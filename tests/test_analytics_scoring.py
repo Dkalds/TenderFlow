@@ -24,7 +24,11 @@ import pytest
 
 import services.analytics.scoring as sc_mod
 from services.analytics.scoring import _effective_weights, score_dataframe
-from services.analytics.scoring_signals import CompetenciaStats, MargenStats
+from services.analytics.scoring_signals import (
+    CompetenciaStats,
+    ImportePercentiles,
+    MargenStats,
+)
 
 # ---------------------------------------------------------------------------
 # Helpers de fixtures
@@ -44,6 +48,7 @@ _EMPTY_MARG = MargenStats()
 _PROJ_KEYS = (
     "id_externo",
     "titulo",
+    "descripcion",
     "organo_contratacion",
     "importe",
     "cpv",
@@ -56,7 +61,7 @@ _PROJ_KEYS = (
 
 
 @contextmanager
-def _repo_data(rows: list[dict]):
+def _repo_data(rows: list[dict], tech_signal: dict[str, float] | None = None):
     normalized = [{k: r.get(k) for k in _PROJ_KEYS} for r in rows]
     imp = pd.Series([r.get("importe") for r in normalized], dtype=float).dropna()
     p10 = float(imp.quantile(0.10)) if len(imp) else 0.0
@@ -72,7 +77,16 @@ def _repo_data(rows: list[dict]):
         )
         stack.enter_context(patch.object(sc_mod._repo, "licitaciones_by_ids", side_effect=_by_ids))
         stack.enter_context(
-            patch.object(sc_mod._repo, "importe_percentiles", return_value=(p10, p90))
+            patch.object(
+                sc_mod,
+                "load_importe_percentiles",
+                return_value=ImportePercentiles(p10=p10, p90=p90, fuente="universo_vivo"),
+            )
+        )
+        # Sin este doble, la dimensión `senal_tecnica` iría a Postgres en un
+        # test unit y la salud saldría degradada por el fallo de conexión.
+        stack.enter_context(
+            patch.object(sc_mod._repo, "tech_signal_by_ids", return_value=dict(tech_signal or {}))
         )
         yield
 
@@ -558,6 +572,130 @@ def test_score_dataframe_usa_contexto_del_base_df_no_del_target():
 
 
 # ---------------------------------------------------------------------------
+# Salud de señales y conteo total
+# ---------------------------------------------------------------------------
+
+
+def test_signals_reporta_de_que_esta_hecho_el_score():
+    """La respuesta dice qué señales aportaron y cuáles no."""
+    comp, marg = _patch_signals(
+        comp=CompetenciaStats(media_global=4.0, status="ok"),
+        marg=MargenStats(status="error"),
+    )
+    with _repo_data(_rows(10)), comp, marg:
+        res = sc_mod.get_scoring(sc_mod.ScoringFilters(limit=5))
+
+    assert res.signals is not None
+    assert res.signals.competencia == "ok"
+    assert res.signals.margen == "error"
+    assert res.signals.percentiles_fuente == "universo_vivo"
+    assert res.signals.degradado is True
+
+
+def test_signals_no_degradado_con_todas_las_senales_sanas():
+    comp, marg = _patch_signals(
+        comp=CompetenciaStats(media_global=4.0, status="ok"),
+        marg=MargenStats(baja_media_global=0.2, status="ok"),
+    )
+    with _repo_data(_rows(10)), comp, marg:
+        res = sc_mod.get_scoring(sc_mod.ScoringFilters(limit=5))
+
+    assert res.signals is not None
+    assert res.signals.degradado is False
+
+
+def test_total_scored_cuenta_antes_del_truncado():
+    """`total_scored` responde "cuántas hay", no "cuántas caben en la página"."""
+    comp, marg = _patch_signals()
+    with _repo_data(_rows(30)), comp, marg:
+        res = sc_mod.get_scoring(sc_mod.ScoringFilters(limit=5))
+
+    assert len(res.opportunities) == 5
+    assert res.total_scored == 30
+
+
+def test_total_scored_descuenta_las_filtradas_por_min_score():
+    """Lo que no pasa el filtro no cuenta: el total es de candidatas reales."""
+    comp, marg = _patch_signals()
+    with _repo_data(_rows(30)), comp, marg:
+        todas = sc_mod.get_scoring(sc_mod.ScoringFilters(limit=500))
+        umbral = sorted((o.score for o in todas.opportunities), reverse=True)[9]
+        res = sc_mod.get_scoring(sc_mod.ScoringFilters(min_score=umbral, limit=3))
+
+    assert len(res.opportunities) == 3
+    assert 0 < res.total_scored < 30
+    assert res.total_scored == sum(1 for o in todas.opportunities if o.score >= umbral)
+
+
+# ---------------------------------------------------------------------------
+# Descartes del usuario
+# ---------------------------------------------------------------------------
+
+
+@contextmanager
+def _patch_dismissals(ids: list[str]):
+    """Doble de `db.radar_dismissals.list_ids` (se importa dentro de la función)."""
+    import db.radar_dismissals as dismissals_mod
+
+    with patch.object(dismissals_mod, "list_ids", return_value=ids):
+        yield
+
+
+def test_las_descartadas_salen_del_ranking_y_el_corte_se_rellena():
+    """Descartar 3 de 30 no deja un top-5 de 2: entran las siguientes.
+
+    Filtrándolas en el cliente sobre el top-N ya cortado, quien triaba las 24
+    señales de la bandeja se quedaba con la bandeja vacía hasta el día
+    siguiente, porque las descartadas seguían ocupando su plaza.
+    """
+    comp, marg = _patch_signals()
+    with _repo_data(_rows(30)), comp, marg:
+        completo = sc_mod.get_scoring(sc_mod.ScoringFilters(limit=5))
+    descartadas = [o.id_externo for o in completo.opportunities[:3]]
+
+    comp2, marg2 = _patch_signals()
+    with _repo_data(_rows(30)), comp2, marg2, _patch_dismissals(descartadas):
+        res = sc_mod.get_scoring(
+            sc_mod.ScoringFilters(limit=5, exclude_dismissed=True), user_key="u1"
+        )
+
+    devueltas = [o.id_externo for o in res.opportunities]
+    assert len(devueltas) == 5
+    assert not set(devueltas) & set(descartadas)
+    assert res.total_scored == 27
+
+
+def test_el_modo_page_aligned_ignora_los_descartes():
+    """El listado manda: una fila descartada visible sigue mereciendo su score."""
+    comp, marg = _patch_signals()
+    with _repo_data(_rows(10)), comp, marg, _patch_dismissals(["L001"]):
+        res = sc_mod.get_scoring(
+            sc_mod.ScoringFilters(ids=["L001", "L002"], exclude_dismissed=True),
+            user_key="u1",
+        )
+
+    assert {o.id_externo for o in res.opportunities} == {"L001", "L002"}
+
+
+def test_sin_usuario_no_se_filtra_nada():
+    """El endpoint también sirve peticiones sin identidad; ahí no hay descartes."""
+    comp, marg = _patch_signals()
+    with _repo_data(_rows(10)), comp, marg, _patch_dismissals(["L001"]):
+        res = sc_mod.get_scoring(sc_mod.ScoringFilters(limit=50, exclude_dismissed=True))
+
+    assert "L001" in {o.id_externo for o in res.opportunities}
+
+
+def test_por_defecto_el_ranking_no_mira_los_descartes():
+    """Opt-in: pipeline, tecnologías y detalle no cambian de comportamiento."""
+    comp, marg = _patch_signals()
+    with _repo_data(_rows(10)), comp, marg, _patch_dismissals(["L001"]):
+        res = sc_mod.get_scoring(sc_mod.ScoringFilters(limit=50), user_key="u1")
+
+    assert "L001" in {o.id_externo for o in res.opportunities}
+
+
+# ---------------------------------------------------------------------------
 # Guardia: no deben existir constantes SAP en el módulo scoring
 # ---------------------------------------------------------------------------
 
@@ -568,3 +706,39 @@ def test_no_sap_constants_in_scoring_module():
     assert not hasattr(sc_mod, "_SAP_MODULES")
     assert not hasattr(sc_mod, "_SAP_SERVICES_PORTFOLIO")
     assert not hasattr(sc_mod, "_S4HANA_KEYWORDS")
+
+
+def test_ningun_modulo_que_puntue_usa_keywords_de_vendor():
+    """La guardia cubre todo `services/analytics/` que produzca score o banda.
+
+    Mirando solo `scoring.py`, `organo_detail._simple_score` sobrevivió al RFC
+    con sus keywords SAP intactas y siguió puntuando el drill-down de órgano.
+    Un ranking que premia decir "sap" en el título deja de ser genérico, y el
+    producto ya clasifica tecnología con datos y no con `in titulo`.
+
+    Los módulos meramente descriptivos (p. ej. el desglose por módulo SAP de
+    `proyectos_modulos.py`) sí pueden nombrar vendors: ahí la marca es el eje
+    del análisis, no un premio en un ranking. La distinción la hace el propio
+    módulo: se audita el que asigne `score`/`banda`.
+    """
+    import re
+    from pathlib import Path
+
+    vendor_literal = re.compile(r"""["'](sap|erp|s/?4hana|hana|abap|fiori)["']""", re.IGNORECASE)
+    asigna_puntuacion = re.compile(r"^\s*(score|banda|band)\s*[:=]", re.MULTILINE)
+    analytics_dir = Path(sc_mod.__file__).parent
+
+    ofensores: dict[str, list[str]] = {}
+    for path in sorted(analytics_dir.glob("*.py")):
+        fuente = path.read_text(encoding="utf-8")
+        if not asigna_puntuacion.search(fuente):
+            continue
+        lineas = [
+            line.strip()
+            for line in fuente.splitlines()
+            if vendor_literal.search(line) and not line.strip().startswith("#")
+        ]
+        if lineas:
+            ofensores[path.name] = lineas
+
+    assert ofensores == {}, f"Literales de vendor en módulos que puntúan: {ofensores}"

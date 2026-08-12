@@ -20,6 +20,7 @@ from pydantic import BaseModel, Field
 from db.repositories.aggregates import AggregateRepository, LicitacionesFilters
 from observability.logging import get_logger
 from services.analytics.scoring import score_dataframe
+from services.analytics.scoring_signals import load_importe_percentiles
 
 log = get_logger(__name__)
 
@@ -170,10 +171,12 @@ def get_pipeline(filters: PipelineFilters) -> PipelineResult:
     valor_30d = float(all_df.loc[all_df["dias_restantes"] <= 30, "importe"].sum(skipna=True))
 
     # Score de toda la ventana (no solo los `limit` devueltos). Contexto:
-    # percentiles P10/P90 globales desde SQL; la afinidad es por-fila, así que
-    # calcularla sobre la ventana equivale a calcularla sobre la tabla entera
-    # y consultar estos ids.
-    score_df = score_dataframe(all_df, all_df, importe_percentiles=_repo.importe_percentiles())
+    # percentiles P10/P90 del universo vivo desde SQL, la misma fuente que usa
+    # el Radar — si cada superficie normalizara contra una población distinta,
+    # el KPI "Calientes" contaría bandas que el Radar no reconoce. La afinidad
+    # es por-fila, así que calcularla sobre la ventana equivale a calcularla
+    # sobre la tabla entera y consultar estos ids.
+    score_df = score_dataframe(all_df, all_df, importe_percentiles=load_importe_percentiles())
     if not score_df.empty:
         all_df["id_externo"] = all_df["id_externo"].astype(str)
         all_df = all_df.merge(score_df, on="id_externo", how="left")

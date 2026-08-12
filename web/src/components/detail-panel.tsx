@@ -53,6 +53,7 @@ const DESGLOSE_LABELS: Record<string, string> = {
   competencia: "Competencia",
   margen: "Margen esperado",
   afinidad: "Afinidad",
+  senal_tecnica: "Señal técnica",
   riesgo: "Riesgo",
 };
 

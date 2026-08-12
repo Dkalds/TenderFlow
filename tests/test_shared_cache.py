@@ -415,6 +415,49 @@ class TestTryRedis:
             assert isinstance(result, _MemoryBackend)
 
 
+class TestInvalidateUserScoped:
+    """Invalidación dirigida cuando el propio usuario cambia el resultado."""
+
+    def test_borra_solo_las_entradas_de_ese_usuario_y_esa_funcion(self):
+        """Descartar una señal no puede tirar la caché de los demás.
+
+        El Radar sirve el ranking cacheado 300 s y ya excluye los descartes del
+        usuario; sin esta invalidación, la señal descartada seguiría en pantalla
+        hasta que expirase el TTL y el hueco no lo ocuparía la siguiente.
+        """
+        mod = _fresh_import()
+
+        @mod.cache_response(ttl=60, namespace="invalidate-ns")
+        def scoring(*, limit, _user):
+            return {"limit": limit, "principal": _user["user_key"]}
+
+        @mod.cache_response(ttl=60, namespace="invalidate-ns")
+        def otra_funcion(*, _user):
+            return {"principal": _user["user_key"]}
+
+        async def invoke():
+            await scoring(limit=24, _user={"user_key": "user-a"})
+            await scoring(limit=50, _user={"user_key": "user-a"})
+            await scoring(limit=24, _user={"user_key": "user-b"})
+            await otra_funcion(_user={"user_key": "user-a"})
+
+        asyncio.run(invoke())
+        cache = mod.get_cache("invalidate-ns")
+        assert len(cache.keys("*")) == 4
+
+        borradas = mod.invalidate_user_scoped("invalidate-ns", "scoring", "user-a")
+
+        assert borradas == 2
+        restantes = cache.keys("*")
+        assert len(restantes) == 2
+        assert all("principal:user-a" not in k or not k.startswith("scoring|") for k in restantes)
+
+    def test_no_falla_cuando_no_hay_nada_que_invalidar(self):
+        mod = _fresh_import()
+
+        assert mod.invalidate_user_scoped("invalidate-vacio", "scoring", "user-a") == 0
+
+
 class TestCacheResponseIdentity:
     """Las respuestas personalizadas nunca comparten entrada entre usuarios."""
 

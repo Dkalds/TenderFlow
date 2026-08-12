@@ -42,6 +42,7 @@ from typing import Any
 
 from db.database import connect_read
 from db.repositories.base import loose_distinct_count, rows_to_dicts
+from db.repositories.tecnologia_pliego import NO_SIGNAL_SENTINEL
 from observability.logging import get_logger
 from shared.estados import ESTADOS_CERRADOS, abierta_sql
 
@@ -1356,13 +1357,17 @@ class AggregateRepository:
     ) -> list[dict[str, Any]]:
         """Proyección ACOTADA de las licitaciones de UN órgano (ADR-023).
 
-        El scoring simple y la estacionalidad del drill-down operan en pandas
-        sobre este subconjunto — acotado por definición al órgano pedido.
+        El scoring y la estacionalidad del drill-down operan en pandas sobre
+        este subconjunto — acotado por definición al órgano pedido.
+        ``fecha_limite`` está porque el ranking usa el motor de scoring real,
+        que puntúa el plazo: sin esa columna todas las filas del drill-down
+        saldrían marcadas ``sin_plazo``.
         """
         where, params = _build_where(filters)
         sql = (
             "SELECT id_externo, titulo, organo_contratacion, importe, cpv, "
-            "       tipo_contrato, estado, fecha_publicacion, ccaa, tecnologia, url "
+            "       tipo_contrato, estado, fecha_publicacion, fecha_limite, "
+            "       ccaa, tecnologia, url "
             "FROM licitaciones "
             f"WHERE {where} AND organo_contratacion = %s"
         )
@@ -1372,19 +1377,26 @@ class AggregateRepository:
     # ── Scoring / pipeline: proyecciones acotadas y contexto ─────────────
 
     # Columnas que _score_row (services/analytics/scoring.py) necesita leer.
+    # `descripcion` no se expone en la respuesta: es insumo de la afinidad, que
+    # antes solo miraba el título — y el título de un pliego español rara vez
+    # nombra la tecnología. En PLACSP viene del `<summary>` ATOM, así que son
+    # cadenas cortas sobre ~1,6 k filas.
     _SCORING_COLS = (
-        "id_externo, titulo, organo_contratacion, importe, cpv, "
+        "id_externo, titulo, descripcion, organo_contratacion, importe, cpv, "
         "fecha_limite, estado, ccaa, tecnologia, fecha_publicacion, ml_tech_principal, url"
     )
 
     def importe_percentiles(self) -> tuple[float, float]:
-        """(P10, P90) de importe sobre TODA la tabla (contexto de scoring).
+        """(P10, P90) de importe sobre TODA la tabla.
 
-        Sin filtros a propósito: el contexto de percentiles del scoring se
-        calcula sobre el dataset completo para no sesgarse por el subconjunto
-        filtrado (misma semántica que el ``base_df`` original).
-        ``percentile_cont`` interpola linealmente, igual que
-        ``Series.quantile`` por defecto.
+        Fallback de ``importe_percentiles_universo`` para cuando el universo
+        vivo tiene tan pocos importes que sus percentiles serían ruido: ahí una
+        distribución estable —aunque contaminada— discrimina mejor que una
+        calculada sobre un puñado de filas. No lo llames directamente desde el
+        scoring; el llamante es ``services.analytics.scoring_signals``.
+
+        Sin filtros a propósito. ``percentile_cont`` interpola linealmente,
+        igual que ``Series.quantile`` por defecto.
         """
         sql = (
             "SELECT percentile_cont(0.10) WITHIN GROUP (ORDER BY importe), "
@@ -1396,6 +1408,44 @@ class AggregateRepository:
         if row is None or row[0] is None:
             return 0.0, 0.0
         return float(row[0]), float(row[1] or 0.0)
+
+    def importe_percentiles_universo(
+        self,
+        *,
+        hoy_iso: str,
+        cerrados: tuple[str, ...] = ESTADOS_CERRADOS,
+    ) -> tuple[float, float, int]:
+        """(P10, P90, nº de importes) sobre el universo puntuable.
+
+        El predicado es **el mismo** que el de ``scoring_candidates``: si uno
+        cambia, el otro también. La dimensión ``importe`` del score normaliza
+        una oportunidad contra la distribución de este resultado, así que la
+        población de referencia tiene que ser aquella en la que esa oportunidad
+        compite —el mercado abierto de hoy—, no la tabla entera: de sus
+        1.640.915 filas (medido 2026-08-11) el 91% son avisos agregados de PSCP
+        sin plazo propio que nunca fueron oportunidades. Con esa referencia, un
+        contrato de 300 k€ se comparaba contra un corpus cuyos percentiles
+        describen otro mercado.
+
+        Devuelve también el conteo para que el llamante decida si la muestra da
+        para percentiles o conviene caer al fallback global.
+        """
+        placeholders = ",".join("%s" for _ in cerrados)
+        guard = _iso_guard("fecha_limite")
+        sql = (
+            "SELECT percentile_cont(0.10) WITHIN GROUP (ORDER BY importe), "
+            "       percentile_cont(0.90) WITHIN GROUP (ORDER BY importe), "
+            "       COUNT(importe) "
+            "FROM licitaciones "
+            f"WHERE (estado IS NULL OR estado NOT IN ({placeholders})) "
+            f"  AND {guard} AND fecha_limite >= %s "
+            "  AND importe IS NOT NULL"
+        )
+        with connect_read() as c:
+            row = c.execute(sql, [*cerrados, hoy_iso]).fetchone()
+        if row is None or row[0] is None:
+            return 0.0, 0.0, 0
+        return float(row[0]), float(row[1] or 0.0), int(row[2] or 0)
 
     def scoring_candidates(
         self,
@@ -1442,6 +1492,10 @@ class AggregateRepository:
         ``hoy_iso`` se inyecta (no ``now()`` en SQL) como en
         ``overview_para_hoy``: el corte queda fijado por el llamante y los
         tests no dependen del reloj.
+
+        El predicado de estado + plazo está replicado en
+        ``importe_percentiles_universo``, que calcula la distribución de
+        referencia de la dimensión ``importe``: si cambia aquí, cambia allí.
         """
         where, params = _build_where(filters or LicitacionesFilters())
         placeholders = ",".join("%s" for _ in cerrados)
@@ -1463,6 +1517,68 @@ class AggregateRepository:
         sql = f"SELECT {self._SCORING_COLS} FROM licitaciones WHERE id_externo IN ({placeholders})"
         with connect_read() as c:
             return rows_to_dicts(c.execute(sql, ids))
+
+    def tech_signal_by_ids(
+        self, ids: list[str], *, tecnologia: str | None = None
+    ) -> dict[str, float]:
+        """Fuerza de la señal técnica [0,1] por licitación, para las ids dadas.
+
+        Combina las dos evidencias que el sistema ya produce y hasta ahora solo
+        servían para filtrar o etiquetar:
+
+        - ``licitacion_tecnologia_pliego``: derivada del **texto real de los
+          pliegos**, con términos citables. Es la más fuerte de las dos y
+          sobrevive al clobber de ``db/upsert.py``.
+        - ``licitacion_tecnologia_score``: probabilidad del clasificador ML.
+
+        Se toma el máximo: una tecnología confirmada por cualquiera de las dos
+        vías está confirmada. Con ``tecnologia``, la fuerza es la de ESA
+        tecnología (es el ranking de "las mejores oportunidades SAP", no "las
+        mejores oportunidades que además son SAP"); sin filtro, la máxima sobre
+        cualquiera.
+
+        Se consulta **por ids** y no se cachea entera a propósito:
+        ``licitacion_tecnologia_score`` tiene una fila por (licitación, label)
+        sobre toda la tabla, así que puede llegar a millones — el patrón de
+        carga completa que usan las otras señales aquí reventaría la memoria
+        del proceso. El universo puntuable son ~1,6 k ids y ambas consultas
+        atacan sus claves primarias.
+
+        No usa ``licitaciones.ml_proba_max``: `db/upsert.py` la sobreescribe en
+        cada re-scrape (esa es justamente la razón de existir de la tabla de
+        pliego).
+        """
+        if not ids:
+            return {}
+        filtro_tech = " AND tecnologia = %s" if tecnologia else ""
+        params: list[Any] = [ids, NO_SIGNAL_SENTINEL]
+        if tecnologia:
+            params.append(tecnologia)
+        params.append(ids)
+        if tecnologia:
+            params.append(tecnologia)
+        sql = (
+            "SELECT licitacion_id, MAX(fuerza) AS fuerza FROM ("
+            "  SELECT licitacion_id, MAX(score) AS fuerza"
+            "    FROM licitacion_tecnologia_pliego"
+            "   WHERE licitacion_id = ANY(%s) AND tecnologia <> %s"
+            f"{filtro_tech}"
+            "   GROUP BY licitacion_id"
+            "  UNION ALL"
+            "  SELECT licitacion_id, MAX(probabilidad) AS fuerza"
+            "    FROM licitacion_tecnologia_score"
+            "   WHERE licitacion_id = ANY(%s)"
+            f"{filtro_tech}"
+            "   GROUP BY licitacion_id"
+            ") sub GROUP BY licitacion_id"
+        )
+        with connect_read() as c:
+            rows = rows_to_dicts(c.execute(sql, params))
+        return {
+            str(r["licitacion_id"]): float(r["fuerza"])
+            for r in rows
+            if r["licitacion_id"] is not None and r["fuerza"] is not None
+        }
 
     def pipeline_window(
         self,

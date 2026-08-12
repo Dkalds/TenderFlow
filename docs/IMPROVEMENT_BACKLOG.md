@@ -18,10 +18,10 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 - **Problema:** acotar el universo puntuable (commit del fix del Radar, 2026-08-11) quitó el escaneo de 1,5 M filas, pero `_build_context` sigue pagando tres consultas de contexto que no dependen de la fila puntuada y que escanean la tabla entera. Medido en producción el 2026-08-11: `importe_percentiles()` **7,4 s** (seq scan + sort de 1,63 M importes, y a diferencia de las señales **no está cacheada**: se llama en cada request), la media de ofertas por CPV-4 de `load_competencia_stats` **9,5 s** (hash join de 1,6 M adjudicaciones contra un Parallel Seq Scan de `licitaciones` filtrando por `analysis_universe`, que no tiene índice utilizable), más las tres consultas de `load_margen_stats`. Total observado de un request en frío: **59,6 s** (correlation_id `93da5a9b`, 25 filas puntuadas) frente a 186 ms con caché caliente. Ya no tumba el proceso —las cachés ahora sobreviven porque la instancia deja de reiniciarse—, pero la primera carga del Radar tras cada deploy o expiración de TTL paga eso entero.
 - **Acceptance criteria:**
   - Primera carga del Radar en una instancia fría por debajo de 5 s.
-  - `importe_percentiles()` cacheada con el mismo patrón `SignalAwareCache` que ya usan las señales (P10/P90 globales cambian con la ingesta, no con el request), o materializada.
-  - La media de ofertas por CPV-4 deja de escanear `licitaciones` entera: índice que sirva el predicado de `analysis_universe`/`cpv`, o agregado materializado por CPV-4.
-- **Files de partida:** [db/repositories/aggregates.py](../db/repositories/aggregates.py) (`importe_percentiles`), [services/analytics/scoring_signals.py](../services/analytics/scoring_signals.py), [services/_data_cache.py](../services/_data_cache.py)
-- **Riesgo:** bajo — cachear un agregado global y añadir un índice; sin cambio de contrato ni de números mostrados.
+  - ~~`importe_percentiles()` cacheada con el mismo patrón `SignalAwareCache` que ya usan las señales (P10/P90 globales cambian con la ingesta, no con el request), o materializada.~~ **Hecho 2026-08-12**: `load_importe_percentiles()` cachea con `SignalAwareCache` y además consulta `importe_percentiles_universo()`, que agrega sobre las ~1,6 k filas del universo puntuable usando `idx_lic_fecha_limite` en vez de escanear 1,63 M importes. El método global queda solo como fallback cuando la muestra viva no llega a 50 importes.
+  - La media de ofertas por CPV-4 deja de escanear `licitaciones` entera: índice que sirva el predicado de `analysis_universe`/`cpv`, o agregado materializado por CPV-4. **Pendiente** — es lo que mantiene este ítem abierto: necesita migración (índice o materialización), y tocar `db/alembic/` requiere OK humano explícito (AGENTS §6). Sin esta pata, el frío absoluto sigue por encima de 5 s aunque los percentiles ya no aporten sus 7,4 s.
+- **Files de partida:** [db/repositories/aggregates.py](../db/repositories/aggregates.py) (`importe_percentiles_universo`), [services/analytics/scoring_signals.py](../services/analytics/scoring_signals.py), [services/_data_cache.py](../services/_data_cache.py)
+- **Riesgo:** bajo — cachear un agregado global y añadir un índice; sin cambio de contrato. Sí cambian los números mostrados: los percentiles pasan a describir el mercado abierto y no la tabla entera (deliberado, ver addendum del RFC de scoring).
 
 ### [P2] Surface `participaciones_ute` en el frontend de competidores
 - **Área:** web/src/components/competitors/company-profile-types.ts, web/src/components/competitors/company-profile-summary.tsx, web/src/app/(dashboard)/competidores/page.tsx
@@ -224,11 +224,20 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 ### [P3] Unificar la definición de "Calientes" (heurística de resumen vs banda de scoring)
 - **Área:** services/analytics/resumen, services/analytics/pipeline, services/analytics/scoring
 - **Problema:** `services/analytics/resumen.py::get_resumen_hoy` calcula "calientes" como `importe ≥ P75 AND estado activo AND en plazo` (heurística ad-hoc), mientras que el KPI "Calientes" nuevo de `/analytics/pipeline` (2026-07-20) usa la banda de scoring genérico (`score ≥ 75`, `services/analytics/scoring.py`). Son dos definiciones distintas de la misma palabra visibles en páginas contiguas (Resumen enlaza su "Calientes" a Pipeline & Alertas), lo que puede desconcertar si los números no coinciden.
-- **Acceptance criteria:**
-  - Una sola definición de "caliente" reutilizada por ambos endpoints (lo más simple: `resumen_hoy` adopta la banda de scoring, ya que es la señal más rica — importe/plazo/competencia/margen/afinidad/riesgo vs. solo importe).
-  - Los números de "Calientes" coinciden entre `/resumen` y `/pipeline-alertas` para el mismo dataset.
+- **Progreso 2026-08-12:** resuelta la mitad barata — el KPI del resumen ya no se llama "Calientes" en la UI (`kpi-rows.tsx` → "Grandes en plazo", `notification-bell.tsx` → "Grandes"), así que dos números distintos dejan de compartir nombre. El campo `ResumenHoyResult.calientes` se conserva porque es contrato público, con la advertencia en su docstring.
+- **Acceptance criteria (lo que queda):**
+  - Decidir si el resumen adopta la banda de scoring (señal más rica) o mantiene su heurística de importe con el nombre nuevo. Si adopta el score, renombrar también el campo del DTO en una migración consciente del contrato (AGENTS §3.5).
 - **Files de partida:** [services/analytics/resumen.py](../services/analytics/resumen.py), [services/analytics/pipeline.py](../services/analytics/pipeline.py), [services/analytics/scoring.py](../services/analytics/scoring.py)
 - **Riesgo:** bajo — cambia un número visible en dos KPIs; sin migración de schema.
+
+### [P3] Vigilar el crecimiento de `predicciones_baja`
+- **Área:** services/analytics/scoring_signals, services/ml/scoring, scheduler/jobs/ml_predicciones
+- **Problema:** `_load_margen_stats_raw` carga la tabla entera (`licitacion_id`, `p50`) a un dict en cada refresco de caché. Hoy es barato —el job de ML solo predice licitaciones abiertas, 5 k por corrida— pero el upsert **no purga**, así que la tabla acumula filas de expedientes ya cerrados y crece de forma monótona. No se filtra por universo vivo a propósito: el modo page-aligned del Detalle puntúa filas cerradas y perdería su dimensión de margen en silencio.
+- **Acceptance criteria:**
+  - Vigilar el campo `predicciones` del log `scoring_signals_margen_cargada`.
+  - Si supera ~200 k filas, purgar por antigüedad en el job de ML (no filtrar en el loader).
+- **Files de partida:** [services/analytics/scoring_signals.py](../services/analytics/scoring_signals.py), [services/ml/scoring.py](../services/ml/scoring.py)
+- **Riesgo:** bajo — hoy es solo instrumentación; la purga se decide con el dato medido.
 
 ### [P3] Ordenar /renovaciones por score de oportunidad en el servidor
 - **Área:** web/renovaciones, services/competitive/renovaciones

@@ -55,6 +55,12 @@ class ResumenHoyFilters(BaseModel):
 
 
 class ResumenHoyResult(BaseModel):
+    # OJO con el nombre: aquí "caliente" es **importe ≥ P75, abierta y en
+    # plazo**, no la banda `Caliente` del score (≥75 puntos) que cuenta
+    # `/analytics/pipeline`. Son dos preguntas distintas —"cuáles son gordas"
+    # frente a "cuáles merecen mi tiempo"— que compartían nombre en dos
+    # páginas contiguas. El campo se conserva porque es contrato público; la
+    # UI ya no lo llama "Calientes".
     calientes: int = 0
     vencen_48h: int = 0
     nuevas_24h: int = 0

@@ -2,7 +2,7 @@ import * as React from "react";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, waitFor, act } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import type { RadarTender } from "@/hooks/use-radar";
+import type { RadarTender, ScoringSignals } from "@/hooks/use-radar";
 
 /**
  * El Radar es ahora una consola tabular con inspector en el mismo plano, pero
@@ -51,11 +51,19 @@ vi.mock("@/hooks/use-organization", () => ({
 
 const refetch = vi.fn();
 const radarState: {
-  data?: { items: RadarTender[] };
+  data?: { items: RadarTender[]; signals?: ScoringSignals | null };
   isLoading: boolean;
   error: unknown;
   refetch: typeof refetch;
 } = { data: undefined, isLoading: false, error: null, refetch };
+
+const SIGNALS_SANAS: ScoringSignals = {
+  competencia: "ok",
+  margen: "ok",
+  percentiles_fuente: "universo_vivo",
+  afinidad_metodo: "keyword_cpv_fallback",
+  senal_tecnica: "ok",
+};
 
 // El triaje es server-side: la página lee los descartes y muta contra
 // `/api/v1/radar/dismissals`. El stub replica esa ida y vuelta con un store
@@ -81,9 +89,21 @@ const dismissMutate = vi.fn((id: string) => setDismissed([...dismissedIds, id]))
 const restoreMutate = vi.fn((id: string) =>
   setDismissed(dismissedIds.filter((current) => current !== id)),
 );
+// El segmento "Descartadas" ya no sale del top-24 (el backend lo excluye): se
+// hidrata por ids con el modo page-aligned. El stub las busca en el mismo
+// conjunto sintético para que el segmento siga siendo navegable en el test.
+function useDismissedTendersStub(ids: string[], enabled: boolean) {
+  const items = enabled
+    ? (radarState.data?.items ?? []).filter((t) => ids.includes(t.id_externo))
+    : [];
+  return { items, isLoading: false, truncadas: 0 };
+}
+
 vi.mock("@/hooks/use-radar", () => ({
   useRadar: () => radarState,
   useRadarDismissals: () => ({ data: useDismissedStub() }),
+  useRadarDismissedTenders: (ids: string[], enabled: boolean) =>
+    useDismissedTendersStub(ids, enabled),
   useDismissRadarTender: () => ({ mutate: dismissMutate }),
   useRestoreRadarTender: () => ({ mutate: restoreMutate }),
 }));
@@ -148,7 +168,7 @@ function tender(overrides: Partial<RadarTender> = {}): RadarTender {
 
 beforeEach(() => {
   setDismissed([]);
-  radarState.data = { items: [tender()] };
+  radarState.data = { items: [tender()], signals: SIGNALS_SANAS };
   radarState.isLoading = false;
     radarState.error = null;
   watchedItems.length = 0;
@@ -303,5 +323,50 @@ describe("RadarPage", () => {
     fireEvent.click(screen.getByRole("button", { name: /^Descartadas\s*1$/ }));
 
     expect(screen.getAllByText("Mantenimiento SAP").length).toBeGreaterThan(0);
+  });
+
+  it("avisa cuando el backend dice que una señal del score no aportó", () => {
+    // Una señal caída puntúa igual que una sin datos: todas las filas neutras
+    // en esa dimensión, y el ranking sigue pareciendo sano. El aviso es lo que
+    // impide que el usuario decida sobre un orden degradado sin saberlo.
+    radarState.data = {
+      items: [tender({ score: 61, band: "Atractiva" })],
+      signals: { ...SIGNALS_SANAS, margen: "error" },
+    };
+
+    renderRadar();
+
+    expect(screen.getByRole("status")).toHaveTextContent(/Score degradado/);
+    expect(screen.getByRole("status")).toHaveTextContent(/sin predicción de baja/);
+  });
+
+  it("no avisa de nada cuando todas las señales están sanas", () => {
+    renderRadar();
+
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+  });
+
+  it("cuenta todas las descartadas del usuario, no solo las del top-24", () => {
+    // El contador salía de intersectar los descartes con las 24 señales
+    // recibidas, así que descartar algo que luego salía del ranking lo hacía
+    // desaparecer también de su propio segmento.
+    setDismissed(["FUERA-1", "FUERA-2", "FUERA-3"]);
+
+    renderRadar();
+
+    expect(screen.getByRole("button", { name: /^Descartadas\s*3$/ })).toBeInTheDocument();
+  });
+
+  it("avisa también cuando el importe se normaliza contra el histórico completo", () => {
+    // El fallback global no es un fallo, pero cambia el significado del score:
+    // la referencia deja de ser el mercado en el que se compite hoy.
+    radarState.data = {
+      items: [tender({ score: 61, band: "Atractiva" })],
+      signals: { ...SIGNALS_SANAS, percentiles_fuente: "global" },
+    };
+
+    renderRadar();
+
+    expect(screen.getByRole("status")).toHaveTextContent(/histórico completo/);
   });
 });

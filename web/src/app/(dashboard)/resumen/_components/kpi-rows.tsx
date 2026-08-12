@@ -232,10 +232,17 @@ export function KpiRows({ overview, hoy, isLoading, hoyLoading, porMes }: KpiRow
             />
           </Stagger.Item>
           <Stagger.Item>
+            {/*
+              Se llamaba "Calientes", igual que el KPI de /pipeline-alertas —al
+              que además enlaza— pero cuenta otra cosa: aquí es importe ≥ P75 y
+              en plazo; allí, banda del score ≥ 75. Dos números distintos con el
+              mismo nombre en páginas contiguas. El campo del DTO conserva su
+              nombre (es contrato); lo que se corrige es lo que lee el usuario.
+            */}
             <UrgentCard
-              title="Calientes"
+              title="Grandes en plazo"
               value={formatNumber(hoy?.calientes)}
-              subtitle="Alto importe y en plazo"
+              subtitle="Importe ≥ P75, abiertas y en plazo"
               icon={Flame}
               accent="warm"
               loading={hoyLoading}

@@ -22,12 +22,13 @@ from __future__ import annotations
 
 import io
 import json
+import re
 import zipfile
 from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 from api.auth import create_api_key
 from api.concurrency import run_db
@@ -52,6 +53,7 @@ from services.gdpr import (
     set_key_expiry,
 )
 from shared.dto import SessionsRevoked, StatusMessage, StatusOk
+from shared.scoring_weights import validate_scoring_weights
 
 log = get_logger(__name__)
 
@@ -322,26 +324,58 @@ def rotate_my_key(
 # ---------------------------------------------------------------------------
 
 
+_CPV_RE = re.compile(r"^\d{4,8}$")
+_MAX_CPVS = 50
+
+
 class UserProfileBody(BaseModel):
     """Cuerpo para crear/actualizar el perfil de scoring."""
 
     weights: dict[str, int] | None = None
     afinidad_keywords: list[str] | None = None
+    # La columna `cpvs_json` existía y el scoring la leía, pero ningún cuerpo la
+    # declaraba: era inescribible por API, y encima cada PUT la machacaba con
+    # NULL. La similitud por CPV de la afinidad (1.0 exacto / 0.8 por división)
+    # nunca llegó a activarse en producción.
+    cpvs: list[str] | None = None
     importe_min: float | None = None
     importe_max: float | None = None
     organization_id: int | None = None
     visibility: Literal["private", "organization"] = "private"
 
-    def validate_weights(self) -> None:
-        if self.weights is not None:
-            total = sum(self.weights.values())
-            if total != 100:
-                from fastapi import HTTPException
-
-                raise HTTPException(
-                    status_code=422,
-                    detail=f"Los pesos deben sumar 100, suman {total}.",
+    @field_validator("cpvs")
+    @classmethod
+    def _clean_cpvs(cls, value: list[str] | None) -> list[str] | None:
+        if value is None:
+            return None
+        limpios: list[str] = []
+        for raw in value:
+            cpv = str(raw).strip()
+            if not cpv:
+                continue
+            if not _CPV_RE.match(cpv):
+                raise ValueError(
+                    f"CPV invalido: {cpv!r}. Se esperan 4-8 digitos (division, grupo o codigo)."
                 )
+            if cpv not in limpios:
+                limpios.append(cpv)
+        if len(limpios) > _MAX_CPVS:
+            raise ValueError(f"Maximo {_MAX_CPVS} CPVs por perfil, llegaron {len(limpios)}.")
+        return limpios
+
+    def validate_weights(self) -> None:
+        """Aplica la misma regla que los pesos globales de settings.
+
+        Antes solo comprobaba la suma, así que `{"foo": 100}` pasaba: las cinco
+        dimensiones reales se quedaban a 0 —`w.get(dim, 0)`— y el usuario veía
+        el corpus entero en banda Descarte sin ningún error que lo explicara.
+        """
+        if self.weights is None:
+            return
+        try:
+            validate_scoring_weights(self.weights)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 class UserProfileOut(BaseModel):
@@ -350,6 +384,7 @@ class UserProfileOut(BaseModel):
     user_key: str | None = None
     weights: dict[str, int] | None = None
     afinidad_keywords: list[str] | None = None
+    cpvs: list[str] | None = None
     importe_min: float | None = None
     importe_max: float | None = None
     updated_at: str | None = None
@@ -374,6 +409,7 @@ async def get_profile(
     return UserProfileOut(
         weights=raw.get("weights"),
         afinidad_keywords=raw.get("afinidad_keywords"),
+        cpvs=raw.get("cpvs"),
         importe_min=raw.get("importe_min"),
         importe_max=raw.get("importe_max"),
         updated_at=raw.get("updated_at"),
@@ -389,8 +425,12 @@ async def put_profile(
 ) -> StatusOk:
     """Crea o actualiza el perfil de scoring personalizado.
 
-    Los pesos deben sumar 100 cuando se proporcionan.
-    Pasar `null` en un campo lo mantiene sin cambios (no sobrescribe).
+    Los pesos, cuando se proporcionan, deben ser dimensiones conocidas, no
+    negativas y sumar 100.
+
+    **Reemplaza el perfil completo**: el upsert escribe todas las columnas, así
+    que un campo omitido (o `null`) se guarda como `null`, no conserva el valor
+    anterior. Enviá siempre el estado íntegro.
     """
     from db.repositories.user_profiles import upsert_user_profile
 
@@ -403,6 +443,7 @@ async def put_profile(
         {
             "weights": body.weights,
             "afinidad_keywords": body.afinidad_keywords,
+            "cpvs": body.cpvs,
             "importe_min": body.importe_min,
             "importe_max": body.importe_max,
         },

@@ -64,3 +64,56 @@ def test_affinity_without_explicit_portfolio_is_unavailable() -> None:
     )
     assert result.method == "unavailable"
     assert result.scores == {}
+
+
+def test_el_fallback_no_matchea_keywords_dentro_de_otras_palabras() -> None:
+    """ "sap" no está en "pasaporte", ni "erp" en "superposición".
+
+    Con `in` sobre el título ambos daban positivo, y la afinidad —15 puntos por
+    defecto— premiaba coincidencias inexistentes.
+    """
+    portfolio = build_portfolio(keywords=["sap", "erp"])
+    candidates = pd.DataFrame(
+        [
+            {"id_externo": "FALSO", "titulo": "Renovación de pasaportes y superposición de capas"},
+            {"id_externo": "REAL", "titulo": "Mantenimiento SAP y del ERP corporativo"},
+        ]
+    )
+
+    with patch("services.embeddings.embeddings_available", return_value=False):
+        result = score_affinity_batch(candidates, portfolio)
+
+    assert result.scores["FALSO"] == 0.0
+    assert result.scores["REAL"] > 0.0
+
+
+def test_el_fallback_tambien_mira_la_descripcion() -> None:
+    """El título de un pliego español rara vez nombra la tecnología."""
+    portfolio = build_portfolio(keywords=["sap"])
+    candidates = pd.DataFrame(
+        [
+            {
+                "id_externo": "DESC",
+                "titulo": "Servicios de mantenimiento del sistema de gestión económica",
+                "descripcion": "Incluye el soporte de los módulos SAP del ayuntamiento.",
+            }
+        ]
+    )
+
+    with patch("services.embeddings.embeddings_available", return_value=False):
+        result = score_affinity_batch(candidates, portfolio)
+
+    assert result.scores["DESC"] > 0.0
+
+
+def test_el_fallback_cuenta_keywords_distintas_no_repeticiones() -> None:
+    """Repetir una palabra no es tener más afinidad; son 3 keywords para saturar."""
+    portfolio = build_portfolio(keywords=["sap"])
+    candidates = pd.DataFrame(
+        [{"id_externo": "REP", "titulo": "SAP SAP SAP SAP", "descripcion": "SAP"}]
+    )
+
+    with patch("services.embeddings.embeddings_available", return_value=False):
+        result = score_affinity_batch(candidates, portfolio)
+
+    assert result.scores["REP"] == 0.333333

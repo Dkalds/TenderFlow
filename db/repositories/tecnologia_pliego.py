@@ -26,7 +26,11 @@ from db.repositories.base import rows_to_dicts
 # por licitación -- es multi-fila por tecnología). score=0 la deja fuera de
 # cualquier merge (PLIEGO_TECH_MIN_SCORE nunca es <= 0) y de las lecturas
 # para el endpoint, que la filtran explícitamente.
-_NO_SIGNAL_SENTINEL = "__no_signal__"
+#
+# Público: cualquier lectura de la tabla tiene que excluirlo, y duplicar el
+# literal en otro repo es la forma de que un día uno de los dos se olvide.
+NO_SIGNAL_SENTINEL = "__no_signal__"
+_NO_SIGNAL_SENTINEL = NO_SIGNAL_SENTINEL
 
 
 class TechSignal(NamedTuple):

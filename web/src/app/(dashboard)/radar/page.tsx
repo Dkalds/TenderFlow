@@ -17,9 +17,11 @@ import { getJSON, setJSON } from "@/lib/storage";
 import { cn, formatNumber } from "@/lib/utils";
 import {
   type RadarTender,
+  type ScoringSignals,
   useDismissRadarTender,
   useRadar,
   useRadarDismissals,
+  useRadarDismissedTenders,
   useRestoreRadarTender,
 } from "@/hooks/use-radar";
 import { RadarInspector } from "./_components/radar-inspector";
@@ -68,6 +70,29 @@ const SHORTCUTS = [
 type SegmentKey = (typeof SEGMENTS)[number]["key"];
 type SortKey = (typeof SORTS)[number]["key"];
 
+/**
+ * Qué se le dice al usuario cuando el backend avisa de que el score va cojo.
+ *
+ * No es decoración: una señal caída puntúa igual que una sin datos —todas las
+ * filas neutrales en esa dimensión— y el ranking sigue pareciendo sano. La
+ * señal de margen estuvo muerta semanas por ese motivo. El texto describe la
+ * consecuencia para quien decide, no el fallo técnico.
+ */
+const SIGNAL_WARNINGS: Record<string, string> = {
+  competencia: "sin histórico de competencia: esa dimensión puntúa neutra",
+  margen: "sin predicción de baja: esa dimensión puntúa neutra",
+  percentiles: "el importe se compara contra el histórico completo, no contra el mercado abierto",
+};
+
+function signalWarnings(signals: ScoringSignals | null | undefined): string[] {
+  if (!signals) return [];
+  const avisos: string[] = [];
+  if (signals.competencia !== "ok") avisos.push(SIGNAL_WARNINGS.competencia);
+  if (signals.margen !== "ok") avisos.push(SIGNAL_WARNINGS.margen);
+  if (signals.percentiles_fuente !== "universo_vivo") avisos.push(SIGNAL_WARNINGS.percentiles);
+  return avisos;
+}
+
 /** Marca de la última visita, para el punto «nueva» de cada fila. */
 const LAST_VISIT_KEY = "radar-last-visit";
 
@@ -110,32 +135,41 @@ export default function RadarPage() {
   );
 
   const all = React.useMemo(() => data?.items ?? [], [data]);
+  const avisosDeSenal = React.useMemo(() => signalWarnings(data?.signals), [data]);
+
+  // El ranking llega ya sin las descartadas (`exclude_dismissed`), así que su
+  // segmento se hidrata aparte y su contador es el total real, no la
+  // intersección con un top-24 del que ya salieron.
+  const descartadas = useRadarDismissedTenders(dismissedIds, segment === "descartadas");
 
   const counts = React.useMemo(
     () => ({
       bandeja: all.filter((t) => !dismissed.has(t.id_externo) && !followedIds.has(t.id_externo))
         .length,
       siguiendo: all.filter((t) => followedIds.has(t.id_externo)).length,
-      descartadas: all.filter((t) => dismissed.has(t.id_externo)).length,
+      descartadas: dismissedIds.length,
       todas: all.length,
     }),
-    [all, dismissed, followedIds],
+    [all, dismissed, dismissedIds, followedIds],
   );
 
   const rows = React.useMemo(() => {
-    const filtered = all.filter((tender) => {
+    // El backend ya excluyó las descartadas; el filtro cliente cubre la ventana
+    // entre la mutación optimista y el refetch del ranking.
+    const base = segment === "descartadas" ? descartadas.items : all;
+    const filtered = base.filter((tender) => {
       if (segment === "bandeja")
         return !dismissed.has(tender.id_externo) && !followedIds.has(tender.id_externo);
       if (segment === "siguiendo") return followedIds.has(tender.id_externo);
-      if (segment === "descartadas") return dismissed.has(tender.id_externo);
-      return true;
+      if (segment === "descartadas") return true;
+      return !dismissed.has(tender.id_externo);
     });
     return filtered.slice().sort((a, b) => {
       if (sort === "score") return (b.score ?? -1) - (a.score ?? -1);
       if (sort === "plazo") return (daysLeft(a.fecha_limite) ?? 9999) - (daysLeft(b.fecha_limite) ?? 9999);
       return (b.importe ?? 0) - (a.importe ?? 0);
     });
-  }, [all, segment, sort, dismissed, followedIds]);
+  }, [all, descartadas.items, segment, sort, dismissed, followedIds]);
 
   const activeIndex = Math.min(selected, Math.max(0, rows.length - 1));
   const active: RadarTender | undefined = rows[activeIndex];
@@ -307,6 +341,15 @@ export default function RadarPage() {
             );
           })}
         </div>
+
+        {avisosDeSenal.length > 0 && (
+          <div
+            role="status"
+            className="flex-none border-b border-amber-500/25 bg-amber-500/8 px-3.5 py-1.5 text-[11.5px] leading-[1.45] text-amber-700 dark:text-amber-300"
+          >
+            <span className="font-medium">Score degradado</span> — {avisosDeSenal.join(" · ")}.
+          </div>
+        )}
 
         {/* Cabecera de columnas */}
         <div
