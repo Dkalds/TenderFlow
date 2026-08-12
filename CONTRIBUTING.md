@@ -44,6 +44,11 @@ refactor(services): simplificar capa de dominio
 
 El changelog se genera automáticamente con `git-cliff` a partir de estos commits (ver `cliff.toml`).
 
+En CI, el check `Commitlint (PR titles)` (`.github/workflows/pr-title.yml`)
+valida el **título del PR** con estas mismas reglas: al mergear con squash, ese
+título es el subject del commit que llega a `master`. Si el check sale en rojo,
+corregí el título y se reevalúa solo — no hace falta subir un commit nuevo.
+
 ## Pre-commit hooks
 
 Los hooks se instalan con `make dev`. Se ejecutan automáticamente en cada commit.

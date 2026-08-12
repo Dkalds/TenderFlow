@@ -166,6 +166,7 @@ tenderflow/
 ├── tests/                        # Tests (unit, integration, e2e, property, load)
 ├── .github/workflows/            # CI/CD
 │   ├── ci.yml                    #   Lint, tipos, tests, pre-commit, audit, docker build
+│   ├── pr-title.yml              #   Commitlint sobre el título del PR (reevalúa al editarlo)
 │   ├── security.yml              #   Semgrep SAST + Trivy + rotation reminder
 │   ├── scrape-daily.yml          #   Feed ATOM/conectores en vivo (cada 4h)
 │   ├── scrape-bulk.yml           #   Refresh de N meses (manual, sin cron)
