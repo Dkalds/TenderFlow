@@ -188,6 +188,39 @@ def test_scoring_empty_dataset():
     assert res.total_scored == 0
 
 
+def test_scoring_top_n_pide_al_repo_universo_vivo_y_filtrado():
+    """El recorte del universo se delega a SQL, no se hace luego en pandas.
+
+    Es lo que separa un endpoint que responde de uno que tumba el proceso: sin
+    acotar, `scoring_candidates` devolvía 1,5 M filas en producción. Y el
+    filtro por tecnología tiene que viajar con la consulta, o el top-N sería el
+    global recortado después (ADR-014, invariante 1).
+    """
+    comp, marg = _patch_signals()
+    with _repo_data(_rows(3)), comp, marg:
+        sc_mod.get_scoring(sc_mod.ScoringFilters(limit=5, tecnologia="SAP"))
+        kwargs = sc_mod._repo.scoring_candidates.call_args.kwargs
+
+    assert kwargs["filters"].tecnologia == "SAP"
+    # El corte de plazo es una fecha ISO concreta, no `None` ni `now()` en SQL.
+    assert len(kwargs["hoy_iso"]) == 10 and kwargs["hoy_iso"][4] == "-"
+
+
+def test_scoring_ids_mode_no_recorta_por_plazo():
+    """En page-aligned manda el listado: si una fila se ve, se puntúa.
+
+    Alinear el score con la página exige puntuar exactamente esas filas —
+    incluidas las vencidas o cerradas que el listado decida mostrar.
+    """
+    vencida = _rows(1)
+    vencida[0]["fecha_limite"] = "2020-01-01T00:00:00+00:00"
+    comp, marg = _patch_signals()
+    with _repo_data(vencida), comp, marg:
+        res = sc_mod.get_scoring(sc_mod.ScoringFilters(ids=["L000"]))
+
+    assert [o.id_externo for o in res.opportunities] == ["L000"]
+
+
 # ---------------------------------------------------------------------------
 # Nuevos tests: competencia
 # ---------------------------------------------------------------------------
