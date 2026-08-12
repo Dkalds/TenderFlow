@@ -22,7 +22,7 @@ from __future__ import annotations
 import argparse
 import secrets
 import sys
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 # Asegurar que el package root está en sys.path cuando se corre como script
@@ -32,6 +32,32 @@ if str(_ROOT) not in sys.path:
 
 
 # ── Datos de ejemplo ──────────────────────────────────────────────────────────
+
+
+def _dia(offset: int) -> str:
+    """Fecha ISO a ``offset`` días de hoy (negativo = pasado).
+
+    Las fechas del seed eran literales fijos, escritos cuando "hoy" era
+    principios de julio de 2026: los 12 expedientes ``ADM`` tenían entonces
+    plazo futuro y los 3 ``ADJ`` plazo pasado, que es la forma que documenta
+    ``web/e2e/fixtures.ts`` ("12 en ADM —puntuables— y 3 en ADJ, que el ranking
+    descarta por cerrados").
+
+    Mientras el Radar filtraba solo por estado eso daba igual. Desde que
+    ``scoring_candidates`` exige además plazo vivo, cada literal que vence saca
+    un expediente del ranking: el 2026-08-11 se cayó ``SEED-2026-008`` y con él
+    el E2E que lo busca, y el 2026-08-26 se habría quedado vacío del todo.
+
+    Los offsets reproducen exactamente los intervalos originales respecto a
+    aquel "hoy", así que el corpus mantiene su forma —mismo orden, misma
+    separación entre publicación y plazo— y deja de caducar.
+
+    En UTC y no en hora local, como el resto del fichero: si no, sembrar y
+    comprobar a distinta hora del día podría dar días distintos según la zona
+    de quien lo ejecute.
+    """
+    return (datetime.now(UTC).date() + timedelta(days=offset)).isoformat()
+
 
 _SAMPLE_LICITACIONES = [
     {
@@ -43,8 +69,8 @@ _SAMPLE_LICITACIONES = [
         "cpv": "30213000",
         "tipo_contrato": "Suministro",
         "estado": "ADM",
-        "fecha_publicacion": "2026-06-01",
-        "fecha_limite": "2026-07-15",
+        "fecha_publicacion": _dia(-34),
+        "fecha_limite": _dia(10),
         "ccaa": "Madrid",
         "provincia": "Madrid",
         "tecnologia": "hardware",
@@ -59,8 +85,8 @@ _SAMPLE_LICITACIONES = [
         "cpv": "72212000",
         "tipo_contrato": "Servicios",
         "estado": "ADM",
-        "fecha_publicacion": "2026-06-05",
-        "fecha_limite": "2026-07-20",
+        "fecha_publicacion": _dia(-30),
+        "fecha_limite": _dia(15),
         "ccaa": "Andalucía",
         "provincia": "Sevilla",
         "tecnologia": "software",
@@ -75,8 +101,8 @@ _SAMPLE_LICITACIONES = [
         "cpv": "72220000",
         "tipo_contrato": "Servicios",
         "estado": "ADM",
-        "fecha_publicacion": "2026-06-10",
-        "fecha_limite": "2026-07-25",
+        "fecha_publicacion": _dia(-25),
+        "fecha_limite": _dia(20),
         "ccaa": "Cataluña",
         "provincia": "Barcelona",
         "tecnologia": "cloud",
@@ -91,8 +117,8 @@ _SAMPLE_LICITACIONES = [
         "cpv": "72315000",
         "tipo_contrato": "Servicios",
         "estado": "ADJ",
-        "fecha_publicacion": "2026-05-15",
-        "fecha_limite": "2026-06-30",
+        "fecha_publicacion": _dia(-51),
+        "fecha_limite": _dia(-5),
         "ccaa": "Madrid",
         "provincia": "Madrid",
         "tecnologia": "seguridad",
@@ -107,8 +133,8 @@ _SAMPLE_LICITACIONES = [
         "cpv": "32412000",
         "tipo_contrato": "Servicios",
         "estado": "ADM",
-        "fecha_publicacion": "2026-06-15",
-        "fecha_limite": "2026-08-01",
+        "fecha_publicacion": _dia(-20),
+        "fecha_limite": _dia(27),
         "ccaa": "Comunitat Valenciana",
         "provincia": "Valencia",
         "tecnologia": "redes",
@@ -123,8 +149,8 @@ _SAMPLE_LICITACIONES = [
         "cpv": "48310000",
         "tipo_contrato": "Suministro",
         "estado": "ADM",
-        "fecha_publicacion": "2026-06-20",
-        "fecha_limite": "2026-07-31",
+        "fecha_publicacion": _dia(-15),
+        "fecha_limite": _dia(26),
         "ccaa": "Aragón",
         "provincia": "Zaragoza",
         "tecnologia": "software",
@@ -139,8 +165,8 @@ _SAMPLE_LICITACIONES = [
         "cpv": "72611000",
         "tipo_contrato": "Servicios",
         "estado": "ADM",
-        "fecha_publicacion": "2026-06-18",
-        "fecha_limite": "2026-07-28",
+        "fecha_publicacion": _dia(-17),
+        "fecha_limite": _dia(23),
         "ccaa": "Madrid",
         "provincia": "Madrid",
         "tecnologia": "soporte",
@@ -155,8 +181,8 @@ _SAMPLE_LICITACIONES = [
         "cpv": "72263000",
         "tipo_contrato": "Servicios",
         "estado": "ADM",
-        "fecha_publicacion": "2026-06-22",
-        "fecha_limite": "2026-08-10",
+        "fecha_publicacion": _dia(-13),
+        "fecha_limite": _dia(36),
         "ccaa": "País Vasco",
         "provincia": "Vizcaya",
         "tecnologia": "ERP",
@@ -171,8 +197,8 @@ _SAMPLE_LICITACIONES = [
         "cpv": "48820000",
         "tipo_contrato": "Suministro",
         "estado": "ADJ",
-        "fecha_publicacion": "2026-05-20",
-        "fecha_limite": "2026-06-25",
+        "fecha_publicacion": _dia(-46),
+        "fecha_limite": _dia(-10),
         "ccaa": "Galicia",
         "provincia": "A Coruña",
         "tecnologia": "infraestructura",
@@ -187,8 +213,8 @@ _SAMPLE_LICITACIONES = [
         "cpv": "72212460",
         "tipo_contrato": "Servicios",
         "estado": "ADM",
-        "fecha_publicacion": "2026-06-25",
-        "fecha_limite": "2026-08-05",
+        "fecha_publicacion": _dia(-10),
+        "fecha_limite": _dia(31),
         "ccaa": "Cataluña",
         "provincia": "Barcelona",
         "tecnologia": "móvil",
@@ -203,8 +229,8 @@ _SAMPLE_LICITACIONES = [
         "cpv": "79810000",
         "tipo_contrato": "Servicios",
         "estado": "ADM",
-        "fecha_publicacion": "2026-06-28",
-        "fecha_limite": "2026-08-08",
+        "fecha_publicacion": _dia(-7),
+        "fecha_limite": _dia(34),
         "ccaa": "Extremadura",
         "provincia": "Badajoz",
         "tecnologia": "impresion",
@@ -219,8 +245,8 @@ _SAMPLE_LICITACIONES = [
         "cpv": "64216000",
         "tipo_contrato": "Servicios",
         "estado": "ADM",
-        "fecha_publicacion": "2026-06-30",
-        "fecha_limite": "2026-08-15",
+        "fecha_publicacion": _dia(-5),
+        "fecha_limite": _dia(41),
         "ccaa": "Illes Balears",
         "provincia": "Palma",
         "tecnologia": "comunicaciones",
@@ -235,8 +261,8 @@ _SAMPLE_LICITACIONES = [
         "cpv": "79212200",
         "tipo_contrato": "Servicios",
         "estado": "ADJ",
-        "fecha_publicacion": "2026-05-25",
-        "fecha_limite": "2026-06-20",
+        "fecha_publicacion": _dia(-41),
+        "fecha_limite": _dia(-15),
         "ccaa": "Madrid",
         "provincia": "Madrid",
         "tecnologia": "seguridad",
@@ -251,8 +277,8 @@ _SAMPLE_LICITACIONES = [
         "cpv": "72253200",
         "tipo_contrato": "Servicios",
         "estado": "ADM",
-        "fecha_publicacion": "2026-07-01",
-        "fecha_limite": "2026-08-20",
+        "fecha_publicacion": _dia(-4),
+        "fecha_limite": _dia(46),
         "ccaa": "Canarias",
         "provincia": "Las Palmas",
         "tecnologia": "backup",
@@ -267,8 +293,8 @@ _SAMPLE_LICITACIONES = [
         "cpv": "80533100",
         "tipo_contrato": "Servicios",
         "estado": "ADM",
-        "fecha_publicacion": "2026-07-03",
-        "fecha_limite": "2026-08-25",
+        "fecha_publicacion": _dia(-2),
+        "fecha_limite": _dia(51),
         "ccaa": "Madrid",
         "provincia": "Madrid",
         "tecnologia": "formacion",
