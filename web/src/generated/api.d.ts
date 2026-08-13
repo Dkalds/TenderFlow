@@ -2836,7 +2836,7 @@ export interface components {
             /**
              * Model
              * @description Modelo LLM a usar. Ver /api/v1/ask/models para modelos disponibles.
-             * @default deepseek-ai/deepseek-v4-pro
+             * @default deepseek-ai/deepseek-v4-flash-0731
              */
             model: string;
             /**
@@ -5791,7 +5791,7 @@ export interface components {
             /**
              * Model
              * @description Modelo LLM a usar. Ver /api/v1/ask/models para modelos disponibles.
-             * @default deepseek-ai/deepseek-v4-pro
+             * @default deepseek-ai/deepseek-v4-flash-0731
              */
             model: string;
         };
