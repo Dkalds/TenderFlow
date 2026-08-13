@@ -6,7 +6,7 @@ vi.mock("@/lib/api-client", () => ({
   fetchWithAuth: vi.fn(() => new Promise(() => {})),
 }));
 
-import { EventosFeed } from "@/app/(dashboard)/pipeline-alertas/_components/eventos-feed";
+import { EventosFeed } from "@/app/(dashboard)/resumen/_components/eventos-feed";
 
 function renderFeed(data?: unknown) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });

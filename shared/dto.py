@@ -10,7 +10,7 @@ Uso:
 from __future__ import annotations
 
 import re
-from datetime import datetime
+from datetime import date, datetime
 from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, BeforeValidator, ConfigDict, EmailStr, Field
@@ -545,6 +545,8 @@ class PursuitUpdate(BaseModel):
     outcome: PursuitOutcome | None = None
     awarded_amount_eur: float | None = Field(default=None, ge=0)
     outcome_reason: str | None = Field(default=None, max_length=4000)
+    next_action: str | None = Field(default=None, max_length=300)
+    next_action_due: date | None = None
     expected_version: int | None = Field(default=None, ge=1)
 
 
@@ -580,6 +582,8 @@ class PursuitSummary(BaseModel):
     outcome: PursuitOutcome
     awarded_amount_eur: float | None = Field(default=None, ge=0)
     outcome_reason: str | None = None
+    next_action: str | None = None
+    next_action_due: date | None = None
     identified_at: PgDateTime
     decision_at: PgDateTime | None = None
     submitted_at: PgDateTime | None = None
@@ -618,3 +622,75 @@ class PursuitMetrics(BaseModel):
     win_rate: float | None = Field(default=None, ge=0, le=1)
     awarded_amount_eur: float = Field(default=0, ge=0)
     median_decision_time_hours: float | None = Field(default=None, ge=0)
+
+
+# ── Agenda de Mi Pipeline ───────────────────────────────────────────────────
+#
+# La agenda fusiona tres clases de compromiso en una sola cronología por
+# usuario/organización. La fusión, el orden y la banda de urgencia se calculan
+# en backend (ADR-014: el frontend no fabrica orden ni agregados).
+
+AgendaItemKind = Literal["pursuit", "senal", "renovacion"]
+AgendaUrgencia = Literal["vencida", "hoy", "semana", "mes", "despues", "sin_fecha"]
+
+
+class PipelineAgendaItem(BaseModel):
+    """Una fila de la agenda, ya clasificada por urgencia.
+
+    Los campos específicos de cada ``kind`` son NULL en los otros dos:
+    ``pursuit_*``/``status``/``next_action`` solo en pursuits, ``rule_*`` solo
+    en señales, ``adjudicatario``/``riesgo_cambio`` solo en renovaciones.
+    ``importe_eur`` es presupuesto de licitación (pursuit/señal) o importe
+    adjudicado del contrato que vence (renovación).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    kind: AgendaItemKind
+    urgencia: AgendaUrgencia
+    due_date: date | None
+    dias_restantes: int | None
+    licitacion_id: str
+    titulo: str | None
+    organo: str | None
+    importe_eur: float | None
+    ccaa: str | None
+    tecnologia: str | None
+    url: str | None
+    pursuit_id: int | None
+    status: PursuitStatus | None
+    decision: PursuitDecision | None
+    responsible_user_id: int | None
+    responsible_name: str | None
+    next_action: str | None
+    next_action_due: date | None
+    version: int | None
+    rule_id: int | None
+    rule_nombre: str | None
+    adjudicatario: str | None
+    riesgo_cambio: float | None
+
+
+class PipelineAgendaKpis(BaseModel):
+    """Franja de compromisos de la agenda, calculada sobre el scope completo."""
+
+    vence_semana: int = Field(ge=0)
+    vence_semana_importe_eur: float = Field(ge=0)
+    go_no_go_pendientes: int = Field(ge=0)
+    sin_proxima_accion: int = Field(ge=0)
+    senales_nuevas: int = Field(ge=0)
+
+
+class PipelineAgendaResponse(BaseModel):
+    """Respuesta de ``GET /api/v1/pursuits/agenda``."""
+
+    organization_id: int = Field(ge=1)
+    solo_mios: bool
+    items: list[PipelineAgendaItem] = Field(default_factory=list)
+    kpis: PipelineAgendaKpis
+    #: Nº de pursuits abiertos considerados; si se alcanzó el tope interno la
+    #: agenda lo declara en vez de presentar KPIs silenciosamente bajos.
+    pursuits_total: int = Field(ge=0)
+    pursuits_truncados: bool
+    senales_truncadas: bool
+    renovaciones_horizonte_meses: int = Field(ge=1, le=60)

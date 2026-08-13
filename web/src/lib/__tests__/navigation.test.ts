@@ -90,10 +90,13 @@ describe("contrato de filtros de los espacios", () => {
     expect(pathUsesGlobalFilters("/mercado")).toBe(true);
   });
 
-  it("Mi Pipeline lo consume porque al menos una de sus vistas lo hace", () => {
-    // /renovaciones sólo aplica tecnología, pero /pipeline-alertas aplica todo.
-    expect(pathUsesGlobalFilters("/mi-pipeline")).toBe(true);
-    expect(pageGlobalFilterKeys("/mi-pipeline")).toBeNull();
+  it("Mi Pipeline aplica solo tecnología y CCAA, la unión de sus vistas", () => {
+    // La agenda (heredera de /pipeline-alertas) declara tecnología + CCAA y
+    // /renovaciones solo tecnología: la barra muestra esa unión y nada más.
+    // `filtersApply` en scope-bar es `usesGlobalFilters || subset.length > 0`,
+    // así que la barra sigue apareciendo aunque ambas declaren `false`.
+    expect(pathUsesGlobalFilters("/mi-pipeline")).toBe(false);
+    expect(pageGlobalFilterKeys("/mi-pipeline")).toEqual(["tecnologia", "ccaa"]);
   });
 
   it("Competencia hereda el contrato completo de competidores y UTEs", () => {

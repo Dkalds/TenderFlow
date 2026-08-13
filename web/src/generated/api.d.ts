@@ -2325,6 +2325,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/pursuits/agenda": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Pursuits Agenda
+         * @description Agenda de compromisos: fusión, orden y bandas calculados en backend.
+         *
+         *     Sin caché compartida: la respuesta es por usuario/organización (incluye el
+         *     triaje de señales del propio usuario).
+         */
+        get: operations["get_pursuits_agenda_api_v1_pursuits_agenda_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/pursuits/metrics": {
         parameters: {
             query?: never;
@@ -5076,6 +5099,107 @@ export interface components {
             total: number;
         };
         /**
+         * PipelineAgendaItem
+         * @description Una fila de la agenda, ya clasificada por urgencia.
+         *
+         *     Los campos específicos de cada ``kind`` son NULL en los otros dos:
+         *     ``pursuit_*``/``status``/``next_action`` solo en pursuits, ``rule_*`` solo
+         *     en señales, ``adjudicatario``/``riesgo_cambio`` solo en renovaciones.
+         *     ``importe_eur`` es presupuesto de licitación (pursuit/señal) o importe
+         *     adjudicado del contrato que vence (renovación).
+         */
+        PipelineAgendaItem: {
+            /** Adjudicatario */
+            adjudicatario: string | null;
+            /** Ccaa */
+            ccaa: string | null;
+            /** Decision */
+            decision: ("pending" | "go" | "no_go") | null;
+            /** Dias Restantes */
+            dias_restantes: number | null;
+            /** Due Date */
+            due_date: string | null;
+            /** Importe Eur */
+            importe_eur: number | null;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "pursuit" | "senal" | "renovacion";
+            /** Licitacion Id */
+            licitacion_id: string;
+            /** Next Action */
+            next_action: string | null;
+            /** Next Action Due */
+            next_action_due: string | null;
+            /** Organo */
+            organo: string | null;
+            /** Pursuit Id */
+            pursuit_id: number | null;
+            /** Responsible Name */
+            responsible_name: string | null;
+            /** Responsible User Id */
+            responsible_user_id: number | null;
+            /** Riesgo Cambio */
+            riesgo_cambio: number | null;
+            /** Rule Id */
+            rule_id: number | null;
+            /** Rule Nombre */
+            rule_nombre: string | null;
+            /** Status */
+            status: ("identified" | "qualifying" | "go_no_go" | "preparing" | "submitted" | "won" | "lost" | "withdrawn") | null;
+            /** Tecnologia */
+            tecnologia: string | null;
+            /** Titulo */
+            titulo: string | null;
+            /**
+             * Urgencia
+             * @enum {string}
+             */
+            urgencia: "vencida" | "hoy" | "semana" | "mes" | "despues" | "sin_fecha";
+            /** Url */
+            url: string | null;
+            /** Version */
+            version: number | null;
+        };
+        /**
+         * PipelineAgendaKpis
+         * @description Franja de compromisos de la agenda, calculada sobre el scope completo.
+         */
+        PipelineAgendaKpis: {
+            /** Go No Go Pendientes */
+            go_no_go_pendientes: number;
+            /** Senales Nuevas */
+            senales_nuevas: number;
+            /** Sin Proxima Accion */
+            sin_proxima_accion: number;
+            /** Vence Semana */
+            vence_semana: number;
+            /** Vence Semana Importe Eur */
+            vence_semana_importe_eur: number;
+        };
+        /**
+         * PipelineAgendaResponse
+         * @description Respuesta de ``GET /api/v1/pursuits/agenda``.
+         */
+        PipelineAgendaResponse: {
+            /** Items */
+            items?: components["schemas"]["PipelineAgendaItem"][];
+            kpis: components["schemas"]["PipelineAgendaKpis"];
+            /** Organization Id */
+            organization_id: number;
+            /** Pursuits Total */
+            pursuits_total: number;
+            /** Pursuits Truncados */
+            pursuits_truncados: boolean;
+            /** Renovaciones Horizonte Meses */
+            renovaciones_horizonte_meses: number;
+            /** Senales Truncadas */
+            senales_truncadas: boolean;
+            /** Solo Mios */
+            solo_mios: boolean;
+        };
+        /**
          * PipelineEntry
          * @description Single pipeline entry with deadline info.
          */
@@ -5326,6 +5450,10 @@ export interface components {
             identified_at: string;
             /** Licitacion Id */
             licitacion_id: string;
+            /** Next Action */
+            next_action?: string | null;
+            /** Next Action Due */
+            next_action_due?: string | null;
             /** Offer Price Eur */
             offer_price_eur?: number | null;
             /** Organization Id */
@@ -5460,6 +5588,10 @@ export interface components {
             identified_at: string;
             /** Licitacion Id */
             licitacion_id: string;
+            /** Next Action */
+            next_action?: string | null;
+            /** Next Action Due */
+            next_action_due?: string | null;
             /** Offer Price Eur */
             offer_price_eur?: number | null;
             /** Organization Id */
@@ -5507,6 +5639,10 @@ export interface components {
             decision_reason?: string | null;
             /** Expected Version */
             expected_version?: number | null;
+            /** Next Action */
+            next_action?: string | null;
+            /** Next Action Due */
+            next_action_due?: string | null;
             /** Offer Price Eur */
             offer_price_eur?: number | null;
             /** Outcome */
@@ -11871,6 +12007,45 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PursuitSummary"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_pursuits_agenda_api_v1_pursuits_agenda_get: {
+        parameters: {
+            query?: {
+                organization_id?: number | null;
+                /** @description Limita los pursuits a los que el usuario es responsable */
+                solo_mios?: boolean;
+                tecnologia?: string | null;
+                ccaa?: string | null;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PipelineAgendaResponse"];
                 };
             };
             /** @description Validation Error */

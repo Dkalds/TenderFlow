@@ -56,6 +56,12 @@ cambiaría una pantalla viva por un 404.
 - **Detalle** (`/detalle`) — tabla de trabajo de trece columnas con el
   inspector de cinco pestañas (`components/detail-inspector.tsx`) en el mismo
   plano, en vez del Sheet modal de once bloques apilados.
+- **Mi Pipeline** (`/mi-pipeline`) — reconstruido como cockpit personal de
+  compromisos: agenda por bandas de urgencia (`GET /pursuits/agenda`, fusión y
+  orden en backend), embudo sobre `GET /pursuits/metrics` y horizonte de
+  renovaciones con CTA de anticipar. Inventario función a función de las
+  pantallas absorbidas en
+  [mi-pipeline-inventario.md](mi-pipeline-inventario.md).
 
 **Consolidadas**, con el cromo de consola y su conmutador de vistas
 (`components/layout/space-shell.tsx`). Cada vista monta la pantalla original
@@ -65,8 +71,13 @@ completa, así que no se ha tocado una sola de sus funciones:
 | --- | --- | --- |
 | `/mercado` | 8 | tendencias · tendencias-cpv · calendario · geografía · tecnologías · órganos · clusters · proyectos-modulos |
 | `/competencia` | 2 | competidores · utes |
-| `/mi-pipeline` | 2 | pipeline-alertas · renovaciones |
 | `/ops` | 5 | observabilidad · calidad-datos · administración · feature-flags · active-learning |
+
+`/mi-pipeline` estuvo en esta tabla (2 vistas montando las pantallas
+originales); desde 2026-08-13 está **rediseñado a fondo** — ver arriba y su
+[inventario](mi-pipeline-inventario.md). `/pipeline-alertas` se borró (su
+redirect sigue vivo hacia `?vista=agenda`) y `/renovaciones` vive como vista
+`horizonte`.
 
 **Con cabecera de espacio** y su pantalla intacta: `/oportunidades`,
 `/investigador`, `/mi-watchlist`, `/mi-perfil`, `/empresas`, `/equipo`.
@@ -86,6 +97,7 @@ Consolidar no era el objetivo: era el envase. Esto es lo que cambia dentro.
 | Resumen | Lo urgente en tarjetas grandes con su destino visible; el contexto en tira con delta y anomalía |
 | Radar | Consola tabular: J/K · S · X con deshacer · ⏎, inspector siguiendo a la selección |
 | Detalle | Los once bloques del Sheet modal en cinco pestañas, en el mismo plano que la tabla |
+| Mi Pipeline | De dos pantallas de mercado cosidas a la agenda personal: una cronología de compromisos con bandas de urgencia del backend, inspector al lado con editor de próxima acción, y triaje compartido con el Radar |
 | Oportunidades | Carriles a alto de pantalla con scroll propio; en la ficha, **Decisión abre** (era el último de seis paneles) |
 | Competencia | La tabla que gobierna los nueve gráficos va primero; los nueve pasan a cortes con pestañas; el dossier sale del modal |
 | Investigador | `alpha` y `top_k` visibles; resultados y conversación conviven en vez de excluirse |

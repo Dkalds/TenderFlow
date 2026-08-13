@@ -226,18 +226,20 @@ export function KpiRows({ overview, hoy, isLoading, hoyLoading, porMes }: KpiRow
               icon={Clock}
               accent="hot"
               loading={hoyLoading}
-              href="/pipeline-alertas"
-              target="/pipeline-alertas"
+              href="/detalle"
+              target="/detalle"
               alert={Boolean(hoy && hoy.vencen_48h > 0)}
             />
           </Stagger.Item>
           <Stagger.Item>
             {/*
-              Se llamaba "Calientes", igual que el KPI de /pipeline-alertas —al
-              que además enlaza— pero cuenta otra cosa: aquí es importe ≥ P75 y
-              en plazo; allí, banda del score ≥ 75. Dos números distintos con el
-              mismo nombre en páginas contiguas. El campo del DTO conserva su
-              nombre (es contrato); lo que se corrige es lo que lee el usuario.
+              Se llamaba "Calientes" (histórico: el KPI homónimo de la extinta
+              /pipeline-alertas contaba otra cosa: banda del score ≥ 75; aquí es
+              importe ≥ P75 y en plazo). El campo del DTO conserva su nombre (es
+              contrato); lo que se corrige es lo que lee el usuario. Ambas
+              tarjetas de mercado enlazan a /detalle, la tabla de trabajo del
+              corpus completo — la agenda de Mi Pipeline es personal y contaría
+              otro universo.
             */}
             <UrgentCard
               title="Grandes en plazo"
@@ -246,8 +248,8 @@ export function KpiRows({ overview, hoy, isLoading, hoyLoading, porMes }: KpiRow
               icon={Flame}
               accent="warm"
               loading={hoyLoading}
-              href="/pipeline-alertas"
-              target="/pipeline-alertas"
+              href="/detalle"
+              target="/detalle"
             />
           </Stagger.Item>
           <Stagger.Item>

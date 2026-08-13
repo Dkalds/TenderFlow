@@ -49,9 +49,14 @@ export const SPACE_VIEWS: Record<string, SpaceView[]> = {
     { key: "competidores", label: "Competidores", from: "competidores" },
     { key: "utes", label: "UTEs", from: "utes" },
   ],
+  // Rediseño 2026-08: la agenda absorbe pipeline-alertas (inventario de
+  // funciones en docs/redesign/mi-pipeline-inventario.md) y el horizonte es la
+  // pantalla de renovaciones con el CTA de anticipar. Los `?vista=` heredados
+  // (`pipeline`, `renovaciones`) los alias-ea la página del espacio.
   "mi-pipeline": [
-    { key: "pipeline", label: "Pipeline y alertas", from: "pipeline-alertas" },
-    { key: "renovaciones", label: "Renovaciones", from: "renovaciones" },
+    { key: "agenda", label: "Agenda", from: "pipeline-alertas" },
+    { key: "embudo", label: "Embudo" },
+    { key: "horizonte", label: "Horizonte", from: "renovaciones" },
   ],
   ops: [
     { key: "observabilidad", label: "Observabilidad", from: "observabilidad" },

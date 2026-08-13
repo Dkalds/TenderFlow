@@ -1,15 +1,22 @@
-"""Dominio de oportunidades: permisos, transiciones y métricas."""
+"""Dominio de oportunidades: permisos, transiciones, métricas y agenda."""
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from statistics import median
 from typing import Any
 
 from db.database import now_utc_iso
+from db.repositories.agenda import SignalCriteria, signal_rows
 from db.repositories.pursuits import PursuitConcurrencyError, PursuitRepository
+from services.competitive.renovaciones import proximas_renovaciones
 from services.organizations import require_active_member, resolve_organization
+from services.watchlist_rules import list_rules
 from shared.dto import (
+    AgendaUrgencia,
+    PipelineAgendaItem,
+    PipelineAgendaKpis,
+    PipelineAgendaResponse,
     PursuitCreate,
     PursuitDetail,
     PursuitListResponse,
@@ -20,6 +27,17 @@ from shared.dto import (
 )
 
 _repo = PursuitRepository()
+
+# ── Topes de la agenda ──────────────────────────────────────────────────────
+# La agenda declara sus truncamientos en la respuesta (ADR-014: nada de
+# presentar un corte como si fuera el total). Los topes existen para acotar la
+# respuesta, no para ocultar cola.
+AGENDA_PURSUITS_MAX = 500
+AGENDA_SENALES_MAX = 50
+AGENDA_SENALES_POR_REGLA = 25
+AGENDA_REGLAS_MAX = 20
+AGENDA_RENOVACIONES_MAX = 15
+AGENDA_RENOVACIONES_MESES = 6
 
 _TRANSITIONS: dict[str, frozenset[str]] = {
     "identified": frozenset({"qualifying", "withdrawn"}),
@@ -195,11 +213,75 @@ def get_metrics(
     )
 
 
+def get_agenda(
+    user_id: int,
+    *,
+    user_key: str,
+    organization_id: int | None = None,
+    solo_mios: bool = False,
+    tecnologia: str | None = None,
+    ccaa: str | None = None,
+) -> PipelineAgendaResponse:
+    """Agenda de compromisos: pursuits abiertos, señales sin triar y renovaciones.
+
+    La fusión, el orden y las bandas de urgencia se calculan aquí; el frontend
+    solo agrupa por la banda que ya viene puesta. Las señales reutilizan el
+    triaje del Radar: seguir = crear pursuit, descartar = ``radar_dismissals``.
+    """
+    resolved_id, _ = resolve_organization(user_id, organization_id)
+    hoy = datetime.now(UTC).date()
+
+    pursuit_rows, pursuits_truncados = _repo.agenda_rows(
+        resolved_id,
+        responsible_user_id=user_id if solo_mios else None,
+        tecnologia=tecnologia,
+        ccaa=ccaa,
+        limit=AGENDA_PURSUITS_MAX,
+    )
+    items = [_pursuit_item(row, hoy) for row in pursuit_rows]
+
+    senal_items, senales_truncadas = _agenda_senales(
+        user_key,
+        resolved_id,
+        hoy,
+        tecnologia=tecnologia,
+        ccaa=ccaa,
+    )
+    items.extend(senal_items)
+    items.extend(
+        _agenda_renovaciones(
+            _repo.licitacion_ids(resolved_id),
+            hoy,
+            tecnologia=tecnologia,
+            ccaa=ccaa,
+        )
+    )
+
+    items.sort(key=_agenda_orden)
+    return PipelineAgendaResponse(
+        organization_id=resolved_id,
+        solo_mios=solo_mios,
+        items=items,
+        kpis=_agenda_kpis(items),
+        pursuits_total=len(pursuit_rows),
+        pursuits_truncados=pursuits_truncados,
+        senales_truncadas=senales_truncadas,
+        renovaciones_horizonte_meses=AGENDA_RENOVACIONES_MESES,
+    )
+
+
 def _normalize_and_validate_update(
     current: dict[str, Any],
     requested: dict[str, Any],
     organization_id: int,
 ) -> dict[str, Any]:
+    if "next_action" in requested:
+        texto = str(requested["next_action"] or "").strip()
+        requested["next_action"] = texto or None
+    if isinstance(requested.get("next_action_due"), date):
+        # La columna es TEXT ISO (v83); serializar aquí mantiene comparable el
+        # diff contra ``current`` y el payload del evento JSON-serializable.
+        requested["next_action_due"] = requested["next_action_due"].isoformat()
     changes = {field: value for field, value in requested.items() if current.get(field) != value}
     if not changes:
         return {}
@@ -281,3 +363,232 @@ def _elapsed_hours(start: object, end: object) -> float | None:
         end_dt = end_dt.replace(tzinfo=UTC)
     seconds = (end_dt - start_dt).total_seconds()
     return max(0.0, seconds / 3600)
+
+
+# ── Agenda: fusión, bandas y KPIs ───────────────────────────────────────────
+
+_KIND_ORDEN = {"pursuit": 0, "senal": 1, "renovacion": 2}
+
+
+def _urgencia(dias: int | None) -> AgendaUrgencia:
+    """Banda de urgencia de un compromiso a ``dias`` vista. Pura y testeable."""
+    if dias is None:
+        return "sin_fecha"
+    if dias < 0:
+        return "vencida"
+    if dias == 0:
+        return "hoy"
+    if dias <= 7:
+        return "semana"
+    if dias <= 30:
+        return "mes"
+    return "despues"
+
+
+def _parse_iso_date(value: object) -> date | None:
+    """Fecha de un TEXT ISO (``YYYY-MM-DD`` o timestamp completo), o ``None``."""
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    if not isinstance(value, str):
+        return None
+    try:
+        return date.fromisoformat(value.strip()[:10])
+    except ValueError:
+        return None
+
+
+def _agenda_orden(item: PipelineAgendaItem) -> tuple[bool, int, int, str]:
+    """Sin fecha al final; a igual día, pursuit antes que señal y renovación."""
+    return (
+        item.dias_restantes is None,
+        item.dias_restantes if item.dias_restantes is not None else 0,
+        _KIND_ORDEN[item.kind],
+        item.licitacion_id,
+    )
+
+
+def _pursuit_item(row: dict[str, Any], hoy: date) -> PipelineAgendaItem:
+    deadline = _parse_iso_date(row.get("tender_deadline"))
+    next_due = _parse_iso_date(row.get("next_action_due"))
+    fechas = [valor for valor in (deadline, next_due) if valor is not None]
+    due = min(fechas) if fechas else None
+    dias = (due - hoy).days if due is not None else None
+    return PipelineAgendaItem.model_validate(
+        {
+            "kind": "pursuit",
+            "urgencia": _urgencia(dias),
+            "due_date": due,
+            "dias_restantes": dias,
+            "licitacion_id": str(row["licitacion_id"]),
+            "titulo": row.get("titulo"),
+            "organo": row.get("organo"),
+            "importe_eur": row.get("importe_eur"),
+            "ccaa": row.get("ccaa"),
+            "tecnologia": row.get("tecnologia"),
+            "url": row.get("url"),
+            "pursuit_id": int(row["pursuit_id"]),
+            "status": row.get("status"),
+            "decision": row.get("decision"),
+            "responsible_user_id": row.get("responsible_user_id"),
+            "responsible_name": row.get("responsible_name"),
+            "next_action": row.get("next_action"),
+            "next_action_due": next_due,
+            "version": int(row["version"]),
+            "rule_id": None,
+            "rule_nombre": None,
+            "adjudicatario": None,
+            "riesgo_cambio": None,
+        }
+    )
+
+
+def _agenda_senales(
+    user_key: str,
+    organization_id: int,
+    hoy: date,
+    *,
+    tecnologia: str | None,
+    ccaa: str | None,
+) -> tuple[list[PipelineAgendaItem], bool]:
+    """Matches vivos y sin triar de las reglas activas del usuario, deduplicados."""
+    reglas = [regla for regla in list_rules(user_key, organization_id) if regla.active]
+    recogidas: dict[str, PipelineAgendaItem] = {}
+    for regla in reglas[:AGENDA_REGLAS_MAX]:
+        if regla.id is None:
+            continue
+        criterios = SignalCriteria(
+            rule_id=regla.id,
+            nombre=regla.nombre,
+            keyword=regla.keyword,
+            cpv=regla.cpv,
+            min_importe=regla.min_importe,
+            ccaa=regla.ccaa,
+        )
+        etiqueta = regla.nombre or regla.keyword or regla.cpv or f"Regla {regla.id}"
+        for row in signal_rows(
+            criterios,
+            user_key=user_key,
+            organization_id=organization_id,
+            tecnologia=tecnologia,
+            ccaa=ccaa,
+            limit=AGENDA_SENALES_POR_REGLA,
+        ):
+            licitacion_id = str(row["id_externo"])
+            if licitacion_id in recogidas:
+                continue
+            deadline = _parse_iso_date(row.get("fecha_limite"))
+            dias = (deadline - hoy).days if deadline is not None else None
+            recogidas[licitacion_id] = PipelineAgendaItem.model_validate(
+                {
+                    "kind": "senal",
+                    "urgencia": _urgencia(dias),
+                    "due_date": deadline,
+                    "dias_restantes": dias,
+                    "licitacion_id": licitacion_id,
+                    "titulo": row.get("titulo"),
+                    "organo": row.get("organo"),
+                    "importe_eur": row.get("importe_eur"),
+                    "ccaa": row.get("ccaa"),
+                    "tecnologia": row.get("tecnologia"),
+                    "url": row.get("url"),
+                    "pursuit_id": None,
+                    "status": None,
+                    "decision": None,
+                    "responsible_user_id": None,
+                    "responsible_name": None,
+                    "next_action": None,
+                    "next_action_due": None,
+                    "version": None,
+                    "rule_id": regla.id,
+                    "rule_nombre": etiqueta,
+                    "adjudicatario": None,
+                    "riesgo_cambio": None,
+                }
+            )
+    senales = list(recogidas.values())
+    senales.sort(key=_agenda_orden)
+    return senales[:AGENDA_SENALES_MAX], len(senales) > AGENDA_SENALES_MAX
+
+
+def _agenda_renovaciones(
+    con_pursuit: set[str],
+    hoy: date,
+    *,
+    tecnologia: str | None,
+    ccaa: str | None,
+) -> list[PipelineAgendaItem]:
+    """Contratos que vencen en el horizonte y aún no se anticiparon.
+
+    Un mismo contrato con varios adjudicatarios (UTE) aparece una sola vez:
+    la fila más próxima al vencimiento gana, que es la primera del orden SQL.
+    """
+    rows = proximas_renovaciones(
+        months_ahead=AGENDA_RENOVACIONES_MESES,
+        ccaa=ccaa,
+        tecnologias=[tecnologia] if tecnologia else None,
+        limit=AGENDA_RENOVACIONES_MAX * 4,
+    )
+    items: list[PipelineAgendaItem] = []
+    vistos: set[str] = set()
+    for row in rows:
+        licitacion_id = str(row["licitacion_id"])
+        if licitacion_id in con_pursuit or licitacion_id in vistos:
+            continue
+        vistos.add(licitacion_id)
+        due = _parse_iso_date(row.get("fecha_fin_efectiva"))
+        dias = (due - hoy).days if due is not None else None
+        items.append(
+            PipelineAgendaItem.model_validate(
+                {
+                    "kind": "renovacion",
+                    "urgencia": _urgencia(dias),
+                    "due_date": due,
+                    "dias_restantes": dias,
+                    "licitacion_id": licitacion_id,
+                    "titulo": row.get("titulo"),
+                    "organo": row.get("organo_contratacion"),
+                    "importe_eur": row.get("importe_adjudicado"),
+                    "ccaa": row.get("ccaa"),
+                    "tecnologia": None,
+                    "url": row.get("url"),
+                    "pursuit_id": None,
+                    "status": None,
+                    "decision": None,
+                    "responsible_user_id": None,
+                    "responsible_name": None,
+                    "next_action": None,
+                    "next_action_due": None,
+                    "version": None,
+                    "rule_id": None,
+                    "rule_nombre": None,
+                    "adjudicatario": row.get("empresa"),
+                    "riesgo_cambio": row.get("riesgo_cambio"),
+                }
+            )
+        )
+        if len(items) >= AGENDA_RENOVACIONES_MAX:
+            break
+    return items
+
+
+def _agenda_kpis(items: list[PipelineAgendaItem]) -> PipelineAgendaKpis:
+    """KPIs sobre los items ya fusionados del scope pedido.
+
+    ``vence_semana`` incluye lo vencido: un compromiso pasado de plazo sigue
+    exigiendo acción, no desaparece del contador por llegar tarde.
+    """
+    pursuits = [item for item in items if item.kind == "pursuit"]
+    en_semana = [
+        item
+        for item in pursuits
+        if item.dias_restantes is not None and item.dias_restantes <= 7
+    ]
+    return PipelineAgendaKpis(
+        vence_semana=len(en_semana),
+        vence_semana_importe_eur=sum(item.importe_eur or 0.0 for item in en_semana),
+        go_no_go_pendientes=sum(1 for item in pursuits if item.decision == "pending"),
+        sin_proxima_accion=sum(1 for item in pursuits if not item.next_action),
+        senales_nuevas=sum(1 for item in items if item.kind == "senal"),
+    )
