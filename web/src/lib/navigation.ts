@@ -261,11 +261,14 @@ export const SECTIONS: NavSection[] = [
     icon: ListChecks,
     pages: [
       {
-        label: "Pipeline & Alertas",
+        label: "Agenda",
         slug: "pipeline-alertas",
         description:
-          "Licitaciones en plazo, predicciones y alertas de vencimiento.",
+          "Agenda de compromisos: pursuits, señales sin triar y renovaciones por vencer.",
         icon: ListChecks,
+        usesGlobalFilters: false,
+        globalFilterKeys: ["tecnologia", "ccaa"],
+        singleValueFilterKeys: ["tecnologia", "ccaa"],
       },
       {
         label: "Renovaciones",

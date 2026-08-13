@@ -148,8 +148,12 @@ describe("LEGACY_REDIRECTS", () => {
       to: "/competencia?vista=competidores",
     });
     expect(LEGACY_REDIRECTS).toContainEqual({
+      from: "/pipeline-alertas",
+      to: "/mi-pipeline?vista=agenda",
+    });
+    expect(LEGACY_REDIRECTS).toContainEqual({
       from: "/renovaciones",
-      to: "/mi-pipeline?vista=renovaciones",
+      to: "/mi-pipeline?vista=horizonte",
     });
   });
 

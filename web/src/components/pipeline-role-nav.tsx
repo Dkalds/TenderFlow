@@ -4,7 +4,7 @@ import Link from "next/link";
 import { Bell, CalendarClock, CalendarDays, ArrowRight } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
-export type PipelinePageKey = "pipeline-alertas" | "renovaciones" | "calendario";
+export type PipelinePageKey = "agenda" | "renovaciones" | "calendario";
 
 interface PageMeta {
   href: string;
@@ -14,15 +14,17 @@ interface PageMeta {
 }
 
 const PAGES: Record<PipelinePageKey, PageMeta> = {
-  "pipeline-alertas": {
-    href: "/pipeline-alertas",
-    label: "Pipeline & Alertas",
-    role: "Oportunidades activas que están cerrando + alertas suscribibles",
+  // Rediseño 2026-08: pipeline-alertas fue absorbida por la agenda de
+  // Mi Pipeline (docs/redesign/mi-pipeline-inventario.md).
+  agenda: {
+    href: "/mi-pipeline",
+    label: "Mi Pipeline · Agenda",
+    role: "Tus compromisos (pursuits, señales y renovaciones) ordenados por vencimiento",
     icon: Bell,
   },
   renovaciones: {
-    href: "/renovaciones",
-    label: "Renovaciones",
+    href: "/mi-pipeline?vista=horizonte",
+    label: "Horizonte",
     role: "Contratos ya adjudicados que vencen (riesgo de cambio de proveedor)",
     icon: CalendarClock,
   },
@@ -34,7 +36,7 @@ const PAGES: Record<PipelinePageKey, PageMeta> = {
   },
 };
 
-const ORDER: PipelinePageKey[] = ["pipeline-alertas", "renovaciones", "calendario"];
+const ORDER: PipelinePageKey[] = ["agenda", "renovaciones", "calendario"];
 
 /**
  * Banda de orientación compartida por las tres páginas del territorio "qué viene":

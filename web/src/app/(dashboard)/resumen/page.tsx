@@ -9,6 +9,7 @@ import { useFilters } from "@/lib/filters";
 import { TimelineSection } from "./_components/timeline-section";
 import { NovedadesBanner } from "./_components/novedades-banner";
 import { KpiRows } from "./_components/kpi-rows";
+import { EventosFeed } from "./_components/eventos-feed";
 import { AtajosAnalisis } from "./_components/atajos-analisis";
 import type { TimelineItem, ExtendedOverview } from "./_components/types";
 import type {
@@ -170,6 +171,13 @@ export default function ResumenPage() {
             pubSortDir={pubSortDir}
             togglePubSort={togglePubSort}
           />
+
+          {/* Movimientos de contrato del mercado (GET /eventos). Vivía en la
+              extinta /pipeline-alertas; su pregunta —"¿qué ha cambiado?"— es
+              la de este espacio, no la de la agenda personal de Mi Pipeline. */}
+          <div className="mt-4">
+            <EventosFeed />
+          </div>
 
           <AtajosAnalisis />
         </div>

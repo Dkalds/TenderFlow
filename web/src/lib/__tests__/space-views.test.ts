@@ -24,7 +24,7 @@ describe("SPACE_VIEWS", () => {
     ]);
     expect(SPACE_VIEWS.mercado).toHaveLength(8);
     expect(SPACE_VIEWS.competencia).toHaveLength(2);
-    expect(SPACE_VIEWS["mi-pipeline"]).toHaveLength(2);
+    expect(SPACE_VIEWS["mi-pipeline"]).toHaveLength(3);
     expect(SPACE_VIEWS.ops).toHaveLength(6);
   });
 

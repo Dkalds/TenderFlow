@@ -4,7 +4,10 @@ import * as React from "react";
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { TableVirtuoso, type TableComponents } from "react-virtuoso";
+import { useCreatePursuit } from "@/hooks/use-pursuits";
+import { useOrganizationStore } from "@/hooks/use-organization";
 import { fetchWithAuth } from "@/lib/api-client";
 import type {
   Renovacion,
@@ -124,6 +127,25 @@ export default function RenovacionesPage() {
   const router = useRouter();
   const [meses, setMeses] = useState("6");
   const [empresaSearch, setEmpresaSearch] = useState("");
+
+  // Anticipar: abre un pursuit sobre el contrato que vence, antes de que la
+  // relicitación se publique. Mismo flujo de creación que el Radar; la agenda
+  // de Mi Pipeline deja de listar la renovación en cuanto existe el pursuit.
+  const createPursuit = useCreatePursuit();
+  const setActiveOrganizationId = useOrganizationStore((state) => state.setActiveOrganizationId);
+  const anticipar = React.useCallback(
+    async (licitacionId: string) => {
+      try {
+        const pursuit = await createPursuit.mutateAsync({ licitacion_id: licitacionId });
+        setActiveOrganizationId(pursuit.organization_id);
+        toast.success("Renovación anticipada como pursuit");
+        router.push(`/oportunidades/${pursuit.id}`);
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : "No se pudo anticipar la renovación");
+      }
+    },
+    [createPursuit, router, setActiveOrganizationId],
+  );
 
   // Filtro global de la barra superior. Solo aplicamos "tecnología" aquí:
   // el endpoint de renovaciones filtra por licitaciones.tecnologia.
@@ -352,6 +374,7 @@ export default function RenovacionesPage() {
                   <TableHead className="text-right">Importe</TableHead>
                   <TableHead className="text-right">Riesgo de cambio</TableHead>
                   <TableHead className="text-right">Oportunidad</TableHead>
+                  <TableHead className="text-right">Acción</TableHead>
                 </TableRow>
               )}
               itemContent={(_index, r) => (
@@ -431,6 +454,18 @@ export default function RenovacionesPage() {
                     ) : (
                       <span className="text-xs text-muted-foreground">—</span>
                     )}
+                  </TableCell>
+                  <TableCell className="text-right whitespace-nowrap">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        void anticipar(r.licitacion_id);
+                      }}
+                      className="tf-pressable h-6 rounded-md border border-primary/30 bg-primary/8 px-2 text-[11px] font-medium text-primary"
+                    >
+                      Anticipar
+                    </button>
                   </TableCell>
                 </>
               )}

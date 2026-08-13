@@ -144,7 +144,7 @@ export const CONSOLE_SPACES: ConsoleSpace[] = [
     label: "Mi Pipeline",
     short: "PIP",
     slug: "mi-pipeline",
-    description: "Licitaciones en plazo, alertas y renovaciones.",
+    description: "Tus compromisos, ordenados por lo que vence.",
     icon: ListChecks,
     group: "personal",
     views: SPACE_VIEWS["mi-pipeline"],

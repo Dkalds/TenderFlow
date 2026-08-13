@@ -145,6 +145,8 @@ export function useDismissRadarTender() {
       // El ranking se pide con `exclude_dismissed`: hay que volver a pedirlo
       // para que entre la señal que ocupa el hueco.
       void qc.invalidateQueries({ queryKey: ["radar", "scoring"] });
+      // La agenda de Mi Pipeline excluye señales descartadas: comparte triaje.
+      void qc.invalidateQueries({ queryKey: ["pursuits", "agenda"] });
     },
   });
 }
@@ -172,6 +174,8 @@ export function useRestoreRadarTender() {
     onSettled: () => {
       void qc.invalidateQueries({ queryKey: DISMISSALS_KEY });
       void qc.invalidateQueries({ queryKey: ["radar", "scoring"] });
+      // La agenda de Mi Pipeline excluye señales descartadas: comparte triaje.
+      void qc.invalidateQueries({ queryKey: ["pursuits", "agenda"] });
     },
   });
 }

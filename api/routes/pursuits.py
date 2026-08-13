@@ -26,6 +26,7 @@ from services.pursuits import (
     PursuitTransitionError,
     PursuitValidationError,
     create_pursuit,
+    get_agenda,
     get_metrics,
     get_pursuit,
     list_pursuits,
@@ -37,6 +38,7 @@ from shared.dto import (
     OrganizationMembershipOut,
     OrganizationMembershipUpsert,
     OrganizationSummary,
+    PipelineAgendaResponse,
     PursuitCreate,
     PursuitDetail,
     PursuitListResponse,
@@ -221,6 +223,36 @@ async def get_pursuit_metrics(
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except PursuitValidationError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.get("/pursuits/agenda", response_model=PipelineAgendaResponse)
+async def get_pursuits_agenda(
+    organization_id: int | None = Query(default=None, ge=1),
+    solo_mios: bool = Query(
+        default=False,
+        description="Limita los pursuits a los que el usuario es responsable",
+    ),
+    tecnologia: str | None = Query(default=None, max_length=80),
+    ccaa: str | None = Query(default=None, max_length=80),
+    ctx: dict[str, Any] = Depends(require_any_auth),
+) -> PipelineAgendaResponse:
+    """Agenda de compromisos: fusión, orden y bandas calculados en backend.
+
+    Sin caché compartida: la respuesta es por usuario/organización (incluye el
+    triaje de señales del propio usuario).
+    """
+    try:
+        return await run_db(
+            get_agenda,
+            int(ctx["user_id"]),
+            user_key=str(ctx["user_key"]),
+            organization_id=organization_id,
+            solo_mios=solo_mios,
+            tecnologia=tecnologia,
+            ccaa=ccaa,
+        )
+    except OrganizationAccessError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
 
 
 @router.get("/pursuits/{pursuit_id}", response_model=PursuitDetail)

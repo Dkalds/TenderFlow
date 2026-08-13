@@ -34,12 +34,17 @@ export type PursuitList = components["schemas"]["PursuitListResponse"];
 export type PursuitMetrics = components["schemas"]["PursuitMetrics"];
 export type CreatePursuitInput = components["schemas"]["PursuitCreate"];
 export type UpdatePursuitInput = components["schemas"]["PursuitUpdate"];
+export type PipelineAgenda = components["schemas"]["PipelineAgendaResponse"];
+export type PipelineAgendaItem = components["schemas"]["PipelineAgendaItem"];
+export type AgendaUrgencia = PipelineAgendaItem["urgencia"];
+export type AgendaKind = PipelineAgendaItem["kind"];
 
 export const pursuitKeys = {
   all: ["pursuits"] as const,
   list: (filters: PursuitFilters) => ["pursuits", "list", filters] as const,
   detail: (id: string) => ["pursuits", "detail", id] as const,
   metrics: ["pursuits", "metrics"] as const,
+  agenda: ["pursuits", "agenda"] as const,
 };
 
 export interface PursuitFilters {
@@ -89,9 +94,10 @@ export function usePursuit(id: string | null) {
 }
 
 function invalidatePursuits(queryClient: ReturnType<typeof useQueryClient>) {
+  // `pursuitKeys.all` es prefijo de `metrics` y `agenda`, así que una sola
+  // invalidación cubre listados, métricas y la agenda de Mi Pipeline.
   return Promise.all([
     queryClient.invalidateQueries({ queryKey: pursuitKeys.all }),
-    queryClient.invalidateQueries({ queryKey: pursuitKeys.metrics }),
     queryClient.invalidateQueries({ queryKey: ["organizations"] }),
   ]);
 }
@@ -145,5 +151,36 @@ export function usePursuitMetrics() {
       return fetchWithAuth<PursuitMetrics>(`/api/v1/pursuits/metrics${query ? `?${query}` : ""}`);
     },
     staleTime: 60_000,
+  });
+}
+
+export interface AgendaFilters {
+  soloMios: boolean;
+  tecnologia: string | null;
+  ccaa: string | null;
+}
+
+/**
+ * Agenda de compromisos de Mi Pipeline.
+ *
+ * La fusión (pursuits + señales + renovaciones), el orden y las bandas de
+ * urgencia vienen del backend; aquí solo se agrupan por la banda ya puesta.
+ * El descarte de señales comparte persistencia con el Radar
+ * (`/api/v1/radar/dismissals`), así que sus mutaciones invalidan esta query.
+ */
+export function usePipelineAgenda(filters: AgendaFilters) {
+  const organizationId = useActiveOrganizationId();
+  return useQuery({
+    queryKey: [...pursuitKeys.agenda, filters, organizationId],
+    queryFn: () => {
+      const params = new URLSearchParams();
+      if (organizationId != null) params.set("organization_id", String(organizationId));
+      if (filters.soloMios) params.set("solo_mios", "true");
+      if (filters.tecnologia) params.set("tecnologia", filters.tecnologia);
+      if (filters.ccaa) params.set("ccaa", filters.ccaa);
+      const query = params.toString();
+      return fetchWithAuth<PipelineAgenda>(`/api/v1/pursuits/agenda${query ? `?${query}` : ""}`);
+    },
+    staleTime: 30_000,
   });
 }

@@ -14,6 +14,7 @@ _PURSUIT_SELECT = (
     "p.responsible_user_id, u.display_name AS responsible_name, "
     "p.status, p.decision, p.decision_reason, p.offer_price_eur, "
     "p.outcome, p.awarded_amount_eur, p.outcome_reason, "
+    "p.next_action, p.next_action_due, "
     "p.identified_at, p.decision_at, p.submitted_at, p.closed_at, "
     "p.created_at, p.updated_at, p.version "
     "FROM pursuits p "
@@ -31,10 +32,26 @@ _UPDATABLE_COLUMNS = frozenset(
         "outcome",
         "awarded_amount_eur",
         "outcome_reason",
+        "next_action",
+        "next_action_due",
         "decision_at",
         "submitted_at",
         "closed_at",
     }
+)
+
+# Estados que sacan un pursuit de la agenda: ya no hay trabajo pendiente.
+_ESTADOS_TERMINALES_SQL = "('won', 'lost', 'withdrawn')"
+
+_AGENDA_SELECT = (
+    "SELECT p.id AS pursuit_id, p.licitacion_id, "
+    "l.titulo, l.fecha_limite AS tender_deadline, l.importe AS importe_eur, "
+    "l.organo_contratacion AS organo, l.ccaa, l.tecnologia, l.url, "
+    "p.responsible_user_id, u.display_name AS responsible_name, "
+    "p.status, p.decision, p.next_action, p.next_action_due, p.version "
+    "FROM pursuits p "
+    "JOIN licitaciones l ON l.id_externo = p.licitacion_id "
+    "LEFT JOIN users u ON u.id = p.responsible_user_id "
 )
 
 
@@ -147,6 +164,56 @@ class PursuitRepository:
             )
             items = rows_to_dicts(cur)
         return items, int(total_row[0] if total_row else 0)
+
+    def agenda_rows(
+        self,
+        organization_id: int,
+        *,
+        responsible_user_id: int | None = None,
+        tecnologia: str | None = None,
+        ccaa: str | None = None,
+        limit: int = 500,
+    ) -> tuple[list[dict[str, Any]], bool]:
+        """Pursuits abiertos de la organización con su licitación, para la agenda.
+
+        Devuelve ``(filas, truncado)``: se pide ``limit + 1`` y se recorta, para
+        que el servicio pueda declarar el truncamiento en vez de presentar KPIs
+        silenciosamente bajos (ADR-014).
+        """
+        clauses = [
+            "p.organization_id = %s",
+            "p.status NOT IN " + _ESTADOS_TERMINALES_SQL,
+        ]
+        params: list[Any] = [organization_id]
+        if responsible_user_id is not None:
+            clauses.append("p.responsible_user_id = %s")
+            params.append(responsible_user_id)
+        if tecnologia:
+            clauses.append("l.tecnologia = %s")
+            params.append(tecnologia)
+        if ccaa:
+            clauses.append("l.ccaa = %s")
+            params.append(ccaa)
+        with connect_read() as conn:
+            cur = conn.execute(
+                _AGENDA_SELECT + " WHERE " + " AND ".join(clauses) + " ORDER BY p.id LIMIT %s",
+                tuple([*params, limit + 1]),
+            )
+            rows = rows_to_dicts(cur)
+        return rows[:limit], len(rows) > limit
+
+    def licitacion_ids(self, organization_id: int) -> set[str]:
+        """Licitaciones con pursuit (en cualquier estado) en la organización.
+
+        Un pursuit cerrado también cuenta como triado: la señal no debe
+        reaparecer en la agenda por haberse perdido o retirado la oportunidad.
+        """
+        with connect_read() as conn:
+            cur = conn.execute(
+                "SELECT licitacion_id FROM pursuits WHERE organization_id = %s",
+                (organization_id,),
+            )
+            return {str(row[0]) for row in cur.fetchall()}
 
     def update(
         self,
