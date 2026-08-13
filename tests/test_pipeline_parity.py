@@ -115,7 +115,6 @@ class TestCanonicalPipelineSteps:
             "scheduler.pipeline_runs._run_dlq_retry": _make_mock("dlq_retry"),
             "scheduler.pipeline_runs._run_anomaly_checks": _make_mock("anomaly_checks"),
             "scheduler.pipeline_runs._run_retention_cleanup": _make_mock("retention_cleanup"),
-            "scheduler.pipeline_runs._run_ml_retrain": _make_mock("ml_retrain"),
             "scheduler.pipeline_runs._run_sap_active_learning": _make_mock("sap_active_learning"),
             "scheduler.pipeline_runs._run_drift_checks": _make_mock("drift_checks"),
         }
@@ -148,7 +147,7 @@ class TestCanonicalPipelineSteps:
             patch("scheduler.pipeline_runs._run_dlq_retry"),
             patch("scheduler.pipeline_runs._run_anomaly_checks"),
             patch("scheduler.pipeline_runs._run_retention_cleanup"),
-            patch("scheduler.pipeline_runs._run_ml_retrain"),
+            patch("scheduler.pipeline_runs._run_sap_active_learning"),
             patch("scheduler.pipeline_runs._run_drift_checks"),
         ):
             results = _run_post_ingestion_steps()
@@ -209,7 +208,6 @@ class TestLaneAwareSteps:
             patch("scheduler.pipeline_runs._run_dlq_retry") as dlq_retry,
             patch("scheduler.pipeline_runs._run_anomaly_checks"),
             patch("scheduler.pipeline_runs._run_retention_cleanup"),
-            patch("scheduler.pipeline_runs._run_ml_retrain"),
             patch("scheduler.pipeline_runs._run_sap_active_learning"),
             patch("scheduler.pipeline_runs._run_drift_checks"),
         ):

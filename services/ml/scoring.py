@@ -62,6 +62,13 @@ def score_predicciones_baja(*, limit: int = 5000) -> dict[str, Any]:
     artefacto = resolve_active_artifact(MODEL_NAME) if activa else None
     preds: list[Prediccion] | None = None
     version: int | None = None
+    # Distingue el baseline legítimo (no hay versión activa: el RFC lo sirve a
+    # propósito) del baseline **degradado** (hay versión activa pero no se pudo
+    # servir). Los dos escriben las mismas filas y hasta 2026-08 los dos salían
+    # como `status: ok`, así que el batch pasaba en verde mientras el modelo
+    # activo llevaba semanas sin llegar a producción. El CLI usa este campo
+    # para poner el job en rojo y alertar.
+    degradado: str | None = None
     if activa and artefacto is not None:
         modelo = BajaModel.load(artefacto)
         try:
@@ -78,9 +85,11 @@ def score_predicciones_baja(*, limit: int = 5000) -> dict[str, Any]:
                 version=int(activa["version"]),
                 error=str(exc),
             )
+            degradado = "feature_schema_mismatch"
     if preds is None:
         if activa and artefacto is None:
             log.warning("baja_model_artifact_unresolvable_fallback_baseline")
+            degradado = "artefacto_irresoluble"
         preds = predecir_baseline(filas, _media_global_baja())
         version = None
 
@@ -110,12 +119,14 @@ def score_predicciones_baja(*, limit: int = 5000) -> dict[str, Any]:
         filas=len(preds),
         model_version=version,
         serving="modelo" if version else "baseline",
+        degradado=degradado,
     )
     return {
         "status": "ok",
         "filas": len(preds),
         "model_version": version,
         "serving": "modelo" if version else "baseline",
+        "degradado": degradado,
         "computed_at": computed_at,
     }
 
@@ -173,15 +184,20 @@ def score_predicciones_retencion(*, months_ahead: int = 12) -> dict[str, Any]:
 
     activa = get_active("retencion_model")
     artefacto = resolve_active_artifact("retencion_model") if activa else None
+    # Ver la nota de `degradado` en score_predicciones_baja: el baseline por
+    # falta de modelo activo es el contrato del RFC; el baseline con modelo
+    # activo irresoluble es una avería que debe verse.
+    degradado: str | None = None
     if activa and artefacto is None:
         log.warning("retencion_model_artifact_unresolvable_fallback_baseline")
+        degradado = "artefacto_irresoluble"
         activa = None
 
     from services.ml.retencion_labels import features_para_vencimientos
 
     filas = features_para_vencimientos(months_ahead=months_ahead)
     if not filas:
-        return {"status": "sin_vencimientos", "filas": 0}
+        return {"status": "sin_vencimientos", "filas": 0, "degradado": degradado}
 
     if activa:
         from services.ml.retencion_model import RetencionModel
@@ -214,7 +230,12 @@ def score_predicciones_retencion(*, months_ahead: int = 12) -> dict[str, Any]:
                 ],
             )
         log.info("retencion_scoring_done", filas=len(filas), model_version=version_int)
-        return {"status": "ok", "filas": len(filas), "model_version": version_int}
+        return {
+            "status": "ok",
+            "filas": len(filas),
+            "model_version": version_int,
+            "degradado": None,
+        }
     else:
         # Baseline heuristico: tasa historica de re-adjudicacion por segmento
         log.info("retencion_scoring_baseline", reason="sin_modelo_activo", filas=len(filas))
@@ -250,12 +271,13 @@ def score_predicciones_retencion(*, months_ahead: int = 12) -> dict[str, Any]:
                 "model_version=excluded.model_version, computed_at=excluded.computed_at",
                 rows_to_insert,
             )
-        log.info("retencion_baseline_done", filas=len(rows_to_insert))
+        log.info("retencion_baseline_done", filas=len(rows_to_insert), degradado=degradado)
         return {
             "status": "baseline",
             "filas": len(rows_to_insert),
             "model_version": model_version_str,
             "serving": "baseline",
+            "degradado": degradado,
         }
 
 

@@ -47,9 +47,11 @@ _PYTHON_M = re.compile(r"python\s+-m\s+([\w.]+)")
 _ALIAS_PIPELINE: dict[str, str] = {
     "digest_daily": "digests",
     "drift_report": "drift_checks",
-    "ml_retrain_baja": "ml_retrain",
     "watchlist_rules": "watchlist_notify",
 }
+# `ml_retrain_baja` salió de este mapa en 2026-08 al pasar a plane='actions'
+# (`.github/workflows/train-predictivos.yml`): dejarlo apuntando a un paso que
+# ya no existe en CANONICAL_STEPS solo serviría para enmascarar un revert.
 
 
 _SCHEDULE_TRIGGER = re.compile(r"^\s*schedule:\s*$", re.MULTILINE)

@@ -16,7 +16,7 @@ Generado: 2026-08-13
 | `recent_bulk` | manual | python -m scheduler.run_update (workflow_dispatch) |
 | `retention_cleanup` | pipeline | CANONICAL_STEPS[retention_cleanup] |
 | `ml_scoring_baja` | actions | python -m scheduler.jobs.ml_predicciones |
-| `ml_retrain_baja` | pipeline | CANONICAL_STEPS[ml_retrain] |
+| `ml_retrain_baja` | actions | python -m scheduler.jobs.ml_predicciones |
 | `documentos_embeddings` | actions | python -m scheduler.jobs.documentos_embeddings |
 | `dlq_retry` | pipeline | CANONICAL_STEPS[dlq_retry] |
 | `digest_daily` | pipeline | CANONICAL_STEPS[digests] |

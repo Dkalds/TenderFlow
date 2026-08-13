@@ -88,8 +88,16 @@ def build_default_registry() -> list[ScheduledJob]:
             heavy=True,  # construye el dataset histórico completo
         ),
         ScheduledJob(
+            # plane='actions' (2026-08): el reentrenamiento salió de
+            # CANONICAL_STEPS a `.github/workflows/train-predictivos.yml`. La
+            # pipeline canónica corre con `contents: read`, así que entrenaba
+            # sin poder publicar el .pkl en la Release y dejaba filas de
+            # model_versions apuntando a rutas de runners ya destruidos.
+            # `default_interval_minutes` sigue gobernando el plano APScheduler
+            # (docker-compose), que no es el plano activo.
             name="ml_retrain_baja",
-            plane="pipeline",
+            plane="actions",
+            module="scheduler.jobs.ml_predicciones",
             fn=run_ml_retrain,
             interval_env="SCHEDULER_ML_RETRAIN_INTERVAL_MINUTES",
             default_interval_minutes=43_200,  # mensual

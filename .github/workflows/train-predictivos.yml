@@ -1,0 +1,113 @@
+name: Train & publish modelos predictivos
+
+# Re-entrenamiento mensual de los modelos predictivos (baja y retención,
+# RFC 20260611-2) **y publicación de sus artefactos en la Release**.
+#
+# Por qué existe este workflow y no es un paso más de la pipeline canónica:
+# hasta 2026-08 `ml_retrain` vivía en `CANONICAL_STEPS` (dentro de
+# `scrape-daily.yml`), que corre con `permissions: contents: read`. Entrenaba
+# en el runner, registraba `path` + `sha256` en `model_versions`… y el `.pkl`
+# moría con el runner efímero. Ninguna Release lo publicaba —`train-model.yml`
+# solo sube `sap_classifier`— así que `shared/model_artifacts.py` no podía
+# resolver el artefacto de ninguna versión activa y `ml-scoring.yml` servía el
+# baseline histórico indefinidamente, en verde. Publicar exige
+# `contents: write`, y ese permiso no debe estar en el job de ingesta.
+#
+# La activación de la versión nueva sigue siendo decisión humana vía
+# `db.model_registry` (salvo `ML_PRED_AUTO_ACTIVATE`): este workflow deja el
+# artefacto disponible, no cambia lo que se sirve.
+
+on:
+  schedule:
+    # Mensual, día 1 a las 03:00 UTC: misma cadencia que tenía el paso
+    # `ml_retrain` (_SEGUNDOS_MES), fuera de la ventana del scrape (cada 4 h,
+    # 55 min de presupuesto) y antes del scoring diario de las 07:30.
+    - cron: "0 3 1 * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write # necesario para subir los artefactos a la Release
+
+concurrency:
+  group: train-predictivos
+  cancel-in-progress: false
+
+jobs:
+  train:
+    name: Retrain baja/retención & upload to release
+    runs-on: ubuntu-latest
+    # Construye el dataset histórico completo y explora hiperparámetros sobre
+    # varios folds para dos modelos: presupuesto holgado frente a los 15 min
+    # del clasificador SAP.
+    timeout-minutes: 45
+
+    env:
+      # Mismos ejes que el resto de jobs de datos: ENV=prod activa los
+      # validators (TLS de DATABASE_URL, alertas); APP_PROFILE=scraper omite
+      # los secretos del proceso HTTP.
+      ENV: prod
+      APP_PROFILE: scraper
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      DATABASE_SSL_ROOT_CERT: ${{ secrets.DATABASE_SSL_ROOT_CERT }}
+      LOG_FORMAT: json
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      # Emite `artefactos` (rutas separadas por espacio) por $GITHUB_OUTPUT.
+      # Sale vacío si ninguno de los dos modelos tenía histórico suficiente,
+      # que no es un fallo: se sigue sirviendo el baseline.
+      - name: Retrain predictive models
+        id: retrain
+        env:
+          ALERT_EMAIL_TO: ${{ secrets.ALERT_EMAIL_TO }}
+          ALERT_SMTP_USER: ${{ secrets.ALERT_SMTP_USER }}
+          ALERT_SMTP_PASSWORD: ${{ secrets.ALERT_SMTP_PASSWORD }}
+          ALERT_MIN_LEVEL: ${{ vars.ALERT_MIN_LEVEL || 'warn' }}
+        run: python -m scheduler.jobs.ml_predicciones retrain
+
+      - name: Upload artifacts to release
+        if: steps.retrain.outputs.artefactos != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ARTEFACTOS: ${{ steps.retrain.outputs.artefactos }}
+        run: |
+          set -euo pipefail
+          # `gh release view` sin argumentos resuelve la MISMA release que
+          # consulta shared/model_artifacts.py (`/releases/latest`): si se
+          # subieran los assets a otro tag, el scoring no los encontraría.
+          TAG=$(gh release view --json tagName -q '.tagName' 2>/dev/null || echo "")
+          if [ -z "$TAG" ]; then
+            TAG="v0.0.0-model"
+            echo "No hay releases publicadas; creando $TAG"
+            gh release create "$TAG" --title "ML Models" --notes "Artefactos de modelo"
+          fi
+          # shellcheck disable=SC2086 -- rutas sin espacios, split intencional
+          gh release upload "$TAG" $ARTEFACTOS --clobber
+          echo "Artefactos publicados en $TAG: $ARTEFACTOS"
+
+          # `gh release upload` sale 0 aunque el asset acabe con otro nombre
+          # (colisiones, sufijos). El scoring busca el asset por el nombre
+          # EXACTO del fichero registrado en model_versions, así que se
+          # comprueba nombre a nombre en vez de confiar en el código de salida.
+          PUBLICADOS=$(gh release view "$TAG" --json assets -q '.assets[].name')
+          for ruta in $ARTEFACTOS; do
+            nombre=$(basename "$ruta")
+            if ! echo "$PUBLICADOS" | grep -Fqx "$nombre"; then
+              echo "::error::$nombre no aparece en los assets de $TAG; ml-scoring no podrá resolverlo"
+              exit 1
+            fi
+          done
+          echo "Verificado: todos los artefactos están en $TAG"

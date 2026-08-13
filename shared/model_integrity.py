@@ -130,16 +130,22 @@ def verify_model_integrity(
     return actual_hash
 
 
-def write_checksum(target: Path) -> str:
+def write_checksum(target: Path, sha256: str | None = None) -> str:
     """Calcula el SHA256 de ``target`` y lo persiste en ``<target>.sha256``.
 
     Usado por los métodos ``save()`` de los cuatro modelos para mantener el
     checksum co-ubicado sincronizado con el artefacto recién escrito.
 
+    Args:
+        target: artefacto ``.pkl`` cuyo checksum se persiste.
+        sha256: hash ya calculado sobre ``target``. Lo pasa
+            ``shared.model_artifacts`` para no releer un artefacto de cientos
+            de MB que acaba de hashear; omitido, se calcula aquí.
+
     Returns:
-        El SHA256 (hex) calculado, por si el llamador quiere loguearlo.
+        El SHA256 (hex) escrito, por si el llamador quiere loguearlo.
     """
-    sha256_hash = hashlib.sha256(target.read_bytes()).hexdigest()
+    sha256_hash = sha256 or hashlib.sha256(target.read_bytes()).hexdigest()
     target.with_suffix(".sha256").write_text(sha256_hash, encoding="utf-8")
     return sha256_hash
 

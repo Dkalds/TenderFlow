@@ -52,10 +52,17 @@ CANONICAL_STEPS: list[str] = [
     "dlq_retry",
     "anomaly_checks",
     "retention_cleanup",
-    "ml_retrain",
     "sap_active_learning",
     "drift_checks",
 ]
+
+# `ml_retrain` salió de la lista en 2026-08: vive en
+# `.github/workflows/train-predictivos.yml`. Entrenaba aquí, dentro de un job
+# con `permissions: contents: read`, así que el artefacto no podía publicarse
+# en la Release y moría con el runner efímero — dejando filas de
+# `model_versions` con un `path` que ningún job posterior podía resolver. El
+# workflow nuevo entrena Y publica; duplicarlo aquí volvería a registrar
+# versiones irresolubles.
 
 
 # ---------------------------------------------------------------------------
@@ -78,7 +85,6 @@ _LANE_AWARE_STEPS = frozenset({"dlq_retry"})
 
 _SEGUNDOS_DIA = 24 * 60 * 60
 _SEGUNDOS_SEMANA = 7 * _SEGUNDOS_DIA
-_SEGUNDOS_MES = 30 * _SEGUNDOS_DIA
 
 
 def _run_periodic(name: str, ttl_seconds: int, fn: Any) -> str:
@@ -269,20 +275,6 @@ def _run_retention_cleanup() -> str:
     from scheduler.jobs.retention_cleanup import run as run_retention_cleanup
 
     return _run_periodic("retention_cleanup", _SEGUNDOS_DIA, run_retention_cleanup)
-
-
-def _run_ml_retrain() -> str:
-    """Re-entrena los modelos de baja/retención (una vez al mes).
-
-    ``train-model.yml`` cubre el clasificador SAP, no estos: hasta ahora
-    ``run_retrain`` solo estaba en el registry del loop, que no es el plano
-    activo, así que los modelos predictivos nunca se re-entrenaban en
-    producción. La activación de la versión nueva sigue siendo decisión
-    humana vía model_registry (no la cambia este paso).
-    """
-    from scheduler.jobs.ml_predicciones import run_retrain
-
-    return _run_periodic("ml_retrain", _SEGUNDOS_MES, run_retrain)
 
 
 def _run_sap_active_learning() -> str:

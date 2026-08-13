@@ -43,9 +43,68 @@ def test_scoring_cli_failure_statuses_exit_nonzero(status):
         assert ml_job.run_scoring_cli() == 1
 
 
+def test_scoring_cli_ok_when_baseline_sin_modelo_activo():
+    """Baseline SIN versión activa es el contrato del RFC, no una avería."""
+    resumen = {
+        "baja": {"status": "ok", "serving": "baseline", "model_version": None, "degradado": None},
+        "retencion": {"status": "baseline", "degradado": None},
+        "drift": {},
+        "calibracion": {},
+    }
+    with (
+        patch.object(ml_job, "run_scoring", return_value=resumen),
+        patch("db.database.init_db"),
+    ):
+        assert ml_job.run_scoring_cli() == 0
+
+
+@pytest.mark.parametrize("motivo", ["artefacto_irresoluble", "feature_schema_mismatch"])
+def test_scoring_cli_fails_when_serving_degradado(motivo):
+    """Modelo activo que no llega a servirse: job en rojo + alerta.
+
+    Es el fallo que dejaba el batch en verde sirviendo baseline durante
+    semanas: `status` seguía siendo "ok" porque las filas se escribían.
+    """
+    resumen = {
+        "baja": {"status": "ok", "serving": "baseline", "degradado": motivo},
+        "retencion": {},
+        "drift": {},
+        "calibracion": {},
+    }
+    with (
+        patch.object(ml_job, "run_scoring", return_value=resumen),
+        patch("db.database.init_db"),
+        patch("observability.alerts.notify") as notify,
+    ):
+        assert ml_job.run_scoring_cli() == 1
+    notify.assert_called_once()
+    assert notify.call_args.kwargs["baja"] == motivo
+
+
+def test_scoring_cli_fails_when_only_retencion_degradado():
+    resumen = {
+        "baja": {"status": "ok", "degradado": None},
+        "retencion": {"status": "baseline", "degradado": "artefacto_irresoluble"},
+        "drift": {},
+        "calibracion": {},
+    }
+    with (
+        patch.object(ml_job, "run_scoring", return_value=resumen),
+        patch("db.database.init_db"),
+        patch("observability.alerts.notify"),
+    ):
+        assert ml_job.run_scoring_cli() == 1
+
+
 # ---------------------------------------------------------------------------
 # ml_predicciones — verify
 # ---------------------------------------------------------------------------
+
+
+def _ahora_iso(horas_atras: float = 0.0) -> str:
+    from datetime import UTC, datetime, timedelta
+
+    return (datetime.now(UTC) - timedelta(hours=horas_atras)).isoformat()
 
 
 def test_verify_cli_fails_when_table_empty():
@@ -54,10 +113,93 @@ def test_verify_cli_fails_when_table_empty():
         assert ml_job.verify_predicciones_cli() == 1
 
 
-def test_verify_cli_ok_when_rows_present():
-    estado = {"filas": 42, "ultimo_computed_at": "2026-07-26T00:00:00"}
+def test_verify_cli_ok_when_rows_are_fresh():
+    estado = {"filas": 42, "ultimo_computed_at": _ahora_iso(1)}
     with patch("db.repositories.predicciones.PrediccionesRepository.estado", return_value=estado):
         assert ml_job.verify_predicciones_cli() == 0
+
+
+def test_verify_cli_fails_when_rows_are_stale():
+    """Filas de una corrida vieja: el upsert no purga, así que sobreviven a un
+    batch que no escribió ninguna y hacían pasar la verificación."""
+    estado = {"filas": 42, "ultimo_computed_at": _ahora_iso(72)}
+    with patch("db.repositories.predicciones.PrediccionesRepository.estado", return_value=estado):
+        assert ml_job.verify_predicciones_cli() == 1
+
+
+@pytest.mark.parametrize("valor", [None, "", "no-es-una-fecha"])
+def test_verify_cli_fails_when_timestamp_unusable(valor):
+    """Con filas pero sin timestamp legible no se puede afirmar frescura."""
+    estado = {"filas": 42, "ultimo_computed_at": valor}
+    with patch("db.repositories.predicciones.PrediccionesRepository.estado", return_value=estado):
+        assert ml_job.verify_predicciones_cli() == 1
+
+
+def test_verify_cli_accepts_naive_timestamp():
+    """Un ``computed_at`` sin tz se interpreta como UTC, no como local."""
+    from datetime import UTC, datetime, timedelta
+
+    naive = (datetime.now(UTC) - timedelta(hours=2)).replace(tzinfo=None).isoformat()
+    estado = {"filas": 7, "ultimo_computed_at": naive}
+    with patch("db.repositories.predicciones.PrediccionesRepository.estado", return_value=estado):
+        assert ml_job.verify_predicciones_cli() == 0
+
+
+# ---------------------------------------------------------------------------
+# ml_predicciones — retrain (train-predictivos.yml)
+# ---------------------------------------------------------------------------
+
+
+def test_retrain_cli_publishes_artifacts_to_github_output(tmp_path, monkeypatch):
+    """El workflow sube lo que emite este output: sin él el .pkl muere con el
+    runner y `model_versions` queda apuntando a una ruta irresoluble."""
+    pkl = tmp_path / "baja_model.pkl"
+    pkl.write_bytes(b"modelo")
+    (tmp_path / "baja_model.sha256").write_text("deadbeef", encoding="utf-8")
+    salida = tmp_path / "gh_output"
+    salida.touch()
+    monkeypatch.setenv("GITHUB_OUTPUT", str(salida))
+
+    resultados = {
+        "baja": {"status": "ok", "version": 3, "path": str(pkl)},
+        "retencion": {"status": "datos_insuficientes", "n": 12},
+    }
+    with (
+        patch.object(ml_job, "run_retrain", return_value=resultados),
+        patch("db.database.init_db"),
+    ):
+        assert ml_job.run_retrain_cli() == 0
+
+    escrito = salida.read_text(encoding="utf-8")
+    assert escrito.startswith("artefactos=")
+    assert str(pkl) in escrito
+    # El checksum co-ubicado viaja con el .pkl: verify_model_integrity lo exige
+    # en ENV=prod antes de deserializar.
+    assert str(tmp_path / "baja_model.sha256") in escrito
+
+
+def test_retrain_cli_fails_on_unexpected_status(tmp_path, monkeypatch):
+    monkeypatch.delenv("GITHUB_OUTPUT", raising=False)
+    resultados = {"baja": {"status": "error"}, "retencion": {"status": "ok", "path": ""}}
+    with (
+        patch.object(ml_job, "run_retrain", return_value=resultados),
+        patch("db.database.init_db"),
+    ):
+        assert ml_job.run_retrain_cli() == 1
+
+
+def test_retrain_cli_ok_without_data(monkeypatch):
+    """Sin histórico suficiente no hay artefacto ni fallo: se sigue con baseline."""
+    monkeypatch.delenv("GITHUB_OUTPUT", raising=False)
+    resultados = {
+        "baja": {"status": "datos_insuficientes", "n": 3},
+        "retencion": {"status": "datos_insuficientes", "n": 5},
+    }
+    with (
+        patch.object(ml_job, "run_retrain", return_value=resultados),
+        patch("db.database.init_db"),
+    ):
+        assert ml_job.run_retrain_cli() == 0
 
 
 # ---------------------------------------------------------------------------

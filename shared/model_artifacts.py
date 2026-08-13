@@ -125,6 +125,7 @@ def resolve_active_artifact(name: str) -> Path | None:
             raise ModelArtifactMismatch(
                 f"El artefacto de '{name}' en {path} no coincide con el sha256 registrado"
             )
+        _ensure_sidecar_checksum(path, actual)
         return path
 
     if not expected:
@@ -145,4 +146,28 @@ def resolve_active_artifact(name: str) -> Path | None:
         raise ModelArtifactMismatch(
             f"El asset descargado para '{name}' no coincide con el sha256 registrado"
         )
+    _ensure_sidecar_checksum(path, actual)
     return path
+
+
+def _ensure_sidecar_checksum(path: Path, verified_sha256: str) -> None:
+    """Escribe ``<path>.sha256`` si falta, con el hash ya verificado.
+
+    ``shared.model_integrity.verify_model_integrity`` —el paso previo a
+    ``joblib.load``— **rechaza la carga en ``ENV=prod``** cuando no hay ni pin
+    out-of-band ni checksum co-ubicado. El asset de la Release se descarga
+    solo (``_download_release_asset`` pide ``path.name``), así que sin esto
+    resolver un artefacto en un runner efímero cambiaría el fallback silencioso
+    a baseline por un ``RuntimeError`` a mitad del batch.
+
+    El hash que se persiste es el que acaba de cotejarse contra
+    ``model_versions``, no uno leído del propio release: es la misma fuente
+    out-of-band que el pin ``ML_*_SHA256``, no una verificación circular.
+    """
+    sidecar = path.with_suffix(".sha256")
+    if sidecar.exists():
+        return
+    from shared.model_integrity import write_checksum
+
+    write_checksum(path, verified_sha256)
+    log.info("model_artifact_sidecar_written", path=str(sidecar))
