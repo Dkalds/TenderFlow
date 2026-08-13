@@ -48,7 +48,9 @@ def test_provider_for_nvidia_models():
     """Modelos con namespace ('/') son NVIDIA NIM."""
     from llm.client import provider_for
 
-    assert provider_for("deepseek-ai/deepseek-v4-pro") == "nvidia"
+    assert provider_for("deepseek-ai/deepseek-v4-flash-0731") == "nvidia"
+    assert provider_for("nvidia/nemotron-3-super-120b-a12b") == "nvidia"
+    assert provider_for("z-ai/glm-5.2") == "nvidia"
     assert provider_for("meta/llama-3.1-70b-instruct") == "nvidia"
 
 
@@ -143,6 +145,56 @@ def test_available_models_are_strings():
         assert isinstance(m, str) and m
 
 
+def test_default_model_is_available():
+    """DEFAULT_MODEL está en AVAILABLE_MODELS.
+
+    Sin esto, /ask rechaza con 400 su propio default y la IA queda inutilizable
+    para cualquier cliente que no envíe `model` explícito.
+    """
+    from llm.client import AVAILABLE_MODELS, DEFAULT_MODEL
+
+    assert DEFAULT_MODEL in AVAILABLE_MODELS
+
+
+def test_every_available_model_has_a_price():
+    """Todo modelo ofertado tiene entrada en _PRICE_PER_MTOK.
+
+    `_record_usage` solo alimenta el BudgetGuard cuando el modelo está en ese
+    dict: un modelo sin precio gasta sin que el breaker de coste lo cuente, y
+    LLM_BUDGET_MODE=enforce deja de proteger la factura en silencio.
+    """
+    from llm.client import _PRICE_PER_MTOK, AVAILABLE_MODELS
+
+    sin_precio = [m for m in AVAILABLE_MODELS if m not in _PRICE_PER_MTOK]
+    assert not sin_precio, f"Modelos sin precio: {sin_precio}"
+
+
+def test_ask_route_defaults_match_default_model():
+    """Los defaults Pydantic de /ask y /resumen siguen a llm.client.DEFAULT_MODEL.
+
+    Hoy la sincronía la sostiene solo un comentario. Este test la hace fallar
+    en CI en vez de en producción: el modelo por defecto de NVIDIA ya caducó
+    una vez (deepseek-v4-pro, EOL 2026-08-07) y hubo que tocar tres archivos.
+    """
+    from api.routes.ask import AskRequest, ResumenRequest
+    from llm.client import DEFAULT_MODEL
+
+    assert AskRequest.model_fields["model"].default == DEFAULT_MODEL
+    assert ResumenRequest.model_fields["model"].default == DEFAULT_MODEL
+
+
+def test_pliego_facts_model_is_available():
+    """settings.PLIEGO_FACTS_MODEL es un modelo ofertado.
+
+    Lo consumen api/routes/licitaciones.py y el job de embeddings; si apunta a
+    un modelo retirado, la extracción de fichas de pliego falla en silencio.
+    """
+    from config import settings
+    from llm.client import AVAILABLE_MODELS
+
+    assert settings.PLIEGO_FACTS_MODEL in AVAILABLE_MODELS
+
+
 # ---------------------------------------------------------------------------
 # stream_llm_response — despacho correcto
 # ---------------------------------------------------------------------------
@@ -198,7 +250,7 @@ def test_stream_llm_response_dispatches_to_nvidia(monkeypatch):
 
         result = list(
             stream_llm_response(
-                "pregunta de prueba", [], model="deepseek-ai/deepseek-v4-pro", keywords=[]
+                "pregunta de prueba", [], model="deepseek-ai/deepseek-v4-flash-0731", keywords=[]
             )
         )
 

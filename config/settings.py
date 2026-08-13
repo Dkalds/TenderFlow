@@ -520,7 +520,9 @@ class Settings(BaseSettings):
     # seleccionado; se activa de forma explícita para no generar gasto por el
     # mero despliegue de la migración.
     PLIEGO_FACTS_ENABLED: bool = False
-    PLIEGO_FACTS_MODEL: str = "deepseek-ai/deepseek-v4-pro"
+    # Mantener sincronizado con llm.client.DEFAULT_MODEL: el valor anterior
+    # (deepseek-v4-pro) quedó EOL en NVIDIA el 2026-08-07 y devolvía 410.
+    PLIEGO_FACTS_MODEL: str = "deepseek-ai/deepseek-v4-flash-0731"
     # Tamaños de lote por fase del job scheduler/jobs/documentos_embeddings.py.
     # pliegos.yml no propaga REDIS_URL, así que el gate de presupuesto LLM
     # arranca de 0 en cada corrida -- el tope real del batch de facts es este
