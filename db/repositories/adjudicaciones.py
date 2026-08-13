@@ -6,6 +6,7 @@ import re
 from typing import Any
 
 from db.database import connect_read
+from db.repositories.aggregates import LicitacionesFilters, build_licitaciones_where
 from db.repositories.base import count_where, rows_to_dicts
 
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
@@ -343,7 +344,9 @@ class AdjudicacionRepository:
 
     # ── Drill-down por órgano (ADR-023) ──────────────────────────────────
 
-    def load_por_organo(self, organo: str) -> list[dict[str, Any]]:
+    def load_por_organo(
+        self, organo: str, filters: LicitacionesFilters | None = None
+    ) -> list[dict[str, Any]]:
         """Proyección ACOTADA de las adjudicaciones de UN órgano.
 
         Justificación ADR-023: acotada por definición al órgano pedido; el
@@ -352,13 +355,20 @@ class AdjudicacionRepository:
         maestro-canónico-o-raw (la misma expresión que los grafos
         órgano↔empresa); ``fecha_publicacion``/``importe_licitacion`` vienen
         del join para el lead-time y la baja porcentual.
+
+        ``filters`` acota además por el ámbito activo, sobre la licitación
+        adjudicada (alias ``l``). Sin él, un drill-down abierto con
+        ``tecnologia=SAP`` mostraba unos KPIs filtrados junto a un "top
+        adjudicatario" y un lead-time calculados sobre el histórico entero del
+        órgano: dos universos distintos en el mismo panel.
         """
+        where, params = build_licitaciones_where(filters or LicitacionesFilters(), alias="l")
         sql = (
             f"SELECT a.licitacion_id, {_EMPRESA_KEY_SQL} AS nombre, "
             "       a.importe_adjudicado, a.fecha_adjudicacion, "
             "       l.fecha_publicacion, l.importe AS importe_licitacion "
             f"{_GRAPH_FROM}"
-            "WHERE l.organo_contratacion = %s"
+            f"WHERE {where} AND l.organo_contratacion = %s"
         )
         with connect_read() as c:
-            return rows_to_dicts(c.execute(sql, [organo]))
+            return rows_to_dicts(c.execute(sql, [*params, organo]))

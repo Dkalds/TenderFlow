@@ -4,7 +4,6 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { startTransition, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import { useSearchParams } from "next/navigation";
-import { useQuery } from "@tanstack/react-query";
 import { useFilteredQuery } from "@/hooks/use-filtered-query";
 import { useDebounce } from "@/hooks/use-debounce";
 import { KpiCard, KpiStrip } from "@/components/charts/kpi-card";
@@ -109,20 +108,24 @@ export default function OrganosPage() {
     debouncedFilter ? { q: debouncedFilter } : undefined,
   );
 
-  const { data: detailData, isLoading: detailLoading } =
-    useQuery<OrganoDetailResponse>({
-      queryKey: ["analytics", "organos", selectedOrgano],
-      queryFn: async () => {
-        const res = await fetch(
-          `/api/v1/analytics/organos/${encodeURIComponent(selectedOrgano!)}`,
-          { credentials: "include" },
-        );
-        if (!res.ok) throw new Error(`API error: ${res.status}`);
-        return res.json();
-      },
-      enabled: !!selectedOrgano,
-      staleTime: 5 * 60 * 1000,
-    });
+  // El drill-down viaja con el mismo ámbito que el ranking del que se abre.
+  // Antes era un `fetch` desnudo sin un solo parámetro: entrando con
+  // `?tecnologia=SAP`, la tabla contaba las licitaciones SAP del órgano y el
+  // panel de al lado respondía con su histórico completo — dos universos, el
+  // mismo encabezado. `useFilteredQuery` además mete los filtros en la key,
+  // así que cambiar de ámbito refetchea en vez de servir el panel anterior.
+  //
+  // El último argumento (`isRealtime`) apaga `keepPreviousData` a propósito: el
+  // panel lleva el nombre del órgano en la cabecera, y servir las cifras del
+  // anterior mientras carga el nuevo es la misma mentira que este cambio viene
+  // a quitar. Aquí se prefiere el esqueleto.
+  const { data: detailData, isLoading: detailLoading } = useFilteredQuery<OrganoDetailResponse>(
+    ["analytics", "organo-detail", selectedOrgano ?? ""],
+    `/api/v1/analytics/organos/${encodeURIComponent(selectedOrgano ?? "")}`,
+    { enabled: !!selectedOrgano, staleTime: 5 * 60 * 1000 },
+    undefined,
+    true,
+  );
 
   const items = useMemo(() => data?.organos ?? [], [data]);
 

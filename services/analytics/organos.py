@@ -34,6 +34,12 @@ class OrganosFilters(BaseModel):
     fecha_hasta: date | None = None
     ccaa: str | None = None
     tecnologia: str | None = None
+    estado: str | None = None
+    importe_min: float | None = None
+    solo_abiertas: bool = False
+    # Ojo: ``q`` aquí busca **el nombre del órgano**, no es el ``q`` del ámbito
+    # global (que busca título/órgano/id sobre licitaciones). Son dos preguntas
+    # distintas que comparten nombre de parámetro; ver la nota del endpoint.
     q: str | None = None
     limit: int = 50
 
@@ -72,6 +78,9 @@ def _to_repo_filters(filters: OrganosFilters) -> LicitacionesFilters:
         fecha_hasta=filters.fecha_hasta.isoformat() if filters.fecha_hasta else None,
         ccaa=filters.ccaa,
         tecnologia=filters.tecnologia,
+        estado=filters.estado,
+        importe_min=filters.importe_min,
+        solo_abiertas=filters.solo_abiertas,
     )
 
 

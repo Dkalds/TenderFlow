@@ -119,6 +119,11 @@ class LicitacionesFilters:
     importe_min: float | None = None
     q: str | None = None
     cpv: str | None = None
+    # "Sólo las que siguen abiertas": descarta los estados terminales en vez de
+    # enumerar los abiertos (ver shared/estados.py). No es redundante con
+    # ``estado``: ése fija uno concreto, éste excluye el cierre y deja pasar
+    # cualquier código que la fuente publique mañana.
+    solo_abiertas: bool = False
 
     def is_empty(self) -> bool:
         """True si ningún filtro está activo, es decir, si el ámbito es la tabla entera.
@@ -136,41 +141,63 @@ class LicitacionesFilters:
         return self == LicitacionesFilters()
 
 
-def _build_where(filters: LicitacionesFilters) -> tuple[str, list[Any]]:
-    """Construye el ``WHERE`` (dialecto qmark) desde :class:`LicitacionesFilters`."""
+def build_licitaciones_where(
+    filters: LicitacionesFilters, *, alias: str | None = None
+) -> tuple[str, list[Any]]:
+    """Construye el ``WHERE`` (dialecto qmark) desde :class:`LicitacionesFilters`.
+
+    ``alias`` califica las columnas (``l.estado``) para las consultas que cruzan
+    ``licitaciones`` con otra tabla — el drill-down de un órgano acota así sus
+    adjudicaciones con el mismo ámbito que sus licitaciones, en vez de dejar
+    que "top adjudicatario" y "lead time" midan el histórico completo mientras
+    los KPIs de al lado miden el filtro. Sin ``alias`` las columnas van
+    desnudas, como en las agregaciones que leen sólo de ``licitaciones``.
+    """
+
+    def col(name: str) -> str:
+        return f"{alias}.{name}" if alias else name
+
     clauses: list[str] = ["1 = 1"]
     params: list[Any] = []
 
     if filters.fecha_desde:
-        clauses.append("fecha_publicacion >= %s")
+        clauses.append(f"{col('fecha_publicacion')} >= %s")
         params.append(filters.fecha_desde)
     if filters.fecha_hasta:
-        clauses.append("fecha_publicacion <= %s")
+        clauses.append(f"{col('fecha_publicacion')} <= %s")
         params.append(filters.fecha_hasta)
     if filters.ccaa:
-        clauses.append("ccaa = %s")
+        clauses.append(f"{col('ccaa')} = %s")
         params.append(filters.ccaa)
     if filters.tecnologia:
-        clauses.append("tecnologia = %s")
+        clauses.append(f"{col('tecnologia')} = %s")
         params.append(filters.tecnologia)
     if filters.estado:
-        clauses.append("estado = %s")
+        clauses.append(f"{col('estado')} = %s")
         params.append(filters.estado)
+    if filters.solo_abiertas:
+        clauses.append(abierta_sql(col("estado")))
     if filters.importe_min is not None:
-        clauses.append("importe >= %s")
+        clauses.append(f"{col('importe')} >= %s")
         params.append(filters.importe_min)
     if filters.q and filters.q.strip():
         needle = f"%{_escape_like(filters.q.strip())}%"
         clauses.append(
-            "(titulo ILIKE %s ESCAPE '\\' OR organo_contratacion ILIKE %s ESCAPE '\\' "
-            "OR id_externo ILIKE %s ESCAPE '\\')"
+            f"({col('titulo')} ILIKE %s ESCAPE '\\' "
+            f"OR {col('organo_contratacion')} ILIKE %s ESCAPE '\\' "
+            f"OR {col('id_externo')} ILIKE %s ESCAPE '\\')"
         )
         params.extend([needle, needle, needle])
     if filters.cpv:
-        clauses.append("cpv = %s")
+        clauses.append(f"{col('cpv')} = %s")
         params.append(filters.cpv)
 
     return " AND ".join(clauses), params
+
+
+# Nombre interno histórico: los call sites de este módulo agregan sobre
+# ``licitaciones`` a secas y nunca pasan ``alias``.
+_build_where = build_licitaciones_where
 
 
 class AggregateRepository:

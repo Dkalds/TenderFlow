@@ -264,6 +264,11 @@ def organos(
     fecha_hasta: date | None = Query(default=None, description="End date (YYYY-MM-DD)"),
     ccaa: str | None = Query(default=None, description="Filter by CCAA"),
     tecnologia: str | None = Query(default=None, description="Filter by tecnologia"),
+    estado: str | None = Query(default=None, description="Filter by tender status"),
+    importe_min: float | None = Query(default=None, ge=0, description="Min tender budget (EUR)"),
+    solo_abiertas: bool = Query(
+        default=False, description="Solo licitaciones que siguen abiertas (no terminales)"
+    ),
     q: str | None = Query(
         default=None,
         max_length=200,
@@ -272,12 +277,27 @@ def organos(
     limit: int = Query(default=50, ge=1, le=500, description="Max organos to return"),
     _user: dict[str, Any] = Depends(get_current_session_user),
 ) -> OrganosResult:
-    """Ranking of contracting bodies by activity."""
+    """Ranking of contracting bodies by activity.
+
+    Todos los filtros acotan el universo de licitaciones **antes** de agregar,
+    así que ``total_organos``, ``importe_total`` y ``concentracion_top10``
+    miden el ámbito pedido y no la tabla entera.
+
+    ``q`` es la excepción y sigue significando lo de siempre: busca **el nombre
+    del órgano**, no el título de la licitación como en el resto del producto.
+    El cliente manda ahí el ``q`` del ámbito global, así que una búsqueda de
+    ámbito acota este ranking por nombre de órgano y no por licitación. Es una
+    incoherencia anterior a este cambio y no se toca aquí: renombrar el
+    parámetro rompería los deep-links ``/organos?q=<órgano>``.
+    """
     filters = OrganosFilters(
         fecha_desde=fecha_desde,
         fecha_hasta=fecha_hasta,
         ccaa=ccaa,
         tecnologia=tecnologia,
+        estado=estado,
+        importe_min=importe_min,
+        solo_abiertas=solo_abiertas,
         q=q,
         limit=limit,
     )
@@ -568,14 +588,28 @@ def organo_detail(
     fecha_hasta: date | None = Query(default=None, description="End date (YYYY-MM-DD)"),
     ccaa: str | None = Query(default=None, description="Filter by CCAA"),
     tecnologia: str | None = Query(default=None, description="Filter by tecnologia"),
+    estado: str | None = Query(default=None, description="Filter by tender status"),
+    importe_min: float | None = Query(default=None, ge=0, description="Min tender budget (EUR)"),
+    solo_abiertas: bool = Query(
+        default=False, description="Solo licitaciones que siguen abiertas (no terminales)"
+    ),
     _user: dict[str, Any] = Depends(get_current_session_user),
 ) -> OrganoDetailResult:
-    """Drill-down for a single contracting body."""
+    """Drill-down for a single contracting body.
+
+    Acepta el mismo ámbito que el ranking del que se abre, y lo aplica tanto a
+    las licitaciones del órgano como a sus adjudicaciones: los KPIs, el top de
+    adjudicatarios, el lead-time y la estacionalidad miden todos el mismo
+    subconjunto.
+    """
     filters = OrganoDetailFilters(
         fecha_desde=fecha_desde,
         fecha_hasta=fecha_hasta,
         ccaa=ccaa,
         tecnologia=tecnologia,
+        estado=estado,
+        importe_min=importe_min,
+        solo_abiertas=solo_abiertas,
     )
     return get_organo_detail(organo, filters)
 

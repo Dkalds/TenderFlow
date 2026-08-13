@@ -1,8 +1,10 @@
 """Organo detail analytics — drill-down for a single contracting body.
 
 Consume proyecciones ACOTADAS al órgano pedido (ADR-023):
-``AggregateRepository.licitaciones_por_organo`` (filtros globales en el
-``WHERE``) y ``AdjudicacionRepository.load_por_organo``. Hasta 2026-08 cargaba
+``AggregateRepository.licitaciones_por_organo`` y
+``AdjudicacionRepository.load_por_organo``, las dos con los filtros del ámbito
+en el ``WHERE`` — todo lo que pinta el panel (KPIs, adjudicatarios, lead-time,
+estacionalidad y ranking) mide el mismo subconjunto. Hasta 2026-08 cargaba
 las dos tablas completas a pandas en el proceso API — bloqueado en Render por
 el cortacircuitos full-table, que dejaba este endpoint vacío en producción.
 El scoring simple, la estacionalidad y el lead-time siguen en pandas sobre el
@@ -49,6 +51,9 @@ class OrganoDetailFilters(BaseModel):
     fecha_hasta: date | None = None
     ccaa: str | None = None
     tecnologia: str | None = None
+    estado: str | None = None
+    importe_min: float | None = None
+    solo_abiertas: bool = False
 
 
 class OrganoKpis(BaseModel):
@@ -109,6 +114,9 @@ def _to_repo_filters(filters: OrganoDetailFilters) -> LicitacionesFilters:
         fecha_hasta=filters.fecha_hasta.isoformat() if filters.fecha_hasta else None,
         ccaa=filters.ccaa,
         tecnologia=filters.tecnologia,
+        estado=filters.estado,
+        importe_min=filters.importe_min,
+        solo_abiertas=filters.solo_abiertas,
     )
 
 
@@ -170,7 +178,8 @@ def _adj_lookup_for(adj_df: pd.DataFrame, ids: pd.Series) -> dict[str, dict[str,
 def get_organo_detail(organo: str, filters: OrganoDetailFilters) -> OrganoDetailResult:
     """Drill-down for a single contracting body."""
     log.info("analytics_organo_detail_start", organo=organo)
-    rows = _repo.licitaciones_por_organo(organo, _to_repo_filters(filters))
+    repo_filters = _to_repo_filters(filters)
+    rows = _repo.licitaciones_por_organo(organo, repo_filters)
     if not rows:
         return OrganoDetailResult()
 
@@ -199,8 +208,10 @@ def get_organo_detail(organo: str, filters: OrganoDetailFilters) -> OrganoDetail
         lead_time_medio=None,
     )
 
-    # Adjudicatarios del órgano (proyección acotada)
-    adj_df = pd.DataFrame(_adj_repo.load_por_organo(organo))
+    # Adjudicatarios del órgano (proyección acotada, con el mismo ámbito que
+    # las licitaciones de arriba: si el panel dice "13 licitaciones SAP", su
+    # top adjudicatario tiene que salir de esas 13).
+    adj_df = pd.DataFrame(_adj_repo.load_por_organo(organo, repo_filters))
     top_adj: list[TopAdjudicatario] = []
     if not adj_df.empty:
         adj_df = adj_df.assign(
