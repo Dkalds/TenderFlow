@@ -2,13 +2,12 @@
 
 from __future__ import annotations
 
-import json
-import re
 from typing import Any
 
 from db.repositories.documentos import DocumentosRepository
 from db.repositories.tender_fact_sheets import TenderFactSheetsRepository
 from llm.client import DEFAULT_MODEL, stream_llm_response
+from llm.json_utils import extract_json_object
 from observability.logging import get_logger
 from shared.tender_facts import EvidenceRef, TenderFactSheet, TenderFactSheetRecord
 
@@ -98,20 +97,6 @@ def _select_pages(pages: list[dict[str, Any]]) -> list[dict[str, Any]]:
         selected,
         key=lambda p: (int(p["documento_id"]), int(p["page_number"])),
     )
-
-
-def _extract_json_object(raw: str) -> dict[str, Any]:
-    """Acepta JSON puro o un único bloque fenced y rechaza texto sin objeto."""
-    cleaned = re.sub(r"^\s*```(?:json)?\s*", "", raw.strip(), flags=re.IGNORECASE)
-    cleaned = re.sub(r"\s*```\s*$", "", cleaned)
-    start = cleaned.find("{")
-    end = cleaned.rfind("}")
-    if start < 0 or end <= start:
-        raise ValueError("El extractor no devolvió un objeto JSON")
-    value = json.loads(cleaned[start : end + 1])
-    if not isinstance(value, dict):
-        raise ValueError("La ficha extraída no es un objeto JSON")
-    return value
 
 
 def _normalize_quote(value: str) -> str:
@@ -208,7 +193,7 @@ def extract_fact_sheet(
                 max_tokens=3500,
             )
         )
-        facts = TenderFactSheet.model_validate(_extract_json_object(raw))
+        facts = TenderFactSheet.model_validate(extract_json_object(raw))
         facts, rejected = _validate_fact_evidence(facts, pages)
         field_count, evidence_count = _counts(facts)
         status = "needs_review" if rejected else "extracted"

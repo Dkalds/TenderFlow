@@ -83,6 +83,15 @@ jobs:
           ALERT_MIN_LEVEL: ${{ vars.ALERT_MIN_LEVEL || 'warn' }}
           GITHUB_TOKEN: ${{ github.token }}
           SCRAPER_MONTHS: ${{ inputs.months || 3 }}
+          # El bulk también corre los pasos post-ingesta, así que ejecuta
+          # `llm_tech_labeling` igual que el carril diario. Sin estas variables,
+          # un bulk manual consumiría la ventana diaria del paso sin clasificar
+          # nada (ver `_run_periodic`: el lock solo se suelta si el paso falla).
+          NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+          LLM_TECH_LABELING_ENABLED: ${{ vars.LLM_TECH_LABELING_ENABLED || 'false' }}
+          LLM_TECH_LABELING_MODEL: ${{ vars.LLM_TECH_LABELING_MODEL || 'deepseek-ai/deepseek-v4-pro' }}
+          LLM_TECH_LABELING_BATCH: ${{ vars.LLM_TECH_LABELING_BATCH || '200' }}
+          LLM_TECH_FEEDBACK_ENABLED: ${{ vars.LLM_TECH_FEEDBACK_ENABLED || 'false' }}
         run: |
           MAX_RETRIES=2
           DELAY_SECS=90

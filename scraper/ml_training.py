@@ -349,7 +349,10 @@ def train_from_db() -> dict[str, Any]:
         )
         lic_rows = lic_cur.fetchall()
         lic_cols = [d[0] for d in lic_cur.description]
-        fb_cur = c.execute("SELECT expediente, relevante FROM ml_feedback")
+        # ``source = 'human'`` por el mismo motivo que en
+        # ``scheduler/concept_drift.py::_fetch_training_dataframe``: el feedback
+        # automático del etiquetado por LLM no puede realimentar al modelo.
+        fb_cur = c.execute("SELECT expediente, relevante FROM ml_feedback WHERE source = 'human'")
         fb_rows = fb_cur.fetchall()
         fb_cols = [d[0] for d in fb_cur.description]
 

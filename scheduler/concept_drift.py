@@ -449,6 +449,14 @@ def _fetch_training_dataframe() -> Any:
     _build_dataset() en ml_classifier.py pueda usar todos los features
     disponibles (CPV tokens, importe bins, split temporal).
     Enriquece las etiquetas con feedback humano de ml_feedback.
+
+    Los SELECT van por el protocolo DBAPI (``execute``/``fetchall``) y no por
+    ``pd.read_sql_query``: la conexión que devuelve ``connect()`` es
+    ``_PgConnAdapter``, que expone ``execute``/``executemany`` pero **no**
+    ``cursor()``, y pandas lo necesita para su camino no-SQLAlchemy. Usarlo
+    lanzaba ``AttributeError`` y dejaba el reentrenamiento semanal caído sin
+    que nada lo destapara. Mismo patrón que ``scraper/ml_training.py``, que ya
+    lo hacía así.
     """
     try:
         import pandas as pd
@@ -456,13 +464,23 @@ def _fetch_training_dataframe() -> Any:
         return None
 
     with connect() as c:
-        lic = pd.read_sql_query(
+        lic_cur = c.execute(
             "SELECT id_externo, titulo, descripcion, raw_keywords, cpv, "
             "importe, fecha_publicacion, tecnologia "
-            "FROM licitaciones",
-            c,
+            "FROM licitaciones"
         )
-        fb = pd.read_sql_query("SELECT expediente, relevante FROM ml_feedback", c)
+        lic_rows = lic_cur.fetchall()
+        lic_cols = [d[0] for d in lic_cur.description]
+        # Solo feedback humano: las etiquetas automáticas (source='llm_batch')
+        # son predicciones, y entrenar sobre ellas es enseñarle al modelo lo
+        # que ya cree -- el override de abajo es duro y sin pesos, así que una
+        # etiqueta del LLM pisaría la señal de keywords con su propia salida.
+        fb_cur = c.execute("SELECT expediente, relevante FROM ml_feedback WHERE source = 'human'")
+        fb_rows = fb_cur.fetchall()
+        fb_cols = [d[0] for d in fb_cur.description]
+
+    lic = pd.DataFrame(lic_rows, columns=lic_cols)
+    fb = pd.DataFrame(fb_rows, columns=fb_cols)
     if lic.empty:
         return None
 

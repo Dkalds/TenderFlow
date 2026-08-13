@@ -537,6 +537,27 @@ class Settings(BaseSettings):
     # una señal de pliego entre al merge hacia ml_tecnologias/licitacion_tecnologia_score.
     PLIEGO_TECH_MIN_SCORE: float = 0.5
 
+    # ── LLM: etiquetado batch de tecnología sobre la metadata del anuncio ────
+    # Categorizar a mano la cola de active learning es inviable por volumen.
+    # Este carril clasifica con un LLM leyendo solo el anuncio (sin pliegos),
+    # así que cubre todo el universo y no la minoría con documentos. Off por
+    # defecto: genera gasto, se activa de forma explícita como PLIEGO_FACTS.
+    LLM_TECH_LABELING_ENABLED: bool = False
+    LLM_TECH_LABELING_MODEL: str = "deepseek-ai/deepseek-v4-pro"
+    # Licitaciones clasificadas por corrida. Mismo caveat que PLIEGO_*_BATCH:
+    # sin REDIS_URL en el runner, el presupuesto LLM arranca de 0 en cada
+    # corrida y el tope real de gasto es este tamaño de lote (~$0.07 por 200).
+    LLM_TECH_LABELING_BATCH: int = 200
+    # Vuelca además las etiquetas seguras a ml_feedback (source='llm_batch'),
+    # que es lo que saca la licitación de la cola humana de active learning
+    # (su query es un anti-join contra esa tabla). Independiente del flag de
+    # arriba: primero se valida la calidad de la señal, después se deja que
+    # vacíe la cola. Esas filas NUNCA entrenan al modelo -- ver v80.
+    LLM_TECH_FEEDBACK_ENABLED: bool = False
+    # Por debajo de esta confianza la licitación se deja para revisión humana:
+    # el objetivo es vaciar la cola de lo evidente, no de lo dudoso.
+    LLM_TECH_FEEDBACK_MIN_CONF: float = 0.90
+
     # ── LLM: presupuesto de gasto + timeout (RFC llm-dependencia-gestionada) ──
     # Tope de gasto del proveedor LLM por ventana (USD). <= 0 desactiva el límite.
     LLM_BUDGET_USD_DAILY: float = 5.0

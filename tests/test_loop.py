@@ -217,7 +217,8 @@ class TestJobRegistry:
         assert "ml_retrain_baja" in names
         assert "documentos_embeddings" in names
         assert "watchlist_rules" in names
-        assert len(registry) == 11
+        assert "llm_tech_labeling" in names
+        assert len(registry) == 12
 
     def test_heavy_jobs_marked_correctly(self):
         from scheduler.jobs import build_default_registry

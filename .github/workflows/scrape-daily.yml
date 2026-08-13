@@ -69,6 +69,19 @@ jobs:
           ALERT_SMTP_PASSWORD: ${{ secrets.ALERT_SMTP_PASSWORD }}
           ALERT_MIN_LEVEL: ${{ vars.ALERT_MIN_LEVEL || 'warn' }}
           GITHUB_TOKEN: ${{ github.token }}
+          # Paso post-ingesta `llm_tech_labeling` (categorización por LLM sobre
+          # la metadata del anuncio). La key va en el `env:` del step y no en el
+          # del job para no exponerla a los conectores, que no la necesitan.
+          # Sin ella el paso falla en bloque, suelta la ventana diaria y pone el
+          # run en rojo — degradación visible, nunca silenciosa.
+          NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+          # Flags como `vars` para poder encender/apagar y ajustar el lote desde
+          # Actions → Variables, sin tocar código (mismo patrón que pliegos.yml).
+          # Con la variable sin definir manda el default de config/settings.py.
+          LLM_TECH_LABELING_ENABLED: ${{ vars.LLM_TECH_LABELING_ENABLED || 'false' }}
+          LLM_TECH_LABELING_MODEL: ${{ vars.LLM_TECH_LABELING_MODEL || 'deepseek-ai/deepseek-v4-pro' }}
+          LLM_TECH_LABELING_BATCH: ${{ vars.LLM_TECH_LABELING_BATCH || '200' }}
+          LLM_TECH_FEEDBACK_ENABLED: ${{ vars.LLM_TECH_FEEDBACK_ENABLED || 'false' }}
         run: python -m scheduler.run_update --daily
 
       # Los seis conectores llevan `if: !cancelled()`: son fuentes

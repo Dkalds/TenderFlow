@@ -125,6 +125,42 @@ class TecnologiaPliegoRepository:
             ).fetchall()
             return [str(row[0]) for row in rows]
 
+    def list_metadata_pending_llm_signal(
+        self, *, signal_version: str, method: str = "llm_metadata", limit: int = 200
+    ) -> list[dict[str, Any]]:
+        """Licitaciones sin señal ``method`` vigente, con la metadata que basta
+        para clasificarlas.
+
+        A diferencia de ``list_licitaciones_pending_signal``, no exige
+        documentos: el etiquetado por LLM sobre metadata solo lee el anuncio,
+        así que el universo es toda la tabla ``licitaciones``. Devuelve las
+        filas completas (no solo los ids) para que el job no haga un N+1
+        contra el repo de licitaciones.
+
+        Las más recientes primero: el valor de negocio está en el flujo
+        entrante, y el backlog histórico se drena por detrás lote a lote.
+
+        Pendiente = sin fila de esta ``(method, signal_version)``, incluido el
+        sentinel ``NO_SIGNAL_SENTINEL`` -- una licitación que el LLM ya declaró
+        "sin tecnología" cuenta como procesada y no se reintenta hasta que se
+        bumpee la versión (modelo o prompt nuevo).
+        """
+        with connect_read() as c:
+            cur = c.execute(
+                "SELECT l.id_externo, l.titulo, l.descripcion, l.cpv, l.importe, "
+                "l.organo_contratacion, l.estado, l.fecha_publicacion "
+                "FROM licitaciones l "
+                "WHERE NOT EXISTS ("
+                "  SELECT 1 FROM licitacion_tecnologia_pliego p "
+                "  WHERE p.licitacion_id = l.id_externo AND p.method = %s "
+                "  AND p.signal_version = %s"
+                ") "
+                "ORDER BY l.fecha_publicacion DESC NULLS LAST, l.id_externo "
+                "LIMIT %s",
+                (method, signal_version, max(1, min(int(limit), 5000))),
+            )
+            return rows_to_dicts(cur)
+
     def list_signals_for_merge(
         self, *, min_score: float, licitacion_ids: list[str] | None = None
     ) -> list[dict[str, Any]]:

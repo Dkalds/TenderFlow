@@ -149,8 +149,11 @@ try:
     # ── Pliegos: señal de tecnología (plan categorización-pliegos) ─────────
     pliego_tech_signal_total = Counter(
         "pliego_tech_signal_total",
-        "Licitaciones puntuadas por señal de tecnología de pliego, por resultado",
-        ["method", "status"],  # method: keywords | llm · status: scored | no_signal | error
+        "Licitaciones puntuadas por señal de tecnología, por método y resultado",
+        # method: keywords | llm | llm_metadata (este último no viene de pliegos
+        # sino de la metadata del anuncio, pero comparte tabla, merge y contador)
+        # · status: scored | no_signal | error
+        ["method", "status"],
     )
 
     pliego_tech_merge_total = Counter(

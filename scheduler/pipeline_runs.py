@@ -43,6 +43,7 @@ CANONICAL_STEPS: list[str] = [
     "ml_scoring",
     "ml_tecnologias",
     "tech_signal_merge",
+    "llm_tech_labeling",
     "analytics_export",
     "kpi_precompute",
     "aggregates_precompute",
@@ -150,6 +151,34 @@ def _run_tech_signal_merge() -> None:
     from services.tech_signal import merge_doc_signals
 
     merge_doc_signals()
+
+
+def _run_llm_tech_labeling() -> str:
+    """Categorización por LLM sobre la metadata del anuncio (una vez al día).
+
+    Va después de ``tech_signal_merge`` para no competir con él por la misma
+    licitación en la misma pasada: el job funde su propio lote al terminar, y
+    ese merge incremental es el que deja la señal en ``ml_tecnologias``.
+
+    Cadencia diaria y no cada 4h porque cada corrida cuesta dinero real
+    (``LLM_TECH_LABELING_BATCH`` llamadas al proveedor). Gated además por
+    ``LLM_TECH_LABELING_ENABLED``, que por defecto deja el paso en no-op.
+
+    Si el lote entero se cae —falta ``NVIDIA_API_KEY``, proveedor caído— se
+    lanza a propósito: ``_run_periodic`` solo suelta la ventana cuando el paso
+    falla, así que tragarse el fallo dejaría la cadencia diaria consumida sin
+    haber clasificado nada. Lanzando, el paso sale en rojo (con su email) y la
+    siguiente pasada de la pipeline, 4h después, lo reintenta.
+    """
+    from scheduler.jobs.llm_tech_labeling import batch_failed_systemically
+    from scheduler.jobs.llm_tech_labeling import run as run_llm_tech_labeling
+
+    def _run_and_check() -> None:
+        counts = run_llm_tech_labeling()
+        if batch_failed_systemically(counts):
+            raise RuntimeError(f"El lote de etiquetado por LLM falló entero: {counts}")
+
+    return _run_periodic("llm_tech_labeling", _SEGUNDOS_DIA, _run_and_check)
 
 
 def _run_analytics_export() -> None:

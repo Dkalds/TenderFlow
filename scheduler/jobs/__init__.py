@@ -31,6 +31,7 @@ def build_default_registry() -> list[ScheduledJob]:
     from scheduler.drift_report import run_drift_report
     from scheduler.jobs.daily_atom import run as run_daily_atom
     from scheduler.jobs.documentos_embeddings import run as run_documentos_embeddings
+    from scheduler.jobs.llm_tech_labeling import run as run_llm_tech_labeling
     from scheduler.jobs.ml_predicciones import run_retrain as run_ml_retrain
     from scheduler.jobs.ml_predicciones import run_scoring as run_ml_scoring
     from scheduler.jobs.recent_bulk import run as run_recent_bulk
@@ -129,6 +130,18 @@ def build_default_registry() -> list[ScheduledJob]:
             interval_env="SCHEDULER_WATCHLIST_RULES_INTERVAL_MINUTES",
             default_interval_minutes=240,  # mismo cadencia que daily_atom
             initial_offset_minutes=15,
+        ),
+        ScheduledJob(
+            # Ligero pese a llamar al LLM: es I/O de red secuencial, no CPU, así
+            # que no justifica el ProcessPoolExecutor de los jobs heavy. La
+            # cadencia real la impone `_run_periodic` (diaria) dentro del paso
+            # canónico; este intervalo gobierna el plano APScheduler.
+            name="llm_tech_labeling",
+            plane="pipeline",
+            fn=run_llm_tech_labeling,
+            interval_env="SCHEDULER_LLM_TECH_LABELING_INTERVAL_MINUTES",
+            default_interval_minutes=1440,
+            initial_offset_minutes=300,
         ),
         ScheduledJob(
             name="anomaly_checks",
