@@ -21,10 +21,11 @@ Generado: 2026-08-11
 | `dlq_retry` | pipeline | CANONICAL_STEPS[dlq_retry] |
 | `digest_daily` | pipeline | CANONICAL_STEPS[digests] |
 | `watchlist_rules` | pipeline | CANONICAL_STEPS[watchlist_notify] |
+| `llm_tech_labeling` | pipeline | CANONICAL_STEPS[llm_tech_labeling] |
 | `anomaly_checks` | pipeline | CANONICAL_STEPS[anomaly_checks] |
 | `drift_report` | pipeline | CANONICAL_STEPS[drift_checks] |
 
-**11 jobs, todos con plano verificado.**
+**12 jobs, todos con plano verificado.**
 
 ## Ratchet TID251 — acceso directo a BD fuera de repositories
 

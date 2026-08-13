@@ -177,17 +177,25 @@ def active_model_summary(name: str = "sap_classifier") -> dict[str, Any]:
 
 
 def feedbacks_since_last_train(name: str = "sap_classifier") -> int:
-    """Cuenta filas en ``ml_feedback`` desde el ``trained_at`` de la versión activa.
+    """Cuenta filas de feedback **humano** desde el ``trained_at`` de la versión
+    activa.
 
-    Si no hay versión activa, devuelve el total. Usado por C1 (active learning).
+    Si no hay versión activa, devuelve el total. Usado por C1 (active learning)
+    para decidir si toca reentrenar.
+
+    Solo ``source='human'``: el entrenamiento ignora el feedback automático
+    (ver ``scheduler/concept_drift.py::_fetch_training_dataframe``), así que
+    contarlo aquí dispararía reentrenamientos con dataset idéntico -- un lote
+    de etiquetado por LLM supera el umbral de 50 sin aportar una sola etiqueta
+    nueva al modelo.
     """
     active = get_active(name)
     with connect() as c:
         if active is None:
-            cur = c.execute("SELECT COUNT(*) FROM ml_feedback")
+            cur = c.execute("SELECT COUNT(*) FROM ml_feedback WHERE source = 'human'")
         else:
             cur = c.execute(
-                "SELECT COUNT(*) FROM ml_feedback WHERE created_at > %s",
+                "SELECT COUNT(*) FROM ml_feedback WHERE source = 'human' AND created_at > %s",
                 (active["trained_at"],),
             )
         row = cur.fetchone()

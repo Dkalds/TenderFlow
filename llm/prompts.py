@@ -16,6 +16,8 @@ Modos:
       fragmentos de sus pliegos como contexto.
     - ``resumen``: resumen ejecutivo estructurado de una licitación.
     - ``extraction``: JSON estricto para la ficha verificable del pliego.
+    - ``clasificacion``: JSON estricto con las tecnologías del anuncio, sobre
+      un vocabulario cerrado que viaja en la pregunta.
 """
 
 from __future__ import annotations
@@ -24,7 +26,7 @@ import re
 from typing import Any, Literal, TypedDict
 
 Role = Literal["user", "assistant"]
-PromptMode = Literal["general", "licitacion", "resumen", "extraction"]
+PromptMode = Literal["general", "licitacion", "resumen", "extraction", "clasificacion"]
 
 
 class ChatMessage(TypedDict):
@@ -46,6 +48,8 @@ _CONTEXT_CHARS_BY_MODE: dict[PromptMode, int] = {
     "licitacion": MAX_CONTEXT_CHARS_LICITACION,
     "resumen": MAX_CONTEXT_CHARS_LICITACION,
     "extraction": MAX_CONTEXT_CHARS_LICITACION,
+    # Clasificación: un solo anuncio (título + descripción), sin pliegos.
+    "clasificacion": MAX_CONTEXT_CHARS_GENERAL,
 }
 
 _TRUNCATION_MARK = "\n[contexto truncado]"
@@ -128,10 +132,27 @@ _SYSTEM_EXTRACTION = (
 )
 
 
+_SYSTEM_CLASIFICACION = (
+    _BASE
+    + _UNTRUSTED_CONTEXT_RULES
+    + (
+        "Clasifica la licitación del CONTEXTO según las tecnologías de la lista cerrada que "
+        "indica la pregunta. Usa exclusivamente esas etiquetas, escritas tal cual. "
+        "Devuelve solo un objeto JSON válido, sin Markdown ni explicaciones. "
+        "Etiqueta únicamente tecnologías que el contrato implanta, mantiene, migra o licencia "
+        "de forma sustancial: no cuentan las menciones incidentales ni la ofimática genérica. "
+        "confidence es tu certeza real entre 0 y 1. Si ninguna etiqueta aplica, devuelve la "
+        "lista vacía en vez de forzar la más parecida."
+    )
+)
+
+
 def build_system_prompt(mode: PromptMode, *, has_corpus_context: bool) -> str:
     """Devuelve el system prompt para el modo dado."""
     if mode == "extraction":
         return _SYSTEM_EXTRACTION
+    if mode == "clasificacion":
+        return _SYSTEM_CLASIFICACION
     if mode == "licitacion":
         return _SYSTEM_LICITACION
     if mode == "resumen":

@@ -22,8 +22,16 @@ class FeedbackRepository:
         tecnologias_secundarias: list[str] | None = None,
         model_version: int | None = None,
         user_id: int | None = None,
+        source: str = "human",
     ) -> str:
-        """Inserta feedback y devuelve el timestamp de creación."""
+        """Inserta feedback y devuelve el timestamp de creación.
+
+        ``source`` distingue la etiqueta puesta por una persona (``'human'``,
+        el default, que es lo que era todo antes de v80) de la automática del
+        etiquetado por LLM (``'llm_batch'``). El entrenamiento y el contador de
+        reentrenamiento solo miran las humanas: ver el docstring de la
+        migración ``v80_ml_feedback_source``.
+        """
         import json
 
         now = now_utc_iso()
@@ -35,8 +43,9 @@ class FeedbackRepository:
         with connect() as c:
             c.execute(
                 "INSERT INTO ml_feedback "
-                "(expediente, relevante, nota, tecnologia, tecnologias_secundarias, model_version, user_id, created_at) "
-                "VALUES (%s, %s, %s, %s, %s, %s, %s, %s)",
+                "(expediente, relevante, nota, tecnologia, tecnologias_secundarias, "
+                "model_version, user_id, source, created_at) "
+                "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)",
                 (
                     expediente,
                     1 if relevante else 0,
@@ -45,10 +54,27 @@ class FeedbackRepository:
                     ts_json,
                     model_version,
                     user_id,
+                    source,
                     now,
                 ),
             )
         return now
+
+    def existing_expedientes(self, expedientes: list[str]) -> set[str]:
+        """Cuáles de estos expedientes ya tienen alguna fila de feedback.
+
+        El etiquetado automático la usa para no insertar dos veces la misma
+        licitación: ``ml_feedback`` no tiene unique sobre ``expediente`` ni
+        upsert, así que la deduplicación es responsabilidad del que escribe.
+        """
+        if not expedientes:
+            return set()
+        with connect_read() as c:
+            rows = c.execute(
+                "SELECT DISTINCT expediente FROM ml_feedback WHERE expediente = ANY(%s)",
+                (list(expedientes),),
+            ).fetchall()
+        return {str(r[0]) for r in rows}
 
     def stats(self) -> dict[str, Any]:
         with connect_read() as c:

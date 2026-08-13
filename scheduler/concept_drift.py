@@ -462,7 +462,13 @@ def _fetch_training_dataframe() -> Any:
             "FROM licitaciones",
             c,
         )
-        fb = pd.read_sql_query("SELECT expediente, relevante FROM ml_feedback", c)
+        # Solo feedback humano: las etiquetas automáticas (source='llm_batch')
+        # son predicciones, y entrenar sobre ellas es enseñarle al modelo lo
+        # que ya cree -- el override de abajo es duro y sin pesos, así que una
+        # etiqueta del LLM pisaría la señal de keywords con su propia salida.
+        fb = pd.read_sql_query(
+            "SELECT expediente, relevante FROM ml_feedback WHERE source = 'human'", c
+        )
     if lic.empty:
         return None
 
