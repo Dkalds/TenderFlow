@@ -249,6 +249,8 @@ SIGNING_KEY=<clave-aleatoria-32-chars>
 # Proveedor por defecto: NVIDIA NIM (API compatible con OpenAI, modelo deepseek).
 # NVIDIA_API_KEY=nvapi-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 # Alternativos: OPENAI_API_KEY, ANTHROPIC_API_KEY
+# NVIDIA retira modelos sin aviso. El catálogo vivo se consulta sin auth:
+#   curl -s https://integrate.api.nvidia.com/v1/models | grep -o '"id":"[^"]*"'
 
 # ── Alertas por email (opcional) ─────────────────────────
 ALERT_EMAIL_TO=destino@ejemplo.com

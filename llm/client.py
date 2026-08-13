@@ -35,14 +35,40 @@ _OPENAI_PREFIXES = ("gpt-", "o1-", "o3-")
 _ANTHROPIC_PREFIXES = ("claude-",)
 
 # NVIDIA NIM expone una API compatible con OpenAI. Los modelos llegan con formato
-# "namespace/modelo" (p. ej. "deepseek-ai/deepseek-v4-pro"), por lo que el "/" en
+# "namespace/modelo" (p. ej. "deepseek-ai/deepseek-v4-flash-0731"), y el "/" en
 # el nombre actúa como discriminador frente a los modelos OpenAI/Anthropic.
 # El endpoint es configurable vía NVIDIA_BASE_URL para apuntar a un gateway propio.
 _NVIDIA_BASE_URL = os.environ.get("NVIDIA_BASE_URL", "https://integrate.api.nvidia.com/v1")
 
-# Modelos mostrados en el selectbox del dashboard y aceptados por el endpoint /ask
+# Modelos mostrados en el selectbox del dashboard y aceptados por el endpoint /ask.
+#
+# Los modelos NVIDIA NIM se validaron contra el catálogo vivo
+# (GET https://integrate.api.nvidia.com/v1/models, público, sin auth) el
+# 2026-08-13. NVIDIA retira modelos sin aviso: `deepseek-ai/deepseek-v4-pro` —
+# el default anterior — llegó a su end-of-life el 2026-08-07T09:00Z y desde
+# entonces devuelve 410, lo que dejó la IA caída seis días en silencio. Antes de
+# tocar esta lista, verificá contra ese endpoint que el id sigue existiendo.
+#
+# Los cuatro modelos NIM marcados abajo como "razonamiento" generan una traza de
+# reasoning ANTES de la respuesta final, y esa traza consume el presupuesto de
+# `max_tokens` del provider (900 en /ask, 1500 en /resumen). Si la traza se lo
+# come entero, el stream llega vacío y /ask degrada — mismo síntoma que un
+# proveedor caído. Se controla con `chat_template_kwargs`, que este cliente
+# todavía NO envía (ver docs/IMPROVEMENT_BACKLOG.md).
 AVAILABLE_MODELS: list[str] = [
-    "deepseek-ai/deepseek-v4-pro",
+    # ── NVIDIA NIM (free tier: sin coste, limitado por RPM/créditos de la key) ─
+    # 284B totales / 13B activos. Tier "flash": el de menor coste computacional
+    # por token de la lista y por eso el de mejor relación velocidad/calidad.
+    "deepseek-ai/deepseek-v4-flash-0731",
+    # 744B / 40B activos. Razonamiento, pero con modo non-thinking explícito.
+    "z-ai/glm-5.2",
+    # 120B / 12B activos, 1M contexto, español soportado. Razonamiento.
+    "nvidia/nemotron-3-super-120b-a12b",
+    # 550B / 55B activos, 1M contexto. Razonamiento. El más lento del lote.
+    "nvidia/nemotron-3-ultra-550b-a55b",
+    # 428B / 23B activos, 1M contexto. Razonamiento; afinado a coding/agentes.
+    "minimaxai/minimax-m3",
+    # ── Proveedores de pago (requieren OPENAI_API_KEY / ANTHROPIC_API_KEY) ────
     "gpt-4o-mini",
     "gpt-4o",
     "gpt-3.5-turbo",
@@ -51,7 +77,11 @@ AVAILABLE_MODELS: list[str] = [
 ]
 
 # Modelo por defecto cuando el cliente no especifica uno.
-DEFAULT_MODEL = "deepseek-ai/deepseek-v4-pro"
+# Criterio: mejor relación velocidad/calidad. Con 13B de parámetros activos es
+# el más rápido por token de la lista, y los foros de NVIDIA lo reportan por
+# encima del V4 Pro (1.6T) que sustituye. Además es de la misma familia contra
+# la que están afinados los prompts de `llm/prompts.py`.
+DEFAULT_MODEL = "deepseek-ai/deepseek-v4-flash-0731"
 
 # Límites de entrada
 _MAX_QUESTION_LEN = 2000
@@ -62,8 +92,18 @@ _MAX_HISTORY_CONTENT_LEN = 4000
 
 # ── Precio por millón de tokens (USD): (input, output) ────────────────────────
 _PRICE_PER_MTOK: dict[str, tuple[float, float]] = {
-    # NVIDIA NIM — precio aproximado, ajustar según el plan contratado.
-    "deepseek-ai/deepseek-v4-pro": (0.27, 1.10),
+    # NVIDIA NIM — en el free tier de build.nvidia.com estas llamadas no se
+    # facturan (el límite son los créditos y el RPM de la key). Aun así llevan
+    # precio NOCIONAL de referencia, por dos motivos: `_record_usage` solo
+    # alimenta el BudgetGuard si el modelo está en este dict, así que un 0.0
+    # dejaría el breaker de coste sin contar nada; y si algún día se pasa a un
+    # plan de pago el control ya está puesto. Son estimaciones por clase de
+    # modelo, no tarifas publicadas: ajustar al plan real que se contrate.
+    "deepseek-ai/deepseek-v4-flash-0731": (0.10, 0.40),
+    "z-ai/glm-5.2": (0.60, 2.00),
+    "nvidia/nemotron-3-super-120b-a12b": (0.20, 0.80),
+    "nvidia/nemotron-3-ultra-550b-a55b": (0.90, 3.60),
+    "minimaxai/minimax-m3": (0.30, 1.20),
     "gpt-4o-mini": (0.15, 0.60),
     "gpt-4o": (2.50, 10.00),
     "gpt-3.5-turbo": (0.50, 1.50),
