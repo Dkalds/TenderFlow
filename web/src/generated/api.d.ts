@@ -251,6 +251,17 @@ export interface paths {
         /**
          * Organos
          * @description Ranking of contracting bodies by activity.
+         *
+         *     Todos los filtros acotan el universo de licitaciones **antes** de agregar,
+         *     así que ``total_organos``, ``importe_total`` y ``concentracion_top10``
+         *     miden el ámbito pedido y no la tabla entera.
+         *
+         *     ``q`` es la excepción y sigue significando lo de siempre: busca **el nombre
+         *     del órgano**, no el título de la licitación como en el resto del producto.
+         *     El cliente manda ahí el ``q`` del ámbito global, así que una búsqueda de
+         *     ámbito acota este ranking por nombre de órgano y no por licitación. Es una
+         *     incoherencia anterior a este cambio y no se toca aquí: renombrar el
+         *     parámetro rompería los deep-links ``/organos?q=<órgano>``.
          */
         get: operations["organos_api_v1_analytics_organos_get"];
         put?: never;
@@ -271,6 +282,11 @@ export interface paths {
         /**
          * Organo Detail
          * @description Drill-down for a single contracting body.
+         *
+         *     Acepta el mismo ámbito que el ranking del que se abre, y lo aplica tanto a
+         *     las licitaciones del órgano como a sus adjudicaciones: los KPIs, el top de
+         *     adjudicatarios, el lead-time y la estacionalidad miden todos el mismo
+         *     subconjunto.
          */
         get: operations["organo_detail_api_v1_analytics_organos__organo__get"];
         put?: never;
@@ -7880,6 +7896,12 @@ export interface operations {
                 ccaa?: string | null;
                 /** @description Filter by tecnologia */
                 tecnologia?: string | null;
+                /** @description Filter by tender status */
+                estado?: string | null;
+                /** @description Min tender budget (EUR) */
+                importe_min?: number | null;
+                /** @description Solo licitaciones que siguen abiertas (no terminales) */
+                solo_abiertas?: boolean;
                 /** @description Search organo name (accent/case-insensitive substring) */
                 q?: string | null;
                 /** @description Max organos to return */
@@ -7924,6 +7946,12 @@ export interface operations {
                 ccaa?: string | null;
                 /** @description Filter by tecnologia */
                 tecnologia?: string | null;
+                /** @description Filter by tender status */
+                estado?: string | null;
+                /** @description Min tender budget (EUR) */
+                importe_min?: number | null;
+                /** @description Solo licitaciones que siguen abiertas (no terminales) */
+                solo_abiertas?: boolean;
             };
             header?: never;
             path: {

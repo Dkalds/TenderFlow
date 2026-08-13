@@ -357,6 +357,199 @@ def test_get_organo_detail_filtros_en_sql(tmp_db):
     assert result.kpis.total_licitaciones == 0
 
 
+# ── El ámbito acota licitaciones Y adjudicaciones (mismo universo) ──────────
+
+
+def _seed_organo_dos_tecnologias() -> None:
+    """ORG A con una licitación SAP y otra no-SAP, cada una con su adjudicataria."""
+    _insert_licitaciones(
+        [
+            {
+                "id_externo": "T1",
+                "titulo": "Servicio SAP cloud",
+                "organo_contratacion": "ORG A",
+                "importe": 1_000_000.0,
+                "estado": "ADJ",
+                "fecha_publicacion": "2025-01-01",
+                "ccaa": "Madrid",
+                "tipo_contrato": "2",
+                "tecnologia": "SAP",
+                "url": None,
+            },
+            {
+                "id_externo": "T2",
+                "titulo": "Mantenimiento de jardines",
+                "organo_contratacion": "ORG A",
+                "importe": 40_000.0,
+                "estado": "PUB",
+                "fecha_publicacion": "2025-01-02",
+                "ccaa": "Madrid",
+                "tipo_contrato": "3",
+                "tecnologia": "OTRO",
+                "url": None,
+            },
+        ]
+    )
+    _seed_adjudicaciones(
+        [
+            {
+                "licitacion_id": "T1",
+                "nombre": "CONSULTORA SAP",
+                "importe_adjudicado": 900_000.0,
+                "fecha_adjudicacion": "2025-01-11",
+            },
+            {
+                "licitacion_id": "T2",
+                "nombre": "JARDINERIA SL",
+                "importe_adjudicado": 38_000.0,
+                "fecha_adjudicacion": "2025-01-12",
+            },
+        ]
+    )
+
+
+def test_get_organo_detail_tecnologia_acota_tambien_adjudicatarios(tmp_db):
+    """El ámbito recorta las adjudicaciones, no sólo las licitaciones.
+
+    Regresión de lo que se veía en `/mercado?tecnologia=SAP&vista=organos`: los
+    KPIs contaban 1 licitación SAP y, al lado, "top adjudicatario" salía de las
+    adjudicaciones enteras del órgano — podía ser la empresa de jardinería.
+    """
+    _seed_organo_dos_tecnologias()
+
+    result = get_organo_detail("ORG A", OrganoDetailFilters(tecnologia="SAP"))
+
+    assert result.kpis.total_licitaciones == 1
+    assert result.kpis.importe_total == 1_000_000.0
+    assert [s.id_externo for s in result.top_scored] == ["T1"]
+    # Sólo la adjudicataria de la licitación SAP entra en el panel.
+    assert [a.nombre for a in result.top_adjudicatarios] == ["CONSULTORA SAP"]
+    assert result.kpis.top_adjudicatario == "CONSULTORA SAP"
+    # …y la estacionalidad cuenta el mismo subconjunto (sólo enero, 1 fila).
+    assert [(e.mes_numero, e.count) for e in result.estacionalidad] == [(1, 1)]
+
+
+def test_get_organo_detail_solo_abiertas_descarta_terminales(tmp_db):
+    """`solo_abiertas` excluye RES/ADJ/ANUL en el drill-down."""
+    _seed_organo_dos_tecnologias()
+
+    result = get_organo_detail("ORG A", OrganoDetailFilters(solo_abiertas=True))
+
+    # T1 está ADJ (terminal); sólo sobrevive T2, que está PUB.
+    assert result.kpis.total_licitaciones == 1
+    assert [s.id_externo for s in result.top_scored] == ["T2"]
+    # Y las adjudicaciones se recortan con el mismo predicado, no con el suyo.
+    assert [a.nombre for a in result.top_adjudicatarios] == ["JARDINERIA SL"]
+
+
+def test_get_organo_detail_importe_min(tmp_db):
+    """`importe_min` recorta por presupuesto de la licitación."""
+    _seed_organo_dos_tecnologias()
+
+    result = get_organo_detail("ORG A", OrganoDetailFilters(importe_min=500_000.0))
+
+    assert result.kpis.total_licitaciones == 1
+    assert [s.id_externo for s in result.top_scored] == ["T1"]
+
+
+def test_get_organos_tecnologia_acota_los_totales(tmp_db):
+    """El ranking y sus totales miden el ámbito, no la tabla entera."""
+    _seed_organo_dos_tecnologias()
+
+    result = get_organos(OrganosFilters(tecnologia="SAP"))
+
+    assert result.total_organos == 1
+    assert result.organos[0].count == 1
+    # 1M de la SAP; los 40k de la de jardinería quedan fuera del importe total.
+    assert result.importe_total == 1_000_000.0
+
+
+def test_get_organos_solo_abiertas_y_importe_min(tmp_db):
+    """Los dos filtros del ámbito que el endpoint no aceptaba hasta ahora."""
+    _seed_organo_dos_tecnologias()
+
+    abiertas = get_organos(OrganosFilters(solo_abiertas=True))
+    caras = get_organos(OrganosFilters(importe_min=500_000.0))
+
+    # Sólo T2 sigue abierta (T1 está ADJ) → 40k.
+    assert abiertas.importe_total == 40_000.0
+    # Sólo T1 supera el mínimo → 1M.
+    assert caras.importe_total == 1_000_000.0
+
+
+# ── Los endpoints reenvían el ámbito (no basta con declarar el parámetro) ──
+#
+# El fallo que motiva estos tests es justo el de un parámetro declarado y no
+# reenviado: `/analytics/organos/{organo}` aceptaba filtros desde hacía meses y
+# el cliente no le mandaba ninguno. Cubrir sólo la capa de servicio deja ese
+# tramo sin red.
+
+
+def _seed_para_http() -> None:
+    """Siembra el órgano de los tests HTTP y vacía la caché de analytics.
+
+    ``cache_response`` es de proceso y no se resetea entre tests: sin esto, una
+    respuesta cacheada por otro módulo para la misma URL sin parámetros haría
+    pasar (o fallar) estos tests por motivos ajenos al ámbito.
+    """
+    from db.database import connect
+    from shared.cache import reset_cache
+
+    reset_cache("analytics")
+
+    filas = [
+        ("HTTP-SAP", "Servicio SAP", "ORG HTTP", 1_000_000.0, "PUB", "SAP"),
+        ("HTTP-OTRO", "Obra civil", "ORG HTTP", 30_000.0, "ADJ", "OTRO"),
+    ]
+    with connect() as conn:
+        for id_externo, titulo, organo, importe, estado, tecnologia in filas:
+            conn.execute(
+                "INSERT INTO licitaciones (id_externo, titulo, organo_contratacion, "
+                "importe, estado, fecha_publicacion, fecha_extraccion, tecnologia) "
+                "VALUES (%s, %s, %s, %s, %s, %s, %s, %s)",
+                (
+                    id_externo,
+                    titulo,
+                    organo,
+                    importe,
+                    estado,
+                    "2026-07-01",
+                    "2026-07-30T00:00:00+00:00",
+                    tecnologia,
+                ),
+            )
+
+
+def test_endpoint_organos_reenvia_el_ambito(client, api_db, auth):
+    _seed_para_http()
+
+    todo = client.get("/api/v1/analytics/organos", headers=auth)
+    solo_sap = client.get("/api/v1/analytics/organos", params={"tecnologia": "SAP"}, headers=auth)
+    solo_abiertas = client.get(
+        "/api/v1/analytics/organos", params={"solo_abiertas": "true"}, headers=auth
+    )
+    caras = client.get("/api/v1/analytics/organos", params={"importe_min": 500_000}, headers=auth)
+
+    assert todo.json()["importe_total"] == 1_030_000.0
+    assert solo_sap.json()["importe_total"] == 1_000_000.0
+    # HTTP-OTRO está ADJ (terminal) → sólo sobrevive la SAP, que está PUB.
+    assert solo_abiertas.json()["importe_total"] == 1_000_000.0
+    assert caras.json()["importe_total"] == 1_000_000.0
+
+
+def test_endpoint_organo_detail_reenvia_el_ambito(client, api_db, auth):
+    _seed_para_http()
+
+    todo = client.get("/api/v1/analytics/organos/ORG HTTP", headers=auth)
+    solo_sap = client.get(
+        "/api/v1/analytics/organos/ORG HTTP", params={"tecnologia": "SAP"}, headers=auth
+    )
+
+    assert todo.json()["kpis"]["total_licitaciones"] == 2
+    assert solo_sap.json()["kpis"]["total_licitaciones"] == 1
+    assert [s["id_externo"] for s in solo_sap.json()["top_scored"]] == ["HTTP-SAP"]
+
+
 # ── get_overview (smoke) ────────────────────────────────────────────────────
 
 
