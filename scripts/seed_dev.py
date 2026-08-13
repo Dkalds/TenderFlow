@@ -302,27 +302,34 @@ _SAMPLE_LICITACIONES = [
     },
 ]
 
+# Las fechas van en `_dia()` por el mismo motivo que las de las licitaciones,
+# y además por uno propio: cada adjudicación pertenece a uno de los tres
+# expedientes ``ADJ``, cuyo plazo ya se mueve con el calendario. Dejarlas fijas
+# las descolgaba de su licitación un día más cada día, hasta el absurdo de
+# adjudicar un contrato antes de que cerrara su propio plazo de presentación
+# (el 2026-08-12 ya iban 37, 31 y 33 días por delante). Los offsets conservan
+# la separación original entre plazo y adjudicación: +1, +7 y +5 días.
 _SAMPLE_ADJUDICACIONES = [
-    # ADJ-004
+    # ADJ-004 — plazo en _dia(-5)
     {
         "licitacion_id": "SEED-2026-004",
         "adjudicatario": "SecureTech Solutions S.L.",
         "importe": 310000.00,
-        "fecha": "2026-07-01",
+        "fecha": _dia(-4),
     },
-    # ADJ-009
+    # ADJ-009 — plazo en _dia(-10)
     {
         "licitacion_id": "SEED-2026-009",
         "adjudicatario": "Servidores Ibéricos S.A.",
         "importe": 1050000.00,
-        "fecha": "2026-07-02",
+        "fecha": _dia(-3),
     },
-    # ADJ-013
+    # ADJ-013 — plazo en _dia(-15)
     {
         "licitacion_id": "SEED-2026-013",
         "adjudicatario": "CertISO Consultoría",
         "importe": 58000.00,
-        "fecha": "2026-06-25",
+        "fecha": _dia(-10),
     },
 ]
 
