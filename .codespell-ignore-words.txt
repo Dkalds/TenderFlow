@@ -139,3 +139,4 @@ importen
 termine
 admisible
 significan
+ans
