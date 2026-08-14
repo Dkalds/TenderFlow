@@ -75,6 +75,42 @@ def test_fichero_ausente_con_sha_intenta_descarga(tmp_db, tmp_path):
     assert artefacto.read_bytes() == contenido
 
 
+def test_descarga_deja_el_checksum_colocado(tmp_db, tmp_path):
+    """El asset de la Release llega solo, sin su ``.sha256``.
+
+    ``shared.model_integrity.verify_model_integrity`` —el paso previo a
+    ``joblib.load``— aborta en ENV=prod si no hay ni pin ni checksum
+    co-ubicado, así que sin escribirlo aquí resolver el artefacto cambiaría el
+    fallback a baseline por un RuntimeError a mitad del batch.
+    """
+    artefacto = tmp_path / "baja_model.pkl"
+    contenido = b"modelo-desde-release"
+    _register("baja", artefacto, _sha(contenido))
+
+    def _fake_download(_asset_name: str, dest: Path) -> bool:
+        dest.write_bytes(contenido)
+        return True
+
+    with patch("shared.model_artifacts._download_release_asset", side_effect=_fake_download):
+        resolve_active_artifact("baja")
+
+    sidecar = tmp_path / "baja_model.sha256"
+    assert sidecar.read_text(encoding="utf-8").strip() == _sha(contenido)
+
+
+def test_no_pisa_un_checksum_colocado_existente(tmp_db, tmp_path):
+    """Si el sidecar ya existe se respeta: detectar una discrepancia entre él y
+    el artefacto es justo el trabajo de verify_model_integrity."""
+    artefacto = tmp_path / "baja_model.pkl"
+    artefacto.write_bytes(b"modelo-serializado")
+    sidecar = tmp_path / "baja_model.sha256"
+    sidecar.write_text("un-hash-que-no-cuadra", encoding="utf-8")
+    _register("baja", artefacto, _sha(b"modelo-serializado"))
+
+    assert resolve_active_artifact("baja") == artefacto
+    assert sidecar.read_text(encoding="utf-8") == "un-hash-que-no-cuadra"
+
+
 def test_descarga_con_sha_incorrecto_falla(tmp_db, tmp_path):
     artefacto = tmp_path / "baja_model.pkl"
     _register("baja", artefacto, _sha(b"lo-esperado"))

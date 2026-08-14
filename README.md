@@ -172,6 +172,8 @@ tenderflow/
 │   ├── scrape-bulk.yml           #   Refresh de N meses (manual, sin cron)
 │   ├── healthcheck.yml           #   Healthcheck (cada 6h)
 │   ├── train-model.yml           #   Entrenamiento programado del clasificador
+│   ├── ml-scoring.yml            #   Scoring diario de predicciones (baja/retención)
+│   ├── train-predictivos.yml     #   Retrain mensual + publicación de artefactos
 │   └── ...                       #   backup, changelog, release, release-sdk
 ├── docker/                       # Dockerfiles (multi-stage) + entrypoints
 │   ├── Dockerfile.api            #   Imagen de la API/scheduler

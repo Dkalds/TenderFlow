@@ -621,7 +621,47 @@ def test_scoring_degrada_a_baseline_si_el_layout_no_coincide(db, monkeypatch, tm
     stats = score_predicciones_baja()
 
     assert stats["serving"] == "baseline"
+    # `degradado` distingue este baseline (hay modelo activo que no se pudo
+    # servir) del baseline honesto por no haber modelo: el CLI del workflow
+    # pone el job en rojo solo en el primero.
+    assert stats["degradado"] == "feature_schema_mismatch"
     assert prediccion_baja("ABIERTA")["model_version"] is None
+
+
+def test_scoring_marca_degradado_si_el_artefacto_no_resuelve(db, monkeypatch):
+    """Versión activa cuyo .pkl no existe ni se puede descargar de la Release.
+
+    Es el estado en el que quedaba cualquier versión entrenada en un runner
+    efímero antes de que `train-predictivos.yml` publicara los artefactos.
+    """
+    from db.database import connect
+    from db.model_registry import register_version
+
+    with connect() as c:
+        _sembrar_historico(c, n_meses=2, por_mes=4)
+        _insertar_abierta(c)
+
+    register_version(name=MODEL_NAME, path="data/models/no-existe.pkl", sha256="", activate=True)
+    monkeypatch.setattr("shared.model_artifacts.resolve_active_artifact", lambda *_a, **_k: None)
+
+    stats = score_predicciones_baja()
+
+    assert stats["serving"] == "baseline"
+    assert stats["degradado"] == "artefacto_irresoluble"
+
+
+def test_scoring_sin_modelo_activo_no_marca_degradado(db):
+    """Baseline sin versión activa: contrato del RFC, no una avería."""
+    from db.database import connect
+
+    with connect() as c:
+        _sembrar_historico(c, n_meses=2, por_mes=4)
+        _insertar_abierta(c)
+
+    stats = score_predicciones_baja()
+
+    assert stats["serving"] == "baseline"
+    assert stats["degradado"] is None
 
 
 # ---------------------------------------------------------------------------

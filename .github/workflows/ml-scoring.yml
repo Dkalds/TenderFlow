@@ -2,8 +2,12 @@ name: ML scoring predicciones
 
 on:
   schedule:
-    # Diario a las 07:30 UTC — tras el scrape de las 06:00 (timeout 30 min),
-    # replica el orden del scheduler local (ml_scoring_baja corre tras la ingesta).
+    # Diario a las 07:30 UTC. El carril de ingesta (`scrape-daily.yml`) corre
+    # cada 4 h (00, 04, 08, 12, 16, 20 UTC) con un presupuesto de 55 min, así
+    # que a las 07:30 la pasada de las 04:00 ya terminó y la de las 08:00 aún
+    # no ha empezado: se puntúa sobre datos recién ingeridos sin competir con
+    # el scrape. Replica el orden del scheduler local (ml_scoring_baja corre
+    # tras la ingesta).
     - cron: "30 7 * * *"
   workflow_dispatch:
 
@@ -16,8 +20,27 @@ concurrency:
 
 jobs:
   scoring:
+    name: Score predicciones & verify
     runs-on: ubuntu-latest
     timeout-minutes: 20
+
+    env:
+      # ENV=prod porque este job escribe en la BD de producción, así que
+      # los validators de datos (TLS de DATABASE_URL, alertas) deben estar
+      # activos. APP_PROFILE=scraper omite los secretos que solo necesita
+      # el proceso HTTP (SIGNING_KEY, REDIS_URL, CORS): son ejes distintos.
+      ENV: prod
+      APP_PROFILE: scraper
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      DATABASE_SSL_ROOT_CERT: ${{ secrets.DATABASE_SSL_ROOT_CERT }}
+      LOG_FORMAT: json
+      # `data/models/` es efímero en el runner: shared/model_artifacts.py
+      # descarga el artefacto de la versión activa desde la Release. Sin token
+      # esa llamada va anónima contra api.github.com (60 req/h por IP, y las
+      # IPs de los runners son compartidas), así que el artefacto se quedaba
+      # sin resolver y el batch degradaba a baseline. Mismo patrón que
+      # scrape-daily.yml.
+      GITHUB_TOKEN: ${{ github.token }}
 
     steps:
       - name: Checkout
@@ -34,24 +57,22 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
+      # El batch calcula drift (PSI por feature) y calibración, y ambos avisan
+      # por `observability.alerts.notify` (paso 7 del RFC 20260611-2). El canal
+      # es opcional por diseño —si no está configurado la alerta solo se
+      # loguea— así que sin estos secretos las alertas de deriva se quedaban en
+      # el runner y morían con él.
       - name: Run scoring batch
         env:
-          # ENV=prod porque este job escribe en la BD de producción, así que
-          # los validators de datos (TLS de DATABASE_URL, alertas) deben estar
-          # activos. APP_PROFILE=scraper omite los secretos que solo necesita
-          # el proceso HTTP (SIGNING_KEY, REDIS_URL, CORS): son ejes distintos.
-          ENV: prod
-          APP_PROFILE: scraper
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          DATABASE_SSL_ROOT_CERT: ${{ secrets.DATABASE_SSL_ROOT_CERT }}
-          LOG_FORMAT: json
+          ALERT_EMAIL_TO: ${{ secrets.ALERT_EMAIL_TO }}
+          ALERT_SMTP_USER: ${{ secrets.ALERT_SMTP_USER }}
+          ALERT_SMTP_PASSWORD: ${{ secrets.ALERT_SMTP_PASSWORD }}
+          ALERT_MIN_LEVEL: ${{ vars.ALERT_MIN_LEVEL || 'warn' }}
         run: python -m scheduler.jobs.ml_predicciones scoring
 
+      # Verifica filas Y frescura: el upsert de predicciones_baja no purga, así
+      # que las filas de ayer sobreviven a un batch que no escribió ninguna.
+      # Si la ventana de 26 h salta sin que el scoring haya fallado, mirá el
+      # log `baja_scoring_skip` — significa que no hubo licitaciones abiertas.
       - name: Verify predicciones materialized
-        env:
-          ENV: prod
-          APP_PROFILE: scraper
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          DATABASE_SSL_ROOT_CERT: ${{ secrets.DATABASE_SSL_ROOT_CERT }}
-          LOG_FORMAT: json
         run: python -m scheduler.jobs.ml_predicciones verify
