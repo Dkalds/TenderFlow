@@ -215,9 +215,11 @@ def ensure_documents_ready(licitacion_id: str) -> dict[str, int]:
     rows = repo.list_by_licitacion(licitacion_id)
     pending = [row for row in rows if row.get("status") == "pending"]
     any_extracted = any(row.get("status") == "extracted" for row in rows)
-    candidates = pending if (pending or any_extracted) else [
-        row for row in rows if row.get("status") == "error"
-    ]
+    candidates = (
+        pending
+        if (pending or any_extracted)
+        else [row for row in rows if row.get("status") == "error"]
+    )
     candidates.sort(key=lambda row: _DOC_TIPO_PRIORITY.get(str(row.get("tipo")), 2))
 
     counts = {"attempted": 0, "extracted": 0, "error": 0}
