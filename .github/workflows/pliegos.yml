@@ -69,7 +69,11 @@ jobs:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           DATABASE_SSL_ROOT_CERT: ${{ secrets.DATABASE_SSL_ROOT_CERT }}
           PLIEGO_FACTS_ENABLED: ${{ vars.PLIEGO_FACTS_ENABLED || 'false' }}
-          PLIEGO_FACTS_MODEL: ${{ vars.PLIEGO_FACTS_MODEL || 'deepseek-ai/deepseek-v4-pro' }}
+          # Fallback sincronizado con config/settings.py::PLIEGO_FACTS_MODEL. El
+          # anterior (deepseek-v4-pro) quedó EOL en NVIDIA el 2026-08-07 y devuelve
+          # 410: con la fase activada y sin vars.PLIEGO_FACTS_MODEL, este env
+          # pisaba el default bueno de settings y el lote entero de fichas fallaba.
+          PLIEGO_FACTS_MODEL: ${{ vars.PLIEGO_FACTS_MODEL || 'deepseek-ai/deepseek-v4-flash-0731' }}
           # Overrides opcionales vía workflow_dispatch para lotes de
           # recuperación manual (backlog); en el cron nocturno los inputs
           # llegan vacíos y caen a los mismos defaults de config/settings.py.
