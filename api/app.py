@@ -356,6 +356,69 @@ class _MaxBodyMiddleware:
         await send({"type": "http.response.body", "body": self._413_BODY})
 
 
+class _RejectNulMiddleware:
+    """Rechaza el byte NUL en la línea de petición (path y query string).
+
+    Postgres no admite ``\\x00`` en columnas de texto y psycopg lanza
+    ``DataError`` al adaptar el parámetro, así que cualquier filtro de texto que
+    acabe en una query convertía un carácter del cliente en un 500:
+    ``GET /api/v1/competitive/bajas?cpv=%00`` reventaba en
+    ``services/competitive/bajas.py`` y salía por el handler genérico. Lo
+    encontró el fuzzer de contrato en 2026-08; el fallo llevaba semanas vivo.
+
+    El saneo va aquí y no en las ~100 declaraciones ``Query(...)`` de
+    ``api/routes/`` por la misma razón por la que ``shared.dto.SafeStr`` vive en
+    el contrato y no en cada endpoint: acordarse en cada parámetro nuevo no es
+    una defensa, es una lotería. Se comprueban los bytes **crudos** —antes del
+    percent-decode— para cazar tanto ``\\x00`` literal como ``%00``.
+
+    Se rechaza en vez de sanear en silencio: un filtro que se modifica solo y
+    no lo dice devolvería un 200 con el resultado de una consulta que el cliente
+    no pidió.
+    """
+
+    _400_BODY = (
+        b'{"type":"https://licitaciones-sap/errors/bad-request",'
+        b'"title":"Bad Request","status":400,'
+        b'"detail":"La petici\\u00f3n no puede contener el byte NUL (\\\\x00)."}'
+    )
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    @staticmethod
+    def _tiene_nul(scope: Scope) -> bool:
+        crudos: list[bytes] = [
+            bytes(scope.get("query_string") or b""),
+            bytes(scope.get("raw_path") or b""),
+        ]
+        for valor in crudos:
+            if b"\x00" in valor or b"%00" in valor.lower():
+                return True
+        # `path` ya viene decodificado por el servidor ASGI: un %00 en la URL
+        # llega aquí como \x00 aunque `raw_path` no esté disponible.
+        return "\x00" in str(scope.get("path") or "")
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] == "http" and self._tiene_nul(scope):
+            await self._send_400(send)
+            return
+        await self.app(scope, receive, send)
+
+    async def _send_400(self, send: Send) -> None:
+        await send(
+            {
+                "type": "http.response.start",
+                "status": 400,
+                "headers": [
+                    (b"content-type", b"application/problem+json"),
+                    (b"content-length", str(len(self._400_BODY)).encode()),
+                ],
+            }
+        )
+        await send({"type": "http.response.body", "body": self._400_BODY})
+
+
 async def correlation_id_middleware(
     request: Request,
     call_next: Callable[[Request], Awaitable[Response]],
@@ -391,10 +454,16 @@ def register_middlewares(target: FastAPI, *, cors_origins: list[str]) -> None:
     Orden de ejecución resultante, de fuera hacia dentro::
 
         CORS → SecurityHeaders → CorrelationId → AccessLog → CostTracking
-             → RateLimit → compresión → MaxBody → ETag → router
+             → RateLimit → compresión → MaxBody → RejectNul → ETag → router
     """
     # ETag para respuestas GET JSON (cache condicional, F4)
     target.add_middleware(ETagMiddleware)
+
+    # Byte NUL en path/query — un 400 honesto en vez del 500 que provocaba al
+    # llegar a psycopg. Va por dentro de CORS/SecurityHeaders (igual que
+    # _MaxBodyMiddleware) para que el cortocircuito salga con las cabeceras que
+    # el SPA necesita.
+    target.add_middleware(_RejectNulMiddleware)
 
     # Request body size limit — protege contra payloads abusivos (1 MB máx.)
     # Raw ASGI (evita el anti-patrón BaseHTTPMiddleware y el atributo privado _body).

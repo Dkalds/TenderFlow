@@ -230,7 +230,15 @@ jobs:
           # es tooling de un único job, no una dependencia de la suite. Si
           # alguna vez se usa en local, mover a requirements-dev.in y recompilar
           # (scripts/check_requirements_sync.py lo verifica).
-          pip install "schemathesis==4.24.3" "hypothesis>=6.100,<7"
+          # Hypothesis va pineado igual que schemathesis: el gate se declara
+          # determinista (`derandomize=True` en scripts/fuzz_api_contract.py),
+          # pero el corpus lo genera Hypothesis, así que con un rango abierto
+          # los 25 ejemplos por operación cambiaban al resolver pip una versión
+          # nueva. Eso hace que un fallo latente aparezca en el PR de quien
+          # pasaba por ahí (pasó el 2026-08-13 con el NUL de /competitive/bajas,
+          # vivo desde el 3-ago). Pinear no oculta nada: un 5xx sigue siendo un
+          # 5xx, pero el gate culpa al commit correcto.
+          pip install "schemathesis==4.24.3" "hypothesis==6.165.5"
 
       - name: Apply migrations
         run: alembic upgrade head

@@ -159,3 +159,53 @@ def test_el_instance_llega_al_body_y_no_a_los_headers(client, api_key):
     assert response.status_code == 422
     assert "instance" not in response.headers
     assert response.json()["instance"].endswith("/api/v1/licitaciones/bulk-get")
+
+
+# ── NUL en la query string (fuzzer de contrato, 2026-08) ────────────────────
+#
+# El saneo del cuerpo ya estaba resuelto arriba (SafeStr). La query string era
+# el hueco simétrico: `cpv`/`ccaa` de `/competitive/bajas` llegaban crudos a un
+# parámetro SQL y psycopg respondía con `DataError: PostgreSQL text fields
+# cannot contain NUL (0x00) bytes`, que salía como 500. Ninguno de los ~100
+# `Query(...)` de texto del proyecto estaba saneado, así que el guard es
+# transversal (`_RejectNulMiddleware`) y estos tests lo fijan como tal.
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        # El caso exacto que reportó el fuzzer.
+        "/api/v1/competitive/bajas?cpv=%00",
+        "/api/v1/competitive/bajas?ccaa=%00",
+        # Otra familia: prueba que el guard no es un parche de ruta.
+        "/api/v1/analytics/organos?q=%00",
+        "/api/v1/licitaciones?q=%00",
+    ],
+)
+def test_nul_en_query_string_no_es_5xx(client, api_key, url):
+    response = client.get(url, headers=_auth(api_key))
+    assert response.status_code == 400, response.text
+    assert response.headers["content-type"].startswith("application/problem+json")
+
+
+def test_nul_literal_en_un_parametro_no_es_5xx(client, api_key):
+    """Igual que el anterior pero con el byte crudo, no percent-encoded."""
+    response = client.get(
+        "/api/v1/competitive/bajas", params={"cpv": "\x00"}, headers=_auth(api_key)
+    )
+    assert response.status_code < 500
+
+
+def test_la_misma_query_sin_nul_sigue_funcionando(client, api_key):
+    """El guard no puede romper el camino feliz que protege."""
+    response = client.get(
+        "/api/v1/competitive/bajas", params={"cpv": "7200"}, headers=_auth(api_key)
+    )
+    assert response.status_code == 200
+
+
+def test_el_guard_de_nul_esta_montado_en_la_app():
+    """Estructural: si alguien lo desmonta, el 500 vuelve en silencio."""
+    from api.app import _RejectNulMiddleware, app
+
+    assert any(m.cls is _RejectNulMiddleware for m in app.user_middleware)

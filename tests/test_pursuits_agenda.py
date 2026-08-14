@@ -188,7 +188,10 @@ def agenda_deps(monkeypatch: pytest.MonkeyPatch) -> _RepoStub:
         "proximas_renovaciones",
         lambda **kwargs: [
             # Con pursuit en la organización: debe quedar fuera de la agenda.
-            {"licitacion_id": "EXP-1", "fecha_fin_efectiva": (hoy + timedelta(days=90)).isoformat()},
+            {
+                "licitacion_id": "EXP-1",
+                "fecha_fin_efectiva": (hoy + timedelta(days=90)).isoformat(),
+            },
             {
                 "licitacion_id": "REN-1",
                 "titulo": "Soporte SAP",
