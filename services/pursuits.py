@@ -581,9 +581,7 @@ def _agenda_kpis(items: list[PipelineAgendaItem]) -> PipelineAgendaKpis:
     """
     pursuits = [item for item in items if item.kind == "pursuit"]
     en_semana = [
-        item
-        for item in pursuits
-        if item.dias_restantes is not None and item.dias_restantes <= 7
+        item for item in pursuits if item.dias_restantes is not None and item.dias_restantes <= 7
     ]
     return PipelineAgendaKpis(
         vence_semana=len(en_semana),

@@ -520,16 +520,53 @@ def _seed_para_http() -> None:
             )
 
 
-def test_endpoint_organos_reenvia_el_ambito(client, api_db, auth):
-    _seed_para_http()
+@pytest.fixture()
+def sesion(monkeypatch, client):
+    """Cliente con cookie de sesión válida.
 
-    todo = client.get("/api/v1/analytics/organos", headers=auth)
-    solo_sap = client.get("/api/v1/analytics/organos", params={"tecnologia": "SAP"}, headers=auth)
-    solo_abiertas = client.get(
-        "/api/v1/analytics/organos", params={"solo_abiertas": "true"}, headers=auth
+    Los endpoints de ``/analytics`` cuelgan de ``get_current_session_user``,
+    que lee **solo** la cookie de sesión: una ``X-API-Key`` da 401. Los dos
+    tests HTTP de abajo nacieron con ``headers=auth`` y por eso entraron en
+    rojo en master — el ``KeyError: 'importe_total'`` era el ``{"detail": ...}``
+    de un 401, no un cambio en la forma de la respuesta.
+
+    Se stubea ``validate_session_principal`` (mismo patrón que
+    ``tests/test_unit_security_review_identity.py``) para no arrastrar aquí el
+    flujo de login: lo que estos tests verifican es el reenvío del ámbito, no
+    la autenticación.
+    """
+    import api.routes.auth as auth_routes
+
+    monkeypatch.setattr(
+        auth_routes,
+        "validate_session_principal",
+        lambda token: {
+            "user_id": 1,
+            "authenticated_at": "2026-08-02T00:00:00+00:00",
+            "mfa_verified_at": None,
+            "id": 1,
+            "email": "organos@example.test",
+            "display_name": "Usuario",
+            "is_admin": False,
+            "mfa_required": False,
+        },
     )
-    caras = client.get("/api/v1/analytics/organos", params={"importe_min": 500_000}, headers=auth)
+    client.cookies.set("session", "tok-de-prueba")
+    return client
 
+
+def test_endpoint_organos_reenvia_el_ambito(sesion, api_db):
+    _seed_para_http()
+    client = sesion
+
+    todo = client.get("/api/v1/analytics/organos")
+    solo_sap = client.get("/api/v1/analytics/organos", params={"tecnologia": "SAP"})
+    solo_abiertas = client.get("/api/v1/analytics/organos", params={"solo_abiertas": "true"})
+    caras = client.get("/api/v1/analytics/organos", params={"importe_min": 500_000})
+
+    # El 401 de master salía como KeyError tres líneas más abajo: se comprueba
+    # el código antes de leer el cuerpo para que el fallo diga lo que pasa.
+    assert todo.status_code == 200, todo.text
     assert todo.json()["importe_total"] == 1_030_000.0
     assert solo_sap.json()["importe_total"] == 1_000_000.0
     # HTTP-OTRO está ADJ (terminal) → sólo sobrevive la SAP, que está PUB.
@@ -537,14 +574,14 @@ def test_endpoint_organos_reenvia_el_ambito(client, api_db, auth):
     assert caras.json()["importe_total"] == 1_000_000.0
 
 
-def test_endpoint_organo_detail_reenvia_el_ambito(client, api_db, auth):
+def test_endpoint_organo_detail_reenvia_el_ambito(sesion, api_db):
     _seed_para_http()
+    client = sesion
 
-    todo = client.get("/api/v1/analytics/organos/ORG HTTP", headers=auth)
-    solo_sap = client.get(
-        "/api/v1/analytics/organos/ORG HTTP", params={"tecnologia": "SAP"}, headers=auth
-    )
+    todo = client.get("/api/v1/analytics/organos/ORG HTTP")
+    solo_sap = client.get("/api/v1/analytics/organos/ORG HTTP", params={"tecnologia": "SAP"})
 
+    assert todo.status_code == 200, todo.text
     assert todo.json()["kpis"]["total_licitaciones"] == 2
     assert solo_sap.json()["kpis"]["total_licitaciones"] == 1
     assert [s["id_externo"] for s in solo_sap.json()["top_scored"]] == ["HTTP-SAP"]
