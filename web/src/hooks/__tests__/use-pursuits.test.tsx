@@ -155,8 +155,8 @@ function stubApi(organizations: unknown[]) {
 
 function agendaUrls(fetchMock: ReturnType<typeof stubApi>): string[] {
   return fetchMock.mock.calls
-    .map(([u]: [unknown]) => String(u))
-    .filter((u: string) => u.includes("/pursuits/agenda"));
+    .map((call) => String(call[0]))
+    .filter((u) => u.includes("/pursuits/agenda"));
 }
 
 describe("usePipelineAgenda", () => {
