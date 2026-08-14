@@ -54,8 +54,10 @@ cambiaría una pantalla viva por un 404.
   X descartar con deshacer, ⏎ abrir oportunidad, inspector siguiendo a la
   selección.
 - **Detalle** (`/detalle`) — tabla de trabajo de trece columnas con el
-  inspector de cinco pestañas (`components/detail-inspector.tsx`) en el mismo
-  plano, en vez del Sheet modal de once bloques apilados.
+  inspector de cuatro pestañas (`components/detail-inspector.tsx`) en el mismo
+  plano, en vez del Sheet modal de once bloques apilados. La cronología de
+  eventos cierra el Resumen: era una pestaña propia y describe los mismos
+  campos que la ficha, así que leerla exigía cambiar de pestaña.
 - **Mi Pipeline** (`/mi-pipeline`) — reconstruido como cockpit personal de
   compromisos: agenda por bandas de urgencia (`GET /pursuits/agenda`, fusión y
   orden en backend), embudo sobre `GET /pursuits/metrics` y horizonte de
@@ -96,7 +98,7 @@ Consolidar no era el objetivo: era el envase. Esto es lo que cambia dentro.
 | --- | --- |
 | Resumen | Lo urgente en tarjetas grandes con su destino visible; el contexto en tira con delta y anomalía |
 | Radar | Consola tabular: J/K · S · X con deshacer · ⏎, inspector siguiendo a la selección |
-| Detalle | Los once bloques del Sheet modal en cinco pestañas, en el mismo plano que la tabla |
+| Detalle | Los once bloques del Sheet modal en cuatro pestañas, en el mismo plano que la tabla |
 | Mi Pipeline | De dos pantallas de mercado cosidas a la agenda personal: una cronología de compromisos con bandas de urgencia del backend, inspector al lado con editor de próxima acción, y triaje compartido con el Radar |
 | Oportunidades | Carriles a alto de pantalla con scroll propio; en la ficha, **Decisión abre** (era el último de seis paneles) |
 | Competencia | La tabla que gobierna los nueve gráficos va primero; los nueve pasan a cortes con pestañas; el dossier sale del modal |

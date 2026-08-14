@@ -926,7 +926,13 @@ export default function DetallePage() {
       </section>
 
       {detailId && detailWithScore && (
-        <div className="hidden w-[428px] flex-none xl:flex">
+        // El inspector escala con la pantalla en vez de quedarse en 428px fijos.
+        // Con ese ancho la ficha era la parte estrecha del plano: el título
+        // rompía en tres líneas, los diez campos vivían en dos columnas de 200px
+        // y el chat de IA leía como una columna de móvil. El suelo de 28rem
+        // mantiene el panel usable en un portátil de 1280 y el techo de 42rem
+        // evita que en un monitor de 2560 la ficha se estire sin ganar nada.
+        <div className="hidden w-[clamp(28rem,32vw,42rem)] flex-none xl:flex">
           <DetailInspector licitacion={detailWithScore} onClose={closeDetail} />
         </div>
       )}

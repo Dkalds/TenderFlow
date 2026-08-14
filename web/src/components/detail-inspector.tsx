@@ -19,16 +19,17 @@ import type { LicitacionDetail } from "@/components/detail-panel";
  *
  * `DetailPanel` apilaba once bloques dentro de un Sheet modal: para leer los
  * pliegos había que bajar por delante del asistente de IA, y el modal tapaba la
- * tabla de la que venías. Aquí los once bloques se reparten en cinco pestañas y
+ * tabla de la que venías. Aquí los once bloques se reparten en cuatro pestañas y
  * el panel convive con la tabla, así que comparar dos filas es moverse por la
  * lista, no abrir y cerrar.
  *
  * Ningún bloque se ha quedado fuera: Resumen (puntuación + desglose, alertas,
- * predicción de baja, los diez campos, descripción y «Ver en PLACSP»), IA
- * (resumen ejecutivo + chat + «Preguntar» + ficha estructurada del pliego con
- * lotes, criterios, ANS y certificaciones citables), Eventos, Pliegos
- * (documentos parseados) y Recursos (resoluciones del TACRC). La cabecera
- * conserva estado, badge de recurrida, importe y copiar enlace.
+ * predicción de baja, los diez campos, descripción, «Ver en PLACSP» y la
+ * cronología de eventos del contrato), IA (resumen ejecutivo + chat +
+ * «Preguntar» + ficha estructurada del pliego con lotes, criterios, ANS y
+ * certificaciones citables), Pliegos (documentos parseados) y Recursos
+ * (resoluciones del TACRC). La cabecera conserva estado, badge de recurrida,
+ * importe y copiar enlace.
  */
 
 const DESGLOSE_LABELS: Record<string, string> = {
@@ -41,12 +42,11 @@ const DESGLOSE_LABELS: Record<string, string> = {
   riesgo: "Riesgo",
 };
 
-type TabKey = "resumen" | "ia" | "eventos" | "pliegos" | "recursos";
+type TabKey = "resumen" | "ia" | "pliegos" | "recursos";
 
 const TABS: { key: TabKey; label: string }[] = [
   { key: "resumen", label: "Resumen" },
   { key: "ia", label: "IA" },
-  { key: "eventos", label: "Eventos" },
   { key: "pliegos", label: "Pliegos" },
   { key: "recursos", label: "Recursos" },
 ];
@@ -305,11 +305,26 @@ export function DetailInspector({
                 href={l.url}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center gap-1.5 text-[12.5px] font-medium"
+                // `flex w-fit` en vez de `inline-flex`: el margen inferior de una
+                // caja en línea no separa de lo que viene detrás, y detrás hay
+                // ahora la cronología.
+                className="mb-5 flex w-fit items-center gap-1.5 text-[12.5px] font-medium"
               >
                 Ver en PLACSP <ExternalLink className="h-3 w-3" aria-hidden="true" />
               </a>
             )}
+
+            {/* La cronología cierra el Resumen en vez de vivir en su propia
+                pestaña: los eventos son el «qué le ha pasado a este
+                expediente» de los mismos campos que hay arriba (importe,
+                estado, fechas), y separarlos obligaba a cambiar de pestaña
+                para saber si el importe que acabas de leer venía de una
+                modificación. `EventosTimeline` trae su propio estado de carga,
+                de error y de vacío. */}
+            <div className="border-t border-border/50 pt-4">
+              <SectionTitle>Eventos</SectionTitle>
+              <EventosTimeline licitacionId={l.id_externo} />
+            </div>
           </div>
         )}
 
@@ -320,12 +335,6 @@ export function DetailInspector({
                 con citas verificables; el botón «Extraer ficha» descarga los
                 pliegos pendientes bajo demanda y lanza la extracción LLM. */}
             <TenderFactSheetPanel licitacionId={l.id_externo} />
-          </div>
-        )}
-
-        {tab === "eventos" && (
-          <div className="pb-6">
-            <EventosTimeline licitacionId={l.id_externo} />
           </div>
         )}
 
