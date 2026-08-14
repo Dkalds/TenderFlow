@@ -6,7 +6,6 @@ import {
   BriefcaseBusiness,
   CircleCheckBig,
   CircleX,
-  Clock3,
   type LucideIcon,
   RadioTower,
   Search,
@@ -33,6 +32,13 @@ import { cn } from "@/lib/utils";
  * agrupaciones de estado, las cuatro métricas, el buscador por título,
  * referencia y responsable, y los dos estados vacíos (sin oportunidades en
  * absoluto, y sin oportunidades en un carril).
+ *
+ * La tira y los carriles NO cuentan lo mismo, y por eso cada métrica lleva su
+ * matiz debajo: `/pursuits/metrics` devuelve el embudo **acumulado** de la
+ * organización (`pursuits_identified` es toda oportunidad creada alguna vez,
+ * `pursuits_submitted` toda la que llegó a presentarse), mientras que el badge
+ * de cada carril cuenta el **estado actual**. Sin ese matiz, "Identificadas 4"
+ * encima de un carril "Por decidir 1" se lee como tres tarjetas perdidas.
  */
 
 const LANES: { title: string; statuses: PursuitStatus[]; description: string }[] = [
@@ -54,11 +60,13 @@ function Metric({
   icon: Icon,
   label,
   value,
+  hint,
   loading,
 }: {
   icon: LucideIcon;
   label: string;
   value: string | number | undefined;
+  hint: string;
   loading: boolean;
 }) {
   return (
@@ -77,6 +85,9 @@ function Metric({
             {value ?? "—"}
           </div>
         )}
+        <div className="mt-1 truncate text-[10px] leading-[1.3] text-muted-foreground/80">
+          {hint}
+        </div>
       </div>
     </div>
   );
@@ -123,26 +134,30 @@ export default function OportunidadesPage() {
           className="grid flex-none grid-cols-2 gap-px border-b border-border/70 bg-border/60 lg:grid-cols-4"
         >
           <Metric
-            icon={Clock3}
-            label="Identificadas"
+            icon={BriefcaseBusiness}
+            label="Oportunidades"
+            hint="Total creadas, abiertas y cerradas"
             value={metrics.data?.pursuits_identified}
             loading={metrics.isLoading}
           />
           <Metric
             icon={CircleCheckBig}
             label="Presentadas"
+            hint="Las que llegaron a presentarse"
             value={metrics.data?.pursuits_submitted}
             loading={metrics.isLoading}
           />
           <Metric
             icon={Trophy}
             label="Ganadas"
+            hint="Con resultado adjudicado"
             value={metrics.data?.pursuits_won}
             loading={metrics.isLoading}
           />
           <Metric
             icon={CircleX}
             label="Adjudicado"
+            hint="Suma de las ganadas"
             value={metrics.data ? formatEur(metrics.data.awarded_amount_eur) : undefined}
             loading={metrics.isLoading}
           />
