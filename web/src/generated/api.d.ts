@@ -1747,7 +1747,10 @@ export interface paths {
         put?: never;
         /**
          * Extraer o reprocesar la ficha estructurada
-         * @description Reextracción explícita; valida toda cita antes de persistirla.
+         * @description Reextracción explícita; descarga bajo demanda los pliegos que aún
+         *     estén pendientes (el cron nocturno drena el backlog global por lotes y
+         *     esta licitación puede no haber tocado turno) y valida toda cita antes de
+         *     persistirla.
          */
         post: operations["extract_tender_fact_sheet_api_v1_licitaciones__id_externo__ficha_pliego_extract_post"];
         delete?: never;
@@ -3032,6 +3035,27 @@ export interface components {
             importe_en_juego: number;
             /** Proximo Vencimiento */
             proximo_vencimiento: string | null;
+        };
+        /**
+         * CertificationRequirement
+         * @description Certificación exigida (ISO 27001, ENS, partner de fabricante, títulos
+         *     de perfil). ``scope`` distingue si la acredita la empresa o el equipo.
+         */
+        CertificationRequirement: {
+            /** Confidence */
+            confidence: number;
+            /** Description */
+            description: string;
+            /** Evidence */
+            evidence?: components["schemas"]["EvidenceRef"][];
+            /** Name */
+            name: string;
+            /**
+             * Scope
+             * @default other
+             * @enum {string}
+             */
+            scope: "company" | "team" | "other";
         };
         /**
          * ChatMessageDTO
@@ -4519,6 +4543,27 @@ export interface components {
             email: string;
             /** Password */
             password: string;
+        };
+        /**
+         * LotFact
+         * @description Lote publicado; el número de lotes de la licitación es ``len(lots)``.
+         *
+         *     ``lot_number`` se conserva como texto ("1", "Lote III"): los pliegos no
+         *     numeran de forma uniforme y forzar un entero perdería el original citable.
+         */
+        LotFact: {
+            /** Amount Eur */
+            amount_eur?: number | null;
+            /** Confidence */
+            confidence: number;
+            /** Description */
+            description: string;
+            /** Evidence */
+            evidence?: components["schemas"]["EvidenceRef"][];
+            /** Lot Number */
+            lot_number?: string | null;
+            /** Name */
+            name?: string | null;
         };
         /** MarkAlertsReadRequest */
         MarkAlertsReadRequest: {
@@ -6323,6 +6368,23 @@ export interface components {
             top_k: number;
         };
         /**
+         * ServiceLevelFact
+         * @description ANS/SLA: indicador y objetivo comprometido. Las penalizaciones por
+         *     incumplirlo pertenecen a ``penalties``, no aquí.
+         */
+        ServiceLevelFact: {
+            /** Confidence */
+            confidence: number;
+            /** Description */
+            description: string;
+            /** Evidence */
+            evidence?: components["schemas"]["EvidenceRef"][];
+            /** Name */
+            name: string;
+            /** Target */
+            target?: string | null;
+        };
+        /**
          * SessionsRevoked
          * @description Resultado de revocar sesiones (logout-all, borrado de cuenta).
          */
@@ -6634,6 +6696,8 @@ export interface components {
         TenderFactSheet: {
             /** Award Criteria */
             award_criteria?: components["schemas"]["WeightedCriterion"][];
+            /** Certifications */
+            certifications?: components["schemas"]["CertificationRequirement"][];
             /** Critical Deadlines */
             critical_deadlines?: components["schemas"]["DeadlineFact"][];
             /** Economic Solvency */
@@ -6642,8 +6706,12 @@ export interface components {
             extensions?: components["schemas"]["FactItem"][];
             /** Guarantees */
             guarantees?: components["schemas"]["MonetaryFact"][];
+            /** Lots */
+            lots?: components["schemas"]["LotFact"][];
             /** Penalties */
             penalties?: components["schemas"]["MonetaryFact"][];
+            /** Service Levels */
+            service_levels?: components["schemas"]["ServiceLevelFact"][];
             /** Subcontracting */
             subcontracting?: components["schemas"]["FactItem"][];
             /** Team Requirements */
@@ -10816,7 +10884,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description No hay páginas extraídas */
+            /** @description Sin texto de pliegos disponible (ni descargable ahora) */
             422: {
                 headers: {
                     [name: string]: unknown;

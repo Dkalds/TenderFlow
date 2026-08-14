@@ -5,9 +5,11 @@ from __future__ import annotations
 import json
 from unittest.mock import patch
 
+import pytest
+
 from db.database import DocumentoReferencia, connect
 from db.repositories.documentos import DocumentosRepository
-from services.rag.fact_sheet import extract_fact_sheet
+from services.rag.fact_sheet import extract_fact_sheet, extract_fact_sheet_on_demand
 
 
 def _seed_pages(licitacion_id: str = "FACT-1", *, texto: str | None = None) -> tuple[int, str]:
@@ -240,6 +242,199 @@ def test_technology_mention_without_valid_evidence_is_dropped(tmp_db):
     assert record.status == "needs_review"
     assert record.facts is not None
     assert record.facts.technologies == []
+
+
+# ── v3: lotes, certificaciones y niveles de servicio ───────────────────────
+
+
+def _payload_v3(documento_id: int, quote: str) -> str:
+    """Solo las familias nuevas: las claves ausentes deben caer a lista vacía."""
+    evidence = [{"documento_id": documento_id, "page_number": 1, "quote": quote}]
+    return json.dumps(
+        {
+            "lots": [
+                {
+                    "lot_number": "1",
+                    "name": "Implantación SAP",
+                    "description": "Lote 1: implantación del ERP",
+                    "amount_eur": 1200000,
+                    "confidence": 0.9,
+                    "evidence": evidence,
+                }
+            ],
+            "service_levels": [
+                {
+                    "name": "Disponibilidad del servicio",
+                    "target": "99,9% mensual",
+                    "description": "ANS de disponibilidad",
+                    "confidence": 0.8,
+                    "evidence": evidence,
+                }
+            ],
+            "certifications": [
+                {
+                    "name": "ISO 27001",
+                    "scope": "company",
+                    "description": "Certificación de seguridad exigida",
+                    "confidence": 0.85,
+                    "evidence": evidence,
+                }
+            ],
+        }
+    )
+
+
+def test_extract_fact_sheet_v3_families_with_valid_evidence(tmp_db):
+    _db_mod, _ = tmp_db
+    texto = (
+        "El contrato se divide en lotes. Lote 1: implantación del ERP por "
+        "1.200.000 euros, con disponibilidad del 99,9% mensual y certificado "
+        "ISO 27001 en vigor."
+    )
+    doc_id, _ = _seed_pages("FACT-V3-1", texto=texto)
+    quote = "Lote 1: implantación del ERP"
+
+    with patch(
+        "services.rag.fact_sheet.stream_llm_response",
+        return_value=iter([_payload_v3(doc_id, quote)]),
+    ):
+        record = extract_fact_sheet("FACT-V3-1", model="gpt-4o-mini")
+
+    assert record.status == "extracted"
+    assert record.extraction_version == "tender-facts-v3"
+    assert record.facts is not None
+    assert [lot.lot_number for lot in record.facts.lots] == ["1"]
+    assert record.facts.lots[0].amount_eur == 1200000
+    assert record.facts.service_levels[0].target == "99,9% mensual"
+    assert record.facts.certifications[0].scope == "company"
+    # Familias no devueltas por el LLM caen a lista vacía, no a error.
+    assert record.facts.award_criteria == []
+
+
+# ── Extracción bajo demanda (botón «Extraer ficha») ────────────────────────
+
+
+def _seed_licitacion(licitacion_id: str) -> None:
+    with connect() as c:
+        c.execute(
+            "INSERT INTO licitaciones (id_externo, titulo, fuente, fecha_extraccion) "
+            "VALUES (%s, 'Contrato con pliego', 'placsp', CURRENT_TIMESTAMP)",
+            (licitacion_id,),
+        )
+
+
+class TestExtractFactSheetOnDemand:
+    PAGE_TEXT = "El criterio precio tendrá una ponderación del 60 por ciento."
+    QUOTE = "criterio precio tendrá una ponderación del 60 por ciento"
+
+    def _fake_fetch(self, repo: DocumentosRepository):
+        def fetch(documento):  # firma de scraper.document_fetcher.fetch_and_extract
+            repo.mark_extracted(
+                int(documento["id"]),
+                texto=self.PAGE_TEXT,
+                sha256="abc",
+                pages=[self.PAGE_TEXT],
+            )
+            return "extracted"
+
+        return fetch
+
+    def test_fetches_pending_documents_then_extracts(self, tmp_db):
+        _db_mod, _ = tmp_db
+        _seed_licitacion("OND-1")
+        repo = DocumentosRepository()
+        repo.upsert_meta(
+            "OND-1",
+            [DocumentoReferencia(tipo="legal", uri="https://example.test/pcap.pdf")],
+        )
+        doc = repo.list_by_licitacion("OND-1")[0]
+
+        with (
+            patch(
+                "scraper.document_fetcher.fetch_and_extract",
+                side_effect=self._fake_fetch(repo),
+            ) as fetch_mock,
+            patch(
+                "services.rag.fact_sheet.stream_llm_response",
+                return_value=iter([_payload(int(doc["id"]), self.QUOTE)]),
+            ),
+        ):
+            record = extract_fact_sheet_on_demand("OND-1", model="gpt-4o-mini")
+
+        assert fetch_mock.call_count == 1
+        assert record.status == "extracted"
+        assert record.field_count == 1
+
+    def test_without_documents_raises_actionable_message(self, tmp_db):
+        _db_mod, _ = tmp_db
+        _seed_licitacion("OND-2")
+
+        with pytest.raises(ValueError, match="no referencia ningún pliego"):
+            extract_fact_sheet_on_demand("OND-2", model="gpt-4o-mini")
+
+    def test_without_pliegos_extra_skips_fetch_and_keeps_docs_pending(self, tmp_db):
+        """Sin pypdf el fetch no debe intentarse: marcaría el documento como
+        ``error`` y esa fila dejaría de ser elegible para el cron nocturno."""
+        _db_mod, _ = tmp_db
+        _seed_licitacion("OND-3")
+        repo = DocumentosRepository()
+        repo.upsert_meta(
+            "OND-3",
+            [DocumentoReferencia(tipo="legal", uri="https://example.test/pcap.pdf")],
+        )
+
+        with (
+            patch("services.rag.fact_sheet._pdf_extraction_available", return_value=False),
+            pytest.raises(ValueError, match="cola de procesado"),
+        ):
+            extract_fact_sheet_on_demand("OND-3", model="gpt-4o-mini")
+
+        assert repo.list_by_licitacion("OND-3")[0]["status"] == "pending"
+
+    def test_failed_downloads_produce_dead_link_message(self, tmp_db):
+        _db_mod, _ = tmp_db
+        _seed_licitacion("OND-4")
+        repo = DocumentosRepository()
+        repo.upsert_meta(
+            "OND-4",
+            [DocumentoReferencia(tipo="legal", uri="https://example.test/muerto.pdf")],
+        )
+
+        def failing_fetch(documento):
+            repo.mark_error(int(documento["id"]), error_detail="descarga fallida: 500")
+            return "error"
+
+        with (
+            patch("scraper.document_fetcher.fetch_and_extract", side_effect=failing_fetch),
+            pytest.raises(ValueError, match="descargas fallaron"),
+        ):
+            extract_fact_sheet_on_demand("OND-4", model="gpt-4o-mini")
+
+    def test_error_docs_are_retried_only_when_nothing_extracted(self, tmp_db):
+        _db_mod, _ = tmp_db
+        _seed_licitacion("OND-5")
+        repo = DocumentosRepository()
+        repo.upsert_meta(
+            "OND-5",
+            [DocumentoReferencia(tipo="legal", uri="https://example.test/pcap.pdf")],
+        )
+        doc = repo.list_by_licitacion("OND-5")[0]
+        repo.mark_error(int(doc["id"]), error_detail="token caducado")
+
+        with (
+            patch(
+                "scraper.document_fetcher.fetch_and_extract",
+                side_effect=self._fake_fetch(repo),
+            ) as fetch_mock,
+            patch(
+                "services.rag.fact_sheet.stream_llm_response",
+                return_value=iter([_payload(int(doc["id"]), self.QUOTE)]),
+            ),
+        ):
+            record = extract_fact_sheet_on_demand("OND-5", model="gpt-4o-mini")
+
+        assert fetch_mock.call_count == 1  # el doc en error se reintentó
+        assert record.status == "extracted"
 
 
 class TestListPendingLicitacionesSelector:

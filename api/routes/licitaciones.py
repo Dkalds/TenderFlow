@@ -602,7 +602,7 @@ async def get_tender_fact_sheet(
     summary="Extraer o reprocesar la ficha estructurada",
     responses={
         401: {"description": "Autenticación inválida"},
-        422: {"description": "No hay páginas extraídas"},
+        422: {"description": "Sin texto de pliegos disponible (ni descargable ahora)"},
         502: {"description": "El proveedor no devolvió una ficha válida"},
     },
 )
@@ -610,14 +610,17 @@ async def extract_tender_fact_sheet(
     id_externo: str,
     _ctx: dict[str, Any] = Depends(require_any_auth),
 ) -> TenderFactSheetRecord:
-    """Reextracción explícita; valida toda cita antes de persistirla."""
+    """Reextracción explícita; descarga bajo demanda los pliegos que aún
+    estén pendientes (el cron nocturno drena el backlog global por lotes y
+    esta licitación puede no haber tocado turno) y valida toda cita antes de
+    persistirla."""
     from config import settings
-    from services.rag.fact_sheet import extract_fact_sheet
+    from services.rag.fact_sheet import extract_fact_sheet_on_demand
     from services.tech_signal import ingest_llm_technologies
 
     try:
         record = await run_db(
-            extract_fact_sheet,
+            extract_fact_sheet_on_demand,
             id_externo,
             model=settings.PLIEGO_FACTS_MODEL,
         )

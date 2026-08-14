@@ -75,18 +75,49 @@ class TechnologyMention(FactItem):
     name: str = Field(min_length=1, max_length=100)
 
 
+class LotFact(FactItem):
+    """Lote publicado; el número de lotes de la licitación es ``len(lots)``.
+
+    ``lot_number`` se conserva como texto ("1", "Lote III"): los pliegos no
+    numeran de forma uniforme y forzar un entero perdería el original citable.
+    """
+
+    lot_number: str | None = Field(default=None, max_length=50)
+    name: str | None = Field(default=None, max_length=500)
+    amount_eur: float | None = Field(default=None, ge=0)
+
+
+class CertificationRequirement(FactItem):
+    """Certificación exigida (ISO 27001, ENS, partner de fabricante, títulos
+    de perfil). ``scope`` distingue si la acredita la empresa o el equipo."""
+
+    name: str = Field(min_length=1, max_length=300)
+    scope: Literal["company", "team", "other"] = "other"
+
+
+class ServiceLevelFact(FactItem):
+    """ANS/SLA: indicador y objetivo comprometido. Las penalizaciones por
+    incumplirlo pertenecen a ``penalties``, no aquí."""
+
+    name: str = Field(min_length=1, max_length=300)
+    target: str | None = Field(default=None, max_length=300)
+
+
 class TenderFactSheet(BaseModel):
     """Ficha de decisión derivada de pliegos, validada y citable."""
 
     model_config = ConfigDict(extra="forbid")
 
+    lots: list[LotFact] = Field(default_factory=list, max_length=50)
     award_criteria: list[WeightedCriterion] = Field(default_factory=list, max_length=50)
     technical_solvency: list[FactItem] = Field(default_factory=list, max_length=50)
     economic_solvency: list[MonetaryFact] = Field(default_factory=list, max_length=50)
     guarantees: list[MonetaryFact] = Field(default_factory=list, max_length=30)
     penalties: list[MonetaryFact] = Field(default_factory=list, max_length=30)
+    service_levels: list[ServiceLevelFact] = Field(default_factory=list, max_length=50)
     subcontracting: list[FactItem] = Field(default_factory=list, max_length=30)
     team_requirements: list[TeamRequirement] = Field(default_factory=list, max_length=50)
+    certifications: list[CertificationRequirement] = Field(default_factory=list, max_length=50)
     extensions: list[FactItem] = Field(default_factory=list, max_length=30)
     critical_deadlines: list[DeadlineFact] = Field(default_factory=list, max_length=30)
     technologies: list[TechnologyMention] = Field(default_factory=list, max_length=30)

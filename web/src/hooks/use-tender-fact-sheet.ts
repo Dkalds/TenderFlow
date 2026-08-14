@@ -3,10 +3,13 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError, apiMutate, fetchWithAuth } from "@/lib/api-client";
 import type {
+  CertificationRequirement,
   DeadlineFact,
   EvidenceRef,
   FactItem,
+  LotFact,
   MonetaryFact,
+  ServiceLevelFact,
   TeamRequirement,
   TenderFactSheet,
   TenderFactSheetRecord,
@@ -24,10 +27,13 @@ import type {
  * a mano compila aunque la API nunca envíe ese campo.
  */
 export type {
+  CertificationRequirement,
   DeadlineFact,
   EvidenceRef,
   FactItem,
+  LotFact,
   MonetaryFact,
+  ServiceLevelFact,
   TeamRequirement,
   TenderFactSheet,
   TenderFactSheetRecord,
@@ -48,7 +54,10 @@ export type AnyFact =
   | WeightedCriterion
   | MonetaryFact
   | TeamRequirement
-  | DeadlineFact;
+  | DeadlineFact
+  | LotFact
+  | CertificationRequirement
+  | ServiceLevelFact;
 
 const key = (licitacionId: string) => ["tender-fact-sheet", licitacionId] as const;
 

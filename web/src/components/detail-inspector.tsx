@@ -4,6 +4,7 @@ import * as React from "react";
 import { ExternalLink, Link2, MessageSquare, X } from "lucide-react";
 import { toast } from "sonner";
 import { LicitacionAI } from "@/components/licitacion-ai";
+import { TenderFactSheetPanel } from "@/components/pursuits/tender-fact-sheet";
 import { DocumentosBlock } from "@/components/documentos-block";
 import { TecnologiasBlock } from "@/components/tecnologias-block";
 import { EventosTimeline } from "@/components/eventos-timeline";
@@ -24,9 +25,10 @@ import type { LicitacionDetail } from "@/components/detail-panel";
  *
  * Ningún bloque se ha quedado fuera: Resumen (puntuación + desglose, alertas,
  * predicción de baja, los diez campos, descripción y «Ver en PLACSP»), IA
- * (resumen ejecutivo + chat + «Preguntar»), Eventos, Pliegos (documentos
- * parseados) y Recursos (resoluciones del TACRC). La cabecera conserva estado,
- * badge de recurrida, importe y copiar enlace.
+ * (resumen ejecutivo + chat + «Preguntar» + ficha estructurada del pliego con
+ * lotes, criterios, ANS y certificaciones citables), Eventos, Pliegos
+ * (documentos parseados) y Recursos (resoluciones del TACRC). La cabecera
+ * conserva estado, badge de recurrida, importe y copiar enlace.
  */
 
 const DESGLOSE_LABELS: Record<string, string> = {
@@ -314,6 +316,10 @@ export function DetailInspector({
         {tab === "ia" && (
           <div className="pb-6">
             <LicitacionAI idExterno={l.id_externo} askSignal={askSignal} />
+            {/* Ficha estructurada (lotes, criterios, ANS, certificaciones…)
+                con citas verificables; el botón «Extraer ficha» descarga los
+                pliegos pendientes bajo demanda y lanza la extracción LLM. */}
+            <TenderFactSheetPanel licitacionId={l.id_externo} />
           </div>
         )}
 

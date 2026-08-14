@@ -13,7 +13,7 @@ from shared.tender_facts import EvidenceRef, TenderFactSheet, TenderFactSheetRec
 
 log = get_logger(__name__)
 
-EXTRACTION_VERSION = "tender-facts-v2"
+EXTRACTION_VERSION = "tender-facts-v3"
 _MAX_CONTEXT_CHARS = 15_000
 _MAX_PAGES = 24
 _TOPIC_TERMS = (
@@ -30,6 +30,20 @@ _TOPIC_TERMS = (
     "experiencia",
     "prórroga",
     "plazo",
+    # v3: lotes, certificaciones y niveles de servicio. Sin estos términos la
+    # selección de páginas puede dejar fuera el anexo de lotes o el capítulo de
+    # ANS, que suelen vivir lejos de los términos administrativos clásicos.
+    # Ojo al elegir términos nuevos: se cuentan como substring casefold, así
+    # que "ans", "sla" o "iso" puntuarían "transporte", "legislación" y
+    # "aviso" — señal falsa que roba presupuesto de contexto a páginas útiles.
+    "lote",
+    "certificac",
+    "certificado",
+    "esquema nacional de seguridad",
+    "nivel de servicio",
+    "niveles de servicio",
+    "disponibilidad",
+    "indicador",
 )
 # v2 (plan "categorización alimentada por los pliegos"): la selección de
 # páginas también pondera menciones de tecnología, o el pliego técnico
@@ -39,16 +53,29 @@ _TECH_TERMS = ("sap", "oracle", "salesforce", "microsoft", "hana", "erp", "crm",
 
 _EXTRACTION_QUESTION = """
 Extrae la ficha del pliego con estas claves JSON exactas:
+lots: [{lot_number, name, description, amount_eur, confidence, evidence}],
 award_criteria: [{name, description, weight_pct, criterion_type, confidence, evidence}],
 technical_solvency: [{description, confidence, evidence}],
 economic_solvency: [{description, amount_eur, confidence, evidence}],
 guarantees: [{description, amount_eur, confidence, evidence}],
 penalties: [{description, amount_eur, confidence, evidence}],
+service_levels: [{name, target, description, confidence, evidence}],
 subcontracting: [{description, confidence, evidence}],
 team_requirements: [{description, role, minimum_years, quantity, confidence, evidence}],
+certifications: [{name, scope, description, confidence, evidence}],
 extensions: [{description, confidence, evidence}],
 critical_deadlines: [{name, description, date_value, confidence, evidence}],
 technologies: [{name, description, confidence, evidence}].
+Para lots: un elemento por lote publicado, con su número tal como aparece
+("1", "Lote III"), su denominación y su presupuesto sin IVA si es inequívoco;
+si el pliego dice que no hay división en lotes, deja la lista vacía.
+Para service_levels: acuerdos de nivel de servicio (ANS/SLA) con su indicador
+en name y el objetivo comprometido en target (ej. name "Disponibilidad del
+servicio", target "99,9% mensual"); las penalizaciones por incumplirlos van
+en penalties, no aquí.
+Para certifications: certificaciones exigidas, con scope "company" si la
+acredita la empresa (ISO 27001, ENS, partner de fabricante), "team" si la
+exige a personas del equipo (certificados de perfil), "other" si no está claro.
 Para technologies: solo plataformas o tecnologías mencionadas explícitamente
 como objeto del contrato (ej. "migración a SAP S/4HANA", "mantenimiento de
 Salesforce Service Cloud") -- no incluyas menciones incidentales o genéricas
@@ -148,6 +175,109 @@ def _validate_fact_evidence(
 def _counts(facts: TenderFactSheet) -> tuple[int, int]:
     items = [item for name in TenderFactSheet.model_fields for item in getattr(facts, name)]
     return len(items), sum(len(item.evidence) for item in items)
+
+
+def _pdf_extraction_available() -> bool:
+    """El extra ``[pliegos]`` (pypdf) es opcional y la imagen de la API no lo
+    trae. Se comprueba ANTES de intentar el fetch: sin pypdf,
+    ``fetch_and_extract`` marcaría el documento como ``error`` y esa fila
+    dejaría de ser elegible para el cron nocturno (que solo toma ``pending``).
+    """
+    import importlib.util
+
+    return importlib.util.find_spec("pypdf") is not None
+
+
+_ONDEMAND_MAX_DOCUMENTS = 8
+_DOC_TIPO_PRIORITY = {"legal": 0, "technical": 1}
+
+
+def ensure_documents_ready(licitacion_id: str) -> dict[str, int]:
+    """Descarga+extrae bajo demanda los adjuntos pendientes de una licitación.
+
+    El cron nocturno drena el backlog global por lotes y una licitación
+    concreta puede tardar semanas en tocar turno; quien la tiene abierta no
+    puede esperar. Descargar en el momento también maximiza la probabilidad
+    de que el enlace PLACSP siga vivo (sus tokens rotan y caducan).
+
+    Los documentos en ``error`` solo se reintentan si ninguno llegó a
+    ``extracted``: sin eso la ficha sería imposible, y con eso reintentarlos
+    en cada clic no resucita enlaces con token caducado. Fail-open por
+    documento, mismo criterio que el job nocturno.
+    """
+    if not _pdf_extraction_available():
+        log.warning("fact_sheet_ondemand_fetch_skipped_no_pliegos_extra")
+        return {"attempted": 0, "extracted": 0, "error": 0, "skipped_no_extra": 1}
+
+    from scraper.document_fetcher import fetch_and_extract
+
+    repo = DocumentosRepository()
+    rows = repo.list_by_licitacion(licitacion_id)
+    pending = [row for row in rows if row.get("status") == "pending"]
+    any_extracted = any(row.get("status") == "extracted" for row in rows)
+    candidates = pending if (pending or any_extracted) else [
+        row for row in rows if row.get("status") == "error"
+    ]
+    candidates.sort(key=lambda row: _DOC_TIPO_PRIORITY.get(str(row.get("tipo")), 2))
+
+    counts = {"attempted": 0, "extracted": 0, "error": 0}
+    for row in candidates[:_ONDEMAND_MAX_DOCUMENTS]:
+        counts["attempted"] += 1
+        try:
+            outcome = fetch_and_extract(row)
+        except Exception as exc:
+            log.warning(
+                "fact_sheet_ondemand_fetch_failed",
+                documento_id=row.get("id"),
+                error=str(exc),
+            )
+            outcome = "error"
+        counts[outcome] = counts.get(outcome, 0) + 1
+    return counts
+
+
+def _missing_pages_detail(licitacion_id: str, fetched: dict[str, int]) -> str:
+    """Mensaje 422 accionable según por qué no hay texto que extraer."""
+    rows = DocumentosRepository().list_by_licitacion(licitacion_id)
+    if not rows:
+        return (
+            "La licitación no referencia ningún pliego descargable; "
+            "la ficha necesita al menos un documento adjunto en PLACSP."
+        )
+    if fetched.get("skipped_no_extra"):
+        return (
+            "Los pliegos siguen en cola de procesado (el servidor no tiene "
+            "instalada la extracción de PDF); el job nocturno los procesará."
+        )
+    errores = sum(1 for row in rows if row.get("status") == "error")
+    return (
+        f"No se pudo extraer texto de los pliegos ({errores} de {len(rows)} "
+        "descargas fallaron). Los enlaces de PLACSP caducan por tokens "
+        "rotativos; suelen volver a estar disponibles tras la ingesta diaria."
+    )
+
+
+def extract_fact_sheet_on_demand(
+    licitacion_id: str,
+    *,
+    model: str = DEFAULT_MODEL,
+) -> TenderFactSheetRecord:
+    """Ficha bajo demanda: trae los pliegos que falten y extrae después.
+
+    Es el camino del botón «Extraer ficha» de la UI; el batch nocturno usa
+    ``extract_fact_sheet`` directamente porque su selector ya garantiza
+    páginas persistidas y su fase de fetch cubre las descargas.
+
+    La falta de páginas se comprueba aquí (y no capturando el ``ValueError``
+    de ``extract_fact_sheet``): ``pydantic.ValidationError`` hereda de
+    ``ValueError``, y reescribir un fallo de validación del LLM como «no hay
+    páginas» mandaría al usuario a mirar el documento equivocado.
+    """
+    fetched = ensure_documents_ready(licitacion_id)
+    pages = DocumentosRepository().list_pages_by_licitacion(licitacion_id)
+    if not any(str(page.get("texto") or "").strip() for page in pages):
+        raise ValueError(_missing_pages_detail(licitacion_id, fetched))
+    return extract_fact_sheet(licitacion_id, model=model)
 
 
 def extract_fact_sheet(

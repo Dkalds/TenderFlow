@@ -72,3 +72,8 @@ psycopg[binary]>=3.2,<4
 psycopg-pool>=3.2,<4
 # Backups S3/R2: instalada y bloqueada con el resto del entorno de producción.
 boto3>=1.43.56,<1.44
+# Extracción de texto de PDFs de pliegos. Vivía solo en el extra [pliegos]
+# (cron nocturno), pero la API también la necesita desde que
+# POST /ficha-pliego/extract descarga y extrae adjuntos bajo demanda
+# (services/rag/fact_sheet.py::ensure_documents_ready). Mismo rango que el extra.
+pypdf>=4.0,<7

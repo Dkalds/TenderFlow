@@ -86,6 +86,9 @@ export type WeightedCriterion = Schemas["WeightedCriterion"];
 export type MonetaryFact = Schemas["MonetaryFact"];
 export type TeamRequirement = Schemas["TeamRequirement"];
 export type DeadlineFact = Schemas["DeadlineFact"];
+export type LotFact = Schemas["LotFact"];
+export type CertificationRequirement = Schemas["CertificationRequirement"];
+export type ServiceLevelFact = Schemas["ServiceLevelFact"];
 export type TechnologyMention = Schemas["TechnologyMention"];
 /** Lo que devuelve `POST /watchlist/items`: sin los campos enriquecidos del GET. */
 export type WatchlistFavoriteCreated = Schemas["WatchlistFavoriteCreated"];
