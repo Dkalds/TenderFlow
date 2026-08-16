@@ -195,6 +195,19 @@ def test_pliego_facts_model_is_available():
     assert settings.PLIEGO_FACTS_MODEL in AVAILABLE_MODELS
 
 
+def test_llm_tech_labeling_model_is_available():
+    """settings.LLM_TECH_LABELING_MODEL es un modelo ofertado.
+
+    Lo consume scheduler/jobs/llm_tech_labeling.py (paso post-ingesta de los
+    workflows de scrape); si apunta a un modelo retirado, todo el lote de
+    clasificación falla — deepseek-v4-pro (EOL 2026-08-07) fue ese caso.
+    """
+    from config import settings
+    from llm.client import AVAILABLE_MODELS
+
+    assert settings.LLM_TECH_LABELING_MODEL in AVAILABLE_MODELS
+
+
 # ---------------------------------------------------------------------------
 # stream_llm_response — despacho correcto
 # ---------------------------------------------------------------------------

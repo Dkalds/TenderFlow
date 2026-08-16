@@ -18,7 +18,7 @@ pillow>=12.3,<13
 # ML — clasificador TF-IDF + LogisticRegression para detección SAP
 scikit-learn>=1.3.0,<2
 # LLM — SDK OpenAI: cubre OpenAI y NVIDIA NIM (API compatible vía base_url).
-# Necesario para el endpoint RAG /api/v1/ask (default: deepseek-ai/deepseek-v4-pro).
+# Necesario para el endpoint RAG /api/v1/ask (default: llm.client.DEFAULT_MODEL).
 openai>=1.30.0,<3
 # OpenTelemetry — tracing distribuido (modo NoOp si no se configura endpoint)
 # Instalar como extra: pip install licitaciones-sap[tracing]

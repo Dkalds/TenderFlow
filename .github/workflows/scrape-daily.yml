@@ -79,7 +79,11 @@ jobs:
           # Actions → Variables, sin tocar código (mismo patrón que pliegos.yml).
           # Con la variable sin definir manda el default de config/settings.py.
           LLM_TECH_LABELING_ENABLED: ${{ vars.LLM_TECH_LABELING_ENABLED || 'false' }}
-          LLM_TECH_LABELING_MODEL: ${{ vars.LLM_TECH_LABELING_MODEL || 'deepseek-ai/deepseek-v4-pro' }}
+          # Fallback sincronizado con config/settings.py::LLM_TECH_LABELING_MODEL.
+          # El anterior (deepseek-v4-pro) quedó EOL en NVIDIA el 2026-08-07 y
+          # devuelve 410: con la fase activada y sin vars.LLM_TECH_LABELING_MODEL,
+          # este env pisaba el default bueno de settings y el lote entero fallaba.
+          LLM_TECH_LABELING_MODEL: ${{ vars.LLM_TECH_LABELING_MODEL || 'deepseek-ai/deepseek-v4-flash-0731' }}
           LLM_TECH_LABELING_BATCH: ${{ vars.LLM_TECH_LABELING_BATCH || '200' }}
           LLM_TECH_FEEDBACK_ENABLED: ${{ vars.LLM_TECH_FEEDBACK_ENABLED || 'false' }}
         run: python -m scheduler.run_update --daily

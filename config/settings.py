@@ -543,7 +543,9 @@ class Settings(BaseSettings):
     # así que cubre todo el universo y no la minoría con documentos. Off por
     # defecto: genera gasto, se activa de forma explícita como PLIEGO_FACTS.
     LLM_TECH_LABELING_ENABLED: bool = False
-    LLM_TECH_LABELING_MODEL: str = "deepseek-ai/deepseek-v4-pro"
+    # Mantener sincronizado con llm.client.DEFAULT_MODEL: el valor anterior
+    # (deepseek-v4-pro) quedó EOL en NVIDIA el 2026-08-07 y devolvía 410.
+    LLM_TECH_LABELING_MODEL: str = "deepseek-ai/deepseek-v4-flash-0731"
     # Licitaciones clasificadas por corrida. Mismo caveat que PLIEGO_*_BATCH:
     # sin REDIS_URL en el runner, el presupuesto LLM arranca de 0 en cada
     # corrida y el tope real de gasto es este tamaño de lote (~$0.07 por 200).
