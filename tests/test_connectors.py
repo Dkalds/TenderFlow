@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from scraper.connectors.base import ParsedTender, RawNotice, run_connector
-from scraper.connectors.ted import TedConnector, _first_lang, _nuts_provincial
+from scraper.connectors.ted import TedConnector, _first_lang, _nuts_provincial, _usable_url
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -442,6 +442,68 @@ def test_ted_parse_contract_notice():
     assert lic.url == "https://ted.europa.eu/es/notice/371218-2026/pdf"
     assert "SAP" in (lic.tecnologia or "")  # detectado en la descripción
     assert parsed.adjudicaciones == []
+
+
+def test_ted_url_usa_el_enlace_de_pliegos_del_comprador():
+    notice = _ted_notice_cn()
+    notice["document-url-lot"] = [
+        "https://contrataciondelestado.es/wps/poc?uri=deeplink:detalle_licitacion"
+        "&idEvl=QGM1HX7Wxp16nTs9LZ9RhQ%3D%3D"
+    ]
+
+    parsed = TedConnector().parse(RawNotice(natural_id="371218-2026", payload=notice))
+
+    assert parsed.licitacion.url is not None
+    assert "idEvl=" in parsed.licitacion.url  # el expediente, no el PDF del anuncio
+
+
+def test_ted_url_prefiere_deeplink_placsp_entre_varios_lotes():
+    notice = _ted_notice_cn()
+    notice["document-url-lot"] = [
+        "https://contractaciopublica.cat/ca/perfils-contractant/detall/12628397",
+        "https://contrataciondelestado.es/wps/poc?uri=deeplink:detalle_licitacion&idEvl=abc%3D",
+    ]
+
+    parsed = TedConnector().parse(RawNotice(natural_id="371218-2026", payload=notice))
+
+    assert parsed.licitacion.url == (
+        "https://contrataciondelestado.es/wps/poc?uri=deeplink:detalle_licitacion&idEvl=abc%3D"
+    )
+
+
+def test_ted_url_ignora_la_raiz_de_la_plataforma():
+    notice = _ted_notice_cn()
+    notice["document-url-lot"] = ["https://www.contratacion.euskadi.eus"]
+
+    parsed = TedConnector().parse(RawNotice(natural_id="371218-2026", payload=notice))
+
+    # La home de la plataforma no acerca al pliego: mejor el PDF del anuncio.
+    assert parsed.licitacion.url == "https://ted.europa.eu/es/notice/371218-2026/pdf"
+
+
+def test_ted_url_cae_al_acceso_restringido_si_no_hay_publico():
+    notice = _ted_notice_cn()
+    notice["document-restricted-url-lot"] = [
+        "https://contractaciopublica.gencat.cat/ecofin_pscp/AppJava/perfil/16138154/customProf"
+    ]
+
+    parsed = TedConnector().parse(RawNotice(natural_id="371218-2026", payload=notice))
+
+    assert parsed.licitacion.url is not None
+    assert parsed.licitacion.url.endswith("/customProf")
+
+
+def test_usable_url_normaliza_y_filtra():
+    # Sin esquema: ~1 de cada 10 valores llega así.
+    assert _usable_url("www.contractaciopublica.cat/ca/perfils/detall/999") == (
+        "https://www.contractaciopublica.cat/ca/perfils/detall/999"
+    )
+    # Query string basta aunque la ruta sea corta.
+    assert _usable_url("https://x.es/p?id=7") == "https://x.es/p?id=7"
+    # Raíces e idioma suelto: no identifican expediente ni perfil.
+    assert _usable_url("https://seuelectronica.diba.cat/") is None
+    assert _usable_url("https://portalcontratacion.navarra.es/es/") is None
+    assert _usable_url("   ") is None
 
 
 def test_ted_parse_award_notice_crea_adjudicacion():

@@ -12,6 +12,8 @@ Mapeo eForms → modelo canónico:
   resultado) → RES, con Adjudicacion si trae winner-name; pin-* → PRE.
 - ``place-of-performance``: primer código NUTS provincial → ccaa vía
   shared.geo.
+- ``url``: enlace de acceso a los pliegos del comprador (BT-15/BT-615) cuando
+  lleva a algún sitio concreto; si no, el PDF del anuncio en TED.
 
 Uso directo (backfill o cron):
     python -m scraper.connectors.ted                 # incremental desde cursor
@@ -22,6 +24,7 @@ from __future__ import annotations
 
 import time
 from typing import TYPE_CHECKING, Any
+from urllib.parse import urlparse
 
 import requests
 
@@ -52,6 +55,9 @@ _FIELDS = [
     "deadline-receipt-tender-date-lot",
     "notice-type",
     "links",
+    # BT-15 / BT-615: dónde publica el comprador los pliegos. Ver _documents_url.
+    "document-url-lot",
+    "document-restricted-url-lot",
     "estimated-value-proc",
     "result-value-notice",
     "winner-name",
@@ -110,6 +116,60 @@ def _nuts_provincial(value: Any) -> str | None:
         if isinstance(code, str) and len(code) > 3 and code.upper().startswith("ES"):
             return code.upper()
     return None
+
+
+def _usable_url(value: str) -> str | None:
+    """Normaliza una URL de BT-15/BT-615 y descarta las que no llevan a nada.
+
+    Sobre una muestra de 300 anuncios españoles (CPV 48/72), 8 de las 83 URLs
+    distintas eran la raíz de la plataforma (``https://www.contratacion.euskadi.eus``,
+    ``https://portalcontratacion.navarra.es/es/``): no acercan al pliego y son
+    peores que el PDF del anuncio, que al menos describe el expediente. El
+    filtro exige query string o dos segmentos de ruta. Algunos valores llegan
+    sin esquema (``www.contractaciopublica.cat``).
+    """
+    url = value.strip()
+    if not url:
+        return None
+    if not url.startswith(("http://", "https://")):
+        url = f"https://{url}"
+    parsed = urlparse(url)
+    if not parsed.netloc:
+        return None
+    segments = [segment for segment in parsed.path.split("/") if segment]
+    if not parsed.query and len(segments) < 2:
+        return None
+    return url
+
+
+def _documents_url(notice: dict[str, Any]) -> str | None:
+    """Enlace de acceso a los pliegos publicado por el comprador (BT-15; BT-615
+    cuando el acceso es restringido).
+
+    Es una página de la plataforma del comprador, no el adjunto en sí: TED
+    nunca publica ficheros de pliego. Solo la traen las convocatorias
+    (``cn-*``) — las adjudicaciones no publican pliegos y caen al PDF del
+    anuncio. Cuando hay varias (una por lote), gana el deeplink de PLACSP: es
+    el único que lleva al expediente concreto en vez de al perfil del
+    contratante.
+    """
+    candidatos: list[str] = []
+    for campo in ("document-url-lot", "document-restricted-url-lot"):
+        valor = notice.get(campo)
+        if isinstance(valor, str):
+            candidatos.append(valor)
+        elif isinstance(valor, list):
+            candidatos.extend(v for v in valor if isinstance(v, str))
+
+    mejor: str | None = None
+    for candidato in candidatos:
+        url = _usable_url(candidato)
+        if url is None:
+            continue
+        if "idevl=" in url.lower():
+            return url
+        mejor = mejor or url
+    return mejor
 
 
 class TedConnector:
@@ -205,7 +265,11 @@ class TedConnector:
         cpv = str(cpvs[0]) if isinstance(cpvs, list) and cpvs else None
         nuts = _nuts_provincial(n.get("place-of-performance"))
         links = n.get("links") or {}
-        url = (links.get("pdf") or {}).get("SPA") or (links.get("xml") or {}).get("MUL")
+        anuncio_url = (links.get("pdf") or {}).get("SPA") or (links.get("xml") or {}).get("MUL")
+        # El enlace del comprador manda sobre el PDF del anuncio: es el que
+        # lleva a los adjuntos. No se pierde nada al desplazarlo — el PDF se
+        # reconstruye desde el id (ted:{pub} → ted.europa.eu/es/notice/{pub}/pdf).
+        url = _documents_url(n) or anuncio_url
         importe = _to_float(n.get("estimated-value-proc")) or _to_float(
             n.get("result-value-notice")
         )
