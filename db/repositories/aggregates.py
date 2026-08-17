@@ -1408,9 +1408,12 @@ class AggregateRepository:
     # antes solo miraba el título — y el título de un pliego español rara vez
     # nombra la tecnología. En PLACSP viene del `<summary>` ATOM, así que son
     # cadenas cortas sobre ~1,6 k filas.
+    # `fuente` no puntúa: viaja con `url` porque es lo que decide cómo se
+    # etiqueta ese enlace en el inspector del Radar (PLACSP, TED, PSCP…).
     _SCORING_COLS = (
         "id_externo, titulo, descripcion, organo_contratacion, importe, cpv, "
-        "fecha_limite, estado, ccaa, tecnologia, fecha_publicacion, ml_tech_principal, url"
+        "fecha_limite, estado, ccaa, tecnologia, fecha_publicacion, ml_tech_principal, url, "
+        "fuente"
     )
 
     def importe_percentiles(self) -> tuple[float, float]:

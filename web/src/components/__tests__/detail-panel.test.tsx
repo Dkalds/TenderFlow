@@ -23,6 +23,7 @@ function makeLic(overrides: Partial<LicitacionDetail> = {}): LicitacionDetail {
     ccaa: "Madrid",
     cpv: "50000000",
     url: "https://contrataciondelestado.es/x",
+    fuente: "placsp",
     tecnologia: "Cloud",
     tipo_contrato: "Servicios",
     provincia: "Madrid",
@@ -58,8 +59,38 @@ describe("DetailPanel", () => {
     // Risk flags render as destructive badges.
     expect(screen.getByText("plazo_corto")).toBeInTheDocument();
     expect(screen.getByText("Alertas")).toBeInTheDocument();
-    // External link.
+    // External link, rotulado con el portal del que salió el expediente.
     expect(screen.getByRole("link", { name: /Ver en PLACSP/ })).toBeInTheDocument();
+  });
+
+  it("names the external link after the source the tender came from", () => {
+    // El enlace decía «Ver en PLACSP» viniera de donde viniera: con una
+    // licitación de TED el texto prometía un portal y abría otro.
+    const { unmount } = renderPanel(
+      makeLic({ fuente: "ted", url: "https://ted.europa.eu/es/notice/1/pdf" }),
+    );
+    expect(screen.getByRole("link", { name: /Ver en TED/ })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /Ver en PLACSP/ })).not.toBeInTheDocument();
+    unmount();
+
+    // Una fuente que el frontend no sabe nombrar no se inventa un portal.
+    renderPanel(makeLic({ fuente: "portal_que_no_existe_todavia" }));
+    expect(
+      screen.getByRole("link", { name: /Ver en la plataforma del comprador/ }),
+    ).toBeInTheDocument();
+  });
+
+  it("does not say TED when the TED link points at the buyer's platform", () => {
+    // El `url` de TED sale de BT-15 desde `82c0683`: normalmente es la
+    // plataforma del comprador, no ted.europa.eu. La etiqueta va con el
+    // destino, no con la fuente a secas.
+    renderPanel(
+      makeLic({ fuente: "ted", url: "https://contractaciopublica.cat/ca/detall/1" }),
+    );
+    expect(
+      screen.getByRole("link", { name: /Ver en la plataforma del comprador/ }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /Ver en TED/ })).not.toBeInTheDocument();
   });
 
   it("omits optional sections when their data is absent", () => {
@@ -76,7 +107,8 @@ describe("DetailPanel", () => {
     );
     expect(screen.queryByText("Puntuación")).not.toBeInTheDocument();
     expect(screen.queryByText("Alertas")).not.toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: /Ver en PLACSP/ })).not.toBeInTheDocument();
+    // Sin `url` no hay enlace externo, se llame como se llame su portal.
+    expect(screen.queryByRole("link", { name: /^Ver en / })).not.toBeInTheDocument();
     // Falls back to id_externo as the title when titulo is present is not the case here.
     expect(screen.getByText("Servicio de mantenimiento")).toBeInTheDocument();
   });

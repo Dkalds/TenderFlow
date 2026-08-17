@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { AlertTriangle, ArrowUpRight, ExternalLink, Loader2, Star, X } from "lucide-react";
 import { fetchWithAuth } from "@/lib/api-client";
+import { fuenteLinkLabel } from "@/lib/fuentes";
 import { cn, formatCurrency, formatDate } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { RadarTender } from "@/hooks/use-radar";
@@ -346,7 +347,7 @@ export function RadarInspector({
             href={tender.url}
             target="_blank"
             rel="noreferrer"
-            aria-label="Ver en PLACSP"
+            aria-label={fuenteLinkLabel(tender.fuente, tender.url)}
             className="tf-pressable grid h-[34px] w-[34px] flex-none place-items-center rounded-lg border border-border/80 text-muted-foreground transition-colors hover:text-foreground"
           >
             <ExternalLink className="h-3.5 w-3.5" />

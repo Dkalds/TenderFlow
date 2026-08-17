@@ -107,6 +107,10 @@ class ScoredOpportunity(BaseModel):
     ccaa: str | None = None
     ml_tech_principal: str | None = None
     url: str | None = None
+    # Fuente de ingesta de la licitación ('placsp', 'ted', 'pscp'…). Acompaña a
+    # `url`: el inspector etiquetaba ese enlace como «Ver en PLACSP» para todas,
+    # y con TED o PSCP apunta a otro portal.
+    fuente: str | None = None
     estado: str | None = None
     score: int
     band: str
@@ -663,6 +667,7 @@ def get_scoring(
                 if pd.notna(row.get("ml_tech_principal"))
                 else None,
                 url=str(row["url"]) if pd.notna(row.get("url")) else None,
+                fuente=str(row["fuente"]) if pd.notna(row.get("fuente")) else None,
                 estado=str(row["estado"]) if pd.notna(row.get("estado")) else None,
                 score=s,
                 band=band,

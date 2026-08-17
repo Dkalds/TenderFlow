@@ -4464,6 +4464,8 @@ export interface components {
             fecha_limite?: string | null;
             /** Fecha Publicacion */
             fecha_publicacion?: string | null;
+            /** Fuente */
+            fuente?: string | null;
             /** Id Externo */
             id_externo: string;
             /** Importe */
@@ -6161,6 +6163,8 @@ export interface components {
             fecha_limite?: string | null;
             /** Fecha Publicacion */
             fecha_publicacion?: string | null;
+            /** Fuente */
+            fuente?: string | null;
             /** Id Externo */
             id_externo: string;
             /** Importe */
