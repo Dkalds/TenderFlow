@@ -12,7 +12,7 @@ pydantic-settings>=2.0.0,<3
 email-validator>=2.0.0,<3
 structlog>=24.1.0,<26
 pybreaker>=1.0.0,<2
-reportlab>=4.0,<5
+reportlab>=4.0,<6
 # Forzar versión sin CVEs conocidas (transitiva via reportlab): PYSEC-2026-2253/54/55/56/57
 pillow>=12.3,<13
 # ML — clasificador TF-IDF + LogisticRegression para detección SAP
