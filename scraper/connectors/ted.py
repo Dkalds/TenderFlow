@@ -15,6 +15,11 @@ Mapeo eForms → modelo canónico:
 - ``url``: enlace de acceso a los pliegos del comprador (BT-15/BT-615) cuando
   lleva a algún sitio concreto; si no, el PDF del anuncio en TED.
 
+Cursor: ``last_seen_updated`` guarda el máximo ``publication-date`` visto, pero
+cada run consulta desde ``watermark - _OVERLAP_DAYS``. Sin ese solapamiento, lo
+que TED añada al índice con fecha anterior al watermark no se vuelve a
+consultar nunca. Ver ``_OVERLAP_DAYS``.
+
 Uso directo (backfill o cron):
     python -m scraper.connectors.ted                 # incremental desde cursor
     python -m scraper.connectors.ted --desde 20250101 --cpv 48,72
@@ -23,6 +28,7 @@ Uso directo (backfill o cron):
 from __future__ import annotations
 
 import time
+from datetime import UTC, date, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 from urllib.parse import urlparse
 
@@ -44,6 +50,39 @@ _API_URL = "https://api.ted.europa.eu/v3/notices/search"
 _PAGE_SIZE = 100
 _TIMEOUT = 60
 _PAGE_PAUSE_S = 0.5  # cortesía con la API pública
+
+# Días que se re-consultan POR DETRÁS del watermark en cada run.
+#
+# El fallo que corrige: el cursor guarda el MÁXIMO `publication-date` visto y
+# la query era `publication-date >= watermark` sin restar nada, así que el
+# único día que se volvía a mirar era el propio watermark, y solo mientras no
+# avanzase. En cuanto entraba un aviso del día D+1 el watermark saltaba y
+# cualquier aviso del día D que TED publicase en el índice más tarde dejaba de
+# consultarse PARA SIEMPRE. Con el cron cada 4 h
+# (.github/workflows/scrape-daily.yml) ese salto ocurre a las pocas horas.
+# Síntoma (2026-08-16): la ventana `>= 2026-06-10` tenía 1.307 filas en BD y un
+# backfill manual sobre la misma ventana insertó 362 nuevas (22 %).
+#
+# Lo que SÍ está medido contra la API (2026-08-16, ventana ESP + CPV 48/72
+# desde el 2026-06-10, 1.674 avisos): los `publication-number` se asignan de
+# forma estrictamente creciente por fecha de publicación y sin huecos — la
+# banda de cada día acaba justo donde empieza la del siguiente (densidad 100 %,
+# 25 días comprobados). Es decir, el índice CONVERGE a completo: re-consultar
+# un día ya cerrado devuelve todo lo suyo. Eso es lo que hace correcto un
+# solapamiento fijo, sea cual sea el retraso exacto de indexación.
+#
+# Lo que NO se pudo medir en una sola sesión es ese retraso: haría falta
+# comparar dos fotos de la API separadas por días, o `created_at` vs
+# `fecha_publicacion` en producción. Por eso `fetch` emite `en_solapamiento` en
+# `ted_fetch_done`: cuántos avisos vienen por detrás del watermark anterior, o
+# sea el conjunto que la estrategia vieja no podía ver. Si en régimen normal es
+# >0 de forma sostenida, la fuga queda confirmada con datos de producción.
+#
+# 14 días es holgado frente a cualquier retraso plausible y sigue siendo
+# barato: ~35,6 avisos/día de media en esta ventana ≈ 500 avisos ≈ 5 páginas
+# por run, y el upsert es idempotente (AGENTS.md §3, invariante 2), así que
+# re-ingerir lo ya visto no duplica nada.
+_OVERLAP_DAYS = 14
 
 _FIELDS = [
     "publication-number",
@@ -71,6 +110,33 @@ _ESTADO_MAP = {
     "cn": "PUB",  # contract notice
     "can": "RES",  # contract award notice (incl. can-modif)
 }
+
+
+def _cursor_date(value: Any) -> date | None:
+    """Interpreta ``last_seen_updated`` como ``date``.
+
+    Tolera todo lo que puede haber quedado guardado en ``ingestion_cursors``:
+    ISO (``2026-08-14``), timestamp (``2026-08-14 00:00:00+00:00``),
+    ``date``/``datetime`` devueltos por psycopg, o el formato compacto que
+    escribe ``--desde`` (``20260814``). Devuelve None si no hay forma de
+    leerlo: caer al lookback por defecto es preferible a tumbar el run entero
+    por un cursor corrupto.
+    """
+    if value is None:
+        return None
+    # datetime antes que date: datetime es subclase de date.
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    text = str(value).strip()
+    for candidato, fmt in ((text[:10], "%Y-%m-%d"), (text[:8], "%Y%m%d")):
+        try:
+            return datetime.strptime(candidato, fmt).date()
+        except ValueError:
+            continue
+    log.warning("ted_cursor_ilegible", valor=text[:32])
+    return None
 
 
 def _first_lang(value: Any) -> str | None:
@@ -183,11 +249,13 @@ class TedConnector:
         cpv_families: tuple[str, ...] = ("48", "72"),
         country: str = "ESP",
         default_lookback_days: int = 30,
+        overlap_days: int = _OVERLAP_DAYS,
         session: requests.Session | None = None,
     ) -> None:
         self.cpv_families = cpv_families
         self.country = country
         self.default_lookback_days = default_lookback_days
+        self.overlap_days = overlap_days
         self._session = session or requests.Session()
         self._max_pub_date: str | None = None
 
@@ -202,21 +270,34 @@ class TedConnector:
         )
 
     def _since(self, cursor: dict[str, Any] | None) -> str:
-        last = (cursor or {}).get("last_seen_updated")
-        if last:
-            # Re-consultar desde el último día visto (solapamiento de 1 día);
-            # el upsert idempotente absorbe los duplicados.
-            return str(last)[:10].replace("-", "")
-        from datetime import UTC, datetime, timedelta
+        """Fecha inicial (YYYYMMDD) de la consulta, a partir del cursor.
 
-        start = datetime.now(UTC) - timedelta(days=self.default_lookback_days)
+        Retrocede ``overlap_days`` desde el watermark en vez de arrancar en él:
+        el watermark es el máximo `publication-date` visto, y lo que TED aún no
+        había indexado de los días anteriores no se volvería a consultar nunca
+        (ver ``_OVERLAP_DAYS``). El upsert idempotente absorbe lo re-leído.
+
+        ``main()`` sustituye este método para el flag ``--desde``: mantener la
+        firma (cursor → YYYYMMDD) es parte del contrato.
+        """
+        watermark = _cursor_date((cursor or {}).get("last_seen_updated"))
+        if watermark is not None:
+            return (watermark - timedelta(days=self.overlap_days)).strftime("%Y%m%d")
+        start = datetime.now(UTC).date() - timedelta(days=self.default_lookback_days)
         return start.strftime("%Y%m%d")
 
     def fetch(self, cursor: dict[str, Any] | None) -> Iterator[RawNotice]:
+        previo = _cursor_date((cursor or {}).get("last_seen_updated"))
+        watermark = previo.isoformat() if previo else None
         query = self._build_query(self._since(cursor))
         page = 1
         total: int | None = None
         seen = 0
+        # Avisos por detrás del watermark anterior: exactamente el conjunto que
+        # la estrategia previa (`>= watermark`) no podía volver a consultar. Se
+        # emite en `ted_fetch_done` para poder medir en producción cuánto está
+        # recuperando el solapamiento en vez de tener que suponerlo.
+        tras_watermark = 0
         while True:
             resp = self._session.post(
                 _API_URL,
@@ -240,14 +321,24 @@ class TedConnector:
                 if not pub_number:
                     continue
                 pub_date = _first_date(notice.get("publication-date"))
-                if pub_date and (self._max_pub_date is None or pub_date > self._max_pub_date):
-                    self._max_pub_date = pub_date
+                if pub_date:
+                    if self._max_pub_date is None or pub_date > self._max_pub_date:
+                        self._max_pub_date = pub_date
+                    if watermark is not None and pub_date < watermark:
+                        tras_watermark += 1
                 seen += 1
                 yield RawNotice(natural_id=str(pub_number), payload=notice)
             if not notices or seen >= total:
                 break
             page += 1
             time.sleep(_PAGE_PAUSE_S)
+        log.info(
+            "ted_fetch_done",
+            seen=seen,
+            total=total,
+            watermark_previo=watermark,
+            en_solapamiento=tras_watermark,
+        )
 
     # ── parse ────────────────────────────────────────────────────────────
 
