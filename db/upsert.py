@@ -17,6 +17,7 @@ from db.connection import connect, now_utc_iso
 from db.dlq import record_failure
 from observability.logging import get_logger
 from observability.runtime_metrics import upsert_rows_dropped_total
+from shared.numeric import values_equal
 
 _log = get_logger(__name__)
 
@@ -723,10 +724,17 @@ def _upsert_chunk(
             old_record = existing.get(lic.id_externo)
 
             if old_record is not None:
+                # `values_equal` y no `!=`: `importe` (y `duracion_valor`) son
+                # `real` en producción, así que lo que devuelve el SELECT es el
+                # float8 escrito redondeado a float4. Con igualdad exacta, cada
+                # re-ingesta de un expediente intacto marcaba "importe cambió"
+                # y escribía una fila de historial basura (medido el
+                # 2026-08-16: 1.785 filas de TED en 8 días, ningún importe
+                # cambiado de verdad). Ver shared/numeric.py.
                 changed: list[str] = [
                     field_name
                     for field_name in HISTORY_TRACKED_FIELDS
-                    if old_record.get(field_name) != data.get(field_name)
+                    if not values_equal(old_record.get(field_name), data.get(field_name))
                 ]
 
                 if changed:
