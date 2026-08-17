@@ -213,7 +213,7 @@ Almacena las licitaciones públicas relacionadas con SAP extraídas de PLACSP.
 | `titulo` | TEXT | Título de la licitación (obligatorio) |
 | `descripcion` | TEXT | Descripción detallada |
 | `organo_contratacion` | TEXT | Nombre del órgano contratante |
-| `importe` | REAL | Importe de licitación en EUR |
+| `importe` | REAL | Importe de licitación en EUR (`real`/float4 en producción, ver nota abajo) |
 | `moneda` | TEXT | Código moneda (default: EUR) |
 | `cpv` | TEXT | Código CPV (Common Procurement Vocabulary) |
 | `tipo_contrato` | TEXT | Código de tipo de contrato (1=obras, 2=servicios, etc.) |
@@ -239,6 +239,16 @@ Almacena las licitaciones públicas relacionadas con SAP extraídas de PLACSP.
 - `idx_estado` — filtros por estado del expediente
 - `idx_cpv` — búsquedas por código CPV
 - `idx_ccaa` — filtros geográficos
+
+**Precisión de `importe` / `duracion_valor`:** en producción son `real` (float4,
+~7 cifras significativas) porque la tabla viene del schema SQLite pre-ADR-021,
+donde el tipo era `REAL`. Alembic las declara `sa.Float` → `double precision`,
+así que un bootstrap nuevo (CI incluido) **no** reproduce esa precisión. Los
+conectores escriben float8, de modo que el valor releído no coincide con el
+escrito: toda comparación de estos campos pasa por
+[`shared/numeric.py::values_equal`](../shared/numeric.py) y no por `!=`. La
+migración a `double precision` está en el backlog (P2) y requiere OK humano
+por la ventana de lock.
 
 ---
 
@@ -351,7 +361,14 @@ Guarda snapshots del estado anterior cuando se detectan cambios en campos clave 
 | `changed_fields` | TEXT | Campos que cambiaron (comma-separated) |
 
 **Campos tracked** (definidos en `config.HISTORY_TRACKED_FIELDS`):
-`importe`, `estado`, `fecha_fin`, `fecha_inicio`, `duracion_valor`, `duracion_unidad`, `titulo`, `descripcion`
+`importe`, `estado`, `fecha_fin`, `fecha_inicio`, `fecha_limite`, `duracion_valor`, `duracion_unidad`, `titulo`, `descripcion`
+
+**Detección de cambios:** `db/upsert.py::_upsert_chunk` compara el registro
+existente con el entrante campo a campo vía `shared.numeric.values_equal`. Los
+campos numéricos se comparan con tolerancia relativa (1e-5): con `!=` exacto,
+el round-trip float8→float4 de `importe` marcaba un cambio en cada re-ingesta y
+llenaba esta tabla de filas sin cambio real (1.785 medidas en 8 días de TED, el
+2026-08-16).
 
 ---
 
