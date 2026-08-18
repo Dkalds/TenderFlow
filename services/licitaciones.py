@@ -219,19 +219,16 @@ def _try_hybrid_search(
         log.debug("hybrid_search_embed_query_failed", error=str(e))
         return None
 
-    from db.database import connect_read
-    from db.search_backend import PgTsBackend
+    from db.search_backend import hybrid_search_docs
 
     try:
-        with connect_read() as conn:
-            docs = PgTsBackend().hybrid_search_docs(
-                conn,
-                question,
-                query_embedding,
-                ccaa=ccaa,
-                tecnologia=tecnologia,
-                limit=top_k,
-            )
+        docs = hybrid_search_docs(
+            question,
+            query_embedding,
+            ccaa=ccaa,
+            tecnologia=tecnologia,
+            limit=top_k,
+        )
     except Exception as e:
         log.debug("hybrid_search_query_failed", error=str(e))
         return None
@@ -240,11 +237,4 @@ def _try_hybrid_search(
 
 def load_licitaciones_for_index() -> pd.DataFrame:
     """Load id_externo, titulo, descripcion for FAISS index building (§3.8)."""
-    from db.database import connect, init_db
-
-    init_db()
-    with connect() as c:
-        cursor = c.execute("SELECT id_externo, titulo, descripcion FROM licitaciones")
-        rows = cursor.fetchall()
-        cols = [d[0] for d in cursor.description]
-    return pd.DataFrame(rows, columns=cols)
+    return _repo.load_for_index()

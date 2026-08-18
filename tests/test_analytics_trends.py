@@ -151,3 +151,19 @@ def test_trends_empty(tmp_db):
     assert res.series == []
     assert res.histogram_bins == []
     assert res.mes_pico is None
+
+
+def test_trends_declara_la_granularidad_usada(tmp_db):
+    """La respuesta dice con qué roll-up construyó la serie.
+
+    `period` cambia de formato con `group_by` (YYYY-MM / YYYY-Www / YYYY-MM-DD),
+    así que el cliente necesita saberlo del propio payload y no de la URL que
+    recuerde haber pedido. Campo aditivo: su default es el `month` de siempre.
+    """
+    _insert(_rows())
+    for freq in ("month", "week", "day"):
+        res = tr_mod.get_trends(tr_mod.TrendsFilters(group_by=freq))
+        assert res.group_by == freq
+        # Dataset de 4 filas: muy por debajo del techo, serie intacta.
+        assert res.serie_truncada is False
+        assert len(res.series) <= tr_mod.MAX_TREND_POINTS

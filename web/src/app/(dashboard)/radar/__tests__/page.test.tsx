@@ -2,6 +2,7 @@ import * as React from "react";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, waitFor, act } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import type { RadarTender, ScoringSignals } from "@/hooks/use-radar";
 
 /**
@@ -142,9 +143,14 @@ function renderRadar() {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
+  // Las acciones de fila (seguir / descartar / abrir) llevan `Tooltip`, y
+  // `Tooltip.Root` de Radix revienta sin un `TooltipProvider` por encima: en la
+  // app lo pone `components/providers.tsx`, aquí hay que ponerlo a mano.
   return render(
     <QueryClientProvider client={client}>
-      <RadarPage />
+      <TooltipProvider>
+        <RadarPage />
+      </TooltipProvider>
     </QueryClientProvider>,
   );
 }

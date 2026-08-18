@@ -153,7 +153,7 @@ export default function TendenciasCpvPage() {
     <div className="space-y-6">
       <div>
         <h1 className="sr-only">Tendencias CPV</h1>
-        <p className="text-muted-foreground">Series temporales por codigo CPV.</p>
+        <p className="text-muted-foreground">Series temporales por código CPV.</p>
       </div>
 
       {/* CPV Multiselect */}
@@ -207,7 +207,7 @@ export default function TendenciasCpvPage() {
             onClick={() => setShowForecast((f) => !f)}
           >
             <BarChart3 className="h-4 w-4 mr-1" />
-            Prevision
+            Previsión
           </Button>
         </CardHeader>
         <CardContent>
@@ -249,7 +249,7 @@ export default function TendenciasCpvPage() {
         <Card>
           <CardHeader>
             <div className="flex items-center gap-2">
-              <CardTitle className="text-base">Prevision Volumen (6 meses)</CardTitle>
+              <CardTitle className="text-base">Previsión Volumen (6 meses)</CardTitle>
               <Badge variant="outline" className="text-amber-600 border-amber-400">
                 Global del mercado
               </Badge>

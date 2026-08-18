@@ -5,6 +5,7 @@ import { ArrowDownRight, ArrowUpRight, Building2, MapPinned, Shapes, Target } fr
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn, formatCurrency, formatNumber, formatPercent } from "@/lib/utils";
 
+import { CompanyUteParticipations } from "./company-ute-participations";
 import { CompanyYearTrend } from "./company-year-trend";
 import {
   buildExecutiveSummary,
@@ -201,6 +202,8 @@ export function CompanyProfileSummary({ profile }: { profile: CompanyProfileData
           </div>
         </div>
       </section>
+
+      <CompanyUteParticipations participations={profile.participaciones_ute} companyName={profile.empresa.nombre} />
 
       <Card>
         <CardHeader>

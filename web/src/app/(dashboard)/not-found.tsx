@@ -10,12 +10,12 @@ export default function DashboardNotFound() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <FileQuestion className="h-5 w-5" />
-            Pagina no encontrada
+            Página no encontrada
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <p className="text-sm text-muted-foreground">
-            La pagina que buscas no existe o ha sido movida.
+            La página que buscas no existe o ha sido movida.
           </p>
           <Button asChild>
             <Link href="/resumen">Ir al resumen</Link>

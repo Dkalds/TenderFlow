@@ -3,7 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import { apiMutate, fetchWithAuth } from "@/lib/api-client";
+import { apiGet, apiMutate, fetchWithAuth } from "@/lib/api-client";
 import type {
   OrganizationMemberInvite,
   OrganizationMembershipOut,
@@ -37,7 +37,7 @@ export const useOrganizationStore = create<OrganizationState>()(
 export function useOrganizations() {
   return useQuery({
     queryKey: ["organizations"],
-    queryFn: () => fetchWithAuth<Organization[]>("/api/v1/organizations"),
+    queryFn: () => apiGet("/api/v1/organizations"),
     select: (organizations) => (Array.isArray(organizations) ? organizations : []),
     staleTime: 5 * 60_000,
   });

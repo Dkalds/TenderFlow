@@ -11,6 +11,7 @@ import { MultiSelect } from "@/components/ui/multi-select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { SearchAutocomplete } from "@/components/ui/search-autocomplete";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { ScrollEdge, useScrollEdgeState } from "@/components/layout/scroll-edge";
 import { SavedViewsMenu } from "@/components/saved-views-menu";
 import { ExportPopover } from "@/components/export-popover";
 import { NotificationBell } from "@/components/notification-bell";
@@ -306,6 +307,9 @@ export function ScopeBar() {
   const { relative } = useDataFreshness();
   const { canUndo, canRedo, undo, redo } = useScopeHistory();
   const [editorOpen, setEditorOpen] = React.useState(false);
+  // El separador con el contenido no es fijo: aparece sólo cuando hay algo
+  // desplazado por debajo de la barra (ver `scroll-edge.tsx`).
+  const scrolled = useScrollEdgeState();
 
   const subsetKeys = pageGlobalFilterKeys(pathname);
   const singleValueKeys = pageSingleValueFilterKeys(pathname);
@@ -403,148 +407,164 @@ export function ScopeBar() {
   // filtran nada. Si además hay filtros activos, se dice.
   if (!filtersApply) {
     return (
-      <header className="tf-glass border-border/70 sticky top-0 z-30 flex h-[52px] flex-none items-center gap-2.5 border-b px-3.5">
-        {activeCount > 0 ? (
-          <>
-            <Info className="text-primary h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-            <span className="text-muted-foreground text-xs">
-              El ámbito global no aplica en esta pantalla ({activeCount}{" "}
-              {activeCount === 1 ? "filtro activo" : "filtros activos"}).
+      <>
+        <header className="tf-glass sticky top-0 z-30 flex h-[52px] flex-none items-center gap-2.5 px-3.5">
+          {activeCount > 0 ? (
+            <>
+              <Info className="text-primary h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+              <span className="text-muted-foreground text-xs">
+                El ámbito global no aplica en esta pantalla ({activeCount}{" "}
+                {activeCount === 1 ? "filtro activo" : "filtros activos"}).
+              </span>
+              <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={filters.resetFilters}>
+                <RotateCcw className="h-3 w-3" />
+                Limpiar
+              </Button>
+            </>
+          ) : (
+            <span className="text-muted-foreground font-mono text-[9px] font-semibold tracking-[0.14em] uppercase">
+              Ámbito · no aplica en esta pantalla
             </span>
-            <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={filters.resetFilters}>
-              <RotateCcw className="h-3 w-3" />
-              Limpiar
-            </Button>
-          </>
-        ) : (
-          <span className="text-muted-foreground font-mono text-[9px] font-semibold tracking-[0.14em] uppercase">
-            Ámbito · no aplica en esta pantalla
-          </span>
-        )}
-        <div className="flex-1" />
-        <ScopeUtilities onSearch={() => setCommandOpen(true)} relative={relative} />
-      </header>
+          )}
+          <div className="flex-1" />
+          <ScopeUtilities onSearch={() => setCommandOpen(true)} relative={relative} />
+        </header>
+        <ScrollEdge active={scrolled} />
+      </>
     );
   }
 
   return (
-    <header className="tf-glass border-border/70 sticky top-0 z-30 flex h-[52px] flex-none [scrollbar-width:none] items-center gap-2.5 overflow-x-auto border-b px-3.5 [&::-webkit-scrollbar]:hidden">
-      <div className="border-border/70 flex flex-none items-center gap-1.5 border-r pr-2.5">
-        <button
-          type="button"
-          onClick={undo}
-          disabled={!canUndo}
-          title="Deshacer cambio de ámbito"
-          aria-label="Deshacer cambio de ámbito"
-          className={cn(
-            NAV_BUTTON,
-            canUndo
-              ? "border-border/80 text-muted-foreground hover:text-foreground cursor-pointer"
-              : "border-border/40 text-muted-foreground/40 cursor-default",
-          )}
-        >
-          <Undo2 className="h-3 w-3" aria-hidden="true" />
-        </button>
-        <button
-          type="button"
-          onClick={redo}
-          disabled={!canRedo}
-          title="Rehacer cambio de ámbito"
-          aria-label="Rehacer cambio de ámbito"
-          className={cn(
-            NAV_BUTTON,
-            canRedo
-              ? "border-border/80 text-muted-foreground hover:text-foreground cursor-pointer"
-              : "border-border/40 text-muted-foreground/40 cursor-default",
-          )}
-        >
-          <Redo2 className="h-3 w-3" aria-hidden="true" />
-        </button>
-      </div>
+    <>
+      {/* La barra scrollea en horizontal, así que el borde no puede vivir dentro
+          (lo recortaría el `overflow`): va como hermano, con alto cero. */}
+      <header className="tf-glass sticky top-0 z-30 flex h-[52px] flex-none [scrollbar-width:none] items-center gap-2.5 overflow-x-auto px-3.5 [&::-webkit-scrollbar]:hidden">
+        <div className="border-border/70 flex flex-none items-center gap-1.5 border-r pr-2.5">
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                onClick={undo}
+                disabled={!canUndo}
+                aria-label="Deshacer cambio de ámbito"
+                className={cn(
+                  NAV_BUTTON,
+                  canUndo
+                    ? "border-border/80 text-muted-foreground hover:text-foreground cursor-pointer"
+                    : "border-border/40 text-muted-foreground/40 cursor-default",
+                )}
+              >
+                <Undo2 className="h-3 w-3" aria-hidden="true" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent>Deshacer cambio de ámbito</TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                onClick={redo}
+                disabled={!canRedo}
+                aria-label="Rehacer cambio de ámbito"
+                className={cn(
+                  NAV_BUTTON,
+                  canRedo
+                    ? "border-border/80 text-muted-foreground hover:text-foreground cursor-pointer"
+                    : "border-border/40 text-muted-foreground/40 cursor-default",
+                )}
+              >
+                <Redo2 className="h-3 w-3" aria-hidden="true" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent>Rehacer cambio de ámbito</TooltipContent>
+          </Tooltip>
+        </div>
 
-      <span className="text-muted-foreground flex-none font-mono text-[9px] leading-none font-semibold tracking-[0.14em] uppercase">
-        Ámbito
-      </span>
+        <span className="text-muted-foreground flex-none font-mono text-[9px] leading-none font-semibold tracking-[0.14em] uppercase">
+          Ámbito
+        </span>
 
-      <div className="flex min-w-0 items-center gap-1.5">
-        {chips.map((chip) => (
-          <ScopeChip key={`${chip.key}-${chip.value}`} chip={chip} />
-        ))}
+        <div className="flex min-w-0 items-center gap-1.5">
+          {chips.map((chip) => (
+            <ScopeChip key={`${chip.key}-${chip.value}`} chip={chip} />
+          ))}
 
-        <Popover open={editorOpen} onOpenChange={setEditorOpen}>
-          <PopoverTrigger asChild>
+          <Popover open={editorOpen} onOpenChange={setEditorOpen}>
+            <PopoverTrigger asChild>
+              <button
+                type="button"
+                aria-haspopup="dialog"
+                className="border-border text-muted-foreground hover:border-primary/50 hover:text-foreground inline-flex h-[26px] flex-none cursor-pointer items-center gap-1.5 rounded-md border border-dashed bg-transparent px-2.5 text-xs font-medium transition-colors duration-140 ease-out"
+              >
+                + Añadir
+              </button>
+            </PopoverTrigger>
+            <PopoverContent align="start" className="w-80">
+              <ScopeEditor meta={meta} shows={shows} singleTecnologia={singleValueKeys.includes("tecnologia")} />
+              {activeCount > 0 && (
+                <div className="border-border/70 mt-1 border-t pt-2">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 w-full justify-start px-2 text-xs"
+                    onClick={filters.resetFilters}
+                  >
+                    <RotateCcw className="h-3 w-3" />
+                    Limpiar el ámbito
+                  </Button>
+                </div>
+              )}
+            </PopoverContent>
+          </Popover>
+        </div>
+
+        <div className="flex-1" />
+
+        <div className="text-muted-foreground flex flex-none items-center gap-[7px] text-[11px]">
+          <span className="relative flex h-1.5 w-1.5" aria-hidden="true">
+            <span className="absolute inset-0 rounded-full bg-[hsl(var(--success))] opacity-60 motion-safe:animate-ping" />
+            <span className="relative h-1.5 w-1.5 rounded-full bg-[hsl(var(--success))]" />
+          </span>
+          <span className="tf-tnum">
+            {countLoading || !overview ? "—" : `${formatNumber(overview.total_licitaciones)} licitaciones`}
+          </span>
+          <span className="opacity-40" aria-hidden="true">
+            ·
+          </span>
+          <span>{relative ? `sync ${relative}` : "sin registro de sync"}</span>
+        </div>
+
+        <SavedViewsMenu />
+
+        <Tooltip>
+          <TooltipTrigger asChild>
             <button
               type="button"
-              aria-haspopup="dialog"
-              className="border-border text-muted-foreground hover:border-primary/50 hover:text-foreground inline-flex h-[26px] flex-none cursor-pointer items-center gap-1.5 rounded-md border border-dashed bg-transparent px-2.5 text-xs font-medium transition-colors duration-140 ease-out"
+              onClick={() => setCommandOpen(true)}
+              aria-label="Abrir búsqueda y comandos"
+              className="border-border/80 text-muted-foreground hover:text-foreground inline-flex h-7 flex-none cursor-pointer items-center gap-1.5 rounded-md border bg-transparent px-2.5 text-xs transition-colors duration-140 ease-out"
             >
-              + Añadir
+              Buscar
+              <span className="border-border/70 rounded border px-1 py-0.5 font-mono text-[9px] leading-none">⌘K</span>
             </button>
-          </PopoverTrigger>
-          <PopoverContent align="start" className="w-80">
-            <ScopeEditor meta={meta} shows={shows} singleTecnologia={singleValueKeys.includes("tecnologia")} />
-            {activeCount > 0 && (
-              <div className="border-border/70 mt-1 border-t pt-2">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-7 w-full justify-start px-2 text-xs"
-                  onClick={filters.resetFilters}
-                >
-                  <RotateCcw className="h-3 w-3" />
-                  Limpiar el ámbito
-                </Button>
-              </div>
-            )}
-          </PopoverContent>
-        </Popover>
-      </div>
+          </TooltipTrigger>
+          <TooltipContent>Buscar licitaciones, órganos, empresas…</TooltipContent>
+        </Tooltip>
 
-      <div className="flex-1" />
-
-      <div className="text-muted-foreground flex flex-none items-center gap-[7px] text-[11px]">
-        <span className="relative flex h-1.5 w-1.5" aria-hidden="true">
-          <span className="absolute inset-0 rounded-full bg-[hsl(var(--success))] opacity-60 motion-safe:animate-ping" />
-          <span className="relative h-1.5 w-1.5 rounded-full bg-[hsl(var(--success))]" />
-        </span>
-        <span className="tf-tnum">
-          {countLoading || !overview ? "—" : `${formatNumber(overview.total_licitaciones)} licitaciones`}
-        </span>
-        <span className="opacity-40" aria-hidden="true">
-          ·
-        </span>
-        <span>{relative ? `sync ${relative}` : "sin registro de sync"}</span>
-      </div>
-
-      <SavedViewsMenu />
-
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <button
-            type="button"
-            onClick={() => setCommandOpen(true)}
-            aria-label="Abrir búsqueda y comandos"
-            className="border-border/80 text-muted-foreground hover:text-foreground inline-flex h-7 flex-none cursor-pointer items-center gap-1.5 rounded-md border bg-transparent px-2.5 text-xs transition-colors duration-140 ease-out"
-          >
-            Buscar
-            <span className="border-border/70 rounded border px-1 py-0.5 font-mono text-[9px] leading-none">⌘K</span>
-          </button>
-        </TooltipTrigger>
-        <TooltipContent>Buscar licitaciones, órganos, empresas…</TooltipContent>
-      </Tooltip>
-
-      <div className="border-border/70 flex flex-none items-center gap-1 border-l pl-2.5">
-        {/* «Exportar ámbito», no «Exportar» a secas: varias pantallas tienen su
-            propia exportación con el corte de esa sección, y dos botones con la
-            misma etiqueta a cuatro dedos de distancia no se distinguen. Este
-            saca lo que gobierna esta barra — el ámbito activo. */}
-        <ExportPopover
-          label="Exportar ámbito"
-          className="[&>button]:h-7 [&>button]:px-2 [&>button]:py-0 [&>button]:text-xs"
-        />
-        <NotificationBell />
-      </div>
-    </header>
+        <div className="border-border/70 flex flex-none items-center gap-1 border-l pl-2.5">
+          {/* «Exportar ámbito», no «Exportar» a secas: varias pantallas tienen su
+              propia exportación con el corte de esa sección, y dos botones con la
+              misma etiqueta a cuatro dedos de distancia no se distinguen. Este
+              saca lo que gobierna esta barra — el ámbito activo. */}
+          <ExportPopover
+            label="Exportar ámbito"
+            className="[&>button]:h-7 [&>button]:px-2 [&>button]:py-0 [&>button]:text-xs"
+          />
+          <NotificationBell />
+        </div>
+      </header>
+      <ScrollEdge active={scrolled} />
+    </>
   );
 }
 

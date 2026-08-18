@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import hashlib
 from datetime import date
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
@@ -16,6 +16,7 @@ from pydantic import BaseModel, Field
 from api.concurrency import run_db
 from api.routes.dual_auth import require_any_auth
 from api.tenancy import require_organization, resolve_organization_ctx
+from db.repositories.renovaciones import proximas_renovaciones
 from db.watchlist_empresas import (
     WatchlistEmpresaEntry,
     add_entry,
@@ -34,7 +35,6 @@ from services.competitive.mercado import (
 from services.competitive.renovaciones import (
     RenovacionesResult,
     RenovacionesResumenResult,
-    proximas_renovaciones,
     resumen_renovaciones,
     totales_renovaciones,
 )
@@ -86,6 +86,14 @@ async def get_renovaciones(
         description="Tecnología(s) separadas por comas (filtro global)",
     ),
     min_importe: float | None = Query(None, ge=0),
+    order_by: Literal["fecha", "score"] = Query(
+        "fecha",
+        description=(
+            "Orden del listado: 'fecha' (vencimiento más próximo primero) o "
+            "'score' (oportunidad = riesgo x importe x urgencia, descendente). "
+            "Con 'score' el `limit` recorta el top-N real del dataset."
+        ),
+    ),
     limit: int = Query(200, ge=1, le=1000),
     offset: int = Query(0, ge=0),
     _ctx: dict[str, Any] = Depends(require_any_auth),
@@ -100,6 +108,7 @@ async def get_renovaciones(
         ccaa=ccaa,
         tecnologias=tecnologias or None,
         min_importe=min_importe,
+        order_by=order_by,
         limit=limit,
         offset=offset,
     )

@@ -11,6 +11,7 @@ import { EventosTimeline } from "@/components/eventos-timeline";
 import { PrediccionBajaBlock } from "@/components/prediccion-baja";
 import { RecurridoBadge, ResolucionesBlock, useResoluciones } from "@/components/resoluciones-block";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn, formatCurrency, formatDate } from "@/lib/utils";
 import type { LicitacionDetail } from "@/components/detail-panel";
 
@@ -127,15 +128,19 @@ export function DetailInspector({
           <RecurridoBadge licitacionId={l.id_externo} />
           <span className="font-mono text-[10.5px] text-muted-foreground">{l.id_externo}</span>
           <div className="flex-1" />
-          <button
-            type="button"
-            onClick={onClose}
-            title="Cerrar · Esc"
-            aria-label="Cerrar ficha"
-            className="tf-pressable grid h-6 w-6 place-items-center rounded-md border border-border/60 text-muted-foreground transition-colors duration-140 ease-out hover:border-border hover:text-foreground"
-          >
-            <X className="h-3 w-3" aria-hidden="true" />
-          </button>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                onClick={onClose}
+                aria-label="Cerrar ficha"
+                className="tf-pressable grid h-6 w-6 place-items-center rounded-md border border-border/60 text-muted-foreground transition-colors duration-140 ease-out hover:border-border hover:text-foreground"
+              >
+                <X className="h-3 w-3" aria-hidden="true" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent>Cerrar · Esc</TooltipContent>
+          </Tooltip>
         </div>
 
         <h2 className="mb-2.5 font-display text-[15px] font-semibold leading-[1.35] tracking-[-0.01em] text-pretty">
@@ -147,15 +152,19 @@ export function DetailInspector({
             {formatCurrency(l.importe)}
           </span>
           <div className="flex-1" />
-          <button
-            type="button"
-            onClick={() => void copyLink()}
-            title="Copiar enlace ?lic="
-            className="tf-pressable inline-flex h-6.5 items-center gap-1.5 rounded-md border border-border/80 px-2.5 text-[11.5px] font-medium text-muted-foreground transition-colors duration-140 ease-out hover:border-primary/45 hover:text-foreground"
-          >
-            <Link2 className="h-3 w-3" aria-hidden="true" />
-            Copiar enlace
-          </button>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                onClick={() => void copyLink()}
+                className="tf-pressable inline-flex h-6.5 items-center gap-1.5 rounded-md border border-border/80 px-2.5 text-[11.5px] font-medium text-muted-foreground transition-colors duration-140 ease-out hover:border-primary/45 hover:text-foreground"
+              >
+                <Link2 className="h-3 w-3" aria-hidden="true" />
+                Copiar enlace
+              </button>
+            </TooltipTrigger>
+            <TooltipContent>Copiar enlace ?lic=</TooltipContent>
+          </Tooltip>
           <button
             type="button"
             onClick={askAI}
@@ -340,7 +349,11 @@ export function DetailInspector({
 
         {tab === "pliegos" && (
           <div className="pb-6">
-            <DocumentosBlock licitacionId={l.id_externo} />
+            {/* `fichaUrl` da salida cuando el enlace directo al adjunto ya no
+                responde (tokens rotativos de PLACSP) y cuando no hemos indexado
+                ningún pliego: en esta pestaña, a diferencia del sheet, no hay
+                otro "Ver en PLACSP" a mano. */}
+            <DocumentosBlock licitacionId={l.id_externo} fichaUrl={l.url} />
           </div>
         )}
 

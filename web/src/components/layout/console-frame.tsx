@@ -4,6 +4,7 @@ import { Suspense } from "react";
 import { ConsoleRail } from "@/components/layout/console-rail";
 import { ScopeBar } from "@/components/layout/scope-bar";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
+import { ScrollEdgeProvider } from "@/components/layout/scroll-edge";
 
 /**
  * Marco del dashboard — rail de 56px + barra de ámbito de 52px.
@@ -27,20 +28,27 @@ import { DashboardShell } from "@/components/layout/dashboard-shell";
  */
 export function ConsoleFrame({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex min-h-screen bg-background text-foreground">
-      <ConsoleRail />
+    // El proveedor del borde de scroll envuelve el marco entero porque el
+    // contenedor que scrollea (`DashboardShell`) y el cromo que dibuja el borde
+    // (rail móvil y barra de ámbito) son hermanos, no antepasados.
+    <ScrollEdgeProvider>
+      <div className="flex min-h-screen bg-background text-foreground">
+        <ConsoleRail />
 
-      <div className="flex min-h-screen min-w-0 flex-1 flex-col">
-        <Suspense fallback={<div className="h-[52px] flex-none border-b border-border/70" />}>
-          <ScopeBar />
-        </Suspense>
+        <div className="flex min-h-screen min-w-0 flex-1 flex-col">
+          {/* El hueco de carga tampoco lleva borde: el estado inicial es "en el
+              tope", y ahí no hay nada debajo que separar. */}
+          <Suspense fallback={<div className="h-[52px] flex-none" />}>
+            <ScopeBar />
+          </Suspense>
 
-        {/* La pantalla gobierna su propio espacio, sin contenedor centrado ni
-            relleno — la tabla llega hasta el borde. */}
-        <DashboardShell>
-          <Suspense fallback={null}>{children}</Suspense>
-        </DashboardShell>
+          {/* La pantalla gobierna su propio espacio, sin contenedor centrado ni
+              relleno — la tabla llega hasta el borde. */}
+          <DashboardShell>
+            <Suspense fallback={null}>{children}</Suspense>
+          </DashboardShell>
+        </div>
       </div>
-    </div>
+    </ScrollEdgeProvider>
   );
 }

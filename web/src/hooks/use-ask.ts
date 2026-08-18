@@ -2,17 +2,30 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { ApiError, apiGet } from "@/lib/api-client";
 import { streamAsk, type ChatMessage, type DegradedInfo, type FuenteDocumento } from "@/lib/ask-stream";
 
-/** Available LLM models for the copilot (shared cache key with /investigador). */
+/**
+ * Available LLM models for the copilot (shared cache key with /investigador).
+ *
+ * La forma de la respuesta (`AskModelInfo`) sale del esquema: antes se leía
+ * `data.models` sobre un `any`, con una rama que además aceptaba un array
+ * pelado que la API nunca ha devuelto.
+ *
+ * Un error HTTP degrada a lista vacía —el selector de modelo se queda con el
+ * valor por defecto en vez de tumbar el panel—, igual que hacía el `if (!res.
+ * ok) return []` anterior. Los fallos de red siguen propagándose.
+ */
 export function useAskModels() {
   return useQuery<string[]>({
     queryKey: ["ask-models"],
     queryFn: async () => {
-      const res = await fetch("/api/v1/ask/models", { credentials: "include" });
-      if (!res.ok) return [];
-      const data = await res.json();
-      return Array.isArray(data) ? data : (data.models ?? []);
+      try {
+        return (await apiGet("/api/v1/ask/models")).models;
+      } catch (error) {
+        if (error instanceof ApiError) return [];
+        throw error;
+      }
     },
     staleTime: Infinity,
     meta: { silent: true },

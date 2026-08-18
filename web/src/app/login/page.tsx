@@ -82,7 +82,7 @@ function LoginPageContent() {
       if (err instanceof ApiError) {
         setError(err.status === 401 ? "Credenciales incorrectas" : err.message);
       } else {
-        setError("Error de conexion. Intenta de nuevo.");
+        setError("Error de conexión. Inténtalo de nuevo.");
       }
     } finally {
       setLoading(false);
@@ -109,7 +109,7 @@ function LoginPageContent() {
               : err.message,
         );
       } else {
-        setError("Error de conexion. Intenta de nuevo.");
+        setError("Error de conexión. Inténtalo de nuevo.");
       }
       setLoading(false);
     }
@@ -138,7 +138,7 @@ function LoginPageContent() {
         // 409: email ya registrado · 400: contrasena no cumple la politica
         setError(err.status === 409 ? "Este correo ya está registrado" : err.message);
       } else {
-        setError("Error de conexion. Intenta de nuevo.");
+        setError("Error de conexión. Inténtalo de nuevo.");
       }
     } finally {
       setLoading(false);

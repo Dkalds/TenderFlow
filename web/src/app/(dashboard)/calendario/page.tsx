@@ -319,7 +319,7 @@ export default function CalendarioPage() {
       {/* Day-of-week distribution */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Distribucion por Dia de la Semana — {selectedYear}</CardTitle>
+          <CardTitle className="text-base">Distribución por Día de la Semana — {selectedYear}</CardTitle>
         </CardHeader>
         <CardContent>
           {isLoading ? (

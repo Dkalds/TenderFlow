@@ -39,6 +39,15 @@ describe("DashboardShell", () => {
     expect(container.querySelector("main")).toHaveAttribute("data-density", "compact");
   });
 
+  it("abre el contenedor con scroll con el centinela del borde", () => {
+    // El cromo de arriba decide si dibuja separador mirando este centinela, y
+    // sólo mide lo que debe si es el primer hijo del elemento que scrollea.
+    const { container } = render(<DashboardShell>contenido</DashboardShell>);
+    const main = container.querySelector("main")!;
+
+    expect(main.firstElementChild).toHaveAttribute("data-scroll-edge-sentinel");
+  });
+
   it("no longer relies on the unused .container selector", () => {
     useDensity.setState({ compact: true });
     const { container } = render(<DashboardShell>contenido</DashboardShell>);

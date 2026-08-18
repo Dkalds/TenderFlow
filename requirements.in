@@ -47,15 +47,29 @@ argon2-cffi>=23.1.0,<25
 # Migraciones de base de datos (Alembic gestiona v14+ tras el baseline casero)
 alembic>=1.13.0,<2
 # API REST
-fastapi>=0.110.0,<1
+#
+# Techo en 0.137 a propósito (2026-08-17, PR #187): desde fastapi 0.141 los
+# routers montados con `include_router` aparecen en `app.routes` como objetos
+# `_IncludedRouter` opacos, sin `.path` ni `.methods`. Con ese salto la API
+# devuelve 500 en *todas* las rutas —`AttributeError: '_IncludedRouter' object
+# has no attribute 'path'`— y ni siquiera pasa el gate de arranque
+# (`/api/v1/health/ready`) del job E2E. `scripts/gen_status.py` tampoco revienta:
+# pasa de detectar 154 endpoints a 7, en silencio.
+#
+# Subir de aquí es una migración con trabajo propio (auditar todo el código y
+# los tests que recorren `app.routes`), no una recompilación de lockfile; por eso
+# fastapi/starlette/uvicorn están además en el `ignore` de .github/dependabot.yml.
+fastapi>=0.110.0,<0.137
 # Starlette pinned explicitly — fastapi 0.136 ships with 0.52.x but >=1.0.1
 # is needed for bugfixes; without this pin the Dockerfile had a force-reinstall hack.
-starlette>=1.0.1,<2
+# Techo en 1.4: 1.6.0 solo entra acompañando al salto de fastapi de arriba.
+starlette>=1.0.1,<1.4
 # Servidor ASGI que ejecuta la API (ver docker/docker-entrypoint-api.sh). Se había
 # perdido de este archivo en algún momento y sobrevivía solo porque requirements.txt
 # no se había vuelto a compilar desde entonces (mismo patrón que el incidente de
 # psycopg-pool — ver scripts/check_requirements_sync.py).
-uvicorn>=0.30.0,<1
+# Techo en 0.47 por coherencia con el par fastapi/starlette de arriba.
+uvicorn>=0.30.0,<0.47
 # Backend de rate limiting distribuido (services/rate_limit_redis.py, RATE_LIMIT_BACKEND=redis).
 # Mismo motivo que uvicorn: presente en pyproject.toml pero faltaba aquí.
 redis>=5.0,<6

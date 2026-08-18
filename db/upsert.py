@@ -170,6 +170,14 @@ class Licitacion:
     inclusion_reason: str | None = None
     analysis_universe: str | None = None
     fecha_actualizacion_fuente: str | None = None
+    # Drivers de la baja publicados en `cac:TenderingProcess` /
+    # `cac:AwardingTerms` (v85). `procedimiento` y `tramitacion` son el CÓDIGO
+    # CODICE crudo, no su etiqueta (ver `_tendering_process_codes`);
+    # `peso_precio_pct` va en % sobre 100 y solo se rellena cuando la escala de
+    # los pesos publicados es deducible (ver `parse_peso_precio`).
+    procedimiento: str | None = None
+    tramitacion: str | None = None
+    peso_precio_pct: float | None = None
     # Fuente de ingesta (ADR-009): 'placsp', 'ted', 'pscp_cat'… Las fuentes
     # nuevas namespacean ademas su id_externo como "{fuente}:{id_natural}".
     fuente: str = "placsp"
@@ -191,6 +199,10 @@ class DocumentoReferencia:
     tipo: str  # legal | technical | additional
     uri: str
     filename: str | None = None
+    # ``cbc:DocumentHash`` del CODICE: hash del contenido publicado, y la única
+    # identidad del adjunto que sobrevive a la rotación del token de la ``uri``
+    # (v88). Opcional porque una fuente que no sea PLACSP puede no traerlo.
+    source_hash: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -202,11 +214,21 @@ _LIC_COLS = ", ".join(_LIC_KEYS)
 _LIC_PLACEHOLDERS = ", ".join("%s" for _ in _LIC_KEYS)
 
 # Campos donde una re-ingesta que no trae el dato NO debe borrar un valor ya
-# conocido. Hoy solo fecha_limite: el nodo CODICE que la publica
+# conocido. El caso original es fecha_limite: el nodo CODICE que la publica
 # (TenderingProcess/TenderSubmissionDeadlinePeriod) puede desaparecer cuando
 # el expediente avanza a fase ADJ/RES, y sin COALESCE esa re-ingesta legítima
 # (misma licitación, estado más reciente) nulearía un plazo ya conocido.
-_LIC_COALESCE_UPDATE_FIELDS = frozenset({"fecha_limite"})
+#
+# procedimiento/tramitacion/peso_precio_pct (v85) cuelgan de esos mismos dos
+# bloques del anuncio de licitación (`cac:TenderingProcess` y
+# `cac:AwardingTerms`) y desaparecen con ellos, así que heredan el problema
+# entero. Sin COALESCE la pérdida no sería uniforme sino sesgada: se cebaría
+# justo con los expedientes ya adjudicados, que son los únicos que el modelo
+# de baja puede usar para entrenar. La cobertura medida saldría alta sobre el
+# feed y baja sobre el dataset.
+_LIC_COALESCE_UPDATE_FIELDS = frozenset(
+    {"fecha_limite", "procedimiento", "tramitacion", "peso_precio_pct"}
+)
 _LIC_UPDATES = ", ".join(
     f"{k}=COALESCE(excluded.{k}, licitaciones.{k})"
     if k in _LIC_COALESCE_UPDATE_FIELDS
