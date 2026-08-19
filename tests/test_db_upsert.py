@@ -531,6 +531,107 @@ def test_upsert_result_properties(db):
 
 
 # ---------------------------------------------------------------------------
+# Ruido de precisión float4 en el detector de diffs (shared/numeric.py)
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture()
+def db_importe_float4(db):
+    """Alinea ``licitaciones.importe`` con producción: ``real`` (float4).
+
+    ``alembic upgrade head`` —de donde sale el schema de la suite— crea la
+    columna como ``double precision`` (``sa.Float`` en
+    baseline002_pg_core_genesis), pero la tabla de producción viene del schema
+    SQLite pre-ADR-021, donde era ``REAL``, y el cutover a Postgres la trajo
+    como ``real``. Sin este ALTER el bug no se puede reproducir: en float8 el
+    round-trip es exacto y el test pasaría por construcción, midiendo nada.
+    """
+    from db.database import connect
+
+    with connect() as c:
+        c.execute("ALTER TABLE licitaciones ALTER COLUMN importe TYPE real")
+    return db
+
+
+def test_reingesta_identica_no_genera_historial_con_importe_float4(db_importe_float4):
+    """Re-ingerir la misma licitación dos veces no debe escribir historial.
+
+    Regresión medida en producción el 2026-08-16: un backfill de TED generó
+    635 filas de ``licitaciones_history`` con ``changed_fields='importe'``, y
+    en los 7 días previos 1.150 más —una tanda por run del cron—. Ningún
+    importe había cambiado: la columna es ``real`` (float4) y los conectores
+    escriben ``float`` de Python (float8), así que el valor que vuelve del
+    SELECT nunca coincide bit a bit con el que se escribió y el ``!=`` del
+    detector de diffs lo leía como un cambio.
+
+    El importe elegido necesita más precisión de la que float4 puede guardar
+    (7+ cifras significativas): con un valor redondo el round-trip sería
+    exacto y el test no ejercitaría nada.
+    """
+    from db.database import connect
+    from db.upsert import upsert_licitaciones_with_history
+
+    lic = make_licitacion(importe=12_345_678.91)
+
+    upsert_licitaciones_with_history([lic], source="ted")
+    result = upsert_licitaciones_with_history([lic], source="ted")
+
+    assert result.modified == []
+    assert result.unchanged == ["TEST-001"]
+    with connect() as c:
+        n = c.execute(
+            "SELECT COUNT(*) FROM licitaciones_history WHERE id_externo = %s", ["TEST-001"]
+        ).fetchone()[0]
+    assert n == 0
+
+
+def test_cambio_real_de_importe_si_genera_historial_con_float4(db_importe_float4):
+    """La tolerancia no puede tapar una modificación de importe de verdad."""
+    from db.database import connect
+    from db.upsert import upsert_licitaciones_with_history
+
+    upsert_licitaciones_with_history([make_licitacion(importe=12_345_678.91)], source="ted")
+    result = upsert_licitaciones_with_history([make_licitacion(importe=13_000_000.0)], source="ted")
+
+    assert result.modified == ["TEST-001"]
+    with connect() as c:
+        row = c.execute(
+            "SELECT changed_fields FROM licitaciones_history WHERE id_externo = %s",
+            ["TEST-001"],
+        ).fetchone()
+    assert row is not None
+    assert "importe" in row[0].split(",")
+
+
+def test_reingesta_identica_no_genera_historial_de_ningun_campo(db_importe_float4):
+    """El resto de campos rastreados tampoco debe moverse en una re-ingesta.
+
+    Guarda de idempotencia end-to-end (invariante §3.2): con la licitación
+    completa —importe float4, fechas, duración, textos— dos pasadas seguidas
+    dejan la tabla de historial vacía.
+    """
+    from db.database import connect
+    from db.upsert import upsert_licitaciones_with_history
+
+    lic = make_licitacion(
+        importe=12_345_678.91,
+        duracion_valor=1.5,
+        duracion_unidad="ANN",
+        fecha_inicio="2026-01-01",
+        fecha_fin="2027-06-30",
+        fecha_limite="2026-08-15T21:59:00+00:00",
+    )
+
+    upsert_licitaciones_with_history([lic], source="ted")
+    upsert_licitaciones_with_history([lic], source="ted")
+    upsert_licitaciones_with_history([lic], source="ted")
+
+    with connect() as c:
+        n = c.execute("SELECT COUNT(*) FROM licitaciones_history").fetchone()[0]
+    assert n == 0
+
+
+# ---------------------------------------------------------------------------
 # cursor helpers
 # ---------------------------------------------------------------------------
 

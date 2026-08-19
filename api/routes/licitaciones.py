@@ -102,6 +102,12 @@ class LicitacionDetail(LicitacionSummary):
     fecha_fin: str | None = None
     raw_keywords: str | None = None
     fecha_extraccion: str | None = None
+    # Fuente de ingesta (ADR-009): 'placsp', 'ted', 'pscp', 'euskadi_rss'… La
+    # ficha etiquetaba su enlace externo como «Ver en PLACSP» pasara lo que
+    # pasara, y con TED/PSCP/Euskadi el `url` no lleva a PLACSP: el texto
+    # mentía. Sin este campo el frontend no tiene de dónde sacar la etiqueta —
+    # `id_externo` no sirve, porque PLACSP es el legacy sin namespace.
+    fuente: str | None = None
 
 
 class AdjudicacionSummary(BaseModel):

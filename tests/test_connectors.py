@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import re
+from datetime import UTC, date, datetime, timedelta
+
 import pytest
 
 from scraper.connectors.base import ParsedTender, RawNotice, run_connector
@@ -535,10 +538,158 @@ def test_ted_query_y_cursor():
     assert "publication-date >= 20260101" in q
     assert "classification-cpv IN (48*)" in q and "classification-cpv IN (72*)" in q
 
-    assert connector._since({"last_seen_updated": "2026-06-01"}) == "20260601"
+    # El watermark NO se consulta tal cual: se retrocede `overlap_days` (ver
+    # _OVERLAP_DAYS en el conector y los tests de solapamiento más abajo).
+    assert connector._since({"last_seen_updated": "2026-06-01"}) == "20260518"
     assert len(connector._since(None)) == 8  # lookback por defecto
 
     assert connector.new_cursor() is None  # sin fetch no avanza
+
+
+# ---------------------------------------------------------------------------
+# TED — solapamiento del cursor
+#
+# El cursor guarda el MÁXIMO `publication-date` visto. TED no termina de
+# indexar el día D antes de que aparezcan avisos del día D+1, así que en cuanto
+# el watermark salta a D+1 lo que quedara pendiente de D no se vuelve a
+# consultar nunca. Evidencia (2026-08-16): la ingesta incremental tenía 1.307
+# avisos de la ventana `publication-date >= 2026-06-10` y un backfill manual
+# sobre la misma ventana insertó 362 filas nuevas (22 %).
+# ---------------------------------------------------------------------------
+
+
+class _FakeTedResponse:
+    def __init__(self, payload):
+        self._payload = payload
+
+    def raise_for_status(self):
+        return None
+
+    def json(self):
+        return self._payload
+
+
+class _FakeTedSession:
+    """API TED de mentira: aplica el `publication-date >= YYYYMMDD` de la query
+    igual que la real y pagina, para que los tests midan qué avisos entran de
+    verdad y no sólo cómo quedó construido el string de la query."""
+
+    def __init__(self, notices):
+        self.notices = notices
+        self.queries: list[str] = []
+
+    def post(self, url, json, timeout):
+        query = json["query"]
+        self.queries.append(query)
+        match = re.search(r"publication-date >= (\d{4})(\d{2})(\d{2})", query)
+        assert match is not None, query
+        desde = "-".join(match.groups())
+        vivos = [n for n in self.notices if str(n["publication-date"])[:10] >= desde]
+        page, limit = json["page"], json["limit"]
+        return _FakeTedResponse(
+            {"notices": vivos[(page - 1) * limit : page * limit], "totalNoticeCount": len(vivos)}
+        )
+
+
+def _ted_aviso(pub_number: str, pub_date: str) -> dict:
+    return {
+        "publication-number": pub_number,
+        "publication-date": f"{pub_date}+02:00",
+        "notice-type": "cn-standard",
+        "notice-title": {"spa": f"Aviso {pub_number}"},
+    }
+
+
+# El aviso que TED indexa tarde: su fecha (12-jun) es ANTERIOR al watermark que
+# dejó el run previo (20-jun), así que sólo se alcanza retrocediendo.
+_TARDIO = "111111-2026"
+_AL_DIA = "222222-2026"
+
+
+def _fetch_ids(connector, cursor):
+    return [raw.natural_id for raw in connector.fetch(cursor)]
+
+
+def _sesion_tardio_y_al_dia():
+    return _FakeTedSession([_ted_aviso(_TARDIO, "2026-06-12"), _ted_aviso(_AL_DIA, "2026-06-20")])
+
+
+def test_ted_solapamiento_recupera_avisos_indexados_tarde():
+    session = _sesion_tardio_y_al_dia()
+    connector = TedConnector(session=session)
+
+    vistos = _fetch_ids(connector, {"last_seen_updated": "2026-06-20"})
+
+    assert _TARDIO in vistos, "el solapamiento debe volver a mirar por detrás del watermark"
+    assert "publication-date >= 20260606" in session.queries[0]  # 20-jun menos 14 días
+
+
+def test_ted_sin_solapamiento_pierde_el_aviso_tardio():
+    """Regresión del fallo original: `overlap_days=0` reproduce la estrategia
+    anterior (consultar desde el watermark tal cual) y pierde el aviso."""
+    connector = TedConnector(session=_sesion_tardio_y_al_dia(), overlap_days=0)
+
+    assert _fetch_ids(connector, {"last_seen_updated": "2026-06-20"}) == [_AL_DIA]
+
+
+def test_ted_solapamiento_no_retrocede_el_cursor():
+    """Re-leer avisos viejos no debe hacer retroceder el watermark: `new_cursor`
+    sigue siendo el máximo visto, o cada run arrastraría el cursor hacia atrás."""
+    connector = TedConnector(session=_sesion_tardio_y_al_dia())
+
+    _fetch_ids(connector, {"last_seen_updated": "2026-06-20"})
+
+    assert connector.new_cursor() == {"last_seen_updated": "2026-06-20"}
+
+
+def test_ted_solapamiento_cubre_varias_paginas():
+    """El solapamiento no debe romper la paginación: el aviso tardío está en la
+    segunda página de la ventana re-consultada."""
+    avisos = [_ted_aviso(f"{i:06d}-2026", "2026-06-19") for i in range(100)]
+    avisos.append(_ted_aviso(_TARDIO, "2026-06-12"))
+    connector = TedConnector(session=_FakeTedSession(avisos))
+
+    vistos = _fetch_ids(connector, {"last_seen_updated": "2026-06-20"})
+
+    assert len(vistos) == 101
+    assert _TARDIO in vistos
+
+
+@pytest.mark.parametrize(
+    "valor",
+    [
+        "2026-06-20",
+        "2026-06-20 00:00:00+00:00",
+        "20260620",
+        date(2026, 6, 20),
+        datetime(2026, 6, 20, 9, 30, tzinfo=UTC),
+    ],
+)
+def test_ted_since_tolera_los_formatos_del_cursor(valor):
+    """`ingestion_cursors` puede devolver str ISO, timestamp o date/datetime de
+    psycopg; `--desde` además escribe el formato compacto."""
+    assert TedConnector(overlap_days=5)._since({"last_seen_updated": valor}) == "20260615"
+
+
+def test_ted_since_con_cursor_ilegible_cae_al_lookback():
+    """Un cursor corrupto no debe tumbar el run: mejor re-escanear de más."""
+    connector = TedConnector(default_lookback_days=30)
+    esperado = (datetime.now(UTC).date() - timedelta(days=30)).strftime("%Y%m%d")
+
+    assert connector._since({"last_seen_updated": "no-es-una-fecha"}) == esperado
+
+
+def test_ted_desde_sigue_sobreescribiendo_since():
+    """`main()` monkeypatchea `_since` para el flag `--desde`; el solapamiento
+    no debe aplicarse encima de una fecha que pidió el usuario."""
+    session = _FakeTedSession([_ted_aviso(_TARDIO, "2026-06-12")])
+    connector = TedConnector(session=session)
+    connector._since = lambda cursor: "20260101"  # exactamente lo que hace main()
+
+    vistos = _fetch_ids(connector, {"last_seen_updated": "2026-06-20"})
+
+    assert vistos == [_TARDIO]
+    assert "publication-date >= 20260101" in session.queries[0]
 
 
 # ---------------------------------------------------------------------------

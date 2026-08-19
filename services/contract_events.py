@@ -33,6 +33,7 @@ from pydantic import BaseModel
 from db.database import connect, connect_read, get_cursor, set_cursor
 from db.repositories.base import rows_to_dicts
 from observability.logging import get_logger
+from shared.numeric import values_equal
 
 log = get_logger(__name__)
 
@@ -78,7 +79,12 @@ _CAMPOS_EVENTO = ("estado", "importe", "fecha_fin", "duracion_valor", "duracion_
 
 def _classify(campo: str, antes: Any, despues: Any) -> tuple[str, float | None, str] | None:
     """Devuelve (tipo, importe_delta, detalle) o None si el cambio no es evento."""
-    if antes == despues:
+    # Con tolerancia y no `==`: `importe` es `real` en producción y el snapshot
+    # de historial puede diferir del valor actual sólo por el redondeo a
+    # float4, sin que nadie haya modificado el contrato. Esto además protege
+    # de las filas de historial basura escritas antes del fix en db/upsert.py
+    # (ver shared/numeric.py): siguen en la tabla y el cursor las procesará.
+    if values_equal(antes, despues):
         return None
     if campo == "estado":
         tipo = _ESTADO_EVENTO.get(str(despues or "").upper(), "cambio_estado")

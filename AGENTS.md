@@ -166,7 +166,17 @@ Estas acciones requieren **OK explícito** antes de ejecutar:
 - Cambiar dependencias en `pyproject.toml`, `requirements*.in`, `requirements*.txt`.
 - Borrar tests existentes o relajar markers strict en `pyproject.toml`.
 - `git reset --hard`, force-push, ramas borradas, reescritura de historia.
-- `git push`, **excepto** cuando el usuario o el harness ya asignaron una rama de trabajo para la tarea (típico en Claude Code web / sesiones remotas): a esa rama se pushea sin volver a preguntar. A `master` nunca se pushea directo.
+- `git push`, **excepto** cuando el usuario o el harness ya asignaron una rama de
+    trabajo para la tarea (típico en Claude Code web / sesiones remotas): a esa rama
+    se pushea sin volver a preguntar.
+
+    Sobre `master`: el camino por defecto sigue siendo rama + PR, y a `master` no se
+    pushea directo por iniciativa propia. **Pero si el usuario lo pide nombrando ese
+    destino** ("push a master", "mergea esto a master"), esa es la decisión: se
+    ejecuta sin volver a preguntar y sin reproponer el PR — basta con decir qué se va
+    a hacer antes de hacerlo, y avisar de lo que el push arrastra (rebase pendiente,
+    controles no ejecutados, cambios que no son tuyos). Un "subilo" o un "hacé push" a
+    secas **no** es esa autorización: ahí aplica el camino por defecto.
 - Crear/cerrar PRs e issues en GitHub (incluso desde una rama ya autorizada).
 - Ejecutar la capacidad real de un skill con efectos externos (deploy,
     automatización de navegador contra un sitio real, CLI de infraestructura

@@ -127,6 +127,33 @@ def test_anulacion(db):
     assert eventos(db)[0]["tipo"] == "anulacion"
 
 
+def test_ruido_float4_del_importe_no_genera_modificacion():
+    """El redondeo a float4 del importe no es una modificación de contrato.
+
+    ``licitaciones.importe`` es ``real`` en producción, así que el snapshot de
+    historial y el valor actual pueden diferir sólo por ese redondeo. Sin
+    tolerancia, cada fila de historial basura escrita antes del fix de
+    ``db/upsert.py`` —siguen en la tabla, el cursor las procesará— derivaría en
+    un evento ``modificacion`` con un ``importe_delta`` inventado que la
+    cronología de la ficha de detalle mostraría como un cambio real.
+    """
+    from services.contract_events import _classify
+
+    # Los dos valores que una columna `real` puede devolver para el mismo
+    # importe escrito (12 345 678,91) según cómo se serialice: 1,7e-6 relativo.
+    assert _classify("importe", 12_345_700.0, 12_345_679.0) is None
+
+
+def test_modificacion_real_de_importe_sigue_generando_evento():
+    from services.contract_events import _classify
+
+    evento = _classify("importe", 100_000.0, 125_000.0)
+    assert evento is not None
+    tipo, delta, _detalle = evento
+    assert tipo == "modificacion"
+    assert delta == 25_000.0
+
+
 def test_cambio_solo_titulo_no_genera_evento(db):
     from services.contract_events import derive_new_events
 

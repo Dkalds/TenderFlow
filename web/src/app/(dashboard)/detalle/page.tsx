@@ -908,6 +908,10 @@ export default function DetallePage() {
             ccaa: row.ccaa ?? null,
             cpv: row.cpv ?? null,
             url: row.url ?? null,
+            // El listado no trae `fuente` (solo la ficha), y el comparador no
+            // pinta el enlace externo: mismo `null` que el resto de campos que
+            // esta proyección no puede rellenar.
+            fuente: null,
             tecnologia: row.tecnologia ?? null,
             tipo_contrato: null,
             provincia: null,

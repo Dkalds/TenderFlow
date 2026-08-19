@@ -18,7 +18,7 @@ dependencies = [
     "pydantic-settings>=2.0.0,<3",
     "structlog>=24.1.0,<26",
     "pybreaker>=1.0.0,<2",
-    "reportlab>=4.0,<5",
+    "reportlab>=4.0,<6",
     "scikit-learn>=1.3.0,<2",
     "joblib>=1.3.0,<2",
     "networkx>=3.0,<4",
@@ -27,7 +27,7 @@ dependencies = [
     # de aquí decía `<8` y el lockfile instalaba 8.0.0, así que `pip install -e .`
     # y `pip install -r requirements.txt` pedían cosas incompatibles.
     "prometheus-fastapi-instrumentator>=8.0.0,<9",
-    "bcrypt>=4.0,<5",
+    "bcrypt>=4.0,<6",
     "argon2-cffi>=23.1.0,<25",
     "alembic>=1.13.0,<2",
     # Mismo techo que requirements.in: 0.141 rompe todas las rutas
@@ -58,7 +58,7 @@ llm = [
 # faiss-cpu eliminado en Fase 3 (2026-07-04): /search usa FTS5/BM25+LIKE; sentence-transformers
 # se mantiene porque lo usan ml_classifier, clustering_engine y embeddings.
 ml = [
-    "sentence-transformers>=2.2.0,<4",
+    "sentence-transformers>=2.2.0,<6",
 ]
 # Validación de DataFrames con pandera.
 # Instalar con: pip install licitaciones-sap[schemas]
@@ -68,7 +68,7 @@ schemas = [
 # Deps opcionales para embeddings pre-entrenados en el pipeline ML.
 # Instalar con: pip install licitaciones-sap[ml-embeddings]
 ml-embeddings = [
-    "sentence-transformers>=2.2.0,<4",
+    "sentence-transformers>=2.2.0,<6",
 ]
 # Deps opcionales para observabilidad distribuida (OTLP/OpenTelemetry).
 # Instalar con: pip install licitaciones-sap[tracing]

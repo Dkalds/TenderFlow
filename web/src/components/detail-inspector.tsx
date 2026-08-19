@@ -13,6 +13,7 @@ import { RecurridoBadge, ResolucionesBlock, useResoluciones } from "@/components
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn, formatCurrency, formatDate } from "@/lib/utils";
+import { fuenteLinkLabel } from "@/lib/fuentes";
 import type { LicitacionDetail } from "@/components/detail-panel";
 
 /**
@@ -25,8 +26,8 @@ import type { LicitacionDetail } from "@/components/detail-panel";
  * lista, no abrir y cerrar.
  *
  * Ningún bloque se ha quedado fuera: Resumen (puntuación + desglose, alertas,
- * predicción de baja, los diez campos, descripción, «Ver en PLACSP» y la
- * cronología de eventos del contrato), IA (resumen ejecutivo + chat +
+ * predicción de baja, los diez campos, descripción, el enlace al portal de
+ * origen y la cronología de eventos del contrato), IA (resumen ejecutivo + chat +
  * «Preguntar» + ficha estructurada del pliego con lotes, criterios, ANS y
  * certificaciones citables), Pliegos (documentos parseados) y Recursos
  * (resoluciones del TACRC). La cabecera conserva estado, badge de recurrida,
@@ -319,7 +320,8 @@ export function DetailInspector({
                 // ahora la cronología.
                 className="mb-5 flex w-fit items-center gap-1.5 text-[12.5px] font-medium"
               >
-                Ver en PLACSP <ExternalLink className="h-3 w-3" aria-hidden="true" />
+                {fuenteLinkLabel(l.fuente, l.url)}{" "}
+                <ExternalLink className="h-3 w-3" aria-hidden="true" />
               </a>
             )}
 

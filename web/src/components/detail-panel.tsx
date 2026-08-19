@@ -11,6 +11,7 @@ import { EventosTimeline } from "@/components/eventos-timeline";
 import { PrediccionBajaBlock } from "@/components/prediccion-baja";
 import { RecurridoBadge, ResolucionesBlock } from "@/components/resoluciones-block";
 import { cn, formatCurrency, formatDate } from "@/lib/utils";
+import { fuenteLinkLabel } from "@/lib/fuentes";
 import { ExternalLink, Link2, MessageSquare } from "lucide-react";
 import { toast } from "sonner";
 
@@ -24,6 +25,8 @@ interface LicitacionDetail {
   ccaa: string | null;
   cpv: string | null;
   url: string | null;
+  /** Fuente de ingesta (`placsp`, `ted`, `pscp`…): rotula `url`. Ver `lib/fuentes`. */
+  fuente: string | null;
   tecnologia: string | null;
   tipo_contrato: string | null;
   provincia: string | null;
@@ -227,7 +230,7 @@ export function DetailPanel({ licitacion: l, onClose, className }: DetailPanelPr
             rel="noopener noreferrer"
             className="text-primary mt-6 inline-flex items-center gap-1.5 text-sm hover:underline"
           >
-            Ver en PLACSP <ExternalLink className="h-3.5 w-3.5" />
+            {fuenteLinkLabel(l.fuente, l.url)} <ExternalLink className="h-3.5 w-3.5" />
           </a>
         )}
       </SheetContent>
