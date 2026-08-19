@@ -156,7 +156,7 @@ jobs:
         run: pytest -n auto --cov=. --cov-report=term-missing --cov-report=xml --cov-fail-under=78
 
       - name: Upload coverage XML
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:
           name: coverage-xml-${{ matrix.python-version }}
@@ -180,7 +180,7 @@ jobs:
 
       - name: Upload diff-cover report
         if: github.event_name == 'pull_request' && matrix.python-version == '3.13'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: diff-cover-report
           path: diff-cover.html
@@ -402,7 +402,7 @@ jobs:
 
       - name: Upload bandit report
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: bandit-report
           path: bandit-report.json
@@ -449,7 +449,7 @@ jobs:
 
       - name: Upload Trivy SARIF
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: trivy-results
           path: trivy-results.sarif
@@ -536,7 +536,7 @@ jobs:
 
       - name: Upload frontend coverage
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: web-coverage-lcov
           path: web/coverage/lcov.info
@@ -643,7 +643,7 @@ jobs:
 
       - name: Upload Playwright report
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: playwright-report
           path: web/playwright-report/
@@ -652,7 +652,7 @@ jobs:
       # Sin esto, un fallo por backend caído se diagnostica a ciegas.
       - name: Upload API log
         if: failure()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: e2e-api-log
           path: /tmp/uvicorn.log
