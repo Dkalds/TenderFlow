@@ -39,7 +39,7 @@ from db.repositories.base import rows_to_dicts
 # dominio del dedupe —matching, marcado, cursor— se queda aquí. Los call-sites
 # de ``services/`` siguen importándolo de este módulo, así que el guardrail
 # textual de ``tests/test_dedup_guardrail.py`` sigue viendo lo que vigila.
-from db.sql_fragments import exclude_duplicados_sql  # noqa: F401
+from db.sql_fragments import exclude_duplicados_sql as exclude_duplicados_sql
 from observability.logging import get_logger
 from observability.runtime_metrics import dedupe_marked_total, dedupe_match_rate
 from services.normalization import normalize_company

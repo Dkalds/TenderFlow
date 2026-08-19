@@ -93,9 +93,9 @@ class DocumentosRepository:
             por_hash = {(f["tipo"], f["source_hash"]): f for f in existentes if f["source_hash"]}
             por_uri = {f["uri"]: f for f in existentes}
             legacy_por_tipo: dict[str, list[dict[str, Any]]] = {}
-            for fila in existentes:
-                if not fila["source_hash"]:
-                    legacy_por_tipo.setdefault(fila["tipo"], []).append(fila)
+            for existente in existentes:
+                if not existente["source_hash"]:
+                    legacy_por_tipo.setdefault(existente["tipo"], []).append(existente)
             # ``uri -> id`` de las filas vivas; se mantiene al día según se
             # planifican movimientos, para que dos referencias del mismo lote no
             # se peleen por la misma URI.

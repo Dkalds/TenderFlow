@@ -31,7 +31,6 @@ import { DataTable } from "@/components/ui/data-table";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
-  AlertTriangle,
   Users,
   Key,
   RotateCcw,
@@ -466,13 +465,6 @@ function AdministracionContent() {
           Gestión de DLQ, usuarios y claves API.
         </p>
       </div>
-
-      <Card className="border-yellow-500 bg-yellow-50/50 dark:bg-yellow-950/20">
-        <CardContent className="pt-4 flex items-center gap-2 text-sm">
-          <AlertTriangle className="h-4 w-4 text-yellow-600 shrink-0" />
-          <span>Solo accesible para administradores</span>
-        </CardContent>
-      </Card>
 
       {/* DLQ Management */}
       <Card>

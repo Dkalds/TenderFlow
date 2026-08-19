@@ -29,19 +29,19 @@ from db.repositories.base import rows_to_dicts
 # el nombre sigue importándose desde aquí en `services/pursuits.py`,
 # `scheduler/competitor_alerts.py` y la suite. Es un alias, no una capa
 # passthrough (ADR-024): los llamadores nuevos deben ir al repository.
-from db.repositories.renovaciones import (  # noqa: F401
-    dias_restantes_sql,
-    proximas_renovaciones,
-    rango_vencimiento_sql,
+from db.repositories.renovaciones import dias_restantes_sql as dias_restantes_sql
+from db.repositories.renovaciones import (
+    proximas_renovaciones as proximas_renovaciones,
+)
+from db.repositories.renovaciones import (
+    rango_vencimiento_sql as rango_vencimiento_sql,
 )
 from services.dedupe import exclude_duplicados_sql
 
 # FECHA_FIN_SQL se re-exporta por compatibilidad con imports externos.
-from services.sql_fragments import (  # noqa: F401
-    FECHA_FIN_SQL,
-    TECHNOLOGY_OBSERVED_SQL,
-    fecha_fin_sql,
-)
+from services.sql_fragments import FECHA_FIN_SQL as FECHA_FIN_SQL
+from services.sql_fragments import TECHNOLOGY_OBSERVED_SQL as TECHNOLOGY_OBSERVED_SQL
+from services.sql_fragments import fecha_fin_sql as fecha_fin_sql
 
 # ── Umbrales de "contrato caliente" ───────────────────────────────────────
 # Definición canónica y única (ADR-014): vivía duplicada en el cliente
