@@ -49,6 +49,7 @@ comando
 auxiliar
 funcional
 manifiesto
+manifiestos
 percentil
 limite
 dimensiones
@@ -128,4 +129,5 @@ importen
 termine
 admisible
 significan
+elipsis
 ans

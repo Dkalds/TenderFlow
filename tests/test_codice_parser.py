@@ -980,8 +980,8 @@ class TestParseDocumentReferences:
         del token de la URI (v88)."""
         entry = self._get_entry(
             _make_entry_with_documentos(
-                legal_hash="OCbO5xyQntBEy+cK1a0r9pRmwO4=",
-                technical_hash="f5NdW1FC5TMibeBpUfl84QbUFpM=",
+                legal_hash="OCbO5xyQntBEy+cK1a0r9pRmwO4=",  # pragma: allowlist secret
+                technical_hash="f5NdW1FC5TMibeBpUfl84QbUFpM=",  # pragma: allowlist secret
             )
         )
         refs = parse_document_references(entry)
