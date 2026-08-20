@@ -1001,7 +1001,9 @@ class TestParseDocumentReferences:
         """Un mismo hash partido por el serializador XML no puede generar dos
         identidades distintas."""
         entry = self._get_entry(
-            _make_entry_with_documentos(legal_hash="OCbO5xyQntBE\n        y+cK1a0r9pRmwO4=")  # pragma: allowlist secret
+            _make_entry_with_documentos(
+                legal_hash="OCbO5xyQntBE\n        y+cK1a0r9pRmwO4="
+            )  # pragma: allowlist secret
         )
         refs = parse_document_references(entry)
 
