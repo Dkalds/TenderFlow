@@ -988,8 +988,8 @@ class TestParseDocumentReferences:
 
         legal = next(r for r in refs if r.tipo == "legal")
         technical = next(r for r in refs if r.tipo == "technical")
-        assert legal.source_hash == "OCbO5xyQntBEy+cK1a0r9pRmwO4="
-        assert technical.source_hash == "f5NdW1FC5TMibeBpUfl84QbUFpM="
+        assert legal.source_hash == "OCbO5xyQntBEy+cK1a0r9pRmwO4="  # pragma: allowlist secret
+        assert technical.source_hash == "f5NdW1FC5TMibeBpUfl84QbUFpM="  # pragma: allowlist secret
 
     def test_source_hash_es_none_si_no_viene(self):
         entry = self._get_entry(_make_entry_with_documentos())
@@ -1001,12 +1001,12 @@ class TestParseDocumentReferences:
         """Un mismo hash partido por el serializador XML no puede generar dos
         identidades distintas."""
         entry = self._get_entry(
-            _make_entry_with_documentos(legal_hash="OCbO5xyQntBE\n        y+cK1a0r9pRmwO4=")
+            _make_entry_with_documentos(legal_hash="OCbO5xyQntBE\n        y+cK1a0r9pRmwO4=")  # pragma: allowlist secret
         )
         refs = parse_document_references(entry)
 
         legal = next(r for r in refs if r.tipo == "legal")
-        assert legal.source_hash == "OCbO5xyQntBEy+cK1a0r9pRmwO4="
+        assert legal.source_hash == "OCbO5xyQntBEy+cK1a0r9pRmwO4="  # pragma: allowlist secret
 
     def test_multiple_additional_documents(self):
         entry = self._get_entry(
