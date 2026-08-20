@@ -33,6 +33,13 @@ from typing import Any
 
 from db.database import connect, connect_read, get_cursor, set_cursor
 from db.repositories.base import rows_to_dicts
+
+# Reexport: el fragmento SQL bajó a ``db/sql_fragments.py`` (ADR-022) para que
+# ``db/`` pueda interpolarlo sin importar hacia arriba (ADR-024). La lógica de
+# dominio del dedupe —matching, marcado, cursor— se queda aquí. Los call-sites
+# de ``services/`` siguen importándolo de este módulo, así que el guardrail
+# textual de ``tests/test_dedup_guardrail.py`` sigue viendo lo que vigila.
+from db.sql_fragments import exclude_duplicados_sql as exclude_duplicados_sql
 from observability.logging import get_logger
 from observability.runtime_metrics import dedupe_marked_total, dedupe_match_rate
 from services.normalization import normalize_company
@@ -41,20 +48,6 @@ log = get_logger(__name__)
 
 CONFIANZA_EXACTA = 1.0
 CONFIANZA_REVISION = 0.8
-
-
-def exclude_duplicados_sql(col: str = "l.id_externo") -> str:
-    """Cláusula SQL para excluir filas no-canónicas en consultas analíticas.
-
-    ``col`` es la columna que referencia a ``licitaciones.id_externo`` en la
-    query llamadora (``l.id_externo``, ``a.licitacion_id``…). Centralizada
-    para no repetir la subquery en cada servicio. Solo excluye duplicados
-    ``confirmed``; los ``pending`` cuentan hasta que un humano los confirme.
-    """
-    # S608: `col` es una referencia de columna fija escrita por los servicios
-    # llamadores, nunca input de usuario; los valores siempre van con ?.
-    subquery = "(SELECT licitacion_id FROM licitaciones_duplicados WHERE status = 'confirmed')"
-    return f"{col} NOT IN {subquery}"
 
 
 def normalize_organo(name: str | None) -> str | None:

@@ -25,6 +25,7 @@ import {
   routeSlug,
   spaceAbsorbing,
 } from "@/lib/console-spaces";
+import { ScrollEdgeUnder, useScrollEdgeState } from "@/components/layout/scroll-edge";
 import { useAdmin } from "@/hooks/use-admin";
 import { useWithFilters } from "@/lib/filters";
 import { useDensity, initDensity } from "@/lib/density";
@@ -183,6 +184,9 @@ export function ConsoleRail() {
   const isAdmin = useAdmin();
   const withFilters = useWithFilters();
   const [mobileOpen, setMobileOpen] = React.useState(false);
+  // La barra móvil es translúcida y se apoya sobre el contenido: su separador
+  // sólo existe cuando hay algo desplazado debajo (ver `scroll-edge.tsx`).
+  const scrolled = useScrollEdgeState();
 
   const spaces = CONSOLE_SPACES.filter((space) => isSpaceVisible(space, isAdmin));
 
@@ -242,7 +246,7 @@ export function ConsoleRail() {
 
       {/* Móvil: el rail se pliega en un cajón. El diseño es de escritorio, pero
           plegarlo a nada dejaría el producto sin navegación en pantalla pequeña. */}
-      <div className="tf-glass sticky top-0 z-40 flex h-12 items-center gap-2 border-b border-border/70 px-3 md:hidden">
+      <div className="tf-glass sticky top-0 z-40 flex h-12 items-center gap-2 px-3 md:hidden">
         <Button
           variant="ghost"
           size="icon"
@@ -257,6 +261,9 @@ export function ConsoleRail() {
         <span className="ml-auto">
           <AccountMenu />
         </span>
+        {/* Dentro de la barra —y no como hermano— porque `sticky` ya la deja
+            posicionada y aquí no hay `overflow` que recorte. */}
+        <ScrollEdgeUnder active={scrolled} />
       </div>
 
       <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>

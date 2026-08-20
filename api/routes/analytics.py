@@ -64,7 +64,12 @@ from services.analytics.tecnologias import (
     get_tecnologia_detalle,
     get_tecnologias,
 )
-from services.analytics.trends import TrendsFilters, TrendsResult, get_trends
+from services.analytics.trends import (
+    MAX_TREND_POINTS,
+    TrendsFilters,
+    TrendsResult,
+    get_trends,
+)
 from services.analytics.trends_cpv import TrendsCpvFilters, TrendsCpvResult, get_trends_cpv
 from services.analytics.utes import UTEFilters, UTEResult, get_utes
 from services.source_health import SourceFreshnessResult, get_source_freshness
@@ -108,11 +113,26 @@ def trends(
     ccaa: str | None = Query(default=None, description="Filter by CCAA"),
     tecnologia: str | None = Query(default=None, description="Filter by tecnologia"),
     group_by: Literal["month", "week", "day"] = Query(
-        default="month", description="Group by month, week or day"
+        default="month",
+        description=(
+            "Frecuencia del roll-up de la serie: month (default), week o day. "
+            "Es el mando que acota `series`, que escala con la LONGITUD DEL RANGO "
+            "DE FECHAS y no con el número de licitaciones (day ≈ 1 punto/día, o "
+            "sea ~3.650 puntos en 10 años; week ~1/7; month ~1/30). La respuesta "
+            "declara en `group_by` la granularidad usada y en `serie_truncada` si "
+            f"se alcanzó el techo de {MAX_TREND_POINTS} puntos."
+        ),
     ),
     _user: dict[str, Any] = Depends(get_current_session_user),
 ) -> TrendsResult:
-    """Time series trends with heatmap and YoY deltas."""
+    """Time series trends with heatmap and YoY deltas.
+
+    ``series`` es lo único de esta respuesta que no está acotado por la
+    cardinalidad de un ``GROUP BY``: crece con el rango de fechas pedido. Por
+    eso el contrato aquí no es ``limit``/``offset`` (no hay "página siguiente"
+    de una serie temporal) sino ``group_by`` como granularidad del roll-up, más
+    un techo duro de puntos que la respuesta declara.
+    """
     filters = TrendsFilters(
         fecha_desde=fecha_desde,
         fecha_hasta=fecha_hasta,
@@ -565,10 +585,28 @@ def trends_cpv(
     fecha_hasta: date | None = Query(default=None, description="End date (YYYY-MM-DD)"),
     ccaa: str | None = Query(default=None, description="Filter by CCAA"),
     tecnologia: str | None = Query(default=None, description="Filter by tecnologia"),
-    top_n: int = Query(default=15, ge=1, le=50, description="Top N CPVs"),
+    top_n: int = Query(
+        default=15,
+        ge=1,
+        le=50,
+        description=(
+            "Top N CPVs. Acota el número de series, no la longitud de cada una: "
+            "el tamaño total es `top_n` x meses del rango."
+        ),
+    ),
     _user: dict[str, Any] = Depends(get_current_session_user),
 ) -> TrendsCpvResult:
-    """Per-CPV time series and rankings."""
+    """Per-CPV time series and rankings.
+
+    Comparte con ``/trends`` el eje que crece con el rango de fechas, pero el
+    mando de roll-up **no aplica igual**: aquí la serie ya es mensual y fija
+    (``trends_cpv_series`` agrupa por ``substr(fecha_publicacion, 1, 7)`` en
+    SQL), o sea que ya está en la granularidad más gruesa que este endpoint
+    ofrece, y el otro eje —cuántos CPVs— sí está acotado por ``top_n`` (<=50).
+    Exponer un ``group_by`` aquí exigiría tocar el SQL de
+    ``db/repositories/aggregates.py``, que es donde vive (ADR-022); queda
+    anotado para la ola que lo aborde en vez de duplicar el roll-up en Python.
+    """
     filters = TrendsCpvFilters(
         cpv=cpv,
         fecha_desde=fecha_desde,

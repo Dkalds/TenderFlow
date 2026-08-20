@@ -29,14 +29,15 @@ from dataclasses import dataclass
 from datetime import timedelta
 from typing import Any
 
-from db.database import connect_read
-from db.repositories.base import rows_to_dicts
+from db.contrato_eventos import contar_por_licitacion_y_tipo
+from db.repositories.adjudicaciones import AdjudicacionRepository
 from observability.logging import get_logger
-from services.dedupe import exclude_duplicados_sql, normalize_organo
+from services.dedupe import normalize_organo
 from services.ml.features import _cpv4, _fecha_dt
-from services.sql_fragments import fecha_fin_sql
 
 log = get_logger(__name__)
+
+_adj_repo = AdjudicacionRepository()
 
 VENTANA_MESES = 18
 
@@ -72,32 +73,13 @@ class ParRetencion:
 
 
 def _cargar_adjudicaciones() -> list[dict[str, Any]]:
-    sql = f"""
-        SELECT a.licitacion_id, a.empresa_id, a.nombre, a.fecha_adjudicacion,
-               a.importe_adjudicado, l.organo_contratacion AS organo, l.cpv,
-               l.ccaa, l.importe, l.titulo,
-               {fecha_fin_sql()} AS fecha_fin_efectiva
-        FROM adjudicaciones a
-        JOIN licitaciones l ON l.id_externo = a.licitacion_id
-        WHERE a.fecha_adjudicacion IS NOT NULL AND {exclude_duplicados_sql()}
-        ORDER BY a.fecha_adjudicacion ASC
-    """  # noqa: S608 — fragmentos constantes (fecha_fin_sql, dedupe)
-    with connect_read() as c:
-        return rows_to_dicts(c.execute(sql))
+    """Histórico ordenado por fecha de adjudicación (ver ``load_para_retencion``)."""
+    return _adj_repo.load_para_retencion()
 
 
 def _eventos_por_licitacion() -> dict[str, dict[str, int]]:
-    with connect_read() as c:
-        rows = rows_to_dicts(
-            c.execute(
-                "SELECT licitacion_id, tipo, COUNT(*) AS n FROM contrato_eventos "
-                "WHERE tipo IN ('modificacion', 'prorroga') GROUP BY licitacion_id, tipo"
-            )
-        )
-    out: dict[str, dict[str, int]] = defaultdict(dict)
-    for r in rows:
-        out[str(r["licitacion_id"])][str(r["tipo"])] = int(r["n"])
-    return out
+    """Modificaciones y prórrogas por licitación, proxy de satisfacción."""
+    return contar_por_licitacion_y_tipo()
 
 
 def _features_historicas(

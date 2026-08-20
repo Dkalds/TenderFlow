@@ -44,7 +44,7 @@ export function AdminGuard({ children, fallback }: AdminGuardProps) {
           <ShieldAlert className="h-12 w-12 text-muted-foreground" />
           <h2 className="text-xl font-semibold">Acceso restringido</h2>
           <p className="text-muted-foreground max-w-md">
-            Esta pagina solo esta disponible para administradores.
+            Esta página solo está disponible para administradores.
           </p>
         </CardContent>
       </Card>

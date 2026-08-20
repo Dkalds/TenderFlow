@@ -1,22 +1,13 @@
-ist
 licitacion
 licitaciones
 nd
 te
 elegible
-hagas
 autor
 implemente
 fo
-ot
-ths
-sav
-acion
 ue
 hist
-iif
-wronly
-readby
 varios
 excede
 caracteres
@@ -58,6 +49,7 @@ comando
 auxiliar
 funcional
 manifiesto
+manifiestos
 percentil
 limite
 dimensiones
@@ -70,7 +62,6 @@ diagrama
 responsable
 ignora
 normales
-amplitud
 pase
 persisten
 momento
@@ -124,7 +115,6 @@ mata
 smove
 envrionment
 cursos
-foto
 interpolar
 sme
 extensiones
@@ -139,4 +129,5 @@ importen
 termine
 admisible
 significan
+elipsis
 ans

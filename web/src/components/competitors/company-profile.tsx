@@ -15,6 +15,7 @@ import { formatDate, formatNumber } from "@/lib/utils";
 
 import { CompanyAwards } from "./company-awards";
 import { CompanyProfileSummary } from "./company-profile-summary";
+import { CompanyUteParticipations } from "./company-ute-participations";
 import type { CompanyProfileData } from "./company-profile-types";
 
 type Period = "12m" | "3y" | "all" | "global";
@@ -203,11 +204,17 @@ export function CompanyProfile({ empresaId, groupIds }: CompanyProfileProps) {
       </section>
 
       {noActivity ? (
-        <div className="bg-muted/20 rounded-lg border border-dashed p-6 text-center">
-          <p className="font-medium">Sin adjudicaciones dentro de este ámbito</p>
-          <p className="text-muted-foreground mt-1 text-sm">
-            La empresa existe, pero no tiene actividad que cumpla el periodo y los filtros seleccionados.
-          </p>
+        // Un miembro que solo ha ganado a través de UTEs tiene 0 adjudicaciones
+        // propias: sin esta rama su participación quedaría igual de invisible
+        // que antes de exponerla.
+        <div className="space-y-6">
+          <div className="bg-muted/20 rounded-lg border border-dashed p-6 text-center">
+            <p className="font-medium">Sin adjudicaciones dentro de este ámbito</p>
+            <p className="text-muted-foreground mt-1 text-sm">
+              La empresa existe, pero no tiene actividad que cumpla el periodo y los filtros seleccionados.
+            </p>
+          </div>
+          <CompanyUteParticipations participations={profile.participaciones_ute} companyName={profile.empresa.nombre} />
         </div>
       ) : (
         <div className="space-y-8">

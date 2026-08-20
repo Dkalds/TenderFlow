@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useMemo } from "react";
 import { useSearchParams } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
@@ -15,6 +15,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   Select,
   SelectContent,
@@ -42,7 +43,6 @@ import {
   Mail,
 } from "lucide-react";
 import { cn, formatCurrency, formatDate, truncate } from "@/lib/utils";
-import type { WatchlistRuleMatch, WatchlistRuleOut } from "@/lib/api-types";
 import { getJSON, setJSON } from "@/lib/storage";
 import { apiMutate, fetchWithAuth } from "@/lib/api-client";
 import { SpaceShell } from "@/components/layout/space-shell";
@@ -50,149 +50,33 @@ import {
   useRemoveWatchlistItem,
   useWatchlistItems,
 } from "@/hooks/use-watchlist-items";
-
-/* ------------------------------------------------------------------ */
-/*  Types — del contrato OpenAPI (la ruta ya declara sus DTOs)         */
-/* ------------------------------------------------------------------ */
-
-type Frequency = "immediate" | "daily" | "weekly";
-
-type ApiRule = WatchlistRuleOut;
-
-interface RuleBody {
-  nombre: string | null;
-  keyword: string | null;
-  cpv: string | null;
-  min_importe: number | null;
-  ccaa: string | null;
-  frequency: Frequency;
-  active: boolean;
-}
-
-/** Estado de formulario compartido entre "Nueva regla" y el panel de edición. */
-interface RuleFormState {
-  keyword: string;
-  cpv: string;
-  minImporte: string;
-  ccaa: string;
-  frequency: Frequency;
-}
-
-function ruleToFormState(rule: ApiRule): RuleFormState {
-  return {
-    keyword: rule.keyword ?? "",
-    cpv: rule.cpv ?? "",
-    minImporte: rule.min_importe != null ? String(rule.min_importe) : "",
-    ccaa: rule.ccaa ?? "",
-    frequency: rule.frequency,
-  };
-}
-
-function formStateToBody(form: RuleFormState, active: boolean): RuleBody {
-  return {
-    nombre: form.keyword.trim() || null,
-    keyword: form.keyword.trim() || null,
-    cpv: form.cpv.trim() || null,
-    min_importe: form.minImporte ? parseFloat(form.minImporte) : null,
-    ccaa: form.ccaa || null,
-    frequency: form.frequency,
-    active,
-  };
-}
-
-type MatchItem = WatchlistRuleMatch;
+import {
+  FREQ_LABEL,
+  FREQ_OPTIONS,
+  LEGACY_KEY,
+  MIGRATED_FLAG,
+  activeRulesOf,
+  ccaaOptions,
+  dedupeMatches,
+  formStateToBody,
+  parsePrefill,
+  prefillToFormState,
+  ruleToBody,
+  ruleToFormState,
+  useLegacyRuleMigration,
+  type ApiRule,
+  type Frequency,
+  type LegacyRule,
+  type MatchItem,
+  type RuleBody,
+  type RuleFormState,
+} from "./_hooks/use-watchlist-rules";
 
 /* ------------------------------------------------------------------ */
 /*  Helpers de API (sesión vía cookie, igual que el resto del dash)    */
 /* ------------------------------------------------------------------ */
 
 const RULES_KEY = "/api/v1/watchlist/rules";
-
-function ruleToBody(rule: ApiRule, overrides: Partial<RuleBody> = {}): RuleBody {
-  return {
-    nombre: rule.nombre ?? null,
-    keyword: rule.keyword ?? null,
-    cpv: rule.cpv ?? null,
-    min_importe: rule.min_importe ?? null,
-    ccaa: rule.ccaa ?? null,
-    frequency: rule.frequency ?? "daily",
-    active: rule.active ?? true,
-    ...overrides,
-  };
-}
-
-/* ------------------------------------------------------------------ */
-/*  Migración one-shot del localStorage legacy → servidor             */
-/* ------------------------------------------------------------------ */
-
-const LEGACY_KEY = "watchlist_rules";
-const MIGRATED_FLAG = "watchlist_rules_migrated";
-
-interface LegacyRule {
-  keyword?: string;
-  cpvFilter?: string;
-  minImporte?: number | null;
-  ccaa?: string;
-  frequency?: "inmediata" | "diaria" | "semanal";
-  active?: boolean;
-}
-
-const LEGACY_FREQ: Record<string, Frequency> = {
-  inmediata: "immediate",
-  diaria: "daily",
-  semanal: "weekly",
-};
-
-function legacyToBody(r: LegacyRule): RuleBody {
-  return {
-    nombre: r.keyword?.trim() || null,
-    keyword: r.keyword?.trim() || null,
-    cpv: r.cpvFilter?.trim() || null,
-    min_importe: r.minImporte ?? null,
-    ccaa: r.ccaa || null,
-    frequency: LEGACY_FREQ[r.frequency ?? "diaria"] ?? "daily",
-    active: r.active ?? true,
-  };
-}
-
-/* ------------------------------------------------------------------ */
-/*  Opciones de formulario                                             */
-/* ------------------------------------------------------------------ */
-
-const CCAA_FALLBACK = [
-  "__all__",
-  "Andalucia",
-  "Aragon",
-  "Asturias",
-  "Baleares",
-  "Canarias",
-  "Cantabria",
-  "Castilla y Leon",
-  "Castilla-La Mancha",
-  "Cataluna",
-  "Ceuta",
-  "Comunidad Valenciana",
-  "Extremadura",
-  "Galicia",
-  "La Rioja",
-  "Madrid",
-  "Melilla",
-  "Murcia",
-  "Navarra",
-  "Pais Vasco",
-];
-
-const FREQ_OPTIONS: { value: Frequency; label: string }[] = [
-  { value: "immediate", label: "Inmediata" },
-  { value: "daily", label: "Diaria" },
-  { value: "weekly", label: "Semanal" },
-];
-
-const FREQ_LABEL: Record<Frequency, string> = {
-  immediate: "Inmediata",
-  daily: "Diaria",
-  weekly: "Semanal",
-};
 
 /* ------------------------------------------------------------------ */
 /*  Campos de formulario reutilizables (edición de reglas)             */
@@ -217,7 +101,7 @@ function RuleFormFields({
         </label>
         <Input
           id={`${idPrefix}-keyword`}
-          placeholder="Ej: SAP, infraestructura..."
+          placeholder="Ej: SAP, infraestructura…"
           value={value.keyword}
           onChange={(e) => onChange({ keyword: e.target.value })}
         />
@@ -235,7 +119,7 @@ function RuleFormFields({
       </div>
       <div className="space-y-1">
         <label htmlFor={`${idPrefix}-importe`} className="text-sm font-medium">
-          Importe minimo
+          Importe mínimo
         </label>
         <Input
           id={`${idPrefix}-importe`}
@@ -247,7 +131,7 @@ function RuleFormFields({
       </div>
       <div className="space-y-1">
         <label htmlFor={`${idPrefix}-ccaa`} className="text-sm font-medium">
-          Comunidad Autonoma
+          Comunidad Autónoma
         </label>
         <Select
           value={value.ccaa || "__all__"}
@@ -267,7 +151,7 @@ function RuleFormFields({
       </div>
       <div className="space-y-1">
         <label htmlFor={`${idPrefix}-frequency`} className="text-sm font-medium">
-          Frecuencia de notificacion
+          Frecuencia de notificación
         </label>
         <Select
           value={value.frequency}
@@ -362,7 +246,7 @@ function EditRuleSheet({
               )}
               {previewMut.isSuccess && (
                 <Badge variant="secondary">
-                  {previewMut.data.total} licitacion(es) coincidirian
+                  {previewMut.data.total} licitación(es) coincidirían
                 </Badge>
               )}
               {previewMut.isError && (
@@ -458,15 +342,20 @@ function FavoritosPanel() {
                 {formatDate(item.fecha_publicacion)}
               </span>
             )}
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-9 w-9 shrink-0 text-destructive"
-              title="Quitar de favoritos"
-              onClick={() => removeItem.mutate(item.id_externo)}
-            >
-              <Trash2 className="h-4 w-4" />
-            </Button>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-9 w-9 shrink-0 text-destructive"
+                  aria-label="Quitar de favoritos"
+                  onClick={() => removeItem.mutate(item.id_externo)}
+                >
+                  <Trash2 className="h-4 w-4" aria-hidden="true" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Quitar de favoritos</TooltipContent>
+            </Tooltip>
           </CardContent>
         </Card>
       ))}
@@ -487,22 +376,17 @@ export default function MiWatchlistPage() {
   // filtros" navega aquí con ?prefill=<filterParams JSON-encoded>. Se lee
   // una sola vez como estado inicial (no en un efecto) — el usuario puede
   // seguir editando el formulario libremente después.
-  const prefill = useMemo(() => {
-    const raw = searchParams.get("prefill");
-    if (!raw) return null;
-    try {
-      return JSON.parse(raw) as Record<string, string>;
-    } catch {
-      return null;
-    }
-  }, [searchParams]);
+  const prefilled = useMemo(
+    () => prefillToFormState(parsePrefill(searchParams.get("prefill"))),
+    [searchParams],
+  );
 
   // Form state
-  const [keyword, setKeyword] = useState(() => prefill?.q ?? "");
-  const [cpv, setCpv] = useState("");
-  const [minImporte, setMinImporte] = useState(() => prefill?.importe_min ?? "");
-  const [ccaa, setCcaa] = useState(() => prefill?.ccaa?.split(",")[0] ?? "");
-  const [frequency, setFrequency] = useState<Frequency>("daily");
+  const [keyword, setKeyword] = useState(() => prefilled.keyword);
+  const [cpv, setCpv] = useState(() => prefilled.cpv);
+  const [minImporte, setMinImporte] = useState(() => prefilled.minImporte);
+  const [ccaa, setCcaa] = useState(() => prefilled.ccaa);
+  const [frequency, setFrequency] = useState<Frequency>(prefilled.frequency);
   const [formOpen, setFormOpen] = useState(true);
   const [editingRule, setEditingRule] = useState<ApiRule | null>(null);
 
@@ -519,36 +403,15 @@ export default function MiWatchlistPage() {
   });
 
   /* ---- Migración one-shot del localStorage ---- */
-  const migratedRef = useRef(false);
-  useEffect(() => {
-    if (migratedRef.current) return;
-    migratedRef.current = true;
-    if (getJSON<boolean>(MIGRATED_FLAG, false)) return;
-    const legacy = getJSON<LegacyRule[]>(LEGACY_KEY, []);
-    if (legacy.length === 0) {
-      setJSON(MIGRATED_FLAG, true);
-      return;
-    }
-    void (async () => {
-      let todasOk = true;
-      for (const r of legacy) {
-        try {
-          await apiMutate("POST", RULES_KEY, legacyToBody(r));
-        } catch {
-          // best-effort: seguimos con las demás, pero si alguna regla falla NO
-          // marcamos la migración como completa ni vaciamos el legacy. Así no se
-          // pierden reglas (antes se borraban aunque el POST fallara con 403) y
-          // el próximo arranque reintenta la migración pendiente.
-          todasOk = false;
-        }
-      }
-      if (todasOk) {
-        setJSON(MIGRATED_FLAG, true);
-        setJSON(LEGACY_KEY, []);
-      }
-      qc.invalidateQueries({ queryKey: ["watchlist-rules"] });
-    })();
-  }, [qc]);
+  useLegacyRuleMigration({
+    // fdi-allow:client-state -- lado lector de la migración one-shot a servidor
+    readFlag: () => getJSON<boolean>(MIGRATED_FLAG, false),
+    readLegacy: () => getJSON<LegacyRule[]>(LEGACY_KEY, []),
+    markMigrated: () => setJSON(MIGRATED_FLAG, true),
+    clearLegacy: () => setJSON(LEGACY_KEY, []),
+    post: (body: RuleBody) => apiMutate("POST", RULES_KEY, body),
+    onDone: () => qc.invalidateQueries({ queryKey: ["watchlist-rules"] }),
+  });
 
   /* ---- CCAA options (best-effort desde meta) ---- */
   const { data: metaCcaas } = useQuery<string[]>({
@@ -563,8 +426,7 @@ export default function MiWatchlistPage() {
     },
     staleTime: Infinity,
   });
-  const ccaaList =
-    metaCcaas && metaCcaas.length > 0 ? ["__all__", ...metaCcaas] : CCAA_FALLBACK;
+  const ccaaList = ccaaOptions(metaCcaas);
 
   /* ---- Mutations ---- */
   const invalidate = () =>
@@ -608,10 +470,7 @@ export default function MiWatchlistPage() {
     setFrequency("daily");
   };
 
-  const activeRules = useMemo(
-    () => (rules ?? []).filter((r) => r.active),
-    [rules],
-  );
+  const activeRules = useMemo(() => activeRulesOf(rules), [rules]);
 
   /* ---- Resultados combinados (matches reales por regla activa) ---- */
   const { data: combined, isLoading: matchesLoading } = useQuery<MatchItem[]>({
@@ -630,14 +489,7 @@ export default function MiWatchlistPage() {
           }
         }),
       );
-      const seen = new Map<string, MatchItem>();
-      for (const items of perRule) {
-        for (const item of items) {
-          const key = item.id_externo ?? item.titulo ?? JSON.stringify(item);
-          if (!seen.has(key)) seen.set(key, item);
-        }
-      }
-      return Array.from(seen.values());
+      return dedupeMatches(perRule);
     },
   });
 
@@ -728,7 +580,7 @@ export default function MiWatchlistPage() {
                 </label>
                 <Input
                   id="wl-keyword"
-                  placeholder="Ej: SAP, infraestructura..."
+                  placeholder="Ej: SAP, infraestructura…"
                   value={keyword}
                   onChange={(e) => setKeyword(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && submit()}
@@ -747,7 +599,7 @@ export default function MiWatchlistPage() {
               </div>
               <div className="space-y-1">
                 <label htmlFor="wl-importe" className="text-sm font-medium">
-                  Importe minimo
+                  Importe mínimo
                 </label>
                 <Input
                   id="wl-importe"
@@ -759,7 +611,7 @@ export default function MiWatchlistPage() {
               </div>
               <div className="space-y-1">
                 <label htmlFor="wl-ccaa" className="text-sm font-medium">
-                  Comunidad Autonoma
+                  Comunidad Autónoma
                 </label>
                 <Select
                   value={ccaa || "__all__"}
@@ -779,7 +631,7 @@ export default function MiWatchlistPage() {
               </div>
               <div className="space-y-1">
                 <label htmlFor="wl-frequency" className="text-sm font-medium">
-                  Frecuencia de notificacion
+                  Frecuencia de notificación
                 </label>
                 <Select
                   value={frequency}
@@ -860,45 +712,66 @@ export default function MiWatchlistPage() {
                     </div>
                   </div>
                   <div className="flex items-center gap-1 shrink-0">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-9 w-9"
-                      title={rule.active ? "Desactivar" : "Activar"}
-                      onClick={() =>
-                        updateMut.mutate({
-                          id: rule.id,
-                          body: ruleToBody(rule, { active: !rule.active }),
-                        })
-                      }
-                    >
-                      <Eye
-                        className={cn(
-                          "h-4 w-4",
-                          rule.active
-                            ? "text-primary"
-                            : "text-muted-foreground",
-                        )}
-                      />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-9 w-9"
-                      title="Editar regla"
-                      onClick={() => setEditingRule(rule)}
-                    >
-                      <Pencil className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-9 w-9 text-destructive"
-                      title="Eliminar"
-                      onClick={() => deleteMut.mutate(rule.id)}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-9 w-9"
+                          aria-label={
+                            rule.active ? "Desactivar regla" : "Activar regla"
+                          }
+                          aria-pressed={rule.active}
+                          onClick={() =>
+                            updateMut.mutate({
+                              id: rule.id,
+                              body: ruleToBody(rule, { active: !rule.active }),
+                            })
+                          }
+                        >
+                          <Eye
+                            aria-hidden="true"
+                            className={cn(
+                              "h-4 w-4",
+                              rule.active
+                                ? "text-primary"
+                                : "text-muted-foreground",
+                            )}
+                          />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        {rule.active ? "Desactivar" : "Activar"}
+                      </TooltipContent>
+                    </Tooltip>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-9 w-9"
+                          aria-label="Editar regla"
+                          onClick={() => setEditingRule(rule)}
+                        >
+                          <Pencil className="h-4 w-4" aria-hidden="true" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>Editar regla</TooltipContent>
+                    </Tooltip>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-9 w-9 text-destructive"
+                          aria-label="Eliminar regla"
+                          onClick={() => deleteMut.mutate(rule.id)}
+                        >
+                          <Trash2 className="h-4 w-4" aria-hidden="true" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>Eliminar</TooltipContent>
+                    </Tooltip>
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-2">
@@ -997,7 +870,7 @@ export default function MiWatchlistPage() {
                             href={`/detalle?lic=${item.id_externo ?? ""}`}
                             className="text-sm font-medium hover:underline line-clamp-1"
                           >
-                            {truncate(item.titulo ?? "Sin titulo", 100)}
+                            {truncate(item.titulo ?? "Sin título", 100)}
                           </a>
                           {item.organo_contratacion && (
                             <p className="text-xs text-muted-foreground truncate">

@@ -46,7 +46,10 @@ def _run_fetch_phase(limit: int = _FETCH_BATCH_SIZE) -> dict[str, int]:
 
     repo = DocumentosRepository()
     pendientes = repo.list_pendientes(limit=limit)
-    counts: dict[str, int] = {"extracted": 0, "error": 0}
+    # ``skipped`` (breaker abierto) se declara aquí para que el informe del cron
+    # tenga siempre la misma forma: un lote entero saltado debe verse como 300
+    # skipped, no como una clave ausente.
+    counts: dict[str, int] = {"extracted": 0, "error": 0, "skipped": 0}
     for doc in pendientes:
         try:
             status = fetch_and_extract(doc)

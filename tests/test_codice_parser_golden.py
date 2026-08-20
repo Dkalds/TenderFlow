@@ -54,7 +54,7 @@ _GOLDEN = _FIXTURES / "golden.jsonl"
 
 # El corpus solo crece (ver docstring). Bajar este número es un error, no un
 # ajuste: significa que alguien borró un caso que un incidente real justificó.
-_MIN_CASOS = 11
+_MIN_CASOS = 14
 
 # Rellenado por `default_factory=now_utc_iso`: no es salida del parseo.
 _CAMPOS_NO_DETERMINISTAS = frozenset({"fecha_extraccion"})

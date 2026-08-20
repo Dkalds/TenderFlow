@@ -222,7 +222,10 @@ def ensure_documents_ready(licitacion_id: str) -> dict[str, int]:
     )
     candidates.sort(key=lambda row: _DOC_TIPO_PRIORITY.get(str(row.get("tipo")), 2))
 
-    counts = {"attempted": 0, "extracted": 0, "error": 0}
+    # ``skipped`` lo devuelve el fetcher cuando el breaker está abierto: no se
+    # llegó a intentar la descarga y la fila sigue ``pending``. Se declara para
+    # que el diagnóstico pueda distinguirlo de un fallo real.
+    counts = {"attempted": 0, "extracted": 0, "error": 0, "skipped": 0}
     for row in candidates[:_ONDEMAND_MAX_DOCUMENTS]:
         counts["attempted"] += 1
         try:
@@ -250,6 +253,15 @@ def _missing_pages_detail(licitacion_id: str, fetched: dict[str, int]) -> str:
         return (
             "Los pliegos siguen en cola de procesado (el servidor no tiene "
             "instalada la extracción de PDF); el job nocturno los procesará."
+        )
+    if fetched.get("skipped") and not fetched.get("error"):
+        # Breaker abierto: no se intentó ninguna descarga, así que hablar de
+        # "descargas fallaron" mandaría a mirar los pliegos cuando el problema
+        # es que PLACSP está rechazando y hay que reintentar más tarde.
+        return (
+            "PLACSP no está respondiendo ahora mismo, así que no se ha llegado "
+            "a descargar ningún pliego. Los documentos siguen en cola: "
+            "reintentá en unos minutos o esperá al job nocturno."
         )
     errores = sum(1 for row in rows if row.get("status") == "error")
     return (

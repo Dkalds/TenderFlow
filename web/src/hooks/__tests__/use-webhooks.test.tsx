@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { useCreateWebhook, usePingWebhook, useWebhookEventTypes, useWebhooks } from "@/hooks/use-webhooks";
+import { callUrl, jsonResponse } from "./fetch-call";
 
 const toastCalls: Array<[string, string]> = [];
 vi.mock("sonner", () => ({
@@ -19,7 +20,7 @@ function wrapper({ children }: { children: React.ReactNode }) {
 }
 
 function stub(body: unknown) {
-  const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(body), { status: 200 }));
+  const fetchMock = vi.fn().mockImplementation(() => Promise.resolve(jsonResponse(body)));
   vi.stubGlobal("fetch", fetchMock);
   return fetchMock;
 }
@@ -47,7 +48,7 @@ describe("useWebhooks", () => {
     const { result } = renderHook(() => useWebhookEventTypes(), { wrapper });
     await waitFor(() => expect(result.current.data).toEqual(["*", "watchlist_match"]));
 
-    expect(String(fetchMock.mock.calls[0][0])).toContain("/api/v1/webhooks/event-types");
+    expect(callUrl(fetchMock.mock.calls[0])).toBe("/api/v1/webhooks/event-types");
   });
 
   it("el alta devuelve el secret, que solo viaja esta vez", async () => {

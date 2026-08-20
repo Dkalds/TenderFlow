@@ -3,13 +3,7 @@
 import { startTransition, useCallback, useEffect, useMemo, useState } from "react";
 import { parseAsString, useQueryState } from "nuqs";
 import { useQuery } from "@tanstack/react-query";
-import {
-  useReactTable,
-  getCoreRowModel,
-  type PaginationState,
-  type RowSelectionState,
-  type SortingState,
-} from "@tanstack/react-table";
+import { useReactTable, getCoreRowModel } from "@tanstack/react-table";
 import {
   ArrowDown,
   ArrowUp,
@@ -27,6 +21,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { ExportPopover } from "@/components/export-popover";
 import { Comparator } from "@/components/comparator";
 import { DetailInspector } from "@/components/detail-inspector";
@@ -43,6 +38,13 @@ import {
 } from "@/hooks/use-watchlist-items";
 import type { LicitacionSummary } from "@/lib/api-types";
 import { bandColor, shortEur } from "../radar/_components/radar-shared";
+import {
+  buildCsv,
+  pageIdsOf,
+  useDetalleRows,
+  useDetalleTableState,
+  type ScoringResponse,
+} from "./_hooks/use-detalle-table";
 
 /**
  * Detalle — tabla de trabajo con inspector en el mismo plano.
@@ -69,27 +71,8 @@ interface LicitacionesResponse {
   offset: number;
 }
 
-interface ScoringItem {
-  id_externo: string;
-  score: number;
-  band: string;
-  desglose: Record<string, number>;
-}
-
-interface ScoringResponse {
-  opportunities: ScoringItem[];
-}
-
-interface MergedRow extends LicitacionSummary {
-  score?: number;
-  band?: string;
-  desglose?: Record<string, number>;
-  isNew?: boolean;
-}
-
 /* ── Constantes ─────────────────────────────────────────────────────── */
 
-const PAGE_SIZE = 25;
 const LAST_VIEWED_KEY = "detalle_last_viewed";
 const WATCHLIST_KEY = "detalle_watchlist";
 
@@ -117,22 +100,6 @@ const COLUMNS: { key: string; label: string; width: string; sortable?: boolean; 
 
 const TABLE_MIN_WIDTH = 1246;
 
-/**
- * Columnas que el backend sabe ordenar, y el valor de `sort` que espera.
- *
- * `GET /licitaciones` acepta `sort` con seis valores (`db/repositories/
- * licitaciones.py::_SORT_MAP`) y **descarta en silencio cualquier otro**. La
- * tabla enviaba `sort_by`/`sort_order`, que ese endpoint no lee: la cabecera
- * pintaba su flecha y las filas no se movían. Las tres columnas de aquí se
- * ordenan en servidor sobre el total; el resto se ordena en cliente sobre la
- * página cargada, y la tabla lo dice en vez de fingir un orden global.
- */
-const SERVER_SORT: Record<string, string> = {
-  titulo: "titulo",
-  importe: "importe",
-  fecha_publicacion: "fecha_publicacion",
-};
-
 const SHORTCUTS = [
   { key: "J K", label: "recorrer" },
   { key: "⏎", label: "abrir ficha" },
@@ -150,32 +117,7 @@ function getWatchlist(): string[] {
 }
 
 function downloadCsv(rows: LicitacionSummary[], filename: string) {
-  const headers = [
-    "id_externo",
-    "titulo",
-    "organo_contratacion",
-    "importe",
-    "estado",
-    "fecha_publicacion",
-    "ccaa",
-    "cpv",
-    "tecnologia",
-  ];
-  const csv = [
-    headers.join(","),
-    ...rows.map((row) =>
-      headers
-        .map((header) => {
-          const value = (row as unknown as Record<string, unknown>)[header];
-          const text = value == null ? "" : String(value);
-          return text.includes(",") || text.includes('"')
-            ? `"${text.replace(/"/g, '""')}"`
-            : text;
-        })
-        .join(","),
-    ),
-  ].join("\n");
-  const blob = new Blob([csv], { type: "text/csv" });
+  const blob = new Blob([buildCsv(rows)], { type: "text/csv" });
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
   anchor.href = url;
@@ -195,12 +137,19 @@ export default function DetallePage() {
     [tecnologias, setTecnologias],
   );
 
-  const [sorting, setSorting] = useState<SortingState>([]);
-  const [pagination, setPagination] = useState<PaginationState>({
-    pageIndex: 0,
-    pageSize: PAGE_SIZE,
-  });
-  const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
+  const {
+    sorting,
+    setSorting,
+    pagination,
+    setPagination,
+    rowSelection,
+    setRowSelection,
+    queryParams,
+    activeSort,
+    clientSorted,
+    toggleSort,
+    toggleRow,
+  } = useDetalleTableState({ filterParams, q });
   // Permalink de la ficha: ?lic=<id_externo>, con push al historial (atrás
   // cierra el inspector) y URL compartible desde cualquier fila.
   const [detailId, setDetailId] = useQueryState(
@@ -230,29 +179,6 @@ export default function DetallePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- migración única al montar
   }, []);
 
-  // La búsqueda global vive en la barra de ámbito; al cambiar, se vuelve a la
-  // primera página, porque «página 7 de otro criterio» no significa nada.
-  useEffect(() => {
-    setPagination((current) => (current.pageIndex === 0 ? current : { ...current, pageIndex: 0 }));
-  }, [q]);
-
-  const queryParams = useMemo(() => {
-    const params: Record<string, string> = {
-      ...filterParams,
-      limit: String(pagination.pageSize),
-      offset: String(pagination.pageIndex * pagination.pageSize),
-    };
-    const active = sorting[0];
-    const serverKey = active ? SERVER_SORT[active.id] : undefined;
-    if (active && serverKey) {
-      // El prefijo `-` invierte el sentido por defecto de cada columna: para
-      // fecha el default es descendente y para importe/título ascendente.
-      const defaultIsDesc = serverKey === "fecha_publicacion";
-      params.sort = active.desc === defaultIsDesc ? serverKey : `-${serverKey}`;
-    }
-    return params;
-  }, [pagination, sorting, filterParams]);
-
   const { data, isLoading, error, isFetching, refetch } = useQuery({
     queryKey: ["licitaciones", queryParams],
     queryFn: async ({ signal }) => {
@@ -272,10 +198,7 @@ export default function DetallePage() {
 
   // Scoring alineado a la página: se pide el score exacto de las filas visibles
   // (sus id_externo), no un top-500 global disjunto del orden y del filtro.
-  const pageIds = useMemo(
-    () => (data?.items ?? []).map((row) => row.id_externo).filter(Boolean),
-    [data],
-  );
+  const pageIds = useMemo(() => pageIdsOf(data?.items), [data]);
 
   const { data: scoring } = useQuery({
     queryKey: ["scoring-batch", pageIds],
@@ -305,48 +228,28 @@ export default function DetallePage() {
     enabled: !!detailId,
   });
 
-  const scoreMap = useMemo(() => {
-    const map = new Map<string, ScoringItem>();
-    for (const item of scoring?.opportunities ?? []) map.set(item.id_externo, item);
-    return map;
-  }, [scoring]);
-
-  const activeSort = sorting[0];
-  // Orden en cliente sólo para las columnas que el backend no sabe ordenar.
-  // Es un orden sobre la página cargada, no sobre el total, y el pie lo dice.
-  const clientSorted = Boolean(activeSort && !SERVER_SORT[activeSort.id]);
-
-  const mergedRows = useMemo<MergedRow[]>(() => {
-    const rows = (data?.items ?? []).map((row) => {
-      const scored = scoreMap.get(row.id_externo);
-      const published = row.fecha_publicacion ? new Date(row.fecha_publicacion).getTime() : 0;
-      return {
-        ...row,
-        score: scored?.score,
-        band: scored?.band,
-        desglose: scored?.desglose,
-        isNew: published > lastViewed,
-      };
-    });
-
-    if (!activeSort || SERVER_SORT[activeSort.id]) return rows;
-
-    const key = activeSort.id as keyof MergedRow;
-    return rows.sort((a, b) => {
-      const left = a[key];
-      const right = b[key];
-      if (left == null && right == null) return 0;
-      if (left == null) return 1;
-      if (right == null) return -1;
-      const compared =
-        typeof left === "number" && typeof right === "number"
-          ? left - right
-          : String(left).localeCompare(String(right), "es", { sensitivity: "base" });
-      return activeSort.desc ? -compared : compared;
-    });
-  }, [data, scoreMap, lastViewed, activeSort]);
-
-  const totalPages = Math.max(1, Math.ceil((data?.total ?? 0) / pagination.pageSize));
+  // Orden en cliente sólo para las columnas que el backend no sabe ordenar
+  // (`clientSorted`): es un orden sobre la página cargada, no sobre el total, y
+  // el pie de la tabla lo dice.
+  const {
+    scoreMap,
+    mergedRows,
+    totalPages,
+    pageWindow,
+    selectedIds,
+    selectedItems,
+    allPageSelected,
+    toggleAllPage,
+  } = useDetalleRows({
+    items: data?.items,
+    total: data?.total,
+    scoring,
+    lastViewed,
+    activeSort,
+    pagination,
+    rowSelection,
+    setRowSelection,
+  });
 
   // eslint-disable-next-line react-hooks/incompatible-library
   const table = useReactTable({
@@ -363,40 +266,6 @@ export default function DetallePage() {
     getRowId: (row) => row.id_externo,
     enableRowSelection: true,
   });
-
-  const selectedIds = Object.keys(rowSelection).filter((key) => rowSelection[key]);
-  const selectedItems = mergedRows.filter((row) => selectedIds.includes(row.id_externo));
-  const allPageSelected = mergedRows.length > 0 && mergedRows.every((row) => rowSelection[row.id_externo]);
-
-  const toggleAllPage = () => {
-    setRowSelection((current) => {
-      const next = { ...current };
-      for (const row of mergedRows) {
-        if (allPageSelected) delete next[row.id_externo];
-        else next[row.id_externo] = true;
-      }
-      return next;
-    });
-  };
-
-  const toggleRow = (id: string) => {
-    setRowSelection((current) => {
-      const next = { ...current };
-      if (next[id]) delete next[id];
-      else next[id] = true;
-      return next;
-    });
-  };
-
-  const toggleSort = (columnId: string) => {
-    setSorting((current) => {
-      const active = current[0];
-      // asc → desc → sin orden, el ciclo que ya tenía la tabla.
-      if (!active || active.id !== columnId) return [{ id: columnId, desc: false }];
-      if (!active.desc) return [{ id: columnId, desc: true }];
-      return [];
-    });
-  };
 
   const toggleFavorite = (id: string) => {
     if (watchedIds.has(id)) removeWatchlistItem.mutate(id);
@@ -473,14 +342,6 @@ export default function DetallePage() {
 
   const rowHeight = compact ? 34 : 44;
   const isEmpty = !isLoading && !error && mergedRows.length === 0;
-
-  const pageWindow = useMemo(() => {
-    const pages: number[] = [];
-    const start = Math.max(0, pagination.pageIndex - 2);
-    const end = Math.min(totalPages - 1, pagination.pageIndex + 2);
-    for (let index = start; index <= end; index += 1) pages.push(index);
-    return pages;
-  }, [pagination.pageIndex, totalPages]);
 
   const sortLabel = sorting.length
     ? `${COLUMNS.find((column) => column.key === sorting[0].id)?.label ?? sorting[0].id} ${
@@ -674,11 +535,16 @@ export default function DetallePage() {
                           )}
                         </td>
                         <td>
+                          {/* Sin `Tooltip` a propósito: el `title` que había
+                              aquí no decía nada que no esté ya en pantalla —el
+                              atajo «S · favorito» vive en la tira de SHORTCUTS
+                              del pie— y el `aria-label` sí distingue añadir de
+                              quitar, que es lo que el `title` no hacía. De paso
+                              son 25 Popovers menos por página. */}
                           <button
                             type="button"
                             aria-label={favorite ? "Quitar de favoritos" : "Añadir a favoritos"}
                             aria-pressed={favorite}
-                            title="Seguir · S"
                             onClick={(event) => {
                               event.stopPropagation();
                               toggleFavorite(row.id_externo);
@@ -739,22 +605,28 @@ export default function DetallePage() {
                         </td>
                         <td className="px-1">
                           {row.ccaa ? (
-                            <button
-                              type="button"
-                              title={`Filtrar por ${row.ccaa}`}
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                toggleCcaa(row.ccaa!);
-                              }}
-                              className={cn(
-                                "block max-w-full truncate rounded px-1.5 py-0.5 text-left text-[11.5px] transition-colors duration-140 ease-out",
-                                ccaaOn
-                                  ? "border border-primary/40 bg-primary/14 font-semibold text-primary"
-                                  : "border border-transparent text-muted-foreground hover:text-foreground",
-                              )}
-                            >
-                              {row.ccaa}
-                            </button>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <button
+                                  type="button"
+                                  aria-label={`Filtrar por ${row.ccaa}`}
+                                  aria-pressed={ccaaOn}
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    toggleCcaa(row.ccaa!);
+                                  }}
+                                  className={cn(
+                                    "block max-w-full truncate rounded px-1.5 py-0.5 text-left text-[11.5px] transition-colors duration-140 ease-out",
+                                    ccaaOn
+                                      ? "border border-primary/40 bg-primary/14 font-semibold text-primary"
+                                      : "border border-transparent text-muted-foreground hover:text-foreground",
+                                  )}
+                                >
+                                  {row.ccaa}
+                                </button>
+                              </TooltipTrigger>
+                              <TooltipContent>{`Filtrar por ${row.ccaa}`}</TooltipContent>
+                            </Tooltip>
                           ) : (
                             <span className="text-muted-foreground">—</span>
                           )}
@@ -764,22 +636,28 @@ export default function DetallePage() {
                         </td>
                         <td className="px-1 pr-3.5">
                           {row.tecnologia ? (
-                            <button
-                              type="button"
-                              title={`Filtrar por ${row.tecnologia}`}
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                toggleTecnologia(row.tecnologia!);
-                              }}
-                              className={cn(
-                                "block max-w-full truncate rounded border px-1.5 py-0.5 text-left text-[10.5px] font-medium transition-colors duration-140 ease-out",
-                                tecOn
-                                  ? "border-[hsl(var(--info)/0.5)] bg-[hsl(var(--info)/0.2)] text-[hsl(var(--info))]"
-                                  : "border-[hsl(var(--info)/0.22)] bg-[hsl(var(--info)/0.08)] text-[hsl(var(--info))]",
-                              )}
-                            >
-                              {row.tecnologia}
-                            </button>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <button
+                                  type="button"
+                                  aria-label={`Filtrar por ${row.tecnologia}`}
+                                  aria-pressed={tecOn}
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    toggleTecnologia(row.tecnologia!);
+                                  }}
+                                  className={cn(
+                                    "block max-w-full truncate rounded border px-1.5 py-0.5 text-left text-[10.5px] font-medium transition-colors duration-140 ease-out",
+                                    tecOn
+                                      ? "border-[hsl(var(--info)/0.5)] bg-[hsl(var(--info)/0.2)] text-[hsl(var(--info))]"
+                                      : "border-[hsl(var(--info)/0.22)] bg-[hsl(var(--info)/0.08)] text-[hsl(var(--info))]",
+                                  )}
+                                >
+                                  {row.tecnologia}
+                                </button>
+                              </TooltipTrigger>
+                              <TooltipContent>{`Filtrar por ${row.tecnologia}`}</TooltipContent>
+                            </Tooltip>
                           ) : (
                             <span className="text-muted-foreground">—</span>
                           )}
@@ -865,26 +743,34 @@ export default function DetallePage() {
           ))}
           <span className="mx-0.5 hidden h-4.5 w-px bg-border/70 xl:block" aria-hidden="true" />
           <nav aria-label="Paginación" className="flex items-center gap-0.5">
-            <button
-              type="button"
-              title="Primera página"
-              aria-label="Primera página"
-              className={pageButton}
-              onClick={() => table.setPageIndex(0)}
-              disabled={!table.getCanPreviousPage()}
-            >
-              <ChevronsLeft className="h-3 w-3" aria-hidden="true" />
-            </button>
-            <button
-              type="button"
-              title="Anterior"
-              aria-label="Página anterior"
-              className={pageButton}
-              onClick={() => table.previousPage()}
-              disabled={!table.getCanPreviousPage()}
-            >
-              <ChevronLeft className="h-3 w-3" aria-hidden="true" />
-            </button>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  aria-label="Primera página"
+                  className={pageButton}
+                  onClick={() => table.setPageIndex(0)}
+                  disabled={!table.getCanPreviousPage()}
+                >
+                  <ChevronsLeft className="h-3 w-3" aria-hidden="true" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>Primera página</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  aria-label="Página anterior"
+                  className={pageButton}
+                  onClick={() => table.previousPage()}
+                  disabled={!table.getCanPreviousPage()}
+                >
+                  <ChevronLeft className="h-3 w-3" aria-hidden="true" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>Anterior</TooltipContent>
+            </Tooltip>
             {pageWindow.map((page) => (
               <button
                 key={page}
@@ -901,26 +787,34 @@ export default function DetallePage() {
                 {page + 1}
               </button>
             ))}
-            <button
-              type="button"
-              title="Siguiente"
-              aria-label="Página siguiente"
-              className={pageButton}
-              onClick={() => table.nextPage()}
-              disabled={!table.getCanNextPage()}
-            >
-              <ChevronRight className="h-3 w-3" aria-hidden="true" />
-            </button>
-            <button
-              type="button"
-              title="Última página"
-              aria-label="Última página"
-              className={pageButton}
-              onClick={() => table.setPageIndex(totalPages - 1)}
-              disabled={!table.getCanNextPage()}
-            >
-              <ChevronsRight className="h-3 w-3" aria-hidden="true" />
-            </button>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  aria-label="Página siguiente"
+                  className={pageButton}
+                  onClick={() => table.nextPage()}
+                  disabled={!table.getCanNextPage()}
+                >
+                  <ChevronRight className="h-3 w-3" aria-hidden="true" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>Siguiente</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  aria-label="Última página"
+                  className={pageButton}
+                  onClick={() => table.setPageIndex(totalPages - 1)}
+                  disabled={!table.getCanNextPage()}
+                >
+                  <ChevronsRight className="h-3 w-3" aria-hidden="true" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>Última página</TooltipContent>
+            </Tooltip>
           </nav>
         </div>
       </section>
@@ -945,17 +839,27 @@ export default function DetallePage() {
               {selectedIds.length} seleccionadas
             </span>
             <span className="h-4.5 w-px bg-border/70" aria-hidden="true" />
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-7 px-2.5 text-xs"
-              onClick={() => setShowComparator(true)}
-              disabled={selectedIds.length < 2 || selectedIds.length > 3}
-              title="Comparar 2 o 3 licitaciones"
-            >
-              <GitCompareArrows className="h-3.5 w-3.5" />
-              Comparar ({selectedIds.length})
-            </Button>
+            <Tooltip>
+              {/* El disparador es el `span`, no el `Button`: cuando el botón
+                  está deshabilitado no emite eventos de puntero, y justo ahí es
+                  cuando hace falta explicar por qué. `focusin` sí burbujea, así
+                  que con el botón activo el tooltip también abre con teclado. */}
+              <TooltipTrigger asChild>
+                <span className="inline-flex">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 px-2.5 text-xs"
+                    onClick={() => setShowComparator(true)}
+                    disabled={selectedIds.length < 2 || selectedIds.length > 3}
+                  >
+                    <GitCompareArrows className="h-3.5 w-3.5" />
+                    Comparar ({selectedIds.length})
+                  </Button>
+                </span>
+              </TooltipTrigger>
+              <TooltipContent>Comparar 2 o 3 licitaciones</TooltipContent>
+            </Tooltip>
             <Button
               variant="outline"
               size="sm"

@@ -198,7 +198,7 @@ export default function TendenciasPage() {
     <div className="space-y-6">
       <div>
         <h1 className="sr-only">Tendencias</h1>
-        <p className="text-muted-foreground">Evolucion de publicaciones y montos a lo largo del tiempo.</p>
+        <p className="text-muted-foreground">Evolución de publicaciones y montos a lo largo del tiempo.</p>
       </div>
 
       {/* KPI Row */}
@@ -301,7 +301,7 @@ export default function TendenciasPage() {
       {histBins.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Distribucion de Importes</CardTitle>
+            <CardTitle className="text-base">Distribución de Importes</CardTitle>
           </CardHeader>
           <CardContent>
             <ChartErrorBoundary>
@@ -404,7 +404,7 @@ export default function TendenciasPage() {
       {/* Forecast */}
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle className="text-base">Prevision (6 meses)</CardTitle>
+          <CardTitle className="text-base">Previsión (6 meses)</CardTitle>
           <div className="flex items-center gap-1">
             <Button
               variant={forecastMetric === "count" ? "default" : "outline"}
@@ -438,9 +438,9 @@ export default function TendenciasPage() {
                 {/* "Goma" de la banda: el token de fondo de la card (no blanco) para que sea theme-safe en dark mode. */}
                 <Area type="monotone" dataKey="lower" stroke="none" fill="hsl(var(--card))" fillOpacity={1} name="Lower" />
                 {/* Historical line */}
-                <Line type="monotone" dataKey="historico" stroke="hsl(221, 83%, 53%)" strokeWidth={2} dot={{ r: 2 }} name="Historico" />
+                <Line type="monotone" dataKey="historico" stroke="hsl(221, 83%, 53%)" strokeWidth={2} dot={{ r: 2 }} name="Histórico" />
                 {/* Forecast line */}
-                <Line type="monotone" dataKey="forecast_val" stroke="hsl(221, 83%, 53%)" strokeWidth={2} strokeDasharray="6 3" dot={{ r: 2 }} name="Prevision" />
+                <Line type="monotone" dataKey="forecast_val" stroke="hsl(221, 83%, 53%)" strokeWidth={2} strokeDasharray="6 3" dot={{ r: 2 }} name="Previsión" />
               </AreaChart>
             </ResponsiveContainer>
               </ChartErrorBoundary>

@@ -11,7 +11,50 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 
 ---
 
+## P0 — Urgente
+
+### [P0] Restablecer la copia remota de backups — rotos desde el 2026-07-05
+- **Área:** .github/workflows/backup.yml, .github/workflows/restore-drill.yml, GitHub Settings (acción del usuario)
+- **Problema:** `backup.yml` corre a diario y **falla siempre**, en ~45 s, sin llegar a volcar nada: muere en los guards `: "${AWS_ROLE_TO_ASSUME:?...}"` / `: "${BACKUP_S3_BUCKET:?...}"` (backup.yml:50-51) porque esos dos secrets no existen en el repo. Verificado el 2026-08-18: runs del 16, 17 y 18 de agosto en `failure`, y ninguno de los dos nombres aparece en `gh secret list`. Consecuencia: **no hay copia remota recuperable de ninguna fecha desde el 2026-07-05**, y `restore-drill.yml` (que verificaría que un backup restaura) está bloqueado por lo mismo, así que tampoco hay señal de que el mecanismo funcione. `BACKUP_ENCRYPTION_KEY` sí está cargada (2026-08-04), o sea que falta exactamente el destino, no el cifrado.
+- **Acceptance criteria:**
+  - `AWS_ROLE_TO_ASSUME` y `BACKUP_S3_BUCKET` cargados como GH Secrets (el rol necesita `s3:PutObject` sobre el bucket y confianza con el OIDC de Actions).
+  - Un run de `backup.yml` en verde con el objeto verificado en S3.
+  - Un run de `restore-drill.yml` en verde sobre ese backup — hasta que el drill pase, "hay backups" es una hipótesis.
+- **Files de partida:** [.github/workflows/backup.yml](../.github/workflows/backup.yml), [.github/workflows/restore-drill.yml](../.github/workflows/restore-drill.yml), [docs/runbooks/backup-restore.md](runbooks/backup-restore.md)
+- **Relación:** es la pata de infraestructura del checklist F3d (P1, más abajo), que cubre el cifrado y la rotación de credenciales pero da por hecho que el destino existe.
+- **Riesgo:** bajo — solo configuración, sin tocar código. El riesgo real es el que ya se está corriendo cada día que pasa sin copia.
+
+---
+
 ## P1 — Alta
+
+### [P1] `make web-test` sale con exit 0 aunque no ejecute ni un test
+- **Área:** web/vitest.config.ts, Makefile (`web-test`, `web-test-coverage`), CI
+- **Problema:** cuando vitest no consigue arrancar sus workers, **no falla: reporta `Test Files no tests` / `Tests no tests` junto a N errores y termina con exit code 0**. Un gate que solo mira el código de salida da por verde una suite que no corrió. Reproducido tres veces seguidas el 2026-08-18/19 sobre el mismo árbol, con los dos pools: `--pool=forks --no-file-parallelism` → 70 de 113 ficheros ejecutados, 43 errores de arranque, **exit 0**; `--pool=forks` → **0 de 113**, 113 errores, **exit 0**; y un único fichero (`src/lib/__tests__/safe-redirect.test.ts`) con `--pool=threads` → `no tests`, 1 error, **exit 0**. El mensaje es siempre `[vitest-pool]: Failed to start forks worker` / `[vitest-pool-runner]: Timeout waiting for worker to respond` (START_TIMEOUT de 60 s, no configurable por CLI). En esta máquina lo dispara la contención (OneDrive + antivirus), pero la causa de fondo —**el runner no distingue "todo pasó" de "no se ejecutó nada"**— es del repo y viaja a CI: un runner lento o un contenedor apretado producen ahí el mismo falso verde, y el job saldría en verde sin haber probado nada.
+- **Acceptance criteria:**
+  - `make web-test` falla si el número de ficheros ejecutados es 0, o si hay errores de arranque de pool, aunque vitest devuelva 0. Basta con envolver la invocación y comprobar el resumen (o usar `--reporter=json` y asertar `numTotalTestSuites > 0`).
+  - Un umbral mínimo de ficheros esperados, para que perder la mitad de la suite tampoco pase por verde. Es el mismo patrón de ratchet que ya usan `KNOWN_5XX` y la whitelist TID251.
+  - Documentado en [docs/AGENT_PLAYBOOK.md](AGENT_PLAYBOOK.md) junto al resto de prerrequisitos.
+- **Files de partida:** [Makefile](../Makefile) (línea ~183), [web/vitest.config.ts](../web/vitest.config.ts)
+- **Riesgo:** bajo — envuelve un comando, no toca tests. El riesgo es el de no hacerlo: es un gate que miente en la dirección peligrosa.
+
+### [P1] Los enlaces a documentos de PLACSP caducan y el pipeline los da por muertos
+- **Área:** scraper/codice_parser.py, db/repositories/documentos.py, scraper/document_fetcher.py, db/alembic, web (bloque Documentos)
+- **Problema:** PLACSP publica los adjuntos en dos familias de URI y solo una es estable. El 82% de las **37.953** filas de `documentos` (medido en prod el 2026-08-18) usa `FileSystem/servlet/GetDocumentByIdServlet?cifrado=…&DocumentIdParam=<token 128 chars>`, un token que la plataforma **re-emite**: cuando caduca, el servlet devuelve `Error 500: NullPointerException` en vez de 404. El 18% restante (`wps/wcm/…/docAccCmpnt?…DocumentIdParam=<uuid>`) sigue resolviendo años después. Sobre una muestra de 35 URIs reales, el 40% ya estaba muerto.
+  Lo que convierte esto en deuda estructural y no en mala suerte es que **el CODICE ya publica identidad estable por documento y el parser la ignora**: verificado sobre el feed Atom vivo (390 entries, 1.323 `DocumentReference`), el **100%** trae `<cbc:ID>` con el nombre del fichero (`PCAP.pdf`) y el **100%** trae `<cbc:DocumentHash>`, un hash del contenido que **no cambia cuando rota el token**. `parse_document_references` (scraper/codice_parser.py:172-193) solo lee `cbc:URI` y `cbc:FileName` — y `cbc:FileName` no viene nunca en los adjuntos, por eso `filename` es NULL en **37.953 de 37.953 filas**.
+  De ahí salen cuatro daños concretos:
+  1. `upsert_meta` (db/repositories/documentos.py:32-51) resuelve conflictos por `ON CONFLICT(licitacion_id, uri) DO NOTHING`. Como el token forma parte de la `uri`, un re-scrape con token nuevo **inserta fila nueva** en vez de refrescar la vieja: 262 grupos ya duplicados así (637 filas sobrantes). Ojo al diseñar el arreglo: `(licitacion_id, tipo)` **no** es identidad válida —3.997 grupos del mismo día son expedientes con varios pliegos del mismo tipo, legítimos—, pero `(licitacion_id, tipo, DocumentHash)` sí.
+  2. `list_by_licitacion` (documentos.py:83-94) ordena `created_at` ascendente, así que de un documento duplicado la UI enseña **primero el enlace más viejo**, que es justo el muerto.
+  3. El fetcher convierte fallos transitorios en definitivos: de los 2.556 documentos en `status='error'`, **1.702 (66%) fallaron solo porque el circuit breaker estaba abierto** (`descarga fallida: Timeout not elapsed yet…`) y quedaron marcados como terminales, fuera de `list_pendientes` para siempre. Otros 105 son el 500 del token caducado; ~663 son content-types no soportados (docx/zip/xml) cuyos enlaces probablemente siguen vivos; solo ~27 son fallos genuinamente definitivos.
+  4. La UI ignora el `status` que la API ya le envía (`DocumentoSummary`, api/routes/licitaciones.py:119-127): `documentos-block.tsx` pinta `href={doc.uri}` sin distinguir, y cuando no hay documentos devuelve `null` en vez de ofrecer la ficha. El fallback existe y es estable al 100%: `licitaciones.url` (deeplink `detalle_licitacion&idEvl=…`), que ya se muestra como "Ver en PLACSP" en el panel de detalle pero **no** en la pestaña Pliegos, que es justo donde está el usuario cuando pincha un enlace muerto.
+- **Acceptance criteria** (tres PRs independientes, mergeables por separado y en este orden):
+  - **PR-A · el breaker deja de fabricar errores terminales.** En `fetch_and_extract` (scraper/document_fetcher.py:264-269), `pybreaker.CircuitBreakerError` devuelve `"skipped"` y **no toca la fila** (sigue `pending`, reintentable); un `HTTPError` 500 marca error conservando el prefijo `descarga fallida: ` y añadiendo `token caducado (500)` para poder contarlos. `_run_fetch_phase` (scheduler/jobs/documentos_embeddings.py:49) inicializa `"skipped": 0`. Cambian dos asserts existentes en `tests/test_documentos_embeddings_job.py:75,78`.
+  - **PR-B · identidad estable en la ingesta.** El parser lee `cbc:ID` (como `filename`, con `cbc:FileName` teniendo precedencia si viniera) y `cbc:DocumentHash` (campo `source_hash` nuevo en `DocumentoReferencia`, db/upsert.py:188). Migración **con gate humano (AGENTS §6)**: `source_hash TEXT` + índice único parcial `(licitacion_id, tipo, source_hash) WHERE source_hash IS NOT NULL` (nace vacío: instantáneo) + reparación de las 1.702 víctimas del breaker a `pending` (precedente de data-repair en migración: `v67_pg_short_tz_offset_repair.py`). `upsert_meta` pasa a SELECT-first por licitación con bucketing en Python: refresca por hash (y **revive** `error`→`pending` solo si el detalle empieza por `descarga fallida:` y la uri cambió — los fallos de extracción no reviven), adopta identidad en filas legacy por uri exacto o por tipo único, e inserta el resto. Sin esa adopción, re-correr `scripts/backfill_documentos.py` metería decenas de miles de duplicados de golpe. Los 637 sobrantes legacy se quedan (sin hash no hay fusión segura): **no purgar sin decisión explícita**.
+  - **PR-C · la UI deja de mentir.** `list_by_licitacion` ordena `CASE tipo` (legal→technical→additional) y luego `created_at DESC`, que relega el duplicado muerto. `documentos-block.tsx` se tipa con el `DocumentoSummary` generado (existe en web/src/generated/api.d.ts:3761; hoy hay una interfaz a mano) y lee `status`: las filas en error se muestran atenuadas con la nota de que el enlace puede haber caducado, **pero conservan el enlace** —una cuarta parte de los errores son content-types que el navegador abre sin problema, romperlos sería peor—, y tanto el pie del bloque como el estado vacío ofrecen la ficha de PLACSP vía una prop `fichaUrl` nueva que `detail-inspector.tsx:352` rellena con `l.url`. No cambia el contrato API (`status` ya viaja), así que no hay codegen.
+- **Verificación post-deploy** (SQL de solo lectura contra Supabase; baselines del 2026-08-18): errores de breaker a 0 tras la migración y ≈0 a los 7 días; `source_hash` no nulo creciendo (~1,3 k referencias/día); `filename IS NOT NULL` despegando de 0; grupos multi-día sin hash sin crecer (262); reparto de `status` frente a la base (pending ~33,6 k · error 2.556 · extracted 1.735); aparición de `token caducado (500)`; y cero filas violando el índice único nuevo.
+- **Files de partida:** [scraper/codice_parser.py](../scraper/codice_parser.py) (`parse_document_references`), [db/repositories/documentos.py](../db/repositories/documentos.py) (`upsert_meta`, `list_by_licitacion`), [scraper/document_fetcher.py](../scraper/document_fetcher.py), [db/upsert.py](../db/upsert.py) (`DocumentoReferencia`), [web/src/components/documentos-block.tsx](../web/src/components/documentos-block.tsx)
+- **Fuera de alcance (deliberado):** content-types no soportados y OCR; blob storage (`storage_key` sigue reservado y NULL — el texto por página en `documento_pages` ya hace que el RAG sobreviva a la muerte del enlace); re-resolver tokens re-scrapeando la ficha HTML bajo demanda; y el throughput del backlog (`PLIEGO_FETCH_BATCH=300` frente a ~33 k pendientes). Tampoco se tocan cabeceras de navegador en el fetcher: el corpus real de errores no tiene ni un rechazo del WAF, así que no hay evidencia que lo justifique.
+- **Riesgo:** medio — PR-B cambia la semántica del upsert de un camino de ingesta diario y necesita migración (gate humano §6); PR-A y PR-C son acotados. Mitigado por el troceo en tres PRs, por los tests de caracterización del repositorio y por el fail-open que ya tiene `_persist_documentos` (scraper/connectors/base.py:212-213), que degrada un fallo de documentos a warning sin tumbar la ingesta.
 
 ### [P1] El contexto de scoring cuesta ~25 s en frío en cada instancia nueva
 - **Área:** db/repositories/aggregates.py, services/analytics/scoring_signals.py
@@ -69,10 +112,11 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 ### [P1] LLM como dependencia gestionada (presupuesto + circuit-breaker + fallback + eval RAG)
 - **Área:** llm/, api/routes/ask.py, observability
 - **Problema:** `/ask` es ahora un camino de producción con proveedor externo de pago (NVIDIA NIM/DeepSeek, commit `d6619f8`). El RFC de tokens (`implemented`) cerró la *medición* y dejó el *enforcement* para "un RFC posterior". Falta: presupuesto/circuit-breaker de gasto, fallback degradado si el proveedor cae, y eval de RAG (sin eval set las regresiones de calidad son invisibles a CI). Este es ese RFC posterior.
+- **⚠️ Estado real, verificado el 2026-08-18: casi todo esto ya está implementado y el backlog no se había actualizado.** Existe `llm/budget.py` con `BudgetGuard` (acumulador por ventana día/mes en Redis con `INCRBYFLOAT`+TTL y fallback in-memory), tope **por sujeto** además del global (sin él una sola cuenta agota la ventana de todas — denegación de servicio barata), `LLM_BUDGET_USD_DAILY`/`_MONTHLY`/`_DAILY_PER_USER` en settings, y `/ask` con `_check_budget`, 429 documentado y el evento SSE `degraded` para el fallback sin síntesis. Un detalle que el backlog decía al revés: `LLM_BUDGET_MODE` **ya está en `enforce`**, no en `monitor` como declaraba la nota de riesgo.
 - **Acceptance criteria:**
-  - Con presupuesto superado y `LLM_BUDGET_MODE=enforce`, `/ask` responde 429/503 sin llamar al proveedor; `llm_budget_exceeded_total` sube. Modo `monitor` solo alerta.
-  - Ante fallo del proveedor o breaker abierto, `/ask` degrada a documentos del RAG sin síntesis (`degraded` en el stream); el SSE no rompe y el DTO no cambia (§3.5).
-  - Eval de **recuperación** determinista en CI (sin LLM real) que falla si se rompe el contexto recuperado.
+  - ~~Con presupuesto superado y `LLM_BUDGET_MODE=enforce`, `/ask` responde 429/503 sin llamar al proveedor; `llm_budget_exceeded_total` sube. Modo `monitor` solo alerta.~~ **Hecho** (`llm/budget.py`, `api/routes/ask.py`).
+  - ~~Ante fallo del proveedor o breaker abierto, `/ask` degrada a documentos del RAG sin síntesis (`degraded` en el stream); el SSE no rompe y el DTO no cambia (§3.5).~~ **Hecho** (`api/routes/ask.py`, eventos `degraded` por `provider_error`, `timeout` y `empty_response`).
+  - Eval de **recuperación** determinista en CI (sin LLM real) que falla si se rompe el contexto recuperado. **Es lo único que mantiene abierto este ítem.**
 - **Files de partida:** [api/routes/ask.py](../api/routes/ask.py), [llm/client.py](../llm/client.py), [config/settings.py](../config/settings.py), [docs/adr/[[ADR-006-etag-pdf-export-ratelimit-redis|ADR-006]]-etag-pdf-export-ratelimit-redis.md](../docs/adr/ADR-006-etag-pdf-export-ratelimit-redis.md)
 - **RFC:** [2026-06-30-rfc-llm-dependencia-gestionada.md](rfc/2026-06-30-rfc-llm-dependencia-gestionada.md)
 - **Riesgo:** medio — toca un endpoint de producción; mitigado por `LLM_BUDGET_MODE=monitor` como default (medir antes de cortar) y contrato API intacto. **Construye sobre** el RFC de observabilidad de tokens (P2, abajo).
@@ -80,6 +124,17 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 ---
 
 ## P2 — Media
+
+### [P2] `render.yaml` no gobierna el servicio que corre en producción
+- **Área:** render.yaml, Render Dashboard (acción del usuario)
+- **Problema:** el Blueprint está en el repo, pero el servicio de producción se creó a mano por el dashboard y nunca se vinculó a él, así que el fichero documenta una intención que nadie aplica: editarlo no cambia nada y leerlo puede inducir a error sobre cómo está configurado el servicio real. Lo que sí está activo es `autoDeploy`, y **sin healthcheck configurado** — es decir, un deploy que arranca mal reemplaza igualmente al que funcionaba, sin rollback automático. (Estado observado en la sesión del 2026-08-04; **reconfirmar en el dashboard antes de actuar**, que es barato.)
+- **Acceptance criteria:**
+  - Confirmado en el dashboard si el servicio está o no vinculado al Blueprint.
+  - `healthCheckPath` configurado y verificado con un deploy deliberadamente fallido (o, si se vincula el Blueprint, que el del fichero quede efectivo).
+  - Si se decide no vincular, dejarlo escrito en `render.yaml` para que el fichero no siga aparentando ser la fuente de verdad.
+- **Files de partida:** [render.yaml](../render.yaml), [.github/workflows/deploy.yml](../.github/workflows/deploy.yml)
+- **Relación:** comparte superficie con el P3 de staging y plan de la API (más abajo); si se toca el servicio, conviene decidir ambos a la vez.
+- **Riesgo:** bajo-medio — vincular un Blueprint a un servicio existente puede recrearlo; hacerlo en ventana y con el healthcheck decidido de antemano.
 
 ### [P2] Migrar `licitaciones.importe` de `real` a `double precision`
 - **Área:** db/alembic, db/upsert.py, shared/numeric.py
@@ -169,21 +224,36 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 
 ## P3 — Nice to have
 
-### [P3] Decidir el destino del peso de `graphify-out/` (17MB, ~52% del repo)
+### [P3] Descartar los avisos fantasma de Dependabot (manifest `uv.lock` inexistente)
+- **Área:** GitHub Security (acción del usuario), .github/dependabot.yml
+- **Problema:** buena parte de los avisos pip abiertos apuntan a un `uv.lock` que **no está trackeado en git** (verificado el 2026-08-18: `git ls-files` no lo encuentra). Son alertas sobre un manifest que no existe en el repo, así que no hay nada que parchear en ellas — pero ocupan el mismo listado que los avisos reales, y un tab de seguridad con decenas de entradas irreales se deja de mirar. Al triar, filtrar por `manifest_path`.
+- **Acceptance criteria:** avisos cuyo `manifest_path` sea `uv.lock` descartados con motivo; el listado de seguridad refleja solo manifiestos que el repo contiene de verdad.
+- **Files de partida:** [.github/dependabot.yml](../.github/dependabot.yml)
+- **Riesgo:** bajo — no toca código; el cuidado está en descartar solo los del manifest fantasma.
+
+### [P3] Suites propias para `services/investigador/` y `extraction_runs`
+- **Área:** tests/
+- **Problema:** ambos módulos se ejercitan hoy solo de refilón, desde tests de search y de pipeline que van a otra cosa. Eso da cobertura de líneas pero no fija su contrato: un cambio de comportamiento puede pasar si los tests que lo tocan siguen verdes por lo que ellos venían a comprobar.
+- **Acceptance criteria:** un `tests/test_investigador*.py` y un `tests/test_extraction_runs.py` que cubran sus caminos principales y sus errores esperados, sin depender de la suite que hoy los roza.
+- **Riesgo:** bajo — solo añade tests.
+
+### [P3] Decidir el destino del peso de `graphify-out/` (28 MB y creciendo)
 - **Área:** graphify-out, .claude/hooks
-- **Problema:** los artefactos commiteados del knowledge graph pesan 17MB de un repo de 33MB sin `.git`: cada clone y cada sesión remota los paga, y el hook de stale-flag deja el working tree dirty en sesiones sin el CLI (que no pueden limpiarlo). El valor para agentes sin CLI es real (AGENTS.md §1), así que es un trade-off consciente a revisar, no un error.
+- **Problema:** los artefactos commiteados del knowledge graph pesan **28 MB** (medido 2026-08-18): cada clone y cada sesión remota los paga, y el hook de stale-flag deja el working tree dirty en sesiones sin el CLI (que no pueden limpiarlo). El valor para agentes sin CLI es real (AGENTS.md §1), así que es un trade-off consciente a revisar, no un error. **La cifra de este ítem estaba desactualizada: decía 17 MB, o sea que el artefacto creció un 65% mientras la decisión seguía aplazada.** La comparación "~52% del repo" ya no es evaluable tal cual y se retira; lo que decide es el absoluto y su tendencia.
 - **Acceptance criteria:**
   - Decisión registrada: mantener como está, excluir `wiki/` (la parte más pesada y más regenerable), o mover a artefacto de CI/LFS con fallback textual documentado en AGENTS.md §1.
 - **Files de partida:** [AGENTS.md](../AGENTS.md), [.claude/hooks/](../.claude/hooks/)
 - **Riesgo:** bajo — decisión de mantenedor; sin impacto en runtime.
 
-### [P3] Dejar de engordar los god modules: `aggregates.py` y `settings.py`
+### [P3] Los dos módulos-dios: `aggregates.py` y `settings.py`
+- **Nota:** este ítem estaba **duplicado**. Había una segunda entrada, "Partir los dos módulos-dios: `aggregates.py` y `settings.py`", sobre los mismos dos ficheros y con criterios que se contradecían: una decía "no big-bang, solo dejar de crecer" y la otra "partir por dominio". Fusionados el 2026-08-18 (mismo patrón que la fusión de los `title=` el 2026-08-10). El criterio que sobrevive es el gradual, que es el que el repo ha demostrado que sí ejecuta.
 - **Área:** db/repositories/aggregates.py, config/settings.py
-- **Problema:** los dos archivos más grandes del repo (≈1300 y ≈950 LOC) concentran demasiadas responsabilidades: todas las agregaciones analíticas y toda la configuración. No urge un big-bang; la regla es no seguir haciéndolos crecer.
+- **Problema:** `db/repositories/aggregates.py` son 1.327 líneas y 55 funciones en una sola clase que concentra toda la analítica; `config/settings.py` son 946 líneas con 26 validadores en una clase plana que mezcla ejes ortogonales (BD, ML, LLM, auth, scraper, observabilidad) que ya están conceptualmente separados por `APP_PROFILE`. Son los dos ficheros que todo el mundo tiene que tocar, y donde se concentran los conflictos de merge. (`shared/dto.py`, en contraste, está sano: 620 líneas / 45 clases.)
 - **Acceptance criteria:**
-  - Una agregación o setting nuevo va a un módulo hermano (`aggregates_<área>.py` / settings por dominio) en vez de sumar al monolito; al tocar un bloque cohesivo existente, se evalúa extraerlo en el mismo cambio.
+  - Una agregación o setting **nuevo** va a un módulo hermano (`aggregates_<área>.py` / settings por dominio) en vez de sumar al monolito.
+  - Al tocar un bloque cohesivo existente **por otro motivo**, se evalúa extraerlo en el mismo cambio. El destino de `AggregateRepository` es partido por dominio (overview / geografía / competidores) y el de `Settings` submodelos anidados por eje preservando los nombres de variables de entorno — pero **llegando por partes, con la suite verde entre cada una**, no en un big-bang.
 - **Files de partida:** [db/repositories/aggregates.py](../db/repositories/aggregates.py), [config/settings.py](../config/settings.py)
-- **Riesgo:** bajo — refactor local oportunista.
+- **Riesgo:** bajo si se hace oportunista; medio si alguien intenta el big-bang.
 
 ### [P3] Migrar los `title=` nativos restantes a `Tooltip`
 - **Área:** web/src (celdas de tabla y textos truncados)
@@ -222,7 +292,14 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 - **Área:** services/, scheduler/, api/routes/, scraper/, scripts/
 - **Problema:** El ratchet TID251 tiene una whitelist que solo puede decrecer (conteo vigente: [STATUS.md](STATUS.md), generado por `make status`). **Destino fijado por [ADR-022](adr/ADR-022-frontera-de-persistencia.md)**: el SQL se mueve a `db/`, y `db/repositories/*` (clases) y `db/*.py` (funciones de módulo) son el mismo estrato — o sea que **no hay renombrado de por medio**, cada archivo va al módulo `db/` de su tabla en la forma que ya tenga. Antes de ADR-022 este ítem no tenía estado final declarado, que era el motivo real de que llevara meses parado: refactorizar hacia un destino indefinido produce un idioma más, no menos.
 - **Baseline (medido 2026-07-30 sobre `pyproject.toml`):** services/ 18 · scheduler/ 9 · scripts/ 5 · api/ 4 · scraper/ 2 = **38 archivos** en whitelist, más los dos globs estructurales que no son deuda (`db/**` y `tests/*`, exentos por diseño). El "= 44 entradas" del baseline anterior no cuadraba con el desglose (que ya sumaba 40 contando los globs); la cifra de referencia es la de STATUS.md, que cuenta archivos.
-- **Progreso 2026-08-10 — primera ola, 38 → 36:** `services/job_locks.py` entero pasa a `db/job_locks.py` (aprovechando que había que corregir su `release()`, que borraba locks ajenos) y el `SELECT 1` de `services/health.py` pasa a `db.connection.ping()`. El ratchet llevaba meses sin moverse; la lección de esta ola es que sale barato cuando se hace **al pasar por el módulo por otro motivo**, no como pasada dedicada. Siguientes candidatos por coste (conteo de `connect(`+`execute(`): `services/ml/calibration.py` (1), `services/entity_resolution.py` (1), `services/licitaciones.py` (2), `services/competitive/bajas.py` (2), `services/ml/features.py` (2), `services/ml/retencion_labels.py` (2).
+- **Progreso 2026-08-10 — primera ola, 38 → 36:** `services/job_locks.py` entero pasa a `db/job_locks.py` (aprovechando que había que corregir su `release()`, que borraba locks ajenos) y el `SELECT 1` de `services/health.py` pasa a `db.connection.ping()`. El ratchet llevaba meses sin moverse; la lección de esta ola es que sale barato cuando se hace **al pasar por el módulo por otro motivo**, no como pasada dedicada.
+- **Progreso 2026-08-18 — 34 → 32:** `services/licitaciones.py` y `services/ml/retencion_labels.py` salen de la whitelist; su SQL pasa a `db/repositories/licitaciones.py` y `db/repositories/adjudicaciones.py`, con tests de caracterización escritos **antes** de mover. El listado de renovaciones también se movió a `db/repositories/renovaciones.py` (ítem de `/renovaciones`, ver Cerrados), pero su entrada del ratchet **no se puede quitar todavía** porque los agregados hermanos (`resumen_renovaciones`/`totales_renovaciones`) siguen en `services/`.
+- **Corrección de conteo:** la cifra "38 → 36" de la ola anterior nunca cuadró con [STATUS.md](STATUS.md), que el 2026-08-13 ya contaba **34**. La cifra buena es siempre la de STATUS.md, que se genera con `make status`; anotar el conteo a mano en este fichero solo produce dos números que se contradicen.
+- **Dos efectos colaterales que esta migración tiene y nadie había registrado** (descubiertos el 2026-08-18 al ejecutar la ola):
+  1. **Erosiona el guardrail de dedupe.** `tests/test_dedup_guardrail.py` escaneaba solo `services/`; mover SQL analítico a `db/` lo sacaba de su radio en silencio. Ya está corregido (el escáner tiene ahora una lista explícita de módulos de `db/`), pero **cada ola futura debe añadir a `_SCANNED_FILES` el módulo de `db/` que crea**, en el mismo cambio. Lo que destapó al ampliarlo es un ítem P1 propio.
+  2. **Tienta a invertir las capas.** Al mover una query se mueven con ella los fragmentos SQL que interpola, y el reflejo es importarlos de `services/` — que ADR-024 prohíbe (`db/` no depende de `services/`). El destino correcto es `db/sql_fragments.py`, creado el 2026-08-18 con `FECHA_FIN_SQL`, `TECHNOLOGY_OBSERVED_SQL` y `exclude_duplicados_sql`; `services/` los reexporta.
+- Siguientes candidatos por coste (conteo de `connect(`+`execute(`): `services/ml/calibration.py` (1), `services/entity_resolution.py` (1), `services/competitive/bajas.py` (2), `services/ml/features.py` (2).
+- **Candidato aparte, por rendimiento en seguridad y no por coste:** `services/competitive/mercado.py` concentra ~12 de los ~30 `# noqa: S608` del repo (conteo del 2026-08-18). Cada supresión está justificada una por una y el idioma de fragmentos constantes está documentado en `services/sql_fragments.py`, así que no es un bug — pero es la mayor densidad de SQL interpolado del proyecto en un solo fichero, y cada filtro nuevo que se añade ahí es otra oportunidad de que un valor entre por concatenación sin que nadie lo note. Al moverlo a `db/`, hacerlo con un builder de `WHERE` testeado en lugar de arrastrar la interpolación tal cual (patrón de `tests/test_adjudicaciones_dedupe_sql.py`, que verifica que los `%s` siguen cuadrando con los parámetros).
 - **Orden de olas:** services/ → api/ → scheduler/ → scripts/ (por densidad; `services/` es además el único que viola la capa de dominio de ADR-007)
 - **Excepción declarada:** `services/sql_fragments.py` se queda — expone fragmentos SQL constantes pero no ejecuta nada (ADR-022 §3).
 - **Acceptance criteria por ola:**
@@ -262,12 +339,14 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 - **Riesgo:** bajo — la fórmula ya está escrita y es determinista; portarla a SQL es mecánico y el eval es comparar ambos órdenes sobre el mismo dataset.
 
 ### [P3] Scroll edge effects en vez de divisores duros bajo el chrome flotante
-- **Área:** web/components/layout (top-nav, kpi-bar, global-filter-bar)
-- **Problema:** `TopNav`, `KpiBar` y `GlobalFilterBar` son `tf-glass` (translúcidos, `position: sticky`) y cada uno delimita con un `border-b border-border/70` fijo, en vez del "scroll edge effect" que pide apple-design §12: un fade/máscara de blur activado por scroll, solo donde el contenido realmente pasa por debajo del chrome flotante. Hallazgo F11 de la revisión de las skills de Emil Kowalski (2026-07-25); no bloqueante, es refinamiento visual.
+- **Área:** web/src/components/layout
+- **Problema:** el chrome flotante es `tf-glass` (translúcido, `position: sticky`) y delimita con un `border-b` fijo, en vez del "scroll edge effect" que pide apple-design §12: un fade/máscara activado por scroll, solo donde el contenido realmente pasa por debajo. Hallazgo F11 de la revisión de las skills de Emil Kowalski (2026-07-25); no bloqueante, es refinamiento visual.
+- **⚠️ Este ítem citaba tres ficheros que ya no existen.** Nombraba `top-nav.tsx`, `kpi-bar.tsx` y `global-filter-bar.tsx`; el rediseño de la consola (2026-08-13, ver [docs/redesign/](redesign/)) los sustituyó. El chrome vigente es `console-frame.tsx`, `console-rail.tsx`, `space-shell.tsx`, `scope-bar.tsx`, `dashboard-shell.tsx` y `page-header.tsx`. Corregido el 2026-08-18 — un ítem que apunta a ficheros borrados hace que quien lo coja empiece por un callejón sin salida.
+- **Progreso 2026-08-18:** existe `web/src/components/layout/scroll-edge.tsx` con la primitiva (sentinel + `IntersectionObserver`, `prefers-reduced-motion` respetado) y 14 tests. Queda cablearla en el resto de superficies con borde duro.
 - **Acceptance criteria:**
-  - El borde duro se sustituye por una máscara/gradiente que aparece solo cuando hay contenido scrolleado debajo (p. ej. vía `IntersectionObserver` en un sentinel, o `scroll-driven animations` si el soporte de navegador lo permite).
+  - El borde duro se sustituye por una máscara/gradiente que aparece solo cuando hay contenido scrolleado debajo.
   - Sin borde visible cuando el contenido está en el tope (`scrollY === 0`).
-- **Files de partida:** [web/src/components/layout/top-nav.tsx](../web/src/components/layout/top-nav.tsx), [web/src/components/layout/kpi-bar.tsx](../web/src/components/layout/kpi-bar.tsx), [web/src/components/layout/global-filter-bar.tsx](../web/src/components/layout/global-filter-bar.tsx)
+- **Files de partida:** [web/src/components/layout/scroll-edge.tsx](../web/src/components/layout/scroll-edge.tsx), [web/src/components/layout/console-frame.tsx](../web/src/components/layout/console-frame.tsx), [web/src/components/layout/scope-bar.tsx](../web/src/components/layout/scope-bar.tsx)
 - **Riesgo:** bajo — puramente visual, sin tocar datos ni contratos.
 
 ### [P2] Contrato de paginación común para la API
@@ -300,16 +379,6 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 - **Files de partida:** [tests/conftest.py](../tests/conftest.py)
 - **Riesgo:** medio — toca el aislamiento de toda la suite; un fallo aquí se manifiesta como tests que se contaminan entre sí.
 
-### [P3] Partir los dos módulos-dios: `aggregates.py` y `settings.py`
-
-- **Área:** db/repositories/aggregates.py, config/settings.py
-- **Problema:** `db/repositories/aggregates.py` son 1.327 líneas y 55 funciones en una sola clase que concentra toda la analítica; `config/settings.py` son 946 líneas con 26 validadores en una clase plana que mezcla ejes ortogonales (BD, ML, LLM, auth, scraper, observabilidad) que ya están conceptualmente separados por `APP_PROFILE`. Son los dos ficheros que todo el mundo tiene que tocar, y donde se concentran los conflictos de merge. (`shared/dto.py`, en contraste, está sano: 620 líneas / 45 clases.)
-- **Acceptance criteria:**
-  - `AggregateRepository` partido por dominio (overview / geografía / competidores), **al pasar por cada dominio**, no en un big-bang.
-  - `Settings` en submodelos anidados por eje, preservando los nombres de variables de entorno.
-- **Files de partida:** [db/repositories/aggregates.py](../db/repositories/aggregates.py), [config/settings.py](../config/settings.py)
-- **Riesgo:** medio — mucha superficie; mitigable haciéndolo por partes con la suite verde entre cada una.
-
 ### [P3] Entorno de staging y plan de la API
 
 - **Área:** render.yaml, infraestructura (acción del usuario)
@@ -323,6 +392,38 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 ---
 
 ## Cerrados
+
+- [2026-08-18] **P1: seis queries analíticas de `db/` contaban dos veces los contratos
+  duplicados entre fuentes** — `tests/test_dedup_guardrail.py` existe para impedir exactamente
+  eso, pero **solo escaneaba `services/competitive` y `services/ml`**. Las olas del ratchet
+  TID251 llevan meses moviendo SQL analítico a `db/` (ADR-022) y, al moverlo, lo sacaban del
+  radio del escáner: sin fallo, sin aviso, y con el commit de la migración saliendo verde. Es
+  un guardrail que se desactivaba solo, por el mecanismo mismo del refactor que el backlog
+  promueve. Al ampliar el escáner aparecieron 9 funciones sin la cláusula. Dos son exentas por
+  diseño (`list_paginated` es CRUD, y `find_publicacion_posterior_a_adjudicacion` busca
+  anomalías: deduplicar escondería lo que va a buscar). Una era **falso positivo del propio
+  escáner** (`ml_dataset.licitaciones_abiertas` sí deduplica, con la subconsulta escrita
+  inline). Las seis restantes eran deuda real, y las dos peores estaban en el camino de las
+  métricas que se publican: `load_for_competitors`, que alimenta la cuota de mercado y el HHI
+  de `services/analytics/competitors.py` —y se verificó que ese módulo **tampoco** deduplica en
+  pandas—, y `load_licitadores`, el ranking de licitadores. Las otras cuatro son los KPIs de
+  UTE. En esas cuatro la cláusula se sembró en `_adj_filter_conditions`, el helper que las
+  cuatro comparten, para que no se pueda olvidar en la quinta.
+  El escáner ahora lleva una lista explícita de módulos de `db/` (`_SCANNED_FILES`) que **cada
+  ola futura del ratchet debe ampliar en el mismo cambio que crea el módulo**, y reconoce las
+  tres formas legítimas de aportar el dedupe: la llamada al helper, la constante de módulo (el
+  idioma de `db/`, que evita importar hacia arriba) y la subconsulta inline. `_PENDIENTES_MAX`
+  queda en 0.
+  `tests/test_adjudicaciones_dedupe_sql.py` (19 tests, sin BD) fija la composición del SQL en
+  la frontera: que la cláusula aparece con filtros y sin ellos, que el `WHERE` queda bien
+  formado en ambos caminos, que apunta a `a.licitacion_id` y no a `l.id_externo` —con el LEFT
+  JOIN, la columna de la derecha habría descartado filas válidas por `NULL NOT IN`— y, sobre
+  todo, **que los `%s` siguen cuadrando con los parámetros**: sembrar una condición en un
+  constructor de `WHERE` desalinea los valores en silencio si la condición lleva placeholder, y
+  eso no da error, da resultados incorrectos.
+  **Lo que no se pudo hacer aquí:** medir el delta. La sesión no tenía Postgres, así que no hay
+  número de cuánto bajan la cuota y el ranking al dejar de contar duplicados. Conviene mirarlo
+  en el primer deploy: es la magnitud de lo que llevaban inflado.
 
 - [2026-08-08] **P1: el trabajo bloqueante sale del event loop, y un ratchet impide que vuelva** —
   La API es async pero toda la persistencia es síncrona, así que un `async def` que llamaba directo

@@ -86,6 +86,7 @@ async def get_prediccion_baja(
 )
 @cache_response(ttl=_CALIBRACION_CACHE_TTL_S, namespace="ml")
 async def get_calibracion_baja(
+    incluir_lote: bool = False,
     _ctx: dict[str, Any] = Depends(require_any_auth),
 ) -> CalibracionBajaDTO:
     """Cobertura real del intervalo p10-p90 vs bajas observadas (closed-loop).
@@ -96,8 +97,16 @@ async def get_calibracion_baja(
     predicción↔realidad resueltos (menos de 30 licitaciones adjudicadas
     con predicción previa) — no es un error, es el estado esperado en un
     despliegue nuevo o con poco volumen de adjudicaciones recientes.
+
+    ``incluir_lote=true`` añade el bloque ``por_lote`` con la misma medida a
+    granularidad de lote (la unidad sobre la que se puja). Es **diagnóstico**:
+    los campos de primer nivel siguen describiendo lo que se sirve, y mientras
+    ``por_lote.n_prediccion_por_lote`` sea 0 ese bloque es el modelo agregado
+    evaluado por lote, no un modelo por lote. Opt-in porque duplica el coste de
+    la agregación; la clave de caché incluye el parámetro, así que las dos
+    variantes no se pisan.
     """
-    return await run_db(calibracion_baja_dto)
+    return await run_db(calibracion_baja_dto, incluir_lote)
 
 
 @router.get(

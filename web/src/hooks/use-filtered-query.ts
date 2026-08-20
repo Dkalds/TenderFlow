@@ -7,7 +7,10 @@ import { fetchWithAuth } from "@/lib/api-client";
  * in the query key and URL.
  *
  * Uses fetchWithAuth from api-client.ts for centralized auth handling
- * (401 redirect, error formatting).
+ * (401 redirect, error formatting). No puede pasar por `apiGet`: la ruta es un
+ * parámetro en runtime, no un literal del esquema, así que quien tipa la
+ * respuesta es el llamante vía `T`. Los call sites viven en `src/app/**` y
+ * `src/components/**` — olas siguientes de la migración.
  *
  * @param baseKey - React Query cache key
  * @param url - API endpoint path (without query string)

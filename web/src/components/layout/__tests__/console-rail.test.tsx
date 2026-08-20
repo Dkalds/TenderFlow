@@ -129,6 +129,17 @@ describe("ConsoleRail", () => {
     ).toHaveAttribute("href", "/resumen");
   });
 
+  it("la barra móvil separa con el borde de scroll, no con una línea fija", () => {
+    // Es cromo translúcido apoyado sobre el contenido: el `border-b` que tenía
+    // pintaba la línea también en el tope, donde no hay nada que separar.
+    const { container } = renderRail("/resumen");
+    const barraMovil = container.querySelector("[data-scroll-edge]")!.parentElement!;
+
+    expect(barraMovil.className).toContain("md:hidden");
+    expect(barraMovil.className).not.toContain("border-b");
+    expect(container.querySelector("[data-scroll-edge]")).toHaveAttribute("data-scroll-edge", "off");
+  });
+
   it("arranca la densidad al montar el menú de cuenta", () => {
     renderRail("/resumen");
     expect(initDensity).toHaveBeenCalled();

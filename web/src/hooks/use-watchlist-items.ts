@@ -12,7 +12,7 @@
 
 import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { apiMutate, fetchWithAuth } from "@/lib/api-client";
+import { apiGet, apiMutate } from "@/lib/api-client";
 import type { WatchlistFavoriteCreated, WatchlistFavoriteItem } from "@/lib/api-types";
 
 // Del contrato OpenAPI (la ruta ya declara su DTO) — antes duplicado a mano.
@@ -47,10 +47,7 @@ async function cancelAndSnapshot(qc: QueryClient): Promise<WatchlistItem[] | und
 export function useWatchlistItems() {
   return useQuery({
     queryKey: WATCHLIST_ITEMS_KEY,
-    queryFn: () =>
-      fetchWithAuth<{ items: WatchlistItem[] }>("/api/v1/watchlist/items").then(
-        (r) => r.items,
-      ),
+    queryFn: () => apiGet("/api/v1/watchlist/items").then((r) => r.items),
     meta: { silent: true },
   });
 }

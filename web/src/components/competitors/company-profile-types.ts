@@ -90,6 +90,23 @@ export interface CompanyHistory {
   ultima_adjudicacion: string | null;
 }
 
+/**
+ * UTE en la que la empresa participa como miembro (`CompetitiveCompanyUteParticipationDTO`).
+ *
+ * `contratos` e `importe_total` son de la UTE, no de la empresa: el backend
+ * mantiene esta lista deliberadamente fuera de `totales`/`posicion_mercado`,
+ * que solo cuentan lo adjudicado directamente a `empresa_id`. La UTE ya figura
+ * como empresa propia en la cuota de mercado, así que sumar estos importes a
+ * los totales del dossier contaría el mismo dinero dos veces.
+ */
+export interface CompanyUteParticipation {
+  ute_empresa_id: number;
+  ute_nombre: string;
+  otros_miembros: string[];
+  contratos: number;
+  importe_total: number;
+}
+
 export interface CompanyProfileData {
   empresa: CompanyIdentity;
   scope: CompanyScope;
@@ -103,6 +120,7 @@ export interface CompanyProfileData {
   organos_principales: CompanyBreakdown[];
   por_anio: CompanyYear[];
   movimientos: CompanyMovement[];
+  participaciones_ute: CompanyUteParticipation[];
 }
 
 export interface CompanyAward {

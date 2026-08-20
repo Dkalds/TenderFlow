@@ -574,6 +574,12 @@ export interface paths {
         /**
          * Trends
          * @description Time series trends with heatmap and YoY deltas.
+         *
+         *     ``series`` es lo único de esta respuesta que no está acotado por la
+         *     cardinalidad de un ``GROUP BY``: crece con el rango de fechas pedido. Por
+         *     eso el contrato aquí no es ``limit``/``offset`` (no hay "página siguiente"
+         *     de una serie temporal) sino ``group_by`` como granularidad del roll-up, más
+         *     un techo duro de puntos que la respuesta declara.
          */
         get: operations["trends_api_v1_analytics_trends_get"];
         put?: never;
@@ -594,6 +600,15 @@ export interface paths {
         /**
          * Trends Cpv
          * @description Per-CPV time series and rankings.
+         *
+         *     Comparte con ``/trends`` el eje que crece con el rango de fechas, pero el
+         *     mando de roll-up **no aplica igual**: aquí la serie ya es mensual y fija
+         *     (``trends_cpv_series`` agrupa por ``substr(fecha_publicacion, 1, 7)`` en
+         *     SQL), o sea que ya está en la granularidad más gruesa que este endpoint
+         *     ofrece, y el otro eje —cuántos CPVs— sí está acotado por ``top_n`` (<=50).
+         *     Exponer un ``group_by`` aquí exigiría tocar el SQL de
+         *     ``db/repositories/aggregates.py``, que es donde vive (ADR-022); queda
+         *     anotado para la ola que lo aborde en vez de duplicar el roll-up en Python.
          */
         get: operations["trends_cpv_api_v1_analytics_trends_cpv_get"];
         put?: never;
@@ -2294,6 +2309,14 @@ export interface paths {
          *     predicción↔realidad resueltos (menos de 30 licitaciones adjudicadas
          *     con predicción previa) — no es un error, es el estado esperado en un
          *     despliegue nuevo o con poco volumen de adjudicaciones recientes.
+         *
+         *     ``incluir_lote=true`` añade el bloque ``por_lote`` con la misma medida a
+         *     granularidad de lote (la unidad sobre la que se puja). Es **diagnóstico**:
+         *     los campos de primer nivel siguen describiendo lo que se sirve, y mientras
+         *     ``por_lote.n_prediccion_por_lote`` sea 0 ese bloque es el modelo agregado
+         *     evaluado por lote, no un modelo por lote. Opt-in porque duplica el coste de
+         *     la agregación; la clave de caché incluye el parámetro, así que las dos
+         *     variantes no se pisan.
          */
         get: operations["get_calibracion_baja_api_v1_predicciones_calibracion_get"];
         put?: never;
@@ -2996,6 +3019,11 @@ export interface components {
          *     (``ok|warn|crit|sin_datos|error``) para logging/alertas; el contrato
          *     público solo necesita "todo bien / degradado / no hay datos aún" — el
          *     matiz warn-vs-crit es ruido para el usuario, no una decisión que tome.
+         *
+         *     Los campos de primer nivel siguen describiendo la granularidad **servida**
+         *     (expediente). ``por_lote`` es aditivo y opcional: ausente salvo que se pida
+         *     explícitamente, de modo que el consumidor actual ve exactamente la misma
+         *     respuesta que antes de v86.
          */
         CalibracionBajaDTO: {
             /** Cobertura */
@@ -3010,6 +3038,12 @@ export interface components {
              * @enum {string}
              */
             estado: "ok" | "degradado" | "insuficiente";
+            /**
+             * Granularidad
+             * @default expediente
+             * @enum {string}
+             */
+            granularidad: "expediente" | "lote";
             /** Mae P50 */
             mae_p50?: number | null;
             /**
@@ -3017,6 +3051,42 @@ export interface components {
              * @default 0
              */
             n_evaluadas: number;
+            por_lote?: components["schemas"]["CalibracionPorLoteDTO"] | null;
+            /** Sesgo P50 */
+            sesgo_p50?: number | null;
+        };
+        /**
+         * CalibracionPorLoteDTO
+         * @description Calibración medida sobre lotes en vez de sobre expedientes.
+         *
+         *     Bloque **de diagnóstico**, no la cifra que se sirve: mientras
+         *     ``predicciones_baja`` almacene una predicción por expediente,
+         *     ``n_prediccion_por_lote`` vale 0 y esto es el modelo agregado evaluado a
+         *     granularidad de lote. Ese número es precisamente el baseline contra el que
+         *     hay que comparar un futuro modelo por lote, y por eso viaja en el contrato:
+         *     sin él, un lector no puede distinguir "el modelo por lote va mejor" de "aún
+         *     no hay modelo por lote".
+         */
+        CalibracionPorLoteDTO: {
+            /** Cobertura */
+            cobertura?: number | null;
+            /**
+             * Estado
+             * @enum {string}
+             */
+            estado: "ok" | "degradado" | "insuficiente";
+            /** Mae P50 */
+            mae_p50?: number | null;
+            /**
+             * N Evaluadas
+             * @default 0
+             */
+            n_evaluadas: number;
+            /**
+             * N Prediccion Por Lote
+             * @default 0
+             */
+            n_prediccion_por_lote: number;
             /** Sesgo P50 */
             sesgo_p50?: number | null;
         };
@@ -6968,6 +7038,13 @@ export interface components {
          * @description Combined trends response.
          */
         TrendsResult: {
+            /**
+             * Group By
+             * @description Granularidad del roll-up con la que se construyó `series` (el `group_by` pedido). El formato de `period` depende de ella: `YYYY-MM` en month, `YYYY-Www` (p. ej. 2026-W10) en week y `YYYY-MM-DD` en day.
+             * @default month
+             * @enum {string}
+             */
+            group_by: "month" | "week" | "day";
             /** Heatmap */
             heatmap?: components["schemas"]["HeatmapCell"][];
             /** Histogram Bins */
@@ -6976,6 +7053,12 @@ export interface components {
             mes_pico?: {
                 [key: string]: unknown;
             } | null;
+            /**
+             * Serie Truncada
+             * @description True si `series` alcanzó el techo de 4000 puntos y se recortó al tramo más reciente. Para cubrir un rango más largo sin perder tramo, pide una granularidad más gruesa en `group_by`. `waterfall` se calcula sobre la serie ya recortada; `heatmap`, `histogram_bins` y `mes_pico` siguen midiendo el rango completo.
+             * @default false
+             */
+            serie_truncada: boolean;
             /** Series */
             series?: components["schemas"]["TrendPoint"][];
             /** Waterfall */
@@ -8715,7 +8798,7 @@ export interface operations {
                 ccaa?: string | null;
                 /** @description Filter by tecnologia */
                 tecnologia?: string | null;
-                /** @description Group by month, week or day */
+                /** @description Frecuencia del roll-up de la serie: month (default), week o day. Es el mando que acota `series`, que escala con la LONGITUD DEL RANGO DE FECHAS y no con el número de licitaciones (day ≈ 1 punto/día, o sea ~3.650 puntos en 10 años; week ~1/7; month ~1/30). La respuesta declara en `group_by` la granularidad usada y en `serie_truncada` si se alcanzó el techo de 4000 puntos. */
                 group_by?: "month" | "week" | "day";
             };
             header?: never;
@@ -8759,7 +8842,7 @@ export interface operations {
                 ccaa?: string | null;
                 /** @description Filter by tecnologia */
                 tecnologia?: string | null;
-                /** @description Top N CPVs */
+                /** @description Top N CPVs. Acota el número de series, no la longitud de cada una: el tamaño total es `top_n` x meses del rango. */
                 top_n?: number;
             };
             header?: never;
@@ -9547,6 +9630,8 @@ export interface operations {
                 /** @description Tecnología(s) separadas por comas (filtro global) */
                 tecnologia?: string | null;
                 min_importe?: number | null;
+                /** @description Orden del listado: 'fecha' (vencimiento más próximo primero) o 'score' (oportunidad = riesgo x importe x urgencia, descendente). Con 'score' el `limit` recorta el top-N real del dataset. */
+                order_by?: "fecha" | "score";
                 limit?: number;
                 offset?: number;
             };
@@ -11984,7 +12069,9 @@ export interface operations {
     };
     get_calibracion_baja_api_v1_predicciones_calibracion_get: {
         parameters: {
-            query?: never;
+            query?: {
+                incluir_lote?: boolean;
+            };
             header?: {
                 "X-CSRF-Token"?: string | null;
             };

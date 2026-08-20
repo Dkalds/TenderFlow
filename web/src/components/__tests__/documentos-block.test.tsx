@@ -39,9 +39,52 @@ const ITEMS = {
 };
 
 describe("DocumentosBlock", () => {
-  it("renders nothing when there are no documents", () => {
+  it("renders nothing when there are no documents and no ficha link", () => {
     const { container } = withData("L-empty", { items: [] }, <DocumentosBlock licitacionId="L-empty" />);
     expect(container.firstChild).toBeNull();
+  });
+
+  it("offers the PLACSP ficha when there are no documents but a ficha link", () => {
+    withData(
+      "L-empty2",
+      { items: [] },
+      <DocumentosBlock licitacionId="L-empty2" fichaUrl="https://placsp.example/ficha?idEvl=abc" />,
+    );
+    expect(screen.getByRole("link", { name: /ficha de PLACSP/ })).toHaveAttribute(
+      "href",
+      "https://placsp.example/ficha?idEvl=abc",
+    );
+  });
+
+  it("keeps the link on failed documents but flags it as possibly expired", () => {
+    // `status: "error"` no significa "enlace muerto": también cubre ficheros
+    // que se descargaron bien y nuestro extractor no supo leer (.docx, .zip).
+    // Quitarles el href rompería enlaces que el navegador abre sin problema.
+    const conError = {
+      items: [
+        {
+          ...ITEMS.items[0],
+          status: "error",
+        },
+      ],
+    };
+    withData("L-err", conError, <DocumentosBlock licitacionId="L-err" />);
+
+    const link = screen.getByRole("link", { name: /PCAP\.pdf/ });
+    expect(link).toHaveAttribute("href", "https://example.org/pcap.pdf");
+    expect(screen.getByText(/puede haber caducado/)).toBeInTheDocument();
+  });
+
+  it("shows the ficha link as a footer when documents are present", () => {
+    withData(
+      "L2",
+      ITEMS,
+      <DocumentosBlock licitacionId="L2" fichaUrl="https://placsp.example/ficha?idEvl=xyz" />,
+    );
+    expect(screen.getByRole("link", { name: /ficha de PLACSP/ })).toHaveAttribute(
+      "href",
+      "https://placsp.example/ficha?idEvl=xyz",
+    );
   });
 
   it("renders documents with links to the original source", () => {

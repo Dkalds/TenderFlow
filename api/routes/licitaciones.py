@@ -7,7 +7,7 @@ import hashlib
 import json
 import re
 from collections.abc import Generator
-from typing import Any, Generic, TypeVar
+from typing import Any
 
 from fastapi import (
     APIRouter,
@@ -28,7 +28,12 @@ from db.repositories.adjudicaciones import AdjudicacionRepository
 from db.repositories.documentos import DocumentosRepository
 from db.repositories.licitaciones import LicitacionRepository
 from observability.logging import get_logger
-from shared.dto import SafeStr
+from shared.dto import (
+    MAX_PAGE_LIMIT,
+    CursorPaginatedResponse,
+    PaginatedResponse,
+    SafeStr,
+)
 from shared.export_safety import sanitize_spreadsheet_record
 from shared.tender_facts import EvidenceRef, TenderFactSheetRecord
 
@@ -36,9 +41,7 @@ log = get_logger(__name__)
 
 router = APIRouter(tags=["licitaciones"])
 
-_T = TypeVar("_T")
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
-_MAX_LIMIT = 500
 _MAX_QUERY_LENGTH = 200
 
 # Singletons — instanciados una vez
@@ -130,21 +133,9 @@ class DocumentoSummary(BaseModel):
     created_at: str | None = None
 
 
-class PaginatedResponse(BaseModel, Generic[_T]):
-    total: int
-    limit: int
-    offset: int
-    items: list[_T]
-    deprecation_notice: str | None = None
-
-
-class CursorPaginatedResponse(BaseModel, Generic[_T]):
-    """Respuesta con paginación por cursor (recomendada para datasets grandes)."""
-
-    items: list[_T]
-    next_cursor: str | None = None
-    has_more: bool = False
-    limit: int
+# `PaginatedResponse` y `CursorPaginatedResponse` viven en `shared/dto.py`
+# (contrato de paginación común del API). Se importan arriba: la forma que
+# estas rutas ya usaban es la que ahora comparten las demás.
 
 
 # ── Cursor helpers ────────────────────────────────────────────────────────
@@ -257,7 +248,7 @@ async def list_licitaciones(
     with_total: bool = Query(
         True, description="Incluir total (false = más rápido para paginación)"
     ),
-    limit: int = Query(50, ge=1, le=_MAX_LIMIT),
+    limit: int = Query(50, ge=1, le=MAX_PAGE_LIMIT),
     offset: int = Query(0, ge=0),
     _ctx: dict[str, Any] = Depends(require_any_auth),
 ) -> PaginatedResponse[LicitacionSummary]:
@@ -323,7 +314,7 @@ async def list_licitaciones(
 )
 async def list_licitaciones_cursor(
     cursor: str | None = Query(None, description="Cursor opaco devuelto en la página anterior"),
-    limit: int = Query(100, ge=1, le=_MAX_LIMIT),
+    limit: int = Query(100, ge=1, le=MAX_PAGE_LIMIT),
     tecnologia: str | None = Query(None, description="Tecnología (SAP, ORACLE…)"),
     _ctx: AuthContext = Depends(require_api_key),
 ) -> CursorPaginatedResponse[LicitacionSummary]:
@@ -375,7 +366,7 @@ class SearchRequest(BaseModel):
     fecha_desde: str | None = None
     fecha_hasta: str | None = None
     sort: str | None = None
-    limit: int = Field(50, ge=1, le=_MAX_LIMIT)
+    limit: int = Field(50, ge=1, le=MAX_PAGE_LIMIT)
     offset: int = Field(0, ge=0)
     with_total: bool = True
 
@@ -396,7 +387,7 @@ async def search_licitaciones(
     """
     from services.licitaciones import search_advanced
 
-    limit = max(1, min(body.limit, _MAX_LIMIT))
+    limit = max(1, min(body.limit, MAX_PAGE_LIMIT))
     offset = max(0, body.offset)
 
     def _run() -> tuple[list[dict[str, Any]], int]:
@@ -809,7 +800,7 @@ async def list_adjudicaciones(
     fecha_desde: str | None = Query(None, description="Fecha adjudicación desde"),
     fecha_hasta: str | None = Query(None, description="Fecha adjudicación hasta"),
     with_total: bool = Query(True, description="Incluir total"),
-    limit: int = Query(50, ge=1, le=_MAX_LIMIT),
+    limit: int = Query(50, ge=1, le=MAX_PAGE_LIMIT),
     offset: int = Query(0, ge=0),
     _ctx: dict[str, Any] = Depends(require_any_auth),
 ) -> PaginatedResponse[AdjudicacionSummary]:

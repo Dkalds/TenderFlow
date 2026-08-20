@@ -6,11 +6,22 @@ composición del proyecto:
 
 - Solo se interpolan con f-string **fragmentos constantes** de este módulo,
   whitelists internas de columnas o helpers como
-  ``services.dedupe.exclude_duplicados_sql()`` (que vive allí porque lleva
-  lógica de dominio propia).
+  ``services.dedupe.exclude_duplicados_sql()`` (que sigue exponiéndose desde
+  allí, aunque su definición bajó a ``db/sql_fragments.py``).
 - Los valores de usuario van **siempre** con placeholders ``?``.
 - Cada query que interpola lleva ``# noqa: S608`` inline con justificación.
+
+``FECHA_FIN_SQL``/``fecha_fin_sql()`` y ``TECHNOLOGY_OBSERVED_SQL`` ya no se
+definen aquí: los consume también ``db/`` (repositories de renovaciones y
+adjudicaciones, movidos por la ola del ratchet TID251) y ``db/`` no puede
+importar de ``services/`` (ADR-024). Viven en ``db/sql_fragments.py`` y se
+reexportan desde este módulo, que sigue siendo el sitio por el que los busca
+todo ``services/``. Ver el docstring de ese módulo para el razonamiento.
 """
+
+from db.sql_fragments import FECHA_FIN_SQL as FECHA_FIN_SQL
+from db.sql_fragments import TECHNOLOGY_OBSERVED_SQL as TECHNOLOGY_OBSERVED_SQL
+from db.sql_fragments import fecha_fin_sql as fecha_fin_sql
 
 # Condiciones de validez de un par presupuesto/adjudicado. Descarta filas
 # sin importes positivos y outliers donde el adjudicado supera el
@@ -48,52 +59,10 @@ VALID_PAIR_LOTE = (
 # nota en VALID_PAIR sobre cuál usar según el caso.
 BAJA_PCT_SQL = f"(({EFFECTIVE_BUDGET_SQL}) - a.importe_adjudicado) / ({EFFECTIVE_BUDGET_SQL}) * 100"
 
-# Universo por defecto de los agregados del radar. Las filas anteriores al
-# linaje se consideran legado del radar porque el único pipeline histórico
-# filtraba tecnología; las nuevas fuentes deben declarar su universo y quedan
-# fuera salvo que una métrica las solicite expresamente.
-TECHNOLOGY_OBSERVED_SQL = (
-    "COALESCE(l.analysis_universe, 'technology_observed') = 'technology_observed'"
-)
 TECHNOLOGY_OBSERVED_L2_SQL = (
     "COALESCE(l2.analysis_universe, 'technology_observed') = 'technology_observed'"
 )
 WATCHED_COMPANY_AWARDS_SQL = "l.analysis_universe = 'watched_company_awards_observed'"
-
-# Fecha de fin efectiva del contrato, con prioridad:
-# 1. ``licitaciones.fecha_fin`` explícita (solo ~6% de las filas).
-# 2. ``fecha_inicio + duracion`` (unidades CODICE: ANN/MON/DAY).
-# 3. ``fecha_adjudicacion + duracion`` como último recurso.
-# substr(x, 1, 10) normaliza timestamps ISO a fecha pura; CAST a INT porque
-# duracion_valor es REAL y el CAST a INTEGER es necesario para la aritmética
-# de INTERVAL. Asume alias ``l`` (licitaciones) y ``a`` (adjudicaciones).
-#
-# Devuelve TEXT 'YYYY-MM-DD' (via to_char) y no un date, para que las
-# comparaciones lexicográficas contra las columnas de fecha —que son TEXT en
-# este esquema— sean equivalentes.
-FECHA_FIN_SQL = """
-COALESCE(
-    substr(l.fecha_fin, 1, 10),
-    CASE l.duracion_unidad
-        WHEN 'ANN' THEN to_char(substr(COALESCE(l.fecha_inicio, a.fecha_adjudicacion), 1, 10)::date
-                             + (CAST(l.duracion_valor AS INTEGER) * INTERVAL '1 year'), 'YYYY-MM-DD')
-        WHEN 'MON' THEN to_char(substr(COALESCE(l.fecha_inicio, a.fecha_adjudicacion), 1, 10)::date
-                             + (CAST(l.duracion_valor AS INTEGER) * INTERVAL '1 month'), 'YYYY-MM-DD')
-        WHEN 'DAY' THEN to_char(substr(COALESCE(l.fecha_inicio, a.fecha_adjudicacion), 1, 10)::date
-                             + (CAST(l.duracion_valor AS INTEGER) * INTERVAL '1 day'), 'YYYY-MM-DD')
-    END
-)
-"""
-
-
-def fecha_fin_sql() -> str:
-    """Fragmento SQL de fecha de fin efectiva.
-
-    Envoltorio de :data:`FECHA_FIN_SQL`. Existía para elegir dialecto entre los
-    dos motores; desde ADR-021 hay uno solo, pero se conserva porque es el
-    accessor que usan los call-sites y mantiene el punto único de cambio.
-    """
-    return FECHA_FIN_SQL
 
 
 def round_sql(expr: str, ndigits: int) -> str:

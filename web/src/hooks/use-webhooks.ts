@@ -13,33 +13,35 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { apiMutate, fetchWithAuth } from "@/lib/api-client";
+import { apiGet, apiMutate, fetchWithAuth } from "@/lib/api-client";
 import type {
+  WebhookCreate,
   WebhookCreateResponse,
   WebhookDelivery,
-  WebhookEventTypes,
   WebhookOut,
   WebhookPingResult,
+  WebhookUpdate,
 } from "@/lib/api-types";
 
 export type { WebhookCreateResponse, WebhookDelivery, WebhookOut, WebhookPingResult };
 
 const WEBHOOKS_KEY = ["webhooks"] as const;
 
-export interface WebhookCreateInput {
-  name: string;
-  url: string;
-  event_types: string[];
-}
+/** Cuerpo del alta, tal y como lo declara la API. */
+export type WebhookCreateInput = WebhookCreate;
 
-export interface WebhookUpdateInput {
-  id: number;
-  active?: boolean;
-  name?: string;
-  url?: string;
-  event_types?: string[];
-}
+/** Cuerpo de la edición; el `id` va en la ruta, no en el body. */
+export type WebhookUpdateInput = WebhookUpdate & { id: number };
 
+/**
+ * `GET /webhooks` es la única ruta de webhooks sin DTO: el backend la anota
+ * `-> list[dict[str, Any]]` (su hermana `GET /webhooks/{id}` sí devuelve
+ * `WebhookOut`), así que el esquema generado la describe como una lista de
+ * objetos opacos. Pasarla por `apiGet` cambiaría `WebhookOut[]` por
+ * `{ [k: string]: unknown }[]` y rompería a quien la pinta, de modo que se
+ * queda en `fetchWithAuth` hasta que la ruta declare su modelo. El tipo de
+ * abajo es, hasta entonces, una suposición del frontend.
+ */
 export function useWebhooks() {
   return useQuery({
     queryKey: WEBHOOKS_KEY,
@@ -52,7 +54,7 @@ export function useWebhookEventTypes() {
   return useQuery({
     queryKey: ["webhooks", "event-types"],
     queryFn: () =>
-      fetchWithAuth<WebhookEventTypes>("/api/v1/webhooks/event-types").then((response) => response.event_types),
+      apiGet("/api/v1/webhooks/event-types").then((response) => response.event_types),
     staleTime: 60 * 60_000,
   });
 }

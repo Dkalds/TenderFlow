@@ -8,6 +8,12 @@ La fecha de fin efectiva se calcula en SQL con esta prioridad:
 
 Un contrato que vence es una oportunidad: o lo defiende el adjudicatario
 actual o se lo disputa quien llegue primero a la relicitación.
+
+Aquí quedan los DTOs del contrato API↔web y los dos agregados de la ventana.
+El **listado** (``proximas_renovaciones``, con su orden por score de
+oportunidad) se movió a ``db/repositories/renovaciones.py`` por ADR-022 y se
+re-exporta desde aquí; mover también los dos agregados dejaría quitar la
+entrada de este módulo del ratchet TID251.
 """
 
 from __future__ import annotations
@@ -18,14 +24,24 @@ from pydantic import BaseModel, Field
 
 from db.database import connect_read
 from db.repositories.base import rows_to_dicts
+
+# `proximas_renovaciones` se re-exporta: su SQL se movió a `db/` (ADR-022) pero
+# el nombre sigue importándose desde aquí en `services/pursuits.py`,
+# `scheduler/competitor_alerts.py` y la suite. Es un alias, no una capa
+# passthrough (ADR-024): los llamadores nuevos deben ir al repository.
+from db.repositories.renovaciones import dias_restantes_sql as dias_restantes_sql
+from db.repositories.renovaciones import (
+    proximas_renovaciones as proximas_renovaciones,
+)
+from db.repositories.renovaciones import (
+    rango_vencimiento_sql as rango_vencimiento_sql,
+)
 from services.dedupe import exclude_duplicados_sql
 
 # FECHA_FIN_SQL se re-exporta por compatibilidad con imports externos.
-from services.sql_fragments import (  # noqa: F401
-    FECHA_FIN_SQL,
-    TECHNOLOGY_OBSERVED_SQL,
-    fecha_fin_sql,
-)
+from services.sql_fragments import FECHA_FIN_SQL as FECHA_FIN_SQL
+from services.sql_fragments import TECHNOLOGY_OBSERVED_SQL as TECHNOLOGY_OBSERVED_SQL
+from services.sql_fragments import fecha_fin_sql as fecha_fin_sql
 
 # ── Umbrales de "contrato caliente" ───────────────────────────────────────
 # Definición canónica y única (ADR-014): vivía duplicada en el cliente
@@ -106,88 +122,6 @@ class RenovacionesResumenResult(BaseModel):
     totales: RenovacionesTotales
 
 
-def _rango_vencimiento_sql() -> str:
-    """``BETWEEN`` de vencimiento: hoy y hoy + N meses (parámetro ``?``).
-
-    Produce TEXT 'YYYY-MM-DD' para comparar contra ``fecha_fin_sql()``, que
-    usa el mismo formato.
-    """
-    return (
-        "BETWEEN to_char(CURRENT_DATE, 'YYYY-MM-DD') "
-        "AND to_char(CURRENT_DATE + (%s * INTERVAL '1 month'), 'YYYY-MM-DD')"
-    )
-
-
-def _dias_restantes_sql(fecha_fin_expr: str) -> str:
-    """Días restantes hasta el vencimiento, como entero."""
-    return f"(({fecha_fin_expr})::date - CURRENT_DATE)"
-
-
-def proximas_renovaciones(
-    *,
-    months_ahead: int = 6,
-    empresa_id: int | None = None,
-    ccaa: str | None = None,
-    tecnologias: list[str] | None = None,
-    min_importe: float | None = None,
-    limit: int = 200,
-    offset: int = 0,
-) -> list[dict[str, Any]]:
-    """Contratos cuya fecha de fin efectiva cae en los próximos N meses.
-
-    Cada fila es un par contrato-adjudicatario con la empresa canónica del
-    maestro, ordenado por proximidad del vencimiento.
-    """
-    months_ahead = max(1, min(int(months_ahead), 60))
-    fecha_fin = fecha_fin_sql()
-    sql = f"""
-        SELECT a.licitacion_id,
-               l.titulo,
-               l.organo_contratacion,
-               l.cpv,
-               l.ccaa,
-               l.url,
-               a.empresa_id,
-               COALESCE(e.nombre_canonico, a.nombre) AS empresa,
-               e.es_ute,
-               a.importe_adjudicado,
-               a.fecha_adjudicacion,
-               l.duracion_valor,
-               l.duracion_unidad,
-               {fecha_fin} AS fecha_fin_efectiva,
-               {_dias_restantes_sql(fecha_fin)} AS dias_restantes,
-               pr.riesgo_cambio,
-               pr.model_version AS retencion_model_version
-        FROM adjudicaciones a
-        JOIN licitaciones l ON l.id_externo = a.licitacion_id
-        LEFT JOIN empresas e ON e.empresa_id = a.empresa_id
-        LEFT JOIN predicciones_retencion pr ON pr.licitacion_id = a.licitacion_id
-        WHERE {fecha_fin} {_rango_vencimiento_sql()}
-          AND {TECHNOLOGY_OBSERVED_SQL}
-          AND {exclude_duplicados_sql()}
-    """  # noqa: S608 — fragmentos constantes de services.sql_fragments; valores con ?
-    params: list[Any] = [months_ahead]
-    if empresa_id is not None:
-        sql += " AND a.empresa_id = %s"
-        params.append(empresa_id)
-    if ccaa:
-        sql += " AND l.ccaa = %s"
-        params.append(ccaa)
-    tecnologias = [t for t in (tecnologias or []) if t]
-    if tecnologias:
-        placeholders = ",".join("%s" for _ in tecnologias)
-        sql += f" AND l.tecnologia IN ({placeholders})"
-        params.extend(tecnologias)
-    if min_importe is not None:
-        sql += " AND a.importe_adjudicado >= %s"
-        params.append(min_importe)
-    sql += " ORDER BY fecha_fin_efectiva ASC LIMIT %s OFFSET %s"
-    params.extend([max(1, min(int(limit), 1000)), max(0, int(offset))])
-
-    with connect_read() as c:
-        return rows_to_dicts(c.execute(sql, params))
-
-
 def resumen_renovaciones(
     *,
     months_ahead: int = 12,
@@ -209,7 +143,7 @@ def resumen_renovaciones(
         FROM adjudicaciones a
         JOIN licitaciones l ON l.id_externo = a.licitacion_id
         LEFT JOIN empresas e ON e.empresa_id = a.empresa_id
-        WHERE {fecha_fin} {_rango_vencimiento_sql()}
+        WHERE {fecha_fin} {rango_vencimiento_sql()}
           AND {TECHNOLOGY_OBSERVED_SQL}
           AND {exclude_duplicados_sql()}
     """  # noqa: S608 — fragmentos constantes de services.sql_fragments; valores con ?
@@ -247,7 +181,7 @@ def totales_renovaciones(
     """
     months_ahead = max(1, min(int(months_ahead), 60))
     fecha_fin = fecha_fin_sql()
-    dias_restantes = _dias_restantes_sql(fecha_fin)
+    dias_restantes = dias_restantes_sql(fecha_fin)
     sql = f"""
         SELECT COUNT(*) AS contratos_venciendo,
                COALESCE(SUM(a.importe_adjudicado), 0) AS importe_en_juego,
@@ -260,7 +194,7 @@ def totales_renovaciones(
         FROM adjudicaciones a
         JOIN licitaciones l ON l.id_externo = a.licitacion_id
         LEFT JOIN predicciones_retencion pr ON pr.licitacion_id = a.licitacion_id
-        WHERE {fecha_fin} {_rango_vencimiento_sql()}
+        WHERE {fecha_fin} {rango_vencimiento_sql()}
           AND {TECHNOLOGY_OBSERVED_SQL}
           AND {exclude_duplicados_sql()}
     """  # noqa: S608 — fragmentos constantes de services.sql_fragments; valores con ?

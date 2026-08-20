@@ -108,6 +108,31 @@ FEATURE_COLUMNS: tuple[str, ...] = (
 )
 CATEGORICAL_COLUMNS: tuple[str, ...] = FEATURE_COLUMNS[:8]
 
+# Candidatas a feature que la migración v85 ya persiste pero que **todavía no
+# entran** en FEATURE_COLUMNS. Son los tres drivers más fuertes de la baja
+# (tipo de procedimiento, tramitación y peso del precio), y el criterio de
+# aceptación del backlog las admite solo si su cobertura real supera el 50%.
+# Esa cobertura no se ha medido: exige reprocesar los ZIP mensuales cacheados
+# contra una BD, y hasta entonces meterlas sería afirmar sin medir justo lo que
+# el criterio prohíbe. Una feature NULL en el 90% de las filas no es neutra:
+# gasta un split del GBM en aprender el patrón de ausencia.
+#
+# Cómo se activan, cuando la cobertura esté medida y pase del 50%:
+#   1. `db.repositories.ml_dataset` debe SELECT-ear las tres columnas (hoy no
+#      las devuelve, así que `features_procedimiento` recibiría solo NULLs).
+#   2. Insertar "procedimiento" y "tramitacion" DENTRO del bloque categórico de
+#      FEATURE_COLUMNS y subir el corte de CATEGORICAL_COLUMNS de 8 a 10;
+#      "peso_precio_pct" va al bloque numérico. El orden es contrato: lo
+#      verifica el guard de `BajaModel.predict` contra el modelo serializado.
+#   3. Llamar a `features_procedimiento` desde `_features_estaticas`.
+#   4. Reentrenar y reportar el delta de `mae_p50`. Sin reentrenar, el guard
+#      degrada a baseline (por diseño).
+FEATURES_PENDIENTES_COBERTURA: tuple[str, ...] = (
+    "procedimiento",
+    "tramitacion",
+    "peso_precio_pct",
+)
+
 
 @dataclass
 class FilaDataset:
@@ -381,6 +406,30 @@ def _features_estaticas(row: dict[str, Any], ancla: datetime) -> dict[str, Any]:
         "n_lotes": float(n_lotes) if n_lotes is not None else None,
         "mes": float(ancla.month),
         "trimestre": float((ancla.month - 1) // 3 + 1),
+    }
+
+
+def features_procedimiento(row: dict[str, Any]) -> dict[str, Any]:
+    """Las tres columnas de v85 en forma de feature. **Todavía sin cablear.**
+
+    Vive aparte de :func:`_features_estaticas` a propósito: las tres columnas
+    están pendientes del gate de cobertura (ver
+    :data:`FEATURES_PENDIENTES_COBERTURA`), y añadirlas al dict de features
+    antes de medirla cambiaría la forma del dataset —y con ella el contrato de
+    ``feature_columns`` del modelo servido— sin ninguna evidencia de que
+    aporten.
+
+    Las dos categóricas usan ``"na"`` como resto, igual que el resto del bloque
+    categórico, para no inventar una categoría por cada forma de ausencia.
+    ``peso_precio_pct`` es numérica y deja pasar el ``None``: el
+    HistGradientBoosting maneja NaN de forma nativa, y ese NULL es informativo
+    (el expediente no publica pesos deducibles).
+    """
+    peso = row.get("peso_precio_pct")
+    return {
+        "procedimiento": row.get("procedimiento") or "na",
+        "tramitacion": row.get("tramitacion") or "na",
+        "peso_precio_pct": float(peso) if peso is not None else None,
     }
 
 

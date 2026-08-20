@@ -13,6 +13,18 @@ updates:
     labels:
       - "dependencies"
       - "python"
+    # El trío fastapi/starlette/uvicorn sale del grupo automático (2026-08-17,
+    # PR #187). Dependabot los etiquetaba como "minor" —0.136→0.141, 1.3→1.6,
+    # 0.46→0.52— pero ese salto deja `include_router` devolviendo objetos
+    # `_IncludedRouter` opacos en `app.routes`: la API responde 500 en todas las
+    # rutas y no supera ni el gate de arranque del job E2E. Actualizarlos exige
+    # auditar todo lo que recorre `app.routes` (api/, scripts/gen_status.py,
+    # tests/test_exports.py), así que va en un PR propio y a mano. Los topes que
+    # lo hacen efectivo están en requirements.in y pyproject.toml.
+    ignore:
+      - dependency-name: "fastapi"
+      - dependency-name: "starlette"
+      - dependency-name: "uvicorn"
     groups:
       minor-and-patch:
         update-types:

@@ -133,7 +133,7 @@ export default function ClustersPage() {
       <div>
         <h1 className="sr-only">Clusters</h1>
         <p className="text-muted-foreground">
-          Agrupacion semantica de licitaciones por similitud de titulo (KMeans).
+          Agrupación semántica de licitaciones por similitud de título (KMeans).
         </p>
       </div>
 
@@ -142,7 +142,7 @@ export default function ClustersPage() {
         <CardContent className="flex flex-wrap items-center gap-6 py-4">
           <div className="flex min-w-[240px] flex-1 flex-col gap-2">
             <div className="flex items-center justify-between text-sm">
-              <span className="font-medium">Numero de clusters</span>
+              <span className="font-medium">Número de clusters</span>
               <span className="tabular-nums text-muted-foreground">{autoK ? "auto" : kDraft}</span>
             </div>
             <Slider
@@ -243,9 +243,9 @@ export default function ClustersPage() {
         {/* Importe distribution box plot */}
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Distribucion de importe por cluster</CardTitle>
+            <CardTitle className="text-base">Distribución de importe por cluster</CardTitle>
             <CardDescription>
-              Banda = rango (min-max), nucleo = rango intercuartilico (Q1-Q3)
+              Banda = rango (mín-máx), núcleo = rango intercuartílico (Q1-Q3)
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -276,7 +276,7 @@ export default function ClustersPage() {
                     <TableHead className="pb-2 pr-4 font-medium text-muted-foreground">ID</TableHead>
                     <TableHead className="pb-2 pr-4 font-medium text-muted-foreground">Keywords</TableHead>
                     <TableHead className="pb-2 pr-4 font-medium text-muted-foreground">CPV dominante</TableHead>
-                    <TableHead className="pb-2 pr-4 font-medium text-muted-foreground">Organo dominante</TableHead>
+                    <TableHead className="pb-2 pr-4 font-medium text-muted-foreground">Órgano dominante</TableHead>
                     <TableHead className="pb-2 pr-4 text-right font-medium text-muted-foreground">Licitaciones</TableHead>
                     <TableHead className="pb-2 pr-4 text-right font-medium text-muted-foreground">Importe medio</TableHead>
                     <TableHead className="pb-2 text-right font-medium text-muted-foreground">Importe total</TableHead>
@@ -346,8 +346,8 @@ export default function ClustersPage() {
               <Table className="w-full text-sm">
                 <TableHeader>
                   <TableRow className="border-b text-left">
-                    <TableHead className="pb-2 pr-4 font-medium text-muted-foreground">Titulo</TableHead>
-                    <TableHead className="pb-2 pr-4 font-medium text-muted-foreground">Organo</TableHead>
+                    <TableHead className="pb-2 pr-4 font-medium text-muted-foreground">Título</TableHead>
+                    <TableHead className="pb-2 pr-4 font-medium text-muted-foreground">Órgano</TableHead>
                     <TableHead className="pb-2 pr-4 text-right font-medium text-muted-foreground">Importe</TableHead>
                     <TableHead className="pb-2 pr-4 font-medium text-muted-foreground">CCAA</TableHead>
                     <TableHead className="pb-2 font-medium text-muted-foreground">Estado</TableHead>

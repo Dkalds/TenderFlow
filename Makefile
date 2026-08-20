@@ -115,9 +115,18 @@ test-load:  ## Tests de carga/benchmark
 # ── Lockfile reproducible con hashes (uv) ────────────────────────────────
 # Requiere uv instalado (https://github.com/astral-sh/uv).
 # Genera requirements.txt y requirements-dev.txt con --generate-hashes.
+#
+# Plataforma y versión de Python van explícitas porque el lockfile no lleva
+# markers: sin ellas la resolución sale del intérprete de quien ejecute el
+# comando. Compilando desde Windows, por ejemplo, se cuela `colorama` (dep
+# condicional de click/tqdm) y a partir de ahí viaja al CI de Linux como si
+# fuera obligatoria. 3.13 es la versión que ejercita el CI y con la que se
+# generó el lock vigente.
+LOCK_TARGET := --python-platform x86_64-unknown-linux-gnu --python-version 3.13
+
 lock:  ## Genera lockfiles reproducibles con hashes (uv pip compile)
-	uv pip compile requirements.in -o requirements.txt --generate-hashes --quiet
-	uv pip compile requirements-dev.in -o requirements-dev.txt --generate-hashes --quiet
+	uv pip compile requirements.in -o requirements.txt --generate-hashes $(LOCK_TARGET) --quiet
+	uv pip compile requirements-dev.in -o requirements-dev.txt --generate-hashes $(LOCK_TARGET) --quiet
 
 lock-hashes: lock
 

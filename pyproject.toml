@@ -19,15 +19,22 @@ dependencies = [
     "structlog>=24.1.0,<26",
     "pybreaker>=1.0.0,<2",
     "reportlab>=4.0,<6",
-    "scikit-learn>=1.3.0,<2",
+    # Mismo techo que requirements.in: 1.9.0 rompe HistGradientBoostingRegressor
+    # con columnas numéricas 100% NaN (razonamiento largo está allí).
+    "scikit-learn>=1.3.0,<1.9",
     "joblib>=1.3.0,<2",
     "networkx>=3.0,<4",
     "prometheus_client>=0.19.0,<1",
-    "prometheus-fastapi-instrumentator>=7.0,<8",
+    # `<9` para no contradecir a requirements.in, que ya exigía >=8.0.0: el rango
+    # de aquí decía `<8` y el lockfile instalaba 8.0.0, así que `pip install -e .`
+    # y `pip install -r requirements.txt` pedían cosas incompatibles.
+    "prometheus-fastapi-instrumentator>=8.0.0,<9",
     "bcrypt>=4.0,<6",
     "argon2-cffi>=23.1.0,<25",
     "alembic>=1.13.0,<2",
-    "fastapi>=0.110.0,<1",
+    # Mismo techo que requirements.in: 0.141 rompe todas las rutas
+    # (`_IncludedRouter` sin `.path`). El razonamiento largo está allí.
+    "fastapi>=0.110.0,<0.137",
     "redis>=5.0,<6",
     "cachetools>=5.3.0,<8",
     "brotli-asgi>=1.4.0,<2",
@@ -169,8 +176,6 @@ ignore = [
 "services/deadline_reminders.py" = ["TID251"]
 "services/dedupe.py" = ["TID251"]
 "services/entity_resolution.py" = ["TID251"]
-"services/licitaciones.py" = ["TID251", "S608"]
-"services/ml/retencion_labels.py" = ["TID251"]
 "services/ml/scoring.py" = ["TID251"]
 "services/notifications.py" = ["TID251"]
 "services/resoluciones.py" = ["TID251"]

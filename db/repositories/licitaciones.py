@@ -7,7 +7,7 @@ Las queries complejas usan SQLAlchemy Core para construcción type-safe
 from __future__ import annotations
 
 import re
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import Select, and_, func, or_, select, text
 
@@ -16,6 +16,9 @@ from db.models import _DIALECT, compile_query, licitacion_tecnologia_score, lici
 from db.repositories.base import loose_distinct_strings, rows_to_dicts
 from observability.logging import get_logger
 from shared.estados import ESTADOS_CERRADOS
+
+if TYPE_CHECKING:
+    import pandas as pd
 
 log = get_logger(__name__)
 
@@ -599,6 +602,33 @@ class LicitacionRepository:
         except Exception:
             log.warning("fts_ids_search_failed", exc_info=True)
             return None
+
+    def load_for_index(self) -> pd.DataFrame:
+        """``id_externo``/``titulo``/``descripcion`` de toda la tabla, como DataFrame.
+
+        Carga full-table para construir índices de búsqueda offline (AGENTS.md
+        §3.8). Las columnas se toman de ``cursor.description``, no de las
+        filas: con la tabla vacía el DataFrame sale igualmente **con las tres
+        columnas**, que es lo que espera cualquier consumidor que indexe por
+        nombre de columna.
+
+        El SQL vivía en ``services/licitaciones.py``; se movió aquí al sacar
+        ese módulo del ratchet TID251 (ADR-022).
+        """
+        import pandas as pd
+
+        from db.database import connect, init_db
+
+        # `connect()` y no `connect_read()`: se conserva el pool de escritura
+        # que usaba el call-site original. El de lectura tiene otra sesión
+        # (autocommit, read-only) y cambiarlo aquí de paso mezclaría el
+        # traslado del SQL con una decisión de routing que nadie ha evaluado.
+        init_db()
+        with connect() as c:
+            cursor = c.execute("SELECT id_externo, titulo, descripcion FROM licitaciones")
+            rows = cursor.fetchall()
+            cols = [d[0] for d in cursor.description]
+        return pd.DataFrame(rows, columns=cols)
 
     def load_drift_window(self, start: str, end: str) -> list[dict[str, Any]]:
         """Carga licitaciones de un rango de fechas para drift detection."""

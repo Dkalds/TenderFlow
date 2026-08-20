@@ -238,6 +238,35 @@ describe("ScopeBar — contrato de filtros por página", () => {
   });
 });
 
+describe("ScopeBar — separador con el contenido", () => {
+  /**
+   * La barra es translúcida y se apoya sobre la tabla. El `border-b` fijo que
+   * tenía dibujaba una línea dura también con el contenido en el tope, donde no
+   * separa nada. Ahora el separador es el borde de scroll (`scroll-edge.tsx`):
+   * existe sólo cuando hay algo desplazado por debajo.
+   */
+  it("no lleva borde duro, ni con ámbito ni sin él", () => {
+    const { container } = renderBar();
+    expect(container.querySelector("header")!.className).not.toContain("border-b");
+
+    cleanup();
+    pathnameRef.current = "/mi-perfil";
+    const sinAmbito = renderBar();
+    expect(sinAmbito.container.querySelector("header")!.className).not.toContain("border-b");
+  });
+
+  it("cuelga el borde de scroll, apagado mientras el contenido está en el tope", () => {
+    const { container } = renderBar();
+    expect(container.querySelector("[data-scroll-edge]")).toHaveAttribute("data-scroll-edge", "off");
+  });
+
+  it("también en las pantallas sin ámbito", () => {
+    pathnameRef.current = "/mi-perfil";
+    const { container } = renderBar();
+    expect(container.querySelector("[data-scroll-edge]")).toHaveAttribute("data-scroll-edge", "off");
+  });
+});
+
 describe("ScopeBar — utilidades", () => {
   it("el botón de buscar abre la paleta de comandos", () => {
     renderBar();

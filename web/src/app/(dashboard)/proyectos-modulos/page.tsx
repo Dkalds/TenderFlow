@@ -225,10 +225,10 @@ export default function ProyectosModulosPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="sr-only">
-            Proyectos &amp; Modulos
+            Proyectos &amp; Módulos
           </h1>
           <p className="text-muted-foreground">
-            Desglose por tipo de proyecto y modulo SAP.
+            Desglose por tipo de proyecto y módulo SAP.
           </p>
         </div>
         <ExportPopover
@@ -246,7 +246,7 @@ export default function ProyectosModulosPage() {
           loading={isLoading}
         />
         <KpiCard
-          title="Top modulo YoY"
+          title="Top módulo YoY"
           value={isLoading ? undefined : (yoy?.modulo ?? "-")}
           subtitle={
             yoy && yoy.crecimiento_pct >= YOY_NUEVO
@@ -263,7 +263,7 @@ export default function ProyectosModulosPage() {
           loading={isLoading}
         />
         <KpiCard
-          title="% Multi-modulo"
+          title="% Multi-módulo"
           value={isLoading ? undefined : formatPercent(pctMultiModulo)}
           subtitle="clasificados / total"
           icon={Percent}
@@ -302,7 +302,7 @@ export default function ProyectosModulosPage() {
           loading={isLoading}
         />
         <KpiCard
-          title="Modulos Detectados"
+          title="Módulos Detectados"
           value={
             isLoading
               ? undefined
@@ -329,7 +329,7 @@ export default function ProyectosModulosPage() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
               <FolderKanban className="h-4 w-4" />
-              Modulos SAP por Cantidad
+              Módulos SAP por Cantidad
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -365,7 +365,7 @@ export default function ProyectosModulosPage() {
         <Card>
           <CardHeader>
             <CardTitle className="text-base">
-              Modulos por Importe (Treemap)
+              Módulos por Importe (Treemap)
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -417,7 +417,7 @@ export default function ProyectosModulosPage() {
       <Card>
         <CardHeader>
           <CardTitle className="text-base">
-            Importe Medio por Modulo SAP
+            Importe Medio por Módulo SAP
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -434,7 +434,7 @@ export default function ProyectosModulosPage() {
                   <tr className="border-b text-left">
                     {(
                       [
-                        ["modulo", "Modulo"],
+                        ["modulo", "Módulo"],
                         ["count", "Cantidad"],
                         ["importe", "Importe Total"],
                         ["importe_medio", "Importe Medio"],
@@ -557,7 +557,7 @@ export default function ProyectosModulosPage() {
       {/* Top CPV codes */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Top codigos CPV</CardTitle>
+          <CardTitle className="text-base">Top códigos CPV</CardTitle>
         </CardHeader>
         <CardContent>
           {isLoading ? (

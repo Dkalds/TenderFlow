@@ -8,11 +8,19 @@
  * en vez de llegar a la pantalla como `undefined`.
  */
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { apiMutate, fetchWithAuth } from "@/lib/api-client";
+import { apiGet, apiMutate, fetchWithAuth, type ApiQueryValue } from "@/lib/api-client";
 import { useActiveOrganizationId } from "@/hooks/use-organization";
-import type { components } from "@/generated/api";
+import type {
+  PipelineAgendaItem as PipelineAgendaItemDTO,
+  PipelineAgendaResponse,
+  PursuitCreate,
+  PursuitDetail,
+  PursuitListResponse,
+  PursuitMetrics as PursuitMetricsDTO,
+  PursuitUpdate,
+} from "@/lib/api-types";
 
-export type Pursuit = components["schemas"]["PursuitDetail"];
+export type Pursuit = PursuitDetail;
 export type PursuitStatus = Pursuit["status"];
 
 /** Orden del workflow. `satisfies` la ancla al esquema: un estado que el backend
@@ -30,12 +38,12 @@ export const PURSUIT_STATUSES = [
 
 export type PursuitDecision = Pursuit["decision"];
 export type PursuitOutcome = Pursuit["outcome"];
-export type PursuitList = components["schemas"]["PursuitListResponse"];
-export type PursuitMetrics = components["schemas"]["PursuitMetrics"];
-export type CreatePursuitInput = components["schemas"]["PursuitCreate"];
-export type UpdatePursuitInput = components["schemas"]["PursuitUpdate"];
-export type PipelineAgenda = components["schemas"]["PipelineAgendaResponse"];
-export type PipelineAgendaItem = components["schemas"]["PipelineAgendaItem"];
+export type PursuitList = PursuitListResponse;
+export type PursuitMetrics = PursuitMetricsDTO;
+export type CreatePursuitInput = PursuitCreate;
+export type UpdatePursuitInput = PursuitUpdate;
+export type PipelineAgenda = PipelineAgendaResponse;
+export type PipelineAgendaItem = PipelineAgendaItemDTO;
 export type AgendaUrgencia = PipelineAgendaItem["urgencia"];
 export type AgendaKind = PipelineAgendaItem["kind"];
 
@@ -52,13 +60,24 @@ export interface PursuitFilters {
   responsible_user_id?: number;
 }
 
-function pursuitQuery(filters: PursuitFilters, organizationId: number | null): string {
-  const params = new URLSearchParams();
-  if (filters.status) params.set("status", filters.status);
-  if (filters.responsible_user_id) params.set("responsible_user_id", String(filters.responsible_user_id));
-  if (organizationId != null) params.set("organization_id", String(organizationId));
-  const search = params.toString();
-  return search ? `?${search}` : "";
+/**
+ * Query del listado. Los valores `undefined` los descarta el serializador del
+ * cliente tipado, así que esto equivale al `if (x) params.set(...)` anterior.
+ */
+function pursuitQuery(
+  filters: PursuitFilters,
+  organizationId: number | null,
+): Record<string, ApiQueryValue> {
+  return {
+    status: filters.status,
+    responsible_user_id: filters.responsible_user_id || undefined,
+    organization_id: organizationId ?? undefined,
+  };
+}
+
+/** Query común a las vistas de organización que van por el cliente tipado. */
+function organizationQuery(organizationId: number | null): Record<string, ApiQueryValue> {
+  return { organization_id: organizationId ?? undefined };
 }
 
 /**
@@ -72,7 +91,7 @@ export function usePursuits(filters: PursuitFilters = {}) {
   return useQuery({
     queryKey: [...pursuitKeys.list(filters), organizationId],
     queryFn: () =>
-      fetchWithAuth<PursuitList>(`/api/v1/pursuits${pursuitQuery(filters, organizationId)}`),
+      apiGet("/api/v1/pursuits", { params: { query: pursuitQuery(filters, organizationId) } }),
     staleTime: 30_000,
   });
 }
@@ -144,12 +163,8 @@ export function usePursuitMetrics() {
   const organizationId = useActiveOrganizationId();
   return useQuery({
     queryKey: [...pursuitKeys.metrics, organizationId],
-    queryFn: () => {
-      const params = new URLSearchParams();
-      if (organizationId != null) params.set("organization_id", String(organizationId));
-      const query = params.toString();
-      return fetchWithAuth<PursuitMetrics>(`/api/v1/pursuits/metrics${query ? `?${query}` : ""}`);
-    },
+    queryFn: () =>
+      apiGet("/api/v1/pursuits/metrics", { params: { query: organizationQuery(organizationId) } }),
     staleTime: 60_000,
   });
 }
@@ -172,15 +187,19 @@ export function usePipelineAgenda(filters: AgendaFilters) {
   const organizationId = useActiveOrganizationId();
   return useQuery({
     queryKey: [...pursuitKeys.agenda, filters, organizationId],
-    queryFn: () => {
-      const params = new URLSearchParams();
-      if (organizationId != null) params.set("organization_id", String(organizationId));
-      if (filters.soloMios) params.set("solo_mios", "true");
-      if (filters.tecnologia) params.set("tecnologia", filters.tecnologia);
-      if (filters.ccaa) params.set("ccaa", filters.ccaa);
-      const query = params.toString();
-      return fetchWithAuth<PipelineAgenda>(`/api/v1/pursuits/agenda${query ? `?${query}` : ""}`);
-    },
+    queryFn: () =>
+      apiGet("/api/v1/pursuits/agenda", {
+        params: {
+          query: {
+            ...organizationQuery(organizationId),
+            // `solo_mios` solo viaja cuando está activo: el backend ya asume
+            // `false` y mandarlo vacío ensuciaría la URL cacheada.
+            solo_mios: filters.soloMios || undefined,
+            tecnologia: filters.tecnologia || undefined,
+            ccaa: filters.ccaa || undefined,
+          },
+        },
+      }),
     staleTime: 30_000,
   });
 }

@@ -209,7 +209,7 @@ export default function UtesPage() {
         {/* Evolucion temporal — composed bar + line */}
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Evolucion Temporal de UTEs</CardTitle>
+            <CardTitle className="text-base">Evolución Temporal de UTEs</CardTitle>
           </CardHeader>
           <CardContent>
             {isLoading ? (
@@ -292,7 +292,7 @@ export default function UtesPage() {
             </div>
           ) : (
             <p className="py-8 text-center text-muted-foreground">
-              Sin pares de co-licitacion detectados
+              Sin pares de co-licitación detectados
             </p>
           )}
         </CardContent>
@@ -379,7 +379,7 @@ export default function UtesPage() {
               <Table>
                 <TableHeader>
                   <TableRow className="text-left text-muted-foreground">
-                    <TableHead>Metrica</TableHead>
+                    <TableHead>Métrica</TableHead>
                     <TableHead>
                       <span className="inline-flex items-center gap-1">
                         <Badge variant="default" className="text-xs">UTE</Badge>
@@ -420,7 +420,7 @@ export default function UtesPage() {
             <div className="relative w-full sm:w-64">
               <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="Buscar miembro..."
+                placeholder="Buscar miembro…"
                 value={memberSearch}
                 onChange={(e) => setMemberSearch(e.target.value)}
                 className="pl-8"

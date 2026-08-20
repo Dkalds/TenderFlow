@@ -278,9 +278,9 @@ export default function TecnologiasPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="sr-only">Tecnologias</h1>
+          <h1 className="sr-only">Tecnologías</h1>
           <p className="text-muted-foreground">
-            Distribucion, evolucion y cruces por tecnologia detectada.
+            Distribución, evolución y cruces por tecnología detectada.
           </p>
         </div>
         <ExportPopover
@@ -292,14 +292,14 @@ export default function TecnologiasPage() {
       {/* KPI Row */}
       <KpiStrip columns={4}>
         <KpiCard
-          title="Tecnologias detectadas"
+          title="Tecnologías detectadas"
           value={isLoading ? undefined : formatNumber(data?.n_tecnologias ?? 0)}
           subtitle={`${formatNumber(data?.sin_clasificar ?? 0)} sin clasificar`}
           icon={Cpu}
           loading={isLoading}
         />
         <KpiCard
-          title="Tecnologia lider"
+          title="Tecnología líder"
           value={isLoading ? undefined : (data?.tecnologia_lider ?? "-")}
           subtitle={
             data?.lider_count
@@ -316,9 +316,9 @@ export default function TecnologiasPage() {
           loading={isLoading}
         />
         <KpiCard
-          title="Tasa adjudicacion"
+          title="Tasa adjudicación"
           value={isLoading ? undefined : formatPercent(data?.tasa_adjudicacion_media ?? 0)}
-          subtitle="media por tecnologia"
+          subtitle="media por tecnología"
           icon={Percent}
           loading={isLoading}
         />
@@ -365,7 +365,7 @@ export default function TecnologiasPage() {
           <div className="flex items-center justify-between">
             <CardTitle className="flex items-center gap-2 text-base">
               <TrendingUp className="h-4 w-4" />
-              Evolucion mensual por tecnologia
+              Evolución mensual por tecnología
             </CardTitle>
             <div className="flex gap-1">
               <Button
@@ -400,7 +400,7 @@ export default function TecnologiasPage() {
       <div className="grid gap-6 lg:grid-cols-2">
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Volumen por tecnologia</CardTitle>
+            <CardTitle className="text-base">Volumen por tecnología</CardTitle>
             <CardDescription>
               Nº de licitaciones (color = importe)
             </CardDescription>
@@ -418,7 +418,7 @@ export default function TecnologiasPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Importe por tecnologia</CardTitle>
+            <CardTitle className="text-base">Importe por tecnología</CardTitle>
             <CardDescription>
               Importe acumulado (color = nº licitaciones)
             </CardDescription>
@@ -439,7 +439,7 @@ export default function TecnologiasPage() {
       <div className="grid gap-6 lg:grid-cols-2">
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Distribucion por cantidad</CardTitle>
+            <CardTitle className="text-base">Distribución por cantidad</CardTitle>
           </CardHeader>
           <CardContent>
             {isLoading ? (
@@ -456,7 +456,7 @@ export default function TecnologiasPage() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
               <MapIcon className="h-4 w-4" />
-              Distribucion geografica por tecnologia
+              Distribución geográfica por tecnología
             </CardTitle>
             <CardDescription>Top 10 CCAA</CardDescription>
           </CardHeader>
@@ -478,7 +478,7 @@ export default function TecnologiasPage() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
               <Grid3x3 className="h-4 w-4" />
-              Top organos por tecnologia
+              Top órganos por tecnología
             </CardTitle>
             <CardDescription>Nº de licitaciones</CardDescription>
           </CardHeader>
@@ -542,7 +542,7 @@ export default function TecnologiasPage() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
             <Filter className="h-4 w-4" />
-            Detalle por tecnologia
+            Detalle por tecnología
           </CardTitle>
           <div className="mt-2 flex flex-wrap items-center gap-3">
             <Select
@@ -550,10 +550,10 @@ export default function TecnologiasPage() {
               onValueChange={(v) => setSelectedTech(v === "__all__" ? "" : v)}
             >
               <SelectTrigger className="w-56 text-sm">
-                <SelectValue placeholder="Selecciona una tecnologia" />
+                <SelectValue placeholder="Selecciona una tecnología" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="__all__">Selecciona una tecnologia</SelectItem>
+                <SelectItem value="__all__">Selecciona una tecnología</SelectItem>
                 {items.map((t) => (
                   <SelectItem key={t.tecnologia} value={t.tecnologia}>
                     {t.tecnologia}
@@ -571,7 +571,7 @@ export default function TecnologiasPage() {
         <CardContent>
           {!selectedTech ? (
             <p className="py-8 text-center text-muted-foreground">
-              Selecciona una tecnologia para ver sus licitaciones.
+              Selecciona una tecnología para ver sus licitaciones.
             </p>
           ) : detalleLoading ? (
             <div className="space-y-2">
@@ -598,12 +598,12 @@ export default function TecnologiasPage() {
                 <Table className="w-full text-sm">
                   <TableHeader>
                     <TableRow className="border-b text-left">
-                      <TableHead className="pb-2 pr-4 font-medium text-muted-foreground">Titulo</TableHead>
-                      <TableHead className="pb-2 pr-4 font-medium text-muted-foreground">Organo</TableHead>
+                      <TableHead className="pb-2 pr-4 font-medium text-muted-foreground">Título</TableHead>
+                      <TableHead className="pb-2 pr-4 font-medium text-muted-foreground">Órgano</TableHead>
                       <TableHead className="pb-2 pr-4 text-right font-medium text-muted-foreground">Importe</TableHead>
                       <TableHead className="pb-2 pr-4 font-medium text-muted-foreground">Estado</TableHead>
                       <TableHead className="pb-2 pr-4 font-medium text-muted-foreground">CCAA</TableHead>
-                      <TableHead className="pb-2 font-medium text-muted-foreground">Publicacion</TableHead>
+                      <TableHead className="pb-2 font-medium text-muted-foreground">Publicación</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -643,11 +643,11 @@ export default function TecnologiasPage() {
       {/* Aggregated table */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Todas las Tecnologias</CardTitle>
+          <CardTitle className="text-base">Todas las Tecnologías</CardTitle>
           <div className="relative mt-2">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
-              placeholder="Buscar tecnologia..."
+              placeholder="Buscar tecnología…"
               value={filter}
               onChange={(e) => setFilter(e.target.value)}
               className="max-w-sm pl-9"
@@ -666,7 +666,7 @@ export default function TecnologiasPage() {
               <Table className="w-full text-sm">
                 <TableHeader>
                   <TableRow className="border-b text-left">
-                    <TableHead className="pb-2 pr-4 font-medium text-muted-foreground">Tecnologia</TableHead>
+                    <TableHead className="pb-2 pr-4 font-medium text-muted-foreground">Tecnología</TableHead>
                     <TableHead className="pb-2 pr-4 text-right font-medium text-muted-foreground">Cantidad</TableHead>
                     <TableHead className="pb-2 pr-4 text-right font-medium text-muted-foreground">Importe</TableHead>
                     <TableHead className="pb-2 pr-4 text-right font-medium text-muted-foreground">% Adj.</TableHead>

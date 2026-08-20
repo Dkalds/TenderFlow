@@ -72,10 +72,21 @@ class TestRunFetchPhase:
         ):
             counts = _run_fetch_phase()
 
-        assert counts == {"extracted": 1, "error": 1}
+        assert counts == {"extracted": 1, "error": 1, "skipped": 0}
 
     def test_no_pending_returns_zero_counts(self, repo):
-        assert _run_fetch_phase() == {"extracted": 0, "error": 0}
+        assert _run_fetch_phase() == {"extracted": 0, "error": 0, "skipped": 0}
+
+    def test_skipped_no_consume_la_fila(self, repo):
+        """Un documento saltado por breaker abierto se cuenta aparte y sigue
+        ``pending``: el lote de mañana lo reintenta."""
+        _seed_pending(repo, "EXP-F5")
+
+        with patch("scraper.document_fetcher.fetch_and_extract", side_effect=["skipped"]):
+            counts = _run_fetch_phase()
+
+        assert counts == {"extracted": 0, "error": 0, "skipped": 1}
+        assert len(repo.list_pendientes()) == 1
 
     def test_unexpected_exception_counts_as_error(self, repo):
         _seed_pending(repo, "EXP-F3")

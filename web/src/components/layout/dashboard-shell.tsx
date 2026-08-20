@@ -1,6 +1,7 @@
 "use client";
 
 import { usePathname } from "next/navigation";
+import { ScrollEdgeSentinel } from "@/components/layout/scroll-edge";
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
 import { CONSOLE_SPACES } from "@/lib/console-spaces";
 import { useDensity } from "@/lib/density";
@@ -45,6 +46,10 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
       data-density={compact ? "compact" : "normal"}
       className="flex-1 overflow-auto"
     >
+      {/* Primero de todo: es el centinela que decide si el cromo de arriba
+          dibuja su borde. Tiene que ser el primer hijo del contenedor con
+          scroll, no de la página, o mediría otra cosa. */}
+      <ScrollEdgeSentinel />
       <h1 className="sr-only">{pageTitle}</h1>
       {children}
     </main>

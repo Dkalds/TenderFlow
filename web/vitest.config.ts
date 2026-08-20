@@ -46,6 +46,24 @@ export default defineConfig({
       // pisos por carpeta de abajo conservan la garantía anterior sobre
       // lib/hooks/components: el global cubre el conjunto, y esos cubren el
       // subconjunto que ya se medía. Subir el global exige tests de páginas.
+      //
+      // 2026-08-18: las páginas de más de 1.000 líneas ya no tienen la lógica
+      // dentro del componente. `detalle`, `competidores` y `mi-watchlist` la
+      // exportan desde `_hooks/` y esos módulos SÍ están medidos:
+      //
+      //   src/app/**/_hooks/*.ts  →  99.67 stmts / 95 branches / 100 funcs / 100 lines
+      //                              (305/306 · 228/240 · 107/107 · 242/242)
+      //   src/lib/ask-stream.ts   →  90.38/83.33/100/93.61  ⇒  100/96.29/100/100
+      //
+      // Los umbrales globales de abajo NO suben todavía, y es a propósito: el
+      // denominador global no se pudo volver a medir en la máquina local (cuatro
+      // intentos de `vitest run --coverage` sobre los 109 ficheros murieron con
+      // `[vitest-pool]: Failed to start threads worker`, que reporta «no tests»
+      // con exit 0 y una cobertura falsa del 0-14%). Proyectar 40.2/30.4/37.5/41.6
+      // + los 305/228/107/242 medidos da ~45/34/42/46, pero eso es aritmética, no
+      // una medición: subir el piso a un número no medido es justo lo que deja
+      // CI en rojo. Súbanse los cuatro globales cuando el job `frontend` publique
+      // su propio número, dejando el buffer de ~2-3 puntos de siempre.
       thresholds: {
         statements: 38,
         branches: 28,
