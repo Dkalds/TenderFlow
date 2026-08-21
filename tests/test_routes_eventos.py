@@ -100,3 +100,26 @@ def test_eventos_feed_tipos_validos(client, auth):
     for tipo in tipos_validos:
         r = client.get(f"/api/v1/eventos?tipo={tipo}", headers=auth)
         assert r.status_code == 200, f"tipo={tipo!r} devolvio {r.status_code}"
+
+
+def test_eventos_feed_acepta_el_ambito_global(client, auth):
+    """Los filtros generales del Resumen viajan al feed sin romperlo."""
+    r = client.get(
+        "/api/v1/eventos?ccaa=Madrid&tecnologia=SAP&estado=PUB&importe_min=1000"
+        "&solo_abiertas=true&q=mantenimiento&fecha_desde=2026-01-01&fecha_hasta=2026-12-31",
+        headers=auth,
+    )
+    assert r.status_code == 200
+    assert isinstance(r.json()["items"], list)
+
+
+def test_eventos_feed_fecha_invalida(client, auth):
+    """fecha_desde no ISO → 422 (no una query con basura dentro)."""
+    r = client.get("/api/v1/eventos?fecha_desde=ayer", headers=auth)
+    assert r.status_code == 422
+
+
+def test_eventos_feed_importe_min_negativo(client, auth):
+    """importe_min < 0 → 422."""
+    r = client.get("/api/v1/eventos?importe_min=-1", headers=auth)
+    assert r.status_code == 422
