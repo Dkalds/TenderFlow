@@ -31,8 +31,44 @@ from config.settings import Settings
 
 _RAIZ = Path(__file__).resolve().parent.parent
 
-# Directorios sin código de producción: sus getattr no gobiernan nada desplegado.
-_EXCLUIDOS = ("tests", "scripts", ".git", "node_modules", "web", "graphify-out")
+# Paquetes de producción que el guard recorre. **Allowlist y no denylist**, a
+# propósito: recorrer `_RAIZ.rglob("*.py")` filtrando por prefijos prohibidos
+# barre todo lo que no esté nombrado, y en un árbol de trabajo real eso son
+# 18.598 ficheros de los que 18.228 salen de `.venv/` y `.claude/worktrees/`.
+# Bastaba con que una dependencia trajera su propio `getattr(settings, ...)`
+# —hypothesis tiene `getattr(settings, "_current_profile")`— para poner el guard
+# en rojo por código de terceros que no gobierna nada desplegado. Mismo patrón
+# que `tests/test_baja_single_source.py::_SCAN_DIRS`.
+_PAQUETES_DE_PRODUCCION: tuple[str, ...] = (
+    "api",
+    "config",
+    "db",
+    "llm",
+    "observability",
+    "scheduler",
+    "scraper",
+    "services",
+    "shared",
+)
+
+# Directorios de raíz que contienen `.py` y **no** son producción. No se usa
+# para filtrar: existe para que `test_la_allowlist_de_paquetes_no_se_queda_atras`
+# pueda distinguir "paquete nuevo que nadie añadió al guard" de "directorio
+# excluido a conciencia".
+_NO_PRODUCCION: frozenset[str] = frozenset(
+    {
+        ".agents",
+        ".claude",
+        ".codex",
+        ".venv",
+        "dashboard",
+        "graphify-out",
+        "node_modules",
+        "scripts",
+        "tests",
+        "web",
+    }
+)
 
 # Acepta tanto ``settings`` como el alias ``_settings`` (shared/auth_core.py).
 _PATRON = re.compile(r"getattr\(\s*_?settings\s*,\s*[\"']([A-Za-z_][A-Za-z0-9_]*)[\"']")
@@ -55,11 +91,12 @@ def _campos_declarados() -> frozenset[str]:
 
 
 def _ficheros_de_produccion() -> list[Path]:
-    return [
-        ruta
-        for ruta in _RAIZ.rglob("*.py")
-        if not ruta.relative_to(_RAIZ).parts[0].startswith(_EXCLUIDOS)
-    ]
+    ficheros: list[Path] = []
+    for paquete in _PAQUETES_DE_PRODUCCION:
+        base = _RAIZ / paquete
+        if base.is_dir():
+            ficheros.extend(base.rglob("*.py"))
+    return sorted(ficheros)
 
 
 def _referencias() -> dict[str, set[str]]:
@@ -106,6 +143,35 @@ def test_la_allowlist_de_vestigios_no_crece() -> None:
     assert not obsoletos, (
         f"Estas entradas de _VESTIGIOS_PERMITIDOS ya no hacen falta: {sorted(obsoletos)}. "
         "Borralas de la lista — el ratchet solo puede encoger."
+    )
+
+
+def test_la_allowlist_de_paquetes_no_se_queda_atras() -> None:
+    """Un paquete de producción nuevo entra en el guard, o esto falla.
+
+    Es el riesgo que introduce cambiar el denylist por un allowlist: el walk
+    anterior cubría cualquier directorio nuevo por defecto —a costa de barrer
+    también ``.venv/``— y una lista explícita no. En vez de confiar en que
+    alguien se acuerde, cualquier directorio de raíz con ``.py`` que no esté
+    clasificado en una de las dos listas rompe aquí, y clasificarlo obliga a
+    decidir si su código gobierna algo desplegado.
+
+    ``next(..., None)`` corta en el primer ``.py``, así que descubrir que
+    ``.venv`` tiene Python no cuesta recorrer sus 11.385 ficheros.
+    """
+    con_python = {
+        hijo.name
+        for hijo in _RAIZ.iterdir()
+        if hijo.is_dir() and next(hijo.rglob("*.py"), None) is not None
+    }
+    sin_clasificar = sorted(con_python - set(_PAQUETES_DE_PRODUCCION) - _NO_PRODUCCION)
+    sueltos = sorted(ruta.name for ruta in _RAIZ.glob("*.py"))
+
+    assert not sin_clasificar and not sueltos, (
+        "Hay Python en la raíz del repo que el guard no clasifica. Directorios: "
+        f"{sin_clasificar}; módulos sueltos: {sueltos}. Añadilos a "
+        "_PAQUETES_DE_PRODUCCION si su código se despliega, o a _NO_PRODUCCION "
+        "si no."
     )
 
 
