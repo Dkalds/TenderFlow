@@ -19,10 +19,14 @@ reexportan desde este módulo, que sigue siendo el sitio por el que los busca
 todo ``services/``. Ver el docstring de ese módulo para el razonamiento.
 """
 
-from db.sql_fragments import (  # noqa: F401  — reexport, ver docstring
-    FECHA_FIN_SQL,
-    TECHNOLOGY_OBSERVED_SQL,
-    fecha_fin_sql,
+from db.sql_fragments import (
+    FECHA_FIN_SQL as FECHA_FIN_SQL,
+)
+from db.sql_fragments import (
+    TECHNOLOGY_OBSERVED_SQL as TECHNOLOGY_OBSERVED_SQL,
+)
+from db.sql_fragments import (
+    fecha_fin_sql as fecha_fin_sql,
 )
 
 # Condiciones de validez de un par presupuesto/adjudicado. Descarta filas
