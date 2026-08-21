@@ -1,6 +1,11 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { SITE_NAME, SITE_URL } from "@/lib/site";
+import {
+  OG_IMAGE_COMPARTIDA,
+  SITE_NAME,
+  SITE_URL,
+  TWITTER_COMPARTIDO,
+} from "@/lib/site";
 import { CONTENIDO } from "./_content/landing";
 
 /**
@@ -19,12 +24,17 @@ export const metadata: Metadata = {
   title: { absolute: CONTENIDO.metaTitle },
   description: CONTENIDO.metaDescription,
   alternates: { canonical: "/" },
+  // `OG_IMAGE_COMPARTIDA` no es opcional: declarar `openGraph` aquí reemplaza
+  // entero el del layout raíz, y sin esparcirla la portada —la página que la
+  // gente comparte— se quedaría sin imagen de preview. Ver `@/lib/site`.
   openGraph: {
+    ...OG_IMAGE_COMPARTIDA,
     title: CONTENIDO.metaTitle,
     description: CONTENIDO.metaDescription,
     url: "/",
   },
   twitter: {
+    ...TWITTER_COMPARTIDO,
     title: CONTENIDO.metaTitle,
     description: CONTENIDO.metaDescription,
   },
