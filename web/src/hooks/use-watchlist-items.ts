@@ -93,7 +93,13 @@ export function useRemoveWatchlistItem() {
   const qc = useQueryClient();
   return useMutation<void, unknown, string, MutationContext>({
     mutationFn: (idExterno: string) =>
-      apiMutate<void>("DELETE", `/api/v1/watchlist/items/${idExterno}`),
+      apiMutate<void>(
+        "DELETE",
+        // encodeURIComponent como en use-radar.ts: los id_externo de PLACSP
+        // llevan espacios y barras (p.ej. "PA-S 2026/000058") y sin escapar
+        // no forman una URL válida.
+        `/api/v1/watchlist/items/${encodeURIComponent(idExterno)}`,
+      ),
     onMutate: async (idExterno: string) => {
       const previous = await cancelAndSnapshot(qc);
       qc.setQueryData<WatchlistItem[]>(WATCHLIST_ITEMS_KEY, (old) =>

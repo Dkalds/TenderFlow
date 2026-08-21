@@ -6,6 +6,8 @@ localmente (ver más abajo).
 
 from __future__ import annotations
 
+from urllib.parse import quote
+
 import pytest
 
 
@@ -72,6 +74,35 @@ def test_add_list_remove_roundtrip(client, api_key):
 
     # borrar
     assert client.delete("/api/v1/watchlist/items/L1", headers=h).status_code == 204
+    assert client.get("/api/v1/watchlist/items", headers=h).json()["items"] == []
+
+
+def test_roundtrip_id_externo_con_barras(client, api_key):
+    """Un expediente de PLACSP con '/' se puede marcar y también desmarcar.
+
+    El POST recibe el ``id_externo`` en el body, así que siempre aceptó las
+    barras; el DELETE lo recibe por la ruta y con el conversor por defecto
+    (``[^/]+``) no casaba, devolviendo un 404 de enrutado. El resultado era un
+    favorito que se podía crear pero no borrar nunca. Ver
+    ``tests/test_routing_id_externo_con_barras.py`` para el invariante de
+    enrutado completo.
+    """
+    from db.database import connect
+
+    h = _auth(api_key)
+    id_externo = "PA-S 2026/000058"
+    with connect() as c:
+        c.execute(
+            "INSERT INTO licitaciones (id_externo, titulo, estado, fuente, fecha_extraccion) "
+            "VALUES (%s, %s, %s, 'placsp', CURRENT_TIMESTAMP)",
+            (id_externo, "Suministro con id barrado", "ABIERTO"),
+        )
+
+    creado = client.post("/api/v1/watchlist/items", json={"id_externo": id_externo}, headers=h)
+    assert creado.status_code == 201
+
+    url = f"/api/v1/watchlist/items/{quote(id_externo, safe='')}"
+    assert client.delete(url, headers=h).status_code == 204
     assert client.get("/api/v1/watchlist/items", headers=h).json()["items"] == []
 
 

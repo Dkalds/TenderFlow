@@ -79,7 +79,12 @@ async def post_dismissal(
 
 
 @router.delete(
-    "/dismissals/{id_externo}",
+    # ``:path`` y no el conversor por defecto: hay ``id_externo`` de PLACSP
+    # con barras (p.ej. ``PA-S 2026/000058``). Con ``[^/]+`` este DELETE no
+    # casaba y devolvía 404 antes del handler, así que esas señales quedaban
+    # descartadas para siempre: el POST recibe el id en el body y sí las
+    # acepta, de modo que se podían descartar pero nunca deshacer.
+    "/dismissals/{id_externo:path}",
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Deshacer el descarte de una señal",
 )

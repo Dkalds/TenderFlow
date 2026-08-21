@@ -171,7 +171,13 @@ jobs:
           BASE_REF: ${{ github.base_ref }}
         run: |
           pip install diff-cover
-          git fetch origin "$BASE_REF" --depth=1
+          # Sin --depth=1: el checkout de este job ya usa fetch-depth: 0, así
+          # que la historia está completa. Volver a traer la base en shallow
+          # le ponía una frontera a origin/$BASE_REF y diff-cover moría con
+          # "fatal: origin/master...HEAD: no merge base". Colaba solo cuando
+          # el tip de la base era padre directo del merge del PR (es decir,
+          # justo después de integrar master), y fallaba el resto de veces.
+          git fetch origin "$BASE_REF"
           diff-cover coverage.xml \
             --compare-branch="origin/$BASE_REF" \
             --fail-under=80 \
@@ -238,7 +244,15 @@ jobs:
           # pasaba por ahí (pasó el 2026-08-13 con el NUL de /competitive/bajas,
           # vivo desde el 3-ago). Pinear no oculta nada: un 5xx sigue siendo un
           # 5xx, pero el gate culpa al commit correcto.
-          pip install "schemathesis==4.24.3" "hypothesis==6.165.5"
+          # jsonschema-rs va pineado por el mismo motivo, y hacía falta: es
+          # el core Rust del que sale `CanonicalSchema`, y schemathesis lo
+          # declara `>=0.49.0`, sin cota superior. Al publicarse la 0.50.0
+          # desapareció `CanonicalSchema.is_satisfiable()`, que schemathesis
+          # 4.24.3 sigue llamando, así que el gate reventaba con un
+          # AttributeError *generando* los casos — antes de tocar ninguna
+          # ruta, y en todos los PRs a la vez. Comprobado que 0.49.9 expone
+          # el método y 0.50.0 no.
+          pip install "schemathesis==4.24.3" "hypothesis==6.165.5" "jsonschema-rs==0.49.9"
 
       - name: Apply migrations
         run: alembic upgrade head

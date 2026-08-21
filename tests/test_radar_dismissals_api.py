@@ -8,6 +8,8 @@ todas sus queries, no delega la propiedad en la ruta).
 
 from __future__ import annotations
 
+from urllib.parse import quote
+
 import pytest
 
 
@@ -53,6 +55,27 @@ def test_dismiss_list_restore_roundtrip(client, api_key):
     assert removed.status_code == 204
 
     assert client.get("/api/v1/radar/dismissals", headers=_auth(api_key)).json()["ids"] == []
+
+
+def test_roundtrip_id_externo_con_barras(client, api_key):
+    """Una señal de PLACSP con '/' se puede descartar y también recuperar.
+
+    El POST recibe el ``id_externo`` en el body y siempre aceptó las barras; el
+    DELETE lo recibe por la ruta y con el conversor por defecto (``[^/]+``) no
+    casaba, así que devolvía un 404 de enrutado: la señal quedaba descartada
+    para siempre. Ver ``tests/test_routing_id_externo_con_barras.py`` para el
+    invariante de enrutado completo.
+    """
+    h = _auth(api_key)
+    id_externo = "PA-S 2026/000058"
+
+    creado = client.post("/api/v1/radar/dismissals", json={"id_externo": id_externo}, headers=h)
+    assert creado.status_code == 201
+    assert creado.json()["ids"] == [id_externo]
+
+    url = f"/api/v1/radar/dismissals/{quote(id_externo, safe='')}"
+    assert client.delete(url, headers=h).status_code == 204
+    assert client.get("/api/v1/radar/dismissals", headers=h).json()["ids"] == []
 
 
 def test_dismiss_is_idempotent(client, api_key):
