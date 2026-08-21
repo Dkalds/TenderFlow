@@ -5,6 +5,15 @@ construye sobre el GROUP BY diario (cientos de filas post-agregación) y el
 roll-up a semana/mes se hace en Python. Hasta 2026-08 este módulo cargaba la
 tabla completa a pandas en el proceso API — bloqueado en Render por el
 cortacircuitos full-table, que dejaba el endpoint vacío en producción.
+
+**Cota del tamaño de la respuesta.** ``series`` no escala con el número de
+licitaciones sino con la LONGITUD DEL RANGO DE FECHAS, así que un ``limit`` por
+filas —el idioma de paginación del resto del API— es aquí la herramienta
+equivocada: no hay "página siguiente" de una serie temporal. Los dos mandos
+correctos son la granularidad del roll-up (``group_by``, expuesto al cliente) y
+el rango; este módulo aplica además un techo duro de :data:`MAX_TREND_POINTS`
+puntos para que la respuesta no pueda crecer sin cota conforme se acumule
+histórico.
 """
 
 from __future__ import annotations
@@ -21,6 +30,19 @@ log = get_logger(__name__)
 
 _repo = AggregateRepository()
 
+TrendsFreq = Literal["month", "week", "day"]
+
+#: Techo duro de puntos de ``series``. Está deliberadamente por encima del rango
+#: más ancho que puede pedir un consumidor actual —el Calendario pide
+#: ``group_by=day`` sin fechas, o sea todo el histórico diario, y 4.000 puntos
+#: son ~11 años— para que la respuesta de hoy sea idéntica byte a byte. Existe
+#: para que el contrato tenga cota: a partir de ahí la serie se recorta al tramo
+#: MÁS RECIENTE y la respuesta lo declara en ``serie_truncada``, en vez de
+#: engordar indefinidamente. Recortar (y no re-agregar a una granularidad más
+#: gruesa) es deliberado: el Calendario filtra los periodos por
+#: ``^\\d{4}-\\d{2}-\\d{2}$`` y devolverle semanas sería un calendario vacío.
+MAX_TREND_POINTS = 4000
+
 
 # ---------------------------------------------------------------------------
 # DTOs
@@ -34,7 +56,18 @@ class TrendsFilters(BaseModel):
     fecha_hasta: date | None = None
     ccaa: str | None = None
     tecnologia: str | None = None
-    group_by: Literal["month", "week", "day"] = "month"
+    group_by: TrendsFreq = Field(
+        default="month",
+        description=(
+            "Frecuencia del roll-up de la serie temporal. Es el mando que acota "
+            "el tamaño de `series`: la serie crece con la LONGITUD DEL RANGO DE "
+            "FECHAS, no con el número de licitaciones, así que pedir menos filas "
+            "no sirve de nada. A `day` sale ~1 punto por día (10 años ≈ 3.650 "
+            "puntos); `week` da ~1/7 de eso y `month` ~1/30. Para rangos largos, "
+            "engorda la granularidad en vez de recortar el rango. El default "
+            "`month` es el de siempre."
+        ),
+    )
 
 
 class TrendPoint(BaseModel):
@@ -78,6 +111,25 @@ class TrendsResult(BaseModel):
     waterfall: list[WaterfallPoint] = Field(default_factory=list)
     histogram_bins: list[HistogramBin] = Field(default_factory=list)
     mes_pico: dict[str, Any] | None = None
+    group_by: TrendsFreq = Field(
+        default="month",
+        description=(
+            "Granularidad del roll-up con la que se construyó `series` "
+            "(el `group_by` pedido). El formato de `period` depende de ella: "
+            "`YYYY-MM` en month, `YYYY-Www` (p. ej. 2026-W10) en week y "
+            "`YYYY-MM-DD` en day."
+        ),
+    )
+    serie_truncada: bool = Field(
+        default=False,
+        description=(
+            f"True si `series` alcanzó el techo de {MAX_TREND_POINTS} puntos y se "
+            "recortó al tramo más reciente. Para cubrir un rango más largo sin "
+            "perder tramo, pide una granularidad más gruesa en `group_by`. "
+            "`waterfall` se calcula sobre la serie ya recortada; `heatmap`, "
+            "`histogram_bins` y `mes_pico` siguen midiendo el rango completo."
+        ),
+    )
 
 
 def _to_repo_filters(filters: TrendsFilters) -> LicitacionesFilters:
@@ -125,6 +177,18 @@ def _build_series(daily: list[dict[str, Any]], freq: str) -> list[TrendPoint]:
     return [
         TrendPoint(period=label, count=int(c), importe=imp) for label, (c, imp) in buckets.items()
     ]
+
+
+def _clip_series(series: list[TrendPoint]) -> tuple[list[TrendPoint], bool]:
+    """Acota la serie a :data:`MAX_TREND_POINTS`, conservando el tramo reciente.
+
+    ``trends_daily`` devuelve los días con ``ORDER BY dia`` y ``_build_series``
+    preserva ese orden, así que la cola de la lista es el tramo más reciente —
+    que es el que un gráfico de tendencia necesita si hay que sacrificar algo.
+    """
+    if len(series) <= MAX_TREND_POINTS:
+        return series, False
+    return series[-MAX_TREND_POINTS:], True
 
 
 def _yoy_from_repo(filters: LicitacionesFilters) -> tuple[float, float]:
@@ -181,7 +245,7 @@ def get_trends(filters: TrendsFilters) -> TrendsResult:
     repo_filters = _to_repo_filters(filters)
 
     daily = _repo.trends_daily(repo_filters)
-    series = _build_series(daily, filters.group_by)
+    series, serie_truncada = _clip_series(_build_series(daily, filters.group_by))
     heatmap = [
         HeatmapCell(row=str(r["mes"]), col=str(r["estado"]), value=int(r["value"]))
         for r in _repo.trends_heatmap(repo_filters)
@@ -199,6 +263,13 @@ def get_trends(filters: TrendsFilters) -> TrendsResult:
             for label, count in _repo.trends_histogram(repo_filters)
         ],
         mes_pico=_find_mes_pico(daily),
+        group_by=filters.group_by,
+        serie_truncada=serie_truncada,
     )
-    log.info("analytics_trends_done", points=len(result.series))
+    log.info(
+        "analytics_trends_done",
+        points=len(result.series),
+        group_by=filters.group_by,
+        truncada=serie_truncada,
+    )
     return result

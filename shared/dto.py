@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import re
 from datetime import date, datetime
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any, Generic, Literal, TypeVar
 
 from pydantic import BaseModel, BeforeValidator, ConfigDict, EmailStr, Field
 
@@ -116,13 +116,65 @@ class KpiSnapshotDTO(BaseModel):
     computed_at: PgDateTime | None = None
 
 
-class PaginatedResponse(BaseModel):
-    """Respuesta paginada genérica."""
+# ── Contrato de paginación común ───────────────────────────────────────────
+#
+# Los dos envelopes de abajo nacieron dentro de `api/routes/licitaciones.py` y
+# vivían allí, en 1 de los 30 módulos de rutas: cada consumidor del cliente TS
+# aprendía una forma distinta de paginar. Se mueven aquí —el módulo que ya es
+# el contrato API↔web— para que las siguientes olas de rutas los reutilicen en
+# vez de reinventar la forma.
+#
+# Conservan **el nombre exacto** que tenían en la ruta a propósito: FastAPI
+# deriva de él el componente OpenAPI (`PaginatedResponse_LicitacionSummary_`,
+# `CursorPaginatedResponse_LicitacionSummary_`) que `web/src/generated/api.d.ts`
+# ya referencia. Rebautizarlos a `Paginated[T]` habría roto el cliente generado
+# sin ganar nada: el idioma ya existía, solo estaba en el sitio equivocado.
 
-    items: list[LicitacionSummary]
+_ItemT = TypeVar("_ItemT")
+
+#: Tope de `limit` en los listados que adoptan este contrato de paginación. Es
+#: parte del contrato (por encima el API responde 422), así que vive con los
+#: DTOs y no en una ruta.
+#:
+#: **No es universal todavía, y decir lo contrario sería falso**: la adopción va
+#: por olas y hay rutas con su propio tope heredado. La conocida es
+#: ``GET /competitive/renovaciones`` (``le=1000``). Bajarla a este valor no es
+#: una limpieza: es un estrechamiento del contrato público —un cliente que hoy
+#: pide 800 empezaría a recibir 422—, y por eso no se hizo de paso. Lo que sí
+#: dejó de tener sentido es el motivo por el que pedía 1000: desde que
+#: ``order_by=score`` ordena en servidor, el front pide 200 y recibe el top-N
+#: real. Unificar el tope es un cambio deliberado, con su nota de contrato.
+MAX_PAGE_LIMIT = 500
+
+#: Página por defecto cuando el endpoint no tiene un motivo para otra cosa.
+DEFAULT_PAGE_LIMIT = 50
+
+
+class PaginatedResponse(BaseModel, Generic[_ItemT]):
+    """Página de un listado con paginación por offset.
+
+    ``total`` vale ``-1`` cuando el endpoint se invocó con ``with_total=false``:
+    la página es válida pero el conteo no se calculó (evita el ``COUNT(*)``).
+    """
+
     total: int
     limit: int
     offset: int
+    items: list[_ItemT]
+    deprecation_notice: str | None = None
+
+
+class CursorPaginatedResponse(BaseModel, Generic[_ItemT]):
+    """Página con paginación por cursor (recomendada para datasets grandes).
+
+    No necesita ``COUNT(*)`` ni se descuadra con inserciones concurrentes, así
+    que es la forma preferida para listados que crecen.
+    """
+
+    items: list[_ItemT]
+    next_cursor: str | None = None
+    has_more: bool = False
+    limit: int
 
 
 class SearchRequest(BaseModel):
