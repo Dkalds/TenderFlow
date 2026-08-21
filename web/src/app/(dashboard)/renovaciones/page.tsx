@@ -64,6 +64,23 @@ const HORIZONTES = [
   { value: "24", label: "24 meses" },
 ];
 
+/**
+ * Cuántas oportunidades pide la tabla. El backend ordena por score
+ * (`order_by=score`), así que estas son las N mayores del dataset completo y
+ * no las N primeras por fecha de fin: ese era el fallo que obligaba a pedir
+ * 1000 filas y reordenarlas aquí.
+ */
+const TOP_OPORTUNIDADES = 200;
+
+/**
+ * Días por mes con los que se convierte el horizonte en escala de urgencia.
+ * Tiene que ser el mismo número que `DIAS_POR_MES` en
+ * `db/repositories/renovaciones.py`: el servidor ordena con ese valor y aquí
+ * se pinta el badge relativo con el mismo, así que si se separan la tabla
+ * mostraría un orden y unos números que no se corresponden.
+ */
+const DIAS_POR_MES = 30;
+
 function diasBadgeVariant(dias: number | null): "destructive" | "secondary" | "outline" {
   if (dias == null) return "outline";
   if (dias <= 30) return "destructive";
@@ -160,13 +177,12 @@ export default function RenovacionesPage() {
     queryFn: () =>
       fetchWithAuth(
         // Esta lista alimenta **solo la tabla virtualizada**; los KPIs de
-        // arriba son totales del servidor sobre el dataset completo. Residual
-        // conocido: la tabla se reordena en cliente por score de oportunidad,
-        // así que con más de 1000 contratos en la ventana el "top" mostrado
-        // sería el top de las 1000 primeras por fecha de fin, no del dataset.
-        // Ordenar por score en el servidor es un ítem de backlog abierto.
-        // fdi-allow:large-limit
-        `/api/v1/competitive/renovaciones?months=${meses}&limit=1000${tecnologiaQs}`,
+        // arriba son totales del servidor sobre el dataset completo. El orden
+        // por oportunidad lo hace el SQL (`order_by=score`), así que estas
+        // filas son el top-N real de la ventana y no hace falta traerse un
+        // sample grande para reordenarlo aquí.
+        `/api/v1/competitive/renovaciones?months=${meses}&order_by=score` +
+          `&limit=${TOP_OPORTUNIDADES}${tecnologiaQs}`,
       ),
     staleTime: 5 * 60 * 1000,
   });
@@ -180,35 +196,43 @@ export default function RenovacionesPage() {
     staleTime: 5 * 60 * 1000,
   });
 
-  const horizonteDias = Number(meses) * 30;
+  const horizonteDias = Number(meses) * DIAS_POR_MES;
 
+  // El score ya no ordena —eso lo hace el SQL— pero sí se pinta: la columna
+  // "Oportunidad" muestra cada fila relativa al máximo del top servido, y para
+  // eso hace falta el número. Misma fórmula que la del backend, fijada por
+  // tests/test_renovaciones_score.py.
+  const scored = useMemo(
+    () =>
+      (data?.items ?? []).map((r) => ({
+        ...r,
+        _score: opportunityScore({
+          riesgoCambio: r.riesgo_cambio,
+          importe: r.importe_adjudicado,
+          diasRestantes: r.dias_restantes,
+          horizonteDias,
+        }),
+      })),
+    [data, horizonteDias],
+  );
+
+  // Búsqueda local sobre el top servido; conserva el orden del servidor.
   const items = useMemo(() => {
-    const all = data?.items ?? [];
-    const scored = all.map((r) => ({
-      ...r,
-      _score: opportunityScore({
-        riesgoCambio: r.riesgo_cambio,
-        importe: r.importe_adjudicado,
-        diasRestantes: r.dias_restantes,
-        horizonteDias,
-      }),
-    }));
+    if (!empresaSearch) return scored;
     const q = empresaSearch.toLowerCase();
-    const filtered = empresaSearch
-      ? scored.filter(
-          (r) =>
-            (r.empresa ?? "").toLowerCase().includes(q) ||
-            (r.organo_contratacion ?? "").toLowerCase().includes(q) ||
-            (r.titulo ?? "").toLowerCase().includes(q),
-        )
-      : scored;
-    // Priorizar por oportunidad (riesgo × importe × urgencia), no por proximidad.
-    return [...filtered].sort((a, b) => b._score - a._score);
-  }, [data, empresaSearch, horizonteDias]);
+    return scored.filter(
+      (r) =>
+        (r.empresa ?? "").toLowerCase().includes(q) ||
+        (r.organo_contratacion ?? "").toLowerCase().includes(q) ||
+        (r.titulo ?? "").toLowerCase().includes(q),
+    );
+  }, [scored, empresaSearch]);
 
+  // Referencia del badge: el máximo del top completo, no el del subconjunto
+  // filtrado — si no, escribir en la caja de búsqueda reescalaría la columna.
   const maxScore = useMemo(
-    () => items.reduce((m, r) => Math.max(m, r._score), 0),
-    [items],
+    () => scored.reduce((m, r) => Math.max(m, r._score), 0),
+    [scored],
   );
 
   // Los KPIs son totales del dataset completo servidos por el backend, no una
@@ -332,8 +356,12 @@ export default function RenovacionesPage() {
           <div>
             <CardTitle>Contratos que vencen</CardTitle>
             <CardDescription>
-              {formatNumber(items.length)} contratos ordenados por oportunidad
-              (riesgo × importe × urgencia).
+              Top {formatNumber(TOP_OPORTUNIDADES)} por oportunidad (riesgo × importe ×
+              urgencia), ordenado en el servidor sobre el dataset completo
+              {empresaSearch
+                ? ` · ${formatNumber(items.length)} coinciden con el filtro`
+                : ""}
+              .
             </CardDescription>
           </div>
           <div className="relative w-full sm:w-72">
@@ -445,7 +473,7 @@ export default function RenovacionesPage() {
                         return (
                           <Badge
                             variant={rel >= 66 ? "default" : rel >= 33 ? "secondary" : "outline"}
-                            title="Riesgo × importe × urgencia (relativo al máximo de la vista)"
+                            title="Riesgo × importe × urgencia (relativo al máximo del top servido)"
                           >
                             {rel}
                           </Badge>
