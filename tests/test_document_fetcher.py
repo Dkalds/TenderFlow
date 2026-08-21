@@ -14,7 +14,9 @@ from __future__ import annotations
 from io import BytesIO
 from unittest.mock import MagicMock, patch
 
+import pybreaker
 import pytest
+import requests
 
 from scraper.document_fetcher import (
     DocumentFetchError,
@@ -23,6 +25,27 @@ from scraper.document_fetcher import (
     _extract_text,
     fetch_and_extract,
 )
+
+
+def _http_error_del_transporte_real(status_code: int) -> requests.HTTPError:
+    """El ``HTTPError`` tal y como lo produce la ruta de descarga de verdad.
+
+    Se invoca el ``raise_for_status`` real de ``PinnedHttpsResponse`` en vez de
+    construir la excepción a mano: ese método no pasa ``response=``, así que
+    ``exc.response`` es ``None`` y cualquier clasificación por
+    ``exc.response.status_code`` queda muda en producción aunque el test pase.
+    Atarse aquí al transporte real hace que un cambio en el formato del mensaje
+    rompa el test en vez de degradar la clasificación en silencio.
+    """
+    from shared.outbound_http import PinnedHttpsResponse
+
+    respuesta = PinnedHttpsResponse.__new__(PinnedHttpsResponse)
+    respuesta.status_code = status_code
+    try:
+        respuesta.raise_for_status()
+    except requests.HTTPError as exc:
+        return exc
+    raise AssertionError(f"raise_for_status() no lanzó para status {status_code}")
 
 
 def _make_minimal_pdf(text: str = "Pliego de condiciones de prueba") -> bytes:
@@ -198,6 +221,71 @@ class TestFetchAndExtract:
         assert row is not None
         assert row["status"] == "error"
         assert "descarga fallida" in (row["error_detail"] or "")
+
+    def test_breaker_abierto_no_marca_error_y_deja_la_fila_reintentable(self, repo):
+        """El breaker abierto es una condición del servidor, no del documento.
+
+        Marcarlo 'error' lo expulsaría de ``list_pendientes`` para siempre; en
+        producción eso convirtió 1.702 documentos sanos en bajas definitivas.
+        """
+        doc = _seed_documento(repo)
+
+        with patch(
+            "scraper.document_fetcher._download_bytes",
+            side_effect=pybreaker.CircuitBreakerError(
+                "Timeout not elapsed yet, circuit breaker still open"
+            ),
+        ):
+            status = fetch_and_extract(doc)
+
+        assert status == "skipped"
+        row = repo.get(doc["id"])
+        assert row is not None
+        assert row["status"] == "pending"  # sigue en la cola
+        assert row["error_detail"] is None
+
+    def test_token_caducado_500_marca_error_nombrando_la_causa(self, repo):
+        """El 500 del servlet (token rotativo muerto) conserva el prefijo de
+        descarga —es lo que distingue un fallo de red de uno de extracción, y
+        lo que permitirá revivir la fila cuando el CODICE traiga token nuevo—
+        pero deja la causa escrita para poder contarlos.
+
+        La excepción la produce el ``raise_for_status`` **real** del transporte,
+        no una fabricada a mano: ``PinnedHttpsResponse`` construye el
+        ``HTTPError`` sin ``response=``, así que un test que inyecte
+        ``HTTPError(..., response=Mock(status_code=500))`` pasa en verde contra
+        una rama que en producción no se ejecuta nunca.
+        """
+        doc = _seed_documento(repo)
+
+        with patch(
+            "scraper.document_fetcher._download_bytes",
+            side_effect=_http_error_del_transporte_real(500),
+        ):
+            status = fetch_and_extract(doc)
+
+        assert status == "error"
+        row = repo.get(doc["id"])
+        assert row is not None
+        detalle = row["error_detail"] or ""
+        assert detalle.startswith("descarga fallida:")
+        assert "token caducado (500)" in detalle
+
+    def test_http_error_no_500_no_se_etiqueta_como_token_caducado(self, repo):
+        doc = _seed_documento(repo)
+
+        with patch(
+            "scraper.document_fetcher._download_bytes",
+            side_effect=_http_error_del_transporte_real(404),
+        ):
+            status = fetch_and_extract(doc)
+
+        assert status == "error"
+        row = repo.get(doc["id"])
+        assert row is not None
+        detalle = row["error_detail"] or ""
+        assert detalle.startswith("descarga fallida:")
+        assert "token caducado" not in detalle
 
     def test_corrupt_pdf_marks_error_but_records_download_metadata(self, repo):
         """Extracción fallida tras descarga OK: se persiste sha256/size (útil

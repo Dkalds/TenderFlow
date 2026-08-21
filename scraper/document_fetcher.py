@@ -15,7 +15,11 @@ from __future__ import annotations
 import hashlib
 import io
 import multiprocessing
+import re
 from typing import Any
+
+import pybreaker
+import requests
 
 from config import USER_AGENT, settings
 from observability.logging import get_logger
@@ -26,6 +30,25 @@ log = get_logger(__name__)
 
 _SUPPORTED_CONTENT_TYPES = frozenset({"application/pdf", "text/plain"})
 _MAX_ERROR_DETAIL_LEN = 2000
+
+
+def _status_de(exc: requests.HTTPError) -> int | None:
+    """Código HTTP de un ``HTTPError``, venga de donde venga.
+
+    ``PinnedHttpsResponse.raise_for_status`` (shared/outbound_http.py) construye
+    el error **sin** ``response=``, así que ``exc.response`` es ``None`` en toda
+    la ruta de descarga de documentos y leer ``exc.response.status_code`` a
+    secas no detecta nada. Se cae entonces al texto del mensaje, cuyo formato
+    fija esa misma función; ``test_document_fetcher`` ejercita el
+    ``raise_for_status`` real para que un cambio de redacción rompa el test en
+    vez de dejar la clasificación muda.
+    """
+    respuesta = getattr(exc, "response", None)
+    codigo = getattr(respuesta, "status_code", None)
+    if isinstance(codigo, int):
+        return codigo
+    match = re.search(r"\b(\d{3})\b", str(exc))
+    return int(match.group(1)) if match else None
 
 
 class DocumentFetchError(RuntimeError):
@@ -252,8 +275,10 @@ def fetch_and_extract(documento: dict[str, Any]) -> str:
     ``documento`` es una fila de ``DocumentosRepository.list_pendientes()``
     (dict con al menos ``id``/``uri``). El binario nunca se persiste.
 
-    Devuelve ``"extracted"`` o ``"error"`` — para que el llamador (job de
-    embeddings, F8) instrumente métricas sin releer la fila.
+    Devuelve ``"extracted"``, ``"error"`` o ``"skipped"`` — para que el llamador
+    (job de embeddings, F8) instrumente métricas sin releer la fila.
+    ``"skipped"`` significa que no se llegó a intentar nada (breaker abierto):
+    la fila se queda en ``pending`` y entra en el lote siguiente.
     """
     from db.repositories.documentos import DocumentosRepository
 
@@ -263,6 +288,29 @@ def fetch_and_extract(documento: dict[str, Any]) -> str:
 
     try:
         content, content_type = _download_bytes(uri)
+    except pybreaker.CircuitBreakerError as e:
+        # El breaker abierto no dice nada de ESTE documento: dice que PLACSP
+        # está rechazando ahora mismo. Marcarlo 'error' lo sacaría de
+        # ``list_pendientes`` para siempre por una condición transitoria — así
+        # se perdieron 1.702 documentos (el 66% de los errores acumulados en
+        # producción a 2026-08-18) antes de que existiera esta rama. La fila se
+        # queda ``pending`` y el lote siguiente la reintenta.
+        log.info("document_fetch_skipped_breaker_open", documento_id=documento_id, error=str(e))
+        return "skipped"
+    except requests.HTTPError as e:
+        # El servlet de PLACSP contesta 500 (NullPointerException), no 404,
+        # cuando el token rotativo de la URI ha caducado. Se marca error como
+        # cualquier otro fallo de descarga —conservando el prefijo, que es lo
+        # que distingue "falló la red" de "falló la extracción"— pero nombrando
+        # la causa: estos son justo los que un token nuevo del CODICE resucita.
+        detalle = (
+            f"descarga fallida: token caducado (500): {e}"
+            if _status_de(e) == 500
+            else f"descarga fallida: {e}"
+        )
+        log.warning("document_fetch_download_failed", documento_id=documento_id, error=str(e))
+        repo.mark_error(documento_id, error_detail=detalle[:_MAX_ERROR_DETAIL_LEN])
+        return "error"
     except Exception as e:
         log.warning("document_fetch_download_failed", documento_id=documento_id, error=str(e))
         repo.mark_error(documento_id, error_detail=f"descarga fallida: {e}"[:_MAX_ERROR_DETAIL_LEN])
