@@ -7,10 +7,12 @@ from __future__ import annotations
 
 import io
 from datetime import datetime
+from typing import Any
 
 import openpyxl
 import pandas as pd
 from fastapi import FastAPI
+from starlette.testclient import TestClient
 
 from api.routes.exports import _generate_ics
 from services.exports import generate_csv, generate_excel, get_export_filename
@@ -273,26 +275,43 @@ def test_get_export_filename_custom_prefix():
 
 
 def _resuelve(path: str) -> str | None:
-    """Devuelve el nombre del handler que Starlette elegiría para *path*."""
-    from starlette.routing import Match
+    """Devuelve el nombre del handler al que resuelve un GET a *path*.
 
+    Envuelve la app en un ASGI middleware que lee ``scope["route"]`` una vez
+    que el router lo ha fijado, igual que el fixture ``resolve`` de
+    ``tests/test_routing_id_externo_con_barras.py``.
+
+    Antes recorría ``app.routes`` buscando ``Match.FULL`` y devolvía
+    ``route.name``. Eso funciona con el fastapi que fija el pin
+    (``>=0.110,<0.137``), pero depende de que ``include_router`` aplane las
+    ``APIRoute`` en ``app.routes``, que es justo lo que deja de ser cierto a
+    partir de 0.141: los routers incluidos pasan a ser objetos
+    ``_IncludedRouter`` opacos, sin ``.name`` ni ``.path``. Ver el porqué del
+    techo en ``requirements.in`` (PR #187). Resolver por ``scope["route"]`` no
+    mira la representación interna, así que el guard sobrevive a esa subida en
+    vez de convertirse en un ``AttributeError`` el día que se haga.
+
+    Devuelve ``None`` si ninguna ruta casó (404 de enrutado). No necesita BD ni
+    credenciales: el enrutado ocurre antes que la autenticación, y el ``route``
+    se lee en un ``finally`` para que un fallo del handler (401, 500) no lo
+    pierda.
+    """
     from api.routes.exports import router
 
     app = FastAPI()
     app.include_router(router, prefix="/api/v1")
-    scope = {
-        "type": "http",
-        "method": "GET",
-        "path": path,
-        "headers": [],
-        "query_string": b"",
-        "root_path": "",
-    }
-    for route in app.routes:
-        match, _ = route.matches(scope)
-        if match == Match.FULL:
-            return str(route.name)
-    return None
+
+    captured: dict[str, Any] = {}
+
+    async def probe(scope, receive, send):
+        try:
+            await app(scope, receive, send)
+        finally:
+            captured["route"] = scope.get("route")
+
+    client = TestClient(probe, raise_server_exceptions=False)
+    client.get(path)
+    return getattr(getattr(captured.get("route"), "endpoint", None), "__name__", None)
 
 
 def test_rutas_estaticas_de_exports_no_las_ensombrece_el_comodin():

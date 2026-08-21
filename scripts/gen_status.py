@@ -22,6 +22,7 @@ import re
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 _ROOT = Path(__file__).resolve().parent.parent
 _OUT = _ROOT / "docs" / "STATUS.md"
@@ -57,12 +58,44 @@ def _jobs_table() -> tuple[list[dict], list[str]]:
     return check_job_parity.check()
 
 
+def _rutas_efectivas(routes: list[Any]) -> list[Any]:
+    """Aplana los routers incluidos a rutas que llevan su propio ``path``.
+
+    Con el fastapi que fija el pin (``>=0.110,<0.137``) ``include_router``
+    deja las ``APIRoute`` ya aplanadas en ``app.routes`` y esto es la
+    identidad. Desde 0.141 los routers incluidos pasan a ser objetos
+    ``_IncludedRouter`` opacos, sin ``.path`` ni ``.methods``: el bucle de
+    ``_endpoints`` los descartaría por el ``continue`` y STATUS.md pasaría de
+    154 endpoints a 7 **sin fallar**, que es el modo de fallo peor de los dos
+    (el razonamiento del techo está en ``requirements.in``, PR #187). Esos
+    routers sí exponen ``effective_route_contexts()``, que devuelve contextos
+    cuya ruta resuelta ya viene con el prefijo aplicado.
+
+    Es el mismo aplanado que hace ``prometheus_fastapi_instrumentator.routing``
+    (``_effective_routes``) —dependencia nuestra que ya absorbió esta subida—,
+    copiado a propósito en vez de importado: es API privada suya.
+    """
+    efectivas: list[Any] = []
+    for route in routes:
+        contextos = getattr(route, "effective_route_contexts", None)
+        if not callable(contextos):
+            efectivas.append(route)
+            continue
+        for contexto in contextos():
+            # Las rutas planas de Starlette llevan la ruta ya prefijada en
+            # `starlette_route`; las de FastAPI lo dejan sin fijar y es el
+            # propio contexto el que expone `.path`.
+            starlette_route = getattr(contexto, "starlette_route", None)
+            efectivas.append(contexto if starlette_route is None else starlette_route)
+    return efectivas
+
+
 def _endpoints() -> list[tuple[str, str]]:
     """Rutas expuestas por la API, leídas del router de FastAPI."""
     from api.app import app
 
     out: list[tuple[str, str]] = []
-    for route in app.routes:
+    for route in _rutas_efectivas(app.routes):
         path = getattr(route, "path", None)
         methods = getattr(route, "methods", None)
         if not path or not methods:
