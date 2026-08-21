@@ -281,7 +281,7 @@ async def entradas_sitemap(
     return [
         EntradaSitemap(
             ref=codificar_ref(str(f["id_externo"])),
-            ccaa=f.get("ccaa"),  # type: ignore[arg-type]
+            ccaa=f.get("ccaa"),
             titulo=str(f["titulo"]),
             actualizado=str(f["fecha_extraccion"]) if f.get("fecha_extraccion") else None,
         )
