@@ -19,6 +19,12 @@ import type { NextRequest } from "next/server";
 // URLs por fichero).
 const PUBLIC_PREFIXES = [
   "/login",
+  // Superficie pública de datos. Como prefijos y no como rutas exactas: de
+  // `/licitaciones` cuelgan tanto los hubs por comunidad autónoma como las
+  // fichas, que llevan cuatro segmentos.
+  "/licitaciones",
+  "/cpv",
+  "/aviso-legal",
   "/_next",
   "/favicon.ico",
   "/spain-ccaa.json",

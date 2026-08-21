@@ -24,9 +24,22 @@ export default function PublicoLayout({ children }: { children: React.ReactNode 
     <div className="flex min-h-screen flex-col bg-background">
       <header className="border-b border-border/60">
         <div className="mx-auto flex w-full max-w-6xl items-center justify-between px-6 py-4">
-          <Link href="/" aria-label="TenderFlow — inicio">
-            <TenderFlowLogo boxSize={30} />
-          </Link>
+          <div className="flex items-center gap-7">
+            <Link href="/" aria-label="TenderFlow — inicio">
+              <TenderFlowLogo boxSize={30} />
+            </Link>
+            {/* Estos dos enlaces son la vía por la que la superficie de datos
+                recibe autoridad interna. Sin ellos los hubs solo existen en el
+                sitemap: rastreables, pero sin nada que los respalde. */}
+            <nav aria-label="Secciones" className="hidden items-center gap-5 text-sm sm:flex">
+              <Link href="/licitaciones" className="text-muted-foreground hover:text-foreground">
+                Licitaciones
+              </Link>
+              <Link href="/cpv" className="text-muted-foreground hover:text-foreground">
+                Por CPV
+              </Link>
+            </nav>
+          </div>
           <Link
             href="/login"
             className="inline-flex h-9 items-center justify-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground shadow transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
@@ -43,6 +56,12 @@ export default function PublicoLayout({ children }: { children: React.ReactNode 
       <footer className="border-t border-border/60">
         <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center justify-between gap-4 px-6 py-8 text-xs text-muted-foreground">
           <span>TenderFlow — Inteligencia de licitaciones del sector público español</span>
+          <Link
+            href="/aviso-legal"
+            className="-my-1.5 inline-flex items-center rounded px-1 py-1.5 font-medium hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            Aviso legal
+          </Link>
           {/* `py-1.5` no es decorativo: sin él el enlace mide 16 px de alto y
               queda por debajo del mínimo de 24×24 px que exige WCAG 2.5.8. */}
           <Link
