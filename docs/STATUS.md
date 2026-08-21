@@ -6,7 +6,7 @@ tags: [status, generado]
 
 <!-- generado por scripts/gen_status.py — no editar a mano -->
 
-Generado: 2026-08-19
+Generado: 2026-08-21
 
 ## Paridad de planos de orquestación (ADR-012)
 
@@ -201,7 +201,7 @@ Generado: 2026-08-19
 | PATCH | `/api/v1/pursuits/{pursuit_id}` |
 | GET | `/api/v1/radar/dismissals` |
 | POST | `/api/v1/radar/dismissals` |
-| DELETE | `/api/v1/radar/dismissals/{id_externo}` |
+| DELETE | `/api/v1/radar/dismissals/{id_externo:path}` |
 | GET | `/api/v1/resoluciones` |
 | GET | `/api/v1/saved-filters` |
 | POST | `/api/v1/saved-filters` |
@@ -213,7 +213,7 @@ Generado: 2026-08-19
 | GET | `/api/v1/watchlist/feed.xml` |
 | GET | `/api/v1/watchlist/items` |
 | POST | `/api/v1/watchlist/items` |
-| DELETE | `/api/v1/watchlist/items/{id_externo}` |
+| DELETE | `/api/v1/watchlist/items/{id_externo:path}` |
 | GET | `/api/v1/watchlist/rules` |
 | POST | `/api/v1/watchlist/rules` |
 | POST | `/api/v1/watchlist/rules/preview` |
