@@ -92,6 +92,7 @@ const profile: CompanyProfileData = {
   organos_principales: [],
   por_anio: [],
   movimientos: [],
+  participaciones_ute: [],
 };
 
 const recentAwards: CompanyAwardsData = {
