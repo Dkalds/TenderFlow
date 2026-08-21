@@ -1,0 +1,102 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Caso: adjuntos con la forma REAL que publica PLACSP (verificada el 2026-08-18
+  sobre el feed Atom vivo, 1.323 DocumentReference), que no es la del caso 06.
+
+  Tres diferencias que importan y que el parser ignoró hasta v88:
+    1. La URI es `GetDocumentByIdServlet?cifrado=…&DocumentIdParam=<token>`. Ese
+       token lo re-emite la plataforma: al caducar, el servlet devuelve 500
+       (NullPointerException), no 404.
+    2. NO hay `cbc:FileName` — en los adjuntos de PLACSP no aparece nunca. El
+       nombre del fichero viaja en el `cbc:ID`, que es de donde hay que sacarlo.
+    3. SÍ hay `cbc:DocumentHash`: hash del contenido, estable frente a la
+       rotación del token. Es la identidad con la que `upsert_meta` refresca la
+       fila en vez de duplicarla.
+
+  Los dos PCAP del mismo expediente no son un duplicado: son pliegos distintos
+  (lotes distintos) con hash distinto, y el caso existe para fijar que
+  `(licitacion_id, tipo)` NO sirve como identidad de documento.
+-->
+<entry xmlns="http://www.w3.org/2005/Atom"
+       xmlns:cbc="urn:dgpe:names:draft:codice:schema:xsd:CommonBasicComponents-2"
+       xmlns:cac="urn:dgpe:names:draft:codice:schema:xsd:CommonAggregateComponents-2"
+       xmlns:cacext="urn:dgpe:names:draft:codice-place-ext:schema:xsd:CommonAggregateComponents-2"
+       xmlns:cbcext="urn:dgpe:names:draft:codice-place-ext:schema:xsd:CommonBasicComponents-2">
+  <id>https://contrataciondelestado.es/wps/poc?uri=deeplink:detalle_licitacion&amp;idEvl=2026-TOKEN-0014</id>
+  <title>Mantenimiento evolutivo de plataforma SAP S/4HANA</title>
+  <updated>2026-08-10T11:41:07+02:00</updated>
+  <link href="https://contrataciondelestado.es/wps/poc?uri=deeplink:detalle_licitacion&amp;idEvl=2026-TOKEN-0014" rel="alternate"/>
+  <summary type="text">Id licitación: 2026-TOKEN-0014; Órgano de Contratación: Universidad de Las Palmas de Gran Canaria; Importe: 480000.00 EUR; Estado: PUB</summary>
+  <cacext:ContractFolderStatus>
+    <cbc:ContractFolderID>2026-TOKEN-0014</cbc:ContractFolderID>
+    <cbcext:ContractFolderStatusCode>PUB</cbcext:ContractFolderStatusCode>
+    <cacext:LocatedContractingParty>
+      <cac:Party>
+        <cac:PartyName><cbc:Name>Universidad de Las Palmas de Gran Canaria</cbc:Name></cac:PartyName>
+      </cac:Party>
+    </cacext:LocatedContractingParty>
+    <cacext:ValidNoticeInfo>
+      <cacext:AdditionalPublicationStatus>
+        <cacext:AdditionalPublicationDocumentReference>
+          <cbc:IssueDate>2026-08-04</cbc:IssueDate>
+        </cacext:AdditionalPublicationDocumentReference>
+      </cacext:AdditionalPublicationStatus>
+    </cacext:ValidNoticeInfo>
+    <cac:ProcurementProject>
+      <cbc:Name>Mantenimiento evolutivo de plataforma SAP S/4HANA</cbc:Name>
+      <cbc:TypeCode>2</cbc:TypeCode>
+      <cac:RequiredCommodityClassification>
+        <cbc:ItemClassificationCode>72267100-0</cbc:ItemClassificationCode>
+      </cac:RequiredCommodityClassification>
+      <cac:BudgetAmount>
+        <cbc:TaxExclusiveAmount currencyID="EUR">480000.00</cbc:TaxExclusiveAmount>
+      </cac:BudgetAmount>
+      <cac:RealizedLocation>
+        <cbc:CountrySubentity>Las Palmas</cbc:CountrySubentity>
+        <cbc:CountrySubentityCode>ES705</cbc:CountrySubentityCode>
+      </cac:RealizedLocation>
+    </cac:ProcurementProject>
+    <cac:TenderingProcess>
+      <cac:TenderSubmissionDeadlinePeriod>
+        <cbc:EndDate>2026-09-15</cbc:EndDate>
+        <cbc:EndTime>14:00:00</cbc:EndTime>
+      </cac:TenderSubmissionDeadlinePeriod>
+    </cac:TenderingProcess>
+    <cac:LegalDocumentReference>
+      <cbc:ID>PLIEGO CLAUSULAS ADMINISTRATIVAS PARTICULARES.pdf</cbc:ID>
+      <cac:Attachment>
+        <cac:ExternalReference>
+          <cbc:URI>https://contrataciondelestado.es/FileSystem/servlet/GetDocumentByIdServlet?cifrado=QUC1GjXXSiLkydRHJBmbpw%3D%3D&amp;DocumentIdParam=28LCpDtIK%2Bv2YUVOfnCQLPiHnIV5x8U6GN7Cm%2B6WfMuicxX6GpyXISL04/BCuiTCEweczK1waUI2e9Kd0BqsKHUTue5mB5yJmg/YzefdVOd7QB3HKyQaFUExmUVQCerk</cbc:URI>
+          <cbc:DocumentHash>OCbO5xyQntBEy+cK1a0r9pRmwO4=</cbc:DocumentHash>
+        </cac:ExternalReference>
+      </cac:Attachment>
+    </cac:LegalDocumentReference>
+    <cac:LegalDocumentReference>
+      <cbc:ID>PCAP - LOTE 2.pdf</cbc:ID>
+      <cac:Attachment>
+        <cac:ExternalReference>
+          <cbc:URI>https://contrataciondelestado.es/FileSystem/servlet/GetDocumentByIdServlet?cifrado=QUC1GjXXSiLkydRHJBmbpw%3D%3D&amp;DocumentIdParam=GdE4kwbnYg0C1oq1WuhAIxLlUXoMA9qckLb6m4GAVEpvTTntfs%2BEoFzXOUalcZQ8gpKHdHEMCFUl/SVnGrp8TfGAlK9nFRs6/Lz7v6/vAhDfdyQgZAdTm3EfcUAC7CJ6</cbc:URI>
+          <cbc:DocumentHash>twIgH5bxfv5A9P7A2Gqj71hWV28=</cbc:DocumentHash>
+        </cac:ExternalReference>
+      </cac:Attachment>
+    </cac:LegalDocumentReference>
+    <cac:TechnicalDocumentReference>
+      <cbc:ID>PROYECTO DE EJECUCION.pdf</cbc:ID>
+      <cac:Attachment>
+        <cac:ExternalReference>
+          <cbc:URI>https://contrataciondelestado.es/FileSystem/servlet/GetDocumentByIdServlet?cifrado=QUC1GjXXSiLkydRHJBmbpw%3D%3D&amp;DocumentIdParam=OZCUw0hJlWR2vFVmD1iR4cdQd9qMfbCv07p/lZMgPfQQ63v7qfAL34xdUDArMh6BMjIOAcr1BPf/4OiHvDWiYEmVNVOTVHQwVo9lNh167uiCx2e6p7hqtlp2aFupgHMr</cbc:URI>
+          <cbc:DocumentHash>f5NdW1FC5TMibeBpUfl84QbUFpM=</cbc:DocumentHash>
+        </cac:ExternalReference>
+      </cac:Attachment>
+    </cac:TechnicalDocumentReference>
+    <cac:AdditionalDocumentReference>
+      <cbc:ID>Información sobre recursos</cbc:ID>
+      <cac:Attachment>
+        <cac:ExternalReference>
+          <cbc:URI>https://contrataciondelestado.es/wps/wcm/connect/PLACE_es/Site/area/docAccCmpnt?srv=cmpnt&amp;cmpntname=GetDocumentsById&amp;source=library&amp;DocumentIdParam=2026-7174efe7-a4d3-4956-8bc2-e5000d2bbd7f</cbc:URI>
+          <cbc:FileName>Información sobre recursos</cbc:FileName>
+        </cac:ExternalReference>
+      </cac:Attachment>
+    </cac:AdditionalDocumentReference>
+  </cacext:ContractFolderStatus>
+</entry>

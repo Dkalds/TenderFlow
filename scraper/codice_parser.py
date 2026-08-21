@@ -13,6 +13,7 @@ XPath, por eso los remapeamos a 'cacext' y 'cbcext'.
 from __future__ import annotations
 
 import re
+import unicodedata
 from collections.abc import Iterator
 from typing import Any
 
@@ -177,6 +178,19 @@ def parse_document_references(entry: Any) -> list[DocumentoReferencia]:
     ``cbc:FileName``). Fase A2 del plan Pliegos+RAG — el fetcher (F7) resuelve
     la URI más tarde; este parser es puro y no descarga nada.
 
+    Además de la URI se extraen dos campos que PLACSP sí publica siempre y que
+    esta función ignoró hasta v88 (medido sobre el feed vivo: 390 entries,
+    1.323 referencias, **100% de cobertura en ambos**):
+
+    - ``cbc:DocumentHash`` → ``source_hash``. Es un hash del contenido, así que
+      **no cambia cuando PLACSP re-emite el token** de la URI. Es la identidad
+      con la que ``upsert_meta`` refresca la fila en vez de duplicarla.
+    - ``cbc:ID`` → ``filename`` cuando no hay ``cbc:FileName``. En los adjuntos
+      de PLACSP ``cbc:FileName`` no aparece nunca —por eso ``filename`` estaba
+      a NULL en las 37.953 filas de producción— pero ``cbc:ID`` trae el nombre
+      del fichero ("PCAP.pdf"). Se respeta la precedencia de ``cbc:FileName``
+      porque es el campo que UBL define para esto y otras fuentes sí lo mandan.
+
     Una referencia sin URI (adjunto reservado/no publicado, frecuente en
     CODICE) se descarta silenciosamente — no es un error de parseo.
     """
@@ -187,8 +201,22 @@ def parse_document_references(entry: Any) -> list[DocumentoReferencia]:
             uri = _text(node, "./cac:Attachment/cac:ExternalReference/cbc:URI")
             if not uri:
                 continue
-            filename = _text(node, "./cac:Attachment/cac:ExternalReference/cbc:FileName")
-            refs.append(DocumentoReferencia(tipo=tipo, uri=uri, filename=filename))
+            filename = _text(node, "./cac:Attachment/cac:ExternalReference/cbc:FileName") or _text(
+                node, "./cbc:ID"
+            )
+            source_hash = _text(node, "./cac:Attachment/cac:ExternalReference/cbc:DocumentHash")
+            if source_hash:
+                # El base64 puede venir partido en varias líneas dentro del XML;
+                # normalizamos para que el mismo hash no genere dos identidades.
+                source_hash = "".join(source_hash.split())
+            refs.append(
+                DocumentoReferencia(
+                    tipo=tipo,
+                    uri=uri,
+                    filename=filename,
+                    source_hash=source_hash or None,
+                )
+            )
     return refs
 
 
@@ -232,6 +260,159 @@ def _tender_deadline(root: Any, tendering_process_prefix: str) -> str | None:
             continue
         end_time = _text(root, f"{tendering_process_prefix}/cac:{period}/cbc:EndTime")
         return to_iso_datetime(end_date, end_time)
+    return None
+
+
+def _tendering_process_codes(
+    root: Any, tendering_process_prefix: str
+) -> tuple[str | None, str | None]:
+    """``(procedimiento, tramitación)`` del mismo bloque que ``_tender_deadline``.
+
+    ``cbc:ProcedureCode`` (abierto / restringido / negociado / menor…) y
+    ``cbc:UrgencyCode`` (ordinaria / urgente / emergencia) son hermanos de
+    ``cac:TenderSubmissionDeadlinePeriod`` dentro de ``cac:TenderingProcess``,
+    así que comparten prefijo con el plazo y aceptan la misma raíz relativa.
+
+    Se guarda el **código crudo**, no su etiqueta: CODICE los publica como
+    valores de sendas listas controladas (el atributo ``listURI`` apunta al
+    ``.gc`` de la Plataforma) y traducirlos aquí obligaría a embeber una copia
+    de esas listas en el repo, que envejece en silencio en cuanto la Plataforma
+    publica una versión nueva — un código desconocido se vería como una
+    etiqueta plausible pero equivocada. Para el modelo de baja el código ya es
+    una categoría estable, que es todo lo que un GBM necesita; la etiqueta
+    legible es trabajo de la capa de presentación, con la codelist delante.
+    """
+    return (
+        _text(root, f"{tendering_process_prefix}/cbc:ProcedureCode"),
+        _text(root, f"{tendering_process_prefix}/cbc:UrgencyCode"),
+    )
+
+
+# Un criterio de adjudicación se reconoce por su tipo cuando la fuente lo
+# codifica en texto (UBL 2.1 / eForms usan `PRICE` y `COST`); CODICE de PLACSP
+# lo codifica con números de una lista controlada cuyo significado no está en
+# el repo, así que ahí manda la descripción.
+_TIPOS_CRITERIO_PRECIO = frozenset({"price", "cost"})
+
+# Tokens (ya sin acentos y en minúscula) que identifican un criterio económico.
+# Deliberadamente cortos y pocos: "economic" cubre económico/económica/
+# economicos, y el conjunto se queda en lo que no admite otra lectura. Añadir
+# "importe" o "baja" subiría el recall a costa de capturar criterios que no son
+# el precio ("importe de la garantía", "baja temeraria" como umbral), y un peso
+# del precio inflado es peor para el modelo que un NULL honesto.
+_TOKENS_CRITERIO_PRECIO = ("precio", "economic", "coste")
+
+# Bandas en las que la suma de TODOS los pesos publicados declara su escala:
+# ~100 son porcentajes, ~1 son fracciones. Fuera de ambas no se puede afirmar
+# la escala (típico: el expediente publica solo algunos criterios, o los
+# publica sin peso), y entonces el campo se queda NULL. Ver `parse_peso_precio`.
+_PESO_TOTAL_PORCENTAJE = (95.0, 105.0)
+_PESO_TOTAL_FRACCION = (0.95, 1.05)
+
+# Criterios (CODICE los llama `AwardingCriteria`, UBL 2.1 `AwardingCriterion`)
+# bajo `cac:AwardingTerms`. Se buscan por `local-name()` porque las dos grafías
+# conviven en el feed según la versión del esquema con la que se publicó el
+# expediente, y porque los subcriterios cuelgan de tags distintos
+# (`SubordinateAwardingCriteria`/`...Criterion`) que aquí no hace falta nombrar.
+_CRITERIO_ADJ_XPATH = "//*[local-name()='AwardingCriteria' or local-name()='AwardingCriterion']"
+_CRITERIO_PESO_XPATH = "./*[local-name()='WeightNumeric' or local-name()='Weight']"
+_CRITERIO_TIPO_XPATH = (
+    "./*[local-name()='AwardingCriteriaTypeCode' or local-name()='AwardingCriterionTypeCode']"
+)
+_CRITERIO_TEXTO_XPATH = "./*[local-name()='Description' or local-name()='Name']//text()"
+
+# Subcadena común a todas las grafías de un criterio, la del contenedor
+# (`AwardingCriteria`/`AwardingCriterion`) y la de los anidados
+# (`SubordinateAwardingCriteria`/`...Criterion`). Sirve para reconocer un
+# ancestro-criterio sin enumerar las cuatro.
+_CRITERIO_LOCALNAME = "AwardingCriteri"
+
+
+def _sin_acentos(texto: str) -> str:
+    """Minúsculas sin diacríticos, para comparar descripciones del feed."""
+    descompuesto = unicodedata.normalize("NFKD", texto)
+    return "".join(ch for ch in descompuesto if not unicodedata.combining(ch)).lower()
+
+
+def _criterios_raiz(entry: Any, cfs: str) -> list[Any]:
+    """Criterios de adjudicación de primer nivel (sin sus subcriterios).
+
+    Los subcriterios reparten el peso *de su padre*, no el del expediente:
+    sumarlos junto al padre contaría el mismo peso dos veces y sacaría el total
+    fuera de la banda que declara la escala, convirtiendo un expediente
+    perfectamente legible en un NULL. Se descarta todo nodo que tenga otro
+    criterio por ancestro, subiendo hasta ``AwardingTerms``.
+
+    El filtro compara **nombres locales**, no identidades de nodo: lxml crea los
+    proxies de Python bajo demanda y apoyarse en que ``getparent()`` devuelva el
+    mismo objeto sería depender de su caché.
+    """
+    nodos: list[Any] = list(
+        entry.xpath(
+            f"{cfs}/cac:TenderingTerms/cac:AwardingTerms{_CRITERIO_ADJ_XPATH}", namespaces=NS
+        )
+    )
+    raiz: list[Any] = []
+    for nodo in nodos:
+        padre = nodo.getparent()
+        anidado = False
+        while padre is not None:
+            local = etree.QName(padre).localname
+            if local == "AwardingTerms":
+                break
+            if _CRITERIO_LOCALNAME in local:
+                anidado = True
+                break
+            padre = padre.getparent()
+        if not anidado:
+            raiz.append(nodo)
+    return raiz
+
+
+def _es_criterio_precio(nodo: Any) -> bool:
+    tipo = _text(nodo, _CRITERIO_TIPO_XPATH)
+    if tipo and tipo.strip().lower() in _TIPOS_CRITERIO_PRECIO:
+        return True
+    textos = nodo.xpath(_CRITERIO_TEXTO_XPATH, namespaces=NS)
+    plano = _sin_acentos(" ".join(str(t) for t in textos))
+    return any(token in plano for token in _TOKENS_CRITERIO_PRECIO)
+
+
+def parse_peso_precio(entry: Any) -> float | None:
+    """Peso del precio en los criterios de adjudicación, en % sobre 100.
+
+    El dato que mueve la baja no es "hay criterios de precio" sino *cuánto*
+    pesa el precio frente a los criterios de juicio de valor: un 100% de precio
+    y un 40% describen dos mercados distintos. CODICE publica cada criterio con
+    su ``WeightNumeric``, pero **no publica la escala**: unos expedientes usan
+    porcentajes (60, 40) y otros fracciones (0.6, 0.4).
+
+    La escala se deduce de la suma de todos los pesos publicados: ~100 →
+    porcentajes, ~1 → fracciones (por 100). Si la suma cae fuera de ambas bandas
+    la escala es indeterminable — típicamente porque el expediente publica solo
+    parte de los criterios, o los publica sin peso — y se devuelve ``None``.
+    Devolver el número igualmente daría un porcentaje inventado sobre un
+    denominador desconocido, y el modelo no tiene forma de distinguirlo de uno
+    medido.
+
+    Un expediente cuyos criterios suman bien y no incluyen ninguno económico
+    devuelve ``0.0``, que es información real (adjudicación solo por calidad),
+    no ausencia de dato.
+    """
+    cfs = "./cacext:ContractFolderStatus"
+    total = 0.0
+    precio = 0.0
+    for nodo in _criterios_raiz(entry, cfs):
+        peso = _float(nodo, _CRITERIO_PESO_XPATH)
+        if peso is None or peso < 0:
+            continue
+        total += peso
+        if _es_criterio_precio(nodo):
+            precio += peso
+    if _PESO_TOTAL_PORCENTAJE[0] <= total <= _PESO_TOTAL_PORCENTAJE[1]:
+        return round(precio, 4)
+    if _PESO_TOTAL_FRACCION[0] <= total <= _PESO_TOTAL_FRACCION[1]:
+        return round(precio * 100.0, 4)
     return None
 
 
@@ -345,6 +526,8 @@ def parse_entry(entry: Any) -> Licitacion | None:
     fecha_inicio = to_iso_date(_text(entry, f"{pp}/cbc:StartDate"))
     fecha_fin = to_iso_date(_text(entry, f"{pp}/cbc:EndDate"))
     fecha_limite = _tender_deadline(entry, f"{cfs}/cac:TenderingProcess")
+    procedimiento, tramitacion = _tendering_process_codes(entry, f"{cfs}/cac:TenderingProcess")
+    peso_precio_pct = parse_peso_precio(entry)
 
     prorroga = _text(
         entry,
@@ -401,6 +584,9 @@ def parse_entry(entry: Any) -> Licitacion | None:
         fecha_fin=fecha_fin,
         prorroga_descripcion=prorroga,
         tecnologia=",".join(tecnologias),
+        procedimiento=procedimiento,
+        tramitacion=tramitacion,
+        peso_precio_pct=peso_precio_pct,
     )
 
     # Track NULL % for critical fields (silent data loss detection)
@@ -415,6 +601,13 @@ def parse_entry(entry: Any) -> Licitacion | None:
             "estado": lic.estado,
             "fecha_publicacion": lic.fecha_publicacion,
             "fecha_limite": lic.fecha_limite,
+            # No son campos críticos: son los tres candidatos a feature del
+            # modelo de baja, y su NULL % ES la cobertura que decide si entran
+            # en `FEATURE_COLUMNS` (umbral 50%). Instrumentarlos aquí mide esa
+            # cobertura sobre el feed real sin escribir un script aparte.
+            "procedimiento": lic.procedimiento,
+            "tramitacion": lic.tramitacion,
+            "peso_precio_pct": lic.peso_precio_pct,
         }
         for field, value in _critical.items():
             if value is None:
@@ -474,6 +667,8 @@ def parse_entry_unfiltered(entry: Any) -> Licitacion | None:
     fecha_inicio = to_iso_date(_text(entry, f"{pp}/cbc:StartDate"))
     fecha_fin = to_iso_date(_text(entry, f"{pp}/cbc:EndDate"))
     fecha_limite = _tender_deadline(entry, f"{cfs}/cac:TenderingProcess")
+    procedimiento, tramitacion = _tendering_process_codes(entry, f"{cfs}/cac:TenderingProcess")
+    peso_precio_pct = parse_peso_precio(entry)
     prorroga = _text(
         entry,
         f"{project_xp}/cac:ContractExtension/cac:OptionValidityPeriod/cbc:Description",
@@ -513,6 +708,9 @@ def parse_entry_unfiltered(entry: Any) -> Licitacion | None:
         fecha_fin=fecha_fin,
         prorroga_descripcion=prorroga,
         tecnologia=None,
+        procedimiento=procedimiento,
+        tramitacion=tramitacion,
+        peso_precio_pct=peso_precio_pct,
     )
 
 

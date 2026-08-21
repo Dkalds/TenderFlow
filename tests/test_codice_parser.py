@@ -342,39 +342,48 @@ def _make_entry_with_documentos(
     technical_uri: str | None = "https://contrataciondelestado.es/pliego-tecnico.pdf",
     additional_uris: tuple[str, ...] = (),
     legal_filename: str | None = "PCAP.pdf",
+    legal_hash: str | None = None,
+    technical_hash: str | None = None,
 ) -> str:
-    """Entry con {Legal,Technical,Additional}DocumentReference (adjuntos CODICE)."""
+    """Entry con {Legal,Technical,Additional}DocumentReference (adjuntos CODICE).
+
+    Los ``cbc:ID`` llevan nombre de fichero porque es lo que PLACSP publica de
+    verdad (verificado sobre el feed vivo): en sus adjuntos ``cbc:FileName`` no
+    aparece nunca y el nombre viaja en el ``cbc:ID``.
+    """
     cbc = _NS["cbc"]
     cac = _NS["cac"]
     cacext = _NS["cacext"]
     cbcext = _NS["cbcext"]
 
-    def _doc_ref(uri: str | None, filename: str | None) -> str:
+    def _doc_ref(uri: str | None, filename: str | None, doc_hash: str | None = None) -> str:
         if uri is None:
             return ""
         filename_xml = f"<cbc:FileName>{filename}</cbc:FileName>" if filename else ""
+        hash_xml = f"<cbc:DocumentHash>{doc_hash}</cbc:DocumentHash>" if doc_hash else ""
         return f"""
             <cac:Attachment>
               <cac:ExternalReference>
                 <cbc:URI>{uri}</cbc:URI>
                 {filename_xml}
+                {hash_xml}
               </cac:ExternalReference>
             </cac:Attachment>"""
 
     legal_xml = (
-        f"<cac:LegalDocumentReference><cbc:ID>1</cbc:ID>"
-        f"{_doc_ref(legal_uri, legal_filename)}</cac:LegalDocumentReference>"
+        f"<cac:LegalDocumentReference><cbc:ID>PCAP-expediente.pdf</cbc:ID>"
+        f"{_doc_ref(legal_uri, legal_filename, legal_hash)}</cac:LegalDocumentReference>"
         if legal_uri is not None
         else ""
     )
     technical_xml = (
-        f"<cac:TechnicalDocumentReference><cbc:ID>2</cbc:ID>"
-        f"{_doc_ref(technical_uri, None)}</cac:TechnicalDocumentReference>"
+        f"<cac:TechnicalDocumentReference><cbc:ID>PPT.pdf</cbc:ID>"
+        f"{_doc_ref(technical_uri, None, technical_hash)}</cac:TechnicalDocumentReference>"
         if technical_uri is not None
         else ""
     )
     additional_xml = "".join(
-        f"<cac:AdditionalDocumentReference><cbc:ID>{i + 3}</cbc:ID>"
+        f"<cac:AdditionalDocumentReference><cbc:ID>anexo{i + 1}.pdf</cbc:ID>"
         f"{_doc_ref(uri, None)}</cac:AdditionalDocumentReference>"
         for i, uri in enumerate(additional_uris)
     )
@@ -942,13 +951,62 @@ class TestParseDocumentReferences:
         assert legal.uri == "https://contrataciondelestado.es/pliego-legal.pdf"
         assert legal.filename == "PCAP.pdf"
 
-    def test_filename_is_optional(self):
+    def test_filename_cae_al_cbc_id_cuando_no_hay_filename(self):
+        """Sin ``cbc:FileName`` el nombre sale del ``cbc:ID``.
+
+        Antes se afirmaba aquí ``filename is None``, y eso describía un defecto,
+        no un requisito: los adjuntos de PLACSP no traen ``cbc:FileName`` nunca,
+        así que esa rama dejaba la columna ``filename`` a NULL en el 100% de las
+        filas de producción teniendo el nombre delante, en el ``cbc:ID``.
+        """
         entry = self._get_entry(_make_entry_with_documentos())
         refs = parse_document_references(entry)
 
         technical = next(r for r in refs if r.tipo == "technical")
         assert technical.uri == "https://contrataciondelestado.es/pliego-tecnico.pdf"
-        assert technical.filename is None
+        assert technical.filename == "PPT.pdf"
+
+    def test_filename_explicito_gana_al_cbc_id(self):
+        """``cbc:FileName`` es el campo que UBL define para esto: si una fuente
+        lo manda, manda sobre el ``cbc:ID``."""
+        entry = self._get_entry(_make_entry_with_documentos(legal_filename="PCAP.pdf"))
+        refs = parse_document_references(entry)
+
+        legal = next(r for r in refs if r.tipo == "legal")
+        assert legal.filename == "PCAP.pdf"  # no "PCAP-expediente.pdf" del cbc:ID
+
+    def test_extrae_document_hash_como_source_hash(self):
+        """El ``cbc:DocumentHash`` es la identidad que sobrevive a la rotación
+        del token de la URI (v88)."""
+        entry = self._get_entry(
+            _make_entry_with_documentos(
+                legal_hash="OCbO5xyQntBEy+cK1a0r9pRmwO4=",
+                technical_hash="f5NdW1FC5TMibeBpUfl84QbUFpM=",
+            )
+        )
+        refs = parse_document_references(entry)
+
+        legal = next(r for r in refs if r.tipo == "legal")
+        technical = next(r for r in refs if r.tipo == "technical")
+        assert legal.source_hash == "OCbO5xyQntBEy+cK1a0r9pRmwO4="
+        assert technical.source_hash == "f5NdW1FC5TMibeBpUfl84QbUFpM="
+
+    def test_source_hash_es_none_si_no_viene(self):
+        entry = self._get_entry(_make_entry_with_documentos())
+        refs = parse_document_references(entry)
+
+        assert all(r.source_hash is None for r in refs)
+
+    def test_source_hash_normaliza_el_base64_partido_en_lineas(self):
+        """Un mismo hash partido por el serializador XML no puede generar dos
+        identidades distintas."""
+        entry = self._get_entry(
+            _make_entry_with_documentos(legal_hash="OCbO5xyQntBE\n        y+cK1a0r9pRmwO4=")
+        )
+        refs = parse_document_references(entry)
+
+        legal = next(r for r in refs if r.tipo == "legal")
+        assert legal.source_hash == "OCbO5xyQntBEy+cK1a0r9pRmwO4="
 
     def test_multiple_additional_documents(self):
         entry = self._get_entry(
