@@ -54,6 +54,22 @@ def test_documentos_licitacion_con_documentos(client, auth):
     assert "texto" not in doc
 
 
+def test_documentos_llegan_en_orden_documental(client, auth):
+    """El orden lo fija el backend, no el cliente: el bloque de la UI pinta la
+    lista tal cual llega, así que el PCAP tiene que venir antes que el PPT."""
+    _seed_licitacion("DOC004")
+    DocumentosRepository().upsert_meta(
+        "DOC004",
+        [
+            DocumentoReferencia(tipo="technical", uri="https://x/ppt.pdf"),
+            DocumentoReferencia(tipo="legal", uri="https://x/pcap.pdf"),
+        ],
+    )
+    r = client.get("/api/v1/licitaciones/DOC004/documentos", headers=auth)
+    assert r.status_code == 200
+    assert [d["tipo"] for d in r.json()["items"]] == ["legal", "technical"]
+
+
 def test_documentos_licitacion_sin_auth(client):
     """Sin cabecera de autenticación → 401 o 403."""
     _seed_licitacion("DOC003")
