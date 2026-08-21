@@ -1474,6 +1474,74 @@ class AggregateRepository:
             return 0.0, 0.0, 0
         return float(row[0]), float(row[1] or 0.0), int(row[2] or 0)
 
+    # Máximo de ofertas recibidas por expediente en la ventana pedida. Va como
+    # sub-select y no como join directo contra ``adjudicaciones`` porque una
+    # licitación multi-lote tiene una adjudicación por lote: sin colapsarlas
+    # antes, sus ofertas pesarían una vez por lote en la media del segmento.
+    _COMPETENCIA_SUB = (
+        "SELECT a.licitacion_id, MAX(a.n_ofertas_recibidas) AS max_ofertas "
+        "FROM adjudicaciones a "
+        "WHERE a.n_ofertas_recibidas IS NOT NULL "
+        "  AND a.fecha_adjudicacion >= %s "
+        "GROUP BY a.licitacion_id"
+    )
+
+    def competencia_ofertas_por_cpv4(
+        self, *, cutoff_iso: str
+    ) -> tuple[list[dict[str, Any]], float | None]:
+        """(filas ``cpv4``/``media_ofertas``, media global) del universo del radar.
+
+        Señal de competencia del scoring: cuántas ofertas suele recibir un
+        expediente del segmento. La media global es el fallback para los CPV-4
+        sin muestra propia, y por eso **no** aplica el ``HAVING`` ni el filtro de
+        ``cpv``: cuenta todo lo que el universo tenga en la ventana.
+
+        El predicado del universo se interpola desde
+        :data:`db.sql_fragments.TECHNOLOGY_OBSERVED_SQL` y no se escribe a mano,
+        porque ``v84_lic_universo_cpv_index`` crea un índice **parcial** con ese
+        mismo texto: el planificador solo lo usa si puede demostrar que este
+        WHERE implica el predicado del índice, y no normaliza variantes del
+        ``COALESCE``. Una copia divergente aquí no rompería el resultado —
+        volvería en silencio al Parallel Seq Scan de 9,5 s que motivó el índice.
+        Las dos columnas que la consulta pide de ``licitaciones``
+        (``id_externo`` para el join, ``cpv`` para el segmento) son exactamente
+        las del índice, para que el nodo pueda resolverse sin bajar al heap.
+
+        Vivía en ``services/analytics/scoring_signals.py``; baja aquí por
+        ADR-022 (todo el SQL en ``db/``) al tocarla para el índice.
+
+        ``cutoff_iso`` llega calculado por el llamante (ventana de 24 meses de
+        calendario), como el resto de ventanas relativas de este módulo: el
+        resultado no depende del reloj de quien lo corre.
+        """
+        por_cpv4 = (
+            "SELECT substr(l.cpv, 1, 4) AS cpv4, AVG(sub.max_ofertas) AS media_ofertas "
+            f"FROM ({self._COMPETENCIA_SUB}) sub "
+            "JOIN licitaciones l ON l.id_externo = sub.licitacion_id "
+            f"WHERE {TECHNOLOGY_OBSERVED_SQL} "
+            "  AND l.cpv IS NOT NULL "
+            "  AND length(l.cpv) >= 4 "
+            "GROUP BY cpv4 "
+            "HAVING COUNT(*) >= 3"
+        )
+        # Misma forma que la de arriba —agregar ``adjudicaciones`` primero y
+        # unir después— y no el join sobre las filas crudas: el join entra con
+        # una fila por expediente en vez de una por lote. Da el mismo número
+        # (``id_externo`` es la PK, así que la unión es 1:1) leyendo menos.
+        global_sql = (
+            "SELECT AVG(sub.max_ofertas) AS media_global "
+            f"FROM ({self._COMPETENCIA_SUB}) sub "
+            "JOIN licitaciones l ON l.id_externo = sub.licitacion_id "
+            f"WHERE {TECHNOLOGY_OBSERVED_SQL}"
+        )
+        with connect_read() as c:
+            rows = rows_to_dicts(c.execute(por_cpv4, [cutoff_iso]))
+            row_global = c.execute(global_sql, [cutoff_iso]).fetchone()
+        media_global = (
+            float(row_global[0]) if row_global is not None and row_global[0] is not None else None
+        )
+        return rows, media_global
+
     def scoring_candidates(
         self,
         *,

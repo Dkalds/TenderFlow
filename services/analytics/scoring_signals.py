@@ -121,59 +121,23 @@ def _cutoff_iso(months: int = 24) -> str:
 
 
 def _load_competencia_stats_raw(cutoff_months: int = 24) -> CompetenciaStats:
-    """Carga sin caché — llamado solo por SignalAwareCache.get()."""
+    """Carga sin caché — llamado solo por SignalAwareCache.get().
+
+    El SQL vive en ``AggregateRepository.competencia_ofertas_por_cpv4`` (ADR-022)
+    desde que hubo que fijar el texto del predicado de universo: el índice
+    parcial de ``v84_lic_universo_cpv_index`` solo entra si la consulta lo
+    escribe igual, y ese acoplamiento se defiende peor repartido entre dos
+    capas. Aquí queda lo que sí es del servicio: la ventana de 24 meses, el
+    parseo y el estado de la señal.
+    """
     cutoff = _cutoff_iso(cutoff_months)
-    # Sub-select por licitacion_id para no sobre-ponderar multi-lote (una licitación
-    # puede tener múltiples adjudicaciones; tomamos la máx de ofertas por licitación).
-    sql = """
-        SELECT
-            substr(l.cpv, 1, 4)      AS cpv4,
-            AVG(sub.max_ofertas)      AS media_ofertas
-        FROM (
-            SELECT
-                a.licitacion_id,
-                MAX(a.n_ofertas_recibidas) AS max_ofertas
-            FROM adjudicaciones a
-            WHERE a.n_ofertas_recibidas IS NOT NULL
-              AND a.fecha_adjudicacion >= %s
-            GROUP BY a.licitacion_id
-        ) sub
-        JOIN licitaciones l ON l.id_externo = sub.licitacion_id
-        WHERE l.cpv IS NOT NULL
-          AND COALESCE(l.analysis_universe, 'technology_observed') = 'technology_observed'
-          AND length(l.cpv) >= 4
-        GROUP BY cpv4
-        HAVING COUNT(*) >= 3
-    """
-    sql_global = """
-        SELECT AVG(sub.max_ofertas) AS media_global
-        FROM (
-            SELECT
-                a.licitacion_id,
-                MAX(a.n_ofertas_recibidas) AS max_ofertas
-            FROM adjudicaciones a
-            JOIN licitaciones l ON l.id_externo = a.licitacion_id
-            WHERE a.n_ofertas_recibidas IS NOT NULL
-              AND a.fecha_adjudicacion >= %s
-              AND COALESCE(l.analysis_universe, 'technology_observed') = 'technology_observed'
-            GROUP BY a.licitacion_id
-        ) sub
-    """
     try:
-        with connect_read() as c:
-            rows: list[dict[str, Any]] = rows_to_dicts(c.execute(sql, (cutoff,)))
-            media_por_cpv4 = {
-                str(r["cpv4"]): float(r["media_ofertas"])
-                for r in rows
-                if r["cpv4"] is not None and r["media_ofertas"] is not None
-            }
-            row_global = c.execute(sql_global, (cutoff,)).fetchone()
-            media_global: float | None = None
-            if row_global is not None:
-                val = (
-                    row_global[0] if not hasattr(row_global, "keys") else row_global["media_global"]
-                )
-                media_global = float(val) if val is not None else None
+        rows, media_global = _repo.competencia_ofertas_por_cpv4(cutoff_iso=cutoff)
+        media_por_cpv4 = {
+            str(r["cpv4"]): float(r["media_ofertas"])
+            for r in rows
+            if r["cpv4"] is not None and r["media_ofertas"] is not None
+        }
         hay_datos = bool(media_por_cpv4) or media_global is not None
         return CompetenciaStats(
             media_por_cpv4=media_por_cpv4,
