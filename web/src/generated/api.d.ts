@@ -1215,7 +1215,17 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Feed de eventos de contrato recientes */
+        /**
+         * Feed de eventos de contrato recientes
+         * @description Movimientos de contrato recientes, acotados por el ámbito global.
+         *
+         *     Los filtros de licitación (CCAA, tecnología, estado, importe, búsqueda) se
+         *     aplican sobre el expediente movido, así que el feed mide el mismo universo
+         *     que el resto del Resumen. Las fechas acotan **el movimiento**, no la
+         *     publicación del expediente: la pregunta del feed es qué ha cambiado en la
+         *     ventana, y una ventana sobre `fecha_publicacion` dejaría el panel vacío en
+         *     cuanto el ámbito mirase a meses anteriores.
+         */
         get: operations["get_eventos_api_v1_eventos_get"];
         put?: never;
         post?: never;
@@ -9925,6 +9935,22 @@ export interface operations {
                 tipo?: string | null;
                 dias?: number;
                 limit?: number;
+                /** @description Movimientos desde esta fecha (sustituye a `dias`) */
+                fecha_desde?: string | null;
+                /** @description Movimientos hasta esta fecha */
+                fecha_hasta?: string | null;
+                /** @description Comunidad Autónoma de la licitación */
+                ccaa?: string | null;
+                /** @description Tecnología de la licitación */
+                tecnologia?: string | null;
+                /** @description Estado de la licitación (PUB, EV, ADJ…) */
+                estado?: string | null;
+                /** @description Importe mínimo (EUR) */
+                importe_min?: number | null;
+                /** @description Solo licitaciones que siguen abiertas (no terminales) */
+                solo_abiertas?: boolean;
+                /** @description Búsqueda en título, órgano o expediente */
+                q?: string | null;
             };
             header?: {
                 "X-CSRF-Token"?: string | null;

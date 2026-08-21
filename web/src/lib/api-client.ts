@@ -12,12 +12,36 @@ import createClient from "openapi-fetch";
 import type { paths } from "@/generated/api";
 
 /**
+ * Origen al que apunta el cliente tipado.
+ *
+ * En navegador se usa el propio origen y no la cadena vacía. `openapi-fetch`
+ * no llama a `fetch(url, init)`: construye un `new Request(url, init)` y le
+ * pasa el objeto. La implementación de `Request` de Node —la que corre bajo
+ * jsdom en los tests— rechaza las URLs relativas (`TypeError: Failed to parse
+ * URL from /api/v1/…`), así que con `baseUrl: ""` toda llamada por este
+ * cliente reventaba en cuanto se ejercitaba desde un test. Al ser el mismo
+ * origen, en el navegador la request resultante es idéntica a la relativa.
+ */
+function resolveBaseUrl(): string {
+  if (typeof window !== "undefined") return window.location.origin;
+  // fdi-allow:localhost-url — fallback SSR/Node legítimo cuando API_BASE_URL no está set; no es dato renderizado.
+  return process.env.API_BASE_URL ?? "http://localhost:8080";
+}
+
+/**
  * Base API client — all requests go through this.
  * Cookie-based auth (httpOnly) is handled automatically by the browser.
  */
 export const api = createClient<paths>({
-  // fdi-allow:localhost-url — fallback SSR/Node legítimo cuando API_BASE_URL no está set; no es dato renderizado.
-  baseUrl: typeof window !== "undefined" ? "" : process.env.API_BASE_URL ?? "http://localhost:8080",
+  baseUrl: resolveBaseUrl(),
+  /**
+   * `openapi-fetch` captura `globalThis.fetch` una sola vez, al crear el
+   * cliente. Como este módulo se evalúa al importarlo, esa captura ocurre
+   * antes de que un test pueda sustituir el global, y el doble nunca se
+   * usaba. Resolverlo en cada llamada mantiene el fetch global sustituible,
+   * igual que en `fetchWithAuth` — sin cambiar nada en producción.
+   */
+  fetch: (request) => globalThis.fetch(request),
   credentials: "include",
   headers: {
     "Content-Type": "application/json",
@@ -181,6 +205,9 @@ export type ApiGetPath = keyof {
  * Las llamadas con ruta dinámica (`/licitaciones/{id}`) siguen usando
  * `fetchWithAuth`; para esas, tipá el retorno con `components["schemas"][...]`
  * vía `@/lib/api-types`, nunca con una interfaz local.
+ *
+ * Migración por olas: `src/hooks/**` ya está migrado; `src/app/**`,
+ * `src/components/**` y `src/lib/**` siguen pendientes.
  */
 export type ApiGetResult<P extends ApiGetPath> = paths[P] extends {
   get: { responses: { 200: { content: { "application/json": infer R } } } };
@@ -188,9 +215,18 @@ export type ApiGetResult<P extends ApiGetPath> = paths[P] extends {
   ? R
   : never;
 
+/**
+ * Valor admisible en un parámetro de query.
+ *
+ * `undefined` y `null` los descarta el serializador de `openapi-fetch`, así que
+ * un filtro sin valor no llega a la URL: es el equivalente al `if (x) params.
+ * set(...)` que hacían los hooks a mano.
+ */
+export type ApiQueryValue = string | number | boolean | readonly string[] | null | undefined;
+
 export async function apiGet<P extends ApiGetPath>(
   path: P,
-  init?: { params?: Record<string, unknown>; signal?: AbortSignal },
+  init?: { params?: { query?: Record<string, ApiQueryValue> }; signal?: AbortSignal },
 ): Promise<ApiGetResult<P>> {
   const { data, error, response } = await (
     api.GET as unknown as (

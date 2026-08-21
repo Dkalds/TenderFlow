@@ -3,7 +3,8 @@
  *
  * Strategy:
  *  - Mock `@/lib/ask-stream` so streamAsk is a vi.fn() we fully control.
- *  - useAskModels uses fetch via react-query; mock fetch globally for those.
+ *  - useAskModels va por el cliente tipado (`apiGet`); se sustituye el fetch
+ *    global y se leen las llamadas con los helpers de `./fetch-call`.
  *  - Each renderHook gets a fresh QueryClient (retry: false) to avoid state bleed.
  */
 
@@ -12,6 +13,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import * as React from "react";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import type { AskParams, AskStreamResult } from "@/lib/ask-stream";
+import { callUrl, jsonResponse } from "./fetch-call";
 
 // ── Mock ask-stream before importing the hook ──────────────────────────────────
 const mockStreamAsk = vi.fn<(params: AskParams) => Promise<AskStreamResult>>();
@@ -36,16 +38,6 @@ function createWrapper() {
 
 function makeResult(overrides: Partial<AskStreamResult> = {}): AskStreamResult {
   return { answer: "", fuentes: [], degraded: null, resumenMeta: null, ...overrides };
-}
-
-/** Build a minimal Response-like object. */
-function makeResponse(body: unknown, status = 200): Response {
-  return {
-    ok: status >= 200 && status < 300,
-    status,
-    json: () => Promise.resolve(body),
-    headers: { get: () => "application/json" },
-  } as unknown as Response;
 }
 
 // ── Setup / teardown ───────────────────────────────────────────────────────────
@@ -244,8 +236,13 @@ describe("useChat", () => {
 // ── useAskModels tests ─────────────────────────────────────────────────────────
 
 describe("useAskModels", () => {
-  it("returns the models array from a successful response", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(makeResponse(["gpt-4", "gpt-3.5"])));
+  it("reads the models list off the AskModelInfo contract", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockImplementation(() =>
+        Promise.resolve(jsonResponse({ default: "gpt-4", models: ["gpt-4", "gpt-3.5"] })),
+      );
+    vi.stubGlobal("fetch", fetchMock);
 
     const { result } = renderHook(() => useAskModels(), {
       wrapper: createWrapper(),
@@ -253,21 +250,16 @@ describe("useAskModels", () => {
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(result.current.data).toEqual(["gpt-4", "gpt-3.5"]);
-  });
-
-  it("extracts models from a { models: [...] } shape", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(makeResponse({ models: ["llama3"] })));
-
-    const { result } = renderHook(() => useAskModels(), {
-      wrapper: createWrapper(),
-    });
-
-    await waitFor(() => expect(result.current.isSuccess).toBe(true));
-    expect(result.current.data).toEqual(["llama3"]);
+    expect(callUrl(fetchMock.mock.calls[0])).toBe("/api/v1/ask/models");
   });
 
   it("returns [] on non-ok response", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(makeResponse(null, 500)));
+    // El selector de modelo degrada al valor por defecto en vez de tumbar el
+    // panel del copiloto.
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation(() => Promise.resolve(jsonResponse({ detail: "boom" }, 500))),
+    );
 
     const { result } = renderHook(() => useAskModels(), {
       wrapper: createWrapper(),

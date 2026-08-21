@@ -8,6 +8,7 @@ import {
   useRadarDismissals,
   useRestoreRadarTender,
 } from "@/hooks/use-radar";
+import { callMethod, callUrl, jsonResponse } from "./fetch-call";
 
 /**
  * El Radar consume `GET /analytics/scoring?limit=24` como fuente única: es el
@@ -42,15 +43,23 @@ function stubApi(options: {
   opportunities?: ReturnType<typeof scored>[];
   dismissals?: string[];
 }) {
-  const fetchMock = vi.fn().mockImplementation((url: string) => {
-    const target = String(url);
-    const body = target.includes("/radar/dismissals")
+  const fetchMock = vi.fn().mockImplementation((...call: unknown[]) => {
+    const body = callUrl(call).includes("/radar/dismissals")
       ? { ids: options.dismissals ?? [] }
       : { opportunities: options.opportunities ?? [] };
-    return Promise.resolve(new Response(JSON.stringify(body), { status: 200 }));
+    return Promise.resolve(jsonResponse(body));
   });
   vi.stubGlobal("fetch", fetchMock);
   return fetchMock;
+}
+
+/** URLs pedidas, en el orden en que se pidieron. */
+function urls(fetchMock: ReturnType<typeof stubApi>): string[] {
+  return fetchMock.mock.calls.map((call) => callUrl(call));
+}
+
+function scoringUrl(fetchMock: ReturnType<typeof stubApi>): string | undefined {
+  return urls(fetchMock).find((url) => url.includes("/analytics/scoring"));
 }
 
 afterEach(() => {
@@ -64,7 +73,7 @@ describe("useRadar", () => {
     const { result } = renderHook(() => useRadar(), { wrapper });
     await waitFor(() => expect(result.current.data).toBeDefined());
 
-    const calls = fetchMock.mock.calls.map(([url]) => String(url));
+    const calls = urls(fetchMock);
     expect(calls.some((url) => url.includes("/api/v1/analytics/scoring"))).toBe(true);
     expect(calls.some((url) => url.includes("/api/v1/licitaciones"))).toBe(false);
   });
@@ -75,10 +84,7 @@ describe("useRadar", () => {
     const { result } = renderHook(() => useRadar(), { wrapper });
     await waitFor(() => expect(result.current.data).toBeDefined());
 
-    const scoringCall = fetchMock.mock.calls
-      .map(([url]) => String(url))
-      .find((url) => url.includes("/analytics/scoring"));
-    expect(scoringCall).toContain("limit=24");
+    expect(scoringUrl(fetchMock)).toContain("limit=24");
   });
 
   it("pide el ranking sin las señales que el usuario descartó", async () => {
@@ -90,10 +96,7 @@ describe("useRadar", () => {
     const { result } = renderHook(() => useRadar(), { wrapper });
     await waitFor(() => expect(result.current.data).toBeDefined());
 
-    const scoringCall = fetchMock.mock.calls
-      .map(([url]) => String(url))
-      .find((url) => url.includes("/analytics/scoring"));
-    expect(scoringCall).toContain("exclude_dismissed=true");
+    expect(scoringUrl(fetchMock)).toContain("exclude_dismissed=true");
   });
 
   it("respeta el orden que devuelve el backend sin reordenar en cliente", async () => {
@@ -132,10 +135,7 @@ describe("useRadar", () => {
     const { result } = renderHook(() => useRadar("Salesforce"), { wrapper });
     await waitFor(() => expect(result.current.data).toBeDefined());
 
-    const scoringCall = fetchMock.mock.calls
-      .map(([url]) => String(url))
-      .find((url) => url.includes("/analytics/scoring"));
-    expect(scoringCall).toContain("tecnologia=Salesforce");
+    expect(scoringUrl(fetchMock)).toContain("tecnologia=Salesforce");
     expect(result.current.data!.items.map((item) => item.id_externo)).toEqual(["SF"]);
   });
 
@@ -145,10 +145,7 @@ describe("useRadar", () => {
     const { result } = renderHook(() => useRadar(), { wrapper });
     await waitFor(() => expect(result.current.data).toBeDefined());
 
-    const scoringCall = fetchMock.mock.calls
-      .map(([url]) => String(url))
-      .find((url) => url.includes("/analytics/scoring"));
-    expect(scoringCall).not.toContain("tecnologia=");
+    expect(scoringUrl(fetchMock)).not.toContain("tecnologia=");
   });
 });
 
@@ -176,9 +173,7 @@ describe("descarte server-side", () => {
     });
 
     const posted = fetchMock.mock.calls.find(
-      ([url, init]) =>
-        String(url).includes("/radar/dismissals") &&
-        (init as RequestInit | undefined)?.method === "POST",
+      (call) => callUrl(call).includes("/radar/dismissals") && callMethod(call) === "POST",
     );
     expect(posted).toBeDefined();
   });
@@ -192,10 +187,8 @@ describe("descarte server-side", () => {
       await result.current.mutateAsync("DESCARTADA");
     });
 
-    const deleted = fetchMock.mock.calls.find(
-      ([, init]) => (init as RequestInit | undefined)?.method === "DELETE",
-    );
+    const deleted = fetchMock.mock.calls.find((call) => callMethod(call) === "DELETE");
     expect(deleted).toBeDefined();
-    expect(String(deleted![0])).toContain("DESCARTADA");
+    expect(callUrl(deleted!)).toContain("DESCARTADA");
   });
 });

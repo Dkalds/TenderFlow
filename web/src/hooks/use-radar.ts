@@ -2,8 +2,13 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { apiMutate, fetchWithAuth } from "@/lib/api-client";
-import type { components } from "@/generated/api";
+import { apiGet, apiMutate } from "@/lib/api-client";
+import type {
+  RadarDismissalBody,
+  RadarDismissalsResult,
+  ScoredOpportunity,
+  ScoringSignalsHealth,
+} from "@/lib/api-types";
 
 /**
  * Proyección que renderiza el Radar.
@@ -11,18 +16,10 @@ import type { components } from "@/generated/api";
  * Se deriva del esquema generado, no se escribe a mano: un campo que la API no
  * envía deja de compilar aquí en vez de aparecer como `undefined` en pantalla.
  */
-type ScoredOpportunity = components["schemas"]["ScoredOpportunity"];
-
 export type RadarTender = ScoredOpportunity;
 
 /** De qué señales está hecho el score que se está mostrando. */
-export type ScoringSignals = components["schemas"]["ScoringSignalsHealth"];
-
-type ScoringResponse = components["schemas"]["ScoringResult"];
-
-interface DismissalsResponse {
-  ids: string[];
-}
+export type ScoringSignals = ScoringSignalsHealth;
 
 const DISMISSALS_KEY = ["radar", "dismissals"] as const;
 
@@ -52,13 +49,20 @@ const DISMISSALS_KEY = ["radar", "dismissals"] as const;
  * señal siguiente.
  */
 export function useRadar(tecnologia: string | null = null) {
-  const params = new URLSearchParams({ limit: "24", exclude_dismissed: "true" });
-  if (tecnologia) params.set("tecnologia", tecnologia);
-
   const scoring = useQuery({
     queryKey: ["radar", "scoring", tecnologia],
     queryFn: () =>
-      fetchWithAuth<ScoringResponse>(`/api/v1/analytics/scoring?${params.toString()}`),
+      apiGet("/api/v1/analytics/scoring", {
+        params: {
+          query: {
+            limit: 24,
+            exclude_dismissed: true,
+            // `null`/`""` no llegan a la URL: sin tecnología seleccionada el
+            // ranking es el global, no el de la tecnología vacía.
+            tecnologia: tecnologia || undefined,
+          },
+        },
+      }),
     staleTime: 5 * 60_000,
   });
 
@@ -89,9 +93,9 @@ export function useRadarDismissedTenders(ids: string[], enabled: boolean) {
   const query = useQuery({
     queryKey: ["radar", "dismissed-tenders", visibles],
     queryFn: () =>
-      fetchWithAuth<ScoringResponse>(
-        `/api/v1/analytics/scoring?ids=${encodeURIComponent(visibles.join(","))}`,
-      ),
+      apiGet("/api/v1/analytics/scoring", {
+        params: { query: { ids: visibles.join(",") } },
+      }),
     enabled: enabled && visibles.length > 0,
     staleTime: 5 * 60_000,
   });
@@ -107,10 +111,7 @@ export function useRadarDismissedTenders(ids: string[], enabled: boolean) {
 export function useRadarDismissals() {
   return useQuery({
     queryKey: DISMISSALS_KEY,
-    queryFn: () =>
-      fetchWithAuth<DismissalsResponse>("/api/v1/radar/dismissals").then(
-        (response) => response.ids,
-      ),
+    queryFn: () => apiGet("/api/v1/radar/dismissals").then((response) => response.ids),
     staleTime: 60_000,
   });
 }
@@ -125,9 +126,9 @@ export function useDismissRadarTender() {
   const qc = useQueryClient();
   return useMutation<string[], unknown, string, { previous: string[] | undefined }>({
     mutationFn: (idExterno: string) =>
-      apiMutate<DismissalsResponse>("POST", "/api/v1/radar/dismissals", {
+      apiMutate<RadarDismissalsResult>("POST", "/api/v1/radar/dismissals", {
         id_externo: idExterno,
-      }).then((response) => response.ids),
+      } satisfies RadarDismissalBody).then((response) => response.ids),
     onMutate: async (idExterno: string) => {
       await qc.cancelQueries({ queryKey: DISMISSALS_KEY });
       const previous = qc.getQueryData<string[]>(DISMISSALS_KEY);

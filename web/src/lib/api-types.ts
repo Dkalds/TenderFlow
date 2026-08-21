@@ -101,3 +101,38 @@ export type WebhookOut = Schemas["WebhookOut"];
 export type ResolucionOut = Schemas["ResolucionOut"];
 export type TimelineResult = Schemas["TimelineResult"];
 export type PrediccionBajaResult = Schemas["PrediccionBajaResult"];
+
+// Ola 1 del tipado del cliente OpenAPI (`src/hooks/**`, backlog «migrar al
+// cliente tipado»). Los hooks de pursuits y radar importaban
+// `components["schemas"][...]` directamente de `@/generated/api`, saltándose
+// esta capa: una regeneración que renombre un schema rompía los imports en
+// cada hook en vez de en este único fichero.
+export type PursuitDetail = Schemas["PursuitDetail"];
+export type PursuitListResponse = Schemas["PursuitListResponse"];
+export type PursuitMetrics = Schemas["PursuitMetrics"];
+export type PursuitCreate = Schemas["PursuitCreate"];
+export type PursuitUpdate = Schemas["PursuitUpdate"];
+export type PipelineAgendaResponse = Schemas["PipelineAgendaResponse"];
+export type PipelineAgendaItem = Schemas["PipelineAgendaItem"];
+export type ScoredOpportunity = Schemas["ScoredOpportunity"];
+export type ScoringResult = Schemas["ScoringResult"];
+export type ScoringSignalsHealth = Schemas["ScoringSignalsHealth"];
+
+// Envoltorios de respuesta que los hooks declaraban como `interface` local
+// (`LastExtractionResponse`, `DismissalsResponse`, `{ items: … }` inline).
+export type LastExtraction = Schemas["LastExtraction"];
+export type RadarDismissalsResult = Schemas["RadarDismissalsResult"];
+export type RadarDismissalBody = Schemas["RadarDismissalBody"];
+export type WatchlistFavoritesResult = Schemas["WatchlistFavoritesResult"];
+
+// Cuerpos de petición de webhooks: el alta y la edición los describía el hook
+// a mano, con `event_types` obligatorio donde la API lo tiene opcional.
+export type WebhookCreate = Schemas["WebhookCreate"];
+export type WebhookUpdate = Schemas["WebhookUpdate"];
+
+// Adjuntos (pliegos) de una licitación. El bloque de documentos declaraba su
+// propia `interface Documento` a mano — justo el patrón que este fichero existe
+// para evitar: `status` viajaba en la respuesta desde el principio y la UI no
+// lo miraba, así que los enlaces caducados se pintaban como los sanos.
+export type DocumentoSummary = Schemas["DocumentoSummary"];
+export type DocumentosResult = Schemas["DocumentosResult"];

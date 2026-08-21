@@ -1,12 +1,8 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { fetchWithAuth } from "@/lib/api-client";
+import { apiGet } from "@/lib/api-client";
 import { formatRelativeTime } from "@/lib/utils";
-
-interface LastExtractionResponse {
-  last_extraction: string | null;
-}
 
 /**
  * Antigüedad del dato que el usuario está viendo, en un solo sitio.
@@ -25,7 +21,7 @@ interface LastExtractionResponse {
 export function useDataFreshness() {
   const query = useQuery({
     queryKey: ["meta", "last-extraction"],
-    queryFn: () => fetchWithAuth<LastExtractionResponse>("/api/v1/meta/last-extraction"),
+    queryFn: () => apiGet("/api/v1/meta/last-extraction"),
     staleTime: 5 * 60_000,
     refetchInterval: 5 * 60_000,
     retry: 1,

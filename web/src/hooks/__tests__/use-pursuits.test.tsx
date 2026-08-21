@@ -10,6 +10,7 @@ import {
   useUpdatePursuit,
 } from "@/hooks/use-pursuits";
 import { useOrganizationStore } from "@/hooks/use-organization";
+import { callUrl, jsonResponse } from "./fetch-call";
 
 const pursuit = {
   id: 1, organization_id: 1, licitacion_id: "lic-1", tender_title: "Servicio TI",
@@ -31,15 +32,12 @@ afterEach(() => {
 
 describe("pursuit hooks", () => {
   it("loads a filtered opportunity list through the product contract", async () => {
-    const fetchMock = vi.fn().mockImplementation((url: string) =>
+    const fetchMock = vi.fn().mockImplementation((...call: unknown[]) =>
       Promise.resolve(
-        new Response(
-          JSON.stringify(
-            url.includes("/organizations")
-              ? [{ id: 1, name: "Equipo", is_personal: true, role: "owner", created_at: "2026-07-30T10:00:00Z" }]
-              : { items: [pursuit], total: 1 },
-          ),
-          { status: 200 },
+        jsonResponse(
+          callUrl(call).includes("/organizations")
+            ? [{ id: 1, name: "Equipo", is_personal: true, role: "owner", created_at: "2026-07-30T10:00:00Z" }]
+            : { items: [pursuit], total: 1 },
         ),
       ),
     );
@@ -49,28 +47,25 @@ describe("pursuit hooks", () => {
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
     expect(result.current.data?.items?.[0].id).toBe(1);
-    expect(fetchMock.mock.calls.some(([url]) => String(url).includes("status=identified"))).toBe(true);
-    expect(fetchMock.mock.calls.some(([url]) => String(url).includes("organization_id=1"))).toBe(true);
+    expect(fetchMock.mock.calls.some((call) => callUrl(call).includes("status=identified"))).toBe(true);
+    expect(fetchMock.mock.calls.some((call) => callUrl(call).includes("organization_id=1"))).toBe(true);
   });
 
   it("creates an opportunity with the selected tender id", async () => {
     useOrganizationStore.setState({ activeOrganizationId: 1 });
-    const fetchMock = vi.fn().mockImplementation((url: string) =>
+    const fetchMock = vi.fn().mockImplementation((...call: unknown[]) =>
       Promise.resolve(
-        new Response(
-          JSON.stringify(
-            url.includes("/organizations")
-              ? [{ id: 1, name: "Equipo", is_personal: true, role: "owner", created_at: "2026-07-30T10:00:00Z" }]
-              : pursuit,
-          ),
-          { status: 200 },
+        jsonResponse(
+          callUrl(call).includes("/organizations")
+            ? [{ id: 1, name: "Equipo", is_personal: true, role: "owner", created_at: "2026-07-30T10:00:00Z" }]
+            : pursuit,
         ),
       ),
     );
     vi.stubGlobal("fetch", fetchMock);
     const { result } = renderHook(() => useCreatePursuit(), { wrapper });
     await waitFor(() =>
-      expect(fetchMock.mock.calls.some(([url]) => String(url).includes("/organizations"))).toBe(true),
+      expect(fetchMock.mock.calls.some((call) => callUrl(call).includes("/organizations"))).toBe(true),
     );
 
     await result.current.mutateAsync({ licitacion_id: "lic-1" });
@@ -92,15 +87,12 @@ describe("pursuit hooks", () => {
     const updated = { ...pursuit, status: "qualifying", version: 2 };
     vi.stubGlobal(
       "fetch",
-      vi.fn().mockImplementation((url: string) =>
+      vi.fn().mockImplementation((...call: unknown[]) =>
         Promise.resolve(
-          new Response(
-            JSON.stringify(
-              String(url).includes("/organizations")
-                ? [{ id: 1, name: "Equipo", is_personal: true, role: "owner", created_at: "2026-07-30T10:00:00Z" }]
-                : updated,
-            ),
-            { status: 200 },
+          jsonResponse(
+            callUrl(call).includes("/organizations")
+              ? [{ id: 1, name: "Equipo", is_personal: true, role: "owner", created_at: "2026-07-30T10:00:00Z" }]
+              : updated,
           ),
         ),
       ),
@@ -141,12 +133,9 @@ const ORG = {
 } as const;
 
 function stubApi(organizations: unknown[]) {
-  const fetchMock = vi.fn().mockImplementation((url: string) =>
+  const fetchMock = vi.fn().mockImplementation((...call: unknown[]) =>
     Promise.resolve(
-      new Response(
-        JSON.stringify(String(url).includes("/organizations") ? organizations : agenda),
-        { status: 200 },
-      ),
+      jsonResponse(callUrl(call).includes("/organizations") ? organizations : agenda),
     ),
   );
   vi.stubGlobal("fetch", fetchMock);
@@ -155,7 +144,7 @@ function stubApi(organizations: unknown[]) {
 
 function agendaUrls(fetchMock: ReturnType<typeof stubApi>): string[] {
   return fetchMock.mock.calls
-    .map((call) => String(call[0]))
+    .map((call) => callUrl(call))
     .filter((u) => u.includes("/pursuits/agenda"));
 }
 

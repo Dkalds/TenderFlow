@@ -24,6 +24,7 @@ import {
   useIsWatchlisted,
   type WatchlistItem,
 } from "@/hooks/use-watchlist-items";
+import { callCredentials, callMethod, callUrl, jsonResponse } from "./fetch-call";
 
 const WATCHLIST_ITEMS_KEY = ["watchlist-items"];
 
@@ -52,7 +53,11 @@ const ITEMS: WatchlistItem[] = [
   },
 ];
 
-/** Build a minimal Response-like object for fetch mocks. */
+/**
+ * Doble mínimo para las mutaciones, que van por `apiMutate` (`fetch(url, init)`
+ * y `res.json()`). El listado NO puede usarlo: va por el cliente tipado, que
+ * lee `headers` y `text()` de la respuesta — para eso está `jsonResponse`.
+ */
 function makeResponse(body: unknown, status = 200): Response {
   return {
     ok: status >= 200 && status < 300,
@@ -83,10 +88,8 @@ afterEach(() => {
 
 describe("useWatchlistItems", () => {
   it("fetches the list from /api/v1/watchlist/items", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn<typeof fetch>().mockResolvedValue(makeResponse({ items: ITEMS })),
-    );
+    const fetchMock = vi.fn().mockImplementation(() => Promise.resolve(jsonResponse({ items: ITEMS })));
+    vi.stubGlobal("fetch", fetchMock);
     const qc = createClient();
     const { result } = renderHook(() => useWatchlistItems(), {
       wrapper: createWrapper(qc),
@@ -95,10 +98,12 @@ describe("useWatchlistItems", () => {
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
     expect(result.current.data).toEqual(ITEMS);
-    expect(fetch).toHaveBeenCalledWith(
-      "/api/v1/watchlist/items",
-      expect.objectContaining({ credentials: "include" }),
-    );
+    const call = fetchMock.mock.calls[0];
+    expect(callUrl(call)).toBe("/api/v1/watchlist/items");
+    expect(callMethod(call)).toBe("GET");
+    // La cookie de sesión es la única credencial: sin `include` la petición
+    // sale anónima y la lista vuelve vacía en vez de fallar.
+    expect(callCredentials(call)).toBe("include");
   });
 });
 
@@ -235,7 +240,7 @@ describe("useIsWatchlisted", () => {
   it("returns true when the id_externo is present in the cached list", async () => {
     const qc = createClient();
     qc.setQueryData(WATCHLIST_ITEMS_KEY, ITEMS);
-    vi.stubGlobal("fetch", vi.fn<typeof fetch>().mockResolvedValue(makeResponse({ items: ITEMS })));
+    vi.stubGlobal("fetch", vi.fn().mockImplementation(() => Promise.resolve(jsonResponse({ items: ITEMS }))));
 
     const { result } = renderHook(() => useIsWatchlisted("EXT-1"), {
       wrapper: createWrapper(qc),
@@ -247,7 +252,7 @@ describe("useIsWatchlisted", () => {
   it("returns false when the id_externo is not present in the cached list", async () => {
     const qc = createClient();
     qc.setQueryData(WATCHLIST_ITEMS_KEY, ITEMS);
-    vi.stubGlobal("fetch", vi.fn<typeof fetch>().mockResolvedValue(makeResponse({ items: ITEMS })));
+    vi.stubGlobal("fetch", vi.fn().mockImplementation(() => Promise.resolve(jsonResponse({ items: ITEMS }))));
 
     const { result } = renderHook(() => useIsWatchlisted("EXT-MISSING"), {
       wrapper: createWrapper(qc),
