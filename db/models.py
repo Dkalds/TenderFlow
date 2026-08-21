@@ -80,6 +80,11 @@ licitaciones = Table(
     Column("inclusion_reason", Text),
     Column("analysis_universe", String),
     Column("fecha_actualizacion_fuente", String),
+    # v85_lic_procedimiento_tramitacion: códigos CODICE crudos + peso del
+    # precio en % sobre 100 (NULL cuando la escala publicada no es deducible).
+    Column("procedimiento", String),
+    Column("tramitacion", String),
+    Column("peso_precio_pct", Float),
     Column("fuente", String, nullable=False, default="placsp"),
     Column("fecha_extraccion", String, nullable=False),
 )
