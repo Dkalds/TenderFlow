@@ -80,7 +80,7 @@ export function OrganosRankingChart({
             type="category"
             width={200}
             tick={{ fontSize: 12 }}
-            tickFormatter={(v: string) => (v.length > 35 ? v.slice(0, 35) + "..." : v)}
+            tickFormatter={(v: string) => (v.length > 35 ? v.slice(0, 35) + "…" : v)}
           />
           <Tooltip
             formatter={(value) => [formatValue(value as number), tooltipLabel]}

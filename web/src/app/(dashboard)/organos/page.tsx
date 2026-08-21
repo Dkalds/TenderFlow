@@ -216,7 +216,7 @@ export default function OrganosPage() {
       {/* Search filter */}
       <SearchAutocomplete
         className="max-w-sm"
-        placeholder="Buscar órgano o CCAA..."
+        placeholder="Buscar órgano o CCAA…"
         value={filter}
         onChange={setFilter}
         suggestions={[
@@ -254,7 +254,7 @@ export default function OrganosPage() {
             isLoading
               ? undefined
               : topOrgano.length > 40
-                ? topOrgano.slice(0, 40) + "..."
+                ? topOrgano.slice(0, 40) + "…"
                 : topOrgano
           }
           icon={Trophy}

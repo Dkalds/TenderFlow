@@ -26,7 +26,7 @@ export default function DashboardError({
         </CardHeader>
         <CardContent className="space-y-4">
           <p className="text-sm text-muted-foreground">
-            Se ha producido un error al cargar esta pagina. Por favor, intentalo de nuevo.
+            Se ha producido un error al cargar esta página. Por favor, inténtalo de nuevo.
           </p>
           <Button onClick={reset}>Reintentar</Button>
         </CardContent>

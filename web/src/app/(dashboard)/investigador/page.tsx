@@ -65,9 +65,9 @@ const DEFAULT_CONFIG: InvestigadorConfig = {
 };
 
 const EXAMPLE_QUESTIONS = [
-  "Cuales son las licitaciones mas recientes?",
-  "Que es un PCAP y que contiene?",
-  "Como funciona el procedimiento abierto simplificado?",
+  "¿Cuáles son las licitaciones más recientes?",
+  "¿Qué es un PCAP y qué contiene?",
+  "¿Cómo funciona el procedimiento abierto simplificado?",
   "Resumen de licitaciones de mantenimiento en Madrid",
   "Buscar licitaciones de S/4HANA con importe mayor a 500K",
 ];
@@ -307,7 +307,7 @@ export default function InvestigadorPage() {
         >
           <CardTitle className="flex items-center gap-2 text-sm">
             <Settings className="h-4 w-4" />
-            Configuracion
+            Configuración
             {settingsOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
           </CardTitle>
         </CardHeader>
@@ -382,7 +382,7 @@ export default function InvestigadorPage() {
           <div className="mb-4 flex gap-2">
             <Button variant={mode === "search" ? "default" : "outline"} size="sm" onClick={() => setMode("search")}>
               <Search className="mr-2 h-4 w-4" />
-              Busqueda
+              Búsqueda
             </Button>
             <Button variant={mode === "ask" ? "default" : "outline"} size="sm" onClick={() => setMode("ask")}>
               <MessageSquare className="mr-2 h-4 w-4" />
@@ -394,8 +394,8 @@ export default function InvestigadorPage() {
             <Input
               placeholder={
                 mode === "search"
-                  ? "Buscar licitaciones por texto semantico..."
-                  : "Haz una pregunta sobre licitaciones..."
+                  ? "Buscar licitaciones por texto semántico…"
+                  : "Haz una pregunta sobre licitaciones…"
               }
               value={query}
               onChange={(e) => setQuery(e.target.value)}
@@ -405,8 +405,8 @@ export default function InvestigadorPage() {
             <Button onClick={() => handleSubmit()} disabled={loading || chat.loading || !query.trim()}>
               {loading || chat.loading
                 ? mode === "search"
-                  ? "Buscando..."
-                  : "Preguntando..."
+                  ? "Buscando…"
+                  : "Preguntando…"
                 : mode === "search"
                   ? "Buscar"
                   : "Preguntar"}
@@ -529,7 +529,7 @@ export default function InvestigadorPage() {
           {searchResults.length === 0 ? (
             <Card className="border-dashed">
               <CardContent className="text-muted-foreground py-8 text-center">
-                No se encontraron resultados para tu busqueda.
+                No se encontraron resultados para tu búsqueda.
               </CardContent>
             </Card>
           ) : (
@@ -547,7 +547,7 @@ export default function InvestigadorPage() {
                           href={`/detalle?lic=${r.id_externo ?? r.id ?? r.expediente ?? ""}`}
                           className="hover:underline"
                         >
-                          {r.titulo ?? "Sin titulo"}
+                          {r.titulo ?? "Sin título"}
                         </a>
                       </CardTitle>
                       <div className="flex shrink-0 items-center gap-2">
@@ -606,7 +606,7 @@ export default function InvestigadorPage() {
               Introduce una consulta para buscar en el corpus de licitaciones
             </p>
             <p className="text-muted-foreground/70 mt-1 text-sm">
-              Usa el modo &quot;Busqueda&quot; para resultados semanticos o &quot;Preguntar&quot; para conversar con el
+              Usa el modo &quot;Búsqueda&quot; para resultados semánticos o &quot;Preguntar&quot; para conversar con el
               asistente (corpus + conocimiento general).
             </p>
           </CardContent>

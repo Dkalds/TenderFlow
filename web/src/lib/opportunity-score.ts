@@ -5,6 +5,14 @@
  * adjudicatario actual renovará casi seguro (riesgo de cambio bajo) no es una
  * oportunidad. Lo accionable combina **riesgo de cambio** (modelo de retención),
  * **importe** y **urgencia** (proximidad del vencimiento).
+ *
+ * **Este módulo ya no ordena la tabla.** El orden lo decide el SQL
+ * (`db/repositories/renovaciones.py`, `order_by=score`) para que un `LIMIT N`
+ * devuelva el top-N real del dataset y no el top-N del sample que cupo en el
+ * cliente. Lo que queda aquí es el número que pinta la columna "Oportunidad",
+ * y por eso la fórmula tiene que seguir siendo idéntica a la de SQL: la
+ * equivalencia está fijada en `tests/test_renovaciones_score.py`. Si cambias
+ * una, cambia la otra.
  */
 
 export interface OpportunityInput {

@@ -99,7 +99,10 @@ function TecnologiaRow({ item }: { item: TecnologiaDetalle }) {
  *  clasificador ML y señal detectada en el texto de los pliegos, con
  *  evidencia expandible (ver plan Pliegos+RAG en docs/IMPROVEMENT_BACKLOG.md).
  *  No se muestra cuando no hay ninguna tecnología detectada por ninguna
- *  fuente (mismo criterio de `null` cuando está vacío que DocumentosBlock). */
+ *  fuente. (DocumentosBlock seguía este mismo criterio de `null` en vacío;
+ *  desde que recibe `fichaUrl` ya no siempre: cuando la tiene, el vacío pasa a
+ *  ser un enlace a la ficha del expediente. Aquí no hay equivalente — si no
+ *  detectamos tecnologías, no hay ningún sitio al que mandar al usuario.) */
 export function TecnologiasBlock({ licitacionId }: { licitacionId: string }) {
   const { data } = useQuery<TecnologiasResult>({
     queryKey: ["tecnologias", licitacionId],
