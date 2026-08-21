@@ -172,9 +172,9 @@ export default function GeografiaPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="sr-only">Geografia</h1>
+          <h1 className="sr-only">Geografía</h1>
           <p className="text-muted-foreground">
-            Distribucion geografica por Comunidad Autonoma.
+            Distribución geográfica por Comunidad Autónoma.
           </p>
         </div>
         <ExportPopover
@@ -186,13 +186,13 @@ export default function GeografiaPage() {
       {/* KPI Row */}
       <KpiStrip columns={4}>
         <KpiCard
-          title="CCAA Mas Activa"
+          title="CCAA Más Activa"
           value={isLoading ? undefined : topCcaa}
           icon={Trophy}
           loading={isLoading}
         />
         <KpiCard
-          title="Concentracion Top 3"
+          title="Concentración Top 3"
           value={isLoading ? undefined : formatPercent(top3Concentration)}
           subtitle="del total"
           icon={MapPin}
@@ -207,7 +207,7 @@ export default function GeografiaPage() {
         <KpiCard
           title="Mayor Ticket Medio"
           value={isLoading ? undefined : ccaaMayorTicket}
-          subtitle="CCAA con mayor importe/licitacion"
+          subtitle="CCAA con mayor importe/licitación"
           icon={DollarSign}
           loading={isLoading}
         />
@@ -277,7 +277,7 @@ export default function GeografiaPage() {
         <Card>
           <CardHeader>
             <CardTitle className="text-base">
-              Distribucion por Importe
+              Distribución por Importe
             </CardTitle>
             <CardDescription>Clic en una CCAA para filtrar</CardDescription>
           </CardHeader>

@@ -11,6 +11,7 @@ import {
   useWatchlistItems,
 } from "@/hooks/use-watchlist-items";
 import { useOrganizationStore } from "@/hooks/use-organization";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useFilters } from "@/lib/filters";
 import { useDensity } from "@/lib/density";
 import { getJSON, setJSON } from "@/lib/storage";
@@ -532,47 +533,59 @@ export default function RadarPage() {
                         : "pointer-events-none opacity-0",
                     )}
                   >
-                    <button
-                      type="button"
-                      title="Descartar · X"
-                      aria-label={`Descartar ${tender.titulo}`}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        dismiss(tender);
-                      }}
-                      className="tf-pressable grid h-6.5 w-6.5 place-items-center rounded-md border border-border/80 bg-card text-muted-foreground transition-colors duration-140 ease-out hover:border-destructive/50 hover:text-destructive"
-                    >
-                      <X className="h-3 w-3" aria-hidden="true" />
-                    </button>
-                    <button
-                      type="button"
-                      title="Seguir · S"
-                      aria-label={isFollowed ? `Dejar de seguir ${tender.titulo}` : `Seguir ${tender.titulo}`}
-                      aria-pressed={isFollowed}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        toggleFollow(tender);
-                      }}
-                      className={cn(
-                        "tf-pressable grid h-6.5 w-6.5 place-items-center rounded-md border transition-colors duration-140 ease-out",
-                        isFollowed
-                          ? "border-primary/50 bg-primary/16 text-primary"
-                          : "border-border/80 bg-card text-muted-foreground hover:text-foreground",
-                      )}
-                    >
-                      <Star className={cn("h-3 w-3", isFollowed && "fill-current")} aria-hidden="true" />
-                    </button>
-                    <button
-                      type="button"
-                      title="Abrir oportunidad · ⏎"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        void openPursuit(tender);
-                      }}
-                      className="tf-pressable h-6.5 whitespace-nowrap rounded-md border border-primary/35 bg-primary/14 px-2.5 text-[11px] font-semibold text-primary transition-colors duration-140 ease-out hover:bg-primary/24"
-                    >
-                      Abrir
-                    </button>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <button
+                          type="button"
+                          aria-label={`Descartar ${tender.titulo}`}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            dismiss(tender);
+                          }}
+                          className="tf-pressable grid h-6.5 w-6.5 place-items-center rounded-md border border-border/80 bg-card text-muted-foreground transition-colors duration-140 ease-out hover:border-destructive/50 hover:text-destructive"
+                        >
+                          <X className="h-3 w-3" aria-hidden="true" />
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent>Descartar · X</TooltipContent>
+                    </Tooltip>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <button
+                          type="button"
+                          aria-label={isFollowed ? `Dejar de seguir ${tender.titulo}` : `Seguir ${tender.titulo}`}
+                          aria-pressed={isFollowed}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            toggleFollow(tender);
+                          }}
+                          className={cn(
+                            "tf-pressable grid h-6.5 w-6.5 place-items-center rounded-md border transition-colors duration-140 ease-out",
+                            isFollowed
+                              ? "border-primary/50 bg-primary/16 text-primary"
+                              : "border-border/80 bg-card text-muted-foreground hover:text-foreground",
+                          )}
+                        >
+                          <Star className={cn("h-3 w-3", isFollowed && "fill-current")} aria-hidden="true" />
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent>Seguir · S</TooltipContent>
+                    </Tooltip>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            void openPursuit(tender);
+                          }}
+                          className="tf-pressable h-6.5 whitespace-nowrap rounded-md border border-primary/35 bg-primary/14 px-2.5 text-[11px] font-semibold text-primary transition-colors duration-140 ease-out hover:bg-primary/24"
+                        >
+                          Abrir
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent>Abrir oportunidad · ⏎</TooltipContent>
+                    </Tooltip>
                   </div>
                 </div>
               );
