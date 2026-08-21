@@ -86,11 +86,65 @@ test.describe("Superficie pública sin sesión", () => {
     expect(body).toContain("Sitemap:");
   });
 
-  test("el sitemap se sirve y anuncia la portada", async ({ request }) => {
-    const res = await request.get("/sitemap.xml", { maxRedirects: 0 });
+  test("el indice de sitemaps existe y enumera ficheros que se sirven", async ({
+    request,
+  }) => {
+    // `robots.txt` anuncia esta URL. Con `generateSitemaps`, Next publica
+    // `/sitemap/N.xml` pero NO crea indice: `/sitemap.xml` da 404. Si alguien
+    // vuelve a apuntar el robots ahi, Search Console lo reporta como error de
+    // cobertura y nadie se entera hasta semanas despues.
+    const indice = await request.get("/sitemap-index.xml", { maxRedirects: 0 });
+    expect(indice.status()).toBe(200);
 
+    const xml = await indice.text();
+    expect(xml).toContain("<sitemapindex");
+
+    // Cada fichero anunciado tiene que existir de verdad.
+    const locs = [...xml.matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => m[1]);
+    expect(locs.length).toBeGreaterThan(0);
+    for (const loc of locs) {
+      const fichero = await request.get(new URL(loc).pathname, { maxRedirects: 0 });
+      expect(fichero.status(), `${loc} anunciado en el indice`).toBe(200);
+    }
+  });
+
+  test("robots abre solo los prefijos publicos", async ({ request }) => {
+    const body = await (await request.get("/robots.txt")).text();
+    for (const prefijo of ["/licitaciones", "/cpv", "/aviso-legal"]) {
+      expect(body).toContain(`Allow: ${prefijo}`);
+    }
+    expect(body).toContain("Sitemap: ");
+    // La politica es allowlist: bloquear todo y abrir lo publico. Si alguien la
+    // invierte a `Allow: /`, cada pantalla del dashboard queda rastreable.
+    expect(body).toContain("Disallow: /");
+    expect(body).not.toMatch(/^Allow: \/$/m);
+  });
+
+  test("el aviso legal se sirve", async ({ request }) => {
+    const res = await request.get("/aviso-legal", { maxRedirects: 0 });
     expect(res.status()).toBe(200);
-    expect(await res.text()).toContain("<loc>");
+  });
+
+  test("la portada enlaza a la superficie de datos", async ({ page }) => {
+    // Sin estos enlaces, los hubs y las fichas solo existen en el sitemap:
+    // rastreables, pero sin que nada les transmita autoridad. Es la diferencia
+    // entre que Google los encuentre y que lleguen a rankear.
+    await page.goto("/");
+
+    await expect(page.locator('a[href="/licitaciones"]').first()).toBeVisible();
+    await expect(page.locator('a[href="/cpv"]').first()).toBeVisible();
+  });
+
+  test("los indices de la superficie publica no dan error de servidor", async ({
+    request,
+  }) => {
+    // No se afirma 200: con una base sembrada sin volumen suficiente, el indice
+    // devuelve 404 a proposito (un indice vacio es contenido delgado). Lo que
+    // nunca puede pasar es un 5xx, que es lo que este test fija.
+    for (const ruta of ["/licitaciones", "/cpv"]) {
+      const res = await request.get(ruta, { maxRedirects: 0 });
+      expect(res.status(), `${ruta} no puede dar 5xx`).toBeLessThan(500);
+    }
   });
 
   test("la imagen Open Graph se sirve como PNG", async ({ request }) => {

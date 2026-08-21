@@ -181,6 +181,37 @@ export default function LandingPage() {
         </section>
       </div>
 
+      {/* Explorar los datos.
+          No es un bloque de navegación decorativo: es el único enlace desde la
+          portada —la página con más autoridad del sitio— hacia la superficie
+          indexable. Sin él, los hubs y las fichas quedan colgando solo del
+          sitemap, que los hace rastreables pero no les transmite relevancia. */}
+      <div className="border-t border-border/60 bg-card/30">
+        <section className="mx-auto w-full max-w-6xl px-6 py-14">
+          <h2 className="font-display text-2xl font-semibold tracking-[-0.02em] md:text-3xl">
+            Explora los concursos publicados
+          </h2>
+          <p className="mt-3 max-w-[62ch] text-base leading-relaxed text-muted-foreground">
+            El anuncio oficial de cada licitación es consultable sin cuenta: objeto, órgano de
+            contratación, presupuesto, plazos y lotes, con enlace al perfil del contratante.
+          </p>
+          <div className="mt-7 flex flex-wrap gap-3">
+            <Link
+              href="/licitaciones"
+              className="inline-flex h-11 items-center justify-center rounded-md border border-input px-6 text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground"
+            >
+              Por comunidad autónoma
+            </Link>
+            <Link
+              href="/cpv"
+              className="inline-flex h-11 items-center justify-center rounded-md border border-input px-6 text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground"
+            >
+              Por código CPV
+            </Link>
+          </div>
+        </section>
+      </div>
+
       {/* Cierre */}
       <section className="mx-auto w-full max-w-6xl px-6 py-20">
         <h2 className="max-w-[24ch] font-display text-2xl font-semibold tracking-[-0.02em] text-balance md:text-3xl">
