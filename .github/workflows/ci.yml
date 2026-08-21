@@ -171,7 +171,13 @@ jobs:
           BASE_REF: ${{ github.base_ref }}
         run: |
           pip install diff-cover
-          git fetch origin "$BASE_REF" --depth=1
+          # Sin --depth=1: el checkout de este job ya usa fetch-depth: 0, así
+          # que la historia está completa. Volver a traer la base en shallow
+          # le ponía una frontera a origin/$BASE_REF y diff-cover moría con
+          # "fatal: origin/master...HEAD: no merge base". Colaba solo cuando
+          # el tip de la base era padre directo del merge del PR (es decir,
+          # justo después de integrar master), y fallaba el resto de veces.
+          git fetch origin "$BASE_REF"
           diff-cover coverage.xml \
             --compare-branch="origin/$BASE_REF" \
             --fail-under=80 \
