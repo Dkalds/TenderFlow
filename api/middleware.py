@@ -212,6 +212,32 @@ _HEAVY_ENDPOINT_PATTERNS: tuple[tuple[re.Pattern[str], int], ...] = (
 )
 
 
+# La superficie pública indexable vive bajo este prefijo y necesita su propio
+# bucket. Con la clave global `api:{ip}` compartida, dos cosas iban mal a la vez:
+# los rastreadores consumían la cuota del usuario autenticado que estuviera
+# detrás del mismo NAT, y —lo grave— si Next renderiza en servidor desde una IP
+# de egreso única, TODAS las páginas públicas se contaban contra un solo bucket
+# de 120/min y la superficie SEO se estrangulaba sola con 429.
+#
+# El límite es más alto porque el tráfico es cualitativamente distinto:
+# lecturas anónimas, cacheables y sin estado, servidas a rastreadores que
+# hacen ráfagas por diseño. Sigue siendo una cuota por IP, así que un abusivo
+# concreto se corta igual, pero ya no arrastra al resto de la API.
+PUBLIC_PATH_PREFIX = "/api/v1/publico/"
+PUBLIC_MAX_CALLS = 600
+
+
+def _rate_bucket(path: str, client: str) -> tuple[str, int | None]:
+    """Clave de cuota y tope propio para ``path``.
+
+    Devuelve ``(clave, tope)``. Un tope ``None`` significa "usa el default del
+    middleware", que es como se comporta todo lo que no es superficie pública.
+    """
+    if path.startswith(PUBLIC_PATH_PREFIX):
+        return f"publico:{client}", PUBLIC_MAX_CALLS
+    return f"api:{client}", None
+
+
 def _effective_max_calls(path: str, default: int) -> int:
     """Límite de requests por ventana aplicable a ``path``.
 
@@ -272,11 +298,12 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
 
         client = _client_key(request)
-        # BaseHTTPMiddleware se ejecuta antes del routing: un bucket global
-        # por cliente evita el bypass por path params variables.
-        rate_key = f"api:{client}"
+        # BaseHTTPMiddleware se ejecuta antes del routing: un bucket por
+        # cliente evita el bypass por path params variables. La superficie
+        # pública lleva el suyo aparte (ver `_rate_bucket`).
+        rate_key, tope_propio = _rate_bucket(path, client)
         # Endpoints pesados (ML inference, exports) tienen límite inferior.
-        effective_max = _effective_max_calls(path, self._max)
+        effective_max = _effective_max_calls(path, tope_propio or self._max)
         allowed = get_rate_limiter().check(
             rate_key,
             max_calls=effective_max,
@@ -452,6 +479,14 @@ class ETagMiddleware(BaseHTTPMiddleware):
         # personalizado; ningún cache compartido debe conservarla.
         is_authenticated = bool(request.headers.get("cookie") or request.headers.get("x-api-key"))
 
+        # `Vary` no es opcional desde el momento en que la línea de arriba
+        # decide el `Cache-Control` leyendo cabeceras de la **petición**: sin
+        # declararlo, un CDN o un proxy intermedio no sabe que la respuesta
+        # depende de ellas y puede servirle a un visitante anónimo la copia
+        # cacheada de uno autenticado. Se emite siempre, también en el 304,
+        # porque la dependencia existe igualmente en ese camino.
+        vary = "Cookie, X-API-Key"
+
         # Lo que este middleware NO va a etiquetar con ETag (no-200, streams,
         # descargas) conserva el `private, no-store` de siempre: sin
         # revalidación posible, lo correcto es no guardarlo en ningún sitio.
@@ -459,6 +494,7 @@ class ETagMiddleware(BaseHTTPMiddleware):
         if response.status_code != 200 or not es_json:
             if is_authenticated:
                 response.headers["Cache-Control"] = "private, no-store"
+            response.headers["Vary"] = vary
             return response
 
         # Para el JSON que sí lleva ETag, `private` mantiene fuera a los cachés
@@ -493,11 +529,13 @@ class ETagMiddleware(BaseHTTPMiddleware):
             }
             not_modified["ETag"] = etag
             not_modified["Cache-Control"] = cache_control or "no-cache"
+            not_modified["Vary"] = vary
             return Response(status_code=304, headers=not_modified)
 
         headers = dict(response.headers)
         headers["ETag"] = etag
         headers["Cache-Control"] = cache_control or headers.get("Cache-Control", "no-cache")
+        headers["Vary"] = vary
         return Response(
             content=body,
             status_code=response.status_code,

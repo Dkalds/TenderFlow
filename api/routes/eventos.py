@@ -8,6 +8,7 @@
 
 from __future__ import annotations
 
+from datetime import date
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -16,6 +17,7 @@ from pydantic import BaseModel
 from api.concurrency import run_db
 from api.routes.dual_auth import require_any_auth
 from db.database import connect_read
+from db.repositories.aggregates import LicitacionesFilters
 from services.contract_events import EventoFeedItem, EventosFeedResult, eventos_recientes, timeline
 
 router = APIRouter(tags=["eventos"])
@@ -90,8 +92,31 @@ async def get_eventos(
     ),
     dias: int = Query(30, ge=1, le=365),
     limit: int = Query(100, ge=1, le=500),
+    fecha_desde: date | None = Query(
+        None, description="Movimientos desde esta fecha (sustituye a `dias`)"
+    ),
+    fecha_hasta: date | None = Query(None, description="Movimientos hasta esta fecha"),
+    ccaa: str | None = Query(None, description="Comunidad Autónoma de la licitación"),
+    tecnologia: str | None = Query(None, description="Tecnología de la licitación"),
+    estado: str | None = Query(None, description="Estado de la licitación (PUB, EV, ADJ…)"),
+    importe_min: float | None = Query(None, ge=0, description="Importe mínimo (EUR)"),
+    solo_abiertas: bool = Query(
+        False, description="Solo licitaciones que siguen abiertas (no terminales)"
+    ),
+    q: str | None = Query(
+        None, max_length=200, description="Búsqueda en título, órgano o expediente"
+    ),
     _ctx: dict[str, Any] = Depends(require_any_auth),
 ) -> EventosFeedResult:
+    """Movimientos de contrato recientes, acotados por el ámbito global.
+
+    Los filtros de licitación (CCAA, tecnología, estado, importe, búsqueda) se
+    aplican sobre el expediente movido, así que el feed mide el mismo universo
+    que el resto del Resumen. Las fechas acotan **el movimiento**, no la
+    publicación del expediente: la pregunta del feed es qué ha cambiado en la
+    ventana, y una ventana sobre `fecha_publicacion` dejaría el panel vacío en
+    cuanto el ámbito mirase a meses anteriores.
+    """
     tipos: tuple[str, ...] | None = None
     if tipo:
         if tipo not in _TIPOS_VALIDOS:
@@ -100,5 +125,21 @@ async def get_eventos(
                 detail=f"Tipo inválido. Válidos: {sorted(_TIPOS_VALIDOS)}",
             )
         tipos = (tipo,)
-    items = await run_db(eventos_recientes, tipos=tipos, dias=dias, limit=limit)
+    filters = LicitacionesFilters(
+        ccaa=ccaa,
+        tecnologia=tecnologia,
+        estado=estado,
+        importe_min=importe_min,
+        solo_abiertas=solo_abiertas,
+        q=q,
+    )
+    items = await run_db(
+        eventos_recientes,
+        tipos=tipos,
+        dias=dias,
+        limit=limit,
+        desde=fecha_desde.isoformat() if fecha_desde else None,
+        hasta=fecha_hasta.isoformat() if fecha_hasta else None,
+        filters=filters,
+    )
     return EventosFeedResult(items=[EventoFeedItem(**i) for i in items], dias=dias)
