@@ -92,6 +92,41 @@ def _isolate_database_url(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _isolate_dotenv_from_fresh_settings(monkeypatch):
+    """Evita que el ``.env`` del desarrollador entre en un ``Settings(...)`` nuevo.
+
+    ``_isolate_database_url`` (arriba) blanquea el singleton ya construido, pero
+    no cubre a los tests que instancian ``Settings`` ellos mismos con inputs
+    controlados: pydantic-settings mezcla ``.env`` en **cada** construcción, así
+    que los kwargs explícitos del test conviven con valores reales de la
+    máquina.
+
+    Detectado 2026-08-21: ``.env`` define ``GOOGLE_CLIENT_ID`` sin
+    ``OAUTH_ALLOWED_DOMAINS``/``_EMAILS``, y eso encendía Google OAuth en dos
+    tests de ``test_config_settings.py`` que no hablan de OAuth. Uno fallaba con
+    el error del allowlist de OAuth; el otro, peor, esperaba un fallo por
+    ``sslmode`` y recibía el de OAuth — un test verde-por-el-motivo-equivocado a
+    un paso de distancia.
+
+    Se neutralizan **solo las credenciales de OAuth**, no el dotenv entero:
+    desactivarlo por completo (``env_file=None``) rompe otros 16 tests de
+    ``test_config_settings.py``, que dan por hecho que ``.env`` aporta los
+    secretos obligatorios del perfil ``api``. Ese acoplamiento se queda: el
+    ``.env`` es un paso de arranque documentado (README) y desmontarlo es un
+    cambio con alcance propio. Lo que sí arregla este fixture es que el
+    **contenido** de ese fichero, que varía de una máquina a otra y no está
+    versionado, decida el resultado de tests que no hablan de OAuth.
+
+    Poner la variable a cadena vacía en el entorno basta porque en
+    pydantic-settings el entorno del proceso **gana** al dotenv. Un test que
+    necesite OAuth encendido lo sigue pudiendo declarar explícitamente en los
+    kwargs de ``Settings``.
+    """
+    for credencial in ("GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET"):
+        monkeypatch.setenv(credencial, "")
+
+
+@pytest.fixture(autouse=True)
 def _default_placsp_connector_disabled(monkeypatch):
     """Fuerza ``PLACSP_CONNECTOR_ENABLED=False`` por defecto en tests unitarios.
 
