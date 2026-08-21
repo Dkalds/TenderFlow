@@ -101,6 +101,230 @@ class TestUpsertMeta:
         assert len(repo.list_pendientes()) == 2
 
 
+class TestUpsertMetaIdentidadEstable:
+    """Identidad por ``(licitacion_id, tipo, source_hash)`` — v88.
+
+    Los enlaces de PLACSP llevan un token que la plataforma re-emite, así que
+    la URI no identifica al documento: antes de v88 cada rotación insertaba una
+    fila nueva (262 grupos duplicados en producción).
+    """
+
+    def _uno(self, repo, licitacion_id: str) -> dict:
+        filas = repo.list_by_licitacion(licitacion_id)
+        assert len(filas) == 1, f"esperaba 1 fila, hay {len(filas)}"
+        return filas[0]
+
+    def test_rotacion_de_token_refresca_en_vez_de_duplicar(self, repo):
+        _insert_licitacion("EXP-H1")
+        repo.upsert_meta(
+            "EXP-H1",
+            [DocumentoReferencia(tipo="legal", uri="https://x/doc?token=VIEJO", source_hash="H1")],
+        )
+
+        repo.upsert_meta(
+            "EXP-H1",
+            [
+                DocumentoReferencia(
+                    tipo="legal",
+                    uri="https://x/doc?token=NUEVO",
+                    source_hash="H1",
+                    filename="PCAP.pdf",
+                )
+            ],
+        )
+
+        fila = self._uno(repo, "EXP-H1")
+        assert fila["uri"] == "https://x/doc?token=NUEVO"
+        assert fila["filename"] == "PCAP.pdf"
+
+    def test_rotacion_conserva_el_texto_ya_extraido(self, repo):
+        """Mismo hash = mismo contenido: re-extraer sería tirar trabajo bueno."""
+        _insert_licitacion("EXP-H2")
+        repo.upsert_meta(
+            "EXP-H2",
+            [DocumentoReferencia(tipo="legal", uri="https://x/doc?token=V", source_hash="H1")],
+        )
+        doc = repo.list_pendientes()[0]
+        repo.mark_extracted(doc["id"], texto="cláusulas del pliego", sha256="abc")
+
+        repo.upsert_meta(
+            "EXP-H2",
+            [DocumentoReferencia(tipo="legal", uri="https://x/doc?token=N", source_hash="H1")],
+        )
+
+        fila = repo.get(doc["id"])
+        assert fila is not None
+        assert fila["status"] == "extracted"
+        assert fila["texto"] == "cláusulas del pliego"
+        assert fila["uri"] == "https://x/doc?token=N"
+
+    def test_revive_un_error_de_descarga_cuando_llega_token_nuevo(self, repo):
+        _insert_licitacion("EXP-H3")
+        repo.upsert_meta(
+            "EXP-H3",
+            [DocumentoReferencia(tipo="legal", uri="https://x/doc?token=V", source_hash="H1")],
+        )
+        doc = repo.list_pendientes()[0]
+        repo.mark_error(doc["id"], error_detail="descarga fallida: token caducado (500): 500")
+
+        repo.upsert_meta(
+            "EXP-H3",
+            [DocumentoReferencia(tipo="legal", uri="https://x/doc?token=N", source_hash="H1")],
+        )
+
+        fila = repo.get(doc["id"])
+        assert fila is not None
+        assert fila["status"] == "pending"
+        assert fila["error_detail"] is None
+
+    def test_no_revive_un_error_de_extraccion(self, repo):
+        """Un .docx sigue sin poder extraerse por mucho que cambie el enlace;
+        revivirlo lo metería en un ciclo perpetuo comiéndose el lote diario."""
+        _insert_licitacion("EXP-H4")
+        repo.upsert_meta(
+            "EXP-H4",
+            [DocumentoReferencia(tipo="legal", uri="https://x/doc?token=V", source_hash="H1")],
+        )
+        doc = repo.list_pendientes()[0]
+        repo.mark_error(doc["id"], error_detail="content-type no soportado: 'application/zip'")
+
+        repo.upsert_meta(
+            "EXP-H4",
+            [DocumentoReferencia(tipo="legal", uri="https://x/doc?token=N", source_hash="H1")],
+        )
+
+        fila = repo.get(doc["id"])
+        assert fila is not None
+        assert fila["status"] == "error"
+
+    def test_adopta_identidad_de_una_fila_legacy_con_la_misma_uri(self, repo):
+        """Filas anteriores a v88 (sin hash) ganan identidad sin duplicarse."""
+        _insert_licitacion("EXP-H5")
+        repo.upsert_meta("EXP-H5", [DocumentoReferencia(tipo="legal", uri="https://x/doc?t=X")])
+
+        repo.upsert_meta(
+            "EXP-H5",
+            [
+                DocumentoReferencia(
+                    tipo="legal", uri="https://x/doc?t=X", source_hash="H1", filename="PCAP.pdf"
+                )
+            ],
+        )
+
+        fila = self._uno(repo, "EXP-H5")
+        assert fila["filename"] == "PCAP.pdf"
+        assert repo.get(fila["id"])["source_hash"] == "H1"
+
+    def test_adopcion_por_tipo_unico_repara_el_enlace_legacy(self, repo):
+        """Fila legacy + token ya rotado: sin esto, cada re-scrape duplicaría
+        (y un backfill histórico completo metería decenas de miles de filas)."""
+        _insert_licitacion("EXP-H6")
+        repo.upsert_meta(
+            "EXP-H6", [DocumentoReferencia(tipo="legal", uri="https://x/doc?token=VIEJO")]
+        )
+
+        repo.upsert_meta(
+            "EXP-H6",
+            [DocumentoReferencia(tipo="legal", uri="https://x/doc?token=NUEVO", source_hash="H1")],
+        )
+
+        fila = self._uno(repo, "EXP-H6")
+        assert fila["uri"] == "https://x/doc?token=NUEVO"
+
+    def test_no_adopta_cuando_el_mapeo_es_ambiguo(self, repo):
+        """Con dos filas legacy del mismo tipo no hay forma de saber cuál es:
+        se inserta y no se toca ninguna, en vez de adivinar."""
+        _insert_licitacion("EXP-H7")
+        repo.upsert_meta(
+            "EXP-H7",
+            [
+                DocumentoReferencia(tipo="legal", uri="https://x/a?token=V1"),
+                DocumentoReferencia(tipo="legal", uri="https://x/b?token=V2"),
+            ],
+        )
+
+        repo.upsert_meta(
+            "EXP-H7",
+            [DocumentoReferencia(tipo="legal", uri="https://x/a?token=NUEVO", source_hash="H1")],
+        )
+
+        uris = {f["uri"] for f in repo.list_by_licitacion("EXP-H7")}
+        assert uris == {"https://x/a?token=V1", "https://x/b?token=V2", "https://x/a?token=NUEVO"}
+
+    def test_varios_documentos_del_mismo_tipo_conviven(self, repo):
+        """Un expediente con tres anexos son tres documentos, no un duplicado:
+        por eso la identidad incluye el hash y no es solo (licitacion, tipo)."""
+        _insert_licitacion("EXP-H8")
+
+        n = repo.upsert_meta(
+            "EXP-H8",
+            [
+                DocumentoReferencia(
+                    tipo="additional", uri=f"https://x/anexo{i}", source_hash=f"H{i}"
+                )
+                for i in range(3)
+            ],
+        )
+
+        assert n == 3
+        assert len(repo.list_by_licitacion("EXP-H8")) == 3
+
+    def test_no_adopta_una_fila_ya_extraida(self, repo):
+        """Un pliego sustituido no puede heredar el texto del anterior.
+
+        La adopción por tipo único es una inferencia, no una prueba: si la fila
+        legacy ya tiene texto extraído, atarle la identidad del documento nuevo
+        dejaría al asistente citando el pliego viejo mientras la UI enlaza al
+        nuevo, y de forma permanente (no volvería a la cola de pendientes ni a
+        la de chunking).
+        """
+        _insert_licitacion("EXP-H10")
+        repo.upsert_meta(
+            "EXP-H10", [DocumentoReferencia(tipo="legal", uri="https://x/pcap-v1?token=V")]
+        )
+        vieja = repo.list_pendientes()[0]
+        repo.mark_extracted(vieja["id"], texto="PCAP versión 1", sha256="abc")
+
+        # El órgano publica una corrección: documento distinto (hash nuevo).
+        repo.upsert_meta(
+            "EXP-H10",
+            [DocumentoReferencia(tipo="legal", uri="https://x/pcap-v2?token=N", source_hash="H2")],
+        )
+
+        filas = repo.list_by_licitacion("EXP-H10")
+        assert len(filas) == 2, "el pliego corregido debe entrar como fila nueva"
+        anterior = repo.get(vieja["id"])
+        assert anterior is not None
+        assert anterior["texto"] == "PCAP versión 1"
+        assert anterior["source_hash"] is None  # no se le inventó identidad
+        nueva = next(f for f in filas if f["id"] != vieja["id"])
+        assert nueva["status"] == "pending"  # se descargará de verdad
+
+    def test_adopcion_por_uri_corrige_el_tipo(self, repo):
+        """La adopción por URI casa solo por ``uri``: si el CODICE reclasifica
+        el documento, la fila no puede quedarse con el tipo viejo y el hash
+        del nuevo."""
+        _insert_licitacion("EXP-H11")
+        repo.upsert_meta("EXP-H11", [DocumentoReferencia(tipo="legal", uri="https://x/doc")])
+
+        repo.upsert_meta(
+            "EXP-H11",
+            [DocumentoReferencia(tipo="technical", uri="https://x/doc", source_hash="H1")],
+        )
+
+        filas = repo.list_by_licitacion("EXP-H11")
+        assert len(filas) == 1
+        assert filas[0]["tipo"] == "technical"
+
+    def test_referencia_repetida_en_el_mismo_lote_no_duplica(self, repo):
+        _insert_licitacion("EXP-H9")
+        ref = DocumentoReferencia(tipo="legal", uri="https://x/doc", source_hash="H1")
+
+        repo.upsert_meta("EXP-H9", [ref, ref])
+
+        assert len(repo.list_by_licitacion("EXP-H9")) == 1
+
+
 class TestListPendientes:
     def test_respects_limit(self, repo):
         _insert_licitacion("EXP-6")
@@ -187,6 +411,43 @@ class TestListByLicitacion:
         assert pcap["filename"] == "PCAP.pdf"
         assert pcap["status"] == "pending"
         assert "texto" not in pcap
+
+    def test_orden_documental_legal_technical_additional(self, repo):
+        """El PCAP manda sobre el PPT y este sobre los adicionales, sin importar
+        en qué orden los devolviera el CODICE (mismo criterio que
+        ``list_chunks_by_licitacion``)."""
+        _insert_licitacion("EXP-DOC-ORD")
+        repo.upsert_meta(
+            "EXP-DOC-ORD",
+            [
+                DocumentoReferencia(tipo="additional", uri="https://x/anexo.pdf"),
+                DocumentoReferencia(tipo="technical", uri="https://x/ppt.pdf"),
+                DocumentoReferencia(tipo="legal", uri="https://x/pcap.pdf"),
+            ],
+        )
+
+        tipos = [i["tipo"] for i in repo.list_by_licitacion("EXP-DOC-ORD")]
+
+        assert tipos == ["legal", "technical", "additional"]
+
+    def test_dentro_de_un_tipo_gana_el_mas_reciente(self, repo):
+        """Cuando la rotación de token dejó dos filas del mismo pliego, la UI
+        debe ver primero la nueva: la vieja es justo la que ya ha caducado."""
+        _insert_licitacion("EXP-DOC-DUP")
+        repo.upsert_meta(
+            "EXP-DOC-DUP",
+            [
+                DocumentoReferencia(tipo="legal", uri="https://x/pcap.pdf?token=viejo"),
+                DocumentoReferencia(tipo="legal", uri="https://x/pcap.pdf?token=nuevo"),
+            ],
+        )
+        filas = {i["uri"]: i["id"] for i in repo.list_by_licitacion("EXP-DOC-DUP")}
+        _set_created_at(filas["https://x/pcap.pdf?token=viejo"], "2026-01-01T00:00:00Z")
+        _set_created_at(filas["https://x/pcap.pdf?token=nuevo"], "2026-08-01T00:00:00Z")
+
+        uris = [i["uri"] for i in repo.list_by_licitacion("EXP-DOC-DUP")]
+
+        assert uris[0] == "https://x/pcap.pdf?token=nuevo"
 
     def test_returns_empty_list_when_no_documentos(self, repo):
         _insert_licitacion("EXP-DOC3")

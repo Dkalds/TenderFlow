@@ -199,6 +199,10 @@ class DocumentoReferencia:
     tipo: str  # legal | technical | additional
     uri: str
     filename: str | None = None
+    # ``cbc:DocumentHash`` del CODICE: hash del contenido publicado, y la única
+    # identidad del adjunto que sobrevive a la rotación del token de la ``uri``
+    # (v88). Opcional porque una fuente que no sea PLACSP puede no traerlo.
+    source_hash: str | None = None
 
 
 # ---------------------------------------------------------------------------
