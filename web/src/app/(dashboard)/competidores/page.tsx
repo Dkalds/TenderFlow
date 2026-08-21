@@ -1,6 +1,7 @@
 "use client";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Panel, PanelTabs } from "@/components/console/panel";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 import React, { startTransition, useState, useMemo, useCallback } from "react";
 import dynamic from "next/dynamic";
@@ -69,39 +70,16 @@ import {
   X,
 } from "lucide-react";
 
-interface Competitor {
-  nombre: string;
-  empresa_id?: number | null;
-  nif?: string | null;
-  empresa_ids?: number[];
-  nifs?: string[];
-  nombres_variantes?: string[];
-  es_agrupacion?: boolean;
-  count: number;
-  importe: number;
-  cuota: number;
-  contratos_por_anio?: number;
-  importe_medio?: number;
-  baja_media?: number;
-  n_organos?: number;
-  ofertas_medias?: number;
-  pct_monopolio?: number;
-  pct_top_organo?: number;
-  ultima?: string;
-}
-
-interface HeatmapEntry {
-  ccaa: string;
-  empresa: string;
-  count: number;
-}
-
-interface BajaItem {
-  grupo: string;
-  grupo_id?: number;
-  contratos: number;
-  baja_media_pct: number | null;
-}
+import {
+  drillDownExtraParams,
+  drillDownIds,
+  toggleCompareSelection,
+  useCompetidoresView,
+  type BajaItem,
+  type Competitor,
+  type HeatmapEntry,
+  type SortKey,
+} from "./_hooks/use-competidores-view";
 
 interface CompetitorsData {
   total_adjudicaciones: number;
@@ -116,22 +94,6 @@ interface CompetitorsData {
   heatmap_ccaa?: HeatmapEntry[];
   estacionalidad?: { mes: number; count: number; importe: number }[];
 }
-
-type SortKey =
-  | "nombre"
-  | "count"
-  | "importe"
-  | "cuota"
-  | "contratos_por_anio"
-  | "importe_medio"
-  | "baja_media"
-  | "nif"
-  | "ofertas_medias"
-  | "pct_monopolio"
-  | "pct_top_organo"
-  | "ultima";
-
-const MONTH_LABELS = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
 
 // Heatmap color scale
 function heatColor(value: number, max: number): string {
@@ -177,6 +139,19 @@ const CompetitorRow = React.memo(function CompetitorRow({
     .filter(Boolean)
     .join(" · ");
 
+  // El nombre es un botón sólo cuando hay dossier al que ir. En el caso
+  // agrupado el tooltip explica que el dossier suma todas las identidades;
+  // sin agrupación no hay nada que explicar y el control va desnudo.
+  const nombreBoton = (
+    <button
+      type="button"
+      className="text-primary cursor-pointer text-left hover:underline"
+      onClick={() => onDrillDown(c)}
+    >
+      {c.nombre}
+    </button>
+  );
+
   return (
     <TableRow className="hover:bg-muted/50 border-b last:border-0">
       <TableCell className="px-2 py-2">
@@ -189,33 +164,46 @@ const CompetitorRow = React.memo(function CompetitorRow({
       <TableCell className="px-3 py-2 font-medium">
         <div className="flex min-w-52 items-center gap-2">
           {c.empresa_id != null || (c.empresa_ids?.length ?? 0) > 0 ? (
-            <button
-              type="button"
-              className="text-primary cursor-pointer text-left hover:underline"
-              onClick={() => onDrillDown(c)}
-              title={
-                c.es_agrupacion
-                  ? "Abrir el dossier agregando todas las identidades del grupo"
-                  : undefined
-              }
-            >
-              {c.nombre}
-            </button>
+            c.es_agrupacion ? (
+              <Tooltip>
+                <TooltipTrigger asChild>{nombreBoton}</TooltipTrigger>
+                <TooltipContent>
+                  Abrir el dossier agregando todas las identidades del grupo
+                </TooltipContent>
+              </Tooltip>
+            ) : (
+              nombreBoton
+            )
           ) : (
-            <span title="Sin identidad en el maestro de empresas; el dossier individual no está disponible.">
-              <Link
-                href={`/empresas?q=${encodeURIComponent(c.nombre)}`}
-                className="text-primary text-left hover:underline"
-                title="Buscar esta empresa en el maestro de empresas"
-              >
-                {c.nombre}
-              </Link>
-            </span>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Link
+                  href={`/empresas?q=${encodeURIComponent(c.nombre)}`}
+                  className="text-primary text-left hover:underline"
+                >
+                  {c.nombre}
+                </Link>
+              </TooltipTrigger>
+              <TooltipContent className="max-w-64">
+                Sin identidad en el maestro de empresas; el dossier individual no está
+                disponible. Este enlace la busca en el maestro.
+              </TooltipContent>
+            </Tooltip>
           )}
           {c.es_agrupacion ? (
-            <Badge variant="secondary" className="shrink-0 font-normal" title={groupingDetails}>
-              {groupingLabel}
-            </Badge>
+            <Tooltip>
+              {/* `Badge` no reenvía ref (es una función suelta que escupe un
+                  `div`), así que el disparador es el `span`: si el ref no
+                  llegara, Radix se quedaría sin ancla y el tooltip flotaría. */}
+              <TooltipTrigger asChild>
+                <span className="inline-flex shrink-0">
+                  <Badge variant="secondary" className="font-normal">
+                    {groupingLabel}
+                  </Badge>
+                </span>
+              </TooltipTrigger>
+              <TooltipContent>{groupingDetails}</TooltipContent>
+            </Tooltip>
           ) : null}
         </div>
       </TableCell>
@@ -310,21 +298,12 @@ export default function CompetidoresPage() {
   // Grupo de identidades del maestro que representan al mismo competidor
   // analítico (mismo nombre/NIF conectado, aún sin fusionar). El dossier
   // siempre agrega todas — el usuario nunca elige cuál abrir.
-  const drillDownGroupIds = useMemo(() => {
-    if (!drillDownCompany) return [];
-    const ids = new Set<number>();
-    if (drillDownCompany.empresa_id != null) ids.add(drillDownCompany.empresa_id);
-    for (const id of drillDownCompany.empresa_ids ?? []) ids.add(id);
-    return [...ids];
-  }, [drillDownCompany]);
+  const drillDownGroupIds = useMemo(() => drillDownIds(drillDownCompany), [drillDownCompany]);
   const drillDownCompanyId = drillDownGroupIds[0];
-  const drillDownExtraParams = useMemo<Record<string, string>>(() => {
-    const extra: Record<string, string> = {};
-    if (drillDownGroupIds.length > 1) {
-      extra.empresa_ids = drillDownGroupIds.join(",");
-    }
-    return extra;
-  }, [drillDownGroupIds]);
+  const drillDownParams = useMemo(
+    () => drillDownExtraParams(drillDownGroupIds),
+    [drillDownGroupIds],
+  );
   const { data: drillDownProfile, isLoading: isLoadingDrillDownProfile } = useFilteredQuery<CompanyProfileData>(
     ["competitive-company-profile", String(drillDownCompanyId ?? "none"), drillDownGroupIds.join(",")],
     `/api/v1/competitive/empresas/${drillDownCompanyId ?? 0}/perfil`,
@@ -332,7 +311,7 @@ export default function CompetidoresPage() {
       enabled: drillDownCompanyId != null,
       staleTime: 5 * 60 * 1000,
     },
-    drillDownExtraParams,
+    drillDownParams,
   );
   const { data: drillDownAwards, isLoading: isLoadingDrillDownAwards } = useFilteredQuery<CompanyAwardsData>(
     [
@@ -345,205 +324,42 @@ export default function CompetidoresPage() {
       enabled: drillDownCompanyId != null,
       staleTime: 5 * 60 * 1000,
     },
-    { limit: "5", offset: "0", sort: "fecha_desc", ...drillDownExtraParams },
+    { limit: "5", offset: "0", sort: "fecha_desc", ...drillDownParams },
   );
 
 
-  const toggleCompareSelection = useCallback((nombre: string) => {
-    setSelectedCompanies((prev) => {
-      if (prev.includes(nombre)) return prev.filter((n) => n !== nombre);
-      if (prev.length >= 2) return [prev[1], nombre];
-      return [...prev, nombre];
-    });
-  }, []);
-
-  // Apply search filter to all data
-  const searchFilter = useCallback(
-    (items: { nombre: string; nif?: string | null; nifs?: string[]; nombres_variantes?: string[] }[]) => {
-      if (!search) return items;
-      const q = search.toLowerCase();
-      return items.filter((c) =>
-        [c.nombre, c.nif, ...(c.nifs ?? []), ...(c.nombres_variantes ?? [])]
-          .filter(Boolean)
-          .join(" ")
-          .toLowerCase()
-          .includes(q),
-      );
-    },
-    [search],
+  const onToggleCompare = useCallback(
+    (nombre: string) => setSelectedCompanies((prev) => toggleCompareSelection(prev, nombre)),
+    [],
   );
 
-  const filteredCompetitors = useMemo(() => {
-    if (!data?.competitors) return [];
-    return searchFilter(data.competitors) as Competitor[];
-  }, [data, searchFilter]);
-
-  const filteredSorted = useMemo(() => {
-    return [...filteredCompetitors].sort((a, b) => {
-      const mul = sortDir === "asc" ? 1 : -1;
-      if (sortKey === "nombre" || sortKey === "nif" || sortKey === "ultima") {
-        return mul * ((a[sortKey] ?? "") as string).localeCompare((b[sortKey] ?? "") as string);
-      }
-      return mul * (((a[sortKey] as number) ?? 0) - ((b[sortKey] as number) ?? 0));
-    });
-  }, [filteredCompetitors, sortKey, sortDir]);
-
-  // Pie chart: top 10 + Otros by importe (filtered)
-  const pieData = useMemo(() => {
-    if (!filteredCompetitors.length) return [];
-    const sorted = [...filteredCompetitors].sort((a, b) => b.importe - a.importe);
-    const top10 = sorted.slice(0, 10);
-    const top10Importe = top10.reduce((s, c) => s + c.importe, 0);
-    // Sin búsqueda, "Otros" = mercado total − top 10 (incluye la cola fuera de
-    // los `limit` competidores devueltos). Con búsqueda, solo lo filtrado visible.
-    const otrosImporte = search
-      ? sorted.slice(10).reduce((s, c) => s + c.importe, 0)
-      : Math.max((data?.importe_total ?? top10Importe) - top10Importe, 0);
-    const result = top10.map((c) => ({ name: truncate(c.nombre, 25), value: c.importe }));
-    if (otrosImporte > 0) result.push({ name: "Otros", value: otrosImporte });
-    return result;
-  }, [filteredCompetitors, search, data]);
-
-  // Top 20 bar chart data (filtered)
-  const barData = useMemo(() => {
-    return [...filteredCompetitors].sort((a, b) => b.count - a.count).slice(0, 20);
-  }, [filteredCompetitors]);
-
-  // Scatter data filtered
-  const scatterData = useMemo(() => {
-    if (!data?.scatter_data) return [];
-    return searchFilter(data.scatter_data) as ScatterPoint[];
-  }, [data, searchFilter]);
-
-  // Top 5 for scatter labels
-  const scatterTop5 = useMemo(() => {
-    if (!data?.competitors) return new Set<string>();
-    const top = [...data.competitors].sort((a, b) => b.importe - a.importe).slice(0, 5);
-    return new Set(top.map((c) => c.nombre));
-  }, [data]);
-
-  // Heatmap
-  const heatmapData = useMemo(() => {
-    if (!data?.heatmap_ccaa?.length)
-      return {
-        empresas: [] as string[],
-        ccaas: [] as string[],
-        matrix: {} as Record<string, Record<string, number>>,
-        max: 0,
-      };
-    const filtered = search
-      ? data.heatmap_ccaa.filter((h) => h.empresa.toLowerCase().includes(search.toLowerCase()))
-      : data.heatmap_ccaa;
-
-    // Top 10 empresas by total count
-    const empresaCounts: Record<string, number> = {};
-    for (const h of filtered) {
-      empresaCounts[h.empresa] = (empresaCounts[h.empresa] ?? 0) + h.count;
-    }
-    const empresas = Object.entries(empresaCounts)
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 10)
-      .map(([e]) => e);
-    const empresaSet = new Set(empresas);
-
-    const ccaaSet = new Set<string>();
-    const matrix: Record<string, Record<string, number>> = {};
-    let max = 0;
-    for (const h of filtered) {
-      if (!empresaSet.has(h.empresa)) continue;
-      ccaaSet.add(h.ccaa);
-      if (!matrix[h.empresa]) matrix[h.empresa] = {};
-      matrix[h.empresa][h.ccaa] = h.count;
-      if (h.count > max) max = h.count;
-    }
-    return { empresas, ccaas: Array.from(ccaaSet).sort(), matrix, max };
-  }, [data, search]);
-
-  // Radar comparison data
-  const radarData = useMemo(() => {
-    if (selectedCompanies.length !== 2 || !data?.competitors) return null;
-    const [nameA, nameB] = selectedCompanies;
-    const compA = data.competitors.find((c) => c.nombre === nameA);
-    const compB = data.competitors.find((c) => c.nombre === nameB);
-    if (!compA || !compB) return null;
-
-    const allComps = data.competitors;
-    const maxCount = Math.max(...allComps.map((c) => c.count), 1);
-    const maxImporte = Math.max(...allComps.map((c) => c.importe), 1);
-    const maxCuota = Math.max(...allComps.map((c) => c.cuota), 1);
-    const maxCpa = Math.max(...allComps.map((c) => c.contratos_por_anio ?? 0), 1);
-    const maxIm = Math.max(...allComps.map((c) => c.importe_medio ?? 0), 1);
-    const maxBaja = Math.max(...allComps.map((c) => c.baja_media ?? 0), 1);
-
-    const dims = ["Contratos", "Importe", "Cuota", "Contratos/Año", "Importe Medio", "Agresividad baja"];
-    const normalize = (c: Competitor) => [
-      (c.count / maxCount) * 100,
-      (c.importe / maxImporte) * 100,
-      (c.cuota / maxCuota) * 100,
-      ((c.contratos_por_anio ?? 0) / maxCpa) * 100,
-      ((c.importe_medio ?? 0) / maxIm) * 100,
-      ((c.baja_media ?? 0) / maxBaja) * 100,
-    ];
-
-    const valsA = normalize(compA);
-    const valsB = normalize(compB);
-
-    return {
-      nameA,
-      nameB,
-      dataA: dims.map((d, i) => ({ dimension: d, value: valsA[i] })),
-      dataB: dims.map((d, i) => ({ dimension: d, value: valsB[i] })),
-    };
-  }, [selectedCompanies, data]);
-
-  // Treemap: top 20 companies by importe for sector visualization
-  const treemapData = useMemo(() => {
-    if (!filteredCompetitors.length) return [];
-    return [...filteredCompetitors]
-      .sort((a, b) => b.importe - a.importe)
-      .slice(0, 20)
-      .map((c) => ({
-        name: truncate(c.nombre, 22),
-        size: c.importe,
-        count: c.count,
-      }));
-  }, [filteredCompetitors]);
-
-  // Positioning scatter: baja_media vs importe_medio
-  const positioningData = useMemo(() => {
-    if (!filteredCompetitors.length) return [];
-    return filteredCompetitors
-      .filter((c) => c.baja_media != null && c.importe_medio != null && c.importe_medio > 0)
-      .map((c) => ({
-        nombre: c.nombre,
-        baja_media: c.baja_media ?? 0,
-        importe_medio: c.importe_medio ?? 0,
-        count: c.count,
-        pct_monopolio: c.pct_monopolio ?? 0,
-      }));
-  }, [filteredCompetitors]);
-
-  // Estacionalidad monthly chart data
-  const estacionalidadData = useMemo(() => {
-    if (!data?.estacionalidad?.length) return [];
-    const full = Array.from({ length: 12 }, (_, i) => {
-      const entry = data.estacionalidad!.find((e) => e.mes === i + 1);
-      return { mes: MONTH_LABELS[i], count: entry?.count ?? 0, importe: entry?.importe ?? 0 };
-    });
-    return full;
-  }, [data]);
-
-  // Desglose por CCAA de la empresa desde su PERFIL (por_ccaa, por empresa,
-  // completo hasta 20 CCAA), no del heatmap_ccaa global recortado al top-10
-  // empresas — que dejaba el drill-down VACÍO para cualquier empresa fuera de
-  // ese top, prometiendo más de lo que entregaba (ADR-014).
-  // Ranking de bajas por empresa (más agresivas primero)
-  const bajasSorted = useMemo(() => {
-    const items = (bajasData?.items ?? []).filter((b) => b.baja_media_pct != null);
-    const sorted = [...items].sort((a, b) => (b.baja_media_pct ?? 0) - (a.baja_media_pct ?? 0));
-    const maxBaja = Math.max(...sorted.map((b) => b.baja_media_pct ?? 0), 1);
-    return { rows: sorted.slice(0, 12), maxBaja };
-  }, [bajasData]);
+  // Todas las series de la pantalla (búsqueda, orden, tarta, barras, dispersión,
+  // mapa de calor, radar, treemap, posicionamiento, estacionalidad y ranking de
+  // bajas) viven en `_hooks/use-competidores-view.ts` como funciones puras.
+  const {
+    filteredSorted,
+    pieData,
+    barData,
+    scatterData,
+    scatterTop5,
+    heatmapData,
+    radarData,
+    treemapData,
+    positioningData,
+    estacionalidadData,
+    bajasSorted,
+  } = useCompetidoresView({
+    competitors: data?.competitors,
+    scatterData: data?.scatter_data,
+    heatmapCcaa: data?.heatmap_ccaa,
+    estacionalidad: data?.estacionalidad,
+    importeTotal: data?.importe_total,
+    bajas: bajasData?.items,
+    search,
+    sortKey,
+    sortDir,
+    selectedCompanies,
+  });
 
   if (error) {
     return (
@@ -564,8 +380,8 @@ export default function CompetidoresPage() {
     { key: "baja_media", label: "Baja Media %" },
     { key: "ofertas_medias", label: "Ofertas Medias" },
     { key: "pct_monopolio", label: "% Sin comp." },
-    { key: "pct_top_organo", label: "% Top Organo" },
-    { key: "ultima", label: "Ultima Adj." },
+    { key: "pct_top_organo", label: "% Top Órgano" },
+    { key: "ultima", label: "Última Adj." },
   ];
 
   return (
@@ -608,14 +424,14 @@ export default function CompetidoresPage() {
         </Stagger.Item>
         <Stagger.Item>
           <KpiCard
-            title="HHI Concentracion"
+            title="HHI Concentración"
             value={isLoading ? undefined : formatNumber(data?.hhi)}
             subtitle={
               data?.hhi != null
                 ? data.hhi < 1500
                   ? "Mercado competitivo"
                   : data.hhi < 2500
-                    ? "Concentracion moderada"
+                    ? "Concentración moderada"
                     : "Mercado concentrado"
                 : undefined
             }
@@ -625,7 +441,7 @@ export default function CompetidoresPage() {
         </Stagger.Item>
         <Stagger.Item>
           <KpiCard
-            title="% Oferta Unica"
+            title="% Oferta Única"
             value={isLoading ? undefined : formatPercent(data?.pct_oferta_unica)}
             subtitle="Licitaciones con un solo ofertante"
             icon={AlertTriangle}
@@ -710,7 +526,7 @@ export default function CompetidoresPage() {
                         key={rowKey}
                         competitor={c}
                         selected={selectedCompanies.includes(c.nombre)}
-                        onToggleCompare={toggleCompareSelection}
+                        onToggleCompare={onToggleCompare}
                         onDrillDown={setDrillDownCompany}
                       />
                     );
@@ -831,16 +647,20 @@ export default function CompetidoresPage() {
                   {/* Header row */}
                   <div className="text-muted-foreground p-1 font-medium" />
                   {heatmapData.ccaas.map((ccaa) => (
-                    <button
-                      key={ccaa}
-                      type="button"
-                      onClick={() => toggleCcaa(ccaa)}
-                      aria-pressed={activeCcaa.has(ccaa)}
-                      className={`hover:bg-muted cursor-pointer truncate rounded-sm p-1 text-center font-medium transition-colors ${activeCcaa.has(ccaa) ? "bg-primary/15 text-primary" : "text-muted-foreground"}`}
-                      title={`Filtrar por ${ccaa}`}
-                    >
-                      {truncate(ccaa, 10)}
-                    </button>
+                    <Tooltip key={ccaa}>
+                      <TooltipTrigger asChild>
+                        <button
+                          type="button"
+                          onClick={() => toggleCcaa(ccaa)}
+                          aria-pressed={activeCcaa.has(ccaa)}
+                          aria-label={`Filtrar por ${ccaa}`}
+                          className={`hover:bg-muted cursor-pointer truncate rounded-sm p-1 text-center font-medium transition-colors ${activeCcaa.has(ccaa) ? "bg-primary/15 text-primary" : "text-muted-foreground"}`}
+                        >
+                          {truncate(ccaa, 10)}
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent>{`Filtrar por ${ccaa}`}</TooltipContent>
+                    </Tooltip>
                   ))}
                   {/* Data rows */}
                   {heatmapData.empresas.map((empresa) => (

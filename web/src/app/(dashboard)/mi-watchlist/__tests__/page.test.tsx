@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, screen, within, fireEvent, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { TooltipProvider } from "@/components/ui/tooltip";
 
 vi.mock("next/navigation", () => ({
   useSearchParams: () => new URLSearchParams(),
@@ -63,9 +64,14 @@ function mockFetchRouter(handlers: {
 
 function renderPage() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
+  // Las acciones de regla (activar / editar / eliminar) llevan `Tooltip`, y
+  // `Tooltip.Root` de Radix revienta sin un `TooltipProvider` por encima: en la
+  // app lo pone `components/providers.tsx`, aquí hay que ponerlo a mano.
   return render(
     <QueryClientProvider client={qc}>
-      <MiWatchlistPage />
+      <TooltipProvider>
+        <MiWatchlistPage />
+      </TooltipProvider>
     </QueryClientProvider>,
   );
 }
@@ -88,8 +94,8 @@ describe("MiWatchlistPage — edición de reglas", () => {
     mockFetchRouter({});
     renderPage();
 
-    await waitFor(() => expect(screen.getAllByTitle("Editar regla")[0]).toBeInTheDocument());
-    fireEvent.click(screen.getAllByTitle("Editar regla")[0]);
+    await waitFor(() => expect(screen.getAllByRole("button", { name: "Editar regla" })[0]).toBeInTheDocument());
+    fireEvent.click(screen.getAllByRole("button", { name: "Editar regla" })[0]);
 
     expect(await screen.findByText("Editar regla")).toBeInTheDocument();
     const dialog = within(screen.getByRole("dialog"));
@@ -97,7 +103,7 @@ describe("MiWatchlistPage — edición de reglas", () => {
     expect(keywordInput.value).toBe("SAP");
     const cpvInput = dialog.getByLabelText("Filtro CPV") as HTMLInputElement;
     expect(cpvInput.value).toBe("72000000");
-    const importeInput = dialog.getByLabelText("Importe minimo") as HTMLInputElement;
+    const importeInput = dialog.getByLabelText("Importe mínimo") as HTMLInputElement;
     expect(importeInput.value).toBe("50000");
     // El email de entrega también se muestra dentro del panel de edición.
     expect(dialog.getByText(/Entrega por email a/)).toBeInTheDocument();
@@ -108,8 +114,8 @@ describe("MiWatchlistPage — edición de reglas", () => {
     mockFetchRouter({ onPut });
     renderPage();
 
-    await waitFor(() => expect(screen.getAllByTitle("Editar regla")[0]).toBeInTheDocument());
-    fireEvent.click(screen.getAllByTitle("Editar regla")[0]);
+    await waitFor(() => expect(screen.getAllByRole("button", { name: "Editar regla" })[0]).toBeInTheDocument());
+    fireEvent.click(screen.getAllByRole("button", { name: "Editar regla" })[0]);
     await screen.findByText("Editar regla");
 
     const dialog = within(screen.getByRole("dialog"));
@@ -129,13 +135,13 @@ describe("MiWatchlistPage — edición de reglas", () => {
     mockFetchRouter({ onPut });
     renderPage();
 
-    await waitFor(() => expect(screen.getAllByTitle("Editar regla")[0]).toBeInTheDocument());
-    fireEvent.click(screen.getAllByTitle("Editar regla")[0]);
+    await waitFor(() => expect(screen.getAllByRole("button", { name: "Editar regla" })[0]).toBeInTheDocument());
+    fireEvent.click(screen.getAllByRole("button", { name: "Editar regla" })[0]);
     await screen.findByText("Editar regla");
 
     fireEvent.click(screen.getByRole("button", { name: /Probar regla/ }));
 
-    expect(await screen.findByText("12 licitacion(es) coincidirian")).toBeInTheDocument();
+    expect(await screen.findByText("12 licitación(es) coincidirían")).toBeInTheDocument();
     expect(onPut).not.toHaveBeenCalled();
   });
 });
