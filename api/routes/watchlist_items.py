@@ -95,7 +95,11 @@ async def post_item(
 
 
 @router.delete(
-    "/{id_externo}",
+    # ``:path`` y no el conversor por defecto: hay ``id_externo`` de PLACSP
+    # con barras (p.ej. ``PA-S 2026/000058``). Con ``[^/]+`` este DELETE no
+    # casaba y devolvía 404 antes del handler, así que un favorito creado vía
+    # POST (que recibe el id en el body) no se podía eliminar nunca.
+    "/{id_externo:path}",
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Eliminar un favorito propio",
 )
