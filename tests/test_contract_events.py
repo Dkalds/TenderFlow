@@ -194,6 +194,50 @@ def test_timeline_une_hitos_implicitos_y_eventos(db):
     assert any("Ganadora SL" in (i.get("detalle") or "") for i in items)
 
 
+def test_eventos_recientes_acota_por_ambito(db):
+    """El feed mide el mismo universo de licitaciones que el resto del Resumen."""
+    from db.repositories.aggregates import LicitacionesFilters
+    from services.contract_events import derive_new_events, eventos_recientes
+
+    upsert(db, lic_id="C-MAD", ccaa="Madrid", tecnologia="SAP", importe=100000.0)
+    upsert(db, lic_id="C-MAD", ccaa="Madrid", tecnologia="SAP", importe=150000.0)
+    upsert(db, lic_id="C-CAT", ccaa="Cataluña", tecnologia="ORACLE", importe=100000.0)
+    upsert(db, lic_id="C-CAT", ccaa="Cataluña", tecnologia="ORACLE", importe=90000.0)
+    derive_new_events()
+
+    todos = eventos_recientes(dias=365)
+    assert {e["licitacion_id"] for e in todos} == {"C-MAD", "C-CAT"}
+
+    solo_madrid = eventos_recientes(dias=365, filters=LicitacionesFilters(ccaa="Madrid"))
+    assert {e["licitacion_id"] for e in solo_madrid} == {"C-MAD"}
+
+    solo_oracle = eventos_recientes(dias=365, filters=LicitacionesFilters(tecnologia="ORACLE"))
+    assert {e["licitacion_id"] for e in solo_oracle} == {"C-CAT"}
+
+    # importe_min mira la licitación, no el delta del movimiento.
+    caros = eventos_recientes(dias=365, filters=LicitacionesFilters(importe_min=120000))
+    assert {e["licitacion_id"] for e in caros} == {"C-MAD"}
+
+    # Ámbito vacío = tabla entera: ni un filtro de más.
+    assert len(eventos_recientes(dias=365, filters=LicitacionesFilters())) == len(todos)
+
+
+def test_eventos_recientes_acota_por_fecha_del_movimiento(db):
+    """`desde`/`hasta` recortan por la fecha del evento, no por la publicación."""
+    from db.database import connect
+    from services.contract_events import derive_new_events, eventos_recientes
+
+    upsert(db, importe=100000.0)
+    upsert(db, importe=150000.0)
+    derive_new_events()
+    with connect() as c:
+        c.execute("UPDATE contrato_eventos SET fecha = %s", ("2026-02-15",))
+
+    assert len(eventos_recientes(desde="2026-02-01", hasta="2026-02-28")) == 1
+    assert eventos_recientes(desde="2026-03-01") == []
+    assert eventos_recientes(desde="2026-01-01", hasta="2026-02-01") == []
+
+
 def test_eventos_recientes_filtra_por_tipo(db):
     from services.contract_events import derive_new_events, eventos_recientes
 

@@ -31,6 +31,7 @@ from typing import Any
 from pydantic import BaseModel
 
 from db.database import connect, connect_read, get_cursor, set_cursor
+from db.repositories.aggregates import LicitacionesFilters, build_licitaciones_where
 from db.repositories.base import rows_to_dicts
 from observability.logging import get_logger
 
@@ -255,23 +256,57 @@ def timeline(licitacion_id: str) -> list[dict[str, Any]]:
 
 
 def eventos_recientes(
-    *, tipos: tuple[str, ...] | None = None, dias: int = 30, limit: int = 100
+    *,
+    tipos: tuple[str, ...] | None = None,
+    dias: int = 30,
+    limit: int = 100,
+    desde: str | None = None,
+    hasta: str | None = None,
+    filters: LicitacionesFilters | None = None,
 ) -> list[dict[str, Any]]:
-    """Feed de eventos recientes (modificaciones, prórrogas…) para el dashboard."""
+    """Feed de eventos recientes (modificaciones, prórrogas…) para el dashboard.
+
+    ``filters`` acota el feed al mismo universo de licitaciones que el resto del
+    Resumen (CCAA, tecnología, estado, importe mínimo, búsqueda…): el JOIN con
+    ``licitaciones`` ya estaba ahí para el título, así que el ámbito se aplica
+    sobre él con el mismo ``WHERE`` que las agregaciones.
+
+    Las fechas van aparte a propósito y **no** dentro de ``filters``: ahí
+    acotarían ``fecha_publicacion`` (cuándo se publicó el expediente) y aquí lo
+    que se pregunta es cuándo se movió el contrato. ``desde`` sustituye a la
+    ventana relativa de ``dias``; ``hasta`` la remata por arriba.
+    """
     cutoff_expr = "to_char(CURRENT_DATE - (%s * INTERVAL '1 day'), 'YYYY-MM-DD')"
+    clauses: list[str] = []
+    params: list[Any] = []
+    if desde:
+        clauses.append("ev.fecha >= %s")
+        params.append(desde)
+    else:
+        # cutoff_expr es un fragmento constante; el valor va con placeholder
+        clauses.append(f"ev.fecha >= {cutoff_expr}")
+        params.append(max(1, int(dias)))
+    if hasta:
+        clauses.append("ev.fecha <= %s")
+        params.append(hasta)
+    if tipos:
+        placeholders = ",".join("%s" for _ in tipos)
+        clauses.append(f"ev.tipo IN ({placeholders})")
+        params.extend(tipos)
+    if filters is not None and not filters.is_empty():
+        lic_where, lic_params = build_licitaciones_where(filters, alias="l")
+        clauses.append(f"({lic_where})")
+        params.extend(lic_params)
+
+    # Lo único interpolado son fragmentos construidos aquí o en
+    # `build_licitaciones_where`; todo valor de usuario va con placeholder.
     sql = (
-        "SELECT ev.licitacion_id, ev.tipo, ev.fecha, ev.detalle, ev.importe_delta, "  # noqa: S608
+        "SELECT ev.licitacion_id, ev.tipo, ev.fecha, ev.detalle, ev.importe_delta, "
         "       l.titulo, l.organo_contratacion, l.fuente "
         "FROM contrato_eventos ev "
         "JOIN licitaciones l ON l.id_externo = ev.licitacion_id "
-        f"WHERE ev.fecha >= {cutoff_expr}"  # cutoff_expr es un fragmento constante; valores con ?
+        "WHERE " + " AND ".join(clauses) + " ORDER BY ev.fecha DESC LIMIT %s"
     )
-    params: list[Any] = [max(1, int(dias))]
-    if tipos:
-        placeholders = ",".join("%s" for _ in tipos)
-        sql += f" AND ev.tipo IN ({placeholders})"
-        params.extend(tipos)
-    sql += " ORDER BY ev.fecha DESC LIMIT %s"
     params.append(max(1, min(int(limit), 500)))
     with connect_read() as c:
         return rows_to_dicts(c.execute(sql, params))

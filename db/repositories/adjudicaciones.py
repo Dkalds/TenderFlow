@@ -8,6 +8,7 @@ from typing import Any
 from db.database import connect_read
 from db.repositories.aggregates import LicitacionesFilters, build_licitaciones_where
 from db.repositories.base import count_where, rows_to_dicts
+from db.sql_fragments import exclude_duplicados_sql, fecha_fin_sql
 
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
@@ -37,8 +38,19 @@ def _adj_filter_conditions(
     fecha_desde: str | None,
     fecha_hasta: str | None,
 ) -> tuple[list[str], list[Any]]:
-    """Condiciones de filtro comunes de las consultas UTE (sobre el alias ``a``)."""
-    conditions: list[str] = []
+    """Condiciones de filtro comunes de las consultas UTE (sobre el alias ``a``).
+
+    La exclusión de duplicados cross-fuente va **sembrada**, no como filtro
+    opcional: las cuatro consultas que usan este helper (``ute_kpis``,
+    ``ute_top_miembros``, ``ute_evolucion``, ``load_ute_rows``) son agregaciones,
+    y una UTE cuyo contrato entra por PSCP y por PLACSP contaba dos veces en los
+    KPIs, en el ranking y en la serie mensual. Sembrarla aquí en vez de repetirla
+    en cada query hace imposible olvidarla al añadir la quinta.
+
+    El fragmento no lleva placeholders (es una subconsulta constante), así que no
+    desalinea ``params`` con los ``%s`` de los filtros que vienen detrás.
+    """
+    conditions: list[str] = [exclude_duplicados_sql("a.licitacion_id")]
     params: list[Any] = []
     if ccaa_filter:
         placeholders = ",".join("%s" for _ in ccaa_filter)
@@ -133,7 +145,14 @@ class AdjudicacionRepository:
             "LEFT JOIN empresas e ON e.empresa_id = a.empresa_id "
             "LEFT JOIN grupos_empresariales g ON g.grupo_id = e.grupo_id "
         )
-        conditions: list[str] = []
+        # Dedupe cross-fuente: NO es opcional. Sin esta condición un contrato
+        # publicado a la vez en PSCP y PLACSP cuenta dos veces en la cuota de
+        # mercado y en el HHI que calcula `services/analytics/competitors.py`,
+        # que tampoco deduplica aguas abajo. Va sobre `a.licitacion_id` y no
+        # sobre `l.id_externo` porque el JOIN con licitaciones es LEFT: con la
+        # columna de la derecha, una fila huérfana daría NULL y `NULL NOT IN`
+        # la descartaría en silencio.
+        conditions: list[str] = [exclude_duplicados_sql("a.licitacion_id")]
         params: list[Any] = []
         if ccaa:
             conditions.append("a.ccaa = %s")
@@ -174,11 +193,15 @@ class AdjudicacionRepository:
             "FROM adjudicaciones a "
             "JOIN licitaciones l ON l.id_externo = a.licitacion_id "
         )
+        # Dedupe cross-fuente obligatorio: una adjudicación duplicada entre
+        # fuentes cuenta dos veces en el ranking de licitadores.
+        conditions: list[str] = [exclude_duplicados_sql("a.licitacion_id")]
         params: list[Any] = []
         if ccaa_filter:
             placeholders = ",".join("%s" for _ in ccaa_filter)
-            sql += f"WHERE a.ccaa IN ({placeholders}) "
+            conditions.append(f"a.ccaa IN ({placeholders})")
             params.extend(ccaa_filter)
+        sql += "WHERE " + " AND ".join(conditions) + " "
         sql += f"ORDER BY a.fecha_adjudicacion DESC LIMIT {int(limit)}"
         with connect_read() as c:
             return rows_to_dicts(c.execute(sql, params))
@@ -372,3 +395,37 @@ class AdjudicacionRepository:
         )
         with connect_read() as c:
             return rows_to_dicts(c.execute(sql, [*params, organo]))
+
+    # ── Etiquetado de retención (Fase 6.2) ───────────────────────────────
+
+    def load_para_retencion(self) -> list[dict[str, Any]]:
+        """Histórico de adjudicaciones con la fecha de fin efectiva del contrato.
+
+        Base del etiquetado de retención (``services/ml/retencion_labels.py``):
+        cada fila es un contrato adjudicado, y ``fecha_fin_efectiva`` —
+        calculada en SQL con la misma prioridad que usa el repository de
+        renovaciones — es lo que convierte la fila en un vencimiento
+        emparejable con su sucesor.
+
+        El **orden cronológico ascendente es contractual**, no cosmético: las
+        features anti-fuga toman ``previos[0]`` como el primer contrato de la
+        relación órgano-empresa, así que reordenar esta consulta cambiaría en
+        silencio la antigüedad calculada.
+
+        El SQL vivía en ``services/ml/retencion_labels.py``; se movió aquí al
+        sacar ese módulo del ratchet TID251 (ADR-022: todo el SQL en ``db/``).
+        """
+        # S608 no aplica: los dos fragmentos interpolados (fecha_fin_sql,
+        # exclude_duplicados_sql) son constantes de código, sin datos de usuario.
+        sql = f"""
+            SELECT a.licitacion_id, a.empresa_id, a.nombre, a.fecha_adjudicacion,
+                   a.importe_adjudicado, l.organo_contratacion AS organo, l.cpv,
+                   l.ccaa, l.importe, l.titulo,
+                   {fecha_fin_sql()} AS fecha_fin_efectiva
+            FROM adjudicaciones a
+            JOIN licitaciones l ON l.id_externo = a.licitacion_id
+            WHERE a.fecha_adjudicacion IS NOT NULL AND {exclude_duplicados_sql()}
+            ORDER BY a.fecha_adjudicacion ASC
+        """
+        with connect_read() as c:
+            return rows_to_dicts(c.execute(sql))
