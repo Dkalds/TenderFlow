@@ -62,6 +62,7 @@ from api.routes.meta import router as meta_router
 from api.routes.models import router as models_router
 from api.routes.notifications import router as notifications_router
 from api.routes.predicciones import router as predicciones_router
+from api.routes.publico import router as publico_router
 from api.routes.pursuits import router as pursuits_router
 from api.routes.radar import router as radar_router
 from api.routes.resoluciones import router as resoluciones_router
@@ -542,6 +543,11 @@ app.include_router(competitive_router, prefix="/api/v1")
 app.include_router(eventos_router, prefix="/api/v1")
 app.include_router(resoluciones_router, prefix="/api/v1")
 app.include_router(predicciones_router, prefix="/api/v1")
+# Superficie pública anónima. Cuelga de /api/v1/publico y no de
+# /api/v1/licitaciones porque el catch-all autenticado del final de este
+# fichero ensombrecería cualquier ruta pública bajo ese prefijo, y le
+# devolvería 401 a los rastreadores sin fallar en el arranque.
+app.include_router(publico_router, prefix="/api/v1")
 app.include_router(pursuits_router, prefix="/api/v1")
 app.include_router(analytics_router, prefix="/api/v1")
 app.include_router(feedback_router, prefix="/api/v1")

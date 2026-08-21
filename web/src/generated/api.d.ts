@@ -2327,6 +2327,129 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/publico/hubs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Comunidades y códigos CPV con página de índice
+         * @description Alimenta las páginas `/licitaciones` y `/cpv`.
+         *
+         *     Ambas listas van filtradas por volumen mínimo en el repositorio: un hub con
+         *     dos licitaciones no es una página, es contenido delgado.
+         *
+         *     Va en un solo endpoint y no en dos porque sus dos consumidores —los índices
+         *     y los enlaces de la portada— quieren las dos listas a la vez, y así una
+         *     página de índice hace una llamada en vez de dos.
+         */
+        get: operations["hubs_api_v1_publico_hubs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/publico/licitaciones": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Listado público de licitaciones
+         * @description Anuncios publicables, del más reciente al más antiguo.
+         *
+         *     ``total`` es el recuento real con los filtros aplicados, no el tamaño de la
+         *     página. Lo necesita la paginación del hub: sin él no se puede saber si hay
+         *     página siguiente ni enlazar a la última, y un hub sin paginación deja
+         *     huérfanas todas las fichas a partir de la primera cincuentena — solo
+         *     alcanzables por sitemap, que las hace rastreables pero no les transmite
+         *     ninguna autoridad.
+         */
+        get: operations["listar_publicas_api_v1_publico_licitaciones_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/publico/licitaciones/{ref}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Anuncio público de una licitación
+         * @description Anuncio oficial de un expediente, por su referencia pública.
+         *
+         *     Los tres motivos de 404 —no existe, es un duplicado no canónico, o es
+         *     demasiado pobre para ser una página— se devuelven indistinguibles a
+         *     propósito: para el visitante son el mismo caso, y distinguirlos filtraría
+         *     qué expedientes existen en la base pero se ocultan.
+         */
+        get: operations["ficha_publica_api_v1_publico_licitaciones__ref__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/publico/sitemap/entradas": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Tramo de URLs para un fichero de sitemap
+         * @description Un tramo estable de expedientes publicables.
+         *
+         *     El orden lo fija el repositorio por ``id_externo`` y no por fecha: con orden
+         *     temporal, un expediente republicado saltaría de fichero y el mismo tramo
+         *     devolvería URLs distintas en cada regeneración.
+         */
+        get: operations["entradas_sitemap_api_v1_publico_sitemap_entradas_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/publico/sitemap/resumen": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Número de URLs publicables
+         * @description Lo consume ``generateSitemaps`` de Next para saber cuántos ficheros crear.
+         */
+        get: operations["resumen_sitemap_api_v1_publico_sitemap_resumen_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/pursuits": {
         parameters: {
             query?: never;
@@ -3990,6 +4113,20 @@ export interface components {
             /** Revisiones Pendientes */
             revisiones_pendientes: number;
         };
+        /**
+         * EntradaSitemap
+         * @description Lo mínimo para construir una URL de sitemap y su ``lastmod``.
+         */
+        EntradaSitemap: {
+            /** Actualizado */
+            actualizado?: string | null;
+            /** Ccaa */
+            ccaa?: string | null;
+            /** Ref */
+            ref: string;
+            /** Titulo */
+            titulo: string;
+        };
         /** Estacionalidad */
         Estacionalidad: {
             /** Count */
@@ -4490,6 +4627,38 @@ export interface components {
             vencen_48h: number;
         };
         /**
+         * HubCcaa
+         * @description Una comunidad autónoma con página de índice propia.
+         */
+        HubCcaa: {
+            /** Nombre */
+            nombre: string;
+            /** Slug */
+            slug: string;
+            /** Total */
+            total: number;
+        };
+        /**
+         * HubCpv
+         * @description Un código CPV con página de índice propia.
+         */
+        HubCpv: {
+            /** Codigo */
+            codigo: string;
+            /** Total */
+            total: number;
+        };
+        /**
+         * Hubs
+         * @description Índice de la superficie pública.
+         */
+        Hubs: {
+            /** Ccaa */
+            ccaa: components["schemas"]["HubCcaa"][];
+            /** Cpv */
+            cpv: components["schemas"]["HubCpv"][];
+        };
+        /**
          * ImporteBox
          * @description Five-number summary of importe for a cluster (box-plot).
          */
@@ -4565,6 +4734,67 @@ export interface components {
             /** Url */
             url?: string | null;
         };
+        /**
+         * LicitacionPublica
+         * @description Anuncio de licitación tal y como lo publica la fuente oficial.
+         *
+         *     Todos los campos provienen del anuncio de PLACSP o TED, que ya es open data
+         *     reutilizable. `url` y `actualizado` no son decorativos: la Ley 37/2007
+         *     condiciona la reutilización a citar la fuente e indicar la fecha de la
+         *     última actualización, así que ambos tienen que llegar a la página.
+         */
+        LicitacionPublica: {
+            /** Actualizado */
+            actualizado?: string | null;
+            /** Ccaa */
+            ccaa?: string | null;
+            /** Cpv */
+            cpv?: string | null;
+            /** Descripcion */
+            descripcion?: string | null;
+            /** Duracion Unidad */
+            duracion_unidad?: string | null;
+            /** Duracion Valor */
+            duracion_valor?: number | null;
+            /** Estado */
+            estado?: string | null;
+            /** Expediente */
+            expediente: string;
+            /** Fecha Fin */
+            fecha_fin?: string | null;
+            /** Fecha Inicio */
+            fecha_inicio?: string | null;
+            /** Fecha Limite */
+            fecha_limite?: string | null;
+            /** Fecha Publicacion */
+            fecha_publicacion?: string | null;
+            /** Fuente */
+            fuente: string;
+            /** Importe */
+            importe?: number | null;
+            /** Lotes */
+            lotes?: components["schemas"]["LotePublico"][];
+            /** Moneda */
+            moneda?: string | null;
+            /** Nuts Code */
+            nuts_code?: string | null;
+            /** Organo Contratacion */
+            organo_contratacion?: string | null;
+            /** Procedimiento */
+            procedimiento?: string | null;
+            /** Provincia */
+            provincia?: string | null;
+            /** Ref */
+            ref: string;
+            /** Tipo Contrato */
+            tipo_contrato?: string | null;
+            /** Titulo */
+            titulo: string;
+            /** Tramitacion */
+            tramitacion?: string | null;
+            /** Url */
+            url?: string | null;
+        };
         /** LicitacionSummary */
         LicitacionSummary: {
             /** Ccaa */
@@ -4636,6 +4866,22 @@ export interface components {
             lot_number?: string | null;
             /** Name */
             name?: string | null;
+        };
+        /**
+         * LotePublico
+         * @description Lote de una licitación. La tabla `lotes` no tiene campos de persona.
+         */
+        LotePublico: {
+            /** Cpv */
+            cpv?: string | null;
+            /** Fecha Limite */
+            fecha_limite?: string | null;
+            /** Importe */
+            importe?: number | null;
+            /** Numero */
+            numero: string;
+            /** Titulo */
+            titulo?: string | null;
         };
         /** MarkAlertsReadRequest */
         MarkAlertsReadRequest: {
@@ -5149,6 +5395,19 @@ export interface components {
             deprecation_notice?: string | null;
             /** Items */
             items: components["schemas"]["AdjudicacionSummary"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Total */
+            total: number;
+        };
+        /** PaginatedResponse[LicitacionPublica] */
+        PaginatedResponse_LicitacionPublica_: {
+            /** Deprecation Notice */
+            deprecation_notice?: string | null;
+            /** Items */
+            items: components["schemas"]["LicitacionPublica"][];
             /** Limit */
             limit: number;
             /** Offset */
@@ -6063,6 +6322,14 @@ export interface components {
              * @default deepseek-ai/deepseek-v4-flash-0731
              */
             model: string;
+        };
+        /**
+         * ResumenSitemap
+         * @description Cuántas URLs publicables hay. Dimensiona la partición del sitemap.
+         */
+        ResumenSitemap: {
+            /** Total */
+            total: number;
         };
         /** RetenderingResult */
         RetenderingResult: {
@@ -12098,6 +12365,150 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    hubs_api_v1_publico_hubs_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Hubs"];
+                };
+            };
+        };
+    };
+    listar_publicas_api_v1_publico_licitaciones_get: {
+        parameters: {
+            query?: {
+                /** @description Slug de comunidad autónoma, p.ej. `comunidad-valenciana` */
+                ccaa?: string | null;
+                /** @description Prefijo de código CPV */
+                cpv?: string | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Página de anuncios publicables */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaginatedResponse_LicitacionPublica_"];
+                };
+            };
+            /** @description Parámetros inválidos */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    ficha_publica_api_v1_publico_licitaciones__ref__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                ref: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Anuncio con sus lotes */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LicitacionPublica"];
+                };
+            };
+            /** @description No existe, es duplicado, o no supera el umbral de sustancia */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    entradas_sitemap_api_v1_publico_sitemap_entradas_get: {
+        parameters: {
+            query?: {
+                offset?: number;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EntradaSitemap"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    resumen_sitemap_api_v1_publico_sitemap_resumen_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResumenSitemap"];
                 };
             };
         };
