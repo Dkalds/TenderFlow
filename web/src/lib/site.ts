@@ -1,3 +1,5 @@
+import type { Metadata } from "next";
+
 /**
  * Identidad pública del sitio: origen absoluto, nombre y descripción.
  *
@@ -50,3 +52,52 @@ export const SITE_NAME = "TenderFlow";
 export const SITE_DESCRIPTION =
   "Inteligencia de mercado para licitaciones de tecnología del sector público " +
   "español: seguimiento de concursos, análisis competitivo y alertas.";
+
+/**
+ * Imagen Open Graph, para **esparcir** en el `openGraph` de cualquier página
+ * que declare el suyo.
+ *
+ * Hace falta por cómo fusiona Next los metadatos: los objetos se combinan de
+ * forma *superficial*, así que una página que exporta `openGraph` **reemplaza
+ * entero** el del layout padre, incluida la imagen que `app/opengraph-image.tsx`
+ * inyecta automáticamente. El síntoma es silencioso y caro: la página se
+ * comparte en Slack o LinkedIn sin preview, y nada falla en el build.
+ *
+ * Ocurrió de verdad al montar la landing. Por eso vive aquí y no incrustado en
+ * una página: cada ruta pública nueva que declare `openGraph` tiene que
+ * esparcir esto.
+ *
+ * No se declara en el layout raíz a propósito. Las páginas que **no** pisan
+ * `openGraph` —`/login`, por ejemplo— ya reciben la imagen por convención de
+ * fichero; añadirla también arriba emitiría dos `og:image`.
+ *
+ * La URL se deja relativa: `metadataBase` la vuelve absoluta, que es como los
+ * unfurlers la necesitan.
+ */
+/**
+ * Tipo de tarjeta de Twitter/X, para esparcir igual que `OG_IMAGE_COMPARTIDA`.
+ *
+ * Misma trampa y por el mismo motivo: una página que declara `twitter` para
+ * poner su título reemplaza el objeto entero y se deja por el camino el
+ * `card: "summary_large_image"` del layout raíz. El resultado es que el enlace
+ * se despliega como tarjeta pequeña cuadrada en vez de con la imagen grande.
+ *
+ * La imagen no hace falta declararla: Next la deriva de `openGraph.images`.
+ */
+// El tipo se escribe a mano —y no con `Pick<Metadata["twitter"], "card">`—
+// porque `twitter` es una unión discriminada por el propio `card`, así que
+// `card` no es una clave común a todos sus miembros y `Pick` no la encuentra.
+export const TWITTER_COMPARTIDO: { card: "summary_large_image" } = {
+  card: "summary_large_image",
+};
+
+export const OG_IMAGE_COMPARTIDA: Pick<NonNullable<Metadata["openGraph"]>, "images"> = {
+  images: [
+    {
+      url: "/opengraph-image",
+      width: 1200,
+      height: 630,
+      alt: `${SITE_NAME} — Inteligencia de licitaciones del sector público español`,
+    },
+  ],
+};
