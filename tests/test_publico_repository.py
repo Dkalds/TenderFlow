@@ -66,8 +66,10 @@ def corpus(tmp_db):
                 ),
             )
         conn.execute(
-            "INSERT INTO licitaciones_duplicados (licitacion_id, status) VALUES (%s, %s)",
-            ("P-08", "confirmed"),
+            "INSERT INTO licitaciones_duplicados "
+            "(licitacion_id, canonical_id, confianza, status, clave_match) "
+            "VALUES (%s, %s, %s, %s, %s)",
+            ("P-08", "P-01", 1.0, "confirmed", "test"),
         )
     return db_mod
 
@@ -265,14 +267,16 @@ def test_los_lotes_salen_ordenados_por_numero(corpus, repo):
     with corpus.connect() as conn:
         for numero in (3, 1, 2):
             conn.execute(
-                "INSERT INTO lotes (licitacion_id, numero, titulo, cpv, importe) "
-                "VALUES (%s, %s, %s, %s, %s)",
-                ("P-01", numero, f"Lote {numero}", "72000000", 1000.0 * numero),
+                "INSERT INTO lotes "
+                "(licitacion_id, numero, titulo, cpv, importe, fecha_extraccion) "
+                "VALUES (%s, %s, %s, %s, %s, CURRENT_TIMESTAMP)",
+                ("P-01", str(numero), f"Lote {numero}", "72000000", 1000.0 * numero),
             )
 
     lotes = repo.lotes_de("P-01")
 
-    assert [lote["numero"] for lote in lotes] == [1, 2, 3]
+    # `lotes.numero` es `String`, no entero: el orden es el de la columna.
+    assert [lote["numero"] for lote in lotes] == ["1", "2", "3"]
     assert set(lotes[0].keys()) == {"numero", "titulo", "cpv", "importe", "fecha_limite"}
 
 

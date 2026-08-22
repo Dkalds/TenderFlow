@@ -180,9 +180,10 @@ def test_la_ficha_incluye_sus_lotes_ordenados(client, corpus):
     with corpus.connect() as c:
         for numero in (2, 1):
             c.execute(
-                "INSERT INTO lotes (licitacion_id, numero, titulo, cpv, importe) "
-                "VALUES (%s,%s,%s,%s,%s)",
-                ("R-01", numero, f"Lote {numero}", "72000000", 1000.0),
+                "INSERT INTO lotes "
+                "(licitacion_id, numero, titulo, cpv, importe, fecha_extraccion) "
+                "VALUES (%s,%s,%s,%s,%s,CURRENT_TIMESTAMP)",
+                ("R-01", str(numero), f"Lote {numero}", "72000000", 1000.0),
             )
 
     cuerpo = client.get(f"/api/v1/publico/licitaciones/{codificar_ref('R-01')}").json()

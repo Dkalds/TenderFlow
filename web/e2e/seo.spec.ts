@@ -39,10 +39,13 @@ test.describe("Superficie pública sin sesión", () => {
       .catch(() => null);
     expect(robots ?? "").not.toContain("noindex");
 
-    await expect(page.locator('link[rel="canonical"]')).toHaveAttribute(
-      "href",
-      /\/$/,
-    );
+    // Lo que importa es que apunte a la **raíz**, no a una subruta. No se
+    // afirma la barra final: Next serializa el canonical de la raíz como el
+    // origen pelado (`https://sitio`), y para Google esa URL y `https://sitio/`
+    // son la misma. Anclar la barra ataba el test a un detalle del framework.
+    const canonical = await page.locator('link[rel="canonical"]').getAttribute("href");
+    expect(canonical).toBeTruthy();
+    expect(new URL(canonical ?? "").pathname).toBe("/");
   });
 
   test("la portada declara los datos estructurados que se ven en la página", async ({
