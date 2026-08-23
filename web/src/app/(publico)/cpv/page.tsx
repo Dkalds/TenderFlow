@@ -4,7 +4,7 @@ import { notFound } from "next/navigation";
 import { ArrowUpRight, Hash } from "lucide-react";
 import { obtenerHubs } from "@/lib/publico-api";
 import { OG_IMAGE_COMPARTIDA, TWITTER_COMPARTIDO } from "@/lib/site";
-import { listaJsonLd, migasJsonLd } from "@/lib/jsonld";
+import { listaJsonLd, migasJsonLd, serializarJsonLd } from "@/lib/jsonld";
 import { rutaHubCpv } from "@/lib/slug";
 import { formatNumber } from "@/lib/utils";
 
@@ -55,7 +55,7 @@ export default async function IndiceCpv() {
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{
-          __html: JSON.stringify([migasJsonLd(migas), listaJsonLd("Licitaciones por código CPV", entradas)]),
+          __html: serializarJsonLd([migasJsonLd(migas), listaJsonLd("Licitaciones por código CPV", entradas)]),
         }}
       />
 

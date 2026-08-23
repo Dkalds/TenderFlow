@@ -7,10 +7,10 @@ import { legacyRedirects } from "./src/lib/space-views";
  * X-DNS-Prefetch-Control y HSTS.
  *
  * El Content-Security-Policy NO se emite en este fichero. Se construye por
- * request en `src/middleware.ts` y va en enforcing (cabecera
+ * request en `src/proxy.ts` y va en enforcing (cabecera
  * `Content-Security-Policy`, no Report-Only), porque `script-src` usa un nonce
  * nuevo en cada respuesta junto a `'strict-dynamic'`: un array de headers
- * estático no puede generar ese valor. El matcher del middleware excluye
+ * estático no puede generar ese valor. El matcher del proxy excluye
  * `/api`, `/_next/static`, `/_next/image` y `favicon.ico`. En `/_next/static`
  * y `/_next/image` eso deja las de abajo como únicas cabeceras. `/api/*` no:
  * `rewrites()` lo proxya al backend FastAPI, que ya emite las suyas desde

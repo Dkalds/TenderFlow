@@ -21,6 +21,7 @@ import { HeroConsola } from "./_components/hero-consola";
 import { EnlaceSolicitarAcceso } from "./_components/enlace-solicitar-acceso";
 import capturaRadarClaro from "./_assets/radar-claro.webp";
 import capturaRadarOscuro from "./_assets/radar-oscuro.webp";
+import { serializarJsonLd } from "@/lib/jsonld";
 
 /**
  * Landing pública — la única página de TenderFlow que un buscador puede
@@ -42,6 +43,14 @@ import capturaRadarOscuro from "./_assets/radar-oscuro.webp";
  * raíz: en la portada duplicaría la marca ("TenderFlow … | TenderFlow") y se
  * comería caracteres del título en el resultado de búsqueda.
  */
+/**
+ * La landing no consulta datos, pero declara `revalidate` igual que el resto de
+ * la superficie pública: deja la ruta en el mismo régimen ISR y documenta que
+ * es estática a propósito. Hasta que el layout raíz dejó de leer `headers()`
+ * esto no habría servido de nada — la app entera se renderizaba por request.
+ */
+export const revalidate = 3600;
+
 export const metadata: Metadata = {
   title: { absolute: CONTENIDO.metaTitle },
   description: CONTENIDO.metaDescription,
@@ -168,7 +177,7 @@ function CtaAcceso({ utmContent }: { utmContent: string }) {
 export default function LandingPage() {
   return (
     <>
-      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(datosEstructurados()) }} />
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: serializarJsonLd(datosEstructurados()) }} />
 
       {/* Portada */}
       <section className="relative overflow-hidden">
