@@ -37,11 +37,7 @@ function descripcionSeo(lic: LicitacionPublica): string {
   return `${partes.join(" · ")}. Anuncio oficial, plazos y lotes.`.slice(0, 160);
 }
 
-export async function generateMetadata({
-  params,
-}: {
-  params: Promise<Params>;
-}): Promise<Metadata> {
+export async function generateMetadata({ params }: { params: Promise<Params> }): Promise<Metadata> {
   const { ref } = await params;
   const lic = await obtenerLicitacion(ref);
   if (!lic) return { title: "Licitación no encontrada", robots: { index: false } };
@@ -99,23 +95,17 @@ export default async function FichaLicitacion({ params }: { params: Promise<Para
     ["Fecha límite", fecha(lic.fecha_limite)],
     ["Inicio de ejecución", fecha(lic.fecha_inicio)],
     ["Fin de ejecución", fecha(lic.fecha_fin)],
-    [
-      "Duración",
-      lic.duracion_valor ? `${lic.duracion_valor} ${lic.duracion_unidad ?? ""}`.trim() : null,
-    ],
+    ["Duración", lic.duracion_valor ? `${lic.duracion_valor} ${lic.duracion_unidad ?? ""}`.trim() : null],
     ["Provincia", lic.provincia ?? null],
     ["Comunidad autónoma", lic.ccaa ?? null],
   ];
 
   return (
     <>
-      <script
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(migasJsonLd(migas)) }}
-      />
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(migasJsonLd(migas)) }} />
 
       <article className="mx-auto w-full max-w-4xl px-6 py-12">
-        <nav aria-label="Migas de pan" className="mb-6 text-xs text-muted-foreground">
+        <nav aria-label="Migas de pan" className="text-muted-foreground mb-6 text-xs">
           <ol className="flex flex-wrap items-center gap-1.5">
             {migas.slice(0, -1).map((miga) => (
               <li key={miga.ruta} className="flex items-center gap-1.5">
@@ -125,31 +115,27 @@ export default async function FichaLicitacion({ params }: { params: Promise<Para
                 <span aria-hidden="true">/</span>
               </li>
             ))}
-            <li className="truncate text-foreground/70">{lic.titulo.slice(0, 60)}</li>
+            <li className="text-foreground/70 truncate">{lic.titulo.slice(0, 60)}</li>
           </ol>
         </nav>
 
-        <h1 className="font-display text-3xl font-bold leading-[1.15] tracking-[-0.025em] text-balance md:text-4xl">
+        <h1 className="font-display text-3xl leading-[1.15] font-bold tracking-[-0.025em] text-balance md:text-4xl">
           {lic.titulo}
         </h1>
 
         {lic.descripcion && (
-          <p className="mt-6 max-w-[68ch] whitespace-pre-line text-base leading-relaxed text-muted-foreground">
+          <p className="text-muted-foreground mt-6 max-w-[68ch] text-base leading-relaxed whitespace-pre-line">
             {lic.descripcion}
           </p>
         )}
 
-        <h2 className="mt-12 font-display text-xl font-semibold tracking-[-0.02em]">
-          Datos del anuncio
-        </h2>
+        <h2 className="font-display mt-12 text-xl font-semibold tracking-[-0.02em]">Datos del anuncio</h2>
         <dl className="mt-5 grid gap-x-10 gap-y-4 sm:grid-cols-2">
           {datos
             .filter((par): par is [string, string] => Boolean(par[1]))
             .map(([etiqueta, valor]) => (
               <div key={etiqueta}>
-                <dt className="text-[11px] uppercase tracking-wide text-muted-foreground">
-                  {etiqueta}
-                </dt>
+                <dt className="text-muted-foreground text-[11px] tracking-wide uppercase">{etiqueta}</dt>
                 <dd className="mt-0.5 text-sm font-medium">{valor}</dd>
               </div>
             ))}
@@ -157,13 +143,11 @@ export default async function FichaLicitacion({ params }: { params: Promise<Para
 
         {lotes.length > 0 && (
           <>
-            <h2 className="mt-12 font-display text-xl font-semibold tracking-[-0.02em]">
-              Lotes ({lotes.length})
-            </h2>
+            <h2 className="font-display mt-12 text-xl font-semibold tracking-[-0.02em]">Lotes ({lotes.length})</h2>
             <div className="mt-5 overflow-x-auto">
               <table className="w-full min-w-[32rem] text-sm">
                 <thead>
-                  <tr className="border-b border-border/60 text-left text-[11px] uppercase tracking-wide text-muted-foreground">
+                  <tr className="border-border/60 text-muted-foreground border-b text-left text-[11px] tracking-wide uppercase">
                     <th className="py-2 pr-4 font-medium">Nº</th>
                     <th className="py-2 pr-4 font-medium">Objeto</th>
                     <th className="py-2 pr-4 font-medium">CPV</th>
@@ -172,7 +156,7 @@ export default async function FichaLicitacion({ params }: { params: Promise<Para
                 </thead>
                 <tbody>
                   {lotes.map((lote) => (
-                    <tr key={lote.numero} className="border-b border-border/30">
+                    <tr key={lote.numero} className="border-border/30 border-b">
                       <td className="py-2.5 pr-4 font-mono text-xs">{lote.numero}</td>
                       <td className="py-2.5 pr-4">{lote.titulo ?? "—"}</td>
                       <td className="py-2.5 pr-4 font-mono text-xs">{lote.cpv ?? "—"}</td>
@@ -189,23 +173,25 @@ export default async function FichaLicitacion({ params }: { params: Promise<Para
             reutilización a citar la fuente e indicar la fecha de la última
             actualización, así que este bloque es un requisito legal de la
             página, no un pie de página opcional. */}
-        <aside className="mt-12 rounded-lg border border-border/60 bg-card/40 p-5 text-sm">
+        <aside className="border-border/60 bg-card/40 mt-12 rounded-lg border p-5 text-sm">
           <p className="text-muted-foreground">
             Datos procedentes de la{" "}
-            <span className="font-medium text-foreground">
-              {lic.fuente === "ted" ? "base de datos TED de la Unión Europea" : "Plataforma de Contratación del Sector Público"}
+            <span className="text-foreground font-medium">
+              {lic.fuente === "ted"
+                ? "base de datos TED de la Unión Europea"
+                : "Plataforma de Contratación del Sector Público"}
             </span>
             , reutilizados al amparo de la Ley 37/2007.{" "}
             {fecha(lic.actualizado) && <>Última actualización: {fecha(lic.actualizado)}.</>}
           </p>
-          <p className="mt-3 text-muted-foreground">
+          <p className="text-muted-foreground mt-3">
             Para presentar oferta, el documento válido es el del perfil del contratante.{" "}
             {lic.url && (
               <a
                 href={lic.url}
                 rel="nofollow noopener"
                 target="_blank"
-                className="font-medium text-foreground underline underline-offset-4"
+                className="text-foreground font-medium underline underline-offset-4"
               >
                 Ver el anuncio oficial
               </a>
@@ -216,13 +202,13 @@ export default async function FichaLicitacion({ params }: { params: Promise<Para
         <div className="mt-10 flex flex-wrap gap-3">
           <Link
             href={rutaHubCcaa(lic.ccaa)}
-            className="inline-flex h-10 items-center rounded-md border border-input px-5 text-sm font-medium hover:bg-accent hover:text-accent-foreground"
+            className="border-input hover:bg-accent hover:text-accent-foreground inline-flex h-10 items-center rounded-md border px-5 text-sm font-medium"
           >
             Más licitaciones {lic.ccaa ? `en ${lic.ccaa}` : ""}
           </Link>
           <Link
             href="/login"
-            className="inline-flex h-10 items-center rounded-md bg-primary px-5 text-sm font-semibold text-primary-foreground hover:bg-primary/90"
+            className="bg-primary text-primary-foreground hover:bg-primary/90 inline-flex h-10 items-center rounded-md px-5 text-sm font-semibold"
           >
             Seguir este contrato con {SITE_NAME}
           </Link>

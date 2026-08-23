@@ -53,15 +53,7 @@ function useActiveSpaceKey(): string | undefined {
   return spaceAbsorbing(slug)?.space.key;
 }
 
-function RailButton({
-  space,
-  active,
-  href,
-}: {
-  space: ConsoleSpace;
-  active: boolean;
-  href: string;
-}) {
+function RailButton({ space, active, href }: { space: ConsoleSpace; active: boolean; href: string }) {
   const Icon = space.icon;
   return (
     <Tooltip>
@@ -74,19 +66,17 @@ function RailButton({
             "transition-colors duration-150 ease-out",
             active
               ? "border-primary/30 bg-primary/12 text-primary"
-              : "border-transparent text-muted-foreground/80 hover:text-foreground",
+              : "text-muted-foreground/80 hover:text-foreground border-transparent",
           )}
         >
           <Icon className="h-4 w-4" aria-hidden="true" />
-          <span className="font-mono text-[8px] font-medium leading-none tracking-[0.04em]">
-            {space.short}
-          </span>
+          <span className="font-mono text-[8px] leading-none font-medium tracking-[0.04em]">{space.short}</span>
           <span className="sr-only">{space.label}</span>
         </Link>
       </TooltipTrigger>
       <TooltipContent side="right">
         <span className="font-medium">{space.label}</span>
-        <span className="block max-w-56 text-[11px] text-muted-foreground">{space.description}</span>
+        <span className="text-muted-foreground block max-w-56 text-[11px]">{space.description}</span>
       </TooltipContent>
     </Tooltip>
   );
@@ -94,7 +84,10 @@ function RailButton({
 
 /** Menú de cuenta: lo que vivía en el extremo derecho del TopNav. */
 function AccountMenu() {
-  const { theme, setTheme } = useTheme();
+  // `resolvedTheme`, no `theme`: con `defaultTheme="system"` el valor de
+  // `theme` es "system" hasta que el usuario elige, y este toggle decide el
+  // siguiente tema a partir del que se está viendo de verdad.
+  const { resolvedTheme, setTheme } = useTheme();
   const { compact, toggleCompact } = useDensity();
   const organizations = useOrganizations();
   const activeOrganizationId = useActiveOrganizationId();
@@ -119,24 +112,22 @@ function AccountMenu() {
         <button
           type="button"
           aria-label="Menú de cuenta"
-          className="tf-pressable grid h-7 w-7 place-items-center rounded-full border border-primary/30 bg-primary/15 font-mono text-[10px] font-semibold text-primary"
+          className="tf-pressable border-primary/30 bg-primary/15 text-primary grid h-7 w-7 place-items-center rounded-full border font-mono text-[10px] font-semibold"
         >
           <User className="h-3.5 w-3.5" aria-hidden="true" />
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent side="right" align="end" className="w-60">
-        <p className="px-2 pb-1.5 pt-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+        <p className="text-muted-foreground px-2 pt-1 pb-1.5 text-[10px] font-semibold tracking-[0.12em] uppercase">
           Organización activa
         </p>
         <div className="px-2 pb-2">
           <select
             aria-label="Organización activa"
             value={activeOrganizationId ?? ""}
-            onChange={(event) =>
-              setActiveOrganizationId(event.target.value ? Number(event.target.value) : null)
-            }
+            onChange={(event) => setActiveOrganizationId(event.target.value ? Number(event.target.value) : null)}
             disabled={organizations.isLoading || !organizations.data?.length}
-            className="h-8 w-full rounded-md border border-input bg-background px-2 text-xs font-medium text-foreground"
+            className="border-input bg-background text-foreground h-8 w-full rounded-md border px-2 text-xs font-medium"
           >
             {!organizations.data?.length && <option value="">Organización personal</option>}
             {organizations.data?.map((organization) => (
@@ -153,24 +144,26 @@ function AccountMenu() {
             Gestionar equipo
           </Link>
         </DropdownMenuItem>
-        <DropdownMenuItem onSelect={(event) => { event.preventDefault(); toggleCompact(); }}>
+        <DropdownMenuItem
+          onSelect={(event) => {
+            event.preventDefault();
+            toggleCompact();
+          }}
+        >
           {compact ? <LayoutGrid className="h-4 w-4" /> : <AlignJustify className="h-4 w-4" />}
           {compact ? "Densidad cómoda" : "Densidad compacta"}
         </DropdownMenuItem>
         <DropdownMenuItem
           onSelect={(event) => {
             event.preventDefault();
-            setTheme(theme === "dark" ? "light" : "dark");
+            setTheme(resolvedTheme === "dark" ? "light" : "dark");
           }}
         >
-          {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-          {theme === "dark" ? "Modo claro" : "Modo oscuro"}
+          {resolvedTheme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+          {resolvedTheme === "dark" ? "Modo claro" : "Modo oscuro"}
         </DropdownMenuItem>
         <DropdownMenuSeparator />
-        <DropdownMenuItem
-          onSelect={() => handleLogout()}
-          className="text-destructive focus:text-destructive"
-        >
+        <DropdownMenuItem onSelect={() => handleLogout()} className="text-destructive focus:text-destructive">
           <LogOut className="h-4 w-4" />
           {"Cerrar sesión"}
         </DropdownMenuItem>
@@ -200,12 +193,12 @@ export function ConsoleRail() {
       <nav
         aria-label="Espacios"
         style={{ width: RAIL_WIDTH }}
-        className="sticky top-0 hidden h-screen shrink-0 flex-col items-center gap-1 border-r border-border/80 bg-[linear-gradient(180deg,hsl(var(--card)/0.9),hsl(var(--background)/0.8))] py-3 md:flex"
+        className="border-border/80 sticky top-0 hidden h-screen shrink-0 flex-col items-center gap-1 border-r bg-[linear-gradient(180deg,hsl(var(--card)/0.9),hsl(var(--background)/0.8))] py-3 md:flex"
       >
         <Link
           href={withFilters("/resumen")}
           aria-label="TenderFlow · ir al resumen"
-          className="mb-3.5 grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-primary text-primary-foreground shadow-[0_8px_18px_-10px_hsl(var(--primary)/0.7)]"
+          className="bg-primary text-primary-foreground mb-3.5 grid h-8 w-8 shrink-0 place-items-center rounded-lg shadow-[0_8px_18px_-10px_hsl(var(--primary)/0.7)]"
         >
           {/* Monograma TF real del repo (`tenderflow-logo.tsx`), no un glifo. */}
           <svg
@@ -225,10 +218,10 @@ export function ConsoleRail() {
           </svg>
         </Link>
 
-        <div className="flex min-h-0 flex-1 flex-col items-center gap-1 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <div className="flex min-h-0 flex-1 [scrollbar-width:none] flex-col items-center gap-1 overflow-y-auto [&::-webkit-scrollbar]:hidden">
           {groups.map((entry, index) => (
             <React.Fragment key={entry.group}>
-              {index > 0 && <span className="my-1.5 h-px w-6 bg-border/70" aria-hidden="true" />}
+              {index > 0 && <span className="bg-border/70 my-1.5 h-px w-6" aria-hidden="true" />}
               {entry.items.map((space) => (
                 <RailButton
                   key={space.key}
@@ -247,12 +240,7 @@ export function ConsoleRail() {
       {/* Móvil: el rail se pliega en un cajón. El diseño es de escritorio, pero
           plegarlo a nada dejaría el producto sin navegación en pantalla pequeña. */}
       <div className="tf-glass sticky top-0 z-40 flex h-12 items-center gap-2 px-3 md:hidden">
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={() => setMobileOpen(true)}
-          aria-label="Abrir navegación"
-        >
+        <Button variant="ghost" size="icon" onClick={() => setMobileOpen(true)} aria-label="Abrir navegación">
           <Menu className="h-5 w-5" />
         </Button>
         <Link href={withFilters("/resumen")} className="font-display text-sm font-bold">
@@ -268,13 +256,13 @@ export function ConsoleRail() {
 
       <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
         <SheetContent side="left" className="w-72 overflow-y-auto p-3 md:hidden">
-          <SheetTitle className="px-2 pb-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+          <SheetTitle className="text-muted-foreground px-2 pb-2 text-[10px] font-semibold tracking-[0.14em] uppercase">
             Espacios
           </SheetTitle>
           <nav aria-label="Navegación móvil" className="space-y-0.5">
             {groups.map((entry, index) => (
               <React.Fragment key={entry.group}>
-                {index > 0 && <span className="my-2 block h-px bg-border/70" aria-hidden="true" />}
+                {index > 0 && <span className="bg-border/70 my-2 block h-px" aria-hidden="true" />}
                 {entry.items.map((space) => {
                   const Icon = space.icon;
                   const active = activeKey === space.key;

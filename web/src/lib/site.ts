@@ -50,8 +50,8 @@ export const SITE_NAME = "TenderFlow";
  * que es lo que Google muestra antes de truncar.
  */
 export const SITE_DESCRIPTION =
-  "Inteligencia de mercado para licitaciones de tecnología del sector público " +
-  "español: seguimiento de concursos, análisis competitivo y alertas.";
+  "Radar de licitaciones públicas de tecnología enterprise en España: decide " +
+  "dónde pujar, a qué precio y contra quién, sobre fuentes oficiales.";
 
 /**
  * Imagen Open Graph, para **esparcir** en el `openGraph` de cualquier página
@@ -97,7 +97,7 @@ export const OG_IMAGE_COMPARTIDA: Pick<NonNullable<Metadata["openGraph"]>, "imag
       url: "/opengraph-image",
       width: 1200,
       height: 630,
-      alt: `${SITE_NAME} — Inteligencia de licitaciones del sector público español`,
+      alt: `${SITE_NAME} — Radar de licitaciones TI del sector público español`,
     },
   ],
 };

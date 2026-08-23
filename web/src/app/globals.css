@@ -329,6 +329,20 @@
   animation-duration: 500ms;
 }
 
+/* Llenado one-shot de una barra decorativa al montarse: scaleX 0→1 vía
+ * @starting-style, sin JavaScript. `transform` y no `width` para no tocar
+ * layout, con la curva de la casa y un delay que deja aterrizar primero a la
+ * tarjeta que lo contiene. Bajo prefers-reduced-motion el bloque global
+ * restringe transition-property a opacity/color, así que la barra aparece ya
+ * llena en vez de animarse; en navegadores sin @starting-style, igual. */
+@utility tf-fill-enter {
+  transform-origin: left;
+  transition: transform 600ms var(--ease-out) 350ms;
+  @starting-style {
+    transform: scaleX(0);
+  }
+}
+
 @utility fade-in-0 {
   --tf-enter-opacity: 0;
 }

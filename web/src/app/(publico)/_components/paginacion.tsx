@@ -60,8 +60,8 @@ export function Paginacion({
   const href = (pagina: number) => (pagina === 1 ? base : `${base}?p=${pagina}`);
 
   return (
-    <nav aria-label="Paginación" className="mt-10 border-t border-border/50 pt-6">
-      <p className="text-xs text-muted-foreground">
+    <nav aria-label="Paginación" className="border-border/50 mt-10 border-t pt-6">
+      <p className="text-muted-foreground text-xs">
         Página {paginaActual} de {ultima} · {formatNumber(total)} licitaciones
       </p>
       <ul className="mt-3 flex flex-wrap items-center gap-1.5">
@@ -70,7 +70,7 @@ export function Paginacion({
             <Link
               href={href(paginaActual - 1)}
               rel="prev"
-              className="inline-flex h-9 items-center rounded-md border border-input px-3 text-sm font-medium hover:bg-accent hover:text-accent-foreground"
+              className="border-input hover:bg-accent hover:text-accent-foreground inline-flex h-9 items-center rounded-md border px-3 text-sm font-medium"
             >
               Anterior
             </Link>
@@ -79,7 +79,7 @@ export function Paginacion({
 
         {paginasVisibles(paginaActual, ultima).map((pagina, indice) =>
           pagina === "…" ? (
-            <li key={`hueco-${indice}`} className="px-1.5 text-sm text-muted-foreground">
+            <li key={`hueco-${indice}`} className="text-muted-foreground px-1.5 text-sm">
               …
             </li>
           ) : (
@@ -89,8 +89,8 @@ export function Paginacion({
                 aria-current={pagina === paginaActual ? "page" : undefined}
                 className={
                   pagina === paginaActual
-                    ? "inline-flex h-9 min-w-9 items-center justify-center rounded-md bg-primary px-3 text-sm font-semibold text-primary-foreground"
-                    : "inline-flex h-9 min-w-9 items-center justify-center rounded-md border border-input px-3 text-sm hover:bg-accent hover:text-accent-foreground"
+                    ? "bg-primary text-primary-foreground inline-flex h-9 min-w-9 items-center justify-center rounded-md px-3 text-sm font-semibold"
+                    : "border-input hover:bg-accent hover:text-accent-foreground inline-flex h-9 min-w-9 items-center justify-center rounded-md border px-3 text-sm"
                 }
               >
                 {pagina}
@@ -104,7 +104,7 @@ export function Paginacion({
             <Link
               href={href(paginaActual + 1)}
               rel="next"
-              className="inline-flex h-9 items-center rounded-md border border-input px-3 text-sm font-medium hover:bg-accent hover:text-accent-foreground"
+              className="border-input hover:bg-accent hover:text-accent-foreground inline-flex h-9 items-center rounded-md border px-3 text-sm font-medium"
             >
               Siguiente
             </Link>

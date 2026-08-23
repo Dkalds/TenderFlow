@@ -31,12 +31,7 @@ import {
   Star,
   Sun,
 } from "lucide-react";
-import {
-  isSpaceVisible,
-  CONSOLE_GROUP_ORDER,
-  CONSOLE_SPACES,
-  type ConsoleGroup,
-} from "@/lib/console-spaces";
+import { isSpaceVisible, CONSOLE_GROUP_ORDER, CONSOLE_SPACES, type ConsoleGroup } from "@/lib/console-spaces";
 
 /** Encabezados de los grupos del rail, en la paleta. */
 const GROUP_LABELS: Record<ConsoleGroup, string> = {
@@ -70,7 +65,9 @@ function CommandPaletteInner() {
   const openCopilot = useUiStore((s) => s.openCopilot);
   const openSavedViews = useUiStore((s) => s.openSavedViews);
   const router = useRouter();
-  const { theme, setTheme } = useTheme();
+  // `resolvedTheme`, no `theme`: con `defaultTheme="system"` el toggle debe
+  // partir del tema que se está viendo, no del literal "system".
+  const { resolvedTheme, setTheme } = useTheme();
   const { compact, toggleCompact } = useDensity();
   const isAdmin = useAdmin();
   const withFilters = useWithFilters();
@@ -144,7 +141,7 @@ function CommandPaletteInner() {
       />
       <Command
         label="Paleta de comandos"
-        className="tf-glass-strong relative z-10 w-full max-w-xl overflow-hidden rounded-xl border border-border/70 shadow-2xl"
+        className="tf-glass-strong border-border/70 relative z-10 w-full max-w-xl overflow-hidden rounded-xl border shadow-2xl"
         loop
         onKeyDown={(e) => {
           if (e.key === "Escape") {
@@ -153,51 +150,45 @@ function CommandPaletteInner() {
           }
         }}
       >
-        <div className="flex items-center gap-2 border-b border-border/60 px-3">
-          <Sparkles className="h-4 w-4 shrink-0 text-primary" />
+        <div className="border-border/60 flex items-center gap-2 border-b px-3">
+          <Sparkles className="text-primary h-4 w-4 shrink-0" />
           <Command.Input
             ref={inputRef}
             value={search}
             onValueChange={setSearch}
             placeholder="Buscar páginas, acciones o id de licitación…"
-            className="h-12 w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+            className="placeholder:text-muted-foreground h-12 w-full bg-transparent text-sm outline-none"
           />
-          <kbd className="hidden rounded border border-border/70 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground sm:inline">
+          <kbd className="border-border/70 text-muted-foreground hidden rounded border px-1.5 py-0.5 font-mono text-[10px] sm:inline">
             Esc
           </kbd>
         </div>
 
         <Command.List className="max-h-[min(60vh,420px)] overflow-y-auto p-2">
-          <Command.Empty className="py-6 text-center text-sm text-muted-foreground">
-            Sin resultados.
-          </Command.Empty>
+          <Command.Empty className="text-muted-foreground py-6 text-center text-sm">Sin resultados.</Command.Empty>
 
           {(showJump || showSearch) && (
             <Command.Group
               heading="Saltar a"
-              className="px-1 text-[11px] font-medium text-muted-foreground [&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:py-1.5"
+              className="text-muted-foreground px-1 text-[11px] font-medium [&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:py-1.5"
             >
               {showJump && (
                 <Command.Item
                   value={`licitacion ${idQuery}`}
-                  onSelect={() =>
-                    run(() => router.push(`/detalle?lic=${encodeURIComponent(idQuery)}`))
-                  }
-                  className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-sm aria-selected:bg-accent aria-selected:text-accent-foreground"
+                  onSelect={() => run(() => router.push(`/detalle?lic=${encodeURIComponent(idQuery)}`))}
+                  className="aria-selected:bg-accent aria-selected:text-accent-foreground flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-sm"
                 >
-                  <ArrowRight className="h-4 w-4 text-primary" />
+                  <ArrowRight className="text-primary h-4 w-4" />
                   Ir a licitación <span className="font-mono text-xs">{idQuery}</span>
                 </Command.Item>
               )}
               {showSearch && (
                 <Command.Item
                   value={`buscar ${idQuery}`}
-                  onSelect={() =>
-                    run(() => router.push(`/detalle?q=${encodeURIComponent(idQuery)}`))
-                  }
-                  className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-sm aria-selected:bg-accent aria-selected:text-accent-foreground"
+                  onSelect={() => run(() => router.push(`/detalle?q=${encodeURIComponent(idQuery)}`))}
+                  className="aria-selected:bg-accent aria-selected:text-accent-foreground flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-sm"
                 >
-                  <Search className="h-4 w-4 text-primary" />
+                  <Search className="text-primary h-4 w-4" />
                   Buscar <span className="font-mono text-xs">&quot;{idQuery}&quot;</span> en licitaciones
                 </Command.Item>
               )}
@@ -206,40 +197,30 @@ function CommandPaletteInner() {
 
           <Command.Group
             heading="Acciones"
-            className="px-1 text-[11px] font-medium text-muted-foreground [&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:py-1.5"
+            className="text-muted-foreground px-1 text-[11px] font-medium [&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:py-1.5"
           >
             <Command.Item
               value="copiloto preguntar ask ia"
               onSelect={() => run(() => openCopilot())}
-              className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-sm aria-selected:bg-accent aria-selected:text-accent-foreground"
+              className="aria-selected:bg-accent aria-selected:text-accent-foreground flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-sm"
             >
-              <Sparkles className="h-4 w-4 text-primary" />
+              <Sparkles className="text-primary h-4 w-4" />
               Abrir copiloto
             </Command.Item>
             <Command.Item
               value="tema theme oscuro claro dark light"
-              onSelect={() =>
-                run(() => setTheme(theme === "dark" ? "light" : "dark"))
-              }
-              className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-sm aria-selected:bg-accent aria-selected:text-accent-foreground"
+              onSelect={() => run(() => setTheme(resolvedTheme === "dark" ? "light" : "dark"))}
+              className="aria-selected:bg-accent aria-selected:text-accent-foreground flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-sm"
             >
-              {theme === "dark" ? (
-                <Sun className="h-4 w-4" />
-              ) : (
-                <Moon className="h-4 w-4" />
-              )}
-              Cambiar tema ({theme === "dark" ? "claro" : "oscuro"})
+              {resolvedTheme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+              Cambiar tema ({resolvedTheme === "dark" ? "claro" : "oscuro"})
             </Command.Item>
             <Command.Item
               value="densidad compacta normal density"
               onSelect={() => run(() => toggleCompact())}
-              className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-sm aria-selected:bg-accent aria-selected:text-accent-foreground"
+              className="aria-selected:bg-accent aria-selected:text-accent-foreground flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-sm"
             >
-              {compact ? (
-                <LayoutGrid className="h-4 w-4" />
-              ) : (
-                <AlignJustify className="h-4 w-4" />
-              )}
+              {compact ? <LayoutGrid className="h-4 w-4" /> : <AlignJustify className="h-4 w-4" />}
               Densidad {compact ? "normal" : "compacta"}
             </Command.Item>
           </Command.Group>
@@ -247,56 +228,44 @@ function CommandPaletteInner() {
           {hasActiveFilters && (
             <Command.Group
               heading="Acciones con filtros"
-              className="px-1 text-[11px] font-medium text-muted-foreground [&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:py-1.5"
+              className="text-muted-foreground px-1 text-[11px] font-medium [&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:py-1.5"
             >
               <Command.Item
                 value="guardar vista actual saved view"
                 onSelect={() => run(() => openSavedViews())}
-                className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-sm aria-selected:bg-accent aria-selected:text-accent-foreground"
+                className="aria-selected:bg-accent aria-selected:text-accent-foreground flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-sm"
               >
-                <Bookmark className="h-4 w-4 text-primary" />
+                <Bookmark className="text-primary h-4 w-4" />
                 Guardar vista actual
               </Command.Item>
               <Command.Item
                 value="crear regla watchlist alerta filtros"
                 onSelect={() =>
-                  run(() =>
-                    router.push(
-                      `/mi-watchlist?prefill=${encodeURIComponent(JSON.stringify(filterParams))}`,
-                    ),
-                  )
+                  run(() => router.push(`/mi-watchlist?prefill=${encodeURIComponent(JSON.stringify(filterParams))}`))
                 }
-                className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-sm aria-selected:bg-accent aria-selected:text-accent-foreground"
+                className="aria-selected:bg-accent aria-selected:text-accent-foreground flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-sm"
               >
-                <Star className="h-4 w-4 text-primary" />
+                <Star className="text-primary h-4 w-4" />
                 Crear regla de watchlist con estos filtros
               </Command.Item>
               <Command.Item
                 value="exportar csv vista actual"
                 onSelect={() =>
-                  run(() =>
-                    triggerDownload(
-                      buildExportUrl("/api/v1/exports/download", "csv", filterParams),
-                    ),
-                  )
+                  run(() => triggerDownload(buildExportUrl("/api/v1/exports/download", "csv", filterParams)))
                 }
-                className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-sm aria-selected:bg-accent aria-selected:text-accent-foreground"
+                className="aria-selected:bg-accent aria-selected:text-accent-foreground flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-sm"
               >
-                <FileText className="h-4 w-4 text-primary" />
+                <FileText className="text-primary h-4 w-4" />
                 Exportar CSV (vista actual)
               </Command.Item>
               <Command.Item
                 value="exportar excel xlsx vista actual"
                 onSelect={() =>
-                  run(() =>
-                    triggerDownload(
-                      buildExportUrl("/api/v1/exports/download", "xlsx", filterParams),
-                    ),
-                  )
+                  run(() => triggerDownload(buildExportUrl("/api/v1/exports/download", "xlsx", filterParams)))
                 }
-                className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-sm aria-selected:bg-accent aria-selected:text-accent-foreground"
+                className="aria-selected:bg-accent aria-selected:text-accent-foreground flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-sm"
               >
-                <FileSpreadsheet className="h-4 w-4 text-primary" />
+                <FileSpreadsheet className="text-primary h-4 w-4" />
                 Exportar Excel (vista actual)
               </Command.Item>
               <Command.Item
@@ -307,9 +276,9 @@ function CommandPaletteInner() {
                     toast.success("Enlace copiado");
                   })
                 }
-                className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-sm aria-selected:bg-accent aria-selected:text-accent-foreground"
+                className="aria-selected:bg-accent aria-selected:text-accent-foreground flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-sm"
               >
-                <Link2 className="h-4 w-4 text-primary" />
+                <Link2 className="text-primary h-4 w-4" />
                 Copiar enlace con filtros
               </Command.Item>
             </Command.Group>
@@ -322,7 +291,7 @@ function CommandPaletteInner() {
             <Command.Group
               key={group.label}
               heading={group.label}
-              className="px-1 text-[11px] font-medium text-muted-foreground [&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:py-1.5"
+              className="text-muted-foreground px-1 text-[11px] font-medium [&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:py-1.5"
             >
               {group.items.map((item) => {
                 const Icon = item.icon;
@@ -331,13 +300,11 @@ function CommandPaletteInner() {
                     key={item.href}
                     value={item.value}
                     onSelect={() => run(() => router.push(withFilters(item.href)))}
-                    className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-sm aria-selected:bg-accent aria-selected:text-accent-foreground"
+                    className="aria-selected:bg-accent aria-selected:text-accent-foreground flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-sm"
                   >
-                    <Icon className="h-4 w-4 text-muted-foreground" />
+                    <Icon className="text-muted-foreground h-4 w-4" />
                     {item.label}
-                    {item.hint && (
-                      <span className="ml-auto text-[11px] text-muted-foreground">{item.hint}</span>
-                    )}
+                    {item.hint && <span className="text-muted-foreground ml-auto text-[11px]">{item.hint}</span>}
                   </Command.Item>
                 );
               })}
