@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { ArrowUpRight, Hash } from "lucide-react";
 import { obtenerHubs } from "@/lib/publico-api";
 import { OG_IMAGE_COMPARTIDA, TWITTER_COMPARTIDO } from "@/lib/site";
 import { listaJsonLd, migasJsonLd } from "@/lib/jsonld";
@@ -14,6 +15,9 @@ import { formatNumber } from "@/lib/utils";
  * del público objetivo busca literalmente por código. Igual que
  * `/licitaciones`, este índice existe tanto para que la URL padre no devuelva
  * 404 como para que los hubs por código reciban enlaces internos.
+ *
+ * Los totales por código vienen del endpoint de hubs (ADR-014: aquí no se
+ * agrega nada); las cards comparten lenguaje visual con la landing.
  */
 
 export const metadata: Metadata = {
@@ -55,8 +59,12 @@ export default async function IndiceCpv() {
         }}
       />
 
-      <div className="mx-auto w-full max-w-5xl px-6 py-12">
-        <h1 className="font-display text-3xl font-bold tracking-[-0.025em] text-balance md:text-4xl">
+      <div className="mx-auto w-full max-w-6xl px-6 py-12">
+        <p className="text-primary flex items-center gap-2 font-mono text-xs tracking-widest uppercase">
+          <Hash className="h-4 w-4" aria-hidden="true" />
+          Por código CPV
+        </p>
+        <h1 className="font-display mt-3 text-3xl font-bold tracking-[-0.025em] text-balance md:text-4xl">
           Licitaciones por código CPV
         </h1>
         <p className="text-muted-foreground mt-4 max-w-[62ch] text-base leading-relaxed">
@@ -64,15 +72,23 @@ export default async function IndiceCpv() {
           de cada contrato. Estos son los códigos con actividad en el corpus, ordenados por volumen.
         </p>
 
-        <ul className="mt-10 grid gap-x-8 gap-y-1 sm:grid-cols-2 lg:grid-cols-3">
+        <ul className="mt-10 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {cpv.map((hub) => (
             <li key={hub.codigo}>
               <Link
                 href={rutaHubCpv(hub.codigo)}
-                className="hover:bg-accent/60 flex items-baseline justify-between gap-3 rounded px-1 py-2"
+                className="group border-border/70 bg-card focus-visible:ring-ring hover:border-primary/40 flex items-center justify-between gap-3 rounded-xl border px-5 py-4 transition-[transform,border-color,box-shadow] duration-200 ease-out hover:shadow-md focus-visible:ring-2 focus-visible:outline-none active:scale-[0.99]"
               >
-                <span className="font-mono text-sm font-medium">{hub.codigo}</span>
-                <span className="text-muted-foreground text-xs tabular-nums">{formatNumber(hub.total)}</span>
+                <span className="min-w-0">
+                  <span className="block truncate font-mono text-sm font-semibold">{hub.codigo}</span>
+                  <span className="text-muted-foreground tf-tnum mt-0.5 block text-xs">
+                    {formatNumber(hub.total)} licitaciones
+                  </span>
+                </span>
+                <ArrowUpRight
+                  aria-hidden="true"
+                  className="text-muted-foreground group-hover:text-primary h-4 w-4 shrink-0 transition-[transform,color] duration-200 ease-out group-hover:translate-x-0.5 group-hover:-translate-y-0.5"
+                />
               </Link>
             </li>
           ))}

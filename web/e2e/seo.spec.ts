@@ -48,9 +48,7 @@ test.describe("Superficie pública sin sesión", () => {
     expect(new URL(canonical ?? "").pathname).toBe("/");
   });
 
-  test("la portada declara los datos estructurados que se ven en la página", async ({
-    page,
-  }) => {
+  test("la portada declara los datos estructurados que se ven en la página", async ({ page }) => {
     await page.goto("/");
 
     const bruto = await page.locator('script[type="application/ld+json"]').textContent();
@@ -63,12 +61,8 @@ test.describe("Superficie pública sin sesión", () => {
 
     // Marcar como FAQ preguntas que no están visibles infringe las directrices
     // de Google. Cada pregunta del JSON-LD tiene que existir en el HTML.
-    const faq = (grafo["@graph"] ?? []).find(
-      (n: { "@type": string }) => n["@type"] === "FAQPage",
-    );
-    const preguntas: string[] = (faq?.mainEntity ?? []).map(
-      (q: { name: string }) => q.name,
-    );
+    const faq = (grafo["@graph"] ?? []).find((n: { "@type": string }) => n["@type"] === "FAQPage");
+    const preguntas: string[] = (faq?.mainEntity ?? []).map((q: { name: string }) => q.name);
     expect(preguntas.length).toBeGreaterThan(0);
     for (const pregunta of preguntas) {
       await expect(page.getByText(pregunta, { exact: true })).toBeVisible();
@@ -89,9 +83,7 @@ test.describe("Superficie pública sin sesión", () => {
     expect(body).toContain("Sitemap:");
   });
 
-  test("el indice de sitemaps existe y enumera ficheros que se sirven", async ({
-    request,
-  }) => {
+  test("el indice de sitemaps existe y enumera ficheros que se sirven", async ({ request }) => {
     // `robots.txt` anuncia esta URL. Con `generateSitemaps`, Next publica
     // `/sitemap/N.xml` pero NO crea indice: `/sitemap.xml` da 404. Si alguien
     // vuelve a apuntar el robots ahi, Search Console lo reporta como error de
@@ -128,6 +120,18 @@ test.describe("Superficie pública sin sesión", () => {
     expect(res.status()).toBe(200);
   });
 
+  test("el CTA de acceso tiene un destino real", async ({ page }) => {
+    // El acceso es por invitación: el CTA principal apunta al mailto de
+    // contacto cuando el build lo definió (NEXT_PUBLIC_CONTACT_EMAIL) o a
+    // /login con atribución UTM cuando no. Cualquier otro destino significa
+    // que el embudo se rompió — el fallo que motivó lib/contacto.ts era un
+    // CTA que moría en un formulario de registro deshabilitado.
+    await page.goto("/");
+
+    const href = await page.getByRole("link", { name: "Solicita acceso" }).first().getAttribute("href");
+    expect(href).toMatch(/^(mailto:.+|\/login\?utm_source=publico&utm_content=hero)$/);
+  });
+
   test("la portada enlaza a la superficie de datos", async ({ page }) => {
     // Sin estos enlaces, los hubs y las fichas solo existen en el sitemap:
     // rastreables, pero sin que nada les transmita autoridad. Es la diferencia
@@ -138,9 +142,7 @@ test.describe("Superficie pública sin sesión", () => {
     await expect(page.locator('a[href="/cpv"]').first()).toBeVisible();
   });
 
-  test("los indices de la superficie publica no dan error de servidor", async ({
-    request,
-  }) => {
+  test("los indices de la superficie publica no dan error de servidor", async ({ request }) => {
     // No se afirma 200: con una base sembrada sin volumen suficiente, el indice
     // devuelve 404 a proposito (un indice vacio es contenido delgado). Lo que
     // nunca puede pasar es un 5xx, que es lo que este test fija.
@@ -179,14 +181,8 @@ test.describe("Metadatos de /login", () => {
     // distinto; sin canonical serían decenas de URLs con el mismo contenido.
     await page.goto("/login?redirect=%2Fresumen");
 
-    await expect(page.locator('link[rel="canonical"]')).toHaveAttribute(
-      "href",
-      /\/login$/,
-    );
-    await expect(page.locator('meta[name="robots"]')).toHaveAttribute(
-      "content",
-      /noindex/,
-    );
+    await expect(page.locator('link[rel="canonical"]')).toHaveAttribute("href", /\/login$/);
+    await expect(page.locator('meta[name="robots"]')).toHaveAttribute("content", /noindex/);
   });
 
   test("emite las etiquetas que necesitan los unfurlers", async ({ page }) => {
@@ -194,16 +190,11 @@ test.describe("Metadatos de /login", () => {
 
     await expect(page.locator('meta[property="og:title"]')).toHaveCount(1);
     await expect(page.locator('meta[property="og:image"]')).toHaveCount(1);
-    await expect(page.locator('meta[name="twitter:card"]')).toHaveAttribute(
-      "content",
-      "summary_large_image",
-    );
+    await expect(page.locator('meta[name="twitter:card"]')).toHaveAttribute("content", "summary_large_image");
 
     // `og:image` debe ser absoluta o ningún unfurler la resuelve: eso es lo que
     // aporta `metadataBase` en `app/layout.tsx`.
-    const ogImage = await page
-      .locator('meta[property="og:image"]')
-      .getAttribute("content");
+    const ogImage = await page.locator('meta[property="og:image"]').getAttribute("content");
     expect(ogImage).toMatch(/^https?:\/\//);
   });
 });
