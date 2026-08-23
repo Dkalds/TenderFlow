@@ -25,6 +25,10 @@ const PUBLIC_PREFIXES = [
   "/licitaciones",
   "/cpv",
   "/aviso-legal",
+  // Acuse de recibo del formulario de solicitud de acceso: es el destino del
+  // 303 que devuelve la API, así que lo alcanza gente sin sesión por
+  // definición. Lleva `noindex` en sus propios metadatos.
+  "/solicitud-recibida",
   "/_next",
   "/favicon.ico",
   "/spain-ccaa.json",

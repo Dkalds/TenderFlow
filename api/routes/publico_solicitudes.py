@@ -1,0 +1,177 @@
+"""Ruta ``POST /api/v1/publico/solicitudes-acceso`` — cola de peticiones de acceso.
+
+Único endpoint público de **escritura** de la API, y por eso todo aquí es
+deliberado.
+
+**Cuelga de ``/publico`` por la misma razón que el resto de la superficie
+anónima**: ``api/app.py`` registra al final un catch-all
+``/api/v1/licitaciones/{id_externo:path}`` con ``require_any_auth``, y
+cualquier ruta pública bajo ese prefijo quedaría ensombrecida sin un solo error
+en el arranque. Además ``scripts/check_public_surface.py`` escanea
+``api/routes/publico*.py``, así que este fichero entra gratis en ese guard.
+
+**Acepta ``application/x-www-form-urlencoded``, no JSON.** El formulario de la
+landing es HTML puro dentro de un Server Component: sin JavaScript de cliente,
+sin ``fetch`` y sin hidratación. Un ``<form method="post">`` nativo envía
+form-encoded, y a cambio el embudo funciona con el JavaScript bloqueado, que es
+exactamente el escenario en el que un ``mailto:`` también fallaba.
+
+El cuerpo se parsea con ``urllib.parse.parse_qs`` y no con ``Form()`` de
+FastAPI, que exigiría añadir ``python-multipart`` a las dependencias. Para un
+único endpoint que sólo recibe urlencoded, tres líneas de biblioteca estándar
+evitan un parser nuevo en el árbol de dependencias —y la regeneración de locks
+con hashes que arrastra—. ``multipart/form-data`` se rechaza explícitamente:
+aquí no se suben ficheros.
+
+**Responde 303 y nunca 5xx.** ``scripts/fuzz_api_contract.py`` mantiene
+``KNOWN_5XX`` a cero: entrada de internet, salida limpia. Un envío inválido no
+es un error del servidor, es una redirección a la misma página de gracias con
+``?estado=error``. Y como el navegador sigue la redirección, el usuario nunca
+ve JSON.
+
+**Sin CSRF, a propósito.** ``require_csrf`` es una dependencia por endpoint que
+sólo aplica cuando hay cookie de sesión (``api/routes/dual_auth.py``); este POST
+es anónimo y no muta nada del usuario que lo envía. Lo que sí se comprueba es
+que ``Origin``/``Referer``, **cuando vienen**, pertenezcan al propio sitio: no
+es una defensa contra un atacante determinado —puede omitir la cabecera— pero
+corta el envío cruzado casual desde un formulario alojado en otro dominio.
+
+**Anti-abuso sin captcha.** La CSP de la superficie pública es
+``connect-src 'self'``, así que un captcha de terceros no cargaría sin
+relajarla. Lo que hay: un bucket de rate limit propio y estricto en
+``api/middleware.py`` (no el de la superficie pública, que es de 600/min y
+compartido con los rastreadores), y un campo trampa que ningún humano ve. Es
+suficiente para una cola que revisa una persona y cuyo peor caso es borrar
+filas — la concesión de acceso sigue siendo manual y fail-closed.
+"""
+
+from __future__ import annotations
+
+import re
+from urllib.parse import parse_qs, urlparse
+
+from fastapi import APIRouter, Request, status
+from fastapi.responses import RedirectResponse
+
+from api.concurrency import run_db
+from config.settings import settings
+from db.solicitudes_acceso import crear_solicitud
+from observability.logging import get_logger
+
+log = get_logger(__name__)
+
+router = APIRouter(tags=["publico"])
+
+# Página de gracias de la web. Relativa a propósito: así atraviesa el rewrite
+# de Vercel y funciona igual en local, en preview y en producción.
+_DESTINO_OK = "/solicitud-recibida"
+_DESTINO_ERROR = "/solicitud-recibida?estado=error"
+
+# Validación de email deliberadamente laxa: el objetivo es descartar la errata
+# evidente, no decidir si un buzón existe. Un patrón estricto rechaza
+# direcciones válidas y el coste de un falso negativo aquí es perder un lead.
+_EMAIL = re.compile(r"^[^@\s]+@[^@\s.]+\.[^@\s]+$")
+
+_MAX_EMAIL = 254  # RFC 5321
+_MAX_EMPRESA = 200
+_MAX_MENSAJE = 2000
+
+# Orígenes de los que se acepta el envío. Sólo se comprueba si la cabecera
+# viene; ver el docstring del módulo.
+_ORIGENES_DEV = ("http://localhost:3000", "http://127.0.0.1:3000")
+
+
+def _origenes_validos() -> set[str]:
+    permitidos = {
+        origen.strip().rstrip("/")
+        for origen in (settings.CORS_ALLOWED_ORIGINS or "").split(",")
+        if origen.strip()
+    }
+    if settings.ENV == "dev":
+        permitidos.update(_ORIGENES_DEV)
+    return permitidos
+
+
+def _origen_ajeno(request: Request) -> bool:
+    """``True`` si la petición declara un origen y no es de los nuestros."""
+    permitidos = _origenes_validos()
+    if not permitidos:
+        # Sin configuración no se puede afirmar que un origen sea ajeno, y
+        # rechazar por defecto dejaría el formulario roto en cuanto alguien
+        # despliegue sin CORS_ALLOWED_ORIGINS. El rate limit sigue en pie.
+        return False
+    declarado = request.headers.get("origin") or request.headers.get("referer")
+    if not declarado:
+        return False
+    partes = urlparse(declarado)
+    if not partes.scheme or not partes.netloc:
+        return False
+    return f"{partes.scheme}://{partes.netloc}" not in permitidos
+
+
+def _limpiar(valor: str | None, maximo: int) -> str | None:
+    if valor is None:
+        return None
+    recortado = valor.strip()[:maximo]
+    return recortado or None
+
+
+# Sólo se acepta el envío nativo de un formulario HTML.
+_TIPO_FORMULARIO = "application/x-www-form-urlencoded"
+
+
+def _campo(datos: dict[str, list[str]], nombre: str) -> str:
+    """Primer valor de un campo del formulario, o cadena vacía."""
+    valores = datos.get(nombre)
+    return valores[0] if valores else ""
+
+
+@router.post(
+    "/publico/solicitudes-acceso",
+    status_code=status.HTTP_303_SEE_OTHER,
+    summary="Registra una solicitud de acceso enviada desde la web pública",
+    response_class=RedirectResponse,
+)
+async def solicitar_acceso(request: Request) -> RedirectResponse:
+    if not request.headers.get("content-type", "").startswith(_TIPO_FORMULARIO):
+        return RedirectResponse(_DESTINO_ERROR, status_code=status.HTTP_303_SEE_OTHER)
+
+    # El límite de 1 MB de cuerpo ya lo aplica el middleware de la aplicación.
+    crudo = await request.body()
+    datos = parse_qs(crudo.decode("utf-8", errors="replace"), keep_blank_values=True)
+
+    # Campo trampa: invisible para una persona, irresistible para un bot que
+    # rellena todo lo que encuentra. Si viene con algo se responde el mismo 303
+    # de éxito y no se guarda nada — decírselo sólo le enseñaría a evitarlo.
+    if _campo(datos, "website").strip():
+        log.info("solicitud_acceso_honeypot")
+        return RedirectResponse(_DESTINO_OK, status_code=status.HTTP_303_SEE_OTHER)
+
+    if _origen_ajeno(request):
+        log.warning("solicitud_acceso_origen_ajeno")
+        return RedirectResponse(_DESTINO_ERROR, status_code=status.HTTP_303_SEE_OTHER)
+
+    correo = _campo(datos, "email").strip()[:_MAX_EMAIL]
+    # El consentimiento es obligatorio: sin él no hay base para guardar un dato
+    # de contacto, así que el envío se rechaza en lugar de guardarse "por si
+    # acaso". Un checkbox HTML sin marcar ni siquiera se envía.
+    if not _EMAIL.match(correo) or not _campo(datos, "consentimiento").strip():
+        return RedirectResponse(_DESTINO_ERROR, status_code=status.HTTP_303_SEE_OTHER)
+
+    try:
+        await run_db(
+            crear_solicitud,
+            email=correo,
+            empresa=_limpiar(_campo(datos, "empresa"), _MAX_EMPRESA),
+            mensaje=_limpiar(_campo(datos, "mensaje"), _MAX_MENSAJE),
+            origen=_limpiar(_campo(datos, "origen"), 40),
+        )
+    except Exception:
+        # Nunca un 5xx desde una página pública: se registra para el operador y
+        # el visitante recibe la misma redirección de error que un envío mal
+        # formado. El fuzzer del contrato mantiene KNOWN_5XX a cero.
+        log.exception("solicitud_acceso_error")
+        return RedirectResponse(_DESTINO_ERROR, status_code=status.HTTP_303_SEE_OTHER)
+
+    log.info("solicitud_acceso_registrada")
+    return RedirectResponse(_DESTINO_OK, status_code=status.HTTP_303_SEE_OTHER)

@@ -19,6 +19,7 @@ import { solicitarAccesoHref } from "@/lib/contacto";
 import { CONTENIDO, type IconoLanding } from "./_content/landing";
 import { MarcoCaptura } from "./_components/marco-captura";
 import { FranjaDatos } from "./_components/franja-datos";
+import { FormularioSolicitud } from "./_components/formulario-solicitud";
 import { EnlaceSolicitarAcceso } from "./_components/enlace-solicitar-acceso";
 import capturaHero from "./_assets/radar-hero.webp";
 import capturaHeroMovil from "./_assets/radar-hero-movil.webp";
@@ -496,10 +497,10 @@ export default function LandingPage() {
           <p className="text-muted-foreground mx-auto mt-5 max-w-[62ch] text-base leading-relaxed md:text-lg">
             {CONTENIDO.cierreTexto}
           </p>
-          <div className="mt-9 flex justify-center">
-            <CtaAcceso utmContent="cierre" />
-          </div>
           <p className="text-muted-foreground mt-5 text-xs">{CONTENIDO.cierreNota}</p>
+          {/* El destino del CTA, aquí mismo. El botón del hero salta a este
+              ancla en vez de abrir un cliente de correo. */}
+          <FormularioSolicitud />
         </div>
       </section>
     </>

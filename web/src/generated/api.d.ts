@@ -24,6 +24,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/solicitudes-acceso": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Listar */
+        get: operations["listar_api_v1_admin_solicitudes_acceso_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/solicitudes-acceso/{solicitud_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Cambiar Estado */
+        patch: operations["cambiar_estado_api_v1_admin_solicitudes_acceso__solicitud_id__patch"];
+        trace?: never;
+    };
     "/api/v1/admin/users": {
         parameters: {
             query?: never;
@@ -2460,6 +2494,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/publico/solicitudes-acceso": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Registra una solicitud de acceso enviada desde la web pública */
+        post: operations["solicitar_acceso_api_v1_publico_solicitudes_acceso_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/pursuits": {
         parameters: {
             query?: never;
@@ -4155,6 +4206,11 @@ export interface components {
             importe: number;
             /** Mes */
             mes: number;
+        };
+        /** EstadoBody */
+        EstadoBody: {
+            /** Estado */
+            estado: string;
         };
         /**
          * EstadoCount
@@ -6755,6 +6811,26 @@ export interface components {
             /** Flags */
             flags: components["schemas"]["FlagIn"][];
         };
+        /**
+         * SolicitudAccesoOut
+         * @description Una solicitud de la cola, tal como la ve el panel.
+         */
+        SolicitudAccesoOut: {
+            /** Created At */
+            created_at?: string | null;
+            /** Email */
+            email: string;
+            /** Empresa */
+            empresa?: string | null;
+            /** Estado */
+            estado: string;
+            /** Id */
+            id: number;
+            /** Mensaje */
+            mensaje?: string | null;
+            /** Origen */
+            origen?: string | null;
+        };
         /** SourceFreshness */
         SourceFreshness: {
             /** Cursor Updated At */
@@ -8041,6 +8117,82 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    listar_api_v1_admin_solicitudes_acceso_get: {
+        parameters: {
+            query?: {
+                /** @description Filtra por estado de la cola */
+                estado?: string | null;
+                limit?: number;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SolicitudAccesoOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cambiar_estado_api_v1_admin_solicitudes_acceso__solicitud_id__patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                solicitud_id: number;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EstadoBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StatusOk"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
             };
         };
     };
@@ -12536,6 +12688,24 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ResumenSitemap"];
                 };
+            };
+        };
+    };
+    solicitar_acceso_api_v1_publico_solicitudes_acceso_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            303: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

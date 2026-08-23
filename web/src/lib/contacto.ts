@@ -17,32 +17,28 @@
 /** Email de contacto público, o `null` si el entorno no lo define. */
 export const CONTACT_EMAIL: string | null = process.env.NEXT_PUBLIC_CONTACT_EMAIL?.trim() || null;
 
+/** Ancla del formulario de solicitud en la landing. */
+export const ANCLA_SOLICITUD = "solicitar-acceso";
+
 /**
  * Destino del CTA "Solicita acceso".
  *
- * Con email configurado: `mailto:` con asunto y cuerpo prellenados (los dos
- * datos que el operador necesita para habilitar el acceso: email o dominio).
- * Sin él: /login con atribución UTM — Vercel Analytics ya está montado y
- * `utm_content` es una de sus dimensiones, así que distinguir qué CTA convierte
- * no requiere ni una línea de JavaScript en la landing. El canonical de /login
- * colapsa las variantes, así que el SEO no se entera.
+ * Apunta al formulario de la propia landing, que es el único destino que
+ * funciona siempre: un `mailto:` no hace nada en un escritorio con webmail y
+ * sin cliente de correo configurado, no deja rastro medible, y dependía de una
+ * variable de entorno que si faltaba mandaba al visitante a /login, donde el
+ * alta responde 403. El formulario persiste la petición en la API y devuelve
+ * una página de gracias.
  *
- * El origen viaja también en el cuerpo del `mailto`, y no es cosmético: la
- * rama con email ignoraba `utmContent` por completo, de modo que el enlace del
- * hero y el del cierre eran **byte a byte idénticos** y lo único capaz de
- * distinguirlos era el evento `track()` de la isla de analytics — que se pierde
- * con cualquier bloqueador. Una línea en el correo que llega sobrevive a eso.
+ * Se devuelve con la barra inicial para que sirva igual desde /login, que está
+ * en otra ruta; desde la propia landing el navegador lo trata como salto de
+ * fragmento y no recarga nada.
+ *
+ * `utmContent` sigue distinguiendo desde qué CTA se llegó: lo consume el evento
+ * de analytics de la isla `EnlaceSolicitarAcceso`. El correo de contacto ya no
+ * decide el destino del CTA principal — se mantiene para el pie y el aviso
+ * legal, donde sí es una dirección de contacto y no un embudo.
  */
-export function solicitarAccesoHref(utmContent: string): string {
-  if (!CONTACT_EMAIL) {
-    return `/login?utm_source=publico&utm_content=${encodeURIComponent(utmContent)}`;
-  }
-  const asunto = "Solicitud de acceso a TenderFlow";
-  const cuerpo =
-    "Hola,\n\n" +
-    "Quiero solicitar acceso a TenderFlow.\n\n" +
-    "Empresa:\n" +
-    "Email o dominio a habilitar:\n\n" +
-    `Origen: ${utmContent}\n`;
-  return `mailto:${CONTACT_EMAIL}?subject=${encodeURIComponent(asunto)}&body=${encodeURIComponent(cuerpo)}`;
+export function solicitarAccesoHref(_utmContent: string): string {
+  return `/#${ANCLA_SOLICITUD}`;
 }

@@ -114,6 +114,17 @@ export interface ContenidoLanding {
   cierreTitulo: string;
   cierreTexto: string;
   cierreNota: string;
+  /** Formulario de solicitud de acceso. Etiquetas y textos legales: es lo que
+   *  lee quien decide dejar sus datos, así que es copy y vive aquí. */
+  formEmail: string;
+  formEmpresa: string;
+  formMensaje: string;
+  formConsentimiento: string;
+  formAvisoLegal: string;
+  formEnviar: string;
+  /** Etiqueta del campo trampa. No la ve nadie salvo un bot o un lector de
+   *  pantalla mal configurado; existe para que el campo no quede sin nombre. */
+  formTrampa: string;
 }
 
 export const CONTENIDO: ContenidoLanding = {
@@ -349,4 +360,12 @@ export const CONTENIDO: ContenidoLanding = {
   // Antes repetía entera la FAQ de "¿puedo crearme una cuenta?". Ahora sólo
   // remite a ella.
   cierreNota: "El acceso es por invitación.",
+
+  formEmail: "Email de trabajo",
+  formEmpresa: "Empresa",
+  formMensaje: "¿Qué queréis mirar? (opcional)",
+  formConsentimiento: "Acepto que TenderFlow guarde estos datos para responder a esta solicitud de acceso, según el",
+  formAvisoLegal: "aviso legal",
+  formEnviar: "Enviar solicitud",
+  formTrampa: "No rellenes este campo",
 };
