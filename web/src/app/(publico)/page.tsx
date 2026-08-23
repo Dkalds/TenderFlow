@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import Image, { getImageProps } from "next/image";
+import type { LucideIcon } from "lucide-react";
 import {
   ArrowRight,
   ArrowUpRight,
@@ -9,14 +10,13 @@ import {
   FileText,
   Gauge,
   Radar,
-  ScanSearch,
   TrendingDown,
   Users,
   Workflow,
 } from "lucide-react";
 import { OG_IMAGE_COMPARTIDA, SITE_NAME, SITE_URL, TWITTER_COMPARTIDO } from "@/lib/site";
 import { solicitarAccesoHref } from "@/lib/contacto";
-import { CONTENIDO } from "./_content/landing";
+import { CONTENIDO, type IconoLanding } from "./_content/landing";
 import { MarcoCaptura } from "./_components/marco-captura";
 import { EnlaceSolicitarAcceso } from "./_components/enlace-solicitar-acceso";
 import capturaHero from "./_assets/radar-hero.webp";
@@ -124,11 +124,21 @@ function datosEstructurados() {
   };
 }
 
-/* Iconografía por posición, fuera del contenido: el copy es dato puro y la
- * elección visual pertenece a la maquetación. Mismo orden que los arrays de
- * `landing.ts`; ante un desajuste de longitud se cae al primero. */
-const ICONOS_PILARES = [Radar, TrendingDown, Users];
-const ICONOS_SECCIONES = [ScanSearch, Database, Gauge, TrendingDown, Users, FileText, Workflow];
+/* Iconografía fuera del contenido: el copy es dato puro y la elección visual
+ * pertenece a la maquetación. La correspondencia va por clave y no por
+ * posición — con arrays paralelos, reordenar `landing.ts` desalineaba los
+ * iconos sin un solo error de compilación, y el `?? ICONOS[0]` de rescate
+ * enmascaraba el desajuste en vez de delatarlo. Este `Record` es exhaustivo:
+ * añadir una clave al tipo sin darle icono no compila. */
+const ICONOS: Record<IconoLanding, LucideIcon> = {
+  radar: Radar,
+  precio: TrendingDown,
+  competencia: Users,
+  corpus: Database,
+  scoring: Gauge,
+  pliegos: FileText,
+  flujo: Workflow,
+};
 
 /* Los CTA a /login comparten piel en el hero y en el cierre; una sola
  * constante evita que las dos copias diverjan en el siguiente retoque.
@@ -148,6 +158,16 @@ const CTA_SECUNDARIO =
   "bg-background/60 px-6 text-sm font-medium " +
   "transition-[transform,background-color,border-color] duration-150 ease-out " +
   "hover:bg-accent hover:text-accent-foreground active:scale-[0.97] " +
+  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring " +
+  "focus-visible:ring-offset-2 focus-visible:ring-offset-background";
+
+/* Piel de las tarjetas de "Explorar". Estaba copiada carácter a carácter en
+ * las dos tarjetas —250 caracteres de clases, con su icono y su transición—,
+ * la misma duplicación que los dos CTA ya habían evitado con una constante. */
+const TARJETA_EXPLORAR =
+  "group flex items-center justify-between gap-4 rounded-xl border border-border/70 bg-card p-6 " +
+  "transition-[transform,border-color,box-shadow] duration-200 ease-out " +
+  "hover:border-primary/40 hover:shadow-md active:scale-[0.99] " +
   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring " +
   "focus-visible:ring-offset-2 focus-visible:ring-offset-background";
 
@@ -274,7 +294,7 @@ export default function LandingPage() {
           </div>
 
           <figure className={`${ENTRADA_HERO} mt-14`}>
-            <MarcoCaptura etiqueta="radar · triaje diario">
+            <MarcoCaptura etiqueta={CONTENIDO.capturaHeroEtiqueta}>
               <CapturaHero />
             </MarcoCaptura>
             <figcaption className="text-muted-foreground mt-3 text-center text-xs">{CONTENIDO.capturaNota}</figcaption>
@@ -282,33 +302,15 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* Diccionario de familias: la forma más rápida de decir "esto es
-          tecnología enterprise, no toda la contratación" es enseñar la lista. */}
-      <section aria-label="Familias de producto cubiertas" className="border-border/60 bg-card/40 border-y">
-        <div className="mx-auto w-full max-w-6xl px-6 py-10">
-          <p className="text-muted-foreground max-w-[70ch] text-sm leading-relaxed">{CONTENIDO.familiasTitulo}</p>
-          <ul className="mt-5 flex flex-wrap gap-2">
-            {CONTENIDO.familias.map((familia) => (
-              <li
-                key={familia}
-                className="border-border/70 bg-background/70 text-foreground/75 rounded-md border px-3 py-1.5 font-mono text-xs font-medium"
-              >
-                {familia}
-              </li>
-            ))}
-          </ul>
-        </div>
-      </section>
-
       {/* Cómo funciona: las tres decisiones, en tres tarjetas */}
       <section id="como-funciona" className="mx-auto w-full max-w-6xl scroll-mt-24 px-6 py-20">
-        <p className="text-primary font-mono text-xs tracking-widest uppercase">{CONTENIDO.ctaSecundario}</p>
+        <p className="text-primary font-mono text-xs tracking-widest uppercase">{CONTENIDO.pilaresKicker}</p>
         <h2 className="font-display mt-3 max-w-[26ch] text-2xl leading-snug font-semibold tracking-[-0.02em] text-balance md:text-3xl">
-          Tres decisiones sobre un mismo corpus acotado
+          {CONTENIDO.pilaresTitulo}
         </h2>
         <div className="mt-10 grid gap-4 md:grid-cols-3">
           {CONTENIDO.pilares.map((pilar, i) => {
-            const Icono = ICONOS_PILARES[i] ?? ICONOS_PILARES[0];
+            const Icono = ICONOS[pilar.icono];
             return (
               <article key={pilar.titulo} className="border-border/70 bg-card relative rounded-xl border p-6 shadow-sm">
                 <span aria-hidden="true" className="text-muted-foreground/60 absolute top-5 right-5 font-mono text-xs">
@@ -332,14 +334,14 @@ export default function LandingPage() {
           next/image es exactamente lo que hace falta. */}
       <div className="border-border/60 bg-card/40 border-t">
         <section className="mx-auto w-full max-w-6xl px-6 py-20">
-          <p className="text-primary font-mono text-xs tracking-widest uppercase">Detalle</p>
+          <p className="text-primary font-mono text-xs tracking-widest uppercase">{CONTENIDO.capturaKicker}</p>
           <h2 className="font-display mt-3 max-w-[26ch] text-2xl leading-snug font-semibold tracking-[-0.02em] text-balance md:text-3xl">
             {CONTENIDO.capturaTitulo}
           </h2>
           <p className="text-muted-foreground mt-4 max-w-[64ch] text-base leading-relaxed">{CONTENIDO.capturaTexto}</p>
 
           <figure className="mt-10">
-            <MarcoCaptura etiqueta="detalle · corpus completo">
+            <MarcoCaptura etiqueta={CONTENIDO.capturaEtiqueta}>
               <Image src={capturaDetalle} alt={CONTENIDO.capturaAlt} sizes={SIZES_ANCHA} className="h-auto w-full" />
             </MarcoCaptura>
             <figcaption className="text-muted-foreground mt-3 text-xs">{CONTENIDO.capturaNota}</figcaption>
@@ -351,7 +353,7 @@ export default function LandingPage() {
       <div className="border-border/60 border-t">
         <div className="mx-auto w-full max-w-6xl px-6 py-4">
           {CONTENIDO.secciones.map((seccion, i) => {
-            const Icono = ICONOS_SECCIONES[i] ?? ICONOS_SECCIONES[0];
+            const Icono = ICONOS[seccion.icono];
             return (
               <section
                 key={seccion.h2}
@@ -378,27 +380,49 @@ export default function LandingPage() {
                       {parrafo}
                     </p>
                   ))}
-                  {seccion.bullets && seccion.bullets.length > 0 && (
-                    <ul className="mt-6 space-y-3">
-                      {seccion.bullets.map((bullet) => (
-                        <li key={bullet} className="flex gap-3 text-base leading-relaxed">
-                          <Check className="text-primary mt-1 h-4 w-4 shrink-0" aria-hidden="true" />
-                          {bullet}
-                        </li>
-                      ))}
-                    </ul>
+                  <ul className="mt-6 space-y-3">
+                    {seccion.bullets.map((bullet) => (
+                      <li key={bullet} className="flex gap-3 text-base leading-relaxed">
+                        <Check className="text-primary mt-1 h-4 w-4 shrink-0" aria-hidden="true" />
+                        {bullet}
+                      </li>
+                    ))}
+                  </ul>
+                  {/* El diccionario de familias era una franja suelta sin
+                      encabezado —un bloque cargado de keywords invisible para
+                      quien navega por títulos—. Vive donde se explica: dentro
+                      de la sección que dice qué entra en el corpus. */}
+                  {seccion.icono === "corpus" && (
+                    <>
+                      <p className="text-muted-foreground mt-8 text-sm leading-relaxed">{CONTENIDO.familiasTitulo}</p>
+                      <ul className="mt-4 flex flex-wrap gap-2">
+                        {CONTENIDO.familias.map((familia) => (
+                          <li
+                            key={familia}
+                            className="border-border/70 bg-card text-foreground/75 rounded-md border px-3 py-1.5 font-mono text-xs font-medium"
+                          >
+                            {familia}
+                          </li>
+                        ))}
+                      </ul>
+                    </>
                   )}
-                  {seccion.enlace && (
-                    <Link
-                      href={seccion.enlace.href}
-                      className="group text-primary mt-6 inline-flex items-center gap-1.5 text-sm font-medium underline-offset-4 hover:underline"
-                    >
-                      {seccion.enlace.texto}
-                      <ArrowRight
-                        className="h-3.5 w-3.5 transition-transform duration-200 ease-out group-hover:translate-x-0.5"
-                        aria-hidden="true"
-                      />
-                    </Link>
+                  {seccion.enlaces && (
+                    <div className="mt-6 flex flex-col gap-2">
+                      {seccion.enlaces.map((enlace) => (
+                        <Link
+                          key={enlace.href}
+                          href={enlace.href}
+                          className="group text-primary inline-flex w-fit items-center gap-1.5 text-sm font-medium underline-offset-4 hover:underline"
+                        >
+                          {enlace.texto}
+                          <ArrowRight
+                            className="h-3.5 w-3.5 transition-transform duration-200 ease-out group-hover:translate-x-0.5"
+                            aria-hidden="true"
+                          />
+                        </Link>
+                      ))}
+                    </div>
                   )}
                 </div>
               </section>
@@ -410,11 +434,11 @@ export default function LandingPage() {
       {/* Preguntas frecuentes */}
       <div className="border-border/60 bg-card/30 border-t">
         <section className="mx-auto w-full max-w-6xl px-6 py-16">
-          <p className="text-primary font-mono text-xs tracking-widest uppercase">FAQ</p>
-          <h2 className="font-display mt-3 text-2xl font-semibold tracking-[-0.02em] md:text-3xl">
-            Preguntas frecuentes
+          <p className="text-primary font-mono text-xs tracking-widest uppercase">{CONTENIDO.faqKicker}</p>
+          <h2 id="faq-titulo" className="font-display mt-3 text-2xl font-semibold tracking-[-0.02em] md:text-3xl">
+            {CONTENIDO.faqTitulo}
           </h2>
-          <dl className="mt-10 grid gap-x-14 gap-y-8 md:grid-cols-2">
+          <dl aria-labelledby="faq-titulo" className="mt-10 grid gap-x-14 gap-y-8 md:grid-cols-2">
             {CONTENIDO.faq.map((item) => (
               <div key={item.pregunta} className="border-border/50 max-w-[58ch] border-t pt-6">
                 <dt className="text-base leading-snug font-semibold">{item.pregunta}</dt>
@@ -433,45 +457,22 @@ export default function LandingPage() {
       <div className="border-border/60 border-t">
         <section className="mx-auto w-full max-w-6xl px-6 py-16">
           <h2 className="font-display text-2xl font-semibold tracking-[-0.02em] md:text-3xl">
-            Explora los concursos publicados
+            {CONTENIDO.explorarTitulo}
           </h2>
-          <p className="text-muted-foreground mt-3 max-w-[62ch] text-base leading-relaxed">
-            El anuncio oficial de cada licitación es consultable sin cuenta: objeto, órgano de contratación,
-            presupuesto, plazos y lotes, con enlace al perfil del contratante.
-          </p>
+          <p className="text-muted-foreground mt-3 max-w-[62ch] text-base leading-relaxed">{CONTENIDO.explorarTexto}</p>
           <div className="mt-8 grid gap-4 sm:grid-cols-2">
-            <Link
-              href="/licitaciones"
-              className="group border-border/70 bg-card hover:border-primary/40 focus-visible:ring-ring focus-visible:ring-offset-background flex items-center justify-between gap-4 rounded-xl border p-6 transition-[transform,border-color,box-shadow] duration-200 ease-out hover:shadow-md focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none active:scale-[0.99]"
-            >
-              <span className="min-w-0">
-                <span className="font-display block text-lg font-semibold tracking-[-0.01em]">
-                  Por comunidad autónoma
+            {CONTENIDO.explorar.map((destino) => (
+              <Link key={destino.href} href={destino.href} className={TARJETA_EXPLORAR}>
+                <span className="min-w-0">
+                  <span className="font-display block text-lg font-semibold tracking-[-0.01em]">{destino.titulo}</span>
+                  <span className="text-muted-foreground mt-1 block text-sm leading-relaxed">{destino.texto}</span>
                 </span>
-                <span className="text-muted-foreground mt-1 block text-sm leading-relaxed">
-                  Los anuncios abiertos de cada territorio, con su hub indexable.
-                </span>
-              </span>
-              <ArrowUpRight
-                className="text-muted-foreground group-hover:text-primary h-5 w-5 shrink-0 transition-[transform,color] duration-200 ease-out group-hover:translate-x-0.5 group-hover:-translate-y-0.5"
-                aria-hidden="true"
-              />
-            </Link>
-            <Link
-              href="/cpv"
-              className="group border-border/70 bg-card hover:border-primary/40 focus-visible:ring-ring focus-visible:ring-offset-background flex items-center justify-between gap-4 rounded-xl border p-6 transition-[transform,border-color,box-shadow] duration-200 ease-out hover:shadow-md focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none active:scale-[0.99]"
-            >
-              <span className="min-w-0">
-                <span className="font-display block text-lg font-semibold tracking-[-0.01em]">Por código CPV</span>
-                <span className="text-muted-foreground mt-1 block text-sm leading-relaxed">
-                  Software y servicios TI, agrupados por el código de la fuente.
-                </span>
-              </span>
-              <ArrowUpRight
-                className="text-muted-foreground group-hover:text-primary h-5 w-5 shrink-0 transition-[transform,color] duration-200 ease-out group-hover:translate-x-0.5 group-hover:-translate-y-0.5"
-                aria-hidden="true"
-              />
-            </Link>
+                <ArrowUpRight
+                  className="text-muted-foreground group-hover:text-primary h-5 w-5 shrink-0 transition-[transform,color] duration-200 ease-out group-hover:translate-x-0.5 group-hover:-translate-y-0.5"
+                  aria-hidden="true"
+                />
+              </Link>
+            ))}
           </div>
         </section>
       </div>
