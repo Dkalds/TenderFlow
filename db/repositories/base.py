@@ -26,6 +26,22 @@ _ALLOWED_TABLES = frozenset(
 )
 
 
+def csv_values(value: str | None) -> list[str]:
+    """Trocea un filtro multi-valor (``"Madrid,Cataluña"``) en sus valores.
+
+    La barra de ámbito del frontend permite marcar varias CCAAs, estados o
+    tecnologías y las manda unidas por comas (``web/src/lib/filters.ts``:
+    ``ccaas.join(",")``). Vive aquí y no en un repository concreto porque es la
+    misma codificación para los dos que la reciben —``aggregates`` (analytics) y
+    ``licitaciones`` (el listado)—, y que ambos la lean igual es justo lo que
+    evita que la tabla y los KPIs de al lado midan universos distintos.
+
+    Un valor suelto devuelve una lista de uno, así que los llamadores que pasan
+    un único valor no cambian de comportamiento.
+    """
+    return [item.strip() for item in (value or "").split(",") if item.strip()]
+
+
 def rows_to_dicts(cursor: Any) -> list[dict[str, Any]]:
     """Convierte todas las filas de un cursor en lista de dicts."""
     cols = [d[0] for d in cursor.description]

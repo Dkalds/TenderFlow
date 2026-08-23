@@ -41,7 +41,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from db.database import connect_read
-from db.repositories.base import loose_distinct_count, rows_to_dicts
+from db.repositories.base import csv_values, loose_distinct_count, rows_to_dicts
 from db.repositories.tecnologia_pliego import NO_SIGNAL_SENTINEL
 from db.sql_fragments import TECHNOLOGY_OBSERVED_SQL
 from observability.logging import get_logger
@@ -102,6 +102,19 @@ _FOLD_DST = "aaaaeeeeiiiioooouuuuncAAAAEEEEIIIIOOOOUUUUNC"
 def _fold_expr(column: str) -> str:
     """Expresión SQL que pliega tildes y mayúsculas de ``column``."""
     return f"lower(translate({column}, '{_FOLD_SRC}', '{_FOLD_DST}'))"
+
+
+def _in_clause(column: str, values: list[str]) -> str:
+    """``col = %s`` para un valor, ``col IN (%s, …)`` para varios.
+
+    Se conserva la igualdad en el caso de uno solo para no cambiar el plan de
+    las consultas que ya existían (el índice btree de la columna).
+    """
+    if len(values) == 1:
+        return f"{column} = %s"
+    # Se interpolan placeholders, nunca valores: éstos van siempre por params.
+    placeholders = ",".join("%s" for _ in values)
+    return f"{column} IN ({placeholders})"
 
 
 @dataclass(frozen=True)
@@ -167,15 +180,33 @@ def build_licitaciones_where(
     if filters.fecha_hasta:
         clauses.append(f"{col('fecha_publicacion')} <= %s")
         params.append(filters.fecha_hasta)
-    if filters.ccaa:
-        clauses.append(f"{col('ccaa')} = %s")
-        params.append(filters.ccaa)
-    if filters.tecnologia:
-        clauses.append(f"{col('tecnologia')} = %s")
-        params.append(filters.tecnologia)
-    if filters.estado:
-        clauses.append(f"{col('estado')} = %s")
-        params.append(filters.estado)
+    ccaas = csv_values(filters.ccaa)
+    if ccaas:
+        clauses.append(_in_clause(col("ccaa"), ccaas))
+        params.extend(ccaas)
+    tecnologias = csv_values(filters.tecnologia)
+    if tecnologias:
+        # ``tecnologia`` guarda un CSV de códigos por fila (``"SAP,SALESFORCE"``),
+        # así que la igualdad se dejaba fuera los expedientes multi-tecnología:
+        # filtrar el ámbito por SAP escondía justo los que además llevan otra.
+        # Mismo explode que usan las agregaciones de tecnologías más abajo.
+        #
+        # Coste: el explode no puede usar ``idx_lic_tecnologia`` (btree de
+        # igualdad, v21), así que las consultas CON filtro de tecnología pasan a
+        # secuencial. Las que no lo llevan no cambian —no se añade cláusula—. Un
+        # índice GIN sobre ``string_to_array(tecnologia, ',')`` lo devolvería a
+        # indexado, pero exige migración y va aparte de este arreglo.
+        placeholders = ",".join("%s" for _ in tecnologias)
+        clauses.append(
+            "EXISTS (SELECT 1 FROM unnest(string_to_array("
+            f"COALESCE({col('tecnologia')}, ''), ',')) AS _tec(code) "
+            f"WHERE trim(_tec.code) IN ({placeholders}))"
+        )
+        params.extend(tecnologias)
+    estados = csv_values(filters.estado)
+    if estados:
+        clauses.append(_in_clause(col("estado"), estados))
+        params.extend(estados)
     if filters.solo_abiertas:
         clauses.append(abierta_sql(col("estado")))
     if filters.importe_min is not None:

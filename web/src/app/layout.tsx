@@ -7,6 +7,7 @@ import { Providers } from "@/components/providers";
 import { RouteProgress } from "@/components/route-progress";
 import { Toaster } from "@/components/toaster";
 import { LiveRegion } from "@/components/live-region";
+import { SITE_DESCRIPTION, SITE_NAME, SITE_URL } from "@/lib/site";
 import "nprogress/nprogress.css";
 import "leaflet/dist/leaflet.css";
 import "./globals.css";
@@ -35,13 +36,49 @@ export const viewport: Viewport = {
   initialScale: 1,
 };
 
+/**
+ * Metadatos raíz de los que hereda toda la app.
+ *
+ * `metadataBase` es el que convierte las rutas relativas de `openGraph.images`
+ * y `alternates.canonical` en URLs absolutas: sin él Next emite un warning en
+ * build y las etiquetas `og:image` salen relativas, que es lo mismo que no
+ * tenerlas — ningún unfurler las resuelve.
+ *
+ * `robots: noindex` es el **default de toda la aplicación** a propósito.
+ * TenderFlow es hoy un dashboard privado entero: no hay una sola ruta que deba
+ * indexarse salvo `/login`, y ésa se marca explícitamente en su propio layout.
+ * Cuando exista el grupo de rutas públicas, será ese grupo el que revierta la
+ * herencia con `index: true`, y no al revés. El default seguro es el que no
+ * filtra pantallas internas a Google por olvido.
+ *
+ * **Aquí no se declara `alternates.canonical`, y es deliberado.** El canonical
+ * se hereda a todos los descendientes: un `canonical: "/"` en la raíz haría que
+ * cada página que no lo sobrescriba se declarase a sí misma como la portada, y
+ * Google dejaría de indexar todo lo demás. El canonical es una propiedad de
+ * cada URL concreta, así que se declara página a página — ver
+ * `app/login/layout.tsx`. Lo mismo vale para `openGraph.url`.
+ */
 export const metadata: Metadata = {
+  metadataBase: new URL(SITE_URL),
   title: {
-    template: "%s | TenderFlow",
-    default: "TenderFlow",
+    template: `%s | ${SITE_NAME}`,
+    default: SITE_NAME,
   },
-  description:
-    "Inteligencia de mercado para licitaciones de tecnología del sector público.",
+  description: SITE_DESCRIPTION,
+  applicationName: SITE_NAME,
+  robots: { index: false, follow: false },
+  openGraph: {
+    type: "website",
+    locale: "es_ES",
+    siteName: SITE_NAME,
+    title: SITE_NAME,
+    description: SITE_DESCRIPTION,
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: SITE_NAME,
+    description: SITE_DESCRIPTION,
+  },
   icons: {
     icon: [
       { url: "/favicon.ico" },

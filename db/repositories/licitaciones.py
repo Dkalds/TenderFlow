@@ -13,7 +13,7 @@ from sqlalchemy import Select, and_, func, or_, select, text
 
 from db.database import connect_read, fts_available
 from db.models import _DIALECT, compile_query, licitacion_tecnologia_score, licitaciones
-from db.repositories.base import loose_distinct_strings, rows_to_dicts
+from db.repositories.base import csv_values, loose_distinct_strings, rows_to_dicts
 from observability.logging import get_logger
 from shared.estados import ESTADOS_CERRADOS
 
@@ -28,6 +28,40 @@ _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 def _escape_like(s: str) -> str:
     """Escape SQL LIKE wildcards (%, _) in user input."""
     return s.replace("%", r"\%").replace("_", r"\_")
+
+
+def _any_of(column: Any, values: list[str]) -> Any:
+    """``col == v`` para un valor, ``col IN (…)`` para varios."""
+    return column == values[0] if len(values) == 1 else column.in_(values)
+
+
+def _tecnologia_en_csv(codes: list[str]) -> Any:
+    """Casa ``codes`` contra el CSV de códigos que guarda cada fila.
+
+    ``licitaciones.tecnologia`` no es un código, es ``"SAP,SALESFORCE"``: la
+    igualdad dejaba fuera los expedientes multi-tecnología, así que filtrar por
+    SAP escondía justo los que además llevan otra. Mismo universo que resuelve
+    ``db/repositories/aggregates.py`` para los agregados de analytics —el
+    listado y los KPIs de la misma pantalla tienen que contar lo mismo—, con la
+    normalización de espacios que allí hace el ``trim`` del explode.
+    """
+    normalized = func.replace(func.coalesce(licitaciones.c.tecnologia, ""), " ", "")
+    # Sin `escape=`: el escape por defecto de LIKE en Postgres ya es la barra
+    # invertida que pone `_escape_like`, igual que el resto del módulo. Pasarlo
+    # explícito lo rompería —el dialecto se compila sin conexión, asume
+    # `standard_conforming_strings=off` y emitiría `ESCAPE '\'`, dos caracteres
+    # donde Postgres exige uno.
+    return or_(
+        *[
+            or_(
+                normalized == code,
+                normalized.like(f"{_escape_like(code)},%"),
+                normalized.like(f"%,{_escape_like(code)},%"),
+                normalized.like(f"%,{_escape_like(code)}"),
+            )
+            for code in codes
+        ]
+    )
 
 
 # Columnas devueltas en listados (resumen)
@@ -119,17 +153,20 @@ class LicitacionRepository:
                     licitaciones.c.descripcion.like(like),
                 )
             )
-        if estado:
-            clauses.append(licitaciones.c.estado == estado)
+        estados = csv_values(estado)
+        if estados:
+            clauses.append(_any_of(licitaciones.c.estado, estados))
         if solo_abiertas:
             # `COALESCE` y no `NOT IN` a secas: en SQL `NULL NOT IN (...)` es
             # NULL, así que las filas sin estado —que son oportunidades hasta
             # que se demuestre lo contrario— quedarían fuera del resultado.
             clauses.append(func.coalesce(licitaciones.c.estado, "").notin_(ESTADOS_CERRADOS))
-        if ccaa:
-            clauses.append(licitaciones.c.ccaa == ccaa)
-        if tecnologia:
-            clauses.append(licitaciones.c.tecnologia == tecnologia)
+        ccaas = csv_values(ccaa)
+        if ccaas:
+            clauses.append(_any_of(licitaciones.c.ccaa, ccaas))
+        tecnologias = csv_values(tecnologia)
+        if tecnologias:
+            clauses.append(_tecnologia_en_csv(tecnologias))
 
         if tecnologia_predicha:
             if min_proba_tech is not None:
@@ -188,7 +225,10 @@ class LicitacionRepository:
         if ccaa:
             clauses.append(licitaciones.c.ccaa.in_(ccaa))
         if tecnologia:
-            clauses.append(licitaciones.c.tecnologia.in_(tecnologia))
+            # Mismo casado contra el CSV de la fila que el listado: si la
+            # búsqueda semántica acotara por igualdad, sus `allowed_ids`
+            # dejarían fuera expedientes que la tabla de al lado sí enseña.
+            clauses.append(_tecnologia_en_csv(list(tecnologia)))
         if fecha_desde and _DATE_RE.match(fecha_desde):
             clauses.append(licitaciones.c.fecha_publicacion >= fecha_desde)
         if fecha_hasta and _DATE_RE.match(fecha_hasta):
@@ -499,8 +539,10 @@ class LicitacionRepository:
     ) -> tuple[list[dict[str, Any]], int]:
         """Búsqueda avanzada con criterios complejos (multi-valor, rangos de importe).
 
-        Extiende ``list_paginated`` con soporte para listas de estado/ccaa/tecnologia
-        (IN clause) y rangos de importe. Usada por el endpoint POST /licitaciones/search.
+        Extiende ``list_paginated`` con soporte para listas de estado/ccaa
+        (``IN``) y rangos de importe. ``tecnologia`` casa contra el CSV de
+        códigos de cada fila, igual que en el resto del producto (ver
+        :func:`_tecnologia_en_csv`). Usada por POST /licitaciones/search.
         """
         order = _SORT_MAP.get(sort or "", _DEFAULT_ORDER)
         clauses: list[Any] = [
@@ -523,7 +565,7 @@ class LicitacionRepository:
         if ccaa:
             clauses.append(licitaciones.c.ccaa.in_(ccaa))
         if tecnologia:
-            clauses.append(licitaciones.c.tecnologia.in_(tecnologia))
+            clauses.append(_tecnologia_en_csv(list(tecnologia)))
         if importe_min is not None:
             clauses.append(licitaciones.c.importe >= importe_min)
         if importe_max is not None:

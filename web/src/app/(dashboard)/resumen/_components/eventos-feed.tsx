@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { useQuery } from "@tanstack/react-query";
 import {
   Card,
   CardContent,
@@ -22,7 +21,8 @@ import {
   Scale,
   type LucideIcon,
 } from "lucide-react";
-import { fetchWithAuth } from "@/lib/api-client";
+import { useFilteredQuery } from "@/hooks/use-filtered-query";
+import { useFilters } from "@/lib/filters";
 import { formatCurrency, formatDate, truncate } from "@/lib/utils";
 import type { EventosFeedResult } from "@/lib/api-types";
 
@@ -63,14 +63,31 @@ function ImporteDelta({ value }: { value: number | null | undefined }) {
   );
 }
 
+/** Ventana del feed en palabras, para que la tarjeta diga qué está midiendo
+ * cuando el ámbito mueve las fechas. */
+function ventanaLabel(desde: string | null, hasta: string | null): string {
+  if (desde && hasta) return `Del ${formatDate(desde)} al ${formatDate(hasta)}`;
+  if (desde) return `Desde el ${formatDate(desde)}`;
+  if (hasta) return `Hasta el ${formatDate(hasta)}`;
+  return "Últimos 30 días";
+}
+
 /** Feed de movimientos de contrato (prórrogas, modificaciones, anulaciones…)
- * — GET /api/v1/eventos, hoy sin explotar en ninguna otra página. */
+ * — GET /api/v1/eventos.
+ *
+ * Lee por el ámbito global como el resto del Resumen: un panel que ignoraba
+ * los filtros mientras los KPIs de arriba los respetaban contaba movimientos
+ * de expedientes que la pantalla ya había descartado. Las fechas del ámbito
+ * acotan aquí *el movimiento* (cuándo cambió el contrato), no la publicación
+ * del expediente — ver el docstring de `GET /eventos`. */
 export function EventosFeed() {
-  const { data, isLoading } = useQuery<EventosFeedResult>({
-    queryKey: ["eventos", "feed"],
-    queryFn: () => fetchWithAuth<EventosFeedResult>("/api/v1/eventos?dias=30&limit=20"),
-    staleTime: 2 * 60 * 1000,
-  });
+  const { rango } = useFilters();
+  const { data, isLoading } = useFilteredQuery<EventosFeedResult>(
+    ["eventos", "feed"],
+    "/api/v1/eventos",
+    { staleTime: 2 * 60 * 1000 },
+    { dias: "30", limit: "20" },
+  );
 
   const items = data?.items ?? [];
 
@@ -82,8 +99,8 @@ export function EventosFeed() {
           Movimientos del pipeline
         </CardTitle>
         <CardDescription>
-          Últimos 30 días — prórrogas, modificaciones y adjudicaciones (dataset
-          completo).
+          {ventanaLabel(rango.desde, rango.hasta)} — prórrogas, modificaciones y
+          adjudicaciones del ámbito activo.
         </CardDescription>
       </CardHeader>
       <CardContent>

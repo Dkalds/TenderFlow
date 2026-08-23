@@ -433,11 +433,26 @@ Los datos se reutilizan al amparo de:
 - **Real Decreto 1495/2011**
 - **Ley 9/2017** de Contratos del Sector Público
 
-Fuente oficial: Plataforma de Contratación del Sector Público
-(https://contrataciondelestado.es).
+Fuentes oficiales: Plataforma de Contratación del Sector Público
+(https://contrataciondelestado.es) y base de datos TED de la Unión Europea.
 
-Esta aplicación **no suplanta** a la fuente oficial; sirve únicamente
-para fines de análisis estadístico e inteligencia comercial.
+Esta aplicación **no suplanta** a la fuente oficial: para preparar o presentar
+una oferta, los documentos válidos son los del perfil del contratante.
+
+**Reutilización pública.** Además del uso analítico interno, TenderFlow publica
+una superficie indexable con el **anuncio** de licitación (objeto, órgano,
+presupuesto, CPV, plazos y lotes). La Ley 37/2007 lo permite condicionado a
+citar la fuente, indicar la fecha de la última actualización y no desnaturalizar
+el dato: cada ficha pública cumple las tres cosas, y el marco completo está en
+`/aviso-legal` (`web/src/app/(publico)/aviso-legal/page.tsx`).
+
+**Qué no se publica.** Nada de la tabla `adjudicaciones` —ni denominación, ni
+NIF, ni importes adjudicados—, porque un adjudicatario puede ser una persona
+física y el sistema no distingue persona física de jurídica; publicarlo sería
+un tratamiento de datos personales sin base jurídica suficiente. Tampoco sale
+nada derivado del pipeline propio (scoring ML, linaje del filtro, predicciones).
+La proyección pública es una allowlist explícita en
+`db/repositories/publico.py`, y `make check-public-surface` la verifica en CI.
 
 ---
 
