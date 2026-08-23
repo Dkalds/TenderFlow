@@ -21,7 +21,17 @@
  * cada cuatro horas pese a llamarse "daily"—. La fuente de verdad es el código.
  */
 
+/** Los tres verbos del producto, arriba del todo. Cada uno resume una
+ * consola real (Radar / baja de referencia / módulo competitivo); el detalle
+ * verificable de cada afirmación vive en la sección correspondiente. */
+export interface PilarLanding {
+  titulo: string;
+  texto: string;
+}
+
 export interface SeccionLanding {
+  /** Etiqueta corta de navegación visual ("Corpus", "Fuentes", …). */
+  kicker: string;
   h2: string;
   parrafos: string[];
   bullets?: string[];
@@ -37,15 +47,25 @@ export interface ContenidoLanding {
   metaTitle: string;
   /** 150-160 caracteres. */
   metaDescription: string;
+  /** Categoría de producto, visible antes que el h1: qué clase de cosa es esto. */
+  eyebrow: string;
   h1: string;
   subtitulo: string;
   ctaPrimario: string;
   ctaSecundario: string;
+  /** Línea de confianza bajo los CTAs: fuentes y modelo de acceso, verificables. */
+  notaFuentes: string;
+  pilares: PilarLanding[];
+  familiasTitulo: string;
+  /** Diccionario de familias de producto (scraper/filters.py): el corpus se
+   * acota por señal de estas trece marcas, y por eso se pueden enumerar. */
+  familias: string[];
   secciones: SeccionLanding[];
   faq: PreguntaFrecuente[];
   /** Bloque de cierre, tras las preguntas frecuentes. */
   cierreTitulo: string;
   cierreTexto: string;
+  cierreNota: string;
 }
 
 export const CONTENIDO: ContenidoLanding = {
@@ -58,11 +78,16 @@ export const CONTENIDO: ContenidoLanding = {
     "Radar de licitaciones públicas de tecnología enterprise en España: scoring " +
     "de oportunidad, baja de referencia por segmento y competencia por órgano.",
 
-  h1: "Licitaciones de tecnología del sector público: decide a cuáles merece la pena presentarte",
+  eyebrow: "Inteligencia de licitaciones · Tecnología enterprise · España",
+
+  // El espacio duro en "a qué" evita que el corte de línea deje una "a"
+  // huérfana a final de renglón en los anchos de hero más habituales.
+  h1: "Licitaciones de tecnología del sector público: decide dónde pujar, a\u00A0qué precio y contra quién",
   subtitulo:
-    "Un corpus acotado de licitaciones tecnológicas de la administración pública " +
-    "española, con el contexto que hace falta para decidir dónde ir, a qué precio " +
-    "pujar y contra quién compites.",
+    "TenderFlow es un radar de licitaciones públicas de tecnología enterprise en " +
+    "España. Acota el mercado a los expedientes con señal TI real y les añade el " +
+    "contexto de decisión: scoring de oportunidad con tu perfil, baja de " +
+    "referencia por segmento, competencia por órgano y lectura de pliegos con citas.",
 
   // El alta self-service está desactivada en producción: `ALLOW_SELF_REGISTRATION`
   // es `False` por defecto y no se declara en `render.yaml`, así que
@@ -71,8 +96,56 @@ export const CONTENIDO: ContenidoLanding = {
   ctaPrimario: "Solicita acceso",
   ctaSecundario: "Cómo funciona",
 
+  notaFuentes:
+    "Fuentes oficiales: PLACSP cada cuatro horas, TED y los RSS de Galicia y " + "Euskadi. Acceso por invitación.",
+
+  pilares: [
+    {
+      titulo: "Dónde pujar",
+      texto:
+        "Radar ordena la bandeja diaria por score de oportunidad sobre seis " +
+        "dimensiones, con pesos configurables por usuario. Bandas Caliente, " +
+        "Atractiva, Tibia y Descarte para cortar por umbral, y lo descartado " +
+        "no vuelve a aparecer.",
+    },
+    {
+      titulo: "A qué precio",
+      texto:
+        "Baja media por empresa, órgano, CPV y comunidad autónoma; escenarios " +
+        "por cuantiles sobre adjudicaciones comparables y un intervalo de baja " +
+        "previsto p10/p50/p90 con su calibración declarada.",
+    },
+    {
+      titulo: "Contra quién",
+      texto:
+        "Cuota y concentración HHI sobre las adjudicaciones oficiales, dossier " +
+        "por competidor con NIF normalizado, alias y UTEs, e historial de lo " +
+        "que publica cada órgano de contratación y con qué resultado.",
+    },
+  ],
+
+  familiasTitulo:
+    "Solo entra el expediente con señal de tecnología enterprise: trece familias " +
+    "de producto en el diccionario, más rescate del clasificador sobre CPV 48 y 72.",
+  familias: [
+    "SAP",
+    "Salesforce",
+    "Oracle",
+    "Microsoft",
+    "ServiceNow",
+    "Workday",
+    "IBM",
+    "OpenText",
+    "Unit4",
+    "Meta4",
+    "Sopra",
+    "Sage",
+    "Infor",
+  ],
+
   secciones: [
     {
+      kicker: "Corpus",
       h2: "Un radar tecnológico, no un censo de toda la contratación pública",
       parrafos: [
         "TenderFlow no indexa toda la contratación pública española. Solo entra en el corpus el expediente con señal de tecnología enterprise: coincidencia con el diccionario de trece familias de producto —SAP, Salesforce, Oracle, Microsoft, ServiceNow, Workday, IBM, OpenText, Unit4, Meta4, Sopra, Sage e Infor—, rescate del clasificador sobre CPV 48 (software) y 72 (servicios TI), o consulta directa por esos CPV en el caso de TED. Todo lo que se guarda queda marcado con el motivo por el que entró.",
@@ -85,6 +158,7 @@ export const CONTENIDO: ContenidoLanding = {
       ],
     },
     {
+      kicker: "Fuentes",
       h2: "Fuentes oficiales, cadencia declarada y límites por escrito",
       parrafos: [
         "La fuente principal es el feed ATOM de la Plataforma de Contratación del Sector Público, que se recorre cada cuatro horas con cursor incremental, escritura idempotente e historial de cambios por expediente. Se suman TED, para anuncios con ejecución en España dentro de CPV 48 y 72, y los RSS oficiales de Contratos de Galicia y Open Data Euskadi.",
@@ -97,6 +171,7 @@ export const CONTENIDO: ContenidoLanding = {
       ],
     },
     {
+      kicker: "Scoring",
       h2: "Decide a qué presentarte: scoring de oportunidad con tu propio perfil",
       parrafos: [
         "El ranking ordena el mercado abierto por potencial comercial sobre seis dimensiones: importe, plazo, competencia esperada, margen, afinidad y señal técnica. Los pesos son configurables y cada usuario guarda su perfil —pesos, keywords de afinidad, CPV y rango de importe—; sin perfil se aplican los valores globales. Si no defines keywords de afinidad, esa dimensión se omite y su peso se reparte entre las demás.",
@@ -109,6 +184,7 @@ export const CONTENIDO: ContenidoLanding = {
       ],
     },
     {
+      kicker: "Precio",
       h2: "Decide a qué precio: baja de referencia y escenarios sobre comparables",
       parrafos: [
         "La pregunta operativa no es cuánto vale el contrato, sino cuánto hay que bajar para ganar en ese segmento. TenderFlow calcula la baja media agregada por empresa, órgano, CPV y comunidad autónoma, usando el presupuesto del lote cuando la adjudicación tiene uno resuelto y descartando los pares en los que el importe adjudicado supera el presupuesto en más de un 50 %.",
@@ -121,6 +197,7 @@ export const CONTENIDO: ContenidoLanding = {
       ],
     },
     {
+      kicker: "Competencia",
       h2: "Contra quién compites y qué historial tiene ese órgano",
       parrafos: [
         "El módulo competitivo trabaja sobre las adjudicaciones extraídas del propio CODICE: cuota dentro del universo tecnológico observado, concentración HHI por CPV, comunidad autónoma, órgano y tecnología, dossier por competidor y listado paginado de sus adjudicaciones. Detrás hay un maestro canónico de adjudicatarios con NIF normalizado, alias, UTEs y cola de revisión humana para los emparejamientos dudosos.",
@@ -133,6 +210,7 @@ export const CONTENIDO: ContenidoLanding = {
       ],
     },
     {
+      kicker: "Pliegos",
       h2: "Qué pide el pliego, sin leerte doscientas páginas",
       parrafos: [
         "Un proceso nocturno descarga y extrae el texto de hasta 300 documentos por pasada, y trocea y calcula embeddings sobre hasta 100 de ellos. Sobre ese texto, una licitación puede resumirse al vuelo —objeto, órgano, importes y plazos, requisitos clave y riesgos— y el asistente conversacional responde preguntas sobre el corpus.",
@@ -145,6 +223,7 @@ export const CONTENIDO: ContenidoLanding = {
       ],
     },
     {
+      kicker: "Flujo",
       h2: "Después de decidir: vigilancia, alertas y pipeline comercial",
       parrafos: [
         "Las reglas de vigilancia se definen por keyword, CPV, importe mínimo y comunidad autónoma, con frecuencia inmediata, diaria o semanal, previsualización del número real de coincidencias antes de guardarlas y aviso por email más notificación en la aplicación. También puedes vigilar empresas concretas y recibir sus movimientos después de cada ingesta.",
@@ -197,4 +276,5 @@ export const CONTENIDO: ContenidoLanding = {
     "los datos, cada cuánto entran, qué se filtra y qué no se calcula. Si tu equipo " +
     "vende tecnología enterprise a la administración pública española y quiere verlo " +
     "sobre vuestros propios concursos, pide acceso y lo abrimos.",
+  cierreNota: "El acceso es por invitación: se habilita tu email o el dominio de tu empresa " + "y entras con Google.",
 };

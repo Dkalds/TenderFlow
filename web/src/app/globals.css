@@ -49,7 +49,7 @@
     --info: 210 90% 42%;
     --info-foreground: 0 0% 100%;
     --border: 200 15% 40% / 0.28;
-    --input: 200 15% 40% / 0.30;
+    --input: 200 15% 40% / 0.3;
     --ring: 22 78% 40%;
     --radius: 0.625rem;
 
@@ -164,7 +164,10 @@
       linear-gradient(180deg, hsl(var(--background)), hsl(var(--background)) 100%);
     color: hsl(var(--foreground));
     font-family: var(--font-geist-sans), system-ui, sans-serif;
-    font-feature-settings: "cv11" 1, "ss01" 1, "tnum" 1;
+    font-feature-settings:
+      "cv11" 1,
+      "ss01" 1,
+      "tnum" 1;
     text-rendering: optimizeLegibility;
     -webkit-font-smoothing: antialiased;
   }
@@ -319,6 +322,12 @@
 @utility anim-duration-200 {
   animation-duration: 200ms;
 }
+/* Marketing/first-view tier (emil-design-eng: "Marketing/explanatory can be
+ * longer"). Solo para entradas que se ven una vez por visita —el hero de la
+ * landing pública—, nunca para UI operativa, que se queda bajo 300ms. */
+@utility anim-duration-500 {
+  animation-duration: 500ms;
+}
 
 @utility fade-in-0 {
   --tf-enter-opacity: 0;
@@ -427,7 +436,9 @@
  * (a fading toast, a color state change) that helps comprehension.
  */
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after {
+  *,
+  *::before,
+  *::after {
     animation-duration: 150ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 150ms !important;
@@ -616,9 +627,27 @@ body {
   }
 }
 
+/*
+ * Retícula de fondo del hero de la landing pública: líneas finas de la tinta
+ * del tema, desvanecidas radialmente para que solo "sujeten" la parte alta.
+ * Estática a propósito (la landing se sirve sin JS de cliente y el fondo no
+ * es información): funciona igual en claro y oscuro porque usa --foreground.
+ */
+.tf-hero-grid {
+  background-image:
+    linear-gradient(hsl(var(--foreground) / 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, hsl(var(--foreground) / 0.06) 1px, transparent 1px);
+  background-size: 44px 44px;
+  -webkit-mask-image: radial-gradient(ellipse 90% 70% at 50% 0%, black 25%, transparent 78%);
+  mask-image: radial-gradient(ellipse 90% 70% at 50% 0%, black 25%, transparent 78%);
+}
+
 /* Tabular figures for large numeric displays (KPIs, metrics) */
 .tf-tnum {
-  font-feature-settings: "tnum" 1, "cv11" 1, "ss01" 1;
+  font-feature-settings:
+    "tnum" 1,
+    "cv11" 1,
+    "ss01" 1;
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.01em;
 }
@@ -634,12 +663,7 @@ body {
   position: absolute;
   inset: 0;
   transform: translateX(-100%);
-  background: linear-gradient(
-    90deg,
-    transparent,
-    hsl(var(--muted-foreground) / 0.08),
-    transparent
-  );
+  background: linear-gradient(90deg, transparent, hsl(var(--muted-foreground) / 0.08), transparent);
   animation: tf-shimmer 1.6s infinite;
 }
 @keyframes tf-shimmer {
@@ -666,7 +690,9 @@ body {
   transition: transform 200ms linear !important;
 }
 #nprogress .peg {
-  box-shadow: 0 0 10px hsl(var(--primary)), 0 0 5px hsl(var(--primary)) !important;
+  box-shadow:
+    0 0 10px hsl(var(--primary)),
+    0 0 5px hsl(var(--primary)) !important;
 }
 
 /* Branded Recharts tooltips — theme-aware surface for every default tooltip */
@@ -703,12 +729,18 @@ body {
   padding: 0 !important;
   pointer-events: none;
   color: hsl(204 35% 12%);
-  text-shadow: 0 0 3px hsl(var(--card)), 0 0 6px hsl(var(--card)), 0 1px 2px rgb(0 0 0 / 0.12);
+  text-shadow:
+    0 0 3px hsl(var(--card)),
+    0 0 6px hsl(var(--card)),
+    0 1px 2px rgb(0 0 0 / 0.12);
 }
 .ccaa-label::before {
   display: none !important;
 }
 .dark .ccaa-label {
   color: hsl(36 12% 92%);
-  text-shadow: 0 0 3px hsl(200 32% 5%), 0 0 6px hsl(200 32% 5%), 0 1px 2px rgb(0 0 0 / 0.4);
+  text-shadow:
+    0 0 3px hsl(200 32% 5%),
+    0 0 6px hsl(200 32% 5%),
+    0 1px 2px rgb(0 0 0 / 0.4);
 }
