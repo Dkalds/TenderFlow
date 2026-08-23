@@ -70,7 +70,7 @@ export function Paginacion({
             <Link
               href={href(paginaActual - 1)}
               rel="prev"
-              className="border-input hover:bg-accent hover:text-accent-foreground inline-flex h-9 items-center rounded-md border px-3 text-sm font-medium"
+              className="border-input hover:bg-accent hover:text-accent-foreground inline-flex h-9 items-center rounded-md border px-3 text-sm font-medium transition-[transform,background-color,border-color] duration-150 ease-out active:scale-[0.97]"
             >
               Anterior
             </Link>
@@ -90,7 +90,7 @@ export function Paginacion({
                 className={
                   pagina === paginaActual
                     ? "bg-primary text-primary-foreground inline-flex h-9 min-w-9 items-center justify-center rounded-md px-3 text-sm font-semibold"
-                    : "border-input hover:bg-accent hover:text-accent-foreground inline-flex h-9 min-w-9 items-center justify-center rounded-md border px-3 text-sm"
+                    : "border-input hover:bg-accent hover:text-accent-foreground inline-flex h-9 min-w-9 items-center justify-center rounded-md border px-3 text-sm transition-[transform,background-color,border-color] duration-150 ease-out active:scale-[0.97]"
                 }
               >
                 {pagina}
@@ -104,7 +104,7 @@ export function Paginacion({
             <Link
               href={href(paginaActual + 1)}
               rel="next"
-              className="border-input hover:bg-accent hover:text-accent-foreground inline-flex h-9 items-center rounded-md border px-3 text-sm font-medium"
+              className="border-input hover:bg-accent hover:text-accent-foreground inline-flex h-9 items-center rounded-md border px-3 text-sm font-medium transition-[transform,background-color,border-color] duration-150 ease-out active:scale-[0.97]"
             >
               Siguiente
             </Link>

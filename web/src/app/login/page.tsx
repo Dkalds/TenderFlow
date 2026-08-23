@@ -163,7 +163,9 @@ function LoginPageContent() {
 
   return (
     <div className="bg-background relative flex min-h-screen items-center justify-center overflow-hidden p-4">
-      {/* Animated particle backdrop */}
+      {/* Animated particle backdrop, sobre la misma retícula fina que el hero
+          de la landing: la puerta de entrada y la portada comparten fondo. */}
+      <div aria-hidden="true" className="tf-hero-grid absolute inset-0 z-0" />
       <ParticleField className="z-0" />
       {/* Soft radial halo to calm the area behind the card and keep contrast */}
       <div
@@ -180,7 +182,10 @@ function LoginPageContent() {
           <TenderFlowLogo showText={false} boxSize={48} />
           <div>
             <h1 className="tf-display text-foreground">TenderFlow</h1>
-            <p className="text-muted-foreground mt-1 text-sm">Análisis y seguimiento de licitaciones en tiempo real</p>
+            {/* Sin "tiempo real": la ingesta es cada cuatro horas y el propio
+                FAQ de la landing lo dice — el copy público no promete lo que
+                el producto no hace. */}
+            <p className="text-muted-foreground mt-1 text-sm">Radar de licitaciones TI del sector público español</p>
           </div>
         </div>
 

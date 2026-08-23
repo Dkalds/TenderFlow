@@ -17,12 +17,16 @@ import { OG_IMAGE_COMPARTIDA, SITE_NAME, SITE_URL, TWITTER_COMPARTIDO } from "@/
 import { solicitarAccesoHref } from "@/lib/contacto";
 import { CONTENIDO } from "./_content/landing";
 import { HeroConsola } from "./_components/hero-consola";
+import { EnlaceSolicitarAcceso } from "./_components/enlace-solicitar-acceso";
 
 /**
  * Landing pública — la única página de TenderFlow que un buscador puede
  * indexar, y la primera pantalla de quien llega sin cuenta.
  *
- * Es un Server Component sin una línea de JavaScript de cliente, a propósito:
+ * Es un Server Component sin JavaScript de cliente para el contenido, a propósito
+ * (la única isla es el beacon de analytics del CTA — ver
+ * `_components/enlace-solicitar-acceso.tsx` —, cuyo ancla llega igualmente
+ * renderizada en el HTML del servidor):
  * lo que un rastreador lee es el HTML de la respuesta, y todo lo que haya que
  * hidratar para que aparezca el texto es texto que Google puede no ver. Por la
  * misma razón todo el movimiento de la página es CSS puro (los primitivos
@@ -142,27 +146,19 @@ const ENTRADA_HERO = "animate-in fade-in-0 slide-in-from-bottom-2 anim-duration-
 
 /* CTA de acceso. El destino lo decide `solicitarAccesoHref` (lib/contacto):
  * mailto con asunto prellenado cuando el entorno define el email de contacto,
- * /login con atribución UTM cuando no. `<a>` para mailto (Link es para rutas
- * internas) y `<Link>` para el fallback. */
+ * /login con atribución UTM cuando no. El ancla la pinta la isla
+ * `EnlaceSolicitarAcceso` para emitir el evento de analytics del clic — un
+ * mailto no genera pageview y sin evento el CTA principal sería un punto
+ * ciego. El href se calcula aquí, en servidor. */
 function CtaAcceso({ utmContent }: { utmContent: string }) {
-  const href = solicitarAccesoHref(utmContent);
-  const contenido = (
-    <>
+  return (
+    <EnlaceSolicitarAcceso href={solicitarAccesoHref(utmContent)} ubicacion={utmContent} className={CTA_PRIMARIO}>
       {CONTENIDO.ctaPrimario}
       <ArrowRight
         className="h-4 w-4 transition-transform duration-200 ease-out group-hover:translate-x-0.5"
         aria-hidden="true"
       />
-    </>
-  );
-  return href.startsWith("mailto:") ? (
-    <a href={href} className={CTA_PRIMARIO}>
-      {contenido}
-    </a>
-  ) : (
-    <Link href={href} className={CTA_PRIMARIO}>
-      {contenido}
-    </Link>
+    </EnlaceSolicitarAcceso>
   );
 }
 

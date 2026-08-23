@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { obtenerLicitacion, type LicitacionPublica } from "@/lib/publico-api";
-import { OG_IMAGE_COMPARTIDA, SITE_NAME, TWITTER_COMPARTIDO } from "@/lib/site";
+import { SITE_NAME, TWITTER_COMPARTIDO } from "@/lib/site";
 import { migasJsonLd } from "@/lib/jsonld";
 import { rutaHubCcaa, rutaLicitacion } from "@/lib/slug";
 import { EMPTY, formatCurrency, formatDate } from "@/lib/utils";
@@ -18,6 +18,11 @@ import { EMPTY, formatCurrency, formatDate } from "@/lib/utils";
  * La ruta lleva cuatro segmentos —`/licitaciones/{ccaa}/{slug}/{ref}`— y la
  * referencia va suelta en el último. Ver `lib/slug.ts`: el alfabeto base64url
  * incluye `-`, así que pegarla al slug haría imposible saber dónde acaba uno.
+ *
+ * Presentación: los tres datos que deciden si el anuncio interesa
+ * (presupuesto, fecha límite, publicación) van como destacados; el resto en la
+ * tabla de datos. Todo son valores del endpoint tal cual — aquí no se calcula
+ * ni se interpreta nada (ADR-014).
  */
 
 type Params = { ccaa: string; slug: string; ref: string };
@@ -25,6 +30,10 @@ type Params = { ccaa: string; slug: string; ref: string };
 function fecha(valor: string | null | undefined): string | null {
   const formateada = formatDate(valor);
   return formateada === EMPTY ? null : formateada;
+}
+
+function nombreFuente(lic: LicitacionPublica): string {
+  return lic.fuente === "ted" ? "TED · Unión Europea" : "PLACSP";
 }
 
 function descripcionSeo(lic: LicitacionPublica): string {
@@ -49,12 +58,15 @@ export async function generateMetadata({ params }: { params: Promise<Params> }):
   const canonical = rutaLicitacion({ ccaa: lic.ccaa, titulo: lic.titulo, ref: lic.ref });
   const descripcion = descripcionSeo(lic);
 
+  // Aquí NO se esparce `OG_IMAGE_COMPARTIDA`: este segmento tiene su propia
+  // `opengraph-image.tsx` con los datos del anuncio, y los metadatos por
+  // convención de fichero tienen prioridad. Declarar además la genérica
+  // emitiría dos `og:image` compitiendo.
   return {
     title: lic.titulo.slice(0, 70),
     description: descripcion,
     alternates: { canonical },
     openGraph: {
-      ...OG_IMAGE_COMPARTIDA,
       title: lic.titulo.slice(0, 70),
       description: descripcion,
       url: canonical,
@@ -82,23 +94,30 @@ export default async function FichaLicitacion({ params }: { params: Promise<Para
     },
   ];
 
+  // Los tres datos de decisión, como destacados; solo se pintan los presentes.
+  const destacados: [string, string | null][] = [
+    ["Presupuesto", lic.importe ? formatCurrency(lic.importe) : null],
+    ["Fecha límite", fecha(lic.fecha_limite)],
+    ["Publicación", fecha(lic.fecha_publicacion)],
+  ];
+
+  // El resto del anuncio. Lo que ya está arriba (destacados y chips de
+  // cabecera: estado y expediente) no se repite aquí.
   const datos: [string, string | null][] = [
     ["Órgano de contratación", lic.organo_contratacion ?? null],
-    ["Expediente", lic.expediente],
-    ["Presupuesto", lic.importe ? formatCurrency(lic.importe) : null],
     ["CPV", lic.cpv ?? null],
     ["Tipo de contrato", lic.tipo_contrato ?? null],
     ["Procedimiento", lic.procedimiento ?? null],
     ["Tramitación", lic.tramitacion ?? null],
-    ["Estado", lic.estado ?? null],
-    ["Publicación", fecha(lic.fecha_publicacion)],
-    ["Fecha límite", fecha(lic.fecha_limite)],
     ["Inicio de ejecución", fecha(lic.fecha_inicio)],
     ["Fin de ejecución", fecha(lic.fecha_fin)],
     ["Duración", lic.duracion_valor ? `${lic.duracion_valor} ${lic.duracion_unidad ?? ""}`.trim() : null],
     ["Provincia", lic.provincia ?? null],
     ["Comunidad autónoma", lic.ccaa ?? null],
   ];
+
+  const CHIP =
+    "inline-flex items-center rounded-full border border-border/60 bg-card/60 px-2.5 py-0.5 text-xs font-medium";
 
   return (
     <>
@@ -109,7 +128,7 @@ export default async function FichaLicitacion({ params }: { params: Promise<Para
           <ol className="flex flex-wrap items-center gap-1.5">
             {migas.slice(0, -1).map((miga) => (
               <li key={miga.ruta} className="flex items-center gap-1.5">
-                <Link href={miga.ruta} className="hover:text-foreground">
+                <Link href={miga.ruta} className="hover:text-foreground transition-colors duration-150">
                   {miga.nombre}
                 </Link>
                 <span aria-hidden="true">/</span>
@@ -119,7 +138,17 @@ export default async function FichaLicitacion({ params }: { params: Promise<Para
           </ol>
         </nav>
 
-        <h1 className="font-display text-3xl leading-[1.15] font-bold tracking-[-0.025em] text-balance md:text-4xl">
+        {/* Cabecera del anuncio: fuente, estado y expediente, tal como los da
+            el endpoint. */}
+        <p className="flex flex-wrap items-center gap-1.5">
+          <span className={`${CHIP} border-primary/30 bg-primary/[0.06] text-primary font-mono`}>
+            {nombreFuente(lic)}
+          </span>
+          {lic.estado && <span className={`${CHIP} text-muted-foreground`}>{lic.estado}</span>}
+          {lic.expediente && <span className={`${CHIP} text-muted-foreground font-mono`}>Exp. {lic.expediente}</span>}
+        </p>
+
+        <h1 className="font-display mt-4 text-3xl leading-[1.15] font-bold tracking-[-0.025em] text-balance md:text-4xl">
           {lic.titulo}
         </h1>
 
@@ -129,8 +158,21 @@ export default async function FichaLicitacion({ params }: { params: Promise<Para
           </p>
         )}
 
+        {destacados.some(([, valor]) => valor) && (
+          <dl className="mt-8 grid gap-3 sm:grid-cols-3">
+            {destacados
+              .filter((par): par is [string, string] => Boolean(par[1]))
+              .map(([etiqueta, valor]) => (
+                <div key={etiqueta} className="border-border/70 bg-card rounded-xl border p-4">
+                  <dt className="text-muted-foreground text-[11px] tracking-wide uppercase">{etiqueta}</dt>
+                  <dd className="font-display tf-tnum mt-1 text-xl font-semibold tracking-[-0.01em]">{valor}</dd>
+                </div>
+              ))}
+          </dl>
+        )}
+
         <h2 className="font-display mt-12 text-xl font-semibold tracking-[-0.02em]">Datos del anuncio</h2>
-        <dl className="mt-5 grid gap-x-10 gap-y-4 sm:grid-cols-2">
+        <dl className="border-border/70 bg-card mt-5 grid gap-x-10 gap-y-4 rounded-xl border p-6 sm:grid-cols-2">
           {datos
             .filter((par): par is [string, string] => Boolean(par[1]))
             .map(([etiqueta, valor]) => (
@@ -144,23 +186,23 @@ export default async function FichaLicitacion({ params }: { params: Promise<Para
         {lotes.length > 0 && (
           <>
             <h2 className="font-display mt-12 text-xl font-semibold tracking-[-0.02em]">Lotes ({lotes.length})</h2>
-            <div className="mt-5 overflow-x-auto">
+            <div className="border-border/70 bg-card mt-5 overflow-x-auto rounded-xl border px-5 py-2">
               <table className="w-full min-w-[32rem] text-sm">
                 <thead>
                   <tr className="border-border/60 text-muted-foreground border-b text-left text-[11px] tracking-wide uppercase">
-                    <th className="py-2 pr-4 font-medium">Nº</th>
-                    <th className="py-2 pr-4 font-medium">Objeto</th>
-                    <th className="py-2 pr-4 font-medium">CPV</th>
-                    <th className="py-2 font-medium">Importe</th>
+                    <th className="py-2.5 pr-4 font-medium">Nº</th>
+                    <th className="py-2.5 pr-4 font-medium">Objeto</th>
+                    <th className="py-2.5 pr-4 font-medium">CPV</th>
+                    <th className="py-2.5 font-medium">Importe</th>
                   </tr>
                 </thead>
                 <tbody>
                   {lotes.map((lote) => (
-                    <tr key={lote.numero} className="border-border/30 border-b">
+                    <tr key={lote.numero} className="border-border/30 border-b last:border-b-0">
                       <td className="py-2.5 pr-4 font-mono text-xs">{lote.numero}</td>
                       <td className="py-2.5 pr-4">{lote.titulo ?? "—"}</td>
                       <td className="py-2.5 pr-4 font-mono text-xs">{lote.cpv ?? "—"}</td>
-                      <td className="py-2.5">{formatCurrency(lote.importe)}</td>
+                      <td className="tf-tnum py-2.5">{formatCurrency(lote.importe)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -173,7 +215,7 @@ export default async function FichaLicitacion({ params }: { params: Promise<Para
             reutilización a citar la fuente e indicar la fecha de la última
             actualización, así que este bloque es un requisito legal de la
             página, no un pie de página opcional. */}
-        <aside className="border-border/60 bg-card/40 mt-12 rounded-lg border p-5 text-sm">
+        <aside className="border-border/60 bg-card/40 mt-12 rounded-xl border p-5 text-sm">
           <p className="text-muted-foreground">
             Datos procedentes de la{" "}
             <span className="text-foreground font-medium">
@@ -202,13 +244,15 @@ export default async function FichaLicitacion({ params }: { params: Promise<Para
         <div className="mt-10 flex flex-wrap gap-3">
           <Link
             href={rutaHubCcaa(lic.ccaa)}
-            className="border-input hover:bg-accent hover:text-accent-foreground inline-flex h-10 items-center rounded-md border px-5 text-sm font-medium"
+            className="border-input hover:bg-accent hover:text-accent-foreground inline-flex h-10 items-center rounded-md border px-5 text-sm font-medium transition-[transform,background-color,border-color] duration-150 ease-out active:scale-[0.97]"
           >
             Más licitaciones {lic.ccaa ? `en ${lic.ccaa}` : ""}
           </Link>
+          {/* utm_content=ficha: en Vercel Analytics se ve cuántos llegan a
+              /login desde una ficha indexada — el camino orgánico completo. */}
           <Link
-            href="/login"
-            className="bg-primary text-primary-foreground hover:bg-primary/90 inline-flex h-10 items-center rounded-md px-5 text-sm font-semibold"
+            href="/login?utm_source=publico&utm_content=ficha"
+            className="bg-primary text-primary-foreground hover:bg-primary/90 inline-flex h-10 items-center rounded-md px-5 text-sm font-semibold shadow-md transition-[transform,background-color] duration-150 ease-out active:scale-[0.97]"
           >
             Seguir este contrato con {SITE_NAME}
           </Link>

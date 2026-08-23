@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+import { MapPin } from "lucide-react";
 import { listarLicitaciones } from "@/lib/publico-api";
+import { formatNumber } from "@/lib/utils";
 import { OG_IMAGE_COMPARTIDA, TWITTER_COMPARTIDO } from "@/lib/site";
 import { migasJsonLd } from "@/lib/jsonld";
 import { CCAA_SIN_ASIGNAR, rutaHubCcaa } from "@/lib/slug";
@@ -101,7 +103,17 @@ export default async function HubCcaa({
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(migasJsonLd(migas)) }} />
 
       <div className="mx-auto w-full max-w-5xl px-6 py-12">
-        <h1 className="font-display text-3xl font-bold tracking-[-0.025em] text-balance md:text-4xl">
+        <p className="text-primary flex flex-wrap items-center gap-x-3 gap-y-1.5 font-mono text-xs tracking-widest uppercase">
+          <span className="flex items-center gap-2">
+            <MapPin className="h-4 w-4" aria-hidden="true" />
+            Por comunidad autónoma
+          </span>
+          {/* El total lo da el endpoint del listado: aquí no se cuenta nada. */}
+          <span className="text-muted-foreground border-border/60 bg-card/60 rounded-full border px-2.5 py-0.5 font-sans text-xs font-medium tracking-normal normal-case">
+            {formatNumber(total)} publicadas
+          </span>
+        </p>
+        <h1 className="font-display mt-3 text-3xl font-bold tracking-[-0.025em] text-balance md:text-4xl">
           Licitaciones de tecnología en {nombre}
         </h1>
         <p className="text-muted-foreground mt-4 max-w-[62ch] text-base leading-relaxed">
