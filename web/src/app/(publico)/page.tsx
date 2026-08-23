@@ -18,6 +18,7 @@ import { OG_IMAGE_COMPARTIDA, SITE_NAME, SITE_URL, TWITTER_COMPARTIDO } from "@/
 import { solicitarAccesoHref } from "@/lib/contacto";
 import { CONTENIDO, type IconoLanding } from "./_content/landing";
 import { MarcoCaptura } from "./_components/marco-captura";
+import { FranjaDatos } from "./_components/franja-datos";
 import { EnlaceSolicitarAcceso } from "./_components/enlace-solicitar-acceso";
 import capturaHero from "./_assets/radar-hero.webp";
 import capturaHeroMovil from "./_assets/radar-hero-movil.webp";
@@ -301,6 +302,11 @@ export default function LandingPage() {
           </figure>
         </div>
       </section>
+
+      {/* Las tres cifras reales del corpus, justo después de la promesa del
+          hero. Es un componente async: la página sigue siendo estática con ISR,
+          así que la llamada ocurre al generar y no en cada visita. */}
+      <FranjaDatos />
 
       {/* Cómo funciona: las tres decisiones, en tres tarjetas */}
       <section id="como-funciona" className="mx-auto w-full max-w-6xl scroll-mt-24 px-6 py-20">

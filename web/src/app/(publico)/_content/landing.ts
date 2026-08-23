@@ -97,6 +97,13 @@ export interface ContenidoLanding {
    *  son de demostración, y presentarlos como reales rompería la regla de
    *  arriba. Viaja con cada figura. */
   capturaNota: string;
+  /** Etiquetas de la franja de cifras. Los números los da el backend; lo único
+   *  que se escribe aquí es cómo se llaman, y ahí está el riesgo: una etiqueta
+   *  generosa convierte un agregado honesto en una cifra inflada. */
+  franjaExpedientes: string;
+  franjaComunidades: string;
+  franjaCpv: string;
+  franjaNota: string;
   secciones: SeccionLanding[];
   faqKicker: string;
   faqTitulo: string;
@@ -209,6 +216,14 @@ export const CONTENIDO: ContenidoLanding = {
     "importe, estado, score, fecha, comunidad autónoma, CPV y tecnología en columnas ordenables.",
   capturaEtiqueta: "detalle · corpus completo",
   capturaNota: "Interfaz real del producto. Los expedientes de la imagen son datos de demostración.",
+
+  franjaExpedientes: "Expedientes publicables ahora mismo",
+  franjaComunidades: "Comunidades autónomas con índice propio",
+  franjaCpv: "Códigos CPV con volumen suficiente",
+  franjaNota:
+    "Cifras del corpus público, servidas por la API en el momento de generar esta " +
+    "página. No es toda la contratación pública: es lo que ha entrado en el radar " +
+    "tecnológico y supera el umbral de contenido para publicarse.",
 
   // Cuatro secciones, no siete. Las siete anteriores compartían plantilla exacta
   // —dos párrafos y tres bullets cada una— y ocupaban casi la mitad del scroll
