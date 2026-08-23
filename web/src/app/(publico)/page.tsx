@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import Image from "next/image";
+import Image, { getImageProps } from "next/image";
 import {
   ArrowRight,
   ArrowUpRight,
@@ -17,10 +17,11 @@ import {
 import { OG_IMAGE_COMPARTIDA, SITE_NAME, SITE_URL, TWITTER_COMPARTIDO } from "@/lib/site";
 import { solicitarAccesoHref } from "@/lib/contacto";
 import { CONTENIDO } from "./_content/landing";
-import { HeroConsola } from "./_components/hero-consola";
+import { MarcoCaptura } from "./_components/marco-captura";
 import { EnlaceSolicitarAcceso } from "./_components/enlace-solicitar-acceso";
-import capturaRadarClaro from "./_assets/radar-claro.webp";
-import capturaRadarOscuro from "./_assets/radar-oscuro.webp";
+import capturaHero from "./_assets/radar-hero.webp";
+import capturaHeroMovil from "./_assets/radar-hero-movil.webp";
+import capturaDetalle from "./_assets/detalle-corpus.webp";
 import { serializarJsonLd } from "@/lib/jsonld";
 
 /**
@@ -174,16 +175,77 @@ function CtaAcceso({ utmContent }: { utmContent: string }) {
   );
 }
 
+/* Captura del hero, con art direction.
+
+   Una consola de escritorio completa reducida a los ~342 px de un móvil es
+   ilegible: el texto de la tabla queda por debajo de 2 px. Por eso en pantallas
+   estrechas se sirve un recorte del panel de detalle —el score, su banda y el
+   desglose de las seis dimensiones—, que es estrecho por naturaleza y cuenta la
+   misma historia a un tamaño que se lee.
+
+   Va con `<picture>` y no con dos `<Image>` y clases `hidden`, porque con CSS
+   el navegador se descarga las dos variantes; aquí sólo baja la que aplica.
+   `priority` marca la imagen como `eager` + `fetchPriority="high"`: es el LCP
+   de la página. Las dimensiones se declaran en el `<source>` para que el
+   navegador reserve la caja correcta antes de decodificar y no haya salto. */
+const SIZES_ANCHA = "(min-width: 1152px) 1104px, calc(100vw - 3rem)";
+const SIZES_ESTRECHA = "calc(100vw - 3rem)";
+
+function CapturaHero() {
+  const comun = { alt: CONTENIDO.capturaHeroAlt, priority: true };
+  const {
+    props: { srcSet: ancha },
+  } = getImageProps({ ...comun, src: capturaHero, sizes: SIZES_ANCHA });
+  const {
+    props: { srcSet: estrecha, ...resto },
+  } = getImageProps({ ...comun, src: capturaHeroMovil, sizes: SIZES_ESTRECHA });
+
+  return (
+    <picture>
+      {/* `sizes` va también en el `<source>`: sin él el navegador asume 100vw y
+          se descarga la variante de 3840 px para un hueco de 1104. */}
+      <source
+        media="(min-width: 640px)"
+        srcSet={ancha}
+        sizes={SIZES_ANCHA}
+        width={capturaHero.width}
+        height={capturaHero.height}
+      />
+      {/* `loading`/`fetchPriority` explícitos: al desestructurar `srcSet` fuera
+          de `props` se pierde la propagación, y esta imagen es el LCP. */}
+      <img
+        {...resto}
+        srcSet={estrecha}
+        alt={CONTENIDO.capturaHeroAlt}
+        loading="eager"
+        fetchPriority="high"
+        className="h-auto w-full"
+      />
+    </picture>
+  );
+}
+
 export default function LandingPage() {
   return (
     <>
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: serializarJsonLd(datosEstructurados()) }} />
 
-      {/* Portada */}
+      {/* Portada.
+
+          El hero enseñaba un mock CSS abstracto de la consola y la captura real
+          vivía tres pantallas más abajo: la misma historia contada dos veces, y
+          la versión pobre —sin texto, porque ADR-014 no permite inventar datos
+          en el frontend— ocupando el espacio de más valor de la página. Queda
+          una sola visualización, la de verdad, arriba.
+
+          Con ella el LCP pasa a ser una imagen priorizable en vez del `h1`
+          atado a la descarga de Space Grotesk. El texto se centra porque la
+          captura ocupa el ancho completo: una columna alineada a la izquierda
+          sobre una imagen a sangre queda descolgada. */}
       <section className="relative overflow-hidden">
         <div aria-hidden="true" className="tf-hero-grid absolute inset-0 -z-10" />
-        <div className="mx-auto grid w-full max-w-6xl items-center gap-14 px-6 pt-16 pb-20 md:pt-24 lg:grid-cols-[minmax(0,1fr)_minmax(0,26rem)] lg:gap-12">
-          <div className="tf-stagger">
+        <div className="mx-auto w-full max-w-6xl px-6 pt-16 pb-20 md:pt-24">
+          <div className="tf-stagger mx-auto max-w-3xl text-center">
             <p
               className={`${ENTRADA_HERO} border-primary/30 bg-primary/[0.06] text-primary inline-flex items-center gap-2 rounded-full border px-3.5 py-1.5 font-mono text-[11px] font-medium tracking-wider uppercase`}
             >
@@ -191,31 +253,32 @@ export default function LandingPage() {
               {CONTENIDO.eyebrow}
             </p>
             <h1
-              className={`${ENTRADA_HERO} font-display mt-6 max-w-[22ch] text-4xl leading-[1.06] font-bold tracking-[-0.03em] text-balance md:text-5xl`}
+              className={`${ENTRADA_HERO} font-display mx-auto mt-6 max-w-[24ch] text-4xl leading-[1.06] font-bold tracking-[-0.03em] text-balance md:text-5xl`}
             >
               {CONTENIDO.h1}
             </h1>
             <p
-              className={`${ENTRADA_HERO} text-muted-foreground mt-6 max-w-[58ch] text-base leading-relaxed md:text-lg`}
+              className={`${ENTRADA_HERO} text-muted-foreground mx-auto mt-6 max-w-[58ch] text-base leading-relaxed text-pretty md:text-lg`}
             >
               {CONTENIDO.subtitulo}
             </p>
-            <div className={`${ENTRADA_HERO} mt-9 flex flex-wrap items-center gap-3`}>
+            <div className={`${ENTRADA_HERO} mt-9 flex flex-wrap items-center justify-center gap-3`}>
               <CtaAcceso utmContent="hero" />
               <Link href="#como-funciona" className={CTA_SECUNDARIO}>
                 {CONTENIDO.ctaSecundario}
               </Link>
             </div>
-            <p className={`${ENTRADA_HERO} text-muted-foreground mt-5 text-xs leading-relaxed`}>
+            <p className={`${ENTRADA_HERO} text-muted-foreground mx-auto mt-5 max-w-[62ch] text-xs leading-relaxed`}>
               {CONTENIDO.notaFuentes}
             </p>
           </div>
 
-          {/* En una columna (móvil/tablet) la ilustración no debe estirarse a
-              todo el ancho: se acota y centra; en lg vuelve a su columna. */}
-          <div className="mx-auto w-full max-w-xl lg:mx-0 lg:max-w-none">
-            <HeroConsola />
-          </div>
+          <figure className={`${ENTRADA_HERO} mt-14`}>
+            <MarcoCaptura etiqueta="radar · triaje diario">
+              <CapturaHero />
+            </MarcoCaptura>
+            <figcaption className="text-muted-foreground mt-3 text-center text-xs">{CONTENIDO.capturaNota}</figcaption>
+          </figure>
         </div>
       </section>
 
@@ -262,42 +325,23 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* Así se ve: captura real del Radar. La imagen cambia con el tema vía
-          el variant `dark:` (class-driven, ver globals.css); ambas versiones
-          van en el HTML y CSS decide, sin JavaScript. `priority` no: está
-          bajo el fold y el lazy nativo de next/image basta. */}
+      {/* Segunda pantalla del producto. Antes repetía el Radar —mismo cromo,
+          mismas bandas, mismas seis dimensiones que el mock de arriba—; ahora
+          que la consola está en el hero, aquí se enseña algo distinto: el
+          corpus completo. Sin `priority`: está bajo el fold y el lazy nativo de
+          next/image es exactamente lo que hace falta. */}
       <div className="border-border/60 bg-card/40 border-t">
         <section className="mx-auto w-full max-w-6xl px-6 py-20">
-          <p className="text-primary font-mono text-xs tracking-widest uppercase">Así se ve</p>
+          <p className="text-primary font-mono text-xs tracking-widest uppercase">Detalle</p>
           <h2 className="font-display mt-3 max-w-[26ch] text-2xl leading-snug font-semibold tracking-[-0.02em] text-balance md:text-3xl">
             {CONTENIDO.capturaTitulo}
           </h2>
           <p className="text-muted-foreground mt-4 max-w-[64ch] text-base leading-relaxed">{CONTENIDO.capturaTexto}</p>
 
           <figure className="mt-10">
-            <div className="border-border/70 bg-card tf-card-shadow overflow-hidden rounded-xl border">
-              <div className="border-border/60 flex items-center gap-1.5 border-b px-4 py-2.5">
-                <span className="bg-muted-foreground/25 h-2.5 w-2.5 rounded-full" />
-                <span className="bg-muted-foreground/25 h-2.5 w-2.5 rounded-full" />
-                <span className="bg-muted-foreground/25 h-2.5 w-2.5 rounded-full" />
-                <span className="text-muted-foreground ml-3 font-mono text-[10px] tracking-wide">
-                  radar · triaje diario
-                </span>
-              </div>
-              <Image
-                src={capturaRadarClaro}
-                alt="Consola Radar de TenderFlow: bandeja de triaje ordenada por score, con bandas, tecnología, importe y plazo por expediente, y desglose de las seis dimensiones del score"
-                className="w-full dark:hidden"
-                sizes="(min-width: 1152px) 1104px, calc(100vw - 3rem)"
-              />
-              <Image
-                src={capturaRadarOscuro}
-                alt=""
-                aria-hidden="true"
-                className="hidden w-full dark:block"
-                sizes="(min-width: 1152px) 1104px, calc(100vw - 3rem)"
-              />
-            </div>
+            <MarcoCaptura etiqueta="detalle · corpus completo">
+              <Image src={capturaDetalle} alt={CONTENIDO.capturaAlt} sizes={SIZES_ANCHA} className="h-auto w-full" />
+            </MarcoCaptura>
             <figcaption className="text-muted-foreground mt-3 text-xs">{CONTENIDO.capturaNota}</figcaption>
           </figure>
         </section>

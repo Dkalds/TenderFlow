@@ -67,8 +67,12 @@ export interface ContenidoLanding {
   /** Sección "Así se ve": la captura real del Radar. La nota de datos de
    * demostración no es opcional — la regla de este fichero exige no presentar
    * como real lo que no lo es, y los expedientes de la imagen son del seed. */
+  /** Alt de la captura del hero. Va aquí y no en el TSX porque es copy: lo
+   *  lee un lector de pantalla y lo indexa Google como cualquier otro texto. */
+  capturaHeroAlt: string;
   capturaTitulo: string;
   capturaTexto: string;
+  capturaAlt: string;
   capturaNota: string;
   secciones: SeccionLanding[];
   faq: PreguntaFrecuente[];
@@ -153,11 +157,18 @@ export const CONTENIDO: ContenidoLanding = {
     "Infor",
   ],
 
-  capturaTitulo: "Así se ve por dentro",
+  capturaHeroAlt:
+    "Radar de TenderFlow: bandeja de triaje ordenada por score, con banda, órgano, " +
+    "tecnología, importe y plazo por expediente, y el panel de detalle con el " +
+    "desglose de las seis dimensiones que componen la puntuación.",
+  capturaTitulo: "El corpus entero, en una tabla",
   capturaTexto:
-    "Radar, la consola de triaje diario: la bandeja llega ordenada por score, " +
-    "cada señal se sigue, se descarta o se abre, y el desglose muestra qué pesó " +
-    "en la puntuación de cada expediente.",
+    "El Radar es la vista de trabajo diaria; debajo está el corpus completo con " +
+    "todos los campos —expediente, órgano, importe, estado, score, fecha, CCAA, " +
+    "CPV y tecnología—, ordenable por cualquiera de ellos y exportable.",
+  capturaAlt:
+    "Vista de detalle de TenderFlow: tabla del corpus con expediente, título, órgano, " +
+    "importe, estado, score, fecha, comunidad autónoma, CPV y tecnología en columnas ordenables.",
   capturaNota: "Interfaz real del producto. Los expedientes de la imagen son datos de demostración.",
 
   secciones: [
