@@ -30,17 +30,26 @@ import { serializarJsonLd } from "@/lib/jsonld";
  * Landing pública — la única página de TenderFlow que un buscador puede
  * indexar, y la primera pantalla de quien llega sin cuenta.
  *
- * Es un Server Component sin JavaScript de cliente para el contenido, a propósito
- * (la única isla es el beacon de analytics del CTA — ver
- * `_components/enlace-solicitar-acceso.tsx` —, cuyo ancla llega igualmente
- * renderizada en el HTML del servidor):
- * lo que un rastreador lee es el HTML de la respuesta, y todo lo que haya que
- * hidratar para que aparezca el texto es texto que Google puede no ver. Por la
- * misma razón todo el movimiento de la página es CSS puro (los primitivos
- * `animate-in`/`tf-stagger` de globals.css) y **ningún contenido depende del
- * scroll para hacerse visible**: una entrada al cargar termina sola; un reveal
- * al hacer scroll dejaría texto en `opacity: 0` para un rastreador que no
- * scrollea.
+ * El contenido es Server Component y no depende de hidratación: lo que un
+ * rastreador lee es el HTML de la respuesta, y todo lo que haya que hidratar
+ * para que aparezca el texto es texto que Google puede no ver. La única isla
+ * cliente es el beacon de analytics del CTA (ver
+ * `_components/enlace-solicitar-acceso.tsx`), cuyo ancla llega igualmente
+ * renderizada desde el servidor; el formulario de solicitud es HTML nativo y
+ * envía sin JavaScript.
+ *
+ * Ojo con la afirmación "sin JavaScript de cliente", que este comentario hacía
+ * a secas y el build desmentía: es cierta de esta página, no del documento. El
+ * layout raíz montaba los providers del dashboard —react-query, sesión,
+ * tooltips— y con ellos ~170 KB comprimidos. Dejó de hacerlo, pero la
+ * afirmación sólo se sostiene mientras nadie los devuelva ahí.
+ *
+ * Todo el movimiento es CSS puro (los primitivos `animate-in`/`tf-stagger` de
+ * globals.css) y **ningún contenido depende del scroll para hacerse visible**:
+ * una entrada al cargar termina sola; un reveal al hacer scroll dejaría texto
+ * en `opacity: 0` para un rastreador que no scrollea. Tampoco queda ninguna
+ * animación infinita — la había, un `animate-ping` sobre el fold, en el mock
+ * que esta página ya no usa.
  *
  * `title.absolute` evita la plantilla `%s | TenderFlow` que declara el layout
  * raíz: en la portada duplicaría la marca ("TenderFlow … | TenderFlow") y se
@@ -320,7 +329,10 @@ export default function LandingPage() {
             const Icono = ICONOS[pilar.icono];
             return (
               <article key={pilar.titulo} className="border-border/70 bg-card relative rounded-xl border p-6 shadow-sm">
-                <span aria-hidden="true" className="text-muted-foreground/60 absolute top-5 right-5 font-mono text-xs">
+                {/* Sin `/60`: a esa opacidad el numeral queda en 2,5:1 sobre el fondo
+                    claro e incumple el mínimo de 4,5:1 de WCAG 1.4.3, que aplica a
+                    todo texto visible aunque sea decorativo y lleve aria-hidden. */}
+                <span aria-hidden="true" className="text-muted-foreground absolute top-5 right-5 font-mono text-xs">
                   {String(i + 1).padStart(2, "0")}
                 </span>
                 <span className="bg-primary/10 text-primary flex h-10 w-10 items-center justify-center rounded-lg">
@@ -369,9 +381,13 @@ export default function LandingPage() {
                 {/* La columna de cabecera acompaña al texto largo con sticky:
                     en pantallas cortas el lector nunca pierde de vista en qué
                     parte del producto está. */}
-                <div className="md:sticky md:top-24 md:self-start">
+                {/* `top-16` y no `top-24`: el header sticky mide ~58 px, así que 96
+                    dejaba 38 px de hueco muerto. `z-10` y fondo propio porque al
+                    desanclarse la columna pasaba por debajo del header traslúcido y
+                    su título se leía borroso a través del blur. */}
+                <div className="bg-background md:sticky md:top-16 md:z-10 md:self-start md:pb-4">
                   <p className="text-primary flex items-center gap-2.5 font-mono text-xs tracking-widest uppercase">
-                    <span aria-hidden="true" className="text-muted-foreground/60">
+                    <span aria-hidden="true" className="text-muted-foreground">
                       {String(i + 1).padStart(2, "0")}
                     </span>
                     <Icono className="h-4 w-4" aria-hidden="true" />
