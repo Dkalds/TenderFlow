@@ -18,6 +18,16 @@
 }
 
 /*
+ * `dark:` sigue a la clase del tema, no al sistema operativo. El tema de la
+ * app es class-driven (next-themes escribe `.dark` en <html>): sin este
+ * override, el variant por defecto de Tailwind v4 (prefers-color-scheme)
+ * ignoraba el toggle del usuario y los `dark:` del dashboard divergían del
+ * resto de tokens. Con default "system" ambos coinciden salvo elección
+ * explícita — que es exactamente cuando debe mandar la clase.
+ */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/*
  * TenderFlow design tokens.
  * Premium market-intelligence dashboard: neutral base, indigo accent,
  * layered surfaces, refined elevation, and consistent chart colors.

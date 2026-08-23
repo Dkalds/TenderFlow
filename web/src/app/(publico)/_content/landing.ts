@@ -64,6 +64,12 @@ export interface ContenidoLanding {
   /** Diccionario de familias de producto (scraper/filters.py): el corpus se
    * acota por señal de estas trece marcas, y por eso se pueden enumerar. */
   familias: string[];
+  /** Sección "Así se ve": la captura real del Radar. La nota de datos de
+   * demostración no es opcional — la regla de este fichero exige no presentar
+   * como real lo que no lo es, y los expedientes de la imagen son del seed. */
+  capturaTitulo: string;
+  capturaTexto: string;
+  capturaNota: string;
   secciones: SeccionLanding[];
   faq: PreguntaFrecuente[];
   /** Bloque de cierre, tras las preguntas frecuentes. */
@@ -146,6 +152,13 @@ export const CONTENIDO: ContenidoLanding = {
     "Sage",
     "Infor",
   ],
+
+  capturaTitulo: "Así se ve por dentro",
+  capturaTexto:
+    "Radar, la consola de triaje diario: la bandeja llega ordenada por score, " +
+    "cada señal se sigue, se descarta o se abre, y el desglose muestra qué pesó " +
+    "en la puntuación de cada expediente.",
+  capturaNota: "Interfaz real del producto. Los expedientes de la imagen son datos de demostración.",
 
   secciones: [
     {

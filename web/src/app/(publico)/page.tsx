@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import Image from "next/image";
 import {
   ArrowRight,
   ArrowUpRight,
@@ -18,6 +19,8 @@ import { solicitarAccesoHref } from "@/lib/contacto";
 import { CONTENIDO } from "./_content/landing";
 import { HeroConsola } from "./_components/hero-consola";
 import { EnlaceSolicitarAcceso } from "./_components/enlace-solicitar-acceso";
+import capturaRadarClaro from "./_assets/radar-claro.webp";
+import capturaRadarOscuro from "./_assets/radar-oscuro.webp";
 
 /**
  * Landing pública — la única página de TenderFlow que un buscador puede
@@ -249,6 +252,47 @@ export default function LandingPage() {
           })}
         </div>
       </section>
+
+      {/* Así se ve: captura real del Radar. La imagen cambia con el tema vía
+          el variant `dark:` (class-driven, ver globals.css); ambas versiones
+          van en el HTML y CSS decide, sin JavaScript. `priority` no: está
+          bajo el fold y el lazy nativo de next/image basta. */}
+      <div className="border-border/60 bg-card/40 border-t">
+        <section className="mx-auto w-full max-w-6xl px-6 py-20">
+          <p className="text-primary font-mono text-xs tracking-widest uppercase">Así se ve</p>
+          <h2 className="font-display mt-3 max-w-[26ch] text-2xl leading-snug font-semibold tracking-[-0.02em] text-balance md:text-3xl">
+            {CONTENIDO.capturaTitulo}
+          </h2>
+          <p className="text-muted-foreground mt-4 max-w-[64ch] text-base leading-relaxed">{CONTENIDO.capturaTexto}</p>
+
+          <figure className="mt-10">
+            <div className="border-border/70 bg-card tf-card-shadow overflow-hidden rounded-xl border">
+              <div className="border-border/60 flex items-center gap-1.5 border-b px-4 py-2.5">
+                <span className="bg-muted-foreground/25 h-2.5 w-2.5 rounded-full" />
+                <span className="bg-muted-foreground/25 h-2.5 w-2.5 rounded-full" />
+                <span className="bg-muted-foreground/25 h-2.5 w-2.5 rounded-full" />
+                <span className="text-muted-foreground ml-3 font-mono text-[10px] tracking-wide">
+                  radar · triaje diario
+                </span>
+              </div>
+              <Image
+                src={capturaRadarClaro}
+                alt="Consola Radar de TenderFlow: bandeja de triaje ordenada por score, con bandas, tecnología, importe y plazo por expediente, y desglose de las seis dimensiones del score"
+                className="w-full dark:hidden"
+                sizes="(min-width: 1152px) 1104px, calc(100vw - 3rem)"
+              />
+              <Image
+                src={capturaRadarOscuro}
+                alt=""
+                aria-hidden="true"
+                className="hidden w-full dark:block"
+                sizes="(min-width: 1152px) 1104px, calc(100vw - 3rem)"
+              />
+            </div>
+            <figcaption className="text-muted-foreground mt-3 text-xs">{CONTENIDO.capturaNota}</figcaption>
+          </figure>
+        </section>
+      </div>
 
       {/* Cuerpo en detalle */}
       <div className="border-border/60 border-t">
