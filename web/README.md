@@ -87,3 +87,19 @@ En Docker, el build usa `../docker/Dockerfile.web` (ver `docker-compose.yml`
 en la raíz). El build de producción (`npm run build`) corre
 `codegen:best-effort` antes de `next build`, así que no requiere que la API
 esté disponible para compilar.
+
+## Variables de entorno
+
+Las del frontend viven en [`.env.example`](.env.example), con su explicación
+una a una. Dos cosas que se olvidan con facilidad:
+
+- **`NEXT_PUBLIC_*` se hornea en el build.** Cambiar el valor en Vercel no
+  surte efecto hasta un redespliegue sin caché de build.
+- **`API_BASE_URL` es obligatoria en producción.** `next.config.ts` rompe el
+  build a propósito si falta, para no publicar una web sin datos.
+
+El guard de paridad de entorno (`make check-env-parity`) solo cubre el backend
+—compara `config/settings.py`, el `.env.example` de la raíz y `render.yaml`—,
+así que las de aquí no las verifica nadie automáticamente: al añadir una,
+documentarla en ese fichero es el único paso que evita que se convierta en una
+variable fantasma.

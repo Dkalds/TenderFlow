@@ -32,6 +32,10 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+# ...salvo la plantilla documentada: dejarla fuera del repositorio es
+# precisamente lo que convirtió NEXT_PUBLIC_CONTACT_EMAIL en una variable
+# fantasma que nadie sabía que había que definir.
+!.env.example
 
 # vercel
 .vercel

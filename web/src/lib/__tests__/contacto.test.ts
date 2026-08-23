@@ -72,4 +72,20 @@ describe("solicitarAccesoHref", () => {
     // varios clientes de correo.
     expect(href).not.toContain("\n");
   });
+
+  it("marca en el cuerpo desde qué CTA se solicitó", async () => {
+    // Sin esto, el mailto del hero y el del cierre eran byte a byte idénticos:
+    // la rama con email ignoraba `utmContent`, así que lo único que distinguía
+    // los dos CTA era el evento de analytics, que cae con un bloqueador.
+    const { solicitarAccesoHref } = await importarContacto({
+      NEXT_PUBLIC_CONTACT_EMAIL: "acceso@tenderflow.example",
+    });
+
+    const hero = solicitarAccesoHref("hero");
+    const cierre = solicitarAccesoHref("cierre");
+
+    expect(decodeURIComponent(hero.split("body=")[1])).toContain("Origen: hero");
+    expect(decodeURIComponent(cierre.split("body=")[1])).toContain("Origen: cierre");
+    expect(hero).not.toBe(cierre);
+  });
 });

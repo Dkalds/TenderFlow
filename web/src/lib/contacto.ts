@@ -22,10 +22,16 @@ export const CONTACT_EMAIL: string | null = process.env.NEXT_PUBLIC_CONTACT_EMAI
  *
  * Con email configurado: `mailto:` con asunto y cuerpo prellenados (los dos
  * datos que el operador necesita para habilitar el acceso: email o dominio).
- * Sin él: /login como hasta ahora, con atribución UTM — Vercel Analytics ya
- * está montado y `utm_content` es una de sus dimensiones, así que distinguir
- * qué CTA convierte no requiere ni una línea de JavaScript en la landing.
- * El canonical de /login colapsa las variantes, así que el SEO no se entera.
+ * Sin él: /login con atribución UTM — Vercel Analytics ya está montado y
+ * `utm_content` es una de sus dimensiones, así que distinguir qué CTA convierte
+ * no requiere ni una línea de JavaScript en la landing. El canonical de /login
+ * colapsa las variantes, así que el SEO no se entera.
+ *
+ * El origen viaja también en el cuerpo del `mailto`, y no es cosmético: la
+ * rama con email ignoraba `utmContent` por completo, de modo que el enlace del
+ * hero y el del cierre eran **byte a byte idénticos** y lo único capaz de
+ * distinguirlos era el evento `track()` de la isla de analytics — que se pierde
+ * con cualquier bloqueador. Una línea en el correo que llega sobrevive a eso.
  */
 export function solicitarAccesoHref(utmContent: string): string {
   if (!CONTACT_EMAIL) {
@@ -33,6 +39,10 @@ export function solicitarAccesoHref(utmContent: string): string {
   }
   const asunto = "Solicitud de acceso a TenderFlow";
   const cuerpo =
-    "Hola,\n\n" + "Quiero solicitar acceso a TenderFlow.\n\n" + "Empresa:\n" + "Email o dominio a habilitar:\n";
+    "Hola,\n\n" +
+    "Quiero solicitar acceso a TenderFlow.\n\n" +
+    "Empresa:\n" +
+    "Email o dominio a habilitar:\n\n" +
+    `Origen: ${utmContent}\n`;
   return `mailto:${CONTACT_EMAIL}?subject=${encodeURIComponent(asunto)}&body=${encodeURIComponent(cuerpo)}`;
 }
