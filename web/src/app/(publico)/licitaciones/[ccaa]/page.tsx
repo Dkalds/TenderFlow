@@ -98,29 +98,21 @@ export default async function HubCcaa({
 
   return (
     <>
-      <script
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(migasJsonLd(migas)) }}
-      />
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(migasJsonLd(migas)) }} />
 
       <div className="mx-auto w-full max-w-5xl px-6 py-12">
         <h1 className="font-display text-3xl font-bold tracking-[-0.025em] text-balance md:text-4xl">
           Licitaciones de tecnología en {nombre}
         </h1>
-        <p className="mt-4 max-w-[62ch] text-base leading-relaxed text-muted-foreground">
-          Concursos públicos con componente de tecnología enterprise publicados por órganos de
-          contratación {nombre === "sin comunidad autónoma asignada" ? "sin comunidad asignada en la fuente" : `de ${nombre}`}. Cada
+        <p className="text-muted-foreground mt-4 max-w-[62ch] text-base leading-relaxed">
+          Concursos públicos con componente de tecnología enterprise publicados por órganos de contratación{" "}
+          {nombre === "sin comunidad autónoma asignada" ? "sin comunidad asignada en la fuente" : `de ${nombre}`}. Cada
           ficha enlaza al anuncio original del perfil del contratante.
         </p>
 
         <ListadoLicitaciones licitaciones={licitaciones} jsonLdNombre={`Licitaciones en ${nombre}`} />
 
-        <Paginacion
-          base={rutaHubCcaa(ccaa)}
-          paginaActual={pagina}
-          total={total}
-          porPagina={POR_PAGINA}
-        />
+        <Paginacion base={rutaHubCcaa(ccaa)} paginaActual={pagina} total={total} porPagina={POR_PAGINA} />
       </div>
     </>
   );

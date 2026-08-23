@@ -101,7 +101,9 @@ export function HeroConsola() {
                   <span className={`bg-muted-foreground/20 block h-1.5 rounded-full ${fila.meta}`} />
                 </span>
                 <span className="bg-muted-foreground/15 h-1.5 w-16 shrink-0 overflow-hidden rounded-full">
-                  <span className={`block h-full rounded-full ${PUNTO_BANDA[fila.banda]} ${fila.score}`} />
+                  <span
+                    className={`tf-fill-enter block h-full rounded-full ${PUNTO_BANDA[fila.banda]} ${fila.score}`}
+                  />
                 </span>
               </li>
             ))}
@@ -115,7 +117,7 @@ export function HeroConsola() {
                 <li key={dimension.nombre}>
                   <span className="text-muted-foreground text-[10px] leading-none font-medium">{dimension.nombre}</span>
                   <span className="bg-muted-foreground/15 mt-1 block h-1 overflow-hidden rounded-full">
-                    <span className={`bg-primary/70 block h-full rounded-full ${dimension.peso}`} />
+                    <span className={`tf-fill-enter bg-primary/70 block h-full rounded-full ${dimension.peso}`} />
                   </span>
                 </li>
               ))}

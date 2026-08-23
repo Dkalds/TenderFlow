@@ -1,12 +1,7 @@
 "use client";
 
 import * as React from "react";
-import {
-  QueryCache,
-  MutationCache,
-  QueryClient,
-  QueryClientProvider,
-} from "@tanstack/react-query";
+import { QueryCache, MutationCache, QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ThemeProvider } from "next-themes";
 import { NuqsAdapter } from "nuqs/adapters/next/app";
 import { SessionProvider } from "@/lib/auth";
@@ -18,19 +13,12 @@ import {
   type QueryFeedbackMeta,
 } from "@/lib/query-feedback";
 
-export function Providers({
-  children,
-  nonce,
-}: {
-  children: React.ReactNode;
-  nonce?: string;
-}) {
+export function Providers({ children, nonce }: { children: React.ReactNode; nonce?: string }) {
   const [queryClient] = React.useState(
     () =>
       new QueryClient({
         queryCache: new QueryCache({
-          onError: (error, query) =>
-            notifyQueryError(error, query.meta as QueryFeedbackMeta | undefined),
+          onError: (error, query) => notifyQueryError(error, query.meta as QueryFeedbackMeta | undefined),
         }),
         mutationCache: new MutationCache({
           onError: (error, _vars, _ctx, mutation) =>
@@ -48,13 +36,13 @@ export function Providers({
   );
   return (
     <QueryClientProvider client={queryClient}>
-      <ThemeProvider
-        attribute="class"
-        defaultTheme="dark"
-        enableSystem={false}
-        disableTransitionOnChange
-        nonce={nonce}
-      >
+      {/* `system` como default: quien no ha elegido tema sigue al del sistema
+          operativo — relevante sobre todo para la superficie pública, donde el
+          visitante anónimo no tiene toggle. Una elección explícita (toggle del
+          menú de cuenta / paleta) se persiste y gana. Todo consumidor que
+          decida algo por tema debe leer `resolvedTheme`, no `theme`: con
+          default system, `theme` vale "system". */}
+      <ThemeProvider attribute="class" defaultTheme="system" disableTransitionOnChange nonce={nonce}>
         <SessionProvider>
           <TooltipProvider>
             <NuqsAdapter>{children}</NuqsAdapter>

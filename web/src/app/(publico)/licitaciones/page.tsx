@@ -56,10 +56,7 @@ export default async function IndiceLicitaciones() {
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{
-          __html: JSON.stringify([
-            migasJsonLd(migas),
-            listaJsonLd("Licitaciones por comunidad autónoma", entradas),
-          ]),
+          __html: JSON.stringify([migasJsonLd(migas), listaJsonLd("Licitaciones por comunidad autónoma", entradas)]),
         }}
       />
 
@@ -67,34 +64,30 @@ export default async function IndiceLicitaciones() {
         <h1 className="font-display text-3xl font-bold tracking-[-0.025em] text-balance md:text-4xl">
           Licitaciones públicas de tecnología en España
         </h1>
-        <p className="mt-4 max-w-[62ch] text-base leading-relaxed text-muted-foreground">
-          Concursos con componente de tecnología enterprise publicados por la administración
-          española, agrupados por comunidad autónoma. Los datos proceden de la Plataforma de
-          Contratación del Sector Público y de TED, y cada ficha enlaza al anuncio original.
+        <p className="text-muted-foreground mt-4 max-w-[62ch] text-base leading-relaxed">
+          Concursos con componente de tecnología enterprise publicados por la administración española, agrupados por
+          comunidad autónoma. Los datos proceden de la Plataforma de Contratación del Sector Público y de TED, y cada
+          ficha enlaza al anuncio original.
         </p>
 
-        <h2 className="mt-12 font-display text-xl font-semibold tracking-[-0.02em]">
-          Por comunidad autónoma
-        </h2>
+        <h2 className="font-display mt-12 text-xl font-semibold tracking-[-0.02em]">Por comunidad autónoma</h2>
         <ul className="mt-5 grid gap-x-8 gap-y-1 sm:grid-cols-2 lg:grid-cols-3">
           {ccaa.map((hub) => (
             <li key={hub.slug}>
               <Link
                 href={rutaHubCcaa(hub.slug)}
-                className="flex items-baseline justify-between gap-3 rounded px-1 py-2 hover:bg-accent/60"
+                className="hover:bg-accent/60 flex items-baseline justify-between gap-3 rounded px-1 py-2"
               >
                 <span className="text-sm font-medium">{hub.nombre}</span>
-                <span className="text-xs tabular-nums text-muted-foreground">
-                  {formatNumber(hub.total)}
-                </span>
+                <span className="text-muted-foreground text-xs tabular-nums">{formatNumber(hub.total)}</span>
               </Link>
             </li>
           ))}
         </ul>
 
-        <p className="mt-10 text-sm text-muted-foreground">
+        <p className="text-muted-foreground mt-10 text-sm">
           ¿Buscas por tipo de contrato?{" "}
-          <Link href="/cpv" className="font-medium text-foreground underline underline-offset-4">
+          <Link href="/cpv" className="text-foreground font-medium underline underline-offset-4">
             Índice por código CPV
           </Link>
           .

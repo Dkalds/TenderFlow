@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { TenderFlowLogo } from "@/components/layout/tenderflow-logo";
+import { CONTACT_EMAIL } from "@/lib/contacto";
 
 /**
  * Layout de la superficie pública.
@@ -50,8 +51,10 @@ export default function PublicoLayout({ children }: { children: React.ReactNode 
               </Link>
             </nav>
           </div>
+          {/* utm_content distingue en Vercel Analytics desde qué CTA se llega
+              a /login; el canonical de /login colapsa las variantes. */}
           <Link
-            href="/login"
+            href="/login?utm_source=publico&utm_content=header"
             className="bg-primary text-primary-foreground hover:bg-primary/90 focus-visible:ring-ring focus-visible:ring-offset-background inline-flex h-9 items-center justify-center rounded-md px-4 text-sm font-medium shadow transition-[transform,background-color] duration-150 ease-out focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none active:scale-[0.97]"
           >
             Iniciar sesión
@@ -97,8 +100,16 @@ export default function PublicoLayout({ children }: { children: React.ReactNode 
               >
                 Aviso legal
               </Link>
+              {CONTACT_EMAIL && (
+                <a
+                  href={`mailto:${CONTACT_EMAIL}`}
+                  className="hover:text-foreground focus-visible:ring-ring -my-1.5 inline-flex items-center rounded px-1 py-1.5 transition-colors duration-150 focus-visible:ring-2 focus-visible:outline-none"
+                >
+                  Contacto
+                </a>
+              )}
               <Link
-                href="/login"
+                href="/login?utm_source=publico&utm_content=footer"
                 className="hover:text-foreground focus-visible:ring-ring -my-1.5 inline-flex items-center rounded px-1 py-1.5 transition-colors duration-150 focus-visible:ring-2 focus-visible:outline-none"
               >
                 Acceder

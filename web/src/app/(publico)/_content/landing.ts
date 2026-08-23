@@ -35,6 +35,10 @@ export interface SeccionLanding {
   h2: string;
   parrafos: string[];
   bullets?: string[];
+  /** Enlace interno hacia la superficie pública de datos, cuando la sección
+   * habla de algo que se puede ver sin cuenta. Además de útil para el lector,
+   * reparte autoridad interna hacia los hubs indexables. */
+  enlace?: { texto: string; href: string };
 }
 
 export interface PreguntaFrecuente {
@@ -156,6 +160,7 @@ export const CONTENIDO: ContenidoLanding = {
         "El rescate del clasificador se limita a CPV 48 y 72, y hoy solo la práctica SAP admite expedientes sin keyword.",
         "Cada licitación conserva la versión del filtro y del clasificador con la que entró, así que siempre se sabe con qué criterio se admitió cada expediente.",
       ],
+      enlace: { texto: "Explora las licitaciones por código CPV", href: "/cpv" },
     },
     {
       kicker: "Fuentes",
@@ -169,6 +174,10 @@ export const CONTENIDO: ContenidoLanding = {
         "Los campos que la fuente no publica quedan vacíos, y se mide el porcentaje de nulos en órgano de contratación, importe y CPV.",
         "Carril por NIF: si vigilas una empresa se conservan sus adjudicaciones aunque el expediente no dé señal tecnológica, desde que la das de alta.",
       ],
+      enlace: {
+        texto: "Ver los anuncios publicados, por comunidad autónoma",
+        href: "/licitaciones",
+      },
     },
     {
       kicker: "Scoring",

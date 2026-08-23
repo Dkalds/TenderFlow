@@ -39,20 +39,20 @@ export function ListadoLicitaciones({
         dangerouslySetInnerHTML={{ __html: JSON.stringify(listaJsonLd(jsonLdNombre, entradas)) }}
       />
 
-      <ul className="mt-10 divide-y divide-border/50 border-t border-border/50">
+      <ul className="divide-border/50 border-border/50 mt-10 divide-y border-t">
         {licitaciones.map((lic, indice) => {
           const limite = fechaCorta(lic.fecha_limite);
           return (
             <li key={lic.ref} className="py-5">
-              <h2 className="text-base font-semibold leading-snug">
-                <Link href={entradas[indice].ruta} className="hover:underline underline-offset-4">
+              <h2 className="text-base leading-snug font-semibold">
+                <Link href={entradas[indice].ruta} className="underline-offset-4 hover:underline">
                   {lic.titulo}
                 </Link>
               </h2>
               {lic.organo_contratacion && (
-                <p className="mt-1 text-sm text-muted-foreground">{lic.organo_contratacion}</p>
+                <p className="text-muted-foreground mt-1 text-sm">{lic.organo_contratacion}</p>
               )}
-              <p className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+              <p className="text-muted-foreground mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
                 {lic.importe && <span>{formatCurrency(lic.importe)}</span>}
                 {lic.cpv && <span className="font-mono">CPV {lic.cpv}</span>}
                 {lic.provincia && <span>{lic.provincia}</span>}

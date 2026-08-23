@@ -51,10 +51,7 @@ export default async function IndiceCpv() {
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{
-          __html: JSON.stringify([
-            migasJsonLd(migas),
-            listaJsonLd("Licitaciones por código CPV", entradas),
-          ]),
+          __html: JSON.stringify([migasJsonLd(migas), listaJsonLd("Licitaciones por código CPV", entradas)]),
         }}
       />
 
@@ -62,10 +59,9 @@ export default async function IndiceCpv() {
         <h1 className="font-display text-3xl font-bold tracking-[-0.025em] text-balance md:text-4xl">
           Licitaciones por código CPV
         </h1>
-        <p className="mt-4 max-w-[62ch] text-base leading-relaxed text-muted-foreground">
-          El CPV (Common Procurement Vocabulary) es la clasificación con la que la administración
-          identifica el objeto de cada contrato. Estos son los códigos con actividad en el corpus,
-          ordenados por volumen.
+        <p className="text-muted-foreground mt-4 max-w-[62ch] text-base leading-relaxed">
+          El CPV (Common Procurement Vocabulary) es la clasificación con la que la administración identifica el objeto
+          de cada contrato. Estos son los códigos con actividad en el corpus, ordenados por volumen.
         </p>
 
         <ul className="mt-10 grid gap-x-8 gap-y-1 sm:grid-cols-2 lg:grid-cols-3">
@@ -73,23 +69,18 @@ export default async function IndiceCpv() {
             <li key={hub.codigo}>
               <Link
                 href={rutaHubCpv(hub.codigo)}
-                className="flex items-baseline justify-between gap-3 rounded px-1 py-2 hover:bg-accent/60"
+                className="hover:bg-accent/60 flex items-baseline justify-between gap-3 rounded px-1 py-2"
               >
                 <span className="font-mono text-sm font-medium">{hub.codigo}</span>
-                <span className="text-xs tabular-nums text-muted-foreground">
-                  {formatNumber(hub.total)}
-                </span>
+                <span className="text-muted-foreground text-xs tabular-nums">{formatNumber(hub.total)}</span>
               </Link>
             </li>
           ))}
         </ul>
 
-        <p className="mt-10 text-sm text-muted-foreground">
+        <p className="text-muted-foreground mt-10 text-sm">
           ¿Prefieres buscar por territorio?{" "}
-          <Link
-            href="/licitaciones"
-            className="font-medium text-foreground underline underline-offset-4"
-          >
+          <Link href="/licitaciones" className="text-foreground font-medium underline underline-offset-4">
             Índice por comunidad autónoma
           </Link>
           .

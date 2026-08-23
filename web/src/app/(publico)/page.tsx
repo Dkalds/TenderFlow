@@ -14,6 +14,7 @@ import {
   Workflow,
 } from "lucide-react";
 import { OG_IMAGE_COMPARTIDA, SITE_NAME, SITE_URL, TWITTER_COMPARTIDO } from "@/lib/site";
+import { solicitarAccesoHref } from "@/lib/contacto";
 import { CONTENIDO } from "./_content/landing";
 import { HeroConsola } from "./_components/hero-consola";
 
@@ -139,6 +140,32 @@ const CTA_SECUNDARIO =
  * quieta y legible desde el primer frame. */
 const ENTRADA_HERO = "animate-in fade-in-0 slide-in-from-bottom-2 anim-duration-500";
 
+/* CTA de acceso. El destino lo decide `solicitarAccesoHref` (lib/contacto):
+ * mailto con asunto prellenado cuando el entorno define el email de contacto,
+ * /login con atribución UTM cuando no. `<a>` para mailto (Link es para rutas
+ * internas) y `<Link>` para el fallback. */
+function CtaAcceso({ utmContent }: { utmContent: string }) {
+  const href = solicitarAccesoHref(utmContent);
+  const contenido = (
+    <>
+      {CONTENIDO.ctaPrimario}
+      <ArrowRight
+        className="h-4 w-4 transition-transform duration-200 ease-out group-hover:translate-x-0.5"
+        aria-hidden="true"
+      />
+    </>
+  );
+  return href.startsWith("mailto:") ? (
+    <a href={href} className={CTA_PRIMARIO}>
+      {contenido}
+    </a>
+  ) : (
+    <Link href={href} className={CTA_PRIMARIO}>
+      {contenido}
+    </Link>
+  );
+}
+
 export default function LandingPage() {
   return (
     <>
@@ -166,13 +193,7 @@ export default function LandingPage() {
               {CONTENIDO.subtitulo}
             </p>
             <div className={`${ENTRADA_HERO} mt-9 flex flex-wrap items-center gap-3`}>
-              <Link href="/login" className={CTA_PRIMARIO}>
-                {CONTENIDO.ctaPrimario}
-                <ArrowRight
-                  className="h-4 w-4 transition-transform duration-200 ease-out group-hover:translate-x-0.5"
-                  aria-hidden="true"
-                />
-              </Link>
+              <CtaAcceso utmContent="hero" />
               <Link href="#como-funciona" className={CTA_SECUNDARIO}>
                 {CONTENIDO.ctaSecundario}
               </Link>
@@ -274,6 +295,18 @@ export default function LandingPage() {
                       ))}
                     </ul>
                   )}
+                  {seccion.enlace && (
+                    <Link
+                      href={seccion.enlace.href}
+                      className="group text-primary mt-6 inline-flex items-center gap-1.5 text-sm font-medium underline-offset-4 hover:underline"
+                    >
+                      {seccion.enlace.texto}
+                      <ArrowRight
+                        className="h-3.5 w-3.5 transition-transform duration-200 ease-out group-hover:translate-x-0.5"
+                        aria-hidden="true"
+                      />
+                    </Link>
+                  )}
                 </div>
               </section>
             );
@@ -364,13 +397,7 @@ export default function LandingPage() {
             {CONTENIDO.cierreTexto}
           </p>
           <div className="mt-9 flex justify-center">
-            <Link href="/login" className={CTA_PRIMARIO}>
-              {CONTENIDO.ctaPrimario}
-              <ArrowRight
-                className="h-4 w-4 transition-transform duration-200 ease-out group-hover:translate-x-0.5"
-                aria-hidden="true"
-              />
-            </Link>
+            <CtaAcceso utmContent="cierre" />
           </div>
           <p className="text-muted-foreground mt-5 text-xs">{CONTENIDO.cierreNota}</p>
         </div>
