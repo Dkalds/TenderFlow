@@ -4,7 +4,7 @@ import { notFound } from "next/navigation";
 import { ArrowUpRight, MapPin } from "lucide-react";
 import { obtenerHubs } from "@/lib/publico-api";
 import { OG_IMAGE_COMPARTIDA, TWITTER_COMPARTIDO } from "@/lib/site";
-import { listaJsonLd, migasJsonLd } from "@/lib/jsonld";
+import { listaJsonLd, migasJsonLd, serializarJsonLd } from "@/lib/jsonld";
 import { rutaHubCcaa } from "@/lib/slug";
 import { formatNumber } from "@/lib/utils";
 
@@ -60,7 +60,7 @@ export default async function IndiceLicitaciones() {
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{
-          __html: JSON.stringify([migasJsonLd(migas), listaJsonLd("Licitaciones por comunidad autónoma", entradas)]),
+          __html: serializarJsonLd([migasJsonLd(migas), listaJsonLd("Licitaciones por comunidad autónoma", entradas)]),
         }}
       />
 

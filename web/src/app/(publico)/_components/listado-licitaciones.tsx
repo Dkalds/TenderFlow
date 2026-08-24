@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { ArrowUpRight } from "lucide-react";
 import type { LicitacionPublica } from "@/lib/publico-api";
-import { listaJsonLd } from "@/lib/jsonld";
+import { listaJsonLd, serializarJsonLd } from "@/lib/jsonld";
 import { rutaLicitacion } from "@/lib/slug";
 import { EMPTY, formatCurrency, formatDate } from "@/lib/utils";
 
@@ -45,7 +45,7 @@ export function ListadoLicitaciones({
     <>
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(listaJsonLd(jsonLdNombre, entradas)) }}
+        dangerouslySetInnerHTML={{ __html: serializarJsonLd(listaJsonLd(jsonLdNombre, entradas)) }}
       />
 
       <ul className="divide-border/50 border-border/50 mt-10 divide-y border-t">

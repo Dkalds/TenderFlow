@@ -4,7 +4,7 @@ import { Hash } from "lucide-react";
 import { listarLicitaciones } from "@/lib/publico-api";
 import { formatNumber } from "@/lib/utils";
 import { OG_IMAGE_COMPARTIDA, TWITTER_COMPARTIDO } from "@/lib/site";
-import { migasJsonLd } from "@/lib/jsonld";
+import { migasJsonLd, serializarJsonLd } from "@/lib/jsonld";
 import { rutaHubCpv } from "@/lib/slug";
 import { ListadoLicitaciones } from "@/app/(publico)/_components/listado-licitaciones";
 import { Paginacion } from "@/app/(publico)/_components/paginacion";
@@ -108,7 +108,7 @@ export default async function HubCpv({
 
   return (
     <>
-      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(migasJsonLd(migas)) }} />
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: serializarJsonLd(migasJsonLd(migas)) }} />
 
       <div className="mx-auto w-full max-w-5xl px-6 py-12">
         <p className="text-primary flex flex-wrap items-center gap-x-3 gap-y-1.5 font-mono text-xs tracking-widest uppercase">

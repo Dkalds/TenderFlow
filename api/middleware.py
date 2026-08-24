@@ -226,6 +226,21 @@ _HEAVY_ENDPOINT_PATTERNS: tuple[tuple[re.Pattern[str], int], ...] = (
 PUBLIC_PATH_PREFIX = "/api/v1/publico/"
 PUBLIC_MAX_CALLS = 600
 
+# El único endpoint público de **escritura** (la cola de solicitudes de acceso
+# que alimenta el formulario de la landing) necesita bucket propio, no una
+# entrada en `_HEAVY_ENDPOINT_LIMITS`.
+#
+# El motivo es que esa tabla ajusta el tope pero **no** la clave: el contador
+# seguiría siendo `publico:{ip}`, compartido con todas las lecturas anónimas.
+# Un tope de 5 sobre ese contador significaría que cinco peticiones de un
+# rastreador dejan el formulario inservible, y que cada envío consume cuota de
+# la superficie SEO. Con clave propia, las dos cosas se limitan por separado.
+#
+# Cinco por minuto y por IP: un humano rellena el formulario una vez, y lo que
+# hay detrás es una cola que revisa una persona.
+SOLICITUDES_PATH = "/api/v1/publico/solicitudes-acceso"
+SOLICITUDES_MAX_CALLS = 5
+
 
 def _rate_bucket(path: str, client: str) -> tuple[str, int | None]:
     """Clave de cuota y tope propio para ``path``.
@@ -233,6 +248,8 @@ def _rate_bucket(path: str, client: str) -> tuple[str, int | None]:
     Devuelve ``(clave, tope)``. Un tope ``None`` significa "usa el default del
     middleware", que es como se comporta todo lo que no es superficie pública.
     """
+    if path == SOLICITUDES_PATH:
+        return f"solicitudes:{client}", SOLICITUDES_MAX_CALLS
     if path.startswith(PUBLIC_PATH_PREFIX):
         return f"publico:{client}", PUBLIC_MAX_CALLS
     return f"api:{client}", None

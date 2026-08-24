@@ -46,30 +46,38 @@ describe("CONTACT_EMAIL", () => {
 });
 
 describe("solicitarAccesoHref", () => {
-  it("sin email degrada a /login con atribución UTM", async () => {
-    const { solicitarAccesoHref } = await importarContacto({});
-    expect(solicitarAccesoHref("hero")).toBe("/login?utm_source=publico&utm_content=hero");
-  });
-
-  it("escapa el utm_content en el fallback", async () => {
-    const { solicitarAccesoHref } = await importarContacto({});
-    expect(solicitarAccesoHref("a b&c")).toBe("/login?utm_source=publico&utm_content=a%20b%26c");
-  });
-
-  it("con email construye un mailto con asunto y cuerpo prellenados", async () => {
-    const { solicitarAccesoHref } = await importarContacto({
+  /**
+   * El CTA apuntaba a un `mailto:` cuando el entorno definía el buzón y a
+   * /login cuando no. Las dos ramas eran fondos de saco por motivos distintos:
+   * el `mailto:` no hace nada en un escritorio con webmail y no deja rastro
+   * medible, y /login responde 403 al alta. Ahora el destino es siempre el
+   * formulario de la landing, que persiste la petición en la API.
+   */
+  it("apunta al formulario de la landing, haya o no email configurado", async () => {
+    const sinEmail = await importarContacto({});
+    const conEmail = await importarContacto({
       NEXT_PUBLIC_CONTACT_EMAIL: "acceso@tenderflow.example",
     });
-    const href = solicitarAccesoHref("cierre");
 
-    expect(href.startsWith("mailto:acceso@tenderflow.example?")).toBe(true);
-    expect(href).toContain(`subject=${encodeURIComponent("Solicitud de acceso a TenderFlow")}`);
-    // El cuerpo pide lo que el operador necesita para habilitar el acceso.
-    const cuerpo = decodeURIComponent(href.split("body=")[1]);
-    expect(cuerpo).toContain("Empresa:");
-    expect(cuerpo).toContain("Email o dominio a habilitar:");
-    // Los saltos de línea van escapados: un mailto con \n crudos se trunca en
-    // varios clientes de correo.
-    expect(href).not.toContain("\n");
+    expect(sinEmail.solicitarAccesoHref("hero")).toBe("/#solicitar-acceso");
+    expect(conEmail.solicitarAccesoHref("hero")).toBe("/#solicitar-acceso");
+  });
+
+  it("no depende del entorno para tener destino", async () => {
+    // El fallo que motivó este módulo era exactamente ese: una variable sin
+    // documentar decidía si el CTA principal llevaba a alguna parte.
+    const { solicitarAccesoHref } = await importarContacto({});
+
+    expect(solicitarAccesoHref("cierre")).not.toContain("login");
+    expect(solicitarAccesoHref("cierre")).not.toContain("mailto");
+  });
+
+  it("sirve igual desde otra ruta que desde la portada", async () => {
+    // Desde /login tiene que navegar a la landing y saltar al ancla; desde la
+    // propia landing el navegador lo trata como salto de fragmento.
+    const { solicitarAccesoHref, ANCLA_SOLICITUD } = await importarContacto({});
+
+    expect(solicitarAccesoHref("login").startsWith("/#")).toBe(true);
+    expect(solicitarAccesoHref("login")).toBe(`/#${ANCLA_SOLICITUD}`);
   });
 });

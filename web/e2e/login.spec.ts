@@ -59,22 +59,44 @@ test.describe("Formulario de acceso", () => {
   });
 });
 
+/**
+ * En producción `ALLOW_SELF_REGISTRATION` está apagado y no se declara en
+ * `render.yaml`, así que `POST /auth/register` responde 403. La pestaña de
+ * "Crear cuenta" seguía ofreciéndose igualmente: un formulario completo cuyo
+ * único final posible era un error. Ahora sólo aparece con la bandera puesta,
+ * y este bloque comprueba las dos configuraciones en vez de dar por hecha la
+ * que producción no expone.
+ */
+const ALTA_ABIERTA = process.env.NEXT_PUBLIC_ALLOW_SELF_REGISTRATION === "1";
+
 test.describe("Alta de cuenta", () => {
   test.beforeEach(async ({ page }) => {
     await page.goto("/login");
     await page.waitForLoadState("networkidle");
   });
 
+  test("cerrada, no se ofrece la pestaña y se explica por qué", async ({ page }) => {
+    test.skip(ALTA_ABIERTA, "El entorno declara el alta self-service abierta");
+
+    await expect(page.getByRole("tab", { name: /crear cuenta|sign up|registr/i })).toHaveCount(0);
+    await expect(page.locator("#confirm-password")).toHaveCount(0);
+    // Quien llega desde la landing sin cuenta tiene que saber por qué no puede
+    // entrar. La nota se enseña haya o no email de contacto configurado.
+    await expect(page.getByText(/acceso es por invitación/i)).toBeVisible();
+  });
+
   test("la pestaña de registro revela el campo de confirmación", async ({ page }) => {
+    test.skip(!ALTA_ABIERTA, "El alta self-service está cerrada en este entorno");
+
     await expect(page.locator("#confirm-password")).toHaveCount(0);
     await page.getByRole("tab", { name: /crear cuenta|sign up|registr/i }).click();
     await expect(page.locator("#confirm-password")).toBeVisible();
-    await expect(
-      page.getByRole("button", { name: /crear cuenta|sign up|registr/i })
-    ).toBeVisible();
+    await expect(page.getByRole("button", { name: /crear cuenta|sign up|registr/i })).toBeVisible();
   });
 
   test("contraseñas distintas dan error sin navegar", async ({ page }) => {
+    test.skip(!ALTA_ABIERTA, "El alta self-service está cerrada en este entorno");
+
     await page.getByRole("tab", { name: /crear cuenta|sign up|registr/i }).click();
 
     await page.locator("#email").fill("nuevo@example.com");
@@ -84,9 +106,7 @@ test.describe("Alta de cuenta", () => {
 
     // La validación de cliente corre antes de cualquier petición. Se apunta a
     // aria-live="polite" para no capturar el anunciador de rutas de Next.
-    await expect(page.locator("[role='alert'][aria-live='polite']")).toContainText(
-      /no coinciden|do not match/i
-    );
+    await expect(page.locator("[role='alert'][aria-live='polite']")).toContainText(/no coinciden|do not match/i);
     await expect(page).toHaveURL(/\/login/);
   });
 });

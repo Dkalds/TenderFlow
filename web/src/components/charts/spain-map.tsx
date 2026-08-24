@@ -4,6 +4,10 @@ import * as React from "react";
 import type { FeatureCollection, Feature, Geometry } from "geojson";
 import type { Layer, LeafletMouseEvent } from "leaflet";
 import { GeoJSON, MapContainer, ZoomControl } from "react-leaflet";
+// El CSS de Leaflet se importaba en el layout raíz, así que la landing pública
+// —donde no hay mapa— se llevaba 16 KB de estilos y los PNG de los marcadores.
+// Va con el único componente que lo usa.
+import "leaflet/dist/leaflet.css";
 import { useTheme } from "next-themes";
 import { cn } from "@/lib/utils";
 import { formatNumber } from "@/lib/utils";
@@ -25,22 +29,22 @@ interface SpainMapProps {
 // Maps GeoJSON "name" → canonical name used by the app
 const GEO_TO_CANONICAL: Record<string, string> = {
   "Castilla-Leon": "Castilla y León",
-  "Cataluña": "Cataluña",
-  "Ceuta": "Ceuta",
-  "Murcia": "Murcia",
+  Cataluña: "Cataluña",
+  Ceuta: "Ceuta",
+  Murcia: "Murcia",
   "La Rioja": "La Rioja",
-  "Baleares": "Islas Baleares",
-  "Canarias": "Canarias",
-  "Cantabria": "Cantabria",
-  "Andalucia": "Andalucía",
-  "Asturias": "Asturias",
-  "Valencia": "Comunidad Valenciana",
-  "Melilla": "Melilla",
-  "Navarra": "Navarra",
-  "Galicia": "Galicia",
-  "Aragon": "Aragón",
-  "Madrid": "Madrid",
-  "Extremadura": "Extremadura",
+  Baleares: "Islas Baleares",
+  Canarias: "Canarias",
+  Cantabria: "Cantabria",
+  Andalucia: "Andalucía",
+  Asturias: "Asturias",
+  Valencia: "Comunidad Valenciana",
+  Melilla: "Melilla",
+  Navarra: "Navarra",
+  Galicia: "Galicia",
+  Aragon: "Aragón",
+  Madrid: "Madrid",
+  Extremadura: "Extremadura",
   "Castilla-La Mancha": "Castilla-La Mancha",
   "Pais Vasco": "País Vasco",
 };
@@ -48,41 +52,41 @@ const GEO_TO_CANONICAL: Record<string, string> = {
 // Name normalization for incoming data
 const CCAA_ALIASES: Record<string, string> = {
   "comunidad de madrid": "Madrid",
-  "madrid": "Madrid",
-  "cataluña": "Cataluña",
-  "catalunya": "Cataluña",
+  madrid: "Madrid",
+  cataluña: "Cataluña",
+  catalunya: "Cataluña",
   "país vasco": "País Vasco",
-  "euskadi": "País Vasco",
+  euskadi: "País Vasco",
   "pais vasco": "País Vasco",
   "comunidad valenciana": "Comunidad Valenciana",
   "comunitat valenciana": "Comunidad Valenciana",
-  "valencia": "Comunidad Valenciana",
-  "andalucía": "Andalucía",
-  "andalucia": "Andalucía",
+  valencia: "Comunidad Valenciana",
+  andalucía: "Andalucía",
+  andalucia: "Andalucía",
   "castilla y león": "Castilla y León",
   "castilla y leon": "Castilla y León",
   "castilla-la mancha": "Castilla-La Mancha",
   "castilla la mancha": "Castilla-La Mancha",
-  "galicia": "Galicia",
-  "asturias": "Asturias",
+  galicia: "Galicia",
+  asturias: "Asturias",
   "principado de asturias": "Asturias",
-  "cantabria": "Cantabria",
-  "navarra": "Navarra",
+  cantabria: "Cantabria",
+  navarra: "Navarra",
   "comunidad foral de navarra": "Navarra",
   "la rioja": "La Rioja",
-  "aragón": "Aragón",
-  "aragon": "Aragón",
-  "extremadura": "Extremadura",
-  "murcia": "Murcia",
+  aragón: "Aragón",
+  aragon: "Aragón",
+  extremadura: "Extremadura",
+  murcia: "Murcia",
   "región de murcia": "Murcia",
   "region de murcia": "Murcia",
   "islas baleares": "Islas Baleares",
   "illes balears": "Islas Baleares",
-  "baleares": "Islas Baleares",
-  "canarias": "Canarias",
+  baleares: "Islas Baleares",
+  canarias: "Canarias",
   "islas canarias": "Canarias",
-  "ceuta": "Ceuta",
-  "melilla": "Melilla",
+  ceuta: "Ceuta",
+  melilla: "Melilla",
 };
 
 function normalizeCcaa(name: string): string {
@@ -103,11 +107,7 @@ const COLOR_SCALES = {
   },
 } as const;
 
-function interpolateColor(
-  t: number,
-  scale: "blue" | "green" | "orange",
-  mode: "light" | "dark",
-): string {
+function interpolateColor(t: number, scale: "blue" | "green" | "orange", mode: "light" | "dark"): string {
   const s = COLOR_SCALES[mode][scale];
   const parse = (c: string) => {
     const m = c.match(/hsl\((\d+)\s+(\d+)%\s+(\d+)%\)/);
@@ -156,7 +156,9 @@ export const SpainMap = React.memo(function SpainMap({
       .catch(() => {
         if (!cancelled) setGeoError(true);
       });
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const valueMap = React.useMemo(() => {
@@ -244,18 +246,16 @@ export const SpainMap = React.memo(function SpainMap({
   if (!geoData) {
     return (
       <div
-        className={cn("flex items-center justify-center rounded-md border border-border bg-muted/30", className)}
+        className={cn("border-border bg-muted/30 flex items-center justify-center rounded-md border", className)}
         style={{ height }}
       >
-        <span className="text-sm text-muted-foreground">
-          {geoError ? "Error cargando mapa" : "Cargando mapa…"}
-        </span>
+        <span className="text-muted-foreground text-sm">{geoError ? "Error cargando mapa" : "Cargando mapa…"}</span>
       </div>
     );
   }
 
   return (
-    <div className={cn("relative w-full overflow-hidden rounded-md border border-border", className)}>
+    <div className={cn("border-border relative w-full overflow-hidden rounded-md border", className)}>
       <MapContainer
         center={[40.0, -3.7]}
         zoom={6}
@@ -278,7 +278,7 @@ export const SpainMap = React.memo(function SpainMap({
       {hoveredCcaa && (
         <div
           role="tooltip"
-          className="pointer-events-none absolute z-[1000] -translate-x-1/2 -translate-y-full rounded border border-border bg-popover px-2.5 py-1.5 text-xs text-popover-foreground shadow-md"
+          className="border-border bg-popover text-popover-foreground pointer-events-none absolute z-[1000] -translate-x-1/2 -translate-y-full rounded border px-2.5 py-1.5 text-xs shadow-md"
           style={{ left: tooltipPos.x, top: tooltipPos.y - 12 }}
         >
           <p className="font-semibold">{hoveredCcaa}</p>

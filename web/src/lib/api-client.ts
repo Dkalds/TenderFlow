@@ -50,7 +50,7 @@ export const api = createClient<paths>({
 
 /**
  * Redirige a /login preservando el deep-link actual como `?redirect=`, igual
- * que el middleware de Next (`web/src/middleware.ts`). No hace nada en SSR ni
+ * que el proxy de borde de Next (`web/src/proxy.ts`). No hace nada en SSR ni
  * si ya estamos en /login (evita un bucle de redirecciones y perder el destino).
  */
 function redirectToLogin(): void {

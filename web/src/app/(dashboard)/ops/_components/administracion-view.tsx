@@ -15,13 +15,7 @@ import { useState, useCallback, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { type ColumnDef } from "@tanstack/react-table";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-} from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Badge } from "@/components/ui/badge";
@@ -30,21 +24,11 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { DataTable } from "@/components/ui/data-table";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
-import {
-  Users,
-  Key,
-  RotateCcw,
-  Plus,
-  Copy,
-  Shield,
-  Info,
-  Webhook as WebhookIcon,
-  Trash2,
-  Radio,
-} from "lucide-react";
+import { Users, Key, RotateCcw, Plus, Copy, Shield, Info, Webhook as WebhookIcon, Trash2, Radio } from "lucide-react";
 import { apiMutate } from "@/lib/api-client";
 import { formatDate, cn } from "@/lib/utils";
 import { AdminGuard } from "@/components/admin-guard";
+import { SolicitudesAccesoCard } from "./solicitudes-acceso-card";
 
 interface QualityData {
   dlq_count?: number;
@@ -127,19 +111,17 @@ function AdministracionContent() {
     },
   });
 
-  const { data: keysData, isLoading: keysLoading } = useQuery<ApiKeysResponse>(
-    {
-      queryKey: ["api-keys"],
-      queryFn: async () => {
-        const res = await fetch("/api/v1/me/keys", {
-          credentials: "include",
-        });
-        if (res.status === 401) throw new Error("Sesión expirada");
-        if (!res.ok) throw new Error(`Error ${res.status}`);
-        return res.json();
-      },
+  const { data: keysData, isLoading: keysLoading } = useQuery<ApiKeysResponse>({
+    queryKey: ["api-keys"],
+    queryFn: async () => {
+      const res = await fetch("/api/v1/me/keys", {
+        credentials: "include",
+      });
+      if (res.status === 401) throw new Error("Sesión expirada");
+      if (!res.ok) throw new Error(`Error ${res.status}`);
+      return res.json();
     },
-  );
+  });
 
   const {
     data: usersData,
@@ -211,8 +193,7 @@ function AdministracionContent() {
       queryClient.invalidateQueries({ queryKey: ["webhooks"] });
       toast.success("Webhook creado");
     },
-    onError: (err) =>
-      toast.error(err instanceof Error ? err.message : "No se pudo crear el webhook."),
+    onError: (err) => toast.error(err instanceof Error ? err.message : "No se pudo crear el webhook."),
   });
 
   const deleteWebhook = useMutation({
@@ -237,8 +218,7 @@ function AdministracionContent() {
   };
 
   const pingWebhook = useMutation({
-    mutationFn: (id: number) =>
-      apiMutate<{ success: boolean; error?: string }>("POST", `/api/v1/webhooks/${id}/ping`),
+    mutationFn: (id: number) => apiMutate<{ success: boolean; error?: string }>("POST", `/api/v1/webhooks/${id}/ping`),
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["webhooks"] });
       if (data.success) toast.success("Entrega de prueba enviada correctamente");
@@ -248,17 +228,11 @@ function AdministracionContent() {
   });
 
   function toggleWhEvent(event: string, checked: boolean) {
-    setWhEvents((prev) =>
-      checked ? [...prev, event] : prev.filter((e) => e !== event),
-    );
+    setWhEvents((prev) => (checked ? [...prev, event] : prev.filter((e) => e !== event)));
   }
 
   const rotateKey = useMutation({
-    mutationFn: () =>
-      apiMutate<{ raw_token?: string; token?: string }>(
-        "POST",
-        "/api/v1/me/keys/rotate",
-      ),
+    mutationFn: () => apiMutate<{ raw_token?: string; token?: string }>("POST", "/api/v1/me/keys/rotate"),
     onSuccess: (data) => {
       const token = data.raw_token ?? data.token ?? "???";
       setNewKeyToken(token);
@@ -300,10 +274,7 @@ function AdministracionContent() {
           return (
             <Badge
               variant={active ? "default" : "secondary"}
-              className={cn(
-                active &&
-                  "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200",
-              )}
+              className={cn(active && "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200")}
             >
               {active ? "Activo" : "Inactivo"}
             </Badge>
@@ -315,11 +286,7 @@ function AdministracionContent() {
         header: "Último login",
         cell: ({ getValue }) => {
           const v = getValue<string | null>();
-          return (
-            <span className="text-muted-foreground">
-              {v ? formatDate(v) : "—"}
-            </span>
-          );
+          return <span className="text-muted-foreground">{v ? formatDate(v) : "—"}</span>;
         },
       },
       {
@@ -354,17 +321,13 @@ function AdministracionContent() {
         id: "prefijo",
         accessorFn: (k) => k.prefix ?? k.key_prefix ?? "—",
         header: "Prefijo",
-        cell: ({ getValue }) => (
-          <span className="font-mono text-xs tabular-nums">{getValue<string>()}</span>
-        ),
+        cell: ({ getValue }) => <span className="font-mono text-xs tabular-nums">{getValue<string>()}</span>,
       },
       {
         accessorKey: "created_at",
         header: "Creada",
         cell: ({ getValue }) => (
-          <span className="text-muted-foreground">
-            {formatDate(getValue<string | undefined>())}
-          </span>
+          <span className="text-muted-foreground">{formatDate(getValue<string | undefined>())}</span>
         ),
       },
       {
@@ -372,11 +335,7 @@ function AdministracionContent() {
         header: "Último uso",
         cell: ({ getValue }) => {
           const v = getValue<string | undefined>();
-          return (
-            <span className="text-muted-foreground">
-              {v ? formatDate(v) : "Nunca"}
-            </span>
-          );
+          return <span className="text-muted-foreground">{v ? formatDate(v) : "Nunca"}</span>;
         },
       },
       {
@@ -408,10 +367,7 @@ function AdministracionContent() {
           return (
             <Badge
               variant={active ? "default" : "secondary"}
-              className={cn(
-                active &&
-                  "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200",
-              )}
+              className={cn(active && "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200")}
             >
               {active ? "Activa" : "Revocada"}
             </Badge>
@@ -423,12 +379,7 @@ function AdministracionContent() {
         header: "Acciones",
         cell: () => (
           <div className="text-right">
-            <Button
-              variant="ghost"
-              size="sm"
-              className="text-destructive"
-              onClick={handleRevokeKey}
-            >
+            <Button variant="ghost" size="sm" className="text-destructive" onClick={handleRevokeKey}>
               Revocar
             </Button>
           </div>
@@ -461,10 +412,13 @@ function AdministracionContent() {
     <div className="space-y-6">
       <div>
         <h1 className="sr-only">Administración</h1>
-        <p className="text-muted-foreground">
-          Gestión de DLQ, usuarios y claves API.
-        </p>
+        <p className="text-muted-foreground">Gestión de DLQ, usuarios y claves API.</p>
       </div>
+
+      {/* Cola de solicitudes de acceso llegadas desde la landing pública. Va
+          primero porque es lo único de esta pantalla con trabajo pendiente
+          esperando a una persona. */}
+      <SolicitudesAccesoCard />
 
       {/* DLQ Management */}
       <Card>
@@ -473,9 +427,7 @@ function AdministracionContent() {
             <RotateCcw className="h-5 w-5" />
             Gestión de DLQ
           </CardTitle>
-          <CardDescription>
-            Dead Letter Queue — registros que fallaron durante el procesamiento
-          </CardDescription>
+          <CardDescription>Dead Letter Queue — registros que fallaron durante el procesamiento</CardDescription>
         </CardHeader>
         <CardContent className="flex items-center justify-between">
           <div>
@@ -484,16 +436,12 @@ function AdministracionContent() {
             ) : (
               <>
                 <p className="text-2xl font-bold">{dlqCount}</p>
-                <p className="text-sm text-muted-foreground">
-                  registros en DLQ
-                </p>
+                <p className="text-muted-foreground text-sm">registros en DLQ</p>
               </>
             )}
           </div>
           <div className="flex items-center gap-2">
-            {confirmDlq && (
-              <span className="text-sm text-yellow-600">¿Confirmar?</span>
-            )}
+            {confirmDlq && <span className="text-sm text-yellow-600">¿Confirmar?</span>}
             <Button
               variant={confirmDlq ? "destructive" : "outline"}
               onClick={handleDlqReprocess}
@@ -503,11 +451,7 @@ function AdministracionContent() {
               {confirmDlq ? "Sí, reprocesar" : "Reprocesar DLQ"}
             </Button>
             {confirmDlq && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setConfirmDlq(false)}
-              >
+              <Button variant="ghost" size="sm" onClick={() => setConfirmDlq(false)}>
                 Cancelar
               </Button>
             )}
@@ -534,16 +478,12 @@ function AdministracionContent() {
               ))}
             </div>
           ) : usersError ? (
-            <div className="flex items-center gap-2 text-sm text-muted-foreground bg-muted/50 rounded-md p-3">
+            <div className="text-muted-foreground bg-muted/50 flex items-center gap-2 rounded-md p-3 text-sm">
               <Info className="h-4 w-4 shrink-0" />
               <span>{(usersError as Error).message}</span>
             </div>
           ) : (
-            <DataTable
-              columns={userColumns}
-              data={users}
-              initialSorting={[{ id: "email", desc: false }]}
-            />
+            <DataTable columns={userColumns} data={users} initialSorting={[{ id: "email", desc: false }]} />
           )}
         </CardContent>
       </Card>
@@ -558,12 +498,7 @@ function AdministracionContent() {
             </CardTitle>
             <CardDescription>Claves de acceso a la API</CardDescription>
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => rotateKey.mutate()}
-            disabled={rotateKey.isPending}
-          >
+          <Button variant="outline" size="sm" onClick={() => rotateKey.mutate()} disabled={rotateKey.isPending}>
             <Plus className="mr-2 h-4 w-4" />
             {rotateKey.isPending ? "Generando…" : "Generar nueva clave"}
           </Button>
@@ -573,27 +508,14 @@ function AdministracionContent() {
           {newKeyToken && (
             <Card className="mb-4 border-green-500 bg-green-50/50 dark:bg-green-950/20">
               <CardContent className="pt-4">
-                <p className="text-sm font-medium mb-2">
-                  Nueva clave generada — copia ahora, no se mostrara de nuevo:
-                </p>
+                <p className="mb-2 text-sm font-medium">Nueva clave generada — copia ahora, no se mostrara de nuevo:</p>
                 <div className="flex items-center gap-2">
-                  <code className="flex-1 bg-muted p-2 rounded text-xs font-mono break-all">
-                    {newKeyToken}
-                  </code>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => copyToClipboard(newKeyToken)}
-                  >
+                  <code className="bg-muted flex-1 rounded p-2 font-mono text-xs break-all">{newKeyToken}</code>
+                  <Button variant="outline" size="sm" onClick={() => copyToClipboard(newKeyToken)}>
                     <Copy className="h-4 w-4" />
                   </Button>
                 </div>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="mt-2"
-                  onClick={() => setNewKeyToken(null)}
-                >
+                <Button variant="ghost" size="sm" className="mt-2" onClick={() => setNewKeyToken(null)}>
                   Cerrar
                 </Button>
               </CardContent>
@@ -606,9 +528,7 @@ function AdministracionContent() {
               <Skeleton className="h-5 w-3/4" />
             </div>
           ) : apiKeys.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              No hay claves API registradas.
-            </p>
+            <p className="text-muted-foreground text-sm">No hay claves API registradas.</p>
           ) : (
             <DataTable
               columns={keyColumns}
@@ -630,35 +550,22 @@ function AdministracionContent() {
             Webhooks
           </CardTitle>
           <CardDescription>
-            Integraciones salientes — todas las claves admin/sesión admin ven y gestionan
-            los mismos webhooks (no son por-usuario).
+            Integraciones salientes — todas las claves admin/sesión admin ven y gestionan los mismos webhooks (no son
+            por-usuario).
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           {newWebhookSecret && (
             <Card className="border-green-500 bg-green-50/50 dark:bg-green-950/20">
               <CardContent className="pt-4">
-                <p className="text-sm font-medium mb-2">
-                  Secret generado — cópialo ahora, no se mostrará de nuevo:
-                </p>
+                <p className="mb-2 text-sm font-medium">Secret generado — cópialo ahora, no se mostrará de nuevo:</p>
                 <div className="flex items-center gap-2">
-                  <code className="flex-1 bg-muted p-2 rounded text-xs font-mono break-all">
-                    {newWebhookSecret}
-                  </code>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => copyToClipboard(newWebhookSecret)}
-                  >
+                  <code className="bg-muted flex-1 rounded p-2 font-mono text-xs break-all">{newWebhookSecret}</code>
+                  <Button variant="outline" size="sm" onClick={() => copyToClipboard(newWebhookSecret)}>
                     <Copy className="h-4 w-4" />
                   </Button>
                 </div>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="mt-2"
-                  onClick={() => setNewWebhookSecret(null)}
-                >
+                <Button variant="ghost" size="sm" className="mt-2" onClick={() => setNewWebhookSecret(null)}>
                   Cerrar
                 </Button>
               </CardContent>
@@ -720,28 +627,25 @@ function AdministracionContent() {
               <Skeleton className="h-5 w-3/4" />
             </div>
           ) : webhooksError ? (
-            <div className="flex items-center gap-2 text-sm text-muted-foreground bg-muted/50 rounded-md p-3">
+            <div className="text-muted-foreground bg-muted/50 flex items-center gap-2 rounded-md p-3 text-sm">
               <Info className="h-4 w-4 shrink-0" />
               <span>{(webhooksError as Error).message}</span>
             </div>
           ) : !webhooksData || webhooksData.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No hay webhooks registrados.</p>
+            <p className="text-muted-foreground text-sm">No hay webhooks registrados.</p>
           ) : (
             <div className="space-y-2">
               {webhooksData.map((wh) => (
                 <div
                   key={wh.id}
-                  className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border/70 p-3"
+                  className="border-border/70 flex flex-wrap items-center justify-between gap-2 rounded-md border p-3"
                 >
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
                       <p className="font-medium">{wh.name}</p>
                       <Badge
                         variant={wh.active ? "default" : "secondary"}
-                        className={cn(
-                          wh.active &&
-                            "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200",
-                        )}
+                        className={cn(wh.active && "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200")}
                       >
                         {wh.active ? "Activo" : "Inactivo"}
                       </Badge>
@@ -751,7 +655,7 @@ function AdministracionContent() {
                         </Badge>
                       )}
                     </div>
-                    <p className="truncate text-xs text-muted-foreground">{wh.url}</p>
+                    <p className="text-muted-foreground truncate text-xs">{wh.url}</p>
                     <div className="mt-1 flex flex-wrap gap-1">
                       {wh.event_types.map((ev) => (
                         <Badge key={ev} variant="outline" className="text-xs">
@@ -775,9 +679,7 @@ function AdministracionContent() {
                       </TooltipTrigger>
                       <TooltipContent>Enviar entrega de prueba</TooltipContent>
                     </Tooltip>
-                    {confirmDeleteWebhookId === wh.id && (
-                      <span className="text-xs text-destructive">¿Confirmar?</span>
-                    )}
+                    {confirmDeleteWebhookId === wh.id && <span className="text-destructive text-xs">¿Confirmar?</span>}
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <Button
@@ -786,7 +688,9 @@ function AdministracionContent() {
                           className={confirmDeleteWebhookId === wh.id ? "" : "text-destructive"}
                           disabled={deleteWebhook.isPending}
                           onClick={() => handleDeleteWebhookClick(wh.id)}
-                          aria-label={confirmDeleteWebhookId === wh.id ? "Confirmar eliminación de webhook" : "Eliminar webhook"}
+                          aria-label={
+                            confirmDeleteWebhookId === wh.id ? "Confirmar eliminación de webhook" : "Eliminar webhook"
+                          }
                         >
                           <Trash2 className="h-4 w-4" aria-hidden="true" />
                         </Button>
@@ -796,11 +700,7 @@ function AdministracionContent() {
                       </TooltipContent>
                     </Tooltip>
                     {confirmDeleteWebhookId === wh.id && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => setConfirmDeleteWebhookId(null)}
-                      >
+                      <Button variant="ghost" size="sm" onClick={() => setConfirmDeleteWebhookId(null)}>
                         Cancelar
                       </Button>
                     )}

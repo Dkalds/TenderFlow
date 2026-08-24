@@ -44,6 +44,7 @@ from api.middleware import (
     SecurityHeadersMiddleware,
     _trusted_client_ip,
 )
+from api.routes.admin_solicitudes import router as admin_solicitudes_router
 from api.routes.admin_users import router as admin_users_router
 from api.routes.analytics import router as analytics_router
 from api.routes.ask import router as ask_router
@@ -63,6 +64,7 @@ from api.routes.models import router as models_router
 from api.routes.notifications import router as notifications_router
 from api.routes.predicciones import router as predicciones_router
 from api.routes.publico import router as publico_router
+from api.routes.publico_solicitudes import router as publico_solicitudes_router
 from api.routes.pursuits import router as pursuits_router
 from api.routes.radar import router as radar_router
 from api.routes.resoluciones import router as resoluciones_router
@@ -548,6 +550,9 @@ app.include_router(predicciones_router, prefix="/api/v1")
 # fichero ensombrecería cualquier ruta pública bajo ese prefijo, y le
 # devolvería 401 a los rastreadores sin fallar en el arranque.
 app.include_router(publico_router, prefix="/api/v1")
+# Único endpoint público de escritura: la cola de solicitudes de acceso que
+# alimenta el formulario de la landing. Mismo prefijo y mismo motivo.
+app.include_router(publico_solicitudes_router, prefix="/api/v1")
 app.include_router(pursuits_router, prefix="/api/v1")
 app.include_router(analytics_router, prefix="/api/v1")
 app.include_router(feedback_router, prefix="/api/v1")
@@ -565,6 +570,7 @@ app.include_router(radar_router, prefix="/api/v1")
 app.include_router(saved_filters_router, prefix="/api/v1")
 app.include_router(notifications_router, prefix="/api/v1")
 app.include_router(admin_users_router, prefix="/api/v1")
+app.include_router(admin_solicitudes_router, prefix="/api/v1")
 app.include_router(feature_flags_router, prefix="/api/v1")
 app.include_router(ask_router, prefix="/api/v1")
 

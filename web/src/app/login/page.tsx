@@ -23,6 +23,20 @@ const OAUTH_ERROR_MESSAGES: Record<string, string> = {
   email_not_allowed: "Tu cuenta de Google no tiene acceso a TenderFlow.",
 };
 
+/**
+ * ¿Se enseña la pestaña de "Crear cuenta"?
+ *
+ * En producción `ALLOW_SELF_REGISTRATION` está apagado y no se declara en
+ * `render.yaml`, así que `POST /auth/register` responde 403. La pestaña seguía
+ * ahí igualmente: quien llegaba desde la landing rellenaba un formulario
+ * completo para recibir un error. Es el mismo fondo de saco que motivó
+ * `lib/contacto`, un paso más adelante en el embudo.
+ *
+ * La bandera permite reactivarla el día que el alta se abra, sin volver a
+ * tocar el componente.
+ */
+const ALTA_ABIERTA = process.env.NEXT_PUBLIC_ALLOW_SELF_REGISTRATION === "1" || process.env.NODE_ENV === "development";
+
 export default function LoginPage() {
   return (
     <Suspense>
@@ -194,30 +208,33 @@ function LoginPageContent() {
             frequency, "delight" purpose). */}
         <Card className="border-border/70 animate-in fade-in-0 slide-in-from-bottom-2 anim-duration-200 shadow-xl backdrop-blur-sm">
           <CardHeader className="space-y-4">
-            {/* Login / Register tab switcher */}
-            <div
-              role="tablist"
-              aria-label="Iniciar sesión o crear cuenta"
-              className="bg-muted grid grid-cols-2 gap-1 rounded-lg p-1 text-sm font-medium"
-            >
-              {(["login", "register"] as const).map((m) => (
-                <button
-                  key={m}
-                  type="button"
-                  role="tab"
-                  id={`tab-${m}`}
-                  aria-selected={mode === m}
-                  aria-controls="auth-panel"
-                  onClick={() => switchMode(m)}
-                  className={cn(
-                    "focus-visible:ring-ring rounded-md px-3 py-1.5 transition-colors focus-visible:ring-2 focus-visible:outline-none",
-                    mode === m ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
-                  )}
-                >
-                  {m === "login" ? "Iniciar sesión" : "Crear cuenta"}
-                </button>
-              ))}
-            </div>
+            {/* Login / Register tab switcher. Solo cuando el alta está
+                abierta: en producción la pestaña llevaba a un 403. */}
+            {ALTA_ABIERTA && (
+              <div
+                role="tablist"
+                aria-label="Iniciar sesión o crear cuenta"
+                className="bg-muted grid grid-cols-2 gap-1 rounded-lg p-1 text-sm font-medium"
+              >
+                {(["login", "register"] as const).map((m) => (
+                  <button
+                    key={m}
+                    type="button"
+                    role="tab"
+                    id={`tab-${m}`}
+                    aria-selected={mode === m}
+                    aria-controls="auth-panel"
+                    onClick={() => switchMode(m)}
+                    className={cn(
+                      "focus-visible:ring-ring rounded-md px-3 py-1.5 transition-colors focus-visible:ring-2 focus-visible:outline-none",
+                      mode === m ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
+                    )}
+                  >
+                    {m === "login" ? "Iniciar sesión" : "Crear cuenta"}
+                  </button>
+                ))}
+              </div>
+            )}
             <CardDescription>
               {isRegister ? "Crea tu cuenta con correo y contraseña" : "Accede con tu cuenta para ver el dashboard"}
             </CardDescription>
@@ -432,21 +449,26 @@ function LoginPageContent() {
                   Continuar con Google
                 </Button>
 
-                {/* El alta self-service está desactivada en producción: sin esta
-                nota, quien llega desde la landing sin cuenta se queda ante un
-                formulario que no puede usar. Solo se muestra cuando el entorno
-                define un email de contacto real (lib/contacto). */}
-                {CONTACT_EMAIL && (
-                  <p className="text-muted-foreground mt-6 text-center text-xs leading-relaxed">
-                    El acceso es por invitación.{" "}
+                {/* El alta self-service está desactivada en producción, así que
+                    quien llega desde la landing sin cuenta necesita saber por
+                    qué no puede entrar. La nota se enseña **siempre**: antes
+                    dependía de que el entorno definiera un email de contacto,
+                    de modo que justo en el despliegue peor configurado —el que
+                    manda el CTA a /login por no tener buzón— la pantalla no
+                    daba ninguna explicación. Con email, además, enlaza. */}
+                <p className="text-muted-foreground mt-6 text-center text-xs leading-relaxed">
+                  El acceso es por invitación.{" "}
+                  {CONTACT_EMAIL ? (
                     <a
                       href={solicitarAccesoHref("login")}
                       className="text-foreground font-medium underline-offset-4 hover:underline"
                     >
                       Solicita acceso para tu equipo
                     </a>
-                  </p>
-                )}
+                  ) : (
+                    <span>Se habilita tu email o el dominio de tu empresa.</span>
+                  )}
+                </p>
 
                 {process.env.NODE_ENV === "development" && (
                   <>

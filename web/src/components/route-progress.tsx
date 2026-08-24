@@ -3,6 +3,9 @@
 import { Suspense, useEffect } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 import NProgress from "nprogress";
+// El CSS viajaba en el layout raíz, donde lo heredaba también la superficie
+// pública, que no tiene barra de progreso. Va con su componente.
+import "nprogress/nprogress.css";
 
 // Constant motion (a progress bar filling) wants `linear`, not NProgress's
 // default `ease` (review-animations / emil-design-eng easing decision tree:

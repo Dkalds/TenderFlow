@@ -3,7 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { obtenerLicitacion, type LicitacionPublica } from "@/lib/publico-api";
 import { SITE_NAME, TWITTER_COMPARTIDO } from "@/lib/site";
-import { migasJsonLd } from "@/lib/jsonld";
+import { migasJsonLd, serializarJsonLd } from "@/lib/jsonld";
 import { rutaHubCcaa, rutaLicitacion } from "@/lib/slug";
 import { EMPTY, formatCurrency, formatDate } from "@/lib/utils";
 
@@ -121,7 +121,7 @@ export default async function FichaLicitacion({ params }: { params: Promise<Para
 
   return (
     <>
-      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(migasJsonLd(migas)) }} />
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: serializarJsonLd(migasJsonLd(migas)) }} />
 
       <article className="mx-auto w-full max-w-4xl px-6 py-12">
         <nav aria-label="Migas de pan" className="text-muted-foreground mb-6 text-xs">

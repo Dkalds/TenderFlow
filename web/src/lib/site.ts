@@ -1,3 +1,4 @@
+import { CONTENIDO } from "@/app/(publico)/_content/landing";
 import type { Metadata } from "next";
 
 /**
@@ -48,10 +49,14 @@ export const SITE_NAME = "TenderFlow";
  * Descripción por defecto. Se reutiliza en `<meta name="description">`, en Open
  * Graph y en la Twitter card para que las tres digan lo mismo; ~150 caracteres,
  * que es lo que Google muestra antes de truncar.
+ *
+ * Sale del contenido de la landing en vez de tener redacción propia. Eran dos
+ * textos distintos para el mismo posicionamiento —uno aquí y otro en
+ * `landing.ts`—, los dos se emitían (éste en la raíz, aquél en la portada) y no
+ * había nada que los mantuviera alineados: cualquier revisión del copy dejaba
+ * el otro atrás sin que fallara nada.
  */
-export const SITE_DESCRIPTION =
-  "Radar de licitaciones públicas de tecnología enterprise en España: decide " +
-  "dónde pujar, a qué precio y contra quién, sobre fuentes oficiales.";
+export const SITE_DESCRIPTION = CONTENIDO.metaDescription;
 
 /**
  * Imagen Open Graph, para **esparcir** en el `openGraph` de cualquier página

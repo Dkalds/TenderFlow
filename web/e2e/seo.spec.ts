@@ -121,15 +121,31 @@ test.describe("Superficie pública sin sesión", () => {
   });
 
   test("el CTA de acceso tiene un destino real", async ({ page }) => {
-    // El acceso es por invitación: el CTA principal apunta al mailto de
-    // contacto cuando el build lo definió (NEXT_PUBLIC_CONTACT_EMAIL) o a
-    // /login con atribución UTM cuando no. Cualquier otro destino significa
-    // que el embudo se rompió — el fallo que motivó lib/contacto.ts era un
-    // CTA que moría en un formulario de registro deshabilitado.
+    // El acceso es por invitación, así que el CTA principal necesita un
+    // destino que funcione siempre. Sus dos versiones anteriores no lo eran:
+    // un `mailto:` no hace nada en un escritorio con webmail y dependía de una
+    // variable de entorno, y sin ella caía a /login, donde el alta responde
+    // 403. Ahora lleva al formulario de la propia página, que persiste la
+    // petición en la API.
     await page.goto("/");
 
     const href = await page.getByRole("link", { name: "Solicita acceso" }).first().getAttribute("href");
-    expect(href).toMatch(/^(mailto:.+|\/login\?utm_source=publico&utm_content=hero)$/);
+    expect(href).toBe("/#solicitar-acceso");
+  });
+
+  test("el formulario de solicitud existe y envía a la API pública", async ({ page }) => {
+    // El ancla del CTA tiene que llevar a un formulario de verdad, y ese
+    // formulario tiene que apuntar al endpoint público: si el `action` se
+    // rompe, el CTA vuelve a no llevar a ninguna parte y nada más lo detecta.
+    await page.goto("/");
+
+    const formulario = page.locator("form#solicitar-acceso");
+    await expect(formulario).toBeVisible();
+    await expect(formulario).toHaveAttribute("action", "/api/v1/publico/solicitudes-acceso");
+    await expect(formulario).toHaveAttribute("method", /post/i);
+    // Sin consentimiento explícito no hay base para guardar el dato, así que
+    // la casilla es obligatoria también en el navegador.
+    await expect(formulario.locator('input[name="consentimiento"]')).toHaveAttribute("required", "");
   });
 
   test("la portada enlaza a la superficie de datos", async ({ page }) => {
