@@ -16,7 +16,7 @@ dependencies = [
     "openpyxl>=3.1.0,<4",
     "python-dotenv>=1.0.0,<2",
     "pydantic-settings>=2.0.0,<3",
-    "structlog>=24.1.0,<26",
+    "structlog>=24.1.0,<27",
     "pybreaker>=1.0.0,<2",
     "reportlab>=4.0,<6",
     # Mismo techo que requirements.in: 1.9.0 rompe HistGradientBoostingRegressor

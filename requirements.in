@@ -10,7 +10,7 @@ python-dotenv>=1.0.0,<2
 pydantic-settings>=2.0.0,<3
 # Validación de emails para pydantic EmailStr (api/routes/auth.py)
 email-validator>=2.0.0,<3
-structlog>=24.1.0,<26
+structlog>=24.1.0,<27
 pybreaker>=1.0.0,<2
 reportlab>=4.0,<6
 # Forzar versión sin CVEs conocidas (transitiva via reportlab): PYSEC-2026-2253/54/55/56/57
