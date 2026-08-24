@@ -405,11 +405,33 @@ class TestComputeF1Drop:
         mock_clf_cls = MagicMock()
         mock_clf_cls.load.return_value = mock_clf
 
+        # La referencia es ``golden_holdout_f1`` (etiquetas humanas), no el
+        # ``f1`` del test split: ese se mide contra etiquetas derivadas de
+        # keywords y compararlo con feedback humano no es una comparación.
         with patch(
             "db.model_registry.get_active",
-            return_value={"metrics": {"f1": 0.9}, "path": "model.pkl"},
+            return_value={
+                "metrics": {"f1": 0.9, "golden_holdout_f1": 0.9},
+                "path": "model.pkl",
+            },
         ):
             with patch("db.database.connect", return_value=mock_connect):
                 with patch("scraper.ml_classifier.SAPClassifier", mock_clf_cls):
                     result = compute_f1_drop(min_labelled=5)
         assert result > 0.0  # there should be a drop since predictions are all wrong
+
+    def test_sin_referencia_humana_no_alerta(self):
+        """Una versión registrada antes del gate unificado no dispara alertas.
+
+        Antes se comparaba el ``f1`` del test split (etiquetas de keywords)
+        contra el F1 sobre feedback humano: la diferencia entre ambas
+        poblaciones es estructural, así que el umbral de aviso al 3% saltaba
+        (o no) por motivos ajenos al modelo.
+        """
+        from scheduler.drift_report import compute_f1_drop
+
+        with patch(
+            "db.model_registry.get_active",
+            return_value={"metrics": {"f1": 0.9}, "path": "model.pkl"},
+        ):
+            assert compute_f1_drop(min_labelled=5) == 0.0

@@ -388,7 +388,20 @@ async def feedback_queue(
                 from scraper.ml_classifier import SAPClassifier
 
                 clf = SAPClassifier.load()
-                probs = clf.predict_proba(texts)
+                # cpvs/importes son obligatorios aquí: el modelo se entrenó
+                # con los tokens estructurales de ``_augment_text`` y sin
+                # ellos la cola se ordena con una probabilidad que no es la
+                # del modelo (ver SAPClassifier.predict_proba).
+                probs = clf.predict_proba(
+                    texts,
+                    cpvs=[
+                        (str(c["cpv"]) if c.get("cpv") is not None else None) for c in candidates
+                    ],
+                    importes=[
+                        (float(c["importe"]) if c.get("importe") is not None else None)
+                        for c in candidates
+                    ],
+                )
                 scores = []
                 for i, row in enumerate(candidates):
                     p = float(probs[i][1]) if hasattr(probs[i], "__len__") else 0.5

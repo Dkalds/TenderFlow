@@ -17,7 +17,7 @@ from typing import Any
 
 from db.database import connect, connect_read, now_utc_iso
 from observability.logging import get_logger
-from services.dedupe import exclude_duplicados_sql
+from services.dedupe import exclude_duplicados_sql, normalize_organo
 from services.ml.baja_model import (
     MODEL_NAME,
     BajaModel,
@@ -132,38 +132,37 @@ def score_predicciones_baja(*, limit: int = 5000) -> dict[str, Any]:
 
 
 def _tasa_retencion_baseline() -> dict[tuple[str, str], float]:
-    """Tasa historica de re-adjudicacion al mismo adjudicatario por (organo, CPV-4).
+    """Tasa histórica de **retención** por ``(órgano normalizado, CPV-4)``.
 
-    Para cada par (organo, CPV-4) con >= 5 contratos consecutivos, calcula la
-    fraccion de los que fueron readjudicados al mismo ganador.
-    Fallback: media global si el par no tiene historia suficiente.
+    Hasta 2026-08 esta función medía otra cosa: contaba adjudicaciones con
+    ``empresa_id`` no nulo sobre el total del segmento —la tasa de vinculación
+    al maestro de empresas, ≈1 en cuanto la resolución de entidades funciona—
+    bajo un docstring que prometía "la fracción de los que fueron readjudicados
+    al mismo ganador". El resultado era un ``predicciones_retencion`` con un
+    riesgo de cambio constante y falsamente bajo, escrito cada noche.
+
+    Ahora delega en ``retencion_labels.tasas_retencion_por_segmento``, que
+    agrega ``AVG(label)`` sobre los MISMOS pares vencimiento→sucesora con los
+    que se entrena el modelo de retención. Es el mismo criterio que aplica
+    :func:`_media_global_baja` con el target de baja: el baseline tiene que
+    medir la magnitud que sustituye, o compararlo con el modelo no significa
+    nada.
+
+    Efecto lateral buscado: la población pasa a ser la del etiquetado (todas
+    las adjudicaciones no duplicadas con fin efectivo) en vez del universo
+    ``technology_observed`` de la query anterior. La comparación baseline↔
+    modelo se hace sobre las mismas filas.
+
+    Fail-open, como antes: si el etiquetado falla, ``{}`` y el serving cae a la
+    media global.
     """
-    sql = """
-        SELECT
-            l.organo_contratacion,
-            substr(l.cpv, 1, 4) AS cpv4,
-            COUNT(*) AS total,
-            SUM(CASE WHEN a.empresa_id IS NOT NULL THEN 1 ELSE 0 END) AS con_adjudicatario
-        FROM licitaciones l
-        JOIN adjudicaciones a ON a.licitacion_id = l.id_externo
-        WHERE l.organo_contratacion IS NOT NULL
-          AND COALESCE(l.analysis_universe, 'technology_observed') = 'technology_observed'
-          AND l.cpv IS NOT NULL
-          AND length(l.cpv) >= 4
-        GROUP BY l.organo_contratacion, cpv4
-        HAVING COUNT(*) >= 5
-    """
-    tasas: dict[tuple[str, str], float] = {}
+    from services.ml.retencion_labels import tasas_retencion_por_segmento
+
     try:
-        with connect_read() as c:
-            rows = c.execute(sql).fetchall()
-        for row in rows:
-            organo, cpv4, total, con_adj = row
-            if total and total > 0:
-                tasas[(str(organo), str(cpv4))] = float(con_adj) / float(total)
+        return tasas_retencion_por_segmento()
     except Exception as exc:
         log.warning("retencion_baseline_error", error=str(exc))
-    return tasas
+        return {}
 
 
 def _media_global_retencion(tasas: dict[tuple[str, str], float]) -> float:
@@ -176,7 +175,8 @@ def score_predicciones_retencion(*, months_ahead: int = 12) -> dict[str, Any]:
     """Puntua el riesgo de cambio de manos en los vencimientos proximos.
 
     Sin version activa del modelo, usa un baseline heuristico: tasa historica
-    de re-adjudicacion por (organo, CPV-4) con fallback a media global.
+    de retencion observada por (organo normalizado, CPV-4) con fallback a la
+    media global (:func:`_tasa_retencion_baseline`).
     Se materializa con model_version='baseline' para que la UI lo distinga.
     """
     from db.model_registry import get_active
@@ -237,7 +237,7 @@ def score_predicciones_retencion(*, months_ahead: int = 12) -> dict[str, Any]:
             "degradado": None,
         }
     else:
-        # Baseline heuristico: tasa historica de re-adjudicacion por segmento
+        # Baseline heuristico: tasa historica de retencion observada por segmento
         log.info("retencion_scoring_baseline", reason="sin_modelo_activo", filas=len(filas))
         tasas = _tasa_retencion_baseline()
         media_global = _media_global_retencion(tasas)
@@ -245,10 +245,15 @@ def score_predicciones_retencion(*, months_ahead: int = 12) -> dict[str, Any]:
         model_version_str = "baseline"
         rows_to_insert = []
         for f in filas:
-            # Intentar obtener CPV-4 y organo de la fila (si tiene estos attrs)
-            cpv4 = str(getattr(f, "cpv", "") or "")[:4]
-            organo = str(getattr(f, "organo_contratacion", "") or "")
-            tasa = tasas.get((organo, cpv4), media_global) if cpv4 and organo else media_global
+            # La clave tiene que ser la MISMA con la que se agregó la tasa:
+            # ``(normalize_organo(organo), cpv4)``. Antes se leían ``f.cpv`` y
+            # ``f.organo_contratacion`` con ``getattr(..., "")``, dos atributos
+            # que ``ParRetencion`` no tiene: los dos salían vacíos, la condición
+            # de abajo era siempre falsa y TODAS las filas recibían la media
+            # global — el lookup por segmento no se aplicaba nunca.
+            organo_n = normalize_organo(f.organo)
+            cpv4 = f.cpv4 or ""
+            tasa = tasas.get((organo_n, cpv4), media_global) if cpv4 and organo_n else media_global
             prob = min(max(tasa, 0.0), 1.0)
             rows_to_insert.append(
                 (
@@ -285,22 +290,72 @@ def _baja_real(c: Any, licitacion_id: str) -> tuple[float, float] | None:
     """Baja real ``(baja_pct, importe_adjudicado)`` si la licitación fue adjudicada.
 
     Suma ``importe_adjudicado`` de todos los lotes de la licitación (una
-    licitación puede tener varias filas en ``adjudicaciones``) y lo compara
-    contra el presupuesto (``licitaciones.importe``).
+    licitación puede tener varias filas en ``adjudicaciones``) y lo divide
+    entre el **presupuesto efectivo** del expediente.
+
+    Ese denominador es la parte que estaba mal. El modelo aprende y
+    ``calibration.py`` mide contra la regla de
+    ``db.repositories.ml_dataset._sql_agregado``: si TODAS las adjudicaciones
+    del expediente tienen ``lote_id`` resuelto, el presupuesto es la suma de
+    los lotes **distintos** adjudicados (un lote ganado por dos empresas no
+    cuenta su presupuesto dos veces); si alguna no lo tiene (datos anteriores a
+    v65_lotes), ``licitaciones.importe``. Aquí se dividía siempre entre
+    ``licitaciones.importe``, así que un expediente de tres lotes con dos
+    adjudicados devolvía por el API una "baja real" del 61% al lado de un
+    intervalo entrenado contra el 22% de la porción adjudicada: la comparación
+    estimado-vs-real que justifica este endpoint enfrentaba dos magnitudes
+    distintas.
+
+    Lo que **no** se importa del dataset son sus filtros de validez (universo
+    ``technology_observed``, tolerancia de sobrecoste): seleccionan filas de
+    entrenamiento, no filas que enseñar. Aplicarlos aquí convertiría en 404
+    expedientes reales por no ser aptos para entrenar.
+
+    La regla vive duplicada porque ``MlDatasetRepository`` solo la expone sobre
+    el dataset completo y este es un GET por expediente; su sitio natural es un
+    método por id en ese repositorio (``db/``).
     """
     sql = f"""
-        SELECT l.importe, SUM(a.importe_adjudicado) AS total_adjudicado
-        FROM adjudicaciones a
-        JOIN licitaciones l ON l.id_externo = a.licitacion_id
-        WHERE a.licitacion_id = %s AND {exclude_duplicados_sql()}
-          AND l.importe > 0 AND a.importe_adjudicado > 0
-        GROUP BY l.importe
+        WITH adj AS (
+            SELECT SUM(a.importe_adjudicado) AS total_adjudicado,
+                   COUNT(*) AS n_adjudicaciones,
+                   COUNT(a.lote_id) AS n_con_lote
+            FROM adjudicaciones a
+            WHERE a.licitacion_id = %s
+              AND a.importe_adjudicado > 0
+              AND {exclude_duplicados_sql("a.licitacion_id")}
+        ),
+        lotes_adjudicados AS (
+            SELECT SUM(lo.importe) AS presupuesto_lotes
+            FROM (
+                SELECT DISTINCT licitacion_id, lote_id
+                FROM adjudicaciones
+                WHERE licitacion_id = %s
+                  AND lote_id IS NOT NULL
+                  AND importe_adjudicado > 0
+            ) d
+            JOIN lotes lo ON lo.id = d.lote_id
+            WHERE lo.importe > 0
+        )
+        SELECT CASE
+                   WHEN adj.n_adjudicaciones = adj.n_con_lote
+                        AND la.presupuesto_lotes > 0
+                   THEN la.presupuesto_lotes
+                   ELSE l.importe
+               END AS presupuesto_efectivo,
+               adj.total_adjudicado
+        FROM adj
+        JOIN licitaciones l ON l.id_externo = %s
+        LEFT JOIN lotes_adjudicados la ON TRUE
+        WHERE l.importe > 0 AND adj.total_adjudicado > 0
     """  # noqa: S608 — exclude_duplicados_sql() es un fragmento constante
-    row = c.execute(sql, (licitacion_id,)).fetchone()
+    row = c.execute(sql, (licitacion_id, licitacion_id, licitacion_id)).fetchone()
     if row is None or row[0] is None or row[1] is None:
         return None
-    importe, total_adjudicado = row
-    return (importe - total_adjudicado) / importe, total_adjudicado
+    presupuesto_efectivo, total_adjudicado = float(row[0]), float(row[1])
+    if presupuesto_efectivo <= 0:
+        return None
+    return (presupuesto_efectivo - total_adjudicado) / presupuesto_efectivo, total_adjudicado
 
 
 def prediccion_baja(licitacion_id: str) -> dict[str, Any] | None:

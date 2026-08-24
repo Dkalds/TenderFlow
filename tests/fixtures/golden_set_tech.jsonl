@@ -1,0 +1,89 @@
+# Golden set MULTI-LABEL para la evaluación honesta del TechnologyClassifier.
+# Lo consume services/ml/eval_tech.py (gemelo de tests/fixtures/golden_set.jsonl,
+# que es el binario SAP). Formato JSONL: una licitación por línea; las líneas
+# vacías y las que empiezan por '#' se ignoran.
+#
+# Campos:
+#   id            : identificador estable del ejemplo.
+#   titulo        : título de la licitación.
+#   descripcion   : descripción / objeto del contrato.
+#   labels        : lista de tecnologías HUMANAS (claves de TECHNOLOGY_KEYWORDS).
+#                   Lista VACÍA = revisado y sin tecnología: es un verdadero
+#                   negativo, no un caso sin etiquetar. Son los que sostienen
+#                   la precisión medida.
+#   keyword_labels: OPCIONAL. Lo que matches_technology() detectaría. Si se
+#                   omite, se deriva al cargar llamando al filtro real, de modo
+#                   que el golden set mide el valor incremental contra el filtro
+#                   VIGENTE y no contra una copia congelada. Fijarlo a mano sólo
+#                   tiene sentido para conservar lo que el regex hacía el día
+#                   del etiquetado.
+#   cpv, importe  : opcionales, alimentan los tokens estructurales del modelo.
+#   note          : justificación del etiquetado. Obligatoria en la práctica:
+#                   una etiqueta sin justificación no es revisable.
+#
+# ── CRITERIO DE ETIQUETADO ────────────────────────────────────────────────
+# Se etiqueta una tecnología cuando el texto la identifica SIN AMBIGÜEDAD para
+# alguien del dominio, por una de estas vías:
+#   (a) el nombre del producto o del fabricante ("SAP S/4HANA", "Workday HCM");
+#   (b) vocabulario exclusivo de esa tecnología aunque no la nombre ("Exadata"
+#       sólo es Oracle; "triggers Apex"/"LWC" sólo es Salesforce; "Walldorf" y
+#       "desarrollos Z" sólo son SAP; "Now Platform" sólo es ServiceNow).
+# NO se etiqueta por inferencia de contexto ("un ERP en una administración
+# grande suele ser SAP") ni por el CPV. La duda se resuelve dejando la etiqueta
+# fuera: un falso positivo en el golden set infla el recall medido del modelo.
+# Multi-etiqueta cuando el objeto abarca varias (integraciones, lotes mixtos).
+#
+# ── QUÉ ES ESTA SEMILLA Y QUÉ NO ES ───────────────────────────────────────
+# Las 23 líneas de abajo son ejemplos SEMILLA redactados a mano sobre patrones
+# habituales de pliegos, elegidos porque su tecnología es inequívoca por el
+# texto. NO son una muestra de licitaciones reales ni un etiquetado humano de
+# producción, y NO son una muestra representativa de la distribución real.
+# Por tanto:
+#   - Sirven como red de regresión (que el modelo no deje de pescar los casos
+#     sin keyword) y como smoke test del pipeline de evaluación.
+#   - NO sirven para publicar una precisión/recall del sistema. Cualquier cifra
+#     calculada sólo sobre esta semilla es una cota superior optimista.
+# Se han puesto pocos a propósito: un golden set fabricado en masa es PEOR que
+# uno pequeño, porque da una falsa sensación de medida sobre texto que el propio
+# etiquetador escribió.
+#
+# ── CUÁNTOS HACEN FALTA Y POR QUÉ ─────────────────────────────────────────
+# Objetivo: 300-500 licitaciones REALES de la BD, etiquetadas por una persona.
+# El número sale de lo que se quiere medir:
+#   - Recall por etiqueta con media anchura ±0.15 al 95%: ~45 positivos humanos
+#     de esa tecnología (1.96*sqrt(0.25/n) <= 0.15). Con ±0.10, ~100.
+#     Por debajo de ~30 positivos, el error estándar del recall es mayor que
+#     casi cualquier mejora que se quiera detectar entre dos modelos.
+#   - recall_no_keyword necesita >= 10 positivos SIN keyword por tecnología:
+#     es la métrica que justifica que exista el modelo, y con 2 ó 3 casos su
+#     valor salta entre 0.00, 0.33 y 0.67 según un solo acierto.
+#   - Negativos: al menos tantos como positivos, y con "hard negatives" de TI
+#     sin fabricante (desarrollo a medida, ciberseguridad, redes) — son los que
+#     revientan la precisión y no aparecen si se muestrea sólo por ml_proba.
+# Muestreo recomendado: estratificado por la zona de desacuerdo entre el modelo
+# y matches_technology() (predicho sin keyword / con keyword y no predicho),
+# que es donde el etiquetado humano rinde más por hora invertida.
+# Se amplía añadiendo líneas al final; no hace falta tocar código.
+{"id": "gt-sap-kw-01", "titulo": "Servicio de mantenimiento y soporte de la plataforma SAP ECC del Ayuntamiento", "descripcion": "Soporte correctivo y evolutivo de los módulos FI, CO y MM de SAP ECC 6.0.", "labels": ["SAP"], "cpv": "72250000", "importe": 480000, "note": "SEMILLA. SAP ECC nombrado explícitamente."}
+{"id": "gt-sap-nokw-01", "titulo": "Mantenimiento del sistema integrado de gestión de la solución del fabricante de Walldorf", "descripcion": "Soporte del ERP corporativo del fabricante alemán de Walldorf para las áreas económica y logística.", "labels": ["SAP"], "cpv": "72000000", "importe": 380000, "note": "SEMILLA sin keyword. Walldorf identifica a SAP sin nombrarlo; el regex no lo pesca."}
+{"id": "gt-sap-nokw-02", "titulo": "Soporte funcional de los módulos FI, CO, MM y SD del ERP corporativo", "descripcion": "Mantenimiento funcional de los módulos financieros y logísticos del ERP y de sus desarrollos Z.", "labels": ["SAP"], "cpv": "72000000", "importe": 175000, "note": "SEMILLA sin keyword. FI/CO/MM/SD y los 'desarrollos Z' son nomenclatura exclusiva de SAP."}
+{"id": "gt-oracle-kw-01", "titulo": "Renovación del soporte de las licencias de base de datos Oracle", "descripcion": "Mantenimiento del gestor Oracle Database y de Oracle WebLogic.", "labels": ["ORACLE"], "cpv": "48610000", "importe": 260000, "note": "SEMILLA. Oracle nombrado explícitamente."}
+{"id": "gt-oracle-nokw-01", "titulo": "Mantenimiento del sistema gestor de base de datos sobre appliance Exadata", "descripcion": "Soporte del appliance Exadata y del motor de base de datos que aloja.", "labels": ["ORACLE"], "cpv": "48610000", "importe": 310000, "note": "SEMILLA sin keyword. Exadata es un producto exclusivo de Oracle y no está en las keywords."}
+{"id": "gt-microsoft-kw-01", "titulo": "Suministro de licencias Microsoft 365 y soporte de SharePoint", "descripcion": "Suscripción anual Microsoft 365 y mantenimiento del portal SharePoint.", "labels": ["MICROSOFT"], "cpv": "48000000", "importe": 520000, "note": "SEMILLA. Microsoft 365 y SharePoint nombrados explícitamente."}
+{"id": "gt-microsoft-nokw-01", "titulo": "Suministro de licencias de la suite ofimática Office Standard para puestos de trabajo", "descripcion": "Adquisición de licencias perpetuas de Office Standard y Windows Server.", "labels": ["MICROSOFT"], "cpv": "48300000", "importe": 190000, "note": "SEMILLA sin keyword. Office Standard y Windows Server son de Microsoft; el regex sólo tiene 'licencias microsoft' y 'microsoft 365'."}
+{"id": "gt-salesforce-kw-01", "titulo": "Implantación de Salesforce Service Cloud para la atención a la ciudadanía", "descripcion": "Despliegue de Salesforce Service Cloud y configuración de flujos de atención.", "labels": ["SALESFORCE"], "cpv": "72000000", "importe": 410000, "note": "SEMILLA. Salesforce nombrado explícitamente."}
+{"id": "gt-salesforce-nokw-01", "titulo": "Desarrollo de componentes LWC y triggers en Apex sobre el CRM corporativo", "descripcion": "Construcción de componentes web LWC, triggers Apex y flows sobre la org del CRM.", "labels": ["SALESFORCE"], "cpv": "72212400", "importe": 140000, "note": "SEMILLA sin keyword. LWC, triggers Apex y 'org' son vocabulario exclusivo de Salesforce."}
+{"id": "gt-servicenow-kw-01", "titulo": "Licencias y soporte de la plataforma ServiceNow ITSM", "descripcion": "Suscripción y mantenimiento de ServiceNow ITSM para el centro de atención a usuarios.", "labels": ["SERVICENOW"], "cpv": "48000000", "importe": 230000, "note": "SEMILLA. ServiceNow nombrado explícitamente."}
+{"id": "gt-servicenow-nokw-01", "titulo": "Implantación de la herramienta de gestión de servicios sobre Now Platform", "descripcion": "Despliegue del catálogo de servicios y del CMDB sobre Now Platform.", "labels": ["SERVICENOW"], "cpv": "72000000", "importe": 275000, "note": "SEMILLA sin keyword. 'Now Platform' es el nombre del producto de ServiceNow y no está en las keywords."}
+{"id": "gt-workday-kw-01", "titulo": "Servicios de implantación de Workday HCM", "descripcion": "Puesta en marcha del módulo Workday HCM de gestión de personas.", "labels": ["WORKDAY"], "cpv": "72212450", "importe": 360000, "note": "SEMILLA. Workday HCM nombrado explícitamente."}
+{"id": "gt-unit4-kw-01", "titulo": "Mantenimiento del ERP económico-financiero Agresso", "descripcion": "Soporte del ERP Agresso de la universidad.", "labels": ["UNIT4"], "cpv": "72250000", "importe": 120000, "note": "SEMILLA. Agresso es el ERP de Unit4."}
+{"id": "gt-meta4-kw-01", "titulo": "Soporte del sistema de nómina Meta4 PeopleNet", "descripcion": "Mantenimiento de Meta4 PeopleNet para la gestión de nóminas y RRHH.", "labels": ["META4"], "cpv": "72514000", "importe": 95000, "note": "SEMILLA. Meta4 PeopleNet nombrado explícitamente."}
+{"id": "gt-ibm-kw-01", "titulo": "Mantenimiento del sistema de gestión de activos IBM Maximo", "descripcion": "Soporte de IBM Maximo para el mantenimiento de infraestructuras municipales.", "labels": ["IBM"], "cpv": "72250000", "importe": 200000, "note": "SEMILLA. IBM Maximo nombrado explícitamente."}
+{"id": "gt-multi-01", "titulo": "Integración entre el ERP SAP y el CRM Salesforce del organismo", "descripcion": "Desarrollo de interfaces entre SAP S/4HANA y Salesforce Sales Cloud.", "labels": ["SAP", "SALESFORCE"], "cpv": "72200000", "importe": 300000, "note": "SEMILLA multi-etiqueta: el objeto abarca las dos tecnologías."}
+{"id": "gt-neg-ti-01", "titulo": "Desarrollo de un portal web ciudadano a medida en Java y Angular", "descripcion": "Construcción de un portal con backend Java, frontend Angular y base de datos PostgreSQL.", "labels": [], "cpv": "72200000", "importe": 190000, "note": "SEMILLA hard negative: TI de desarrollo a medida sin fabricante enterprise."}
+{"id": "gt-neg-ti-02", "titulo": "Servicio de centro de operaciones de seguridad gestionado 24x7", "descripcion": "Monitorización de eventos de seguridad, respuesta a incidentes y análisis forense.", "labels": [], "cpv": "72500000", "importe": 600000, "note": "SEMILLA hard negative: ciberseguridad gestionada, ninguna tecnología del catálogo."}
+{"id": "gt-neg-ti-03", "titulo": "Suministro de electrónica de red y puntos de acceso wifi", "descripcion": "Adquisición de switches, routers y puntos de acceso para la sede central.", "labels": [], "cpv": "32400000", "importe": 240000, "note": "SEMILLA hard negative: hardware de comunicaciones, no software enterprise."}
+{"id": "gt-neg-ti-04", "titulo": "Implantación de un gestor documental corporativo basado en Alfresco", "descripcion": "Despliegue de Alfresco y migración del archivo de expedientes.", "labels": [], "cpv": "48311000", "importe": 175000, "note": "SEMILLA hard negative: Alfresco es competidor de OpenText, no OpenText."}
+{"id": "gt-neg-noti-01", "titulo": "Servicio de limpieza de edificios e instalaciones municipales", "descripcion": "Limpieza periódica de dependencias administrativas y centros culturales.", "labels": [], "cpv": "90910000", "importe": 320000, "note": "SEMILLA negativo claro: no es TI."}
+{"id": "gt-neg-noti-02", "titulo": "Obras de reforma de la cubierta del polideportivo municipal", "descripcion": "Ejecución de obras de impermeabilización y sustitución de la cubierta.", "labels": [], "cpv": "45261000", "importe": 540000, "note": "SEMILLA negativo claro: obra civil."}
+{"id": "gt-neg-noti-03", "titulo": "Servicio de comedor escolar en centros educativos", "descripcion": "Prestación del servicio de catering y comedor para centros de educación infantil.", "labels": [], "cpv": "55524000", "importe": 410000, "note": "SEMILLA negativo claro: restauración."}

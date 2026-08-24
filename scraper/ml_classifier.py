@@ -10,19 +10,39 @@ Estrategia de etiquetado:
   - Negativos: licitaciones con CPV fuera del rango TI/software (no 48xxx ni 72xxx)
     y sin keywords SAP — muestra balanceada automáticamente.
 
-Mejoras respecto a la versión original:
+Features del pipeline:
   1. FeatureUnion: TF-IDF word (1,2) + TF-IDF char_wb (2,4) — captura sub-palabras
      como "S/4HANA", "netweaver" que word-tokenizer fragmenta incorrectamente.
-  2. CalibratedClassifierCV(sigmoid) — probabilidades calibradas (ECE reducido).
-  3. Split temporal si fecha_publicacion disponible; random 80/20 como fallback.
-  4. CV F1 estimate via 3-fold sobre el set de entrenamiento (pipeline sin calibración).
-  5. PR-AUC y threshold sweep → optimal_threshold almacenado en metadata.
-  6. self._threshold actualizado al optimal_threshold; fallback a settings si no entrenado.
-  7. Metadata completa guardada en el pickle: trained_at, version, metrics, threshold.
-  8. predict_proba() público (necesario para uncertainty sampling en active learning).
-  9. precompute_ml_proba() — actualiza columna ml_proba en BD para todas las licitaciones.
- 10. CPV e importe se codifican como tokens especiales en el texto de entrenamiento y
-     predicción, permitiendo al modelo aprender señales estructurales sin cambiar la API.
+  2. CPV e importe se codifican como tokens especiales (``_augment_text``) en
+     entrenamiento **y** en los tres caminos de predicción, sin cambiar la API.
+  3. ``precompute_ml_proba()`` actualiza la columna ``ml_proba`` en BD.
+
+Cómo se evalúa (y por qué así)
+------------------------------
+El dataset se parte en tres, no en dos: **fit** (ajuste), **validación**
+(elección del umbral y de la calibración) y **test** (las métricas que se
+publican). Elegir el umbral donde se reportan las métricas las infla — medido
+sobre el golden set: +0,08 de F-beta de media, +0,25 en el p90.
+
+El corte es **por fecha, no por posición**, y respeta la integridad de grupo:
+ningún expediente (sus lotes, sus prórrogas, sus republicaciones) puede
+aparecer a los dos lados. Si hay fechas y ningún corte deja las dos clases a
+ambos lados, ``train()`` devuelve ``error: temporal_split_impossible`` en vez de
+caer a un split aleatorio: un aleatorio sobre datos temporales mide
+interpolación, no predicción de licitaciones futuras, y publicarlo bajo los
+mismos nombres de métrica es lo que hacía que las cifras del registry no
+significaran lo que decían.
+
+Las métricas se calculan sobre el pipeline **final** —después de la calibración
+externa— para que ``brier``/``ece`` describan el modelo que de verdad se
+serializa. ``f1_ti``/``pr_auc_ti`` las restringen a CPV 48/72, que es la única
+población sobre la que el modelo decide en producción. ``metrics_reliable``
+marca si el test da para sostener esas cifras; el gate de promoción
+(``services.ml.promotion``) se niega a promocionar si no.
+
+Las métricas internas miden cuánto **imita** el modelo al filtro de keywords,
+porque de ahí salen las etiquetas. Lo que mide su valor real es
+``recall_no_keyword`` sobre el golden set humano (``services.ml_eval``).
 
 Uso:
     # Entrenar (una vez, o periódicamente):
@@ -45,7 +65,6 @@ from config import settings
 from observability.logging import get_logger
 from scraper.ml_pipeline import (
     _augment_text,
-    _build_dataset,
     _expected_calibration_error,
     _make_pipeline,
     _make_pipeline_with_embeddings,
@@ -67,6 +86,12 @@ _GITHUB_REPO_RE = re.compile(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+")
 
 # Número mínimo de ejemplos para entrenar
 MIN_TRAIN_SAMPLES = 50
+# Umbral a partir del cual las métricas del test se consideran fiables. Por
+# debajo se calculan igual (son informativas) pero se marcan
+# ``metrics_reliable=False`` y el gate de promoción se niega a promocionar:
+# un f1 a cuatro decimales sobre 10 filas de test no es una medición.
+MIN_RELIABLE_TEST_ROWS = 100
+MIN_RELIABLE_POS = 20
 
 
 class SAPClassifier:
@@ -122,24 +147,28 @@ class SAPClassifier:
             fbeta_score,
             precision_recall_curve,
         )
-        from sklearn.model_selection import (
-            StratifiedKFold,
-            TimeSeriesSplit,
-            cross_val_score,
-            train_test_split,
+        from sklearn.model_selection import GroupKFold, cross_val_score
+
+        from scraper.ml_pipeline import (
+            TemporalSplitImposible,
+            build_dataset_rows,
+            split_dataset_rows,
         )
 
-        # Ordenar por fecha si está disponible (split temporal)
-        _has_date = "fecha_publicacion" in df.columns and df["fecha_publicacion"].notna().any()
+        # Ordenar por fecha si está disponible: no lo necesita el split (que
+        # corta por fecha, no por posición) pero deja los logs y el dataset
+        # legibles en orden cronológico.
+        _has_date = bool(
+            "fecha_publicacion" in df.columns and df["fecha_publicacion"].notna().any()
+        )
         if _has_date:
             df = df.sort_values("fecha_publicacion", na_position="first").reset_index(drop=True)
 
         pu_learning = bool(getattr(settings, "ML_PU_LEARNING", False))
-        weights_all: list[float] | None = None
-        if pu_learning:
-            texts, labels, weights_all = _build_dataset(df, return_weights=True)
-        else:
-            texts, labels = _build_dataset(df)
+        filas = build_dataset_rows(df)
+        texts = [f.text for f in filas]
+        labels = [f.label for f in filas]
+        weights_all: list[float] | None = [f.weight for f in filas] if pu_learning else None
         if len(texts) < MIN_TRAIN_SAMPLES:
             log.warning(
                 "ml_classifier.insufficient_data",
@@ -160,69 +189,108 @@ class SAPClassifier:
             return {"error": "single_class", "n_positive": n_pos_total, "n_negative": n_neg_total}
 
         # ── Split ──────────────────────────────────────────────────────────
-        # ``w_train`` lleva los pesos PU alineados con X_train (None si no aplica).
-        w_train: list[float] | None = None
-        if _has_date:
-            # Split temporal: últimos 20% como test (más realista que random)
-            cutoff = max(1, int(len(texts) * 0.80))
-            X_train, X_test = texts[:cutoff], texts[cutoff:]
-            y_train, y_test = labels[:cutoff], labels[cutoff:]
-            if weights_all is not None:
-                w_train = weights_all[:cutoff]
-            # Si el test set tiene una sola clase, caer a random split
-            if len(set(y_test)) < 2:
-                _has_date = False
-                w_train = None
+        # Corte por FECHA (no por posición) y con integridad de grupo: ningún
+        # expediente puede aparecer a los dos lados. Si hay fechas pero ningún
+        # corte es válido, se aborta en vez de degradar a un split aleatorio:
+        # esa degradación silenciosa era lo que hacía que ``f1``/``pr_auc``
+        # midieran interpolación y se publicaran como si midieran predicción.
+        try:
+            split = split_dataset_rows(filas)
+        except TemporalSplitImposible as exc:
+            log.warning("ml_classifier.temporal_split_impossible", error=str(exc))
+            return {
+                "error": "temporal_split_impossible",
+                "detail": str(exc),
+                "n_samples": len(texts),
+                "n_positive": n_pos_total,
+                "n_negative": n_neg_total,
+            }
 
-        if not _has_date:
-            if weights_all is not None:
-                (
-                    X_train,
-                    X_test,
-                    y_train,
-                    y_test,
-                    w_train,
-                    _w_test,
-                ) = train_test_split(
-                    texts,
-                    labels,
-                    weights_all,
-                    test_size=0.2,
-                    random_state=42,
-                    stratify=labels,
-                )
-            else:
-                X_train, X_test, y_train, y_test = train_test_split(
-                    texts, labels, test_size=0.2, random_state=42, stratify=labels
-                )
+        X_train = [texts[i] for i in split.train]
+        y_train = [labels[i] for i in split.train]
+        X_test = [texts[i] for i in split.test]
+        y_test = [labels[i] for i in split.test]
+        g_train = [filas[i].grupo for i in split.train]
+        # ``w_train`` lleva los pesos PU alineados con X_train (None si no aplica).
+        w_train: list[float] | None = (
+            [weights_all[i] for i in split.train] if weights_all is not None else None
+        )
+        _has_date = split.strategy == "temporal"
+
+        if len(set(y_train)) < 2:
+            log.warning("ml_classifier.single_class_train", n_train=len(y_train))
+            return {
+                "error": "single_class_train",
+                "n_train": len(y_train),
+                "n_test": len(y_test),
+            }
 
         # ── CV F1 estimate (pipeline no calibrado, más rápido) ─────────────
         from scraper.ml_pipeline import _make_pipeline as _make_ml_pipeline
 
         pipeline_cv = _make_ml_pipeline(calibrate=False)
-        n_cv_splits = min(3, len(set(y_train)))  # protección datos muy pequeños
+        # ``min(3, len(set(y_train)))`` daba SIEMPRE 2 folds: en este punto
+        # y_train tiene exactamente dos clases por construcción, así que el
+        # `min` no protegía de datos pequeños, solo capaba la CV a la mitad.
+        # El límite real son los grupos y la clase minoritaria.
+        n_grupos = len(set(g_train))
+        n_minoritaria = min(y_train.count(0), y_train.count(1))
+        n_cv_splits = max(2, min(3, n_grupos, n_minoritaria))
         cv_f1: float = 0.0
-        if len(X_train) >= 10 and n_cv_splits >= 2:
+        cv_pr_auc: float = 0.0
+        if len(X_train) >= 10 and n_grupos >= 2 and n_minoritaria >= 2:
             try:
-                # TimeSeriesSplit cuando hay fechas y está habilitado en settings:
-                # respeta el orden temporal (sin shuffle) — refleja mejor el
-                # rendimiento esperado sobre datos futuros.
-                if _has_date and getattr(settings, "ML_USE_TIMESERIES_CV", True):
-                    cv_splitter: Any = TimeSeriesSplit(n_splits=n_cv_splits)
-                else:
-                    cv_splitter = StratifiedKFold(
-                        n_splits=n_cv_splits, shuffle=True, random_state=42
-                    )
+                # GroupKFold: los lotes y republicaciones de un mismo
+                # expediente no pueden repartirse entre folds, o la CV mide
+                # memorización. Sustituye a StratifiedKFold(shuffle=True) y a
+                # TimeSeriesSplit, que nunca llegaba a ejecutarse porque
+                # dependía de un `_has_date` ya mutado a False.
+                cv_splitter: Any = GroupKFold(n_splits=n_cv_splits)
                 cv_scores = cross_val_score(
                     pipeline_cv,
                     X_train,
                     y_train,
+                    groups=g_train,
                     cv=cv_splitter,
                     scoring="f1",
                 )
                 cv_f1 = float(np.mean(cv_scores))
-            except Exception:
+                cv_ap = cross_val_score(
+                    pipeline_cv,
+                    X_train,
+                    y_train,
+                    groups=g_train,
+                    cv=cv_splitter,
+                    scoring="average_precision",
+                )
+                cv_pr_auc = float(np.mean(cv_ap))
+            except Exception as _cv_exc:
+                log.warning("ml_classifier.cv_failed", error=str(_cv_exc))
                 cv_f1 = 0.0
+                cv_pr_auc = 0.0
+
+        # ── Split interno fit/val ─────────────────────────────────────────
+        # El umbral y la calibración NO se pueden elegir sobre el mismo
+        # conjunto donde se reportan las métricas: hacerlo sobreestima
+        # precision/recall (medido: +0.08 de F-beta de media sobre un golden
+        # de 27 ejemplos, +0.25 en el p90). Se corta una validación *dentro*
+        # del train, con las mismas reglas de fecha y grupo.
+        filas_train = [filas[i] for i in split.train]
+        try:
+            inner = split_dataset_rows(filas_train, seed=7)
+        except TemporalSplitImposible as _inner_exc:
+            log.warning("ml_classifier.no_validation_split", error=str(_inner_exc))
+            inner = None
+
+        if inner is not None:
+            X_fit = [filas_train[i].text for i in inner.train]
+            y_fit = [filas_train[i].label for i in inner.train]
+            w_fit = [filas_train[i].weight for i in inner.train] if w_train is not None else None
+            X_val = [filas_train[i].text for i in inner.test]
+            y_val = [filas_train[i].label for i in inner.test]
+        else:
+            X_fit, y_fit, w_fit = X_train, y_train, w_train
+            X_val, y_val = [], []
 
         # ── Entrenamiento final (pipeline calibrado) ───────────────────────
         tune_on_train = bool(getattr(settings, "ML_TUNE_ON_TRAIN", False))
@@ -230,140 +298,71 @@ class SAPClassifier:
         if tune_on_train:
             log.info("ml_classifier.tuning_start")
             try:
-                tuned_pipeline, best_params = _tune_pipeline(X_train, y_train)
+                tuned_pipeline, best_params = _tune_pipeline(X_fit, y_fit)
                 self.pipeline = tuned_pipeline
                 self._trained = True
                 log.info("ml_classifier.tuning_done", best_params=best_params)
             except Exception as _tune_exc:
                 log.warning("ml_classifier.tuning_failed", error=str(_tune_exc))
-                self.pipeline.fit(X_train, y_train)
+                self.pipeline.fit(X_fit, y_fit)
                 self._trained = True
         else:
-            if w_train is not None:
+            if w_fit is not None:
                 # PU learning: los negativos ambiguos pesan menos en el ajuste.
-                self.pipeline.fit(X_train, y_train, clf__sample_weight=w_train)
+                self.pipeline.fit(X_fit, y_fit, clf__sample_weight=w_fit)
             else:
-                self.pipeline.fit(X_train, y_train)
+                self.pipeline.fit(X_fit, y_fit)
             self._trained = True
 
-        # ── Evaluación en test set ─────────────────────────────────────────
-        proba_test = self.pipeline.predict_proba(X_test)[:, 1]
-        y_pred = self.pipeline.predict(X_test)
-
-        acc = float(accuracy_score(y_test, y_pred))
-        f1 = float(f1_score(y_test, y_pred, zero_division=0))
-
-        # PR-AUC (más informativo que ROC-AUC en clases desbalanceadas)
-        pr_auc: float = 0.0
-        if len(set(y_test)) >= 2:
-            pr_auc = float(average_precision_score(y_test, proba_test))
-
-        # ── Calidad de calibración ────────────────────────────────────────
-        # Brier score: error cuadrático medio de las probabilidades (0=perfecto).
-        # ECE: Expected Calibration Error con 10 bins equi-anchos.
-        brier: float = float(brier_score_loss(y_test, proba_test))
-        ece: float = _expected_calibration_error(np.asarray(y_test), proba_test, n_bins=10)
-
-        # ── Threshold sweep: maximizar F-beta (β configurable) ────────────
         beta = float(getattr(settings, "ML_FBETA", 1.0))
+
+        # ── Calibración externa (opcional), ANTES de medir ────────────────
+        # Si ML_USE_CALIBRATION=True, el pipeline base se construyó SIN
+        # CalibratedClassifierCV interno (ver __init__), de modo que
+        # calibrate_and_tune aplica una ÚNICA capa de calibración. Va aquí, y
+        # no después de las métricas, porque antes brier/ece/pr_auc se
+        # calculaban sobre el pipeline SIN calibrar y se guardaban como si
+        # describieran el modelo que luego se serializa y se sirve.
+        calibration_method: str | None = None
+        if getattr(settings, "ML_USE_CALIBRATION", False) and X_val:
+            try:
+                from services.threshold_tuning import calibrate_and_tune
+
+                tune_result = calibrate_and_tune(
+                    base_estimator=self.pipeline,
+                    X_train=X_fit,
+                    y_train=list(y_fit),
+                    X_val=X_val,
+                    y_val=list(y_val),
+                    cost_fp=float(getattr(settings, "ML_COST_FP", 1.0)),
+                    cost_fn=float(getattr(settings, "ML_COST_FN", 1.0)),
+                )
+                self.pipeline = tune_result.calibrated
+                calibration_method = tune_result.method
+                log.info("ml_classifier.calibrated", method=tune_result.method)
+            except Exception as _cal_exc:
+                log.warning("ml_classifier.calibration_failed", error=str(_cal_exc))
+
+        # ── Umbral: se elige en VALIDACIÓN, nunca en test ─────────────────
+        threshold_source = "settings_default"
         optimal_threshold = settings.ML_CONFIDENCE_THRESHOLD
-        if len(set(y_test)) >= 2:
-            precisions, recalls, thresholds = precision_recall_curve(y_test, proba_test)
-            # F_beta = (1+β²) * P*R / (β²*P + R)
+        if X_val and len(set(y_val)) >= 2:
+            proba_val = self.pipeline.predict_proba(X_val)[:, 1]
+            precisions, recalls, thresholds = precision_recall_curve(y_val, proba_val)
             beta_sq = beta * beta
             denom = beta_sq * precisions[:-1] + recalls[:-1] + 1e-9
             fbeta_scores = (1 + beta_sq) * precisions[:-1] * recalls[:-1] / denom
             if len(fbeta_scores) > 0:
                 best_idx = int(np.argmax(fbeta_scores))
-                optimal_threshold = float(thresholds[best_idx])
-                # Clamping: no salir del rango [0.3, 0.95]
-                optimal_threshold = max(0.30, min(0.95, optimal_threshold))
-
+                optimal_threshold = max(0.30, min(0.95, float(thresholds[best_idx])))
+                threshold_source = "validation"
         self._threshold = optimal_threshold
 
-        # Métricas con el threshold óptimo
-        y_pred_opt = (proba_test >= optimal_threshold).astype(int)
-        precision_opt = float(
-            np.sum((y_pred_opt == 1) & (np.array(y_test) == 1)) / (np.sum(y_pred_opt == 1) + 1e-9)
-        )
-        recall_opt = float(
-            np.sum((y_pred_opt == 1) & (np.array(y_test) == 1))
-            / (np.sum(np.array(y_test) == 1) + 1e-9)
-        )
-        fbeta_opt = float(fbeta_score(y_test, y_pred_opt, beta=beta, zero_division=0))
-
-        metrics: dict[str, Any] = {
-            "accuracy": round(acc, 4),
-            "f1": round(f1, 4),
-            "fbeta": round(fbeta_opt, 4),
-            "beta": beta,
-            "cv_f1": round(cv_f1, 4),
-            "pr_auc": round(pr_auc, 4),
-            "brier": round(brier, 4),
-            "ece": round(ece, 4),
-            "optimal_threshold": round(optimal_threshold, 4),
-            "precision": round(precision_opt, 4),
-            "recall": round(recall_opt, 4),
-            "n_train": len(X_train),
-            "n_test": len(X_test),
-            "n_positive": n_pos_total,
-            "n_negative": n_neg_total,
-            "temporal_split": _has_date,
-        }
-        self.metadata = {
-            **metrics,
-            "trained_at": datetime.now(UTC).isoformat(),
-        }
-        if best_params is not None:
-            self.metadata["best_params"] = best_params
-
-        # ── Calibración de probabilidades + threshold tuning externo (opcional) ───
-        # Si ML_USE_CALIBRATION=True en settings, usa CalibratedClassifierCV +
-        # búsqueda F-beta sobre malla fina para refinar el umbral y mejorar las
-        # probabilidades predichas.
-        if getattr(settings, "ML_USE_CALIBRATION", False):
-            # El pipeline base se construyó SIN CalibratedClassifierCV interno
-            # (ver __init__), de modo que calibrate_and_tune aplica una ÚNICA
-            # capa de calibración + tuning de umbral sensible a coste.
-            try:
-                from services.threshold_tuning import calibrate_and_tune
-
-                cost_fn = float(getattr(settings, "ML_COST_FN", 1.0))
-                cost_fp = float(getattr(settings, "ML_COST_FP", 1.0))
-                tune_result = calibrate_and_tune(
-                    base_estimator=self.pipeline,
-                    X_train=X_train,
-                    y_train=list(y_train),
-                    X_val=X_test,
-                    y_val=list(y_test),
-                    cost_fp=cost_fp,
-                    cost_fn=cost_fn,
-                )
-                # Sustituir pipeline por versión calibrada y actualizar threshold
-                self.pipeline = tune_result.calibrated
-                self._threshold = tune_result.threshold
-                metrics["optimal_threshold"] = round(tune_result.threshold, 4)
-                metrics["fbeta_calibrated"] = round(tune_result.fbeta, 4)
-                metrics["calibration_method"] = tune_result.method
-                self.metadata.update(
-                    optimal_threshold=metrics["optimal_threshold"],
-                    fbeta_calibrated=metrics["fbeta_calibrated"],
-                    calibration_method=tune_result.method,
-                )
-                log.info(
-                    "ml_classifier.calibrated",
-                    threshold=self._threshold,
-                    fbeta=tune_result.fbeta,
-                    method=tune_result.method,
-                )
-            except Exception as _cal_exc:
-                log.warning("ml_classifier.calibration_failed", error=str(_cal_exc))
-
-        # ── Threshold final sobre el golden set (labels humanas) ──────────────
-        # El threshold anterior se optimizó sobre el test split, cuyas labels
-        # derivan del filtro de keywords. El golden set tiene labels humanas
-        # independientes → base más honesta para fijar el umbral con costos
-        # reales (un FN, perder una licitación SAP, cuesta más que un FP).
+        # ── Umbral final sobre el golden set (labels humanas, split "tune") ──
+        # Las etiquetas del split derivan del filtro de keywords; el golden set
+        # tiene etiquetas humanas independientes. El tuning usa SOLO la mitad
+        # "tune"; la mitad "holdout" queda para reportar sin contaminar.
+        golden_metrics: dict[str, Any] = {}
         if getattr(settings, "ML_TUNE_THRESHOLD_ON_GOLDEN", True):
             try:
                 from services.ml_eval import tune_threshold_on_golden
@@ -375,20 +374,121 @@ class SAPClassifier:
                 )
                 if golden is not None:
                     self._threshold = float(golden["threshold"])
-                    metrics["golden_threshold"] = golden["threshold"]
-                    metrics["golden_recall"] = golden["recall"]
-                    metrics["golden_recall_no_keyword"] = golden["recall_no_keyword"]
-                    metrics["golden_precision"] = golden["precision"]
-                    self.metadata.update(
-                        optimal_threshold=golden["threshold"],
-                        golden_threshold=golden["threshold"],
-                        golden_recall=golden["recall"],
-                        golden_recall_no_keyword=golden["recall_no_keyword"],
-                        golden_precision=golden["precision"],
-                    )
-                    log.info("ml_classifier.golden_threshold_applied", **golden)
+                    threshold_source = "golden_tune"
+                    golden_metrics = {f"golden_{k}": v for k, v in golden.items()}
             except Exception as _golden_exc:
                 log.warning("ml_classifier.golden_tuning_failed", error=str(_golden_exc))
+
+        optimal_threshold = self._threshold
+
+        # ── Evaluación en test set, con el pipeline y el umbral FINALES ────
+        proba_test = self.pipeline.predict_proba(X_test)[:, 1]
+        y_pred_opt = (proba_test >= optimal_threshold).astype(int)
+        y_test_arr = np.asarray(y_test, dtype=int)
+
+        acc = float(accuracy_score(y_test_arr, y_pred_opt))
+        f1 = float(f1_score(y_test_arr, y_pred_opt, zero_division=0))
+        fbeta_opt = float(fbeta_score(y_test_arr, y_pred_opt, beta=beta, zero_division=0))
+        pr_auc = (
+            float(average_precision_score(y_test_arr, proba_test)) if len(set(y_test)) >= 2 else 0.0
+        )
+        brier = float(brier_score_loss(y_test_arr, proba_test))
+        ece = _expected_calibration_error(y_test_arr, proba_test, n_bins=10)
+
+        tp = int(((y_pred_opt == 1) & (y_test_arr == 1)).sum())
+        fp = int(((y_pred_opt == 1) & (y_test_arr == 0)).sum())
+        fn = int(((y_pred_opt == 0) & (y_test_arr == 1)).sum())
+        precision_opt = tp / (tp + fp) if (tp + fp) else 0.0
+        recall_opt = tp / (tp + fn) if (tp + fn) else 0.0
+
+        # ── Métricas operativas ───────────────────────────────────────────
+        cost_fn_v = float(getattr(settings, "ML_COST_FN", 1.0))
+        cost_fp_v = float(getattr(settings, "ML_COST_FP", 1.0))
+        from services.ml_eval import metricas_operativas
+
+        operativas = metricas_operativas(
+            y_test_arr.tolist(), proba_test.tolist(), cost_fp=cost_fp_v, cost_fn=cost_fn_v
+        )
+
+        # ── Métricas restringidas a la población de serving (CPV 48/72) ───
+        # El modelo se entrena con negativos de todos los CPV pero en
+        # producción solo puntúa TI, donde el token CPV_TI es constante. La
+        # métrica global mide un separador de CPV que ya está implementado
+        # aguas arriba; esta mide lo que el modelo aporta donde decide.
+        ti_pos = [j for j, i in enumerate(split.test) if filas[i].cpv_ti]
+        if ti_pos:
+            y_ti = y_test_arr[ti_pos]
+            proba_ti = proba_test[ti_pos]
+            pred_ti = (proba_ti >= optimal_threshold).astype(int)
+            metricas_ti: dict[str, Any] = {
+                "n_test_ti": len(ti_pos),
+                "f1_ti": round(float(f1_score(y_ti, pred_ti, zero_division=0)), 4),
+            }
+            if len(set(y_ti.tolist())) >= 2:
+                metricas_ti["pr_auc_ti"] = round(float(average_precision_score(y_ti, proba_ti)), 4)
+        else:
+            metricas_ti = {"n_test_ti": 0}
+            log.warning(
+                "ml_classifier.sin_test_ti",
+                hint=(
+                    "Ninguna fila de test tiene CPV 48/72: el test no cubre la "
+                    "población sobre la que el modelo decide en producción. "
+                    "Sembrá hard negatives TI (seed_negatives(include_ti=True))."
+                ),
+            )
+
+        # ── ¿Son fiables estas métricas? ──────────────────────────────────
+        # MIN_TRAIN_SAMPLES=50 permite entrenar, pero un test de 10 filas no
+        # sostiene un f1 a cuatro decimales. Este flag es el que consulta el
+        # gate de promoción para negarse a promocionar a ciegas.
+        n_pos_test = int(y_test_arr.sum())
+        metrics_reliable = len(y_test) >= MIN_RELIABLE_TEST_ROWS and n_pos_test >= MIN_RELIABLE_POS
+        if not metrics_reliable:
+            log.warning(
+                "ml_classifier.metrics_not_reliable",
+                n_test=len(y_test),
+                n_pos_test=n_pos_test,
+                min_test=MIN_RELIABLE_TEST_ROWS,
+                min_pos=MIN_RELIABLE_POS,
+            )
+
+        metrics: dict[str, Any] = {
+            "accuracy": round(acc, 4),
+            "f1": round(f1, 4),
+            "fbeta": round(fbeta_opt, 4),
+            "beta": beta,
+            "cv_f1": round(cv_f1, 4),
+            "cv_pr_auc": round(cv_pr_auc, 4),
+            "pr_auc": round(pr_auc, 4),
+            "brier": round(brier, 4),
+            "ece": round(ece, 4),
+            "optimal_threshold": round(optimal_threshold, 4),
+            "threshold_source": threshold_source,
+            "precision": round(precision_opt, 4),
+            "recall": round(recall_opt, 4),
+            "n_train": len(X_fit),
+            "n_val": len(X_val),
+            "n_test": len(X_test),
+            "n_positive": n_pos_total,
+            "n_negative": n_neg_total,
+            "n_positive_test": n_pos_test,
+            "temporal_split": _has_date,
+            "split_strategy": split.strategy,
+            "split_fecha_corte": split.fecha_corte,
+            "split_descartadas_por_grupo": split.descartadas_por_grupo,
+            "metrics_reliable": metrics_reliable,
+            **metricas_ti,
+            **operativas,
+            **golden_metrics,
+        }
+        if calibration_method is not None:
+            metrics["calibration_method"] = calibration_method
+        self.metadata = {
+            **metrics,
+            "trained_at": datetime.now(UTC).isoformat(),
+        }
+        if best_params is not None:
+            self.metadata["best_params"] = best_params
 
         log.info("ml_classifier.trained", **metrics)
         # Append run a registry JSON para histórico de entrenamientos.
@@ -475,18 +575,34 @@ class SAPClassifier:
         return [(float(p[1]) >= threshold, float(p[1])) for p in probas]
 
     def predict_proba(
-        self, texts: list[str], *, entity_ids: list[str] | None = None
+        self,
+        texts: list[str],
+        *,
+        entity_ids: list[str] | None = None,
+        cpvs: list[str | None] | None = None,
+        importes: list[float | None] | None = None,
+        organos: list[str | None] | None = None,
     ) -> npt.NDArray[np.floating[Any]]:
         """Devuelve la matriz de probabilidades sklearn (shape: [n, 2]).
 
-        Columna 0 = P(no-SAP), columna 1 = P(SAP). Idéntico a
-        sklearn.pipeline.Pipeline.predict_proba — expuesto en SAPClassifier
-        para que los endpoints de active learning puedan usarlo directamente.
+        Columna 0 = P(no-SAP), columna 1 = P(SAP).
 
-        If ``entity_ids`` is provided (same length as ``texts``), results are
-        cached in the feature store keyed by entity_id and model version.
-        Cached values are returned without recomputation when the version
-        matches.
+        .. important:: Pasá ``cpvs``/``importes``
+
+            El modelo se entrena sobre texto **aumentado** con los tokens
+            estructurales de :func:`_augment_text` (``CPV_TI``, ``CPV2_72``,
+            ``IMPORTE_M``…). Este método los aplica igual que ``predict`` y
+            ``predict_batch``; hasta ahora no lo hacía, y era el único de los
+            tres que no. Como es el que puntúa la cola de active learning,
+            el conjunto de licitaciones que un humano llegaba a etiquetar
+            —y por tanto todo el feedback que realimenta el modelo— se
+            ordenaba con una probabilidad calculada sin las señales más
+            discriminantes, y además contradecía el ``ml_proba`` guardado en
+            BD para la misma licitación.
+
+        Si se pasa ``entity_ids`` (misma longitud que ``texts``), los
+        resultados se cachean en el feature store por entity_id y versión de
+        modelo, y se devuelven sin recomputar cuando la versión coincide.
         """
         if not self._trained:
             raise RuntimeError("Clasificador no entrenado.")
@@ -517,7 +633,15 @@ class SAPClassifier:
         uncached_indices = [i for i in range(len(texts)) if i not in cached_indices]
 
         if uncached_indices:
-            uncached_texts = [texts[i] for i in uncached_indices]
+            uncached_texts = [
+                _augment_text(
+                    texts[i],
+                    cpv=cpvs[i] if cpvs and i < len(cpvs) else None,
+                    importe=importes[i] if importes and i < len(importes) else None,
+                    organo=organos[i] if organos and i < len(organos) else None,
+                )
+                for i in uncached_indices
+            ]
             computed = self.pipeline.predict_proba(uncached_texts)
         else:
             computed = np.empty((0, 2))
@@ -787,36 +911,53 @@ class SAPClassifier:
         # la integridad del artefacto local — que es el dato que sí viaja entre
         # máquinas (ver ADR-025 sobre identificar artefactos por contenido).
         registry_sha256 = ""
+        sirviendo_artefacto_del_registry = False
+        version_activa: object | None = None
         if path is None:
             try:
                 from db.model_registry import get_active
 
                 active = get_active("sap_classifier")
                 if active:
-                    registry_sha256 = str(active.get("sha256") or "")
+                    version_activa = active.get("version")
                     registry_path = Path(str(active["path"])) if active.get("path") else None
                     if registry_path is not None and registry_path.exists():
                         path = registry_path
+                        registry_sha256 = str(active.get("sha256") or "")
+                        sirviendo_artefacto_del_registry = True
                         log.info(
                             "ml_classifier.load_from_registry",
-                            version=active.get("version"),
+                            version=version_activa,
                             path=str(path),
                         )
                     elif registry_path is not None:
-                        log.info(
-                            "ml_classifier.registry_path_not_local",
-                            version=active.get("version"),
+                        # El artefacto versionado se quedó en el runner efímero
+                        # que lo entrenó. Se sirve el local — pero SIN heredar
+                        # el sha del registry: describe otro fichero, y
+                        # aplicarlo como pin hacía que todo `load()` muriera
+                        # con "integridad comprometida" en cuanto el
+                        # reentrenamiento semanal promocionaba una versión.
+                        log.warning(
+                            "ml_classifier.serving_version_mismatch",
+                            version_activa=version_activa,
                             registry_path=str(registry_path),
                             fallback=str(_MODEL_PATH),
+                            hint=(
+                                "El artefacto de la versión activa no está en esta máquina; "
+                                "se sirve el modelo local, que puede ser anterior."
+                            ),
                         )
             except Exception as _reg_exc:
                 log.warning("ml_classifier.registry_lookup_failed", error=str(_reg_exc))
 
         target = path or _MODEL_PATH
-        # El pin explícito de settings manda; si no hay, sirve el hash que dejó
-        # registrado quien entrenó el modelo. Es lo que permite comprobar que el
-        # artefacto de esta máquina es el mismo que la versión activa declara.
-        pinned = str(getattr(settings, "ML_MODEL_SHA256", "") or "") or registry_sha256
+        # El pin explícito de settings manda siempre. El sha del registry solo
+        # se aplica cuando se está sirviendo **ese mismo** artefacto: es un
+        # hash de contenido de un fichero concreto, no una propiedad del
+        # modelo activo en abstracto.
+        pinned = str(getattr(settings, "ML_MODEL_SHA256", "") or "")
+        if not pinned and sirviendo_artefacto_del_registry:
+            pinned = registry_sha256
         verify_model_integrity(
             target,
             pinned_sha256=pinned,
@@ -943,11 +1084,21 @@ if __name__ == "__main__":
         if "error" in tech_metrics:
             print(f"\n[ERROR] {tech_metrics}")
         else:
-            print(f"  macro_f1_ml_ready : {tech_metrics.get('macro_f1_ml_ready')}")
+            # `macro_f1_ml_ready_only` promedia SOLO las etiquetas con
+            # suficientes positivos: es un promedio de los aprobados. Las dos
+            # de al lado son las que cubren las 13 tecnologías.
+            print(f"  micro_f1 (todas)  : {tech_metrics.get('micro_f1_all_labels')}")
+            print(f"  macro_f1 (todas)  : {tech_metrics.get('macro_f1_all_labels')}")
+            print(f"  macro_f1 ml_ready : {tech_metrics.get('macro_f1_ml_ready_only')}")
+            # Si las etiquetas salen del regex de keywords, las métricas de
+            # arriba miden imitación, no detección. Este es el dato que decide
+            # si significan algo.
+            print(f"  labels circulares : {tech_metrics.get('labels_circulares')}")
             print(f"  n_models          : {tech_metrics.get('n_models')}")
             print(f"  n_rules_fallback  : {tech_metrics.get('n_rules_fallback')}")
             print(
-                f"  n_train / n_test  : {tech_metrics.get('n_train')} / {tech_metrics.get('n_test')}"
+                f"  n_train/val/test  : {tech_metrics.get('n_train')} / "
+                f"{tech_metrics.get('n_val')} / {tech_metrics.get('n_test')}"
             )
             print("\nDesglose por tecnología:")
             per_tech = tech_metrics.get("per_tech", {})
