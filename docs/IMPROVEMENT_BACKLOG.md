@@ -40,15 +40,6 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 - **Files de partida:** [scripts/sample_golden_candidates.py](../scripts/sample_golden_candidates.py), [tests/fixtures/golden_set.jsonl](../tests/fixtures/golden_set.jsonl), [services/ml_eval.py](../services/ml_eval.py)
 - **Riesgo:** bajo en código, alto en oportunidad — mientras el set sea pequeño, el gate de promoción bloquea con poca evidencia y el umbral servido tiene una varianza que ninguna mejora del modelo puede compensar.
 
-### [P1] `HistGradientBoosting` revienta con una columna constante (numpy 2.4.4 + scikit-learn 1.9.0)
-- **Área:** services/ml/baja_model.py, requirements.txt
-- **Problema:** con las versiones **pineadas en `requirements.txt`**, entrenar el modelo de baja falla con `ValueError: window shape cannot be larger than input array shape` dentro de `sklearn/ensemble/_hist_gradient_boosting/binning.py:82`: `sliding_window_view(distinct_values, 2)` no admite una feature con un solo valor distinto. Verificado el 2026-08-24 sobre un worktree limpio de `master` (`5164793`): `tests/test_ml_baja_model.py` → 3 failed, 30 passed, y las versiones instaladas coinciden con los pins (numpy 2.4.4, scikit-learn 1.9.0). **No es un artefacto del entorno de desarrollo**: es el comportamiento de las dependencias que el repo declara. Afecta a `test_entrenar_registra_version_y_metricas`, `test_predicciones_del_modelo_distinguen_segmentos` y `test_scoring_degrada_a_baseline_si_el_layout_no_coincide`.
-- **Acceptance criteria:**
-  - `pytest tests/test_ml_baja_model.py` en verde con los pins vigentes.
-  - La solución elegida está documentada: descartar columnas constantes antes del ajuste (cambio local en `baja_model`, no toca dependencias) **o** mover el pin de scikit-learn (requiere OK explícito por AGENTS.md §6).
-- **Files de partida:** [services/ml/baja_model.py](../services/ml/baja_model.py), [tests/test_ml_baja_model.py](../tests/test_ml_baja_model.py)
-- **Riesgo:** medio — el reentrenamiento mensual del modelo de baja no puede completar mientras esto siga así; el serving degrada al baseline, que es el comportamiento previsto para un fallo, pero el modelo nunca llega a existir.
-
 ### [P1] `make web-test` sale con exit 0 aunque no ejecute ni un test
 - **Área:** web/vitest.config.ts, Makefile (`web-test`, `web-test-coverage`), CI
 - **Problema:** cuando vitest no consigue arrancar sus workers, **no falla: reporta `Test Files no tests` / `Tests no tests` junto a N errores y termina con exit code 0**. Un gate que solo mira el código de salida da por verde una suite que no corrió. Reproducido tres veces seguidas el 2026-08-18/19 sobre el mismo árbol, con los dos pools: `--pool=forks --no-file-parallelism` → 70 de 113 ficheros ejecutados, 43 errores de arranque, **exit 0**; `--pool=forks` → **0 de 113**, 113 errores, **exit 0**; y un único fichero (`src/lib/__tests__/safe-redirect.test.ts`) con `--pool=threads` → `no tests`, 1 error, **exit 0**. El mensaje es siempre `[vitest-pool]: Failed to start forks worker` / `[vitest-pool-runner]: Timeout waiting for worker to respond` (START_TIMEOUT de 60 s, no configurable por CLI). En esta máquina lo dispara la contención (OneDrive + antivirus), pero la causa de fondo —**el runner no distingue "todo pasó" de "no se ejecutó nada"**— es del repo y viaja a CI: un runner lento o un contenedor apretado producen ahí el mismo falso verde, y el job saldría en verde sin haber probado nada.
@@ -145,6 +136,18 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 ---
 
 ## P2 — Media
+
+### [P2] `HistGradientBoosting` revienta si una feature llega entera a NaN
+- **Área:** services/ml/baja_model.py, services/ml/features.py, tests/test_ml_baja_model.py
+- **Problema:** con las versiones pineadas (numpy 2.4.4, scikit-learn 1.9.0), ajustar `HistGradientBoostingRegressor` sobre una matriz con **una columna enteramente NaN** falla con `ValueError: window shape cannot be larger than input array shape` en `sklearn/ensemble/_hist_gradient_boosting/binning.py:82`. La causa es precisa: `_find_binning_thresholds` guarda el caso de una columna **constante** (`if len(distinct_values) == 1: return []`) pero no el de **cero** valores distintos, que es lo que deja una columna todo-NaN tras descartar los missing; entonces `sliding_window_view(distinct_values, 2)` recibe un array vacío. Reproducido aislado: columna todo-NaN → ValueError; columna constante → OK.
+- **Estado de la evidencia (importante):** **no reproduce en CI.** `master` está verde en el mismo commit base (run #830 sobre `5164793`), y CI corre la suite entera sin filtro de marcadores. Sí reproduce en el contenedor de sesiones remotas —sobre un worktree limpio de `5164793` y sobre la rama de trabajo, con Python 3.11 y 3.13 y las versiones pineadas— en `test_entrenar_registra_version_y_metricas`, `test_predicciones_del_modelo_distinguen_segmentos` y `test_scoring_degrada_a_baseline_si_el_layout_no_coincide`. Qué hace que la matriz salga con una columna todo-NaN aquí y no allí **está sin identificar**: el histórico sintético de `_sembrar_historico` es determinista (fechas fijas, CPV/CCAA/tipo/fuente constantes), así que la diferencia tiene que estar en el entorno o en el estado de la BD, no en el fixture.
+- **Por qué merece entrada igualmente:** el docstring de `FEATURES_PENDIENTES_COBERTURA` ya avisa de que "una feature NULL en el 90% de las filas no es neutra". Aquí la consecuencia es peor que un split desperdiciado: al 100% de NULL el ajuste **no arranca**. Cualquier feature nueva con cobertura baja puede tumbar el reentrenamiento en vez de degradarlo.
+- **Acceptance criteria:**
+  - Identificado qué diferencia de entorno produce la columna todo-NaN aquí y no en CI (o descartado como artefacto del contenedor, dejándolo escrito).
+  - `baja_model` descarta las columnas sin ningún valor observado antes del ajuste, con log de cuáles y un test que fije el invariante — el reentrenamiento no puede depender de que ninguna feature llegue vacía.
+- **Files de partida:** [services/ml/baja_model.py](../services/ml/baja_model.py), [services/ml/features.py](../services/ml/features.py)
+- **Riesgo:** bajo — el serving ya degrada al baseline si el modelo no existe, que es el comportamiento previsto para un fallo de entrenamiento.
+
 
 ### [P2] `render.yaml` no gobierna el servicio que corre en producción
 - **Área:** render.yaml, Render Dashboard (acción del usuario)
