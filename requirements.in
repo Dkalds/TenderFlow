@@ -55,7 +55,7 @@ bcrypt>=4.0,<6
 # security.yml corre sin supresiones a propósito, así que el suelo es la vía.
 cryptography>=50.0.0,<51
 # argon2-cffi: algoritmo preferido para nuevos hashes (bcrypt mantenido para compatibilidad)
-argon2-cffi>=23.1.0,<25
+argon2-cffi>=23.1.0,<26
 # Migraciones de base de datos (Alembic gestiona v14+ tras el baseline casero)
 alembic>=1.13.0,<2
 # API REST

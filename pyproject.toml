@@ -30,7 +30,7 @@ dependencies = [
     # y `pip install -r requirements.txt` pedían cosas incompatibles.
     "prometheus-fastapi-instrumentator>=8.0.0,<9",
     "bcrypt>=4.0,<6",
-    "argon2-cffi>=23.1.0,<25",
+    "argon2-cffi>=23.1.0,<26",
     "alembic>=1.13.0,<2",
     # Mismo techo que requirements.in: 0.141 rompe todas las rutas
     # (`_IncludedRouter` sin `.path`). El razonamiento largo está allí.
