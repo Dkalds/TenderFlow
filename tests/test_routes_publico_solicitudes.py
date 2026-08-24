@@ -21,6 +21,13 @@ def _contar() -> int:
     return contar_pendientes()
 
 
+def _con_origenes(monkeypatch, origenes: set[str]) -> None:
+    """Fija los orígenes aceptados sin depender de la configuración del entorno."""
+    import api.routes.publico_solicitudes as modulo
+
+    monkeypatch.setattr(modulo, "_origenes_validos", lambda: origenes)
+
+
 def test_envio_valido_redirige_y_persiste(client):
     antes = _contar()
 
@@ -131,3 +138,113 @@ def test_no_requiere_autenticacion(client):
 
     assert r.status_code != 401
     assert r.status_code != 403
+
+
+def test_un_origen_ajeno_no_guarda(client, monkeypatch):
+    """Un formulario alojado en otro dominio no puede sembrar la cola.
+
+    No es una defensa contra un atacante decidido —puede omitir la cabecera—
+    pero corta el envío cruzado casual, que es lo que la haría inútil.
+    """
+    _con_origenes(monkeypatch, {"https://tenderflow.example"})
+    antes = _contar()
+
+    r = client.post(
+        RUTA,
+        content="email=evil%40e.example&consentimiento=si",
+        headers={**FORM, "Origin": "https://evil.example"},
+        follow_redirects=False,
+    )
+
+    assert r.status_code == 303
+    assert "estado=error" in r.headers["location"]
+    assert _contar() == antes
+
+
+def test_el_origen_propio_sigue_pasando(client, monkeypatch):
+    _con_origenes(monkeypatch, {"https://tenderflow.example"})
+    antes = _contar()
+
+    r = client.post(
+        RUTA,
+        content="email=buena%40e.example&consentimiento=si",
+        headers={**FORM, "Origin": "https://tenderflow.example"},
+        follow_redirects=False,
+    )
+
+    assert r.status_code == 303
+    assert r.headers["location"] == "/solicitud-recibida"
+    assert _contar() == antes + 1
+
+
+def test_un_referer_ilegible_no_bloquea(client, monkeypatch):
+    """Una cabecera malformada no es prueba de origen ajeno, así que no corta."""
+    _con_origenes(monkeypatch, {"https://tenderflow.example"})
+    antes = _contar()
+
+    r = client.post(
+        RUTA,
+        content="email=rara%40e.example&consentimiento=si",
+        headers={**FORM, "Referer": "no-es-una-url"},
+        follow_redirects=False,
+    )
+
+    assert r.status_code == 303
+    assert _contar() == antes + 1
+
+
+def test_un_fallo_de_base_de_datos_no_asoma_como_5xx(client, monkeypatch):
+    """La API caída no puede devolver un error de servidor a una página pública."""
+    import api.routes.publico_solicitudes as modulo
+
+    def _revienta(**_kwargs):
+        raise RuntimeError("base de datos caída")
+
+    monkeypatch.setattr(modulo, "crear_solicitud", _revienta)
+
+    r = client.post(
+        RUTA,
+        content="email=caida%40e.example&consentimiento=si",
+        headers=FORM,
+        follow_redirects=False,
+    )
+
+    assert r.status_code == 303
+    assert "estado=error" in r.headers["location"]
+
+
+def test_sin_origenes_configurados_no_se_bloquea_a_nadie(client, monkeypatch):
+    """Un despliegue sin CORS_ALLOWED_ORIGINS no puede quedarse sin formulario.
+
+    Sin lista no se puede afirmar que un origen sea ajeno; rechazar por defecto
+    convertiría un olvido de configuración en un embudo roto. El rate limit y
+    la trampa siguen en pie.
+    """
+    _con_origenes(monkeypatch, set())
+    antes = _contar()
+
+    r = client.post(
+        RUTA,
+        content="email=sinlista%40e.example&consentimiento=si",
+        headers={**FORM, "Origin": "https://cualquiera.example"},
+        follow_redirects=False,
+    )
+
+    assert r.status_code == 303
+    assert _contar() == antes + 1
+
+
+def test_los_origenes_salen_de_la_configuracion(monkeypatch):
+    """La lista se lee del entorno, sin barras finales, y en dev añade localhost."""
+    import api.routes.publico_solicitudes as modulo
+
+    monkeypatch.setattr(
+        modulo.settings, "CORS_ALLOWED_ORIGINS", "https://uno.example/, https://dos.example"
+    )
+    monkeypatch.setattr(modulo.settings, "ENV", "prod")
+
+    assert modulo._origenes_validos() == {"https://uno.example", "https://dos.example"}
+
+    monkeypatch.setattr(modulo.settings, "ENV", "dev")
+
+    assert "http://localhost:3000" in modulo._origenes_validos()
