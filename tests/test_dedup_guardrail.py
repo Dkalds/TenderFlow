@@ -67,13 +67,6 @@ _GUARD_CALL = "exclude_duplicados_sql"
 # son deuda congelada al ampliar el escáner a ``db/`` el 2026-08-18. Esta lista
 # solo puede encoger (mismo contrato que el ratchet TID251 y que KNOWN_5XX).
 _ALLOWLIST: dict[str, str] = {
-    "scoring._tasa_retencion_baseline": (
-        "Calcula tasa de re-adjudicacion historica por (organo, CPV-4). Necesita "
-        "contar TODAS las adjudicaciones por segmento para calcular la probabilidad "
-        "de retener al adjudicatario — excluir duplicados subestimaria el denominador. "
-        "No usa el resultado para metricas de cuota/HHI ni entrenamiento ML. "
-        "(Feature D, 2026-07-05)"
-    ),
     # --- Exentas por diseño -------------------------------------------------
     "adjudicaciones.list_paginated": (
         "CRUD del API, no analitica: lista filas tal como estan para que el "

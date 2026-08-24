@@ -6,6 +6,7 @@ import hashlib
 import sqlite3
 import tempfile
 from contextlib import contextmanager
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -182,68 +183,90 @@ class TestModelRegistry:
 
 
 class TestPromotionGate:
-    """Tests for maybe_retrain_classifier promotion gate."""
+    """El gate de promoción que aplica ``maybe_retrain_classifier``.
 
-    def test_promotion_rejected_when_f1_drops(self):
-        """If new F1 < old_F1 - epsilon, result should contain promotion_rejected=True."""
+    Ya no vive inline: ambos caminos de reentrenamiento (este y
+    ``scraper.ml_training.train_from_db``) delegan en
+    ``services.ml.promotion.promote_if_better``, que decide sobre el golden set
+    humano en vez de comparar métricas medidas cada una sobre su propio test
+    split. La lógica del gate se testea en ``tests/test_ml_promotion_gate.py``;
+    aquí solo se comprueba el cableado y qué devuelve el job.
+    """
+
+    def _patches(self, promocion: SimpleNamespace):
+        import pandas as pd
+
+        return (
+            patch("db.model_registry.feedbacks_since_last_train", return_value=200),
+            patch("db.model_registry.get_active", return_value={"version": 1, "metrics": {}}),
+            patch(
+                "scheduler.concept_drift._fetch_training_dataframe",
+                return_value=pd.DataFrame({"col": [1]}),
+            ),
+            patch("scraper.ml_classifier.SAPClassifier"),
+            patch("scraper.ml_training.precompute_ml_proba"),
+            patch("services.ml.promotion.promote_if_better", return_value=promocion),
+            patch("scheduler.concept_drift.notify"),
+        )
+
+    def test_promotion_rejected_when_gate_fails(self):
+        """Si el gate rechaza, no se activa nada y el motivo llega al resultado."""
         from scheduler.concept_drift import maybe_retrain_classifier
 
-        mock_active = {"version": 1, "metrics": {"f1": 0.90}}
-        mock_metrics = {"f1": 0.80, "n_train": 50, "n_test": 10}
-
+        promocion = SimpleNamespace(
+            activada=False,
+            version=2,
+            motivos_rechazo=["recall_no_keyword 0.0000 < 0.05"],
+            golden={},
+            as_dict=lambda: {"activada": False, "version": 2},
+        )
+        patches = self._patches(promocion)
         with (
-            patch("db.model_registry.feedbacks_since_last_train", return_value=200),
-            patch("db.model_registry.get_active", return_value=mock_active),
-            patch("db.model_registry.register_version"),
-            patch("scheduler.concept_drift._fetch_training_dataframe") as mock_df,
-            patch("scraper.ml_classifier.SAPClassifier") as MockClf,
-            patch("scraper.ml_training.precompute_ml_proba"),
+            patches[0],
+            patches[1],
+            patches[2],
+            patches[3] as MockClf,
+            patches[4],
+            patches[5],
+            patches[6],
         ):
-            import pandas as pd
-
-            mock_df.return_value = pd.DataFrame({"col": [1]})
-            instance = MockClf.return_value
-            instance.train.return_value = mock_metrics
-            saved = MagicMock()
-            saved.read_bytes.return_value = b"fake_model_data"
-            instance.save.return_value = saved
-
+            MockClf.return_value.train.return_value = {"f1": 0.80, "n_train": 50, "n_test": 10}
             result = maybe_retrain_classifier(threshold=100)
 
         assert result.get("promotion_rejected") is True
-        assert result["new_f1"] == pytest.approx(0.80)
-        assert result["old_f1"] == pytest.approx(0.90)
+        assert result["failed_metrics"] == ["recall_no_keyword 0.0000 < 0.05"]
+        assert "new_version" not in result
 
-    def test_promotion_passes_when_f1_acceptable(self):
-        """If new F1 >= old_F1 - epsilon, version should be registered."""
+    def test_promotion_passes_when_gate_accepts(self):
+        """Si el gate acepta, se reporta la versión nueva y se recomputa ml_proba."""
         from scheduler.concept_drift import maybe_retrain_classifier
 
-        mock_active = {"version": 1, "metrics": {"f1": 0.85}}
-        mock_metrics = {"f1": 0.84, "n_train": 50, "n_test": 10}  # within epsilon=0.02
-
+        promocion = SimpleNamespace(
+            activada=True,
+            version=2,
+            motivos_rechazo=[],
+            golden={"recall_no_keyword": 0.6},
+            as_dict=lambda: {"activada": True, "version": 2},
+        )
+        patches = self._patches(promocion)
         with (
-            patch("db.model_registry.feedbacks_since_last_train", return_value=200),
-            patch("db.model_registry.get_active", return_value=mock_active),
-            patch("db.model_registry.register_version", return_value=2) as mock_reg,
-            patch("scheduler.concept_drift._fetch_training_dataframe") as mock_df,
-            patch("scraper.ml_classifier.SAPClassifier") as MockClf,
-            patch("scraper.ml_training.precompute_ml_proba"),
-            patch("scheduler.concept_drift.notify"),
+            patches[0],
+            patches[1],
+            patches[2],
+            patches[3] as MockClf,
+            patches[4] as mock_precompute,
+            patches[5] as mock_promote,
+            patches[6],
         ):
-            import pandas as pd
-
-            mock_df.return_value = pd.DataFrame({"col": [1]})
-            instance = MockClf.return_value
-            instance.train.return_value = mock_metrics
-            saved = MagicMock()
-            saved.read_bytes.return_value = b"model_bytes"
-            instance.save.return_value = saved
-
+            MockClf.return_value.train.return_value = {"f1": 0.84, "n_train": 50, "n_test": 10}
             result = maybe_retrain_classifier(threshold=100)
 
         assert result.get("promotion_rejected") is None
         assert result["new_version"] == 2
-        mock_reg.assert_called_once()
+        mock_promote.assert_called_once()
+        # force=True: si no, la superficie de serving y el test de drift de
+        # predicciones se quedan con los scores del modelo anterior.
+        mock_precompute.assert_called_once_with(force=True)
 
 
 # ─── compute_psi tests ───────────────────────────────────────────────────────

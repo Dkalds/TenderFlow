@@ -126,6 +126,23 @@ class Settings(BaseSettings):
     ML_TECH_FRAGILE_C: float = 0.3
     # Precisión mínima exigida al elegir threshold del tier frágil.
     ML_TECH_FRAGILE_MIN_PRECISION: float = 0.70
+    # Score mínimo para aceptar una tecnología del etiquetado LLM como etiqueta
+    # de entrenamiento. Es la fuente que rompe la circularidad del multi-label
+    # (la columna `tecnologia` la escribe el mismo regex que ve el modelo), así
+    # que conviene ser exigente: una etiqueta LLM floja es ruido con la
+    # apariencia de ground truth. Ver scraper/tech_classifier.
+    ML_TECH_LLM_MIN_SCORE: float = 0.5
+    # Keywords mínimas presentes en el texto para que el tier `rules` clasifique.
+    # El score de ese tier es la *fracción* de keywords de la tecnología que
+    # aparecen, así que compararlo contra ML_TECH_DEFAULT_THRESHOLD (0.50) exigía
+    # que el texto contuviera la mitad del vocabulario de la tecnología: en la
+    # práctica, el tier no clasificaba nada. Con 1, la semántica es "al menos
+    # una keyword", que es lo que el fallback pretendía.
+    ML_TECH_RULES_MIN_KEYWORDS: int = 1
+    # Golden set multi-etiqueta con labels humanas para el clasificador de
+    # tecnologías (el equivalente de ML_GOLDEN_SET_PATH para el binario).
+    # Ver services/ml/eval_tech.py.
+    ML_GOLDEN_TECH_SET_PATH: str = "tests/fixtures/golden_set_tech.jsonl"
     # Reentrenamiento semanal automático (cron en scheduler.loop).
     # Activado (2026-05-23) — si hay ≥50 nuevos feedbacks, reentrenar y evaluar.
     ML_TECH_AUTO_RETRAIN: bool = True

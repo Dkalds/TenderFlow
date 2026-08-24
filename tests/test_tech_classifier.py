@@ -643,3 +643,321 @@ class TestTechTrainFromDb:
 
             result = train_from_db()
             mock_instance.save.assert_called_once()
+
+
+# ── Anti-circularidad: resolución de la columna de etiquetas (arreglo A) ────
+
+
+def _rules_only_df(tecnologia: str = "META4", n: int = 24) -> pd.DataFrame:
+    """DataFrame mínimo donde ninguna etiqueta llega al tier ML.
+
+    Con esto ``train()`` recorre la resolución de etiquetas y la asignación de
+    umbrales sin ajustar un solo modelo: los tests corren en milisegundos.
+    """
+    return pd.DataFrame(
+        {
+            "titulo": [f"contrato de servicios {i}" for i in range(n)],
+            "descripcion": ["objeto del contrato"] * n,
+            "tecnologia": [tecnologia] * n,
+        }
+    )
+
+
+class TestResolverLabelColumn:
+    def test_sin_columnas_devuelve_vacio(self) -> None:
+        from scraper.tech_classifier import _resolver_label_column
+
+        res = _resolver_label_column(pd.DataFrame({"titulo": ["a"], "descripcion": ["b"]}))
+        assert res.column == ""
+
+    def test_solo_keywords_marca_circular_y_avisa(self) -> None:
+        """Entrenar contra ``tecnologia`` es imitar al regex que ve el mismo texto."""
+        from unittest.mock import patch
+
+        from scraper.tech_classifier import _resolver_label_column
+
+        df = pd.DataFrame({"titulo": ["a"], "descripcion": ["b"], "tecnologia": ["SAP"]})
+        with patch("scraper.tech_classifier.log") as mock_log:
+            res = _resolver_label_column(df)
+        assert res.column == "tecnologia"
+        assert res.circular is True
+        assert mock_log.warning.call_args[0][0] == "tech_classifier.circular_labels"
+
+    def test_humana_gana_a_llm_y_a_keywords(self) -> None:
+        from scraper.tech_classifier import _LABEL_COL_RESOLVED, _resolver_label_column
+
+        df = pd.DataFrame(
+            {
+                "titulo": ["a", "b", "c"],
+                "descripcion": ["x", "y", "z"],
+                "tecnologia": ["SAP", "SAP", "SAP"],
+                "tecnologia_llm": ["ORACLE", "ORACLE", None],
+                "tecnologia_humana": ["WORKDAY", None, None],
+            }
+        )
+        res = _resolver_label_column(df)
+        assert res.circular is False
+        assert list(res.df[_LABEL_COL_RESOLVED]) == ["WORKDAY", "ORACLE", "SAP"]
+        assert res.counts == {"human": 1, "llm": 1, "keywords": 1, "sin_etiqueta": 0}
+
+    def test_no_muta_el_dataframe_original(self) -> None:
+        from scraper.tech_classifier import _LABEL_COL_RESOLVED, _resolver_label_column
+
+        df = pd.DataFrame({"titulo": ["a"], "descripcion": ["x"], "tecnologia_humana": ["SAP"]})
+        _resolver_label_column(df)
+        assert _LABEL_COL_RESOLVED not in df.columns
+
+    def test_cadena_vacia_es_negativo_revisado_no_falta_de_etiqueta(self) -> None:
+        """Un "el humano miró y no vio tecnología" es información, no un hueco."""
+        from scraper.tech_classifier import _LABEL_COL_RESOLVED, _resolver_label_column
+
+        df = pd.DataFrame(
+            {
+                "titulo": ["a"],
+                "descripcion": ["x"],
+                "tecnologia": ["SAP"],
+                "tecnologia_humana": [""],
+            }
+        )
+        res = _resolver_label_column(df)
+        assert list(res.df[_LABEL_COL_RESOLVED]) == [""]
+        assert res.counts["human"] == 1
+
+    def test_llm_filtra_por_score(self) -> None:
+        from unittest.mock import patch
+
+        from scraper.tech_classifier import _LABEL_COL_RESOLVED, _resolver_label_column
+
+        df = pd.DataFrame(
+            {
+                "titulo": ["a"],
+                "descripcion": ["x"],
+                "tecnologia_llm": ["SAP:0.91,ORACLE:0.12"],
+            }
+        )
+        with patch("scraper.tech_classifier.settings") as mock_settings:
+            mock_settings.ML_TECH_LLM_MIN_SCORE = 0.5
+            res = _resolver_label_column(df)
+        assert list(res.df[_LABEL_COL_RESOLVED]) == ["SAP"]
+
+
+class TestTrainRompeLaCircularidad:
+    def test_train_usa_la_etiqueta_humana_no_las_keywords(self) -> None:
+        """Con ``tecnologia_humana`` presente, ``tecnologia`` no debe decidir nada."""
+        df = _rules_only_df("SAP")
+        df["tecnologia_humana"] = ["ORACLE"] * len(df)
+
+        clf = TechnologyClassifier()
+        metrics = clf.train(df)
+        per_tech = metrics["per_tech"]
+        assert per_tech["ORACLE"]["n_positive"] == len(df)
+        assert per_tech["SAP"]["n_positive"] == 0
+        assert metrics["labels_circulares"] is False
+
+    def test_train_avisa_cuando_solo_hay_keywords(self) -> None:
+        from unittest.mock import patch
+
+        clf = TechnologyClassifier()
+        with patch("scraper.tech_classifier.log") as mock_log:
+            metrics = clf.train(_rules_only_df())
+        assert metrics["labels_circulares"] is True
+        avisos = [c[0][0] for c in mock_log.warning.call_args_list]
+        assert "tech_classifier.circular_labels" in avisos
+
+    def test_label_column_explicita(self) -> None:
+        df = _rules_only_df("SAP")
+        df["mi_columna"] = ["WORKDAY"] * len(df)
+        clf = TechnologyClassifier()
+        metrics = clf.train(df, label_column="mi_columna")
+        assert metrics["per_tech"]["WORKDAY"]["n_positive"] == len(df)
+        assert metrics["per_tech"]["SAP"]["n_positive"] == 0
+
+    def test_label_column_inexistente(self) -> None:
+        clf = TechnologyClassifier()
+        result = clf.train(_rules_only_df(), label_column="no_existe")
+        assert result == {"error": "missing_tecnologia_column"}
+
+
+# ── Tier rules alcanzable (arreglo E) ───────────────────────────────────────
+
+
+class TestRulesThreshold:
+    def test_semantica_al_menos_una_keyword(self) -> None:
+        from config.keywords import TECHNOLOGY_KEYWORDS
+
+        clf = TechnologyClassifier()
+        n = len(TECHNOLOGY_KEYWORDS["META4"])
+        thr = clf._rules_threshold("META4")
+        # Estrictamente entre "cero keywords" y "una keyword": no depende de la
+        # igualdad exacta de dos divisiones en coma flotante.
+        assert 0.0 < thr < 1.0 / n
+        assert thr == pytest.approx(0.5 / n)
+
+    def test_default_threshold_era_inalcanzable(self) -> None:
+        """Regresión del bug: 0.50 exigía la mitad del vocabulario del label."""
+        from config.keywords import TECHNOLOGY_KEYWORDS
+        from scraper.ml_pipeline import _keyword_fallback_score
+
+        score = _keyword_fallback_score(
+            "mantenimiento del sistema de nóminas meta4", TECHNOLOGY_KEYWORDS["META4"]
+        )
+        assert score < 0.50  # con el umbral viejo no se clasificaba
+        clf = TechnologyClassifier()
+        assert score >= clf._rules_threshold("META4")  # con el nuevo, sí
+
+    def test_sin_keywords_cae_al_default(self) -> None:
+        clf = TechnologyClassifier()
+        clf._fallback_keywords["VACIA"] = []
+        assert clf._rules_threshold("VACIA") == pytest.approx(0.50)
+
+    def test_una_keyword_se_clasifica_tras_entrenar(self) -> None:
+        """Con el umbral viejo (0.50) el tier rules no clasificaba nada."""
+        clf = TechnologyClassifier()
+        clf.train(_rules_only_df())  # todas las etiquetas caen en tier rules
+        assert clf._tier["META4"] == _TIER_RULES
+
+        pred = clf.predict_one("Contrato de mantenimiento de nóminas meta4 del organismo")
+        assert "META4" in pred["predicted"]
+        assert pred["principal"] == "META4"
+        assert pred["thresholds"]["META4"] < 0.50
+
+    def test_texto_sin_keywords_sigue_sin_clasificarse(self) -> None:
+        clf = TechnologyClassifier()
+        clf.train(_rules_only_df())
+        pred = clf.predict_one("Servicio de limpieza viaria y recogida de residuos")
+        assert pred["predicted"] == []
+
+    def test_override_de_settings_sigue_ganando(self) -> None:
+        from unittest.mock import patch
+
+        clf = TechnologyClassifier()
+        clf.train(_rules_only_df())
+        with patch("scraper.tech_classifier.settings") as mock_settings:
+            mock_settings.ML_TECH_THRESHOLDS = {"META4": 0.99}
+            mock_settings.ML_TECH_DEFAULT_THRESHOLD = 0.5
+            assert clf._threshold_for("META4") == 0.99
+
+
+# ── Split estratificado train/val/test (arreglos C y E) ─────────────────────
+
+
+def _multilabel_Y(n: int = 120, n_raros: int = 8):
+    """Matriz de etiquetas con una clase mayoritaria y una rara."""
+    Y = np.zeros((n, len(TECH_LABELS)), dtype=np.int8)
+    sap = TECH_LABELS.index("SAP")
+    workday = TECH_LABELS.index("WORKDAY")
+    Y[:40, sap] = 1
+    Y[40 : 40 + n_raros, workday] = 1
+    return Y
+
+
+class TestSplitIndices:
+    def test_particion_disjunta_y_completa(self) -> None:
+        from scraper.tech_classifier import _split_indices
+
+        split = _split_indices(_multilabel_Y())
+        todos = set(split.train) | set(split.val) | set(split.test)
+        assert todos == set(range(120))
+        assert len(split.train) + len(split.val) + len(split.test) == 120
+        assert len(split.val) > 0 and len(split.test) > 0
+
+    def test_estratifica_las_etiquetas_raras(self) -> None:
+        """Sin estratificar, un label frágil puede quedarse sin positivos en val."""
+        from scraper.tech_classifier import _split_indices
+
+        Y = _multilabel_Y()
+        workday = TECH_LABELS.index("WORKDAY")
+        split = _split_indices(Y)
+        assert split.stratified is True
+        assert Y[split.train, workday].sum() > 0
+        assert Y[split.val, workday].sum() > 0
+        assert Y[split.test, workday].sum() > 0
+
+    def test_datasets_pequenos_no_reservan_val_ni_test(self) -> None:
+        from scraper.tech_classifier import _split_indices
+
+        split = _split_indices(_multilabel_Y(n=30, n_raros=2))
+        assert len(split.train) == 30
+        assert len(split.val) == 0 and len(split.test) == 0
+        assert split.reason == "n_rows_insuficiente"
+
+    def test_fallback_no_estratificado_se_registra(self) -> None:
+        from unittest.mock import patch
+
+        import sklearn.model_selection as skms
+
+        from scraper.tech_classifier import _split_indices
+
+        real = skms.train_test_split
+
+        def _falla_si_estratifica(*args, **kwargs):
+            if kwargs.get("stratify") is not None:
+                raise ValueError("clase con un solo miembro")
+            return real(*args, **kwargs)
+
+        with patch.object(skms, "train_test_split", _falla_si_estratifica):
+            with patch("scraper.tech_classifier.log") as mock_log:
+                split = _split_indices(_multilabel_Y())
+        assert split.stratified is False
+        assert split.reason.startswith("stratify_failed")
+        avisos = [c[0][0] for c in mock_log.warning.call_args_list]
+        assert "tech_classifier.split_not_stratified" in avisos
+
+
+# ── Umbral elegido en val, métrica reportada en test (arreglos C y D) ───────
+
+
+@pytest.mark.slow
+class TestTrainMetricasHonestas:
+    def test_reserva_validacion_separada_del_test(self) -> None:
+        clf = TechnologyClassifier()
+        metrics = clf.train(_make_synthetic_df())
+        assert metrics["n_val"] > 0
+        assert metrics["n_test"] > 0
+        assert metrics["n_train"] + metrics["n_val"] + metrics["n_test"] == metrics["n_samples"]
+        assert metrics["split_estratificado"] is True
+
+    def test_metrica_reportada_es_la_del_umbral_servido(self) -> None:
+        """Antes se guardaba el F1 de un umbral distinto del que se sirve."""
+        from unittest.mock import patch
+
+        from config import settings as real_settings
+
+        clf = TechnologyClassifier()
+        with patch("scraper.tech_classifier.settings") as mock_settings:
+            mock_settings.ML_TECH_THRESHOLDS = {"SAP": 0.999}
+            for attr in (
+                "ML_TECH_MIN_POS_READY",
+                "ML_TECH_MIN_POS_FRAGILE",
+                "ML_TECH_FRAGILE_C",
+                "ML_TECH_FRAGILE_MIN_PRECISION",
+                "ML_TECH_DEFAULT_THRESHOLD",
+            ):
+                setattr(mock_settings, attr, getattr(real_settings, attr))
+            metrics = clf.train(_make_synthetic_df())
+            sap = metrics["per_tech"]["SAP"]
+            # El umbral servido es el override, no el afinado en validación.
+            assert sap["threshold"] == pytest.approx(0.999)
+            assert sap["threshold_overridden"] is True
+            # ...y la métrica corresponde a ESE umbral: nadie pasa 0.999.
+            assert sap["recall"] == 0.0
+            assert clf._threshold_for("SAP") == pytest.approx(0.999)
+
+    def test_reporta_micro_y_macro_sobre_todas_las_etiquetas(self) -> None:
+        clf = TechnologyClassifier()
+        metrics = clf.train(_make_synthetic_df())
+        # La métrica confusable ya no existe con ese nombre.
+        assert "macro_f1_ml_ready" not in metrics
+        assert metrics["macro_f1_ml_ready_only"] > 0
+        for clave in ("micro_f1_all_labels", "macro_f1_all_labels", "n_labels_sin_soporte_en_test"):
+            assert clave in metrics
+        # El promedio de los aprobados no puede ser peor que el global.
+        assert metrics["macro_f1_all_labels"] <= metrics["macro_f1_ml_ready_only"]
+        assert metrics["n_labels"] == len(TECH_LABELS)
+
+    def test_per_tech_incluye_soporte_en_test(self) -> None:
+        clf = TechnologyClassifier()
+        metrics = clf.train(_make_synthetic_df())
+        assert metrics["per_tech"]["SAP"]["support_test"] > 0
+        # El F1 de cross-validation se reporta aparte: es de otro umbral (0.5).
+        assert "f1_cv_mean" in metrics["per_tech"]["SAP"]

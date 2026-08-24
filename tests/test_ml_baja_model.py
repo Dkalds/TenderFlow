@@ -742,3 +742,167 @@ def test_api_prediccion_baja(client, auth):
     assert {"p10", "p50", "p90", "model_version", "computed_at", "serving"} <= set(data)
 
     assert client.get("/api/v1/licitaciones/NADA/prediccion-baja", headers=auth).status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# La baja real que sirve el API usa el denominador del entrenamiento
+# ---------------------------------------------------------------------------
+
+
+def test_baja_real_usa_el_presupuesto_efectivo_del_expediente(db):
+    """Regresión: ``_baja_real`` dividía entre ``licitaciones.importe``.
+
+    El modelo entrena —y ``calibration.py`` mide— contra el presupuesto
+    efectivo (``db/repositories/ml_dataset.py``): la suma de los lotes
+    adjudicados cuando todos están resueltos. Con el denominador anterior este
+    expediente devolvía por el API una "baja real" del 61% al lado de un
+    intervalo entrenado contra el 22%, y la comparación estimado-vs-real que
+    justifica el endpoint enfrentaba dos magnitudes distintas.
+    """
+    from db.database import connect
+
+    with connect() as c:
+        _insertar_expediente(c, "MULTI-REAL", 100_000)
+        lote1 = _insertar_lote(c, "MULTI-REAL", "1", 20_000)
+        lote2 = _insertar_lote(c, "MULTI-REAL", "2", 30_000)
+        _insertar_lote(c, "MULTI-REAL", "3", 50_000)  # publicado, no adjudicado
+        _insertar_adjudicacion(c, "MULTI-REAL", 15_000, lote_id=lote1)
+        _insertar_adjudicacion(c, "MULTI-REAL", 24_000, lote_id=lote2)
+
+    datos = prediccion_baja("MULTI-REAL")
+
+    assert datos is not None
+    assert datos["baja_real"] == pytest.approx(1 - 39_000 / 50_000)
+    assert datos["importe_adjudicado"] == pytest.approx(39_000)
+    # El invariante, no el número: la misma magnitud que aprende el modelo.
+    assert datos["baja_real"] == pytest.approx(_target("MULTI-REAL"))
+
+
+def test_baja_real_no_cuenta_dos_veces_el_lote_compartido(db):
+    """Dos empresas ganan el mismo lote: su presupuesto entra una sola vez."""
+    from db.database import connect
+
+    with connect() as c:
+        _insertar_expediente(c, "COMPARTIDO-REAL", 100_000)
+        lote = _insertar_lote(c, "COMPARTIDO-REAL", "1", 20_000)
+        _insertar_adjudicacion(c, "COMPARTIDO-REAL", 8_000, lote_id=lote, nombre="Empresa A")
+        _insertar_adjudicacion(c, "COMPARTIDO-REAL", 9_000, lote_id=lote, nombre="Empresa B")
+
+    datos = prediccion_baja("COMPARTIDO-REAL")
+
+    assert datos is not None
+    assert datos["baja_real"] == pytest.approx(1 - 17_000 / 20_000)
+    assert datos["baja_real"] == pytest.approx(_target("COMPARTIDO-REAL"))
+
+
+def test_baja_real_sin_lote_resuelto_cae_al_presupuesto_del_expediente(db):
+    """Datos anteriores a v65_lotes: el denominador vuelve a ser ``l.importe``."""
+    from db.database import connect
+
+    with connect() as c:
+        _insertar_expediente(c, "PRE-V65-REAL", 100_000)
+        _insertar_adjudicacion(c, "PRE-V65-REAL", 40_000)
+        _insertar_adjudicacion(c, "PRE-V65-REAL", 35_000)
+
+    datos = prediccion_baja("PRE-V65-REAL")
+
+    assert datos is not None
+    assert datos["baja_real"] == pytest.approx(1 - 75_000 / 100_000)
+    assert datos["baja_real"] == pytest.approx(_target("PRE-V65-REAL"))
+
+
+# ---------------------------------------------------------------------------
+# Rolling-origin: los folds se cortan por la fecha en que la baja es observable
+# ---------------------------------------------------------------------------
+
+
+def _dataset_publicacion_vs_adjudicacion(
+    *, meses: int = 48, por_mes: int = 10, retardo_meses: int = 8
+) -> tuple[list[FilaDataset], dict[str, str]]:
+    """Filas publicadas mes a mes y adjudicadas ``retardo_meses`` después.
+
+    El retardo entre publicación y adjudicación es lo que separa los dos
+    criterios de corte: con folds cortados por publicación, el train de cada
+    fold se lleva todas las filas de los últimos ``retardo_meses`` antes del
+    corte, cuya baja todavía no existía en ese instante.
+    """
+    from datetime import datetime
+
+    def _fecha(indice: int) -> str:
+        return datetime(2021 + indice // 12, indice % 12 + 1, 15).strftime("%Y-%m-%d")
+
+    filas: list[FilaDataset] = []
+    fechas_label: dict[str, str] = {}
+    for mes in range(meses):
+        for k in range(por_mes):
+            lic_id = f"L{mes:02d}-{k}"
+            filas.append(
+                FilaDataset(licitacion_id=lic_id, fecha=_fecha(mes), features={}, baja=0.1)
+            )
+            fechas_label[lic_id] = _fecha(mes + retardo_meses)
+    return filas, fechas_label
+
+
+def test_ningun_fold_entrena_con_etiquetas_posteriores_a_su_corte():
+    """El invariante del rolling-origin honesto.
+
+    Antes los folds se cortaban por ``fecha_anchor`` (la publicación) en los dos
+    lados. Como el ancla nunca es posterior a la adjudicación, el train recibía
+    filas adjudicadas después del corte: etiquetas que en ese instante no
+    existían.
+    """
+    from services.ml.baja_model import _folds_rolling
+
+    filas, fechas_label = _dataset_publicacion_vs_adjudicacion()
+
+    folds = _folds_rolling(filas, 6, 3, fechas_label)
+
+    assert len(folds) == 3
+    for train, valid in folds:
+        assert train and valid
+        corte = min(f.fecha for f in valid)  # origen del fold
+        ultima_etiqueta = max(fechas_label[f.licitacion_id] for f in train)
+        assert ultima_etiqueta < corte, (
+            f"el train conoce una baja de {ultima_etiqueta}, posterior al corte {corte}"
+        )
+        # Y el test sigue seleccionándose por publicación: es lo que se
+        # observa al servir, cuando la licitación aún está abierta.
+        assert all(f.fecha >= corte for f in valid)
+
+
+def test_las_filas_publicadas_pero_no_adjudicadas_quedan_en_la_banda_de_embargo():
+    """Ni train ni test en el fold que las pilla a medias.
+
+    Su baja no se conocía en el corte (no pueden entrenar) y ya estaban
+    publicadas cuando empieza el bloque de validación (no son test).
+    """
+    from services.ml.baja_model import _folds_rolling
+
+    filas, fechas_label = _dataset_publicacion_vs_adjudicacion()
+
+    train, valid = _folds_rolling(filas, 6, 3, fechas_label)[0]
+    usadas = {f.licitacion_id for f in train} | {f.licitacion_id for f in valid}
+    corte = min(f.fecha for f in valid)
+
+    embargadas = [
+        f
+        for f in filas
+        if f.fecha < corte <= fechas_label[f.licitacion_id] and f.licitacion_id not in usadas
+    ]
+    assert embargadas, "sin banda de embargo el corte no está haciendo nada"
+    assert all(f.licitacion_id not in usadas for f in embargadas)
+
+
+def test_el_split_unico_de_respaldo_tambien_embarga_el_train():
+    """El fallback de histórico corto comparte el criterio de los folds."""
+    from services.ml.baja_model import _split_temporal
+
+    filas, fechas_label = _dataset_publicacion_vs_adjudicacion(
+        meses=12, por_mes=12, retardo_meses=2
+    )
+
+    train, valid = _split_temporal(filas, 6, fechas_label)
+
+    assert train and valid
+    corte = min(f.fecha for f in valid)
+    assert max(fechas_label[f.licitacion_id] for f in train) < corte

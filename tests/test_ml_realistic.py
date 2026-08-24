@@ -199,21 +199,62 @@ class TestNewMetrics:
         assert metrics["temporal_split"] is False
 
     def test_train_temporal_split_with_dates(self, sample_df):
-        """Cuando se proporcionan fechas, debe usar split temporal."""
+        """Con fechas y ambas clases repartidas en el tiempo, el split es temporal.
+
+        El fixture lista primero todos los SAP y después los no-SAP, así que
+        asignarle fechas progresivas tal cual deja todos los positivos en el
+        pasado (ver ``test_train_aborta_si_no_hay_corte_temporal_valido``).
+        Aquí se intercalan para representar un histórico real.
+        """
         import pandas as pd
 
         from scraper.ml_classifier import SAPClassifier
 
         df_with_dates = sample_df.copy()
-        # Asignar fechas progresivas para simular datos temporales
+        # Intercalar positivos y negativos antes de datar: el orden del fixture
+        # no es un histórico, es la lista de casos de prueba.
+        pos = df_with_dates[df_with_dates["raw_keywords"].notna()].reset_index(drop=True)
+        neg = df_with_dates[df_with_dates["raw_keywords"].isna()].reset_index(drop=True)
+        filas = []
+        for i in range(max(len(pos), len(neg))):
+            if i < len(pos):
+                filas.append(pos.iloc[i])
+            if i < len(neg):
+                filas.append(neg.iloc[i])
+        df_with_dates = pd.DataFrame(filas).reset_index(drop=True)
         dates = pd.date_range("2023-01-01", periods=len(df_with_dates), freq="7D").strftime(
             "%Y-%m-%d"
         )
         df_with_dates["fecha_publicacion"] = dates
+
         clf = SAPClassifier()
         metrics = clf.train(df_with_dates)
-        # Puede ser True o False (depende de distribución de clases en test set)
-        assert "temporal_split" in metrics
+        assert "error" not in metrics, metrics
+        # Contrato nítido: con fechas utilizables el split ES temporal. Antes
+        # este assert solo comprobaba que la clave existiera, y de hecho el
+        # valor era SIEMPRE False porque _build_dataset destruía el orden.
+        assert metrics["temporal_split"] is True
+        assert metrics["split_strategy"] == "temporal"
+        assert metrics["split_fecha_corte"] is not None
+
+    def test_train_aborta_si_no_hay_corte_temporal_valido(self, sample_df):
+        """Con todos los positivos en el pasado, se aborta en vez de degradar.
+
+        Un ``train_test_split`` aleatorio sobre datos temporales no es un
+        fallback: mide interpolación, no predicción de licitaciones futuras.
+        Publicarlo bajo los mismos nombres de métrica era el fallo de fondo.
+        """
+        import pandas as pd
+
+        from scraper.ml_classifier import SAPClassifier
+
+        df = sample_df.copy()  # el fixture ya viene con los SAP primero
+        df["fecha_publicacion"] = pd.date_range("2023-01-01", periods=len(df), freq="7D").strftime(
+            "%Y-%m-%d"
+        )
+        metrics = SAPClassifier().train(df)
+        assert metrics.get("error") == "temporal_split_impossible"
+        assert "detail" in metrics
 
     def test_threshold_used_in_predict(self, sample_df):
         """El umbral óptimo del entrenamiento se usa en predict()."""

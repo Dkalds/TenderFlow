@@ -18,7 +18,8 @@ from observability.logging import get_logger
 log = get_logger(__name__)
 
 # Ruta del registro de entrenamientos (histórico de runs).
-_REGISTRY_PATH = Path(__file__).parents[1] / "data" / "models" / "registry.json"
+_MODEL_DIR = Path(__file__).parents[1] / "data" / "models"
+_REGISTRY_PATH = _MODEL_DIR / "registry.json"
 
 
 def _append_to_registry(entry: dict[str, Any], path: Path | None = None) -> Path:
@@ -379,8 +380,31 @@ def train_from_db() -> dict[str, Any]:
     # guarda (mismo comportamiento que antes: train decide, no un early-return).
     clf = SAPClassifier()
     metrics = clf.train(lic)
-    if "error" not in metrics:
-        clf.save()
+    if "error" in metrics:
+        return metrics
+
+    # El artefacto de producción SOLO se sobrescribe si la versión nueva pasa
+    # el gate. Antes este camino —el que genera el asset de la Release que
+    # descargan la API y todos los runners— guardaba sin ninguna comprobación
+    # y sin registrar versión, así que un entrenamiento con datos degradados
+    # se promocionaba solo y no había versión previa a la que volver.
+    from services.ml.promotion import promote_if_better
+
+    resultado = promote_if_better(
+        clf,
+        metrics,
+        name="sap_classifier",
+        notes="train_from_db",
+        models_dir=_MODEL_DIR,
+        publicar_como=_MODEL_DIR / "sap_classifier.pkl",
+    )
+    metrics["promotion"] = resultado.as_dict()
+    if not resultado.activada:
+        log.warning(
+            "train_from_db.no_promocionado",
+            version=resultado.version,
+            motivos=resultado.motivos_rechazo,
+        )
     return metrics
 
 

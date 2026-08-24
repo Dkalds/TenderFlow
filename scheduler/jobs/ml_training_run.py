@@ -30,7 +30,17 @@ def run() -> dict[str, Any]:
     """
     from scraper.ml_training import precompute_ml_proba, seed_negatives, train_from_db
 
-    seed_negatives()
+    # ``include_ti=True``: en serving el modelo SOLO puntúa licitaciones con
+    # CPV 48/72 (``scraper.pipeline._ml_classify_entry`` descarta el resto
+    # antes de parsear). Sembrando solo negativos no-TI, el separador más
+    # fuerte que aprendía era el propio CPV — constante en el punto donde de
+    # verdad decide. Los hard negatives TI son los que enseñan a distinguir
+    # SAP de otro proveedor de TI.
+    # ``spread_months=6``: con un solo mes, los negativos comparten ventana
+    # temporal y vocabulario, otro atajo que el modelo aprende en vez de la
+    # señal. Es exactamente lo que el docstring de
+    # ``_collect_negatives_from_month`` dice querer evitar.
+    seed_negatives(include_ti=True, spread_months=6)
     metrics = train_from_db()
     log.info("ml_training_metrics", **{k: v for k, v in metrics.items() if k != "error"})
 

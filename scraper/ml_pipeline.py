@@ -3,12 +3,14 @@
 Contiene:
   - ``_make_pipeline()`` — FeatureUnion(TF-IDF word + char_wb) + MaxAbsScaler + CalibratedLR
   - ``_augment_text()`` — añade tokens estructurales (CPV, importe) al texto
-  - ``_build_dataset()`` — construye (texts, labels) desde un DataFrame
+  - ``build_dataset_rows()`` — filas del dataset **en el orden del DataFrame**
+  - ``_build_dataset()`` — atajo (texts, labels) sobre lo anterior
   - ``_expected_calibration_error()`` — ECE con bins equi-anchos
 """
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Literal, overload
 
 from sklearn.base import BaseEstimator, TransformerMixin
@@ -30,10 +32,14 @@ class SentenceEmbeddingTransformer(BaseEstimator, TransformerMixin):  # type: ig
     Requires: pip install sentence-transformers (optional dependency).
     """
 
-    def __init__(
-        self, model_name: str = "paraphrase-multilingual-MiniLM-L6-v2", batch_size: int = 64
-    ):
-        self.model_name = model_name
+    def __init__(self, model_name: str | None = None, batch_size: int = 64):
+        # El default estaba hardcodeado a MiniLM-**L6**-v2 mientras
+        # ``settings.EMBEDDING_MODEL`` (y ``services.embeddings``) usan
+        # **L12**-v2: dos modelos de embeddings distintos conviviendo en el
+        # mismo repo, y el de este pipeline no se podía cambiar por config.
+        from config import settings
+
+        self.model_name = model_name or str(settings.EMBEDDING_MODEL)
         self.batch_size = batch_size
         self._model = None
 
@@ -299,6 +305,8 @@ def validate_training_data(
     Raises:
         ValueError: Si la distribución de labels viola min_minority_pct.
     """
+    import pandas as pd  # runtime: las ramas de abajo construyen Series
+
     n_rows = len(df)
     log.info("validate_training_data.start", n_rows=n_rows)
 
@@ -385,50 +393,109 @@ def validate_training_data(
     return df
 
 
-@overload
-def _build_dataset(df: pd.DataFrame) -> tuple[list[str], list[int]]: ...
+@dataclass(frozen=True)
+class DatasetRow:
+    """Una fila del dataset, con todo lo que el split necesita para no filtrar.
+
+    ``_build_dataset`` devolvía solo ``(texts, labels)`` concatenando el bloque
+    de positivos y luego el de negativos, lo que destruía el orden del
+    DataFrame y dejaba el split temporal de ``SAPClassifier.train`` sin nada
+    que cortar (ver el docstring de :func:`build_dataset_rows`). Esta fila
+    transporta además la fecha y la clave de grupo, para que el split se pueda
+    hacer por tiempo y por expediente en vez de por posición.
+    """
+
+    text: str
+    label: int
+    weight: float
+    fecha: str | None
+    grupo: str
+    # ¿CPV 48/72? Es la población sobre la que el modelo decide de verdad en
+    # producción, así que las métricas restringidas a ella son las que hay
+    # que mirar (``f1_ti`` / ``pr_auc_ti``).
+    cpv_ti: bool = False
 
 
-@overload
-def _build_dataset(
-    df: pd.DataFrame, *, return_weights: Literal[False]
-) -> tuple[list[str], list[int]]: ...
+def _clave_grupo(titulo: str, descripcion: str) -> str:
+    """Clave de agrupación de licitaciones que son la *misma* convocatoria.
+
+    Un expediente aparece varias veces en la BD: un anuncio por lote, las
+    prórrogas, y las republicaciones con distinto ``id_externo`` y un título
+    casi idéntico. Con un split aleatorio esas casi-duplicadas caen a ambos
+    lados y el modelo "acierta" en test lo que ya memorizó en train, inflando
+    F1 y PR-AUC. Agrupándolas, ninguna convocatoria puede estar en los dos
+    lados del corte.
+
+    La normalización quita acentos, mayúsculas, puntuación y **dígitos** —
+    que es justo lo que distingue "Lote 3" de "Lote 7" o el año de la
+    prórroga— y colapsa espacios.
+    """
+    import hashlib
+    import unicodedata
+
+    base = f"{titulo} {descripcion}".strip()
+    decomposed = unicodedata.normalize("NFKD", base.lower())
+    stripped = "".join(c for c in decomposed if not unicodedata.combining(c))
+    solo_letras = "".join(ch if ch.isalpha() or ch.isspace() else " " for ch in stripped)
+    norm = " ".join(solo_letras.split())[:120]
+    if not norm:
+        # Sin texto no hay forma de agrupar: cada fila es su propio grupo.
+        return f"vacio-{hashlib.sha256(base.encode('utf-8')).hexdigest()[:16]}"
+    return norm
 
 
-@overload
-def _build_dataset(
-    df: pd.DataFrame, *, return_weights: Literal[True]
-) -> tuple[list[str], list[int], list[float]]: ...
+def _fecha_clave(valor: Any) -> str | None:
+    """Normaliza ``fecha_publicacion`` a ``YYYY-MM-DD`` (o ``None`` si no sirve).
+
+    Las columnas de fecha son TEXT y admiten basura; comparar strings de
+    longitud distinta ordenaría mal, así que se recorta a la fecha ISO.
+    """
+    if valor is None:
+        return None
+    texto = str(valor).strip()
+    if len(texto) < 10:
+        return None
+    fecha = texto[:10]
+    if fecha[4] != "-" or fecha[7] != "-":
+        return None
+    return fecha
 
 
-def _build_dataset(
-    df: pd.DataFrame, *, return_weights: bool = False
-) -> tuple[list[str], list[int]] | tuple[list[str], list[int], list[float]]:
-    """Construye el dataset de entrenamiento desde el DataFrame.
+def build_dataset_rows(df: pd.DataFrame) -> list[DatasetRow]:
+    """Construye las filas del dataset **preservando el orden del DataFrame**.
 
     Fuentes de etiqueta (prioridad descendente):
-      1. ``es_relevante`` columna (feedback humano explícito).
-      2. ``raw_keywords`` IS NOT NULL → positivo.
-      Negativos: ``raw_keywords`` IS NULL + CPV fuera del rango TI (no 48/72).
-    Aumenta los textos con tokens CPV e importe si las columnas están presentes.
+      1. ``es_relevante`` cuando está presente para esa fila — es la etiqueta
+         ya resuelta por el caller (``train_from_db`` y
+         ``concept_drift._fetch_training_dataframe`` mezclan ahí keywords y
+         feedback humano, con el humano ganando).
+      2. ``raw_keywords`` no vacío → positivo, solo para las filas sin
+         ``es_relevante``.
 
-    Preserva el orden del df para que el split temporal en train() sea correcto.
+    .. note:: Por qué ya no se hace ``es_relevante | raw_keywords``
 
-    Args:
-        df: DataFrame con las licitaciones.
-        return_weights: Si ``True``, devuelve además una lista de pesos de
-            muestra (PU learning). Los negativos *ambiguos* —CPV TI (48/72)
-            sin keywords, potenciales SAP no detectados— reciben
-            ``ML_PU_UNLABELED_WEIGHT`` en vez de 1.0, reduciendo el sesgo de
-            aprender el filtro de keywords como ground truth.
+        La versión anterior recomputaba la prioridad con un ``OR``, lo que
+        revertía a positivo cualquier fila que hubiera hecho match de
+        keywords — incluidas las que un humano acababa de marcar como **no
+        relevantes**. El feedback negativo es el único capaz de corregir los
+        falsos positivos del filtro de keywords, así que descartarlo fijaba el
+        techo del modelo en "reproducir el filtro" en toda la zona
+        ``keyword=True``. Ahora, donde hay etiqueta explícita, esa etiqueta
+        manda; el ``OR`` solo se aplica a las filas que no la tienen.
+
+    Negativos: todo lo que no sale positivo, submuestreado a un máximo de 2x
+    positivos (semilla fija). El submuestreo elige *qué* negativos entran pero
+    **no reordena**: las filas se emiten en el orden original del DataFrame.
     """
     import numpy as np
+    import pandas as pd
 
     has_cpv = "cpv" in df.columns
     has_importe = "importe" in df.columns
     has_keywords = "raw_keywords" in df.columns
     has_relevante = "es_relevante" in df.columns
     has_organo = "organo_contratacion" in df.columns
+    has_fecha = "fecha_publicacion" in df.columns
 
     from config import settings
 
@@ -459,53 +526,272 @@ def _build_dataset(
         cpv_val = str(row.get("cpv", "") or "").strip()
         return cpv_val.startswith(("48", "72"))
 
-    # Máscara de positivos
-    if has_relevante and not has_keywords:
-        mask_pos = df["es_relevante"].astype(bool)
-    elif has_relevante and has_keywords:
-        mask_pos = df["es_relevante"].astype(bool) | (
-            df["raw_keywords"].notna() & (df["raw_keywords"] != "")
-        )
-    elif has_keywords:
-        mask_pos = df["raw_keywords"].notna() & (df["raw_keywords"] != "")
+    # ── Máscara de positivos ───────────────────────────────────────────────
+    mask_kw = df["raw_keywords"].notna() & (df["raw_keywords"] != "") if has_keywords else None
+
+    if has_relevante:
+        relevante = df["es_relevante"]
+        explicita = relevante.notna()
+        # ``to_numeric`` antes de ``fillna``: sobre una columna object,
+        # ``fillna(0).astype(float)`` avisa de downcasting implícito.
+        pos_relevante = pd.to_numeric(relevante, errors="coerce").fillna(0).astype(bool)
+        if mask_kw is not None:
+            # Donde hay etiqueta explícita manda ella (incluido un 0 que
+            # contradice a las keywords); donde no, se cae a las keywords.
+            mask_pos = pos_relevante.where(explicita, mask_kw).astype(bool)
+        else:
+            mask_pos = pos_relevante
+    elif mask_kw is not None:
+        mask_pos = mask_kw
     else:
-        return ([], [], []) if return_weights else ([], [])
+        return []
 
-    # Máscara de negativos: sin señal positiva.
-    # Incluye CPV 48/72 (TI) sin raw_keywords como hard negatives — estas
-    # licitaciones son de TI pero no de SAP, y son cruciales para que el
-    # modelo aprenda a distinguir SAP de otros proveedores TI.
-    mask_neg = ~mask_pos
+    records: list[dict[str, Any]] = df.to_dict("records")  # type: ignore[assignment]
+    # ``mask_pos`` conserva el índice del df; se recorre por posición.
+    pos_flags = [bool(v) for v in mask_pos.to_numpy()]
 
-    pos_rows = df[mask_pos]
-    neg_rows = df[mask_neg]
+    neg_positions = [i for i, es_pos in enumerate(pos_flags) if not es_pos]
+    n_pos = len(pos_flags) - len(neg_positions)
 
-    pos_records = pos_rows.to_dict("records")
-    neg_records = neg_rows.to_dict("records")
-    pos_texts = [_text_for_row(r) for r in pos_records]  # type: ignore[arg-type]
-    neg_texts_all = [_text_for_row(r) for r in neg_records]  # type: ignore[arg-type]
-    neg_ambiguous_all = [_is_ambiguous_neg(r) for r in neg_records]  # type: ignore[arg-type]
-
-    # Balancear: máx. 2x positivos en negativos
-    max_neg = min(len(neg_texts_all), len(pos_texts) * 2)
-    if max_neg < len(neg_texts_all):
+    # Balancear: máx. 2x positivos en negativos. Se eligen posiciones, no se
+    # reordena nada: el orden del DataFrame se preserva al emitir.
+    max_neg = min(len(neg_positions), n_pos * 2)
+    if max_neg < len(neg_positions):
         rng = np.random.default_rng(42)
-        idx = rng.choice(len(neg_texts_all), max_neg, replace=False)
-        idx_sorted = sorted(idx)
-        neg_texts = [neg_texts_all[i] for i in idx_sorted]
-        neg_ambiguous = [neg_ambiguous_all[i] for i in idx_sorted]
+        elegidos = rng.choice(len(neg_positions), max_neg, replace=False)
+        neg_seleccionados = {neg_positions[i] for i in elegidos}
     else:
-        neg_texts = neg_texts_all
-        neg_ambiguous = neg_ambiguous_all
-
-    texts = pos_texts + neg_texts
-    labels = [1] * len(pos_texts) + [0] * len(neg_texts)
-    if not return_weights:
-        return texts, labels
+        neg_seleccionados = set(neg_positions)
 
     unlabeled_w = float(getattr(settings, "ML_PU_UNLABELED_WEIGHT", 0.5))
-    weights = [1.0] * len(pos_texts) + [(unlabeled_w if amb else 1.0) for amb in neg_ambiguous]
-    return texts, labels, weights
+
+    filas: list[DatasetRow] = []
+    for i, row in enumerate(records):
+        es_pos = pos_flags[i]
+        if not es_pos and i not in neg_seleccionados:
+            continue
+        peso = 1.0
+        if not es_pos and _is_ambiguous_neg(row):
+            peso = unlabeled_w
+        filas.append(
+            DatasetRow(
+                text=_text_for_row(row),
+                label=1 if es_pos else 0,
+                weight=peso,
+                fecha=_fecha_clave(row.get("fecha_publicacion")) if has_fecha else None,
+                grupo=_clave_grupo(
+                    str(row.get("titulo", "") or ""),
+                    str(row.get("descripcion", "") or ""),
+                ),
+                cpv_ti=str(row.get("cpv", "") or "").strip().startswith(("48", "72")),
+            )
+        )
+    return filas
+
+
+@dataclass(frozen=True)
+class DatasetSplit:
+    """Partición train/test del dataset, con la estrategia que la produjo."""
+
+    train: list[int]
+    test: list[int]
+    strategy: str  # "temporal" | "grouped_random"
+    fecha_corte: str | None
+    descartadas_por_grupo: int
+
+
+class TemporalSplitImposible(RuntimeError):
+    """Hay fechas pero no admiten un corte temporal con ambas clases a los dos lados.
+
+    No se degrada a un split aleatorio: un split aleatorio sobre datos
+    temporales no es un *fallback*, es **otra métrica** —mide interpolación,
+    no predicción de licitaciones futuras— y publicarla bajo los mismos
+    nombres (``f1``, ``pr_auc``) es lo que hacía que las cifras del registry
+    no significaran lo que decían.
+    """
+
+
+_TEST_SHARE = 0.20
+_MIN_TEST_ROWS = 10
+# Un "grupo" que se lleva más de esta fracción del dataset no es un expediente:
+# es la normalización de :func:`_clave_grupo` colapsando de más (p. ej. cientos
+# de anuncios cuyo título solo difiere en un número de expediente). Tratarlo
+# como una unidad indivisible dejaría el corte temporal sin salida, así que sus
+# filas vuelven a agruparse individualmente y se avisa.
+_MAX_GROUP_SHARE = 0.25
+
+
+def _grupos_efectivos(filas: list[DatasetRow]) -> list[str]:
+    """Claves de grupo, deshaciendo los colapsos patológicos de la normalización.
+
+    :func:`_clave_grupo` quita los dígitos, que es lo que hace que "Lote 3" y
+    "Lote 7" del mismo expediente compartan clave. El efecto secundario es que
+    un corpus donde muchos títulos solo se diferencian en un número puede
+    acabar con un único grupo gigante — y un grupo indivisible que se lleva
+    medio dataset no deja hacer ningún corte. Por encima de
+    ``_MAX_GROUP_SHARE`` se asume que la clave no identifica un expediente y
+    esas filas se desagrupan.
+    """
+    from collections import Counter
+
+    claves = [f.grupo for f in filas]
+    tope = max(1, int(len(filas) * _MAX_GROUP_SHARE))
+    sobredimensionados = {g for g, c in Counter(claves).items() if c > tope}
+    if not sobredimensionados:
+        return claves
+    log.warning(
+        "split_dataset.grupos_sobredimensionados",
+        n_grupos=len(sobredimensionados),
+        tope=tope,
+        n_filas=len(filas),
+        hint=(
+            "La clave de grupo colapsa demasiadas licitaciones distintas; "
+            "esas filas se tratan como grupos individuales para el split."
+        ),
+    )
+    return [f"{g}#{i}" if g in sobredimensionados else g for i, g in enumerate(claves)]
+
+
+def split_dataset_rows(filas: list[DatasetRow], *, seed: int = 42) -> DatasetSplit:
+    """Parte las filas en train/test sin fuga temporal ni de grupo.
+
+    **Temporal** (cuando hay fechas): se busca la fecha de corte que deja
+    ~20% de filas después. ``train`` son las filas con fecha ≤ corte y
+    ``test`` las posteriores **cuyo grupo no aparece antes del corte**. Las
+    filas posteriores al corte que pertenecen a un grupo ya visto en train se
+    **descartan**: dejarlas en test filtraría el expediente y dejarlas en
+    train filtraría el futuro.
+
+    **Agrupado aleatorio** (cuando no hay ninguna fecha): ``GroupShuffleSplit``
+    sobre la clave de grupo. No hay información temporal que respetar, pero sí
+    hay que impedir que lotes y republicaciones del mismo expediente caigan a
+    los dos lados.
+
+    Raises:
+        TemporalSplitImposible: si hay fechas pero ningún corte deja las dos
+            clases a ambos lados con suficientes filas en test.
+    """
+    n = len(filas)
+    if n == 0:
+        return DatasetSplit([], [], "grouped_random", None, 0)
+
+    grupos = _grupos_efectivos(filas)
+    fechas = [f.fecha for f in filas]
+    con_fecha = [f for f in fechas if f is not None]
+
+    # ── Sin ninguna fecha: split agrupado aleatorio ───────────────────────
+    if not con_fecha:
+        from sklearn.model_selection import GroupShuffleSplit
+
+        etiquetas = [f.label for f in filas]
+        splitter = GroupShuffleSplit(n_splits=1, test_size=_TEST_SHARE, random_state=seed)
+        train_idx, test_idx = next(splitter.split(range(n), etiquetas, groups=grupos))
+        log.info(
+            "split_dataset.grouped_random",
+            n_train=len(train_idx),
+            n_test=len(test_idx),
+            n_grupos=len(set(grupos)),
+        )
+        return DatasetSplit(
+            [int(i) for i in train_idx], [int(i) for i in test_idx], "grouped_random", None, 0
+        )
+
+    # ── Con fechas: corte temporal por fecha, no por posición ─────────────
+    # Las filas sin fecha no pueden situarse a un lado del corte: se descartan
+    # del split temporal en vez de asumir que son antiguas.
+    idx_datados = [i for i, f in enumerate(fechas) if f is not None]
+    candidatas = sorted(set(con_fecha))
+
+    # Primer grupo (por fecha mínima) de cada clave, para la regla de grupo.
+    primera_fecha_grupo: dict[str, str] = {}
+    for i in idx_datados:
+        g = grupos[i]
+        fecha_i = fechas[i]
+        assert fecha_i is not None  # garantizado por idx_datados
+        anterior = primera_fecha_grupo.get(g)
+        if anterior is None or fecha_i < anterior:
+            primera_fecha_grupo[g] = fecha_i
+
+    def _particion(corte: str) -> tuple[list[int], list[int], int]:
+        train: list[int] = []
+        test: list[int] = []
+        descartadas = 0
+        for i in idx_datados:
+            fecha_i = fechas[i]
+            assert fecha_i is not None
+            if fecha_i <= corte:
+                train.append(i)
+            elif primera_fecha_grupo[grupos[i]] > corte:
+                test.append(i)
+            else:
+                descartadas += 1
+        return train, test, descartadas
+
+    # Se prueban los cortes por cercanía al 20% objetivo hasta dar con uno
+    # válido: el más cercano puede dejar una sola clase en test.
+    n_datadas = len(idx_datados)
+    por_cercania = sorted(
+        candidatas,
+        key=lambda c: abs(
+            sum(1 for i in idx_datados if (fechas[i] or "") > c) / n_datadas - _TEST_SHARE
+        ),
+    )
+    for corte in por_cercania:
+        train, test, descartadas = _particion(corte)
+        if len(test) < _MIN_TEST_ROWS or not train:
+            continue
+        if len({filas[i].label for i in train}) < 2:
+            continue
+        if len({filas[i].label for i in test}) < 2:
+            continue
+        log.info(
+            "split_dataset.temporal",
+            fecha_corte=corte,
+            n_train=len(train),
+            n_test=len(test),
+            descartadas_por_grupo=descartadas,
+            n_sin_fecha=n - n_datadas,
+        )
+        return DatasetSplit(train, test, "temporal", corte, descartadas)
+
+    raise TemporalSplitImposible(
+        f"Ningún corte temporal deja las dos clases a ambos lados con >= {_MIN_TEST_ROWS} "
+        f"filas en test (n={n}, con fecha={n_datadas}, "
+        f"positivos={sum(1 for f in filas if f.label == 1)})."
+    )
+
+
+@overload
+def _build_dataset(df: pd.DataFrame) -> tuple[list[str], list[int]]: ...
+
+
+@overload
+def _build_dataset(
+    df: pd.DataFrame, *, return_weights: Literal[False]
+) -> tuple[list[str], list[int]]: ...
+
+
+@overload
+def _build_dataset(
+    df: pd.DataFrame, *, return_weights: Literal[True]
+) -> tuple[list[str], list[int], list[float]]: ...
+
+
+def _build_dataset(
+    df: pd.DataFrame, *, return_weights: bool = False
+) -> tuple[list[str], list[int]] | tuple[list[str], list[int], list[float]]:
+    """Atajo ``(texts, labels[, weights])`` sobre :func:`build_dataset_rows`.
+
+    Se mantiene por compatibilidad con los call sites que solo necesitan los
+    textos y las etiquetas. El orden es el del DataFrame de entrada, no el de
+    positivos-y-luego-negativos que devolvía antes.
+    """
+    filas = build_dataset_rows(df)
+    texts = [f.text for f in filas]
+    labels = [f.label for f in filas]
+    if not return_weights:
+        return texts, labels
+    return texts, labels, [f.weight for f in filas]
 
 
 def _expected_calibration_error(y_true: Any, y_proba: Any, n_bins: int = 10) -> float:
@@ -691,13 +977,22 @@ def _parse_tecnologia_csv(value: Any) -> list[str]:
 def _build_multilabel_dataset(
     df: pd.DataFrame,
     labels: list[str],
+    *,
+    label_column: str = "tecnologia",
 ) -> tuple[list[str], Any, list[int]]:
     """Construye (textos_aumentados, Y_binaria, positivos_por_label).
 
     Args:
-        df: DataFrame con columnas titulo, descripcion, tecnologia (CSV).
+        df: DataFrame con columnas titulo, descripcion y la columna de
+            etiquetas indicada por ``label_column`` (CSV de tecnologías).
             Opcionalmente: cpv, importe.
         labels: Lista canónica de tecnologías (orden columnar de Y).
+        label_column: Columna de la que salen las etiquetas. Por defecto
+            ``"tecnologia"``, que es el resultado de ``matches_technology()``
+            —el mismo regex que ve el texto de entrada, así que entrenar
+            contra ella es circular. Los call sites que disponen de una
+            etiqueta independiente (humana o LLM) deben pasar aquí su
+            columna resuelta; ver ``scraper.tech_classifier``.
 
     Returns:
         ``texts``: lista de strings (título + descripción + tokens estructurales).
@@ -708,7 +1003,7 @@ def _build_multilabel_dataset(
 
     has_cpv = "cpv" in df.columns
     has_importe = "importe" in df.columns
-    has_tecnologia = "tecnologia" in df.columns
+    has_tecnologia = label_column in df.columns
 
     validate_training_data(df, label_columns=labels)
 
@@ -731,7 +1026,7 @@ def _build_multilabel_dataset(
         texts.append(_augment_text(base[:1000], cpv=cpv or None, importe=importe_f))
 
         if has_tecnologia:
-            for tag in _parse_tecnologia_csv(row.get("tecnologia")):
+            for tag in _parse_tecnologia_csv(row.get(label_column)):
                 idx = label_to_idx.get(tag)
                 if idx is not None:
                     Y[i, idx] = 1

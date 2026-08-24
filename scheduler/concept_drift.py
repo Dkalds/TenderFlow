@@ -284,11 +284,7 @@ def maybe_retrain_classifier(
     Returns:
         Dict con ``triggered``, ``feedbacks_new``, ``new_version`` (si aplica).
     """
-    from db.model_registry import (
-        feedbacks_since_last_train,
-        get_active,
-        register_version,
-    )
+    from db.model_registry import feedbacks_since_last_train, get_active
 
     name = "sap_classifier"
     n_new = feedbacks_since_last_train(name)
@@ -316,6 +312,7 @@ def maybe_retrain_classifier(
 
         from scraper.ml_classifier import SAPClassifier
         from scraper.ml_training import precompute_ml_proba
+        from services.ml.promotion import promote_if_better
 
         df = _fetch_training_dataframe()
         if df is None or df.empty:
@@ -330,108 +327,52 @@ def maybe_retrain_classifier(
             result["error"] = metrics.get("error")
             return result
 
-        next_version = (active["version"] if active else 0) + 1
-        version_path = Path("data/models") / f"{name}_v{next_version}.pkl"
-        saved = clf.save(version_path)
-
-        import hashlib
-
-        sha = hashlib.sha256(saved.read_bytes()).hexdigest()
-
-        n_samples = metrics.get("n_train", 0) + metrics.get("n_test", 0)
-
-        # Promotion gate: multi-metric check (F1, PR-AUC, Brier score)
-        new_f1 = float(metrics.get("f1") or 0.0)
-        old_metrics = (active or {}).get("metrics", {}) if active else {}
-        old_f1 = float(old_metrics.get("f1") or 0.0)
-
-        new_pr_auc = float(metrics.get("pr_auc") or 0.0)
-        old_pr_auc = old_metrics.get("pr_auc")
-
-        new_brier = float(metrics.get("brier") or 1.0)
-        old_brier = old_metrics.get("brier")
-
-        # Log all metrics comparison
-        log.info(
-            "active_learning.promotion_gate_comparison",
-            old_f1=round(old_f1, 4),
-            new_f1=round(new_f1, 4),
-            old_pr_auc=round(float(old_pr_auc), 4) if old_pr_auc is not None else None,
-            new_pr_auc=round(new_pr_auc, 4),
-            old_brier=round(float(old_brier), 4) if old_brier is not None else None,
-            new_brier=round(new_brier, 4),
-        )
-
-        failed_metrics: list[str] = []
-
-        # F1 gate
-        if old_f1 > 0.0 and new_f1 < old_f1 - 0.02:
-            failed_metrics.append(f"f1 ({new_f1:.4f} < {old_f1:.4f} - 0.02)")
-
-        # PR-AUC gate
-        if old_pr_auc is not None:
-            old_pr_auc_f = float(old_pr_auc)
-            if new_pr_auc < old_pr_auc_f - 0.03:
-                failed_metrics.append(f"pr_auc ({new_pr_auc:.4f} < {old_pr_auc_f:.4f} - 0.03)")
-        else:
-            log.warning(
-                "active_learning.promotion_gate_skip_pr_auc",
-                reason="metric not available in previous model",
-            )
-
-        # Brier score gate (lower is better)
-        if old_brier is not None:
-            old_brier_f = float(old_brier)
-            if new_brier > old_brier_f + 0.05:
-                failed_metrics.append(f"brier ({new_brier:.4f} > {old_brier_f:.4f} + 0.05)")
-        else:
-            log.warning(
-                "active_learning.promotion_gate_skip_brier",
-                reason="metric not available in previous model",
-            )
-
-        should_activate = (old_f1 == 0.0 and old_pr_auc is None and old_brier is None) or len(
-            failed_metrics
-        ) == 0
-        if not should_activate:
-            log.warning(
-                "active_learning.promotion_gate_rejected",
-                failed_metrics=failed_metrics,
-                new_f1=round(new_f1, 4),
-                old_f1=round(old_f1, 4),
-            )
-            result["promotion_rejected"] = True
-            result["new_f1"] = new_f1
-            result["old_f1"] = old_f1
-            result["failed_metrics"] = failed_metrics
-            return result
-
-        new_version = register_version(
+        # Gate único, compartido con ``scraper.ml_training.train_from_db``:
+        # decide sobre el golden set humano (fijo entre versiones) en vez de
+        # comparar métricas medidas cada una sobre su propio test split, y
+        # bloquea si el modelo no aporta nada sobre el filtro de keywords.
+        models_dir = Path("data/models")
+        promocion = promote_if_better(
+            clf,
+            metrics,
             name=name,
-            path=str(saved),
-            sha256=sha,
-            metrics=metrics,
-            n_samples=n_samples,
             n_feedbacks=n_new,
             notes="active_learning_auto_retrain",
-            activate=True,
+            models_dir=models_dir,
+            publicar_como=models_dir / "sap_classifier.pkl",
         )
-        result["triggered"] = True
-        result["new_version"] = new_version
         result["metrics"] = metrics
-        log.info("active_learning.retrain_ok", new_version=new_version, n_new=n_new)
+        result["promotion"] = promocion.as_dict()
+
+        if not promocion.activada:
+            log.warning(
+                "active_learning.promotion_gate_rejected",
+                motivos=promocion.motivos_rechazo,
+                version=promocion.version,
+            )
+            result["promotion_rejected"] = True
+            result["failed_metrics"] = promocion.motivos_rechazo
+            return result
+
+        result["triggered"] = True
+        result["new_version"] = promocion.version
+        log.info("active_learning.retrain_ok", new_version=promocion.version, n_new=n_new)
 
         notify(
             AlertLevel.INFO,
-            f"Active learning: clasificador re-entrenado (v{new_version})",
+            f"Active learning: clasificador re-entrenado (v{promocion.version})",
             f"Re-entrenamiento disparado por {n_new} feedbacks nuevos.\n"
             f"Métricas: pr_auc={metrics.get('pr_auc')}, f1={metrics.get('f1')}, "
-            f"threshold={metrics.get('optimal_threshold')}",
+            f"threshold={metrics.get('optimal_threshold')}, "
+            f"recall_no_keyword={promocion.golden.get('recall_no_keyword')}",
         )
 
-        # Pre-computar ml_proba para todas las licitaciones con el nuevo modelo
+        # Pre-computar ml_proba con el modelo nuevo: si no, la superficie de
+        # serving y el test de drift de predicciones siguen mostrando los
+        # scores del modelo anterior. ``force=True`` porque el objetivo es
+        # justamente sobrescribir los valores del modelo viejo.
         try:
-            precompute_ml_proba(force=False)
+            precompute_ml_proba(force=True)
         except Exception as precomp_exc:
             log.warning("active_learning.precompute_failed", error=str(precomp_exc))
 

@@ -29,7 +29,7 @@ Uso típico::
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol
 
@@ -56,6 +56,11 @@ class GoldenExample:
     importe: float | None = None
     keyword_match: bool | None = None  # ¿lo detectaría el filtro de keywords?
     note: str = ""
+    # "tune" (elegir el umbral) | "holdout" (reportar). Vacío = sin asignar:
+    # `asignar_splits` lo reparte por hash del id. El default NO puede ser una
+    # de las dos mitades, o los ejemplos construidos en código se irían todos
+    # al mismo lado y el reparto por hash nunca llegaría a ejecutarse.
+    split: str = ""
 
     @property
     def text(self) -> str:
@@ -162,10 +167,130 @@ def load_golden_set(path: str | Path | None = None) -> list[GoldenExample]:
                     bool(obj["keyword_match"]) if obj.get("keyword_match") is not None else None
                 ),
                 note=str(obj.get("note", "")),
+                split=str(obj.get("split") or ""),
             )
         )
-    log.info("ml_eval.golden_set_loaded", path=str(target), n=len(examples))
+    examples = asignar_splits(examples)
+    n_tune = sum(1 for e in examples if e.split == SPLIT_TUNE)
+    log.info(
+        "ml_eval.golden_set_loaded",
+        path=str(target),
+        n=len(examples),
+        n_tune=n_tune,
+        n_holdout=len(examples) - n_tune,
+    )
     return examples
+
+
+SPLIT_TUNE = "tune"
+SPLIT_HOLDOUT = "holdout"
+# Mínimos por debajo de los cuales una mitad del golden set no sostiene lo que
+# se le pide. Medido sobre el golden actual (27 ejemplos, 6 positivos sin
+# keyword): el umbral elegido tiene sigma=0.084 y p5-p95 = [0.30, 0.56], y el
+# F-beta reportado sobre el mismo conjunto donde se eligió sobreestima el real
+# en +0.08 de media (+0.25 en el p90).
+MIN_TUNE_EXAMPLES = 60
+MIN_HOLDOUT_EXAMPLES = 60
+
+
+def asignar_splits(examples: list[GoldenExample]) -> list[GoldenExample]:
+    """Reparte el golden set en "tune" y "holdout" de forma **estable**.
+
+    El umbral operativo no puede elegirse y reportarse sobre el mismo
+    conjunto. Los ejemplos que traen ``split`` explícito en el JSONL lo
+    conservan; el resto se asigna por hash del ``id``, de modo que:
+
+      - la asignación es determinista y no cambia entre ejecuciones,
+      - añadir ejemplos nuevos **no** reasigna los existentes,
+      - ~50% cae en cada mitad.
+    """
+    import hashlib
+
+    asignados: list[GoldenExample] = []
+    for ex in examples:
+        if ex.split in (SPLIT_TUNE, SPLIT_HOLDOUT):
+            asignados.append(ex)
+            continue
+        digest = hashlib.sha256(ex.id.encode("utf-8")).digest()
+        destino = SPLIT_TUNE if digest[0] % 2 == 0 else SPLIT_HOLDOUT
+        asignados.append(replace(ex, split=destino))
+    return asignados
+
+
+def filtrar_split(examples: list[GoldenExample], split: str) -> list[GoldenExample]:
+    """Devuelve los ejemplos de una mitad del golden set."""
+    return [e for e in examples if e.split == split]
+
+
+def metricas_operativas(
+    y_true: Sequence[int],
+    y_proba: Sequence[float],
+    *,
+    cost_fp: float = 1.0,
+    cost_fn: float = 1.0,
+    ks: tuple[int, ...] = (10, 25, 50),
+    precisiones_objetivo: tuple[float, ...] = (0.80, 0.90),
+) -> dict[str, Any]:
+    """Métricas del problema tal y como se usa, no del clasificador en abstracto.
+
+    Un analista revisa una cola ordenada por probabilidad y perder una
+    licitación SAP cuesta más que revisar una falsa. Eso no lo captura ni el
+    F1 ni el PR-AUC:
+
+      - ``precision_at_k``: de las k mejor puntuadas, cuántas son relevantes.
+        Es lo que ve quien abre la cola.
+      - ``recall_at_precision_X``: cuánto recall se puede exigir sin bajar la
+        precisión de X. Responde a "¿cuánto podemos pescar sin ahogar al que
+        revisa?".
+      - ``coste_esperado_min`` y su umbral: el coste total mínimo alcanzable
+        con ``ML_COST_FN``/``ML_COST_FP``, y dónde está. Es la única cifra
+        comparable entre dos modelos cuando los errores no cuestan igual.
+    """
+    import numpy as np
+
+    yt = np.asarray(y_true, dtype=int)
+    yp = np.asarray(y_proba, dtype=float)
+    out: dict[str, Any] = {}
+    if len(yt) == 0:
+        return out
+
+    orden = np.argsort(-yp)
+    yt_ord = yt[orden]
+    total_pos = int(yt.sum())
+    for k in ks:
+        if k <= len(yt_ord):
+            out[f"precision_at_{k}"] = round(float(yt_ord[:k].sum()) / k, 4)
+
+    # recall alcanzable sin bajar de cada precisión objetivo
+    umbrales = np.unique(yp)
+    for objetivo in precisiones_objetivo:
+        mejor_recall = 0.0
+        for t in umbrales:
+            pred = (yp >= t).astype(int)
+            tp = int(((pred == 1) & (yt == 1)).sum())
+            fp = int(((pred == 1) & (yt == 0)).sum())
+            if tp + fp == 0:
+                continue
+            prec = tp / (tp + fp)
+            if prec >= objetivo and total_pos:
+                mejor_recall = max(mejor_recall, tp / total_pos)
+        out[f"recall_at_precision_{int(objetivo * 100)}"] = round(mejor_recall, 4)
+
+    # coste esperado mínimo y umbral que lo alcanza
+    mejor_coste = float("inf")
+    mejor_t = 0.5
+    for t in umbrales:
+        pred = (yp >= t).astype(int)
+        fp = int(((pred == 1) & (yt == 0)).sum())
+        fn = int(((pred == 0) & (yt == 1)).sum())
+        coste = fp * cost_fp + fn * cost_fn
+        if coste < mejor_coste:
+            mejor_coste = coste
+            mejor_t = float(t)
+    if mejor_coste < float("inf"):
+        out["coste_esperado_min"] = round(mejor_coste / len(yt), 4)
+        out["coste_esperado_min_threshold"] = round(mejor_t, 4)
+    return out
 
 
 def evaluate_probas(
@@ -252,6 +377,7 @@ def evaluate_classifier(
     *,
     threshold: float | None = None,
     beta: float | None = None,
+    split: str | None = SPLIT_HOLDOUT,
 ) -> GoldenEvalResult:
     """Evalúa un clasificador entrenado contra el golden set.
 
@@ -261,6 +387,11 @@ def evaluate_classifier(
         threshold: Umbral de decisión. Si ``None``, usa ``clf._threshold`` si
             existe, o ``ML_CONFIDENCE_THRESHOLD``.
         beta: β para F-beta. Si ``None``, usa ``ML_FBETA``.
+        split: Mitad del golden set a evaluar. Por defecto ``"holdout"``, la
+            que **no** se usó para elegir el umbral — es la única que da una
+            cifra que no está inflada por el propio tuning. Pasar ``None``
+            evalúa el conjunto entero (útil para inspección manual, no para
+            reportar).
 
     Returns:
         :class:`GoldenEvalResult` con las métricas (incluido ``recall_no_keyword``).
@@ -269,9 +400,20 @@ def evaluate_classifier(
 
     if examples is None:
         examples = load_golden_set()
+    if split is not None:
+        # `asignar_splits` es idempotente: respeta los splits ya fijados y
+        # reparte los que falten, por si el caller trae ejemplos construidos
+        # a mano en vez de cargados del JSONL.
+        examples = filtrar_split(asignar_splits(examples), split)
     if not examples:
-        log.warning("ml_eval.no_examples")
+        log.warning("ml_eval.no_examples", split=split)
         return evaluate_probas([], [], threshold=threshold or 0.5, beta=beta or 1.0)
+    if split == SPLIT_HOLDOUT and len(examples) < MIN_HOLDOUT_EXAMPLES:
+        log.warning(
+            "ml_eval.golden_holdout_too_small",
+            n=len(examples),
+            min_recomendado=MIN_HOLDOUT_EXAMPLES,
+        )
 
     if threshold is None:
         threshold = float(getattr(clf, "_threshold", settings.ML_CONFIDENCE_THRESHOLD))
@@ -329,9 +471,23 @@ def tune_threshold_on_golden(
         raise ValueError("cost_fp y cost_fn deben ser positivos")
     if examples is None:
         examples = load_golden_set()
+    # SOLO la mitad "tune": elegir el umbral sobre todo el golden y luego
+    # reportar sobre todo el golden es medirse con la regla que uno mismo
+    # acaba de doblar.
+    examples = filtrar_split(asignar_splits(examples), SPLIT_TUNE)
     if len(examples) < min_examples:
         log.info("ml_eval.golden_tuning_skipped", n=len(examples), min_required=min_examples)
         return None
+    if len(examples) < MIN_TUNE_EXAMPLES:
+        log.warning(
+            "ml_eval.golden_tune_split_too_small",
+            n=len(examples),
+            min_recomendado=MIN_TUNE_EXAMPLES,
+            hint=(
+                "El umbral servido se está fijando sobre muy pocos ejemplos humanos; "
+                "amplía el golden set con scripts/sample_golden_candidates.py."
+            ),
+        )
 
     y_true = [ex.label for ex in examples]
     if len(set(y_true)) < 2:
@@ -362,15 +518,24 @@ def tune_threshold_on_golden(
     out["beta"] = round(beta, 4)
     out["cost_fp"] = cost_fp
     out["cost_fn"] = cost_fn
+    out["n_tune"] = len(examples)
+    out["tune_reliable"] = len(examples) >= MIN_TUNE_EXAMPLES
     log.info("ml_eval.golden_threshold_tuned", **out)
     return out
 
 
 __all__ = [
+    "MIN_HOLDOUT_EXAMPLES",
+    "MIN_TUNE_EXAMPLES",
+    "SPLIT_HOLDOUT",
+    "SPLIT_TUNE",
     "GoldenEvalResult",
     "GoldenExample",
+    "asignar_splits",
     "evaluate_classifier",
     "evaluate_probas",
+    "filtrar_split",
     "load_golden_set",
+    "metricas_operativas",
     "tune_threshold_on_golden",
 ]

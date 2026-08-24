@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 
@@ -120,9 +121,67 @@ class TestTrainFromDb:
 
         from scraper.ml_training import train_from_db
 
-        train_from_db()
+        # El artefacto de producción ya no se sobrescribe a ciegas: este camino
+        # —el que genera el asset de la Release que sirven API y runners— pasa
+        # por el mismo gate que el reentrenamiento semanal. Antes guardaba si
+        # `train()` no devolvía `error`, sin gate ni versión registrada.
+        with patch("services.ml.promotion.promote_if_better") as mock_promote:
+            mock_promote.return_value = SimpleNamespace(
+                activada=True,
+                version=3,
+                motivos_rechazo=[],
+                as_dict=lambda: {"activada": True, "version": 3},
+            )
+            metrics = train_from_db()
+
         mock_clf.train.assert_called_once()
-        mock_clf.save.assert_called_once()
+        mock_promote.assert_called_once()
+        assert metrics["promotion"]["activada"] is True
+
+    @patch("db.database.connect")
+    @patch("db.database.init_db")
+    @patch("scraper.ml_classifier.SAPClassifier")
+    def test_train_no_promociona_si_el_gate_rechaza(
+        self, mock_clf_cls: MagicMock, mock_init: MagicMock, mock_connect: MagicMock
+    ) -> None:
+        lic_cursor = MagicMock()
+        lic_cursor.fetchall.return_value = [
+            ("LIC-1", "t1", "d1", "SAP", "48000000", 1000, "2024-01-01", "SAP"),
+        ]
+        lic_cursor.description = [
+            ("id_externo",),
+            ("titulo",),
+            ("descripcion",),
+            ("raw_keywords",),
+            ("cpv",),
+            ("importe",),
+            ("fecha_publicacion",),
+            ("tecnologia",),
+        ]
+        fb_cursor = MagicMock()
+        fb_cursor.fetchall.return_value = []
+        fb_cursor.description = [("expediente",), ("relevante",)]
+        mock_conn = MagicMock()
+        mock_conn.execute.side_effect = [lic_cursor, fb_cursor]
+        mock_connect.return_value.__enter__ = MagicMock(return_value=mock_conn)
+        mock_connect.return_value.__exit__ = MagicMock(return_value=False)
+
+        mock_clf = MagicMock()
+        mock_clf.train.return_value = {"f1": 0.1}
+        mock_clf_cls.return_value = mock_clf
+
+        from scraper.ml_training import train_from_db
+
+        with patch("services.ml.promotion.promote_if_better") as mock_promote:
+            mock_promote.return_value = SimpleNamespace(
+                activada=False,
+                version=4,
+                motivos_rechazo=["recall_no_keyword 0.0000 < 0.05"],
+                as_dict=lambda: {"activada": False, "version": 4},
+            )
+            metrics = train_from_db()
+
+        assert metrics["promotion"]["activada"] is False
 
     @patch("db.database.connect")
     @patch("db.database.init_db")

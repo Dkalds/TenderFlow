@@ -11,6 +11,22 @@
 #                  literal u otra keyword obvia); false si NO — estos son los
 #                  casos donde el ML debe aportar sobre las keywords.
 #   note         : justificación breve del etiquetado.
+#   split        : "tune" (elegir el umbral) | "holdout" (reportar métricas).
+#                  Opcional: si se deja vacío o se omite, services.ml_eval lo
+#                  asigna por hash del `id`, de forma estable — añadir ejemplos
+#                  nuevos NO reasigna los que ya estaban.
+#
+# TAMAÑO: ESTE SET ES DEMASIADO PEQUEÑO PARA LO QUE SE LE PIDE.
+# De él salen el umbral que se sirve en produccion y `recall_no_keyword`, la
+# unica metrica que mide si el ML aporta algo sobre matches_sap(). Con 27
+# ejemplos (6 positivos sin keyword) `recall_no_keyword` se mueve a saltos de
+# 16,7 puntos y solo puede tomar 7 valores; un bootstrap da un umbral con
+# sigma=0,084 y rango p5-p95 de [0,30, 0,56].
+# Objetivo: 300-500 ejemplos, con >= 60 por mitad
+# (services.ml_eval.MIN_TUNE_EXAMPLES / MIN_HOLDOUT_EXAMPLES).
+# Para elegir QUE mandar a etiquetar: python -m scripts.sample_golden_candidates
+# El muestreo prioriza la zona de desacuerdo entre keywords y modelo, que es
+# donde una etiqueta humana aporta informacion.
 #
 # IMPORTANTE: este seed inicial fue etiquetado por conocimiento de dominio como
 # punto de partida. El etiquetado humano masivo (200-500 casos, priorizando la

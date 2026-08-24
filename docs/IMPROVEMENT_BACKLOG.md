@@ -28,6 +28,18 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 
 ## P1 — Alta
 
+### [P1] Ampliar el golden set del clasificador SAP a 300-500 ejemplos etiquetados a mano
+- **Área:** tests/fixtures/golden_set.jsonl, tests/fixtures/golden_set_tech.jsonl, scripts/sample_golden_candidates.py (acción del usuario: etiquetar)
+- **Problema:** el golden set es el único sitio del repo con etiquetas humanas independientes del filtro de keywords, y de él salen dos cosas que gobiernan producción: el umbral servido y `recall_no_keyword`, la métrica que decide si el ML aporta algo sobre `matches_sap()` (desde el 2026-08-24 es criterio **bloqueante** del gate de promoción, `services/ml/promotion.py`). Con 27 ejemplos no sostiene ninguna de las dos: solo 6 son positivos humanos sin keyword, así que `recall_no_keyword` se mueve a saltos de 16,7 puntos y solo puede tomar 7 valores; un bootstrap sobre esos 27 da un umbral con sigma=0,084 y rango p5-p95 de [0,30, 0,56] sobre un rango útil de 0,65, y el F-beta reportado sobre el mismo conjunto donde se elegía el umbral sobreestimaba el real en +0,08 de media (+0,25 en el p90). El reparto tune/holdout ya está implementado; partir 27 en dos no arregla el tamaño. El golden multi-etiqueta (`golden_set_tech.jsonl`) tiene 23 ejemplos semilla y el mismo problema.
+- **Por qué no se cerró en el mismo cambio:** etiquetar requiere criterio humano sobre licitaciones reales. Fabricar cientos de ejemplos sintéticos mediría el texto que escribió quien los fabricó, no la realidad — un golden set inventado es peor que uno pequeño, porque el pequeño al menos se sabe pequeño.
+- **Acceptance criteria:**
+  - >= 60 ejemplos por mitad (`services.ml_eval.MIN_TUNE_EXAMPLES` / `MIN_HOLDOUT_EXAMPLES`); objetivo 300-500 en total.
+  - >= 30 positivos humanos **sin keyword** en el holdout, para que `recall_no_keyword` tenga resolución útil.
+  - `load_golden_set()` deja de emitir `golden_tune_split_too_small` / `golden_holdout_too_small`.
+- **Cómo empezar:** `python -m scripts.sample_golden_candidates --n 400 --out /tmp/candidatos.jsonl` — muestrea estratificando por la zona de desacuerdo entre keywords y modelo, que es donde una etiqueta humana aporta información. Escribe `label: null` para rellenar a mano.
+- **Files de partida:** [scripts/sample_golden_candidates.py](../scripts/sample_golden_candidates.py), [tests/fixtures/golden_set.jsonl](../tests/fixtures/golden_set.jsonl), [services/ml_eval.py](../services/ml_eval.py)
+- **Riesgo:** bajo en código, alto en oportunidad — mientras el set sea pequeño, el gate de promoción bloquea con poca evidencia y el umbral servido tiene una varianza que ninguna mejora del modelo puede compensar.
+
 ### [P1] `make web-test` sale con exit 0 aunque no ejecute ni un test
 - **Área:** web/vitest.config.ts, Makefile (`web-test`, `web-test-coverage`), CI
 - **Problema:** cuando vitest no consigue arrancar sus workers, **no falla: reporta `Test Files no tests` / `Tests no tests` junto a N errores y termina con exit code 0**. Un gate que solo mira el código de salida da por verde una suite que no corrió. Reproducido tres veces seguidas el 2026-08-18/19 sobre el mismo árbol, con los dos pools: `--pool=forks --no-file-parallelism` → 70 de 113 ficheros ejecutados, 43 errores de arranque, **exit 0**; `--pool=forks` → **0 de 113**, 113 errores, **exit 0**; y un único fichero (`src/lib/__tests__/safe-redirect.test.ts`) con `--pool=threads` → `no tests`, 1 error, **exit 0**. El mensaje es siempre `[vitest-pool]: Failed to start forks worker` / `[vitest-pool-runner]: Timeout waiting for worker to respond` (START_TIMEOUT de 60 s, no configurable por CLI). En esta máquina lo dispara la contención (OneDrive + antivirus), pero la causa de fondo —**el runner no distingue "todo pasó" de "no se ejecutó nada"**— es del repo y viaja a CI: un runner lento o un contenedor apretado producen ahí el mismo falso verde, y el job saldría en verde sin haber probado nada.
@@ -124,6 +136,18 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 ---
 
 ## P2 — Media
+
+### [P2] `HistGradientBoosting` revienta si una feature llega entera a NaN
+- **Área:** services/ml/baja_model.py, services/ml/features.py, tests/test_ml_baja_model.py
+- **Problema:** con las versiones pineadas (numpy 2.4.4, scikit-learn 1.9.0), ajustar `HistGradientBoostingRegressor` sobre una matriz con **una columna enteramente NaN** falla con `ValueError: window shape cannot be larger than input array shape` en `sklearn/ensemble/_hist_gradient_boosting/binning.py:82`. La causa es precisa: `_find_binning_thresholds` guarda el caso de una columna **constante** (`if len(distinct_values) == 1: return []`) pero no el de **cero** valores distintos, que es lo que deja una columna todo-NaN tras descartar los missing; entonces `sliding_window_view(distinct_values, 2)` recibe un array vacío. Reproducido aislado: columna todo-NaN → ValueError; columna constante → OK.
+- **Estado de la evidencia (importante):** **no reproduce en CI.** `master` está verde en el mismo commit base (run #830 sobre `5164793`), y CI corre la suite entera sin filtro de marcadores. Sí reproduce en el contenedor de sesiones remotas —sobre un worktree limpio de `5164793` y sobre la rama de trabajo, con Python 3.11 y 3.13 y las versiones pineadas— en `test_entrenar_registra_version_y_metricas`, `test_predicciones_del_modelo_distinguen_segmentos` y `test_scoring_degrada_a_baseline_si_el_layout_no_coincide`. Qué hace que la matriz salga con una columna todo-NaN aquí y no allí **está sin identificar**: el histórico sintético de `_sembrar_historico` es determinista (fechas fijas, CPV/CCAA/tipo/fuente constantes), así que la diferencia tiene que estar en el entorno o en el estado de la BD, no en el fixture.
+- **Por qué merece entrada igualmente:** el docstring de `FEATURES_PENDIENTES_COBERTURA` ya avisa de que "una feature NULL en el 90% de las filas no es neutra". Aquí la consecuencia es peor que un split desperdiciado: al 100% de NULL el ajuste **no arranca**. Cualquier feature nueva con cobertura baja puede tumbar el reentrenamiento en vez de degradarlo.
+- **Acceptance criteria:**
+  - Identificado qué diferencia de entorno produce la columna todo-NaN aquí y no en CI (o descartado como artefacto del contenedor, dejándolo escrito).
+  - `baja_model` descarta las columnas sin ningún valor observado antes del ajuste, con log de cuáles y un test que fije el invariante — el reentrenamiento no puede depender de que ninguna feature llegue vacía.
+- **Files de partida:** [services/ml/baja_model.py](../services/ml/baja_model.py), [services/ml/features.py](../services/ml/features.py)
+- **Riesgo:** bajo — el serving ya degrada al baseline si el modelo no existe, que es el comportamiento previsto para un fallo de entrenamiento.
+
 
 ### [P2] `render.yaml` no gobierna el servicio que corre en producción
 - **Área:** render.yaml, Render Dashboard (acción del usuario)

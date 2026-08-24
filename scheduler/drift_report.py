@@ -320,9 +320,27 @@ def compute_f1_drop(
         log.info("compute_f1_drop_no_active_model", model=model_name)
         return 0.0
 
-    # F1 registrado en el entrenamiento
-    trained_f1 = float(active.get("metrics", {}).get("f1") or 0.0)
+    # Referencia: el F1 del modelo sobre el holdout HUMANO del golden set.
+    #
+    # Antes se usaba ``metrics["f1"]``, medido sobre el test split cuyas
+    # etiquetas derivan de ``raw_keywords``, y se comparaba contra el F1 sobre
+    # feedback humano reciente. Son dos poblaciones con semántica de etiqueta
+    # distinta y prevalencia distinta: la diferencia entre ambas es
+    # estructural, no deriva. Con el aviso al 3% de caída relativa, eso
+    # significa alertar (o no) por razones que nada tienen que ver con el
+    # modelo. Ahora ambos lados son etiquetas humanas.
+    metricas_activas = active.get("metrics", {})
+    trained_f1 = float(metricas_activas.get("golden_holdout_f1") or 0.0)
     if trained_f1 <= 0.0:
+        log.warning(
+            "compute_f1_drop_sin_referencia_humana",
+            model=model_name,
+            hint=(
+                "La versión activa no tiene golden_holdout_f1: se registró antes "
+                "del gate de promoción unificado. No se compara contra el f1 del "
+                "test split porque mide otra cosa."
+            ),
+        )
         return 0.0
 
     # Cargar feedback reciente como ground-truth
@@ -330,11 +348,16 @@ def compute_f1_drop(
     try:
         with db_connect() as c:
             rows = c.execute(
+                # ``source = 'human'`` por el mismo motivo que en
+                # ``_fetch_training_dataframe``: el feedback automático del
+                # etiquetado por LLM son predicciones, no ground truth.
+                # Usarlas aquí medía el acuerdo entre dos modelos y lo
+                # reportaba como degradación frente a la realidad.
                 "SELECT f.expediente, f.relevante, l.titulo, l.descripcion, "
                 "l.cpv, l.importe "
                 "FROM ml_feedback f "
                 "JOIN licitaciones l ON l.id_externo = f.expediente "
-                "WHERE f.created_at >= %s",
+                "WHERE f.created_at >= %s AND f.source = 'human'",
                 (since,),
             ).fetchall()
     except Exception as exc:

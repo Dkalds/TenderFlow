@@ -17,6 +17,15 @@ media global del train), que es lo que sirve ``baja_de_referencia``. Se compara
 además con pérdida pinball en q=0.5 para las dos, porque el MAE lo minimiza la
 mediana y enfrentar un p50 contra una *media* favorece al modelo.
 
+Los folds se cortan por la fecha de **adjudicación**, que es cuando la etiqueta
+pasa a ser observable. No contradice el ancla temporal único de
+``services.ml.features`` —las features se siguen mirando desde la publicación,
+en entrenamiento y en scoring—: son dos preguntas distintas. El ancla dice
+"¿qué se sabía del mercado al publicar esta licitación?"; el corte del fold dice
+"¿qué filas tenían ya resultado conocido en este instante?". Cortar el train por
+publicación respondía a la segunda con la primera y le daba al modelo bajas que
+todavía no habían ocurrido.
+
 **Criterio de honestidad del RFC**: si el MAE(p50) no mejora el baseline ≥10%
 relativo, la versión se registra pero NO se activa, y el serving sigue siendo
 el baseline.
@@ -36,8 +45,9 @@ import hashlib
 import math
 import random
 from collections import Counter
+from collections.abc import Mapping
 from dataclasses import dataclass
-from datetime import timedelta
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -314,22 +324,76 @@ class BajaModel:
         return obj
 
 
+def _fechas_adjudicacion(hasta: str | None = None) -> dict[str, str]:
+    """``licitacion_id`` → fecha de adjudicación (``YYYY-MM-DD``) del expediente.
+
+    ``FilaDataset`` solo lleva el ancla de features —la publicación, acotada a
+    no superar la adjudicación (``db.repositories.ml_dataset``)—, y los cortes
+    temporales necesitan además el instante en el que la **etiqueta** pasó a ser
+    observable. Sale del mismo repositorio y con el mismo filtro ``hasta`` que
+    el dataset, así que ambas lecturas describen la misma población; el precio
+    es una ejecución extra de la query agregada por entrenamiento (mensual).
+
+    Lo natural sería que ``construir_dataset_baja`` devolviera esa fecha en la
+    propia fila; eso es un cambio en ``services.ml.features``, fuera del alcance
+    de este arreglo.
+    """
+    from db.repositories.ml_dataset import MlDatasetRepository
+
+    return {
+        str(row["id_externo"]): str(row["fecha_adjudicacion"])[:10]
+        for row in MlDatasetRepository().pares_baja_agregada(hasta)
+        if row.get("fecha_adjudicacion")
+    }
+
+
+def _fecha_label(fila: FilaDataset, fechas_label: Mapping[str, str]) -> datetime:
+    """Instante en el que la etiqueta de ``fila`` pasó a ser observable.
+
+    Es la fecha de adjudicación: la baja no existe antes de ella. Sin entrada en
+    el mapa se cae al ancla de la fila, que es lo único disponible (y nunca
+    posterior a la adjudicación, así que el fallback solo puede adelantar el
+    corte, no retrasarlo).
+    """
+    return _fecha_dt(fechas_label.get(fila.licitacion_id) or fila.fecha)
+
+
 def _split_temporal(
-    filas: list[FilaDataset], valid_meses: int
+    filas: list[FilaDataset], valid_meses: int, fechas_label: Mapping[str, str]
 ) -> tuple[list[FilaDataset], list[FilaDataset]]:
-    """Entrena hasta T, valida T..T+valid_meses (las filas llegan ordenadas)."""
+    """Entrena hasta T, valida T..T+valid_meses (las filas llegan ordenadas).
+
+    Mismo criterio asimétrico que :func:`_folds_rolling`: el train se filtra por
+    la fecha en la que la etiqueta pasó a ser observable y el valid por el ancla
+    de features.
+    """
     corte = _fecha_dt(filas[-1].fecha) - timedelta(days=valid_meses * 30)
-    train = [f for f in filas if _fecha_dt(f.fecha) < corte]
+    train = [f for f in filas if _fecha_label(f, fechas_label) < corte]
     valid = [f for f in filas if _fecha_dt(f.fecha) >= corte]
     if len(train) < MIN_TRAIN_SAMPLES // 2 or len(valid) < _MIN_VALID_SAMPLES:
-        # Histórico corto: split temporal 80/20 manteniendo el orden.
+        # Histórico corto: split temporal 80/20 manteniendo el orden, con el
+        # mismo embargo sobre el train (las filas aún sin adjudicar en el corte
+        # no pueden entrenar). Si el embargo lo vacía —todas las etiquetas del
+        # 80% inicial llegaron después del corte— se conserva el split sin
+        # filtrar y se deja constancia: un train vacío no es un modelo peor,
+        # es ningún modelo.
         k = int(len(filas) * 0.8)
         train, valid = filas[:k], filas[k:]
+        if valid:
+            corte_80 = _fecha_dt(valid[0].fecha)
+            embargado = [f for f in train if _fecha_label(f, fechas_label) < corte_80]
+            if embargado:
+                train = embargado
+            else:
+                log.warning("baja_model_split_80_20_sin_embargo", n_train=len(train))
     return train, valid
 
 
 def _folds_rolling(
-    filas: list[FilaDataset], valid_meses: int, n_folds: int
+    filas: list[FilaDataset],
+    valid_meses: int,
+    n_folds: int,
+    fechas_label: Mapping[str, str],
 ) -> list[tuple[list[FilaDataset], list[FilaDataset]]]:
     """Cortes sucesivos con ventana de train expansiva (rolling origin).
 
@@ -337,6 +401,20 @@ def _folds_rolling(
     siguiente; el más reciente entrena con todo menos el último bloque. Si el
     histórico no da para ningún fold válido, cae al split único de
     :func:`_split_temporal`, que es el comportamiento anterior.
+
+    Los dos lados del corte usan fechas **distintas**, y es el arreglo de un bug
+    real: el train son las filas cuya etiqueta ya era observable en el corte
+    (``fecha_adjudicacion < inicio``) y el valid las publicadas en el bloque
+    siguiente (``inicio <= ancla < límite``). Hasta 2026-08 los dos lados
+    cortaban por el ancla —la publicación— y, como el ancla siempre precede a
+    la adjudicación, el train se llevaba filas adjudicadas después del corte:
+    el modelo veía en cada fold etiquetas que en ese instante no existían y la
+    métrica describía un entrenamiento irrealizable en producción.
+
+    Consecuencia buscada: las filas publicadas antes del corte pero adjudicadas
+    después no caen en ningún lado de ese fold. No son train (su baja todavía no
+    se conocía) ni test (ya estaban publicadas cuando empieza el bloque); son la
+    banda de embargo que el rolling origin necesita para ser honesto.
     """
     fin = _fecha_dt(filas[-1].fecha)
     ancho = timedelta(days=valid_meses * 30)
@@ -344,11 +422,11 @@ def _folds_rolling(
     for k in range(n_folds, 0, -1):
         inicio = fin - ancho * k
         limite = fin - ancho * (k - 1)
-        train = [f for f in filas if _fecha_dt(f.fecha) < inicio]
+        train = [f for f in filas if _fecha_label(f, fechas_label) < inicio]
         valid = [f for f in filas if inicio <= _fecha_dt(f.fecha) < limite]
         if len(train) >= MIN_TRAIN_SAMPLES // 2 and len(valid) >= _MIN_VALID_SAMPLES:
             folds.append((train, valid))
-    return folds or [_split_temporal(filas, valid_meses)]
+    return folds or [_split_temporal(filas, valid_meses, fechas_label)]
 
 
 def _fit_quantil(
@@ -547,7 +625,10 @@ def entrenar(
     usar_conformal = bool(getattr(settings, "ML_BAJA_CONFORMAL", True))
 
     cat_mask = [col in CATEGORICAL_COLUMNS for col in FEATURE_COLUMNS]
-    folds = _folds_rolling(filas, valid_meses, n_folds)
+    # Cuándo pasó a ser observable la etiqueta de cada fila: sin esto los folds
+    # se cortan por la publicación y el train ve bajas del futuro.
+    fechas_label = _fechas_adjudicacion(hasta)
+    folds = _folds_rolling(filas, valid_meses, n_folds, fechas_label)
     hiper, n_explorados = _buscar_hiper(folds, cat_mask, n_combos, halflife)
 
     # Bloque de calibración: el trozo inmediatamente anterior al último fold de
@@ -557,7 +638,11 @@ def entrenar(
     calibracion: list[FilaDataset] = []
     if usar_conformal and len(train_final) >= MIN_TRAIN_SAMPLES:
         corte_cal = _fecha_dt(valid_final[0].fecha) - timedelta(days=valid_meses * 30)
-        ajuste = [f for f in train_final if _fecha_dt(f.fecha) < corte_cal]
+        # Mismo criterio asimétrico que los folds: ajusta lo que ya estaba
+        # etiquetado en el corte y calibra sobre lo publicado después. Con el
+        # corte por publicación en los dos lados, el offset conformal se medía
+        # con un modelo que había visto bajas posteriores a su propio corte.
+        ajuste = [f for f in train_final if _fecha_label(f, fechas_label) < corte_cal]
         candidata = [f for f in train_final if _fecha_dt(f.fecha) >= corte_cal]
         if len(ajuste) >= MIN_TRAIN_SAMPLES and len(candidata) >= _MIN_VALID_SAMPLES:
             train_final, calibracion = ajuste, candidata

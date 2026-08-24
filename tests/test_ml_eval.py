@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from services.ml_eval import (
+    SPLIT_HOLDOUT,
+    SPLIT_TUNE,
     GoldenExample,
     evaluate_classifier,
     evaluate_probas,
@@ -100,7 +102,11 @@ class TestEvaluateClassifier:
             GoldenExample("b", "Desarrollo ABAP del ERP", "", 1, keyword_match=False),
             GoldenExample("c", "Suministro de mobiliario", "", 0, keyword_match=False),
         ]
-        result = evaluate_classifier(_StubClassifier(), examples)
+        # ``split=None`` evalúa el conjunto entero: este test mide la
+        # aritmética de las métricas, no el reparto tune/holdout (que por
+        # defecto restringe a la mitad de holdout — ver TestSplitDelGoldenSet
+        # en tests/test_ml_promotion_gate.py).
+        result = evaluate_classifier(_StubClassifier(), examples, split=None)
         assert result.n == 3
         # El stub pesca el caso ABAP-sin-keyword → recall_no_keyword == 1.0
         assert result.n_no_keyword_positive == 1
@@ -115,12 +121,21 @@ class TestEvaluateClassifier:
 class TestTuneThresholdOnGolden:
     def _examples(self) -> list[GoldenExample]:
         # 6 SAP (texto con 'sap'/'abap') + 6 no-SAP, separables por el stub.
-        sap = [GoldenExample(f"s{i}", "Soporte SAP", "", 1, keyword_match=True) for i in range(4)]
+        # ``split=SPLIT_TUNE`` explícito: el tuning solo mira esa mitad, así
+        # que sin marcarlos el reparto por hash dejaría fuera la mitad de los
+        # ejemplos y el test mediría otra cosa.
+        sap = [
+            GoldenExample(f"s{i}", "Soporte SAP", "", 1, keyword_match=True, split=SPLIT_TUNE)
+            for i in range(4)
+        ]
         sap += [
-            GoldenExample(f"n{i}", "Desarrollo ABAP", "", 1, keyword_match=False) for i in range(2)
+            GoldenExample(f"n{i}", "Desarrollo ABAP", "", 1, keyword_match=False, split=SPLIT_TUNE)
+            for i in range(2)
         ]
         no = [
-            GoldenExample(f"x{i}", "Mobiliario oficina", "", 0, keyword_match=False)
+            GoldenExample(
+                f"x{i}", "Mobiliario oficina", "", 0, keyword_match=False, split=SPLIT_TUNE
+            )
             for i in range(6)
         ]
         return sap + no
@@ -138,15 +153,37 @@ class TestTuneThresholdOnGolden:
     def test_none_when_too_few_examples(self) -> None:
         out = tune_threshold_on_golden(
             _StubClassifier(),
-            [GoldenExample("a", "SAP", "", 1)],
+            [GoldenExample("a", "SAP", "", 1, split=SPLIT_TUNE)],
             min_examples=10,
         )
         assert out is None
 
     def test_none_when_single_class(self) -> None:
-        examples = [GoldenExample(f"s{i}", "SAP", "", 1) for i in range(12)]
+        examples = [GoldenExample(f"s{i}", "SAP", "", 1, split=SPLIT_TUNE) for i in range(12)]
         out = tune_threshold_on_golden(_StubClassifier(), examples)
         assert out is None
+
+    def test_no_usa_el_holdout_para_elegir_el_umbral(self) -> None:
+        # El invariante central: los ejemplos de holdout no pueden influir en
+        # el umbral que se sirve, o la métrica que luego se reporta sobre
+        # ellos está inflada por el propio tuning.
+        tune = [
+            GoldenExample(f"t{i}", "Soporte SAP", "", i % 2, keyword_match=True, split=SPLIT_TUNE)
+            for i in range(12)
+        ]
+        holdout = [
+            GoldenExample(
+                f"h{i}", "Mobiliario oficina", "", 1, keyword_match=False, split=SPLIT_HOLDOUT
+            )
+            for i in range(40)
+        ]
+        solo_tune = tune_threshold_on_golden(_StubClassifier(), tune, cost_fp=1.0, cost_fn=3.0)
+        con_holdout = tune_threshold_on_golden(
+            _StubClassifier(), tune + holdout, cost_fp=1.0, cost_fn=3.0
+        )
+        assert solo_tune is not None and con_holdout is not None
+        assert solo_tune["threshold"] == con_holdout["threshold"]
+        assert solo_tune["n_tune"] == con_holdout["n_tune"] == 12
 
     def test_invalid_costs_raise(self) -> None:
         try:

@@ -76,7 +76,7 @@ Restricciones de datos relevantes:
 evento con positivo Y negativo observables es la renovación: el incumbente
 de un contrato que vence vuelve a ganar el siguiente análogo (positivo) o lo
 gana otro (negativo). Etiquetado: pares (contrato vencido → siguiente
-adjudicación del mismo órgano con mismo CPV-4 en ventana ±18 meses, matching
+adjudicación del mismo órgano con mismo CPV-4 en ventana [-6, +18] meses (asimétrica desde 2026-08-24: una sucesora adjudicada mucho antes del vencimiento entraba en las features del propio par y codificaba el target), matching
 vía maestro de empresas). Features: antigüedad de la relación
 órgano-empresa, nº de contratos previos con ese órgano, cuota de la empresa
 en el segmento, HHI, baja con la que ganó el contrato original, si hubo
@@ -194,7 +194,7 @@ por API con honestidad — que ya es útil).
   /licitaciones/{id}/prediccion-baja` (siempre con model_version y
   computed_at; NULL = baseline) + intervalo visible en el detail panel.
 - **Paso 5** — `services/ml/retencion_labels.py` (pares órgano
-  normalizado + CPV-4, ventana ±18 meses, empresa vía maestro) +
+  normalizado + CPV-4, ventana [-6, +18] meses, empresa vía maestro) +
   `scripts/audit_retencion.py`. **La auditoría manual de 50 pares queda
   pendiente de la BD real** — bloquear la activación del modelo hasta
   hacerla.

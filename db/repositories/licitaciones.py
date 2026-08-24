@@ -454,6 +454,102 @@ class LicitacionRepository:
             )
             return rows_to_dicts(cur)
 
+    def etiquetas_tecnologia_no_circulares(self) -> dict[str, dict[str, str | None]]:
+        """Etiquetas de tecnología **independientes del regex de keywords**.
+
+        El clasificador multi-etiqueta se entrenaba sobre la columna
+        ``licitaciones.tecnologia``, que la producen los conectores llamando a
+        ``matches_technology(titulo, ...)``: el mismo regex aplicado al mismo
+        texto que ve el modelo. ``Y[:, j] == 1`` era entonces una función
+        determinista y perfectamente aprendible del propio input, así que todas
+        las métricas medían cuánto **imita** el modelo al regex, no cuánta
+        tecnología detecta.
+
+        Este método aporta las dos fuentes que sí son independientes, para que
+        ``scraper.tech_classifier._resolver_label_column`` las priorice sobre
+        las keywords:
+
+        - ``tecnologia_humana``: CSV desde el feedback humano más reciente de
+          cada expediente (``ml_feedback`` con ``source='human'``), uniendo
+          ``tecnologia`` y el JSON de ``tecnologias_secundarias``.
+        - ``tecnologia_llm``: CSV ``TECNOLOGIA:score`` desde
+          ``licitacion_tecnologia_pliego`` con ``method IN ('llm_metadata',
+          'llm')``.
+
+        Convención de ausencia, que es la parte que importa para no inventar
+        etiquetas:
+
+        - ``None`` → esa fuente **no se pronunció** sobre la licitación.
+        - ``""`` (cadena vacía) → la fuente la revisó y declaró que no tiene
+          ninguna tecnología. Es un negativo de verdad, no un desconocido. Para
+          el LLM eso son las filas con el sentinel ``__no_signal__``; para el
+          humano, un feedback sin tecnología.
+
+        Returns:
+            ``{id_externo: {"tecnologia_humana": ..., "tecnologia_llm": ...}}``
+            con solo las licitaciones sobre las que alguna fuente se pronunció.
+        """
+        import json
+
+        from db.repositories.tecnologia_pliego import NO_SIGNAL_SENTINEL
+
+        salida: dict[str, dict[str, str | None]] = {}
+        with connect_read() as c:
+            # Feedback humano: la fila más reciente por expediente. ml_feedback
+            # no tiene unique por expediente, así que sin el DISTINCT ON la
+            # etiqueta dependería del orden de filas — no determinista.
+            cur = c.execute(
+                "SELECT DISTINCT ON (expediente) expediente, tecnologia, "
+                "tecnologias_secundarias "
+                "FROM ml_feedback WHERE source = 'human' "
+                "ORDER BY expediente, created_at DESC, id DESC"
+            )
+            for expediente, tecnologia, secundarias in cur.fetchall():
+                etiquetas: list[str] = []
+                if tecnologia:
+                    etiquetas.append(str(tecnologia).strip().upper())
+                if secundarias:
+                    try:
+                        extra = json.loads(str(secundarias))
+                    except (TypeError, ValueError):
+                        extra = []
+                    if isinstance(extra, list):
+                        etiquetas.extend(str(t).strip().upper() for t in extra if t)
+                # Cadena vacía y no None: el humano revisó y no marcó nada.
+                salida.setdefault(str(expediente), {})["tecnologia_humana"] = ",".join(
+                    dict.fromkeys(e for e in etiquetas if e)
+                )
+
+            # Señal LLM por pliego, con su score para que el consumidor filtre.
+            cur = c.execute(
+                "SELECT l.id_externo, p.tecnologia, p.score "
+                "FROM licitacion_tecnologia_pliego p "
+                "JOIN licitaciones l ON l.id = p.licitacion_id "
+                "WHERE p.method IN ('llm_metadata', 'llm')"
+            )
+            por_licitacion: dict[str, list[str]] = {}
+            revisadas: set[str] = set()
+            for id_externo, tecnologia, score in cur.fetchall():
+                clave = str(id_externo)
+                revisadas.add(clave)
+                if str(tecnologia) == NO_SIGNAL_SENTINEL:
+                    continue
+                por_licitacion.setdefault(clave, []).append(
+                    f"{str(tecnologia).strip().upper()}:{float(score or 0.0):.4f}"
+                )
+            for clave in revisadas:
+                salida.setdefault(clave, {})["tecnologia_llm"] = ",".join(
+                    por_licitacion.get(clave, [])
+                )
+
+        log.info(
+            "etiquetas_tecnologia_no_circulares",
+            n_licitaciones=len(salida),
+            n_humanas=sum(1 for v in salida.values() if v.get("tecnologia_humana") is not None),
+            n_llm=sum(1 for v in salida.values() if v.get("tecnologia_llm") is not None),
+        )
+        return salida
+
     def get_unlabelled_random(self, limit: int = 20) -> list[dict[str, Any]]:
         with connect_read() as c:
             cur = c.execute(
