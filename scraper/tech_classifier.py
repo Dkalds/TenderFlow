@@ -347,13 +347,13 @@ def _split_indices(Y: _NDArray, *, random_state: int = 42) -> _Split:
         log.warning("tech_classifier.split_skipped", n_rows=n_rows, minimo=_MIN_ROWS_FOR_SPLIT)
         return _Split(idx, vacio, vacio, False, "n_rows_insuficiente")
 
-    strat = np.asarray(_collapse_rare(_stratification_key(Y), _MIN_STRATUM))
+    estratos = np.asarray(_collapse_rare(_stratification_key(Y), _MIN_STRATUM))
     try:
         trainval, test = train_test_split(
-            idx, test_size=0.2, random_state=random_state, stratify=strat
+            idx, test_size=0.2, random_state=random_state, stratify=estratos
         )
         train, val = train_test_split(
-            trainval, test_size=0.25, random_state=random_state, stratify=strat[trainval]
+            trainval, test_size=0.25, random_state=random_state, stratify=estratos[trainval]
         )
         return _Split(train, val, test, True, "")
     except ValueError as exc:
