@@ -252,15 +252,92 @@ def test_training_run_raises_on_error_metrics():
         precompute.assert_not_called()
 
 
-def test_training_run_precomputes_on_success():
+_METRICAS_PROMOCIONADAS = {
+    "f1": 0.8,
+    "promotion": {"activada": True, "version": 3, "motivos_rechazo": []},
+}
+_METRICAS_RECHAZADAS = {
+    "f1": 0.8,
+    "promotion": {
+        "activada": False,
+        "version": 4,
+        "motivos_rechazo": ["recall_no_keyword 0.0000 < 0.05"],
+    },
+}
+
+
+def test_training_run_precomputes_forzado_al_promocionar():
+    """Si el modelo cambió, `ml_proba` tiene que recalcularse entero.
+
+    Con ``force=False`` solo se rellenaban los NULL, así que la superficie de
+    serving y el test de drift de predicciones seguían mostrando los scores
+    del modelo anterior.
+    """
     with (
         patch("scraper.ml_training.seed_negatives") as seed,
-        patch("scraper.ml_training.train_from_db", return_value={"f1": 0.8}),
+        patch("scraper.ml_training.train_from_db", return_value=_METRICAS_PROMOCIONADAS),
         patch("scraper.ml_training.precompute_ml_proba") as precompute,
     ):
-        assert training_job.run() == {"f1": 0.8}
-        seed.assert_called_once()
-        precompute.assert_called_once_with(force=False)
+        assert training_job.run() == _METRICAS_PROMOCIONADAS
+        precompute.assert_called_once_with(force=True)
+        # Los negativos deben venir de la población de serving (CPV 48/72) y
+        # de varios meses: sembrarlos de un solo mes y sin TI le enseña al
+        # modelo un separador de CPV que en producción es constante.
+        seed.assert_called_once_with(include_ti=True, spread_months=6)
+
+
+def test_training_run_no_precomputa_si_el_gate_rechaza():
+    """Un rechazo del gate no es un error, pero tampoco hay nada que aplicar."""
+    with (
+        patch("scraper.ml_training.seed_negatives"),
+        patch("scraper.ml_training.train_from_db", return_value=_METRICAS_RECHAZADAS),
+        patch("scraper.ml_training.precompute_ml_proba") as precompute,
+    ):
+        assert training_job.run() == _METRICAS_RECHAZADAS
+        precompute.assert_not_called()
+
+
+def test_promocionado_distingue_los_tres_desenlaces():
+    assert training_job.promocionado(_METRICAS_PROMOCIONADAS) is True
+    assert training_job.promocionado(_METRICAS_RECHAZADAS) is False
+    # Métricas sin bloque `promotion` (p. ej. un camino antiguo) no cuentan
+    # como promoción: ante la duda, no se publica.
+    assert training_job.promocionado({"f1": 0.9}) is False
+
+
+def test_salida_github_permite_al_workflow_distinguir_rechazo_de_fallo(tmp_path, monkeypatch):
+    """Sin estos outputs, el YAML no puede separar "gate rechazó" de "reventó".
+
+    En los dos casos falta el `.pkl`, y el paso de verificación moría con un
+    `ls: cannot access` que no explicaba nada.
+    """
+    destino = tmp_path / "gh_output"
+    monkeypatch.setenv("GITHUB_OUTPUT", str(destino))
+
+    training_job._emitir_salida_github(
+        {
+            **_METRICAS_RECHAZADAS,
+            "n_train": 900,
+            "n_test": 240,
+            "promotion": {
+                **_METRICAS_RECHAZADAS["promotion"],
+                "golden": {"recall_no_keyword": 0.0},
+            },
+        }
+    )
+    salida = dict(linea.split("=", 1) for linea in destino.read_text(encoding="utf-8").splitlines())
+    assert salida["promoted"] == "false"
+    assert salida["version"] == "4"
+    assert "recall_no_keyword" in salida["rejection_reasons"]
+    assert salida["n_train"] == "900"
+    # Una sola línea por clave: un salto dentro del valor rompería el parseo
+    # de `$GITHUB_OUTPUT`.
+    assert len(destino.read_text(encoding="utf-8").strip().splitlines()) == 6
+
+
+def test_salida_github_es_no_op_fuera_de_actions(monkeypatch):
+    monkeypatch.delenv("GITHUB_OUTPUT", raising=False)
+    training_job._emitir_salida_github(_METRICAS_PROMOCIONADAS)  # no debe lanzar
 
 
 # ---------------------------------------------------------------------------
