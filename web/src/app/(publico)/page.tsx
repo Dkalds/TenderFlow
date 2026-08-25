@@ -1,3 +1,4 @@
+import { Fragment } from "react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import Image, { getImageProps } from "next/image";
@@ -188,12 +189,18 @@ const TARJETA_EXPLORAR =
  * quieta y legible desde el primer frame. */
 const ENTRADA_HERO = "animate-in fade-in-0 slide-in-from-bottom-2 anim-duration-500";
 
-/* CTA de acceso. El destino lo decide `solicitarAccesoHref` (lib/contacto):
- * mailto con asunto prellenado cuando el entorno define el email de contacto,
- * /login con atribución UTM cuando no. El ancla la pinta la isla
- * `EnlaceSolicitarAcceso` para emitir el evento de analytics del clic — un
- * mailto no genera pageview y sin evento el CTA principal sería un punto
- * ciego. El href se calcula aquí, en servidor. */
+/* CTA de acceso. El destino lo decide `solicitarAccesoHref` (lib/contacto) y
+ * hoy es siempre el ancla del formulario de esta misma página: sus dos
+ * versiones anteriores —un `mailto:` dependiente de una variable de entorno, y
+ * /login como fallback— no llevaban a ninguna parte utilizable.
+ *
+ * El ancla la pinta la isla `EnlaceSolicitarAcceso` para emitir el evento de
+ * analytics del clic. Ojo con lo que ese evento mide: **intención, no
+ * conversión**. Desde que el destino es un fragmento, pulsar el botón es un
+ * scroll, no un envío. La conversión la reporta la página de gracias
+ * (`solicitud-recibida`), que es la única que sabe si el POST prosperó; las
+ * dos métricas juntas son las que dan el embudo. `utmContent` distingue de qué
+ * CTA vino el clic — header, hero, intermedio— y por eso hay más de uno. */
 function CtaAcceso({ utmContent }: { utmContent: string }) {
   return (
     <EnlaceSolicitarAcceso href={solicitarAccesoHref(utmContent)} ubicacion={utmContent} className={CTA_PRIMARIO}>
@@ -293,6 +300,13 @@ export default function LandingPage() {
             >
               {CONTENIDO.subtitulo}
             </p>
+            {/* Descalificar aquí y no cuatro pantallas más abajo. Va con el
+                peso del cuerpo y no en gris de nota: es una afirmación del
+                producto, no una letra pequeña, y quien no encaja tiene que
+                poder leerla de una pasada y marcharse sin gastar la página. */}
+            <p className={`${ENTRADA_HERO} text-foreground/80 mx-auto mt-4 max-w-[58ch] text-sm leading-relaxed`}>
+              {CONTENIDO.heroAcotacion}
+            </p>
             <div className={`${ENTRADA_HERO} mt-9 flex flex-wrap items-center justify-center gap-3`}>
               <CtaAcceso utmContent="hero" />
               <Link href="#como-funciona" className={CTA_SECUNDARIO}>
@@ -374,8 +388,8 @@ export default function LandingPage() {
           {CONTENIDO.secciones.map((seccion, i) => {
             const Icono = ICONOS[seccion.icono];
             return (
+              <Fragment key={seccion.h2}>
               <section
-                key={seccion.h2}
                 className="border-border/40 grid gap-6 border-b py-14 last:border-b-0 md:grid-cols-[minmax(0,22rem)_minmax(0,1fr)] md:gap-14"
               >
                 {/* La columna de cabecera acompaña al texto largo con sticky:
@@ -449,6 +463,29 @@ export default function LandingPage() {
                   )}
                 </div>
               </section>
+              {/* Único punto de conversión intermedio.
+
+                  El formulario vive al final de ~1.500 palabras y el botón del
+                  hero salta hasta allí, así que entre una cosa y otra no había
+                  dónde actuar: quien terminaba de leer "cuánto hay que bajar, y
+                  contra quién" —el momento de más intención de la página— tenía
+                  que seguir bajando o irse. Va justo después de esa sección y no
+                  repartido por todas: un reclamo cada dos párrafos convierte el
+                  argumento en un folleto. */}
+              {seccion.icono === "precio" && (
+                <div className="border-border/40 flex flex-wrap items-center justify-between gap-x-8 gap-y-4 border-b py-10">
+                  <div className="max-w-[46ch]">
+                    <p className="font-display text-lg font-semibold tracking-[-0.01em]">
+                      {CONTENIDO.ctaIntermedioTitulo}
+                    </p>
+                    <p className="text-muted-foreground mt-1.5 text-sm leading-relaxed">
+                      {CONTENIDO.ctaIntermedioTexto}
+                    </p>
+                  </div>
+                  <CtaAcceso utmContent="intermedio" />
+                </div>
+              )}
+              </Fragment>
             );
           })}
         </div>

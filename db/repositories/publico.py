@@ -240,6 +240,38 @@ class PublicoRepository:
         with connect_read() as c:
             return _consultar(c)
 
+    def ultima_incorporacion(self, *, conn: Any | None = None) -> str | None:
+        """Cuándo entró el expediente publicable más reciente, o ``None``.
+
+        Es la prueba de frescura de la superficie pública: la landing promete
+        una cadencia de ingesta y hasta ahora no había en pantalla ni un dato
+        que la respaldara. Devuelve ``MAX(fecha_extraccion)``, que el upsert
+        refresca en cada pasada (``fecha_extraccion=excluded.fecha_extraccion``
+        en ``_LIC_UPDATES``, sin ``COALESCE``), así que se mueve tanto al
+        incorporar un expediente nuevo como al reingerir uno ya visto.
+
+        Ojo con la etiqueta que lo acompañe: **no** es "última sincronización".
+        Una pasada que no encuentra nada no mueve este valor, y decir lo
+        contrario sería exactamente la clase de afirmación que ADR-014 prohíbe.
+        Lo que afirma es lo que mide: cuándo entró el último expediente.
+
+        La columna es ``TEXT`` con ISO 8601 UTC (``now_utc_iso``), cuyo orden
+        lexicográfico coincide con el cronológico, así que ``MAX`` es correcto
+        sin castear. El filtro es el mismo ``_BASE_WHERE`` que ``contar``: el
+        dato tiene que hablar del corpus que se publica, no de la tabla entera.
+        """
+        sql = f"SELECT MAX(l.fecha_extraccion) FROM licitaciones l WHERE {_BASE_WHERE}"
+
+        def _consultar(c: Any) -> str | None:
+            fila = c.execute(sql).fetchone()
+            valor = fila[0] if fila else None
+            return str(valor) if valor else None
+
+        if conn is not None:
+            return _consultar(conn)
+        with connect_read() as c:
+            return _consultar(c)
+
     def hubs_ccaa(self, *, conn: Any | None = None) -> list[dict[str, Any]]:
         """Comunidades autónomas con volumen suficiente para tener página.
 

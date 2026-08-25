@@ -98,6 +98,16 @@ export function formatPercent(
 export function formatDate(
   date: string | Date | null | undefined,
   locale = "es-ES",
+  /**
+   * Zona en la que interpretar el instante. Por defecto, la del runtime.
+   *
+   * Importa en lo que se renderiza en servidor: ahí el runtime es UTC, así que
+   * un instante de las 00:30 en Madrid se pinta con la fecha del día anterior
+   * para un lector español. Los componentes cliente no lo necesitan —el
+   * navegador ya está en la zona del usuario— pero los Server Components de la
+   * superficie pública sí, y su público es de un solo país.
+   */
+  timeZone?: string,
 ): string {
   if (!date) return EMPTY;
   let d: Date;
@@ -117,8 +127,18 @@ export function formatDate(
     year: "numeric",
     month: "short",
     day: "numeric",
+    ...(timeZone ? { timeZone } : {}),
   });
 }
+
+/**
+ * Zona horaria del dominio: la contratación pública española.
+ *
+ * Se pasa explícitamente en lo que se renderiza en servidor. Sin ella el
+ * runtime de Next (UTC) decide la fecha, y en la franja de horas nocturnas eso
+ * significa publicar el día anterior al que el visitante tiene en el reloj.
+ */
+export const ZONA_ES = "Europe/Madrid";
 
 /**
  * Fecha + hora ("12 ago 2026, 14:30").

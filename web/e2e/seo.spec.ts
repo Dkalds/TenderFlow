@@ -120,17 +120,38 @@ test.describe("Superficie pública sin sesión", () => {
     expect(res.status()).toBe(200);
   });
 
-  test("el CTA de acceso tiene un destino real", async ({ page }) => {
+  test("todos los CTA de acceso llevan al formulario", async ({ page }) => {
     // El acceso es por invitación, así que el CTA principal necesita un
     // destino que funcione siempre. Sus dos versiones anteriores no lo eran:
     // un `mailto:` no hace nada en un escritorio con webmail y dependía de una
     // variable de entorno, y sin ella caía a /login, donde el alta responde
     // 403. Ahora lleva al formulario de la propia página, que persiste la
     // petición en la API.
+    //
+    // Son tres —header, hero e intermedio— y se comprueban todos: el valor de
+    // repartirlos es que ninguno sea el que se quedó apuntando al sitio viejo.
     await page.goto("/");
 
-    const href = await page.getByRole("link", { name: "Solicita acceso" }).first().getAttribute("href");
-    expect(href).toBe("/#solicitar-acceso");
+    const ctas = page.getByRole("link", { name: "Solicita acceso" });
+
+    expect(await ctas.count()).toBeGreaterThanOrEqual(3);
+    for (const href of await ctas.evaluateAll((as) => as.map((a) => a.getAttribute("href")))) {
+      expect(href).toBe("/#solicitar-acceso");
+    }
+  });
+
+  test("el header ofrece pedir acceso, no solo iniciar sesión", async ({ page }) => {
+    // El header es el CTA más persistente del sitio y llevaba a /login, que
+    // para quien llega sin cuenta es un muro: el alta responde 403 y el login
+    // con Google es fail-closed sin allowlist. En móvil, donde la nav de
+    // secciones está oculta, era además lo único accionable de la cabecera.
+    await page.goto("/");
+
+    const header = page.locator("header");
+
+    await expect(header.getByRole("link", { name: "Solicita acceso" })).toBeVisible();
+    // Iniciar sesión sigue estando: el cambio es de jerarquía, no de supresión.
+    await expect(header.getByRole("link", { name: "Iniciar sesión" })).toBeVisible();
   });
 
   test("el formulario de solicitud existe y envía a la API pública", async ({ page }) => {
@@ -146,6 +167,48 @@ test.describe("Superficie pública sin sesión", () => {
     // Sin consentimiento explícito no hay base para guardar el dato, así que
     // la casilla es obligatoria también en el navegador.
     await expect(formulario.locator('input[name="consentimiento"]')).toHaveAttribute("required", "");
+    // Un `<form>` no es enfocable, así que sin esto el salto de fragmento
+    // movía el scroll pero no el foco: quien pulsaba el CTA con teclado
+    // volvía al hero al tabular. Ver el módulo del componente.
+    await expect(formulario).toHaveAttribute("tabindex", "-1");
+  });
+
+  test("enviar el formulario lleva a la página de gracias", async ({ page }) => {
+    // El único endpoint público de escritura no tenía ni un test que lo
+    // ejercitara de punta a punta: se comprobaba el `action` del `<form>`, no
+    // que enviarlo hiciera algo. Un 303 mal formado, un rewrite roto o un
+    // rechazo por origen dejan el embudo muerto sin que nada falle.
+    await page.goto("/#solicitar-acceso");
+
+    const formulario = page.locator("form#solicitar-acceso");
+    await formulario.locator('input[name="email"]').fill("e2e@tenderflow.example");
+    await formulario.locator('input[name="empresa"]').fill("E2E");
+    await formulario.locator('input[name="consentimiento"]').check();
+    await formulario.locator('button[type="submit"]').click();
+
+    await page.waitForURL(/\/solicitud-recibida/);
+    await expect(page.locator("h1")).toHaveText("Solicitud recibida");
+    // Un acuse de recibo no es contenido: Google no tiene nada que indexar.
+    const robots = await page.locator('meta[name="robots"]').getAttribute("content");
+    expect(robots ?? "").toContain("noindex");
+  });
+
+  test("un envío sin consentimiento dice qué falta, no un error genérico", async ({ page }) => {
+    // El endpoint sabe cuál de las dos comprobaciones falló; hasta ahora las
+    // dos colapsaban en el mismo `?estado=error` y la página tenía que decir
+    // "revisa el email y la casilla". Quien no sabe en qué se equivocó, y
+    // encima ha perdido lo que escribió, no reescribe el formulario.
+    //
+    // El envío se hace por API y no por UI porque el `required` del navegador
+    // impide llegar al servidor sin marcar la casilla — que es justo la
+    // primera línea de defensa, y por eso también se verifica arriba.
+    const respuesta = await page.request.post("/api/v1/publico/solicitudes-acceso", {
+      form: { email: "sin-consentimiento@tenderflow.example" },
+      maxRedirects: 0,
+    });
+
+    expect(respuesta.status()).toBe(303);
+    expect(respuesta.headers()["location"]).toContain("estado=consentimiento");
   });
 
   test("la portada enlaza a la superficie de datos", async ({ page }) => {

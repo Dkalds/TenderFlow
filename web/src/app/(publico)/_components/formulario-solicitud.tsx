@@ -29,6 +29,17 @@ import { CONTENIDO } from "../_content/landing";
  * la vista en vez de con `display:none`, que algunos bots detectan. El servidor
  * responde el mismo 303 de éxito si viene relleno, sin guardar nada.
  *
+ * `tabIndex={-1}` en el `<form>` no es decorativo: es lo que hace que el CTA
+ * funcione con teclado. Un salto de fragmento mueve el scroll **y** el foco,
+ * pero solo si el destino es enfocable, y un `<form>` no lo es por defecto —
+ * quien pulsaba "Solicita acceso" veía bajar la página y, al tabular, volvía al
+ * hero, seis pantallas por encima de lo que estaba mirando. Con `-1` el
+ * elemento es enfocable programáticamente sin entrar en el orden de tabulación.
+ * El `focus:outline-none` que lo acompaña es por lo mismo: este foco es
+ * consecuencia del salto y no navegación del usuario, así que un anillo
+ * alrededor del formulario entero se leería como un error. Los controles de
+ * dentro conservan el suyo.
+ *
  * `Input`/`Textarea` son los primitivos del sistema de diseño y no llevan
  * `"use client"`, así que el formulario sigue siendo servidor puro. La casilla
  * y el botón se quedan nativos a propósito: el `Checkbox` y el `Button` de
@@ -42,7 +53,8 @@ export function FormularioSolicitud() {
       id={ANCLA_SOLICITUD}
       method="post"
       action="/api/v1/publico/solicitudes-acceso"
-      className="border-border/70 bg-card mx-auto mt-10 max-w-xl scroll-mt-24 rounded-xl border p-6 text-left shadow-sm"
+      tabIndex={-1}
+      className="border-border/70 bg-card mx-auto mt-10 max-w-xl scroll-mt-24 rounded-xl border p-6 text-left shadow-sm focus:outline-none"
     >
       <input type="hidden" name="origen" value="landing" />
       <p aria-hidden="true" className="absolute left-[-9999px] h-px w-px overflow-hidden">

@@ -2482,8 +2482,13 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Número de URLs publicables
-         * @description Lo consume ``generateSitemaps`` de Next para saber cuántos ficheros crear.
+         * Tamaño y frescura del corpus publicable
+         * @description Lo consumen ``generateSitemaps`` de Next y la franja de cifras de la landing.
+         *
+         *     Las dos consultas van en el mismo endpoint —y no en uno nuevo— porque son
+         *     el mismo hecho sobre el mismo corpus y comparten cacheabilidad: separarlas
+         *     duplicaría el ``WHERE`` de publicabilidad en dos rutas que tendrían que
+         *     moverse a la vez.
          */
         get: operations["resumen_sitemap_api_v1_publico_sitemap_resumen_get"];
         put?: never;
@@ -6422,9 +6427,20 @@ export interface components {
         };
         /**
          * ResumenSitemap
-         * @description Cuántas URLs publicables hay. Dimensiona la partición del sitemap.
+         * @description Tamaño y frescura del corpus publicable.
+         *
+         *     ``total`` dimensiona la partición del sitemap; ``actualizado`` es la fecha
+         *     de incorporación del expediente publicable más reciente, y lo consume la
+         *     franja de cifras de la landing.
+         *
+         *     ``actualizado`` es opcional porque un corpus vacío no tiene fecha que dar.
+         *     El consumidor tiene que tratar ese caso como "todavía no lo sé" y no
+         *     pintarlo: inventar una fecha ahí sería fabricar la prueba de frescura que
+         *     el dato existe para respaldar.
          */
         ResumenSitemap: {
+            /** Actualizado */
+            actualizado?: string | null;
             /** Total */
             total: number;
         };
