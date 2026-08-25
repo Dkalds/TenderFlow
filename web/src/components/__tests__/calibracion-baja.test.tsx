@@ -78,4 +78,48 @@ describe("CalibracionBajaBlock", () => {
       screen.getByText(/menos fiables de lo que indican/),
     ).toBeInTheDocument();
   });
+
+  it("attributes a degraded reading to the baseline when that is what is served", () => {
+    // El panel decia "Calibracion del modelo de baja" degradada mientras lo
+    // servido era el baseline y no habia ningun modelo activo que reentrenar.
+    renderWithData({
+      estado: "degradado",
+      cobertura: 0.241,
+      cobertura_nominal: 0.8,
+      mae_p50: 0.123,
+      sesgo_p50: 0.02,
+      n_evaluadas: 406,
+      regimen_servido: "baseline",
+    });
+    expect(screen.getByText(/Sirviendo: estimación histórica/)).toBeInTheDocument();
+    expect(screen.getByText(/No hay modelo activo/)).toBeInTheDocument();
+  });
+
+  it("names the trained model when the model is what is served", () => {
+    renderWithData({
+      estado: "ok",
+      cobertura: 0.82,
+      cobertura_nominal: 0.8,
+      mae_p50: 0.045,
+      sesgo_p50: 0.01,
+      n_evaluadas: 57,
+      regimen_servido: "modelo",
+    });
+    expect(screen.getByText(/Sirviendo: modelo entrenado/)).toBeInTheDocument();
+    expect(screen.queryByText(/No hay modelo activo/)).not.toBeInTheDocument();
+  });
+
+  it("says what is being served while there is not enough data yet", () => {
+    renderWithData({
+      estado: "insuficiente",
+      cobertura: null,
+      cobertura_nominal: 0.8,
+      mae_p50: null,
+      sesgo_p50: null,
+      n_evaluadas: 12,
+      regimen_servido: "baseline",
+    });
+    expect(screen.getByText(/12 evaluadas hasta ahora/)).toBeInTheDocument();
+    expect(screen.getByText(/No hay modelo activo/)).toBeInTheDocument();
+  });
 });

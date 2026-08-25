@@ -3210,6 +3210,7 @@ export interface components {
          *     respuesta que antes de v86.
          */
         CalibracionBajaDTO: {
+            baseline?: components["schemas"]["CalibracionRegimenDTO"] | null;
             /** Cobertura */
             cobertura?: number | null;
             /**
@@ -3230,12 +3231,15 @@ export interface components {
             granularidad: "expediente" | "lote";
             /** Mae P50 */
             mae_p50?: number | null;
+            modelo?: components["schemas"]["CalibracionRegimenDTO"] | null;
             /**
              * N Evaluadas
              * @default 0
              */
             n_evaluadas: number;
             por_lote?: components["schemas"]["CalibracionPorLoteDTO"] | null;
+            /** Regimen Servido */
+            regimen_servido?: ("modelo" | "baseline") | null;
             /** Sesgo P50 */
             sesgo_p50?: number | null;
         };
@@ -3271,6 +3275,33 @@ export interface components {
              * @default 0
              */
             n_prediccion_por_lote: number;
+            /** Sesgo P50 */
+            sesgo_p50?: number | null;
+        };
+        /**
+         * CalibracionRegimenDTO
+         * @description Calibración de uno de los dos regímenes de serving por separado.
+         *
+         *     Existe porque la cifra agregada no distingue "el modelo activo se degradó"
+         *     de "no hay modelo y el baseline nunca prometió esta cobertura", y son dos
+         *     acciones distintas: reentrenar frente a activar. ``estado="insuficiente"``
+         *     es lo normal en el régimen que no se está sirviendo.
+         */
+        CalibracionRegimenDTO: {
+            /** Cobertura */
+            cobertura?: number | null;
+            /**
+             * Estado
+             * @enum {string}
+             */
+            estado: "ok" | "degradado" | "insuficiente";
+            /** Mae P50 */
+            mae_p50?: number | null;
+            /**
+             * N Evaluadas
+             * @default 0
+             */
+            n_evaluadas: number;
             /** Sesgo P50 */
             sesgo_p50?: number | null;
         };

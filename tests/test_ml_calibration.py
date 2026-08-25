@@ -18,8 +18,14 @@ def db(tmp_db):
     return db_mod
 
 
-def _sembrar_par(c, lic_id, importe, baja_realizada, p10, p50, p90):
-    """Inserta licitación + adjudicación (baja real) + predicción servida."""
+def _sembrar_par(
+    c, lic_id, importe, baja_realizada, p10, p50, p90, model_version=1, computed_at=None
+):
+    """Inserta licitación + adjudicación (baja real) + predicción servida.
+
+    ``model_version=None`` marca la fila como servida por el **baseline**, que
+    es como ``services.ml.scoring`` las materializa sin modelo activo.
+    """
     c.execute(
         "INSERT INTO licitaciones (id_externo, titulo, organo_contratacion, cpv, ccaa, "
         " importe, tipo_contrato, fuente, fecha_publicacion, fecha_extraccion) "
@@ -35,8 +41,8 @@ def _sembrar_par(c, lic_id, importe, baja_realizada, p10, p50, p90):
     )
     c.execute(
         "INSERT INTO predicciones_baja (licitacion_id, p10, p50, p90, model_version, "
-        " computed_at) VALUES (%s, %s, %s, %s, 1, CURRENT_TIMESTAMP)",
-        (lic_id, p10, p50, p90),
+        " computed_at) VALUES (%s, %s, %s, %s, %s, COALESCE(%s, CURRENT_TIMESTAMP))",
+        (lic_id, p10, p50, p90, model_version, computed_at),
     )
 
 
@@ -201,3 +207,223 @@ def test_dto_error_mapea_a_insuficiente(db, monkeypatch):
     dto = calibracion_baja_dto()
     assert dto.estado == "insuficiente"
     assert dto.cobertura is None
+
+
+# ---------------------------------------------------------------------------
+# Pares del baseline (insumo de la conformalización — services.ml.baja_model)
+# ---------------------------------------------------------------------------
+
+
+def test_pares_baseline_resueltos_ignora_las_filas_del_modelo(db):
+    """Calibrar el baseline con intervalos que produjo el modelo mediría otra
+    cosa: la corrección tiene que salir de lo que el baseline sirvió."""
+    from db.repositories.ml_dataset import MlDatasetRepository
+
+    with db.connect() as c:
+        for i in range(3):
+            _sembrar_par(c, f"B{i}", 100_000.0, 0.20, 0.12, 0.20, 0.28, model_version=None)
+        for i in range(2):
+            _sembrar_par(c, f"M{i}", 100_000.0, 0.20, 0.10, 0.20, 0.30, model_version=7)
+
+    pares = MlDatasetRepository().pares_baseline_resueltos()
+
+    assert len(pares) == 3
+    assert all(p50 == pytest.approx(0.20) for p50, _ in pares)
+    assert all(realizada == pytest.approx(0.20) for _, realizada in pares)
+
+
+def test_pares_baseline_resueltos_devuelve_p50_no_el_intervalo_guardado(db):
+    """Regresión de idempotencia: el offset se mide contra el intervalo crudo.
+
+    Esta fila simula una noche posterior, con el ``p10``/``p90`` ya ensanchados
+    por una corrección previa. Si el repositorio devolviera esos extremos, el
+    score de la segunda pasada saldría ~0 y la anchura quedaría congelada en la
+    de la primera. Devolviendo ``p50`` —que el offset nunca toca— el intervalo
+    crudo se reconstruye igual noche tras noche.
+    """
+    from db.repositories.ml_dataset import MlDatasetRepository
+
+    with db.connect() as c:
+        # Crudo seria [0.12, 0.28]; lo guardado ya viene ensanchado.
+        _sembrar_par(c, "B0", 100_000.0, 0.40, 0.00, 0.20, 0.55, model_version=None)
+
+    pares = MlDatasetRepository().pares_baseline_resueltos()
+
+    assert pares == [(pytest.approx(0.20), pytest.approx(0.40))]
+
+
+# ---------------------------------------------------------------------------
+# Segmentación por régimen de serving (modelo vs baseline)
+# ---------------------------------------------------------------------------
+
+
+def _sembrar_dos_regimenes(c, cuando_modelo="2026-02-01", cuando_baseline="2026-05-01"):
+    """35 pares del modelo, todos cubiertos, y 35 del baseline, ninguno.
+
+    La mezcla da justo 50% de cobertura: un número que no describe ni al modelo
+    (perfecto) ni al baseline (nulo), que es la razón de ser del desglose.
+    """
+    for i in range(35):
+        _sembrar_par(
+            c,
+            f"MOD{i}",
+            100_000.0,
+            0.20,
+            0.10,
+            0.20,
+            0.30,
+            model_version=3,
+            computed_at=cuando_modelo,
+        )
+    for i in range(35):
+        _sembrar_par(
+            c,
+            f"BAS{i}",
+            100_000.0,
+            0.20,
+            0.30,
+            0.35,
+            0.40,
+            model_version=None,
+            computed_at=cuando_baseline,
+        )
+
+
+def test_calibracion_desglosa_los_dos_regimenes(db):
+    with db.connect() as c:
+        _sembrar_dos_regimenes(c)
+
+    res = comprobar_calibracion_baja()
+
+    assert res["n"] == 70
+    assert res["cobertura"] == pytest.approx(0.50), "el agregado sigue siendo el agregado"
+    assert res["por_regimen"]["modelo"]["n"] == 35
+    assert res["por_regimen"]["modelo"]["cobertura"] == pytest.approx(1.0)
+    assert res["por_regimen"]["baseline"]["n"] == 35
+    assert res["por_regimen"]["baseline"]["cobertura"] == pytest.approx(0.0)
+
+
+def test_severidad_se_atribuye_al_baseline_cuando_es_lo_servido(db):
+    """El caso que motivó esto: el panel decía "el modelo está degradado"
+    mientras lo servido era el baseline y no había modelo activo."""
+    with db.connect() as c:
+        # El baseline es lo más reciente => es lo que se está sirviendo.
+        _sembrar_dos_regimenes(c, cuando_modelo="2026-02-01", cuando_baseline="2026-05-01")
+
+    res = comprobar_calibracion_baja()
+
+    assert res["regimen_servido"] == "baseline"
+    assert res["severidad_sobre"] == "baseline"
+    # Sobre la mezcla (50%) saldría "warn"; sobre lo que de verdad se sirve, crit.
+    assert res["status"] == "crit"
+
+
+def test_severidad_no_arrastra_al_modelo_recien_activado(db):
+    """El fallo simétrico: una tanda vieja del baseline no debe teñir de rojo
+    un modelo recién activado que está bien calibrado."""
+    with db.connect() as c:
+        _sembrar_dos_regimenes(c, cuando_modelo="2026-05-01", cuando_baseline="2026-02-01")
+
+    res = comprobar_calibracion_baja()
+
+    assert res["regimen_servido"] == "modelo"
+    assert res["severidad_sobre"] == "modelo"
+    assert res["status"] == "ok", "la mezcla habría alertado; el modelo servido está bien"
+    assert res["cobertura"] == pytest.approx(0.50), "el agregado no se maquilla"
+
+
+def test_severidad_cae_al_total_sin_pares_propios_del_regimen(db):
+    """Con menos de _MIN_EVALUADAS pares propios, la cifra del régimen es ruido
+    y se juzga el total: describe algo que sí se sirvió."""
+    with db.connect() as c:
+        for i in range(40):
+            _sembrar_par(
+                c,
+                f"MOD{i}",
+                100_000.0,
+                0.20,
+                0.30,
+                0.35,
+                0.40,
+                model_version=3,
+                computed_at="2026-02-01",
+            )
+        for i in range(5):  # baseline servido hoy, pero sin muestra propia
+            _sembrar_par(
+                c,
+                f"BAS{i}",
+                100_000.0,
+                0.20,
+                0.10,
+                0.20,
+                0.30,
+                model_version=None,
+                computed_at="2026-05-01",
+            )
+
+    res = comprobar_calibracion_baja()
+
+    assert res["regimen_servido"] == "baseline"
+    assert res["severidad_sobre"] == "total"
+    assert res["status"] == "crit"
+
+
+def test_regimen_servido_ignora_las_pasadas_viejas(db):
+    """Lo que se sirve hoy es la última pasada de scoring, no la mayoría
+    histórica de la tabla."""
+    from db.repositories.ml_dataset import MlDatasetRepository
+
+    with db.connect() as c:
+        for i in range(20):
+            _sembrar_par(
+                c,
+                f"V{i}",
+                100_000.0,
+                0.20,
+                0.10,
+                0.20,
+                0.30,
+                model_version=3,
+                computed_at="2026-01-01",
+            )
+        _sembrar_par(
+            c,
+            "N0",
+            100_000.0,
+            0.20,
+            0.10,
+            0.20,
+            0.30,
+            model_version=None,
+            computed_at="2026-06-01",
+        )
+
+    assert MlDatasetRepository().regimen_servido() == "baseline"
+
+
+def test_dto_expone_el_regimen_servido_y_el_desglose(db):
+    with db.connect() as c:
+        _sembrar_dos_regimenes(c)
+
+    dto = calibracion_baja_dto()
+
+    assert dto.regimen_servido == "baseline"
+    assert dto.baseline is not None
+    assert dto.baseline.estado == "degradado"
+    assert dto.baseline.n_evaluadas == 35
+    assert dto.modelo is not None
+    assert dto.modelo.estado == "ok"
+
+
+def test_dto_sin_datos_no_inventa_desglose(db):
+    """El camino ``sin_datos`` no desglosa: exponer un régimen vacío como si se
+    hubiera medido sería peor que decir que no hay bloque."""
+    with db.connect() as c:
+        for i in range(5):
+            _sembrar_par(c, f"L{i}", 100_000.0, 0.20, 0.10, 0.20, 0.30)
+
+    dto = calibracion_baja_dto()
+
+    assert dto.estado == "insuficiente"
+    assert dto.modelo is None and dto.baseline is None
+    assert dto.regimen_servido == "modelo"

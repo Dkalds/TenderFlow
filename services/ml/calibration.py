@@ -18,6 +18,21 @@ El SQL vive en ``db.repositories.ml_dataset`` (ADR-022) y comparte la regla de
 denominador con el target de entrenamiento: cobertura y MAE se miden sobre la
 misma magnitud que el modelo aprende.
 
+Dos regímenes de serving, no uno
+--------------------------------
+``predicciones_baja`` mezcla filas que sirvió el **modelo** (``model_version``
+no nulo) con las que sirvió el **baseline** (nulo, cuando no hay versión activa
+o el artefacto no se pudo resolver). Cada uno conformaliza su intervalo por su
+cuenta, así que un promedio conjunto no describe a ninguno: depende de en qué
+proporción se sirvió cada uno. Peor, atribuye al modelo lo que hizo el baseline
+—una alerta que manda a reentrenar a quien no tiene modelo activo—.
+
+Por eso el resultado trae ``por_regimen`` y la severidad se decide sobre el
+régimen que ``regimen_servido()`` dice que está en producción hoy
+(:func:`_regimen_a_juzgar`). Los campos de primer nivel siguen siendo el
+agregado: es lo que el usuario tiene servido, venga de donde venga, y es lo que
+mantiene comparable :func:`comparar_mae_p50` entre granularidades.
+
 Dos granularidades, un solo default
 -----------------------------------
 Desde v86 el monitor sabe medir a dos granularidades: por **expediente** (lo
@@ -58,6 +73,50 @@ Granularidad = Literal["expediente", "lote"]
 # medida sobre datos reales.
 GRANULARIDAD_SERVIDA: Granularidad = "expediente"
 
+# Cómo se nombra en una alerta el régimen al que se atribuye la degradación.
+# La redacción importa: "el modelo de baja degradado" mandaba a reentrenar a
+# quien en realidad no tenía ningún modelo activo que reentrenar.
+_ETIQUETA_REGIMEN = {
+    "modelo": "el modelo de baja",
+    "baseline": "el baseline histórico de baja (no hay modelo activo)",
+    "total": "el intervalo de baja servido",
+}
+
+
+def _redondear(bloque: dict[str, Any]) -> dict[str, Any]:
+    """Redondea un bloque de métricas del repositorio conservando los ``None``.
+
+    ``None`` y ``0.0`` no son lo mismo aquí: el primero es "este régimen no ha
+    servido ningún par evaluable", el segundo sería "cubre el 0%".
+    """
+    return {
+        clave: (round(float(valor), 4) if isinstance(valor, float) else valor)
+        for clave, valor in bloque.items()
+    }
+
+
+def _regimen_a_juzgar(
+    regimen: str | None,
+    por_regimen: dict[str, dict[str, Any]],
+    cobertura_total: float,
+) -> tuple[str, float]:
+    """Sobre qué cifra se decide la severidad, y cuál es esa cifra.
+
+    La degradación que importa es la del régimen que se está sirviendo **ahora**.
+    Juzgar la mezcla histórica tiene dos fallos simétricos: una tanda vieja de
+    predicciones del baseline arrastra a un modelo recién activado que está
+    bien, y —lo que de verdad ocurrió— una degradación del baseline se anuncia
+    como "el modelo está descalibrado" cuando no hay modelo ninguno.
+
+    Cae al total cuando el régimen servido todavía no reúne ``_MIN_EVALUADAS``
+    pares propios: con menos, su cobertura es ruido, y el total al menos
+    describe algo que se sirvió de verdad.
+    """
+    bloque = por_regimen.get(regimen or "", {})
+    if bloque.get("n", 0) >= _MIN_EVALUADAS and bloque.get("cobertura") is not None:
+        return regimen or "total", float(bloque["cobertura"])
+    return "total", cobertura_total
+
 
 def comprobar_calibracion_baja(granularidad: Granularidad = GRANULARIDAD_SERVIDA) -> dict[str, Any]:
     """Cobertura empírica del intervalo p10-p90 vs bajas realizadas.
@@ -87,21 +146,40 @@ def comprobar_calibracion_baja(granularidad: Granularidad = GRANULARIDAD_SERVIDA
             if granularidad == "expediente"
             else repo.calibracion_baja_por_lote()
         )
+        # Se consulta también sin datos suficientes: "aún no hay señal, y lo que
+        # se está sirviendo mientras tanto es el baseline" es más útil que un
+        # "sin_datos" pelado.
+        regimen = repo.regimen_servido()
 
         n = int(medido["n"])
         if n < _MIN_EVALUADAS or medido["cobertura"] is None:
             log.info(
-                "ml_calibracion_skip", reason="pocas_evaluadas", n=n, granularidad=granularidad
+                "ml_calibracion_skip",
+                reason="pocas_evaluadas",
+                n=n,
+                granularidad=granularidad,
+                regimen_servido=regimen,
             )
-            return {"status": "sin_datos", "n": n, "granularidad": granularidad}
+            return {
+                "status": "sin_datos",
+                "n": n,
+                "granularidad": granularidad,
+                "regimen_servido": regimen,
+            }
 
         cobertura = round(float(medido["cobertura"]), 4)
         mae = round(float(medido["mae"] or 0.0), 4)
         sesgo = round(float(medido["sesgo"] or 0.0), 4)
 
-        if cobertura < _COBERTURA_CRIT:
+        por_regimen = {
+            nombre: _redondear(bloque)
+            for nombre, bloque in (medido.get("por_regimen") or {}).items()
+        }
+        juzgado, cobertura_juzgada = _regimen_a_juzgar(regimen, por_regimen, cobertura)
+
+        if cobertura_juzgada < _COBERTURA_CRIT:
             severity = "crit"
-        elif cobertura < _COBERTURA_WARN:
+        elif cobertura_juzgada < _COBERTURA_WARN:
             severity = "warn"
         else:
             severity = "ok"
@@ -114,6 +192,9 @@ def comprobar_calibracion_baja(granularidad: Granularidad = GRANULARIDAD_SERVIDA
             "mae_p50": mae,
             "sesgo_p50": sesgo,
             "granularidad": granularidad,
+            "regimen_servido": regimen,
+            "severidad_sobre": juzgado,
+            "por_regimen": por_regimen,
         }
         if granularidad == "lote":
             resultado["n_prediccion_por_lote"] = int(medido.get("n_prediccion_por_lote") or 0)
@@ -128,9 +209,9 @@ def comprobar_calibracion_baja(granularidad: Granularidad = GRANULARIDAD_SERVIDA
 
                 notify(
                     "warn" if severity == "warn" else "error",
-                    f"Calibración del modelo de baja degradada "
-                    f"(cobertura {cobertura:.0%} vs {_COBERTURA_NOMINAL:.0%} nominal)",
-                    f"n={n} mae_p50={mae} sesgo_p50={sesgo}",
+                    f"Calibración degradada: {_ETIQUETA_REGIMEN[juzgado]} cubre "
+                    f"{cobertura_juzgada:.0%} vs {_COBERTURA_NOMINAL:.0%} nominal",
+                    f"n={n} mae_p50={mae} sesgo_p50={sesgo} regimen_servido={regimen}",
                 )
             except Exception:  # canal de alertas opcional
                 log.debug("ml_calibracion_alert_channel_unavailable")
@@ -223,6 +304,22 @@ def _estado_publico(status: object) -> _EstadoPublico:
     return "insuficiente"
 
 
+class CalibracionRegimenDTO(BaseModel):
+    """Calibración de uno de los dos regímenes de serving por separado.
+
+    Existe porque la cifra agregada no distingue "el modelo activo se degradó"
+    de "no hay modelo y el baseline nunca prometió esta cobertura", y son dos
+    acciones distintas: reentrenar frente a activar. ``estado="insuficiente"``
+    es lo normal en el régimen que no se está sirviendo.
+    """
+
+    estado: _EstadoPublico
+    cobertura: float | None = None
+    mae_p50: float | None = None
+    sesgo_p50: float | None = None
+    n_evaluadas: int = 0
+
+
 class CalibracionPorLoteDTO(BaseModel):
     """Calibración medida sobre lotes en vez de sobre expedientes.
 
@@ -264,7 +361,42 @@ class CalibracionBajaDTO(BaseModel):
     sesgo_p50: float | None = None
     n_evaluadas: int = 0
     granularidad: Granularidad = GRANULARIDAD_SERVIDA
+    # Qué está produciendo hoy los intervalos. Sin esto la UI no puede decir si
+    # "degradado" significa un modelo que se torció o un baseline que nunca
+    # tuvo garantía de cobertura, que es lo que el usuario necesita saber para
+    # decidir cuánto fiarse del rango que tiene delante.
+    regimen_servido: Literal["modelo", "baseline"] | None = None
+    modelo: CalibracionRegimenDTO | None = None
+    baseline: CalibracionRegimenDTO | None = None
     por_lote: CalibracionPorLoteDTO | None = None
+
+
+def _regimen_dto(bloque: dict[str, Any] | None) -> CalibracionRegimenDTO | None:
+    """Adapta un bloque de ``por_regimen`` al contrato público.
+
+    ``None`` cuando el régimen no aparece en la medición (p. ej. el resultado
+    llegó por el camino ``sin_datos``/``error``, que no lo desglosa). Un régimen
+    que sí aparece pero sin pares suficientes se expone como ``insuficiente``:
+    es información, no ausencia de ella.
+    """
+    if bloque is None:
+        return None
+    n_evaluadas = int(bloque.get("n") or 0)
+    cobertura = bloque.get("cobertura")
+    estado: _EstadoPublico
+    if n_evaluadas < _MIN_EVALUADAS or cobertura is None:
+        estado = "insuficiente"
+    elif cobertura < _COBERTURA_WARN:
+        estado = "degradado"
+    else:
+        estado = "ok"
+    return CalibracionRegimenDTO(
+        estado=estado,
+        cobertura=cobertura,
+        mae_p50=bloque.get("mae"),
+        sesgo_p50=bloque.get("sesgo"),
+        n_evaluadas=n_evaluadas,
+    )
 
 
 def calibracion_baja_dto(incluir_lote: bool = False) -> CalibracionBajaDTO:
@@ -290,11 +422,16 @@ def calibracion_baja_dto(incluir_lote: bool = False) -> CalibracionBajaDTO:
             n_prediccion_por_lote=int(crudo_lote.get("n_prediccion_por_lote", 0)),
         )
 
+    por_regimen = raw.get("por_regimen") or {}
+    regimen = raw.get("regimen_servido")
     return CalibracionBajaDTO(
         estado=_estado_publico(raw.get("status")),
         cobertura=raw.get("cobertura"),
         mae_p50=raw.get("mae_p50"),
         sesgo_p50=raw.get("sesgo_p50"),
         n_evaluadas=int(raw.get("n", 0)),
+        regimen_servido=regimen if regimen in ("modelo", "baseline") else None,
+        modelo=_regimen_dto(por_regimen.get("modelo")),
+        baseline=_regimen_dto(por_regimen.get("baseline")),
         por_lote=por_lote,
     )

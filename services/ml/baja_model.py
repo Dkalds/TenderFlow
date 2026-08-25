@@ -34,6 +34,13 @@ Los intervalos se **conformalizan** (split-CQR) sobre un bloque temporal que
 el ajuste no vio: la cobertura del 80% pasa a cumplirse por construcción en vez
 de depender de que los tres cuantiles salgan bien calibrados por su cuenta.
 
+El **baseline** (:func:`predecir_baseline`, lo que se sirve mientras no haya
+versión activa) se conformaliza igual, pero contra los pares
+predicción↔realidad que él mismo generó en producción — ver
+:func:`offset_conformal_baseline`. Su ±40% relativo original no tenía ninguna
+garantía de cobertura pese a servirse como "p10-p90"; medido sobre 406 pares
+cubría el 24%, no el 80%.
+
 Registro en ``model_versions`` (name="baja_model") con métricas completas;
 activación manual vía ``db.model_registry.activate_version`` o automática si
 ``ML_PRED_AUTO_ACTIVATE=true`` y se cumplen los criterios.
@@ -74,6 +81,15 @@ _MODEL_PATH = Path(__file__).parents[2] / "data" / "models" / "baja_model.pkl"
 # Tope físico del target: una baja real vive en [0, 1); el clip evita que
 # outliers residuales empujen predicciones absurdas.
 _BAJA_MAX = 0.95
+# Semiancho relativo del intervalo del baseline antes de conformalizar (la
+# heurística original: ±40% de la mediana). No es una cobertura, es una
+# *forma*: lo que la convierte en un intervalo del 80% es el offset conformal.
+_BASELINE_ANCHO_RELATIVO = 0.4
+# Fracción de bajas realizadas negativas a partir de la cual el offset simétrico
+# deja de ser inocuo: por encima, la cobertura se está comprando estirando el
+# extremo superior porque el inferior no puede bajar de 0. Ver
+# :func:`offset_conformal_baseline`.
+_FRACCION_NEGATIVA_TOLERADA = 0.05
 # Criterios de activación (acceptance del RFC).
 MEJORA_MINIMA_RELATIVA = 0.10
 COBERTURA_OBJETIVO = (0.75, 0.85)
@@ -536,10 +552,21 @@ def _offset_conformal(
     """
     import numpy as np
 
-    n = len(y)
-    if n < _MIN_VALID_SAMPLES:
+    if len(y) < _MIN_VALID_SAMPLES:
         return 0.0
-    scores = np.maximum(p10 - y, y - p90)
+    return _cuantil_conformal(np.maximum(p10 - y, y - p90), cobertura)
+
+
+def _cuantil_conformal(scores: npt.NDArray[np.float64], cobertura: float) -> float:
+    """Cuantil ``⌈(n+1)·cobertura⌉/n`` de los scores de conformidad.
+
+    Extraído para que el modelo y el baseline usen literalmente la misma regla:
+    lo que cambia entre los dos es cómo se construye el score, no el nivel al
+    que se corta.
+    """
+    import numpy as np
+
+    n = len(scores)
     nivel = min(1.0, math.ceil((n + 1) * cobertura) / n)
     return float(np.quantile(scores, nivel, method="higher"))
 
@@ -777,19 +804,129 @@ def entrenar(
     }
 
 
-def predecir_baseline(filas: list[FilaDataset], media_global: float = 0.12) -> list[Prediccion]:
+def intervalo_baseline(p50: float, offset: float = 0.0) -> tuple[float, float]:
+    """Intervalo del baseline alrededor de ``p50``, con corrección conformal.
+
+    Punto único donde vive la regla del ±40%: la usan el serving
+    (:func:`predecir_baseline`) y la calibración
+    (:func:`offset_conformal_baseline`). Medir el score de conformidad contra
+    una anchura distinta de la que se sirve daría un offset que no corrige lo
+    que se está sirviendo, así que las dos entran por aquí.
+
+    ``offset`` ensancha ambos extremos (o los estrecha, si es negativo). La
+    mediana no se toca — es exactamente lo que permite reconstruir el intervalo
+    *crudo* de una fila ya servida a partir de su ``p50`` almacenado, y por
+    tanto recalcular el offset cada noche sin acumularlo sobre sí mismo. El
+    ``min``/``max`` final mantiene ``p10 <= p50 <= p90`` incluso con un offset
+    lo bastante negativo como para cruzar los extremos.
+    """
+    ancho = p50 * _BASELINE_ANCHO_RELATIVO + offset
+    p10 = min(max(p50 - ancho, 0.0), p50)
+    p90 = max(min(p50 + ancho, _BAJA_MAX), p50)
+    return p10, p90
+
+
+def offset_conformal_baseline(pares: list[tuple[float, float]]) -> float:
+    """Corrección split-conformal para que el intervalo del baseline cubra el 80%.
+
+    ``pares`` son ``(p50_servido, baja_realizada)`` ya resueltos
+    (``MlDatasetRepository.pares_baseline_resueltos``, que los mide con la misma
+    regla de denominador que el target). El score se calcula contra el intervalo
+    crudo reconstruido desde ``p50``, no contra el que se guardó: así la
+    corrección es idempotente y converge en vez de congelarse.
+
+    Misma matemática que la del modelo (:func:`_offset_conformal`): un baseline
+    que dice "p10-p90" tiene que ganarse ese nombre igual que se lo gana el
+    modelo. Devuelve ``0.0`` con menos de :data:`_MIN_VALID_SAMPLES` pares —
+    sin muestra suficiente la corrección sería ruido, y ensanchar por ruido
+    engaña tanto como no ensanchar.
+
+    Validez: split-conformal supone intercambiabilidad, y aquí los pares son
+    adjudicaciones pasadas frente a licitaciones abiertas. Es el mismo supuesto
+    —y la misma exposición al drift— que la conformalización del modelo sobre
+    un bloque temporal held-out; ``services.ml.drift`` es lo que vigila que
+    siga siendo razonable.
+    """
+    import numpy as np
+
+    if len(pares) < _MIN_VALID_SAMPLES:
+        return 0.0
+
+    crudos = [intervalo_baseline(p50) for p50, _ in pares]
+    lo = np.array([c[0] for c in crudos], dtype=np.float64)
+    hi = np.array([c[1] for c in crudos], dtype=np.float64)
+    y = np.array([realizada for _, realizada in pares], dtype=np.float64)
+
+    # Score de Romano: cuánto hay que sumar a cada extremo para meter el punto.
+    scores = np.maximum(lo - y, y - hi)
+    # ...salvo que ningún offset pueda meterlo. ``intervalo_baseline`` clipa a
+    # [0, _BAJA_MAX], mientras que la baja realizada que mide el closed-loop
+    # admite valores **negativos** (sobrecoste: se adjudica por encima del
+    # presupuesto, hasta la tolerancia de ``db.repositories.ml_dataset``). Esos
+    # pares quedan fuera por mucho que se ensanche, y contarlos como si un
+    # offset mayor fuera a capturarlos es lo que hace que el cuantil se quede
+    # corto: la cobertura servida aterrizaría por debajo de la nominal.
+    alcanzable = (y >= 0.0) & (y <= _BAJA_MAX)
+    scores = np.where(alcanzable, scores, np.inf)
+
+    offset = _cuantil_conformal(scores, _COBERTURA_NOMINAL)
+    if not math.isfinite(offset):
+        # Ni ensanchando al máximo se alcanza la nominal sin permitir p10 < 0.
+        # Se sirve entonces el offset más pequeño que captura todos los pares
+        # capturables -- la cobertura máxima alcanzable bajo este contrato, sin
+        # inflar el intervalo más allá de eso, que no compraría ni un par más.
+        # El hueco contra la nominal lo reporta el monitor de calibración, que
+        # es la lectura correcta: fingir un 80% imposible sería peor.
+        finitos = scores[np.isfinite(scores)]
+        offset = float(finitos.max()) if finitos.size else 0.0
+
+    n_bajo_cero = int((y < 0.0).sum())
+    servidos = [intervalo_baseline(p50, offset) for p50, _ in pares]
+    cubierto = (y >= np.array([lo for lo, _ in servidos])) & (
+        y <= np.array([hi for _, hi in servidos])
+    )
+
+    # Este evento es el que hace falta para decidir si ``p10`` debe poder ser
+    # negativo, y por eso se emite siempre, no solo cuando algo falla.
+    #
+    # El offset es **simétrico** (Romano et al., igual que el del modelo), pero
+    # el extremo inferior está clipado a 0 mientras que la baja realizada puede
+    # ser negativa. Cuando eso pasa, la cobertura se compra estirando solo el
+    # extremo superior: se alcanza el 80% nominal, sí, pero ``p90`` acaba muy
+    # por encima del percentil 90 real y deja de significar lo que dice. Es una
+    # degradación distinta de la que arregla este offset y no se puede resolver
+    # sin decidir si el contrato admite ``p10 < 0`` -- decisión de producto,
+    # no del monitor.
+    evento = {
+        "n": len(pares),
+        "offset": offset,
+        "cobertura_calibracion": float(cubierto.mean()),
+        "cobertura_nominal": _COBERTURA_NOMINAL,
+        "cobertura_maxima_con_p10_no_negativo": float(alcanzable.mean()),
+        "n_realizada_negativa": n_bajo_cero,
+    }
+    if n_bajo_cero / len(pares) > _FRACCION_NEGATIVA_TOLERADA:
+        log.warning("baja_baseline_conformal_asimetria_por_clip", **evento)
+    else:
+        log.info("baja_baseline_conformal", **evento)
+    return offset
+
+
+def predecir_baseline(
+    filas: list[FilaDataset], media_global: float = 0.12, offset: float = 0.0
+) -> list[Prediccion]:
     """Serving honesto cuando no hay modelo activo: la media del segmento como
-    p50 y un intervalo fijo ±40% relativo (heurística documentada)."""
+    p50 y el intervalo del ±40% relativo **conformalizado** con ``offset``.
+
+    Con ``offset=0.0`` sale la heurística original, que no tiene ninguna
+    garantía de cobertura: llamar p10/p90 a sus extremos prometía un 80% que
+    nadie había medido. ``offset`` es lo que :func:`offset_conformal_baseline`
+    calcula sobre pares ya resueltos y lo que convierte esa forma en un
+    intervalo del 80% de verdad.
+    """
     out: list[Prediccion] = []
     for fila in filas:
         p50 = min(max(_baseline(fila, media_global), 0.0), _BAJA_MAX)
-        ancho = p50 * 0.4
-        out.append(
-            Prediccion(
-                licitacion_id=fila.licitacion_id,
-                p10=max(p50 - ancho, 0.0),
-                p50=p50,
-                p90=min(p50 + ancho, _BAJA_MAX),
-            )
-        )
+        p10, p90 = intervalo_baseline(p50, offset)
+        out.append(Prediccion(licitacion_id=fila.licitacion_id, p10=p10, p50=p50, p90=p90))
     return out
