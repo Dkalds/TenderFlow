@@ -30,11 +30,46 @@ services:
       # Ruta a la CA de Supabase para verify-full (cert público). Ver db/certs/README.md.
       - key: DATABASE_SSL_ROOT_CERT
         sync: false
-      # Tamaño del pool psycopg hacia el session pooler de Supavisor. El
-      # default de config/settings.py (5) se quedaba corto: las agregaciones
-      # de analytics retenían las 5 conexiones y el resto de endpoints
-      # esperaba en cola (pool-1 connection timeout, 2026-08-01).
+      # ── Presupuesto de conexiones ────────────────────────────────────
+      # Hay DOS pools psycopg, no uno: escritura (`connect`) y lectura
+      # (`connect_read`), porque el modo solo-lectura se fija en la sesión.
+      # Cada uno abre su propia conexión de sesión contra Supavisor, así que
+      # el techo de este servicio es la SUMA de los dos, no `DB_POOL_SIZE`.
+      # (Con más precisión: `min(API_THREADPOOL_TOKENS, escritura + lectura)`,
+      # porque cada hilo síncrono sostiene como mucho una conexión. Hoy los
+      # dos términos valen 24 —el threadpool por un lado, 12+12 por otro—,
+      # así que el techo queda en 24 mires por donde mires.)
+      #
+      # Ese techo tiene que caber en el `Pool Size` del session pooler de
+      # Supabase (Project Settings → Database → Connection pooling). Si no
+      # cabe, la API se queda sin ranuras ella sola bajo carga, y cualquier
+      # otro cliente —el `alembic upgrade` de .github/workflows/migrate.yml,
+      # los jobs con APP_PROFILE=scraper— muere en el connect con
+      # `FATAL: (EMAXCONNSESSION) max clients reached in session mode`.
+      # Fue exactamente lo que pasó el 2026-08-24: pooler en 15, techo en 24.
+      #
+      # A fecha de este commit: 12 + 12 = 24, con el pooler en 30. Ese 30 se
+      # configura en el panel de Supabase, no aquí, así que este número es
+      # una nota — la verdad está en el dashboard.
+      #
+      # Al subir cualquiera de los dos valores, subir antes el pooler. El
+      # margen que queda arriba lo marca `max_connections` de la instancia
+      # (60, menos 3 reservadas para superusuario), del que los servicios de
+      # la propia plataforma (PostgREST, Storage, mgmt-api, exporter) ya
+      # consumen ~8 conexiones directas que NO pasan por el pooler.
+      #
+      # Subir de 5 a 12 vino de un incidente concreto: las agregaciones de
+      # analytics retenían las 5 conexiones del default de
+      # config/settings.py y el resto de endpoints esperaba en cola
+      # (pool-1 connection timeout, 2026-08-01).
       - key: DB_POOL_SIZE
+        value: "12"
+      # Declarado explícitamente aunque coincida con el de escritura: el
+      # default de config/settings.py es 0, que NO significa «sin pool de
+      # lectura» sino «hereda DB_POOL_SIZE» (db/connection.py, `0 or
+      # default_size`). Sin esta línea el 24 de arriba es emergente y nadie
+      # que lea este fichero lo ve venir.
+      - key: DB_READ_POOL_SIZE
         value: "12"
       # ── Redis (cache compartido + rate limiting) — OBLIGATORIO en prod ──
       # Formato: redis://[:password@]host[:port][/db]
