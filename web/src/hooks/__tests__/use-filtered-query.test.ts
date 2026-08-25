@@ -163,6 +163,56 @@ describe("useFilteredQuery", () => {
     expect(url.searchParams.get("estado")).toBe("publicada");
   });
 
+  it("merges filter params into a URL that already carries its own query string", async () => {
+    // Regresión: `/mercado?tecnologia=SAP` monta la vista de tendencias, que pide
+    // `/api/v1/analytics/trends?group_by=month`. Concatenar el filtro detrás de un
+    // segundo `?` mandaba `group_by=month?tecnologia=SAP`, que el `Literal` del
+    // endpoint rechaza con 422 y tumbaba la pantalla entera.
+    mockUseFilterParams.mockReturnValue({ tecnologia: "SAP" });
+
+    const wrapper = createWrapper();
+    const { result } = renderHook(
+      () =>
+        useFilteredQuery<unknown>(
+          ["analytics", "trends"],
+          "/api/v1/analytics/trends?group_by=month",
+        ),
+      { wrapper },
+    );
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    const calledUrl = (fetch as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
+    expect(calledUrl.split("?")).toHaveLength(2);
+
+    const url = new URL(calledUrl, "http://localhost");
+    expect(url.pathname).toBe("/api/v1/analytics/trends");
+    expect(url.searchParams.get("group_by")).toBe("month");
+    expect(url.searchParams.get("tecnologia")).toBe("SAP");
+  });
+
+  it("lets explicit params override a literal in the URL's own query string", async () => {
+    mockUseFilterParams.mockReturnValue({});
+
+    const wrapper = createWrapper();
+    const { result } = renderHook(
+      () =>
+        useFilteredQuery<unknown>(
+          ["analytics", "trends"],
+          "/api/v1/analytics/trends?group_by=month",
+          undefined,
+          { group_by: "day" },
+        ),
+      { wrapper },
+    );
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    const calledUrl = (fetch as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
+    const url = new URL(calledUrl, "http://localhost");
+    expect(url.searchParams.getAll("group_by")).toEqual(["day"]);
+  });
+
   // ── extraParams merging ───────────────────────────────────────────────────────
 
   it("merges extraParams with filter params, filter params take precedence", async () => {

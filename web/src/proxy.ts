@@ -169,7 +169,12 @@ export function proxy(request: NextRequest) {
 
   if (!request.cookies.get("session")) {
     const loginUrl = new URL("/login", request.url);
-    loginUrl.searchParams.set("redirect", pathname);
+    // `pathname` + `search`, no sólo el path: el ámbito de una pantalla vive en
+    // la query (`/mercado?tecnologia=SAP`), así que mandar sólo `/mercado`
+    // devolvía al usuario una pantalla distinta de la que había pedido. El
+    // destino se sanea al consumirlo (`lib/safe-redirect.ts`), que ya conserva
+    // `search` — era este extremo el que nunca la enviaba.
+    loginUrl.searchParams.set("redirect", `${pathname}${request.nextUrl.search}`);
     return withSecurityHeaders(NextResponse.redirect(loginUrl), csp);
   }
 

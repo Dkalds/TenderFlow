@@ -29,8 +29,19 @@ export function useFilteredQuery<T>(
   const filterParams = useFilterParams();
   const merged = { ...extraParams, ...filterParams };
 
-  const queryString = new URLSearchParams(merged).toString();
-  const fullUrl = queryString ? `${url}?${queryString}` : url;
+  // La ruta puede traer ya su propia query (`…/trends?group_by=month`), así que
+  // los filtros se FUSIONAN sobre ella en vez de concatenarse detrás de un
+  // segundo `?`. Concatenar producía `…/trends?group_by=month?tecnologia=SAP`,
+  // que el backend lee como `group_by="month?tecnologia=SAP"` y su
+  // `Literal["month","week","day"]` rechaza con 422: la pantalla entera se caía
+  // en cuanto el ámbito tenía un filtro (`/mercado?tecnologia=SAP`).
+  const [path, baseQuery = ""] = url.split("?");
+  const search = new URLSearchParams(baseQuery);
+  // Los params explícitos ganan a los literales de la ruta, misma precedencia
+  // que `extraParams` ← `filterParams` de la línea de arriba.
+  for (const [key, value] of Object.entries(merged)) search.set(key, value);
+  const queryString = search.toString();
+  const fullUrl = queryString ? `${path}?${queryString}` : path;
 
   return useQuery<T>({
     // La URL y los params fusionados forman parte de la key: dos endpoints (o el
