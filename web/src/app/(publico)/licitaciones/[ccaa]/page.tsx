@@ -8,6 +8,7 @@ import { migasJsonLd, serializarJsonLd } from "@/lib/jsonld";
 import { CCAA_SIN_ASIGNAR, rutaHubCcaa } from "@/lib/slug";
 import { ListadoLicitaciones } from "@/app/(publico)/_components/listado-licitaciones";
 import { Paginacion } from "@/app/(publico)/_components/paginacion";
+import { CierrePublico } from "@/app/(publico)/_components/cierre-publico";
 
 /**
  * Hub de licitaciones por comunidad autónoma.
@@ -125,6 +126,8 @@ export default async function HubCcaa({
         <ListadoLicitaciones licitaciones={licitaciones} jsonLdNombre={`Licitaciones en ${nombre}`} />
 
         <Paginacion base={rutaHubCcaa(ccaa)} paginaActual={pagina} total={total} porPagina={POR_PAGINA} />
+
+        <CierrePublico ubicacion="hub-ccaa" />
       </div>
     </>
   );

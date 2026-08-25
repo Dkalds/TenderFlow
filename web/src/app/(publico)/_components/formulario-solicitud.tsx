@@ -56,6 +56,11 @@ export function FormularioSolicitud() {
       tabIndex={-1}
       className="border-border/70 bg-card mx-auto mt-10 max-w-xl scroll-mt-24 rounded-xl border p-6 text-left shadow-sm focus:outline-none"
     >
+      {/* Superficie desde la que se envía, no CTA pulsado: los tres botones
+          llevan al mismo ancla de este mismo formulario, así que sin
+          JavaScript el navegador manda lo mismo en los tres casos. La
+          atribución por CTA vive en el evento de analytics. Ver
+          `db/solicitudes_acceso.py::crear_solicitud`. */}
       <input type="hidden" name="origen" value="landing" />
       <p aria-hidden="true" className="absolute left-[-9999px] h-px w-px overflow-hidden">
         <label>

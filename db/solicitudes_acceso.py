@@ -26,11 +26,41 @@ def crear_solicitud(
     ``consentimiento_at`` se sella aquí con la hora del servidor y no con un
     valor que venga del cliente: es la prueba de que hubo consentimiento en
     este envío, así que tiene que ser inmune a lo que mande el navegador.
+
+    **Idempotente por email mientras la solicitud siga pendiente** (v90). Sin
+    esto, cada pulsación creaba una fila: un doble clic, un reintento tras el
+    303 de error o —el caso más probable— volver a darle después de agotar el
+    rate limit llenaban de duplicados una cola que revisa una persona a mano.
+
+    Al reenviar se actualiza la fila existente en vez de crear otra, y se
+    conserva su ``id`` y su ``created_at``: lo que llega después es la misma
+    petición mejor contada, no una nueva. ``consentimiento_at`` sí se refresca,
+    porque el contenido que la fila refleja pasa a ser el del último envío y es
+    ese el que la persona consintió.
+
+    ``origen`` registra **desde qué superficie** se envió el formulario, no qué
+    CTA se pulsó. La columna nació con la intención de distinguir el CTA sin
+    depender de JavaScript, y eso no es alcanzable: los tres botones de la
+    landing apuntan al mismo ancla del mismo ``<form>``, así que el navegador
+    manda lo mismo se pulse el que se pulse. Discriminar por CTA exigiría o
+    JavaScript —lo que la columna quería evitar— o volver la página dinámica
+    para leer un query param, que costaría el ISR de la portada entera. La
+    atribución por CTA vive donde sí es barata: el evento ``solicitar_acceso``
+    de analytics, con su dimensión ``ubicacion``.
     """
     with connect() as c:
         cur = c.execute(
             "INSERT INTO solicitudes_acceso (email, empresa, mensaje, origen, consentimiento_at) "
-            "VALUES (%s, %s, %s, %s, NOW()) RETURNING id",
+            "VALUES (%s, %s, %s, %s, NOW()) "
+            # El índice de v90 es parcial y sobre una expresión, así que el
+            # arbitrador tiene que repetir las dos cosas para que Postgres lo
+            # reconozca.
+            "ON CONFLICT (lower(email)) WHERE estado = 'pendiente' DO UPDATE SET "
+            "  empresa = COALESCE(EXCLUDED.empresa, solicitudes_acceso.empresa), "
+            "  mensaje = COALESCE(EXCLUDED.mensaje, solicitudes_acceso.mensaje), "
+            "  origen = COALESCE(EXCLUDED.origen, solicitudes_acceso.origen), "
+            "  consentimiento_at = EXCLUDED.consentimiento_at "
+            "RETURNING id",
             (email, empresa, mensaje, origen),
         )
         fila = cur.fetchone()

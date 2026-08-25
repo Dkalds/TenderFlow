@@ -37,6 +37,15 @@ ahora este path como caso propio y redirige con ``ESTADO_LIMITE``; los estados
 los declara este módulo para que la página de gracias y la API no puedan
 divergir.
 
+**Avisa de lo que encola.** Una solicitud guardada y no vista no sirve de nada,
+y la concesión de acceso es manual: sin aviso, el embudo terminaba en una fila
+de Postgres que solo se descubría abriendo el panel. Se emite
+``EVENTO_SOLICITUD_ACCESO`` por el sistema de webhooks existente —con su firma
+HMAC y su allowlist anti-SSRF— y **sin el email ni el mensaje**: el aviso dice
+que hay algo que atender, no quién lo pide. Va como ``BackgroundTasks``, o sea
+después de enviar la respuesta, para que los cinco segundos de timeout por
+entrega no los espere el visitante.
+
 **Sin CSRF, a propósito.** ``require_csrf`` es una dependencia por endpoint que
 sólo aplica cuando hay cookie de sesión (``api/routes/dual_auth.py``); este POST
 es anónimo y no muta nada del usuario que lo envía. Lo que sí se comprueba es
@@ -58,12 +67,13 @@ from __future__ import annotations
 import re
 from urllib.parse import parse_qs, urlparse
 
-from fastapi import APIRouter, Request, status
+from fastapi import APIRouter, BackgroundTasks, Request, status
 from fastapi.responses import RedirectResponse
 
 from api.concurrency import run_db
 from config.settings import settings
-from db.solicitudes_acceso import crear_solicitud
+from db.solicitudes_acceso import contar_pendientes, crear_solicitud
+from db.webhooks import EVENTO_SOLICITUD_ACCESO, trigger_event
 from observability.logging import get_logger
 
 log = get_logger(__name__)
@@ -161,13 +171,48 @@ def _campo(datos: dict[str, list[str]], nombre: str) -> str:
     return valores[0] if valores else ""
 
 
+def _avisar_operador(solicitud_id: int, empresa: str | None, origen: str | None) -> None:
+    """Anuncia una solicitud nueva por webhook.
+
+    Sin esto el embudo terminaba en una fila de Postgres que nadie miraba: el
+    formulario funcionaba, la cola crecía y la concesión de acceso —que es
+    manual— dependía de que alguien se acordara de abrir el panel. Se reutiliza
+    el sistema de webhooks que ya existe, con su firma HMAC y su allowlist
+    anti-SSRF, en vez de añadir un canal nuevo.
+
+    **No viaja ni el email ni el mensaje.** Un webhook sale del sistema hacia un
+    endpoint configurado por el operador, y el aviso no necesita el dato
+    personal para cumplir su función: dice que hay algo que atender y cuántas
+    esperan; la dirección se lee en el panel, que ya exige ser admin. `empresa`
+    sí va, porque es dato de negocio y es lo que hace accionable el aviso.
+
+    Corre como ``BackgroundTasks``, o sea **después** de enviar la respuesta:
+    la entrega tiene cinco segundos de timeout por webhook y el visitante no
+    tiene por qué esperarlos. Y no propaga: un webhook mal configurado no puede
+    convertirse en un fallo de un formulario público.
+    """
+    try:
+        entregados = trigger_event(
+            EVENTO_SOLICITUD_ACCESO,
+            {
+                "id": solicitud_id,
+                "empresa": empresa,
+                "origen": origen,
+                "pendientes": contar_pendientes(),
+            },
+        )
+        log.info("solicitud_acceso_aviso", solicitud_id=solicitud_id, entregados=entregados)
+    except Exception:
+        log.exception("solicitud_acceso_aviso_fallido", solicitud_id=solicitud_id)
+
+
 @router.post(
     "/publico/solicitudes-acceso",
     status_code=status.HTTP_303_SEE_OTHER,
     summary="Registra una solicitud de acceso enviada desde la web pública",
     response_class=RedirectResponse,
 )
-async def solicitar_acceso(request: Request) -> RedirectResponse:
+async def solicitar_acceso(request: Request, tareas: BackgroundTasks) -> RedirectResponse:
     if not request.headers.get("content-type", "").startswith(_TIPO_FORMULARIO):
         return RedirectResponse(_DESTINO_ERROR, status_code=status.HTTP_303_SEE_OTHER)
 
@@ -198,13 +243,16 @@ async def solicitar_acceso(request: Request) -> RedirectResponse:
             destino_error(ESTADO_CONSENTIMIENTO), status_code=status.HTTP_303_SEE_OTHER
         )
 
+    empresa = _limpiar(_campo(datos, "empresa"), _MAX_EMPRESA)
+    origen = _limpiar(_campo(datos, "origen"), 40)
+
     try:
-        await run_db(
+        solicitud_id = await run_db(
             crear_solicitud,
             email=correo,
-            empresa=_limpiar(_campo(datos, "empresa"), _MAX_EMPRESA),
+            empresa=empresa,
             mensaje=_limpiar(_campo(datos, "mensaje"), _MAX_MENSAJE),
-            origen=_limpiar(_campo(datos, "origen"), 40),
+            origen=origen,
         )
     except Exception:
         # Nunca un 5xx desde una página pública: se registra para el operador y
@@ -212,6 +260,8 @@ async def solicitar_acceso(request: Request) -> RedirectResponse:
         # formado. El fuzzer del contrato mantiene KNOWN_5XX a cero.
         log.exception("solicitud_acceso_error")
         return RedirectResponse(_DESTINO_ERROR, status_code=status.HTTP_303_SEE_OTHER)
+
+    tareas.add_task(_avisar_operador, solicitud_id, empresa, origen)
 
     log.info("solicitud_acceso_registrada")
     return RedirectResponse(_DESTINO_OK, status_code=status.HTTP_303_SEE_OTHER)

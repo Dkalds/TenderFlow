@@ -88,6 +88,11 @@ export interface ContenidoLanding {
    *  convencido a mitad de página no tenía dónde actuar. */
   ctaIntermedioTitulo: string;
   ctaIntermedioTexto: string;
+  /** Cierre de los hubs públicos, que son las páginas por las que se entra
+   *  desde un buscador. Vive aquí, con el resto del copy de la superficie
+   *  pública, aunque no se pinte en la portada. */
+  publicoCierreTitulo: string;
+  publicoCierreTexto: string;
   pilaresKicker: string;
   pilaresTitulo: string;
   pilares: PilarLanding[];
@@ -184,6 +189,12 @@ export const CONTENIDO: ContenidoLanding = {
 
   ctaIntermedioTitulo: "¿Te sirve para vuestros concursos?",
   ctaIntermedioTexto: "No hace falta llegar al final de la página para pedir acceso.",
+
+  publicoCierreTitulo: "Esto es solo la parte pública",
+  publicoCierreTexto:
+    "Aquí está el anuncio tal y como lo publica la fuente. Dentro, cada expediente " +
+    "llega con su score de oportunidad, la baja de referencia de su segmento y quién " +
+    "se lleva normalmente ese tipo de contrato.",
 
   pilaresKicker: "Cómo funciona",
   pilaresTitulo: "Tres decisiones sobre un mismo corpus acotado",
