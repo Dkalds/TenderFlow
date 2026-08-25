@@ -12,6 +12,7 @@ clasificador SAP es un job de release con artefacto versionado, distinto del
 
 from __future__ import annotations
 
+import os
 from typing import Any
 
 from observability.logging import get_logger
@@ -47,15 +48,71 @@ def run() -> dict[str, Any]:
     if "error" in metrics:
         raise RuntimeError(f"Training failed: {metrics['error']}")
 
-    precompute_ml_proba(force=False)
+    # ``force=True``, y solo si se promocionó: si el modelo cambió, dejar los
+    # ``ml_proba`` viejos deja la superficie de serving y el test de drift de
+    # predicciones mostrando los scores del modelo anterior. Y si el gate
+    # rechazó, en este runner no hay artefacto que aplicar — ``precompute``
+    # degradaría a ``skipped_no_model`` sin hacer nada útil.
+    if promocionado(metrics):
+        precompute_ml_proba(force=True)
     return metrics
+
+
+def promocionado(metrics: dict[str, Any]) -> bool:
+    """¿Pasó el gate de promoción y hay artefacto nuevo que publicar?
+
+    ``train_from_db`` delega en ``services.ml.promotion.promote_if_better``,
+    que **solo** escribe ``data/models/sap_classifier.pkl`` —el asset de la
+    Release que descargan la API y los runners— si el candidato supera el
+    gate. Un rechazo no es un error: es el mecanismo funcionando.
+    """
+    promocion = metrics.get("promotion") or {}
+    return bool(promocion.get("activada"))
+
+
+def _emitir_salida_github(metrics: dict[str, Any]) -> None:
+    """Escribe el desenlace en ``$GITHUB_OUTPUT`` para que el workflow decida.
+
+    Sin esto, ``train-model.yml`` no puede distinguir "el gate rechazó al
+    candidato" de "el entrenamiento reventó": en ambos casos falta el
+    ``.pkl``, y el paso de verificación moría con un ``ls: cannot access``
+    que no explica nada.
+    """
+    destino = os.environ.get("GITHUB_OUTPUT")
+    if not destino:
+        return
+    promocion = metrics.get("promotion") or {}
+    motivos = "; ".join(str(m) for m in (promocion.get("motivos_rechazo") or []))
+    golden = promocion.get("golden") or {}
+    lineas = [
+        f"promoted={'true' if promocionado(metrics) else 'false'}",
+        f"version={promocion.get('version') or ''}",
+        # Una sola línea: los outputs multilinea necesitan heredoc y estos
+        # motivos son frases cortas.
+        f"rejection_reasons={motivos.replace(chr(10), ' ')}",
+        f"recall_no_keyword={golden.get('recall_no_keyword', '')}",
+        f"n_train={metrics.get('n_train', '')}",
+        f"n_test={metrics.get('n_test', '')}",
+    ]
+    with open(destino, "a", encoding="utf-8") as fh:
+        fh.write("\n".join(lineas) + "\n")
 
 
 if __name__ == "__main__":
     import sys
 
     try:
-        run()
+        _metrics = run()
     except RuntimeError as exc:
         log.error("ml_training_failed", error=str(exc))
         sys.exit(1)
+
+    _emitir_salida_github(_metrics)
+    if not promocionado(_metrics):
+        # Salida 0 a propósito: el entrenamiento terminó bien y el gate hizo
+        # su trabajo. Marcar esto en rojo enseñaría a ignorar los rojos. El
+        # workflow se encarga de que quede visible que NO se publicó nada.
+        log.warning(
+            "ml_training_no_promocionado",
+            motivos=(_metrics.get("promotion") or {}).get("motivos_rechazo"),
+        )

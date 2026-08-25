@@ -15,7 +15,14 @@ jobs:
   train:
     name: Train classifier & upload to release
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # 60 y no 15: `seed_negatives(spread_months=6)` descarga SEIS bulks
+    # mensuales de PLACSP donde antes descargaba uno, y este runner no tiene
+    # `data/downloads/` cacheado (ningún workflow del repo lo cachea; los ZIP
+    # son grandes y una caché de varios GB para un job manual se desalojaría
+    # entre ejecuciones). La referencia del repo para trabajo de bulks es
+    # `scrape-bulk.yml`, que presupuesta 120 min; 60 cubre 6 descargas más el
+    # entrenamiento con margen.
+    timeout-minutes: 60
 
     steps:
       - name: Checkout
@@ -33,6 +40,7 @@ jobs:
           pip install -r requirements.txt
 
       - name: Train model
+        id: train
         env:
           # ENV=prod porque este job lee y escribe en la BD de producción, así
           # que los validators de datos (TLS de DATABASE_URL) deben estar
@@ -44,13 +52,46 @@ jobs:
           LOG_FORMAT: json
         run: python -m scheduler.jobs.ml_training_run
 
+      # El gate de promoción (`services/ml/promotion.py`) solo escribe
+      # `sap_classifier.pkl` si el candidato lo supera, así que su ausencia es
+      # un desenlace legítimo y no un fallo. Sin este corte, el `ls` de abajo
+      # moría con "cannot access" sin explicar nada.
+      - name: Report rejected candidate
+        if: steps.train.outputs.promoted != 'true'
+        # Los valores van por `env` y no interpolados en el script: una
+        # expresión de Actions dentro de `run:` se sustituye ANTES de que bash
+        # vea la línea, así que un backtick o una comilla en el texto rompería
+        # el paso (o algo peor).
+        env:
+          VERSION: ${{ steps.train.outputs.version }}
+          REASONS: ${{ steps.train.outputs.rejection_reasons }}
+          RECALL_NO_KEYWORD: ${{ steps.train.outputs.recall_no_keyword }}
+          N_TRAIN: ${{ steps.train.outputs.n_train }}
+          N_TEST: ${{ steps.train.outputs.n_test }}
+        run: |
+          {
+            echo "## Modelo NO publicado"
+            echo
+            echo "El entrenamiento terminó correctamente, pero el candidato no superó el"
+            echo "gate de promoción, así que la Release conserva el modelo anterior."
+            echo
+            echo "- Versión registrada (sin activar): \`$VERSION\`"
+            echo "- Motivos: \`$REASONS\`"
+            echo "- recall_no_keyword: \`$RECALL_NO_KEYWORD\`"
+            echo "- n_train / n_test: \`$N_TRAIN\` / \`$N_TEST\`"
+            echo
+            echo "La versión queda en \`model_versions\` para inspección y rollback."
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Verify model artifact
+        if: steps.train.outputs.promoted == 'true'
         run: |
           ls -lh data/models/sap_classifier.pkl
           cat data/models/sap_classifier.sha256
 
       - name: Get or create latest release tag
         id: release_tag
+        if: steps.train.outputs.promoted == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -63,10 +104,17 @@ jobs:
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
 
       - name: Upload model to release
+        if: steps.train.outputs.promoted == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.release_tag.outputs.tag }}
+          VERSION: ${{ steps.train.outputs.version }}
+          RECALL_NO_KEYWORD: ${{ steps.train.outputs.recall_no_keyword }}
+          N_TRAIN: ${{ steps.train.outputs.n_train }}
+          N_TEST: ${{ steps.train.outputs.n_test }}
         run: |
-          TAG="${{ steps.release_tag.outputs.tag }}"
+          # `TAG` llega por `env`, no interpolado: una expresión de Actions
+          # dentro de `run:` se sustituye antes de que bash lea la línea.
           # Eliminar asset anterior si existe (gh ignora si no existe)
           gh release delete-asset "$TAG" sap_classifier.pkl --yes 2>/dev/null || true
           gh release delete-asset "$TAG" sap_classifier.sha256 --yes 2>/dev/null || true
@@ -76,3 +124,11 @@ jobs:
             data/models/sap_classifier.sha256 \
             --clobber
           echo "Model uploaded to release $TAG"
+          {
+            echo "## Modelo publicado"
+            echo
+            echo "- Release: \`$TAG\`"
+            echo "- Versión: \`$VERSION\`"
+            echo "- recall_no_keyword: \`$RECALL_NO_KEYWORD\`"
+            echo "- n_train / n_test: \`$N_TRAIN\` / \`$N_TEST\`"
+          } >> "$GITHUB_STEP_SUMMARY"
