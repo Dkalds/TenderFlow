@@ -8,7 +8,14 @@ import pytest
 
 import services.ml.baja_model as baja_model_mod
 from config import settings
-from services.ml.baja_model import MODEL_NAME, BajaModel, entrenar, predecir_baseline
+from services.ml.baja_model import (
+    MODEL_NAME,
+    BajaModel,
+    entrenar,
+    intervalo_baseline,
+    offset_conformal_baseline,
+    predecir_baseline,
+)
 from services.ml.features import FilaDataset
 from services.ml.scoring import prediccion_baja, score_predicciones_baja
 
@@ -319,6 +326,59 @@ def test_scoring_sin_modelo_sirve_baseline(db):
     assert 0 <= pred["p10"] <= pred["p50"] <= pred["p90"] < 1
 
 
+def test_scoring_baseline_conformaliza_el_intervalo(db):
+    """El baseline servido ensancha su intervalo con la evidencia acumulada.
+
+    Regresión de la degradación observada en producción: el ±40% relativo se
+    servía bajo el nombre p10/p90 —que promete un 80%— sin que nadie hubiera
+    medido su cobertura. Con pares resueltos suficientes, el offset conformal
+    sale de la realidad en vez de la heurística.
+    """
+    from db.database import connect
+
+    with connect() as c:
+        n_hist = _sembrar_historico(c, n_meses=8, por_mes=5)
+        # Predicciones que el baseline "sirvio" en su dia (model_version NULL),
+        # todas con p50 = 0.10: acierta en Organo A y se queda muy corta en
+        # Organo B (baja ~25%), que es lo que genera scores positivos.
+        for i in range(n_hist):
+            c.execute(
+                "INSERT INTO predicciones_baja (licitacion_id, p10, p50, p90, "
+                " model_version, computed_at) "
+                "VALUES (%s, 0.06, 0.10, 0.14, NULL, CURRENT_TIMESTAMP)",
+                (f"H{i}",),
+            )
+        _insertar_abierta(c)
+
+    stats = score_predicciones_baja()
+
+    assert stats["serving"] == "baseline"
+    assert stats["conformal_offset_baseline"] > 0
+
+    pred = prediccion_baja("ABIERTA")
+    assert pred["model_version"] is None
+    # El contrato de la tabla se mantiene pese al ensanchamiento.
+    assert 0 <= pred["p10"] <= pred["p50"] <= pred["p90"] < 1
+    # Y el intervalo es mas ancho que el +-40% crudo que se servia antes.
+    assert pred["p90"] - pred["p10"] > 0.8 * pred["p50"]
+
+
+def test_scoring_baseline_sin_pares_resueltos_no_ensancha(db):
+    """Sin pares suficientes el offset es 0 y sale la heurística de siempre:
+    ensanchar con una muestra de tres pares sería ensanchar por ruido."""
+    from db.database import connect
+
+    with connect() as c:
+        _sembrar_historico(c, n_meses=3, por_mes=4)
+        _insertar_abierta(c)
+
+    stats = score_predicciones_baja()
+
+    assert stats["conformal_offset_baseline"] == 0.0
+    pred = prediccion_baja("ABIERTA")
+    assert pred["p90"] - pred["p10"] == pytest.approx(0.8 * pred["p50"], rel=1e-3)
+
+
 def test_media_global_baja_usa_presupuesto_del_lote(db):
     """Regresión: _media_global_baja() comparaba cada adjudicación contra el
     presupuesto del EXPEDIENTE completo, no el de su lote (v65_lotes). Un
@@ -379,6 +439,149 @@ def test_baseline_intervalo_valido():
     assert pred.p10 == pytest.approx(0.12)
     assert pred.p50 == pytest.approx(0.20)
     assert pred.p90 == pytest.approx(0.28)
+
+
+# ---------------------------------------------------------------------------
+# Conformalización del baseline
+# ---------------------------------------------------------------------------
+
+
+def _pares_simetricos(p50=0.20, n=101, paso=0.004):
+    """``(p50, realizada)`` con desviaciones simétricas y deterministas.
+
+    ``n`` impar y centrado en ``p50``: la desviación 0 aparece una vez y cada
+    magnitud ``k*paso`` dos, lo que fija el cuantil de los scores sin depender
+    de un generador aleatorio.
+    """
+    mitad = n // 2
+    return [(p50, p50 + (i - mitad) * paso) for i in range(n)]
+
+
+def test_offset_conformal_baseline_alcanza_la_cobertura_nominal():
+    """El ±40% relativo no cubre el 80%; el offset es lo que lo consigue.
+
+    Es la regresión de la degradación observada en producción: cobertura real
+    del 24% sobre 406 pares contra un nominal del 80%, sirviendo el baseline.
+    """
+    pares = _pares_simetricos()
+
+    # Sin corregir: el intervalo crudo [0.12, 0.28] deja fuera a la mayoría.
+    crudo_lo, crudo_hi = intervalo_baseline(0.20)
+    cobertura_cruda = sum(crudo_lo <= y <= crudo_hi for _, y in pares) / len(pares)
+    assert cobertura_cruda < 0.45
+
+    offset = offset_conformal_baseline(pares)
+    assert offset > 0
+
+    lo, hi = intervalo_baseline(0.20, offset)
+    cobertura = sum(lo <= y <= hi for _, y in pares) / len(pares)
+    # Split-conformal garantiza >= la nominal, y no de largo: si se pasara
+    # mucho, el intervalo sería inútil de puro ancho.
+    assert 0.80 <= cobertura <= 0.87
+
+
+def test_offset_conformal_baseline_se_mide_sobre_el_intervalo_crudo():
+    """Idempotencia: recalcular el offset no lo acumula sobre sí mismo.
+
+    El score se calcula reconstruyendo el intervalo desde ``p50`` (que el
+    offset nunca toca), no desde el ``p10``/``p90`` almacenados. Si se midiera
+    sobre lo guardado —ya ensanchado— la segunda pasada daría ~0 y la anchura
+    quedaría congelada en la de la primera.
+    """
+    pares = _pares_simetricos()
+    primero = offset_conformal_baseline(pares)
+    # Segunda noche: los mismos pares, ya servidos con el offset aplicado. La
+    # entrada de la función es (p50, realizada), así que el resultado no puede
+    # depender de lo que se guardó.
+    assert offset_conformal_baseline(pares) == pytest.approx(primero)
+
+
+def test_offset_conformal_baseline_sin_muestra_no_corrige():
+    """Con pocos pares la corrección sería ruido: ensanchar por ruido engaña
+    tanto como no ensanchar."""
+    assert offset_conformal_baseline(_pares_simetricos(n=29)) == 0.0
+    assert offset_conformal_baseline([]) == 0.0
+
+
+def test_intervalo_baseline_conserva_la_monotonia_con_offset_negativo():
+    """Un offset negativo estrecha (el intervalo sobraba de ancho) pero nunca
+    puede cruzar los extremos: p10 <= p50 <= p90 es contrato de la tabla."""
+    lo, hi = intervalo_baseline(0.20, offset=-0.5)
+    assert lo <= 0.20 <= hi
+    lo, hi = intervalo_baseline(0.20, offset=-0.02)
+    assert lo == pytest.approx(0.14) and hi == pytest.approx(0.26)
+
+
+def _cobertura(pares, offset):
+    dentro = 0
+    for p50, y in pares:
+        lo, hi = intervalo_baseline(p50, offset)
+        dentro += lo <= y <= hi
+    return dentro / len(pares)
+
+
+def test_offset_conformal_baseline_cuenta_el_clip_en_cero():
+    """El score ignora los pares que ningún offset puede capturar.
+
+    ``intervalo_baseline`` clipa ``p10`` a 0, pero la baja realizada puede ser
+    negativa (sobrecoste). Tratar esos pares como "capturables ensanchando"
+    corta el cuantil demasiado pronto y la cobertura servida aterriza por
+    debajo de la nominal — justo el fallo que este offset viene a evitar.
+
+    Los sobrecostes se siembran sobre expedientes de ``p50`` pequeño: su score
+    ingenuo es pequeño también, así que se cuelan en la parte baja del cuantil
+    y lo arrastran. Con sobrecostes de score grande el error no se ve, que es
+    por lo que pasó desapercibido.
+    """
+    import numpy as np
+
+    from services.ml.baja_model import _offset_conformal
+
+    pares = [(0.05, -0.005)] * 20
+    pares += [(0.20, 0.20 + k * 0.005) for k in range(-40, 40)]
+
+    crudos = [intervalo_baseline(p50) for p50, _ in pares]
+    ingenuo = _offset_conformal(
+        np.array([c[0] for c in crudos]),
+        np.array([c[1] for c in crudos]),
+        np.array([y for _, y in pares]),
+    )
+    corregido = offset_conformal_baseline(pares)
+
+    assert corregido > ingenuo
+    assert _cobertura(pares, ingenuo) < 0.80, "el cuantil ingenuo se queda corto"
+    assert _cobertura(pares, corregido) >= 0.80
+
+
+def test_offset_conformal_baseline_no_finge_una_nominal_imposible():
+    """Con demasiados sobrecostes el 80% es inalcanzable con ``p10 >= 0``.
+
+    Se sirve el offset más pequeño que captura todo lo capturable —ni un
+    infinito, ni un ensanchamiento que no compraría un solo par más— y el hueco
+    contra la nominal lo reporta el monitor de calibración.
+    """
+    import math
+
+    # 40% de sobrecostes: el techo de cobertura es el 60%, bajo la nominal.
+    pares = [(0.20, -0.05)] * 40 + [(0.20, 0.20 + k * 0.002) for k in range(-30, 30)]
+    offset = offset_conformal_baseline(pares)
+
+    assert math.isfinite(offset)
+    assert _cobertura(pares, offset) == pytest.approx(0.60)
+    # Y no se infla más allá del techo: ensanchar otro punto no captura nada.
+    assert _cobertura(pares, offset + 0.10) == pytest.approx(0.60)
+
+
+def test_predecir_baseline_aplica_el_offset():
+    fila = FilaDataset(
+        licitacion_id="X",
+        fecha="2026-06-01",
+        features={"baja_media_organo_cpv4": 0.20},
+    )
+    pred = predecir_baseline([fila], offset=0.10)[0]
+    assert pred.p50 == pytest.approx(0.20), "la mediana no se toca"
+    assert pred.p10 == pytest.approx(0.02)
+    assert pred.p90 == pytest.approx(0.38)
 
 
 # ---------------------------------------------------------------------------

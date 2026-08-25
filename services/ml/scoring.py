@@ -9,6 +9,12 @@ Si no hay versión activa del modelo en ``model_versions`` (no entrenado aún,
 o el entrenamiento no batió al baseline — criterio de honestidad), se sirve
 el **baseline** de medias históricas del segmento con ``model_version NULL``:
 el frontend puede distinguirlo y etiquetarlo como estimación histórica.
+
+Ese baseline también **conformaliza** su intervalo (``_offset_baseline``). Su
+±40% relativo era una forma sin garantía de cobertura, servida bajo el nombre
+p10/p90 que promete un 80%: en producción cubría el 24%. Ahora la anchura sale
+de los pares predicción↔realidad que el propio baseline ya generó, con la misma
+matemática split-conformal que usa el modelo.
 """
 
 from __future__ import annotations
@@ -44,6 +50,28 @@ def _media_global_baja() -> float:
     return MlDatasetRepository().media_global_baja()
 
 
+def _offset_baseline() -> float:
+    """Corrección conformal del intervalo del baseline, sobre pares ya resueltos.
+
+    Sin esto el baseline servía un ±40% relativo que no cubría el 80% que su
+    nombre (p10/p90) promete: medido en producción sobre 406 pares, cubría el
+    24%. El offset lo mide contra la realidad y lo corrige.
+
+    Fail-open como el resto del closed-loop: si la agregación falla se sirve el
+    intervalo crudo en vez de no servir nada. Se loguea el fallo, porque un 0
+    por error y un 0 por falta de pares se leen igual en la tabla y no son lo
+    mismo.
+    """
+    from db.repositories.ml_dataset import MlDatasetRepository
+    from services.ml.baja_model import offset_conformal_baseline
+
+    try:
+        return offset_conformal_baseline(MlDatasetRepository().pares_baseline_resueltos())
+    except Exception as exc:
+        log.warning("baja_baseline_conformal_failed", error=str(exc))
+        return 0.0
+
+
 def score_predicciones_baja(*, limit: int = 5000) -> dict[str, Any]:
     """Puntúa las licitaciones abiertas y materializa ``predicciones_baja``."""
     filas = features_licitaciones_abiertas(limit=limit)
@@ -69,6 +97,9 @@ def score_predicciones_baja(*, limit: int = 5000) -> dict[str, Any]:
     # activo llevaba semanas sin llegar a producción. El CLI usa este campo
     # para poner el job en rojo y alertar.
     degradado: str | None = None
+    # Solo tiene valor en el camino baseline; en el del modelo la
+    # conformalización ya viene dentro del artefacto (`conformal_offset`).
+    offset_baseline: float | None = None
     if activa and artefacto is not None:
         modelo = BajaModel.load(artefacto)
         try:
@@ -90,7 +121,8 @@ def score_predicciones_baja(*, limit: int = 5000) -> dict[str, Any]:
         if activa and artefacto is None:
             log.warning("baja_model_artifact_unresolvable_fallback_baseline")
             degradado = "artefacto_irresoluble"
-        preds = predecir_baseline(filas, _media_global_baja())
+        offset_baseline = _offset_baseline()
+        preds = predecir_baseline(filas, _media_global_baja(), offset_baseline)
         version = None
 
     computed_at = now_utc_iso()
@@ -120,6 +152,7 @@ def score_predicciones_baja(*, limit: int = 5000) -> dict[str, Any]:
         model_version=version,
         serving="modelo" if version else "baseline",
         degradado=degradado,
+        conformal_offset_baseline=offset_baseline,
     )
     return {
         "status": "ok",
@@ -127,6 +160,7 @@ def score_predicciones_baja(*, limit: int = 5000) -> dict[str, Any]:
         "model_version": version,
         "serving": "modelo" if version else "baseline",
         "degradado": degradado,
+        "conformal_offset_baseline": offset_baseline,
         "computed_at": computed_at,
     }
 

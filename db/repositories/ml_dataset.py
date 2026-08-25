@@ -254,13 +254,65 @@ def _sql_por_lote(hasta: str | None) -> tuple[str, list[Any]]:
 # medida que pide el gate — el modelo actual evaluado a granularidad de lote,
 # que es el número contra el que hay que comparar un futuro modelo por lote.
 _PREDICCION_APLICABLE = """
-    SELECT p.p10, p.p50, p.p90, p.lote_id
+    SELECT p.p10, p.p50, p.p90, p.lote_id, p.model_version
     FROM predicciones_baja p
     WHERE p.licitacion_id = pl.id_externo
       AND (p.lote_id = pl.lote_id OR p.lote_id IS NULL)
     ORDER BY (p.lote_id IS NULL)
     LIMIT 1
 """
+
+# Agregados de calibración, medidos a la vez sobre el total y sobre cada
+# régimen de serving. ``GROUPING(es_baseline)`` marca la fila del total, que así
+# sale exacto en el mismo viaje en vez de recomponerse ponderando en Python.
+_AGREGADOS_CALIBRACION = """
+    GROUPING(es_baseline) AS es_total,
+    es_baseline,
+    COUNT(*) AS n,
+    AVG(CASE WHEN realizada BETWEEN p10 AND p90 THEN 1.0 ELSE 0.0 END) AS cobertura,
+    AVG(ABS(realizada - p50)) AS mae,
+    AVG(realizada - p50) AS sesgo
+"""
+
+_SIN_DATOS: dict[str, Any] = {"n": 0, "cobertura": None, "mae": None, "sesgo": None}
+
+
+def _por_regimen(filas: list[Any], con_lote: bool = False) -> dict[str, Any]:
+    """Descompone un GROUPING SET en total + un bloque por régimen de serving.
+
+    Un solo número que promedie los intervalos que sirvió el modelo con los que
+    sirvió el baseline no describe a ninguno de los dos: el modelo conformaliza
+    su intervalo y el baseline el suyo, con anchuras distintas, así que la
+    mezcla depende de en qué proporción se sirvió cada uno y no de si alguno
+    está bien calibrado. El total se conserva —es lo que el usuario tiene
+    servido, venga de donde venga— y el desglose es lo que permite **atribuir**
+    una degradación en vez de solo detectarla.
+    """
+    total = dict(_SIN_DATOS)
+    regimenes: dict[str, dict[str, Any]] = {
+        "modelo": dict(_SIN_DATOS),
+        "baseline": dict(_SIN_DATOS),
+    }
+    if con_lote:
+        total["n_prediccion_por_lote"] = 0
+        for bloque in regimenes.values():
+            bloque["n_prediccion_por_lote"] = 0
+
+    for fila in filas:
+        medido: dict[str, Any] = {
+            "n": int(fila[2] or 0),
+            "cobertura": float(fila[3]) if fila[3] is not None else None,
+            "mae": float(fila[4]) if fila[4] is not None else None,
+            "sesgo": float(fila[5]) if fila[5] is not None else None,
+        }
+        if con_lote:
+            medido["n_prediccion_por_lote"] = int(fila[6] or 0)
+        if fila[0]:  # GROUPING(es_baseline) = 1 → la fila agregada
+            total = medido
+        else:
+            regimenes["baseline" if fila[1] else "modelo"] = medido
+
+    return {**total, "por_regimen": regimenes}
 
 
 class MlDatasetRepository:
@@ -384,6 +436,41 @@ class MlDatasetRepository:
             row = c.execute(envuelto, params).fetchone()
         return float(row[0]) if row and row[0] is not None else defecto
 
+    def pares_baseline_resueltos(self) -> list[tuple[float, float]]:
+        """``(p50_servido, baja_realizada)`` de los pares que sirvió el baseline.
+
+        Solo filas con ``model_version IS NULL``: son exactamente las que
+        produjo ``predecir_baseline``, y calibrar el baseline con intervalos que
+        salieron del modelo mediría otra cosa.
+
+        Devuelve el ``p50`` y **no** el intervalo almacenado, a propósito. El
+        offset conformal tiene que medirse siempre contra el intervalo *crudo*
+        de la regla (``services.ml.baja_model.intervalo_baseline``), que es
+        reconstruible desde ``p50`` porque el offset nunca toca la mediana. Si
+        se midiera contra el ``p10``/``p90`` ya guardados, cada noche se
+        calcularía la corrección sobre un intervalo ya corregido: el score
+        saldría ~0 y la anchura quedaría congelada en la de la primera pasada.
+
+        Misma regla de denominador que el target de entrenamiento, por el mismo
+        motivo que en :meth:`calibracion_baja`.
+        """
+        sql, params = _sql_agregado(None)
+        envuelto = f"""
+            SELECT pb.p50 AS p50,
+                   (t2.presupuesto_efectivo - t2.total_adjudicado)
+                       / t2.presupuesto_efectivo AS realizada
+            FROM predicciones_baja pb
+            JOIN ({sql}) t2 ON t2.id_externo = pb.licitacion_id
+            WHERE pb.model_version IS NULL
+        """  # SQL propio del módulo; los valores van con %s.
+        with connect_read() as c:
+            filas = c.execute(envuelto, params).fetchall()
+        return [
+            (float(p50), float(realizada))
+            for p50, realizada in filas
+            if p50 is not None and realizada is not None
+        ]
+
     def calibracion_baja(self) -> dict[str, Any]:
         """Cobertura empírica, MAE y sesgo de ``predicciones_baja`` vs la realidad.
 
@@ -396,28 +483,20 @@ class MlDatasetRepository:
         sql, params = _sql_agregado(None)
         envuelto = f"""
             WITH evaluadas AS (
-                SELECT pb.p10 AS p10, pb.p50 AS p50, pb.p90 AS p90,
+                SELECT (pb.model_version IS NULL) AS es_baseline,
+                       pb.p10 AS p10, pb.p50 AS p50, pb.p90 AS p90,
                        (t2.presupuesto_efectivo - t2.total_adjudicado)
                            / t2.presupuesto_efectivo AS realizada
                 FROM predicciones_baja pb
                 JOIN ({sql}) t2 ON t2.id_externo = pb.licitacion_id
             )
-            SELECT COUNT(*) AS n,
-                   AVG(CASE WHEN realizada BETWEEN p10 AND p90 THEN 1.0 ELSE 0.0 END) AS cobertura,
-                   AVG(ABS(realizada - p50)) AS mae,
-                   AVG(realizada - p50) AS sesgo
+            SELECT {_AGREGADOS_CALIBRACION}
             FROM evaluadas
+            GROUP BY GROUPING SETS ((es_baseline), ())
         """  # SQL propio del módulo; los valores van con %s.
         with connect_read() as c:
-            row = c.execute(envuelto, params).fetchone()
-        if not row or row[0] is None:
-            return {"n": 0, "cobertura": None, "mae": None, "sesgo": None}
-        return {
-            "n": int(row[0]),
-            "cobertura": float(row[1]) if row[1] is not None else None,
-            "mae": float(row[2]) if row[2] is not None else None,
-            "sesgo": float(row[3]) if row[3] is not None else None,
-        }
+            filas = c.execute(envuelto, params).fetchall()
+        return _por_regimen(list(filas))
 
     def calibracion_baja_por_lote(self) -> dict[str, Any]:
         """Lo mismo que :meth:`calibracion_baja`, pero un par por **lote**.
@@ -438,34 +517,45 @@ class MlDatasetRepository:
         sql, params = _sql_por_lote(None)
         envuelto = f"""
             WITH evaluadas AS (
-                SELECT pb.p10 AS p10, pb.p50 AS p50, pb.p90 AS p90,
+                SELECT (pb.model_version IS NULL) AS es_baseline,
+                       pb.p10 AS p10, pb.p50 AS p50, pb.p90 AS p90,
                        pb.lote_id IS NOT NULL AS prediccion_propia,
                        (pl.presupuesto_efectivo - pl.total_adjudicado)
                            / pl.presupuesto_efectivo AS realizada
                 FROM ({sql}) pl
                 JOIN LATERAL ({_PREDICCION_APLICABLE}) pb ON TRUE
             )
-            SELECT COUNT(*) AS n,
-                   AVG(CASE WHEN realizada BETWEEN p10 AND p90 THEN 1.0 ELSE 0.0 END) AS cobertura,
-                   AVG(ABS(realizada - p50)) AS mae,
-                   AVG(realizada - p50) AS sesgo,
+            SELECT {_AGREGADOS_CALIBRACION},
                    COUNT(*) FILTER (WHERE prediccion_propia) AS n_prediccion_por_lote
             FROM evaluadas
+            GROUP BY GROUPING SETS ((es_baseline), ())
         """  # SQL propio del módulo; los valores van con %s.
         with connect_read() as c:
-            row = c.execute(envuelto, params).fetchone()
-        if not row or row[0] is None:
-            return {
-                "n": 0,
-                "cobertura": None,
-                "mae": None,
-                "sesgo": None,
-                "n_prediccion_por_lote": 0,
-            }
-        return {
-            "n": int(row[0]),
-            "cobertura": float(row[1]) if row[1] is not None else None,
-            "mae": float(row[2]) if row[2] is not None else None,
-            "sesgo": float(row[3]) if row[3] is not None else None,
-            "n_prediccion_por_lote": int(row[4] or 0),
-        }
+            filas = c.execute(envuelto, params).fetchall()
+        return _por_regimen(list(filas), con_lote=True)
+
+    def regimen_servido(self) -> str | None:
+        """``"modelo"`` o ``"baseline"``, según la última pasada de scoring.
+
+        No se deduce de ``model_versions``: el scoring degrada a baseline aun
+        con una versión activa si el artefacto no se resuelve o el layout de
+        features no cuadra (``services.ml.scoring``). La fuente de verdad de lo
+        que se está sirviendo es la propia tabla de predicciones.
+
+        Mira solo el lote más reciente de ``computed_at`` (indexado): las filas
+        viejas describen lo que se servía entonces, que es justo lo que no hay
+        que confundir con lo de ahora. ``None`` si no hay ninguna predicción.
+        """
+        sql = """
+            SELECT (model_version IS NULL) AS es_baseline, COUNT(*) AS n
+            FROM predicciones_baja
+            WHERE computed_at = (SELECT MAX(computed_at) FROM predicciones_baja)
+            GROUP BY 1
+            ORDER BY n DESC
+            LIMIT 1
+        """
+        with connect_read() as c:
+            row = c.execute(sql).fetchone()
+        if not row:
+            return None
+        return "baseline" if row[0] else "modelo"
