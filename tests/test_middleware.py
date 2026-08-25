@@ -218,6 +218,46 @@ class TestRateLimitMiddleware:
         assert "X-RateLimit-Limit" in resp.headers
 
     @patch("api.middleware.get_rate_limiter")
+    @patch("api.middleware._client_key", return_value="ip:1.2.3.4")
+    def test_solicitudes_blocked_redirects_instead_of_json(self, _ck, mock_rl):
+        """El formulario de la landing no puede acabar en `problem+json`.
+
+        `api/routes/publico_solicitudes.py` está escrito para que ningún camino
+        de error enseñe JSON a un navegador, pero el corte por cuota ocurre
+        antes del router: sin este caso propio, cinco envíos desde una IP
+        —una oficina tras NAT, un reintento— dejaban el RFC 7807 en pantalla.
+        """
+        from api.middleware import SOLICITUDES_PATH
+
+        limiter = MagicMock()
+        limiter.check.return_value = False
+        mock_rl.return_value = limiter
+
+        async def _handler(request):
+            return JSONResponse({"ok": True})
+
+        app = Starlette(routes=[Route(SOLICITUDES_PATH, _handler, methods=["POST"])])
+        app.add_middleware(RateLimitMiddleware)
+        resp = TestClient(app).post(SOLICITUDES_PATH, follow_redirects=False)
+
+        assert resp.status_code == 303
+        assert resp.headers["location"] == "/solicitud-recibida?estado=limite"
+        assert "Retry-After" in resp.headers
+        assert "json" not in resp.headers.get("content-type", "")
+
+    @patch("api.middleware.get_rate_limiter")
+    @patch("api.middleware._client_key", return_value="ip:1.2.3.4")
+    def test_other_paths_still_get_problem_json(self, _ck, mock_rl):
+        """La excepción es solo del formulario: el resto de la API no cambia."""
+        limiter = MagicMock()
+        limiter.check.return_value = False
+        mock_rl.return_value = limiter
+
+        resp = TestClient(_make_app(RateLimitMiddleware)).get("/test")
+
+        assert resp.status_code == 429
+
+    @patch("api.middleware.get_rate_limiter")
     def test_excluded_path_bypasses(self, mock_rl):
         limiter = MagicMock()
         limiter.check.return_value = False  # would block if checked

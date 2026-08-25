@@ -15,9 +15,9 @@ import hashlib
 import re
 from collections.abc import Awaitable, Callable
 
-from fastapi import Request
+from fastapi import Request, status
 from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.responses import Response
+from starlette.responses import RedirectResponse, Response
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from observability.logging import get_logger
@@ -238,6 +238,11 @@ PUBLIC_MAX_CALLS = 600
 #
 # Cinco por minuto y por IP: un humano rellena el formulario una vez, y lo que
 # hay detrás es una cola que revisa una persona.
+#
+# Al agotarse la cuota este path **no** responde `problem+json` como el resto de
+# la API: quien lo consume es un navegador siguiendo un `<form method="post">`,
+# así que se le redirige a la página de gracias con el estado de límite. Ver el
+# caso propio en `RateLimitMiddleware.dispatch`.
 SOLICITUDES_PATH = "/api/v1/publico/solicitudes-acceso"
 SOLICITUDES_MAX_CALLS = 5
 
@@ -328,6 +333,24 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         )
         if not allowed:
             log.warning("rate_limit_exceeded", client=client, path=path)
+
+            # El formulario de la landing lo rellena una persona en un
+            # navegador, no un cliente de API: aquí un `problem+json` es JSON
+            # crudo en pantalla, y `api/routes/publico_solicitudes.py` está
+            # escrito entero para que eso no pase en ningún camino de error.
+            # El corte por cuota ocurre antes del router, así que la excepción
+            # tiene que vivir aquí. Import perezoso por el mismo motivo que el
+            # de `problem_429`: no arrastrar el árbol de rutas al importar el
+            # middleware.
+            if path == SOLICITUDES_PATH:
+                from api.routes.publico_solicitudes import ESTADO_LIMITE, destino_error
+
+                return RedirectResponse(
+                    destino_error(ESTADO_LIMITE),
+                    status_code=status.HTTP_303_SEE_OTHER,
+                    headers={"Retry-After": str(int(self._window))},
+                )
+
             # `application/problem+json` como el resto de la API (RFC 7807). El
             # 429 cortocircuita antes del router, así que se construye aquí en
             # vez de en un exception handler; `problem_429` ya existía sin uso.

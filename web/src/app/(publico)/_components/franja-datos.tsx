@@ -1,18 +1,18 @@
-import { contarPublicables, obtenerHubs } from "@/lib/publico-api";
-import { formatNumber } from "@/lib/utils";
+import { obtenerHubs, obtenerResumenPublico } from "@/lib/publico-api";
+import { formatDate, formatNumber, ZONA_ES } from "@/lib/utils";
 import { CONTENIDO } from "../_content/landing";
 
 /**
- * Tres cifras reales del corpus, bajo el hero.
+ * Tres cifras reales del corpus y su fecha, bajo el hero.
  *
  * La landing no citaba ni un dato pese a tener tres agregados públicos a una
  * llamada de distancia. Una página cuyo producto vende confianza en el dato no
  * enseñaba ninguno, y el visitante tenía que creerse el tamaño del corpus.
  *
- * Cumple ADR-014 por construcción: los tres números salen tal cual del backend
- * —`/publico/sitemap/resumen` da el total y `/publico/hubs` las dos listas ya
- * filtradas por su umbral—, y aquí sólo se cuenta la longitud de lo que el
- * endpoint devolvió. No se agrega, no se deriva y no se estima nada.
+ * Cumple ADR-014 por construcción: los números salen tal cual del backend
+ * —`/publico/sitemap/resumen` da el total y la fecha, `/publico/hubs` las dos
+ * listas ya filtradas por su umbral—, y aquí sólo se cuenta la longitud de lo
+ * que el endpoint devolvió. No se agrega, no se deriva y no se estima nada.
  *
  * Las etiquetas dicen exactamente lo que el número es. «Expedientes
  * publicables» y no «licitaciones en España»: el corpus público está filtrado
@@ -20,19 +20,39 @@ import { CONTENIDO } from "../_content/landing";
  * inflarlo. «Con hub» y «con volumen» por lo mismo — el backend sólo devuelve
  * las comunidades y los CPV que superan su mínimo de expedientes.
  *
+ * La fecha responde a lo único que las tres cifras no acreditaban: **la
+ * frescura**. El hero promete PLACSP cada cuatro horas y hasta ahora nada en
+ * pantalla lo respaldaba, que es una promesa sin prueba en la página de un
+ * producto que vende precisamente eso. Va como fecha absoluta y no como «hace
+ * N horas» porque la página es ISR con una hora de revalidación: un relativo
+ * calculado al generar puede llevar hasta una hora de retraso y se leería como
+ * un dato en vivo que no es. La fecha absoluta no envejece mal, y `ZONA_ES` la
+ * fija en la zona del corpus en vez de en el UTC del runtime.
+ *
  * Sin animación de entrada de los números: el presupuesto de movimiento del
  * proyecto prohíbe animar el dato que el usuario vino a leer.
  */
 export async function FranjaDatos() {
-  const [total, hubs] = await Promise.all([contarPublicables(), obtenerHubs()]);
+  const [resumen, hubs] = await Promise.all([obtenerResumenPublico(), obtenerHubs()]);
 
   // La API puede no estar disponible en el build (CI construye sin backend) o
   // devolver un corpus vacío. Antes de enseñar ceros o un esqueleto, no se
   // enseña nada: con ISR, la primera revalidación con datos rellena la franja.
-  if (total <= 0 || hubs.ccaa.length === 0 || hubs.cpv.length === 0) return null;
+  //
+  // Que se caiga en silencio era el problema: la única prueba dura de la página
+  // desaparecía sin dejar rastro y podía estar así hasta una hora sin que nadie
+  // se enterara. El aviso sale en los logs del servidor de Next, que es donde
+  // se genera. No es una excepción: la página tiene que servirse igual.
+  if (resumen.total <= 0 || hubs.ccaa.length === 0 || hubs.cpv.length === 0) {
+    console.warn(
+      "[landing] franja de cifras omitida: la API pública no devolvió corpus",
+      { total: resumen.total, ccaa: hubs.ccaa.length, cpv: hubs.cpv.length },
+    );
+    return null;
+  }
 
   const cifras = [
-    { valor: formatNumber(total), etiqueta: CONTENIDO.franjaExpedientes },
+    { valor: formatNumber(resumen.total), etiqueta: CONTENIDO.franjaExpedientes },
     { valor: formatNumber(hubs.ccaa.length), etiqueta: CONTENIDO.franjaComunidades },
     { valor: formatNumber(hubs.cpv.length), etiqueta: CONTENIDO.franjaCpv },
   ];
@@ -48,7 +68,18 @@ export async function FranjaDatos() {
             </div>
           ))}
         </dl>
-        <p className="text-muted-foreground mt-6 text-xs leading-relaxed">{CONTENIDO.franjaNota}</p>
+        {/* Un corpus sin fecha no pinta fecha. El backend la declara opcional
+            justamente para que el consumidor pueda callarse en vez de inventar
+            la prueba de frescura que el dato existe para respaldar. */}
+        {resumen.actualizado && (
+          <p className="text-muted-foreground mt-6 text-sm">
+            {CONTENIDO.franjaActualizado}:{" "}
+            <time dateTime={resumen.actualizado} className="text-foreground font-medium">
+              {formatDate(resumen.actualizado, "es-ES", ZONA_ES)}
+            </time>
+          </p>
+        )}
+        <p className="text-muted-foreground mt-3 text-xs leading-relaxed">{CONTENIDO.franjaNota}</p>
       </div>
     </section>
   );

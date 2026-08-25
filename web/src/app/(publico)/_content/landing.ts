@@ -76,9 +76,18 @@ export interface ContenidoLanding {
   eyebrow: string;
   h1: string;
   subtitulo: string;
+  /** A quién **no** le sirve, en el hero y no cuatro pantallas más abajo.
+   *  En un producto deliberadamente estrecho, descalificar rápido es un favor
+   *  al visitante y ahorra una solicitud que nadie va a poder atender. */
+  heroAcotacion: string;
   ctaPrimario: string;
   ctaSecundario: string;
   notaFuentes: string;
+  /** Reclamo intermedio, tras la sección de precio y competencia. El único
+   *  punto de conversión estaba al final de ~1.500 palabras: quien ya estaba
+   *  convencido a mitad de página no tenía dónde actuar. */
+  ctaIntermedioTitulo: string;
+  ctaIntermedioTexto: string;
   pilaresKicker: string;
   pilaresTitulo: string;
   pilares: PilarLanding[];
@@ -103,6 +112,11 @@ export interface ContenidoLanding {
   franjaExpedientes: string;
   franjaComunidades: string;
   franjaCpv: string;
+  /** Etiqueta de la fecha de frescura. Dice exactamente lo que el dato mide
+   *  —cuándo entró el último expediente— y **no** "última sincronización": una
+   *  pasada que no encuentra nada no mueve esa fecha, y llamarla sync sería
+   *  afirmar que el pipeline corrió cuando el dato no lo demuestra. */
+  franjaActualizado: string;
   franjaNota: string;
   secciones: SeccionLanding[];
   faqKicker: string;
@@ -144,10 +158,19 @@ export const CONTENIDO: ContenidoLanding = {
   h1: "Licitaciones de tecnología del sector público: decide dónde pujar, a qué precio y contra quién",
   // El subtítulo repetía los tres verbos que el h1 acaba de decir y que las
   // tarjetas de abajo desarrollan: en pantalla y media la misma tríada salía
-  // cuatro veces. Aquí se queda con lo que el h1 no dice — qué es y qué acota.
+  // cuatro veces. Aquí se queda con lo que el h1 no dice — qué es, para quién
+  // y qué acota. El destinatario estaba solo en el cierre, en la última
+  // pantalla: un producto que sirve a un nicho tiene que nombrarlo arriba.
   subtitulo:
-    "Un radar sectorial: solo los expedientes con señal de tecnología enterprise, " +
-    "con el contexto que hace falta para decidir sobre ellos.",
+    "Un radar sectorial para equipos que venden tecnología enterprise a la " +
+    "administración pública española: solo los expedientes con esa señal, y el " +
+    "contexto que hace falta para decidir sobre ellos.",
+
+  // La frase estaba enterrada en el primer párrafo de la primera sección, a
+  // cuatro pantallas del hero. Descalificar tarde no ahorra ninguna solicitud:
+  // la cuesta entera de la página se la come igual quien no encaja.
+  heroAcotacion:
+    "Si tu negocio es obra pública, sanidad o suministros generales, esto no te sirve.",
 
   // El alta self-service está desactivada en producción: `ALLOW_SELF_REGISTRATION`
   // es `False` por defecto y no se declara en `render.yaml`, así que
@@ -158,6 +181,9 @@ export const CONTENIDO: ContenidoLanding = {
 
   notaFuentes:
     "Fuentes oficiales: PLACSP cada cuatro horas, TED y los RSS de Galicia y " + "Euskadi. Acceso por invitación.",
+
+  ctaIntermedioTitulo: "¿Te sirve para vuestros concursos?",
+  ctaIntermedioTexto: "No hace falta llegar al final de la página para pedir acceso.",
 
   pilaresKicker: "Cómo funciona",
   pilaresTitulo: "Tres decisiones sobre un mismo corpus acotado",
@@ -231,6 +257,7 @@ export const CONTENIDO: ContenidoLanding = {
   franjaExpedientes: "Expedientes publicables ahora mismo",
   franjaComunidades: "Comunidades autónomas con índice propio",
   franjaCpv: "Códigos CPV con volumen suficiente",
+  franjaActualizado: "Último expediente incorporado",
   franjaNota:
     "Cifras del corpus público, servidas por la API en el momento de generar esta " +
     "página. No es toda la contratación pública: es lo que ha entrado en el radar " +
@@ -247,7 +274,10 @@ export const CONTENIDO: ContenidoLanding = {
       icono: "corpus",
       h2: "Un radar tecnológico, no un censo de toda la contratación pública",
       parrafos: [
-        "TenderFlow no indexa toda la contratación pública española. Solo entra el expediente con señal de tecnología enterprise: coincidencia con el diccionario de familias, rescate del clasificador sobre CPV 48 y 72, o consulta directa por esos CPV en TED. Cada uno queda marcado con el motivo por el que entró. Comparar precios y competencia exige un mercado acotado; en un índice general esas comparaciones no significan nada. Si tu negocio es obra pública, sanidad o suministros generales, esto no te sirve.",
+        // La frase que descalificaba —"si tu negocio es obra pública…"— subió
+        // al hero (`heroAcotacion`). No se repite aquí: una sola fuente por
+        // afirmación es la regla de este fichero.
+        "TenderFlow no indexa toda la contratación pública española. Solo entra el expediente con señal de tecnología enterprise: coincidencia con el diccionario de familias, rescate del clasificador sobre CPV 48 y 72, o consulta directa por esos CPV en TED. Cada uno queda marcado con el motivo por el que entró. Comparar precios y competencia exige un mercado acotado; en un índice general esas comparaciones no significan nada.",
         "La fuente principal es el feed ATOM de la Plataforma de Contratación del Sector Público: cada cuatro horas, con cursor incremental e historial de cambios por expediente. Se suman TED y los RSS oficiales de Galicia y Euskadi, que son de descubrimiento reciente —no aportan histórico completo— y el producto no los presenta como si lo hicieran.",
       ],
       bullets: [
@@ -308,12 +338,18 @@ export const CONTENIDO: ContenidoLanding = {
 
   faqKicker: "FAQ",
   faqTitulo: "Preguntas frecuentes",
-  // Tres preguntas, no seis. Las otras tres reformulaban con otras palabras lo
-  // que las secciones acababan de explicar —qué entra en la base, de dónde
-  // salen los datos y si se analizan todos los pliegos—; sus dos afirmaciones
-  // que no estaban en el cuerpo (Ley 37/2007 y "no sustituye a la fuente
-  // oficial") viven ahora como bullets de "Corpus y fuentes". Quedan las que
-  // responden algo que el cuerpo no responde.
+  // Solo preguntas que el cuerpo de la página no responde. Las tres que se
+  // quitaron reformulaban con otras palabras lo que las secciones acababan de
+  // explicar —qué entra en la base, de dónde salen los datos y si se analizan
+  // todos los pliegos—; sus dos afirmaciones propias (Ley 37/2007 y "no
+  // sustituye a la fuente oficial") viven ahora como bullets de "Corpus y
+  // fuentes".
+  //
+  // Las dos últimas son las que todo comprador pregunta y la página dejaba sin
+  // respuesta: cuánto cuesta y cuánto se tarda en contestar. Que la respuesta
+  // sea "no hay precio publicado" y "no hay plazo comprometido" no es motivo
+  // para omitirlas — es la respuesta, y omitirla deja al visitante con la
+  // pregunta encima en el momento de decidir si escribe.
   faq: [
     {
       pregunta: "¿Me dice la probabilidad de ganar un concurso?",
@@ -329,6 +365,16 @@ export const CONTENIDO: ContenidoLanding = {
       pregunta: "¿Qué pasa con mis datos y con lo que guardo dentro?",
       respuesta:
         "Los datos de mercado son globales y compartidos; lo tuyo —perfil de scoring, reglas de vigilancia, favoritos, vistas guardadas y oportunidades— queda asociado a tu usuario y a tu organización. Desde la pantalla de cuenta puedes exportar todos tus datos y eliminar la cuenta con confirmación explícita; el borrado anonimiza tu histórico y revoca de paso tus sesiones y claves de API.",
+    },
+    {
+      pregunta: "¿Cuánto cuesta?",
+      respuesta:
+        "No hay precio publicado. En el producto no existe alta self-service, ni pasarela de pago, ni planes: el acceso se concede a mano, uno a uno, y las condiciones se hablan en la conversación que abre la solicitud. Cuando haya precios públicos estarán en esta página; poner mientras tanto un «desde X €» que no responde a nada sería inventarse el dato igual que inventarse una métrica.",
+    },
+    {
+      pregunta: "¿Cuánto tardáis en responder a una solicitud?",
+      respuesta:
+        "No hay un plazo comprometido, porque no hay ningún automatismo que lo sostenga: la solicitud entra en una cola —pendiente, atendida o descartada— que revisa una persona, y el acceso se habilita a mano sobre tu email o el dominio de tu empresa. La respuesta llega por correo y no es inmediata. Si tienes una fecha de presentación encima, dilo en el mensaje.",
     },
   ],
 

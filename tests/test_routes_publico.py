@@ -229,7 +229,31 @@ def test_los_hubs_aplican_el_umbral_de_volumen(client, corpus):
 
 
 def test_el_resumen_cuenta_solo_lo_publicable(client, corpus):
-    assert client.get("/api/v1/publico/sitemap/resumen").json() == {"total": 4}
+    assert client.get("/api/v1/publico/sitemap/resumen").json() == {
+        "total": 4,
+        "actualizado": "2026-08-01T00:00:00+00:00",
+    }
+
+
+def test_el_resumen_publica_la_fecha_del_ultimo_expediente(client, corpus):
+    """Es la prueba de frescura que la landing enseña bajo el hero.
+
+    Tiene que salir del corpus **publicable**: R-99 no llega a página, así que
+    su fecha no puede acreditar que haya entrado nada nuevo.
+    """
+    with corpus.connect() as c:
+        c.execute(
+            "UPDATE licitaciones SET fecha_extraccion = %s WHERE id_externo = %s",
+            ("2027-01-01T00:00:00+00:00", "R-99"),
+        )
+        c.execute(
+            "UPDATE licitaciones SET fecha_extraccion = %s WHERE id_externo = %s",
+            ("2026-08-14T06:00:00+00:00", "R-02"),
+        )
+
+    cuerpo = client.get("/api/v1/publico/sitemap/resumen").json()
+
+    assert cuerpo["actualizado"] == "2026-08-14T06:00:00+00:00"
 
 
 def test_las_entradas_traen_lo_justo_para_url_y_lastmod(client, corpus):

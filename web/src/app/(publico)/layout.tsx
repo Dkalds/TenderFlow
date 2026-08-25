@@ -2,7 +2,9 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { ThemeProvider } from "next-themes";
 import { TenderFlowLogo } from "@/components/layout/tenderflow-logo";
-import { CONTACT_EMAIL } from "@/lib/contacto";
+import { CONTACT_EMAIL, solicitarAccesoHref } from "@/lib/contacto";
+import { CONTENIDO } from "./_content/landing";
+import { EnlaceSolicitarAcceso } from "./_components/enlace-solicitar-acceso";
 
 /**
  * Layout de la superficie pública.
@@ -14,16 +16,22 @@ import { CONTACT_EMAIL } from "@/lib/contacto";
  * aquí, en el grupo de rutas que de verdad es público.
  *
  * No monta `ConsoleFrame` ni la paleta de comandos ni el copiloto: son piezas
- * cliente que exigen sesión. Todo lo que cuelga de este layout es HTML de
- * servidor, que es lo que un rastreador puede leer. El header es sticky con
+ * cliente que exigen sesión. Todo el **contenido** que cuelga de este layout se
+ * renderiza en servidor, que es lo que un rastreador puede leer; las dos islas
+ * cliente que hay —`ThemeProvider` y el ancla con evento del CTA— no aportan
+ * texto que dependa de la hidratación. El header es sticky con
  * la superficie `tf-glass` de la casa (CSS puro, con fallback sólido); por eso
  * los anclajes de la landing llevan `scroll-mt-*`, o el header taparía el
  * título al que se salta.
  *
- * El único cliente que monta es `ThemeProvider`: el resto de providers de la
- * aplicación (react-query, sesión, tooltips, nuqs) vive ahora en los grupos que
- * los usan, porque aquí sólo servían para engordar el bundle de una página de
- * marketing y disparar un `GET /auth/me` por visita anónima. El tema sí hace
+ * Los providers de la aplicación (react-query, sesión, tooltips, nuqs) no se
+ * montan aquí: viven en los grupos que los usan, porque en esta superficie sólo
+ * servían para engordar el bundle de una página de marketing y disparar un
+ * `GET /auth/me` por visita anónima. Lo que sí monta son dos islas mínimas.
+ * `EnlaceSolicitarAcceso` es la del CTA del header, y existe por lo mismo que
+ * en la landing: sin su evento, el botón más persistente del sitio sería un
+ * punto ciego en la medición; su ancla y su `href` llegan renderizados desde el
+ * servidor, así que sin JavaScript el enlace funciona igual. El tema sí hace
  * falta: el variant `dark` del proyecto es class-driven
  * (`@custom-variant dark` en `globals.css`), así que sin la clase `.dark` un
  * visitante con el sistema en oscuro vería la landing en claro. Va **sin**
@@ -66,14 +74,40 @@ export default function PublicoLayout({ children }: { children: React.ReactNode 
                 </Link>
               </nav>
             </div>
-            {/* utm_content distingue en Vercel Analytics desde qué CTA se llega
-              a /login; el canonical de /login colapsa las variantes. */}
-            <Link
-              href="/login?utm_source=publico&utm_content=header"
-              className="bg-primary text-primary-foreground hover:bg-primary/90 focus-visible:ring-ring focus-visible:ring-offset-background inline-flex h-9 items-center justify-center rounded-md px-4 text-sm font-medium shadow transition-[transform,background-color] duration-150 ease-out focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none active:scale-[0.97]"
-            >
-              Iniciar sesión
-            </Link>
+            {/* El header llevaba "Iniciar sesión" como único botón, y era el
+              CTA más persistente del sitio: acompaña al visitante durante toda
+              la página. Para quien llega sin cuenta —el público entero de esta
+              superficie— /login no es una acción, es un muro: el alta responde
+              403 y el login con Google es fail-closed sin allowlist. La propia
+              FAQ lo dice ("por eso el botón principal es solicitar acceso y no
+              crear una cuenta") mientras el header decía lo contrario.
+
+              Ahora la jerarquía coincide con el producto: solicitar acceso es
+              el botón, y acceder es un enlace para quien ya tiene cuenta y sabe
+              lo que busca. En móvil, donde la nav de secciones está oculta,
+              esto es además lo único accionable del header — razón de más para
+              que no sea un callejón sin salida.
+
+              utm_content distingue en Vercel Analytics desde qué CTA se llega a
+              /login; el canonical de /login colapsa las variantes. */}
+            <div className="flex items-center gap-4">
+              <Link
+                href="/login?utm_source=publico&utm_content=header"
+                // `whitespace-nowrap`: al dejar de ser un botón con padding,
+                // a 375 px "Iniciar sesión" partía en dos renglones junto a un
+                // CTA de una sola línea. El texto es corto y cabe entero.
+                className="text-muted-foreground hover:text-foreground focus-visible:ring-ring rounded text-sm whitespace-nowrap transition-colors duration-150 focus-visible:ring-2 focus-visible:outline-none"
+              >
+                Iniciar sesión
+              </Link>
+              <EnlaceSolicitarAcceso
+                href={solicitarAccesoHref("header")}
+                ubicacion="header"
+                className="bg-primary text-primary-foreground hover:bg-primary/90 focus-visible:ring-ring focus-visible:ring-offset-background inline-flex h-9 items-center justify-center rounded-md px-4 text-sm font-medium shadow transition-[transform,background-color] duration-150 ease-out focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none active:scale-[0.97]"
+              >
+                {CONTENIDO.ctaPrimario}
+              </EnlaceSolicitarAcceso>
+            </div>
           </div>
         </header>
 

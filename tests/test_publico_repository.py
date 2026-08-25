@@ -203,6 +203,44 @@ def test_contar_ignora_la_paginacion(corpus, repo):
 
 
 # ---------------------------------------------------------------------------
+# Frescura
+# ---------------------------------------------------------------------------
+
+
+def _fechar(db_mod, id_externo: str, cuando: str) -> None:
+    with db_mod.connect() as conn:
+        conn.execute(
+            "UPDATE licitaciones SET fecha_extraccion = %s WHERE id_externo = %s",
+            (cuando, id_externo),
+        )
+
+
+def test_ultima_incorporacion_devuelve_la_mas_reciente(corpus, repo):
+    """La landing usa esta fecha como prueba de frescura del corpus."""
+    _fechar(corpus, "P-03", "2026-08-20T09:30:00+00:00")
+
+    assert repo.ultima_incorporacion() == "2026-08-20T09:30:00+00:00"
+
+
+def test_ultima_incorporacion_ignora_lo_que_no_se_publica(corpus, repo):
+    """Un expediente que no llega a página no puede acreditar frescura.
+
+    P-06 tiene el título por debajo del umbral: existe en la tabla pero no en
+    la superficie pública. Si su fecha contara, la landing diría "incorporado
+    hace un minuto" señalando algo que el visitante no puede abrir.
+    """
+    _fechar(corpus, "P-06", "2027-01-01T00:00:00+00:00")
+    _fechar(corpus, "P-01", "2026-08-15T12:00:00+00:00")
+
+    assert repo.ultima_incorporacion() == "2026-08-15T12:00:00+00:00"
+
+
+def test_ultima_incorporacion_sin_corpus_es_none(tmp_db, repo):
+    """Sin expedientes no hay fecha que dar, y el consumidor no pinta nada."""
+    assert repo.ultima_incorporacion() is None
+
+
+# ---------------------------------------------------------------------------
 # Hubs
 # ---------------------------------------------------------------------------
 

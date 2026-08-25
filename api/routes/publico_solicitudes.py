@@ -26,8 +26,16 @@ aquí no se suben ficheros.
 **Responde 303 y nunca 5xx.** ``scripts/fuzz_api_contract.py`` mantiene
 ``KNOWN_5XX`` a cero: entrada de internet, salida limpia. Un envío inválido no
 es un error del servidor, es una redirección a la misma página de gracias con
-``?estado=error``. Y como el navegador sigue la redirección, el usuario nunca
+``?estado=<motivo>``. Y como el navegador sigue la redirección, el usuario nunca
 ve JSON.
+
+Ese "nunca ve JSON" tenía una fuga que no se veía desde este fichero: el corte
+por rate limit ocurre en ``RateLimitMiddleware``, **antes** del router, y
+devolvía el ``application/problem+json`` de RFC 7807 en crudo al navegador —una
+oficina tras NAT o un reintento bastaban para provocarlo—. El middleware trata
+ahora este path como caso propio y redirige con ``ESTADO_LIMITE``; los estados
+los declara este módulo para que la página de gracias y la API no puedan
+divergir.
 
 **Sin CSRF, a propósito.** ``require_csrf`` es una dependencia por endpoint que
 sólo aplica cuando hay cookie de sesión (``api/routes/dual_auth.py``); este POST
@@ -65,7 +73,34 @@ router = APIRouter(tags=["publico"])
 # Página de gracias de la web. Relativa a propósito: así atraviesa el rewrite
 # de Vercel y funciona igual en local, en preview y en producción.
 _DESTINO_OK = "/solicitud-recibida"
-_DESTINO_ERROR = "/solicitud-recibida?estado=error"
+
+# Estados de error que entiende la página de gracias.
+#
+# Un único `?estado=error` obligaba a un texto genérico ("revisa que el email
+# sea correcto y que hayas aceptado…") aunque aquí se sabe perfectamente cuál
+# de las dos cosas falló. Diferenciarlos convierte "vuelve a intentarlo" en
+# "revisa esto", que es la diferencia entre recuperar el envío y perderlo.
+#
+# Lo que **no** viaja de vuelta es lo que el visitante escribió: el email es un
+# dato personal y no se pone en una query string, que acaba en logs de acceso,
+# en el `Referer` de la siguiente petición y en el historial del navegador. El
+# coste es que hay que reescribir el formulario; es el correcto.
+ESTADO_EMAIL = "email"
+ESTADO_CONSENTIMIENTO = "consentimiento"
+ESTADO_ERROR = "error"
+#: Cuota agotada. Lo emite `RateLimitMiddleware`, no esta ruta: el corte por
+#: rate limit ocurre antes del router y sin él el visitante veía el
+#: `application/problem+json` crudo, que es justo lo que este módulo evita en
+#: todos sus demás caminos.
+ESTADO_LIMITE = "limite"
+
+
+def destino_error(motivo: str) -> str:
+    """URL de la página de gracias para un envío que no prosperó."""
+    return f"{_DESTINO_OK}?estado={motivo}"
+
+
+_DESTINO_ERROR = destino_error(ESTADO_ERROR)
 
 # Validación de email deliberadamente laxa: el objetivo es descartar la errata
 # evidente, no decidir si un buzón existe. Un patrón estricto rechaza
@@ -152,11 +187,16 @@ async def solicitar_acceso(request: Request) -> RedirectResponse:
         return RedirectResponse(_DESTINO_ERROR, status_code=status.HTTP_303_SEE_OTHER)
 
     correo = _campo(datos, "email").strip()[:_MAX_EMAIL]
+    if not _EMAIL.match(correo):
+        return RedirectResponse(destino_error(ESTADO_EMAIL), status_code=status.HTTP_303_SEE_OTHER)
+
     # El consentimiento es obligatorio: sin él no hay base para guardar un dato
     # de contacto, así que el envío se rechaza en lugar de guardarse "por si
     # acaso". Un checkbox HTML sin marcar ni siquiera se envía.
-    if not _EMAIL.match(correo) or not _campo(datos, "consentimiento").strip():
-        return RedirectResponse(_DESTINO_ERROR, status_code=status.HTTP_303_SEE_OTHER)
+    if not _campo(datos, "consentimiento").strip():
+        return RedirectResponse(
+            destino_error(ESTADO_CONSENTIMIENTO), status_code=status.HTTP_303_SEE_OTHER
+        )
 
     try:
         await run_db(

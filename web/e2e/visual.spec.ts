@@ -68,3 +68,43 @@ test.describe("Regresión visual", () => {
     });
   }
 });
+
+/**
+ * La portada, aparte y sin sesión.
+ *
+ * Va en su propio bloque por un motivo que no es de estilo: con la sesión del
+ * proyecto, `/` redirige al dashboard, así que añadirla a `PANTALLAS` habría
+ * capturado la consola creyendo capturar la landing — un baseline verde sobre
+ * la página equivocada.
+ *
+ * Y merece estar: es la única pantalla del producto cuyo daño por regresión
+ * visual es directo, porque es la primera —y a veces la única— que ve alguien
+ * que todavía no es usuario.
+ */
+test.describe("Regresión visual de la portada", () => {
+  test.use({ storageState: { cookies: [], origins: [] } });
+  test.skip(
+    ({ browserName }) => browserName !== "chromium",
+    "Los baselines se mantienen solo para chromium"
+  );
+  test.skip(
+    !process.env.VISUAL_BASELINE,
+    "Sin baselines commiteados todavía: ver la cabecera de este fichero"
+  );
+
+  test("la portada coincide con su baseline", async ({ page }) => {
+    await page.goto("/");
+    await expect(page.locator("main").first()).toBeVisible({ timeout: 20000 });
+    await page.waitForLoadState("networkidle");
+
+    await expect(page).toHaveScreenshot("portada.png", {
+      fullPage: true,
+      maxDiffPixelRatio: 0.02,
+      // La franja de cifras trae tres números del corpus y la fecha del último
+      // expediente: cambian con la ingesta y no son diseño. Enmascararlos es lo
+      // que hace que este baseline dure más de un día.
+      mask: [page.getByLabel("El corpus en cifras")],
+      animations: "disabled",
+    });
+  });
+});

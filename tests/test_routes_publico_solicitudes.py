@@ -50,7 +50,7 @@ def test_sin_consentimiento_no_guarda(client):
     r = client.post(RUTA, content="email=b%40e.example", headers=FORM, follow_redirects=False)
 
     assert r.status_code == 303
-    assert "estado=error" in r.headers["location"]
+    assert "estado=consentimiento" in r.headers["location"]
     assert _contar() == antes
 
 
@@ -66,8 +66,30 @@ def test_email_invalido_no_guarda(client, email):
     )
 
     assert r.status_code == 303
-    assert "estado=error" in r.headers["location"]
+    assert "estado=email" in r.headers["location"]
     assert _contar() == antes
+
+
+def test_el_motivo_del_rechazo_viaja_pero_los_datos_no(client):
+    """El estado dice qué falló; el email no vuelve en la URL.
+
+    Diferenciar el motivo es lo que permite a la página de gracias decir
+    "revisa esto" en vez de "vuelve a intentarlo". Devolver además lo escrito
+    ahorraría reescribir el formulario, pero pondría un dato personal en una
+    query string —logs de acceso, `Referer`, historial— y eso no se hace.
+    """
+    r = client.post(
+        RUTA,
+        content="email=ana%40empresa.example",  # válido, pero sin consentimiento
+        headers=FORM,
+        follow_redirects=False,
+    )
+
+    destino = r.headers["location"]
+
+    assert "estado=consentimiento" in destino
+    assert "ana" not in destino
+    assert "empresa.example" not in destino
 
 
 def test_honeypot_finge_exito_pero_no_guarda(client):

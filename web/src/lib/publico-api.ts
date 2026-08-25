@@ -16,6 +16,7 @@ import type { components } from "@/generated/api";
 export type LicitacionPublica = components["schemas"]["LicitacionPublica"];
 export type EntradaSitemap = components["schemas"]["EntradaSitemap"];
 export type Hubs = components["schemas"]["Hubs"];
+export type ResumenSitemap = components["schemas"]["ResumenSitemap"];
 
 /**
  * Origen de la API para llamadas desde el servidor.
@@ -115,10 +116,22 @@ export async function obtenerHubs(): Promise<Hubs> {
   return (await pedir<Hubs>("/hubs")) ?? { ccaa: [], cpv: [] };
 }
 
+/**
+ * Tamaño y frescura del corpus publicable.
+ *
+ * `actualizado` es la fecha de incorporación del expediente publicable más
+ * reciente. Puede faltar —corpus vacío, o API caída— y en ese caso el llamante
+ * no pinta nada: la franja de la landing existe para respaldar una promesa de
+ * frescura, y rellenar el hueco con una fecha inventada sería fabricar
+ * justamente la prueba.
+ */
+export async function obtenerResumenPublico(): Promise<ResumenSitemap> {
+  return (await pedir<ResumenSitemap>("/sitemap/resumen")) ?? { total: 0 };
+}
+
 /** Cuántas URLs publicables hay. Dimensiona la partición del sitemap. */
 export async function contarPublicables(): Promise<number> {
-  const resumen = await pedir<{ total: number }>("/sitemap/resumen");
-  return resumen?.total ?? 0;
+  return (await obtenerResumenPublico()).total;
 }
 
 /** Un tramo estable de entradas para un fichero de sitemap. */
