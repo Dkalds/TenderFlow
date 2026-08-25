@@ -311,6 +311,19 @@ def _repo_falso(agregado: dict[str, object], por_lote: dict[str, object]) -> typ
         def calibracion_baja_por_lote(self) -> dict[str, object]:
             return por_lote
 
+        def regimen_servido(self) -> str | None:
+            """Sin filas de predicción no hay régimen que declarar.
+
+            El doble tiene que implementarlo aunque estas pruebas no midan la
+            atribución: ``comprobar_calibracion_baja`` es fail-open, así que un
+            método que falte no explota — se convierte en ``status="error"`` y
+            el test falla por un motivo que no es el suyo.
+
+            Devolver ``None`` deja la severidad sobre el agregado, que es lo que
+            estos casos fijan.
+            """
+            return None
+
     return _Falso
 
 
