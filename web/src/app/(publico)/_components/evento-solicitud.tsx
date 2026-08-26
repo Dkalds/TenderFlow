@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect } from "react";
 import { track } from "@vercel/analytics";
 
 /**
@@ -21,15 +21,43 @@ import { track } from "@vercel/analytics";
  * escribió. El email no viaja en la URL (ver `publico_solicitudes.py`) y por
  * tanto tampoco puede llegar aquí.
  *
- * El `ref` evita el doble envío del Strict Mode en desarrollo, que en producción
- * no ocurre pero en local duplicaría cada conversión de la que se fía uno.
+ * Contar de más
+ * -------------
+ * Una conversión es un hecho que ocurre una vez, y el montaje de un componente
+ * no lo es. Dos caminos la duplicaban:
+ *
+ * 1. **Recargar** la página de gracias, o llegar con atrás/adelante, monta el
+ *    componente otra vez. Se descarta mirando el tipo de navegación: solo
+ *    cuenta `navigate`, que es lo que produce seguir el 303 del formulario;
+ *    `reload` y `back_forward` no son envíos nuevos.
+ * 2. **Strict Mode** en desarrollo invoca el efecto dos veces. Lo corta el
+ *    mismo candado de `sessionStorage`, que además sobrevive a un remontaje
+ *    por cualquier otra causa.
+ *
+ * El candado va por estado: un visitante que falla y luego acierta tiene dos
+ * hechos distintos que contar, y los dos deben salir.
+ *
+ * Queda un caso que no se puede distinguir desde el cliente: entrar tecleando
+ * la URL cuenta como éxito. La página es `noindex` y no la enlaza nadie, así
+ * que ese ruido es despreciable; cerrarlo del todo exigiría un token de un solo
+ * uso en la redirección, y no compensa por ahora.
  */
 export function EventoSolicitud({ estado }: { estado: string }) {
-  const emitido = useRef(false);
-
   useEffect(() => {
-    if (emitido.current) return;
-    emitido.current = true;
+    const [navegacion] = performance.getEntriesByType(
+      "navigation",
+    ) as PerformanceNavigationTiming[];
+    if (navegacion && navegacion.type !== "navigate") return;
+
+    const candado = `tf:solicitud:${estado}`;
+    try {
+      if (sessionStorage.getItem(candado)) return;
+      sessionStorage.setItem(candado, "1");
+    } catch {
+      // Modo privado o almacenamiento bloqueado: sin candado se puede contar de
+      // más, pero perder la conversión entera sería peor.
+    }
+
     track("solicitud_acceso_resultado", { estado });
   }, [estado]);
 

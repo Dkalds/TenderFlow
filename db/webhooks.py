@@ -38,6 +38,13 @@ from shared.ssrf import validate_outbound_url
 log = get_logger(__name__)
 
 _DELIVERY_TIMEOUT_S = 5.0
+
+#: Solicitud de acceso nueva desde la landing. La emite
+#: ``api/routes/publico_solicitudes.py`` y la acepta como suscripción
+#: ``api/routes/webhooks.py``; el nombre vive aquí, con el resto de la
+#: maquinaria de entrega, para que los dos extremos no puedan escribirlo
+#: distinto y el evento se pierda sin que falle nada.
+EVENTO_SOLICITUD_ACCESO = "solicitud_acceso.creada"
 _MAX_FAILURES_BEFORE_DISABLE = 10
 
 

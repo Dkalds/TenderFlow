@@ -8,6 +8,7 @@ import { migasJsonLd, serializarJsonLd } from "@/lib/jsonld";
 import { rutaHubCpv } from "@/lib/slug";
 import { ListadoLicitaciones } from "@/app/(publico)/_components/listado-licitaciones";
 import { Paginacion } from "@/app/(publico)/_components/paginacion";
+import { CierrePublico } from "@/app/(publico)/_components/cierre-publico";
 
 /**
  * Hub por código CPV.
@@ -142,6 +143,8 @@ export default async function HubCpv({
         <ListadoLicitaciones licitaciones={licitaciones} jsonLdNombre={`Licitaciones CPV ${codigo}`} />
 
         <Paginacion base={rutaHubCpv(codigo)} paginaActual={pagina} total={total} porPagina={POR_PAGINA} />
+
+        <CierrePublico ubicacion="hub-cpv" />
       </div>
     </>
   );

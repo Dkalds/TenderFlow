@@ -36,6 +36,7 @@ from api.routes.dual_auth import require_admin
 from config.settings import settings
 from db.audit import log_event
 from db.repositories.webhooks import WebhookRepository
+from db.webhooks import EVENTO_SOLICITUD_ACCESO
 from observability.logging import get_logger
 from shared.outbound_http import pinned_https_request
 from shared.ssrf import validate_outbound_url
@@ -44,7 +45,16 @@ log = get_logger(__name__)
 
 router = APIRouter(prefix="/webhooks", tags=["webhooks"])
 
-_VALID_EVENTS = {"watchlist_match", "daily_summary", "watchlist_rule.matched", "*"}
+# `solicitud_acceso.creada` lo emite `publico_solicitudes.py` cuando entra una
+# petición desde la landing. Sin una suscripción a este evento, la cola de
+# acceso —que se atiende a mano— solo se descubre abriendo el panel.
+_VALID_EVENTS = {
+    "watchlist_match",
+    "daily_summary",
+    "watchlist_rule.matched",
+    EVENTO_SOLICITUD_ACCESO,
+    "*",
+}
 _IDEMPOTENCY_KEY_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
 
 

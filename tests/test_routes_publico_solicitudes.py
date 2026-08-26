@@ -92,6 +92,128 @@ def test_el_motivo_del_rechazo_viaja_pero_los_datos_no(client):
     assert "empresa.example" not in destino
 
 
+def test_reenviar_no_duplica_la_cola(client):
+    """Un doble clic o un reintento no pueden crear tres filas iguales.
+
+    Es el caso probable, no el raro: tras agotar el rate limit —cinco por
+    minuto— lo que hace cualquiera es volver a darle al botón. Quien paga los
+    duplicados es la persona que revisa la cola a mano.
+    """
+    antes = _contar()
+    cuerpo = "email=repe%40empresa.example&empresa=Uno&consentimiento=si"
+
+    primera = client.post(RUTA, content=cuerpo, headers=FORM, follow_redirects=False)
+    segunda = client.post(RUTA, content=cuerpo, headers=FORM, follow_redirects=False)
+
+    assert primera.status_code == 303
+    assert segunda.status_code == 303
+    assert segunda.headers["location"] == "/solicitud-recibida"
+    assert _contar() == antes + 1
+
+
+def test_reenviar_actualiza_lo_que_llega_mejor_contado(client):
+    """La segunda vez es la misma petición mejor explicada, no otra distinta."""
+    client.post(
+        RUTA,
+        content="email=mejora%40empresa.example&consentimiento=si",
+        headers=FORM,
+        follow_redirects=False,
+    )
+    client.post(
+        RUTA,
+        content="email=mejora%40empresa.example&empresa=Acme&mensaje=Con+detalle&consentimiento=si",
+        headers=FORM,
+        follow_redirects=False,
+    )
+
+    from db.solicitudes_acceso import listar_solicitudes
+
+    filas = [f for f in listar_solicitudes(limit=100) if f["email"] == "mejora@empresa.example"]
+
+    assert len(filas) == 1
+    assert filas[0]["empresa"] == "Acme"
+    assert filas[0]["mensaje"] == "Con detalle"
+
+
+def test_la_unicidad_no_bloquea_pedir_acceso_otra_vez(client):
+    """El índice es parcial: sólo hay una pendiente por email, no una histórica.
+
+    Si se atendió o se descartó, volver a pedir acceso es legítimo y tiene que
+    poder entrar; un UNIQUE a secas convertiría el histórico en un muro.
+    """
+    from db.solicitudes_acceso import actualizar_estado, listar_solicitudes
+
+    client.post(
+        RUTA,
+        content="email=vuelve%40empresa.example&consentimiento=si",
+        headers=FORM,
+        follow_redirects=False,
+    )
+    [primera] = [f for f in listar_solicitudes(limit=100) if f["email"] == "vuelve@empresa.example"]
+    actualizar_estado(primera["id"], "descartada")
+
+    antes = _contar()
+    client.post(
+        RUTA,
+        content="email=vuelve%40empresa.example&consentimiento=si",
+        headers=FORM,
+        follow_redirects=False,
+    )
+
+    assert _contar() == antes + 1
+
+
+def test_una_solicitud_nueva_avisa_al_operador(client, monkeypatch):
+    """El embudo no puede terminar en una fila que nadie mira.
+
+    El aviso sale por el sistema de webhooks que ya existe, y **sin el email**:
+    un webhook sale del sistema y el aviso no necesita el dato personal para
+    cumplir su función. La dirección se lee en el panel, que exige ser admin.
+    """
+    import api.routes.publico_solicitudes as modulo
+
+    emitidos: list[tuple[str, dict[str, object]]] = []
+    monkeypatch.setattr(
+        modulo, "trigger_event", lambda evento, payload: emitidos.append((evento, payload)) or 1
+    )
+
+    client.post(
+        RUTA,
+        content="email=avisa%40empresa.example&empresa=Acme&mensaje=secreto&consentimiento=si",
+        headers=FORM,
+        follow_redirects=False,
+    )
+
+    assert len(emitidos) == 1
+    evento, payload = emitidos[0]
+    assert evento == "solicitud_acceso.creada"
+    assert payload["empresa"] == "Acme"
+    assert "avisa@empresa.example" not in str(payload)
+    assert "secreto" not in str(payload)
+
+
+def test_un_webhook_roto_no_rompe_el_formulario(client, monkeypatch):
+    """El aviso es un efecto lateral: no puede tumbar un formulario público."""
+    import api.routes.publico_solicitudes as modulo
+
+    def _revienta(*_a, **_k):
+        raise RuntimeError("endpoint del operador caído")
+
+    monkeypatch.setattr(modulo, "trigger_event", _revienta)
+    antes = _contar()
+
+    respuesta = client.post(
+        RUTA,
+        content="email=roto%40empresa.example&consentimiento=si",
+        headers=FORM,
+        follow_redirects=False,
+    )
+
+    assert respuesta.status_code == 303
+    assert respuesta.headers["location"] == "/solicitud-recibida"
+    assert _contar() == antes + 1
+
+
 def test_honeypot_finge_exito_pero_no_guarda(client):
     """Un bot que rellena el campo trampa recibe el mismo 303 de éxito.
 
