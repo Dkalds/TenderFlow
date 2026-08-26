@@ -681,23 +681,72 @@ class AggregateRepository:
     )
 
     def resumen_timeline_items(
-        self, filters: LicitacionesFilters, *, limit: int
-    ) -> list[dict[str, Any]]:
-        """Las ``limit`` licitaciones más recientes (scatter de ``/resumen/timeline``).
+        self, filters: LicitacionesFilters, *, limit: int, muestrear: bool = False
+    ) -> tuple[list[dict[str, Any]], int]:
+        """Filas del scatter de ``/resumen/timeline`` y total de la ventana.
 
-        El ``ORDER BY ... DESC LIMIT`` lo resuelve el btree de
-        ``fecha_publicacion`` hacia atrás: se materializan ``limit`` filas, no
-        la tabla entera como hacía el ``sort_values().head()`` de pandas.
+        Dos modos, porque el mismo endpoint alimenta dos preguntas distintas:
+
+        - ``muestrear=False`` (por defecto): las ``limit`` **más recientes**. Es
+          lo que necesita la tabla «Últimas publicaciones», y el ``ORDER BY ...
+          DESC LIMIT`` lo resuelve el btree de ``fecha_publicacion`` hacia atrás
+          sin materializar la ventana entera.
+        - ``muestrear=True``: una **muestra sistemática repartida por toda la
+          ventana**. Lo pide la nube de puntos, para la que «las 1.000 más
+          recientes» era una respuesta equivocada: en producción, las 1.000 más
+          recientes de una ventana de 30 días son 48 horas, así que un gráfico
+          rotulado «en el periodo» dibujaba dos días. Se ordena por fecha, se
+          numera y se toma una de cada ``ceil(total/limit)``: el resultado
+          conserva la forma de la nube y cubre el rango pedido.
+
+        El segundo elemento del par es el total de la ventana **antes** de
+        recortar, en los dos modos. Sin él, la UI no puede decir si lo que
+        enseña es todo o una parte (regla del rediseño: nada de topes
+        silenciosos).
         """
         where, params = _build_where(filters)
         guard = _iso_guard("fecha_publicacion")
+
+        if not muestrear:
+            total = self._resumen_timeline_total(where, params)
+            sql = (
+                f"SELECT {self._RESUMEN_ITEM_COLS} FROM licitaciones "
+                f"WHERE {where} AND {guard} "
+                "ORDER BY fecha_publicacion DESC LIMIT %s"
+            )
+            with connect_read() as c:
+                return rows_to_dicts(c.execute(sql, [*params, limit])), total
+
+        # `(rn - 1) % stride = 0` y no `rn % stride = 1`: con stride 1 —la
+        # ventana cabe entera— el segundo no selecciona nada, porque `rn % 1`
+        # es siempre 0. Así el caso «no hace falta muestrear» sale gratis por
+        # la misma consulta en vez de por una rama aparte.
         sql = (
-            f"SELECT {self._RESUMEN_ITEM_COLS} FROM licitaciones "
-            f"WHERE {where} AND {guard} "
-            "ORDER BY fecha_publicacion DESC LIMIT %s"
+            "WITH ventana AS ("
+            f"  SELECT {self._RESUMEN_ITEM_COLS}, "
+            "         row_number() OVER (ORDER BY fecha_publicacion DESC) AS rn, "
+            "         count(*) OVER () AS total "
+            "  FROM licitaciones "
+            f"  WHERE {where} AND {guard}"
+            ") "
+            f"SELECT {self._RESUMEN_ITEM_COLS}, total FROM ventana "
+            "WHERE (rn - 1) %% greatest(1, ceil(total::numeric / %s)::bigint) = 0 "
+            "ORDER BY fecha_publicacion DESC"
         )
         with connect_read() as c:
-            return rows_to_dicts(c.execute(sql, [*params, limit]))
+            rows = rows_to_dicts(c.execute(sql, [*params, limit]))
+        total = int(rows[0]["total"]) if rows else 0
+        for row in rows:
+            row.pop("total", None)
+        return rows, total
+
+    def _resumen_timeline_total(self, where: str, params: list[Any]) -> int:
+        """Expedientes de la ventana, para poder declarar el recorte."""
+        guard = _iso_guard("fecha_publicacion")
+        sql = f"SELECT count(*) FROM licitaciones WHERE {where} AND {guard}"
+        with connect_read() as c:
+            row = c.execute(sql, params).fetchone()
+        return int(row[0] or 0) if row else 0
 
     def resumen_novedades(
         self, *, desde_iso: str, sample_limit: int

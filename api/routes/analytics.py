@@ -463,6 +463,16 @@ def resumen_timeline(
     fecha_hasta: date | None = Query(default=None, description="End date (YYYY-MM-DD)"),
     ccaa: str | None = Query(default=None, description="Filter by CCAA"),
     tecnologia: str | None = Query(default=None, description="Filter by tecnologia"),
+    muestra: bool = Query(
+        default=False,
+        description=(
+            "Reparte las filas por toda la ventana (muestra sistemática) en vez "
+            "de devolver las más recientes. Lo pide la nube de puntos del "
+            "Resumen: sin esto, las 1.000 más recientes de una ventana de 30 "
+            "días son 48 horas de datos. La tabla de últimas publicaciones "
+            "necesita el orden contrario, así que el reparto es opt-in."
+        ),
+    ),
     _user: dict[str, Any] = Depends(get_current_session_user),
 ) -> TimelineScatterResult:
     """Scatter data for timeline visualization."""
@@ -471,6 +481,7 @@ def resumen_timeline(
         fecha_hasta=fecha_hasta,
         ccaa=ccaa,
         tecnologia=tecnologia,
+        muestrear=muestra,
     )
     return get_timeline_scatter(filters)
 

@@ -1,5 +1,3 @@
-import type { AnalyticsOverview } from "@/lib/api-types";
-
 export interface TimelineItem {
   id_externo: string;
   titulo: string;
@@ -11,6 +9,13 @@ export interface TimelineItem {
   ccaa: string | null;
 }
 
-export type ExtendedOverview = AnalyticsOverview;
-
 export const ITEMS_PER_PAGE = 10;
+
+/**
+ * Tope de filas de `GET /analytics/resumen/timeline` (`_TIMELINE_LIMIT` en
+ * `services/analytics/resumen.py`). El frontend lo necesita para **declarar**
+ * el recorte: la tabla decía «1–10 de 1.000» y ese 1.000 se leía como el total
+ * del ámbito, cuando es el tope del endpoint. Si el backend lo cambia, aquí se
+ * queda corto el aviso, nunca el dato — por eso se compara con `>=`.
+ */
+export const TIMELINE_MAX = 1000;

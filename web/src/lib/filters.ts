@@ -281,6 +281,37 @@ export function appendFiltersToPath(path: string, qs: string): string {
 }
 
 /**
+ * Fusiona el ámbito activo con los parámetros que el propio enlace ya trae.
+ *
+ * Es la otra mitad de {@link appendFiltersToPath}, que devuelve intacto
+ * cualquier path con query — pensado para el deep-link que quiere *sustituir*
+ * el ámbito. Las tarjetas del Resumen necesitan lo contrario: cuentan dentro
+ * del ámbito activo y su enlace tiene que abrir **ese mismo** subconjunto, más
+ * su propio recorte. Con `appendFiltersToPath`, «Total activas» contaba las
+ * abiertas de Madrid y abría las abiertas de España.
+ *
+ * Los parámetros del path ganan a los del ámbito: si la tarjeta fija
+ * `fecha_desde=ayer`, esa fecha es su razón de existir y no la del chip.
+ */
+export function mergeFiltersIntoPath(path: string, qs: string): string {
+  if (!qs) return path;
+  const [base, ownQuery = ""] = path.split("?");
+  const merged = new URLSearchParams(qs.startsWith("?") ? qs.slice(1) : qs);
+  for (const [key, value] of new URLSearchParams(ownQuery)) merged.set(key, value);
+  const next = merged.toString();
+  return next ? `${base}?${next}` : base;
+}
+
+/**
+ * Como {@link useWithFilters}, pero fusionando en vez de descartar el ámbito
+ * cuando el destino trae su propia query (ver {@link mergeFiltersIntoPath}).
+ */
+export function useScopedHref(): (path: string) => string {
+  const qs = useFiltersQueryString();
+  return useCallback((path: string) => mergeFiltersIntoPath(path, qs), [qs]);
+}
+
+/**
  * Returns a helper that appends the active filters to a navigation path so
  * page-to-page navigation preserves them (see {@link appendFiltersToPath}).
  */

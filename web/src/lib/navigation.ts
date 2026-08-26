@@ -142,8 +142,12 @@ export const SECTIONS: NavSection[] = [
       {
         label: "Resumen",
         slug: "resumen",
+        // Describía «top licitaciones» —un panel que la pantalla no tiene desde
+        // hace dos rediseños, servido por `/analytics/resumen/top`, que sigue
+        // vivo en el backend sin un solo consumidor. La ficha ahora enumera lo
+        // que se pinta de verdad, en el orden en que se pinta.
         description:
-          "Top licitaciones, distribución por estado y salud competitiva del mercado.",
+          "Tus compromisos del día, lo que exige atención en el mercado abierto y la salud competitiva del ámbito.",
         icon: LayoutDashboard,
       },
     ],
