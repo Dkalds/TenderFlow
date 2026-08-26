@@ -72,6 +72,10 @@ class TimelineScatterFilters(BaseModel):
     fecha_hasta: date | None = None
     ccaa: str | None = None
     tecnologia: str | None = None
+    #: Reparte las filas por toda la ventana en vez de devolver las más
+    #: recientes. Lo pide la nube de puntos; la tabla de «últimas
+    #: publicaciones» necesita justo lo contrario y por eso es opt-in.
+    muestrear: bool = False
 
 
 class TimelineScatterItem(BaseModel):
@@ -87,6 +91,12 @@ class TimelineScatterItem(BaseModel):
 
 class TimelineScatterResult(BaseModel):
     items: list[TimelineScatterItem] = Field(default_factory=list)
+    #: Expedientes de la ventana antes de recortar. La UI lo necesita para
+    #: decir si enseña todo o una parte, en vez de callarse el tope.
+    total: int = 0
+    #: ``items`` es una muestra sistemática repartida por la ventana, no las
+    #: filas más recientes.
+    muestreado: bool = False
 
 
 class SankeyNode(BaseModel):
@@ -228,10 +238,16 @@ def get_resumen_hoy(filters: ResumenHoyFilters) -> ResumenHoyResult:
 
 
 def get_timeline_scatter(filters: TimelineScatterFilters) -> TimelineScatterResult:
-    """Scatter data for all licitaciones (max 1000)."""
-    log.info("analytics_timeline_scatter_start")
+    """Hasta ``_TIMELINE_LIMIT`` publicaciones de la ventana, con su total.
 
-    rows = _repo.resumen_timeline_items(_to_repo_filters(filters), limit=_TIMELINE_LIMIT)
+    Con ``muestrear`` la selección se reparte por todo el rango pedido en vez
+    de quedarse en las más recientes — ver ``resumen_timeline_items``.
+    """
+    log.info("analytics_timeline_scatter_start", muestrear=filters.muestrear)
+
+    rows, total = _repo.resumen_timeline_items(
+        _to_repo_filters(filters), limit=_TIMELINE_LIMIT, muestrear=filters.muestrear
+    )
     items = [
         TimelineScatterItem(
             id_externo=str(row["id_externo"]),
@@ -246,8 +262,14 @@ def get_timeline_scatter(filters: TimelineScatterFilters) -> TimelineScatterResu
         for row in rows
     ]
 
-    log.info("analytics_timeline_scatter_done", count=len(items))
-    return TimelineScatterResult(items=items)
+    log.info("analytics_timeline_scatter_done", count=len(items), total=total)
+    return TimelineScatterResult(
+        items=items,
+        total=total,
+        # Sólo es muestra si de verdad se dejó algo fuera: con la ventana
+        # entera dentro del tope, el modo no cambia lo que se devuelve.
+        muestreado=filters.muestrear and total > len(items),
+    )
 
 
 def get_sankey_flow(filters: SankeyFilters) -> SankeyResult:

@@ -1,6 +1,7 @@
 "use client";
 
 import { cn } from "@/lib/utils";
+import { estadoLabel } from "@/lib/estados";
 import {
   CheckCircle2,
   Clock,
@@ -30,12 +31,21 @@ const VARIANT_CLASS: Record<Variant, string> = {
 
 /* ── Estado (tender state) ─────────────────────────────────────────── */
 
+/**
+ * Indexado por la etiqueta legible. El valor que llega de la API es el código
+ * PLACSP (`PUB`, `EV`…), así que `estadoLabel` lo normaliza antes de buscar —
+ * sin eso toda licitación real caía al badge neutro con el código en crudo
+ * (ver `lib/estados.ts`).
+ */
 const ESTADO_STYLES: Record<string, { variant: Variant; icon: LucideIcon }> = {
   Publicada: { variant: "info", icon: Clock },
+  "Evaluación": { variant: "info", icon: Timer },
   Adjudicada: { variant: "success", icon: CheckCircle2 },
   Resuelta: { variant: "success", icon: FileCheck },
   Desierta: { variant: "neutral", icon: AlertTriangle },
   Anulada: { variant: "destructive", icon: XCircle },
+  "Anuncio previo": { variant: "neutral", icon: Clock },
+  Creada: { variant: "neutral", icon: Clock },
   "En plazo": { variant: "info", icon: Timer },
 };
 
@@ -68,7 +78,8 @@ export function StatusBadge({
   if (!value) return <span className="text-muted-foreground">-</span>;
 
   const styles = kind === "estado" ? ESTADO_STYLES : BAND_STYLES;
-  const entry = styles[value];
+  const text = kind === "estado" ? estadoLabel(value) : value;
+  const entry = styles[text];
   const variant: Variant = entry?.variant ?? "neutral";
   const Icon = entry?.icon;
 
@@ -79,14 +90,14 @@ export function StatusBadge({
         VARIANT_CLASS[variant],
         className,
       )}
-      aria-label={`${kind === "estado" ? "Estado" : "Puntuación"}: ${value}`}
+      aria-label={`${kind === "estado" ? "Estado" : "Puntuación"}: ${text}`}
     >
       {showIcon && Icon ? (
         <Icon className="h-3 w-3" aria-hidden="true" />
       ) : (
         <span className="h-1.5 w-1.5 rounded-full bg-current opacity-80" aria-hidden="true" />
       )}
-      {value}
+      {text}
     </span>
   );
 }

@@ -7279,6 +7279,16 @@ export interface components {
         TimelineScatterResult: {
             /** Items */
             items?: components["schemas"]["TimelineScatterItem"][];
+            /**
+             * Muestreado
+             * @default false
+             */
+            muestreado: boolean;
+            /**
+             * Total
+             * @default 0
+             */
+            total: number;
         };
         /**
          * TipoEstadoEntry
@@ -9037,6 +9047,8 @@ export interface operations {
                 ccaa?: string | null;
                 /** @description Filter by tecnologia */
                 tecnologia?: string | null;
+                /** @description Reparte las filas por toda la ventana (muestra sistemática) en vez de devolver las más recientes. Lo pide la nube de puntos del Resumen: sin esto, las 1.000 más recientes de una ventana de 30 días son 48 horas de datos. La tabla de últimas publicaciones necesita el orden contrario, así que el reparto es opt-in. */
+                muestra?: boolean;
             };
             header?: never;
             path?: never;

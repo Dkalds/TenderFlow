@@ -133,3 +133,4 @@ elipsis
 ans
 barrer
 intelectual
+foto

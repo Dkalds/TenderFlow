@@ -48,8 +48,12 @@ cambiaría una pantalla viva por un 404.
 
 **Rediseñadas a fondo**, con su superficie reconstruida:
 
-- **Resumen** (`/resumen`) — lo urgente en tarjetas grandes con su destino
-  visible; el contexto en tira compacta con delta y aviso de anomalía.
+- **Resumen** (`/resumen`) — de dentro hacia fuera: **Tu día** (compromisos de
+  la organización, `GET /pursuits/agenda`), el mercado abierto con el destino
+  real de cada tarjeta en su pie, contexto y salud competitiva en tiras, la
+  composición por estado/órgano que el payload ya traía sin pintar, las
+  publicaciones y los movimientos. Cada banda pide su dato y pinta su error.
+  El detalle de qué mentía y por qué, en los docstrings de `_components/`.
 - **Radar** (`/radar`) — consola de decisión: J/K para recorrer, S seguir,
   X descartar con deshacer, ⏎ abrir oportunidad, inspector siguiendo a la
   selección.
@@ -96,7 +100,7 @@ Consolidar no era el objetivo: era el envase. Esto es lo que cambia dentro.
 
 | Pantalla | El movimiento |
 | --- | --- |
-| Resumen | Lo urgente en tarjetas grandes con su destino visible; el contexto en tira con delta y anomalía |
+| Resumen | Lo personal primero (agenda de la organización); el mercado después. Cada panel declara qué parte del ámbito aplica y qué listado abre de verdad |
 | Radar | Consola tabular: J/K · S · X con deshacer · ⏎, inspector siguiendo a la selección |
 | Detalle | Los once bloques del Sheet modal en cuatro pestañas, en el mismo plano que la tabla |
 | Mi Pipeline | De dos pantallas de mercado cosidas a la agenda personal: una cronología de compromisos con bandas de urgencia del backend, inspector al lado con editor de próxima acción, y triaje compartido con el Radar |
