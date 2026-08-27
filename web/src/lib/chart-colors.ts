@@ -46,6 +46,12 @@ export const ESTADO_CHART_COLOR: Record<string, string> = {
   Resuelta: "hsl(var(--chart-7))",
   "Anuncio previo": "hsl(var(--chart-9))",
   Creada: "hsl(var(--chart-10))",
+  // Estados PSCP canonizados por la migración v91. «Publicación agregada» es
+  // el 93% del corpus, así que es la barra que domina la composición del
+  // Resumen: darle color propio es lo que la distingue del resto.
+  "Publicación agregada": "hsl(var(--chart-8))",
+  "En ejecución": "hsl(var(--chart-3))",
+  "Consulta preliminar": "hsl(var(--chart-6))",
 };
 
 export function getEstadoChartColor(estado: string | null | undefined): string {

@@ -47,6 +47,13 @@ const ESTADO_STYLES: Record<string, { variant: Variant; icon: LucideIcon }> = {
   "Anuncio previo": { variant: "neutral", icon: Clock },
   Creada: { variant: "neutral", icon: Clock },
   "En plazo": { variant: "info", icon: Timer },
+  // Estados PSCP canonizados por la migración v91. Los dos primeros son
+  // terminales (`shared/estados.py`), de ahí el icono de cerrado: un aviso
+  // agregado recoge contratos ya celebrados y `En ejecución` ya está
+  // adjudicado. `Consulta preliminar` sí es previa a la licitación.
+  "Publicación agregada": { variant: "neutral", icon: FileCheck },
+  "En ejecución": { variant: "success", icon: CheckCircle2 },
+  "Consulta preliminar": { variant: "neutral", icon: Clock },
 };
 
 /* ── Band (scoring band) ───────────────────────────────────────────── */

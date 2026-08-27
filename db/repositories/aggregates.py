@@ -1646,14 +1646,22 @@ class AggregateRepository:
         Radar a puntuar de verdad: con los 15 expedientes del seed (12 ``ADM``,
         3 ``ADJ``) el ranking salía vacío.
 
-        **El estado no acota nada por sí solo.** Medido en producción el
-        2026-08-11: de 1.640.915 filas, 1.501.273 no están en estado terminal
-        —el 91%—, porque 1.460.719 llegan de PSCP con ``PUBLICACIÓ AGREGADA``,
-        que no es RES/ADJ/ANUL. Cargar eso en pandas son 1,5 M filas por 12
-        columnas en cada request: la API se quedaba sin memoria y Render reiniciaba
-        la instancia (diez reinicios el 2026-08-11, uno por cada carga del
-        Radar), o el ``statement_timeout`` mataba la consulta y el usuario veía
-        "Error al cargar la bandeja del radar".
+        **El estado no acotaba nada por sí solo.** Medido en producción el
+        2026-08-11: de 1.640.915 filas, 1.501.273 no estaban en estado terminal
+        —el 91%—, porque 1.460.719 llegaban de PSCP con ``PUBLICACIÓ
+        AGREGADA``, que no es RES/ADJ/ANUL. Cargar eso en pandas son 1,5 M filas
+        por 12 columnas en cada request: la API se quedaba sin memoria y Render
+        reiniciaba la instancia (diez reinicios el 2026-08-11, uno por cada
+        carga del Radar), o el ``statement_timeout`` mataba la consulta y el
+        usuario veía "Error al cargar la bandeja del radar".
+
+        Desde el 2026-08-26 esa fase sí tiene código propio (``AGR``) y sí es
+        terminal —v91 la normalizó y ``shared.estados`` la cuenta cerrada—, así
+        que hoy el filtro de estado por sí solo ya descarta el grueso. **El
+        plazo vivo sigue siendo necesario igualmente**, por lo que se explica
+        abajo: es una condición sobre la oportunidad, no un apaño de volumen, y
+        quitarla volvería a meter en el Radar los expedientes abiertos cuyo
+        plazo venció.
 
         Por eso el universo exige además **plazo vivo**: sin fecha límite en el
         futuro no hay nada que presentar, y el Radar es una bandeja de
@@ -1666,7 +1674,10 @@ class AggregateRepository:
         Consecuencia deliberada: este universo ya **no** coincide con
         ``total_activas`` del resumen, que sigue contando por estado. Son dos
         preguntas distintas —"cuántas siguen vivas en el sistema" frente a "a
-        cuántas puedo presentarme hoy"— y el ranking necesita la segunda.
+        cuántas puedo presentarme hoy"— y el ranking necesita la segunda. Lo
+        que v91 arregló no es esa divergencia sino que ``total_activas``
+        respondiera mal a *su* pregunta: contaba 657.156 sobre 691.974 porque
+        las publicaciones agregadas pasaban por abiertas.
 
         ``hoy_iso`` se inyecta (no ``now()`` en SQL) como en
         ``overview_para_hoy``: el corte queda fijado por el llamante y los

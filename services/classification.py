@@ -9,6 +9,7 @@ Exports principales:
     tecnologia_label(code)   →  str
     detect_project_type(text) →  str
     estado_label(code)       →  str
+    normalizar_estado(fase)  →  str | None
     tipo_contrato_label(code) →  str
     CPV_NAMES                →  dict[str, str]
     SAP_MODULES              →  dict[str, list[str]]
@@ -20,6 +21,8 @@ Exports principales:
 from __future__ import annotations
 
 import re
+
+from services.normalization import fold_text
 
 # Re-export geo helpers for convenience
 from shared.geo import NUTS3_TO_CCAA, nuts_to_ccaa
@@ -36,6 +39,7 @@ __all__ = [
     "detect_modules",
     "detect_project_type",
     "estado_label",
+    "normalizar_estado",
     "nuts_to_ccaa",
     "tecnologia_label",
     "tipo_contrato_label",
@@ -208,6 +212,10 @@ def detect_project_type(text: str | None) -> str:
 
 
 # ── Decoder estados PLACSP ─────────────────────────────────────────────
+# Vocabulario canónico de `licitaciones.estado`. Los seis primeros son códigos
+# PLACSP; los tres últimos nacieron en la PSCP catalana, que publica fases sin
+# equivalente PLACSP y que hasta el 2026-08-26 se guardaban como la etiqueta
+# catalana en crudo (ver `normalizar_estado`).
 ESTADO_LABELS: dict[str, str] = {
     "PUB": "Publicada",
     "EV": "Evaluación",
@@ -216,6 +224,9 @@ ESTADO_LABELS: dict[str, str] = {
     "ANUL": "Anulada",
     "PRE": "Anuncio previo",
     "CREA": "Creada",
+    "AGR": "Publicación agregada",
+    "EJEC": "En ejecución",
+    "CPM": "Consulta preliminar",
 }
 
 
@@ -224,6 +235,86 @@ def estado_label(code: str | None) -> str:
     if not code:
         return "Desconocido"
     return ESTADO_LABELS.get(code.strip(), code.strip())
+
+
+# Fase de publicación de la fuente (catalán/castellano, folded) → código
+# canónico. Se recorre **en orden** y gana la primera coincidencia por
+# subcadena, así que lo específico va antes que lo genérico: "publicació
+# agregada d'adjudicacions" es AGR, no ADJ, y por eso `adjudicaci` está abajo.
+_FASE_ESTADO: tuple[tuple[str, str], ...] = (
+    # Fases PSCP sin equivalente PLACSP. Van primero porque varias contienen
+    # subcadenas que las genéricas de abajo capturarían por accidente.
+    ("publicacio agregada", "AGR"),
+    ("publicacion agregada", "AGR"),
+    ("consulta preliminar", "CPM"),
+    ("alerta futura", "PRE"),
+    ("execucio", "EJEC"),
+    ("ejecucion", "EJEC"),
+    # `avaluac` y no `avaluaci`: el dato ya ingerido llegó cortado a 20
+    # caracteres como 'EXPEDIENT EN AVALUAC', justo antes de esa `i`, y la
+    # migración v91 usa este mismo prefijo. Que las dos rutas reconozcan el
+    # valor mutilado es lo que hace que migración e ingesta coincidan.
+    ("avaluac", "EV"),
+    ("evaluac", "EV"),
+    # Fases con equivalente PLACSP directo.
+    ("anunci previ", "PRE"),
+    ("previ", "PRE"),
+    ("formalitzaci", "RES"),
+    ("formalizaci", "RES"),
+    ("adjudicaci", "ADJ"),
+    ("anul", "ANUL"),
+    ("desist", "ANUL"),
+    ("licitaci", "PUB"),
+    ("anunci", "PUB"),
+)
+
+# Fases cuyo texto es demasiado corto para buscar por subcadena sin arrastrar
+# falsos positivos ("eva" aparece dentro de "elevació"). Se comparan enteras.
+_FASE_ESTADO_EXACTA: dict[str, str] = {
+    "eva": "EV",
+}
+
+
+def normalizar_estado(fase: str | None) -> str | None:
+    """Traduce la fase publicada por una fuente al código canónico de estado.
+
+    La comparte toda la ingesta —PSCP (``fase_publicacio``) y los RSS
+    regionales (``Estado:`` dentro de la descripción)—, que son las dos fuentes
+    que publican etiquetas en prosa en vez de códigos. TED y CÓDICE ya emiten
+    códigos y no pasan por aquí.
+
+    **Qué se arregla aquí.** El conector PSCP hacía
+    ``fase.strip().upper()[:20]`` cuando no reconocía la fase, y ese corte a 20
+    caracteres es lo que dejó en producción 645.664 filas con
+    ``'PUBLICACIÓ AGREGADA '`` —espacio final incluido, porque el corte cae a
+    mitad de la palabra siguiente— y otras 623 con ``'EXPEDIENT EN AVALUAC'``.
+    La columna no tiene límite de longitud (``db/models.py``): el truncado era
+    nuestro, no de la fuente, y convertía cada fase larga en un código
+    inventado que ninguna capa sabía decodificar.
+
+    **Por qué el desconocido sigue pasando en crudo.** Devolver ``None`` para
+    lo no mapeado perdería la única evidencia de que la fuente publicó algo
+    nuevo, y ``shared.estados`` cuenta como abierto tanto ``NULL`` como
+    cualquier código desconocido, así que tampoco protegería nada. Se devuelve
+    el texto normalizado (sin acentos, en mayúsculas, sin cortar) y el llamante
+    decide si además quiere avisar. Es la misma regla que
+    :mod:`shared.estados`: enumerar lo conocido y dejar que lo nuevo se vea.
+    """
+    if not fase:
+        return None
+    folded = fold_text(fase).strip()
+    if not folded:
+        return None
+    exacta = _FASE_ESTADO_EXACTA.get(folded)
+    if exacta is not None:
+        return exacta
+    for needle, estado in _FASE_ESTADO:
+        if needle in folded:
+            return estado
+    # Sin mapeo: se conserva la fase entera, plegada y en mayúsculas. Plegada
+    # (y no `fase.upper()`) para que 'EXECUCIÓ' y 'EXECUCIO' no sean dos
+    # estados distintos en el desplegable de filtros.
+    return folded.upper() or None
 
 
 # ── Decoder tipo de contrato ───────────────────────────────────────────

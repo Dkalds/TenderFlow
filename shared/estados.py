@@ -17,14 +17,34 @@ Las etiquetas legibles son otra cosa y viven en :mod:`services.classification`
 
 from __future__ import annotations
 
-# Estados terminales: el expediente se resolvió (RES), se adjudicó (ADJ) o se
-# anuló (ANUL). Ya no hay nada que licitar.
+# Estados terminales: el expediente se resolvió (RES), se adjudicó (ADJ), se
+# anuló (ANUL), se publicó de forma agregada (AGR) o ya está en ejecución
+# (EJEC). Ya no hay nada que licitar.
 #
-# Se enumera el cierre y nunca la apertura: PUB, EV, PRE, CREA —y cualquier
-# código que la fuente incorpore mañana sin avisar— cuentan como abiertos. Al
-# revés, un estado nuevo desaparecería del Radar en silencio, que es el fallo
-# más caro de los dos.
-ESTADOS_CERRADOS: tuple[str, ...] = ("RES", "ADJ", "ANUL")
+# Se enumera el cierre y nunca la apertura: PUB, EV, PRE, CREA, CPM —y
+# cualquier código que la fuente incorpore mañana sin avisar— cuentan como
+# abiertos. Al revés, un estado nuevo desaparecería del Radar en silencio, que
+# es el fallo más caro de los dos.
+#
+# ``AGR`` y ``EJEC`` se añadieron el 2026-08-26 y no son códigos PLACSP: son
+# las dos fases de la PSCP catalana que el conector guardaba como etiqueta
+# cruda (ver ``services.classification.normalizar_estado``). Contarlas como
+# abiertas no era una decisión, era el efecto de no reconocerlas:
+#
+# - ``AGR`` (*publicació agregada*) son avisos que agrupan contratos ya
+#   celebrados, sin plazo propio; nunca fueron una oportunidad individual a la
+#   que presentarse. Son 645.664 de las 691.974 filas del corpus —el 93%—, así
+#   que mientras contaron como abiertas el "Total activas" del Resumen decía
+#   657.156 sobre 691.974: el KPI más grande de la pantalla de entrada medía
+#   el tamaño del corpus, no el de la oportunidad.
+# - ``EJEC`` (*execució*) es un contrato ya adjudicado y en marcha.
+#
+# El Radar no cambia con esto: ``scoring_candidates`` ya las descartaba por no
+# tener ``fecha_limite`` viva. Lo que cambia son las superficies que cuentan
+# por estado —``count_total_activas``, ``overview_para_hoy``, el filtro "sólo
+# abiertas" y ``licitaciones_abiertas`` del dataset de ML—, que hasta ahora
+# contradecían al Radar.
+ESTADOS_CERRADOS: tuple[str, ...] = ("RES", "ADJ", "ANUL", "AGR", "EJEC")
 
 
 def abierta_sql(col: str = "estado") -> str:

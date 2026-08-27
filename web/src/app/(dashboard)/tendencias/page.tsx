@@ -11,6 +11,7 @@ import { ChartErrorBoundary } from "@/components/charts/chart-error-boundary";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Button } from "@/components/ui/button";
 import { formatCurrency, formatNumber, formatPercent, cn } from "@/lib/utils";
+import { estadoLabel } from "@/lib/estados";
 import { useFilteredQuery } from "@/hooks/use-filtered-query";
 import type { TrendPoint } from "@/lib/api-types";
 import {
@@ -356,7 +357,9 @@ export default function TendenciasPage() {
                 </div>
                 {heatmapData.estados.map((estado) => (
                   <div key={estado} className="flex items-center">
-                    <div className="w-32 shrink-0 text-xs text-muted-foreground truncate pr-2" title={estado}>{estado}</div>
+                    {/* `por_estado` viaja con el código de la columna, no con la
+                        etiqueta: sin traducir, la fila del heatmap se rotula "AGR". */}
+                    <div className="w-32 shrink-0 text-xs text-muted-foreground truncate pr-2" title={estadoLabel(estado)}>{estadoLabel(estado)}</div>
                     {heatmapData.meses.map((mes) => {
                       const cell = heatmapData.grid.find((g) => g.mes === mes && g.estado === estado);
                       const value = cell?.value ?? 0;
@@ -369,7 +372,7 @@ export default function TendenciasPage() {
                             intensity > 0.55 ? "text-primary-foreground" : "text-foreground/80",
                           )}
                           style={heatmapCellStyle(value, heatmapData.maxVal)}
-                          title={`${estado} - ${mes}: ${value}`}
+                          title={`${estadoLabel(estado)} - ${mes}: ${value}`}
                         >
                           {value > 0 ? value : ""}
                         </div>
