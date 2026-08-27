@@ -242,6 +242,25 @@ async def list_licitaciones(
     ),
     fecha_desde: str | None = Query(None, description="Fecha publicación desde (YYYY-MM-DD)"),
     fecha_hasta: str | None = Query(None, description="Fecha publicación hasta (YYYY-MM-DD)"),
+    cierre_desde: str | None = Query(
+        None,
+        description=(
+            "Fecha límite de presentación desde (YYYY-MM-DD). Eje distinto de "
+            "fecha_desde/fecha_hasta, que acotan publicación: éste acota el "
+            "cierre. Lo pide cualquier superficie que cuente plazos —la tarjeta "
+            "«Vencen 48h» de /resumen— para poder abrir el listado que enseña "
+            "justo lo que cuenta. Los expedientes sin plazo publicado quedan "
+            "fuera en cuanto se usa cualquiera de las dos cotas."
+        ),
+    ),
+    cierre_hasta: str | None = Query(
+        None,
+        description=(
+            "Fecha límite de presentación hasta (YYYY-MM-DD), inclusive el día "
+            "entero: fecha_limite guarda la hora de cierre, así que la cota "
+            "incluye los expedientes que cierran ese mismo día a cualquier hora."
+        ),
+    ),
     sort: str | None = Query(
         None, description="Orden: fecha_publicacion (default), -importe, importe, titulo"
     ),
@@ -261,6 +280,8 @@ async def list_licitaciones(
     _validate_query(q)
     _validate_date(fecha_desde, "fecha_desde")
     _validate_date(fecha_hasta, "fecha_hasta")
+    _validate_date(cierre_desde, "cierre_desde")
+    _validate_date(cierre_hasta, "cierre_hasta")
 
     # Cabecera de deprecación
     response.headers["Deprecation"] = "true"
@@ -277,6 +298,8 @@ async def list_licitaciones(
         min_proba_tech=min_proba_tech,
         fecha_desde=fecha_desde,
         fecha_hasta=fecha_hasta,
+        cierre_desde=cierre_desde,
+        cierre_hasta=cierre_hasta,
         limit=limit,
         offset=offset,
         sort=sort,

@@ -6376,6 +6376,8 @@ export interface components {
              * @default 0
              */
             calientes: number;
+            /** Importe P75 */
+            importe_p75?: number | null;
             /**
              * Nuevas 24H
              * @default 0
@@ -11038,6 +11040,10 @@ export interface operations {
                 fecha_desde?: string | null;
                 /** @description Fecha publicación hasta (YYYY-MM-DD) */
                 fecha_hasta?: string | null;
+                /** @description Fecha límite de presentación desde (YYYY-MM-DD). Eje distinto de fecha_desde/fecha_hasta, que acotan publicación: éste acota el cierre. Lo pide cualquier superficie que cuente plazos —la tarjeta «Vencen 48h» de /resumen— para poder abrir el listado que enseña justo lo que cuenta. Los expedientes sin plazo publicado quedan fuera en cuanto se usa cualquiera de las dos cotas. */
+                cierre_desde?: string | null;
+                /** @description Fecha límite de presentación hasta (YYYY-MM-DD), inclusive el día entero: fecha_limite guarda la hora de cierre, así que la cota incluye los expedientes que cierran ese mismo día a cualquier hora. */
+                cierre_hasta?: string | null;
                 /** @description Orden: fecha_publicacion (default), -importe, importe, titulo */
                 sort?: string | null;
                 /** @description Incluir total (false = más rápido para paginación) */
