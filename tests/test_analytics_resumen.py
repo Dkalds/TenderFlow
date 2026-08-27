@@ -300,6 +300,60 @@ def test_timeline_scatter_orden_descendente_y_filtro_fecha(tmp_db):
     assert [i.id_externo for i in filtrado.items] == ["NUEVA", "MEDIA"]
 
 
+def test_timeline_scatter_declara_el_total_de_la_ventana(tmp_db):
+    """`total` cuenta la ventana entera, no las filas devueltas."""
+    _insert([_row(f"T{i}", fecha_pub_offset=-i) for i in range(1, 6)])
+
+    result = get_timeline_scatter(TimelineScatterFilters())
+
+    assert result.total == 5
+    assert result.muestreado is False
+
+
+def test_timeline_scatter_muestra_cubre_toda_la_ventana(tmp_db):
+    """Con `muestrear`, la selección se reparte por el rango pedido.
+
+    El bug que fija: `/resumen/timeline` devolvía las N más recientes, así que
+    la nube del Resumen —rotulada «en el periodo»— dibujaba las últimas 48
+    horas de una ventana de 30 días. Aquí se comprime el tope a 5 para poder
+    comprobarlo con un dataset pequeño: la muestra tiene que tocar el extremo
+    viejo del rango, que es justo lo que el modo «más recientes» nunca alcanza.
+    """
+    _insert([_row(f"D{dia:03d}", fecha_pub_offset=-dia) for dia in range(1, 31)])
+
+    with patch("services.analytics.resumen._TIMELINE_LIMIT", 5):
+        recientes = get_timeline_scatter(TimelineScatterFilters())
+        muestra = get_timeline_scatter(TimelineScatterFilters(muestrear=True))
+
+    assert recientes.total == 30
+    assert muestra.total == 30
+    assert muestra.muestreado is True
+
+    # Las más recientes se agolpan en la cabecera del rango…
+    assert [i.id_externo for i in recientes.items] == [
+        "D001",
+        "D002",
+        "D003",
+        "D004",
+        "D005",
+    ]
+    # …y la muestra toma una de cada `ceil(30/5) = 6`, llegando al día 25.
+    ids_muestra = [i.id_externo for i in muestra.items]
+    assert ids_muestra == ["D001", "D007", "D013", "D019", "D025"]
+
+
+def test_timeline_scatter_muestra_no_recorta_si_cabe_entera(tmp_db):
+    """Ventana por debajo del tope: `muestrear` devuelve todo y no miente."""
+    _insert([_row(f"C{i}", fecha_pub_offset=-i) for i in range(1, 4)])
+
+    result = get_timeline_scatter(TimelineScatterFilters(muestrear=True))
+
+    assert len(result.items) == 3
+    assert result.total == 3
+    # No se dejó nada fuera, así que no es una muestra.
+    assert result.muestreado is False
+
+
 # ---------------------------------------------------------------------------
 # get_sankey_flow
 # ---------------------------------------------------------------------------

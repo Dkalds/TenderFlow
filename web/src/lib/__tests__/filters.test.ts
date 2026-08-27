@@ -4,7 +4,7 @@
  * Covers: filtersToParams (pure function)
  */
 import { describe, it, expect } from "vitest";
-import { filtersToParams, appendFiltersToPath } from "@/lib/filters";
+import { filtersToParams, appendFiltersToPath, mergeFiltersIntoPath } from "@/lib/filters";
 import type { FilterValues } from "@/lib/filters";
 
 const emptyFilters: FilterValues = {
@@ -143,6 +143,30 @@ describe("appendFiltersToPath", () => {
 
   it("leaves deep-links untouched even with no active filters", () => {
     expect(appendFiltersToPath("/detalle?lic=ABC123", "")).toBe("/detalle?lic=ABC123");
+  });
+});
+
+describe("mergeFiltersIntoPath", () => {
+  it("fusiona el ámbito con la query propia del enlace", () => {
+    expect(mergeFiltersIntoPath("/detalle?solo_abiertas=true", "?ccaa=MD")).toBe(
+      "/detalle?ccaa=MD&solo_abiertas=true",
+    );
+  });
+
+  it("deja ganar al parámetro del enlace cuando la clave colisiona", () => {
+    // La tarjeta «Nuevas 24h» fija su propia fecha: ésa es su razón de existir,
+    // no la del chip de fecha del ámbito.
+    expect(mergeFiltersIntoPath("/detalle?fecha_desde=2026-08-25", "?fecha_desde=2026-01-01")).toBe(
+      "/detalle?fecha_desde=2026-08-25",
+    );
+  });
+
+  it("se comporta como appendFiltersToPath cuando el path va limpio", () => {
+    expect(mergeFiltersIntoPath("/detalle", "?estado=PUB")).toBe("/detalle?estado=PUB");
+  });
+
+  it("devuelve el path intacto sin ámbito activo", () => {
+    expect(mergeFiltersIntoPath("/detalle?solo_abiertas=true", "")).toBe("/detalle?solo_abiertas=true");
   });
 });
 

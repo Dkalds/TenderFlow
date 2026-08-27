@@ -90,18 +90,20 @@ describe("StatCell", () => {
   });
 
   it("marca la subida con signo y la bajada sin él", () => {
+    // Coma decimal: el delta comparte pantalla con porcentajes formateados
+    // con `formatPercent`, y mezclarlos delataba dos formateadores distintos.
     const { rerender } = render(<StatCell label="Contratos" value="10" trend={4.25} />);
-    expect(screen.getByText("+4.3%")).toBeInTheDocument();
+    expect(screen.getByText("+4,3%")).toBeInTheDocument();
 
     rerender(<StatCell label="Contratos" value="10" trend={-4.25} />);
-    expect(screen.queryByText("+4.3%")).not.toBeInTheDocument();
-    // El signo de la bajada lo pone `toFixed`, no el componente.
-    expect(screen.getByText("-4.3%")).toBeInTheDocument();
+    expect(screen.queryByText("+4,3%")).not.toBeInTheDocument();
+    // El signo de la bajada lo pone el número, no el componente.
+    expect(screen.getByText("-4,3%")).toBeInTheDocument();
   });
 
   it("trata el cero como subida y omite el delta si no hay tendencia", () => {
     const { rerender } = render(<StatCell label="Contratos" value="10" trend={0} />);
-    expect(screen.getByText("+0.0%")).toBeInTheDocument();
+    expect(screen.getByText("+0,0%")).toBeInTheDocument();
 
     rerender(<StatCell label="Contratos" value="10" />);
     expect(screen.queryByText(/%/)).not.toBeInTheDocument();

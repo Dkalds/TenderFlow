@@ -16,6 +16,8 @@ export type Schemas = components["schemas"];
 export type LicitacionSummary = Schemas["LicitacionSummary"];
 export type LicitacionDetail = Schemas["LicitacionDetail"];
 export type TrendPoint = Schemas["TrendPoint"];
+export type TrendsResult = Schemas["TrendsResult"];
+export type HistogramBin = Schemas["HistogramBin"];
 export type RetenderingResult = Schemas["RetenderingResult"];
 export type ForecastVolumeResult = Schemas["ForecastVolumeResult"];
 /** El backend lo llama `OverviewResult`; el frontend histórico, `AnalyticsOverview`. */

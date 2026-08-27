@@ -85,6 +85,28 @@ export function formatPercent(
 }
 
 /**
+ * Mes «YYYY-MM» en su forma abreviada castellana: «2026-07» → «jul».
+ *
+ * Con `withYear`, «jul 2026» — hace falta cuando se comparan dos meses de años
+ * distintos y «ene vs dic» no dice cuál es cuál. El punto que `Intl` añade en
+ * castellano («jul.») se quita: en una etiqueta de 10 px se lee como final de
+ * frase. Una cadena que no tenga la forma esperada se devuelve tal cual.
+ */
+export function formatMonth(
+  mes: string,
+  withYear = false,
+  locale = "es-ES",
+): string {
+  const [year, month] = mes.split("-");
+  const date = new Date(Number(year), Number(month) - 1, 1);
+  if (!year || !month || isNaN(date.getTime())) return mes;
+  const label = new Intl.DateTimeFormat(locale, { month: "short" })
+    .format(date)
+    .replace(".", "");
+  return withYear ? `${label} ${year}` : label;
+}
+
+/**
  * Format a date for display.
  * Handles ISO (YYYY-MM-DD) and legacy DD/MM/YYYY formats from the CODICE parser.
  *

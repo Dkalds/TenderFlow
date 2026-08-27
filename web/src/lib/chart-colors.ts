@@ -7,6 +7,8 @@
  * resolves the variable, so series colors follow the active theme automatically.
  */
 
+import { estadoLabel } from "@/lib/estados";
+
 /** Ordered categorical palette for multi-series charts (10 distinct hues). */
 export const CHART_SERIES = [
   "hsl(var(--chart-1))",
@@ -30,18 +32,25 @@ export function getSeriesColor(i: number): string {
 /**
  * Tender state -> chart fill color (token-based). Use `getEstadoChartColor`
  * for a safe lookup that falls back to the first series color.
+ *
+ * Indexada por la etiqueta legible, no por el código PLACSP: `estadoLabel`
+ * normaliza antes de buscar (ver `lib/estados.ts` para por qué hacía falta).
  */
 export const ESTADO_CHART_COLOR: Record<string, string> = {
   Publicada: "hsl(var(--chart-1))",
   Adjudicada: "hsl(var(--chart-2))",
   Desierta: "hsl(var(--chart-3))",
+  "Evaluación": "hsl(var(--chart-4))",
   Anulada: "hsl(var(--chart-5))",
   "En plazo": "hsl(var(--chart-6))",
   Resuelta: "hsl(var(--chart-7))",
+  "Anuncio previo": "hsl(var(--chart-9))",
+  Creada: "hsl(var(--chart-10))",
 };
 
 export function getEstadoChartColor(estado: string | null | undefined): string {
-  return (estado ? ESTADO_CHART_COLOR[estado] : undefined) ?? CHART_SERIES[0];
+  const label = estadoLabel(estado);
+  return (label ? ESTADO_CHART_COLOR[label] : undefined) ?? CHART_SERIES[0];
 }
 
 /** Scoring band -> score-band token color. */

@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { RotateCcw } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn, formatPercent } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
 
 /**
@@ -132,8 +132,13 @@ export function StatCell({
                 up ? "text-[hsl(var(--success))]" : "text-destructive",
               )}
             >
+              {/* `formatPercent` y no `toFixed`: éste emite siempre el punto
+                  decimal, así que la tira sacaba «+768.9%» pegado a un
+                  «93,1%» del panel de al lado — el mismo carácter con dos
+                  significados a 40 px de distancia que ya señaló el hallazgo 3
+                  de la auditoría UX para el KPI bar. */}
               {up ? "+" : ""}
-              {trend.toFixed(1)}%
+              {formatPercent(trend)}
             </span>
           )}
         </div>
@@ -203,6 +208,10 @@ export function PanelEmpty({
 }) {
   return (
     <div
+      // `status` y no un div mudo: pasar de «cargando» a «no hay nada» es un
+      // cambio de estado que el lector de pantalla tiene que oír, y era
+      // silencioso en toda la consola (hallazgo 5 de la auditoría UX).
+      role="status"
       className="grid place-items-center rounded-[10px] border border-dashed border-border/60 px-4 py-9 text-center"
       style={height ? { minHeight: height } : undefined}
     >

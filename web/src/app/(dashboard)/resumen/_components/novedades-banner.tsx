@@ -10,6 +10,11 @@ import type { ResumenNovedadesResult } from "@/lib/api-types";
  * Novedades desde la última visita. La muestra de cinco no es decorativa: es
  * lo que convierte «hay 23 nuevas» en algo sobre lo que se puede decidir sin
  * abrir otra pantalla, así que cada línea enlaza a su ficha.
+ *
+ * `GET /analytics/resumen/novedades` no acepta **ningún** filtro: cuenta contra
+ * `last_login` sobre el corpus entero. Estaba en una pantalla llena de chips de
+ * ámbito sin decirlo, así que el rótulo lo declara — la misma regla que el
+ * aviso de alcance de los paneles vecinos.
  */
 export function NovedadesBanner({
   data,
@@ -30,6 +35,9 @@ export function NovedadesBanner({
           </span>
           <span className="min-w-0 flex-1 text-[12.5px] font-semibold text-[hsl(var(--info))]">
             {data.count} nuevas licitaciones desde tu última visita
+            <span className="ml-1.5 font-normal text-[10.5px] text-[hsl(var(--info)/0.75)]">
+              en todo el corpus, sin el ámbito
+            </span>
           </span>
           <Link href="/detalle" className="flex-none whitespace-nowrap text-[11.5px] font-medium">
             Ver todas →
