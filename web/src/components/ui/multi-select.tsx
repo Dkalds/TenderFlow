@@ -34,6 +34,14 @@ interface MultiSelectProps {
   className?: string;
   /** Texto cuando la búsqueda no encuentra nada. */
   emptyMessage?: string;
+  /**
+   * Cómo mostrar un valor. Por defecto se muestra tal cual, que es lo correcto
+   * para CCAA o tecnología: el valor almacenado ya es legible. El filtro de
+   * estado no: ahí el valor es un código (`PUB`, `AGR`) y lo que hay que
+   * enseñar es su etiqueta. Se busca sobre las dos formas, así que escribir
+   * "publicada" o "PUB" encuentra la misma opción.
+   */
+  optionLabel?: (value: string) => string;
 }
 
 export function MultiSelect({
@@ -44,16 +52,24 @@ export function MultiSelect({
   single = false,
   className,
   emptyMessage = "Sin coincidencias",
+  optionLabel,
   ...props
 }: MultiSelectProps) {
   const [open, setOpen] = React.useState(false);
   const [query, setQuery] = React.useState("");
 
+  const label = React.useCallback(
+    (option: string) => optionLabel?.(option) ?? option,
+    [optionLabel],
+  );
+
   const filtered = React.useMemo(() => {
     const needle = foldText(query.trim());
     if (!needle) return options;
-    return options.filter((option) => foldText(option).includes(needle));
-  }, [options, query]);
+    return options.filter(
+      (option) => foldText(option).includes(needle) || foldText(label(option)).includes(needle),
+    );
+  }, [options, query, label]);
 
   // Al cerrar se limpia la búsqueda: reabrir con un filtro viejo aplicado
   // esconde opciones sin que se vea por qué. Se hace en el propio manejador de
@@ -74,7 +90,7 @@ export function MultiSelect({
 
   const triggerLabel = selected.length
     ? single
-      ? selected[0]
+      ? label(selected[0])
       : `${selected.length} seleccionada${selected.length > 1 ? "s" : ""}`
     : placeholder;
 
@@ -132,7 +148,7 @@ export function MultiSelect({
                 >
                   {isSelected && <Check className="h-2.5 w-2.5" />}
                 </span>
-                <span className="truncate">{option}</span>
+                <span className="truncate">{label(option)}</span>
               </button>
             );
           })}

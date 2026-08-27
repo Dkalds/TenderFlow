@@ -27,6 +27,14 @@ export const ESTADO_LABELS: Record<string, string> = {
   ANUL: "Anulada",
   PRE: "Anuncio previo",
   CREA: "Creada",
+  // Fases de la PSCP catalana sin equivalente PLACSP. Hasta la migración v91
+  // se guardaban como la etiqueta catalana en crudo y truncada a 20 caracteres
+  // ('PUBLICACIÓ AGREGADA ', 'EXPEDIENT EN AVALUAC'), así que llegaban hasta
+  // aquí sin que ninguna tabla supiera traducirlas. `AGR` y `EJEC` además son
+  // terminales: ver `shared/estados.py`.
+  AGR: "Publicación agregada",
+  EJEC: "En ejecución",
+  CPM: "Consulta preliminar",
 };
 
 /**

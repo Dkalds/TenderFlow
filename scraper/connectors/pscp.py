@@ -32,6 +32,7 @@ from db.upsert import Adjudicacion, Licitacion
 from observability import get_logger
 from scraper.connectors.base import ParsedTender, RawNotice
 from scraper.filters import matches_technology
+from services.classification import normalizar_estado
 from shared.geo import nuts_to_ccaa
 
 if TYPE_CHECKING:
@@ -94,19 +95,6 @@ _FIELD_CANDIDATES: dict[str, tuple[str, ...]] = {
     "n_ofertas": ("ofertes_rebudes",),
 }
 
-# Fase de publicación PSCP (catalán, folded) → estado canónico PLACSP.
-_FASE_ESTADO = (
-    ("anunci previ", "PRE"),
-    ("previ", "PRE"),
-    ("formalitzaci", "RES"),
-    ("formalizaci", "RES"),
-    ("adjudicaci", "ADJ"),
-    ("anul", "ANUL"),
-    ("desist", "ANUL"),
-    ("licitaci", "PUB"),
-    ("anunci", "PUB"),
-)
-
 
 def _field(record: dict[str, Any], concept: str) -> Any:
     """Primer candidato de campo presente y no vacío para un concepto."""
@@ -150,15 +138,15 @@ def _number(record: dict[str, Any], concept: str) -> float | None:
 
 
 def _fase_to_estado(fase: str | None) -> str | None:
-    if not fase:
-        return None
-    from services.normalization import fold_text
+    """Fase PSCP → código canónico, vía el normalizador compartido.
 
-    folded = fold_text(fase)
-    for needle, estado in _FASE_ESTADO:
-        if needle in folded:
-            return estado
-    return fase.strip().upper()[:20] or None
+    La tabla de mapeo vivía aquí y truncaba a 20 caracteres lo que no
+    reconocía, que es como ``'PUBLICACIÓ AGREGADA '`` acabó siendo un estado.
+    Ahora la comparte con el conector de RSS regionales, que tenía el mismo
+    problema con su campo ``Estado:``; ver
+    :func:`services.classification.normalizar_estado`.
+    """
+    return normalizar_estado(fase)
 
 
 class PscpConnector:

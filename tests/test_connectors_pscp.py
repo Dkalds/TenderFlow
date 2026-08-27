@@ -87,8 +87,54 @@ def test_fase_to_estado_mapea_fases_catalanas():
     assert _fase_to_estado("Formalització") == "RES"
     assert _fase_to_estado("Anul·lació") == "ANUL"
     assert _fase_to_estado(None) is None
-    # Fase desconocida: se conserva cruda (truncada), no se pierde
+    # Fase desconocida: se conserva entera, plegada y en mayúsculas
     assert _fase_to_estado("Fase rara") == "FASE RARA"
+
+
+def test_fase_to_estado_mapea_las_fases_sin_equivalente_placsp():
+    """Las seis fases PSCP que se guardaban como etiqueta catalana en crudo.
+
+    Son las que llenaron la columna en producción (ver la migración v91): 645k
+    filas en ``PUBLICACIÓ AGREGADA`` sólo porque nadie las había mapeado.
+    """
+    assert _fase_to_estado("Publicació agregada de contractes menors") == "AGR"
+    assert _fase_to_estado("Execució") == "EJEC"
+    assert _fase_to_estado("Expedient en avaluació") == "EV"
+    assert _fase_to_estado("Alerta futura") == "PRE"
+    assert _fase_to_estado("Consulta preliminar del mercat") == "CPM"
+    assert _fase_to_estado("Eva") == "EV"
+
+
+def test_fase_to_estado_no_trunca_ni_deja_espacios():
+    """El ``[:20]`` de la ingesta era el origen de los estados mutilados.
+
+    ``'PUBLICACIÓ AGREGADA '`` —con espacio final— y ``'EXPEDIENT EN AVALUAC'``
+    no venían así de la fuente: eran el corte cayendo a mitad de palabra. Aquí
+    se fija que ninguna fase larga vuelva a producir un código inventado.
+    """
+    largo = _fase_to_estado("Fase larguísima que no reconoce nadie todavía")
+    assert largo == "FASE LARGUISIMA QUE NO RECONOCE NADIE TODAVIA"
+    assert largo is not None and largo == largo.strip()
+
+
+def test_fase_to_estado_reconoce_el_valor_ya_truncado():
+    """Migración e ingesta tienen que coincidir sobre el dato mutilado.
+
+    v91 normaliza lo que ya está en la BD, y ahí ``EXPEDIENT EN AVALUAC`` está
+    cortado justo antes de la ``i`` de ``avaluació``. Si el prefijo de Python
+    fuera ``avaluaci`` y el de SQL ``avaluac``, las dos rutas discreparían.
+    """
+    assert _fase_to_estado("EXPEDIENT EN AVALUAC") == "EV"
+    assert _fase_to_estado("PUBLICACIÓ AGREGADA ") == "AGR"
+
+
+def test_fase_to_estado_lo_especifico_gana_a_lo_generico():
+    """Una publicación agregada de adjudicaciones es AGR, no ADJ.
+
+    El orden de ``_FASE_ESTADO`` es la única cosa que lo garantiza: ambas
+    subcadenas están presentes en la misma fase.
+    """
+    assert _fase_to_estado("Publicació agregada d'adjudicacions") == "AGR"
 
 
 def test_field_candidates_y_number():

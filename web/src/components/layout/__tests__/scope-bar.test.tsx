@@ -127,9 +127,11 @@ describe("ScopeBar — chips del ámbito", () => {
 
     expect(removeButton(/Quitar busca sap/)).toBeInTheDocument();
     expect(removeButton(/Quitar periodo 2026-01-01 → 2026-06-30/)).toBeInTheDocument();
-    // Los multivalor generan un chip por valor, no uno agregado.
-    expect(removeButton(/Quitar estado PUB/)).toBeInTheDocument();
-    expect(removeButton(/Quitar estado ADJ/)).toBeInTheDocument();
+    // Los multivalor generan un chip por valor, no uno agregado. El chip de
+    // estado se rotula con la etiqueta y no con el código: `PUB` no le dice
+    // nada a nadie, y menos `AGR`.
+    expect(removeButton(/Quitar estado Publicada/)).toBeInTheDocument();
+    expect(removeButton(/Quitar estado Adjudicada/)).toBeInTheDocument();
     expect(removeButton(/Quitar ccaa Madrid/)).toBeInTheDocument();
     expect(removeButton(/Quitar tecnología SAP/)).toBeInTheDocument();
     expect(removeButton(/Quitar importe/)).toBeInTheDocument();
@@ -151,7 +153,9 @@ describe("ScopeBar — chips del ámbito", () => {
   it("quitar un estado conserva los demás", () => {
     filtersRef.current = { ...filtersRef.current, estados: ["PUB", "ADJ"] };
     renderBar();
-    fireEvent.click(removeButton(/Quitar estado PUB/));
+    // Se rotula con la etiqueta pero se filtra por el código: lo que llega al
+    // setter —y por tanto a la URL y a la query— sigue siendo `ADJ`.
+    fireEvent.click(removeButton(/Quitar estado Publicada/));
     expect(filtersRef.current.setEstados).toHaveBeenCalledWith(["ADJ"]);
   });
 
