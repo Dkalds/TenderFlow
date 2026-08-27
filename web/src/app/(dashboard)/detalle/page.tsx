@@ -41,6 +41,7 @@ import { bandColor, shortEur } from "../radar/_components/radar-shared";
 import {
   buildCsv,
   pageIdsOf,
+  useCierreRecorte,
   useDetalleRows,
   useDetalleTableState,
   type ScoringResponse,
@@ -137,6 +138,16 @@ export default function DetallePage() {
     [tecnologias, setTecnologias],
   );
 
+  // Recorte propio de la pantalla (`?cierre_desde=`/`?cierre_hasta=`), que se
+  // suma al ámbito global en vez de sustituirlo: el deep-link de una tarjeta de
+  // /resumen llega con la ventana de cierre y con los chips de ámbito que el
+  // usuario tuviera puestos, y la tabla tiene que respetar los dos.
+  const cierre = useCierreRecorte();
+  const queryFilters = useMemo(
+    () => ({ ...filterParams, ...cierre.params }),
+    [filterParams, cierre.params],
+  );
+
   const {
     sorting,
     setSorting,
@@ -149,7 +160,7 @@ export default function DetallePage() {
     clientSorted,
     toggleSort,
     toggleRow,
-  } = useDetalleTableState({ filterParams, q });
+  } = useDetalleTableState({ filterParams: queryFilters, q });
   // Permalink de la ficha: ?lic=<id_externo>, con push al historial (atrás
   // cierra el inspector) y URL compartible desde cualquier fila.
   const [detailId, setDetailId] = useQueryState(
@@ -369,6 +380,22 @@ export default function DetallePage() {
             Tabla completa con todos los campos y exportación
           </span>
           <div className="flex-1" />
+          {cierre.label && (
+            <button
+              type="button"
+              onClick={() => {
+                cierre.clear();
+                // Volver a la primera página: «página 7» de un recorte que ya no
+                // existe apunta a un tramo distinto del listado ensanchado.
+                setPagination((current) => ({ ...current, pageIndex: 0 }));
+              }}
+              title="Quitar el recorte por fecha de cierre"
+              className="tf-pressable inline-flex h-6 items-center gap-1.5 rounded-md border border-primary/26 bg-primary/10 px-2 text-[11px] font-medium text-primary transition-colors duration-140 ease-out hover:bg-primary/20"
+            >
+              {cierre.label}
+              <span className="opacity-60">×</span>
+            </button>
+          )}
           {sortLabel && (
             <button
               type="button"
@@ -704,14 +731,22 @@ export default function DetallePage() {
                   Sin resultados
                 </div>
                 <p className="mb-3.5 text-[13px] leading-[1.5] text-muted-foreground">
-                  Ninguna licitación encaja con el ámbito actual.
+                  {cierre.label
+                    ? "Ninguna licitación encaja con el ámbito actual ni con el recorte por fecha de cierre."
+                    : "Ninguna licitación encaja con el ámbito actual."}
                 </p>
                 <button
                   type="button"
-                  onClick={resetFilters}
+                  onClick={() => {
+                    resetFilters();
+                    // El recorte por cierre también: si sólo se limpiara el
+                    // ámbito, el botón dejaría la pantalla igual de vacía y
+                    // sin nada más que pulsar.
+                    cierre.clear();
+                  }}
                   className="tf-pressable h-[30px] rounded-md border border-primary/40 bg-primary/12 px-3 text-xs font-medium text-primary"
                 >
-                  Limpiar ámbito
+                  {cierre.label ? "Limpiar ámbito y recorte" : "Limpiar ámbito"}
                 </button>
               </div>
             )}

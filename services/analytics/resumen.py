@@ -65,6 +65,18 @@ class ResumenHoyResult(BaseModel):
     vencen_48h: int = 0
     nuevas_24h: int = 0
     total_activas: int = 0
+    # El corte de importe con el que se contó `calientes`, para que la tarjeta
+    # que lo enseña pueda abrir su listado (`importe_min=<p75>&solo_abiertas=true`)
+    # en vez de un listado más ancho que la cifra.
+    #
+    # `None` cuando el P75 usado **no** es el global: con ámbito activo el
+    # percentil se recalcula sobre el subconjunto filtrado dentro de la propia
+    # query de agregación (`aggregates.overview_para_hoy`, CTE `p75`) y no sale
+    # de ella. Publicar ahí el P75 global sería peor que no publicar nada: el
+    # enlace cortaría por un umbral que no es el que produjo el número. El
+    # consumidor debe tratar el `None` como "no puedo enlazar exacto", nunca
+    # como cero.
+    importe_p75: float | None = None
 
 
 class TimelineScatterFilters(BaseModel):
@@ -222,6 +234,11 @@ def get_resumen_hoy(filters: ResumenHoyFilters) -> ResumenHoyResult:
         vencen_48h=counts["vencen_48h"],
         nuevas_24h=counts["nuevas_24h"],
         total_activas=counts["total_activas"],
+        # `snap` no es None exactamente cuando el ámbito es la tabla entera
+        # (`read_overview_snapshot_for` devuelve None con cualquier filtro), que
+        # es justo el caso en que el P75 del snapshot **es** el que usó el
+        # contador de arriba.
+        importe_p75=snap.importe_p75 if snap is not None else None,
     )
     log.info("analytics_resumen_hoy_done")
     return result

@@ -7,6 +7,7 @@ Las queries complejas usan SQLAlchemy Core para construcción type-safe
 from __future__ import annotations
 
 import re
+from datetime import date, timedelta
 from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import Select, and_, func, or_, select, text
@@ -23,6 +24,42 @@ if TYPE_CHECKING:
 log = get_logger(__name__)
 
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+# Cotas del guard ISO de las columnas de fecha. Espejo de
+# ``db/repositories/aggregates.py::_iso_guard``, que las documenta: rango
+# lexicográfico y no regex, porque ``~`` no puede usar el btree de la columna y
+# obliga a evaluar el patrón fila a fila. Aquí van como par de constantes en vez
+# de como fragmento de texto porque este módulo compila SA Core con
+# ``compile_query`` en lugar de interpolar SQL.
+_ISO_MIN = "1900"
+_ISO_MAX = "3000"
+
+
+def _iso_guard(column: Any) -> Any:
+    """Cláusula SA Core que excluye fechas claramente malformadas."""
+    return and_(column >= _ISO_MIN, column < _ISO_MAX)
+
+
+def _dia_siguiente(iso_date: str) -> str | None:
+    """``YYYY-MM-DD`` + 1 día, o ``None`` si esa fecha no existe en el calendario.
+
+    ``fecha_limite`` no guarda un día, guarda el instante de cierre completo
+    (``2026-08-28T14:00:00``: lo escribe ``to_iso_datetime`` desde
+    ``scraper/codice_parser.py::_tender_deadline``). Por eso una cota superior
+    dada por día no puede ser ``<= '2026-08-28'``: lexicográficamente eso deja
+    fuera **todos** los expedientes que cierran ese mismo día a cualquier hora,
+    que son justo los que la cota pretende incluir. La cota exacta es "menor que
+    el día siguiente", y sigue siendo un rango sargable sobre
+    ``idx_lic_fecha_limite``.
+
+    El regex de la ruta acepta un ``2026-13-45`` bien formateado pero inexistente;
+    aquí se descarta en silencio, igual que el resto de fechas malformadas del
+    módulo, en vez de propagar un ``ValueError`` como 500.
+    """
+    try:
+        return (date.fromisoformat(iso_date) + timedelta(days=1)).isoformat()
+    except ValueError:
+        return None
 
 
 def _escape_like(s: str) -> str:
@@ -132,9 +169,18 @@ class LicitacionRepository:
         min_proba_tech: float | None = None,
         fecha_desde: str | None = None,
         fecha_hasta: str | None = None,
+        cierre_desde: str | None = None,
+        cierre_hasta: str | None = None,
         only_classified: bool = True,
     ) -> list[Any]:
-        """Devuelve lista de cláusulas SA Core para WHERE."""
+        """Devuelve lista de cláusulas SA Core para WHERE.
+
+        ``fecha_desde``/``fecha_hasta`` acotan **publicación** y
+        ``cierre_desde``/``cierre_hasta`` acotan **cierre** (``fecha_limite``).
+        Son ejes distintos y combinables: el listado que abre la tarjeta
+        «Vencen 48h» de ``/resumen`` pide el segundo, que hasta ahora no
+        existía y dejaba el enlace abriendo el catálogo entero.
+        """
         clauses = []
 
         if only_classified:
@@ -201,6 +247,23 @@ class LicitacionRepository:
         if fecha_hasta and _DATE_RE.match(fecha_hasta):
             clauses.append(licitaciones.c.fecha_publicacion <= fecha_hasta)
 
+        # Ventana de cierre. El guard ISO va una sola vez aunque haya dos cotas
+        # —son rangos sobre la misma columna y Postgres los funde en un único
+        # recorrido del índice—, y hace falta aunque el ``>=`` ya ponga suelo:
+        # el techo ``< '3000'`` no lo implica. Mismo par de predicados que
+        # cuenta ``aggregates.overview_para_hoy`` para ``vencen_48h``, de modo
+        # que la tarjeta y el listado que abre midan lo mismo.
+        cierre_desde_ok = bool(cierre_desde and _DATE_RE.match(cierre_desde))
+        hasta_exclusivo = (
+            _dia_siguiente(cierre_hasta) if cierre_hasta and _DATE_RE.match(cierre_hasta) else None
+        )
+        if cierre_desde_ok or hasta_exclusivo:
+            clauses.append(_iso_guard(licitaciones.c.fecha_limite))
+        if cierre_desde_ok:
+            clauses.append(licitaciones.c.fecha_limite >= cierre_desde)
+        if hasta_exclusivo:
+            clauses.append(licitaciones.c.fecha_limite < hasta_exclusivo)
+
         return clauses
 
     # ── public API ────────────────────────────────────────────────────────────
@@ -252,6 +315,8 @@ class LicitacionRepository:
         min_proba_tech: float | None = None,
         fecha_desde: str | None = None,
         fecha_hasta: str | None = None,
+        cierre_desde: str | None = None,
+        cierre_hasta: str | None = None,
         limit: int = 50,
         offset: int = 0,
         sort: str | None = None,
@@ -263,6 +328,11 @@ class LicitacionRepository:
         :data:`shared.estados.ESTADOS_CERRADOS` (resuelta, adjudicada,
         anulada). Es el filtro que necesita cualquier superficie de
         oportunidad — el Radar — para no proponer expedientes cerrados.
+
+        ``cierre_desde``/``cierre_hasta`` acotan ``fecha_limite`` (ver
+        :meth:`_base_filters`). Una fila sin plazo publicado queda fuera en
+        cuanto se pide cualquiera de las dos cotas: NULL no cumple el guard
+        ISO, igual que en los contadores de ``/analytics/resumen/hoy``.
         """
         order = _SORT_MAP.get(sort or "", _DEFAULT_ORDER)
         clauses = self._base_filters(
@@ -275,6 +345,8 @@ class LicitacionRepository:
             min_proba_tech=min_proba_tech,
             fecha_desde=fecha_desde,
             fecha_hasta=fecha_hasta,
+            cierre_desde=cierre_desde,
+            cierre_hasta=cierre_hasta,
         )
 
         # Usar FTS5 para búsquedas de texto si disponible
@@ -287,6 +359,8 @@ class LicitacionRepository:
                 tecnologia=tecnologia,
                 fecha_desde=fecha_desde,
                 fecha_hasta=fecha_hasta,
+                cierre_desde=cierre_desde,
+                cierre_hasta=cierre_hasta,
                 limit=limit,
                 offset=offset,
                 order=order,
@@ -323,6 +397,8 @@ class LicitacionRepository:
         tecnologia: str | None,
         fecha_desde: str | None,
         fecha_hasta: str | None,
+        cierre_desde: str | None,
+        cierre_hasta: str | None,
         limit: int,
         offset: int,
         order: Any,
@@ -352,6 +428,23 @@ class LicitacionRepository:
         if fecha_hasta and _DATE_RE.match(fecha_hasta):
             extra_conditions.append("l.fecha_publicacion <= %s")
             extra_params.append(fecha_hasta)
+        # La ventana de cierre también aquí: si esta rama se saltara el recorte,
+        # escribir en la búsqueda global convertiría en silencio un listado de
+        # «vencen esta semana» en el catálogo entero que casa con el texto.
+        cierre_desde_ok = bool(cierre_desde and _DATE_RE.match(cierre_desde))
+        hasta_exclusivo = (
+            _dia_siguiente(cierre_hasta) if cierre_hasta and _DATE_RE.match(cierre_hasta) else None
+        )
+        if cierre_desde_ok or hasta_exclusivo:
+            extra_conditions.append(
+                f"(l.fecha_limite >= '{_ISO_MIN}' AND l.fecha_limite < '{_ISO_MAX}')"
+            )
+        if cierre_desde_ok:
+            extra_conditions.append("l.fecha_limite >= %s")
+            extra_params.append(cierre_desde)
+        if hasta_exclusivo:
+            extra_conditions.append("l.fecha_limite < %s")
+            extra_params.append(hasta_exclusivo)
 
         # Compilar order clause a string para insertar en FTS SQL
         compiled_order = str(order.compile(dialect=_DIALECT))
