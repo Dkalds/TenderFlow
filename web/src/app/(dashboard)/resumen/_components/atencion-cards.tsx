@@ -27,10 +27,15 @@ import { AvisoAlcance } from "./aviso-alcance";
  * 2. **El destino dice si es exacto.** La cabecera afirmaba que «cada tarjeta
  *    abre su listado ya filtrado» y dos de las cuatro abrían `/detalle` sin
  *    filtro ninguno: «Vencen 48h: 37» llevaba a un listado de 148.000. El
- *    backend no tiene filtro por fecha de cierre ni por el P75 de importe
- *    (`GET /licitaciones` no los acepta), y fabricarlo en cliente sería
- *    inventar el filtrado (ADR-014). Así que el pie de la tarjeta marca con `≈`
- *    los dos destinos que se quedan cortos y dice en qué.
+ *    backend no sabía acotar ni por fecha de cierre ni por el P75 de importe, y
+ *    fabricarlo en cliente sería inventar el filtrado (ADR-014), así que el pie
+ *    marcaba con `≈` los destinos que se quedaban cortos. Ya no hace falta:
+ *    `GET /licitaciones` acepta `cierre_desde`/`cierre_hasta` sobre
+ *    `fecha_limite`, y `/resumen/hoy` publica el `importe_p75` con el que contó.
+ *    El `≈` sobrevive para el único caso que sigue sin poder ser exacto: con
+ *    ámbito activo el P75 se recalcula sobre el subconjunto filtrado y el
+ *    endpoint no lo publica, así que ahí «Grandes en plazo» vuelve a ser
+ *    aproximada y lo dice.
  * 3. **El alcance del endpoint se declara.** `/analytics/resumen/hoy` sólo
  *    aplica fecha, CCAA y tecnología; con búsqueda o estado en el ámbito, estos
  *    contadores miden otro conjunto que la tira de contexto de abajo. Ver
@@ -133,7 +138,25 @@ export function AtencionCards() {
     return `/detalle?fecha_desde=${ayer}`;
   }, []);
 
+  // Deep-link de «Vencen 48h»: `cierre_desde`/`cierre_hasta` acotan
+  // `fecha_limite`, la misma columna sobre la que el KPI cuenta.
+  //
+  // El recorte es por día y el contador por hora, así que el listado va de las
+  // 00:00 de hoy al final de pasado mañana: los mismos dos días, con los
+  // extremos redondeados. Es la granularidad que aceptan los parámetros —una
+  // fecha en la URL tiene que poder escribirla una persona— y la que mantiene
+  // el enlace legible cuando se comparte.
+  const vencenHref = useMemo(() => {
+    // eslint-disable-next-line react-hooks/purity
+    const ahora = Date.now();
+    const desde = new Date(ahora).toISOString().slice(0, 10);
+    const hasta = new Date(ahora + 2 * 86400000).toISOString().slice(0, 10);
+    return `/detalle?cierre_desde=${desde}&cierre_hasta=${hasta}`;
+  }, []);
+
   const data = hoy.data;
+  // `null` cuando el corte no es el global: ver el punto 2 de la cabecera.
+  const p75 = data?.importe_p75 ?? null;
 
   // El recuento es el dato central de la pantalla y saltaba en silencio para
   // quien usa lector (hallazgo 5 de la auditoría UX).
@@ -151,9 +174,9 @@ export function AtencionCards() {
       subtitle: "Cierran en menos de 2 días",
       icon: Clock,
       accent: "hot",
-      href: "/detalle",
-      target: "/detalle · sin filtro de cierre",
-      exacto: false,
+      href: vencenHref,
+      target: "/detalle · cierra en 48h",
+      exacto: true,
       alert: Boolean(data && data.vencen_48h > 0),
     },
     {
@@ -166,9 +189,9 @@ export function AtencionCards() {
       subtitle: "Importe ≥ P75, abiertas y en plazo",
       icon: Flame,
       accent: "warm",
-      href: "/detalle?solo_abiertas=true",
-      target: "/detalle abiertas · sin el corte P75",
-      exacto: false,
+      href: p75 !== null ? `/detalle?solo_abiertas=true&importe_min=${p75}` : "/detalle?solo_abiertas=true",
+      target: p75 !== null ? "/detalle abiertas · importe ≥ P75" : "/detalle abiertas · sin el corte P75",
+      exacto: p75 !== null,
     },
     {
       key: "nuevas",
