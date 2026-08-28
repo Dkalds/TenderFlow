@@ -143,14 +143,42 @@ def test_por_estado(db):
 
 
 def test_funnel_estados_orden_fijo(db):
+    """Orden fijo e independiente del conteo, y **con todos** los códigos.
+
+    Los cinco de siempre no bastaban desde que la PSCP catalana trajo `AGR`,
+    `EJEC` y `CPM` (v91): `AGR` sola es el grueso del corpus, así que el embudo
+    enseñaba cinco tramos que sumaban una fracción de `total` y la pantalla
+    presentaba esa diferencia como si no existiera.
+    """
     res = get_overview(OverviewFilters())
-    # Orden fijo PUB, EV, RES, ADJ, ANUL — independiente del conteo.
-    assert [f.estado for f in res.funnel_estados] == ["PUB", "EV", "RES", "ADJ", "ANUL"]
+    assert [f.estado for f in res.funnel_estados] == [
+        "PUB",
+        "EV",
+        "RES",
+        "ADJ",
+        "ANUL",
+        "PRE",
+        "AGR",
+        "EJEC",
+        "CPM",
+    ]
     expected_n = _expected_por_estado()
     total = len(_ROWS)
     for step in res.funnel_estados:
         assert step.n == expected_n.get(step.estado, 0)
         assert step.pct == pytest.approx(expected_n.get(step.estado, 0) / total * 100)
+
+
+def test_funnel_estados_suman_el_total(db):
+    """La propiedad que hace legible el embudo: no se pierde ninguna fila.
+
+    Sin ella, quien mira los tramos no puede saber si lo que falta es cero o es
+    un millón de filas. El tramo `OTROS` recoge lo que no cae en ningún código
+    conocido y sólo aparece cuando hay algo dentro, así que sobre un corpus
+    limpio esta suma se cumple sin él.
+    """
+    res = get_overview(OverviewFilters())
+    assert sum(step.n for step in res.funnel_estados) == len(_ROWS)
 
 
 def test_por_mes(db):

@@ -73,10 +73,15 @@ class TestClientErrorPayloadValido:
         assert _kwargs_del_log(mock_log)["digest"] == ""
 
     def test_trunca_mensaje_y_stack(self, client, _rate_limit_ok):
+        # El payload tiene que quedar **por debajo** del tope de cuerpo
+        # (`_MAX_CLIENT_ERROR_BYTES`, 4096) y por encima de los topes de campo
+        # (300 y 2000): con 2000+3000 caracteres el endpoint respondía 413 y
+        # este caso no llegaba a comprobar el truncado que venía a comprobar.
+        # El rechazo del cuerpo grande tiene su propio test más abajo.
         with patch("api.routes.security.log") as mock_log:
             resp = client.post(
                 "/api/v1/security/client-error",
-                json={"message": "m" * 2000, "stack": "s" * 3000},
+                json={"message": "m" * 500, "stack": "s" * 2500},
             )
         assert resp.status_code == 204
         kwargs = _kwargs_del_log(mock_log)

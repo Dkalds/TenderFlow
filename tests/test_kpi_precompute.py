@@ -315,10 +315,17 @@ class TestComputeAllKpis:
 
         # We need different return values for fetchone and fetchall calls.
         # fetchone returns (value,) and fetchall returns list of tuples.
-        # La tupla tiene que ser tan ancha como la consulta con más columnas
-        # (`overview_kpis` y los indicadores de adjudicaciones leen cuatro):
-        # una más corta rompe con IndexError en cuanto se añade un KPI.
-        mock_conn.execute.return_value.fetchone.return_value = (42, 100.0, 7.0, 3)
+        # La tupla tiene que ser tan ancha como la consulta con más columnas: una
+        # más corta rompe en cuanto se añade un KPI. Desde que
+        # `overview_adjudicaciones_indicadores` devuelve también la **cobertura**
+        # de sus porcentajes (`adj_total`, `adj_con_n_ofertas`) son seis, y ese
+        # sitio sí desempaqueta posicionalmente, así que una tupla de cuatro no
+        # falla con IndexError sino con ValueError al desempaquetar.
+        #
+        # Ensancharla es seguro: los demás consumidores de este mismo doble
+        # (`overview_kpis`, `overview_tasa_anulacion`, `importe_p75`,
+        # `count_total_activas`) leen por índice, no desempaquetan.
+        mock_conn.execute.return_value.fetchone.return_value = (42, 100.0, 7.0, 3, 100, 42)
         mock_conn.execute.return_value.fetchall.return_value = []
 
         result = _compute_all_kpis(mock_conn)
@@ -356,8 +363,8 @@ class TestRunKpiPrecompute:
     @patch("db.database.init_db")
     def test_run(self, mock_init: MagicMock, mock_connect: MagicMock) -> None:
         mock_conn = MagicMock()
-        # Cuatro columnas: ver el comentario de TestComputeAllKpis.
-        mock_conn.execute.return_value.fetchone.return_value = (10, 50.0, 5.0, 2)
+        # Seis columnas: ver el comentario de TestComputeAllKpis.
+        mock_conn.execute.return_value.fetchone.return_value = (10, 50.0, 5.0, 2, 50, 10)
         mock_conn.execute.return_value.fetchall.return_value = []
         mock_connect.return_value.__enter__ = MagicMock(return_value=mock_conn)
         mock_connect.return_value.__exit__ = MagicMock(return_value=False)
