@@ -261,12 +261,18 @@ def test_la_clave_lleva_una_componente_temporal_en_los_dos_alias() -> None:
     prefiere la publicación más antigua, el anuncio de 2019 tapaba el de 2026 y
     la convocatoria abierta se caía del listado, de `contar`, de los dos hubs y
     del sitemap: el error caro, el de esconder un contrato que existe.
+
+    Antes esto contaba apariciones de ``substr(coalesce(`` y exigía exactamente
+    dos, una por alias. Dejó de valer cuando la cláusula pasó a llevar también
+    el hash de :func:`clave_canonica_sql`, que repite las cuatro componentes: la
+    cuenta subió a cuatro sin que la propiedad cambiara. Se comprueba ahora
+    contra el fragmento mismo, que es más fuerte —compara la expresión entera,
+    no un prefijo— y no vuelve a romperse porque la cláusula crezca.
     """
     clausula = fila_canonica_sql(alias="l", gemelo="l2", filtro_gemelo="true")
 
-    assert clausula.count("substr(coalesce(") == 2  # una expresión por alias
-    assert "l2.fecha_publicacion, l2.fecha_extraccion" in clausula
-    assert "l.fecha_publicacion, l.fecha_extraccion" in clausula
+    assert periodo_publicacion_sql("l") in clausula
+    assert periodo_publicacion_sql("l2") in clausula
 
 
 def test_el_desempate_final_es_la_clave_primaria() -> None:

@@ -150,10 +150,14 @@ _BASE_WHERE = _publicable_sql("l")
 # cobertura, y si `contar` discrepara del listado el hub paginaría hacia
 # páginas vacías. `ficha` se queda fuera a propósito — ver su docstring.
 #
-# Coste: ver `fila_canonica_sql`. Resumen — hash anti-join sobre las ~586k
-# filas publicables, sin índice que cubra la clave, y el listado ya no puede
-# resolver su `ORDER BY ... LIMIT` por índice. Lo paga una revalidación ISR
-# cacheada una hora, no cada visita.
+# Coste: ver `fila_canonica_sql`. Resumen — anti-join sobre las ~586k filas
+# publicables, apoyado en `idx_lic_clave_canonica` (revisión v92), y el listado
+# ya no puede resolver su `ORDER BY ... LIMIT` por índice. Lo paga una
+# revalidación ISR cacheada una hora, no cada visita.
+#
+# Ese índice no es una optimización opcional: #226 desplegó estas consultas sin
+# él y las seis superficies devolvieron 500 por `statement_timeout` hasta que
+# v92 lo creó. Si alguien lo retira, esto se cae otra vez.
 _CANONICA_SQL = fila_canonica_sql(alias="l", gemelo="l2", filtro_gemelo=_publicable_sql("l2"))
 
 #: Filtro de las seis superficies indexables. `_BASE_WHERE` es un superconjunto
