@@ -71,3 +71,50 @@ def test_licitaciones_write_has_no_legacy_alias() -> None:
         == "licitaciones:write"
     )
     assert not has_scope(frozenset({"read:licitaciones"}), "licitaciones:write")
+
+
+def test_el_resumen_es_lectura_aunque_lleve_path_param() -> None:
+    """``POST /licitaciones/{id}/resumen`` sólo lee, y por eso no exige ``write``.
+
+    Lee el anuncio y los fragmentos de pliego ya persistidos y los transforma en
+    tokens: todos sus accesos van por ``connect_read`` y no hay ningún upsert.
+    Que llame a un LLM y cueste dinero no lo convierte en escritura — el coste
+    lo acotan el presupuesto por sujeto y el rate limit, que son otros
+    mecanismos, y la ruta se autoprotege además con ``ask:read``.
+
+    Hace falta un patrón y no la lista de igualdad porque el path lleva el
+    identificador dentro, así que nunca podría casar por igualdad.
+    """
+    assert (
+        required_scope_for_request("POST", "/api/v1/licitaciones/EXP-1/resumen")
+        == "licitaciones:read"
+    )
+    # `id_externo` de PLACSP con barras (p.ej. `PA-S 2026/000058`): el `:path`
+    # de la ruta las admite, y la excepción tiene que seguirlas admitiendo.
+    assert (
+        required_scope_for_request("POST", "/api/v1/licitaciones/PA-S 2026/000058/resumen")
+        == "licitaciones:read"
+    )
+
+
+def test_la_extraccion_de_ficha_sigue_exigiendo_escritura() -> None:
+    """La vecina de ``/resumen`` en el mismo subárbol sí muta, y no puede colarse.
+
+    ``ficha-pliego/extract`` descarga documentos contra PLACSP, marca las filas
+    de ``documentos`` y **sobrescribe la ficha vigente — incluso cuando la
+    petición acaba en 502**. Es el hueco que motivó ramificar por verbo: con la
+    regla anterior quedaba al alcance de ``data:read``, el scope por defecto de
+    toda API key nueva.
+
+    Por eso el patrón de ``/resumen`` va anclado en ``$`` y no es un prefijo.
+    """
+    assert (
+        required_scope_for_request("POST", "/api/v1/licitaciones/EXP-1/ficha-pliego/extract")
+        == "licitaciones:write"
+    )
+    # Una ruta mutante que colgara de un path con «resumen» dentro tampoco hereda.
+    assert (
+        required_scope_for_request("POST", "/api/v1/licitaciones/EXP-1/resumen/extract")
+        == "licitaciones:write"
+    )
+    assert not has_scope(frozenset({"data:read"}), "licitaciones:write")

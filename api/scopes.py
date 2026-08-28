@@ -9,6 +9,7 @@ becoming reachable by a read-only key.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Iterable
 
 _READ_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
@@ -33,6 +34,40 @@ _LICITACIONES_READ_POSTS: frozenset[str] = frozenset(
         "/api/v1/licitaciones/bulk-get",
     }
 )
+
+# La misma excepción para los POST de lectura que llevan **path param**, que por
+# construcción no pueden casar contra el conjunto de arriba: se compara por
+# igualdad y su path lleva un identificador dentro.
+#
+# Sólo hay uno, y su clasificación se verificó siguiendo el handler hasta la BD:
+# `/resumen` (api/routes/ask.py) lee el anuncio y los fragmentos de pliego ya
+# persistidos y los transforma en tokens; todos sus accesos van por
+# `connect_read` y no hay ningún upsert — su propio docstring declara «sin
+# caché». Que llame a un LLM y cueste dinero no lo hace escritura: ese coste lo
+# acotan el presupuesto por sujeto y el rate limit, que son otros mecanismos. Y
+# la ruta ya se autoprotege además con `_check_ask_scope`, que exige `ask:read`.
+#
+# El patrón termina anclado en `/resumen$` **a propósito**: su vecina
+# `/{id}/ficha-pliego/extract` cuelga del mismo subárbol y sí muta —escribe en
+# `documentos`, `tender_fact_sheets` y las señales de tecnología, y sobrescribe
+# la ficha vigente incluso cuando la petición acaba en 502—, así que un patrón
+# por prefijo la habría dejado al alcance de `data:read`, el scope por defecto
+# de toda API key nueva. Es justo el hueco que ramificar por verbo cerraba.
+_LICITACIONES_READ_POST_PATTERNS: tuple[re.Pattern[str], ...] = (
+    re.compile(r"^/api/v1/licitaciones/.+/resumen$"),
+)
+
+
+def _es_post_de_lectura_de_licitaciones(path: str) -> bool:
+    """¿Este POST bajo /licitaciones sólo lee?
+
+    Dos mecanismos porque hay dos formas de path: literal (igualdad, barato) y
+    con parámetro (regex). Ninguno es un prefijo, para que la excepción no se
+    contagie a un endpoint mutante que mañana cuelgue del mismo subárbol.
+    """
+    return path in _LICITACIONES_READ_POSTS or any(
+        patron.match(path) for patron in _LICITACIONES_READ_POST_PATTERNS
+    )
 
 
 def required_scope_for_request(method: str, path: str) -> str:
@@ -90,7 +125,9 @@ def required_scope_for_request(method: str, path: str) -> str:
     # watchlist/notifications/saved-filters, salvo los POST de lectura ya
     # publicados.
     if normalized_path.startswith("/api/v1/licitaciones"):
-        if normalized_method in _READ_METHODS or normalized_path in _LICITACIONES_READ_POSTS:
+        if normalized_method in _READ_METHODS or _es_post_de_lectura_de_licitaciones(
+            normalized_path
+        ):
             return "licitaciones:read"
         return "licitaciones:write"
     if normalized_path.startswith("/api/v1/empresas/reviews"):
