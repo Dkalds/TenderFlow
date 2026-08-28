@@ -27,17 +27,20 @@ export const ESTADO_LABELS: Record<string, string> = {
   ANUL: "Anulada",
   PRE: "Anuncio previo",
   CREA: "Creada",
-  // Los dos códigos propios de la PSCP catalana. Nombrados por lo que son y no
-  // por su efecto ("Cerrada"): son 1,7 M de contratos menores publicados en
-  // bloque frente a 58.528 anuncios de adjudicación reales, y fundirlos con ADJ
-  // destrozaría cualquier lectura competitiva.
-  AGREG: "Publicación agregada",
+  // Fases de la PSCP catalana sin equivalente PLACSP. Hasta la migración v91
+  // se guardaban como la etiqueta catalana en crudo y truncada a 20 caracteres
+  // ('PUBLICACIÓ AGREGADA ', 'EXPEDIENT EN AVALUAC'), así que llegaban hasta
+  // aquí sin que ninguna tabla supiera traducirlas. `AGR` y `EJEC` además son
+  // terminales: ver `shared/estados.py`.
+  AGR: "Publicación agregada",
   EJEC: "En ejecución",
-  // Cajón del embudo por estado: lo que el backend no pudo clasificar en
-  // ninguno de los códigos de arriba (filas sin estado, o con el texto crudo que
-  // el conector escribió antes del arreglo de 2026-08-27 y que
-  // `scripts/repair_estados_pscp.py` todavía no ha limpiado). Existe para que
-  // los tramos sumen el total en vez de dejar filas fuera sin decirlo.
+  CPM: "Consulta preliminar",
+  // Cajón del embudo por estado (`overview_funnel`): lo que no cae en ninguno
+  // de los códigos de arriba —filas sin estado, o con un código que la fuente
+  // publicó y todavía nadie mapeó—. No es un estado de la fuente: existe para
+  // que los tramos del embudo sumen el total en vez de dejar filas fuera sin
+  // decirlo, que con AGR siendo el grueso del corpus dejaba la lectura sin
+  // sentido.
   OTROS: "Otros / sin clasificar",
 };
 

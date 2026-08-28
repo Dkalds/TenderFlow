@@ -17,6 +17,14 @@ describe("estadoLabel", () => {
     expect(estadoLabel("XYZ")).toBe("XYZ");
   });
 
+  it("traduce las fases PSCP canonizadas por la migración v91", () => {
+    // Antes de v91 estas tres llegaban como la etiqueta catalana cruda —y
+    // truncada— desde el conector, así que no había código que traducir.
+    expect(estadoLabel("AGR")).toBe("Publicación agregada");
+    expect(estadoLabel("EJEC")).toBe("En ejecución");
+    expect(estadoLabel("CPM")).toBe("Consulta preliminar");
+  });
+
   it("trata el vacío como vacío, no como «Desconocido»", () => {
     expect(estadoLabel(null)).toBe("");
     expect(estadoLabel(undefined)).toBe("");
@@ -39,5 +47,12 @@ describe("getEstadoChartColor · códigos", () => {
 
   it("cae a la primera serie con un código desconocido", () => {
     expect(getEstadoChartColor("XYZ")).toBe(CHART_SERIES[0]);
+  });
+
+  it("da color propio a la publicación agregada, que es el 93% del corpus", () => {
+    // Sin entrada propia caía en CHART_SERIES[0], el mismo color que `PUB`:
+    // la barra que domina la composición era indistinguible de la que menos.
+    expect(getEstadoChartColor("AGR")).toBe(ESTADO_CHART_COLOR["Publicación agregada"]);
+    expect(getEstadoChartColor("AGR")).not.toBe(getEstadoChartColor("PUB"));
   });
 });

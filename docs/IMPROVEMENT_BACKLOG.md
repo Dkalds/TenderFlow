@@ -376,6 +376,16 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 - **Files de partida:** [services/analytics/resumen.py](../services/analytics/resumen.py), [services/analytics/pipeline.py](../services/analytics/pipeline.py), [services/analytics/scoring.py](../services/analytics/scoring.py)
 - **Riesgo:** bajo — cambia un número visible en dos KPIs; sin migración de schema.
 
+### [P3] El embudo del Resumen mide sus porcentajes contra todo el corpus
+- **Área:** db/repositories/aggregates (`overview_funnel`), services/analytics/overview
+- **Problema:** `overview_funnel` divide cada escalón (`PUB`, `EV`, `RES`, `ADJ`, `ANUL`) entre `COUNT(*)` de la tabla filtrada, no entre las filas que participan en el embudo. Con los 645.664 expedientes en `AGR` —que no son un escalón de nada: son avisos agregados de contratos ya celebrados— los cinco escalones suman ~6,7% y el 93% restante es invisible. El embudo se lee como si el 93% de los expedientes se hubieran perdido entre publicación y adjudicación.
+- **Origen:** salió al normalizar `licitaciones.estado` (migración v91, 2026-08-26). La normalización no lo causó ni lo arregla: sólo lo hace explicable, porque hasta entonces ese 93% ni siquiera tenía nombre.
+- **Acceptance criteria:**
+  - Decidir el denominador: o los cinco escalones (`pct` suma 100 y el embudo se lee como embudo), o el corpus entero pero rotulando en la UI qué queda fuera. Lo que no puede quedarse es un porcentaje sin denominador declarado.
+  - Si cambia `FunnelStep.pct`, es un cambio de semántica sobre contrato público (AGENTS §3.5): documentarlo en el DTO.
+- **Files de partida:** [db/repositories/aggregates.py](../db/repositories/aggregates.py), [services/analytics/overview.py](../services/analytics/overview.py)
+- **Riesgo:** bajo — cambia un porcentaje mostrado; sin migración de schema.
+
 ### [P3] Vigilar el crecimiento de `predicciones_baja`
 - **Área:** services/analytics/scoring_signals, services/ml/scoring, scheduler/jobs/ml_predicciones
 - **Problema:** `_load_margen_stats_raw` carga la tabla entera (`licitacion_id`, `p50`) a un dict en cada refresco de caché. Hoy es barato —el job de ML solo predice licitaciones abiertas, 5 k por corrida— pero el upsert **no purga**, así que la tabla acumula filas de expedientes ya cerrados y crece de forma monótona. No se filtra por universo vivo a propósito: el modo page-aligned del Detalle puntúa filas cerradas y perdería su dimensión de margen en silencio.

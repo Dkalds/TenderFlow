@@ -16,7 +16,6 @@ from api.routes.dual_auth import require_any_auth
 from db.repositories.kpi_snapshots import read_meta_cpv
 from db.repositories.licitaciones import LicitacionRepository
 from shared.cache import single_flight
-from shared.estados import filtrar_estados_canonicos
 
 router = APIRouter(prefix="/meta", tags=["meta"])
 
@@ -50,20 +49,8 @@ def _load_filter_options() -> dict[str, list[str]]:
     index scan. El precálculo de KPIs la deja lista en ``kpi_snapshots`` tras
     cada ingesta, que es exactamente cuando puede cambiar; si no está, el
     repository la calcula en vivo y la respuesta es la misma.
-
-    ``estado`` se recorta al vocabulario canónico *aquí*, en Python, y no en el
-    SELECT DISTINCT: el SQL vive en ``db/`` (ADR-022) y filtrar por una lista
-    blanca de nueve códigos sobre un resultado de doce valores no justifica
-    tocar el loose index scan. El corpus histórico tiene ``estado`` con texto
-    crudo de la PSCP truncado a 20 caracteres ("EXPEDIENT EN AVALUAC",
-    "PUBLICACIÓ AGREGADA "), y el selector de la UI los ofrecía como si fueran
-    estados. El conector ya no los escribe y
-    ``scripts/repair_estados_pscp.py`` limpia lo escrito, pero el filtro deja
-    de mentir sin esperar a ninguna de las dos cosas.
     """
-    options = _lic_repo.get_filter_options(cpv_values=read_meta_cpv())
-    options["estado"] = filtrar_estados_canonicos(options["estado"])
-    return options
+    return _lic_repo.get_filter_options(cpv_values=read_meta_cpv())
 
 
 @router.get(

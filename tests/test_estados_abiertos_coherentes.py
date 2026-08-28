@@ -19,21 +19,26 @@ from db.repositories.aggregates import AggregateRepository, LicitacionesFilters
 from db.repositories.licitaciones import LicitacionRepository
 from shared.estados import ESTADOS_CERRADOS, abierta_sql
 
-# Un expediente por estado: los tres terminales, dos abiertos conocidos, uno
+# Un expediente por estado: los cinco terminales, tres abiertos conocidos, uno
 # abierto que la lista blanca se comía (`ADM`) y otro que la fuente aún no ha
 # documentado.
 _FILAS = (
     ("EST-PUB", "PUB"),
     ("EST-EV", "EV"),
+    ("EST-CPM", "CPM"),
     ("EST-ADM", "ADM"),
     ("EST-FUTURO", "XYZ"),
     ("EST-NULL", None),
     ("EST-RES", "RES"),
     ("EST-ADJ", "ADJ"),
     ("EST-ANUL", "ANUL"),
+    # Las dos fases PSCP canonizadas en v91. `AGR` es el caso que motivó el
+    # cambio: 645.664 filas que contaban como abiertas por no estar mapeadas.
+    ("EST-AGR", "AGR"),
+    ("EST-EJEC", "EJEC"),
 )
 
-_ABIERTOS = {"EST-PUB", "EST-EV", "EST-ADM", "EST-FUTURO", "EST-NULL"}
+_ABIERTOS = {"EST-PUB", "EST-EV", "EST-CPM", "EST-ADM", "EST-FUTURO", "EST-NULL"}
 
 
 @pytest.fixture()
@@ -69,6 +74,20 @@ def test_abierta_sql_admite_nulos_y_estados_no_documentados():
     # el siguiente que publique la fuente quedaría fuera.
     for abierto in ("PUB", "EV", "ADM"):
         assert f"'{abierto}'" not in predicado
+
+
+def test_las_fases_pscp_canonizadas_cuentan_como_cerradas():
+    """`AGR` y `EJEC` son terminales, y eso es una decisión, no un detalle.
+
+    Mientras `PUBLICACIÓ AGREGADA` no estuvo mapeada contaba como abierta por
+    omisión, y el "Total activas" del Resumen decía 657.156 sobre un corpus de
+    691.974. Si alguien las saca de `ESTADOS_CERRADOS` sin querer, el KPI
+    vuelve a medir el tamaño del corpus.
+    """
+    assert "AGR" in ESTADOS_CERRADOS
+    assert "EJEC" in ESTADOS_CERRADOS
+    # `CPM` (consulta preliminar) sí es una oportunidad futura: abierta.
+    assert "CPM" not in ESTADOS_CERRADOS
 
 
 def test_abierta_sql_admite_otra_columna():

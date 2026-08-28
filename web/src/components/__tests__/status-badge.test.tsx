@@ -61,6 +61,37 @@ describe("StatusBadge — estado kind (default)", () => {
   });
 });
 
+describe("StatusBadge — estado kind, código canónico", () => {
+  // El detalle de una licitación pasa `l.estado`, que es el código de la
+  // columna. Con el mapa indexado sólo por etiquetas la chapa salía neutra,
+  // sin icono y rotulada "PUB".
+  it("renders the label, not the raw code", () => {
+    render(<StatusBadge value="PUB" />);
+    expect(screen.getByText("Publicada")).toBeInTheDocument();
+    expect(screen.queryByText("PUB")).not.toBeInTheDocument();
+  });
+
+  it("labels the states canonised in v91", () => {
+    render(<StatusBadge value="AGR" />);
+    expect(screen.getByText("Publicación agregada")).toBeInTheDocument();
+  });
+
+  it("uses the label in the aria-label too", () => {
+    render(<StatusBadge value="ADJ" />);
+    expect(screen.getByLabelText("Estado: Adjudicada")).toBeInTheDocument();
+  });
+
+  it("picks up the icon for a code", () => {
+    const { container } = render(<StatusBadge value="ADJ" showIcon />);
+    expect(container.querySelector("svg")).toBeInTheDocument();
+  });
+
+  it("leaves an unknown state as-is", () => {
+    render(<StatusBadge value="FASE NUEVA" />);
+    expect(screen.getByText("FASE NUEVA")).toBeInTheDocument();
+  });
+});
+
 describe("StatusBadge — band kind", () => {
   it("renders Caliente band", () => {
     render(<StatusBadge value="Caliente" kind="band" />);

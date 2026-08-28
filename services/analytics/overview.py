@@ -307,10 +307,10 @@ def get_overview(filters: OverviewFilters) -> OverviewResult:
             pct=float(n / total_funnel * 100) if total_funnel else 0.0,
         )
 
-    # AGREG y EJEC son los dos códigos de la PSCP catalana, y AGREG solo es el
-    # 93% del corpus: sin ellos estos tramos sumaban una fracción del total y la
-    # pantalla no lo decía.
-    codigos = ("PUB", "EV", "RES", "ADJ", "ANUL", "AGREG", "EJEC")
+    # AGR, EJEC y CPM son los códigos de la PSCP catalana que normalizó v91, y
+    # AGR solo es el 93% del corpus: sin ellos estos tramos sumaban una fracción
+    # del total y la pantalla no lo decía.
+    codigos = ("PUB", "EV", "RES", "ADJ", "ANUL", "PRE", "AGR", "EJEC", "CPM")
     funnel_estados = [_paso(est, funnel_data.get(est, 0)) for est in codigos]
 
     # Y lo que no cae en ninguno —filas sin estado, o con el texto crudo que el

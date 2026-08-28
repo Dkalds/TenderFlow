@@ -19,6 +19,7 @@ import { useAnnounceOnChange } from "@/components/live-region";
 import { useDebounce } from "@/hooks/use-debounce";
 import { useDataFreshness } from "@/hooks/use-data-freshness";
 import { useFilteredQuery } from "@/hooks/use-filtered-query";
+import { estadoLabel } from "@/lib/estados";
 import { useFilters, useFilterParams } from "@/lib/filters";
 import { useScopeHistory } from "@/lib/scope-history";
 import { useSearchHistory } from "@/lib/search-history";
@@ -240,6 +241,9 @@ function ScopeEditor({
             selected={filters.estados}
             onChange={filters.setEstados}
             placeholder="Añadir estado…"
+            // `/meta/filters` devuelve los códigos de la columna, no etiquetas:
+            // sin esto el desplegable ofrecía "AGR" y "EJEC" como opciones.
+            optionLabel={estadoLabel}
           />
           {/* Separado del multi-select porque no es un código más: descarta los
               estados terminales, cualesquiera que sean. Marcar "PUB" y "EV" a
@@ -370,7 +374,9 @@ export function ScopeBar() {
       for (const value of filters.estados) {
         list.push({
           key: "Estado",
-          value,
+          // La chapa muestra la etiqueta pero filtra por el código: el valor
+          // que viaja en la URL y en la query sigue siendo `value`.
+          value: estadoLabel(value),
           remove: () => filters.setEstados(filters.estados.filter((item) => item !== value)),
         });
       }

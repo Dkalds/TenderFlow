@@ -40,22 +40,25 @@ vi.mock("@/lib/filters", async () => {
 
 import { AtencionCards } from "@/app/(dashboard)/resumen/_components/atencion-cards";
 
-const HOY = { calientes: 12, vencen_48h: 37, nuevas_24h: 8, total_activas: 42100 };
+const HOY = {
+  calientes: 12,
+  vencen_48h: 37,
+  nuevas_24h: 8,
+  total_activas: 42100,
+  importe_p75: 250000,
+};
 
 function key(base: string[], url: string) {
   return [...base, url, { ...scope.params }];
 }
 
-function renderCards() {
+function renderCards(hoy: Record<string, unknown> = HOY) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
-  qc.setQueryData(
-    key(["analytics", "resumen", "hoy"], "/api/v1/analytics/resumen/hoy"),
-    HOY,
-  );
-  qc.setQueryData(
-    key(["analytics", "resumen", "novedades"], "/api/v1/analytics/resumen/novedades"),
-    { count: 0, sample: [] },
-  );
+  qc.setQueryData(key(["analytics", "resumen", "hoy"], "/api/v1/analytics/resumen/hoy"), hoy);
+  qc.setQueryData(key(["analytics", "resumen", "novedades"], "/api/v1/analytics/resumen/novedades"), {
+    count: 0,
+    sample: [],
+  });
   return render(
     <QueryClientProvider client={qc}>
       <AtencionCards />
@@ -108,12 +111,35 @@ describe("AtencionCards", () => {
     expect(hrefDe("Nuevas 24h")).toMatch(/fecha_desde=\d{4}-\d{2}-\d{2}/);
   });
 
-  it("marca con ≈ los destinos que el backend no sabe filtrar", () => {
+  it("«Vencen 48h» abre la ventana de cierre que cuenta", () => {
+    // Era el destino roto del rediseño: contaba 37 y abría las 148.000 del
+    // catálogo entero. `GET /licitaciones` ya acota por `fecha_limite`.
     renderCards();
-    // No hay filtro por fecha de cierre ni por el P75 de importe en
-    // GET /licitaciones: el pie lo dice en vez de prometer un listado exacto.
-    expect(screen.getByText(/≈ \/detalle · sin filtro de cierre/)).toBeInTheDocument();
+    const href = hrefDe("Vencen 48h");
+    expect(href).toMatch(/cierre_desde=\d{4}-\d{2}-\d{2}/);
+    expect(href).toMatch(/cierre_hasta=\d{4}-\d{2}-\d{2}/);
+    expect(screen.getByText("/detalle · cierra en 48h")).toBeInTheDocument();
+    expect(screen.queryByText(/≈ \/detalle · cierra en 48h/)).not.toBeInTheDocument();
+  });
+
+  it("«Grandes en plazo» corta por el P75 que publica el endpoint", () => {
+    renderCards();
+    expect(hrefDe("Grandes en plazo")).toContain("importe_min=250000");
+    expect(hrefDe("Grandes en plazo")).toContain("solo_abiertas=true");
+    expect(screen.getByText("/detalle abiertas · importe ≥ P75")).toBeInTheDocument();
+  });
+
+  it("sin P75 publicado, «Grandes en plazo» vuelve a declararse aproximada", () => {
+    // Con ámbito activo el percentil se recalcula sobre el subconjunto filtrado
+    // y no sale del endpoint: enlazar con el P75 global cortaría por un umbral
+    // que no es el que produjo la cifra.
+    renderCards({ ...HOY, importe_p75: null });
+    expect(hrefDe("Grandes en plazo")).not.toContain("importe_min");
     expect(screen.getByText(/≈ \/detalle abiertas · sin el corte P75/)).toBeInTheDocument();
+  });
+
+  it("«Total activas» sigue abriendo sólo las abiertas, sin ≈", () => {
+    renderCards();
     expect(screen.getByText("/detalle sólo abiertas")).toBeInTheDocument();
   });
 

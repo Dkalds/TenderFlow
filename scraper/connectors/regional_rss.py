@@ -18,6 +18,7 @@ import requests
 from db.upsert import Licitacion
 from scraper.connectors.base import ParsedTender, RawNotice
 from scraper.filters import matches_technology
+from services.classification import normalizar_estado
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -152,7 +153,10 @@ class RegionalRssConnector:
             ),
             importe=_amount(description),
             tipo_contrato=_label(description, ("Tipo de contrato",)),
-            estado=_label(description, ("Estado",)),
+            # `Estado:` llega como prosa ("En licitación", "Adjudicada"…), no
+            # como código: se normaliza igual que la fase de PSCP para que las
+            # dos fuentes hablen el mismo vocabulario.
+            estado=normalizar_estado(_label(description, ("Estado",))),
             fecha_publicacion=published[:10] if isinstance(published, str) else None,
             fecha_limite=_date(
                 _label(
