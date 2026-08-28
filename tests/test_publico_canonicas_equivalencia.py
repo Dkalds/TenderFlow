@@ -37,47 +37,53 @@ from db.repositories.publico import (
     _canonicas_from,
 )
 
-pytestmark = pytest.mark.usefixtures("tmp_db")
+
+@pytest.fixture()
+def db(tmp_db: Any) -> Any:
+    """El módulo de BD ya inicializado. ``tmp_db`` devuelve ``(db_mod, tmp_path)``."""
+    db_mod, _ = tmp_db
+    return db_mod
 
 
-def _sembrar(conn: Any, filas: list[dict[str, Any]]) -> None:
+def _sembrar(db: Any, filas: list[dict[str, Any]]) -> None:
     """Inserta lo mínimo para que una fila sea publicable y comparable."""
-    for f in filas:
-        conn.execute(
-            "INSERT INTO licitaciones (id_externo, titulo, organo_contratacion, cpv, "
-            "importe, fecha_publicacion, fecha_extraccion, fuente, ccaa) "
-            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)",
-            (
-                f["id_externo"],
-                f.get("titulo", "Servicio de mantenimiento de sistemas SAP para el organismo"),
-                f.get("organo", "Ayuntamiento de Ejemplo"),
-                f.get("cpv", "72000000"),
-                f.get("importe", 100000.0),
-                f.get("fecha_publicacion", "2026-03-01"),
-                f.get("fecha_extraccion", "2026-03-02T00:00:00Z"),
-                f.get("fuente", "pscp"),
-                f.get("ccaa", "Cataluña"),
-            ),
-        )
+    with db.connect() as c:
+        for f in filas:
+            c.execute(
+                "INSERT INTO licitaciones (id_externo, titulo, organo_contratacion, cpv, "
+                "importe, fecha_publicacion, fecha_extraccion, fuente, ccaa) "
+                "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)",
+                (
+                    f["id_externo"],
+                    f.get("titulo", "Servicio de mantenimiento de sistemas SAP para el organismo"),
+                    f.get("organo", "Ayuntamiento de Ejemplo"),
+                    f.get("cpv", "72000000"),
+                    f.get("importe", 100000.0),
+                    f.get("fecha_publicacion", "2026-03-01"),
+                    f.get("fecha_extraccion", "2026-03-02T00:00:00Z"),
+                    f.get("fuente", "pscp"),
+                    f.get("ccaa", "Cataluña"),
+                ),
+            )
 
 
-# S608: las dos cláusulas son constantes del módulo compuestas en import-time,
-# no input de usuario. Es el mismo criterio que aplica `db/sql_fragments.py`.
-def _ids_anti_join(conn: Any) -> set[str]:
-    filas = conn.execute(
-        f"SELECT l.id_externo FROM licitaciones l WHERE {_WHERE_INDEXABLE}"  # noqa: S608
-    ).fetchall()
+def _ids_anti_join(db: Any) -> set[str]:
+    with db.connect_read() as c:
+        filas = c.execute(
+            f"SELECT l.id_externo FROM licitaciones l WHERE {_WHERE_INDEXABLE}"  # noqa: S608
+        ).fetchall()
     return {r[0] for r in filas}
 
 
-def _ids_agrupacion(conn: Any) -> set[str]:
-    filas = conn.execute(
-        f"SELECT c.id_externo FROM {_canonicas_from('l.id_externo')}"  # noqa: S608
-    ).fetchall()
+def _ids_agrupacion(db: Any) -> set[str]:
+    with db.connect_read() as c:
+        filas = c.execute(
+            f"SELECT c.id_externo FROM {_canonicas_from('l.id_externo')}"  # noqa: S608
+        ).fetchall()
     return {r[0] for r in filas}
 
 
-def test_las_dos_formas_eligen_la_misma_canonica_entre_gemelas(tmp_db: Any) -> None:
+def test_las_dos_formas_eligen_la_misma_canonica_entre_gemelas(db: Any) -> None:
     """Tres reemisiones del mismo contrato: las dos dejan pasar la misma fila.
 
     Misma clave (órgano + CPV4 + año-mes + título) y distinta fecha de
@@ -85,7 +91,7 @@ def test_las_dos_formas_eligen_la_misma_canonica_entre_gemelas(tmp_db: Any) -> N
     sitemap cuando llegan corrigendos.
     """
     _sembrar(
-        tmp_db,
+        db,
         [
             {"id_externo": "A-1", "fecha_publicacion": "2026-03-05"},
             {"id_externo": "A-2", "fecha_publicacion": "2026-03-10"},
@@ -93,14 +99,11 @@ def test_las_dos_formas_eligen_la_misma_canonica_entre_gemelas(tmp_db: Any) -> N
         ],
     )
 
-    anti = _ids_anti_join(tmp_db)
-    grupo = _ids_agrupacion(tmp_db)
-
-    assert anti == grupo
-    assert anti == {"A-1"}, "gana la publicación más antigua"
+    assert _ids_anti_join(db) == _ids_agrupacion(db)
+    assert _ids_anti_join(db) == {"A-1"}, "gana la publicación más antigua"
 
 
-def test_las_filas_sin_organo_sobreviven_todas_en_las_dos_formas(tmp_db: Any) -> None:
+def test_las_filas_sin_organo_sobreviven_todas_en_las_dos_formas(db: Any) -> None:
     """El caso que un ``DISTINCT ON`` ingenuo rompería en silencio.
 
     Sin órgano la clave es ``NULL``. El anti-join no encuentra gemela (``NULL =
@@ -110,7 +113,7 @@ def test_las_filas_sin_organo_sobreviven_todas_en_las_dos_formas(tmp_db: Any) ->
     la superficie pública sin que fallara ninguna consulta.
     """
     _sembrar(
-        tmp_db,
+        db,
         [
             {"id_externo": "S-1", "organo": None},
             {"id_externo": "S-2", "organo": None},
@@ -118,14 +121,11 @@ def test_las_filas_sin_organo_sobreviven_todas_en_las_dos_formas(tmp_db: Any) ->
         ],
     )
 
-    anti = _ids_anti_join(tmp_db)
-    grupo = _ids_agrupacion(tmp_db)
-
-    assert anti == grupo
-    assert anti == {"S-1", "S-2", "S-3"}, "sin órgano no se colapsa nada"
+    assert _ids_anti_join(db) == _ids_agrupacion(db)
+    assert _ids_anti_join(db) == {"S-1", "S-2", "S-3"}, "sin órgano no se colapsa nada"
 
 
-def test_contar_coincide_con_las_filas_que_el_listado_publica(tmp_db: Any) -> None:
+def test_contar_coincide_con_las_filas_que_el_listado_publica(db: Any) -> None:
     """``contar`` (agrupación) y ``listar`` (anti-join) tienen que cuadrar.
 
     Es el invariante que impide que un hub pagine hacia páginas vacías: si el
@@ -133,7 +133,7 @@ def test_contar_coincide_con_las_filas_que_el_listado_publica(tmp_db: Any) -> No
     página en blanco y Search Console lo cuenta como error de cobertura.
     """
     _sembrar(
-        tmp_db,
+        db,
         [
             {"id_externo": "B-1", "titulo": "Suministro de licencias y soporte SAP S/4HANA"},
             {"id_externo": "B-2", "titulo": "Suministro de licencias y soporte SAP S/4HANA"},
@@ -143,14 +143,14 @@ def test_contar_coincide_con_las_filas_que_el_listado_publica(tmp_db: Any) -> No
     )
     repo = PublicoRepository()
 
-    total = repo.contar(conn=tmp_db)
-    publicadas = repo.listar(limite=200, desplazamiento=0, conn=tmp_db)
+    total = repo.contar()
+    publicadas = repo.listar(limite=200, desplazamiento=0)
 
     assert total == len(publicadas)
     assert total == 3, "las dos reemisiones de B colapsan en una"
 
 
-def test_el_filtro_de_comunidad_se_aplica_despues_de_elegir_la_canonica(tmp_db: Any) -> None:
+def test_el_filtro_de_comunidad_se_aplica_despues_de_elegir_la_canonica(db: Any) -> None:
     """Filtrar dentro de la subconsulta cambiaría la respuesta, y por eso no se hace.
 
     Dos gemelas del mismo contrato en comunidades distintas: la canónica es la
@@ -159,7 +159,7 @@ def test_el_filtro_de_comunidad_se_aplica_despues_de_elegir_la_canonica(tmp_db: 
     existe para evitar.
     """
     _sembrar(
-        tmp_db,
+        db,
         [
             {"id_externo": "E-1", "fecha_publicacion": "2026-03-05", "ccaa": "Cataluña"},
             {"id_externo": "E-2", "fecha_publicacion": "2026-03-15", "ccaa": "Madrid"},
@@ -167,8 +167,8 @@ def test_el_filtro_de_comunidad_se_aplica_despues_de_elegir_la_canonica(tmp_db: 
     )
     repo = PublicoRepository()
 
-    assert repo.contar(ccaa_slug="cataluna", conn=tmp_db) == 1
-    assert repo.contar(ccaa_slug="madrid", conn=tmp_db) == 0
+    assert repo.contar(ccaa_slug="cataluna") == 1
+    assert repo.contar(ccaa_slug="madrid") == 0
 
 
 def test_la_publicabilidad_es_la_misma_en_las_dos_formas() -> None:

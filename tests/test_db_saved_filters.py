@@ -203,6 +203,25 @@ class TestDeleteSavedFilterOwnership:
     """
 
     @staticmethod
+    def _organizacion(nombre: str = "Equipo de vistas") -> int:
+        """Crea una organización de verdad y devuelve su id.
+
+        `saved_filters.organization_id` es FK contra `organizations`, así que un
+        id inventado revienta el INSERT con ForeignKeyViolation antes de llegar a
+        comprobar nada de la propiedad del borrado, que es lo que estos tests
+        miran.
+        """
+        from db.repositories.organizations import OrganizationRepository
+        from db.users import create_user
+
+        owner = create_user(
+            email=f"{nombre.lower().replace(' ', '-')}@example.test",
+            password_hash="test-hash",  # pragma: allowlist secret -- literal de test
+            display_name=nombre,
+        )
+        return int(OrganizationRepository().create_organization(nombre, owner)["id"])
+
+    @staticmethod
     def _seed(owner: str, other: str, org_id: int) -> None:
         from db.saved_filters import save_filter
 
@@ -212,42 +231,46 @@ class TestDeleteSavedFilterOwnership:
     def test_colleague_cannot_delete_a_shared_view(self, api_db):
         from db.saved_filters import delete_saved_filter, list_saved_filters
 
-        self._seed("owner-key", "other-key", 42)
+        org = self._organizacion()
+        self._seed("owner-key", "other-key", org)
         compartida = next(
-            row for row in list_saved_filters("owner-key", 42) if row["name"] == "vista compartida"
+            row for row in list_saved_filters("owner-key", org) if row["name"] == "vista compartida"
         )
 
         # El compañero la VE (es de visibilidad organización)...
-        visibles = {row["id"] for row in list_saved_filters("other-key", 42)}
+        visibles = {row["id"] for row in list_saved_filters("other-key", org)}
         assert compartida["id"] in visibles
 
         # ...pero no la borra, y se le dice que no en vez de fingir que sí.
         assert (
-            delete_saved_filter(compartida["id"], user_key="other-key", organization_id=42) is False
+            delete_saved_filter(compartida["id"], user_key="other-key", organization_id=org)
+            is False
         )
-        assert compartida["id"] in {row["id"] for row in list_saved_filters("owner-key", 42)}
+        assert compartida["id"] in {row["id"] for row in list_saved_filters("owner-key", org)}
 
     def test_owner_still_deletes_its_own_view(self, api_db):
         from db.saved_filters import delete_saved_filter, list_saved_filters
 
-        self._seed("owner-key", "other-key", 42)
+        org = self._organizacion()
+        self._seed("owner-key", "other-key", org)
         compartida = next(
-            row for row in list_saved_filters("owner-key", 42) if row["name"] == "vista compartida"
+            row for row in list_saved_filters("owner-key", org) if row["name"] == "vista compartida"
         )
 
         assert (
-            delete_saved_filter(compartida["id"], user_key="owner-key", organization_id=42) is True
+            delete_saved_filter(compartida["id"], user_key="owner-key", organization_id=org) is True
         )
-        assert compartida["id"] not in {row["id"] for row in list_saved_filters("owner-key", 42)}
+        assert compartida["id"] not in {row["id"] for row in list_saved_filters("owner-key", org)}
 
     def test_delete_across_organizations_still_denied(self, api_db):
         """La regresión que NO se quería introducir: el predicado de
         organización sigue siendo condición necesaria además del dueño."""
         from db.saved_filters import delete_saved_filter, list_saved_filters
 
-        self._seed("owner-key", "other-key", 42)
+        org = self._organizacion()
+        self._seed("owner-key", "other-key", org)
         compartida = next(
-            row for row in list_saved_filters("owner-key", 42) if row["name"] == "vista compartida"
+            row for row in list_saved_filters("owner-key", org) if row["name"] == "vista compartida"
         )
 
         assert (

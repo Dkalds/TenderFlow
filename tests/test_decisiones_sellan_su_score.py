@@ -22,26 +22,32 @@ import pytest
 
 from db import radar_dismissals
 
-pytestmark = pytest.mark.usefixtures("tmp_db")
+
+@pytest.fixture()
+def db(tmp_db: Any) -> Any:
+    """El módulo de BD ya inicializado. ``tmp_db`` devuelve ``(db_mod, tmp_path)``."""
+    db_mod, _ = tmp_db
+    return db_mod
 
 
-def _fila(conn: Any, user_key: str, id_externo: str) -> tuple[Any, Any]:
-    cur = conn.execute(
-        "SELECT score, banda FROM radar_dismissals WHERE user_key = %s AND id_externo = %s",
-        (user_key, id_externo),
-    )
-    fila = cur.fetchone()
+def _fila(db: Any, user_key: str, id_externo: str) -> tuple[Any, Any]:
+    with db.connect_read() as c:
+        cur = c.execute(
+            "SELECT score, banda FROM radar_dismissals WHERE user_key = %s AND id_externo = %s",
+            (user_key, id_externo),
+        )
+        fila = cur.fetchone()
     assert fila is not None, "el descarte no se guardó"
     return fila[0], fila[1]
 
 
-def test_el_descarte_guarda_el_score_que_el_usuario_tenia_delante(tmp_db: Any) -> None:
+def test_el_descarte_guarda_el_score_que_el_usuario_tenia_delante(db: Any) -> None:
     radar_dismissals.add("u-1", "EXP-1", score=82, banda="Caliente")
 
-    assert _fila(tmp_db, "u-1", "EXP-1") == (82, "Caliente")
+    assert _fila(db, "u-1", "EXP-1") == (82, "Caliente")
 
 
-def test_un_segundo_descarte_no_reescribe_el_score_de_la_decision(tmp_db: Any) -> None:
+def test_un_segundo_descarte_no_reescribe_el_score_de_la_decision(db: Any) -> None:
     """El ``DO NOTHING`` tiene que conservar el primero, no el último.
 
     Escenario real: el usuario descarta con score 82, y más tarde el cliente
@@ -54,10 +60,10 @@ def test_un_segundo_descarte_no_reescribe_el_score_de_la_decision(tmp_db: Any) -
     radar_dismissals.add("u-1", "EXP-1", score=82, banda="Caliente")
     radar_dismissals.add("u-1", "EXP-1", score=31, banda="Tibia")
 
-    assert _fila(tmp_db, "u-1", "EXP-1") == (82, "Caliente")
+    assert _fila(db, "u-1", "EXP-1") == (82, "Caliente")
 
 
-def test_se_puede_descartar_sin_score_y_la_fila_dice_que_no_se_supo(tmp_db: Any) -> None:
+def test_se_puede_descartar_sin_score_y_la_fila_dice_que_no_se_supo(db: Any) -> None:
     """Descartar es la acción; medir es el efecto secundario.
 
     La agenda de Mi Pipeline descarta sin tener el score en pantalla, y una
@@ -67,10 +73,10 @@ def test_se_puede_descartar_sin_score_y_la_fila_dice_que_no_se_supo(tmp_db: Any)
     """
     radar_dismissals.add("u-1", "EXP-2")
 
-    assert _fila(tmp_db, "u-1", "EXP-2") == (None, None)
+    assert _fila(db, "u-1", "EXP-2") == (None, None)
 
 
-def test_el_score_es_por_usuario_como_el_resto_de_la_tabla(tmp_db: Any) -> None:
+def test_el_score_es_por_usuario_como_el_resto_de_la_tabla(db: Any) -> None:
     """Dos usuarios pueden descartar el mismo expediente con puntuaciones distintas.
 
     El score depende de los pesos del perfil de cada uno, así que no es una
@@ -80,11 +86,11 @@ def test_el_score_es_por_usuario_como_el_resto_de_la_tabla(tmp_db: Any) -> None:
     radar_dismissals.add("u-1", "EXP-3", score=90, banda="Caliente")
     radar_dismissals.add("u-2", "EXP-3", score=12, banda="Descarte")
 
-    assert _fila(tmp_db, "u-1", "EXP-3") == (90, "Caliente")
-    assert _fila(tmp_db, "u-2", "EXP-3") == (12, "Descarte")
+    assert _fila(db, "u-1", "EXP-3") == (90, "Caliente")
+    assert _fila(db, "u-2", "EXP-3") == (12, "Descarte")
 
 
-def test_listar_descartes_no_cambia_de_forma_al_anadir_las_columnas(tmp_db: Any) -> None:
+def test_listar_descartes_no_cambia_de_forma_al_anadir_las_columnas(db: Any) -> None:
     """``list_ids`` sigue devolviendo sólo ids: el contrato del Radar no se movió.
 
     Las columnas nuevas son para analítica, no para la pantalla. Si se colaran

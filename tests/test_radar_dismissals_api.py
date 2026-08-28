@@ -138,3 +138,34 @@ def test_los_descartes_de_distintos_usuarios_no_se_mezclan(client, api_db):
     # Y el segundo usuario tampoco puede deshacer el descarte del primero.
     assert client.delete("/api/v1/radar/dismissals/SOLO-UNO", headers=_auth(dos)).status_code == 404
     assert client.get("/api/v1/radar/dismissals", headers=_auth(uno)).json()["ids"] == ["SOLO-UNO"]
+
+
+def test_un_id_con_byte_nul_es_422_y_no_un_500(client) -> None:
+    """Postgres rechaza el byte NUL en columnas de texto con un ``DataError``.
+
+    Sin saneo en el contrato ese error escapa como 500 desde la ruta, y basta un
+    carácter que puede mandar cualquier cliente. Lo destapó el fuzzer de
+    contrato (`scripts/fuzz_api_contract.py`), cuyo gate exige que ninguna
+    operación devuelva 5xx: un 4xx es una respuesta válida, un 5xx es una
+    excepción sin manejar.
+
+    El saneo vive en el DTO (`SafeStr`) y no en el handler, así que el fallo
+    sale como 422 con la ruta del campo — que es lo que un cliente puede
+    corregir.
+    """
+    from api.auth import create_api_key
+    from db.users import create_user
+
+    key = create_api_key(
+        "key-nul",
+        scopes="*",
+        user_id=create_user(email="radar-nul@example.test", password_hash="h"),
+    )
+
+    respuesta = client.post(
+        "/api/v1/radar/dismissals",
+        json={"id_externo": "EXP\u0000-1"},
+        headers=_auth(key),
+    )
+
+    assert respuesta.status_code == 422, "un NUL no puede acabar en un 500"

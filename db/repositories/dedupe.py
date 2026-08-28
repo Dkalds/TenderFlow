@@ -75,17 +75,23 @@ _EXPEDIENTE_NATURAL_SQL = (
 
 
 def _iter_dicts(sql: str, params: tuple[Any, ...]) -> Iterator[dict[str, Any]]:
-    """Recorre un SELECT fila a fila sin construir la lista completa de dicts.
+    """Recorre un SELECT sin construir la lista completa de dicts.
 
-    Es la mitad barata de ``rows_to_dicts``: el driver sigue materializando el
-    resultado en cliente (son tuplas), pero no se añade encima una lista de
-    dicts —mucho más pesada— con la fuente entera. Ver el pico de memoria que
-    documenta :func:`iter_filas_publicables_de_organos`.
+    Es la mitad barata de ``rows_to_dicts``: las **tuplas** sí se materializan
+    —el adaptador de ``db/connection.py`` no expone cursor iterable, sólo
+    ``fetchall``/``fetchone``, así que no hay streaming que aprovechar— pero no
+    se añade encima una lista de dicts, que es varias veces más pesada y es la
+    que provocaba el pico con la fuente entera. Ver
+    :func:`iter_filas_publicables_de_organos`.
+
+    Se escribió primero como ``for fila in cur``, que es lo natural con un
+    cursor de psycopg y aquí lanza ``TypeError``: ``execute`` devuelve el
+    adaptador, no el cursor.
     """
     with connect_read() as c:
         cur = c.execute(sql, params)
         columnas = [d[0] for d in cur.description]
-        for fila in cur:
+        for fila in cur.fetchall():
             yield dict(zip(columnas, fila, strict=False))
 
 

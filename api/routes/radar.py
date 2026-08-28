@@ -21,6 +21,7 @@ from api.routes.dual_auth import require_any_auth
 from db import radar_dismissals
 from observability.logging import get_logger
 from shared.cache import invalidate_user_scoped
+from shared.dto import SafeStr
 
 log = get_logger(__name__)
 
@@ -64,7 +65,12 @@ class RadarDismissalBody(BaseModel):
     supo» y no se rellena con nada inventado.
     """
 
-    id_externo: str = Field(max_length=120)
+    # `SafeStr` y no `str`: `id_externo` acaba en una columna de texto de
+    # Postgres, que rechaza el byte NUL con un `DataError`. Sin esto la ruta
+    # devolvía 500 ante un byte NUL que puede mandar cualquier cliente, en vez
+    # del 422 con la ruta del campo que sí se puede corregir. Lo destapó el
+    # fuzzer de contrato; el mismo precedente que `/licitaciones/bulk-get`.
+    id_externo: SafeStr = Field(max_length=120)
     score: int | None = Field(default=None, ge=0, le=100)
     banda: Literal["Caliente", "Atractiva", "Tibia", "Descarte"] | None = None
 
