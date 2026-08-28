@@ -24,8 +24,7 @@ vi.mock("sonner", () => {
 
 const setActiveOrganizationId = vi.fn();
 vi.mock("@/hooks/use-organization", () => ({
-  useOrganizationStore: (selector: (s: unknown) => unknown) =>
-    selector({ setActiveOrganizationId }),
+  useOrganizationStore: (selector: (s: unknown) => unknown) => selector({ setActiveOrganizationId }),
 }));
 
 const dismissMutate = vi.fn();
@@ -179,7 +178,9 @@ describe("AgendaView", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Descartar señal" }));
 
-    expect(dismissMutate).toHaveBeenCalledWith("SEN-1");
+    // La agenda descarta sin el score delante: la fila queda con `null`,
+    // que es «no se supo» y no un cero que parecería una señal mala.
+    expect(dismissMutate).toHaveBeenCalledWith({ idExterno: "SEN-1" });
     expect(toastCall).toHaveBeenCalledWith(
       "Señal descartada",
       expect.objectContaining({ action: expect.objectContaining({ label: "Deshacer" }) }),

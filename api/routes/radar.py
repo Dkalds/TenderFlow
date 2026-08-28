@@ -11,7 +11,7 @@ se añade).
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
@@ -42,10 +42,31 @@ def _invalidar_ranking(user_key: str) -> None:
     invalidate_user_scoped("analytics", "scoring", user_key)
 
 
+#: Vocabulario cerrado de bandas. Lo fija `_band()` en
+#: `services/analytics/scoring.py`; aquí se valida para que un cliente no pueda
+#: sembrar la tabla con etiquetas inventadas y volver inservible el análisis de
+#: «qué banda concentra los descartes», que es para lo que existe la columna.
+BANDAS_SCORE = ("Caliente", "Atractiva", "Tibia", "Descarte")
+
+
 class RadarDismissalBody(BaseModel):
-    """Cuerpo del descarte de una señal."""
+    """Cuerpo del descarte de una señal.
+
+    ``score`` y ``banda`` son los que el usuario tenía **en pantalla** al
+    descartar, y por eso los manda el cliente en vez de recalcularlos aquí: el
+    score se computa en vivo sobre el universo del día y el perfil del usuario,
+    así que recalcularlo en el servidor daría un número distinto del que motivó
+    la decisión — que es justo el dato que se quiere conservar (revisión `v93`).
+
+    Son opcionales a propósito: descartar es la acción, medir es el efecto
+    secundario. Un cliente antiguo o una llamada por API siguen pudiendo
+    descartar sin mandarlos, y la fila queda con `NULL`, que significa «no se
+    supo» y no se rellena con nada inventado.
+    """
 
     id_externo: str = Field(max_length=120)
+    score: int | None = Field(default=None, ge=0, le=100)
+    banda: Literal["Caliente", "Atractiva", "Tibia", "Descarte"] | None = None
 
 
 class RadarDismissalsResult(BaseModel):
@@ -71,7 +92,13 @@ async def post_dismissal(
     body: RadarDismissalBody,
     ctx: dict[str, Any] = Depends(require_any_auth),
 ) -> RadarDismissalsResult:
-    await run_db(radar_dismissals.add, _user_key(ctx), body.id_externo)
+    await run_db(
+        radar_dismissals.add,
+        _user_key(ctx),
+        body.id_externo,
+        score=body.score,
+        banda=body.banda,
+    )
     log.info("radar_dismissal_created", id_externo=body.id_externo)
     _invalidar_ranking(_user_key(ctx))
     ids = await run_db(radar_dismissals.list_ids, _user_key(ctx))

@@ -148,7 +148,7 @@ export default function AgendaView() {
 
   const descartar = React.useCallback(
     (item: PipelineAgendaItem) => {
-      dismissTender.mutate(item.licitacion_id);
+      dismissTender.mutate({ idExterno: item.licitacion_id });
       toast("Señal descartada", {
         description: item.titulo ?? undefined,
         action: { label: "Deshacer", onClick: () => restoreTender.mutate(item.licitacion_id) },

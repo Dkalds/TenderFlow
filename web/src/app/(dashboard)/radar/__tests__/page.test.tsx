@@ -46,8 +46,7 @@ vi.mock("@/hooks/use-watchlist-items", () => ({
 
 const setActiveOrganizationId = vi.fn();
 vi.mock("@/hooks/use-organization", () => ({
-  useOrganizationStore: (selector: (s: unknown) => unknown) =>
-    selector({ setActiveOrganizationId }),
+  useOrganizationStore: (selector: (s: unknown) => unknown) => selector({ setActiveOrganizationId }),
 }));
 
 const refetch = vi.fn();
@@ -86,27 +85,27 @@ function useDismissedStub() {
   }, []);
   return dismissedIds;
 }
-const dismissMutate = vi.fn((id: string) => setDismissed([...dismissedIds, id]));
-const restoreMutate = vi.fn((id: string) =>
-  setDismissed(dismissedIds.filter((current) => current !== id)),
-);
+const dismissMutate = vi.fn(({ idExterno }: { idExterno: string }) => setDismissed([...dismissedIds, idExterno]));
+const restoreMutate = vi.fn((id: string) => setDismissed(dismissedIds.filter((current) => current !== id)));
 // El segmento "Descartadas" ya no sale del top-24 (el backend lo excluye): se
 // hidrata por ids con el modo page-aligned. El stub las busca en el mismo
 // conjunto sintético para que el segmento siga siendo navegable en el test.
 function useDismissedTendersStub(ids: string[], enabled: boolean) {
-  const items = enabled
-    ? (radarState.data?.items ?? []).filter((t) => ids.includes(t.id_externo))
-    : [];
+  const items = enabled ? (radarState.data?.items ?? []).filter((t) => ids.includes(t.id_externo)) : [];
   return { items, isLoading: false, truncadas: 0 };
 }
 
 vi.mock("@/hooks/use-radar", () => ({
   useRadar: () => radarState,
   useRadarDismissals: () => ({ data: useDismissedStub() }),
-  useRadarDismissedTenders: (ids: string[], enabled: boolean) =>
-    useDismissedTendersStub(ids, enabled),
+  useRadarDismissedTenders: (ids: string[], enabled: boolean) => useDismissedTendersStub(ids, enabled),
   useDismissRadarTender: () => ({ mutate: dismissMutate }),
   useRestoreRadarTender: () => ({ mutate: restoreMutate }),
+  // `esBandaConocida` es una función pura, no un hook: se deja la de verdad.
+  // Stubearla con `vi.fn()` haría pasar el test con cualquier etiqueta, que es
+  // justo lo que la función existe para impedir.
+  esBandaConocida: (valor: unknown): boolean =>
+    typeof valor === "string" && ["Caliente", "Atractiva", "Tibia", "Descarte"].includes(valor),
 }));
 
 // El inspector consulta el histórico del órgano; en jsdom no hay backend, así
@@ -159,6 +158,11 @@ function tender(overrides: Partial<RadarTender> = {}): RadarTender {
   return {
     id_externo: "LIC-1",
     titulo: "Mantenimiento SAP",
+    // `score` y `band` son obligatorios en `ScoredOpportunity`: el `as` de
+    // abajo los ocultaba, y desde que el descarte los sella (v93) la ausencia
+    // se notaba en las aserciones. El fixture dice ahora lo que dice la API.
+    score: 87,
+    band: "Caliente",
     organo_contratacion: "Ayuntamiento de Madrid",
     importe: 250000,
     estado: "PUB",
@@ -176,7 +180,7 @@ beforeEach(() => {
   setDismissed([]);
   radarState.data = { items: [tender()], signals: SIGNALS_SANAS };
   radarState.isLoading = false;
-    radarState.error = null;
+  radarState.error = null;
   watchedItems.length = 0;
 });
 
@@ -205,6 +209,10 @@ describe("RadarPage", () => {
   });
 
   it("only says 'Sin puntuar' when the tender really has no score", () => {
+    // La ausencia de score se declara aquí y no se hereda del fixture: desde que
+    // éste trae `score`/`band` como los trae la API, apoyarse en que faltaran
+    // habría hecho pasar este test por el motivo equivocado.
+    radarState.data = { items: [tender({ score: undefined, band: undefined })] };
     renderRadar();
 
     expect(screen.getByText("Sin puntuar")).toBeInTheDocument();
@@ -228,9 +236,7 @@ describe("RadarPage", () => {
     // `GET /analytics/scoring?limit=24`, el top-24 del corpus abierto.
     renderRadar();
 
-    expect(
-      screen.getByText(/top 24 del mercado abierto por potencial comercial/),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/top 24 del mercado abierto por potencial comercial/)).toBeInTheDocument();
   });
 
   it("renders the countdown to the deadline the API now returns", () => {
@@ -254,7 +260,11 @@ describe("RadarPage", () => {
     fireEvent.click(screen.getByRole("button", { name: /Abrir oportunidad/ }));
 
     await waitFor(() => expect(push).toHaveBeenCalledWith("/oportunidades/7"));
-    expect(createPursuit).toHaveBeenCalledWith({ licitacion_id: "LIC-1" });
+    expect(createPursuit).toHaveBeenCalledWith({
+      licitacion_id: "LIC-1",
+      score_al_abrir: 87,
+      banda_al_abrir: "Caliente",
+    });
   });
 
   it("reports a failure to open instead of navigating", async () => {
@@ -300,7 +310,13 @@ describe("RadarPage", () => {
     renderRadar();
     fireEvent.click(screen.getByRole("button", { name: "Descartar" }));
 
-    expect(dismissMutate).toHaveBeenCalledWith("LIC-1");
+    // El descarte sella el score que estaba en pantalla: sin él no se puede
+    // saber si el Radar priorizó bien, y no se reconstruye después (v93).
+    expect(dismissMutate).toHaveBeenCalledWith({
+      idExterno: "LIC-1",
+      score: 87,
+      banda: "Caliente",
+    });
     expect(toastCall).toHaveBeenCalledWith(
       "Señal descartada",
       expect.objectContaining({ action: expect.objectContaining({ label: "Deshacer" }) }),
@@ -434,7 +450,7 @@ describe("RadarPage — foco y teclado", () => {
     fireEvent.keyDown(filas[2], { key: "Enter" });
 
     await waitFor(() =>
-      expect(createPursuit).toHaveBeenCalledWith({ licitacion_id: "LIC-3" }),
+      expect(createPursuit).toHaveBeenCalledWith(expect.objectContaining({ licitacion_id: "LIC-3" })),
     );
     // Ni el atajo global ni la fila duplican la creación del pursuit.
     expect(createPursuit).toHaveBeenCalledTimes(1);
@@ -526,11 +542,7 @@ describe("RadarPage en móvil", () => {
 
   it("una señal es una fila, no dos árboles que puedan divergir", () => {
     radarState.data = {
-      items: [
-        tender({ id_externo: "LIC-1" }),
-        tender({ id_externo: "LIC-2" }),
-        tender({ id_externo: "LIC-3" }),
-      ],
+      items: [tender({ id_externo: "LIC-1" }), tender({ id_externo: "LIC-2" }), tender({ id_externo: "LIC-3" })],
       signals: SIGNALS_SANAS,
     };
 

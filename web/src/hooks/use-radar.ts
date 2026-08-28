@@ -118,6 +118,51 @@ export function useRadarDismissals() {
 }
 
 /**
+ * Qué se descarta, y con qué puntuación delante.
+ *
+ * `score` y `banda` son los que el usuario TENÍA EN PANTALLA al decidir, no los
+ * de ahora: el backend no los recalcula porque el score se computa en vivo sobre
+ * el universo del día y los pesos del perfil, así que preguntárselo después daría
+ * otro número. Sin ellos no hay forma de saber si el Radar prioriza bien, y el
+ * dato es irrecuperable a posteriori (revisión `v93`).
+ *
+ * Son opcionales porque hay una superficie que descarta sin tener el score
+ * delante —la agenda de Mi Pipeline—, y descartar no puede depender de poder
+ * medirlo. Ahí la fila queda con `null`, que significa «no se supo».
+ */
+/**
+ * Vocabulario cerrado de bandas, el mismo que `_band()` en
+ * `services/analytics/scoring.py` y que valida `RadarDismissalBody`.
+ *
+ * Se escribe a mano y no sale de `@/generated/api.d.ts` porque el esquema tipa
+ * `ScoredOpportunity.band` como `string` a secas: es el backend quien tendría
+ * que declararlo `Literal`, y hacerlo es un cambio de contrato aparte. Mientras
+ * tanto, esta unión es lo que impide mandar una etiqueta inventada — el
+ * servidor la rechazaría con 422 y el descarte se perdería.
+ */
+export type BandaScore = "Caliente" | "Atractiva" | "Tibia" | "Descarte";
+
+const BANDAS: readonly string[] = ["Caliente", "Atractiva", "Tibia", "Descarte"];
+
+/**
+ * ¿Es esta cadena una banda del vocabulario, o algo que no sabemos leer?
+ *
+ * El esquema tipa `band` como `string`, así que una banda nueva en el backend
+ * llegaría aquí sin que TypeScript dijera nada. Ante una que no reconocemos se
+ * manda `null` —«no se supo»— en vez de propagarla: el servidor la rechazaría
+ * con 422 y el usuario perdería el descarte por un problema de telemetría.
+ */
+export function esBandaConocida(valor: string | null | undefined): valor is BandaScore {
+  return typeof valor === "string" && BANDAS.includes(valor);
+}
+
+export type DescarteRadar = {
+  idExterno: string;
+  score?: number | null;
+  banda?: BandaScore | null;
+};
+
+/**
  * Descartar / deshacer, con actualización optimista.
  *
  * El descarte vivía en `React.useState`: el usuario triaba 24 señales,
@@ -125,18 +170,20 @@ export function useRadarDismissals() {
  */
 export function useDismissRadarTender() {
   const qc = useQueryClient();
-  return useMutation<string[], unknown, string, { previous: string[] | undefined }>({
-    mutationFn: (idExterno: string) =>
+  return useMutation<string[], unknown, DescarteRadar, { previous: string[] | undefined }>({
+    mutationFn: ({ idExterno, score, banda }: DescarteRadar) =>
       apiMutate<RadarDismissalsResult>("POST", "/api/v1/radar/dismissals", {
         id_externo: idExterno,
+        score: score ?? null,
+        banda: banda ?? null,
       } satisfies RadarDismissalBody).then((response) => response.ids),
-    onMutate: async (idExterno: string) => {
+    onMutate: async ({ idExterno }: DescarteRadar) => {
       await qc.cancelQueries({ queryKey: DISMISSALS_KEY });
       const previous = qc.getQueryData<string[]>(DISMISSALS_KEY);
       qc.setQueryData<string[]>(DISMISSALS_KEY, (old) => [idExterno, ...(old ?? [])]);
       return { previous };
     },
-    onError: (_err, _idExterno, ctx) => {
+    onError: (_err, _descarte, ctx) => {
       qc.setQueryData(DISMISSALS_KEY, ctx?.previous);
       toast.error("No se pudo descartar la señal");
     },
@@ -160,16 +207,11 @@ export function useRestoreRadarTender() {
   const qc = useQueryClient();
   return useMutation<void, unknown, string, { previous: string[] | undefined }>({
     mutationFn: (idExterno: string) =>
-      apiMutate<void>(
-        "DELETE",
-        `/api/v1/radar/dismissals/${encodeURIComponent(idExterno)}`,
-      ),
+      apiMutate<void>("DELETE", `/api/v1/radar/dismissals/${encodeURIComponent(idExterno)}`),
     onMutate: async (idExterno: string) => {
       await qc.cancelQueries({ queryKey: DISMISSALS_KEY });
       const previous = qc.getQueryData<string[]>(DISMISSALS_KEY);
-      qc.setQueryData<string[]>(DISMISSALS_KEY, (old) =>
-        (old ?? []).filter((id) => id !== idExterno),
-      );
+      qc.setQueryData<string[]>(DISMISSALS_KEY, (old) => (old ?? []).filter((id) => id !== idExterno));
       return { previous };
     },
     onError: (_err, _idExterno, ctx) => {

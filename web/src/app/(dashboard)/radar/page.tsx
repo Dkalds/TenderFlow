@@ -19,6 +19,7 @@ import { cn, formatNumber } from "@/lib/utils";
 import {
   type RadarTender,
   type ScoringSignals,
+  esBandaConocida,
   useDismissRadarTender,
   useRadar,
   useRadarDismissals,
@@ -234,7 +235,13 @@ export default function RadarPage() {
 
   const dismiss = React.useCallback(
     (tender: RadarTender) => {
-      dismissTender.mutate(tender.id_externo);
+      // El score y la banda viajan con el descarte: son los que el usuario tenía
+      // delante al decidir, y no se pueden reconstruir después (revisión v93).
+      dismissTender.mutate({
+        idExterno: tender.id_externo,
+        score: tender.score,
+        banda: esBandaConocida(tender.band) ? tender.band : null,
+      });
       toast("Señal descartada", {
         description: tender.titulo ?? undefined,
         action: { label: "Deshacer", onClick: () => restore(tender.id_externo) },
@@ -266,7 +273,13 @@ export default function RadarPage() {
   const openPursuit = React.useCallback(
     async (tender: RadarTender) => {
       try {
-        const pursuit = await createPursuit.mutateAsync({ licitacion_id: tender.id_externo });
+        const pursuit = await createPursuit.mutateAsync({
+          licitacion_id: tender.id_externo,
+          // Mismo motivo que en el descarte: sella la puntuación que motivó
+          // abrir la oportunidad, para poder medir el win rate por banda.
+          score_al_abrir: tender.score,
+          banda_al_abrir: esBandaConocida(tender.band) ? tender.band : null,
+        });
         setActiveOrganizationId(pursuit.organization_id);
         toast.success("Oportunidad abierta para el equipo");
         router.push(`/oportunidades/${pursuit.id}`);

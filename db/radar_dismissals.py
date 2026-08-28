@@ -15,17 +15,35 @@ from __future__ import annotations
 from db.database import connect, connect_read
 
 
-def add(user_key: str, id_externo: str) -> None:
+def add(
+    user_key: str,
+    id_externo: str,
+    *,
+    score: int | None = None,
+    banda: str | None = None,
+) -> None:
     """Marca una licitación como descartada por el usuario.
 
     Idempotente: la clave primaria es ``(user_key, id_externo)``, así que
     descartar dos veces no duplica ni falla.
+
+    ``score`` y ``banda`` son la puntuación que el usuario tenía **delante** al
+    descartar, no la de ahora. Se guardan porque son irrecuperables: el score se
+    calcula en vivo sobre el universo del día y los pesos del perfil, así que
+    preguntárselo mañana al motor daría otro número (revisión ``v93``). Son
+    opcionales para que un cliente que no los mande siga pudiendo descartar: el
+    triaje no puede depender de la telemetría.
+
+    El ``DO NOTHING`` conserva el score del **primer** descarte, que es el que
+    corresponde a la decisión. Un segundo POST sobre lo ya descartado no lo
+    reescribe con el score de un momento en que el usuario no decidió nada.
     """
     with connect() as c:
         c.execute(
-            "INSERT INTO radar_dismissals (user_key, id_externo) VALUES (%s, %s) "
+            "INSERT INTO radar_dismissals (user_key, id_externo, score, banda) "
+            "VALUES (%s, %s, %s, %s) "
             "ON CONFLICT (user_key, id_externo) DO NOTHING",
-            (user_key, id_externo),
+            (user_key, id_externo, score, banda),
         )
 
 
