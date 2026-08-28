@@ -262,6 +262,51 @@ def _rango_canonico_sql(alias: str) -> str:
     )
 
 
+def clave_canonica_sql(alias: str = "l") -> str:
+    """Huella de las cuatro componentes de la clave canónica, en 32 caracteres.
+
+    **No añade semántica**: es exactamente la conjunción de las cuatro
+    igualdades de :func:`fila_canonica_sql`, comprimida para que quepa en un
+    índice. Existe por una razón puramente física — sin ella el anti-join no
+    tiene índice posible y la superficie pública entera muere por
+    ``statement_timeout`` (incidente del 2026-08-28).
+
+    **Por qué un hash y no las cuatro expresiones en un índice compuesto.** Una
+    entrada de btree no puede pasar de ~2704 bytes, y ``titulo`` no tiene cota
+    superior: ``_sustancia_sql`` solo le pone un suelo de 25 caracteres. Un
+    índice sobre ``lower(btrim(titulo))`` no falla al planificar sino al
+    **crearse**, en cuanto una fila trae un título largo, y con
+    ``CONCURRENTLY`` deja un índice inválido detrás. El md5 mide siempre lo
+    mismo, así que ese modo de fallo no existe.
+
+    **Por qué sigue siendo correcto.** El hash entra como predicado
+    *redundante*: las cuatro igualdades exactas se quedan donde estaban, así
+    que una colisión de md5 no puede colapsar dos contratos distintos —el
+    planificador usa el hash para descartar barato y las igualdades deciden.
+
+    **Los NULL se propagan igual que antes, y hace falta que así sea.**
+    ``organo_normalizado_sql`` devuelve NULL cuando no hay órgano, y
+    ``NULL = NULL`` no es cierto: hoy dos filas sin órgano **no** colapsan.
+    Concatenar propaga ese NULL a todo el hash, que vuelve a comparar como no
+    cierto. Meter un ``coalesce`` aquí para "arreglar" el NULL cambiaría el
+    comportamiento y colapsaría filas que hoy sobreviven.
+
+    El separador ``chr(31)`` (unit separator) impide que un corrimiento entre
+    componentes finja una clave igual. Aunque lo fingiera, lo atrapan las
+    igualdades exactas.
+
+    Si esta expresión cambia, hay que reescribir el índice de la migración
+    ``v92`` en el mismo commit: divergir no rompe nada visible, solo deja el
+    índice muerto y el timeout de vuelta. ``tests/test_clave_canonica_index.py``
+    falla si se separan.
+    """
+    return (
+        f"md5({organo_normalizado_sql(alias)} || chr(31) || {cpv4_sql(alias)} "
+        f"|| chr(31) || {periodo_publicacion_sql(alias)} || chr(31) "
+        f"|| {titulo_normalizado_sql(alias)})"
+    )
+
+
 def fila_canonica_sql(*, alias: str = "l", gemelo: str = "l2", filtro_gemelo: str) -> str:
     """Cláusula que solo deja pasar la fila canónica de cada contrato.
 
@@ -279,13 +324,19 @@ def fila_canonica_sql(*, alias: str = "l", gemelo: str = "l2", filtro_gemelo: st
     arriba, el planificador puede resolverlo con un hash anti-join: una pasada
     para construir y otra para sondear.
 
-    Aun así **no es barato**: las cuatro expresiones se calculan en las dos
-    ramas, no hay índice que las cubra, y el listado pierde la posibilidad de
-    resolver ``ORDER BY fecha_publicacion DESC LIMIT 50`` por índice — tiene
-    que materializar el anti-join antes de ordenar. Se asume porque estas
-    consultas las paga una revalidación ISR cacheada una hora en el CDN, no
-    cada visita. El arreglo de verdad es un índice funcional sobre la clave
-    (o una vista materializada), y eso exige una migración.
+    Sin índice esto **no era viable**, y no en sentido figurado: se desplegó
+    así en #226 y tumbó la superficie pública entera por ``statement_timeout``
+    el 2026-08-28. El índice funcional que lo sostiene es
+    ``idx_lic_clave_canonica`` (revisión ``v92``), y lo que indexa es
+    :func:`clave_canonica_sql` — de ahí que el hash encabece el ``WHERE`` de
+    abajo. **Este fragmento no se puede usar sin ese índice**: cualquier
+    superficie nueva que lo adopte hereda esa dependencia.
+
+    Aun con índice no es gratis: las cuatro expresiones se siguen calculando en
+    las dos ramas, y el listado pierde la posibilidad de resolver
+    ``ORDER BY fecha_publicacion DESC LIMIT 50`` por índice — tiene que
+    materializar el anti-join antes de ordenar. Se asume porque estas consultas
+    las paga una revalidación ISR cacheada una hora en el CDN, no cada visita.
 
     La cuarta igualdad —el año-mes, ver :func:`periodo_publicacion_sql`— es lo
     que impide que una convocatoria anual recurrente esconda su propia edición
@@ -295,7 +346,11 @@ def fila_canonica_sql(*, alias: str = "l", gemelo: str = "l2", filtro_gemelo: st
     """
     return (
         f"NOT EXISTS (SELECT 1 FROM licitaciones {gemelo} WHERE "
-        f"{organo_normalizado_sql(gemelo)} = {organo_normalizado_sql(alias)} "
+        # Primero el hash: es lo único que un índice puede cubrir (ver
+        # `clave_canonica_sql`), y es redundante con las cuatro igualdades de
+        # abajo, que se quedan porque son las que deciden de verdad.
+        f"{clave_canonica_sql(gemelo)} = {clave_canonica_sql(alias)} "
+        f"AND {organo_normalizado_sql(gemelo)} = {organo_normalizado_sql(alias)} "
         f"AND {cpv4_sql(gemelo)} = {cpv4_sql(alias)} "
         f"AND {periodo_publicacion_sql(gemelo)} = {periodo_publicacion_sql(alias)} "
         f"AND {titulo_normalizado_sql(gemelo)} = {titulo_normalizado_sql(alias)} "
