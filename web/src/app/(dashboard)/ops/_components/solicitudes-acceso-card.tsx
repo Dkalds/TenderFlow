@@ -13,10 +13,22 @@
  * dice si la petición ya se ha tratado. La tarjeta lo declara en su cabecera
  * para que nadie asuma lo contrario.
  *
+ * **La vista por defecto son las pendientes, y no es cosmética.** El endpoint
+ * devuelve las N más recientes ordenadas por `created_at DESC` mezclando los
+ * tres estados, así que pedirlo sin filtro hacía que, en cuanto la cola
+ * histórica superase la ventana, una solicitud pendiente antigua se cayera por
+ * abajo sin forma de volver a ella. En un producto de acceso por invitación eso
+ * no es una fila perdida en una tabla: es una persona que escribió pidiendo
+ * entrar y a la que nunca nadie contestó. Por el mismo motivo el contador de la
+ * cabecera sale de su propia consulta filtrada por estado y no de contar
+ * pendientes dentro de la ventana que se esté mirando — un contador calculado
+ * sobre una lista truncada da siempre la respuesta tranquilizadora.
+ *
  * Vive en su propio fichero y no dentro de `administracion-view.tsx`, que ya
  * pasa de 800 líneas y está en el roadmap de descomposición del UX_AUDIT.
  */
 
+import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Inbox } from "lucide-react";
@@ -52,19 +64,51 @@ const ETIQUETA_ESTADO: Record<string, string> = {
   descartada: "Descartada",
 };
 
+/**
+ * Tope que acepta el endpoint (`limit: int = Query(100, ge=1, le=500)`).
+ *
+ * Se pide el máximo en vez del defecto de 100: la cola de pendientes de un
+ * producto por invitación no llega a 500 en la práctica, así que en la vista
+ * que importa no hay truncado real. Cuando lo haya, se dice — ver `truncada`.
+ */
+const LIMITE = 500;
+
+/** Qué mitad de la cola se está mirando. */
+type Vista = "pendiente" | "historico";
+
+async function cargarSolicitudes(query: string): Promise<SolicitudAcceso[]> {
+  const res = await fetch(`/api/v1/admin/solicitudes-acceso?${query}`, {
+    credentials: "include",
+  });
+  if (res.status === 401) throw new Error("Sesión expirada");
+  if (res.status === 403) throw new Error("Requiere permisos de admin");
+  if (!res.ok) throw new Error(`Error ${res.status}`);
+  return res.json();
+}
+
 export function SolicitudesAccesoCard() {
   const queryClient = useQueryClient();
+  const [vista, setVista] = useState<Vista>("pendiente");
 
-  const { data, isLoading, error } = useQuery<SolicitudAcceso[]>({
-    queryKey: ["admin-solicitudes-acceso"],
-    queryFn: async () => {
-      const res = await fetch("/api/v1/admin/solicitudes-acceso", { credentials: "include" });
-      if (res.status === 401) throw new Error("Sesión expirada");
-      if (res.status === 403) throw new Error("Requiere permisos de admin");
-      if (!res.ok) throw new Error(`Error ${res.status}`);
-      return res.json();
-    },
+  // Dos consultas y no una lista filtrada en cliente. Filtrar aquí es
+  // exactamente lo que fallaba: el recorte del servidor ya se había llevado por
+  // delante las pendientes viejas antes de que llegaran a este componente.
+  const pendientesQuery = useQuery<SolicitudAcceso[]>({
+    queryKey: ["admin-solicitudes-acceso", "pendiente"],
+    queryFn: () => cargarSolicitudes(`estado=pendiente&limit=${LIMITE}`),
   });
+
+  // El histórico sólo se pide si alguien lo abre: es la vista de consulta, no
+  // la de trabajo, y no tiene por qué costar una petición a cada apertura del
+  // panel.
+  const historicoQuery = useQuery<SolicitudAcceso[]>({
+    queryKey: ["admin-solicitudes-acceso", "historico"],
+    queryFn: () => cargarSolicitudes(`limit=${LIMITE}`),
+    enabled: vista === "historico",
+  });
+
+  const activa = vista === "pendiente" ? pendientesQuery : historicoQuery;
+  const { isLoading, error } = activa;
 
   const cambiarEstado = useMutation({
     mutationFn: (vars: { id: number; estado: string; notificar?: boolean }) =>
@@ -92,8 +136,14 @@ export function SolicitudesAccesoCard() {
     onError: () => toast.error("No se pudo actualizar la solicitud"),
   });
 
-  const solicitudes = data ?? [];
-  const pendientes = solicitudes.filter((s) => s.estado === "pendiente").length;
+  const solicitudes = activa.data ?? [];
+  // `undefined` mientras la consulta de pendientes no ha respondido: sin dato
+  // no se pinta el contador, en vez de afirmar un cero que aún no se sabe.
+  const pendientes = pendientesQuery.data?.length;
+  // Una lista que llega justo al tope no es "N": es "al menos N". Decirlo con
+  // un `+` es la diferencia entre un número y una promesa que no se sostiene.
+  const truncada = solicitudes.length >= LIMITE;
+  const pendientesTruncado = pendientes !== undefined && pendientes >= LIMITE;
 
   return (
     <Card>
@@ -101,7 +151,12 @@ export function SolicitudesAccesoCard() {
         <CardTitle className="flex items-center gap-2">
           <Inbox className="h-4 w-4" aria-hidden="true" />
           Solicitudes de acceso
-          {pendientes > 0 && <Badge variant="secondary">{pendientes} pendientes</Badge>}
+          {pendientes !== undefined && pendientes > 0 && (
+            <Badge variant="secondary">
+              {pendientes}
+              {pendientesTruncado ? "+" : ""} pendientes
+            </Badge>
+          )}
         </CardTitle>
         <CardDescription>
           Peticiones enviadas desde el formulario de la web pública. Marcarlas aquí no concede el acceso: la allowlist
@@ -110,10 +165,45 @@ export function SolicitudesAccesoCard() {
         </CardDescription>
       </CardHeader>
       <CardContent>
+        {/* El conmutador, y no un filtro sobre lo ya descargado: cada vista es
+            su propia consulta al servidor, que es el único sitio donde el
+            recorte se puede aplicar sin perder filas por el camino. */}
+        <div
+          className="mb-3 flex items-center gap-1.5"
+          role="group"
+          aria-label="Qué solicitudes se listan"
+        >
+          <Button
+            size="sm"
+            variant={vista === "pendiente" ? "secondary" : "ghost"}
+            aria-pressed={vista === "pendiente"}
+            onClick={() => setVista("pendiente")}
+          >
+            Pendientes
+          </Button>
+          <Button
+            size="sm"
+            variant={vista === "historico" ? "secondary" : "ghost"}
+            aria-pressed={vista === "historico"}
+            onClick={() => setVista("historico")}
+          >
+            Todas
+          </Button>
+        </div>
         {isLoading && <Skeleton className="h-24 w-full" />}
         {error && <p className="text-destructive text-sm">{(error as Error).message}</p>}
         {!isLoading && !error && solicitudes.length === 0 && (
-          <p className="text-muted-foreground text-sm">Todavía no ha llegado ninguna solicitud.</p>
+          <p className="text-muted-foreground text-sm">
+            {vista === "pendiente"
+              ? "No queda ninguna solicitud pendiente. En «Todas» está el histórico."
+              : "Todavía no ha llegado ninguna solicitud."}
+          </p>
+        )}
+        {!isLoading && !error && truncada && (
+          <p className="text-muted-foreground mb-3 text-xs">
+            Se muestran las {LIMITE} más recientes: hay más de las que caben en una respuesta. Usa
+            «Pendientes» para no perder ninguna sin atender.
+          </p>
         )}
         {!isLoading && !error && solicitudes.length > 0 && (
           <ul className="divide-border/60 divide-y">

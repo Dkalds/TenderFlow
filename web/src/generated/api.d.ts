@@ -4617,6 +4617,13 @@ export interface components {
         };
         /** ForecastVolumeResult */
         ForecastVolumeResult: {
+            /**
+             * Banda Sigmas
+             * @default 1.5
+             */
+            banda_sigmas: number;
+            /** Modelo */
+            modelo?: string | null;
             /** Series */
             series?: components["schemas"]["ForecastSeriesPoint"][];
         };
@@ -5929,8 +5936,23 @@ export interface components {
              * @default 0
              */
             importe_total_sap: number;
+            /**
+             * Menciones Modulo
+             * @default 0
+             */
+            menciones_modulo: number;
             /** Modulos */
             modulos?: components["schemas"]["ModuloEntry"][];
+            /**
+             * Modulos Por Clasificada
+             * @default 0
+             */
+            modulos_por_clasificada: number;
+            /**
+             * Pct Match Portfolio
+             * @default 0
+             */
+            pct_match_portfolio: number;
             /**
              * Ticket Medio Sap
              * @default 0
@@ -5941,6 +5963,11 @@ export interface components {
             /** Tipos Proyecto */
             tipos_proyecto?: components["schemas"]["ProyectoTipoEntry"][];
             top_modulo_yoy?: components["schemas"]["TopModuloYoY"] | null;
+            /**
+             * Total
+             * @default 0
+             */
+            total: number;
             /**
              * Total Clasificados
              * @default 0
@@ -6202,16 +6229,10 @@ export interface components {
          * @description Data quality metrics.
          */
         QualityResult: {
-            /**
-             * Cobertura Modulo Sap
-             * @default 0
-             */
-            cobertura_modulo_sap: number;
-            /**
-             * Cobertura Nif
-             * @default 0
-             */
-            cobertura_nif: number;
+            /** Cobertura Modulo Sap */
+            cobertura_modulo_sap?: number | null;
+            /** Cobertura Nif */
+            cobertura_nif?: number | null;
             /** Completitud Columnas */
             completitud_columnas?: components["schemas"]["ColumnCompleteness"][];
             /**

@@ -14,6 +14,11 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
+from services.analytics.forecast import (
+    BANDA_SIGMAS,
+    MODELO_HOLT_WINTERS,
+    MODELO_LINEAL,
+)
 from services.analytics.forecast_svc import (
     ForecastFilters,
     RetenderingFilters,
@@ -96,7 +101,10 @@ def test_forecast_volume_historico_mas_proyeccion():
 
     # 5 meses de histórico + 3 de forecast
     assert len(result.series) == 8
-    historico = [p for p in result.series if p.tipo == "histórico"]
+    # El discriminante viaja SIN tilde: con "histórico" el gráfico comparaba
+    # contra "historico" y toda la serie pasada salía `undefined`.
+    assert {p.tipo for p in result.series} == {"historico", "forecast"}
+    historico = [p for p in result.series if p.tipo == "historico"]
     forecast = [p for p in result.series if p.tipo == "forecast"]
     assert len(historico) == 5
     assert len(forecast) == 3
@@ -116,9 +124,32 @@ def test_forecast_volume_metric_sum():
     _seed(_rows_volumen())
     result = get_forecast_volume(ForecastFilters(months_ahead=2, metric="sum"))
 
-    historico = [p for p in result.series if p.tipo == "histórico"]
+    historico = [p for p in result.series if p.tipo == "historico"]
     # Enero: 1 licitación x 100k
     assert historico[0].valor == 100_000.0
+
+
+def test_forecast_volume_declara_modelo_y_banda_constante():
+    """El motor usado y la anchura de la banda son contrato, no folclore.
+
+    La caída de Holt-Winters al fallback lineal solo se veía en el log: la
+    pantalla pintaba las dos curvas igual. Y la banda ``lower``/``upper`` no es
+    un intervalo de confianza — es ±1,5σ de TODA la serie histórica, la misma
+    para cada horizonte. Este test fija ambas cosas: que el modelo viaja y que
+    la banda efectivamente NO se ensancha (si algún día se ensancha, es que
+    dejó de ser esta aproximación y la etiqueta de la UI debe cambiar con ella).
+    """
+    _seed(_rows_volumen())
+    result = get_forecast_volume(ForecastFilters(months_ahead=3))
+
+    assert result.modelo in {MODELO_HOLT_WINTERS, MODELO_LINEAL}
+    assert result.banda_sigmas == BANDA_SIGMAS
+
+    forecast = [p for p in result.series if p.tipo == "forecast"]
+    # `upper` no se recorta, así que upper - valor es exactamente el semiancho.
+    semianchos = [p.upper - p.valor for p in forecast if p.upper is not None]
+    assert len(semianchos) == 3
+    assert all(s == pytest.approx(semianchos[0]) for s in semianchos)
 
 
 def test_forecast_volume_historico_insuficiente():
@@ -132,7 +163,7 @@ def test_forecast_volume_filtro_ccaa():
     _seed(_rows_volumen())
     result = get_forecast_volume(ForecastFilters(months_ahead=2, ccaa="Madrid"))
 
-    historico = [p for p in result.series if p.tipo == "histórico"]
+    historico = [p for p in result.series if p.tipo == "historico"]
     # Enero tenía 1 fila (j=0, Madrid) → sigue 1; febrero 2 filas → 1 Madrid
     assert historico[0].valor == 1.0
     assert historico[1].valor == 1.0
@@ -141,6 +172,8 @@ def test_forecast_volume_filtro_ccaa():
 def test_forecast_volume_dataset_vacio():
     result = get_forecast_volume(ForecastFilters())
     assert result.series == []
+    # Sin serie no hay motor que declarar: `None`, no un modelo inventado.
+    assert result.modelo is None
 
 
 # ── get_retendering_forecast ────────────────────────────────────────────────

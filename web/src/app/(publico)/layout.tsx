@@ -111,7 +111,11 @@ export default function PublicoLayout({ children }: { children: React.ReactNode 
           </div>
         </header>
 
-        <main id="main-content" className="flex-1">
+        {/* Destino del skip link. Sin `tabIndex={-1}` el salto mueve el scroll
+            pero no el foco en Safari, así que el teclado seguía atrapado en la
+            cabecera después de "saltar al contenido" — mismo motivo por el que
+            lo llevan los otros dos `main` de la app (/login y el dashboard). */}
+        <main id="main-content" tabIndex={-1} className="flex-1">
           {children}
         </main>
 

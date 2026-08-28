@@ -22,6 +22,7 @@ Uso directo (backfill o cron):
 
 from __future__ import annotations
 
+import re
 import time
 from typing import TYPE_CHECKING, Any
 
@@ -49,6 +50,12 @@ _PAGE_PAUSE_S = 0.5  # cortesía con la API pública
 _NUTS_CATALUNYA = "ES51"
 # Campo de sistema Socrata para el fetch incremental.
 _CURSOR_FIELD = ":updated_at"
+# Prefijo ISO-8601 que exige el CHECK ``ck_licitaciones_fecha_actualizacion_fuente_iso``
+# (migración v59). Socrata devuelve ``:updated_at`` como timestamp flotante
+# ('2026-06-11T10:23:45.000'), pero es un campo de sistema de un tercero: si
+# algún día llegara como epoch o con otro formato, escribirlo tal cual haría
+# fallar el INSERT del lote entero en `_flush`, no sólo el de esa fila.
+_ISO_DATE_PREFIX = re.compile(r"\d{4}-\d{2}-\d{2}")
 
 # Candidatos de nombre de campo por concepto, en orden de preferencia.
 # Validados contra el dataset vivo ybgg-dgi6 el 2026-06-11 (salida real de
@@ -135,6 +142,25 @@ def _number(record: dict[str, Any], concept: str) -> float | None:
         return float(value.replace(",", "."))
     except ValueError:
         return None
+
+
+def _marca_actualizacion(record: dict[str, Any]) -> str | None:
+    """Recencia de la fila: el ``:updated_at`` de Socrata, o ``None`` si no es ISO.
+
+    Es el mismo valor que ``fetch`` usa como cursor, y viaja en el payload
+    porque el ``$select`` lo pide explícitamente. Poblarlo importa fuera del
+    cursor: ``run_connector`` colapsa las apariciones del mismo ``id_externo``
+    dentro de un run comparando ``fecha_actualizacion_fuente``, y PSCP publica
+    **una fila por fase** del expediente. Sin este campo todas las fases valían
+    lo mismo para ese desempate y, en un feed ordenado ``:updated_at ASC``,
+    sobrevivía la fase más antigua —el estado del expediente retrocedía—.
+
+    Ningún otro campo del dataset sirve: cada fase trae SU fecha
+    (anunci/adjudicació/formalització…) y ``:updated_at`` es el único común a
+    todas y nunca nulo, que es la misma razón por la que es el campo del cursor.
+    """
+    marca = str(record.get(_CURSOR_FIELD) or "").strip()
+    return marca if _ISO_DATE_PREFIX.match(marca) else None
 
 
 def _fase_to_estado(fase: str | None) -> str | None:
@@ -339,6 +365,7 @@ class PscpConnector:
             estado=estado,
             fecha_publicacion=_date(record, "fecha_publicacion"),
             fecha_limite=_date(record, "fecha_limite"),
+            fecha_actualizacion_fuente=_marca_actualizacion(record),
             url=_text(record, "url"),
             raw_keywords=",".join(keywords) or None,
             tecnologia=",".join(tecnologias) or None,

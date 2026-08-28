@@ -13,6 +13,7 @@ frecuencia* (→ ``notifications``) se añaden en increments posteriores.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import Any, Literal
 
 from pydantic import BaseModel
@@ -21,6 +22,7 @@ from sqlalchemy import and_, func, or_, select
 from db.database import connect, connect_read
 from db.models import compile_query, licitaciones
 from db.repositories.base import rows_to_dicts
+from db.repositories.watchlist_rules import bounded_match_counts
 
 Frequency = Literal["immediate", "daily", "weekly"]
 
@@ -209,14 +211,23 @@ def _rule_clauses(rule: WatchlistRule) -> list[Any]:
 
     Aplica TODOS los criterios: keyword (título/descripción), cpv (prefijo),
     min_importe (>=) y ccaa (=). El CPV deja de ser un control muerto.
+
+    La keyword usa ``ILIKE``, no ``LIKE``: en Postgres ``LIKE`` distingue caja,
+    así que una regla escrita "sap" o "erp" no casaba con un corpus donde el
+    acrónimo va en mayúsculas, y el fallo era mudo — badge a 0, pestaña vacía y,
+    sobre todo, ``matches_since`` (que comparte este predicado) nunca devolvía
+    nada, con lo que el job de alertas jamás disparaba. El resto del producto ya
+    buscaba con ``ILIKE`` (``db/repositories/aggregates.py``), así que esto
+    además alinea la regla con lo que el usuario ve en el buscador. El CPV se
+    queda con ``LIKE``: es un prefijo numérico y la caja no juega.
     """
     clauses: list[Any] = []
     if rule.keyword:
         like = f"%{_escape_like(rule.keyword)}%"
         clauses.append(
             or_(
-                licitaciones.c.titulo.like(like),
-                licitaciones.c.descripcion.like(like),
+                licitaciones.c.titulo.ilike(like),
+                licitaciones.c.descripcion.ilike(like),
             )
         )
     if rule.cpv:
@@ -238,6 +249,18 @@ def count_matches(rule: WatchlistRule) -> int:
     with connect_read() as c:
         row = c.execute(sql, params).fetchone()
     return int(row[0]) if row else 0
+
+
+def count_matches_bounded(rules: Sequence[WatchlistRule]) -> list[int]:
+    """Conteo ACOTADO de varias reglas de una sentada (badge del listado).
+
+    ``count_matches`` es exacto y por eso caro: escaneo secuencial completo por
+    regla. Para el listado —donde el número solo alimenta un badge— se usa el
+    conteo con techo de ``db.repositories.watchlist_rules``, que además resuelve
+    todas las reglas con una única conexión en vez de una por regla. Un valor
+    igual a ``MATCH_COUNT_CAP`` quiere decir «al menos tantas».
+    """
+    return bounded_match_counts([_rule_clauses(rule) for rule in rules])
 
 
 def list_matches(rule: WatchlistRule, *, limit: int = 50) -> list[dict[str, Any]]:

@@ -378,6 +378,134 @@ describe("RadarPage", () => {
 });
 
 /**
+ * Foco y teclado. Aquí el riesgo no es cosmético: abrir una oportunidad crea un
+ * pursuit en backend y navega, así que una fila equivocada no se deshace con un
+ * Ctrl+Z. Lo que fijan estos tests es que el objeto de la acción sea el que el
+ * usuario está mirando, y que las acciones ocultas no sean paradas de
+ * tabulación fantasma.
+ */
+describe("RadarPage — foco y teclado", () => {
+  function tresFilas() {
+    radarState.data = {
+      items: [
+        tender({ id_externo: "LIC-1", titulo: "Fila uno" }),
+        tender({ id_externo: "LIC-2", titulo: "Fila dos" }),
+        tender({ id_externo: "LIC-3", titulo: "Fila tres" }),
+      ],
+      signals: SIGNALS_SANAS,
+    };
+  }
+
+  /**
+   * Simula el ancho `md` (la tabla). jsdom no evalúa media queries y el stub de
+   * `src/test/setup.ts` responde "no match" a todo, que en esta página significa
+   * ficha móvil; la página consulta `matchMedia` porque `inert` es un atributo y
+   * no se puede condicionar con un prefijo responsive de Tailwind.
+   */
+  function conAnchoDeTabla(): () => void {
+    const original = window.matchMedia;
+    window.matchMedia = ((query: string) => ({
+      matches: query.includes("min-width: 768px"),
+      media: query,
+      onchange: null,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      addListener: () => {},
+      removeListener: () => {},
+      dispatchEvent: () => false,
+    })) as unknown as typeof window.matchMedia;
+    return () => {
+      window.matchMedia = original;
+    };
+  }
+
+  it("Intro abre la fila enfocada, no la que quedó seleccionada", async () => {
+    // Tabular hasta la séptima fila y pulsar Intro abría la primera: el atajo
+    // vivía solo en el listener de `window`, que actúa sobre `selected`, y Tab
+    // mueve el foco sin tocar `selected`.
+    tresFilas();
+
+    const { container } = renderRadar();
+    const filas = container.querySelectorAll<HTMLElement>("[data-active]");
+    act(() => filas[2].focus());
+
+    // El keydown se dispara sobre la fila enfocada, como hace el navegador: de
+    // ahí propaga hasta `window`, donde escucha el atajo global.
+    fireEvent.keyDown(filas[2], { key: "Enter" });
+
+    await waitFor(() =>
+      expect(createPursuit).toHaveBeenCalledWith({ licitacion_id: "LIC-3" }),
+    );
+    // Ni el atajo global ni la fila duplican la creación del pursuit.
+    expect(createPursuit).toHaveBeenCalledTimes(1);
+  });
+
+  it("Intro sobre otro botón de la página lo deja actuar en vez de abrir una oportunidad", () => {
+    // El listener global solo se apartaba ante INPUT/TEXTAREA/contentEditable,
+    // así que Intro en cualquier botón hacía `preventDefault()` —cancelándolo—
+    // y abría un pursuit sobre la fila seleccionada.
+    tresFilas();
+    renderRadar();
+
+    const orden = screen.getByRole("button", { name: "Plazo" });
+    act(() => orden.focus());
+    const noCancelado = fireEvent.keyDown(orden, { key: "Enter" });
+
+    expect(noCancelado).toBe(true);
+    expect(createPursuit).not.toHaveBeenCalled();
+  });
+
+  it("Intro sobre un botón de la fila no abre además la oportunidad", () => {
+    // El `onKeyDown` de la fila también recibe lo que sube desde sus botones:
+    // sin filtrar por `currentTarget`, Intro sobre «Descartar» descartaría y
+    // abriría la oportunidad en el mismo gesto.
+    tresFilas();
+    renderRadar();
+
+    const descartar = screen.getByRole("button", { name: "Descartar Fila uno" });
+    act(() => descartar.focus());
+    const noCancelado = fireEvent.keyDown(descartar, { key: "Enter" });
+
+    expect(noCancelado).toBe(true);
+    expect(createPursuit).not.toHaveBeenCalled();
+  });
+
+  it("las acciones ocultas de la tabla no son paradas de tabulación invisibles", () => {
+    // 23 filas inactivas × 3 botones = 69 paradas sin foco visible (WCAG 2.4.7).
+    // `md:opacity-0` las esconde de la vista pero no del orden de tabulación.
+    const restaurarAncho = conAnchoDeTabla();
+    try {
+      tresFilas();
+      const { container } = renderRadar();
+      const lista = container.querySelector('[data-slot="radar-lista"]')!;
+
+      const enfocables = Array.from(lista.querySelectorAll("button")).filter(
+        (boton) => !boton.closest("[inert]") && boton.tabIndex !== -1,
+      );
+
+      // Solo los tres de la fila activa.
+      expect(enfocables).toHaveLength(3);
+    } finally {
+      restaurarAncho();
+    }
+  });
+
+  it("en la ficha móvil las acciones de toda fila siguen siendo alcanzables", () => {
+    // El bloque es visible por debajo de `md` por decisión escrita: inertizarlo
+    // ahí dejaría descartar y seguir fuera del alcance del teclado.
+    tresFilas();
+    const { container } = renderRadar();
+    const lista = container.querySelector('[data-slot="radar-lista"]')!;
+
+    const enfocables = Array.from(lista.querySelectorAll("button")).filter(
+      (boton) => !boton.closest("[inert]") && boton.tabIndex !== -1,
+    );
+
+    expect(enfocables).toHaveLength(9);
+  });
+});
+
+/**
  * Lo que se puede fijar del Radar en móvil **desde jsdom**, que no tiene
  * layout: no hay anchos, ni media queries, ni `getBoundingClientRect` real, así
  * que "no hay scroll horizontal a 375 px" y "el botón mide 36 px" solo se

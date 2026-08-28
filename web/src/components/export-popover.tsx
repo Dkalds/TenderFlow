@@ -32,9 +32,11 @@ export function ExportPopover({
 }: ExportPopoverProps) {
   const filterParams = useFilterParams();
 
-  const handleExport = (format: "csv" | "xlsx") => {
+  // `format` es el parámetro de la API, no la extensión: el Excel se pide como
+  // `excel` y se recibe como `.xlsx`. Pedirlo como `xlsx` devolvía un 422.
+  const handleExport = (format: "csv" | "excel") => {
     const url = buildExportUrl(endpoint, format, filterParams, extraParams);
-    triggerDownload(url);
+    void triggerDownload(url);
   };
 
   return (
@@ -48,7 +50,7 @@ export function ExportPopover({
           <FileText aria-hidden="true" className="h-4 w-4" />
           Exportar CSV
         </DropdownMenuItem>
-        <DropdownMenuItem onClick={() => handleExport("xlsx")}>
+        <DropdownMenuItem onClick={() => handleExport("excel")}>
           <FileSpreadsheet aria-hidden="true" className="h-4 w-4" />
           Exportar Excel
         </DropdownMenuItem>

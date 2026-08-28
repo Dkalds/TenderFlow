@@ -112,17 +112,29 @@ async def delete_saved_filter_route(
     ctx: dict[str, Any] = Depends(require_organization(write=True)),
 ) -> StatusOk:
     user_key = _user_key(ctx)
-    # Comprobar propiedad antes de borrar (previene IDOR — OWASP A01).
+    # Comprobar visibilidad antes de borrar (previene IDOR — OWASP A01). No
+    # basta con esto: la lista incluye las vistas *compartidas* de los demás
+    # miembros, y ésas se ven pero no se borran.
     rows = await run_db(list_saved_filters, user_key, ctx["organization_id"])
     if not any(row["id"] == filter_id for row in rows):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Vista no encontrada.",
         )
-    await run_db(
+    # El borrado es sólo del dueño, así que su resultado manda: si no tocó
+    # ninguna fila la vista era de un compañero. Devolver `ok` ahí sería
+    # mentirle al cliente —la vista sigue en su sitio y la UI la haría
+    # desaparecer hasta el siguiente refresco—, y confirmar un borrado que no
+    # ocurrió es peor que negarlo.
+    deleted = await run_db(
         delete_saved_filter,
         filter_id,
         user_key=user_key,
         organization_id=ctx["organization_id"],
     )
+    if not deleted:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Vista no encontrada.",
+        )
     return StatusOk(status="ok")

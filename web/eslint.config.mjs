@@ -36,6 +36,11 @@ const eslintConfig = defineConfig([
       // `label-has-for` está **deprecada** por jsx-a11y (redundante con
       // `label-has-associated-control`, que sí cubre los casos reales).
       "jsx-a11y/label-has-for": "off",
+      // Fuera del set recommended, se sube a mano: es la que caza el botón
+      // icon-only sin nombre accesible (WCAG 4.1.2). Los dos flechas de año del
+      // Calendario se colaron precisamente porque nada lo verificaba, mientras
+      // todos los demás `size="icon"` del repo sí llevan `aria-label`.
+      "jsx-a11y/control-has-associated-label": "error",
     },
   },
   // Stricter rules

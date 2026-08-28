@@ -5,6 +5,7 @@ import {
   estadoDe,
   etiquetaProgreso,
   progresoDe,
+  progresoParaTelemetria,
   PASOS,
 } from "@/components/onboarding/pasos";
 import { hayReglaActiva, perfilConfigurado, tienePursuits } from "@/components/onboarding/senales";
@@ -60,6 +61,31 @@ describe("progresoDe / etiquetaProgreso", () => {
       "1 de 3 hechos · 1 sin comprobar",
     );
     expect(etiquetaProgreso({ hechos: 2, total: 3, sinResolver: 0 })).toBe("2 de 3 hechos");
+  });
+});
+
+describe("progresoParaTelemetria", () => {
+  /**
+   * El catálogo de telemetría sólo admite dimensiones enumerables leyendo el
+   * fichero (`lib/analytics.ts` §1). Lo que se fija aquí es esa promesa: la
+   * dimensión no puede convertirse en un contador libre por la puerta de atrás.
+   */
+  it("manda el número de pasos hechos como categoría, no como número", () => {
+    expect(progresoParaTelemetria({ hechos: 0, total: 3, sinResolver: 0 })).toBe("0");
+    expect(progresoParaTelemetria({ hechos: 1, total: 3, sinResolver: 0 })).toBe("1");
+    expect(progresoParaTelemetria({ hechos: 2, total: 3, sinResolver: 0 })).toBe("2");
+  });
+
+  it("lo que está sin comprobar no cuenta como hecho", () => {
+    const progreso = progresoDe(derivarPasos({ perfil: true, reglas: "error", pursuit: false }));
+    expect(progresoParaTelemetria(progreso)).toBe("1");
+  });
+
+  it("un cuarto paso no abriría la cardinalidad de la métrica", () => {
+    // La banda no se pinta con todo hecho, así que "3" no es alcanzable hoy;
+    // el tope existe para que añadir un paso mañana tampoco lo vuelva posible
+    // sin que nadie lo decida.
+    expect(progresoParaTelemetria({ hechos: 3, total: 4, sinResolver: 0 })).toBe("2");
   });
 });
 

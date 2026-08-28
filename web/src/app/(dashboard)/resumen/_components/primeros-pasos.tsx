@@ -15,9 +15,11 @@ import {
   derivarPasos,
   etiquetaProgreso,
   progresoDe,
+  progresoParaTelemetria,
   type EstadoPaso,
   type PasoDerivado,
 } from "@/components/onboarding/pasos";
+import { registrarEvento } from "@/lib/analytics";
 import { useSenalesOnboarding } from "@/components/onboarding/use-estado-onboarding";
 
 /**
@@ -122,6 +124,13 @@ export function PrimerosPasos({ onDescartar }: { onDescartar?: () => void }) {
 
   function ocultar() {
     marcarDescartado();
+    // La otra mitad del embudo: los pasos hechos dicen quién se activa, y esto
+    // dice quién se planta. La banda sólo se pinta con algo pendiente, así que
+    // pulsar aquí es siempre un rechazo, no un «ya está»; `progreso` distingue
+    // el rechazo de entrada (`"0"`) del abandono con casi todo hecho (`"2"`),
+    // que señalan a problemas distintos. Va antes de `onDescartar` porque ese
+    // callback desmonta la sección.
+    registrarEvento("onboarding_ocultado", { progreso: progresoParaTelemetria(progreso) });
     onDescartar?.();
   }
 

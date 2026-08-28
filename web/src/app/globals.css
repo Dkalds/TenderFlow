@@ -52,11 +52,38 @@
     --accent-foreground: 22 75% 28%;
     --destructive: 355 75% 42%;
     --destructive-foreground: 0 0% 98%;
-    --success: 150 70% 30%;
+    /*
+     * Rampa semántica del TEMA CLARO — luminosidades fijadas por contraste, no
+     * por gusto. Estos tokens no se usan nunca como relleno sólido: se pintan
+     * como texto (`text-warning`, `text-success`, `text-info`) sobre `--card` o
+     * sobre el fondo de página, así que su L la manda WCAG 1.4.3 (4,5:1), y la
+     * paleta original —pensada en oscuro, donde estos mismos valores dan 7-12:1—
+     * se quedaba en 2,9-4,4:1 en claro. Ratios recalculados (antes -> ahora),
+     * sobre tarjeta `0 0% 100%` y sobre página `40 22% 96%`:
+     *
+     *   --warning / --score-warm  40% -> 29%   card 2,91 -> 5,13 · page 2,68 -> 4,73
+     *   --urgency-medium          38% -> 28%   card 2,96 -> 5,08 · page 2,73 -> 4,68
+     *   --urgency-high            44% -> 35%   card 3,41 -> 5,07 · page 3,14 -> 4,68
+     *   --urgency-low             32% -> 29%   card 4,34 -> 5,12 · page 4,00 -> 4,72
+     *   --success                 30% -> 28%   card 4,84 -> 5,41 · page 4,47 -> 5,00
+     *   --info                    42% -> 39%   card 5,27 -> 5,92 · page 4,86 -> 5,46
+     *   --chart-3 (1.4.11, 3:1)   44% -> 32%   card 2,17 -> 3,96 · page 2,00 -> 3,65
+     *
+     * Cada uno queda 1-3 puntos de L por debajo de lo que bastaría contra la
+     * tarjeta: el suelo real no es el blanco puro sino el fondo de página, más
+     * oscuro, que resta ~0,4 al ratio. `contraste-tokens.test.ts` recalcula
+     * estos números leyendo este fichero — si alguien aclara un token, cae.
+     *
+     * Lo que sigue sin llegar a 4,5:1 es el texto sobre el propio tinte del
+     * token (`bg-warning/15 text-warning` del `Badge`): sube de 2,51 a 4,20 pero
+     * cerrarlo del todo exige tocar la opacidad del tinte en `badge.tsx` /
+     * `status-badge.tsx`, no la rampa.
+     */
+    --success: 150 70% 28%;
     --success-foreground: 0 0% 100%;
-    --warning: 42 95% 40%;
+    --warning: 42 95% 29%;
     --warning-foreground: 42 100% 8%;
-    --info: 210 90% 42%;
+    --info: 210 90% 39%;
     --info-foreground: 0 0% 100%;
     --border: 200 15% 40% / 0.28;
     --input: 200 15% 40% / 0.3;
@@ -70,16 +97,20 @@
     --tf-shadow-md: 0 2px 4px hsl(var(--shadow-ink) / 0.05), 0 8px 20px -10px hsl(var(--shadow-ink) / 0.18);
     --tf-shadow-lg: 0 1px 0 hsl(0 0% 100% / 0.6) inset, 0 12px 36px -12px hsl(var(--shadow-ink) / 0.22);
 
-    /* Urgency semaphore (red -> green ramps only) */
+    /* Urgency semaphore (red -> green ramps only). Ver la nota de contraste
+       de la rampa semántica más arriba: los tres tramos no críticos bajan de
+       luminosidad para pasar 4,5:1 en claro. */
     --urgency-critical: 0 75% 48%;
-    --urgency-high: 30 90% 44%;
-    --urgency-medium: 45 95% 38%;
-    --urgency-low: 150 70% 32%;
+    --urgency-high: 30 90% 35%;
+    --urgency-medium: 45 95% 28%;
+    --urgency-low: 150 70% 29%;
 
     /* Chart colors */
     --chart-1: 22 80% 46%;
     --chart-2: 194 85% 38%;
-    --chart-3: 46 95% 44%;
+    /* El amarillo era el único de los diez por debajo del 3:1 que 1.4.11 exige
+       a un objeto gráfico; ver la nota de contraste de la rampa semántica. */
+    --chart-3: 46 95% 32%;
     --chart-4: 95 60% 40%;
     --chart-5: 270 60% 58%;
     --chart-6: 160 85% 32%;
@@ -90,7 +121,9 @@
 
     /* Scoring bands */
     --score-hot: 0 78% 48%;
-    --score-warm: 42 95% 40%;
+    /* La banda media del score comparte tinta con `--warning` a propósito, así
+       que comparte también su luminosidad corregida. */
+    --score-warm: 42 95% 29%;
     --score-cold: 210 80% 45%;
     --score-skip: 200 6% 46%;
   }

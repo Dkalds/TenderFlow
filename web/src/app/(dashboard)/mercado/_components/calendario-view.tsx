@@ -206,26 +206,32 @@ export default function CalendarioView() {
           </p>
         </div>
 
-        {/* Year selector */}
+        {/* Selector de año. Los dos botones son icon-only: el SVG de lucide no
+            aporta texto, así que sin `aria-label` el lector anuncia «botón» a
+            secas y no hay forma de saber cuál avanza y cuál retrocede (WCAG
+            4.1.2). El icono se marca `aria-hidden` para que no compita con la
+            etiqueta. El año visible no sirve de nombre: vive fuera del botón. */}
         <div className="flex items-center gap-1">
           <Button
             variant="outline"
             size="icon"
             className="h-8 w-8"
+            aria-label="Año anterior"
             onClick={() => setSelectedYear((y) => Math.max(availableYears[0], y - 1))}
             disabled={selectedYear <= availableYears[0]}
           >
-            <ChevronLeft className="h-4 w-4" />
+            <ChevronLeft className="h-4 w-4" aria-hidden="true" />
           </Button>
           <span className="px-3 text-sm font-medium tabular-nums">{selectedYear}</span>
           <Button
             variant="outline"
             size="icon"
             className="h-8 w-8"
+            aria-label="Año siguiente"
             onClick={() => setSelectedYear((y) => Math.min(availableYears[availableYears.length - 1], y + 1))}
             disabled={selectedYear >= availableYears[availableYears.length - 1]}
           >
-            <ChevronRight className="h-4 w-4" />
+            <ChevronRight className="h-4 w-4" aria-hidden="true" />
           </Button>
         </div>
       </div>

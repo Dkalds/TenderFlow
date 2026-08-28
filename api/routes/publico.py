@@ -15,7 +15,10 @@ tráfico anónimo, sin un solo error visible en el arranque. Colgar de
 ``db/repositories/publico.py`` como allowlist explícita y los DTO son nuevos
 —``LicitacionPublica``, no ``LicitacionSummary``— porque los privados arrastran
 ``tecnologia``, ``ml_tecnologias``, ``ml_proba_max`` y ``ml_tech_principal``.
-``scripts/check_public_surface.py`` lo verifica en CI.
+``scripts/check_public_surface.py`` escanea este módulo —y la proyección del
+repositorio— contra las denylists de analítica propia y de datos personales;
+CI lo corre con ``--strict`` en el job de análisis estático, junto al resto de
+guards.
 
 **Nada de ``adjudicaciones``.** El adjudicatario puede ser un autónomo y no hay
 lógica en el repositorio que distinga persona física de jurídica, así que la

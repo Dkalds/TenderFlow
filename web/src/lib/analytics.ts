@@ -103,6 +103,32 @@ export interface EventosProducto {
    */
   pursuit_estado_cambiado: { estado: string };
   /**
+   * El **primer** paso del embudo de activación, y el que más pesa: hasta que
+   * alguien pone sus pesos y sus keywords, «el Radar puntúa con pesos
+   * genéricos» y todo lo que ve encima está ordenado para otro. Sin este
+   * evento, los dos siguientes (`regla_creada`, `pursuit_creado`) medían un
+   * embudo sin boca: se veía cuánta gente llegaba al segundo paso y no cuánta
+   * se caía antes del primero.
+   *
+   * `primera_vez` separa la configuración inicial de los reajustes posteriores,
+   * que son uso normal y no activación. Nada del contenido del perfil viaja
+   * aquí: los pesos, las keywords y los CPV de alguien son su estrategia
+   * comercial, igual que en `regla_creada`.
+   */
+  perfil_configurado: { primera_vez: PrimeraVez };
+  /**
+   * El otro final del embudo: el rechazo explícito del onboarding.
+   *
+   * La banda «Primeros pasos» se apaga sola cuando los tres pasos están hechos,
+   * así que el botón «Ocultar» sólo se pulsa con algo pendiente — es la señal
+   * de "esto no me sirve", y sin ella una caída del embudo no se distingue de
+   * un abandono. `progreso` dice en qué punto se descartó (`"0"` es rechazo de
+   * entrada; `"2"` es abandono con el trabajo casi hecho, que apunta a que el
+   * paso que falta es el caro). Es una dimensión cerrada de tres valores, no un
+   * contador: lo compone `progresoParaTelemetria` en `onboarding/pasos.ts`.
+   */
+  onboarding_ocultado: { progreso: "0" | "1" | "2" };
+  /**
    * Activación por la otra puerta: la primera regla de watchlist es lo que
    * convierte el producto en algo que trabaja solo.
    *
@@ -151,6 +177,8 @@ export const PROPIEDADES_PERMITIDAS = {
   licitacion_seguida: ["accion"],
   pursuit_creado: ["primera_vez"],
   pursuit_estado_cambiado: ["estado"],
+  perfil_configurado: ["primera_vez"],
+  onboarding_ocultado: ["progreso"],
   regla_creada: ["primera_vez"],
   asistente_usado: ["modo", "ambito", "resultado"],
   export_lanzado: ["formato", "recurso"],
@@ -221,6 +249,21 @@ export function primeraVez(marca: string): PrimeraVez {
 const SEGMENTO_SEGURO = /^[a-z][a-z-]*$/;
 
 /**
+ * Traducción del `format` de la URL a la dimensión de la métrica.
+ *
+ * El parámetro que acepta la API y la extensión del fichero que devuelve no se
+ * llaman igual: se pide `format=excel` y llega un `.xlsx` (`_EXTENSIONS` en
+ * `services/exports.py`). La métrica se queda con la extensión porque es lo que
+ * el usuario reconoce y lo que ya tienen las series históricas. `xlsx` sigue
+ * mapeado para las URLs que alguien tuviera guardadas de antes.
+ */
+const FORMATO_POR_PARAMETRO: Readonly<Record<string, "csv" | "xlsx">> = {
+  csv: "csv",
+  excel: "xlsx",
+  xlsx: "xlsx",
+};
+
+/**
  * Dimensiones de una descarga a partir de su URL.
  *
  * De la URL sólo sobreviven dos cosas: el formato y la ruta depurada del
@@ -231,7 +274,7 @@ const SEGMENTO_SEGURO = /^[a-z][a-z-]*$/;
 export function dimensionesDeDescarga(url: string): EventosProducto["export_lanzado"] {
   const [ruta = "", query = ""] = url.split("?");
   const declarado = new URLSearchParams(query).get("format");
-  const formato = declarado === "csv" || declarado === "xlsx" ? declarado : "otro";
+  const formato = FORMATO_POR_PARAMETRO[declarado ?? ""] ?? "otro";
   const recurso = ruta
     .replace(/^\/?api\/v\d+\//, "")
     .split("/")

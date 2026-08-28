@@ -29,6 +29,7 @@ import type { LicitacionDetail } from "@/components/detail-panel";
 import { cn, formatCurrency, formatDate, formatNumber, truncate } from "@/lib/utils";
 import { getJSON, setJSON, remove as removeStored } from "@/lib/storage";
 import { useDensity } from "@/lib/density";
+import { descargarBlob } from "@/lib/export";
 import { useFilterParams, useFilters } from "@/lib/filters";
 import { toggleValue } from "@/lib/chart-interaction";
 import {
@@ -118,13 +119,9 @@ function getWatchlist(): string[] {
 }
 
 function downloadCsv(rows: LicitacionSummary[], filename: string) {
-  const blob = new Blob([buildCsv(rows)], { type: "text/csv" });
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = filename;
-  anchor.click();
-  URL.revokeObjectURL(url);
+  // Vía `descargarBlob` y no con un ancla propia: esta exportación se arma en el
+  // cliente, no pasa por `/exports/download` y por eso no emitía ningún evento.
+  descargarBlob(filename, new Blob([buildCsv(rows)], { type: "text/csv" }), "detalle");
 }
 
 /* ── Pantalla ───────────────────────────────────────────────────────── */

@@ -65,17 +65,49 @@ export const CCAA_FALLBACK = [
   "Pais Vasco",
 ];
 
-export const FREQ_OPTIONS: { value: Frequency; label: string }[] = [
-  { value: "immediate", label: "Inmediata" },
-  { value: "daily", label: "Diaria" },
-  { value: "weekly", label: "Semanal" },
-];
-
+/**
+ * Etiquetas del selector de frecuencia.
+ *
+ * `immediate` NO es inmediata y llamarla así prometía una actualidad que la
+ * ingesta no da: el job de alertas entrega en el siguiente run de digests y ese
+ * cron corre cada 4 horas (`scheduler/watchlist_rules_alerts.py`), así que el
+ * peor caso son ~4 h. El proyecto ya retiró «tiempo real» del login por esta
+ * misma razón; el valor del contrato se queda como está y solo cambia lo que
+ * lee el usuario.
+ */
 export const FREQ_LABEL: Record<Frequency, string> = {
-  immediate: "Inmediata",
+  immediate: "En cuanto se detecte (hasta ~4 h)",
   daily: "Diaria",
   weekly: "Semanal",
 };
+
+export const FREQ_OPTIONS: { value: Frequency; label: string }[] = [
+  { value: "immediate", label: FREQ_LABEL.immediate },
+  { value: "daily", label: FREQ_LABEL.daily },
+  { value: "weekly", label: FREQ_LABEL.weekly },
+];
+
+/**
+ * Nota bajo el selector: la latencia es de la ingesta, no de la frecuencia
+ * elegida, y para un plazo que vence hoy ninguna frecuencia es suficiente.
+ */
+export const FREQ_NOTE =
+  "TenderFlow revisa las fuentes cada 4 horas: ninguna frecuencia entrega antes. Para un plazo que vence hoy, la fuente oficial sigue siendo el perfil del contratante.";
+
+/* ── Conteo de coincidencias ────────────────────────────────────────── */
+
+/**
+ * Techo del conteo que devuelve el listado (`match_count`), en espejo de
+ * `MATCH_COUNT_CAP` en `db/repositories/watchlist_rules.py`. El backend cuenta
+ * sobre un subselect con `LIMIT` para no barrer 1,6M filas por regla, así que
+ * al llegar al tope el número solo significa «al menos tantas».
+ */
+export const MATCH_COUNT_CAP = 1000;
+
+/** Texto del badge: «999+» cuando el conteo viene saturado. */
+export function formatMatchCount(count: number): string {
+  return count >= MATCH_COUNT_CAP ? "999+" : String(count);
+}
 
 /**
  * Lista de CCAA del selector: las de `meta/filters` si llegaron, y si no el

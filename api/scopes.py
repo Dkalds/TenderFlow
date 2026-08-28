@@ -22,6 +22,18 @@ _LEGACY_SCOPE_ALIASES: dict[str, frozenset[str]] = {
     "watchlist:read": frozenset({"read:watchlist"}),
 }
 
+# POST **de lectura** bajo /licitaciones: el cuerpo transporta criterios que no
+# caben en query string (multi-CCAA, multi-tecnología, listas de hasta 100 ids),
+# no un cambio de estado. Se enumeran uno a uno —y no por prefijo— para que la
+# excepción no se contagie a un endpoint mutante que mañana cuelgue del mismo
+# subárbol: ampliar esta lista tiene que ser una decisión, no un descuido.
+_LICITACIONES_READ_POSTS: frozenset[str] = frozenset(
+    {
+        "/api/v1/licitaciones/search",
+        "/api/v1/licitaciones/bulk-get",
+    }
+)
+
 
 def required_scope_for_request(method: str, path: str) -> str:
     """Return the single least-privilege scope required for an API-key request."""
@@ -68,8 +80,19 @@ def required_scope_for_request(method: str, path: str) -> str:
         return "exports:read"
     if normalized_path.startswith("/api/v1/analytics"):
         return "analytics:read"
+    # /licitaciones no es un subárbol de solo lectura: bajo él vive
+    # ``POST .../ficha-pliego/extract``, que descarga pliegos contra PLACSP,
+    # extrae el PDF en un proceso aislado, llama al LLM y **sobrescribe** la
+    # ficha vigente. Devolver ``licitaciones:read`` para cualquier verbo dejaba
+    # esa mutación cara al alcance de ``data:read`` —el scope por defecto de
+    # toda API key nueva y alias de ``licitaciones:read``, ver
+    # ``_LEGACY_SCOPE_ALIASES``—. Se ramifica por método, como
+    # watchlist/notifications/saved-filters, salvo los POST de lectura ya
+    # publicados.
     if normalized_path.startswith("/api/v1/licitaciones"):
-        return "licitaciones:read"
+        if normalized_method in _READ_METHODS or normalized_path in _LICITACIONES_READ_POSTS:
+            return "licitaciones:read"
+        return "licitaciones:write"
     if normalized_path.startswith("/api/v1/empresas/reviews"):
         return "admin"
     if normalized_path.startswith("/api/v1/empresas"):

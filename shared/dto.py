@@ -116,7 +116,11 @@ class LicitacionDetail(LicitacionSummary):
 # `analysis_universe` y `peso_precio_pct`. Todo eso es pipeline propio.
 # Tampoco nada de `adjudicaciones`: el adjudicatario puede ser una persona
 # física y no hay lógica en el repositorio que lo distinga.
-# `scripts/check_public_surface.py` lo verifica en CI.
+# `scripts/check_public_surface.py` (que CI corre con `--strict`) NO escanea
+# este fichero: vigila `api/routes/publico*.py` y la proyección por allowlist de
+# `db/repositories/publico.py`, que son las dos puertas por las que un campo
+# llegaría hasta aquí. Esta lista, por tanto, se sostiene por revisión; el guard
+# cubre el camino, no el DTO.
 
 
 class LotePublico(BaseModel):

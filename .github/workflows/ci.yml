@@ -71,6 +71,16 @@ jobs:
       - name: Verify frontend analytical integrity (ADR-014)
         run: python scripts/check_frontend_invariants.py --strict
 
+      # Misma lección otra vez: el guard de la superficie pública estaba
+      # escrito y pasando limpio, pero no lo invocaba nadie (ni el Makefile, ni
+      # este workflow, ni pre-commit) mientras varios docstrings afirmaban que
+      # corría en CI. Es el único control automático de la restricción dura del
+      # producto —la superficie anónima publica solo el dato base del anuncio
+      # oficial, nada de adjudicatarios, NIF ni analítica propia— y la fuga que
+      # vigila no rompe nada: el endpoint responde 200 con un campo de más.
+      - name: Verify public surface (sin adjudicatarios, NIF ni analítica propia)
+        run: python scripts/check_public_surface.py --strict
+
       - name: Verify scheduler job parity (ADR-012)
         env:
           ENV: dev
