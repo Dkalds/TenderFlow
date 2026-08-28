@@ -103,6 +103,127 @@ def _build_html(level: AlertLevel, title: str, body: str, context: dict[str, Any
     """)
 
 
+def _entregar_email(
+    *,
+    recipient: str,
+    subject: str,
+    texto: str,
+    html: str,
+    evento: str = "alert_email",
+    etiqueta_destino: str = "ALERT_EMAIL_TO",
+    destino_log: str | None = None,
+) -> bool:
+    """Entrega un email por SMTP con STARTTLS. Devuelve si salió de aquí.
+
+    Punto único de transporte del proyecto: lo comparten las alertas de
+    operación (:func:`_send_smtp`) y los emails de producto
+    (:func:`enviar_email_transaccional`). Tener dos implementaciones de SMTP
+    significaba que arreglar el timeout, el STARTTLS o el manejo de error en una
+    dejaba la otra atrás.
+
+    **Nunca propaga.** Un buzón mal configurado o un SMTP caído no pueden
+    tumbar a quien llama: los dos usos son efectos secundarios de una operación
+    que ya salió bien (una alerta que describe algo ya ocurrido, o un correo que
+    acompaña a un cambio de estado ya escrito en la base). El valor de retorno
+    existe para que el llamante lo registre, no para que reintente aquí.
+
+    ``evento`` prefija los eventos de log —``alert_email`` mantiene los nombres
+    que ya existían (``alert_email_sent``…) para no romper lo que los busque— y
+    ``etiqueta_destino`` nombra de dónde salió el destinatario, que no es el
+    mismo sitio en los dos usos.
+
+    ``destino_log`` es **lo que se escribe en el log** en lugar de la dirección.
+    Existe porque los dos usos tienen destinatarios de naturaleza distinta: el de
+    las alertas es ``ALERT_EMAIL_TO``, una constante de configuración que sí
+    puede registrarse entera, mientras que el del correo de producto es una
+    persona física y su dirección es un dato personal. Sin este parámetro, este
+    ``log.info`` contradecía en el log del transporte la promesa que
+    ``services/solicitudes_acceso.py::notificar_acceso_concedido`` cumple en el
+    suyo ("se registra si salió y a qué dominio, NUNCA la dirección completa"),
+    y ningún test lo veía porque el del servicio mockea el transporte entero.
+    """
+    from config import settings
+
+    user = settings.ALERT_SMTP_USER.strip()
+    password = settings.ALERT_SMTP_PASSWORD.get_secret_value().strip()
+    host = settings.ALERT_SMTP_HOST.strip()
+    port = settings.ALERT_SMTP_PORT
+    destino = recipient.strip()
+
+    if not (destino and user and password):
+        log.debug(
+            "alert_smtp_not_configured",
+            missing=[
+                k
+                for k, v in {
+                    etiqueta_destino: destino,
+                    "ALERT_SMTP_USER": user,
+                    "ALERT_SMTP_PASSWORD": password,
+                }.items()
+                if not v
+            ],
+        )
+        return False
+
+    msg = MIMEMultipart("alternative")
+    msg["Subject"] = subject
+    msg["From"] = user
+    msg["To"] = destino
+    msg.attach(MIMEText(texto, "plain", "utf-8"))
+    msg.attach(MIMEText(html, "html", "utf-8"))
+
+    try:
+        with smtplib.SMTP(host, port, timeout=15) as server:
+            server.ehlo()
+            server.starttls()
+            server.login(user, password)
+            server.sendmail(user, [destino], msg.as_string())
+        log.info(
+            f"{evento}_sent",
+            to=destino if destino_log is None else destino_log,
+            subject=subject,
+        )
+        return True
+    except smtplib.SMTPException as e:
+        log.warning(f"{evento}_failed", error=str(e))
+        return False
+    except OSError as e:
+        log.warning(f"{evento}_network_error", error=str(e))
+        return False
+
+
+def enviar_email_transaccional(*, to_addr: str, subject: str, texto: str, html: str) -> bool:
+    """Envía un email **de producto** a una persona, no una alerta de operación.
+
+    Existe porque :func:`notify` no sirve para esto por tres motivos, y los tres
+    se notan en el buzón de quien lo recibe: el asunto sale como
+    ``[TenderFlow] [WARN] …``, el cuerpo va envuelto en la plantilla de alerta
+    con su franja de color y su pie de "alerta automática", y el envío está
+    sujeto a ``ALERT_MIN_LEVEL`` —o sea que un correo dirigido a una persona
+    podría no salir según cómo esté configurado el umbral de las alertas de
+    infraestructura, que no tiene nada que ver.
+
+    Comparte credenciales SMTP con las alertas a propósito: el proyecto tiene un
+    solo buzón remitente y añadir un segundo juego de variables sería
+    configuración nueva para un beneficio que hoy no existe. Si algún día el
+    correo de producto necesita su propio remitente, este es el punto donde
+    cambiarlo.
+
+    Al log va **el dominio y no la dirección**: aquí el destinatario es una
+    persona, no un buzón de operación, y el dominio basta para diagnosticar un
+    correo corporativo que rebota.
+    """
+    return _entregar_email(
+        recipient=to_addr,
+        subject=subject,
+        texto=texto,
+        html=html,
+        evento="email_producto",
+        etiqueta_destino="destinatario",
+        destino_log=to_addr.rpartition("@")[2] or "desconocido",
+    )
+
+
 def _send_smtp(
     level: AlertLevel,
     title: str,
@@ -118,48 +239,12 @@ def _send_smtp(
     """
     from config import settings
 
-    recipient = (to_addr or settings.ALERT_EMAIL_TO or "").strip()
-    user = settings.ALERT_SMTP_USER.strip()
-    password = settings.ALERT_SMTP_PASSWORD.get_secret_value().strip()
-    host = settings.ALERT_SMTP_HOST.strip()
-    port = settings.ALERT_SMTP_PORT
-
-    if not (recipient and user and password):
-        log.debug(
-            "alert_smtp_not_configured",
-            missing=[
-                k
-                for k, v in {
-                    "ALERT_EMAIL_TO": recipient,
-                    "ALERT_SMTP_USER": user,
-                    "ALERT_SMTP_PASSWORD": password,
-                }.items()
-                if not v
-            ],
-        )
-        return
-
-    subject = f"[TenderFlow] [{level.name}] {title}"
-    html = _build_html(level, title, body, context)
-
-    msg = MIMEMultipart("alternative")
-    msg["Subject"] = subject
-    msg["From"] = user
-    msg["To"] = recipient
-    msg.attach(MIMEText(body, "plain", "utf-8"))
-    msg.attach(MIMEText(html, "html", "utf-8"))
-
-    try:
-        with smtplib.SMTP(host, port, timeout=15) as server:
-            server.ehlo()
-            server.starttls()
-            server.login(user, password)
-            server.sendmail(user, [recipient], msg.as_string())
-        log.info("alert_email_sent", to=recipient, subject=subject)
-    except smtplib.SMTPException as e:
-        log.warning("alert_email_failed", error=str(e))
-    except OSError as e:
-        log.warning("alert_email_network_error", error=str(e))
+    _entregar_email(
+        recipient=(to_addr or settings.ALERT_EMAIL_TO or ""),
+        subject=f"[TenderFlow] [{level.name}] {title}",
+        texto=body,
+        html=_build_html(level, title, body, context),
+    )
 
 
 def notify(

@@ -37,14 +37,24 @@ ahora este path como caso propio y redirige con ``ESTADO_LIMITE``; los estados
 los declara este módulo para que la página de gracias y la API no puedan
 divergir.
 
-**Avisa de lo que encola.** Una solicitud guardada y no vista no sirve de nada,
-y la concesión de acceso es manual: sin aviso, el embudo terminaba en una fila
-de Postgres que solo se descubría abriendo el panel. Se emite
-``EVENTO_SOLICITUD_ACCESO`` por el sistema de webhooks existente —con su firma
-HMAC y su allowlist anti-SSRF— y **sin el email ni el mensaje**: el aviso dice
-que hay algo que atender, no quién lo pide. Va como ``BackgroundTasks``, o sea
-después de enviar la respuesta, para que los cinco segundos de timeout por
-entrega no los espere el visitante.
+**Avisa de lo que encola, por dos canales.** Una solicitud guardada y no vista
+no sirve de nada, y la concesión de acceso es manual: sin aviso, el embudo
+terminaba en una fila de Postgres que solo se descubría abriendo el panel. Se
+emite ``EVENTO_SOLICITUD_ACCESO`` por el sistema de webhooks existente —con su
+firma HMAC y su allowlist anti-SSRF— **y además un email al operador**
+(``services/solicitudes_acceso.py``), porque el webhook exige que alguien lo
+haya configurado y un canal opcional no puede ser el único que hay. Los dos van
+**sin el email ni el mensaje** de quien escribe: el aviso dice que hay algo que
+atender, no quién lo pide; la dirección se lee en el panel, que ya exige ser
+administrador. Todo ello como ``BackgroundTasks``, o sea después de enviar la
+respuesta, para que los timeouts de entrega no los espere el visitante.
+
+El correo va **agrupado por ventana**, no uno por solicitud
+(``services/solicitudes_acceso.py``): este endpoint es anónimo y sin captcha, y
+``notify`` no tiene throttling ninguno, así que un aviso por envío convertía el
+formulario en un amplificador de correo contra el único buzón remitente del
+proyecto — que además es el que manda las alertas de infraestructura. El cuerpo
+lleva la cuenta de pendientes, así que agrupar no pierde información.
 
 **Sin CSRF, a propósito.** ``require_csrf`` es una dependencia por endpoint que
 sólo aplica cuando hay cookie de sesión (``api/routes/dual_auth.py``); este POST
@@ -75,6 +85,7 @@ from config.settings import settings
 from db.solicitudes_acceso import contar_pendientes, crear_solicitud
 from db.webhooks import EVENTO_SOLICITUD_ACCESO, trigger_event
 from observability.logging import get_logger
+from services.solicitudes_acceso import avisar_operador_de_solicitud
 
 log = get_logger(__name__)
 
@@ -191,19 +202,33 @@ def _avisar_operador(solicitud_id: int, empresa: str | None, origen: str | None)
     tiene por qué esperarlos. Y no propaga: un webhook mal configurado no puede
     convertirse en un fallo de un formulario público.
     """
+    pendientes = 0
     try:
+        pendientes = contar_pendientes()
         entregados = trigger_event(
             EVENTO_SOLICITUD_ACCESO,
             {
                 "id": solicitud_id,
                 "empresa": empresa,
                 "origen": origen,
-                "pendientes": contar_pendientes(),
+                "pendientes": pendientes,
             },
         )
         log.info("solicitud_acceso_aviso", solicitud_id=solicitud_id, entregados=entregados)
     except Exception:
         log.exception("solicitud_acceso_aviso_fallido", solicitud_id=solicitud_id)
+
+    # Segundo canal, en su propio try: el webhook sólo avisa si alguien lo ha
+    # configurado —con su suscripción y su `WEBHOOK_ALLOWED_HOSTS`—, y un canal
+    # opcional no puede ser el único que hay. Si el webhook falló arriba, este
+    # aviso tiene que salir igualmente: por eso no comparte el bloque.
+    #
+    # Devuelve False también cuando se agrupa con un aviso reciente, que no es
+    # un fallo: el correo agrupado lleva la cuenta de pendientes. Por eso no se
+    # registra nada aquí — quien decide, y loguea, es el servicio.
+    avisar_operador_de_solicitud(
+        solicitud_id=solicitud_id, empresa=empresa, origen=origen, pendientes=pendientes
+    )
 
 
 @router.post(

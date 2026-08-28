@@ -42,6 +42,7 @@ El [Makefile](../Makefile) es la fuente canónica. Targets habituales:
 | Validar invariantes analíticos del frontend | `make check-frontend-invariants` |
 | Lint / typecheck frontend | `make web-lint` / `make web-typecheck` |
 | Tests unitarios frontend | `make web-test` (con umbrales: `make web-test-coverage`) |
+| Un fichero de test del frontend | `cd web && npm run test -- --expect-min=1 <ruta>` |
 | Tests E2E frontend | `make web-test-e2e` |
 | Paridad de variables de entorno | `make check-env-parity` |
 | Arrancar API / frontend | `make api` / `make web-dev` |
@@ -64,10 +65,22 @@ schema aislado mediante las fixtures de `tests/conftest.py`.
 | `make status`, `make job-parity` | requiere deps | disponible |
 | `make check-api-contract` | requiere deps | disponible tras `make openapi` |
 | `make test-unit`, `make test`, `make check` | no disponible | no disponible sin `TEST_DATABASE_URL` |
+| `make web-test`, `make web-test-coverage` | no disponible | requiere `web/node_modules` (`cd web && npm ci`) |
 | `graphify *` | solo si el CLI está instalado | igual |
 
 Un control no ejecutado se reporta como tal; no cuenta como verde ni se
 sustituye por otro motor. El catálogo completo sigue disponible con `make help`.
+
+**`make web-test` no es `vitest run` a pelo.** Pasa por
+`web/scripts/run-vitest.mjs`, que además del exit code comprueba cuántos
+ficheros de test se ejecutaron de verdad (ratchet `MIN_TEST_FILES`) y busca
+errores de arranque del pool. Motivo: vitest sale con **exit 0** cuando no
+consigue levantar sus workers (`[vitest-pool]: Failed to start forks worker`) y
+reporta `Test Files no tests` — un verde que no probó nada, en local y en CI. Si
+ves el mensaje «LA SUITE DE TESTS DEL FRONTEND NO SE EJECUTÓ», tus tests no
+fallaron: no llegaron a correr; reintentá con `--pool=threads
+--no-file-parallelism`. `npm run test:raw` es la vía sin gate, solo para
+depuración manual; nunca en CI.
 
 ---
 

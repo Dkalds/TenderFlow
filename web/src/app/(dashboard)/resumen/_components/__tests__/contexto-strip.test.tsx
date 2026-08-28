@@ -1,5 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
+  celdaSalud,
+  coberturaSinMedir,
   compararMeses,
   mesesCerrados,
 } from "@/app/(dashboard)/resumen/_components/contexto-strip";
@@ -22,12 +24,7 @@ const SERIE = [
 
 describe("mesesCerrados", () => {
   it("descarta el mes en curso", () => {
-    expect(mesesCerrados(SERIE, "2026-08").map((mes) => mes.mes)).toEqual([
-      "2026-04",
-      "2026-05",
-      "2026-06",
-      "2026-07",
-    ]);
+    expect(mesesCerrados(SERIE, "2026-08").map((mes) => mes.mes)).toEqual(["2026-04", "2026-05", "2026-06", "2026-07"]);
   });
 
   it("tolera una serie ausente", () => {
@@ -88,5 +85,93 @@ describe("formatMonth", () => {
 
   it("devuelve la cadena intacta si no tiene forma de mes", () => {
     expect(formatMonth("sin-fecha")).toBe("sin-fecha");
+  });
+});
+
+/**
+ * «Oferta única 93,1 %» y «PYME adjudicataria 0,7 %» estaban en la tira de salud
+ * competitiva como hechos del mercado. No lo eran: el numerador cuenta las
+ * adjudicaciones que traen `n_ofertas_recibidas`/`es_pyme` y la republicación
+ * masiva de PSCP no las trae, así que el porcentaje describía la fuente. Lo que
+ * estos tests fijan es que la cifra **no llega a pintarse** mientras el backend
+ * no acredite sobre cuántas filas va — y que la celda diga cuánto le falta, en
+ * el mismo tono que «sin dos meses cerrados que comparar».
+ */
+describe("celdaSalud", () => {
+  const GLOSA = "adjudicaciones con 1 oferta";
+
+  it("se abstiene cuando el backend no manda cobertura", () => {
+    const celda = celdaSalud(93.1, undefined, GLOSA);
+    expect(celda.value).toBe("—");
+    expect(celda.value).not.toContain("93");
+    expect(celda.hint).toBe("sin cobertura medida del dato de origen");
+  });
+
+  it("se abstiene con cobertura baja y dice exactamente cuánta hay", () => {
+    const celda = celdaSalud(
+      93.1,
+      {
+        base: 5780,
+        universo: 170000,
+        cobertura_pct: 3.4,
+        umbral_pct: 50,
+        suficiente: false,
+      },
+      GLOSA,
+    );
+    expect(celda.value).toBe("—");
+    expect(celda.hint).toBe("solo 3,4% de las adjudicaciones traen el dato");
+  });
+
+  it("no confunde «cobertura 0 %» con «cobertura sin medir»", () => {
+    const celda = celdaSalud(93.1, { cobertura_pct: 0, suficiente: false }, GLOSA);
+    expect(celda.hint).toBe("solo 0,0% de las adjudicaciones traen el dato");
+  });
+
+  it("ignora un `suficiente` ausente aunque la cobertura sea alta", () => {
+    // Backend viejo sirviendo el campo a medias: el default es abstenerse.
+    const celda = celdaSalud(93.1, { cobertura_pct: 88.2 }, GLOSA);
+    expect(celda.value).toBe("—");
+  });
+
+  it("pinta el porcentaje solo cuando el backend lo avala, con la cobertura al pie", () => {
+    const celda = celdaSalud(
+      41.5,
+      {
+        base: 150000,
+        universo: 170000,
+        cobertura_pct: 88.2,
+        umbral_pct: 50,
+        suficiente: true,
+      },
+      GLOSA,
+    );
+    expect(celda.value).toBe("41,5%");
+    expect(celda.hint).toBe(`${GLOSA} · cobertura 88,2%`);
+  });
+});
+
+/**
+ * La segunda mitad de la decisión: abstenerse no es lo mismo cuando se sabe
+ * cuánta cobertura hay que cuando no se sabe. Con cobertura medida y baja, la
+ * celda tiene algo que contar y se queda. Sin medir —que es lo que devuelve hoy
+ * `overview_adjudicaciones_indicadores`— sólo puede repetir «no sé» en todas las
+ * cargas, así que la celda se retira de la tira y el motivo se dice una vez en
+ * el pie de la sección.
+ */
+describe("coberturaSinMedir", () => {
+  it("es cierto cuando el backend no manda cobertura", () => {
+    expect(coberturaSinMedir(undefined)).toBe(true);
+  });
+
+  it("es cierto cuando la manda pero sin `cobertura_pct` (el caso de hoy)", () => {
+    expect(coberturaSinMedir({ umbral_pct: 50, suficiente: false })).toBe(true);
+    expect(coberturaSinMedir({ cobertura_pct: null, umbral_pct: 50 })).toBe(true);
+  });
+
+  it("es falso con cobertura medida, aunque sea cero o insuficiente", () => {
+    expect(coberturaSinMedir({ cobertura_pct: 0, suficiente: false })).toBe(false);
+    expect(coberturaSinMedir({ cobertura_pct: 3.4, suficiente: false })).toBe(false);
+    expect(coberturaSinMedir({ cobertura_pct: 88.2, suficiente: true })).toBe(false);
   });
 });

@@ -1,5 +1,8 @@
 "use client";
 
+import { useEffect } from "react";
+import { reportError } from "@/lib/report-error";
+
 /**
  * Último recinto de contención: un fallo en el layout raíz o en `Providers`
  * ocurre por encima de `(dashboard)/error.tsx`, así que hasta ahora caía en la
@@ -9,6 +12,16 @@
  * no puede apoyarse en los providers ni en los componentes de UI (el fallo
  * puede venir precisamente de ahí), así que va con estilos en línea y sin
  * dependencias.
+ *
+ * La única excepción a esa regla es `report-error`, y va razonada: aquí llegan
+ * los errores más graves de la aplicación —los que dejan la pantalla en
+ * blanco— y hasta ahora esta página los pintaba y los olvidaba, sin avisar a
+ * nadie. El módulo se importa a sabiendas de la restricción: no tiene
+ * dependencias, no toca el DOM y está escrito para no lanzar nunca, así que no
+ * puede ser él quien tumbe la pantalla de emergencia. El `digest` que se le
+ * enseña al usuario es el mismo que viaja en el reporte, de modo que un
+ * "Código: 1a2b3c" en un correo de soporte se cruza con la línea del log sin
+ * tener que preguntar nada más.
  */
 export default function GlobalError({
   error,
@@ -17,6 +30,10 @@ export default function GlobalError({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
+  useEffect(() => {
+    reportError("global-error", error, undefined, "global-error");
+  }, [error]);
+
   return (
     <html lang="es">
       <body

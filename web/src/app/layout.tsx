@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono, Space_Grotesk } from "next/font/google";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import { Analytics } from "@vercel/analytics/next";
+import { ClientErrorListener } from "@/components/client-error-listener";
 import { SITE_DESCRIPTION, SITE_NAME, SITE_URL } from "@/lib/site";
 import "./globals.css";
 
@@ -115,6 +116,15 @@ export default function RootLayout({
         <a href="#main-content" className="skip-link">
           Saltar al contenido principal
         </a>
+        {/*
+          Único punto de la app que ve los errores que escapan del árbol de
+          React (`window.onerror`, `unhandledrejection`). Va aquí y no en
+          `(dashboard)/layout.tsx` porque un fallo en la landing o en `/login`
+          era igual de invisible, y porque es una isla sin estado: no lee
+          `headers()` ni monta providers, así que no saca del prerender a la
+          superficie pública.
+        */}
+        <ClientErrorListener />
         {children}
         <SpeedInsights />
         <Analytics />

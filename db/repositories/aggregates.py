@@ -310,34 +310,36 @@ class AggregateRepository:
 
     def overview_funnel(self, filters: LicitacionesFilters) -> dict[str, int]:
         where, params = _build_where(filters)
-        sql = (
-            "SELECT "
-            "  COUNT(*) FILTER (WHERE estado = 'PUB') AS pub, "
-            "  COUNT(*) FILTER (WHERE estado = 'EV') AS ev, "
-            "  COUNT(*) FILTER (WHERE estado = 'RES') AS res, "
-            "  COUNT(*) FILTER (WHERE estado = 'ADJ') AS adj, "
-            "  COUNT(*) FILTER (WHERE estado = 'ANUL') AS anul, "
-            "  COUNT(*) AS total "
-            "FROM licitaciones WHERE " + where
+        # AGREG y EJEC entran aquí desde 2026-08-27 y no son un detalle: AGREG es
+        # el 93% del corpus (la publicación agregada de la PSCP catalana). Sin su
+        # cubo, los cinco tramos sumaban el 7% de `total` y el embudo del Resumen
+        # presentaba esa diferencia como si no existiera.
+        codigos = ("PUB", "EV", "RES", "ADJ", "ANUL", "AGREG", "EJEC")
+        # Los códigos son constantes de `shared.estados`, nunca entrada de
+        # usuario: se interpolan como literales igual que hace `abierta_sql()`.
+        filtros = ", ".join(
+            f"COUNT(*) FILTER (WHERE estado = '{codigo}') AS c{i}"
+            for i, codigo in enumerate(codigos)
         )
+        sql = f"SELECT {filtros}, COUNT(*) AS total FROM licitaciones WHERE {where}"
         with connect_read() as c:
             row = c.execute(sql, params).fetchone()
         if row is None:
-            return {"PUB": 0, "EV": 0, "RES": 0, "ADJ": 0, "ANUL": 0, "total": 0}
-        pub, ev, res, adj, anul, total = row
-        return {
-            "PUB": int(pub or 0),
-            "EV": int(ev or 0),
-            "RES": int(res or 0),
-            "ADJ": int(adj or 0),
-            "ANUL": int(anul or 0),
-            "total": int(total or 0),
-        }
+            return {**dict.fromkeys(codigos, 0), "total": 0}
+        conteos = {codigo: int(row[i] or 0) for i, codigo in enumerate(codigos)}
+        return {**conteos, "total": int(row[len(codigos)] or 0)}
 
     def overview_adjudicaciones_indicadores(
         self, *, conn: Any | None = None
     ) -> dict[str, float | None]:
-        """HHI, % oferta única y lead time medio, agregados en Postgres.
+        """HHI, % oferta única, lead time medio y % PYME, agregados en Postgres.
+
+        Devuelve además ``adj_total`` y ``adj_con_n_ofertas``: la **cobertura**
+        de ``pct_oferta_unica``, o sea sobre cuántas adjudicaciones del corpus se
+        calcula ese porcentaje. No es un extra: sin esos dos contadores el
+        servicio no puede distinguir "el 93 % de las adjudicaciones tuvo una sola
+        oferta" de "el 93 % de las pocas filas que declaran el número de ofertas
+        tuvo una sola", que es lo que de verdad decía el número en producción.
 
         Sustituye la carga full-table ``adjudicaciones⋈licitaciones`` que
         alimentaba estos tres KPIs vía pandas (27 s y ~170k filas por llamada
@@ -384,7 +386,28 @@ class AggregateRepository:
             # distinta base serían peor que un solo número conservador.
             "  (SELECT 100.0 * COUNT(*) FILTER (WHERE es_pyme = 1) "
             "          / NULLIF(COUNT(*), 0) "
-            "   FROM adjudicaciones) AS pct_pyme"
+            "   FROM adjudicaciones) AS pct_pyme, "
+            # Denominadores de la cobertura de `pct_oferta_unica`. Sin ellos,
+            # `services/analytics/overview.py` no podía medir sobre cuántas filas
+            # está calculando el porcentaje y devolvía cobertura *desconocida*,
+            # con lo que la tira de Salud competitiva del Resumen se abstenía
+            # siempre: la celda quedaba en «—» de forma permanente.
+            #
+            # Los dos números describen la misma base que el porcentaje de
+            # arriba: `pct_oferta_unica` divide entre las filas con
+            # `n_ofertas_recibidas` no nulo, y eso es exactamente
+            # `adj_con_n_ofertas` sobre `adj_total`. Que valor y cobertura
+            # compartan base es lo que hace la cobertura interpretable.
+            #
+            # `adj_con_es_pyme` NO se añade aquí a propósito: `pct_pyme` divide
+            # entre `COUNT(*)` —el NULL cuenta como «no PYME», ver arriba—, así
+            # que su valor y esa cobertura hablarían de bases distintas, y
+            # publicarlo sin corregir antes el denominador sería pasar de ocultar
+            # un número dudoso a enseñarlo. La condición está escrita en
+            # `services/analytics/overview.py`, junto a `cobertura_pyme`.
+            "  (SELECT COUNT(*) FROM adjudicaciones) AS adj_total, "
+            "  (SELECT COUNT(*) FILTER (WHERE n_ofertas_recibidas IS NOT NULL) "
+            "   FROM adjudicaciones) AS adj_con_n_ofertas"
         )
         with _lectura(conn) as c:
             row = c.execute(sql).fetchone()
@@ -394,14 +417,22 @@ class AggregateRepository:
                 "pct_oferta_unica": 0.0,
                 "lead_time_medio": None,
                 "pct_pyme": 0.0,
+                # Sin fila no hay corpus que medir, y eso NO es cobertura 0 %
+                # sino cobertura desconocida: `_cobertura` en el servicio trata
+                # el universo a cero como desconocida y el consumidor se
+                # abstiene, que es lo correcto aquí.
+                "adj_total": 0.0,
+                "adj_con_n_ofertas": 0.0,
             }
-        hhi, pct_oferta_unica, lead_time, pct_pyme = row
+        hhi, pct_oferta_unica, lead_time, pct_pyme, adj_total, adj_con_n_ofertas = row
         lead_val = float(lead_time) if lead_time is not None and float(lead_time) > 0 else None
         return {
             "hhi": float(hhi or 0.0),
             "pct_oferta_unica": float(pct_oferta_unica or 0.0),
             "lead_time_medio": lead_val,
             "pct_pyme": float(pct_pyme or 0.0),
+            "adj_total": float(adj_total or 0.0),
+            "adj_con_n_ofertas": float(adj_con_n_ofertas or 0.0),
         }
 
     def overview_yoy_and_recent(

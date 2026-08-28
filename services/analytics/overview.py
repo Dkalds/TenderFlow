@@ -13,21 +13,95 @@ DataFrame full-table de ``load_adjudicaciones()`` (27 s y ~170k filas por
 llamada medidos en prod), que en Render además estaba bloqueado por
 ``render_api_full_table_loads_blocked`` y dejaba los tres KPIs a cero/None.
 Siguen ignorando los filtros del endpoint, como siempre hicieron.
+
+``pct_oferta_unica`` y ``pct_pyme`` viajan además con su cobertura
+(``CoberturaMetricaDTO``). El motivo: en producción la tira de salud
+competitiva del Resumen publicaba «oferta única 93,1 %» y «PYME adjudicataria
+0,7 %», dos cifras que nadie del dominio se cree. No son el mercado español,
+son el reparto de qué filas traen ``n_ofertas_recibidas`` y ``es_pyme`` — la
+republicación masiva de PSCP no los trae. Sin denominador, un porcentaje así
+describe la fuente, no el fenómeno. La cobertura de ``pct_oferta_unica`` ya sale
+medida —el agregado de ``db/`` cuenta su base y su universo—; la de ``pct_pyme``
+sigue **desconocida** a propósito hasta que el denominador de esa métrica y el
+de su cobertura sean el mismo (ver ``_K_ADJ_*``), y desconocida basta para que
+el consumidor se abstenga.
 """
 
 from __future__ import annotations
 
 from datetime import UTC, date, datetime, timedelta
+from typing import Final
 
 from pydantic import BaseModel, Field
 
 from db.repositories.aggregates import AggregateRepository, LicitacionesFilters
 from db.repositories.kpi_snapshots import read_overview_snapshot_for
 from observability.logging import get_logger
+from shared.dto import CoberturaMetricaDTO
 
 log = get_logger(__name__)
 
 _repo = AggregateRepository()
+
+#: Umbral de cobertura por debajo del cual un porcentaje agregado deja de ser un
+#: hecho del mercado y pasa a ser un hecho sobre qué filas traen el campo.
+#:
+#: 50 % es el punto en que la muestra deja de ser mayoría del corpus: por debajo,
+#: el sesgo de selección de la fuente puede mover el resultado más que el
+#: fenómeno medido. No es un umbral estadístico —no hay uno que valga para
+#: cualquier campo—, es el mínimo defendible ante alguien del dominio: «lo
+#: calculo sobre menos de la mitad de las adjudicaciones» ya obliga a explicarse.
+UMBRAL_COBERTURA_PCT: Final = 50.0
+
+#: Claves de cobertura de ``overview_adjudicaciones_indicadores``.
+#:
+#: Las dos primeras **ya llegan**: el agregado de ``db/repositories`` cuenta las
+#: adjudicaciones totales y las que declaran ``n_ofertas_recibidas``, así que la
+#: cobertura de ``pct_oferta_unica`` es un número medido y la celda deja de
+#: abstenerse por falta de dato.
+#:
+#: La tercera **sigue sin llegar, y a propósito**: ``pct_pyme`` divide entre
+#: ``COUNT(*)`` —el NULL cuenta como «no PYME»— mientras que su cobertura
+#: mediría las filas que sí declaran ``es_pyme``. Valor y cobertura hablarían de
+#: bases distintas, y destaparla sin corregir antes el denominador en ``db/``
+#: sería pasar de ocultar un número dudoso a publicarlo. Hasta entonces la
+#: métrica se abstiene, que es el default correcto.
+#:
+#: Se leen todas con ``.get`` por lo mismo de siempre: una clave que falte tiene
+#: que dar cobertura desconocida, nunca un cero que parezca medido.
+_K_ADJ_TOTAL: Final = "adj_total"
+_K_ADJ_CON_N_OFERTAS: Final = "adj_con_n_ofertas"
+_K_ADJ_CON_ES_PYME: Final = "adj_con_es_pyme"
+
+
+def _cobertura_desconocida() -> CoberturaMetricaDTO:
+    """Cobertura sin medir: ``suficiente=False``, que es el default seguro."""
+    return CoberturaMetricaDTO(umbral_pct=UMBRAL_COBERTURA_PCT)
+
+
+def _cobertura(base: float | None, universo: float | None) -> CoberturaMetricaDTO:
+    """Cobertura de un porcentaje a partir de su base y su universo.
+
+    ``cobertura_pct`` no se redondea: un 3,4 % tiene que salir como 3,4 % para
+    que el consumidor pueda decir cuánto de poco es. Redondearlo a algo cómodo
+    —a cero, al umbral, a «bajo»— sería repetir el problema que este campo viene
+    a resolver. El único ajuste es el tope en 100, que solo puede saltar si base
+    y universo llegan de consultas incoherentes; el DTO lo exige (``le=100``) y
+    reventar aquí por eso sería tumbar el overview entero por un decimal.
+
+    Un universo a cero **no** es cobertura 100 %: es que no hay corpus que medir,
+    y se devuelve como desconocida.
+    """
+    if base is None or universo is None or universo <= 0:
+        return _cobertura_desconocida()
+    pct = min(base / universo * 100, 100.0)
+    return CoberturaMetricaDTO(
+        base=int(base),
+        universo=int(universo),
+        cobertura_pct=pct,
+        umbral_pct=UMBRAL_COBERTURA_PCT,
+        suficiente=pct >= UMBRAL_COBERTURA_PCT,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -96,6 +170,12 @@ class OverviewResult(BaseModel):
     pct_oferta_unica: float = 0.0
     # Market indicators
     pct_pyme: float = 0.0
+    # Cada uno de los dos porcentajes de arriba viaja con las filas que lo
+    # sostienen. Campos nuevos con default: el contrato existente no se rompe y
+    # un cliente que los ignore ve exactamente lo que veía antes — por eso el
+    # gate vive en el consumidor y no en el valor, que se sigue sirviendo.
+    cobertura_oferta_unica: CoberturaMetricaDTO = Field(default_factory=_cobertura_desconocida)
+    cobertura_pyme: CoberturaMetricaDTO = Field(default_factory=_cobertura_desconocida)
     concentracion_top10: float = 0.0
     lead_time_medio: float | None = None
     tasa_anulacion: float = 0.0
@@ -219,14 +299,29 @@ def get_overview(filters: OverviewFilters) -> OverviewResult:
 
     funnel_data = _repo.overview_funnel(repo_filters)
     total_funnel = funnel_data["total"]
-    funnel_estados = [
-        FunnelStep(
-            estado=est,
-            n=funnel_data[est],
-            pct=float(funnel_data[est] / total_funnel * 100) if total_funnel else 0.0,
+
+    def _paso(estado: str, n: int) -> FunnelStep:
+        return FunnelStep(
+            estado=estado,
+            n=n,
+            pct=float(n / total_funnel * 100) if total_funnel else 0.0,
         )
-        for est in ("PUB", "EV", "RES", "ADJ", "ANUL")
-    ]
+
+    # AGREG y EJEC son los dos códigos de la PSCP catalana, y AGREG solo es el
+    # 93% del corpus: sin ellos estos tramos sumaban una fracción del total y la
+    # pantalla no lo decía.
+    codigos = ("PUB", "EV", "RES", "ADJ", "ANUL", "AGREG", "EJEC")
+    funnel_estados = [_paso(est, funnel_data.get(est, 0)) for est in codigos]
+
+    # Y lo que no cae en ninguno —filas sin estado, o con el texto crudo que el
+    # conector escribió antes del arreglo y que la reparación aún no ha
+    # limpiado— se declara en vez de desaparecer. El tramo solo aparece si hay
+    # algo dentro, así que sobre un corpus limpio nada cambia. Que los tramos
+    # sumen el total es la propiedad que hace legible el embudo: sin ella, quien
+    # lo mira no puede saber si lo que falta es cero o es un millón de filas.
+    resto = total_funnel - sum(funnel_data.get(est, 0) for est in codigos)
+    if resto > 0:
+        funnel_estados.append(_paso("OTROS", resto))
 
     result = OverviewResult(
         total_licitaciones=k["total"],
@@ -243,6 +338,18 @@ def get_overview(filters: OverviewFilters) -> OverviewResult:
         hhi=adj_ind["hhi"] or 0.0,
         pct_oferta_unica=adj_ind["pct_oferta_unica"] or 0.0,
         pct_pyme=adj_ind["pct_pyme"] or 0.0,
+        cobertura_oferta_unica=_cobertura(
+            adj_ind.get(_K_ADJ_CON_N_OFERTAS), adj_ind.get(_K_ADJ_TOTAL)
+        ),
+        # OJO al destapar este: `pct_pyme` se calcula hoy con denominador
+        # `COUNT(*)` —el NULL cuenta como «no PYME», ver el comentario de
+        # `overview_adjudicaciones_indicadores`—, así que su valor y esta
+        # cobertura hablan de bases distintas. Mientras la cobertura siga por
+        # debajo del umbral el consumidor se abstiene y da igual; el día que
+        # `adj_con_es_pyme` supere el 50 %, el denominador de `pct_pyme` tiene
+        # que corregirse en `db/` **en el mismo cambio** o pasaremos de ocultar
+        # un número dudoso a publicarlo.
+        cobertura_pyme=_cobertura(adj_ind.get(_K_ADJ_CON_ES_PYME), adj_ind.get(_K_ADJ_TOTAL)),
         concentracion_top10=concentracion_top10,
         lead_time_medio=adj_ind["lead_time_medio"],
         tasa_anulacion=tasa_anulacion,

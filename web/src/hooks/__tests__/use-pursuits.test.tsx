@@ -11,6 +11,13 @@ import {
 } from "@/hooks/use-pursuits";
 import { useOrganizationStore } from "@/hooks/use-organization";
 import { callUrl, jsonResponse } from "./fetch-call";
+import { primeraVez, registrarEvento } from "@/lib/analytics";
+
+// Telemetría doblada: lo que se fija es qué evento sale de cada mutación.
+vi.mock("@/lib/analytics", () => ({
+  registrarEvento: vi.fn(),
+  primeraVez: vi.fn(() => "si"),
+}));
 
 const pursuit = {
   id: 1, organization_id: 1, licitacion_id: "lic-1", tender_title: "Servicio TI",
@@ -28,6 +35,8 @@ function wrapper({ children }: { children: React.ReactNode }) {
 afterEach(() => {
   useOrganizationStore.setState({ activeOrganizationId: null });
   vi.unstubAllGlobals();
+  vi.mocked(registrarEvento).mockClear();
+  vi.mocked(primeraVez).mockClear();
 });
 
 describe("pursuit hooks", () => {
@@ -77,6 +86,9 @@ describe("pursuit hooks", () => {
         body: JSON.stringify({ licitacion_id: "lic-1", organization_id: 1 }),
       }),
     );
+    // Activación. Ni el id del pursuit ni el de la organización entran en el
+    // evento: el hecho es "alguien se comprometió", no quién con qué.
+    expect(registrarEvento).toHaveBeenCalledWith("pursuit_creado", { primera_vez: "si" });
   });
 
   it("seeds the detail cache under the key the detail view reads", async () => {
@@ -108,6 +120,33 @@ describe("pursuit hooks", () => {
     await result.current.mutateAsync({ status: "qualifying" });
 
     expect(client.getQueryData([...pursuitKeys.detail("1"), 1])).toMatchObject({ version: 2 });
+    // Sólo cuando el PATCH toca el estado: un cambio de precio no es un avance
+    // del workflow y contarlo como tal enmascararía el abandono.
+    expect(registrarEvento).toHaveBeenCalledWith("pursuit_estado_cambiado", {
+      estado: "qualifying",
+    });
+  });
+
+  it("no cuenta como avance del pipeline un PATCH que no toca el estado", async () => {
+    useOrganizationStore.setState({ activeOrganizationId: 1 });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation((...call: unknown[]) =>
+        Promise.resolve(
+          jsonResponse(
+            callUrl(call).includes("/organizations")
+              ? [{ id: 1, name: "Equipo", is_personal: true, role: "owner", created_at: "2026-07-30T10:00:00Z" }]
+              : { ...pursuit, offer_price_eur: 1000, version: 2 },
+          ),
+        ),
+      ),
+    );
+
+    const { result } = renderHook(() => useUpdatePursuit(1), { wrapper });
+    await waitFor(() => expect(useOrganizationStore.getState().activeOrganizationId).toBe(1));
+    await result.current.mutateAsync({ offer_price_eur: 1000 });
+
+    expect(registrarEvento).not.toHaveBeenCalled();
   });
 });
 

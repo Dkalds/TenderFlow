@@ -28,6 +28,16 @@ _T = TypeVar("_T")
 # no se escriba. La invalidación principal es por ingesta real.
 _DEFAULT_TTL = 600.0
 
+# TTL de un valor DEGRADADO (el loader capturó un fallo y devolvió el neutro).
+# Corto a propósito: un agregado degradado no es un dato, es la ausencia de uno,
+# y retenerlo el TTL normal convierte un error transitorio de Postgres en diez
+# minutos de señal muerta para todos los requests — sin que nada reintente. Pero
+# tampoco cero: la carga que suele degradar es justo la lenta, y con la BD
+# saturada cada request reintentando el agregado empeora la causa. Treinta
+# segundos es el compromiso: se recupera al minuto siguiente y como mucho un
+# reintento por ventana.
+_DEGRADED_TTL = 30.0
+
 
 class SignalAwareCache(Generic[_T]):
     """Caché de un único valor con invalidación por TTL + señal de ingesta."""
@@ -37,10 +47,19 @@ class SignalAwareCache(Generic[_T]):
         self._value: _T | None = None
         self._loaded_at = 0.0
         self._signal_ts = -1.0
+        # TTL de la carga vigente. Coincide con ``_ttl`` salvo cuando el valor
+        # cacheado es degradado (ver ``_DEGRADED_TTL``).
+        self._effective_ttl = ttl
         self._valid = False
         self._lock = threading.Lock()
 
-    def get(self, loader: Callable[[], _T]) -> _T:
+    def get(
+        self,
+        loader: Callable[[], _T],
+        *,
+        degraded: Callable[[_T], bool] | None = None,
+        degraded_ttl: float = _DEGRADED_TTL,
+    ) -> _T:
         """Devuelve el valor cacheado si sigue fresco; si no, llama a ``loader``.
 
         Serializado con un lock: sin esto, N requests concurrentes con caché
@@ -48,6 +67,11 @@ class SignalAwareCache(Generic[_T]):
         cada una construyendo su propia copia de la carga full-table al mismo
         tiempo — el pico de memoria se multiplica por N en vez de servirse una
         sola vez. Ver postmortem OOM Render 2026-07-14.
+
+        ``degraded`` deja que el llamante reconozca su propio valor de fallo
+        (los loaders de señales capturan la excepción y devuelven el neutro, así
+        que desde aquí un error es indistinguible de un dato). El valor se sirve
+        igual, pero se retiene solo ``degraded_ttl``.
         """
         # El valor se lee a un local antes de comprobar la frescura: un refresco
         # concurrente pone ``_value`` a None mientras construye el reemplazo, y
@@ -73,16 +97,21 @@ class SignalAwareCache(Generic[_T]):
             self._valid = False
             self._value = None
             value = loader()
+            # El TTL se decide antes de publicar nada: si ``degraded`` fuera
+            # defectuoso y lanzara, la caché queda inválida (se reintenta) en vez
+            # de publicar un valor con el TTL del load anterior.
+            ttl = degraded_ttl if degraded is not None and degraded(value) else self._ttl
             self._value = value
             self._loaded_at = time.time()
             self._signal_ts = get_signal_timestamp()
+            self._effective_ttl = ttl
             self._valid = True
             return value
 
     def _is_fresh(self) -> bool:
         return (
             self._valid
-            and (time.time() - self._loaded_at) < self._ttl
+            and (time.time() - self._loaded_at) < self._effective_ttl
             and get_signal_timestamp() <= self._signal_ts
         )
 
@@ -92,4 +121,5 @@ class SignalAwareCache(Generic[_T]):
             self._value = None
             self._loaded_at = 0.0
             self._signal_ts = -1.0
+            self._effective_ttl = self._ttl
             self._valid = False

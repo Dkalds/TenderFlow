@@ -10,6 +10,8 @@ import {
   notifyQueryError,
   notifyMutationError,
   notifyMutationSuccess,
+  debeReintentar,
+  retrasoDeReintento,
   type QueryFeedbackMeta,
 } from "@/lib/query-feedback";
 
@@ -29,8 +31,21 @@ export function Providers({ children, nonce }: { children: React.ReactNode; nonc
         defaultOptions: {
           queries: {
             staleTime: 5 * 60 * 1000,
-            retry: 1,
+            /*
+             * Política de reintentos centralizada (`lib/query-feedback.ts`), no
+             * repartida hook a hook. Era `retry: 1` para todo: un 404 se pedía
+             * dos veces y un arranque en frío de la API —Render free con
+             * spin-down— se daba por perdido tras un único reintento inmediato.
+             * Ahora solo se reintenta lo que puede cambiar de resultado (red,
+             * 408, 5xx) y con backoff creciente.
+             */
+            retry: debeReintentar,
+            retryDelay: retrasoDeReintento,
           },
+          /*
+           * Las mutaciones se quedan sin reintento (default de React Query): no
+           * son idempotentes y repetir un POST puede duplicar un efecto.
+           */
         },
       }),
   );

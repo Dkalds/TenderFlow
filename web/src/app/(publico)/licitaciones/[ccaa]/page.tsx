@@ -90,7 +90,10 @@ export default async function HubCcaa({
 
   // Un hub vacío es contenido delgado por definición: no hay nada que indexar
   // y, si Google lo rastrea, cuenta como página de baja calidad del dominio.
-  // Un 404 es la respuesta correcta.
+  // Un 404 es la respuesta correcta — pero solo cuando "vacío" es una respuesta
+  // del backend y no un fallo de red disfrazado. `listarLicitaciones` lanza en
+  // ese segundo caso (ver `lib/publico-api.ts`), de modo que la revalidación
+  // horaria no puede sustituir un hub bueno por un 404 indexable.
   if (licitaciones.length === 0) notFound();
 
   const nombre = nombreDesdeSlug(ccaa);

@@ -19,6 +19,11 @@ import { CONSOLE_SPACES } from "@/lib/console-spaces";
  * inventariadas de esas ocho rutas siguen exactamente donde estaban. Se cargan
  * bajo demanda (`next/dynamic`): ocho pantallas de gráficos en un solo bundle
  * costarían el arranque del espacio entero para ver un corte.
+ *
+ * Las vistas viven en `_components/<x>-view.tsx` y las consumen dos entradas:
+ * este espacio y el `page.tsx` de la ruta heredada. Hasta 2026-08 este módulo
+ * importaba directamente esos `page.tsx`, así que cada uno era a la vez
+ * boundary de ruta y componente y Next no podía tratarlo como lo primero.
  */
 
 const loading = () => (
@@ -29,14 +34,14 @@ const loading = () => (
 );
 
 const VIEWS: Record<string, React.ComponentType> = {
-  tiempo: dynamic(() => import("../tendencias/page"), { loading }),
-  cpv: dynamic(() => import("../tendencias-cpv/page"), { loading }),
-  calendario: dynamic(() => import("../calendario/page"), { loading }),
-  geografia: dynamic(() => import("../geografia/page"), { loading }),
-  tecnologias: dynamic(() => import("../tecnologias/page"), { loading }),
-  organos: dynamic(() => import("../organos/page"), { loading }),
-  clusters: dynamic(() => import("../clusters/page"), { loading }),
-  proyectos: dynamic(() => import("../proyectos-modulos/page"), { loading }),
+  tiempo: dynamic(() => import("./_components/tendencias-view"), { loading }),
+  cpv: dynamic(() => import("./_components/tendencias-cpv-view"), { loading }),
+  calendario: dynamic(() => import("./_components/calendario-view"), { loading }),
+  geografia: dynamic(() => import("./_components/geografia-view"), { loading }),
+  tecnologias: dynamic(() => import("./_components/tecnologias-view"), { loading }),
+  organos: dynamic(() => import("./_components/organos-view"), { loading }),
+  clusters: dynamic(() => import("./_components/clusters-view"), { loading }),
+  proyectos: dynamic(() => import("./_components/proyectos-modulos-view"), { loading }),
 };
 
 const SPACE = CONSOLE_SPACES.find((space) => space.key === "mercado")!;

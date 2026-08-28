@@ -4,6 +4,12 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+
+// La telemetría se dobla entera: aquí interesa *qué* evento sale de cada
+// desenlace del stream, no que el SDK de analítica funcione.
+vi.mock("@/lib/analytics", () => ({ registrarEvento: vi.fn() }));
+
+import { registrarEvento } from "@/lib/analytics";
 import { streamAsk, streamResumen } from "@/lib/ask-stream";
 
 /** Build a Response whose body streams the given SSE lines. */
@@ -36,6 +42,7 @@ beforeEach(() => {
     configurable: true,
     value: "",
   });
+  vi.mocked(registrarEvento).mockClear();
 });
 
 afterEach(() => {
@@ -239,5 +246,191 @@ describe("streamResumen", () => {
 
     const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect((init.headers as Record<string, string>)["X-CSRF-Token"]).toBe("mytoken");
+  });
+});
+
+/* ── Stream que se corta a media respuesta ──────────────────────────────── */
+
+/**
+ * Response SSE que emite los chunks dados y luego rompe el cuerpo.
+ *
+ * Va por `pull` y no por `start`: romper el stream dentro de `start` descarta
+ * lo ya encolado y el cliente no llega a leer nada, que es justo el escenario
+ * contrario al que interesa aquí (leer media respuesta y perder el resto).
+ */
+function sseAbortadoTras(chunks: string[], error: Error): Response {
+  const encoder = new TextEncoder();
+  let emitidos = 0;
+  const body = new ReadableStream<Uint8Array>({
+    pull(controller) {
+      if (emitidos < chunks.length) {
+        controller.enqueue(encoder.encode(chunks[emitidos]));
+        emitidos += 1;
+        return;
+      }
+      controller.error(error);
+    },
+  });
+  return new Response(body, {
+    status: 200,
+    headers: { "content-type": "text/event-stream" },
+  });
+}
+
+describe("stream interrumpido", () => {
+  it("una caída de red a media respuesta rechaza en vez de devolver media respuesta", async () => {
+    // La distinción que sostiene el producto: `streamAsk` resuelve = la
+    // respuesta terminó. Si el cuerpo se rompe y aun así resolviera, quien
+    // llama no tiene forma de saber que lo que pinta está a medias, y la
+    // burbuja se queda con media frase presentada como respuesta completa.
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValue(
+          sseAbortadoTras(
+            ['data: {"text": "El plazo de presentación termina el"}\n\n'],
+            new Error("network error"),
+          ),
+        ),
+    );
+
+    const tokens: string[] = [];
+    await expect(
+      streamAsk({ question: "¿plazo?", onToken: (acc) => tokens.push(acc) }),
+    ).rejects.toThrow();
+
+    // El texto llegó a pintarse —eso es el streaming— pero la promesa no
+    // resolvió: el estado "terminado" nunca se alcanza.
+    expect(tokens).toEqual(["El plazo de presentación termina el"]);
+  });
+
+  it("un corte de red no cuenta como uso del asistente", async () => {
+    // Ni "ok" ni "error": el asistente no falló, se cayó el enlace. Contarlo
+    // como error ensuciaría la única métrica que dice si esto sirve.
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(sseAbortadoTras([], new Error("network error"))),
+    );
+
+    await expect(streamAsk({ question: "q", onToken: vi.fn() })).rejects.toThrow();
+    expect(registrarEvento).not.toHaveBeenCalled();
+  });
+
+  it("un abort del usuario tampoco emite telemetría", async () => {
+    const abortError = new DOMException("The user aborted a request.", "AbortError");
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(abortError));
+
+    await expect(streamAsk({ question: "q", onToken: vi.fn() })).rejects.toThrow(
+      "The user aborted a request.",
+    );
+    expect(registrarEvento).not.toHaveBeenCalled();
+  });
+});
+
+/* ── Telemetría del desenlace ───────────────────────────────────────────── */
+
+describe("telemetría asistente_usado", () => {
+  it("una respuesta con síntesis cuenta como uso que sirvió", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(sseResponse(['data: {"text": "ok"}\n\n', "data: [DONE]\n\n"])),
+    );
+
+    await streamAsk({ question: "q", onToken: vi.fn() });
+
+    expect(registrarEvento).toHaveBeenCalledWith("asistente_usado", {
+      modo: "pregunta",
+      ambito: "corpus",
+      resultado: "ok",
+    });
+  });
+
+  it("`degraded` se propaga al evento: uso que NO sirvió", async () => {
+    // Es el evento que emite el backend cuando el proveedor LLM falla o se
+    // agota el presupuesto. Si se contara como "ok", el asistente aparentaría
+    // funcionar mientras devuelve documentos sin síntesis.
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValue(
+          sseResponse([
+            'data: {"degraded": true, "reason": "presupuesto_agotado", "docs": []}\n\n',
+            "data: [DONE]\n\n",
+          ]),
+        ),
+    );
+
+    const onDegraded = vi.fn();
+    const result = await streamAsk({ question: "q", onToken: vi.fn(), onDegraded });
+
+    expect(onDegraded).toHaveBeenCalledWith({ reason: "presupuesto_agotado", docs: [] });
+    expect(result.degraded?.reason).toBe("presupuesto_agotado");
+    expect(registrarEvento).toHaveBeenCalledWith("asistente_usado", {
+      modo: "pregunta",
+      ambito: "corpus",
+      resultado: "degradado",
+    });
+  });
+
+  it("preguntar sobre una licitación se distingue de preguntar al corpus", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(sseResponse(["data: [DONE]\n\n"])));
+
+    await streamAsk({ question: "q", idExterno: "EXP-1", onToken: vi.fn() });
+
+    expect(registrarEvento).toHaveBeenCalledWith(
+      "asistente_usado",
+      expect.objectContaining({ ambito: "licitacion" }),
+    );
+  });
+
+  it("un rechazo del servidor sí cuenta como error", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, { status: 429 })));
+
+    await expect(streamAsk({ question: "q", onToken: vi.fn() })).rejects.toThrow("Error 429");
+    expect(registrarEvento).toHaveBeenCalledWith("asistente_usado", {
+      modo: "pregunta",
+      ambito: "corpus",
+      resultado: "error",
+    });
+  });
+
+  it("el resumen degradado se distingue del resumen con síntesis", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValue(
+          sseResponse([
+            'data: {"degraded": true, "reason": "sin_pliego"}\n\n',
+            "data: [DONE]\n\n",
+          ]),
+        ),
+    );
+
+    await streamResumen({ idExterno: "EXP-1", onToken: vi.fn() });
+
+    expect(registrarEvento).toHaveBeenCalledWith("asistente_usado", {
+      modo: "resumen",
+      ambito: "licitacion",
+      resultado: "degradado",
+    });
+  });
+
+  it("la pregunta y la licitación NUNCA viajan en el evento", async () => {
+    // Regla de privacidad de `lib/analytics.ts`: el `id_externo` identifica la
+    // licitación y con ella el negocio del cliente.
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(sseResponse(["data: [DONE]\n\n"])));
+
+    await streamAsk({
+      question: "¿cuánto paga el Ayuntamiento de X?",
+      idExterno: "EXP-SECRETO",
+      onToken: vi.fn(),
+    });
+
+    const [, propiedades] = vi.mocked(registrarEvento).mock.calls[0];
+    expect(Object.keys(propiedades)).toEqual(["modo", "ambito", "resultado"]);
+    expect(JSON.stringify(propiedades)).not.toContain("EXP-SECRETO");
   });
 });

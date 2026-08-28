@@ -180,7 +180,13 @@ web-lint:  ## Lint del frontend Next.js
 web-typecheck:  ## Type checking del frontend Next.js
 	cd web && npm run typecheck
 
-web-test:  ## Tests unitarios del frontend (vitest)
+# `npm run test` y `test:coverage` pasan por web/scripts/run-vitest.mjs, no por
+# `vitest run` a pelo. Motivo: vitest sale con **exit 0** cuando no consigue
+# arrancar sus workers (`[vitest-pool]: Failed to start forks worker`) y reporta
+# "no tests"; este target daba verde sin haber probado nada, aquí y en CI. El
+# runner comprueba cuántos ficheros corrieron de verdad contra un ratchet.
+# Para saltártelo a sabiendas existe `npm run test:raw` (no usar en CI).
+web-test:  ## Tests unitarios del frontend (vitest + gate de suite ejecutada)
 	cd web && npm run test
 
 web-test-coverage:  ## Tests del frontend con cobertura (los umbrales que aplica CI)

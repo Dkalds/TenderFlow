@@ -23,11 +23,16 @@ import { SITE_URL } from "@/lib/site";
 export const revalidate = 3600;
 
 export async function GET(): Promise<Response> {
+  // Sin `try`/`catch` a propósito. Si la API no contesta, `contarPublicables`
+  // lanza y esta ruta falla; con ISR eso conserva el índice ya generado, y en
+  // frío devuelve un 500 que Googlebot reintenta. Capturar para servir un índice
+  // de reserva sería lo peor de los dos mundos: un índice con un solo fichero
+  // —"las otras 580.000 URLs han desaparecido"— **horneado en la caché** de la
+  // ruta durante la hora siguiente, porque este handler es estático.
   const total = await contarPublicables();
   const tramos = Math.ceil(total / SITEMAP_POR_FICHERO);
 
-  // +1 por el fichero 0, que lleva las páginas estáticas y existe siempre —
-  // también cuando la API no contesta y `total` es 0.
+  // +1 por el fichero 0, que lleva las páginas estáticas y existe siempre.
   const ficheros = Array.from(
     { length: tramos + 1 },
     (_, indice) => `${SITE_URL}/sitemap/${indice}.xml`,

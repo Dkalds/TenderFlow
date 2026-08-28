@@ -32,6 +32,7 @@ import { useDensity, initDensity } from "@/lib/density";
 import { useActiveOrganizationId, useOrganizations, useOrganizationStore } from "@/hooks/use-organization";
 import { apiMutate } from "@/lib/api-client";
 import { reportError } from "@/lib/report-error";
+import { registrarEvento } from "@/lib/analytics";
 
 /**
  * Rail de espacios — 56px, el único cromo permanente a la izquierda.
@@ -60,6 +61,11 @@ function RailButton({ space, active, href }: { space: ConsoleSpace; active: bool
       <TooltipTrigger asChild>
         <Link
           href={href}
+          // `space.key`, no la URL: la clave estable sobrevive a renombrar el
+          // slug o a que el espacio absorba otra ruta, cosa que el pageview no
+          // hace. Mide navegación *desde el rail*, no visitas: entrar por URL
+          // guardada o por la paleta de comandos no pasa por aquí.
+          onClick={() => registrarEvento("espacio_abierto", { espacio: space.key, origen: "rail" })}
           aria-current={active ? "page" : undefined}
           className={cn(
             "tf-pressable flex h-10 w-10 flex-col items-center justify-center gap-0.5 rounded-[9px] border",
@@ -270,7 +276,16 @@ export function ConsoleRail() {
                     <Link
                       key={space.key}
                       href={withFilters(landingHref(space))}
-                      onClick={() => setMobileOpen(false)}
+                      // Mismo evento, distinto origen: el cajón móvil se usa
+                      // sobre un diseño pensado para escritorio, y saber cuánto
+                      // pesa es la mitad de la decisión de invertir en él.
+                      onClick={() => {
+                        registrarEvento("espacio_abierto", {
+                          espacio: space.key,
+                          origen: "rail_movil",
+                        });
+                        setMobileOpen(false);
+                      }}
                       aria-current={active ? "page" : undefined}
                       className={cn(
                         "flex items-center gap-2.5 rounded-md px-3 py-2 text-[13px] font-medium transition-colors",

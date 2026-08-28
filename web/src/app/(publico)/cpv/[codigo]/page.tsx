@@ -99,6 +99,9 @@ export default async function HubCpv({
     limit: POR_PAGINA,
     offset: (pagina - 1) * POR_PAGINA,
   });
+  // Vacío = el backend contestó y no hay nada bajo ese prefijo. Un fallo de la
+  // API no llega aquí: `listarLicitaciones` lanza, la regeneración ISR falla y
+  // el hub anterior se sigue sirviendo (ver `lib/publico-api.ts`).
   if (licitaciones.length === 0) notFound();
 
   const division = descripcionDivision(codigo);

@@ -42,6 +42,11 @@ export const revalidate = 3600;
 
 export default async function IndiceCpv() {
   const { cpv } = await obtenerHubs();
+
+  // 404 solo cuando el backend afirma que no hay códigos con volumen. Un fallo
+  // de la API ya no llega hasta aquí como lista vacía: `obtenerHubs` lanza, la
+  // regeneración ISR falla y Next sigue sirviendo el índice anterior en vez de
+  // reemplazarlo por un 404 que Google tardaría semanas en desandar.
   if (cpv.length === 0) notFound();
 
   const migas = [

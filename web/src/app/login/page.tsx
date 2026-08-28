@@ -12,6 +12,7 @@ import { CONTACT_EMAIL, solicitarAccesoHref } from "@/lib/contacto";
 import { ParticleField } from "@/components/layout/particle-field";
 import { cn } from "@/lib/utils";
 import { safeRedirectPath } from "@/lib/safe-redirect";
+import { registrarEvento } from "@/lib/analytics";
 
 type Mode = "login" | "register";
 
@@ -86,6 +87,14 @@ function LoginPageContent() {
         setMfaPending(true);
         return;
       }
+      // Denominador de todo lo demás: sin entradas, "20 exports" no se sabe si
+      // son muchos o poquísimos. Ni el email ni el destino viajan al evento.
+      //
+      // Lo que sigue es una navegación dura, así que el evento puede quedarse
+      // sin enviar si el script de analítica todavía no había arrancado. Se
+      // acepta ese subconteo: retrasar la entrada al producto para asegurar una
+      // métrica sería exactamente el orden de prioridades equivocado.
+      registrarEvento("sesion_iniciada", { metodo: "password" });
       window.location.href = safeRedirectPath(searchParams.get("redirect"));
     } catch (err) {
       if (err instanceof ApiError) {
@@ -107,6 +116,10 @@ function LoginPageContent() {
       // La cookie de sesión ya existe, así que `apiMutate` adjunta el CSRF que
       // el login dejó puesto — este endpoint lo exige.
       await apiMutate("POST", "/api/v1/auth/totp/verify", { code: mfaCode.trim() });
+      // Única entrada de Google que este componente llega a ver: el callback
+      // vuelve aquí con `?mfa=required`. La entrada con Google **sin** segundo
+      // factor aterriza directamente en el dashboard y no se cuenta todavía.
+      registrarEvento("sesion_iniciada", { metodo: "totp" });
       window.location.href = safeRedirectPath(searchParams.get("redirect"));
     } catch (err) {
       if (err instanceof ApiError) {
@@ -141,6 +154,10 @@ function LoginPageContent() {
         password,
         display_name: displayName.trim() || undefined,
       });
+      // El alta self-service está apagada en producción, así que esto sólo se
+      // ve el día que se abra; entonces conviene poder distinguir la primera
+      // entrada de las siguientes sin tener que instrumentar nada más.
+      registrarEvento("sesion_iniciada", { metodo: "registro" });
       window.location.href = "/resumen";
     } catch (err) {
       if (err instanceof ApiError) {

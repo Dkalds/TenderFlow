@@ -46,9 +46,24 @@ function descripcionSeo(lic: LicitacionPublica): string {
   return `${partes.join(" · ")}. Anuncio oficial, plazos y lotes.`.slice(0, 160);
 }
 
+/**
+ * Metadatos de la ficha.
+ *
+ * Comparte llamada con el cuerpo de la página: Next deduplica el `fetch` dentro
+ * de la misma request, así que pedir el anuncio dos veces cuesta una.
+ *
+ * Aquí **no se captura** el fallo de la API, aunque una excepción en
+ * `generateMetadata` tumbe la página entera. Es justo lo que se busca: si no se
+ * pudo preguntar, la regeneración ISR debe fallar para que Next conserve la
+ * copia anterior. La alternativa —devolver el `noindex` de abajo cuando en
+ * realidad no sabemos si el expediente existe— es peor que un 500: le pediría a
+ * Google que desindexe una ficha viva por un timeout de red. Y capturar solo
+ * aquí tampoco arreglaría nada, porque el cuerpo lanzaría a continuación.
+ */
 export async function generateMetadata({ params }: { params: Promise<Params> }): Promise<Metadata> {
   const { ref } = await params;
   const lic = await obtenerLicitacion(ref);
+  // `null` es ausencia afirmada por la API (404/410), no "no pude saberlo".
   if (!lic) return { title: "Licitación no encontrada", robots: { index: false } };
 
   // El canonical se calcula desde el dato **actual**, no desde la URL que se
@@ -79,6 +94,11 @@ export async function generateMetadata({ params }: { params: Promise<Params> }):
 export default async function FichaLicitacion({ params }: { params: Promise<Params> }) {
   const { ref } = await params;
   const lic = await obtenerLicitacion(ref);
+
+  // 404 **solo** si la API dijo 404. Si no se pudo preguntar, `obtenerLicitacion`
+  // lanza y esta línea no se alcanza: con ISR eso conserva la ficha ya generada,
+  // y en una URL nunca generada devuelve un 500 —que Googlebot reintenta— en vez
+  // de un 404 que la borra del índice. Ver `lib/publico-api.ts`.
   if (!lic) notFound();
 
   // `lotes` es opcional en el esquema generado: Pydantic lo declara con

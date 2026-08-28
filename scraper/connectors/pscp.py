@@ -94,9 +94,55 @@ _FIELD_CANDIDATES: dict[str, tuple[str, ...]] = {
     "n_ofertas": ("ofertes_rebudes",),
 }
 
-# Fase de publicación PSCP (catalán, folded) → estado canónico PLACSP.
+# Fase de publicación PSCP (catalán, folded) → estado canónico de shared.estados.
+#
+# El vocabulario completo del dataset ybgg-dgi6 se midió contra la API viva el
+# 2026-08-27 (`$select=fase_publicacio,count(*)&$group=fase_publicacio`), junto
+# con la cobertura de los campos que deciden si una fase es una oportunidad
+# viva (`count(termini_presentacio_ofertes)`, `count(data_adjudicacio_contracte)`,
+# `count(denominacio_adjudicatari)`):
+#
+#   fase                              filas      con plazo   con adjudicatario
+#   Publicació agregada de contractes  1.720.860          0          1.714.520
+#   Formalització                         99.977     91.873             95.854
+#   Adjudicació                           58.528     38.812             53.787
+#   Execució                              40.133     38.544             37.982
+#   Anul·lació                            24.367     14.150             10.328
+#   Anunci de licitació                   12.670     12.663                  0
+#   Expedient en avaluació                 4.673      4.665                  0
+#   Anunci previ                             665          0                  0
+#   Alerta futura                            583          0                  0
+#   Consulta preliminar del mercat           441          0                  0
+#
+# Criterio aplicado: es oportunidad viva la convocatoria con plazo de
+# presentación y sin adjudicatario (licitació, avaluació) más los preavisos que
+# aún no abrieron plazo (previ, consulta preliminar, alerta futura).
+#
+# "Publicació agregada de contractes" NO lo es, y es el 93% del corpus: cero
+# filas con plazo de presentación, 99,6% con adjudicatario y fecha de
+# adjudicación, y 1.301.576 de ellas con `procediment = "Contracte menor"`. Es
+# la publicación trimestral en bloque de contratos menores YA adjudicados. Se
+# le da código propio (AGREG) en vez de ADJ porque sí está cerrada, pero
+# fundirla con los 58.528 anuncios de adjudicación reales convertiría cualquier
+# KPI de "adjudicadas" en un recuento de contratos menores catalanes.
+#
+# "Execució" es post-formalización (93,6% con adjudicatario): contrato vivo pero
+# expediente cerrado a efectos de licitar. También código propio (EJEC) para no
+# inflar RES, que en el resto del sistema significa "formalizada".
+#
+# El orden importa (match por subcadena, primero que gana) y las agujas están
+# recortadas a propósito para sobrevivir al truncado a 20 caracteres que dejó
+# el fallback antiguo en la BD: "EXPEDIENT EN AVALUAC" folded es
+# "expedient en avaluac", así que la aguja es "avaluac" y no "avaluaci". Eso
+# permite que `scripts/repair_estados_pscp.py` reutilice esta misma tabla para
+# reparar las filas históricas en vez de mantener un segundo mapeo paralelo.
 _FASE_ESTADO = (
     ("anunci previ", "PRE"),
+    ("consulta preliminar", "PRE"),
+    ("alerta futura", "PRE"),
+    ("publicacio agregada", "AGREG"),
+    ("avaluac", "EV"),
+    ("execuci", "EJEC"),
     ("previ", "PRE"),
     ("formalitzaci", "RES"),
     ("formalizaci", "RES"),
@@ -106,6 +152,11 @@ _FASE_ESTADO = (
     ("licitaci", "PUB"),
     ("anunci", "PUB"),
 )
+
+# Fases crudas ya reportadas en este proceso. El log de una fase sin mapear es
+# accionable una vez (falta una entrada en `_FASE_ESTADO`), pero si la fuente
+# renombra la fase masiva serían 1,7M de líneas idénticas por corrida.
+_fases_sin_mapeo_vistas: set[str] = set()
 
 
 def _field(record: dict[str, Any], concept: str) -> Any:
@@ -149,7 +200,24 @@ def _number(record: dict[str, Any], concept: str) -> float | None:
         return None
 
 
-def _fase_to_estado(fase: str | None) -> str | None:
+def fase_to_estado(fase: str | None) -> str | None:
+    """Fase de publicación PSCP → código canónico de :mod:`shared.estados`.
+
+    Una fase que no reconocemos devuelve ``None``, nunca el texto crudo de la
+    fuente. El fallback anterior era ``fase.strip().upper()[:20]``, y por ahí se
+    colaron al campo ``estado`` valores como ``"EXPEDIENT EN AVALUAC"`` o
+    ``"PUBLICACIÓ AGREGADA "`` (truncado a 20 caracteres, espacio final
+    incluido). El daño no era cosmético: ``GET /meta/filters`` los ofrecía como
+    opciones de filtro, y como :func:`shared.estados.abierta_sql` enumera el
+    cierre y no la apertura, esas 645k filas contaban como oportunidades vivas
+    en todos los KPIs.
+
+    ``None`` y no un código inventado: sin mapeo no tenemos evidencia de cierre,
+    y el módulo ``shared.estados`` trata el NULL como abierto a propósito ("un
+    estado nuevo desaparecería del Radar en silencio, que es el fallo más caro
+    de los dos"). La fase cruda se emite en un log estructurado para que el
+    operador sepa qué falta mapear en ``_FASE_ESTADO``.
+    """
     if not fase:
         return None
     from services.normalization import fold_text
@@ -158,7 +226,15 @@ def _fase_to_estado(fase: str | None) -> str | None:
     for needle, estado in _FASE_ESTADO:
         if needle in folded:
             return estado
-    return fase.strip().upper()[:20] or None
+    if folded not in _fases_sin_mapeo_vistas:
+        _fases_sin_mapeo_vistas.add(folded)
+        log.warning("pscp_fase_sin_mapeo", fase=fase.strip(), fuente=SOURCE_ID)
+    return None
+
+
+# Alias interno histórico: `tests/test_connectors_pscp.py` lo importa por este
+# nombre desde antes de que la función fuese parte del contrato del módulo.
+_fase_to_estado = fase_to_estado
 
 
 class PscpConnector:
@@ -327,7 +403,7 @@ class PscpConnector:
             return None  # sin objeto de contrato no hay nada que indexar
 
         organo = _text(record, "organo")
-        estado = _fase_to_estado(_text(record, "fase"))
+        estado = fase_to_estado(_text(record, "fase"))
         cpv = _text(record, "cpv")
         if cpv:
             cpv = cpv.split(",")[0].split(";")[0].strip() or None

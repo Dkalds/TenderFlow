@@ -23,6 +23,15 @@ Qué NO sale de aquí, decidido con el dueño del producto:
   ``SMEAwardedIndicator`` y marca a cualquier empresa pequeña). La tabla entera
   se queda privada.
 - Ningún campo derivado del ML ni del linaje del pipeline.
+
+**Una fila por contrato, no una por anuncio.** Las seis superficies indexables
+—``listar``, ``contar``, ``ultima_incorporacion``, los dos hubs y el sitemap—
+comparten ``_WHERE_INDEXABLE``, que además del umbral de sustancia colapsa las
+reemisiones del mismo contrato. Comparten *la constante* y no una copia cada
+una: el docstring de ``contar`` y el de ``pagina_de_sitemap`` ya explican qué
+pasa cuando dos de estas consultas discrepan (error de cobertura en Search
+Console, paginación hacia páginas vacías), y con seis call-sites la única
+defensa que aguanta es que no haya dos textos que mantener.
 """
 
 from __future__ import annotations
@@ -31,7 +40,12 @@ from typing import Any
 
 from db.database import connect_read
 from db.repositories.base import rows_to_dicts
-from db.sql_fragments import exclude_duplicados_sql
+from db.sql_fragments import (
+    FOLD_DST,
+    FOLD_SRC,
+    exclude_duplicados_sql,
+    fila_canonica_sql,
+)
 
 __all__ = ["PublicoRepository"]
 
@@ -93,17 +107,58 @@ _MIN_POR_HUB = 3
 _MIN_CARACTERES_TITULO = 25
 _MIN_CARACTERES_DESCRIPCION = 200
 
-_SUSTANCIA_SQL = (
-    f"l.titulo IS NOT NULL AND length(trim(l.titulo)) >= {_MIN_CARACTERES_TITULO} "
-    f"AND (l.importe IS NOT NULL "
-    f"OR length(coalesce(l.descripcion, '')) >= {_MIN_CARACTERES_DESCRIPCION})"
-)
 
-# Publicar un duplicado es contenido duplicado —que Google penaliza— y además
-# presenta dos veces el mismo contrato al visitante.
-_NO_DUPLICADOS_SQL = exclude_duplicados_sql("l.id_externo")
+def _sustancia_sql(alias: str) -> str:
+    """Umbral de sustancia escrito para un alias concreto.
 
-_BASE_WHERE = f"{_SUSTANCIA_SQL} AND {_NO_DUPLICADOS_SQL}"
+    Está parametrizado por alias —y no es una constante con ``l`` dentro—
+    porque el filtro de canónica necesita aplicar **el mismo** umbral a la fila
+    gemela de la subconsulta. Si divergieran, una fila demasiado pobre para
+    publicarse podría tapar a la buena y el contrato desaparecería entero.
+    """
+    return (
+        f"{alias}.titulo IS NOT NULL AND length(trim({alias}.titulo)) >= {_MIN_CARACTERES_TITULO} "
+        f"AND ({alias}.importe IS NOT NULL "
+        f"OR length(coalesce({alias}.descripcion, '')) >= {_MIN_CARACTERES_DESCRIPCION})"
+    )
+
+
+def _publicable_sql(alias: str) -> str:
+    """Sustancia + duplicado ya marcado. Lo que hace publicable a una fila."""
+    # Publicar un duplicado es contenido duplicado —que Google penaliza— y
+    # además presenta dos veces el mismo contrato al visitante.
+    no_duplicados = exclude_duplicados_sql(alias + ".id_externo")
+    return f"{_sustancia_sql(alias)} AND {no_duplicados}"
+
+
+#: Publicabilidad de la fila, sin más. Es lo que aplica `ficha`.
+_BASE_WHERE = _publicable_sql("l")
+
+# ── Contrato canónico: una fila por contrato, no una por anuncio ──────────
+# `exclude_duplicados_sql` solo excluye lo que el job de dedupe marcó como
+# `confirmed`. Ese job es *cross-fuente* y su clave es el expediente natural,
+# así que no ve el caso que de verdad ensucia esta superficie: la misma fuente
+# reemitiendo el mismo contrato con otro `id_externo` (TED acuña un
+# `publication-number` por anuncio; PSCP cae al `id` de la fila cuando el
+# registro no trae `codi_expedient`). Resultado observado en la auditoría: el
+# hub de Cataluña servía el mismo contrato dos veces en la primera página.
+#
+# De ahí que la proyección se defienda sola en vez de confiar en que el job
+# haya corrido. La cláusula se compone una sola vez y la usan las **seis**
+# superficies indexables. No es cosmética que compartan constante: si el
+# listado y el sitemap discreparan, Search Console lo reporta como error de
+# cobertura, y si `contar` discrepara del listado el hub paginaría hacia
+# páginas vacías. `ficha` se queda fuera a propósito — ver su docstring.
+#
+# Coste: ver `fila_canonica_sql`. Resumen — hash anti-join sobre las ~586k
+# filas publicables, sin índice que cubra la clave, y el listado ya no puede
+# resolver su `ORDER BY ... LIMIT` por índice. Lo paga una revalidación ISR
+# cacheada una hora, no cada visita.
+_CANONICA_SQL = fila_canonica_sql(alias="l", gemelo="l2", filtro_gemelo=_publicable_sql("l2"))
+
+#: Filtro de las seis superficies indexables. `_BASE_WHERE` es un superconjunto
+#: suyo, nunca al revés: una URL del sitemap siempre tiene ficha.
+_WHERE_INDEXABLE = f"{_BASE_WHERE} AND {_CANONICA_SQL}"
 
 # ── Resolución del slug de comunidad autónoma ─────────────────────────────
 # El hub `/licitaciones/comunidad-valenciana` recibe un slug, no el nombre. La
@@ -113,18 +168,17 @@ _BASE_WHERE = f"{_SUSTANCIA_SQL} AND {_NO_DUPLICADOS_SQL}"
 # mano divergiría del valor real de la columna en cuanto la fuente publicara
 # una grafía nueva — y el hub devolvería vacío sin que nada fallara.
 #
-# Los pares de plegado replican los de `_fold_expr` en
-# `db/repositories/aggregates.py`. Se escriben aquí en vez de importarse porque
-# allí son privados del módulo; si cambian, hay que tocar los dos sitios.
-_FOLD_SRC = "áàäâéèëêíìïîóòöôúùüûñçÁÀÄÂÉÈËÊÍÌÏÎÓÒÖÔÚÙÜÛÑÇ"
-_FOLD_DST = "aaaaeeeeiiiioooouuuuncAAAAEEEEIIIIOOOOUUUUNC"
+# Los pares de plegado viven en `db/sql_fragments.py` desde que el filtro de
+# canónica los necesita también: eran una copia local de los de `_fold_expr`
+# (`db/repositories/aggregates.py`, privados de aquel módulo) y una tercera
+# copia era una divergencia esperando a ocurrir.
 
 #: Slug de `l.ccaa` calculado en SQL, equivalente a `slugificar()` de
 #: `web/src/lib/slug.ts`. Las dos implementaciones tienen que coincidir o el
 #: enlace que genera el frontend apuntaría a un hub que no encuentra nada.
 _CCAA_SLUG_SQL = (
     "trim(both '-' from regexp_replace("
-    f"lower(translate(coalesce(l.ccaa, ''), '{_FOLD_SRC}', '{_FOLD_DST}')), "
+    f"lower(translate(coalesce(l.ccaa, ''), '{FOLD_SRC}', '{FOLD_DST}')), "
     "'[^a-z0-9]+', '-', 'g'))"
 )
 
@@ -136,10 +190,19 @@ class PublicoRepository:
         """Devuelve el anuncio público de un expediente, o ``None``.
 
         ``None`` cubre tres casos que para el visitante son el mismo 404: el
-        expediente no existe, es un duplicado no canónico, o no supera el
-        umbral de sustancia. Que un expediente delgado devuelva 404 y no una
-        página pobre es intencionado — es la mitad de la defensa contra el
-        contenido delgado; la otra mitad es que tampoco entra en el sitemap.
+        expediente no existe, es un duplicado ya marcado, o no supera el umbral
+        de sustancia. Que un expediente delgado devuelva 404 y no una página
+        pobre es intencionado — es la mitad de la defensa contra el contenido
+        delgado; la otra mitad es que tampoco entra en el sitemap.
+
+        Aplica ``_BASE_WHERE`` y **no** el filtro de canónica de las superficies
+        indexables, que es un subconjunto suyo. La asimetría es a favor de
+        seguridad y va en el único sentido que no rompe nada: toda URL del
+        sitemap tiene ficha. Al revés —404 en algo que el índice ya conoce—
+        sería una oleada de errores de cobertura en Search Console. La fila
+        gemela no canónica sigue respondiendo 200, pero no la enlaza nadie ni
+        entra en el sitemap, así que no compite por indexación. Marcarla con
+        ``rel=canonical`` es trabajo del frontend, no de esta capa.
         """
         sql = f"SELECT {_SELECT_PUBLICO} FROM licitaciones l WHERE l.id_externo = %s AND {_BASE_WHERE}"
 
@@ -176,8 +239,13 @@ class PublicoRepository:
         desplazamiento: int = 0,
         conn: Any | None = None,
     ) -> list[dict[str, Any]]:
-        """Listado público para los hubs, del más reciente al más antiguo."""
-        condiciones = [_BASE_WHERE]
+        """Listado público para los hubs, del más reciente al más antiguo.
+
+        Una fila por contrato: el filtro de canónica impide que el mismo
+        anuncio reemitido aparezca dos veces en la misma página, que es lo que
+        hacía el hub de Cataluña.
+        """
+        condiciones = [_WHERE_INDEXABLE]
         params: list[Any] = []
 
         if ccaa_slug:
@@ -219,8 +287,13 @@ class PublicoRepository:
         más y deducir si hay siguiente— deja al hub sin poder decir cuántas hay
         en total ni enlazar a la última página, y el resultado se cachea una
         hora en el CDN, así que un ``COUNT`` por hub y hora es despreciable.
+
+        Cuenta contratos canónicos, no filas. Es el mismo número que la landing
+        publica como "expedientes publicables": antes contaba también cada
+        reemisión, y con Cataluña aportando el 96,6% del corpus la cifra iba
+        inflada por la republicación masiva de una sola fuente.
         """
-        condiciones = [_BASE_WHERE]
+        condiciones = [_WHERE_INDEXABLE]
         params: list[Any] = []
         if ccaa_slug:
             condiciones.append(f"{_CCAA_SLUG_SQL} = %s")
@@ -257,10 +330,12 @@ class PublicoRepository:
 
         La columna es ``TEXT`` con ISO 8601 UTC (``now_utc_iso``), cuyo orden
         lexicográfico coincide con el cronológico, así que ``MAX`` es correcto
-        sin castear. El filtro es el mismo ``_BASE_WHERE`` que ``contar``: el
-        dato tiene que hablar del corpus que se publica, no de la tabla entera.
+        sin castear. El filtro es el mismo ``_WHERE_INDEXABLE`` que ``contar``:
+        el dato tiene que hablar del corpus que se publica, no de la tabla
+        entera — y una reemisión que no llega a página tampoco puede acreditar
+        frescura, porque el visitante no puede abrirla.
         """
-        sql = f"SELECT MAX(l.fecha_extraccion) FROM licitaciones l WHERE {_BASE_WHERE}"
+        sql = f"SELECT MAX(l.fecha_extraccion) FROM licitaciones l WHERE {_WHERE_INDEXABLE}"
 
         def _consultar(c: Any) -> str | None:
             fila = c.execute(sql).fetchone()
@@ -282,7 +357,7 @@ class PublicoRepository:
         """
         sql = (
             f"SELECT {_CCAA_SLUG_SQL} AS slug, max(l.ccaa) AS nombre, COUNT(*) AS total "
-            f"FROM licitaciones l WHERE {_BASE_WHERE} AND l.ccaa IS NOT NULL "
+            f"FROM licitaciones l WHERE {_WHERE_INDEXABLE} AND l.ccaa IS NOT NULL "
             f"GROUP BY slug HAVING COUNT(*) >= {_MIN_POR_HUB} "
             "ORDER BY total DESC"
         )
@@ -299,7 +374,7 @@ class PublicoRepository:
         """Códigos CPV con volumen suficiente para tener página."""
         sql = (
             "SELECT l.cpv AS codigo, COUNT(*) AS total "
-            f"FROM licitaciones l WHERE {_BASE_WHERE} AND l.cpv IS NOT NULL "
+            f"FROM licitaciones l WHERE {_WHERE_INDEXABLE} AND l.cpv IS NOT NULL "
             f"AND l.cpv <> '' GROUP BY l.cpv HAVING COUNT(*) >= {_MIN_POR_HUB} "
             "ORDER BY total DESC"
         )
@@ -324,10 +399,16 @@ class PublicoRepository:
         El orden es por ``id_externo`` y no por fecha: la partición tiene que
         ser estable entre ejecuciones o un expediente saltaría de fichero cada
         vez que se republica, y el mismo tramo devolvería URLs distintas.
+
+        La misma exigencia de estabilidad recae sobre el filtro de canónica, y
+        por eso su criterio de desempate termina en ``id_externo``: elegir la
+        canónica "por cualquiera de las dos" haría que la URL de un contrato
+        cambiara entre regeneraciones del sitemap, que es exactamente lo que
+        este orden existe para evitar.
         """
         sql = (
             "SELECT l.id_externo, l.ccaa, l.titulo, l.fecha_extraccion "
-            f"FROM licitaciones l WHERE {_BASE_WHERE} "
+            f"FROM licitaciones l WHERE {_WHERE_INDEXABLE} "
             "ORDER BY l.id_externo LIMIT %s OFFSET %s"
         )
         params = (max(1, min(tamano, 50_000)), max(0, desplazamiento))

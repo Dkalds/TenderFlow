@@ -208,6 +208,14 @@ def detect_project_type(text: str | None) -> str:
 
 
 # ── Decoder estados PLACSP ─────────────────────────────────────────────
+# Tiene que cubrir `shared.estados.ESTADOS_CANONICOS` entero: desde que
+# `api/routes/meta.py` recorta el selector con `filtrar_estados_canonicos`, un
+# código canónico sin etiqueta llega crudo a la interfaz —el usuario lee
+# literalmente "AGREG"— y arrastra a las tablas de color y de estilo del
+# frontend, que están indexadas por la etiqueta castellana. Eso es la regresión
+# que `web/src/lib/estados.ts` documenta haber arreglado una vez ("el scatter
+# pintaba sus mil puntos del mismo color bajo el rótulo «color por estado»").
+# `tests/test_estados_labels.py` impide que vuelvan a divergir.
 ESTADO_LABELS: dict[str, str] = {
     "PUB": "Publicada",
     "EV": "Evaluación",
@@ -216,6 +224,13 @@ ESTADO_LABELS: dict[str, str] = {
     "ANUL": "Anulada",
     "PRE": "Anuncio previo",
     "CREA": "Creada",
+    # Los dos de la PSCP catalana. Nombrados por lo que son y no por su efecto
+    # ("Cerrada"), que es lo que justifica que tengan código propio en vez de
+    # reutilizar ADJ/RES: son 1,7 M de contratos menores agregados frente a
+    # 58.528 anuncios de adjudicación reales, y los KPIs competitivos lo
+    # distinguen.
+    "AGREG": "Publicación agregada",
+    "EJEC": "En ejecución",
 }
 
 

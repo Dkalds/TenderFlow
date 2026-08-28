@@ -64,6 +64,16 @@ export default defineConfig({
       // una medición: subir el piso a un número no medido es justo lo que deja
       // CI en rojo. Súbanse los cuatro globales cuando el job `frontend` publique
       // su propio número, dejando el buffer de ~2-3 puntos de siempre.
+      //
+      // 2026-08-27: quinto intento, mismo desenlace. `vitest run --coverage`
+      // muere con `Timeout terminating forks worker` sobre los 109 ficheros —con
+      // el pool `forks` por defecto y también con `--pool=threads
+      // --no-file-parallelism`— y remata con «no tests» y 0% en las cuatro
+      // métricas, que es cobertura falsa, no cobertura cero. Los tests nuevos de
+      // esta tanda (ida y vuelta del ámbito por la URL en
+      // `lib/__tests__/filters.test.ts`, y los desenlaces del stream de `/ask`
+      // en `ask-stream.test.ts`) pasan ejecutados en solitario, pero un fichero
+      // que pasa no es un denominador global: los pisos siguen sin tocarse.
       thresholds: {
         statements: 38,
         branches: 28,

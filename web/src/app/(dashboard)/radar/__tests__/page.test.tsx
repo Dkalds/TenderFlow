@@ -376,3 +376,86 @@ describe("RadarPage", () => {
     expect(screen.getByRole("status")).toHaveTextContent(/histórico completo/);
   });
 });
+
+/**
+ * Lo que se puede fijar del Radar en móvil **desde jsdom**, que no tiene
+ * layout: no hay anchos, ni media queries, ni `getBoundingClientRect` real, así
+ * que "no hay scroll horizontal a 375 px" y "el botón mide 36 px" solo se
+ * pueden comprobar en un navegador — eso vive en `e2e/responsive.spec.ts`.
+ *
+ * Lo que sí se puede fijar aquí, y es lo que de verdad se rompe con el tiempo,
+ * es la **forma**: que la ficha y la fila sigan siendo un solo árbol (nadie ha
+ * duplicado la lista en dos ramas que puedan divergir), que las clases táctiles
+ * existan en la base y no solo tras `md:`, y que lo que se oculta esté oculto a
+ * partir de `md` y no al revés. Son aserciones sobre clases, con todo lo que
+ * eso tiene de proxy; se declaran como tal en vez de disfrazarse de test de
+ * comportamiento.
+ */
+describe("RadarPage en móvil", () => {
+  function clases(node: Element): string[] {
+    return node.className.split(/\s+/).filter(Boolean);
+  }
+
+  it("una señal es una fila, no dos árboles que puedan divergir", () => {
+    radarState.data = {
+      items: [
+        tender({ id_externo: "LIC-1" }),
+        tender({ id_externo: "LIC-2" }),
+        tender({ id_externo: "LIC-3" }),
+      ],
+      signals: SIGNALS_SANAS,
+    };
+
+    const { container } = renderRadar();
+
+    // Si alguien resuelve el móvil con una segunda lista (`md:hidden` + `hidden
+    // md:block`), aquí saldrían seis: la ficha y la fila dejan de tener una
+    // única fuente y empiezan a divergir en silencio.
+    expect(container.querySelectorAll("[data-active]")).toHaveLength(3);
+    expect(container.querySelectorAll('[data-slot="radar-acciones"]')).toHaveLength(3);
+  });
+
+  it("las acciones de una fila no dependen de haberla seleccionado antes", () => {
+    // En escritorio se revelan al seleccionar/hover, que en táctil convierte
+    // descartar en dos toques. La ocultación tiene que vivir tras `md:`.
+    radarState.data = {
+      items: [tender({ id_externo: "LIC-1" }), tender({ id_externo: "LIC-2" })],
+      signals: SIGNALS_SANAS,
+    };
+
+    const { container } = renderRadar();
+    const acciones = container.querySelectorAll('[data-slot="radar-acciones"]');
+    const inactiva = acciones[1];
+
+    expect(clases(inactiva)).toContain("md:opacity-0");
+    expect(clases(inactiva)).toContain("md:pointer-events-none");
+    expect(clases(inactiva)).not.toContain("opacity-0");
+    expect(clases(inactiva)).not.toContain("pointer-events-none");
+  });
+
+  it("el descarte y el «Abrir» se dimensionan para el pulgar antes de encogerse", () => {
+    renderRadar();
+
+    // 36×36 en la base; los 26 px de la consola quedan tras `md:`. El mínimo de
+    // WCAG 2.5.8 son 24×24, que se cumple en ambos, pero se falla con el dedo.
+    const descartar = screen.getByRole("button", { name: "Descartar Mantenimiento SAP" });
+    expect(clases(descartar)).toEqual(expect.arrayContaining(["h-9", "w-9", "md:h-6.5", "md:w-6.5"]));
+
+    const seguir = screen.getByRole("button", { name: "Seguir Mantenimiento SAP" });
+    expect(clases(seguir)).toEqual(expect.arrayContaining(["h-9", "w-9", "md:h-6.5", "md:w-6.5"]));
+
+    const abrir = screen.getByRole("button", { name: "Abrir" });
+    expect(clases(abrir)).toEqual(expect.arrayContaining(["h-9", "md:h-6.5"]));
+  });
+
+  it("la cabecera de columnas no se cuela en la ficha, donde no hay columnas", () => {
+    const { container } = renderRadar();
+    const cabecera = container.querySelector('[data-slot="radar-cabecera"]');
+
+    expect(cabecera).not.toBeNull();
+    expect(clases(cabecera!)).toContain("hidden");
+    expect(clases(cabecera!)).toContain("md:grid");
+    // La rejilla entera es de escritorio: ni una columna sin prefijo.
+    expect(clases(cabecera!).filter((c) => c.startsWith("grid-cols-"))).toHaveLength(0);
+  });
+});

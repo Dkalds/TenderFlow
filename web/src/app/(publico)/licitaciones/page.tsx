@@ -47,6 +47,14 @@ export default async function IndiceLicitaciones() {
 
   // Un índice sin nada que indexar es contenido delgado. Mejor 404 que una
   // página vacía que Google cuente contra la calidad del dominio.
+  //
+  // La condición dice lo que parece **desde que `obtenerHubs` distingue "no hay
+  // hubs" de "no pude preguntar"** (ver `lib/publico-api.ts`). Antes no: un
+  // fallo de red devolvía la misma lista vacía, y como esta ruta es ISR, la
+  // revalidación que pillaba la API fría sustituía el índice bueno por un 404
+  // que se servía durante la hora siguiente. Ahora ese caso lanza: la
+  // regeneración falla, Next conserva la copia anterior y lo reintenta. Este
+  // `notFound()` solo se ejecuta cuando el backend afirmó que no hay hubs.
   if (ccaa.length === 0) notFound();
 
   const migas = [

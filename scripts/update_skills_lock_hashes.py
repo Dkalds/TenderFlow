@@ -25,8 +25,18 @@ LOCK_PATH = ROOT / "skills-lock.json"
 
 
 def tree_hashes(root: Path) -> dict[str, str]:
+    """Gemelo exacto de ``scripts/check_agent_docs.py::tree_hashes``.
+
+    Los dos tienen que calcular lo mismo o el lock que escribe este script no
+    lo valida aquél. La normalización de finales de línea a LF está explicada
+    allí (``contenido_normalizado``): sin ella el hash depende de cómo hizo el
+    checkout cada máquina, y en Windows el lock quedaba permanentemente
+    «desactualizado» sin que nadie hubiera tocado un skill.
+    """
     return {
-        path.relative_to(root).as_posix(): hashlib.sha256(path.read_bytes()).hexdigest()
+        path.relative_to(root).as_posix(): hashlib.sha256(
+            path.read_bytes().replace(b"\r\n", b"\n")
+        ).hexdigest()
         for path in sorted(root.rglob("*"))
         if path.is_file()
     }

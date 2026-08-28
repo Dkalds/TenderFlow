@@ -1,10 +1,21 @@
 # Auditoría UX/UI del frontend
 
-Revisión crítica de `web/` (Next.js 16, App Router) hecha el 2026-08-01. Las
-cifras del original —28 rutas de dashboard, ~27k LOC de TSX— se quedaron atrás
-enseguida: a 2026-08-10 son 33 rutas y ~44,7k LOC de TS/TSX. Prioriza por daño al usuario, no por
-esfuerzo. La **Ola 1** ya está implementada; el resto está priorizado abajo y
-replicado en [IMPROVEMENT_BACKLOG.md](IMPROVEMENT_BACKLOG.md).
+Revisión crítica de `web/` (Next.js 16, App Router) hecha el 2026-08-01, repasada
+el 2026-08-27. Prioriza por daño al usuario, no por esfuerzo. La **Ola 1** ya está
+implementada; el resto está priorizado abajo y replicado en
+[IMPROVEMENT_BACKLOG.md](IMPROVEMENT_BACKLOG.md).
+
+**Tamaño, medido el 2026-08-27:** 43 `page.tsx` y **57.438 líneas** de TS/TSX en
+`web/src` excluyendo `src/generated/api.d.ts` (14.109 líneas más, generadas por
+codegen: contarlas infla el número sin que nadie las escriba). El árbol de
+navegación son **14 espacios de consola** (`lib/console-spaces.ts`), que absorben
+como `?vista=` las rutas heredadas.
+
+> Este documento ha citado tres juegos de cifras distintos —"28 rutas / ~27k LOC",
+> luego "33 rutas / ~44,7k"— sin decir nunca qué se contaba. De ahí la nota de
+> arriba: **una cifra sin su denominador envejece mal y no se puede reproducir**.
+> Si una cifra no se puede volver a medir con un comando, se retira en vez de
+> arrastrarla; es lo mismo que esta auditoría le exige al producto.
 
 Documentos hermanos, que esta auditoría no repite:
 [frontend-data-invariants.md](frontend-data-invariants.md) (ADR-014) y
@@ -18,15 +29,20 @@ La disciplina técnica del frontend está por encima de la media y está
 documentada: tokens de diseño en `web/src/app/globals.css`, un manual de
 movimiento con presupuestos de duración reales, invariantes de integridad
 analítica **bloqueantes en CI**, `eslint-plugin-jsx-a11y` en `error`, overlays
-sobre Radix con focus trap, y `lib/navigation.ts` como fuente única del árbol de
-navegación con un contrato por página de qué filtros aplica de verdad.
+sobre Radix con focus trap, y un registro único del árbol de navegación con un
+contrato por página de qué filtros aplica de verdad.
 
-El problema no es falta de rigor. Es que **el producto está a mitad de una
-migración de modelo mental y esa costura es visible para el usuario**. El
-comentario de `lib/navigation.ts` lo dice: *"Legacy analytical routes stay in
-SECTIONS beneath Mercado … during the gradual migration"*. La migración no ha
-terminado, y mientras tanto conviven dos arquitecturas de información, dos
+El problema, **cuando se escribió esta auditoría**, no era falta de rigor: era
+que el producto estaba a mitad de una migración de modelo mental y esa costura se
+veía. El comentario de entonces en `lib/navigation.ts` lo decía —*"Legacy
+analytical routes stay in SECTIONS beneath Mercado … during the gradual
+migration"*— y mientras tanto convivían dos arquitecturas de información, dos
 lenguajes visuales de página y varias fuentes de verdad para el mismo dato.
+
+**Esa migración terminó el 2026-08-03** (punto 2 de abajo): hoy hay un solo
+registro, `lib/console-spaces.ts`, y `lib/navigation.ts` queda como catálogo de
+páginas y contratos de filtros. El diagnóstico de esta sección se conserva porque
+explica de dónde vienen los cinco problemas de abajo, no porque siga vigente.
 
 Eso importa más aquí que en otro producto: TenderFlow vende **confianza en el
 dato**. Cada incoherencia de formato o de etiquetado se cobra en credibilidad,
@@ -75,7 +91,7 @@ el top-24 del corpus abierto, no una ventana cronológica reordenada. Y el
 descarte es server-side (`/api/v1/radar/dismissals`, migración v76): recargar
 conserva el triaje.
 
-### 2 · Dos arquitecturas de información, tres componentes contando historias distintas — **P1** ◐ parcialmente resuelto
+### 2 · Dos arquitecturas de información, tres componentes contando historias distintas — **P1** ✅ resuelto
 
 `lib/navigation.ts` declara dos árboles: `PRODUCT_SPACES` (Radar / Oportunidades
 / Mercado) y `SECTIONS` (12 secciones analíticas). Los tres componentes de
@@ -101,18 +117,18 @@ descarte; breadcrumb con los tres niveles reales, colapsando el nivel que
 duplique a un vecino; sidebar colapsada como rail de iconos con Tooltip y nombre
 accesible; preferencia de colapso persistida.
 
-**Pendiente (P1, backlog):** la unificación de verdad — fundir `PRODUCT_SPACES`
-y `SECTIONS` en un solo árbol. Mientras existan dos, "Mercado" es a la vez un
-espacio y una sección dentro de sí mismo, y el breadcrumb tiene que colapsar ese
-nivel para no decir "Mercado › Mercado › Órganos". Toca las 28 rutas; merece su
-propia rama.
+**Cerrado del todo (2026-08-03).** La unificación se hizo: `CONSOLE_SPACES` +
+`SPACE_VIEWS` (`lib/console-spaces.ts`) son la única fuente, y el cromo heredado
+—`top-nav`, `sidebar`, `global-filter-bar`, `breadcrumb`, `page-tabs`, `kpi-bar`
+y `PRODUCT_SPACES`/`SECTIONS`— se demolió con sus tests. Ya no hay dos árboles,
+así que "Mercado" ha dejado de estar dentro de sí mismo y el breadcrumb no tiene
+ningún nivel que colapsar. Hoy son **14 espacios** que absorben las rutas
+heredadas como `?vista=` (medido el 2026-08-27).
 
-**Corregido el 2026-08-07:** este recuento quedó obsoleto con la migración a
-espacios de consola. Hoy son **13 espacios que absorben 19 vistas**, y solo tres
-rutas quedaban fuera de la navegación: `/licitadores` (redirect deliberado) y
-`ecosistema-partners` / `red-organo-empresa`, dos páginas completas a las que no
-se llegaba desde ninguna parte — rescatadas como vistas experimentales en el
-commit `0f55f2c`.
+Antes de eso, tres rutas quedaban fuera de la navegación: `/licitadores`
+(redirect deliberado) y `ecosistema-partners` / `red-organo-empresa`, dos páginas
+completas a las que no se llegaba desde ninguna parte — rescatadas como vistas
+experimentales en el commit `0f55f2c`.
 
 ### 3 · Cinco formateadores de moneda, y el más visible estaba mal — **P1** ✅ resuelto en Ola 1
 
@@ -177,49 +193,65 @@ pesaban más de lo que parece:
 | **`<Toaster />` vivía en `(dashboard)/layout.tsx`**: todo `toast()` disparado en `/login` se descartaba en silencio | ✅ montado en `Providers`, que hoy cuelga de `(dashboard)/layout.tsx` **y** de `login/layout.tsx`. Pasó por el layout raíz, pero desde ahí lo heredaba también la superficie pública, que no dispara toasts y no debía cargar el runtime del dashboard. El invariante es el de siempre: un `toast()` en `/login` tiene que verse |
 | **Atajos que secuestraban la escritura**: el guard solo excluía `input`/`textarea`, así que con el foco en un `contenteditable` o un listbox de Radix pulsar `1` te sacaba de la página. Y los 5 atajos apuntaban a páginas legacy, ninguno a Radar ni Oportunidades | ✅ guard ampliado, modificadores respetados, `1`–`6` incluyen los espacios primarios |
 | **Atajos indescubribles**: solo ⌘K estaba anunciado | ✅ overlay `?`, derivado de `NUMBER_SHORTCUTS` para que no driftee |
-| **192 `title=` nativos** frente a un `Tooltip` de Radix ya construido. El `title` nativo no se dispara con teclado | ◐ migrados los de la cabecera; el resto pendiente |
+| **192 `title=` nativos** frente a un `Tooltip` de Radix ya construido. El `title` nativo no se dispara con teclado | ◐ migrados los de la cabecera y los controles icon-only; **quedan 137** (medidos el 2026-08-27), sobre todo celdas de tabla y textos truncados |
 | **Ortografía castellana rota** en decenas de cadenas visibles, incluida la meta description del sitio | ◐ hechas las superficies de mayor visibilidad; el barrido completo queda pendiente |
 
 ---
 
 ## Hallazgos menores, no cubiertos por la Ola 1
 
+Estado revisado contra el código el 2026-08-27. Los hallazgos que citaban
+ficheros hoy inexistentes se han reescrito o retirado: un hallazgo que apunta a
+un fichero borrado hace que quien lo coja empiece por un callejón sin salida.
+
 | Hallazgo | Evidencia | Prioridad |
 |---|---|---|
-| `e2e/responsive.spec.ts` es un test vacío: asigna `_hamburger` y nunca lo usa; solo comprueba que `body` es visible. La experiencia móvil no tiene cobertura real | `web/e2e/responsive.spec.ts` | P1 |
-| `vitest.config.ts` excluye `src/app/**` de cobertura, y ahí vive la mayor parte de la lógica (12 páginas superan las 500 líneas) | `web/vitest.config.ts` | P2 |
-| Páginas gigantes sin descomponer: `mi-watchlist` 1072 LOC, `competidores` 988, `active-learning` 865. El patrón `_components/` solo se aplicó en `resumen` y `pipeline-alertas` | — | P2 |
-| `radar/page.tsx` y `oportunidades/page.tsx` están escritas en estilo comprimido (líneas de 900 caracteres con ternarios anidados). Son los dos ficheros más difíciles de modificar con seguridad, y los más nuevos | — | P2 |
-| El selector de organización de la sidebar es un `<select>` nativo estilado, mientras el resto de controles son Radix: comportamiento de teclado y lector distinto | `layout/sidebar.tsx` | P2 |
+| ~~`e2e/responsive.spec.ts` es un test vacío~~ ✅ **resuelto** (`197df83`): tres casos reales de drawer móvil y rail de escritorio, sin `.or()` ni condicionales | `web/e2e/responsive.spec.ts` | — |
+| ~~`vitest.config.ts` excluye `src/app/**` de cobertura~~ ✅ **corregido el 2026-08-10**: solo se excluyen `layout/loading/error/not-found`, y `src/app/**/_hooks/*.ts` se mide. Lo que sigue abierto es la cobertura en sí, no el denominador | `web/vitest.config.ts` | ver backlog |
+| Páginas grandes sin descomponer. **Las tres que citaba esta fila ya bajaron** al extraer su lógica a `_hooks/`: `detalle` 929 (era 1.015), `mi-watchlist` 917 (1.044), `competidores` 867 (1.047). Siguientes por tamaño, aún sin `_hooks/`: `tecnologias` 734, `organos` 649, `radar` 635 | medido 2026-08-27 | P2 |
+| ~~`radar/page.tsx` y `oportunidades/page.tsx` en estilo comprimido~~ — retirado: `oportunidades` son hoy 245 líneas y `radar` 635, ambas reescritas desde entonces. La afirmación sobre su legibilidad no se ha vuelto a comprobar, así que se retira en vez de repetirse | — | — |
+| El selector de organización es un `<select>` nativo estilado, mientras el resto de controles son Radix: comportamiento de teclado y lector distinto. **Vive ahora en el rail**, no en la sidebar (demolida) | `layout/console-rail.tsx:125` | P2 |
 | ~~Los filtros de CCAA / tecnología / estado son `<select>` nativos~~ ✅ resuelto 2026-08-07 (`352db1b`): `ui/multi-select.tsx` con Popover, búsqueda que ignora tildes (`foldText`) y quitar desde el propio control | `layout/scope-bar.tsx` | — |
-| La sidebar es `hidden md:flex`: por debajo de `md` el conmutador de espacios de producto no existe, solo el drawer del TopNav | `layout/sidebar.tsx` | P2 |
-| `next.config.ts` describe la CSP como Report-Only, pero `middleware.ts` la aplica: comentario obsoleto respecto al código | `web/next.config.ts` | P3 |
-| `/licitadores` conserva `layout.tsx` (con `metadata.title`) y `loading.tsx` para una ruta que solo hace `redirect("/competidores")` | `app/(dashboard)/licitadores/` | P3 |
+| Por debajo de `md` el rail de espacios es `hidden` y el drawer es la única navegación. **Ya no es un agujero de verificación** —el e2e lo cubre—, sino de diseño: lo que hay detrás del drawer son tablas densas pensadas para escritorio | `layout/console-rail.tsx:196,242` | P2 |
+| ~~`next.config.ts` describe la CSP como Report-Only~~ ✅ **el comentario ya dice lo contrario** ("no Report-Only", `next.config.ts:11`) | `web/next.config.ts` | — |
+| ~~`/licitadores` conserva `layout.tsx` y `loading.tsx`~~ ✅ **resuelto**: el directorio solo contiene `page.tsx` | `app/(dashboard)/licitadores/` | — |
 
 **Corrección respecto a una lectura inicial:** `/licitadores` **no** es una ruta
 huérfana. Es un *redirect* deliberado a `/competidores` (consolidación
 documentada en su RFC) que existe para no romper deep-links guardados; su
-ausencia de `navigation.ts` es correcta.
+ausencia del registro de navegación es correcta.
 
 ---
 
-## Decisiones de producto abiertas
+## Decisiones de producto
 
-No las toma un agente. Las dos condicionan trabajo futuro:
+**1. ¿El producto es español-only? — DECIDIDA: sí, y ejecutada.** La capa de i18n
+vestigial ya no existe: `lib/i18n.ts` y `public/locales/` están **borrados** del
+árbol, y la retirada quedó documentada donde deja huella, en `web/src/proxy.ts`
+("`/locales` salió con la retirada de i18n (el producto es español-only): era una
+ruta exenta del control de sesión sin nada detrás"). Se ejecutó en `b070c0e`
+(PR #154, 2026-08-08), o sea que esta auditoría llevaba **casi tres semanas
+listando como pregunta abierta algo que ya tenía respuesta en el código**.
 
-**1. ¿El producto es español-only?** Hoy hay una capa de i18n vestigial:
-`lib/i18n.ts` + `public/locales/{es,en}.json` con 40 claves cada uno, `t()`
-usado en 12 ficheros y casi siempre para una o dos cadenas, **ningún selector de
-idioma en ninguna parte**, y `<html lang="es">` fijo. `en.json` es inalcanzable.
-Si la respuesta es "sí, español-only", lo honesto es retirar la capa en vez de
-mantener algo que aparenta i18n y no lo es. Si es "no", hay que completarla —
-extraer ~2.000 cadenas hardcodeadas—, no ampliarla ad hoc.
+Consecuencia para el trabajo futuro, que es lo único que esta sección tiene que
+decir ahora: **no se añaden `t()` ni ficheros de locale ad hoc**. Si alguna vez
+se quiere un segundo idioma, es una decisión nueva y empieza por extraer las
+cadenas, no por reintroducir media capa.
 
-**2. ¿Se unifican los dos árboles de navegación, y cuándo?** La migración lleva
-abierta desde que se introdujeron los espacios de producto. Mientras siga
-abierta, cualquier arreglo de navegación es contención: el breadcrumb tiene que
-colapsar niveles duplicados porque "Mercado" es a la vez espacio y sección, y la
-sidebar mantiene dos listas con criterios distintos.
+**2. ¿Se unifican los dos árboles de navegación, y cuándo? — DECIDIDA y
+ejecutada.** `CONSOLE_SPACES` + `SPACE_VIEWS` son hoy la única fuente y
+`PRODUCT_SPACES`/`SECTIONS` desaparecieron (ver _Cerrados_ del backlog,
+2026-08-03). Se conserva el párrafo de abajo porque explica por qué el breadcrumb
+de entonces tenía que colapsar niveles, no porque siga habiendo nada que decidir.
+
+Mientras estuvo abierta, cualquier arreglo de navegación fue contención: el
+breadcrumb tenía que colapsar niveles duplicados porque "Mercado" era a la vez
+espacio y sección, y la sidebar mantenía dos listas con criterios distintos.
+
+**Las decisiones que sí siguen abiertas hoy no son de UI**, y viven en el
+backlog con su coste declarado: el `plan: free` de la API frente al SLO del 99 %,
+y si la allowlist de acceso deja de ser una variable de entorno editada a mano
+(esa además necesita RFC: toca auth y migración).
 
 ---
 
@@ -227,16 +259,21 @@ sidebar mantiene dos listas con criterios distintos.
 
 **Ola 1 — hecha.** Los cuatro ejes de arriba, en cuatro commits temáticos.
 
-**Ola 2 — confianza y cobertura** (recomendada a continuación):
-1. Endpoint de dismiss del Radar + `fecha_limite`/`tecnologia` en
-   `ScoredOpportunity`, y cambiar el Radar a `scoring?limit=N`. Cierra el P0 de
-   verdad.
-2. Convertir `e2e/responsive.spec.ts` en un test real.
-3. Filtros multi-select sobre `ui/select.tsx` en vez de `<select>` nativos.
+**Ola 2 — hecha del todo.** Sus tres puntos están cerrados y verificados en el
+código el 2026-08-27:
+1. Dismiss del Radar server-side y `GET /analytics/scoring?limit=24` como fuente
+   única (commits `8eb7450`/`ad2574e`, squash `b070c0e`) — ver el punto 1 arriba.
+2. `e2e/responsive.spec.ts` es un test real: tres casos a 375×812 y 1440×900 que
+   exigen el drawer, un destino concreto (`/radar`) y su cierre, **sin `.or()`,
+   sin `if`, sin `.catch()`**. Cae si se elimina el drawer (`197df83`).
+3. `ui/multi-select.tsx` sustituye a los `<select>` nativos de los filtros
+   (`352db1b`, squash `b070c0e`). Queda **uno** sin migrar, el de organización
+   del rail (`console-rail.tsx:125`); está en el backlog con la experiencia móvil.
 
-**Ola 3 — el cambio estructural:** unificar `PRODUCT_SPACES` y `SECTIONS` en un
-solo árbol y rehacer sidebar/breadcrumb/tabs encima. Es el de mayor impacto y el
-que toca las 28 rutas.
+**Ola 3 — hecha.** La unificación de árboles se ejecutó el 2026-08-03: hoy hay un
+solo registro (`CONSOLE_SPACES`/`SPACE_VIEWS`) y el cromo heredado se demolió.
 
-**Continuo:** migración de los `title=` restantes a `Tooltip`, barrido de
-ortografía, descomposición de las páginas gigantes.
+**Continuo:** migración de los `title=` restantes a `Tooltip` (**137** hoy, desde
+los 192 del original), barrido de ortografía, y descomposición de las páginas
+grandes — la vía que funcionó es extraer a `_hooks/`, hecha en `detalle`,
+`mi-watchlist` y `competidores`.

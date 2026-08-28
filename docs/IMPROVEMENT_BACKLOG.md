@@ -9,6 +9,15 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 - Si añadís un ítem nuevo, copiá la plantilla del final.
 - Al cerrarlo, no lo dejes tachado aquí: **movélo entero a la sección _Cerrados_** del final con la fecha y el commit/PR que lo resolvió. Las secciones P1/P2/P3 contienen **solo ítems abiertos**.
 
+## Repaso del 2026-08-27 (auditoría de producto/UX)
+
+Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citaban. Lo que cambió:
+
+- **Cerrado y archivado:** el P1 de los enlaces caducados de PLACSP — entregado entero en `c230e63` (PR #191), no en los tres SHAs que el ítem citaba, que nunca llegaron a `master`. Ficha completa en [el archivo](archive/IMPROVEMENT_BACKLOG_CERRADOS.md).
+- **Altas:** dos P1 (allowlist de acceso, `plan: free` frente al SLO) y dos P2 (onboarding de primer uso, experiencia móvil). El de la allowlist nace como **RFC**, no como PR: toca auth y necesita migración.
+- **Cifras corregidas** en el P1 de cobertura del frontend: las páginas de 1.000+ líneas que citaba ya no existen.
+- **Sigue abierto y no se tocó en esta tanda:** el P0 de los backups sin copia remota (configuración de infraestructura, acción del usuario) y la pata pendiente del P1 de scoring en frío (necesita índice o materialización, o sea migración con gate humano §6).
+
 ---
 
 ## P0 — Urgente
@@ -50,23 +59,26 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 - **Files de partida:** [Makefile](../Makefile) (línea ~183), [web/vitest.config.ts](../web/vitest.config.ts)
 - **Riesgo:** bajo — envuelve un comando, no toca tests. El riesgo es el de no hacerlo: es un gate que miente en la dirección peligrosa.
 
-### [P1] Los enlaces a documentos de PLACSP caducan y el pipeline los da por muertos
-- **Área:** scraper/codice_parser.py, db/repositories/documentos.py, scraper/document_fetcher.py, db/alembic, web (bloque Documentos)
-- **Problema:** PLACSP publica los adjuntos en dos familias de URI y solo una es estable. El 82% de las **37.953** filas de `documentos` (medido en prod el 2026-08-18) usa `FileSystem/servlet/GetDocumentByIdServlet?cifrado=…&DocumentIdParam=<token 128 chars>`, un token que la plataforma **re-emite**: cuando caduca, el servlet devuelve `Error 500: NullPointerException` en vez de 404. El 18% restante (`wps/wcm/…/docAccCmpnt?…DocumentIdParam=<uuid>`) sigue resolviendo años después. Sobre una muestra de 35 URIs reales, el 40% ya estaba muerto.
-  Lo que convierte esto en deuda estructural y no en mala suerte es que **el CODICE ya publica identidad estable por documento y el parser la ignora**: verificado sobre el feed Atom vivo (390 entries, 1.323 `DocumentReference`), el **100%** trae `<cbc:ID>` con el nombre del fichero (`PCAP.pdf`) y el **100%** trae `<cbc:DocumentHash>`, un hash del contenido que **no cambia cuando rota el token**. `parse_document_references` (scraper/codice_parser.py:172-193) solo lee `cbc:URI` y `cbc:FileName` — y `cbc:FileName` no viene nunca en los adjuntos, por eso `filename` es NULL en **37.953 de 37.953 filas**.
-  De ahí salen cuatro daños concretos:
-  1. `upsert_meta` (db/repositories/documentos.py:32-51) resuelve conflictos por `ON CONFLICT(licitacion_id, uri) DO NOTHING`. Como el token forma parte de la `uri`, un re-scrape con token nuevo **inserta fila nueva** en vez de refrescar la vieja: 262 grupos ya duplicados así (637 filas sobrantes). Ojo al diseñar el arreglo: `(licitacion_id, tipo)` **no** es identidad válida —3.997 grupos del mismo día son expedientes con varios pliegos del mismo tipo, legítimos—, pero `(licitacion_id, tipo, DocumentHash)` sí.
-  2. `list_by_licitacion` (documentos.py:83-94) ordena `created_at` ascendente, así que de un documento duplicado la UI enseña **primero el enlace más viejo**, que es justo el muerto.
-  3. El fetcher convierte fallos transitorios en definitivos: de los 2.556 documentos en `status='error'`, **1.702 (66%) fallaron solo porque el circuit breaker estaba abierto** (`descarga fallida: Timeout not elapsed yet…`) y quedaron marcados como terminales, fuera de `list_pendientes` para siempre. Otros 105 son el 500 del token caducado; ~663 son content-types no soportados (docx/zip/xml) cuyos enlaces probablemente siguen vivos; solo ~27 son fallos genuinamente definitivos.
-  4. La UI ignora el `status` que la API ya le envía (`DocumentoSummary`, api/routes/licitaciones.py:119-127): `documentos-block.tsx` pinta `href={doc.uri}` sin distinguir, y cuando no hay documentos devuelve `null` en vez de ofrecer la ficha. El fallback existe y es estable al 100%: `licitaciones.url` (deeplink `detalle_licitacion&idEvl=…`), que ya se muestra como "Ver en PLACSP" en el panel de detalle pero **no** en la pestaña Pliegos, que es justo donde está el usuario cuando pincha un enlace muerto.
-- **Acceptance criteria** (tres PRs independientes, mergeables por separado y en este orden):
-  - **PR-A · el breaker deja de fabricar errores terminales.** En `fetch_and_extract` (scraper/document_fetcher.py:264-269), `pybreaker.CircuitBreakerError` devuelve `"skipped"` y **no toca la fila** (sigue `pending`, reintentable); un `HTTPError` 500 marca error conservando el prefijo `descarga fallida: ` y añadiendo `token caducado (500)` para poder contarlos. `_run_fetch_phase` (scheduler/jobs/documentos_embeddings.py:49) inicializa `"skipped": 0`. Cambian dos asserts existentes en `tests/test_documentos_embeddings_job.py:75,78`.
-  - **PR-B · identidad estable en la ingesta.** El parser lee `cbc:ID` (como `filename`, con `cbc:FileName` teniendo precedencia si viniera) y `cbc:DocumentHash` (campo `source_hash` nuevo en `DocumentoReferencia`, db/upsert.py:188). Migración **con gate humano (AGENTS §6)**: `source_hash TEXT` + índice único parcial `(licitacion_id, tipo, source_hash) WHERE source_hash IS NOT NULL` (nace vacío: instantáneo) + reparación de las 1.702 víctimas del breaker a `pending` (precedente de data-repair en migración: `v67_pg_short_tz_offset_repair.py`). `upsert_meta` pasa a SELECT-first por licitación con bucketing en Python: refresca por hash (y **revive** `error`→`pending` solo si el detalle empieza por `descarga fallida:` y la uri cambió — los fallos de extracción no reviven), adopta identidad en filas legacy por uri exacto o por tipo único, e inserta el resto. Sin esa adopción, re-correr `scripts/backfill_documentos.py` metería decenas de miles de duplicados de golpe. Los 637 sobrantes legacy se quedan (sin hash no hay fusión segura): **no purgar sin decisión explícita**.
-  - **PR-C · la UI deja de mentir.** `list_by_licitacion` ordena `CASE tipo` (legal→technical→additional) y luego `created_at DESC`, que relega el duplicado muerto. `documentos-block.tsx` se tipa con el `DocumentoSummary` generado (existe en web/src/generated/api.d.ts:3761; hoy hay una interfaz a mano) y lee `status`: las filas en error se muestran atenuadas con la nota de que el enlace puede haber caducado, **pero conservan el enlace** —una cuarta parte de los errores son content-types que el navegador abre sin problema, romperlos sería peor—, y tanto el pie del bloque como el estado vacío ofrecen la ficha de PLACSP vía una prop `fichaUrl` nueva que `detail-inspector.tsx:352` rellena con `l.url`. No cambia el contrato API (`status` ya viaja), así que no hay codegen.
-- **Verificación post-deploy** (SQL de solo lectura contra Supabase; baselines del 2026-08-18): errores de breaker a 0 tras la migración y ≈0 a los 7 días; `source_hash` no nulo creciendo (~1,3 k referencias/día); `filename IS NOT NULL` despegando de 0; grupos multi-día sin hash sin crecer (262); reparto de `status` frente a la base (pending ~33,6 k · error 2.556 · extracted 1.735); aparición de `token caducado (500)`; y cero filas violando el índice único nuevo.
-- **Files de partida:** [scraper/codice_parser.py](../scraper/codice_parser.py) (`parse_document_references`), [db/repositories/documentos.py](../db/repositories/documentos.py) (`upsert_meta`, `list_by_licitacion`), [scraper/document_fetcher.py](../scraper/document_fetcher.py), [db/upsert.py](../db/upsert.py) (`DocumentoReferencia`), [web/src/components/documentos-block.tsx](../web/src/components/documentos-block.tsx)
-- **Fuera de alcance (deliberado):** content-types no soportados y OCR; blob storage (`storage_key` sigue reservado y NULL — el texto por página en `documento_pages` ya hace que el RAG sobreviva a la muerte del enlace); re-resolver tokens re-scrapeando la ficha HTML bajo demanda; y el throughput del backlog (`PLIEGO_FETCH_BATCH=300` frente a ~33 k pendientes). Tampoco se tocan cabeceras de navegador en el fetcher: el corpus real de errores no tiene ni un rechazo del WAF, así que no hay evidencia que lo justifique.
-- **Riesgo:** medio — PR-B cambia la semántica del upsert de un camino de ingesta diario y necesita migración (gate humano §6); PR-A y PR-C son acotados. Mitigado por el troceo en tres PRs, por los tests de caracterización del repositorio y por el fail-open que ya tiene `_persist_documentos` (scraper/connectors/base.py:212-213), que degrada un fallo de documentos a warning sin tumbar la ingesta.
+### [P1] Aprobar un acceso es editar variables de entorno a mano — decisión de auth, necesita RFC
+- **Área:** config/settings.py, api/routes/admin_solicitudes.py, render.yaml, db/ (acción del usuario + RFC)
+- **Problema:** el embudo público ya está entero salvo el último paso. `POST /publico/solicitudes-acceso` registra la petición, `GET/PATCH /admin/solicitudes-acceso` da la cola, y el aviso por correo al solicitante existe (`services/solicitudes_acceso.py::notificar_acceso_concedido`, opt-in por operación) — o sea que **la promesa de `solicitud-recibida/page.tsx` ("la respuesta llega por correo") ya se puede cumplir**, cosa que hasta la PR #215 no era cierta. Lo que sigue abierto es que **conceder el acceso no está en el producto**: la allowlist son dos strings de entorno (`OAUTH_ALLOWED_EMAILS`/`OAUTH_ALLOWED_DOMAINS`, `config/settings.py:258-259`, declaradas con `sync: false` en `render.yaml:110-113`), así que aprobar a alguien es entrar al panel de Render, editar una variable y esperar el redeploy. De ahí salen dos consecuencias: el `notificar` del PATCH es opt-in **precisamente porque el sistema no puede saber si la allowlist ya se editó** (un correo antes de tiempo manda a la persona contra un 403), y no queda rastro de quién concedió qué acceso ni cuándo.
+- **Ojo al leer esto:** la descripción de arriba se escribió contra el **working tree** del 2026-08-27, donde `api/routes/admin_solicitudes.py` y `services/solicitudes_acceso.py` estaban recién tocados y `docs/runbooks/conceder-acceso.md` sin commitear. Si ese trabajo ha aterrizado, la pata del aviso por correo ya está cerrada y lo único que queda abierto de este ítem es la allowlist; confirmá el estado del runbook antes de empezar.
+- **Por qué esto NO es un PR directo:** mover la allowlist a base de datos es (a) una **migración** —tabla nueva, gate humano de AGENTS.md §6— y (b) un cambio en el **camino de autenticación**, que según AGENTS.md §5 exige RFC antes de escribir código. Un agente que "solo" añadiera la tabla ya habría decidido por su cuenta dónde vive la verdad del acceso.
+- **Acceptance criteria:**
+  - RFC en `docs/rfc/` que decida: allowlist en BD frente a seguir en entorno; qué pasa con el fail-closed que hoy garantiza el validador de `config/settings.py` cuando ambas variables están vacías en prod; y si el PATCH pasa a conceder el acceso de verdad (y entonces `notificar` deja de ser opt-in) o se queda como cola de trabajo.
+  - Solo después: migración con OK humano, endpoint, y registro del alta en `db/audit.py` como el resto de acciones de admin.
+- **Files de partida:** [api/routes/admin_solicitudes.py](../api/routes/admin_solicitudes.py), [config/settings.py](../config/settings.py), [services/solicitudes_acceso.py](../services/solicitudes_acceso.py), [render.yaml](../render.yaml)
+- **Riesgo:** alto — es el control de acceso al producto. Un error aquí abre la aplicación o deja fuera a quien ya entraba; por eso el RFC va antes que el código.
+
+### [P1] La API de producción corre en `plan: free` y el SLO de disponibilidad dice 99 %
+- **Área:** render.yaml, docs/sli-slo.md, infraestructura (decisión del usuario, con coste)
+- **Problema:** `render.yaml:25` declara `plan: free` para `tenderflow-api`. El plan gratuito de Render hace **spin-down por inactividad**, así que la primera petición tras un rato de silencio paga el arranque en frío entero, y el contenedor tiene 512 MB — el mismo donde ya hubo un OOM (comentario de `api/app.py`). Enfrente, [docs/sli-slo.md](sli-slo.md) fija **≥ 99 % de disponibilidad a 30 días** (7,2 h/mes de presupuesto de error) y **P99 < 500 ms**. Un servicio que se apaga solo no puede firmar ninguno de los dos, y el `healthCheckPath` de `render.yaml:34` no lo arregla: mide si responde, no si estaba despierto. O se sube el plan o se corrige el SLO — mantener ambos escritos es tener un objetivo que nadie mide contra una infraestructura que no puede cumplirlo.
+- **Acceptance criteria (decisión del usuario):**
+  - Decidido y escrito: se sube el plan de `tenderflow-api`, o `docs/sli-slo.md` baja el objetivo al que el plan free sí sostiene, diciendo por qué.
+  - Si se sube el plan: `render.yaml` actualizado, y el spin-down descartado como causa en la primera lectura de disponibilidad posterior.
+- **Files de partida:** [render.yaml](../render.yaml), [docs/sli-slo.md](sli-slo.md)
+- **Relación:** comparte superficie con el P2 de `render.yaml` sin vincular al Blueprint y con el P3 de staging; si se toca el servicio, conviene decidir los tres a la vez.
+- **Riesgo:** bajo técnico, con coste económico — por eso es decisión del usuario.
 
 ### [P1] El contexto de scoring cuesta ~25 s en frío en cada instancia nueva
 - **Área:** db/repositories/aggregates.py, services/analytics/scoring_signals.py
@@ -220,13 +232,33 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 
 ### [P1] Cobertura de tests de las páginas del frontend
 - **Área:** web/src/app (tests vitest)
-- **Problema:** Con el denominador corregido el 2026-08-10 (antes se excluía `src/app/**` entero alegando que son Server Components, y 34 de 37 páginas son `"use client"`), la cobertura real del frontend es **40.2/30.4/37.5/41.6**, no el 68/63/68/70 que CI parecía exigir. Las páginas están al 0%: ahí vive la lógica de filtros, mutaciones y derivación, en ficheros de más de 1.000 líneas (`competidores` 1.047, `mi-watchlist` 1.044, `detalle` 1.015). Los pisos por carpeta de `lib`/`hooks`/`components` conservan la garantía anterior, pero el conjunto está descubierto.
+- **Problema:** Con el denominador corregido el 2026-08-10 (antes se excluía `src/app/**` entero alegando que son Server Components, y la mayoría de las páginas son `"use client"`), la cobertura real del frontend es **40.2/30.4/37.5/41.6**, no el 68/63/68/70 que CI parecía exigir. Las páginas están al 0%: ahí vive la lógica de filtros, mutaciones y derivación. Los pisos por carpeta de `lib`/`hooks`/`components` conservan la garantía anterior, pero el conjunto está descubierto.
+- **Cifras actualizadas 2026-08-27:** las tres páginas que este ítem citaba con 1.000+ líneas (`competidores` 1.047, `mi-watchlist` 1.044, `detalle` 1.015) **ya no las tienen**: hoy son `detalle` 929, `mi-watchlist` 917 y `competidores` 867, porque su lógica salió a `_hooks/` (las tres tienen ya ese directorio, y `vitest.config.ts` mide `src/app/**/_hooks/*.ts` al 99,67 % de sentencias). O sea que el segundo criterio de aceptación está a medias por las tres de arriba y sin empezar por el resto. Los porcentajes globales **no se han vuelto a medir en esta sesión** (`make web-test` no se ejecutó): los 40.2/30.4/37.5/41.6 son del 2026-08-10 y hay que releerlos antes de usarlos como baseline.
 - **Acceptance criteria:**
   - Tests de los 3 flujos críticos que siguen sin cubrir: filtros nuqs (`web/src/lib/filters.ts` ya cubierto; falta su uso desde las páginas), watchlist (`use-watchlist-items`), streaming SSE de `/ask` (`ask-stream.ts`).
-  - Extraer a hooks testeables la lógica de las páginas de 1.000+ líneas, en vez de testear el árbol entero.
+  - Seguir extrayendo a hooks testeables la lógica de las páginas más grandes, en vez de testear el árbol entero. Siguientes por tamaño tras las tres ya extraídas: `tecnologias` 734, `organos` 649, `radar` 635.
   - Subir los umbrales globales de `vitest.config.ts` conforme suba lo medido. **No bajar los pisos por carpeta.**
 - **Files de partida:** [web/vitest.config.ts](../web/vitest.config.ts), [web/src/lib/ask-stream.ts](../web/src/lib/ask-stream.ts)
 - **Riesgo:** bajo — solo añade tests.
+
+### [P2] La consola no tiene primer uso: se entra a 14 espacios sin que nadie explique ninguno
+- **Área:** web/src/components/layout, web/src/app/(dashboard)
+- **Problema:** no existe onboarding de ningún tipo — cero coincidencias de `onboarding` en todo `web/src`. Quien entra por primera vez aterriza en `/resumen` con el rail de 14 espacios (`web/src/lib/console-spaces.ts`) y una barra de ámbito ya aplicada, y deduce por su cuenta qué es el Radar, en qué se diferencia de Oportunidades y qué significa el score que abre cada tarjeta. En un producto que vende **confianza en el dato**, un número sin explicar la primera vez que se ve no se lee como preciso: se lee como opaco.
+- **Acceptance criteria:**
+  - Un recorrido de primer uso, descartable y que no vuelva —persistido por usuario en servidor, no en `localStorage` (invariante 2 de [frontend-data-invariants.md](frontend-data-invariants.md))— que explique al menos qué ordena el Radar, qué es el ámbito de la `scope-bar` y de dónde sale el score.
+  - Estados vacíos que enseñen en vez de solo informar: el patrón de "sin resultados" ya existe; lo que falta es que diga qué hacer.
+- **Files de partida:** [web/src/lib/console-spaces.ts](../web/src/lib/console-spaces.ts), [web/src/components/layout/console-rail.tsx](../web/src/components/layout/console-rail.tsx)
+- **Riesgo:** bajo — aditivo, sin tocar datos; el cuidado está en no fabricar explicaciones que el backend no respalde.
+
+### [P2] La experiencia móvil existe pero nadie la diseñó
+- **Área:** web/src/components/layout, web/src/app/(dashboard)
+- **Problema:** por debajo de `md` el rail de espacios es `hidden` (`console-rail.tsx:196`) y la única navegación es el drawer del `Sheet` (`console-rail.tsx:242-258`). Eso **ya está cubierto por un test real** (`web/e2e/responsive.spec.ts` a 375×812, sin `.or()` ni condicionales), así que no es un agujero de verificación: es que el contenido que hay detrás del drawer no está pensado para ese ancho — lo que llenan las páginas son tablas densas y grafos. El selector de organización del propio rail sigue además siendo un `<select>` nativo (`console-rail.tsx:125`) mientras el resto de controles son Radix: comportamiento de teclado y de lector distinto.
+- **Acceptance criteria:**
+  - Decidido y escrito qué significa "móvil" aquí: consulta puntual (leer una ficha, mirar una alerta) o consola completa. Sin esa decisión, cada página lo resuelve distinto.
+  - Las tablas de las páginas del alcance elegido tienen presentación propia por debajo de `md`, no un scroll horizontal de la de escritorio.
+  - El selector de organización pasa a Radix, alineado con `ui/multi-select.tsx`.
+- **Files de partida:** [web/src/components/layout/console-rail.tsx](../web/src/components/layout/console-rail.tsx), [web/e2e/responsive.spec.ts](../web/e2e/responsive.spec.ts)
+- **Riesgo:** bajo — presentación; sin tocar contratos ni datos.
 
 ### [P2] Extraer las vistas de `/ops` a componentes compartidos
 - **Área:** web/src/app/(dashboard)/ops
@@ -403,14 +435,14 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 - **Files de partida:** [tests/conftest.py](../tests/conftest.py)
 - **Riesgo:** medio — toca el aislamiento de toda la suite; un fallo aquí se manifiesta como tests que se contaminan entre sí.
 
-### [P3] Entorno de staging y plan de la API
+### [P3] Entorno de staging
 
 - **Área:** render.yaml, infraestructura (acción del usuario)
-- **Problema:** `render.yaml` define tres servicios, todos en `frankfurt`, ninguno de staging: el primer entorno donde un cambio se ejecuta contra infraestructura real es producción. La API corre además en `plan: free`, con spin-down por inactividad y 512 MB — el mismo contenedor donde ya hubo un OOM. El nuevo `deploy.yml` verifica el deploy, pero verificar no sustituye a tener dónde probar.
+- **Problema:** `render.yaml` define tres servicios, todos en `frankfurt`, ninguno de staging: el primer entorno donde un cambio se ejecuta contra infraestructura real es producción. `deploy.yml` verifica el deploy, pero verificar no sustituye a tener dónde probar.
 - **Acceptance criteria (decisión del usuario, con coste asociado):**
-  - Decidir si se sube el plan de `tenderflow-api` (elimina spin-down y el techo de memoria).
   - Decidir si se añade un servicio de staging apuntando a una BD de staging, y si `deploy.yml` despliega allí primero.
 - **Files de partida:** [render.yaml](../render.yaml), [.github/workflows/deploy.yml](../.github/workflows/deploy.yml)
+- **Relación:** la otra mitad de este ítem —el `plan: free` de la API— se separó el 2026-08-27 y subió a P1, porque contradice un SLO escrito y eso no es un nice-to-have. Se decide con coste, igual que ésta.
 - **Riesgo:** bajo técnico, con coste económico — por eso es decisión del usuario.
 
 ---

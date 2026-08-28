@@ -89,7 +89,13 @@ def main() -> None:
         print(f"[ERROR] No existe {args.spec}. Ejecutá `make openapi` primero.")
         sys.exit(2)
 
-    spec = json.loads(args.spec.read_text())
+    # `encoding="utf-8"` explícito: sin él Python usa la codificación de la
+    # plataforma, que en Windows es cp1252, y el fichero revienta con
+    # UnicodeDecodeError en cuanto un summary lleva una tilde — o sea siempre,
+    # porque la API está documentada en castellano. El gate era inejecutable
+    # fuera de Linux y el fallo no decía nada de codificaciones: decía
+    # "character maps to <undefined>" a mitad de un byte.
+    spec = json.loads(args.spec.read_text(encoding="utf-8"))
     opaque = find_opaque(spec)
 
     if args.list:

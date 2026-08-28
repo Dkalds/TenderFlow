@@ -4,7 +4,7 @@
  * Covers: initial list fetch, optimistic add (+ rollback on error),
  * optimistic remove (+ rollback on error), and useIsWatchlisted.
  */
-import { describe, it, expect, vi, afterEach } from "vitest";
+import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
 import { renderHook, waitFor, act } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import * as React from "react";
@@ -16,7 +16,12 @@ vi.mock("sonner", () => ({
   },
 }));
 
+// La telemetría se dobla entera: el test comprueba *qué* evento se emite, no
+// que la librería de Vercel funcione.
+vi.mock("@/lib/analytics", () => ({ registrarEvento: vi.fn() }));
+
 import { toast } from "sonner";
+import { registrarEvento } from "@/lib/analytics";
 import {
   useWatchlistItems,
   useAddWatchlistItem,
@@ -80,6 +85,10 @@ function createWrapper(qc: QueryClient) {
     return React.createElement(QueryClientProvider, { client: qc }, children);
   };
 }
+
+beforeEach(() => {
+  vi.mocked(registrarEvento).mockClear();
+});
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -149,6 +158,9 @@ describe("useAddWatchlistItem", () => {
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     const finalCache = qc.getQueryData<WatchlistItem[]>(WATCHLIST_ITEMS_KEY);
     expect(finalCache).toContainEqual(created);
+    // El evento no lleva el `id_externo`: identifica la licitación y con ella
+    // el negocio del cliente (regla de privacidad de `lib/analytics.ts`).
+    expect(registrarEvento).toHaveBeenCalledWith("licitacion_seguida", { accion: "seguir" });
   });
 
   it("rolls back the cache and shows a toast when the POST fails", async () => {
@@ -175,6 +187,9 @@ describe("useAddWatchlistItem", () => {
     const cached = qc.getQueryData<WatchlistItem[]>(WATCHLIST_ITEMS_KEY);
     expect(cached).toEqual([ITEMS[0]]);
     expect(toast.error).toHaveBeenCalledWith("No se pudo añadir a favoritos");
+    // Un POST que falló no es un seguimiento: contarlo inflaría la métrica con
+    // decisiones que el usuario no llegó a tomar.
+    expect(registrarEvento).not.toHaveBeenCalled();
   });
 });
 

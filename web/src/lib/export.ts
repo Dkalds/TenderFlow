@@ -4,6 +4,8 @@
  * single source of truth for how export query params are assembled.
  */
 
+import { dimensionesDeDescarga, registrarEvento } from "./analytics";
+
 /**
  * Build a download URL for the given endpoint, combining the requested
  * format, the active filter params and any extra (page-specific) params as
@@ -35,8 +37,17 @@ export function buildExportUrl(
   return `${endpoint}?${params.toString()}`;
 }
 
-/** Trigger a browser download for `url` via a programmatic, invisible `<a>` click. */
+/**
+ * Trigger a browser download for `url` via a programmatic, invisible `<a>` click.
+ *
+ * Aquí se mide, y no en los dos llamadores, porque este es el embudo por el que
+ * pasa toda descarga: instrumentar las llamadas dejaría fuera al tercero que
+ * aparezca. De la URL sólo se conserva formato y recurso —la query lleva los
+ * filtros escritos por el usuario y no sale de este proceso (ver
+ * `dimensionesDeDescarga`).
+ */
 export function triggerDownload(url: string): void {
+  registrarEvento("export_lanzado", dimensionesDeDescarga(url));
   const a = document.createElement("a");
   a.href = url;
   a.download = "";

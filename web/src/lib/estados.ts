@@ -27,6 +27,18 @@ export const ESTADO_LABELS: Record<string, string> = {
   ANUL: "Anulada",
   PRE: "Anuncio previo",
   CREA: "Creada",
+  // Los dos códigos propios de la PSCP catalana. Nombrados por lo que son y no
+  // por su efecto ("Cerrada"): son 1,7 M de contratos menores publicados en
+  // bloque frente a 58.528 anuncios de adjudicación reales, y fundirlos con ADJ
+  // destrozaría cualquier lectura competitiva.
+  AGREG: "Publicación agregada",
+  EJEC: "En ejecución",
+  // Cajón del embudo por estado: lo que el backend no pudo clasificar en
+  // ninguno de los códigos de arriba (filas sin estado, o con el texto crudo que
+  // el conector escribió antes del arreglo de 2026-08-27 y que
+  // `scripts/repair_estados_pscp.py` todavía no ha limpiado). Existe para que
+  // los tramos sumen el total en vez de dejar filas fuera sin decirlo.
+  OTROS: "Otros / sin clasificar",
 };
 
 /**

@@ -47,9 +47,22 @@ import { bandColor, daysLeft, shortEur, urgency } from "./_components/radar-shar
  * sobre ellos no hay decisión que tomar.
  *
  * El triaje (descartar / deshacer) es server-side: recargar lo conserva.
+ *
+ * **Por debajo de `md` esto deja de ser una tabla.** Las siete columnas miden
+ * 666 px de ancho mínimo: a 375 px la acción quedaba a dos pantallazos de
+ * scroll horizontal del título, y el caso de uso móvil real —un comercial
+ * mirando el Radar en una visita— es justo decidir en cinco segundos. La
+ * conversión no duplica el árbol: los mismos nodos se agrupan en envoltorios
+ * que a partir de `md` se disuelven con `display: contents` y vuelven a caer
+ * en sus columnas. Una sola fuente de datos, de lógica y de marcado.
  */
 
-const GRID = "grid-cols-[46px_1fr_176px_132px_108px_96px_108px] gap-3 px-3.5";
+/**
+ * Rejilla de la tabla — solo a partir de `md`. Por debajo no hay rejilla: la
+ * fila es una ficha en columna (ver `rows.map`), y la cabecera de columnas
+ * desaparece porque no habría columnas que rotular.
+ */
+const GRID = "md:grid-cols-[46px_1fr_176px_132px_108px_96px_108px] md:gap-3 md:px-3.5";
 const SEGMENTS = [
   { key: "bandeja", label: "Bandeja" },
   { key: "siguiendo", label: "Siguiendo" },
@@ -276,9 +289,12 @@ export default function RadarPage() {
 
   return (
     <div className="flex h-[calc(100vh-52px)] min-h-0">
-      <section className="flex min-w-0 flex-1 flex-col border-r border-border/70">
-        {/* Segmentos y orden */}
-        <div className="flex h-11 flex-none items-center gap-0.5 border-b border-border/60 px-3.5">
+      {/* El borde derecho solo separa de algo cuando el inspector existe. */}
+      <section className="flex min-w-0 flex-1 flex-col xl:border-r xl:border-border/70">
+        {/* Segmentos y orden. En móvil envuelve en varias líneas en vez de
+            desbordar: son ocho controles y ninguno se puede esconder sin
+            quitarle al usuario el cambio de bandeja o el criterio de orden. */}
+        <div className="flex min-h-11 flex-none flex-wrap items-center gap-x-0.5 gap-y-1.5 border-b border-border/60 px-3 py-2 md:h-11 md:flex-nowrap md:px-3.5 md:py-0">
           {SEGMENTS.map((item) => {
             const on = segment === item.key;
             return (
@@ -291,7 +307,10 @@ export default function RadarPage() {
                 }}
                 aria-pressed={on}
                 className={cn(
-                  "tf-pressable inline-flex h-7 items-center gap-[7px] rounded-md border px-2.5 text-[12.5px] font-medium transition-colors duration-150 ease-out",
+                  // 32 px de alto en móvil: es un control que se pulsa con el
+                  // pulgar, y 28 px queda justo por encima del mínimo de
+                  // WCAG 2.5.8 pero se falla igual.
+                  "tf-pressable inline-flex h-8 flex-none items-center gap-[7px] rounded-md border px-2.5 text-[12.5px] font-medium transition-colors duration-150 ease-out md:h-7",
                   on
                     ? "border-border/70 bg-secondary text-foreground"
                     : "border-transparent text-muted-foreground hover:text-foreground",
@@ -309,17 +328,20 @@ export default function RadarPage() {
               </button>
             );
           })}
-          <div className="flex-1" />
+          {/* En móvil el hueco es un salto de línea: los segmentos ocupan la
+              primera y el orden la segunda. A partir de `md` vuelve a ser el
+              muelle que empuja el orden al extremo derecho. */}
+          <div className="basis-full md:flex-1" />
           {dismissed.size > 0 && (
             <button
               type="button"
               onClick={() => dismissed.forEach((id) => restore(id))}
-              className="tf-pressable mr-1.5 h-6 rounded-md border border-border/70 px-2 text-[11px] font-medium text-muted-foreground transition-colors duration-140 ease-out hover:text-foreground"
+              className="tf-pressable mr-1.5 h-7 flex-none rounded-md border border-border/70 px-2 text-[11px] font-medium text-muted-foreground transition-colors duration-140 ease-out hover:text-foreground md:h-6"
             >
               Restaurar {dismissed.size} descartada{dismissed.size === 1 ? "" : "s"}
             </button>
           )}
-          <span className="mr-1.5 font-mono text-[8.5px] font-semibold uppercase tracking-[0.11em] text-muted-foreground/70">
+          <span className="mr-1.5 flex-none font-mono text-[8.5px] font-semibold uppercase tracking-[0.11em] text-muted-foreground/70">
             Orden
           </span>
           {SORTS.map((item) => {
@@ -331,7 +353,7 @@ export default function RadarPage() {
                 onClick={() => setSort(item.key)}
                 aria-pressed={on}
                 className={cn(
-                  "tf-pressable h-6 rounded-md border px-2 text-[11px] font-medium transition-colors duration-150 ease-out",
+                  "tf-pressable h-7 flex-none rounded-md border px-2 text-[11px] font-medium transition-colors duration-150 ease-out md:h-6",
                   on
                     ? "border-primary/25 bg-primary/10 text-primary"
                     : "border-transparent text-muted-foreground hover:text-foreground",
@@ -346,16 +368,20 @@ export default function RadarPage() {
         {avisosDeSenal.length > 0 && (
           <div
             role="status"
-            className="flex-none border-b border-amber-500/25 bg-amber-500/8 px-3.5 py-1.5 text-[11.5px] leading-[1.45] text-amber-700 dark:text-amber-300"
+            className="flex-none border-b border-amber-500/25 bg-amber-500/8 px-3 py-1.5 text-[11.5px] leading-[1.45] text-amber-700 dark:text-amber-300 md:px-3.5"
           >
             <span className="font-medium">Score degradado</span> — {avisosDeSenal.join(" · ")}.
           </div>
         )}
 
-        {/* Cabecera de columnas */}
+        {/* Cabecera de columnas. Decisión escrita: por debajo de `md` no se
+            renderiza porque no hay columnas que rotular — en la ficha cada
+            dato lleva su propia forma (color de banda, «d» del plazo, «€» del
+            importe) y un rótulo por celda sería ruido, no ayuda. */}
         <div
+          data-slot="radar-cabecera"
           className={cn(
-            "grid h-[30px] flex-none items-center border-b border-border/70 bg-card/50 font-mono text-[9px] font-semibold uppercase tracking-[0.1em] text-muted-foreground",
+            "hidden h-[30px] flex-none items-center border-b border-border/70 bg-card/50 font-mono text-[9px] font-semibold uppercase tracking-[0.1em] text-muted-foreground md:grid",
             GRID,
           )}
         >
@@ -368,7 +394,7 @@ export default function RadarPage() {
           <span className="text-right">Acción</span>
         </div>
 
-        <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto">
+        <div data-slot="radar-lista" ref={listRef} className="min-h-0 flex-1 overflow-y-auto">
           {error ? (
             <div
               role="alert"
@@ -442,9 +468,12 @@ export default function RadarPage() {
                       setSelected(index);
                     }
                   }}
-                  style={{ height: rowHeight }}
+                  // El alto fijo de fila es de la tabla: en la ficha el título
+                  // ocupa dos líneas y recortarla a 44 px la dejaría sin nada.
+                  style={{ "--tf-radar-fila": `${rowHeight}px` } as React.CSSProperties}
                   className={cn(
-                    "relative grid cursor-pointer items-center border-b border-border/40 transition-colors duration-110 ease-out",
+                    "relative flex cursor-pointer flex-col gap-2 border-b border-border/40 px-3 py-3 transition-colors duration-110 ease-out",
+                    "md:grid md:h-[var(--tf-radar-fila)] md:items-center md:py-0",
                     GRID,
                     isActive ? "bg-primary/9" : "hover:bg-primary/5",
                   )}
@@ -455,82 +484,114 @@ export default function RadarPage() {
                     style={{ background: isActive ? bandColor(tender.band) : "transparent" }}
                   />
 
-                  <div className="flex flex-col items-start gap-0.5">
-                    <span
-                      className="tf-tnum font-mono text-[15px] font-semibold leading-none"
-                      style={{ color: bandColor(tender.band) }}
-                    >
-                      {tender.score != null ? Math.round(tender.score) : "—"}
-                    </span>
-                    <span className="font-mono text-[8px] font-medium uppercase leading-none tracking-[0.04em] text-muted-foreground">
-                      {tender.band ?? "s/p"}
-                    </span>
-                  </div>
-
-                  <div className="min-w-0">
-                    <div className="flex min-w-0 items-center gap-[7px]">
-                      {isNew && (
-                        <span className="flex-none rounded border border-[hsl(var(--success)/0.3)] bg-[hsl(var(--success)/0.12)] px-1 py-0.5 font-mono text-[8px] font-semibold uppercase tracking-[0.06em] text-[hsl(var(--success))]">
-                          Nueva
-                        </span>
-                      )}
+                  {/* Los cuatro envoltorios que siguen agrupan la ficha móvil y
+                      se disuelven con `md:contents`: a partir de `md` sus hijos
+                      caen directos en la rejilla, en el mismo orden que rotula
+                      la cabecera. Es lo que permite que ficha y fila sean el
+                      mismo árbol y no puedan divergir. */}
+                  <div className="flex min-w-0 items-center gap-3 md:contents">
+                    <div className="flex flex-none flex-col items-start gap-0.5">
                       <span
-                        className={cn(
-                          "truncate text-[13px] leading-[1.3] tracking-[-0.005em]",
-                          isActive ? "font-semibold text-foreground" : "font-medium",
-                        )}
+                        className="tf-tnum font-mono text-[15px] font-semibold leading-none"
+                        style={{ color: bandColor(tender.band) }}
                       >
-                        {tender.titulo}
+                        {tender.score != null ? Math.round(tender.score) : "—"}
+                      </span>
+                      <span className="font-mono text-[8px] font-medium uppercase leading-none tracking-[0.04em] text-muted-foreground">
+                        {tender.band ?? "s/p"}
                       </span>
                     </div>
-                    {/* Flujo inline, no flex: `text-overflow` se ignora en un
-                        contenedor flex y la línea se cortaría a medias. */}
-                    <div className="mt-0.5 block truncate font-mono text-[10.5px] leading-[1.3] text-muted-foreground/80">
-                      {[tender.id_externo, tender.cpv ? `CPV ${tender.cpv}` : null, tender.ccaa]
-                        .filter(Boolean)
-                        .join(" · ")}
+
+                    <div className="min-w-0 flex-1">
+                      <div className="flex min-w-0 items-center gap-[7px]">
+                        {isNew && (
+                          <span className="flex-none rounded border border-[hsl(var(--success)/0.3)] bg-[hsl(var(--success)/0.12)] px-1 py-0.5 font-mono text-[8px] font-semibold uppercase tracking-[0.06em] text-[hsl(var(--success))]">
+                            Nueva
+                          </span>
+                        )}
+                        {/* Dos líneas en móvil, una en la tabla. Un título del
+                            TED ronda los 120 caracteres y empieza por el
+                            preámbulo administrativo: cortarlo en una línea a
+                            375 px deja fuera el objeto del contrato, que es lo
+                            único por lo que se mira el Radar.
+                            `line-clamp-1` y no `truncate` para la tabla: son la
+                            misma utilidad en las dos anchuras, así que el orden
+                            en cascada lo decide el prefijo `md:` y no la
+                            ordenación interna de Tailwind entre dos familias
+                            distintas que escriben `display`. */}
+                        <span
+                          className={cn(
+                            "min-w-0 line-clamp-2 text-[13px] leading-[1.35] tracking-[-0.005em]",
+                            "md:line-clamp-1 md:leading-[1.3]",
+                            isActive ? "font-semibold text-foreground" : "font-medium",
+                          )}
+                        >
+                          {tender.titulo}
+                        </span>
+                      </div>
+                      {/* Flujo inline, no flex: `text-overflow` se ignora en un
+                          contenedor flex y la línea se cortaría a medias. */}
+                      <div className="mt-0.5 block truncate font-mono text-[10.5px] leading-[1.3] text-muted-foreground/80">
+                        {[tender.id_externo, tender.cpv ? `CPV ${tender.cpv}` : null, tender.ccaa]
+                          .filter(Boolean)
+                          .join(" · ")}
+                      </div>
                     </div>
                   </div>
 
-                  <span className="truncate text-xs leading-[1.35] text-muted-foreground">
-                    {tender.organo_contratacion ?? "—"}
-                  </span>
-
-                  {tech ? (
-                    <span className="max-w-full justify-self-start truncate rounded-[5px] border border-[hsl(var(--info)/0.26)] bg-[hsl(var(--info)/0.1)] px-1.5 py-1 text-[11px] font-medium text-[hsl(var(--info))]">
-                      {tech}
+                  {/* Órgano y tecnología son las dos columnas que se subordinan
+                      en móvil: siguen ahí, en una línea secundaria bajo el
+                      título, en vez de competir con score, plazo e importe. */}
+                  <div className="flex min-w-0 items-center justify-between gap-2 md:contents">
+                    <span className="min-w-0 flex-1 truncate text-xs leading-[1.35] text-muted-foreground">
+                      {tender.organo_contratacion ?? "—"}
                     </span>
-                  ) : (
-                    <span className="text-[11px] text-muted-foreground/60">—</span>
-                  )}
 
-                  <span className="tf-tnum text-right font-mono text-[13px] font-semibold">
-                    {shortEur(tender.importe)}
-                  </span>
+                    {tech ? (
+                      <span className="max-w-[46%] flex-none justify-self-start truncate rounded-[5px] border border-[hsl(var(--info)/0.26)] bg-[hsl(var(--info)/0.1)] px-1.5 py-1 text-[11px] font-medium text-[hsl(var(--info))] md:max-w-full">
+                        {tech}
+                      </span>
+                    ) : (
+                      <span className="flex-none text-[11px] text-muted-foreground/60">—</span>
+                    )}
+                  </div>
 
-                  <div className="flex flex-col items-end gap-1.5">
-                    <span
-                      className="tf-tnum font-mono text-xs font-semibold leading-none"
-                      style={{ color: urg.color }}
-                    >
-                      {days != null ? `${days} d` : "—"}
+                  <div className="flex items-center justify-between gap-3 md:contents">
+                    <span className="tf-tnum font-mono text-[13px] font-semibold md:text-right">
+                      {shortEur(tender.importe)}
                     </span>
-                    <span className="block h-0.5 w-14 overflow-hidden rounded-sm bg-muted-foreground/20">
+
+                    <div className="flex flex-none flex-col items-end gap-1.5">
                       <span
-                        className="block h-full w-full origin-left transition-transform duration-[420ms] ease-out"
-                        style={{ background: urg.color, transform: `scaleX(${urg.ratio})` }}
-                      />
-                    </span>
+                        className="tf-tnum font-mono text-xs font-semibold leading-none"
+                        style={{ color: urg.color }}
+                      >
+                        {days != null ? `${days} d` : "—"}
+                      </span>
+                      <span className="block h-0.5 w-14 overflow-hidden rounded-sm bg-muted-foreground/20">
+                        <span
+                          className="block h-full w-full origin-left transition-transform duration-[420ms] ease-out"
+                          style={{ background: urg.color, transform: `scaleX(${urg.ratio})` }}
+                        />
+                      </span>
+                    </div>
                   </div>
 
                   {/* Las acciones tienen columna propia y no se superponen a
-                      Importe ni a Plazo: al cambiar de fila nada se mueve. */}
+                      Importe ni a Plazo: al cambiar de fila nada se mueve.
+                      En móvil están siempre visibles: revelarlas al seleccionar
+                      es un gesto de hover, y en táctil convertiría descartar en
+                      dos toques (uno para que aparezca el botón, otro para
+                      pulsarlo). Solo a partir de `md` vuelven a depender de la
+                      fila activa. */}
                   <div
+                    data-slot="radar-acciones"
                     className={cn(
-                      "flex items-center justify-end gap-1.5",
+                      "flex items-center justify-end gap-2 border-t border-border/40 pt-2.5",
+                      "md:gap-1.5 md:border-t-0 md:pt-0",
                       isActive
-                        ? "animate-in fade-in-0 slide-in-from-right-2 duration-[170ms]"
-                        : "pointer-events-none opacity-0",
+                        ? "md:animate-in md:fade-in-0 md:slide-in-from-right-2 md:duration-[170ms]"
+                        : "md:pointer-events-none md:opacity-0",
                     )}
                   >
                     <Tooltip>
@@ -542,9 +603,12 @@ export default function RadarPage() {
                             event.stopPropagation();
                             dismiss(tender);
                           }}
-                          className="tf-pressable grid h-6.5 w-6.5 place-items-center rounded-md border border-border/80 bg-card text-muted-foreground transition-colors duration-140 ease-out hover:border-destructive/50 hover:text-destructive"
+                          // 36×36 en móvil. Los 26 px de la consola cumplen el
+                          // mínimo de WCAG 2.5.8 (24×24) pero se fallan con el
+                          // pulgar, y aquí el error cuesta una señal descartada.
+                          className="tf-pressable grid h-9 w-9 place-items-center rounded-md border border-border/80 bg-card text-muted-foreground transition-colors duration-140 ease-out hover:border-destructive/50 hover:text-destructive md:h-6.5 md:w-6.5"
                         >
-                          <X className="h-3 w-3" aria-hidden="true" />
+                          <X className="h-4 w-4 md:h-3 md:w-3" aria-hidden="true" />
                         </button>
                       </TooltipTrigger>
                       <TooltipContent>Descartar · X</TooltipContent>
@@ -560,13 +624,16 @@ export default function RadarPage() {
                             toggleFollow(tender);
                           }}
                           className={cn(
-                            "tf-pressable grid h-6.5 w-6.5 place-items-center rounded-md border transition-colors duration-140 ease-out",
+                            "tf-pressable grid h-9 w-9 place-items-center rounded-md border transition-colors duration-140 ease-out md:h-6.5 md:w-6.5",
                             isFollowed
                               ? "border-primary/50 bg-primary/16 text-primary"
                               : "border-border/80 bg-card text-muted-foreground hover:text-foreground",
                           )}
                         >
-                          <Star className={cn("h-3 w-3", isFollowed && "fill-current")} aria-hidden="true" />
+                          <Star
+                            className={cn("h-4 w-4 md:h-3 md:w-3", isFollowed && "fill-current")}
+                            aria-hidden="true"
+                          />
                         </button>
                       </TooltipTrigger>
                       <TooltipContent>Seguir · S</TooltipContent>
@@ -579,7 +646,10 @@ export default function RadarPage() {
                             event.stopPropagation();
                             void openPursuit(tender);
                           }}
-                          className="tf-pressable h-6.5 whitespace-nowrap rounded-md border border-primary/35 bg-primary/14 px-2.5 text-[11px] font-semibold text-primary transition-colors duration-140 ease-out hover:bg-primary/24"
+                          // En móvil ocupa el resto de la línea: es la acción
+                          // que se busca, y el borde derecho es donde cae el
+                          // pulgar. En la tabla vuelve a su ancho de contenido.
+                          className="tf-pressable h-9 flex-1 whitespace-nowrap rounded-md border border-primary/35 bg-primary/14 px-2.5 text-[12px] font-semibold text-primary transition-colors duration-140 ease-out hover:bg-primary/24 md:h-6.5 md:flex-none md:text-[11px]"
                         >
                           Abrir
                         </button>
@@ -593,8 +663,8 @@ export default function RadarPage() {
           )}
         </div>
 
-        <div className="flex h-[34px] flex-none items-center gap-3.5 border-t border-border/70 bg-card/60 px-3.5 text-[11px] text-muted-foreground">
-          <span className="tf-tnum">{statusLine}</span>
+        <div className="flex h-[34px] min-w-0 flex-none items-center gap-3.5 border-t border-border/70 bg-card/60 px-3 text-[11px] text-muted-foreground md:px-3.5">
+          <span className="tf-tnum truncate">{statusLine}</span>
           <span className="hidden text-muted-foreground/60 lg:inline">
             · top 24 del mercado abierto por potencial comercial
           </span>
@@ -610,6 +680,14 @@ export default function RadarPage() {
         </div>
       </section>
 
+      {/* Decisión escrita: el inspector no baja de `xl`. Son 432 px de segunda
+          superficie sobre la fila seleccionada; a 375 px o tapa la lista o la
+          parte en dos. Lo accionable sí baja entero —seguir, descartar y abrir
+          viven en la ficha—, así que lo que se pierde en móvil es contexto de
+          lectura (desglose de score, línea de tiempo, competencia esperada), no
+          capacidad. Ese contexto tiene pantalla propia en `/detalle?lic=`, que
+          hoy solo se enlaza desde aquí: pendiente de resolver el acceso a ella
+          desde la ficha sin convertir toda la fila en un enlace. */}
       <aside className="hidden w-[432px] flex-none flex-col bg-card/40 xl:flex">
         {active ? (
           <RadarInspector

@@ -1,3 +1,22 @@
+# ⚠️ ANTES DE FIARTE DE ESTE FICHERO: comprueba que gobierna algo.
+#
+# El servicio de producción se creó a mano por el dashboard y **nunca se vinculó
+# a este Blueprint**, así que durante un tiempo lo de aquí fue una intención y no
+# una configuración: editarlo no cambiaba nada, y leerlo inducía a error sobre
+# cómo está configurado el servicio real. Lo observado en el dashboard
+# (2026-08-04) contradecía dos líneas de este mismo fichero — `autoDeploy` estaba
+# activo y no había healthcheck configurado —, o sea que un deploy que arrancara
+# mal reemplazaba igualmente al que funcionaba, sin rollback.
+#
+# Verificación (dos minutos, en el dashboard de Render):
+#   1. Settings del servicio → ¿aparece vinculado a un Blueprint?
+#   2. Si NO: lo que manda es el dashboard, y hay que replicar allí a mano
+#      `autoDeploy: false` y `healthCheckPath`, o vincular el Blueprint (ojo:
+#      vincularlo a un servicio existente puede recrearlo; hacerlo en ventana).
+#   3. Anota aquí el resultado cuando lo compruebes, para que el siguiente que
+#      lea este fichero no tenga que volver a preguntárselo.
+#
+# Estado anotado: SIN VERIFICAR desde 2026-08-04.
 services:
   - type: web
     name: tenderflow-api
