@@ -22,6 +22,7 @@ from __future__ import annotations
 import importlib.util
 from pathlib import Path
 from typing import Any
+from unittest.mock import patch
 
 from db.sql_fragments import clave_canonica_sql
 
@@ -92,3 +93,64 @@ def test_la_clave_propaga_null_en_vez_de_taparlo() -> None:
     # El coalesce legítimo es el de dentro de cada componente (organo vacío,
     # fecha ausente); lo que no puede haber es uno envolviendo al hash entero.
     assert not clave.startswith("md5(coalesce(")
+
+
+def _sql_emitido(funcion: str, *, dialecto: str = "postgresql") -> list[str]:
+    """Ejecuta ``upgrade``/``downgrade`` de v92 y devuelve el DDL que emitieron.
+
+    Se sustituye ``op`` entero porque lo que se quiere afirmar es el SQL, no que
+    alembic funcione. El ``autocommit_block`` sale de ``MagicMock``, que ya
+    implementa el protocolo de context manager.
+    """
+    modulo = _cargar_v92()
+    emitido: list[str] = []
+    with patch.object(modulo, "op") as op_falso:
+        op_falso.get_bind.return_value.dialect.name = dialecto
+        op_falso.execute.side_effect = emitido.append
+        getattr(modulo, funcion)()
+    return emitido
+
+
+def test_upgrade_crea_el_indice_sin_bloquear_y_sin_morir_por_timeout() -> None:
+    """Las tres piezas del DDL son las tres que hacen falta, y ninguna sobra.
+
+    ``CONCURRENTLY`` porque la tabla tiene que seguir aceptando escrituras
+    mientras se construye, y ``statement_timeout = 0`` porque construir este
+    índice sobre ~692k filas pasa de largo los 30 s del rol — sin eso la
+    migración moriría del mismo timeout que existe para eliminar.
+    """
+    emitido = _sql_emitido("upgrade")
+
+    assert "SET statement_timeout = 0" in emitido
+    crear = next(s for s in emitido if s.startswith("CREATE INDEX"))
+    assert "CONCURRENTLY" in crear
+    assert "IF NOT EXISTS idx_lic_clave_canonica" in crear
+    assert _CLAVE_CANONICA_SQL in crear
+
+
+def test_upgrade_hace_analyze_porque_v91_dejo_las_estadisticas_viejas() -> None:
+    """Sin ``ANALYZE`` el índice puede existir y el planificador ignorarlo.
+
+    v91 reescribió ``estado`` en ~645k filas justo antes de esta revisión, así
+    que las estadísticas de ``licitaciones`` describen una tabla que ya no es.
+    Va al final: antes del índice no serviría de nada.
+    """
+    emitido = _sql_emitido("upgrade")
+
+    assert emitido[-1] == "ANALYZE licitaciones"
+
+
+def test_downgrade_retira_el_indice_tambien_sin_bloquear() -> None:
+    """Un ``DROP INDEX`` sin ``CONCURRENTLY`` toma un lock exclusivo sobre la
+    tabla, y revertir no puede costar más que aplicar."""
+    emitido = _sql_emitido("downgrade")
+
+    assert any("DROP INDEX CONCURRENTLY IF EXISTS idx_lic_clave_canonica" in s for s in emitido)
+
+
+def test_fuera_de_postgres_no_emite_nada() -> None:
+    """DIALECT-GUARDED: la suite corre parte de sus casos sobre SQLite, donde ni
+    ``CONCURRENTLY`` ni el índice funcional existen. Las dos direcciones tienen
+    que ser no-op ahí, no fallar."""
+    assert _sql_emitido("upgrade", dialecto="sqlite") == []
+    assert _sql_emitido("downgrade", dialecto="sqlite") == []
