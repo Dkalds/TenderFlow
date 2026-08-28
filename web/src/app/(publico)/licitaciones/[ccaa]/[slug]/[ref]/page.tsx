@@ -2,10 +2,13 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { obtenerLicitacion, type LicitacionPublica } from "@/lib/publico-api";
-import { SITE_NAME, TWITTER_COMPARTIDO } from "@/lib/site";
+import { TWITTER_COMPARTIDO } from "@/lib/site";
+import { estadoLabel } from "@/lib/estados";
 import { migasJsonLd, serializarJsonLd } from "@/lib/jsonld";
 import { rutaHubCcaa, rutaLicitacion } from "@/lib/slug";
 import { EMPTY, formatCurrency, formatDate } from "@/lib/utils";
+import { CierrePublico } from "@/app/(publico)/_components/cierre-publico";
+import { plazoPresentacion } from "@/app/(publico)/_components/plazo";
 
 /**
  * Ficha pública de una licitación.
@@ -22,7 +25,11 @@ import { EMPTY, formatCurrency, formatDate } from "@/lib/utils";
  * Presentación: los tres datos que deciden si el anuncio interesa
  * (presupuesto, fecha límite, publicación) van como destacados; el resto en la
  * tabla de datos. Todo son valores del endpoint tal cual — aquí no se calcula
- * ni se interpreta nada (ADR-014).
+ * ni se interpreta nada (ADR-014). Lo que sí se traduce, igual que en el
+ * listado de los hubs, es la presentación de dos de ellos: el código de estado
+ * pasa por `estadoLabel` (la API lo devuelve crudo: `AGR`, `EJEC`, `RES`) y la
+ * fecha límite por `plazoPresentacion`, que decide si el plazo sigue abierto en
+ * lugar de anunciar como vivo lo que cerró hace meses.
  */
 
 type Params = { ccaa: string; slug: string; ref: string };
@@ -114,10 +121,16 @@ export default async function FichaLicitacion({ params }: { params: Promise<Para
     },
   ];
 
+  // El destacado del plazo cambia de rótulo, no de valor: la fecha es la que
+  // dio el endpoint y lo que se corrige es la promesa que la envolvía. Un
+  // «Fecha límite» sobre un plazo vencido se lee como una convocatoria abierta,
+  // y esta ficha es lo primero que ve quien llega desde un buscador.
+  const plazo = plazoPresentacion(lic.fecha_limite);
+
   // Los tres datos de decisión, como destacados; solo se pintan los presentes.
   const destacados: [string, string | null][] = [
     ["Presupuesto", lic.importe ? formatCurrency(lic.importe) : null],
-    ["Fecha límite", fecha(lic.fecha_limite)],
+    [plazo?.vencido ? "Plazo cerrado" : "Fecha límite", plazo?.fecha ?? null],
     ["Publicación", fecha(lic.fecha_publicacion)],
   ];
 
@@ -164,7 +177,7 @@ export default async function FichaLicitacion({ params }: { params: Promise<Para
           <span className={`${CHIP} border-primary/30 bg-primary/[0.06] text-primary font-mono`}>
             {nombreFuente(lic)}
           </span>
-          {lic.estado && <span className={`${CHIP} text-muted-foreground`}>{lic.estado}</span>}
+          {lic.estado && <span className={`${CHIP} text-muted-foreground`}>{estadoLabel(lic.estado)}</span>}
           {lic.expediente && <span className={`${CHIP} text-muted-foreground font-mono`}>Exp. {lic.expediente}</span>}
         </p>
 
@@ -261,6 +274,18 @@ export default async function FichaLicitacion({ params }: { params: Promise<Para
           </p>
         </aside>
 
+        {/* Las dos salidas de la ficha, ambas secundarias: seguir navegando el
+            corpus, o entrar con una cuenta que ya se tiene.
+
+            El botón principal era este segundo enlace, y mandaba a /login a
+            quien acababa de descubrir el producto. El alta self-service está
+            apagada en producción (`lib/contacto.ts`): allí no hay registro que
+            completar, sólo un formulario que responde 403 a quien no ha sido
+            invitado. La ficha es la página que más tráfico orgánico recibe y su
+            único CTA era, literalmente, una puerta cerrada.
+
+            utm_content=ficha se conserva: en Vercel Analytics sigue viéndose
+            cuántos llegan a /login desde una ficha indexada. */}
         <div className="mt-10 flex flex-wrap gap-3">
           <Link
             href={rutaHubCcaa(lic.ccaa)}
@@ -268,15 +293,20 @@ export default async function FichaLicitacion({ params }: { params: Promise<Para
           >
             Más licitaciones {lic.ccaa ? `en ${lic.ccaa}` : ""}
           </Link>
-          {/* utm_content=ficha: en Vercel Analytics se ve cuántos llegan a
-              /login desde una ficha indexada — el camino orgánico completo. */}
           <Link
             href="/login?utm_source=publico&utm_content=ficha"
-            className="bg-primary text-primary-foreground hover:bg-primary/90 inline-flex h-10 items-center rounded-md px-5 text-sm font-semibold shadow-md transition-[transform,background-color] duration-150 ease-out active:scale-[0.97]"
+            className="border-input hover:bg-accent hover:text-accent-foreground inline-flex h-10 items-center rounded-md border px-5 text-sm font-medium transition-[transform,background-color,border-color] duration-150 ease-out active:scale-[0.97]"
           >
-            Seguir este contrato con {SITE_NAME}
+            Ya tengo cuenta
           </Link>
         </div>
+
+        {/* El cierre que sí lleva a alguna parte, el mismo de los hubs: dice qué
+            hay dentro que no esté en el anuncio y solicita acceso por el canal
+            que existe. `ubicacion="ficha"` separa su evento `solicitar_acceso`
+            del de los hubs, que es la comparación que interesa — cuál de las dos
+            superficies orgánicas convierte. */}
+        <CierrePublico ubicacion="ficha" />
       </article>
     </>
   );

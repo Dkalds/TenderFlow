@@ -66,6 +66,42 @@ log = get_logger(__name__)
 CONFIANZA_EXACTA = 1.0
 CONFIANZA_REVISION = 0.8
 
+# ── Señal de fallo del job ────────────────────────────────────────────────
+# El llamador de :func:`detect_duplicates` (``scraper/connectors/base.py``,
+# ``_post_ingestion``) es fail-open a propósito: un dedupe roto no puede tumbar
+# una ingesta cuyas filas ya están persistidas. Pero hasta 2026-08 ese ``except``
+# sólo dejaba un ``log.warning``, así que un ``detect_duplicates`` que reventara
+# en todas las pasadas —por memoria, que es lo que hacía el índice de candidatas
+# sin acotar— dejaba el run marcado como exitoso y no existía ninguna serie
+# temporal donde se viera. Este contador es esa señal.
+#
+# Se declara junto al job cuyo fallo cuenta y no en
+# ``observability/runtime_metrics.py`` —donde viven sus hermanas
+# ``dedupe_marked_total`` y ``dedupe_match_rate``— para que el ``except`` del
+# runner pueda importarlo del mismo módulo que acaba de fallar y no dependa de
+# un tercero. El fallback no-op replica el trato defensivo de aquel módulo: sin
+# ``prometheus_client`` la métrica no existe, pero el proceso sigue.
+try:
+    from prometheus_client import Counter
+
+    dedupe_run_failed_total = Counter(
+        "dedupe_run_failed_total",
+        "Pasadas de detect_duplicates que terminaron en excepción, por fuente",
+        ["fuente"],
+    )
+except ImportError:  # pragma: no cover — mismo fallback que observability.runtime_metrics
+
+    class _ContadorNoop:
+        def labels(self, **_kwargs: str) -> _ContadorNoop:
+            return self
+
+        def inc(self, _value: float = 1) -> None: ...
+
+    # El stub no es un ``Counter`` y no puede serlo — el objetivo del fallback es
+    # justamente no depender de la librería. Mismo ``ignore`` que usa
+    # ``observability/runtime_metrics.py`` para sus propios no-op.
+    dedupe_run_failed_total = _ContadorNoop()  # type: ignore[assignment]
+
 
 def normalize_organo(name: str | None) -> str | None:
     """Órgano plegado para matching: sin acentos, sin formas societarias, lower."""
@@ -189,35 +225,31 @@ def detect_duplicates(*, fuente: str) -> DedupeResult:
 
     Pensado para engancharse en ``_post_ingestion`` del runner de conectores
     (fail-open en el llamador) o ejecutarse manualmente tras un backfill.
+
+    **El índice de candidatas se acota por expediente**, igual que
+    :func:`detect_republicaciones` lo acota por órgano. El diseño anterior
+    consultaba ``FROM licitaciones WHERE fuente != %s`` sin LIMIT ni watermark y
+    lo materializaba como lista de dicts en cada ingesta —~1,7 M filas de PSCP—;
+    como el llamador traga la excepción, reventar por memoria no impedía que el
+    run se declarara exitoso. Aquí el prefiltro no pierde nada: el matching de
+    abajo exige expediente natural idéntico, así que toda fila descartada por el
+    ``ANY`` habría fallado igual la comparación (ver
+    ``db/repositories/dedupe.py``).
     """
     result = DedupeResult(fuente=fuente)
     cursor_source = f"dedupe_{fuente}"
     watermark = str((get_cursor(cursor_source) or {}).get("last_seen_updated") or "")
 
-    with connect_read() as c:
-        nuevas = rows_to_dicts(
-            c.execute(
-                "SELECT id_externo, organo_contratacion, cpv, fuente, "
-                "       fecha_publicacion, fecha_extraccion "
-                "FROM licitaciones WHERE fuente = %s AND fecha_extraccion > %s",
-                (fuente, watermark),
-            )
-        )
-        if not nuevas:
-            return result
-        # Índice expediente → filas del resto de fuentes. Un solo SELECT de
-        # columnas ligeras por pasada; el coste por fila nueva es O(1).
-        otras = rows_to_dicts(
-            c.execute(
-                "SELECT id_externo, organo_contratacion, cpv, fuente, "
-                "       fecha_publicacion, fecha_extraccion "
-                "FROM licitaciones WHERE fuente != %s",
-                (fuente,),
-            )
-        )
+    nuevas = dedupe_repo.filas_nuevas_de_fuente(fuente, watermark)
+    if not nuevas:
+        return result
+
+    # Índice expediente → filas del resto de fuentes, acotado a los expedientes
+    # que esta pasada puede emparejar. El coste por fila nueva sigue siendo O(1).
+    expedientes = sorted({e for row in nuevas if (e := natural_expediente(str(row["id_externo"])))})
     por_expediente: dict[str, list[dict[str, Any]]] = {}
-    for row in otras:
-        por_expediente.setdefault(natural_expediente(row["id_externo"]), []).append(row)
+    for row in dedupe_repo.iter_filas_de_otras_fuentes_por_expediente(fuente, expedientes):
+        por_expediente.setdefault(natural_expediente(str(row["id_externo"])), []).append(row)
 
     marcas: list[tuple[str, str, str, float, str]] = []
     max_extraccion = watermark
@@ -257,15 +289,7 @@ def detect_duplicates(*, fuente: str) -> DedupeResult:
                 }
             )
 
-    if marcas:
-        with connect() as c:
-            c.executemany(
-                "INSERT INTO licitaciones_duplicados "
-                "(licitacion_id, canonical_id, clave_match, confianza, status) "
-                "VALUES (%s, %s, %s, %s, %s) "
-                "ON CONFLICT(licitacion_id) DO NOTHING",
-                marcas,
-            )
+    dedupe_repo.marcar_duplicados(marcas)
     if max_extraccion and max_extraccion != watermark:
         set_cursor(cursor_source, last_seen_updated=max_extraccion)
     if result.evaluadas:

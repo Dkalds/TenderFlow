@@ -77,20 +77,38 @@ def delete_saved_filter(
     *,
     user_key: str,
     organization_id: int | None = None,
-) -> None:
-    """Elimina un filtro guardado por ID, siempre acotado a su dueño."""
+) -> bool:
+    """Elimina un filtro guardado por ID, siempre acotado a su dueño.
+
+    ``False`` si no existe, no es del usuario o es de otra organización.
+
+    La rama de organización llevaba ``AND (visibility = 'organization' OR
+    user_key = %s)``: el ``OR`` convertía la pertenencia en *alternativa* a la
+    visibilidad, no en restricción, así que cualquier miembro podía borrar la
+    vista compartida de un compañero. No había fuga entre organizaciones —el
+    predicado de ``organization_id`` seguía ahí— pero sí un borrado ajeno y sin
+    rastro, y el docstring prometía justo lo contrario.
+
+    De las dos formas de hacer coincidir código y promesa se elige la
+    conservadora: **sólo el dueño borra**. Ver una vista compartida y poder
+    destruirla son capacidades distintas; compartir no es ceder. Y el error se
+    recupera de formas asimétricas: quien no puede borrar pide al dueño que lo
+    haga, quien perdió una vista ajena no tiene de dónde recuperarla. Mismo
+    predicado que su hermana ``services/watchlist_rules.py::delete_rule``.
+    """
     with connect() as c:
         if organization_id is None:
-            c.execute(
+            cur = c.execute(
                 "DELETE FROM saved_filters WHERE id = %s AND user_key = %s",
                 (filter_id, user_key),
             )
         else:
-            c.execute(
+            cur = c.execute(
                 "DELETE FROM saved_filters WHERE id = %s AND organization_id = %s "
-                "AND (visibility = 'organization' OR user_key = %s)",
+                "AND user_key = %s",
                 (filter_id, organization_id, user_key),
             )
+        return bool(cur.rowcount > 0)
 
 
 def filters_to_json(

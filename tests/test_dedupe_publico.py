@@ -82,17 +82,38 @@ def _capture(metodo: str, **kwargs: Any) -> tuple[str, list[Any]]:
     return capturado["sql"], capturado["params"]
 
 
-#: Las seis superficies indexables, con y sin filtros donde los admiten.
-_INDEXABLES: list[tuple[str, dict[str, Any]]] = [
+# Las seis superficies indexables aplican el MISMO criterio de canónica, pero en
+# dos formas distintas, y por eso hay dos listas en vez de una.
+#
+# La razón es de coste y está medida contra producción: el anti-join hace un
+# sondeo indexado por fila, así que con `LIMIT` corta pronto (5,9 s un tramo del
+# sitemap) y sin `LIMIT` recorre las ~695k una a una (~200 s, muy por encima del
+# `statement_timeout` de 30 s). La agrupación no se beneficia del `LIMIT` pero
+# hace una sola pasada (9,1 s). Se desplegó el anti-join en las seis y tumbó la
+# superficie pública entera durante horas.
+#
+# `tests/test_publico_canonicas_equivalencia.py` comprueba contra Postgres que
+# las dos formas seleccionan el mismo conjunto; aquí sólo se vigila que ninguna
+# superficie se quede SIN una de las dos.
+
+#: Superficies con `LIMIT`: usan el anti-join.
+_ANTI_JOIN: list[tuple[str, dict[str, Any]]] = [
     ("listar", {}),
     ("listar", {"ccaa_slug": "cataluna", "cpv_prefijo": "72"}),
+    ("pagina_de_sitemap", {"desplazamiento": 0, "tamano": 100}),
+]
+
+#: Superficies que agregan la tabla entera: usan `DISTINCT ON` sobre la clave.
+_AGRUPACION: list[tuple[str, dict[str, Any]]] = [
     ("contar", {}),
     ("contar", {"ccaa_slug": "cataluna"}),
     ("ultima_incorporacion", {}),
     ("hubs_ccaa", {}),
     ("hubs_cpv", {}),
-    ("pagina_de_sitemap", {"desplazamiento": 0, "tamano": 100}),
 ]
+
+#: Las seis, para los invariantes que valen igual en las dos formas.
+_INDEXABLES: list[tuple[str, dict[str, Any]]] = _ANTI_JOIN + _AGRUPACION
 
 
 def _normalizar(sql: str) -> str:
@@ -104,8 +125,8 @@ def _normalizar(sql: str) -> str:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize(("metodo", "kwargs"), _INDEXABLES)
-def test_las_superficies_indexables_aplican_el_filtro_de_canonica(
+@pytest.mark.parametrize(("metodo", "kwargs"), _ANTI_JOIN)
+def test_las_superficies_con_limit_aplican_el_anti_join(
     metodo: str, kwargs: dict[str, Any]
 ) -> None:
     """Sin esto, el hub vuelve a servir el mismo contrato dos veces en una página."""
@@ -118,17 +139,41 @@ def test_las_superficies_indexables_aplican_el_filtro_de_canonica(
     )
 
 
+@pytest.mark.parametrize(("metodo", "kwargs"), _AGRUPACION)
+def test_los_agregados_aplican_la_agrupacion_por_clave(metodo: str, kwargs: dict[str, Any]) -> None:
+    """La otra mitad del mismo criterio, y con el mismo desempate.
+
+    Se exige el ``DISTINCT ON`` sobre la clave agrupable Y el orden canónico
+    completo: si el ``ORDER BY`` perdiera un criterio, el agregado elegiría una
+    canónica distinta de la que publica el sitemap y la URL de un contrato
+    dejaría de ser estable entre regeneraciones.
+    """
+    sql, _ = _capture(metodo, **kwargs)
+    normalizado = _normalizar(sql)
+
+    assert f"DISTINCT ON ({publico_mod._CLAVE_AGRUPABLE})" in normalizado, (
+        f"{metodo}({kwargs}) perdió la agrupación por clave canónica"
+    )
+    assert _normalizar(publico_mod._ORDEN_CANONICO) in normalizado, (
+        f"{metodo}({kwargs}) no desempata con el orden canónico completo"
+    )
+
+
 @pytest.mark.parametrize(("metodo", "kwargs"), _INDEXABLES)
-def test_las_seis_superficies_comparten_el_mismo_where(metodo: str, kwargs: dict[str, Any]) -> None:
+def test_las_seis_superficies_comparten_la_misma_publicabilidad(
+    metodo: str, kwargs: dict[str, Any]
+) -> None:
     """Si divergen, Search Console lo reporta como error de cobertura.
 
     El listado y el sitemap tienen que ver el mismo universo, y ``contar`` el
-    mismo que ambos o la paginación del hub enlaza páginas vacías.
+    mismo que ambos o la paginación del hub enlaza páginas vacías. Lo que se
+    comparte es ``_BASE_WHERE`` —el umbral de sustancia más el dedupe marcado—,
+    que es la parte común a las dos formas de resolver la canónica.
     """
     sql, _ = _capture(metodo, **kwargs)
 
-    assert _normalizar(publico_mod._WHERE_INDEXABLE) in _normalizar(sql), (
-        f"{metodo}({kwargs}) no comparte `_WHERE_INDEXABLE` con el resto"
+    assert _normalizar(publico_mod._BASE_WHERE) in _normalizar(sql), (
+        f"{metodo}({kwargs}) no comparte `_BASE_WHERE` con el resto"
     )
 
 
@@ -208,7 +253,12 @@ def test_la_subconsulta_filtra_la_fila_gemela_igual_que_la_exterior() -> None:
     candidata y encima rankeara por debajo, eliminaría a la fila publicable y
     el contrato desaparecería entero de la superficie.
     """
-    sql, _ = _capture("contar")
+    # Se mira `listar` y no `contar`: la fila gemela sólo existe en la forma de
+    # anti-join. Los agregados resuelven la canónica agrupando, así que no hay
+    # subconsulta que filtrar y la propiedad no les aplica — lo que en ellos
+    # sustituye a esta garantía es que el `DISTINCT ON` se hace sobre el
+    # conjunto ya filtrado por `_BASE_WHERE`, que cubre el mismo caso.
+    sql, _ = _capture("listar")
 
     # El umbral de sustancia tiene que aparecer escrito para los dos alias.
     assert "l2.titulo IS NOT NULL" in sql

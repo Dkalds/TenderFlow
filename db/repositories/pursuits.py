@@ -80,8 +80,17 @@ class PursuitRepository:
         responsible_user_id: int | None,
         actor_user_id: int,
         idempotency_key: str | None = None,
+        score_al_abrir: int | None = None,
+        banda_al_abrir: str | None = None,
     ) -> tuple[dict[str, Any], bool]:
-        """Crea idempotentemente y registra exactamente un evento inicial."""
+        """Crea idempotentemente y registra exactamente un evento inicial.
+
+        ``score_al_abrir``/``banda_al_abrir`` sellan la puntuación que motivó la
+        decisión (revisión ``v93``). Sólo se escriben en el INSERT: si el pursuit
+        ya existía, se conservan los de la primera vez, que es cuando alguien
+        decidió de verdad — reescribirlos en el camino idempotente falsearía la
+        medida con el score de un momento en que nadie decidió nada.
+        """
         now = now_utc_iso()
         with connect() as conn:
             existing = self._get_scoped(conn, organization_id, licitacion_id=licitacion_id)
@@ -92,8 +101,8 @@ class PursuitRepository:
                 "INSERT INTO pursuits "
                 "(organization_id, licitacion_id, responsible_user_id, "
                 " identified_at, created_by_user_id, updated_by_user_id, "
-                " created_at, updated_at) "
-                "VALUES (%s, %s, %s, %s, %s, %s, %s, %s) "
+                " created_at, updated_at, score_al_abrir, banda_al_abrir) "
+                "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) "
                 "ON CONFLICT(organization_id, licitacion_id) DO NOTHING RETURNING id",
                 (
                     organization_id,
@@ -104,6 +113,8 @@ class PursuitRepository:
                     actor_user_id,
                     now,
                     now,
+                    score_al_abrir,
+                    banda_al_abrir,
                 ),
             ).fetchone()
             was_created = inserted is not None

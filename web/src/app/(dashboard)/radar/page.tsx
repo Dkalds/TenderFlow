@@ -19,6 +19,7 @@ import { cn, formatNumber } from "@/lib/utils";
 import {
   type RadarTender,
   type ScoringSignals,
+  esBandaConocida,
   useDismissRadarTender,
   useRadar,
   useRadarDismissals,
@@ -110,6 +111,42 @@ function signalWarnings(signals: ScoringSignals | null | undefined): string[] {
 /** Marca de la última visita, para el punto «nueva» de cada fila. */
 const LAST_VISIT_KEY = "radar-last-visit";
 
+/**
+ * Controles que ya hacen algo propio con Intro. El atajo global se aparta ante
+ * ellos porque escucha en `window`: sin este filtro, pulsar Intro con el foco
+ * en «Restaurar», en un segmento o en el propio botón de una fila hacía
+ * `preventDefault()` —cancelando ese botón— y abría una oportunidad sobre la
+ * fila *seleccionada*, que no tiene por qué ser la que se está mirando.
+ *
+ * Las filas entran aquí por su `role="button"`: su Intro lo resuelve el
+ * `onKeyDown` de la fila, que sí sabe sobre qué índice está actuando.
+ */
+const CONTROLES_CON_INTRO_PROPIO = 'a, button, select, [role="button"]';
+
+/**
+ * A partir de `md` el Radar es una tabla y las acciones de las filas inactivas
+ * se ocultan (`md:opacity-0`). Eso las saca de la vista pero **no** del orden de
+ * tabulación, así que hacía falta saber en JS si estamos en ese ancho: `inert`
+ * es un atributo, no una clase, y no se puede condicionar con un prefijo
+ * responsive. Por debajo de `md` el bloque es visible por decisión escrita
+ * (ver el comentario de `radar-acciones`) y ahí no se inertiza nada.
+ */
+const CONSULTA_TABLA = "(min-width: 768px)";
+
+function useAnchoDeTabla(): boolean {
+  return React.useSyncExternalStore(
+    (alCambiar) => {
+      const consulta = window.matchMedia(CONSULTA_TABLA);
+      consulta.addEventListener("change", alCambiar);
+      return () => consulta.removeEventListener("change", alCambiar);
+    },
+    () => window.matchMedia(CONSULTA_TABLA).matches,
+    // En servidor se asume la ficha móvil: el peor fallo posible es dejar
+    // enfocable algo que ya lo era, nunca robar el foco a un botón visible.
+    () => false,
+  );
+}
+
 export default function RadarPage() {
   const router = useRouter();
   const filters = useFilters();
@@ -126,6 +163,7 @@ export default function RadarPage() {
   const createPursuit = useCreatePursuit();
   const setActiveOrganizationId = useOrganizationStore((state) => state.setActiveOrganizationId);
 
+  const enTabla = useAnchoDeTabla();
   const [segment, setSegment] = React.useState<SegmentKey>("bandeja");
   const [sort, setSort] = React.useState<SortKey>("score");
   const [selected, setSelected] = React.useState(0);
@@ -197,7 +235,13 @@ export default function RadarPage() {
 
   const dismiss = React.useCallback(
     (tender: RadarTender) => {
-      dismissTender.mutate(tender.id_externo);
+      // El score y la banda viajan con el descarte: son los que el usuario tenía
+      // delante al decidir, y no se pueden reconstruir después (revisión v93).
+      dismissTender.mutate({
+        idExterno: tender.id_externo,
+        score: tender.score,
+        banda: esBandaConocida(tender.band) ? tender.band : null,
+      });
       toast("Señal descartada", {
         description: tender.titulo ?? undefined,
         action: { label: "Deshacer", onClick: () => restore(tender.id_externo) },
@@ -229,7 +273,13 @@ export default function RadarPage() {
   const openPursuit = React.useCallback(
     async (tender: RadarTender) => {
       try {
-        const pursuit = await createPursuit.mutateAsync({ licitacion_id: tender.id_externo });
+        const pursuit = await createPursuit.mutateAsync({
+          licitacion_id: tender.id_externo,
+          // Mismo motivo que en el descarte: sella la puntuación que motivó
+          // abrir la oportunidad, para poder medir el win rate por banda.
+          score_al_abrir: tender.score,
+          banda_al_abrir: esBandaConocida(tender.band) ? tender.band : null,
+        });
         setActiveOrganizationId(pursuit.organization_id);
         toast.success("Oportunidad abierta para el equipo");
         router.push(`/oportunidades/${pursuit.id}`);
@@ -241,7 +291,10 @@ export default function RadarPage() {
   );
 
   // Teclado: J/K (o flechas) recorren, S sigue, X descarta, ⏎ abre. Se ignora
-  // mientras el foco está en un campo de texto, para no secuestrar la escritura.
+  // mientras el foco está en un campo de texto, para no secuestrar la escritura,
+  // y —en el caso de Intro— también ante cualquier control que ya tenga su
+  // propia acción: abrir una oportunidad escribe en el backend y navega, así que
+  // no puede dispararse como efecto colateral de pulsar otro botón.
   React.useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
@@ -263,6 +316,7 @@ export default function RadarPage() {
         event.preventDefault();
         if (active) dismiss(active);
       } else if (event.key === "Enter") {
+        if (target?.closest(CONTROLES_CON_INTRO_PROPIO)) return;
         event.preventDefault();
         if (active) void openPursuit(active);
       }
@@ -462,10 +516,27 @@ export default function RadarPage() {
                   tabIndex={0}
                   aria-current={isActive ? "true" : undefined}
                   onClick={() => setSelected(index)}
+                  // Tabular movía el foco sin mover la selección, así que el
+                  // inspector, la banda lateral y los atajos globales seguían
+                  // hablando de otra fila. Foco y selección son la misma cosa:
+                  // lo que estás mirando es sobre lo que actúas.
+                  onFocus={() => setSelected(index)}
                   onKeyDown={(event) => {
+                    // Solo la tecla que llega a la fila, no la que sube desde
+                    // sus botones: Intro sobre «Descartar» ya descarta, y
+                    // dejarla pasar aquí abriría además la oportunidad.
+                    if (event.target !== event.currentTarget) return;
                     if (event.key === " ") {
                       event.preventDefault();
                       setSelected(index);
+                    } else if (event.key === "Enter") {
+                      // Intro sobre la fila lo resuelve la fila, con su propio
+                      // `index`: el listener de `window` trabaja sobre `active`
+                      // y abría un pursuit —escritura en backend y navegación—
+                      // sobre la fila seleccionada, no sobre la enfocada.
+                      event.preventDefault();
+                      setSelected(index);
+                      void openPursuit(tender);
                     }
                   }}
                   // El alto fijo de fila es de la tabla: en la ficha el título
@@ -586,6 +657,13 @@ export default function RadarPage() {
                       fila activa. */}
                   <div
                     data-slot="radar-acciones"
+                    // `md:opacity-0` esconde el bloque pero lo deja en el orden
+                    // de tabulación: 23 filas inactivas × 3 botones eran 69
+                    // paradas invisibles, sin foco visible (WCAG 2.4.7). `inert`
+                    // los saca del foco y del árbol de accesibilidad, y solo
+                    // donde están ocultos: en la ficha móvil son visibles y
+                    // siguen siendo alcanzables.
+                    inert={enTabla && !isActive}
                     className={cn(
                       "flex items-center justify-end gap-2 border-t border-border/40 pt-2.5",
                       "md:gap-1.5 md:border-t-0 md:pt-0",

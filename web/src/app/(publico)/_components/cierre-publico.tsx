@@ -12,9 +12,11 @@ import { EnlaceSolicitarAcceso } from "./enlace-solicitar-acceso";
  * botón de chrome no cierra nada; hace falta decir qué hay dentro que no esté
  * en la lista que se acaba de leer.
  *
- * Va en los hubs (`[ccaa]`, `[codigo]`) y **no** en los dos índices: esos son
- * navegación —listas de enlaces a los hubs— y quien los cruza está buscando
- * dónde entrar, no decidiendo nada.
+ * Va en los hubs (`[ccaa]`, `[codigo]`) y en la ficha, que es el otro final de
+ * recorrido orgánico: quien la lee entera ya sabe si el contrato le interesa, y
+ * hasta 2026-08 lo único que se le ofrecía ahí era /login, donde el alta está
+ * apagada. **No** va en los dos índices: esos son navegación —listas de enlaces
+ * a los hubs— y quien los cruza está buscando dónde entrar, no decidiendo nada.
  *
  * Las tres cosas que promete son las mismas que la landing, y existen: score de
  * oportunidad, baja de referencia por segmento y módulo competitivo.

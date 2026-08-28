@@ -19,7 +19,11 @@ from pydantic import BaseModel, Field
 
 from db.repositories.aggregates import AggregateRepository, LicitacionesFilters
 from observability.logging import get_logger
-from services.analytics.forecast import build_forecast_df, forecast_volume_from_monthly
+from services.analytics.forecast import (
+    BANDA_SIGMAS,
+    build_forecast_df,
+    forecast_volume_from_monthly,
+)
 
 log = get_logger(__name__)
 
@@ -50,6 +54,16 @@ class ForecastSeriesPoint(BaseModel):
 
 class ForecastVolumeResult(BaseModel):
     series: list[ForecastSeriesPoint] = Field(default_factory=list)
+    # Qué motor produjo la proyección ("holt-winters" | "regresion-lineal"). La
+    # caída al fallback lineal solo se veía en el log, y la pantalla presentaba
+    # ambas igual: quien lee la curva no sabía si miraba un suavizado estacional
+    # o una recta. `None` cuando no hay serie.
+    modelo: str | None = None
+    # Sigmas de la banda `lower`/`upper`. NO es un intervalo de confianza: es
+    # +/-N sigma de TODA la serie histórica, idéntico en los seis horizontes (un IC
+    # real se ensancha con el horizonte). Se publica para que la UI la rotule
+    # con el número real en vez de dejar que se lea como un IC.
+    banda_sigmas: float = BANDA_SIGMAS
 
 
 class RetenderingFilters(BaseModel):
@@ -131,8 +145,12 @@ def get_forecast_volume(filters: ForecastFilters) -> ForecastVolumeResult:
         for _, row in result_df.iterrows()
     ]
 
-    log.info("analytics_forecast_volume_done", points=len(series))
-    return ForecastVolumeResult(series=series)
+    # `modelo` es constante en todo el DataFrame (lo fija el motor que produjo
+    # la proyección), así que basta con leerlo de la primera fila.
+    modelo = str(result_df["modelo"].iloc[0]) if "modelo" in result_df.columns else None
+
+    log.info("analytics_forecast_volume_done", points=len(series), modelo=modelo)
+    return ForecastVolumeResult(series=series, modelo=modelo)
 
 
 def get_retendering_forecast(filters: RetenderingFilters) -> RetenderingResult:

@@ -616,6 +616,18 @@ async def get_tender_fact_sheet(
     return record
 
 
+def _budget_subject(ctx: dict[str, Any]) -> str | None:
+    """Sujeto al que atribuir el gasto LLM: la ``user_key`` opaca del auth.
+
+    Réplica deliberada de ``api/routes/ask.py::_budget_subject``: es el
+    contrato de ``llm.budget`` (nunca el email ni el ``user_id`` crudo), y
+    duplicar tres líneas cuesta menos que hacer que una ruta importe un
+    privado de otra.
+    """
+    raw = ctx.get("user_key")
+    return raw if isinstance(raw, str) and raw else None
+
+
 @router.post(
     "/licitaciones/{id_externo:path}/ficha-pliego/extract",
     response_model=TenderFactSheetRecord,
@@ -623,27 +635,53 @@ async def get_tender_fact_sheet(
     responses={
         401: {"description": "Autenticación inválida"},
         422: {"description": "Sin texto de pliegos disponible (ni descargable ahora)"},
+        # El 429 por presupuesto LLM agotado (ver el handler) no se declara aquí
+        # a propósito: tocar `responses` regenera `web/src/generated/api.d.ts` y
+        # el gate de codegen drift exige recommitearlo. Documentarlo es una
+        # línea + `make openapi`, en un cambio que no arrastre esto.
         502: {"description": "El proveedor no devolvió una ficha válida"},
     },
 )
 async def extract_tender_fact_sheet(
     id_externo: str,
-    _ctx: dict[str, Any] = Depends(require_any_auth),
+    ctx: dict[str, Any] = Depends(require_any_auth),
 ) -> TenderFactSheetRecord:
     """Reextracción explícita; descarga bajo demanda los pliegos que aún
     estén pendientes (el cron nocturno drena el backlog global por lotes y
     esta licitación puede no haber tocado turno) y valida toda cita antes de
     persistirla."""
     from config import settings
+    from llm.budget import LLMBudgetExceeded, bind_budget_subject
     from services.rag.fact_sheet import extract_fact_sheet_on_demand
     from services.tech_signal import ingest_llm_technologies
 
+    # El gasto de esta ruta entra por ``stream_llm_response``, que consulta y
+    # apunta el presupuesto sin saber a quién atribuirlo. Sin sujeto el guard
+    # solo veía el tope global: una sola cuenta podía agotar la ventana de
+    # todas las demás reextrayendo fichas, que es una denegación de servicio
+    # barata. El ``bind`` va DENTRO del closure a propósito —anyio copia el
+    # contexto en cada salto al threadpool, así que la mutación muere con el
+    # hilo y no se filtra a otra request—, igual que en ask.py::_stream_ask.
+    scope_key = _budget_subject(ctx)
+
+    # El nombre del closure viaja al span OTEL (``db.function``), así que se
+    # elige parecido al de la función que envuelve para no romper búsquedas.
+    def _extract_fact_sheet_on_demand() -> TenderFactSheetRecord:
+        bind_budget_subject(scope_key)
+        return extract_fact_sheet_on_demand(id_externo, model=settings.PLIEGO_FACTS_MODEL)
+
     try:
-        record = await run_db(
-            extract_fact_sheet_on_demand,
-            id_externo,
-            model=settings.PLIEGO_FACTS_MODEL,
-        )
+        record = await run_db(_extract_fact_sheet_on_demand)
+    except LLMBudgetExceeded as exc:
+        # Con sujeto bindeado el breaker de coste ya puede dispararse aquí. Se
+        # captura ANTES del 502 genérico: el presupuesto agotado es un límite
+        # reintentable del cliente (429, como en /ask), no un fallo del
+        # proveedor. Va también antes del 422 sólo por claridad de lectura;
+        # LLMBudgetExceeded hereda de RuntimeError, no de ValueError.
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=str(exc),
+        ) from exc
     except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,

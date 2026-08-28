@@ -133,3 +133,24 @@ export function etiquetaProgreso(progreso: Progreso): string {
   if (progreso.sinResolver === 0) return base;
   return `${base} · ${progreso.sinResolver} sin comprobar`;
 }
+
+/**
+ * Progreso tal como puede viajar en telemetría: dimensión categórica cerrada.
+ *
+ * El catálogo de `lib/analytics.ts` sólo admite valores enumerables leyendo el
+ * fichero, y un contador libre no lo es. De ahí que sea un string de tres
+ * valores y no un número.
+ *
+ * El tope en `"2"` no es un recorte arbitrario: la banda no se pinta con los
+ * tres pasos hechos (`debeMostrarse`), así que «ocultar con todo hecho» no es
+ * un estado alcanzable y `"3"` sería una categoría muerta. Clampar además deja
+ * la dimensión cerrada si algún día se añade un cuarto paso — la cardinalidad
+ * de una métrica no puede crecer sin que nadie lo decida.
+ */
+export type ProgresoOnboarding = "0" | "1" | "2";
+
+export function progresoParaTelemetria(progreso: Progreso): ProgresoOnboarding {
+  if (progreso.hechos <= 0) return "0";
+  if (progreso.hechos === 1) return "1";
+  return "2";
+}

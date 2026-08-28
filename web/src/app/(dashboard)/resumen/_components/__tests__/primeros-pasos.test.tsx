@@ -60,6 +60,9 @@ vi.mock("@/lib/analytics", () => ({
 
 import { PrimerosPasos } from "@/app/(dashboard)/resumen/_components/primeros-pasos";
 import { estaDescartado } from "@/components/onboarding/descarte";
+import { registrarEvento } from "@/lib/analytics";
+
+const eventos = vi.mocked(registrarEvento);
 
 const PERFIL_HECHO = {
   weights: { importe: 100 },
@@ -110,6 +113,7 @@ describe("PrimerosPasos", () => {
     cleanup();
     window.localStorage.clear();
     apiGet.mockClear();
+    eventos.mockClear();
     backend.perfil = {};
     backend.reglas = { items: [] };
     backend.pursuits = { items: [], total: 0, limit: 50, offset: 0, organization_id: 1 };
@@ -220,6 +224,31 @@ describe("PrimerosPasos", () => {
     expect(screen.queryByRole("heading", { name: "Primeros pasos" })).not.toBeInTheDocument();
     expect(estaDescartado()).toBe(true);
     expect(onDescartar).toHaveBeenCalledTimes(1);
+  });
+
+  /**
+   * «Ocultar» es la señal de rechazo del onboarding, y sin medirla una caída
+   * del embudo no se distingue de un abandono silencioso. Lo que se fija aquí
+   * es que el evento salga **y** que sólo lleve la categoría de progreso: por
+   * ahí no puede colarse nada del usuario.
+   */
+  it("«Ocultar» emite el rechazo con el progreso en que se descartó", async () => {
+    renderBanda();
+    await esperarResuelto(0);
+
+    fireEvent.click(screen.getByRole("button", { name: "Ocultar los primeros pasos" }));
+
+    expect(eventos).toHaveBeenCalledWith("onboarding_ocultado", { progreso: "0" });
+  });
+
+  it("distingue el rechazo de entrada del abandono con trabajo hecho", async () => {
+    backend.perfil = PERFIL_HECHO;
+    renderBanda();
+    await esperarResuelto(1);
+
+    fireEvent.click(screen.getByRole("button", { name: "Ocultar los primeros pasos" }));
+
+    expect(eventos).toHaveBeenCalledWith("onboarding_ocultado", { progreso: "1" });
   });
 
   it("descartada en este dispositivo, no vuelve ni pide los datos", async () => {

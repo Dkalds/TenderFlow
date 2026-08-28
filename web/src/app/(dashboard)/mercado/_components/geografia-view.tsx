@@ -358,10 +358,29 @@ export default function GeografiaView() {
                     <TableRow
                       key={idx}
                       onClick={() => toggleCcaa(item.ccaa)}
-                      aria-pressed={isActive}
                       className={`cursor-pointer border-b border-border/50 hover:bg-muted/50 ${isActive ? "bg-primary/10" : ""}`}
                     >
-                      <TableCell className="py-2 pr-4 font-medium">{item.ccaa}</TableCell>
+                      {/* El conmutador es un botón real dentro de la celda, no
+                          la fila. `aria-pressed` sobre un `<tr>` no lo lee
+                          nadie —`row` no admite ese estado— y la fila entera no
+                          era alcanzable por teclado: quien no usa ratón no
+                          tenía forma de filtrar por CCAA desde esta tabla.
+                          El `onClick` del `<tr>` sobrevive como atajo. */}
+                      <TableCell className="py-2 pr-4 font-medium">
+                        <button
+                          type="button"
+                          aria-pressed={isActive}
+                          className="cursor-pointer text-left font-medium"
+                          onClick={(e) => {
+                            // Si no se corta, el clic sube al `<tr>` y el toggle
+                            // se aplica dos veces (vuelve al estado inicial).
+                            e.stopPropagation();
+                            toggleCcaa(item.ccaa);
+                          }}
+                        >
+                          {item.ccaa}
+                        </button>
+                      </TableCell>
                       <TableCell className="py-2 pr-4 text-right tabular-nums">
                         {formatNumber(item.count)}
                       </TableCell>

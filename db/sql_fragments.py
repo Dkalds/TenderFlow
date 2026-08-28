@@ -307,6 +307,46 @@ def clave_canonica_sql(alias: str = "l") -> str:
     )
 
 
+def clave_canonica_agrupable_sql(alias: str = "l") -> str:
+    """La clave canónica, pero garantizando que nunca es ``NULL``.
+
+    Existe para poder **agrupar** por la clave en vez de anti-unir contra ella.
+    :func:`fila_canonica_sql` resuelve "¿es esta fila la canónica?" fila a fila,
+    lo que obliga a un sondeo por cada una de las ~695k: perfecto cuando hay un
+    ``LIMIT`` que corta pronto (el sitemap), ruinoso cuando hay que recorrer la
+    tabla entera (``contar``, los dos hubs, ``ultima_incorporacion``). Medido en
+    producción el 2026-08-28: ~200 s por anti-join frente a **9,1 s** agrupando.
+
+    **El ``coalesce`` no es cosmético: preserva la semántica de los NULL.**
+    ``organo_normalizado_sql`` devuelve ``NULL`` sin órgano, y en el anti-join
+    ``NULL = NULL`` no es cierto, así que ninguna fila sin órgano encuentra
+    gemela y **todas** sobreviven. Un ``DISTINCT ON`` sobre la clave cruda haría
+    lo contrario —``DISTINCT`` sí considera iguales dos ``NULL``— y colapsaría
+    todas esas filas en una, haciendo desaparecer contratos. Sustituir el NULL
+    por algo único a la fila (``id_externo`` es la clave primaria) reproduce
+    exactamente el comportamiento del anti-join: cada una es su propio grupo.
+
+    El prefijo ``'r:'`` impide que un ``id_externo`` que casualmente parezca un
+    md5 colisione con una clave real.
+    """
+    return f"coalesce({clave_canonica_sql(alias)}, 'r:' || {alias}.id_externo)"
+
+
+def orden_canonico_sql(alias: str = "l") -> str:
+    """El criterio de :func:`_rango_canonico_sql`, en forma de lista ``ORDER BY``.
+
+    Mismo orden y mismos desempates que el anti-join —de ahí que las dos salgan
+    del mismo sitio—, pero como lista separada por comas en vez de constructor
+    de fila, que es lo que admite un ``ORDER BY`` de ``DISTINCT ON``. Si
+    divergieran, agregado y sitemap elegirían canónicas distintas para el mismo
+    contrato y la cifra de la portada dejaría de describir lo que se publica.
+    """
+    return (
+        f"({alias}.fuente <> 'placsp'), coalesce({alias}.fecha_publicacion, '9999'), "
+        f"coalesce({alias}.fecha_extraccion, '9999'), {alias}.id_externo"
+    )
+
+
 def fila_canonica_sql(*, alias: str = "l", gemelo: str = "l2", filtro_gemelo: str) -> str:
     """Cláusula que solo deja pasar la fila canónica de cada contrato.
 

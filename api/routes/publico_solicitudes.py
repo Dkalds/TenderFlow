@@ -7,8 +7,9 @@ deliberado.
 anónima**: ``api/app.py`` registra al final un catch-all
 ``/api/v1/licitaciones/{id_externo:path}`` con ``require_any_auth``, y
 cualquier ruta pública bajo ese prefijo quedaría ensombrecida sin un solo error
-en el arranque. Además ``scripts/check_public_surface.py`` escanea
-``api/routes/publico*.py``, así que este fichero entra gratis en ese guard.
+en el arranque. Además ``scripts/check_public_surface.py`` escanea por prefijo
+``api/routes/publico*.py`` —CI lo corre con ``--strict``—, así que este fichero
+entra gratis en ese guard por llamarse como se llama.
 
 **Acepta ``application/x-www-form-urlencoded``, no JSON.** El formulario de la
 landing es HTML puro dentro de un Server Component: sin JavaScript de cliente,

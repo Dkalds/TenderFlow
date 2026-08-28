@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { useUiStore } from "@/lib/ui-store";
 
 const push = vi.fn();
@@ -13,13 +13,24 @@ vi.mock("@/lib/filters", () => ({
   useWithFilters: () => (p: string) => p,
   useFilterParams: () => filterParamsStub,
 }));
-vi.mock("sonner", () => ({ toast: { success: vi.fn() } }));
+vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
 import { CommandPalette } from "@/components/command-palette";
 import { toast } from "sonner";
 
+// `triggerDownload` arma el fichero desde un blob, así que jsdom necesita las
+// dos mitades que no implementa: la respuesta y el object URL.
+const fetchSpy = vi.fn();
+
 beforeEach(() => {
   useUiStore.setState({ commandOpen: false, savedViewsOpen: false });
+  fetchSpy.mockReset();
+  fetchSpy.mockResolvedValue(
+    new Response("id;titulo", { status: 200, headers: { "Content-Type": "text/csv" } }),
+  );
+  vi.stubGlobal("fetch", fetchSpy);
+  URL.createObjectURL = vi.fn(() => "blob:stub");
+  URL.revokeObjectURL = vi.fn();
   push.mockClear();
   setTheme.mockClear();
   writeText.mockClear();
@@ -112,7 +123,12 @@ describe("CommandPalette — Acciones con filtros", () => {
     );
   });
 
-  it("'Exportar CSV (vista actual)' triggers a CSV download", () => {
+  // La descarga dejó de ser un `<a download>` a ciegas: ahora pasa por `fetch`,
+  // comprueba `res.ok` y sólo entonces arma el ancla. Estos dos tests afirman
+  // sobre la URL pedida y no sobre el click, que es lo que de verdad importa —
+  // el bug que motivó el cambio era mandar `format=xlsx`, un valor que la API
+  // rechaza con 422, y espiar el click no lo habría detectado nunca.
+  it("'Exportar CSV (vista actual)' pide el CSV con los filtros activos", async () => {
     const clickSpy = vi
       .spyOn(HTMLAnchorElement.prototype, "click")
       .mockImplementation(() => {});
@@ -120,11 +136,16 @@ describe("CommandPalette — Acciones con filtros", () => {
     useUiStore.setState({ commandOpen: true });
     render(<CommandPalette />);
     fireEvent.click(screen.getByText("Exportar CSV (vista actual)"));
-    expect(clickSpy).toHaveBeenCalledTimes(1);
+
+    await waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(1));
+    const url = new URL(fetchSpy.mock.calls[0][0] as string, "http://localhost");
+    expect(url.searchParams.get("format")).toBe("csv");
+    expect(url.searchParams.get("q")).toBe("obras");
+    await waitFor(() => expect(clickSpy).toHaveBeenCalledTimes(1));
     clickSpy.mockRestore();
   });
 
-  it("'Exportar Excel (vista actual)' triggers an Excel download", () => {
+  it("'Exportar Excel (vista actual)' lo pide como `excel`, no como `xlsx`", async () => {
     const clickSpy = vi
       .spyOn(HTMLAnchorElement.prototype, "click")
       .mockImplementation(() => {});
@@ -132,7 +153,11 @@ describe("CommandPalette — Acciones con filtros", () => {
     useUiStore.setState({ commandOpen: true });
     render(<CommandPalette />);
     fireEvent.click(screen.getByText("Exportar Excel (vista actual)"));
-    expect(clickSpy).toHaveBeenCalledTimes(1);
+
+    await waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(1));
+    const url = new URL(fetchSpy.mock.calls[0][0] as string, "http://localhost");
+    expect(url.searchParams.get("format")).toBe("excel");
+    await waitFor(() => expect(clickSpy).toHaveBeenCalledTimes(1));
     clickSpy.mockRestore();
   });
 

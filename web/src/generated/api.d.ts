@@ -4617,6 +4617,13 @@ export interface components {
         };
         /** ForecastVolumeResult */
         ForecastVolumeResult: {
+            /**
+             * Banda Sigmas
+             * @default 1.5
+             */
+            banda_sigmas: number;
+            /** Modelo */
+            modelo?: string | null;
             /** Series */
             series?: components["schemas"]["ForecastSeriesPoint"][];
         };
@@ -5929,8 +5936,23 @@ export interface components {
              * @default 0
              */
             importe_total_sap: number;
+            /**
+             * Menciones Modulo
+             * @default 0
+             */
+            menciones_modulo: number;
             /** Modulos */
             modulos?: components["schemas"]["ModuloEntry"][];
+            /**
+             * Modulos Por Clasificada
+             * @default 0
+             */
+            modulos_por_clasificada: number;
+            /**
+             * Pct Match Portfolio
+             * @default 0
+             */
+            pct_match_portfolio: number;
             /**
              * Ticket Medio Sap
              * @default 0
@@ -5942,6 +5964,11 @@ export interface components {
             tipos_proyecto?: components["schemas"]["ProyectoTipoEntry"][];
             top_modulo_yoy?: components["schemas"]["TopModuloYoY"] | null;
             /**
+             * Total
+             * @default 0
+             */
+            total: number;
+            /**
              * Total Clasificados
              * @default 0
              */
@@ -5950,14 +5977,30 @@ export interface components {
         /**
          * PursuitCreate
          * @description Convierte una licitación existente en oportunidad colaborativa.
+         *
+         *     ``score_al_abrir`` y ``banda_al_abrir`` son la puntuación que el usuario
+         *     tenía en pantalla al comprometerse, y los manda el cliente porque el score
+         *     no se persiste en ninguna parte: se calcula en vivo sobre el universo del día
+         *     y los pesos del perfil, así que recalcularlo aquí daría un número distinto
+         *     del que motivó la decisión. Sin ellos no hay forma de responder si el Radar
+         *     prioriza bien —la promesa central del producto—, y el dato es irrecuperable
+         *     a posteriori (revisión ``v93``).
+         *
+         *     Opcionales: abrir la oportunidad es la acción y medir es el efecto
+         *     secundario. Una llamada por API o un cliente antiguo siguen funcionando, y
+         *     la fila queda con ``NULL``, que significa «no se supo».
          */
         PursuitCreate: {
+            /** Banda Al Abrir */
+            banda_al_abrir?: ("Caliente" | "Atractiva" | "Tibia" | "Descarte") | null;
             /** Licitacion Id */
             licitacion_id: string;
             /** Organization Id */
             organization_id?: number | null;
             /** Responsible User Id */
             responsible_user_id?: number | null;
+            /** Score Al Abrir */
+            score_al_abrir?: number | null;
         };
         /**
          * PursuitDetail
@@ -6202,16 +6245,10 @@ export interface components {
          * @description Data quality metrics.
          */
         QualityResult: {
-            /**
-             * Cobertura Modulo Sap
-             * @default 0
-             */
-            cobertura_modulo_sap: number;
-            /**
-             * Cobertura Nif
-             * @default 0
-             */
-            cobertura_nif: number;
+            /** Cobertura Modulo Sap */
+            cobertura_modulo_sap?: number | null;
+            /** Cobertura Nif */
+            cobertura_nif?: number | null;
             /** Completitud Columnas */
             completitud_columnas?: components["schemas"]["ColumnCompleteness"][];
             /**
@@ -6290,10 +6327,25 @@ export interface components {
         /**
          * RadarDismissalBody
          * @description Cuerpo del descarte de una señal.
+         *
+         *     ``score`` y ``banda`` son los que el usuario tenía **en pantalla** al
+         *     descartar, y por eso los manda el cliente en vez de recalcularlos aquí: el
+         *     score se computa en vivo sobre el universo del día y el perfil del usuario,
+         *     así que recalcularlo en el servidor daría un número distinto del que motivó
+         *     la decisión — que es justo el dato que se quiere conservar (revisión `v93`).
+         *
+         *     Son opcionales a propósito: descartar es la acción, medir es el efecto
+         *     secundario. Un cliente antiguo o una llamada por API siguen pudiendo
+         *     descartar sin mandarlos, y la fila queda con `NULL`, que significa «no se
+         *     supo» y no se rellena con nada inventado.
          */
         RadarDismissalBody: {
+            /** Banda */
+            banda?: ("Caliente" | "Atractiva" | "Tibia" | "Descarte") | null;
             /** Id Externo */
             id_externo: string;
+            /** Score */
+            score?: number | null;
         };
         /**
          * RadarDismissalsResult

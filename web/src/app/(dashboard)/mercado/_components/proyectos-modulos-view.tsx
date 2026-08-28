@@ -22,6 +22,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { ExportPopover } from "@/components/export-popover";
 import { formatCurrency, formatNumber, formatPercent } from "@/lib/utils";
+import type { Schemas } from "@/lib/api-types";
 import {
   FolderKanban,
   Hash,
@@ -33,50 +34,27 @@ import {
   ArrowUpDown,
 } from "lucide-react";
 
-interface ModuloItem {
-  modulo: string;
-  count: number;
-  importe: number;
-}
-
-interface TipoProyectoItem {
-  tipo: string;
-  count: number;
-  importe: number;
-}
-
-interface TopModuloYoY {
-  modulo: string;
-  crecimiento_pct: number;
-  n_act: number;
-}
-
-interface TipoEstadoItem {
-  tipo: string;
-  estado: string;
-  n: number;
-}
-
-interface CpvItem {
-  cpv: string;
-  cpv_desc: string;
-  count: number;
-  importe: number;
-}
-
-interface ProyectosModulosResponse {
-  modulos: ModuloItem[];
-  tipos_proyecto: TipoProyectoItem[];
-  total_clasificados: number;
-  importe_total_sap?: number;
-  ticket_medio_sap?: number;
-  total_modulos: number;
-  total_tipos: number;
+/**
+ * Contrato REAL del endpoint, derivado del esquema OpenAPI.
+ *
+ * Antes era una `interface` escrita a mano que declaraba `total`,
+ * `total_modulos` y `total_tipos`: tres campos que el backend nunca emitió.
+ * TypeScript los daba por buenos, llegaban como `undefined` y activaban
+ * fallbacks — el de `total` dividía por la suma de filas de módulo (una
+ * licitación con módulos A+B cuenta dos veces), así que el KPI leía MÁS BAJO
+ * cuanto más multi-módulo era el corpus. Derivar el tipo del esquema hace que
+ * `npm run typecheck` delate esa divergencia en vez de la pantalla.
+ *
+ * El bloque intersección son los campos que este cambio AÑADE a
+ * `ProyectosModulosResult` en el backend; se declaran aquí solo hasta que se
+ * regenere `api.d.ts` (`make openapi`), que es artefacto generado.
+ */
+type ProyectosModulosResponse = Schemas["ProyectosModulosResult"] & {
   total?: number;
-  top_modulo_yoy: TopModuloYoY | null;
-  tipo_estado: TipoEstadoItem[];
-  cpv: CpvItem[];
-}
+  menciones_modulo?: number;
+  pct_match_portfolio?: number;
+  modulos_por_clasificada?: number;
+};
 
 /** Sentinel used by the backend to flag a brand-new module (no prior-year data). */
 const YOY_NUEVO = 999;
@@ -102,10 +80,14 @@ export default function ProyectosModulosView() {
   // de filas de módulo (una licitación con módulos A+B contaba doble el importe).
   const ticketMedioSAP = data?.ticket_medio_sap ?? 0;
 
-  const pctMultiModulo = useMemo(() => {
-    const total = data?.total ?? modulos.reduce((s, m) => s + m.count, 0);
-    return total > 0 ? ((data?.total_clasificados ?? 0) / total) * 100 : 0;
-  }, [data, modulos]);
+  // Los dos ratios y sus denominadores vienen calculados del backend (ADR-014):
+  // aquí no se derivan totales. `?? null` para que la tarjeta se abstenga ("—")
+  // si el campo no viaja, en vez de inventar un 0 %.
+  const totalAmbito = data?.total ?? null;
+  const totalClasificados = data?.total_clasificados ?? 0;
+  const mencionesModulo = data?.menciones_modulo ?? null;
+  const modulosPorClasificada = data?.modulos_por_clasificada ?? null;
+  const pctMatchPortfolio = data?.pct_match_portfolio ?? null;
 
   const ticketS4Hana = useMemo(() => {
     const s4 = modulos.find(
@@ -115,11 +97,6 @@ export default function ProyectosModulosView() {
     );
     return s4 && s4.count > 0 ? s4.importe / s4.count : null;
   }, [modulos]);
-
-  const pctMatchPortfolio = useMemo(() => {
-    const total = data?.total ?? modulos.reduce((s, m) => s + m.count, 0);
-    return total > 0 ? ((data?.total_clasificados ?? 0) / total) * 100 : 0;
-  }, [data, modulos]);
 
   const modulosSorted = useMemo(
     () => [...modulos].sort((a, b) => b.count - a.count),
@@ -269,10 +246,25 @@ export default function ProyectosModulosView() {
           icon={TrendingUp}
           loading={isLoading}
         />
+        {/*
+          Intensidad multi-módulo con el signo correcto: 1,00 = todas las
+          clasificadas tienen un solo módulo, y sube al detectarse más módulos
+          por licitación. NO es un «% de licitaciones multi-módulo»: eso exige
+          contar licitaciones con >1 módulo distinto, que el agregado SQL de hoy
+          (un COUNT por patrón, sin distinct por licitación) no produce.
+        */}
         <KpiCard
-          title="% Multi-módulo"
-          value={isLoading ? undefined : formatPercent(pctMultiModulo)}
-          subtitle="clasificados / total"
+          title="Módulos por clasificada"
+          value={
+            isLoading || modulosPorClasificada == null
+              ? undefined
+              : formatNumber(modulosPorClasificada)
+          }
+          subtitle={
+            mencionesModulo != null
+              ? `${formatNumber(mencionesModulo)} menciones / ${formatNumber(totalClasificados)} clasificadas`
+              : undefined
+          }
           icon={Percent}
           loading={isLoading}
         />
@@ -290,7 +282,16 @@ export default function ProyectosModulosView() {
         />
         <KpiCard
           title="% Match Portfolio"
-          value={isLoading ? undefined : formatPercent(pctMatchPortfolio)}
+          value={
+            isLoading || pctMatchPortfolio == null
+              ? undefined
+              : formatPercent(pctMatchPortfolio)
+          }
+          subtitle={
+            totalAmbito != null
+              ? `${formatNumber(totalClasificados)} / ${formatNumber(totalAmbito)} licitaciones del ámbito`
+              : undefined
+          }
           icon={Layers}
           loading={isLoading}
         />
@@ -300,31 +301,29 @@ export default function ProyectosModulosView() {
       <KpiStrip columns={3}>
         <KpiCard
           title="Total Clasificados"
-          value={
-            isLoading
-              ? undefined
-              : formatNumber(data?.total_clasificados ?? 0)
+          value={isLoading ? undefined : formatNumber(totalClasificados)}
+          subtitle={
+            totalAmbito != null
+              ? `de ${formatNumber(totalAmbito)} del ámbito`
+              : undefined
           }
           icon={Hash}
           loading={isLoading}
         />
+        {/*
+          `modulos` / `tipos_proyecto` llegan completos (sin recorte), así que
+          su longitud ES el conteo. Antes se anteponía `data?.total_modulos` /
+          `data?.total_tipos`, campos que el contrato no emite.
+        */}
         <KpiCard
           title="Módulos Detectados"
-          value={
-            isLoading
-              ? undefined
-              : formatNumber(data?.total_modulos ?? modulos.length)
-          }
+          value={isLoading ? undefined : formatNumber(modulos.length)}
           icon={Boxes}
           loading={isLoading}
         />
         <KpiCard
           title="Tipos de Proyecto"
-          value={
-            isLoading
-              ? undefined
-              : formatNumber(data?.total_tipos ?? tipos.length)
-          }
+          value={isLoading ? undefined : formatNumber(tipos.length)}
           icon={Layers}
           loading={isLoading}
         />

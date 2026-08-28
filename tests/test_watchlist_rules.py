@@ -8,13 +8,16 @@ from __future__ import annotations
 
 import pytest
 
+from db.repositories import watchlist_rules as watchlist_rules_repo
 from services.watchlist_rules import (
     WatchlistRule,
     count_matches,
+    count_matches_bounded,
     create_rule,
     delete_rule,
     list_matches,
     list_rules,
+    matches_since,
     set_active,
     update_rule,
 )
@@ -172,3 +175,63 @@ def test_list_matches_devuelve_campos(db):
     assert {r["id_externo"] for r in rows} == {"L1", "L2"}
     assert "titulo" in rows[0]
     assert "importe" in rows[0]
+
+
+# ── caja de la keyword ────────────────────────────────────────────────────────
+#
+# El corpus escribe los acrónimos en mayúsculas ("SAP", "ERP") y el usuario los
+# teclea como le sale. Con ``LIKE`` (sensible a caja en Postgres) una regla "sap"
+# devolvía 0 sin error ni log: badge a 0, pestaña vacía y —lo caro— el job de
+# alertas mudo, porque ``matches_since`` comparte el predicado. Los tests de
+# arriba no lo cazaban porque sembraban y consultaban en la MISMA caja.
+
+
+@pytest.mark.parametrize("keyword", ["sap", "SAP", "Sap", "sAp"])
+def test_match_keyword_ignora_la_caja(db, keyword):
+    _seed_licitaciones()
+    # Mismo resultado que "SAP": L1 (título) y L3 (descripción).
+    assert count_matches(WatchlistRule(keyword=keyword)) == 2
+
+
+def test_match_keyword_en_descripcion_ignora_la_caja(db):
+    _seed_licitaciones()
+    # "módulo SAP" vive solo en la descripción de L3; el OR de descripción
+    # también tiene que ser insensible, no solo el del título.
+    assert count_matches(WatchlistRule(keyword="módulo sap")) == 1
+
+
+@pytest.mark.parametrize("keyword", ["sap", "SAP"])
+def test_matches_since_ignora_la_caja(db, keyword):
+    """El job de alertas usa ``matches_since``: si la caja lo silencia, no
+    dispara nunca. Se comprueba aparte del conteo, no por delegación."""
+    _seed_licitaciones()
+    rows = matches_since(WatchlistRule(keyword=keyword), "2025-12-31")
+    assert {r["id_externo"] for r in rows} == {"L1", "L3"}
+
+
+def test_matches_since_respeta_el_corte_temporal_con_caja_cruzada(db):
+    _seed_licitaciones()
+    # Todo el seed es de 2026-01-01: un corte posterior no devuelve nada aunque
+    # la keyword case en minúsculas.
+    assert matches_since(WatchlistRule(keyword="sap"), "2026-01-02") == []
+
+
+# ── conteo acotado del listado ────────────────────────────────────────────────
+
+
+def test_count_matches_bounded_coincide_con_el_exacto_bajo_el_tope(db):
+    _seed_licitaciones()
+    reglas = [WatchlistRule(keyword="sap"), WatchlistRule(cpv="72"), WatchlistRule()]
+    assert count_matches_bounded(reglas) == [2, 2, 3]
+
+
+def test_count_matches_bounded_satura_en_el_tope(db, monkeypatch):
+    """Por encima del techo el número deja de ser exacto y se queda en el tope
+    (la UI lo pinta «999+»). Se baja el tope en vez de sembrar 1.000 filas."""
+    _seed_licitaciones()
+    monkeypatch.setattr(watchlist_rules_repo, "MATCH_COUNT_CAP", 2)
+    assert count_matches_bounded([WatchlistRule()]) == [2]  # hay 3, se corta en 2
+
+
+def test_count_matches_bounded_lista_vacia_no_pide_conexion(db):
+    assert count_matches_bounded([]) == []

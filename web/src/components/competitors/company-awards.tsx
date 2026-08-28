@@ -14,6 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useDebounce } from "@/hooks/use-debounce";
 import { fetchWithAuth } from "@/lib/api-client";
+import { descargarBlob } from "@/lib/export";
 import { formatCurrency, formatDate, formatNumber, formatPercent, truncate } from "@/lib/utils";
 
 import type { CompanyAward, CompanyAwardsData } from "./company-profile-types";
@@ -120,13 +121,14 @@ export function CompanyAwards({ empresaId, scopeQuery }: CompanyAwardsProps) {
             .join(","),
         ),
       ].join("\n");
-      const blob = new Blob(["\ufeff", csv], { type: "text/csv;charset=utf-8" });
-      const href = URL.createObjectURL(blob);
-      const anchor = document.createElement("a");
-      anchor.href = href;
-      anchor.download = `adjudicaciones-empresa-${empresaId}.csv`;
-      anchor.click();
-      URL.revokeObjectURL(href);
+      // `descargarBlob` en vez de un ancla propia: el fichero se compone en el
+      // cliente y no pasa por `/exports/download`, que es el único sitio donde
+      // se emitía el evento de exportación. `empresaId` no viaja a la métrica.
+      descargarBlob(
+        `adjudicaciones-empresa-${empresaId}.csv`,
+        new Blob(["\ufeff", csv], { type: "text/csv;charset=utf-8" }),
+        "adjudicaciones-empresa",
+      );
     } finally {
       setIsExporting(false);
     }

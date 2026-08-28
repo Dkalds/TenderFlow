@@ -13,7 +13,17 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, cleanup, fireEvent, within } from "@testing-library/react";
 import { TooltipProvider } from "@/components/ui/tooltip";
 
-const { pathnameRef, filtersRef, filterParamsRef, historyRef, overviewRef, setCommandOpen, undo, redo } = vi.hoisted(
+const {
+  pathnameRef,
+  filtersRef,
+  filterParamsRef,
+  historyRef,
+  overviewRef,
+  overviewKeyRef,
+  setCommandOpen,
+  undo,
+  redo,
+} = vi.hoisted(
   () => ({
     pathnameRef: { current: "/mercado" },
     filtersRef: {
@@ -38,6 +48,10 @@ const { pathnameRef, filtersRef, filterParamsRef, historyRef, overviewRef, setCo
     filterParamsRef: { current: {} as Record<string, string> },
     historyRef: { current: { canUndo: false, canRedo: false } },
     overviewRef: { current: { data: { total_licitaciones: 1234 }, isLoading: false } },
+    // Clave con la que se pidió el recuento. Su último elemento son los params,
+    // que es lo que hay que poder afirmar: la barra no puede contar con filtros
+    // que la pantalla no aplica.
+    overviewKeyRef: { current: [] as unknown[] },
     setCommandOpen: vi.fn(),
     undo: vi.fn(),
     redo: vi.fn(),
@@ -62,11 +76,19 @@ vi.mock("@/hooks/use-data-freshness", () => ({
   useDataFreshness: () => ({ relative: "hace 5 min" }),
 }));
 vi.mock("@/hooks/use-debounce", () => ({ useDebounce: (v: unknown) => v }));
-vi.mock("@/hooks/use-filtered-query", () => ({
-  useFilteredQuery: () => overviewRef.current,
-}));
+vi.mock("@/lib/api-client", () => ({ fetchWithAuth: vi.fn() }));
+// La barra monta DOS queries: el catálogo de `/meta/filters` y el recuento del
+// ámbito. Se distinguen por el primer elemento de la clave; la del recuento
+// además se registra para poder afirmar con qué params salió.
 vi.mock("@tanstack/react-query", () => ({
-  useQuery: () => ({ data: { estado: [], ccaa: ["Madrid"], tecnologia: ["SAP"], cpv: [] } }),
+  keepPreviousData: Symbol("keepPreviousData"),
+  useQuery: ({ queryKey }: { queryKey: unknown[] }) => {
+    if (queryKey[0] === "meta-filters") {
+      return { data: { estado: [], ccaa: ["Madrid"], tecnologia: ["SAP"], cpv: [] } };
+    }
+    overviewKeyRef.current = queryKey;
+    return overviewRef.current;
+  },
 }));
 vi.mock("@/components/live-region", () => ({ useAnnounceOnChange: vi.fn() }));
 vi.mock("@/components/saved-views-menu", () => ({ SavedViewsMenu: () => null }));
@@ -91,6 +113,7 @@ beforeEach(() => {
   filterParamsRef.current = {};
   historyRef.current = { canUndo: false, canRedo: false };
   overviewRef.current = { data: { total_licitaciones: 1234 }, isLoading: false };
+  overviewKeyRef.current = [];
   filtersRef.current = {
     ...filtersRef.current,
     q: "",
@@ -239,6 +262,70 @@ describe("ScopeBar — contrato de filtros por página", () => {
     filterParamsRef.current = { q: "sap" };
     renderBar();
     expect(screen.getByText(/\(1 filtro activo\)/)).toBeInTheDocument();
+  });
+});
+
+describe("ScopeBar — pantallas de subconjunto", () => {
+  /**
+   * El caso intermedio, que era el agujero: `/radar` declara
+   * `globalFilterKeys: ["tecnologia"]`, así que el ámbito SÍ aplica —pero solo
+   * en parte—. La barra pintaba el recuento pedido con `useFilterParams()`
+   * completo: llegando desde Detalle con CCAA=Madrid decía «312 licitaciones»
+   * mientras el Radar enseñaba el top nacional. Y el aviso honesto era
+   * inalcanzable justo ahí, porque solo se mostraba cuando NADA aplicaba.
+   */
+  const conRadarFiltrado = () => {
+    pathnameRef.current = "/radar";
+    filterParamsRef.current = { ccaa: "Madrid", tecnologia: "SAP" };
+    filtersRef.current = { ...filtersRef.current, ccaas: ["Madrid"], tecnologias: ["SAP"] };
+  };
+
+  it("pide el recuento solo con el subconjunto que la pantalla aplica", () => {
+    conRadarFiltrado();
+    renderBar();
+    // El último elemento de la clave son los params de la petición.
+    expect(overviewKeyRef.current.at(-1)).toEqual({ tecnologia: "SAP" });
+  });
+
+  it("no recorta nada donde la pantalla consume el ámbito entero", () => {
+    filterParamsRef.current = { ccaa: "Madrid", tecnologia: "SAP" };
+    renderBar(); // pathname por defecto: /mercado
+    expect(overviewKeyRef.current.at(-1)).toEqual({ ccaa: "Madrid", tecnologia: "SAP" });
+  });
+
+  it("anuncia los filtros activos que la pantalla no aplica", () => {
+    conRadarFiltrado();
+    renderBar();
+    expect(screen.getByText("1 filtro activo no aplica en esta pantalla")).toBeInTheDocument();
+  });
+
+  it("ofrece quitar solo los que no aplican, conservando los que sí", () => {
+    conRadarFiltrado();
+    renderBar();
+    fireEvent.click(screen.getByRole("button", { name: /Quitarlo/ }));
+    expect(filtersRef.current.setCcaas).toHaveBeenCalledWith([]);
+    // Lo que la pantalla sí filtra no se toca: «Limpiar el ámbito» se lo
+    // llevaría por delante, y por eso este botón es otro.
+    expect(filtersRef.current.setTecnologias).not.toHaveBeenCalled();
+    expect(filtersRef.current.resetFilters).not.toHaveBeenCalled();
+  });
+
+  it("se calla cuando todo lo activo cae dentro del subconjunto", () => {
+    pathnameRef.current = "/radar";
+    filterParamsRef.current = { tecnologia: "SAP" };
+    filtersRef.current = { ...filtersRef.current, tecnologias: ["SAP"] };
+    renderBar();
+    expect(screen.queryByText(/no aplica[n]? en esta pantalla/)).not.toBeInTheDocument();
+  });
+
+  it("los chips y el recuento hablan del mismo corte", () => {
+    conRadarFiltrado();
+    renderBar();
+    // El chip de CCAA no se pinta (no lo aplica la pantalla) y su param tampoco
+    // viaja en la query: antes el chip desaparecía pero el filtro seguía contando.
+    expect(screen.queryByRole("button", { name: /Quitar ccaa Madrid/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Quitar tecnología SAP/ })).toBeInTheDocument();
+    expect(overviewKeyRef.current.at(-1)).not.toHaveProperty("ccaa");
   });
 });
 

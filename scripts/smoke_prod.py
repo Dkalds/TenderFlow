@@ -15,6 +15,16 @@ Uso::
     # o con API key (endpoints que la aceptan):
     SMOKE_BASE_URL=... SMOKE_API_KEY=... python scripts/smoke_prod.py
 
+Los checks de ``/api/v1/publico/*`` son los que más importan, aunque en la
+lista sean los últimos en llegar: son la única superficie que consume un
+visitante anónimo —y Googlebot—, así que un fallo ahí lo ve todo internet antes
+de que ningún cliente autenticado se entere. Y no es hipotético: el 2026-08-28
+la superficie pública entera respondió 500 durante horas y este smoke salió
+VERDE (run de las 09:44 UTC) porque no tocaba ni un endpoint público. Además,
+al no exigir credenciales, no pueden degradar al camino "401: check omitido"
+que sí puede vaciar de contenido a los checks privados cuando el runner corre
+sin secretos.
+
 Exit 0 si todos los checks pasan; 1 con el detalle de los que fallan. Pensado
 para un workflow programado o `make smoke-prod` tras cada deploy.
 
@@ -54,6 +64,24 @@ def _positive(key: str) -> Callable[[Any], str | None]:
     return _check
 
 
+def _non_empty_lists(*keys: str) -> Callable[[Any], str | None]:
+    """Exige que **todas** las listas nombradas traigan algo.
+
+    ``/publico/hubs`` devuelve dos índices independientes en la misma respuesta
+    (``ccaa`` y ``cpv``) y cada uno alimenta su propia página de índice: mirar
+    solo uno dejaría que la mitad del árbol público se vaciara en verde.
+    """
+
+    def _check(payload: Any) -> str | None:
+        for key in keys:
+            problema = _non_empty_list(key)(payload)
+            if problema:
+                return problema
+        return None
+
+    return _check
+
+
 def _status_ok(payload: Any) -> str | None:
     status = payload.get("status") if isinstance(payload, dict) else None
     if status not in ("healthy", "ok", "ready", "degraded"):
@@ -61,14 +89,27 @@ def _status_ok(payload: Any) -> str | None:
     return None
 
 
+# Rutas que un anónimo tiene que poder leer. Un 401/403 aquí no se puede
+# perdonar como "el smoke corre sin credenciales" (ver `main`): es exactamente
+# el fallo que el router público existe para evitar — que el catch-all
+# autenticado de `/api/v1/licitaciones/{id:path}` ensombrezca una ruta pública.
+_PREFIJO_PUBLICO = "/api/v1/publico/"
+
 # Endpoints insignia: si alguno responde vacío, la pantalla principal
 # correspondiente está rota aunque el HTTP sea 200.
+#
+# Los `publico_*` cierran el agujero que describe el docstring del módulo: sin
+# ellos, la superficie anónima podía caerse entera sin que este script se
+# inmutara.
 CHECKS: list[Check] = [
     ("health", "/api/v1/health/ready", _status_ok),
     ("overview", "/api/v1/analytics/overview", _positive("total_licitaciones")),
     ("resumen_hoy", "/api/v1/analytics/resumen/hoy", _positive("total_activas")),
     ("licitaciones", "/api/v1/licitaciones?limit=1", _non_empty_list("items")),
     ("trends", "/api/v1/analytics/trends?group_by=month", _non_empty_list("series")),
+    ("publico_sitemap", "/api/v1/publico/sitemap/resumen", _positive("total")),
+    ("publico_hubs", "/api/v1/publico/hubs", _non_empty_lists("ccaa", "cpv")),
+    ("publico_licitaciones", "/api/v1/publico/licitaciones?limit=1", _non_empty_list("items")),
 ]
 
 
@@ -105,10 +146,16 @@ def main() -> int:
         try:
             status, payload = _fetch(base, path)
         except urllib.error.HTTPError as exc:
-            if exc.code in (401, 403):
+            if exc.code in (401, 403) and not path.startswith(_PREFIJO_PUBLICO):
                 # Sin credenciales el endpoint exige auth: se reporta pero no
                 # se considera fallo de datos (el check de datos exige correr
                 # con SMOKE_API_KEY o SMOKE_SESSION_COOKIE).
+                #
+                # La excepción son las rutas de `_PREFIJO_PUBLICO`: ahí nadie
+                # tiene que autenticarse, así que un 401/403 cae al camino de
+                # fallo de abajo en vez de convertirse en un check omitido —
+                # que es como esta indulgencia habría tragado en silencio el
+                # incidente que motivó añadirlos.
                 print(f"  ~ {name}: {exc.code} (sin credenciales; check omitido)")
                 continue
             failures.append(f"{name}: HTTP {exc.code}")

@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { usePathname } from "next/navigation";
-import { useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { Info, Redo2, RotateCcw, Search, Undo2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -18,7 +18,7 @@ import { NotificationBell } from "@/components/notification-bell";
 import { useAnnounceOnChange } from "@/components/live-region";
 import { useDebounce } from "@/hooks/use-debounce";
 import { useDataFreshness } from "@/hooks/use-data-freshness";
-import { useFilteredQuery } from "@/hooks/use-filtered-query";
+import { fetchWithAuth } from "@/lib/api-client";
 import { estadoLabel } from "@/lib/estados";
 import { useFilters, useFilterParams } from "@/lib/filters";
 import { useScopeHistory } from "@/lib/scope-history";
@@ -43,7 +43,10 @@ import { cn, formatNumber } from "@/lib/utils";
  *
  * El contrato por página se respeta igual que antes (`lib/navigation.ts`): una
  * página que no consume filtros no ve chips inertes, y si hay filtros activos
- * se dice en vez de fingir que aplican.
+ * se dice en vez de fingir que aplican. Eso vale también para el caso
+ * intermedio —la página que aplica solo un subconjunto—: los chips, el recuento
+ * y el aviso se calculan todos sobre ese mismo subconjunto, para que la barra
+ * no pueda afirmar un número que la pantalla no está enseñando.
  */
 
 interface MetaFilters {
@@ -56,6 +59,24 @@ interface MetaFilters {
 interface OverviewData {
   total_licitaciones: number;
 }
+
+/**
+ * Params de URL que emite cada clave del ámbito (ver `filtersToParams` en
+ * `lib/filters`).
+ *
+ * El contrato por página se expresa en CLAVES (`ccaa`, `estado`…) pero la query
+ * viaja en PARAMS (`ccaa`, `solo_abiertas`…), y la correspondencia no es 1-a-1:
+ * `fecha` produce dos params y `estado` otros dos. Sin este mapa no hay forma de
+ * recortar los params al subconjunto que la pantalla aplica de verdad.
+ */
+const FILTER_KEY_PARAMS: Record<GlobalFilterKey, readonly string[]> = {
+  q: ["q"],
+  fecha: ["fecha_desde", "fecha_hasta"],
+  ccaa: ["ccaa"],
+  tecnologia: ["tecnologia"],
+  estado: ["estado", "solo_abiertas"],
+  importe: ["importe_min"],
+};
 
 function toIsoDate(d: Date): string {
   return d.toISOString().slice(0, 10);
@@ -339,13 +360,60 @@ export function ScopeBar() {
     enabled: filtersApply,
   });
 
-  // Recuento del ámbito: el mismo dataset y la misma clave de query que el KPI
-  // bar, para que no puedan discrepar sobre cuántas licitaciones hay dentro.
-  const { data: overview, isLoading: countLoading } = useFilteredQuery<OverviewData>(
-    ["analytics", "overview"],
-    "/api/v1/analytics/overview",
-    { staleTime: 60_000, retry: 1, enabled: filtersApply },
-  );
+  // Params con los que se pide el recuento: SOLO los del subconjunto que la
+  // pantalla aplica de verdad.
+  //
+  // Antes se pedía con `useFilterParams()` completo. En una pantalla de
+  // subconjunto —Radar aplica `tecnologia` y nada más— eso hacía que la barra
+  // anunciara «312 licitaciones» calculadas con CCAA=Madrid mientras el Radar
+  // enseñaba el top nacional. El aviso honesto que ya existía era inalcanzable
+  // justo ahí, porque `filtersApply` es cierto en el caso subconjunto.
+  const scopedParams = React.useMemo(() => {
+    if (!subsetKeys) return filterParams;
+    const allowed = new Set(subsetKeys.flatMap((key) => FILTER_KEY_PARAMS[key]));
+    return Object.fromEntries(Object.entries(filterParams).filter(([param]) => allowed.has(param)));
+  }, [filterParams, subsetKeys]);
+
+  // Filtros activos que esta pantalla NO aplica. Cero cuando la página consume
+  // el ámbito entero.
+  const outOfScopeCount = activeCount - Object.keys(scopedParams).length;
+
+  /** Limpia solo lo que no aplica: lo que sí filtra la pantalla se conserva. */
+  const clearOutOfScope = React.useCallback(() => {
+    if (!subsetKeys) return;
+    const applies = (key: GlobalFilterKey) => subsetKeys.includes(key);
+    if (!applies("q")) filters.setQ("");
+    if (!applies("fecha")) filters.setRango({ desde: null, hasta: null });
+    if (!applies("estado")) {
+      filters.setEstados([]);
+      filters.setSoloAbiertas(false);
+    }
+    if (!applies("ccaa")) filters.setCcaas([]);
+    if (!applies("tecnologia")) filters.setTecnologias([]);
+    if (!applies("importe")) filters.setImporteMin(null);
+  }, [filters, subsetKeys]);
+
+  // Recuento del ámbito: el mismo dataset y la misma forma de clave que
+  // `useFilteredQuery` (`[...baseKey, url, params]`), para que en las pantallas
+  // que consumen el ámbito entero siga compartiendo caché con el resto de
+  // consumidores de `/analytics/overview` en vez de duplicar la petición. No se
+  // puede usar el hook directamente: siempre fusiona `useFilterParams()`
+  // completo, que es justo lo que aquí hay que recortar.
+  const { data: overview, isLoading: countLoading } = useQuery<OverviewData>({
+    queryKey: ["analytics", "overview", "/api/v1/analytics/overview", scopedParams],
+    queryFn: () => {
+      const search = new URLSearchParams(scopedParams).toString();
+      return fetchWithAuth<OverviewData>(
+        search ? `/api/v1/analytics/overview?${search}` : "/api/v1/analytics/overview",
+      );
+    },
+    staleTime: 60_000,
+    retry: 1,
+    enabled: filtersApply,
+    // Mismo comportamiento que `useFilteredQuery`: al cambiar el ámbito se
+    // mantiene el número anterior en vez de parpadear a «—».
+    placeholderData: keepPreviousData,
+  });
 
   const chips: Chip[] = React.useMemo(() => {
     const list: Chip[] = [];
@@ -523,6 +591,28 @@ export function ScopeBar() {
             </PopoverContent>
           </Popover>
         </div>
+
+        {/* El caso subconjunto también merece el aviso. Antes solo se decía «el
+            ámbito global no aplica» cuando NO aplicaba nada; con una pantalla
+            que aplica parte del ámbito —Radar, que filtra por tecnología y por
+            nada más— los filtros restantes quedaban activos, visibles en la URL
+            y sin efecto, sin que nada lo dijera. Se ofrece quitarlos por
+            separado: «Limpiar el ámbito» se llevaría por delante los que sí
+            filtran esta pantalla. */}
+        {outOfScopeCount > 0 && (
+          <div className="flex flex-none items-center gap-1.5">
+            <Info className="text-primary h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+            <span className="text-muted-foreground text-xs">
+              {outOfScopeCount === 1
+                ? "1 filtro activo no aplica en esta pantalla"
+                : `${outOfScopeCount} filtros activos no aplican en esta pantalla`}
+            </span>
+            <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={clearOutOfScope}>
+              <RotateCcw className="h-3 w-3" />
+              {outOfScopeCount === 1 ? "Quitarlo" : "Quitarlos"}
+            </Button>
+          </div>
+        )}
 
         <div className="flex-1" />
 

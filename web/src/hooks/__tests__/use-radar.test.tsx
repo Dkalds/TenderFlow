@@ -2,12 +2,7 @@ import * as React from "react";
 import { describe, expect, it, vi, afterEach } from "vitest";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, renderHook, waitFor } from "@testing-library/react";
-import {
-  useDismissRadarTender,
-  useRadar,
-  useRadarDismissals,
-  useRestoreRadarTender,
-} from "@/hooks/use-radar";
+import { useDismissRadarTender, useRadar, useRadarDismissals, useRestoreRadarTender } from "@/hooks/use-radar";
 import { callMethod, callUrl, jsonResponse } from "./fetch-call";
 import { registrarEvento } from "@/lib/analytics";
 
@@ -44,10 +39,7 @@ function wrapper({ children }: { children: React.ReactNode }) {
   return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
 }
 
-function stubApi(options: {
-  opportunities?: ReturnType<typeof scored>[];
-  dismissals?: string[];
-}) {
+function stubApi(options: { opportunities?: ReturnType<typeof scored>[]; dismissals?: string[] }) {
   const fetchMock = vi.fn().mockImplementation((...call: unknown[]) => {
     const body = callUrl(call).includes("/radar/dismissals")
       ? { ids: options.dismissals ?? [] }
@@ -113,10 +105,7 @@ describe("useRadar", () => {
     const { result } = renderHook(() => useRadar(), { wrapper });
     await waitFor(() => expect(result.current.data).toBeDefined());
 
-    expect(result.current.data!.items.map((item) => item.id_externo)).toEqual([
-      "PRIMERA",
-      "SEGUNDA",
-    ]);
+    expect(result.current.data!.items.map((item) => item.id_externo)).toEqual(["PRIMERA", "SEGUNDA"]);
   });
 
   it("trae el plazo y la tecnología que la tarjeta pinta", async () => {
@@ -168,20 +157,31 @@ describe("descarte server-side", () => {
   it("descartar hace POST y refleja la señal al momento", async () => {
     const fetchMock = stubApi({ dismissals: [] });
 
-    const { result } = renderHook(
-      () => ({ list: useRadarDismissals(), dismiss: useDismissRadarTender() }),
-      { wrapper },
-    );
+    const { result } = renderHook(() => ({ list: useRadarDismissals(), dismiss: useDismissRadarTender() }), {
+      wrapper,
+    });
     await waitFor(() => expect(result.current.list.data).toEqual([]));
 
     await act(async () => {
-      await result.current.dismiss.mutateAsync("NUEVA");
+      await result.current.dismiss.mutateAsync({
+        idExterno: "NUEVA",
+        score: 82,
+        banda: "Caliente",
+      });
     });
 
     const posted = fetchMock.mock.calls.find(
       (call) => callUrl(call).includes("/radar/dismissals") && callMethod(call) === "POST",
     );
     expect(posted).toBeDefined();
+    // El score y la banda viajan con el descarte porque no se pueden
+    // reconstruir después: sin ellos es imposible saber si el Radar prioriza
+    // bien, que es la promesa que vende el producto (revisión v93).
+    expect(JSON.parse(String(posted?.[1]?.body))).toMatchObject({
+      id_externo: "NUEVA",
+      score: 82,
+      banda: "Caliente",
+    });
     // El evento sale del descarte confirmado por el servidor y no lleva el id
     // de la señal: la pregunta es si el Radar se usa para decidir, no sobre qué.
     expect(registrarEvento).toHaveBeenCalledWith("radar_triaje", { accion: "descartar" });

@@ -1,5 +1,5 @@
 .PHONY: status product-status job-parity skills-inventory install dev lint format typecheck audit audit-truth-check fuzz-api mutation-sample capture-placsp-fixtures test test-all test-parallel test-unit test-integration test-e2e test-property test-load lock lock-hashes lock-uv install-uv scrape scrape-daily scrape-bulk api doctor seed seed-full seed-reset clean kpi kpi-export-parquet runbook-backup-restore runbook-dlq-replay runbook-rate-limit-reset runbook-model-rollback runbook-disaster-recovery check check-frontend-invariants check-api-contract check-agent-docs audit-truth help migrate migrate-alembic migrate-status migrate-history web-dev web-build web-codegen web-lint web-typecheck web-test-e2e web-test-e2e-ui web-docker cutover
-.PHONY: web-test web-test-coverage check-env-parity
+.PHONY: web-test web-test-coverage check-env-parity check-public-surface
 
 # ── Ayuda ────────────────────────────────────────────────────────────────
 help:  ## Muestra esta ayuda
@@ -50,6 +50,14 @@ check-agent-docs:  ## Valida instrucciones, skills, commands, hooks, plugins y m
 
 check-env-parity:  ## Variables obligatorias en prod declaradas en render.yaml y documentadas
 	python scripts/check_env_parity.py
+
+# `--strict` y no el modo aviso: es el único control automático de la
+# restricción dura del producto (la superficie anónima publica solo el dato
+# base del anuncio oficial). Estuvo escrito y pasando limpio sin que lo
+# invocara nadie —ni este Makefile, ni CI, ni pre-commit— mientras varios
+# docstrings afirmaban lo contrario; un gate que nadie ejecuta es documentación.
+check-public-surface:  ## La superficie anónima no expone adjudicatarios, NIF ni analítica propia
+	python scripts/check_public_surface.py --strict
 
 smoke-prod:  ## Chequeo sintético contra producción (SMOKE_BASE_URL + SMOKE_API_KEY)
 	python scripts/smoke_prod.py

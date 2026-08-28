@@ -25,6 +25,7 @@ from services.watchlist_rules import (
     Frequency,
     WatchlistRule,
     count_matches,
+    count_matches_bounded,
     create_rule,
     delete_rule,
     list_matches,
@@ -88,6 +89,11 @@ class WatchlistRuleOut(WatchlistRule):
     """
 
     id: int
+    # Conteo ACOTADO (ver ``count_matches_bounded``): saturado en
+    # ``MATCH_COUNT_CAP``. El listado no puede permitirse un COUNT(*) exacto por
+    # regla, así que este número significa «al menos tantas» cuando llega al
+    # tope, y la UI lo pinta como «999+». El exacto vive en el detalle
+    # (``/{rule_id}/matches``), que se pide de una regla cada vez.
     match_count: int
     email: str | None  # email de entrega, si lo tiene
 
@@ -133,9 +139,8 @@ def _rules_with_counts(user_key: str, organization_id: int | None = None) -> lis
             cols = [d[0] for d in cur.description]
             rows_raw = [dict(zip(cols, row, strict=False)) for row in cur.fetchall()]
 
-    result: list[WatchlistRuleOut] = []
-    for r in rows_raw:
-        rule = WatchlistRule(
+    rules = [
+        WatchlistRule(
             id=r.get("id"),
             nombre=r.get("nombre"),
             keyword=r.get("keyword"),
@@ -145,14 +150,17 @@ def _rules_with_counts(user_key: str, organization_id: int | None = None) -> lis
             frequency=r.get("frequency") or "daily",
             active=bool(r.get("active", 1)),
         )
-        result.append(
-            WatchlistRuleOut(
-                **rule.model_dump(),
-                match_count=count_matches(rule),
-                email=r.get("email"),
-            )
-        )
-    return result
+        for r in rows_raw
+    ]
+    # Un único viaje para TODAS las reglas y con techo. Antes esto era un
+    # ``count_matches(rule)`` dentro del bucle: N escaneos secuenciales sobre
+    # ~1,6M filas y N conexiones del pool en una sola petición, con 30 s de
+    # ``statement_timeout`` para todo el conjunto.
+    counts = count_matches_bounded(rules)
+    return [
+        WatchlistRuleOut(**rule.model_dump(), match_count=count, email=r.get("email"))
+        for rule, count, r in zip(rules, counts, rows_raw, strict=True)
+    ]
 
 
 def _matches_for(rule: WatchlistRule, limit: int) -> list[dict[str, Any]]:

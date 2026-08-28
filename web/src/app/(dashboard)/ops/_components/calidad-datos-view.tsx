@@ -47,8 +47,13 @@ interface QualityData {
   pct_fecha?: number;
   pct_titulo?: number;
   completitud_columnas?: ColumnCompleteness[];
-  cobertura_nif?: number;
-  cobertura_modulo_sap?: number;
+  // `null` = NO MEDIDO (ni `nif` ni `modulo_sap` son columnas de
+  // `licitaciones`), y la tarjeta se abstiene. El backend devolvía el literal
+  // 0.0, que la guarda `!= null` daba por bueno: la pantalla que existe para
+  // acreditar la calidad del dato afirmaba una cobertura del 0,0 % que nadie
+  // había medido.
+  cobertura_nif?: number | null;
+  cobertura_modulo_sap?: number | null;
   dlq_count?: number;
   pct_fecha_iso?: number;
   fechas_no_iso?: number;
@@ -136,6 +141,9 @@ export default function CalidadDatosView() {
               ? formatPercent(data.cobertura_nif)
               : undefined
           }
+          subtitle={
+            !isLoading && data?.cobertura_nif == null ? "sin medir" : undefined
+          }
           icon={Users}
           loading={isLoading}
         />
@@ -144,6 +152,11 @@ export default function CalidadDatosView() {
           value={
             data?.cobertura_modulo_sap != null
               ? formatPercent(data.cobertura_modulo_sap)
+              : undefined
+          }
+          subtitle={
+            !isLoading && data?.cobertura_modulo_sap == null
+              ? "sin medir"
               : undefined
           }
           icon={Boxes}

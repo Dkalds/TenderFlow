@@ -85,6 +85,8 @@ def create_pursuit(
         responsible_user_id=responsible_user_id,
         actor_user_id=user_id,
         idempotency_key=idempotency_key,
+        score_al_abrir=body.score_al_abrir,
+        banda_al_abrir=body.banda_al_abrir,
     )
     return PursuitSummary.model_validate(row), created
 

@@ -26,12 +26,15 @@ Qué NO sale de aquí, decidido con el dueño del producto:
 
 **Una fila por contrato, no una por anuncio.** Las seis superficies indexables
 —``listar``, ``contar``, ``ultima_incorporacion``, los dos hubs y el sitemap—
-comparten ``_WHERE_INDEXABLE``, que además del umbral de sustancia colapsa las
-reemisiones del mismo contrato. Comparten *la constante* y no una copia cada
-una: el docstring de ``contar`` y el de ``pagina_de_sitemap`` ya explican qué
-pasa cuando dos de estas consultas discrepan (error de cobertura en Search
-Console, paginación hacia páginas vacías), y con seis call-sites la única
-defensa que aguanta es que no haya dos textos que mantener.
+colapsan las reemisiones del mismo contrato con la MISMA regla, escrita una
+sola vez. Lo que cambia entre ellas es la forma de aplicarla, no el criterio:
+las que llevan ``LIMIT`` usan el anti-join ``_WHERE_INDEXABLE`` y las que
+agregan la tabla entera usan ``_canonicas_from`` (ver la nota que las compara,
+con sus tiempos medidos). Las dos parten de ``_BASE_WHERE`` y del mismo orden
+canónico, y ``tests/test_publico_canonicas_equivalencia.py`` comprueba que
+seleccionan el mismo conjunto — porque si discreparan, ``contar`` diría un
+número que el hub no puede paginar y Search Console lo reportaría como error de
+cobertura sin decir por qué.
 """
 
 from __future__ import annotations
@@ -43,8 +46,10 @@ from db.repositories.base import rows_to_dicts
 from db.sql_fragments import (
     FOLD_DST,
     FOLD_SRC,
+    clave_canonica_agrupable_sql,
     exclude_duplicados_sql,
     fila_canonica_sql,
+    orden_canonico_sql,
 )
 
 __all__ = ["PublicoRepository"]
@@ -164,6 +169,51 @@ _CANONICA_SQL = fila_canonica_sql(alias="l", gemelo="l2", filtro_gemelo=_publica
 #: suyo, nunca al revés: una URL del sitemap siempre tiene ficha.
 _WHERE_INDEXABLE = f"{_BASE_WHERE} AND {_CANONICA_SQL}"
 
+
+# ── Dos formas de decir lo mismo, y cuándo usa cada una ───────────────────
+# `_WHERE_INDEXABLE` (anti-join) y `_CANONICAS_FROM` (agrupación) seleccionan
+# EXACTAMENTE el mismo conjunto de filas. Conviven porque su coste se invierte
+# según haya o no un `LIMIT` que corte pronto:
+#
+#   · Anti-join: un sondeo indexado por fila candidata. Con `LIMIT 10000` el
+#     plan para en cuanto junta las filas pedidas — 5,9 s para un tramo del
+#     sitemap. Sin `LIMIT` son ~695k sondeos: ~200 s, muy por encima del
+#     `statement_timeout` de 30 s del rol de la API.
+#   · Agrupación: una pasada, un `DISTINCT ON` sobre la clave. No se beneficia
+#     de un `LIMIT` pequeño, pero recorre la tabla una sola vez — 9,1 s con el
+#     `work_mem` real de producción (3500 kB, plan paralelo con dos workers).
+#
+# Regla: si la consulta lleva `LIMIT`, anti-join; si agrega la tabla entera,
+# agrupación. Se desplegó lo contrario en #226 y tumbó la superficie pública
+# entera durante horas (500 por `QueryCanceled`), que es la razón por la que
+# esta nota existe y por la que las cifras de arriba están medidas y no
+# estimadas.
+_CLAVE_AGRUPABLE = clave_canonica_agrupable_sql("l")
+_ORDEN_CANONICO = orden_canonico_sql("l")
+
+
+def _canonicas_from(columnas: str) -> str:
+    """Subconsulta con **una fila por contrato canónico** y las columnas pedidas.
+
+    ``columnas`` se proyecta desde el alias ``l``; el resultado se expone como
+    ``c`` para que el llamante filtre y agregue sobre él.
+
+    **Dentro de esta subconsulta sólo va la publicabilidad, nunca los filtros
+    del llamante.** En el anti-join la canonicidad se decide sobre el corpus
+    publicable completo y el filtro de comunidad o CPV se conjuga después; si
+    aquí se metiera dentro, la fila canónica se elegiría entre las candidatas
+    que el filtro deja pasar y no entre todas. Efecto concreto: un contrato cuya
+    fila canónica está en otra comunidad aparecería en el hub por su fila
+    gemela, que es justamente el duplicado que este filtro existe para evitar.
+    Los filtros se aplican **fuera**, sobre ``c``.
+    """
+    return (
+        f"(SELECT DISTINCT ON ({_CLAVE_AGRUPABLE}) {columnas} "
+        f"FROM licitaciones l WHERE {_BASE_WHERE} "
+        f"ORDER BY {_CLAVE_AGRUPABLE}, {_ORDEN_CANONICO}) AS c"
+    )
+
+
 # ── Resolución del slug de comunidad autónoma ─────────────────────────────
 # El hub `/licitaciones/comunidad-valenciana` recibe un slug, no el nombre. La
 # traducción ocurre **en Postgres** y no con una tabla en el frontend, por dos
@@ -177,14 +227,26 @@ _WHERE_INDEXABLE = f"{_BASE_WHERE} AND {_CANONICA_SQL}"
 # (`db/repositories/aggregates.py`, privados de aquel módulo) y una tercera
 # copia era una divergencia esperando a ocurrir.
 
+
 #: Slug de `l.ccaa` calculado en SQL, equivalente a `slugificar()` de
 #: `web/src/lib/slug.ts`. Las dos implementaciones tienen que coincidir o el
 #: enlace que genera el frontend apuntaría a un hub que no encuentra nada.
-_CCAA_SLUG_SQL = (
-    "trim(both '-' from regexp_replace("
-    f"lower(translate(coalesce(l.ccaa, ''), '{FOLD_SRC}', '{FOLD_DST}')), "
-    "'[^a-z0-9]+', '-', 'g'))"
-)
+def _ccaa_slug_sql(alias: str = "l") -> str:
+    """El slug, escrito para un alias concreto.
+
+    Parametrizado por alias porque los agregados lo aplican sobre la subconsulta
+    de canónicas (``c``) y el listado sobre la tabla (``l``). Una constante con
+    ``l`` dentro obligaría a duplicar la expresión, que es exactamente cómo se
+    empieza a divergir.
+    """
+    return (
+        "trim(both '-' from regexp_replace("
+        f"lower(translate(coalesce({alias}.ccaa, ''), '{FOLD_SRC}', '{FOLD_DST}')), "
+        "'[^a-z0-9]+', '-', 'g'))"
+    )
+
+
+_CCAA_SLUG_SQL = _ccaa_slug_sql("l")
 
 
 class PublicoRepository:
@@ -297,16 +359,19 @@ class PublicoRepository:
         reemisión, y con Cataluña aportando el 96,6% del corpus la cifra iba
         inflada por la republicación masiva de una sola fuente.
         """
-        condiciones = [_WHERE_INDEXABLE]
+        condiciones: list[str] = []
         params: list[Any] = []
         if ccaa_slug:
-            condiciones.append(f"{_CCAA_SLUG_SQL} = %s")
+            condiciones.append(f"{_ccaa_slug_sql('c')} = %s")
             params.append(ccaa_slug)
         if cpv_prefijo:
-            condiciones.append("l.cpv LIKE %s")
+            condiciones.append("c.cpv LIKE %s")
             params.append(f"{cpv_prefijo}%")
 
-        sql = f"SELECT COUNT(*) FROM licitaciones l WHERE {' AND '.join(condiciones)}"
+        # Agrupación y no anti-join: este COUNT no tiene `LIMIT` que corte, así
+        # que recorre la tabla entera. Ver la nota de `_canonicas_from`.
+        where = f" WHERE {' AND '.join(condiciones)}" if condiciones else ""
+        sql = f"SELECT COUNT(*) FROM {_canonicas_from('l.ccaa, l.cpv')}{where}"
 
         def _consultar(c: Any) -> int:
             fila = c.execute(sql, tuple(params)).fetchone()
@@ -334,12 +399,14 @@ class PublicoRepository:
 
         La columna es ``TEXT`` con ISO 8601 UTC (``now_utc_iso``), cuyo orden
         lexicográfico coincide con el cronológico, así que ``MAX`` es correcto
-        sin castear. El filtro es el mismo ``_WHERE_INDEXABLE`` que ``contar``:
+        sin castear. Se apoya en el mismo conjunto canónico que ``contar``:
         el dato tiene que hablar del corpus que se publica, no de la tabla
         entera — y una reemisión que no llega a página tampoco puede acreditar
         frescura, porque el visitante no puede abrirla.
         """
-        sql = f"SELECT MAX(l.fecha_extraccion) FROM licitaciones l WHERE {_WHERE_INDEXABLE}"
+        # Agrupación y no anti-join: un MAX sobre la tabla entera no tiene
+        # `LIMIT` que corte. Ver la nota de `_canonicas_from`.
+        sql = f"SELECT MAX(c.fecha_extraccion) FROM {_canonicas_from('l.fecha_extraccion')}"
 
         def _consultar(c: Any) -> str | None:
             fila = c.execute(sql).fetchone()
@@ -359,9 +426,13 @@ class PublicoRepository:
         llegan no desaparecen del sitio —sus fichas siguen existiendo— pero no
         reciben página de índice propia.
         """
+        # Agrupación y no anti-join: agrega la tabla entera sin `LIMIT` que
+        # corte. Ver la nota de `_canonicas_from`. El `ccaa IS NOT NULL` va
+        # FUERA de la subconsulta, para que la canónica se elija entre todas
+        # las gemelas y no sólo entre las que declaran comunidad.
         sql = (
-            f"SELECT {_CCAA_SLUG_SQL} AS slug, max(l.ccaa) AS nombre, COUNT(*) AS total "
-            f"FROM licitaciones l WHERE {_WHERE_INDEXABLE} AND l.ccaa IS NOT NULL "
+            f"SELECT {_ccaa_slug_sql('c')} AS slug, max(c.ccaa) AS nombre, COUNT(*) AS total "
+            f"FROM {_canonicas_from('l.ccaa')} WHERE c.ccaa IS NOT NULL "
             f"GROUP BY slug HAVING COUNT(*) >= {_MIN_POR_HUB} "
             "ORDER BY total DESC"
         )
@@ -376,10 +447,11 @@ class PublicoRepository:
 
     def hubs_cpv(self, *, conn: Any | None = None) -> list[dict[str, Any]]:
         """Códigos CPV con volumen suficiente para tener página."""
+        # Agrupación y no anti-join: ver la nota de `_canonicas_from`.
         sql = (
-            "SELECT l.cpv AS codigo, COUNT(*) AS total "
-            f"FROM licitaciones l WHERE {_WHERE_INDEXABLE} AND l.cpv IS NOT NULL "
-            f"AND l.cpv <> '' GROUP BY l.cpv HAVING COUNT(*) >= {_MIN_POR_HUB} "
+            "SELECT c.cpv AS codigo, COUNT(*) AS total "
+            f"FROM {_canonicas_from('l.cpv')} WHERE c.cpv IS NOT NULL "
+            f"AND c.cpv <> '' GROUP BY c.cpv HAVING COUNT(*) >= {_MIN_POR_HUB} "
             "ORDER BY total DESC"
         )
 

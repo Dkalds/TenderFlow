@@ -24,6 +24,7 @@ import { formatCurrency, truncate } from "@/lib/utils";
 import { getJSON, setJSON } from "@/lib/storage";
 import { useFilters } from "@/lib/filters";
 import { getCsrfToken } from "@/lib/api-client";
+import { descargarBlob } from "@/lib/export";
 import { useChat } from "@/hooks/use-ask";
 import { ChatThread } from "@/components/chat-thread";
 import { SpaceShell } from "@/components/layout/space-shell";
@@ -128,13 +129,13 @@ function exportCSV(results: SearchResult[]) {
     ].join(","),
   );
   const csv = [headers.join(","), ...rows].join("\n");
-  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `investigador_resultados_${Date.now()}.csv`;
-  a.click();
-  URL.revokeObjectURL(url);
+  // El CSV se arma aquí con lo que ya está en pantalla: no pasa por
+  // `/exports/download`, así que sin `descargarBlob` la descarga no se medía.
+  descargarBlob(
+    `investigador_resultados_${Date.now()}.csv`,
+    new Blob([csv], { type: "text/csv;charset=utf-8;" }),
+    "investigador",
+  );
 }
 
 /* ------------------------------------------------------------------ */

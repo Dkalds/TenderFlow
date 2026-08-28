@@ -208,3 +208,33 @@ def test_detect_duplicates_instrumenta_metricas(tmp_db):
 
     rate = _metric_value("dedupe_match_rate", {"fuente": "pscp"})
     assert rate == 0.5  # 1 marcada de 2 evaluadas en la última pasada
+
+
+def test_dedupe_roto_en_la_ingesta_deja_senal_y_no_solo_un_log():
+    """El ``except`` fail-open de ``_post_ingestion`` incrementa un contador.
+
+    Sin él, un ``detect_duplicates`` que reventara en todas las pasadas —lo que
+    hacía el índice de candidatas sin acotar, por memoria— dejaba el run marcado
+    como exitoso y no había ninguna serie temporal donde se viera. El fail-open
+    se conserva: la ingesta no puede caerse por el dedupe.
+    """
+    from unittest.mock import patch
+
+    import pytest
+
+    from scraper.connectors.base import _post_ingestion
+
+    before = _metric_value("dedupe_run_failed_total", {"fuente": "pscp"})
+    if before is None:
+        pytest.skip("prometheus_client no instalado — métricas no-op")
+
+    with (
+        patch("services.entity_resolution.resolve_all_unlinked"),
+        patch("services.dedupe.detect_duplicates", side_effect=RuntimeError("índice roto")),
+        patch("services.contract_events.derive_new_events"),
+        patch("shared.cache_signal.signal_cache_invalidation"),
+    ):
+        _post_ingestion("pscp")  # no propaga: el fail-open sigue en pie
+
+    after = _metric_value("dedupe_run_failed_total", {"fuente": "pscp"})
+    assert after is not None and after - before == 1.0

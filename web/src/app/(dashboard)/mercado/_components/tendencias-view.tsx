@@ -79,6 +79,12 @@ interface OverviewResponse {
 interface ForecastPoint {
   mes: string;
   valor: number;
+  /**
+   * Discriminante SIN tilde. El backend emitía "histórico" y esta vista
+   * comparaba contra "historico": ningún punto pasado casaba, todos salían
+   * `undefined` y la proyección se pintaba flotando, sin serie histórica contra
+   * la que contrastarla. El valor normalizado lo fija `forecast.py`.
+   */
   tipo: "historico" | "forecast";
   lower?: number;
   upper?: number;
@@ -86,6 +92,18 @@ interface ForecastPoint {
 
 interface ForecastResponse {
   series: ForecastPoint[];
+  /** Motor que produjo la proyección: "holt-winters" | "regresion-lineal". */
+  modelo?: string | null;
+  /** Sigmas de la banda `lower`/`upper`. No es un intervalo de confianza. */
+  banda_sigmas?: number;
+}
+
+/** Etiqueta legible del motor de forecast; el crudo si el backend añade otro. */
+function modeloLabel(modelo: string | null | undefined): string | null {
+  if (!modelo) return null;
+  if (modelo === "holt-winters") return "Holt-Winters (suavizado exponencial)";
+  if (modelo === "regresion-lineal") return "regresión lineal (fallback)";
+  return modelo;
 }
 
 /* ── Helpers ────────────────────────────────────────────────────────── */
@@ -417,9 +435,26 @@ export default function TendenciasView() {
 
       {/* Forecast */}
       <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle className="text-base">Previsión (6 meses)</CardTitle>
-          <div className="flex items-center gap-1">
+        <CardHeader className="flex flex-row items-start justify-between gap-4">
+          <div className="space-y-1">
+            <CardTitle className="text-base">Previsión (6 meses)</CardTitle>
+            {/*
+              La banda sombreada NO es un intervalo de confianza: es ±Nσ de toda
+              la serie histórica, el MISMO valor para los seis horizontes (un IC
+              real se ensancha con el horizonte). Los sigmas y el modelo los
+              publica el backend — rotularlos aquí evita que el gráfico se lea
+              como una incertidumbre estimada que nadie estimó.
+            */}
+            <CardDescription>
+              {forecast?.banda_sigmas != null
+                ? `Banda aproximada ≈${formatNumber(forecast.banda_sigmas)}σ de la serie histórica; no es un intervalo de confianza (no crece con el horizonte).`
+                : "Banda aproximada sobre la desviación de la serie histórica; no es un intervalo de confianza (no crece con el horizonte)."}
+              {modeloLabel(forecast?.modelo)
+                ? ` Modelo: ${modeloLabel(forecast?.modelo)}.`
+                : ""}
+            </CardDescription>
+          </div>
+          <div className="flex shrink-0 items-center gap-1">
             <Button
               variant={forecastMetric === "count" ? "default" : "outline"}
               size="sm"

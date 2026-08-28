@@ -138,6 +138,23 @@ class ProyectosModulosResult(BaseModel):
     modulos: list[ModuloEntry] = Field(default_factory=list)
     tipos_proyecto: list[ProyectoTipoEntry] = Field(default_factory=list)
     total_clasificados: int = 0
+    # Denominador del ámbito: TODAS las licitaciones que pasan los filtros, con
+    # o sin módulo SAP. El frontend no puede reconstruirlo — sumar las filas de
+    # `modulos` cuenta dos veces una licitación con módulos A+B, y ese fallback
+    # es justo el que invertía el KPI de multi-módulo (a más multi-módulo, más
+    # bajo leía). Se emite explícito para que la tarjeta pueda rotular «x / N».
+    total: int = 0
+    # Suma de detecciones por módulo: una licitación con A+B suma 2. NO es un
+    # conteo de licitaciones, así que nunca es denominador de un porcentaje de
+    # licitaciones; solo numerador de la densidad de módulos de abajo.
+    menciones_modulo: int = 0
+    # Los dos ratios que la pantalla publica, cada uno con SU denominador:
+    #   pct_match_portfolio      = total_clasificados / total          (ámbito)
+    #   modulos_por_clasificada  = menciones_modulo / total_clasificados
+    # El segundo mide intensidad multi-módulo con el signo correcto: 1,0 = todas
+    # mono-módulo, y sube al detectarse más módulos por licitación.
+    pct_match_portfolio: float = 0.0
+    modulos_por_clasificada: float = 0.0
     # KPIs a nivel licitación (distinct): NO suma de filas de módulo. Una licitación
     # con módulos A+B cuenta una sola vez → sin doble conteo de importe/ticket.
     importe_total_sap: float = 0.0
@@ -228,6 +245,15 @@ def get_proyectos_modulos(filters: ProyectosModulosFilters) -> ProyectosModulosR
     ]
     ticket_medio_sap = importe_total_sap / total_clasificados if total_clasificados else 0.0
 
+    # Ámbito completo (mismo WHERE, licitaciones con y sin módulo). Se reutiliza
+    # el agregado ligero de tecnologías —COUNT(*) + un FILTER— en vez de
+    # `overview_kpis`, que además calcularía SUM/AVG(importe) y un
+    # COUNT(DISTINCT organo_contratacion) que aquí nadie consume.
+    total_ambito, _sin_tecnologia = _repo.tecnologias_total_y_sin_clasificar(repo_filters)
+    menciones_modulo = sum(e.count for e in modulos)
+    pct_match_portfolio = total_clasificados / total_ambito * 100 if total_ambito else 0.0
+    modulos_por_clasificada = menciones_modulo / total_clasificados if total_clasificados else 0.0
+
     tipo_estado = [
         TipoEstadoEntry(
             tipo=str(r["tipo_contrato"]),
@@ -250,6 +276,10 @@ def get_proyectos_modulos(filters: ProyectosModulosFilters) -> ProyectosModulosR
         modulos=modulos,
         tipos_proyecto=tipos_proyecto,
         total_clasificados=total_clasificados,
+        total=total_ambito,
+        menciones_modulo=menciones_modulo,
+        pct_match_portfolio=round(pct_match_portfolio, 2),
+        modulos_por_clasificada=round(modulos_por_clasificada, 2),
         importe_total_sap=round(importe_total_sap, 2),
         ticket_medio_sap=round(ticket_medio_sap, 2),
         top_modulo_yoy=_top_modulo_yoy(repo_filters),

@@ -116,7 +116,11 @@ class LicitacionDetail(LicitacionSummary):
 # `analysis_universe` y `peso_precio_pct`. Todo eso es pipeline propio.
 # Tampoco nada de `adjudicaciones`: el adjudicatario puede ser una persona
 # física y no hay lógica en el repositorio que lo distinga.
-# `scripts/check_public_surface.py` lo verifica en CI.
+# `scripts/check_public_surface.py` (que CI corre con `--strict`) NO escanea
+# este fichero: vigila `api/routes/publico*.py` y la proyección por allowlist de
+# `db/repositories/publico.py`, que son las dos puertas por las que un campo
+# llegaría hasta aquí. Esta lista, por tanto, se sostiene por revisión; el guard
+# cubre el camino, no el DTO.
 
 
 class LotePublico(BaseModel):
@@ -698,13 +702,28 @@ class OrganizationMemberInvite(BaseModel):
 
 
 class PursuitCreate(BaseModel):
-    """Convierte una licitación existente en oportunidad colaborativa."""
+    """Convierte una licitación existente en oportunidad colaborativa.
+
+    ``score_al_abrir`` y ``banda_al_abrir`` son la puntuación que el usuario
+    tenía en pantalla al comprometerse, y los manda el cliente porque el score
+    no se persiste en ninguna parte: se calcula en vivo sobre el universo del día
+    y los pesos del perfil, así que recalcularlo aquí daría un número distinto
+    del que motivó la decisión. Sin ellos no hay forma de responder si el Radar
+    prioriza bien —la promesa central del producto—, y el dato es irrecuperable
+    a posteriori (revisión ``v93``).
+
+    Opcionales: abrir la oportunidad es la acción y medir es el efecto
+    secundario. Una llamada por API o un cliente antiguo siguen funcionando, y
+    la fila queda con ``NULL``, que significa «no se supo».
+    """
 
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
     licitacion_id: str = Field(min_length=1, max_length=500)
     organization_id: int | None = Field(default=None, ge=1)
     responsible_user_id: int | None = Field(default=None, ge=1)
+    score_al_abrir: int | None = Field(default=None, ge=0, le=100)
+    banda_al_abrir: Literal["Caliente", "Atractiva", "Tibia", "Descarte"] | None = None
 
 
 class PursuitUpdate(BaseModel):

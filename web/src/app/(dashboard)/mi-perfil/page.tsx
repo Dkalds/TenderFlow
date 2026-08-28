@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Slider } from "@/components/ui/slider";
 import { toast } from "sonner";
+import { primeraVez, registrarEvento } from "@/lib/analytics";
 import { fetchWithAuth, apiMutate } from "@/lib/api-client";
 import { formatCurrency } from "@/lib/utils";
 import { SpaceShell } from "@/components/layout/space-shell";
@@ -274,6 +275,14 @@ export default function MiPerfilPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: PROFILE_KEY });
       setDirty(false);
+      // Primer paso del embudo de activación («Primeros pasos» en /resumen) y
+      // el que más pesa: hasta que existe este perfil, el Radar puntúa con los
+      // pesos genéricos de `settings.SCORING_WEIGHTS` y el orden que ve el
+      // usuario es el de otro. `primeraVez` separa esa configuración inicial de
+      // los reajustes, que son uso normal. Sin propiedades del contenido: los
+      // pesos, las keywords y los CPV son la estrategia comercial de quien los
+      // pone, no una dimensión de producto.
+      registrarEvento("perfil_configurado", { primera_vez: primeraVez("perfil") });
       toast.success("Perfil guardado. El scoring usará tus pesos personalizados.");
     },
     onError: () => toast.error("No se pudo guardar el perfil."),

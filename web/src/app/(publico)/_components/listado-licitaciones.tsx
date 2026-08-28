@@ -1,9 +1,11 @@
 import Link from "next/link";
 import { ArrowUpRight } from "lucide-react";
 import type { LicitacionPublica } from "@/lib/publico-api";
+import { estadoLabel } from "@/lib/estados";
 import { listaJsonLd, serializarJsonLd } from "@/lib/jsonld";
 import { rutaLicitacion } from "@/lib/slug";
-import { EMPTY, formatCurrency, formatDate } from "@/lib/utils";
+import { formatCurrency } from "@/lib/utils";
+import { plazoPresentacion } from "./plazo";
 
 /**
  * Listado de licitaciones para los hubs.
@@ -20,12 +22,13 @@ import { EMPTY, formatCurrency, formatDate } from "@/lib/utils";
  * van como chips en vez de un párrafo corrido — mismo lenguaje visual que la
  * landing. Los valores son los que da el endpoint, tal cual: aquí no se
  * calcula ni se colorea nada (ADR-014).
+ *
+ * Lo único que se traduce es la **presentación**, que no es derivar dato: el
+ * código de estado se pasa por `estadoLabel` —la API devuelve `AGR`/`EJEC` en
+ * crudo y ninguna respuesta los traduce— y la fecha límite por
+ * `plazoPresentacion`, que dice si el plazo sigue abierto. Ambos son mapeos
+ * deterministas del valor que dio el backend, sin agregarlo ni completarlo.
  */
-
-function fechaCorta(valor: string | null | undefined): string | null {
-  const formateada = formatDate(valor);
-  return formateada === EMPTY ? null : formateada;
-}
 
 const CHIP = "inline-flex items-center rounded-full border border-border/60 bg-background/60 px-2.5 py-0.5 text-xs";
 
@@ -41,6 +44,11 @@ export function ListadoLicitaciones({
     ruta: rutaLicitacion({ ccaa: lic.ccaa, titulo: lic.titulo, ref: lic.ref }),
   }));
 
+  // Un solo instante para toda la lista: si cada fila leyera su reloj, dos
+  // anuncios que cierran el mismo día podrían caer a distinto lado de la
+  // medianoche dentro del mismo HTML.
+  const ahora = new Date();
+
   return (
     <>
       <script
@@ -50,7 +58,7 @@ export function ListadoLicitaciones({
 
       <ul className="divide-border/50 border-border/50 mt-10 divide-y border-t">
         {licitaciones.map((lic, indice) => {
-          const limite = fechaCorta(lic.fecha_limite);
+          const plazo = plazoPresentacion(lic.fecha_limite, ahora);
           return (
             <li key={lic.ref}>
               <Link
@@ -70,8 +78,12 @@ export function ListadoLicitaciones({
                     )}
                     {lic.cpv && <span className={`${CHIP} text-muted-foreground font-mono`}>CPV {lic.cpv}</span>}
                     {lic.provincia && <span className={`${CHIP} text-muted-foreground`}>{lic.provincia}</span>}
-                    {limite && <span className={`${CHIP} text-muted-foreground`}>Hasta el {limite}</span>}
-                    {lic.estado && <span className={`${CHIP} text-muted-foreground`}>{lic.estado}</span>}
+                    {plazo && (
+                      <span className={`${CHIP} text-muted-foreground`}>
+                        {plazo.vencido ? "Plazo cerrado el" : "Hasta el"} {plazo.fecha}
+                      </span>
+                    )}
+                    {lic.estado && <span className={`${CHIP} text-muted-foreground`}>{estadoLabel(lic.estado)}</span>}
                   </p>
                 </span>
                 <ArrowUpRight

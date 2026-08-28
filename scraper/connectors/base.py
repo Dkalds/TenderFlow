@@ -197,6 +197,35 @@ class ConnectorRunResult:
         }
 
 
+def _es_reaparicion_mas_vieja(recencia: str, mejor: str | None, *, stream_asc: bool) -> bool:
+    """¿Esta aparición del expediente es igual o más vieja que la ya conservada?
+
+    ``mejor`` es la mejor ``fecha_actualizacion_fuente`` vista para ese
+    ``id_externo`` en el run, o ``None`` si es la primera vez que aparece.
+    ``stream_asc`` es ``cursor_advances_incrementally``: el mismo atributo que
+    declara que el conector recorre el feed de más viejo a más nuevo.
+
+    El caso que motiva la función es **las dos recencias vacías**. Con el ``<=``
+    a secas, ``"" <= ""`` se cumple siempre, así que la primera aparición ganaba
+    y todas las posteriores se descartaban. PSCP nunca puebla el campo hasta el
+    arreglo de esta misma tanda, publica una fila por fase del expediente y
+    sirve el feed ``:updated_at ASC``: el resultado era que sobrevivía la fase
+    **más antigua** del expediente (una «Anunci previ» tapando la adjudicación)
+    siempre que dos fases cayeran en el mismo run —raro en régimen diario,
+    frecuente en el backfill por lotes.
+
+    Sin dato de recencia el único orden disponible es el del stream, y ese es el
+    que decide: en un feed ASC gana la última vista; en uno newest-first
+    (ATOM/TED) gana la primera, porque ahí «primera» significa «más reciente».
+    Una recencia desconocida no puede contar como «ya tengo algo igual o mejor».
+    """
+    if mejor is None:
+        return False
+    if not mejor and not recencia:
+        return not stream_asc
+    return recencia <= mejor
+
+
 def _persist_documentos(
     docs_por_lic: dict[str, list[DocumentoReferencia]], *, source_id: str
 ) -> None:
@@ -211,6 +240,22 @@ def _persist_documentos(
             repo.upsert_meta(licitacion_id, refs)
     except Exception as e:
         log.warning("connector_documentos_persist_failed", source=source_id, error=str(e))
+
+
+def _contar_dedupe_fallido(source_id: str) -> None:
+    """Incrementa ``dedupe_run_failed_total{fuente}``; nunca propaga.
+
+    El import va dentro de la función porque el fallo que se está contando puede
+    ser justamente el import de ``services.dedupe``: en ese caso no hay contador
+    que tocar y lo único correcto es no apilar una segunda excepción encima de
+    la que ya se está gestionando.
+    """
+    try:
+        from services.dedupe import dedupe_run_failed_total
+
+        dedupe_run_failed_total.labels(fuente=source_id).inc()
+    except Exception:  # pragma: no cover — la métrica nunca puede tumbar la ingesta
+        log.debug("connector_dedupe_metric_failed", source=source_id, exc_info=True)
 
 
 def _post_ingestion(source_id: str) -> None:
@@ -241,6 +286,12 @@ def _post_ingestion(source_id: str) -> None:
 
         detect_duplicates(fuente=source_id)
     except Exception as e:
+        # Fail-open a propósito —un dedupe roto no puede tumbar una ingesta cuyas
+        # filas ya están escritas— pero NO en silencio: hasta 2026-08 aquí sólo
+        # había el log.warning, así que un detect_duplicates que reventara en
+        # todas las pasadas dejaba el run marcado como exitoso y sin ninguna
+        # serie temporal donde se viera. El contador es lo alertable.
+        _contar_dedupe_fallido(source_id)
         log.warning("connector_dedupe_failed", source=source_id, error=str(e))
     try:
         from services.contract_events import derive_new_events
@@ -393,12 +444,14 @@ def run_connector(connector: Connector, *, batch_size: int = 200) -> ConnectorRu
             result.parsed += 1
             lic_id = parsed.licitacion.id_externo
             recencia = parsed.licitacion.fecha_actualizacion_fuente or ""
-            mejor = mejor_recencia.get(lic_id)
-            if mejor is not None and recencia <= mejor:
+            if _es_reaparicion_mas_vieja(
+                recencia, mejor_recencia.get(lic_id), stream_asc=advances_incrementally
+            ):
                 # Ya vimos una versión igual o más reciente de este expediente en
                 # el run (pendiente en el lote o ya persistida en un flush previo):
                 # no la pisamos con una más vieja. Con esto, tanto en feeds
-                # newest-first como ASC, gana siempre la versión más reciente.
+                # newest-first como ASC, gana siempre la versión más reciente
+                # —incluso cuando la fuente no dice cuál lo es.
                 continue
             mejor_recencia[lic_id] = recencia
             lic_por_id[lic_id] = parsed.licitacion

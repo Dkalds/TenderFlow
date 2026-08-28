@@ -45,8 +45,14 @@ class QualityResult(BaseModel):
     last_scrape_hours_ago: float | None = None
     dlq_count: int = 0
     completitud_columnas: list[ColumnCompleteness] = Field(default_factory=list)
-    cobertura_nif: float = 0.0
-    cobertura_modulo_sap: float = 0.0
+    # `None` = NO MEDIDO, y la tarjeta se abstiene. Ni `nif` ni `modulo_sap` son
+    # columnas de `licitaciones`: el camino pandas caía en el guard
+    # `if col in df.columns` y la migración a SQL congeló ese resultado como el
+    # literal 0.0. En la pantalla que existe para acreditar la calidad del dato,
+    # publicar un 0,0 % medido de una cobertura que nadie mide es peor que no
+    # publicar nada — y el 0.0 pasaba la guarda `!= null` del frontend.
+    cobertura_nif: float | None = None
+    cobertura_modulo_sap: float | None = None
     # Consistencia de FORMATO de fecha (no completitud): de las fechas de
     # publicación presentes, % en ISO-8601 y nº con formato inválido (DD/MM/YYYY…).
     pct_fecha_iso: float = 0.0
@@ -182,10 +188,8 @@ def get_quality() -> QualityResult:
         pct_organization_scoped=pct_organization_scoped,
         filas_sin_organizacion=filas_sin_organizacion,
         completitud_columnas=completitud,
-        # nif / modulo_sap no son columnas de licitaciones: el pandas original
-        # devolvía 0.0 por el guard `if col in df.columns` — se preserva.
-        cobertura_nif=0.0,
-        cobertura_modulo_sap=0.0,
+        # cobertura_nif / cobertura_modulo_sap se quedan en su default `None`
+        # (no medidas): ver la nota del DTO.
     )
     log.info("analytics_quality_done", total=result.total_records)
     return result

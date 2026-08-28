@@ -398,19 +398,32 @@ export default function OrganosView() {
                     <TableRow
                       key={idx}
                       className="border-b border-border/50 hover:bg-muted/50 cursor-pointer"
-                      tabIndex={0}
-                      role="row"
                       onClick={() => handleOrganoClick(item.organo_contratacion)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" || e.key === " ")
-                          handleOrganoClick(item.organo_contratacion);
-                      }}
                     >
-                      <TableCell
-                        className="py-2 pr-4 max-w-xs truncate"
-                        title={item.organo_contratacion}
-                      >
-                        {item.organo_contratacion}
+                      {/* El destino del clic tiene que EXISTIR para el teclado y
+                          para el lector de pantalla. Hacer la fila focusable
+                          (`tabIndex` + `onKeyDown`) le daba el foco pero no un
+                          rol interactivo: el lector anunciaba una fila de tabla,
+                          no algo que se pueda activar. Y ponerle `role="button"`
+                          al `<tr>` es peor — deja de ser una fila, así que se
+                          pierden encabezados y navegación por columnas. Lo
+                          correcto es un control real dentro de la primera celda,
+                          rotulado con el nombre de la fila; el `onClick` del
+                          `<tr>` se queda como atajo de ratón sobre el resto. */}
+                      <TableCell className="py-2 pr-4 max-w-xs">
+                        <button
+                          type="button"
+                          className="block w-full max-w-full cursor-pointer truncate text-left"
+                          title={item.organo_contratacion}
+                          onClick={(e) => {
+                            // Sin esto el clic sube al `<tr>` y el handler corre
+                            // dos veces por pulsación.
+                            e.stopPropagation();
+                            handleOrganoClick(item.organo_contratacion);
+                          }}
+                        >
+                          {item.organo_contratacion}
+                        </button>
                       </TableCell>
                       <TableCell className="py-2 pr-4 w-40">
                         <div className="flex items-center gap-2">

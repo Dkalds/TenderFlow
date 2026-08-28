@@ -251,7 +251,7 @@ function CommandPaletteInner() {
               <Command.Item
                 value="exportar csv vista actual"
                 onSelect={() =>
-                  run(() => triggerDownload(buildExportUrl("/api/v1/exports/download", "csv", filterParams)))
+                  run(() => void triggerDownload(buildExportUrl("/api/v1/exports/download", "csv", filterParams)))
                 }
                 className="aria-selected:bg-accent aria-selected:text-accent-foreground flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-sm"
               >
@@ -261,7 +261,9 @@ function CommandPaletteInner() {
               <Command.Item
                 value="exportar excel xlsx vista actual"
                 onSelect={() =>
-                  run(() => triggerDownload(buildExportUrl("/api/v1/exports/download", "xlsx", filterParams)))
+                  // `excel` es el valor que declara la API; `xlsx` es sólo la
+                  // extensión del fichero y devolvía un 422.
+                  run(() => void triggerDownload(buildExportUrl("/api/v1/exports/download", "excel", filterParams)))
                 }
                 className="aria-selected:bg-accent aria-selected:text-accent-foreground flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-sm"
               >

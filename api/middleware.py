@@ -207,6 +207,19 @@ _HEAVY_ENDPOINT_PATTERNS: tuple[tuple[re.Pattern[str], int], ...] = (
     # /licitaciones/{id_externo:path}/explain — el id puede contener '/'
     # (p.ej. "PA-S 2026/000058"), por eso el comodín admite barras.
     (re.compile(r"^/api/v1/licitaciones/.+/explain$"), 30),
+    # /licitaciones/{id}/ficha-pliego/extract — la única ruta mutante de
+    # /licitaciones y la más cara de la API: descarga contra PLACSP los pliegos
+    # pendientes, extrae el PDF en un proceso aislado y pide al LLM una ficha de
+    # hasta 3.500 tokens. Mismo tope que /ask porque el coste es de la misma
+    # naturaleza —una llamada a proveedor por petición—, y corría al default de
+    # 120/min por no estar en esta tabla. El comodín admite barras: el id
+    # externo puede llevarlas (ver la nota de /explain).
+    (re.compile(r"^/api/v1/licitaciones/.+/ficha-pliego/extract$"), 10),
+    # /licitaciones/{id}/resumen — abre un SSE, arma contexto RAG con lecturas
+    # de BD y streamea tokens del LLM. Es /ask con otro nombre y otra pregunta,
+    # así que comparte su tope en vez del default: dejarlo en 120/min convertía
+    # el límite de /ask en decorativo (misma capacidad, ruta distinta).
+    (re.compile(r"^/api/v1/licitaciones/.+/resumen$"), 10),
     # /models/{name}/activate/{version}
     (re.compile(r"^/api/v1/models/[^/]+/activate/[^/]+$"), 10),
 )

@@ -8,6 +8,17 @@ from observability.logging import get_logger
 
 log = get_logger(__name__)
 
+# Anchura de la banda que acompaña al forecast, en sigmas de la serie histórica.
+# Es una constante del modelo, no un parámetro estimado: se publica en el
+# contrato para que la UI rotule la banda con el número real en vez de dejar que
+# se lea como un intervalo de confianza (que no lo es: no crece con el horizonte).
+BANDA_SIGMAS = 1.5
+
+# Identificadores del motor que produjo la proyección. Viajan en el contrato:
+# la caída del primero al segundo era invisible fuera del log.
+MODELO_HOLT_WINTERS = "holt-winters"
+MODELO_LINEAL = "regresion-lineal"
+
 # Conversión de unidades CODICE a meses
 UNIT_TO_MONTHS = {
     "ANN": 12.0,
@@ -175,8 +186,8 @@ def forecast_volume(
         metric: ``"count"`` (número de licitaciones) o ``"sum"`` (importe total).
 
     Returns:
-        DataFrame con columnas ``mes``, ``valor``, ``tipo`` ("histórico" | "forecast"),
-        y ``lower``/``upper`` (banda de confianza aproximada, solo para forecast).
+        DataFrame con columnas ``mes``, ``valor``, ``tipo`` ("historico" | "forecast"),
+        ``modelo`` y ``lower``/``upper`` (banda aproximada, solo para forecast).
         Devuelve DataFrame vacío si hay <3 meses de histórico.
     """
     if df.empty or "fecha_publicacion" not in df.columns:
@@ -215,6 +226,16 @@ def forecast_volume_from_monthly(hist: pd.DataFrame, *, months_ahead: int = 6) -
     ``hist`` debe traer columnas ``mes`` (Timestamp inicio de mes) y ``valor``.
     Permite alimentar el forecast desde el ``GROUP BY`` mensual de Postgres en
     vez de materializar la tabla entera para re-agregarla aquí.
+
+    Emite además ``modelo`` (constante en todas las filas): qué motor produjo la
+    proyección. La caída de Holt-Winters a la regresión lineal era silenciosa —
+    solo un WARNING en el log— y la pantalla presentaba las dos igual; ahora el
+    consumidor puede decir cuál está mirando.
+
+    ``lower``/``upper`` NO son un intervalo de confianza: son +/-1,5 sigma de TODA la
+    serie histórica, el mismo valor para los seis horizontes. Una banda real
+    crece con el horizonte; esta no. Se emite ``BANDA_SIGMAS`` junto al modelo
+    para que la UI pueda rotularla por lo que es en vez de por lo que parece.
     """
     hist = hist.sort_values("mes").reset_index(drop=True)
     if len(hist) < 3:
@@ -235,7 +256,8 @@ def forecast_volume_from_monthly(hist: pd.DataFrame, *, months_ahead: int = 6) -
             initialization_method="estimated",
         ).fit(optimized=True)
         forecast_vals = model.forecast(months_ahead)
-        std_err = (hist["valor"].std() or 1.0) * 1.5  # banda ~1.5 sigma aproximada
+        std_err = (hist["valor"].std() or 1.0) * BANDA_SIGMAS
+        modelo = MODELO_HOLT_WINTERS
     except Exception:
         log.warning("forecast_holtwinters_fallback", exc_info=True)
         # Fallback: regresión lineal simple
@@ -246,7 +268,8 @@ def forecast_volume_from_monthly(hist: pd.DataFrame, *, months_ahead: int = 6) -
         m, b = float(coeffs[0]), float(coeffs[1])
         future_x = np.arange(len(hist), len(hist) + months_ahead, dtype=float)
         forecast_vals = pd.Series(m * future_x + b)
-        std_err = (hist["valor"].std() or 1.0) * 1.5
+        std_err = (hist["valor"].std() or 1.0) * BANDA_SIGMAS
+        modelo = MODELO_LINEAL
 
     # Construir tabla de salida
     last_mes = hist["mes"].max()
@@ -260,9 +283,14 @@ def forecast_volume_from_monthly(hist: pd.DataFrame, *, months_ahead: int = 6) -
             "mes": future_months,
             "valor": forecast_vals.clip(lower=0).values,
             "tipo": "forecast",
+            "modelo": modelo,
             "lower": (forecast_vals - std_err).clip(lower=0).values,
             "upper": (forecast_vals + std_err).values,
         }
     )
-    hist_out = hist.assign(tipo="histórico", lower=None, upper=None)
+    # Sin tilde a propósito: `tipo` es un DISCRIMINANTE que viaja al frontend,
+    # no una etiqueta de pantalla. Con "histórico" el gráfico comparaba contra
+    # "historico" y toda la serie pasada salía `undefined` — la proyección se
+    # pintaba flotando, sin histórico contra el que contrastarla.
+    hist_out = hist.assign(tipo="historico", modelo=modelo, lower=None, upper=None)
     return pd.concat([hist_out, fc_df], ignore_index=True)

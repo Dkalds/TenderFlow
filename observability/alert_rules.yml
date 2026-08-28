@@ -29,6 +29,45 @@ groups:
   # SQL o usan proyecciones acotadas, el cortacircuitos full-table ya no
   # existe y su metrica analytics_degraded_responses_total dejo de emitirse.
 
+  - name: api_availability
+    # Salud de LECTURA de la API vista desde el tráfico real (métricas RED de
+    # prometheus-fastapi-instrumentator, api/app.py).
+    #
+    # Existe porque el 2026-08-28 la superficie pública devolvió 500 durante
+    # horas sin que se disparara nada: PgPoolHealthCheckFailed mira
+    # `up{job="tenderflow-api"}`, y un proceso que contesta 500 a todo sigue
+    # sirviendo /metrics, así que `up` vale 1. La señal existía —el
+    # instrumentador va con should_group_status_codes=False, o sea que hay
+    # `http_requests_total{status="500"}` desglosado— y se dibujaba en el panel
+    # RED de Grafana, pero ninguna regla la miraba.
+    rules:
+      - alert: ApiErrorRateHigh
+        # Misma expresión que el panel "error rate" de
+        # observability/grafana/dashboards/api_red.json, para que lo que alerta
+        # y lo que se mira al diagnosticar sean el mismo número.
+        #
+        # El clamp_min(…, 1) del denominador no es cosmético: con tráfico casi
+        # nulo (madrugada) un puñado de 5xx daría un ratio de 1.0 y la alerta
+        # sería ruido permanente. Al suelo de 1 req/s hace falta volumen real
+        # de errores para cruzar el 5 %.
+        #
+        # OJO: /api/v1/health.* está en `excluded_handlers`, así que el
+        # healthcheck verde no diluye el ratio — que es justo el escenario del
+        # incidente.
+        expr: >-
+          sum(rate(http_requests_total{status=~"5.."}[5m]))
+          / clamp_min(sum(rate(http_requests_total[5m])), 1) > 0.05
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "API: más del 5% de respuestas 5xx durante 5m"
+          description: >
+            Más del 5% del tráfico HTTP acaba en 5xx sostenido durante 5
+            minutos. El proceso puede seguir vivo (up=1) y aun así no servir
+            nada útil. Revisar logs de la API en Render y el panel
+            api_red.json antes de mirar la base de datos.
+
   - name: llm_budget
     # Presupuesto LLM (RFC llm-dependencia-gestionada). En modo monitor estas
     # alertas son la unica senal de que el enforcement habria cortado trafico.
@@ -114,6 +153,25 @@ groups:
             El p99 de db_write_duration_seconds supera 1s durante 10m con backend
             Postgres. Investigar queries lentas en Supabase Dashboard →
             Query Performance.
+
+      - alert: PgReadLatencyHigh
+        # Simétrica de PgWriteLatencyHigh sobre db_read_duration_seconds, que
+        # db/connection.py ya observa en cada lectura. El umbral es mucho más
+        # alto (5s, no 1s) a propósito: una lectura lenta no bloquea a nadie
+        # como sí lo hace una escritura, y las agregaciones analíticas tardan
+        # segundos de forma legítima. A 5s de p99 el timeout del cliente ya
+        # está cerca y la pantalla se ve rota, que es cuando importa.
+        expr: histogram_quantile(0.99, rate(db_read_duration_seconds_bucket[10m])) > 5.0
+        for: 10m
+        labels:
+          severity: warning
+          adr: "016"
+        annotations:
+          summary: "Latencia p99 de lectura Postgres > 5s"
+          description: >
+            El p99 de db_read_duration_seconds supera 5s durante 10m.
+            Sospechar de un índice que dejó de usarse o de un anti-join sin
+            acotar; investigar en Supabase Dashboard → Query Performance.
 
       - alert: PgConcurrentWritersHigh
         # ADR-004: >3 escritores concurrentes sostenido → review de arquitectura.

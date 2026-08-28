@@ -53,6 +53,7 @@ import {
 } from "@/hooks/use-watchlist-items";
 import {
   FREQ_LABEL,
+  FREQ_NOTE,
   FREQ_OPTIONS,
   LEGACY_KEY,
   MIGRATED_FLAG,
@@ -60,6 +61,7 @@ import {
   ccaaOptions,
   dedupeMatches,
   formStateToBody,
+  formatMatchCount,
   parsePrefill,
   prefillToFormState,
   ruleToBody,
@@ -158,7 +160,10 @@ function RuleFormFields({
           value={value.frequency}
           onValueChange={(v) => onChange({ frequency: v as Frequency })}
         >
-          <SelectTrigger id={`${idPrefix}-frequency`}>
+          <SelectTrigger
+            id={`${idPrefix}-frequency`}
+            aria-describedby={`${idPrefix}-frequency-note`}
+          >
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -169,6 +174,12 @@ function RuleFormFields({
             ))}
           </SelectContent>
         </Select>
+        <p
+          id={`${idPrefix}-frequency-note`}
+          className="text-xs text-muted-foreground"
+        >
+          {FREQ_NOTE}
+        </p>
       </div>
     </div>
   );
@@ -648,7 +659,10 @@ export default function MiWatchlistPage() {
                   value={frequency}
                   onValueChange={(v) => setFrequency(v as Frequency)}
                 >
-                  <SelectTrigger id="wl-frequency">
+                  <SelectTrigger
+                    id="wl-frequency"
+                    aria-describedby="wl-frequency-note"
+                  >
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -659,6 +673,12 @@ export default function MiWatchlistPage() {
                     ))}
                   </SelectContent>
                 </Select>
+                <p
+                  id="wl-frequency-note"
+                  className="text-xs text-muted-foreground"
+                >
+                  {FREQ_NOTE}
+                </p>
               </div>
               <div className="flex items-end">
                 <Button
@@ -717,8 +737,15 @@ export default function MiWatchlistPage() {
                       <CardTitle className="text-base truncate">
                         {rule.nombre || rule.keyword || "Regla"}
                       </CardTitle>
-                      <Badge variant="default" className="shrink-0">
-                        {rule.match_count}
+                      {/* El conteo del listado viene acotado por el backend
+                          (subselect con LIMIT, para no barrer 1,6M filas por
+                          regla): al tope se pinta «999+», no un falso exacto. */}
+                      <Badge
+                        variant="default"
+                        className="shrink-0"
+                        title={`${formatMatchCount(rule.match_count)} coincidencias`}
+                      >
+                        {formatMatchCount(rule.match_count)}
                       </Badge>
                     </div>
                   </div>

@@ -46,8 +46,7 @@ vi.mock("@/hooks/use-watchlist-items", () => ({
 
 const setActiveOrganizationId = vi.fn();
 vi.mock("@/hooks/use-organization", () => ({
-  useOrganizationStore: (selector: (s: unknown) => unknown) =>
-    selector({ setActiveOrganizationId }),
+  useOrganizationStore: (selector: (s: unknown) => unknown) => selector({ setActiveOrganizationId }),
 }));
 
 const refetch = vi.fn();
@@ -86,27 +85,27 @@ function useDismissedStub() {
   }, []);
   return dismissedIds;
 }
-const dismissMutate = vi.fn((id: string) => setDismissed([...dismissedIds, id]));
-const restoreMutate = vi.fn((id: string) =>
-  setDismissed(dismissedIds.filter((current) => current !== id)),
-);
+const dismissMutate = vi.fn(({ idExterno }: { idExterno: string }) => setDismissed([...dismissedIds, idExterno]));
+const restoreMutate = vi.fn((id: string) => setDismissed(dismissedIds.filter((current) => current !== id)));
 // El segmento "Descartadas" ya no sale del top-24 (el backend lo excluye): se
 // hidrata por ids con el modo page-aligned. El stub las busca en el mismo
 // conjunto sintético para que el segmento siga siendo navegable en el test.
 function useDismissedTendersStub(ids: string[], enabled: boolean) {
-  const items = enabled
-    ? (radarState.data?.items ?? []).filter((t) => ids.includes(t.id_externo))
-    : [];
+  const items = enabled ? (radarState.data?.items ?? []).filter((t) => ids.includes(t.id_externo)) : [];
   return { items, isLoading: false, truncadas: 0 };
 }
 
 vi.mock("@/hooks/use-radar", () => ({
   useRadar: () => radarState,
   useRadarDismissals: () => ({ data: useDismissedStub() }),
-  useRadarDismissedTenders: (ids: string[], enabled: boolean) =>
-    useDismissedTendersStub(ids, enabled),
+  useRadarDismissedTenders: (ids: string[], enabled: boolean) => useDismissedTendersStub(ids, enabled),
   useDismissRadarTender: () => ({ mutate: dismissMutate }),
   useRestoreRadarTender: () => ({ mutate: restoreMutate }),
+  // `esBandaConocida` es una función pura, no un hook: se deja la de verdad.
+  // Stubearla con `vi.fn()` haría pasar el test con cualquier etiqueta, que es
+  // justo lo que la función existe para impedir.
+  esBandaConocida: (valor: unknown): boolean =>
+    typeof valor === "string" && ["Caliente", "Atractiva", "Tibia", "Descarte"].includes(valor),
 }));
 
 // El inspector consulta el histórico del órgano; en jsdom no hay backend, así
@@ -159,6 +158,11 @@ function tender(overrides: Partial<RadarTender> = {}): RadarTender {
   return {
     id_externo: "LIC-1",
     titulo: "Mantenimiento SAP",
+    // `score` y `band` son obligatorios en `ScoredOpportunity`: el `as` de
+    // abajo los ocultaba, y desde que el descarte los sella (v93) la ausencia
+    // se notaba en las aserciones. El fixture dice ahora lo que dice la API.
+    score: 87,
+    band: "Caliente",
     organo_contratacion: "Ayuntamiento de Madrid",
     importe: 250000,
     estado: "PUB",
@@ -176,7 +180,7 @@ beforeEach(() => {
   setDismissed([]);
   radarState.data = { items: [tender()], signals: SIGNALS_SANAS };
   radarState.isLoading = false;
-    radarState.error = null;
+  radarState.error = null;
   watchedItems.length = 0;
 });
 
@@ -205,6 +209,10 @@ describe("RadarPage", () => {
   });
 
   it("only says 'Sin puntuar' when the tender really has no score", () => {
+    // La ausencia de score se declara aquí y no se hereda del fixture: desde que
+    // éste trae `score`/`band` como los trae la API, apoyarse en que faltaran
+    // habría hecho pasar este test por el motivo equivocado.
+    radarState.data = { items: [tender({ score: undefined, band: undefined })] };
     renderRadar();
 
     expect(screen.getByText("Sin puntuar")).toBeInTheDocument();
@@ -228,9 +236,7 @@ describe("RadarPage", () => {
     // `GET /analytics/scoring?limit=24`, el top-24 del corpus abierto.
     renderRadar();
 
-    expect(
-      screen.getByText(/top 24 del mercado abierto por potencial comercial/),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/top 24 del mercado abierto por potencial comercial/)).toBeInTheDocument();
   });
 
   it("renders the countdown to the deadline the API now returns", () => {
@@ -254,7 +260,11 @@ describe("RadarPage", () => {
     fireEvent.click(screen.getByRole("button", { name: /Abrir oportunidad/ }));
 
     await waitFor(() => expect(push).toHaveBeenCalledWith("/oportunidades/7"));
-    expect(createPursuit).toHaveBeenCalledWith({ licitacion_id: "LIC-1" });
+    expect(createPursuit).toHaveBeenCalledWith({
+      licitacion_id: "LIC-1",
+      score_al_abrir: 87,
+      banda_al_abrir: "Caliente",
+    });
   });
 
   it("reports a failure to open instead of navigating", async () => {
@@ -300,7 +310,13 @@ describe("RadarPage", () => {
     renderRadar();
     fireEvent.click(screen.getByRole("button", { name: "Descartar" }));
 
-    expect(dismissMutate).toHaveBeenCalledWith("LIC-1");
+    // El descarte sella el score que estaba en pantalla: sin él no se puede
+    // saber si el Radar priorizó bien, y no se reconstruye después (v93).
+    expect(dismissMutate).toHaveBeenCalledWith({
+      idExterno: "LIC-1",
+      score: 87,
+      banda: "Caliente",
+    });
     expect(toastCall).toHaveBeenCalledWith(
       "Señal descartada",
       expect.objectContaining({ action: expect.objectContaining({ label: "Deshacer" }) }),
@@ -378,6 +394,134 @@ describe("RadarPage", () => {
 });
 
 /**
+ * Foco y teclado. Aquí el riesgo no es cosmético: abrir una oportunidad crea un
+ * pursuit en backend y navega, así que una fila equivocada no se deshace con un
+ * Ctrl+Z. Lo que fijan estos tests es que el objeto de la acción sea el que el
+ * usuario está mirando, y que las acciones ocultas no sean paradas de
+ * tabulación fantasma.
+ */
+describe("RadarPage — foco y teclado", () => {
+  function tresFilas() {
+    radarState.data = {
+      items: [
+        tender({ id_externo: "LIC-1", titulo: "Fila uno" }),
+        tender({ id_externo: "LIC-2", titulo: "Fila dos" }),
+        tender({ id_externo: "LIC-3", titulo: "Fila tres" }),
+      ],
+      signals: SIGNALS_SANAS,
+    };
+  }
+
+  /**
+   * Simula el ancho `md` (la tabla). jsdom no evalúa media queries y el stub de
+   * `src/test/setup.ts` responde "no match" a todo, que en esta página significa
+   * ficha móvil; la página consulta `matchMedia` porque `inert` es un atributo y
+   * no se puede condicionar con un prefijo responsive de Tailwind.
+   */
+  function conAnchoDeTabla(): () => void {
+    const original = window.matchMedia;
+    window.matchMedia = ((query: string) => ({
+      matches: query.includes("min-width: 768px"),
+      media: query,
+      onchange: null,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      addListener: () => {},
+      removeListener: () => {},
+      dispatchEvent: () => false,
+    })) as unknown as typeof window.matchMedia;
+    return () => {
+      window.matchMedia = original;
+    };
+  }
+
+  it("Intro abre la fila enfocada, no la que quedó seleccionada", async () => {
+    // Tabular hasta la séptima fila y pulsar Intro abría la primera: el atajo
+    // vivía solo en el listener de `window`, que actúa sobre `selected`, y Tab
+    // mueve el foco sin tocar `selected`.
+    tresFilas();
+
+    const { container } = renderRadar();
+    const filas = container.querySelectorAll<HTMLElement>("[data-active]");
+    act(() => filas[2].focus());
+
+    // El keydown se dispara sobre la fila enfocada, como hace el navegador: de
+    // ahí propaga hasta `window`, donde escucha el atajo global.
+    fireEvent.keyDown(filas[2], { key: "Enter" });
+
+    await waitFor(() =>
+      expect(createPursuit).toHaveBeenCalledWith(expect.objectContaining({ licitacion_id: "LIC-3" })),
+    );
+    // Ni el atajo global ni la fila duplican la creación del pursuit.
+    expect(createPursuit).toHaveBeenCalledTimes(1);
+  });
+
+  it("Intro sobre otro botón de la página lo deja actuar en vez de abrir una oportunidad", () => {
+    // El listener global solo se apartaba ante INPUT/TEXTAREA/contentEditable,
+    // así que Intro en cualquier botón hacía `preventDefault()` —cancelándolo—
+    // y abría un pursuit sobre la fila seleccionada.
+    tresFilas();
+    renderRadar();
+
+    const orden = screen.getByRole("button", { name: "Plazo" });
+    act(() => orden.focus());
+    const noCancelado = fireEvent.keyDown(orden, { key: "Enter" });
+
+    expect(noCancelado).toBe(true);
+    expect(createPursuit).not.toHaveBeenCalled();
+  });
+
+  it("Intro sobre un botón de la fila no abre además la oportunidad", () => {
+    // El `onKeyDown` de la fila también recibe lo que sube desde sus botones:
+    // sin filtrar por `currentTarget`, Intro sobre «Descartar» descartaría y
+    // abriría la oportunidad en el mismo gesto.
+    tresFilas();
+    renderRadar();
+
+    const descartar = screen.getByRole("button", { name: "Descartar Fila uno" });
+    act(() => descartar.focus());
+    const noCancelado = fireEvent.keyDown(descartar, { key: "Enter" });
+
+    expect(noCancelado).toBe(true);
+    expect(createPursuit).not.toHaveBeenCalled();
+  });
+
+  it("las acciones ocultas de la tabla no son paradas de tabulación invisibles", () => {
+    // 23 filas inactivas × 3 botones = 69 paradas sin foco visible (WCAG 2.4.7).
+    // `md:opacity-0` las esconde de la vista pero no del orden de tabulación.
+    const restaurarAncho = conAnchoDeTabla();
+    try {
+      tresFilas();
+      const { container } = renderRadar();
+      const lista = container.querySelector('[data-slot="radar-lista"]')!;
+
+      const enfocables = Array.from(lista.querySelectorAll("button")).filter(
+        (boton) => !boton.closest("[inert]") && boton.tabIndex !== -1,
+      );
+
+      // Solo los tres de la fila activa.
+      expect(enfocables).toHaveLength(3);
+    } finally {
+      restaurarAncho();
+    }
+  });
+
+  it("en la ficha móvil las acciones de toda fila siguen siendo alcanzables", () => {
+    // El bloque es visible por debajo de `md` por decisión escrita: inertizarlo
+    // ahí dejaría descartar y seguir fuera del alcance del teclado.
+    tresFilas();
+    const { container } = renderRadar();
+    const lista = container.querySelector('[data-slot="radar-lista"]')!;
+
+    const enfocables = Array.from(lista.querySelectorAll("button")).filter(
+      (boton) => !boton.closest("[inert]") && boton.tabIndex !== -1,
+    );
+
+    expect(enfocables).toHaveLength(9);
+  });
+});
+
+/**
  * Lo que se puede fijar del Radar en móvil **desde jsdom**, que no tiene
  * layout: no hay anchos, ni media queries, ni `getBoundingClientRect` real, así
  * que "no hay scroll horizontal a 375 px" y "el botón mide 36 px" solo se
@@ -398,11 +542,7 @@ describe("RadarPage en móvil", () => {
 
   it("una señal es una fila, no dos árboles que puedan divergir", () => {
     radarState.data = {
-      items: [
-        tender({ id_externo: "LIC-1" }),
-        tender({ id_externo: "LIC-2" }),
-        tender({ id_externo: "LIC-3" }),
-      ],
+      items: [tender({ id_externo: "LIC-1" }), tender({ id_externo: "LIC-2" }), tender({ id_externo: "LIC-3" })],
       signals: SIGNALS_SANAS,
     };
 
