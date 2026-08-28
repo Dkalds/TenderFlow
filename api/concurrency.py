@@ -44,6 +44,7 @@ __all__ = [
     "reset_limiters",
     "run_cpu",
     "run_db",
+    "run_io",
     "run_ml",
     "run_probe",
 ]
@@ -122,6 +123,23 @@ async def run_probe(fn: Callable[..., T], *args: Any, **kwargs: Any) -> T:
     return await to_thread.run_sync(
         lambda: fn(*args, **kwargs), limiter=limiter, abandon_on_cancel=True
     )
+
+
+async def run_io(fn: Callable[..., T], *args: Any, **kwargs: Any) -> T:
+    """Ejecuta I/O de red **síncrona** (SMTP, HTTP saliente) en el threadpool.
+
+    Mismo mecanismo que ``run_db`` y misma razón —no bloquear el event loop—
+    pero con su propio span: etiquetar un envío de correo como ``db.query``
+    ensucia las trazas justo donde se investiga una latencia, y un día alguien
+    buscará por qué una "query" tarda quince segundos y encontrará un SMTP.
+
+    Sin bulkhead propio a propósito: hoy el único uso es un correo puntual
+    disparado a mano por un administrador, no un camino de tráfico. Si aparece
+    I/O de red en un endpoint caliente, merecerá su ``CapacityLimiter`` como
+    lo tienen ``run_ml`` y ``run_cpu``.
+    """
+    with _span("io.task", {"io.function": _fn_name(fn)}):
+        return await to_thread.run_sync(lambda: fn(*args, **kwargs))
 
 
 async def run_ml(fn: Callable[..., T], *args: Any, **kwargs: Any) -> T:

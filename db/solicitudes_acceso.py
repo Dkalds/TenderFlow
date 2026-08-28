@@ -84,6 +84,28 @@ def listar_solicitudes(*, estado: str | None = None, limit: int = 100) -> list[d
         return [dict(zip(cols, fila, strict=False)) for fila in cur.fetchall()]
 
 
+def obtener_solicitud(solicitud_id: int) -> dict[str, Any] | None:
+    """Una solicitud por id, o ``None`` si no existe.
+
+    La necesita el panel al aprobar: para escribirle a quien pidió acceso hay
+    que leer su dirección, y ``listar_solicitudes`` sólo pagina la cola entera.
+    Devuelve también el ``estado`` actual porque quien aprueba necesita saber si
+    la fila **ya** estaba atendida: sin esa comprobación, pulsar dos veces le
+    manda dos correos a la misma persona.
+    """
+    with connect() as c:
+        cur = c.execute(
+            "SELECT id, email, empresa, mensaje, origen, estado, created_at "
+            "FROM solicitudes_acceso WHERE id = %s",
+            (solicitud_id,),
+        )
+        fila = cur.fetchone()
+        if fila is None:
+            return None
+        cols = [d[0] for d in cur.description]
+        return dict(zip(cols, fila, strict=False))
+
+
 def actualizar_estado(solicitud_id: int, estado: str) -> bool:
     """Mueve una solicitud de estado. Devuelve ``False`` si no existe."""
     if estado not in ESTADOS:

@@ -1,11 +1,26 @@
 /**
  * Tests for web/src/lib/filters.ts
  *
- * Covers: filtersToParams (pure function)
+ * Covers: filtersToParams (pure function) y el viaje de ida y vuelta del ámbito
+ * por la URL (al final del fichero).
  */
-import { describe, it, expect } from "vitest";
-import { filtersToParams, appendFiltersToPath, mergeFiltersIntoPath } from "@/lib/filters";
-import type { FilterValues } from "@/lib/filters";
+import { describe, it, expect, vi, afterEach } from "vitest";
+import { renderHook, act, cleanup, waitFor } from "@testing-library/react";
+import { withNuqsTestingAdapter } from "nuqs/adapters/testing";
+import {
+  EMPTY_SCOPE,
+  filtersToParams,
+  appendFiltersToPath,
+  mergeFiltersIntoPath,
+  scopeKey,
+  useFilters,
+  useScopeSnapshot,
+} from "@/lib/filters";
+import type { FilterValues, FiltersState, ScopeSnapshot } from "@/lib/filters";
+
+afterEach(() => {
+  cleanup();
+});
 
 const emptyFilters: FilterValues = {
   q: "",
@@ -187,5 +202,172 @@ describe("filtersToParams · solo_abiertas", () => {
   it("no enumera estados: convive con un filtro de estado sin pisarlo", () => {
     const result = filtersToParams(makeFilters({ soloAbiertas: true, estados: ["ADM"] }));
     expect(result).toEqual({ solo_abiertas: "true", estado: "ADM" });
+  });
+});
+
+/* ── Ida y vuelta del ámbito por la URL ─────────────────────────────────
+ *
+ * Estos bloques van al final a propósito: escribir con los setters encola
+ * escrituras en la cola global de nuqs, y se drenan aquí en vez de dejar que
+ * contaminen los tests de función pura de arriba (mismo motivo que en
+ * `filters-hooks.test.tsx`).
+ *
+ * Lo que fijan no es que los setters "no lancen" —eso ya estaba— sino que el
+ * ámbito **vuelva entero** después de pasar por la URL. Es la mitad de cliente
+ * del fallo de #220: el ámbito viaja como query string y cualquier eslabón que
+ * lo pierda (una serialización que se come una clave, una navegación que se
+ * queda con el pathname) deja al usuario mirando otros datos sin saberlo.
+ */
+
+/** Aplica acciones sobre `useFilters` y devuelve la query string resultante. */
+async function urlTras(acciones: (filtros: FiltersState) => void): Promise<string> {
+  const onUrlUpdate = vi.fn();
+  const { result, unmount } = renderHook(() => useFilters(), {
+    wrapper: withNuqsTestingAdapter({ onUrlUpdate }),
+  });
+  await act(async () => {
+    acciones(result.current);
+  });
+  await waitFor(() => expect(onUrlUpdate).toHaveBeenCalled());
+  const ultima = onUrlUpdate.mock.calls.at(-1)?.[0] as { queryString: string };
+  unmount();
+  return ultima.queryString;
+}
+
+/** Lee el ámbito que una query string representa. */
+function leerFiltros(search: string): FiltersState {
+  const { result } = renderHook(() => useFilters(), {
+    wrapper: withNuqsTestingAdapter({ searchParams: search }),
+  });
+  return result.current;
+}
+
+const AMBITO_COMPLETO = (filtros: FiltersState): void => {
+  // Acentos, espacios y `&` en la búsqueda: los tres caracteres que un
+  // serializador descuidado rompe o trunca.
+  filtros.setQ("obras hidráulicas & señalización");
+  filtros.setEstados(["PUB", "ADJ"]);
+  filtros.setCcaas(["Madrid", "Castilla-La Mancha"]);
+  filtros.setTecnologias(["IA", "Cloud"]);
+  filtros.setImporteMin(150_000);
+  filtros.setSoloAbiertas(true);
+  filtros.setComparar(true);
+  filtros.setRango({ desde: "2026-01-01", hasta: "2026-06-30" });
+  filtros.setRangoB({ desde: "2025-01-01", hasta: "2025-06-30" });
+};
+
+describe("useFilters · ida y vuelta por la URL", () => {
+  it("los once parámetros del ámbito vuelven idénticos", async () => {
+    const qs = await urlTras(AMBITO_COMPLETO);
+    const vuelta = leerFiltros(qs);
+
+    expect(vuelta.q).toBe("obras hidráulicas & señalización");
+    expect(vuelta.estados).toEqual(["PUB", "ADJ"]);
+    expect(vuelta.ccaas).toEqual(["Madrid", "Castilla-La Mancha"]);
+    expect(vuelta.tecnologias).toEqual(["IA", "Cloud"]);
+    expect(vuelta.importeMin).toBe(150_000);
+    expect(vuelta.soloAbiertas).toBe(true);
+    expect(vuelta.comparar).toBe(true);
+    expect(vuelta.rango).toEqual({ desde: "2026-01-01", hasta: "2026-06-30" });
+    expect(vuelta.rangoB).toEqual({ desde: "2025-01-01", hasta: "2025-06-30" });
+  });
+
+  it("un importe mínimo de 0 sobrevive y no se lee como «sin importe»", async () => {
+    // `0` es falsy: el camino donde más fácil se pierde un filtro real.
+    const qs = await urlTras((f) => f.setImporteMin(0));
+    expect(leerFiltros(qs).importeMin).toBe(0);
+  });
+
+  it("un booleano apagado no viaja como «false», que se leería como encendido", async () => {
+    const qs = await urlTras((f) => {
+      f.setSoloAbiertas(true);
+      f.setSoloAbiertas(false);
+    });
+    expect(new URLSearchParams(qs).get("solo_abiertas")).toBeNull();
+    expect(leerFiltros(qs).soloAbiertas).toBe(false);
+  });
+
+  it("resetFilters deja la URL sin ninguna clave del ámbito", async () => {
+    const qs = await urlTras((f) => {
+      AMBITO_COMPLETO(f);
+      f.resetFilters();
+    });
+
+    const params = new URLSearchParams(qs);
+    for (const clave of Object.keys(EMPTY_SCOPE)) {
+      expect(params.get(clave) ?? "").toBe("");
+    }
+    const vuelta = leerFiltros(qs);
+    expect(vuelta.q).toBe("");
+    expect(vuelta.estados).toEqual([]);
+    expect(vuelta.ccaas).toEqual([]);
+    expect(vuelta.importeMin).toBeNull();
+    expect(vuelta.soloAbiertas).toBe(false);
+    expect(vuelta.rango).toEqual({ desde: null, hasta: null });
+  });
+
+  it("el ámbito sobrevive a un enlace que ya trae su propia query", async () => {
+    // El caso de #220: `/mercado` monta la vista de tendencias con `?vista=` y
+    // el chip de tecnología tenía que llegar junto a ella, no en su lugar ni
+    // pegado detrás de un segundo `?`.
+    const qs = await urlTras((f) => f.setTecnologias(["SAP"]));
+    const href = mergeFiltersIntoPath("/mercado?vista=tiempo", qs);
+
+    expect(href.startsWith("/mercado?")).toBe(true);
+    expect(href.split("?").length).toBe(2);
+    const destino = new URLSearchParams(href.split("?")[1]);
+    expect(destino.get("vista")).toBe("tiempo");
+    expect(leerFiltros(href.split("?")[1]).tecnologias).toEqual(["SAP"]);
+  });
+});
+
+describe("useScopeSnapshot", () => {
+  it("lee los once parámetros crudos, incluidos los que useFilters deriva", () => {
+    const { result } = renderHook(() => useScopeSnapshot(), {
+      wrapper: withNuqsTestingAdapter({
+        searchParams: "?q=obras&estado=PUB,ADJ&solo_abiertas=true",
+      }),
+    });
+    expect(result.current.snapshot).toEqual({
+      ...EMPTY_SCOPE,
+      q: "obras",
+      estado: "PUB,ADJ",
+      solo_abiertas: "true",
+    });
+  });
+
+  it("restaurar una instantánea es UNA sola actualización de URL", async () => {
+    // Es la razón de existir del hook: con los setters sueltos, deshacer
+    // generaba once entradas de historial y once refetch en cascada.
+    const onUrlUpdate = vi.fn();
+    const { result } = renderHook(() => useScopeSnapshot(), {
+      wrapper: withNuqsTestingAdapter({ onUrlUpdate }),
+    });
+    const destino: ScopeSnapshot = {
+      ...EMPTY_SCOPE,
+      q: "grúas",
+      ccaa: "Galicia",
+      importe_min: "80000",
+    };
+
+    await act(async () => {
+      result.current.applySnapshot(destino);
+    });
+    await waitFor(() => expect(onUrlUpdate).toHaveBeenCalled());
+
+    expect(onUrlUpdate).toHaveBeenCalledTimes(1);
+    const { queryString } = onUrlUpdate.mock.calls[0][0] as { queryString: string };
+    const params = new URLSearchParams(queryString);
+    expect(params.get("q")).toBe("grúas");
+    expect(params.get("ccaa")).toBe("Galicia");
+    expect(params.get("importe_min")).toBe("80000");
+  });
+
+  it("scopeKey distingue dos ámbitos que sólo difieren en una clave", () => {
+    // El historial compara por esta cadena: si colisionaran, deshacer se
+    // saltaría un paso en silencio.
+    const base = { ...EMPTY_SCOPE, q: "obras" };
+    expect(scopeKey(base)).toBe(scopeKey({ ...base }));
+    expect(scopeKey(base)).not.toBe(scopeKey({ ...base, ccaa: "Madrid" }));
   });
 });

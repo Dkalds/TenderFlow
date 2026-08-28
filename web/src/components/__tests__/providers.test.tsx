@@ -58,6 +58,12 @@ vi.mock("@/lib/query-feedback", () => ({
   notifyMutationError: (...args: unknown[]) => mockNotifyMutationError(...args),
   notifyMutationSuccess: (...args: unknown[]) =>
     mockNotifyMutationSuccess(...args),
+  // La política de reintentos vive en el mismo módulo y `Providers` la pasa a
+  // `defaultOptions.queries`. El doble tiene que exportarla: si falta, el
+  // QueryClient se construye con `retry: undefined` y el render revienta.
+  // Su comportamiento se fija en `lib/__tests__/query-retry.test.ts`.
+  debeReintentar: () => false,
+  retrasoDeReintento: () => 0,
 }));
 
 // ── Subject under test ─────────────────────────────────────────────────────────

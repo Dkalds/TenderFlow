@@ -160,10 +160,35 @@ def skill_is_model_invocable(skill_dir: Path) -> bool:
     return "disable-model-invocation: true" not in head
 
 
+def contenido_normalizado(path: Path) -> bytes:
+    """Bytes del fichero con los finales de línea llevados a LF.
+
+    Sin esto la comprobación depende del sistema operativo en el que se ejecute,
+    y en Windows falla siempre. ``.gitattributes`` declara ``* text=auto
+    eol=lf``, así que LF es la forma canónica del repo y es lo que hay en el
+    índice (``git ls-files --eol`` da ``i/lf`` para los 325 ficheros de skills);
+    pero una copia de trabajo en Windows puede quedarse con CRLF, y entonces
+    comparar bytes crudos reporta como «divergentes» ficheros que en git son
+    **el mismo blob** — verificado: ``.claude/hooks/pretooluse_edit_stale.py`` y
+    su gemelo de ``.codex`` tienen hashes de blob idénticos y sólo difieren en
+    los 31 bytes de sus retornos de carro.
+
+    Que la comparación sea de bytes es correcto (un cambio real de contenido
+    tiene que saltar); lo que no lo es, es que el resultado dependa de cómo
+    hizo el checkout cada máquina. Normalizar no relaja nada en Linux, donde
+    los ficheros ya están en LF: los hashes que produce son los mismos, así que
+    los ``verifiedHash`` ya guardados en ``skills-lock.json`` siguen valiendo.
+    """
+    return path.read_bytes().replace(b"\r\n", b"\n")
+
+
 def tree_hashes(root: Path) -> dict[str, str]:
-    """Return stable SHA-256 hashes for every file below ``root``."""
+    """Return stable SHA-256 hashes for every file below ``root``.
+
+    «Stable» incluye *entre plataformas*: ver :func:`contenido_normalizado`.
+    """
     return {
-        path.relative_to(root).as_posix(): hashlib.sha256(path.read_bytes()).hexdigest()
+        path.relative_to(root).as_posix(): hashlib.sha256(contenido_normalizado(path)).hexdigest()
         for path in sorted(root.rglob("*"))
         if path.is_file()
     }
@@ -345,7 +370,9 @@ def check_hook_parity() -> None:
         if name not in claude_files or name not in codex_files:
             fail("hooks", f"el hook `{name}` no existe en ambos adaptadores Claude/Codex")
             continue
-        if claude_files[name].read_bytes() != codex_files[name].read_bytes():
+        # Normalizado por el mismo motivo que `tree_hashes`: en Windows estos
+        # tres ficheros salían como divergentes siendo el mismo blob en git.
+        if contenido_normalizado(claude_files[name]) != contenido_normalizado(codex_files[name]):
             fail("hooks", f"el hook `{name}` diverge entre .claude/hooks y .codex/hooks")
 
 

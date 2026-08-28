@@ -4,6 +4,7 @@ import { Providers } from "@/components/providers";
 import { RouteProgress } from "@/components/route-progress";
 import { Toaster } from "@/components/toaster";
 import { LiveRegion } from "@/components/live-region";
+import { ConnectionBanner } from "@/components/connection-banner";
 import { ConsoleFrame } from "@/components/layout/console-frame";
 import { CommandPalette } from "@/components/command-palette";
 import { GlobalCopilot } from "@/components/copilot-panel";
@@ -42,6 +43,9 @@ export default async function DashboardLayout({ children }: { children: React.Re
   return (
     <Providers nonce={nonce}>
       <RouteProgress />
+      {/* Dentro de `Providers`: lee el caché de React Query para saber si hay
+          reintentos en vuelo (arranque en frío de la API). */}
+      <ConnectionBanner />
       <ConsoleFrame>{children}</ConsoleFrame>
       <CommandPalette />
       <GlobalCopilot />

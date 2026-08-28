@@ -23,6 +23,12 @@ la dirección de la dependencia, que ahora es ``services/ → db/``, la permitid
 No se movieron los demás fragmentos de ``services/sql_fragments.py``: solo
 bajan los que ``db/`` consume hoy. Bajar el resto es trabajo de la misma ola del
 ratchet, cuando alguna query de ``db/`` los necesite.
+
+Los fragmentos de **clave canónica** del final del módulo nacieron aquí, no
+bajaron de ``services/``. Viven en ``db/`` por ADR-022 —son SQL— y en este
+módulo y no en el repositorio que los usa porque ``services/dedupe.py`` tiene
+que poder espejar las mismas reglas en Python sin que las dos definiciones
+diverjan en silencio.
 """
 
 from __future__ import annotations
@@ -88,3 +94,211 @@ def exclude_duplicados_sql(col: str = "l.id_externo") -> str:
     # llamadores, nunca input de usuario; los valores siempre van con ?.
     subquery = "(SELECT licitacion_id FROM licitaciones_duplicados WHERE status = 'confirmed')"
     return f"{col} NOT IN {subquery}"
+
+
+# ── Plegado de acentos en SQL ─────────────────────────────────────────────
+# Pares de `translate()` para que una tilde distinta no convierta dos valores
+# iguales en dos valores distintos. Replican los de `_fold_expr` en
+# `db/repositories/aggregates.py`, que son privados de aquel módulo; si allí
+# cambian, hay que tocar los dos sitios.
+FOLD_SRC = "áàäâéèëêíìïîóòöôúùüûñçÁÀÄÂÉÈËÊÍÌÏÎÓÒÖÔÚÙÜÛÑÇ"
+FOLD_DST = "aaaaeeeeiiiioooouuuuncAAAAEEEEIIIIOOOOUUUUNC"
+
+
+# ── Clave canónica de un contrato ─────────────────────────────────────────
+# `exclude_duplicados_sql` solo tapa lo que un humano o el job de dedupe ya
+# marcaron. Los fragmentos de abajo son la otra mitad: colapsan en SQL, sin
+# depender de que ningún job haya corrido, las filas que describen el mismo
+# contrato. La clave —órgano + CPV4 + año-mes + título— y el criterio de
+# canónica están aquí y no en el repositorio que los usa para que
+# `services/dedupe.py` pueda espejar exactamente las mismas reglas en Python
+# (ADR-024: services → db). Por eso los gemelos Python (`plegar_organo`,
+# `periodo_canonico`) también viven aquí, pegados a la definición SQL que
+# replican.
+#
+# Por qué NO se usa el expediente natural, que es la clave débil de
+# `services.dedupe.match_key`: tanto TED como PSCP acuñan un `id_externo` por
+# **anuncio**, no por **contrato** (`ted:{publication-number}`,
+# `pscp:{codi_expedient|id}`). En una republicación —el caso contra el que esto
+# defiende— los expedientes naturales son distintos por construcción, así que
+# esa clave no ve nada. Lo que sí se repite palabra por palabra es el título
+# publicado, que además es lo que hace que dos filas sean *la misma página*
+# para quien lee: el criterio de contenido duplicado de un buscador es el texto
+# que sirve la URL, no el identificador interno.
+
+
+def organo_normalizado_sql(alias: str = "l") -> str:
+    """Órgano de contratación plegado, o ``NULL`` si no hay órgano.
+
+    El ``NULL`` es deliberado y no un descuido: en SQL ``NULL = NULL`` no es
+    verdadero, así que una fila sin órgano nunca colapsa contra ninguna otra.
+    Es el equivalente exacto de que ``services.dedupe.match_key`` devuelva
+    ``None`` cuando falta el órgano.
+
+    No replica ``normalize_organo``, que además retira formas societarias con
+    una tabla en Python. Esto pliega **menos** y por tanto colapsa menos, que
+    es la dirección segura para un filtro cuyo error caro es esconder un
+    contrato que sí existe.
+    """
+    return (
+        f"nullif(lower(translate(btrim(coalesce({alias}.organo_contratacion, '')), "
+        f"'{FOLD_SRC}', '{FOLD_DST}')), '')"
+    )
+
+
+def cpv4_sql(alias: str = "l") -> str:
+    """CPV a 4 dígitos, o cadena vacía si no hay CPV utilizable.
+
+    Misma granularidad que ``services.dedupe._cpv4``. La cadena vacía sí
+    compara igual contra otra cadena vacía: dos filas sin CPV que coincidan en
+    órgano y título son la misma página aunque ninguna declare el código.
+
+    **Límite conocido**: si una reemisión afina el CPV (``72200000`` en el
+    anuncio de licitación y ``72212000`` en el de adjudicación) el CPV4 pasa de
+    ``7220`` a ``7221`` y las dos filas dejan de colapsar. Se acepta a
+    sabiendas: aflojar a CPV2 taparía esos casos, pero a cambio dos contratos
+    del mismo órgano con el mismo título y códigos realmente distintos dentro
+    de la misma división se fundirían en uno, y el hub del código perdedor se
+    quedaría sin él. Enseñar un duplicado de más es visible y medible; esconder
+    un contrato que existe, no. Con datos reales delante se puede medir cuánto
+    pesa cada caso y mover el corte con criterio.
+    """
+    return f"CASE WHEN {alias}.cpv ~ '^[0-9]{{4}}' THEN substr({alias}.cpv, 1, 4) ELSE '' END"
+
+
+def titulo_normalizado_sql(alias: str = "l") -> str:
+    """Título plegado a minúsculas y sin espacios en los bordes.
+
+    Solo ``lower`` + ``btrim``, sin plegado de acentos ni colapso de espacios
+    interiores: la republicación que esto persigue viene del mismo feed y
+    reemite el título byte a byte, así que normalizar más solo añadiría coste
+    por fila —son ~586k— y riesgo de colapsar dos contratos distintos.
+    """
+    return f"lower(btrim({alias}.titulo))"
+
+
+def periodo_publicacion_sql(alias: str = "l") -> str:
+    """Año-mes (``YYYY-MM``) de la fila, o cadena vacía si no tiene fechas.
+
+    **Por qué la clave necesita una componente temporal.** Órgano + CPV4 +
+    título describen el *objeto* del contrato, no el contrato: un órgano que
+    licita cada año el mismo mantenimiento con el mismo título administrativo y
+    el mismo CPV4 produce filas cuya clave coincide byte a byte. Como
+    :func:`_rango_canonico_sql` prefiere la publicación más antigua, sin esta
+    componente el anuncio de 2019 tapaba el de 2026 y la convocatoria **viva**
+    desaparecía del listado, de ``contar``, de los dos hubs y del sitemap. Ese
+    es justo el error caro que ``cpv4_sql`` dice no querer cometer —"esconder un
+    contrato que existe" no es visible ni medible—, así que la clave lo corrige
+    aquí y no más arriba.
+
+    **Por qué año-mes y no año.** El corte tiene que dejar pasar la reemisión
+    que sí hay que colapsar —corrigendos y anuncios de adjudicación del mismo
+    expediente, que llegan en días— y separar las ediciones anuales. Un mes
+    cubre la primera y no la segunda. El caso que se pierde es el corrigendo que
+    cruza el cambio de mes: ahí las dos filas dejan de colapsar y la superficie
+    enseña un duplicado. Es el lado barato del error, y es la misma dirección
+    que eligen ``cpv4_sql`` y ``organo_normalizado_sql``.
+
+    La cadena vacía sí compara igual contra otra cadena vacía, como en
+    :func:`cpv4_sql`: dos filas sin ninguna fecha no se pueden separar por
+    tiempo y seguían colapsando antes de este fragmento.
+    """
+    return f"substr(coalesce({alias}.fecha_publicacion, {alias}.fecha_extraccion, ''), 1, 7)"
+
+
+# Gemelos en Python de los dos fragmentos que ``services/dedupe.py`` necesita
+# reproducir fila a fila. Viven pegados a su definición SQL —y no en el
+# servicio— porque el modo de fallo que importa es que diverjan en silencio:
+# el detector marcaría pares que la proyección no colapsa, o al revés, y nadie
+# se enteraría hasta ver dos veces el mismo contrato en un hub.
+_TABLA_PLEGADO = str.maketrans(FOLD_SRC, FOLD_DST)
+
+
+def plegar_organo(valor: str | None) -> str | None:
+    """Gemelo Python de :func:`organo_normalizado_sql`. ``None`` si no hay órgano.
+
+    Diferencia conocida y aceptada: ``str.strip()`` retira también tabuladores y
+    saltos de línea, mientras que ``btrim`` de Postgres solo retira espacios. Es
+    la misma asimetría —y del mismo lado— que documenta
+    ``services.dedupe.normalize_titulo``: Python pliega un pelo más, así que el
+    detector puede proponer a revisión un par que el SQL no colapsa. Una entrada
+    de más en una cola humana es barata; esconder un contrato, no.
+    """
+    plegado = (valor or "").strip().translate(_TABLA_PLEGADO).lower()
+    return plegado or None
+
+
+def periodo_canonico(fecha_publicacion: str | None, fecha_extraccion: str | None) -> str:
+    """Gemelo Python de :func:`periodo_publicacion_sql`.
+
+    Espeja ``coalesce`` y no "el primer valor no vacío": ``coalesce`` solo salta
+    los ``NULL``, así que una ``fecha_publicacion`` de cadena vacía gana igual en
+    SQL y tiene que ganar igual aquí.
+    """
+    for valor in (fecha_publicacion, fecha_extraccion):
+        if valor is not None:
+            return str(valor)[:7]
+    return ""
+
+
+def _rango_canonico_sql(alias: str) -> str:
+    """Tupla de orden que decide cuál de las filas gemelas es la canónica.
+
+    Menor gana, y el orden es **total** porque termina en la clave primaria:
+    sin ese último desempate, dos filas con las mismas fechas empatarían y
+    Postgres podría devolver una u otra según el plan. En el sitemap eso
+    significaría que la URL de un contrato cambia entre regeneraciones, que es
+    justo lo que un sitemap existe para evitar.
+
+    Los tres primeros criterios son los mismos que ``_pick_canonical`` en
+    ``services/dedupe.py``: PLACSP primero (lleva más detalle de adjudicación),
+    luego la publicación más antigua, luego la extracción más antigua. Preferir
+    la más antigua y no la más reciente es lo que mantiene quieta la URL cuando
+    llegan corrigendos.
+    """
+    return (
+        f"(({alias}.fuente <> 'placsp'), coalesce({alias}.fecha_publicacion, '9999'), "
+        f"coalesce({alias}.fecha_extraccion, '9999'), {alias}.id_externo)"
+    )
+
+
+def fila_canonica_sql(*, alias: str = "l", gemelo: str = "l2", filtro_gemelo: str) -> str:
+    """Cláusula que solo deja pasar la fila canónica de cada contrato.
+
+    ``filtro_gemelo`` es el predicado de publicabilidad escrito para ``gemelo``
+    y **no** es opcional: si el gemelo no se filtrara igual que la fila
+    exterior, una fila que no se publica podría tapar a una que sí, y la
+    superficie perdería un contrato entero sin que nada fallara.
+
+    Se escribe como un ``NOT EXISTS`` conjuntivo a propósito. La alternativa
+    natural —``DISTINCT ON (clave)`` en una subconsulta— obliga a ordenar las
+    ~586k filas por la clave y volver a ordenarlas por fecha para el listado;
+    y meter la guarda en un ``OR`` de nivel superior impediría que Postgres
+    convirtiera el ``NOT EXISTS`` en un *anti-join*, dejándolo como subplan por
+    fila (586k barridos completos). Conjuntivo y con las tres igualdades
+    arriba, el planificador puede resolverlo con un hash anti-join: una pasada
+    para construir y otra para sondear.
+
+    Aun así **no es barato**: las cuatro expresiones se calculan en las dos
+    ramas, no hay índice que las cubra, y el listado pierde la posibilidad de
+    resolver ``ORDER BY fecha_publicacion DESC LIMIT 50`` por índice — tiene
+    que materializar el anti-join antes de ordenar. Se asume porque estas
+    consultas las paga una revalidación ISR cacheada una hora en el CDN, no
+    cada visita. El arreglo de verdad es un índice funcional sobre la clave
+    (o una vista materializada), y eso exige una migración.
+
+    La cuarta igualdad —el año-mes, ver :func:`periodo_publicacion_sql`— es lo
+    que impide que una convocatoria anual recurrente esconda su propia edición
+    viva detrás de la de hace siete años. Acota el grupo además de encarecerlo
+    un poco: las claves pasan a ser más selectivas, así que el hash anti-join
+    construye cubos más pequeños.
+    """
+    return (
+        f"NOT EXISTS (SELECT 1 FROM licitaciones {gemelo} WHERE "
+        f"{organo_normalizado_sql(gemelo)} = {organo_normalizado_sql(alias)} "
+        f"AND {cpv4_sql(gemelo)} = {cpv4_sql(alias)} "
+        f"AND {periodo_publicacion_sql(gemelo)} = {periodo_publicacion_sql(alias)} "
+        f"AND {titulo_normalizado_sql(gemelo)} = {titulo_normalizado_sql(alias)} "
+        f"AND {filtro_gemelo} "
+        f"AND {_rango_canonico_sql(gemelo)} < {_rango_canonico_sql(alias)})"
+    )

@@ -34,9 +34,16 @@ import {
  * de urgencia que ya vienen del backend (`GET /pursuits/agenda`): el frontend
  * no fusiona, no ordena y no clasifica (ADR-014). Los gestos son los del
  * Radar: J/K recorren, S sigue/anticipa, X descarta, ⏎ abre.
+ *
+ * Y como en el Radar, **por debajo de `md` deja de ser tabla**: mirar la agenda
+ * en el móvil es el otro caso de uso en movilidad, y una lista de compromisos
+ * comprimida en cinco columnas de 384 px obliga a scroll horizontal para llegar
+ * a «Seguir». Los envoltorios de la ficha se disuelven con `md:contents`, así
+ * que fila y ficha son el mismo árbol.
  */
 
-const GRID = "grid-cols-[72px_26px_1fr_110px_96px] gap-3 px-3.5";
+/** Rejilla de la tabla — solo a partir de `md`. Por debajo, ficha en columna. */
+const GRID = "md:grid-cols-[72px_26px_1fr_110px_96px] md:gap-3 md:px-3.5";
 
 const BANDAS: { key: AgendaUrgencia; label: string; tone: string }[] = [
   { key: "vencida", label: "Vencidas", tone: "text-destructive" },
@@ -209,7 +216,9 @@ export default function AgendaView() {
   }
 
   const kpis = data?.kpis;
-  const rowPad = compact ? "py-1.5" : "py-2.5";
+  // La densidad es de la tabla: la ficha móvil tiene su propio relleno, y
+  // apretarla a 6 px de aire vertical no la hace más legible, solo más pequeña.
+  const rowPad = compact ? "md:py-1.5" : "md:py-2.5";
 
   return (
     <div className="space-y-4">
@@ -260,7 +269,7 @@ export default function AgendaView() {
 
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_300px]">
         <section className="min-w-0 overflow-hidden rounded-xl border border-border/60 bg-card/70">
-          <div className="flex h-10 items-center gap-2 border-b border-border/60 px-3.5">
+          <div className="flex h-11 items-center gap-2 border-b border-border/60 px-3 md:h-10 md:px-3.5">
             <button
               type="button"
               aria-pressed={soloMios}
@@ -269,7 +278,8 @@ export default function AgendaView() {
                 setSelected(0);
               }}
               className={cn(
-                "tf-pressable h-6.5 rounded-full border px-2.5 text-[11.5px] font-medium transition-colors duration-150 ease-out",
+                // 32 px de alto en móvil: el filtro se pulsa con el pulgar.
+                "tf-pressable h-8 flex-none rounded-full border px-2.5 text-[11.5px] font-medium transition-colors duration-150 ease-out md:h-6.5",
                 soloMios
                   ? "border-primary/30 bg-primary/10 text-primary"
                   : "border-border/70 text-muted-foreground hover:text-foreground",
@@ -277,7 +287,7 @@ export default function AgendaView() {
             >
               Solo míos
             </button>
-            <span className="text-[11px] text-muted-foreground">
+            <span className="truncate text-[11px] text-muted-foreground">
               {isLoading ? "Cargando agenda…" : `${formatNumber(items.length)} compromisos`}
             </span>
             <div className="flex-1" />
@@ -293,7 +303,16 @@ export default function AgendaView() {
             </div>
           </div>
 
-          <div ref={listRef} className="max-h-[calc(100vh-320px)] min-h-[240px] overflow-y-auto">
+          {/* En móvil el alto se ata al viewport (`70vh`) y no a un cálculo
+              pensado para la franja de KPIs de escritorio, que ahí ocupa el
+              doble de alto y dejaba la lista en una rendija. Sigue siendo un
+              contenedor con scroll propio: las cabeceras de banda son
+              `sticky` y necesitan uno acotado para no pegarse bajo el cromo. */}
+          <div
+            data-slot="agenda-filas"
+            ref={listRef}
+            className="max-h-[70vh] min-h-[240px] overflow-y-auto md:max-h-[calc(100vh-320px)]"
+          >
             {isLoading ? (
               <div className="flex flex-col gap-2.5 p-3.5">
                 {Array.from({ length: 8 }, (_, index) => (
@@ -318,7 +337,7 @@ export default function AgendaView() {
                   <React.Fragment key={banda.key}>
                     <div
                       className={cn(
-                        "sticky top-0 z-10 border-b border-border/50 bg-card px-3.5 py-1 font-mono text-[9.5px] font-semibold uppercase tracking-[0.12em]",
+                        "sticky top-0 z-10 border-b border-border/50 bg-card px-3 py-1 font-mono text-[9.5px] font-semibold uppercase tracking-[0.12em] md:px-3.5",
                         banda.tone,
                       )}
                     >
@@ -339,75 +358,92 @@ export default function AgendaView() {
                             if (event.key === "Enter") abrir(item);
                           }}
                           className={cn(
-                            "grid cursor-pointer items-center border-b border-border/40 transition-colors duration-120 ease-out",
+                            "flex cursor-pointer flex-col gap-2 border-b border-border/40 px-3 py-3 transition-colors duration-120 ease-out",
+                            "md:grid md:items-center md:py-0",
                             GRID,
                             rowPad,
                             on ? "bg-primary/8" : "hover:bg-secondary/60",
                           )}
                         >
-                          <span
-                            className={cn(
-                              "tf-tnum inline-flex h-5 items-center justify-center rounded-full px-1.5 font-mono text-[10.5px] font-semibold",
-                              CHIP_POR_BANDA[item.urgencia],
-                            )}
-                          >
-                            {plazoChip(item)}
-                          </span>
-                          <Meta.icon
-                            className="h-3.5 w-3.5 text-muted-foreground"
-                            aria-label={Meta.label}
-                          />
-                          <div className="min-w-0">
-                            <p className="truncate text-[12.5px] font-medium leading-[1.35]">
-                              {item.titulo ?? item.licitacion_id}
-                            </p>
-                            <p className="truncate text-[10.5px] text-muted-foreground">
-                              {metaLinea(item)}
-                            </p>
+                          {/* Envoltorios de la ficha: `md:contents` los disuelve
+                              y sus hijos vuelven a las columnas de la tabla, en
+                              el mismo orden. Un árbol, dos presentaciones. */}
+                          <div className="flex min-w-0 items-center gap-2 md:contents">
+                            <span
+                              className={cn(
+                                "tf-tnum inline-flex h-5 flex-none items-center justify-center rounded-full px-1.5 font-mono text-[10.5px] font-semibold",
+                                CHIP_POR_BANDA[item.urgencia],
+                              )}
+                            >
+                              {plazoChip(item)}
+                            </span>
+                            <Meta.icon
+                              className="h-3.5 w-3.5 flex-none text-muted-foreground"
+                              aria-label={Meta.label}
+                            />
+                            <div className="min-w-0 flex-1">
+                              {/* Dos líneas en móvil, una en la tabla: el
+                                  título de un expediente no cabe en 240 px.
+                                  Misma utilidad en las dos anchuras (`md:` y no
+                                  `truncate`) para que el orden en cascada lo
+                                  decida el prefijo, no la ordenación interna. */}
+                              <p className="line-clamp-2 text-[12.5px] font-medium leading-[1.35] md:line-clamp-1">
+                                {item.titulo ?? item.licitacion_id}
+                              </p>
+                              <p className="truncate text-[10.5px] text-muted-foreground">
+                                {metaLinea(item)}
+                              </p>
+                            </div>
                           </div>
-                          <span className="tf-tnum text-right font-mono text-[11.5px] text-foreground/85">
-                            {item.importe_eur != null ? formatCompactCurrency(item.importe_eur) : EMPTY}
-                          </span>
-                          <span className="flex justify-end">
-                            {item.kind === "pursuit" ? (
-                              <button
-                                type="button"
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  abrir(item);
-                                }}
-                                className="tf-pressable h-6 rounded-md border border-border/70 px-2 text-[11px] font-medium text-muted-foreground transition-colors hover:text-foreground"
-                              >
-                                Abrir
-                              </button>
-                            ) : (
-                              <span className="flex items-center gap-1">
+
+                          <div className="flex items-center justify-between gap-3 border-t border-border/40 pt-2 md:contents">
+                            <span className="tf-tnum font-mono text-[11.5px] text-foreground/85 md:text-right">
+                              {item.importe_eur != null ? formatCompactCurrency(item.importe_eur) : EMPTY}
+                            </span>
+                            {/* 32 px de alto en móvil frente a los 24 de la
+                                consola: 24×24 es el mínimo que exige WCAG 2.5.8,
+                                no una medida cómoda para el pulgar. */}
+                            <span className="flex flex-none justify-end">
+                              {item.kind === "pursuit" ? (
                                 <button
                                   type="button"
                                   onClick={(event) => {
                                     event.stopPropagation();
-                                    void seguir(item);
+                                    abrir(item);
                                   }}
-                                  className="tf-pressable h-6 rounded-md border border-primary/30 bg-primary/8 px-2 text-[11px] font-medium text-primary"
+                                  className="tf-pressable h-8 rounded-md border border-border/70 px-3 text-[11px] font-medium text-muted-foreground transition-colors hover:text-foreground md:h-6 md:px-2"
                                 >
-                                  {item.kind === "renovacion" ? "Anticipar" : "Seguir"}
+                                  Abrir
                                 </button>
-                                {item.kind === "senal" && (
+                              ) : (
+                                <span className="flex items-center gap-1.5 md:gap-1">
                                   <button
                                     type="button"
-                                    aria-label="Descartar señal"
                                     onClick={(event) => {
                                       event.stopPropagation();
-                                      descartar(item);
+                                      void seguir(item);
                                     }}
-                                    className="tf-pressable grid h-6 w-6 place-items-center rounded-md border border-border/70 text-muted-foreground transition-colors hover:text-destructive"
+                                    className="tf-pressable h-8 rounded-md border border-primary/30 bg-primary/8 px-3 text-[11px] font-medium text-primary md:h-6 md:px-2"
                                   >
-                                    <X className="h-3 w-3" aria-hidden="true" />
+                                    {item.kind === "renovacion" ? "Anticipar" : "Seguir"}
                                   </button>
-                                )}
-                              </span>
-                            )}
-                          </span>
+                                  {item.kind === "senal" && (
+                                    <button
+                                      type="button"
+                                      aria-label="Descartar señal"
+                                      onClick={(event) => {
+                                        event.stopPropagation();
+                                        descartar(item);
+                                      }}
+                                      className="tf-pressable grid h-8 w-8 place-items-center rounded-md border border-border/70 text-muted-foreground transition-colors hover:text-destructive md:h-6 md:w-6"
+                                    >
+                                      <X className="h-3.5 w-3.5 md:h-3 md:w-3" aria-hidden="true" />
+                                    </button>
+                                  )}
+                                </span>
+                              )}
+                            </span>
+                          </div>
                         </div>
                       );
                     })}
@@ -506,6 +542,12 @@ function AgendaInspector({
   const esPursuit = item?.kind === "pursuit" && item.pursuit_id != null;
 
   return (
+    // Decisión escrita: el inspector no baja de `xl`. Lo accionable de cada
+    // compromiso ya está en su ficha (abrir / seguir / anticipar / descartar),
+    // así que en móvil no se pierde ninguna decisión. Lo que sí queda fuera es
+    // el editor de próxima acción: escribir un texto libre y una fecha en 375 px
+    // pide una hoja a pantalla completa, no un panel lateral encogido, y eso es
+    // trabajo aparte — anotado como pendiente, no resuelto con un `hidden`.
     <aside className="hidden min-w-0 self-start rounded-xl border border-border/60 bg-card/70 p-4 xl:sticky xl:top-0 xl:block">
       {!item ? (
         <p className="py-8 text-center text-[11.5px] text-muted-foreground">

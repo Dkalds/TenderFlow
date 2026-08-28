@@ -9,6 +9,11 @@ import {
   useRestoreRadarTender,
 } from "@/hooks/use-radar";
 import { callMethod, callUrl, jsonResponse } from "./fetch-call";
+import { registrarEvento } from "@/lib/analytics";
+
+// La telemetría se dobla entera: aquí se fija *qué* evento sale del triaje, no
+// que la librería de Vercel funcione.
+vi.mock("@/lib/analytics", () => ({ registrarEvento: vi.fn() }));
 
 /**
  * El Radar consume `GET /analytics/scoring?limit=24` como fuente única: es el
@@ -64,6 +69,7 @@ function scoringUrl(fetchMock: ReturnType<typeof stubApi>): string | undefined {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.mocked(registrarEvento).mockClear();
 });
 
 describe("useRadar", () => {
@@ -176,6 +182,9 @@ describe("descarte server-side", () => {
       (call) => callUrl(call).includes("/radar/dismissals") && callMethod(call) === "POST",
     );
     expect(posted).toBeDefined();
+    // El evento sale del descarte confirmado por el servidor y no lleva el id
+    // de la señal: la pregunta es si el Radar se usa para decidir, no sobre qué.
+    expect(registrarEvento).toHaveBeenCalledWith("radar_triaje", { accion: "descartar" });
   });
 
   it("deshacer hace DELETE sobre el id descartado", async () => {
@@ -190,5 +199,6 @@ describe("descarte server-side", () => {
     const deleted = fetchMock.mock.calls.find((call) => callMethod(call) === "DELETE");
     expect(deleted).toBeDefined();
     expect(callUrl(deleted!)).toContain("DESCARTADA");
+    expect(registrarEvento).toHaveBeenCalledWith("radar_triaje", { accion: "recuperar" });
   });
 });

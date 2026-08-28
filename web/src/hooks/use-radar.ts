@@ -3,6 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { apiGet, apiMutate } from "@/lib/api-client";
+import { registrarEvento } from "@/lib/analytics";
 import type {
   RadarDismissalBody,
   RadarDismissalsResult,
@@ -141,6 +142,9 @@ export function useDismissRadarTender() {
     },
     onSuccess: (ids: string[]) => {
       qc.setQueryData<string[]>(DISMISSALS_KEY, ids);
+      // Se mide el descarte confirmado por el servidor, no el optimista de
+      // `onMutate`: un rollback dejaría contada una decisión que no ocurrió.
+      registrarEvento("radar_triaje", { accion: "descartar" });
     },
     onSettled: () => {
       // El ranking se pide con `exclude_dismissed`: hay que volver a pedirlo
@@ -171,6 +175,11 @@ export function useRestoreRadarTender() {
     onError: (_err, _idExterno, ctx) => {
       qc.setQueryData(DISMISSALS_KEY, ctx?.previous);
       toast.error("No se pudo recuperar la señal");
+    },
+    // Recuperar dice cuánto se arrepiente la gente del triaje: si sube, es que
+    // la tarjeta no da suficiente para decidir de un vistazo.
+    onSuccess: () => {
+      registrarEvento("radar_triaje", { accion: "recuperar" });
     },
     onSettled: () => {
       void qc.invalidateQueries({ queryKey: DISMISSALS_KEY });

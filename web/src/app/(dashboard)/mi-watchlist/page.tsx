@@ -45,6 +45,7 @@ import {
 import { cn, formatCurrency, formatDate, truncate } from "@/lib/utils";
 import { getJSON, setJSON } from "@/lib/storage";
 import { apiMutate, fetchWithAuth } from "@/lib/api-client";
+import { primeraVez, registrarEvento } from "@/lib/analytics";
 import { SpaceShell } from "@/components/layout/space-shell";
 import {
   useRemoveWatchlistItem,
@@ -434,7 +435,17 @@ export default function MiWatchlistPage() {
 
   const createMut = useMutation({
     mutationFn: (body: RuleBody) => apiMutate("POST", RULES_KEY, body),
-    onSuccess: invalidate,
+    onSuccess: () => {
+      invalidate();
+      // Crear la primera regla de vigilancia es la señal de activación del
+      // producto: es el momento en que alguien pasa de mirar el mercado a
+      // pedirle al sistema que lo mire por él. `primeraVez` distingue esa
+      // primera de las siguientes, que es lo que hace medible el embudo de
+      // activación en vez de un contador de uso. Sin propiedades del contenido
+      // de la regla: qué CPV o qué keyword vigila alguien no es una dimensión
+      // de producto, es su estrategia comercial.
+      registrarEvento("regla_creada", { primera_vez: primeraVez("regla") });
+    },
   });
   const updateMut = useMutation({
     mutationFn: ({ id, body }: { id: number; body: RuleBody }) =>

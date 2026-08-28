@@ -35,6 +35,13 @@ export const ESTADO_LABELS: Record<string, string> = {
   AGR: "Publicación agregada",
   EJEC: "En ejecución",
   CPM: "Consulta preliminar",
+  // Cajón del embudo por estado (`overview_funnel`): lo que no cae en ninguno
+  // de los códigos de arriba —filas sin estado, o con un código que la fuente
+  // publicó y todavía nadie mapeó—. No es un estado de la fuente: existe para
+  // que los tramos del embudo sumen el total en vez de dejar filas fuera sin
+  // decirlo, que con AGR siendo el grueso del corpus dejaba la lectura sin
+  // sentido.
+  OTROS: "Otros / sin clasificar",
 };
 
 /**

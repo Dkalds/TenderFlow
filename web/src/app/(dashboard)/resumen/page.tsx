@@ -1,8 +1,10 @@
 "use client";
 
+import { useCallback, useRef } from "react";
 import { ExportPopover } from "@/components/export-popover";
 import { CopilotBar } from "@/components/copilot-panel";
 import { TuDia } from "./_components/tu-dia";
+import { PrimerosPasos } from "./_components/primeros-pasos";
 import { AtencionCards } from "./_components/atencion-cards";
 import { ContextoStrip } from "./_components/contexto-strip";
 import { ComposicionPanel } from "./_components/composicion-panel";
@@ -21,6 +23,11 @@ import { AtajosAnalisis } from "./_components/atajos-analisis";
  * ninguna pista de que existiera. Ahora la página va **de dentro hacia fuera**:
  *
  * 1. **Tu día** — compromisos de tu organización (`GET /pursuits/agenda`).
+ * 1b. **Primeros pasos** — sólo mientras al usuario le falte configurar algo que
+ *    el producto necesita para hablar de su negocio. Va **debajo** de «Tu día»
+ *    a propósito: no desplaza la tesis de la pantalla, y en una cuenta nueva
+ *    «Tu día» ocupa una línea vacía, así que cae igualmente en la primera
+ *    pantalla, justo donde explica por qué esa línea está vacía.
  * 2. **Mercado abierto** — lo que exige mirar hoy en el corpus, con el destino
  *    real de cada tarjeta en su pie.
  * 3. **Contexto y salud competitiva** — la foto del ámbito y los indicadores de
@@ -36,6 +43,18 @@ import { AtajosAnalisis } from "./_components/atajos-analisis";
  * eso se lee como «la aplicación está rota», no como «un panel no responde».
  */
 export default function ResumenPage() {
+  const contenidoRef = useRef<HTMLDivElement>(null);
+
+  /**
+   * Al ocultar «Primeros pasos» la sección se desmonta con el foco dentro, y un
+   * foco huérfano manda al lector de pantalla al principio del documento. Se
+   * recoge en el contenedor de la pantalla, sin arrastrar el scroll: el usuario
+   * seguía mirando donde estaba.
+   */
+  const recogerFoco = useCallback(() => {
+    contenidoRef.current?.focus({ preventScroll: true });
+  }, []);
+
   return (
     <div className="flex h-[calc(100vh-52px)] min-h-0 flex-col">
       <header className="border-border/60 flex h-11 flex-none items-center gap-2.5 border-b px-4">
@@ -47,10 +66,15 @@ export default function ResumenPage() {
         <ExportPopover className="[&>button]:h-7 [&>button]:px-2.5 [&>button]:py-0 [&>button]:text-xs" />
       </header>
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-4 pt-4 pb-6">
+      <div
+        ref={contenidoRef}
+        tabIndex={-1}
+        className="min-h-0 flex-1 overflow-y-auto px-4 pt-4 pb-6 outline-none"
+      >
         <CopilotBar className="mb-4 max-w-[720px]" />
 
         <TuDia />
+        <PrimerosPasos onDescartar={recogerFoco} />
         <AtencionCards />
         <ContextoStrip />
         <ComposicionPanel />

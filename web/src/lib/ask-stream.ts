@@ -8,6 +8,7 @@
  */
 
 import { getCsrfToken } from "./api-client";
+import { registrarEvento } from "./analytics";
 
 export interface ChatMessage {
   role: "user" | "assistant";
@@ -138,6 +139,11 @@ async function consumeStream(res: Response, cb: StreamCallbacks): Promise<AskStr
  * POST a question and stream the answer. Resolves with the final result
  * (answer + fuentes/degraded metadata). Throws on non-OK responses; aborts are
  * surfaced as the standard AbortError.
+ *
+ * Telemetría: se cuenta la pregunta que llega a tener respuesta (o rechazo del
+ * servidor). Un abort del usuario o una caída de red no emiten nada — no son
+ * "el asistente falló", y contarlos como tal ensuciaría la única métrica que
+ * dice si esto sirve.
  */
 export async function streamAsk({
   question,
@@ -167,8 +173,21 @@ export async function streamAsk({
     }),
     signal,
   });
-  if (!res.ok) throw new Error(`Error ${res.status}`);
-  return consumeStream(res, callbacks);
+  const ambito = idExterno ? "licitacion" : "corpus";
+  if (!res.ok) {
+    registrarEvento("asistente_usado", { modo: "pregunta", ambito, resultado: "error" });
+    throw new Error(`Error ${res.status}`);
+  }
+  const resultado = await consumeStream(res, callbacks);
+  // `degradado` es la respuesta sin síntesis del LLM: cuenta como uso, pero no
+  // como uso que sirva. Separarlas es la única forma de ver si el asistente
+  // aparenta funcionar. La pregunta, el modelo y la licitación no salen de aquí.
+  registrarEvento("asistente_usado", {
+    modo: "pregunta",
+    ambito,
+    resultado: resultado.degraded ? "degradado" : "ok",
+  });
+  return resultado;
 }
 
 /**
@@ -192,6 +211,19 @@ export async function streamResumen({
     body: JSON.stringify({ model: model || undefined }),
     signal,
   });
-  if (!res.ok) throw new Error(`Error ${res.status}`);
-  return consumeStream(res, callbacks);
+  if (!res.ok) {
+    registrarEvento("asistente_usado", {
+      modo: "resumen",
+      ambito: "licitacion",
+      resultado: "error",
+    });
+    throw new Error(`Error ${res.status}`);
+  }
+  const resultado = await consumeStream(res, callbacks);
+  registrarEvento("asistente_usado", {
+    modo: "resumen",
+    ambito: "licitacion",
+    resultado: resultado.degraded ? "degradado" : "ok",
+  });
+  return resultado;
 }

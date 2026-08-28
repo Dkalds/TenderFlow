@@ -409,6 +409,44 @@ class ClusterSummary(BaseModel):
     computed_at: PgDateTime | None = None
 
 
+# ── Cobertura de métricas agregadas ─────────────────────────────────────────
+
+
+class CoberturaMetricaDTO(BaseModel):
+    """Cuántas filas sostienen realmente un porcentaje agregado.
+
+    Un porcentaje sin denominador no es un hecho del mercado: es un hecho sobre
+    qué filas traen el campo. El caso que motiva este DTO es «oferta única
+    93,1 %» en la tira de salud competitiva del Resumen — el numerador cuenta
+    ``n_ofertas_recibidas = 1`` y el denominador solo las filas con el campo
+    informado, y la republicación masiva de PSCP no trae ese campo. Con ese
+    sesgo de selección el número mide la fuente, no la competencia.
+
+    Por eso cada porcentaje viaja con su base. Todos los campos son opcionales
+    con default: añadirlos no rompe a ningún cliente del contrato, y el default
+    (`base`/`cobertura_pct` desconocidas, ``suficiente=False``) es el
+    conservador — quien no sabe su cobertura no puede afirmar su porcentaje.
+
+    ``cobertura_pct`` se sirve **sin redondear a un número cómodo**: un 3,4 %
+    tiene que llegar al cliente como 3,4 %, no como «bajo» ni como 0.
+    """
+
+    #: Filas con el campo informado — el denominador honesto del porcentaje.
+    base: int | None = Field(default=None, ge=0)
+    #: Filas del corpus consideradas (informadas o no).
+    universo: int | None = Field(default=None, ge=0)
+    #: ``base / universo * 100``. ``None`` = cobertura no medida, que **no** es
+    #: lo mismo que cobertura cero: no autoriza a afirmar el porcentaje, pero
+    #: tampoco a negarlo.
+    cobertura_pct: float | None = Field(default=None, ge=0, le=100)
+    #: Umbral por debajo del cual el consumidor no debe presentar la métrica
+    #: como un hecho. Viaja con el dato para que el cliente no lo reinvente.
+    umbral_pct: float = Field(default=50.0, ge=0, le=100)
+    #: ``cobertura_pct is not None and cobertura_pct >= umbral_pct``. Lo decide
+    #: el backend (ADR-014): el frontend presenta, no deriva analítica.
+    suficiente: bool = False
+
+
 # Competitive company dossier
 
 

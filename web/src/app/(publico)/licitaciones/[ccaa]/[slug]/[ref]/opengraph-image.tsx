@@ -48,6 +48,10 @@ function Chip({ texto }: { texto: string }) {
 
 export default async function Image({ params }: { params: Promise<{ ref: string }> }) {
   const { ref } = await params;
+  // `lic` en `null` es el 404 confirmado por la API, y para él sí vale la
+  // tarjeta genérica de más abajo. Un fallo de red no llega hasta aquí: lanza,
+  // y con ISR eso deja en pie la imagen ya generada — mucho mejor que sustituir
+  // el unfurl de un anuncio real por la tarjeta de relleno.
   const lic = await obtenerLicitacion(ref);
 
   // Título recortado a lo que cabe en dos líneas grandes; el corte con elipsis

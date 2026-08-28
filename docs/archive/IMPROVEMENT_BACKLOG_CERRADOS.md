@@ -23,6 +23,28 @@ No se borra nada: el histórico de por qué se hizo cada cosa sigue siendo
 
 ## Cerrados
 
+- [2026-08-20] **P1: los enlaces a documentos de PLACSP caducan y el pipeline los daba por muertos** —
+  Cerrado entero en **`c230e63`** (PR #191). El ítem se había escrito como tres PRs independientes
+  (A: el breaker deja de fabricar errores terminales · B: identidad estable en la ingesta ·
+  C: la UI deja de mentir) y acabaron entregándose en un solo squash, porque la migración del
+  bloque B encadena a `v87` y el corpus golden depende de fixtures del mismo árbol.
+  Verificado en el código de `master`: `scraper/document_fetcher.py` devuelve `"skipped"` con el
+  breaker abierto y etiqueta `token caducado (500)` conservando el prefijo `descarga fallida: `;
+  `scraper/codice_parser.py::parse_document_references` lee `cbc:DocumentHash` como `source_hash`
+  y `cbc:ID` como `filename`; `db/alembic/versions/v88_documentos_source_hash.py` añade la columna,
+  el índice único parcial y repara las 1.702 víctimas del breaker; y
+  `web/src/components/documentos-block.tsx` lee `status`, atenúa las filas caducadas **sin quitar
+  el enlace** y ofrece `fichaUrl` tanto en el pie como en el estado vacío.
+  > **Ojo con los SHAs, otra vez.** Este ítem circuló citando `02f919e`, `c174341` y `71b8949`
+  > como "los tres PRs, ya en master". **No están en master**: son los commits de las ramas antes
+  > del squash de la PR #191, y sobreviven solo en `chore/deps-split-fastapi` /
+  > `integracion/seo-deps-pr`. Es exactamente la trampa que ya avisa la nota del 2026-08-07 al
+  > principio de este archivo. El SHA que resuelve es `c230e63`.
+  **Queda fuera y sigue vivo:** la verificación post-deploy que el propio ítem describía (errores
+  de breaker a 0, `source_hash` creciendo, `filename` despegando de 0, cero filas violando el
+  índice nuevo) es SQL de solo lectura contra Supabase y **no se ha ejecutado**. Y los 637
+  duplicados legacy sin hash siguen en la tabla: no se purgan sin decisión explícita.
+
 - [2026-08-04] **P1: la categorización de tecnología ahora también la alimentan los pliegos, no solo el título** —
   Hasta ahora la clasificación de tecnología corría una sola vez en el ingest y solo veía
   `titulo + descripcion` (`scraper/pipeline.py`); un título como "mantenimiento del sistema de

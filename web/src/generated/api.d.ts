@@ -3311,6 +3311,27 @@ export interface components {
             sesgo_p50?: number | null;
         };
         /**
+         * CambioEstadoOut
+         * @description Resultado del cambio de estado.
+         *
+         *     Conserva ``status`` para no romper a quien ya lo lea, y añade si el correo
+         *     salió. Sin ese campo, un SMTP mal configurado dejaría al operador creyendo
+         *     que ha avisado a alguien a quien nadie escribió — el mismo fallo silencioso
+         *     que este endpoint viene a cerrar, una capa más arriba.
+         *
+         *     ``notificado`` es ``None`` cuando no se pidió aviso: distinto de ``False``,
+         *     que significa "se pidió y no salió".
+         */
+        CambioEstadoOut: {
+            /** Notificado */
+            notificado?: boolean | null;
+            /**
+             * Status
+             * @default ok
+             */
+            status: string;
+        };
+        /**
          * CarteraEmpresa
          * @description Cartera en juego de una empresa dentro de la ventana.
          */
@@ -3420,6 +3441,43 @@ export interface components {
              * @default 0
              */
             total: number;
+        };
+        /**
+         * CoberturaMetricaDTO
+         * @description Cuántas filas sostienen realmente un porcentaje agregado.
+         *
+         *     Un porcentaje sin denominador no es un hecho del mercado: es un hecho sobre
+         *     qué filas traen el campo. El caso que motiva este DTO es «oferta única
+         *     93,1 %» en la tira de salud competitiva del Resumen — el numerador cuenta
+         *     ``n_ofertas_recibidas = 1`` y el denominador solo las filas con el campo
+         *     informado, y la republicación masiva de PSCP no trae ese campo. Con ese
+         *     sesgo de selección el número mide la fuente, no la competencia.
+         *
+         *     Por eso cada porcentaje viaja con su base. Todos los campos son opcionales
+         *     con default: añadirlos no rompe a ningún cliente del contrato, y el default
+         *     (`base`/`cobertura_pct` desconocidas, ``suficiente=False``) es el
+         *     conservador — quien no sabe su cobertura no puede afirmar su porcentaje.
+         *
+         *     ``cobertura_pct`` se sirve **sin redondear a un número cómodo**: un 3,4 %
+         *     tiene que llegar al cliente como 3,4 %, no como «bajo» ni como 0.
+         */
+        CoberturaMetricaDTO: {
+            /** Base */
+            base?: number | null;
+            /** Cobertura Pct */
+            cobertura_pct?: number | null;
+            /**
+             * Suficiente
+             * @default false
+             */
+            suficiente: boolean;
+            /**
+             * Umbral Pct
+             * @default 50
+             */
+            umbral_pct: number;
+            /** Universo */
+            universo?: number | null;
         };
         /**
          * ColumnCompleteness
@@ -4247,6 +4305,11 @@ export interface components {
         EstadoBody: {
             /** Estado */
             estado: string;
+            /**
+             * Notificar
+             * @default false
+             */
+            notificar: boolean;
         };
         /**
          * EstadoCount
@@ -5405,6 +5468,8 @@ export interface components {
              * @default 0
              */
             ccaa_cubiertas: number;
+            cobertura_oferta_unica?: components["schemas"]["CoberturaMetricaDTO"];
+            cobertura_pyme?: components["schemas"]["CoberturaMetricaDTO"];
             /**
              * Concentracion Geo Top3
              * @default 0
@@ -8241,7 +8306,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["StatusOk"];
+                    "application/json": components["schemas"]["CambioEstadoOut"];
                 };
             };
             /** @description Validation Error */

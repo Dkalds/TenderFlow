@@ -9,6 +9,7 @@
  */
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiGet, apiMutate, fetchWithAuth, type ApiQueryValue } from "@/lib/api-client";
+import { primeraVez, registrarEvento } from "@/lib/analytics";
 import { useActiveOrganizationId } from "@/hooks/use-organization";
 import type {
   PipelineAgendaItem as PipelineAgendaItemDTO,
@@ -130,7 +131,13 @@ export function useCreatePursuit() {
         ...input,
         organization_id: input.organization_id ?? organizationId ?? undefined,
       }),
-    onSuccess: () => invalidatePursuits(queryClient),
+    onSuccess: () => {
+      // Activación: el salto de mirar el mercado a trabajar una oportunidad.
+      // Ni el id del pursuit ni el de la organización entran en el evento — el
+      // hecho es "alguien se comprometió", no "quién con qué".
+      registrarEvento("pursuit_creado", { primera_vez: primeraVez("pursuit") });
+      return invalidatePursuits(queryClient);
+    },
   });
 }
 
@@ -149,7 +156,11 @@ export function useUpdatePursuit(id: string | number) {
         input,
       );
     },
-    onSuccess: (pursuit) => {
+    onSuccess: (pursuit, input) => {
+      // ¿El pipeline se mueve, o se abandona en cuanto se crea? Sólo cuando el
+      // parche toca el estado: un PATCH de precio o de responsable no es un
+      // avance del workflow y contarlo como tal enmascararía el abandono.
+      if (input.status) registrarEvento("pursuit_estado_cambiado", { estado: input.status });
       // La misma clave que lee `usePursuit`, organización incluida: sin ella el
       // detalle se sembraba en una entrada que nadie consulta y la vista se
       // quedaba esperando al refetch de la invalidación.

@@ -13,6 +13,7 @@
 import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { apiGet, apiMutate } from "@/lib/api-client";
+import { registrarEvento } from "@/lib/analytics";
 import type { WatchlistFavoriteCreated, WatchlistFavoriteItem } from "@/lib/api-types";
 
 // Del contrato OpenAPI (la ruta ya declara su DTO) — antes duplicado a mano.
@@ -82,6 +83,10 @@ export function useAddWatchlistItem() {
           item.id_externo === idExterno && item.id < 0 ? { ...item, ...created } : item,
         ),
       );
+      // El `id_externo` NO viaja al evento: identifica la licitación y, con
+      // ella, el negocio del cliente. Lo que se mide es que alguien decidió
+      // quedarse con una señal, no cuál.
+      registrarEvento("licitacion_seguida", { accion: "seguir" });
     },
     onSettled: () => {
       void qc.invalidateQueries({ queryKey: WATCHLIST_ITEMS_KEY });
@@ -110,6 +115,11 @@ export function useRemoveWatchlistItem() {
     onError: (_err, _idExterno, ctx) => {
       qc.setQueryData(WATCHLIST_ITEMS_KEY, ctx?.previous);
       toast.error("No se pudo quitar de favoritos");
+    },
+    // La otra mitad del par: sin ella, "500 seguimientos" no dice si la lista
+    // crece o si la gente entra y sale de las mismas licitaciones.
+    onSuccess: () => {
+      registrarEvento("licitacion_seguida", { accion: "dejar_de_seguir" });
     },
     onSettled: () => {
       void qc.invalidateQueries({ queryKey: WATCHLIST_ITEMS_KEY });

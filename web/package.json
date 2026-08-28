@@ -13,9 +13,10 @@
     "codegen": "openapi-typescript http://localhost:8080/api/openapi.json -o src/generated/api.d.ts",
     "codegen:file": "openapi-typescript ../api/openapi.json -o src/generated/api.d.ts",
     "codegen:best-effort": "node scripts/codegen-best-effort.mjs",
-    "test": "vitest run",
+    "test": "node scripts/run-vitest.mjs",
     "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage",
+    "test:coverage": "node scripts/run-vitest.mjs --coverage",
+    "test:raw": "vitest run",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:headed": "playwright test --headed"

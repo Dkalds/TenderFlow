@@ -35,14 +35,26 @@ import { CONTENIDO } from "../_content/landing";
 export async function FranjaDatos() {
   const [resumen, hubs] = await Promise.all([obtenerResumenPublico(), obtenerHubs()]);
 
-  // La API puede no estar disponible en el build (CI construye sin backend) o
-  // devolver un corpus vacío. Antes de enseñar ceros o un esqueleto, no se
-  // enseña nada: con ISR, la primera revalidación con datos rellena la franja.
+  // Qué queda en este camino, ahora que `publico-api` **lanza**.
   //
-  // Que se caiga en silencio era el problema: la única prueba dura de la página
-  // desaparecía sin dejar rastro y podía estar así hasta una hora sin que nadie
-  // se enterara. El aviso sale en los logs del servidor de Next, que es donde
-  // se genera. No es una excepción: la página tiene que servirse igual.
+  // Desde 2026-08 un fallo de transporte o un 5xx ya no llegan aquí como un
+  // objeto vacío: `obtenerResumenPublico`/`obtenerHubs` tiran `ErrorApiPublica`
+  // y nadie la captura aguas arriba, a propósito (ver el docstring de
+  // `lib/publico-api.ts`). Envolver este `Promise.all` en un `try/catch` para
+  // servir la landing sin franja sería la degradación cómoda y el bug caro:
+  // Next hornearía esa versión mutilada en la caché ISR durante la hora
+  // siguiente, que es exactamente lo que ese módulo existe para no hacer. Con el
+  // `throw`, la regeneración falla, **se conserva la copia buena** y se vuelve a
+  // intentar; la landing sólo cae de verdad si la API está caída en el primer
+  // render, cuando todavía no hay copia que conservar.
+  //
+  // Lo que sí se decide aquí es el otro caso, el que no es un error: la API
+  // respondió y no hay corpus que citar. Pasa en el build de CI (compila sin
+  // `API_BASE_URL`, y `pedir` degrada a "sin dato" sólo ahí) y pasaría con un
+  // corpus vacío de verdad. Antes de enseñar ceros o un esqueleto, no se enseña
+  // nada; con ISR, la primera revalidación con datos rellena la franja. El aviso
+  // por consola existe porque desaparecer en silencio era el problema: la única
+  // prueba dura de la página se esfumaba hasta una hora sin dejar rastro.
   if (resumen.total <= 0 || hubs.ccaa.length === 0 || hubs.cpv.length === 0) {
     console.warn(
       "[landing] franja de cifras omitida: la API pública no devolvió corpus",

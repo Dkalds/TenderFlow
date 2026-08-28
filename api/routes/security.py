@@ -1,18 +1,20 @@
-"""Endpoints de seguridad: CSP reports y GitHub Secret Scanning.
+"""Endpoints de seguridad: CSP reports, errores de cliente y GitHub Secret Scanning.
 
 GET  /api/v1/security/csp-report      — recibe CSP violations del navegador
+POST /api/v1/security/client-error    — recibe errores JS del navegador (solo log)
 POST /api/v1/security/leaked-key      — recibe notificaciones de GitHub Secret Scanning
 """
 
 from __future__ import annotations
 
 import base64
+import re
 import time
 from typing import Any
 
 import httpx
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 from api.auth import AuthContext, require_scope
 from api.concurrency import run_db
@@ -126,6 +128,176 @@ async def csp_report(request: Request) -> None:
     from services.security import store_csp_violation
 
     await run_db(store_csp_violation, blocked_uri, violated_directive, document_uri, source_file)
+
+
+# ── Client error endpoint ─────────────────────────────────────────────────────
+#
+# Canal propio de reporte de errores de cliente. Existe porque no hay Sentry ni
+# ningún otro colector en el frontend (`grep -ri sentry web/` = 0 resultados) y
+# añadir `@sentry/nextjs` es un cambio de dependencias que requiere OK humano.
+# El precedente exacto es `csp-report`, unos cientos de líneas más arriba: POST
+# sin autenticación que el navegador envía por su cuenta.
+#
+# **Solo loguea.** Persistir exigiría una tabla, y una tabla exige migración, que
+# está fuera de alcance. La traza queda en el log estructurado (structlog), que
+# es donde ya vive `csp_violation`; quien quiera series temporales las saca de
+# ahí sin tocar el esquema.
+
+# Presupuesto de bytes por reporte. 4 KiB da para un mensaje, un stack recortado
+# en cliente y poco más; por encima de eso no hay diagnóstico, hay sumidero.
+_MAX_CLIENT_ERROR_BYTES = 4096
+
+# Topes de cada campo **en servidor**. El cliente ya trunca, pero el cliente es
+# justo la parte que no controlamos: quien postea aquí puede ser cualquiera.
+_MAX_MESSAGE = 300
+_MAX_STACK = 2000
+_MAX_CONTEXT = 80
+_MAX_PATH = 200
+_MAX_USER_AGENT = 200
+
+# `source` es un campo de log, y un campo de log con texto libre del atacante es
+# cardinalidad ilimitada en el agregador. Lista blanca o "desconocido".
+_ORIGENES_CLIENTE = frozenset({"onerror", "unhandledrejection", "global-error", "manual"})
+
+# El digest de Next es un hash hexadecimal; cualquier otra cosa se descarta en
+# vez de recortarse, porque un digest inválido no sirve para correlacionar nada.
+_DIGEST_VALIDO = re.compile(r"[A-Za-z0-9_-]{1,64}")
+
+
+class ClientErrorReport(BaseModel):
+    """Contrato del reporte de error de cliente. **Deliberadamente pobre.**
+
+    No vive en ``shared/dto.py`` porque no es contrato API↔web tipado: el
+    endpoint es ``include_in_schema=False`` y el emisor es un ``sendBeacon``
+    suelto, igual que el de CSP. Se sigue el precedente local de
+    ``AuditChainVerification``.
+
+    ``extra="ignore"`` es la garantía de privacidad, no una comodidad: lo que un
+    call-site del frontend adjunte como contexto extra (que puede llevar datos
+    de formulario o identificadores de usuario) se descarta aquí aunque llegue.
+    El frontend tampoco lo envía — ver ``web/src/lib/report-error.ts`` —, pero
+    las dos puertas se cierran por separado.
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    message: str = ""
+    source: str = ""
+    context: str = ""
+    path: str = ""
+    stack: str = ""
+    digest: str = ""
+
+
+async def _leer_body_acotado(request: Request, limite: int) -> bytes | None:
+    """Lee el body abortando en cuanto pasa de ``limite`` bytes.
+
+    No vale con mirar ``Content-Length``: una request ``chunked`` no lo trae y
+    ``await request.body()`` la acumularía entera en memoria. Se consume el
+    stream contando, que es la única forma de acotar de verdad un endpoint que
+    acepta POST de cualquiera.
+
+    Returns:
+        El body, o ``None`` si excede el límite.
+    """
+    trozos: list[bytes] = []
+    total = 0
+    async for trozo in request.stream():
+        total += len(trozo)
+        if total > limite:
+            return None
+        trozos.append(trozo)
+    return b"".join(trozos)
+
+
+def _ruta_sin_query(valor: str) -> str:
+    """Deja solo el path de la URL: sin query string, sin fragmento, sin origen.
+
+    La query es donde viajan los datos: filtros que pueden llevar el nombre de
+    una empresa, tokens de un enlace mágico, o el correo que el repo se niega
+    explícitamente a poner en una URL (ver ``api/routes/publico_solicitudes.py``).
+    Se corta antes de mirar nada más, y lo que no empiece por ``/`` —una URL
+    absoluta, que podría traer credenciales en el userinfo— se tira entero.
+    """
+    ruta = valor.split("?", 1)[0].split("#", 1)[0]
+    return ruta[:_MAX_PATH] if ruta.startswith("/") else ""
+
+
+@router.post(
+    "/client-error",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Recibir error de cliente (JS) del navegador",
+    include_in_schema=False,  # No exponer en docs públicos
+)
+async def client_error(request: Request) -> None:
+    """Recibe un error de JavaScript ocurrido en el navegador y lo loguea.
+
+    Sin autenticación: un fallo del layout raíz ocurre por encima de la sesión,
+    así que exigir credenciales dejaría fuera justo los errores más graves.
+
+    **Qué viaja**: mensaje del error, origen (``onerror``,
+    ``unhandledrejection``, ``global-error``, ``manual``), etiqueta de contexto
+    del call-site, ``pathname`` sin query, stack y ``digest`` de Next. **Qué no
+    viaja**: correo, identificador de usuario, contenido de formularios, query
+    string, cookies, la IP del cliente, ni el ``extra`` que los call-sites pasan
+    a ``reportError``.
+
+    La IP se lee —hace falta para la clave del rate limiter— pero **no se
+    registra**. Es dato personal bajo RGPD, y junto a ``path`` y ``user_agent``
+    en la misma línea de log construiría un rastro de navegación por IP en un
+    endpoint sin autenticación. Es el mismo criterio que ``csp_violation``, doce
+    líneas más arriba, que tampoco la escribe; la única línea del fichero que
+    registra una IP es el corte por rate limit de ``csp-report``, que no lleva
+    contenido del reporte. Si algún día hace falta para investigar abuso, lo que
+    corresponde es un hash truncado con sal de proceso, no la IP en claro.
+
+    Riesgo residual asumido: un stack puede contener la URL del script y, en un
+    error lanzado desde un script inline, la de la propia página. Por eso el
+    stack se trunca y la ruta se sanea aparte; no se intenta reescribir el stack
+    porque un stack reescrito deja de servir para depurar, que es todo el punto.
+
+    Rate limiting: 20 reportes/min por IP, además del límite global del
+    middleware (bucket ``api:{ip}``, 120/min). Un cliente en bucle de error
+    consume su cuota y deja de escribir en el log; el resto sigue reportando.
+    """
+    client_ip = _trusted_client_ip(request)
+    allowed = await run_db(
+        lambda: get_rate_limiter().check(f"clierr:{client_ip}", max_calls=20, window_seconds=60)
+    )
+    if not allowed:
+        # 204 igualmente: revelar el rate limit al emisor no aporta nada y
+        # convertiría el propio descarte en ruido que el navegador reintentaría.
+        return
+
+    body = await _leer_body_acotado(request, _MAX_CLIENT_ERROR_BYTES)
+    if body is None:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail="Client error report too large",
+        )
+
+    try:
+        reporte = ClientErrorReport.model_validate_json(body)
+    except Exception:
+        return  # Body inválido: se ignora en silencio, como en csp-report
+
+    message = reporte.message.strip()[:_MAX_MESSAGE]
+    if not message:
+        return  # Un reporte sin mensaje no es diagnosticable; no ensucia el log
+
+    digest = reporte.digest if _DIGEST_VALIDO.fullmatch(reporte.digest) else ""
+    source = reporte.source if reporte.source in _ORIGENES_CLIENTE else "desconocido"
+
+    log.warning(
+        "client_error",
+        source=source,
+        context=reporte.context.strip()[:_MAX_CONTEXT],
+        message=message,
+        path=_ruta_sin_query(reporte.path),
+        digest=digest,
+        stack=reporte.stack[:_MAX_STACK],
+        user_agent=request.headers.get("user-agent", "")[:_MAX_USER_AGENT],
+    )
 
 
 # ── GitHub Secret Scanning partner endpoint ───────────────────────────────────
