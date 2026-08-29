@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import pytest
 
-from db.repositories.publico import PublicoRepository
+from db.repositories.publico import PublicoRepository, refrescar_vista_canonicas
 
 # ---------------------------------------------------------------------------
 # Corpus
@@ -71,6 +71,11 @@ def corpus(tmp_db):
             "VALUES (%s, %s, %s, %s, %s)",
             ("P-08", "P-01", 1.0, "confirmed", "test"),
         )
+    # La superficie pública lee de la vista materializada (revisión v94), que no
+    # se entera de un INSERT: hay que refrescarla o el test vería el corpus
+    # vacío. En producción lo hace el paso `aggregates_precompute` al final de
+    # cada pasada de ingesta.
+    refrescar_vista_canonicas()
     return db_mod
 
 

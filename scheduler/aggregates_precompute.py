@@ -20,6 +20,7 @@ from datetime import UTC, datetime
 from typing import Any, cast
 
 from db.database import connect, connect_read
+from db.repositories.publico import refrescar_vista_canonicas
 from observability.logging import get_logger
 
 log = get_logger(__name__)
@@ -136,10 +137,14 @@ def _persist_clusters(conn: Any, rows: list[dict[str, Any]]) -> None:
 
 
 def run_aggregates_precompute() -> dict[str, Any]:
-    """Calcula los clusters semánticos y persiste ``mat_clusters``.
+    """Calcula los clusters semánticos y refresca la vista de canónicas.
+
+    Los dos trabajos comparten paso porque comparten disparador —el final de la
+    pasada de ingesta— y porque los dos son lo mismo: precálculo que evita pagar
+    en cada petición lo que se puede pagar una vez por pasada.
 
     Returns:
-        Dict con ``n_clusters`` y ``status``.
+        Dict con ``n_clusters``, ``n_canonicas`` y ``status``.
     """
     try:
         # Cómputo de clusters fuera de la transacción de escritura
@@ -156,9 +161,18 @@ def run_aggregates_precompute() -> dict[str, Any]:
                 n=len(clusters),
             )
 
+        # La superficie pública entera lee de esta vista (revisión v94). Va
+        # DESPUÉS de los clusters y en su propia transacción: si el clustering
+        # fallara, el refresco no tiene por qué caer con él — son dos precálculos
+        # independientes y dejar la vista sin refrescar congelaría el sitio
+        # público en silencio.
+        n_canonicas = refrescar_vista_canonicas()
+        log.info("aggregates_precompute.canonicas_refrescadas", n=n_canonicas)
+
         return {
             "status": "ok",
             "n_clusters": len(clusters),
+            "n_canonicas": n_canonicas,
         }
     except Exception as exc:
         log.exception("aggregates_precompute.failed", error=str(exc))

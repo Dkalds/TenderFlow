@@ -28,31 +28,29 @@ Qué NO sale de aquí, decidido con el dueño del producto:
 —``listar``, ``contar``, ``ultima_incorporacion``, los dos hubs y el sitemap—
 colapsan las reemisiones del mismo contrato con la MISMA regla, escrita una
 sola vez. Lo que cambia entre ellas es la forma de aplicarla, no el criterio:
-las que llevan ``LIMIT`` usan el anti-join ``_WHERE_INDEXABLE`` y las que
-agregan la tabla entera usan ``_canonicas_from`` (ver la nota que las compara,
-con sus tiempos medidos). Las dos parten de ``_BASE_WHERE`` y del mismo orden
-canónico, y ``tests/test_publico_canonicas_equivalencia.py`` comprueba que
-seleccionan el mismo conjunto — porque si discreparan, ``contar`` diría un
-número que el hub no puede paginar y Search Console lo reportaría como error de
-cobertura sin decir por qué.
+todas leen de la vista materializada ``licitaciones_canonicas`` (revisión
+``v94``), que es donde vive la definición de qué contrato se publica. Antes cada
+una aplicaba el filtro por su cuenta y el coste era insostenible; ver la nota
+sobre la vista más abajo, con los tiempos medidos. Que las seis lean del MISMO
+sitio es lo que impide que discrepen: si ``contar`` dijera un número que el hub
+no puede paginar, Search Console lo reportaría como error de cobertura sin decir
+por qué.
 """
 
 from __future__ import annotations
 
 from typing import Any
 
-from db.database import connect_read
+from db.database import connect, connect_read
 from db.repositories.base import rows_to_dicts
 from db.sql_fragments import (
     FOLD_DST,
     FOLD_SRC,
-    clave_canonica_agrupable_sql,
     exclude_duplicados_sql,
     fila_canonica_sql,
-    orden_canonico_sql,
 )
 
-__all__ = ["PublicoRepository"]
+__all__ = ["PublicoRepository", "refrescar_vista_canonicas"]
 
 
 # ── Proyección pública ────────────────────────────────────────────────────
@@ -170,48 +168,37 @@ _CANONICA_SQL = fila_canonica_sql(alias="l", gemelo="l2", filtro_gemelo=_publica
 _WHERE_INDEXABLE = f"{_BASE_WHERE} AND {_CANONICA_SQL}"
 
 
-# ── Dos formas de decir lo mismo, y cuándo usa cada una ───────────────────
-# `_WHERE_INDEXABLE` (anti-join) y `_CANONICAS_FROM` (agrupación) seleccionan
-# EXACTAMENTE el mismo conjunto de filas. Conviven porque su coste se invierte
-# según haya o no un `LIMIT` que corte pronto:
+# ── De dónde salen las canónicas: la vista materializada ──────────────────
+# Las SEIS superficies indexables leen de `licitaciones_canonicas` (revisión
+# v94), no de `licitaciones` con el filtro puesto. Los dos intentos anteriores
+# están documentados aquí porque explican por qué hizo falta:
 #
-#   · Anti-join: un sondeo indexado por fila candidata. Con `LIMIT 10000` el
-#     plan para en cuanto junta las filas pedidas — 5,9 s para un tramo del
-#     sitemap. Sin `LIMIT` son ~695k sondeos: ~200 s, muy por encima del
-#     `statement_timeout` de 30 s del rol de la API.
-#   · Agrupación: una pasada, un `DISTINCT ON` sobre la clave. No se beneficia
-#     de un `LIMIT` pequeño, pero recorre la tabla una sola vez — 9,1 s con el
-#     `work_mem` real de producción (3500 kB, plan paralelo con dos workers).
+#   · #226 metió el anti-join (`_CANONICA_SQL`) en las seis. Sin índice son
+#     ~200 s y tumbó la superficie pública entera durante horas.
+#   · v92 puso el índice, que arregla las consultas CON `LIMIT` —el plan corta
+#     pronto— y deja los agregados entre 9 y 30 s según si el planificador
+#     consigue un worker paralelo. La instancia tiene `max_worker_processes = 6`,
+#     así que no lo consigue siempre: medido en producción, los mismos endpoints
+#     alternaban entre 200 y 500. Un 500 intermitente en la superficie que
+#     rastrea Googlebot es peor que uno limpio, porque no es diagnosticable.
 #
-# Regla: si la consulta lleva `LIMIT`, anti-join; si agrega la tabla entera,
-# agrupación. Se desplegó lo contrario en #226 y tumbó la superficie pública
-# entera durante horas (500 por `QueryCanceled`), que es la razón por la que
-# esta nota existe y por la que las cifras de arriba están medidas y no
-# estimadas.
-_CLAVE_AGRUPABLE = clave_canonica_agrupable_sql("l")
-_ORDEN_CANONICO = orden_canonico_sql("l")
-
-
-def _canonicas_from(columnas: str) -> str:
-    """Subconsulta con **una fila por contrato canónico** y las columnas pedidas.
-
-    ``columnas`` se proyecta desde el alias ``l``; el resultado se expone como
-    ``c`` para que el llamante filtre y agregue sobre él.
-
-    **Dentro de esta subconsulta sólo va la publicabilidad, nunca los filtros
-    del llamante.** En el anti-join la canonicidad se decide sobre el corpus
-    publicable completo y el filtro de comunidad o CPV se conjuga después; si
-    aquí se metiera dentro, la fila canónica se elegiría entre las candidatas
-    que el filtro deja pasar y no entre todas. Efecto concreto: un contrato cuya
-    fila canónica está en otra comunidad aparecería en el hub por su fila
-    gemela, que es justamente el duplicado que este filtro existe para evitar.
-    Los filtros se aplican **fuera**, sobre ``c``.
-    """
-    return (
-        f"(SELECT DISTINCT ON ({_CLAVE_AGRUPABLE}) {columnas} "
-        f"FROM licitaciones l WHERE {_BASE_WHERE} "
-        f"ORDER BY {_CLAVE_AGRUPABLE}, {_ORDEN_CANONICO}) AS c"
-    )
+# Materializar mueve ese coste a una vez por pasada del pipeline. Y van las
+# seis, no sólo las cuatro que fallaban: si `listar` leyera en vivo y `contar`
+# la vista, un expediente recién ingerido saldría en el listado sin estar
+# contado y el hub paginaría hacia una página vacía — el error de cobertura que
+# este módulo lleva advirtiendo desde el principio. La frescura tiene que ser
+# uniforme, aunque sea menor.
+#
+# `_CANONICA_SQL` y `_WHERE_INDEXABLE` se conservan: son la DEFINICIÓN de qué es
+# canónico —la gemela de lo que materializa v94— y lo que compara
+# `tests/test_mv_canonicas_definicion.py`. Ya no los ejecuta ninguna consulta.
+#
+# Contrato de frescura, que hay que respetar al tocar esto: la vista va tan
+# fresca como su último `REFRESH`, al final de la pasada de ingesta (cada 4 h).
+# `ficha` NO lee de aquí —no aplica el filtro de canónica, asimetría deliberada
+# ya documentada— así que un expediente nuevo tiene página desde el primer
+# momento; lo que tarda en aparecer es en los listados y en los recuentos.
+VISTA_CANONICAS = "licitaciones_canonicas"
 
 
 # ── Resolución del slug de comunidad autónoma ─────────────────────────────
@@ -247,6 +234,41 @@ def _ccaa_slug_sql(alias: str = "l") -> str:
 
 
 _CCAA_SLUG_SQL = _ccaa_slug_sql("l")
+
+
+def refrescar_vista_canonicas(*, conn: Any | None = None) -> int:
+    """Recalcula ``licitaciones_canonicas`` y devuelve cuántas filas quedaron.
+
+    Lo llama el paso ``aggregates_precompute`` del pipeline, al final de cada
+    pasada de ingesta. Es lo que convierte la vista en un dato vivo: sin este
+    refresco la superficie pública se congelaría en el corpus del día del
+    despliegue, y —peor— lo haría en silencio, sirviendo cifras coherentes entre
+    sí pero viejas.
+
+    ``CONCURRENTLY`` no es opcional. Un ``REFRESH`` normal toma un
+    ``AccessExclusiveLock`` sobre la vista: las seis superficies públicas se
+    quedarían esperando los ~10 s que tarda en reconstruirse, cada cuatro horas.
+    Con ``CONCURRENTLY`` las lecturas siguen sirviendo la versión anterior
+    mientras se construye la nueva, que es lo que hace aceptable refrescar sobre
+    una base viva. El precio es que exige el índice único de la revisión ``v94``
+    y que tarda algo más, porque construye y luego difunde.
+
+    El conteo posterior no es decorativo: es lo que permite que el job registre
+    el tamaño del corpus publicable en cada pasada y que una caída brusca sea
+    visible. Un refresco que deja la vista vacía —porque alguien endureció el
+    umbral de sustancia sin querer— es exactamente la clase de fallo que no
+    levanta ninguna excepción.
+    """
+
+    def _refrescar(c: Any) -> int:
+        c.execute(f"REFRESH MATERIALIZED VIEW CONCURRENTLY {VISTA_CANONICAS}")
+        fila = c.execute(f"SELECT COUNT(*) FROM {VISTA_CANONICAS}").fetchone()
+        return int(fila[0]) if fila else 0
+
+    if conn is not None:
+        return _refrescar(conn)
+    with connect() as c:
+        return _refrescar(c)
 
 
 class PublicoRepository:
@@ -311,22 +333,28 @@ class PublicoRepository:
         anuncio reemitido aparezca dos veces en la misma página, que es lo que
         hacía el hub de Cataluña.
         """
-        condiciones = [_WHERE_INDEXABLE]
+        condiciones: list[str] = []
         params: list[Any] = []
 
         if ccaa_slug:
-            condiciones.append(f"{_CCAA_SLUG_SQL} = %s")
+            condiciones.append(f"{_ccaa_slug_sql('c')} = %s")
             params.append(ccaa_slug)
         if cpv_prefijo:
             # `LIKE 'prefijo%'` y no `startswith` en Python: el filtrado tiene
             # que ocurrir en Postgres o la paginación mentiría.
-            condiciones.append("l.cpv LIKE %s")
+            condiciones.append("c.cpv LIKE %s")
             params.append(f"{cpv_prefijo}%")
 
+        # La vista decide QUÉ filas se publican y `licitaciones` aporta el resto
+        # de columnas. Los filtros y el orden van sobre `c` —no sobre `l`— para
+        # que el listado y `contar` vean literalmente el mismo conjunto: si uno
+        # filtrara por la tabla y el otro por la vista, un refresco a medias los
+        # haría discrepar y el hub paginaría hacia páginas vacías.
+        where = f" WHERE {' AND '.join(condiciones)}" if condiciones else ""
         sql = (
-            f"SELECT {_SELECT_PUBLICO} FROM licitaciones l "
-            f"WHERE {' AND '.join(condiciones)} "
-            "ORDER BY l.fecha_publicacion DESC NULLS LAST, l.id_externo "
+            f"SELECT {_SELECT_PUBLICO} FROM {VISTA_CANONICAS} c "
+            f"JOIN licitaciones l ON l.id_externo = c.id_externo{where} "
+            "ORDER BY c.fecha_publicacion DESC NULLS LAST, c.id_externo "
             "LIMIT %s OFFSET %s"
         )
         params.extend([max(1, min(limite, 200)), max(0, desplazamiento)])
@@ -368,10 +396,8 @@ class PublicoRepository:
             condiciones.append("c.cpv LIKE %s")
             params.append(f"{cpv_prefijo}%")
 
-        # Agrupación y no anti-join: este COUNT no tiene `LIMIT` que corte, así
-        # que recorre la tabla entera. Ver la nota de `_canonicas_from`.
         where = f" WHERE {' AND '.join(condiciones)}" if condiciones else ""
-        sql = f"SELECT COUNT(*) FROM {_canonicas_from('l.ccaa, l.cpv')}{where}"
+        sql = f"SELECT COUNT(*) FROM {VISTA_CANONICAS} c{where}"
 
         def _consultar(c: Any) -> int:
             fila = c.execute(sql, tuple(params)).fetchone()
@@ -404,9 +430,7 @@ class PublicoRepository:
         entera — y una reemisión que no llega a página tampoco puede acreditar
         frescura, porque el visitante no puede abrirla.
         """
-        # Agrupación y no anti-join: un MAX sobre la tabla entera no tiene
-        # `LIMIT` que corte. Ver la nota de `_canonicas_from`.
-        sql = f"SELECT MAX(c.fecha_extraccion) FROM {_canonicas_from('l.fecha_extraccion')}"
+        sql = f"SELECT MAX(c.fecha_extraccion) FROM {VISTA_CANONICAS} c"
 
         def _consultar(c: Any) -> str | None:
             fila = c.execute(sql).fetchone()
@@ -426,13 +450,9 @@ class PublicoRepository:
         llegan no desaparecen del sitio —sus fichas siguen existiendo— pero no
         reciben página de índice propia.
         """
-        # Agrupación y no anti-join: agrega la tabla entera sin `LIMIT` que
-        # corte. Ver la nota de `_canonicas_from`. El `ccaa IS NOT NULL` va
-        # FUERA de la subconsulta, para que la canónica se elija entre todas
-        # las gemelas y no sólo entre las que declaran comunidad.
         sql = (
             f"SELECT {_ccaa_slug_sql('c')} AS slug, max(c.ccaa) AS nombre, COUNT(*) AS total "
-            f"FROM {_canonicas_from('l.ccaa')} WHERE c.ccaa IS NOT NULL "
+            f"FROM {VISTA_CANONICAS} c WHERE c.ccaa IS NOT NULL "
             f"GROUP BY slug HAVING COUNT(*) >= {_MIN_POR_HUB} "
             "ORDER BY total DESC"
         )
@@ -447,10 +467,9 @@ class PublicoRepository:
 
     def hubs_cpv(self, *, conn: Any | None = None) -> list[dict[str, Any]]:
         """Códigos CPV con volumen suficiente para tener página."""
-        # Agrupación y no anti-join: ver la nota de `_canonicas_from`.
         sql = (
             "SELECT c.cpv AS codigo, COUNT(*) AS total "
-            f"FROM {_canonicas_from('l.cpv')} WHERE c.cpv IS NOT NULL "
+            f"FROM {VISTA_CANONICAS} c WHERE c.cpv IS NOT NULL "
             f"AND c.cpv <> '' GROUP BY c.cpv HAVING COUNT(*) >= {_MIN_POR_HUB} "
             "ORDER BY total DESC"
         )
@@ -482,10 +501,13 @@ class PublicoRepository:
         cambiara entre regeneraciones del sitemap, que es exactamente lo que
         este orden existe para evitar.
         """
+        # No toca `licitaciones`: la vista ya lleva las cuatro columnas que el
+        # sitemap necesita, y su índice único sobre `id_externo` resuelve este
+        # `ORDER BY ... LIMIT/OFFSET` directamente.
         sql = (
-            "SELECT l.id_externo, l.ccaa, l.titulo, l.fecha_extraccion "
-            f"FROM licitaciones l WHERE {_WHERE_INDEXABLE} "
-            "ORDER BY l.id_externo LIMIT %s OFFSET %s"
+            "SELECT c.id_externo, c.ccaa, c.titulo, c.fecha_extraccion "
+            f"FROM {VISTA_CANONICAS} c "
+            "ORDER BY c.id_externo LIMIT %s OFFSET %s"
         )
         params = (max(1, min(tamano, 50_000)), max(0, desplazamiento))
 
