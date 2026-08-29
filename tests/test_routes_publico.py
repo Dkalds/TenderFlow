@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import pytest
 
+from db.repositories.publico import refrescar_vista_canonicas
 from shared.public_ref import codificar_ref
 
 _TITULO_LARGO = "Servicio de mantenimiento de sistemas"
@@ -52,6 +53,11 @@ def corpus(api_db):
             "fecha_extraccion, importe) VALUES (%s,%s,%s,%s,%s,%s)",
             ("R-99", "Obras", "PUB", "2026-08-01", "2026-08-01T00:00:00+00:00", 1.0),
         )
+    # La superficie pública lee de la vista materializada (revisión v94), que no
+    # se entera de un INSERT: hay que refrescarla o el test vería el corpus
+    # vacío. En producción lo hace el paso `aggregates_precompute` al final de
+    # cada pasada de ingesta.
+    refrescar_vista_canonicas()
     return db_mod
 
 

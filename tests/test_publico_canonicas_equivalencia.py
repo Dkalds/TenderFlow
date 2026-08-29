@@ -1,18 +1,15 @@
-"""Las dos formas de seleccionar canónicas tienen que devolver el mismo conjunto.
+"""La vista materializada contiene exactamente lo que el anti-join seleccionaba.
 
-``db/repositories/publico.py`` mantiene dos expresiones que seleccionan
-*exactamente* las mismas filas y que existen sólo porque su coste se invierte:
+Desde ``v94`` la superficie pública lee de ``licitaciones_canonicas`` en vez de
+resolver la canónica en cada consulta. La definición del anti-join
+(``_WHERE_INDEXABLE``) se conserva como lo que es: la especificación de qué
+significa «canónico». Este fichero comprueba, **contra Postgres y con filas de
+verdad**, que la vista materializa esa especificación y no otra cosa.
 
-- ``_WHERE_INDEXABLE`` (anti-join, :func:`fila_canonica_sql`) para las consultas
-  con ``LIMIT``, donde el plan corta pronto — un tramo del sitemap en 5,9 s.
-- ``_canonicas_from`` (``DISTINCT ON``) para los agregados de tabla entera, que
-  no tienen ``LIMIT`` que los salve — 9,1 s frente a los ~200 s del anti-join.
-
-Que dos definiciones del mismo concepto convivan es una divergencia esperando a
-ocurrir, y ésta se cobraría cara: si el agregado y el listado eligieran
-canónicas distintas, ``contar`` diría un número que el hub no puede paginar y
-Search Console lo reportaría como error de cobertura sin decir por qué. Este
-fichero es el precio de tener las dos.
+Es una comprobación distinta de la de ``test_mv_canonicas_definicion.py``, que
+compara los dos textos SQL. Aquí se comparan los dos CONJUNTOS: dos definiciones
+pueden diferir en el texto y coincidir en el resultado, y —lo que importa— al
+revés.
 
 El caso que de verdad importa es el de los ``NULL``. ``organo_normalizado_sql``
 devuelve ``NULL`` sin órgano; en el anti-join ``NULL = NULL`` no es cierto, así
@@ -33,8 +30,9 @@ import pytest
 from db.repositories.publico import (
     _BASE_WHERE,
     _WHERE_INDEXABLE,
+    VISTA_CANONICAS,
     PublicoRepository,
-    _canonicas_from,
+    refrescar_vista_canonicas,
 )
 
 
@@ -65,6 +63,9 @@ def _sembrar(db: Any, filas: list[dict[str, Any]]) -> None:
                     f.get("ccaa", "Cataluña"),
                 ),
             )
+    # Sin esto la vista seguiría con el corpus de antes del INSERT y todos los
+    # asertos compararían contra un conjunto vacío.
+    refrescar_vista_canonicas()
 
 
 def _ids_anti_join(db: Any) -> set[str]:
@@ -75,11 +76,9 @@ def _ids_anti_join(db: Any) -> set[str]:
     return {r[0] for r in filas}
 
 
-def _ids_agrupacion(db: Any) -> set[str]:
+def _ids_en_la_vista(db: Any) -> set[str]:
     with db.connect_read() as c:
-        filas = c.execute(
-            f"SELECT c.id_externo FROM {_canonicas_from('l.id_externo')}"  # noqa: S608
-        ).fetchall()
+        filas = c.execute(f"SELECT id_externo FROM {VISTA_CANONICAS}").fetchall()  # noqa: S608
     return {r[0] for r in filas}
 
 
@@ -99,7 +98,7 @@ def test_las_dos_formas_eligen_la_misma_canonica_entre_gemelas(db: Any) -> None:
         ],
     )
 
-    assert _ids_anti_join(db) == _ids_agrupacion(db)
+    assert _ids_anti_join(db) == _ids_en_la_vista(db)
     assert _ids_anti_join(db) == {"A-1"}, "gana la publicación más antigua"
 
 
@@ -121,7 +120,7 @@ def test_las_filas_sin_organo_sobreviven_todas_en_las_dos_formas(db: Any) -> Non
         ],
     )
 
-    assert _ids_anti_join(db) == _ids_agrupacion(db)
+    assert _ids_anti_join(db) == _ids_en_la_vista(db)
     assert _ids_anti_join(db) == {"S-1", "S-2", "S-3"}, "sin órgano no se colapsa nada"
 
 
@@ -177,5 +176,6 @@ def test_la_publicabilidad_es_la_misma_en_las_dos_formas() -> None:
     Comprobación de texto, no de comportamiento: es la que caza el día que
     alguien endurezca el umbral de sustancia en un sitio y no en el otro.
     """
+    # La otra mitad —que el cuerpo congelado de la vista sea el que componen
+    # los fragmentos— vive en test_mv_canonicas_definicion.py.
     assert _BASE_WHERE in _WHERE_INDEXABLE
-    assert _BASE_WHERE in _canonicas_from("l.id_externo")
