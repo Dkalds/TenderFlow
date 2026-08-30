@@ -370,3 +370,102 @@ def test_healthcheck_main_alert_mode_degraded_returns_0(tmp_db):
         code = main()
 
     assert code == 0
+
+
+# ---------------------------------------------------------------------------
+# Frescura de la vista pública (`licitaciones_canonicas`, v94)
+#
+# `last_pipeline_run` sale de `kpi_snapshots`, que escribe el paso ANTERIOR al
+# refresco de la vista. Un `aggregates_precompute` que fallara dejaba la
+# pipeline "fresca" y la superficie pública congelada: cifras coherentes entre
+# sí, viejas, y sin nada que lo delatara. Estos tests fijan la señal que faltaba.
+# ---------------------------------------------------------------------------
+
+
+def _registrar_refresco(c, *, hace_horas: float, filas: int) -> None:
+    from datetime import datetime, timedelta
+
+    from db.repositories.publico import EVENTO_REFRESCO_CANONICAS
+
+    ts = (datetime.now(UTC) - timedelta(hours=hace_horas)).isoformat()
+    c.execute(
+        "INSERT INTO ops_events (ts, event_type, value) VALUES (%s, %s, %s)",
+        (ts, EVENTO_REFRESCO_CANONICAS, float(filas)),
+    )
+
+
+def test_vista_sin_refrescos_y_sin_datos_no_ensucia_el_informe(tmp_db):
+    """Una base sin corpus no tiene nada que decir sobre frescura.
+
+    Es el caso de cualquier schema de test y de un entorno recién creado: si
+    avisara aquí, el check sería ruido y acabaría desactivado.
+    """
+    from scheduler.healthcheck import run_check
+
+    result = run_check()
+
+    assert "canonicas_sin_registro_de_refresco" not in result["warnings"]
+    assert {"name": "canonicas_frescas", "ok": True} in result["checks"]
+
+
+def test_vista_fresca_no_avisa(tmp_db):
+    from db.database import connect
+    from scheduler.healthcheck import run_check
+
+    with connect() as c:
+        _registrar_refresco(c, hace_horas=1, filas=411_450)
+
+    result = run_check()
+
+    assert not any(w.startswith("canonicas_stale") for w in result["warnings"])
+    assert {"name": "canonicas_frescas", "ok": True} in result["checks"]
+    assert result["info"]["canonicas"]["filas"] == 411_450
+
+
+def test_vista_vieja_degrada_el_estado(tmp_db):
+    """Dos ciclos del carril de 4h sin refrescar ya es una anomalía."""
+    from db.database import connect
+    from scheduler.healthcheck import run_check
+
+    with connect() as c:
+        _registrar_refresco(c, hace_horas=30, filas=411_450)
+
+    result = run_check(canonicas_stale_hours=9)
+
+    assert result["status"] == "degraded"
+    assert any(w.startswith("canonicas_stale") for w in result["warnings"])
+    assert {"name": "canonicas_frescas", "ok": False} in result["checks"]
+
+
+def test_vista_que_encoge_avisa(tmp_db):
+    """Un refresco que deja la vista mucho más pequeña no lanza excepción.
+
+    El corpus publicable solo crece salvo purga deliberada, así que una caída
+    del 10% es un umbral de sustancia mal tocado o una fuente que dejó de
+    ingerir — y ninguna de las dos cosas falla por su cuenta.
+    """
+    from db.database import connect
+    from scheduler.healthcheck import run_check
+
+    with connect() as c:
+        _registrar_refresco(c, hace_horas=5, filas=411_000)
+        _registrar_refresco(c, hace_horas=1, filas=12_000)
+
+    result = run_check()
+
+    assert result["status"] == "degraded"
+    assert any(w.startswith("canonicas_encogieron") for w in result["warnings"])
+    assert {"name": "canonicas_tamano", "ok": False} in result["checks"]
+
+
+def test_vista_vacia_tras_refrescar_avisa(tmp_db):
+    from db.database import connect
+    from scheduler.healthcheck import run_check
+
+    with connect() as c:
+        _registrar_refresco(c, hace_horas=1, filas=0)
+
+    result = run_check()
+
+    assert "canonicas_vacias" in result["warnings"]
+    assert {"name": "canonicas_tamano", "ok": False} in result["checks"]

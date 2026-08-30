@@ -27,6 +27,7 @@ import { ExportPopover } from "@/components/export-popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { cn, formatCurrency, formatDate, formatNumber, formatPercent } from "@/lib/utils";
+import { valorOEmpty } from "@/lib/cobertura";
 import {
   Cpu,
   Hash,
@@ -318,13 +319,13 @@ export default function TecnologiasView() {
         />
         <KpiCard
           title="Importe medio / tech"
-          value={isLoading ? undefined : formatCurrency(data?.importe_medio_global ?? 0)}
+          value={isLoading ? undefined : valorOEmpty(data?.importe_medio_global, formatCurrency)}
           icon={DollarSign}
           loading={isLoading}
         />
         <KpiCard
           title="Tasa adjudicación"
-          value={isLoading ? undefined : formatPercent(data?.tasa_adjudicacion_media ?? 0)}
+          value={isLoading ? undefined : valorOEmpty(data?.tasa_adjudicacion_media, formatPercent)}
           subtitle="media por tecnología"
           icon={Percent}
           loading={isLoading}
@@ -592,12 +593,12 @@ export default function TecnologiasView() {
                 <KpiCard title="Licitaciones" value={formatNumber(detalle?.n ?? 0)} icon={Hash} />
                 <KpiCard
                   title="Importe total"
-                  value={formatCurrency(detalle?.importe_total ?? 0)}
+                  value={valorOEmpty(detalle?.importe_total, formatCurrency)}
                   icon={DollarSign}
                 />
                 <KpiCard
                   title="Importe medio"
-                  value={formatCurrency(detalle?.importe_medio ?? 0)}
+                  value={valorOEmpty(detalle?.importe_medio, formatCurrency)}
                   icon={TrendingUp}
                 />
               </div>

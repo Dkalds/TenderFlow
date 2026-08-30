@@ -95,12 +95,21 @@ export default function CalidadDatosView() {
   const chartData: ColumnCompleteness[] =
     data?.completitud_columnas && data.completitud_columnas.length > 0
       ? data.completitud_columnas
-      : [
-          { columna: "Título", pct: data?.pct_titulo ?? 0 },
-          { columna: "CPV", pct: data?.pct_cpv ?? 0 },
-          { columna: "Importe", pct: data?.pct_importe ?? 0 },
-          { columna: "Fecha", pct: data?.pct_fecha ?? 0 },
-        ];
+      : // Fallback a los `pct_*` sueltos. Se filtran los que el backend no
+        // manda en vez de rellenarlos con 0: una barra a 0,0 % en la pantalla
+        // de Calidad de Datos afirma que ninguna fila tiene título, que es la
+        // misma cobertura inventada que #228 quitó de las dos tarjetas de
+        // arriba. Sin dato, la columna no entra en el gráfico.
+        (
+          [
+            { columna: "Título", pct: data?.pct_titulo },
+            { columna: "CPV", pct: data?.pct_cpv },
+            { columna: "Importe", pct: data?.pct_importe },
+            { columna: "Fecha", pct: data?.pct_fecha },
+          ] as { columna: string; pct?: number | null }[]
+        )
+          .filter((c): c is { columna: string; pct: number } => c.pct != null)
+          .map((c) => ({ columna: c.columna, pct: c.pct }));
 
   const dlqCount = data?.dlq_count ?? 0;
   const fechasNoIso = data?.fechas_no_iso ?? 0;

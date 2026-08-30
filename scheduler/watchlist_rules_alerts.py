@@ -36,6 +36,16 @@ _LOOKBACK_DAYS = 30
 # Intervalo minimo entre alertas segun frecuencia (``immediate`` no espera).
 _FREQ_INTERVAL = {"daily": timedelta(days=1), "weekly": timedelta(days=7)}
 
+#: Días que la ventana de búsqueda retrocede sobre la última notificación.
+#:
+#: Dos, y no cero, porque ``fecha_publicacion`` es un día y la ventana avanza a
+#: una hora: sin solape, lo ingerido después de la evaluación del día se perdía
+#: para siempre. Y dos, y no diez, porque el solape solo es gratis mientras el
+#: anti-join contra ``user_notifications`` pueda descartarlo con el índice
+#: único; una ventana muy larga acabaría pagando el escaneo sin cubrir ningún
+#: caso nuevo — la ingesta tardía real es de horas, no de días.
+_VENTANA_GRACIA_DIAS = 2
+
 
 def _load_active_rules() -> list[dict[str, Any]]:
     # Intentar con la columna email (v47). Fallback a query sin email en BDs legacy.
@@ -80,9 +90,32 @@ def _is_due(row: dict[str, Any], now: datetime) -> bool:
 
 
 def _since_date(row: dict[str, Any], default_since: str) -> str:
-    """Fecha desde la que buscar matches: la ultima notificacion o el lookback."""
+    """Fecha desde la que buscar matches: la última notificación menos la gracia.
+
+    El corte no puede ser la fecha exacta de la última notificación. ``since``
+    se compara contra ``fecha_publicacion``, que tiene granularidad de día,
+    mientras que la ventana avanza a la hora en que corre el job: un expediente
+    publicado el día D pero ingerido después de la evaluación de ese día caía
+    fuera de la ventana siguiente y no volvía a entrar nunca.
+
+    Restar :data:`_VENTANA_GRACIA_DIAS` hace que la ventana **se solape a
+    propósito**. Volver a mirar dos días no cuesta nada —el anti-join de
+    ``matches_since`` descarta lo ya notificado antes de gastar el ``LIMIT``— y
+    a cambio cubre tanto la ingesta tardía del mismo día como la de la víspera,
+    que es la que producen los conectores que corren después del carril diario.
+    """
     last = row.get("last_notified_at")
-    return str(last)[:10] if last else default_since
+    if not last:
+        return default_since
+    try:
+        ultimo = datetime.fromisoformat(str(last))
+    except (ValueError, TypeError):
+        # Marca ilegible: se cae al lookback largo en vez de inventar un corte.
+        # Con el anti-join, mirar de más es barato; mirar de menos pierde avisos.
+        return default_since
+    if ultimo.tzinfo is None:
+        ultimo = ultimo.replace(tzinfo=UTC)
+    return (ultimo - timedelta(days=_VENTANA_GRACIA_DIAS)).date().isoformat()
 
 
 def _row_to_rule(row: dict[str, Any]) -> WatchlistRule:
@@ -225,13 +258,30 @@ def check_rules_and_notify(*, limit_per_rule: int = 50) -> int:
         if not _is_due(row, now):
             continue
         rule = _row_to_rule(row)
-        new_matches = matches_since(rule, _since_date(row, default_since), limit=limit_per_rule)
-        # Mover la ventana siempre (haya o no matches) para no re-escanear.
+        user_key = str(row["user_key"])
+        new_matches = matches_since(
+            rule,
+            _since_date(row, default_since),
+            limit=limit_per_rule,
+            user_key=user_key,
+        )
+        if len(new_matches) >= limit_per_rule:
+            # La página se llenó: hay más matches de los que caben en una
+            # evaluación. No se pierden —el anti-join hace que la siguiente
+            # empiece por los que quedaron— pero conviene que se vea, porque
+            # una regla que satura el tope cada día es una regla mal acotada.
+            log.warning(
+                "watchlist_rule_matches_truncados",
+                rule_id=int(row["id"]),
+                limit=limit_per_rule,
+            )
+        # Mover la ventana siempre (haya o no matches) para no re-escanear. Es
+        # seguro justo porque el corte ya no es lo que decide qué es nuevo: la
+        # ventana se solapa y la deduplicación la hace el anti-join.
         _update_last_notified(int(row["id"]), now_ts)
         if not new_matches:
             continue
 
-        user_key = str(row["user_key"])
         rule_id = int(row["id"])
         email = row.get("email")
 

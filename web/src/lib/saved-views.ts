@@ -12,6 +12,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiMutate, fetchWithAuth } from "@/lib/api-client";
+import { primeraVez, registrarEvento } from "@/lib/analytics";
 import type { FilterValues, FiltersState } from "@/lib/filters";
 
 export interface SavedView {
@@ -73,7 +74,13 @@ export function useSaveView() {
       successMessage: "Vista guardada",
       errorTitle: "No se pudo guardar la vista",
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: SAVED_VIEWS_KEY }),
+    onSuccess: () => {
+      // Señal de activación: guardar un criterio es el momento en que una
+      // búsqueda deja de repetirse a mano. Va en `onSuccess` y no al pulsar,
+      // por lo mismo que `export_lanzado`: un intento fallido no es uso.
+      registrarEvento("vista_guardada", { primera_vez: primeraVez("vista") });
+      return qc.invalidateQueries({ queryKey: SAVED_VIEWS_KEY });
+    },
   });
 }
 

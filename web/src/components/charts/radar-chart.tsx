@@ -16,7 +16,14 @@ import { CHART_SERIES } from "@/lib/chart-colors";
 
 interface RadarDataPoint {
   dimension: string;
-  value: number;
+  /**
+   * `null` = esa dimensión no existe para esa serie, y Recharts deja el hueco.
+   *
+   * No es lo mismo que `0`. En un radar el 0 es el vértice pegado al centro,
+   * que se lee como «el peor del mercado en esa dimensión»: rellenar un dato
+   * ausente con 0 no es abstenerse, es afirmar lo contrario de lo que se sabe.
+   */
+  value: number | null;
   fullMark?: number;
 }
 

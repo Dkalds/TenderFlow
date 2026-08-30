@@ -12,6 +12,8 @@ import {
 } from "@/hooks/use-watchlist-items";
 import { useOrganizationStore } from "@/hooks/use-organization";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { ScoreDesglose } from "@/components/score-desglose";
 import { useFilters } from "@/lib/filters";
 import { useDensity } from "@/lib/density";
 import { getJSON, setJSON } from "@/lib/storage";
@@ -561,17 +563,53 @@ export default function RadarPage() {
                       la cabecera. Es lo que permite que ficha y fila sean el
                       mismo árbol y no puedan divergir. */}
                   <div className="flex min-w-0 items-center gap-3 md:contents">
-                    <div className="flex flex-none flex-col items-start gap-0.5">
-                      <span
-                        className="tf-tnum font-mono text-[15px] font-semibold leading-none"
-                        style={{ color: bandColor(tender.band) }}
+                    {/* El score abre su propio desglose. Es un `Popover` y no
+                        un `title` nativo por dos razones: el `title` no se
+                        dispara con teclado y aquí el contenido no es una
+                        etiqueta sino datos. El `stopPropagation` evita que
+                        abrir la explicación cuente como seleccionar la fila. */}
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <button
+                          type="button"
+                          data-slot="radar-score"
+                          onClick={(e) => e.stopPropagation()}
+                          aria-label={
+                            tender.score != null
+                              ? `Ver de qué está hecha la puntuación ${Math.round(tender.score)}`
+                              : "Este expediente no está puntuado"
+                          }
+                          className="focus-visible:ring-ring flex flex-none cursor-pointer flex-col items-start gap-0.5 rounded-sm focus-visible:ring-2 focus-visible:outline-none"
+                        >
+                          <span
+                            className="tf-tnum font-mono text-[15px] font-semibold leading-none"
+                            style={{ color: bandColor(tender.band) }}
+                          >
+                            {tender.score != null ? Math.round(tender.score) : "—"}
+                          </span>
+                          {/* "s/p" era un código que nadie fuera del equipo
+                              podía descifrar, en mono de 8 px. */}
+                          <span className="text-muted-foreground font-mono text-[8px] font-medium uppercase leading-none tracking-[0.04em]">
+                            {tender.band ?? "sin puntuar"}
+                          </span>
+                        </button>
+                      </PopoverTrigger>
+                      <PopoverContent
+                        align="start"
+                        className="w-[300px]"
+                        onClick={(e) => e.stopPropagation()}
                       >
-                        {tender.score != null ? Math.round(tender.score) : "—"}
-                      </span>
-                      <span className="font-mono text-[8px] font-medium uppercase leading-none tracking-[0.04em] text-muted-foreground">
-                        {tender.band ?? "s/p"}
-                      </span>
-                    </div>
+                        <p className="mb-2.5 text-[11.5px] font-semibold">
+                          Cómo se compone esta puntuación
+                        </p>
+                        <ScoreDesglose desglose={tender.desglose} riesgos={tender.risk_flags} />
+                        <p className="text-muted-foreground mt-2.5 text-[10.5px] leading-relaxed">
+                          Ordena el Radar sobre el corpus abierto. No es una
+                          recomendación comercial: mide encaje con tu perfil, no
+                          probabilidad de ganar.
+                        </p>
+                      </PopoverContent>
+                    </Popover>
 
                     <div className="min-w-0 flex-1">
                       <div className="flex min-w-0 items-center gap-[7px]">

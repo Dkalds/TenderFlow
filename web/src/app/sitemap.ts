@@ -13,7 +13,11 @@ import { rutaHubCcaa, rutaHubCpv, rutaLicitacion } from "@/lib/slug";
  *
  * El límite de Google son 50.000 URLs por fichero, y el corpus de licitaciones
  * lo supera con holgura, así que `generateSitemaps` produce
- * `/sitemap/0.xml`, `/sitemap/1.xml`… y Next sirve el índice en `/sitemap.xml`.
+ * `/sitemap/0.xml`, `/sitemap/1.xml`…
+ *
+ * Lo que Next **no** produce es el índice que los enumera: `/sitemap.xml`
+ * devuelve 404 y por eso existe `app/sitemap-index.xml/route.ts`. Este
+ * comentario decía lo contrario y contradecía a sus dos vecinos.
  *
  * El fichero `0` es siempre el de las páginas estáticas, aparte de los tramos
  * de licitaciones: así la portada y los índices no comparten destino con el

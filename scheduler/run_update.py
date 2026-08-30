@@ -5,6 +5,11 @@ Uso:
   python -m scheduler.run_update --backfill 2024 1   # desde ene-2024
   python -m scheduler.run_update --months 6     # últimos 6 meses
   python -m scheduler.run_update --daily        # feed ATOM en vivo
+
+  # Pasada partida, que es como la ejecuta `scrape-daily.yml`: se ingiere,
+  # corren los seis conectores multi-fuente y solo entonces se cierra.
+  python -m scheduler.run_update --daily --fase ingesta
+  python -m scheduler.run_update --daily --fase cierre
 """
 
 from __future__ import annotations
@@ -21,9 +26,12 @@ from observability import (
     notify,
 )
 from scheduler.pipeline_runs import (
+    LANE_BULK,
+    LANE_DAILY,
     run_backfill_pipeline,
     run_bulk_pipeline,
     run_daily_pipeline,
+    run_post_ingestion_only,
 )
 
 
@@ -44,6 +52,18 @@ def main() -> int:
         action="store_true",
         help="Ejecutar carril diario (feed ATOM en vivo)",
     )
+    p.add_argument(
+        "--fase",
+        choices=("completo", "ingesta", "cierre"),
+        default="completo",
+        help=(
+            "Qué mitad de la pasada ejecutar. `completo` (default) ingiere y cierra, "
+            "que es el comportamiento histórico. `ingesta` ingiere sin ejecutar los "
+            "pasos post-ingesta y `cierre` ejecuta solo esos pasos: juntos permiten "
+            "que el cierre corra DESPUÉS de los conectores multi-fuente en vez de "
+            "en medio de ellos (ver `run_post_ingestion_only`)."
+        ),
+    )
     p.add_argument("--verbose", "-v", action="store_true")
     p.add_argument(
         "--log-format",
@@ -60,8 +80,21 @@ def main() -> int:
     log = get_logger("run_update")
 
     try:
+        if args.fase == "cierre":
+            # Solo el cierre: ningún conector, ninguna ingesta. El carril lo
+            # decide `--daily` porque `dlq_retry` reparte presupuesto distinto
+            # en cada uno.
+            lane = LANE_DAILY if args.daily else LANE_BULK
+            pipeline_result = run_post_ingestion_only(lane=lane)
+            log.info(
+                "cierre_pasada_completado",
+                lane=lane,
+                steps=pipeline_result.get("steps", {}),
+            )
+            return _apply_step_failures(pipeline_result, 0, log)
+
         if args.daily:
-            pipeline_result = run_daily_pipeline()
+            pipeline_result = run_daily_pipeline(con_cierre=args.fase == "completo")
             _log_daily_summary(pipeline_result, log)
             # Retorna 1 si la ingesta falló (alerta ya enviada en pipeline).
             ingestion_status = pipeline_result.get("ingestion_result", {}).get("status", "ok")

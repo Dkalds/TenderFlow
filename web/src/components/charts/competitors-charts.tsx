@@ -57,7 +57,8 @@ interface PositioningEntry {
   baja_media: number;
   importe_medio: number;
   count: number;
-  pct_monopolio: number;
+  /** `null` cuando el corpus no reporta ofertantes para esa empresa. */
+  pct_monopolio: number | null;
 }
 
 interface EstacionalidadEntry {
@@ -273,7 +274,13 @@ export const CompetitorsPositioningChart = React.memo(function CompetitorsPositi
                   <p>Baja media: {d.baja_media.toFixed(1)}%</p>
                   <p>Importe medio: {formatCurrency(d.importe_medio)}</p>
                   <p>Contratos: {formatNumber(d.count)}</p>
-                  <p>% Monopolio: {d.pct_monopolio.toFixed(1)}%</p>
+                  {/* Sin dato de ofertantes no hay porcentaje que dar: un
+                      «0,0 %» aquí se lee como «nunca gana sin competencia»,
+                      que es lo contrario de «no lo sabemos». */}
+                  <p>
+                    % Monopolio:{" "}
+                    {d.pct_monopolio == null ? "sin dato de ofertantes" : `${d.pct_monopolio.toFixed(1)}%`}
+                  </p>
                 </div>
               );
             }}

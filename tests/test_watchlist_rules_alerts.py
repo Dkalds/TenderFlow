@@ -1,7 +1,11 @@
 """Tests del job de alertas de reglas de watchlist (scheduler/watchlist_rules_alerts).
 
 Cubre: due/no-due por frecuencia, reglas inactivas, sin matches (mueve ventana),
-solo licitaciones posteriores a last_notified_at, y escritura en user_notifications.
+corte temporal, deduplicación por anti-join y escritura en user_notifications.
+
+El corte temporal se prueba en sus DOS formas, y la segunda es la que faltaba
+hasta el 2026-08-30: días distintos (siempre funcionó) y **el mismo día que el
+cursor**, que es el estado normal de producción y no notificaba nunca.
 """
 
 from __future__ import annotations
@@ -167,7 +171,10 @@ def test_solo_matches_posteriores_a_last_notified(tmp_db):
     rid = create_rule("user-a", WatchlistRule(keyword="SAP", frequency="daily"))
     with connect() as c:
         _set_last_notified(c, rid, (datetime.now(UTC) - timedelta(days=2)).isoformat())
-        _insert_lic(c, "OLD", titulo="SAP viejo", fecha=_recent(5))  # antes del corte
+        # El corte efectivo es `last_notified_at - _VENTANA_GRACIA_DIAS`, o sea
+        # hace 4 días: "OLD" se elige claramente fuera de esa ventana para que
+        # el test siga midiendo el corte y no el margen exacto de la gracia.
+        _insert_lic(c, "OLD", titulo="SAP viejo", fecha=_recent(10))  # antes del corte
         _insert_lic(c, "NEW", titulo="SAP nuevo", fecha=_recent(1))  # despues del corte
 
     n = watchlist_rules_alerts.check_rules_and_notify()
@@ -181,3 +188,86 @@ def test_solo_matches_posteriores_a_last_notified(tmp_db):
     lic_ids = {r[0] for r in notifs}
     assert "NEW" in lic_ids
     assert "OLD" not in lic_ids
+
+
+# ── El corte del mismo día ────────────────────────────────────────────────────
+#
+# Los tests de arriba siembran la licitación en un día DISTINTO del cursor, que
+# es el caso que siempre funcionó. El que rompía en producción es el otro: el
+# cursor y la publicación en el MISMO día. Con el filtro exclusivo (`>`) y una
+# ventana que avanza en cada evaluación, ese expediente quedaba excluido para
+# siempre — y como el carril diario corre a las 00:0x UTC, "el mismo día" es
+# casi todo lo que se publica.
+
+
+def test_notifica_lo_publicado_el_mismo_dia_en_que_la_regla_ya_se_evaluo(tmp_db):
+    """Regresión del P0: cursor y publicación en el mismo día.
+
+    Con el corte exclusivo anterior este test devolvía 0 notificaciones y
+    ninguna alerta se disparaba nunca más después de la primera evaluación.
+    """
+    from db.database import connect
+
+    _, _ = tmp_db
+    rid = create_rule("user-a", WatchlistRule(keyword="SAP", frequency="immediate"))
+    hoy = datetime.now(UTC)
+    with connect() as c:
+        # La regla ya se evaluó hoy — es el estado normal de producción, no un
+        # caso raro: el job corre cada 4 h y mueve la ventana siempre.
+        _set_last_notified(c, rid, hoy.isoformat())
+        _insert_lic(c, "HOY", titulo="Implantacion SAP", fecha=hoy.date().isoformat())
+
+    assert watchlist_rules_alerts.check_rules_and_notify() == 1
+
+    with connect() as c:
+        notifs = c.execute(
+            "SELECT licitacion_id FROM user_notifications WHERE type = 'rule_match'"
+        ).fetchall()
+    assert {r[0] for r in notifs} == {"HOY"}
+
+
+def test_no_repite_una_notificacion_ya_escrita(tmp_db):
+    """La ventana se solapa a propósito; quien deduplica es el anti-join."""
+    from db.database import connect
+
+    _, _ = tmp_db
+    create_rule("user-a", WatchlistRule(keyword="SAP", frequency="immediate"))
+    with connect() as c:
+        _insert_lic(c, "L1", titulo="SAP", fecha=_recent(0))
+
+    assert watchlist_rules_alerts.check_rules_and_notify() == 1
+    # Segunda pasada inmediata: la misma licitación sigue dentro de la ventana
+    # (por eso el anti-join es imprescindible), pero ya no es nueva.
+    assert watchlist_rules_alerts.check_rules_and_notify() == 0
+
+    with connect() as c:
+        total = c.execute(
+            "SELECT COUNT(*) FROM user_notifications WHERE type = 'rule_match'"
+        ).fetchone()[0]
+    assert total == 1
+
+
+def test_el_tope_no_se_gasta_en_lo_ya_notificado(tmp_db):
+    """Con más matches que tope, las pasadas siguientes drenan el resto.
+
+    Antes el ``LIMIT`` se aplicaba sobre filas ya notificadas, así que las
+    coincidencias por encima del tope no se alcanzaban nunca: el INSERT las
+    descartaba por el índice único y la siguiente pasada volvía a traer las
+    mismas.
+    """
+    from db.database import connect
+
+    _, _ = tmp_db
+    create_rule("user-a", WatchlistRule(keyword="SAP", frequency="immediate"))
+    with connect() as c:
+        for i, dias in enumerate((0, 1, 2)):
+            _insert_lic(c, f"L{i}", titulo="SAP", fecha=_recent(dias))
+
+    assert watchlist_rules_alerts.check_rules_and_notify(limit_per_rule=2) == 1
+    assert watchlist_rules_alerts.check_rules_and_notify(limit_per_rule=2) == 1
+
+    with connect() as c:
+        notifs = c.execute(
+            "SELECT licitacion_id FROM user_notifications WHERE type = 'rule_match'"
+        ).fetchall()
+    assert {r[0] for r in notifs} == {"L0", "L1", "L2"}

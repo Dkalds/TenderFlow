@@ -243,9 +243,11 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 
 ### [P2] La consola no tiene primer uso: se entra a 14 espacios sin que nadie explique ninguno
 - **Área:** web/src/components/layout, web/src/app/(dashboard)
-- **Problema:** no existe onboarding de ningún tipo — cero coincidencias de `onboarding` en todo `web/src`. Quien entra por primera vez aterriza en `/resumen` con el rail de 14 espacios (`web/src/lib/console-spaces.ts`) y una barra de ámbito ya aplicada, y deduce por su cuenta qué es el Radar, en qué se diferencia de Oportunidades y qué significa el score que abre cada tarjeta. En un producto que vende **confianza en el dato**, un número sin explicar la primera vez que se ve no se lee como preciso: se lee como opaco.
-- **Acceptance criteria:**
-  - Un recorrido de primer uso, descartable y que no vuelva —persistido por usuario en servidor, no en `localStorage` (invariante 2 de [frontend-data-invariants.md](frontend-data-invariants.md))— que explique al menos qué ordena el Radar, qué es el ámbito de la `scope-bar` y de dónde sale el score.
+- **Problema (parcialmente resuelto, ver progreso):** quien entra por primera vez aterriza en `/resumen` con el rail de 14 espacios (`web/src/lib/console-spaces.ts`) y una barra de ámbito ya aplicada. En un producto que vende **confianza en el dato**, un número sin explicar la primera vez que se ve no se lee como preciso: se lee como opaco.
+- **Progreso 2026-08-30:** la frase original de este ítem —«no existe onboarding de ningún tipo, cero coincidencias de `onboarding` en todo `web/src`»— **ya era falsa** cuando se auditó: `components/onboarding/` y `resumen/_components/primeros-pasos.tsx` existen desde #226, con los tres pasos derivados del estado real del servidor. Y el criterio del score se cerró con el desglose en el propio Radar (`components/score-desglose.tsx`): el badge abre un `Popover` con las dimensiones que componen la puntuación y una nota de qué mide y qué no. El desglose ya viajaba en `ScoredOpportunity.desglose` y solo se pintaba en el inspector de `/detalle`.
+- **Acceptance criteria (lo que queda):**
+  - ~~Explicar de dónde sale el score~~ ✅ 2026-08-30.
+  - Explicar qué es el ámbito de la `scope-bar` la primera vez.
   - Estados vacíos que enseñen en vez de solo informar: el patrón de "sin resultados" ya existe; lo que falta es que diga qué hacer.
 - **Files de partida:** [web/src/lib/console-spaces.ts](../web/src/lib/console-spaces.ts), [web/src/components/layout/console-rail.tsx](../web/src/components/layout/console-rail.tsx)
 - **Riesgo:** bajo — aditivo, sin tocar datos; el cuidado está en no fabricar explicaciones que el backend no respalde.
@@ -259,15 +261,6 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
   - El selector de organización pasa a Radix, alineado con `ui/multi-select.tsx`.
 - **Files de partida:** [web/src/components/layout/console-rail.tsx](../web/src/components/layout/console-rail.tsx), [web/e2e/responsive.spec.ts](../web/e2e/responsive.spec.ts)
 - **Riesgo:** bajo — presentación; sin tocar contratos ni datos.
-
-### [P2] Extraer las vistas de `/ops` a componentes compartidos
-- **Área:** web/src/app/(dashboard)/ops
-- **Problema:** `ops/page.tsx:28-33` importa con `dynamic()` **seis `page.tsx` completos** (`observabilidad`, `calidad-datos`, `administracion`, `feature-flags`, `active-learning`, `webhooks`) y los renderiza como componentes. Esos módulos siguen existiendo además como rutas propias, así que cada uno tiene dos puntos de entrada y dos estados de URL, y Next no puede tratarlos como boundaries de ruta. Es la costura de la consolidación en espacios, materializada en código.
-- **Acceptance criteria:**
-  - El cuerpo de cada una pasa a `_components/<x>-view.tsx`; tanto la ruta como `/ops` consumen esa vista.
-  - `ops/page.tsx` deja de importar ningún `page.tsx`.
-- **Files de partida:** [web/src/app/(dashboard)/ops/page.tsx](<../web/src/app/(dashboard)/ops/page.tsx>)
-- **Riesgo:** bajo-medio — mecánico pero toca seis páginas; hacerlo de una en una.
 
 ### [P3] Documentar `FRONTEND_URL` y `SENTRY_DSN` en `.env.example`
 - **Área:** .env.example
@@ -458,6 +451,105 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 ---
 
 ## Cerrados
+
+- [2026-08-30] **P2: extraer las vistas de `/ops` a componentes compartidos** — ya estaba
+  hecho y el ítem seguía abierto describiendo el estado anterior. `ops/page.tsx` importa hoy
+  seis `_components/<x>-view.tsx` y ninguna `page.tsx`; su propio docstring documenta el
+  cambio. Se cierra al detectarlo en la auditoría del 2026-08-29: un ítem cuya premisa el
+  código desmiente hace que quien lo coja empiece por un callejón sin salida, que es
+  exactamente lo que AGENTS.md §5 prohíbe.
+
+- [2026-08-30] **P0: las alertas de reglas de vigilancia no podían dispararse** — el job
+  guardaba su cursor como marca de tiempo y lo comparaba como **fecha**, con `>` estricto,
+  contra `fecha_publicacion`, que solo tiene día; y adelantaba la ventana en cada evaluación
+  hubiera o no coincidencias. Efecto compuesto: en cuanto una regla se evaluaba el día D, todo
+  lo publicado ese día quedaba fuera de su ventana **para siempre**. Con el carril diario
+  corriendo a las 00:0x UTC —cuando no se ha publicado nada del día todavía— la regla no
+  volvía a disparar nunca después de su primera evaluación. Sin excepción, sin log y con sus
+  tests en verde, porque todos sembraban el cursor y la publicación en días distintos, que es
+  el único caso que funcionaba.
+  El corte pasa a inclusivo con dos días de gracia y **quien decide qué es nuevo deja de ser
+  la fecha**: es el anti-join contra `user_notifications`
+  (`db/repositories/watchlist_rules.py::matches_pendientes`), o sea la misma verdad que ya
+  imponía el `UNIQUE(user_key, licitacion_id, type)` de v48 — solo que antes actuaba en el
+  INSERT, demasiado tarde para impedir que las filas ya notificadas gastaran el `LIMIT`.
+  De paso, una regla que satura el tope deja aviso en vez de perder las coincidencias por
+  encima de él. Tres tests nuevos, incluido el del mismo día que faltaba.
+  **No verificado:** los tests exigen Postgres y esta sesión no lo tiene.
+
+- [2026-08-30] **P1: el refresco de la vista pública corría antes que cinco de las siete
+  fuentes** — `scrape-daily.yml` ejecutaba `run_update --daily`, que ingiere PLACSP *y* corre
+  la secuencia canónica entera (KPIs, refresco de `licitaciones_canonicas`, evaluación de
+  reglas, digests), y solo entonces lanzaba TED, Galicia, Euskadi, adjudicaciones vigiladas,
+  PSCP y TACRC. Su corpus del ciclo no entraba en la superficie pública, ni en los agregados,
+  ni en las alertas hasta cuatro horas después. El contrato escrito en
+  `db/repositories/publico.py` decía «al final de la pasada de ingesta»; era a mitad.
+  La pasada se parte en `--fase ingesta` y `--fase cierre` (`run_post_ingestion_only`), y el
+  cierre es ahora el último step del workflow. Sin `continue-on-error`: un cierre roto sí debe
+  poner el job en rojo, porque es donde viven el refresco y las alertas.
+
+- [2026-08-30] **P1: un fallo del clustering congelaba la superficie pública en silencio** —
+  `run_aggregates_precompute` declaraba en su docstring que el refresco iba aparte «por si el
+  clustering fallara» y metía las dos cosas en el mismo `try`, con los dos caminos que de
+  verdad pueden caer —una lectura de 50.000 filas y un DELETE con inserciones por lotes— por
+  delante del refresco. El resultado era el sitio público servido sobre el último corpus
+  bueno: cifras coherentes entre sí, viejas, y sin nada que lo delatara. Ahora son dos `try`
+  independientes con estado `partial`, y el healthcheck vigila la vista (`canonicas_frescas`,
+  `canonicas_tamano`) leyendo el evento `mv_canonicas_refresh` de `ops_events` — la única
+  señal que cruza del plano efímero de Actions. NO se añadió regla de Prometheus, y está
+  escrito por qué en `alert_rules.yml`: el scheduler no es scrapeable, sería una alerta muerta.
+
+- [2026-08-30] **P1: métricas de cobertura desconocida pintadas como 0 %** — `/resumen` se
+  abstenía de publicar `pct_oferta_unica` sin cobertura suficiente y `/competidores`, un clic
+  más allá, publicaba la misma magnitud sin acotar; el gráfico de posicionamiento convertía
+  los nulos en `0 %`, presentando a una empresa sin dato de ofertantes como la más disputada
+  del mercado. El helper sale a `lib/cobertura.ts` y se aplica en las dos superficies. El
+  guard `check_frontend_invariants.py` gana la categoría `nulo-a-cero`, que encontró **18**
+  ocurrencias: se corrigieron las que se pintan y se justificaron en su línea las que son
+  denominador o clave de orden.
+
+- [2026-08-30] **P1: la superficie pública perdía su telemetría en el proxy de borde** —
+  `PUBLIC_PREFIXES` de `web/src/proxy.ts` no eximía `/_vercel`, así que las peticiones a
+  `/_vercel/insights/*` y `/_vercel/speed-insights/*` sin cookie de sesión —o sea todas las de
+  la superficie anónima— recibían un 307 a `/login`. Se perdían las páginas vistas de las URLs
+  indexables y los dos eventos que miden la conversión del embudo. Dentro del dashboard no se
+  notaba porque allí siempre hay sesión, que es lo que lo hacía invisible desde dentro del
+  producto. Con él se añade la primera suite de `proxy.ts` (31 casos): rutas públicas y
+  privadas, la trampa del prefijo `/` que el propio fichero documentaba sin red debajo, y las
+  dos ramas de CSP. **Pendiente de verificar contra producción:** si además el plan de Vercel
+  descarta los eventos personalizados (son función de Pro), este arreglo no basta por sí solo.
+
+- [2026-08-30] **P1: el aviso legal declaraba sus propias lagunas en producción** — el sitio
+  es indexable y recoge una dirección de correo por consentimiento explícito, y la página
+  terminaba con «Pendiente de completar: identificación del responsable del tratamiento y
+  domicilio social». Honesto, y no es cumplir: el RGPD (art. 13) y la LSSI-CE (art. 10) exigen
+  identificar al responsable en el momento de la recogida. La identidad pasa a `lib/legal.ts`
+  y la ausencia **rompe el build de producción** (`next.config.ts`), en vez de hacer
+  desaparecer el bloque en silencio. El plazo de conservación deja de ser «no hay ninguno»: se
+  publican 24 meses y `scheduler/retention.py` los aplica, con un test que compara el número
+  publicado con el que borra el job — si se separan, el aviso pasa a ser una promesa falsa sin
+  que falle nada. **Requiere acción del responsable:** cargar las tres variables en Vercel.
+
+- [2026-08-30] **P2: nueve rutas del dashboard sin título de documento** — WCAG 2.2 §2.4.2,
+  nivel A. Faltaba en Radar y Oportunidades, las dos pantallas insignia, que heredaban el
+  `default` del layout raíz: pestaña, marcador, historial y lector de pantalla decían
+  «TenderFlow» en todas. Nueve `layout.tsx`, `generateMetadata` en las dos rutas dinámicas, y
+  un test que recorre el árbol para que la décima falle el día que se cree.
+
+- [2026-08-30] **P2: cambiar de espacio no se anunciaba ni movía el foco** — la consola navega
+  en cliente entre catorce espacios y el foco se quedaba en el enlace del rail. Las dos piezas
+  necesarias ya existían sin usarse: la región `aria-live` única y el `#main-content` con
+  `tabIndex={-1}`. Seis líneas en `DashboardShell` y tres tests.
+
+- [2026-08-30] **P2: el guard de superficie pública no alcanzaba al código que la alimenta** —
+  `check_public_surface.py` escaneaba `api/routes`, `db/repositories/publico.py` y
+  `web/src/app/(publico)`, y dejaba fuera los módulos de `lib/` que componen lo que se publica
+  (`jsonld.ts` serializa datos estructurados con `dangerouslySetInnerHTML`). No había fuga:
+  había una red con un agujero que se abriría en cuanto alguien extrajera una pieza a `lib/`,
+  que es el refactor que el repo promueve — el mismo mecanismo por el que el escáner de
+  deduplicación se desactivó solo en 2026-08. Radio ampliado de 23 a 36 ficheros y verificado
+  inyectando una fuga temporal en `lib/jsonld.ts`, que el guard detectó.
+
 
 - [2026-08-18] **P1: seis queries analíticas de `db/` contaban dos veces los contratos
   duplicados entre fuentes** — `tests/test_dedup_guardrail.py` existe para impedir exactamente

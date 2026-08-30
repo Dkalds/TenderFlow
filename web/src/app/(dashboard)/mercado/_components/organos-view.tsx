@@ -26,6 +26,7 @@ import { SearchAutocomplete } from "@/components/ui/search-autocomplete";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ExportPopover } from "@/components/export-popover";
 import { foldText, formatCurrency, formatDate, formatNumber, formatPercent } from "@/lib/utils";
+import { valorOEmpty } from "@/lib/cobertura";
 import { CHART_SERIES } from "@/lib/chart-colors";
 import {
   Building2,
@@ -144,8 +145,12 @@ export default function OrganosView() {
   // Totales reales del backend (sobre TODO el dataset), no la suma del top-50
   // que devuelve `items`: antes "Concentración Top 10" se inflaba (denominador =
   // top-50) e "Importe Total" se subestimaba (ignoraba órganos fuera del top-50).
-  const top10Concentration = data?.concentracion_top10 ?? 0;
-  const totalImporte = data?.importe_total ?? 0;
+  // `?? null` y no `?? 0`: un campo que el backend no manda no es un cero. Un
+  // "0 %" de concentración se lee como "mercado perfectamente repartido" y un
+  // "0 €" de importe total como "no se licitó nada" — dos afirmaciones que el
+  // dataset no hace. La tarjeta se abstiene con `valorOEmpty`.
+  const top10Concentration = data?.concentracion_top10 ?? null;
+  const totalImporte = data?.importe_total ?? null;
 
   const topOrgano = items.length > 0 ? items[0].organo_contratacion : "-";
 
@@ -249,14 +254,14 @@ export default function OrganosView() {
         />
         <KpiCard
           title="Concentración Top 10"
-          value={isLoading ? undefined : formatPercent(top10Concentration)}
+          value={isLoading ? undefined : valorOEmpty(top10Concentration, formatPercent)}
           subtitle="del total de licitaciones"
           icon={Hash}
           loading={isLoading}
         />
         <KpiCard
           title="Importe Total"
-          value={isLoading ? undefined : formatCurrency(totalImporte)}
+          value={isLoading ? undefined : valorOEmpty(totalImporte, formatCurrency)}
           icon={TrendingUp}
           loading={isLoading}
         />

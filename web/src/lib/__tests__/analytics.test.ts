@@ -103,7 +103,15 @@ describe("registrarEvento", () => {
     // y `onboarding_ocultado` son su boca y su fuga, y sin las dos los tres
     // eventos que ya había medían un embudo del que no se veía ni la entrada ni
     // el abandono.
-    expect(Object.keys(PROPIEDADES_PERMITIDAS).length).toBeLessThanOrEqual(11);
+    //
+    // Subido de 11 a 13 el 2026-08-30 con `busqueda_realizada` y
+    // `vista_guardada`. El embudo seguía empezando en «perfil configurado»,
+    // que es ya el segundo o tercer paso de una sesión: no se podía distinguir
+    // «entró y no encontró nada» de «entró y no llegó a buscar», y esos dos
+    // diagnósticos piden arreglos opuestos —cobertura del corpus frente a
+    // descubribilidad de la búsqueda—. `vista_guardada` es el complemento de
+    // `regla_creada`: una dice «vuelvo a esto», la otra «avísame de esto».
+    expect(Object.keys(PROPIEDADES_PERMITIDAS).length).toBeLessThanOrEqual(13);
   });
 });
 

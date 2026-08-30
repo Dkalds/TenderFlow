@@ -22,7 +22,7 @@ from sqlalchemy import and_, func, or_, select
 from db.database import connect, connect_read
 from db.models import compile_query, licitaciones
 from db.repositories.base import rows_to_dicts
-from db.repositories.watchlist_rules import bounded_match_counts
+from db.repositories.watchlist_rules import bounded_match_counts, matches_pendientes
 
 Frequency = Literal["immediate", "daily", "weekly"]
 
@@ -276,18 +276,30 @@ def list_matches(rule: WatchlistRule, *, limit: int = 50) -> list[dict[str, Any]
 
 
 def matches_since(
-    rule: WatchlistRule, since: str | None, *, limit: int = 50
+    rule: WatchlistRule,
+    since: str | None,
+    *,
+    limit: int = 50,
+    user_key: str | None = None,
 ) -> list[dict[str, Any]]:
-    """Como ``list_matches`` pero solo licitaciones con ``fecha_publicacion``
-    posterior a ``since`` (fecha ISO ``YYYY-MM-DD``). Para el job de alertas:
-    ver únicamente lo nuevo desde la última notificación."""
-    clauses = _rule_clauses(rule)
-    if since:
-        clauses.append(licitaciones.c.fecha_publicacion > since)
-    stmt = select(*_MATCH_COLS).select_from(licitaciones)
-    if clauses:
-        stmt = stmt.where(and_(*clauses))
-    stmt = stmt.order_by(licitaciones.c.fecha_publicacion.desc()).limit(limit)
-    sql, params = compile_query(stmt)
-    with connect_read() as c:
-        return rows_to_dicts(c.execute(sql, params))
+    """Matches de la regla desde ``since`` que aún no se han notificado.
+
+    ``since`` es una fecha ISO ``YYYY-MM-DD`` y el corte es **inclusivo**. Fue
+    exclusivo (``>``) hasta el 2026-08-30 y esa desigualdad, combinada con una
+    ventana que el job adelanta en cada evaluación, hacía que ninguna licitación
+    publicada el día en que la regla se evaluaba pudiera notificarse jamás: el
+    job quedaba mudo sin error, sin log y con sus tests en verde, porque todos
+    sembraban días distintos. El razonamiento completo está en
+    ``db.repositories.watchlist_rules``.
+
+    ``user_key`` activa el anti-join contra las notificaciones ya escritas, que
+    es lo que hace seguro el solape de ventanas. Sin él —vista previa, tests que
+    no ejercen el job— la función es un listado con corte temporal y basta.
+    """
+    return matches_pendientes(
+        _rule_clauses(rule),
+        _MATCH_COLS,
+        desde=since,
+        limit=limit,
+        user_key=user_key,
+    )

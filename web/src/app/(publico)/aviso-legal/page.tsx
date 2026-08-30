@@ -1,6 +1,14 @@
 import type { Metadata } from "next";
 import { SITE_NAME } from "@/lib/site";
 import { CONTACT_EMAIL } from "@/lib/contacto";
+import {
+  LEGAL_DOMICILIO,
+  LEGAL_MESES_RETENCION_SOLICITUDES,
+  LEGAL_NIF,
+  LEGAL_RESPONSABLE,
+  identificacionCompleta,
+  lagunasLegales,
+} from "@/lib/legal";
 
 /**
  * Aviso legal de la superficie pública.
@@ -32,6 +40,14 @@ export const metadata: Metadata = {
 };
 
 export default function AvisoLegal() {
+  // La dirección de contacto entra en la lista de pendientes por el mismo
+  // motivo que el resto: sin ella no hay canal publicado para ejercer los
+  // derechos que el RGPD reconoce, y callarlo sería peor que decirlo.
+  const pendientes = [
+    ...(CONTACT_EMAIL ? [] : ["dirección de contacto"]),
+    ...lagunasLegales(),
+  ];
+
   return (
     <article className="mx-auto w-full max-w-3xl px-6 py-14">
       <h1 className="font-display text-3xl font-bold tracking-[-0.025em] md:text-4xl">Aviso legal</h1>
@@ -99,11 +115,12 @@ export default function AvisoLegal() {
       </p>
       <p className="text-muted-foreground mt-3 text-base leading-relaxed">
         La solicitud queda en una cola interna con tres estados —pendiente, atendida o descartada— que revisa una
-        persona. Hoy no existe un borrado automático por plazo: se conserva mientras pueda hacer falta para gestionar
-        la solicitud y hasta que pidas su supresión, que puedes hacer en cualquier momento por la dirección de contacto
-        de más abajo. Puedes ejercer igualmente los derechos de acceso, rectificación, oposición, limitación y
-        portabilidad que reconoce el Reglamento (UE) 2016/679, y retirar el consentimiento sin que ello afecte a la
-        licitud del tratamiento anterior.
+        persona. Se conserva un máximo de{" "}
+        <strong className="text-foreground">{LEGAL_MESES_RETENCION_SOLICITUDES} meses</strong> desde su envío, tras los
+        cuales se elimina de forma automática; también se elimina antes si pides su supresión, que puedes hacer en
+        cualquier momento por la dirección de contacto de más abajo. Puedes ejercer igualmente los derechos de acceso,
+        rectificación, oposición, limitación y portabilidad que reconoce el Reglamento (UE) 2016/679, y retirar el
+        consentimiento sin que ello afecte a la licitud del tratamiento anterior.
       </p>
 
       <h2 className="font-display mt-10 text-xl font-semibold tracking-[-0.02em]">Medición de uso</h2>
@@ -114,6 +131,25 @@ export default function AvisoLegal() {
         visitante, de modo que no requiere consentimiento previo ni banner. No se recoge ningún dato que te identifique
         y los eventos de solicitud registran únicamente desde qué punto de la página se pulsó, nunca lo que escribiste.
       </p>
+
+      <h2 className="font-display mt-10 text-xl font-semibold tracking-[-0.02em]">
+        Responsable del tratamiento
+      </h2>
+      {/* Los tres datos llegan por entorno (`lib/legal`): son datos societarios
+          reales y no le corresponde inventarlos a este fichero. En producción
+          su ausencia rompe el build (`next.config.ts`); aquí la página degrada
+          diciendo qué falta, que es lo que ve un build local o el job de CI. */}
+      {identificacionCompleta() ? (
+        <p className="text-muted-foreground mt-3 text-base leading-relaxed">
+          Responsable: <strong className="text-foreground">{LEGAL_RESPONSABLE}</strong>, con NIF{" "}
+          <strong className="text-foreground">{LEGAL_NIF}</strong> y domicilio a efectos de notificaciones en{" "}
+          <strong className="text-foreground">{LEGAL_DOMICILIO}</strong>.
+        </p>
+      ) : (
+        <p className="text-muted-foreground mt-3 text-base leading-relaxed">
+          La identificación completa del responsable no está disponible en esta compilación del sitio.
+        </p>
+      )}
 
       <h2 className="font-display mt-10 text-xl font-semibold tracking-[-0.02em]">Contacto</h2>
       <p className="text-muted-foreground mt-3 text-base leading-relaxed">
@@ -137,12 +173,14 @@ export default function AvisoLegal() {
           </a>
         </p>
       ) : null}
-      <p className="border-border text-muted-foreground mt-6 rounded-lg border border-dashed p-4 text-sm">
-        <strong className="text-foreground">Pendiente de completar:</strong>{" "}
-        {CONTACT_EMAIL ? "" : "dirección de contacto, "}identificación del responsable del tratamiento y domicilio
-        social, y un plazo de conservación de las solicitudes de acceso respaldado por un borrado automático — hoy no
-        hay ninguno, y por eso arriba se describe lo que el código hace en vez de prometer un plazo.
-      </p>
+      {/* El recuadro enumeraba siempre las mismas tres lagunas aunque alguna
+          estuviera resuelta, y un aviso que no distingue lo pendiente de lo
+          hecho se deja de leer. Ahora solo aparece si de verdad falta algo. */}
+      {pendientes.length > 0 ? (
+        <p className="border-border text-muted-foreground mt-6 rounded-lg border border-dashed p-4 text-sm">
+          <strong className="text-foreground">Pendiente de completar:</strong> {pendientes.join(", ")}.
+        </p>
+      ) : null}
       <p className="text-muted-foreground mt-6 text-sm">
         Última actualización de este aviso: agosto de 2026.
       </p>
