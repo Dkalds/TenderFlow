@@ -7,7 +7,7 @@ from typing import Any
 
 def run() -> dict[str, Any]:
     """Purge historical data according to the retention policy."""
-    from scheduler.retention import run_retention
+    from scheduler.retention import SOLICITUDES_ACCESO_RETENTION_DAYS, run_retention
 
     return run_retention(
         runs_days=90,
@@ -17,5 +17,9 @@ def run() -> dict[str, Any]:
         access_days=180,
         idempotency_days=1,
         webhook_deliveries_days=90,
+        # El único plazo de esta lista que además está publicado en el aviso
+        # legal: sale de la constante, no de un literal, para que no pueda
+        # separarse de lo que se le promete al visitante.
+        solicitudes_acceso_days=SOLICITUDES_ACCESO_RETENTION_DAYS,
         apply=True,
     )

@@ -415,12 +415,47 @@ def _run_post_ingestion_steps(*, lane: str = LANE_BULK) -> dict[str, str]:
     return results
 
 
-def run_daily_pipeline() -> dict[str, Any]:
+def run_post_ingestion_only(*, lane: str = LANE_DAILY) -> dict[str, Any]:
+    """Solo el cierre de la pasada: los pasos post-ingesta, sin ingerir nada.
+
+    Existe para que el workflow pueda ejecutar el cierre **después** de todos
+    los conectores y no en medio de ellos.
+
+    ``scrape-daily.yml`` corría ``run_update --daily`` —ingesta PLACSP *más*
+    toda la secuencia canónica— y solo entonces lanzaba TED, Galicia, Euskadi,
+    adjudicaciones vigiladas, PSCP y TACRC. O sea que el refresco de
+    ``licitaciones_canonicas``, los KPIs precalculados y la evaluación de las
+    reglas de vigilancia ocurrían antes de que cinco de las siete fuentes
+    hubieran ingerido nada: su corpus del ciclo no entraba en la superficie
+    pública, ni en los agregados, ni en las alertas hasta cuatro horas después.
+    El contrato de ``db/repositories/publico.py`` dice que la vista se refresca
+    «al final de la pasada de ingesta»; esta función es lo que hace que sea
+    verdad.
+
+    Returns:
+        Dict con ``steps`` y ``status`` (``ok`` si ningún paso falló).
+    """
+    step_results = _run_post_ingestion_steps(lane=lane)
+    fallidos = [name for name, estado in step_results.items() if estado != "ok"]
+    return {
+        "status": "ok" if not fallidos else "degraded",
+        "steps": step_results,
+    }
+
+
+def run_daily_pipeline(*, con_cierre: bool = True) -> dict[str, Any]:
     """Pipeline canónica para el carril diario (feed ATOM).
 
     Ejecuta la ingesta diaria y todos los pasos post-ingesta en la secuencia
     oficial. Usada tanto por ``run_update.py --daily`` como por
     ``scheduler/jobs/daily_atom.py``.
+
+    Args:
+        con_cierre: si es ``False`` ingiere y **no** ejecuta los pasos
+            post-ingesta, que quedan para una invocación posterior de
+            :func:`run_post_ingestion_only`. Lo usa ``scrape-daily.yml`` para
+            que el cierre ocurra tras los seis conectores. El default es
+            ``True`` para que ningún caller pierda el cierre por omisión.
 
     Cuando ``PLACSP_CONNECTOR_ENABLED=True`` (F2), usa ``PlacspAtomConnector``
     a través de ``run_connector``; si es False, usa el pipeline legacy.
@@ -437,7 +472,7 @@ def run_daily_pipeline() -> dict[str, Any]:
     from config import settings as _settings
 
     if getattr(_settings, "PLACSP_CONNECTOR_ENABLED", False):
-        return _run_daily_pipeline_connector()
+        return _run_daily_pipeline_connector(con_cierre=con_cierre)
 
     # ── Legacy path ──────────────────────────────────────────────────────────
     from scraper.pipeline import update_daily
@@ -450,7 +485,7 @@ def run_daily_pipeline() -> dict[str, Any]:
     if status != "ok" and status not in _HANDLED_STATUSES:
         raise RuntimeError(f"daily ingestion failed: {status}")
 
-    step_results = _run_post_ingestion_steps(lane=LANE_DAILY)
+    step_results = _run_post_ingestion_steps(lane=LANE_DAILY) if con_cierre else {}
 
     return {
         "status": status,
@@ -459,7 +494,7 @@ def run_daily_pipeline() -> dict[str, Any]:
     }
 
 
-def _run_daily_pipeline_connector() -> dict[str, Any]:
+def _run_daily_pipeline_connector(*, con_cierre: bool = True) -> dict[str, Any]:
     """Implementación del carril diario usando PlacspAtomConnector (F2).
 
     Mantiene paridad operacional con el camino legacy (``update_daily``):
@@ -522,7 +557,7 @@ def _run_daily_pipeline_connector() -> dict[str, Any]:
             except Exception:
                 log.warning("daily_connector_log_extraccion_failed")
 
-    step_results = _run_post_ingestion_steps(lane=LANE_DAILY)
+    step_results = _run_post_ingestion_steps(lane=LANE_DAILY) if con_cierre else {}
 
     return {
         "status": status,

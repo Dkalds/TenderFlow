@@ -208,7 +208,7 @@ def test_run_aggregates_precompute_no_longer_reports_empresas(tmp_db):
 
 
 def test_run_aggregates_precompute_returns_error_on_exception():
-    """Cuando connect() falla, devuelve status=error sin propagar."""
+    """Sin BD alguna, las dos mitades caen y el status es error, sin propagar."""
 
     import scheduler.aggregates_precompute as ap
 
@@ -221,3 +221,78 @@ def test_run_aggregates_precompute_returns_error_on_exception():
 
     assert result["status"] == "error"
     assert "error" in result
+
+
+# ---------------------------------------------------------------------------
+# Independencia de las dos mitades
+#
+# Los dos precálculos comparten paso y disparador, no destino. El refresco de
+# `licitaciones_canonicas` alimenta las seis superficies públicas indexables;
+# los clusters, una vista analítica interna. Hasta el 2026-08-30 vivían en el
+# mismo `try` —con un comentario que afirmaba justo lo contrario— así que un
+# fallo cargando o persistiendo clusters se saltaba el refresco y congelaba el
+# sitio público en silencio.
+# ---------------------------------------------------------------------------
+
+
+def test_el_refresco_corre_aunque_el_clustering_falle(tmp_db):
+    """Regresión: un clustering roto no puede dejar la vista sin refrescar."""
+    _db_mod, _ = tmp_db
+    import scheduler.aggregates_precompute as ap
+
+    with patch.object(ap, "_recalcular_clusters", side_effect=RuntimeError("clustering roto")):
+        result = ap.run_aggregates_precompute()
+
+    # `partial`, no `error`: una de las dos mitades sí salió, y el paso tiene
+    # que poder distinguirlo — no es lo mismo que no haber hecho nada.
+    assert result["status"] == "partial"
+    assert result["error"] == "clusters"
+    assert result["n_clusters"] is None
+    # Lo que importa: la vista se refrescó igual.
+    assert result["n_canonicas"] is not None
+
+
+def test_el_clustering_corre_aunque_el_refresco_falle(tmp_db):
+    """La independencia va en los dos sentidos, no solo en el que duele más."""
+    _db_mod, _ = tmp_db
+    import scheduler.aggregates_precompute as ap
+
+    with patch.object(ap, "refrescar_vista_canonicas", side_effect=RuntimeError("vista bloqueada")):
+        result = ap.run_aggregates_precompute()
+
+    assert result["status"] == "partial"
+    assert result["error"] == "canonicas"
+    assert result["n_canonicas"] is None
+    assert result["n_clusters"] is not None
+
+
+def test_el_refresco_deja_rastro_en_ops_events(tmp_db):
+    """Sin este evento el healthcheck no puede ver una vista congelada.
+
+    Es la única señal persistente que cruza del plano efímero de Actions al
+    healthcheck: los counters de Prometheus mueren con el proceso.
+    """
+    _db_mod, _ = tmp_db
+    import scheduler.aggregates_precompute as ap
+
+    with patch.object(ap, "record_event") as record:
+        result = ap.run_aggregates_precompute()
+
+    assert result["status"] == "ok"
+    record.assert_called_once()
+    assert record.call_args.args[0] == "mv_canonicas_refresh"
+    assert record.call_args.kwargs["value"] == float(result["n_canonicas"])
+
+
+def test_no_se_emite_evento_si_el_refresco_falla(tmp_db):
+    """Un evento emitido tras un fallo mentiría sobre la frescura de la vista."""
+    _db_mod, _ = tmp_db
+    import scheduler.aggregates_precompute as ap
+
+    with (
+        patch.object(ap, "refrescar_vista_canonicas", side_effect=RuntimeError("boom")),
+        patch.object(ap, "record_event") as record,
+    ):
+        ap.run_aggregates_precompute()
+
+    record.assert_not_called()

@@ -22,6 +22,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { ExportPopover } from "@/components/export-popover";
 import { formatCurrency, formatNumber, formatPercent } from "@/lib/utils";
+import { valorOEmpty } from "@/lib/cobertura";
 import type { Schemas } from "@/lib/api-types";
 import {
   FolderKanban,
@@ -78,7 +79,9 @@ export default function ProyectosModulosView() {
 
   // SAP-specific KPIs — a nivel licitación distinct desde el backend, NO la suma
   // de filas de módulo (una licitación con módulos A+B contaba doble el importe).
-  const ticketMedioSAP = data?.ticket_medio_sap ?? 0;
+  // `?? null`: sin dato la tarjeta se abstiene. Un "0 €" de ticket medio
+  // afirma que los contratos SAP no valen nada.
+  const ticketMedioSAP = data?.ticket_medio_sap ?? null;
 
   // Los dos ratios y sus denominadores vienen calculados del backend (ADR-014):
   // aquí no se derivan totales. `?? null` para que la tarjeta se abstenga ("—")
@@ -225,7 +228,7 @@ export default function ProyectosModulosView() {
       <KpiStrip columns={5}>
         <KpiCard
           title="Ticket Medio SAP"
-          value={isLoading ? undefined : formatCurrency(ticketMedioSAP)}
+          value={isLoading ? undefined : valorOEmpty(ticketMedioSAP, formatCurrency)}
           icon={DollarSign}
           loading={isLoading}
         />

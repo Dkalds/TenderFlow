@@ -22,6 +22,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { formatCurrency, formatNumber, truncate } from "@/lib/utils";
+import { valorOEmpty } from "@/lib/cobertura";
 import {
   Check,
   Eye,
@@ -363,7 +364,7 @@ function EmpresaPerfil({ empresaId }: { empresaId: number }) {
               Importe adjudicado
             </p>
             <p className="font-mono text-xl font-bold">
-              {formatCurrency(totales?.importe_total ?? 0)}
+              {valorOEmpty(totales?.importe_total, formatCurrency)}
             </p>
           </div>
           <div>

@@ -238,8 +238,9 @@ export function buildHeatmap(
 export interface RadarModel {
   nameA: string;
   nameB: string;
-  dataA: { dimension: string; value: number }[];
-  dataB: { dimension: string; value: number }[];
+  /** `value: null` = esa dimensión no existe para esa empresa. Ver abajo. */
+  dataA: { dimension: string; value: number | null }[];
+  dataB: { dimension: string; value: number | null }[];
 }
 
 /**
@@ -263,17 +264,28 @@ export function buildRadarData(
   const maxCount = Math.max(...competitors.map((c) => c.count), 1);
   const maxImporte = Math.max(...competitors.map((c) => c.importe), 1);
   const maxCuota = Math.max(...competitors.map((c) => c.cuota), 1);
+  // fdi-allow:nulo-a-cero — techo de normalización: una empresa sin el dato no
+  // debe subir el máximo del mercado, y `Math.max(…, 1)` ya evita el /0.
   const maxCpa = Math.max(...competitors.map((c) => c.contratos_por_anio ?? 0), 1);
+  // fdi-allow:nulo-a-cero — ídem.
   const maxIm = Math.max(...competitors.map((c) => c.importe_medio ?? 0), 1);
+  // fdi-allow:nulo-a-cero — ídem.
   const maxBaja = Math.max(...competitors.map((c) => c.baja_media ?? 0), 1);
 
-  const normalize = (c: Competitor) => [
+  // Los ejes que la empresa no tiene salen `null`, no 0. En un radar de
+  // comparación un 0 no es "sin dato": es el vértice pegado al centro, o sea
+  // "el peor del mercado en esa dimensión". Recharts deja hueco con `null`,
+  // que es exactamente lo que hay que comunicar.
+  const escala = (valor: number | null | undefined, maximo: number): number | null =>
+    valor == null ? null : (valor / maximo) * 100;
+
+  const normalize = (c: Competitor): (number | null)[] => [
     (c.count / maxCount) * 100,
     (c.importe / maxImporte) * 100,
     (c.cuota / maxCuota) * 100,
-    ((c.contratos_por_anio ?? 0) / maxCpa) * 100,
-    ((c.importe_medio ?? 0) / maxIm) * 100,
-    ((c.baja_media ?? 0) / maxBaja) * 100,
+    escala(c.contratos_por_anio, maxCpa),
+    escala(c.importe_medio, maxIm),
+    escala(c.baja_media, maxBaja),
   ];
 
   const valsA = normalize(compA);
@@ -309,7 +321,8 @@ export interface PositioningPoint {
   baja_media: number;
   importe_medio: number;
   count: number;
-  pct_monopolio: number;
+  /** `null` = el corpus no reporta ofertantes para esta empresa. Ver abajo. */
+  pct_monopolio: number | null;
 }
 
 /**
@@ -325,10 +338,20 @@ export function buildPositioningData(filtered: Competitor[]): PositioningPoint[]
     .filter((c) => c.baja_media != null && c.importe_medio != null && c.importe_medio > 0)
     .map((c) => ({
       nombre: c.nombre,
-      baja_media: c.baja_media ?? 0,
-      importe_medio: c.importe_medio ?? 0,
+      // Los dos ejes están garantizados por el `filter` de arriba; el `??` es
+      // solo para el compilador.
+      // El `filter` de arriba ya garantiza los dos ejes; el `??` es para el
+      // compilador, no una coerción de dato ausente.
+      baja_media: c.baja_media ?? 0, // fdi-allow:nulo-a-cero
+      importe_medio: c.importe_medio ?? 0, // fdi-allow:nulo-a-cero
       count: c.count,
-      pct_monopolio: c.pct_monopolio ?? 0,
+      // `pct_monopolio` NO se rellena con 0. Este módulo descartaba los puntos
+      // sin ambos ejes precisamente para no afirmar «oferta a precio de
+      // catálogo y contratos minúsculos», y luego hacía justo eso con la
+      // tercera dimensión: una empresa sin dato de ofertantes salía en el
+      // tooltip como «% Monopolio: 0,0 %», o sea como la más disputada del
+      // mercado. `null` viaja hasta el tooltip, que lo pinta como sin dato.
+      pct_monopolio: c.pct_monopolio ?? null,
     }));
 }
 
@@ -358,8 +381,11 @@ export interface BajasModel {
 export function sortBajas(items: BajaItem[] | undefined): BajasModel {
   const withValue = (items ?? []).filter((b) => b.baja_media_pct != null);
   const sorted = [...withValue].sort(
-    (a, b) => (b.baja_media_pct ?? 0) - (a.baja_media_pct ?? 0),
+    // Clave de orden, no valor pintado: sin dato la fila cae al final en vez
+    // de encabezar el ranking.
+    (a, b) => (b.baja_media_pct ?? 0) - (a.baja_media_pct ?? 0), // fdi-allow:nulo-a-cero
   );
+  // fdi-allow:nulo-a-cero — techo de normalización de la barra.
   const maxBaja = Math.max(...sorted.map((b) => b.baja_media_pct ?? 0), 1);
   return { rows: sorted.slice(0, 12), maxBaja };
 }

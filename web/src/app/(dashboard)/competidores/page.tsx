@@ -51,6 +51,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Stagger } from "@/components/motion";
 
 import { formatCurrency, formatNumber, formatPercent, truncate } from "@/lib/utils";
+import { celdaSaludPorPct, valorOEmpty } from "@/lib/cobertura";
 import { CompanyQuickView } from "@/components/competitors/company-quick-view";
 import type { CompanyAwardsData, CompanyProfileData } from "@/components/competitors/company-profile-types";
 import { useFilters } from "@/lib/filters";
@@ -87,6 +88,17 @@ interface CompetitorsData {
   importe_total?: number;
   hhi: number;
   pct_oferta_unica: number;
+  /**
+   * Qué porcentaje de las adjudicaciones trae el número de ofertantes.
+   *
+   * Es el denominador de `pct_oferta_unica`, y sin él ese porcentaje no
+   * significa nada: `services/analytics/competitors.py` lo calcula solo sobre
+   * las licitaciones que reportan el dato («cobertura parcial según fuente»,
+   * dice su propio comentario). La API ya lo envía —`shared/dto.py`— y esta
+   * pantalla no lo miraba: publicaba el porcentaje a secas mientras `/resumen`,
+   * un clic más allá, se abstenía de publicarlo por cobertura insuficiente.
+   */
+  cobertura_ofertas_pct?: number | null;
   pct_pyme: number;
   top_competidor: string;
   competitors: Competitor[];
@@ -369,6 +381,15 @@ export default function CompetidoresPage() {
     );
   }
 
+  // Mismo trato que en `/resumen`: con cobertura insuficiente no se pinta un
+  // número atenuado, se dice qué falta. Un porcentaje en gris sigue siendo un
+  // porcentaje en la cabeza de quien lo lee.
+  const ofertaUnica = celdaSaludPorPct(
+    data?.pct_oferta_unica,
+    data?.cobertura_ofertas_pct,
+    "licitaciones con un solo ofertante",
+  );
+
   const TABLE_COLUMNS: { key: SortKey; label: string }[] = [
     { key: "nombre", label: "Nombre" },
     { key: "nif", label: "NIF" },
@@ -442,8 +463,8 @@ export default function CompetidoresPage() {
         <Stagger.Item>
           <KpiCard
             title="% Oferta Única"
-            value={isLoading ? undefined : formatPercent(data?.pct_oferta_unica)}
-            subtitle="Licitaciones con un solo ofertante"
+            value={isLoading ? undefined : ofertaUnica.value}
+            subtitle={isLoading ? undefined : ofertaUnica.hint}
             icon={AlertTriangle}
             loading={isLoading}
           />
@@ -771,10 +792,13 @@ export default function CompetidoresPage() {
                   <div className="bg-muted h-4 flex-1 overflow-hidden rounded-full">
                     <div
                       className="bg-primary h-full rounded-full"
+                      // fdi-allow:nulo-a-cero — ancho de la barra: sin dato no se dibuja.
                       style={{ width: `${((b.baja_media_pct ?? 0) / bajasSorted.maxBaja) * 100}%` }}
                     />
                   </div>
-                  <span className="w-14 text-right text-xs tabular-nums">{formatPercent(b.baja_media_pct ?? 0)}</span>
+                  <span className="w-14 text-right text-xs tabular-nums">
+                    {valorOEmpty(b.baja_media_pct, formatPercent)}
+                  </span>
                   <span className="text-muted-foreground w-10 text-right text-xs tabular-nums">
                     {formatNumber(b.contratos)}
                   </span>

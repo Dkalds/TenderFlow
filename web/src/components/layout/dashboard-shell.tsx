@@ -1,6 +1,8 @@
 "use client";
 
+import * as React from "react";
 import { usePathname } from "next/navigation";
+import { useAnnounce } from "@/components/live-region";
 import { ScrollEdgeSentinel } from "@/components/layout/scroll-edge";
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
 import { CONSOLE_SPACES } from "@/lib/console-spaces";
@@ -26,13 +28,50 @@ function usePageTitle(): string {
   return space?.label ?? "TenderFlow";
 }
 
+/**
+ * Anuncia la pantalla nueva y lleva el foco al contenido.
+ *
+ * La consola navega en cliente entre catorce espacios: al activar un destino
+ * del rail el contenido se sustituye entero, pero el foco se quedaba en el
+ * enlace y no se anunciaba nada. Quien usa lector de pantalla no recibía señal
+ * de que la pantalla había cambiado, y quien navega con teclado tenía que
+ * recorrer otra vez toda la navegación para llegar al contenido — en cada
+ * salto, catorce veces por sesión.
+ *
+ * Las dos piezas ya existían y no se usaban: la región `aria-live` única de
+ * `components/live-region.tsx` y el `#main-content` con `tabIndex={-1}` de este
+ * mismo componente, que se puso como destino del skip link.
+ *
+ * El primer render NO anuncia: al entrar, el lector ya está leyendo la página.
+ * Anunciar ahí duplicaría el título en vez de informar de un cambio.
+ */
+function useAnunciarCambioDePantalla(titulo: string, ref: React.RefObject<HTMLElement | null>) {
+  const anunciar = useAnnounce();
+  const pathname = usePathname();
+  const anterior = React.useRef<string | null>(null);
+
+  React.useEffect(() => {
+    if (anterior.current !== null && anterior.current !== pathname) {
+      anunciar(titulo);
+      // `preventScroll`: el foco es consecuencia de la navegación, no una
+      // petición del usuario de ir a ningún sitio. Sin esto, mover el foco
+      // arrastraría el scroll y se perdería la posición que Next restaura.
+      ref.current?.focus({ preventScroll: true });
+    }
+    anterior.current = pathname;
+  }, [pathname, titulo, anunciar, ref]);
+}
+
 export function DashboardShell({ children }: { children: React.ReactNode }) {
   useKeyboardShortcuts();
   const compact = useDensity((s) => s.compact);
   const pageTitle = usePageTitle();
+  const mainRef = React.useRef<HTMLElement>(null);
+  useAnunciarCambioDePantalla(pageTitle, mainRef);
 
   return (
     <main
+      ref={mainRef}
       id="main-content"
       // Destino del skip link. Sin `tabIndex={-1}` el salto mueve el scroll pero
       // no el foco en Safari, así que el teclado seguía atrapado en la barra de

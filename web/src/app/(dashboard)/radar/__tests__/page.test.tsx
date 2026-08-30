@@ -496,7 +496,13 @@ describe("RadarPage — foco y teclado", () => {
       const lista = container.querySelector('[data-slot="radar-lista"]')!;
 
       const enfocables = Array.from(lista.querySelectorAll("button")).filter(
-        (boton) => !boton.closest("[inert]") && boton.tabIndex !== -1,
+        (boton) =>
+          !boton.closest("[inert]") &&
+          boton.tabIndex !== -1 &&
+          // El disparador del desglose del score es visible en todas las filas
+          // —es la explicación del número que ordena la bandeja— así que es una
+          // parada legítima y no es lo que este test vigila.
+          boton.dataset.slot !== "radar-score",
       );
 
       // Solo los tres de la fila activa.
@@ -514,7 +520,10 @@ describe("RadarPage — foco y teclado", () => {
     const lista = container.querySelector('[data-slot="radar-lista"]')!;
 
     const enfocables = Array.from(lista.querySelectorAll("button")).filter(
-      (boton) => !boton.closest("[inert]") && boton.tabIndex !== -1,
+      (boton) =>
+        !boton.closest("[inert]") &&
+        boton.tabIndex !== -1 &&
+        boton.dataset.slot !== "radar-score",
     );
 
     expect(enfocables).toHaveLength(9);

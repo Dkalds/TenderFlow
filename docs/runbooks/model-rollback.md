@@ -92,6 +92,32 @@ else:
 EOF
 ```
 
+## De dónde sale `$ADMIN_API_KEY`
+
+Los dos `curl` de abajo son los únicos pasos del runbook que no se resuelven con
+acceso a la BD, y el endpoint que usan (`POST /models/{name}/activate/{version}`)
+depende de `require_scope("admin")`, que **cuelga de `require_api_key` y por
+tanto no acepta la cookie de sesión**: no hay forma de hacer esto desde la
+consola, ni siquiera siendo administrador. Durante un incidente, descubrirlo en
+ese momento cuesta minutos que no hay.
+
+Si no tenés una key admin a mano, emitila antes de necesitarla:
+
+```bash
+# `--user-id` es obligatorio en prod/staging: una API key sin propietario se
+# rechaza (una persona no puede fragmentarse en identidades por credencial).
+python -m scripts.rotate_api_keys --name rollback-ops --user-id <TU_USER_ID> --scopes admin
+```
+
+El token se imprime una sola vez y no es recuperable. Guardalo en el gestor de
+secretos del equipo, no en el historial del shell.
+
+> Alternativa sin credencial, para cuando la key no aparece: el cambio de
+> `is_active` del paso anterior ya está hecho en BD, así que basta con esperar
+> a que venza `API_MODEL_CACHE_TTL_SECONDS` (5 min por defecto) o reiniciar el
+> servicio desde el dashboard de Render. Es más lento y más brusco, pero no
+> depende de tener el token.
+
 ## Hacer que la API sirva la versión nueva
 
 Cambiar `is_active` en la BD **no basta**: el proceso de la API cachea el

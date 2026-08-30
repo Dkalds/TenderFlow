@@ -178,3 +178,98 @@ def test_log_daily_summary_no_notify_when_no_modifications():
         run_update._log_daily_summary(pipeline_result, log_mock)
 
     mock_notify.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Pasada partida: `--fase ingesta` / `--fase cierre`
+#
+# `scrape-daily.yml` ejecutaba la secuencia canónica completa —KPIs, refresco de
+# la vista pública, evaluación de reglas de vigilancia— y solo entonces lanzaba
+# TED, Galicia, Euskadi, adjudicaciones vigiladas, PSCP y TACRC. Cinco de las
+# siete fuentes ingerían después de que se calculara todo lo que las incluye.
+# Partir la pasada es lo que permite invertir ese orden en el workflow.
+# ---------------------------------------------------------------------------
+
+
+def test_fase_ingesta_no_ejecuta_los_pasos_post_ingesta():
+    pipeline_result = {
+        "status": "ok",
+        "ingestion_result": {"status": "ok", "inserted": [], "modified": []},
+        "steps": {},
+    }
+
+    with (
+        patch("scheduler.run_update.run_daily_pipeline", return_value=pipeline_result) as daily,
+        patch("scheduler.run_update.run_post_ingestion_only") as cierre,
+        patch("scheduler.run_update.count_licitaciones", return_value=100),
+        patch("sys.argv", ["run_update", "--daily", "--fase", "ingesta"]),
+    ):
+        from scheduler import run_update
+
+        code = run_update.main()
+
+    assert code == 0
+    assert daily.call_args.kwargs["con_cierre"] is False
+    cierre.assert_not_called()
+
+
+def test_fase_cierre_no_ingiere_nada():
+    with (
+        patch("scheduler.run_update.run_daily_pipeline") as daily,
+        patch(
+            "scheduler.run_update.run_post_ingestion_only",
+            return_value={"status": "ok", "steps": {"kpi_precompute": "ok"}},
+        ) as cierre,
+        patch("sys.argv", ["run_update", "--daily", "--fase", "cierre"]),
+    ):
+        from scheduler import run_update
+
+        code = run_update.main()
+
+    assert code == 0
+    daily.assert_not_called()
+    cierre.assert_called_once()
+    assert cierre.call_args.kwargs["lane"] == "daily"
+
+
+def test_fase_cierre_pone_el_job_en_rojo_si_un_paso_falla():
+    """El cierre es donde viven el refresco de la vista pública y las alertas.
+
+    Un paso roto ahí tiene que verse: es la mitad de la pasada cuyo fallo antes
+    quedaba tapado por el exit code de la ingesta.
+    """
+    with (
+        patch(
+            "scheduler.run_update.run_post_ingestion_only",
+            return_value={
+                "status": "degraded",
+                "steps": {"kpi_precompute": "ok", "aggregates_precompute": "error"},
+            },
+        ),
+        patch("sys.argv", ["run_update", "--daily", "--fase", "cierre"]),
+    ):
+        from scheduler import run_update
+
+        code = run_update.main()
+
+    assert code == 1
+
+
+def test_por_defecto_la_pasada_sigue_siendo_completa():
+    """Ningún caller que no declare fase puede perder el cierre en silencio."""
+    pipeline_result = {
+        "status": "ok",
+        "ingestion_result": {"status": "ok", "inserted": [], "modified": []},
+        "steps": {"kpi_precompute": "ok"},
+    }
+
+    with (
+        patch("scheduler.run_update.run_daily_pipeline", return_value=pipeline_result) as daily,
+        patch("scheduler.run_update.count_licitaciones", return_value=100),
+        patch("sys.argv", ["run_update", "--daily"]),
+    ):
+        from scheduler import run_update
+
+        run_update.main()
+
+    assert daily.call_args.kwargs["con_cierre"] is True

@@ -34,15 +34,11 @@ import type { LicitacionDetail } from "@/components/detail-panel";
  * importe y copiar enlace.
  */
 
-const DESGLOSE_LABELS: Record<string, string> = {
-  importe: "Importe",
-  plazo: "Plazo",
-  competencia: "Competencia",
-  margen: "Margen esperado",
-  afinidad: "Afinidad",
-  senal_tecnica: "Señal técnica",
-  riesgo: "Riesgo",
-};
+// Las etiquetas viven en `components/score-desglose.tsx` desde que el Radar
+// también pinta el desglose: dos copias del mismo mapa divergen en cuanto el
+// scoring añade una dimensión, y la pantalla que se quedara atrás mostraría la
+// clave cruda sin que nada fallara.
+import { DESGLOSE_LABELS } from "@/components/score-desglose";
 
 type TabKey = "resumen" | "ia" | "pliegos" | "recursos";
 

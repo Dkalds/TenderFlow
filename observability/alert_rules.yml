@@ -22,6 +22,16 @@
 # 2026-08 tras ADR-021 (SQLite eliminado): sus metricas ya no se emiten. La
 # latencia de escritura la cubre PgWriteLatencyHigh (postgres_pool_alerts).
 #
+# FRESCURA DEL DATO: NO tiene reglas aqui, y es deliberado. La vista
+# `licitaciones_canonicas` --de la que lee la superficie publica entera-- la
+# refresca `scheduler/aggregates_precompute.py`, que corre en el plano efimero
+# de GH Actions y por tanto NO es scrapeable: una regla de Prometheus sobre esa
+# frescura no podria dispararse nunca. La vigila `scheduler/healthcheck.py`
+# (checks "canonicas_frescas" y "canonicas_tamano") leyendo el evento
+# `mv_canonicas_refresh` de ops_events, y alerta por email con ALERT_MIN_LEVEL.
+# No anadir aqui una regla hermana: seria una alerta muerta que da la impresion
+# de cobertura.
+#
 
 groups:
   # El grupo analytics_degradation (AnalyticsDegradedServing) se retiro en

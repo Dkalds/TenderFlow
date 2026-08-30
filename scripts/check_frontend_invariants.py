@@ -49,6 +49,7 @@ CATEGORIES: tuple[str, ...] = (
     "client-state",
     "large-limit",
     "synthetic-graph",
+    "nulo-a-cero",
 )
 
 # ── Patrones por categoría ────────────────────────────────────────────────
@@ -71,12 +72,47 @@ _RE_SYNTHETIC_GRAPH = re.compile(
     re.IGNORECASE,
 )
 
+# `?? 0` sobre una MÉTRICA nullable, que es la forma más barata de fabricar un
+# dato: convierte "no lo sé" en una afirmación, y casi siempre en la dirección
+# que más engaña. Casos reales encontrados el 2026-08-30, todos pintados como
+# KPI o como tooltip: `pct_monopolio ?? 0` presentaba a una empresa sin dato de
+# ofertantes como la más disputada del mercado; `tasa_adjudicacion_media ?? 0`
+# afirmaba un 0 % de adjudicación; `concentracion_top10 ?? 0`, un mercado
+# perfectamente repartido; `ticket_medio_sap ?? 0`, contratos que no valen nada.
+#
+# La lista de nombres es explícita y no un `\w+` genérico a propósito: `?? 0` es
+# correcto y frecuente para contadores, longitudes, índices y acumuladores. Lo
+# que no puede coercionarse es un porcentaje, una media o un importe agregado.
+# Al añadir una métrica nueva de esa clase, añadila aquí — es el mismo trato que
+# `_SCANNED_FILES` en el escáner de deduplicación.
+#
+# Salida correcta: `valorOEmpty(valor, formatX)` de `lib/cobertura.ts`, o
+# propagar el `null` hasta quien pinta. Si en un sitio concreto el cero SÍ es el
+# valor real, se anota con `fdi-allow:nulo-a-cero` y el motivo.
+_METRICAS_NO_COERCIBLES = (
+    "pct_[a-z0-9_]+",
+    "[a-z0-9_]*porcentaje[a-z0-9_]*",
+    "tasa_[a-z0-9_]+",
+    "importe_(?:medio|total)[a-z0-9_]*",
+    "ticket_[a-z0-9_]+",
+    "concentracion_[a-z0-9_]+",
+    "cuota[a-z0-9_]*",
+    "baja_media[a-z0-9_]*",
+    "hhi",
+    "cobertura_[a-z0-9_]+",
+)
+_RE_NULO_A_CERO = re.compile(
+    r"\b(?:" + "|".join(_METRICAS_NO_COERCIBLES) + r")\s*\?\?\s*0\b",
+    re.IGNORECASE,
+)
+
 _PATTERNS: dict[str, re.Pattern[str]] = {
     "localhost-url": _RE_LOCALHOST,
     "mock-data": _RE_MOCK,
     "client-state": _RE_CLIENT_STATE,
     "large-limit": _RE_LARGE_LIMIT,
     "synthetic-graph": _RE_SYNTHETIC_GRAPH,
+    "nulo-a-cero": _RE_NULO_A_CERO,
 }
 
 # Categorías que solo tienen sentido en comentarios (el marcador del anti-patrón

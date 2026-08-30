@@ -82,6 +82,21 @@ def _count_and_delete(conn: object, table: str, date_col: str, cutoff: str, *, a
     return int(count)
 
 
+#: Meses que se conservan las solicitudes de acceso.
+#:
+#: **Es un plazo publicado, no una preferencia operativa**: el aviso legal lo
+#: anuncia al visitante en el momento de la recogida
+#: (`web/src/lib/legal.ts::LEGAL_MESES_RETENCION_SOLICITUDES`), que es lo que
+#: exige el RGPD. Antes no había ninguno y el aviso lo decía —«hoy no existe un
+#: borrado automático por plazo»—, que es honesto y no es cumplir.
+#:
+#: Los dos números tienen que coincidir; lo comprueba
+#: `tests/test_retention_solicitudes.py`, porque una divergencia aquí convierte
+#: el aviso en una promesa falsa sin que falle nada.
+SOLICITUDES_ACCESO_RETENTION_MESES = 24
+SOLICITUDES_ACCESO_RETENTION_DAYS = SOLICITUDES_ACCESO_RETENTION_MESES * 30
+
+
 def run_retention(
     *,
     runs_days: int,
@@ -91,6 +106,7 @@ def run_retention(
     access_days: int,
     idempotency_days: int = 1,
     webhook_deliveries_days: int = 90,
+    solicitudes_acceso_days: int = SOLICITUDES_ACCESO_RETENTION_DAYS,
     apply: bool,
 ) -> dict[str, int]:
     """Purga registros históricos según la política de retención configurada.
@@ -105,6 +121,8 @@ def run_retention(
         access_days: Retención de access_log (días).
         idempotency_days: Retención de idempotency_keys (días).
         webhook_deliveries_days: Retención de webhook_deliveries (días).
+        solicitudes_acceso_days: Retención de solicitudes_acceso (días). Es el
+            plazo que el aviso legal publica; ver la constante de este módulo.
         apply: Si False, modo dry-run (cuenta sin borrar).
 
     Returns:
@@ -119,6 +137,11 @@ def run_retention(
         ("access_log", "logged_in_at", access_days),
         ("idempotency_keys", "created_at", idempotency_days),
         ("webhook_deliveries", "created_at", webhook_deliveries_days),
+        # Datos de contacto de personas que escribieron desde la página
+        # pública. Se borran por plazo con independencia de su estado: una
+        # solicitud de hace dos años está abandonada, atendida o descartada, y
+        # en los tres casos ya no hay finalidad que justifique conservarla.
+        ("solicitudes_acceso", "created_at", solicitudes_acceso_days),
     ]
 
     with connect() as conn:

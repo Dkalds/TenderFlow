@@ -328,8 +328,24 @@ describe("buildRadarData", () => {
       competitor({ nombre: "B", count: 1, importe: 1, cuota: 1 }),
     ];
     const radar = buildRadarData(["A", "B"], sinBaja)!;
-    expect(radar.dataA.every((d) => Number.isFinite(d.value))).toBe(true);
-    expect(radar.dataA[5].value).toBe(0);
+    // Los ejes que SÍ tienen dato siguen siendo números finitos: el `max(…, 1)`
+    // sigue evitando la división por cero, que es lo que este test vigila.
+    expect(radar.dataA.slice(0, 3).every((d) => Number.isFinite(d.value))).toBe(true);
+  });
+
+  it("un eje sin dato sale `null`, no pegado al centro", () => {
+    // Este test afirmaba `value === 0` para el eje ausente, y con eso blindaba
+    // el problema en vez de detectarlo: en un radar el 0 es el vértice pegado
+    // al centro, que se lee como «el peor del mercado en esa dimensión». Es una
+    // afirmación, y justo la contraria de lo que se sabe. Recharts deja hueco
+    // con `null`.
+    const sinBaja = [
+      competitor({ nombre: "A", count: 1, importe: 1, cuota: 1 }),
+      competitor({ nombre: "B", count: 1, importe: 1, cuota: 1 }),
+    ];
+    const radar = buildRadarData(["A", "B"], sinBaja)!;
+    expect(radar.dataA[5].value).toBeNull();
+    expect(radar.dataB[5].value).toBeNull();
   });
 });
 
@@ -365,7 +381,12 @@ describe("buildPositioningData", () => {
     expect(buildPositioningData([cero])).toEqual([]);
   });
 
-  it("copia las métricas del punto y rellena pct_monopolio ausente", () => {
+  it("copia las métricas del punto y propaga pct_monopolio ausente", () => {
+    // Antes esperaba `pct_monopolio: 0`, y ese cero llegaba al tooltip como
+    // «% Monopolio: 0,0 %»: una empresa sin dato de ofertantes se presentaba
+    // como la más disputada del mercado. El propio `buildPositioningData`
+    // descarta los puntos sin ambos ejes para no afirmar lo que el dataset no
+    // dice, y hacía justo eso con la tercera dimensión.
     const sinMonopolio = competitor({
       nombre: "Z",
       baja_media: 12,
@@ -377,8 +398,20 @@ describe("buildPositioningData", () => {
       baja_media: 12,
       importe_medio: 5000,
       count: 3,
+      pct_monopolio: null,
+    });
+  });
+
+  it("un pct_monopolio real sí se copia", () => {
+    // La distinción que importa: 0 es un dato, ausente es otra cosa.
+    const conCero = competitor({
+      nombre: "Z",
+      baja_media: 12,
+      importe_medio: 5000,
+      count: 3,
       pct_monopolio: 0,
     });
+    expect(buildPositioningData([conCero])[0].pct_monopolio).toBe(0);
   });
 
   it("vacío sin competidores", () => {

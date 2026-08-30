@@ -100,6 +100,32 @@ const nextConfig: NextConfig = {
           "http://localhost:8080 y la app fallaría en runtime.",
       );
     }
+    // Identificación del responsable del tratamiento y canal de ejercicio de
+    // derechos. En producción no son opcionales: el sitio es indexable y recoge
+    // una dirección de correo por consentimiento explícito, así que el RGPD
+    // (art. 13) y la LSSI-CE (art. 10) exigen publicarlos en el momento de la
+    // recogida. Antes su ausencia solo hacía desaparecer el bloque de la página
+    // —el fallo más silencioso posible para una obligación legal—, así que
+    // rompe el build en el mismo sitio y por el mismo criterio que API_BASE_URL:
+    // solo en el despliegue donde la ausencia es un incidente.
+    if (esProduccionVercel) {
+      const legales = {
+        NEXT_PUBLIC_LEGAL_RESPONSABLE: process.env.NEXT_PUBLIC_LEGAL_RESPONSABLE,
+        NEXT_PUBLIC_LEGAL_NIF: process.env.NEXT_PUBLIC_LEGAL_NIF,
+        NEXT_PUBLIC_LEGAL_DOMICILIO: process.env.NEXT_PUBLIC_LEGAL_DOMICILIO,
+        NEXT_PUBLIC_CONTACT_EMAIL: process.env.NEXT_PUBLIC_CONTACT_EMAIL,
+      };
+      const faltan = Object.entries(legales)
+        .filter(([, valor]) => !valor?.trim())
+        .map(([nombre]) => nombre);
+      if (faltan.length > 0) {
+        throw new Error(
+          `Faltan variables del aviso legal en el proyecto de Vercel: ${faltan.join(", ")}. ` +
+            "Sin ellas /aviso-legal se publica sin identificar al responsable del " +
+            "tratamiento ni ofrecer canal para ejercer derechos.",
+        );
+      }
+    }
     if (process.env.VERCEL_ENV === "preview" && !process.env.API_BASE_URL) {
       // No aborta el build —el preview es útil para revisar UI— pero deja
       // constancia de por qué sus llamadas a /api/* no van a resolver.

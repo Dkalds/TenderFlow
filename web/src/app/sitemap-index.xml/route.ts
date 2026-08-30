@@ -18,8 +18,25 @@ import { SITE_URL } from "@/lib/site";
  * ficheros inexistentes ni se deje los últimos fuera.
  */
 
-// Una hora, igual que el dato que enumera. `generateSitemaps` se evalúa en el
-// build, así que un índice más fresco que sus ficheros no aportaría nada.
+// Una hora, igual que el dato que enumera.
+//
+// La versión anterior de este comentario justificaba el plazo diciendo que
+// «`generateSitemaps` se evalúa en el build», y eso es falso: el handler que
+// Next genera para las rutas de sitemap particionado **vuelve a llamar a
+// `generateSitemaps()` en cada petición** y responde 404 si el `id` pedido no
+// está en la lista que devuelve (verificado en
+// `node_modules/next/dist/build/webpack/loaders/next-metadata-route-loader.js`,
+// función `getDynamicSitemapRouteCode`, no deducido de la documentación).
+//
+// La consecuencia es la buena, y conviene dejarla escrita porque no es obvia:
+// el índice y los ficheros derivan del MISMO recuento vivo, así que cuando el
+// corpus cruza un múltiplo de `SITEMAP_POR_FICHERO` el tramo nuevo aparece en
+// los dos a la vez. `generateStaticParams` solo decide qué tramos se
+// prerenderizan; uno posterior se genera bajo demanda y se sirve igual.
+//
+// Lo que sí hay que conservar es que las dos mitades cuenten igual: si este
+// índice y `app/sitemap.ts` usaran fuentes distintas del total, volvería el
+// error de cobertura que esta separación evita.
 export const revalidate = 3600;
 
 export async function GET(): Promise<Response> {

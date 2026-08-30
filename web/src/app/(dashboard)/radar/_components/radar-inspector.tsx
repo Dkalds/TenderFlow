@@ -93,7 +93,9 @@ function ExpectedCompetition({ organo }: { organo: string | null | undefined }) 
 
   if (!organo) return null;
 
-  const total = data?.kpis?.importe_total ?? 0;
+  // Denominador, nunca se pinta: el `total > 0` de abajo convierte la ausencia
+  // en `share = null`, que es lo correcto.
+  const total = data?.kpis?.importe_total ?? 0; // fdi-allow:nulo-a-cero
   const rivals = (data?.top_adjudicatarios ?? []).slice(0, 3);
 
   return (

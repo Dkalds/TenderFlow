@@ -63,10 +63,32 @@ REPO_ROOT = Path(__file__).parent.parent
 # Los árboles que sirven tráfico anónimo. Se listan explícitamente en vez de
 # escanear todo el repo: el dashboard privado usa estos campos con todo el
 # derecho, y un guard que grite ahí sería ruido que acaba desactivado.
+#
+# La lista incluye los módulos de `web/src/lib/` que componen lo que se publica,
+# y no solo el árbol de rutas. El motivo es un precedente del propio repo: el
+# escáner de deduplicación (`tests/test_dedup_guardrail.py`) se desactivaba solo
+# porque las olas del ratchet TID251 movían el SQL fuera de su radio —sin fallo,
+# sin aviso y con el commit de la migración en verde—. Aquí pasaría lo mismo en
+# cuanto alguien extrajera una pieza de `(publico)/` a `lib/`, que es
+# exactamente el refactor que el repo promueve.
+#
+# **Al mover código de `(publico)/` a `lib/`, añadilo aquí en el mismo cambio.**
 SCAN_TARGETS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("api/routes", (".py",)),  # filtrado a los módulos públicos, ver _es_publico
     ("db/repositories/publico.py", (".py",)),  # donde vive la allowlist de columnas
     ("web/src/app/(publico)", (".ts", ".tsx")),
+    # Rutas de metadatos que sirven tráfico anónimo desde fuera de `(publico)/`.
+    ("web/src/app/sitemap.ts", (".ts",)),
+    ("web/src/app/sitemap-index.xml", (".ts",)),
+    ("web/src/app/robots.ts", (".ts",)),
+    ("web/src/app/opengraph-image.tsx", (".tsx",)),
+    # Composición del dato público: `jsonld` serializa datos estructurados con
+    # `dangerouslySetInnerHTML` y `publico-api` declara los tipos que consume la
+    # superficie. Un campo prohibido llega a la página por cualquiera de los dos.
+    ("web/src/lib/jsonld.ts", (".ts",)),
+    ("web/src/lib/publico-api.ts", (".ts",)),
+    ("web/src/lib/slug.ts", (".ts",)),
+    ("web/src/lib/site.ts", (".ts",)),
 )
 
 # Dentro de api/routes/ solo son públicos los módulos con este prefijo. El

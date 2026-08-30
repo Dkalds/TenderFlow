@@ -62,6 +62,19 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
+      # INGESTA de PLACSP, sin cerrar la pasada.
+      #
+      # Este step corría `--daily` a secas, es decir la ingesta MÁS toda la
+      # secuencia canónica: KPIs, refresco de `licitaciones_canonicas`,
+      # evaluación de las reglas de vigilancia y digests. Y solo entonces
+      # arrancaban TED, Galicia, Euskadi, adjudicaciones vigiladas, PSCP y
+      # TACRC. O sea que cinco de las siete fuentes ingerían DESPUÉS de que se
+      # calculara todo lo que las tiene que incluir: su corpus del ciclo no
+      # entraba en la superficie pública, ni en los agregados, ni en las alertas
+      # hasta la pasada siguiente, cuatro horas más tarde.
+      #
+      # Los env del LLM se mudan con él al step de cierre: `llm_tech_labeling`
+      # es un paso post-ingesta y aquí ya no corre.
       - name: Run daily scraper
         env:
           ALERT_EMAIL_TO: ${{ secrets.ALERT_EMAIL_TO }}
@@ -69,24 +82,7 @@ jobs:
           ALERT_SMTP_PASSWORD: ${{ secrets.ALERT_SMTP_PASSWORD }}
           ALERT_MIN_LEVEL: ${{ vars.ALERT_MIN_LEVEL || 'warn' }}
           GITHUB_TOKEN: ${{ github.token }}
-          # Paso post-ingesta `llm_tech_labeling` (categorización por LLM sobre
-          # la metadata del anuncio). La key va en el `env:` del step y no en el
-          # del job para no exponerla a los conectores, que no la necesitan.
-          # Sin ella el paso falla en bloque, suelta la ventana diaria y pone el
-          # run en rojo — degradación visible, nunca silenciosa.
-          NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
-          # Flags como `vars` para poder encender/apagar y ajustar el lote desde
-          # Actions → Variables, sin tocar código (mismo patrón que pliegos.yml).
-          # Con la variable sin definir manda el default de config/settings.py.
-          LLM_TECH_LABELING_ENABLED: ${{ vars.LLM_TECH_LABELING_ENABLED || 'false' }}
-          # Fallback sincronizado con config/settings.py::LLM_TECH_LABELING_MODEL.
-          # El anterior (deepseek-v4-pro) quedó EOL en NVIDIA el 2026-08-07 y
-          # devuelve 410: con la fase activada y sin vars.LLM_TECH_LABELING_MODEL,
-          # este env pisaba el default bueno de settings y el lote entero fallaba.
-          LLM_TECH_LABELING_MODEL: ${{ vars.LLM_TECH_LABELING_MODEL || 'deepseek-ai/deepseek-v4-flash-0731' }}
-          LLM_TECH_LABELING_BATCH: ${{ vars.LLM_TECH_LABELING_BATCH || '200' }}
-          LLM_TECH_FEEDBACK_ENABLED: ${{ vars.LLM_TECH_FEEDBACK_ENABLED || 'false' }}
-        run: python -m scheduler.run_update --daily
+        run: python -m scheduler.run_update --daily --fase ingesta
 
       # Los seis conectores llevan `if: !cancelled()`: son fuentes
       # independientes del feed ATOM y no deben caerse con él. Hasta 2026-08 no
@@ -106,6 +102,12 @@ jobs:
       # 30916761519 y 30935191157 salieron verdes con `ml_retrain: error` y
       # `drift_checks: error`. Eso ya no pasa. Cada paso sigue enviando su email
       # de `_notify_step_failure` como antes.
+      #
+      # Desde que la pasada va partida (`--fase ingesta` aquí, `--fase cierre`
+      # al final), esas dos mitades del exit code viven en steps distintos: la
+      # ingesta lo devuelve este step y los pasos post-ingesta el de cierre.
+      # Los dos ponen el job en rojo; lo que cambia es que un fallo de ingesta
+      # ya no arrastra al cierre, que sigue corriendo con lo que sí entró.
       #
       # Se usa `!cancelled()` y no `always()` para que una cancelación
       # (concurrency, timeout del job) sí los detenga.
@@ -169,6 +171,43 @@ jobs:
         env:
           TACRC_INDEX_URL: ${{ vars.TACRC_INDEX_URL }}
         run: python -m scraper.connectors.tacrc
+
+      # CIERRE de la pasada: la secuencia canónica completa, ahora que las
+      # siete fuentes ya han ingerido. Es lo que hace verdadero el contrato de
+      # `db/repositories/publico.py` — «la vista va tan fresca como su último
+      # REFRESH, al final de la pasada de ingesta».
+      #
+      # `!cancelled()` y no `success()`: si un conector falla, el cierre tiene
+      # que correr igual con lo que sí entró. Sin `continue-on-error`, en
+      # cambio: un cierre roto SÍ debe poner el job en rojo — es donde viven el
+      # refresco de la vista pública y las alertas de vigilancia.
+      - name: Cierre de la pasada (pasos post-ingesta)
+        if: ${{ !cancelled() }}
+        timeout-minutes: 20
+        env:
+          ALERT_EMAIL_TO: ${{ secrets.ALERT_EMAIL_TO }}
+          ALERT_SMTP_USER: ${{ secrets.ALERT_SMTP_USER }}
+          ALERT_SMTP_PASSWORD: ${{ secrets.ALERT_SMTP_PASSWORD }}
+          ALERT_MIN_LEVEL: ${{ vars.ALERT_MIN_LEVEL || 'warn' }}
+          GITHUB_TOKEN: ${{ github.token }}
+          # Paso post-ingesta `llm_tech_labeling` (categorización por LLM sobre
+          # la metadata del anuncio). La key va en el `env:` del step y no en el
+          # del job para no exponerla a los conectores, que no la necesitan.
+          # Sin ella el paso falla en bloque, suelta la ventana diaria y pone el
+          # run en rojo — degradación visible, nunca silenciosa.
+          NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+          # Flags como `vars` para poder encender/apagar y ajustar el lote desde
+          # Actions → Variables, sin tocar código (mismo patrón que pliegos.yml).
+          # Con la variable sin definir manda el default de config/settings.py.
+          LLM_TECH_LABELING_ENABLED: ${{ vars.LLM_TECH_LABELING_ENABLED || 'false' }}
+          # Fallback sincronizado con config/settings.py::LLM_TECH_LABELING_MODEL.
+          # El anterior (deepseek-v4-pro) quedó EOL en NVIDIA el 2026-08-07 y
+          # devuelve 410: con la fase activada y sin vars.LLM_TECH_LABELING_MODEL,
+          # este env pisaba el default bueno de settings y el lote entero fallaba.
+          LLM_TECH_LABELING_MODEL: ${{ vars.LLM_TECH_LABELING_MODEL || 'deepseek-ai/deepseek-v4-flash-0731' }}
+          LLM_TECH_LABELING_BATCH: ${{ vars.LLM_TECH_LABELING_BATCH || '200' }}
+          LLM_TECH_FEEDBACK_ENABLED: ${{ vars.LLM_TECH_FEEDBACK_ENABLED || 'false' }}
+        run: python -m scheduler.run_update --daily --fase cierre
 
       - name: Healthcheck post-run
         if: always()

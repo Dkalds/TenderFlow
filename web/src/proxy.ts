@@ -30,6 +30,19 @@ const PUBLIC_PREFIXES = [
   // definición. Lleva `noindex` en sus propios metadatos.
   "/solicitud-recibida",
   "/_next",
+  // Telemetría de la plataforma: `/_vercel/insights/*` (Web Analytics) y
+  // `/_vercel/speed-insights/*` (Core Web Vitals). El matcher de abajo excluye
+  // `/_next/static` pero no `/_vercel`, así que sin esta línea el guard de
+  // sesión las trata como ruta privada y devuelve un 307 a `/login`.
+  //
+  // A quien alcanza es justamente a quien nunca tiene cookie: el visitante
+  // anónimo de la superficie pública. O sea que se perdían las páginas vistas
+  // de las URLs indexables —el argumento entero de adquisición— y los dos
+  // eventos que miden la conversión del embudo (`solicitar_acceso` y
+  // `solicitud_acceso_resultado`, en `_components/`). Dentro del dashboard no
+  // se notaba porque allí siempre hay sesión, que es lo que hacía el fallo
+  // difícil de ver desde dentro del producto.
+  "/_vercel",
   "/favicon.ico",
   "/spain-ccaa.json",
   "/robots.txt",

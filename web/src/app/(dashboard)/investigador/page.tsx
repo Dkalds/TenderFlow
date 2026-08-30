@@ -24,6 +24,7 @@ import { formatCurrency, truncate } from "@/lib/utils";
 import { getJSON, setJSON } from "@/lib/storage";
 import { useFilters } from "@/lib/filters";
 import { getCsrfToken } from "@/lib/api-client";
+import { registrarEvento } from "@/lib/analytics";
 import { descargarBlob } from "@/lib/export";
 import { useChat } from "@/hooks/use-ask";
 import { ChatThread } from "@/components/chat-thread";
@@ -268,6 +269,14 @@ export default function InvestigadorPage() {
         const data = await res.json();
         const hits: SearchResult[] = data.hits ?? data.results ?? data.items ?? [];
         setSearchResults(hits);
+        // Boca del embudo. `con_resultados` es lo que separa uso de fricción:
+        // una búsqueda que no devuelve nada no dice que el producto sirva.
+        // El término buscado NO viaja — es la estrategia comercial de quien lo
+        // escribe, igual que las keywords de una regla de vigilancia.
+        registrarEvento("busqueda_realizada", {
+          superficie: "investigador",
+          con_resultados: hits.length > 0 ? "si" : "no",
+        });
       } catch (err) {
         if (err instanceof DOMException && err.name === "AbortError") return;
         setError(err instanceof Error ? err.message : "Error desconocido");

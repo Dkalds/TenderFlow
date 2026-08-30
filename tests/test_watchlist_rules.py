@@ -216,6 +216,18 @@ def test_matches_since_respeta_el_corte_temporal_con_caja_cruzada(db):
     assert matches_since(WatchlistRule(keyword="sap"), "2026-01-02") == []
 
 
+def test_matches_since_incluye_el_dia_del_corte(db):
+    """El corte es inclusivo, y de eso depende que el job de alertas dispare.
+
+    Con ``>`` una licitación publicada el mismo día que el cursor quedaba fuera
+    para siempre, porque la ventana solo avanza. La deduplicación la hace el
+    anti-join contra ``user_notifications``, no esta desigualdad.
+    """
+    _seed_licitaciones()
+    rows = matches_since(WatchlistRule(keyword="sap"), "2026-01-01")
+    assert {r["id_externo"] for r in rows} == {"L1", "L3"}
+
+
 # ── conteo acotado del listado ────────────────────────────────────────────────
 
 

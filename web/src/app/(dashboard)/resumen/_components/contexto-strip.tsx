@@ -5,6 +5,8 @@ import { PanelError, StatCell, StatStrip } from "@/components/console/panel";
 import { useFilteredQuery } from "@/hooks/use-filtered-query";
 import { isAnomaly } from "@/lib/anomaly-detection";
 import { EMPTY, formatCompactCurrency, formatMonth, formatNumber, formatPercent } from "@/lib/utils";
+import { celdaSalud, coberturaSinMedir } from "@/lib/cobertura";
+import type { CeldaSalud, CoberturaMetrica } from "@/lib/cobertura";
 import type { AnalyticsOverview } from "@/lib/api-types";
 
 /**
@@ -72,68 +74,20 @@ interface MesAgregado {
  * un cliente ve mientras el backend desplegado sea el viejo — y sin `suficiente`
  * la celda se abstiene, que es la salida segura.
  */
-export interface CoberturaMetrica {
-  base?: number | null;
-  universo?: number | null;
-  cobertura_pct?: number | null;
-  umbral_pct?: number;
-  suficiente?: boolean;
-}
+// `CoberturaMetrica`, `celdaSalud` y `coberturaSinMedir` viven en
+// `lib/cobertura.ts` desde el 2026-08-30. Estaban aquí, y por eso la regla que
+// implementan —no afirmar un porcentaje cuyo denominador no se conoce— solo se
+// aplicaba en esta pantalla: `/competidores` publicaba las mismas magnitudes
+// sin acotarlas. Se reexportan para no romper a quien las importaba de aquí.
+// Se importan además de reexportarse: un `export … from` no crea binding local
+// y este módulo las usa unas líneas más abajo.
+export type { CeldaSalud, CoberturaMetrica };
+export { celdaSalud, coberturaSinMedir };
 
 type OverviewConCobertura = AnalyticsOverview & {
   cobertura_oferta_unica?: CoberturaMetrica;
   cobertura_pyme?: CoberturaMetrica;
 };
-
-/** Lo que la celda acaba pintando: un valor y el pie que lo acota. */
-export interface CeldaSalud {
-  value: string;
-  hint: string;
-}
-
-/**
- * Celda de un porcentaje de salud competitiva, acotada por su cobertura.
- *
- * El único juicio que se toma aquí es de presentación —pintar o no pintar—; el
- * porcentaje y el veredicto `suficiente` llegan calculados del backend
- * (ADR-014). Con cobertura insuficiente **no se muestra un número atenuado**:
- * se muestra qué falta. Un 93,1 % en gris sigue siendo un 93,1 % en la cabeza
- * de quien lo lee.
- */
-export function celdaSalud(
-  pct: number | null | undefined,
-  cobertura: CoberturaMetrica | undefined,
-  glosa: string,
-): CeldaSalud {
-  if (cobertura?.suficiente !== true) {
-    const medida = cobertura?.cobertura_pct;
-    return {
-      value: EMPTY,
-      hint:
-        medida == null
-          ? "sin cobertura medida del dato de origen"
-          : `solo ${formatPercent(medida)} de las adjudicaciones traen el dato`,
-    };
-  }
-  return {
-    value: formatPercent(pct),
-    hint: `${glosa} · cobertura ${formatPercent(cobertura.cobertura_pct)}`,
-  };
-}
-
-/**
- * ¿El backend ni siquiera llegó a medir la cobertura de esta métrica?
- *
- * `cobertura_pct == null` es «no lo sé», que no es lo mismo que «es baja» — el
- * DTO lo dice explícitamente. La distinción decide qué se hace con la celda: con
- * una cobertura medida y baja hay algo que contar («solo 3,4 % de las
- * adjudicaciones traen el dato» es información sobre el corpus), pero con la
- * cobertura sin medir la celda sólo puede repetir que no sabe, y hacerlo en
- * todas las cargas. Eso no es abstenerse: es ruido con forma de KPI.
- */
-export function coberturaSinMedir(cobertura: CoberturaMetrica | undefined): boolean {
-  return cobertura?.cobertura_pct == null;
-}
 
 /** Variación porcentual de `curr` sobre `prev`, o `undefined` si no se puede. */
 function pctDelta(curr?: number, prev?: number): number | undefined {

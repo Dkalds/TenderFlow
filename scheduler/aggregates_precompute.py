@@ -22,6 +22,7 @@ from typing import Any, cast
 from db.database import connect, connect_read
 from db.repositories.publico import refrescar_vista_canonicas
 from observability.logging import get_logger
+from observability.ops_events import record_event
 
 log = get_logger(__name__)
 
@@ -136,47 +137,82 @@ def _persist_clusters(conn: Any, rows: list[dict[str, Any]]) -> None:
 # ── Punto de entrada ──────────────────────────────────────────────────────────
 
 
+def _recalcular_clusters() -> int:
+    """Recalcula ``mat_clusters`` y devuelve cuántas filas quedaron."""
+    # Cómputo fuera de la transacción de escritura.
+    with connect_read() as read_conn:
+        clustering_data = _load_clustering_data(read_conn)
+
+    clusters = _compute_clusters(clustering_data)
+
+    # Persistencia en una transacción separada.
+    with connect() as write_conn:
+        _persist_clusters(write_conn, clusters)
+    log.info("aggregates_precompute.clusters_done", n=len(clusters))
+    return len(clusters)
+
+
 def run_aggregates_precompute() -> dict[str, Any]:
-    """Calcula los clusters semánticos y refresca la vista de canónicas.
+    """Recalcula los clusters semánticos y refresca la vista de canónicas.
 
     Los dos trabajos comparten paso porque comparten disparador —el final de la
     pasada de ingesta— y porque los dos son lo mismo: precálculo que evita pagar
     en cada petición lo que se puede pagar una vez por pasada.
 
+    **Comparten paso pero no destino, y por eso van en `try` separados.** Hasta
+    el 2026-08-30 estaban en el mismo bloque, con un comentario que afirmaba lo
+    contrario: cualquier excepción cargando o persistiendo clusters salía por el
+    `except` sin llegar al refresco. Y los dos caminos por los que este paso
+    puede caer de verdad —una lectura de hasta 50.000 filas y un DELETE con
+    inserciones por lotes— estaban justo por delante. El precio de ese orden lo
+    paga la superficie pública entera, que se queda servida sobre el corpus del
+    último refresco bueno: cifras coherentes entre sí, viejas, y sin nada que
+    lo delate.
+
+    El refresco es además el trabajo importante de los dos: los clusters
+    alimentan una vista analítica, la vista alimenta las seis superficies
+    indexables.
+
     Returns:
-        Dict con ``n_clusters``, ``n_canonicas`` y ``status``.
+        Dict con ``status`` (``ok`` · ``partial`` · ``error``), ``n_clusters``,
+        ``n_canonicas`` y los errores de cada mitad si los hubo. ``partial``
+        significa que una de las dos salió: el paso no es verde, pero tampoco
+        es lo mismo que no haber hecho nada.
     """
+    resultado: dict[str, Any] = {"n_clusters": None, "n_canonicas": None}
+    fallos: list[str] = []
+
     try:
-        # Cómputo de clusters fuera de la transacción de escritura
-        with connect_read() as read_conn:
-            clustering_data = _load_clustering_data(read_conn)
-
-        clusters = _compute_clusters(clustering_data)
-
-        # Persistencia de clusters en una transacción separada
-        with connect() as write_conn:
-            _persist_clusters(write_conn, clusters)
-            log.info(
-                "aggregates_precompute.clusters_done",
-                n=len(clusters),
-            )
-
-        # La superficie pública entera lee de esta vista (revisión v94). Va
-        # DESPUÉS de los clusters y en su propia transacción: si el clustering
-        # fallara, el refresco no tiene por qué caer con él — son dos precálculos
-        # independientes y dejar la vista sin refrescar congelaría el sitio
-        # público en silencio.
-        n_canonicas = refrescar_vista_canonicas()
-        log.info("aggregates_precompute.canonicas_refrescadas", n=n_canonicas)
-
-        return {
-            "status": "ok",
-            "n_clusters": len(clusters),
-            "n_canonicas": n_canonicas,
-        }
+        resultado["n_clusters"] = _recalcular_clusters()
     except Exception as exc:
-        log.exception("aggregates_precompute.failed", error=str(exc))
-        return {"status": "error", "error": str(exc)}
+        log.exception("aggregates_precompute.clusters_failed", error=str(exc))
+        resultado["error_clusters"] = str(exc)
+        fallos.append("clusters")
+
+    try:
+        n_canonicas = refrescar_vista_canonicas()
+        resultado["n_canonicas"] = n_canonicas
+        log.info("aggregates_precompute.canonicas_refrescadas", n=n_canonicas)
+        # Deja rastro persistente del refresco. Los counters de Prometheus mueren
+        # con el proceso efímero de Actions; `scheduler/healthcheck.py` lee
+        # `ops_events` desde la BD y es quien convierte esto en la única señal de
+        # que la superficie pública sigue viva. Sin ella, una vista congelada no
+        # se distingue de una fresca hasta que alguien compara a mano.
+        record_event("mv_canonicas_refresh", value=float(n_canonicas))
+    except Exception as exc:
+        log.exception("aggregates_precompute.canonicas_failed", error=str(exc))
+        resultado["error_canonicas"] = str(exc)
+        fallos.append("canonicas")
+
+    if not fallos:
+        resultado["status"] = "ok"
+    elif len(fallos) == 2:
+        resultado["status"] = "error"
+        resultado["error"] = "; ".join(fallos)
+    else:
+        resultado["status"] = "partial"
+        resultado["error"] = fallos[0]
+    return resultado
 
 
 if __name__ == "__main__":

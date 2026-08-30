@@ -50,7 +50,12 @@ from db.sql_fragments import (
     fila_canonica_sql,
 )
 
-__all__ = ["PublicoRepository", "refrescar_vista_canonicas"]
+__all__ = [
+    "EVENTO_REFRESCO_CANONICAS",
+    "PublicoRepository",
+    "estado_refresco_canonicas",
+    "refrescar_vista_canonicas",
+]
 
 
 # ── Proyección pública ────────────────────────────────────────────────────
@@ -195,6 +200,13 @@ _WHERE_INDEXABLE = f"{_BASE_WHERE} AND {_CANONICA_SQL}"
 #
 # Contrato de frescura, que hay que respetar al tocar esto: la vista va tan
 # fresca como su último `REFRESH`, al final de la pasada de ingesta (cada 4 h).
+# "Al final" es literal desde el 2026-08-30 y hubo que arreglarlo para que lo
+# fuera: `scrape-daily.yml` ejecutaba la secuencia canónica entera —este
+# refresco incluido— y solo entonces lanzaba TED, Galicia, Euskadi, PSCP,
+# TACRC y adjudicaciones vigiladas, así que cinco de las siete fuentes
+# aparecían aquí con un ciclo de retraso. Hoy el workflow parte la pasada en
+# `--fase ingesta` y `--fase cierre` y el refresco corre en la segunda. Si
+# alguien vuelve a juntarlas, esta frase deja de ser cierta.
 # `ficha` NO lee de aquí —no aplica el filtro de canónica, asimetría deliberada
 # ya documentada— así que un expediente nuevo tiene página desde el primer
 # momento; lo que tarda en aparecer es en los listados y en los recuentos.
@@ -269,6 +281,64 @@ def refrescar_vista_canonicas(*, conn: Any | None = None) -> int:
         return _refrescar(conn)
     with connect() as c:
         return _refrescar(c)
+
+
+#: Evento con el que ``scheduler/aggregates_precompute.py`` deja constancia de
+#: cada refresco. Vive aquí, junto a la vista que describe, porque es su
+#: contrato: quien renombre uno tiene el otro delante.
+EVENTO_REFRESCO_CANONICAS = "mv_canonicas_refresh"
+
+
+def estado_refresco_canonicas(*, conn: Any | None = None, historico: int = 2) -> dict[str, Any]:
+    """Con qué frescura y qué tamaño se sirve hoy la superficie pública.
+
+    Devuelve ``{"con_datos": bool, "eventos": [(ts, valor), …]}``, del más
+    reciente al más antiguo. Lo consume ``scheduler/healthcheck.py``.
+
+    Postgres no registra cuándo se refrescó una vista materializada, así que la
+    frescura se lee del rastro que deja el job en ``ops_events``. Esa es toda la
+    señal que hay: los counters de Prometheus mueren con el proceso efímero de
+    Actions, y comparar la vista contra la tabla exigiría repetir el anti-join
+    que la vista existe precisamente para no pagar.
+
+    ``con_datos`` acompaña a los eventos porque sin él no se puede interpretar
+    su ausencia: una vista vacía sin refrescos es una base sin corpus, y una
+    vista llena sin refrescos es el job caído. Y **se pregunta antes por
+    ``relispopulated``**, no directamente por las filas: sobre una vista creada
+    ``WITH NO DATA`` cualquier ``SELECT`` —incluido un ``EXISTS``— lanza
+    ``ObjectNotInPrerequisiteState``, así que consultarla a pelo convertía «esta
+    base todavía no tiene corpus» en «no pude medir la frescura», que es un
+    aviso, y degradaba el healthcheck entero de cualquier entorno recién creado.
+    La pregunta que hay que hacer es la misma —¿hay contenido?— y sin poblar la
+    respuesta es no.
+    """
+
+    def _consultar(c: Any) -> dict[str, Any]:
+        # `to_regclass` resuelve por `search_path` (el schema aislado de cada
+        # test) y devuelve NULL en vez de lanzar si la vista no existe: una base
+        # anterior a v94 se comporta como una sin datos, no como un error.
+        fila = c.execute(
+            "SELECT relispopulated FROM pg_class WHERE oid = to_regclass(%s)",
+            [VISTA_CANONICAS],
+        ).fetchone()
+        poblada = bool(fila[0]) if fila else False
+        # `EXISTS` y no `COUNT(*)`: la pregunta es binaria y no hay motivo para
+        # recorrer 400.000 filas para responderla.
+        con_datos = (
+            bool(c.execute(f"SELECT EXISTS (SELECT 1 FROM {VISTA_CANONICAS})").fetchone()[0])
+            if poblada
+            else False
+        )
+        eventos = c.execute(
+            "SELECT ts, value FROM ops_events WHERE event_type = %s ORDER BY ts DESC LIMIT %s",
+            (EVENTO_REFRESCO_CANONICAS, historico),
+        ).fetchall()
+        return {"con_datos": con_datos, "eventos": [(r[0], r[1]) for r in eventos]}
+
+    if conn is not None:
+        return _consultar(conn)
+    with connect() as c:
+        return _consultar(c)
 
 
 class PublicoRepository:

@@ -157,6 +157,32 @@ export interface EventosProducto {
    * usuario.
    */
   export_lanzado: { formato: "csv" | "xlsx" | "otro"; recurso: string };
+  /**
+   * La boca real del embudo: ¿alguien llega a buscar algo?
+   *
+   * El embudo empezaba en `perfil_configurado`, que es ya el segundo o tercer
+   * paso de una sesión. Sin este evento no se podía distinguir «entró y no
+   * encontró nada» de «entró y no llegó a buscar», que piden arreglos
+   * opuestos: el primero es un problema de cobertura del corpus y el segundo
+   * de descubribilidad de la búsqueda.
+   *
+   * `con_resultados` es la mitad que hace útil el evento —una búsqueda que no
+   * devuelve nada no es uso, es fricción— y `superficie` distingue las tres
+   * puertas de entrada. **Nunca viaja el término buscado**: es la estrategia
+   * comercial de quien lo escribe, igual que las keywords de una regla.
+   */
+  busqueda_realizada: {
+    superficie: "paleta" | "investigador" | "listado";
+    con_resultados: "si" | "no";
+  };
+  /**
+   * Criterio guardado: el momento en que una búsqueda deja de repetirse a mano.
+   *
+   * Es señal de activación por derecho propio y el complemento de
+   * `regla_creada`: una vista guardada dice «vuelvo a esto», una regla dice
+   * «avísame de esto». Del criterio no viaja nada, solo que se guardó.
+   */
+  vista_guardada: { primera_vez: PrimeraVez };
 }
 
 export type EventoProducto = keyof EventosProducto;
@@ -182,6 +208,8 @@ export const PROPIEDADES_PERMITIDAS = {
   regla_creada: ["primera_vez"],
   asistente_usado: ["modo", "ambito", "resultado"],
   export_lanzado: ["formato", "recurso"],
+  busqueda_realizada: ["superficie", "con_resultados"],
+  vista_guardada: ["primera_vez"],
 } as const satisfies Record<EventoProducto, readonly string[]>;
 
 /** Tope defensivo de longitud: un valor largo delata que alguien coló texto. */

@@ -5,6 +5,8 @@ Comprueba:
   2. Hubo al menos una extracción exitosa en las últimas N horas.
   3. No hay >K fallos sin resolver en la DLQ.
     4. Al menos el 99% de adjudicaciones están enlazadas con una empresa.
+    5. La vista `licitaciones_canonicas` —de la que lee la superficie pública
+       entera— se refrescó hace poco y no ha encogido.
 
 Salida:
   exit 0 → healthy
@@ -32,6 +34,7 @@ if _project_root not in sys.path:
     sys.path.insert(0, _project_root)
 
 from db.database import connect, init_db  # noqa: E402
+from db.repositories.publico import estado_refresco_canonicas  # noqa: E402
 from observability import AlertLevel, configure_logging, get_logger, notify  # noqa: E402
 
 log = get_logger(__name__)
@@ -56,7 +59,101 @@ def _contar_licitaciones(c: Any) -> tuple[int, bool]:
     return int(c.execute("SELECT COUNT(*) FROM licitaciones").fetchone()[0]), False
 
 
-def run_check(freshness_hours: int = 36, dlq_threshold: int = 50) -> dict[str, Any]:
+#: Caída relativa del corpus publicable que se considera anómala entre dos
+#: refrescos consecutivos. El corpus solo crece salvo purga deliberada, así que
+#: un 10% de pérdida ya no es ruido: es un umbral de sustancia mal tocado, un
+#: lote de duplicados mal marcado o una fuente que dejó de ingerir.
+_CAIDA_CANONICAS_MAX = 0.10
+
+
+def _comprobar_vista_canonicas(
+    c: Any,
+    stale_hours: int,
+    checks: list[dict[str, object]],
+    warnings: list[str],
+    info: dict[str, object],
+) -> None:
+    """Antigüedad y tamaño del último refresco de la vista pública.
+
+    Va en su propio ``try`` por el mismo motivo que sus vecinos: un check
+    secundario no puede llevarse por delante el informe entero, y con
+    ``connect()`` una consulta fallida deja la sesión abortada si no se hace
+    ROLLBACK.
+    """
+    try:
+        estado = estado_refresco_canonicas(conn=c)
+        con_datos = bool(estado["con_datos"])
+        filas = list(estado["eventos"])
+    except Exception as exc:
+        # ROLLBACK obligatorio: `connect()` abre transacción, y una consulta
+        # fallida dejaría abortado todo lo que viene después.
+        with contextlib.suppress(Exception):
+            c.rollback()
+        info["canonicas_error"] = str(exc)[:200]
+        # "No lo pude medir" no es "está mal", y tampoco puede tumbar el resto
+        # del informe: mismo criterio que el check de resolución de empresas.
+        warnings.append("canonicas_no_medida")
+        checks.append({"name": "canonicas_frescas", "ok": True})
+        return
+
+    if not filas:
+        # Sin ningún refresco registrado.
+        #
+        # Con la vista VACÍA no hay nada que afirmar: es una base sin corpus
+        # —un schema de test, un entorno recién creado— y avisar ahí sería
+        # ruido que acaba desactivando el check.
+        #
+        # Con la vista LLENA es otra cosa: hay corpus publicándose y el job que
+        # debería refrescarlo no ha dejado rastro ni una vez. Es exactamente el
+        # estado que este check existe para no dejar pasar.
+        info["canonicas_sin_registro"] = True
+        if con_datos:
+            warnings.append("canonicas_sin_registro_de_refresco")
+        checks.append({"name": "canonicas_frescas", "ok": not con_datos})
+        return
+
+    try:
+        ultimo = datetime.fromisoformat(str(filas[0][0]))
+        if ultimo.tzinfo is None:
+            ultimo = ultimo.replace(tzinfo=UTC)
+    except (ValueError, TypeError):
+        ultimo = datetime.now(UTC) - timedelta(days=365)
+
+    edad_horas = (datetime.now(UTC) - ultimo).total_seconds() / 3600
+    n_actual = int(filas[0][1] or 0)
+    info["canonicas"] = {
+        "ultimo_refresco": filas[0][0],
+        "edad_horas": round(edad_horas, 1),
+        "filas": n_actual,
+    }
+
+    fresca = edad_horas <= stale_hours
+    if not fresca:
+        warnings.append(f"canonicas_stale:{edad_horas:.1f}h")
+    checks.append({"name": "canonicas_frescas", "ok": fresca})
+
+    # Un refresco que deja la vista vacía —o mucho más pequeña— no levanta
+    # ninguna excepción: es exactamente la clase de fallo que hay que cazar
+    # comparando, no observando.
+    if n_actual == 0:
+        warnings.append("canonicas_vacias")
+        checks.append({"name": "canonicas_tamano", "ok": False})
+        return
+    if len(filas) > 1:
+        n_previo = int(filas[1][1] or 0)
+        cayo = n_previo > 0 and n_actual < n_previo * (1 - _CAIDA_CANONICAS_MAX)
+        if cayo:
+            warnings.append(f"canonicas_encogieron:{n_previo}->{n_actual}")
+        checks.append({"name": "canonicas_tamano", "ok": not cayo})
+    else:
+        checks.append({"name": "canonicas_tamano", "ok": True})
+
+
+def run_check(
+    freshness_hours: int = 36,
+    dlq_threshold: int = 50,
+    canonicas_stale_hours: int = 9,
+) -> dict[str, Any]:
     init_db()
     status = "healthy"
     checks: list[dict[str, object]] = []
@@ -203,6 +300,19 @@ def run_check(freshness_hours: int = 36, dlq_threshold: int = 50) -> dict[str, A
         ).fetchone()
         info["last_pipeline_run"] = last_kpi[0] if last_kpi else None
 
+        # ── Frescura de la vista pública (v94) ─────────────────────────
+        # `last_pipeline_run` NO sirve para esto y ese es justo el problema que
+        # cierra este bloque: sale de `kpi_snapshots`, que escribe el paso
+        # ANTERIOR al refresco de la vista. Un `aggregates_precompute` que
+        # fallara dejaría la pipeline "fresca" y la superficie pública
+        # congelada, sirviendo cifras coherentes entre sí y viejas.
+        #
+        # Se mide sobre `ops_events` y no sobre la vista porque Postgres no
+        # registra cuándo se refrescó una vista materializada, y comparar sus
+        # filas contra la tabla exige repetir el anti-join que la vista existe
+        # para evitar. El evento lo emite `scheduler/aggregates_precompute.py`.
+        _comprobar_vista_canonicas(c, canonicas_stale_hours, checks, warnings, info)
+
         # Locks activos (ADR-012)
         try:
             now_iso = datetime.now(UTC).isoformat()
@@ -297,11 +407,18 @@ def main() -> int:
     p = argparse.ArgumentParser()
     p.add_argument("--freshness-hours", type=int, default=36)
     p.add_argument("--dlq-threshold", type=int, default=50)
+    p.add_argument(
+        "--canonicas-stale-hours",
+        type=int,
+        default=9,
+        help="Horas sin refrescar `licitaciones_canonicas` que se consideran viejas "
+        "(por defecto 9: dos ciclos del carril de 4h más margen)",
+    )
     p.add_argument("--alert", action="store_true", help="Emite alertas si el estado no es healthy")
     args = p.parse_args()
 
     configure_logging()
-    result = run_check(args.freshness_hours, args.dlq_threshold)
+    result = run_check(args.freshness_hours, args.dlq_threshold, args.canonicas_stale_hours)
     print(json.dumps(result, indent=2, default=str))
 
     if args.alert and result["status"] != "healthy":
