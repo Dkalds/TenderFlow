@@ -273,7 +273,29 @@ def refrescar_vista_canonicas(*, conn: Any | None = None) -> int:
     """
 
     def _refrescar(c: Any) -> int:
-        c.execute(f"REFRESH MATERIALIZED VIEW CONCURRENTLY {VISTA_CANONICAS}")
+        # `CONCURRENTLY` exige que la vista ya esté poblada: Postgres lo
+        # rechaza con `FeatureNotSupported` sobre una vista recién creada
+        # `WITH NO DATA`. Esa vista existe en dos sitios reales —el schema de
+        # la suite, que sale de `pg_dump --schema-only` y por tanto emite
+        # siempre `WITH NO DATA`, y cualquier entorno donde se recree la vista
+        # a mano— así que el primer refresco tiene que ser el normal.
+        #
+        # Degradar aquí no reintroduce el bloqueo que motiva `CONCURRENTLY`:
+        # una vista sin poblar no se puede leer (todo `SELECT` sobre ella
+        # falla), de modo que no hay lector al que el `AccessExclusiveLock`
+        # pueda hacer esperar. A partir del segundo refresco vuelve a ser
+        # `CONCURRENTLY`, que es el caso de producción.
+        # `to_regclass` y no `%s::regclass`: el cast lanza `UndefinedTable` si
+        # la vista no existe, mientras que la función devuelve NULL. Así el
+        # fallo por vista ausente lo da el `REFRESH` de abajo —que es donde se
+        # entiende— en vez de esta comprobación previa. Resuelve por
+        # `search_path`, que es lo que necesita el schema aislado por test.
+        fila = c.execute(
+            "SELECT relispopulated FROM pg_class WHERE oid = to_regclass(%s)",
+            [VISTA_CANONICAS],
+        ).fetchone()
+        concurrente = "CONCURRENTLY " if fila and fila[0] else ""
+        c.execute(f"REFRESH MATERIALIZED VIEW {concurrente}{VISTA_CANONICAS}")
         fila = c.execute(f"SELECT COUNT(*) FROM {VISTA_CANONICAS}").fetchone()
         return int(fila[0]) if fila else 0
 

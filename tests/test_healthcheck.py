@@ -382,6 +382,21 @@ def test_healthcheck_main_alert_mode_degraded_returns_0(tmp_db):
 # ---------------------------------------------------------------------------
 
 
+def _con_run_exitoso() -> None:
+    """Siembra una extracción correcta.
+
+    Sin ella `run_check` mete `sin_runs_registrados` en `errors` y el estado de
+    una BD de test recién creada ya es `critical` (ver
+    `test_healthcheck_critical_without_runs`). Afirmar `degraded` sin esto mide
+    el estado de arranque, no el check que se quiere probar.
+    """
+    from observability.metrics import record_run
+
+    with record_run("run-ok-canonicas") as m:
+        m.months_attempted = 1
+        m.months_ok = 1
+
+
 def _registrar_refresco(c, *, hace_horas: float, filas: int) -> None:
     from datetime import datetime, timedelta
 
@@ -427,6 +442,7 @@ def test_vista_vieja_degrada_el_estado(tmp_db):
     from db.database import connect
     from scheduler.healthcheck import run_check
 
+    _con_run_exitoso()
     with connect() as c:
         _registrar_refresco(c, hace_horas=30, filas=411_450)
 
@@ -447,6 +463,7 @@ def test_vista_que_encoge_avisa(tmp_db):
     from db.database import connect
     from scheduler.healthcheck import run_check
 
+    _con_run_exitoso()
     with connect() as c:
         _registrar_refresco(c, hace_horas=5, filas=411_000)
         _registrar_refresco(c, hace_horas=1, filas=12_000)
