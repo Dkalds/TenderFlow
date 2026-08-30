@@ -303,14 +303,31 @@ def estado_refresco_canonicas(*, conn: Any | None = None, historico: int = 2) ->
 
     ``con_datos`` acompaña a los eventos porque sin él no se puede interpretar
     su ausencia: una vista vacía sin refrescos es una base sin corpus, y una
-    vista llena sin refrescos es el job caído. Se resuelve con ``EXISTS`` y no
-    con ``COUNT(*)`` — la pregunta es binaria y no hay motivo para recorrer
-    400.000 filas para responderla.
+    vista llena sin refrescos es el job caído. Y **se pregunta antes por
+    ``relispopulated``**, no directamente por las filas: sobre una vista creada
+    ``WITH NO DATA`` cualquier ``SELECT`` —incluido un ``EXISTS``— lanza
+    ``ObjectNotInPrerequisiteState``, así que consultarla a pelo convertía «esta
+    base todavía no tiene corpus» en «no pude medir la frescura», que es un
+    aviso, y degradaba el healthcheck entero de cualquier entorno recién creado.
+    La pregunta que hay que hacer es la misma —¿hay contenido?— y sin poblar la
+    respuesta es no.
     """
 
     def _consultar(c: Any) -> dict[str, Any]:
-        con_datos = bool(
-            c.execute(f"SELECT EXISTS (SELECT 1 FROM {VISTA_CANONICAS})").fetchone()[0]
+        # `to_regclass` resuelve por `search_path` (el schema aislado de cada
+        # test) y devuelve NULL en vez de lanzar si la vista no existe: una base
+        # anterior a v94 se comporta como una sin datos, no como un error.
+        fila = c.execute(
+            "SELECT relispopulated FROM pg_class WHERE oid = to_regclass(%s)",
+            [VISTA_CANONICAS],
+        ).fetchone()
+        poblada = bool(fila[0]) if fila else False
+        # `EXISTS` y no `COUNT(*)`: la pregunta es binaria y no hay motivo para
+        # recorrer 400.000 filas para responderla.
+        con_datos = (
+            bool(c.execute(f"SELECT EXISTS (SELECT 1 FROM {VISTA_CANONICAS})").fetchone()[0])
+            if poblada
+            else False
         )
         eventos = c.execute(
             "SELECT ts, value FROM ops_events WHERE event_type = %s ORDER BY ts DESC LIMIT %s",
