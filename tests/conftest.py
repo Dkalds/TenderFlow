@@ -365,6 +365,28 @@ def _pg_schema(_pg_schema_ddl):
         conn.execute(f'SET search_path TO "{schema}", public')
         conn.execute(ddl)
 
+        # `pg_dump --schema-only` emite las vistas materializadas `WITH NO
+        # DATA`: quedan creadas pero **sin poblar**, un estado que en
+        # producción no existe —la migración que las crea lo hace `WITH DATA`—
+        # y sobre el que Postgres rechaza tanto leerlas
+        # (`ObjectNotInPrerequisiteState`) como refrescarlas `CONCURRENTLY`
+        # (`FeatureNotSupported`). Sin este poblado el schema del test miente
+        # sobre producción y arrastra a fallar a todo lo que toque la vista.
+        # Están vacías, así que refrescarlas es instantáneo. Se descubren por
+        # catálogo en vez de por nombre para que no haya que volver aquí cada
+        # vez que se añada una.
+        vistas = [
+            r[0]
+            for r in conn.execute(
+                "SELECT c.relname FROM pg_class c "
+                "JOIN pg_namespace n ON n.oid = c.relnamespace "
+                "WHERE c.relkind = 'm' AND n.nspname = %s",
+                [schema],
+            ).fetchall()
+        ]
+        for vista in vistas:
+            conn.execute(f'REFRESH MATERIALIZED VIEW "{schema}"."{vista}"')
+
     sep = "&" if "?" in base_url else "?"
     scoped_url = f"{base_url}{sep}options=-csearch_path%3D{schema}%2Cpublic"
 

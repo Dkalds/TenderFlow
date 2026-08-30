@@ -549,6 +549,13 @@ def db_importe_float4(db):
     from db.database import connect
 
     with connect() as c:
+        # `licitaciones_canonicas` (v94) selecciona `importe`, así que su regla
+        # `_RETURN` bloquea el ALTER con `FeatureNotSupported: cannot alter
+        # type of a column used by a view or rule`. Estos tests no miran la
+        # superficie pública —solo el detector de diffs sobre float4— y el
+        # schema es de usar y tirar (uno por test, ver `_pg_schema`), así que
+        # la vista sobra: se tira antes de tocar el tipo.
+        c.execute("DROP MATERIALIZED VIEW IF EXISTS licitaciones_canonicas")
         c.execute("ALTER TABLE licitaciones ALTER COLUMN importe TYPE real")
     return db
 
