@@ -889,8 +889,13 @@ export interface paths {
          * @description Alta self-service con email + password. Hace auto-login (set session cookie).
          *
          *     Política de contraseña equilibrada: mínimo 10 caracteres con mayúsculas,
-         *     minúsculas y al menos un dígito (sin exigir carácter especial). Registro
-         *     abierto: cualquier email válido puede crear cuenta.
+         *     minúsculas y al menos un dígito (sin exigir carácter especial).
+         *
+         *     **El alta NO es abierta.** Está cerrada por defecto
+         *     (``ALLOW_SELF_REGISTRATION=False``) y en producción responde 403: el acceso
+         *     a TenderFlow es por invitación y se concede a mano desde el panel de
+         *     solicitudes. Este docstring decía «Registro abierto: cualquier email válido
+         *     puede crear cuenta» dos líneas por encima del guard que lo impide.
          */
         post: operations["register_api_v1_auth_register_post"];
         delete?: never;
