@@ -218,6 +218,12 @@ def _fechar(db_mod, id_externo: str, cuando: str) -> None:
             "UPDATE licitaciones SET fecha_extraccion = %s WHERE id_externo = %s",
             (cuando, id_externo),
         )
+    # Mismo motivo que en el fixture `corpus`: la superficie pública lee de la
+    # vista materializada (v94), que no se entera de un UPDATE. Sin refrescar,
+    # `ultima_incorporacion` sigue devolviendo la fecha que se sembró y el test
+    # mide la vista rancia en vez del cambio que acaba de hacer. En producción
+    # lo hace `aggregates_precompute` al final de cada pasada de ingesta.
+    refrescar_vista_canonicas()
 
 
 def test_ultima_incorporacion_devuelve_la_mas_reciente(corpus, repo):
