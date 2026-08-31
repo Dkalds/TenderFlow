@@ -51,7 +51,7 @@ dependencies = [
 # El SDK de OpenAI cubre OpenAI y NVIDIA NIM (API compatible, base_url propio).
 # Sin este extra, llm/providers/*.py operan en modo NoOp (log warning + sin respuesta).
 llm = [
-    "openai>=1.30.0,<3",
+    "openai>=1.30.0,<4",
     "anthropic>=0.40.0,<1",
 ]
 # Deps opcionales para búsqueda semántica y vectorización.
