@@ -84,7 +84,15 @@ AVAILABLE_MODELS: list[str] = [
 DEFAULT_MODEL = "deepseek-ai/deepseek-v4-flash-0731"
 
 # Límites de entrada
-_MAX_QUESTION_LEN = 2000
+#
+# ``MAX_QUESTION_LEN`` es público a propósito: no solo acota lo que teclea un
+# usuario en /ask, también acota las plantillas de prompt que este repo pasa
+# como ``question`` (la ficha de pliego, el etiquetado de tecnología). Cuando
+# una de esas constantes creció por encima del tope, la funcionalidad entera
+# dejó de funcionar con un ValueError antes de llegar al proveedor —y sin un
+# nombre público no había forma de que un test lo fijara. Ver
+# ``tests/test_tender_fact_sheet.py::test_extraction_question_fits_llm_limit``.
+MAX_QUESTION_LEN = 2000
 _MIN_QUESTION_LEN = 3
 _MAX_DOCS = 50
 _MAX_HISTORY_MESSAGES = 20
@@ -265,9 +273,9 @@ def _validate_request(
         )
     if not question or len(question) < _MIN_QUESTION_LEN:
         raise ValueError(f"La pregunta debe tener al menos {_MIN_QUESTION_LEN} caracteres.")
-    if len(question) > _MAX_QUESTION_LEN:
+    if len(question) > MAX_QUESTION_LEN:
         raise ValueError(
-            f"La pregunta excede el máximo de {_MAX_QUESTION_LEN} caracteres "
+            f"La pregunta excede el máximo de {MAX_QUESTION_LEN} caracteres "
             f"(recibido: {len(question)})."
         )
     if len(docs) > _MAX_DOCS:

@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, get_args
+
+from annotated_types import MaxLen
+from pydantic import ValidationError
+from pydantic.fields import FieldInfo
 
 from db.repositories.documentos import DocumentosRepository
 from db.repositories.tender_fact_sheets import TenderFactSheetsRepository
@@ -13,7 +17,11 @@ from shared.tender_facts import EvidenceRef, TenderFactSheet, TenderFactSheetRec
 
 log = get_logger(__name__)
 
-EXTRACTION_VERSION = "tender-facts-v3"
+# v4: mismo esquema de datos que v3, pero la pregunta vuelve a caber en el
+# límite del cliente LLM (v3 nunca llegó a producir una ficha) y los hechos se
+# validan uno a uno. Se bumpea para poder distinguir en la BD una fila escrita
+# por el extractor arreglado de las que dejó el roto.
+EXTRACTION_VERSION = "tender-facts-v4"
 _MAX_CONTEXT_CHARS = 15_000
 _MAX_PAGES = 24
 _TOPIC_TERMS = (
@@ -51,37 +59,49 @@ _TOPIC_TERMS = (
 # del presupuesto de contexto si solo se puntúa por términos administrativos.
 _TECH_TERMS = ("sap", "oracle", "salesforce", "microsoft", "hana", "erp", "crm", "software")
 
+# El texto viaja como ``question`` a ``stream_llm_response``, que rechaza
+# cualquier pregunta de más de ``MAX_QUESTION_LEN`` caracteres ANTES de llamar
+# al proveedor. No es cosmética: v3 (lotes/ANS/certificaciones) dejó esta
+# constante en 2070 y desde entonces la ficha falló SIEMPRE —botón «Extraer
+# ficha» y cron nocturno por igual— con «La pregunta excede el máximo de 2000
+# caracteres», que la UI enseñaba tal cual. Al añadir una familia nueva hay que
+# recortar en otro sitio; `test_extraction_question_fits_llm_limit` lo fija.
+#
+# Los valores cerrados (`criterion_type`, `scope`), el formato de fecha y el
+# techo de la cita se enuncian aquí porque el modelo los valida en
+# ``shared/tender_facts.py``: un "calidad" en vez de "quality" o un
+# "15/10/2026" en vez de ISO ya no tira la ficha entera (ver ``_parse_facts``),
+# pero sí pierde ese hecho.
 _EXTRACTION_QUESTION = """
-Extrae la ficha del pliego con estas claves JSON exactas:
-lots: [{lot_number, name, description, amount_eur, confidence, evidence}],
-award_criteria: [{name, description, weight_pct, criterion_type, confidence, evidence}],
-technical_solvency: [{description, confidence, evidence}],
-economic_solvency: [{description, amount_eur, confidence, evidence}],
-guarantees: [{description, amount_eur, confidence, evidence}],
-penalties: [{description, amount_eur, confidence, evidence}],
-service_levels: [{name, target, description, confidence, evidence}],
-subcontracting: [{description, confidence, evidence}],
-team_requirements: [{description, role, minimum_years, quantity, confidence, evidence}],
-certifications: [{name, scope, description, confidence, evidence}],
-extensions: [{description, confidence, evidence}],
-critical_deadlines: [{name, description, date_value, confidence, evidence}],
-technologies: [{name, description, confidence, evidence}].
-Para lots: un elemento por lote publicado, con su número tal como aparece
-("1", "Lote III"), su denominación y su presupuesto sin IVA si es inequívoco;
-si el pliego dice que no hay división en lotes, deja la lista vacía.
-Para service_levels: acuerdos de nivel de servicio (ANS/SLA) con su indicador
-en name y el objetivo comprometido en target (ej. name "Disponibilidad del
-servicio", target "99,9% mensual"); las penalizaciones por incumplirlos van
-en penalties, no aquí.
-Para certifications: certificaciones exigidas, con scope "company" si la
-acredita la empresa (ISO 27001, ENS, partner de fabricante), "team" si la
-exige a personas del equipo (certificados de perfil), "other" si no está claro.
-Para technologies: solo plataformas o tecnologías mencionadas explícitamente
-como objeto del contrato (ej. "migración a SAP S/4HANA", "mantenimiento de
-Salesforce Service Cloud") -- no incluyas menciones incidentales o genéricas
-(ej. "se trabajará con herramientas ofimáticas estándar").
-Cada evidence es {documento_id, page_number, quote}; usa null cuando un valor
-tipado no aparezca y listas vacías cuando no haya evidencia.
+Devuelve un objeto JSON con estas claves exactas. Cada valor es una lista de
+objetos que SIEMPRE llevan description, confidence (0 a 1) y evidence, más los
+campos propios de su familia:
+lots: {lot_number, name, amount_eur},
+award_criteria: {name, weight_pct, criterion_type},
+technical_solvency: {},
+economic_solvency: {amount_eur},
+guarantees: {amount_eur},
+penalties: {amount_eur},
+service_levels: {name, target},
+subcontracting: {},
+team_requirements: {role, minimum_years, quantity},
+certifications: {name, scope},
+extensions: {},
+critical_deadlines: {name, date_value},
+technologies: {name}.
+lots: un elemento por lote publicado, con lot_number tal como aparece ("1",
+"Lote III") y su presupuesto sin IVA si es inequívoco; vacío si no hay lotes.
+criterion_type: solo "price", "quality", "automatic", "judgement" u "other".
+certifications: scope "company" si la acredita la empresa (ISO 27001, ENS),
+"team" si la exige a personas del equipo, "other" si no está claro.
+service_levels: el indicador en name y el compromiso en target ("Disponibilidad
+del servicio" / "99,9% mensual"); sus penalizaciones van en penalties.
+technologies: solo plataformas que el contrato implanta, mantiene, migra o
+licencia ("migración a SAP S/4HANA"), nunca menciones incidentales.
+date_value: fecha ISO AAAA-MM-DD, o null si el pliego no fija una exacta.
+Cada evidence es {documento_id, page_number, quote}, con quote copiado
+literalmente del fragmento y de menos de 400 caracteres. Usa null cuando un
+valor tipado no aparezca y listas vacías cuando no haya evidencia.
 """.strip()
 
 
@@ -146,6 +166,63 @@ def _validated_evidence(
         evidence.start_offset = page_start + exact_pos
         evidence.end_offset = evidence.start_offset + len(evidence.quote)
     return evidence
+
+
+# Ninguna familia declara un tope mayor que este; el default solo cubre que
+# alguien añada una sin `max_length`.
+_DEFAULT_FAMILY_LIMIT = 50
+
+
+def _family_limit(field: FieldInfo) -> int:
+    """Máximo de elementos que ``TenderFactSheet`` acepta en esa familia."""
+    return next(
+        (c.max_length for c in field.metadata if isinstance(c, MaxLen)),
+        _DEFAULT_FAMILY_LIMIT,
+    )
+
+
+def _parse_facts(payload: dict[str, Any]) -> tuple[TenderFactSheet, int]:
+    """Valida la respuesta del LLM hecho a hecho, no todo o nada.
+
+    ``TenderFactSheet.model_validate`` sobre el objeto entero es todo-o-nada:
+    una sola cita más larga de la cuenta, un ``criterion_type`` en español o
+    una fecha que no es ISO —entre trece familias y decenas de elementos—
+    tiraba la ficha completa, se persistía ``failed`` y el usuario veía «Aún no
+    hay una ficha verificable» con el volcado de pydantic debajo. Validando
+    elemento a elemento se pierde solo lo que no encaja.
+
+    El descarte NO es silencioso: cuenta como ``rejected`` igual que una cita
+    inverificable, así que la ficha queda en ``needs_review`` y la UI lo avisa.
+    El tope por familia se respeta aquí porque el modelo lo valida de vuelta al
+    releer la fila persistida, y un exceso rompería la lectura, no la escritura.
+    """
+    facts = TenderFactSheet()
+    dropped = 0
+    # ``extra='forbid'`` del modelo existía para que una clave inesperada no
+    # pasara desapercibida. Validando por familia esa clave ya no rompe nada,
+    # así que la visibilidad se conserva por log en vez de por excepción.
+    if desconocidas := payload.keys() - TenderFactSheet.model_fields.keys():
+        log.warning("fact_sheet_unknown_keys", keys=sorted(desconocidas))
+    for name, field in TenderFactSheet.model_fields.items():
+        items = payload.get(name)
+        if items is None:
+            continue
+        if not isinstance(items, list):
+            dropped += 1
+            continue
+        (item_model,) = get_args(field.annotation)
+        limit = _family_limit(field)
+        kept: list[Any] = []
+        for index, item in enumerate(items):
+            if len(kept) >= limit:
+                dropped += len(items) - index
+                break
+            try:
+                kept.append(item_model.model_validate(item))
+            except ValidationError:
+                dropped += 1
+        setattr(facts, name, kept)
+    return facts, dropped
 
 
 def _validate_fact_evidence(
@@ -337,8 +414,16 @@ def extract_fact_sheet(
                 max_tokens=3500,
             )
         )
-        facts = TenderFactSheet.model_validate(extract_json_object(raw))
-        facts, rejected = _validate_fact_evidence(facts, pages)
+        facts, invalid = _parse_facts(extract_json_object(raw))
+        facts, unverifiable = _validate_fact_evidence(facts, pages)
+        rejected = invalid + unverifiable
+        if rejected:
+            log.info(
+                "fact_sheet_items_rejected",
+                licitacion_id=licitacion_id,
+                invalid=invalid,
+                unverifiable=unverifiable,
+            )
         field_count, evidence_count = _counts(facts)
         status = "needs_review" if rejected else "extracted"
         sheets.upsert(
