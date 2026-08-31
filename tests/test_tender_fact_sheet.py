@@ -9,7 +9,11 @@ import pytest
 
 from db.database import DocumentoReferencia, connect
 from db.repositories.documentos import DocumentosRepository
-from services.rag.fact_sheet import extract_fact_sheet, extract_fact_sheet_on_demand
+from services.rag.fact_sheet import (
+    EXTRACTION_VERSION,
+    extract_fact_sheet,
+    extract_fact_sheet_on_demand,
+)
 
 
 def _seed_pages(licitacion_id: str = "FACT-1", *, texto: str | None = None) -> tuple[int, str]:
@@ -301,7 +305,7 @@ def test_extract_fact_sheet_v3_families_with_valid_evidence(tmp_db):
         record = extract_fact_sheet("FACT-V3-1", model="gpt-4o-mini")
 
     assert record.status == "extracted"
-    assert record.extraction_version == "tender-facts-v3"
+    assert record.extraction_version == EXTRACTION_VERSION
     assert record.facts is not None
     assert [lot.lot_number for lot in record.facts.lots] == ["1"]
     assert record.facts.lots[0].amount_eur == 1200000
@@ -309,6 +313,163 @@ def test_extract_fact_sheet_v3_families_with_valid_evidence(tmp_db):
     assert record.facts.certifications[0].scope == "company"
     # Familias no devueltas por el LLM caen a lista vacía, no a error.
     assert record.facts.award_criteria == []
+
+
+# ── v4: la pregunta cabe en el cliente y los hechos se validan uno a uno ──
+
+
+def test_extraction_question_fits_llm_limit():
+    """``stream_llm_response`` rechaza una ``question`` de más de
+    ``MAX_QUESTION_LEN`` caracteres ANTES de llamar al proveedor.
+
+    Regresión de v3 (lotes/ANS/certificaciones): la pregunta creció hasta 2070
+    caracteres y desde entonces la ficha falló SIEMPRE —botón «Extraer ficha» y
+    cron nocturno por igual— con «La pregunta excede el máximo de 2000
+    caracteres», que la UI enseñaba tal cual al usuario. Ningún test lo vio
+    porque todos mockean ``stream_llm_response``, que es justo la función que
+    valida: este comprueba la constante contra el validador real.
+    """
+    from llm.client import MAX_QUESTION_LEN, _validate_request
+    from services.rag.fact_sheet import _EXTRACTION_QUESTION
+
+    assert len(_EXTRACTION_QUESTION) <= MAX_QUESTION_LEN
+    _validate_request(_EXTRACTION_QUESTION, [], "deepseek-ai/deepseek-v4-flash-0731")
+
+
+class TestPartialPayloadSurvives:
+    """El contrato es estricto a propósito, pero un LLM se desvía de él a
+    menudo; antes de v4 una sola desviación entre trece familias dejaba la
+    ficha en ``failed`` y al usuario con «Aún no hay una ficha verificable»."""
+
+    QUOTE = "criterio precio tendrá una ponderación del 60 por ciento"
+
+    def _evidence(self, documento_id: int) -> list[dict[str, object]]:
+        return [{"documento_id": documento_id, "page_number": 1, "quote": self.QUOTE}]
+
+    def test_invalid_items_are_dropped_and_the_valid_ones_survive(self, tmp_db):
+        _db_mod, _ = tmp_db
+        doc_id, _page_text = _seed_pages("FACT-PARTIAL")
+        evidence = self._evidence(doc_id)
+        payload = json.dumps(
+            {
+                "award_criteria": [
+                    {
+                        "name": "Precio",
+                        "description": "Criterio económico",
+                        "weight_pct": 60,
+                        "criterion_type": "price",
+                        "confidence": 0.95,
+                        "evidence": evidence,
+                    },
+                    # criterion_type traducido: el Literal del modelo lo rechaza.
+                    {
+                        "name": "Calidad",
+                        "description": "Criterio técnico",
+                        "criterion_type": "calidad",
+                        "confidence": 0.8,
+                        "evidence": evidence,
+                    },
+                ],
+                # Fecha en formato español, no ISO.
+                "critical_deadlines": [
+                    {
+                        "name": "Fin de plazo",
+                        "description": "Presentación de ofertas",
+                        "date_value": "15/10/2026",
+                        "confidence": 0.7,
+                        "evidence": evidence,
+                    }
+                ],
+                # Cita por encima del máximo de 600 caracteres de EvidenceRef.
+                "guarantees": [
+                    {
+                        "description": "Garantía definitiva",
+                        "confidence": 0.6,
+                        "evidence": [
+                            {"documento_id": doc_id, "page_number": 1, "quote": "x" * 900}
+                        ],
+                    }
+                ],
+                # Clave que el modelo no conoce: se ignora (y se loguea).
+                "presupuesto_total": [{"description": "1.000.000 EUR"}],
+            }
+        )
+
+        with patch(
+            "services.rag.fact_sheet.stream_llm_response",
+            return_value=iter([payload]),
+        ):
+            record = extract_fact_sheet("FACT-PARTIAL", model="gpt-4o-mini")
+
+        assert record.status == "needs_review"
+        assert record.facts is not None
+        assert [c.name for c in record.facts.award_criteria] == ["Precio"]
+        assert record.facts.critical_deadlines == []
+        assert record.facts.guarantees == []
+        assert record.field_count == 1
+        assert record.evidence_count == 1
+
+    def test_family_over_its_cap_is_trimmed_so_the_row_can_be_read_back(self, tmp_db):
+        """``guarantees`` declara ``max_length=30``. Persistir 35 elementos
+        escribe bien pero rompe la RELECTURA (``TenderFactSheetRecord`` valida
+        el mismo modelo), así que el recorte tiene que pasar antes de guardar.
+        """
+        _db_mod, _ = tmp_db
+        doc_id, _page_text = _seed_pages("FACT-CAP")
+        evidence = self._evidence(doc_id)
+        payload = json.dumps(
+            {
+                "guarantees": [
+                    {
+                        "description": f"Garantía {i}",
+                        "amount_eur": 1000 + i,
+                        "confidence": 0.5,
+                        "evidence": evidence,
+                    }
+                    for i in range(35)
+                ]
+            }
+        )
+
+        with patch(
+            "services.rag.fact_sheet.stream_llm_response",
+            return_value=iter([payload]),
+        ):
+            record = extract_fact_sheet("FACT-CAP", model="gpt-4o-mini")
+
+        assert record.facts is not None
+        assert len(record.facts.guarantees) == 30
+        # Los 5 sobrantes cuentan como descarte, no desaparecen en silencio.
+        assert record.status == "needs_review"
+
+    def test_llm_payload_that_is_not_a_list_per_family_does_not_break(self, tmp_db):
+        _db_mod, _ = tmp_db
+        doc_id, _page_text = _seed_pages("FACT-SHAPE")
+        payload = json.dumps(
+            {
+                "award_criteria": [
+                    {
+                        "name": "Precio",
+                        "description": "Criterio económico",
+                        "criterion_type": "price",
+                        "confidence": 0.9,
+                        "evidence": self._evidence(doc_id),
+                    }
+                ],
+                "guarantees": {"description": "no es una lista"},
+            }
+        )
+
+        with patch(
+            "services.rag.fact_sheet.stream_llm_response",
+            return_value=iter([payload]),
+        ):
+            record = extract_fact_sheet("FACT-SHAPE", model="gpt-4o-mini")
+
+        assert record.status == "needs_review"
+        assert record.facts is not None
+        assert [c.name for c in record.facts.award_criteria] == ["Precio"]
+        assert record.facts.guarantees == []
 
 
 # ── Extracción bajo demanda (botón «Extraer ficha») ────────────────────────
