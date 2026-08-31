@@ -256,6 +256,11 @@ def test_el_resumen_publica_la_fecha_del_ultimo_expediente(client, corpus):
             "UPDATE licitaciones SET fecha_extraccion = %s WHERE id_externo = %s",
             ("2026-08-14T06:00:00+00:00", "R-02"),
         )
+    # Mismo motivo que en el fixture `corpus`: la vista materializada (v94) no
+    # se entera de un UPDATE, así que sin refrescar el endpoint publicaría la
+    # fecha sembrada y el test mediría la vista rancia en vez de estas dos
+    # actualizaciones. En producción lo hace `aggregates_precompute`.
+    refrescar_vista_canonicas()
 
     cuerpo = client.get("/api/v1/publico/sitemap/resumen").json()
 
