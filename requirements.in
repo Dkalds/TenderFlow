@@ -84,7 +84,7 @@ starlette>=1.0.1,<1.4
 uvicorn>=0.30.0,<0.47
 # Backend de rate limiting distribuido (services/rate_limit_redis.py, RATE_LIMIT_BACKEND=redis).
 # Mismo motivo que uvicorn: presente en pyproject.toml pero faltaba aquí.
-redis>=5.0,<6
+redis>=5.0,<9
 # Forecasting — suavizado exponencial (ExponentialSmoothing) para tendencias
 statsmodels>=0.14.0,<1
 # Análisis de redes de proveedores (partners.py)
