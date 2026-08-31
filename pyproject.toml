@@ -35,7 +35,7 @@ dependencies = [
     # Mismo techo que requirements.in: 0.141 rompe todas las rutas
     # (`_IncludedRouter` sin `.path`). El razonamiento largo está allí.
     "fastapi>=0.110.0,<0.137",
-    "redis>=5.0,<6",
+    "redis>=5.0,<9",
     "cachetools>=5.3.0,<8",
     "brotli-asgi>=1.4.0,<2",
     # F3: Postgres/Supabase (ADR-016). Optional: solo se activa cuando DATABASE_URL
