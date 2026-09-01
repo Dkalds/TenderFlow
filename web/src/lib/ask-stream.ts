@@ -36,7 +36,20 @@ export interface DegradedInfo {
 export interface ResumenMeta {
   has_pliego_text: boolean;
   truncated: boolean;
+  /** True cuando el resumen se sirvió del caché del servidor (sin llamada LLM). */
+  cached?: boolean;
   documentos: { tipo: string | null; filename: string | null; status: string | null }[];
+}
+
+/**
+ * Ámbito EFECTIVO de la respuesta. Si se pidió `id_externo` pero el backend no
+ * pudo cargar el contexto de esa licitación, degrada al corpus general y aquí
+ * llega `contexto: "general"` — la UI debe avisarlo en vez de presentar la
+ * respuesta como si fuera del expediente.
+ */
+export interface AskMeta {
+  contexto: "licitacion" | "general";
+  id_externo?: string | null;
 }
 
 export interface AskStreamResult {
@@ -44,6 +57,7 @@ export interface AskStreamResult {
   fuentes: FuenteDocumento[];
   degraded: DegradedInfo | null;
   resumenMeta: ResumenMeta | null;
+  askMeta: AskMeta | null;
 }
 
 interface StreamCallbacks {
@@ -52,6 +66,7 @@ interface StreamCallbacks {
   onFuentes?: (fuentes: FuenteDocumento[]) => void;
   onDegraded?: (info: DegradedInfo) => void;
   onResumenMeta?: (meta: ResumenMeta) => void;
+  onAskMeta?: (meta: AskMeta) => void;
 }
 
 export interface AskParams extends StreamCallbacks {
@@ -70,12 +85,20 @@ export interface AskParams extends StreamCallbacks {
 export interface ResumenParams extends StreamCallbacks {
   idExterno: string;
   model?: string;
+  /** Regenerate ignoring the server-side cache (the "Regenerar" button). */
+  force?: boolean;
   signal?: AbortSignal;
 }
 
 /** Parse the SSE body (or plain-JSON fallback) dispatching every known event. */
 async function consumeStream(res: Response, cb: StreamCallbacks): Promise<AskStreamResult> {
-  const result: AskStreamResult = { answer: "", fuentes: [], degraded: null, resumenMeta: null };
+  const result: AskStreamResult = {
+    answer: "",
+    fuentes: [],
+    degraded: null,
+    resumenMeta: null,
+    askMeta: null,
+  };
 
   const handleParsed = (parsed: Record<string, unknown>): void => {
     if (typeof parsed.text === "string" && parsed.text) {
@@ -93,6 +116,9 @@ async function consumeStream(res: Response, cb: StreamCallbacks): Promise<AskStr
     } else if (parsed.resumen_meta && typeof parsed.resumen_meta === "object") {
       result.resumenMeta = parsed.resumen_meta as ResumenMeta;
       cb.onResumenMeta?.(result.resumenMeta);
+    } else if (parsed.ask_meta && typeof parsed.ask_meta === "object") {
+      result.askMeta = parsed.ask_meta as AskMeta;
+      cb.onAskMeta?.(result.askMeta);
     }
   };
 
@@ -191,12 +217,14 @@ export async function streamAsk({
 }
 
 /**
- * Generate the on-the-fly AI summary of one licitación (streaming, no cache).
- * The first SSE event is `resumen_meta` (pliego availability + document list).
+ * Generate (or serve cached) the AI summary of one licitación, streaming.
+ * The first SSE event is `resumen_meta` (pliego availability + document list +
+ * `cached`). Pass `force: true` to regenerate ignoring the server cache.
  */
 export async function streamResumen({
   idExterno,
   model,
+  force,
   signal,
   ...callbacks
 }: ResumenParams): Promise<AskStreamResult> {
@@ -208,7 +236,7 @@ export async function streamResumen({
       "Content-Type": "application/json",
       ...(csrf ? { "X-CSRF-Token": csrf } : {}),
     },
-    body: JSON.stringify({ model: model || undefined }),
+    body: JSON.stringify({ model: model || undefined, force: force || undefined }),
     signal,
   });
   if (!res.ok) {

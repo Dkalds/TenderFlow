@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ChatThread } from "@/components/chat-thread";
+import { ChatThread, FeedbackButtons } from "@/components/chat-thread";
 import { MarkdownAnswer } from "@/components/markdown-answer";
 import { useChat } from "@/hooks/use-ask";
 import { streamResumen, type ResumenMeta } from "@/lib/ask-stream";
@@ -26,9 +26,10 @@ const STATUS_LABELS: Record<string, string> = {
 };
 
 /**
- * Sección "Asistente IA" del detalle de una licitación: resumen ejecutivo
- * generado al vuelo (streaming, sin caché) y chat contextualizado en el
- * expediente y el contenido de sus pliegos.
+ * Sección "Asistente IA" del detalle de una licitación: resumen ejecutivo en
+ * streaming (cacheado en servidor por estado de documentos; «Regenerar» lo
+ * fuerza) y chat contextualizado en el expediente y el contenido de sus
+ * pliegos, con feedback de utilidad por respuesta.
  */
 export function LicitacionAI({ idExterno, askSignal = 0 }: LicitacionAIProps) {
   const [tab, setTab] = React.useState("resumen");
@@ -43,34 +44,38 @@ export function LicitacionAI({ idExterno, askSignal = 0 }: LicitacionAIProps) {
 
   React.useEffect(() => () => abortRef.current?.abort(), []);
 
-  const generarResumen = React.useCallback(async () => {
-    abortRef.current?.abort();
-    const abort = new AbortController();
-    abortRef.current = abort;
+  const generarResumen = React.useCallback(
+    async (force = false) => {
+      abortRef.current?.abort();
+      const abort = new AbortController();
+      abortRef.current = abort;
 
-    setResumenLoading(true);
-    setResumenError(null);
-    setResumenDegraded(false);
-    setResumen("");
-    setMeta(null);
+      setResumenLoading(true);
+      setResumenError(null);
+      setResumenDegraded(false);
+      setResumen("");
+      setMeta(null);
 
-    try {
-      const result = await streamResumen({
-        idExterno,
-        signal: abort.signal,
-        onToken: setResumen,
-        onResumenMeta: setMeta,
-        onDegraded: () => setResumenDegraded(true),
-      });
-      if (!result.answer && result.degraded) setResumen(null);
-    } catch (err) {
-      if (err instanceof DOMException && err.name === "AbortError") return;
-      setResumenError(err instanceof Error ? err.message : "Error desconocido");
-      setResumen(null);
-    } finally {
-      if (abortRef.current === abort) setResumenLoading(false);
-    }
-  }, [idExterno]);
+      try {
+        const result = await streamResumen({
+          idExterno,
+          force,
+          signal: abort.signal,
+          onToken: setResumen,
+          onResumenMeta: setMeta,
+          onDegraded: () => setResumenDegraded(true),
+        });
+        if (!result.answer && result.degraded) setResumen(null);
+      } catch (err) {
+        if (err instanceof DOMException && err.name === "AbortError") return;
+        setResumenError(err instanceof Error ? err.message : "Error desconocido");
+        setResumen(null);
+      } finally {
+        if (abortRef.current === abort) setResumenLoading(false);
+      }
+    },
+    [idExterno],
+  );
 
   // ── Chat contextualizado ────────────────────────────────────────────────
   const chat = useChat({ idExterno });
@@ -119,7 +124,7 @@ export function LicitacionAI({ idExterno, askSignal = 0 }: LicitacionAIProps) {
               <p className="text-muted-foreground text-sm">
                 Genera un resumen de la oportunidad y de sus pliegos con IA.
               </p>
-              <Button size="sm" onClick={generarResumen} className="gap-1.5">
+              <Button size="sm" onClick={() => void generarResumen()} className="gap-1.5">
                 <Sparkles className="h-3.5 w-3.5" />
                 Generar resumen
               </Button>
@@ -176,11 +181,28 @@ export function LicitacionAI({ idExterno, askSignal = 0 }: LicitacionAIProps) {
             </div>
           ) : null}
 
+          {resumen != null && resumen !== "" && !resumenLoading && !resumenDegraded && (
+            <FeedbackButtons modo="resumen" />
+          )}
+
           {resumen != null && !resumenLoading && (
-            <Button variant="ghost" size="sm" className="mt-2 gap-1.5" onClick={generarResumen}>
-              <RefreshCw className="h-3.5 w-3.5" />
-              Regenerar
-            </Button>
+            <div className="mt-2 flex items-center gap-2">
+              {/* Regenerar fuerza al proveedor: el hit de caché ya se sirvió. */}
+              <Button
+                variant="ghost"
+                size="sm"
+                className="gap-1.5"
+                onClick={() => void generarResumen(true)}
+              >
+                <RefreshCw className="h-3.5 w-3.5" />
+                Regenerar
+              </Button>
+              {meta?.cached && (
+                <span className="text-muted-foreground text-[11px]">
+                  Resumen guardado de una generación anterior.
+                </span>
+              )}
+            </div>
           )}
         </TabsContent>
 
@@ -192,7 +214,13 @@ export function LicitacionAI({ idExterno, askSignal = 0 }: LicitacionAIProps) {
             </p>
           )}
 
-          <ChatThread messages={chat.messages} streaming={chat.streaming} loading={chat.loading} error={chat.error} />
+          <ChatThread
+            messages={chat.messages}
+            streaming={chat.streaming}
+            loading={chat.loading}
+            error={chat.error}
+            expectLicitacionContext
+          />
 
           <div className="flex items-center gap-2">
             <Input

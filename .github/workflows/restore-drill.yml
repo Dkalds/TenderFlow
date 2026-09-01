@@ -12,6 +12,7 @@ on:
 
 permissions:
   contents: read
+  actions: read # descarga el artefacto del último backup cuando no hay S3
   id-token: write # credenciales temporales OIDC para el bucket de backup
 
 jobs:
@@ -21,6 +22,7 @@ jobs:
     timeout-minutes: 15
     env:
       AWS_ROLE_TO_ASSUME: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+      BACKUP_S3_BUCKET: ${{ secrets.BACKUP_S3_BUCKET }}
     services:
       postgres:
         # postgres:16 amd64 digest, refreshed by the dependency-update workflow.
@@ -56,11 +58,15 @@ jobs:
           BACKUP_ENCRYPTION_KEY: ${{ secrets.BACKUP_ENCRYPTION_KEY }}
         run: |
           set -eu
-          : "${AWS_ROLE_TO_ASSUME:?AWS_ROLE_TO_ASSUME es obligatorio para el restore drill}"
-          : "${BACKUP_S3_BUCKET:?BACKUP_S3_BUCKET es obligatorio para el restore drill}"
           : "${BACKUP_ENCRYPTION_KEY:?BACKUP_ENCRYPTION_KEY es obligatorio para el restore drill}"
+          if [ -n "${AWS_ROLE_TO_ASSUME:-}" ] && [ -z "${BACKUP_S3_BUCKET:-}" ] || \
+             [ -z "${AWS_ROLE_TO_ASSUME:-}" ] && [ -n "${BACKUP_S3_BUCKET:-}" ]; then
+            echo "::error::AWS_ROLE_TO_ASSUME y BACKUP_S3_BUCKET deben configurarse juntos"
+            exit 1
+          fi
 
       - name: Configure temporary AWS credentials
+        if: ${{ env.AWS_ROLE_TO_ASSUME != '' && env.BACKUP_S3_BUCKET != '' }}
         uses: aws-actions/configure-aws-credentials@cabfdba3510de1431bac9dba27511d97497fc100 # v5
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
@@ -73,15 +79,12 @@ jobs:
           BACKUP_S3_PREFIX: ${{ secrets.BACKUP_S3_PREFIX || 'backups/' }}
           BACKUP_ENCRYPTION_KEY: ${{ secrets.BACKUP_ENCRYPTION_KEY }}
           AWS_ENDPOINT_URL: ${{ secrets.AWS_ENDPOINT_URL }}
+          GH_TOKEN: ${{ github.token }}
         run: |
-          if [ -z "$BACKUP_S3_BUCKET" ]; then
-            echo "::warning::BACKUP_S3_BUCKET no configurado — drill omitido."
-            exit 1
-          fi
-          : "${AWS_ROLE_TO_ASSUME:?AWS_ROLE_TO_ASSUME es obligatorio para el restore drill}"
           : "${BACKUP_ENCRYPTION_KEY:?BACKUP_ENCRYPTION_KEY es obligatorio para el restore drill}"
           mkdir -p data/backups
-          python - <<'EOF'
+          if [ -n "${BACKUP_S3_BUCKET:-}" ]; then
+            python - <<'EOF'
           import os
           import sys
 
@@ -106,6 +109,14 @@ jobs:
           s3.download_file(bucket, latest["Key"], dest)
           print(f"Descargado: {latest['Key']} -> {dest}")
           EOF
+          else
+            RUN_ID=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow backup.yml \
+              --status success --limit 1 --json databaseId --jq '.[0].databaseId')
+            test -n "$RUN_ID"
+            gh run download "$RUN_ID" --repo "$GITHUB_REPOSITORY" \
+              --name "db-backup-${RUN_ID}" --dir data/backups
+            echo "Descargado artefacto cifrado del run ${RUN_ID}"
+          fi
           ENCRYPTED=$(find data/backups -maxdepth 1 -type f -name '*.gpg' -print -quit)
           test -n "$ENCRYPTED"
           printf '%s' "$BACKUP_ENCRYPTION_KEY" | gpg --batch --yes --pinentry-mode loopback --passphrase-fd 0 \

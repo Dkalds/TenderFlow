@@ -32,6 +32,50 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # `ci.yml` audita `requirements.txt`, pero los extras `pliegos` y
+  # `ml-embeddings` no salen de ningún lockfile: se resuelven en cada pasada y
+  # hasta ahora no los miraba nadie. Aquí es donde importan, porque el job
+  # `pliegos` los instala con la DATABASE_URL de producción y las claves de
+  # OpenAI/Anthropic/NVIDIA en el entorno.
+  #
+  # Va en un job **aparte y sin secretos**, no como paso previo dentro de
+  # `pliegos`, y la razón es la disciplina que `scrape-daily.yml` ya deja
+  # escrita: lo auxiliar no debe poder tumbar el camino de datos. Un escáner
+  # que falla porque OSV publicó un aviso de `torch` a las 08:00 no puede
+  # dejar sin drenar el backlog de ~44k documentos a las 09:00 — y menos sin
+  # que nadie se entere, porque `scheduler/healthcheck.py` no cubre esta
+  # tubería. Como job independiente el hallazgo se ve (el workflow queda en
+  # rojo) sin bloquear la ingesta, y tampoco se ejecuta nada vulnerable con
+  # credenciales de producción, que es lo que pasaría con `continue-on-error`.
+  audit-extras:
+    name: Audit de los extras sin lockfile
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install -e ".[pliegos,ml-embeddings]"
+
+      # Sin `-r`: audita el entorno ya resuelto, que es justo lo que los
+      # lockfiles no alcanzan.
+      - name: Audit del entorno resuelto
+        run: |
+          pip install pip-audit
+          pip-audit \
+            --ignore-vuln PYSEC-2024-277 \
+            --ignore-vuln PYSEC-2026-161
+
   pliegos:
     runs-on: ubuntu-latest
     # El lote diario subió de 50 a 300 (PLIEGO_FETCH_BATCH) para drenar el

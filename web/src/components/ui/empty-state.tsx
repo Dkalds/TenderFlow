@@ -14,7 +14,7 @@ export interface EmptyStateProps {
 export function EmptyState({
   icon: Icon = Inbox,
   title = "Sin datos",
-  hint = "Ajusta los filtros o el rango de fechas para ver resultados.",
+  hint = "No hay información disponible para el ámbito actual.",
   actionLabel,
   onAction,
   className,

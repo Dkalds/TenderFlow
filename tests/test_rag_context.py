@@ -167,3 +167,87 @@ def test_primary_doc_from_context_shape(repo):
     assert doc["descripcion"] == "Descripción del anuncio"
     assert doc["_score"] == 2.0
     assert [c["texto"] for c in doc["chunks"]] == ["requisitos del pliego"]
+
+
+# ---------------------------------------------------------------------------
+# Camino pgvector (unit: sin BD — repo falso + embeddings parcheados)
+# ---------------------------------------------------------------------------
+
+
+class _FakeRepo:
+    def __init__(self, rows):
+        self.rows = rows
+        self.calls: list[tuple[str, int]] = []
+
+    def search_chunks_by_embedding(self, licitacion_id, embedding, *, limit):
+        self.calls.append((licitacion_id, limit))
+        return self.rows
+
+
+def _patch_embeddings(monkeypatch, *, available: bool = True):
+    import numpy as np
+
+    import services.embeddings as emb
+
+    monkeypatch.setattr(emb, "embeddings_available", lambda: available)
+    monkeypatch.setattr(emb, "encode_texts", lambda texts: np.asarray([[0.1] * 4]))
+
+
+def test_pgvector_selection_orders_documentally_and_respects_budget(monkeypatch):
+    from services.rag.context import _select_chunks_pgvector
+
+    _patch_embeddings(monkeypatch)
+    rows = [
+        {"documento_id": 2, "chunk_index": 0, "texto": "solvencia técnica ISO", "score": 0.9},
+        {"documento_id": 1, "chunk_index": 3, "texto": "criterios de adjudicación", "score": 0.8},
+        {"documento_id": 1, "chunk_index": 0, "texto": "objeto del contrato", "score": 0.1},
+    ]
+    repo = _FakeRepo(rows)
+
+    result = _select_chunks_pgvector(repo, "EXP-PGV", "¿solvencia?", max_chars=10_000, max_chunks=2)
+
+    assert result is not None
+    selected, truncated = result
+    # Entran los 2 mejores por score; el orden final es documental.
+    assert [(c["documento_id"], c["chunk_index"]) for c in selected] == [(1, 3), (2, 0)]
+    assert truncated is True
+    assert repo.calls == [("EXP-PGV", 24)]
+
+
+def test_pgvector_selection_returns_none_without_engine(monkeypatch):
+    from services.rag.context import _select_chunks_pgvector
+
+    _patch_embeddings(monkeypatch, available=False)
+    repo = _FakeRepo([{"documento_id": 1, "chunk_index": 0, "texto": "x", "score": 1.0}])
+
+    assert _select_chunks_pgvector(repo, "EXP-PGV", "¿?", max_chars=1000, max_chunks=2) is None
+    assert repo.calls == []  # ni siquiera consulta la BD
+
+
+def test_pgvector_selection_returns_none_on_query_error(monkeypatch):
+    """Un fallo de la query ANN (p.ej. dimensión de vector distinta tras cambiar
+    el modelo de embeddings) degrada al camino Python, no rompe el contexto."""
+    from services.rag.context import _select_chunks_pgvector
+
+    _patch_embeddings(monkeypatch)
+
+    class _BrokenRepo:
+        def search_chunks_by_embedding(self, *args, **kwargs):
+            raise RuntimeError("different vector dimensions")
+
+    assert (
+        _select_chunks_pgvector(_BrokenRepo(), "EXP-PGV", "¿?", max_chars=1000, max_chunks=2)
+        is None
+    )
+
+
+def test_pgvector_selection_returns_none_without_rows(monkeypatch):
+    """Sin embeddings persistidos para la licitación, el fallback en Python aún
+    puede chunkear al vuelo: ``None``, no ``([], …)``."""
+    from services.rag.context import _select_chunks_pgvector
+
+    _patch_embeddings(monkeypatch)
+    assert (
+        _select_chunks_pgvector(_FakeRepo([]), "EXP-PGV", "¿?", max_chars=1000, max_chunks=2)
+        is None
+    )

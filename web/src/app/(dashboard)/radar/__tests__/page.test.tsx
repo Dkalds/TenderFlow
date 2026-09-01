@@ -62,6 +62,7 @@ const SIGNALS_SANAS: ScoringSignals = {
   margen: "ok",
   percentiles_fuente: "universo_vivo",
   afinidad_metodo: "keyword_cpv_fallback",
+  perfil: "ok",
   senal_tecnica: "ok",
 };
 

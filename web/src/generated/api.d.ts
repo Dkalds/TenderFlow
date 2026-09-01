@@ -41,6 +41,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/solicitudes-acceso/grants": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Listar Grants */
+        get: operations["listar_grants_api_v1_admin_solicitudes_acceso_grants_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/solicitudes-acceso/grants/{grant_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Revocar Grant */
+        delete: operations["revocar_grant_api_v1_admin_solicitudes_acceso_grants__grant_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/solicitudes-acceso/{solicitud_id}": {
         parameters: {
             query?: never;
@@ -290,12 +324,10 @@ export interface paths {
          *     así que ``total_organos``, ``importe_total`` y ``concentracion_top10``
          *     miden el ámbito pedido y no la tabla entera.
          *
-         *     ``q`` es la excepción y sigue significando lo de siempre: busca **el nombre
-         *     del órgano**, no el título de la licitación como en el resto del producto.
-         *     El cliente manda ahí el ``q`` del ámbito global, así que una búsqueda de
-         *     ámbito acota este ranking por nombre de órgano y no por licitación. Es una
-         *     incoherencia anterior a este cambio y no se toca aquí: renombrar el
-         *     parámetro rompería los deep-links ``/organos?q=<órgano>``.
+         *     ``q`` aplica la misma búsqueda global por título/órgano/expediente que el
+         *     resto del producto. ``organo_q`` filtra el nombre del órgano dentro de ese
+         *     universo. Los deep-links históricos ``?q=<órgano>`` siguen encontrándolo
+         *     porque el órgano forma parte de la búsqueda global.
          */
         get: operations["organos_api_v1_analytics_organos_get"];
         put?: never;
@@ -875,6 +907,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/auth/password-reset/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Confirm Password Reset
+         * @description Consume un token una sola vez, cambia la contraseña y revoca sesiones.
+         */
+        post: operations["confirm_password_reset_api_v1_auth_password_reset_confirm_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/password-reset/request": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Request Password Reset
+         * @description Emite una respuesta indistinguible exista o no la cuenta.
+         */
+        post: operations["request_password_reset_api_v1_auth_password_reset_request_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/auth/register": {
         parameters: {
             query?: never;
@@ -1309,8 +1381,7 @@ export interface paths {
          *
          *        El job vive en un dict **de proceso** con los bytes del PDF en memoria.
          *        Eso sólo funciona con una única instancia que además no se reinicie:
-         *        cualquier deploy o reinicio de la instancia (el plan de pago de Render
-         *        ya no hiberna por inactividad, pero sí recicla en cada release) hace
+         *     cualquier hibernación, deploy o reinicio de la instancia hace
          *        desaparecer un job aceptado con 202 y el sondeo devuelve 404 sin que
          *        nada lo registre como fallo; y al escalar a dos instancias el poll cae
          *        en la equivocada y responde 404 o 403 de forma no determinista.
@@ -1800,6 +1871,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/licitaciones/{id_externo}/ficha-pliego/estado": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * ¿Hay una extracción de ficha en curso?
+         * @description Estado efímero del BackgroundTask de extracción (para el polling de la
+         *     UI). El resultado en sí se lee de ``…/ficha-pliego``.
+         */
+        get: operations["get_tender_fact_sheet_state_api_v1_licitaciones__id_externo__ficha_pliego_estado_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/licitaciones/{id_externo}/ficha-pliego/extract": {
         parameters: {
             query?: never;
@@ -1823,6 +1915,33 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/licitaciones/{id_externo}/ficha-pliego/extract-async": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Lanzar la extracción de la ficha en background
+         * @description Variante asíncrona de ``…/ficha-pliego/extract`` para la UI.
+         *
+         *     El camino síncrono descarga hasta 8 PDFs y llama al LLM dentro de la
+         *     request — minutos de spinner con la conexión abierta. Aquí la request
+         *     devuelve 202 al instante y el trabajo corre como BackgroundTask; el
+         *     cliente hace polling de ``…/ficha-pliego/estado`` y relee la ficha al
+         *     terminar. Idempotente: con una extracción ya en curso responde 202 sin
+         *     lanzar otra.
+         */
+        post: operations["extract_tender_fact_sheet_async_api_v1_licitaciones__id_externo__ficha_pliego_extract_async_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/licitaciones/{id_externo}/resumen": {
         parameters: {
             query?: never;
@@ -1834,13 +1953,18 @@ export interface paths {
         put?: never;
         /**
          * Resumen IA de una licitación (oportunidad + pliegos)
-         * @description Genera al vuelo un resumen ejecutivo de la licitación (sin caché).
+         * @description Genera (o sirve cacheado) el resumen ejecutivo de la licitación.
          *
          *     Secciones: qué se licita, órgano y contexto, importe y plazos, requisitos
          *     clave del pliego, y riesgos/avisos. El primer evento SSE es
-         *     ``resumen_meta`` con ``has_pliego_text`` y el estado de los documentos —
-         *     si no hay texto de pliegos procesado, el resumen se basa solo en los
-         *     metadatos del anuncio y lo indica.
+         *     ``resumen_meta`` con ``has_pliego_text``, ``cached`` y el estado de los
+         *     documentos — si no hay texto de pliegos procesado, el resumen se basa solo
+         *     en los metadatos del anuncio y lo indica. Si existe una ficha estructurada
+         *     verificada, sus hechos entran como contexto priorizado.
+         *
+         *     El resumen generado se cachea con una firma del estado (documentos +
+         *     ficha + metadatos): mismo estado → misma respuesta sin coste LLM.
+         *     ``force=true`` regenera ignorando el caché.
          *
          *     Requiere scope ``ask:read`` (API key) o sesión activa (cookie).
          */
@@ -2984,6 +3108,34 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** AccessGrantOut */
+        AccessGrantOut: {
+            /** Active */
+            active: boolean;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Granted By */
+            granted_by?: number | null;
+            /** Id */
+            id: number;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "email" | "domain";
+            /** Revoked At */
+            revoked_at?: string | null;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Value */
+            value: string;
+        };
         /** AdjudicacionSummary */
         AdjudicacionSummary: {
             /** Ccaa */
@@ -3328,6 +3480,8 @@ export interface components {
          *     que significa "se pidió y no salió".
          */
         CambioEstadoOut: {
+            /** Grant Id */
+            grant_id?: number | null;
             /** Notificado */
             notificado?: boolean | null;
             /**
@@ -4308,6 +4462,8 @@ export interface components {
         };
         /** EstadoBody */
         EstadoBody: {
+            /** Conceder */
+            conceder?: ("email" | "domain") | null;
             /** Estado */
             estado: string;
             /**
@@ -4454,6 +4610,16 @@ export interface components {
             description: string;
             /** Evidence */
             evidence?: components["schemas"]["EvidenceRef"][];
+        };
+        /**
+         * FactSheetExtractionState
+         * @description Estado del proceso de extracción de la ficha (no del dato persistido).
+         */
+        FactSheetExtractionState: {
+            /** Licitacion Id */
+            licitacion_id: string;
+            /** Running */
+            running: boolean;
         };
         /**
          * FeedbackQueueItem
@@ -5607,6 +5773,21 @@ export interface components {
             /** Total */
             total: number;
         };
+        /** PasswordResetConfirm */
+        PasswordResetConfirm: {
+            /** Password */
+            password: string;
+            /** Token */
+            token: string;
+        };
+        /** PasswordResetRequest */
+        PasswordResetRequest: {
+            /**
+             * Email
+             * Format: email
+             */
+            email: string;
+        };
         /** PeriodDeltas */
         PeriodDeltas: {
             /**
@@ -6543,6 +6724,12 @@ export interface components {
          */
         ResumenRequest: {
             /**
+             * Force
+             * @description Ignora el resumen cacheado y regenera con el proveedor LLM.
+             * @default false
+             */
+            force: boolean;
+            /**
              * Model
              * @description Modelo LLM a usar. Ver /api/v1/ask/models para modelos disponibles.
              * @default deepseek-ai/deepseek-v4-flash-0731
@@ -6805,6 +6992,12 @@ export interface components {
              * @description universo_vivo | global | lote_local | sin_datos
              */
             percentiles_fuente: string;
+            /**
+             * Perfil
+             * @description ok | error
+             * @default ok
+             */
+            perfil: string;
             /**
              * Senal Tecnica
              * @description ok | error
@@ -7791,6 +7984,11 @@ export interface components {
             importe_max?: number | null;
             /** Importe Min */
             importe_min?: number | null;
+            /**
+             * Inherited
+             * @default false
+             */
+            inherited: boolean;
             /** Organization Id */
             organization_id?: number | null;
             /** Updated At */
@@ -8338,6 +8536,76 @@ export interface operations {
             };
         };
     };
+    listar_grants_api_v1_admin_solicitudes_acceso_grants_get: {
+        parameters: {
+            query?: {
+                include_inactive?: boolean;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccessGrantOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    revocar_grant_api_v1_admin_solicitudes_acceso_grants__grant_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                grant_id: number;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccessGrantOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     cambiar_estado_api_v1_admin_solicitudes_acceso__solicitud_id__patch: {
         parameters: {
             query?: never;
@@ -8540,7 +8808,9 @@ export interface operations {
                 /** @description Filter by CCAA */
                 ccaa?: string | null;
             };
-            header?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
             path?: never;
             cookie?: {
                 session?: string | null;
@@ -8584,7 +8854,9 @@ export interface operations {
                 /** @description Filter by tecnologia */
                 tecnologia?: string | null;
             };
-            header?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
             path?: never;
             cookie?: {
                 session?: string | null;
@@ -8630,7 +8902,9 @@ export interface operations {
                 /** @description Max competitors to return */
                 limit?: number;
             };
-            header?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
             path?: never;
             cookie?: {
                 session?: string | null;
@@ -8676,7 +8950,9 @@ export interface operations {
                 /** @description Filter by tecnologia */
                 tecnologia?: string | null;
             };
-            header?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
             path?: never;
             cookie?: {
                 session?: string | null;
@@ -8720,7 +8996,9 @@ export interface operations {
                 /** @description Filter by tecnologia */
                 tecnologia?: string | null;
             };
-            header?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
             path?: never;
             cookie?: {
                 session?: string | null;
@@ -8758,7 +9036,9 @@ export interface operations {
                 /** @description Filter by tecnologia */
                 tecnologia?: string | null;
             };
-            header?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
             path?: never;
             cookie?: {
                 session?: string | null;
@@ -8803,12 +9083,16 @@ export interface operations {
                 importe_min?: number | null;
                 /** @description Solo licitaciones que siguen abiertas (no terminales) */
                 solo_abiertas?: boolean;
-                /** @description Search organo name (accent/case-insensitive substring) */
+                /** @description Búsqueda global por título, órgano o expediente */
                 q?: string | null;
+                /** @description Filtro local por nombre de órgano (sin distinguir tildes) */
+                organo_q?: string | null;
                 /** @description Max organos to return */
                 limit?: number;
             };
-            header?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
             path?: never;
             cookie?: {
                 session?: string | null;
@@ -8854,7 +9138,9 @@ export interface operations {
                 /** @description Solo licitaciones que siguen abiertas (no terminales) */
                 solo_abiertas?: boolean;
             };
-            header?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
             path: {
                 organo: string;
             };
@@ -8902,7 +9188,9 @@ export interface operations {
                 /** @description Min tender budget (EUR) */
                 importe_min?: number | null;
             };
-            header?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
             path?: never;
             cookie?: {
                 session?: string | null;
@@ -8952,7 +9240,9 @@ export interface operations {
                 /** @description Min tender budget (EUR) */
                 importe_min?: number | null;
             };
-            header?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
             path?: never;
             cookie?: {
                 session?: string | null;
@@ -8990,7 +9280,9 @@ export interface operations {
                 /** @description Filter by tecnologia */
                 tecnologia?: string | null;
             };
-            header?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
             path?: never;
             cookie?: {
                 session?: string | null;
@@ -9021,7 +9313,9 @@ export interface operations {
     quality_api_v1_analytics_quality_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
             path?: never;
             cookie?: {
                 session?: string | null;
@@ -9061,7 +9355,9 @@ export interface operations {
                 /** @description Filter by tecnologia */
                 tecnologia?: string | null;
             };
-            header?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
             path?: never;
             cookie?: {
                 session?: string | null;
@@ -9092,7 +9388,9 @@ export interface operations {
     resumen_novedades_api_v1_analytics_resumen_novedades_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
             path?: never;
             cookie?: {
                 session?: string | null;
@@ -9132,7 +9430,9 @@ export interface operations {
                 /** @description Filter by tecnologia */
                 tecnologia?: string | null;
             };
-            header?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
             path?: never;
             cookie?: {
                 session?: string | null;
@@ -9174,7 +9474,9 @@ export interface operations {
                 /** @description Reparte las filas por toda la ventana (muestra sistemática) en vez de devolver las más recientes. Lo pide la nube de puntos del Resumen: sin esto, las 1.000 más recientes de una ventana de 30 días son 48 horas de datos. La tabla de últimas publicaciones necesita el orden contrario, así que el reparto es opt-in. */
                 muestra?: boolean;
             };
-            header?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
             path?: never;
             cookie?: {
                 session?: string | null;
@@ -9216,7 +9518,9 @@ export interface operations {
                 /** @description Number of top licitaciones */
                 n?: number;
             };
-            header?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
             path?: never;
             cookie?: {
                 session?: string | null;
@@ -9259,8 +9563,12 @@ export interface operations {
                 ids?: string | null;
                 /** @description Excluye del ranking las senales que el usuario descarto, antes de ordenar y cortar. Se ignora en modo ids. */
                 exclude_dismissed?: boolean;
+                /** @description Organización activa; por defecto la personal del usuario. */
+                organization_id?: number | null;
             };
-            header?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
             path?: never;
             cookie?: {
                 session?: string | null;
@@ -9291,7 +9599,9 @@ export interface operations {
     source_freshness_api_v1_analytics_source_freshness_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
             path?: never;
             cookie?: {
                 session?: string | null;
@@ -9329,7 +9639,9 @@ export interface operations {
                 /** @description Filter by CCAA */
                 ccaa?: string | null;
             };
-            header?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
             path?: never;
             cookie?: {
                 session?: string | null;
@@ -9371,7 +9683,9 @@ export interface operations {
                 /** @description Max tenders to return */
                 limit?: number;
             };
-            header?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
             path?: never;
             cookie?: {
                 session?: string | null;
@@ -9413,7 +9727,9 @@ export interface operations {
                 /** @description Frecuencia del roll-up de la serie: month (default), week o day. Es el mando que acota `series`, que escala con la LONGITUD DEL RANGO DE FECHAS y no con el número de licitaciones (day ≈ 1 punto/día, o sea ~3.650 puntos en 10 años; week ~1/7; month ~1/30). La respuesta declara en `group_by` la granularidad usada y en `serie_truncada` si se alcanzó el techo de 4000 puntos. */
                 group_by?: "month" | "week" | "day";
             };
-            header?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
             path?: never;
             cookie?: {
                 session?: string | null;
@@ -9457,7 +9773,9 @@ export interface operations {
                 /** @description Top N CPVs. Acota el número de series, no la longitud de cada una: el tamaño total es `top_n` x meses del rango. */
                 top_n?: number;
             };
-            header?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
             path?: never;
             cookie?: {
                 session?: string | null;
@@ -9495,7 +9813,9 @@ export interface operations {
                 /** @description Filter by CCAA */
                 ccaa?: string | null;
             };
-            header?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
             path?: never;
             cookie?: {
                 session?: string | null;
@@ -9803,6 +10123,72 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    confirm_password_reset_api_v1_auth_password_reset_confirm_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PasswordResetConfirm"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StatusOk"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    request_password_reset_api_v1_auth_password_reset_request_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PasswordResetRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DetailMessage"];
                 };
             };
             /** @description Validation Error */
@@ -10745,7 +11131,9 @@ export interface operations {
                 fecha_hasta?: string | null;
                 limit?: number;
             };
-            header?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
             path?: never;
             cookie?: {
                 session?: string | null;
@@ -11574,6 +11962,48 @@ export interface operations {
             };
         };
     };
+    get_tender_fact_sheet_state_api_v1_licitaciones__id_externo__ficha_pliego_estado_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                id_externo: string;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FactSheetExtractionState"];
+                };
+            };
+            /** @description Autenticación inválida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     extract_tender_fact_sheet_api_v1_licitaciones__id_externo__ficha_pliego_extract_post: {
         parameters: {
             query?: never;
@@ -11618,6 +12048,48 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    extract_tender_fact_sheet_async_api_v1_licitaciones__id_externo__ficha_pliego_extract_async_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                id_externo: string;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Extracción lanzada (o ya en curso) */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FactSheetExtractionState"];
+                };
+            };
+            /** @description Autenticación inválida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
             };
         };
     };

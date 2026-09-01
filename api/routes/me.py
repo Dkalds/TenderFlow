@@ -52,6 +52,7 @@ from services.gdpr import (
     revoke_all_api_keys_for_user,
     set_key_expiry,
 )
+from shared.cache import invalidate_organization_scoped, invalidate_user_scoped
 from shared.dto import SessionsRevoked, StatusMessage, StatusOk
 from shared.scoring_weights import validate_scoring_weights
 
@@ -87,6 +88,13 @@ def _user_key(ctx: dict[str, Any]) -> str:
     práctica pero podía divergir silenciosamente si algún día lo hiciera.
     """
     return str(ctx["user_key"])
+
+
+def _invalidate_profile_scoring(user_key: str, *organization_ids: int | None) -> None:
+    """Invalida el ranking propio y el de las organizaciones afectadas."""
+    invalidate_user_scoped("analytics", "scoring", user_key)
+    for organization_id in {value for value in organization_ids if value is not None}:
+        invalidate_organization_scoped("analytics", "scoring", organization_id)
 
 
 def _actor_key(ctx: dict[str, Any]) -> str:
@@ -390,6 +398,7 @@ class UserProfileOut(BaseModel):
     updated_at: str | None = None
     organization_id: int | None = None
     visibility: Literal["private", "organization"] = "private"
+    inherited: bool = False
 
 
 @router.get("/me/profile", summary="Obtener el perfil de scoring del usuario")
@@ -407,6 +416,7 @@ async def get_profile(
     if raw is None:
         return UserProfileOut()
     return UserProfileOut(
+        user_key=raw.get("user_key"),
         weights=raw.get("weights"),
         afinidad_keywords=raw.get("afinidad_keywords"),
         cpvs=raw.get("cpvs"),
@@ -415,6 +425,7 @@ async def get_profile(
         updated_at=raw.get("updated_at"),
         organization_id=raw.get("organization_id"),
         visibility=raw.get("visibility") or "private",
+        inherited=raw.get("user_key") != user_key,
     )
 
 
@@ -432,11 +443,12 @@ async def put_profile(
     que un campo omitido (o `null`) se guarda como `null`, no conserva el valor
     anterior. Enviá siempre el estado íntegro.
     """
-    from db.repositories.user_profiles import upsert_user_profile
+    from db.repositories.user_profiles import get_user_profile, upsert_user_profile
 
     body.validate_weights()
     ctx = await resolve_organization_ctx(ctx, body.organization_id, write=True)
     user_key = _user_key(ctx)
+    previous = await run_db(get_user_profile, user_key)
     await run_db(
         upsert_user_profile,
         user_key,
@@ -450,6 +462,11 @@ async def put_profile(
         ctx["organization_id"],
         body.visibility,
     )
+    _invalidate_profile_scoring(
+        user_key,
+        previous.get("organization_id") if previous else None,
+        int(ctx["organization_id"]),
+    )
     return StatusOk(status="ok")
 
 
@@ -458,8 +475,13 @@ async def delete_profile(
     ctx: dict[str, Any] = Depends(require_any_auth),
 ) -> StatusOk:
     """Elimina el perfil de scoring. El scoring vuelve a los settings globales."""
-    from db.repositories.user_profiles import delete_user_profile
+    from db.repositories.user_profiles import delete_user_profile, get_user_profile
 
     user_key = _user_key(ctx)
+    previous = await run_db(get_user_profile, user_key)
     await run_db(delete_user_profile, user_key)
+    _invalidate_profile_scoring(
+        user_key,
+        previous.get("organization_id") if previous else None,
+    )
     return StatusOk(status="ok")

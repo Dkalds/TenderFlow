@@ -434,3 +434,69 @@ describe("telemetría asistente_usado", () => {
     expect(JSON.stringify(propiedades)).not.toContain("EXP-SECRETO");
   });
 });
+
+/* ── ask_meta (ámbito efectivo) y caché del resumen ─────────────────────── */
+
+describe("ask_meta y resumen cacheado", () => {
+  it("parses ask_meta and exposes the effective scope", async () => {
+    // Con id_externo pedido pero contexto caído, el backend degrada al corpus
+    // y lo declara en ask_meta: la UI avisa en vez de fingir contexto.
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValue(
+          sseResponse([
+            'data: {"ask_meta": {"contexto": "general", "id_externo": "EXP-1"}}\n\n',
+            'data: {"text": "respuesta"}\n\n',
+            "data: [DONE]\n\n",
+          ]),
+        ),
+    );
+
+    const onAskMeta = vi.fn();
+    const result = await streamAsk({
+      question: "q",
+      idExterno: "EXP-1",
+      onToken: vi.fn(),
+      onAskMeta,
+    });
+
+    expect(result.askMeta).toEqual({ contexto: "general", id_externo: "EXP-1" });
+    expect(onAskMeta).toHaveBeenCalledWith({ contexto: "general", id_externo: "EXP-1" });
+  });
+
+  it("resumen_meta.cached llega al resultado", async () => {
+    const meta = { has_pliego_text: true, truncated: false, cached: true, documentos: [] };
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValue(
+          sseResponse([
+            `data: ${JSON.stringify({ resumen_meta: meta })}\n\n`,
+            'data: {"text": "resumen guardado"}\n\n',
+            "data: [DONE]\n\n",
+          ]),
+        ),
+    );
+
+    const result = await streamResumen({ idExterno: "EXP-1", onToken: vi.fn() });
+    expect(result.resumenMeta?.cached).toBe(true);
+  });
+
+  it("force viaja en el body del resumen (y se omite por defecto)", async () => {
+    // Una Response nueva por llamada: el body de una Response solo puede leerse
+    // una vez, y aquí el mock atiende dos peticiones.
+    const fetchMock = vi.fn().mockImplementation(() =>
+      Promise.resolve(sseResponse(["data: [DONE]\n\n"])),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await streamResumen({ idExterno: "EXP-1", onToken: vi.fn() });
+    await streamResumen({ idExterno: "EXP-1", force: true, onToken: vi.fn() });
+
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).not.toHaveProperty("force");
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body).force).toBe(true);
+  });
+});

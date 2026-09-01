@@ -9,6 +9,7 @@ import { registrarEvento } from "@/lib/analytics";
 // La telemetría se dobla entera: aquí se fija *qué* evento sale del triaje, no
 // que la librería de Vercel funcione.
 vi.mock("@/lib/analytics", () => ({ registrarEvento: vi.fn() }));
+vi.mock("@/hooks/use-organization", () => ({ useActiveOrganizationId: () => 7 }));
 
 /**
  * El Radar consume `GET /analytics/scoring?limit=24` como fuente única: es el
@@ -83,6 +84,7 @@ describe("useRadar", () => {
     await waitFor(() => expect(result.current.data).toBeDefined());
 
     expect(scoringUrl(fetchMock)).toContain("limit=24");
+    expect(scoringUrl(fetchMock)).toContain("organization_id=7");
   });
 
   it("pide el ranking sin las señales que el usuario descartó", async () => {

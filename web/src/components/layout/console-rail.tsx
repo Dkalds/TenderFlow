@@ -10,6 +10,13 @@ import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -128,20 +135,26 @@ function AccountMenu() {
           Organización activa
         </p>
         <div className="px-2 pb-2">
-          <select
+          <Select
             aria-label="Organización activa"
-            value={activeOrganizationId ?? ""}
-            onChange={(event) => setActiveOrganizationId(event.target.value ? Number(event.target.value) : null)}
+            value={activeOrganizationId != null ? String(activeOrganizationId) : "personal"}
+            onValueChange={(value) => setActiveOrganizationId(value === "personal" ? null : Number(value))}
             disabled={organizations.isLoading || !organizations.data?.length}
-            className="border-input bg-background text-foreground h-8 w-full rounded-md border px-2 text-xs font-medium"
           >
-            {!organizations.data?.length && <option value="">Organización personal</option>}
-            {organizations.data?.map((organization) => (
-              <option key={organization.id} value={organization.id}>
-                {organization.name} · {organization.role}
-              </option>
-            ))}
-          </select>
+            <SelectTrigger className="h-8 text-xs font-medium" aria-label="Organización activa">
+              <SelectValue placeholder="Organización personal" />
+            </SelectTrigger>
+            <SelectContent>
+              {!organizations.data?.length && (
+                <SelectItem value="personal">Organización personal</SelectItem>
+              )}
+              {organizations.data?.map((organization) => (
+                <SelectItem key={organization.id} value={String(organization.id)}>
+                  {organization.name} · {organization.role}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
         <DropdownMenuSeparator />
         <DropdownMenuItem asChild>

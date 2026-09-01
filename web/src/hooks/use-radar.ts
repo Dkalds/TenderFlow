@@ -2,6 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { useActiveOrganizationId } from "@/hooks/use-organization";
 import { apiGet, apiMutate } from "@/lib/api-client";
 import { registrarEvento } from "@/lib/analytics";
 import type {
@@ -50,8 +51,9 @@ const DISMISSALS_KEY = ["radar", "dismissals"] as const;
  * señal siguiente.
  */
 export function useRadar(tecnologia: string | null = null) {
+  const organizationId = useActiveOrganizationId();
   const scoring = useQuery({
-    queryKey: ["radar", "scoring", tecnologia],
+    queryKey: ["radar", "scoring", organizationId, tecnologia],
     queryFn: () =>
       apiGet("/api/v1/analytics/scoring", {
         params: {
@@ -61,6 +63,7 @@ export function useRadar(tecnologia: string | null = null) {
             // `null`/`""` no llegan a la URL: sin tecnología seleccionada el
             // ranking es el global, no el de la tecnología vacía.
             tecnologia: tecnologia || undefined,
+            organization_id: organizationId ?? undefined,
           },
         },
       }),
@@ -90,12 +93,18 @@ export function useRadar(tecnologia: string | null = null) {
 const MAX_DESCARTADAS_HIDRATADAS = 200;
 
 export function useRadarDismissedTenders(ids: string[], enabled: boolean) {
+  const organizationId = useActiveOrganizationId();
   const visibles = ids.slice(0, MAX_DESCARTADAS_HIDRATADAS);
   const query = useQuery({
-    queryKey: ["radar", "dismissed-tenders", visibles],
+    queryKey: ["radar", "dismissed-tenders", organizationId, visibles],
     queryFn: () =>
       apiGet("/api/v1/analytics/scoring", {
-        params: { query: { ids: visibles.join(",") } },
+        params: {
+          query: {
+            ids: visibles.join(","),
+            organization_id: organizationId ?? undefined,
+          },
+        },
       }),
     enabled: enabled && visibles.length > 0,
     staleTime: 5 * 60_000,

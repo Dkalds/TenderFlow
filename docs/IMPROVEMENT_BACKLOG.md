@@ -16,19 +16,30 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 - **Cerrado y archivado:** el P1 de los enlaces caducados de PLACSP — entregado entero en `c230e63` (PR #191), no en los tres SHAs que el ítem citaba, que nunca llegaron a `master`. Ficha completa en [el archivo](archive/IMPROVEMENT_BACKLOG_CERRADOS.md).
 - **Altas:** dos P1 (allowlist de acceso, `plan: free` frente al SLO) y dos P2 (onboarding de primer uso, experiencia móvil). El de la allowlist nace como **RFC**, no como PR: toca auth y necesita migración.
 - **Cifras corregidas** en el P1 de cobertura del frontend: las páginas de 1.000+ líneas que citaba ya no existen.
-- **Sigue abierto y no se tocó en esta tanda:** el P0 de los backups sin copia remota (configuración de infraestructura, acción del usuario) y la pata pendiente del P1 de scoring en frío (necesita índice o materialización, o sea migración con gate humano §6).
+- **Sigue abierto y requiere acción externa:** el P0 de los backups sin copia remota
+  (configuración de infraestructura). El índice del scoring en frío ya existe en
+  `v84_lic_universo_cpv_index`; queda medir su efecto tras aplicar la revisión, no
+  volver a implementarlo.
 
 ---
 
 ## P0 — Urgente
 
-### [P0] Restablecer la copia remota de backups — rotos desde el 2026-07-05
+### [P0] Verificar en GitHub el backup remoto cifrado y su restore drill
 - **Área:** .github/workflows/backup.yml, .github/workflows/restore-drill.yml, GitHub Settings (acción del usuario)
-- **Problema:** `backup.yml` corre a diario y **falla siempre**, en ~45 s, sin llegar a volcar nada: muere en los guards `: "${AWS_ROLE_TO_ASSUME:?...}"` / `: "${BACKUP_S3_BUCKET:?...}"` (backup.yml:50-51) porque esos dos secrets no existen en el repo. Verificado el 2026-08-18: runs del 16, 17 y 18 de agosto en `failure`, y ninguno de los dos nombres aparece en `gh secret list`. Consecuencia: **no hay copia remota recuperable de ninguna fecha desde el 2026-07-05**, y `restore-drill.yml` (que verificaría que un backup restaura) está bloqueado por lo mismo, así que tampoco hay señal de que el mecanismo funcione. `BACKUP_ENCRYPTION_KEY` sí está cargada (2026-08-04), o sea que falta exactamente el destino, no el cifrado.
+- **Problema:** verificado el 2026-09-01 que `BACKUP_ENCRYPTION_KEY` existe y
+  faltan `AWS_ROLE_TO_ASSUME`/`BACKUP_S3_BUCKET`. El código ya no bloquea por
+  ello: `backup.yml` sube siempre el dump cifrado como GitHub Artifact (90 días)
+  y S3 queda como segunda copia opcional; `restore-drill.yml` descarga el último
+  artefacto exitoso cuando no hay S3. Falta que este cambio llegue a GitHub y
+  ejecutar ambos workflows: hasta que el drill pase, la recuperación sigue sin
+  estar demostrada.
 - **Acceptance criteria:**
-  - `AWS_ROLE_TO_ASSUME` y `BACKUP_S3_BUCKET` cargados como GH Secrets (el rol necesita `s3:PutObject` sobre el bucket y confianza con el OIDC de Actions).
-  - Un run de `backup.yml` en verde con el objeto verificado en S3.
-  - Un run de `restore-drill.yml` en verde sobre ese backup — hasta que el drill pase, "hay backups" es una hipótesis.
+  - Un run de `backup.yml` en verde y artefacto `db-backup-<run_id>` con sólo
+    `*.dump.gpg`.
+  - Un run de `restore-drill.yml` en verde sobre ese artefacto.
+  - Opcional: `AWS_ROLE_TO_ASSUME` y `BACKUP_S3_BUCKET` configurados juntos para
+    una segunda copia S3/R2.
 - **Files de partida:** [.github/workflows/backup.yml](../.github/workflows/backup.yml), [.github/workflows/restore-drill.yml](../.github/workflows/restore-drill.yml), [docs/runbooks/backup-restore.md](runbooks/backup-restore.md)
 - **Relación:** es la pata de infraestructura del checklist F3d (P1, más abajo), que cubre el cifrado y la rotación de credenciales pero da por hecho que el destino existe.
 - **Riesgo:** bajo — solo configuración, sin tocar código. El riesgo real es el que ya se está corriendo cada día que pasa sin copia.
@@ -49,16 +60,6 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 - **Files de partida:** [scripts/sample_golden_candidates.py](../scripts/sample_golden_candidates.py), [tests/fixtures/golden_set.jsonl](../tests/fixtures/golden_set.jsonl), [services/ml_eval.py](../services/ml_eval.py)
 - **Riesgo:** bajo en código, alto en oportunidad — mientras el set sea pequeño, el gate de promoción bloquea con poca evidencia y el umbral servido tiene una varianza que ninguna mejora del modelo puede compensar.
 
-### [P1] `make web-test` sale con exit 0 aunque no ejecute ni un test
-- **Área:** web/vitest.config.ts, Makefile (`web-test`, `web-test-coverage`), CI
-- **Problema:** cuando vitest no consigue arrancar sus workers, **no falla: reporta `Test Files no tests` / `Tests no tests` junto a N errores y termina con exit code 0**. Un gate que solo mira el código de salida da por verde una suite que no corrió. Reproducido tres veces seguidas el 2026-08-18/19 sobre el mismo árbol, con los dos pools: `--pool=forks --no-file-parallelism` → 70 de 113 ficheros ejecutados, 43 errores de arranque, **exit 0**; `--pool=forks` → **0 de 113**, 113 errores, **exit 0**; y un único fichero (`src/lib/__tests__/safe-redirect.test.ts`) con `--pool=threads` → `no tests`, 1 error, **exit 0**. El mensaje es siempre `[vitest-pool]: Failed to start forks worker` / `[vitest-pool-runner]: Timeout waiting for worker to respond` (START_TIMEOUT de 60 s, no configurable por CLI). En esta máquina lo dispara la contención (OneDrive + antivirus), pero la causa de fondo —**el runner no distingue "todo pasó" de "no se ejecutó nada"**— es del repo y viaja a CI: un runner lento o un contenedor apretado producen ahí el mismo falso verde, y el job saldría en verde sin haber probado nada.
-- **Acceptance criteria:**
-  - `make web-test` falla si el número de ficheros ejecutados es 0, o si hay errores de arranque de pool, aunque vitest devuelva 0. Basta con envolver la invocación y comprobar el resumen (o usar `--reporter=json` y asertar `numTotalTestSuites > 0`).
-  - Un umbral mínimo de ficheros esperados, para que perder la mitad de la suite tampoco pase por verde. Es el mismo patrón de ratchet que ya usan `KNOWN_5XX` y la whitelist TID251.
-  - Documentado en [docs/AGENT_PLAYBOOK.md](AGENT_PLAYBOOK.md) junto al resto de prerrequisitos.
-- **Files de partida:** [Makefile](../Makefile) (línea ~183), [web/vitest.config.ts](../web/vitest.config.ts)
-- **Riesgo:** bajo — envuelve un comando, no toca tests. El riesgo es el de no hacerlo: es un gate que miente en la dirección peligrosa.
-
 ### [P1] Aprobar un acceso es editar variables de entorno a mano — decisión de auth, necesita RFC
 - **Área:** config/settings.py, api/routes/admin_solicitudes.py, render.yaml, db/ (acción del usuario + RFC)
 - **Problema:** el embudo público ya está entero salvo el último paso. `POST /publico/solicitudes-acceso` registra la petición, `GET/PATCH /admin/solicitudes-acceso` da la cola, y el aviso por correo al solicitante existe (`services/solicitudes_acceso.py::notificar_acceso_concedido`, opt-in por operación) — o sea que **la promesa de `solicitud-recibida/page.tsx` ("la respuesta llega por correo") ya se puede cumplir**, cosa que hasta la PR #215 no era cierta. Lo que sigue abierto es que **conceder el acceso no está en el producto**: la allowlist son dos strings de entorno (`OAUTH_ALLOWED_EMAILS`/`OAUTH_ALLOWED_DOMAINS`, `config/settings.py:258-259`, declaradas con `sync: false` en `render.yaml:110-113`), así que aprobar a alguien es entrar al panel de Render, editar una variable y esperar el redeploy. De ahí salen dos consecuencias: el `notificar` del PATCH es opt-in **precisamente porque el sistema no puede saber si la allowlist ya se editó** (un correo antes de tiempo manda a la persona contra un 403), y no queda rastro de quién concedió qué acceso ni cuándo.
@@ -69,32 +70,6 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
   - Solo después: migración con OK humano, endpoint, y registro del alta en `db/audit.py` como el resto de acciones de admin.
 - **Files de partida:** [api/routes/admin_solicitudes.py](../api/routes/admin_solicitudes.py), [config/settings.py](../config/settings.py), [services/solicitudes_acceso.py](../services/solicitudes_acceso.py), [render.yaml](../render.yaml)
 - **Riesgo:** alto — es el control de acceso al producto. Un error aquí abre la aplicación o deja fuera a quien ya entraba; por eso el RFC va antes que el código.
-
-### [P1] La API de producción corre en `plan: free` y el SLO de disponibilidad dice 99 %
-- **Área:** render.yaml, docs/sli-slo.md, infraestructura (decisión del usuario, con coste)
-- **Problema:** `render.yaml:25` declara `plan: free` para `tenderflow-api`. El plan gratuito de Render hace **spin-down por inactividad**, así que la primera petición tras un rato de silencio paga el arranque en frío entero, y el contenedor tiene 512 MB — el mismo donde ya hubo un OOM (comentario de `api/app.py`). Enfrente, [docs/sli-slo.md](sli-slo.md) fija **≥ 99 % de disponibilidad a 30 días** (7,2 h/mes de presupuesto de error) y **P99 < 500 ms**. Un servicio que se apaga solo no puede firmar ninguno de los dos, y el `healthCheckPath` de `render.yaml:34` no lo arregla: mide si responde, no si estaba despierto. O se sube el plan o se corrige el SLO — mantener ambos escritos es tener un objetivo que nadie mide contra una infraestructura que no puede cumplirlo.
-- **Acceptance criteria (decisión del usuario):**
-  - Decidido y escrito: se sube el plan de `tenderflow-api`, o `docs/sli-slo.md` baja el objetivo al que el plan free sí sostiene, diciendo por qué.
-  - Si se sube el plan: `render.yaml` actualizado, y el spin-down descartado como causa en la primera lectura de disponibilidad posterior.
-- **Files de partida:** [render.yaml](../render.yaml), [docs/sli-slo.md](sli-slo.md)
-- **Relación:** comparte superficie con el P2 de `render.yaml` sin vincular al Blueprint y con el P3 de staging; si se toca el servicio, conviene decidir los tres a la vez.
-- **Riesgo:** bajo técnico, con coste económico — por eso es decisión del usuario.
-
-### [P1] El contexto de scoring cuesta ~25 s en frío en cada instancia nueva
-- **Área:** db/repositories/aggregates.py, services/analytics/scoring_signals.py
-- **Problema:** acotar el universo puntuable (commit del fix del Radar, 2026-08-11) quitó el escaneo de 1,5 M filas, pero `_build_context` sigue pagando tres consultas de contexto que no dependen de la fila puntuada y que escanean la tabla entera. Medido en producción el 2026-08-11: `importe_percentiles()` **7,4 s** (seq scan + sort de 1,63 M importes, y a diferencia de las señales **no está cacheada**: se llama en cada request), la media de ofertas por CPV-4 de `load_competencia_stats` **9,5 s** (hash join de 1,6 M adjudicaciones contra un Parallel Seq Scan de `licitaciones` filtrando por `analysis_universe`, que no tiene índice utilizable), más las tres consultas de `load_margen_stats`. Total observado de un request en frío: **59,6 s** (correlation_id `93da5a9b`, 25 filas puntuadas) frente a 186 ms con caché caliente. Ya no tumba el proceso —las cachés ahora sobreviven porque la instancia deja de reiniciarse—, pero la primera carga del Radar tras cada deploy o expiración de TTL paga eso entero.
-- **Acceptance criteria:**
-  - Primera carga del Radar en una instancia fría por debajo de 5 s.
-  - ~~`importe_percentiles()` cacheada con el mismo patrón `SignalAwareCache` que ya usan las señales (P10/P90 globales cambian con la ingesta, no con el request), o materializada.~~ **Hecho 2026-08-12**: `load_importe_percentiles()` cachea con `SignalAwareCache` y además consulta `importe_percentiles_universo()`, que agrega sobre las ~1,6 k filas del universo puntuable usando `idx_lic_fecha_limite` en vez de escanear 1,63 M importes. El método global queda solo como fallback cuando la muestra viva no llega a 50 importes.
-  - La media de ofertas por CPV-4 deja de escanear `licitaciones` entera: índice que sirva el predicado de `analysis_universe`/`cpv`, o agregado materializado por CPV-4. **Pendiente** — es lo que mantiene este ítem abierto: necesita migración (índice o materialización), y tocar `db/alembic/` requiere OK humano explícito (AGENTS §6). Sin esta pata, el frío absoluto sigue por encima de 5 s aunque los percentiles ya no aporten sus 7,4 s.
-- **Files de partida:** [db/repositories/aggregates.py](../db/repositories/aggregates.py) (`importe_percentiles_universo`), [services/analytics/scoring_signals.py](../services/analytics/scoring_signals.py), [services/_data_cache.py](../services/_data_cache.py)
-- **Riesgo:** bajo — cachear un agregado global y añadir un índice; sin cambio de contrato. Sí cambian los números mostrados: los percentiles pasan a describir el mercado abierto y no la tabla entera (deliberado, ver addendum del RFC de scoring).
-
-### [P2] Surface `participaciones_ute` en el frontend de competidores
-- **Área:** web/src/components/competitors/company-profile-types.ts, web/src/components/competitors/company-profile-summary.tsx, web/src/app/(dashboard)/competidores/page.tsx
-- **Problema:** el backend ya expone `participaciones_ute` en `GET /api/v1/competitive/.../perfil` (ver _Cerrados_, commit `33d98e4`) — por cada UTE de la que la empresa es miembro, sus `contratos`/`importe_total` propios y los `otros_miembros`. `company-profile-types.ts` todavía no declara el campo (compara con `por_cpv`/`por_anio`/`movimientos`, todas ya tipadas ahí) y ningún componente lo renderiza, así que el dato es invisible en la UI aunque ya viaja en la respuesta.
-- **Acceptance criteria:** tipo `CompanyUteParticipation` en `company-profile-types.ts` reflejando el DTO; una sección en el dossier (`company-profile-summary.tsx` o vecino) listando las UTEs con sus `otros_miembros`, dejando claro que esos importes son **adicionales** a los totales directos de la empresa, no una desagregación de ellos (evitar que el usuario los sume dos veces mentalmente).
-- **Riesgo:** bajo — solo lectura de un campo ya validado por el contrato OpenAPI/TS; sin cambio de backend.
 
 ### [P2] Mejorar el ranking de retrieval de producción (MRR 0.689)
 - **Área:** db/search_backend.py, services/licitaciones.py
@@ -132,18 +107,6 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
   - `docs/runbooks/migracion-persistencia.md` Paso 9 reescrito como checklist `- [ ]` ejecutable con comandos psql concretos.
   - 2026-07-26: `setup_pg_roles.sql` endurece el rol de runtime con `NOINHERIT`/`NOBYPASSRLS` y sin `CREATE` en `public`; Alembic v59 revoca `EXECUTE` público sobre la función `SECURITY DEFINER` de RLS. Sigue pendiente ejecutar el checklist contra Supabase.
 - **Riesgo:** bajo — todo el código/tooling es aditivo y ya está testeado; el riesgo real pendiente es que el usuario no ejecute el checklist (backups sin cifrar, credencial sin rotar, rol de privilegios mínimos sin crear).
-
-### [P1] LLM como dependencia gestionada (presupuesto + circuit-breaker + fallback + eval RAG)
-- **Área:** llm/, api/routes/ask.py, observability
-- **Problema:** `/ask` es ahora un camino de producción con proveedor externo de pago (NVIDIA NIM/DeepSeek, commit `d6619f8`). El RFC de tokens (`implemented`) cerró la *medición* y dejó el *enforcement* para "un RFC posterior". Falta: presupuesto/circuit-breaker de gasto, fallback degradado si el proveedor cae, y eval de RAG (sin eval set las regresiones de calidad son invisibles a CI). Este es ese RFC posterior.
-- **⚠️ Estado real, verificado el 2026-08-18: casi todo esto ya está implementado y el backlog no se había actualizado.** Existe `llm/budget.py` con `BudgetGuard` (acumulador por ventana día/mes en Redis con `INCRBYFLOAT`+TTL y fallback in-memory), tope **por sujeto** además del global (sin él una sola cuenta agota la ventana de todas — denegación de servicio barata), `LLM_BUDGET_USD_DAILY`/`_MONTHLY`/`_DAILY_PER_USER` en settings, y `/ask` con `_check_budget`, 429 documentado y el evento SSE `degraded` para el fallback sin síntesis. Un detalle que el backlog decía al revés: `LLM_BUDGET_MODE` **ya está en `enforce`**, no en `monitor` como declaraba la nota de riesgo.
-- **Acceptance criteria:**
-  - ~~Con presupuesto superado y `LLM_BUDGET_MODE=enforce`, `/ask` responde 429/503 sin llamar al proveedor; `llm_budget_exceeded_total` sube. Modo `monitor` solo alerta.~~ **Hecho** (`llm/budget.py`, `api/routes/ask.py`).
-  - ~~Ante fallo del proveedor o breaker abierto, `/ask` degrada a documentos del RAG sin síntesis (`degraded` en el stream); el SSE no rompe y el DTO no cambia (§3.5).~~ **Hecho** (`api/routes/ask.py`, eventos `degraded` por `provider_error`, `timeout` y `empty_response`).
-  - Eval de **recuperación** determinista en CI (sin LLM real) que falla si se rompe el contexto recuperado. **Es lo único que mantiene abierto este ítem.**
-- **Files de partida:** [api/routes/ask.py](../api/routes/ask.py), [llm/client.py](../llm/client.py), [config/settings.py](../config/settings.py), [docs/adr/[[ADR-006-etag-pdf-export-ratelimit-redis|ADR-006]]-etag-pdf-export-ratelimit-redis.md](../docs/adr/ADR-006-etag-pdf-export-ratelimit-redis.md)
-- **RFC:** [2026-06-30-rfc-llm-dependencia-gestionada.md](rfc/2026-06-30-rfc-llm-dependencia-gestionada.md)
-- **Riesgo:** medio — toca un endpoint de producción; mitigado por `LLM_BUDGET_MODE=monitor` como default (medir antes de cortar) y contrato API intacto. **Construye sobre** el RFC de observabilidad de tokens (P2, abajo).
 
 ---
 
@@ -256,9 +219,14 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 - **Área:** web/src/components/layout, web/src/app/(dashboard)
 - **Problema:** por debajo de `md` el rail de espacios es `hidden` (`console-rail.tsx:196`) y la única navegación es el drawer del `Sheet` (`console-rail.tsx:242-258`). Eso **ya está cubierto por un test real** (`web/e2e/responsive.spec.ts` a 375×812, sin `.or()` ni condicionales), así que no es un agujero de verificación: es que el contenido que hay detrás del drawer no está pensado para ese ancho — lo que llenan las páginas son tablas densas y grafos. El selector de organización del propio rail sigue además siendo un `<select>` nativo (`console-rail.tsx:125`) mientras el resto de controles son Radix: comportamiento de teclado y de lector distinto.
 - **Acceptance criteria:**
-  - Decidido y escrito qué significa "móvil" aquí: consulta puntual (leer una ficha, mirar una alerta) o consola completa. Sin esa decisión, cada página lo resuelve distinto.
-  - Las tablas de las páginas del alcance elegido tienen presentación propia por debajo de `md`, no un scroll horizontal de la de escritorio.
-  - El selector de organización pasa a Radix, alineado con `ui/multi-select.tsx`.
+  - ✅ **Decidido 2026-09-01:** móvil es consulta y triaje —Radar, ficha,
+    watchlist y agenda—, no edición completa de matrices analíticas.
+  - ✅ Radar y Agenda tienen presentación propia bajo `md`; el E2E exige que
+    los cuatro flujos elegidos no desborden el documento.
+  - ✅ El selector de organización usa Radix `Select`, alineado con el resto de
+    controles de la consola.
+  - Pendiente hasta que CI ejecute el nuevo E2E: confirmar Detalle y Watchlist
+    a 375×812 sobre el build de producción.
 - **Files de partida:** [web/src/components/layout/console-rail.tsx](../web/src/components/layout/console-rail.tsx), [web/e2e/responsive.spec.ts](../web/e2e/responsive.spec.ts)
 - **Riesgo:** bajo — presentación; sin tocar contratos ni datos.
 
@@ -269,16 +237,41 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 - **Files de partida:** [.env.example](../.env.example), [scripts/check_env_parity.py](../scripts/check_env_parity.py)
 - **Riesgo:** bajo — documentación.
 
+### [P2] Golden set de extracción de fichas: la calidad de la ficha no se mide
+- **Área:** tests/eval, services/rag/fact_sheet.py
+- **Problema:** el retrieval tiene eval con ratchet (`tests/eval/test_eval_rag.py`, MRR ≥ 0.65); la extracción de fichas y el resumen IA no tienen ninguno. La ficha ya tiene mecánica de validación dura (citas contra texto persistido), pero nadie mide precisión/recall por familia: un cambio de prompt, de modelo o del selector de páginas puede degradar la extracción sin que nada salte. El feedback de usuario (evento `asistente_feedback`, 2026-09-01) da señal débil; el eval da la red fuerte. Esto además **bloquea** la unificación del selector de páginas de la ficha con el retrieval pgvector (ítem siguiente): refactorizar ese selector sin eval es volar a ciegas.
+- **Acceptance criteria:**
+  - ~10 pliegos reales etiquetados a mano (lotes, criterios con pesos, solvencias, ANS, certificaciones) como fixture versionado.
+  - Eval que mida precisión/recall por familia contra ese set, con umbral mínimo ratcheado al valor medido, mismo patrón que `MRR_MIN`.
+- **Files de partida:** [tests/eval/test_eval_rag.py](../tests/eval/test_eval_rag.py), [services/rag/fact_sheet.py](../services/rag/fact_sheet.py)
+- **Riesgo:** bajo en código; el coste real es el etiquetado manual (decisión/tiempo del mantenedor).
+
+### [P2] Unificar la selección de páginas de la ficha con el retrieval pgvector
+- **Área:** services/rag/fact_sheet.py, services/rag/context.py
+- **Problema:** conviven dos nociones de "texto relevante del pliego": la ficha puntúa páginas con términos hardcodeados (`_TOPIC_TERMS`/`_TECH_TERMS`, con footguns documentados en el propio fichero) y el chat/resumen rankea chunks (desde 2026-09-01, vía pgvector con fallback Python). Dos selectores, dos presupuestos, dos mantenimientos. La convergencia natural: seleccionar páginas de la ficha con queries fijas por familia ("criterios de adjudicación", "solvencia económica"…) contra los embeddings persistidos, y retirar las listas de términos.
+- **Por qué NO se hizo en el cambio del 2026-09-01:** el selector actual está batallado y la extracción no tiene eval (ítem anterior). Cambiar qué páginas ve el LLM sin poder medir el efecto sobre la ficha es exactamente el tipo de regresión silenciosa que este backlog existe para evitar. Orden correcto: primero el golden set, después este refactor medido contra él.
+- **Acceptance criteria:** un único camino de selección de contexto de pliegos parametrizado por caso de uso; `_TOPIC_TERMS`/`_TECH_TERMS` retirados; el eval de extracción igual o mejor que el baseline medido.
+- **Files de partida:** [services/rag/fact_sheet.py](../services/rag/fact_sheet.py), [services/rag/context.py](../services/rag/context.py), [db/repositories/documentos.py](../db/repositories/documentos.py)
+- **Riesgo:** medio — toca el camino que produce el dato más confiable del producto; por eso va detrás del eval.
+
 ---
 
 ## P3 — Nice to have
 
+### [P3] Pre-generar el resumen IA nocturno para licitaciones calientes
+- **Área:** scheduler/jobs, api/routes/ask.py
+- **Problema:** desde 2026-09-01 el resumen se cachea por firma de estado (documentos + ficha + metadatos), pero la primera visita de cada licitación sigue pagando latencia completa de proveedor. El cron nocturno podría calentar el caché para el subconjunto que la gente abre (vigiladas, banda alta de score, publicadas ese día) y el detalle abriría con el resumen ya puesto.
+- **Acceptance criteria:** fase opcional del job nocturno (gated por setting, mismo patrón que `PLIEGO_FACTS_ENABLED`) que genera el resumen para N licitaciones priorizadas si no hay entrada vigente; presupuesto LLM respetado (BudgetGuard ya cuenta este gasto).
+- **Files de partida:** [api/routes/ask.py](../api/routes/ask.py), [scheduler/jobs/documentos_embeddings.py](../scheduler/jobs/documentos_embeddings.py)
+- **Riesgo:** bajo — reutiliza el caché y el breaker de coste existentes; el riesgo es gasto LLM, acotado por el propio guard.
+
 ### [P3] Descartar los avisos fantasma de Dependabot (manifest `uv.lock` inexistente)
 - **Área:** GitHub Security (acción del usuario), .github/dependabot.yml
-- **Problema:** buena parte de los avisos pip abiertos apuntan a un `uv.lock` que **no está trackeado en git** (verificado el 2026-08-18: `git ls-files` no lo encuentra). Son alertas sobre un manifest que no existe en el repo, así que no hay nada que parchear en ellas — pero ocupan el mismo listado que los avisos reales, y un tab de seguridad con decenas de entradas irreales se deja de mirar. Al triar, filtrar por `manifest_path`.
-- **Acceptance criteria:** avisos cuyo `manifest_path` sea `uv.lock` descartados con motivo; el listado de seguridad refleja solo manifiestos que el repo contiene de verdad.
+- **Problema:** 37 de los 38 avisos abiertos apuntan a un `uv.lock` que se borró de `master` en `cc096fb` (2026-05-31). El grafo de dependencias de GitHub conservó una instantánea de ese fichero y **sigue emitiendo avisos nuevos contra ella** — los abiertos van del 2026-07-13 al 2026-08-07, todos posteriores al borrado. La prueba está en el SBOM, que lista a la vez los pines vivos y sus fantasmas (`pillow@12.3.0` ×2 junto a `pillow@12.2.0`; `cryptography@50.0.0` ×2 junto a `46.0.7`), y en el trío del 2026-08-03 sobre `GHSA-g6cj-pr64-35w5`: #82 y #83 (manifiestos vivos) se cerraron el mismo día; #87 (`uv.lock`) sigue abierto y no puede cerrarse nunca.
+- **Cómo triar (corregido 2026-08-30):** **no** basta con filtrar por `manifest_path`, y sobre todo no debe convertirse en una regla de auto-descarte. GitHub atribuye mal ese campo: los tres avisos de `cryptography` (#87–#89) salen etiquetados como `uv.lock` pese a que ese paquete **nunca** estuvo en ese fichero. Una regla que descarte por `manifest_path: uv.lock` acabaría tapando en silencio un aviso real de `requirements.txt`. El criterio que sí decide es el pin vivo: comparar `first_patched_version` contra `requirements.txt` / `requirements-dev.txt` / `web/package-lock.json`, aviso por aviso.
+- **Acceptance criteria:** los 37 descartados con motivo (`not_used` los 18 de GitPython, que no está en ningún manifiesto; `inaccurate` el resto, cuyo pin vivo ya está parcheado); el listado refleja solo manifiestos reales. La cura de fondo —que el grafo deje de ver `uv.lock`— exige forzar un re-parse del path o abrir ticket a GitHub Support; el toggle del dependency graph no existe en repos públicos.
 - **Files de partida:** [.github/dependabot.yml](../.github/dependabot.yml)
-- **Riesgo:** bajo — no toca código; el cuidado está en descartar solo los del manifest fantasma.
+- **Riesgo:** bajo — no toca código; el cuidado está en verificar cada aviso contra el pin vivo en vez de contra el nombre del manifiesto.
 
 ### [P3] Suites propias para `services/investigador/` y `extraction_runs`
 - **Área:** tests/
@@ -388,15 +381,6 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 - **Files de partida:** [services/analytics/scoring_signals.py](../services/analytics/scoring_signals.py), [services/ml/scoring.py](../services/ml/scoring.py)
 - **Riesgo:** bajo — hoy es solo instrumentación; la purga se decide con el dato medido.
 
-### [P3] Ordenar /renovaciones por score de oportunidad en el servidor
-- **Área:** web/renovaciones, services/competitive/renovaciones
-- **Problema:** La tabla trae `limit=1000` ordenado por `fecha_fin_efectiva ASC` y **reordena en cliente** por el score de oportunidad (`web/src/lib/opportunity-score.ts`: riesgo × importe × urgencia). Con más de 1000 contratos en la ventana, el "top de oportunidades" que ve el usuario es el top de las 1000 primeras por fecha de fin, no del dataset. Es un residuo acotado del ítem de KPIs ya cerrado (los KPIs sí son totales de servidor) y está anotado en la línea con `fdi-allow:large-limit`.
-- **Acceptance criteria:**
-  - El score se calcula en SQL y `proximas_renovaciones` acepta `order_by=score`, de modo que el top-N mostrado sea el top-N real.
-  - Retirar el `fdi-allow:large-limit` de `renovaciones/page.tsx`.
-- **Files de partida:** [services/competitive/renovaciones.py](../services/competitive/renovaciones.py), [web/src/lib/opportunity-score.ts](../web/src/lib/opportunity-score.ts), [web/src/app/(dashboard)/renovaciones/page.tsx](<../web/src/app/(dashboard)/renovaciones/page.tsx>)
-- **Riesgo:** bajo — la fórmula ya está escrita y es determinista; portarla a SQL es mecánico y el eval es comparar ambos órdenes sobre el mismo dataset.
-
 ### [P3] Scroll edge effects en vez de divisores duros bajo el chrome flotante
 - **Área:** web/src/components/layout
 - **Problema:** el chrome flotante es `tf-glass` (translúcido, `position: sticky`) y delimita con un `border-b` fijo, en vez del "scroll edge effect" que pide apple-design §12: un fade/máscara activado por scroll, solo donde el contenido realmente pasa por debajo. Hallazgo F11 de la revisión de las skills de Emil Kowalski (2026-07-25); no bloqueante, es refinamiento visual.
@@ -451,6 +435,42 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 ---
 
 ## Cerrados
+
+- [2026-09-01] **Revisión integral de la IA del detalle de licitación (10 mejoras en un
+  cambio)** — salida de la auditoría de arquitecto del asistente IA. Lo que cambió:
+  (1) el extracto de `descripcion` es ahora por modo (`llm/prompts.py::_EXCERPT_CHARS_BY_MODE`):
+  el resumen ejecutivo veía **300 chars** del anuncio con 16k de presupuesto sin usar;
+  (2) la neutralización anti-inyección cubre el bloque de contexto entero — `titulo` y
+  `descripcion` también son texto scrapeado y podían cerrar `</fuentes_no_confiables>`;
+  (3) los prompts internos (extraction/clasificacion/resumen) dejan de viajar por el límite
+  de usuario de 2000 chars (`MAX_INTERNAL_QUESTION_LEN=12k`) — la causa raíz del incidente
+  v3 de la ficha; (4) cadena de fallback de proveedor (`FALLBACK_MODELS`): un modelo que
+  falla o devuelve vacío ANTES del primer token pasa al siguiente con API key, con métrica
+  `llm_fallback_total` — mitiga el patrón deepseek-v4-pro (6 días caído en silencio);
+  (5) canary diario del catálogo NIM (`scheduler/jobs/llm_models_canary.py`, paso canónico
+  `llm_models_canary`) que convierte el próximo EOL en un email en vez de en un 410 mudo;
+  (6) el serving del chat/resumen usa los embeddings pgvector persistidos
+  (`DocumentosRepository.search_chunks_by_embedding`, `ORDER BY embedding <=>`) cuando el
+  motor está disponible, con el camino Python previo como fallback — hasta ahora el job
+  nocturno pagaba embeddings que ninguna request consultaba, y sin el extra instalado el
+  "ranking semántico" real de producción era overlap de substrings; (7) el resumen se
+  cachea por firma de estado (documentos + ficha + metadatos, `shared/cache`, TTL 7d) con
+  `force` para regenerar y `cached` en `resumen_meta` — sin migración a propósito (gate §6);
+  (8) la ficha verificada entra como contexto priorizado del resumen (chunk «ficha
+  estructurada verificada» + instrucción en el system prompt); (9) `/ask` emite el evento
+  aditivo `ask_meta` con el ámbito EFECTIVO y la UI avisa cuando la respuesta degradó al
+  corpus — antes ese fallback era silencioso en el detalle; (10) «Extraer ficha» pasa a
+  background (`extract-async` + polling de `/estado`, flag `running` en cache y no en el
+  CHECK de la tabla), las citas de la ficha resuelven a `filename · página` con deeplink
+  `#page=N` al PDF, la confianza autoinformada se presenta como ordinal, y nace el evento
+  `asistente_feedback` (👍/👎 en chat, resumen y ficha). Diferido con criterio: golden set
+  de extracción y unificación del selector de páginas (ítems P2 nuevos), pre-generación
+  nocturna del resumen (P3). **Verificación:** ruff y mypy strict en verde; suite unit
+  completa en verde salvo dos fallos preexistentes de trabajo sin commitear ajeno a este
+  cambio (`auth.py::confirm_password_reset` en el checker de blocking-IO y el test de
+  notificación de solicitudes); contrato OpenAPI e invariantes frontend OK; tsc/eslint/
+  vitest del frontend en verde. Los tests de integración (Postgres) NO se ejecutaron en
+  esta sesión — sin BD local — y quedan para CI.
 
 - [2026-08-30] **P2: extraer las vistas de `/ops` a componentes compartidos** — ya estaba
   hecho y el ítem seguía abierto describiendo el estado anterior. `ops/page.tsx` importa hoy

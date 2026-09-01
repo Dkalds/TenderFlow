@@ -136,6 +136,7 @@ class ScoringSignalsHealth(BaseModel):
         description="semantic_embeddings | keyword_cpv_fallback | unavailable"
     )
     senal_tecnica: str = Field(default="ok", description="ok | error")
+    perfil: str = Field(default="ok", description="ok | error")
 
     @property
     def degradado(self) -> bool:
@@ -144,6 +145,7 @@ class ScoringSignalsHealth(BaseModel):
             self.competencia != "ok"
             or self.margen != "ok"
             or self.senal_tecnica != "ok"
+            or self.perfil != "ok"
             or self.percentiles_fuente != "universo_vivo"
         )
 
@@ -550,6 +552,7 @@ def score_dataframe(
 def get_scoring(
     filters: ScoringFilters,
     user_key: str | None = None,
+    organization_id: int | None = None,
 ) -> ScoringResult:
     """Puntúa licitaciones y devuelve resultados filtrados/ordenados.
 
@@ -560,6 +563,7 @@ def get_scoring(
         "analytics_scoring_start",
         filters=filters.model_dump(exclude_none=True),
         personalized=user_key is not None,
+        organization_id=organization_id,
     )
     # ADR-023: proyección acotada desde SQL en vez de la tabla completa.
     # Sin `ids`, el universo puntuable son las oportunidades vivas: estado no
@@ -604,11 +608,12 @@ def get_scoring(
 
     # Cargar perfil del usuario si se proporciona
     profile: ScoringProfile | None = None
+    profile_status = "ok"
     if user_key is not None:
         try:
             from db.repositories.user_profiles import get_user_profile
 
-            raw_profile = get_user_profile(user_key)
+            raw_profile = get_user_profile(user_key, organization_id)
             if raw_profile is not None:
                 profile = ScoringProfile(
                     weights=raw_profile.get("weights"),
@@ -619,6 +624,7 @@ def get_scoring(
                 )
         except Exception as exc:
             log.warning("scoring_profile_load_error", error=str(exc))
+            profile_status = "error"
 
     # Construir contexto inmutable (P10/P90 del universo vivo vía SQL cacheado
     # + señales + settings/perfil). Los percentiles se calculan en Postgres
@@ -694,6 +700,7 @@ def get_scoring(
             percentiles_fuente=ctx.percentiles_fuente,
             afinidad_metodo=ctx.affinity_method,
             senal_tecnica="error" if ctx.tech_signal is None else "ok",
+            perfil=profile_status,
         ),
     )
     log.info("analytics_scoring_done", total=total, devueltas=len(scored))

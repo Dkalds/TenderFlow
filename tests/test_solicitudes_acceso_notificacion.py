@@ -305,7 +305,7 @@ class TestPatchNotifica:
             app.dependency_overrides.clear()
 
         assert resp.status_code == 200
-        assert resp.json() == {"status": "ok", "notificado": None}
+        assert resp.json() == {"status": "ok", "notificado": None, "grant_id": None}
         obtener.assert_not_called()
         avisar.assert_not_called()
 

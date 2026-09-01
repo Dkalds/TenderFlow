@@ -3,8 +3,9 @@
 Agrega en Postgres vía :class:`AggregateRepository` (ADR-023); hasta 2026-08
 cargaba la tabla completa a pandas en el proceso API — bloqueado en Render por
 el cortacircuitos full-table, que dejaba este endpoint vacío en producción.
-La búsqueda ``q`` sigue siendo accent/case-insensitive: el servicio pliega la
-aguja con ``fold_text`` y el repositorio pliega la columna en SQL.
+La búsqueda local ``organo_q`` sigue siendo accent/case-insensitive: el
+servicio pliega la aguja con ``fold_text`` y el repositorio pliega la columna
+en SQL. ``q`` conserva la semántica global de título/órgano/expediente.
 """
 
 from __future__ import annotations
@@ -37,10 +38,10 @@ class OrganosFilters(BaseModel):
     estado: str | None = None
     importe_min: float | None = None
     solo_abiertas: bool = False
-    # Ojo: ``q`` aquí busca **el nombre del órgano**, no es el ``q`` del ámbito
-    # global (que busca título/órgano/id sobre licitaciones). Son dos preguntas
-    # distintas que comparten nombre de parámetro; ver la nota del endpoint.
+    # Búsqueda del ámbito global sobre título/órgano/id de licitaciones.
     q: str | None = None
+    # Búsqueda propia de esta vista, exclusivamente por nombre de órgano.
+    organo_q: str | None = None
     limit: int = 50
 
 
@@ -81,6 +82,7 @@ def _to_repo_filters(filters: OrganosFilters) -> LicitacionesFilters:
         estado=filters.estado,
         importe_min=filters.importe_min,
         solo_abiertas=filters.solo_abiertas,
+        q=filters.q,
     )
 
 
@@ -93,7 +95,7 @@ def get_organos(filters: OrganosFilters) -> OrganosResult:
     """Compute organo ranking with concentration metrics."""
     log.info("analytics_organos_start", filters=filters.model_dump(exclude_none=True))
     repo_filters = _to_repo_filters(filters)
-    q_folded = fold_text(filters.q) if filters.q else None
+    q_folded = fold_text(filters.organo_q) if filters.organo_q else None
 
     total, total_organos, importe_total = _repo.organos_totales(repo_filters, q_folded=q_folded)
     if total == 0:

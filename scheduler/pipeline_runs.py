@@ -51,6 +51,7 @@ CANONICAL_STEPS: list[str] = [
     "digests",
     "dlq_retry",
     "anomaly_checks",
+    "llm_models_canary",
     "retention_cleanup",
     "sap_active_learning",
     "drift_checks",
@@ -347,6 +348,29 @@ def _run_anomaly_checks() -> None:
     from scheduler.anomaly_alerts import run_anomaly_checks
 
     run_anomaly_checks()
+
+
+def _run_llm_models_canary() -> str:
+    """Canary del catálogo NIM (una vez al día): avisa ANTES del próximo EOL.
+
+    Un modelo ofertado que desaparece del catálogo tumbó la IA seis días en
+    silencio (deepseek-v4-pro, 410 sin aviso). Modelos ausentes se lanzan como
+    fallo del paso: así llega el email de ``_notify_step_failure`` en vez de
+    quedarse en un log de runner efímero — que es exactamente donde se ocultó
+    el incidente original. Un fallo de red del propio canary NO lanza (el
+    job lo reporta como ``error`` y reintenta en la siguiente ventana).
+    """
+
+    def _check() -> None:
+        from scheduler.jobs.llm_models_canary import run as run_canary
+
+        result = run_canary()
+        if result["missing"]:
+            raise RuntimeError(
+                f"Modelos NIM ofertados que ya no existen en el catálogo: {result['missing']}"
+            )
+
+    return _run_periodic("llm_models_canary", _SEGUNDOS_DIA, _check)
 
 
 # ---------------------------------------------------------------------------

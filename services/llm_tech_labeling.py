@@ -90,7 +90,8 @@ def build_question() -> str:
 
     El vocabulario viaja aquí y no en el system prompt para que
     ``llm/prompts.py`` siga sin depender de ``config``. Cabe de sobra en el
-    límite de 2000 chars que impone ``llm.client._validate_request``: son 11
+    tope interno de plantilla (``MAX_INTERNAL_QUESTION_LEN``) que
+    ``llm.client._validate_request`` aplica al modo ``clasificacion``: son 11
     etiquetas cortas.
     """
     return _QUESTION_TEMPLATE.format(labels=", ".join(TECH_LABELS))
@@ -168,6 +169,10 @@ def classify_licitacion(lic: dict[str, Any], *, model: str) -> dict[str, TechSig
             keywords=[],
             mode="clasificacion",
             max_tokens=_MAX_OUTPUT_TOKENS,
+            # Sin fallback de proveedor: ``signal_version`` incluye el modelo y
+            # gobierna qué se reprocesa; responder con otro modelo dejaría la
+            # señal atribuida al equivocado. Mejor fallar y reintentar mañana.
+            fallback=False,
         )
     )
     if not raw.strip():

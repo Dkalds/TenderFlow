@@ -100,6 +100,24 @@ los secretos cuando lleven más de 90 días.
   validan contra regex `^[a-zA-Z_]\w*$` antes de usarse en `ALTER TABLE`.
 - XML: lxml con `resolve_entities=False`, `no_network=True` para prevenir XXE.
 
+### Acceso OAuth dinámico
+
+`OAUTH_ALLOWED_EMAILS`/`OAUTH_ALLOWED_DOMAINS` siguen siendo el bootstrap
+estático. `access_grants` añade concesiones de email o dominio administrables
+desde el producto. El callback exige una coincidencia estática o dinámica; una
+tabla vacía o una caída de Postgres deniega el acceso fuera de desarrollo. Las
+altas y bajas requieren admin y dejan eventos de auditoría sin copiar el email
+o dominio al audit log.
+
+### Recuperación de contraseña local
+
+`POST /auth/password-reset/request` no revela si existe la cuenta. Un token
+aleatorio se envía en el fragmento `#token=` —no viaja a servidores ni access
+logs— y en Postgres sólo se guarda su SHA-256. Caduca en 30 minutos, se consume
+una vez y la confirmación revoca todas las sesiones activas. Las solicitudes se
+limitan por IP y por hash del email; los tokens usados/expirados se purgan por
+retención.
+
 ## Reporte de vulnerabilidades
 
 Abrir un issue **privado** (Security advisory) en GitHub con etiqueta

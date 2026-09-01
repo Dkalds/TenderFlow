@@ -11,7 +11,8 @@ from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from api.routes.auth import get_current_session_user
+from api.routes.dual_auth import require_any_auth as require_analytics_auth
+from api.tenancy import require_organization
 from observability.logging import get_logger
 from services.analytics.clusters import ClustersFilters, ClustersResult, get_clusters
 from services.analytics.compare import CompareFilters, CompareResult, get_compare_periods
@@ -90,7 +91,7 @@ def overview(
     estado: str | None = Query(default=None, description="Filter by estado"),
     q: str | None = Query(default=None, description="Free-text search (titulo, organo, id)"),
     importe_min: float | None = Query(default=None, ge=0, description="Min tender budget (EUR)"),
-    _user: dict[str, Any] = Depends(get_current_session_user),
+    _user: dict[str, Any] = Depends(require_analytics_auth),
 ) -> OverviewResult:
     """Return aggregated KPIs, breakdowns, and funnel data."""
     filters = OverviewFilters(
@@ -123,7 +124,7 @@ def trends(
             f"se alcanzó el techo de {MAX_TREND_POINTS} puntos."
         ),
     ),
-    _user: dict[str, Any] = Depends(get_current_session_user),
+    _user: dict[str, Any] = Depends(require_analytics_auth),
 ) -> TrendsResult:
     """Time series trends with heatmap and YoY deltas.
 
@@ -149,7 +150,7 @@ def geography(
     fecha_desde: date | None = Query(default=None, description="Start date (YYYY-MM-DD)"),
     fecha_hasta: date | None = Query(default=None, description="End date (YYYY-MM-DD)"),
     tecnologia: str | None = Query(default=None, description="Filter by tecnologia"),
-    _user: dict[str, Any] = Depends(get_current_session_user),
+    _user: dict[str, Any] = Depends(require_analytics_auth),
 ) -> GeoResult:
     """Geographic distribution by CCAA."""
     filters = GeoFilters(
@@ -170,7 +171,7 @@ def competitors(
     estado: str | None = Query(default=None, description="Filter by tender status"),
     importe_min: float | None = Query(default=None, ge=0, description="Min tender budget (EUR)"),
     limit: int = Query(default=20, ge=1, le=100, description="Max competitors to return"),
-    _user: dict[str, Any] = Depends(get_current_session_user),
+    _user: dict[str, Any] = Depends(require_analytics_auth),
 ) -> CompetitorResult:
     """Competitor analysis — market share, HHI, bidder rankings."""
     filters = CompetitorFilters(
@@ -232,7 +233,7 @@ def scoring(
             "ordenar y cortar. Se ignora en modo ids."
         ),
     ),
-    _user: dict[str, Any] = Depends(get_current_session_user),
+    _user: dict[str, Any] = Depends(require_organization()),
 ) -> ScoringResult:
     """Opportunity scoring — ranked by commercial potential, or page-aligned by ids.
 
@@ -253,13 +254,17 @@ def scoring(
         ids=id_list,
         exclude_dismissed=exclude_dismissed,
     )
-    return get_scoring(filters, user_key=user_key)
+    return get_scoring(
+        filters,
+        user_key=user_key,
+        organization_id=int(_user["organization_id"]),
+    )
 
 
 @router.get("/quality", response_model=QualityResult)
 @cache_response(ttl=600, user_scoped=False)
 def quality(
-    _user: dict[str, Any] = Depends(get_current_session_user),
+    _user: dict[str, Any] = Depends(require_analytics_auth),
 ) -> QualityResult:
     """Data quality metrics — completeness and scrape freshness."""
     return get_quality()
@@ -271,7 +276,7 @@ def quality(
     summary="Frescura y SLA por fuente de ingesta",
 )
 def source_freshness(
-    _user: dict[str, Any] = Depends(get_current_session_user),
+    _user: dict[str, Any] = Depends(require_analytics_auth),
 ) -> SourceFreshnessResult:
     """Hace visibles cursores atascados, runs fallidos y detección <24h."""
     return get_source_freshness()
@@ -292,10 +297,15 @@ def organos(
     q: str | None = Query(
         default=None,
         max_length=200,
-        description="Search organo name (accent/case-insensitive substring)",
+        description="Búsqueda global por título, órgano o expediente",
+    ),
+    organo_q: str | None = Query(
+        default=None,
+        max_length=200,
+        description="Filtro local por nombre de órgano (sin distinguir tildes)",
     ),
     limit: int = Query(default=50, ge=1, le=500, description="Max organos to return"),
-    _user: dict[str, Any] = Depends(get_current_session_user),
+    _user: dict[str, Any] = Depends(require_analytics_auth),
 ) -> OrganosResult:
     """Ranking of contracting bodies by activity.
 
@@ -303,12 +313,10 @@ def organos(
     así que ``total_organos``, ``importe_total`` y ``concentracion_top10``
     miden el ámbito pedido y no la tabla entera.
 
-    ``q`` es la excepción y sigue significando lo de siempre: busca **el nombre
-    del órgano**, no el título de la licitación como en el resto del producto.
-    El cliente manda ahí el ``q`` del ámbito global, así que una búsqueda de
-    ámbito acota este ranking por nombre de órgano y no por licitación. Es una
-    incoherencia anterior a este cambio y no se toca aquí: renombrar el
-    parámetro rompería los deep-links ``/organos?q=<órgano>``.
+    ``q`` aplica la misma búsqueda global por título/órgano/expediente que el
+    resto del producto. ``organo_q`` filtra el nombre del órgano dentro de ese
+    universo. Los deep-links históricos ``?q=<órgano>`` siguen encontrándolo
+    porque el órgano forma parte de la búsqueda global.
     """
     filters = OrganosFilters(
         fecha_desde=fecha_desde,
@@ -319,6 +327,7 @@ def organos(
         importe_min=importe_min,
         solo_abiertas=solo_abiertas,
         q=q,
+        organo_q=organo_q,
         limit=limit,
     )
     return get_organos(filters)
@@ -330,7 +339,7 @@ def tecnologias(
     fecha_desde: date | None = Query(default=None, description="Start date (YYYY-MM-DD)"),
     fecha_hasta: date | None = Query(default=None, description="End date (YYYY-MM-DD)"),
     ccaa: str | None = Query(default=None, description="Filter by CCAA"),
-    _user: dict[str, Any] = Depends(get_current_session_user),
+    _user: dict[str, Any] = Depends(require_analytics_auth),
 ) -> TecnologiasResult:
     """Technology distribution across licitaciones."""
     filters = TecnologiasFilters(
@@ -349,7 +358,7 @@ def tecnologias_detail(
     fecha_hasta: date | None = Query(default=None, description="End date (YYYY-MM-DD)"),
     ccaa: str | None = Query(default=None, description="Filter by CCAA"),
     limit: int = Query(default=100, ge=1, le=500, description="Max tenders to return"),
-    _user: dict[str, Any] = Depends(get_current_session_user),
+    _user: dict[str, Any] = Depends(require_analytics_auth),
 ) -> TecnologiaDetalleResult:
     """Top-N tenders for a single technology, with subset KPIs."""
     filters = TecnologiaDetalleFilters(
@@ -367,7 +376,7 @@ def proyectos_modulos(
     fecha_desde: date | None = Query(default=None, description="Start date (YYYY-MM-DD)"),
     fecha_hasta: date | None = Query(default=None, description="End date (YYYY-MM-DD)"),
     tecnologia: str | None = Query(default=None, description="Filter by tecnologia"),
-    _user: dict[str, Any] = Depends(get_current_session_user),
+    _user: dict[str, Any] = Depends(require_analytics_auth),
 ) -> ProyectosModulosResult:
     """SAP module and project type breakdown."""
     filters = ProyectosModulosFilters(
@@ -386,7 +395,7 @@ def clusters(
     fecha_desde: date | None = Query(default=None, description="Start date (YYYY-MM-DD)"),
     fecha_hasta: date | None = Query(default=None, description="End date (YYYY-MM-DD)"),
     ccaa: str | None = Query(default=None, description="Filter by CCAA"),
-    _user: dict[str, Any] = Depends(get_current_session_user),
+    _user: dict[str, Any] = Depends(require_analytics_auth),
 ) -> ClustersResult:
     """Semantic clustering of tenders (KMeans over TF-IDF) with keyword labels."""
     filters = ClustersFilters(
@@ -411,7 +420,7 @@ def pipeline(
     estado: str | None = Query(default=None, description="Filter by estado"),
     q: str | None = Query(default=None, description="Free-text search (titulo, organo, id)"),
     importe_min: float | None = Query(default=None, ge=0, description="Min tender budget (EUR)"),
-    _user: dict[str, Any] = Depends(get_current_session_user),
+    _user: dict[str, Any] = Depends(require_analytics_auth),
 ) -> PipelineResult:
     """Upcoming deadlines and urgency alerts."""
     filters = PipelineFilters(
@@ -431,7 +440,7 @@ def pipeline(
 @router.get("/resumen/novedades", response_model=ResumenNovedadesResult)
 @cache_response(ttl=120)
 def resumen_novedades(
-    _user: dict[str, Any] = Depends(get_current_session_user),
+    _user: dict[str, Any] = Depends(require_analytics_auth),
 ) -> ResumenNovedadesResult:
     """New licitaciones since user's last visit."""
     return get_resumen_novedades(_user["user_id"])
@@ -444,7 +453,7 @@ def resumen_hoy(
     fecha_hasta: date | None = Query(default=None, description="End date (YYYY-MM-DD)"),
     ccaa: str | None = Query(default=None, description="Filter by CCAA"),
     tecnologia: str | None = Query(default=None, description="Filter by tecnologia"),
-    _user: dict[str, Any] = Depends(get_current_session_user),
+    _user: dict[str, Any] = Depends(require_analytics_auth),
 ) -> ResumenHoyResult:
     """Para hoy — calientes, vencimientos, nuevas."""
     filters = ResumenHoyFilters(
@@ -473,7 +482,7 @@ def resumen_timeline(
             "necesita el orden contrario, así que el reparto es opt-in."
         ),
     ),
-    _user: dict[str, Any] = Depends(get_current_session_user),
+    _user: dict[str, Any] = Depends(require_analytics_auth),
 ) -> TimelineScatterResult:
     """Scatter data for timeline visualization."""
     filters = TimelineScatterFilters(
@@ -493,7 +502,7 @@ def resumen_sankey(
     fecha_hasta: date | None = Query(default=None, description="End date (YYYY-MM-DD)"),
     ccaa: str | None = Query(default=None, description="Filter by CCAA"),
     tecnologia: str | None = Query(default=None, description="Filter by tecnologia"),
-    _user: dict[str, Any] = Depends(get_current_session_user),
+    _user: dict[str, Any] = Depends(require_analytics_auth),
 ) -> SankeyResult:
     """Sankey flow: tipo_contrato → estado."""
     filters = SankeyFilters(
@@ -513,7 +522,7 @@ def resumen_top(
     ccaa: str | None = Query(default=None, description="Filter by CCAA"),
     tecnologia: str | None = Query(default=None, description="Filter by tecnologia"),
     n: int = Query(default=10, ge=1, le=100, description="Number of top licitaciones"),
-    _user: dict[str, Any] = Depends(get_current_session_user),
+    _user: dict[str, Any] = Depends(require_analytics_auth),
 ) -> TopLicitacionesResult:
     """Top N licitaciones by importe."""
     filters = TopLicitacionesFilters(
@@ -535,7 +544,7 @@ def forecast_volume_endpoint(
     fecha_hasta: date | None = Query(default=None, description="End date (YYYY-MM-DD)"),
     ccaa: str | None = Query(default=None, description="Filter by CCAA"),
     tecnologia: str | None = Query(default=None, description="Filter by tecnologia"),
-    _user: dict[str, Any] = Depends(get_current_session_user),
+    _user: dict[str, Any] = Depends(require_analytics_auth),
 ) -> ForecastVolumeResult:
     """Volume forecast using Holt-Winters / linear regression."""
     filters = ForecastFilters(
@@ -563,7 +572,7 @@ def forecast_retendering(
     fecha_hasta: date | None = Query(default=None, description="End date (YYYY-MM-DD)"),
     ccaa: str | None = Query(default=None, description="Filter by CCAA"),
     tecnologia: str | None = Query(default=None, description="Filter by tecnologia"),
-    _user: dict[str, Any] = Depends(get_current_session_user),
+    _user: dict[str, Any] = Depends(require_analytics_auth),
 ) -> RetenderingResult:
     """Retendering forecast — contracts approaching end of term.
 
@@ -605,7 +614,7 @@ def trends_cpv(
             "el tamaño total es `top_n` x meses del rango."
         ),
     ),
-    _user: dict[str, Any] = Depends(get_current_session_user),
+    _user: dict[str, Any] = Depends(require_analytics_auth),
 ) -> TrendsCpvResult:
     """Per-CPV time series and rankings.
 
@@ -642,7 +651,7 @@ def organo_detail(
     solo_abiertas: bool = Query(
         default=False, description="Solo licitaciones que siguen abiertas (no terminales)"
     ),
-    _user: dict[str, Any] = Depends(get_current_session_user),
+    _user: dict[str, Any] = Depends(require_analytics_auth),
 ) -> OrganoDetailResult:
     """Drill-down for a single contracting body.
 
@@ -669,7 +678,7 @@ def utes(
     fecha_desde: date | None = Query(default=None, description="Start date (YYYY-MM-DD)"),
     fecha_hasta: date | None = Query(default=None, description="End date (YYYY-MM-DD)"),
     ccaa: str | None = Query(default=None, description="Filter by CCAA"),
-    _user: dict[str, Any] = Depends(get_current_session_user),
+    _user: dict[str, Any] = Depends(require_analytics_auth),
 ) -> UTEResult:
     """UTE-specific analysis from adjudicaciones."""
     filters = UTEFilters(
@@ -689,7 +698,7 @@ def compare_periods(
     range_b_hasta: date = Query(description="Period B end date"),
     ccaa: str | None = Query(default=None, description="Filter by CCAA"),
     tecnologia: str | None = Query(default=None, description="Filter by tecnologia"),
-    _user: dict[str, Any] = Depends(get_current_session_user),
+    _user: dict[str, Any] = Depends(require_analytics_auth),
 ) -> CompareResult:
     """Compare two time periods side-by-side."""
     filters = CompareFilters(

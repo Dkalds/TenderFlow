@@ -6,8 +6,10 @@ import { Star } from "lucide-react";
 describe("EmptyState", () => {
   it("renders with default title and hint", () => {
     render(<EmptyState />);
-    // i18n t("common.no_data") and t("common.no_data_hint") should be present
-    expect(document.body).toBeInTheDocument();
+    expect(screen.getByText("Sin datos")).toBeInTheDocument();
+    expect(
+      screen.getByText("No hay información disponible para el ámbito actual."),
+    ).toBeInTheDocument();
   });
 
   it("renders custom title", () => {

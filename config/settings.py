@@ -921,29 +921,13 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def _validate_prod_oauth_domains(self) -> Settings:
-        """En producción, OAuth sin allowlist es fail-closed: el arranque se rechaza.
+        """La allowlist estática puede quedar vacía cuando gobierna Postgres.
 
-        Hasta 2026-08 esto era solo un ``warnings.warn`` — con ambos allowlists
-        vacíos, cualquier cuenta de Google podía iniciar sesión en producción y
-        el único rastro era una línea de log que nadie mira en el arranque.
-        Un producto B2B con datos de clientes no debe poder desplegarse en ese
-        estado por accidente; quien de verdad quiera login abierto puede poner
-        ``OAUTH_ALLOWED_DOMAINS=*`` de forma explícita y auditable.
+        ``oauth_email_allowed`` sólo permite el vacío en desarrollo. En
+        producción/staging, el callback consulta ``access_grants`` y cualquier
+        fallo de BD deniega el acceso. El comodín explícito sigue siendo la
+        única forma de abrir OAuth a cualquier dominio.
         """
-        if (
-            self._is_prod_data
-            and self._serves_http
-            and self.GOOGLE_CLIENT_ID
-            and not self.OAUTH_ALLOWED_DOMAINS
-            and not self.OAUTH_ALLOWED_EMAILS
-        ):
-            raise ValueError(
-                "OAUTH_ALLOWED_DOMAINS y OAUTH_ALLOWED_EMAILS están vacíos con "
-                "Google OAuth activo en producción: cualquier cuenta de Google "
-                "podría iniciar sesión. Configura al menos uno de los dos; para "
-                "permitir cualquier cuenta de forma deliberada, usa "
-                "OAUTH_ALLOWED_DOMAINS=*."
-            )
         return self
 
     @field_validator("DATABASE_URL", mode="before")

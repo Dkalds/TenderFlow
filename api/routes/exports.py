@@ -26,7 +26,7 @@ from pydantic import BaseModel
 
 from api.auth import AuthContext, require_api_key
 from api.concurrency import run_db
-from api.routes.auth import get_current_session_user
+from api.routes.dual_auth import require_any_auth
 from observability.logging import get_logger
 
 log = get_logger(__name__)
@@ -182,8 +182,7 @@ def create_export(
 
        El job vive en un dict **de proceso** con los bytes del PDF en memoria.
        Eso sólo funciona con una única instancia que además no se reinicie:
-       cualquier deploy o reinicio de la instancia (el plan de pago de Render
-       ya no hiberna por inactividad, pero sí recicla en cada release) hace
+    cualquier hibernación, deploy o reinicio de la instancia hace
        desaparecer un job aceptado con 202 y el sondeo devuelve 404 sin que
        nada lo registre como fallo; y al escalar a dos instancias el poll cae
        en la equivocada y responde 404 o 403 de forma no determinista.
@@ -242,7 +241,7 @@ async def download_export(
     fecha_desde: str | None = Query(None),
     fecha_hasta: str | None = Query(None),
     limit: int = Query(10000, ge=1, le=50000),
-    _user: dict[str, Any] = Depends(get_current_session_user),
+    _user: dict[str, Any] = Depends(require_any_auth),
 ) -> StreamingResponse:
     """Descarga síncrona (CSV, Excel o PDF) con los filtros actuales.
 

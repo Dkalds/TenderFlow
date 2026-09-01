@@ -90,7 +90,7 @@ describe("progresoParaTelemetria", () => {
 });
 
 describe("perfilConfigurado", () => {
-  const vacio: Schemas["UserProfileOut"] = { visibility: "private" };
+  const vacio: Schemas["UserProfileOut"] = { visibility: "private", inherited: false };
 
   it("el objeto vacío que devuelve la API sin perfil es «no configurado»", () => {
     expect(perfilConfigurado(vacio)).toBe(false);

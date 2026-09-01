@@ -47,11 +47,15 @@ jobs:
       - name: Validate backup configuration
         run: |
           set -eu
-          : "${AWS_ROLE_TO_ASSUME:?AWS_ROLE_TO_ASSUME es obligatorio para backups remotos}"
-          : "${BACKUP_S3_BUCKET:?BACKUP_S3_BUCKET es obligatorio para backups remotos}"
           : "${BACKUP_ENCRYPTION_KEY:?BACKUP_ENCRYPTION_KEY es obligatorio para cifrar backups}"
+          if [ -n "${AWS_ROLE_TO_ASSUME:-}" ] && [ -z "${BACKUP_S3_BUCKET:-}" ] || \
+             [ -z "${AWS_ROLE_TO_ASSUME:-}" ] && [ -n "${BACKUP_S3_BUCKET:-}" ]; then
+            echo "::error::AWS_ROLE_TO_ASSUME y BACKUP_S3_BUCKET deben configurarse juntos"
+            exit 1
+          fi
 
       - name: Configure temporary AWS credentials
+        if: ${{ env.AWS_ROLE_TO_ASSUME != '' && env.BACKUP_S3_BUCKET != '' }}
         uses: aws-actions/configure-aws-credentials@cabfdba3510de1431bac9dba27511d97497fc100 # v5
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
@@ -96,16 +100,19 @@ jobs:
           echo "Backup completado: $(du -sh "$BACKUP_FILE" | cut -f1)"
           UPLOAD_FILE="$BACKUP_FILE"
           echo "Dump cifrado → $UPLOAD_FILE"
-          # Subir a S3/R2 si está configurado (bucket privado). Solo el fichero resultante.
-          : "${BACKUP_S3_BUCKET:?BACKUP_S3_BUCKET es obligatorio}"
-          UPLOAD_FILE="$UPLOAD_FILE" python -c "
-          import boto3, os, pathlib
-          s3 = boto3.client('s3', endpoint_url=os.environ.get('AWS_ENDPOINT_URL') or None)
-          f = pathlib.Path(os.environ['UPLOAD_FILE'])
-          key = os.environ.get('BACKUP_S3_PREFIX', 'backups/') + f.name
-          s3.upload_file(str(f), os.environ['BACKUP_S3_BUCKET'], key)
-          print('Uploaded to s3://%s/%s' % (os.environ['BACKUP_S3_BUCKET'], key))
-          "
+          # S3/R2 es un segundo destino opcional. El artefacto cifrado de
+          # GitHub se sube siempre en el step siguiente y sostiene el restore
+          # drill incluso cuando no hay infraestructura AWS configurada.
+          if [ -n "${BACKUP_S3_BUCKET:-}" ]; then
+            UPLOAD_FILE="$UPLOAD_FILE" python -c "
+            import boto3, os, pathlib
+            s3 = boto3.client('s3', endpoint_url=os.environ.get('AWS_ENDPOINT_URL') or None)
+            f = pathlib.Path(os.environ['UPLOAD_FILE'])
+            key = os.environ.get('BACKUP_S3_PREFIX', 'backups/') + f.name
+            s3.upload_file(str(f), os.environ['BACKUP_S3_BUCKET'], key)
+            print('Uploaded to s3://%s/%s' % (os.environ['BACKUP_S3_BUCKET'], key))
+            "
+          fi
 
       # ── Rama SQLite legacy (pre-cutover) ──────────────────────────────
       - name: Run SQLite backup
@@ -122,11 +129,11 @@ jobs:
           DATABASE_URL: ""
         run: python scripts/backup_db.py --s3 --keep 3 --keep-s3 "${KEEP_S3_INPUT}"
 
-      - name: Upload backup artifact (fallback)
-        # Sube el backup como artefacto de GitHub Actions si el upload S3 falla.
-        # Los artefactos se retienen 90 días. SOLO ficheros cifrados/comprimidos:
+      - name: Upload encrypted backup artifact
+        # Destino remoto primario cuando S3 no está configurado y segunda copia
+        # cuando sí lo está. SOLO ficheros cifrados/comprimidos:
         # nunca un dump PG en claro (*.dump) — contiene PII + hashes de secretos.
-        if: failure()
+        if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: db-backup-${{ github.run_id }}

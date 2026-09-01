@@ -31,6 +31,7 @@ def build_default_registry() -> list[ScheduledJob]:
     from scheduler.drift_report import run_drift_report
     from scheduler.jobs.daily_atom import run as run_daily_atom
     from scheduler.jobs.documentos_embeddings import run as run_documentos_embeddings
+    from scheduler.jobs.llm_models_canary import run as run_llm_models_canary
     from scheduler.jobs.llm_tech_labeling import run as run_llm_tech_labeling
     from scheduler.jobs.ml_predicciones import run_retrain as run_ml_retrain
     from scheduler.jobs.ml_predicciones import run_scoring as run_ml_scoring
@@ -150,6 +151,17 @@ def build_default_registry() -> list[ScheduledJob]:
             interval_env="SCHEDULER_LLM_TECH_LABELING_INTERVAL_MINUTES",
             default_interval_minutes=1440,
             initial_offset_minutes=300,
+        ),
+        ScheduledJob(
+            # Una petición HTTP al catálogo público de NIM: avisa por log de
+            # error cuando un modelo ofertado desaparece (EOL sin aviso), que
+            # ya dejó la IA caída seis días una vez.
+            name="llm_models_canary",
+            plane="pipeline",
+            fn=run_llm_models_canary,
+            interval_env="SCHEDULER_LLM_MODELS_CANARY_INTERVAL_MINUTES",
+            default_interval_minutes=1440,
+            initial_offset_minutes=90,
         ),
         ScheduledJob(
             name="anomaly_checks",

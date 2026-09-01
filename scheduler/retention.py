@@ -95,6 +95,7 @@ def _count_and_delete(conn: object, table: str, date_col: str, cutoff: str, *, a
 #: el aviso en una promesa falsa sin que falle nada.
 SOLICITUDES_ACCESO_RETENTION_MESES = 24
 SOLICITUDES_ACCESO_RETENTION_DAYS = SOLICITUDES_ACCESO_RETENTION_MESES * 30
+PASSWORD_RESET_RETENTION_DAYS = 7
 
 
 def run_retention(
@@ -142,6 +143,10 @@ def run_retention(
         # solicitud de hace dos años está abandonada, atendida o descartada, y
         # en los tres casos ya no hay finalidad que justifique conservarla.
         ("solicitudes_acceso", "created_at", solicitudes_acceso_days),
+        # Tokens usados o caducados no aportan valor operativo. La tabla sólo
+        # contiene hashes, pero la minimización también aplica a identificadores
+        # indirectos y a credenciales ya inválidas.
+        ("password_reset_tokens", "created_at", PASSWORD_RESET_RETENTION_DAYS),
     ]
 
     with connect() as conn:

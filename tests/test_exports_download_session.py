@@ -126,9 +126,35 @@ def test_download_filtra_por_rango_de_fechas(session_client):
 
 
 def test_download_sin_sesion_no_ejecuta_el_handler(client, api_db):
-    """Sin cookie de sesión no se llega al cuerpo: 401/403, nunca 5xx."""
+    """Sin cookie ni API key no se llega al cuerpo: 401/403, nunca 5xx."""
     resp = client.get("/api/v1/exports/download?format=csv")
     assert resp.status_code in (401, 403)
+
+
+def test_download_acepta_api_key_ligada_con_scope_exports(client, api_db):
+    import db.database as db_mod
+    from api.auth import create_api_key
+    from db.users import create_user
+    from shared.auth_core import hash_password
+
+    user_id = create_user(
+        email="export-api@example.test",
+        password_hash=hash_password(_PASSWORD),
+    )
+    token = create_api_key(
+        "export-download",
+        scopes="exports:read",
+        user_id=user_id,
+    )
+    _seed_licitacion(db_mod, "EXP-DL-API")
+
+    resp = client.get(
+        "/api/v1/exports/download?format=csv",
+        headers={"X-API-Key": token},
+    )
+
+    assert resp.status_code == 200, resp.text
+    assert "EXP-DL-API" in resp.content.decode("utf-8-sig")
 
 
 # ── GET /exports/calendario.ics ──────────────────────────────────────────────

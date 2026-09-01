@@ -25,6 +25,13 @@ import { SEED_LICITACION } from "./fixtures";
 const MOVIL = { width: 375, height: 812 };
 const ESCRITORIO = { width: 1440, height: 900 };
 
+async function expectDocumentFits(page: import("@playwright/test").Page) {
+  const overflow = await page.evaluate(
+    () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+  );
+  expect(overflow).toBeLessThanOrEqual(1);
+}
+
 test.describe("Móvil (375×812)", () => {
   test.use({ viewport: MOVIL });
 
@@ -114,6 +121,37 @@ test.describe("Móvil (375×812)", () => {
       expect(caja!.width).toBeGreaterThanOrEqual(24);
       expect(caja!.height).toBeGreaterThanOrEqual(24);
     }
+  });
+
+  test("la ficha de una licitación se consulta sin desbordar la página", async ({ page }) => {
+    await page.goto(`/detalle?lic=${SEED_LICITACION.id}`);
+    await expect(page.getByText(SEED_LICITACION.titulo).first()).toBeVisible({ timeout: 20_000 });
+
+    await expectDocumentFits(page);
+  });
+
+  test("watchlist mantiene visibles sus dos modos de trabajo", async ({ page }) => {
+    await page.goto("/mi-watchlist");
+    const reglas = page.getByRole("tab", { name: "Reglas" });
+    const favoritos = page.getByRole("tab", { name: "Favoritos" });
+
+    for (const tab of [reglas, favoritos]) {
+      await expect(tab).toBeVisible();
+      await expect(tab).toBeInViewport();
+      const box = await tab.boundingBox();
+      expect(box).not.toBeNull();
+      expect(box!.height).toBeGreaterThanOrEqual(24);
+    }
+    await expectDocumentFits(page);
+  });
+
+  test("la agenda usa fichas móviles y no desborda el documento", async ({ page }) => {
+    await page.goto("/mi-pipeline");
+    await expect(page.getByText(/compromisos|Tu agenda está vacía/).first()).toBeVisible({
+      timeout: 20_000,
+    });
+
+    await expectDocumentFits(page);
   });
 });
 

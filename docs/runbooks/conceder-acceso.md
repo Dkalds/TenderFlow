@@ -40,35 +40,30 @@ Cada fila trae `id`, `email`, `empresa`, `mensaje`, `origen` y `created_at`.
 
 ---
 
-## 2. Decidir y habilitar el acceso
+## 2. Decidir, conceder y avisar
 
-**Este es el paso que el sistema no puede dar por ti.** La allowlist vive en
-variables de entorno (`shared/auth_core.py`), no en la base de datos:
+La acción es atómica desde la API: persiste el grant dinámico, marca la solicitud
+como atendida y sólo después intenta enviar el correo.
 
-- `OAUTH_ALLOWED_EMAILS` — direcciones sueltas, separadas por coma.
-- `OAUTH_ALLOWED_DOMAINS` — dominios enteros (`empresa.com`), cuando se habilita
-  a un equipo en vez de a una persona.
-
-Añade la dirección (o el dominio) **en el dashboard de Render**, en el servicio
-`tenderflow-api`, y espera a que el servicio reinicie. Hasta que reinicie, la
-persona sigue recibiendo un 403.
-
-> Mover esta allowlist a base de datos —para poder aprobar desde el panel— es un
-> cambio de mecanismo de autenticación: requiere RFC (AGENTS.md §5) y migración.
-> Está anotado en el backlog; mientras no se haga, este paso es manual y es la
-> razón de que el correo del paso 3 sea opt-in y no automático.
-
----
-
-## 3. Avisar a la persona
-
-Sólo **después** de que el servicio haya reiniciado con la allowlist nueva:
+Concesión a una sola dirección (opción normal):
 
 ```bash
 curl -s -X PATCH -H "X-API-Key: $ADMIN_API_KEY" -H "Content-Type: application/json" \
-  -d '{"estado":"atendida","notificar":true}' \
+  -d '{"estado":"atendida","conceder":"email","notificar":true}' \
   "$API/api/v1/admin/solicitudes-acceso/<id>" | jq
 ```
+
+Concesión a todo el dominio (sólo tras aprobar al cliente completo):
+
+```bash
+curl -s -X PATCH -H "X-API-Key: $ADMIN_API_KEY" -H "Content-Type: application/json" \
+  -d '{"estado":"atendida","conceder":"domain","notificar":true}' \
+  "$API/api/v1/admin/solicitudes-acceso/<id>" | jq
+```
+
+La respuesta incluye `grant_id`, que identifica la concesión revocable. Las
+variables `OAUTH_ALLOWED_EMAILS`/`OAUTH_ALLOWED_DOMAINS` se conservan como
+bootstrap de emergencia y no se editan para altas normales.
 
 La respuesta trae `notificado`:
 
@@ -78,12 +73,27 @@ La respuesta trae `notificado`:
 | `false` | Se pidió y **no** salió (SMTP sin configurar, buzón que rechaza, o la solicitud ya estaba atendida) | Revisar `email_producto_failed` en los logs y escribir a mano |
 | `null` | No se pidió aviso | Nada |
 
-El orden importa: si avisas antes de habilitar, la persona entra, recibe un 403 y
-se lleva la impresión de que el producto no funciona.
+El orden lo impone el servidor: si no puede persistir la concesión, no marca la
+solicitud como atendida ni envía el correo.
 
 Marcar `notificar: true` sobre una solicitud **que ya estaba `atendida`** no
 reenvía nada (devuelve `notificado: false`): pulsar dos veces no puede escribir
 dos veces a la misma persona.
+
+---
+
+## 3. Revocar una concesión dinámica
+
+```bash
+curl -s -H "X-API-Key: $ADMIN_API_KEY" \
+  "$API/api/v1/admin/solicitudes-acceso/grants" | jq
+curl -s -X DELETE -H "X-API-Key: $ADMIN_API_KEY" \
+  "$API/api/v1/admin/solicitudes-acceso/grants/<grant_id>" | jq
+```
+
+Revocar impide nuevos logins. Las sesiones ya abiertas mantienen su política de
+caducidad; para cortar una cuenta existente, desactívala desde Administración.
+Una entrada estática de entorno no puede revocarse desde este endpoint.
 
 ---
 
@@ -104,6 +114,8 @@ peor que el silencio.
 
 - Todo cambio de estado queda en el log de auditoría encadenado
   (`solicitud_acceso.estado`), verificable con `scripts/verify_audit_chain.py`.
+- Cada alta/baja dinámica deja `access_grant.granted`/`access_grant.revoked` sin
+  copiar el email o dominio al detalle del audit log.
 - El correo a la persona registra sólo el **dominio** del destinatario
   (`solicitud_acceso_aviso_persona`), nunca la dirección completa.
 - Reenviar el formulario con el mismo email **no** crea una fila nueva mientras

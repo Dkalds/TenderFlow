@@ -3,7 +3,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ApiError, apiGet } from "@/lib/api-client";
-import { streamAsk, type ChatMessage, type DegradedInfo, type FuenteDocumento } from "@/lib/ask-stream";
+import {
+  streamAsk,
+  type AskMeta,
+  type ChatMessage,
+  type DegradedInfo,
+  type FuenteDocumento,
+} from "@/lib/ask-stream";
 
 /**
  * Available LLM models for the copilot (shared cache key with /investigador).
@@ -42,6 +48,8 @@ export interface ChatTurn {
   fuentes?: FuenteDocumento[];
   /** Set when the backend degraded (no LLM synthesis) for this turn. */
   degraded?: DegradedInfo | null;
+  /** Effective scope of the answer (licitación vs corpus fallback). */
+  askMeta?: AskMeta | null;
 }
 
 export interface SendOptions {
@@ -121,11 +129,13 @@ export function useChat(opts?: { idExterno?: string }): UseChatResult {
           onToken: (accumulated) => updateLastAssistant({ content: accumulated }),
           onFuentes: (fuentes) => updateLastAssistant({ fuentes }),
           onDegraded: (degraded) => updateLastAssistant({ degraded }),
+          onAskMeta: (askMeta) => updateLastAssistant({ askMeta }),
         });
         updateLastAssistant({
           content: result.answer,
           fuentes: result.fuentes.length > 0 ? result.fuentes : undefined,
           degraded: result.degraded,
+          askMeta: result.askMeta,
         });
       } catch (err) {
         if (err instanceof DOMException && err.name === "AbortError") return;

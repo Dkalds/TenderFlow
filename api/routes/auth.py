@@ -17,7 +17,17 @@ from asyncio import to_thread
 from typing import Any
 
 import httpx
-from fastapi import APIRouter, Cookie, Depends, Header, HTTPException, Request, Response, status
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Cookie,
+    Depends,
+    Header,
+    HTTPException,
+    Request,
+    Response,
+    status,
+)
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, EmailStr, Field, field_validator
 
@@ -59,8 +69,51 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 _SESSION_COOKIE = "session"
 _CSRF_COOKIE = "csrf_token"
 _OAUTH_PKCE_COOKIE = "oauth_pkce"
+_OAUTH_TELEMETRY_COOKIE = "oauth_login"
 _SESSION_MAX_AGE = 86400  # 24h
 _OAUTH_MAX_AGE = 600
+_RESET_REQUEST_RESPONSE = "Si existe una cuenta local activa, recibirás un enlace de recuperación."
+
+
+async def _oauth_access_allowed(email: str) -> bool:
+    """Allowlist estática o grant dinámico; cualquier fallo dinámico deniega."""
+    if oauth_email_allowed(email):
+        return True
+    try:
+        from db.access_grants import is_access_granted
+
+        return bool(await run_db(is_access_granted, email))
+    except Exception:
+        log.exception("oauth_dynamic_allowlist_unavailable")
+        return False
+
+
+async def _password_reset_rate_allowed(request: Request, email: str | None = None) -> bool:
+    """Cuotas independientes por IP y sujeto; un fallo del limiter deniega."""
+    from api.middleware import _trusted_client_ip
+    from services.rate_limiting import get_rate_limiter
+
+    client_ip = _trusted_client_ip(request)
+    email_key = hashlib.sha256((email or "").strip().lower().encode()).hexdigest()[:16]
+
+    def _check() -> bool:
+        limiter = get_rate_limiter()
+        ip_allowed = limiter.check(
+            f"password-reset:ip:{client_ip}", max_calls=5, window_seconds=900
+        )
+        if not ip_allowed:
+            return False
+        if email:
+            return limiter.check(
+                f"password-reset:subject:{email_key}", max_calls=3, window_seconds=3600
+            )
+        return True
+
+    try:
+        return bool(await run_db(_check))
+    except Exception:
+        log.exception("password_reset_rate_limiter_unavailable")
+        return False
 
 
 # ---------------------------------------------------------------------------
@@ -305,6 +358,15 @@ class RegisterRequest(BaseModel):
     display_name: str | None = None
 
 
+class PasswordResetRequest(BaseModel):
+    email: EmailStr
+
+
+class PasswordResetConfirm(BaseModel):
+    token: str = Field(min_length=32, max_length=200)
+    password: str = Field(min_length=10, max_length=512)
+
+
 class UserInfo(BaseModel):
     """Public user info returned by auth endpoints."""
 
@@ -450,6 +512,69 @@ async def register(body: RegisterRequest, response: Response, request: Request) 
         display_name=display_name,
         is_admin=False,
     )
+
+
+# ---------------------------------------------------------------------------
+# Password recovery for local accounts
+# ---------------------------------------------------------------------------
+
+
+@router.post(
+    "/password-reset/request",
+    status_code=status.HTTP_202_ACCEPTED,
+    response_model=DetailMessage,
+)
+async def request_password_reset(
+    body: PasswordResetRequest,
+    request: Request,
+    background_tasks: BackgroundTasks,
+) -> DetailMessage:
+    """Emite una respuesta indistinguible exista o no la cuenta."""
+    email = str(body.email).strip().lower()
+    if not await _password_reset_rate_allowed(request, email):
+        return DetailMessage(detail=_RESET_REQUEST_RESPONSE)
+
+    from services.password_reset import issue_password_reset, send_password_reset_email
+
+    try:
+        created, token = await run_db(issue_password_reset, email)
+    except Exception:
+        log.exception("password_reset_request_failed")
+        return DetailMessage(detail=_RESET_REQUEST_RESPONSE)
+    if created and token is not None:
+        background_tasks.add_task(send_password_reset_email, email, token)
+    return DetailMessage(detail=_RESET_REQUEST_RESPONSE)
+
+
+@router.post("/password-reset/confirm", response_model=StatusOk)
+async def confirm_password_reset(
+    body: PasswordResetConfirm,
+    request: Request,
+) -> StatusOk:
+    """Consume un token una sola vez, cambia la contraseña y revoca sesiones."""
+    if not await _password_reset_rate_allowed(request):
+        raise HTTPException(status_code=429, detail="Demasiados intentos. Inténtalo más tarde.")
+
+    password_check = check_password_strength(
+        body.password,
+        min_length=10,
+        label="password",
+    )
+    if not password_check.is_strong:
+        raise HTTPException(status_code=400, detail=password_check.summary)
+
+    from db.password_reset import consume_reset_token
+    from services.password_reset import token_hash
+
+    def _consume() -> int | None:
+        password_digest = hash_password(body.password)
+        return consume_reset_token(token_hash(body.token), password_digest)
+
+    user_id = await run_db(_consume)
+    if user_id is None:
+        raise HTTPException(status_code=400, detail="El enlace no es válido o ha caducado.")
+    log.info("password_reset_completed", user_id=user_id)
+    return StatusOk(status="ok")
 
 
 # ---------------------------------------------------------------------------
@@ -867,7 +992,7 @@ async def google_callback(
         return _oauth_error_redirect(frontend_url, "oauth_failed")
 
     email: str = str(claims.get("email", ""))
-    if not email or not oauth_email_allowed(email):
+    if not email or not await _oauth_access_allowed(email):
         log.warning("oauth_email_not_allowed")
         return _oauth_error_redirect(frontend_url, "email_not_allowed")
 
@@ -894,5 +1019,15 @@ async def google_callback(
     destino = "/login?mfa=required" if mfa_required else "/resumen"
     redirect = RedirectResponse(url=f"{frontend_url}{destino}", status_code=302)
     redirect.delete_cookie(_OAUTH_PKCE_COOKIE, path="/api/v1/auth/oauth/google")
+    if not mfa_required:
+        redirect.set_cookie(
+            _OAUTH_TELEMETRY_COOKIE,
+            "1",
+            max_age=120,
+            httponly=False,
+            secure=settings.ENV in ("prod", "staging"),
+            samesite="lax",
+            path="/",
+        )
     await run_db(_set_session_cookie, redirect, user_id, request)
     return redirect

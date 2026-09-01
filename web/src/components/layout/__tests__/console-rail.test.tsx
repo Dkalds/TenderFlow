@@ -146,4 +146,12 @@ describe("ConsoleRail", () => {
     // Un menú de cuenta por superficie: el de escritorio y el de la barra móvil.
     expect(screen.getAllByRole("button", { name: "Menú de cuenta" })).toHaveLength(2);
   });
+
+  it("usa un selector Radix accesible para cambiar de organización", () => {
+    renderRail("/resumen");
+    fireEvent.pointerDown(screen.getAllByRole("button", { name: "Menú de cuenta" })[0]);
+
+    const selector = screen.getByRole("combobox", { name: "Organización activa" });
+    expect(selector.tagName).toBe("BUTTON");
+  });
 });

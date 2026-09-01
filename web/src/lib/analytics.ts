@@ -72,7 +72,7 @@ export interface EventosProducto {
    * no se sabe si son muchos o poquísimos. `metodo` separa contraseña de
    * segundo factor y de alta nueva.
    */
-  sesion_iniciada: { metodo: "password" | "totp" | "registro" };
+  sesion_iniciada: { metodo: "password" | "google" | "totp" | "registro" };
   /**
    * ¿Qué espacios se visitan? La clave estable de `ConsoleSpace` (existe
    * justamente para esto) sobrevive a renombrar el slug o mover la ruta, cosa
@@ -151,6 +151,18 @@ export interface EventosProducto {
     resultado: "ok" | "degradado" | "error";
   };
   /**
+   * ¿Las respuestas de la IA sirven? `asistente_usado` mide uso;
+   * este mide calidad percibida: el pulgar explícito sobre una respuesta del
+   * chat, un resumen o la ficha del pliego. Es la única señal de calidad que
+   * existe mientras no haya un eval con golden set — sin ella, "se usa mucho"
+   * y "responde mal" son indistinguibles. Nunca viaja la pregunta, la
+   * respuesta ni la licitación: solo qué superficie y si sirvió.
+   */
+  asistente_feedback: {
+    modo: "pregunta" | "resumen" | "ficha";
+    util: "si" | "no";
+  };
+  /**
    * ¿La gente se lleva el dato? Es la señal más fuerte de que una pantalla
    * sirve de verdad. `recurso` sale de la ruta del endpoint depurada (ver
    * `dimensionesDeDescarga`), nunca de la query: ahí van los filtros del
@@ -207,6 +219,7 @@ export const PROPIEDADES_PERMITIDAS = {
   onboarding_ocultado: ["progreso"],
   regla_creada: ["primera_vez"],
   asistente_usado: ["modo", "ambito", "resultado"],
+  asistente_feedback: ["modo", "util"],
   export_lanzado: ["formato", "recurso"],
   busqueda_realizada: ["superficie", "con_resultados"],
   vista_guardada: ["primera_vez"],

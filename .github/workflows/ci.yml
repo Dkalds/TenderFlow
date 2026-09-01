@@ -401,6 +401,38 @@ jobs:
           --ignore-vuln PYSEC-2024-277
           --ignore-vuln PYSEC-2026-161
 
+      # `requirements-dev.txt` tiene 132 pines, de los cuales 76 son los
+      # mismos de `requirements.txt` y ya los cubre el paso de arriba: lo que
+      # este añade son los ~56 restantes (pytest, schemathesis, diff-cover…),
+      # que hasta ahora no auditaba nadie. No van a la imagen de producción,
+      # pero se ejecutan en CI con el checkout del repo delante, así que un
+      # paquete comprometido ahí es un problema real.
+      #
+      # Siguen fuera de cobertura los que los workflows instalan a mano y sin
+      # fijar (bandit en ci.yml y security.yml, mutmut en mutation-sample.yml,
+      # detect-secrets en security.yml): no están en ningún lockfile.
+      - name: Audit dev dependencies
+        run: >-
+          pip-audit -r requirements-dev.txt
+          --ignore-vuln PYSEC-2024-277
+          --ignore-vuln PYSEC-2026-161
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "22"
+
+      # No había **ningún** escáner de dependencias npm en todo el repo: la
+      # alerta de nanoid (#104, GHSA-2v37-7h3g-55p8) vivió desde el 2026-08-14
+      # sin que CI pudiera verla. Trivy solo mira la imagen de la API, que no
+      # lleva `node_modules`. Son dos árboles distintos —`/web` es la app y la
+      # raíz lleva los paquetes de Vercel—, y `npm audit` no es recursivo.
+      - name: Audit npm dependencies (web)
+        working-directory: web
+        run: npm audit --audit-level=high
+
+      - name: Audit npm dependencies (raíz)
+        run: npm audit --audit-level=high
+
   # ── SAST: depende de static-analysis (ahorra runner si lint falla) ─
   bandit:
     name: SAST (bandit)

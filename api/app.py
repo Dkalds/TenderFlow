@@ -192,7 +192,9 @@ app = FastAPI(
     description=(
         "API pública para consultar las licitaciones y adjudicaciones SAP "
         "extraídas de la Plataforma de Contratación del Sector Público (PLACSP).\n\n"
-        "**Autenticación**: cabecera `X-API-Key` en todos los endpoints excepto `/health`.\n\n"
+        "**Autenticación**: los endpoints protegidos declaran en OpenAPI si aceptan "
+        "sesión, `X-API-Key` o ambas. `/publico/*`, `/health` y el inicio de sesión "
+        "son anónimos por diseño.\n\n"
         "**Rate limiting**: 120 req/min por API-Key (configurable). Devuelve 429 al exceder.\n\n"
         "**Trazabilidad**: cada request acepta y devuelve `X-Correlation-Id` para "
         "correlación end-to-end con los logs.\n\n"

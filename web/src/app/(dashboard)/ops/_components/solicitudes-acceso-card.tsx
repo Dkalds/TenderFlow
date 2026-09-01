@@ -7,11 +7,9 @@
  * petición vivía en el buzón de alguien. Aquí se ve qué ha entrado y se marca
  * como atendida o descartada.
  *
- * **Marcar una solicitud como atendida no concede el acceso.** La allowlist
- * sigue en `OAUTH_ALLOWED_EMAILS`/`OAUTH_ALLOWED_DOMAINS`, así que habilitar a
- * alguien es editar variables de entorno y redesplegar; el estado de aquí sólo
- * dice si la petición ya se ha tratado. La tarjeta lo declara en su cabecera
- * para que nadie asuma lo contrario.
+ * La acción principal persiste una concesión dinámica antes de notificar. La
+ * configuración estática sigue siendo bootstrap, pero las altas normales ya
+ * no exigen editar Render ni redesplegar.
  *
  * **La vista por defecto son las pendientes, y no es cosmética.** El endpoint
  * devuelve las N más recientes ordenadas por `created_at DESC` mezclando los
@@ -56,6 +54,14 @@ interface SolicitudAcceso {
 interface CambioEstado {
   status: string;
   notificado: boolean | null;
+  grant_id?: number | null;
+}
+
+interface AccessGrant {
+  id: number;
+  kind: "email" | "domain";
+  value: string;
+  active: boolean;
 }
 
 const ETIQUETA_ESTADO: Record<string, string> = {
@@ -107,17 +113,35 @@ export function SolicitudesAccesoCard() {
     enabled: vista === "historico",
   });
 
+  const grantsQuery = useQuery<AccessGrant[]>({
+    queryKey: ["admin-access-grants"],
+    queryFn: async () => {
+      const response = await fetch("/api/v1/admin/solicitudes-acceso/grants", {
+        credentials: "include",
+      });
+      if (!response.ok) throw new Error(`Error ${response.status}`);
+      return response.json() as Promise<AccessGrant[]>;
+    },
+  });
+
   const activa = vista === "pendiente" ? pendientesQuery : historicoQuery;
   const { isLoading, error } = activa;
 
   const cambiarEstado = useMutation({
-    mutationFn: (vars: { id: number; estado: string; notificar?: boolean }) =>
+    mutationFn: (vars: {
+      id: number;
+      estado: string;
+      notificar?: boolean;
+      conceder?: "email" | "domain";
+    }) =>
       apiMutate<CambioEstado>("PATCH", `/api/v1/admin/solicitudes-acceso/${vars.id}`, {
         estado: vars.estado,
         notificar: vars.notificar ?? false,
+        conceder: vars.conceder ?? null,
       }),
     onSuccess: (respuesta) => {
       queryClient.invalidateQueries({ queryKey: ["admin-solicitudes-acceso"] });
+      queryClient.invalidateQueries({ queryKey: ["admin-access-grants"] });
       // `notificado` distingue tres cosas y las tres importan: no se pidió
       // aviso (`null`), salió (`true`), o se pidió y NO salió (`false`). Sin
       // este reparto, un SMTP mal configurado dejaba al operador convencido de
@@ -134,6 +158,16 @@ export function SolicitudesAccesoCard() {
       }
     },
     onError: () => toast.error("No se pudo actualizar la solicitud"),
+  });
+
+  const revocar = useMutation({
+    mutationFn: (grantId: number) =>
+      apiMutate("DELETE", `/api/v1/admin/solicitudes-acceso/grants/${grantId}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["admin-access-grants"] });
+      toast.success("Acceso revocado para nuevos inicios de sesión");
+    },
+    onError: () => toast.error("No se pudo revocar el acceso"),
   });
 
   const solicitudes = activa.data ?? [];
@@ -159,9 +193,9 @@ export function SolicitudesAccesoCard() {
           )}
         </CardTitle>
         <CardDescription>
-          Peticiones enviadas desde el formulario de la web pública. Marcarlas aquí no concede el acceso: la allowlist
-          sigue en las variables de entorno del despliegue. El orden es habilitar la dirección, esperar al reinicio y
-          solo entonces «Atendida y avisar», que es lo que escribe a la persona.
+          Peticiones enviadas desde la web pública. «Conceder email y avisar» activa el acceso
+          antes de enviar el correo. Conceder un dominio abre el acceso a todas sus cuentas y
+          debe reservarse para clientes aprobados.
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -228,39 +262,39 @@ export function SolicitudesAccesoCard() {
                   </Badge>
                   {solicitud.estado === "pendiente" && (
                     <>
-                      {/* El aviso va en su propio botón, y no de propina al
-                          marcar atendida, porque el correo afirma «ya puedes
-                          entrar»: mandarlo antes de haber editado la allowlist
-                          manda a la persona contra un 403. El orden correcto
-                          está en docs/runbooks/conceder-acceso.md. */}
                       <Button
                         size="sm"
                         disabled={cambiarEstado.isPending}
-                        title="Marca la solicitud y escribe a la persona. Úsalo solo si ya has añadido su dirección o su dominio a la allowlist y el servicio ha reiniciado."
                         onClick={() =>
                           cambiarEstado.mutate({
                             id: solicitud.id,
                             estado: "atendida",
                             notificar: true,
+                            conceder: "email",
                           })
                         }
                       >
-                        Atendida y avisar
+                        Conceder email y avisar
                       </Button>
                       <Button
                         size="sm"
                         variant="secondary"
                         disabled={cambiarEstado.isPending}
-                        title="Solo marca la solicitud como tratada. No escribe a nadie."
-                        onClick={() => cambiarEstado.mutate({ id: solicitud.id, estado: "atendida" })}
+                        onClick={() =>
+                          cambiarEstado.mutate({
+                            id: solicitud.id,
+                            estado: "atendida",
+                            notificar: true,
+                            conceder: "domain",
+                          })
+                        }
                       >
-                        Atendida
+                        Conceder dominio
                       </Button>
                       <Button
                         size="sm"
                         variant="ghost"
                         disabled={cambiarEstado.isPending}
-                        title="Cierra la solicitud sin escribir a nadie."
                         onClick={() => cambiarEstado.mutate({ id: solicitud.id, estado: "descartada" })}
                       >
                         Descartar
@@ -272,6 +306,38 @@ export function SolicitudesAccesoCard() {
             ))}
           </ul>
         )}
+        <div className="border-border/60 mt-5 border-t pt-4">
+          <h3 className="text-sm font-semibold">Accesos dinámicos activos</h3>
+          {grantsQuery.isLoading ? (
+            <Skeleton className="mt-3 h-12 w-full" />
+          ) : (grantsQuery.data?.length ?? 0) === 0 ? (
+            <p className="text-muted-foreground mt-2 text-xs">
+              No hay concesiones dinámicas; pueden seguir aplicando las variables de entorno.
+            </p>
+          ) : (
+            <ul className="divide-border/60 mt-2 divide-y">
+              {grantsQuery.data?.map((grant) => (
+                <li key={grant.id} className="flex items-center justify-between gap-3 py-2">
+                  <div className="min-w-0">
+                    <span className="text-xs font-medium">{grant.value}</span>
+                    <Badge variant="outline" className="ml-2">
+                      {grant.kind === "email" ? "Email" : "Dominio"}
+                    </Badge>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    disabled={revocar.isPending}
+                    aria-label={`Revocar acceso de ${grant.value}`}
+                    onClick={() => revocar.mutate(grant.id)}
+                  >
+                    Revocar
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
       </CardContent>
     </Card>
   );

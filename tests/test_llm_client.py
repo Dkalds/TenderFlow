@@ -420,3 +420,162 @@ def test_stream_llm_response_passes_api_key(monkeypatch):
         list(stream_llm_response("pregunta de prueba", [], model="gpt-4o-mini", keywords=[]))
 
     assert received_key[0] == "test-openai-key"
+
+
+# ---------------------------------------------------------------------------
+# Modos internos — tope de plantilla, no de usuario
+# ---------------------------------------------------------------------------
+
+
+def test_internal_modes_allow_template_length_questions():
+    """Las plantillas internas (extraction/clasificacion/resumen) no chocan con
+    el límite de usuario: usan MAX_INTERNAL_QUESTION_LEN. Regresión del
+    incidente v3 de la ficha (plantilla de 2070 chars → ficha rota en silencio).
+    """
+    from llm.client import MAX_INTERNAL_QUESTION_LEN, MAX_QUESTION_LEN, _validate_request
+
+    template = "x" * (MAX_QUESTION_LEN + 500)
+    for mode in ("extraction", "clasificacion", "resumen"):
+        _validate_request(template, [], "gpt-4o-mini", mode=mode)  # no lanza
+
+    import pytest
+
+    with pytest.raises(ValueError, match="excede el máximo"):
+        _validate_request(template, [], "gpt-4o-mini", mode="general")
+    with pytest.raises(ValueError, match="excede el máximo"):
+        _validate_request(
+            "x" * (MAX_INTERNAL_QUESTION_LEN + 1), [], "gpt-4o-mini", mode="extraction"
+        )
+
+
+# ---------------------------------------------------------------------------
+# Fallback de proveedor
+# ---------------------------------------------------------------------------
+
+
+def _sin_claves_nvidia_anthropic(monkeypatch):
+    """Aísla la cadena de fallback del entorno de quien corre los tests."""
+    for var in ("NVIDIA_API_KEY", "ANTHROPIC_API_KEY", "OPENAI_API_KEY"):
+        monkeypatch.delenv(var, raising=False)
+
+
+def test_fallback_on_provider_error_before_first_token(monkeypatch):
+    """Si el modelo pedido lanza antes de emitir, se intenta el siguiente con key."""
+    _sin_claves_nvidia_anthropic(monkeypatch)
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")  # pragma: allowlist secret
+
+    def broken_openai(system, messages, model, api_key, **kwargs) -> Iterator[str]:
+        raise RuntimeError("410 Gone")
+        yield  # pragma: no cover
+
+    def working_anthropic(system, messages, model, api_key, **kwargs) -> Iterator[str]:
+        yield from ["desde", " claude"]
+
+    with (
+        patch("llm.providers.openai_provider.stream", broken_openai),
+        patch("llm.providers.anthropic_provider.stream", working_anthropic),
+    ):
+        from llm.client import stream_llm_response
+
+        result = list(stream_llm_response("pregunta de prueba", [], "gpt-4o-mini", []))
+
+    assert result == ["desde", " claude"]
+
+
+def test_fallback_on_empty_stream(monkeypatch):
+    """Stream vacío (API key ausente, provider abortado) también activa fallback."""
+    _sin_claves_nvidia_anthropic(monkeypatch)
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")  # pragma: allowlist secret
+
+    def empty_openai(system, messages, model, api_key, **kwargs) -> Iterator[str]:
+        return iter([])
+
+    def working_anthropic(system, messages, model, api_key, **kwargs) -> Iterator[str]:
+        yield "rescatado"
+
+    with (
+        patch("llm.providers.openai_provider.stream", empty_openai),
+        patch("llm.providers.anthropic_provider.stream", working_anthropic),
+    ):
+        from llm.client import stream_llm_response
+
+        result = list(stream_llm_response("pregunta de prueba", [], "gpt-4o-mini", []))
+
+    assert result == ["rescatado"]
+
+
+def test_no_fallback_after_first_token(monkeypatch):
+    """Con tokens ya emitidos no se cambia de modelo: el error se propaga."""
+    import pytest
+
+    _sin_claves_nvidia_anthropic(monkeypatch)
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")  # pragma: allowlist secret
+
+    def half_broken_openai(system, messages, model, api_key, **kwargs) -> Iterator[str]:
+        yield "primer token"
+        raise RuntimeError("conexión cortada")
+
+    def working_anthropic(system, messages, model, api_key, **kwargs) -> Iterator[str]:
+        yield "no debería llegar aquí"
+
+    with (
+        patch("llm.providers.openai_provider.stream", half_broken_openai),
+        patch("llm.providers.anthropic_provider.stream", working_anthropic),
+    ):
+        from llm.client import stream_llm_response
+
+        received: list[str] = []
+        with pytest.raises(RuntimeError, match="conexión cortada"):
+            stream = stream_llm_response("pregunta de prueba", [], "gpt-4o-mini", [])
+            received.extend(stream)
+
+    assert received == ["primer token"]
+
+
+def test_fallback_disabled_propagates_error(monkeypatch):
+    """Con fallback=False el error del modelo pedido se propaga tal cual."""
+    import pytest
+
+    _sin_claves_nvidia_anthropic(monkeypatch)
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")  # pragma: allowlist secret
+
+    def broken_openai(system, messages, model, api_key, **kwargs) -> Iterator[str]:
+        raise RuntimeError("410 Gone")
+        yield  # pragma: no cover
+
+    with patch("llm.providers.openai_provider.stream", broken_openai):
+        from llm.client import stream_llm_response
+
+        with pytest.raises(RuntimeError, match="410 Gone"):
+            list(stream_llm_response("pregunta de prueba", [], "gpt-4o-mini", [], fallback=False))
+
+
+def test_all_candidates_failed_raises_last_error(monkeypatch):
+    """Sin ningún candidato viable con key, se propaga el último error real."""
+    import pytest
+
+    _sin_claves_nvidia_anthropic(monkeypatch)
+
+    def broken_stream(system, messages, model, api_key, **kwargs) -> Iterator[str]:
+        raise RuntimeError("proveedor caído")
+        yield  # pragma: no cover
+
+    # Ambos providers rotos: aunque el entorno de quien corre los tests tenga
+    # claves reales en config.secrets, ningún candidato puede salir a red.
+    with (
+        patch("llm.providers.openai_provider.stream", broken_stream),
+        patch("llm.providers.anthropic_provider.stream", broken_stream),
+    ):
+        from llm.client import stream_llm_response
+
+        with pytest.raises(RuntimeError, match="proveedor caído"):
+            list(stream_llm_response("pregunta de prueba", [], "gpt-4o-mini", []))
+
+
+def test_fallback_models_are_available_and_priced():
+    """La cadena de fallback solo oferta modelos válidos (y con precio)."""
+    from llm.client import _PRICE_PER_MTOK, AVAILABLE_MODELS, FALLBACK_MODELS
+
+    for model in FALLBACK_MODELS:
+        assert model in AVAILABLE_MODELS
+        assert model in _PRICE_PER_MTOK

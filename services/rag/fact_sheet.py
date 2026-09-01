@@ -59,13 +59,13 @@ _TOPIC_TERMS = (
 # del presupuesto de contexto si solo se puntúa por términos administrativos.
 _TECH_TERMS = ("sap", "oracle", "salesforce", "microsoft", "hana", "erp", "crm", "software")
 
-# El texto viaja como ``question`` a ``stream_llm_response``, que rechaza
-# cualquier pregunta de más de ``MAX_QUESTION_LEN`` caracteres ANTES de llamar
-# al proveedor. No es cosmética: v3 (lotes/ANS/certificaciones) dejó esta
-# constante en 2070 y desde entonces la ficha falló SIEMPRE —botón «Extraer
-# ficha» y cron nocturno por igual— con «La pregunta excede el máximo de 2000
-# caracteres», que la UI enseñaba tal cual. Al añadir una familia nueva hay que
-# recortar en otro sitio; `test_extraction_question_fits_llm_limit` lo fija.
+# El texto viaja como ``question`` a ``stream_llm_response`` en modo interno
+# (``extraction``), acotado por ``MAX_INTERNAL_QUESTION_LEN`` — el tope de
+# plantilla, no el de usuario. La historia importa: cuando compartía el límite
+# de 2000 chars de /ask, v3 (lotes/ANS/certificaciones) lo dejó en 2070 y la
+# ficha falló SIEMPRE —botón «Extraer ficha» y cron nocturno por igual— con
+# «La pregunta excede el máximo…», que la UI enseñaba tal cual. El tope interno
+# da holgura real y `test_extraction_question_fits_llm_limit` sigue fijándolo.
 #
 # Los valores cerrados (`criterion_type`, `scope`), el formato de fecha y el
 # techo de la cita se enuncian aquí porque el modelo los valida en
@@ -412,6 +412,11 @@ def extract_fact_sheet(
                 keywords=list(_TOPIC_TERMS),
                 mode="extraction",
                 max_tokens=3500,
+                # Sin fallback de proveedor: la fila persiste `model`, y un
+                # cambio silencioso de modelo la haría mentir sobre quién
+                # extrajo. Si el proveedor está caído, la extracción falla
+                # visible y el cron/botón reintentan.
+                fallback=False,
             )
         )
         facts, invalid = _parse_facts(extract_json_object(raw))
@@ -458,3 +463,169 @@ def get_fact_sheet(licitacion_id: str) -> TenderFactSheetRecord | None:
     """Lee la ficha vigente sin invocar al proveedor LLM."""
     row = TenderFactSheetsRepository().get(licitacion_id)
     return TenderFactSheetRecord.model_validate(row) if row else None
+
+
+# ── Ficha verificada como contexto del resumen IA ──────────────────────────────
+
+_SUMMARY_FAMILY_LABELS: dict[str, str] = {
+    "lots": "Lotes",
+    "award_criteria": "Criterios de adjudicación",
+    "technical_solvency": "Solvencia técnica",
+    "economic_solvency": "Solvencia económica",
+    "guarantees": "Garantías",
+    "penalties": "Penalizaciones",
+    "service_levels": "Niveles de servicio (ANS)",
+    "subcontracting": "Subcontratación",
+    "team_requirements": "Equipo requerido",
+    "certifications": "Certificaciones",
+    "extensions": "Prórrogas",
+    "critical_deadlines": "Fechas críticas",
+    "technologies": "Tecnologías",
+}
+_SUMMARY_MAX_ITEMS_PER_FAMILY = 8
+
+
+# ``Any``: recibe cualquiera de las trece familias de ``TenderFactSheet``
+# (LotFact, WeightedCriterion, MonetaryFact…), que solo comparten FactItem;
+# los campos extra se consultan con getattr.
+def _summary_item_line(item: Any) -> str:
+    """Línea compacta de un hecho: nombre + atributos tipados + descripción."""
+    name = getattr(item, "name", None) or getattr(item, "role", None)
+    detalles: list[str] = []
+    if getattr(item, "weight_pct", None) is not None:
+        detalles.append(f"peso {item.weight_pct}%")
+    if getattr(item, "amount_eur", None) is not None:
+        detalles.append(f"{item.amount_eur} EUR")
+    if getattr(item, "target", None):
+        detalles.append(f"objetivo {item.target}")
+    if getattr(item, "minimum_years", None) is not None:
+        detalles.append(f"{item.minimum_years} años mín.")
+    if getattr(item, "date_value", None) is not None:
+        detalles.append(str(item.date_value))
+    cabecera = str(name) if name else ""
+    if detalles:
+        cabecera = f"{cabecera} ({', '.join(detalles)})" if cabecera else ", ".join(detalles)
+    descripcion = str(getattr(item, "description", "") or "")[:200]
+    cuerpo = f"{cabecera}: {descripcion}" if cabecera else descripcion
+    return f"- {cuerpo}"
+
+
+def facts_summary_text(facts: TenderFactSheet, *, max_chars: int = 2500) -> str:
+    """Texto compacto de la ficha para inyectar como chunk del resumen IA.
+
+    Son los pocos datos "confiables" del sistema (cada hecho sobrevivió a la
+    validación de citas contra el texto persistido), así que el resumen los
+    recibe como fragmento etiquetado — el system prompt de modo ``resumen``
+    les da prioridad en '## Requisitos clave del pliego'.
+    """
+    lines: list[str] = []
+    for family, label in _SUMMARY_FAMILY_LABELS.items():
+        items = getattr(facts, family)
+        if not items:
+            continue
+        lines.append(f"{label}:")
+        lines.extend(_summary_item_line(item) for item in items[:_SUMMARY_MAX_ITEMS_PER_FAMILY])
+    text = "\n".join(lines)
+    return text[:max_chars]
+
+
+# ── Extracción en background (botón «Extraer ficha») ───────────────────────────
+
+# El estado ``running`` vive en cache y no en la tabla: añadirlo al CHECK de
+# ``tender_fact_sheets.status`` exigiría migración, y es un estado efímero de
+# proceso, no del dato. TTL de seguridad por si el worker muere sin limpiar.
+_EXTRACTION_RUNNING_TTL_SECONDS = 15 * 60
+
+
+# ``Any``: el backend concreto (_MemoryBackend | _RedisBackend) es privado de
+# shared.cache; aquí solo se usan get/set/delete.
+def _jobs_cache() -> Any:
+    from shared.cache import get_cache
+
+    return get_cache("fact_sheet_jobs")
+
+
+def _running_key(licitacion_id: str) -> str:
+    return f"running|{licitacion_id}"
+
+
+def extraction_running(licitacion_id: str) -> bool:
+    """True si hay una extracción en curso para la licitación."""
+    return bool(_jobs_cache().get(_running_key(licitacion_id)))
+
+
+def try_mark_extraction_running(licitacion_id: str) -> bool:
+    """Marca la extracción como en curso; ``False`` si ya lo estaba.
+
+    get+set sin atomicidad: dos clics simultáneos podrían colarse ambos, con
+    el único coste de una extracción duplicada (el upsert es idempotente).
+    """
+    cache = _jobs_cache()
+    key = _running_key(licitacion_id)
+    if cache.get(key):
+        return False
+    cache.set(key, True, ttl=_EXTRACTION_RUNNING_TTL_SECONDS)
+    return True
+
+
+def clear_extraction_running(licitacion_id: str) -> None:
+    _jobs_cache().delete(_running_key(licitacion_id))
+
+
+def run_background_extraction(
+    licitacion_id: str,
+    *,
+    model: str,
+    budget_subject: str | None = None,
+) -> None:
+    """Cuerpo del BackgroundTask de ``POST …/ficha-pliego/extract-async``.
+
+    Nunca lanza: el resultado se comunica por la fila persistida (que el
+    frontend consulta por polling) y por logs. El caso «sin páginas» —el único
+    en que ``extract_fact_sheet_on_demand`` falla SIN persistir— se materializa
+    aquí como ``failed`` con detalle, o el polling vería un 404 mudo para
+    siempre.
+    """
+    from llm.budget import bind_budget_subject
+
+    try:
+        bind_budget_subject(budget_subject)
+        try:
+            record = extract_fact_sheet_on_demand(licitacion_id, model=model)
+        except ValidationError:
+            # extract_fact_sheet ya persistió el estado failed con su detalle.
+            log.warning("fact_sheet_background_validation_failed", licitacion_id=licitacion_id)
+            return
+        except ValueError as exc:
+            TenderFactSheetsRepository().upsert(
+                licitacion_id=licitacion_id,
+                status="failed",
+                extraction_version=EXTRACTION_VERSION,
+                model=model,
+                facts=None,
+                field_count=0,
+                evidence_count=0,
+                error_detail=str(exc)[:2000],
+            )
+            return
+        except Exception as exc:
+            log.warning(
+                "fact_sheet_background_extract_failed",
+                licitacion_id=licitacion_id,
+                error=str(exc),
+            )
+            return
+
+        try:
+            from services.tech_signal import ingest_llm_technologies
+
+            ingest_llm_technologies(record)
+        except Exception as exc:
+            # La ficha ya está persistida; la señal de tecnología es aditiva.
+            log.warning(
+                "fact_sheet_background_tech_ingest_failed",
+                licitacion_id=licitacion_id,
+                error=str(exc),
+            )
+    finally:
+        clear_extraction_running(licitacion_id)

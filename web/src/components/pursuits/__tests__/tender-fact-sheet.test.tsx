@@ -20,17 +20,44 @@ vi.mock("@/hooks/use-tender-fact-sheet", () => ({
     },
   }),
   useExtractTenderFactSheet: () => ({ mutateAsync: extract, isPending: false }),
+  useTenderFactSheetExtraction: () => ({ start: extract, isStarting: false, running: false }),
+  useFactSheetDocumentos: () => ({
+    data: {
+      id_externo: "LIC-1",
+      items: [
+        {
+          id: 7,
+          tipo: "legal",
+          uri: "https://placsp.example/pcap.pdf",
+          filename: "PCAP.pdf",
+          content_type: "application/pdf",
+          size_bytes: 1000,
+          status: "extracted",
+          created_at: "2026-07-30T00:00:00Z",
+        },
+      ],
+    },
+  }),
 }));
 
 import { TenderFactSheetPanel } from "@/components/pursuits/tender-fact-sheet";
 
 describe("TenderFactSheetPanel", () => {
-  it("renders facts with confidence and an auditable document/page citation", () => {
+  it("renders facts with ordinal confidence and an auditable document/page citation", () => {
     render(<TenderFactSheetPanel licitacionId="LIC-1" />);
     expect(screen.getByText("Criterios de adjudicación")).toBeInTheDocument();
     expect(screen.getByText("Precio")).toBeInTheDocument();
-    expect(screen.getByText("86% confianza")).toBeInTheDocument();
+    // La confianza autoinformada del LLM se presenta como ordinal, con el
+    // número crudo como detalle — no como un porcentaje que aparente calibración.
+    expect(screen.getByText(/Confianza alta · 86%/)).toBeInTheDocument();
     expect(screen.getAllByText(/1 cita verificable/).length).toBeGreaterThan(0);
+  });
+
+  it("resolves citations to the document filename with a page deeplink", () => {
+    render(<TenderFactSheetPanel licitacionId="LIC-1" />);
+    const enlaces = screen.getAllByRole("link", { name: /PCAP\.pdf · página/ });
+    expect(enlaces.length).toBeGreaterThan(0);
+    expect(enlaces[0]).toHaveAttribute("href", expect.stringContaining("#page="));
   });
 
   it("renders v3 families: lots with number, SLAs with target and certifications with scope", () => {

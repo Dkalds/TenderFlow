@@ -5,10 +5,15 @@ Arma el contexto que ``/api/v1/ask`` (con ``id_externo``) y
 metadatos del anuncio + fragmentos de pliego seleccionados con presupuesto
 de caracteres.
 
-El ranking semántico frente a la pregunta corre en Python vía
-``services.embeddings.smart_match`` (embeddings MiniLM si están instalados,
-substring si no): un solo camino, sin ramas por motor —
-el embedding persistido en ``documento_chunks`` no se consulta aquí.
+Ranking frente a la pregunta, en orden de preferencia:
+
+1. **pgvector** (si sentence-transformers está instalado y hay embeddings
+   persistidos): se embebe SOLO la pregunta y el orden lo da ``embedding <=>``
+   en Postgres — los vectores que el job nocturno ya pagó. Sin tope de
+   candidatos previo al ranking.
+2. **Python** (fallback): ``services.embeddings.smart_match`` sobre los
+   candidatos de ``list_chunks_by_licitacion`` (o chunking al vuelo), que sin
+   el extra ``[ml-embeddings]`` degrada a overlap de substrings.
 """
 
 from __future__ import annotations
@@ -55,6 +60,57 @@ def _chunks_from_textos(repo: DocumentosRepository, licitacion_id: str) -> list[
             if len(out) >= MAX_CANDIDATE_CHUNKS:
                 return out
     return out
+
+
+def _select_chunks_pgvector(
+    repo: DocumentosRepository,
+    licitacion_id: str,
+    question: str,
+    *,
+    max_chars: int,
+    max_chunks: int,
+) -> tuple[list[dict[str, Any]], bool] | None:
+    """Selección vía embeddings persistidos. ``None`` = usar el camino Python.
+
+    Devuelve ``None`` (y no ``([], False)``) cuando el motor no está
+    disponible, la query falla (p.ej. dimensión del vector distinta tras un
+    cambio de modelo de embeddings) o no hay embeddings para la licitación:
+    en todos esos casos el fallback en Python aún puede producir contexto.
+    """
+    from services.embeddings import embeddings_available, encode_texts
+
+    if not embeddings_available():
+        return None
+    try:
+        query_vec = encode_texts([question])[0]
+        rows = repo.search_chunks_by_embedding(
+            licitacion_id,
+            [float(x) for x in query_vec],
+            limit=max(max_chunks * 3, 24),
+        )
+    except Exception:
+        log.warning("rag_context.pgvector_failed", licitacion_id=licitacion_id, exc_info=True)
+        return None
+    if not rows:
+        return None
+
+    # Umbral laxo, como en smart_match: el ranking decide QUÉ entra; por debajo
+    # del umbral el chunk solo entra si sobra presupuesto (relleno documental).
+    relevant = [r for r in rows if float(r.get("score") or 0.0) >= _RANK_THRESHOLD]
+    ordered = relevant + [r for r in rows if r not in relevant]
+    selected: list[dict[str, Any]] = []
+    used = 0
+    for row in ordered:
+        texto = str(row.get("texto") or "").strip()
+        if not texto:
+            continue
+        if len(selected) >= max_chunks or used + len(texto) > max_chars:
+            break
+        selected.append(row)
+        used += len(texto)
+    # El ranking decide QUÉ entra; el orden documental hace el contexto legible.
+    selected.sort(key=lambda c: (c.get("documento_id") or 0, c.get("chunk_index") or 0))
+    return selected, len(selected) < len(rows)
 
 
 def _rank_by_question(question: str, candidates: list[dict[str, Any]]) -> list[int]:
@@ -131,15 +187,34 @@ def build_licitacion_context(
 
     repo = DocumentosRepository()
     documentos: list[dict[str, Any]] = []
-    candidates: list[dict[str, Any]] = []
     try:
         documentos = repo.list_by_licitacion(id_externo)
+    except Exception:
+        log.warning("rag_context.documentos_failed", id_externo=id_externo, exc_info=True)
+
+    # Camino preferente: ranking con los embeddings persistidos (pgvector).
+    if question:
+        via_pgvector = _select_chunks_pgvector(
+            repo, id_externo, question, max_chars=max_chars, max_chunks=max_chunks
+        )
+        if via_pgvector is not None:
+            selected, truncated = via_pgvector
+            return LicitacionContext(
+                detail=detail,
+                documentos=documentos,
+                chunks=selected,
+                has_pliego_text=True,
+                truncated=truncated,
+            )
+
+    candidates: list[dict[str, Any]] = []
+    try:
         candidates = repo.list_chunks_by_licitacion(id_externo, limit=MAX_CANDIDATE_CHUNKS)
         if not candidates:
             candidates = _chunks_from_textos(repo, id_externo)
     except Exception:
         # Sin documentos no se bloquea la respuesta: se degrada a solo metadatos.
-        log.warning("rag_context.documentos_failed", id_externo=id_externo, exc_info=True)
+        log.warning("rag_context.chunks_failed", id_externo=id_externo, exc_info=True)
 
     selected, truncated = _select_chunks(
         candidates, question, max_chars=max_chars, max_chunks=max_chunks
@@ -173,7 +248,10 @@ def primary_doc_from_context(id_externo: str, ctx: LicitacionContext) -> dict[st
     doc: dict[str, Any] = {"id_externo": id_externo}
     for field in _PRIMARY_DOC_FIELDS:
         doc[field] = detail.get(field)
-    doc["descripcion"] = str(detail.get("descripcion") or "")[:1000]
+    # 4000 y no 1000: el presupuesto real del extracto lo pone
+    # ``llm.prompts._EXCERPT_CHARS_BY_MODE`` (2400 en modo licitación/resumen);
+    # este corte solo evita cargar descripciones patológicas en memoria.
+    doc["descripcion"] = str(detail.get("descripcion") or "")[:4000]
     doc["chunks"] = ctx["chunks"]
     doc["_score"] = 2.0
     return doc

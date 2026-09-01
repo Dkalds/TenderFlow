@@ -457,6 +457,24 @@ class TestInvalidateUserScoped:
 
         assert mod.invalidate_user_scoped("invalidate-vacio", "scoring", "user-a") == 0
 
+    def test_organization_invalidation_reaches_all_members_only_in_that_organization(self):
+        mod = _fresh_import()
+
+        @mod.cache_response(ttl=60, namespace="invalidate-org")
+        def scoring(*, _user):
+            return dict(_user)
+
+        async def invoke():
+            await scoring(_user={"user_key": "user-a", "organization_id": 7})
+            await scoring(_user={"user_key": "user-b", "organization_id": 7})
+            await scoring(_user={"user_key": "user-c", "organization_id": 8})
+
+        asyncio.run(invoke())
+        assert mod.invalidate_organization_scoped("invalidate-org", "scoring", 7) == 2
+        restantes = mod.get_cache("invalidate-org").keys("*")
+        assert len(restantes) == 1
+        assert "organization:8" in restantes[0]
+
 
 class TestCacheResponseIdentity:
     """Las respuestas personalizadas nunca comparten entrada entre usuarios."""
@@ -481,6 +499,28 @@ class TestCacheResponseIdentity:
         assert first["principal"] == "user-a"
         assert second["principal"] == "user-b"
         assert first == repeat
+        assert calls == 2
+
+    def test_same_user_does_not_share_cache_between_organizations(self):
+        mod = _fresh_import()
+        calls = 0
+
+        @mod.cache_response(ttl=60, namespace="organization-regression")
+        def personalized(*, _user):
+            nonlocal calls
+            calls += 1
+            return {"organization_id": _user["organization_id"], "call": calls}
+
+        async def invoke():
+            personal = await personalized(_user={"user_key": "user-a", "organization_id": 1})
+            team = await personalized(_user={"user_key": "user-a", "organization_id": 2})
+            repeat = await personalized(_user={"user_key": "user-a", "organization_id": 1})
+            return personal, team, repeat
+
+        personal, team, repeat = asyncio.run(invoke())
+        assert personal["organization_id"] == 1
+        assert team["organization_id"] == 2
+        assert personal == repeat
         assert calls == 2
 
     def test_user_scoped_false_comparte_entrada_entre_identidades(self):

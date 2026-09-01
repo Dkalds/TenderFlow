@@ -23,6 +23,23 @@ No se borra nada: el histórico de por qué se hizo cada cosa sigue siendo
 
 ## Cerrados
 
+- [2026-09-01] **P1: Render Free ya no se presenta como compatible con un SLO de
+  disponibilidad del 99 %** — `docs/sli-slo.md` suspende explícitamente ese SLO
+  mientras exista spin-down, conserva el 99 % como objetivo para un plan sin
+  hibernación y corrige su presupuesto a 7,2 h/mes y 14,4 min/día. La latencia
+  web deja de figurar como no instrumentada: `@vercel/speed-insights` ya está
+  montado; queda verificar retención y configurar una alerta en la plataforma.
+
+- [2026-09-01] **Cinco entradas abiertas cuya aceptación ya estaba implementada** —
+  archivadas tras contrastarlas con el código y sus tests: `make web-test` pasa por
+  `web/scripts/run-vitest.mjs`, exige al menos 120 ficheros y falla ante errores de pool;
+  el eval determinista RAG vive en `tests/eval/test_eval_rag.py`; el índice parcial
+  `v84_lic_universo_cpv_index` sirve el predicado de la señal de competencia (queda medir
+  el frío en producción, no escribir el índice); `CompanyUteParticipations` ya aparece en
+  los dos dossiers de competidor con suite propia; y Renovaciones pide
+  `order_by=score` al servidor y limita después del ranking global. Se retiraron del backlog
+  porque su premisa describía un árbol anterior, no trabajo pendiente.
+
 - [2026-08-20] **P1: los enlaces a documentos de PLACSP caducan y el pipeline los daba por muertos** —
   Cerrado entero en **`c230e63`** (PR #191). El ítem se había escrito como tres PRs independientes
   (A: el breaker deja de fabricar errores terminales · B: identidad estable en la ingesta ·

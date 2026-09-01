@@ -9,6 +9,7 @@ import { ConsoleFrame } from "@/components/layout/console-frame";
 import { CommandPalette } from "@/components/command-palette";
 import { GlobalCopilot } from "@/components/copilot-panel";
 import { KeyboardHelp } from "@/components/keyboard-help";
+import { OAuthLoginTelemetry } from "@/components/oauth-login-telemetry";
 
 export const dynamic = "force-dynamic";
 
@@ -42,6 +43,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
 
   return (
     <Providers nonce={nonce}>
+      <OAuthLoginTelemetry />
       <RouteProgress />
       {/* Dentro de `Providers`: lee el caché de React Query para saber si hay
           reintentos en vuelo (arranque en frío de la API). */}

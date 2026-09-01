@@ -8,7 +8,7 @@ Inteligencia de licitaciones del Sector Público español.
 
 | Módulo | Descripción |
 |--------|-------------|
-| **Scraper multi-fuente** | Framework de conectores ([ADR-009](docs/adr/ADR-009-framework-conectores-multifuente.md)): PLACSP (feed ATOM en vivo en el cron diario; ZIPs mensuales bulk sólo a demanda vía `scrape-bulk.yml`), PSCP y TACRC (activos en el cron diario) y TED (implementado, pendiente de cablear). Parser CODICE/UBL con resiliencia (circuit breaker, reintentos) |
+| **Scraper multi-fuente** | Framework de conectores ([ADR-009](docs/adr/ADR-009-framework-conectores-multifuente.md)): PLACSP (feed ATOM en vivo en el cron diario; ZIPs mensuales bulk sólo a demanda vía `scrape-bulk.yml`), TED, Galicia y Euskadi activos cada 4 h; PSCP y TACRC se activan cuando sus variables de fuente están configuradas. Parser CODICE/UBL con resiliencia (circuit breaker, reintentos) |
 | **Clasificación** | Filtrado por keywords + modelo ML TF-IDF + LogisticRegression entrenado sobre los propios datos |
 | **Base de datos** | **Postgres** en producción, CI y desarrollo — motor único ([ADR-016](docs/adr/ADR-016-destino-persistencia-supabase.md) Supabase, psycopg3 + pool gestionado; Turso retirado en [ADR-020](docs/adr/ADR-020-retirada-turso.md) y SQLite en [ADR-021](docs/adr/ADR-021-retirada-sqlite.md)). Upsert batcheado e idempotente, historial de cambios, DLQ |
 | **Web frontend** | Next.js 16 con dashboard analítico (KPIs, pipeline, competidores, tendencias), búsqueda y administración |
@@ -16,7 +16,7 @@ Inteligencia de licitaciones del Sector Público español.
 | **Analítica competitiva** | Detección de bajas anómalas, análisis de mercado, renovaciones y riesgo de cambio de proveedor (`services/competitive/`) |
 | **Alertas** | Emails automáticos por watchlist de usuario (CPV, keyword, CCAA, importe mínimo), alertas de competidores y de concept drift del modelo ML |
 | **Observabilidad** | Structlog (JSON/consola), Prometheus metrics, healthcheck, tracing OTLP opcional, alertas por nivel de severidad, dashboards Grafana |
-| **Autenticación** | Password con rate limiting + Google OAuth 2.0, HMAC-signed CSRF state, TOTP (2FA) |
+| **Autenticación** | Password con recuperación de un solo uso + Google OAuth 2.0 con grants dinámicos auditables, HMAC-signed CSRF state y TOTP (2FA) |
 | **Búsqueda** | Full-text nativo (`tsvector`+GIN, vía `db/search_backend.py`) + búsqueda semántica opcional con sentence-transformers |
 
 ---
@@ -350,6 +350,7 @@ directamente.
 | Password | Comparación con `hmac.compare_digest`. Rate limiting progresivo (bloqueo `2^n` segundos tras 3 intentos). Timeout de sesión 8h |
 | Google OAuth | HMAC-SHA256 state con nonce + timestamp. Clave de firma independiente (`SIGNING_KEY`) del client secret |
 | TOTP (2FA) | Secretos cifrados con Fernet (`TOTP_ENCRYPTION_KEY`), obligatorio en `ENV=prod` |
+| Recuperación local | Token aleatorio de un uso; sólo se persiste SHA-256, caduca en 30 min y revoca todas las sesiones al cambiar la contraseña |
 
 ### Protecciones generales
 

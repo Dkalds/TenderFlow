@@ -364,7 +364,10 @@ def oauth_email_allowed(email: str) -> bool:
     if "*" in allowed_domains:
         return True
     if not allowed_emails and not allowed_domains:
-        return True
+        # Desarrollo conserva el arranque sin configuración. En producción y
+        # staging, una lista estática vacía significa "consulta la allowlist
+        # dinámica", nunca "deja entrar a cualquiera".
+        return settings.ENV == "dev"
     domain = normalized.rsplit("@", 1)[-1] if "@" in normalized else ""
     return normalized in allowed_emails or domain in allowed_domains
 

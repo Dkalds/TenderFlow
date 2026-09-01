@@ -560,6 +560,7 @@ class TestOAuthEmailAllowed:
         from shared.auth_core import oauth_email_allowed
 
         settings = MagicMock()
+        settings.ENV = "dev"
         settings.OAUTH_ALLOWED_EMAILS = ""
         settings.OAUTH_ALLOWED_DOMAINS = ""
         with patch("shared.auth_core.settings", settings, create=True):

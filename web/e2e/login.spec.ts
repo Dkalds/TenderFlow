@@ -30,6 +30,27 @@ test.describe("Formulario de acceso", () => {
     await expect(page.getByRole("button", { name: /^Iniciar/i })).toBeVisible();
   });
 
+  test("ofrece Google antes que la alternativa de contraseña", async ({ page }) => {
+    const google = page.getByRole("button", { name: "Continuar con Google" });
+    const email = page.getByLabel(/email|correo/i);
+
+    await expect(google).toBeVisible();
+    const googleComesFirst = await google.evaluate(
+      (button, input) => Boolean(button.compareDocumentPosition(input) & Node.DOCUMENT_POSITION_FOLLOWING),
+      await email.elementHandle(),
+    );
+    expect(googleComesFirst).toBe(true);
+  });
+
+  test("el control de mostrar contraseña tiene objetivo táctil accesible", async ({ page }) => {
+    const toggle = page.getByRole("button", { name: "Mostrar contraseña" });
+    const box = await toggle.boundingBox();
+
+    expect(box).not.toBeNull();
+    expect(box!.width).toBeGreaterThanOrEqual(24);
+    expect(box!.height).toBeGreaterThanOrEqual(24);
+  });
+
   test("credenciales válidas dejan sesión iniciada", async ({ page, context }) => {
     await page.getByLabel(/email|correo/i).fill(DEMO_USER.email);
     await page.locator("#password").fill(DEMO_USER.password);
@@ -55,6 +76,8 @@ test.describe("Formulario de acceso", () => {
     await expect(page.getByText(/credenciales incorrectas|demasiados intentos/i)).toBeVisible({
       timeout: 15000,
     });
+    await expect(page.locator("#email")).toHaveAttribute("aria-invalid", "true");
+    await expect(page.locator("#password")).toHaveAttribute("aria-describedby", /login-error/);
     await expect(page).toHaveURL(/\/login/);
   });
 });
