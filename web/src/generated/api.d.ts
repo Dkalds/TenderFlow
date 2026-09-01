@@ -12082,6 +12082,13 @@ export interface operations {
                 };
                 content?: never;
             };
+            /** @description Licitación no encontrada */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {

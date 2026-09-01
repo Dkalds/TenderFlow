@@ -16,9 +16,12 @@ test.describe("Flujos de trabajo críticos", () => {
       await page.getByRole("button", { name: "Guardar vista actual" }).click();
 
       await expect.poll(() => savedViewExists(page, name)).toBe(true);
-  await page.reload();
-  await page.getByRole("button", { name: "Vistas" }).click();
-  await expect(page.getByRole("button", { name })).toBeVisible();
+      await page.reload();
+      await page.getByRole("button", { name: "Vistas" }).click();
+      // `.first()`: el nombre de la vista aparece en DOS botones (aplicar la
+      // vista y «Eliminar <nombre>», cuyo accessible name lo contiene), y el
+      // strict mode de Playwright rechaza el locator ambiguo.
+      await expect(page.getByRole("button", { name }).first()).toBeVisible();
     } finally {
       await deleteSavedView(page, context, name);
     }
