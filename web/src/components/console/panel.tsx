@@ -144,7 +144,9 @@ export function StatCell({
         </div>
       )}
       {hint && (
-        <div className="mt-1 truncate text-[10px] leading-[1.3] text-muted-foreground/80">{hint}</div>
+        // Sin el /80: a 10px la opacidad dejaba el hint por debajo de 4.5:1
+        // sobre bg-card (violación color-contrast del E2E de accesibilidad).
+        <div className="mt-1 truncate text-[10px] leading-[1.3] text-muted-foreground">{hint}</div>
       )}
     </>
   );

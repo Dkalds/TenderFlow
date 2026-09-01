@@ -597,16 +597,29 @@ def run_background_extraction(
             log.warning("fact_sheet_background_validation_failed", licitacion_id=licitacion_id)
             return
         except ValueError as exc:
-            TenderFactSheetsRepository().upsert(
-                licitacion_id=licitacion_id,
-                status="failed",
-                extraction_version=EXTRACTION_VERSION,
-                model=model,
-                facts=None,
-                field_count=0,
-                evidence_count=0,
-                error_detail=str(exc)[:2000],
-            )
+            try:
+                TenderFactSheetsRepository().upsert(
+                    licitacion_id=licitacion_id,
+                    status="failed",
+                    extraction_version=EXTRACTION_VERSION,
+                    model=model,
+                    facts=None,
+                    field_count=0,
+                    evidence_count=0,
+                    error_detail=str(exc)[:2000],
+                )
+            except Exception:
+                # El contrato de esta función es «nunca lanza»: si ni el estado
+                # failed puede persistirse (p.ej. la licitación no existe y la
+                # FK lo rechaza — la ruta ya lo corta con 404, esto es defensa
+                # en profundidad), el detalle queda en el log y nada revienta
+                # el ciclo del BackgroundTask.
+                log.warning(
+                    "fact_sheet_background_failed_upsert_failed",
+                    licitacion_id=licitacion_id,
+                    error=str(exc),
+                    exc_info=True,
+                )
             return
         except Exception as exc:
             log.warning(
