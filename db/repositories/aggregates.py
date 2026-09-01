@@ -97,6 +97,7 @@ def _escape_like(s: str) -> str:
 # que fold_text para ASCII).
 _FOLD_SRC = "áàäâéèëêíìïîóòöôúùüûñçÁÀÄÂÉÈËÊÍÌÏÎÓÒÖÔÚÙÜÛÑÇ"
 _FOLD_DST = "aaaaeeeeiiiioooouuuuncAAAAEEEEIIIIOOOOUUUUNC"
+_FOLD_TABLE = str.maketrans(_FOLD_SRC, _FOLD_DST)
 
 
 def _fold_expr(column: str) -> str:
@@ -213,11 +214,11 @@ def build_licitaciones_where(
         clauses.append(f"{col('importe')} >= %s")
         params.append(filters.importe_min)
     if filters.q and filters.q.strip():
-        needle = f"%{_escape_like(filters.q.strip())}%"
+        needle = f"%{_escape_like(filters.q.strip().translate(_FOLD_TABLE).lower())}%"
         clauses.append(
-            f"({col('titulo')} ILIKE %s ESCAPE '\\' "
-            f"OR {col('organo_contratacion')} ILIKE %s ESCAPE '\\' "
-            f"OR {col('id_externo')} ILIKE %s ESCAPE '\\')"
+            f"({_fold_expr(col('titulo'))} LIKE %s ESCAPE '\\' "
+            f"OR {_fold_expr(col('organo_contratacion'))} LIKE %s ESCAPE '\\' "
+            f"OR {_fold_expr(col('id_externo'))} LIKE %s ESCAPE '\\')"
         )
         params.extend([needle, needle, needle])
     if filters.cpv:

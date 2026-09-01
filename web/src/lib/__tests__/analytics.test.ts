@@ -111,7 +111,11 @@ describe("registrarEvento", () => {
     // diagnósticos piden arreglos opuestos —cobertura del corpus frente a
     // descubribilidad de la búsqueda—. `vista_guardada` es el complemento de
     // `regla_creada`: una dice «vuelvo a esto», la otra «avísame de esto».
-    expect(Object.keys(PROPIEDADES_PERMITIDAS).length).toBeLessThanOrEqual(13);
+    //
+    // Subido de 13 a 14 el 2026-09-01 con `sesion_iniciada`: aporta el
+    // denominador que faltaba para interpretar todo el embudo y distingue sus
+    // cuatro puertas sin enviar identidad ni otro dato de cardinalidad alta.
+    expect(Object.keys(PROPIEDADES_PERMITIDAS).length).toBeLessThanOrEqual(14);
   });
 });
 

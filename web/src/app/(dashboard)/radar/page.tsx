@@ -99,6 +99,7 @@ const SIGNAL_WARNINGS: Record<string, string> = {
   competencia: "sin histórico de competencia: esa dimensión puntúa neutra",
   margen: "sin predicción de baja: esa dimensión puntúa neutra",
   percentiles: "el importe se compara contra el histórico completo, no contra el mercado abierto",
+  perfil: "no se pudo cargar tu perfil: el orden usa temporalmente los pesos globales",
 };
 
 function signalWarnings(signals: ScoringSignals | null | undefined): string[] {
@@ -107,6 +108,7 @@ function signalWarnings(signals: ScoringSignals | null | undefined): string[] {
   if (signals.competencia !== "ok") avisos.push(SIGNAL_WARNINGS.competencia);
   if (signals.margen !== "ok") avisos.push(SIGNAL_WARNINGS.margen);
   if (signals.percentiles_fuente !== "universo_vivo") avisos.push(SIGNAL_WARNINGS.percentiles);
+  if (signals.perfil !== "ok") avisos.push(SIGNAL_WARNINGS.perfil);
   return avisos;
 }
 

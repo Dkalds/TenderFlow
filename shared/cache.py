@@ -381,6 +381,8 @@ def cache_response(
                     # `user_key` solo multiplicaba por N el mismo cálculo.
                     if user_scoped and isinstance(v, dict) and v.get("user_key"):
                         key_parts.append(f"principal:{v['user_key']}")
+                        if v.get("organization_id") is not None:
+                            key_parts.append(f"organization:{v['organization_id']}")
                     continue
                 if isinstance(v, BaseModel):
                     key_parts.append(f"{k}:{v.model_dump_json(exclude_none=True)}")
@@ -455,4 +457,29 @@ def invalidate_user_scoped(namespace: str, func_name: str, user_key: str) -> int
             borradas += 1
     if borradas:
         log.debug("cache_invalidated_user_scoped", func=func_name, borradas=borradas)
+    return borradas
+
+
+def invalidate_organization_scoped(namespace: str, func_name: str, organization_id: int) -> int:
+    """Borra las entradas de ``func_name`` calculadas para una organización.
+
+    Un perfil de scoring con visibilidad de organización cambia el ranking de
+    todos sus miembros, no solo el de quien lo guarda. La marca forma parte de
+    la misma clave segura que ``principal:<user_key>`` y funciona tanto con el
+    backend en memoria como con Redis.
+    """
+    cache = get_cache(namespace)
+    marca = f"organization:{organization_id}"
+    borradas = 0
+    for key in cache.keys(f"{func_name}|*"):
+        if marca in key:
+            cache.delete(key)
+            borradas += 1
+    if borradas:
+        log.debug(
+            "cache_invalidated_organization_scoped",
+            func=func_name,
+            organization_id=organization_id,
+            borradas=borradas,
+        )
     return borradas

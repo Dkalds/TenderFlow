@@ -83,16 +83,40 @@ AVAILABLE_MODELS: list[str] = [
 # la que están afinados los prompts de `llm/prompts.py`.
 DEFAULT_MODEL = "deepseek-ai/deepseek-v4-flash-0731"
 
+# Cadena de fallback cuando el modelo pedido falla ANTES de emitir el primer
+# token (excepción del provider o stream vacío — el síntoma exacto del EOL de
+# deepseek-v4-pro, que dejó la IA caída seis días devolviendo 410 en silencio).
+# Solo se intentan los modelos cuyo proveedor tiene API key configurada, y
+# nunca se cambia de modelo a mitad de respuesta: con tokens ya emitidos el
+# error se propaga tal cual. El orden es coste ascendente dentro de "fiable":
+# segundo NIM gratuito primero, después los proveedores de pago baratos.
+FALLBACK_MODELS: list[str] = [
+    DEFAULT_MODEL,
+    "z-ai/glm-5.2",
+    "gpt-4o-mini",
+    "claude-haiku-4-5",
+]
+
+_PROVIDER_KEY_ENV: dict[str, str] = {
+    "openai": "OPENAI_API_KEY",
+    "anthropic": "ANTHROPIC_API_KEY",
+    "nvidia": "NVIDIA_API_KEY",
+}
+
 # Límites de entrada
 #
-# ``MAX_QUESTION_LEN`` es público a propósito: no solo acota lo que teclea un
-# usuario en /ask, también acota las plantillas de prompt que este repo pasa
-# como ``question`` (la ficha de pliego, el etiquetado de tecnología). Cuando
-# una de esas constantes creció por encima del tope, la funcionalidad entera
-# dejó de funcionar con un ValueError antes de llegar al proveedor —y sin un
-# nombre público no había forma de que un test lo fijara. Ver
+# ``MAX_QUESTION_LEN`` acota lo que teclea un usuario en /ask. Las plantillas
+# internas (ficha de pliego, clasificación, resumen) NO son input de usuario y
+# viajan por los modos de ``_INTERNAL_PROMPT_MODES`` con su propio tope,
+# ``MAX_INTERNAL_QUESTION_LEN``: cuando compartían el límite de usuario, el
+# crecimiento de la plantilla de extracción (v3) rompió la ficha entera en
+# silencio con «La pregunta excede el máximo de 2000 caracteres». El tope
+# interno existe igualmente —una plantilla desbocada debe fallar en tests, no
+# facturarse— pero deja holgura real. Ver
 # ``tests/test_tender_fact_sheet.py::test_extraction_question_fits_llm_limit``.
 MAX_QUESTION_LEN = 2000
+MAX_INTERNAL_QUESTION_LEN = 12_000
+_INTERNAL_PROMPT_MODES: frozenset[str] = frozenset({"extraction", "clasificacion", "resumen"})
 _MIN_QUESTION_LEN = 3
 _MAX_DOCS = 50
 _MAX_HISTORY_MESSAGES = 20
@@ -261,8 +285,13 @@ def _validate_request(
     docs: list[dict[str, Any]],
     model: str,
     history: list[ChatMessage] | None = None,
+    mode: PromptMode = "general",
 ) -> None:
     """Valida los parámetros de entrada antes de llamar al proveedor.
+
+    Los modos internos (``_INTERNAL_PROMPT_MODES``) usan el tope de plantilla
+    ``MAX_INTERNAL_QUESTION_LEN`` en vez del de usuario: su ``question`` la
+    escribe este repo, no un humano en /ask.
 
     Raises:
         ValueError: Si alguno de los parámetros es inválido.
@@ -271,11 +300,14 @@ def _validate_request(
         raise ValueError(
             f"Modelo '{model}' no disponible. Modelos soportados: {', '.join(AVAILABLE_MODELS)}"
         )
+    max_question_len = (
+        MAX_INTERNAL_QUESTION_LEN if mode in _INTERNAL_PROMPT_MODES else MAX_QUESTION_LEN
+    )
     if not question or len(question) < _MIN_QUESTION_LEN:
         raise ValueError(f"La pregunta debe tener al menos {_MIN_QUESTION_LEN} caracteres.")
-    if len(question) > MAX_QUESTION_LEN:
+    if len(question) > max_question_len:
         raise ValueError(
-            f"La pregunta excede el máximo de {MAX_QUESTION_LEN} caracteres "
+            f"La pregunta excede el máximo de {max_question_len} caracteres "
             f"(recibido: {len(question)})."
         )
     if len(docs) > _MAX_DOCS:
@@ -295,57 +327,50 @@ def _validate_request(
                 )
 
 
-# ── API pública ────────────────────────────────────────────────────────────────
+# ── Fallback de proveedor ──────────────────────────────────────────────────────
 
 
-def stream_llm_response(
-    question: str,
-    docs: list[dict[str, Any]],
+def _provider_key_available(provider: str) -> bool:
+    """True si el proveedor tiene API key configurada (secrets o entorno)."""
+    env_var = _PROVIDER_KEY_ENV.get(provider)
+    return bool(env_var and _get_key(env_var))
+
+
+_llm_fallback_counter: Any = None
+_llm_fallback_counter_init = False
+
+
+def _note_fallback(model: str, reason: str) -> None:
+    """Log + métrica cuando un modelo falla sin emitir y se intenta el siguiente."""
+    global _llm_fallback_counter, _llm_fallback_counter_init
+    log.warning("llm_client.model_failed_trying_fallback", model=model, reason=reason)
+    if not _llm_fallback_counter_init:
+        _llm_fallback_counter_init = True
+        try:
+            from prometheus_client import Counter
+
+            _llm_fallback_counter = Counter(
+                "llm_fallback_total",
+                "Intentos de modelo LLM fallidos antes del primer token",
+                ["model", "reason"],
+            )
+        except Exception:
+            log.debug("llm_fallback_counter_init_failed", exc_info=True)
+    if _llm_fallback_counter is not None:
+        try:
+            _llm_fallback_counter.labels(model=model, reason=reason).inc()
+        except Exception:
+            pass
+
+
+def _stream_single_model(
     model: str,
-    keywords: list[str],
-    *,
-    history: list[ChatMessage] | None = None,
-    mode: PromptMode = "general",
-    max_tokens: int | None = None,
+    system: str,
+    messages: list[ChatMessage],
+    max_tokens: int | None,
 ) -> Iterator[str]:
-    """Genera tokens LLM en streaming delegando al proveedor correcto.
-
-    Args:
-        question: Pregunta del usuario (3-2000 caracteres).
-        docs: Lista de dicts con claves ``id_externo``, ``titulo``,
-              ``organo_contratacion``, ``importe``, ``estado``, ``descripcion``
-              y opcionalmente ``chunks`` (fragmentos de pliego). Máximo 50.
-        model: Nombre del modelo. Debe estar en ``AVAILABLE_MODELS``.
-        keywords: Palabras clave para el extracto contextual.
-        history: Historial previo de la conversación (no incluye ``question``).
-            Máximo 20 mensajes de 4000 chars; se sanea y trunca en
-            ``llm/prompts.py``. No se persiste.
-        mode: Modo de prompt — ``general`` (corpus + conocimiento general),
-            ``licitacion`` (un expediente con sus pliegos) o ``resumen``.
-        max_tokens: Límite de tokens de salida; ``None`` usa el default del
-            provider.
-
-    Yields:
-        Fragmentos de texto del modelo a medida que llegan.
-
-    Raises:
-        ValueError: Si ``model`` no está en ``AVAILABLE_MODELS``, o si
-                    ``question``/``docs``/``history`` están fuera de rango.
-        LLMBudgetExceeded: Si el presupuesto está agotado y
-                    ``LLM_BUDGET_MODE=enforce`` (RFC llm-dependencia-gestionada).
-    """
-    _validate_request(question, docs, model, history)
-
-    # Breaker de coste ANTES de llamar al proveedor: en enforce corta el gasto,
-    # en monitor solo instrumenta. Nota: al ser esto un generador, el check corre
-    # en la primera iteración; /ask hace además un check eager pre-stream para
-    # poder responder 429 antes de abrir el SSE.
-    from llm.budget import get_budget_guard
-
-    get_budget_guard().check()
-
+    """Stream de UN modelo concreto, con instrumentación de latencia/uso."""
     p = provider_for(model)
-    system, messages = build_messages(question, docs, keywords, mode=mode, history=history)
     t0 = time.monotonic()
     status = "ok"
     usage: dict[str, int] = {}
@@ -409,3 +434,92 @@ def stream_llm_response(
             input_tokens=usage.get("input_tokens"),
             output_tokens=usage.get("output_tokens"),
         )
+
+
+# ── API pública ────────────────────────────────────────────────────────────────
+
+
+def stream_llm_response(
+    question: str,
+    docs: list[dict[str, Any]],
+    model: str,
+    keywords: list[str],
+    *,
+    history: list[ChatMessage] | None = None,
+    mode: PromptMode = "general",
+    max_tokens: int | None = None,
+    fallback: bool = True,
+) -> Iterator[str]:
+    """Genera tokens LLM en streaming delegando al proveedor correcto.
+
+    Args:
+        question: Pregunta del usuario (3-2000 caracteres).
+        docs: Lista de dicts con claves ``id_externo``, ``titulo``,
+              ``organo_contratacion``, ``importe``, ``estado``, ``descripcion``
+              y opcionalmente ``chunks`` (fragmentos de pliego). Máximo 50.
+        model: Nombre del modelo. Debe estar en ``AVAILABLE_MODELS``.
+        keywords: Palabras clave para el extracto contextual.
+        history: Historial previo de la conversación (no incluye ``question``).
+            Máximo 20 mensajes de 4000 chars; se sanea y trunca en
+            ``llm/prompts.py``. No se persiste.
+        mode: Modo de prompt — ``general`` (corpus + conocimiento general),
+            ``licitacion`` (un expediente con sus pliegos) o ``resumen``.
+        max_tokens: Límite de tokens de salida; ``None`` usa el default del
+            provider.
+        fallback: Con ``True`` (default), si ``model`` falla ANTES de emitir el
+            primer token (excepción o stream vacío) se intentan en orden los
+            ``FALLBACK_MODELS`` cuyo proveedor tenga API key. Nunca se cambia
+            de modelo con tokens ya emitidos.
+
+    Yields:
+        Fragmentos de texto del modelo a medida que llegan.
+
+    Raises:
+        ValueError: Si ``model`` no está en ``AVAILABLE_MODELS``, o si
+                    ``question``/``docs``/``history`` están fuera de rango.
+        LLMBudgetExceeded: Si el presupuesto está agotado y
+                    ``LLM_BUDGET_MODE=enforce`` (RFC llm-dependencia-gestionada).
+    """
+    _validate_request(question, docs, model, history, mode)
+
+    # Breaker de coste ANTES de llamar al proveedor: en enforce corta el gasto,
+    # en monitor solo instrumenta. Nota: al ser esto un generador, el check corre
+    # en la primera iteración; /ask hace además un check eager pre-stream para
+    # poder responder 429 antes de abrir el SSE.
+    from llm.budget import get_budget_guard
+
+    get_budget_guard().check()
+
+    system, messages = build_messages(question, docs, keywords, mode=mode, history=history)
+
+    candidates = [model]
+    if fallback:
+        candidates += [m for m in FALLBACK_MODELS if m != model]
+
+    last_error: Exception | None = None
+    for position, candidate in enumerate(candidates):
+        # El modelo pedido se intenta siempre (si le falta la key, su stream
+        # vacío activa el fallback); los de la cadena solo si tienen key.
+        if position > 0 and not _provider_key_available(provider_for(candidate)):
+            continue
+        emitted = False
+        try:
+            for chunk in _stream_single_model(candidate, system, messages, max_tokens):
+                emitted = True
+                yield chunk
+        except Exception as exc:
+            if emitted:
+                # Con tokens ya entregados no hay fallback limpio: propagar.
+                raise
+            last_error = exc
+            _note_fallback(candidate, "error")
+            continue
+        if emitted:
+            return
+        _note_fallback(candidate, "empty")
+
+    # Ningún candidato emitió: si hubo excepción se propaga la última; si todos
+    # devolvieron vacío se termina sin tokens (los consumidores ya degradan
+    # ese caso — evento SSE ``degraded`` en /ask, error explícito en los jobs).
+    if last_error is not None:
+        raise last_error

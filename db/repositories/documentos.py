@@ -516,6 +516,38 @@ class DocumentosRepository:
             )
             return rows_to_dicts(cur)
 
+    def search_chunks_by_embedding(
+        self,
+        licitacion_id: str,
+        embedding: Sequence[float],
+        *,
+        limit: int = 24,
+    ) -> list[dict[str, Any]]:
+        """Chunks de la licitación ordenados por cercanía coseno a ``embedding``.
+
+        Es el camino de serving del plan Pliegos+RAG F8: los embeddings que el
+        job nocturno persiste en ``documento_chunks`` se consultan con el
+        operador ``<=>`` de pgvector en vez de re-embeber los candidatos en
+        Python por request. ``score`` es similitud coseno (1 - distancia),
+        comparable con los umbrales de ``services.embeddings``.
+
+        Sin tope de candidatos: el índice recorre todos los chunks de la
+        licitación, así que los documentos tardíos de expedientes grandes ya no
+        quedan fuera del ranking por un LIMIT previo.
+        """
+        vec = _to_pg_vector_literal(embedding)
+        with connect_read() as c:
+            cur = c.execute(
+                "SELECT dc.documento_id, d.tipo, d.filename, dc.chunk_index, dc.texto, "
+                "1 - (dc.embedding <=> %s::vector) AS score "
+                "FROM documento_chunks dc JOIN documentos d ON d.id = dc.documento_id "
+                "WHERE d.licitacion_id = %s AND dc.embedding IS NOT NULL "
+                "ORDER BY dc.embedding <=> %s::vector "
+                "LIMIT %s",
+                (vec, licitacion_id, vec, max(1, min(int(limit), 200))),
+            )
+            return rows_to_dicts(cur)
+
     def list_textos_by_licitacion(
         self, licitacion_id: str, limit: int = 10
     ) -> list[dict[str, Any]]:

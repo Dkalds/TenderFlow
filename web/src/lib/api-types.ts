@@ -78,6 +78,8 @@ export type AskModelInfo = Schemas["AskModelInfo"];
 export type TenderFactSheet = Schemas["TenderFactSheet"];
 export type TenderFactSheetRecord = Schemas["TenderFactSheetRecord"];
 export type EvidenceRef = Schemas["EvidenceRef"];
+/** Estado efímero del BackgroundTask de extracción (extract-async + polling). */
+export type FactSheetExtractionState = Schemas["FactSheetExtractionState"];
 /**
  * Familias de hechos de la ficha de pliego. El backend las tipa por separado
  * (un criterio de adjudicación tiene `weight_pct`, un aval tiene `amount_eur`);

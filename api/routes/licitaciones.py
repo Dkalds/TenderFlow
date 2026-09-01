@@ -11,6 +11,7 @@ from typing import Any
 
 from fastapi import (
     APIRouter,
+    BackgroundTasks,
     Depends,
     HTTPException,
     Query,
@@ -703,6 +704,73 @@ async def extract_tender_fact_sheet(
         log.warning("tender_fact_sheet_tech_ingest_failed", id_externo=id_externo, error=str(exc))
 
     return record
+
+
+class FactSheetExtractionState(BaseModel):
+    """Estado del proceso de extracción de la ficha (no del dato persistido)."""
+
+    licitacion_id: str
+    running: bool
+
+
+@router.post(
+    "/licitaciones/{id_externo:path}/ficha-pliego/extract-async",
+    response_model=FactSheetExtractionState,
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="Lanzar la extracción de la ficha en background",
+    responses={
+        202: {"description": "Extracción lanzada (o ya en curso)"},
+        401: {"description": "Autenticación inválida"},
+    },
+)
+async def extract_tender_fact_sheet_async(
+    id_externo: str,
+    background: BackgroundTasks,
+    ctx: dict[str, Any] = Depends(require_any_auth),
+) -> FactSheetExtractionState:
+    """Variante asíncrona de ``…/ficha-pliego/extract`` para la UI.
+
+    El camino síncrono descarga hasta 8 PDFs y llama al LLM dentro de la
+    request — minutos de spinner con la conexión abierta. Aquí la request
+    devuelve 202 al instante y el trabajo corre como BackgroundTask; el
+    cliente hace polling de ``…/ficha-pliego/estado`` y relee la ficha al
+    terminar. Idempotente: con una extracción ya en curso responde 202 sin
+    lanzar otra.
+    """
+    from config import settings
+    from services.rag.fact_sheet import run_background_extraction, try_mark_extraction_running
+
+    # Al threadpool aunque sea una lectura de cache: con backend Redis es I/O
+    # de red, y un handler async no puede bloquearse en el event loop.
+    if await run_db(try_mark_extraction_running, id_externo):
+        background.add_task(
+            run_background_extraction,
+            id_externo,
+            model=settings.PLIEGO_FACTS_MODEL,
+            budget_subject=_budget_subject(ctx),
+        )
+        log.info("tender_fact_sheet_extract_async_started", id_externo=id_externo)
+    return FactSheetExtractionState(licitacion_id=id_externo, running=True)
+
+
+@router.get(
+    "/licitaciones/{id_externo:path}/ficha-pliego/estado",
+    response_model=FactSheetExtractionState,
+    summary="¿Hay una extracción de ficha en curso?",
+    responses={401: {"description": "Autenticación inválida"}},
+)
+async def get_tender_fact_sheet_state(
+    id_externo: str,
+    _ctx: dict[str, Any] = Depends(require_any_auth),
+) -> FactSheetExtractionState:
+    """Estado efímero del BackgroundTask de extracción (para el polling de la
+    UI). El resultado en sí se lee de ``…/ficha-pliego``."""
+    from services.rag.fact_sheet import extraction_running
+
+    return FactSheetExtractionState(
+        licitacion_id=id_externo,
+        running=await run_db(extraction_running, id_externo),
+    )
 
 
 class TechScore(BaseModel):

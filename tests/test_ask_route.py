@@ -46,6 +46,18 @@ def ask_client_no_scope(api_db):
     return client
 
 
+@pytest.fixture(autouse=True)
+def _reset_resumen_cache():
+    """El caché del resumen es process-wide (shared.cache): sin reset, el hit
+    de un test contamina al siguiente (p.ej. el de provider_error nunca
+    llegaría al proveedor)."""
+    from shared.cache import reset_cache
+
+    reset_cache("llm_resumen")
+    yield
+    reset_cache("llm_resumen")
+
+
 def _fake_stream(*_args, **_kwargs) -> Iterator[str]:
     yield "Respuesta de prueba"
     yield " con datos."
@@ -645,6 +657,65 @@ class TestResumenEndpoint:
             resp = ask_client.post("/api/v1/licitaciones/EXP-1/resumen", json={})
         assert resp.status_code == 429
 
+    def test_resumen_second_call_served_from_cache(self, ask_client):
+        """Mismo expediente + mismo estado de documentos → el segundo resumen
+        sale del caché sin tocar al proveedor, y resumen_meta lo declara."""
+        import json as _json
+
+        calls: list[int] = []
+
+        def _counting_stream(*_args, **_kwargs) -> Iterator[str]:
+            calls.append(1)
+            yield "## Qué se licita\nresumen generado"
+
+        with patch("services.rag.context.build_licitacion_context", return_value=_fake_ctx()):
+            with patch("llm.client.stream_llm_response", _counting_stream):
+                first = ask_client.post("/api/v1/licitaciones/EXP-1/resumen", json={})
+                second = ask_client.post("/api/v1/licitaciones/EXP-1/resumen", json={})
+
+        assert first.status_code == 200 and second.status_code == 200
+        assert len(calls) == 1  # una sola llamada al LLM
+
+        def _meta(resp):
+            lines = [line for line in resp.text.splitlines() if line.startswith("data: ")]
+            return _json.loads(lines[0][len("data: ") :])["resumen_meta"]
+
+        assert _meta(first)["cached"] is False
+        assert _meta(second)["cached"] is True
+        assert "resumen generado" in second.text
+
+    def test_resumen_force_regenerates_ignoring_cache(self, ask_client):
+        calls: list[int] = []
+
+        def _counting_stream(*_args, **_kwargs) -> Iterator[str]:
+            calls.append(1)
+            yield "resumen regenerado"
+
+        with patch("services.rag.context.build_licitacion_context", return_value=_fake_ctx()):
+            with patch("llm.client.stream_llm_response", _counting_stream):
+                ask_client.post("/api/v1/licitaciones/EXP-1/resumen", json={})
+                resp = ask_client.post("/api/v1/licitaciones/EXP-1/resumen", json={"force": True})
+
+        assert resp.status_code == 200
+        assert len(calls) == 2  # el force volvió al proveedor
+
+    def test_resumen_degraded_response_is_not_cached(self, ask_client):
+        """Un stream vacío degrada y NO deja entrada: el siguiente intento
+        vuelve al proveedor en vez de servir el vacío para siempre."""
+
+        def _empty_stream(*_args, **_kwargs) -> Iterator[str]:
+            return iter([])
+
+        with patch("services.rag.context.build_licitacion_context", return_value=_fake_ctx()):
+            with patch("llm.client.stream_llm_response", _empty_stream):
+                first = ask_client.post("/api/v1/licitaciones/EXP-1/resumen", json={})
+            assert '"degraded": true' in first.text
+
+            with patch("llm.client.stream_llm_response", _fake_stream):
+                second = ask_client.post("/api/v1/licitaciones/EXP-1/resumen", json={})
+
+        assert "Respuesta de prueba" in second.text
+
 
 # ── GET /api/v1/ask/models ────────────────────────────────────────────────────
 
@@ -674,3 +745,47 @@ class TestAskModels:
         data = resp.json()
         assert "default" in data
         assert data["default"] in data["models"]
+
+
+# ── Evento ask_meta (ámbito efectivo de la respuesta) ─────────────────────────
+
+
+class TestAskMetaEvent:
+    def test_ask_meta_reports_general_context(self, ask_client):
+        import json as _json
+
+        with patch("api.routes.ask._retrieve_docs", _one_doc_retrieve):
+            with patch("llm.client.stream_llm_response", _fake_stream):
+                resp = ask_client.post(
+                    "/api/v1/ask", json={"question": "¿Qué licitaciones SAP hay?"}
+                )
+
+        assert resp.status_code == 200
+        lines = [line for line in resp.text.splitlines() if '"ask_meta"' in line]
+        assert len(lines) == 1
+        meta = _json.loads(lines[0][len("data: ") :])["ask_meta"]
+        assert meta["contexto"] == "general"
+        assert meta["id_externo"] is None
+
+    def test_ask_meta_flags_fallback_to_corpus_when_licitacion_context_fails(self, ask_client):
+        """Con id_externo pedido pero contexto de licitación no disponible, la
+        respuesta degrada al corpus — y ask_meta lo hace visible en vez de
+        dejar que la UI presente la respuesta como si fuera del expediente."""
+        import json as _json
+
+        with patch("services.rag.context.build_licitacion_context", return_value=None):
+            with patch("api.routes.ask._retrieve_docs", _one_doc_retrieve):
+                with patch("llm.client.stream_llm_response", _fake_stream):
+                    resp = ask_client.post(
+                        "/api/v1/ask",
+                        json={
+                            "question": "¿solvencia técnica?",
+                            "id_externo": "EXP-STALE",
+                        },
+                    )
+
+        assert resp.status_code == 200
+        lines = [line for line in resp.text.splitlines() if '"ask_meta"' in line]
+        meta = _json.loads(lines[0][len("data: ") :])["ask_meta"]
+        assert meta["contexto"] == "general"
+        assert meta["id_externo"] == "EXP-STALE"

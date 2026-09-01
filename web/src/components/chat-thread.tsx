@@ -1,10 +1,11 @@
 "use client";
 
 import * as React from "react";
-import { ChevronDown, ChevronRight, FileText, TriangleAlert } from "lucide-react";
+import { ChevronDown, ChevronRight, FileText, ThumbsDown, ThumbsUp, TriangleAlert } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
 import { MarkdownAnswer } from "@/components/markdown-answer";
+import { registrarEvento } from "@/lib/analytics";
 import type { ChatTurn } from "@/hooks/use-ask";
 import type { DegradedInfo, FuenteDocumento } from "@/lib/ask-stream";
 
@@ -62,6 +63,66 @@ function FuentesBlock({ fuentes }: { fuentes: FuenteDocumento[] }) {
   );
 }
 
+/**
+ * Pulgares de calidad sobre una respuesta completa del asistente. Solo emiten
+ * telemetría categórica (`asistente_feedback`): ni la pregunta ni la respuesta
+ * salen del navegador. El voto es local al turno y no se puede repetir.
+ */
+export function FeedbackButtons({ modo }: { modo: "pregunta" | "resumen" | "ficha" }) {
+  const [voted, setVoted] = React.useState<"si" | "no" | null>(null);
+
+  const vote = (util: "si" | "no") => {
+    if (voted) return;
+    setVoted(util);
+    registrarEvento("asistente_feedback", { modo, util });
+  };
+
+  return (
+    <div className="mt-1.5 flex items-center gap-1" role="group" aria-label="¿Te ha servido?">
+      {voted ? (
+        <span className="text-muted-foreground text-[11px]">Gracias por el feedback.</span>
+      ) : (
+        <>
+          <button
+            type="button"
+            onClick={() => vote("si")}
+            aria-label="Respuesta útil"
+            className="text-muted-foreground hover:text-foreground grid h-6 w-6 place-items-center rounded-md transition-colors"
+          >
+            <ThumbsUp className="h-3 w-3" aria-hidden="true" />
+          </button>
+          <button
+            type="button"
+            onClick={() => vote("no")}
+            aria-label="Respuesta no útil"
+            className="text-muted-foreground hover:text-foreground grid h-6 w-6 place-items-center rounded-md transition-colors"
+          >
+            <ThumbsDown className="h-3 w-3" aria-hidden="true" />
+          </button>
+        </>
+      )}
+    </div>
+  );
+}
+
+/** Aviso: se pidió contexto de una licitación pero la respuesta salió del
+ *  corpus general (el backend no pudo cargar el expediente). Sin esto el
+ *  fallback era silencioso y la respuesta se leía como si fuera del pliego. */
+function ScopeFallbackNotice() {
+  return (
+    <div className="mt-2 rounded-md border border-amber-500/50 bg-amber-500/10 p-2 text-xs" role="status">
+      <p className="flex items-center gap-1.5 font-medium text-amber-700 dark:text-amber-400">
+        <TriangleAlert className="h-3.5 w-3.5" aria-hidden="true" />
+        Respuesta sin el contexto de este expediente
+      </p>
+      <p className="text-muted-foreground mt-0.5">
+        No se pudo cargar la licitación (o sus pliegos), así que esta respuesta se basa en el corpus
+        general y conocimiento común.
+      </p>
+    </div>
+  );
+}
+
 /** Amber notice shown when the backend degraded (no LLM synthesis). */
 function DegradedNotice({ degraded }: { degraded: DegradedInfo }) {
   const docs = degraded.docs ?? [];
@@ -96,13 +157,26 @@ export interface ChatThreadProps {
   loading: boolean;
   error: string | null;
   className?: string;
+  /**
+   * True cuando este hilo pidió contexto de una licitación concreta
+   * (`idExterno`): habilita el aviso de fallback si el backend respondió con
+   * el corpus general en su lugar.
+   */
+  expectLicitacionContext?: boolean;
 }
 
 /**
  * Presentational multi-turn chat thread (shared by the copilot panel, the
  * investigador page and the licitación AI tab). Inputs live in the parents.
  */
-export function ChatThread({ messages, streaming, loading, error, className }: ChatThreadProps) {
+export function ChatThread({
+  messages,
+  streaming,
+  loading,
+  error,
+  className,
+  expectLicitacionContext,
+}: ChatThreadProps) {
   const bottomRef = React.useRef<HTMLDivElement>(null);
 
   React.useEffect(() => {
@@ -139,8 +213,14 @@ export function ChatThread({ messages, streaming, loading, error, className }: C
                 ▌
               </span>
             ) : null}
+            {expectLicitacionContext && m.askMeta && m.askMeta.contexto !== "licitacion" ? (
+              <ScopeFallbackNotice />
+            ) : null}
             {m.degraded ? <DegradedNotice degraded={m.degraded} /> : null}
             {m.fuentes && m.fuentes.length > 0 ? <FuentesBlock fuentes={m.fuentes} /> : null}
+            {m.content && !m.degraded && !(isLast && (streaming || loading)) ? (
+              <FeedbackButtons modo="pregunta" />
+            ) : null}
           </div>
         );
       })}

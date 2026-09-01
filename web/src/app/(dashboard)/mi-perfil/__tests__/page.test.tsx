@@ -34,6 +34,8 @@ vi.mock("@/lib/analytics", async (importOriginal) => {
   return { ...real, registrarEvento: vi.fn() };
 });
 
+vi.mock("@/hooks/use-organization", () => ({ useActiveOrganizationId: () => 7 }));
+
 import MiPerfilPage from "@/app/(dashboard)/mi-perfil/page";
 import { apiMutate, fetchWithAuth } from "@/lib/api-client";
 import { registrarEvento } from "@/lib/analytics";
@@ -92,6 +94,11 @@ describe("MiPerfilPage — telemetría de activación", () => {
 
     await waitFor(() =>
       expect(eventos).toHaveBeenCalledWith("perfil_configurado", { primera_vez: "si" }),
+    );
+    expect(mutar).toHaveBeenCalledWith(
+      "PUT",
+      "/api/v1/me/profile",
+      expect.objectContaining({ organization_id: 7, visibility: "private" }),
     );
   });
 

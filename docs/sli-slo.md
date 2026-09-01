@@ -8,9 +8,9 @@ Definición de los indicadores de nivel de servicio (SLI) y objetivos (SLO) del 
 
 | Servicio | SLO | Periodo | Medido por |
 |----------|-----|---------|------------|
-| Disponibilidad del frontend web | ≥ 99% | 30 días | `up{service="api"}` (Prometheus) |
+| Disponibilidad API | Sin SLO vigente mientras `tenderflow-api` use Render Free | 30 días | `up{service="api"}` + smoke sintético |
 | Frescura de datos | ≤ 36h sin scrape exitoso | 7 días | `scheduler/healthcheck.py` (cada 6h) |
-| Latencia de carga del frontend web | P95 < 3 s | 7 días | ⚠️ **sin medición** — ver nota |
+| Latencia de carga del frontend web | P95 < 3 s | 7 días | Speed Insights RUM; panel/alerta por verificar |
 | Tasa de éxito del pipeline | ≥ 95% de runs | 30 días | `extraction_runs` vía healthcheck |
 | Cobertura de datos (importe presente) | ≥ 80% | 30 días | `extraction_runs` vía healthcheck |
 | Tiempo de respuesta API REST | P99 < 500 ms | 7 días | `http_request_duration_seconds` (Prometheus) |
@@ -25,12 +25,15 @@ el error budget no era computable y las reglas de `observability/alert_rules.yml
 no se evaluaban.
 
 Con el despliegue de Prometheus + Grafana en Render (ADR-019) pasan a medirse
-los SLOs de disponibilidad y de latencia de API. Quedan dos matices:
+la disponibilidad y la latencia de API. Quedan dos matices:
 
-- **Latencia del frontend web**: el frontend se sirve fuera de este
-  despliegue, así que Prometheus no lo ve. Requiere RUM (Web Vitals desde el
-  navegador) o un probe sintético; hasta entonces el SLO no es medible y está
-  marcado como tal en vez de fingir cobertura.
+- **Latencia del frontend web**: Prometheus no la ve, pero el layout raíz monta
+  `@vercel/speed-insights` y ya emite RUM. Falta verificar en Vercel que el plan
+  conserva la serie y configurar una alerta; instrumentado no significa
+  operacionalizado.
+- **Disponibilidad de la API**: `render.yaml` declara `plan: free`, con
+  spin-down. El 99 % queda como objetivo histórico, no como SLO vigente ni
+  promesa contractual, hasta subir de plan y observar una ventana completa.
 - **Planos efímeros** (scraper, ML y pliegos en GitHub Actions): no son
   scrapeables — el proceso muere al terminar el job y exponer un Pushgateway
   público sería superficie de ataque sin autenticación. Siguen reportando por
@@ -42,15 +45,15 @@ los SLOs de disponibilidad y de latencia de API. Quedan dos matices:
 
 ## SLI/SLO detallados
 
-### 1. Disponibilidad del frontend web
+### 1. Disponibilidad de la API
 
 | Campo | Valor |
 |-------|-------|
 | **SLI** | `(tiempo_total - tiempo_inaccesible) / tiempo_total × 100` |
-| **SLO** | ≥ 99% mensual |
+| **SLO** | No vigente con Render Free. Objetivo para un plan sin spin-down: ≥ 99% mensual |
 | **Medición** | Chequeo sintético cada 15 min (`.github/workflows/smoke.yml`) + healthcheck cada 6 h (`healthcheck.yml` → `scheduler/healthcheck.py`) |
 | **Alerta** | Email (`observability/alerts.py`) — no hay PagerDuty en este stack. El sondeo cada 15 min acota el tiempo de detección a ~7 min de media; con el cron de 6 h anterior eran ~3 h y este SLO no era computable |
-| **Error budget** | 7.2 min/día, 3.6h/mes |
+| **Error budget** | No aplica mientras el SLO esté suspendido. A 99% serían 14,4 min/día y 7,2 h/mes |
 
 ### 2. Frescura de datos
 
@@ -68,8 +71,8 @@ los SLOs de disponibilidad y de latencia de API. Quedan dos matices:
 |-------|-------|
 | **SLI** | Tiempo de respuesta HTTP P50 / P95 / P99 de la ruta principal del frontend web |
 | **SLO** | P95 < 3 s en cargas con caché caliente |
-| **Medición** | Prometheus + Grafana. Config de producción: `observability/prometheus.render.yml`, horneada en la imagen por `docker/Dockerfile.prometheus` (`prometheus.yml` es la de docker-compose local) |
-| **Alerta** | **No implementada** — `observability/alert_rules.yml` no define ninguna regla de latencia HTTP; las 7 vigentes cubren presupuesto LLM, dedupe y pool de Postgres |
+| **Medición** | RUM con `@vercel/speed-insights`, montado en `web/src/app/layout.tsx`. La retención efectiva y el panel de producción no se verifican desde el repo |
+| **Alerta** | **No implementada** — Speed Insights recoge la señal, pero no hay alerta versionada |
 | **Optimizaciones activas** | Caché caliente, agregados server-side y paginación server-side |
 
 ### 4. Tasa de éxito del pipeline de scraping
@@ -106,7 +109,7 @@ los SLOs de disponibilidad y de latencia de API. Quedan dos matices:
 
 | SLO | Periodo | Budget total | Budget/día |
 |-----|---------|-------------|------------|
-| Disponibilidad 99% | 30 días | 7.2 h/mes | 14.4 min/día |
+| Disponibilidad 99% (suspendido en plan free) | 30 días | 7,2 h/mes | 14,4 min/día |
 | Frescura ≤36h | Continuo | 0 (hard limit) | — |
 | Éxito pipeline 95% | 30 días | 1.5 runs fallidos/30 | — |
 

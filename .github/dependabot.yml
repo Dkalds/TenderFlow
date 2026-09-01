@@ -44,6 +44,42 @@ updates:
     labels:
       - "dependencies"
       - "javascript"
+    # `all` aquí es explicitud, no un arreglo: para npm equivale al conjunto
+    # de dependencias declaradas, que es lo que el bloque ya cubría por
+    # defecto. El escalón `indirect` que sí alcanza transitivas existe en
+    # bundler/pip/composer/cargo/gomod/uv, no en npm.
+    #
+    # Que quede dicho para el próximo que venga a buscar aquí el arreglo de un
+    # aviso transitivo: `allow` solo gobierna las **version updates**, no las
+    # security updates, así que no era esto lo que faltaba para nanoid (#104).
+    # Lo que faltaba era tenerlas habilitadas: `automated-security-fixes`
+    # estaba en `false` hasta el 2026-08-30.
+    allow:
+      - dependency-type: "all"
+    groups:
+      minor-and-patch:
+        update-types:
+          - "minor"
+          - "patch"
+
+  # El `package.json` de la raíz (@vercel/analytics, @vercel/speed-insights) es
+  # un segundo árbol npm que el bloque de `/web` no ve: `directory` no es
+  # recursivo. Sin esta entrada nadie lo vigilaba.
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "Europe/Madrid"
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 3
+    labels:
+      - "dependencies"
+      - "javascript"
+    allow:
+      - dependency-type: "all"
     groups:
       minor-and-patch:
         update-types:

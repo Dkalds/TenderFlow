@@ -320,20 +320,23 @@ def test_extract_fact_sheet_v3_families_with_valid_evidence(tmp_db):
 
 def test_extraction_question_fits_llm_limit():
     """``stream_llm_response`` rechaza una ``question`` de más de
-    ``MAX_QUESTION_LEN`` caracteres ANTES de llamar al proveedor.
+    ``MAX_INTERNAL_QUESTION_LEN`` caracteres ANTES de llamar al proveedor.
 
     Regresión de v3 (lotes/ANS/certificaciones): la pregunta creció hasta 2070
-    caracteres y desde entonces la ficha falló SIEMPRE —botón «Extraer ficha» y
-    cron nocturno por igual— con «La pregunta excede el máximo de 2000
-    caracteres», que la UI enseñaba tal cual al usuario. Ningún test lo vio
-    porque todos mockean ``stream_llm_response``, que es justo la función que
-    valida: este comprueba la constante contra el validador real.
+    caracteres y —cuando compartía el límite de usuario de 2000— la ficha falló
+    SIEMPRE, botón «Extraer ficha» y cron nocturno por igual, con «La pregunta
+    excede el máximo…», que la UI enseñaba tal cual. Ningún test lo vio porque
+    todos mockean ``stream_llm_response``, que es justo la función que valida:
+    este comprueba la constante contra el validador real, en el modo real
+    (``extraction``, que usa el tope interno de plantilla).
     """
-    from llm.client import MAX_QUESTION_LEN, _validate_request
+    from llm.client import MAX_INTERNAL_QUESTION_LEN, _validate_request
     from services.rag.fact_sheet import _EXTRACTION_QUESTION
 
-    assert len(_EXTRACTION_QUESTION) <= MAX_QUESTION_LEN
-    _validate_request(_EXTRACTION_QUESTION, [], "deepseek-ai/deepseek-v4-flash-0731")
+    assert len(_EXTRACTION_QUESTION) <= MAX_INTERNAL_QUESTION_LEN
+    _validate_request(
+        _EXTRACTION_QUESTION, [], "deepseek-ai/deepseek-v4-flash-0731", mode="extraction"
+    )
 
 
 class TestPartialPayloadSurvives:
@@ -807,3 +810,100 @@ class TestIngestLlmTechnologies:
             updated_at="2026-08-04T00:00:00+00:00",
         )
         assert ingest_llm_technologies(record) == 0
+
+
+# ── facts_summary_text: la ficha verificada como contexto del resumen ──────
+
+
+def test_facts_summary_text_renders_families_and_attributes():
+    from services.rag.fact_sheet import facts_summary_text
+    from shared.tender_facts import (
+        EvidenceRef,
+        LotFact,
+        TenderFactSheet,
+        WeightedCriterion,
+    )
+
+    ev = EvidenceRef(documento_id=1, page_number=2, quote="cita")
+    facts = TenderFactSheet(
+        lots=[
+            LotFact(
+                description="Lote de implantación",
+                confidence=0.9,
+                evidence=[ev],
+                lot_number="1",
+                name="Implantación",
+                amount_eur=120000.0,
+            )
+        ],
+        award_criteria=[
+            WeightedCriterion(
+                description="Oferta económica",
+                confidence=0.8,
+                evidence=[ev],
+                name="Precio",
+                weight_pct=60.0,
+                criterion_type="price",
+            )
+        ],
+    )
+
+    text = facts_summary_text(facts)
+
+    assert "Lotes:" in text
+    assert "Criterios de adjudicación:" in text
+    assert "Precio" in text
+    assert "peso 60.0%" in text
+    assert "120000.0 EUR" in text
+    # Familias vacías no aparecen (no meter ruido en el contexto).
+    assert "Garantías" not in text
+
+
+def test_facts_summary_text_respects_max_chars():
+    from services.rag.fact_sheet import facts_summary_text
+    from shared.tender_facts import EvidenceRef, FactItem, TenderFactSheet
+
+    ev = EvidenceRef(documento_id=1, page_number=1, quote="q")
+    facts = TenderFactSheet(
+        technical_solvency=[
+            FactItem(description="requisito " * 50, confidence=0.5, evidence=[ev])
+            for _ in range(20)
+        ]
+    )
+    assert len(facts_summary_text(facts, max_chars=500)) <= 500
+
+
+def test_facts_summary_text_empty_sheet_is_empty():
+    from services.rag.fact_sheet import facts_summary_text
+    from shared.tender_facts import TenderFactSheet
+
+    assert facts_summary_text(TenderFactSheet()) == ""
+
+
+# ── Flag de extracción en curso (extract-async) ────────────────────────────
+
+
+def test_extraction_running_flag_lifecycle():
+    """try_mark → running → segundo try rechazado → clear → libre.
+
+    El flag vive en shared.cache (namespace propio), no en la tabla: añadir
+    'running' al CHECK de status exigiría migración y es estado de proceso.
+    """
+    from shared.cache import reset_cache
+
+    reset_cache("fact_sheet_jobs")
+    try:
+        from services.rag.fact_sheet import (
+            clear_extraction_running,
+            extraction_running,
+            try_mark_extraction_running,
+        )
+
+        assert extraction_running("EXP-BG-1") is False
+        assert try_mark_extraction_running("EXP-BG-1") is True
+        assert extraction_running("EXP-BG-1") is True
+        assert try_mark_extraction_running("EXP-BG-1") is False  # ya en curso
+        clear_extraction_running("EXP-BG-1")
+        assert extraction_running("EXP-BG-1") is False
+    finally:
+        reset_cache("fact_sheet_jobs")

@@ -604,6 +604,51 @@ def test_signals_no_degradado_con_todas_las_senales_sanas():
     assert res.signals.degradado is False
 
 
+def test_profile_uses_resolved_organization():
+    comp, marg = _patch_signals(
+        comp=CompetenciaStats(media_global=4.0, status="ok"),
+        marg=MargenStats(baja_media_global=0.2, status="ok"),
+    )
+    with (
+        _repo_data(_rows(10)),
+        comp,
+        marg,
+        patch("db.repositories.user_profiles.get_user_profile", return_value=None) as load,
+    ):
+        sc_mod.get_scoring(
+            sc_mod.ScoringFilters(limit=5),
+            user_key="user-a",
+            organization_id=7,
+        )
+
+    load.assert_called_once_with("user-a", 7)
+
+
+def test_profile_load_failure_is_visible_in_signal_health():
+    comp, marg = _patch_signals(
+        comp=CompetenciaStats(media_global=4.0, status="ok"),
+        marg=MargenStats(baja_media_global=0.2, status="ok"),
+    )
+    with (
+        _repo_data(_rows(10)),
+        comp,
+        marg,
+        patch(
+            "db.repositories.user_profiles.get_user_profile",
+            side_effect=RuntimeError("profile unavailable"),
+        ),
+    ):
+        res = sc_mod.get_scoring(
+            sc_mod.ScoringFilters(limit=5),
+            user_key="user-a",
+            organization_id=7,
+        )
+
+    assert res.signals is not None
+    assert res.signals.perfil == "error"
+    assert res.signals.degradado is True
+
+
 def test_total_scored_cuenta_antes_del_truncado():
     """`total_scored` responde "cuántas hay", no "cuántas caben en la página"."""
     comp, marg = _patch_signals()

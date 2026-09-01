@@ -6,9 +6,9 @@
  * en el `page.tsx` de la ruta.
  *
  * Es la única de las ocho que lee la URL (`useSearchParams`, para sembrar el
- * filtro con `?q=`). No dependía de ser una ruta sino de la query, y la query
+ * filtro con `?organo_q=`). No dependía de ser una ruta sino de la query, y la query
  * sobrevive igual por las dos entradas: el redirect 308 arrastra la entrante, y
- * `/mercado?vista=organos&q=…` la lleva escrita.
+ * `/mercado?vista=organos&organo_q=…` la lleva escrita.
  */
 
 import { EmptyState } from "@/components/ui/empty-state";
@@ -106,8 +106,9 @@ interface OrganoDetailResponse {
 
 export default function OrganosView() {
   const searchParams = useSearchParams();
-  // Deep-link externo: `?q=<órgano>` siembra el filtro.
-  const [filter, setFilter] = useState(() => searchParams?.get("q") ?? "");
+  // Deep-link externo: `?organo_q=<órgano>` siembra el filtro local. `q`
+  // pertenece al ámbito global y useFilteredQuery lo adjunta por separado.
+  const [filter, setFilter] = useState(() => searchParams?.get("organo_q") ?? "");
   const [selectedOrgano, setSelectedOrgano] = useState<string | null>(null);
 
   // Búsqueda server-side (accent-insensitive): sin q el API devuelve solo el
@@ -118,7 +119,7 @@ export default function OrganosView() {
     ["analytics", "organos", debouncedFilter],
     "/api/v1/analytics/organos",
     { staleTime: 5 * 60 * 1000 },
-    debouncedFilter ? { q: debouncedFilter } : undefined,
+    debouncedFilter ? { organo_q: debouncedFilter } : undefined,
   );
 
   // El drill-down viaja con el mismo ámbito que el ranking del que se abre.

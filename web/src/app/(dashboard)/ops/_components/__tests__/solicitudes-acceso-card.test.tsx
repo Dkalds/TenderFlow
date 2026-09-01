@@ -63,6 +63,9 @@ function instalarFetch() {
     "fetch",
     vi.fn(async (url: string) => {
       urlsPedidas.push(url);
+      if (url.includes("/grants")) {
+        return { ok: true, status: 200, json: async () => [] };
+      }
       const params = new URLSearchParams(url.split("?")[1] ?? "");
       const estado = params.get("estado");
       const limite = Number(params.get("limit") ?? LIMITE_POR_DEFECTO);
@@ -83,8 +86,10 @@ function renderCard() {
 }
 
 function queryDe(vista: "pendiente" | "historico"): string | undefined {
-  return urlsPedidas.find((url) =>
-    vista === "pendiente" ? url.includes("estado=pendiente") : !url.includes("estado="),
+  return urlsPedidas.find(
+    (url) =>
+      !url.includes("/grants") &&
+      (vista === "pendiente" ? url.includes("estado=pendiente") : !url.includes("estado=")),
   );
 }
 
@@ -169,13 +174,13 @@ describe("SolicitudesAccesoCard", () => {
     expect(await screen.findByText(/No queda ninguna solicitud pendiente/)).toBeInTheDocument();
   });
 
-  it("atender una solicitud refresca las dos vistas", async () => {
+  it("conceder una solicitud activa el email antes de avisar", async () => {
     cola.push(solicitud(1, "pendiente"));
     renderCard();
     await screen.findByText("alguien-1@empresa.es");
     const pedidasAntes = urlsPedidas.length;
 
-    fireEvent.click(screen.getByRole("button", { name: "Atendida" }));
+    fireEvent.click(screen.getByRole("button", { name: "Conceder email y avisar" }));
 
     // La clave de las dos consultas comparte prefijo, así que el
     // `invalidateQueries` del `onSuccess` alcanza a ambas: el contador no puede
@@ -184,7 +189,11 @@ describe("SolicitudesAccesoCard", () => {
     expect(mutar).toHaveBeenCalledWith(
       "PATCH",
       "/api/v1/admin/solicitudes-acceso/1",
-      expect.objectContaining({ estado: "atendida" }),
+      expect.objectContaining({
+        estado: "atendida",
+        conceder: "email",
+        notificar: true,
+      }),
     );
   });
 });

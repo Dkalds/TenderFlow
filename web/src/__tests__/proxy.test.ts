@@ -36,6 +36,7 @@ describe("rutas públicas", () => {
     ["/cpv/72000000", "un hub por CPV"],
     ["/aviso-legal", "el aviso legal"],
     ["/login", "el login"],
+    ["/restablecer-contrasena", "la recuperación de contraseña"],
     ["/solicitud-recibida", "el acuse del formulario"],
     ["/robots.txt", "robots"],
     ["/sitemap.xml", "el sitemap"],

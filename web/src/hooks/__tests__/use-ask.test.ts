@@ -37,7 +37,7 @@ function createWrapper() {
 }
 
 function makeResult(overrides: Partial<AskStreamResult> = {}): AskStreamResult {
-  return { answer: "", fuentes: [], degraded: null, resumenMeta: null, ...overrides };
+  return { answer: "", fuentes: [], degraded: null, resumenMeta: null, askMeta: null, ...overrides };
 }
 
 // ── Setup / teardown ───────────────────────────────────────────────────────────

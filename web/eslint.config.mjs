@@ -24,6 +24,9 @@ const eslintConfig = defineConfig([
     // Informe HTML de cobertura (v8 lo escribe al correr `npm run
     // test:coverage`): lo genera una herramienta y no está versionado.
     "coverage/**",
+    // Reportes, trazas y adjuntos generados por Playwright.
+    "playwright-report/**",
+    "test-results/**",
   ]),
   // Accessibility rules.
   // El plugin `jsx-a11y` ya lo registra `eslint-config-next/core-web-vitals`;

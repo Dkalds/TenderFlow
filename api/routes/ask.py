@@ -7,8 +7,10 @@ modelo responde con conocimiento general indicándolo). Con ``id_externo`` el
 contexto es esa licitación concreta: metadatos del anuncio + fragmentos de sus
 pliegos (``services/rag/context.py``).
 
-``/licitaciones/{id_externo}/resumen`` genera al vuelo un resumen ejecutivo
-estructurado de la oportunidad y su pliego (streaming, sin caché).
+``/licitaciones/{id_externo}/resumen`` genera un resumen ejecutivo
+estructurado de la oportunidad y su pliego (streaming; cacheado por firma de
+estado — documentos + ficha verificada + metadatos — con ``force`` para
+regenerar).
 
 Ambos requieren API-key con scope ``ask:read`` o sesión activa.
 
@@ -54,6 +56,15 @@ _MAX_HISTORY_CONTENT_LEN = 4000
 
 _RESUMEN_QUESTION = "Genera el resumen estructurado de esta licitación."
 _RESUMEN_MAX_TOKENS = 1500
+
+# Caché del resumen: mismo expediente + mismos documentos + misma ficha →
+# mismo texto, sin pagar otra llamada LLM ni la espera del streaming. La clave
+# incorpora una firma del estado (metadatos del anuncio, status de cada
+# documento, extracted_at de la ficha), así que un pliego recién procesado o
+# una ficha nueva invalidan solos; el TTL solo acota el caso residual.
+# ``_RESUMEN_CACHE_VERSION`` se bumpea al cambiar el prompt o el contexto.
+_RESUMEN_CACHE_TTL_SECONDS = 7 * 24 * 3600
+_RESUMEN_CACHE_VERSION = "resumen-v2"
 
 # Campos que viajan en el evento SSE ``degraded`` (fallback sin síntesis LLM).
 # Aditivo al stream, NO al DTO (RFC llm-dependencia-gestionada §3.5).
@@ -130,6 +141,10 @@ class ResumenRequest(BaseModel):
     model: str = Field(
         default="deepseek-ai/deepseek-v4-flash-0731",
         description="Modelo LLM a usar. Ver /api/v1/ask/models para modelos disponibles.",
+    )
+    force: bool = Field(
+        default=False,
+        description="Ignora el resumen cacheado y regenera con el proveedor LLM.",
     )
 
 
@@ -233,6 +248,38 @@ def _fuentes_documentos(docs: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 def _sse_event(payload: dict[str, Any]) -> str:
     return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
+
+
+def _resumen_cache_key(
+    id_externo: str,
+    model: str,
+    doc: dict[str, Any],
+    documentos: list[dict[str, Any]],
+    ficha_extracted_at: str | None,
+) -> str:
+    """Clave de caché del resumen: expediente + modelo + firma de estado.
+
+    La firma cubre lo que puede cambiar el resumen sin que cambie el id: los
+    metadatos del anuncio (importe, estado, fechas…), el ciclo de vida de cada
+    documento (un pliego que pasa a ``extracted`` cambia el contexto) y la
+    ficha verificada vigente.
+    """
+    import hashlib
+
+    payload = {
+        "v": _RESUMEN_CACHE_VERSION,
+        "id": id_externo,
+        "model": model,
+        "doc": {k: v for k, v in doc.items() if k not in ("chunks", "_score")},
+        "documentos": [
+            (d.get("id"), d.get("status"), str(d.get("created_at"))) for d in documentos
+        ],
+        "ficha": ficha_extracted_at,
+    }
+    digest = hashlib.sha256(
+        json.dumps(payload, sort_keys=True, ensure_ascii=False, default=str).encode("utf-8")
+    ).hexdigest()
+    return f"resumen|{digest}"
 
 
 def _stream_sse(
@@ -366,6 +413,17 @@ async def _stream_ask(request: AskRequest, scope_key: str | None) -> AsyncGenera
     degraded_docs = [{k: d.get(k) for k in _DEGRADED_DOC_FIELDS} for d in docs]
     fuentes = _fuentes_documentos(docs)
 
+    # Evento aditivo ``ask_meta``: el ámbito EFECTIVO de la respuesta. Importa
+    # cuando se pidió ``id_externo`` y el contexto de esa licitación no pudo
+    # cargarse: sin este evento el fallback al corpus era silencioso y la UI
+    # del detalle presentaba como "sobre este expediente" una respuesta que no
+    # lo era.
+    pre_events: list[dict[str, Any]] = [
+        {"ask_meta": {"contexto": mode, "id_externo": request.id_externo}}
+    ]
+    if fuentes:
+        pre_events.append({"fuentes_documentos": fuentes})
+
     def _factory() -> Iterator[str]:
         # El coste solo se conoce dentro de llm/client.py::_record_usage, que no
         # ve al usuario. Se corre en un thread con contexto propio (to_thread lo
@@ -384,7 +442,7 @@ async def _stream_ask(request: AskRequest, scope_key: str | None) -> AsyncGenera
     return _stream_sse(
         _factory,
         degraded_docs,
-        pre_events=[{"fuentes_documentos": fuentes}] if fuentes else None,
+        pre_events=pre_events,
     )
 
 
@@ -463,13 +521,18 @@ async def resumen_licitacion(
     body: ResumenRequest,
     user: dict[str, Any] = Depends(require_any_auth),
 ) -> StreamingResponse:
-    """Genera al vuelo un resumen ejecutivo de la licitación (sin caché).
+    """Genera (o sirve cacheado) el resumen ejecutivo de la licitación.
 
     Secciones: qué se licita, órgano y contexto, importe y plazos, requisitos
     clave del pliego, y riesgos/avisos. El primer evento SSE es
-    ``resumen_meta`` con ``has_pliego_text`` y el estado de los documentos —
-    si no hay texto de pliegos procesado, el resumen se basa solo en los
-    metadatos del anuncio y lo indica.
+    ``resumen_meta`` con ``has_pliego_text``, ``cached`` y el estado de los
+    documentos — si no hay texto de pliegos procesado, el resumen se basa solo
+    en los metadatos del anuncio y lo indica. Si existe una ficha estructurada
+    verificada, sus hechos entran como contexto priorizado.
+
+    El resumen generado se cachea con una firma del estado (documentos +
+    ficha + metadatos): mismo estado → misma respuesta sin coste LLM.
+    ``force=true`` regenera ignorando el caché.
 
     Requiere scope ``ask:read`` (API key) o sesión activa (cookie).
     """
@@ -498,41 +561,99 @@ async def resumen_licitacion(
     # Igual que en `/ask`: el armado del contexto toca BD y no puede correr en
     # el event loop. `primary_doc_from_context` también va a BD, así que viaja
     # en el mismo salto al threadpool en vez de en uno propio.
-    def _load_context() -> tuple[LicitacionContext, dict[str, Any]] | None:
-        """Contexto + documento principal, en el threadpool (ambos van a BD)."""
+    def _load_context() -> tuple[LicitacionContext, dict[str, Any], str | None] | None:
+        """Contexto + documento principal + ficha, en el threadpool (van a BD).
+
+        Si hay ficha verificada vigente, sus hechos entran como primer chunk
+        etiquetado: son los únicos datos del sistema validados con cita, y el
+        system prompt de modo ``resumen`` les da prioridad en la sección de
+        requisitos. Su ``extracted_at`` forma parte de la firma de caché.
+        """
         loaded = build_licitacion_context(id_externo, None)
         if loaded is None:
             return None
-        return loaded, primary_doc_from_context(id_externo, loaded)
+        doc = primary_doc_from_context(id_externo, loaded)
+        ficha_at: str | None = None
+        try:
+            from services.rag.fact_sheet import facts_summary_text, get_fact_sheet
 
-    loaded_pair = await run_db(_load_context)
-    if loaded_pair is None:
+            ficha = get_fact_sheet(id_externo)
+            if (
+                ficha is not None
+                and ficha.facts is not None
+                and ficha.status in ("extracted", "needs_review")
+            ):
+                texto = facts_summary_text(ficha.facts)
+                if texto:
+                    doc["chunks"] = [
+                        {"tipo": "ficha estructurada verificada", "texto": texto},
+                        *doc["chunks"],
+                    ]
+                    ficha_at = ficha.extracted_at
+        except Exception as exc:
+            # La ficha es un refuerzo del contexto, nunca un bloqueo del resumen.
+            log.warning("resumen.fact_sheet_context_failed", id_externo=id_externo, error=str(exc))
+        return loaded, doc, ficha_at
+
+    loaded_tuple = await run_db(_load_context)
+    if loaded_tuple is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Licitación '{id_externo}' no encontrada.",
         )
-    ctx, doc = loaded_pair
+    ctx, doc, ficha_at = loaded_tuple
     degraded_docs = [{k: doc.get(k) for k in _DEGRADED_DOC_FIELDS}]
+
+    from shared.cache import get_cache
+
+    cache = get_cache("llm_resumen")
+    cache_key = _resumen_cache_key(id_externo, body.model, doc, ctx["documentos"], ficha_at)
+    cached_raw = None if body.force else cache.get(cache_key)
+    cached_text = str(cached_raw) if isinstance(cached_raw, str) and cached_raw.strip() else None
+
     resumen_meta = {
         "has_pliego_text": ctx["has_pliego_text"],
         "truncated": ctx["truncated"],
+        "cached": cached_text is not None,
         "documentos": [
             {"tipo": d.get("tipo"), "filename": d.get("filename"), "status": d.get("status")}
             for d in ctx["documentos"]
         ],
     }
 
-    def _factory() -> Iterator[str]:
-        # Ver _stream_ask: el sujeto viaja por contexto hasta _record_usage.
-        bind_budget_subject(scope_key)
-        return stream_llm_response(
-            question=_RESUMEN_QUESTION,
-            docs=[doc],
-            model=body.model,
-            keywords=[],
-            mode="resumen",
-            max_tokens=_RESUMEN_MAX_TOKENS,
-        )
+    if cached_text is not None:
+        # Hit: se sirve el texto persistido como un único evento, sin proveedor.
+        def _factory() -> Iterator[str]:
+            return iter([cached_text])
+
+    else:
+
+        def _factory() -> Iterator[str]:
+            # Ver _stream_ask: el sujeto viaja por contexto hasta _record_usage.
+            bind_budget_subject(scope_key)
+
+            def _generate_and_cache() -> Iterator[str]:
+                parts: list[str] = []
+                for token in stream_llm_response(
+                    question=_RESUMEN_QUESTION,
+                    docs=[doc],
+                    model=body.model,
+                    keywords=[],
+                    mode="resumen",
+                    max_tokens=_RESUMEN_MAX_TOKENS,
+                ):
+                    parts.append(token)
+                    yield token
+                # Solo se cachea un stream completo con contenido: los caminos
+                # degradados (vacío, excepción, timeout) no dejan entrada.
+                texto = "".join(parts).strip()
+                if texto:
+                    try:
+                        cache.set(cache_key, texto, ttl=_RESUMEN_CACHE_TTL_SECONDS)
+                    except Exception:
+                        log.debug("resumen.cache_set_failed", exc_info=True)
+
+            return _generate_and_cache()
 
     generator = _stream_sse(
         _factory,

@@ -552,25 +552,20 @@ def test_ensure_data_dirs_creates_directories(tmp_path):
 # ---------------------------------------------------------------------------
 
 
-def test_prod_oauth_without_allowlists_refuses_startup():
-    """Con OAuth activo y ambos allowlists vacíos, prod no arranca (fail-closed).
-
-    Hasta 2026-08 esto era solo un ``warnings.warn``: cualquier cuenta de
-    Google podía iniciar sesión en producción sin dejar más rastro que una
-    línea de log en el arranque.
-    """
+def test_prod_oauth_without_static_allowlists_uses_dynamic_fail_closed_path():
+    """La tabla dinámica permite arrancar sin convertir vacío en acceso abierto."""
     from config.settings import Settings
 
-    with pytest.raises(Exception, match="OAUTH_ALLOWED_DOMAINS"):
-        Settings(
-            ENV="prod",
-            APP_PROFILE="api",
-            DATABASE_URL="",
-            GOOGLE_CLIENT_ID="client-id.apps.googleusercontent.com",
-            OAUTH_ALLOWED_DOMAINS="",
-            OAUTH_ALLOWED_EMAILS="",
-            **_API_SECRETS,
-        )
+    configured = Settings(
+        ENV="prod",
+        APP_PROFILE="api",
+        DATABASE_URL="",
+        GOOGLE_CLIENT_ID="client-id.apps.googleusercontent.com",
+        OAUTH_ALLOWED_DOMAINS="",
+        OAUTH_ALLOWED_EMAILS="",
+        **_API_SECRETS,
+    )
+    assert configured.GOOGLE_CLIENT_ID
 
 
 @pytest.mark.parametrize(

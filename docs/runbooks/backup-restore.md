@@ -5,17 +5,22 @@
 **Responsable**: Equipo de Operaciones  
 **Frecuencia**: Diario (automático vía `backup.yml`, 03:00 UTC). Manual ante incidentes.
 
+**Destinos remotos:** cada run conserva el dump cifrado como GitHub Artifact
+durante 90 días. Si `AWS_ROLE_TO_ASSUME` y `BACKUP_S3_BUCKET` están ambos
+configurados, se sube además a S3/R2. El restore drill prefiere S3 y cae al
+artefacto del último run exitoso cuando no hay configuración AWS.
+
 ---
 
 ## Backups Postgres cifrados (producción, F3d)
 
 La rama Postgres de `.github/workflows/backup.yml` ya cifra el dump con GPG
-simétrico (AES256) **si y solo si** existe el secret `BACKUP_ENCRYPTION_KEY`.
-Sin él, el workflow emite `::warning::` y sube el dump en claro a S3 privado
-(nunca como artefacto de GitHub). El dump contiene PII y hashes de
-`api_keys`/`totp_secrets`: el secret es obligatorio en producción.
+simétrico (AES256) y falla **antes de ejecutar `pg_dump`** si falta
+`BACKUP_ENCRYPTION_KEY`, `AWS_ROLE_TO_ASSUME` o `BACKUP_S3_BUCKET`. Nunca sube
+un dump en claro. El dump contiene PII y hashes de `api_keys`/`totp_secrets`:
+los tres valores son obligatorios en producción.
 
-### Alta del secret (acción manual del usuario, gate §6)
+### Alta del secret de cifrado (acción manual del usuario, gate §6)
 
 ```bash
 # Genera la clave y súbela como GH Secret en un solo paso.
@@ -33,10 +38,12 @@ openssl rand -base64 48 | gh secret set BACKUP_ENCRYPTION_KEY
 1. `gh secret list | grep BACKUP_ENCRYPTION_KEY` — debe existir.
 2. Lanzar el backup a mano: `gh workflow run backup.yml` y esperar el run.
 3. En el run: el step de Postgres debe loguear `Dump cifrado → …dump.gpg`
-   (sin el `::warning::` de clave ausente) y el artefacto
+    y el artefacto
    `db-backup-<run_id>` debe contener solo `*.dump.gpg`.
-4. El lunes siguiente (o a mano: `gh workflow run restore-drill.yml`),
+4. A mano: `gh workflow run restore-drill.yml`,
    verificar que el drill semanal sigue verde.
+5. Si se usa S3, `AWS_ROLE_TO_ASSUME` y `BACKUP_S3_BUCKET` se configuran juntos;
+    declarar sólo uno hace fallar el guard para no fingir una segunda copia.
 
 ### Descifrar un backup
 
@@ -62,13 +69,19 @@ Tras restaurar: `alembic current` debe reportar `head`, y un smoke
 
 ---
 
-## Backup manual
+## Backup manual SQLite (legacy, solo desarrollo)
+
+Este comando **no sirve para Postgres/Supabase**. En producción, el backup
+manual soportado es lanzar `backup.yml` con `workflow_dispatch`, porque reutiliza
+exactamente el cifrado, OIDC y destino que verifica el restore drill.
 
 ```bash
 python scripts/backup_db.py
 ```
 
-Crea un fichero comprimido en `data/backups/licitaciones_YYYYMMDD_HHMMSS.db.gz`.
+Crea un fichero SQLite cifrado en
+`data/backups/licitaciones_YYYYMMDD_HHMMSS.db.gz.gpg` y exige
+`BACKUP_ENCRYPTION_KEY`.
 
 ## Verificar integridad del backup
 
@@ -77,8 +90,10 @@ python scripts/restore_db.py --verify                 # el último backup local
 python scripts/restore_db.py --verify path/al.db.gz   # uno concreto
 ```
 
-Corre `PRAGMA integrity_check` + query de humo (nº de tablas y filas en
-`licitaciones`) sobre una copia temporal. Exit code 0 = restaurable.
+Corre `PRAGMA integrity_check` + query de humo sobre una copia SQLite temporal.
+Para Postgres, la verificación soportada es `restore-drill.yml`: descifra el
+último `.dump.gpg`, ejecuta `pg_restore` contra un Postgres efímero y consulta
+el esquema restaurado. Exit code 0 = restaurable.
 
 > El workflow `.github/workflows/restore-drill.yml` ejecuta esta verificación
 > sobre el último backup de S3/R2 cada lunes — un backup no probado no es un

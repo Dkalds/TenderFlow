@@ -146,3 +146,82 @@ class TestCambiarEstado:
 
         assert resp.status_code == 422
         actualizar.assert_not_called()
+
+    def test_concede_email_antes_de_notificar(self, client):
+        app.dependency_overrides[require_any_auth] = _admin
+        grant = {
+            "id": 11,
+            "kind": "email",
+            "value": "ana@empresa.example",
+            "active": True,
+            "granted_by": 1,
+            "created_at": "2026-09-01T00:00:00+00:00",
+            "updated_at": "2026-09-01T00:00:00+00:00",
+            "revoked_at": None,
+        }
+        try:
+            with (
+                patch(
+                    "api.routes.admin_solicitudes.grant_access_request",
+                    return_value={
+                        "grant": grant,
+                        "email": "ana@empresa.example",
+                        "empresa": "Empresa SL",
+                        "previous_state": "pendiente",
+                    },
+                ) as grant_fn,
+                patch("api.routes.admin_solicitudes.log_event"),
+                patch(
+                    "api.routes.admin_solicitudes.notificar_acceso_concedido",
+                    return_value=True,
+                ),
+            ):
+                resp = client.patch(
+                    f"{RUTA}/7",
+                    json={"estado": "atendida", "conceder": "email", "notificar": True},
+                )
+        finally:
+            app.dependency_overrides.clear()
+
+        assert resp.status_code == 200, resp.text
+        assert resp.json() == {"status": "ok", "notificado": True, "grant_id": 11}
+        grant_fn.assert_called_once_with(
+            7,
+            "email",
+            granted_by=1,
+        )
+
+
+class TestAccessGrants:
+    def test_listar_y_revocar_requiere_admin(self, client):
+        app.dependency_overrides[require_any_auth] = _no_admin
+        try:
+            assert client.get(f"{RUTA}/grants").status_code == 403
+            assert client.delete(f"{RUTA}/grants/1").status_code == 403
+        finally:
+            app.dependency_overrides.clear()
+
+    def test_revoca_y_audita(self, client):
+        app.dependency_overrides[require_any_auth] = _admin
+        grant = {
+            "id": 11,
+            "kind": "email",
+            "value": "ana@empresa.example",
+            "active": False,
+            "granted_by": 1,
+            "created_at": "2026-09-01T00:00:00+00:00",
+            "updated_at": "2026-09-01T00:01:00+00:00",
+            "revoked_at": "2026-09-01T00:01:00+00:00",
+        }
+        try:
+            with (
+                patch("api.routes.admin_solicitudes.revoke_access", return_value=grant),
+                patch("api.routes.admin_solicitudes.log_event") as audit,
+            ):
+                resp = client.delete(f"{RUTA}/grants/11")
+        finally:
+            app.dependency_overrides.clear()
+
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["active"] is False
+        assert audit.call_args.kwargs["event_type"] == "access_grant.revoked"

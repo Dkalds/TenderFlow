@@ -1,12 +1,15 @@
 "use client";
 
+import * as React from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError, apiMutate, fetchWithAuth } from "@/lib/api-client";
 import type {
   CertificationRequirement,
   DeadlineFact,
+  DocumentosResult,
   EvidenceRef,
   FactItem,
+  FactSheetExtractionState,
   LotFact,
   MonetaryFact,
   ServiceLevelFact,
@@ -85,4 +88,72 @@ export function useExtractTenderFactSheet(licitacionId: string) {
       ),
     onSuccess: (record) => queryClient.setQueryData(key(licitacionId), record),
   });
+}
+
+/**
+ * Metadatos de los documentos de la licitación, para resolver
+ * `documento_id → filename/uri` en las citas de la ficha. Comparte queryKey con
+ * `DocumentosBlock`, así que abrir la pestaña Pliegos no repite la petición.
+ */
+export function useFactSheetDocumentos(licitacionId: string) {
+  return useQuery({
+    queryKey: ["documentos", licitacionId],
+    queryFn: () =>
+      fetchWithAuth<DocumentosResult>(
+        `/api/v1/licitaciones/${encodeURIComponent(licitacionId)}/documentos`,
+      ),
+    enabled: Boolean(licitacionId),
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
+const estadoKey = (licitacionId: string) => ["tender-fact-sheet-estado", licitacionId] as const;
+
+/**
+ * Extracción en background (`extract-async` + polling de `/estado`).
+ *
+ * El camino síncrono (`useExtractTenderFactSheet`) mantiene la request abierta
+ * mientras se descargan hasta 8 PDFs y responde el LLM — minutos de spinner y
+ * un timeout de proxy esperando a pasar. Aquí el POST devuelve 202 al momento;
+ * el estado se sondea cada pocos segundos y, al terminar, se refresca la ficha.
+ */
+export function useTenderFactSheetExtraction(licitacionId: string) {
+  const queryClient = useQueryClient();
+
+  const estado = useQuery({
+    queryKey: estadoKey(licitacionId),
+    queryFn: () =>
+      fetchWithAuth<FactSheetExtractionState>(
+        `/api/v1/licitaciones/${encodeURIComponent(licitacionId)}/ficha-pliego/estado`,
+      ),
+    enabled: Boolean(licitacionId),
+    // Sondeo solo mientras hay trabajo en curso; parado, es una lectura única.
+    refetchInterval: (query) => (query.state.data?.running ? 2500 : false),
+  });
+
+  const running = estado.data?.running === true;
+
+  // Transición running → parado: la ficha (nueva o failed) ya está persistida.
+  const wasRunning = React.useRef(false);
+  React.useEffect(() => {
+    if (wasRunning.current && !running) {
+      void queryClient.invalidateQueries({ queryKey: key(licitacionId) });
+    }
+    wasRunning.current = running;
+  }, [running, licitacionId, queryClient]);
+
+  const start = useMutation({
+    mutationFn: () =>
+      apiMutate<FactSheetExtractionState>(
+        "POST",
+        `/api/v1/licitaciones/${encodeURIComponent(licitacionId)}/ficha-pliego/extract-async`,
+      ),
+    onSuccess: (state) => queryClient.setQueryData(estadoKey(licitacionId), state),
+  });
+
+  return {
+    start: () => start.mutateAsync(),
+    isStarting: start.isPending,
+    running,
+  };
 }

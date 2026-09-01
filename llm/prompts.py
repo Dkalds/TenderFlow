@@ -52,6 +52,20 @@ _CONTEXT_CHARS_BY_MODE: dict[PromptMode, int] = {
     "clasificacion": MAX_CONTEXT_CHARS_GENERAL,
 }
 
+# Presupuesto del extracto de ``descripcion`` por modo. Los 300 chars están
+# afinados para el modo corpus, donde hasta 20 docs compiten por 8k; en los
+# modos de licitación única hay UN doc y 16k de presupuesto, y aplicarles el
+# mismo recorte dejaba al resumen ejecutivo viendo ~300 chars del anuncio (el
+# resto del presupuesto se quedaba sin usar). Clasificación no lo necesita:
+# ahí la descripción íntegra viaja como chunk (ver services/llm_tech_labeling).
+_EXCERPT_CHARS_BY_MODE: dict[PromptMode, int] = {
+    "general": 300,
+    "licitacion": 2400,
+    "resumen": 2400,
+    "extraction": 300,
+    "clasificacion": 300,
+}
+
 _TRUNCATION_MARK = "\n[contexto truncado]"
 
 # ── System prompts ─────────────────────────────────────────────────────────────
@@ -111,6 +125,9 @@ _SYSTEM_RESUMEN = (
         "estas secciones: '## Qué se licita', '## Órgano y contexto', '## Importe y plazos', "
         "'## Requisitos clave del pliego' y '## Riesgos y avisos'. "
         "Sé conciso y factual: no inventes datos que no estén en el contexto. "
+        "Si el contexto incluye un fragmento etiquetado como 'ficha estructurada verificada', "
+        "sus hechos ya fueron validados con citas contra los pliegos: dales prioridad al "
+        "redactar '## Requisitos clave del pliego'. "
         "Si el contexto no incluye fragmentos de pliegos, omite la sección "
         "'## Requisitos clave del pliego' y añade en '## Riesgos y avisos' el aviso: "
         "'Resumen basado solo en los metadatos del anuncio; los pliegos no están disponibles "
@@ -204,7 +221,7 @@ def _neutralize_sandbox_delimiters(text: str) -> str:
     return _SANDBOX_DELIMITER_RE.sub("", text)
 
 
-def _doc_block(doc: dict[str, Any], keywords: list[str]) -> str:
+def _doc_block(doc: dict[str, Any], keywords: list[str], *, excerpt_chars: int = 300) -> str:
     lines = [
         f"[{doc['id_externo']}] {doc.get('titulo', '')}",
         f"Órgano: {doc.get('organo_contratacion', '—')}",
@@ -214,7 +231,7 @@ def _doc_block(doc: dict[str, Any], keywords: list[str]) -> str:
     for key, label in _OPTIONAL_DOC_FIELDS:
         if doc.get(key):
             lines.append(f"{label}: {doc[key]}")
-    lines.append(f"Descripción: {_excerpt(doc.get('descripcion'), keywords)}")
+    lines.append(f"Descripción: {_excerpt(doc.get('descripcion'), keywords, excerpt_chars)}")
     for chunk in doc.get("chunks") or []:
         etiqueta = " ".join(str(chunk[k]) for k in ("tipo", "filename") if chunk.get(k))
         location = " ".join(
@@ -224,21 +241,30 @@ def _doc_block(doc: dict[str, Any], keywords: list[str]) -> str:
             f"--- Fragmento de pliego ({etiqueta or 'documento'}"
             f"{'; documento/página ' + location if location else ''}) ---"
         )
-        # Neutraliza el delimitador del sandbox por si el chunk scrapeado lo trae.
-        lines.append(_neutralize_sandbox_delimiters(str(chunk.get("texto", ""))))
+        lines.append(str(chunk.get("texto", "")))
     return "\n".join(lines)
 
 
-def build_context_block(docs: list[dict[str, Any]], keywords: list[str], *, max_chars: int) -> str:
+def build_context_block(
+    docs: list[dict[str, Any]],
+    keywords: list[str],
+    *,
+    max_chars: int,
+    excerpt_chars: int = 300,
+) -> str:
     """Concatena los bloques de contexto respetando el presupuesto de chars.
 
     Si el presupuesto se agota, el bloque en curso se corta y el resultado
     termina con ``[contexto truncado]``; los docs restantes se descartan.
+
+    El resultado completo pasa por :func:`_neutralize_sandbox_delimiters`:
+    no solo los chunks de pliego — ``titulo`` y ``descripcion`` también son
+    texto scrapeado y podían cerrar ``</fuentes_no_confiables>`` igual.
     """
     parts: list[str] = []
     used = 0
     for doc in docs:
-        block = _doc_block(doc, keywords)
+        block = _doc_block(doc, keywords, excerpt_chars=excerpt_chars)
         remaining = max_chars - used
         if len(block) > remaining:
             cut = block[: max(0, remaining)].rstrip()
@@ -249,7 +275,7 @@ def build_context_block(docs: list[dict[str, Any]], keywords: list[str], *, max_
             break
         parts.append(block)
         used += len(block) + 2  # separador "\n\n"
-    return "\n\n".join(parts)
+    return _neutralize_sandbox_delimiters("\n\n".join(parts))
 
 
 # ── Historial de conversación ──────────────────────────────────────────────────
@@ -315,7 +341,12 @@ def build_messages(
     has_context = bool(docs)
     system = build_system_prompt(mode, has_corpus_context=has_context)
     if has_context:
-        block = build_context_block(docs, keywords, max_chars=_CONTEXT_CHARS_BY_MODE[mode])
+        block = build_context_block(
+            docs,
+            keywords,
+            max_chars=_CONTEXT_CHARS_BY_MODE[mode],
+            excerpt_chars=_EXCERPT_CHARS_BY_MODE[mode],
+        )
         final = (
             "<fuentes_no_confiables>\n"
             f"{block}\n"

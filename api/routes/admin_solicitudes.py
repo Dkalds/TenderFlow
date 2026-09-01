@@ -17,13 +17,19 @@ prometerle a alguien un acceso que todavía le daría 403.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
 from api.concurrency import run_db, run_io
 from api.routes.dual_auth import require_admin
+from db.access_grants import (
+    AccessGrantKind,
+    grant_access_request,
+    list_access_grants,
+    revoke_access,
+)
 from db.audit import log_event
 from db.solicitudes_acceso import (
     ESTADOS,
@@ -53,6 +59,7 @@ class SolicitudAccesoOut(BaseModel):
 
 class EstadoBody(BaseModel):
     estado: str
+    conceder: Literal["email", "domain"] | None = None
     #: Escribir a quien pidió el acceso diciéndole que ya puede entrar.
     #:
     #: Opt-in y no automático: sólo el operador sabe si ya añadió la dirección a
@@ -76,6 +83,18 @@ class CambioEstadoOut(BaseModel):
 
     status: str = "ok"
     notificado: bool | None = None
+    grant_id: int | None = None
+
+
+class AccessGrantOut(BaseModel):
+    id: int
+    kind: AccessGrantKind
+    value: str
+    active: bool
+    granted_by: int | None = None
+    created_at: datetime
+    updated_at: datetime
+    revoked_at: datetime | None = None
 
 
 @router.get("", response_model=list[SolicitudAccesoOut])
@@ -99,9 +118,11 @@ async def cambiar_estado(
     if body.estado not in ESTADOS:
         raise HTTPException(status_code=422, detail=f"estado no válido: {body.estado}")
 
-    avisar = body.notificar and body.estado == "atendida"
+    if body.conceder is not None and body.estado != "atendida":
+        raise HTTPException(status_code=422, detail="Solo se concede una solicitud atendida")
+    avisar = (body.notificar or body.conceder is not None) and body.estado == "atendida"
 
-    def _trabajo() -> tuple[bool, dict[str, Any] | None]:
+    def _trabajo() -> tuple[bool, dict[str, Any] | None, int | None]:
         # El cambio de estado y su registro de auditoría son dos escrituras
         # síncronas: van juntas en un único salto al threadpool. Dejar el
         # `log_event` fuera bloqueaba el event loop —y con él, todos los demás
@@ -111,8 +132,27 @@ async def cambiar_estado(
         # dirección, y también el estado anterior para no reenviar el correo a
         # quien ya estaba atendido (pulsar dos veces no puede escribir dos veces
         # a la misma persona).
-        previa = obtener_solicitud(solicitud_id) if avisar else None
-        actualizada = actualizar_estado(solicitud_id, body.estado)
+        grant_id: int | None = None
+        previa: dict[str, Any] | None
+        if body.conceder is not None:
+            granted = grant_access_request(
+                solicitud_id,
+                body.conceder,
+                granted_by=int(admin["user_id"]),
+            )
+            if granted is None:
+                return False, None, None
+            previa = {
+                "email": granted["email"],
+                "empresa": granted["empresa"],
+                "estado": granted["previous_state"],
+            }
+            actualizada = True
+            grant = granted["grant"]
+            grant_id = grant["id"]
+        else:
+            previa = obtener_solicitud(solicitud_id) if avisar else None
+            actualizada = actualizar_estado(solicitud_id, body.estado)
         if actualizada:
             log_event(
                 event_type="solicitud_acceso.estado",
@@ -120,19 +160,26 @@ async def cambiar_estado(
                 resource=f"solicitud_acceso:{solicitud_id}",
                 detail=body.estado,
             )
-        return actualizada, previa
+            if body.conceder is not None:
+                log_event(
+                    event_type="access_grant.granted",
+                    user_key=str(admin.get("user_id", "")),
+                    resource=f"access_grant:{grant_id}",
+                    detail={"kind": grant["kind"]},
+                )
+        return actualizada, previa, grant_id
 
-    actualizada, previa = await run_db(_trabajo)
+    actualizada, previa, grant_id = await run_db(_trabajo)
     if not actualizada:
         raise HTTPException(status_code=404, detail="solicitud no encontrada")
 
     if not avisar:
-        return CambioEstadoOut(status="ok")
+        return CambioEstadoOut(status="ok", grant_id=grant_id)
 
     if previa is None or previa.get("estado") == "atendida":
         # Ya estaba atendida (o desapareció entre la lectura y la escritura): el
         # estado queda bien, pero no se reenvía nada.
-        return CambioEstadoOut(status="ok", notificado=False)
+        return CambioEstadoOut(status="ok", notificado=False, grant_id=grant_id)
 
     # El correo va fuera del `run_db`: es I/O de red con su propio timeout, y
     # meterlo en el salto de base de datos retendría una conexión del pool
@@ -141,4 +188,31 @@ async def cambiar_estado(
     empresa_valor = previa.get("empresa")
     empresa = str(empresa_valor) if empresa_valor else None
     notificado = await run_io(notificar_acceso_concedido, email=email, empresa=empresa)
-    return CambioEstadoOut(status="ok", notificado=notificado)
+    return CambioEstadoOut(status="ok", notificado=notificado, grant_id=grant_id)
+
+
+@router.get("/grants", response_model=list[AccessGrantOut])
+async def listar_grants(
+    include_inactive: bool = Query(False),
+    _admin: dict[str, Any] = Depends(require_admin),
+) -> list[AccessGrantOut]:
+    rows = await run_db(list_access_grants, include_inactive=include_inactive)
+    return [AccessGrantOut.model_validate(row) for row in rows]
+
+
+@router.delete("/grants/{grant_id}", response_model=AccessGrantOut)
+async def revocar_grant(
+    grant_id: int,
+    admin: dict[str, Any] = Depends(require_admin),
+) -> AccessGrantOut:
+    grant = await run_db(revoke_access, grant_id)
+    if grant is None:
+        raise HTTPException(status_code=404, detail="concesión no encontrada o ya revocada")
+    await run_db(
+        log_event,
+        event_type="access_grant.revoked",
+        user_key=str(admin.get("user_id", "")),
+        resource=f"access_grant:{grant_id}",
+        detail={"kind": grant["kind"]},
+    )
+    return AccessGrantOut.model_validate(grant)

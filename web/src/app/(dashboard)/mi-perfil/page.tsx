@@ -9,24 +9,30 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Slider } from "@/components/ui/slider";
+import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import { primeraVez, registrarEvento } from "@/lib/analytics";
 import { fetchWithAuth, apiMutate } from "@/lib/api-client";
 import { formatCurrency } from "@/lib/utils";
 import { SpaceShell } from "@/components/layout/space-shell";
 import { formatDateTime } from "@/lib/utils";
+import { useActiveOrganizationId } from "@/hooks/use-organization";
 
 // ---------------------------------------------------------------------------
 // Tipos
 // ---------------------------------------------------------------------------
 
 interface UserProfile {
+  user_key?: string | null;
   weights?: Record<string, number> | null;
   afinidad_keywords?: string[] | null;
   cpvs?: string[] | null;
   importe_min?: number | null;
   importe_max?: number | null;
   updated_at?: string | null;
+  organization_id?: number | null;
+  visibility?: "private" | "organization";
+  inherited?: boolean;
 }
 
 /** Mismo criterio que valida el backend: división, grupo o código completo. */
@@ -229,11 +235,15 @@ function GdprSection() {
 
 export default function MiPerfilPage() {
   const queryClient = useQueryClient();
+  const activeOrganizationId = useActiveOrganizationId();
 
   // Carga del perfil actual
   const { data, isLoading } = useQuery<UserProfile>({
-    queryKey: PROFILE_KEY,
-    queryFn: () => fetchWithAuth<UserProfile>("/api/v1/me/profile"),
+    queryKey: [...PROFILE_KEY, activeOrganizationId],
+    queryFn: () =>
+      fetchWithAuth<UserProfile>(
+        `/api/v1/me/profile${activeOrganizationId ? `?organization_id=${activeOrganizationId}` : ""}`,
+      ),
     staleTime: 60_000,
   });
 
@@ -245,6 +255,7 @@ export default function MiPerfilPage() {
   const [cpvInput, setCpvInput] = useState("");
   const [importeMin, setImporteMin] = useState("");
   const [importeMax, setImporteMax] = useState("");
+  const [sharedWithOrganization, setSharedWithOrganization] = useState(false);
   const [dirty, setDirty] = useState(false);
 
   // Rellenar formulario cuando llegan datos del servidor
@@ -255,6 +266,7 @@ export default function MiPerfilPage() {
     setCpvs(data.cpvs ?? []);
     setImporteMin(data.importe_min != null ? String(data.importe_min) : "");
     setImporteMax(data.importe_max != null ? String(data.importe_max) : "");
+    setSharedWithOrganization(data.visibility === "organization");
     setDirty(false);
   }, [data]);
 
@@ -271,9 +283,12 @@ export default function MiPerfilPage() {
         cpvs: cpvs.length > 0 ? cpvs : null,
         importe_min: importeMin !== "" ? Number(importeMin) : null,
         importe_max: importeMax !== "" ? Number(importeMax) : null,
+        organization_id: activeOrganizationId,
+        visibility: sharedWithOrganization ? "organization" : "private",
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: PROFILE_KEY });
+      queryClient.invalidateQueries({ queryKey: ["radar", "scoring"] });
       setDirty(false);
       // Primer paso del embudo de activación («Primeros pasos» en /resumen) y
       // el que más pesa: hasta que existe este perfil, el Radar puntúa con los
@@ -298,7 +313,9 @@ export default function MiPerfilPage() {
       setCpvs([]);
       setImporteMin("");
       setImporteMax("");
+      setSharedWithOrganization(false);
       setDirty(false);
+      queryClient.invalidateQueries({ queryKey: ["radar", "scoring"] });
       toast.success("Perfil eliminado. El scoring vuelve a los valores globales.");
     },
     onError: () => toast.error("No se pudo eliminar el perfil."),
@@ -359,7 +376,7 @@ export default function MiPerfilPage() {
         <h1 className="sr-only">Mi perfil de scoring</h1>
         <p className="text-muted-foreground mt-1">
           Personaliza cómo se puntúan las oportunidades. Los cambios aplican en el panel de
-          detalle y en el ranking de la vista de Tecnologías.
+          detalle, el Radar y los rankings analíticos.
         </p>
         {hasProfile && (
           <p className="mt-2 text-xs text-muted-foreground">
@@ -368,6 +385,38 @@ export default function MiPerfilPage() {
           </p>
         )}
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Ámbito del perfil</CardTitle>
+          <CardDescription>
+            El Radar usa el perfil del ámbito activo. Un perfil compartido sirve como
+            referencia para los miembros que no tengan uno propio.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {data?.inherited && (
+            <Badge variant="secondary">Perfil heredado de la organización</Badge>
+          )}
+          <div className="flex items-center justify-between gap-4">
+            <label htmlFor="profile-visibility" className="space-y-1">
+              <span className="block text-sm font-medium">Compartir con la organización</span>
+              <span className="block text-xs text-muted-foreground">
+                Los demás miembros podrán usar estos pesos si no han creado un perfil propio.
+              </span>
+            </label>
+            <Switch
+              id="profile-visibility"
+              checked={sharedWithOrganization}
+              onCheckedChange={(checked) => {
+                setSharedWithOrganization(checked);
+                setDirty(true);
+              }}
+              aria-label="Compartir perfil con la organización"
+            />
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Pesos de scoring */}
       <Card>
@@ -581,7 +630,7 @@ export default function MiPerfilPage() {
           <Save className="h-4 w-4" />
           {saveMut.isPending ? "Guardando…" : "Guardar perfil"}
         </Button>
-        {hasProfile && (
+        {hasProfile && !data?.inherited && (
           <Button
             variant="outline"
             onClick={() => deleteMut.mutate()}

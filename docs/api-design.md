@@ -16,11 +16,17 @@ Arrancá el servidor con `make api` (uvicorn en `:8080` con reload).
 
 ## Autenticación
 
-Todas las rutas protegidas requieren el header:
+Las rutas protegidas declaran su mecanismo en OpenAPI. La mayoría acepta una
+sesión web o el header:
 
 ```
 X-API-Key: <token>
 ```
+
+Las claves son credenciales de máquina ligadas a un usuario y deben tener el
+scope que corresponde al método y a la ruta. Las operaciones sensibles de
+cuenta exigen una sesión reciente; los feeds para clientes externos pueden ser
+solo API key. Las rutas anónimas viven bajo `/publico`, `/health` y `/auth`.
 
 ### Scopes
 
@@ -45,8 +51,11 @@ Scopes usados en el proyecto:
 | `webhooks:read`    | GET webhooks                 |
 | `webhooks:write`   | POST/PATCH/DELETE webhooks   |
 | `watchlist:read`   | GET watchlist feed           |
+| `analytics:read`   | GET analytics                |
+| `exports:read`     | Descargas y estado de exports |
 | `admin`            | POST rollback modelos, verificar auditoría |
-| `*`                | Acceso total (default al crear key) |
+| `data:read`        | Lecturas generales (default al crear key) |
+| `*`                | Acceso total explícito       |
 
 ## Contrato de errores (RFC 7807)
 

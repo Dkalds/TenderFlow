@@ -259,7 +259,7 @@ def test_get_organos_q_accent_insensitive(tmp_db):
 
 
 def test_get_organos_q_filters_before_limit(tmp_db):
-    """Un órgano fuera del top-limit sigue siendo encontrable con q."""
+    """El q global busca licitaciones antes de agregar y limitar."""
     _insert_licitaciones([*_lic_rows(), _organo_con_tildes()])
 
     # limit=1: sin q solo saldría ORG A; con q el match aparece igual
@@ -270,6 +270,26 @@ def test_get_organos_q_filters_before_limit(tmp_db):
     assert [o.organo_contratacion for o in con_q.organos] == [
         "Gerencia de Informática de la Seguridad Social"
     ]
+
+
+def test_get_organos_organo_q_is_local_and_accent_insensitive(tmp_db):
+    _insert_licitaciones([*_lic_rows(), _organo_con_tildes()])
+
+    result = get_organos(OrganosFilters(organo_q="gerencia de informatica"))
+
+    assert [o.organo_contratacion for o in result.organos] == [
+        "Gerencia de Informática de la Seguridad Social"
+    ]
+
+
+def test_get_organos_global_q_can_match_tender_title(tmp_db):
+    rows = _lic_rows()
+    rows[0]["titulo"] = "Proyecto Centinela irrepetible"
+    _insert_licitaciones(rows)
+
+    result = get_organos(OrganosFilters(q="Centinela irrepetible"))
+
+    assert [o.organo_contratacion for o in result.organos] == ["ORG A"]
 
 
 # ── get_organo_detail ───────────────────────────────────────────────────────
