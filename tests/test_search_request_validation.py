@@ -34,3 +34,10 @@ def test_semantic_request_accepts_normal_input():
 
     req = SemanticSearchRequest(q="SAP S/4HANA consultoría", ccaa=["Madrid"])
     assert req.q.startswith("SAP")
+
+
+def test_semantic_request_accepts_explicit_none_dates():
+    from api.routes.search import SemanticSearchRequest
+
+    req = SemanticSearchRequest(q="consulta normal", fecha_desde=None, fecha_hasta=None)
+    assert req.fecha_desde is None
