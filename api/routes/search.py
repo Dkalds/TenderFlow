@@ -25,7 +25,7 @@ from __future__ import annotations
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from api.concurrency import run_db, run_ml
 from api.routes.dual_auth import require_any_auth
@@ -78,6 +78,20 @@ class SemanticSearchRequest(BaseModel):
     fecha_hasta: str | None = Field(
         default=None, description="Fecha de publicación hasta (YYYY-MM-DD)"
     )
+
+    @field_validator("q", "ccaa", "tecnologia", "fecha_desde", "fecha_hasta")
+    @classmethod
+    def _sin_bytes_nul(cls, value: str | list[str] | None) -> str | list[str] | None:
+        """Postgres rechaza NUL (0x00) en campos de texto con un ``DataError``
+        que llegaba al cliente como 5xx (lo encontró el fuzzing de contrato).
+        Se rechaza como 422 en vez de sanearse en silencio: un NUL en una
+        consulta nunca es intención de usuario, es un input malformado."""
+        if value is None:
+            return value
+        values = value if isinstance(value, list) else [value]
+        if any("\x00" in item for item in values):
+            raise ValueError("El texto no puede contener bytes NUL (0x00).")
+        return value
 
 
 class SemanticHit(BaseModel):

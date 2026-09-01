@@ -42,9 +42,14 @@ import { useSenalesOnboarding } from "@/components/onboarding/use-estado-onboard
  * lo recoja — el foco no puede caerse al `body` sin más.
  */
 
+// Texto a plena tinta (`text-foreground`) en los chips tintados: a 10px,
+// `text-primary` sobre `bg-primary/12` y el verde sobre su tinte quedaban por
+// debajo del 4.5:1 que exige el E2E de accesibilidad. El estado nunca dependió
+// del color (viaja en el texto y en el icono ✓), así que la semántica queda en
+// el fondo tintado.
 const CHIP: Record<EstadoPaso, string> = {
-  hecho: "bg-[hsl(var(--success)/0.14)] text-[hsl(var(--success))]",
-  pendiente: "bg-primary/12 text-primary",
+  hecho: "bg-[hsl(var(--success)/0.14)] text-foreground",
+  pendiente: "bg-primary/12 text-foreground",
   cargando: "bg-secondary text-muted-foreground",
   desconocido: "bg-secondary text-muted-foreground",
 };

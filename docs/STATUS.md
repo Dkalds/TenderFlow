@@ -6,7 +6,7 @@ tags: [status, generado]
 
 <!-- generado por scripts/gen_status.py — no editar a mano -->
 
-Generado: 2026-08-30
+Generado: 2026-09-01
 
 ## Paridad de planos de orquestación (ADR-012)
 
@@ -22,10 +22,11 @@ Generado: 2026-08-30
 | `digest_daily` | pipeline | CANONICAL_STEPS[digests] |
 | `watchlist_rules` | pipeline | CANONICAL_STEPS[watchlist_notify] |
 | `llm_tech_labeling` | pipeline | CANONICAL_STEPS[llm_tech_labeling] |
+| `llm_models_canary` | pipeline | CANONICAL_STEPS[llm_models_canary] |
 | `anomaly_checks` | pipeline | CANONICAL_STEPS[anomaly_checks] |
 | `drift_report` | pipeline | CANONICAL_STEPS[drift_checks] |
 
-**12 jobs, todos con plano verificado.**
+**13 jobs, todos con plano verificado.**
 
 ## Ratchet TID251 — acceso directo a BD fuera de repositories
 
@@ -70,7 +71,7 @@ Generado: 2026-08-30
 
 ## Superficie de la API
 
-**163 endpoints** expuestos.
+**169 endpoints** expuestos.
 
 <details><summary>Ver listado</summary>
 
@@ -82,6 +83,8 @@ Generado: 2026-08-30
 | GET | `/api/redoc` |
 | GET | `/api/v1/adjudicaciones` |
 | GET | `/api/v1/admin/solicitudes-acceso` |
+| GET | `/api/v1/admin/solicitudes-acceso/grants` |
+| DELETE | `/api/v1/admin/solicitudes-acceso/grants/{grant_id}` |
 | PATCH | `/api/v1/admin/solicitudes-acceso/{solicitud_id}` |
 | GET | `/api/v1/admin/users` |
 | GET | `/api/v1/admin/users/{user_id}` |
@@ -120,6 +123,8 @@ Generado: 2026-08-30
 | GET | `/api/v1/auth/me` |
 | GET | `/api/v1/auth/oauth/google/authorize` |
 | GET | `/api/v1/auth/oauth/google/callback` |
+| POST | `/api/v1/auth/password-reset/confirm` |
+| POST | `/api/v1/auth/password-reset/request` |
 | POST | `/api/v1/auth/register` |
 | DELETE | `/api/v1/auth/totp` |
 | POST | `/api/v1/auth/totp/confirm` |
@@ -165,7 +170,9 @@ Generado: 2026-08-30
 | GET | `/api/v1/licitaciones/{id_externo:path}/documentos` |
 | GET | `/api/v1/licitaciones/{id_externo:path}/explain` |
 | GET | `/api/v1/licitaciones/{id_externo:path}/ficha-pliego` |
+| GET | `/api/v1/licitaciones/{id_externo:path}/ficha-pliego/estado` |
 | POST | `/api/v1/licitaciones/{id_externo:path}/ficha-pliego/extract` |
+| POST | `/api/v1/licitaciones/{id_externo:path}/ficha-pliego/extract-async` |
 | POST | `/api/v1/licitaciones/{id_externo:path}/resumen` |
 | GET | `/api/v1/licitaciones/{id_externo:path}/tech-scores` |
 | GET | `/api/v1/licitaciones/{id_externo:path}/tecnologias` |

@@ -721,6 +721,7 @@ class FactSheetExtractionState(BaseModel):
     responses={
         202: {"description": "Extracción lanzada (o ya en curso)"},
         401: {"description": "Autenticación inválida"},
+        404: {"description": "Licitación no encontrada"},
     },
 )
 async def extract_tender_fact_sheet_async(
@@ -739,6 +740,15 @@ async def extract_tender_fact_sheet_async(
     """
     from config import settings
     from services.rag.fact_sheet import run_background_extraction, try_mark_extraction_running
+
+    # 404 ANTES de encolar: con un id inexistente el BackgroundTask acabaría
+    # intentando persistir el estado `failed` y violando la FK de
+    # ``tender_fact_sheets`` — exactamente el 5xx que cazó Schemathesis.
+    if await run_db(_lic_repo.get_by_id, id_externo) is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Licitación '{id_externo}' no encontrada.",
+        )
 
     # Al threadpool aunque sea una lectura de cache: con backend Redis es I/O
     # de red, y un handler async no puede bloquearse en el event loop.

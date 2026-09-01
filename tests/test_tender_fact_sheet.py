@@ -907,3 +907,54 @@ def test_extraction_running_flag_lifecycle():
         assert extraction_running("EXP-BG-1") is False
     finally:
         reset_cache("fact_sheet_jobs")
+
+
+def test_background_extraction_never_raises_even_if_failed_upsert_fails():
+    """Contrato de ``run_background_extraction``: nunca lanza.
+
+    Regresión del hallazgo de Schemathesis: con una licitación inexistente el
+    upsert del estado ``failed`` violaba la FK y la excepción reventaba el
+    BackgroundTask. La ruta ya corta con 404; esto fija la defensa en
+    profundidad para cualquier otro fallo de persistencia.
+    """
+    from unittest.mock import MagicMock
+
+    from shared.cache import reset_cache
+
+    reset_cache("fact_sheet_jobs")
+    try:
+        from services.rag import fact_sheet as fs
+
+        broken_repo = MagicMock()
+        broken_repo.return_value.upsert.side_effect = RuntimeError("FK violada")
+        with (
+            patch.object(fs, "extract_fact_sheet_on_demand", side_effect=ValueError("sin páginas")),
+            patch.object(fs, "TenderFactSheetsRepository", broken_repo),
+        ):
+            fs.try_mark_extraction_running("EXP-BG-FK")
+            fs.run_background_extraction("EXP-BG-FK", model="gpt-4o-mini")  # no lanza
+
+        broken_repo.return_value.upsert.assert_called_once()
+        # El finally limpió el flag aunque el upsert fallara.
+        assert fs.extraction_running("EXP-BG-FK") is False
+    finally:
+        reset_cache("fact_sheet_jobs")
+
+
+def test_background_extraction_swallows_unexpected_errors():
+    """Un fallo inesperado del extractor tampoco revienta el BackgroundTask."""
+    from shared.cache import reset_cache
+
+    reset_cache("fact_sheet_jobs")
+    try:
+        from services.rag import fact_sheet as fs
+
+        with patch.object(
+            fs, "extract_fact_sheet_on_demand", side_effect=RuntimeError("proveedor caído")
+        ):
+            fs.try_mark_extraction_running("EXP-BG-ERR")
+            fs.run_background_extraction("EXP-BG-ERR", model="gpt-4o-mini")  # no lanza
+
+        assert fs.extraction_running("EXP-BG-ERR") is False
+    finally:
+        reset_cache("fact_sheet_jobs")
