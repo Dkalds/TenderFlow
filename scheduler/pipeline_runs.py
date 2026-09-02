@@ -154,10 +154,25 @@ def _run_tech_signal_merge() -> None:
     el primer precompute posterior. Barato (≤ ~11k licitaciones con pliegos
     procesados) y fail-open por licitación -- no hace falta ``try/except``
     aquí porque ``merge_doc_signals`` ya captura y cuenta los fallos.
+
+    El resultado se loguea en vez de descartarse: este paso se comió 14 de los
+    20 minutos del step de cierre durante días (una transacción por licitación,
+    ver ``merge_many_with_lock``) y desde fuera era invisible -- ni duración ni
+    recuento de errores, solo un warning suelto por licitación rota. Con
+    ``elapsed_ms`` y ``errors`` en el log, la próxima deriva se ve en el propio
+    runner.
     """
+    import time as _time
+
     from services.tech_signal import merge_doc_signals
 
-    merge_doc_signals()
+    t0 = _time.monotonic()
+    result = merge_doc_signals()
+    log.info(
+        "pipeline_tech_signal_merge_completed",
+        elapsed_ms=int((_time.monotonic() - t0) * 1000),
+        **result,
+    )
 
 
 def _run_llm_tech_labeling() -> str:

@@ -41,6 +41,30 @@ class TechSignal(NamedTuple):
     evidence: list[dict[str, Any]] | None = None
 
 
+class MergeOutcome(NamedTuple):
+    """Salida de ``merge_many_with_lock``: lo escrito y lo que falló.
+
+    Ambos van por ``licitacion_id`` para que el llamador pueda emitir los
+    eventos de auditoría solo de lo que realmente se persistió y contar los
+    fallos sin volver a la BD.
+    """
+
+    results: dict[str, dict[str, Any]]
+    errors: dict[str, str]
+
+
+# Licitaciones por transacción del merge por lotes. Acota el tamaño de los
+# ``executemany`` y el tiempo que el lote nocturno retiene el lock frente al
+# camino incremental de ``pliegos.yml``; el ahorro de viajes ya está hecho a
+# partir de unas pocas decenas. Ver ``merge_many_with_lock``.
+_MERGE_CHUNK_SIZE = 200
+
+# Clave del advisory lock que serializa el merge consigo mismo. Antes era una
+# por licitación (``tenderflow.tech_signal_merge.<id>``); ver el docstring de
+# ``merge_many_with_lock`` para por qué ahora es una sola.
+_MERGE_LOCK_KEY = "tenderflow.tech_signal_merge"
+
+
 class TecnologiaPliegoRepository:
     def upsert_signals(
         self,
@@ -213,16 +237,18 @@ class TecnologiaPliegoRepository:
             )
             return rows_to_dicts(cur)
 
-    def merge_with_lock(
+    def merge_many_with_lock(
         self,
-        licitacion_id: str,
-        compute: Callable[[dict[str, Any]], dict[str, Any] | None],
-    ) -> dict[str, Any] | None:
-        """Read-modify-write atómico del merge para una licitación, serializado
-        por un advisory lock transaccional (mismo patrón que
+        licitacion_ids: list[str],
+        compute: Callable[[str, dict[str, Any]], dict[str, Any] | None],
+        *,
+        chunk_size: int = _MERGE_CHUNK_SIZE,
+    ) -> MergeOutcome:
+        """Read-modify-write atómico del merge para un lote de licitaciones,
+        serializado por un advisory lock transaccional (mismo patrón que
         ``db/audit.py::_serialize_audit_chain_write``).
 
-        Sin esto, leer el estado actual y escribir el resultado en dos
+        Sin el lock, leer el estado actual y escribir el resultado en dos
         transacciones separadas es una carrera de lost-update real: el paso
         ``tech_signal_merge`` corre cada 4h vía ``scrape-daily.yml``
         (``concurrency.group: scrape``) y también, para lotes recién
@@ -232,49 +258,132 @@ class TecnologiaPliegoRepository:
         la misma licitación uno puede pisar la escritura del otro con datos
         ya obsoletos.
 
-        ``compute`` es lógica de dominio pura (sin I/O) que recibe
-        ``{"predicted": set[str], "scores": dict[str, float]}`` (estado
-        actual de ``licitaciones.ml_tecnologias`` +
-        ``licitacion_tecnologia_score``) y devuelve el resultado a escribir
-        -- o ``None`` para no escribir nada.
-        """
-        with connect() as c:
-            c.execute(
-                "SELECT pg_advisory_xact_lock(hashtext(%s))",
-                (f"tenderflow.tech_signal_merge.{licitacion_id}",),
-            )
-            lic_row = c.execute(
-                "SELECT ml_tecnologias FROM licitaciones WHERE id_externo = %s",
-                (licitacion_id,),
-            ).fetchone()
-            score_rows = c.execute(
-                "SELECT tecnologia, probabilidad FROM licitacion_tecnologia_score "
-                "WHERE licitacion_id = %s",
-                (licitacion_id,),
-            ).fetchall()
-            ml_tecnologias_raw = str(lic_row[0]) if lic_row and lic_row[0] else ""
-            state = {
-                "predicted": {t for t in ml_tecnologias_raw.split(",") if t},
-                "scores": {str(r[0]): float(r[1]) for r in score_rows},
-            }
+        **Por lotes, no de una en una.** Hasta 2026-09 esto era
+        ``merge_with_lock`` y abría una transacción por licitación: lock, dos
+        SELECT, UPDATE, INSERT y COMMIT, o sea ~6 viajes secuenciales a
+        Postgres por fila. Con las 1.085 licitaciones con señal vigente eso
+        son ~6.500 idas y vueltas contra Supabase a ~127 ms cada una: 14 de
+        los 20 minutos del step "Cierre de la pasada" de ``scrape-daily.yml``,
+        que expiraba dejando sin correr todo lo que va detrás (``dlq_retry``,
+        ``anomaly_checks``, ``retention_cleanup``, ``drift_checks``...). No
+        era coste de BD -- ambas búsquedas van por índice (``licitaciones_pkey``
+        e ``idx_lts_lic``)-- sino latencia pura, el mismo defecto que ya se
+        corrigió en ``db/connection.py::connect_read``. Ahora son ~6 viajes
+        por CHUNK.
 
-            result = compute(state)
-            if result is None:
-                return None
+        El lock pasa a ser **uno para toda la feature** en vez de uno por
+        licitación: tomar N locks en una sola sentencia no garantiza el orden
+        de adquisición (dos lotes con conjuntos distintos podrían
+        interbloquearse) y además cuentan contra ``max_locks_per_transaction``.
+        Con la sección crítica reducida a milisegundos por chunk, serializar
+        merge contra merge no cuesta nada, y los dos únicos caminos que lo
+        toman son jobs por lotes.
+
+        ``compute`` es lógica de dominio pura (sin I/O) que recibe
+        ``(licitacion_id, {"predicted": set[str], "scores": dict[str, float]})``
+        -- el estado actual de ``licitaciones.ml_tecnologias`` +
+        ``licitacion_tecnologia_score`` -- y devuelve el resultado a escribir,
+        o ``None`` para no escribir nada de esa licitación.
+
+        Fail-open por licitación: una excepción de ``compute`` (dato
+        inconsistente) descarta solo esa licitación y el resto del chunk se
+        escribe igual. Un fallo de BD revierte su chunk entero y se reporta
+        como error de cada licitación del chunk; los siguientes se intentan
+        igualmente.
+        """
+        results: dict[str, dict[str, Any]] = {}
+        errors: dict[str, str] = {}
+        # Orden estable y sin duplicados: el mismo lote produce los mismos
+        # chunks en cada corrida, así que un fallo de BD siempre se lleva el
+        # mismo grupo y no rota entre pasadas.
+        ordenados = sorted(set(licitacion_ids))
+        for start in range(0, len(ordenados), chunk_size):
+            chunk = ordenados[start : start + chunk_size]
+            try:
+                chunk_results, chunk_errors = self._merge_chunk(chunk, compute)
+            except Exception as exc:
+                errors.update(dict.fromkeys(chunk, f"{type(exc).__name__}: {exc}"))
+                continue
+            results.update(chunk_results)
+            errors.update(chunk_errors)
+        return MergeOutcome(results=results, errors=errors)
+
+    def _merge_chunk(
+        self,
+        chunk: list[str],
+        compute: Callable[[str, dict[str, Any]], dict[str, Any] | None],
+    ) -> tuple[dict[str, dict[str, Any]], dict[str, str]]:
+        """Una transacción del merge por lotes: lock, lectura del estado de
+        todo el chunk, cálculo en memoria y escritura agrupada. Ver
+        ``merge_many_with_lock`` para el porqué del lote y del lock."""
+        results: dict[str, dict[str, Any]] = {}
+        errors: dict[str, str] = {}
+        with connect() as c:
+            c.execute("SELECT pg_advisory_xact_lock(hashtext(%s))", (_MERGE_LOCK_KEY,))
+            lic_rows = c.execute(
+                "SELECT id_externo, ml_tecnologias FROM licitaciones WHERE id_externo = ANY(%s)",
+                (chunk,),
+            ).fetchall()
+            score_rows = c.execute(
+                "SELECT licitacion_id, tecnologia, probabilidad "
+                "FROM licitacion_tecnologia_score WHERE licitacion_id = ANY(%s)",
+                (chunk,),
+            ).fetchall()
+
+            predicted: dict[str, set[str]] = {}
+            for row in lic_rows:
+                raw = str(row[1]) if row[1] else ""
+                predicted[str(row[0])] = {t for t in raw.split(",") if t}
+            scores: dict[str, dict[str, float]] = {}
+            for row in score_rows:
+                scores.setdefault(str(row[0]), {})[str(row[1])] = float(row[2])
 
             now = now_utc_iso()
-            c.execute(
-                "UPDATE licitaciones SET ml_tecnologias = %s, ml_proba_max = %s, "
-                "ml_tech_principal = %s WHERE id_externo = %s",
-                (
-                    result["ml_tecnologias"],
-                    result["ml_proba_max"],
-                    result["ml_tech_principal"],
-                    licitacion_id,
-                ),
-            )
-            pliego_scores: list[tuple[str, float]] = result["pliego_scores"]
-            if pliego_scores:
+            update_params: list[tuple[Any, ...]] = []
+            score_params: list[tuple[Any, ...]] = []
+            for licitacion_id in chunk:
+                # Una licitación inexistente se descarta aquí y no en la BD:
+                # ``licitacion_tecnologia_score`` tiene FK contra
+                # ``licitaciones.id_externo``, así que su INSERT reventaría la
+                # transacción y se llevaría por delante al chunk ENTERO. La
+                # comprobación es gratis (``lic_rows`` ya está leído) y el
+                # resultado es el mismo que daba la versión de una en una: esa
+                # licitación cuenta como error y las demás se escriben.
+                if licitacion_id not in predicted:
+                    errors[licitacion_id] = "licitacion_id sin fila en licitaciones"
+                    continue
+                state: dict[str, Any] = {
+                    "predicted": predicted[licitacion_id],
+                    "scores": scores.get(licitacion_id, {}),
+                }
+                try:
+                    result = compute(licitacion_id, state)
+                except Exception as exc:
+                    errors[licitacion_id] = f"{type(exc).__name__}: {exc}"
+                    continue
+                if result is None:
+                    continue
+                results[licitacion_id] = result
+                update_params.append(
+                    (
+                        result["ml_tecnologias"],
+                        result["ml_proba_max"],
+                        result["ml_tech_principal"],
+                        licitacion_id,
+                    )
+                )
+                score_params.extend(
+                    (licitacion_id, tech, proba, result["threshold_aplicado"], now)
+                    for tech, proba in result["pliego_scores"]
+                )
+
+            if update_params:
+                c.executemany(
+                    "UPDATE licitaciones SET ml_tecnologias = %s, ml_proba_max = %s, "
+                    "ml_tech_principal = %s WHERE id_externo = %s",
+                    update_params,
+                )
+            if score_params:
                 c.executemany(
                     "INSERT INTO licitacion_tecnologia_score "
                     "(licitacion_id, tecnologia, probabilidad, threshold_aplicado, computed_at) "
@@ -283,9 +392,6 @@ class TecnologiaPliegoRepository:
                     "probabilidad=excluded.probabilidad, "
                     "threshold_aplicado=excluded.threshold_aplicado, "
                     "computed_at=excluded.computed_at",
-                    [
-                        (licitacion_id, tech, proba, result["threshold_aplicado"], now)
-                        for tech, proba in pliego_scores
-                    ],
+                    score_params,
                 )
-            return result
+        return results, errors
