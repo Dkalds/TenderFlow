@@ -247,28 +247,87 @@ def _run_watchlist_notify() -> None:
         check_rules_and_notify()
     except Exception as e:
         log.warning("watchlist_rules_alerts_failed", error=str(e))
+    # Recordatorios de plazo (favoritos y pursuits). Existían desde la Feature D
+    # y nadie los invocaba desde ningún plano: en producción nunca corrieron.
+    try:
+        from services.deadline_reminders import check_all_users_deadlines
+
+        check_all_users_deadlines()
+    except Exception as e:
+        log.warning("deadline_reminders_failed", error=str(e))
+    # Cierre asistido: oportunidades abiertas cuyo expediente ya se adjudicó.
+    try:
+        from services.pursuit_awards import notify_detected_awards
+
+        notify_detected_awards()
+    except Exception as e:
+        log.warning("pursuit_awards_failed", error=str(e))
+
+
+#: Horas locales (Madrid) en las que se entregan los digests diario y semanal:
+#: la pasada de las 04:00/08:00 UTC según la estación. Un digest que llega a
+#: las tres de la tarde no es «el correo de la mañana» que alguien abre con el
+#: café, y con la cadencia de 4 h el momento de entrega derivaba de una pasada
+#: a otra hasta caer en cualquier hora.
+_VENTANA_MATINAL_HORAS = (6, 12)
+#: Margen bajo el periodo del lock para que la ventana del día siguiente lo
+#: encuentre libre aunque el cron llegue unos minutos antes que ayer.
+_MARGEN_VENTANA_SEGUNDOS = 4 * 60 * 60
+
+
+def _es_ventana_matinal(ahora: Any | None = None) -> bool:
+    """¿Estamos en la franja de entrega de la mañana, hora peninsular?"""
+    from datetime import UTC, datetime, timedelta, timezone
+
+    momento = ahora or datetime.now(UTC)
+    try:
+        from zoneinfo import ZoneInfo
+
+        local = momento.astimezone(ZoneInfo("Europe/Madrid"))
+    except Exception:  # sin tzdata: aproximar con el horario de invierno
+        local = momento.astimezone(timezone(timedelta(hours=1)))
+    inicio, fin = _VENTANA_MATINAL_HORAS
+    return inicio <= local.hour < fin
 
 
 def _run_digests() -> dict[str, str]:
-    """Drena ``pending_digests`` para las frecuencias daily y weekly.
+    """Drena ``pending_digests`` para las tres frecuencias.
 
-    ``_run_watchlist_notify`` (arriba) **acumula** las coincidencias de las
-    entradas con ``frequency`` daily/weekly en ``pending_digests``, pero hasta
-    ahora nada las vaciaba en producción: ``send_pending_digests`` solo estaba
-    registrado en el plano APScheduler, que no es el plano activo (ADR-012).
-    El resultado era que quien elegía digest diario o semanal no recibía nunca
-    el email. Este paso cierra ese camino.
+    ``_run_watchlist_notify`` (arriba) **acumula** las coincidencias en
+    ``pending_digests`` con la frecuencia de cada regla; este paso las envía:
+
+    - ``immediate``: en cada pasada, sin ventana ni lock. Hasta 2026-09 estas
+      filas se encolaban y **nunca** se enviaban: ``send_pending_digests`` sólo
+      admitía daily/weekly y aquí sólo se invocaban esas dos.
+    - ``daily`` y ``weekly``: una vez por periodo y sólo en la ventana matinal
+      (:func:`_es_ventana_matinal`), para que el digest sea el correo de la
+      mañana y no el de la pasada que casualmente cumplía las 24 h.
+
+    Antes de 2026-08 ni daily ni weekly se enviaban en producción, porque
+    ``send_pending_digests`` sólo estaba registrado en el plano APScheduler,
+    que no es el plano activo (ADR-012).
     """
     from scheduler.watchlist_alerts import send_pending_digests
 
-    return {
-        "daily": _run_periodic(
-            "digest_daily", _SEGUNDOS_DIA, lambda: send_pending_digests("daily")
-        ),
-        "weekly": _run_periodic(
-            "digest_weekly", _SEGUNDOS_SEMANA, lambda: send_pending_digests("weekly")
-        ),
-    }
+    resultado: dict[str, str] = {}
+    send_pending_digests("immediate")
+    resultado["immediate"] = "ok"
+    if not _es_ventana_matinal():
+        log.debug("pipeline_digests_fuera_de_ventana")
+        resultado["daily"] = "skipped"
+        resultado["weekly"] = "skipped"
+        return resultado
+    resultado["daily"] = _run_periodic(
+        "digest_daily",
+        _SEGUNDOS_DIA - _MARGEN_VENTANA_SEGUNDOS,
+        lambda: send_pending_digests("daily"),
+    )
+    resultado["weekly"] = _run_periodic(
+        "digest_weekly",
+        _SEGUNDOS_SEMANA - _MARGEN_VENTANA_SEGUNDOS,
+        lambda: send_pending_digests("weekly"),
+    )
+    return resultado
 
 
 def _run_retention_cleanup() -> str:

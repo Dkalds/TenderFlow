@@ -227,11 +227,29 @@ def test_periodic_releases_lock_on_failure(tmp_db):
 def test_digests_step_drains_both_frequencies(tmp_db):
     from scheduler import pipeline_runs
 
-    with patch("scheduler.watchlist_alerts.send_pending_digests", return_value=0) as send:
+    with (
+        patch("scheduler.watchlist_alerts.send_pending_digests", return_value=0) as send,
+        patch("scheduler.pipeline_runs._es_ventana_matinal", return_value=True),
+    ):
         resultado = pipeline_runs._run_digests()
 
-    assert resultado == {"daily": "ok", "weekly": "ok"}
-    assert {c.args[0] for c in send.call_args_list} == {"daily", "weekly"}
+    assert resultado == {"immediate": "ok", "daily": "ok", "weekly": "ok"}
+    assert {c.args[0] for c in send.call_args_list} == {"immediate", "daily", "weekly"}
+
+
+def test_digests_fuera_de_la_ventana_solo_drena_inmediatas(tmp_db):
+    """A las tres de la tarde no sale «el correo de la mañana», pero las
+    inmediatas siguen saliendo en cada pasada."""
+    from scheduler import pipeline_runs
+
+    with (
+        patch("scheduler.watchlist_alerts.send_pending_digests", return_value=0) as send,
+        patch("scheduler.pipeline_runs._es_ventana_matinal", return_value=False),
+    ):
+        resultado = pipeline_runs._run_digests()
+
+    assert resultado == {"immediate": "ok", "daily": "skipped", "weekly": "skipped"}
+    assert [c.args[0] for c in send.call_args_list] == ["immediate"]
 
 
 def test_digests_is_in_canonical_steps_after_watchlist_notify():

@@ -14,6 +14,7 @@ from __future__ import annotations
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, Field
 
 from api.concurrency import run_db
@@ -276,3 +277,54 @@ async def preview_matches(
 ) -> TotalCount:
     total = await run_db(count_matches, body.to_rule())
     return TotalCount(total=total)
+
+
+# ── Baja desde el correo ────────────────────────────────────────────────────
+
+
+@router.get(
+    "/baja",
+    response_model=StatusOk,
+    summary="Pausar todas las reglas desde el enlace del pie de un digest",
+    responses={
+        303: {"description": "Redirige a Mi Watchlist con las reglas ya pausadas"},
+        403: {"description": "Firma inválida"},
+    },
+)
+async def baja_alertas(
+    k: str = Query(..., min_length=8, max_length=64, description="user_key firmado"),
+    t: str = Query(..., min_length=8, max_length=200, description="Firma HMAC (kid.sig)"),
+) -> Any:
+    """Pausa las reglas de quien pulsa el enlace de baja del digest.
+
+    Sin sesión a propósito: quien quiere dejar de recibir correo no quiere
+    antes hacer login. Lo que autoriza es la firma del ``user_key`` (ver
+    ``services/email_digest.py``). No borra nada —las reglas quedan en pausa
+    y se reactivan desde Mi Watchlist— y por eso, cuando se conoce el sitio,
+    responde con una redirección a esa pantalla en vez de con JSON.
+    """
+
+    def _pausar() -> tuple[bool, int, str | None]:
+        """Verificación, pausa y destino en un solo salto al threadpool.
+
+        La verificación de la firma es HMAC (CPU) y la pausa es una escritura:
+        las dos fuera de ``run_db`` correrían en el event loop. Devuelve
+        ``(firma_valida, reglas_pausadas, destino)`` en vez de lanzar, porque
+        ``HTTPException`` pertenece al handler y no al trabajo despachado.
+        """
+        from services.app_urls import url_absoluta
+        from services.email_digest import verificar_token_de_baja
+        from services.watchlist_rules import deactivate_all_for_user
+
+        if not verificar_token_de_baja(k, t):
+            return False, 0, None
+        pausadas = deactivate_all_for_user(k)
+        return True, pausadas, url_absoluta(f"/mi-watchlist?baja={pausadas}")
+
+    valida, pausadas, destino = await run_db(_pausar)
+    if not valida:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Enlace no válido.")
+    log.info("watchlist_rules_baja", user_key=k[:8], pausadas=pausadas)
+    if destino:
+        return RedirectResponse(destino, status_code=status.HTTP_303_SEE_OTHER)
+    return StatusOk(status="ok")

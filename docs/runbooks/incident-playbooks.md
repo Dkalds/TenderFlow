@@ -274,6 +274,38 @@ BACKUP_S3_BUCKET=mi-bucket python scripts/backup_db.py --s3 --keep 3 --keep-s3 3
 
 ---
 
+## 8. Enlace firmado filtrado (calendario ICS o baja de correos)
+
+**Síntoma:** una persona reporta que su URL de suscripción al calendario, o el
+enlace de baja del pie de un digest, ha llegado a alguien que no debía (chat
+reenviado, calendario compartido, captura de pantalla).
+
+**Qué expone:** el del calendario devuelve solo fechas de compromisos (plazos
+de pursuits abiertos y de favoritos) de esa persona; el de baja pausa sus
+reglas de watchlist, que se reactivan desde Mi Watchlist. Ninguno abre sesión
+ni lee el corpus (RFC
+[2026-09-02-enlaces-firmados](../rfc/2026-09-02-rfc-enlaces-firmados-sin-sesion.md)).
+
+**Remedio:** los enlaces van firmados con `shared/signing`, así que se revocan
+rotando la clave activa. La rotación es **global**: invalida todos los enlaces
+emitidos con la clave retirada, de todos los usuarios, que volverán a pedir el
+suyo desde Mi Pipeline.
+
+1. Generar clave nueva: `python -c "import secrets; print(secrets.token_hex(32))"`.
+2. En Render, añadir el `kid` nuevo a `SIGNING_KEYS_JSON` y apuntar
+   `SIGNING_KEY_ACTIVE` a él, **sin borrar todavía** la clave anterior: así los
+   tokens CSRF/OAuth en vuelo siguen verificando durante el despliegue.
+3. Redesplegar. Comprobar que `GET /exports/calendario/enlace` devuelve una firma
+   con el `kid` nuevo.
+4. Retirar el `kid` viejo de `SIGNING_KEYS_JSON` y redesplegar: ese es el paso
+   que invalida el enlace filtrado.
+
+**Ojo:** `SIGNING_KEY` (variable única, legacy) sigue funcionando como fallback
+si `SIGNING_KEYS_JSON` está vacía. Rotar solo esa variable invalida de golpe
+CSRF, OAuth y estos enlaces sin periodo de gracia.
+
+---
+
 ## Contactos de escalado
 
 | Nivel | Acción | Tiempo máximo respuesta |

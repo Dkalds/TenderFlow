@@ -79,7 +79,18 @@ export interface EventosProducto {
    * que el pageview por URL no hace. Mide navegación desde el rail, no visitas
    * totales: la entrada directa por URL o por la paleta no pasa por aquí.
    */
-  espacio_abierto: { espacio: string; origen: "rail" | "rail_movil" };
+  /**
+   * `vista` sólo viaja cuando el origen es el conmutador de vistas de un
+   * espacio (Mercado tiene ocho cortes, Competencia nueve): sin ella se sabía
+   * que alguien entró en Mercado, no qué corte miró, y no se podía decidir
+   * qué vistas fusionar o retirar. Es una clave del registro
+   * (`lib/space-views.ts`), categórica y cerrada — nunca un filtro.
+   */
+  espacio_abierto: {
+    espacio: string;
+    origen: "rail" | "rail_movil" | "conmutador";
+    vista?: string;
+  };
   /**
    * ¿Se usa el Radar para decidir, o sólo para mirar? Descartar es la decisión
    * que cuesta; recuperar dice cuánto se arrepiente la gente de haberla tomado.
@@ -210,7 +221,7 @@ export type EventoProducto = keyof EventosProducto;
  */
 export const PROPIEDADES_PERMITIDAS = {
   sesion_iniciada: ["metodo"],
-  espacio_abierto: ["espacio", "origen"],
+  espacio_abierto: ["espacio", "origen", "vista"],
   radar_triaje: ["accion"],
   licitacion_seguida: ["accion"],
   pursuit_creado: ["primera_vez"],

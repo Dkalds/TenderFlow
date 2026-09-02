@@ -20,14 +20,16 @@ from datetime import UTC, datetime
 from typing import Any, Literal
 from urllib.parse import urlsplit
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Security, status
 from fastapi.responses import Response, StreamingResponse
+from fastapi.security import APIKeyHeader
 from pydantic import BaseModel
 
-from api.auth import AuthContext, require_api_key
+from api.auth import AuthContext, require_api_key, validate_api_key_credential
 from api.concurrency import run_db
 from api.routes.dual_auth import require_any_auth
 from observability.logging import get_logger
+from shared.dto import CalendarioEnlace
 
 log = get_logger(__name__)
 
@@ -393,9 +395,120 @@ def _calendario_rows(user_key: str) -> list[dict[str, Any]]:
         ]
 
 
+_API_KEY_OPCIONAL = APIKeyHeader(name="X-API-Key", auto_error=False)
+_PREFIJO_FIRMA_CALENDARIO = b"calendario-ics:"
+
+
+def _firma_calendario(user_id: int) -> str:
+    """Firma HMAC del usuario para el enlace de suscripción (``kid.sig``)."""
+    from shared.signing import sign
+
+    return sign(_PREFIJO_FIRMA_CALENDARIO + str(int(user_id)).encode("ascii"))
+
+
+def _verificar_firma_calendario(user_id: int, token: str) -> bool:
+    from shared.signing import verify
+
+    return verify(_PREFIJO_FIRMA_CALENDARIO + str(int(user_id)).encode("ascii"), token)
+
+
+def _eventos_calendario(user_key: str, user_id: int) -> list[dict[str, Any]]:
+    """Eventos ICS del usuario: pursuits abiertos primero, favoritos después.
+
+    Un expediente que es a la vez pursuit y favorito sale una sola vez, como
+    pursuit: es el que lleva responsable y próxima acción.
+    """
+    from db.repositories.pursuits import PursuitRepository
+
+    events: list[dict[str, Any]] = []
+    con_pursuit: set[str] = set()
+    for row in PursuitRepository().calendar_rows(user_id):
+        id_ext = str(row.get("licitacion_id", ""))
+        con_pursuit.add(id_ext)
+        titulo = str(row.get("titulo") or id_ext)[:200]
+        url = str(row.get("url") or "")
+        organizacion = str(row.get("organization_name") or "")
+        pursuit_id = int(row["pursuit_id"])
+        descripcion = f"Oportunidad #{pursuit_id}"
+        if organizacion:
+            descripcion += f" · {organizacion}"
+        if row.get("fecha_limite"):
+            events.append(
+                {
+                    "uid": f"pursuit-{pursuit_id}-plazo@tenderflow",
+                    "dtstart": str(row["fecha_limite"])[:10],
+                    "summary": f"Plazo: {titulo}",
+                    "description": f"{descripcion} · Licitacion: {id_ext}",
+                    "url": url,
+                }
+            )
+        if row.get("next_action_due"):
+            accion = str(row.get("next_action") or "Próxima acción")[:120]
+            events.append(
+                {
+                    "uid": f"pursuit-{pursuit_id}-accion@tenderflow",
+                    "dtstart": str(row["next_action_due"])[:10],
+                    "summary": f"Acción: {accion} · {titulo}",
+                    "description": f"{descripcion} · Licitacion: {id_ext}",
+                    "url": url,
+                }
+            )
+        if row.get("fecha_fin"):
+            events.append(
+                {
+                    "uid": f"pursuit-{pursuit_id}-fin@tenderflow",
+                    "dtstart": str(row["fecha_fin"])[:10],
+                    "summary": f"Fin contrato: {titulo}",
+                    "description": f"{descripcion} · Licitacion: {id_ext}",
+                    "url": url,
+                }
+            )
+
+    for row in _calendario_rows(user_key):
+        id_ext = str(row.get("id_externo", ""))
+        if id_ext in con_pursuit:
+            continue
+        titulo = str(row.get("titulo") or id_ext)[:200]
+        url = str(row.get("url") or "")
+        for field, label in (("fecha_limite", "Plazo"), ("fecha_fin", "Fin contrato")):
+            raw = row.get(field)
+            if not raw:
+                continue
+            events.append(
+                {
+                    "uid": f"{id_ext}-{field}@tenderflow",
+                    "dtstart": str(raw)[:10],
+                    "summary": f"{label}: {titulo}",
+                    "description": f"Favorito · Licitacion: {id_ext}",
+                    "url": url,
+                }
+            )
+    return events
+
+
+@router.get(
+    "/calendario/enlace",
+    response_model=CalendarioEnlace,
+    summary="Enlace de suscripción al calendario de compromisos",
+)
+async def calendario_enlace(
+    ctx: dict[str, Any] = Depends(require_any_auth),
+) -> CalendarioEnlace:
+    """Ruta firmada para suscribirse desde Google/Apple/Outlook, y cuántos
+    eventos devolvería hoy. El cliente antepone su propio origen: el mismo
+    host que sirve la consola proxya ``/api`` a esta API."""
+    from urllib.parse import urlencode
+
+    user_id = int(ctx["user_id"])
+    user_key = str(ctx.get("user_key") or "")
+    eventos = await run_db(_eventos_calendario, user_key, user_id)
+    query = urlencode({"u": user_id, "t": _firma_calendario(user_id)})
+    return CalendarioEnlace(path=f"/api/v1/exports/calendario.ics?{query}", eventos=len(eventos))
+
+
 @router.get(
     "/calendario.ics",
-    summary="Calendario ICS con deadlines y vencimientos de favoritos",
+    summary="Calendario ICS con los plazos de pursuits y favoritos",
     # response_class=Response evita el content application/json {} por defecto
     # (es un .ics; su contrato lo declara `responses`).
     response_class=Response,
@@ -406,58 +519,58 @@ def _calendario_rows(user_key: str) -> list[dict[str, Any]]:
     include_in_schema=True,
 )
 async def calendario_ics(
-    ctx: AuthContext = Depends(require_api_key),
+    api_key_raw: str | None = Security(_API_KEY_OPCIONAL),
+    u: int | None = Query(default=None, ge=1, description="Usuario del enlace firmado"),
+    t: str | None = Query(default=None, max_length=200, description="Firma del enlace"),
+    background_tasks: BackgroundTasks = BackgroundTasks(),
 ) -> Response:
-    """Exporta un archivo .ics con los deadlines (fecha_limite) y fines de
-    contrato (fecha_fin) de las licitaciones favoritas del usuario.
+    """Exporta un archivo .ics con los plazos que importan: los de los pursuits
+    abiertos del usuario (fecha límite y próxima acción) y los de sus favoritos.
 
-    Autenticacion via API key en la cabecera ``X-API-Key`` y solo ahi: la
-    dependencia usa ``APIKeyHeader``, que no mira la query string. Es
-    deliberado — un token en la URL acaba en los access logs, en el historial
-    del navegador y en la cabecera ``Referer`` de cualquier salto externo, y de
-    ahi no se puede revocar. Si un cliente de calendario no admite cabeceras
-    personalizadas, la solucion no es reabrir ``?token=``.
+    Dos formas de autenticarse:
 
-    Compatible con Google Calendar, Outlook, Apple Calendar, etc.:
-      ``/api/v1/exports/calendario.ics`` con cabecera ``X-API-Key: <token>``.
+    - Cabecera ``X-API-Key`` (la de siempre; scripts y clientes que admiten
+      cabeceras).
+    - Enlace firmado ``?u=<user_id>&t=<firma>`` (ver :func:`_firma_calendario`).
+      Google Calendar, Apple Calendar y Outlook **no** envían cabeceras
+      personalizadas al suscribirse a una URL, así que hasta 2026-09 este
+      endpoint era inservible para los tres y ningún componente lo enlazaba.
+      La firma es una capacidad acotada a este endpoint: no abre sesión, no es
+      una API key y sólo devuelve fechas de compromisos. Un enlace filtrado se
+      revoca rotando ``SIGNING_KEY`` (``shared/signing``, con ``kid``).
     """
     from db.users import get_user_by_id
     from shared.identity import user_key_from_email
 
+    user_id: int | None = None
+    if api_key_raw:
+        ctx = await validate_api_key_credential(
+            api_key_raw,
+            method="GET",
+            path="/api/v1/exports/calendario.ics",
+            background_tasks=background_tasks,
+        )
+        user_id = ctx.user_id
+    elif u is not None and t and _verificar_firma_calendario(u, t):
+        user_id = u
+    if user_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Token invalido o ausente"
+        )
+
     # Todo el trabajo de BD va al threadpool: este endpoint lo consumen clientes
     # de calendario que refrescan solos cada pocos minutos, y corría entero
     # sobre el event loop.
-    owner = await run_db(get_user_by_id, ctx.user_id) if ctx.user_id is not None else None
+    owner = await run_db(get_user_by_id, user_id)
     if owner is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="API key owner unavailable"
         )
     user_key = user_key_from_email(owner.get("email"), int(owner["id"]))
 
-    rows = await run_db(_calendario_rows, user_key)
+    events = await run_db(_eventos_calendario, user_key, int(owner["id"]))
 
-    events: list[dict[str, Any]] = []
-    for row in rows:
-        id_ext = str(row.get("id_externo", ""))
-        titulo = str(row.get("titulo") or id_ext)[:200]
-        url = str(row.get("url") or "")
-
-        for field, label in (("fecha_limite", "Plazo"), ("fecha_fin", "Fin contrato")):
-            raw = row.get(field)
-            if not raw:
-                continue
-            date_str = str(raw)[:10]
-            events.append(
-                {
-                    "uid": f"{id_ext}-{field}@tenderflow",
-                    "dtstart": date_str,
-                    "summary": f"{label}: {titulo}",
-                    "description": f"Licitacion: {id_ext}",
-                    "url": url,
-                }
-            )
-
-    ics_content = _generate_ics(events, cal_name="Tenderflow - Favoritos")
+    ics_content = _generate_ics(events, cal_name="TenderFlow - Compromisos")
     log.info("calendario_ics_export", user_key=user_key[:8], events=len(events))
     return Response(
         content=ics_content.encode("utf-8"),

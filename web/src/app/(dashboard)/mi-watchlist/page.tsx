@@ -1,7 +1,9 @@
 "use client";
 
+import * as React from "react";
 import { useState, useMemo } from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
+import { toast } from "sonner";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Card,
@@ -382,7 +384,27 @@ function FavoritosPanel() {
 export default function MiWatchlistPage() {
   const qc = useQueryClient();
   const searchParams = useSearchParams();
+  const router = useRouter();
   const [tab, setTab] = useState<"reglas" | "favoritos">("reglas");
+
+  // Vuelta del enlace de baja del correo: el backend pausa las reglas y
+  // redirige aquí con `?baja=<n>`. Sin este aviso, quien pulsa el enlace
+  // aterriza en una lista de reglas que se han apagado solas.
+  const bajaAvisada = React.useRef(false);
+  React.useEffect(() => {
+    const baja = searchParams.get("baja");
+    if (baja === null || bajaAvisada.current) return;
+    bajaAvisada.current = true;
+    const pausadas = Number.parseInt(baja, 10);
+    toast.info(
+      Number.isFinite(pausadas) && pausadas > 0
+        ? `Correos pausados: ${pausadas} regla(s) en pausa. Reactívalas desde aquí cuando quieras.`
+        : "No había reglas activas que pausar.",
+    );
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete("baja");
+    router.replace(params.size > 0 ? `?${params.toString()}` : "/mi-watchlist", { scroll: false });
+  }, [searchParams, router]);
 
   // Prefill desde la command palette: "Crear regla de watchlist con estos
   // filtros" navega aquí con ?prefill=<filterParams JSON-encoded>. Se lee

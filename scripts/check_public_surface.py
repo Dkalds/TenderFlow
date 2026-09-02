@@ -113,7 +113,7 @@ CAMPOS_ANALITICA: tuple[str, ...] = (
     "raw_keywords",  # el diccionario propietario en claro
     "filter_version",  # hash de TECHNOLOGY_KEYWORDS: delata cuándo cambia
     "classifier_model_version",
-    "inclusion_reason",  # 'keyword' | 'ml_cpv_rescue': revela la estrategia
+    "inclusion_reason",  # 'keyword' | 'ml_cpv_rescue' | 'cpv_ti_universe': revela la estrategia
     "analysis_universe",
 )
 

@@ -41,6 +41,48 @@ TECHNOLOGY_OBSERVED_SQL = (
     "COALESCE(l.analysis_universe, 'technology_observed') = 'technology_observed'"
 )
 
+#: Universos que llegan filtrados por señal tecnológica **antes** de persistir:
+#: PLACSP/TED (``technology_observed``) y los RSS autonómicos, cuyo conector
+#: descarta lo que no casa con el diccionario. Lo que NO está aquí es
+#: ``pscp_observed``: ese conector guarda la plataforma catalana entera
+#: (reactivos, obras, limpieza) y sólo etiqueta ``tecnologia`` cuando el título
+#: casa con el diccionario.
+UNIVERSOS_TECNOLOGICOS: tuple[str, ...] = (
+    "technology_observed",
+    "galicia_rss_recent_technology_observed",
+    "euskadi_rss_recent_technology_observed",
+)
+
+
+def universo_tecnologico_sql(alias: str = "l") -> str:
+    """Predicado «esta fila es tecnología», escrito para un alias.
+
+    Dos caminos entran: un universo filtrado en ingesta, o una etiqueta
+    ``tecnologia`` no vacía (que es como un expediente de PSCP demuestra que
+    casó con el diccionario). ``NULL`` en ``analysis_universe`` cuenta como
+    ``technology_observed`` por el mismo motivo que :data:`TECHNOLOGY_OBSERVED_SQL`:
+    las filas anteriores al linaje sólo pudieron entrar por el filtro histórico.
+
+    Es la definición que la superficie pública tiene que compartir con la
+    analítica: hasta 2026-09 los hubs publicaban las ~400k filas de PSCP sin
+    este corte, y la portada de un «radar tecnológico» abría con reactivos de
+    laboratorio.
+
+    El primer disyunto se escribe **exactamente** como :data:`TECHNOLOGY_OBSERVED_SQL`
+    (para ``alias='l'`` son la misma cadena) y no como un ``IN (...)`` que lo
+    englobe: el índice parcial de ``v84`` sólo sirve ese texto literal, y
+    ``tests/test_scoring_universo_index.py`` rechaza cualquier variante del
+    ``COALESCE``. Los universos de los RSS van aparte, sin ``COALESCE``, porque
+    una fila con ``NULL`` ya entró por el primer disyunto.
+    """
+    canonico = f"COALESCE({alias}.analysis_universe, 'technology_observed') = 'technology_observed'"
+    regionales = ", ".join(f"'{u}'" for u in UNIVERSOS_TECNOLOGICOS if u != "technology_observed")
+    return (
+        f"({canonico} OR {alias}.analysis_universe IN ({regionales}) "
+        f"OR ({alias}.tecnologia IS NOT NULL AND {alias}.tecnologia <> ''))"
+    )
+
+
 # Fecha de fin efectiva del contrato, con prioridad:
 # 1. ``licitaciones.fecha_fin`` explícita (solo ~6% de las filas).
 # 2. ``fecha_inicio + duracion`` (unidades CODICE: ANN/MON/DAY).
@@ -75,6 +117,35 @@ def fecha_fin_sql() -> str:
     accessor que usan los call-sites y mantiene el punto único de cambio.
     """
     return FECHA_FIN_SQL
+
+
+# De dónde sale la fecha de fin que :data:`FECHA_FIN_SQL` devuelve. Mismas
+# ramas y en el mismo orden: si una cambia allí, cambia aquí. El valor viaja
+# hasta la UI, que rotula «estimada» todo lo que no sea ``real`` — el ~94% del
+# horizonte de renovaciones se calcula, no se lee, y presentarlo como fecha
+# firme era una de las promesas que el producto no podía sostener.
+FECHA_FIN_ORIGEN_SQL = """
+CASE
+    WHEN l.fecha_fin IS NOT NULL THEN 'real'
+    WHEN l.duracion_unidad IN ('ANN', 'MON', 'DAY') AND l.duracion_valor IS NOT NULL
+         AND l.fecha_inicio IS NOT NULL THEN 'estimada_inicio'
+    WHEN l.duracion_unidad IN ('ANN', 'MON', 'DAY') AND l.duracion_valor IS NOT NULL
+         AND a.fecha_adjudicacion IS NOT NULL THEN 'estimada_adjudicacion'
+    ELSE 'desconocida'
+END
+"""
+
+ORIGENES_FECHA_FIN: tuple[str, ...] = (
+    "real",
+    "estimada_inicio",
+    "estimada_adjudicacion",
+    "desconocida",
+)
+
+
+def fecha_fin_origen_sql() -> str:
+    """Accessor de :data:`FECHA_FIN_ORIGEN_SQL`, simétrico a :func:`fecha_fin_sql`."""
+    return FECHA_FIN_ORIGEN_SQL
 
 
 def exclude_duplicados_sql(col: str = "l.id_externo") -> str:

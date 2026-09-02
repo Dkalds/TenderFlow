@@ -86,6 +86,38 @@ class Renovacion(BaseModel):
     dias_restantes: int | None
     riesgo_cambio: float | None
     retencion_model_version: int | None
+    #: ``real`` si la fuente publicó la fecha de fin; ``estimada_inicio`` o
+    #: ``estimada_adjudicacion`` si se calculó con la duración; ``desconocida``
+    #: si no hubo con qué. Ver ``db/sql_fragments.py::FECHA_FIN_ORIGEN_SQL``.
+    fecha_fin_origen: str | None
+    #: Prórroga máxima que declara el pliego, leída de la ficha estructurada.
+    #: ``None`` cuando no hay ficha o la cláusula no expresa una duración.
+    prorroga_meses: int | None
+    #: ``fecha_fin_efectiva`` más la prórroga: el último día en que el contrato
+    #: puede seguir vivo sin volver a licitarse.
+    fecha_fin_con_prorroga: str | None
+
+
+def enriquecer_renovaciones(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Añade a cada fila la prórroga leída de la ficha y la fecha fin máxima.
+
+    Se hace aquí y no en SQL porque la cláusula de prórroga es texto con
+    evidencia, no un número: interpretarla es dominio, y ``db/`` no debe
+    conocer el formato de la ficha. Quita ``ficha_json`` de la fila: es un
+    documento entero y no forma parte del contrato de respuesta.
+    """
+    from services.renovaciones_prorroga import meses_de_prorroga, sumar_meses
+
+    enriquecidas: list[dict[str, Any]] = []
+    for row in rows:
+        fila = dict(row)
+        ficha = fila.pop("ficha_json", None)
+        meses = meses_de_prorroga(ficha)
+        fila["prorroga_meses"] = meses
+        fila["fecha_fin_con_prorroga"] = sumar_meses(fila.get("fecha_fin_efectiva"), meses)
+        fila.setdefault("fecha_fin_origen", None)
+        enriquecidas.append(fila)
+    return enriquecidas
 
 
 class RenovacionesResult(BaseModel):

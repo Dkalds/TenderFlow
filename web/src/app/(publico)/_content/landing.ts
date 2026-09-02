@@ -231,7 +231,8 @@ export const CONTENIDO: ContenidoLanding = {
   // que había que tocar a la vez para añadir una familia al diccionario.
   familiasTitulo:
     "Solo entra el expediente con señal de tecnología enterprise: trece familias " +
-    "de producto en el diccionario, más rescate del clasificador sobre CPV 48 y 72.",
+    "de producto en el diccionario, más el universo de servicios TI y software " +
+    "(CPV 48 y 72) de PLACSP y TED, con la familia decidida por el clasificador.",
   familias: [
     "SAP",
     "Salesforce",
@@ -288,7 +289,7 @@ export const CONTENIDO: ContenidoLanding = {
         // La frase que descalificaba —"si tu negocio es obra pública…"— subió
         // al hero (`heroAcotacion`). No se repite aquí: una sola fuente por
         // afirmación es la regla de este fichero.
-        "TenderFlow no indexa toda la contratación pública española. Solo entra el expediente con señal de tecnología enterprise: coincidencia con el diccionario de familias, rescate del clasificador sobre CPV 48 y 72, o consulta directa por esos CPV en TED. Cada uno queda marcado con el motivo por el que entró. Comparar precios y competencia exige un mercado acotado; en un índice general esas comparaciones no significan nada.",
+        "TenderFlow no indexa toda la contratación pública española. Solo entra el expediente con señal de tecnología enterprise: coincidencia con el diccionario de familias, o pertenencia al universo de servicios TI y software (CPV 48 y 72) en PLACSP y TED, donde el clasificador decide la familia. Cada uno queda marcado con el motivo por el que entró. Comparar precios y competencia exige un mercado acotado; en un índice general esas comparaciones no significan nada.",
         "La fuente principal es el feed ATOM de la Plataforma de Contratación del Sector Público: cada cuatro horas, con cursor incremental e historial de cambios por expediente. Se suman TED y los RSS oficiales de Galicia y Euskadi, que son de descubrimiento reciente —no aportan histórico completo— y el producto no los presenta como si lo hicieran.",
       ],
       bullets: [

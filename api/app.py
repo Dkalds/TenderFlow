@@ -62,6 +62,7 @@ from api.routes.me import router as me_router
 from api.routes.meta import router as meta_router
 from api.routes.models import router as models_router
 from api.routes.notifications import router as notifications_router
+from api.routes.organization_settings import router as organization_settings_router
 from api.routes.predicciones import router as predicciones_router
 from api.routes.publico import router as publico_router
 from api.routes.publico_solicitudes import router as publico_solicitudes_router
@@ -556,6 +557,7 @@ app.include_router(publico_router, prefix="/api/v1")
 # alimenta el formulario de la landing. Mismo prefijo y mismo motivo.
 app.include_router(publico_solicitudes_router, prefix="/api/v1")
 app.include_router(pursuits_router, prefix="/api/v1")
+app.include_router(organization_settings_router, prefix="/api/v1")
 app.include_router(analytics_router, prefix="/api/v1")
 app.include_router(feedback_router, prefix="/api/v1")
 app.include_router(webhooks_router, prefix="/api/v1")

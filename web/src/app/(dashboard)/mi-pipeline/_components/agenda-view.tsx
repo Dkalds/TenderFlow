@@ -17,6 +17,8 @@ import { cn, EMPTY, formatCompactCurrency, formatDate, formatNumber, truncate } 
 import { Input } from "@/components/ui/input";
 import { EmptyState } from "@/components/ui/empty-state";
 import { PanelError, SectionTitle, StatCell, StatStrip } from "@/components/console/panel";
+import { CalendarioSuscripcion } from "@/components/pursuits/calendario-suscripcion";
+import { FechaFinOrigenBadge } from "@/components/pursuits/fecha-fin-origen-badge";
 import { useOrganizationStore } from "@/hooks/use-organization";
 import { useDismissRadarTender, useRestoreRadarTender } from "@/hooks/use-radar";
 import {
@@ -222,6 +224,13 @@ export default function AgendaView() {
 
   return (
     <div className="space-y-4">
+      {/* La agenda es la pantalla de los plazos, así que es donde se ofrece
+          llevárselos al calendario propio. El ICS existía y no lo enlazaba
+          nadie: era el único sitio del producto que sabía qué vence y cuándo. */}
+      <div className="flex justify-end">
+        <CalendarioSuscripcion />
+      </div>
+
       {/* Franja de compromisos: calculada en backend sobre el scope pedido */}
       <StatStrip columns={4} className="lg:grid-cols-[repeat(var(--console-stat-columns),minmax(0,1fr))]">
         <StatCell
@@ -614,6 +623,18 @@ function AgendaInspector({
               <div className="flex justify-between gap-3">
                 <dt className="text-muted-foreground">Regla</dt>
                 <dd className="truncate">{item.rule_nombre}</dd>
+              </div>
+            )}
+            {item.kind === "renovacion" && (
+              <div className="flex justify-between gap-3">
+                <dt className="text-muted-foreground">Vencimiento</dt>
+                {/* El 94% de estas fechas se calcula con la duración del
+                    contrato; presentarlas como publicadas era prometer una
+                    precisión que la fuente no da. */}
+                <dd className="flex items-center gap-1.5">
+                  {formatDate(item.due_date)}
+                  <FechaFinOrigenBadge origen={item.fecha_fin_origen} />
+                </dd>
               </div>
             )}
             {item.kind === "renovacion" && item.adjudicatario && (

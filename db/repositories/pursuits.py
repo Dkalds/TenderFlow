@@ -360,6 +360,78 @@ class PursuitRepository:
                 (user_id, user_id, user_id, user_id, user_id, user_id),
             )
 
+    def open_with_award_rows(self, *, limit: int = 500) -> list[dict[str, Any]]:
+        """Pursuits abiertos cuyo expediente ya tiene adjudicación publicada.
+
+        Es la materia prima del cierre asistido: la ingesta conoce quién se
+        llevó el contrato antes de que nadie abra la ficha, y esta consulta es
+        la que permite avisarlo. Trae al responsable con su email para derivar
+        su ``user_key``; sin responsable, el servicio avisa a la organización.
+        """
+        with connect_read() as conn:
+            cur = conn.execute(
+                "SELECT p.id AS pursuit_id, p.organization_id, p.licitacion_id, "
+                "p.responsible_user_id, ru.email AS responsible_email, "
+                "l.titulo, l.estado AS tender_estado, "
+                "(SELECT string_agg(DISTINCT a.nombre, ', ') FROM adjudicaciones a "
+                " WHERE a.licitacion_id = p.licitacion_id) AS adjudicatarios, "
+                "(SELECT SUM(a.importe_adjudicado) FROM adjudicaciones a "
+                " WHERE a.licitacion_id = p.licitacion_id) AS importe_total "
+                "FROM pursuits p "
+                "JOIN licitaciones l ON l.id_externo = p.licitacion_id "
+                "LEFT JOIN users ru ON ru.id = p.responsible_user_id "
+                "WHERE p.status NOT IN " + _ESTADOS_TERMINALES_SQL + " "
+                "AND EXISTS (SELECT 1 FROM adjudicaciones a "
+                "            WHERE a.licitacion_id = p.licitacion_id) "
+                "ORDER BY p.id LIMIT %s",
+                (max(1, min(int(limit), 5000)),),
+            )
+            return rows_to_dicts(cur)
+
+    def deadline_rows(self, *, limit: int = 5000) -> list[dict[str, Any]]:
+        """Pursuits abiertos con responsable y alguna fecha que recordar.
+
+        ``fecha_limite`` es la de presentación del expediente;
+        ``next_action_due`` la que el propio equipo se puso. Las dos son
+        compromisos del pursuit, no del favorito, y hasta 2026-09 ninguna
+        generaba recordatorio: sólo los favoritos de la watchlist lo hacían.
+        """
+        with connect_read() as conn:
+            cur = conn.execute(
+                "SELECT p.id AS pursuit_id, p.organization_id, p.licitacion_id, "
+                "p.responsible_user_id, ru.email AS responsible_email, "
+                "p.next_action, p.next_action_due, l.titulo, l.fecha_limite "
+                "FROM pursuits p "
+                "JOIN licitaciones l ON l.id_externo = p.licitacion_id "
+                "JOIN users ru ON ru.id = p.responsible_user_id "
+                "WHERE p.status NOT IN " + _ESTADOS_TERMINALES_SQL + " "
+                "AND (l.fecha_limite IS NOT NULL OR p.next_action_due IS NOT NULL) "
+                "ORDER BY p.id LIMIT %s",
+                (max(1, min(int(limit), 20000)),),
+            )
+            return rows_to_dicts(cur)
+
+    def calendar_rows(self, user_id: int) -> list[dict[str, Any]]:
+        """Pursuits abiertos de todas las organizaciones activas del usuario,
+        con las fechas que un calendario externo debe mostrar."""
+        with connect_read() as conn:
+            cur = conn.execute(
+                "SELECT p.id AS pursuit_id, p.licitacion_id, p.next_action, "
+                "p.next_action_due, o.name AS organization_name, "
+                "l.titulo, l.fecha_limite, l.fecha_fin, l.url "
+                "FROM pursuits p "
+                "JOIN organization_memberships m ON m.organization_id = p.organization_id "
+                "AND m.user_id = %s AND m.status = 'active' "
+                "JOIN organizations o ON o.id = p.organization_id "
+                "JOIN licitaciones l ON l.id_externo = p.licitacion_id "
+                "WHERE p.status NOT IN " + _ESTADOS_TERMINALES_SQL + " "
+                "AND (l.fecha_limite IS NOT NULL OR l.fecha_fin IS NOT NULL "
+                "     OR p.next_action_due IS NOT NULL) "
+                "ORDER BY p.id",
+                (user_id,),
+            )
+            return rows_to_dicts(cur)
+
     @staticmethod
     def _get_scoped(
         conn: Any,

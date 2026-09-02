@@ -34,7 +34,12 @@ vi.mock("@/lib/analytics", async (importOriginal) => {
   return { ...real, registrarEvento: vi.fn() };
 });
 
-vi.mock("@/hooks/use-organization", () => ({ useActiveOrganizationId: () => 7 }));
+vi.mock("@/hooks/use-organization", () => ({
+  useActiveOrganizationId: () => 7,
+  // La tarjeta de familias tecnológicas mira el rol para decidir si los
+  // controles van deshabilitados: aquí, `member` (solo lectura).
+  useOrganizations: () => ({ data: [{ id: 7, name: "Equipo", role: "member" }] }),
+}));
 
 import MiPerfilPage from "@/app/(dashboard)/mi-perfil/page";
 import { apiMutate, fetchWithAuth } from "@/lib/api-client";

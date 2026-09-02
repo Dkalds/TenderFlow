@@ -66,6 +66,25 @@ def _adj_filter_conditions(
 
 
 class AdjudicacionRepository:
+    def list_for_licitacion(self, licitacion_id: str) -> list[dict[str, Any]]:
+        """Adjudicatarios de un expediente, tal como los publicó la fuente.
+
+        Es lo que la ficha de una oportunidad necesita para proponer su cierre:
+        quién se lo llevó, por cuánto y con cuántas ofertas, lote a lote. Sin
+        agregar ni resolver a empresa canónica —para cerrar un pursuit basta el
+        nombre publicado, y resolverlo aquí acoplaría la ficha al maestro de
+        empresas que la cola de revisión todavía puede estar corrigiendo.
+        """
+        with connect_read() as c:
+            cur = c.execute(
+                "SELECT id, licitacion_id, nombre, nif, importe_adjudicado, "
+                "fecha_adjudicacion, n_ofertas_recibidas, lote_id, result_code "
+                "FROM adjudicaciones WHERE licitacion_id = %s "
+                "ORDER BY lote_id NULLS FIRST, importe_adjudicado DESC NULLS LAST, id",
+                (licitacion_id,),
+            )
+            return rows_to_dicts(cur)
+
     def list_paginated(
         self,
         *,

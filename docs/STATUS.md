@@ -6,7 +6,7 @@ tags: [status, generado]
 
 <!-- generado por scripts/gen_status.py — no editar a mano -->
 
-Generado: 2026-09-01
+Generado: 2026-09-02
 
 ## Paridad de planos de orquestación (ADR-012)
 
@@ -71,7 +71,7 @@ Generado: 2026-09-01
 
 ## Superficie de la API
 
-**169 endpoints** expuestos.
+**173 endpoints** expuestos.
 
 <details><summary>Ver listado</summary>
 
@@ -149,6 +149,7 @@ Generado: 2026-09-01
 | GET | `/api/v1/eventos` |
 | POST | `/api/v1/exports` |
 | GET | `/api/v1/exports/calendario.ics` |
+| GET | `/api/v1/exports/calendario/enlace` |
 | GET | `/api/v1/exports/download` |
 | DELETE | `/api/v1/exports/{job_id}` |
 | GET | `/api/v1/exports/{job_id}` |
@@ -201,6 +202,8 @@ Generado: 2026-09-01
 | GET | `/api/v1/organizations/{organization_id}/members` |
 | POST | `/api/v1/organizations/{organization_id}/members` |
 | PUT | `/api/v1/organizations/{organization_id}/members/{member_user_id}` |
+| GET | `/api/v1/organizations/{organization_id}/settings` |
+| PUT | `/api/v1/organizations/{organization_id}/settings` |
 | GET | `/api/v1/predicciones/calibracion` |
 | GET | `/api/v1/publico/hubs` |
 | GET | `/api/v1/publico/licitaciones` |
@@ -232,6 +235,7 @@ Generado: 2026-09-01
 | DELETE | `/api/v1/watchlist/items/{id_externo:path}` |
 | GET | `/api/v1/watchlist/rules` |
 | POST | `/api/v1/watchlist/rules` |
+| GET | `/api/v1/watchlist/rules/baja` |
 | POST | `/api/v1/watchlist/rules/preview` |
 | DELETE | `/api/v1/watchlist/rules/{rule_id}` |
 | PUT | `/api/v1/watchlist/rules/{rule_id}` |

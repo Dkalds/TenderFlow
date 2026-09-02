@@ -5,6 +5,8 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 
 vi.mock("next/navigation", () => ({
   useSearchParams: () => new URLSearchParams(),
+  // La página limpia `?baja=<n>` tras avisar de la baja de correos.
+  useRouter: () => ({ replace: vi.fn() }),
 }));
 
 import MiWatchlistPage from "@/app/(dashboard)/mi-watchlist/page";

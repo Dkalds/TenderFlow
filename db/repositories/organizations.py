@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from db.database import connect, connect_read, now_utc_iso
@@ -164,6 +165,48 @@ class OrganizationRepository:
                 (organization_id,),
             )
             return rows_to_dicts(cur)
+
+    def get_settings(self, organization_id: int) -> dict[str, Any]:
+        """``settings_json`` deserializado; ``{}`` si la fila no existe o está corrupta."""
+        with connect_read() as conn:
+            row = conn.execute(
+                "SELECT settings_json FROM organizations WHERE id = %s",
+                (organization_id,),
+            ).fetchone()
+        if row is None or not row[0]:
+            return {}
+        try:
+            parsed = json.loads(str(row[0]))
+        except (json.JSONDecodeError, TypeError):
+            return {}
+        return parsed if isinstance(parsed, dict) else {}
+
+    def update_settings(self, organization_id: int, patch: dict[str, Any]) -> dict[str, Any]:
+        """Fusiona ``patch`` sobre ``settings_json`` y devuelve el resultado.
+
+        Fusión superficial a propósito: cada clave es una configuración entera
+        (``tecnologias`` es la lista completa), no un árbol que haya que
+        recorrer. Leer y escribir en la misma transacción evita que dos
+        administradores pisándose se pierdan mutuamente una clave.
+        """
+        with connect() as conn:
+            row = conn.execute(
+                "SELECT settings_json FROM organizations WHERE id = %s FOR UPDATE",
+                (organization_id,),
+            ).fetchone()
+            current: dict[str, Any] = {}
+            if row is not None and row[0]:
+                try:
+                    parsed = json.loads(str(row[0]))
+                    current = parsed if isinstance(parsed, dict) else {}
+                except (json.JSONDecodeError, TypeError):
+                    current = {}
+            merged = {**current, **patch}
+            conn.execute(
+                "UPDATE organizations SET settings_json = %s, updated_at = %s WHERE id = %s",
+                (json.dumps(merged, ensure_ascii=False), now_utc_iso(), organization_id),
+            )
+        return merged
 
     def scope_coverage(self) -> dict[str, int]:
         """Filas totales y sin ``organization_id`` en las tablas escopadas (v64).

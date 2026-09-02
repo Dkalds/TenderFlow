@@ -140,3 +140,10 @@ export type WebhookUpdate = Schemas["WebhookUpdate"];
 // lo miraba, así que los enlaces caducados se pintaban como los sanos.
 export type DocumentoSummary = Schemas["DocumentoSummary"];
 export type DocumentosResult = Schemas["DocumentosResult"];
+
+// Calendario de compromisos y configuración de la organización, añadidos con
+// las mejoras de producto de 2026-09. El enlace del ICS es una ruta firmada:
+// el cliente le antepone su propio origen (ver `calendario-suscripcion.tsx`).
+export type CalendarioEnlace = Schemas["CalendarioEnlace"];
+export type OrganizationSettings = Schemas["OrganizationSettings"];
+export type OrganizationSettingsOut = Schemas["OrganizationSettingsOut"];

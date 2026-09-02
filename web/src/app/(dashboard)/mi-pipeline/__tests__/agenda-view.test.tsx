@@ -11,6 +11,13 @@ import type { PipelineAgenda } from "@/hooks/use-pursuits";
 
 const push = vi.fn();
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push }) }));
+// El botón de suscripción al calendario pide su enlace con react-query, y esta
+// suite renderiza la agenda sin QueryClientProvider a propósito (mockea los
+// hooks de datos uno a uno). Se stubea el hook, no el componente: así el botón
+// se sigue montando de verdad.
+vi.mock("@/hooks/use-calendario", () => ({
+  useCalendarioEnlace: () => ({ data: { path: "/api/v1/exports/calendario.ics?u=1&t=k.s", eventos: 3 } }),
+}));
 
 const toastSuccess = vi.fn();
 const toastError = vi.fn();

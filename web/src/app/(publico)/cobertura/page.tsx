@@ -13,7 +13,7 @@ const SECCIONES: SeccionEvidencia[] = [
   {
     titulo: "Un mercado acotado, no toda la contratación pública",
     texto: [
-      "TenderFlow incluye expedientes con señal de tecnología enterprise. El corte combina coincidencias del diccionario, clasificación sobre CPV 48 y 72 y consultas directas por esos códigos en TED. Cada expediente conserva el motivo por el que entró.",
+      "TenderFlow incluye expedientes con señal de tecnología enterprise. El corte combina coincidencias del diccionario, el universo completo de servicios TI y software (CPV 48 y 72) de PLACSP y TED, y el clasificador que decide qué familia tecnológica lleva cada uno. Cada expediente conserva el motivo por el que entró.",
       "Ese alcance hace comparables el precio y la competencia dentro de un mercado concreto. Si el negocio principal es obra pública, sanidad o suministro general, el corpus no representa ese mercado.",
     ],
     puntos: [

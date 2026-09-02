@@ -32,6 +32,8 @@ interface AlertItem {
   body: string | null;
   licitacion_id: string | null;
   rule_id: number | null;
+  /** Oportunidad de la organización sobre ese expediente, si ya existe. */
+  pursuit_id: number | null;
   read: boolean;
 }
 
@@ -209,9 +211,16 @@ export function NotificationBell({ className: _className }: NotificationBellProp
                 <ul className="mb-2 space-y-0.5">
                   {alerts.slice(0, 5).map((a) => (
                     <li key={a.id}>
-                      {a.licitacion_id ? (
+                      {/* Si el expediente ya es una oportunidad del equipo, el
+                          destino útil es su ficha —donde está la decisión y el
+                          cierre—, no el inspector genérico del catálogo. */}
+                      {a.pursuit_id != null || a.licitacion_id ? (
                         <Link
-                          href={`/detalle?lic=${encodeURIComponent(a.licitacion_id)}`}
+                          href={
+                            a.pursuit_id != null
+                              ? `/oportunidades/${a.pursuit_id}`
+                              : `/detalle?lic=${encodeURIComponent(a.licitacion_id!)}`
+                          }
                           className="block rounded-sm px-2 py-1.5 text-sm hover:bg-accent transition-colors"
                         >
                           <span className="flex items-center gap-2">

@@ -7,6 +7,8 @@ from db.users import get_active_user_by_email_ci
 from shared.dto import (
     OrganizationMembershipOut,
     OrganizationMembershipUpsert,
+    OrganizationSettings,
+    OrganizationSettingsOut,
     OrganizationSummary,
 )
 
@@ -145,3 +147,50 @@ def add_member_by_email(
 
 def claim_legacy_scope(user_id: int, user_key: str) -> None:
     _repo.claim_legacy_rows(user_id, user_key)
+
+
+# ── Configuración de producto de la organización ───────────────────────────
+
+
+def _tecnologias_disponibles() -> list[str]:
+    from config.keywords import TECHNOLOGY_KEYWORDS
+
+    return sorted(TECHNOLOGY_KEYWORDS.keys())
+
+
+def get_settings(user_id: int, organization_id: int) -> OrganizationSettingsOut:
+    """Configuración de la organización; cualquier miembro activo puede leerla."""
+    resolve_organization(user_id, organization_id)
+    raw = _repo.get_settings(organization_id)
+    parsed = OrganizationSettings.model_validate({"tecnologias": raw.get("tecnologias") or []})
+    return OrganizationSettingsOut(
+        organization_id=organization_id,
+        tecnologias=parsed.tecnologias,
+        tecnologias_disponibles=_tecnologias_disponibles(),
+    )
+
+
+def update_settings(
+    user_id: int, organization_id: int, body: OrganizationSettings
+) -> OrganizationSettingsOut:
+    """Escribe la configuración. Sólo owner/admin: es la estrategia del equipo.
+
+    Las familias se validan contra el diccionario (``config/keywords.py``): una
+    familia que no existe no filtraría nada y dejaría el Radar vacío sin que
+    nadie supiera por qué.
+    """
+    _, role = resolve_organization(user_id, organization_id, write=True)
+    if role not in {"owner", "admin"}:
+        raise OrganizationPermissionError(
+            "Solo owner o admin pueden cambiar la configuración de la organización."
+        )
+    disponibles = set(_tecnologias_disponibles())
+    desconocidas = sorted(set(body.tecnologias) - disponibles)
+    if desconocidas:
+        raise ValueError(f"Tecnologías desconocidas: {', '.join(desconocidas)}.")
+    merged = _repo.update_settings(organization_id, {"tecnologias": body.tecnologias})
+    return OrganizationSettingsOut(
+        organization_id=organization_id,
+        tecnologias=list(merged.get("tecnologias") or []),
+        tecnologias_disponibles=sorted(disponibles),
+    )

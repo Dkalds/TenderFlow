@@ -206,11 +206,14 @@ def _db_layer_files() -> list[Path]:
 #   tiempo a medida que se corrijan.
 _LEGITIMATE_SWEEPS: frozenset[str] = frozenset(
     {
-        # Cola de digests por email: scheduler/watchlist_alerts.py necesita
-        # ver los digests PENDIENTES DE TODOS los usuarios para agruparlos
-        # por frecuencia de envío antes de mandarlos. Ejemplo explícito del
-        # encargo original de esta tarea.
-        "db/repositories/watchlist.py::WatchlistRepository.load_pending_digests",
+        # `load_pending_digests` estuvo aquí hasta 2026-09-02: sigue siendo un
+        # barrido global (agrupa los digests pendientes de TODOS los usuarios
+        # antes de enviarlos), pero ya no dispara la heurística porque su JOIN
+        # correlaciona la regla con el `user_key` del propio digest. Esa
+        # correlación no es cosmética: `pending_digests.entry_id` apunta a dos
+        # tablas distintas (`watchlist_rules` y el legado `watchlist_cpv`) sin
+        # discriminador, y unirla sólo por `id` mezclaba los criterios de un
+        # usuario en el correo de otro.
         # Marca como enviados unos ids que vinieron del barrido global de
         # arriba -- nunca de input de usuario final.
         "db/repositories/watchlist.py::WatchlistRepository.mark_digests_sent",
@@ -229,6 +232,16 @@ _LEGITIMATE_SWEEPS: frozenset[str] = frozenset(
         # empresas buscar en la fuente PLACSP durante la ingesta, no los
         # favoritos de un usuario concreto. Sin caller vía api/routes/*.py.
         "db/repositories/watched_companies.py::WatchedCompanyRepository.list_canonical_nifs",
+        # Priorización por demanda real de los dos lotes nocturnos de pliegos
+        # (scheduler/jobs/documentos_embeddings.py). Miran `watchlist_items` y
+        # `pursuits` de TODOS los usuarios a propósito: la pregunta que
+        # responden es «¿este expediente le importa a alguien?», no «¿a quién?».
+        # Acotarlas a un user_key no tendría sentido -- el job no corre en
+        # nombre de nadie -- y el resultado es un orden, no un dato que se
+        # devuelva a un usuario.
+        "db/repositories/documentos.py::DocumentosRepository.list_pendientes",
+        "db/repositories/tender_fact_sheets.py::"
+        "TenderFactSheetsRepository.list_pending_licitaciones",
         # Integridad de la cadena de hashes de auditoría (v26): es UNA
         # cadena global (no una por usuario) -- necesita leer la cola/COUNT
         # de audit_log sin filtrar por usuario para verificar continuidad.

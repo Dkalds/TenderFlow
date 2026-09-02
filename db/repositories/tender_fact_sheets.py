@@ -45,6 +45,17 @@ class TenderFactSheetsRepository:
                 "    WHEN l.ml_tecnologias IS NOT NULL AND l.ml_tecnologias != '' THEN 1 "
                 "    ELSE 2 "
                 "  END AS tech_priority, "
+                # Demanda real primero: un expediente que alguien convirtió en
+                # oportunidad o marcó como favorito es el que va a abrir la
+                # pestaña Pliego hoy. Con 25 fichas por pasada frente a cientos de
+                # documentos descargados, el orden decide si la promesa «qué pide
+                # el pliego» se cumple para quien la está mirando o para nadie.
+                "  CASE WHEN EXISTS (SELECT 1 FROM pursuits p "
+                "        WHERE p.licitacion_id = c.licitacion_id "
+                "        AND p.status NOT IN ('won', 'lost', 'withdrawn')) THEN 0 "
+                "       WHEN EXISTS (SELECT 1 FROM watchlist_items w "
+                "        WHERE w.id_externo = c.licitacion_id) THEN 1 "
+                "       ELSE 2 END AS demanda, "
                 "  tf.updated_at "
                 "  FROM candidatos c "
                 "  JOIN licitaciones l ON l.id_externo = c.licitacion_id "
@@ -59,7 +70,9 @@ class TenderFactSheetsRepository:
                 # stale tech-relevantes por encima del límite del batch deja
                 # bloqueadas para siempre justo las licitaciones sin ninguna señal
                 # de tecnología todavía -- las que este selector existe para descubrir.
-                "ORDER BY tier, CASE WHEN tier = 0 THEN tech_priority ELSE 0 END, "
+                # `demanda` va antes que el tier: una ficha stale de una oportunidad
+                # abierta importa más que una nunca intentada que nadie mira.
+                "ORDER BY demanda, tier, CASE WHEN tier = 0 THEN tech_priority ELSE 0 END, "
                 "updated_at ASC, licitacion_id "
                 "LIMIT %s",
                 (extraction_version, extraction_version, max(1, min(int(limit), 200))),

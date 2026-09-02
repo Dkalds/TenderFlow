@@ -179,6 +179,21 @@ def delete_all_for_user(user_key: str) -> int:
         return int(cur.rowcount)
 
 
+def deactivate_all_for_user(user_key: str) -> int:
+    """Pausa todas las reglas del usuario. Devuelve cuántas estaban activas.
+
+    Es la «baja» del enlace que va al pie de cada digest: no borra nada —las
+    reglas siguen en Mi Watchlist y se reactivan desde allí— pero corta el
+    correo de inmediato, que es lo único que quien pulsa ese enlace quiere.
+    """
+    with connect() as c:
+        cur = c.execute(
+            "UPDATE watchlist_rules SET active = 0 WHERE user_key = %s AND active = 1",
+            (user_key,),
+        )
+        return int(cur.rowcount)
+
+
 # ---------------------------------------------------------------------------
 # Matching sobre el dataset completo
 #

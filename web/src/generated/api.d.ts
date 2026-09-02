@@ -1408,21 +1408,45 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Calendario ICS con deadlines y vencimientos de favoritos
-         * @description Exporta un archivo .ics con los deadlines (fecha_limite) y fines de
-         *     contrato (fecha_fin) de las licitaciones favoritas del usuario.
+         * Calendario ICS con los plazos de pursuits y favoritos
+         * @description Exporta un archivo .ics con los plazos que importan: los de los pursuits
+         *     abiertos del usuario (fecha límite y próxima acción) y los de sus favoritos.
          *
-         *     Autenticacion via API key en la cabecera ``X-API-Key`` y solo ahi: la
-         *     dependencia usa ``APIKeyHeader``, que no mira la query string. Es
-         *     deliberado — un token en la URL acaba en los access logs, en el historial
-         *     del navegador y en la cabecera ``Referer`` de cualquier salto externo, y de
-         *     ahi no se puede revocar. Si un cliente de calendario no admite cabeceras
-         *     personalizadas, la solucion no es reabrir ``?token=``.
+         *     Dos formas de autenticarse:
          *
-         *     Compatible con Google Calendar, Outlook, Apple Calendar, etc.:
-         *       ``/api/v1/exports/calendario.ics`` con cabecera ``X-API-Key: <token>``.
+         *     - Cabecera ``X-API-Key`` (la de siempre; scripts y clientes que admiten
+         *       cabeceras).
+         *     - Enlace firmado ``?u=<user_id>&t=<firma>`` (ver :func:`_firma_calendario`).
+         *       Google Calendar, Apple Calendar y Outlook **no** envían cabeceras
+         *       personalizadas al suscribirse a una URL, así que hasta 2026-09 este
+         *       endpoint era inservible para los tres y ningún componente lo enlazaba.
+         *       La firma es una capacidad acotada a este endpoint: no abre sesión, no es
+         *       una API key y sólo devuelve fechas de compromisos. Un enlace filtrado se
+         *       revoca rotando ``SIGNING_KEY`` (``shared/signing``, con ``kid``).
          */
         get: operations["calendario_ics_api_v1_exports_calendario_ics_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/exports/calendario/enlace": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Enlace de suscripción al calendario de compromisos
+         * @description Ruta firmada para suscribirse desde Google/Apple/Outlook, y cuántos
+         *     eventos devolvería hoy. El cliente antepone su propio origen: el mismo
+         *     host que sirve la consola proxya ``/api`` a esta API.
+         */
+        get: operations["calendario_enlace_api_v1_exports_calendario_enlace_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2465,6 +2489,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/organizations/{organization_id}/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Configuración de la organización (familias tecnológicas) */
+        get: operations["get_organization_settings_api_v1_organizations__organization_id__settings_get"];
+        /** Cambiar la configuración de la organización (owner/admin) */
+        put: operations["put_organization_settings_api_v1_organizations__organization_id__settings_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/predicciones/calibracion": {
         parameters: {
             query?: never;
@@ -2661,6 +2703,11 @@ export interface paths {
         /**
          * Post Pursuit
          * @description Abre una oportunidad; reintentar la misma licitación no duplica.
+         *
+         *     Abrirla es la señal de demanda más fuerte que existe, así que si el
+         *     expediente no tiene ficha del pliego se lanza su extracción en background
+         *     (``PLIEGO_FACTS_ON_PURSUIT``): quien acaba de comprometerse abrirá la
+         *     pestaña Pliego hoy, no cuando el lote nocturno llegue a ese expediente.
          */
         post: operations["post_pursuit_api_v1_pursuits_post"];
         delete?: never;
@@ -2946,6 +2993,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/watchlist/rules/baja": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Pausar todas las reglas desde el enlace del pie de un digest
+         * @description Pausa las reglas de quien pulsa el enlace de baja del digest.
+         *
+         *     Sin sesión a propósito: quien quiere dejar de recibir correo no quiere
+         *     antes hacer login. Lo que autoriza es la firma del ``user_key`` (ver
+         *     ``services/email_digest.py``). No borra nada —las reglas quedan en pausa
+         *     y se reactivan desde Mi Watchlist— y por eso, cuando se conoce el sitio,
+         *     responde con una redirección a esa pantalla en vez de con JSON.
+         */
+        get: operations["baja_alertas_api_v1_watchlist_rules_baja_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/watchlist/rules/preview": {
         parameters: {
             query?: never;
@@ -3202,6 +3275,8 @@ export interface components {
             id: number;
             /** Licitacion Id */
             licitacion_id?: string | null;
+            /** Pursuit Id */
+            pursuit_id?: number | null;
             /**
              * Read
              * @default false
@@ -3356,6 +3431,16 @@ export interface components {
             items: components["schemas"]["LicitacionSummary"][];
             /** Requested */
             requested: number;
+        };
+        /**
+         * CalendarioEnlace
+         * @description Enlace de suscripción al calendario ICS del usuario.
+         */
+        CalendarioEnlace: {
+            /** Eventos */
+            eventos: number;
+            /** Path */
+            path: string;
         };
         /**
          * CalibracionBajaDTO
@@ -5515,6 +5600,33 @@ export interface components {
             user_id: number;
         };
         /**
+         * OrganizationSettings
+         * @description Configuración de producto de una organización (``organizations.settings_json``).
+         *
+         *     ``tecnologias`` son las familias del diccionario (``SAP``, ``MICROSOFT``…)
+         *     que vende la organización. Vacío significa «todas»: el Radar puntúa el
+         *     universo entero, como hasta 2026-09. Con familias declaradas, el Radar
+         *     acota su universo a ellas cuando el usuario no filtra por tecnología a
+         *     mano, y la ingesta no cambia —el filtro es una vista sobre el corpus, no
+         *     una pérdida de datos.
+         */
+        OrganizationSettings: {
+            /** Tecnologias */
+            tecnologias?: string[];
+        };
+        /**
+         * OrganizationSettingsOut
+         * @description Configuración leída, con la organización a la que pertenece.
+         */
+        OrganizationSettingsOut: {
+            /** Organization Id */
+            organization_id: number;
+            /** Tecnologias */
+            tecnologias?: string[];
+            /** Tecnologias Disponibles */
+            tecnologias_disponibles?: string[];
+        };
+        /**
          * OrganizationSummary
          * @description Organización de trabajo visible para el usuario autenticado.
          */
@@ -5855,6 +5967,8 @@ export interface components {
             dias_restantes: number | null;
             /** Due Date */
             due_date: string | null;
+            /** Fecha Fin Origen */
+            fecha_fin_origen?: string | null;
             /** Importe Eur */
             importe_eur: number | null;
             /**
@@ -6161,6 +6275,47 @@ export interface components {
             total_clasificados: number;
         };
         /**
+         * PursuitAdjudicacionDetectada
+         * @description La adjudicación que el sistema ya conoce de una oportunidad abierta.
+         *
+         *     Existe para cerrar el ciclo sin teclear: hasta 2026-09 ganada, perdida e
+         *     importe adjudicado se escribían a mano aunque la ingesta ya traía
+         *     adjudicatario, importe y número de ofertas del mismo expediente. La ficha
+         *     la muestra como propuesta —«este expediente se adjudicó a X por Y €»— y la
+         *     persona confirma el resultado; el sistema no decide por ella quién ganó
+         *     porque no conoce el NIF de la organización.
+         */
+        PursuitAdjudicacionDetectada: {
+            /** Adjudicatarios */
+            adjudicatarios?: components["schemas"]["PursuitAdjudicatario"][];
+            /** Cierre Pendiente */
+            cierre_pendiente: boolean;
+            /** Estado Licitacion */
+            estado_licitacion?: string | null;
+            /** Importe Total */
+            importe_total?: number | null;
+            /** N Ofertas */
+            n_ofertas?: number | null;
+        };
+        /**
+         * PursuitAdjudicatario
+         * @description Un adjudicatario del expediente, tal como lo publicó la fuente.
+         */
+        PursuitAdjudicatario: {
+            /** Fecha Adjudicacion */
+            fecha_adjudicacion?: string | null;
+            /** Importe Adjudicado */
+            importe_adjudicado?: number | null;
+            /** Lote Id */
+            lote_id?: number | null;
+            /** N Ofertas Recibidas */
+            n_ofertas_recibidas?: number | null;
+            /** Nif */
+            nif?: string | null;
+            /** Nombre */
+            nombre: string;
+        };
+        /**
          * PursuitCreate
          * @description Convierte una licitación existente en oportunidad colaborativa.
          *
@@ -6193,6 +6348,7 @@ export interface components {
          * @description Detalle de una oportunidad con su ledger append-only.
          */
         PursuitDetail: {
+            adjudicacion?: components["schemas"]["PursuitAdjudicacionDetectada"] | null;
             /** Awarded Amount Eur */
             awarded_amount_eur?: number | null;
             /** Closed At */
@@ -6585,14 +6741,20 @@ export interface components {
             es_ute: number | null;
             /** Fecha Adjudicacion */
             fecha_adjudicacion: string | null;
+            /** Fecha Fin Con Prorroga */
+            fecha_fin_con_prorroga: string | null;
             /** Fecha Fin Efectiva */
             fecha_fin_efectiva: string | null;
+            /** Fecha Fin Origen */
+            fecha_fin_origen: string | null;
             /** Importe Adjudicado */
             importe_adjudicado: number | null;
             /** Licitacion Id */
             licitacion_id: string;
             /** Organo Contratacion */
             organo_contratacion: string | null;
+            /** Prorroga Meses */
+            prorroga_meses: number | null;
             /** Retencion Model Version */
             retencion_model_version: number | null;
             /** Riesgo Cambio */
@@ -11094,7 +11256,12 @@ export interface operations {
     };
     calendario_ics_api_v1_exports_calendario_ics_get: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Usuario del enlace firmado */
+                u?: number | null;
+                /** @description Firma del enlace */
+                t?: string | null;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -11116,6 +11283,48 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    calendario_enlace_api_v1_exports_calendario_enlace_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CalendarioEnlace"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
             };
         };
     };
@@ -13178,6 +13387,80 @@ export interface operations {
             };
         };
     };
+    get_organization_settings_api_v1_organizations__organization_id__settings_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                organization_id: number;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrganizationSettingsOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_organization_settings_api_v1_organizations__organization_id__settings_put: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                organization_id: number;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OrganizationSettings"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrganizationSettingsOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_calibracion_baja_api_v1_predicciones_calibracion_get: {
         parameters: {
             query?: {
@@ -14137,6 +14420,54 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["CreatedId"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    baja_alertas_api_v1_watchlist_rules_baja_get: {
+        parameters: {
+            query: {
+                /** @description user_key firmado */
+                k: string;
+                /** @description Firma HMAC (kid.sig) */
+                t: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StatusOk"];
+                };
+            };
+            /** @description Redirige a Mi Watchlist con las reglas ya pausadas */
+            303: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Firma inválida */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
