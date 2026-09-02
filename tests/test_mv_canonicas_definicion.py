@@ -1,7 +1,7 @@
 """La vista materializada define lo mismo que los fragmentos del repositorio.
 
 Desde la revisión ``v94`` la definición de «qué contrato se publica» vive en la
-vista ``licitaciones_canonicas`` (redefinida en ``v97`` para acotarla al universo
+vista ``licitaciones_canonicas`` (redefinida en ``v98`` para acotarla al universo
 tecnológico), y las seis superficies indexables se limitan a leer de ella. Eso resuelve el coste —de ~200 s por petición a ~10 s por pasada
 del pipeline— pero abre un modo de fallo nuevo: la vista congela su cuerpo en la
 migración, y si ese cuerpo se separa de los fragmentos que el repositorio
@@ -18,7 +18,7 @@ estar allí: siguen siendo ciertas, pero ahora son propiedades **de la vista**.
 Si este fichero falla, la corrección **no** es editar la constante de la
 revisión vigente: esa migración ya corrió y describe la vista que existe en
 producción. Es escribir una revisión nueva que reconstruya la vista con la
-definición nueva y mover ``_RUTA_VISTA`` a ella (v94 → v97 fue la primera vez).
+definición nueva y mover ``_RUTA_VISTA`` a ella (v94 → v98 fue la primera vez).
 """
 
 from __future__ import annotations
@@ -34,21 +34,21 @@ from db.sql_fragments import (
 )
 
 # La revisión que define la vista HOY. Cada redefinición mueve este puntero:
-# v94 la creó; v97 la acotó al universo tecnológico. Apuntar a una revisión
+# v94 la creó; v98 la acotó al universo tecnológico. Apuntar a una revisión
 # vieja haría pasar el test contra una vista que ya no existe en producción.
 _RUTA_VISTA = (
     Path(__file__).resolve().parents[1]
     / "db"
     / "alembic"
     / "versions"
-    / "v97_mv_canonicas_universo_tecnologico.py"
+    / "v98_mv_canonicas_universo_tecnologico.py"
 )
 
 
 def _cargar_revision_vigente() -> Any:
     """Carga la revisión por ruta: ``db/alembic/versions/`` no es un paquete."""
     spec = importlib.util.spec_from_file_location(
-        "v97_mv_canonicas_universo_tecnologico", _RUTA_VISTA
+        "v98_mv_canonicas_universo_tecnologico", _RUTA_VISTA
     )
     assert spec is not None and spec.loader is not None
     modulo = importlib.util.module_from_spec(spec)

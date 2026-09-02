@@ -31,12 +31,12 @@ No se borra nada: el histórico de por qué se hizo cada cosa sigue siendo
   (`scraper/connectors/pscp.py`) y `_publicable_sql` filtraba por sustancia y duplicados, no por
   universo. Cerrado en la rama `worktree-producto-mejoras`: `db.sql_fragments.universo_tecnologico_sql`
   (universos filtrados en ingesta, o `tecnologia` no vacía) entra en `_publicable_sql`, y la
-  revisión **v97** reconstruye `licitaciones_canonicas` con ese predicado construyendo la vista
+  revisión **v98** reconstruye `licitaciones_canonicas` con ese predicado construyendo la vista
   nueva al lado de la vieja y permutándola (`DROP` + `RENAME`, milisegundos) en vez de tirarla y
-  dejar la superficie sin vista ~10 s. `tests/test_mv_canonicas_definicion.py` apunta ahora a v97
-  y `tests/test_unit_v97_mv_universo.py` fija el DDL emitido. Efecto colateral deliberado: `ficha`
+  dejar la superficie sin vista ~10 s. `tests/test_mv_canonicas_definicion.py` apunta ahora a v98
+  y `tests/test_unit_v98_mv_universo.py` fija el DDL emitido. Efecto colateral deliberado: `ficha`
   devuelve 404 para lo que no es tecnología, que es lo que desindexa lo ya rastreado.
-  **Queda fuera y sigue vivo:** aplicar v97 en producción exige lanzar `migrate.yml` a mano
+  **Queda fuera y sigue vivo:** aplicar v98 en producción exige lanzar `migrate.yml` a mano
   (`autoDeploy` no migra: producción estuvo días en v89 con el repo en v91) y comprobar después
   que `/publico/hubs` deja de listar CPV de reactivos y que la franja de la portada baja a la
   cifra del universo tecnológico. Search Console verá una caída masiva de URLs indexadas: es el

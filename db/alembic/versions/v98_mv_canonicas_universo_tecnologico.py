@@ -1,4 +1,9 @@
-"""v97: la vista de canónicas publicables se acota al universo tecnológico.
+"""v98: la vista de canónicas publicables se acota al universo tecnológico.
+
+Nació como ``v97`` colgando de ``v96``; al fusionar #256, que trajo
+``v97_pursuit_comments`` con el mismo padre, Alembic vio dos cabezas y CI paró
+en «Multiple head revisions». Se reencadena detrás de esa revisión: la cadena
+es append-only y sólo puede tener una cabeza.
 
 Qué corrige
 -----------
@@ -38,8 +43,8 @@ permuta.
 
 DIALECT-GUARDED: solo actúa en Postgres.
 
-Revision ID: v97_mv_canonicas_universo_tecnologico
-Revises: v96_password_reset_tokens
+Revision ID: v98_mv_canonicas_universo_tecnologico
+Revises: v97_pursuit_comments
 Create Date: 2026-09-02
 """
 
@@ -49,14 +54,14 @@ from collections.abc import Sequence
 
 from alembic import op
 
-revision: str = "v97_mv_canonicas_universo_tecnologico"
-down_revision: str | Sequence[str] | None = "v96_password_reset_tokens"
+revision: str = "v98_mv_canonicas_universo_tecnologico"
+down_revision: str | Sequence[str] | None = "v97_pursuit_comments"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
 VISTA = "licitaciones_canonicas"
 #: Nombre transitorio mientras se construye la vista nueva junto a la vieja.
-VISTA_NUEVA = f"{VISTA}_v97"
+VISTA_NUEVA = f"{VISTA}_v98"
 
 # Cuerpo congelado: ``SELECT DISTINCT ON (clave) … WHERE {_publicable_sql('l')}
 # ORDER BY …``, compuesto desde ``db/repositories/publico.py`` y

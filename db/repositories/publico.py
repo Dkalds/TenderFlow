@@ -29,7 +29,7 @@ Qué NO sale de aquí, decidido con el dueño del producto:
 colapsan las reemisiones del mismo contrato con la MISMA regla, escrita una
 sola vez. Lo que cambia entre ellas es la forma de aplicarla, no el criterio:
 todas leen de la vista materializada ``licitaciones_canonicas`` (revisión
-``v94``, redefinida en ``v97`` para acotarla al universo tecnológico), que es
+``v94``, redefinida en ``v98`` para acotarla al universo tecnológico), que es
 donde vive la definición de qué contrato se publica. Antes cada
 una aplicaba el filtro por su cuenta y el coste era insostenible; ver la nota
 sobre la vista más abajo, con los tiempos medidos. Que las seis lean del MISMO
@@ -137,7 +137,7 @@ def _publicable_sql(alias: str) -> str:
     """Sustancia + duplicado ya marcado + universo tecnológico. Lo que hace
     publicable a una fila.
 
-    El tercer término entró el 2026-09-02 (revisión ``v97``). Hasta entonces la
+    El tercer término entró el 2026-09-02 (revisión ``v98``). Hasta entonces la
     superficie pública filtraba por sustancia y duplicados pero no por
     universo, y como el conector PSCP guarda la plataforma catalana entera
     (reactivos, obras, limpieza) con su propio ``analysis_universe``, la portada
@@ -207,7 +207,7 @@ _WHERE_INDEXABLE = f"{_BASE_WHERE} AND {_CANONICA_SQL}"
 # uniforme, aunque sea menor.
 #
 # `_CANONICA_SQL` y `_WHERE_INDEXABLE` se conservan: son la DEFINICIÓN de qué es
-# canónico —la gemela de lo que materializa v97 (antes v94)— y lo que compara
+# canónico —la gemela de lo que materializa v98 (antes v94)— y lo que compara
 # `tests/test_mv_canonicas_definicion.py`. Ya no los ejecuta ninguna consulta.
 #
 # Contrato de frescura, que hay que respetar al tocar esto: la vista va tan

@@ -1,4 +1,4 @@
-"""El DDL que emite ``v97``: construir al lado, permutar, y volver atrás igual.
+"""El DDL que emite ``v98``: construir al lado, permutar, y volver atrás igual.
 
 Un PR con una migración necesita un test que fije lo que emite —el job de
 migraciones de CI la ejecuta pero no la mide— y aquí además se fija la forma:
@@ -22,12 +22,12 @@ _RUTA = (
     / "db"
     / "alembic"
     / "versions"
-    / "v97_mv_canonicas_universo_tecnologico.py"
+    / "v98_mv_canonicas_universo_tecnologico.py"
 )
 
 
 def _cargar() -> Any:
-    spec = importlib.util.spec_from_file_location("v97_mv_canonicas_universo_tecnologico", _RUTA)
+    spec = importlib.util.spec_from_file_location("v98_mv_canonicas_universo_tecnologico", _RUTA)
     assert spec is not None and spec.loader is not None
     modulo = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(modulo)
