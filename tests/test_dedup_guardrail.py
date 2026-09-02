@@ -73,6 +73,13 @@ _ALLOWLIST: dict[str, str] = {
         "usuario vea el dato crudo. Deduplicar aqui ocultaria filas que si "
         "existen en la fuente, que es lo contrario de lo que pide un listado."
     ),
+    "adjudicaciones.list_for_licitacion": (
+        "CRUD del API sobre UN expediente ya elegido por el usuario (la ficha "
+        "de su oportunidad propone el cierre con estos adjudicatarios). No "
+        "agrega ninguna metrica. Ademas deduplicar aqui seria danino: un "
+        "expediente marcado como duplicado despues de abrirse como pursuit "
+        "dejaria su ficha sin adjudicatarios y el cierre asistido mudo."
+    ),
     "adjudicaciones.find_publicacion_posterior_a_adjudicacion": (
         "Deteccion de anomalias de calidad del dato. Su objeto ES encontrar "
         "filas raras; excluir duplicados cross-fuente esconderia justo el tipo "

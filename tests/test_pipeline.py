@@ -710,16 +710,67 @@ class TestMlClassifyEntry:
             result = _ml_classify_entry(entry)
         assert result is None
 
-    def test_no_clf(self):
-        from scraper.pipeline import _load_classifiers, _ml_classify_entry
+    def test_no_clf_keeps_ti_entry_as_cpv_universe(self):
+        """Sin modelo, una entry CPV 48/72 ya no se descarta: es expediente TI."""
+        from scraper.pipeline import INCLUSION_CPV_TI, _load_classifiers, _ml_classify_entry
 
         _load_classifiers.cache_clear()
         entry = MagicMock()
         entry.xpath.return_value = ["72000000"]
+        lic = MagicMock()
         with patch("scraper.pipeline._get_ml_clf", return_value=None):
-            with patch("scraper.pipeline.log"):
-                result = _ml_classify_entry(entry)
-        assert result is None
+            with patch("scraper.pipeline.parse_entry_unfiltered", return_value=lic):
+                with patch("scraper.pipeline.log"):
+                    result = _ml_classify_entry(entry)
+        assert result is lic
+        assert lic.inclusion_reason == INCLUSION_CPV_TI
+
+    def test_low_proba_keeps_entry_without_rescue(self):
+        """Por debajo de ML_UNCERTAINTY_LO la entry se conserva como universo
+        CPV, no como rescate ML: sin `tecnologia`, pero sin perderla."""
+        from scraper.pipeline import INCLUSION_CPV_TI, _ml_classify_entry
+
+        entry = MagicMock()
+        entry.xpath.return_value = ["48000000"]
+        lic = MagicMock()
+        lic.titulo = "Implantación de un ERP corporativo"
+        lic.descripcion = ""
+        lic.cpv = "48000000"
+        lic.importe = 500000.0
+        clf = MagicMock()
+        clf.pipeline.predict_proba.return_value = [[0.95, 0.05]]
+        clf._threshold = 0.6
+        clf.metadata = {"trained_at": "2026-01-01"}
+        with patch("scraper.pipeline._get_ml_clf", return_value=clf):
+            with patch("scraper.pipeline.parse_entry_unfiltered", return_value=lic):
+                with patch("scraper.pipeline._apply_tech_prediction", return_value=None):
+                    with patch("scraper.pipeline.log"):
+                        result = _ml_classify_entry(entry)
+        assert result is lic
+        assert lic.inclusion_reason == INCLUSION_CPV_TI
+        assert lic.ml_proba == 0.05
+
+    def test_high_proba_is_ml_rescue(self):
+        from scraper.pipeline import INCLUSION_ML_RESCUE, _ml_classify_entry
+
+        entry = MagicMock()
+        entry.xpath.return_value = ["72000000"]
+        lic = MagicMock()
+        lic.titulo = "Mantenimiento de sistemas"
+        lic.descripcion = "soporte funcional"
+        lic.cpv = "72000000"
+        lic.importe = 100000.0
+        clf = MagicMock()
+        clf.pipeline.predict_proba.return_value = [[0.1, 0.9]]
+        clf._threshold = 0.6
+        clf.metadata = {"trained_at": "2026-01-01"}
+        with patch("scraper.pipeline._get_ml_clf", return_value=clf):
+            with patch("scraper.pipeline.parse_entry_unfiltered", return_value=lic):
+                with patch("scraper.pipeline._apply_tech_prediction", return_value=None):
+                    with patch("scraper.pipeline.log"):
+                        result = _ml_classify_entry(entry)
+        assert result is lic
+        assert lic.inclusion_reason == INCLUSION_ML_RESCUE
 
     def test_parse_returns_none(self):
         from scraper.pipeline import _ml_classify_entry

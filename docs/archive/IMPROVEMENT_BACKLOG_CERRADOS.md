@@ -23,6 +23,35 @@ No se borra nada: el histórico de por qué se hizo cada cosa sigue siendo
 
 ## Cerrados
 
+- [2026-09-02] **P1: la superficie pública publicaba el censo de PSCP, no el universo
+  tecnológico** — Medido contra producción el 2026-09-01: 415.868 expedientes, 396.583 de
+  Cataluña, con reactivos de laboratorio, servicios a empresas y material sanitario como CPV más
+  frecuentes, bajo una landing que promete «un radar tecnológico, no un censo». Causa doble: el
+  conector PSCP guarda la plataforma catalana entera con `analysis_universe='pscp_observed'`
+  (`scraper/connectors/pscp.py`) y `_publicable_sql` filtraba por sustancia y duplicados, no por
+  universo. Cerrado en la rama `worktree-producto-mejoras`: `db.sql_fragments.universo_tecnologico_sql`
+  (universos filtrados en ingesta, o `tecnologia` no vacía) entra en `_publicable_sql`, y la
+  revisión **v98** reconstruye `licitaciones_canonicas` con ese predicado construyendo la vista
+  nueva al lado de la vieja y permutándola (`DROP` + `RENAME`, milisegundos) en vez de tirarla y
+  dejar la superficie sin vista ~10 s. `tests/test_mv_canonicas_definicion.py` apunta ahora a v98
+  y `tests/test_unit_v98_mv_universo.py` fija el DDL emitido. Efecto colateral deliberado: `ficha`
+  devuelve 404 para lo que no es tecnología, que es lo que desindexa lo ya rastreado.
+  **Queda fuera y sigue vivo:** aplicar v98 en producción exige lanzar `migrate.yml` a mano
+  (`autoDeploy` no migra: producción estuvo días en v89 con el repo en v91) y comprobar después
+  que `/publico/hubs` deja de listar CPV de reactivos y que la franja de la portada baja a la
+  cifra del universo tecnológico. Search Console verá una caída masiva de URLs indexadas: es el
+  objetivo, no un incidente.
+
+- [2026-09-02] **P1: enlaces firmados sin sesión (calendario ICS y baja de correos) — decisión de
+  auth** — Cerrado con el RFC
+  [2026-09-02-rfc-enlaces-firmados-sin-sesion](../rfc/2026-09-02-rfc-enlaces-firmados-sin-sesion.md),
+  aprobado en sesión por el mantenedor. Decisión: URLs de capacidad firmadas con HMAC
+  (`shared/signing`, con `kid`), un prefijo de firma por endpoint, alcance de solo lectura
+  (fechas de compromisos) o reversible (pausa de reglas), revocación global por rotación de
+  `SIGNING_KEY`. Descartados: la API key en la query (abre toda la API) y un token por usuario en
+  BD (tabla + migración para exponer fechas). La rotación que revoca estos enlaces está en
+  `docs/runbooks/incident-playbooks.md` (playbook 8).
+
 - [2026-09-01] **P1: Render Free ya no se presenta como compatible con un SLO de
   disponibilidad del 99 %** — `docs/sli-slo.md` suspende explícitamente ese SLO
   mientras exista spin-down, conserva el 99 % como objetivo para un plan sin

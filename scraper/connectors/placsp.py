@@ -61,15 +61,17 @@ class _PlacspParseCore:
             parse_lotes,
         )
         from scraper.lineage import current_filter_version
-        from scraper.pipeline import _ml_classify_entry
+        from scraper.pipeline import INCLUSION_KEYWORD, INCLUSION_ML_RESCUE, _ml_classify_entry
 
         try:
             lic: Licitacion | None = parse_entry(entry_elem)
-            inclusion_reason = "keyword"
+            inclusion_reason = INCLUSION_KEYWORD
             if lic is None:
-                # Fallback ML para entradas TI (CPV 48/72) sin keywords
+                # Entradas TI (CPV 48/72) sin keywords: el fallback decide si
+                # el modelo las rescata o si quedan como universo CPV.
                 lic = _ml_classify_entry(entry_elem)
-                inclusion_reason = "ml_cpv_rescue"
+                if lic is not None:
+                    inclusion_reason = lic.inclusion_reason or INCLUSION_ML_RESCUE
             if lic is None:
                 return None
             lic.filter_version = current_filter_version()

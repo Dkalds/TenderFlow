@@ -537,6 +537,12 @@ class Settings(BaseSettings):
     # seleccionado; se activa de forma explícita para no generar gasto por el
     # mero despliegue de la migración.
     PLIEGO_FACTS_ENABLED: bool = False
+    # Extraer la ficha del pliego en background al abrir una oportunidad, si no
+    # existe todavía. Es la «demanda real» que el lote nocturno no puede
+    # adivinar: quien convierte un expediente en pursuit va a abrir la pestaña
+    # Pliego hoy. Gasto acotado a un LLM por pursuit nuevo, y sólo si no había
+    # ficha; se apaga sin tocar el job nocturno.
+    PLIEGO_FACTS_ON_PURSUIT: bool = True
     # Mantener sincronizado con llm.client.DEFAULT_MODEL: el valor anterior
     # (deepseek-v4-pro) quedó EOL en NVIDIA el 2026-08-07 y devolvía 410.
     PLIEGO_FACTS_MODEL: str = "deepseek-ai/deepseek-v4-flash-0731"

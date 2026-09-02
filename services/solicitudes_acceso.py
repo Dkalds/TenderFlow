@@ -31,9 +31,7 @@ la persona recibiría un "ya puedes entrar" y se encontraría un 403.
 from __future__ import annotations
 
 import html
-from urllib.parse import urlparse
 
-from config.settings import settings
 from observability.alerts import AlertLevel, enviar_email_transaccional, notify
 from observability.logging import get_logger
 
@@ -77,15 +75,9 @@ def url_de_login() -> str | None:
     Devuelve ``None`` cuando no hay forma honesta de saberlo. El correo se envía
     igual, sin enlace: mejor un correo sin botón que un botón a ninguna parte.
     """
-    origenes = [o.strip().rstrip("/") for o in (settings.CORS_ALLOWED_ORIGINS or "").split(",")]
-    for origen in origenes:
-        if origen.startswith("http"):
-            return f"{origen}/login"
+    from services.app_urls import url_absoluta
 
-    partes = urlparse(settings.OAUTH_REDIRECT_URI or "")
-    if partes.scheme and partes.netloc:
-        return f"{partes.scheme}://{partes.netloc}/login"
-    return None
+    return url_absoluta("/login")
 
 
 def _cuerpo_acceso(empresa: str | None, enlace: str | None) -> tuple[str, str]:

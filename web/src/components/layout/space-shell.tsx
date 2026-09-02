@@ -3,6 +3,7 @@
 import * as React from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { cn } from "@/lib/utils";
+import { registrarEvento } from "@/lib/analytics";
 import { CONSOLE_SPACES, type ConsoleSpace } from "@/lib/console-spaces";
 
 /**
@@ -33,11 +34,14 @@ export function useSpaceView(space: ConsoleSpace): {
     (next: string) => {
       const search = new URLSearchParams(params.toString());
       search.set("vista", next);
+      // Qué corte se mira, no sólo qué espacio: es el dato que permite fusionar
+      // o retirar vistas con uso medido en vez de por intuición.
+      registrarEvento("espacio_abierto", { espacio: space.key, origen: "conmutador", vista: next });
       // `replace`, no `push`: cambiar de corte no es navegar, y llenar el
       // historial de vistas convierte el botón "atrás" en algo inútil.
       router.replace(`?${search.toString()}`, { scroll: false });
     },
-    [params, router],
+    [params, router, space.key],
   );
 
   return { view, setView };

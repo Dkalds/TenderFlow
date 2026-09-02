@@ -16,6 +16,7 @@ from typing import Any
 
 from db.watchlist import list_entries, matches_licitacion, update_last_notified
 from observability import AlertLevel, get_logger, notify
+from observability.alerts import enviar_email_transaccional
 from services.watchlist import (
     load_pending_digests,
     mark_digests_sent,
@@ -245,6 +246,10 @@ def check_and_notify() -> int:
     return total_notified
 
 
+#: Frecuencias que ``pending_digests`` puede llevar y que este módulo drena.
+FRECUENCIAS_DIGEST: tuple[str, ...] = ("immediate", "daily", "weekly")
+
+
 def send_pending_digests(frequency: str = "daily") -> int:
     """Envía los digests pendientes para la frecuencia indicada.
 
@@ -252,13 +257,17 @@ def send_pending_digests(frequency: str = "daily") -> int:
     construye un único email resumen y marca las entradas como enviadas.
 
     Args:
-        frequency: ``'daily'`` o ``'weekly'`` — filtra qué pending_digests procesar.
+        frequency: ``'immediate'``, ``'daily'`` o ``'weekly'`` — filtra qué
+            pending_digests procesar. ``immediate`` existe desde 2026-09: las
+            reglas con esa frecuencia encolaban filas que nadie drenaba.
 
     Returns:
-        Número total de emails de digest enviados.
+        Número de emails de digest que el transporte dio por enviados.
     """
-    if frequency not in ("daily", "weekly"):
-        raise ValueError(f"frequency debe ser 'daily' o 'weekly', no {frequency!r}")
+    if frequency not in FRECUENCIAS_DIGEST:
+        raise ValueError(
+            f"frequency debe ser una de {', '.join(FRECUENCIAS_DIGEST)}, no {frequency!r}"
+        )
 
     rows = load_pending_digests(frequency)
 
@@ -269,58 +278,85 @@ def send_pending_digests(frequency: str = "daily") -> int:
     # Agrupar por destinatario → entry → licitaciones
     from collections import defaultdict
 
+    from services.app_urls import frontend_base_url
+    from services.email_digest import (
+        BloqueDigest,
+        asunto_digest,
+        etiqueta_de_regla,
+        render_digest,
+        url_de_baja_alertas,
+    )
+
+    base_url = frontend_base_url()
     by_recipient: dict[str, dict[int, list[dict[str, Any]]]] = defaultdict(
         lambda: defaultdict(list)
     )
+    user_key_de: dict[str, str] = {}
     digest_ids: list[int] = []
     for row in rows:
-        by_recipient[row["recipient_email"]][int(row["entry_id"])].append(row)
+        recipient = str(row["recipient_email"])
+        by_recipient[recipient][int(row["entry_id"])].append(row)
+        user_key_de.setdefault(recipient, str(row.get("user_key") or ""))
         digest_ids.append(int(row["id"]))
 
     emails_sent = 0
     for recipient, by_entry in by_recipient.items():
-        matches_by_entry: list[tuple[dict[str, Any], list[dict[str, Any]]]] = []
-        for entry_id, lics in by_entry.items():
-            # Reconstruir entry-like dict desde primera fila
+        bloques: list[BloqueDigest] = []
+        for lics in by_entry.values():
             first = lics[0]
-            entry = {
-                "id": entry_id,
-                "cpv_prefix": first.get("cpv_prefix") or "",
-                "keyword": first.get("keyword"),
-                "min_importe": first.get("min_importe"),
-                "ccaa": first.get("entry_ccaa"),
-            }
-            # Reconstruir licitacion-like dicts
-            lic_dicts = [
-                {
-                    "id_externo": r["licitacion_id"],
-                    "titulo": r.get("titulo") or r["licitacion_id"],
-                    "organo_contratacion": r.get("organo_contratacion"),
-                    "cpv": r.get("cpv"),
-                    "importe": r.get("importe"),
-                    "ccaa": r.get("ccaa"),
-                    "estado": r.get("estado"),
-                    "fecha_publicacion": r.get("fecha_publicacion"),
-                    "url": r.get("url"),
-                }
-                for r in lics
-            ]
-            matches_by_entry.append((entry, lic_dicts))
+            etiqueta = etiqueta_de_regla(
+                nombre=first.get("rule_nombre"),
+                keyword=first.get("keyword"),
+                cpv=first.get("cpv_prefix"),
+                min_importe=first.get("min_importe"),
+                ccaa=first.get("entry_ccaa"),
+            )
+            bloques.append(
+                BloqueDigest(
+                    etiqueta=etiqueta,
+                    licitaciones=[
+                        {
+                            "id_externo": r["licitacion_id"],
+                            "titulo": r.get("titulo") or r["licitacion_id"],
+                            "organo_contratacion": r.get("organo_contratacion"),
+                            "cpv": r.get("cpv"),
+                            "importe": r.get("importe"),
+                            "ccaa": r.get("ccaa"),
+                            "tecnologia": r.get("tecnologia"),
+                            "estado": r.get("estado"),
+                            "fecha_publicacion": r.get("fecha_publicacion"),
+                            "fecha_limite": r.get("fecha_limite"),
+                            "url": r.get("url"),
+                        }
+                        for r in lics
+                    ],
+                )
+            )
 
-        n = sum(len(lics) for _, lics in matches_by_entry)
-        body = _build_body(matches_by_entry)
-        notify(
-            AlertLevel.INFO,
-            f"Watchlist ({frequency}): {n} licitación(es)",
-            body,
-            to_addr=recipient,
-            total_coincidencias=n,
+        n = sum(len(b.licitaciones) for b in bloques)
+        texto, html = render_digest(
+            bloques=bloques,
             frecuencia=frequency,
+            base_url=base_url,
+            baja_url=url_de_baja_alertas(user_key_de.get(recipient) or "", base_url),
         )
-        log.info("watchlist_digest_sent", recipient=recipient, total=n, frequency=frequency)
-        emails_sent += 1
+        # Correo de producto, no alerta de operación: sin prefijo de severidad
+        # ni plantilla de monitorización, y no sujeto a ALERT_MIN_LEVEL.
+        enviado = enviar_email_transaccional(
+            to_addr=recipient, subject=asunto_digest(frequency, n), texto=texto, html=html
+        )
+        log.info(
+            "watchlist_digest_sent",
+            recipient_dominio=recipient.rpartition("@")[2] or "desconocido",
+            total=n,
+            frequency=frequency,
+            enviado=enviado,
+        )
+        emails_sent += int(enviado)
 
-    # Marcar todos como enviados
+    # Marcar todos como enviados (también los que el SMTP no pudo entregar: el
+    # transporte nunca propaga y reintentarlos sin fin sin un buzón configurado
+    # acumularía filas para siempre; el log deja constancia del fallo).
     mark_digests_sent(digest_ids)
 
     log.info("send_pending_digests_done", emails=emails_sent, frequency=frequency)

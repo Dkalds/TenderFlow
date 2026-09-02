@@ -33,6 +33,7 @@ from db.repositories.base import rows_to_dicts
 from db.sql_fragments import (
     TECHNOLOGY_OBSERVED_SQL,
     exclude_duplicados_sql,
+    fecha_fin_origen_sql,
     fecha_fin_sql,
 )
 
@@ -146,6 +147,7 @@ def proximas_renovaciones(
     order_by: OrderBy = "fecha",
     limit: int = 200,
     offset: int = 0,
+    con_ficha: bool = False,
 ) -> list[dict[str, Any]]:
     """Contratos cuya fecha de fin efectiva cae en los próximos N meses.
 
@@ -167,6 +169,21 @@ def proximas_renovaciones(
     """
     months_ahead = max(1, min(int(months_ahead), MAX_MESES))
     fecha_fin = fecha_fin_sql()
+    # `fecha_fin_origen` dice de qué rama salió la fecha (real o estimada), y
+    # viaja siempre: es una etiqueta corta y la UI deja de presentar el 94% de
+    # fechas calculadas como si la fuente las hubiera publicado.
+    #
+    # `ficha_json` es la ficha entera del pliego —de ahí lee el servicio la
+    # prórroga prevista— y por eso va bajo `con_ficha`: sólo el listado la
+    # necesita. La agenda de Mi Pipeline pide 60 filas y descarta ese campo,
+    # así que arrastrarlo siempre sería leer 60 documentos JSON para nada.
+    ficha_col = "tf.data_json AS ficha_json," if con_ficha else "NULL AS ficha_json,"
+    ficha_join = (
+        "LEFT JOIN tender_fact_sheets tf ON tf.licitacion_id = a.licitacion_id "
+        "     AND tf.status IN ('extracted', 'needs_review')"
+        if con_ficha
+        else ""
+    )
     sql = f"""
         SELECT a.licitacion_id,
                l.titulo,
@@ -183,12 +200,15 @@ def proximas_renovaciones(
                l.duracion_unidad,
                {fecha_fin} AS fecha_fin_efectiva,
                {dias_restantes_sql(fecha_fin)} AS dias_restantes,
+               {fecha_fin_origen_sql()} AS fecha_fin_origen,
+               {ficha_col}
                pr.riesgo_cambio,
                pr.model_version AS retencion_model_version
         FROM adjudicaciones a
         JOIN licitaciones l ON l.id_externo = a.licitacion_id
         LEFT JOIN empresas e ON e.empresa_id = a.empresa_id
         LEFT JOIN predicciones_retencion pr ON pr.licitacion_id = a.licitacion_id
+        {ficha_join}
         WHERE {fecha_fin} {rango_vencimiento_sql()}
           AND {TECHNOLOGY_OBSERVED_SQL}
           AND {exclude_duplicados_sql()}

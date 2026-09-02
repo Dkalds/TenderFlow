@@ -16,6 +16,9 @@ import {
   formatDate,
 } from "@/components/pursuits/pursuit-presenters";
 import { TenderFactSheetPanel } from "@/components/pursuits/tender-fact-sheet";
+import { AdjudicacionDetectada } from "@/components/pursuits/adjudicacion-detectada";
+import { ExpedientePanel } from "@/components/pursuits/expediente-panel";
+import { PursuitActivity } from "@/components/pursuits/pursuit-activity";
 import { Panel, PanelError, PanelTabs, SectionTitle } from "@/components/console/panel";
 import { usePursuit } from "@/hooks/use-pursuits";
 
@@ -37,7 +40,7 @@ import { usePursuit } from "@/hooks/use-pursuits";
  * oportunidad (`comments_count`), no una segunda llamada.
  */
 
-type TabKey = "decision" | "pliego" | "precio" | "conversacion";
+type TabKey = "decision" | "expediente" | "pliego" | "precio" | "conversacion";
 
 export default function OpportunityDetailPage() {
   const params = useParams<{ id: string }>();
@@ -125,6 +128,10 @@ export default function OpportunityDetailPage() {
           onChange={setTab}
           tabs={[
             { key: "decision", label: "Decisión" },
+            // El expediente vive aquí desde 2026-09: antes había que salir a
+            // `/detalle` para leer órgano, CPV, plazos y pliegos de aquello
+            // sobre lo que se decide en esta misma pantalla.
+            { key: "expediente", label: "Expediente" },
             { key: "pliego", label: "Pliego" },
             { key: "precio", label: "Precio" },
             {
@@ -139,7 +146,12 @@ export default function OpportunityDetailPage() {
       <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-8 pt-4">
         {tab === "decision" && (
           <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
-            <PursuitEditor pursuit={pursuit} />
+            <div>
+              {/* Cierre asistido: sólo aparece cuando la ingesta ya conoce una
+                  adjudicación de este expediente. */}
+              <AdjudicacionDetectada pursuit={pursuit} />
+              <PursuitEditor pursuit={pursuit} />
+            </div>
             <aside className="flex flex-col gap-3.5">
               <Panel>
                 <SectionTitle>Contexto de la licitación</SectionTitle>
@@ -160,6 +172,13 @@ export default function OpportunityDetailPage() {
                   </div>
                 </dl>
               </Panel>
+              <Panel>
+                {/* El ledger `pursuit_events` se persistía desde v61 y no lo
+                    pintaba ninguna pantalla: en un espacio compartido nadie
+                    veía quién había movido qué. */}
+                <SectionTitle>Actividad</SectionTitle>
+                <PursuitActivity events={pursuit.events} />
+              </Panel>
               <p className="px-1 text-[11px] leading-relaxed text-muted-foreground">
                 Los escenarios se basan en el universo observado. La decisión y el precio final
                 siguen siendo responsabilidad del equipo.
@@ -167,6 +186,8 @@ export default function OpportunityDetailPage() {
             </aside>
           </div>
         )}
+
+        {tab === "expediente" && <ExpedientePanel licitacionId={pursuit.licitacion_id} />}
 
         {tab === "pliego" && <TenderFactSheetPanel licitacionId={pursuit.licitacion_id} />}
         {tab === "precio" && <PriceScenariosPanel licitacionId={pursuit.licitacion_id} />}

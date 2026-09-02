@@ -279,6 +279,14 @@ class DocumentosRepository:
                 "JOIN licitaciones l ON l.id_externo = d.licitacion_id "
                 "WHERE d.status = 'pending' "
                 "ORDER BY "
+                # Demanda real por delante de la relevancia estimada: los pliegos
+                # de una oportunidad abierta o de un favorito son los que alguien
+                # va a leer hoy, y la ficha estructurada no puede extraerse hasta
+                # que sus documentos estén descargados.
+                "EXISTS (SELECT 1 FROM pursuits p WHERE p.licitacion_id = d.licitacion_id "
+                "        AND p.status NOT IN ('won', 'lost', 'withdrawn')) DESC, "
+                "EXISTS (SELECT 1 FROM watchlist_items w "
+                "        WHERE w.id_externo = d.licitacion_id) DESC, "
                 "(l.tecnologia IS NOT NULL AND l.tecnologia != '') DESC, "
                 "(l.ml_tecnologias IS NOT NULL AND l.ml_tecnologias != '') DESC, "
                 "d.created_at DESC "

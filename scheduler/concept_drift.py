@@ -159,8 +159,13 @@ def _fetch_recent_texts(days: int = 30) -> list[str]:
     """Obtiene títulos y descripciones de licitaciones de los últimos N días."""
     since = (datetime.now(UTC) - timedelta(days=days)).isoformat()
     with connect() as c:
+        # Fuera del análisis el universo CPV sin señal (``cpv_ti_universe``):
+        # el detector busca términos emergentes entre lo que el diccionario ya
+        # acepta, y meter todo el CPV 48/72 sólo lo llenaría de vocabulario
+        # genérico de TI («mantenimiento», «licencias») que no es deriva.
         cur = c.execute(
-            "SELECT titulo, descripcion FROM licitaciones WHERE fecha_publicacion >= %s",
+            "SELECT titulo, descripcion FROM licitaciones WHERE fecha_publicacion >= %s "
+            "AND COALESCE(inclusion_reason, '') <> 'cpv_ti_universe'",
             (since,),
         )
         texts = []

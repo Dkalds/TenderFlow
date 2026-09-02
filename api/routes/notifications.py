@@ -68,6 +68,9 @@ class AlertItem(BaseModel):
     body: str | None = None
     licitacion_id: str | None = None
     rule_id: int | None = None
+    #: Oportunidad de la organización sobre ese expediente, si existe: la
+    #: campana enlaza a ``/oportunidades/{pursuit_id}`` en vez de al inspector.
+    pursuit_id: int | None = None
     read: bool = False
 
 
@@ -133,6 +136,7 @@ async def get_notifications(
             body=a.get("body"),
             licitacion_id=a.get("licitacion_id"),
             rule_id=a.get("rule_id"),
+            pursuit_id=a.get("pursuit_id"),
             read=a.get("read_at") is not None,
         )
         for a in raw_alerts

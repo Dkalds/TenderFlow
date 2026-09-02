@@ -358,11 +358,22 @@ def test_send_pending_digests_sends_and_marks_sent(tmp_db):
 
     from scheduler.watchlist_alerts import send_pending_digests
 
-    with patch("scheduler.watchlist_alerts.notify") as mock_notify:
+    # Correo de producto (`enviar_email_transaccional`), no alerta de operación
+    # (`notify`): el digest dejó de salir con la plantilla de monitorización.
+    with (
+        patch("scheduler.watchlist_alerts.enviar_email_transaccional", return_value=True) as envio,
+        patch("scheduler.watchlist_alerts.notify") as mock_notify,
+    ):
         result = send_pending_digests("daily")
 
     assert result == 1
-    mock_notify.assert_called_once()
+    envio.assert_called_once()
+    mock_notify.assert_not_called()
+    kwargs = envio.call_args.kwargs
+    assert kwargs["to_addr"] == "dest@example.com"
+    assert "TenderFlow" in kwargs["subject"]
+    assert "[INFO]" not in kwargs["subject"]
+    assert "LIC-DIGEST-01" in kwargs["texto"]
 
     with connect() as c:
         row = c.execute(
@@ -393,8 +404,34 @@ def test_send_pending_digests_multiple_recipients(tmp_db):
 
     from scheduler.watchlist_alerts import send_pending_digests
 
-    with patch("scheduler.watchlist_alerts.notify") as mock_notify:
+    with patch("scheduler.watchlist_alerts.enviar_email_transaccional", return_value=True) as envio:
         result = send_pending_digests("daily")
 
     assert result == 2
-    assert mock_notify.call_count == 2
+    assert envio.call_count == 2
+    assert {c.kwargs["to_addr"] for c in envio.call_args_list} == {"a@x.com", "b@x.com"}
+
+
+def test_send_pending_digests_immediate_se_drena(tmp_db):
+    """Las reglas «inmediatas» encolaban filas que ninguna frecuencia drenaba."""
+    from db.database import connect
+
+    with connect() as c:
+        c.execute(
+            "INSERT INTO pending_digests "
+            "(user_key, recipient_email, entry_id, licitacion_id, frequency, matched_at) "
+            "VALUES ('uk9', 'ya@example.com', 999, 'LIC-INMEDIATA-01', 'immediate', '2024-01-01')"
+        )
+
+    from scheduler.watchlist_alerts import send_pending_digests
+
+    with patch("scheduler.watchlist_alerts.enviar_email_transaccional", return_value=True) as envio:
+        result = send_pending_digests("immediate")
+
+    assert result == 1
+    envio.assert_called_once()
+    with connect() as c:
+        row = c.execute(
+            "SELECT sent FROM pending_digests WHERE licitacion_id = 'LIC-INMEDIATA-01'"
+        ).fetchone()
+    assert row[0] == 1

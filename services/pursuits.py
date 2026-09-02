@@ -7,8 +7,13 @@ from statistics import median
 from typing import Any
 
 from db.database import now_utc_iso
+from db.notifications import insert_user_notification
+from db.repositories.adjudicaciones import AdjudicacionRepository
 from db.repositories.agenda import SignalCriteria, signal_rows
+from db.repositories.licitaciones import LicitacionRepository
 from db.repositories.pursuits import PursuitConcurrencyError, PursuitRepository
+from db.users import get_user_by_id
+from observability.logging import get_logger
 from services.competitive.renovaciones import proximas_renovaciones
 from services.organizations import require_active_member, resolve_organization
 from services.watchlist_rules import list_rules
@@ -17,6 +22,8 @@ from shared.dto import (
     PipelineAgendaItem,
     PipelineAgendaKpis,
     PipelineAgendaResponse,
+    PursuitAdjudicacionDetectada,
+    PursuitAdjudicatario,
     PursuitCreate,
     PursuitDetail,
     PursuitListResponse,
@@ -25,8 +32,15 @@ from shared.dto import (
     PursuitSummary,
     PursuitUpdate,
 )
+from shared.identity import user_key_from_email
 
 _repo = PursuitRepository()
+_adj_repo = AdjudicacionRepository()
+_lic_repo = LicitacionRepository()
+log = get_logger(__name__)
+
+TIPO_NOTIFICACION_ASIGNACION = "pursuit_asignada"
+_ESTADOS_TERMINALES = frozenset({"won", "lost", "withdrawn"})
 
 # ── Topes de la agenda ──────────────────────────────────────────────────────
 # La agenda declara sus truncamientos en la respuesta (ADR-014: nada de
@@ -88,7 +102,91 @@ def create_pursuit(
         score_al_abrir=body.score_al_abrir,
         banda_al_abrir=body.banda_al_abrir,
     )
+    if created:
+        _notificar_asignacion(row, actor_user_id=user_id)
     return PursuitSummary.model_validate(row), created
+
+
+def _notificar_asignacion(row: dict[str, Any], *, actor_user_id: int) -> None:
+    """Alerta in-app a quien acaba de recibir la oportunidad.
+
+    Asignar a alguien no le decía nada hasta 2026-09: la fila cambiaba de
+    responsable y la persona se enteraba al abrir Mi Pipeline, si lo abría.
+    Nunca lanza —la asignación ya está escrita— y no avisa a quien se asigna a
+    sí mismo. La clave única de ``user_notifications`` hace que reasignar el
+    mismo expediente a la misma persona no repita el aviso.
+    """
+    responsable = row.get("responsible_user_id")
+    if responsable is None or int(responsable) == actor_user_id:
+        return
+    try:
+        usuario = get_user_by_id(int(responsable))
+        if usuario is None:
+            return
+        actor = get_user_by_id(actor_user_id) or {}
+        quien = str(actor.get("display_name") or actor.get("email") or "Alguien de tu equipo")
+        titulo = str(row.get("tender_title") or row.get("licitacion_id") or "")[:80]
+        insert_user_notification(
+            user_key=user_key_from_email(usuario.get("email"), int(responsable)),
+            type_=TIPO_NOTIFICACION_ASIGNACION,
+            title=f"Te han asignado: {titulo}",
+            body=f"{quien} te asignó esta oportunidad. Ábrela para ver la decisión pendiente "
+            "y la próxima acción.",
+            licitacion_id=str(row["licitacion_id"]),
+            organization_id=int(row["organization_id"]),
+        )
+    except Exception as exc:
+        log.warning(
+            "pursuit_assignment_notification_failed",
+            pursuit_id=row.get("id"),
+            error=str(exc)[:200],
+        )
+
+
+def _adjudicacion_detectada(row: dict[str, Any]) -> PursuitAdjudicacionDetectada | None:
+    """Lo que la ingesta ya sabe del resultado del expediente, o ``None``.
+
+    Se calcula en lectura y no se persiste: la adjudicación vive en su tabla y
+    puede corregirse con la siguiente pasada; copiarla al pursuit congelaría un
+    dato que no es suyo. Las filas se agregan lo justo para la ficha —importe
+    total y máximo de ofertas— sin resolver a empresa canónica.
+    """
+    licitacion_id = str(row["licitacion_id"])
+    filas = _adj_repo.list_for_licitacion(licitacion_id)
+    if not filas:
+        return None
+    licitacion = _lic_repo.get_by_id(licitacion_id) or {}
+    importes = [float(f["importe_adjudicado"]) for f in filas if f.get("importe_adjudicado")]
+    ofertas = [int(f["n_ofertas_recibidas"]) for f in filas if f.get("n_ofertas_recibidas")]
+    return PursuitAdjudicacionDetectada(
+        estado_licitacion=licitacion.get("estado"),
+        adjudicatarios=[
+            PursuitAdjudicatario(
+                nombre=str(f.get("nombre") or "Adjudicatario sin nombre publicado"),
+                nif=f.get("nif"),
+                importe_adjudicado=f.get("importe_adjudicado"),
+                fecha_adjudicacion=(
+                    str(f["fecha_adjudicacion"])[:10] if f.get("fecha_adjudicacion") else None
+                ),
+                n_ofertas_recibidas=f.get("n_ofertas_recibidas"),
+                lote_id=f.get("lote_id"),
+            )
+            for f in filas
+        ],
+        importe_total=sum(importes) if importes else None,
+        n_ofertas=max(ofertas) if ofertas else None,
+        cierre_pendiente=str(row.get("status")) not in _ESTADOS_TERMINALES,
+    )
+
+
+def _detalle(row: dict[str, Any], organization_id: int, pursuit_id: int) -> PursuitDetail:
+    return PursuitDetail.model_validate(
+        {
+            **row,
+            "events": _repo.list_events(organization_id, pursuit_id),
+            "adjudicacion": _adjudicacion_detectada(row),
+        }
+    )
 
 
 def list_pursuits(
@@ -127,9 +225,7 @@ def get_pursuit(
     row = _repo.get(resolved_id, pursuit_id)
     if row is None:
         raise PursuitNotFoundError("Oportunidad no encontrada.")
-    return PursuitDetail.model_validate(
-        {**row, "events": _repo.list_events(resolved_id, pursuit_id)}
-    )
+    return _detalle(row, resolved_id, pursuit_id)
 
 
 def update_pursuit(
@@ -171,9 +267,9 @@ def update_pursuit(
         raise PursuitConflictError(str(exc)) from exc
     if updated is None:
         raise PursuitNotFoundError("Oportunidad no encontrada.")
-    return PursuitDetail.model_validate(
-        {**updated, "events": _repo.list_events(resolved_id, pursuit_id)}
-    )
+    if changes.get("responsible_user_id") is not None:
+        _notificar_asignacion(updated, actor_user_id=user_id)
+    return _detalle(updated, resolved_id, pursuit_id)
 
 
 def get_metrics(
@@ -567,6 +663,7 @@ def _agenda_renovaciones(
                     "rule_nombre": None,
                     "adjudicatario": row.get("empresa"),
                     "riesgo_cambio": row.get("riesgo_cambio"),
+                    "fecha_fin_origen": row.get("fecha_fin_origen"),
                 }
             )
         )

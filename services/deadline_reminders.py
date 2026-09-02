@@ -11,16 +11,22 @@ El tipo de notificacion incluye la ventana para garantizar el UNIQUE
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from typing import Any
 
 from db.database import connect, connect_read
+from db.notifications import insert_user_notification
+from db.repositories.pursuits import PursuitRepository
 from observability.logging import get_logger
+from shared.identity import user_key_from_email
 
 log = get_logger(__name__)
 
 # Ventanas de alerta en dias
 _DEADLINE_WINDOWS = [30, 7, 1]
+#: Ventanas de la próxima acción de un pursuit. ``0`` es «hoy»: la acción la
+#: fijó el propio equipo y el día señalado merece aviso aunque no falte nada.
+_ACCION_WINDOWS = [7, 1, 0]
 
 
 def _get_watchlist_items(user_key: str) -> list[str]:
@@ -116,10 +122,83 @@ def check_deadlines_and_notify(user_key: str) -> int:
     return written
 
 
-def check_all_users_deadlines() -> int:
-    """Corre el check de deadlines para todos los usuarios con favoritos.
+def _dias_hasta(raw: object, hoy: date) -> int | None:
+    """Días naturales hasta una fecha ISO (o datetime ISO); ``None`` si no parsea."""
+    try:
+        return (date.fromisoformat(str(raw)[:10]) - hoy).days
+    except (ValueError, TypeError):
+        return None
 
-    Llamado desde el job de alertas (scheduler).
+
+def check_pursuit_deadlines() -> int:
+    """Recordatorios para los pursuits abiertos con responsable.
+
+    Dos fechas por pursuit: el plazo de presentación del expediente, con las
+    mismas ventanas y el mismo ``type`` que los favoritos (``deadline_<n>``,
+    así quien además lo tiene en favoritos no recibe el aviso dos veces), y la
+    próxima acción que el equipo se fijó (``accion_<n>``, con ventana «hoy»).
+
+    Hasta 2026-09 el pursuit —el objeto con compromisos de verdad— no generaba
+    ningún recordatorio: sólo la watchlist lo hacía, y ni siquiera ella corría
+    en producción porque nada llamaba a :func:`check_all_users_deadlines`.
+    """
+    rows = PursuitRepository().deadline_rows()
+    hoy = datetime.now(UTC).date()
+    written = 0
+    for row in rows:
+        email = row.get("responsible_email")
+        responsable = row.get("responsible_user_id")
+        if not email or responsable is None:
+            continue
+        user_key = user_key_from_email(str(email), int(responsable))
+        lic_id = str(row["licitacion_id"])
+        titulo = str(row.get("titulo") or lic_id)
+        organization_id = int(row["organization_id"])
+
+        dias = _dias_hasta(row.get("fecha_limite"), hoy)
+        if dias is not None and dias >= 0:
+            for window in _DEADLINE_WINDOWS:
+                if dias > window:
+                    continue
+                written += int(
+                    insert_user_notification(
+                        user_key=user_key,
+                        type_=_deadline_type(window, "fecha_limite"),
+                        title=f"Plazo de presentacion en {dias} dia(s): {titulo[:80]}",
+                        body=f"La oportunidad '{titulo}' vence el "
+                        f"{str(row.get('fecha_limite'))[:10]} ({dias} dias).",
+                        licitacion_id=lic_id,
+                        organization_id=organization_id,
+                    )
+                )
+
+        accion_dias = _dias_hasta(row.get("next_action_due"), hoy)
+        if accion_dias is not None and accion_dias >= 0:
+            accion = str(row.get("next_action") or "Próxima acción")[:80]
+            cuando = "hoy" if accion_dias == 0 else f"en {accion_dias} dia(s)"
+            for window in _ACCION_WINDOWS:
+                if accion_dias > window:
+                    continue
+                written += int(
+                    insert_user_notification(
+                        user_key=user_key,
+                        type_=f"accion_{window}",
+                        title=f"Proxima accion {cuando}: {accion}",
+                        body=f"Oportunidad '{titulo[:80]}'.",
+                        licitacion_id=lic_id,
+                        organization_id=organization_id,
+                    )
+                )
+    if written:
+        log.info("pursuit_deadline_notifications_written", count=written)
+    return written
+
+
+def check_all_users_deadlines() -> int:
+    """Corre el check de deadlines para todos los usuarios con favoritos y
+    para los pursuits abiertos.
+
+    Llamado desde ``_run_watchlist_notify`` (pipeline canónica, cada pasada).
     Returns: total de notificaciones escritas.
     """
     with connect_read() as c:
@@ -132,4 +211,8 @@ def check_all_users_deadlines() -> int:
             total += check_deadlines_and_notify(str(user_key))
         except Exception as exc:
             log.warning("deadline_check_error", user_key=str(user_key)[:8], error=str(exc))
+    try:
+        total += check_pursuit_deadlines()
+    except Exception as exc:
+        log.warning("pursuit_deadline_check_error", error=str(exc)[:200])
     return total

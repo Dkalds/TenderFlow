@@ -37,23 +37,33 @@ def get_unread_ids(user_key: str, candidate_ids: list[str]) -> list[str]:
 def get_user_alerts(
     user_key: str, limit: int = 50, organization_id: int | None = None
 ) -> list[dict[str, Any]]:
-    """Devuelve alertas de reglas/deadlines pendientes (unread primero)."""
+    """Devuelve alertas de reglas/deadlines pendientes (unread primero).
+
+    ``pursuit_id`` llega resuelto por ``(organization_id, licitacion_id)``: si
+    el expediente de la alerta ya es una oportunidad de esa organización, la
+    campana enlaza a la ficha de la oportunidad y no al inspector genérico. Es
+    un ``LEFT JOIN`` a propósito —una alerta de regla sobre un expediente sin
+    pursuit sigue siendo válida— y cuesta un índice de PK, nada más.
+    """
+    select = (
+        "SELECT n.id, n.created_at, n.type, n.title, n.body, n.licitacion_id, "
+        "n.rule_id, n.read_at, p.id AS pursuit_id "
+        "FROM user_notifications n "
+        "LEFT JOIN pursuits p ON p.organization_id = n.organization_id "
+        "AND p.licitacion_id = n.licitacion_id "
+    )
     with connect_read() as c:
         if organization_id is None:
             cur = c.execute(
-                "SELECT id, created_at, type, title, body, licitacion_id, rule_id, read_at "
-                "FROM user_notifications "
-                "WHERE user_key = %s "
-                "ORDER BY read_at IS NOT NULL, created_at DESC "
+                select + "WHERE n.user_key = %s "
+                "ORDER BY n.read_at IS NOT NULL, n.created_at DESC "
                 "LIMIT %s",
                 (user_key, limit),
             )
         else:
             cur = c.execute(
-                "SELECT id, created_at, type, title, body, licitacion_id, rule_id, read_at "
-                "FROM user_notifications "
-                "WHERE user_key = %s AND organization_id = %s "
-                "ORDER BY read_at IS NOT NULL, created_at DESC "
+                select + "WHERE n.user_key = %s AND n.organization_id = %s "
+                "ORDER BY n.read_at IS NOT NULL, n.created_at DESC "
                 "LIMIT %s",
                 (user_key, organization_id, limit),
             )

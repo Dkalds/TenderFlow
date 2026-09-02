@@ -125,6 +125,18 @@ def _signal_post_ingestion(fuente: str) -> None:
 
 _TI_PREFIXES = ("48", "72")
 
+# Motivos de inclusión que persiste el linaje (``licitaciones.inclusion_reason``).
+# ``cpv_ti_universe`` es nuevo desde 2026-09: antes un expediente de CPV 48/72
+# sin keyword que el modelo no aceptaba se **descartaba antes de guardarse**, y
+# como la LCSP (art. 126) restringe nombrar marcas en los pliegos, eso dejaba
+# fuera justo las implantaciones nuevas —«un ERP», «una plataforma de RRHH»—
+# que son las oportunidades grandes. Ahora se conservan con este motivo, sin
+# ``tecnologia`` (el listado por defecto no las enseña; las reglas, la búsqueda
+# y el Investigador sí las ven), igual que TED guarda ya todo su CPV 48/72.
+INCLUSION_KEYWORD = "keyword"
+INCLUSION_ML_RESCUE = "ml_cpv_rescue"
+INCLUSION_CPV_TI = "cpv_ti_universe"
+
 
 @dataclasses.dataclass(frozen=True)
 class _ClassifierHolder:
@@ -215,16 +227,21 @@ def _apply_tech_prediction(lic: Licitacion) -> dict[str, Any] | None:
 
 
 def _ml_classify_entry(entry_elem: Any) -> Licitacion | None:
-    """Fallback ML para entries TI (CPV 48/72) sin keywords de tecnología.
+    """Entradas TI (CPV 48/72) sin keywords de tecnología: parse + score ML.
 
-    Flujo:
+    Devuelve la ``Licitacion`` con ``inclusion_reason`` ya decidido, o ``None``
+    sólo si la entry no es TI o no se puede parsear:
+
       1. Comprobación rápida de CPV — descarta no-TI sin parsear.
-      2. Carga el clasificador (singleton por proceso).
-      3. Parse completo con parse_entry_unfiltered.
-      4. Score con SAPClassifier:
-           - ml_proba < ML_UNCERTAINTY_LO   → None (negativo confiable, descartar)
-           - [ML_UNCERTAINTY_LO, threshold) → incluir para revisión manual (active learning)
-           - [threshold, 1]                 → incluir como positivo confiable
+      2. Parse completo con parse_entry_unfiltered.
+      3. Score con SAPClassifier (si hay modelo):
+           - ml_proba < ML_UNCERTAINTY_LO   → se conserva como ``cpv_ti_universe``
+                                              (sin ``tecnologia``: negativo del
+                                              clasificador, pero expediente TI)
+           - [ML_UNCERTAINTY_LO, threshold) → ``ml_cpv_rescue`` para revisión manual
+           - [threshold, 1]                 → ``ml_cpv_rescue`` positivo confiable
+         Sin modelo, o si el score falla, la entry se conserva como
+         ``cpv_ti_universe``: la regla de CPV no depende del clasificador.
     """
     from config import settings
 
@@ -238,17 +255,16 @@ def _ml_classify_entry(entry_elem: Any) -> Licitacion | None:
     if not cpv or not any(cpv.startswith(p) for p in _TI_PREFIXES):
         return None
 
-    # 2 — Verificar modelo disponible antes del parse (evitar parse inútil)
-    clf = _get_ml_clf()
-    if clf is None:
-        return None
-
-    # 3 — Parse completo sin filtro de keywords
+    # 2 — Parse completo sin filtro de keywords
     lic = parse_entry_unfiltered(entry_elem)
     if lic is None:
         return None
+    lic.inclusion_reason = INCLUSION_CPV_TI
 
-    # 4 — Score ML con texto aumentado
+    # 3 — Score ML con texto aumentado (si hay modelo)
+    clf = _get_ml_clf()
+    if clf is None:
+        return lic
     try:
         from scraper.ml_pipeline import _augment_text
 
@@ -260,7 +276,7 @@ def _ml_classify_entry(entry_elem: Any) -> Licitacion | None:
         proba = float(clf.pipeline.predict_proba([text])[0][1])
     except Exception as exc:
         log.debug("pipeline.ml_score_failed", error=str(exc))
-        return None
+        return lic
 
     lic.ml_proba = proba
     lic.classifier_model_version = str(getattr(clf, "metadata", {}).get("trained_at") or "unknown")
@@ -282,8 +298,12 @@ def _ml_classify_entry(entry_elem: Any) -> Licitacion | None:
                 break
 
     if proba < settings.ML_UNCERTAINTY_LO and accepted_by_tech is None:
-        return None  # negativo confiable → descartar
+        # Negativo confiable del clasificador. Antes se descartaba; ahora queda
+        # como expediente TI sin familia, que es lo que es.
+        log.debug("pipeline.cpv_ti_kept", id=lic.id_externo, ml_proba=round(proba, 3))
+        return lic
 
+    lic.inclusion_reason = INCLUSION_ML_RESCUE
     log.info(
         "pipeline.ml_fallback_accepted",
         id=lic.id_externo,
@@ -575,10 +595,13 @@ def process_daily(*, run_id: str | None = None) -> dict[str, Any]:
     for entry_elem, updated_str in entries:
         try:
             lic = parse_entry(entry_elem)
-            inclusion_reason = "keyword"
+            inclusion_reason = INCLUSION_KEYWORD
             if lic is None:
                 lic = _ml_classify_entry(entry_elem)
-                inclusion_reason = "ml_cpv_rescue"
+                # El fallback decide el motivo (rescate ML o universo CPV).
+                inclusion_reason = (
+                    (lic.inclusion_reason or INCLUSION_ML_RESCUE) if lic else INCLUSION_ML_RESCUE
+                )
             if lic:
                 from scraper.lineage import current_filter_version
 

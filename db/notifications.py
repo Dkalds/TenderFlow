@@ -67,3 +67,46 @@ def get_last_seen_ts(user_key: str) -> str | None:
             (user_key,),
         ).fetchone()
     return row[0] if row else None
+
+
+def insert_user_notification(
+    *,
+    user_key: str,
+    type_: str,
+    title: str,
+    body: str | None,
+    licitacion_id: str | None,
+    organization_id: int | None = None,
+    rule_id: int | None = None,
+    created_at: str | None = None,
+) -> bool:
+    """Escribe una alerta in-app en ``user_notifications``; idempotente.
+
+    La tabla lleva ``UNIQUE(user_key, licitacion_id, type)``, así que quien
+    llama codifica en ``type_`` lo que hace única a la alerta (``deadline_7``,
+    ``pursuit_asignada``, ``adjudicacion_detectada``…) y repetir la llamada no
+    duplica la fila. Devuelve ``True`` sólo si insertó.
+
+    Es la única escritura de alertas de producto fuera de los jobs de reglas:
+    hasta ahora cada productor (reglas, recordatorios) repetía su propio
+    ``INSERT`` con el mismo ``ON CONFLICT``, y un tercero —las asignaciones de
+    pursuits— habría sido la tercera copia.
+    """
+    with connect() as c:
+        cur = c.execute(
+            "INSERT INTO user_notifications "
+            "(user_key, created_at, type, title, body, licitacion_id, rule_id, organization_id) "
+            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s) "
+            "ON CONFLICT(user_key, licitacion_id, type) DO NOTHING",
+            (
+                user_key,
+                created_at or now_utc_iso(),
+                type_,
+                title,
+                body,
+                licitacion_id,
+                rule_id,
+                organization_id,
+            ),
+        )
+        return bool(cur.rowcount > 0)

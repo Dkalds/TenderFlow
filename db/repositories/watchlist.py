@@ -93,16 +93,31 @@ class WatchlistRepository:
             return False
 
     def load_pending_digests(self, frequency: str) -> list[dict[str, Any]]:
-        """Carga los digests pendientes (no enviados) para una frecuencia dada."""
+        """Carga los digests pendientes (no enviados) para una frecuencia dada.
+
+        ``entry_id`` apunta a dos tablas según quién encoló la fila: el job de
+        reglas (``watchlist_rules``, el producto vivo) o el legado de
+        ``watchlist_cpv``. La tabla no lleva discriminador, así que se resuelve
+        por ``(id, user_key)``: una regla del mismo usuario con ese id gana, y
+        sólo si no la hay se cae al legado. Antes se unía sólo a ``watchlist_cpv``
+        por ``id``, y un digest de reglas salía con los criterios de una entrada
+        ajena que casualmente compartía número.
+        """
         with connect_read() as c:
             cur = c.execute(
                 "SELECT pd.id, pd.recipient_email, pd.entry_id, pd.licitacion_id, pd.user_key, "
                 "       l.titulo, l.descripcion, l.organo_contratacion, "
-                "       l.cpv, l.importe, l.ccaa, l.estado, l.fecha_publicacion, l.url, "
-                "       w.cpv_prefix, w.keyword, w.min_importe, w.ccaa AS entry_ccaa "
+                "       l.cpv, l.importe, l.ccaa, l.estado, l.fecha_publicacion, "
+                "       l.fecha_limite, l.tecnologia, l.url, "
+                "       COALESCE(r.cpv, w.cpv_prefix) AS cpv_prefix, "
+                "       COALESCE(r.keyword, w.keyword) AS keyword, "
+                "       COALESCE(r.min_importe, w.min_importe) AS min_importe, "
+                "       COALESCE(r.ccaa, w.ccaa) AS entry_ccaa, "
+                "       r.nombre AS rule_nombre "
                 "FROM pending_digests pd "
                 "LEFT JOIN licitaciones l ON l.id_externo = pd.licitacion_id "
-                "LEFT JOIN watchlist_cpv w ON w.id = pd.entry_id "
+                "LEFT JOIN watchlist_rules r ON r.id = pd.entry_id AND r.user_key = pd.user_key "
+                "LEFT JOIN watchlist_cpv w ON w.id = pd.entry_id AND r.id IS NULL "
                 "WHERE pd.sent = 0 AND pd.frequency = %s "
                 "ORDER BY pd.recipient_email, pd.entry_id",
                 (frequency,),

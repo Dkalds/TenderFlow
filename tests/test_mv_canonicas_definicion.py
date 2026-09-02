@@ -1,8 +1,8 @@
 """La vista materializada define lo mismo que los fragmentos del repositorio.
 
 Desde la revisión ``v94`` la definición de «qué contrato se publica» vive en la
-vista ``licitaciones_canonicas``, y las seis superficies indexables se limitan a
-leer de ella. Eso resuelve el coste —de ~200 s por petición a ~10 s por pasada
+vista ``licitaciones_canonicas`` (redefinida en ``v98`` para acotarla al universo
+tecnológico), y las seis superficies indexables se limitan a leer de ella. Eso resuelve el coste —de ~200 s por petición a ~10 s por pasada
 del pipeline— pero abre un modo de fallo nuevo: la vista congela su cuerpo en la
 migración, y si ese cuerpo se separa de los fragmentos que el repositorio
 considera canónicos, **nada falla**. La superficie serviría, muy deprisa, un
@@ -15,9 +15,10 @@ Aquí viven además dos propiedades que antes se comprobaban sobre el SQL de cad
 consulta (``tests/test_dedupe_publico.py``) y que al materializar dejaron de
 estar allí: siguen siendo ciertas, pero ahora son propiedades **de la vista**.
 
-Si este fichero falla, la corrección **no** es editar la constante de ``v94``:
-esa migración ya corrió y describe la vista que existe en producción. Es escribir
-una revisión nueva que reconstruya la vista con la definición nueva.
+Si este fichero falla, la corrección **no** es editar la constante de la
+revisión vigente: esa migración ya corrió y describe la vista que existe en
+producción. Es escribir una revisión nueva que reconstruya la vista con la
+definición nueva y mover ``_RUTA_VISTA`` a ella (v94 → v98 fue la primera vez).
 """
 
 from __future__ import annotations
@@ -32,26 +33,31 @@ from db.sql_fragments import (
     orden_canonico_sql,
 )
 
-_RUTA_V94 = (
+# La revisión que define la vista HOY. Cada redefinición mueve este puntero:
+# v94 la creó; v98 la acotó al universo tecnológico. Apuntar a una revisión
+# vieja haría pasar el test contra una vista que ya no existe en producción.
+_RUTA_VISTA = (
     Path(__file__).resolve().parents[1]
     / "db"
     / "alembic"
     / "versions"
-    / "v94_mv_licitaciones_canonicas.py"
+    / "v98_mv_canonicas_universo_tecnologico.py"
 )
 
 
-def _cargar_v94() -> Any:
+def _cargar_revision_vigente() -> Any:
     """Carga la revisión por ruta: ``db/alembic/versions/`` no es un paquete."""
-    spec = importlib.util.spec_from_file_location("v94_mv_licitaciones_canonicas", _RUTA_V94)
+    spec = importlib.util.spec_from_file_location(
+        "v98_mv_canonicas_universo_tecnologico", _RUTA_VISTA
+    )
     assert spec is not None and spec.loader is not None
     modulo = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(modulo)
     return modulo
 
 
-_V94 = _cargar_v94()
-_CUERPO: str = _V94._CUERPO
+_REVISION = _cargar_revision_vigente()
+_CUERPO: str = _REVISION._CUERPO
 
 
 def _publicable_esperado() -> str:
@@ -148,7 +154,7 @@ def test_el_refresco_es_concurrente_y_tiene_su_indice_unico() -> None:
     mitades se comprueban juntas: quitar el índice rompería el refresco sin que
     nada más lo notara.
     """
-    fuente = _RUTA_V94.read_text(encoding="utf-8")
+    fuente = _RUTA_VISTA.read_text(encoding="utf-8")
 
     assert "CREATE UNIQUE INDEX" in fuente
     assert "id_externo" in fuente

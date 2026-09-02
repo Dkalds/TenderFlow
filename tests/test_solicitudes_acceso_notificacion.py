@@ -59,7 +59,7 @@ class TestUrlDeLogin:
             CORS_ALLOWED_ORIGINS="https://app.tenderflow.example, https://otro.example",
             OAUTH_REDIRECT_URI="",
         )
-        with patch("services.solicitudes_acceso.settings", fake):
+        with patch("services.app_urls.settings", fake):
             assert url_de_login() == "https://app.tenderflow.example/login"
 
     def test_cae_al_origen_del_callback_oauth(self):
@@ -67,13 +67,13 @@ class TestUrlDeLogin:
             CORS_ALLOWED_ORIGINS="",
             OAUTH_REDIRECT_URI="https://app.example/api/v1/auth/oauth/google/callback",
         )
-        with patch("services.solicitudes_acceso.settings", fake):
+        with patch("services.app_urls.settings", fake):
             assert url_de_login() == "https://app.example/login"
 
     def test_sin_configuracion_no_inventa_una_url(self):
         """Mejor un correo sin botón que un botón a ninguna parte."""
         fake = SimpleNamespace(CORS_ALLOWED_ORIGINS="", OAUTH_REDIRECT_URI="")
-        with patch("services.solicitudes_acceso.settings", fake):
+        with patch("services.app_urls.settings", fake):
             assert url_de_login() is None
 
 

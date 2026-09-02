@@ -35,6 +35,7 @@ from services.competitive.mercado import (
 from services.competitive.renovaciones import (
     RenovacionesResult,
     RenovacionesResumenResult,
+    enriquecer_renovaciones,
     resumen_renovaciones,
     totales_renovaciones,
 )
@@ -101,18 +102,34 @@ async def get_renovaciones(
     """Pipeline de renovaciones: cada fila es un contrato-adjudicatario con
     fecha de fin efectiva (explícita o calculada con la duración CODICE)."""
     tecnologias = [t.strip() for t in (tecnologia or "").split(",") if t.strip()]
-    items = await run_db(
-        proximas_renovaciones,
-        months_ahead=months,
-        empresa_id=empresa_id,
-        ccaa=ccaa,
-        tecnologias=tecnologias or None,
-        min_importe=min_importe,
-        order_by=order_by,
-        limit=limit,
-        offset=offset,
+
+    def _consultar() -> list[dict[str, Any]]:
+        """Consulta y enriquecido, en un solo salto al threadpool.
+
+        La lectura de la prórroga (``enriquecer_renovaciones``) parsea el JSON
+        de la ficha del pliego de cada fila y le pasa un regex: es trabajo
+        síncrono y, sobre 200 filas, no es despreciable. Fuera de ``run_db``
+        correría en el event loop y ningún otro endpoint del proceso
+        respondería mientras tanto.
+        """
+        filas = proximas_renovaciones(
+            months_ahead=months,
+            empresa_id=empresa_id,
+            ccaa=ccaa,
+            tecnologias=tecnologias or None,
+            min_importe=min_importe,
+            order_by=order_by,
+            limit=limit,
+            offset=offset,
+            # Este listado sí pinta la prórroga, así que pide la ficha.
+            con_ficha=True,
+        )
+        # La prórroga se lee de la ficha del pliego en el servicio: es dominio, no SQL.
+        return enriquecer_renovaciones(filas)
+
+    return RenovacionesResult.model_validate(
+        {"items": await run_db(_consultar), "months_ahead": months}
     )
-    return RenovacionesResult.model_validate({"items": items, "months_ahead": months})
 
 
 @router.get("/renovaciones/resumen", summary="Cartera en juego por empresa")

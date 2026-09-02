@@ -258,7 +258,7 @@ export function TenderFactSheetPanel({ licitacionId }: { licitacionId: string })
             <p className="mx-auto mt-1 max-w-lg text-sm text-muted-foreground">
               {extracting
                 ? "Se están descargando los pliegos pendientes y extrayendo los requisitos. Puedes seguir navegando: la ficha aparecerá aquí sola."
-                : "La extracción solo muestra información que pueda citarse desde el pliego. Los campos sin evidencia se mantienen vacíos."}
+                : "La ficha se extrae sola al abrir una oportunidad y en las pasadas nocturnas, que priorizan los expedientes con oportunidad o favorito. Puedes lanzarla ahora. Solo se muestra lo que pueda citarse desde el pliego: los campos sin evidencia quedan vacíos."}
             </p>
             {!extracting && record?.error_detail && (
               <p className="mt-2 text-xs text-destructive">Último intento: {record.error_detail}</p>

@@ -13,7 +13,7 @@ import re
 from datetime import date, datetime
 from typing import Annotated, Any, Generic, Literal, TypeVar
 
-from pydantic import BaseModel, BeforeValidator, ConfigDict, EmailStr, Field
+from pydantic import BaseModel, BeforeValidator, ConfigDict, EmailStr, Field, field_validator
 
 # Postgres serializa timestamptz a texto sin los minutos del offset cuando son
 # cero (p.ej. "2026-08-01 00:45:48.33444+00"), formato que el parser RFC3339
@@ -701,6 +701,54 @@ class OrganizationMemberInvite(BaseModel):
     role: Literal["admin", "member", "viewer"] = "member"
 
 
+class OrganizationSettings(BaseModel):
+    """Configuración de producto de una organización (``organizations.settings_json``).
+
+    ``tecnologias`` son las familias del diccionario (``SAP``, ``MICROSOFT``…)
+    que vende la organización. Vacío significa «todas»: el Radar puntúa el
+    universo entero, como hasta 2026-09. Con familias declaradas, el Radar
+    acota su universo a ellas cuando el usuario no filtra por tecnología a
+    mano, y la ingesta no cambia —el filtro es una vista sobre el corpus, no
+    una pérdida de datos.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    tecnologias: list[str] = Field(default_factory=list, max_length=30)
+
+    @field_validator("tecnologias")
+    @classmethod
+    def _normaliza_tecnologias(cls, value: list[str]) -> list[str]:
+        vistas: list[str] = []
+        for raw in value:
+            code = str(raw).strip().upper()
+            if code and code not in vistas:
+                vistas.append(code)
+        return vistas
+
+
+class OrganizationSettingsOut(OrganizationSettings):
+    """Configuración leída, con la organización a la que pertenece."""
+
+    organization_id: int = Field(ge=1)
+    #: Familias válidas del diccionario, para que el cliente pinte el selector
+    #: sin copiarse la lista a mano (invariante 3 de ``web/AGENTS.md``).
+    tecnologias_disponibles: list[str] = Field(default_factory=list)
+
+
+class CalendarioEnlace(BaseModel):
+    """Enlace de suscripción al calendario ICS del usuario."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    #: Ruta relativa al origen del sitio; el cliente antepone su origen. Un
+    #: cliente de calendario externo la consume tal cual.
+    path: str
+    #: Cuántos eventos devolvería hoy, para que la UI no ofrezca un calendario
+    #: vacío sin decirlo.
+    eventos: int = Field(ge=0)
+
+
 class PursuitCreate(BaseModel):
     """Convierte una licitación existente en oportunidad colaborativa.
 
@@ -791,10 +839,48 @@ class PursuitSummary(BaseModel):
     comments_count: int = Field(default=0, ge=0)
 
 
+class PursuitAdjudicatario(BaseModel):
+    """Un adjudicatario del expediente, tal como lo publicó la fuente."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    nombre: str
+    nif: str | None = None
+    importe_adjudicado: float | None = Field(default=None, ge=0)
+    fecha_adjudicacion: str | None = None
+    n_ofertas_recibidas: int | None = Field(default=None, ge=0)
+    lote_id: int | None = None
+
+
+class PursuitAdjudicacionDetectada(BaseModel):
+    """La adjudicación que el sistema ya conoce de una oportunidad abierta.
+
+    Existe para cerrar el ciclo sin teclear: hasta 2026-09 ganada, perdida e
+    importe adjudicado se escribían a mano aunque la ingesta ya traía
+    adjudicatario, importe y número de ofertas del mismo expediente. La ficha
+    la muestra como propuesta —«este expediente se adjudicó a X por Y €»— y la
+    persona confirma el resultado; el sistema no decide por ella quién ganó
+    porque no conoce el NIF de la organización.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    estado_licitacion: str | None = None
+    adjudicatarios: list[PursuitAdjudicatario] = Field(default_factory=list)
+    importe_total: float | None = Field(default=None, ge=0)
+    n_ofertas: int | None = Field(default=None, ge=0)
+    #: ``True`` cuando el pursuit sigue abierto: es entonces cuando la ficha
+    #: debe proponer el cierre. En un pursuit ya cerrado la adjudicación es
+    #: contexto, no una acción pendiente.
+    cierre_pendiente: bool
+
+
 class PursuitDetail(PursuitSummary):
     """Detalle de una oportunidad con su ledger append-only."""
 
     events: list[PursuitEventOut] = Field(default_factory=list)
+    #: Sólo viaja cuando la ingesta conoce una adjudicación del expediente.
+    adjudicacion: PursuitAdjudicacionDetectada | None = None
 
 
 class PursuitListResponse(BaseModel):
@@ -925,6 +1011,10 @@ class PipelineAgendaItem(BaseModel):
     rule_nombre: str | None
     adjudicatario: str | None
     riesgo_cambio: float | None
+    #: Sólo en renovaciones: ``real`` si la fuente publicó la fecha de fin,
+    #: ``estimada_*`` si se calculó con la duración. Opcional para no romper a
+    #: los clientes que construyen items sin este dato.
+    fecha_fin_origen: str | None = None
 
 
 class PipelineAgendaKpis(BaseModel):

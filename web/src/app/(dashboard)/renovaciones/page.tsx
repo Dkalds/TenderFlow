@@ -17,6 +17,7 @@ import type {
 import { useFilters } from "@/lib/filters";
 import { KpiCard, KpiStrip } from "@/components/charts/kpi-card";
 import { PipelineRoleNav } from "@/components/pipeline-role-nav";
+import { FechaFinOrigenBadge } from "@/components/pursuits/fecha-fin-origen-badge";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -409,10 +410,21 @@ export default function RenovacionesPage() {
                 <>
                   <TableCell className="whitespace-nowrap">
                     <div className="flex flex-col gap-1">
-                      <span className="text-sm">{r.fecha_fin_efectiva ?? "—"}</span>
+                      <span className="flex items-center gap-1.5 text-sm">
+                        {r.fecha_fin_efectiva ?? "—"}
+                        {/* Sólo el ~6% de estas fechas las publica la fuente;
+                            el resto sale de la duración del contrato. */}
+                        <FechaFinOrigenBadge origen={r.fecha_fin_origen} />
+                      </span>
                       <Badge variant={diasBadgeVariant(r.dias_restantes)} className="w-fit">
                         {r.dias_restantes != null ? `${r.dias_restantes} días` : "—"}
                       </Badge>
+                      {r.prorroga_meses != null && (
+                        <span className="text-[10.5px] leading-tight text-muted-foreground">
+                          +{r.prorroga_meses} meses de prórroga
+                          {r.fecha_fin_con_prorroga ? ` → ${r.fecha_fin_con_prorroga}` : ""}
+                        </span>
+                      )}
                     </div>
                   </TableCell>
                   <TableCell className="max-w-[320px]">

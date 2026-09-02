@@ -5,10 +5,11 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
+from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Query, status
 
 from api.concurrency import run_db
 from api.routes.dual_auth import require_any_auth
+from observability.logging import get_logger
 from services.organizations import (
     OrganizationAccessError,
     OrganizationMemberNotFoundError,
@@ -57,6 +58,7 @@ from shared.dto import (
     PursuitUpdate,
 )
 
+log = get_logger(__name__)
 router = APIRouter(tags=["pursuits"])
 
 
@@ -166,6 +168,7 @@ async def put_organization_member(
 )
 async def post_pursuit(
     body: PursuitCreate,
+    background: BackgroundTasks,
     idempotency_key: str | None = Header(
         default=None,
         alias="X-Idempotency-Key",
@@ -173,19 +176,62 @@ async def post_pursuit(
     ),
     ctx: dict[str, Any] = Depends(require_any_auth),
 ) -> PursuitSummary:
-    """Abre una oportunidad; reintentar la misma licitación no duplica."""
+    """Abre una oportunidad; reintentar la misma licitación no duplica.
+
+    Abrirla es la señal de demanda más fuerte que existe, así que si el
+    expediente no tiene ficha del pliego se lanza su extracción en background
+    (``PLIEGO_FACTS_ON_PURSUIT``): quien acaba de comprometerse abrirá la
+    pestaña Pliego hoy, no cuando el lote nocturno llegue a ese expediente.
+    """
     try:
-        pursuit, _created = await run_db(
+        pursuit, created = await run_db(
             create_pursuit,
             int(ctx["user_id"]),
             body,
             idempotency_key=idempotency_key,
         )
-        return pursuit
     except (OrganizationAccessError, OrganizationPermissionError) as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except PursuitValidationError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if created:
+        await _lanzar_ficha_si_falta(background, pursuit.licitacion_id, ctx)
+    return pursuit
+
+
+async def _lanzar_ficha_si_falta(
+    background: BackgroundTasks, licitacion_id: str, ctx: dict[str, Any]
+) -> None:
+    """Encola la extracción de la ficha si no existe. Nunca falla la creación."""
+    from config import settings
+
+    if not settings.PLIEGO_FACTS_ON_PURSUIT:
+        return
+    try:
+        from services.rag.fact_sheet import (
+            get_fact_sheet,
+            run_background_extraction,
+            try_mark_extraction_running,
+        )
+
+        if await run_db(get_fact_sheet, licitacion_id) is not None:
+            return
+        if not await run_db(try_mark_extraction_running, licitacion_id):
+            return
+        raw_subject = ctx.get("user_key")
+        background.add_task(
+            run_background_extraction,
+            licitacion_id,
+            model=settings.PLIEGO_FACTS_MODEL,
+            budget_subject=raw_subject if isinstance(raw_subject, str) and raw_subject else None,
+        )
+        log.info("pursuit_fact_sheet_extraction_started", licitacion_id=licitacion_id)
+    except Exception as exc:
+        log.warning(
+            "pursuit_fact_sheet_extraction_skipped",
+            licitacion_id=licitacion_id,
+            error=str(exc)[:200],
+        )
 
 
 @router.get("/pursuits", response_model=PursuitListResponse)
