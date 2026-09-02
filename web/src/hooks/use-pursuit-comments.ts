@@ -13,10 +13,16 @@
  * Para un hilo por expediente y un equipo de bid es suficiente y no añade
  * infraestructura; si algún día hace falta empuje real, este hook es el único
  * sitio a cambiar.
+ *
+ * Sin telemetría, a propósito: «¿conversa el equipo o cada oportunidad la
+ * trabaja una sola persona?» se responde mejor en backend, contando
+ * `pursuit_comments` (mensajes, autores distintos, expedientes con hilo), que
+ * con un evento categórico. Es la regla 1 de `lib/analytics.ts` —lo que el
+ * servidor ya sabe no se mide desde el navegador— y por eso este hook no
+ * gasta un hueco del catálogo.
  */
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { fetchWithAuth } from "@/lib/api-client";
-import { primeraVez, registrarEvento } from "@/lib/analytics";
 import { useActiveOrganizationId } from "@/hooks/use-organization";
 import { pursuitKeys } from "@/hooks/use-pursuits";
 import type {
@@ -107,12 +113,7 @@ export function useAddPursuitComment(pursuitId: number | string) {
         headers: { "X-Idempotency-Key": idempotencyKey },
         body: JSON.stringify(input),
       }),
-    onSuccess: () => {
-      // Ni el id de la oportunidad ni el texto entran en el evento: el hecho
-      // es "el equipo conversa", no "quién dijo qué".
-      registrarEvento("pursuit_comentado", { primera_vez: primeraVez("pursuit_comentario") });
-      return invalidateThread(queryClient, pursuitId);
-    },
+    onSuccess: () => invalidateThread(queryClient, pursuitId),
   });
 }
 

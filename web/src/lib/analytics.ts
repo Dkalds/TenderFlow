@@ -103,13 +103,6 @@ export interface EventosProducto {
    */
   pursuit_estado_cambiado: { estado: string };
   /**
-   * ¿Se usa la colaboración, o cada oportunidad la trabaja una sola persona?
-   * El hilo de comentarios es la primera superficie de equipo dentro de un
-   * expediente; sin este evento no hay forma de saber si un espacio compartido
-   * conversa o solo reparte responsables. Del comentario no viaja nada.
-   */
-  pursuit_comentado: { primera_vez: PrimeraVez };
-  /**
    * El **primer** paso del embudo de activación, y el que más pesa: hasta que
    * alguien pone sus pesos y sus keywords, «el Radar puntúa con pesos
    * genéricos» y todo lo que ve encima está ordenado para otro. Sin este
@@ -222,7 +215,6 @@ export const PROPIEDADES_PERMITIDAS = {
   licitacion_seguida: ["accion"],
   pursuit_creado: ["primera_vez"],
   pursuit_estado_cambiado: ["estado"],
-  pursuit_comentado: ["primera_vez"],
   perfil_configurado: ["primera_vez"],
   onboarding_ocultado: ["progreso"],
   regla_creada: ["primera_vez"],

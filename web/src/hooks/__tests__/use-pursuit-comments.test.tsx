@@ -10,13 +10,6 @@ import {
 } from "@/hooks/use-pursuit-comments";
 import { useOrganizationStore } from "@/hooks/use-organization";
 import { callMethod, callUrl, jsonResponse } from "./fetch-call";
-import { primeraVez, registrarEvento } from "@/lib/analytics";
-
-// Telemetría doblada: lo que se fija es qué evento sale de la mutación.
-vi.mock("@/lib/analytics", () => ({
-  registrarEvento: vi.fn(),
-  primeraVez: vi.fn(() => "si"),
-}));
 
 const organization = {
   id: 1,
@@ -65,8 +58,6 @@ function stubFetch(mutation: (call: readonly unknown[]) => Response | undefined 
 afterEach(() => {
   useOrganizationStore.setState({ activeOrganizationId: null });
   vi.unstubAllGlobals();
-  vi.mocked(registrarEvento).mockClear();
-  vi.mocked(primeraVez).mockClear();
 });
 
 describe("pursuit comment hooks", () => {
@@ -93,7 +84,7 @@ describe("pursuit comment hooks", () => {
     expect(fetchMock.mock.calls.map(callUrl).some((url) => url.includes("/comments"))).toBe(false);
   });
 
-  it("posts the draft with its idempotency key and reports the event", async () => {
+  it("posts the draft with its idempotency key in the header, not the body", async () => {
     useOrganizationStore.setState({ activeOrganizationId: 1 });
     const fetchMock = stubFetch((call) =>
       callMethod(call) === "POST" ? jsonResponse(comment, 201) : undefined,
@@ -111,7 +102,6 @@ describe("pursuit comment hooks", () => {
     // La clave viaja en la cabecera, nunca en el cuerpo: la API la rechazaría
     // (`extra="forbid"`).
     expect(JSON.parse(String(init.body))).toEqual({ body: "hola" });
-    expect(registrarEvento).toHaveBeenCalledWith("pursuit_comentado", { primera_vez: "si" });
   });
 
   it("deletes a comment and accepts the empty 204 body", async () => {
