@@ -24,7 +24,7 @@ Este script convierte esa afirmación en invariante verificado. Por cada job de
 Uso::
 
     python scripts/check_job_parity.py          # falla con exit 1 si hay huecos
-    python scripts/check_job_parity.py --json   # salida para docs/_Dashboard.md
+    python scripts/check_job_parity.py --json   # salida legible por máquina
 """
 
 from __future__ import annotations
