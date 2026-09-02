@@ -18,6 +18,9 @@ from typing import Any, NamedTuple
 
 from db.database import connect, connect_read, now_utc_iso
 from db.repositories.base import rows_to_dicts
+from observability.logging import get_logger
+
+log = get_logger(__name__)
 
 # Sentinel persistido cuando una licitación se puntuó y no dio ninguna
 # tecnología por encima del mínimo de hits: sin esta fila, la consulta de
@@ -302,6 +305,16 @@ class TecnologiaPliegoRepository:
             try:
                 chunk_results, chunk_errors = self._merge_chunk(chunk, compute)
             except Exception as exc:
+                # ``exc_info``: el dict de errores solo se queda con el str, y
+                # eso es justo lo que hizo indiagnosticable el KeyError que
+                # este rediseño arregla (``error: "'SAP'"`` sin traza). El
+                # traceback solo existe aquí.
+                log.warning(
+                    "tech_signal_merge_chunk_failed",
+                    n_licitaciones=len(chunk),
+                    primera=chunk[0],
+                    exc_info=True,
+                )
                 errors.update(dict.fromkeys(chunk, f"{type(exc).__name__}: {exc}"))
                 continue
             results.update(chunk_results)
@@ -359,6 +372,11 @@ class TecnologiaPliegoRepository:
                 try:
                     result = compute(licitacion_id, state)
                 except Exception as exc:
+                    log.warning(
+                        "tech_signal_merge_failed",
+                        licitacion_id=licitacion_id,
+                        exc_info=True,
+                    )
                     errors[licitacion_id] = f"{type(exc).__name__}: {exc}"
                     continue
                 if result is None:

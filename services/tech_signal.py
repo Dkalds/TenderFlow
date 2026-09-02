@@ -213,8 +213,9 @@ def merge_doc_signals(licitacion_ids: list[str] | None = None) -> dict[str, int]
 
     outcome = repo.merge_many_with_lock(list(by_licitacion), _compute)
 
-    for licitacion_id, error in outcome.errors.items():
-        log.warning("tech_signal_merge_failed", licitacion_id=licitacion_id, error=error)
+    # Los fallos ya los loguea el repositorio, uno a uno y con ``exc_info``:
+    # repetirlos aquí solo duplicaría la línea, y sin la traza, que es lo único
+    # que faltaba para diagnosticar el KeyError de las 33 licitaciones.
     pliego_tech_merge_total.labels(outcome="error").inc(len(outcome.errors))
     pliego_tech_merge_total.labels(outcome="ok").inc(len(outcome.results))
 
