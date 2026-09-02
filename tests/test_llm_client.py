@@ -50,7 +50,7 @@ def test_provider_for_nvidia_models():
 
     assert provider_for("deepseek-ai/deepseek-v4-flash-0731") == "nvidia"
     assert provider_for("nvidia/nemotron-3-super-120b-a12b") == "nvidia"
-    assert provider_for("z-ai/glm-5.2") == "nvidia"
+    assert provider_for("minimaxai/minimax-m3") == "nvidia"
     assert provider_for("meta/llama-3.1-70b-instruct") == "nvidia"
 
 

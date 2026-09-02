@@ -44,12 +44,17 @@ _NVIDIA_BASE_URL = os.environ.get("NVIDIA_BASE_URL", "https://integrate.api.nvid
 #
 # Los modelos NVIDIA NIM se validaron contra el catálogo vivo
 # (GET https://integrate.api.nvidia.com/v1/models, público, sin auth) el
-# 2026-08-13. NVIDIA retira modelos sin aviso: `deepseek-ai/deepseek-v4-pro` —
+# 2026-09-02. NVIDIA retira modelos sin aviso: `deepseek-ai/deepseek-v4-pro` —
 # el default anterior — llegó a su end-of-life el 2026-08-07T09:00Z y desde
 # entonces devuelve 410, lo que dejó la IA caída seis días en silencio. Antes de
 # tocar esta lista, verificá contra ese endpoint que el id sigue existiendo.
 #
-# Los cuatro modelos NIM marcados abajo como "razonamiento" generan una traza de
+# Segundo caso, esta vez detectado por el canary y no por usuarios:
+# `z-ai/glm-5.2` desapareció del catálogo el 2026-09-02 (con él, el namespace
+# `z-ai` entero: no queda ningún GLM que ofertar). Era el segundo eslabón de
+# `FALLBACK_MODELS`, así que se sustituyó allí — ver el comentario de esa lista.
+#
+# Los tres modelos NIM marcados abajo como "razonamiento" generan una traza de
 # reasoning ANTES de la respuesta final, y esa traza consume el presupuesto de
 # `max_tokens` del provider (900 en /ask, 1500 en /resumen). Si la traza se lo
 # come entero, el stream llega vacío y /ask degrada — mismo síntoma que un
@@ -60,8 +65,6 @@ AVAILABLE_MODELS: list[str] = [
     # 284B totales / 13B activos. Tier "flash": el de menor coste computacional
     # por token de la lista y por eso el de mejor relación velocidad/calidad.
     "deepseek-ai/deepseek-v4-flash-0731",
-    # 744B / 40B activos. Razonamiento, pero con modo non-thinking explícito.
-    "z-ai/glm-5.2",
     # 120B / 12B activos, 1M contexto, español soportado. Razonamiento.
     "nvidia/nemotron-3-super-120b-a12b",
     # 550B / 55B activos, 1M contexto. Razonamiento. El más lento del lote.
@@ -90,9 +93,18 @@ DEFAULT_MODEL = "deepseek-ai/deepseek-v4-flash-0731"
 # nunca se cambia de modelo a mitad de respuesta: con tokens ya emitidos el
 # error se propaga tal cual. El orden es coste ascendente dentro de "fiable":
 # segundo NIM gratuito primero, después los proveedores de pago baratos.
+#
+# Ese segundo eslabón era `z-ai/glm-5.2` hasta que salió del catálogo
+# (2026-09-02). Su reemplazo es el NIM de menor coste computacional que queda,
+# pero SÍ es de razonamiento sin modo non-thinking explícito: si la traza se
+# come el `max_tokens`, devuelve stream vacío. Eso no rompe la cadena — un
+# candidato vacío cuenta como fallo y se pasa al siguiente — pero es la razón
+# de que siga por delante de los de pago y no al revés: en un despliegue con
+# solo NVIDIA_API_KEY es el único respaldo posible, y en uno con claves de pago
+# lo peor que hace es costar un intento antes de gpt-4o-mini.
 FALLBACK_MODELS: list[str] = [
     DEFAULT_MODEL,
-    "z-ai/glm-5.2",
+    "nvidia/nemotron-3-super-120b-a12b",
     "gpt-4o-mini",
     "claude-haiku-4-5",
 ]
@@ -132,7 +144,6 @@ _PRICE_PER_MTOK: dict[str, tuple[float, float]] = {
     # plan de pago el control ya está puesto. Son estimaciones por clase de
     # modelo, no tarifas publicadas: ajustar al plan real que se contrate.
     "deepseek-ai/deepseek-v4-flash-0731": (0.10, 0.40),
-    "z-ai/glm-5.2": (0.60, 2.00),
     "nvidia/nemotron-3-super-120b-a12b": (0.20, 0.80),
     "nvidia/nemotron-3-ultra-550b-a55b": (0.90, 3.60),
     "minimaxai/minimax-m3": (0.30, 1.20),
