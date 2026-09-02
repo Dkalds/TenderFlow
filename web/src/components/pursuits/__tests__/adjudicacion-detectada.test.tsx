@@ -33,6 +33,7 @@ const base: Pursuit = {
   created_at: "2026-07-30T10:00:00Z",
   updated_at: "2026-07-30T10:00:00Z",
   version: 4,
+  comments_count: 0,
   events: [],
   adjudicacion: {
     estado_licitacion: "ADJ",

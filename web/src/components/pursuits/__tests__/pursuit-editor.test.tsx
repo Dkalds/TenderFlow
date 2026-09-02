@@ -38,6 +38,7 @@ const basePursuit: Pursuit = {
   created_at: "2026-07-30T10:00:00Z",
   updated_at: "2026-07-30T10:00:00Z",
   version: 1,
+  comments_count: 0,
 };
 
 afterEach(() => {

@@ -16,7 +16,10 @@ _PURSUIT_SELECT = (
     "p.outcome, p.awarded_amount_eur, p.outcome_reason, "
     "p.next_action, p.next_action_due, "
     "p.identified_at, p.decision_at, p.submitted_at, p.closed_at, "
-    "p.created_at, p.updated_at, p.version "
+    "p.created_at, p.updated_at, p.version, "
+    # Contador del hilo de comentarios en la misma consulta: el tablero lo
+    # pinta en cada tarjeta y una llamada por oportunidad no escala (v97).
+    "(SELECT COUNT(*) FROM pursuit_comments c WHERE c.pursuit_id = p.id) AS comments_count "
     "FROM pursuits p "
     "JOIN licitaciones l ON l.id_externo = p.licitacion_id "
     "LEFT JOIN users u ON u.id = p.responsible_user_id "

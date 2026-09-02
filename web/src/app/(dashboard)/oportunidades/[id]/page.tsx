@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { ArrowLeft, CalendarClock, ExternalLink, Landmark, User } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
+import { PursuitCommentsThread } from "@/components/pursuits/pursuit-comments";
 import { PursuitEditor } from "@/components/pursuits/pursuit-editor";
 import { PriceScenariosPanel } from "@/components/pursuits/price-scenarios";
 import {
@@ -32,9 +33,14 @@ import { usePursuit } from "@/hooks/use-pursuits";
  * No se ha quitado nada: el editor completo, la ficha del pliego y los
  * escenarios siguen siendo los mismos componentes, con su `expected_version` y
  * su bloqueo de P(ganar) intactos.
+ *
+ * La cuarta pestaña, «Conversación», es el hilo de comentarios del equipo
+ * (`pursuit-comments.tsx`): el mismo hilo que se abre en panel lateral desde
+ * cada tarjeta del tablero. Su badge es el contador que ya viaja en la
+ * oportunidad (`comments_count`), no una segunda llamada.
  */
 
-type TabKey = "decision" | "expediente" | "pliego" | "precio";
+type TabKey = "decision" | "expediente" | "pliego" | "precio" | "conversacion";
 
 export default function OpportunityDetailPage() {
   const params = useParams<{ id: string }>();
@@ -128,6 +134,11 @@ export default function OpportunityDetailPage() {
             { key: "expediente", label: "Expediente" },
             { key: "pliego", label: "Pliego" },
             { key: "precio", label: "Precio" },
+            {
+              key: "conversacion",
+              label: "Conversación",
+              badge: pursuit.comments_count ? pursuit.comments_count : undefined,
+            },
           ]}
         />
       </header>
@@ -180,6 +191,9 @@ export default function OpportunityDetailPage() {
 
         {tab === "pliego" && <TenderFactSheetPanel licitacionId={pursuit.licitacion_id} />}
         {tab === "precio" && <PriceScenariosPanel licitacionId={pursuit.licitacion_id} />}
+        {tab === "conversacion" && (
+          <PursuitCommentsThread pursuitId={pursuit.id} className="mx-auto h-full max-w-[760px]" />
+        )}
       </div>
     </div>
   );

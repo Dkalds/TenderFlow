@@ -833,6 +833,10 @@ class PursuitSummary(BaseModel):
     created_at: PgDateTime
     updated_at: PgDateTime
     version: int = Field(ge=1)
+    # Tamaño del hilo de comentarios. Lo calcula el repositorio en la misma
+    # consulta (subconsulta correlacionada, v97): el tablero pinta el contador
+    # en cada tarjeta sin una llamada por oportunidad.
+    comments_count: int = Field(default=0, ge=0)
 
 
 class PursuitAdjudicatario(BaseModel):
@@ -886,6 +890,64 @@ class PursuitListResponse(BaseModel):
     items: list[PursuitSummary] = Field(default_factory=list)
     total: int = Field(ge=0)
     limit: int = Field(ge=1, le=200)
+    offset: int = Field(ge=0)
+
+
+# ── Comentarios de una oportunidad ──────────────────────────────────────────
+#
+# El hilo de conversación del equipo sobre un expediente. Tabla propia
+# (``pursuit_comments``, v97) y no entradas del ledger ``pursuit_events``: el
+# ledger es append-only por trigger (v61) y un comentario tiene que poder
+# borrarse; además, mezclar conversación con auditoría convierte el historial
+# de decisiones en ruido.
+
+#: Longitud máxima de un comentario. La migración v97 lo fija también como
+#: CHECK en la tabla, así que cambiarlo aquí exige una revisión nueva.
+PURSUIT_COMMENT_MAX_CHARS = 4000
+
+
+class PursuitCommentCreate(BaseModel):
+    """Nuevo comentario en el hilo de una oportunidad."""
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    body: SafeStr = Field(min_length=1, max_length=PURSUIT_COMMENT_MAX_CHARS)
+
+
+class PursuitCommentOut(BaseModel):
+    """Comentario con el autor resuelto y el permiso de borrado de quien lo pide.
+
+    ``can_delete`` se calcula en backend (autor, o owner/admin del espacio):
+    así el frontend no duplica la regla de moderación ni necesita conocer el
+    rol del solicitante. ``author_user_id`` queda ``NULL`` cuando la cuenta se
+    anonimiza (RGPD); el texto sigue siendo parte del trabajo del equipo.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: int = Field(ge=1)
+    pursuit_id: int = Field(ge=1)
+    organization_id: int = Field(ge=1)
+    author_user_id: int | None = None
+    author_name: str | None = None
+    body: str
+    created_at: PgDateTime
+    can_delete: bool = False
+
+
+class PursuitCommentListResponse(BaseModel):
+    """Página del hilo, en orden cronológico y paginada desde el más reciente.
+
+    ``offset=0`` son los últimos ``limit`` comentarios —lo que un chat abre—,
+    devueltos del más antiguo al más nuevo. ``total`` declara el tamaño real
+    del hilo para que el cliente diga cuánto no está mostrando (ADR-014).
+    """
+
+    pursuit_id: int = Field(ge=1)
+    organization_id: int = Field(ge=1)
+    items: list[PursuitCommentOut] = Field(default_factory=list)
+    total: int = Field(ge=0)
+    limit: int = Field(ge=1, le=500)
     offset: int = Field(ge=0)
 
 

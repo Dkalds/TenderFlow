@@ -127,6 +127,17 @@ export async function apiMutate<T>(
     throw new ApiError(res.status, error.detail ?? error.title ?? "Unknown error");
   }
 
+  return readJsonBody<T>(res);
+}
+
+/**
+ * Cuerpo de una respuesta correcta. Un 204 (los DELETE de la API) no trae
+ * cuerpo, y `res.json()` sobre él revienta con «Unexpected end of JSON input»
+ * justo después de que el borrado haya funcionado: la mutación caía en
+ * `onError` con el dato ya borrado en el servidor.
+ */
+async function readJsonBody<T>(res: Response): Promise<T> {
+  if (res.status === 204) return undefined as T;
   return res.json() as Promise<T>;
 }
 
@@ -168,7 +179,7 @@ export async function fetchWithAuth<T>(
     throw new ApiError(res.status, body.detail ?? body.title ?? `API error: ${res.status}`);
   }
 
-  return res.json() as Promise<T>;
+  return readJsonBody<T>(res);
 }
 
 export class ApiError extends Error {
