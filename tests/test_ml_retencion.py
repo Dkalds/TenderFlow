@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+from datetime import date, timedelta
 
 import pytest
 
@@ -56,6 +57,28 @@ def _contrato(
         "VALUES (%s, %s, %s, %s, %s, CURRENT_TIMESTAMP)",
         (lic_id, f"Empresa {empresa_id}", adjudicado, fecha_adj, empresa_id),
     )
+
+
+def _dia(offset_dias: int) -> str:
+    """Fecha ISO a ``offset_dias`` de hoy (negativo = pasado).
+
+    Todo lo que se siembre para las pruebas de **vencimientos** tiene que salir
+    de aquí, nunca de una fecha escrita a mano. ``features_para_vencimientos``
+    filtra por una ventana anclada en el reloj —``hoy <= fin <= hoy +
+    months_ahead * 30 días``—, así que una constante solo es correcta hasta que
+    el calendario la deja fuera, y entonces el test falla en todas las ramas a
+    la vez sin que nadie haya tocado el código.
+
+    No es hipotético: ``fecha_fin="2026-09-01"`` estuvo entrando por el borde
+    exacto de la ventana hasta el 2026-09-01 y tumbó CI el día 2. En el mismo
+    fichero había un segundo caso armado para el 2026-10-02 y un tercero, el
+    contrato "lejano", que habría entrado en la ventana al llegar 2029.
+
+    Los pares históricos (un contrato y su sucesor, ambos ya ocurridos) sí
+    pueden llevar fechas fijas: comparan pasado contra pasado y el tiempo solo
+    los aleja.
+    """
+    return (date.today() + timedelta(days=offset_dias)).isoformat()
 
 
 # ---------------------------------------------------------------------------
@@ -198,9 +221,12 @@ def test_features_para_vencimientos_solo_futuros(db):
 
     with connect() as c:
         e1 = _empresa(c, "Activa SL")
-        _contrato(c, "PASADO", fecha_adj="2020-01-01", fecha_fin="2021-01-01", empresa_id=e1)
-        _contrato(c, "PROXIMO", fecha_adj="2024-01-01", fecha_fin="2026-09-01", empresa_id=e1)
-        _contrato(c, "LEJANO", fecha_adj="2024-01-01", fecha_fin="2030-01-01", empresa_id=e1)
+        # Los tres se colocan respecto a la ventana [hoy, hoy + 360 días], que
+        # es la que abre `months_ahead=12`: uno ya vencido, uno holgadamente
+        # dentro y uno muy por detrás del límite.
+        _contrato(c, "PASADO", fecha_adj=_dia(-1460), fecha_fin=_dia(-365), empresa_id=e1)
+        _contrato(c, "PROXIMO", fecha_adj=_dia(-730), fecha_fin=_dia(90), empresa_id=e1)
+        _contrato(c, "LEJANO", fecha_adj=_dia(-730), fecha_fin=_dia(365 * 5), empresa_id=e1)
 
     filas = features_para_vencimientos(months_ahead=12)
 
@@ -261,13 +287,15 @@ def test_entrenar_y_puntuar_retencion(db, monkeypatch, tmp_path):
     monkeypatch.setattr(retencion_model_mod, "MIN_TRAIN_SAMPLES", 60)
     with connect() as c:
         fiel, _ = _sembrar_pares(c)
-        # Vencimiento futuro del incumbente fiel para el scoring
+        # Vencimiento futuro del incumbente fiel para el scoring: dentro de la
+        # ventana pase el tiempo que pase, porque de él dependen tanto
+        # `status == "ok"` como la fila de 'FUTURO' que se comprueba abajo.
         _contrato(
             c,
             "FUTURO",
             organo="Organo F1",
-            fecha_adj="2025-09-01",
-            fecha_fin="2026-10-01",
+            fecha_adj=_dia(-365),
+            fecha_fin=_dia(90),
             empresa_id=fiel,
             adjudicado=92_000.0,
         )

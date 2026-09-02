@@ -23,6 +23,7 @@ from db.repositories.api_keys import ApiKeyRepository
 from db.repositories.audit import AuditRepository
 from db.repositories.feedback import FeedbackRepository
 from db.repositories.organizations import OrganizationRepository
+from db.repositories.pursuit_comments import PursuitCommentRepository
 from db.repositories.pursuits import PursuitRepository
 from db.repositories.user_profiles import delete_user_profile, get_user_profile
 from db.repositories.watchlist import WatchlistRepository
@@ -36,6 +37,7 @@ _feedback_repo = FeedbackRepository()
 _audit_repo = AuditRepository()
 _organization_repo = OrganizationRepository()
 _pursuit_repo = PursuitRepository()
+_pursuit_comment_repo = PursuitCommentRepository()
 
 
 def get_user_id_from_key_id(key_id: int) -> int | None:
@@ -109,6 +111,9 @@ def export_collaboration_data(user_id: int) -> dict[str, list[dict[str, Any]]]:
     return {
         "organization_memberships": _organization_repo.export_memberships_for_user(user_id),
         **data,
+        # Solo lo que escribió el solicitante: los comentarios de sus compañeros
+        # en el mismo hilo son datos de ellos, no suyos.
+        "pursuit_comments": _pursuit_comment_repo.export_for_user(user_id),
     }
 
 
@@ -132,6 +137,7 @@ def anonymize_user_data(
     if user_id is not None:
         _feedback_repo.delete_for_user(user_id)
         _pursuit_repo.anonymize_user_references(user_id)
+        _pursuit_comment_repo.anonymize_author(user_id)
         _organization_repo.remove_memberships_for_user(user_id)
     if key_id is not None:
         _api_key_repo.deactivate_by_id(key_id)

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ArrowRight, CalendarClock, UserRound } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
+import { PursuitCommentsButton } from "@/components/pursuits/pursuit-comments";
 import { PursuitDecisionBadge, PursuitStatusBadge, daysUntil, formatDate } from "@/components/pursuits/pursuit-presenters";
 import type { Pursuit } from "@/hooks/use-pursuits";
 
@@ -25,8 +26,12 @@ export function PursuitCard({ pursuit }: { pursuit: Pursuit }) {
             <span className="inline-flex items-center gap-1.5"><UserRound className="h-3.5 w-3.5" />{pursuit.responsible_name ?? "Sin responsable"}</span>
           </div>
 
-          <div className="mt-4 flex items-center justify-between gap-3 border-t border-border/60 pt-3">
+          <div className="mt-4 flex items-center gap-3 border-t border-border/60 pt-3">
             <PursuitDecisionBadge decision={pursuit.decision} />
+            <div className="flex-1" />
+            {/* El chat del equipo se abre aquí mismo, en un panel lateral:
+                comentar una oportunidad no obliga a salir del tablero. */}
+            <PursuitCommentsButton pursuit={pursuit} />
             <Link href={`/oportunidades/${pursuit.id}`} className="inline-flex items-center gap-1 text-xs font-semibold text-primary hover:underline">
               Abrir ficha <ArrowRight className="h-3.5 w-3.5" />
             </Link>

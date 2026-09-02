@@ -2733,6 +2733,53 @@ export interface paths {
         patch: operations["patch_pursuit_api_v1_pursuits__pursuit_id__patch"];
         trace?: never;
     };
+    "/api/v1/pursuits/{pursuit_id}/comments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Pursuit Comments
+         * @description Conversación del equipo sobre la oportunidad.
+         *
+         *     Paginada desde el más reciente (``offset=0`` = los últimos ``limit``), y
+         *     cada página se devuelve en orden cronológico.
+         */
+        get: operations["get_pursuit_comments_api_v1_pursuits__pursuit_id__comments_get"];
+        put?: never;
+        /**
+         * Post Pursuit Comment
+         * @description Publica un comentario; reintentar con la misma clave no lo duplica.
+         */
+        post: operations["post_pursuit_comment_api_v1_pursuits__pursuit_id__comments_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/pursuits/{pursuit_id}/comments/{comment_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Borrar un comentario
+         * @description Borra un comentario propio; owner y admin pueden borrar cualquiera.
+         */
+        delete: operations["delete_pursuit_comment_api_v1_pursuits__pursuit_id__comments__comment_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/radar/dismissals": {
         parameters: {
             query?: never;
@@ -6161,6 +6208,69 @@ export interface components {
             total_clasificados: number;
         };
         /**
+         * PursuitCommentCreate
+         * @description Nuevo comentario en el hilo de una oportunidad.
+         */
+        PursuitCommentCreate: {
+            /** Body */
+            body: string;
+        };
+        /**
+         * PursuitCommentListResponse
+         * @description Página del hilo, en orden cronológico y paginada desde el más reciente.
+         *
+         *     ``offset=0`` son los últimos ``limit`` comentarios —lo que un chat abre—,
+         *     devueltos del más antiguo al más nuevo. ``total`` declara el tamaño real
+         *     del hilo para que el cliente diga cuánto no está mostrando (ADR-014).
+         */
+        PursuitCommentListResponse: {
+            /** Items */
+            items?: components["schemas"]["PursuitCommentOut"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Organization Id */
+            organization_id: number;
+            /** Pursuit Id */
+            pursuit_id: number;
+            /** Total */
+            total: number;
+        };
+        /**
+         * PursuitCommentOut
+         * @description Comentario con el autor resuelto y el permiso de borrado de quien lo pide.
+         *
+         *     ``can_delete`` se calcula en backend (autor, o owner/admin del espacio):
+         *     así el frontend no duplica la regla de moderación ni necesita conocer el
+         *     rol del solicitante. ``author_user_id`` queda ``NULL`` cuando la cuenta se
+         *     anonimiza (RGPD); el texto sigue siendo parte del trabajo del equipo.
+         */
+        PursuitCommentOut: {
+            /** Author Name */
+            author_name?: string | null;
+            /** Author User Id */
+            author_user_id?: number | null;
+            /** Body */
+            body: string;
+            /**
+             * Can Delete
+             * @default false
+             */
+            can_delete: boolean;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Id */
+            id: number;
+            /** Organization Id */
+            organization_id: number;
+            /** Pursuit Id */
+            pursuit_id: number;
+        };
+        /**
          * PursuitCreate
          * @description Convierte una licitación existente en oportunidad colaborativa.
          *
@@ -6197,6 +6307,11 @@ export interface components {
             awarded_amount_eur?: number | null;
             /** Closed At */
             closed_at?: string | null;
+            /**
+             * Comments Count
+             * @default 0
+             */
+            comments_count: number;
             /**
              * Created At
              * Format: date-time
@@ -6337,6 +6452,11 @@ export interface components {
             awarded_amount_eur?: number | null;
             /** Closed At */
             closed_at?: string | null;
+            /**
+             * Comments Count
+             * @default 0
+             */
+            comments_count: number;
             /**
              * Created At
              * Format: date-time
@@ -13595,6 +13715,123 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["PursuitDetail"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_pursuit_comments_api_v1_pursuits__pursuit_id__comments_get: {
+        parameters: {
+            query?: {
+                organization_id?: number | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                pursuit_id: number;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PursuitCommentListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_pursuit_comment_api_v1_pursuits__pursuit_id__comments_post: {
+        parameters: {
+            query?: {
+                organization_id?: number | null;
+            };
+            header?: {
+                "X-Idempotency-Key"?: string | null;
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                pursuit_id: number;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PursuitCommentCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PursuitCommentOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_pursuit_comment_api_v1_pursuits__pursuit_id__comments__comment_id__delete: {
+        parameters: {
+            query?: {
+                organization_id?: number | null;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                pursuit_id: number;
+                comment_id: number;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

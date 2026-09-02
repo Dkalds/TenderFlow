@@ -20,6 +20,12 @@ from services.organizations import (
     list_organizations,
     upsert_membership,
 )
+from services.pursuit_comments import (
+    PursuitCommentNotFoundError,
+    add_comment,
+    delete_comment,
+    list_comments,
+)
 from services.pursuits import (
     PursuitConflictError,
     PursuitNotFoundError,
@@ -39,6 +45,9 @@ from shared.dto import (
     OrganizationMembershipUpsert,
     OrganizationSummary,
     PipelineAgendaResponse,
+    PursuitCommentCreate,
+    PursuitCommentListResponse,
+    PursuitCommentOut,
     PursuitCreate,
     PursuitDetail,
     PursuitListResponse,
@@ -304,3 +313,92 @@ async def patch_pursuit(
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except PursuitValidationError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+# ── Hilo de comentarios ─────────────────────────────────────────────────────
+
+
+@router.get("/pursuits/{pursuit_id}/comments", response_model=PursuitCommentListResponse)
+async def get_pursuit_comments(
+    pursuit_id: int,
+    organization_id: int | None = Query(default=None, ge=1),
+    limit: int = Query(default=200, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
+    ctx: dict[str, Any] = Depends(require_any_auth),
+) -> PursuitCommentListResponse:
+    """Conversación del equipo sobre la oportunidad.
+
+    Paginada desde el más reciente (``offset=0`` = los últimos ``limit``), y
+    cada página se devuelve en orden cronológico.
+    """
+    try:
+        return await run_db(
+            list_comments,
+            int(ctx["user_id"]),
+            pursuit_id,
+            organization_id=organization_id,
+            limit=limit,
+            offset=offset,
+        )
+    except OrganizationAccessError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except PursuitNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.post(
+    "/pursuits/{pursuit_id}/comments",
+    response_model=PursuitCommentOut,
+    status_code=status.HTTP_201_CREATED,
+)
+async def post_pursuit_comment(
+    pursuit_id: int,
+    body: PursuitCommentCreate,
+    organization_id: int | None = Query(default=None, ge=1),
+    idempotency_key: str | None = Header(
+        default=None,
+        alias="X-Idempotency-Key",
+        max_length=200,
+    ),
+    ctx: dict[str, Any] = Depends(require_any_auth),
+) -> PursuitCommentOut:
+    """Publica un comentario; reintentar con la misma clave no lo duplica."""
+    try:
+        return await run_db(
+            add_comment,
+            int(ctx["user_id"]),
+            pursuit_id,
+            body,
+            organization_id=organization_id,
+            idempotency_key=idempotency_key,
+        )
+    except (OrganizationAccessError, OrganizationPermissionError) as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except PursuitNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.delete(
+    "/pursuits/{pursuit_id}/comments/{comment_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Borrar un comentario",
+)
+async def delete_pursuit_comment(
+    pursuit_id: int,
+    comment_id: int,
+    organization_id: int | None = Query(default=None, ge=1),
+    ctx: dict[str, Any] = Depends(require_any_auth),
+) -> None:
+    """Borra un comentario propio; owner y admin pueden borrar cualquiera."""
+    try:
+        await run_db(
+            delete_comment,
+            int(ctx["user_id"]),
+            pursuit_id,
+            comment_id,
+            organization_id=organization_id,
+        )
+    except (OrganizationAccessError, OrganizationPermissionError) as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except (PursuitNotFoundError, PursuitCommentNotFoundError) as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
