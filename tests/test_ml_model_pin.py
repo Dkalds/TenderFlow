@@ -81,8 +81,12 @@ def test_load_prod_with_colocated_checksum_is_allowed(tmp_path, monkeypatch) -> 
 
 
 def test_ensure_downloaded_rejects_non_github_repository(tmp_path) -> None:
-    """El repositorio no puede inyectar rutas ni consultas en la GitHub API."""
-    with patch("scraper.ml_classifier.pinned_https_request") as request:
+    """El repositorio no puede inyectar rutas ni consultas en la GitHub API.
+
+    La validación se mudó a ``shared.release_assets`` con el transporte; el
+    contrato observable desde aquí no cambia.
+    """
+    with patch("shared.release_assets.pinned_https_request") as request:
         downloaded = SAPClassifier.ensure_downloaded(
             path=tmp_path / "model.pkl",
             repo="Dkalds/TenderFlow?redirect=https://internal.example",
@@ -90,3 +94,80 @@ def test_ensure_downloaded_rejects_non_github_repository(tmp_path) -> None:
 
     assert downloaded is False
     request.assert_not_called()
+
+
+def test_ensure_downloaded_baja_tambien_el_checksum_co_ubicado(tmp_path) -> None:
+    """Sin el ``.sha256``, ``load()`` con ENV=prod rechaza el artefacto.
+
+    Bajar solo el ``.pkl`` cambiaba ``no_model`` por ``load_failed``: el paso
+    seguía sin puntuar nada, solo que por otro motivo.
+    """
+    destino = tmp_path / "sap_classifier.pkl"
+    with (
+        patch("shared.release_assets.fetch_latest_release", return_value={"assets": []}),
+        patch("shared.release_assets.find_asset_id", return_value=7),
+        patch("shared.release_assets.download_asset", return_value=True) as descarga,
+        patch("shared.release_assets.download_checksum_sidecar", return_value=True) as sidecar,
+    ):
+        assert SAPClassifier.ensure_downloaded(path=destino) is True
+
+    assert descarga.call_args.args[2] == destino
+    assert sidecar.call_args.args[2] == destino
+
+
+# ── Tercer canal: la Release por nombre, sin pasar por el registro ──────────
+#
+# `resolve_servable_artifact` (#264) mira `model_versions` y, si no hay versión
+# activa, cae al fichero local. En un runner efímero ninguno de los dos existe:
+# `model_versions` no tiene fila de `sap_classifier` y `data/models/` está en
+# `.gitignore`. Sin un tercer canal el paso seguiría en `no_model` con el
+# artefacto publicado en la Release desde el 2026-05-22.
+
+
+def test_resolve_artifact_prefiere_el_registro_y_no_descarga(tmp_path) -> None:
+    with (
+        patch(
+            "shared.model_artifacts.resolve_servable_artifact",
+            return_value=tmp_path / "del_registro.pkl",
+        ),
+        patch.object(SAPClassifier, "ensure_downloaded") as descarga,
+    ):
+        assert SAPClassifier.resolve_artifact() == tmp_path / "del_registro.pkl"
+
+    descarga.assert_not_called()
+
+
+def test_resolve_artifact_cae_a_la_release_cuando_no_hay_ni_registro_ni_local() -> None:
+    """El caso de producción: sin fila en `model_versions` y sin fichero local."""
+    with (
+        patch("shared.model_artifacts.resolve_servable_artifact", return_value=None),
+        patch.object(SAPClassifier, "ensure_downloaded", return_value=True) as descarga,
+    ):
+        resuelto = SAPClassifier.resolve_artifact()
+
+    descarga.assert_called_once()
+    assert resuelto is not None
+    assert resuelto.name == "sap_classifier.pkl"
+
+
+def test_resolve_artifact_devuelve_none_si_la_release_tampoco_lo_tiene() -> None:
+    with (
+        patch("shared.model_artifacts.resolve_servable_artifact", return_value=None),
+        patch.object(SAPClassifier, "ensure_downloaded", return_value=False),
+    ):
+        assert SAPClassifier.resolve_artifact() is None
+
+
+def test_tech_resolve_artifact_tambien_cae_a_la_release() -> None:
+    """Gemelo del SAP: hoy no encuentra nada porque `train-tech.yml` aún no publica."""
+    from scraper.tech_classifier import TechnologyClassifier
+
+    with (
+        patch("shared.model_artifacts.resolve_servable_artifact", return_value=None),
+        patch.object(TechnologyClassifier, "ensure_downloaded", return_value=True) as descarga,
+    ):
+        resuelto = TechnologyClassifier.resolve_artifact()
+
+    descarga.assert_called_once()
+    assert resuelto is not None
+    assert resuelto.name == "tech_classifier.pkl"

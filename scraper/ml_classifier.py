@@ -56,7 +56,6 @@ Uso:
 
 from __future__ import annotations
 
-import re
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
@@ -71,7 +70,6 @@ from scraper.ml_pipeline import (
     _tune_pipeline,
 )
 from shared.model_integrity import verify_model_integrity, write_checksum
-from shared.outbound_http import pinned_https_request
 
 if TYPE_CHECKING:
     import numpy as np
@@ -82,7 +80,6 @@ log = get_logger(__name__)
 
 # Ruta del modelo serializado (formato joblib, extensión .pkl por compatibilidad)
 _MODEL_PATH = Path(__file__).parents[1] / "data" / "models" / "sap_classifier.pkl"
-_GITHUB_REPO_RE = re.compile(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+")
 
 # Número mínimo de ejemplos para entrenar
 MIN_TRAIN_SAMPLES = 50
@@ -787,107 +784,73 @@ class SAPClassifier:
         Usa GITHUB_TOKEN del entorno si está disponible (necesario para repos privados
         y siempre disponible en GitHub Actions via secrets.GITHUB_TOKEN).
 
+        Baja **también** el checksum co-ubicado ``sap_classifier.sha256`` de la
+        misma Release: con ``ENV=prod``, ``verify_model_integrity`` rechaza
+        deserializar un artefacto sin checksum ni pin ``ML_MODEL_SHA256``, así
+        que un ``.pkl`` a secas solo cambia el modo de fallo.
+
+        El transporte vive en ``shared.release_assets``, que es quien sabe que
+        el endpoint de assets responde 302 hacia el CDN y toma la decisión de
+        allowlist para ese segundo salto. Aquí se dejó de descargar entre
+        2026-07-27 y 2026-09-03 justamente por no tenerla.
+
         Returns:
             True si el modelo está disponible (ya existía o se descargó correctamente).
             False si no se pudo descargar (sin acceso a red, sin releases, etc.).
         """
-        import json
         import os
+
+        from shared.release_assets import (
+            download_asset,
+            download_checksum_sidecar,
+            fetch_latest_release,
+            find_asset_id,
+        )
 
         target = path or _MODEL_PATH
         if target.exists():
             log.info("ml_classifier.model_already_local", path=str(target))
             return True
 
-        if not _GITHUB_REPO_RE.fullmatch(repo):
-            log.warning("ml_classifier.invalid_release_repository", repository=repo)
-            return False
-
         github_token = os.environ.get("GITHUB_TOKEN", "")
-        auth_header = {"Authorization": f"Bearer {github_token}"} if github_token else {}
-
-        # Obtener la URL del asset desde la GitHub API
-        api_url = f"https://api.github.com/repos/{repo}/releases/latest"
-        try:
-            with pinned_https_request(
-                "GET",
-                api_url,
-                headers={
-                    "Accept": "application/vnd.github+json",
-                    "User-Agent": "tenderflow",
-                    **auth_header,
-                },
-                timeout_seconds=15,
-                allowed_hosts=frozenset({"api.github.com"}),
-            ) as response:
-                response.raise_for_status()
-                release = json.loads(b"".join(response.iter_content()))
-        except Exception as e:
-            log.warning("ml_classifier.release_fetch_failed", error=str(e))
+        release = fetch_latest_release(repo, token=github_token)
+        if release is None:
+            return False
+        asset_id = find_asset_id(release, asset_name)
+        if asset_id is None:
             return False
 
-        if not isinstance(release, dict):
-            log.warning("ml_classifier.invalid_release_response")
-            return False
-        assets = release.get("assets", [])
-        if not isinstance(assets, list):
-            log.warning("ml_classifier.invalid_release_assets")
+        log.info("ml_classifier.downloading_model", asset_id=asset_id, dest=str(target))
+        if not download_asset(repo, asset_id, target, token=github_token):
             return False
 
-        asset_id: int | None = None
-        for asset in assets:
-            if isinstance(asset, dict) and asset.get("name") == asset_name:
-                candidate = asset.get("id")
-                if isinstance(candidate, int) and candidate > 0:
-                    asset_id = candidate
-                break
+        # Verificar el pin out-of-band si está configurado: no confiar en un
+        # modelo descargado cuyo hash no coincide con ML_MODEL_SHA256.
+        pinned = str(getattr(settings, "ML_MODEL_SHA256", "") or "").strip().lower()
+        if pinned:
+            import hashlib
 
-        if not asset_id:
+            actual = hashlib.sha256(target.read_bytes()).hexdigest().lower()
+            if actual != pinned:
+                log.error(
+                    "ml_classifier.download_hash_mismatch",
+                    expected=pinned[:16],
+                    got=actual[:16],
+                )
+                target.unlink(missing_ok=True)
+                return False
+
+        if not download_checksum_sidecar(repo, release, target, token=github_token) and not pinned:
             log.warning(
-                "ml_classifier.asset_not_found", asset=asset_name, release=release.get("tag_name")
+                "ml_classifier.sin_verificacion_de_integridad",
+                path=str(target),
+                hint=(
+                    "la Release no trae el .sha256 del artefacto y ML_MODEL_SHA256 está "
+                    "vacío; con ENV=prod load() rechazará este fichero"
+                ),
             )
-            return False
-
-        # Para repos privados, descargar via API con Accept: application/octet-stream
-        download_url = f"https://api.github.com/repos/{repo}/releases/assets/{asset_id}"
-        target.parent.mkdir(parents=True, exist_ok=True)
-        try:
-            log.info("ml_classifier.downloading_model", asset_id=asset_id, dest=str(target))
-            with pinned_https_request(
-                "GET",
-                download_url,
-                headers={
-                    "Accept": "application/octet-stream",
-                    "User-Agent": "tenderflow",
-                    **auth_header,
-                },
-                timeout_seconds=60,
-                allowed_hosts=frozenset({"api.github.com"}),
-            ) as response:
-                response.raise_for_status()
-                target.write_bytes(b"".join(response.iter_content()))
-            # Verificar el pin out-of-band si está configurado: no confiar en un
-            # modelo descargado cuyo hash no coincide con ML_MODEL_SHA256.
-            pinned = str(getattr(settings, "ML_MODEL_SHA256", "") or "").strip().lower()
-            if pinned:
-                import hashlib
-
-                actual = hashlib.sha256(target.read_bytes()).hexdigest().lower()
-                if actual != pinned:
-                    log.error(
-                        "ml_classifier.download_hash_mismatch",
-                        expected=pinned[:16],
-                        got=actual[:16],
-                    )
-                    target.unlink(missing_ok=True)
-                    return False
-            log.info("ml_classifier.model_downloaded", path=str(target))
-            return True
-        except Exception as e:
-            log.warning("ml_classifier.download_failed", error=str(e))
-            if target.exists():
-                target.unlink()
-            return False
+        log.info("ml_classifier.model_downloaded", path=str(target))
+        return True
 
     @classmethod
     def load(cls, path: Path | None = None) -> SAPClassifier:
@@ -1001,13 +964,28 @@ class SAPClassifier:
     def resolve_artifact(cls) -> Path | None:
         """Artefacto servible, bajándolo de la Release si hace falta.
 
-        El de la versión activa de ``model_versions`` (verificado por sha256) o,
-        si no hay ninguna registrada, el local. ``None`` si no hay ni uno ni
-        otro. Ver ``shared/model_artifacts.py::resolve_servable_artifact``.
+        Tres canales, en orden de preferencia:
+
+        1. La versión activa de ``model_versions``, verificada por sha256
+           (``shared/model_artifacts.py::resolve_servable_artifact``).
+        2. El artefacto local, si este runner ya lo tiene.
+        3. El asset de la última Release por nombre, vía
+           :meth:`ensure_downloaded` — **sin pasar por el registro**.
+
+        El tercero no es redundante, es el único que funciona hoy: ``model_versions``
+        no tiene ninguna fila de ``sap_classifier`` (el registro lo escribe
+        ``train-model.yml``, que no completa desde 2026-07-05), así que 1 devuelve
+        ``None``; y ``data/models/`` está en ``.gitignore``, así que en un runner
+        efímero 2 también. Con solo esos dos, el paso seguiría saliendo en
+        ``no_model`` con el ``sap_classifier.pkl`` publicado en la Release desde
+        el 2026-05-22 y nadie bajándolo.
         """
         from shared.model_artifacts import resolve_servable_artifact
 
-        return resolve_servable_artifact("sap_classifier", _MODEL_PATH)
+        artefacto = resolve_servable_artifact("sap_classifier", _MODEL_PATH)
+        if artefacto is not None:
+            return artefacto
+        return _MODEL_PATH if cls.ensure_downloaded() else None
 
 
 # ── Re-exportaciones de utilidades ───────────────────────────────────────────

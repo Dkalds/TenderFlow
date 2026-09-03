@@ -1,0 +1,173 @@
+name: Train & publish clasificador multi-tecnología
+
+# Entrena `TechnologyClassifier` y **publica su artefacto en la Release**.
+#
+# Por qué existe: hasta 2026-09 `data/models/tech_classifier.pkl` no lo
+# producía ningún workflow. El único camino era el subcomando local
+# `python -m scraper.ml_classifier train-tech`, y la clase ni siquiera tenía
+# `ensure_downloaded`, así que en los runners de Actions el fichero no existía
+# nunca y el paso canónico `ml_tecnologias` salía `no_model` en TODAS las
+# pasadas de `scrape-daily.yml` desde que el paso existe — no desde una
+# regresión concreta, sino desde siempre.
+#
+# Gemelo de `train-model.yml` (SAP binario) y `train-predictivos.yml`
+# (baja/retención). Publicar exige `contents: write`, y ese permiso no debe
+# estar en el job de ingesta: por eso es un workflow aparte y no un paso de la
+# pipeline canónica.
+#
+# El gate de publicación vive en `scheduler/jobs/tech_training_run.py`: un
+# modelo entrenado sobre `licitaciones.tecnologia` (el regex de los conectores)
+# NO se publica, porque serviría una copia del regex pisando la señal de pliego
+# que `tech_signal_merge` funde sobre esas mismas columnas. El suelo son
+# `ML_TECH_MIN_POS_READY` etiquetas independientes (feedback humano o LLM), y
+# por debajo de él el job **ni entrena**: el resultado se descartaría igual.
+#
+# Con los datos del 2026-09-03 (33 licitaciones con etiqueta humana, 0 del LLM) este workflow
+# termina en verde en ~1 min sin publicar nada, explicando el motivo en el step
+# summary. Es el desenlace correcto, no un fallo — pero significa que
+# `ml_tecnologias` sigue sin modelo hasta que haya etiquetas de verdad.
+
+on:
+  schedule:
+    # Mensual, día 1 a las 05:00 UTC: después de `train-predictivos.yml`
+    # (03:00) para no competir por la BD, y antes del scoring diario de las
+    # 07:30. La cadencia mensual es la del resto de re-entrenamientos; las
+    # etiquetas no circulares (feedback humano + `llm_tech_labeling`) se
+    # acumulan despacio y no justifican más.
+    - cron: "0 5 1 * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write # necesario para subir los artefactos a la Release
+
+concurrency:
+  group: train-tech
+  cancel-in-progress: false
+
+jobs:
+  train:
+    name: Train tech classifier & upload to release
+    runs-on: ubuntu-latest
+    # Un OneVsRest sobre ~13 etiquetas y el corpus entero de `licitaciones`
+    # (~700k filas el 2026-09-03), que `train_from_db` materializa en un
+    # DataFrame. No hay exploración de hiperparámetros ni folds, pero sí un
+    # TF-IDF sobre todo el texto: mismo presupuesto que baja/retención. Cuando
+    # el gate no llega al suelo de etiquetas el job sale en ~1 min sin entrenar,
+    # así que este techo solo se paga cuando hay algo que entrenar de verdad.
+    timeout-minutes: 45
+
+    env:
+      # Mismos ejes que el resto de jobs de datos: ENV=prod activa los
+      # validators (TLS de DATABASE_URL, alertas); APP_PROFILE=scraper omite
+      # los secretos que solo necesita el proceso HTTP.
+      ENV: prod
+      APP_PROFILE: scraper
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      DATABASE_SSL_ROOT_CERT: ${{ secrets.DATABASE_SSL_ROOT_CERT }}
+      LOG_FORMAT: json
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      # Emite `publicable` y `artefactos` (rutas separadas por espacio) en
+      # $GITHUB_OUTPUT. Sale en verde con `publicable=false` cuando el gate
+      # rechaza: es el mecanismo funcionando, no un fallo.
+      - name: Train tech classifier
+        id: train
+        env:
+          ALERT_EMAIL_TO: ${{ secrets.ALERT_EMAIL_TO }}
+          ALERT_SMTP_USER: ${{ secrets.ALERT_SMTP_USER }}
+          ALERT_SMTP_PASSWORD: ${{ secrets.ALERT_SMTP_PASSWORD }}
+          ALERT_MIN_LEVEL: ${{ vars.ALERT_MIN_LEVEL || 'warn' }}
+        run: python -m scheduler.jobs.tech_training_run
+
+      # Los valores van por `env` y no interpolados en el `run:`: una expresión
+      # de Actions se sustituye ANTES de que bash lea la línea, así que un
+      # backtick o una comilla en el texto rompería el paso (o algo peor).
+      - name: Report rejected candidate
+        if: steps.train.outputs.publicable != 'true'
+        env:
+          MOTIVO: ${{ steps.train.outputs.motivo }}
+          N_INDEP: ${{ steps.train.outputs.n_etiquetas_independientes }}
+          UMBRAL: ${{ steps.train.outputs.umbral }}
+          PCT_KEYWORDS: ${{ steps.train.outputs.pct_keywords }}
+          N_MODELS: ${{ steps.train.outputs.n_models }}
+          N_SAMPLES: ${{ steps.train.outputs.n_samples }}
+        run: |
+          {
+            echo "## Modelo NO publicado"
+            echo
+            echo "Solo se publica un modelo con etiquetas **independientes del regex**"
+            echo "de \`matches_technology()\`. Publicar uno circular serviría una copia"
+            echo "del regex pisando la señal de pliego que \`tech_signal_merge\` funde."
+            echo
+            echo "- Motivo: \`$MOTIVO\`"
+            echo "- Etiquetas independientes: \`$N_INDEP\` (umbral \`$UMBRAL\`)"
+            echo "- % de filas etiquetadas por keywords: \`$PCT_KEYWORDS\`"
+            echo "- n_models / n_samples: \`$N_MODELS\` / \`$N_SAMPLES\`"
+            echo
+            echo "Para desbloquearlo hacen falta etiquetas no circulares: feedback"
+            echo "humano en \`ml_feedback\`, o activar \`LLM_TECH_LABELING_ENABLED\` en"
+            echo "\`scrape-daily.yml\` para que \`licitacion_tecnologia_pliego\` acumule"
+            echo "filas con \`method IN ('llm_metadata','llm')\`."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload artifacts to release
+        if: steps.train.outputs.publicable == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ARTEFACTOS: ${{ steps.train.outputs.artefactos }}
+          MACRO_F1: ${{ steps.train.outputs.macro_f1_all_labels }}
+          N_MODELS: ${{ steps.train.outputs.n_models }}
+          PCT_KEYWORDS: ${{ steps.train.outputs.pct_keywords }}
+        run: |
+          set -euo pipefail
+          # `gh release view` sin argumentos resuelve la MISMA release que
+          # consulta `shared/release_assets.py` (`/releases/latest`). Ojo con
+          # `gh release list --limit 1`, que devuelve la más reciente por fecha
+          # de creación y puede no ser la marcada como latest: subir ahí deja
+          # el asset donde nadie lo busca.
+          TAG=$(gh release view --json tagName -q '.tagName' 2>/dev/null || echo "")
+          if [ -z "$TAG" ]; then
+            TAG="v0.0.0-model"
+            echo "No hay releases publicadas; creando $TAG"
+            gh release create "$TAG" --title "ML Models" --notes "Artefactos de modelo"
+          fi
+          # shellcheck disable=SC2086 -- rutas sin espacios, split intencional
+          gh release upload "$TAG" $ARTEFACTOS --clobber
+
+          # `gh release upload` sale 0 aunque el asset acabe con otro nombre
+          # (colisiones, sufijos). `ensure_downloaded` busca por el nombre
+          # EXACTO, así que se comprueba nombre a nombre.
+          PUBLICADOS=$(gh release view "$TAG" --json assets -q '.assets[].name')
+          for ruta in $ARTEFACTOS; do
+            nombre=$(basename "$ruta")
+            if ! echo "$PUBLICADOS" | grep -Fqx "$nombre"; then
+              echo "::error::$nombre no aparece en los assets de $TAG; ml_tecnologias no podrá resolverlo"
+              exit 1
+            fi
+          done
+          {
+            echo "## Modelo publicado"
+            echo
+            echo "- Release: \`$TAG\`"
+            echo "- n_models: \`$N_MODELS\`"
+            echo "- macro_f1_all_labels: \`$MACRO_F1\`"
+            echo "- % de filas etiquetadas por keywords: \`$PCT_KEYWORDS\`"
+            echo
+            echo "Ojo al último dato: el gate solo garantiza un **suelo** de etiquetas"
+            echo "independientes, no que la mayoría lo sean. Si ese porcentaje sigue"
+            echo "alto, las métricas siguen midiendo en buena parte imitación del regex."
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -95,8 +95,13 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          # Usar el último tag existente, o crear uno modelo-only si no hay
-          TAG=$(gh release list --limit 1 --json tagName -q '.[0].tagName' 2>/dev/null || echo "")
+          # `gh release view` sin argumentos, no `gh release list --limit 1`:
+          # el primero resuelve la release marcada como **latest**, que es la
+          # que consulta `shared/release_assets.py` (`/releases/latest`); el
+          # segundo devuelve la más reciente por fecha de creación. Hoy
+          # coinciden porque solo hay una release, pero en cuanto haya dos el
+          # `.pkl` acabaría en un tag que `ensure_downloaded` no mira.
+          TAG=$(gh release view --json tagName -q '.tagName' 2>/dev/null || echo "")
           if [ -z "$TAG" ]; then
             TAG="v0.0.0-model"
             echo "No releases found, will create $TAG"

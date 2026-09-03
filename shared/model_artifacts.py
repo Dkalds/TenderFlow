@@ -16,7 +16,7 @@ Uso::
 
     from shared.model_artifacts import resolve_active_artifact
 
-    path = resolve_active_artifact("baja")   # Path verificado, o None
+    path = resolve_active_artifact("baja_model")   # Path verificado, o None
 """
 
 from __future__ import annotations

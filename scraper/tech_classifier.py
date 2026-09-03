@@ -992,6 +992,80 @@ class TechnologyClassifier:
         return obj  # type: ignore[no-any-return]
 
     @classmethod
+    def ensure_downloaded(
+        cls,
+        path: Path | None = None,
+        repo: str = "Dkalds/TenderFlow",
+        asset_name: str = "tech_classifier.pkl",
+    ) -> bool:
+        """Descarga el modelo de la última Release si no está en disco.
+
+        Gemela de ``SAPClassifier.ensure_downloaded``, y por el mismo motivo:
+        ``data/models/`` es efímero en los runners de Actions. Su ausencia era
+        el agujero más ancho del subsistema — sin este método,
+        ``precompute_ml_tecnologias`` no tenía forma alguna de conseguir el
+        artefacto y salía ``no_model`` en **todas** las pasadas de
+        ``scrape-daily.yml``, no solo desde el 2026-07-27.
+
+        Quien publica el asset es ``.github/workflows/train-tech.yml``.
+
+        Returns:
+            True si el modelo está disponible (ya existía o se descargó).
+            False si no se pudo resolver — el caller degrada a reglas.
+        """
+        import os
+
+        from shared.release_assets import (
+            download_asset,
+            download_checksum_sidecar,
+            fetch_latest_release,
+            find_asset_id,
+        )
+
+        target = path or _MODEL_PATH
+        if target.exists():
+            log.info("tech_classifier.model_already_local", path=str(target))
+            return True
+
+        github_token = os.environ.get("GITHUB_TOKEN", "")
+        release = fetch_latest_release(repo, token=github_token)
+        if release is None:
+            return False
+        asset_id = find_asset_id(release, asset_name)
+        if asset_id is None:
+            return False
+
+        log.info("tech_classifier.downloading_model", asset_id=asset_id, dest=str(target))
+        if not download_asset(repo, asset_id, target, token=github_token):
+            return False
+
+        pinned = str(getattr(settings, "ML_TECH_MODEL_SHA256", "") or "").strip().lower()
+        if pinned:
+            import hashlib
+
+            actual = hashlib.sha256(target.read_bytes()).hexdigest().lower()
+            if actual != pinned:
+                log.error(
+                    "tech_classifier.download_hash_mismatch",
+                    expected=pinned[:16],
+                    got=actual[:16],
+                )
+                target.unlink(missing_ok=True)
+                return False
+
+        if not download_checksum_sidecar(repo, release, target, token=github_token) and not pinned:
+            log.warning(
+                "tech_classifier.sin_verificacion_de_integridad",
+                path=str(target),
+                hint=(
+                    "la Release no trae el .sha256 del artefacto y ML_TECH_MODEL_SHA256 "
+                    "está vacío; con ENV=prod load() rechazará este fichero"
+                ),
+            )
+        log.info("tech_classifier.model_downloaded", path=str(target))
+        return True
+
+    @classmethod
     def is_available(cls, path: Path | None = None) -> bool:
         """True si existe un modelo entrenado **en disco**, sin tocar la red.
 
@@ -1005,13 +1079,22 @@ class TechnologyClassifier:
         """Artefacto servible, bajándolo de la Release si hace falta.
 
         Hoy nadie registra versiones de ``tech_classifier`` en
-        ``model_versions``, así que en la práctica devuelve el local o ``None``.
-        Va por el mismo canal que el SAP para que el día que se registre una
-        versión no haya que descubrir que este camino no la miraba.
+        ``model_versions``, así que el primer canal devuelve ``None``. Va por él
+        igualmente para que el día que se registre una versión no haya que
+        descubrir que este camino no la miraba.
+
+        El tercer canal —:meth:`ensure_downloaded`, el asset de la Release por
+        nombre— es el que puede traer el artefacto sin registro. Hoy tampoco
+        encuentra nada, porque ``tech_classifier.pkl`` no está publicado: lo
+        publica ``.github/workflows/train-tech.yml`` cuando el gate de etiquetas
+        no circulares deja de rechazar.
         """
         from shared.model_artifacts import resolve_servable_artifact
 
-        return resolve_servable_artifact("tech_classifier", _MODEL_PATH)
+        artefacto = resolve_servable_artifact("tech_classifier", _MODEL_PATH)
+        if artefacto is not None:
+            return artefacto
+        return _MODEL_PATH if cls.ensure_downloaded() else None
 
 
 # ── Entrenamiento desde la BD ─────────────────────────────────────────────
