@@ -5,13 +5,38 @@ Los procedimientos detallados viven en `docs/runbooks/`.
 
 ## Resumen de servicios
 
-| Servicio    | Proceso/Container         | Health                | Logs                       |
-| ----------- | ------------------------- | --------------------- | -------------------------- |
-| API REST    | `licitaciones-api`        | `GET /api/v1/health`  | `docker logs api`          |
-| Web frontend | `licitaciones-web`       | `GET /`               | `docker logs licitaciones-web` |
-| Scheduler    | `licitaciones-scheduler` | exit-code & metrics   | `docker logs licitaciones-scheduler` |
-| Scraper      | cron daily / manual      | `scheduler/healthcheck.py` | `docker logs licitaciones-scheduler` |
-| DB SQLite   | volumen `data/`           | `python scripts/doctor.py` | `data/backfill.log`   |
+Producción no corre sobre Docker: la API vive en Render, el frontend en Vercel y
+la BD es Supabase Postgres ([[ADR-016-destino-persistencia-supabase|ADR-016]];
+SQLite se retiró en [[ADR-021-retirada-sqlite|ADR-021]]). El scheduler no es un
+servicio desplegado — son workflows de GitHub Actions
+(`SCHEDULER_PLANE=actions`, [[ADR-012-plano-unico-orquestacion|ADR-012]]).
+
+| Servicio | Dónde corre | Health | Logs |
+| --- | --- | --- | --- |
+| API REST | Render, blueprint `tenderflow-api` | `GET /api/v1/health` | Render → *Logs* |
+| Web frontend | Vercel, proyecto `tenderflow` | `GET /` | Vercel → *Runtime Logs* |
+| Scheduler / scraper | GitHub Actions — `scrape-daily.yml`, cada 4 h | `scheduler/healthcheck.py`; `healthcheck.yml` cada 6 h | `gh run list --workflow=<wf>.yml`, luego `gh run view <id> --log` |
+| DB | Supabase Postgres | `python scripts/doctor.py` | Supabase → *Logs* |
+| Prometheus | Render, blueprint `tenderflow-prometheus` (pserv) | — | Render → *Logs* |
+| Grafana | Render, blueprint `tenderflow-grafana` | `GET /api/health` | Render → *Logs* |
+
+> **El host real de la API es `https://tenderflow-jrtr.onrender.com`.**
+> `tenderflow-api` es el nombre lógico del blueprint, no el hostname;
+> `tenderflow-api.onrender.com` resuelve pero no responde. Verificado el
+> 2026-08-28 contra la API de Render.
+
+> **Un deploy verde no prueba que la migración de ese PR haya corrido.**
+> `migrate.yml` es `workflow_dispatch` deliberadamente (migrar producción es una
+> decisión explícita), mientras que la API se redespliega por su cuenta. El
+> schema puede ir por detrás de `master`: comprobalo con
+> `gh run list --workflow=migrate.yml` y leé el `alembic current` del step
+> "Estado actual del schema".
+
+**Desarrollo local.** `docker-compose.yml` levanta `tenderflow-api`,
+`tenderflow-web`, `tenderflow-postgres`, `tenderflow-redis`,
+`tenderflow-prometheus` y `tenderflow-grafana`; el scheduler solo con
+`docker compose --profile scheduler up` (declara `SCHEDULER_PLANE=docker`). Ahí
+sí valen `docker logs tenderflow-api` y los `docker compose` de más abajo.
 
 ## Playbooks (orden recomendado de consulta)
 
@@ -37,25 +62,30 @@ Los procedimientos detallados viven en `docs/runbooks/`.
 
 ## Procedimientos exprés
 
+Salvo el primero, todos son comandos **locales** (`docker compose`, `localhost`).
+En producción el equivalente de un `exec scheduler` es lanzar el workflow de
+Actions correspondiente con `gh workflow run <wf>.yml`.
+
 ### Reiniciar la API en producción
+No hay `docker compose` en producción: la API es un servicio de Render. En su
+dashboard, *Manual Deploy* → *Restart service*. Verificar:
 ```bash
-docker compose restart api
-# Verificar:
-curl -fsS http://localhost:8080/api/v1/health/ready
+curl -fsS https://tenderflow-jrtr.onrender.com/api/v1/health
 ```
 
-### Forzar re-cómputo de KPIs
+### Forzar re-cómputo de KPIs (local)
 ```bash
 docker compose exec scheduler python -m scheduler.kpi_precompute --force
 ```
 
 ### Activar/Desactivar una versión de modelo
 ```bash
+# Local; contra producción, sustituir el host por el de Render.
 curl -fsS -X POST -H "X-API-Key: $API_KEY" \
   http://localhost:8080/api/v1/models/sap_classifier/activate/3
 ```
 
-### Comprobar drift del clasificador
+### Comprobar drift del clasificador (local)
 ```bash
 docker compose exec scheduler python -c \
   "from scheduler.drift_monitor import run_once; print(run_once())"
