@@ -6,6 +6,7 @@ import {
   SITEMAP_POR_FICHERO,
 } from "@/lib/publico-api";
 import { SITE_URL } from "@/lib/site";
+import { paginasDeSitemap } from "@/lib/rutas-publicas";
 import { rutaHubCcaa, rutaHubCpv, rutaLicitacion } from "@/lib/slug";
 
 /**
@@ -62,10 +63,15 @@ async function estaticas(): Promise<MetadataRoute.Sitemap> {
   const { ccaa, cpv } = await obtenerHubs();
 
   return [
-    { url: SITE_URL, changeFrequency: "daily", priority: 1 },
-    { url: `${SITE_URL}/licitaciones`, changeFrequency: "daily", priority: 0.9 },
-    { url: `${SITE_URL}/cpv`, changeFrequency: "daily", priority: 0.8 },
-    { url: `${SITE_URL}/aviso-legal`, changeFrequency: "yearly", priority: 0.1 },
+    // Las páginas fijas salen de `lib/rutas-publicas.ts`, que es también la
+    // lista que abre el proxy y la que permite robots.txt. Escritas aquí a
+    // mano, las tres páginas de evidencia llevaban desde su despliegue sin
+    // anunciarse.
+    ...paginasDeSitemap().map((pagina) => ({
+      url: pagina.ruta === "/" ? SITE_URL : `${SITE_URL}${pagina.ruta}`,
+      changeFrequency: pagina.frecuencia,
+      priority: pagina.prioridad,
+    })),
     ...ccaa.map((hub) => ({
       url: `${SITE_URL}${rutaHubCcaa(hub.slug)}`,
       changeFrequency: "daily" as const,

@@ -299,6 +299,7 @@ export const CONTENIDO: ContenidoLanding = {
         "Carril por NIF: si vigilas una empresa se conservan sus adjudicaciones aunque el expediente no dé señal tecnológica, desde que la das de alta.",
       ],
       enlaces: [
+        { texto: "Qué entra en el corpus y qué queda fuera", href: "/cobertura" },
         { texto: "Explora las licitaciones por código CPV", href: "/cpv" },
         { texto: "Ver los anuncios publicados, por comunidad autónoma", href: "/licitaciones" },
       ],
@@ -316,6 +317,7 @@ export const CONTENIDO: ContenidoLanding = {
         "La dimensión de competencia se normaliza contra la media de ofertas recibidas por segmento CPV en 24 meses.",
         "El clasificador SAP es auditable: la API devuelve los términos que más pesaron en su probabilidad para un expediente dado.",
       ],
+      enlaces: [{ texto: "Cómo se calcula cada señal, y cuándo se declara insuficiente", href: "/metodologia" }],
     },
     {
       kicker: "Precio y competencia",
@@ -345,6 +347,7 @@ export const CONTENIDO: ContenidoLanding = {
         "El asistente tiene presupuesto de gasto y corte automático si el proveedor de modelo falla.",
         "API REST documentada en OpenAPI, con autenticación por clave con ámbitos y rotación con periodo de gracia; las claves las provisiona el operador.",
       ],
+      enlaces: [{ texto: "Controles de acceso y tratamiento de datos", href: "/seguridad" }],
     },
   ],
 
@@ -376,7 +379,7 @@ export const CONTENIDO: ContenidoLanding = {
     {
       pregunta: "¿Qué pasa con mis datos y con lo que guardo dentro?",
       respuesta:
-        "Los datos de mercado son globales y compartidos; lo tuyo —perfil de scoring, reglas de vigilancia, favoritos, vistas guardadas y oportunidades— queda asociado a tu usuario y a tu organización. Desde la pantalla de cuenta puedes exportar todos tus datos y eliminar la cuenta con confirmación explícita; el borrado anonimiza tu histórico y revoca de paso tus sesiones y claves de API.",
+        "Los datos de mercado son globales y compartidos; lo tuyo —perfil de scoring, reglas de vigilancia, favoritos, vistas guardadas y oportunidades— queda asociado a tu usuario y a tu organización. Desde la pantalla de cuenta puedes exportar todos tus datos y eliminar la cuenta con confirmación explícita; el borrado anonimiza tu histórico y revoca de paso tus sesiones y claves de API. La página de seguridad detalla los controles, sin atribuirse certificaciones que nadie ha auditado.",
     },
     {
       pregunta: "¿Cuánto cuesta?",

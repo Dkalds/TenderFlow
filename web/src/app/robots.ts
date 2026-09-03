@@ -1,5 +1,6 @@
 import type { MetadataRoute } from "next";
 import { SITE_URL } from "@/lib/site";
+import { rutasRastreables } from "@/lib/rutas-publicas";
 
 /**
  * robots.txt.
@@ -25,18 +26,17 @@ import { SITE_URL } from "@/lib/site";
  * funcione: una página bloqueada por robots no puede rastrearse, así que Google
  * tampoco puede leer su `noindex` y nunca la sacaría del índice. Se deja entrar
  * para que lea el `noindex` que declara `app/login/layout.tsx`.
+ *
+ * La lista ya no se escribe aquí: sale de `lib/rutas-publicas.ts`, la misma que
+ * decide qué sirve el proxy sin sesión y qué anuncia el sitemap. Cuando eran
+ * tres listas independientes, tres páginas publicadas se quedaron fuera de las
+ * tres a la vez.
  */
 export default function robots(): MetadataRoute.Robots {
   return {
     rules: {
       userAgent: "*",
-      allow: [
-        "/$", // portada
-        "/licitaciones", // fichas y hubs por comunidad autónoma
-        "/cpv", // hubs por código CPV
-        "/aviso-legal",
-        "/login", // rastreable para que Google lea su noindex
-      ],
+      allow: rutasRastreables(),
       disallow: "/",
     },
     // Al índice y no a `/sitemap.xml`: con `generateSitemaps`, Next sirve

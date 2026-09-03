@@ -42,6 +42,25 @@ export const metadata: Metadata = {
   robots: { index: true, follow: true },
 };
 
+/* Piel de los enlaces del pie. `py-1.5` no es decorativo: sin él estos enlaces
+ * miden 16 px de alto y quedan por debajo del mínimo de 24×24 px que exige
+ * WCAG 2.5.8. Estaba copiada carácter a carácter en los cinco. */
+const ENLACE_PIE =
+  "hover:text-foreground focus-visible:ring-ring -my-1.5 inline-flex items-center rounded px-1 " +
+  "py-1.5 transition-colors duration-150 focus-visible:ring-2 focus-visible:outline-none";
+
+/* Orden deliberado: primero la superficie de datos que se puede ver sin cuenta,
+ * después las tres páginas que responden a «de dónde sale esto» y sólo al final
+ * lo legal. */
+const ENLACES_PIE = [
+  { href: "/licitaciones", texto: "Licitaciones" },
+  { href: "/cpv", texto: "Por CPV" },
+  { href: "/cobertura", texto: "Cobertura" },
+  { href: "/metodologia", texto: "Metodología" },
+  { href: "/seguridad", texto: "Seguridad" },
+  { href: "/aviso-legal", texto: "Aviso legal" },
+];
+
 export default function PublicoLayout({ children }: { children: React.ReactNode }) {
   return (
     <ThemeProvider attribute="class" defaultTheme="system" disableTransitionOnChange>
@@ -128,43 +147,27 @@ export default function PublicoLayout({ children }: { children: React.ReactNode 
                   Inteligencia de licitaciones públicas de tecnología enterprise en España, sobre fuentes oficiales.
                 </p>
               </div>
-              {/* `py-1.5` no es decorativo: sin él estos enlaces miden 16 px de
-                alto y quedan por debajo del mínimo de 24×24 px que exige
-                WCAG 2.5.8. */}
+              {/* Las tres páginas de evidencia —cobertura, metodología y
+                seguridad— entran aquí porque hasta ahora no las enlazaba nadie:
+                estaban publicadas y sólo se llegaba a ellas escribiendo la URL,
+                cosa que no hace ningún visitante. Son además lo que pregunta
+                quien evalúa el producto, así que el pie es el sitio donde se
+                buscan. */}
               <nav
                 aria-label="Enlaces del pie"
                 className="text-muted-foreground flex flex-wrap items-center gap-x-5 gap-y-1 text-xs font-medium"
               >
-                <Link
-                  href="/licitaciones"
-                  className="hover:text-foreground focus-visible:ring-ring -my-1.5 inline-flex items-center rounded px-1 py-1.5 transition-colors duration-150 focus-visible:ring-2 focus-visible:outline-none"
-                >
-                  Licitaciones
-                </Link>
-                <Link
-                  href="/cpv"
-                  className="hover:text-foreground focus-visible:ring-ring -my-1.5 inline-flex items-center rounded px-1 py-1.5 transition-colors duration-150 focus-visible:ring-2 focus-visible:outline-none"
-                >
-                  Por CPV
-                </Link>
-                <Link
-                  href="/aviso-legal"
-                  className="hover:text-foreground focus-visible:ring-ring -my-1.5 inline-flex items-center rounded px-1 py-1.5 transition-colors duration-150 focus-visible:ring-2 focus-visible:outline-none"
-                >
-                  Aviso legal
-                </Link>
+                {ENLACES_PIE.map((enlace) => (
+                  <Link key={enlace.href} href={enlace.href} className={ENLACE_PIE}>
+                    {enlace.texto}
+                  </Link>
+                ))}
                 {CONTACT_EMAIL && (
-                  <a
-                    href={`mailto:${CONTACT_EMAIL}`}
-                    className="hover:text-foreground focus-visible:ring-ring -my-1.5 inline-flex items-center rounded px-1 py-1.5 transition-colors duration-150 focus-visible:ring-2 focus-visible:outline-none"
-                  >
+                  <a href={`mailto:${CONTACT_EMAIL}`} className={ENLACE_PIE}>
                     Contacto
                   </a>
                 )}
-                <Link
-                  href="/login?utm_source=publico&utm_content=footer"
-                  className="hover:text-foreground focus-visible:ring-ring -my-1.5 inline-flex items-center rounded px-1 py-1.5 transition-colors duration-150 focus-visible:ring-2 focus-visible:outline-none"
-                >
+                <Link href="/login?utm_source=publico&utm_content=footer" className={ENLACE_PIE}>
                   Acceder
                 </Link>
               </nav>
