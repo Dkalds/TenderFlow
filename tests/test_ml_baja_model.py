@@ -907,27 +907,153 @@ def test_offset_conformal_estrecha_un_intervalo_que_sobra():
     assert _offset_conformal(p10, p90, y) < 0
 
 
-def test_drift_ve_una_feature_ausente_en_scoring(monkeypatch):
-    """El caso que reportaba PSI 0.00 "estable": ausente al servir, presente al
-    entrenar. El PSI solo compara los presentes; el delta de nulos lo caza."""
+def _fila_drift(fecha, **numericas):
+    """Fila sintética con el layout canónico y las numéricas que interesen."""
+    import services.ml.features as features_mod
+
+    base = dict.fromkeys(features_mod.FEATURE_COLUMNS, 1.0)
+    base.update({c: "x" for c in features_mod.CATEGORICAL_COLUMNS})
+    base["mes"] = float(int(fecha[5:7]))
+    base["trimestre"] = float((int(fecha[5:7]) - 1) // 3 + 1)
+    base.update(numericas)
+    return FilaDataset(licitacion_id="L", fecha=fecha, features=base)
+
+
+def _historico_con_rampa(n=3000):
+    """Serie 2022-01 → 2026-08 con la forma real del dataset de entrenamiento.
+
+    Los ``n_obs`` arrancan en cero y se llenan según se acumula histórico, y
+    ``baja_media_organo`` --que sí gobierna la severidad-- sube con ellos
+    porque al principio de la serie no hay observaciones que promediar.
+    ``log_importe`` es estacionario. Es la asimetría que hacía que el monitor
+    comparase la rampa de arranque contra un scoring siempre "caliente".
+    """
+    filas = []
+    for i in range(n):
+        mes_abs = i * 55 // n
+        filas.append(
+            _fila_drift(
+                f"{2022 + mes_abs // 12}-{mes_abs % 12 + 1:02d}-15",
+                n_obs_organo=float(i * 200 // n),
+                n_obs_cpv4=float(i * 400 // n),
+                n_obs_organo_cpv4=float(i * 100 // n),
+                baja_media_organo=0.100 + (i / n) * 0.050,
+                log_importe=11.0 + (i % 40) * 0.05,
+            )
+        )
+    return filas
+
+
+def _abiertas_del_tramo_reciente(n=500, **numericas):
+    """Scoring sacado de la MISMA distribución que el tramo reciente del histórico."""
+    filas = []
+    for i in range(n):
+        campos = {
+            "n_obs_organo": float(174 + i % 26),
+            "n_obs_cpv4": float(348 + i % 52),
+            "n_obs_organo_cpv4": float(87 + i % 13),
+            # Mismo rango que el tramo reciente del histórico (i/n desde 0.873).
+            "baja_media_organo": 0.1437 + (i / n) * 0.0063,
+            "log_importe": 11.0 + (i % 40) * 0.05,
+        }
+        campos.update(numericas)
+        filas.append(_fila_drift(f"2026-{i * 8 // n + 1:02d}-10", **campos))
+    return filas
+
+
+def _drift_de(monkeypatch, entrenamiento, scoring):
+    import observability.alerts as alerts_mod
     import services.ml.features as features_mod
     from services.ml.drift import comprobar_drift_baja
 
-    def _fila_con(valor):
-        base = dict.fromkeys(features_mod.FEATURE_COLUMNS, 1.0)
-        base.update({c: "x" for c in features_mod.CATEGORICAL_COLUMNS})
-        base["log_importe"] = valor
-        return FilaDataset(licitacion_id="L", fecha="2026-01-01", features=base)
-
-    entrenamiento = [_fila_con(1.0) for _ in range(50)]
-    scoring = [_fila_con(None) for _ in range(50)]
+    # El canal de alertas es real y en severidad != ok intenta mandar email:
+    # sin esto cada test que alerta se come el timeout de SMTP.
+    monkeypatch.setattr(alerts_mod, "notify", lambda *a, **k: None)
     monkeypatch.setattr(features_mod, "construir_dataset_baja", lambda: (entrenamiento, None))
     monkeypatch.setattr(features_mod, "features_licitaciones_abiertas", lambda: scoring)
+    return comprobar_drift_baja()
 
-    resultado = comprobar_drift_baja()
+
+def test_drift_ve_una_feature_ausente_en_scoring(monkeypatch):
+    """El caso que reportaba PSI 0.00 "estable": ausente al servir, presente al
+    entrenar. El PSI solo compara los presentes; el delta de nulos lo caza."""
+    entrenamiento = [_fila_drift("2026-01-01") for _ in range(50)]
+    scoring = [_fila_drift("2026-01-01", log_importe=None) for _ in range(50)]
+
+    resultado = _drift_de(monkeypatch, entrenamiento, scoring)
 
     assert resultado["status"] == "crit"
     assert resultado["missing_delta"]["log_importe"] == pytest.approx(1.0)
+    # 50 filas no dan ventana de referencia utilizable: se cae al histórico
+    # completo y el resultado lo dice en vez de comparar contra cuatro filas.
+    assert resultado["ventana_ref"] is None
+
+
+def test_drift_no_alerta_por_la_rampa_de_arranque_del_historico(monkeypatch):
+    """Sin deriva real, el monitor calla.
+
+    El scoring sale de la misma distribución que el tramo reciente del
+    histórico: lo único que separa a los dos conjuntos es que el entrenamiento
+    también cubre el arranque de la serie, con los acumuladores a medio llenar.
+    Eso no es deriva y no debe alertar.
+    """
+    resultado = _drift_de(monkeypatch, _historico_con_rampa(), _abiertas_del_tramo_reciente())
+
+    assert resultado["status"] == "ok"
+    assert resultado["ventana_ref"] is not None
+    assert resultado["n_ref"] < 3000
+    # Contadores y calendario siguen midiéndose --su PSI sigue siendo alto, y es
+    # correcto que lo sea-- pero no gobiernan la severidad.
+    assert "n_obs_organo" in resultado["psi_informativo"]
+    assert "mes" in resultado["psi_informativo"]
+    assert "n_obs_organo" not in resultado["psi"]
+
+
+def test_drift_con_historico_completo_alertaria_por_la_rampa(monkeypatch):
+    """Contraprueba de la anterior: el mismo dato, sin acotar la referencia.
+
+    Es el falso positivo que se reportaba en producción --PSI de 5-6 en todas
+    las features de acumulador, todas las noches, sin nada que arreglar--.
+    """
+    import services.ml.drift as drift_mod
+
+    monkeypatch.setattr(drift_mod, "_MIN_REF_VENTANA", 10**9)  # fuerza el fallback
+
+    resultado = _drift_de(monkeypatch, _historico_con_rampa(), _abiertas_del_tramo_reciente())
+
+    assert resultado["status"] == "crit"
+    assert resultado["ventana_ref"] is None
+
+
+def test_drift_ve_una_deriva_real_dentro_de_la_ventana(monkeypatch):
+    """Acotar la referencia no ciega el monitor: una feature estática que se
+    desplaza fuera del rango de entrenamiento sigue siendo crit."""
+    resultado = _drift_de(
+        monkeypatch,
+        _historico_con_rampa(),
+        _abiertas_del_tramo_reciente(log_importe=14.0),
+    )
+
+    assert resultado["status"] == "crit"
+    assert resultado["psi_peor_feature"] == "log_importe"
+    assert resultado["bins_vacios"]["log_importe"] > 0
+
+
+def test_drift_alerta_si_el_historico_acumulado_se_desploma(monkeypatch):
+    """La dirección en la que un contador SÍ puede ir mal.
+
+    Que ``n_obs`` suba es el sistema acumulando histórico. Que se hunda es la
+    ingesta rota o el dedupe llevándose media serie, y eso el PSI no lo
+    distingue de lo primero: lo caza el cociente de medianas.
+    """
+    resultado = _drift_de(
+        monkeypatch,
+        _historico_con_rampa(),
+        _abiertas_del_tramo_reciente(n_obs_organo=2.0, n_obs_cpv4=2.0, n_obs_organo_cpv4=1.0),
+    )
+
+    assert resultado["status"] == "crit"
+    assert resultado["contadores"]["n_obs_organo"]["ratio"] < 0.25
 
 
 def test_api_prediccion_baja(client, auth):

@@ -9,7 +9,7 @@ import pytest
 
 import services.ml.retencion_model as retencion_model_mod
 from config import settings
-from services.ml.drift import _psi, comprobar_drift_baja
+from services.ml.drift import _psi, _psi_detalle, comprobar_drift_baja
 from services.ml.retencion_labels import (
     construir_pares,
     features_para_vencimientos,
@@ -349,6 +349,27 @@ def test_psi_detecta_cambio_de_distribucion():
     assert _psi(ref, ref) == pytest.approx(0.0, abs=1e-6)
     desplazada = [v + 80 for v in ref]
     assert _psi(ref, desplazada) > 0.25
+
+
+def test_psi_no_da_falso_verde_cuando_los_bins_colapsan():
+    """``n_lotes`` es 0 en casi todos los expedientes: los cortes por cuantiles
+    salen todos iguales, todo cae en un bin y el PSI da 0.0000 exacto contra
+    CUALQUIER distribución. Ese cero se leía como "estable" cuando lo que decía
+    era "no distingo nada" --el mismo error de fondo que el delta de nulos vino
+    a corregir--. ``bins_ref`` es lo que ahora lo delata.
+    """
+    sin_resolucion = _psi_detalle([0.0] * 990 + [1.0] * 10, [40.0] * 300)
+
+    assert sin_resolucion.valor == pytest.approx(0.0)  # el PSI sigue siendo ciego...
+    assert sin_resolucion.bins_ref == 1  # ...y esto es lo que lo dice
+
+    # Con una cola que la referencia sí separa, la diferencia se ve.
+    con_cola = [0.0] * 900 + [float(i % 9 + 1) for i in range(100)]
+    visible = _psi_detalle(con_cola, [40.0] * 300)
+
+    assert visible.bins_ref > 1
+    assert visible.valor > 0.25
+    assert visible.vacios > 0
 
 
 def test_comprobar_drift_sin_datos_no_explota(db):
