@@ -262,6 +262,49 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 - **Files de partida:** [services/rag/fact_sheet.py](../services/rag/fact_sheet.py), [services/rag/context.py](../services/rag/context.py), [db/repositories/documentos.py](../db/repositories/documentos.py)
 - **Riesgo:** medio — toca el camino que produce el dato más confiable del producto; por eso va detrás del eval.
 
+### [P2] Cada re-ingesta nulea las cuatro columnas ML, y `tech_signal_merge` lo cura a ciegas cada 4h
+- **Área:** db/upsert.py, scheduler/pipeline_runs.py, services/tech_signal.py
+- **Problema:** `_LIC_UPDATES` genera `k=excluded.k` para todos los campos salvo los cuatro de `_LIC_COALESCE_UPDATE_FIELDS` (`fecha_limite`, `procedimiento`, `tramitacion`, `peso_precio_pct`). `ml_proba`, `ml_tecnologias`, `ml_proba_max` y `ml_tech_principal` **no** están, así que cada re-ingesta de un expediente las pisa con lo que trajo el parser — NULL siempre que el proceso de ingesta no tenga clasificador cargado. `tech_signal_merge` existe para sanar eso, pero corre `merge_doc_signals()` **sin ids**: un barrido de la tabla entera (72.235 filas en `licitacion_tecnologia_score`, medido 2026-09-03) cada 4 h, incluso en las pasadas que no ingirieron nada — y `atom_live` reporta `entries_collected: 0` en la gran mayoría de ellas. La forma incremental ya existe y ya se usa desde `scheduler/jobs/documentos_embeddings.py`.
+- **Por qué NO se hizo con el arreglo de la descarga de modelos (2026-09-03):** añadir esas cuatro columnas al `COALESCE` cambia la semántica de escritura de ~700k filas, e impediría además que un re-scoring legítimo limpie un valor viejo. Es una decisión de contrato de datos, no un fix de transporte; bundlearla habría hecho irrevisable el diff del bug.
+- **Acceptance criteria:**
+  - Decidido y escrito si el clobber se corta en origen (COALESCE) o se sigue sanando aguas abajo.
+  - Si se mantiene el merge: el carril diario le pasa los `licitacion_ids` que la pasada tocó, y el barrido completo baja a cadencia diaria (`_run_periodic`).
+  - El docstring de `_run_tech_signal_merge` deja de citar solo `precompute_ml_tecnologias` como fuente del clobber.
+- **Files de partida:** [db/upsert.py](../db/upsert.py) (`_LIC_COALESCE_UPDATE_FIELDS`), [scheduler/pipeline_runs.py](../scheduler/pipeline_runs.py) (`_run_tech_signal_merge`), [services/tech_signal.py](../services/tech_signal.py) (`merge_doc_signals`)
+- **Riesgo:** medio — toca el camino de escritura de la tabla principal.
+
+### [P2] `baja_model` v2 y `retencion_model` v1 están entrenados y publicados, pero nadie puede decidir si activarlos
+- **Área:** db/model_registry.py, services/ml/baja_model.py, services/ml/calibration.py (acción del usuario)
+- **Problema:** desde el 2026-09-03 el reentrenamiento vuelve a completar y sus artefactos están en la Release, pero las tres filas de `model_versions` siguen con `is_active = 0`, así que `ml-scoring.yml` sirve baseline **en verde**. La activación es decisión humana por diseño (`train-predictivos.yml`: *"salvo `ML_PRED_AUTO_ACTIVATE`"*), y el problema es que **las métricas registradas no permiten tomarla**:
+  - `baja_model` v2 mejora al baseline un **3,3%** (`mae_p50` 0.12494 vs `mae_baseline` 0.12999, o sea 0.005), pero su propia dispersión entre folds es **`mae_p50_std_folds` = 0.01287**, dos veces y media esa mejora. Es indistinguible de ruido con la evidencia que hay.
+  - `retencion_model` v1 no registra **ninguna** métrica de baseline (`pr_auc` 0.2453 sobre prevalencia 0.1099, `ece` 0.054): no hay contra qué compararlo.
+  - `baja_model` v1 (2026-08-05) sí registra una mejora del 17,8%, pero su ventana de validación dice `valid_hasta: "2032-06-23"` —una fecha futura, o sea basura— y se entrenó antes del arreglo del rolling origin y del filtro de fechas. No es comparable, y su artefacto ya no está en la Release.
+- **Por qué no se activó al arreglar la descarga (2026-09-03):** activar cambia lo que ve producción, no hay gate automático como el de `services/ml/promotion.py` del SAP, y no hay medición posterior que detecte una regresión. Activar sobre una mejora menor que la varianza es activar sobre ruido.
+- **Acceptance criteria:**
+  - Un criterio de promoción escrito para los predictivos, del mismo tipo que el del clasificador SAP: qué margen sobre el baseline y con qué dispersión se considera suficiente.
+  - `retencion_model` registra una métrica de baseline comparable (el ranking trivial por prevalencia o por antigüedad del contrato).
+  - Decidido y ejecutado: activar o descartar, con el número que lo justifica anotado en `notes` de `model_versions`.
+- **Files de partida:** [db/model_registry.py](../db/model_registry.py), [services/ml/baja_model.py](../services/ml/baja_model.py), [services/ml/promotion.py](../services/ml/promotion.py) (el gate del SAP, como referencia), [.github/workflows/train-predictivos.yml](../.github/workflows/train-predictivos.yml)
+- **Riesgo:** medio — activar cambia lo que sirve `predicciones_baja` sin red que lo detecte.
+
+### [P3] Las 47 adjudicaciones con fecha imposible siguen anclando filas de entrenamiento
+- **Área:** services/ml/features.py, db/repositories/ml_dataset.py, scraper/connectors/pscp.py
+- **Problema:** el #262 filtra en `_fecha_opt` los años de menos de cuatro cifras (`0019-12-10` del expediente `19/002/5-2`, `0202-02-27` de PSCP), que es lo que rompía el round-trip de `%Y`. Pero de las **47 filas** de `adjudicaciones` con `fecha_adjudicacion` imposible —medidas contra producción el 2026-09-03— la mayoría son `1899-12-30`: el cero de la epoch de Excel, o sea como PSCP exporta una celda vacía. Esas pasan el filtro, porque tienen cuatro cifras y parsean bien. Y el ancla del dataset es `LEAST(fecha_publicacion, fecha_adjudicacion)`, así que ganan: la fila entra en el train de **todos** los folds con los acumuladores históricos vacíos, y su adjudicación los alimenta como si precediera a todo el histórico.
+- **Por qué no se subió el umbral con el #262:** el `_ANIO_MINIMO = 1000` está justificado por la asimetría de `%Y` entre `strptime` y `strftime`, que es un hecho del parser y no admite discusión. Un umbral de *plausibilidad* (1990, 2008…) es una afirmación distinta —sobre los datos, no sobre el formato— y merece decidirse aparte en vez de colarse dentro de una constante que hoy significa otra cosa.
+- **Acceptance criteria:**
+  - Decidido dónde se corta: el conector de PSCP (que es quien genera el `1899-12-30`), el parser, o el SQL del dataset.
+  - Las 47 filas dejan de anclar filas de entrenamiento, verificado con la misma query que las midió.
+- **Files de partida:** [services/ml/features.py](../services/ml/features.py) (`_fecha_opt`), [db/repositories/ml_dataset.py](../db/repositories/ml_dataset.py) (`fecha_anchor`), [scraper/connectors/pscp.py](../scraper/connectors/pscp.py)
+- **Riesgo:** bajo — son 47 filas de ~691k adjudicaciones; el impacto es de calidad de dataset, no de disponibilidad.
+
+### [P3] Un solo transporte para bajar assets de la Release
+- **Área:** shared/model_artifacts.py, shared/release_assets.py
+- **Problema:** conviven dos implementaciones de "bajar un asset de la última Release". `shared/release_assets.py` (2026-09-03) va sobre HTTPS pinned con allowlist por salto; `shared/model_artifacts.py::_download_release_asset` usa `requests.get(browser_download_url)` a pelo, que sigue redirects sin validar el destino y sin DNS pinning. La segunda funciona —de hecho es la única que nunca se rompió— pero tiene controles más débiles que el resto de las salidas del repo, y dos implementaciones divergentes del mismo salto es cómo se cuelan las regresiones asimétricas.
+- **Por qué NO se hizo en el mismo cambio:** era el único camino de descarga que funcionaba; tocarlo mientras se arreglaba el otro habría dejado el sistema sin ninguno si el refactor fallaba.
+- **Acceptance criteria:** `_download_release_asset` delega en `shared.release_assets`, conservando la verificación contra el sha256 del registry; los tests de `shared/model_artifacts.py` siguen verdes.
+- **Files de partida:** [shared/model_artifacts.py](../shared/model_artifacts.py), [shared/release_assets.py](../shared/release_assets.py)
+- **Riesgo:** bajo — el fallback a baseline ya está cubierto y testeado.
+
 ---
 
 ## P3 — Nice to have

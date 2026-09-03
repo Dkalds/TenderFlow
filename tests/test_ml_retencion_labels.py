@@ -204,3 +204,28 @@ def test_el_par_expone_el_cpv4_con_el_que_se_segmenta():
     par = _par_con_sucesora_anticipada(empresa_sucesora=7)
     assert par.cpv4 == "7200"
     assert normalize_organo(par.organo) == normalize_organo(_ORGANO)
+
+
+# ---------------------------------------------------------------------------
+# Fechas imposibles en el histórico de adjudicaciones
+# ---------------------------------------------------------------------------
+
+
+def test_descarta_las_adjudicaciones_con_fecha_imposible():
+    """El módulo reparsea ``fecha_adjudicacion`` con ``_fecha_dt`` en cuatro
+    sitios —antigüedad de la relación, los dos extremos de la ventana de
+    sucesión y el ancla anti-fuga—, y una sola fila basura tumba el batch.
+
+    Es la misma familia de datos que mató el carril de baja el 2026-09-01
+    (`0019-12-10` en el expediente `19/002/5-2`): #262 la filtró en
+    ``_fecha_opt``, pero aquí seguía habiendo llamadas directas a
+    ``_fecha_dt`` sobre columnas TEXT.
+    """
+    filas = [
+        {"licitacion_id": "a", "fecha_adjudicacion": "0019-12-10"},
+        {"licitacion_id": "b", "fecha_adjudicacion": "2026-05-01"},
+    ]
+    with patch.object(rl._adj_repo, "load_para_retencion", return_value=filas):
+        cargadas = rl._cargar_adjudicaciones()
+
+    assert [f["licitacion_id"] for f in cargadas] == ["b"]

@@ -614,10 +614,16 @@ class LicitacionRepository:
                 )
 
             # Señal LLM por pliego, con su score para que el consumidor filtre.
+            # Sin JOIN: `licitacion_tecnologia_pliego.licitacion_id` ES el
+            # `id_externo` (así lo declara su propia FK), y `licitaciones` no
+            # tiene columna `id`. El `JOIN licitaciones l ON l.id =
+            # p.licitacion_id` que había aquí lanzaba `UndefinedColumn` en
+            # cada llamada; `train_from_db` lo capturaba y degradaba a
+            # etiquetas circulares con un warning, así que el fallo nunca se
+            # vio como fallo — solo como un clasificador que imitaba el regex.
             cur = c.execute(
-                "SELECT l.id_externo, p.tecnologia, p.score "
+                "SELECT p.licitacion_id, p.tecnologia, p.score "
                 "FROM licitacion_tecnologia_pliego p "
-                "JOIN licitaciones l ON l.id = p.licitacion_id "
                 "WHERE p.method IN ('llm_metadata', 'llm')"
             )
             por_licitacion: dict[str, list[str]] = {}
