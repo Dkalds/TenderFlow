@@ -44,8 +44,24 @@ src/
 ├── lib/                    # API client, filtros nuqs, utilidades (ask-stream, etc.)
 ├── generated/              # api.d.ts generado desde OpenAPI (no editar a mano)
 ├── test/                   # Tests e2e (Playwright)
-└── middleware.ts           # Middleware de Next.js (auth/redirects)
+└── proxy.ts                # Proxy de borde (sesión + CSP). Se llamaba
+                            # middleware.ts hasta Next 16.
 ```
+
+Qué páginas son públicas —qué sirve el proxy sin sesión, qué permite robots.txt
+y qué anuncia el sitemap— se declara una sola vez en `src/lib/rutas-publicas.ts`.
+
+## Capturas de la landing
+
+Las imágenes del producto que enseña la portada se regeneran con el stack
+levantado (Postgres sembrado + API + `npm run dev`):
+
+```bash
+npm run capturas:landing
+```
+
+Escriben sobre `src/app/(publico)/_assets/`. Revisar el resultado antes de
+commitear: lo que se publica es el escaparate del producto.
 
 ## Tests
 

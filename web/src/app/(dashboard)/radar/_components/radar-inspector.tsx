@@ -9,6 +9,7 @@ import { fuenteLinkLabel } from "@/lib/fuentes";
 import { cn, formatCurrency, formatDate } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { RadarTender } from "@/hooks/use-radar";
+import { riesgoLabel } from "@/lib/riesgos";
 import {
   DESGLOSE_LABELS,
   bandColor,
@@ -220,7 +221,7 @@ export function RadarInspector({
                 className="inline-flex items-center gap-1 rounded border border-[hsl(var(--warning)/0.35)] bg-[hsl(var(--warning)/0.12)] px-1.5 py-1 text-[10.5px] text-[hsl(var(--warning))]"
               >
                 <AlertTriangle className="h-3 w-3" aria-hidden="true" />
-                {flag}
+                {riesgoLabel(flag)}
               </li>
             ))}
           </ul>

@@ -78,6 +78,18 @@ test.describe("Accesibilidad básica sin sesión", () => {
     await page.waitForLoadState("networkidle");
     await expectBasicAccessibility(page);
   });
+
+  // La superficie pública faltaba entera en este fichero, y es la que ve un
+  // desconocido: la portada, los índices y las páginas de evidencia. Van sin
+  // sesión a propósito — con cookie, `/` redirige al dashboard y el barrido
+  // se haría sobre la pantalla equivocada.
+  for (const ruta of ["/", "/licitaciones", "/cpv", "/cobertura", "/metodologia", "/seguridad"]) {
+    test(`${ruta} conserva landmarks y nombres accesibles`, async ({ page }) => {
+      await page.goto(ruta);
+      await expect(page.locator("main#main-content")).toBeVisible({ timeout: 20_000 });
+      await expectBasicAccessibility(page);
+    });
+  }
 });
 
 test.describe("Accesibilidad básica con sesión", () => {

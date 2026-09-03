@@ -1,6 +1,7 @@
 "use client";
 
 import { EMPTY } from "@/lib/utils";
+import { riesgoLabel } from "@/lib/riesgos";
 
 /**
  * De qué está hecho el score, en la pantalla donde se decide.
@@ -103,7 +104,7 @@ export function ScoreDesglose({ desglose, riesgos }: ScoreDesgloseProps) {
               key={flag}
               className="border-destructive/32 bg-destructive/12 text-destructive inline-flex h-[20px] items-center rounded-md border px-1.5 text-[10.5px] font-medium"
             >
-              {flag}
+              {riesgoLabel(flag)}
             </span>
           ))}
         </div>

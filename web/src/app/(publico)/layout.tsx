@@ -1,10 +1,38 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { Fraunces } from "next/font/google";
 import { ThemeProvider } from "next-themes";
 import { TenderFlowLogo } from "@/components/layout/tenderflow-logo";
 import { CONTACT_EMAIL, solicitarAccesoHref } from "@/lib/contacto";
 import { CONTENIDO } from "./_content/landing";
 import { EnlaceSolicitarAcceso } from "./_components/enlace-solicitar-acceso";
+
+/**
+ * Tipografía de titulares de la superficie pública.
+ *
+ * El dashboard usa Space Grotesk como `--font-display`, y para la portada eso
+ * era un problema doble. El de forma: es la fuente a la que converge medio
+ * internet generado —la propia skill `frontend-design` la nombra como ejemplo
+ * de lo que no hay que elegir— y, junto a Geist, dejaba la página con el aspecto
+ * de una plantilla. El de fondo: TenderFlow vende lectura de un mercado, y una
+ * grotesca geométrica no dice nada de eso.
+ *
+ * Fraunces es una serif con eje óptico, del linaje de la prensa económica: a
+ * cuerpo de titular tiene contraste y remates, que es exactamente el tono de
+ * «esto lo escribe alguien que sabe de qué habla». El cuerpo de texto sigue en
+ * Geist —una serif a 14 px en pantalla se lee peor— así que el contraste entre
+ * las dos es deliberado.
+ *
+ * Sólo afecta a esta superficie: la clase que genera `next/font` redefine
+ * `--font-display` en el elemento que envuelve el layout, y las utilidades
+ * `font-display` y `tf-*` de `globals.css` resuelven esa variable **en el sitio
+ * donde se usan**, así que la definición más cercana gana sobre la que el layout
+ * raíz pone en `<html>`. El dashboard no se entera.
+ */
+const fuenteDisplay = Fraunces({
+  variable: "--font-display",
+  subsets: ["latin"],
+});
 
 /**
  * Layout de la superficie pública.
@@ -64,35 +92,46 @@ const ENLACES_PIE = [
 export default function PublicoLayout({ children }: { children: React.ReactNode }) {
   return (
     <ThemeProvider attribute="class" defaultTheme="system" disableTransitionOnChange>
-      <div className="bg-background flex min-h-screen flex-col">
+      {/* `fuenteDisplay.variable` aquí y no en el `<html>` del layout raíz:
+          es lo que acota la fuente de titulares a la superficie pública. */}
+      <div className={`${fuenteDisplay.variable} bg-background flex min-h-screen flex-col`}>
         <header className="tf-glass border-border/60 sticky top-0 z-40 border-b">
-          <div className="mx-auto flex w-full max-w-6xl items-center justify-between px-6 py-3.5">
-            <div className="flex items-center gap-7">
+          {/* Dos filas en móvil, una en tablet y escritorio, con una sola nav
+              en el DOM: el `order`/`w-full` la baja de renglón por debajo de
+              `sm` y la deja en línea a partir de ahí. Antes era `hidden sm:flex`
+              sin alternativa, así que en un teléfono —donde no cabe el rail del
+              dashboard ni hay menú— las dos páginas que reparten autoridad
+              interna hacia los hubs desaparecían del chrome. Duplicar el menú
+              para la versión estrecha habría sido lo fácil y lo peor: dos veces
+              cada enlace en el HTML que lee un rastreador. */}
+          <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center gap-x-7 gap-y-2.5 px-6 py-3.5">
+            <Link
+              href="/"
+              aria-label="TenderFlow — inicio"
+              className="focus-visible:ring-ring mr-auto rounded focus-visible:ring-2 focus-visible:outline-none sm:mr-0"
+            >
+              <TenderFlowLogo boxSize={30} />
+            </Link>
+            {/* Estos dos enlaces son la vía por la que la superficie de datos
+              recibe autoridad interna. Sin ellos los hubs solo existen en el
+              sitemap: rastreables, pero sin nada que los respalde. */}
+            <nav
+              aria-label="Secciones"
+              className="order-last flex w-full items-center gap-5 text-sm sm:order-none sm:mr-auto sm:w-auto"
+            >
               <Link
-                href="/"
-                aria-label="TenderFlow — inicio"
-                className="focus-visible:ring-ring rounded focus-visible:ring-2 focus-visible:outline-none"
+                href="/licitaciones"
+                className="text-muted-foreground hover:text-foreground transition-colors duration-150"
               >
-                <TenderFlowLogo boxSize={30} />
+                Licitaciones
               </Link>
-              {/* Estos dos enlaces son la vía por la que la superficie de datos
-                recibe autoridad interna. Sin ellos los hubs solo existen en el
-                sitemap: rastreables, pero sin nada que los respalde. */}
-              <nav aria-label="Secciones" className="hidden items-center gap-5 text-sm sm:flex">
-                <Link
-                  href="/licitaciones"
-                  className="text-muted-foreground hover:text-foreground transition-colors duration-150"
-                >
-                  Licitaciones
-                </Link>
-                <Link
-                  href="/cpv"
-                  className="text-muted-foreground hover:text-foreground transition-colors duration-150"
-                >
-                  Por CPV
-                </Link>
-              </nav>
-            </div>
+              <Link
+                href="/cpv"
+                className="text-muted-foreground hover:text-foreground transition-colors duration-150"
+              >
+                Por CPV
+              </Link>
+            </nav>
             {/* El header llevaba "Iniciar sesión" como único botón, y era el
               CTA más persistente del sitio: acompaña al visitante durante toda
               la página. Para quien llega sin cuenta —el público entero de esta
@@ -120,7 +159,7 @@ export default function PublicoLayout({ children }: { children: React.ReactNode 
                 Iniciar sesión
               </Link>
               <EnlaceSolicitarAcceso
-                href={solicitarAccesoHref("header")}
+                href={solicitarAccesoHref()}
                 ubicacion="header"
                 className="bg-primary text-primary-foreground hover:bg-primary/90 focus-visible:ring-ring focus-visible:ring-offset-background inline-flex h-9 items-center justify-center rounded-md px-4 text-sm font-medium shadow transition-[transform,background-color] duration-150 ease-out focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none active:scale-[0.97]"
               >

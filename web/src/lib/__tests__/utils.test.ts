@@ -117,6 +117,13 @@ describe("formatCurrency", () => {
 // ---------------------------------------------------------------------------
 
 describe("formatNumber", () => {
+  it("agrupa los miles cuando se le pide, aunque el locale no lo haría", () => {
+    // `es-ES` deja "1038" sin separador y "417.182" con él: leídas en fila, en
+    // la franja de la portada, parecen cifras de dos sistemas distintos.
+    expect(formatNumber(1038)).toBe("1038");
+    expect(formatNumber(1038, "es-ES", { agruparSiempre: true })).toBe("1.038");
+  });
+
   it("returns EMPTY for null", () => {
     expect(formatNumber(null)).toBe(EMPTY);
   });

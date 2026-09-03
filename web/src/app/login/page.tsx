@@ -500,7 +500,7 @@ function LoginPageContent() {
                   El acceso es por invitación.{" "}
                   {CONTACT_EMAIL ? (
                     <a
-                      href={solicitarAccesoHref("login")}
+                      href={solicitarAccesoHref()}
                       className="text-foreground font-medium underline-offset-4 hover:underline"
                     >
                       Solicita acceso para tu equipo

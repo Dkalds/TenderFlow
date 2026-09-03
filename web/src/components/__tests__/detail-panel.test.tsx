@@ -33,7 +33,7 @@ function makeLic(overrides: Partial<LicitacionDetail> = {}): LicitacionDetail {
     descripcion: "Mantenimiento integral",
     score: 87.5,
     score_desglose: { relevancia: 90, urgencia: 40 },
-    risk_flags: ["plazo_corto", "monopolio"],
+    risk_flags: ["sin_historico_competencia", "sin_senal_tecnica"],
     ...overrides,
   };
 }
@@ -56,8 +56,10 @@ describe("DetailPanel", () => {
     // Score value + a breakdown dimension.
     expect(screen.getByText("87.5")).toBeInTheDocument();
     expect(screen.getByText("relevancia")).toBeInTheDocument();
-    // Risk flags render as destructive badges.
-    expect(screen.getByText("plazo_corto")).toBeInTheDocument();
+    // Los avisos se pintan traducidos: el identificador en crudo del backend
+    // se leía como un error del programa (ver `lib/riesgos.ts`).
+    expect(screen.getByText("Sin histórico de competencia")).toBeInTheDocument();
+    expect(screen.queryByText("sin_historico_competencia")).not.toBeInTheDocument();
     expect(screen.getByText("Alertas")).toBeInTheDocument();
     // External link, rotulado con el portal del que salió el expediente.
     expect(screen.getByRole("link", { name: /Ver en PLACSP/ })).toBeInTheDocument();
