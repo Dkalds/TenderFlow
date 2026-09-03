@@ -13,6 +13,7 @@ from __future__ import annotations
 import re
 from unittest.mock import MagicMock, patch
 
+from db.repositories.tecnologia_pliego import MergeOutcome
 from services.tech_signal import _build_merge_result, merge_doc_signals, score_documents
 
 
@@ -179,22 +180,60 @@ class TestBuildMergeResult:
         assert result["ml_tech_principal"] is None
         assert result["pliego_scores"] == []
 
+    def test_predicted_technology_without_score_row_does_not_raise(self):
+        """Regresión (2026-09-02): ``ml_tecnologias`` puede nombrar una
+        tecnología que no tiene fila en ``licitacion_tecnologia_score`` -- son
+        dos tablas y ningún invariante las ata. Indexar ``full_scores[t]``
+        lanzaba KeyError('SAP'), que el fail-open convertía en un warning y
+        dejaba a esa licitación sin fusionar en cada pasada (33 en producción).
+        """
+        result = _build_merge_result(
+            {"predicted": {"SAP"}, "scores": {}},
+            {"META4": 0.8},
+            threshold_aplicado=0.5,
+        )
+        assert set(result["ml_tecnologias"].split(",")) == {"SAP", "META4"}
+        # La huérfana entra con 0.0: no se borra lo ya predicho, pero tampoco
+        # puede salir como principal por encima de la señal real del pliego.
+        assert result["ml_tech_principal"] == "META4"
+        assert result["ml_proba_max"] == 0.8
+
+    def test_only_orphan_predicted_technologies_still_yields_a_principal(self):
+        """Sin nada mejor, la huérfana sigue siendo el principal (0.0): el
+        contrato es que ``ml_tech_principal`` nunca esté fuera del CSV."""
+        result = _build_merge_result(
+            {"predicted": {"SAP"}, "scores": {}}, {}, threshold_aplicado=0.5
+        )
+        assert result["ml_tecnologias"] == "SAP"
+        assert result["ml_tech_principal"] == "SAP"
+        assert result["ml_proba_max"] == 0.0
+
 
 class TestMergeDocSignals:
     """Orquestación: lectura de señales, dedupe de eventos por ``merged_at``
     y fail-open. La aritmética del merge en sí se prueba en
-    ``TestBuildMergeResult``; aquí el repo se mockea con ``merge_with_lock``
-    invocando el ``compute`` recibido contra un estado fijo, simulando lo que
-    hace la transacción real sin tocar BD."""
+    ``TestBuildMergeResult``; aquí el repo se mockea con
+    ``merge_many_with_lock`` invocando el ``compute`` recibido contra un estado
+    fijo, simulando lo que hace la transacción real sin tocar BD."""
 
     @staticmethod
     def _repo_with_state(state: dict[str, object]) -> MagicMock:
         repo = MagicMock()
 
-        def _merge_with_lock(_licitacion_id: str, compute: object) -> object:
-            return compute(state)  # type: ignore[operator]
+        def _merge_many(licitacion_ids: list[str], compute: object) -> MergeOutcome:
+            results: dict[str, dict[str, object]] = {}
+            errors: dict[str, str] = {}
+            for licitacion_id in licitacion_ids:
+                try:
+                    result = compute(licitacion_id, state)  # type: ignore[operator]
+                except Exception as exc:  # mismo fail-open que el repo real
+                    errors[licitacion_id] = f"{type(exc).__name__}: {exc}"
+                    continue
+                if result is not None:
+                    results[licitacion_id] = result
+            return MergeOutcome(results=results, errors=errors)
 
-        repo.merge_with_lock.side_effect = _merge_with_lock
+        repo.merge_many_with_lock.side_effect = _merge_many
         return repo
 
     def test_emits_one_event_per_first_time_detection(self):
@@ -257,18 +296,20 @@ class TestMergeDocSignals:
             _signal_row(licitacion_id="L-BAD"),
             _signal_row(licitacion_id="L-OK"),
         ]
-        repo.merge_with_lock.side_effect = [
-            RuntimeError("boom"),
-            {
-                "ml_tecnologias": "META4",
-                "ml_proba_max": 0.8,
-                "ml_tech_principal": "META4",
-                "pliego_scores": [("META4", 0.8)],
-                "threshold_aplicado": 0.5,
-                "existing_scores": {},
-                "full_scores": {"META4": 0.8},
+        repo.merge_many_with_lock.return_value = MergeOutcome(
+            results={
+                "L-OK": {
+                    "ml_tecnologias": "META4",
+                    "ml_proba_max": 0.8,
+                    "ml_tech_principal": "META4",
+                    "pliego_scores": [("META4", 0.8)],
+                    "threshold_aplicado": 0.5,
+                    "existing_scores": {},
+                    "full_scores": {"META4": 0.8},
+                }
             },
-        ]
+            errors={"L-BAD": "RuntimeError: boom"},
+        )
 
         with (
             patch("services.tech_signal.TecnologiaPliegoRepository", return_value=repo),
@@ -278,6 +319,28 @@ class TestMergeDocSignals:
 
         assert result["errors"] == 1
         assert result["licitaciones_merged"] == 1
+
+    def test_the_whole_batch_goes_in_a_single_repository_call(self):
+        """El lote entero se resuelve con UNA llamada al repo y UN stamp: la
+        versión anterior abría una transacción por licitación (~6 viajes a
+        Postgres cada una) y se comía 14 de los 20 minutos del step de cierre
+        de la pipeline diaria."""
+        repo = self._repo_with_state({"predicted": set(), "scores": {}})
+        repo.list_signals_for_merge.return_value = [
+            _signal_row(licitacion_id=f"L{i}") for i in range(5)
+        ]
+
+        with (
+            patch("services.tech_signal.TecnologiaPliegoRepository", return_value=repo),
+            patch("services.tech_signal.append_event"),
+        ):
+            result = merge_doc_signals()
+
+        assert result["licitaciones_merged"] == 5
+        repo.merge_many_with_lock.assert_called_once()
+        assert repo.merge_many_with_lock.call_args.args[0] == [f"L{i}" for i in range(5)]
+        repo.stamp_merged.assert_called_once()
+        assert len(repo.stamp_merged.call_args.args[0]) == 5
 
     def test_append_event_failure_does_not_abort_the_rest_of_the_batch(self):
         """Un fallo emitiendo el evento de L-BAD (ej. error transitorio de
@@ -327,5 +390,5 @@ class TestMergeDocSignals:
             result = merge_doc_signals()
 
         assert result == {"licitaciones_merged": 0, "events_emitted": 0, "errors": 0}
-        repo.merge_with_lock.assert_not_called()
+        repo.merge_many_with_lock.assert_not_called()
         repo.stamp_merged.assert_not_called()

@@ -13,7 +13,6 @@ SQL directo aquí).
 
 from __future__ import annotations
 
-import functools
 import json
 import re
 from typing import Any
@@ -103,10 +102,10 @@ def _build_merge_result(
     state: dict[str, Any], pliego_scores: dict[str, float], threshold_aplicado: float
 ) -> dict[str, Any]:
     """Lógica de dominio pura del merge -- separada para poder correr dentro
-    de ``TecnologiaPliegoRepository.merge_with_lock`` (que la invoca con el
+    de ``TecnologiaPliegoRepository.merge_many_with_lock`` (que la invoca con el
     estado leído bajo el advisory lock, en la misma transacción que la
     escritura, evitando una carrera de lost-update entre planos de
-    orquestación distintos -- ver el docstring de ``merge_with_lock``).
+    orquestación distintos -- ver el docstring de ``merge_many_with_lock``).
 
     ``ml_proba_max``/``ml_tech_principal`` se restringen a ``included`` (las
     tecnologías que quedan en ``ml_tecnologias``): igual que
@@ -125,7 +124,20 @@ def _build_merge_result(
         full_scores[tech] = max(full_scores.get(tech, 0.0), score)
 
     included = existing_predicted | set(pliego_scores)
-    included_scores = {t: full_scores[t] for t in included}
+    # ``.get`` y no ``[]``: ``existing_predicted`` sale del CSV
+    # ``licitaciones.ml_tecnologias`` y ``existing_scores`` de
+    # ``licitacion_tecnologia_score`` -- dos tablas distintas, y nada garantiza
+    # que la primera esté contenida en la segunda. ``precompute_ml_tecnologias``
+    # no persiste fila para un label con score 0.0 (scraper/ml_training.py) y
+    # ``_apply_tech_prediction`` (scraper/pipeline.py) delega la persistencia de
+    # scores en el llamador. Indexar directo lanzaba un KeyError con el nombre
+    # de la tecnología, que el fail-open de ``merge_doc_signals`` reducía a un
+    # warning críptico (``error: "'SAP'"``) y dejaba a esas licitaciones sin
+    # fusionar **para siempre**: 33 de ellas en cada pasada de producción hasta
+    # 2026-09-02. Un 0.0 las mantiene en ml_tecnologias -- el merge nunca borra
+    # lo ya predicho -- y no las deja salir como principal salvo que no haya
+    # nada mejor.
+    included_scores = {t: full_scores.get(t, 0.0) for t in included}
     ml_tecnologias = (
         ",".join(sorted(included, key=lambda t: -included_scores[t])) if included else None
     )
@@ -160,10 +172,15 @@ def merge_doc_signals(licitacion_ids: list[str] | None = None) -> dict[str, int]
     decidir si fusiona (siempre recalcula), solo lo usa para no reemitir el
     evento de auditoría en re-corridas. El merge nunca borra una tecnología
     ya predicha por el modelo, solo añade lo que el pliego detectó encima.
-    El read-modify-write en sí es atómico (``merge_with_lock``); el
+    El read-modify-write en sí es atómico (``merge_many_with_lock``); el
     fail-open cubre la escritura del merge y, por separado, la emisión de
     eventos -- un fallo emitiendo el evento de UNA licitación no aborta el
     resto del lote ni deja sin fusionar a las demás.
+
+    Toda la escritura va en un solo viaje por lote (``merge_many_with_lock``):
+    la versión por licitación costaba 14 de los 20 minutos del step de cierre
+    de la pipeline diaria. Lo único que sigue siendo por fila es
+    ``append_event``, y solo para señales aún sin ``merged_at``.
     """
     from config import settings
 
@@ -174,47 +191,48 @@ def merge_doc_signals(licitacion_ids: list[str] | None = None) -> dict[str, int]
     by_licitacion: dict[str, list[dict[str, Any]]] = {}
     for row in signals:
         by_licitacion.setdefault(str(row["licitacion_id"]), []).append(row)
+    if not by_licitacion:
+        return {"licitaciones_merged": 0, "events_emitted": 0, "errors": 0}
 
-    merged = 0
-    events_emitted = 0
-    errors = 0
-
+    pliego_scores_por_licitacion: dict[str, dict[str, float]] = {}
     for licitacion_id, rows in by_licitacion.items():
         pliego_scores: dict[str, float] = {}
         for row in rows:
             tech = str(row["tecnologia"])
             pliego_scores[tech] = max(pliego_scores.get(tech, 0.0), float(row["score"]))
+        pliego_scores_por_licitacion[licitacion_id] = pliego_scores
 
-        # functools.partial en vez de una lambda cerrando sobre la variable
-        # del bucle: los argumentos quedan ligados al crear el partial, no
-        # por closure tardío (aunque aquí compute() se invoca síncronamente
-        # dentro de merge_with_lock antes de la siguiente iteración).
-        compute = functools.partial(
-            _build_merge_result,
-            pliego_scores=pliego_scores,
-            threshold_aplicado=settings.PLIEGO_TECH_MIN_SCORE,
+    threshold = settings.PLIEGO_TECH_MIN_SCORE
+
+    def _compute(licitacion_id: str, state: dict[str, Any]) -> dict[str, Any] | None:
+        return _build_merge_result(
+            state,
+            pliego_scores=pliego_scores_por_licitacion[licitacion_id],
+            threshold_aplicado=threshold,
         )
-        try:
-            result = repo.merge_with_lock(licitacion_id, compute)
-        except Exception as exc:
-            errors += 1
-            log.warning("tech_signal_merge_failed", licitacion_id=licitacion_id, error=str(exc))
-            pliego_tech_merge_total.labels(outcome="error").inc()
-            continue
 
-        merged += 1
-        pliego_tech_merge_total.labels(outcome="ok").inc()
-        assert result is not None  # pliego_scores nunca vacío: viene de by_licitacion
+    outcome = repo.merge_many_with_lock(list(by_licitacion), _compute)
 
+    # Los fallos ya los loguea el repositorio, uno a uno y con ``exc_info``:
+    # repetirlos aquí solo duplicaría la línea, y sin la traza, que es lo único
+    # que faltaba para diagnosticar el KeyError de las 33 licitaciones.
+    pliego_tech_merge_total.labels(outcome="error").inc(len(outcome.errors))
+    pliego_tech_merge_total.labels(outcome="ok").inc(len(outcome.results))
+
+    events_emitted = 0
+    # Un solo stamp para todo el lote: era una escritura por licitación, que
+    # es justo lo que este rediseño vino a quitar. Lo que falle al emitir se
+    # queda con merged_at NULL y se reintenta solo en la siguiente corrida.
+    to_stamp: list[tuple[str, str, str]] = []
+    for licitacion_id, result in outcome.results.items():
         existing_scores = result["existing_scores"]
         full_scores = result["full_scores"]
-        to_stamp: list[tuple[str, str, str]] = []
-        try:
-            for row in rows:
-                if row.get("merged_at") is not None:
-                    continue
-                tech = str(row["tecnologia"])
-                method = str(row["method"])
+        for row in by_licitacion[licitacion_id]:
+            if row.get("merged_at") is not None:
+                continue
+            tech = str(row["tecnologia"])
+            method = str(row["method"])
+            try:
                 append_event(
                     "licitacion.tecnologia_pliego",
                     licitacion_id,
@@ -229,21 +247,22 @@ def merge_doc_signals(licitacion_ids: list[str] | None = None) -> dict[str, int]
                     },
                     actor_id=None,
                 )
-                events_emitted += 1
-                to_stamp.append((licitacion_id, tech, method))
-        except Exception as exc:
-            log.warning(
-                "tech_signal_event_emit_failed", licitacion_id=licitacion_id, error=str(exc)
-            )
-        finally:
-            # El merge ya se escribió y persistió; cualquier (tech, method) que
-            # falló al emitir/estampar sigue con merged_at NULL y se reintenta
-            # sola en la siguiente corrida -- lo ya emitido en este lote no se
-            # pierde ni se re-emite de más.
-            if to_stamp:
-                repo.stamp_merged(to_stamp, merged_at=now_utc_iso())
+            except Exception as exc:
+                log.warning(
+                    "tech_signal_event_emit_failed", licitacion_id=licitacion_id, error=str(exc)
+                )
+                continue
+            events_emitted += 1
+            to_stamp.append((licitacion_id, tech, method))
 
-    return {"licitaciones_merged": merged, "events_emitted": events_emitted, "errors": errors}
+    if to_stamp:
+        repo.stamp_merged(to_stamp, merged_at=now_utc_iso())
+
+    return {
+        "licitaciones_merged": len(outcome.results),
+        "events_emitted": events_emitted,
+        "errors": len(outcome.errors),
+    }
 
 
 def ingest_llm_technologies(record: TenderFactSheetRecord) -> int:

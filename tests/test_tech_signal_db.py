@@ -12,7 +12,7 @@ import pytest
 from db.database import DocumentoReferencia, connect
 from db.repositories.documentos import DocumentosRepository
 from db.repositories.tecnologia_pliego import TechSignal, TecnologiaPliegoRepository
-from services.tech_signal import merge_doc_signals
+from services.tech_signal import _build_merge_result, merge_doc_signals
 
 
 def _insert_licitacion(
@@ -155,7 +155,151 @@ class TestUpsertSignalsPreservesMergedAt:
         assert [r["tecnologia"] for r in rows] == ["SAP"]
 
 
-class TestMergeWithLockScope:
+class TestMergeManyWithLockBatch:
+    """El merge por lotes resuelve N licitaciones en una transacción por chunk.
+    El modo de fallo propio de ese rediseño —cruzar el estado de una licitación
+    con el de otra al agrupar las lecturas— solo se ve contra BD real."""
+
+    def test_each_licitacion_gets_its_own_signal_not_its_neighbours(self, repo):
+        _insert_licitacion("BATCH-1", ml_tecnologias="SAP")
+        _insert_licitacion("BATCH-2")
+        _insert_licitacion("BATCH-3", ml_tecnologias="ORACLE")
+        with connect() as c:
+            c.executemany(
+                "INSERT INTO licitacion_tecnologia_score "
+                "(licitacion_id, tecnologia, probabilidad, threshold_aplicado, computed_at) "
+                "VALUES (%s, %s, %s, %s, %s)",
+                [
+                    ("BATCH-1", "SAP", 0.95, 0.5, "2026-08-01T00:00:00+00:00"),
+                    ("BATCH-3", "ORACLE", 0.60, 0.5, "2026-08-01T00:00:00+00:00"),
+                ],
+            )
+        for licitacion_id, tech, score in (
+            ("BATCH-1", "META4", 0.8),
+            ("BATCH-2", "DOCKER", 0.7),
+            ("BATCH-3", "META4", 0.9),
+        ):
+            repo.upsert_signals(
+                licitacion_id,
+                method="keywords",
+                signal_version="v1",
+                scores={tech: TechSignal(score=score, matched_terms=[tech.lower()])},
+            )
+
+        result = merge_doc_signals()
+
+        assert result["licitaciones_merged"] == 3
+        assert result["errors"] == 0
+        with connect() as c:
+            rows = c.execute(
+                "SELECT id_externo, ml_tecnologias, ml_tech_principal, ml_proba_max "
+                "FROM licitaciones WHERE id_externo LIKE 'BATCH-%' ORDER BY id_externo"
+            ).fetchall()
+        por_id = {str(r[0]): r for r in rows}
+        assert set(str(por_id["BATCH-1"][1]).split(",")) == {"SAP", "META4"}
+        assert por_id["BATCH-1"][2] == "SAP"  # 0.95 del score previo gana al 0.8
+        assert str(por_id["BATCH-2"][1]) == "DOCKER"
+        assert por_id["BATCH-2"][2] == "DOCKER"
+        assert set(str(por_id["BATCH-3"][1]).split(",")) == {"ORACLE", "META4"}
+        assert por_id["BATCH-3"][2] == "META4"  # 0.9 del pliego gana al 0.60
+
+    def test_chunking_does_not_change_the_result(self, repo):
+        """Con ``chunk_size`` menor que el lote se abren varias transacciones;
+        el resultado tiene que ser idéntico al de una sola."""
+        ids = [f"CHUNK-{i}" for i in range(5)]
+        for licitacion_id in ids:
+            _insert_licitacion(licitacion_id)
+            repo.upsert_signals(
+                licitacion_id,
+                method="keywords",
+                signal_version="v1",
+                scores={"META4": TechSignal(score=0.8, matched_terms=["meta4"])},
+            )
+
+        outcome = repo.merge_many_with_lock(
+            ids,
+            lambda _lic, state: _build_merge_result(
+                state, pliego_scores={"META4": 0.8}, threshold_aplicado=0.5
+            ),
+            chunk_size=2,
+        )
+
+        assert set(outcome.results) == set(ids)
+        assert outcome.errors == {}
+        with connect() as c:
+            rows = c.execute(
+                "SELECT ml_tecnologias FROM licitaciones WHERE id_externo LIKE 'CHUNK-%'"
+            ).fetchall()
+        assert [str(r[0]) for r in rows] == ["META4"] * 5
+
+    def test_an_unknown_licitacion_id_does_not_poison_its_chunk(self, repo):
+        """``licitacion_tecnologia_score`` tiene FK contra ``licitaciones``: un
+        id inexistente reventaría el INSERT y, al ir todo el chunk en una sola
+        transacción, se llevaría por delante a los vecinos. Se descarta antes
+        de tocar la BD."""
+        _insert_licitacion("FK-OK")
+
+        outcome = repo.merge_many_with_lock(
+            ["FK-OK", "FK-NO-EXISTE"],
+            lambda _lic, state: _build_merge_result(
+                state, pliego_scores={"META4": 0.8}, threshold_aplicado=0.5
+            ),
+        )
+
+        assert set(outcome.results) == {"FK-OK"}
+        assert "FK-NO-EXISTE" in outcome.errors
+        with connect() as c:
+            row = c.execute(
+                "SELECT ml_tecnologias FROM licitaciones WHERE id_externo = 'FK-OK'"
+            ).fetchone()
+        assert str(row[0]) == "META4"
+
+    def test_a_licitacion_whose_compute_raises_does_not_lose_the_chunk(self, repo):
+        """Fail-open por licitación dentro de la MISMA transacción: la que
+        revienta se descarta y las demás del chunk se escriben igual."""
+        for licitacion_id in ("FAILOPEN-1", "FAILOPEN-2"):
+            _insert_licitacion(licitacion_id)
+
+        def _compute(licitacion_id, state):
+            if licitacion_id == "FAILOPEN-1":
+                raise KeyError("SAP")
+            return _build_merge_result(state, pliego_scores={"META4": 0.8}, threshold_aplicado=0.5)
+
+        outcome = repo.merge_many_with_lock(["FAILOPEN-1", "FAILOPEN-2"], _compute)
+
+        assert set(outcome.results) == {"FAILOPEN-2"}
+        assert outcome.errors == {"FAILOPEN-1": "KeyError: 'SAP'"}
+        with connect() as c:
+            row = c.execute(
+                "SELECT ml_tecnologias FROM licitaciones WHERE id_externo = 'FAILOPEN-2'"
+            ).fetchone()
+        assert str(row[0]) == "META4"
+
+    def test_predicted_technology_without_score_row_still_merges(self, repo):
+        """Regresión (2026-09-02): ``ml_tecnologias`` nombraba una tecnología
+        sin fila en ``licitacion_tecnologia_score``; el KeyError dejaba a esas
+        33 licitaciones de producción sin fusionar en cada pasada."""
+        _insert_licitacion("ORPHAN-1", ml_tecnologias="SAP")  # sin fila de score
+        repo.upsert_signals(
+            "ORPHAN-1",
+            method="keywords",
+            signal_version="v1",
+            scores={"META4": TechSignal(score=0.8, matched_terms=["meta4"])},
+        )
+
+        result = merge_doc_signals(licitacion_ids=["ORPHAN-1"])
+
+        assert result == {"licitaciones_merged": 1, "events_emitted": 1, "errors": 0}
+        with connect() as c:
+            row = c.execute(
+                "SELECT ml_tecnologias, ml_tech_principal "
+                "FROM licitaciones WHERE id_externo = 'ORPHAN-1'"
+            ).fetchone()
+        assert set(str(row[0]).split(",")) == {"SAP", "META4"}
+        assert row[1] == "META4"
+
+
+class TestMergeManyWithLockScope:
     def test_untouched_technology_score_row_is_not_clobbered(self, repo):
         """El upsert de licitacion_tecnologia_score solo debe tocar las
         tecnologías que la señal de pliego aportó -- una que el pliego no
