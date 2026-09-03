@@ -149,3 +149,97 @@ def test_sap_active_learning_invoca_maybe_retrain(tmp_db, monkeypatch):
     # Segunda pasada dentro de la ventana semanal → skipped (lock retenido).
     assert pr._run_sap_active_learning() == "skipped"
     assert called == [True]
+
+
+# ---------------------------------------------------------------------------
+# resolve_servable_artifact — el canal cableado en scraper/ (2026-09)
+# ---------------------------------------------------------------------------
+#
+# `precompute_ml_proba` y `precompute_ml_tecnologias` decidían si había modelo
+# con `is_available()`, un `Path.exists()` sobre `data/models/`, que está en
+# .gitignore y viene vacío en el runner: salían en `no_model` por construcción
+# en cada pasada de la pipeline diaria, con `sap_classifier.pkl` publicado en
+# la Release desde 2026-05-22 y nadie bajándolo.
+
+
+def test_servable_prefiere_la_version_activa_sobre_el_local(tmp_path):
+    from shared.model_artifacts import resolve_servable_artifact
+
+    activo = tmp_path / "del-registro.pkl"
+    local = tmp_path / "local.pkl"
+    local.write_bytes(b"local")
+
+    with patch("shared.model_artifacts.resolve_active_artifact", return_value=activo):
+        assert resolve_servable_artifact("sap_classifier", local) == activo
+
+
+def test_servable_cae_al_local_sin_version_activa(tmp_path):
+    from shared.model_artifacts import resolve_servable_artifact
+
+    local = tmp_path / "local.pkl"
+    local.write_bytes(b"local")
+
+    with patch("shared.model_artifacts.resolve_active_artifact", return_value=None):
+        assert resolve_servable_artifact("sap_classifier", local) == local
+
+
+def test_servable_sin_activa_ni_local_devuelve_none(tmp_path):
+    """El caso del runner efímero: `data/models/` vacío y sin versión activa."""
+    from shared.model_artifacts import resolve_servable_artifact
+
+    with patch("shared.model_artifacts.resolve_active_artifact", return_value=None):
+        assert resolve_servable_artifact("sap_classifier", tmp_path / "no-existe.pkl") is None
+
+
+def test_servable_propaga_el_mismatch_en_vez_de_caer_al_local(tmp_path):
+    """Servir el artefacto equivocado es peor que no servir ninguno: si la
+    versión activa no cuadra con su sha256, el fallo sube -- no se sirve por
+    detrás un local que nadie ha verificado."""
+    from shared.model_artifacts import resolve_servable_artifact
+
+    local = tmp_path / "local.pkl"
+    local.write_bytes(b"local")
+
+    with patch(
+        "shared.model_artifacts.resolve_active_artifact",
+        side_effect=ModelArtifactMismatch("sha distinto"),
+    ):
+        with pytest.raises(ModelArtifactMismatch):
+            resolve_servable_artifact("sap_classifier", local)
+
+
+def test_los_clasificadores_de_scraper_resuelven_por_el_canal():
+    """El nombre del registro y la ruta local viajan juntos: si alguien cambia
+    uno sin el otro, el artefacto deja de resolverse en silencio."""
+    from scraper.ml_classifier import _MODEL_PATH as SAP_PATH
+    from scraper.ml_classifier import SAPClassifier
+    from scraper.tech_classifier import _MODEL_PATH as TECH_PATH
+    from scraper.tech_classifier import TechnologyClassifier
+
+    with patch("shared.model_artifacts.resolve_servable_artifact") as resolver:
+        SAPClassifier.resolve_artifact()
+        TechnologyClassifier.resolve_artifact()
+
+    assert [c.args for c in resolver.call_args_list] == [
+        ("sap_classifier", SAP_PATH),
+        ("tech_classifier", TECH_PATH),
+    ]
+
+
+def test_precompute_ml_proba_sirve_el_artefacto_resuelto_no_el_local(tmp_path):
+    """La regresión: el paso ya no se rinde por `is_available()` (disco local)
+    y carga el artefacto que devuelve el canal."""
+    from scraper import ml_training
+
+    artefacto = tmp_path / "resuelto.pkl"
+    with (
+        patch("scraper.ml_classifier.SAPClassifier.resolve_artifact", return_value=artefacto),
+        patch("scraper.ml_classifier.SAPClassifier.is_available") as is_available,
+        patch("scraper.ml_classifier.SAPClassifier.load", side_effect=RuntimeError("stop")) as load,
+    ):
+        resultado = ml_training.precompute_ml_proba()
+
+    load.assert_called_once_with(artefacto)
+    is_available.assert_not_called()
+    # `load` reventó a propósito: interesa por dónde pasó, no que puntúe.
+    assert resultado["skipped_no_model"] is True

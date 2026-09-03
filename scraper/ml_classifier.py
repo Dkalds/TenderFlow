@@ -987,8 +987,27 @@ class SAPClassifier:
 
     @classmethod
     def is_available(cls, path: Path | None = None) -> bool:
-        """True si existe un modelo entrenado en disco."""
+        """True si existe un modelo entrenado **en disco**, sin tocar la red.
+
+        Predicado barato a propósito: lo llama el ingest por entrada
+        (``scraper/pipeline.py``) y la API por request
+        (``api/routes/feedback.py``). Para decidir si hay modelo servible en un
+        runner efímero -- donde ``data/models/`` viene vacío -- usá
+        :meth:`resolve_artifact`, que sí puede bajarlo de la Release.
+        """
         return (path or _MODEL_PATH).exists()
+
+    @classmethod
+    def resolve_artifact(cls) -> Path | None:
+        """Artefacto servible, bajándolo de la Release si hace falta.
+
+        El de la versión activa de ``model_versions`` (verificado por sha256) o,
+        si no hay ninguna registrada, el local. ``None`` si no hay ni uno ni
+        otro. Ver ``shared/model_artifacts.py::resolve_servable_artifact``.
+        """
+        from shared.model_artifacts import resolve_servable_artifact
+
+        return resolve_servable_artifact("sap_classifier", _MODEL_PATH)
 
 
 # ── Re-exportaciones de utilidades ───────────────────────────────────────────

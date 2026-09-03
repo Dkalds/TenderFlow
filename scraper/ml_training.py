@@ -425,12 +425,18 @@ def precompute_ml_proba(*, batch_size: int = 500, force: bool = False) -> dict[s
     from scraper.ml_classifier import SAPClassifier
     from scraper.ml_pipeline import _augment_text
 
-    if not SAPClassifier.is_available():
+    # `resolve_artifact` y no `is_available`: el segundo es un `Path.exists()`
+    # sobre `data/models/`, que está en .gitignore y viene vacío en el runner,
+    # así que este paso salía en `no_model` **por construcción** en cada pasada
+    # de la pipeline diaria -- con el artefacto publicado en la Release desde
+    # mayo y nadie bajándolo. Ver `shared/model_artifacts.py`.
+    artefacto = SAPClassifier.resolve_artifact()
+    if artefacto is None:
         log.warning("precompute_ml_proba.no_model")
         return {"updated": 0, "skipped_no_model": True}
 
     try:
-        clf = SAPClassifier.load()
+        clf = SAPClassifier.load(artefacto)
     except Exception as exc:
         log.error("precompute_ml_proba.load_failed", error=str(exc))
         return {"updated": 0, "skipped_no_model": True}
@@ -498,12 +504,14 @@ def precompute_ml_tecnologias(*, batch_size: int = 500, force: bool = False) -> 
     """
     from scraper.tech_classifier import TechnologyClassifier
 
-    if not TechnologyClassifier.is_available():
+    # Mismo motivo que en `precompute_ml_proba`: `is_available` es local.
+    artefacto = TechnologyClassifier.resolve_artifact()
+    if artefacto is None:
         log.warning("precompute_ml_tecnologias.no_model")
         return {"updated": 0, "scores_inserted": 0, "skipped_no_model": True}
 
     try:
-        clf = TechnologyClassifier.load()
+        clf = TechnologyClassifier.load(artefacto)
     except Exception as exc:
         log.error("precompute_ml_tecnologias.load_failed", error=str(exc))
         return {"updated": 0, "scores_inserted": 0, "skipped_no_model": True}

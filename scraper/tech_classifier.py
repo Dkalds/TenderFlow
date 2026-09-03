@@ -993,7 +993,25 @@ class TechnologyClassifier:
 
     @classmethod
     def is_available(cls, path: Path | None = None) -> bool:
+        """True si existe un modelo entrenado **en disco**, sin tocar la red.
+
+        Mismo contrato que ``SAPClassifier.is_available``: barato porque lo
+        llaman el ingest y la API. Para un runner efímero, :meth:`resolve_artifact`.
+        """
         return (path or _MODEL_PATH).exists()
+
+    @classmethod
+    def resolve_artifact(cls) -> Path | None:
+        """Artefacto servible, bajándolo de la Release si hace falta.
+
+        Hoy nadie registra versiones de ``tech_classifier`` en
+        ``model_versions``, así que en la práctica devuelve el local o ``None``.
+        Va por el mismo canal que el SAP para que el día que se registre una
+        versión no haya que descubrir que este camino no la miraba.
+        """
+        from shared.model_artifacts import resolve_servable_artifact
+
+        return resolve_servable_artifact("tech_classifier", _MODEL_PATH)
 
 
 # ── Entrenamiento desde la BD ─────────────────────────────────────────────

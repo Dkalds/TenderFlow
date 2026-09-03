@@ -225,7 +225,10 @@ class TestTrainFromDb:
 class TestPrecomputeMlProba:
     @patch("scraper.ml_classifier.SAPClassifier")
     def test_no_model_available(self, mock_cls: MagicMock) -> None:
-        mock_cls.is_available.return_value = False
+        # `resolve_artifact` y no `is_available`: el paso ya no se rinde por lo
+        # que haya en disco (`data/models/` viene vacío en el runner), sino por
+        # lo que devuelve el canal de artefactos.
+        mock_cls.resolve_artifact.return_value = None
         from scraper.ml_training import precompute_ml_proba
 
         result = precompute_ml_proba()
@@ -314,7 +317,7 @@ class TestPrecomputeMlProba:
 class TestPrecomputeMlTecnologias:
     @patch("scraper.tech_classifier.TechnologyClassifier")
     def test_no_model(self, mock_cls: MagicMock) -> None:
-        mock_cls.is_available.return_value = False
+        mock_cls.resolve_artifact.return_value = None
         from scraper.ml_training import precompute_ml_tecnologias
 
         result = precompute_ml_tecnologias()
