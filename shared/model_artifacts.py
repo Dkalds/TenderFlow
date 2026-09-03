@@ -190,9 +190,19 @@ def resolve_servable_artifact(name: str, fallback: Path) -> Path | None:
     estaba cableado en ``services/ml/scoring.py``.
 
     Un ``ModelArtifactMismatch`` se propaga, igual que en el camino de
-    scoring: servir el artefacto equivocado es peor que no servir ninguno.
+    scoring: servir el artefacto equivocado es peor que no servir ninguno. Un
+    fallo **leyendo** el registro (BD caída, proceso sin ``DATABASE_URL``) no
+    es lo mismo y no debe dejar sin modelo a quien tiene uno local: se avisa y
+    se cae al fallback, que es el criterio que ya aplica
+    ``scraper/ml_classifier.py::load`` con su ``registry_lookup_failed``.
     """
-    artefacto = resolve_active_artifact(name)
+    try:
+        artefacto = resolve_active_artifact(name)
+    except ModelArtifactMismatch:
+        raise
+    except Exception as exc:
+        log.warning("model_artifact_registry_lookup_failed", model=name, error=str(exc))
+        artefacto = None
     if artefacto is not None:
         return artefacto
     if fallback.exists():
