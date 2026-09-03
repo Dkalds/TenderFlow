@@ -171,3 +171,32 @@ def _ensure_sidecar_checksum(path: Path, verified_sha256: str) -> None:
 
     write_checksum(path, verified_sha256)
     log.info("model_artifact_sidecar_written", path=str(sidecar))
+
+
+def resolve_servable_artifact(name: str, fallback: Path) -> Path | None:
+    """Artefacto servible de ``name``, o ``None`` si no hay ninguno.
+
+    Prefiere el de la versión activa del registro -- descargándolo de la
+    Release si este runner no lo tiene, y verificando su sha256 -- y cae al
+    artefacto local de ``fallback`` cuando no hay versión activa registrada.
+
+    Existe porque los clasificadores de ``scraper/`` decidían si había modelo
+    con un ``Path.exists()`` sobre ``data/models/*.pkl``, que está en
+    ``.gitignore`` y no viene en el checkout: en un runner efímero eso es
+    **siempre** False, así que ``precompute_ml_proba`` y
+    ``precompute_ml_tecnologias`` salían en ``no_model`` por construcción,
+    pasada tras pasada, con el artefacto publicado en la Release y nadie
+    bajándolo. El canal ya existía (``resolve_active_artifact``) pero solo
+    estaba cableado en ``services/ml/scoring.py``.
+
+    Un ``ModelArtifactMismatch`` se propaga, igual que en el camino de
+    scoring: servir el artefacto equivocado es peor que no servir ninguno.
+    """
+    artefacto = resolve_active_artifact(name)
+    if artefacto is not None:
+        return artefacto
+    if fallback.exists():
+        log.info("model_artifact_fallback_local", model=name, path=str(fallback))
+        return fallback
+    log.warning("model_artifact_sin_artefacto_servible", model=name, fallback=str(fallback))
+    return None
