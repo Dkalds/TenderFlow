@@ -92,10 +92,21 @@ test.describe("Flujos de trabajo críticos", () => {
     // revoca sus sesiones, así que hacerlo sobre `demo@tenderflow.dev` dejaría
     // sin autenticación al resto de la suite. El alta self-service está abierta
     // porque el job E2E corre con `ENV=dev` (ver `api/routes/auth.py::register`).
-    const email = `e2e-borrado-${Date.now()}@tenderflow.test`;
-    // Credencial de una cuenta desechable que este mismo test crea y borra: no
-    // abre nada fuera del Postgres efímero de CI.
-    const password = "BorradoE2E-2026"; // pragma: allowlist secret
+    const sello = Date.now();
+    const email = `e2e-borrado-${sello}@tenderflow.test`;
+    // Credencial de una cuenta desechable que este mismo test crea y borra.
+    //
+    // Se GENERA en ejecución en vez de ir literal: una constante con pinta de
+    // contraseña en el repositorio la marca `gitleaks`, y silenciarla con una
+    // excepción en `.gitleaks.toml` gastaría una regla de seguridad real en un
+    // caso que no la necesita. De paso, cada ejecución usa una distinta.
+    //
+    // Los 16+ caracteres son obligatorios: `shared/password_policy.py` los
+    // exige (`min_length=16`) y `register` responde 400 por debajo de ahí. La
+    // primera versión de este test usaba una de 15 y fallaba con el mensaje de
+    // «el alta debe estar abierta», que apuntaba al sitio equivocado — el alta
+    // SÍ estaba abierta (`ENV=dev`); lo que no cumplía era la contraseña.
+    const password = `E2E-${sello}-${Math.random().toString(36).slice(2, 10)}-Ok`;
 
     // Contexto propio: sin `storageState`, para no heredar la sesión demo.
     const context = await browser.newContext();
