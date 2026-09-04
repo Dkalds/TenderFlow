@@ -1,36 +1,86 @@
-# ⚠️ ANTES DE FIARTE DE ESTE FICHERO: comprueba que gobierna algo.
+# ⚠️ ANTES DE FIARTE DE ESTE FICHERO: NO gobierna el servicio de producción.
 #
 # El servicio de producción se creó a mano por el dashboard y **nunca se vinculó
-# a este Blueprint**, así que durante un tiempo lo de aquí fue una intención y no
-# una configuración: editarlo no cambiaba nada, y leerlo inducía a error sobre
-# cómo está configurado el servicio real. Lo observado en el dashboard
-# (2026-08-04) contradecía dos líneas de este mismo fichero — `autoDeploy` estaba
-# activo y no había healthcheck configurado —, o sea que un deploy que arrancara
-# mal reemplazaba igualmente al que funcionaba, sin rollback.
+# a este Blueprint**, así que lo de aquí es una intención y no una configuración:
+# editarlo no cambia nada en Render, y leerlo como si fuera la verdad induce a
+# error sobre cómo está configurado el servicio real.
 #
-# Verificación (dos minutos, en el dashboard de Render):
+# ── Estado: VERIFICADO el 2026-08-28 contra la API de Render ────────────────
+# (no contra el dashboard, que sigue sin comprobar; ver "Pregunta abierta").
+#
+#   - Nombre lógico del servicio: `tenderflow-api` (coincide con este fichero).
+#   - Host real: `tenderflow-jrtr.onrender.com`. NO es
+#     `tenderflow-api.onrender.com`: el sufijo aleatorio lo pone Render al crear
+#     el servicio a mano. Es el valor que tienen que llevar `vars.SMOKE_BASE_URL`
+#     (smoke.yml, deploy.yml) y `CORS_ALLOWED_ORIGINS`/`FRONTEND_URL`.
+#   - `autoDeploy`: **ACTIVO** en el servicio real.
+#   - `plan`: **standard** en el servicio real.
+#
+# ── Líneas de este fichero que NO describen la realidad ─────────────────────
+# Se conservan porque son la configuración deseada, no porque estén vigentes:
+#
+#   1. `autoDeploy: false` (abajo). El servicio real despliega en cada push a la
+#      rama conectada, con CI en rojo o sin CI: los 12 jobs, los ratchets, el
+#      fuzzing y los E2E son advisory para producción, no un gate. Y un deploy
+#      que arranque mal reemplaza igualmente al que funcionaba.
+#   2. `healthCheckPath: /api/v1/health` (abajo). El 2026-08-04 no había
+#      healthcheck configurado en el servicio real; sin él Render no espera a
+#      que la instancia nueva esté sana antes de cortar la vieja, así que no hay
+#      rollback automático de un arranque roto. Sin re-verificar desde entonces.
+#   3. Los servicios `tenderflow-prometheus`, `tenderflow-grafana` y
+#      `tenderflow-alertmanager` de más abajo: al no estar vinculado el
+#      Blueprint, declararlos aquí NO los crea. Existen en Render solo si
+#      alguien los creó a mano.
+#
+# `plan: free` SÍ estaba desalineado y se corrigió a `standard` en este cambio
+# (ver el comentario en la propia línea). `docs/sli-slo.md` todavía suspende el
+# SLO de disponibilidad "mientras `tenderflow-api` use Render Free": ese
+# documento no es de este stream y queda reportado como desajuste pendiente.
+#
+# ── Pregunta abierta (decisión pendiente, no un TODO más) ───────────────────
+# Hay que elegir una de las dos, y hasta que se elija este fichero seguirá
+# mintiendo por omisión:
+#
+#   (a) **Vincular el Blueprint** y que este fichero mande de verdad. Ojo:
+#       vincular un Blueprint a un servicio existente puede recrearlo — hacerlo
+#       en ventana, con el `plan` ya correcto aquí (por eso el cambio a
+#       `standard`: enlazarlo con `free` degradaría el servicio).
+#   (b) **Declararlo documental**: renombrarlo a algo que no parezca activo y
+#       replicar a mano en el dashboard `autoDeploy: false` y `healthCheckPath`.
+#
+# Verificación de dos minutos, en el dashboard de Render (nadie la ha hecho aún
+# — la verificación del 2026-08-28 fue por API, que no expone el vínculo):
 #   1. Settings del servicio → ¿aparece vinculado a un Blueprint?
-#   2. Si NO: lo que manda es el dashboard, y hay que replicar allí a mano
-#      `autoDeploy: false` y `healthCheckPath`, o vincular el Blueprint (ojo:
-#      vincularlo a un servicio existente puede recrearlo; hacerlo en ventana).
-#   3. Anota aquí el resultado cuando lo compruebes, para que el siguiente que
-#      lea este fichero no tenga que volver a preguntárselo.
-#
-# Estado anotado: SIN VERIFICAR desde 2026-08-04.
+#   2. Settings → Build & Deploy → ¿`Auto-Deploy` está en `No`?
+#   3. Settings → Health Check Path → ¿dice `/api/v1/health`?
+#   4. Anotá aquí el resultado con su fecha, para que el siguiente que lea este
+#      fichero no tenga que volver a preguntárselo.
 services:
   - type: web
     name: tenderflow-api
     runtime: docker
     dockerfilePath: ./docker/Dockerfile.api
-    plan: free
+    # `free` hasta 2026-08-28, cuando se verificó por la API de Render que el
+    # servicio real corre en `standard`. Corregirlo aquí es seguro precisamente
+    # porque el Blueprint NO está vinculado: esta línea no dispara ningún cambio
+    # de plan. Y dejarla en `free` era lo peligroso — si algún día se vincula el
+    # Blueprint (opción (a) de la cabecera), un `free` aquí DEGRADARÍA el
+    # servicio a un plan con spin-down.
+    plan: standard
     region: frankfurt
-    # Deploy NO automático en cada push: sin esto Render desplegaba código en
+    # ⚠️ NO VIGENTE (ver cabecera, punto 1): el servicio real tiene autoDeploy
+    # ACTIVO. Esto es la configuración deseada, no la observada.
+    #
+    # Deploy NO automático en cada push: sin esto Render despliega código en
     # cada commit a la rama conectada, incluso con CI en rojo, dejando todo el
     # aparato de gates (16 jobs, ratchets, fuzzing, E2E) como puramente
     # advisory para producción. Con autoDeploy:false el deploy se dispara
     # manualmente o vía deploy hook gateado por el job `test` de CI (ver
     # docs/runbooks). Un despliegue solo debe ocurrir sobre un commit verde.
     autoDeploy: false
+    # ⚠️ NO VIGENTE (ver cabecera, punto 2): el 2026-08-04 el servicio real no
+    # tenía healthcheck configurado. Sin él Render no espera a que la instancia
+    # nueva esté sana antes de cortar la vieja.
     healthCheckPath: /api/v1/health
     envVars:
       - key: ENV
@@ -197,6 +247,60 @@ services:
       name: prometheus-data
       mountPath: /prometheus
       sizeGB: 10
+
+  # ── Alertmanager (S6.3) ────────────────────────────────────────────────
+  # Nueve reglas de alerta sin receptor. `observability/alert_rules.yml` define
+  # diez (con el Watchdog nuevo), dos de ellas `severity: critical`
+  # —`ApiErrorRateHigh`, escrita justo después del incidente del 2026-08-28 en
+  # que «la superficie pública devolvió 500 durante horas sin que se disparara
+  # nada», y `PgPoolHealthCheckFailed`—, pero `prometheus.render.yml` no tenía
+  # bloque `alerting:` y no existía Alertmanager en ningún sitio del repo. Las
+  # etiquetas `severity` solo las consume el enrutado de Alertmanager: se
+  # diseñó la capa y no se cableó, así que una alerta que se disparaba se
+  # quedaba en la página /alerts de Prometheus, que no mira nadie.
+  #
+  # `pserv` y no `web`: no tiene por qué ser accesible desde internet — quien lo
+  # consulta es Prometheus, por la red privada. Exponerlo sería publicar la
+  # superficie de silenciado de alertas sin autenticación.
+  #
+  # Disco pequeño pero necesario: `--storage.path` guarda las silences y el
+  # estado de notificación (`nflog`). Sin él, cada redeploy reenvía todo lo que
+  # siga activo y borra los silencios que alguien haya puesto durante un
+  # incidente.
+  - type: pserv
+    name: tenderflow-alertmanager
+    runtime: docker
+    dockerfilePath: ./docker/Dockerfile.alertmanager
+    dockerContext: .
+    plan: starter
+    region: frankfurt
+    disk:
+      name: alertmanager-data
+      mountPath: /alertmanager
+      sizeGB: 1
+    envVars:
+      # Las MISMAS variables ALERT_* que ya usa observability/alerts.py desde
+      # Python y que docs/SECURITY.md lista como secretos gestionados. No se
+      # inventa un segundo juego de credenciales SMTP: el proyecto tiene un solo
+      # buzón remitente.
+      - key: ALERT_EMAIL_TO
+        sync: false
+      - key: ALERT_SMTP_USER
+        sync: false
+      - key: ALERT_SMTP_PASSWORD
+        sync: false
+      - key: ALERT_SMTP_HOST
+        value: smtp.gmail.com
+      - key: ALERT_SMTP_PORT
+        value: "587"
+      # Segundo canal, opcional. Vacío por defecto y sin romper nada: el
+      # entrypoint sustituye la variable ausente por un destino local
+      # inexistente, Alertmanager registra el fallo de ESE receptor y sigue
+      # sirviendo el de email. Aquí es donde va la URL de un dead-man's-switch
+      # (healthchecks.io, Better Stack, Cronitor) para que el Watchdog sirva de
+      # algo — hoy dispara y se enruta, pero nadie nota su ausencia.
+      - key: ALERTMANAGER_WEBHOOK_URL
+        sync: false
 
   - type: web
     name: tenderflow-grafana

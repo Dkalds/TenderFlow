@@ -10,6 +10,7 @@ import {
   type DegradedInfo,
   type FuenteDocumento,
 } from "@/lib/ask-stream";
+import { askKeys } from "@/lib/query-keys";
 
 /**
  * Available LLM models for the copilot (shared cache key with /investigador).
@@ -24,7 +25,7 @@ import {
  */
 export function useAskModels() {
   return useQuery<string[]>({
-    queryKey: ["ask-models"],
+    queryKey: askKeys.models,
     queryFn: async () => {
       try {
         return (await apiGet("/api/v1/ask/models")).models;

@@ -75,12 +75,48 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
+      # Overrides de repositorio → $GITHUB_ENV, y SOLO si están definidos.
+      #
+      # Antes esto vivía como `X: ${{ vars.X || 'literal' }}` en el `env:` del
+      # step. Ese literal no es un default: SUSTITUYE al de `config/settings.py`
+      # cuando la variable no está definida, que es el caso normal. Son dos
+      # fuentes de verdad para el mismo valor y gana la del YAML, que ningún
+      # test mira. Aquí ya costó un incidente concreto y documentado: el modelo
+      # `deepseek-v4-pro` quedó EOL en NVIDIA el 2026-08-07 y devolvía 410; el
+      # default de settings ya estaba corregido, pero el literal del workflow lo
+      # pisaba y tumbó el lote entero. Así el default vigente es siempre el del
+      # código, y la variable de repo lo pisa solo cuando alguien la define.
+      # Verificado por scripts/check_env_parity.py.
+      - name: Exportar overrides de repositorio definidos
+        env:
+          IN_ALERT_MIN_LEVEL: ${{ vars.ALERT_MIN_LEVEL }}
+          IN_LLM_TECH_LABELING_ENABLED: ${{ vars.LLM_TECH_LABELING_ENABLED }}
+          IN_LLM_TECH_LABELING_MODEL: ${{ vars.LLM_TECH_LABELING_MODEL }}
+          IN_LLM_TECH_LABELING_BATCH: ${{ vars.LLM_TECH_LABELING_BATCH }}
+          IN_LLM_TECH_FEEDBACK_ENABLED: ${{ vars.LLM_TECH_FEEDBACK_ENABLED }}
+        run: |
+          set -u
+          if [ -n "${IN_ALERT_MIN_LEVEL:-}" ]; then
+            echo "ALERT_MIN_LEVEL=$IN_ALERT_MIN_LEVEL" >> "$GITHUB_ENV"
+          fi
+          if [ -n "${IN_LLM_TECH_LABELING_ENABLED:-}" ]; then
+            echo "LLM_TECH_LABELING_ENABLED=$IN_LLM_TECH_LABELING_ENABLED" >> "$GITHUB_ENV"
+          fi
+          if [ -n "${IN_LLM_TECH_LABELING_MODEL:-}" ]; then
+            echo "LLM_TECH_LABELING_MODEL=$IN_LLM_TECH_LABELING_MODEL" >> "$GITHUB_ENV"
+          fi
+          if [ -n "${IN_LLM_TECH_LABELING_BATCH:-}" ]; then
+            echo "LLM_TECH_LABELING_BATCH=$IN_LLM_TECH_LABELING_BATCH" >> "$GITHUB_ENV"
+          fi
+          if [ -n "${IN_LLM_TECH_FEEDBACK_ENABLED:-}" ]; then
+            echo "LLM_TECH_FEEDBACK_ENABLED=$IN_LLM_TECH_FEEDBACK_ENABLED" >> "$GITHUB_ENV"
+          fi
+
       - name: Run bulk refresh
         env:
           ALERT_EMAIL_TO: ${{ secrets.ALERT_EMAIL_TO }}
           ALERT_SMTP_USER: ${{ secrets.ALERT_SMTP_USER }}
           ALERT_SMTP_PASSWORD: ${{ secrets.ALERT_SMTP_PASSWORD }}
-          ALERT_MIN_LEVEL: ${{ vars.ALERT_MIN_LEVEL || 'warn' }}
           GITHUB_TOKEN: ${{ github.token }}
           SCRAPER_MONTHS: ${{ inputs.months || 3 }}
           # El bulk también corre los pasos post-ingesta, así que ejecuta
@@ -88,14 +124,6 @@ jobs:
           # un bulk manual consumiría la ventana diaria del paso sin clasificar
           # nada (ver `_run_periodic`: el lock solo se suelta si el paso falla).
           NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
-          LLM_TECH_LABELING_ENABLED: ${{ vars.LLM_TECH_LABELING_ENABLED || 'false' }}
-          # Fallback sincronizado con config/settings.py::LLM_TECH_LABELING_MODEL.
-          # El anterior (deepseek-v4-pro) quedó EOL en NVIDIA el 2026-08-07 y
-          # devuelve 410: con la fase activada y sin vars.LLM_TECH_LABELING_MODEL,
-          # este env pisaba el default bueno de settings y el lote entero fallaba.
-          LLM_TECH_LABELING_MODEL: ${{ vars.LLM_TECH_LABELING_MODEL || 'deepseek-ai/deepseek-v4-flash-0731' }}
-          LLM_TECH_LABELING_BATCH: ${{ vars.LLM_TECH_LABELING_BATCH || '200' }}
-          LLM_TECH_FEEDBACK_ENABLED: ${{ vars.LLM_TECH_FEEDBACK_ENABLED || 'false' }}
         run: |
           MAX_RETRIES=2
           DELAY_SECS=90
@@ -117,5 +145,4 @@ jobs:
           ALERT_EMAIL_TO: ${{ secrets.ALERT_EMAIL_TO }}
           ALERT_SMTP_USER: ${{ secrets.ALERT_SMTP_USER }}
           ALERT_SMTP_PASSWORD: ${{ secrets.ALERT_SMTP_PASSWORD }}
-          ALERT_MIN_LEVEL: ${{ vars.ALERT_MIN_LEVEL || 'warn' }}
         run: python -m scheduler.healthcheck --alert

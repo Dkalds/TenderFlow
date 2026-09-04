@@ -57,6 +57,20 @@ de código fuente, NO un parser SQL completo):
      anidadas, que se escanean por separado con su propio qualname. Esto
      evita que una asignación Python como ``user_key = _user_key(ctx)``
      (que no es un literal de cadena) se confunda con un predicado SQL.
+  1-bis. A esos literales propios se SUMAN las constantes de cadena que la
+     función referencia por nombre (``_FRAGMENTO``, ``self._FRAGMENTO``) y
+     que están definidas en el módulo o en la clase que la contiene.
+     Sin esto el escáner era ciego a una refactorización legítima y
+     frecuente: factorizar a un atributo de clase el ``WHERE`` que comparten
+     dos métodos. Pasó en 2026-09 con
+     ``WatchlistRepository._ITEMS_SCOPE_WHERE``: ``list_items`` y
+     ``calendar_items`` seguían emitiendo ``wi.user_key = %s`` en el SQL que
+     ejecutan --se comprobó concatenando el fragmento-- pero el predicado ya
+     no estaba en el cuerpo de la función y el test las denunció. La salida
+     fácil habría sido meterlas en la allowlist; sería la peor, porque una
+     allowlist con entradas falsas deja de avisar el día que esa query pierda
+     su predicado DE VERDAD. Se arregla la vista del escáner, no la lista de
+     excepciones.
   2. Si esos literales contienen una referencia ``FROM``/``JOIN``/``UPDATE``/
      ``DELETE FROM`` a una tabla user-scoped, se considera que la función
      ejecuta un SELECT/UPDATE/DELETE contra esa tabla.
@@ -86,12 +100,20 @@ check_openapi_contract.py no lo son):
     query TENGA la capacidad de filtrar por user_key, no que todo caller la
     use siempre -- eso es responsabilidad de la capa de autorización de esa
     ruta, fuera del alcance de un test estático sobre ``db/``.
+  - La resolución de constantes (1-bis) es de UN nivel y por nombre, no un
+    análisis de alcance real: una constante definida a partir de otra no se
+    despliega, y dos clases del mismo archivo con un atributo homónimo no se
+    distinguen entre sí (sí se distingue clase de módulo: lo de la clase
+    tiene prioridad). Es el mismo compromiso best-effort que el resto del
+    archivo; el coste de equivocarse aquí es un falso positivo o un falso
+    negativo puntual, no un cambio de la disciplina que se exige.
 """
 
 from __future__ import annotations
 
 import ast
 import re
+from collections.abc import Iterator
 from pathlib import Path
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -138,16 +160,84 @@ def _own_string_constants(node: ast.AST) -> list[str]:
     return out
 
 
-def _iter_functions(node: ast.AST, prefix: str = ""):
-    """Recorre módulo/clases y produce ``(qualname, nodo)`` de cada función o
-    método, incluyendo funciones anidadas (con su qualname punteado)."""
+def _own_referenced_names(node: ast.AST) -> set[str]:
+    """Nombres referenciados en el cuerpo de ``node`` -- tanto ``FRAGMENTO``
+    como ``self.FRAGMENTO`` o ``Clase.FRAGMENTO`` --, SIN bajar a funciones
+    anidadas (mismo criterio que :func:`_own_string_constants`)."""
+    out: set[str] = set()
+    for child in ast.iter_child_nodes(node):
+        if isinstance(child, ast.FunctionDef | ast.AsyncFunctionDef):
+            continue
+        if isinstance(child, ast.Name):
+            out.add(child.id)
+        elif isinstance(child, ast.Attribute):
+            out.add(child.attr)
+        out |= _own_referenced_names(child)
+    return out
+
+
+def _string_value(node: ast.expr) -> str | None:
+    """Valor de un literal de cadena, plegando la concatenación con ``+``.
+
+    La concatenación implícita (``"a" "b"``) ya la funde el parser en un solo
+    ``ast.Constant``; la explícita llega como ``BinOp`` y hay que plegarla
+    aquí -- es la forma en la que este repo escribe los fragmentos SQL largos.
+    """
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        return node.value
+    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
+        izquierda = _string_value(node.left)
+        derecha = _string_value(node.right)
+        if izquierda is not None and derecha is not None:
+            return izquierda + derecha
+    return None
+
+
+def _string_constants_defined_in(body: list[ast.stmt]) -> dict[str, str]:
+    """Constantes de cadena asignadas en ``body`` (cuerpo de módulo o clase),
+    indexadas por nombre."""
+    out: dict[str, str] = {}
+    for stmt in body:
+        targets: list[ast.expr]
+        if isinstance(stmt, ast.Assign):
+            targets = list(stmt.targets)
+            value: ast.expr | None = stmt.value
+        elif isinstance(stmt, ast.AnnAssign):
+            targets = [stmt.target]
+            value = stmt.value
+        else:
+            continue
+        if value is None:
+            continue
+        text = _string_value(value)
+        if text is None:
+            continue
+        for target in targets:
+            if isinstance(target, ast.Name):
+                out[target.id] = text
+    return out
+
+
+def _iter_functions(
+    node: ast.AST, prefix: str = "", consts: dict[str, str] | None = None
+) -> Iterator[tuple[str, ast.FunctionDef | ast.AsyncFunctionDef, dict[str, str]]]:
+    """Recorre módulo/clases y produce ``(qualname, nodo, constantes)`` de cada
+    función o método, incluyendo funciones anidadas (con su qualname punteado).
+
+    ``constantes`` son las de cadena visibles desde esa función: las del módulo,
+    tapadas por las de la clase que la contiene si comparten nombre.
+    """
+    scope = dict(consts or {})
+    body = getattr(node, "body", None)
+    if isinstance(body, list):
+        scope.update(_string_constants_defined_in(body))
     for child in ast.iter_child_nodes(node):
         if isinstance(child, ast.ClassDef):
-            yield from _iter_functions(child, prefix=f"{prefix}{child.name}.")
+            yield from _iter_functions(child, prefix=f"{prefix}{child.name}.", consts=scope)
         elif isinstance(child, ast.FunctionDef | ast.AsyncFunctionDef):
             qualname = f"{prefix}{child.name}"
-            yield qualname, child
-            yield from _iter_functions(child, prefix=f"{qualname}.")
+            yield qualname, child, scope
+            yield from _iter_functions(child, prefix=f"{qualname}.", consts=scope)
 
 
 def _scan_file(path: Path) -> set[str]:
@@ -158,8 +248,14 @@ def _scan_file(path: Path) -> set[str]:
     rel = path.relative_to(_REPO_ROOT).as_posix()
 
     violations: set[str] = set()
-    for qualname, func_node in _iter_functions(tree):
-        pool = "\n".join(_own_string_constants(func_node))
+    for qualname, func_node, consts in _iter_functions(tree):
+        literales = _own_string_constants(func_node)
+        # Constantes que la función referencia por nombre: el fragmento SQL
+        # factorizado a atributo de clase cuenta como texto propio (ver 1-bis).
+        literales += [
+            consts[name] for name in sorted(_own_referenced_names(func_node)) if name in consts
+        ]
+        pool = "\n".join(literales)
         if not pool:
             continue
         touches_target_table = any(

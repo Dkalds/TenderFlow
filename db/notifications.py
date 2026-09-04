@@ -76,7 +76,7 @@ def insert_user_notification(
     title: str,
     body: str | None,
     licitacion_id: str | None,
-    organization_id: int | None = None,
+    organization_id: int,
     rule_id: int | None = None,
     created_at: str | None = None,
 ) -> bool:
@@ -91,6 +91,11 @@ def insert_user_notification(
     hasta ahora cada productor (reglas, recordatorios) repetía su propio
     ``INSERT`` con el mismo ``ON CONFLICT``, y un tercero —las asignaciones de
     pursuits— habría sido la tercera copia.
+
+    ``organization_id`` no admite ``None``: una alerta sin organización queda
+    fuera del alcance de cualquier lectura con ámbito y el usuario no la ve en
+    ningún sitio. Los tres productores (reglas, recordatorios, pursuits) la
+    tienen a mano; que sea obligatoria impide que un cuarto la olvide.
     """
     with connect() as c:
         cur = c.execute(

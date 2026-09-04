@@ -1,19 +1,18 @@
 /**
- * Reglas de watchlist: traducciones de formulario, migración del legacy y
- * deduplicado de coincidencias, fuera del árbol de render.
+ * Reglas de watchlist: traducciones de formulario y deduplicado de
+ * coincidencias, fuera del árbol de render.
  *
- * `mi-watchlist/page.tsx` pasa de las 1.000 líneas. Lo que de verdad puede
+ * `mi-watchlist/page.tsx` pasaba de las 950 líneas. Lo que de verdad puede
  * romperse sin que la UI se queje no es el marcado: es que el formulario mande
- * `""` donde el contrato pide `null`, que la migración del `localStorage` dé por
- * buena una subida que falló (y borre reglas del usuario), o que el listado
- * combinado repita la misma licitación una vez por regla activa. Eso vive aquí.
+ * `""` donde el contrato pide `null`, o que el listado combinado repita la
+ * misma licitación una vez por regla activa. Eso vive aquí.
  *
- * Sin fetch propio: la migración recibe el `POST` inyectado, así que el test la
- * ejercita sin servidor y sin montar la página.
+ * La migración del `localStorage` legacy se mudó a
+ * `use-legacy-rule-migration.ts`: es el único de los tres asuntos que puede
+ * borrar datos del usuario y merece leerse aislado.
  */
 "use client";
 
-import { useEffect, useRef } from "react";
 import type { WatchlistRuleMatch, WatchlistRuleOut } from "@/lib/api-types";
 
 export type Frequency = "immediate" | "daily" | "weekly";
@@ -187,106 +186,6 @@ export function prefillToFormState(
     ccaa: prefill?.ccaa?.split(",")[0] ?? "",
     frequency: "daily",
   };
-}
-
-/* ── Migración one-shot del localStorage ────────────────────────────── */
-
-export interface LegacyRule {
-  keyword?: string;
-  cpvFilter?: string;
-  minImporte?: number | null;
-  ccaa?: string;
-  frequency?: "inmediata" | "diaria" | "semanal";
-  active?: boolean;
-}
-
-export const LEGACY_KEY = "watchlist_rules";
-export const MIGRATED_FLAG = "watchlist_rules_migrated";
-
-const LEGACY_FREQ: Record<string, Frequency> = {
-  inmediata: "immediate",
-  diaria: "daily",
-  semanal: "weekly",
-};
-
-export function legacyToBody(r: LegacyRule): RuleBody {
-  return {
-    nombre: r.keyword?.trim() || null,
-    keyword: r.keyword?.trim() || null,
-    cpv: r.cpvFilter?.trim() || null,
-    min_importe: r.minImporte ?? null,
-    ccaa: r.ccaa || null,
-    frequency: LEGACY_FREQ[r.frequency ?? "diaria"] ?? "daily",
-    active: r.active ?? true,
-  };
-}
-
-/**
- * Sube las reglas del `localStorage` legacy al servidor.
- *
- * Best-effort por regla: si una falla se siguen intentando las demás, pero el
- * resultado es `false` y **el llamador no debe marcar la migración como
- * completa ni vaciar el legacy**. Antes se borraban aunque el POST devolviera
- * 403 y el usuario perdía sus reglas sin enterarse; así el próximo arranque
- * reintenta lo pendiente.
- */
-export async function migrateLegacyRules(
-  legacy: LegacyRule[],
-  post: (body: RuleBody) => Promise<unknown>,
-): Promise<boolean> {
-  let todasOk = true;
-  for (const r of legacy) {
-    try {
-      await post(legacyToBody(r));
-    } catch {
-      todasOk = false;
-    }
-  }
-  return todasOk;
-}
-
-export interface LegacyMigrationDeps {
-  /** Lectura del flag/lista del `localStorage` (inyectada para el test). */
-  readFlag: () => boolean;
-  readLegacy: () => LegacyRule[];
-  markMigrated: () => void;
-  clearLegacy: () => void;
-  post: (body: RuleBody) => Promise<unknown>;
-  onDone: () => void;
-}
-
-/**
- * Ejecuta la migración una sola vez por montaje.
- *
- * El `ref` la protege del doble montaje de StrictMode: sin él la primera
- * ejecución duplicaba cada regla del usuario.
- */
-export function useLegacyRuleMigration(deps: LegacyMigrationDeps): void {
-  const migratedRef = useRef(false);
-  // Se congelan las dependencias del primer render: la migración corre una sola
-  // vez al montar, así que re-leerlas en cada render no cambiaría nada y sí
-  // obligaría a escribir el ref durante el render.
-  const depsRef = useRef(deps);
-
-  useEffect(() => {
-    if (migratedRef.current) return;
-    migratedRef.current = true;
-    const d = depsRef.current;
-    if (d.readFlag()) return;
-    const legacy = d.readLegacy();
-    if (legacy.length === 0) {
-      d.markMigrated();
-      return;
-    }
-    void (async () => {
-      const todasOk = await migrateLegacyRules(legacy, d.post);
-      if (todasOk) {
-        d.markMigrated();
-        d.clearLegacy();
-      }
-      d.onDone();
-    })();
-  }, []);
 }
 
 /* ── Resultados combinados ──────────────────────────────────────────── */

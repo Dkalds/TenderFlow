@@ -18,6 +18,7 @@ import type {
   TenderFactSheetRecord,
   WeightedCriterion,
 } from "@/lib/api-types";
+import { documentosKeys } from "@/lib/query-keys";
 
 /**
  * Tipos derivados del esquema OpenAPI, no escritos a mano.
@@ -97,7 +98,7 @@ export function useExtractTenderFactSheet(licitacionId: string) {
  */
 export function useFactSheetDocumentos(licitacionId: string) {
   return useQuery({
-    queryKey: ["documentos", licitacionId],
+    queryKey: documentosKeys.byLicitacion(licitacionId),
     queryFn: () =>
       fetchWithAuth<DocumentosResult>(
         `/api/v1/licitaciones/${encodeURIComponent(licitacionId)}/documentos`,

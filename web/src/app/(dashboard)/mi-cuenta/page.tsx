@@ -20,6 +20,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { SpaceShell } from "@/components/layout/space-shell";
+import { apiMutate, fetchBlobWithAuth } from "@/lib/api-client";
 import { useSession } from "@/lib/auth";
 
 function ExportCard() {
@@ -28,11 +29,10 @@ function ExportCard() {
   const download = async () => {
     setDownloading(true);
     try {
-      // El endpoint devuelve un ZIP, no JSON: se descarga como blob en vez de
-      // pasar por `fetchWithAuth`, que parsea la respuesta.
-      const response = await fetch("/api/v1/me/data", { credentials: "include" });
-      if (!response.ok) throw new Error(String(response.status));
-      const blob = await response.blob();
+      // El endpoint devuelve un ZIP, no JSON: `fetchBlobWithAuth` es la
+      // variante de `fetchWithAuth` que no parsea la respuesta, pero conserva
+      // la redirección a /login en 401 y el `ApiError` con el `detail` RFC-7807.
+      const blob = await fetchBlobWithAuth("/api/v1/me/data");
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
@@ -74,11 +74,14 @@ function DeleteAccountCard({ email }: { email: string }) {
   const remove = async () => {
     setDeleting(true);
     try {
-      const response = await fetch("/api/v1/me", {
-        method: "DELETE",
-        credentials: "include",
-      });
-      if (!response.ok) throw new Error(String(response.status));
+      // Dos motivos por los que este botón devolvía 403/422 y nunca borró nada:
+      //   1. `DELETE /me` cuelga de `require_recent_session` → `require_any_auth`,
+      //      que rechaza toda mutación por cookie sin `X-CSRF-Token`
+      //      (`api/routes/dual_auth.py`). El `fetch` crudo no lo adjuntaba;
+      //      `apiMutate` sí.
+      //   2. El endpoint exige cuerpo `{"confirmation": "DELETE"}`
+      //      (`DeleteMyDataRequest`, `api/routes/me.py`). Se enviaba vacío.
+      await apiMutate("DELETE", "/api/v1/me", { confirmation: "DELETE" });
       toast.success("Cuenta eliminada");
       window.location.href = "/login";
     } catch {

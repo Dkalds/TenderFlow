@@ -17,27 +17,50 @@ from observability.logging import get_logger
 log = get_logger(__name__)
 
 
-def get_user_profile(user_key: str, organization_id: int | None = None) -> dict[str, Any] | None:
-    """Carga el perfil del usuario. Devuelve None si no tiene perfil."""
+_PROFILE_COLS = (
+    "SELECT user_key, weights_json, afinidad_keywords_json, "
+    "cpvs_json, ccaa_json, importe_min, importe_max, updated_at, "
+    "organization_id, visibility FROM user_profiles "
+)
+
+
+def get_user_profile(user_key: str, organization_id: int) -> dict[str, Any] | None:
+    """Perfil visible dentro de ``organization_id``. ``None`` si no hay.
+
+    ``organization_id`` es obligatoria. Tenía default ``None`` y esa rama caía
+    a ``WHERE user_key = %s``, sin ámbito: quien omitía el argumento no elegía
+    esa semántica, la heredaba en silencio. El camino sin organización sigue
+    existiendo, pero hay que pedirlo por su nombre
+    (:func:`get_own_user_profile`).
+    """
     with connect_read() as c:
-        if organization_id is None:
-            row = c.execute(
-                "SELECT user_key, weights_json, afinidad_keywords_json, "
-                "cpvs_json, ccaa_json, importe_min, importe_max, updated_at, "
-                "organization_id, visibility "
-                "FROM user_profiles WHERE user_key = %s",
-                (user_key,),
-            ).fetchone()
-        else:
-            row = c.execute(
-                "SELECT user_key, weights_json, afinidad_keywords_json, "
-                "cpvs_json, ccaa_json, importe_min, importe_max, updated_at, "
-                "organization_id, visibility "
-                "FROM user_profiles WHERE organization_id = %s "
-                "AND (visibility = 'organization' OR user_key = %s) "
-                "ORDER BY CASE WHEN user_key = %s THEN 0 ELSE 1 END, updated_at DESC LIMIT 1",
-                (organization_id, user_key, user_key),
-            ).fetchone()
+        row = c.execute(
+            _PROFILE_COLS + "WHERE organization_id = %s "
+            "AND (visibility = 'organization' OR user_key = %s) "
+            "ORDER BY CASE WHEN user_key = %s THEN 0 ELSE 1 END, updated_at DESC LIMIT 1",
+            (organization_id, user_key, user_key),
+        ).fetchone()
+    return _row_to_profile(row)
+
+
+def get_own_user_profile(user_key: str) -> dict[str, Any] | None:
+    """Perfil propio del usuario, deliberadamente sin ámbito de organización.
+
+    Es el camino del export GDPR (Art. 15/20) y de los llamadores que todavía
+    no tienen una organización resuelta: la pregunta ahí es «qué guarda el
+    sistema sobre esta persona», no «qué ve este equipo». Se separa de
+    :func:`get_user_profile` para que la ausencia de ámbito sea una decisión
+    escrita en el nombre de la función y no el default de un parámetro.
+    """
+    with connect_read() as c:
+        row = c.execute(
+            _PROFILE_COLS + "WHERE user_key = %s",
+            (user_key,),
+        ).fetchone()
+    return _row_to_profile(row)
+
+
+def _row_to_profile(row: Any) -> dict[str, Any] | None:
     if row is None:
         return None
     cols = [
@@ -71,10 +94,14 @@ def get_user_profile(user_key: str, organization_id: int | None = None) -> dict[
 def upsert_user_profile(
     user_key: str,
     profile: dict[str, Any],
-    organization_id: int | None = None,
+    organization_id: int,
     visibility: str = "private",
 ) -> None:
-    """Crea o actualiza el perfil del usuario."""
+    """Crea o actualiza el perfil del usuario.
+
+    ``organization_id`` sin default: escribir una fila con organización nula
+    la deja invisible para :func:`get_user_profile`, que sí filtra por ámbito.
+    """
     from db.database import now_utc_iso
 
     weights = profile.get("weights")

@@ -32,8 +32,9 @@ observación entregaba antes ese valor a cara descubierta. El HHI del segmento
 usa ventana expansiva (todo el histórico estricto anterior al ancla) en lugar
 de 24 meses móviles -- misma garantía anti-fuga, coste O(1) por fila.
 
-Sin dependencias nuevas: dict/deque de stdlib; numpy solo aparece en los
-módulos de modelo.
+Sin dependencias nuevas: dict/deque de stdlib, más el normalizador de fechas
+canónico (``shared.dates.to_iso_date``); numpy solo aparece en los módulos de
+modelo.
 """
 
 from __future__ import annotations
@@ -46,6 +47,7 @@ from datetime import datetime, timedelta
 from typing import Any
 
 from db.repositories.ml_dataset import MlDatasetRepository
+from shared.dates import to_iso_date
 from shared.estados import ESTADOS_CERRADOS
 
 # Bandas de importe con cortes en los umbrales SARA habituales (€, sin IVA).
@@ -181,7 +183,20 @@ def _cpv4(cpv: str | None) -> str | None:
 
 
 def _fecha_dt(fecha: str) -> datetime:
-    return datetime.strptime(fecha[:10], "%Y-%m-%d")
+    """``datetime`` de una fecha del dataset. Lanza ``ValueError`` si no parsea.
+
+    Normaliza primero con :func:`shared.dates.to_iso_date`, el normalizador
+    canónico del proyecto: las columnas de fecha son TEXT y la fuente publica
+    también ``DD/MM/YYYY`` y ``DD-MM-YYYY``, que antes llegaban aquí crudas y
+    reventaban el ``strptime``. Lo que ``to_iso_date`` no reconoce lo devuelve
+    tal cual, así que el contrato se conserva: **estricto**, lanza en vez de
+    inventar una fecha. Quien no pueda permitirse la excepción usa
+    :func:`_fecha_opt` o :func:`fecha_valida` y descarta la fila.
+    """
+    iso = to_iso_date(fecha)
+    if not iso:
+        raise ValueError(f"fecha vacía: {fecha!r}")
+    return datetime.strptime(iso[:10], "%Y-%m-%d")
 
 
 def _fecha_opt(fecha: Any) -> datetime | None:
@@ -192,6 +207,17 @@ def _fecha_opt(fecha: Any) -> datetime | None:
         return _fecha_dt(str(fecha))
     except ValueError:
         return None
+
+
+def fecha_valida(fecha: Any) -> bool:
+    """¿Es ``fecha`` parseable por :func:`_fecha_dt`?
+
+    Existe para que los llamadores que recorren el dataset (los cortes
+    temporales de ``services.ml.baja_model``) puedan **descartar** la fila
+    inválida en vez de abortar el entrenamiento entero, sin duplicar el
+    criterio de parseo ni capturar ``ValueError`` dentro de un bucle.
+    """
+    return _fecha_opt(fecha) is not None
 
 
 def _plazo_dias(publicacion: Any, limite: Any) -> float | None:

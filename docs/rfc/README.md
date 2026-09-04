@@ -1,6 +1,17 @@
 # RFC Format — licitaciones-sap
 
-Todos los RFCs siguen esta estructura. El agente **architect** es responsable de producirlos.
+Todos los RFCs siguen esta estructura.
+
+> **Sobre los roles de agente (corregido el 2026-09-03).** Este README decía que
+> «el agente **architect** es responsable de producirlos», y la plantilla de
+> abajo sigue admitiendo `author: agent:architect`. Ese esquema multi-rol
+> (orchestrator, architect, coder, test_engineer, reviewer, security_triage) se
+> **retiró el 2026-07-30** junto con la denylist por rol que lo sostenía: hoy no
+> hay roles, hay agentes que siguen `AGENTS.md`. El campo `author` se conserva
+> por compatibilidad con los RFCs ya escritos —y porque `docs/adr/discussions/`
+> hay que leerlo con esa clave—, pero en un RFC nuevo se pone quién lo escribió
+> de verdad. Quién produce un RFC y cuándo hace falta está en `AGENTS.md` §5, no
+> aquí.
 
 ## Nombre de archivo
 

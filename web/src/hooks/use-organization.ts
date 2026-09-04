@@ -10,6 +10,7 @@ import type {
   OrganizationMembershipUpsert,
   OrganizationSummary,
 } from "@/lib/api-types";
+import { organizationKeys } from "@/lib/query-keys";
 
 /** Nombres locales estables sobre los schemas generados (ver lib/api-types.ts). */
 export type Organization = OrganizationSummary;
@@ -36,7 +37,7 @@ export const useOrganizationStore = create<OrganizationState>()(
 
 export function useOrganizations() {
   return useQuery({
-    queryKey: ["organizations"],
+    queryKey: organizationKeys.all,
     queryFn: () => apiGet("/api/v1/organizations"),
     select: (organizations) => (Array.isArray(organizations) ? organizations : []),
     staleTime: 5 * 60_000,
@@ -57,7 +58,7 @@ export function useActiveOrganizationId(): number | null {
 
 export function useOrganizationMembers(organizationId: number | null) {
   return useQuery({
-    queryKey: ["organization-members", organizationId],
+    queryKey: organizationKeys.members(organizationId),
     queryFn: () =>
       fetchWithAuth<OrganizationMember[]>(
         `/api/v1/organizations/${organizationId}/members`,
@@ -75,7 +76,7 @@ export function useCreateOrganization() {
     mutationFn: (name: string) =>
       apiMutate<Organization>("POST", "/api/v1/organizations", { name }),
     onSuccess: async (organization) => {
-      await queryClient.invalidateQueries({ queryKey: ["organizations"] });
+      await queryClient.invalidateQueries({ queryKey: organizationKeys.all });
       setActiveOrganizationId(organization.id);
     },
   });
@@ -91,7 +92,7 @@ export function useAddOrganizationMember(organizationId: number | null) {
         input,
       ),
     onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: ["organization-members", organizationId] }),
+      queryClient.invalidateQueries({ queryKey: organizationKeys.members(organizationId) }),
   });
 }
 
@@ -105,6 +106,6 @@ export function useUpdateOrganizationMember(organizationId: number | null) {
         input,
       ),
     onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: ["organization-members", organizationId] }),
+      queryClient.invalidateQueries({ queryKey: organizationKeys.members(organizationId) }),
   });
 }

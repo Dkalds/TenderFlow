@@ -10,12 +10,11 @@ from typing import Any, cast
 from fastapi import APIRouter, Depends, Response
 from pydantic import BaseModel
 
-from api.cache import cache_get, cache_key, cache_set
 from api.concurrency import run_db
 from api.routes.dual_auth import require_any_auth
 from db.repositories.kpi_snapshots import read_meta_cpv
 from db.repositories.licitaciones import LicitacionRepository
-from shared.cache import single_flight
+from shared.cache import API_NAMESPACE, cache_key, get_cache, single_flight
 
 router = APIRouter(prefix="/meta", tags=["meta"])
 
@@ -76,7 +75,7 @@ async def get_filter_options(
             "cpv": ["72000000", ...]
         }
     """
-    cached = cache_get(_FILTERS_CACHE_KEY)
+    cached = get_cache(API_NAMESPACE).get(_FILTERS_CACHE_KEY)
     if cached is not None:
         response.headers["X-Cache"] = "HIT"
         return MetaFilters(**cast("dict[str, Any]", cached))
@@ -86,13 +85,13 @@ async def get_filter_options(
     # consulta. Dentro del lock hay que volver a leer, porque quien esperaba lo
     # hacía mientras otra corrutina rellenaba la entrada.
     async with single_flight(_FILTERS_CACHE_KEY):
-        cached = cache_get(_FILTERS_CACHE_KEY)
+        cached = get_cache(API_NAMESPACE).get(_FILTERS_CACHE_KEY)
         if cached is not None:
             response.headers["X-Cache"] = "HIT"
             return MetaFilters(**cast("dict[str, Any]", cached))
 
         result = await run_db(_load_filter_options)
-        cache_set(_FILTERS_CACHE_KEY, result, ttl=_FILTERS_TTL)
+        get_cache(API_NAMESPACE).set(_FILTERS_CACHE_KEY, result, ttl=_FILTERS_TTL)
 
     response.headers["X-Cache"] = "MISS"
     return MetaFilters(**result)
@@ -118,12 +117,14 @@ async def get_last_extraction(
     #
     # Se cachea un `dict` y no el `str` pelado para que `None` (corpus vacío) sea
     # un valor cacheable y no se confunda con "no hay entrada".
-    cached = cache_get(_LAST_EXTRACTION_CACHE_KEY)
+    cached = get_cache(API_NAMESPACE).get(_LAST_EXTRACTION_CACHE_KEY)
     if cached is None:
         async with single_flight(_LAST_EXTRACTION_CACHE_KEY):
-            cached = cache_get(_LAST_EXTRACTION_CACHE_KEY)
+            cached = get_cache(API_NAMESPACE).get(_LAST_EXTRACTION_CACHE_KEY)
             if cached is None:
                 date = await run_db(_lic_repo.get_last_extraction_date)
                 cached = {"last_extraction": date}
-                cache_set(_LAST_EXTRACTION_CACHE_KEY, cached, ttl=_LAST_EXTRACTION_TTL)
+                get_cache(API_NAMESPACE).set(
+                    _LAST_EXTRACTION_CACHE_KEY, cached, ttl=_LAST_EXTRACTION_TTL
+                )
     return LastExtraction(**cast("dict[str, Any]", cached))

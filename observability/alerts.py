@@ -74,6 +74,21 @@ def _min_level() -> AlertLevel:
     return _LEVEL_NAMES.get(raw, AlertLevel.WARN)
 
 
+def _contar_fallo_entrega(motivo: str) -> None:
+    """Suma uno a ``alert_delivery_failed_total`` sin poder fallar.
+
+    Va envuelto en su propio ``try`` porque este módulo no puede propagar nada
+    (ver :func:`_entregar_email`): sería absurdo que el contador que existe para
+    hacer visible un canal roto fuese, él mismo, capaz de romper al llamante.
+    """
+    try:
+        from observability.runtime_metrics import alert_delivery_failed_total
+
+        alert_delivery_failed_total.labels(canal="email", motivo=motivo).inc()
+    except Exception:  # pragma: no cover — métrica best-effort
+        log.debug("alert_delivery_metric_unavailable", motivo=motivo)
+
+
 def _build_html(level: AlertLevel, title: str, body: str, context: dict[str, Any]) -> str:
     color = _LEVEL_COLORS[level]
     emoji = _LEVEL_EMOJI[level]
@@ -127,6 +142,13 @@ def _entregar_email(
     acompaña a un cambio de estado ya escrito en la base). El valor de retorno
     existe para que el llamante lo registre, no para que reintente aquí.
 
+    Lo que cambia con S6.3: no propagar no puede significar *no dejar rastro
+    agregable*. Cada camino de fallo incrementa ``alert_delivery_failed_total``
+    antes de devolver ``False``. Sin ese contador, un ``ALERT_SMTP_PASSWORD``
+    caducado dejaba de enviar alertas en silencio — los llamantes descartan el
+    booleano, así que el único rastro era un ``log.warning`` que nadie agrega. El
+    canal que avisa de todo lo demás era el único del que no avisaba nadie.
+
     ``evento`` prefija los eventos de log —``alert_email`` mantiene los nombres
     que ya existían (``alert_email_sent``…) para no romper lo que los busque— y
     ``etiqueta_destino`` nombra de dónde salió el destinatario, que no es el
@@ -163,6 +185,7 @@ def _entregar_email(
                 if not v
             ],
         )
+        _contar_fallo_entrega("not_configured")
         return False
 
     msg = MIMEMultipart("alternative")
@@ -186,9 +209,11 @@ def _entregar_email(
         return True
     except smtplib.SMTPException as e:
         log.warning(f"{evento}_failed", error=str(e))
+        _contar_fallo_entrega("smtp")
         return False
     except OSError as e:
         log.warning(f"{evento}_network_error", error=str(e))
+        _contar_fallo_entrega("network")
         return False
 
 

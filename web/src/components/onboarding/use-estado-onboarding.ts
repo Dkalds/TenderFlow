@@ -6,6 +6,7 @@ import { pursuitKeys } from "@/hooks/use-pursuits";
 import { useActiveOrganizationId, useOrganizations } from "@/hooks/use-organization";
 import { hayReglaActiva, perfilConfigurado, tienePursuits } from "@/components/onboarding/senales";
 import type { PasoId, SenalPaso } from "@/components/onboarding/pasos";
+import { perfilKeys, watchlistKeys } from "@/lib/query-keys";
 
 /**
  * De qué dato del servidor sale cada primer paso.
@@ -50,14 +51,14 @@ export function useSenalesOnboarding(activo: boolean): Partial<Record<PasoId, Se
   const organizationId = useActiveOrganizationId();
 
   const perfil = useQuery({
-    queryKey: ["me", "profile"],
+    queryKey: perfilKeys.me,
     queryFn: () => apiGet("/api/v1/me/profile"),
     enabled: activo,
     staleTime: STALE,
   });
 
   const reglas = useQuery({
-    queryKey: ["watchlist-rules"],
+    queryKey: watchlistKeys.rules,
     queryFn: () => apiGet("/api/v1/watchlist/rules").then((datos) => datos.items ?? []),
     enabled: activo,
     staleTime: STALE,

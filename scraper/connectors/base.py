@@ -82,7 +82,14 @@ def _is_retryable_db_error(exc: BaseException) -> bool:
     )
 
 
-def _record_source_started(source_id: str) -> None:
+#: Estado con el que una fuente declara «estoy apagada a propósito» (le falta
+#: su variable de entorno obligatoria). Lo lee el chequeo de frescura de
+#: ``scheduler/healthcheck.py``, que sin esto no puede distinguir una fuente
+#: desactivada de una rota — las dos se veían igual: sin datos nuevos.
+SOURCE_STATUS_DISABLED = "disabled"
+
+
+def record_source_started(source_id: str) -> None:
     """Best-effort: la observabilidad nunca bloquea la ingesta."""
     try:
         from db.repositories.source_health import SourceHealthRepository
@@ -90,6 +97,55 @@ def _record_source_started(source_id: str) -> None:
         SourceHealthRepository().mark_started(source_id)
     except Exception:
         log.debug("connector_source_health_start_failed", source=source_id, exc_info=True)
+
+
+def record_source_health(
+    source_id: str,
+    *,
+    status: str,
+    fetched: int = 0,
+    parsed: int = 0,
+    discarded: int = 0,
+    errors: int = 0,
+) -> None:
+    """Escribe una fila de ``source_ingestion_health`` para una fuente.
+
+    La usan los caminos de ingesta que NO pasan por ``run_connector`` —hoy
+    TACRC, que tiene su propio runner ligero (RFC 20260611-1 §5.3)— y los CLIs
+    que terminan antes de ingerir nada porque les falta configuración
+    (``record_source_disabled``). Sin esto, esas fuentes son invisibles para el
+    chequeo de frescura: no tener fila y llevar un mes caída se ven igual.
+
+    Best-effort, como el resto de la observabilidad de este módulo.
+    """
+    try:
+        from db.database import get_cursor
+        from db.repositories.source_health import SourceHealthRepository
+
+        cursor = get_cursor(source_id) or {}
+        SourceHealthRepository().mark_completed(
+            source=source_id,
+            status=status,
+            fetched=fetched,
+            parsed=parsed,
+            discarded=discarded,
+            errors=errors,
+            cursor_value=str(cursor.get("last_seen_updated") or "") or None,
+        )
+    except Exception:
+        log.debug("connector_source_health_write_failed", source=source_id, exc_info=True)
+
+
+def record_source_disabled(source_id: str, *, motivo: str) -> None:
+    """Marca la fuente como apagada a propósito y lo deja escrito.
+
+    Un conector al que le falta su variable de entorno obligatoria no debe ni
+    fallar (pondría el job en rojo por una decisión de configuración) ni
+    callarse (el healthcheck lo contaría como fuente muerta). Declara
+    ``disabled`` y sale con código 0.
+    """
+    log.info("connector_source_disabled", source=source_id, motivo=motivo)
+    record_source_health(source_id, status=SOURCE_STATUS_DISABLED)
 
 
 def _record_source_completed(result: ConnectorRunResult) -> None:
@@ -321,7 +377,7 @@ def run_connector(connector: Connector, *, batch_size: int = 200) -> ConnectorRu
     source_id = connector.source_id
     result = ConnectorRunResult(source_id=source_id)
     cursor = get_cursor(source_id)
-    _record_source_started(source_id)
+    record_source_started(source_id)
     log.info("connector_run_start", source=source_id, cursor=cursor)
 
     # Colección del lote pendiente keyed por id_externo (no una lista): colapsa

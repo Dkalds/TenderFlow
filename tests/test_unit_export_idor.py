@@ -1,136 +1,131 @@
-"""Tests unitarios para IDOR fix en export jobs (issue #50).
+"""Aislamiento entre usuarios en la superficie de exports (issue #50).
 
-Verifica que un usuario autenticado no puede acceder a exports de otro usuario.
-Auto-marking: nombre test_unit_* → marker unit (conftest.py).
+**Reescrito el 2026-09-03.** La versión anterior sembraba trabajos en
+``api.routes.exports._store`` —un ``dict`` de proceso— y comprobaba que un
+usuario no pudiera leer el de otro. Ese store y los tres endpoints asíncronos
+que lo usaban se retiraron al aplicar
+``docs/rfc/2026-09-03-rfc-retirada-exports-asincronos.md``: la premisa que los
+hacía aceptables («una instancia única que no se reinicia») no se sostiene en
+el despliegue real, así que ``POST`` en un worker y ``GET`` en otro daba un 404
+inexplicable.
+
+La vulnerabilidad de #50 no se ha vuelto a arreglar: **desapareció con la
+superficie**. Sin estado compartido entre peticiones no hay identificador ajeno
+que adivinar. Pero el invariante que #50 defendía —nadie se descarga la
+exportación de otro— sigue vivo, así que estos tests lo fijan sobre el diseño
+de hoy en vez de desaparecer con el store.
+
+Auto-marking: nombre ``test_unit_*`` → marker ``unit`` (conftest.py).
 """
 
 from __future__ import annotations
 
-import time
+import inspect
 
-import pytest
+import api.routes.exports as exports_mod
 
-from api.auth import AuthContext
-from api.routes.exports import _store
+# Nombres de los endpoints asíncronos retirados. Si reaparecen sin backend
+# compartido, vuelve la superficie del issue #50.
+_ENDPOINTS_RETIRADOS = ("create_export", "get_export", "delete_export", "download_export_job")
 
-# ── Fixtures ──────────────────────────────────────────────────────────────────
-
-OWNER_HASH = "owner_hash_aaa"
-OTHER_HASH = "other_hash_bbb"
-
-JOB_ID = "test-job-idor-001"
+# Parámetros que convertirían la descarga en «dame el resultado con este id»,
+# que es exactamente la forma que tenía el bug.
+_PARAMS_PROHIBIDOS = frozenset({"job_id", "export_id", "owner", "user_id"})
 
 
-@pytest.fixture(autouse=True)
-def _clean_store():
-    """Limpia el store antes y después de cada test."""
-    _store.clear()
-    yield
-    _store.clear()
+def _estado_mutable_de_modulo() -> dict[str, object]:
+    """Estructuras mutables de nivel de módulo que sobreviven entre peticiones.
 
-
-def _make_job(owner: str = OWNER_HASH, status: str = "pending") -> str:
-    """Crea un job en el store con owner dado."""
-    _store[JOB_ID] = {
-        "status": status,
-        "created_at": time.monotonic(),
-        "pdf": b"%PDF-fake" if status == "done" else None,
-        "error": None,
-        "owner": owner,
-        "n_rows": 1,
+    Las constantes en MAYÚSCULAS se excluyen: son configuración declarada, no
+    estado acumulado. Lo que se persigue aquí es lo segundo.
+    """
+    return {
+        nombre: valor
+        for nombre, valor in vars(exports_mod).items()
+        if isinstance(valor, (dict, list, set))
+        and not nombre.startswith("__")
+        and not nombre.isupper()
     }
-    return JOB_ID
 
 
-def _ctx(key_hash: str) -> AuthContext:
-    return AuthContext(key_hash=key_hash, key_id=1, scopes=frozenset({"*"}))
+def test_no_hay_almacen_de_trabajos_compartido() -> None:
+    """El módulo no vuelve a acumular estado entre peticiones.
+
+    Es la forma estructural de #50: el fallo no era la comprobación de dueño
+    que faltaba, era que existiera un identificador global adivinable
+    apuntando al resultado de otro usuario. Un contenedor mutable de nivel de
+    módulo que sobrevive a la petición es la firma de ese patrón, y en un
+    despliegue multi-instancia además no se comparte.
+    """
+    estado = _estado_mutable_de_modulo()
+    assert not estado, (
+        f"api/routes/exports.py acumula estado entre peticiones: {sorted(estado)}. "
+        "Si hace falta estado compartido va a Redis con clave por usuario, no a un contenedor "
+        "de módulo — ver el RFC de retirada de exports asíncronos."
+    )
 
 
-# ── Tests ─────────────────────────────────────────────────────────────────────
+def test_los_endpoints_asincronos_siguen_retirados() -> None:
+    """La máquina 202+poll no vuelve por la puerta de atrás.
+
+    Se retiró por un motivo que no ha cambiado: el store vivía en un proceso y
+    el despliegue tiene varios. Si vuelve, que vuelva con backend compartido y
+    con este fichero reescrito a conciencia, no por descuido.
+    """
+    presentes = [nombre for nombre in _ENDPOINTS_RETIRADOS if hasattr(exports_mod, nombre)]
+    assert not presentes, (
+        f"han reaparecido endpoints asíncronos de export ({presentes}) sin backend compartido."
+    )
 
 
-class TestExportOwnershipGet:
-    """GET /exports/{id} debe validar ownership."""
+def test_la_descarga_sincrona_no_acepta_identificador_ajeno() -> None:
+    """``download_export`` se parametriza por filtros, nunca por id de trabajo.
 
-    def test_owner_can_access_pending_job(self):
-
-        from api.routes.exports import get_export
-
-        _make_job(OWNER_HASH, status="pending")
-        # Owner accede — no debe lanzar 403
-        resp = get_export(JOB_ID, ctx=_ctx(OWNER_HASH))
-        assert resp.status_code == 202  # pending → 202
-
-    def test_owner_can_access_done_job(self):
-        from api.routes.exports import get_export
-
-        _make_job(OWNER_HASH, status="done")
-        resp = get_export(JOB_ID, ctx=_ctx(OWNER_HASH))
-        assert resp.status_code == 200
-
-    def test_other_user_gets_403(self):
-        from fastapi import HTTPException
-
-        from api.routes.exports import get_export
-
-        _make_job(OWNER_HASH)
-        with pytest.raises(HTTPException) as exc_info:
-            get_export(JOB_ID, ctx=_ctx(OTHER_HASH))
-        assert exc_info.value.status_code == 403
-
-    def test_nonexistent_job_gets_404(self):
-        from fastapi import HTTPException
-
-        from api.routes.exports import get_export
-
-        with pytest.raises(HTTPException) as exc_info:
-            get_export("nonexistent", ctx=_ctx(OWNER_HASH))
-        assert exc_info.value.status_code == 404
+    Mientras la exportación se genere desde los filtros de la propia petición
+    no hay nada de otro usuario que pedir.
+    """
+    firma = inspect.signature(exports_mod.download_export)
+    presentes = _PARAMS_PROHIBIDOS & set(firma.parameters)
+    assert not presentes, (
+        f"download_export acepta {sorted(presentes)}: la descarga vuelve a poder referirse al "
+        "trabajo de otro usuario."
+    )
 
 
-class TestExportOwnershipDelete:
-    """DELETE /exports/{id} debe validar ownership."""
+def test_la_descarga_sincrona_exige_autenticacion() -> None:
+    """Nadie descarga sin identificarse.
 
-    def test_owner_can_delete(self):
-        from api.routes.exports import delete_export
-
-        _make_job(OWNER_HASH)
-        delete_export(JOB_ID, ctx=_ctx(OWNER_HASH))
-        assert JOB_ID not in _store
-
-    def test_other_user_cannot_delete(self):
-        from fastapi import HTTPException
-
-        from api.routes.exports import delete_export
-
-        _make_job(OWNER_HASH)
-        with pytest.raises(HTTPException) as exc_info:
-            delete_export(JOB_ID, ctx=_ctx(OTHER_HASH))
-        assert exc_info.value.status_code == 403
-        assert JOB_ID in _store  # job still exists
-
-    def test_delete_nonexistent_is_noop(self):
-        from api.routes.exports import delete_export
-
-        # Should not raise
-        delete_export("nonexistent", ctx=_ctx(OWNER_HASH))
+    Se comprueba sobre la firma real del handler: alguna de sus dependencias
+    tiene que ser de autenticación.
+    """
+    firma = inspect.signature(exports_mod.download_export)
+    defaults = " ".join(
+        repr(p.default)
+        for p in firma.parameters.values()
+        if p.default is not inspect.Parameter.empty
+    )
+    assert "require_" in defaults, (
+        "download_export ya no exige autenticación: cualquiera se lleva el corpus filtrado."
+    )
 
 
-class TestExportOwnershipCreate:
-    """POST /exports debe almacenar owner."""
+def test_la_firma_del_calendario_es_por_usuario_y_no_transferible() -> None:
+    """El enlace firmado de un usuario no vale para el calendario de otro.
 
-    def test_create_stores_owner(self):
-        from unittest.mock import MagicMock
+    Es el equivalente vigente de #50: la URL de capacidad del calendario es la
+    única entrada a este módulo sin sesión, así que su firma tiene que estar
+    ligada al usuario y no ser transferible.
+    """
+    token_a = exports_mod._firma_calendario(1)
+    token_b = exports_mod._firma_calendario(2)
 
-        from api.routes.exports import create_export
+    assert token_a != token_b, "dos usuarios distintos obtienen la misma firma"
+    assert exports_mod._verificar_firma_calendario(1, token_a)
+    assert exports_mod._verificar_firma_calendario(2, token_b)
 
-        bg = MagicMock()
-        result = create_export(
-            background_tasks=bg,
-            ccaa=None,
-            estado=None,
-            q=None,
-            ctx=_ctx(OWNER_HASH),
-        )
-        job_id = result.id
-        assert _store[job_id]["owner"] == OWNER_HASH
+    assert not exports_mod._verificar_firma_calendario(2, token_a), (
+        "la firma del usuario 1 abre el calendario del usuario 2 (IDOR)"
+    )
+    assert not exports_mod._verificar_firma_calendario(1, token_b)
+    assert not exports_mod._verificar_firma_calendario(1, "invalido")
+    assert not exports_mod._verificar_firma_calendario(1, "")

@@ -47,8 +47,20 @@ jobs:
             exit 1
           fi
 
+      # `scripts/smoke_prod.py` falla si `/health/ready` reporta
+      # `schema_revision: behind|ahead` — la revisión alembic aplicada en la BD
+      # no coincide con la cabeza del código desplegado (S6.2). Ese estado NO da
+      # 503 (el proceso sirve tráfico), así que sin este gate se ve exactamente
+      # igual que un despliegue sano hasta que una consulta toca una columna que
+      # todavía no existe.
       - name: Run synthetic checks
         env:
           SMOKE_BASE_URL: ${{ vars.SMOKE_BASE_URL }}
           SMOKE_API_KEY: ${{ secrets.SMOKE_API_KEY }}
+          # Este cron ES el sondeo de disponibilidad de docs/sli-slo.md §1 (cada
+          # 15 min) y hasta ahora su único aviso era el correo por defecto de
+          # GitHub al dueño del repo: sin ALERT_* no notificaba a nadie más.
+          ALERT_EMAIL_TO: ${{ secrets.ALERT_EMAIL_TO }}
+          ALERT_SMTP_USER: ${{ secrets.ALERT_SMTP_USER }}
+          ALERT_SMTP_PASSWORD: ${{ secrets.ALERT_SMTP_PASSWORD }}
         run: python scripts/smoke_prod.py

@@ -21,6 +21,22 @@ global:
 rule_files:
   - /etc/prometheus/alert_rules.yml
 
+# ── Enrutado de alertas (S6.3) ──────────────────────────────────────────────
+# Este bloque NO existía. `alert_rules.yml` define diez reglas —dos de ellas
+# `severity: critical`— y Prometheus las evalúa de verdad desde ADR-019, pero
+# sin `alerting:` una alerta que se dispara no sale de Prometheus: se queda en
+# su página /alerts, que no mira nadie. Las etiquetas `severity` solo las
+# consume el enrutado de Alertmanager, así que hasta ahora decoraban un enrutado
+# inexistente — la capa estaba diseñada y sin cablear.
+#
+# `tenderflow-alertmanager` es un `pserv` de render.yaml, resoluble por la red
+# privada de Render entre servicios de la misma cuenta y región (el mismo
+# mecanismo que el target `tenderflow-api:8080` de abajo).
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ["tenderflow-alertmanager:9093"]
+
 scrape_configs:
   - job_name: "tenderflow-api"
     metrics_path: /metrics

@@ -7,10 +7,32 @@ from typing import Any
 
 from db.database import connect_read
 from db.repositories.aggregates import LicitacionesFilters, build_licitaciones_where
-from db.repositories.base import count_where, rows_to_dicts
-from db.sql_fragments import exclude_duplicados_sql, fecha_fin_sql
+from db.repositories.base import count_where, csv_values, rows_to_dicts
+from db.sql_fragments import (
+    exclude_duplicados_sql,
+    fecha_fin_sql,
+    iso_guard,
+    tecnologia_en_csv_sql,
+)
 
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+#: Techo de filas de :meth:`AdjudicacionRepository.load_for_competitors`.
+#:
+#: La consulta une cinco tablas y su resultado se materializa como DataFrame
+#: **en el proceso HTTP** (la resolución de identidad por union-find y las 16
+#: agregaciones de ``services/analytics/competitors.py`` no son reducibles a un
+#: ``GROUP BY``). Sin techo, una petición sin filtros pedía el histórico entero
+#: de adjudicaciones: es el patrón exacto del OOM de julio que documenta
+#: ``services/_data_cache.py``, y el único motivo por el que no se ha repetido
+#: es que los filtros por defecto de la pantalla acotan por fecha.
+#:
+#: 5.000 filas es lo que hace falta para que un ranking de 20 competidores con
+#: su cuota, su HHI y su desglose por CCAA sea estable; por encima de eso se
+#: está pagando memoria por decimales. Cuando el corte muerde, el servicio lo
+#: **declara** en su resultado (``truncado``) en vez de presentar el recorte
+#: como si fuera el universo.
+LIMITE_COMPETIDORES = 5000
 
 _SUMMARY_COLS = (
     "id, licitacion_id, nombre, nif, importe_adjudicado, "
@@ -145,6 +167,7 @@ class AdjudicacionRepository:
         fecha_desde: str | None = None,
         fecha_hasta: str | None = None,
         importe_min: float | None = None,
+        limit: int = LIMITE_COMPETIDORES,
     ) -> list[dict[str, Any]]:
         """Carga la proyección/filtro necesarios para ``services.analytics.competitors``.
 
@@ -155,6 +178,16 @@ class AdjudicacionRepository:
         ``importe_licitacion``) en el ``WHERE``. La resolución de identidad
         (union-find sobre NIF/nombre normalizados) y las agregaciones siguen
         en pandas — no son reducibles a un ``GROUP BY`` plano.
+
+        ``limit`` acota en **SQL** (ver :data:`LIMITE_COMPETIDORES`), no en
+        pandas: recortar después de traer las filas no evita el pico de memoria,
+        que es lo que había que evitar. El ``ORDER BY`` que lo acompaña es
+        estable —fecha de adjudicación descendente y, como desempate, la clave
+        primaria— porque un ``LIMIT`` sin orden total devuelve filas distintas
+        entre ejecuciones y el ranking de competidores cambiaría solo.
+
+        Devolver exactamente ``limit`` filas es la señal de que el corte mordió:
+        el servicio la lee así y lo declara en su resultado.
         """
         sql = (
             "SELECT " + self._COMPETITOR_COLS + " "
@@ -176,9 +209,16 @@ class AdjudicacionRepository:
         if ccaa:
             conditions.append("a.ccaa = %s")
             params.append(ccaa)
-        if tecnologia:
-            conditions.append("l.tecnologia = %s")
-            params.append(tecnologia)
+        tecnologias = csv_values(tecnologia)
+        if tecnologias:
+            # Explode del CSV y no igualdad: `l.tecnologia` guarda
+            # ``"SAP,SALESFORCE"``, así que la igualdad escondía los
+            # expedientes multi-tecnología. El listado y los agregados ya
+            # explotaban; aquí no, de modo que la cuota de mercado de SAP se
+            # calculaba sobre un universo más pequeño que el que la pantalla de
+            # al lado decía estar mirando.
+            conditions.append(tecnologia_en_csv_sql("l.tecnologia", n=len(tecnologias)))
+            params.extend(tecnologias)
         if estado:
             conditions.append("l.estado = %s")
             params.append(estado)
@@ -193,9 +233,9 @@ class AdjudicacionRepository:
             params.append(importe_min)
         if conditions:
             sql += "WHERE " + " AND ".join(conditions) + " "
-        sql += "ORDER BY a.fecha_adjudicacion DESC"
+        sql += "ORDER BY a.fecha_adjudicacion DESC NULLS LAST, a.id DESC LIMIT %s"
         with connect_read() as c:
-            return rows_to_dicts(c.execute(sql, params))
+            return rows_to_dicts(c.execute(sql, [*params, max(1, int(limit))]))
 
     def load_licitadores(
         self,
@@ -338,7 +378,9 @@ class AdjudicacionRepository:
         """Serie mensual (period YYYY-MM) de adjudicaciones UTE.
 
         El guard sargable ``>= '1900' AND < '3000'`` descarta fechas no-ISO
-        (paridad con el ``dropna`` tras ``to_datetime(errors="coerce")``).
+        (paridad con el ``dropna`` tras ``to_datetime(errors="coerce")``). Lo
+        emite ``db.sql_fragments.iso_guard``, que es de donde salen las otras
+        tres copias del mismo rango en el repositorio.
         """
         conditions, params = _adj_filter_conditions(
             ccaa_filter=ccaa_filter, fecha_desde=fecha_desde, fecha_hasta=fecha_hasta
@@ -346,8 +388,7 @@ class AdjudicacionRepository:
         where = " AND ".join(
             [
                 "COALESCE(a.nombre ~* %s, FALSE)",
-                "a.fecha_adjudicacion >= '1900'",
-                "a.fecha_adjudicacion < '3000'",
+                iso_guard("a.fecha_adjudicacion"),
                 *conditions,
             ]
         )

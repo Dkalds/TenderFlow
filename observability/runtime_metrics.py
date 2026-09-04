@@ -175,6 +175,27 @@ try:
         ["fuente"],
     )
 
+    # ── Entrega de alertas (S6.3) ─────────────────────────────────────────
+    # `observability/alerts.py` documenta que "nunca propaga": un buzón mal
+    # configurado o un SMTP caído no pueden tumbar a quien llama, porque la
+    # alerta describe algo que ya ocurrió. Esa propiedad es correcta y se
+    # mantiene — pero convertía el fallo en INVISIBLE: el valor de retorno de
+    # `_entregar_email` se descartaba, así que un ALERT_SMTP_PASSWORD caducado
+    # dejaba de avisar sin que nadie se enterase. Es el peor modo de fallo
+    # posible para un canal de alertas: silencioso y en el momento en que hace
+    # falta. Este contador lo hace visible sin cambiar la propiedad.
+    #
+    # OJO al alcance: los planos EFÍMEROS (scraper/ML/pliegos/healthcheck en GH
+    # Actions) NO son scrapeables —el proceso muere al terminar el job— y son
+    # justamente los que más alertas envían. Ahí este contador solo alimenta el
+    # log; la vigilancia de ese lado tiene que salir de `ops_events`
+    # (scheduler/healthcheck.py).
+    alert_delivery_failed_total = Counter(
+        "alert_delivery_failed_total",
+        "Alertas que no llegaron a salir del proceso (canal de alertas roto)",
+        ["canal", "motivo"],  # canal: email · motivo: not_configured|smtp|network
+    )
+
     _AVAILABLE = True
 except ImportError:  # pragma: no cover
     log.warning("prometheus_client_unavailable_metrics_disabled")
@@ -211,6 +232,7 @@ except ImportError:  # pragma: no cover
     pliego_tech_merge_total = _NoopMetric()  # type: ignore[assignment]
     dedupe_marked_total = _NoopMetric()  # type: ignore[assignment]
     dedupe_match_rate = _NoopMetric()  # type: ignore[assignment]
+    alert_delivery_failed_total = _NoopMetric()  # type: ignore[assignment]
     _AVAILABLE = False
 
 

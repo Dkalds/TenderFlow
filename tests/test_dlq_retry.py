@@ -3,7 +3,35 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
+from typing import Any
 from unittest.mock import patch
+
+
+def _patch_bulk_connector(*, fetch_failed: bool = False, side_effect: Any = None) -> Any:
+    """Intercepta el reproceso de un mes bulk.
+
+    Desde S2.1 (2026-09) ``dispatch_retry`` reprocesa un ``bulk_YYYYMM`` con
+    ``PlacspBulkConnector`` + ``run_connector`` en vez de con el
+    ``scraper.pipeline.process_month`` legacy, que reescribía el mes sin
+    historial, sin lotes, sin documentos, sin dedupe y sin linaje.
+    """
+    if side_effect is not None:
+        return patch("scraper.connectors.base.run_connector", side_effect=side_effect)
+    return patch(
+        "scraper.connectors.base.run_connector",
+        return_value=SimpleNamespace(
+            source_id="bulk_202601",
+            fetch_failed=fetch_failed,
+            fetched=0,
+            parsed=0,
+            nuevas=0,
+            actualizadas=0,
+            adjudicaciones=0,
+            errores=0,
+        ),
+    )
+
 
 # ---------------------------------------------------------------------------
 # _backoff_seconds
@@ -152,7 +180,7 @@ def test_retry_bulk_success(tmp_db, monkeypatch):
 
     dlq.record_failure("run-1", "bulk_202601", RuntimeError("err"))
     monkeypatch.setattr("scheduler.dlq_retry._is_due", lambda f: True)
-    with patch("scraper.pipeline.process_month", return_value={"status": "ok"}):
+    with _patch_bulk_connector():
         from scheduler.dlq_retry import retry_failed_extractions
 
         result = retry_failed_extractions()
@@ -166,7 +194,7 @@ def test_retry_bulk_failure_increments_retry(tmp_db, monkeypatch):
 
     dlq.record_failure("run-1", "bulk_202601", RuntimeError("err"))
     monkeypatch.setattr("scheduler.dlq_retry._is_due", lambda f: True)
-    with patch("scraper.pipeline.process_month", return_value={"status": "error"}):
+    with _patch_bulk_connector(fetch_failed=True):
         from scheduler.dlq_retry import retry_failed_extractions
 
         result = retry_failed_extractions()
@@ -187,17 +215,17 @@ def test_retry_bulk_bad_format(tmp_db, monkeypatch):
 
 
 def test_retry_skips_bulk_when_include_bulk_false(tmp_db, monkeypatch):
-    """Carril diario: una entrada bulk_YYYYMM no dispara process_month."""
+    """Carril diario: una entrada bulk_YYYYMM no dispara el conector bulk."""
     from db import dlq
 
     dlq.record_failure("run-1", "bulk_202601", RuntimeError("err"))
     monkeypatch.setattr("scheduler.dlq_retry._is_due", lambda f: True)
-    with patch("scraper.pipeline.process_month") as process_month:
+    with _patch_bulk_connector() as run_connector:
         from scheduler.dlq_retry import retry_failed_extractions
 
         result = retry_failed_extractions(include_bulk=False)
 
-    process_month.assert_not_called()
+    run_connector.assert_not_called()
     assert result == 0
     # Sigue pendiente y sin quemar un reintento: la cubre `scrape-bulk.yml`.
     pendiente = dlq.list_unresolved()[0]
@@ -221,14 +249,14 @@ def test_retry_without_bulk_still_drains_other_sources(tmp_db, monkeypatch):
     monkeypatch.setenv("DLQ_BATCH_SIZE", "2")
     with (
         patch("scraper.pipeline.process_daily", return_value={"status": "ok"}) as process_daily,
-        patch("scraper.pipeline.process_month") as process_month,
+        _patch_bulk_connector() as run_connector,
     ):
         from scheduler.dlq_retry import retry_failed_extractions
 
         result = retry_failed_extractions(include_bulk=False)
 
     process_daily.assert_called_once()
-    process_month.assert_not_called()
+    run_connector.assert_not_called()
     assert result == 1
     assert {f["fuente"] for f in dlq.list_unresolved()} == {
         f"bulk_2026{i:02d}" for i in range(1, 7)
@@ -268,7 +296,7 @@ def test_retry_exception_in_scraper(tmp_db, monkeypatch):
 
     dlq.record_failure("run-1", "bulk_202601", RuntimeError("err"))
     monkeypatch.setattr("scheduler.dlq_retry._is_due", lambda f: True)
-    with patch("scraper.pipeline.process_month", side_effect=RuntimeError("scraper crash")):
+    with _patch_bulk_connector(side_effect=RuntimeError("scraper crash")):
         from scheduler.dlq_retry import retry_failed_extractions
 
         result = retry_failed_extractions()

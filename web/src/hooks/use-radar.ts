@@ -11,6 +11,7 @@ import type {
   ScoredOpportunity,
   ScoringSignalsHealth,
 } from "@/lib/api-types";
+import { pursuitKeys, radarKeys } from "@/lib/query-keys";
 
 /**
  * Proyección que renderiza el Radar.
@@ -53,7 +54,7 @@ const DISMISSALS_KEY = ["radar", "dismissals"] as const;
 export function useRadar(tecnologia: string | null = null) {
   const organizationId = useActiveOrganizationId();
   const scoring = useQuery({
-    queryKey: ["radar", "scoring", organizationId, tecnologia],
+    queryKey: radarKeys.scopedScoring(organizationId, tecnologia),
     queryFn: () =>
       apiGet("/api/v1/analytics/scoring", {
         params: {
@@ -96,7 +97,7 @@ export function useRadarDismissedTenders(ids: string[], enabled: boolean) {
   const organizationId = useActiveOrganizationId();
   const visibles = ids.slice(0, MAX_DESCARTADAS_HIDRATADAS);
   const query = useQuery({
-    queryKey: ["radar", "dismissed-tenders", organizationId, visibles],
+    queryKey: radarKeys.dismissed(organizationId, visibles),
     queryFn: () =>
       apiGet("/api/v1/analytics/scoring", {
         params: {
@@ -205,9 +206,9 @@ export function useDismissRadarTender() {
     onSettled: () => {
       // El ranking se pide con `exclude_dismissed`: hay que volver a pedirlo
       // para que entre la señal que ocupa el hueco.
-      void qc.invalidateQueries({ queryKey: ["radar", "scoring"] });
+      void qc.invalidateQueries({ queryKey: radarKeys.scoring });
       // La agenda de Mi Pipeline excluye señales descartadas: comparte triaje.
-      void qc.invalidateQueries({ queryKey: ["pursuits", "agenda"] });
+      void qc.invalidateQueries({ queryKey: pursuitKeys.agenda });
     },
   });
 }
@@ -234,9 +235,9 @@ export function useRestoreRadarTender() {
     },
     onSettled: () => {
       void qc.invalidateQueries({ queryKey: DISMISSALS_KEY });
-      void qc.invalidateQueries({ queryKey: ["radar", "scoring"] });
+      void qc.invalidateQueries({ queryKey: radarKeys.scoring });
       // La agenda de Mi Pipeline excluye señales descartadas: comparte triaje.
-      void qc.invalidateQueries({ queryKey: ["pursuits", "agenda"] });
+      void qc.invalidateQueries({ queryKey: pursuitKeys.agenda });
     },
   });
 }

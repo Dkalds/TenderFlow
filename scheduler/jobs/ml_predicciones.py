@@ -1,7 +1,8 @@
 """Jobs de modelos predictivos (Fase 6, RFC 20260611-2).
 
 - ``run_scoring``: batch nocturno que materializa ``predicciones_baja`` para
-  licitaciones abiertas (serving = lectura de tabla, patrón ``ml_proba``).
+  licitaciones abiertas (serving = lectura de tabla, patrón ``ml_proba``) y
+  **purga** las predicciones de expedientes cerrados hace tiempo.
 - ``run_retrain``: re-entrenamiento mensual; registra la versión nueva en
   ``model_versions`` SIN activar (salvo ``ML_PRED_AUTO_ACTIVATE`` y criterios
   del RFC cumplidos). La activación es decisión humana vía model_registry.
@@ -15,6 +16,38 @@ from observability.logging import get_logger
 
 log = get_logger(__name__)
 
+# Cuánto sobrevive la predicción de un expediente ya cerrado. El upsert nunca
+# purga y `services/analytics/scoring_signals.py` carga la tabla ENTERA a un
+# dict en cada refresco de caché, así que su crecimiento monótono es coste de
+# memoria del camino caliente, no solo de disco.
+DIAS_RETENCION_PREDICCIONES = 90
+
+
+def purgar_predicciones_cerradas(dias: int = DIAS_RETENCION_PREDICCIONES) -> dict[str, Any]:
+    """Borra predicciones de expedientes cerrados hace más de ``dias`` días.
+
+    90 días es el margen entre "el expediente se cerró" y "ya nadie va a mirar
+    la estimación que le dimos": el modo page-aligned del Detalle sigue
+    puntuando expedientes cerrados recientes, y quitarles el margen el mismo
+    día del cierre les cambiaría el score sin avisar.
+
+    Fail-open, como el resto del batch: un fallo de la purga se loguea y no
+    tumba el scoring — no haber borrado filas viejas nunca es peor que no
+    publicar predicciones nuevas.
+    """
+    from datetime import UTC, datetime, timedelta
+
+    from db.repositories.predicciones import PrediccionesRepository
+
+    corte = (datetime.now(UTC) - timedelta(days=dias)).strftime("%Y-%m-%d")
+    try:
+        borradas = PrediccionesRepository().purgar_cerradas(antes_de=corte)
+    except Exception as exc:
+        log.warning("ml_predicciones_purga_failed", error=str(exc), corte=corte)
+        return {"status": "error", "borradas": 0, "corte": corte, "error": str(exc)}
+    log.info("ml_predicciones_purgadas", borradas=borradas, corte=corte, dias=dias)
+    return {"status": "ok", "borradas": borradas, "corte": corte}
+
 
 def run_scoring() -> dict[str, Any]:
     from services.ml.calibration import comprobar_calibracion_baja
@@ -25,7 +58,16 @@ def run_scoring() -> dict[str, Any]:
     retencion = score_predicciones_retencion()
     drift = comprobar_drift_baja()
     calibracion = comprobar_calibracion_baja()
-    return {"baja": baja, "retencion": retencion, "drift": drift, "calibracion": calibracion}
+    # Después de escribir, nunca antes: si el batch se cae a mitad, lo último
+    # que conviene es haber borrado ya filas que iba a refrescar.
+    purga = purgar_predicciones_cerradas()
+    return {
+        "baja": baja,
+        "retencion": retencion,
+        "drift": drift,
+        "calibracion": calibracion,
+        "purga": purga,
+    }
 
 
 def run_retrain() -> dict[str, Any]:
@@ -115,6 +157,7 @@ def run_scoring_cli() -> int:
         retencion_status=retencion.get("status"),
         drift=resumen.get("drift"),
         calibracion=resumen.get("calibracion"),
+        purga=resumen.get("purga"),
     )
 
     if status not in _SCORING_OK_STATUSES:

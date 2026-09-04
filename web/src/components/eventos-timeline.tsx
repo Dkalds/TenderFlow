@@ -5,6 +5,7 @@ import { fetchWithAuth } from "@/lib/api-client";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn, formatCurrency, formatDate } from "@/lib/utils";
+import { eventosKeys } from "@/lib/query-keys";
 
 interface EventoContrato {
   fecha: string | null;
@@ -51,7 +52,7 @@ const TIPO_DOT: Record<string, string> = {
 
 export function EventosTimeline({ licitacionId }: { licitacionId: string }) {
   const { data, isLoading, error } = useQuery<{ items: EventoContrato[] }>({
-    queryKey: ["eventos", licitacionId],
+    queryKey: eventosKeys.byLicitacion(licitacionId),
     queryFn: () =>
       fetchWithAuth(`/api/v1/licitaciones/${encodeURIComponent(licitacionId)}/eventos`),
     staleTime: 5 * 60 * 1000,

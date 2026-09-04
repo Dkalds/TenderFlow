@@ -89,8 +89,9 @@ def _is_due(failure: dict[str, Any]) -> bool:
 _BULK_SOURCE_RE = _re.compile(r"^bulk_(?P<year>\d{4})(?P<month>\d{2})$")
 
 # Prefijo de las fuentes bulk (``bulk_YYYYMM``). Reintentarlas significa
-# reprocesar el mes entero con ``process_month``, que es trabajo de horas: el
-# carril diario las excluye y las cubre el workflow manual `scrape-bulk.yml`.
+# reprocesar el mes entero con ``PlacspBulkConnector``, que es trabajo de
+# horas: el carril diario las excluye y las cubre el workflow manual
+# `scrape-bulk.yml`.
 _BULK_SOURCE_PREFIX = "bulk_"
 
 
@@ -107,10 +108,26 @@ def dispatch_retry(fuente: str, scope: str, run_id: str) -> bool:
     if bulk_match:
         year = int(bulk_match.group("year"))
         month = int(bulk_match.group("month"))
-        from scraper.pipeline import process_month
+        # Reprocesar un mes va por el conector, como el resto de fuentes de
+        # esta función (S2.1, 2026-09). Hasta ahora llamaba a
+        # ``scraper.pipeline.process_month``, el pipeline legacy: reintentar
+        # una entrada de la DLQ reescribía ese mes SIN historial
+        # (``upsert_licitaciones``), sin lotes, sin documentos, sin dedupe y
+        # sin las columnas de linaje — o sea que el remedio de un fallo de
+        # ingesta degradaba las filas que sí habían entrado bien.
+        #
+        # No se llama a ``scheduler.pipeline_runs`` desde aquí a propósito:
+        # ``dlq_retry`` ES un paso post-ingesta, y cualquiera de sus
+        # ``run_*_pipeline`` termina en ``_finalize_ingestion`` →
+        # ``_run_post_ingestion_steps`` → ``dlq_retry`` otra vez.
+        from scraper.connectors.base import run_connector
+        from scraper.connectors.placsp import PlacspBulkConnector
 
-        result = process_month(year, month, run_id=run_id)
-        return result.get("status") in ("ok", "no_publicado")
+        run_result = run_connector(PlacspBulkConnector(year, month))
+        # Un mes no publicado no es un fallo: el conector no emite avisos y
+        # ``fetch_failed`` queda en False, que es el equivalente del
+        # ``no_publicado`` que devolvía ``process_month``.
+        return not run_result.fetch_failed
 
     if fuente == "placsp":
         from scraper.connectors.base import run_connector
@@ -226,8 +243,8 @@ def retry_failed_extractions(
         max_retries: Máximo de reintentos (default: env ``DLQ_MAX_RETRIES`` o 5).
         batch_size:  Entradas por ciclo (default: env ``DLQ_BATCH_SIZE`` o 10).
         include_bulk: Si es False, ignora las entradas ``bulk_YYYYMM``.
-            Reintentar una es ejecutar ``process_month`` completo — descarga y
-            reparseo de los ZIP de un mes entero. Con el default (True) el
+            Reintentar una es correr ``PlacspBulkConnector`` sobre ese mes —
+            descarga y reparseo de los ZIP del mes entero. Con el default (True) el
             carril diario se comía su propio timeout drenando meses bulk:
             ``sweep_exhausted`` sigue corriendo igual, sólo se acota **qué**
             se reintenta.

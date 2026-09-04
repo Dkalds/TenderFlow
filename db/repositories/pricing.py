@@ -6,6 +6,7 @@ from typing import Any
 
 from db.database import connect_read
 from db.repositories.base import rows_to_dicts
+from db.sql_fragments import TECHNOLOGY_OBSERVED_SQL
 
 
 class PricingRepository:
@@ -36,6 +37,8 @@ class PricingRepository:
         como outlier en vez de corregirse -- perdiendo esa fila de la
         distribución en lugar de arreglar el denominador.
         """
+        # S608 no aplica: el único fragmento interpolado es una constante de
+        # ``db/sql_fragments.py``; el valor va con %s.
         sql = (
             "SELECT a.licitacion_id, a.importe_adjudicado, a.n_ofertas_recibidas, "
             "       a.fecha_adjudicacion, l.organo_contratacion, l.cpv, "
@@ -48,7 +51,7 @@ class PricingRepository:
             "  AND COALESCE(lo.importe, l.importe) IS NOT NULL "
             "  AND COALESCE(lo.importe, l.importe) > 0 "
             "  AND a.importe_adjudicado <= COALESCE(lo.importe, l.importe) "
-            "  AND COALESCE(l.analysis_universe, 'technology_observed') = 'technology_observed' "
+            f"  AND {TECHNOLOGY_OBSERVED_SQL} "
             "ORDER BY a.fecha_adjudicacion DESC "
             "LIMIT %s"
         )

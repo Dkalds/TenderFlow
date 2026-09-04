@@ -25,7 +25,14 @@ import { DataTable } from "@/components/ui/data-table";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Users, Key, RotateCcw, Plus, Copy, Shield, Info, Webhook as WebhookIcon, Trash2, Radio } from "lucide-react";
-import { apiMutate } from "@/lib/api-client";
+import { ApiError, apiMutate, fetchWithAuth } from "@/lib/api-client";
+import { adminKeys, analyticsKeys } from "@/lib/query-keys";
+import {
+  useCreateWebhook,
+  useDeleteWebhook,
+  usePingWebhook,
+  useWebhooks,
+} from "@/hooks/use-webhooks";
 import { formatDate, cn } from "@/lib/utils";
 import { AdminGuard } from "@/components/admin-guard";
 import { SolicitudesAccesoCard } from "./solicitudes-acceso-card";
@@ -58,18 +65,6 @@ interface ApiUser {
   last_access?: string | null;
 }
 
-interface Webhook {
-  id: number;
-  name: string;
-  url: string;
-  event_types: string[];
-  active: boolean;
-  created_at: string;
-  last_triggered_at?: string | null;
-  last_status?: number | null;
-  failure_count: number;
-}
-
 const WEBHOOK_EVENTS = ["*", "watchlist_match", "watchlist_rule.matched", "daily_summary"];
 
 interface UserRow {
@@ -79,6 +74,26 @@ interface UserRow {
   is_admin: boolean;
   active: boolean;
   last_login: string | null;
+}
+
+/**
+ * GET de administración con el 403 traducido.
+ *
+ * `fetchWithAuth` propaga el `detail` que manda la API, y el de la guarda de
+ * admin viene en inglés («Admin required.»). Estas dos listas lo pintan tal
+ * cual en pantalla, así que el 403 —y solo el 403— se reescribe al mensaje
+ * castellano que la vista ya mostraba. El resto de códigos conservan el
+ * `detail` real, que es más informativo que el `Error <status>` de antes.
+ */
+async function cargarComoAdmin<T>(url: string): Promise<T> {
+  try {
+    return await fetchWithAuth<T>(url);
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 403) {
+      throw new ApiError(403, "Requiere permisos de admin");
+    }
+    throw error;
+  }
 }
 
 export default function AdministracionView() {
@@ -100,27 +115,13 @@ function AdministracionContent() {
   const [confirmDeleteWebhookId, setConfirmDeleteWebhookId] = useState<number | null>(null);
 
   const { data: quality, isLoading: qualityLoading } = useQuery<QualityData>({
-    queryKey: ["analytics-quality-admin"],
-    queryFn: async () => {
-      const res = await fetch("/api/v1/analytics/quality", {
-        credentials: "include",
-      });
-      if (res.status === 401) throw new Error("Sesión expirada");
-      if (!res.ok) throw new Error(`Error ${res.status}`);
-      return res.json();
-    },
+    queryKey: analyticsKeys.quality,
+    queryFn: () => fetchWithAuth<QualityData>("/api/v1/analytics/quality"),
   });
 
   const { data: keysData, isLoading: keysLoading } = useQuery<ApiKeysResponse>({
-    queryKey: ["api-keys"],
-    queryFn: async () => {
-      const res = await fetch("/api/v1/me/keys", {
-        credentials: "include",
-      });
-      if (res.status === 401) throw new Error("Sesión expirada");
-      if (!res.ok) throw new Error(`Error ${res.status}`);
-      return res.json();
-    },
+    queryKey: adminKeys.apiKeys,
+    queryFn: () => fetchWithAuth<ApiKeysResponse>("/api/v1/me/keys"),
   });
 
   const {
@@ -128,14 +129,8 @@ function AdministracionContent() {
     isLoading: usersLoading,
     error: usersError,
   } = useQuery<ApiUser[]>({
-    queryKey: ["admin-users"],
-    queryFn: async () => {
-      const res = await fetch("/api/v1/admin/users", { credentials: "include" });
-      if (res.status === 401) throw new Error("Sesión expirada");
-      if (res.status === 403) throw new Error("Requiere permisos de admin");
-      if (!res.ok) throw new Error(`Error ${res.status}`);
-      return res.json();
-    },
+    queryKey: adminKeys.users,
+    queryFn: () => cargarComoAdmin<ApiUser[]>("/api/v1/admin/users"),
   });
 
   const users = useMemo<UserRow[]>(
@@ -157,75 +152,35 @@ function AdministracionContent() {
         is_admin: vars.is_admin,
       }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["admin-users"] });
+      queryClient.invalidateQueries({ queryKey: adminKeys.users });
       toast.success("Rol actualizado");
     },
     onError: () => toast.error("No se pudo cambiar el rol (¿eres admin?)"),
   });
 
+  // El panel de webhooks reusa los hooks de `@/hooks/use-webhooks`, que son los
+  // que ya usaba `webhooks-view.tsx`. Antes había aquí una copia completa —misma
+  // clave `["webhooks"]`, mismas cuatro rutas, otros toasts— y las dos vistas se
+  // montan en el mismo espacio `/ops`: dos `queryFn` distintas bajo una clave
+  // compartida, decidida por cuál se montara primero.
   const {
     data: webhooksData,
     isLoading: webhooksLoading,
     error: webhooksError,
-  } = useQuery<Webhook[]>({
-    queryKey: ["webhooks"],
-    queryFn: async () => {
-      const res = await fetch("/api/v1/webhooks", { credentials: "include" });
-      if (res.status === 401) throw new Error("Sesión expirada");
-      if (res.status === 403) throw new Error("Requiere permisos de admin");
-      if (!res.ok) throw new Error(`Error ${res.status}`);
-      return res.json();
-    },
-  });
+  } = useWebhooks();
 
-  const createWebhook = useMutation({
-    mutationFn: () =>
-      apiMutate<{ secret: string }>("POST", "/api/v1/webhooks", {
-        name: whName,
-        url: whUrl,
-        event_types: whEvents.length > 0 ? whEvents : ["*"],
-      }),
-    onSuccess: (data) => {
-      setNewWebhookSecret(data.secret);
-      setWhName("");
-      setWhUrl("");
-      setWhEvents(["*"]);
-      queryClient.invalidateQueries({ queryKey: ["webhooks"] });
-      toast.success("Webhook creado");
-    },
-    onError: (err) => toast.error(err instanceof Error ? err.message : "No se pudo crear el webhook."),
-  });
-
-  const deleteWebhook = useMutation({
-    mutationFn: (id: number) => apiMutate("DELETE", `/api/v1/webhooks/${id}`),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["webhooks"] });
-      toast.success("Webhook eliminado");
-      setConfirmDeleteWebhookId(null);
-    },
-    onError: () => {
-      toast.error("No se pudo eliminar el webhook.");
-      setConfirmDeleteWebhookId(null);
-    },
-  });
+  const createWebhook = useCreateWebhook();
+  const deleteWebhook = useDeleteWebhook();
 
   const handleDeleteWebhookClick = (id: number) => {
     if (confirmDeleteWebhookId !== id) {
       setConfirmDeleteWebhookId(id);
       return;
     }
-    deleteWebhook.mutate(id);
+    deleteWebhook.mutate(id, { onSettled: () => setConfirmDeleteWebhookId(null) });
   };
 
-  const pingWebhook = useMutation({
-    mutationFn: (id: number) => apiMutate<{ success: boolean; error?: string }>("POST", `/api/v1/webhooks/${id}/ping`),
-    onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ["webhooks"] });
-      if (data.success) toast.success("Entrega de prueba enviada correctamente");
-      else toast.error(`Falló la entrega de prueba: ${data.error ?? "desconocido"}`);
-    },
-    onError: () => toast.error("No se pudo enviar la entrega de prueba."),
-  });
+  const pingWebhook = usePingWebhook();
 
   function toggleWhEvent(event: string, checked: boolean) {
     setWhEvents((prev) => (checked ? [...prev, event] : prev.filter((e) => e !== event)));
@@ -236,7 +191,7 @@ function AdministracionContent() {
     onSuccess: (data) => {
       const token = data.raw_token ?? data.token ?? "???";
       setNewKeyToken(token);
-      queryClient.invalidateQueries({ queryKey: ["api-keys"] });
+      queryClient.invalidateQueries({ queryKey: adminKeys.apiKeys });
     },
     onError: () => {
       toast.error("Error al generar clave. Intenta de nuevo.");
@@ -611,7 +566,25 @@ function AdministracionContent() {
             </div>
           </div>
           <Button
-            onClick={() => createWebhook.mutate()}
+            onClick={() =>
+              createWebhook.mutate(
+                {
+                  name: whName,
+                  url: whUrl,
+                  event_types: whEvents.length > 0 ? whEvents : ["*"],
+                },
+                {
+                  onSuccess: (data) => {
+                    // El `secret` sólo viaja en esta respuesta: se enseña aquí o
+                    // se pierde (no hay endpoint que lo vuelva a exponer).
+                    setNewWebhookSecret(data.secret);
+                    setWhName("");
+                    setWhUrl("");
+                    setWhEvents(["*"]);
+                  },
+                },
+              )
+            }
             disabled={!whName.trim() || !whUrl.trim() || createWebhook.isPending}
             className="gap-1.5"
           >
@@ -649,7 +622,7 @@ function AdministracionContent() {
                       >
                         {wh.active ? "Activo" : "Inactivo"}
                       </Badge>
-                      {wh.failure_count > 0 && (
+                      {(wh.failure_count ?? 0) > 0 && (
                         <Badge variant="outline" className="text-destructive">
                           {wh.failure_count} fallo(s)
                         </Badge>

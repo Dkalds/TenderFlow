@@ -8,6 +8,7 @@
 
 import * as React from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { authKeys } from "@/lib/query-keys";
 
 export interface AuthUser {
   user_id: string;
@@ -35,7 +36,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   const queryClient = useQueryClient();
 
   const { data, isLoading } = useQuery<AuthUser | null>({
-    queryKey: ["auth", "me"],
+    queryKey: authKeys.me,
     queryFn: async () => {
       try {
         const res = await fetch("/api/v1/auth/me", { credentials: "include" });
@@ -58,7 +59,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       refresh: async () => {
         // Invalidar la key fija reejecuta la query montada; ya no hace falta un
         // contador en la queryKey (que dejaba entradas de caché muertas).
-        await queryClient.invalidateQueries({ queryKey: ["auth", "me"] });
+        await queryClient.invalidateQueries({ queryKey: authKeys.me });
       },
     }),
     [data, isLoading, queryClient],

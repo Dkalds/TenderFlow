@@ -20,15 +20,20 @@ from typing import Any
 
 from db.database import connect_read
 from db.repositories.base import rows_to_dicts
+from db.sql_fragments import ISO_MAX
 from shared.estados import abierta_sql
 
-# Guard de fecha bien formada, mismo rango sargable que
-# ``db/repositories/aggregates._iso_guard`` (el CHECK de v59 valida el formato
-# en escrituras nuevas; esto solo excluye legado malformado sin regex).
+# Techo de fecha bien formada. Sale de la misma constante que usa
+# ``db.sql_fragments.iso_guard`` —aquí era un ``'3000'`` re-tecleado— y no del
+# fragmento entero: el suelo de esta consulta no es ``'1900'`` sino la fecha de
+# hoy, que es un filtro de negocio ("todavía se puede presentar") y no una
+# guarda de formato. El CHECK de v59 valida el formato en escrituras nuevas;
+# esto solo excluye legado malformado sin recurrir a un regex, que no podría
+# usar el btree de la columna.
 _FECHA_LIMITE_VIVA_SQL = (
     "l.fecha_limite IS NOT NULL "
     "AND l.fecha_limite >= to_char(CURRENT_DATE, 'YYYY-MM-DD') "
-    "AND l.fecha_limite < '3000'"
+    f"AND l.fecha_limite < '{ISO_MAX}'"
 )
 
 _SIGNAL_COLS = (

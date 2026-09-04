@@ -127,20 +127,27 @@ def _scanned_paths() -> list[Path]:
 def _module_guard_names(tree: ast.Module, source: str) -> set[str]:
     """Nombres del módulo que, al referenciarse, ya aportan el dedupe.
 
-    Son de dos clases, y hacen falta las dos porque el escáner es textual y la
+    Son de tres clases, y hacen falta las tres porque el escáner es textual y la
     cláusula no siempre está escrita dentro de la función que consulta:
 
-    1. **Constantes** cuyo valor ES la cláusula — el idioma de ``db/``, que
-       declara ``_NO_DUPLICADOS`` en vez de llamar a ``exclude_duplicados_sql()``
-       para no importar hacia arriba (ADR-024).
-    2. **Funciones auxiliares ya guardadas.** Si un helper construye el ``WHERE``
+    1. **Constantes cuyo valor ES la cláusula**, escrita a mano. Fue el idioma
+       de ``db/`` mientras la subquery se duplicaba en cada módulo para no
+       importar hacia arriba (ADR-024).
+    2. **Constantes cuyo valor SALE de** ``exclude_duplicados_sql(...)``. Es el
+       idioma vigente desde que la definición canónica bajó a
+       ``db/sql_fragments.py`` (el lado correcto de la frontera):
+       ``ml_dataset._NO_DUPLICADOS`` sigue siendo constante de módulo —cuatro
+       consultas la interpolan sobre el mismo alias— pero ya no reescribe la
+       subquery. Sin esta rama, sustituir la copia por la llamada convertía en
+       "violación" a las funciones que la usan, o sea castigaba justo la
+       refactorización buena.
+    3. **Funciones auxiliares ya guardadas.** Si un helper construye el ``WHERE``
        con la cláusula sembrada dentro (``adjudicaciones._adj_filter_conditions``),
        las funciones que delegan en él están cubiertas aunque su propio cuerpo no
-       mencione el dedupe. Sin esto, sembrar la cláusula en el punto compartido
-       —que es lo correcto: hace imposible olvidarla en la siguiente query— haría
-       fallar el guardrail, castigando justo la refactorización buena.
+       mencione el dedupe. Mismo motivo que (2): sembrar la cláusula en el punto
+       compartido hace imposible olvidarla en la siguiente query.
 
-    El coste de (2) es que una función que llame al helper por cualquier otro
+    El coste de (3) es que una función que llame al helper por cualquier otro
     motivo también pasaría. Es un cambio de falsos positivos por falsos
     negativos que se acepta a conciencia: el modo de fallo que importa es la
     query nueva escrita a mano sin dedupe, y esa no llama a ningún helper.
@@ -148,12 +155,17 @@ def _module_guard_names(tree: ast.Module, source: str) -> set[str]:
     names: set[str] = set()
     for node in tree.body:
         if isinstance(node, ast.Assign):
-            value = node.value
-            if (
-                isinstance(value, ast.Constant)
-                and isinstance(value.value, str)
-                and _GUARD_TABLE in value.value
-            ):
+            valor_literal = (
+                isinstance(node.value, ast.Constant)
+                and isinstance(node.value.value, str)
+                and _GUARD_TABLE in node.value.value
+            )
+            # `ast.get_source_segment` y no un `ast.Call` con `func.id`: la
+            # llamada puede venir envuelta (concatenada con otro fragmento,
+            # dentro de un `f"..."`), y lo que importa es que el nombre del
+            # helper aparezca en la expresión que produce la constante.
+            valor_compuesto = _GUARD_CALL in (ast.get_source_segment(source, node.value) or "")
+            if valor_literal or valor_compuesto:
                 names.update(t.id for t in node.targets if isinstance(t, ast.Name))
         elif isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
             segment = ast.get_source_segment(source, node) or ""
@@ -277,3 +289,143 @@ def test_guardrail_cubre_el_sql_migrado_a_db() -> None:
         "El helper compartido de las consultas UTE ya no aporta el dedupe; "
         "o se le quitó la cláusula, o el detector dejó de verla."
     )
+
+
+# ───────────────────────────────────────────────────────────────────────────
+# Escáner de literales: los dos fragmentos que sólo pueden vivir en un sitio
+# ───────────────────────────────────────────────────────────────────────────
+#
+# El guardrail de arriba comprueba que una query *deduplique*. Éste comprueba
+# algo distinto y complementario: que no lo haga escribiendo el fragmento a
+# mano. Dos definiciones del mismo predicado no fallan nunca de forma visible
+# —el resultado sigue siendo correcto— y por eso divergen en silencio:
+#
+# - el ``COALESCE`` del universo: una variante deja de ser servida por el
+#   índice parcial de ``v84`` y el plan vuelve al Parallel Seq Scan de 9,5 s
+#   sin que cambie ni un resultado (ver ``tests/test_scoring_universo_index.py``,
+#   que vigila la otra mitad: que las copias pidan todas lo mismo);
+# - el anti-join de duplicados: una copia que se quede en ``status =
+#   'confirmed'`` mientras la canónica cambia de criterio esconde —o deja de
+#   esconder— filas en una superficie y no en la otra.
+#
+# Los dos tienen ya definición canónica en ``db/sql_fragments.py``. Esta
+# comprobación es la que hace que la siguiente copia sea un fallo de CI en vez
+# de una divergencia futura.
+
+#: Paquetes de producción escaneados. ``tests/`` queda fuera a propósito: un
+#: test puede querer escribir el literal a mano para comprobar otra cosa (lo
+#: hacen ``test_unit_universo_sql`` y las revisiones congeladas).
+_PAQUETES_PRODUCCION = (
+    "api",
+    "db",
+    "observability",
+    "scheduler",
+    "scraper",
+    "services",
+    "shared",
+)
+
+#: Los dos únicos sitios donde el literal puede aparecer.
+#:
+#: - ``db/sql_fragments.py`` es la definición canónica: alguien tiene que
+#:   escribirla.
+#: - ``db/alembic/versions/`` congela el SQL que ya corrió contra producción.
+#:   Una revisión aplicada describe la base que existe, no la que el código
+#:   quisiera: es append-only y **no se reescribe** aunque el fragmento cambie
+#:   (por eso ``v98`` conserva su cuerpo con el universo de su día).
+_EXENTOS = (
+    "db/sql_fragments.py",
+    "db/alembic/versions/",
+)
+
+#: Qué se persigue y por qué. El primero admite cualquier alias (``l.``,
+#: ``l2.``) y también la columna desnuda: las tres grafías estaban en el repo.
+_LITERALES_PROHIBIDOS: dict[str, tuple[str, str]] = {
+    "universo": (
+        r"COALESCE\(\s*(?:\w+\.)?analysis_universe",
+        "db.sql_fragments.technology_observed_sql() (estrecho, el que sirve el "
+        "índice parcial de v84) o universo_tecnologico_sql() (ancho, el de la "
+        "superficie pública)",
+    ),
+    "duplicados": (
+        r"FROM\s+licitaciones_duplicados\s+WHERE\s+status",
+        "db.sql_fragments.exclude_duplicados_sql(col)",
+    ),
+}
+
+
+def _ficheros_de_produccion() -> list[Path]:
+    """Todo ``.py`` de los paquetes de producción menos los exentos."""
+    ficheros: list[Path] = []
+    for paquete in _PAQUETES_PRODUCCION:
+        raiz = _REPO_ROOT / paquete
+        assert raiz.is_dir(), f"_PAQUETES_PRODUCCION apunta a un directorio inexistente: {paquete}"
+        for path in sorted(raiz.rglob("*.py")):
+            relativo = path.relative_to(_REPO_ROOT).as_posix()
+            if any(relativo.startswith(exento) for exento in _EXENTOS):
+                continue
+            ficheros.append(path)
+    return ficheros
+
+
+def _copias_literales() -> list[str]:
+    """``fichero:linea  (motivo)`` por cada literal prohibido encontrado."""
+    hallazgos: list[str] = []
+    for path in _ficheros_de_produccion():
+        texto = path.read_text(encoding="utf-8")
+        relativo = path.relative_to(_REPO_ROOT).as_posix()
+        for nombre, (patron, remedio) in _LITERALES_PROHIBIDOS.items():
+            for match in re.finditer(patron, texto):
+                linea = texto.count("\n", 0, match.start()) + 1
+                hallazgos.append(f"{relativo}:{linea}  [{nombre}] usá {remedio}")
+    return hallazgos
+
+
+#: Copias literales conocidas. Se llevó a 0 el 2026-09-03 sustituyéndolas todas
+#: (16 en ``scheduler/kpi_precompute``, 1 en cada uno de
+#: ``scheduler/aggregates_precompute``, ``db/domain_truth_audit``,
+#: ``db/repositories/pricing``, ``db/repositories/ml_dataset`` (3) y
+#: ``services/sql_fragments``). Mismo contrato que ``_PENDIENTES_MAX``: solo
+#: puede bajar.
+_COPIAS_LITERALES_MAX = 0
+
+
+def test_los_fragmentos_compartidos_no_se_reescriben_a_mano() -> None:
+    """Ningún módulo de producción vuelve a teclear el universo ni el anti-join.
+
+    Es un ratchet, no una preferencia de estilo: los dos fragmentos tienen un
+    acoplamiento invisible con algo que no está en el mismo fichero —el índice
+    parcial de ``v84`` uno, el criterio de canónica el otro— y una copia rompe
+    ese acoplamiento sin romper ningún resultado.
+    """
+    hallazgos = _copias_literales()
+
+    assert len(hallazgos) <= _COPIAS_LITERALES_MAX, (
+        f"{len(hallazgos)} copias literales, tope {_COPIAS_LITERALES_MAX}:\n  "
+        + "\n  ".join(hallazgos)
+        + "\n\nImportá el fragmento de db/sql_fragments.py en vez de reescribirlo."
+    )
+
+
+def test_el_escaner_de_literales_mira_donde_debe() -> None:
+    """Meta-test: sin esto, un path roto daría verde con el repo lleno de copias.
+
+    Comprueba las dos mitades: que se escanean ficheros de verdad, y que los
+    patrones siguen casando con el texto que persiguen (si alguien cambiara la
+    grafía del fragmento canónico, el escáner dejaría de encontrar nada y no se
+    enteraría nadie).
+    """
+    ficheros = _ficheros_de_produccion()
+    assert len(ficheros) > 100, f"solo {len(ficheros)} ficheros escaneados; ¿paths mal?"
+
+    canonico = (_REPO_ROOT / "db/sql_fragments.py").read_text(encoding="utf-8")
+    for nombre, (patron, _remedio) in _LITERALES_PROHIBIDOS.items():
+        assert re.search(patron, canonico), (
+            f"el patrón [{nombre}] ya no casa con db/sql_fragments.py: "
+            "o cambió el fragmento canónico, o el escáner quedó muerto"
+        )
+
+    # Y el fichero canónico está exento de verdad: si dejara de estarlo, el
+    # ratchet fallaría contra su propia definición.
+    escaneados = {p.relative_to(_REPO_ROOT).as_posix() for p in ficheros}
+    assert "db/sql_fragments.py" not in escaneados

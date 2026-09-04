@@ -1361,45 +1361,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/exports": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Create Export
-         * @deprecated
-         * @description Crea un job de exportación PDF asíncrono.
-         *
-         *     .. deprecated::
-         *        Usá ``GET /exports/download?format=pdf``, que devuelve el PDF en la
-         *        propia respuesta.
-         *
-         *        El job vive en un dict **de proceso** con los bytes del PDF en memoria.
-         *        Eso sólo funciona con una única instancia que además no se reinicie:
-         *     cualquier hibernación, deploy o reinicio de la instancia hace
-         *        desaparecer un job aceptado con 202 y el sondeo devuelve 404 sin que
-         *        nada lo registre como fallo; y al escalar a dos instancias el poll cae
-         *        en la equivocada y responde 404 o 403 de forma no determinista.
-         *
-         *        Se mantiene funcionando —retirarlo es un cambio breaking del contrato
-         *        público y requiere RFC (AGENTS §5)— pero no debe usarse en clientes
-         *        nuevos.
-         *
-         *     Devuelve ``{id, status}`` inmediatamente (202 Accepted).
-         *     Sondea ``GET /exports/{id}`` para obtener el PDF cuando ``status=done``.
-         */
-        post: operations["create_export_api_v1_exports_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/exports/calendario.ics": {
         parameters: {
             query?: never;
@@ -1466,44 +1427,14 @@ export interface paths {
          * Download Export
          * @description Descarga síncrona (CSV, Excel o PDF) con los filtros actuales.
          *
-         *     ``format=pdf`` es el camino recomendado para exportar a PDF: devuelve el
-         *     documento en la propia respuesta, sin la máquina de estados 202+poll de
-         *     ``POST /exports`` (ver la nota de deprecación de ese endpoint).
+         *     ``format=pdf`` es **el** camino para exportar a PDF desde 2026-09-03:
+         *     devuelve el documento en la propia respuesta, sin la máquina de estados
+         *     202+poll que sostenía el retirado ``POST /exports``.
          */
         get: operations["download_export_api_v1_exports_download_get"];
         put?: never;
         post?: never;
         delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/exports/{job_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Export
-         * @deprecated
-         * @description Sondea el estado del job. Devuelve el PDF cuando ``status=done``.
-         *
-         *     .. deprecated:: Ver ``POST /exports``.
-         */
-        get: operations["get_export_api_v1_exports__job_id__get"];
-        put?: never;
-        post?: never;
-        /**
-         * Delete Export
-         * @deprecated
-         * @description Elimina un job de exportación de la memoria.
-         *
-         *     .. deprecated:: Ver ``POST /exports``.
-         */
-        delete: operations["delete_export_api_v1_exports__job_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1684,8 +1615,15 @@ export interface paths {
          * @description Kubernetes readiness probe.
          *
          *     - ``503`` solo si la base de datos no responde (el proceso no puede servir tráfico).
-         *     - ``200`` con ``status:"degraded"`` si Redis o disco están degradados pero la BD funciona
-         *       (el proceso puede servir tráfico, con funcionalidad reducida).
+         *     - ``200`` con ``status:"degraded"`` si Redis, disco o el schema están
+         *       desalineados pero la BD funciona (el proceso puede servir tráfico, con
+         *       funcionalidad reducida).
+         *
+         *     Un schema desalineado NO devuelve 503 a propósito: el proceso sirve, y un
+         *     503 haría que Render retirase la instancia y dejase la superficie pública
+         *     caída por un problema que se arregla corriendo una migración. Quien tiene
+         *     que fallar ante ``degraded`` es el pipeline (``deploy.yml``, ``smoke.yml``
+         *     vía ``scripts/smoke_prod.py``), no el balanceador.
          */
         get: operations["readiness_api_v1_health_ready_get"];
         put?: never;
@@ -4213,6 +4151,11 @@ export interface components {
              */
             importe_total: number;
             /**
+             * Limite Filas
+             * @default 5000
+             */
+            limite_filas: number;
+            /**
              * Pct Oferta Unica
              * @default 0
              */
@@ -4234,6 +4177,11 @@ export interface components {
              * @default 0
              */
             total_empresas: number;
+            /**
+             * Truncado
+             * @default false
+             */
+            truncado: boolean;
         };
         /**
          * CpvEntry
@@ -4722,16 +4670,6 @@ export interface components {
             warning?: string | null;
         };
         /**
-         * ExportJobStatus
-         * @description Estado del job de exportación asíncrona (202 + sondeo).
-         */
-        ExportJobStatus: {
-            /** Id */
-            id: string;
-            /** Status */
-            status: string;
-        };
-        /**
          * FactItem
          * @description Hecho textual con confianza y una o más citas.
          */
@@ -4986,6 +4924,11 @@ export interface components {
             disk: string;
             /** Redis */
             redis: string;
+            /**
+             * Schema Revision
+             * @default unknown
+             */
+            schema_revision: string;
             /** Status */
             status: string;
             /** Timestamp */
@@ -7269,6 +7212,12 @@ export interface components {
              * @description ok | vacia | error
              */
             margen: string;
+            /**
+             * Margen Origen
+             * @description modelo | baseline | mixto | sin_predicciones | desconocido
+             * @default desconocido
+             */
+            margen_origen: string;
             /**
              * Percentiles Fuente
              * @description universo_vivo | global | lote_local | sin_datos
@@ -11341,39 +11290,6 @@ export interface operations {
             };
         };
     };
-    create_export_api_v1_exports_post: {
-        parameters: {
-            query?: {
-                ccaa?: string | null;
-                estado?: string | null;
-                q?: string | null;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            202: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ExportJobStatus"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     calendario_ics_api_v1_exports_calendario_ics_get: {
         parameters: {
             query?: {
@@ -11480,75 +11396,6 @@ export interface operations {
                     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": unknown;
                     "text/csv": unknown;
                 };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_export_api_v1_exports__job_id__get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                job_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description PDF generado */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/pdf": unknown;
-                };
-            };
-            /** @description Job pendiente o en curso */
-            202: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ExportJobStatus"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    delete_export_api_v1_exports__job_id__delete: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                job_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
             };
             /** @description Validation Error */
             422: {

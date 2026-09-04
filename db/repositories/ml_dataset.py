@@ -45,19 +45,17 @@ from typing import Any
 
 from db.database import connect_read
 from db.repositories.base import rows_to_dicts
+from db.sql_fragments import TECHNOLOGY_OBSERVED_SQL, exclude_duplicados_sql
 
-# Exclusión de duplicados cross-fuente. Duplicado de
-# ``services.dedupe.exclude_duplicados_sql`` porque ``db/`` no debe depender de
-# ``services/`` (capa superior, ADR-024) -- mismo motivo por el que
-# ``db/repositories/pricing.py`` duplica ``EFFECTIVE_BUDGET_SQL``. Solo excluye
-# duplicados ``confirmed``; los ``pending`` cuentan hasta que un humano los
-# confirme.
-_NO_DUPLICADOS = (
-    "a.licitacion_id NOT IN "
-    "(SELECT licitacion_id FROM licitaciones_duplicados WHERE status = 'confirmed')"
-)
+# Exclusión de duplicados cross-fuente. Era una copia literal de la subconsulta
+# —``db/`` no podía depender de ``services/`` (ADR-024)—; desde que la
+# definición canónica vive en ``db/sql_fragments.py`` se compone desde allí.
+# Sigue siendo constante de módulo porque las cuatro consultas de este fichero
+# la interpolan sobre el mismo alias. Solo excluye duplicados ``confirmed``;
+# los ``pending`` cuentan hasta que un humano los confirme.
+_NO_DUPLICADOS = exclude_duplicados_sql("a.licitacion_id")
 
-_UNIVERSO = "COALESCE(l.analysis_universe, 'technology_observed') = 'technology_observed'"
+_UNIVERSO = TECHNOLOGY_OBSERVED_SQL
 
 # Tolerancia de validez del par agregado: descarta expedientes donde lo
 # adjudicado supera el presupuesto en más de un 50% (errores de fuente o
@@ -410,9 +408,7 @@ class MlDatasetRepository:
               AND NOT EXISTS (
                   SELECT 1 FROM adjudicaciones a WHERE a.licitacion_id = l.id_externo
               )
-              AND l.id_externo NOT IN (
-                  SELECT licitacion_id FROM licitaciones_duplicados WHERE status = 'confirmed'
-              )
+              AND {exclude_duplicados_sql("l.id_externo")}
             ORDER BY l.fecha_publicacion DESC
             LIMIT %s
         """  # Los marcadores se generan aquí; los valores van con %s.

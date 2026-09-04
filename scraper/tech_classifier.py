@@ -992,6 +992,52 @@ class TechnologyClassifier:
         return obj  # type: ignore[no-any-return]
 
     @classmethod
+    def ensure_downloaded(
+        cls,
+        path: Path | None = None,
+        repo: str = "Dkalds/TenderFlow",
+        asset_name: str = "tech_classifier.pkl",
+    ) -> bool:
+        """Descarga el modelo de la última Release si no está en esta máquina.
+
+        Simétrico a ``SAPClassifier.ensure_downloaded``, y por el mismo motivo:
+        ``data/models/`` no está versionado ni entra en la imagen, así que sin
+        un canal de descarga ``is_available()`` es un ``Path.exists()``
+        condenado a ``False`` en cualquier contenedor o runner efímero. El
+        clasificador multi-tecnología llevaba con ``ML_TECH_ENABLED=True`` y sin
+        ese canal desde el principio: el precompute devolvía "no hay modelo" en
+        cada corrida y nadie lo veía.
+
+        Delega en la implementación del clasificador SAP —``pinned_https_request``
+        contra ``api.github.com``, token opcional, verificación del pin
+        out-of-band— para que las dos descargas tengan exactamente las mismas
+        garantías. Lo único propio es **cuál** es el pin: aquí manda
+        ``ML_TECH_MODEL_SHA256``, no ``ML_MODEL_SHA256`` (que describe otro
+        artefacto y, aplicado a este ``.pkl``, lo borraría siempre que
+        estuviera configurado).
+
+        Returns:
+            ``True`` si el modelo está disponible (ya estaba o se descargó).
+        """
+        from scraper.ml_classifier import SAPClassifier
+
+        target = path or _MODEL_PATH
+        if target.exists():
+            log.info("tech_classifier.model_already_local", path=str(target))
+            return True
+
+        ok = SAPClassifier.ensure_downloaded(
+            path=target,
+            repo=repo,
+            asset_name=asset_name,
+            pinned_sha256=str(getattr(settings, "ML_TECH_MODEL_SHA256", "") or ""),
+            pin_setting_name="ML_TECH_MODEL_SHA256",
+        )
+        if not ok:
+            log.warning("tech_classifier.download_unavailable", asset=asset_name)
+        return ok
+
+    @classmethod
     def is_available(cls, path: Path | None = None) -> bool:
         return (path or _MODEL_PATH).exists()
 
@@ -1023,6 +1069,26 @@ def train_from_db() -> dict[str, Any]:
     ``is_turso_backend()``, que devolvía ``False`` con Postgres activo, así que
     la función leía siempre un fichero SQLite local vacío en vez de los datos
     reales. Con un solo motor la clase de bug desaparece.
+
+    **Publica sin gate**, a propósito, porque es el camino del CLI local. El
+    camino que produce el artefacto de la Release pasa por
+    ``services.ml.promotion_tech``, que entrena con :func:`entrenar_tech` (sin
+    guardar) y solo publica si el candidato supera el gate del golden set — el
+    mismo reparto que ``train_from_db`` del clasificador SAP.
+    """
+    clf, metrics = entrenar_tech()
+    if "error" not in metrics:
+        clf.save()
+    return metrics
+
+
+def entrenar_tech() -> tuple[TechnologyClassifier, dict[str, Any]]:
+    """Entrena el multi-etiqueta desde la BD **sin persistirlo**.
+
+    Separado de :func:`train_from_db` para que la decisión de publicar el
+    artefacto la tome el gate de promoción y no el hecho de haber entrenado:
+    guardar primero y evaluar después deja el ``.pkl`` que sirve producción
+    sobrescrito por un candidato que quizá no aporta nada sobre las keywords.
     """
     import pandas as pd
 
@@ -1071,6 +1137,4 @@ def train_from_db() -> dict[str, Any]:
     )
     clf = TechnologyClassifier()
     metrics = clf.train(df)
-    if "error" not in metrics:
-        clf.save()
-    return metrics
+    return clf, metrics

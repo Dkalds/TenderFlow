@@ -1,29 +1,42 @@
-"""Pipeline completo: descarga -> parseo -> filtrado tecnología -> persistencia.
+"""Clasificación compartida + carril diario legacy (ATOM en vivo).
 
 .. deprecated:: 2026-07-11 (F2, ADR-009)
-   Los carriles **daily** y **bulk** de producción ya NO pasan por este módulo:
-   con ``PLACSP_CONNECTOR_ENABLED=True``, ``scheduler/pipeline_runs.py`` enruta
-   por ``PlacspAtomConnector`` / ``PlacspBulkConnector`` + ``run_connector``
-   (``scraper/connectors/``). Este módulo se conserva como camino de rollback
-   (flip a False) y NO debe recibir features nuevas de ingesta.
+   Los carriles de producción no pasan por aquí: ``scheduler/pipeline_runs.py``
+   enruta por ``PlacspAtomConnector`` / ``PlacspBulkConnector`` +
+   ``run_connector`` (``scraper/connectors/``). Este módulo NO debe recibir
+   features nuevas de ingesta.
 
-   Siguen vivos y en uso desde aquí (no mover hasta retirar el legacy):
-   - ``_ml_classify_entry`` / ``_load_classifiers``: el fallback ML compartido,
-     consumido por ``scraper.connectors.placsp._PlacspParseCore``.
-   - ``backfill``: el carril de backfill histórico aún no tiene camino
-     connector (``run_backfill_pipeline`` delega aquí).
-   - ``_summarize``: métricas de run reutilizadas por el wrapper bulk connector.
+**Qué queda vivo aquí y por qué** (tras la retirada S2.1, 2026-09):
+
+- ``_ml_classify_entry`` / ``_load_classifiers`` / ``_apply_tech_prediction``
+  y las constantes ``INCLUSION_*``: el fallback ML compartido, que consume
+  ``scraper.connectors.placsp._PlacspParseCore``. Es código **vivo del camino
+  connector**, no legacy; vive en este fichero por historia, no por diseño.
+- ``_summarize``: métricas de run que reutiliza el bucle bulk de
+  ``scheduler/pipeline_runs.py``.
+- ``process_daily`` / ``update_daily``: el carril diario legacy, todavía
+  alcanzable con ``PLACSP_CONNECTOR_ENABLED=False`` y usado por el dispatch de
+  la DLQ para las entradas históricas del cursor ``place_live_atom``. **Sí**
+  escribe historial y linaje (``upsert_licitaciones_with_history``), que es lo
+  que lo distingue del bulk legacy que se retiró.
+
+**Qué se retiró en 2026-09 (S2.1)** — ``process_month``,
+``_process_month_impl``, ``update_recent`` y ``backfill``. Eran los dos
+caminos bulk/backfill, y seguían siendo escritores de producción vía
+``scheduler/dlq_retry.py`` (entradas ``bulk_YYYYMM``) y
+``run_backfill_pipeline``. Escribían con ``upsert_licitaciones`` —sin
+historial— y sin lotes, sin metadatos de documentos, sin detección de
+duplicados, sin ``source_ingestion_health`` y sin las columnas de linaje
+(``inclusion_reason``, ``filter_version``, ``analysis_universe``). Su
+sustituto es ``PlacspBulkConnector`` + ``run_connector`` mes a mes, que ya
+existía y hace las siete cosas.
 """
 
 from __future__ import annotations
 
 import dataclasses
 import functools
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import UTC, date, datetime
 from typing import Any
-
-from dateutil.relativedelta import relativedelta
 
 from db.database import (
     Licitacion,
@@ -34,7 +47,6 @@ from db.database import (
     log_extraccion,
     replace_adjudicaciones_batch,
     set_cursor,
-    upsert_licitaciones,
     upsert_licitaciones_with_history,
 )
 from db.dlq import record_failure
@@ -46,15 +58,9 @@ from observability import (
     record_run,
     traced,
 )
-from scraper.bulk_downloader import (
-    CircuitOpenError,
-    download_month,
-    iter_xml_files,
-)
 from scraper.codice_parser import (
     NS,
     parse_adjudicaciones,
-    parse_atom_bytes,
     parse_entry,
     parse_entry_unfiltered,
 )
@@ -315,140 +321,6 @@ def _ml_classify_entry(entry_elem: Any) -> Licitacion | None:
     return lic
 
 
-@traced("scraper.process_month")
-def process_month(
-    year: int,
-    month: int,
-    *,
-    run_id: str | None = None,
-    force: bool = False,
-    resolve_empresas: bool = True,
-) -> dict[str, Any]:
-    """Procesa un mes: descarga ZIP, parsea, filtra por tecnología, persiste.
-
-    Garantiza el cierre de la conexión DB del hilo worker actual al finalizar,
-    independientemente del resultado (éxito, error o circuit open).
-    """
-    fuente = f"bulk_{year}{month:02d}"
-    try:
-        return _process_month_impl(
-            year,
-            month,
-            run_id=run_id,
-            force=force,
-            fuente=fuente,
-            resolve_empresas=resolve_empresas,
-        )
-    finally:
-        close_pool()
-
-
-def _process_month_impl(
-    year: int,
-    month: int,
-    *,
-    run_id: str | None,
-    force: bool,
-    fuente: str,
-    resolve_empresas: bool,
-) -> dict[str, Any]:
-    """Implementación interna de process_month (sin gestión de recursos del hilo)."""
-    try:
-        zip_path = download_month(year, month, force=force)
-    except CircuitOpenError as e:
-        log.error("month_circuit_open", year=year, month=month, error=str(e))
-        record_failure(run_id, fuente, e, scope="download")
-        notify(
-            AlertLevel.ERROR,
-            "PLACSP circuit breaker abierto",
-            "El scraper no pudo descargar por fallos consecutivos en PLACSP.",
-            year=year,
-            month=month,
-        )
-        return {"year": year, "month": month, "status": "circuit_open"}
-    except Exception as e:
-        log.exception("month_download_error", year=year, month=month)
-        record_failure(run_id, fuente, e, scope="download")
-        return {"year": year, "month": month, "status": "error_descarga"}
-
-    if zip_path is None:
-        return {"year": year, "month": month, "status": "no_publicado"}
-
-    encontradas = []
-    adj_por_lic: dict[str, list[Any]] = {}
-    entries_error = 0
-    for filename, content in iter_xml_files(zip_path):
-        log.info("xml_parse_start", filename=filename)
-        try:
-            for lic, adjudicaciones in parse_atom_bytes(content):
-                encontradas.append(lic)
-                if adjudicaciones:
-                    adj_por_lic[lic.id_externo] = adjudicaciones
-        except Exception as e:
-            log.exception("xml_parse_error", filename=filename, year=year, month=month)
-            record_failure(run_id, fuente, e, scope="parse", payload_ref=filename)
-            entries_error += 1
-
-    try:
-        nuevas, actualizadas = upsert_licitaciones(encontradas)
-    except Exception as e:
-        log.exception("month_persist_error", year=year, month=month)
-        record_failure(run_id, fuente, e, scope="persist_licitaciones")
-        return {"year": year, "month": month, "status": "error_persistencia"}
-
-    n_adj = 0
-    n_adj_dropped = 0
-    n_adj_failed = 0
-    if adj_por_lic:
-        try:
-            n_adj, n_adj_dropped, n_adj_failed = replace_adjudicaciones_batch(
-                adj_por_lic, run_id=run_id, fuente=fuente
-            )
-            if n_adj_dropped:
-                log.warning("adj_rows_dropped", dropped=n_adj_dropped, persisted=n_adj)
-        except Exception as e:
-            log.warning("month_adj_persist_error", error=str(e))
-            record_failure(run_id, fuente, e, scope="persist_adjudicaciones")
-
-    log_extraccion(
-        fuente=fuente,
-        nuevas=nuevas,
-        actualizadas=actualizadas,
-        total=len(encontradas),
-        notas=f"matches:{len(encontradas)} adj:{n_adj} adj_errors:{n_adj_failed} errors:{entries_error}",
-    )
-
-    # Instrumentación Prometheus (no bloquea si falla)
-    try:
-        from observability.prometheus import RunInstrumentation, _write_metrics
-
-        prom = RunInstrumentation(source=fuente)
-        prom.record_items(nuevas=nuevas, actualizadas=actualizadas)
-        prom.record_parse_error(entries_error)
-        _write_metrics(prom)
-    except Exception:
-        log.debug("prometheus_instrumentation_failed", fuente=fuente)
-
-    # El backfill paralelo difiere esta fase para evitar resolvedores concurrentes.
-    if resolve_empresas:
-        # Aquí etiqueta y ámbito SÍ coinciden: `fuente` es `bulk_YYYYMM` y es
-        # exactamente el valor que este mismo run grabó en `licitaciones.fuente`.
-        _resolve_empresas_post_ingestion(fuente, scope_fuente=fuente)
-    _signal_post_ingestion(fuente)
-
-    return {
-        "year": year,
-        "month": month,
-        "status": "ok",
-        "tech_matches": len(encontradas),
-        "adjudicaciones": n_adj,
-        "adj_errors": n_adj_failed,
-        "nuevas": nuevas,
-        "actualizadas": actualizadas,
-        "entries_error": entries_error,
-    }
-
-
 def _summarize(results: list[dict[str, Any]], metrics: Any) -> None:
     adj_errors_total = 0
     for r in results:
@@ -468,70 +340,6 @@ def _summarize(results: list[dict[str, Any]], metrics: Any) -> None:
                 metrics.errores_descarga += 1
     if adj_errors_total:
         metrics.notas = f"adj_persist_errors:{adj_errors_total}"
-
-
-def update_recent(months_back: int = 3) -> list[dict[str, Any]]:
-    """Actualiza los últimos N meses (idempotente gracias al upsert)."""
-    init_db()
-    today = datetime.now(UTC).date()
-    run_id = bind_run_context(entrypoint="update_recent", months_back=months_back)
-    with record_run(run_id) as metrics:
-        results = []
-        for i in range(months_back):
-            target = today - relativedelta(months=i)
-            results.append(process_month(target.year, target.month, run_id=run_id))
-        _summarize(results, metrics)
-    return results
-
-
-def backfill(start_year: int, start_month: int) -> list[dict[str, Any]]:
-    """Backfill desde una fecha histórica hasta hoy (paralelo por meses)."""
-    if not (1 <= start_month <= 12):
-        raise ValueError(f"start_month must be 1-12, got {start_month}")
-    if start_year < 2000:
-        raise ValueError(f"start_year must be >= 2000, got {start_year}")
-    from config import settings
-
-    init_db()
-    today = datetime.now(UTC).date()
-    cur = date(start_year, start_month, 1)
-    run_id = bind_run_context(entrypoint="backfill", start_year=start_year, start_month=start_month)
-
-    months: list[tuple[int, int]] = []
-    while cur <= today:
-        months.append((cur.year, cur.month))
-        cur += relativedelta(months=1)
-
-    workers = min(settings.BACKFILL_MAX_WORKERS, len(months)) or 1
-    log.info("backfill_start", months=len(months), workers=workers)
-
-    with record_run(run_id) as metrics:
-        results: list[dict[str, Any]] = []
-        with ThreadPoolExecutor(max_workers=workers) as pool:
-            futures = {
-                pool.submit(
-                    process_month,
-                    y,
-                    m,
-                    run_id=run_id,
-                    resolve_empresas=False,
-                ): (y, m)
-                for y, m in months
-            }
-            for future in as_completed(futures):
-                y, m = futures[future]
-                try:
-                    results.append(future.result())
-                except Exception:
-                    log.exception("backfill_month_error", year=y, month=m)
-                    results.append({"year": y, "month": m, "status": "error"})
-                # Nota: las conexiones DB de cada worker se cierran en process_month via finally.
-                # Ámbito global: se llama al completarse cada mes sin saber
-                # cuál, y "placsp_backfill" es una etiqueta de carril, no un
-                # valor de `licitaciones.fuente` (los meses graban `bulk_YYYYMM`).
-                _resolve_empresas_post_ingestion("placsp_backfill", scope_fuente=None)
-        _summarize(results, metrics)
-    return results
 
 
 # ---------------------------------------------------------------------------

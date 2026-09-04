@@ -411,11 +411,34 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     from db.database import close_pool, init_db
-    from scraper.connectors.base import run_connector
+    from scraper.connectors.base import record_source_disabled, run_connector
 
     init_db()
+
+    # Sin dataset configurado la fuente está APAGADA, no rota (S2.5). Antes
+    # esto no llegaba a ejecutarse: `scrape-daily.yml` gatea el step con
+    # `vars.PSCP_DATASET_ID != ''`, así que un PSCP sin configurar no dejaba
+    # rastro de ninguna clase — y si el gate se quitaba, `fetch()` lanzaba
+    # RuntimeError y ponía el job en rojo por una decisión de configuración.
+    # Declarándolo, el chequeo de frescura del healthcheck distingue «apagada»
+    # de «muerta» y el gate del workflow puede retirarse.
+    dataset_id = args.dataset or settings.PSCP_DATASET_ID
+    if not dataset_id:
+        try:
+            record_source_disabled(
+                SOURCE_ID,
+                motivo=(
+                    "PSCP_DATASET_ID no configurado; validá el dataset con "
+                    "`python scripts/probe_pscp.py` y fijalo por entorno"
+                ),
+            )
+        finally:
+            close_pool()
+        print("PSCP: sin PSCP_DATASET_ID configurado — fuente declarada 'disabled'.")
+        return 0
+
     try:
-        connector = PscpConnector(dataset_id=args.dataset)
+        connector = PscpConnector(dataset_id=dataset_id)
         if args.desde:
             connector._since = lambda cursor: args.desde  # type: ignore[method-assign]
         result = run_connector(connector)

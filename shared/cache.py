@@ -17,12 +17,63 @@ Backends:
     Thread-safe con ``threading.Lock``.
   - **Redis** (si ``REDIS_URL`` está configurado): Compartido entre procesos/workers.
     Falla de forma silenciosa volviendo a Memory si Redis no está disponible.
+
+Capas de caché del sistema
+--------------------------
+
+Este módulo es una de varias. La tabla existe porque la pregunta que más cuesta
+responder tras una ingesta no es «¿hay caché?» sino «¿quién invalida cuál?», y
+la respuesta estaba repartida por siete ficheros. ``api/cache.py`` —una fachada
+de 57 líneas sobre este módulo, con su propio ``cache_key``— se retiró el
+2026-09-03 justo por eso: era una capa más que contar sin ser una capa más.
+
+============================== ==================================== =========================================
+Capa                           Qué guarda                           Quién la invalida tras una ingesta
+============================== ==================================== =========================================
+``shared/cache`` (este)        Respuestas de endpoints por           **Nadie: expira por TTL.** Es la
+                               namespace (``api``, ``analytics``,    decisión, no un olvido — la mayoría de
+                               ``llm_resumen``…)                     los namespaces tienen TTL de 60-300 s.
+                                                                     Las invalidaciones puntuales por acción
+                                                                     del usuario (no por ingesta) usan
+                                                                     :func:`invalidate_user_scoped` y
+                                                                     :func:`invalidate_organization_scoped`.
+``services/_data_cache``       Agregados de solo lectura de la       La **señal de ingesta**: el scraper
+(``SignalAwareCache``)         capa de servicios (señales de          escribe la marca al terminar y la
+                               scoring)                              siguiente lectura recarga. Es la única
+                                                                     capa que se entera de la ingesta sola.
+``shared/cache_signal``        La marca de tiempo de esa señal       Se **escribe** en la ingesta (event log
+                               (event log de Postgres + fichero      de Postgres); las lecturas se memoizan
+                               centinela como fallback)              5 s.
+ETag (``api/middleware``)      Nada en servidor: emite ``ETag`` y    El **cuerpo de la respuesta**. Si el
+                               responde 304                          dato cambia, el hash cambia y el 304
+                                                                     deja de emitirse. No hay que invalidar.
+``functools.lru_cache``        Config derivada y cara de recalcular  Nadie en caliente: **muere con el
+de proceso                     (claves de firma, catálogos i18n,     proceso**. Lo que sí se invalida a mano
+                               versión del servicio)                 es ``shared/signing`` tras rotar clave
+                                                                     (``reload_keys``).
+``api/model_cache``            El clasificador ML cargado en         La **activación de versión**
+                               memoria                               (``POST /models/{n}/activate/{v}``),
+                                                                     explícitamente. No la ingesta.
+Nonce store                    Nonces OAuth de un solo uso           TTL de ``cachetools.TTLCache`` (o la
+(``shared/auth_core``)                                               tabla equivalente). Ajeno a la ingesta.
+Rate limiting — Redis          Ventana deslizante por clave          TTL de la propia ventana.
+(``services/rate_limiting``)
+Rate limiting — Postgres       Lo mismo, en la tabla ``rate_limits`` La poda de la ventana. Es el fallback
+(``services/rate_limiting``)                                         cuando no hay Redis; los dos backends
+                                                                     nunca se coordinan entre sí.
+============================== ==================================== =========================================
+
+Lo que **desapareció** de esta tabla el 2026-09-03: el store en memoria de los
+jobs de export asíncrono (``api/routes/exports.py``), que era un ``dict`` de
+proceso con TTL de 15 minutos. Se retiró con los endpoints que lo usaban (ver
+``docs/rfc/2026-09-03-rfc-retirada-exports-asincronos.md``).
 """
 
 from __future__ import annotations
 
 import asyncio
 import functools
+import hashlib
 import inspect
 import json
 import os
@@ -40,6 +91,26 @@ from observability.logging import get_logger
 log = get_logger(__name__)
 
 _MEMORY_MAX_SIZE = 256  # entradas máximas por namespace en modo memory
+
+#: Namespace de las respuestas de la API REST. Era el ``_NAMESPACE`` privado de
+#: ``api/cache.py``; se conserva con el mismo valor para no invalidar de golpe
+#: las entradas vivas en Redis al retirar aquella fachada.
+API_NAMESPACE = "api"
+
+
+def cache_key(*parts: Any) -> str:
+    """Clave determinista a partir de varios componentes.
+
+    Formato conservado tal cual venía de ``api/cache.py``
+    (``licsap:`` + los 16 primeros hex de un MD5): cambiarlo habría dejado
+    huérfanas las entradas ya escritas en Redis, que es exactamente el efecto
+    que se quería evitar al unificar las dos capas.
+
+    MD5 sin ``usedforsecurity``: es un identificador de caché, no un resumen
+    criptográfico; nadie autentica nada con esto.
+    """
+    raw = ":".join(str(p) for p in parts)
+    return "licsap:" + hashlib.md5(raw.encode(), usedforsecurity=False).hexdigest()[:16]
 
 
 # ---------------------------------------------------------------------------

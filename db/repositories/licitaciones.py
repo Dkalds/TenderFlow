@@ -15,8 +15,17 @@ from sqlalchemy import Select, and_, func, or_, select, text
 from db.database import connect_read, fts_available
 from db.models import _DIALECT, compile_query, licitacion_tecnologia_score, licitaciones
 from db.repositories.base import csv_values, loose_distinct_strings, rows_to_dicts
+from db.sql_fragments import (
+    FOLD_DST,
+    FOLD_SRC,
+    FOLD_TABLE,
+    ISO_MAX,
+    ISO_MIN,
+    iso_guard,
+    tecnologia_en_csv_sql,
+)
 from observability.logging import get_logger
-from shared.estados import ESTADOS_CERRADOS
+from shared.estados import ESTADOS_CERRADOS, abierta_core, abierta_sql_marcadores
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -25,19 +34,18 @@ log = get_logger(__name__)
 
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
-# Cotas del guard ISO de las columnas de fecha. Espejo de
-# ``db/repositories/aggregates.py::_iso_guard``, que las documenta: rango
-# lexicográfico y no regex, porque ``~`` no puede usar el btree de la columna y
-# obliga a evaluar el patrón fila a fila. Aquí van como par de constantes en vez
-# de como fragmento de texto porque este módulo compila SA Core con
-# ``compile_query`` en lugar de interpolar SQL.
-_ISO_MIN = "1900"
-_ISO_MAX = "3000"
+# Cotas del guard ISO de las columnas de fecha. Vienen de
+# ``db/sql_fragments.iso_guard``, que las documenta: rango lexicográfico y no
+# regex, porque ``~`` no puede usar el btree de la columna y obliga a evaluar el
+# patrón fila a fila. Este módulo necesita los extremos sueltos y no el texto ya
+# compuesto, porque compila SA Core con ``compile_query`` en vez de interpolar
+# SQL; eran dos constantes locales y ahora son las mismas de allí, así que
+# ampliar el rango ya no puede cambiar sólo la mitad del repositorio.
 
 
 def _iso_guard(column: Any) -> Any:
     """Cláusula SA Core que excluye fechas claramente malformadas."""
-    return and_(column >= _ISO_MIN, column < _ISO_MAX)
+    return and_(column >= ISO_MIN, column < ISO_MAX)
 
 
 def _dia_siguiente(iso_date: str) -> str | None:
@@ -65,6 +73,32 @@ def _dia_siguiente(iso_date: str) -> str | None:
 def _escape_like(s: str) -> str:
     """Escape SQL LIKE wildcards (%, _) in user input."""
     return s.replace("%", r"\%").replace("_", r"\_")
+
+
+def _plegado(column: Any) -> Any:
+    """Versión SA Core de ``db.sql_fragments.fold_expr``: sin tildes y en minúsculas.
+
+    El plegado tiene que aplicarse a los **dos** lados o no sirve de nada: el
+    llamante pliega el término de búsqueda con ``FOLD_TABLE`` antes de mandarlo
+    como parámetro. Se comparte la tabla de traducción con el fragmento de texto
+    para que buscar "murcia" y "Murcía" no dependa de por qué superficie entre
+    la consulta.
+    """
+    return func.lower(func.translate(column, FOLD_SRC, FOLD_DST))
+
+
+#: Dónde busca ``q``. Es la misma lista que arma
+#: ``db/repositories/aggregates.py::build_licitaciones_where``, y tiene que
+#: serlo: el listado y los KPIs de la misma pantalla salen de las dos, y hasta
+#: 2026-09 buscaban en sitios distintos (aquí título + descripción, allí título
+#: + órgano + id) sin plegar acentos en este lado. El mismo texto en la misma
+#: caja daba dos recuentos. ``tests/test_s1_paridad_filtros.py`` los compara.
+_COLUMNAS_BUSQUEDA = (
+    licitaciones.c.titulo,
+    licitaciones.c.descripcion,
+    licitaciones.c.organo_contratacion,
+    licitaciones.c.id_externo,
+)
 
 
 def _any_of(column: Any, values: list[str]) -> Any:
@@ -191,22 +225,18 @@ class LicitacionRepository:
                 )
             )
 
-        if q:
-            like = f"%{_escape_like(q)}%"
-            clauses.append(
-                or_(
-                    licitaciones.c.titulo.like(like),
-                    licitaciones.c.descripcion.like(like),
-                )
-            )
+        if q and q.strip():
+            like = f"%{_escape_like(q.strip().translate(FOLD_TABLE).lower())}%"
+            clauses.append(or_(*[_plegado(c).like(like) for c in _COLUMNAS_BUSQUEDA]))
         estados = csv_values(estado)
         if estados:
             clauses.append(_any_of(licitaciones.c.estado, estados))
         if solo_abiertas:
-            # `COALESCE` y no `NOT IN` a secas: en SQL `NULL NOT IN (...)` es
-            # NULL, así que las filas sin estado —que son oportunidades hasta
-            # que se demuestre lo contrario— quedarían fuera del resultado.
-            clauses.append(func.coalesce(licitaciones.c.estado, "").notin_(ESTADOS_CERRADOS))
+            # El juicio «sigue abierta» sale de `shared.estados`, en su forma
+            # para SA Core: el `COALESCE` (y no un `NOT IN` a secas, que en SQL
+            # descarta el NULL en silencio) está allí, escrito una vez, junto a
+            # la forma de texto que usan los agregados.
+            clauses.append(abierta_core(licitaciones.c.estado))
         ccaas = csv_values(ccaa)
         if ccaas:
             clauses.append(_any_of(licitaciones.c.ccaa, ccaas))
@@ -411,17 +441,23 @@ class LicitacionRepository:
             extra_conditions.append("l.estado = %s")
             extra_params.append(estado)
         if solo_abiertas:
-            # Mismo criterio que la rama SA Core: COALESCE para que un estado
-            # NULL no se caiga del NOT IN.
-            placeholders = ", ".join(["%s"] * len(ESTADOS_CERRADOS))
-            extra_conditions.append(f"COALESCE(l.estado, '') NOT IN ({placeholders})")
+            # Mismo criterio y ahora también misma grafía que la rama SA Core y
+            # que los agregados: el predicado lo emite `shared.estados`. Antes
+            # eran tres escrituras equivalentes del mismo juicio, y equivalente
+            # no protege de que sólo una cambie.
+            extra_conditions.append(abierta_sql_marcadores("l.estado", n=len(ESTADOS_CERRADOS)))
             extra_params.extend(ESTADOS_CERRADOS)
         if ccaa:
             extra_conditions.append("l.ccaa = %s")
             extra_params.append(ccaa)
-        if tecnologia:
-            extra_conditions.append("l.tecnologia = %s")
-            extra_params.append(tecnologia)
+        tecnologias = csv_values(tecnologia)
+        if tecnologias:
+            # Igualdad no: `tecnologia` guarda un CSV por fila, así que buscar
+            # SAP escondía los expedientes que además llevan otra. La rama SA
+            # Core ya explotaba el CSV; ésta comparaba por igualdad, de modo que
+            # escribir texto en la caja cambiaba el universo del filtro.
+            extra_conditions.append(tecnologia_en_csv_sql("l.tecnologia", n=len(tecnologias)))
+            extra_params.extend(tecnologias)
         if fecha_desde and _DATE_RE.match(fecha_desde):
             extra_conditions.append("l.fecha_publicacion >= %s")
             extra_params.append(fecha_desde)
@@ -436,9 +472,7 @@ class LicitacionRepository:
             _dia_siguiente(cierre_hasta) if cierre_hasta and _DATE_RE.match(cierre_hasta) else None
         )
         if cierre_desde_ok or hasta_exclusivo:
-            extra_conditions.append(
-                f"(l.fecha_limite >= '{_ISO_MIN}' AND l.fecha_limite < '{_ISO_MAX}')"
-            )
+            extra_conditions.append(iso_guard("l.fecha_limite"))
         if cierre_desde_ok:
             extra_conditions.append("l.fecha_limite >= %s")
             extra_params.append(cierre_desde)
@@ -522,6 +556,21 @@ class LicitacionRepository:
                 return None
             cols = [d[0] for d in cur.description]
             return dict(zip(cols, row, strict=False))
+
+    def exists(self, id_externo: str) -> bool:
+        """``True`` si el expediente existe. Para los guardas de 404.
+
+        No es ``get_by_id(...) is not None``: quien pregunta esto solo quiere
+        saber si responder 404, y traerse la fila entera (``SELECT *``) para
+        tirarla es trabajo que nadie mira. Vive aquí y no en la ruta porque
+        todo el SQL vive en ``db/`` (ADR-022).
+        """
+        with connect_read() as c:
+            row = c.execute(
+                "SELECT 1 FROM licitaciones WHERE id_externo = %s",
+                (id_externo,),
+            ).fetchone()
+        return row is not None
 
     def get_text_for_ml(self, id_externo: str) -> tuple[str, str, str | None] | None:
         """Devuelve (titulo, descripcion, tecnologia) o None."""
@@ -741,14 +790,9 @@ class LicitacionRepository:
             )
         ]
 
-        if q:
-            like = f"%{_escape_like(q)}%"
-            clauses.append(
-                or_(
-                    licitaciones.c.titulo.like(like),
-                    licitaciones.c.descripcion.like(like),
-                )
-            )
+        if q and q.strip():
+            like = f"%{_escape_like(q.strip().translate(FOLD_TABLE).lower())}%"
+            clauses.append(or_(*[_plegado(c).like(like) for c in _COLUMNAS_BUSQUEDA]))
         if estado:
             clauses.append(licitaciones.c.estado.in_(estado))
         if ccaa:

@@ -84,6 +84,18 @@ log = get_logger(__name__)
 _MODEL_PATH = Path(__file__).parents[1] / "data" / "models" / "sap_classifier.pkl"
 _GITHUB_REPO_RE = re.compile(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+")
 
+# Motivo de degradación cuando el artefacto de la versión activa del registry
+# no está en esta máquina y se sirve el local, que puede ser anterior. Viaja en
+# `SAPClassifier.serving_degradado` y sale por el `warning` de `explain()`: un
+# `log.warning` en el contenedor no lo ve quien consume la API, y esta es
+# justo la situación en la que las explicaciones que devuelve no son las del
+# modelo que el registry dice estar sirviendo.
+DEGRADACION_VERSION_MISMATCH = "serving_version_mismatch"
+_AVISO_VERSION_MISMATCH = (
+    "Degradado: el artefacto de la versión activa no está en esta máquina; "
+    "esta explicación sale del modelo local, que puede ser anterior."
+)
+
 # Número mínimo de ejemplos para entrenar
 MIN_TRAIN_SAMPLES = 50
 # Umbral a partir del cual las métricas del test se consideran fiables. Por
@@ -123,6 +135,10 @@ class SAPClassifier:
         self._threshold: float = settings.ML_CONFIDENCE_THRESHOLD
         # Metadata del entrenamiento (versión, métricas, timestamp).
         self.metadata: dict[str, Any] = {}
+        # Por qué esta instancia NO es el artefacto de la versión activa del
+        # registry, si ese es el caso. Lo rellena `load()`; `explain()` lo
+        # propaga a la respuesta de la API. Ver DEGRADACION_VERSION_MISMATCH.
+        self.serving_degradado: str | None = None
 
     # ── Entrenamiento ─────────────────────────────────────────────────────
 
@@ -682,7 +698,8 @@ class SAPClassifier:
 
         Returns:
             Dict con ``prediction``, ``confidence``, ``top_features`` (lista
-            de ``{term, weight, contribution}``).
+            de ``{term, weight, contribution}``) y, cuando el serving está
+            degradado, ``warning`` (ver :func:`_con_degradacion`).
         """
         if not self._trained:
             raise RuntimeError("Clasificador no entrenado.")
@@ -697,12 +714,14 @@ class SAPClassifier:
         clf_step = self.pipeline.named_steps.get("clf")
 
         if feature_step is None or clf_step is None:
-            return {
-                "prediction": confidence >= self._threshold,
-                "confidence": confidence,
-                "top_features": [],
-                "warning": "No se pudieron extraer pasos del pipeline.",
-            }
+            return self._con_degradacion(
+                {
+                    "prediction": confidence >= self._threshold,
+                    "confidence": confidence,
+                    "top_features": [],
+                    "warning": "No se pudieron extraer pasos del pipeline.",
+                }
+            )
 
         # Transformar el texto a través del FeatureUnion
         tfidf_matrix = feature_step.transform([text])
@@ -718,12 +737,16 @@ class SAPClassifier:
             if hasattr(clf_step, "coef_"):
                 coef = clf_step.coef_[0]
             else:
-                return {
-                    "prediction": confidence >= self._threshold,
-                    "confidence": confidence,
-                    "top_features": [],
-                    "warning": f"Clasificador {type(clf_step).__name__} no soporta explicación lineal.",
-                }
+                return self._con_degradacion(
+                    {
+                        "prediction": confidence >= self._threshold,
+                        "confidence": confidence,
+                        "top_features": [],
+                        "warning": (
+                            f"Clasificador {type(clf_step).__name__} no soporta explicación lineal."
+                        ),
+                    }
+                )
 
         contributions = tfidf_matrix.multiply(coef).toarray().ravel()
 
@@ -743,11 +766,32 @@ class SAPClassifier:
             if abs(contributions[i]) > 1e-9
         ][:top_k]
 
-        return {
-            "prediction": confidence >= self._threshold,
-            "confidence": confidence,
-            "top_features": top,
-        }
+        return self._con_degradacion(
+            {
+                "prediction": confidence >= self._threshold,
+                "confidence": confidence,
+                "top_features": top,
+            }
+        )
+
+    def _con_degradacion(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """Adjunta el aviso de degradación al payload de ``explain``.
+
+        Cuando el artefacto de la versión activa no está en esta máquina, la
+        API sirve el modelo local sin decirlo: hasta ahora eso era solo un
+        `log.warning` dentro del contenedor, invisible para quien consume
+        `/explain`. El campo `warning` ya existe en el DTO de la respuesta
+        (`ExplainPayload`), así que la degradación viaja por ahí en vez de
+        exigir un campo nuevo — y se **antepone** a un aviso previo en lugar de
+        pisarlo: los dos son ciertos y el de degradación es el que cambia cómo
+        hay que leer la explicación entera.
+        """
+        if not self.serving_degradado:
+            return payload
+        previo = str(payload.get("warning") or "")
+        payload["warning"] = f"{_AVISO_VERSION_MISMATCH} {previo}".strip()
+        payload["degradado"] = self.serving_degradado
+        return payload
 
     # ── Persistencia ──────────────────────────────────────────────────────
 
@@ -781,11 +825,25 @@ class SAPClassifier:
         path: Path | None = None,
         repo: str = "Dkalds/TenderFlow",
         asset_name: str = "sap_classifier.pkl",
+        pinned_sha256: str | None = None,
+        pin_setting_name: str = "ML_MODEL_SHA256",
     ) -> bool:
         """Descarga el modelo desde el último GitHub Release si no existe localmente.
 
         Usa GITHUB_TOKEN del entorno si está disponible (necesario para repos privados
         y siempre disponible en GitHub Actions via secrets.GITHUB_TOKEN).
+
+        Args:
+            path: Destino. Por defecto el artefacto local del clasificador SAP.
+            repo: ``owner/name`` del repositorio con la Release.
+            asset_name: Nombre exacto del asset a descargar.
+            pinned_sha256: Pin out-of-band contra el que verificar lo
+                descargado. ``None`` usa ``settings.ML_MODEL_SHA256``. Es
+                parámetro y no lectura fija porque
+                ``TechnologyClassifier.ensure_downloaded`` reutiliza esta
+                descarga para **otro** artefacto: aplicarle el pin del SAP lo
+                borraría en cuanto ese pin estuviera configurado.
+            pin_setting_name: Nombre del setting, solo para el log.
 
         Returns:
             True si el modelo está disponible (ya existía o se descargó correctamente).
@@ -867,8 +925,13 @@ class SAPClassifier:
                 response.raise_for_status()
                 target.write_bytes(b"".join(response.iter_content()))
             # Verificar el pin out-of-band si está configurado: no confiar en un
-            # modelo descargado cuyo hash no coincide con ML_MODEL_SHA256.
-            pinned = str(getattr(settings, "ML_MODEL_SHA256", "") or "").strip().lower()
+            # modelo descargado cuyo hash no coincide con el pin del artefacto.
+            crudo = (
+                pinned_sha256
+                if pinned_sha256 is not None
+                else getattr(settings, "ML_MODEL_SHA256", "")
+            )
+            pinned = str(crudo or "").strip().lower()
             if pinned:
                 import hashlib
 
@@ -876,6 +939,7 @@ class SAPClassifier:
                 if actual != pinned:
                     log.error(
                         "ml_classifier.download_hash_mismatch",
+                        pin=pin_setting_name,
                         expected=pinned[:16],
                         got=actual[:16],
                     )
@@ -913,6 +977,7 @@ class SAPClassifier:
         registry_sha256 = ""
         sirviendo_artefacto_del_registry = False
         version_activa: object | None = None
+        degradado: str | None = None
         if path is None:
             try:
                 from db.model_registry import get_active
@@ -937,6 +1002,7 @@ class SAPClassifier:
                         # aplicarlo como pin hacía que todo `load()` muriera
                         # con "integridad comprometida" en cuanto el
                         # reentrenamiento semanal promocionaba una versión.
+                        degradado = DEGRADACION_VERSION_MISMATCH
                         log.warning(
                             "ml_classifier.serving_version_mismatch",
                             version_activa=version_activa,
@@ -977,8 +1043,13 @@ class SAPClassifier:
             obj._threshold = settings.ML_CONFIDENCE_THRESHOLD
         if not hasattr(obj, "metadata"):
             obj.metadata = {}
+        # El artefacto deserializado puede ser anterior a que este atributo
+        # existiera; se fija siempre, tanto para marcar la degradación como
+        # para limpiarla en una carga sana.
+        obj.serving_degradado = degradado
         log.info(
             "ml_classifier.loaded",
+            degradado=degradado,
             path=str(target),
             threshold=obj._threshold,
             trained_at=obj.metadata.get("trained_at", "legacy"),

@@ -15,9 +15,8 @@ from pydantic import BaseModel, Field
 from api.concurrency import run_db
 from api.routes.dual_auth import require_any_auth
 from db.audit import log_event
-from db.database import connect_read
 from db.empresas import apply_review, list_pending_reviews, resolution_stats
-from db.repositories.base import rows_to_dicts
+from db.repositories.empresas import EmpresasReadRepository
 from observability.logging import get_logger
 
 log = get_logger(__name__)
@@ -124,70 +123,7 @@ def _require_review_admin(ctx: dict[str, Any] = Depends(require_any_auth)) -> di
     return ctx
 
 
-def _list_empresas(q: str | None, limit: int, offset: int) -> list[dict[str, Any]]:
-    sql = (
-        "SELECT e.empresa_id, e.nombre_canonico, e.nif_canonico, e.es_ute, e.es_pyme, "
-        "       g.nombre AS grupo, "
-        "       COUNT(a.id) AS n_adjudicaciones, "
-        "       COALESCE(SUM(a.importe_adjudicado), 0) AS importe_total "
-        "FROM empresas e "
-        "LEFT JOIN grupos_empresariales g ON g.grupo_id = e.grupo_id "
-        "LEFT JOIN adjudicaciones a ON a.empresa_id = e.empresa_id "
-    )
-    params: list[Any] = []
-    if q:
-        sql += (
-            "WHERE e.nombre_canonico LIKE %s OR e.nif_canonico LIKE %s "
-            "OR e.empresa_id IN (SELECT empresa_id FROM empresa_aliases WHERE alias_normalizado LIKE %s) "
-        )
-        like = f"%{q.upper()}%"
-        params.extend([like, like, like])
-    sql += (
-        "GROUP BY e.empresa_id, e.nombre_canonico, e.nif_canonico, e.es_ute, e.es_pyme, g.nombre "
-        "ORDER BY importe_total DESC LIMIT %s OFFSET %s"
-    )
-    params.extend([limit, offset])
-    with connect_read() as c:
-        return rows_to_dicts(c.execute(sql, params))
-
-
-def _get_empresa(empresa_id: int) -> dict[str, Any] | None:
-    with connect_read() as c:
-        cur = c.execute(
-            "SELECT e.empresa_id, e.nombre_canonico, e.nif_canonico, e.es_ute, e.es_pyme, "
-            "       g.nombre AS grupo, e.created_at, e.updated_at "
-            "FROM empresas e LEFT JOIN grupos_empresariales g ON g.grupo_id = e.grupo_id "
-            "WHERE e.empresa_id = %s",
-            (empresa_id,),
-        )
-        rows = rows_to_dicts(cur)
-        if not rows:
-            return None
-        empresa = rows[0]
-        empresa["aliases"] = rows_to_dicts(
-            c.execute(
-                "SELECT alias_normalizado, nif_variante, fuente, confianza "
-                "FROM empresa_aliases WHERE empresa_id = %s ORDER BY id",
-                (empresa_id,),
-            )
-        )
-        empresa["ute_miembros"] = rows_to_dicts(
-            c.execute(
-                "SELECT m.empresa_id, m.nombre_canonico, m.nif_canonico "
-                "FROM ute_miembros u JOIN empresas m ON m.empresa_id = u.miembro_empresa_id "
-                "WHERE u.ute_empresa_id = %s",
-                (empresa_id,),
-            )
-        )
-        empresa["participa_en_utes"] = rows_to_dicts(
-            c.execute(
-                "SELECT u2.ute_empresa_id AS empresa_id, e2.nombre_canonico "
-                "FROM ute_miembros u2 JOIN empresas e2 ON e2.empresa_id = u2.ute_empresa_id "
-                "WHERE u2.miembro_empresa_id = %s",
-                (empresa_id,),
-            )
-        )
-        return empresa
+_repo = EmpresasReadRepository()
 
 
 @router.get("", summary="Buscar empresas del maestro")
@@ -198,7 +134,7 @@ async def list_empresas(
     _ctx: dict[str, Any] = Depends(require_any_auth),
 ) -> EmpresasListResult:
     """Lista empresas canónicas ordenadas por importe adjudicado total."""
-    items = await run_db(_list_empresas, q, limit, offset)
+    items = await run_db(_repo.list_empresas, q, limit, offset)
     return EmpresasListResult(
         items=[EmpresaListItem(**item) for item in items], limit=limit, offset=offset
     )
@@ -264,7 +200,7 @@ async def get_empresa(
     _ctx: dict[str, Any] = Depends(require_any_auth),
 ) -> EmpresaDetail:
     """Empresa con sus aliases, miembros de UTE y UTEs en las que participa."""
-    empresa = await run_db(_get_empresa, empresa_id)
+    empresa = await run_db(_repo.get_empresa, empresa_id)
     if empresa is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Empresa no encontrada.")
     return EmpresaDetail(**empresa)

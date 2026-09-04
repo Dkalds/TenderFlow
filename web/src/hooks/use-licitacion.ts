@@ -14,10 +14,9 @@
 import { useQuery } from "@tanstack/react-query";
 import { fetchWithAuth } from "@/lib/api-client";
 import type { LicitacionDetail } from "@/lib/api-types";
+import { licitacionKeys } from "@/lib/query-keys";
 
-export const licitacionKeys = {
-  detail: (id: string) => ["licitacion", id] as const,
-};
+export { licitacionKeys } from "@/lib/query-keys";
 
 export function useLicitacion(id: string | null) {
   return useQuery({

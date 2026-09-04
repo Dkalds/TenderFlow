@@ -1,61 +1,20 @@
-"""Tests de session helpers y endpoints de autenticación en /api/v1/auth.
+"""Tests de los endpoints de autenticación en /api/v1/auth.
 
 No se duplican:
 - Register + login happy path (en test_auth_register.py)
+
+Los cinco tests de ``_sign_session``/``_verify_session`` se borraron el
+2026-09-03 junto con las dos funciones: eran un JWT hecho a mano que no
+llamaba ningún camino de producción, solo este fichero. El formato de sesión
+real es opaco y revocable (``db/sessions.py``).
 """
 
 from __future__ import annotations
-
-import time
-
-from api.routes.auth import _sign_session, _verify_session
 
 # Fixtures client, auth, api_db se heredan de conftest.py
 
 _VALID_PASSWORD = "P@ssw0rd1234"  # pragma: allowlist secret
 _EMAIL = "sesion@example.com"
-
-
-# ---------------------------------------------------------------------------
-# Helpers de sesión: _sign_session / _verify_session
-# ---------------------------------------------------------------------------
-
-
-def test_verify_session_token_invalido():
-    """Token sin punto (sin separador) → None."""
-    result = _verify_session("tokensinpunto")
-    assert result is None
-
-
-def test_verify_session_base64_malo():
-    """Base64 inválido antes del punto → None."""
-    result = _verify_session("!!!invalido!!!.deadbeef")
-    assert result is None
-
-
-def test_verify_session_firma_mala():
-    """Firma incorrecta (hex modificado) → None."""
-    valid = _sign_session({"user_id": 1, "exp": int(time.time()) + 3600})
-    b64, _ = valid.split(".", 1)
-    tampered = f"{b64}.0000000000000000000000000000000000000000000000000000000000000000"
-    assert _verify_session(tampered) is None
-
-
-def test_verify_session_expirado():
-    """Token con exp en el pasado → None."""
-    token = _sign_session({"user_id": 1, "exp": int(time.time()) - 1})
-    assert _verify_session(token) is None
-
-
-def test_verify_session_roundtrip():
-    """sign → verify devuelve el mismo payload (user_id intacto)."""
-    exp = int(time.time()) + 3600
-    payload = {"user_id": 42, "exp": exp}
-    token = _sign_session(payload)
-    result = _verify_session(token)
-    assert result is not None
-    assert result["user_id"] == 42
-    assert result["exp"] == exp
 
 
 # ---------------------------------------------------------------------------

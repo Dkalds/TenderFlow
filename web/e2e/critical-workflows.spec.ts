@@ -79,6 +79,66 @@ test.describe("Flujos de trabajo críticos", () => {
     expect(response.ok()).toBe(true);
     expect(await download.suggestedFilename()).toMatch(/\.csv$/);
   });
+
+  test("el borrado RGPD de la cuenta se ejecuta contra la API real", async ({ browser }) => {
+    // Regresión O0.7. El botón hacía `fetch("/api/v1/me", {method:"DELETE"})` a
+    // pelo: sin `X-CSRF-Token` (que `require_any_auth` exige a toda mutación
+    // por cookie) y sin el cuerpo `{"confirmation":"DELETE"}` que declara
+    // `DeleteMyDataRequest`. Devolvía 403 y la pantalla decía «Cuenta
+    // eliminada» igualmente… porque tampoco miraba el estado. Este caso lo
+    // ejercita de punta a punta contra Postgres.
+    //
+    // Cuenta desechable, nunca la del seed: el borrado anonimiza el usuario y
+    // revoca sus sesiones, así que hacerlo sobre `demo@tenderflow.dev` dejaría
+    // sin autenticación al resto de la suite. El alta self-service está abierta
+    // porque el job E2E corre con `ENV=dev` (ver `api/routes/auth.py::register`).
+    const email = `e2e-borrado-${Date.now()}@tenderflow.test`;
+    // Credencial de una cuenta desechable que este mismo test crea y borra: no
+    // abre nada fuera del Postgres efímero de CI.
+    const password = "BorradoE2E-2026"; // pragma: allowlist secret
+
+    // Contexto propio: sin `storageState`, para no heredar la sesión demo.
+    const context = await browser.newContext();
+    try {
+      const alta = await context.request.post("/api/v1/auth/register", {
+        data: { email, password, display_name: "Cuenta de borrado E2E" },
+      });
+      expect(
+        alta.status(),
+        "El alta self-service debe estar abierta en CI (ENV=dev) para poder " +
+          "probar el borrado sin tocar los usuarios del seed.",
+      ).toBe(201);
+
+      const page = await context.newPage();
+      await page.goto("/mi-cuenta");
+      await page.getByLabel(/para confirmar/).fill(email);
+
+      const [respuesta] = await Promise.all([
+        page.waitForResponse(
+          (candidate) =>
+            candidate.url().endsWith("/api/v1/me") && candidate.request().method() === "DELETE",
+        ),
+        page.getByRole("button", { name: "Eliminar mi cuenta definitivamente" }).click(),
+      ]);
+
+      expect(
+        respuesta.status(),
+        `DELETE /me devolvió ${respuesta.status()}: ${await respuesta.text()}`,
+      ).toBe(200);
+      expect(respuesta.request().headers()["x-csrf-token"]).toBeTruthy();
+      expect(JSON.parse(respuesta.request().postData() ?? "{}")).toEqual({
+        confirmation: "DELETE",
+      });
+
+      // El borrado revoca sesiones y anonimiza la cuenta: volver a entrar falla.
+      const reintento = await context.request.post("/api/v1/auth/login", {
+        data: { email, password },
+      });
+      expect(reintento.ok()).toBe(false);
+    } finally {
+      await context.close();
+    }
+  });
 });
 
 async function csrfHeaders(context: BrowserContext): Promise<Record<string, string>> {

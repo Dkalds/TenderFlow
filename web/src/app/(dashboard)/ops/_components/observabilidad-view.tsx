@@ -35,9 +35,11 @@ import {
   RefreshCw,
   ShieldCheck,
 } from "lucide-react";
+import { fetchWithAuth } from "@/lib/api-client";
 import { formatDate, formatNumber, formatTime } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 import { getGrafanaUrl } from "@/lib/runtime-config";
+import { adminKeys, analyticsKeys } from "@/lib/query-keys";
 
 interface HealthCheck {
   status?: string;
@@ -107,23 +109,14 @@ export default function ObservabilidadView() {
     dataUpdatedAt,
     refetch,
   } = useQuery<HealthResponse>({
-    queryKey: ["health"],
-    queryFn: async () => {
-      const res = await fetch("/api/v1/health", { credentials: "include" });
-      if (res.status === 401) throw new Error("Sesión expirada");
-      if (!res.ok) throw new Error(`Health check failed: ${res.status}`);
-      return res.json();
-    },
+    queryKey: adminKeys.health,
+    queryFn: () => fetchWithAuth<HealthResponse>("/api/v1/health"),
     refetchInterval: 30_000,
   });
 
   const { data: quality } = useQuery<QualityData>({
-    queryKey: ["analytics-quality-obs"],
-    queryFn: async () => {
-      const res = await fetch("/api/v1/analytics/quality", { credentials: "include" });
-      if (!res.ok) throw new Error(`Error ${res.status}`);
-      return res.json();
-    },
+    queryKey: analyticsKeys.quality,
+    queryFn: () => fetchWithAuth<QualityData>("/api/v1/analytics/quality"),
     refetchInterval: 30_000,
   });
 

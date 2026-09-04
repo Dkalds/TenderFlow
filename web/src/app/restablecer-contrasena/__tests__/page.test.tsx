@@ -10,7 +10,17 @@ beforeEach(() => {
 
 describe("PasswordResetPage", () => {
   it("muestra la misma confirmación genérica tras solicitar un enlace", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, status: 202 }));
+    // `Response` real y no un objeto literal: la página pasa por `apiMutate`,
+    // que lee el cuerpo de la respuesta (un literal sin `json()` reventaba).
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ detail: "ok" }), {
+          status: 202,
+          headers: { "Content-Type": "application/json" },
+        }),
+      ),
+    );
     render(<PasswordResetPage />);
 
     fireEvent.change(screen.getByLabelText("Correo electrónico"), {
@@ -45,7 +55,12 @@ describe("PasswordResetPage", () => {
     window.history.replaceState({}, "", `/restablecer-contrasena#token=${"x".repeat(43)}`);
     vi.stubGlobal(
       "fetch",
-      vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({ status: "ok" }) }),
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ status: "ok" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      ),
     );
     render(<PasswordResetPage />);
 

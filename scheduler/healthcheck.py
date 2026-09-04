@@ -7,6 +7,9 @@ Comprueba:
     4. Al menos el 99% de adjudicaciones están enlazadas con una empresa.
     5. La vista `licitaciones_canonicas` —de la que lee la superficie pública
        entera— se refrescó hace poco y no ha encogido.
+    6. Cada fuente registrada (`scraper.connectors.REGISTERED_SOURCES`) tuvo un
+       run exitoso dentro de su propio `max_lag_hours`, distinguiendo «apagada
+       a propósito» de «muerta».
 
 Salida:
   exit 0 → healthy
@@ -147,6 +150,159 @@ def _comprobar_vista_canonicas(
         checks.append({"name": "canonicas_tamano", "ok": not cayo})
     else:
         checks.append({"name": "canonicas_tamano", "ok": True})
+
+
+#: Estado con el que un conector declara «estoy apagado a propósito» en
+#: ``source_ingestion_health`` (ver ``scraper/connectors/pscp.py`` y
+#: ``tacrc.py``). Apagado no es roto, y el chequeo de frescura tiene que poder
+#: distinguirlos: es justo lo que el ``continue-on-error: true`` del workflow
+#: borraba.
+ESTADO_FUENTE_APAGADA = "disabled"
+
+
+def _lag_horas(last_success_at: Any, momento: datetime) -> float | None:
+    """Horas desde el último run exitoso; ``None`` si nunca hubo uno legible.
+
+    «Nunca tuvo éxito» y «fecha ilegible» se colapsan al mismo valor a
+    propósito: las dos significan «no puedo afirmar que esta fuente haya
+    ingerido», y tratar la segunda como fresca sería inventarse un verde.
+    """
+    if not last_success_at:
+        return None
+    try:
+        ultimo = datetime.fromisoformat(str(last_success_at).replace("Z", "+00:00"))
+    except (ValueError, TypeError):
+        return None
+    if ultimo.tzinfo is None:
+        ultimo = ultimo.replace(tzinfo=UTC)
+    return (momento - ultimo).total_seconds() / 3600
+
+
+def comprobar_frescura_fuentes(
+    repo: Any | None = None,
+    *,
+    ahora: datetime | None = None,
+) -> dict[str, Any]:
+    """Frescura por fuente registrada, contra su propio ``max_lag_hours``.
+
+    Hasta 2026-09 un conector podía llevar semanas muerto y el job de scraping
+    salía verde: seis de los siete corren con ``continue-on-error: true``, así
+    que su fallo no toca el exit code de nadie, y este healthcheck solo miraba
+    el último ``extraction_run`` **global** — que el carril PLACSP mantiene
+    fresco aunque las otras seis fuentes estén paradas.
+
+    Cruza ``scraper.connectors.REGISTERED_SOURCES`` con
+    ``source_ingestion_health`` y clasifica cada fuente:
+
+    - ``atrasada``: hay registro pero el último run exitoso supera su umbral
+      (o no hubo ninguno pese a existir la fila). **Avisa.**
+    - ``apagada``: la fuente escribió ``status='disabled'`` — le falta su
+      variable de entorno obligatoria y lo dijo. No avisa.
+    - ``sin_registro``: no hay fila. Avisa salvo que la fuente sea
+      ``opcional``: repetir cada seis horas que algo nunca se configuró es el
+      ruido que acaba desactivando el check.
+
+    Args:
+        repo: Repositorio de salud. Inyectable para probar sin BD; por defecto
+            ``SourceHealthRepository``.
+        ahora: Momento de referencia (UTC). Inyectable por lo mismo.
+
+    Returns:
+        Dict con ``atrasadas``, ``apagadas``, ``sin_registro`` y ``fuentes``
+        (detalle por fuente: umbral, lag medido y estado reportado).
+    """
+    from scraper.connectors import REGISTERED_SOURCES
+
+    if repo is None:
+        from db.repositories.source_health import SourceHealthRepository
+
+        repo = SourceHealthRepository()
+
+    momento = ahora or datetime.now(UTC)
+    filas = {str(fila.get("source")): fila for fila in repo.list_health()}
+
+    atrasadas: list[str] = []
+    apagadas: list[str] = []
+    sin_registro: list[str] = []
+    detalle: dict[str, Any] = {}
+
+    for fuente in REGISTERED_SOURCES:
+        entrada: dict[str, Any] = {
+            "max_lag_hours": fuente.max_lag_hours,
+            "opcional": fuente.opcional,
+        }
+        detalle[fuente.source_id] = entrada
+        fila = filas.get(fuente.source_id)
+
+        if fila is None:
+            entrada["estado"] = "sin_registro"
+            if not fuente.opcional:
+                sin_registro.append(fuente.source_id)
+            continue
+
+        estado = str(fila.get("status") or "")
+        entrada["status"] = estado
+        if estado == ESTADO_FUENTE_APAGADA:
+            entrada["estado"] = "apagada"
+            apagadas.append(fuente.source_id)
+            continue
+
+        lag = _lag_horas(fila.get("last_success_at"), momento)
+        entrada["lag_hours"] = None if lag is None else round(lag, 1)
+        if lag is None or lag > fuente.max_lag_hours:
+            entrada["estado"] = "atrasada"
+            atrasadas.append(fuente.source_id)
+        else:
+            entrada["estado"] = "fresca"
+
+    return {
+        "atrasadas": atrasadas,
+        "apagadas": apagadas,
+        "sin_registro": sin_registro,
+        "fuentes": detalle,
+    }
+
+
+def _incorporar_frescura_fuentes(
+    checks: list[dict[str, object]],
+    warnings: list[str],
+    info: dict[str, object],
+) -> None:
+    """Ejecuta el chequeo de frescura por fuente y lo vuelca en el informe.
+
+    En su propio ``try`` por el mismo motivo que sus vecinos: un check
+    secundario no puede llevarse por delante el informe entero.
+    """
+    try:
+        resultado = comprobar_frescura_fuentes()
+    except Exception as exc:
+        info["fuentes_frescura_error"] = str(exc)[:200]
+        warnings.append("fuentes_frescura_no_medida")
+        checks.append({"name": "fuentes_frescas", "ok": True})
+        return
+
+    info["fuentes_frescura"] = resultado
+    problemas = [*resultado["atrasadas"], *resultado["sin_registro"]]
+    warnings.extend(f"fuente_atrasada:{s}" for s in resultado["atrasadas"])
+    warnings.extend(f"fuente_sin_registro:{s}" for s in resultado["sin_registro"])
+    checks.append({"name": "fuentes_frescas", "ok": not problemas})
+
+    if problemas:
+        try:
+            notify(
+                AlertLevel.WARN,
+                f"Ingesta: {len(problemas)} fuente(s) sin datos frescos",
+                body=(
+                    "Fuentes fuera de su SLA de frescura (umbrales en "
+                    "scraper/connectors/REGISTERED_SOURCES): "
+                    f"{', '.join(problemas)}."
+                ),
+                atrasadas=resultado["atrasadas"],
+                sin_registro=resultado["sin_registro"],
+                apagadas=resultado["apagadas"],
+            )
+        except Exception:
+            log.debug("fuentes_frescura_notify_failed")
 
 
 def run_check(
@@ -312,6 +468,13 @@ def run_check(
         # filas contra la tabla exige repetir el anti-join que la vista existe
         # para evitar. El evento lo emite `scheduler/aggregates_precompute.py`.
         _comprobar_vista_canonicas(c, canonicas_stale_hours, checks, warnings, info)
+
+        # ── Frescura POR FUENTE (S2.3) ─────────────────────────────────
+        # `last_run_fresh`, más arriba, mira el último `extraction_run`
+        # global, que el carril PLACSP mantiene fresco aunque las otras seis
+        # fuentes lleven semanas muertas — y sus steps corren con
+        # `continue-on-error: true`, así que tampoco ponen el job en rojo.
+        _incorporar_frescura_fuentes(checks, warnings, info)
 
         # Locks activos (ADR-012)
         try:

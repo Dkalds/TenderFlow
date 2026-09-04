@@ -25,7 +25,7 @@ from db.repositories.feedback import FeedbackRepository
 from db.repositories.organizations import OrganizationRepository
 from db.repositories.pursuit_comments import PursuitCommentRepository
 from db.repositories.pursuits import PursuitRepository
-from db.repositories.user_profiles import delete_user_profile, get_user_profile
+from db.repositories.user_profiles import delete_user_profile, get_own_user_profile
 from db.repositories.watchlist import WatchlistRepository
 from observability.logging import get_logger
 
@@ -80,7 +80,9 @@ def export_watchlist_rules(user_key: str) -> list[dict[str, Any]]:
 
 def export_user_profile(user_key: str) -> dict[str, Any] | None:
     """Exporta el perfil de scoring personalizado del usuario, si existe."""
-    return get_user_profile(user_key)
+    # Export GDPR: la pregunta es qué guarda el sistema sobre esta persona,
+    # no qué ve un equipo. Camino sin ámbito, pedido por su nombre.
+    return get_own_user_profile(user_key)
 
 
 def export_user_notifications(user_key: str) -> list[dict[str, Any]]:

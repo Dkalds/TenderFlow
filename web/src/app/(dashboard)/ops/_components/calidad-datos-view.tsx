@@ -32,7 +32,9 @@ import {
   Boxes,
   CalendarClock,
 } from "lucide-react";
+import { fetchWithAuth } from "@/lib/api-client";
 import { formatNumber, formatPercent, cn } from "@/lib/utils";
+import { analyticsKeys } from "@/lib/query-keys";
 const CalidadCompletenessChart = dynamic(() => import("@/components/charts/calidad-datos-charts").then(m => ({ default: m.CalidadCompletenessChart })), { ssr: false, loading: () => <Skeleton className="h-[200px] w-full rounded-md" /> });
 
 interface ColumnCompleteness {
@@ -77,15 +79,8 @@ function freshnessInfo(hours: number | null | undefined): {
 
 export default function CalidadDatosView() {
   const { data, isLoading, isError } = useQuery<QualityData>({
-    queryKey: ["analytics-quality"],
-    queryFn: async () => {
-      const res = await fetch("/api/v1/analytics/quality", {
-        credentials: "include",
-      });
-      if (res.status === 401) throw new Error("Sesión expirada");
-      if (!res.ok) throw new Error(`Error ${res.status}`);
-      return res.json();
-    },
+    queryKey: analyticsKeys.quality,
+    queryFn: () => fetchWithAuth<QualityData>("/api/v1/analytics/quality"),
   });
 
   const hoursAgo = data?.last_scrape_hours_ago ?? null;

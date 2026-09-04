@@ -1,11 +1,17 @@
-"""Endpoint de exportación asíncrona a PDF (F5).
+"""Exportación de datos: descarga síncrona (CSV/Excel/PDF) y calendario ICS.
 
-Flujo:
-  1. ``POST /exports`` — crea un job, lo encola como BackgroundTask,
-     devuelve ``{"id": "...", "status": "pending"}``.
-  2. ``GET /exports/{id}`` — sondea el estado. Devuelve PDF bytes cuando
-     el job está ``done``, o ``{"status": "pending"|"error"}``.
-  3. ``DELETE /exports/{id}`` — elimina el job de la memoria.
+* ``GET /exports/download`` — devuelve el fichero en la propia respuesta.
+* ``GET /exports/calendario/enlace`` — ruta firmada de suscripción al calendario.
+* ``GET /exports/calendario.ics`` — el calendario, por cabecera o enlace firmado.
+
+**Los tres endpoints de job asíncrono (``POST /exports``, ``GET /exports/{id}``,
+``DELETE /exports/{id}``) se retiraron el 2026-09-03**; el almacén en memoria que
+los sostenía se fue con ellos. Motivo y plan en
+``docs/rfc/2026-09-03-rfc-retirada-exports-asincronos.md``: el job vivía en un
+``dict`` de proceso, así que con más de una instancia (o tras cualquier
+reinicio) el 202 aceptaba un trabajo que el sondeo no volvía a encontrar. El
+sustituto es ``GET /exports/download?format=pdf``, que ya existía y devuelve el
+PDF en la misma respuesta.
 
 El PDF se genera con ``reportlab`` (ya en dependencies del proyecto).
 """
@@ -13,9 +19,6 @@ El PDF se genera con ``reportlab`` (ya en dependencies del proyecto).
 from __future__ import annotations
 
 import io
-import threading
-import time
-import uuid
 from datetime import UTC, datetime
 from typing import Any, Literal
 from urllib.parse import urlsplit
@@ -23,46 +26,18 @@ from urllib.parse import urlsplit
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Security, status
 from fastapi.responses import Response, StreamingResponse
 from fastapi.security import APIKeyHeader
-from pydantic import BaseModel
 
-from api.auth import AuthContext, require_api_key, validate_api_key_credential
+from api.auth import validate_api_key_credential
 from api.concurrency import run_db
 from api.routes.dual_auth import require_any_auth
+from api.tenancy import resolve_organization_ctx
+from db.repositories.watchlist import WatchlistRepository
 from observability.logging import get_logger
 from shared.dto import CalendarioEnlace
 
 log = get_logger(__name__)
 
 router = APIRouter(prefix="/exports", tags=["exports"])
-
-# ── Almacén en memoria (proceso) ─────────────────────────────────────────────
-# Sólo lo usan los endpoints de job asíncrono, ya deprecados en favor de
-# `GET /exports/download?format=pdf` (ver la nota en `create_export`). La
-# premisa "instancia única que no se reinicia" que lo hacía aceptable no se
-# sostiene en el despliegue real, y por eso el camino síncrono es el
-# recomendado. TTL = 15 min, max 100 jobs concurrentes.
-
-_TTL_SECONDS = 900
-_MAX_JOBS = 100
-_store: dict[str, dict[str, Any]] = {}
-_store_lock = threading.Lock()
-
-
-def _gc_store() -> None:
-    """Elimina jobs expirados (>TTL) y trunca si excede maxsize."""
-    with _store_lock:
-        now = time.monotonic()
-        expired = [k for k, v in _store.items() if now - v["created_at"] > _TTL_SECONDS]
-        for k in expired:
-            del _store[k]
-        # Si aún excede el máximo tras limpiar expirados, eliminar los más antiguos
-        if len(_store) > _MAX_JOBS:
-            sorted_jobs = sorted(_store.items(), key=lambda kv: kv[1]["created_at"])
-            overflow = len(_store) - _MAX_JOBS
-            for k, _ in sorted_jobs[:overflow]:
-                del _store[k]
-                log.warning("export_pdf.store_overflow_evicted", job_id=k)
-
 
 # ── Generador PDF ─────────────────────────────────────────────────────────────
 
@@ -128,93 +103,6 @@ def _build_pdf(rows: list[dict[str, Any]], title: str) -> bytes:
     return buf.getvalue()
 
 
-# ── Background worker ─────────────────────────────────────────────────────────
-
-
-def _run_export(job_id: str, filters: dict[str, Any]) -> None:
-    """Ejecutado en BackgroundTask: consulta la BD y genera el PDF."""
-    _store[job_id]["status"] = "running"
-    try:
-        from services.licitaciones import fetch_for_pdf
-
-        rows = fetch_for_pdf(
-            ccaa=filters.get("ccaa"),
-            estado=filters.get("estado"),
-            q=filters.get("q"),
-        )
-
-        title = "Licitaciones SAP — Exportación"
-        if filters.get("ccaa"):
-            title += f" ({filters['ccaa']})"
-
-        pdf_bytes = _build_pdf(rows, title)
-        _store[job_id]["pdf"] = pdf_bytes
-        _store[job_id]["status"] = "done"
-        _store[job_id]["n_rows"] = len(rows)
-        log.info("export_pdf.done", job_id=job_id, n_rows=len(rows), bytes=len(pdf_bytes))
-    except Exception as exc:
-        _store[job_id]["status"] = "error"
-        _store[job_id]["error"] = str(exc)
-        log.warning("export_pdf.error", job_id=job_id, error=str(exc))
-
-
-# ── Endpoints ─────────────────────────────────────────────────────────────────
-
-
-class ExportJobStatus(BaseModel):
-    """Estado del job de exportación asíncrona (202 + sondeo)."""
-
-    id: str
-    status: str
-
-
-@router.post("", status_code=202, deprecated=True)
-def create_export(
-    background_tasks: BackgroundTasks,
-    ccaa: str | None = None,
-    estado: str | None = None,
-    q: str | None = None,
-    ctx: AuthContext = Depends(require_api_key),
-) -> ExportJobStatus:
-    """Crea un job de exportación PDF asíncrono.
-
-    .. deprecated::
-       Usá ``GET /exports/download?format=pdf``, que devuelve el PDF en la
-       propia respuesta.
-
-       El job vive en un dict **de proceso** con los bytes del PDF en memoria.
-       Eso sólo funciona con una única instancia que además no se reinicie:
-    cualquier hibernación, deploy o reinicio de la instancia hace
-       desaparecer un job aceptado con 202 y el sondeo devuelve 404 sin que
-       nada lo registre como fallo; y al escalar a dos instancias el poll cae
-       en la equivocada y responde 404 o 403 de forma no determinista.
-
-       Se mantiene funcionando —retirarlo es un cambio breaking del contrato
-       público y requiere RFC (AGENTS §5)— pero no debe usarse en clientes
-       nuevos.
-
-    Devuelve ``{id, status}`` inmediatamente (202 Accepted).
-    Sondea ``GET /exports/{id}`` para obtener el PDF cuando ``status=done``.
-    """
-    _gc_store()
-    job_id = str(uuid.uuid4())
-    with _store_lock:
-        _store[job_id] = {
-            "status": "pending",
-            "created_at": time.monotonic(),
-            "pdf": None,
-            "error": None,
-            "owner": ctx.key_hash,
-        }
-    filters = {k: v for k, v in {"ccaa": ccaa, "estado": estado, "q": q}.items() if v}
-    background_tasks.add_task(_run_export, job_id, filters)
-    log.info("export_pdf.created", job_id=job_id, filters=filters)
-    return ExportJobStatus(id=job_id, status="pending")
-
-
-__all__ = ["router"]
-
-
 # ── Synchronous CSV/Excel download ───────────────────────────────────────────
 
 
@@ -247,9 +135,9 @@ async def download_export(
 ) -> StreamingResponse:
     """Descarga síncrona (CSV, Excel o PDF) con los filtros actuales.
 
-    ``format=pdf`` es el camino recomendado para exportar a PDF: devuelve el
-    documento en la propia respuesta, sin la máquina de estados 202+poll de
-    ``POST /exports`` (ver la nota de deprecación de ese endpoint).
+    ``format=pdf`` es **el** camino para exportar a PDF desde 2026-09-03:
+    devuelve el documento en la propia respuesta, sin la máquina de estados
+    202+poll que sostenía el retirado ``POST /exports``.
     """
     from services.exports import generate_csv, generate_excel, get_export_filename
     from services.licitaciones import fetch_for_pdf
@@ -378,21 +266,7 @@ def _generate_ics(items: list[dict[str, Any]], cal_name: str = "Tenderflow") -> 
     return "\r\n".join(_ics_fold(ln) for ln in lines) + "\r\n"
 
 
-def _calendario_rows(user_key: str) -> list[dict[str, Any]]:
-    """Deadlines y fines de contrato de la watchlist del usuario."""
-    from db.database import connect_read
-
-    with connect_read() as c:
-        cur = c.execute(
-            "SELECT l.id_externo, l.titulo, l.fecha_limite, l.fecha_fin, l.url "
-            "FROM watchlist_items wi "
-            "JOIN licitaciones l ON l.id_externo = wi.id_externo "
-            "WHERE wi.user_key = %s AND (l.fecha_limite IS NOT NULL OR l.fecha_fin IS NOT NULL)",
-            (user_key,),
-        )
-        return [
-            dict(zip([d[0] for d in cur.description], row, strict=False)) for row in cur.fetchall()
-        ]
+_repo_watchlist = WatchlistRepository()
 
 
 _API_KEY_OPCIONAL = APIKeyHeader(name="X-API-Key", auto_error=False)
@@ -412,11 +286,17 @@ def _verificar_firma_calendario(user_id: int, token: str) -> bool:
     return verify(_PREFIJO_FIRMA_CALENDARIO + str(int(user_id)).encode("ascii"), token)
 
 
-def _eventos_calendario(user_key: str, user_id: int) -> list[dict[str, Any]]:
+def _eventos_calendario(user_key: str, user_id: int, organization_id: int) -> list[dict[str, Any]]:
     """Eventos ICS del usuario: pursuits abiertos primero, favoritos después.
 
     Un expediente que es a la vez pursuit y favorito sale una sola vez, como
     pursuit: es el que lleva responsable y próxima acción.
+
+    ``organization_id`` no es decorativa: los favoritos se leen con el mismo
+    predicado de visibilidad que ``GET /watchlist/items``. Hasta 2026-09 esta
+    función ejecutaba su propio SQL en la ruta, filtrando sólo por
+    ``wi.user_key`` — sin organización ni visibilidad— y lo hacía además desde
+    un endpoint alcanzable con un enlace firmado de larga vida, sin sesión.
     """
     from db.repositories.pursuits import PursuitRepository
 
@@ -464,7 +344,7 @@ def _eventos_calendario(user_key: str, user_id: int) -> list[dict[str, Any]]:
                 }
             )
 
-    for row in _calendario_rows(user_key):
+    for row in _repo_watchlist.calendar_items(user_key, organization_id, user_id):
         id_ext = str(row.get("id_externo", ""))
         if id_ext in con_pursuit:
             continue
@@ -486,6 +366,21 @@ def _eventos_calendario(user_key: str, user_id: int) -> list[dict[str, Any]]:
     return events
 
 
+async def _organizacion_del_calendario(ctx: dict[str, Any]) -> int:
+    """Organización con la que se leen los favoritos del calendario.
+
+    Siempre la **personal** del usuario, y por una razón concreta: el enlace de
+    suscripción es una URL firmada que no lleva —ni puede llevar sin invalidar
+    los enlaces ya emitidos— un ``organization_id``. Si el contador de
+    ``/calendario/enlace`` y el contenido de ``/calendario.ics`` resolvieran la
+    organización de formas distintas, el usuario vería un número que no
+    corresponde con su calendario. Los pursuits, que son el grueso del ICS, no
+    dependen de esto: se leen por ``user_id``.
+    """
+    resuelto = await resolve_organization_ctx(ctx, None)
+    return int(resuelto["organization_id"])
+
+
 @router.get(
     "/calendario/enlace",
     response_model=CalendarioEnlace,
@@ -501,7 +396,8 @@ async def calendario_enlace(
 
     user_id = int(ctx["user_id"])
     user_key = str(ctx.get("user_key") or "")
-    eventos = await run_db(_eventos_calendario, user_key, user_id)
+    organization_id = await _organizacion_del_calendario(ctx)
+    eventos = await run_db(_eventos_calendario, user_key, user_id, organization_id)
     query = urlencode({"u": user_id, "t": _firma_calendario(user_id)})
     return CalendarioEnlace(path=f"/api/v1/exports/calendario.ics?{query}", eventos=len(eventos))
 
@@ -568,7 +464,10 @@ async def calendario_ics(
         )
     user_key = user_key_from_email(owner.get("email"), int(owner["id"]))
 
-    events = await run_db(_eventos_calendario, user_key, int(owner["id"]))
+    organization_id = await _organizacion_del_calendario(
+        {"user_id": int(owner["id"]), "user_key": user_key}
+    )
+    events = await run_db(_eventos_calendario, user_key, int(owner["id"]), organization_id)
 
     ics_content = _generate_ics(events, cal_name="TenderFlow - Compromisos")
     log.info("calendario_ics_export", user_key=user_key[:8], events=len(events))
@@ -579,73 +478,4 @@ async def calendario_ics(
     )
 
 
-# ── Jobs asíncronos (deprecados) ─────────────────────────────────────────────
-# Van al final del módulo A PROPÓSITO: ``/{job_id}`` es un comodín de un solo
-# segmento y Starlette resuelve por orden de registro, así que declarado antes
-# se tragaba ``/exports/download`` y ``/exports/calendario.ics`` (las atendía
-# ``get_export`` con job_id="download", que exige X-API-Key y respondía 401 a
-# toda sesión de navegador: todos los botones de exportación del dashboard
-# estaban rotos). Es el mismo motivo por el que el catch-all de licitaciones se
-# registra el último en ``api/app.py``. Cualquier sub-ruta estática nueva de
-# ``/exports`` debe declararse por encima de este bloque.
-
-
-# response_class=Response evita el content application/json {} por defecto:
-# el 200 es el PDF; el estado intermedio viaja como 202 con ExportJobStatus.
-@router.get(
-    "/{job_id}",
-    deprecated=True,
-    response_class=Response,
-    responses={
-        200: {"content": {"application/pdf": {}}, "description": "PDF generado"},
-        202: {"model": ExportJobStatus, "description": "Job pendiente o en curso"},
-    },
-)
-def get_export(
-    job_id: str,
-    ctx: AuthContext = Depends(require_api_key),
-) -> Response:
-    """Sondea el estado del job. Devuelve el PDF cuando ``status=done``.
-
-    .. deprecated:: Ver ``POST /exports``.
-    """
-    job = _store.get(job_id)
-    if job is None:
-        raise HTTPException(status_code=404, detail="Job no encontrado o expirado.")
-    if job.get("owner") != ctx.key_hash:
-        raise HTTPException(status_code=403, detail="Forbidden.")
-    if job["status"] == "done" and job["pdf"]:
-        return Response(
-            content=job["pdf"],
-            media_type="application/pdf",
-            headers={
-                "Content-Disposition": f'attachment; filename="licitaciones_{job_id[:8]}.pdf"',
-                "X-Export-Rows": str(job.get("n_rows", 0)),
-            },
-        )
-    if job["status"] == "error":
-        log.error("export_pdf.client_poll_error", job_id=job_id, error=job["error"])
-        raise HTTPException(
-            status_code=500, detail="Error generando PDF. Consulte los logs del servidor."
-        )
-    # pending o running
-    from fastapi.responses import JSONResponse
-
-    return JSONResponse({"id": job_id, "status": job["status"]}, status_code=202)
-
-
-@router.delete("/{job_id}", status_code=204, deprecated=True)
-def delete_export(
-    job_id: str,
-    ctx: AuthContext = Depends(require_api_key),
-) -> None:
-    """Elimina un job de exportación de la memoria.
-
-    .. deprecated:: Ver ``POST /exports``.
-    """
-    job = _store.get(job_id)
-    if job is None:
-        return
-    if job.get("owner") != ctx.key_hash:
-        raise HTTPException(status_code=403, detail="Forbidden.")
-    del _store[job_id]
+__all__ = ["router"]

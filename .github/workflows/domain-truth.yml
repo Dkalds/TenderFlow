@@ -38,6 +38,27 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
+      # Overrides de repositorio → $GITHUB_ENV, y SOLO si están definidos.
+      #
+      # Antes esto vivía como `X: ${{ vars.X || 'literal' }}` en el `env:` del
+      # step. Ese literal no es un default: SUSTITUYE al de `config/settings.py`
+      # cuando la variable no está definida, que es el caso normal. Son dos
+      # fuentes de verdad para el mismo valor y gana la del YAML, que ningún
+      # test mira — el patrón ya costó dos incidentes (el modelo
+      # `deepseek-v4-pro` EOL devolviendo 410 y tumbando el lote entero de
+      # fichas, con el default de settings ya corregido). Así el default vigente
+      # es siempre el del código, y la variable de repo lo pisa solo cuando
+      # alguien la define de verdad.
+      # Verificado por scripts/check_env_parity.py.
+      - name: Exportar overrides de repositorio definidos
+        env:
+          IN_ALERT_MIN_LEVEL: ${{ vars.ALERT_MIN_LEVEL }}
+        run: |
+          set -u
+          if [ -n "${IN_ALERT_MIN_LEVEL:-}" ]; then
+            echo "ALERT_MIN_LEVEL=$IN_ALERT_MIN_LEVEL" >> "$GITHUB_ENV"
+          fi
+
       # La sección (b) (multi-lote) necesita los ZIP mensuales en disco y este
       # runner es efímero: reporta "sin ZIP cacheados" y no evalúa umbral. Las
       # otras tres miden contra la BD, que es donde está la señal accionable.
@@ -50,7 +71,6 @@ jobs:
           ALERT_EMAIL_TO: ${{ secrets.ALERT_EMAIL_TO }}
           ALERT_SMTP_USER: ${{ secrets.ALERT_SMTP_USER }}
           ALERT_SMTP_PASSWORD: ${{ secrets.ALERT_SMTP_PASSWORD }}
-          ALERT_MIN_LEVEL: ${{ vars.ALERT_MIN_LEVEL || 'warn' }}
           LOG_FORMAT: json
         run: python scripts/audit_domain_truth.py --check --alert
 

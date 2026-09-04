@@ -56,9 +56,15 @@ if TYPE_CHECKING:
 #: todas las consultas del módulo tienen que traer exactamente las mismas: si
 #: divergieran, el índice y las filas nuevas se compararían con claves
 #: construidas de distinta forma y el detector marcaría pares que no existen.
+#:
+#: ``primera_extraccion`` (revisión ``v100``) entra por la misma razón: desde esa
+#: revisión el año-mes de la clave y el desempate de canónica la prefieren sobre
+#: ``fecha_extraccion``, que el upsert reescribe en cada pasada. Sin traerla, los
+#: gemelos Python de ``services/dedupe.py`` no pueden reproducir lo que hace la
+#: proyección y el detector elegiría otra canónica que la superficie pública.
 _COLUMNAS = (
     "l.id_externo, l.organo_contratacion, l.titulo, l.cpv, l.fuente, "
-    "l.fecha_publicacion, l.fecha_extraccion"
+    "l.fecha_publicacion, l.primera_extraccion, l.fecha_extraccion"
 )
 
 #: Expediente natural: el ``id_externo`` sin el namespace de fuente (ADR-009).

@@ -85,9 +85,38 @@ jobs:
           echo "::error title=La API no llegó a responder::15 minutos sin un 200 en /health/ready."
           exit 1
 
+      # Gate de alineación código ↔ schema (S6.2). Va ANTES del smoke y por
+      # separado porque su diagnóstico es distinto: aquí el despliegue "funciona"
+      # —la API responde 200— pero exige columnas que la BD todavía no tiene, y
+      # el fallo aparecerá más tarde, en la primera consulta que las toque. Es el
+      # incidente que motivó `migrate.yml` (`column "lote_id" of relation
+      # "adjudicaciones" does not exist`), que hasta ahora ningún gate veía.
+      - name: Verificar alineación del schema
+        if: ${{ !inputs.skip_smoke }}
+        env:
+          SMOKE_BASE_URL: ${{ vars.SMOKE_BASE_URL }}
+        run: |
+          set -uo pipefail
+          payload=$(curl -sS --max-time 30 "$SMOKE_BASE_URL/api/v1/health/ready" || echo '{}')
+          schema=$(printf '%s' "$payload" | python -c "import json,sys; print(json.load(sys.stdin).get('schema_revision','unknown'))" 2>/dev/null || echo unknown)
+          echo "schema_revision = $schema"
+          case "$schema" in
+            behind*|ahead*)
+              echo "::error title=Schema desalineado::/health/ready dice '$schema'. El código desplegado y la BD no son la misma generación: aplicá Actions → 'Apply DB migrations (alembic)' con mode=apply (si es 'behind') o desplegá el commit correcto (si es 'ahead')."
+              exit 1
+              ;;
+            unknown|unconfigured)
+              echo "::warning title=Alineación de schema sin verificar::/health/ready devolvió '$schema'. El sondeo no pudo leer alembic_version; el deploy continúa, pero este gate no cubrió nada."
+              ;;
+            *)
+              echo "Schema alineado."
+              ;;
+          esac
+
       # El gate real: 200 no significa que la pantalla tenga datos. Este script
       # nació justo de dos incidentes en los que producción respondía 200 con
-      # payloads vacíos y nadie se enteró.
+      # payloads vacíos y nadie se enteró. Desde S6.2 también falla si
+      # `schema_revision` viene desalineado (scripts/smoke_prod.py::_status_ok).
       - name: Chequeo sintético post-deploy
         if: ${{ !inputs.skip_smoke }}
         env:
@@ -95,13 +124,30 @@ jobs:
           SMOKE_API_KEY: ${{ secrets.SMOKE_API_KEY }}
         run: python scripts/smoke_prod.py
 
+      # Todo lo que viene de `inputs`, `job` o `github` viaja por `env:` y se lee
+      # como variable de shell. Interpolar `${{ ... }}` dentro de un bloque
+      # `run:` es el patrón que Semgrep marca como
+      # `yaml.github-actions.security.run-shell-injection`: el valor se pega en
+      # el script ANTES de que exista el shell, así que un input con comillas o
+      # `$(...)` ejecuta comandos en el runner. Este hallazgo dejó `security.yml`
+      # en rojo desde el 2026-08-17 y con él el escaneo semanal entero
+      # (`semgrep --error` aborta el job, y sin job no hay subida de SARIF).
       - name: Resumen
         if: always()
+        env:
+          COMMIT_SHA: ${{ github.sha }}
+          SKIP_SMOKE: ${{ inputs.skip_smoke }}
+          JOB_STATUS: ${{ job.status }}
         run: |
+          if [ "$SKIP_SMOKE" = "true" ]; then
+            verificacion="omitida (skip_smoke)"
+          else
+            verificacion="ejecutada"
+          fi
           {
             echo "### Deploy a producción"
             echo ""
-            echo "- Commit: \`${{ github.sha }}\`"
-            echo "- Verificación posterior: ${{ inputs.skip_smoke && 'omitida (skip_smoke)' || 'ejecutada' }}"
-            echo "- Resultado: ${{ job.status }}"
+            echo "- Commit: \`$COMMIT_SHA\`"
+            echo "- Verificación posterior: $verificacion"
+            echo "- Resultado: $JOB_STATUS"
           } >> "$GITHUB_STEP_SUMMARY"

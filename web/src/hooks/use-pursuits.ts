@@ -20,6 +20,8 @@ import type {
   PursuitMetrics as PursuitMetricsDTO,
   PursuitUpdate,
 } from "@/lib/api-types";
+import { organizationKeys } from "@/lib/query-keys";
+import { pursuitKeys } from "@/lib/query-keys";
 
 export type Pursuit = PursuitDetail;
 export type PursuitStatus = Pursuit["status"];
@@ -48,13 +50,7 @@ export type PipelineAgendaItem = PipelineAgendaItemDTO;
 export type AgendaUrgencia = PipelineAgendaItem["urgencia"];
 export type AgendaKind = PipelineAgendaItem["kind"];
 
-export const pursuitKeys = {
-  all: ["pursuits"] as const,
-  list: (filters: PursuitFilters) => ["pursuits", "list", filters] as const,
-  detail: (id: string) => ["pursuits", "detail", id] as const,
-  metrics: ["pursuits", "metrics"] as const,
-  agenda: ["pursuits", "agenda"] as const,
-};
+export { pursuitKeys } from "@/lib/query-keys";
 
 export interface PursuitFilters {
   status?: PursuitStatus;
@@ -118,7 +114,7 @@ function invalidatePursuits(queryClient: ReturnType<typeof useQueryClient>) {
   // invalidación cubre listados, métricas y la agenda de Mi Pipeline.
   return Promise.all([
     queryClient.invalidateQueries({ queryKey: pursuitKeys.all }),
-    queryClient.invalidateQueries({ queryKey: ["organizations"] }),
+    queryClient.invalidateQueries({ queryKey: organizationKeys.all }),
   ]);
 }
 

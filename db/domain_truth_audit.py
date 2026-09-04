@@ -3,11 +3,18 @@ de dominio y la realidad contractual (Ola 0 del plan de corrección de verdad
 del dato — ver docs/IMPROVEMENT_BACKLOG.md).
 
 Solo lectura, sin transformación de negocio: expone números crudos que
-consume ``scripts/audit_domain_truth.py``. Los fragmentos WHERE
-(``_VALID_PAIR``, ``_TECHNOLOGY_OBSERVED``, ``_EXCLUDE_DUPLICADOS``) espejan
-deliberadamente ``services/sql_fragments.py``/``services/dedupe.py``:
-duplicados aquí porque ``db/`` no debe depender de ``services/`` (capa
-superior, ADR-024) — no porque el criterio de negocio sea distinto.
+consume ``scripts/audit_domain_truth.py``.
+
+``_TECHNOLOGY_OBSERVED`` y ``_EXCLUDE_DUPLICADOS`` eran copias literales de
+``services/sql_fragments.py``/``services/dedupe.py``, justificadas porque
+``db/`` no puede depender de ``services/`` (capa superior, ADR-024). Desde que
+las dos definiciones canónicas viven en ``db/sql_fragments.py`` —el lado
+correcto de la frontera— esa justificación ya no existe, y aquí se importan:
+una auditoría de la verdad del dato que mide sobre un universo distinto del que
+mide el producto no audita nada, y una copia divergente no se ve.
+
+``_VALID_PAIR`` sigue siendo copia: su definición canónica está en
+``services/sql_fragments.py`` y no ha bajado a ``db/`` todavía.
 """
 
 from __future__ import annotations
@@ -16,20 +23,14 @@ from typing import Any
 
 from db.connection import connect_read
 from db.repositories.base import rows_to_dicts
+from db.sql_fragments import TECHNOLOGY_OBSERVED_SQL, exclude_duplicados_sql
 
 # Espejo de services/sql_fragments.py::VALID_PAIR.
 _VALID_PAIR = (
     "l.importe > 0 AND a.importe_adjudicado > 0 AND a.importe_adjudicado <= l.importe * 1.5"
 )
-# Espejo de services/sql_fragments.py::TECHNOLOGY_OBSERVED_SQL.
-_TECHNOLOGY_OBSERVED = (
-    "COALESCE(l.analysis_universe, 'technology_observed') = 'technology_observed'"
-)
-# Espejo de services/dedupe.py::exclude_duplicados_sql() para col="l.id_externo".
-_EXCLUDE_DUPLICADOS = (
-    "l.id_externo NOT IN "
-    "(SELECT licitacion_id FROM licitaciones_duplicados WHERE status = 'confirmed')"
-)
+_TECHNOLOGY_OBSERVED = TECHNOLOGY_OBSERVED_SQL
+_EXCLUDE_DUPLICADOS = exclude_duplicados_sql("l.id_externo")
 
 
 def fecha_limite_gap_by_source() -> list[dict[str, Any]]:

@@ -1,4 +1,4 @@
-"""El índice de v92 y la expresión que consulta la API tienen que ser la misma.
+"""El índice vigente y la expresión que consulta la API tienen que ser la misma.
 
 Un índice funcional solo sirve si su expresión coincide **carácter a carácter**
 con la que aparece en el ``WHERE``. Si divergen no falla nada visible: el
@@ -7,14 +7,16 @@ completo y la superficie pública vuelve a morir por ``statement_timeout``. Es
 decir, el modo de fallo es silencioso hasta que producción se cae — que es
 exactamente lo que pasó el 2026-08-28.
 
-``db/alembic/versions/v92_lic_clave_canonica_index.py`` congela su copia en vez
-de importarla, siguiendo el criterio de v91 y porque ninguna migración de este
-linaje importa del árbol de la app. Este test es el precio de esa decisión: la
-copia congelada puede quedarse atrás, pero no en silencio.
+La revisión que crea el índice congela su copia en vez de importarla, siguiendo
+el criterio de v91 y porque ninguna migración de este linaje importa del árbol
+de la app. Este test es el precio de esa decisión: la copia congelada puede
+quedarse atrás, pero no en silencio.
 
-Si este test falla, la corrección **no** es tocar la constante de v92 —esa
-migración ya corrió en producción y describe el índice que existe allí—. Es
-escribir una revisión nueva que reconstruya el índice con la expresión nueva.
+Si este test falla, la corrección **no** es tocar la constante de una revisión ya
+aplicada —describe el índice que existe en producción—. Es escribir una revisión
+nueva que reconstruya el índice con la expresión nueva y mover ``_RUTA_INDICE``
+a ella. Ya pasó una vez: ``v92`` → ``v101``, cuando la componente temporal de la
+clave pasó de ``fecha_extraccion`` a ``primera_extraccion``.
 """
 
 from __future__ import annotations
@@ -26,33 +28,35 @@ from unittest.mock import patch
 
 from db.sql_fragments import clave_canonica_sql
 
-_RUTA_V92 = (
+_RUTA_INDICE = (
     Path(__file__).resolve().parents[1]
     / "db"
     / "alembic"
     / "versions"
-    / "v92_lic_clave_canonica_index.py"
+    / "v101_lic_clave_canonica_index_inmutable.py"
 )
 
 
-def _cargar_v92() -> Any:
+def _cargar_revision_del_indice() -> Any:
     """Carga la revisión por ruta: ``db/alembic/versions/`` no es un paquete.
 
     Añadirle un ``__init__.py`` para poder importarla sería tocar el directorio
     que alembic descubre por su cuenta, y no hace falta para leer una constante.
     """
-    spec = importlib.util.spec_from_file_location("v92_lic_clave_canonica_index", _RUTA_V92)
+    spec = importlib.util.spec_from_file_location(
+        "v101_lic_clave_canonica_index_inmutable", _RUTA_INDICE
+    )
     assert spec is not None and spec.loader is not None
     modulo = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(modulo)
     return modulo
 
 
-_CLAVE_CANONICA_SQL: str = _cargar_v92()._CLAVE_CANONICA_SQL
+_CLAVE_CANONICA_SQL: str = _cargar_revision_del_indice()._CLAVE_CANONICA_SQL
 
 
-def test_indice_v92_coincide_con_la_expresion_de_la_query() -> None:
-    """La constante congelada de v92 es ``clave_canonica_sql`` sobre la tabla.
+def test_indice_vigente_coincide_con_la_expresion_de_la_query() -> None:
+    """La constante congelada de la revisión vigente es ``clave_canonica_sql``.
 
     El alias de la migración es el nombre de la tabla porque ahí no hay ``FROM``
     que lo abrevie; en las consultas es ``l``. Es la única diferencia admisible.
@@ -74,6 +78,7 @@ def test_clave_es_un_md5_de_las_cuatro_componentes() -> None:
     assert "l.organo_contratacion" in clave
     assert "l.cpv" in clave
     assert "l.fecha_publicacion" in clave
+    assert "l.primera_extraccion" in clave
     assert "l.titulo" in clave
     # Tres separadores para cuatro componentes.
     assert clave.count("chr(31)") == 3
@@ -96,13 +101,13 @@ def test_la_clave_propaga_null_en_vez_de_taparlo() -> None:
 
 
 def _sql_emitido(funcion: str, *, dialecto: str = "postgresql") -> list[str]:
-    """Ejecuta ``upgrade``/``downgrade`` de v92 y devuelve el DDL que emitieron.
+    """Ejecuta ``upgrade``/``downgrade`` de la revisión vigente y devuelve su DDL.
 
     Se sustituye ``op`` entero porque lo que se quiere afirmar es el SQL, no que
     alembic funcione. El ``autocommit_block`` sale de ``MagicMock``, que ya
     implementa el protocolo de context manager.
     """
-    modulo = _cargar_v92()
+    modulo = _cargar_revision_del_indice()
     emitido: list[str] = []
     with patch.object(modulo, "op") as op_falso:
         op_falso.get_bind.return_value.dialect.name = dialecto
@@ -122,18 +127,26 @@ def test_upgrade_crea_el_indice_sin_bloquear_y_sin_morir_por_timeout() -> None:
     emitido = _sql_emitido("upgrade")
 
     assert "SET statement_timeout = 0" in emitido
+    # Y el viejo se tira DESPUÉS de que el nuevo exista: entre un DROP y un
+    # CREATE la superficie pública se queda sin índice, que es el estado que
+    # tumbó producción el 2026-08-28.
+    i_crear = next(i for i, s in enumerate(emitido) if s.startswith("CREATE INDEX"))
+    i_tirar = next(i for i, s in enumerate(emitido) if s.startswith("DROP INDEX"))
+    assert i_crear < i_tirar
     crear = next(s for s in emitido if s.startswith("CREATE INDEX"))
     assert "CONCURRENTLY" in crear
-    assert "IF NOT EXISTS idx_lic_clave_canonica" in crear
+    assert "IF NOT EXISTS idx_lic_clave_canonica_v101" in crear
     assert _CLAVE_CANONICA_SQL in crear
 
 
 def test_upgrade_hace_analyze_porque_v91_dejo_las_estadisticas_viejas() -> None:
     """Sin ``ANALYZE`` el índice puede existir y el planificador ignorarlo.
 
-    v91 reescribió ``estado`` en ~645k filas justo antes de esta revisión, así
-    que las estadísticas de ``licitaciones`` describen una tabla que ya no es.
-    Va al final: antes del índice no serviría de nada.
+    Nació por ``v91``, que reescribió ``estado`` en ~645k filas justo antes de
+    ``v92``. Sigue haciendo falta por el mismo motivo en ``v101``: ``v100``
+    acaba de rellenar ``primera_extraccion`` en las ~692k filas y la expresión
+    que este índice cubre la incluye. Va al final: antes del índice no serviría
+    de nada.
     """
     emitido = _sql_emitido("upgrade")
 
@@ -142,10 +155,18 @@ def test_upgrade_hace_analyze_porque_v91_dejo_las_estadisticas_viejas() -> None:
 
 def test_downgrade_retira_el_indice_tambien_sin_bloquear() -> None:
     """Un ``DROP INDEX`` sin ``CONCURRENTLY`` toma un lock exclusivo sobre la
-    tabla, y revertir no puede costar más que aplicar."""
+    tabla, y revertir no puede costar más que aplicar.
+
+    ``v101`` revierte además a la expresión de ``v92``: el downgrade tiene que
+    dejar el índice que había, no ninguno.
+    """
     emitido = _sql_emitido("downgrade")
 
-    assert any("DROP INDEX CONCURRENTLY IF EXISTS idx_lic_clave_canonica" in s for s in emitido)
+    assert any(
+        "DROP INDEX CONCURRENTLY IF EXISTS idx_lic_clave_canonica_v101" in s for s in emitido
+    )
+    crear = next(s for s in emitido if s.startswith("CREATE INDEX"))
+    assert "IF NOT EXISTS idx_lic_clave_canonica " in crear
 
 
 def test_fuera_de_postgres_no_emite_nada() -> None:

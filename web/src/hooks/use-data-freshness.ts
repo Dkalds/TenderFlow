@@ -3,6 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { apiGet } from "@/lib/api-client";
 import { formatRelativeTime } from "@/lib/utils";
+import { metaKeys } from "@/lib/query-keys";
 
 /**
  * Antigüedad del dato que el usuario está viendo, en un solo sitio.
@@ -20,7 +21,7 @@ import { formatRelativeTime } from "@/lib/utils";
  */
 export function useDataFreshness() {
   const query = useQuery({
-    queryKey: ["meta", "last-extraction"],
+    queryKey: metaKeys.lastExtraction,
     queryFn: () => apiGet("/api/v1/meta/last-extraction"),
     staleTime: 5 * 60_000,
     refetchInterval: 5 * 60_000,

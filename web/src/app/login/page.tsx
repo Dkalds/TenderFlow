@@ -5,7 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader } from "@/components/ui/card";
-import { apiMutate, ApiError } from "@/lib/api-client";
+import { apiMutate, ApiError, fetchWithAuth } from "@/lib/api-client";
 import { LogIn, UserPlus, AlertCircle, Eye, EyeOff, ShieldCheck } from "lucide-react";
 import { TenderFlowLogo } from "@/components/layout/tenderflow-logo";
 import { CONTACT_EMAIL, solicitarAccesoHref } from "@/lib/contacto";
@@ -175,14 +175,9 @@ function LoginPageContent() {
     setError(null);
     setLoading(true);
     try {
-      const res = await fetch("/api/v1/auth/oauth/google/authorize", {
-        credentials: "include",
-      });
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        throw new Error(body.detail || "Error al iniciar OAuth");
-      }
-      const { authorization_url } = await res.json();
+      const { authorization_url } = await fetchWithAuth<{ authorization_url: string }>(
+        "/api/v1/auth/oauth/google/authorize",
+      );
       window.location.href = authorization_url;
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error al conectar con Google");
@@ -528,14 +523,9 @@ function LoginPageContent() {
                         setError(null);
                         setLoading(true);
                         try {
-                          const res = await fetch("/api/v1/auth/dev-login", {
-                            method: "POST",
-                            credentials: "include",
-                          });
-                          if (!res.ok) {
-                            const body = await res.json().catch(() => ({}));
-                            throw new Error(body.detail || "Dev login failed");
-                          }
+                          // `apiMutate` adjunta `X-CSRF-Token` y normaliza el
+                          // error a `ApiError` con el `detail` RFC-7807.
+                          await apiMutate("POST", "/api/v1/auth/dev-login");
                           window.location.href = "/resumen";
                         } catch (err) {
                           setError(err instanceof Error ? err.message : "Dev login failed");

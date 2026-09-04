@@ -5,6 +5,10 @@
   ``services.rate_limiting.get_rate_limiter`` (Redis o tabla ``rate_limits``).
 * :class:`CostTrackingMiddleware`    — Estima coste por request (Prometheus).
 * :class:`AccessLogMiddleware`       — Access log estructurado con métricas RED.
+* :class:`ETagMiddleware`            — ETag/304 para respuestas GET JSON.
+* :class:`_MaxBodyMiddleware`        — Rechaza bodies > 1 MB (ASGI puro).
+* :class:`_RejectNulMiddleware`      — Rechaza el byte NUL en path/query.
+* :func:`correlation_id_middleware`  — Propaga ``X-Correlation-Id``.
 
 Todos diseñados para ser idempotentes y "fail-open" ante errores de infra.
 """
@@ -13,12 +17,14 @@ from __future__ import annotations
 
 import hashlib
 import re
+import uuid
 from collections.abc import Awaitable, Callable
 
 from fastapi import Request, status
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import RedirectResponse, Response
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
+from structlog.contextvars import bind_contextvars, clear_contextvars
 
 from observability.logging import get_logger
 from services.rate_limiting import get_rate_limiter
@@ -489,6 +495,171 @@ class AccessLogMiddleware(BaseHTTPMiddleware):
 _NOT_MODIFIED_PRESERVED_HEADERS = frozenset(
     {"vary", "x-request-id", "x-correlation-id", "content-language"}
 )
+
+
+# ────────────────── Límite de body y saneo de la request line ──────────────
+#
+# Los tres de abajo vivían en ``api/app.py``, que llegó a 706 líneas siendo a
+# la vez fábrica de la app, registro de routers, definición de middlewares y
+# handler de /metrics. No hay nada distinto en ellos: son middlewares, y este
+# es el módulo de los middlewares.
+
+
+class _BodyTooLargeError(Exception):
+    """Señal interna para abortar el pipeline cuando el body excede el límite."""
+
+
+class _MaxBodyMiddleware:
+    """Rechaza requests con body > 1 MB usando raw ASGI.
+
+    Comprueba Content-Length (fast path) y acumula tamaño en streaming
+    (slow path) sin buffering completo del body.
+    """
+
+    _MAX_BYTES = 1 * 1024 * 1024  # 1 MB
+    # RFC 7807 como el resto de la API. El 413 se emite en ASGI crudo (el body
+    # se corta antes de llegar al router, así que no hay exception handler que
+    # lo formatee), pero el contrato que ve el cliente es el mismo: un
+    # `application/problem+json` con type/title/status.
+    _413_BODY = (
+        b'{"type":"https://licitaciones-sap/errors/payload-too-large",'
+        b'"title":"Payload Too Large","status":413,'
+        b'"detail":"Request body demasiado grande (m\\u00e1x. 1 MB)."}'
+    )
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        # Fast path: rechazar inmediatamente si Content-Length lo delata
+        headers = dict(scope.get("headers") or [])
+        cl_raw = headers.get(b"content-length")
+        if cl_raw is not None:
+            try:
+                if int(cl_raw) > self._MAX_BYTES:
+                    await self._send_413(send)
+                    return
+            except (ValueError, UnicodeDecodeError):
+                pass
+
+        # Slow path: para requests con body, envolver receive para contar bytes
+        method = scope.get("method", "")
+        if method in ("POST", "PUT", "PATCH"):
+            body_size = 0
+            max_bytes = self._MAX_BYTES
+
+            async def limiting_receive() -> dict:  # type: ignore[type-arg]
+                nonlocal body_size
+                message = await receive()
+                if message.get("type") == "http.request":
+                    body_size += len(message.get("body", b""))
+                    if body_size > max_bytes:
+                        raise _BodyTooLargeError
+                return dict(message)
+
+            try:
+                await self.app(scope, limiting_receive, send)
+            except _BodyTooLargeError:
+                await self._send_413(send)
+        else:
+            await self.app(scope, receive, send)
+
+    async def _send_413(self, send: Send) -> None:
+        await send(
+            {
+                "type": "http.response.start",
+                "status": 413,
+                "headers": [
+                    (b"content-type", b"application/problem+json"),
+                    (b"content-length", str(len(self._413_BODY)).encode()),
+                ],
+            }
+        )
+        await send({"type": "http.response.body", "body": self._413_BODY})
+
+
+class _RejectNulMiddleware:
+    """Rechaza el byte NUL en la línea de petición (path y query string).
+
+    Postgres no admite ``\\x00`` en columnas de texto y psycopg lanza
+    ``DataError`` al adaptar el parámetro, así que cualquier filtro de texto que
+    acabe en una query convertía un carácter del cliente en un 500:
+    ``GET /api/v1/competitive/bajas?cpv=%00`` reventaba en
+    ``services/competitive/bajas.py`` y salía por el handler genérico. Lo
+    encontró el fuzzer de contrato en 2026-08; el fallo llevaba semanas vivo.
+
+    El saneo va aquí y no en las ~100 declaraciones ``Query(...)`` de
+    ``api/routes/`` por la misma razón por la que ``shared.dto.SafeStr`` vive en
+    el contrato y no en cada endpoint: acordarse en cada parámetro nuevo no es
+    una defensa, es una lotería. Se comprueban los bytes **crudos** —antes del
+    percent-decode— para cazar tanto ``\\x00`` literal como ``%00``.
+
+    Se rechaza en vez de sanear en silencio: un filtro que se modifica solo y
+    no lo dice devolvería un 200 con el resultado de una consulta que el cliente
+    no pidió.
+    """
+
+    _400_BODY = (
+        b'{"type":"https://licitaciones-sap/errors/bad-request",'
+        b'"title":"Bad Request","status":400,'
+        b'"detail":"La petici\\u00f3n no puede contener el byte NUL (\\\\x00)."}'
+    )
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    @staticmethod
+    def _tiene_nul(scope: Scope) -> bool:
+        crudos: list[bytes] = [
+            bytes(scope.get("query_string") or b""),
+            bytes(scope.get("raw_path") or b""),
+        ]
+        for valor in crudos:
+            if b"\x00" in valor or b"%00" in valor.lower():
+                return True
+        # `path` ya viene decodificado por el servidor ASGI: un %00 en la URL
+        # llega aquí como \x00 aunque `raw_path` no esté disponible.
+        return "\x00" in str(scope.get("path") or "")
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] == "http" and self._tiene_nul(scope):
+            await self._send_400(send)
+            return
+        await self.app(scope, receive, send)
+
+    async def _send_400(self, send: Send) -> None:
+        await send(
+            {
+                "type": "http.response.start",
+                "status": 400,
+                "headers": [
+                    (b"content-type", b"application/problem+json"),
+                    (b"content-length", str(len(self._400_BODY)).encode()),
+                ],
+            }
+        )
+        await send({"type": "http.response.body", "body": self._400_BODY})
+
+
+async def correlation_id_middleware(
+    request: Request,
+    call_next: Callable[[Request], Awaitable[Response]],
+) -> Response:
+    """Propaga X-Correlation-Id entre cliente, logs y respuesta."""
+    correlation_id = request.headers.get("X-Correlation-Id") or str(uuid.uuid4())
+
+    # Limpiar y bindear variables de contexto structlog para esta request
+    clear_contextvars()
+    bind_contextvars(correlation_id=correlation_id)
+
+    response = await call_next(request)
+
+    response.headers["X-Correlation-Id"] = correlation_id
+    return response
 
 
 class ETagMiddleware(BaseHTTPMiddleware):

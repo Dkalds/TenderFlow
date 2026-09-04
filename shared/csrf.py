@@ -1,32 +1,63 @@
-"""CSRF token generation and validation — HMAC-signed, session-bound.
+"""Tokens CSRF firmados con HMAC, ligados a la sesión, con ``kid`` y caducidad.
 
-Generates stateless CSRF tokens tied to a specific session ID using
-HMAC-SHA256 via :mod:`shared.signing`. Supports key rotation transparently.
+Formato vigente: ``{session_hash}:{timestamp}:{kid}.{sig}``
 
-Token format: ``{session_hash}:{timestamp}:{kid}.{sig}``
+* ``session_hash`` — 16 primeros hex de SHA-256(session_id); no filtra el token
+  de sesión en bruto ni siquiera a quien lea la cookie CSRF (que es legible por
+  JavaScript, porque el patrón double-submit lo exige).
+* ``timestamp`` — epoch de emisión. Da caducidad propia al token.
+* ``kid.sig`` — firma de :mod:`shared.signing`, que lleva ``kid`` y por tanto
+  admite rotar ``SIGNING_KEY`` sin invalidar lo ya emitido.
 
-* ``session_hash`` — first 16 chars of SHA-256(session_id), avoids leaking
-  the raw session token.
-* ``timestamp`` — Unix epoch seconds when the token was minted.
-* ``kid.sig`` — HMAC signature produced by :func:`shared.signing.sign`.
+Historia (2026-09-03): había **tres** implementaciones de CSRF conviviendo.
+``api/routes/auth.py::_csrf_for_session`` derivaba un HMAC plano de la clave y
+el token de sesión —sin ``kid`` y sin caducidad—, ``api/routes/dual_auth.py``
+reimplementaba inline esa misma comparación, y este módulo, que es el que tiene
+las tres propiedades que se quieren, **no lo importaba nadie fuera de su test**.
+Ahora este módulo es el formato único; los otros dos llaman aquí.
 
-Usage::
+Periodo de gracia
+-----------------
 
-    from shared.csrf import generate_csrf_token, validate_csrf_token
+Emitir el formato nuevo invalidaría de golpe la cookie ``csrf_token`` de todo
+el que tenga sesión abierta: su siguiente mutación saldría 403 y, para el
+usuario, eso es un logout con un error raro. Por eso :func:`csrf_token_valido`
+acepta **los dos formatos** durante el periodo de gracia, controlado por la
+variable de entorno ``CSRF_ACEPTAR_LEGACY``:
+
+* ``1`` (default) — se acepta el token legacy además del nuevo. Es el estado
+  en el que hay que desplegar.
+* ``0`` — solo el formato nuevo. Es el fin del periodo de gracia; se pone
+  cuando ya no queden sesiones anteriores al despliegue, es decir tras
+  ``_SESSION_MAX_AGE`` (24 h) desde que salió a producción.
+
+El formato legacy **no** se emite nunca más: el periodo de gracia solo acepta,
+no produce. Y como el token legacy no lleva ``kid``, se valida contra la clave
+de firma activa: al rotar ``SIGNING_KEY`` los tokens legacy dejan de verificar
+—el nuevo formato sí sobrevive a la rotación, que es medio motivo del cambio—.
+
+Uso::
+
+    from shared.csrf import csrf_token_valido, generate_csrf_token
 
     token = generate_csrf_token(session_id)
-    is_valid = validate_csrf_token(token, session_id, max_age=3600)
+    ok = csrf_token_valido(recibido, session_id, max_age=86400)
 """
 
 from __future__ import annotations
 
 import hashlib
+import hmac
+import os
 import time
 
 from shared.signing import sign, verify
 
 # Default max age: 1 hour
 DEFAULT_MAX_AGE_SECONDS: int = 3600
+
+#: Nombre de la variable de entorno que gobierna el periodo de gracia.
+LEGACY_GRACE_ENV = "CSRF_ACEPTAR_LEGACY"
 
 
 def _session_hash(session_id: str) -> str:
@@ -104,8 +135,54 @@ def validate_csrf_token(
     return verify(payload, sig)
 
 
+# ── Formato legacy: se acepta durante la gracia, no se emite nunca ──────────
+
+
+def legacy_csrf_token(session_id: str) -> str:
+    """Token en el formato anterior: HMAC-SHA256 plano de la clave de firma.
+
+    Se conserva **solo** para poder reconocer las cookies ya emitidas mientras
+    dure el periodo de gracia. No lleva ``kid`` (no sobrevive a una rotación)
+    ni caducidad propia (vive lo que viva la sesión), que son justo las dos
+    razones por las que se sustituye.
+    """
+    from shared.auth_core import get_signing_key
+
+    return hmac.new(get_signing_key(), session_id.encode(), hashlib.sha256).hexdigest()
+
+
+def legacy_aceptado() -> bool:
+    """¿Sigue abierto el periodo de gracia? Ver el docstring del módulo."""
+    return os.getenv(LEGACY_GRACE_ENV, "1").strip().lower() not in ("0", "false", "no")
+
+
+def csrf_token_valido(
+    token: str | None,
+    session_id: str,
+    *,
+    max_age: int = DEFAULT_MAX_AGE_SECONDS,
+) -> bool:
+    """Punto de validación único del sistema. Acepta el formato nuevo siempre.
+
+    Acepta además el legacy mientras dure el periodo de gracia
+    (``CSRF_ACEPTAR_LEGACY``). Un token vacío o ausente nunca es válido: la
+    ausencia de credencial no es un caso a tolerar, es el ataque.
+    """
+    if not token or not session_id:
+        return False
+    if validate_csrf_token(token, session_id, max_age=max_age):
+        return True
+    if not legacy_aceptado():
+        return False
+    return hmac.compare_digest(token, legacy_csrf_token(session_id))
+
+
 __all__ = [
     "DEFAULT_MAX_AGE_SECONDS",
+    "LEGACY_GRACE_ENV",
+    "csrf_token_valido",
     "generate_csrf_token",
+    "legacy_aceptado",
+    "legacy_csrf_token",
     "validate_csrf_token",
 ]

@@ -127,17 +127,37 @@ class TestJsonToSessionState:
 class TestSaveFilter:
     @patch("db.saved_filters.connect")
     @patch("db.saved_filters.now_utc_iso", return_value="2024-01-01T00:00:00Z")
-    def test_save_filter_calls_execute(self, mock_now, mock_connect):
+    def test_save_filter_always_persists_the_organization(self, mock_now, mock_connect):
+        """El INSERT graba la organización; ya no hay rama que la omita.
+
+        Este test llamaba a ``save_filter`` sin ``organization_id`` y esperaba
+        cuatro parámetros: era la rama de fail-open que documenta
+        ``api/tenancy.py``, la que escribía una fila con ``organization_id``
+        nulo. Esa fila no se «guardaba sin ámbito» de forma inocua: quedaba
+        invisible para siempre a la lectura, que sí filtra por organización.
+        El argumento pasó a ser obligatorio, así que lo que queda por proteger
+        es que la columna viaje en el INSERT -- se comprueba sobre el SQL
+        emitido, no solo contando parámetros, para que siga valiendo si cambia
+        el formato del literal.
+        """
         from db.saved_filters import save_filter
 
         mock_conn = MagicMock()
         mock_connect.return_value.__enter__ = MagicMock(return_value=mock_conn)
         mock_connect.return_value.__exit__ = MagicMock(return_value=False)
 
-        save_filter("user1", "my_filter", '{"q":"test"}')
+        save_filter("user1", "my_filter", '{"q":"test"}', 3)
         mock_conn.execute.assert_called_once()
-        args = mock_conn.execute.call_args
-        assert args[0][1] == ("user1", "my_filter", '{"q":"test"}', "2024-01-01T00:00:00Z")
+        sql = " ".join(mock_conn.execute.call_args[0][0].split())
+        assert "organization_id" in sql
+        assert mock_conn.execute.call_args[0][1] == (
+            "user1",
+            "my_filter",
+            '{"q":"test"}',
+            "2024-01-01T00:00:00Z",
+            3,
+            "private",
+        )
 
 
 class TestListSavedFilters:
@@ -153,13 +173,50 @@ class TestListSavedFilters:
         mock_connect.return_value.__enter__ = MagicMock(return_value=mock_conn)
         mock_connect.return_value.__exit__ = MagicMock(return_value=False)
 
-        result = list_saved_filters("user1")
+        result = list_saved_filters("user1", 3)
         assert result == [{"id": 1, "name": "f1", "filters_json": "{}", "created_at": "2024-01-01"}]
+
+    @patch("db.saved_filters.connect")
+    def test_list_always_scopes_by_organization_and_user(self, mock_connect):
+        """La lectura acota por organización Y por visibilidad/dueño.
+
+        Sustituye a la comprobación implícita que hacía el test de arriba
+        cuando ``organization_id`` era opcional: llamarlo con un solo argumento
+        ejercitaba la rama sin filtro de organización, la que devolvía los
+        filtros de un ``user_key`` fuese cual fuese su organización. Esa rama
+        ya no existe; lo que hay que seguir vigilando es que la única query que
+        queda lleve los dos predicados, porque de ellos depende el aislamiento
+        (ver ``tests/test_user_key_sql_isolation.py``).
+        """
+        from db.saved_filters import list_saved_filters
+
+        mock_cursor = MagicMock()
+        mock_cursor.description = [("id",)]
+        mock_cursor.fetchall.return_value = []
+        mock_conn = MagicMock()
+        mock_conn.execute.return_value = mock_cursor
+        mock_connect.return_value.__enter__ = MagicMock(return_value=mock_conn)
+        mock_connect.return_value.__exit__ = MagicMock(return_value=False)
+
+        list_saved_filters("user1", 3)
+        sql = " ".join(mock_conn.execute.call_args[0][0].split())
+        assert "organization_id = %s" in sql
+        assert "user_key = %s" in sql
+        assert mock_conn.execute.call_args[0][1] == (3, "user1")
 
 
 class TestDeleteSavedFilter:
     @patch("db.saved_filters.connect")
-    def test_delete_calls_execute(self, mock_connect):
+    def test_delete_always_scopes_by_organization(self, mock_connect):
+        """No queda ninguna rama de borrado sin ``organization_id``.
+
+        Este test ejercitaba la rama sin organización y esperaba los
+        parámetros ``(42, "user1")``: un DELETE por id acotado solo al dueño,
+        que cruzaba organizaciones sin decirlo. Era el fail-open de
+        ``api/tenancy.py`` en su versión más cara -- un borrado. Se sustituye
+        por la comprobación de que la única query que sobrevive acota por
+        organización y por dueño a la vez.
+        """
         from db.saved_filters import delete_saved_filter
 
         mock_conn = MagicMock()
@@ -168,9 +225,30 @@ class TestDeleteSavedFilter:
 
         mock_conn.execute.return_value.rowcount = 1
 
-        assert delete_saved_filter(42, user_key="user1") is True
+        assert delete_saved_filter(42, user_key="user1", organization_id=3) is True
         mock_conn.execute.assert_called_once()
-        assert mock_conn.execute.call_args[0][1] == (42, "user1")
+        sql = " ".join(mock_conn.execute.call_args[0][0].split())
+        assert "organization_id = %s" in sql
+        assert "user_key = %s" in sql
+        assert mock_conn.execute.call_args[0][1] == (42, 3, "user1")
+
+    @patch("db.saved_filters.connect")
+    def test_delete_reports_a_miss_instead_of_faking_success(self, mock_connect):
+        """Si el predicado no casa con nada, se dice que no.
+
+        La ruta HTTP traduce este ``False`` en un 404: sin él, borrar el filtro
+        de otra organización devolvería 200 y el usuario creería que hizo algo.
+        Vale sin Postgres, a diferencia de ``TestDeleteSavedFilterOwnership``.
+        """
+        from db.saved_filters import delete_saved_filter
+
+        mock_conn = MagicMock()
+        mock_connect.return_value.__enter__ = MagicMock(return_value=mock_conn)
+        mock_connect.return_value.__exit__ = MagicMock(return_value=False)
+
+        mock_conn.execute.return_value.rowcount = 0
+
+        assert delete_saved_filter(42, user_key="user1", organization_id=3) is False
 
     @patch("db.saved_filters.connect")
     def test_org_branch_keeps_the_owner_predicate(self, mock_connect):

@@ -2,14 +2,15 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
+import { useEmpresasWatchlist, useToggleEmpresaWatch } from "@/hooks/use-empresas-watchlist";
 import { ArrowLeft, Building2, CalendarDays, Eye, EyeOff, ShieldAlert } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { apiMutate, fetchWithAuth } from "@/lib/api-client";
+import { fetchWithAuth } from "@/lib/api-client";
 import { useFilters } from "@/lib/filters";
 import { formatDate, formatNumber } from "@/lib/utils";
 
@@ -17,6 +18,7 @@ import { CompanyAwards } from "./company-awards";
 import { CompanyProfileSummary } from "./company-profile-summary";
 import { CompanyUteParticipations } from "./company-ute-participations";
 import type { CompanyProfileData } from "./company-profile-types";
+import { competitiveKeys } from "@/lib/query-keys";
 
 type Period = "12m" | "3y" | "all" | "global";
 
@@ -54,7 +56,6 @@ export function CompanyProfile({ empresaId, groupIds }: CompanyProfileProps) {
   const filters = useFilters();
   const hasGlobalPeriod = Boolean(filters.rango.desde || filters.rango.hasta);
   const [period, setPeriod] = useState<Period>(() => initialCompanyProfilePeriod(hasGlobalPeriod));
-  const queryClient = useQueryClient();
   // El dossier agrega la actividad de todo el grupo; el usuario nunca elige
   // cuál identidad abrir.
   const allIds = useMemo(() => [...new Set([empresaId, ...(groupIds ?? [])])], [empresaId, groupIds]);
@@ -84,32 +85,15 @@ export function CompanyProfile({ empresaId, groupIds }: CompanyProfileProps) {
     isLoading,
     error,
   } = useQuery<CompanyProfileData>({
-    queryKey: ["competitive-company-profile", empresaId, scopeQuery],
+    queryKey: competitiveKeys.companyProfile(empresaId, scopeQuery),
     queryFn: () =>
       fetchWithAuth(`/api/v1/competitive/empresas/${empresaId}/perfil${scopeQuery ? `?${scopeQuery}` : ""}`),
     staleTime: 5 * 60 * 1000,
   });
 
-  const { data: watchlist } = useQuery<{ items: { empresa_id: number }[] }>({
-    queryKey: ["watchlist-empresas"],
-    queryFn: () => fetchWithAuth("/api/v1/competitive/watchlist"),
-    staleTime: 60 * 1000,
-  });
-  const watched = (watchlist?.items ?? []).some((item) => allIds.includes(item.empresa_id));
-  const toggleWatch = useMutation({
-    mutationFn: () =>
-      Promise.all(
-        allIds.map((id) =>
-          watched
-            ? apiMutate("DELETE", `/api/v1/competitive/watchlist/${id}`)
-            : apiMutate("POST", "/api/v1/competitive/watchlist", {
-                empresa_id: id,
-                frequency: "daily",
-              }),
-        ),
-      ),
-    onSettled: () => queryClient.invalidateQueries({ queryKey: ["watchlist-empresas"] }),
-  });
+  const { watchedIds } = useEmpresasWatchlist();
+  const watched = allIds.some((id) => watchedIds.has(id));
+  const toggleWatch = useToggleEmpresaWatch();
 
   if (isLoading) return <ProfileSkeleton />;
 
@@ -176,7 +160,7 @@ export function CompanyProfile({ empresaId, groupIds }: CompanyProfileProps) {
             <Button
               variant={watched ? "secondary" : "outline"}
               className="min-h-10 shrink-0"
-              onClick={() => toggleWatch.mutate()}
+              onClick={() => toggleWatch.mutate({ empresaIds: allIds, watched })}
               disabled={toggleWatch.isPending}
             >
               {watched ? <EyeOff aria-hidden="true" /> : <Eye aria-hidden="true" />}

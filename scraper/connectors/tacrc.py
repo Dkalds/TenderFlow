@@ -197,9 +197,16 @@ def run(index_url: str | None = None, *, session: requests.Session | None = None
     upsert idempotente absorbe el solape. Fallos de fetch van a la DLQ sin
     avanzar el cursor.
     """
+    from scraper.connectors.base import record_source_health, record_source_started
+
     stats: dict[str, Any] = {"fetched": 0, "nuevas": 0, "actualizadas": 0, "errores": 0}
     cursor = get_cursor(SOURCE_ID)
     last_seen = str((cursor or {}).get("last_seen_updated") or "")
+    # TACRC no pasa por ``run_connector`` (tiene runner ligero propio), así que
+    # hasta 2026-09 era la única fuente que NO escribía
+    # ``source_ingestion_health``: para cualquier chequeo de frescura era
+    # indistinguible de una fuente muerta.
+    record_source_started(SOURCE_ID)
     try:
         page = fetch_index(index_url, session=session)
         items = parse_index(page, base_url=index_url or settings.TACRC_INDEX_URL)
@@ -207,6 +214,7 @@ def run(index_url: str | None = None, *, session: requests.Session | None = None
         stats["errores"] += 1
         record_failure(None, SOURCE_ID, e, scope="fetch")
         log.error("tacrc_run_failed", error=str(e))
+        record_source_health(SOURCE_ID, status="failed", errors=1)
         return stats
 
     stats["fetched"] = len(items)
@@ -222,6 +230,13 @@ def run(index_url: str | None = None, *, session: requests.Session | None = None
     if fechas:
         set_cursor(SOURCE_ID, last_seen_updated=max(fechas))
     log.info("tacrc_run_done", **stats)
+    record_source_health(
+        SOURCE_ID,
+        status="success",
+        fetched=int(stats["fetched"]),
+        parsed=len(items),
+        errors=int(stats["errores"]),
+    )
     return stats
 
 
@@ -263,8 +278,29 @@ def main(argv: list[str] | None = None) -> int:
         return 0 if items else 1
 
     from db.database import close_pool, init_db
+    from scraper.connectors.base import record_source_disabled
 
     init_db()
+
+    # Sin índice configurado la fuente está APAGADA, no rota (S2.5). Antes
+    # esto no llegaba a ejecutarse: `scrape-daily.yml` gatea el step con
+    # `vars.TACRC_INDEX_URL != ''`, así que un TACRC sin configurar no dejaba
+    # rastro de ninguna clase — y si el gate se quitaba, `fetch_index` lanzaba
+    # RuntimeError y ponía el job en rojo por una decisión de configuración.
+    if not (args.url or settings.TACRC_INDEX_URL):
+        try:
+            record_source_disabled(
+                SOURCE_ID,
+                motivo=(
+                    "TACRC_INDEX_URL no configurada; validá el índice vivo con "
+                    "`python -m scraper.connectors.tacrc --check --url <url>`"
+                ),
+            )
+        finally:
+            close_pool()
+        print("TACRC: sin TACRC_INDEX_URL configurada — fuente declarada 'disabled'.")
+        return 0
+
     try:
         stats = run(args.url)
     finally:

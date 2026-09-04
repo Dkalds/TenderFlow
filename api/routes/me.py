@@ -443,12 +443,17 @@ async def put_profile(
     que un campo omitido (o `null`) se guarda como `null`, no conserva el valor
     anterior. Enviá siempre el estado íntegro.
     """
-    from db.repositories.user_profiles import get_user_profile, upsert_user_profile
+    from db.repositories.user_profiles import (
+        get_own_user_profile,
+        upsert_user_profile,
+    )
 
     body.validate_weights()
     ctx = await resolve_organization_ctx(ctx, body.organization_id, write=True)
     user_key = _user_key(ctx)
-    previous = await run_db(get_user_profile, user_key)
+    # Sin ámbito a propósito: hace falta la organización que tenía ANTES
+    # para invalidar su caché, y esa es justo la que no se conoce aquí.
+    previous = await run_db(get_own_user_profile, user_key)
     await run_db(
         upsert_user_profile,
         user_key,
@@ -475,10 +480,12 @@ async def delete_profile(
     ctx: dict[str, Any] = Depends(require_any_auth),
 ) -> StatusOk:
     """Elimina el perfil de scoring. El scoring vuelve a los settings globales."""
-    from db.repositories.user_profiles import delete_user_profile, get_user_profile
+    from db.repositories.user_profiles import delete_user_profile, get_own_user_profile
 
     user_key = _user_key(ctx)
-    previous = await run_db(get_user_profile, user_key)
+    # Sin ámbito a propósito: hace falta la organización que tenía ANTES
+    # para invalidar su caché, y esa es justo la que no se conoce aquí.
+    previous = await run_db(get_own_user_profile, user_key)
     await run_db(delete_user_profile, user_key)
     _invalidate_profile_scoring(
         user_key,

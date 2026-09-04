@@ -9,6 +9,34 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 - Si añadís un ítem nuevo, copiá la plantilla del final.
 - Al cerrarlo, no lo dejes tachado aquí: **movélo entero a la sección _Cerrados_** del final con la fecha y el commit/PR que lo resolvió. Las secciones P1/P2/P3 contienen **solo ítems abiertos**.
 
+## Plan de arquitectura 2026-09 — ejecutado parcialmente
+
+El diagnóstico de arquitecto del 2026-09-02 y su plan por streams están en
+[plans/2026-09-plan-arquitectura.md](plans/2026-09-plan-arquitectura.md), con el
+estado real de cada ítem en su §8. **Excluye a propósito `backup.yml` y
+`restore-drill.yml`** (decisión del usuario del 2026-09-02).
+
+Ítems de ESTE backlog que el plan toca, para que nadie los trabaje dos veces:
+
+| Ítem | Estado tras el plan |
+|---|---|
+| [P2] `HistGradientBoosting` revienta con una feature todo-NaN | **Cerrado** — el entrenamiento descarta antes del ajuste las columnas sin ningún valor observado, con log y test |
+| [P2] `render.yaml` no gobierna el servicio de producción | **Parcial** — la cabecera dice ya qué líneas no describen la realidad y con qué fecha se comprobó; vincular el Blueprint sigue siendo acción del usuario |
+| [P2] Migrar las llamadas del frontend al cliente tipado | **Cerrado** — no queda ningún `fetch("/api/…")` crudo fuera de `lib/`, y una regla ESLint impide que vuelva |
+| [P3] Vigilar el crecimiento de `predicciones_baja` | **Cerrado** — el job de ML purga por antigüedad, y el consumidor distingue el p50 del modelo del del baseline histórico |
+| [P3] F5: refactor de repositories (ratchet TID251) | **Progresa** — la whitelist baja de 32 a 28 archivos; el destino sigue siendo vaciarla |
+| [P1] Cobertura de tests de las páginas del frontend | **Parcial** — los pisos por carpeta siguen en pie; el piso de `src/app/**` no llegó a ponerse |
+| [P2] Remediación axe: 4 reglas desactivadas | **Abierto** — sin tocar; sigue pendiente empezar por `nested-interactive` |
+| [P2] Contrato de paginación común | **Abierto** — el agente que lo tenía asignado murió por límite de sesión |
+| [P3] Los dos módulos-dios (`aggregates.py`, `settings.py`) | **Abierto** — sigue vigente la regla oportunista |
+| [P3] Unificar la definición de «Calientes» | **Abierto** |
+| [P3] Descartar los avisos fantasma de Dependabot | **Abierto** — acción del usuario en GitHub |
+
+Ítems **nuevos** que salen del plan y no estaban aquí: partir las páginas
+monolito del dashboard (S5.2), el prefetch en servidor con hidratación (S5.1) y
+el grupo de rutas `(privado)` que unifica `Providers`/`Toaster` (S5.9). Los tres
+quedan descritos en el plan con su porqué y su riesgo.
+
 ## Repaso del 2026-08-27 (auditoría de producto/UX)
 
 Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citaban. Lo que cambió:

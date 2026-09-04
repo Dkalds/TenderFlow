@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { fetchWithAuth } from "@/lib/api-client";
 import { ChevronDown, ChevronRight, Cpu } from "lucide-react";
+import { tecnologiasKeys } from "@/lib/query-keys";
 
 interface EvidenceRef {
   documento_id: number;
@@ -105,7 +106,7 @@ function TecnologiaRow({ item }: { item: TecnologiaDetalle }) {
  *  detectamos tecnologías, no hay ningún sitio al que mandar al usuario.) */
 export function TecnologiasBlock({ licitacionId }: { licitacionId: string }) {
   const { data } = useQuery<TecnologiasResult>({
-    queryKey: ["tecnologias", licitacionId],
+    queryKey: tecnologiasKeys.byLicitacion(licitacionId),
     queryFn: () =>
       fetchWithAuth(`/api/v1/licitaciones/${encodeURIComponent(licitacionId)}/tecnologias`),
     staleTime: 5 * 60 * 1000,

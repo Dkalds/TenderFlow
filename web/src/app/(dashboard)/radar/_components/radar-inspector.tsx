@@ -16,6 +16,7 @@ import {
   daysLeft,
   urgency,
 } from "./radar-shared";
+import { radarKeys } from "@/lib/query-keys";
 
 /**
  * Inspector del Radar — vive en el mismo plano que la lista, no encima.
@@ -82,7 +83,7 @@ function Fact({
 /** Adjudicatarios habituales del órgano — la competencia que cabe esperar. */
 function ExpectedCompetition({ organo }: { organo: string | null | undefined }) {
   const { data, isLoading } = useQuery<OrganoDetailResult>({
-    queryKey: ["radar", "organo", organo],
+    queryKey: radarKeys.organo(organo),
     queryFn: () =>
       fetchWithAuth<OrganoDetailResult>(
         `/api/v1/analytics/organos/${encodeURIComponent(organo!)}`,

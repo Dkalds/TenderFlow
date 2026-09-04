@@ -8,7 +8,7 @@ Definición de los indicadores de nivel de servicio (SLI) y objetivos (SLO) del 
 
 | Servicio | SLO | Periodo | Medido por |
 |----------|-----|---------|------------|
-| Disponibilidad API | Sin SLO vigente mientras `tenderflow-api` use Render Free | 30 días | `up{service="api"}` + smoke sintético |
+| Disponibilidad API | Suspendido — la premisa que lo suspendió (plan free) no se sostiene: ver nota de 2026-09-03 | 30 días | `up{service="api"}` + smoke sintético |
 | Frescura de datos | ≤ 36h sin scrape exitoso | 7 días | `scheduler/healthcheck.py` (cada 6h) |
 | Latencia de carga del frontend web | P95 < 3 s | 7 días | Speed Insights RUM; panel/alerta por verificar |
 | Tasa de éxito del pipeline | ≥ 95% de runs | 30 días | `extraction_runs` vía healthcheck |
@@ -32,7 +32,9 @@ la disponibilidad y la latencia de API. Quedan dos matices:
   conserva la serie y configurar una alerta; instrumentado no significa
   operacionalizado.
 - **Disponibilidad de la API**: `render.yaml` declara `plan: free`, con
-  spin-down. El 99 % queda como objetivo histórico, no como SLO vigente ni
+  spin-down. **Ese fichero no describe el servicio que corre** (ver su propia
+  cabecera y la nota de 2026-09-03 más abajo). El 99 % queda como objetivo
+  histórico, no como SLO vigente ni
   promesa contractual, hasta subir de plan y observar una ventana completa.
 - **Planos efímeros** (scraper, ML y pliegos en GitHub Actions): no son
   scrapeables — el proceso muere al terminar el job y exponer un Pushgateway
@@ -40,6 +42,28 @@ la disponibilidad y la latencia de API. Quedan dos matices:
   la tabla `ops_events`, que lee `scheduler/healthcheck.py`. Ese canal estaba
   **roto desde el cutover a Postgres** (escribía con `libsql` a un fichero
   local del runner) y se corrigió junto con este cambio.
+
+### Nota sobre el plan de Render (2026-09-03)
+
+Este documento suspendió el SLO de disponibilidad apoyándose en una única
+premisa: que `tenderflow-api` corre en el plan **free** de Render, con
+spin-down. Esa premisa viene de `render.yaml`, y `render.yaml` **avisa en su
+propia cabecera de que puede no gobernar nada**: el servicio de producción se
+creó a mano por el dashboard y nunca se vinculó al Blueprint, así que sus
+valores son una intención, no una configuración. Una observación del
+2026-08-28 contra la API de Render encontró el servicio en plan `standard` y
+con `autoDeploy` activo, es decir, lo contrario de dos líneas de ese fichero.
+
+Mientras eso no se confirme, este SLO está suspendido **por desconocimiento**,
+no por una limitación conocida de la plataforma, y esas dos cosas no son lo
+mismo: la primera se arregla mirando un panel dos minutos, la segunda cuesta
+dinero. La comprobación concreta (Blueprint vinculado o no, plan, `autoDeploy`,
+`healthCheckPath`) está en la cabecera de `render.yaml`.
+
+**Al confirmarlo hay que hacer las dos cosas**: anotar el resultado en
+`render.yaml` con su fecha, y volver aquí a restituir o retirar el SLO. Un SLO
+suspendido indefinidamente sin que nadie sepa por qué es indistinguible de no
+tener SLO.
 
 ---
 
@@ -50,7 +74,7 @@ la disponibilidad y la latencia de API. Quedan dos matices:
 | Campo | Valor |
 |-------|-------|
 | **SLI** | `(tiempo_total - tiempo_inaccesible) / tiempo_total × 100` |
-| **SLO** | No vigente con Render Free. Objetivo para un plan sin spin-down: ≥ 99% mensual |
+| **SLO** | Suspendido desde 2026-09-01 por la premisa «plan free con spin-down», que está sin confirmar contra el servicio real (2026-09-03). Objetivo para un plan sin spin-down: ≥ 99% mensual |
 | **Medición** | Chequeo sintético cada 15 min (`.github/workflows/smoke.yml`) + healthcheck cada 6 h (`healthcheck.yml` → `scheduler/healthcheck.py`) |
 | **Alerta** | Email (`observability/alerts.py`) — no hay PagerDuty en este stack. El sondeo cada 15 min acota el tiempo de detección a ~7 min de media; con el cron de 6 h anterior eran ~3 h y este SLO no era computable |
 | **Error budget** | No aplica mientras el SLO esté suspendido. A 99% serían 14,4 min/día y 7,2 h/mes |
@@ -109,7 +133,7 @@ la disponibilidad y la latencia de API. Quedan dos matices:
 
 | SLO | Periodo | Budget total | Budget/día |
 |-----|---------|-------------|------------|
-| Disponibilidad 99% (suspendido en plan free) | 30 días | 7,2 h/mes | 14,4 min/día |
+| Disponibilidad 99% (suspendido, premisa sin confirmar) | 30 días | 7,2 h/mes | 14,4 min/día |
 | Frescura ≤36h | Continuo | 0 (hard limit) | — |
 | Éxito pipeline 95% | 30 días | 1.5 runs fallidos/30 | — |
 

@@ -15,11 +15,12 @@ import { toast } from "sonner";
 import { apiGet, apiMutate } from "@/lib/api-client";
 import { registrarEvento } from "@/lib/analytics";
 import type { WatchlistFavoriteCreated, WatchlistFavoriteItem } from "@/lib/api-types";
+import { watchlistKeys } from "@/lib/query-keys";
 
 // Del contrato OpenAPI (la ruta ya declara su DTO) — antes duplicado a mano.
 export type WatchlistItem = WatchlistFavoriteItem;
 
-const WATCHLIST_ITEMS_KEY = ["watchlist-items"] as const;
+const WATCHLIST_ITEMS_KEY = watchlistKeys.items;
 
 /** Build a placeholder item for optimistic inserts (enriched fields unknown yet). */
 function buildOptimisticItem(idExterno: string): WatchlistItem {

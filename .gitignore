@@ -4,15 +4,24 @@ __pycache__/
 out.txt
 *.py.new
 *.py.bak
-data/downloads/
-data/backups/
-data/*.log
-data/*.db
-data/*.db-*
-# Generated model artifacts (rebuilt with: python -m scraper.ml_classifier train)
-data/models/
-data/metrics/
-data/.cache_invalidation
+# ── data/ — denylist por defecto, no enumeración ─────────────────────────
+# Esto era una lista de sufijos y subdirectorios (`data/downloads/`,
+# `data/backups/`, `data/*.log`, `data/*.db`, `data/models/`, `data/metrics/`…)
+# y por definición solo cubría lo que alguien había visto ya. Se le escaparon al
+# menos dos cosas reales: `data/golden-candidates-2026-09-01.jsonl` —expedientes
+# muestreados de producción— y `data/parquet/`. Una enumeración no puede
+# proteger de un fichero que aún no existe; una denylist con excepciones
+# explícitas sí.
+#
+# `data/*` (y no `data/`) es deliberado: git no mira dentro de un directorio
+# ignorado, así que con `data/` las negaciones de abajo no podrían reactivar
+# nada. Para versionar algo de `data/`, añadí su `!data/<ruta>` aquí — que es
+# justo la decisión consciente que faltaba.
+#
+# A fecha de este commit `git ls-files data` no devuelve nada: no hay ningún
+# fichero trackeado bajo `data/` que este cambio pueda dejar fuera.
+data/*
+!data/.gitkeep
 .env
 .coverage
 # Datos parciales de coverage en modo paralelo: `pytest -n auto --cov` deja un

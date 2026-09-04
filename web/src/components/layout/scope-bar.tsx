@@ -31,6 +31,9 @@ import {
   type GlobalFilterKey,
 } from "@/lib/navigation";
 import { cn, formatNumber } from "@/lib/utils";
+import { analyticsKeys } from "@/lib/query-keys";
+import { useMetaFilters } from "@/hooks/use-meta-filters";
+import type { MetaFilters } from "@/hooks/use-meta-filters";
 
 /**
  * Barra de ámbito — 52px, el objeto de contexto persistente.
@@ -48,13 +51,6 @@ import { cn, formatNumber } from "@/lib/utils";
  * y el aviso se calculan todos sobre ese mismo subconjunto, para que la barra
  * no pueda afirmar un número que la pantalla no está enseñando.
  */
-
-interface MetaFilters {
-  estado: string[];
-  ccaa: string[];
-  tecnologia: string[];
-  cpv: string[];
-}
 
 interface OverviewData {
   total_licitaciones: number;
@@ -349,16 +345,7 @@ export function ScopeBar() {
       : null,
   );
 
-  const { data: meta } = useQuery<MetaFilters>({
-    queryKey: ["meta-filters"],
-    queryFn: async () => {
-      const res = await fetch("/api/v1/meta/filters", { credentials: "include" });
-      if (!res.ok) throw new Error("Failed to fetch filters");
-      return res.json() as Promise<MetaFilters>;
-    },
-    staleTime: 5 * 60 * 1000,
-    enabled: filtersApply,
-  });
+  const { data: meta } = useMetaFilters(filtersApply);
 
   // Params con los que se pide el recuento: SOLO los del subconjunto que la
   // pantalla aplica de verdad.
@@ -400,7 +387,7 @@ export function ScopeBar() {
   // puede usar el hook directamente: siempre fusiona `useFilterParams()`
   // completo, que es justo lo que aquí hay que recortar.
   const { data: overview, isLoading: countLoading } = useQuery<OverviewData>({
-    queryKey: ["analytics", "overview", "/api/v1/analytics/overview", scopedParams],
+    queryKey: analyticsKeys.overview(scopedParams),
     queryFn: () => {
       const search = new URLSearchParams(scopedParams).toString();
       return fetchWithAuth<OverviewData>(

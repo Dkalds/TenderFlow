@@ -2,6 +2,8 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { fetchWithAuth } from "@/lib/api-client";
+import { analyticsKeys } from "@/lib/query-keys";
+import { useFeedbackStats } from "@/hooks/use-feedback";
 import { useDataFreshness } from "@/hooks/use-data-freshness";
 import { useSourceFreshness } from "@/hooks/use-source-freshness";
 import { StatCell, StatStrip } from "@/components/console/panel";
@@ -24,25 +26,17 @@ interface QualityMetrics {
   dlq_count?: number;
 }
 
-interface FeedbackStats {
-  total_labels?: number;
-}
-
 export function OpsHealthStrip() {
   const sources = useSourceFreshness();
   const { relative } = useDataFreshness();
 
   const quality = useQuery<QualityMetrics>({
-    queryKey: ["analytics", "quality"],
+    queryKey: analyticsKeys.quality,
     queryFn: () => fetchWithAuth<QualityMetrics>("/api/v1/analytics/quality"),
     staleTime: 60_000,
   });
 
-  const feedback = useQuery<FeedbackStats>({
-    queryKey: ["feedback-stats"],
-    queryFn: () => fetchWithAuth<FeedbackStats>("/api/v1/feedback/stats"),
-    staleTime: 5 * 60_000,
-  });
+  const feedback = useFeedbackStats();
 
   const healthy = sources.data?.healthy_sources;
   const total = sources.data?.total_sources;

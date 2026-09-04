@@ -3,14 +3,46 @@
 PSI por feature numérica entre la distribución de entrenamiento (bins
 guardados en la metadata del modelo activo en el momento de entrenar... v1:
 recalculada del dataset actual con corte en la fecha de entrenamiento) y la
-distribución de las filas de scoring de hoy. Umbrales estándar del proyecto
-(scheduler.drift_monitor): <0.10 estable · 0.10-0.25 seguimiento · >0.25
-drift significativo → alerta por el canal existente.
+distribución de las filas de scoring de hoy. Los umbrales son los de
+:mod:`services.ml.thresholds`, que es **la** tabla del proyecto: <0.10 estable
+· 0.10-0.25 seguimiento · >0.25 drift significativo → alerta por el canal
+existente.
 
 Además del PSI se vigila el **delta de nulos** por feature. El PSI compara
 solo los valores presentes en ambos lados, así que era ciego al caso más grave
 posible: una feature disponible al entrenar y ausente al servir. Ver
-:data:`_MISSING_DELTA_WARN`.
+:data:`services.ml.thresholds.MISSING_DELTA_WARN`.
+
+Los seis mecanismos de drift/anomalía del repo
+----------------------------------------------
+Se solapan de forma real —tres calculan un KS o un PSI sobre ``importe``— y
+hasta ahora nadie podía saber, leyendo uno, qué hacían los otros cinco. La
+tabla dice qué mide cada uno, cada cuánto corre y por dónde sale su resultado;
+mientras sigan existiendo los seis, esta es la referencia:
+
+===================================  ================================================================  ====================================  =========================================
+Mecanismo                            Qué mide                                                          Cadencia                              Canal de salida
+===================================  ================================================================  ====================================  =========================================
+``scheduler.anomaly_alerts``         Anomalías **del dato ingerido** (importes fuera de N sigmas,       Diaria, paso ``anomaly_checks`` de    ``observability.alerts`` (email) + log
+                                     duplicados, caídas de volumen): calidad de la ingesta, no          la pipeline canónica
+                                     del modelo
+``scheduler.concept_drift``          Términos **emergentes** (TF-IDF) que ``SAP_KEYWORDS`` no cubre,    Semanal, dentro de ``drift_checks``   Alerta + reentrenamiento condicional del
+                                     y ``compute_psi`` sobre ``importe``; puede disparar                                                     clasificador SAP
+                                     ``maybe_retrain_classifier``
+``scheduler.drift_report``           KS/chi² de las **features de entrada** (importe, ccaa,             Semanal, ``drift_checks``             Resumen JSON en ``ops_events`` (durable)
+                                     tecnología, estado) y de la distribución de ``ml_proba``                                                 + HTML/JSON local opcional
+``scheduler.drift_monitor``          Orquestador del clasificador SAP: PSI de ``compute_psi`` +         Semanal, justo tras ``drift_report``  ``observability.alerts`` + log
+                                     caída de F1 contra el feedback humano                                                                    estructurado
+``services.ml.drift`` (este módulo)  PSI **por feature del modelo de baja** entre el dataset de         Diaria, dentro de ``run_scoring``     Log + ``observability.alerts``; el
+                                     entrenamiento y las filas de scoring, más el delta de nulos        (``ml-scoring.yml``)                  estado viaja en el resumen del job
+``scripts.audit_domain_truth``       Verdad del dato contra la fuente (no es drift: contrasta el        Programada, ``domain-truth.yml``      Informe + email
+                                     corpus con PLACSP)
+===================================  ================================================================  ====================================  =========================================
+
+Los cuatro primeros vigilan al **clasificador SAP** o a la ingesta; solo este
+módulo vigila los **modelos predictivos** (baja/retención). Consolidarlos es
+trabajo de arquitectura pendiente; documentar el solape es el paso que evita
+que un séptimo mecanismo nazca por no saber que ya había seis.
 """
 
 from __future__ import annotations
@@ -18,21 +50,14 @@ from __future__ import annotations
 from typing import Any
 
 from observability.logging import get_logger
+from services.ml.thresholds import (
+    MISSING_DELTA_CRIT,
+    MISSING_DELTA_WARN,
+    PSI_CRIT,
+    PSI_WARN,
+)
 
 log = get_logger(__name__)
-
-_PSI_WARN = 0.10
-_PSI_CRIT = 0.25
-
-# Diferencia admisible entre la tasa de nulos de una feature en entrenamiento y
-# en scoring. El PSI solo compara los valores **presentes**, así que una feature
-# que existe al entrenar y no al servir le resultaba invisible: ``n_ofertas``
-# venía de ``adjudicaciones`` (dato post-adjudicación), era NaN en el 100% de
-# las filas de scoring, y el monitor reportaba PSI 0.00 "estable" mientras el
-# modelo se partía sobre ella. Esa asimetría es un fallo de diseño de features,
-# no una deriva de datos, y es la que este umbral vigila.
-_MISSING_DELTA_WARN = 0.20
-_MISSING_DELTA_CRIT = 0.50
 
 
 def _numeric_features() -> tuple[str, ...]:
@@ -99,9 +124,9 @@ def comprobar_drift_baja() -> dict[str, Any]:
 
         peor = max(psi_por_feature.values(), default=0.0)
         peor_missing = max((abs(v) for v in missing_por_feature.values()), default=0.0)
-        if peor >= _PSI_CRIT or peor_missing >= _MISSING_DELTA_CRIT:
+        if peor >= PSI_CRIT or peor_missing >= MISSING_DELTA_CRIT:
             severity = "crit"
-        elif peor >= _PSI_WARN or peor_missing >= _MISSING_DELTA_WARN:
+        elif peor >= PSI_WARN or peor_missing >= MISSING_DELTA_WARN:
             severity = "warn"
         else:
             severity = "ok"

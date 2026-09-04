@@ -7,11 +7,8 @@ with CSRF protection. Complements the existing X-API-Key auth for machine client
 from __future__ import annotations
 
 import hashlib
-import hmac
-import json
 import os
 import re
-import time
 import urllib.parse
 from asyncio import to_thread
 from typing import Any
@@ -49,7 +46,6 @@ from shared.auth_core import (
     csv_set,
     generate_oauth_state,
     generate_pkce_pair,
-    get_signing_key,
     hash_password,
     oauth_email_allowed,
     oauth_email_is_admin,
@@ -58,6 +54,7 @@ from shared.auth_core import (
     verify_oauth_state,
     verify_password,
 )
+from shared.csrf import csrf_token_valido, generate_csrf_token
 from shared.dto import DetailMessage, StatusOk
 from shared.identity import user_key_from_email
 from shared.password_policy import check_password_strength
@@ -117,49 +114,6 @@ async def _password_reset_rate_allowed(request: Request, email: str | None = Non
 
 
 # ---------------------------------------------------------------------------
-# Session payload helpers (HMAC-SHA256 signed JSON)
-# ---------------------------------------------------------------------------
-
-
-def _sign_session(payload: dict[str, Any]) -> str:
-    """Serialize *payload* to JSON and sign with HMAC-SHA256.
-
-    Format: ``{base64url_payload}.{hex_signature}``
-    """
-    import base64
-
-    data = json.dumps(payload, separators=(",", ":")).encode()
-    b64 = base64.urlsafe_b64encode(data).decode()
-    sig = hmac.new(get_signing_key(), data, hashlib.sha256).hexdigest()
-    return f"{b64}.{sig}"
-
-
-def _verify_session(token: str) -> dict[str, Any] | None:
-    """Verify signature and decode the session payload. Returns None on failure."""
-    import base64
-
-    parts = token.split(".", 1)
-    if len(parts) != 2:
-        return None
-    b64, sig = parts
-    try:
-        data = base64.urlsafe_b64decode(b64)
-    except Exception:
-        return None
-    expected = hmac.new(get_signing_key(), data, hashlib.sha256).hexdigest()
-    if not hmac.compare_digest(sig, expected):
-        return None
-    try:
-        payload: dict[str, Any] = json.loads(data)
-    except (json.JSONDecodeError, UnicodeDecodeError):
-        return None
-    # Check expiry
-    if payload.get("exp", 0) < time.time():
-        return None
-    return payload
-
-
-# ---------------------------------------------------------------------------
 # Cookie helpers
 # ---------------------------------------------------------------------------
 
@@ -169,8 +123,18 @@ def _is_secure() -> bool:
 
 
 def _csrf_for_session(session_token: str) -> str:
-    """Double-submit token bound to an opaque server-side session token."""
-    return hmac.new(get_signing_key(), session_token.encode(), hashlib.sha256).hexdigest()
+    """Emite el token double-submit de la sesión, en el formato de ``shared.csrf``.
+
+    Delega en :func:`shared.csrf.generate_csrf_token`: con ``kid`` (sobrevive a
+    una rotación de ``SIGNING_KEY``) y con caducidad propia. Antes derivaba
+    aquí mismo un HMAC plano sin ninguna de las dos cosas, mientras el módulo
+    que sí las tenía no lo usaba nadie.
+
+    **No es determinista**: cada llamada lleva su propio timestamp, así que la
+    validación es :func:`shared.csrf.csrf_token_valido` y no una comparación
+    con el valor «esperado». Eso es lo que permite la rotación.
+    """
+    return generate_csrf_token(session_token)
 
 
 def _set_session_cookie(response: Response, user_id: int, request: Request) -> str:
@@ -311,8 +275,18 @@ async def get_session_user_pending_mfa(
 
 
 def _reject_bad_csrf(user: dict[str, Any], x_csrf_token: str | None) -> None:
-    """Valida el double-submit token contra el derivado de la sesión."""
-    if not x_csrf_token or not hmac.compare_digest(x_csrf_token, user.get("csrf", "")):
+    """Valida el double-submit token contra la sesión que lo emitió.
+
+    ``max_age`` es la vida de la sesión y no el default de una hora de
+    ``shared.csrf``: la cookie CSRF se emite una sola vez, en el login, así que
+    caducarla antes que la sesión dejaría al usuario con una sesión viva y
+    todas sus mutaciones en 403 — un logout disfrazado de error.
+    """
+    if not csrf_token_valido(
+        x_csrf_token,
+        str(user.get("session_token") or ""),
+        max_age=_SESSION_MAX_AGE,
+    ):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="CSRF token mismatch")
 
 

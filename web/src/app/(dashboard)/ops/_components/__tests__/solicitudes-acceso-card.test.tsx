@@ -20,7 +20,27 @@ vi.mock("sonner", () => ({
   toast: { success: vi.fn(), warning: vi.fn(), error: vi.fn() },
 }));
 
-vi.mock("@/lib/api-client", () => ({ apiMutate: vi.fn() }));
+// El factory sustituye el MÓDULO ENTERO, así que tiene que exponer todo lo que
+// el componente importe de él: cuando la tarjeta pasó de `fetch` crudo a
+// `fetchWithAuth` (migración al cliente tipado, 2026-09), este mock seguía
+// devolviendo sólo `apiMutate` y el componente recibía `undefined`. Resultado:
+// las tres queries fallaban, la tarjeta se pintaba vacía y los siete tests
+// morían con «Unable to find an element with the text».
+//
+// `fetchWithAuth` delega en el `fetch` stubbeado en vez de devolver datos por su
+// cuenta, y eso es deliberado: lo que estos tests vigilan es **la query que
+// sale** (`urlsPedidas`), no lo que se pinta. Un mock que se saltara `fetch`
+// dejaría de registrar la URL y el test pasaría a verde sin comprobar nada —
+// justo el fallo que documenta la cabecera de este fichero.
+vi.mock("@/lib/api-client", () => ({
+  apiMutate: vi.fn(),
+  fetchWithAuth: vi.fn(async (url: string) => {
+    const respuesta = (await (globalThis.fetch as unknown as (u: string) => Promise<unknown>)(
+      url,
+    )) as { json: () => Promise<unknown> };
+    return respuesta.json();
+  }),
+}));
 
 import { SolicitudesAccesoCard } from "@/app/(dashboard)/ops/_components/solicitudes-acceso-card";
 import { apiMutate } from "@/lib/api-client";

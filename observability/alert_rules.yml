@@ -39,6 +39,41 @@ groups:
   # SQL o usan proyecciones acotadas, el cortacircuitos full-table ya no
   # existe y su metrica analytics_degraded_responses_total dejo de emitirse.
 
+  - name: meta
+    # Vigila al vigilante. Todas las demás reglas de este fichero comparten un
+    # modo de fallo que ninguna de ellas puede detectar: que el canal entero
+    # este muerto. Si Prometheus se cae, si pierde la ruta al Alertmanager, si
+    # el Alertmanager arranca sin credenciales SMTP o si el buzon rebota, el
+    # sintoma es identico al de "todo va bien" -- silencio. Y ese silencio es
+    # exactamente lo que se leyo como normalidad durante el incidente del
+    # 2026-08-28.
+    #
+    # La forma canonica de cerrarlo es una alerta que dispare SIEMPRE
+    # (`expr: vector(1)`, sin `for`) y que se enrute a un dead-man's-switch: un
+    # sistema EXTERNO que avisa cuando deja de recibirla. El valor no esta en
+    # recibirla, esta en notar su ausencia.
+    #
+    # Enrutado en observability/alertmanager.yml: va al receptor `webhook`, NO
+    # al de email -- un Watchdog que llena el buzon cada 4 horas se filtra en
+    # dos dias y con el se pierde la senal. Mientras
+    # ALERTMANAGER_WEBHOOK_URL no apunte a un dead-man's-switch real
+    # (healthchecks.io, Better Stack, Cronitor), esta regla verifica la mitad de
+    # la cadena: que Prometheus evalua reglas y que el Alertmanager las recibe y
+    # las enruta. La otra mitad -- que alguien note el silencio -- sigue siendo
+    # una accion humana pendiente.
+    rules:
+      - alert: Watchdog
+        expr: vector(1)
+        labels:
+          severity: none
+        annotations:
+          summary: "Watchdog: el canal de alertas esta vivo"
+          description: >
+            Alerta que dispara siempre, por diseno. Su unico proposito es que un
+            sistema externo detecte cuando DEJA de llegar: eso significa que
+            Prometheus, el Alertmanager o el transporte estan caidos, y por
+            tanto que ninguna otra alerta de este fichero podria llegar tampoco.
+
   - name: api_availability
     # Salud de LECTURA de la API vista desde el tráfico real (métricas RED de
     # prometheus-fastapi-instrumentator, api/app.py).

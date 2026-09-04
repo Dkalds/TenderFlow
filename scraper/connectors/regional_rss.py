@@ -9,11 +9,11 @@ from __future__ import annotations
 
 import html
 import re
-import xml.etree.ElementTree as ET  # nosec B405 -- nosemgrep: use-defused-xml -- ver mitigación junto a ET.fromstring más abajo
 from typing import TYPE_CHECKING, Any
 from urllib.parse import parse_qs, urlparse
 
 import requests
+from lxml import etree
 
 from db.upsert import Licitacion
 from scraper.connectors.base import ParsedTender, RawNotice
@@ -29,6 +29,35 @@ _TAG_RE = re.compile(r"<[^>]+>")
 _WS_RE = re.compile(r"\s+")
 _DATE_RE = re.compile(r"(\d{1,2})[-/](\d{1,2})[-/](\d{4})(?:\s+(\d{1,2}):(\d{2}))?")
 _ID_RE = re.compile(r"(?:\bID\s*:\s*|[?&]N=)([A-Za-z0-9._/-]+)", re.IGNORECASE)
+
+
+def _parser_seguro() -> etree.XMLParser:
+    """Parser XML sin expansión de entidades ni resolución por red.
+
+    Hasta 2026-09 el feed se parseaba con ``xml.etree.ElementTree``, que
+    Semgrep marca (``use-defused-xml``) porque el módulo de la stdlib expande
+    entidades por defecto; es una de las alertas abiertas desde el 2026-07-30
+    que mantienen ``security.yml`` en rojo. ``defusedxml`` **no** es
+    dependencia de producción (solo aparece en ``requirements-dev.txt``), así
+    que la mitigación es la que ya usan ``scraper/codice_parser.py`` y
+    ``scraper/atom_live.py``: el parser endurecido de lxml.
+
+    - ``resolve_entities=False`` + ``load_dtd=False``: sin expansión de
+      entidades, así que ni «billion laughs» ni XXE por entidad externa.
+    - ``no_network=True``: ninguna referencia externa se resuelve por red.
+    - ``huge_tree=False``: conserva los límites de tamaño/profundidad de
+      libxml2 (es el default; explícito para que se lea la intención).
+
+    ``recover`` se queda en su default (``False``) a propósito: un feed
+    malformado debe fallar y acabar en la DLQ —que es lo que hacía
+    ``ET.fromstring``— en vez de ingerirse a medias en silencio.
+    """
+    return etree.XMLParser(
+        resolve_entities=False,
+        no_network=True,
+        huge_tree=False,
+        load_dtd=False,
+    )
 
 
 def _plain(value: str | None) -> str:
@@ -95,8 +124,10 @@ class RegionalRssConnector:
         lowered = content.lower()
         if b"<!doctype" in lowered or b"<!entity" in lowered:
             raise ValueError("El feed regional contiene declaraciones XML no permitidas.")
-        # ElementTree es suficiente tras limitar tamaño y rechazar DTD/entidades.
-        root = ET.fromstring(content)  # noqa: S314  # nosec B314
+        # Tamaño acotado + DTD/entidades rechazadas arriba, y aun así el parseo
+        # va con el parser endurecido (ver ``_parser_seguro``): defensa en
+        # profundidad, no una u otra.
+        root = etree.fromstring(content, parser=_parser_seguro())
         previous = str((cursor or {}).get("last_seen_updated") or "")
         for item in root.findall("./channel/item"):
             title = _plain(item.findtext("title"))

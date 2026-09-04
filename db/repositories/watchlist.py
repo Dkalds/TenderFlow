@@ -169,10 +169,23 @@ class WatchlistRepository:
     # watchlist_items — favoritos de licitaciones individuales (v45)
     # ------------------------------------------------------------------
 
+    # ``organization_id`` es obligatoria en los métodos de watchlist_items y no
+    # tiene rama ``None``. La tuvo: quien omitía el argumento caía en una query
+    # sin filtro de organización (lectura) o escribía una fila con organización
+    # nula (``add_item``), invisible para siempre a la rama con ámbito. Un
+    # llamador que hoy la omita falla al tipar, que es cuando toca enterarse.
+    # Los llamadores reciben el valor ya resuelto por ``api.tenancy``
+    # (``ctx["organization_id"]``, que nunca es ``None``).
+
+    _ITEMS_SCOPE_WHERE = (
+        "WHERE wi.organization_id = %s AND "
+        "(wi.visibility = 'organization' OR wi.user_id = %s OR wi.user_key = %s) "
+    )
+
     def list_items(
         self,
         user_key: str,
-        organization_id: int | None = None,
+        organization_id: int,
         user_id: int | None = None,
     ) -> list[dict[str, Any]]:
         """Favoritos del usuario, enriquecidos con datos de la licitación.
@@ -181,25 +194,40 @@ class WatchlistRepository:
         nunca debe fabricar este enriquecimiento por su cuenta.
         """
         with connect_read() as c:
-            sql = (
+            cur = c.execute(
                 "SELECT wi.id, wi.id_externo, wi.created_at, "
                 "       wi.organization_id, wi.visibility, "
                 "       l.titulo, l.importe, l.estado, l.fecha_publicacion "
                 "FROM watchlist_items wi "
                 "LEFT JOIN licitaciones l ON l.id_externo = wi.id_externo "
+                + self._ITEMS_SCOPE_WHERE
+                + "ORDER BY wi.created_at DESC, wi.id DESC",
+                (organization_id, user_id, user_key),
             )
-            if organization_id is None:
-                sql += "WHERE wi.user_key = %s "
-                params: tuple[Any, ...] = (user_key,)
-            else:
-                sql += (
-                    "WHERE wi.organization_id = %s AND "
-                    "(wi.visibility = 'organization' OR wi.user_id = %s OR wi.user_key = %s) "
-                )
-                params = (organization_id, user_id, user_key)
+            return rows_to_dicts(cur)
+
+    def calendar_items(
+        self,
+        user_key: str,
+        organization_id: int,
+        user_id: int | None = None,
+    ) -> list[dict[str, Any]]:
+        """Favoritos con fecha de compromiso, para el calendario ICS.
+
+        Comparte el predicado de visibilidad de :meth:`list_items` a propósito:
+        son la misma colección vista por dos superficies. Hasta 2026-09 esta
+        query vivía en ``api/routes/exports.py`` (violando ADR-022) y filtraba
+        sólo por ``wi.user_key``, sin ``organization_id`` ni ``visibility`` --
+        y quien la sirve es un enlace firmado de larga vida, sin sesión.
+        """
+        with connect_read() as c:
             cur = c.execute(
-                sql + "ORDER BY wi.created_at DESC, wi.id DESC",
-                params,
+                "SELECT l.id_externo, l.titulo, l.fecha_limite, l.fecha_fin, l.url "
+                "FROM watchlist_items wi "
+                "JOIN licitaciones l ON l.id_externo = wi.id_externo "
+                + self._ITEMS_SCOPE_WHERE
+                + "AND (l.fecha_limite IS NOT NULL OR l.fecha_fin IS NOT NULL)",
+                (organization_id, user_id, user_key),
             )
             return rows_to_dicts(cur)
 
@@ -208,7 +236,7 @@ class WatchlistRepository:
         user_key: str,
         user_id: int | None,
         id_externo: str,
-        organization_id: int | None = None,
+        organization_id: int,
         visibility: str = "private",
     ) -> dict[str, Any]:
         """Añade un favorito de forma idempotente.
@@ -217,20 +245,13 @@ class WatchlistRepository:
         devuelve el registro existente sin tocarlo.
         """
         with connect() as c:
-            if organization_id is None:
-                c.execute(
-                    "INSERT INTO watchlist_items (user_key, user_id, id_externo) "
-                    "VALUES (%s, %s, %s) ON CONFLICT(user_key, id_externo) DO NOTHING",
-                    (user_key, user_id, id_externo),
-                )
-            else:
-                c.execute(
-                    "INSERT INTO watchlist_items "
-                    "(user_key, user_id, id_externo, organization_id, visibility) "
-                    "VALUES (%s, %s, %s, %s, %s) "
-                    "ON CONFLICT(user_key, id_externo) DO NOTHING",
-                    (user_key, user_id, id_externo, organization_id, visibility),
-                )
+            c.execute(
+                "INSERT INTO watchlist_items "
+                "(user_key, user_id, id_externo, organization_id, visibility) "
+                "VALUES (%s, %s, %s, %s, %s) "
+                "ON CONFLICT(user_key, id_externo) DO NOTHING",
+                (user_key, user_id, id_externo, organization_id, visibility),
+            )
             cur = c.execute(
                 "SELECT id, user_key, user_id, id_externo, organization_id, "
                 "visibility, created_at "
@@ -244,21 +265,15 @@ class WatchlistRepository:
         self,
         user_key: str,
         id_externo: str,
-        organization_id: int | None = None,
+        organization_id: int,
     ) -> bool:
         """Elimina un favorito propio. ``True`` si borró algo."""
         with connect() as c:
-            if organization_id is None:
-                cur = c.execute(
-                    "DELETE FROM watchlist_items WHERE user_key = %s AND id_externo = %s",
-                    (user_key, id_externo),
-                )
-            else:
-                cur = c.execute(
-                    "DELETE FROM watchlist_items WHERE organization_id = %s "
-                    "AND id_externo = %s AND (visibility = 'organization' OR user_key = %s)",
-                    (organization_id, id_externo, user_key),
-                )
+            cur = c.execute(
+                "DELETE FROM watchlist_items WHERE organization_id = %s "
+                "AND id_externo = %s AND (visibility = 'organization' OR user_key = %s)",
+                (organization_id, id_externo, user_key),
+            )
             return bool(cur.rowcount > 0)
 
     def export_items_by_user_key(self, user_key: str) -> list[dict[str, Any]]:
