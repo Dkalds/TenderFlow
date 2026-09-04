@@ -45,9 +45,6 @@ def test_los_dias_del_job_derivan_de_los_meses_publicados():
 
 def test_solicitudes_acceso_esta_en_la_politica_de_retencion():
     """Sin esta regla el aviso prometería un borrado que nadie ejecuta."""
-    import inspect
+    from scheduler.retention import COLUMNA_FECHA
 
-    from scheduler import retention
-
-    fuente = inspect.getsource(retention.run_retention)
-    assert '("solicitudes_acceso", "created_at"' in fuente
+    assert COLUMNA_FECHA["solicitudes_acceso"] == "created_at"
