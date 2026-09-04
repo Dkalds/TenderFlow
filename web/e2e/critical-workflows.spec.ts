@@ -106,7 +106,7 @@ test.describe("Flujos de trabajo críticos", () => {
     // primera versión de este test usaba una de 15 y fallaba con el mensaje de
     // «el alta debe estar abierta», que apuntaba al sitio equivocado — el alta
     // SÍ estaba abierta (`ENV=dev`); lo que no cumplía era la contraseña.
-    const password = `E2E-${sello}-${Math.random().toString(36).slice(2, 10)}-Ok`;
+    const password = `E2E-${sello}-${Math.random().toString(36).slice(2, 10)}-Ok`; // pragma: allowlist secret
 
     // Contexto propio: sin `storageState`, para no heredar la sesión demo.
     const context = await browser.newContext();

@@ -35,7 +35,7 @@ export function useMetaFilters(enabled = true) {
 /** Sólo las CCAA del catálogo, sin una segunda petición. */
 export function useMetaCcaas() {
   return useQuery<MetaFilters, Error, string[]>({
-    queryKey: metaKeys.filters,
+    queryKey: ["meta-ccaas"],
     queryFn: () => fetchWithAuth<MetaFilters>("/api/v1/meta/filters"),
     staleTime: 5 * 60 * 1000,
     select: (data) => data.ccaa ?? [],

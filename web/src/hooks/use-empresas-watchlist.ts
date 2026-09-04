@@ -69,7 +69,7 @@ export function useToggleEmpresaWatch() {
               }),
         ),
       ),
-    onSettled: () => {
+    onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: watchlistKeys.empresas });
     },
   });
