@@ -112,7 +112,11 @@ jobs:
   test:
     name: Tests (Postgres)
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    # 35, no 25: preventivo. Todavía no ha dado un rojo falso, pero el máximo
+    # observado en las últimas 12 tandas es 22,8 min (mediana 9,7) — 2,2 min de
+    # margen contra el presupuesto anterior. Es el mismo fallo que tumbaba a
+    # `audit`, un timeout dimensionado sobre el caso medio en vez del peor.
+    timeout-minutes: 35
     strategy:
       fail-fast: false
       matrix:
@@ -377,7 +381,19 @@ jobs:
   audit:
     name: Security audit
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    # 15, no 5. Con 5 este job era el que más rojo falso generaba del repo:
+    # 7 de sus últimas 12 ejecuciones murieron con "The job has exceeded the
+    # maximum execution time of 5m0s", con una mediana de 5,2 min contra un
+    # presupuesto de 5. El caso extremo es el run 33854878536, donde el último
+    # paso imprimió `found 0 vulnerabilities` a las 09:36:44.855 y el timeout
+    # lo mató 19 ms después: auditoría correcta, check en rojo.
+    #
+    # El coste real está en `npm audit` de la raíz —3m24s para 6 paquetes,
+    # frente a los 38s que tarda `web/` con 819— porque sin `node_modules` npm
+    # resuelve el árbol contra el registro y `@axe-core/playwright` arrastra el
+    # packument de `playwright-core`, uno de los más grandes de npm. No es un
+    # cuelgue: termina y acierta, solo que no cabe en 5 minutos.
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -514,7 +530,8 @@ jobs:
   codegen-drift:
     name: Codegen Drift Check
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    # 15, no 10: preventivo, máximo observado 8,1 min (mediana 5,4).
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 

@@ -40,7 +40,13 @@ jobs:
   commitlint:
     name: Commitlint (PR titles)
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    # 15, no 5. El `npm install` de abajo es bimodal: mediana 1,1 min, pero 2
+    # de las últimas 12 ejecuciones se comieron los 5 minutos enteros sin
+    # llegar siquiera a `npx commitlint` y murieron con "The job has exceeded
+    # the maximum execution time of 5m0s" (jobs 100965748592 y 100980468454).
+    # El check quedaba en rojo con un título de PR perfectamente válido, que es
+    # justo el fallo que este workflow existe para no tener.
+    timeout-minutes: 15
     steps:
       # Sin `fetch-depth: 0`: el título llega por el payload del evento y
       # commitlint solo necesita `.commitlintrc.json` del árbol de trabajo, no
@@ -51,9 +57,17 @@ jobs:
         with:
           node-version: "20"
 
+      # `--no-save` porque esto es un runner de usar y tirar: sin él npm
+      # reescribe el `package.json` y el `package-lock.json` de la raíz para
+      # apuntarse dos dependencias que nadie va a commitear. `--no-audit` y
+      # `--no-fund` quitan dos viajes al registro que no aportan nada aquí
+      # —auditar dependencias es el trabajo del job `audit` de ci.yml—.
+      # Los paquetes siguen cayendo en `./node_modules`, así que `npx` los
+      # resuelve igual que antes.
       - name: Install commitlint
-        run: |
-          npm install --save-dev @commitlint/cli @commitlint/config-conventional
+        run: >-
+          npm install --no-save --no-audit --no-fund
+          @commitlint/cli @commitlint/config-conventional
 
       # El repo mergea con squash y GitHub usa el título del PR como subject del
       # commit resultante: validar el título es validar lo que acabará en
