@@ -200,8 +200,18 @@ def promote_if_better(
     """Registra la versión y la activa **solo si** pasa el gate.
 
     La versión se registra SIEMPRE (aunque no pase): es lo que permite ver el
-    histórico y hacer rollback. Lo que el gate decide es la *activación* y la
-    publicación del artefacto que sirve producción.
+    histórico. Lo que el gate decide es la *activación* y la publicación del
+    artefacto que sirve producción.
+
+    **El rollback dejó de ser automático.** El ``path`` de una versión activada
+    es el artefacto publicado, no el versionado (ver el comentario junto a
+    ``register_version``), así que reactivar una fila antigua apunta al mismo
+    ``sap_classifier.pkl`` de la Release, cuyo contenido es el de la versión
+    vigente. La verificación de sha256 lo detecta y falla con
+    ``ModelArtifactMismatch`` en vez de servir el modelo equivocado -- ruidoso,
+    pero no silencioso. Para volver atrás de verdad hay que republicar en la
+    Release el ``.pkl`` de esa versión; el artefacto versionado se sigue
+    escribiendo en ``models_dir`` justamente para poder hacerlo.
 
     Args:
         clf: ``SAPClassifier`` ya entrenado (se le pide ``save`` y ``predict``).
@@ -246,10 +256,31 @@ def promote_if_better(
     )
     debe_activar = not motivos
 
+    # Publicar ANTES de registrar: el ``path`` que queda en ``model_versions``
+    # tiene que ser el del fichero que de verdad viaja a la Release, porque es
+    # el nombre EXACTO por el que ``resolve_active_artifact`` lo pedirá desde
+    # otro runner (``_download_release_asset`` casa por ``Path(path).name``).
+    # Registrando el versionado, ``train-model.yml`` subía ``sap_classifier.pkl``
+    # mientras el registro apuntaba a ``sap_classifier_v{N}.pkl`` -- un nombre
+    # que no existe en la Release, así que la resolución moría en
+    # ``asset_not_in_release`` y el paso de scoring volvía a ``no_model``. Es la
+    # invariante que ya cumple ``train-predictivos.yml``: se sube el fichero
+    # cuyo path se registró.
+    ruta_registrada = guardado
+    if debe_activar and publicar_como is not None:
+        publicar_como.parent.mkdir(parents=True, exist_ok=True)
+        publicar_como.write_bytes(guardado.read_bytes())
+        _escribir_checksum(publicar_como)
+        log.info("promotion.artefacto_publicado", path=str(publicar_como))
+        ruta_registrada = publicar_como
+
     n_samples = int(metrics.get("n_train") or 0) + int(metrics.get("n_test") or 0)
     register_version(
         name=name,
-        path=str(guardado),
+        # Mismo sha en los dos: ``publicar_como`` es copia byte a byte de
+        # ``guardado``, así que el hash registrado sigue describiendo el
+        # contenido con independencia de cuál de los dos nombres se registre.
+        path=str(ruta_registrada),
         sha256=sha,
         # ``golden_holdout_*`` y no ``golden_*``: train() ya guarda
         # ``golden_*`` con las métricas de la mitad "tune" (donde se eligió
@@ -264,11 +295,6 @@ def promote_if_better(
 
     if debe_activar:
         log.info("promotion.activada", name=name, version=version, golden=golden_dict)
-        if publicar_como is not None:
-            publicar_como.parent.mkdir(parents=True, exist_ok=True)
-            publicar_como.write_bytes(guardado.read_bytes())
-            _escribir_checksum(publicar_como)
-            log.info("promotion.artefacto_publicado", path=str(publicar_como))
     else:
         log.warning(
             "promotion.rechazada",
