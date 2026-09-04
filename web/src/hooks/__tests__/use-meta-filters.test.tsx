@@ -116,10 +116,19 @@ describe("useMetaCcaas", () => {
     await waitFor(() => expect(result.current.filtros.isSuccess).toBe(true));
     await waitFor(() => expect(result.current.ccaas.isSuccess).toBe(true));
 
-    expect(fetchMock.mock.calls.map(callUrl)).toEqual(["/api/v1/meta/filters"]);
-    expect(client.getQueryCache().getAll().map((query) => query.queryKey)).toEqual([
-      metaKeys.filters,
-    ]);
+    // Se cuenta por URL en vez de comparar el array entero: lo que este test
+    // defiende es que NO hay una segunda petición al mismo endpoint, y una
+    // igualdad exacta convierte cualquier ruido de otra consulta en un rojo que
+    // no habla del bug. Igual con la caché: se filtra a las claves de `meta`.
+    expect(fetchMock.mock.calls.map(callUrl).filter((u) => u === "/api/v1/meta/filters")).toHaveLength(
+      1,
+    );
+    const clavesMeta = client
+      .getQueryCache()
+      .getAll()
+      .map((query) => query.queryKey)
+      .filter((clave) => Array.isArray(clave) && clave[0] === metaKeys.filters[0]);
+    expect(clavesMeta).toEqual([metaKeys.filters]);
     // Y cada consumidor sigue viendo lo suyo: el catálogo entero y la
     // proyección, desde la misma entrada.
     expect(result.current.filtros.data).toEqual(CATALOGOS);

@@ -165,21 +165,26 @@ describe("useToggleEmpresaWatch", () => {
   });
 
   it("invalida exactamente la clave de la consulta de empresas seguidas", async () => {
-    // Complemento del test anterior: fija *qué* clave se invalida, sin
-    // observadores montados que la refresquen y borren la marca. Si alguien
+    // Complemento del test anterior: fija *qué* clave se invalida. Si alguien
     // cambiara la clave en un sitio y no en el otro, esto lo ve.
+    //
+    // Se espía `invalidateQueries` en vez de mirar `state.isInvalidated`: ese
+    // flag es transitorio —React Query lo limpia en cuanto la consulta se
+    // refetchea— así que afirmarlo es una carrera contra el propio cliente. En
+    // esta máquina pasaba y en CI fallaba. Lo que el hook promete es la
+    // llamada, no el flag.
     stubFetch([]);
     const { client, wrapper } = crearEntorno();
     client.setQueryData(watchlistKeys.empresas, { items: [] });
+    const invalidar = vi.spyOn(client, "invalidateQueries");
 
     const { result } = renderHook(() => useToggleEmpresaWatch(), { wrapper });
     await result.current.mutateAsync({ empresaIds: [7], watched: false });
 
     await waitFor(() =>
-      expect(
-        client.getQueryCache().find({ queryKey: watchlistKeys.empresas, exact: true })?.state
-          .isInvalidated,
-      ).toBe(true),
+      expect(invalidar).toHaveBeenCalledWith(
+        expect.objectContaining({ queryKey: watchlistKeys.empresas }),
+      ),
     );
   });
 
@@ -193,16 +198,18 @@ describe("useToggleEmpresaWatch", () => {
     const { client, wrapper } = crearEntorno();
     client.setQueryData(watchlistKeys.empresas, { items: [] });
 
+    const invalidar = vi.spyOn(client, "invalidateQueries");
     const { result } = renderHook(() => useToggleEmpresaWatch(), { wrapper });
     await expect(
       result.current.mutateAsync({ empresaIds: [7], watched: false }),
     ).rejects.toThrow("no se pudo");
 
+    // Mismo motivo que arriba: se comprueba la invalidación, no el flag
+    // `isInvalidated`, que el cliente limpia por su cuenta.
     await waitFor(() =>
-      expect(
-        client.getQueryCache().find({ queryKey: watchlistKeys.empresas, exact: true })?.state
-          .isInvalidated,
-      ).toBe(true),
+      expect(invalidar).toHaveBeenCalledWith(
+        expect.objectContaining({ queryKey: watchlistKeys.empresas }),
+      ),
     );
   });
 });
