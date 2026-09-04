@@ -161,3 +161,83 @@ class TestMetricasOperativas:
 
     def test_conjunto_vacio_no_revienta(self) -> None:
         assert metricas_operativas([], []) == {}
+
+
+# ---------------------------------------------------------------------------
+# Qué `path` queda registrado (2026-09)
+# ---------------------------------------------------------------------------
+#
+# `_download_release_asset` busca el asset por el nombre EXACTO de
+# `Path(model_versions.path).name`. Registrando el artefacto versionado, el
+# registro pedía `sap_classifier_v{N}.pkl` mientras `train-model.yml` subía
+# `sap_classifier.pkl`: la resolución moría en `asset_not_in_release` y el
+# scoring de la pipeline volvía a `no_model`. Se registra el publicado.
+
+
+class _ClfFalso:
+    """Mínimo que `promote_if_better` le pide a un clasificador: `save`."""
+
+    def save(self, path):
+        from pathlib import Path as _P
+
+        destino = _P(path)
+        destino.parent.mkdir(parents=True, exist_ok=True)
+        destino.write_bytes(b"artefacto-entrenado")
+        return destino
+
+
+def _promocionar(tmp_path, *, motivos):
+    """Corre `promote_if_better` con el registro y el gate mockeados."""
+    from unittest.mock import patch
+
+    from services.ml.promotion import promote_if_better
+
+    publicado = tmp_path / "publicado" / "sap_classifier.pkl"
+    with (
+        patch("db.model_registry.get_active", return_value=None),
+        patch("db.model_registry.register_version") as register,
+        patch("services.ml.promotion.evaluar_gate", return_value=motivos),
+        patch("services.ml.promotion.evaluar_en_golden", return_value=None),
+    ):
+        resultado = promote_if_better(
+            _ClfFalso(),
+            {"n_train": 100, "n_test": 50},
+            models_dir=tmp_path / "versiones",
+            publicar_como=publicado,
+        )
+    return resultado, register, publicado
+
+
+def test_al_promocionar_se_registra_el_artefacto_publicado(tmp_path):
+    """El nombre registrado tiene que ser el que viaja a la Release."""
+    resultado, register, publicado = _promocionar(tmp_path, motivos=[])
+
+    assert resultado.activada is True
+    registrado = register.call_args.kwargs
+    assert registrado["path"] == str(publicado)
+    assert registrado["activate"] is True
+    # Y el fichero publicado existe de verdad, con el mismo contenido.
+    assert publicado.read_bytes() == b"artefacto-entrenado"
+
+
+def test_el_sha_registrado_describe_el_fichero_publicado(tmp_path):
+    """`publicar_como` es copia byte a byte, así que el hash sigue valiendo --
+    es lo que verificará `resolve_active_artifact` tras bajarlo."""
+    import hashlib
+
+    _resultado, register, publicado = _promocionar(tmp_path, motivos=[])
+
+    esperado = hashlib.sha256(publicado.read_bytes()).hexdigest()
+    assert register.call_args.kwargs["sha256"] == esperado
+
+
+def test_si_el_gate_rechaza_no_se_publica_y_se_registra_el_versionado(tmp_path):
+    """Un rechazo no toca el artefacto que sirve producción, así que registrar
+    su ruta sería mentir: la fila inactiva apunta al versionado."""
+    resultado, register, publicado = _promocionar(tmp_path, motivos=["recall_no_keyword"])
+
+    assert resultado.activada is False
+    assert not publicado.exists()
+    registrado = register.call_args.kwargs
+    assert registrado["path"].endswith("sap_classifier_v1.pkl")
+    assert registrado["activate"] is False
