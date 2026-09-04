@@ -731,19 +731,62 @@ def _watched_empresa(db, nombre="Watched SL", nif="B99999999"):
         )
 
 
+def _organizacion_de_pruebas(nombre: str) -> int:
+    """Crea una organización real (con su owner) y devuelve su id.
+
+    ``watchlist_empresas.organization_id`` es FK contra ``organizations``
+    (v64), así que un id inventado revienta el INSERT con
+    ``ForeignKeyViolation`` antes de ejercitar nada del CRUD.
+    """
+    from db.repositories.organizations import OrganizationRepository
+    from db.users import create_user
+
+    owner = create_user(
+        email=f"{nombre}@example.test",
+        password_hash="test-hash",  # pragma: allowlist secret -- literal de test
+        display_name=nombre,
+    )
+    return int(OrganizationRepository().create_organization(nombre, owner)["id"])
+
+
 def test_watchlist_crud(db):
+    """CRUD de la vigilancia de competidores, con la organización obligatoria.
+
+    ``WatchlistEmpresaEntry.organization_id`` perdió su default ``None``
+    (S4.3): construir una entrada sin ámbito escribía una fila que la consulta
+    con ámbito no volvía a ver — la empresa quedaba vigilada y ausente de la
+    pantalla a la vez. Además del roundtrip, el test comprueba que la
+    organización es condición necesaria tanto para listar como para borrar.
+    """
     from db.watchlist_empresas import WatchlistEmpresaEntry, add_entry, list_entries, remove_entry
 
     empresa_id = _watched_empresa(db)
-    entry = WatchlistEmpresaEntry(user_key="u1", empresa_id=empresa_id, email="a@b.com")
+    equipo = _organizacion_de_pruebas("competidores-equipo")
+    otro_equipo = _organizacion_de_pruebas("competidores-otro-equipo")
+    entry = WatchlistEmpresaEntry(
+        user_key="u1",
+        empresa_id=empresa_id,
+        organization_id=equipo,
+        email="a@b.com",
+    )
 
     assert add_entry(entry) is not None
     assert add_entry(entry) is None  # duplicado → no-op
-    assert len(list_entries("u1")) == 1
-    assert list_entries("u1")[0]["nombre_canonico"] == "Watched SL"
-    assert remove_entry("u1", empresa_id) is True
-    assert remove_entry("u1", empresa_id) is False
-    assert list_entries("u1") == []
+    assert len(list_entries("u1", equipo)) == 1
+    assert list_entries("u1", equipo)[0]["nombre_canonico"] == "Watched SL"
+
+    # La entrada no se ve ni se borra desde otra organización.
+    assert list_entries("u1", otro_equipo) == []
+    assert remove_entry("u1", empresa_id, otro_equipo) is False
+    assert len(list_entries("u1", equipo)) == 1
+
+    # Ni desde la propia organización si el que borra no es el dueño.
+    assert remove_entry("otro-usuario", empresa_id, equipo) is False
+    assert len(list_entries("u1", equipo)) == 1
+
+    assert remove_entry("u1", empresa_id, equipo) is True
+    assert remove_entry("u1", empresa_id, equipo) is False
+    assert list_entries("u1", equipo) == []
 
 
 def test_competitor_alerts_detecta_nuevas_y_territorio(db, monkeypatch):
@@ -751,7 +794,18 @@ def test_competitor_alerts_detecta_nuevas_y_territorio(db, monkeypatch):
     from scheduler import competitor_alerts
 
     empresa_id = _watched_empresa(db)  # historial: 1 contrato en Madrid (W-01)
-    add_entry(WatchlistEmpresaEntry(user_key="u1", empresa_id=empresa_id, email="a@b.com"))
+    # El job de alertas recorre ``list_all()``, que es deliberadamente global
+    # (notifica a todos los destinatarios, no a una organización); la entrada
+    # se crea igualmente con su organización porque el modelo ya no admite
+    # construirla sin ámbito.
+    add_entry(
+        WatchlistEmpresaEntry(
+            user_key="u1",
+            empresa_id=empresa_id,
+            organization_id=_organizacion_de_pruebas("competidores-alertas"),
+            email="a@b.com",
+        )
+    )
 
     sent: list[dict] = []
     monkeypatch.setattr(

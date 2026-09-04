@@ -32,6 +32,25 @@ def _seed_user_and_key(db_mod, *, user_id: int = 1, key_id: int = 1, key_hash: s
         c.execute(base, vals)
 
 
+def _organizacion_de_pruebas(nombre: str) -> int:
+    """Crea una organización real (con su owner) y devuelve su id.
+
+    ``user_profiles.organization_id`` y ``user_notifications.organization_id``
+    son FK contra ``organizations`` (v64), así que un id inventado revienta el
+    INSERT con ``ForeignKeyViolation`` antes de llegar a ejercitar el borrado
+    o el export, que es lo que estos tests miran.
+    """
+    from db.repositories.organizations import OrganizationRepository
+    from db.users import create_user
+
+    owner = create_user(
+        email=f"{nombre}@example.test",
+        password_hash="test-hash",  # pragma: allowlist secret -- literal de test
+        display_name=nombre,
+    )
+    return int(OrganizationRepository().create_organization(nombre, owner)["id"])
+
+
 # ---------------------------------------------------------------------------
 # get_user_id_from_key_id
 # ---------------------------------------------------------------------------
@@ -185,15 +204,27 @@ def test_export_watchlist_rules(tmp_db):
 
 
 def test_export_user_profile(tmp_db):
+    """El export encuentra el perfil aunque viva dentro de una organización.
+
+    ``upsert_user_profile`` dejó de aceptar ``organization_id=None`` (S4.3):
+    escribir sin ámbito dejaba la fila invisible para la lectura con ámbito.
+    El export, en cambio, sigue siendo ciego a la organización a propósito
+    (``get_own_user_profile``): la pregunta del Art. 15 es «qué guarda el
+    sistema sobre esta persona», no «qué ve este equipo». Este test fija esa
+    asimetría: se escribe CON organización y se exporta SIN pedirla.
+    """
     _db_mod, _ = tmp_db
     from db.repositories.user_profiles import upsert_user_profile
     from services.gdpr import export_user_profile
 
+    organizacion = _organizacion_de_pruebas("gdpr-export")
+
     assert export_user_profile("uk1") is None
-    upsert_user_profile("uk1", {"weights": {"importe": 100}})
+    upsert_user_profile("uk1", {"weights": {"importe": 100}}, organizacion)
     profile = export_user_profile("uk1")
     assert profile is not None
     assert profile["weights"] == {"importe": 100}
+    assert profile["organization_id"] == organizacion
 
 
 def test_export_user_notifications(tmp_db):
@@ -213,19 +244,30 @@ def test_export_user_notifications(tmp_db):
 
 
 def test_anonymize_user_data_covers_rules_profile_and_notifications(tmp_db):
-    """El borrado GDPR (F13·C3.2) cubre watchlist_rules/user_profiles/user_notifications."""
+    """El borrado GDPR (F13·C3.2) cubre watchlist_rules/user_profiles/user_notifications.
+
+    Las tres filas se siembran **con** organización, que es como las escribe el
+    producto desde S4.3. Importa para lo que este test protege: el borrado del
+    Art. 17 se hace por ``user_key`` y no por organización, así que una fila
+    con ámbito no puede sobrevivirlo. Si el borrado empezara a filtrar por
+    organización, aquí quedarían restos.
+    """
     _db_mod, _ = tmp_db
     from db.repositories.user_profiles import upsert_user_profile
     from services.gdpr import anonymize_user_data
     from services.watchlist_rules import WatchlistRule, create_rule
 
-    create_rule("uk1", WatchlistRule(keyword="SAP", frequency="daily"))
-    upsert_user_profile("uk1", {"weights": {"importe": 100}})
+    organizacion = _organizacion_de_pruebas("gdpr-anonimizacion")
+
+    create_rule(
+        "uk1", WatchlistRule(keyword="SAP", frequency="daily"), organization_id=organizacion
+    )
+    upsert_user_profile("uk1", {"weights": {"importe": 100}}, organizacion)
     with connect() as c:
         c.execute(
-            "INSERT INTO user_notifications (user_key, created_at, type, title) "
-            "VALUES (%s, %s, 'rule_match', %s)",
-            ("uk1", now_utc_iso(), "titulo"),
+            "INSERT INTO user_notifications (user_key, created_at, type, title, organization_id) "
+            "VALUES (%s, %s, 'rule_match', %s, %s)",
+            ("uk1", now_utc_iso(), "titulo", organizacion),
         )
 
     anonymize_user_data("uk1")

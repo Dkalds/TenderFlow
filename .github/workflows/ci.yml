@@ -422,7 +422,14 @@ jobs:
   audit:
     name: Security audit
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    # 12 y no 5. Los 5 estaban calibrados para caché de pip CALIENTE: en master,
+    # con la caché poblada, el job termina en ~1 min. En una rama nueva la caché
+    # falla, hay que descargar `pip-audit` más los ~130 pines de
+    # `requirements.txt`, y el job se fue a 5 m 15 s — o sea que **fallaba por
+    # estrenar rama**, no por encontrar nada. Un gate que se pone rojo por un
+    # fallo de caché enseña a re-lanzar sin leer, que es como se acaba
+    # re-lanzando uno que sí tenía razón.
+    timeout-minutes: 12
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 

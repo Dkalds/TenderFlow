@@ -9,6 +9,7 @@ import pytest
 from db.repositories.organizations import OrganizationRepository
 from db.repositories.watchlist import WatchlistRepository
 from db.saved_filters import list_saved_filters, save_filter
+from db.tenancy_backfill import contar_huerfanos
 from services.organizations import (
     OrganizationAccessError,
     claim_legacy_scope,
@@ -66,17 +67,68 @@ def test_organization_visibility_shares_only_explicit_items(tmp_db):
 
 
 def test_legacy_rows_are_claimed_by_personal_organization(tmp_db):
-    _db_mod, _ = tmp_db
+    """Una fila anterior a v64 se adjudica a la organización PERSONAL de su dueño.
+
+    El producto ya no puede fabricar una fila huérfana: ``save_filter`` exige
+    ``organization_id`` desde S4.3. Pero las que se escribieron cuando era
+    opcional siguen en la base y son **invisibles** para la consulta con
+    ámbito — para su dueño, sus vistas guardadas simplemente no están. Ese
+    estado es el que inventaría ``db/tenancy_backfill.contar_huerfanos`` y el
+    que repara ``scripts/asignar_organizacion_huerfanos.py`` (dry-run por
+    defecto) reutilizando este mismo ``claim_legacy_scope``.
+
+    Por eso la fila legacy se siembra por SQL directo: es la única forma que
+    queda de reproducir el pasado. Lo que el test protege no ha cambiado —
+    que ese camino de recuperación siga existiendo y siga adjudicando a la
+    personal, nunca a una compartida.
+    """
+    db_mod, _ = tmp_db
     user_id = _user("legacy-scope@example.test")
-    save_filter("legacy-key", "Filtro", '{"q":"sap"}')
+    with db_mod.connect() as conn:
+        conn.execute(
+            "INSERT INTO saved_filters (user_key, name, filters_json, created_at, "
+            " organization_id) VALUES (%s, %s, %s, %s, NULL)",
+            ("legacy-key", "Filtro", '{"q":"sap"}', "2026-01-01T00:00:00+00:00"),
+        )
+
+    organizations = OrganizationRepository()
+    personal_id = int(organizations.ensure_personal_organization(user_id)["id"])
+
+    # Antes del claim la fila existe pero nadie la ve: es el síntoma exacto.
+    assert list_saved_filters("legacy-key", personal_id) == []
+    assert contar_huerfanos()["saved_filters"] == 1
 
     claim_legacy_scope(user_id, "legacy-key")
-    personal_id = int(OrganizationRepository().ensure_personal_organization(user_id)["id"])
-    rows = list_saved_filters("legacy-key", personal_id)
 
+    rows = list_saved_filters("legacy-key", personal_id)
     assert len(rows) == 1
     assert rows[0]["organization_id"] == personal_id
     assert rows[0]["visibility"] == "private"
+    assert contar_huerfanos()["saved_filters"] == 0
+
+
+def test_claim_legacy_scope_no_toca_filas_ya_compartidas(tmp_db):
+    """El claim solo mira ``organization_id IS NULL``: no reclama lo compartido.
+
+    Complemento del test anterior. La adjudicación es a la organización
+    personal, así que si alcanzara filas que ya tienen ámbito se llevaría una
+    vista del equipo al espacio privado de quien pasara por una ruta
+    org-aware: los demás miembros la verían desaparecer sin que nadie la
+    borrara.
+    """
+    _db_mod, _ = tmp_db
+    user_id = _user("legacy-shared@example.test")
+    organizations = OrganizationRepository()
+    personal_id = int(organizations.ensure_personal_organization(user_id)["id"])
+    equipo_id = int(organizations.create_organization("Equipo legacy", user_id)["id"])
+    save_filter("legacy-key", "Vista del equipo", '{"q":"erp"}', equipo_id, "organization")
+
+    claim_legacy_scope(user_id, "legacy-key")
+
+    assert [row["name"] for row in list_saved_filters("legacy-key", equipo_id)] == [
+        "Vista del equipo"
+    ]
+    assert list_saved_filters("legacy-key", personal_id) == []
 
 
 # ---------------------------------------------------------------------------

@@ -194,6 +194,15 @@ def resolve_active_artifact(name: str) -> Path | None:
         # nuevo es exactamente lo que este módulo existe para impedir.
         log.info("model_artifact_cache_obsoleta", model=name, path=str(local))
         local.unlink(missing_ok=True)
+        # Y con él su checksum co-ubicado, que describía el fichero que se
+        # acaba de borrar. Cada versión de `baja_model`/`retencion_model` se
+        # registra con el MISMO basename (`services/ml/baja_model.py::_MODEL_PATH`
+        # es una ruta fija), así que la entrada de caché se reutiliza entre
+        # versiones: dejar el `.sha256` viejo junto al `.pkl` nuevo hacía que
+        # `verify_model_integrity` abortase la carga con «integridad
+        # comprometida» en ENV=prod — es decir, activar una versión rompía el
+        # servicio en vez de cambiarlo, justo lo que S3.2 vino a arreglar.
+        local.with_suffix(".sha256").unlink(missing_ok=True)
 
     if not expected:
         log.warning("model_artifact_missing_sin_sha256", model=name, path=str(path))
@@ -213,11 +222,18 @@ def resolve_active_artifact(name: str) -> Path | None:
         raise ModelArtifactMismatch(
             f"El asset descargado para '{name}' no coincide con el sha256 registrado"
         )
-    _ensure_sidecar_checksum(local, actual)
+    # `sobrescribir`: el fichero lo acaba de escribir esta función, y su hash
+    # se acaba de cotejar contra `model_versions`. Cualquier `.sha256` que
+    # hubiera en la caché describe a un artefacto que ya no está ahí (en un
+    # checkout `artifact_cache_dir()` ES `data/models/`, donde
+    # `services/ml/promotion.py::_escribir_checksum` deja el suyo al publicar).
+    _ensure_sidecar_checksum(local, actual, sobrescribir=True)
     return local
 
 
-def _ensure_sidecar_checksum(path: Path, verified_sha256: str) -> None:
+def _ensure_sidecar_checksum(
+    path: Path, verified_sha256: str, *, sobrescribir: bool = False
+) -> None:
     """Escribe ``<path>.sha256`` si falta, con el hash ya verificado.
 
     ``shared.model_integrity.verify_model_integrity`` —el paso previo a
@@ -230,9 +246,20 @@ def _ensure_sidecar_checksum(path: Path, verified_sha256: str) -> None:
     El hash que se persiste es el que acaba de cotejarse contra
     ``model_versions``, no uno leído del propio release: es la misma fuente
     out-of-band que el pin ``ML_*_SHA256``, no una verificación circular.
+
+    Args:
+        path: artefacto ya verificado junto al que va el checksum.
+        verified_sha256: hash cotejado contra ``model_versions``.
+        sobrescribir: pisa un sidecar existente. Solo lo activa el camino que
+            **acaba de materializar** ``path`` en la caché escribible, donde el
+            sidecar previo describe a un artefacto que ya no existe. Por
+            defecto es ``False``: sobre un fichero que puso otro (el ``path``
+            del registro, publicado por ``promotion``), una discrepancia entre
+            sidecar y artefacto es un hallazgo que le toca destapar a
+            ``verify_model_integrity``, no algo que taparle aquí.
     """
     sidecar = path.with_suffix(".sha256")
-    if sidecar.exists():
+    if sidecar.exists() and not sobrescribir:
         return
     from shared.model_integrity import write_checksum
 

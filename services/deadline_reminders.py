@@ -14,7 +14,7 @@ from __future__ import annotations
 from datetime import UTC, date, datetime
 from typing import Any
 
-from db.database import connect, connect_read
+from db.database import connect_read
 from db.notifications import insert_user_notification
 from db.repositories.pursuits import PursuitRepository
 from observability.logging import get_logger
@@ -29,14 +29,44 @@ _DEADLINE_WINDOWS = [30, 7, 1]
 _ACCION_WINDOWS = [7, 1, 0]
 
 
-def _get_watchlist_items(user_key: str) -> list[str]:
-    """Devuelve los id_externo de los favoritos del usuario."""
+def _get_watchlist_items(user_key: str) -> dict[str, int]:
+    """``id_externo -> organization_id`` de los favoritos del usuario.
+
+    Devuelve un mapa y no una lista porque el recordatorio **hereda la
+    organización del favorito que lo origina**. La campana lee
+    ``user_notifications`` con ámbito (``services/notifications.get_user_alerts``
+    y sus vecinas reciben siempre un ``organization_id`` ya resuelto desde
+    ``api/tenancy.py``, nunca ``None``), así que una alerta escrita sin
+    organización no aparece en ninguna parte: es la misma clase de fila
+    invisible que S4.3 cerró en los repositorios de tenencia, y este job la
+    seguía escribiendo con su ``INSERT`` crudo.
+
+    Las filas legacy con ``organization_id IS NULL`` —las que se escribieron
+    cuando la columna era opcional— se descartan aquí en vez de propagar el
+    ``None`` hasta la escritura. Crear la alerta huérfana sería peor que no
+    crearla: gasta la clave ``UNIQUE(user_key, licitacion_id, type)`` con una
+    fila que el usuario no ve. Descartarlas se cura solo: en cuanto
+    ``scripts/asignar_organizacion_huerfanos.py`` adjudica el favorito a la
+    organización personal de su dueño, la siguiente pasada del job lo avisa.
+    """
     with connect_read() as c:
         cur = c.execute(
-            "SELECT id_externo FROM watchlist_items WHERE user_key = %s",
+            "SELECT id_externo, organization_id FROM watchlist_items WHERE user_key = %s",
             (user_key,),
         )
-        return [str(row[0]) for row in cur.fetchall()]
+        filas = cur.fetchall()
+    items = {str(row[0]): int(row[1]) for row in filas if row[1] is not None}
+    descartados = len(filas) - len(items)
+    if descartados:
+        # Silenciarlo dejaría a un usuario sin recordatorios sin que nada lo
+        # delate; el aviso nombra cuántos y a quién para poder correr el
+        # backfill de tenencia.
+        log.warning(
+            "watchlist_items_sin_organizacion",
+            user_key=user_key[:8],
+            descartados=descartados,
+        )
+    return items
 
 
 def _get_licitaciones_for_deadlines(
@@ -67,20 +97,32 @@ def check_deadlines_and_notify(user_key: str) -> int:
 
     Idempotente: upsert (ON CONFLICT DO NOTHING) en user_notifications (UNIQUE por user_key, licitacion_id, type).
 
+    La escritura pasa por :func:`db.notifications.insert_user_notification`, el
+    único productor de alertas de producto, para que la alerta lleve la
+    ``organization_id`` del favorito. Hasta 2026-09 este job repetía aquí su
+    propio ``INSERT`` y era el único de los tres productores que no ponía la
+    columna: escribía alertas correctas e invisibles.
+
     Returns:
         Numero de notificaciones nuevas escritas.
     """
-    fav_ids = _get_watchlist_items(user_key)
-    if not fav_ids:
+    favoritos = _get_watchlist_items(user_key)
+    if not favoritos:
         return 0
 
-    lics = _get_licitaciones_for_deadlines(fav_ids)
+    lics = _get_licitaciones_for_deadlines(list(favoritos))
     now = datetime.now(UTC)
     now_ts = now.isoformat()
     written = 0
 
     for lic in lics:
         lic_id = str(lic.get("id_externo") or "")
+        organization_id = favoritos.get(lic_id)
+        if organization_id is None:
+            # No debería ocurrir: las licitaciones salen de la propia consulta
+            # de favoritos. Si ocurriera, escribir con ``None`` es justo lo que
+            # este camino evita, así que se salta.
+            continue
         titulo = str(lic.get("titulo") or lic_id)
 
         for field in ("fecha_limite", "fecha_fin"):
@@ -107,15 +149,17 @@ def check_deadlines_and_notify(user_key: str) -> int:
                 body = (
                     f"La licitacion '{titulo}' vence el {dt.date().isoformat()} ({days_left} dias)."
                 )
-                with connect() as c:
-                    cur = c.execute(
-                        "INSERT INTO user_notifications "
-                        "(user_key, created_at, type, title, body, licitacion_id) "
-                        "VALUES (%s, %s, %s, %s, %s, %s) "
-                        "ON CONFLICT(user_key, licitacion_id, type) DO NOTHING",
-                        (user_key, now_ts, notif_type, title, body, lic_id),
+                written += int(
+                    insert_user_notification(
+                        user_key=user_key,
+                        type_=notif_type,
+                        title=title,
+                        body=body,
+                        licitacion_id=lic_id,
+                        organization_id=organization_id,
+                        created_at=now_ts,
                     )
-                    written += cur.rowcount
+                )
 
     if written:
         log.info("deadline_notifications_written", user_key=user_key[:8], count=written)
