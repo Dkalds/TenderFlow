@@ -29,7 +29,7 @@ export function CierrePublico({ ubicacion }: { ubicacion: string }) {
         <p className="text-muted-foreground mt-1.5 text-sm leading-relaxed">{CONTENIDO.publicoCierreTexto}</p>
       </div>
       <EnlaceSolicitarAcceso
-        href={solicitarAccesoHref(ubicacion)}
+        href={solicitarAccesoHref()}
         ubicacion={ubicacion}
         className="bg-primary text-primary-foreground hover:bg-primary/90 focus-visible:ring-ring focus-visible:ring-offset-background mt-5 inline-flex h-11 shrink-0 items-center justify-center rounded-md px-6 text-sm font-semibold shadow-md transition-[transform,background-color] duration-150 ease-out focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none active:scale-[0.97] sm:mt-0"
       >

@@ -32,6 +32,38 @@ async function expectDocumentFits(page: import("@playwright/test").Page) {
   expect(overflow).toBeLessThanOrEqual(1);
 }
 
+/**
+ * La superficie pública, a los tres anchos.
+ *
+ * No estaba cubierta: los tests de abajo miden el dashboard, que es donde vive
+ * el problema histórico de las tablas anchas. Pero la portada es la única
+ * página que ve alguien que no ha entrado nunca, y un scroll horizontal ahí se
+ * paga en la primera pantalla. Sin sesión, porque con cookie `/` redirige.
+ */
+test.describe("Superficie pública sin sesión", () => {
+  test.use({ storageState: { cookies: [], origins: [] } });
+
+  for (const viewport of [MOVIL, { width: 768, height: 1024 }, ESCRITORIO]) {
+    test(`la portada cabe a ${viewport.width}px`, async ({ page }) => {
+      await page.setViewportSize(viewport);
+      await page.goto("/");
+      await expect(page.locator("h1")).toBeVisible();
+      await expectDocumentFits(page);
+    });
+  }
+
+  test("en móvil el header ofrece navegación, no solo el logo", async ({ page }) => {
+    // La nav de secciones era `hidden … sm:flex` sin alternativa: por debajo de
+    // 640px, las dos páginas que reparten autoridad interna hacia los hubs
+    // desaparecían del chrome y solo quedaban los dos botones de acceso.
+    await page.setViewportSize(MOVIL);
+    await page.goto("/");
+
+    await expect(page.locator('header a[href="/licitaciones"]')).toBeVisible();
+    await expect(page.locator('header a[href="/cpv"]')).toBeVisible();
+  });
+});
+
 test.describe("Móvil (375×812)", () => {
   test.use({ viewport: MOVIL });
 

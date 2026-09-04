@@ -1,3 +1,5 @@
+import { esValorLegalPlaceholder } from "./legal-placeholder";
+
 /**
  * Identidad del responsable del tratamiento.
  *
@@ -18,18 +20,34 @@
  * build de producción si no están—, pero sí en local y en el job `frontend` de
  * CI, que compila a propósito sin entorno. Por eso el módulo degrada en vez de
  * lanzar: la página dice qué falta en vez de mentir o de caerse.
+ *
+ * **Un valor de relleno cuenta como ausente**, y no es una sutileza: el guard
+ * del build sólo miraba que la variable no estuviera vacía, así que producción
+ * llegó a publicar «PLACEHOLDER LOCAL - NO DESPLEGAR» como responsable del
+ * tratamiento. Un aviso legal con un recordatorio dentro no identifica a nadie,
+ * y es peor que uno que declara la laguna: el primero aparenta cumplir. Ver
+ * `lib/legal-placeholder.ts`.
  */
 
+/**
+ * Valor publicable, o `null`.
+ *
+ * `null` significa «no hay dato que publicar», y cubre por igual la variable sin
+ * definir y la definida con un relleno: para el visitante que necesita saber
+ * quién responde por sus datos, las dos son lo mismo.
+ */
+function valorLegal(bruto: string | undefined): string | null {
+  return esValorLegalPlaceholder(bruto) ? null : (bruto as string).trim();
+}
+
 /** Razón social o nombre del responsable. `null` si el entorno no lo define. */
-export const LEGAL_RESPONSABLE: string | null =
-  process.env.NEXT_PUBLIC_LEGAL_RESPONSABLE?.trim() || null;
+export const LEGAL_RESPONSABLE: string | null = valorLegal(process.env.NEXT_PUBLIC_LEGAL_RESPONSABLE);
 
 /** NIF/CIF del responsable. */
-export const LEGAL_NIF: string | null = process.env.NEXT_PUBLIC_LEGAL_NIF?.trim() || null;
+export const LEGAL_NIF: string | null = valorLegal(process.env.NEXT_PUBLIC_LEGAL_NIF);
 
 /** Domicilio a efectos de notificaciones. */
-export const LEGAL_DOMICILIO: string | null =
-  process.env.NEXT_PUBLIC_LEGAL_DOMICILIO?.trim() || null;
+export const LEGAL_DOMICILIO: string | null = valorLegal(process.env.NEXT_PUBLIC_LEGAL_DOMICILIO);
 
 /**
  * Meses que se conservan las solicitudes de acceso antes del borrado automático.

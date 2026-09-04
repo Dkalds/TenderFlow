@@ -29,8 +29,10 @@
 
 /*
  * TenderFlow design tokens.
- * Premium market-intelligence dashboard: neutral base, indigo accent,
- * layered surfaces, refined elevation, and consistent chart colors.
+ * Premium market-intelligence dashboard: neutral warm base, burnt-orange accent
+ * (`--primary`), layered surfaces, refined elevation, and consistent chart
+ * colors. Decía "indigo accent" y no lo es desde hace meses — un comentario que
+ * describe otra paleta manda a buscar el token equivocado.
  */
 
 @layer base {

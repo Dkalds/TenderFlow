@@ -39,6 +39,7 @@ import type { LicitacionDetail } from "@/components/detail-panel";
 // scoring añade una dimensión, y la pantalla que se quedara atrás mostraría la
 // clave cruda sin que nada fallara.
 import { DESGLOSE_LABELS } from "@/components/score-desglose";
+import { riesgoLabel } from "@/lib/riesgos";
 
 type TabKey = "resumen" | "ia" | "pliegos" | "recursos";
 
@@ -270,7 +271,7 @@ export function DetailInspector({
                       key={flag}
                       className="inline-flex h-[22px] items-center rounded-md border border-destructive/32 bg-destructive/12 px-2 text-[11px] font-medium text-destructive"
                     >
-                      {flag}
+                      {riesgoLabel(flag)}
                     </span>
                   ))}
                 </div>

@@ -9,6 +9,7 @@ import { fuenteLinkLabel } from "@/lib/fuentes";
 import { cn, formatCurrency, formatDate } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { RadarTender } from "@/hooks/use-radar";
+import { riesgoLabel } from "@/lib/riesgos";
 import {
   DESGLOSE_LABELS,
   bandColor,
@@ -221,7 +222,7 @@ export function RadarInspector({
                 className="inline-flex items-center gap-1 rounded border border-[hsl(var(--warning)/0.35)] bg-[hsl(var(--warning)/0.12)] px-1.5 py-1 text-[10.5px] text-[hsl(var(--warning))]"
               >
                 <AlertTriangle className="h-3 w-3" aria-hidden="true" />
-                {flag}
+                {riesgoLabel(flag)}
               </li>
             ))}
           </ul>
@@ -252,8 +253,12 @@ export function RadarInspector({
           <Fact label="Ámbito" value={tender.ccaa ?? "—"} />
         </div>
 
+        {/* El aside decía «ADR-014 · backend». Es la referencia interna de la
+            decisión que prohíbe calcular analítica en el navegador: le dice al
+            equipo dónde mirar y al usuario, nada. Lo que sí le importa es de
+            dónde sale el número, y eso es lo que dice ahora. */}
         <SectionTitle
-          aside={<span className="text-[10.5px] text-muted-foreground/70">ADR-014 · backend</span>}
+          aside={<span className="text-[10.5px] text-muted-foreground/70">calculado en servidor</span>}
         >
           Desglose de score
         </SectionTitle>

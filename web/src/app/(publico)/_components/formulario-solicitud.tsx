@@ -54,7 +54,7 @@ export function FormularioSolicitud() {
       method="post"
       action="/api/v1/publico/solicitudes-acceso"
       tabIndex={-1}
-      className="border-border/70 bg-card mx-auto mt-10 max-w-xl scroll-mt-24 rounded-xl border p-6 text-left shadow-sm focus:outline-none"
+      className="border-border/70 bg-card mt-10 w-full scroll-mt-40 rounded-xl border p-6 text-left shadow-sm focus:outline-none sm:scroll-mt-24 md:mt-0"
     >
       {/* Superficie desde la que se envía, no CTA pulsado: los tres botones
           llevan al mismo ancla de este mismo formulario, así que sin
