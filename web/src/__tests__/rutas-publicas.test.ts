@@ -107,6 +107,22 @@ describe("robots y sitemap salen de la misma lista", () => {
     expect(allow).toEqual(rutasRastreables());
   });
 
+  it.each(["/cpvfoo", "/licitacionesx", "/loginfalso", "/aviso-legal-falso"])(
+    "%s no se cuela como pública por empezar igual que un prefijo",
+    (ruta) => {
+      // `startsWith` a secas abría estas cuatro: rutas que no existen, servidas
+      // como públicas y resueltas por el 404 raíz en vez de por el del grupo.
+      expect(esPaginaPublica(ruta)).toBe(false);
+    },
+  );
+
+  it.each(["/licitaciones/cataluna", "/licitaciones/cataluna/algo/EXP-1", "/cpv/72000000"])(
+    "%s sigue siendo pública, que es lo que el prefijo debe abrir",
+    (ruta) => {
+      expect(esPaginaPublica(ruta)).toBe(true);
+    },
+  );
+
   it("la portada se abre anclada, para no abrir el dashboard entero", () => {
     // `Allow: /` anularía el `Disallow: /` y expondría las 36 rutas privadas.
     expect(rutasRastreables()).toContain("/$");

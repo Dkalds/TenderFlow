@@ -151,10 +151,18 @@ export const PAGINAS_PUBLICAS: readonly PaginaPublica[] = [
   },
 ];
 
+/**
+ * Un prefijo casa la ruta exacta y lo que cuelga de ella con `/`, no cualquier
+ * cosa que empiece igual.
+ *
+ * Con `startsWith` a secas, `/cpv` abría también `/cpvfoo` y `/login` abría
+ * `/loginfalso`: rutas que no existen, que el proxy servía como públicas y que
+ * acababan en el 404 raíz —fuera del layout público— en vez de en el del grupo.
+ * La frontera lo cierra sin tocar ninguna URL real.
+ */
 function casa(pagina: PaginaPublica, pathname: string): boolean {
-  return pagina.coincidencia === "exacta"
-    ? pagina.ruta === pathname
-    : pathname.startsWith(pagina.ruta);
+  if (pagina.ruta === pathname) return true;
+  return pagina.coincidencia === "prefijo" && pathname.startsWith(`${pagina.ruta}/`);
 }
 
 /** ¿Se sirve sin sesión? */

@@ -6,15 +6,16 @@ import Link from "next/link";
 /**
  * 404 de última instancia: URLs que no caen en ningún grupo de rutas.
  *
- * Quién llega aquí, comprobado en local: **sólo alguien con sesión**. Una ruta
- * desconocida sin cookie no llega a renderizar nada — el proxy la trata como
- * privada por defecto y devuelve un 307 a `/login` (ver `proxy.ts` y su test).
- * Las 404 que sí ve un visitante anónimo son las de la superficie pública, y de
- * esas se ocupa `app/(publico)/not-found.tsx`, que conserva cabecera y pie.
+ * Quién llega aquí. Una ruta desconocida **sin relación con nada público** la
+ * corta antes el proxy, que la trata como privada y devuelve un 307 a `/login`
+ * (ver `proxy.ts` y su test). Pero también aterrizan aquí las URLs sin ruta que
+ * sí cuelgan de un prefijo público —una ficha con un segmento de más, un enlace
+ * viejo de un buscador— y ésas las ve un visitante anónimo. Por eso el botón
+ * lleva a la portada y no a `/resumen`, que para él es otro muro de login.
  *
- * Aun así el botón deja de llevar a `/resumen`: la portada sirve a los dos
- * públicos —a quien tiene sesión el proxy lo reenvía él mismo a su dashboard—
- * y no da por hecho que quien se topa con un 404 venga de dentro.
+ * Las 404 de las rutas que sí existen —un hub sin resultados, una ficha
+ * despublicada— las atiende `app/(publico)/not-found.tsx`, que conserva la
+ * cabecera y el pie del sitio.
  */
 export default function RootNotFound() {
   return (

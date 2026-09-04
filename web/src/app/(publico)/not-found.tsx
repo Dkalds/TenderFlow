@@ -35,7 +35,7 @@ export default function PublicoNotFound() {
       </h1>
       <p className="text-muted-foreground mt-4 max-w-[58ch] text-base leading-relaxed">
         Puede que el anuncio ya no esté publicado, o que la dirección esté mal escrita. El corpus
-        público se puede recorrer entero desde cualquiera de estos dos índices.
+        público se puede recorrer entero desde los índices por comunidad autónoma y por código CPV.
       </p>
       <ul className="mt-8 space-y-2">
         {DESTINOS.map((destino) => (

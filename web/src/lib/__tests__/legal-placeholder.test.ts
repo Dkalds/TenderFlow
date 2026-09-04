@@ -46,6 +46,26 @@ describe("esValorLegalPlaceholder", () => {
     expect(esValorLegalPlaceholder(valor)).toBe(false);
   });
 
+  // La primera versión comparaba subcadenas y estos cuatro rompían el build de
+  // producción por su propia razón social: dentro de «méTODOs» hay un «todo», y
+  // «Desarrollos» contiene «desarrollo». Un guard que rechaza a una empresa real
+  // es peor que el problema que vino a resolver.
+  it.each([
+    ["Métodos Avanzados, S.L.", "«todo» dentro de «métodos»"],
+    ["Desarrollos Informáticos del Sur, S.A.", "«desarrollo» dentro de «desarrollos»"],
+    ["Avenida Todos los Santos 4, 41002 Sevilla", "«todo» dentro de «todos»"],
+    ["Consultoría Todoterreno, S.L.", "«todo» dentro de «todoterreno»"],
+    ["Ejemplar Servicios Jurídicos, S.L.", "«ejemplo» no está: «ejemplar» sí"],
+  ])("%s NO es relleno (%s)", (valor) => {
+    expect(esValorLegalPlaceholder(valor)).toBe(false);
+  });
+
+  it("sigue cazando la palabra suelta, no sólo la frase", () => {
+    expect(esValorLegalPlaceholder("TODO")).toBe(true);
+    expect(esValorLegalPlaceholder("Avenida Ejemplo 3")).toBe(true);
+    expect(esValorLegalPlaceholder("Pendiente")).toBe(true);
+  });
+
   it("recorta antes de decidir", () => {
     expect(esValorLegalPlaceholder("  Tenderflow Analytics, S.L.  ")).toBe(false);
   });

@@ -495,7 +495,11 @@ export default function LandingPage() {
           competía con el único formulario de la página. */}
       <section className="border-border/60 border-t">
         <div className="mx-auto w-full max-w-6xl px-6 py-20">
-          <div className="grid gap-x-14 gap-y-10 md:grid-cols-[minmax(0,1fr)_minmax(0,32rem)]">
+          {/* `lg` y no `md`: a 768 px el contenedor deja 664 px para las dos
+                pistas, la fija se lleva sus 32rem y a la columna de texto le
+                quedaban 152 px — el titular se salía de su caja. A partir de
+                1024 px hay sitio de sobra para las dos. */}
+            <div className="grid gap-x-14 gap-y-10 lg:grid-cols-[minmax(0,1fr)_minmax(0,28rem)]">
             <div>
               <h2 className="font-display max-w-[18ch] text-3xl font-semibold tracking-[-0.02em] text-balance md:text-4xl">
                 {CONTENIDO.cierreTitulo}

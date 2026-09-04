@@ -63,8 +63,9 @@ export async function FranjaDatos() {
     return null;
   }
 
-  // `agruparSiempre`: las tres cifras se leen juntas, y sin él la del medio
-  // salía como "1038" al lado de "417.182" — mismo locale, dos formatos.
+  // `agruparSiempre`: las tres cifras se leen juntas, y sin él el recuento de
+  // códigos CPV salía como "1038" al lado de "417.182" — mismo locale, dos
+  // formatos, porque `es-ES` no agrupa los números de cuatro dígitos.
   const cifras = [
     { valor: formatNumber(resumen.total, "es-ES", { agruparSiempre: true }), etiqueta: CONTENIDO.franjaExpedientes },
     {

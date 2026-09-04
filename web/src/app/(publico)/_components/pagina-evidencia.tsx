@@ -71,7 +71,7 @@ export function PaginaEvidencia({
 
       <footer className="border-border/60 mt-4 border-t pt-10">
         <p className="font-display max-w-[34ch] text-2xl font-semibold tracking-[-0.02em] text-balance">
-          Contrasta estas reglas con vuestros propios expedientes.
+          Contrasta estas reglas con tus propios expedientes.
         </p>
         {/* Misma etiqueta que los otros cuatro CTA del sitio. Decía «Solicitar
             revisión», que nombraba una acción distinta de la que ocurre y

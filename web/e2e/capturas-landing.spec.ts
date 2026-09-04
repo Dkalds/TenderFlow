@@ -1,6 +1,5 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
-import sharp from "sharp";
 import { test } from "@playwright/test";
 import { SEED_LICITACION } from "./fixtures";
 
@@ -64,7 +63,27 @@ const MOVIL = { width: 375, height: 812 };
  *  150 KB y 41 KB; conviene no alejarse de ahí. */
 const WEBP = { quality: 82 } as const;
 
+/**
+ * `sharp` se importa aquí dentro y no en la cabecera del módulo.
+ *
+ * No está declarado en `web/package.json`: llega como dependencia **opcional y
+ * transitiva** de `next`. Un `import` de nivel superior lo convertiría en
+ * requisito de cargar el fichero, y Playwright carga todos los specs para
+ * listarlos — así que un `npm ci --omit=optional`, o una versión de Next que
+ * deje de traerlo, rompería el listado de tests y el typecheck por un paquete
+ * que nadie declaró. Dentro de la función, el coste lo paga sólo quien ejecuta
+ * la herramienta, y el mensaje dice qué hacer.
+ */
 async function guardarWebp(png: Buffer, nombre: string): Promise<void> {
+  let sharp;
+  try {
+    ({ default: sharp } = await import("sharp"));
+  } catch {
+    throw new Error(
+      "Falta `sharp`, que convierte las capturas a webp. Llega como dependencia " +
+        "opcional de next: instálalo con `npm i -D sharp` si tu instalación lo omitió.",
+    );
+  }
   await mkdir(DESTINO, { recursive: true });
   const webp = await sharp(png).webp(WEBP).toBuffer();
   await writeFile(path.join(DESTINO, nombre), webp);

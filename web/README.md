@@ -43,7 +43,7 @@ src/
 ├── hooks/                  # Hooks de datos (TanStack Query)
 ├── lib/                    # API client, filtros nuqs, utilidades (ask-stream, etc.)
 ├── generated/              # api.d.ts generado desde OpenAPI (no editar a mano)
-├── test/                   # Tests e2e (Playwright)
+├── test/                   # Setup de Vitest (los e2e están en web/e2e/)
 └── proxy.ts                # Proxy de borde (sesión + CSP). Se llamaba
                             # middleware.ts hasta Next 16.
 ```

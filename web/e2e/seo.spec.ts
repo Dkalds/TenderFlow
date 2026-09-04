@@ -4,15 +4,15 @@ import { test, expect } from "@playwright/test";
  * Guard de la superficie pública y de SEO.
  *
  * Existe por un fallo concreto y fácil de reintroducir: el matcher de
- * `src/middleware.ts` sólo excluye `/api`, `/_next/static`, `/_next/image` y
+ * `src/proxy.ts` sólo excluye `/api`, `/_next/static`, `/_next/image` y
  * `favicon.ico`, así que `robots.txt`, `sitemap.xml` y las rutas de imagen de
  * metadatos pasan por el control de sesión. Hasta que se añadieron a
- * `PUBLIC_PREFIXES` devolvían un 307 a `/login`, con dos consecuencias
+ * `la lista de rutas públicas` devolvían un 307 a `/login`, con dos consecuencias
  * invisibles desde dentro del producto: Google no podía leer el robots, y el
  * unfurler de Slack/LinkedIn/WhatsApp recibía la pantalla de login en lugar de
  * la imagen Open Graph, de modo que cada enlace compartido salía sin preview.
  *
- * Un `PUBLIC_PREFIXES` reordenado o un matcher retocado lo rompen sin que falle
+ * Un `la lista de rutas públicas` reordenado o un matcher retocado lo rompen sin que falle
  * ningún otro test. De ahí que cada bloque compruebe el par completo: lo
  * público responde 200 **y** el dashboard sigue cerrado. La segunda mitad
  * importa tanto como la primera — una exención demasiado ancha (meter `"/"`

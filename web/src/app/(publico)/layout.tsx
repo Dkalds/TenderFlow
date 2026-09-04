@@ -72,9 +72,15 @@ export const metadata: Metadata = {
 
 /* Piel de los enlaces del pie. `py-1.5` no es decorativo: sin él estos enlaces
  * miden 16 px de alto y quedan por debajo del mínimo de 24×24 px que exige
- * WCAG 2.5.8. Estaba copiada carácter a carácter en los cinco. */
+ * WCAG 2.5.8. Estaba copiada carácter a carácter en los cinco.
+ *
+ * Sin `-my-1.5`: ese margen negativo devolvía al renglón la altura que el
+ * padding le daba, y con ocho enlaces repartidos en varias líneas las cajas de
+ * dos filas contiguas se solapaban 8 px. Un objetivo táctil que invade al de
+ * arriba incumple el mismo criterio que el padding venía a satisfacer, así que
+ * la altura se recupera con el `gap-y` del contenedor, no comiéndosela. */
 const ENLACE_PIE =
-  "hover:text-foreground focus-visible:ring-ring -my-1.5 inline-flex items-center rounded px-1 " +
+  "hover:text-foreground focus-visible:ring-ring inline-flex items-center rounded px-1 " +
   "py-1.5 transition-colors duration-150 focus-visible:ring-2 focus-visible:outline-none";
 
 /* Orden deliberado: primero la superficie de datos que se puede ver sin cuenta,
@@ -96,14 +102,21 @@ export default function PublicoLayout({ children }: { children: React.ReactNode 
           es lo que acota la fuente de titulares a la superficie pública. */}
       <div className={`${fuenteDisplay.variable} bg-background flex min-h-screen flex-col`}>
         <header className="tf-glass border-border/60 sticky top-0 z-40 border-b">
-          {/* Dos filas en móvil, una en tablet y escritorio, con una sola nav
-              en el DOM: el `order`/`w-full` la baja de renglón por debajo de
-              `sm` y la deja en línea a partir de ahí. Antes era `hidden sm:flex`
-              sin alternativa, así que en un teléfono —donde no cabe el rail del
-              dashboard ni hay menú— las dos páginas que reparten autoridad
-              interna hacia los hubs desaparecían del chrome. Duplicar el menú
-              para la versión estrecha habría sido lo fácil y lo peor: dos veces
-              cada enlace en el HTML que lee un rastreador. */}
+          {/* El header se reparte en varias filas por debajo de `sm` y vuelve a
+              una sola línea a partir de ahí, con una sola nav en el DOM. Antes
+              era `hidden sm:flex` sin alternativa, así que en un teléfono
+              —donde no cabe el rail del dashboard ni hay menú— las dos páginas
+              que reparten autoridad interna hacia los hubs desaparecían del
+              chrome. Duplicar el menú para la versión estrecha habría sido lo
+              fácil y lo peor: dos veces cada enlace en el HTML que lee un
+              rastreador.
+
+              Sin `order-*`: la primera versión bajaba la nav al último renglón
+              con `order-last`, y eso dejaba el orden de tabulación (logo → nav →
+              acceso, el del DOM) al revés del orden visual (logo → acceso →
+              nav). Quien navega con teclado saltaba a una fila que veía debajo y
+              luego volvía arriba. Dejando mandar al DOM, las dos secuencias
+              coinciden a cualquier ancho. */}
           <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center gap-x-7 gap-y-2.5 px-6 py-3.5">
             <Link
               href="/"
@@ -117,7 +130,7 @@ export default function PublicoLayout({ children }: { children: React.ReactNode 
               sitemap: rastreables, pero sin nada que los respalde. */}
             <nav
               aria-label="Secciones"
-              className="order-last flex w-full items-center gap-5 text-sm sm:order-none sm:mr-auto sm:w-auto"
+              className="flex w-full items-center gap-5 text-sm sm:mr-auto sm:w-auto"
             >
               <Link
                 href="/licitaciones"
@@ -194,7 +207,7 @@ export default function PublicoLayout({ children }: { children: React.ReactNode 
                 buscan. */}
               <nav
                 aria-label="Enlaces del pie"
-                className="text-muted-foreground flex flex-wrap items-center gap-x-5 gap-y-1 text-xs font-medium"
+                className="text-muted-foreground -my-1.5 flex flex-wrap items-center gap-x-5 text-xs font-medium"
               >
                 {ENLACES_PIE.map((enlace) => (
                   <Link key={enlace.href} href={enlace.href} className={ENLACE_PIE}>

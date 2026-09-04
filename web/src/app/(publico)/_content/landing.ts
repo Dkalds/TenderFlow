@@ -41,12 +41,14 @@
  * cada cuatro horas pese a llamarse "daily"—. La fuente de verdad es el código.
  */
 
-/** Clave de icono. La iconografía es maquetación, no contenido, pero la
- * correspondencia sí es del contenido: antes vivía en arrays paralelos
- * indexados por posición, de modo que reordenar este fichero desalineaba los
- * iconos sin un solo error de compilación —y un `?? ICONOS[0]` enmascaraba el
- * desajuste en vez de delatarlo—. Con una clave, el mapa del componente es
- * exhaustivo y el compilador avisa. */
+/** Clave temática de cada bloque.
+ *
+ * Nació para elegir el icono de una tarjeta; el rediseño de 2026-09 retiró los
+ * iconos de la portada y la clave se quedó por otro motivo: es lo que permite a
+ * `page.tsx` reconocer una sección concreta —dónde va el diccionario de
+ * familias, tras cuál el reclamo intermedio— sin comparar títulos, que cambian
+ * en cada revisión de copy. Sigue siendo una clave y no una posición: reordenar
+ * este fichero no descoloca nada. */
 export type IconoLanding = "radar" | "precio" | "competencia" | "corpus" | "scoring" | "pliegos" | "flujo";
 
 /** Los tres verbos del producto, arriba del todo. Cada uno resume una
@@ -210,7 +212,7 @@ export const CONTENIDO: ContenidoLanding = {
 
   ultimosTitulo: "Últimos anuncios publicados",
   ultimosFecha: "El más reciente:",
-  ultimosEnlace: "Ver todos los anuncios publicados",
+  ultimosEnlace: "Explorar los anuncios por comunidad autónoma",
 
   ctaIntermedioTitulo: "¿Te sirve para tus concursos?",
   ctaIntermedioTexto: "No hace falta llegar al final de la página para pedir acceso.",
@@ -305,7 +307,7 @@ export const CONTENIDO: ContenidoLanding = {
       bullets: [
         "Datos de fuentes oficiales, reutilizados al amparo de la Ley 37/2007. No es tiempo real, y no sustituye a consultar la fuente antes de presentar una oferta.",
         "Lo que la fuente no publica queda vacío, y se mide cuánto falta en órgano de contratación, importe y CPV.",
-        "Si vigilas una empresa se conservan sus adjudicaciones, aunque el expediente no dé señal tecnológica.",
+        "Si vigilas una empresa se conservan sus adjudicaciones desde que la das de alta, aunque el expediente no dé señal tecnológica.",
       ],
       enlaces: [
         { texto: "Qué entra en el corpus y qué queda fuera", href: "/cobertura" },
@@ -318,12 +320,12 @@ export const CONTENIDO: ContenidoLanding = {
       icono: "scoring",
       h2: "Cada número dice de dónde sale, y cuándo no hay bastante para decirlo",
       parrafos: [
-        "El orden del día se calcula sobre seis dimensiones y el desglose viaja con cada expediente: se ve qué aportó cada una y cuál no tenía dato. Una señal que falta puntúa neutral y se declara; no se disfraza de valoración negativa.",
+        "El orden del día se calcula sobre seis dimensiones y el desglose viaja con cada expediente: se ve qué aportó cada una y cuál no tenía dato. Una señal que falta puntúa neutral en su dimensión y queda declarada; las ausencias que sí penalizan lo hacen en la dimensión de riesgo, a la vista.",
         "Con la baja de referencia pasa lo mismo: hay escenarios cuando existen adjudicaciones comparables suficientes, y cuando no las hay el producto responde que la muestra es insuficiente.",
       ],
       bullets: [
         "Cuatro bandas —Caliente, Atractiva, Tibia y Descarte— para cortar el listado por umbral.",
-        "El clasificador es auditable: la API devuelve qué términos pesaron en su decisión.",
+        "El clasificador de familia SAP es auditable: la API devuelve qué términos pesaron en su decisión.",
         "Los escenarios son descriptivos: no devuelven probabilidad de ganar, y así está escrito en el código.",
       ],
       enlaces: [{ texto: "Cómo se calcula cada señal, y cuándo se declara insuficiente", href: "/metodologia" }],

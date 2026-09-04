@@ -25,34 +25,48 @@
  * ## Qué se considera relleno
  *
  * Un valor vacío o en blanco, y cualquiera que contenga una de las marcas de
- * abajo. Es deliberadamente **generoso en falsos positivos**: rechazar de más
- * cuesta un build fallido con un mensaje que dice qué variable revisar; rechazar
- * de menos cuesta publicar un aviso legal inválido durante semanas. Una razón
- * social real no contiene «placeholder» ni «no desplegar».
+ * abajo. La primera versión comparaba subcadenas sueltas y era **demasiado**
+ * generosa: `"desarrollo"` marcaba «Desarrollos Informáticos del Sur, S.A.», y
+ * `"todo"` marcaba «Métodos Avanzados, S.L.» y «Avenida Todos los Santos» —dentro
+ * de «méTODOs» hay un «todo»—. El coste de ese falso positivo no es teórico: es
+ * el build de producción de una empresa con un nombre corriente, roto por su
+ * propia razón social.
+ *
+ * De ahí las dos familias de abajo. Las **frases** se buscan como subcadena
+ * porque no aparecen por accidente en un dato societario. Las **palabras** se
+ * buscan con frontera de palabra, de modo que casan «todo» pero no «métodos», y
+ * «ejemplo» pero no «ejemplar».
+ *
+ * Sigue inclinado hacia rechazar de más: rechazar cuesta un build fallido con un
+ * mensaje que dice qué variable revisar, y no rechazar cuesta publicar un aviso
+ * legal inválido durante semanas.
  */
 
 /**
- * Marcas que delatan un valor de relleno. En minúsculas y sin acentos: el
- * predicado normaliza antes de comparar, así que «Pendiente» y «pendiente»
- * casan igual.
+ * Frases que sólo aparecen en un valor puesto para acordarse de cambiarlo. Se
+ * buscan como subcadena: ningún dato societario las contiene por casualidad.
+ *
+ * En minúsculas y sin acentos, porque el predicado normaliza antes de comparar.
  */
-const MARCAS_DE_RELLENO = [
+const FRASES_DE_RELLENO = [
   "placeholder",
   "no desplegar",
   "sin validez",
-  "desarrollo",
-  "pendiente",
+  "de desarrollo",
   "por completar",
-  "completar",
-  "ejemplo",
-  "example",
-  "dummy",
-  "tbd",
-  "todo",
-  "xxx",
+  "pendiente de",
+  "sin definir",
+  "a rellenar",
+  "cambiar esto",
   // NIF de relleno canónico del repo: nueve caracteres que ninguna AEAT emite.
   "x0000000x",
 ];
+
+/**
+ * Palabras que delatan un relleno **sólo si están sueltas**. Con frontera de
+ * palabra: «todo» sí, «métodos» y «todos» no; «ejemplo» sí, «ejemplar» no.
+ */
+const PALABRAS_DE_RELLENO = ["todo", "tbd", "xxx", "dummy", "ejemplo", "example", "lorem", "pendiente"];
 
 /**
  * ¿Hay que tratar este valor como si la variable no estuviera definida?
@@ -74,5 +88,10 @@ export function esValorLegalPlaceholder(valor: string | null | undefined): boole
     .replace(/\p{Diacritic}/gu, "")
     .toLowerCase();
 
-  return MARCAS_DE_RELLENO.some((marca) => normalizado.includes(marca));
+  if (FRASES_DE_RELLENO.some((frase) => normalizado.includes(frase))) return true;
+
+  // La frontera de palabra se evalúa sobre el valor ya normalizado —sin
+  // acentos—, así que se comporta igual en «ejemplo» que en cualquier palabra
+  // ASCII.
+  return PALABRAS_DE_RELLENO.some((palabra) => new RegExp(`\\b${palabra}\\b`).test(normalizado));
 }
