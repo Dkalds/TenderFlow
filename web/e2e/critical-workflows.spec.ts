@@ -146,10 +146,17 @@ test.describe("Flujos de trabajo críticos", () => {
         page.getByRole("button", { name: "Eliminar mi cuenta definitivamente" }).click(),
       ]);
 
-      expect(
-        respuesta.status(),
-        `DELETE /me devolvió ${respuesta.status()}: ${await respuesta.text()}`,
-      ).toBe(200);
+      // El cuerpo se lee con red: tras un borrado con éxito la app navega a
+      // `/login` —la sesión acaba de revocarse— y Chromium libera el cuerpo de
+      // la respuesta, de modo que `.text()` lanza «Protocol error
+      // (Network.getResponseBody): No resource with given identifier found».
+      // El estado sigue disponible siempre; el cuerpo solo hace falta para
+      // explicar un fallo, así que su ausencia no puede ser el fallo.
+      const cuerpo = await respuesta
+        .text()
+        .catch(() => "<cuerpo no disponible: la página ya había navegado>");
+
+      expect(respuesta.status(), `DELETE /me devolvió ${respuesta.status()}: ${cuerpo}`).toBe(200);
       expect(respuesta.request().headers()["x-csrf-token"]).toBeTruthy();
       expect(JSON.parse(respuesta.request().postData() ?? "{}")).toEqual({
         confirmation: "DELETE",
