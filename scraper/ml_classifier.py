@@ -56,7 +56,6 @@ Uso:
 
 from __future__ import annotations
 
-import re
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
@@ -71,7 +70,6 @@ from scraper.ml_pipeline import (
     _tune_pipeline,
 )
 from shared.model_integrity import verify_model_integrity, write_checksum
-from shared.outbound_http import pinned_https_request
 
 if TYPE_CHECKING:
     import numpy as np
@@ -80,21 +78,15 @@ if TYPE_CHECKING:
 
 log = get_logger(__name__)
 
+#: Motivo de degradación cuando el artefacto de la versión activa del registry
+#: no está en esta máquina y se sirve el modelo local, que puede ser anterior.
+#: `api/model_cache.py` lo publica en la respuesta de /explain: servir
+#: explicaciones de un modelo distinto del que dice el registry, en silencio,
+#: es peor que no servirlas.
+DEGRADACION_VERSION_MISMATCH = "serving_version_mismatch"
+
 # Ruta del modelo serializado (formato joblib, extensión .pkl por compatibilidad)
 _MODEL_PATH = Path(__file__).parents[1] / "data" / "models" / "sap_classifier.pkl"
-_GITHUB_REPO_RE = re.compile(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+")
-
-# Motivo de degradación cuando el artefacto de la versión activa del registry
-# no está en esta máquina y se sirve el local, que puede ser anterior. Viaja en
-# `SAPClassifier.serving_degradado` y sale por el `warning` de `explain()`: un
-# `log.warning` en el contenedor no lo ve quien consume la API, y esta es
-# justo la situación en la que las explicaciones que devuelve no son las del
-# modelo que el registry dice estar sirviendo.
-DEGRADACION_VERSION_MISMATCH = "serving_version_mismatch"
-_AVISO_VERSION_MISMATCH = (
-    "Degradado: el artefacto de la versión activa no está en esta máquina; "
-    "esta explicación sale del modelo local, que puede ser anterior."
-)
 
 # Número mínimo de ejemplos para entrenar
 MIN_TRAIN_SAMPLES = 50
@@ -135,10 +127,6 @@ class SAPClassifier:
         self._threshold: float = settings.ML_CONFIDENCE_THRESHOLD
         # Metadata del entrenamiento (versión, métricas, timestamp).
         self.metadata: dict[str, Any] = {}
-        # Por qué esta instancia NO es el artefacto de la versión activa del
-        # registry, si ese es el caso. Lo rellena `load()`; `explain()` lo
-        # propaga a la respuesta de la API. Ver DEGRADACION_VERSION_MISMATCH.
-        self.serving_degradado: str | None = None
 
     # ── Entrenamiento ─────────────────────────────────────────────────────
 
@@ -698,8 +686,7 @@ class SAPClassifier:
 
         Returns:
             Dict con ``prediction``, ``confidence``, ``top_features`` (lista
-            de ``{term, weight, contribution}``) y, cuando el serving está
-            degradado, ``warning`` (ver :func:`_con_degradacion`).
+            de ``{term, weight, contribution}``).
         """
         if not self._trained:
             raise RuntimeError("Clasificador no entrenado.")
@@ -714,14 +701,12 @@ class SAPClassifier:
         clf_step = self.pipeline.named_steps.get("clf")
 
         if feature_step is None or clf_step is None:
-            return self._con_degradacion(
-                {
-                    "prediction": confidence >= self._threshold,
-                    "confidence": confidence,
-                    "top_features": [],
-                    "warning": "No se pudieron extraer pasos del pipeline.",
-                }
-            )
+            return {
+                "prediction": confidence >= self._threshold,
+                "confidence": confidence,
+                "top_features": [],
+                "warning": "No se pudieron extraer pasos del pipeline.",
+            }
 
         # Transformar el texto a través del FeatureUnion
         tfidf_matrix = feature_step.transform([text])
@@ -737,16 +722,12 @@ class SAPClassifier:
             if hasattr(clf_step, "coef_"):
                 coef = clf_step.coef_[0]
             else:
-                return self._con_degradacion(
-                    {
-                        "prediction": confidence >= self._threshold,
-                        "confidence": confidence,
-                        "top_features": [],
-                        "warning": (
-                            f"Clasificador {type(clf_step).__name__} no soporta explicación lineal."
-                        ),
-                    }
-                )
+                return {
+                    "prediction": confidence >= self._threshold,
+                    "confidence": confidence,
+                    "top_features": [],
+                    "warning": f"Clasificador {type(clf_step).__name__} no soporta explicación lineal.",
+                }
 
         contributions = tfidf_matrix.multiply(coef).toarray().ravel()
 
@@ -775,23 +756,31 @@ class SAPClassifier:
         )
 
     def _con_degradacion(self, payload: dict[str, Any]) -> dict[str, Any]:
-        """Adjunta el aviso de degradación al payload de ``explain``.
+        """Añade el motivo de degradación al payload, si lo hay.
 
-        Cuando el artefacto de la versión activa no está en esta máquina, la
-        API sirve el modelo local sin decirlo: hasta ahora eso era solo un
-        `log.warning` dentro del contenedor, invisible para quien consume
-        `/explain`. El campo `warning` ya existe en el DTO de la respuesta
-        (`ExplainPayload`), así que la degradación viaja por ahí en vez de
-        exigir un campo nuevo — y se **antepone** a un aviso previo en lugar de
-        pisarlo: los dos son ciertos y el de degradación es el que cambia cómo
-        hay que leer la explicación entera.
+        La explicación de /explain sale de un modelo concreto, y cuando el
+        artefacto de la versión activa del registry no está en esta máquina se
+        sirve el local — que puede ser **anterior**. Eso quedaba solo en un
+        ``log.warning`` dentro de un runner efímero, así que desde fuera una
+        explicación degradada era indistinguible de una sana: misma forma,
+        misma confianza, otro modelo.
+
+        El payload sale intacto cuando no hay degradación: un ``warning``
+        siempre presente se aprende a ignorar en dos días, y entonces el aviso
+        deja de avisar.
         """
-        if not self.serving_degradado:
+        motivo = getattr(self, "serving_degradado", None)
+        if not motivo:
             return payload
-        previo = str(payload.get("warning") or "")
-        payload["warning"] = f"{_AVISO_VERSION_MISMATCH} {previo}".strip()
-        payload["degradado"] = self.serving_degradado
-        return payload
+        return {
+            **payload,
+            "degradado": motivo,
+            "warning": (
+                "Degradado: se está sirviendo el modelo local porque el artefacto de la "
+                "versión activa del registry no está disponible en esta instancia. La "
+                "explicación puede corresponder a un modelo anterior."
+            ),
+        }
 
     # ── Persistencia ──────────────────────────────────────────────────────
 
@@ -825,133 +814,79 @@ class SAPClassifier:
         path: Path | None = None,
         repo: str = "Dkalds/TenderFlow",
         asset_name: str = "sap_classifier.pkl",
-        pinned_sha256: str | None = None,
-        pin_setting_name: str = "ML_MODEL_SHA256",
     ) -> bool:
         """Descarga el modelo desde el último GitHub Release si no existe localmente.
 
         Usa GITHUB_TOKEN del entorno si está disponible (necesario para repos privados
         y siempre disponible en GitHub Actions via secrets.GITHUB_TOKEN).
 
-        Args:
-            path: Destino. Por defecto el artefacto local del clasificador SAP.
-            repo: ``owner/name`` del repositorio con la Release.
-            asset_name: Nombre exacto del asset a descargar.
-            pinned_sha256: Pin out-of-band contra el que verificar lo
-                descargado. ``None`` usa ``settings.ML_MODEL_SHA256``. Es
-                parámetro y no lectura fija porque
-                ``TechnologyClassifier.ensure_downloaded`` reutiliza esta
-                descarga para **otro** artefacto: aplicarle el pin del SAP lo
-                borraría en cuanto ese pin estuviera configurado.
-            pin_setting_name: Nombre del setting, solo para el log.
+        Baja **también** el checksum co-ubicado ``sap_classifier.sha256`` de la
+        misma Release: con ``ENV=prod``, ``verify_model_integrity`` rechaza
+        deserializar un artefacto sin checksum ni pin ``ML_MODEL_SHA256``, así
+        que un ``.pkl`` a secas solo cambia el modo de fallo.
+
+        El transporte vive en ``shared.release_assets``, que es quien sabe que
+        el endpoint de assets responde 302 hacia el CDN y toma la decisión de
+        allowlist para ese segundo salto. Aquí se dejó de descargar entre
+        2026-07-27 y 2026-09-03 justamente por no tenerla.
 
         Returns:
             True si el modelo está disponible (ya existía o se descargó correctamente).
             False si no se pudo descargar (sin acceso a red, sin releases, etc.).
         """
-        import json
         import os
+
+        from shared.release_assets import (
+            download_asset,
+            download_checksum_sidecar,
+            fetch_latest_release,
+            find_asset_id,
+        )
 
         target = path or _MODEL_PATH
         if target.exists():
             log.info("ml_classifier.model_already_local", path=str(target))
             return True
 
-        if not _GITHUB_REPO_RE.fullmatch(repo):
-            log.warning("ml_classifier.invalid_release_repository", repository=repo)
-            return False
-
         github_token = os.environ.get("GITHUB_TOKEN", "")
-        auth_header = {"Authorization": f"Bearer {github_token}"} if github_token else {}
-
-        # Obtener la URL del asset desde la GitHub API
-        api_url = f"https://api.github.com/repos/{repo}/releases/latest"
-        try:
-            with pinned_https_request(
-                "GET",
-                api_url,
-                headers={
-                    "Accept": "application/vnd.github+json",
-                    "User-Agent": "tenderflow",
-                    **auth_header,
-                },
-                timeout_seconds=15,
-                allowed_hosts=frozenset({"api.github.com"}),
-            ) as response:
-                response.raise_for_status()
-                release = json.loads(b"".join(response.iter_content()))
-        except Exception as e:
-            log.warning("ml_classifier.release_fetch_failed", error=str(e))
+        release = fetch_latest_release(repo, token=github_token)
+        if release is None:
+            return False
+        asset_id = find_asset_id(release, asset_name)
+        if asset_id is None:
             return False
 
-        if not isinstance(release, dict):
-            log.warning("ml_classifier.invalid_release_response")
-            return False
-        assets = release.get("assets", [])
-        if not isinstance(assets, list):
-            log.warning("ml_classifier.invalid_release_assets")
+        log.info("ml_classifier.downloading_model", asset_id=asset_id, dest=str(target))
+        if not download_asset(repo, asset_id, target, token=github_token):
             return False
 
-        asset_id: int | None = None
-        for asset in assets:
-            if isinstance(asset, dict) and asset.get("name") == asset_name:
-                candidate = asset.get("id")
-                if isinstance(candidate, int) and candidate > 0:
-                    asset_id = candidate
-                break
+        # Verificar el pin out-of-band si está configurado: no confiar en un
+        # modelo descargado cuyo hash no coincide con ML_MODEL_SHA256.
+        pinned = str(getattr(settings, "ML_MODEL_SHA256", "") or "").strip().lower()
+        if pinned:
+            import hashlib
 
-        if not asset_id:
+            actual = hashlib.sha256(target.read_bytes()).hexdigest().lower()
+            if actual != pinned:
+                log.error(
+                    "ml_classifier.download_hash_mismatch",
+                    expected=pinned[:16],
+                    got=actual[:16],
+                )
+                target.unlink(missing_ok=True)
+                return False
+
+        if not download_checksum_sidecar(repo, release, target, token=github_token) and not pinned:
             log.warning(
-                "ml_classifier.asset_not_found", asset=asset_name, release=release.get("tag_name")
+                "ml_classifier.sin_verificacion_de_integridad",
+                path=str(target),
+                hint=(
+                    "la Release no trae el .sha256 del artefacto y ML_MODEL_SHA256 está "
+                    "vacío; con ENV=prod load() rechazará este fichero"
+                ),
             )
-            return False
-
-        # Para repos privados, descargar via API con Accept: application/octet-stream
-        download_url = f"https://api.github.com/repos/{repo}/releases/assets/{asset_id}"
-        target.parent.mkdir(parents=True, exist_ok=True)
-        try:
-            log.info("ml_classifier.downloading_model", asset_id=asset_id, dest=str(target))
-            with pinned_https_request(
-                "GET",
-                download_url,
-                headers={
-                    "Accept": "application/octet-stream",
-                    "User-Agent": "tenderflow",
-                    **auth_header,
-                },
-                timeout_seconds=60,
-                allowed_hosts=frozenset({"api.github.com"}),
-            ) as response:
-                response.raise_for_status()
-                target.write_bytes(b"".join(response.iter_content()))
-            # Verificar el pin out-of-band si está configurado: no confiar en un
-            # modelo descargado cuyo hash no coincide con el pin del artefacto.
-            crudo = (
-                pinned_sha256
-                if pinned_sha256 is not None
-                else getattr(settings, "ML_MODEL_SHA256", "")
-            )
-            pinned = str(crudo or "").strip().lower()
-            if pinned:
-                import hashlib
-
-                actual = hashlib.sha256(target.read_bytes()).hexdigest().lower()
-                if actual != pinned:
-                    log.error(
-                        "ml_classifier.download_hash_mismatch",
-                        pin=pin_setting_name,
-                        expected=pinned[:16],
-                        got=actual[:16],
-                    )
-                    target.unlink(missing_ok=True)
-                    return False
-            log.info("ml_classifier.model_downloaded", path=str(target))
-            return True
-        except Exception as e:
-            log.warning("ml_classifier.download_failed", error=str(e))
-            if target.exists():
-                target.unlink()
-            return False
+        log.info("ml_classifier.model_downloaded", path=str(target))
+        return True
 
     @classmethod
     def load(cls, path: Path | None = None) -> SAPClassifier:
@@ -976,8 +911,10 @@ class SAPClassifier:
         # máquinas (ver ADR-025 sobre identificar artefactos por contenido).
         registry_sha256 = ""
         sirviendo_artefacto_del_registry = False
+        # Motivo de degradación del servicio, si lo hay. Viaja con el objeto
+        # devuelto —no solo al log— porque el caller tiene que poder DECIRLO.
+        degradado_al_cargar: str | None = None
         version_activa: object | None = None
-        degradado: str | None = None
         if path is None:
             try:
                 from db.model_registry import get_active
@@ -1002,7 +939,6 @@ class SAPClassifier:
                         # aplicarlo como pin hacía que todo `load()` muriera
                         # con "integridad comprometida" en cuanto el
                         # reentrenamiento semanal promocionaba una versión.
-                        degradado = DEGRADACION_VERSION_MISMATCH
                         log.warning(
                             "ml_classifier.serving_version_mismatch",
                             version_activa=version_activa,
@@ -1013,6 +949,11 @@ class SAPClassifier:
                                 "se sirve el modelo local, que puede ser anterior."
                             ),
                         )
+                        # Sin esto, un desajuste de versión es invisible desde
+                        # fuera: la API responde con la confianza de siempre
+                        # sobre un modelo que puede ser anterior, y el aviso se
+                        # queda en el log de un runner efímero.
+                        degradado_al_cargar = DEGRADACION_VERSION_MISMATCH
             except Exception as _reg_exc:
                 log.warning("ml_classifier.registry_lookup_failed", error=str(_reg_exc))
 
@@ -1043,23 +984,56 @@ class SAPClassifier:
             obj._threshold = settings.ML_CONFIDENCE_THRESHOLD
         if not hasattr(obj, "metadata"):
             obj.metadata = {}
-        # El artefacto deserializado puede ser anterior a que este atributo
-        # existiera; se fija siempre, tanto para marcar la degradación como
-        # para limpiarla en una carga sana.
-        obj.serving_degradado = degradado
+        # Lo lee `api/model_cache.py::_cargar` para publicarlo en el `warning`
+        # de /explain.
+        obj.serving_degradado = degradado_al_cargar
         log.info(
             "ml_classifier.loaded",
-            degradado=degradado,
             path=str(target),
             threshold=obj._threshold,
             trained_at=obj.metadata.get("trained_at", "legacy"),
+            degradado=degradado_al_cargar,
         )
         return cast(SAPClassifier, obj)
 
     @classmethod
     def is_available(cls, path: Path | None = None) -> bool:
-        """True si existe un modelo entrenado en disco."""
+        """True si existe un modelo entrenado **en disco**, sin tocar la red.
+
+        Predicado barato a propósito: lo llama el ingest por entrada
+        (``scraper/pipeline.py``) y la API por request
+        (``api/routes/feedback.py``). Para decidir si hay modelo servible en un
+        runner efímero -- donde ``data/models/`` viene vacío -- usá
+        :meth:`resolve_artifact`, que sí puede bajarlo de la Release.
+        """
         return (path or _MODEL_PATH).exists()
+
+    @classmethod
+    def resolve_artifact(cls) -> Path | None:
+        """Artefacto servible, bajándolo de la Release si hace falta.
+
+        Tres canales, en orden de preferencia:
+
+        1. La versión activa de ``model_versions``, verificada por sha256
+           (``shared/model_artifacts.py::resolve_servable_artifact``).
+        2. El artefacto local, si este runner ya lo tiene.
+        3. El asset de la última Release por nombre, vía
+           :meth:`ensure_downloaded` — **sin pasar por el registro**.
+
+        El tercero no es redundante, es el único que funciona hoy: ``model_versions``
+        no tiene ninguna fila de ``sap_classifier`` (el registro lo escribe
+        ``train-model.yml``, que no completa desde 2026-07-05), así que 1 devuelve
+        ``None``; y ``data/models/`` está en ``.gitignore``, así que en un runner
+        efímero 2 también. Con solo esos dos, el paso seguiría saliendo en
+        ``no_model`` con el ``sap_classifier.pkl`` publicado en la Release desde
+        el 2026-05-22 y nadie bajándolo.
+        """
+        from shared.model_artifacts import resolve_servable_artifact
+
+        artefacto = resolve_servable_artifact("sap_classifier", _MODEL_PATH)
+        if artefacto is not None:
+            return artefacto
+        return _MODEL_PATH if cls.ensure_downloaded() else None
 
 
 # ── Re-exportaciones de utilidades ───────────────────────────────────────────

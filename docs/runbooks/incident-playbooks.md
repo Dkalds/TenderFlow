@@ -27,7 +27,7 @@ Playbooks de respuesta rápida para los incidentes más comunes del sistema.
 docker compose ps web
 
 # 2. Ver logs recientes
-docker compose logs web --tail 100  # o journalctl -u licitaciones-web
+docker compose logs web --tail 100  # local; en producción, Vercel → Runtime Logs
 
 # 3. Comprobar healthcheck interno
 curl -fsS http://localhost:3000/ > /dev/null
@@ -37,7 +37,7 @@ curl -fsS http://localhost:3000/ > /dev/null
 
 ```bash
 # Reiniciar el servicio
-docker compose restart web  # o systemctl restart licitaciones-web
+docker compose restart web  # local; en producción, Vercel → Redeploy
 
 # Si el problema persiste: revisar si la API responde
 curl -fsS http://localhost:8080/api/v1/health/ready

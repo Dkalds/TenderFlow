@@ -45,7 +45,7 @@ from db.contrato_eventos import contar_por_licitacion_y_tipo
 from db.repositories.adjudicaciones import AdjudicacionRepository
 from observability.logging import get_logger
 from services.dedupe import normalize_organo
-from services.ml.features import _cpv4, _fecha_dt
+from services.ml.features import _cpv4, _fecha_dt, _fecha_opt
 
 log = get_logger(__name__)
 
@@ -128,8 +128,28 @@ class _Emparejamiento:
 
 
 def _cargar_adjudicaciones() -> list[dict[str, Any]]:
-    """Histórico ordenado por fecha de adjudicación (ver ``load_para_retencion``)."""
-    return _adj_repo.load_para_retencion()
+    """Histórico ordenado por fecha de adjudicación (ver ``load_para_retencion``).
+
+    Descarta las filas con ``fecha_adjudicacion`` imposible. El resto del módulo
+    la reparsea con ``_fecha_dt`` —el parser **estricto**— en cuatro sitios:
+    antigüedad de la relación, los dos extremos de la ventana de sucesión y el
+    ancla anti-fuga. Una sola fila basura tumba el entrenamiento entero, que es
+    exactamente como murió el carril de baja el 2026-09-01.
+
+    El #262 cerró aquel caso concreto filtrando los años de menos de cuatro
+    cifras en ``_fecha_opt``, pero este módulo no pasaba por ese parser: llamaba
+    a ``_fecha_dt`` sobre el TEXT crudo. Filtrando en la carga, los cuatro call
+    sites quedan cubiertos a la vez.
+    """
+    filas = _adj_repo.load_para_retencion()
+    validas = [f for f in filas if _fecha_opt(f.get("fecha_adjudicacion")) is not None]
+    if len(validas) != len(filas):
+        log.warning(
+            "retencion_labels_adjudicaciones_con_fecha_imposible",
+            descartadas=len(filas) - len(validas),
+            total=len(filas),
+        )
+    return validas
 
 
 def _eventos_por_licitacion() -> dict[str, dict[str, int]]:
@@ -242,15 +262,19 @@ def _emparejar(
     vistos: set[str] = set()
     for adj in adjudicaciones:
         fin = adj.get("fecha_fin_efectiva")
+        # `_fecha_opt` y no `_fecha_dt`: `fecha_fin_efectiva` es TEXT y admite
+        # la misma basura que `fecha_adjudicacion`. Antes se comprobaba solo
+        # que no fuese vacía y se parseaba a pelo más abajo, así que una fecha
+        # imposible no se saltaba la fila: reventaba el batch.
+        fin_dt = _fecha_opt(fin)
         empresa_id = adj.get("empresa_id")
         organo_n = normalize_organo(adj.get("organo"))
         cpv4 = _cpv4(adj.get("cpv"))
-        if not fin or empresa_id is None or not organo_n or not cpv4:
+        if fin_dt is None or empresa_id is None or not organo_n or not cpv4:
             continue
         lic_id = str(adj["licitacion_id"])
         if lic_id in vistos:
             continue  # contratos multi-lote: un par por contrato
-        fin_dt = _fecha_dt(str(fin))
 
         candidatas = [
             c

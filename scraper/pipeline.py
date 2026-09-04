@@ -187,6 +187,7 @@ def _load_classifiers() -> _ClassifierHolder:
         try:
             from scraper.tech_classifier import TechnologyClassifier
 
+            TechnologyClassifier.ensure_downloaded()
             if TechnologyClassifier.is_available():
                 tech = TechnologyClassifier.load()
                 log.info(

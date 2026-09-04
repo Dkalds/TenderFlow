@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+from datetime import datetime
 
 import pytest
 
@@ -199,3 +200,63 @@ def test_features_abiertas_usa_historico_y_excluye_adjudicadas(db):
     # El ancla es la publicación de la propia licitación (2026-06-01), no `ahora`.
     assert fila.fecha == "2026-06-01"
     assert fila.features["mes"] == 6.0
+
+
+# ---------------------------------------------------------------------------
+# Fechas con año de menos de cuatro cifras (regresión 2026-09)
+# ---------------------------------------------------------------------------
+#
+# `%Y` NO es simétrico: `strptime` exige exactamente cuatro dígitos, pero el
+# `strftime` de glibc no rellena con ceros los años < 1000 (el de Windows sí).
+# Una `fecha_adjudicacion` de '0019-12-10' -- la tiene el expediente
+# `19/002/5-2` en producción, y '0202-02-27' otro de PSCP -- parseaba bien,
+# ganaba el `LEAST` que calcula `fecha_anchor`, se reserializaba como
+# '19-12-10' y reventaba el siguiente parseo dentro de `_folds_rolling`. El
+# reentrenamiento mensual de `train-predictivos.yml` llevaba desde el
+# 2026-09-01 en rojo por esa única fila, y solo en Linux.
+
+
+def test_fecha_opt_descarta_los_anios_de_menos_de_cuatro_cifras():
+    from services.ml.features import _fecha_opt
+
+    assert _fecha_opt("0019-12-10") is None  # expediente 19/002/5-2
+    assert _fecha_opt("0202-02-27") is None  # pscp:1233348-0001
+    assert _fecha_opt("2024-05-01") == datetime(2024, 5, 1)
+
+
+def test_el_ancla_cae_a_la_publicacion_cuando_el_anchor_tiene_anio_corto():
+    from services.ml.features import _ancla
+
+    ancla = _ancla(
+        {"fecha_anchor": "0019-12-10", "fecha_publicacion": "2024-05-01"},
+        datetime(2030, 1, 1),
+    )
+    assert ancla == datetime(2024, 5, 1)
+
+
+def test_la_fecha_serializada_siempre_se_puede_volver_a_parsear():
+    """`FilaDataset.fecha` se relee con `_fecha_dt`, que exige cuatro dígitos
+    de año. `isoformat` los rellena en cualquier plataforma; `strftime('%Y')`
+    no lo hace en glibc."""
+    from services.ml.features import _fecha_dt
+
+    assert _fecha_dt(datetime(19, 12, 10).date().isoformat()) == datetime(19, 12, 10)
+
+
+def test_una_adjudicacion_con_anio_corto_no_rompe_el_dataset(db):
+    from db.database import connect
+    from services.ml.features import _fecha_dt
+
+    with connect() as c:
+        _insert_par(c, "ANIO-CORTO", fecha="2026-05-01")
+        c.execute(
+            "UPDATE adjudicaciones SET fecha_adjudicacion = %s WHERE licitacion_id = %s",
+            ("0019-12-10", "ANIO-CORTO"),
+        )
+
+    filas, _ = construir_dataset_baja()
+
+    fila = next(f for f in filas if f.licitacion_id == "ANIO-CORTO")
+    # El ancla cae a la publicación, y la cadena resultante se relee sin error
+    # (que es exactamente lo que hacía `_folds_rolling` cuando reventaba).
+    assert _fecha_dt(fila.fecha) == datetime(2026, 5, 1)

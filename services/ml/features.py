@@ -182,6 +182,12 @@ def _cpv4(cpv: str | None) -> str | None:
     return digits if len(digits) == 4 and digits.isdigit() else None
 
 
+# Año por debajo del cual una fecha del corpus es basura de la fuente, no un
+# dato. Ver ``_fecha_opt``: es también el umbral exacto a partir del cual
+# ``strftime('%Y')`` deja de poder releerse con ``strptime('%Y')`` en glibc.
+_ANIO_MINIMO = 1000
+
+
 def _fecha_dt(fecha: str) -> datetime:
     """``datetime`` de una fecha del dataset. Lanza ``ValueError`` si no parsea.
 
@@ -200,13 +206,29 @@ def _fecha_dt(fecha: str) -> datetime:
 
 
 def _fecha_opt(fecha: Any) -> datetime | None:
-    """Parseo tolerante: las columnas de fecha son TEXT y admiten basura."""
+    """Parseo tolerante: las columnas de fecha son TEXT y admiten basura.
+
+    Un año de menos de cuatro cifras se descarta como basura. No es purismo:
+    ``%Y`` **no es simétrico** entre ``strptime`` y ``strftime``. ``strptime``
+    exige exactamente cuatro dígitos, pero ``strftime`` de glibc no rellena
+    con ceros los años < 1000 (el de Windows sí). Así que un
+    ``fecha_adjudicacion`` de ``'0019-12-10'`` —lo tiene el expediente
+    ``19/002/5-2`` en producción, y ``'0202-02-27'`` otro de PSCP— parseaba
+    aquí sin problema, ganaba el ``LEAST`` que calcula ``fecha_anchor``, se
+    reserializaba como ``'19-12-10'`` al construir ``FilaDataset.fecha`` y
+    reventaba el siguiente parseo. El reentrenamiento mensual de
+    ``train-predictivos.yml`` murió así, y solo en Linux -- por eso la suite
+    local nunca lo vio. Descartarlo en el único parser tolerante lo mantiene
+    fuera de todos los consumidores a la vez, y el ``or`` de ``_ancla`` cae a
+    ``fecha_publicacion``, que para esas filas sí es una fecha real.
+    """
     if not fecha:
         return None
     try:
-        return _fecha_dt(str(fecha))
+        parseada = _fecha_dt(str(fecha))
     except ValueError:
         return None
+    return parseada if parseada.year >= _ANIO_MINIMO else None
 
 
 def fecha_valida(fecha: Any) -> bool:
@@ -567,7 +589,13 @@ def _procesar(
         out.append(
             FilaDataset(
                 licitacion_id=str(row["id_externo"]),
-                fecha=ancla.strftime("%Y-%m-%d"),
+                # ``isoformat`` y no ``strftime('%Y-%m-%d')``: el segundo no
+                # rellena el año a cuatro cifras en glibc, y esta cadena se
+                # relee después con ``_fecha_dt``, que exige cuatro. Hoy
+                # ``_fecha_opt`` ya filtra esos años, pero ``_ancla`` también
+                # puede devolver el ``defecto``: el inverso exacto de
+                # ``_fecha_dt`` cierra la puerta por las dos vías.
+                fecha=ancla.date().isoformat(),
                 features=features,
                 baja=target,
             )

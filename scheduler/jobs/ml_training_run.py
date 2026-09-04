@@ -1,15 +1,16 @@
-"""Entrenamiento de los clasificadores — entrypoints de los workflows de release.
+"""Entrenamiento del clasificador SAP — entrypoint del workflow de release.
 
-Dos comandos:
+Invocado por ``.github/workflows/train-model.yml``: seed de negativos →
+entrenamiento → precompute de ``ml_proba``. Vivía como heredoc ``python -c``
+dentro del YAML, fuera del alcance de ruff, mypy y los tests; aquí queda como
+código normal.
 
-- sin argumento → clasificador **SAP** binario
-  (``.github/workflows/train-model.yml``): seed de negativos → entrenamiento →
-  precompute de ``ml_proba``. Vivía como heredoc ``python -c`` en el YAML,
-  fuera del alcance de ruff/mypy/tests; aquí queda como código normal.
-- ``tech`` → clasificador **multi-tecnología**
-  (``.github/workflows/train-tech-model.yml``): entrenamiento → evaluación
-  contra el golden set humano → publicación solo si pasa el gate
-  (``services.ml.promotion_tech``).
+El clasificador **multi-tecnología** tiene su propio entrypoint desde #263:
+``scheduler/jobs/tech_training_run.py``, invocado por ``train-tech.yml``. Este
+módulo llegó a tener un subcomando ``tech`` que hacía lo mismo; se retiró al
+fusionar, porque el de allí aplica un gate de etiquetas circulares más estricto
+—un suelo absoluto de etiquetas independientes— y tener dos caminos para
+publicar el mismo artefacto es cómo se acaba publicando el peor de los dos.
 
 No se registra en ``build_default_registry()``: el re-entrenamiento del
 clasificador SAP es un job de release con artefacto versionado, distinto del
@@ -104,82 +105,29 @@ def _emitir_salida_github(metrics: dict[str, Any]) -> None:
         fh.write("\n".join(lineas) + "\n")
 
 
-def run_tech() -> dict[str, Any]:
-    """Entrena el multi-etiqueta y lo publica **solo si** pasa el gate.
-
-    Entrypoint de ``.github/workflows/train-tech-model.yml``. La lógica vive en
-    ``services.ml.promotion_tech``; aquí solo se orquesta y se traduce el
-    desenlace a ``$GITHUB_OUTPUT``, igual que hace :func:`run` con el binario.
-
-    Raises:
-        RuntimeError: Si el entrenamiento devuelve ``error`` (dataset
-            insuficiente, columna de etiquetas ausente…). Un gate que rechaza
-            NO es un error: eso sale por ``promoted=false``.
-    """
-    from services.ml.promotion_tech import entrenar_y_promocionar
-
-    resultado = entrenar_y_promocionar()
-    metrics = resultado["metrics"]
-    log.info(
-        "ml_tech_training_metrics",
-        **{k: v for k, v in metrics.items() if k not in ("error", "per_tech")},
-    )
-    if "error" in metrics:
-        raise RuntimeError(f"Tech training failed: {metrics['error']}")
-    return {**metrics, "promotion": resultado["promotion"]}
-
-
-def _emitir_salida_github_tech(metrics: dict[str, Any]) -> None:
-    """``$GITHUB_OUTPUT`` del multi-etiqueta.
-
-    Mismos nombres de salida que el binario (``promoted``,
-    ``rejection_reasons``, ``recall_no_keyword``) para que los dos workflows se
-    lean igual, más los conteos propios del multi-label.
-    """
-    destino = os.environ.get("GITHUB_OUTPUT")
-    if not destino:
-        return
-    promocion = metrics.get("promotion") or {}
-    motivos = "; ".join(str(m) for m in (promocion.get("motivos_rechazo") or []))
-    golden = promocion.get("golden") or {}
-    lineas = [
-        f"promoted={'true' if promocionado(metrics) else 'false'}",
-        f"version={promocion.get('version') or ''}",
-        f"rejection_reasons={motivos.replace(chr(10), ' ')}",
-        f"recall_no_keyword={golden.get('recall_no_keyword', '')}",
-        f"macro_f1_all_labels={metrics.get('macro_f1_all_labels', '')}",
-        f"n_models={metrics.get('n_models', '')}",
-        f"labels_circulares={metrics.get('labels_circulares', '')}",
-        f"n_train={metrics.get('n_train', '')}",
-        f"n_test={metrics.get('n_test', '')}",
-    ]
-    with open(destino, "a", encoding="utf-8") as fh:
-        fh.write("\n".join(lineas) + "\n")
-
-
 if __name__ == "__main__":
     import sys
 
-    # Sin argumento: el clasificador SAP (lo que invoca `train-model.yml`, que
-    # no cambia). `tech`: el multi-etiqueta de `train-tech-model.yml`.
-    _es_tech = len(sys.argv) > 1 and sys.argv[1] == "tech"
-
+    # Un solo camino: el clasificador SAP binario, que es lo que invoca
+    # `train-model.yml`. El multi-etiqueta tiene su propio entrypoint desde
+    # #263 (`scheduler/jobs/tech_training_run.py`, workflow `train-tech.yml`),
+    # con un gate de etiquetas circulares más estricto que el que este módulo
+    # llegó a tener: un suelo absoluto de etiquetas independientes, en vez de
+    # fiarse del flag `labels_circulares`, que se apaga en cuanto UNA fila trae
+    # etiqueta humana.
     try:
-        _metrics = run_tech() if _es_tech else run()
+        _metrics = run()
     except RuntimeError as exc:
-        log.error("ml_training_failed", error=str(exc), modelo="tech" if _es_tech else "sap")
+        log.error("ml_training_failed", error=str(exc), modelo="sap")
         sys.exit(1)
 
-    if _es_tech:
-        _emitir_salida_github_tech(_metrics)
-    else:
-        _emitir_salida_github(_metrics)
+    _emitir_salida_github(_metrics)
     if not promocionado(_metrics):
         # Salida 0 a propósito: el entrenamiento terminó bien y el gate hizo
         # su trabajo. Marcar esto en rojo enseñaría a ignorar los rojos. El
         # workflow se encarga de que quede visible que NO se publicó nada.
         log.warning(
             "ml_training_no_promocionado",
-            modelo="tech" if _es_tech else "sap",
+            modelo="sap",
             motivos=(_metrics.get("promotion") or {}).get("motivos_rechazo"),
         )

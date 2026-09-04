@@ -5,31 +5,13 @@ Contiene:
   - ``seed_negatives()`` — descarga bulk y persiste negativos en la BD
   - ``train_from_db()`` — orquesta entrenamiento completo desde la BD
   - ``precompute_ml_proba()`` — pre-computa ml_proba para todas las licitaciones
-  - ``precompute_ml_tecnologias()`` — pre-computa las columnas multi-tecnología
-
-Contrato de los dos ``precompute_*``
-------------------------------------
-Ambos devuelven una clave **estable** :data:`PRECOMPUTE_STATUS_KEY` (``status``)
-que el orquestador tiene que mirar para decidir el desenlace del paso:
-
-- :data:`PRECOMPUTE_STATUS_OK` — se ejecutó (``updated`` puede ser 0 si no
-  había nada pendiente, que sigue siendo "hecho");
-- :data:`PRECOMPUTE_STATUS_SIN_MODELO` — **no había artefacto**: no se tocó
-  ninguna fila y el paso NO debe reportarse como ``ok``.
-
-La distinción importa porque ``ML_TECH_ENABLED`` está en ``True`` y ningún
-workflow entrenaba ni publicaba el ``tech_classifier``: cada corrida devolvía
-``skipped_no_model`` mientras el paso de la pipeline salía en verde, así que la
-ausencia total del modelo multi-tecnología era invisible desde fuera.
-``skipped_no_model`` se mantiene por compatibilidad con los llamadores
-existentes, pero el campo que se lee es ``status``.
 """
 
 from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any, Final
+from typing import Any
 
 from observability.logging import get_logger
 
@@ -38,11 +20,6 @@ log = get_logger(__name__)
 # Ruta del registro de entrenamientos (histórico de runs).
 _MODEL_DIR = Path(__file__).parents[1] / "data" / "models"
 _REGISTRY_PATH = _MODEL_DIR / "registry.json"
-
-# ── Contrato de resultado de los precompute (leído por el orquestador) ───────
-PRECOMPUTE_STATUS_KEY: Final = "status"
-PRECOMPUTE_STATUS_OK: Final = "ok"
-PRECOMPUTE_STATUS_SIN_MODELO: Final = "sin_modelo"
 
 
 def _append_to_registry(entry: dict[str, Any], path: Path | None = None) -> Path:
@@ -431,7 +408,7 @@ def train_from_db() -> dict[str, Any]:
     return metrics
 
 
-def precompute_ml_proba(*, batch_size: int = 500, force: bool = False) -> dict[str, Any]:
+def precompute_ml_proba(*, batch_size: int = 500, force: bool = False) -> dict[str, int]:
     """Pre-computa ml_proba para todas las licitaciones en la BD.
 
     Actualiza la columna ``ml_proba`` con P(SAP) del clasificador actual.
@@ -443,38 +420,26 @@ def precompute_ml_proba(*, batch_size: int = 500, force: bool = False) -> dict[s
         force: Si True, sobreescribe valores existentes.
 
     Returns:
-        ``{"status": "ok" | "sin_modelo", "updated": N, "skipped_no_model": bool}``.
-        Ver el contrato en el docstring del módulo.
+        {"updated": N, "skipped_no_model": bool}
     """
     from scraper.ml_classifier import SAPClassifier
     from scraper.ml_pipeline import _augment_text
 
-    # `ensure_downloaded()` ANTES de `is_available()`: hasta ahora esto solo
-    # funcionaba por efecto colateral de que la fase de ingesta previa, en el
-    # mismo runner, ya había bajado el artefacto (`scraper/pipeline.py` era el
-    # único sitio del repo que lo llamaba). Cualquier ejecución de este
-    # precompute fuera de esa secuencia —el CLI, un job aislado, un contenedor
-    # nuevo— veía "no hay modelo" con la Release llena de artefactos.
-    if not SAPClassifier.ensure_downloaded():
-        log.warning("precompute_ml_proba.download_unavailable")
-
-    if not SAPClassifier.is_available():
+    # `resolve_artifact` y no `is_available`: el segundo es un `Path.exists()`
+    # sobre `data/models/`, que está en .gitignore y viene vacío en el runner,
+    # así que este paso salía en `no_model` **por construcción** en cada pasada
+    # de la pipeline diaria -- con el artefacto publicado en la Release desde
+    # mayo y nadie bajándolo. Ver `shared/model_artifacts.py`.
+    artefacto = SAPClassifier.resolve_artifact()
+    if artefacto is None:
         log.warning("precompute_ml_proba.no_model")
-        return {
-            PRECOMPUTE_STATUS_KEY: PRECOMPUTE_STATUS_SIN_MODELO,
-            "updated": 0,
-            "skipped_no_model": True,
-        }
+        return {"updated": 0, "skipped_no_model": True}
 
     try:
-        clf = SAPClassifier.load()
+        clf = SAPClassifier.load(artefacto)
     except Exception as exc:
         log.error("precompute_ml_proba.load_failed", error=str(exc))
-        return {
-            PRECOMPUTE_STATUS_KEY: PRECOMPUTE_STATUS_SIN_MODELO,
-            "updated": 0,
-            "skipped_no_model": True,
-        }
+        return {"updated": 0, "skipped_no_model": True}
 
     from db.database import connect
 
@@ -487,11 +452,7 @@ def precompute_ml_proba(*, batch_size: int = 500, force: bool = False) -> dict[s
 
     if not rows:
         log.info("precompute_ml_proba.nothing_to_update")
-        return {
-            PRECOMPUTE_STATUS_KEY: PRECOMPUTE_STATUS_OK,
-            "updated": 0,
-            "skipped_no_model": False,
-        }
+        return {"updated": 0, "skipped_no_model": False}
 
     from config import settings
 
@@ -524,11 +485,7 @@ def precompute_ml_proba(*, batch_size: int = 500, force: bool = False) -> dict[s
         updated += len(batch)
 
     log.info("precompute_ml_proba.done", updated=updated)
-    return {
-        PRECOMPUTE_STATUS_KEY: PRECOMPUTE_STATUS_OK,
-        "updated": updated,
-        "skipped_no_model": False,
-    }
+    return {"updated": updated, "skipped_no_model": False}
 
 
 def precompute_ml_tecnologias(*, batch_size: int = 500, force: bool = False) -> dict[str, Any]:
@@ -543,40 +500,21 @@ def precompute_ml_tecnologias(*, batch_size: int = 500, force: bool = False) -> 
         force: Si True, sobreescribe valores existentes.
 
     Returns:
-        ``{"status": "ok" | "sin_modelo", "updated": N, "scores_inserted": M,
-        "skipped_no_model": bool}``. Ver el contrato en el docstring del módulo:
-        ``status == "sin_modelo"`` significa que **no se hizo nada** porque no
-        hay artefacto, y el paso que llame a esto no puede reportarse ``ok``.
+        ``{"updated": N, "scores_inserted": M, "skipped_no_model": bool}``.
     """
     from scraper.tech_classifier import TechnologyClassifier
 
-    # Mismo orden que en `precompute_ml_proba`: primero intentar traerse el
-    # artefacto de la Release, después preguntar si está. `ML_TECH_ENABLED`
-    # lleva en True desde el principio y este modelo no ha llegado nunca a
-    # producción; sin canal de descarga, `is_available()` era un `Path.exists()`
-    # condenado a devolver False en cualquier contenedor.
-    if not TechnologyClassifier.ensure_downloaded():
-        log.warning("precompute_ml_tecnologias.download_unavailable")
-
-    if not TechnologyClassifier.is_available():
+    # Mismo motivo que en `precompute_ml_proba`: `is_available` es local.
+    artefacto = TechnologyClassifier.resolve_artifact()
+    if artefacto is None:
         log.warning("precompute_ml_tecnologias.no_model")
-        return {
-            PRECOMPUTE_STATUS_KEY: PRECOMPUTE_STATUS_SIN_MODELO,
-            "updated": 0,
-            "scores_inserted": 0,
-            "skipped_no_model": True,
-        }
+        return {"updated": 0, "scores_inserted": 0, "skipped_no_model": True}
 
     try:
-        clf = TechnologyClassifier.load()
+        clf = TechnologyClassifier.load(artefacto)
     except Exception as exc:
         log.error("precompute_ml_tecnologias.load_failed", error=str(exc))
-        return {
-            PRECOMPUTE_STATUS_KEY: PRECOMPUTE_STATUS_SIN_MODELO,
-            "updated": 0,
-            "scores_inserted": 0,
-            "skipped_no_model": True,
-        }
+        return {"updated": 0, "scores_inserted": 0, "skipped_no_model": True}
 
     from db.database import connect
 
@@ -589,12 +527,7 @@ def precompute_ml_tecnologias(*, batch_size: int = 500, force: bool = False) -> 
 
     if not rows:
         log.info("precompute_ml_tecnologias.nothing_to_update")
-        return {
-            PRECOMPUTE_STATUS_KEY: PRECOMPUTE_STATUS_OK,
-            "updated": 0,
-            "scores_inserted": 0,
-            "skipped_no_model": False,
-        }
+        return {"updated": 0, "scores_inserted": 0, "skipped_no_model": False}
 
     updated = 0
     scores_inserted = 0
@@ -680,7 +613,6 @@ def precompute_ml_tecnologias(*, batch_size: int = 500, force: bool = False) -> 
         scores_inserted=scores_inserted,
     )
     return {
-        PRECOMPUTE_STATUS_KEY: PRECOMPUTE_STATUS_OK,
         "updated": updated,
         "scores_inserted": scores_inserted,
         "skipped_no_model": False,
