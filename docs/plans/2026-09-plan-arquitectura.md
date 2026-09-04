@@ -6,9 +6,15 @@ tags: [plan, arquitectura, multi-agente]
 
 Redactado el 2026-09-02 a partir del diagnóstico de arquitecto de esa misma
 fecha (verificado contra el código, los logs de GitHub Actions y el estado de
-producción). **Estado: PROPUESTO.** Se convierte en vinculante cuando el
-mantenedor cierre las decisiones de §3; hasta entonces los streams marcados
-«sin gate» pueden empezar.
+producción).
+
+**Estado: EJECUTADO PARCIALMENTE el 2026-09-04** en la rama
+`claude/arq-2026-09`. Qué aterrizó, qué no y con qué controles está en el
+**§8**, que es la sección que hay que leer antes que ninguna otra: tres ítems de
+S5 quedaron fuera y hay cuatro migraciones escritas y **sin aplicar** contra
+ninguna base de datos. Las decisiones de §3 se resolvieron por la propuesta que
+cada una llevaba anotada; las que exigen tocar infraestructura real siguen
+abiertas y están listadas en §8 y §6bis.
 
 Mismo contrato que [2026-08-plan-saneamiento.md](2026-08-plan-saneamiento.md):
 cada stream se ejecuta en su propia rama por un agente independiente, este
