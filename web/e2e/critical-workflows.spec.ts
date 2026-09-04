@@ -119,10 +119,14 @@ test.describe("Flujos de trabajo críticos", () => {
       const alta = await context.request.post("/api/v1/auth/register", {
         data: { email, password, display_name: "Cuenta de borrado E2E" },
       });
+      // El mensaje lleva el estado Y el cuerpo a propósito. La versión anterior
+      // afirmaba «el alta debe estar abierta» pasara lo que pasara, así que un
+      // 400 de política de contraseña y un 403 de bandera apagada se leían
+      // idénticos y mandaban a mirar el sitio equivocado. Un assert que siempre
+      // acusa a la misma causa es peor que uno sin mensaje.
       expect(
         alta.status(),
-        "El alta self-service debe estar abierta en CI (ENV=dev) para poder " +
-          "probar el borrado sin tocar los usuarios del seed.",
+        `POST /auth/register devolvió ${alta.status()}: ${(await alta.text()).slice(0, 300)}`,
       ).toBe(201);
 
       const page = await context.newPage();
