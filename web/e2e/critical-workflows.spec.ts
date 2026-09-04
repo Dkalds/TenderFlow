@@ -98,7 +98,12 @@ test.describe("Flujos de trabajo críticos", () => {
     // equivocado; `web/e2e/login.spec.ts` ya documentaba que en producción la
     // bandera está apagada y `register` responde 403.
     const sello = Date.now();
-    const email = `e2e-borrado-${sello}@tenderflow.test`;
+    // `@example.com` y no `@tenderflow.test`: `email-validator` —el que hay
+    // detrás de `EmailStr`— rechaza los TLD de uso especial, así que `.test`
+    // devolvía 422 («value is not a valid email address»). Es el mismo dominio
+    // que usa `tests/test_auth_register.py`, que sí pasa. El sello temporal
+    // mantiene la cuenta única entre ejecuciones.
+    const email = `e2e-borrado-${sello}@example.com`;
     // Credencial de una cuenta desechable que este mismo test crea y borra.
     //
     // Se GENERA en ejecución en vez de ir literal: una constante con pinta de
