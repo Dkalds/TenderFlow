@@ -43,15 +43,24 @@ COPY --from=builder /install /usr/local
 COPY --chown=appuser:appuser . .
 
 # El `pip` que viaja en la imagen NO es el de la etapa builder: `COPY
-# --from=builder /install /usr/local` trae las dependencias, pero el `pip` que
-# queda instalado en la etapa runtime es el que trae `python:3.13.13-slim`, y
-# ese es el que Trivy escanea (y por el que reportaba un CVE alto). Actualizarlo
-# aquí es seguro: esta capa instala el proyecto con `--no-deps` desde el
-# checkout, sin `-r requirements.txt` y por tanto sin `--require-hashes`, así
-# que no hay verificación de hashes que un pip nuevo pueda romper. Los pines con
-# hash siguen resolviéndose en la etapa builder, que ya fija `pip>=26.1`.
-RUN pip install --upgrade pip \
-    && pip install --no-cache-dir --no-deps . \
+# --from=builder /install /usr/local` trae las dependencias, pero el instalador
+# que queda en la etapa runtime es el que trae `python:3.13.13-slim`, y ese es
+# el que Trivy escanea — por él reportaba un CVE alto.
+#
+# **No se actualiza: se RETIRA.** Actualizarlo fue el primer intento y salió
+# peor: dejaba en la imagen un `pip` nuevo con su `msgpack` vendorizado
+# (GHSA-6v7p-g79w-8964) y el `setuptools` 70.3.0 de la base (CVE-2025-47273),
+# o sea que cambiaba un hallazgo alto por dos. La imagen de ejecución no
+# instala nada: arranca `uvicorn`. Un instalador ahí es superficie sin
+# contrapartida, y es justo lo que usaría alguien con ejecución de código para
+# traerse la siguiente etapa.
+#
+# El proyecto se instala ANTES de retirarlo, con `--no-deps` desde el checkout:
+# sin `-r requirements.txt` y por tanto sin `--require-hashes`, así que no hay
+# verificación de hashes en juego. Los pines con hash se siguen resolviendo en
+# la etapa builder, que fija `pip>=26.1`.
+RUN pip install --no-cache-dir --no-deps . \
+    && pip uninstall --yes pip setuptools wheel \
     && find /usr/local/lib/python3.13 -name '__pycache__' -type d -exec rm -rf {} + 2>/dev/null || true \
     && find /usr/local/lib/python3.13 -name '*.pyc' -delete
 
