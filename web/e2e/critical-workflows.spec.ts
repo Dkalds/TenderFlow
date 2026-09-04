@@ -90,8 +90,13 @@ test.describe("Flujos de trabajo críticos", () => {
     //
     // Cuenta desechable, nunca la del seed: el borrado anonimiza el usuario y
     // revoca sus sesiones, así que hacerlo sobre `demo@tenderflow.dev` dejaría
-    // sin autenticación al resto de la suite. El alta self-service está abierta
-    // porque el job E2E corre con `ENV=dev` (ver `api/routes/auth.py::register`).
+    // sin autenticación al resto de la suite.
+    //
+    // El alta self-service la abre `ALLOW_SELF_REGISTRATION`, declarada en el
+    // job `frontend-e2e` de `ci.yml`. La primera versión de este test daba por
+    // hecho que bastaba `ENV=dev` y fallaba con un mensaje que culpaba al sitio
+    // equivocado; `web/e2e/login.spec.ts` ya documentaba que en producción la
+    // bandera está apagada y `register` responde 403.
     const sello = Date.now();
     const email = `e2e-borrado-${sello}@tenderflow.test`;
     // Credencial de una cuenta desechable que este mismo test crea y borra.

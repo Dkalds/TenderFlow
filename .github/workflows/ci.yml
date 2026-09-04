@@ -682,6 +682,18 @@ jobs:
     env:
       ENV: dev
       DATABASE_URL: postgresql://tenderflow:tenderflow@localhost:5432/tenderflow_e2e  # pragma: allowlist secret
+      # Alta self-service ABIERTA en el E2E, y declarada, no heredada.
+      #
+      # `api/routes/auth.py::register` la abre con `ALLOW_SELF_REGISTRATION` o
+      # con `ENV=dev`, y `web/e2e/login.spec.ts` decide con la variable pública
+      # si ejercita la pestaña de «Crear cuenta» o comprueba que no se ofrece.
+      # Sin declararlas, esa spec verificaba siempre la rama cerrada y la
+      # abierta no la probaba nadie — y el caso del borrado RGPD, que necesita
+      # una cuenta desechable porque anonimiza al usuario y le revoca las
+      # sesiones, no tenía cómo crearla sin tocar el usuario del seed del que
+      # depende el resto de la suite.
+      ALLOW_SELF_REGISTRATION: "1"
+      NEXT_PUBLIC_ALLOW_SELF_REGISTRATION: "1"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
