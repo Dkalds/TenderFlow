@@ -1,6 +1,6 @@
 import * as React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 vi.mock("sonner", () => ({
   toast: { success: vi.fn(), error: vi.fn() },
@@ -48,6 +48,35 @@ describe("Mi cuenta", () => {
   it("advierte de que el borrado no se puede deshacer", () => {
     render(<MiCuentaPage />);
     expect(screen.getByText(/No se puede deshacer/)).toBeInTheDocument();
+  });
+
+  it("el borrado viaja con CSRF y con la confirmación que exige la API", async () => {
+    // Regresión O0.7: el botón hacía `fetch("/api/v1/me", {method:"DELETE"})` a
+    // pelo. `DELETE /me` cuelga de `require_recent_session` → `require_any_auth`,
+    // que devuelve 403 «CSRF token mismatch» a toda mutación por cookie sin
+    // `X-CSRF-Token`, y además exige cuerpo `{"confirmation":"DELETE"}`
+    // (`DeleteMyDataRequest`). Sin las dos cosas el botón no borraba nada.
+    document.cookie = "csrf_token=tok-123";
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ status: "ok" }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<MiCuentaPage />);
+    fireEvent.change(screen.getByLabelText(/para confirmar/), {
+      target: { value: "ana@example.test" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Eliminar mi cuenta definitivamente/ }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("/api/v1/me");
+    expect(init.method).toBe("DELETE");
+    expect((init.headers as Record<string, string>)["X-CSRF-Token"]).toBe("tok-123");
+    expect(JSON.parse(init.body as string)).toEqual({ confirmation: "DELETE" });
   });
 
   it("no pide confirmación de borrado si no hay sesión con email", () => {

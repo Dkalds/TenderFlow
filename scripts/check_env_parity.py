@@ -60,7 +60,42 @@ _NO_APLICA_AL_SERVICIO_WEB = frozenset(
 # Tocar `.env*` requiere OK explícito del responsable (AGENTS.md §6), así que
 # quedan anotados aquí y en docs/IMPROVEMENT_BACKLOG.md en vez de arreglados de
 # tapadillo. La lista solo puede encoger: al documentarlas, borrá la entrada.
-_DOCUMENTACION_PENDIENTE = frozenset({"FRONTEND_URL", "SENTRY_DSN"})
+#
+# ALERTMANAGER_WEBHOOK_URL: la añade el Alertmanager (S6.3). Línea propuesta
+# para `.env.example`, a la espera del OK humano:
+#     # Segundo canal de alertas — dead-man's-switch del Watchdog. Opcional:
+#     # vacío deshabilita el receptor `webhook` sin romper el de email.
+#     # ALERTMANAGER_WEBHOOK_URL=https://hc-ping.com/<uuid>
+_DOCUMENTACION_PENDIENTE = frozenset({"FRONTEND_URL", "SENTRY_DSN", "ALERTMANAGER_WEBHOOK_URL"})
+
+WORKFLOWS_DIR = REPO_ROOT / ".github" / "workflows"
+
+# ── RATCHET: `|| 'literal'` dentro de bloques `env:` de workflow ─────────────
+# El idioma `X: ${{ vars.X || 'literal' }}` parece un default inocente y no lo
+# es: cuando la variable de repositorio no está definida, el literal del YAML
+# **sustituye** al default de `config/settings.py`, que es el que está probado.
+# Son dos fuentes de verdad para el mismo valor y gana la del YAML, sin que
+# ningún test la vea. Ya costó dos incidentes documentados en los comentarios de
+# los propios ficheros: `deepseek-v4-pro` quedó EOL en NVIDIA el 2026-08-07 y
+# devolvía 410; el default de `settings` ya estaba corregido, pero el literal
+# del workflow lo pisaba y tumbó el lote entero de fichas.
+#
+# La forma correcta es exportar la variable a `$GITHUB_ENV` SOLO si está
+# definida, de modo que el default vigente sea siempre el del código.
+#
+# Whitelist congelada: solo se QUITAN entradas, nunca se añaden. Las tres son
+# trabajo pendiente, no excepciones permanentes:
+#   - backup.yml / restore-drill.yml: fuera del alcance de S6 por decisión
+#     explícita del responsable (tocan la cadena de copias y su restauración).
+#   - train-predictivos.yml: lo lleva otro stream de trabajo; editarlo desde
+#     aquí sería pisarle el fichero. Su caso es `ALERT_MIN_LEVEL`, el mismo
+#     patrón que ya se corrigió en los otros seis workflows.
+_ENV_FALLBACK_PENDIENTE = frozenset({"backup.yml", "restore-drill.yml", "train-predictivos.yml"})
+
+# `${{ ... || 'literal' }}`. Solo el fallback a literal entrecomillado: un
+# `a || b` entre dos expresiones no inventa un valor que compita con el default
+# del código, que es lo que este ratchet persigue.
+_FALLBACK_RE = re.compile(r"\|\|\s*'")
 
 
 def _sin_valor_por_defecto(node: ast.AnnAssign) -> bool:
@@ -122,6 +157,56 @@ def _documented_in_example() -> set[str]:
     return set(re.findall(r"^#?\s*([A-Z][A-Z0-9_]*)=", texto, re.MULTILINE))
 
 
+def _bloques_env(texto: str) -> list[tuple[int, str]]:
+    """Devuelve ``(nº de línea, línea)`` de todo lo que cuelga de un ``env:``.
+
+    Recorrido por indentación en vez de parseo YAML: este script es stdlib-only
+    y la pregunta es puramente textual. Un ``env:`` abre bloque; el bloque dura
+    mientras las líneas no vacías tengan MÁS indentación que él.
+
+    Solo mira bloques ``env:``. Un ``|| '…'`` en un ``with:`` (por ejemplo
+    ``aws-region``) o en un ``if:`` no es el problema que persigue el ratchet:
+    lo que importa es lo que acaba en el ENTORNO del proceso pisando el default
+    de ``config/settings.py``.
+    """
+    dentro: list[tuple[int, str]] = []
+    sangria_env: int | None = None
+    for numero, linea in enumerate(texto.splitlines(), start=1):
+        if not linea.strip():
+            continue
+        sangria = len(linea) - len(linea.lstrip())
+        if sangria_env is not None:
+            if sangria > sangria_env:
+                dentro.append((numero, linea))
+                continue
+            sangria_env = None
+        if re.match(r"^\s*(-\s+)?env:\s*$", linea):
+            # `- env:` (primer campo de un ítem de lista) indenta su contenido
+            # respecto al guion, no respecto a la palabra `env`.
+            sangria_env = sangria
+    return dentro
+
+
+def _fallbacks_en_workflows() -> list[str]:
+    """Hallazgos de ``|| 'literal'`` dentro de bloques ``env:`` de workflow."""
+    hallazgos: list[str] = []
+    if not WORKFLOWS_DIR.is_dir():
+        return hallazgos
+    for ruta in sorted(WORKFLOWS_DIR.glob("*.yml")):
+        if ruta.name in _ENV_FALLBACK_PENDIENTE:
+            continue
+        texto = ruta.read_text(encoding="utf-8")
+        for numero, linea in _bloques_env(texto):
+            # Los comentarios son inertes, y varios explican precisamente por
+            # qué se quitó el `|| '…'` de esa línea. Marcarlos convertiría la
+            # documentación del arreglo en un fallo del propio arreglo.
+            if linea.lstrip().startswith("#"):
+                continue
+            if _FALLBACK_RE.search(linea):
+                hallazgos.append(f"{ruta.name}:{numero}: {linea.strip()}")
+    return hallazgos
+
+
 def main() -> int:
     for ruta in (SETTINGS_PY, RENDER_YAML, ENV_EXAMPLE):
         if not ruta.exists():
@@ -157,13 +242,33 @@ def main() -> int:
             print(f"  - {nombre}")
         print("\nDocumentalas en .env.example para que se puedan descubrir.\n")
 
+    fallbacks = _fallbacks_en_workflows()
+    if fallbacks:
+        fallos = True
+        print("[check-env-parity] Workflows con `|| 'literal'` dentro de un bloque `env:`:\n")
+        for hallazgo in fallbacks:
+            print(f"  - {hallazgo}")
+        print(
+            "\nEse literal SUSTITUYE al default de config/settings.py cuando la\n"
+            "variable de repositorio no está definida, y el default del código es\n"
+            "el que está probado. Ya costó dos incidentes (el modelo EOL\n"
+            "deepseek-v4-pro tumbando el lote de fichas). En su lugar, exportá la\n"
+            "variable a $GITHUB_ENV solo si está definida:\n\n"
+            "      - name: Exportar overrides definidos\n"
+            "        env:\n"
+            "          VAR_X: ${{ vars.X }}\n"
+            "        run: |\n"
+            '          if [ -n "${VAR_X:-}" ]; then echo "X=$VAR_X" >> "$GITHUB_ENV"; fi\n'
+        )
+
     if fallos:
         return 1
 
     print(
         f"[check-env-parity] OK — las {len(requeridas)} variables obligatorias en "
-        f"producción están en render.yaml, y sus {len(declaradas)} envVars están "
-        "documentadas en .env.example."
+        f"producción están en render.yaml, sus {len(declaradas)} envVars están "
+        "documentadas en .env.example, y ningún bloque `env:` de workflow pisa "
+        "un default de config/settings.py."
     )
     return 0
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from types import ModuleType
 from unittest.mock import MagicMock, patch
 
 import anyio
@@ -21,17 +22,48 @@ class TestSharedReexports:
         assert callable(get_cache)
 
     def test_dto_importable_from_shared(self):
-        from shared import KpiSnapshotDTO, LicitacionSummary, WatchlistEntry
+        # `LicitacionSummary` y `KpiSnapshotDTO` se re-exportaban aquí hasta
+        # 2026-09-03; se borraron de `shared/dto.py` con las clases muertas.
+        from shared import PaginatedResponse, WatchlistEntry
 
-        assert LicitacionSummary is not None
-        assert KpiSnapshotDTO is not None
+        assert PaginatedResponse is not None
         assert WatchlistEntry is not None
 
     def test_all_exports_listed(self):
+        """`__all__` y lo que el módulo re-exporta tienen que coincidir exactamente.
+
+        Antes esto era `len(__all__) >= 10`, que no medía el invariante sino el
+        tamaño del módulo: al borrarse de `shared/dto.py` las clases muertas el
+        2026-09-03 el conteo bajó a 9 y el test se puso rojo sin que nada
+        estuviera mal. Bajar el umbral a 9 solo aplazaría la misma falsa alarma
+        hasta el siguiente borrado.
+
+        Lo que de verdad hay que proteger son las dos direcciones del re-export:
+        un nombre en `__all__` que ya no exista revienta en `from shared import
+        *`, y un re-export ausente de `__all__` es API pública por accidente,
+        sin declarar.
+        """
         import shared
 
         assert hasattr(shared, "__all__")
-        assert len(shared.__all__) >= 10
+        for name in shared.__all__:
+            assert hasattr(shared, name), f"`shared.__all__` nombra `{name}`, que no existe"
+
+        # Lo re-exportado = lo público del namespace, descontando los submódulos
+        # que `from shared.x import y` deja colgados (`shared.dto`, `shared.geo`…)
+        # y el `annotations` de `from __future__`.
+        reexportado = {
+            name
+            for name, obj in vars(shared).items()
+            if not name.startswith("_")
+            and not isinstance(obj, ModuleType)
+            and name != "annotations"
+        }
+        assert reexportado == set(shared.__all__), (
+            "`__all__` no describe lo que `shared` re-exporta: "
+            f"sobra {sorted(set(shared.__all__) - reexportado)}, "
+            f"falta {sorted(reexportado - set(shared.__all__))}"
+        )
 
     def test_json_dict_importable(self):
         from shared import JsonDict

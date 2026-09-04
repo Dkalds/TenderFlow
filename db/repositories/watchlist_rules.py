@@ -28,7 +28,7 @@ from typing import Any
 
 from sqlalchemy import Select, and_, func, literal, select, text
 
-from db.database import connect_read
+from db.database import connect, connect_read
 from db.models import compile_query, licitaciones
 from db.repositories.base import rows_to_dicts
 from observability.logging import get_logger
@@ -191,3 +191,73 @@ def matches_pendientes(
     )
     with connect_read() as c:
         return rows_to_dicts(c.execute(sql, params))
+
+
+# ── Filas de las reglas y su email de entrega ────────────────────────────────
+#
+# Estas dos funciones vivían dentro de ``api/routes/watchlist_rules.py``, con
+# ``connect``/``connect_read`` importados en el router (ADR-022: el SQL vive en
+# ``db/``; el fichero estaba en la whitelist TID251). La lectura tenía además
+# la misma rama fail-open que se retira en el resto de repositorios: sin
+# ``organization_id`` caía a ``WHERE user_key = %s``, sin ámbito.
+
+_RULE_COLS = (
+    "id, user_key, nombre, keyword, cpv, min_importe, ccaa, "
+    "frequency, active, last_notified_at, email, organization_id, visibility"
+)
+
+#: Mismo SELECT sin las columnas de la revisión v47/v64. Existe para bases sin
+#: migrar (tests contra schema viejo, entornos a medio desplegar): sin él, un
+#: `UndefinedColumn` deja el listado de reglas en 500 en vez de degradarse.
+_RULE_COLS_LEGACY = (
+    "id, user_key, nombre, keyword, cpv, min_importe, ccaa, frequency, active, last_notified_at"
+)
+
+
+def list_rules_rows(user_key: str, organization_id: int) -> list[dict[str, Any]]:
+    """Filas crudas de las reglas visibles en la organización, ordenadas por id.
+
+    Devuelve dicts y no DTOs a propósito: quien llama necesita tanto los campos
+    de la regla como el ``email`` de entrega, que no forma parte del modelo de
+    dominio ``WatchlistRule``.
+    """
+    with connect_read() as c:
+        try:
+            cur = c.execute(
+                "SELECT " + _RULE_COLS + " FROM watchlist_rules "
+                "WHERE organization_id = %s "
+                "AND (visibility = 'organization' OR user_key = %s) ORDER BY id",
+                (organization_id, user_key),
+            )
+            return rows_to_dicts(cur)
+        except Exception as exc:
+            if not _columna_ausente(exc):
+                raise
+    log.warning("watchlist_rules_schema_legacy", user_key=user_key[:8])
+    with connect_read() as c:
+        cur = c.execute(
+            "SELECT " + _RULE_COLS_LEGACY + " FROM watchlist_rules WHERE user_key = %s ORDER BY id",
+            (user_key,),
+        )
+        return rows_to_dicts(cur)
+
+
+def _columna_ausente(exc: Exception) -> bool:
+    """¿El error es «falta una columna de watchlist_rules» y no otra cosa?
+
+    El código anterior capturaba ``Exception`` a secas y reintentaba la query
+    corta ante cualquier fallo: un error de conexión o un timeout se convertía
+    en «este usuario no tiene reglas con email», que es indistinguible de la
+    verdad para quien mira la pantalla.
+    """
+    mensaje = str(exc).lower()
+    return "column" in mensaje or "columna" in mensaje
+
+
+def set_rule_email(user_key: str, rule_id: int, email: str) -> None:
+    """Fija el destinatario de una regla propia. No-op si no es del usuario."""
+    with connect() as c:
+        c.execute(
+            "UPDATE watchlist_rules SET email = %s WHERE id = %s AND user_key = %s",
+            (email, rule_id, user_key),
+        )

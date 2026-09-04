@@ -35,7 +35,9 @@ import {
   X,
 } from "lucide-react";
 import { formatCurrency, formatNumber, formatPercent, cn } from "@/lib/utils";
-import { apiMutate } from "@/lib/api-client";
+import { apiMutate, fetchWithAuth } from "@/lib/api-client";
+import { feedbackKeys } from "@/lib/query-keys";
+import { useFeedbackStats } from "@/hooks/use-feedback";
 import { formatDate, formatDateTime } from "@/lib/utils";
 import { AdminGuard } from "@/components/admin-guard";
 
@@ -67,13 +69,6 @@ interface QueueItem {
 interface QueueResponse {
   items?: QueueItem[];
   total?: number;
-}
-
-interface FeedbackStats {
-  total_labels?: number;
-  pct_relevant?: number;
-  last_updated?: string;
-  [key: string]: unknown;
 }
 
 interface ModelVersionInfo {
@@ -117,39 +112,17 @@ function ActiveLearningContent() {
   const [secondaryTechs, setSecondaryTechs] = useState<Record<string, Set<string>>>({});
 
   const { data: queue, isLoading: queueLoading, isError: queueError } = useQuery<QueueResponse>({
-    queryKey: ["feedback-queue", strategy],
-    queryFn: async () => {
-      const res = await fetch(
-        `/api/v1/feedback/queue?strategy=${strategy}&limit=20`,
-        { credentials: "include" },
-      );
-      if (res.status === 401) throw new Error("Sesión expirada");
-      if (!res.ok) throw new Error(`Error ${res.status}`);
-      return res.json();
-    },
+    queryKey: feedbackKeys.queue(strategy),
+    queryFn: () =>
+      fetchWithAuth<QueueResponse>(`/api/v1/feedback/queue?strategy=${strategy}&limit=20`),
   });
 
   const { data: modelInfo } = useQuery<ModelInfo>({
-    queryKey: ["feedback-model-info"],
-    queryFn: async () => {
-      const res = await fetch("/api/v1/feedback/model-info", { credentials: "include" });
-      if (res.status === 401) throw new Error("Sesión expirada");
-      if (!res.ok) throw new Error(`Error ${res.status}`);
-      return res.json();
-    },
+    queryKey: feedbackKeys.modelInfo,
+    queryFn: () => fetchWithAuth<ModelInfo>("/api/v1/feedback/model-info"),
   });
 
-  const { data: stats, isLoading: statsLoading } = useQuery<FeedbackStats>({
-    queryKey: ["feedback-stats"],
-    queryFn: async () => {
-      const res = await fetch("/api/v1/feedback/stats", {
-        credentials: "include",
-      });
-      if (res.status === 401) throw new Error("Sesión expirada");
-      if (!res.ok) throw new Error(`Error ${res.status}`);
-      return res.json();
-    },
-  });
+  const { data: stats, isLoading: statsLoading } = useFeedbackStats();
 
   const submitFeedback = useMutation({
     mutationFn: (vars: {
@@ -170,7 +143,7 @@ function ActiveLearningContent() {
       }),
     onSuccess: (_data, vars) => {
       setDismissed((prev) => new Set(prev).add(vars.expediente));
-      queryClient.invalidateQueries({ queryKey: ["feedback-stats"] });
+      queryClient.invalidateQueries({ queryKey: feedbackKeys.stats });
     },
     onError: () => {
       toast.error("Error al enviar feedback. Intenta de nuevo.");

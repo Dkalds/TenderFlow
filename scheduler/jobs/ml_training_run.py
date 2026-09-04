@@ -1,9 +1,16 @@
 """Entrenamiento del clasificador SAP — entrypoint del workflow de release.
 
-Invocado por ``.github/workflows/train-model.yml``. La secuencia (seed de
-negativos → entrenamiento → precompute de ``ml_proba``) vivía como heredoc
-``python -c`` en el YAML, fuera del alcance de ruff/mypy/tests; aquí queda
-como código normal del proyecto.
+Invocado por ``.github/workflows/train-model.yml``: seed de negativos →
+entrenamiento → precompute de ``ml_proba``. Vivía como heredoc ``python -c``
+dentro del YAML, fuera del alcance de ruff, mypy y los tests; aquí queda como
+código normal.
+
+El clasificador **multi-tecnología** tiene su propio entrypoint desde #263:
+``scheduler/jobs/tech_training_run.py``, invocado por ``train-tech.yml``. Este
+módulo llegó a tener un subcomando ``tech`` que hacía lo mismo; se retiró al
+fusionar, porque el de allí aplica un gate de etiquetas circulares más estricto
+—un suelo absoluto de etiquetas independientes— y tener dos caminos para
+publicar el mismo artefacto es cómo se acaba publicando el peor de los dos.
 
 No se registra en ``build_default_registry()``: el re-entrenamiento del
 clasificador SAP es un job de release con artefacto versionado, distinto del
@@ -101,10 +108,17 @@ def _emitir_salida_github(metrics: dict[str, Any]) -> None:
 if __name__ == "__main__":
     import sys
 
+    # Un solo camino: el clasificador SAP binario, que es lo que invoca
+    # `train-model.yml`. El multi-etiqueta tiene su propio entrypoint desde
+    # #263 (`scheduler/jobs/tech_training_run.py`, workflow `train-tech.yml`),
+    # con un gate de etiquetas circulares más estricto que el que este módulo
+    # llegó a tener: un suelo absoluto de etiquetas independientes, en vez de
+    # fiarse del flag `labels_circulares`, que se apaga en cuanto UNA fila trae
+    # etiqueta humana.
     try:
         _metrics = run()
     except RuntimeError as exc:
-        log.error("ml_training_failed", error=str(exc))
+        log.error("ml_training_failed", error=str(exc), modelo="sap")
         sys.exit(1)
 
     _emitir_salida_github(_metrics)
@@ -114,5 +128,6 @@ if __name__ == "__main__":
         # workflow se encarga de que quede visible que NO se publicó nada.
         log.warning(
             "ml_training_no_promocionado",
+            modelo="sap",
             motivos=(_metrics.get("promotion") or {}).get("motivos_rechazo"),
         )

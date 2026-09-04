@@ -7,6 +7,7 @@ from datetime import date
 import pandas as pd
 from pydantic import BaseModel, Field
 
+from db.repositories.adjudicaciones import LIMITE_COMPETIDORES
 from observability.logging import get_logger
 from services.adjudicaciones import load_for_competitors
 from services.normalization import normalize_company, normalize_nif
@@ -91,6 +92,25 @@ class CompetitorResult(BaseModel):
     heatmap_ccaa: list[HeatmapCcaaCell] = Field(default_factory=list)
     pct_pyme: float = 0.0
     estacionalidad: list[EstacionalidadEntry] = Field(default_factory=list)
+    truncado: bool = False
+    """El corte de filas mordió: esto describe una muestra, no el universo.
+
+    ``load_for_competitors`` acota en SQL (``LIMITE_COMPETIDORES``) porque el
+    resultado se materializa como DataFrame dentro del proceso HTTP y sin techo
+    una petición sin filtros pedía el histórico entero — el patrón del OOM de
+    julio. Cuando ese techo actúa, ``total_adjudicaciones``, ``importe_total``,
+    el HHI y las cuotas se calculan sobre las ``limite_filas`` adjudicaciones
+    **más recientes** y no sobre todas las que casan con el filtro.
+
+    Se declara en vez de callarse porque la alternativa es servir una cuota de
+    mercado que parece del universo entero y no lo es: quien lea el número tiene
+    que poder saber que el remedio es acotar por fecha o por CCAA. El front
+    puede ignorarlo (el campo es opcional y por defecto ``False``), pero
+    entonces la omisión es una decisión suya y no un dato que nunca existió.
+    """
+
+    limite_filas: int = LIMITE_COMPETIDORES
+    """Techo aplicado. Va en el resultado para que ``truncado`` sea accionable."""
 
 
 # ---------------------------------------------------------------------------
@@ -348,13 +368,22 @@ def _identity_summary(df: pd.DataFrame) -> pd.DataFrame:
     return summary.drop(columns=["master_nifs"])
 
 
-def _load_df(filters: CompetitorFilters) -> pd.DataFrame:
-    """Carga adjudicaciones ya filtradas+proyectadas en SQL (ver ``_apply_filters``:
+def _load_df(filters: CompetitorFilters) -> tuple[pd.DataFrame, bool]:
+    """Carga adjudicaciones ya filtradas+proyectadas en SQL, y si se truncó.
 
-    se mantiene como red de seguridad redundante — corre sobre un dataset que
-    Postgres ya filtró, así que es un no-op en la práctica, pero garantiza que
-    ningún cambio futuro en el SQL puede filtrar de más/menos sin que los
-    tests existentes (que mockean la carga con filas SIN filtrar) lo detecten.
+    ``_apply_filters`` se mantiene como red de seguridad redundante — corre
+    sobre un dataset que Postgres ya filtró, así que es un no-op en la práctica,
+    pero garantiza que ningún cambio futuro en el SQL puede filtrar de
+    más/menos sin que los tests existentes (que mockean la carga con filas SIN
+    filtrar) lo detecten.
+
+    El segundo elemento del par es la señal de truncado. Se deduce del número de
+    filas —``load_for_competitors`` acota en SQL con ``LIMITE_COMPETIDORES`` y un
+    resultado de exactamente ese tamaño significa que había más— y no de un
+    contador que el repositorio devuelva, porque contar el total exacto exigiría
+    una segunda pasada por el mismo join de cinco tablas: el coste que el techo
+    existe para no pagar. El falso positivo posible (justo ``limite_filas``
+    filas y ni una más) sobreestima la incertidumbre, que es el lado seguro.
     """
     rows = load_for_competitors(
         ccaa=filters.ccaa,
@@ -364,6 +393,7 @@ def _load_df(filters: CompetitorFilters) -> pd.DataFrame:
         fecha_hasta=filters.fecha_hasta.isoformat() if filters.fecha_hasta else None,
         importe_min=filters.importe_min,
     )
+    truncado = len(rows) >= LIMITE_COMPETIDORES
     df = pd.DataFrame(rows)
     if not df.empty:
         if "fecha_adjudicacion" in df.columns:
@@ -381,7 +411,7 @@ def _load_df(filters: CompetitorFilters) -> pd.DataFrame:
         )
         # Una sola clave analítica combina maestro, CIF y nombre normalizados.
         df = _prepare_company_identity(df)
-    return df
+    return df, truncado
 
 
 def _apply_filters(df: pd.DataFrame, filters: CompetitorFilters) -> pd.DataFrame:
@@ -394,8 +424,14 @@ def _apply_filters(df: pd.DataFrame, filters: CompetitorFilters) -> pd.DataFrame
         ts = pd.Timestamp(filters.fecha_hasta, tz="UTC")
         df = df[df["fecha_adjudicacion"] <= ts]
     # Eje de producto: segmentación por tecnología (SAP, Salesforce, …).
+    # El CSV se explota igual que en SQL (`tecnologia_en_csv_sql`): la columna
+    # guarda ``"SAP,SALESFORCE"``, así que la igualdad que había aquí volvía a
+    # esconder los expedientes multi-tecnología que la consulta sí había
+    # traído — la red de seguridad filtrando MÁS que el SQL que vigila.
     if filters.tecnologia and "tecnologia" in df.columns:
-        df = df[df["tecnologia"] == filters.tecnologia]
+        buscados = {c.strip() for c in filters.tecnologia.split(",") if c.strip()}
+        codigos = df["tecnologia"].fillna("").astype(str)
+        df = df[codigos.apply(lambda v: bool(buscados & {c.strip() for c in v.split(",")}))]
     if filters.estado and "estado" in df.columns:
         df = df[df["estado"] == filters.estado]
     if filters.importe_min is not None and "importe_licitacion" in df.columns:
@@ -417,12 +453,12 @@ def _compute_hhi(shares: pd.Series) -> float:
 def get_competitors(filters: CompetitorFilters) -> CompetitorResult:
     """Compute competitor rankings, HHI, and single-bid percentage."""
     log.info("analytics_competitors_start", filters=filters.model_dump(exclude_none=True))
-    df = _load_df(filters)
+    df, truncado = _load_df(filters)
     df = _apply_filters(df, filters)
 
     if df.empty or "empresa" not in df.columns:
-        log.info("analytics_competitors_done", total=0)
-        return CompetitorResult()
+        log.info("analytics_competitors_done", total=0, truncado=truncado)
+        return CompetitorResult(truncado=truncado)
 
     total = len(df)
 
@@ -655,6 +691,7 @@ def get_competitors(filters: CompetitorFilters) -> CompetitorResult:
         heatmap_ccaa=heatmap_ccaa,
         pct_pyme=pct_pyme,
         estacionalidad=estacionalidad,
+        truncado=truncado,
     )
-    log.info("analytics_competitors_done", total=total, hhi=hhi)
+    log.info("analytics_competitors_done", total=total, hhi=hhi, truncado=truncado)
     return result

@@ -12,7 +12,7 @@ import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import { primeraVez, registrarEvento } from "@/lib/analytics";
-import { fetchWithAuth, apiMutate } from "@/lib/api-client";
+import { fetchWithAuth, fetchBlobWithAuth, apiMutate } from "@/lib/api-client";
 import { formatCurrency } from "@/lib/utils";
 import { SpaceShell } from "@/components/layout/space-shell";
 import { formatDateTime } from "@/lib/utils";
@@ -22,6 +22,7 @@ import {
   useUpdateOrganizationSettings,
 } from "@/hooks/use-organization-settings";
 import { Checkbox } from "@/components/ui/checkbox";
+import { perfilKeys, radarKeys } from "@/lib/query-keys";
 
 // ---------------------------------------------------------------------------
 // Tipos
@@ -75,7 +76,7 @@ const WEIGHT_DESCRIPTIONS: Record<string, string> = {
     "Premia la evidencia de tecnología en el pliego y el clasificador, de la tecnología que estés filtrando.",
 };
 
-const PROFILE_KEY = ["me", "profile"] as const;
+const PROFILE_KEY = perfilKeys.me;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -145,11 +146,10 @@ function GdprSection() {
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   const exportMut = useMutation({
-    mutationFn: async () => {
-      const res = await fetch("/api/v1/me/data", { credentials: "include" });
-      if (!res.ok) throw new Error(`Error ${res.status}`);
-      return res.blob();
-    },
+    // El endpoint devuelve un ZIP: `fetchBlobWithAuth` es la variante de
+    // `fetchWithAuth` que no parsea el cuerpo pero conserva la redirección a
+    // /login en 401 y el `ApiError` con el `detail` RFC-7807.
+    mutationFn: () => fetchBlobWithAuth("/api/v1/me/data"),
     onSuccess: (blob) => {
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -399,7 +399,7 @@ export default function MiPerfilPage() {
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: PROFILE_KEY });
-      queryClient.invalidateQueries({ queryKey: ["radar", "scoring"] });
+      queryClient.invalidateQueries({ queryKey: radarKeys.scoring });
       setDirty(false);
       // Primer paso del embudo de activación («Primeros pasos» en /resumen) y
       // el que más pesa: hasta que existe este perfil, el Radar puntúa con los
@@ -426,7 +426,7 @@ export default function MiPerfilPage() {
       setImporteMax("");
       setSharedWithOrganization(false);
       setDirty(false);
-      queryClient.invalidateQueries({ queryKey: ["radar", "scoring"] });
+      queryClient.invalidateQueries({ queryKey: radarKeys.scoring });
       toast.success("Perfil eliminado. El scoring vuelve a los valores globales.");
     },
     onError: () => toast.error("No se pudo eliminar el perfil."),

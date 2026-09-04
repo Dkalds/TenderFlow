@@ -227,15 +227,53 @@ _LIC_PLACEHOLDERS = ", ".join("%s" for _ in _LIC_KEYS)
 # justo con los expedientes ya adjudicados, que son los únicos que el modelo
 # de baja puede usar para entrenar. La cobertura medida saldría alta sobre el
 # feed y baja sobre el dataset.
+#
+# Las cuatro columnas de LINAJE (2026-09) entran por el mismo motivo, pero el
+# caso es más agudo: el linaje no lo publica la fuente, lo *decide el camino de
+# ingesta*. `filter_version`, `inclusion_reason` y `analysis_universe` solo los
+# escriben los caminos que conocen el concepto (el conector PLACSP vía
+# `_PlacspParseCore`, TED, los RSS regionales…); cualquier otro camino que
+# reingiera el mismo expediente construye la `Licitacion` con los defaults
+# `None` y, sin COALESCE, BORRABA el linaje ya escrito. `licitaciones` acababa
+# con filas cuyo motivo de inclusión desaparecía sin que nadie hubiera
+# reevaluado nada -- y `analysis_universe` es justo la columna que separa «lo
+# observado» de «el universo de análisis», así que perderla no degrada un dato
+# accesorio: invalida el denominador de las métricas.
+# `classifier_model_version` va con ellas porque responde a la misma pregunta
+# (con qué versión se decidió esto) y la nulea el mismo tipo de re-ingesta.
 _LIC_COALESCE_UPDATE_FIELDS = frozenset(
-    {"fecha_limite", "procedimiento", "tramitacion", "peso_precio_pct"}
+    {
+        "fecha_limite",
+        "procedimiento",
+        "tramitacion",
+        "peso_precio_pct",
+        # ── Linaje de inclusión ──
+        "filter_version",
+        "classifier_model_version",
+        "inclusion_reason",
+        "analysis_universe",
+    }
 )
+
+# Columnas que solo se escriben en el INSERT: quedan FUERA del `DO UPDATE SET`,
+# así que conservan para siempre el valor de la primera ingesta aunque la
+# re-ingesta traiga uno distinto (COALESCE no bastaría: un valor no nulo nuevo
+# pisaría al viejo).
+#
+# Vacío a propósito. El hueco existe porque `primera_extraccion` —la fecha en
+# que el expediente se vio por primera vez, distinta de `fecha_extraccion`, que
+# es la de la última pasada— está pedida pero AÚN NO EXISTE como columna en
+# `db/models.py` ni en el dataclass `Licitacion`. Cuando el agente que la añada
+# la declare, basta con listarla aquí: el `_LIC_UPDATES` de abajo ya la excluye
+# del UPDATE sin más cambios.
+_LIC_INSERT_ONLY_FIELDS: frozenset[str] = frozenset()
+
 _LIC_UPDATES = ", ".join(
     f"{k}=COALESCE(excluded.{k}, licitaciones.{k})"
     if k in _LIC_COALESCE_UPDATE_FIELDS
     else f"{k}=excluded.{k}"
     for k in _LIC_KEYS
-    if k != "id_externo"
+    if k != "id_externo" and k not in _LIC_INSERT_ONLY_FIELDS
 )
 
 # lote_numero_raw es parse-only (ver docstring de Adjudicacion): nunca es
@@ -810,9 +848,36 @@ def upsert_licitaciones_with_history(
     Compara campos clave (HISTORY_TRACKED_FIELDS) con el registro existente.
     Si hay diff, guarda un snapshot del estado *anterior* en licitaciones_history.
 
-    El batch se divide en chunks de ``chunk_size`` elementos, cada uno en su
-    propia transacción SQLite, para liberar el write lock entre chunks y evitar
-    bloqueos prolongados en backfills grandes.
+    **Troceado y atomicidad.** El batch se divide en chunks de ``chunk_size``
+    elementos y cada chunk corre en su propia transacción. La justificación
+    original hablaba de «liberar el write lock entre chunks» de SQLite, motor
+    retirado en ADR-021; en Postgres no hay write lock global que liberar y el
+    motivo válido es otro:
+
+    - **Acotar el tamaño de transacción.** Un backfill mensual mete decenas de
+      miles de filas; una sola transacción acumularía todo ese trabajo en un
+      snapshot, hincharía el WAL y retrasaría el vacuum de las versiones
+      muertas que el propio UPDATE va dejando.
+    - **Acotar la duración de los locks de fila.** Cada `ON CONFLICT DO UPDATE`
+      toma un lock sobre la fila afectada hasta el COMMIT. Con el batch entero
+      en una transacción, esos locks viven lo que dure el batch y chocan con el
+      resto de writers (el `replace_adjudicaciones_batch` de otro conector, las
+      escrituras del carril diario), que es exactamente el modo de fallo que
+      hizo falta cubrir con reintentos en ``scraper/connectors/base.py``.
+
+    Consecuencia que hay que tener presente: **el batch NO es atómico entre
+    chunks**. Si el chunk 7 de 20 falla, los seis anteriores ya están
+    commiteados y los trece siguientes no se ejecutan. Lo que cubre ese estado
+    parcial no es una transacción sino la **idempotencia** del upsert más el
+    reintento del lote completo en
+    ``scraper/connectors/base.py::run_connector._flush``: reintenta
+    ``_flush_once()`` entero (licitaciones + lotes + adjudicaciones + docs) y
+    **difiere la acumulación de contadores al intento que finalmente tiene
+    éxito**, así que repetir los chunks ya escritos no duplica filas ni
+    infla ``nuevas``/``actualizadas``. Un caller que no pase por
+    ``run_connector`` no tiene esa red: para él, un fallo a mitad deja el batch
+    a medio escribir y su reparación es volver a ejecutar la ingesta (que es
+    segura, por lo mismo).
     """
     result = UpsertResult(inserted=[], modified=[], unchanged=[])
 

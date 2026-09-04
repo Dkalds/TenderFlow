@@ -2,9 +2,38 @@
 
 from __future__ import annotations
 
+from contextlib import nullcontext
+from types import SimpleNamespace
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
+
+
+def _resultados_por_mes(results: list[dict[str, Any]]):
+    """``side_effect`` para ``run_connector``: un resultado por mes esperado.
+
+    Traduce el shape que devolvían los tests del camino legacy
+    (``[{"year": ..., "status": "ok"|"error_descarga"}]``) al
+    ``ConnectorRunResult`` que consume el bucle nuevo: lo único que decide el
+    estado del mes es ``fetch_failed``.
+    """
+    pendientes = list(results)
+
+    def _side_effect(connector: Any, **_: Any) -> SimpleNamespace:
+        esperado = pendientes.pop(0)
+        return SimpleNamespace(
+            source_id=connector.source_id,
+            fetch_failed=esperado["status"] != "ok",
+            fetched=0,
+            parsed=0,
+            nuevas=esperado.get("nuevas", 0),
+            actualizadas=esperado.get("actualizadas", 0),
+            adjudicaciones=0,
+            errores=0,
+        )
+
+    return _side_effect
 
 
 def test_run_calls_analytics_export_before_kpi_precompute():
@@ -84,7 +113,12 @@ def test_partial_failure_runs_post_ingestion_and_reports_degraded():
     ]
 
     with (
-        patch("scraper.pipeline.update_recent", return_value=results),
+        patch("scheduler.pipeline_runs.meses_a_procesar", return_value=[(2026, 5), (2026, 6)]),
+        patch("scraper.connectors.base.run_connector", side_effect=_resultados_por_mes(results)),
+        patch("db.database.log_extraccion"),
+        patch("observability.bind_run_context", return_value="run-test"),
+        patch("observability.record_run", return_value=nullcontext(MagicMock())),
+        patch("scraper.pipeline._summarize"),
         patch(
             "scheduler.pipeline_runs._run_post_ingestion_steps",
             return_value={"dlq_retry": "ok"},
@@ -96,7 +130,7 @@ def test_partial_failure_runs_post_ingestion_and_reports_degraded():
     mock_steps.assert_called_once()  # dlq_retry etc. sí corren
     mock_notify.assert_called_once()
     assert out["status"] == "degraded"
-    assert out["failed_months"] == [{"year": 2026, "month": 6, "status": "error_descarga"}]
+    assert [(r["year"], r["month"]) for r in out["failed_months"]] == [(2026, 6)]
 
 
 def test_total_failure_raises_runtimeerror():
@@ -109,7 +143,12 @@ def test_total_failure_raises_runtimeerror():
     ]
 
     with (
-        patch("scraper.pipeline.update_recent", return_value=results),
+        patch("scheduler.pipeline_runs.meses_a_procesar", return_value=[(2026, 5), (2026, 6)]),
+        patch("scraper.connectors.base.run_connector", side_effect=_resultados_por_mes(results)),
+        patch("db.database.log_extraccion"),
+        patch("observability.bind_run_context", return_value="run-test"),
+        patch("observability.record_run", return_value=nullcontext(MagicMock())),
+        patch("scraper.pipeline._summarize"),
         patch("scheduler.pipeline_runs._run_post_ingestion_steps") as mock_steps,
     ):
         with pytest.raises(RuntimeError, match="all 2 month"):
@@ -141,37 +180,46 @@ def test_run_update_returns_1_on_degraded():
     mock_notify.assert_not_called()  # sin alerta CRITICAL "error fatal"
 
 
-# ── Camino legacy de run_bulk_pipeline() (PLACSP_CONNECTOR_ENABLED=False) ────
-# Ejercitan scraper.pipeline.update_recent directamente (vs. mockear
-# scheduler.pipeline_runs.run_bulk_pipeline como en los tests de arriba).
+# ── El job `recent_bulk` sobre el carril bulk ────────────────────────────────
+# Hasta 2026-09 estos tests ejercitaban `scraper.pipeline.update_recent` (el
+# camino legacy que gobernaba `PLACSP_CONNECTOR_ENABLED=False`). Esa rama se
+# retiró con `process_month` (S2.1): `run_bulk_pipeline` va siempre por el
+# conector, así que el punto de intercepción es el bucle por meses.
 
 
 class TestRunRecentBulk:
-    @patch("scheduler.watchlist_alerts.check_and_notify")
-    @patch("scheduler.aggregates_precompute.run_aggregates_precompute")
-    @patch("scheduler.kpi_precompute.run_kpi_precompute")
-    @patch("scraper.pipeline.update_recent", return_value=[{"status": "ok"}])
-    def test_success(self, *mocks: MagicMock) -> None:
+    @patch("scheduler.pipeline_runs._run_bulk_pipeline_connector", return_value={"status": "ok"})
+    def test_success(self, bucle: MagicMock) -> None:
         from scheduler.jobs.recent_bulk import run
 
         run()
 
-    @patch("scraper.pipeline.update_recent", return_value=[{"status": "error"}])
-    def test_failure(self, mock_update: MagicMock) -> None:
+        bucle.assert_called_once_with(3)
+
+    def test_failure(self) -> None:
+        """Si fallan todos los meses, el fallo llega hasta el caller del job."""
         from scheduler.jobs.recent_bulk import run
 
-        with pytest.raises(RuntimeError, match="bulk refresh failed"):
+        with (
+            patch("scheduler.pipeline_runs.meses_a_procesar", return_value=[(2026, 5)]),
+            patch(
+                "scraper.connectors.base.run_connector",
+                side_effect=_resultados_por_mes([{"year": 2026, "month": 5, "status": "error"}]),
+            ),
+            patch("db.database.log_extraccion"),
+            patch("observability.bind_run_context", return_value="run-test"),
+            patch("observability.record_run", return_value=nullcontext(MagicMock())),
+            patch("scraper.pipeline._summarize"),
+            pytest.raises(RuntimeError, match="bulk refresh"),
+        ):
             run()
 
 
 class TestRunRecentBulkDefault:
-    @patch("scheduler.watchlist_alerts.check_and_notify")
-    @patch("scheduler.aggregates_precompute.run_aggregates_precompute")
-    @patch("scheduler.kpi_precompute.run_kpi_precompute")
-    @patch("scraper.pipeline.update_recent", return_value=[{"status": "ok"}])
-    def test_reads_env(self, mock_update: MagicMock, *mocks: MagicMock) -> None:
+    @patch("scheduler.pipeline_runs._run_bulk_pipeline_connector", return_value={"status": "ok"})
+    def test_reads_env(self, bucle: MagicMock) -> None:
         with patch.dict("os.environ", {"SCHEDULER_BULK_MONTHS": "5"}):
             from scheduler.jobs.recent_bulk import run
 
             run()
-        mock_update.assert_called_once_with(5)
+        bucle.assert_called_once_with(5)

@@ -99,6 +99,53 @@ jobs:
           pip install -r requirements.txt
           pip install -e ".[pliegos,ml-embeddings]"
 
+      # Overrides de repositorio → $GITHUB_ENV, y SOLO si están definidos.
+      #
+      # Antes esto vivía como `X: ${{ vars.X || 'literal' }}` en el `env:` del
+      # step. Ese literal no es un default: SUSTITUYE al de `config/settings.py`
+      # cuando la variable no está definida, que es el caso normal. Son dos
+      # fuentes de verdad para el mismo valor y gana la del YAML, que ningún
+      # test mira. Aquí ya costó un incidente concreto y documentado: el modelo
+      # `deepseek-v4-pro` quedó EOL en NVIDIA el 2026-08-07 y devolvía 410; el
+      # default de settings ya estaba corregido, pero el literal del workflow lo
+      # pisaba y tumbó el lote entero de fichas. Así el default vigente es
+      # siempre el del código, y la variable de repo lo pisa solo cuando alguien
+      # la define de verdad.
+      # Verificado por scripts/check_env_parity.py.
+      - name: Exportar overrides de repositorio definidos
+        env:
+          IN_PLIEGO_FACTS_ENABLED: ${{ vars.PLIEGO_FACTS_ENABLED }}
+          IN_PLIEGO_FACTS_MODEL: ${{ vars.PLIEGO_FACTS_MODEL }}
+          IN_FETCH_BATCH: ${{ inputs.fetch_batch }}
+          IN_EMBED_BATCH: ${{ inputs.embed_batch }}
+          IN_FACTS_BATCH: ${{ inputs.facts_batch }}
+          IN_TECH_SIGNAL_BATCH: ${{ inputs.tech_signal_batch }}
+        run: |
+          set -u
+          if [ -n "${IN_PLIEGO_FACTS_ENABLED:-}" ]; then
+            echo "PLIEGO_FACTS_ENABLED=$IN_PLIEGO_FACTS_ENABLED" >> "$GITHUB_ENV"
+          fi
+          if [ -n "${IN_PLIEGO_FACTS_MODEL:-}" ]; then
+            echo "PLIEGO_FACTS_MODEL=$IN_PLIEGO_FACTS_MODEL" >> "$GITHUB_ENV"
+          fi
+          # Los cuatro tamaños de lote son inputs de workflow_dispatch, no
+          # `vars`: en el cron nocturno llegan vacíos y entonces manda el default
+          # de config/settings.py, que es justo lo que se quiere. Antes el
+          # `|| '300'` del YAML los fijaba también en el cron, duplicando el
+          # default en un sitio que ningún test mira.
+          if [ -n "${IN_FETCH_BATCH:-}" ]; then
+            echo "PLIEGO_FETCH_BATCH=$IN_FETCH_BATCH" >> "$GITHUB_ENV"
+          fi
+          if [ -n "${IN_EMBED_BATCH:-}" ]; then
+            echo "PLIEGO_EMBED_BATCH=$IN_EMBED_BATCH" >> "$GITHUB_ENV"
+          fi
+          if [ -n "${IN_FACTS_BATCH:-}" ]; then
+            echo "PLIEGO_FACTS_BATCH=$IN_FACTS_BATCH" >> "$GITHUB_ENV"
+          fi
+          if [ -n "${IN_TECH_SIGNAL_BATCH:-}" ]; then
+            echo "PLIEGO_TECH_SIGNAL_BATCH=$IN_TECH_SIGNAL_BATCH" >> "$GITHUB_ENV"
+          fi
+
       - name: Run pliegos batch (fetch + chunk + embed)
         env:
           # ENV=prod porque este job escribe en la BD de producción, así que
@@ -112,22 +159,18 @@ jobs:
           SCHEDULER_PLANE: actions
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           DATABASE_SSL_ROOT_CERT: ${{ secrets.DATABASE_SSL_ROOT_CERT }}
-          PLIEGO_FACTS_ENABLED: ${{ vars.PLIEGO_FACTS_ENABLED || 'false' }}
-          # Fallback sincronizado con config/settings.py::PLIEGO_FACTS_MODEL. El
-          # anterior (deepseek-v4-pro) quedó EOL en NVIDIA el 2026-08-07 y devuelve
-          # 410: con la fase activada y sin vars.PLIEGO_FACTS_MODEL, este env
-          # pisaba el default bueno de settings y el lote entero de fichas fallaba.
-          PLIEGO_FACTS_MODEL: ${{ vars.PLIEGO_FACTS_MODEL || 'deepseek-ai/deepseek-v4-flash-0731' }}
-          # Overrides opcionales vía workflow_dispatch para lotes de
-          # recuperación manual (backlog); en el cron nocturno los inputs
-          # llegan vacíos y caen a los mismos defaults de config/settings.py.
-          PLIEGO_FETCH_BATCH: ${{ github.event.inputs.fetch_batch || '300' }}
-          PLIEGO_EMBED_BATCH: ${{ github.event.inputs.embed_batch || '100' }}
-          PLIEGO_FACTS_BATCH: ${{ github.event.inputs.facts_batch || '25' }}
-          PLIEGO_TECH_SIGNAL_BATCH: ${{ github.event.inputs.tech_signal_batch || '500' }}
           NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          # Canal de alertas. Este cron nocturno drena un backlog de ~44k
+          # documentos contra la BD de producción y `scheduler/healthcheck.py`
+          # NO cubre esta tubería (lo dice el comentario del job `audit-extras`
+          # de más arriba): sin estas variables, cualquier `notify()` del lote
+          # se quedaba en el log del runner y moría con él, y el único aviso era
+          # el correo por defecto de GitHub al dueño del repo.
+          ALERT_EMAIL_TO: ${{ secrets.ALERT_EMAIL_TO }}
+          ALERT_SMTP_USER: ${{ secrets.ALERT_SMTP_USER }}
+          ALERT_SMTP_PASSWORD: ${{ secrets.ALERT_SMTP_PASSWORD }}
           LOG_FORMAT: json
         run: python -m scheduler.jobs.documentos_embeddings run
 

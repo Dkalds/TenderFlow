@@ -15,14 +15,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from observability.logging import get_logger
+from services.ml.thresholds import F1_DROP_CRIT, F1_DROP_WARN, PSI_CRIT, PSI_WARN
 
 log = get_logger(__name__)
-
-# Umbrales por defecto (sobrescribibles vía settings o args).
-_PSI_WARN = 0.10
-_PSI_CRIT = 0.25
-_F1_DROP_WARN = 0.03  # caída relativa 3 %
-_F1_DROP_CRIT = 0.10  # caída relativa 10 %
 
 
 @dataclass
@@ -34,9 +29,9 @@ class DriftStatus:
 
 
 def _classify(psi: float, f1_drop: float) -> tuple[str, str]:
-    if psi >= _PSI_CRIT or f1_drop >= _F1_DROP_CRIT:
+    if psi >= PSI_CRIT or f1_drop >= F1_DROP_CRIT:
         return "crit", f"PSI={psi:.3f} / Δf1={f1_drop:.3f} sobre umbral crítico"
-    if psi >= _PSI_WARN or f1_drop >= _F1_DROP_WARN:
+    if psi >= PSI_WARN or f1_drop >= F1_DROP_WARN:
         return "warn", f"PSI={psi:.3f} / Δf1={f1_drop:.3f} sobre umbral de aviso"
     return "ok", "Sin drift relevante"
 

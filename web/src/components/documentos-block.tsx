@@ -1,8 +1,7 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
-import { fetchWithAuth } from "@/lib/api-client";
-import type { DocumentoSummary, DocumentosResult } from "@/lib/api-types";
+import { useFactSheetDocumentos } from "@/hooks/use-tender-fact-sheet";
+import type { DocumentoSummary } from "@/lib/api-types";
 import { ExternalLink, FileText } from "lucide-react";
 
 const TIPO_LABELS: Record<string, string> = {
@@ -62,12 +61,10 @@ export function DocumentosBlock({
    *  mantiene el comportamiento anterior: si no hay documentos, no se pinta. */
   fichaUrl?: string | null;
 }) {
-  const { data } = useQuery<DocumentosResult>({
-    queryKey: ["documentos", licitacionId],
-    queryFn: () =>
-      fetchWithAuth(`/api/v1/licitaciones/${encodeURIComponent(licitacionId)}/documentos`),
-    staleTime: 5 * 60 * 1000,
-  });
+  // Mismo hook que la ficha del expediente: compartían la clave
+  // `["documentos", licitacionId]` con dos `queryFn` copiadas, que es la forma
+  // en la que una de las dos deriva sin que nada avise.
+  const { data } = useFactSheetDocumentos(licitacionId);
 
   const items: DocumentoSummary[] = data?.items ?? [];
 

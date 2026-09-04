@@ -314,18 +314,31 @@ def _resuelve(path: str) -> str | None:
     return getattr(getattr(captured.get("route"), "endpoint", None), "__name__", None)
 
 
-def test_rutas_estaticas_de_exports_no_las_ensombrece_el_comodin():
-    """``/{job_id}`` no puede tragarse las sub-rutas estáticas de ``/exports``.
+def test_rutas_estaticas_de_exports_no_las_ensombrece_ningun_comodin():
+    """Cada sub-ruta estática de ``/exports`` resuelve a **su** handler.
 
-    Starlette resuelve por orden de registro, así que declarar ``/{job_id}``
-    antes que ``/download`` hacía que toda descarga cayera en ``get_export``
-    con job_id="download". Como ese handler exige X-API-Key, el endpoint que
-    usan todos los botones de exportación del dashboard respondía 401 a
-    cualquier sesión de navegador. El test existente no lo detectó porque
+    Starlette resuelve por orden de registro, así que declarar un comodín
+    ``/{job_id}`` antes que ``/download`` hacía que toda descarga cayera en
+    ``get_export`` con job_id="download". Como ese handler exigía X-API-Key, el
+    endpoint que usan todos los botones de exportación del dashboard respondía
+    401 a cualquier sesión de navegador. El test que había no lo detectó porque
     aceptaba 401 entre los códigos válidos; este comprueba el handler, no el
     código de estado, que es lo único que no se puede satisfacer por accidente.
+
+    Actualizado el 2026-09-03: el comodín concreto que motivó el test se fue
+    con los jobs asíncronos (``POST /exports``, ``GET|DELETE /exports/{id}``),
+    pero el riesgo de enrutado es del prefijo, no de aquel handler — sigue
+    habiendo tres rutas estáticas, una de ellas con punto en el nombre
+    (``calendario.ics``) y otra con dos segmentos (``calendario/enlace``), que
+    cualquier ruta paramétrica futura se tragaría igual.
     """
     assert _resuelve("/api/v1/exports/download") == "download_export"
     assert _resuelve("/api/v1/exports/calendario.ics") == "calendario_ics"
-    # El camino paramétrico sigue vivo para los jobs reales (uuid4).
-    assert _resuelve("/api/v1/exports/1c9f5f2e-0000-4000-8000-000000000000") == "get_export"
+    assert _resuelve("/api/v1/exports/calendario/enlace") == "calendario_enlace"
+
+    # Hoy no hay camino paramétrico bajo /exports: un identificador suelto es
+    # un 404 de enrutado. Si esta línea falla es que alguien ha vuelto a
+    # registrar un comodín — que vuelva si tiene backend compartido (ver
+    # tests/test_unit_export_idor.py), pero comprobando antes que no ensombrece
+    # a las tres rutas de arriba y actualizando este test a conciencia.
+    assert _resuelve("/api/v1/exports/1c9f5f2e-0000-4000-8000-000000000000") is None

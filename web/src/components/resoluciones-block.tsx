@@ -5,6 +5,7 @@ import { fetchWithAuth } from "@/lib/api-client";
 import { Badge } from "@/components/ui/badge";
 import { formatDate } from "@/lib/utils";
 import { ExternalLink } from "lucide-react";
+import { resolucionesKeys } from "@/lib/query-keys";
 
 interface Resolucion {
   id: number;
@@ -33,7 +34,7 @@ const SENTIDO_VARIANTS: Record<string, "default" | "secondary" | "destructive" |
 
 export function useResoluciones(licitacionId: string) {
   return useQuery<{ items: Resolucion[] }>({
-    queryKey: ["resoluciones", licitacionId],
+    queryKey: resolucionesKeys.byLicitacion(licitacionId),
     queryFn: () =>
       fetchWithAuth(`/api/v1/resoluciones?licitacion_id=${encodeURIComponent(licitacionId)}`),
     staleTime: 5 * 60 * 1000,

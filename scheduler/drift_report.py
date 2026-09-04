@@ -1,8 +1,19 @@
 """Drift detection semanal — compara distribución de inputs recientes vs training set.
 
 Ejecuta un informe Evidently (si está instalado) o un KS test manual.
-Guarda el informe HTML en data/reports/drift_YYYYMMDD.html.
-Genera alerta si p-value < 0.05 en columna 'importe' o 'cpv'.
+
+**Dónde sobrevive el resultado.** El HTML y el JSON se escriben en
+``DATA_DIR/reports/``, que en el runner de GitHub Actions es un disco efímero
+que se destruye al terminar el job y que ningún paso sube como artifact: son
+una comodidad para inspección local, no el registro. Lo que persiste es el
+**resumen en JSON dentro de ``ops_events``** (:func:`_persistir_resumen`), la
+misma tabla que ya leen ``scheduler.healthcheck`` y los tripwires de ADR-004.
+Por eso el fichero se escribe *best-effort*: un disco de solo lectura degrada
+el informe local, no tumba el paso ni se lleva por delante el resumen durable.
+
+Los umbrales (``KS_ALPHA``) salen de :mod:`services.ml.thresholds`, la tabla
+única de umbrales de drift; el mapa de los seis mecanismos que se solapan está
+en el docstring de :mod:`services.ml.drift`.
 
 Scheduler: añadir `scheduler.drift_report.run_drift_report` como tarea semanal.
 """
@@ -18,13 +29,16 @@ from typing import Any
 import pandas as pd
 
 from observability.logging import get_logger
+from services.ml.thresholds import KS_ALPHA
 
 log = get_logger(__name__)
 
 _REPORTS_DIR = Path(os.environ.get("DATA_DIR", "data")) / "reports"
 _WINDOW_DAYS = 7
 _TRAIN_WINDOW_DAYS = 90
-_KS_ALPHA = 0.05
+# Tipo de evento con el que el resumen aterriza en `ops_events`. Es la clave
+# por la que se recupera el histórico de drift cuando el runner ya no existe.
+OPS_EVENT_DRIFT_REPORT = "drift_report"
 
 
 def _json_default(obj: Any) -> Any:
@@ -71,7 +85,7 @@ def _ks_test(ref: pd.Series, cur: pd.Series) -> dict[str, Any]:
     # np.bool_ y json.dumps() lo rechaza. Con NumPy 2 el TypeError resultante
     # dice "Object of type bool is not JSON serializable" — np.bool_.__name__
     # ES "bool" — y el mensaje despista. Ver run_drift_report().
-    return {"statistic": float(stat), "p_value": float(pval), "drift": bool(pval < _KS_ALPHA)}
+    return {"statistic": float(stat), "p_value": float(pval), "drift": bool(pval < KS_ALPHA)}
 
 
 def _prediction_drift(
@@ -131,7 +145,7 @@ def _prediction_drift(
     stat, pval = sp_stats.ks_2samp(recent, previous)
     return {
         # bool() explícito: np.bool_ no es serializable a JSON (ver _ks_test).
-        "drift_detected": bool(pval < _KS_ALPHA),
+        "drift_detected": bool(pval < KS_ALPHA),
         "ks_statistic": float(stat),
         "p_value": float(pval),
         "mean_recent": float(recent.mean()),
@@ -141,10 +155,72 @@ def _prediction_drift(
     }
 
 
+def _resumen_durable(results: dict[str, Any]) -> dict[str, Any]:
+    """Lo que se guarda en ``ops_events``: pequeño, plano y suficiente.
+
+    El informe completo (por columna, con estadísticos) no cabe en el ``detail``
+    de ``ops_events`` y tampoco hace falta: lo que se consulta semanas después
+    es si hubo drift, sobre cuántas filas y en qué columnas.
+    """
+    return {
+        "drift_detected": bool(results.get("drift_detected")),
+        "skipped": bool(results.get("skipped")),
+        "ref_n": results.get("ref_n"),
+        "cur_n": results.get("cur_n"),
+        "columns_drift": [
+            col
+            for col, v in (results.get("columns") or {}).items()
+            if isinstance(v, dict) and v.get("drift")
+        ],
+        "prediction_drift": bool((results.get("prediction_drift") or {}).get("drift_detected")),
+    }
+
+
+def _persistir_resumen(results: dict[str, Any]) -> bool:
+    """Escribe el resumen en ``ops_events``. ``True`` si quedó registrado.
+
+    Es el único rastro que sobrevive al runner efímero, así que se llama
+    **siempre**, también cuando el informe se salta por falta de datos: "no
+    hubo datos esta semana" es información, y con el ``return`` temprano
+    anterior no quedaba constancia de ninguna clase.
+    """
+    try:
+        from observability.ops_events import record_event
+
+        record_event(
+            OPS_EVENT_DRIFT_REPORT,
+            value=1.0 if results.get("drift_detected") else 0.0,
+            detail=json.dumps(_resumen_durable(results), ensure_ascii=False, default=_json_default)[
+                :500
+            ],
+        )
+    except Exception:
+        log.debug("drift_report_ops_event_failed", exc_info=True)
+        return False
+    return True
+
+
+def _escribir_local(nombre: str, contenido: str) -> str | None:
+    """Escribe un fichero del informe en ``DATA_DIR/reports``. ``None`` si no pudo.
+
+    Best-effort a propósito: el directorio puede no ser escribible (contenedor
+    de solo lectura, disco lleno) y ese fichero es una comodidad local, no el
+    registro — el registro es ``ops_events``. Antes, el ``mkdir`` estaba en la
+    primera línea de ``run_drift_report`` y un fallo ahí se llevaba por delante
+    el informe entero.
+    """
+    try:
+        _REPORTS_DIR.mkdir(parents=True, exist_ok=True)
+        destino = _REPORTS_DIR / nombre
+        destino.write_text(contenido, encoding="utf-8")
+    except OSError as exc:
+        log.warning("drift_report_local_write_failed", nombre=nombre, error=str(exc))
+        return None
+    return str(destino)
+
+
 def run_drift_report() -> dict[str, Any]:
     """Genera informe de drift. Devuelve resumen con flags de alerta."""
-    _REPORTS_DIR.mkdir(parents=True, exist_ok=True)
-
     df_ref = _load_window(_TRAIN_WINDOW_DAYS, offset_days=_WINDOW_DAYS)
     df_cur = _load_window(_WINDOW_DAYS)
 
@@ -159,6 +235,7 @@ def run_drift_report() -> dict[str, Any]:
     if df_ref.empty or df_cur.empty:
         results["skipped"] = True
         log.warning("drift_report_skipped", reason="empty_data")
+        results["persistido"] = _persistir_resumen(results)
         return results
 
     # ── Numeric drift ─────────────────────────────────────────────────────
@@ -188,7 +265,7 @@ def run_drift_report() -> dict[str, Any]:
             results["columns"][col] = {
                 "p_value": float(pval),
                 # bool() explícito: np.bool_ no es serializable (ver _ks_test).
-                "drift": bool(pval < _KS_ALPHA),
+                "drift": bool(pval < KS_ALPHA),
             }
         except Exception:
             log.debug("chi2_drift_test_failed", column=col, exc_info=True)
@@ -215,15 +292,23 @@ def run_drift_report() -> dict[str, Any]:
         log.warning("prediction_drift_failed", error=str(exc))
         results["prediction_drift"] = {"error": str(exc)}
 
-    # ── Evidently HTML report (optional) ─────────────────────────────────
-    report_path: Path | None = None
+    # ── Persistir resumen en ops_events ──────────────────────────────────
+    # PRIMERO, antes de tocar el disco: el JSON/HTML de abajo muere con el
+    # runner efímero de Actions y nada lo sube como artifact, así que el
+    # resumen durable no puede quedar detrás de una escritura de fichero que
+    # puede fallar (revisión de arquitectura 2026-08/2026-09). ops_events es la
+    # tabla compartida que ya leen healthcheck y los tripwires.
+    results["persistido"] = _persistir_resumen(results)
+
+    # ── Evidently HTML report (opcional, artefacto local) ─────────────────
+    date_str = datetime.now(UTC).strftime("%Y%m%d")
     try:
         from evidently.metric_preset import DataDriftPreset  # type: ignore[import-not-found]
         from evidently.report import Report  # type: ignore[import-not-found]
 
         report = Report(metrics=[DataDriftPreset()])
         report.run(reference_data=df_ref, current_data=df_cur)
-        date_str = datetime.now(UTC).strftime("%Y%m%d")
+        _REPORTS_DIR.mkdir(parents=True, exist_ok=True)
         report_path = _REPORTS_DIR / f"drift_{date_str}.html"
         report.save_html(str(report_path))
         results["report_path"] = str(report_path)
@@ -233,40 +318,13 @@ def run_drift_report() -> dict[str, Any]:
     except Exception as exc:
         log.warning("drift_evidently_error", error=str(exc))
 
-    # ── Save JSON summary ─────────────────────────────────────────────────
-    date_str = datetime.now(UTC).strftime("%Y%m%d")
-    json_path = _REPORTS_DIR / f"drift_{date_str}.json"
-    json_path.write_text(json.dumps(results, indent=2, ensure_ascii=False, default=_json_default))
-    results["json_path"] = str(json_path)
-
-    # ── Persistir resumen en ops_events ──────────────────────────────────
-    # El JSON/HTML de arriba muere con el runner efímero de Actions; nada lo
-    # subía como artifact, así que el único rastro era una línea de log
-    # (revisión de arquitectura 2026-08). ops_events es la tabla compartida
-    # que ya leen healthcheck y los tripwires — el resumen sobrevive ahí.
-    try:
-        from observability.ops_events import record_event
-
-        record_event(
-            "drift_report",
-            value=1.0 if results["drift_detected"] else 0.0,
-            detail=json.dumps(
-                {
-                    "drift_detected": results["drift_detected"],
-                    "ref_n": results["ref_n"],
-                    "cur_n": results["cur_n"],
-                    "columns_drift": [
-                        col
-                        for col, v in results["columns"].items()
-                        if isinstance(v, dict) and v.get("drift")
-                    ],
-                },
-                ensure_ascii=False,
-                default=_json_default,
-            )[:500],
-        )
-    except Exception:
-        log.debug("drift_report_ops_event_failed", exc_info=True)
+    # ── Copia local del JSON (comodidad de inspección, no el registro) ────
+    json_path = _escribir_local(
+        f"drift_{date_str}.json",
+        json.dumps(results, indent=2, ensure_ascii=False, default=_json_default),
+    )
+    if json_path is not None:
+        results["json_path"] = json_path
 
     if results["drift_detected"]:
         log.warning(

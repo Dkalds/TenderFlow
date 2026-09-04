@@ -101,8 +101,13 @@ jobs:
       - name: Run backfill
         env:
           SCOPE_FUENTE: ${{ inputs.scope_fuente }}
-          BATCH: ${{ inputs.batch || '5000' }}
-          TIME_BUDGET: ${{ inputs.time_budget || '3600' }}
+          # Sin `|| '5000'`: los inputs de arriba ya declaran su `default:` y
+          # este workflow solo se dispara a mano, así que nunca llegan vacíos.
+          # El fallback era código muerto que además duplicaba el default en dos
+          # sitios — y es el idioma que scripts/check_env_parity.py prohíbe
+          # dentro de un `env:` justamente porque suele pisar al del código.
+          BATCH: ${{ inputs.batch }}
+          TIME_BUDGET: ${{ inputs.time_budget }}
           RESTART: ${{ inputs.restart }}
         run: |
           ARGS=(--batch "$BATCH" --time-budget "$TIME_BUDGET")

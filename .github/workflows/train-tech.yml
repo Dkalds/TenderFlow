@@ -84,13 +84,30 @@ jobs:
       # Emite `publicable` y `artefactos` (rutas separadas por espacio) en
       # $GITHUB_OUTPUT. Sale en verde con `publicable=false` cuando el gate
       # rechaza: es el mecanismo funcionando, no un fallo.
+      # Override de repositorio → $GITHUB_ENV, y SOLO si está definido.
+      #
+      # Antes esto era `ALERT_MIN_LEVEL: ${{ vars.ALERT_MIN_LEVEL || 'warn' }}`
+      # en el `env:` del step de abajo. Ese literal no es un default: SUSTITUYE
+      # al de `config/settings.py` cuando la variable no está definida, que es
+      # el caso normal. Son dos fuentes de verdad para el mismo valor y gana la
+      # del YAML, que ningún test mira. En este repo ya costó un incidente
+      # documentado (el modelo EOL `deepseek-v4-pro` tumbando el lote entero de
+      # fichas), y `scripts/check_env_parity.py` lo bloquea desde entonces.
+      - name: Exportar overrides definidos
+        env:
+          VAR_ALERT_MIN_LEVEL: ${{ vars.ALERT_MIN_LEVEL }}
+        run: |
+          set -u
+          if [ -n "${VAR_ALERT_MIN_LEVEL:-}" ]; then
+            echo "ALERT_MIN_LEVEL=$VAR_ALERT_MIN_LEVEL" >> "$GITHUB_ENV"
+          fi
+
       - name: Train tech classifier
         id: train
         env:
           ALERT_EMAIL_TO: ${{ secrets.ALERT_EMAIL_TO }}
           ALERT_SMTP_USER: ${{ secrets.ALERT_SMTP_USER }}
           ALERT_SMTP_PASSWORD: ${{ secrets.ALERT_SMTP_PASSWORD }}
-          ALERT_MIN_LEVEL: ${{ vars.ALERT_MIN_LEVEL || 'warn' }}
         run: python -m scheduler.jobs.tech_training_run
 
       # Los valores van por `env` y no interpolados en el `run:`: una expresión

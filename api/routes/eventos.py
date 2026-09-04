@@ -16,8 +16,8 @@ from pydantic import BaseModel
 
 from api.concurrency import run_db
 from api.routes.dual_auth import require_any_auth
-from db.database import connect_read
 from db.repositories.aggregates import LicitacionesFilters
+from db.repositories.licitaciones import LicitacionRepository
 from services.contract_events import EventoFeedItem, EventosFeedResult, eventos_recientes, timeline
 
 router = APIRouter(tags=["eventos"])
@@ -33,14 +33,7 @@ _TIPOS_VALIDOS = {
 }
 
 
-def _licitacion_existe(licitacion_id: str) -> bool:
-    with connect_read() as c:
-        return (
-            c.execute(
-                "SELECT 1 FROM licitaciones WHERE id_externo = %s", (licitacion_id,)
-            ).fetchone()
-            is not None
-        )
+_repo_licitaciones = LicitacionRepository()
 
 
 class TimelineEvento(BaseModel):
@@ -71,7 +64,7 @@ async def get_timeline(
 ) -> TimelineResult:
     """Hitos del ciclo de vida: publicación → adjudicación → formalización →
     modificaciones/prórrogas → anulación, ordenados cronológicamente."""
-    if not await run_db(_licitacion_existe, licitacion_id):
+    if not await run_db(_repo_licitaciones.exists, licitacion_id):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Licitación no encontrada."
         )

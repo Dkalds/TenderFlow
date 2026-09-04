@@ -60,6 +60,12 @@ const radarState: {
 const SIGNALS_SANAS: ScoringSignals = {
   competencia: "ok",
   margen: "ok",
+  // `margen` dice si la señal funciona; `margen_origen` dice de qué está hecha.
+  // `predicciones_baja` guarda en las mismas columnas el p50 de un modelo
+  // entrenado y el del baseline histórico, y hasta 2026-09 el consumidor no
+  // podía separarlos: un score sostenido por la media histórica se presentaba
+  // igual que uno sostenido por un modelo. Aquí el caso sano es "modelo".
+  margen_origen: "modelo",
   percentiles_fuente: "universo_vivo",
   afinidad_metodo: "keyword_cpv_fallback",
   perfil: "ok",

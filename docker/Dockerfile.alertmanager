@@ -1,0 +1,32 @@
+# Imagen de Alertmanager con la configuración del proyecto horneada (S6.3).
+#
+# Mismo motivo que docker/Dockerfile.prometheus: en Render no hay forma de
+# montar un fichero de configuración por volumen (el único disco montado es el
+# de datos), así que `runtime: image` sobre la imagen upstream arrancaría con la
+# configuración de fábrica — sin receptores y sin enrutado. La vía es construir
+# la imagen con la config dentro.
+#
+# La diferencia con Prometheus es que aquí la configuración lleva SECRETOS
+# (credenciales SMTP, destinatario, URL de webhook), y esos no pueden hornearse
+# en una capa de imagen: quedarían en el registro y en cualquier `docker history`.
+# Por eso el fichero que se copia lleva `${VARIABLE}` y el ENTRYPOINT lo expande
+# con `envsubst` en el arranque, contra las variables de entorno que inyecta
+# Render. Alertmanager no interpola variables de entorno por su cuenta.
+FROM prom/alertmanager:v0.27.0
+
+USER root
+
+# `gettext` trae `envsubst`. La imagen base es Alpine.
+RUN apk add --no-cache gettext
+
+COPY observability/alertmanager.yml /etc/alertmanager/alertmanager.tmpl.yml
+COPY docker/docker-entrypoint-alertmanager.sh /usr/local/bin/entrypoint.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh \
+    && mkdir -p /etc/alertmanager/rendered /alertmanager \
+    && chown -R nobody:nobody /etc/alertmanager /alertmanager
+
+USER nobody
+
+EXPOSE 9093
+
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]

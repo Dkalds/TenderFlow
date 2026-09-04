@@ -65,6 +65,7 @@ from services.ml.features import (
     FilaDataset,
     _fecha_dt,
     construir_dataset_baja,
+    fecha_valida,
 )
 
 if TYPE_CHECKING:
@@ -213,6 +214,46 @@ def _codificar(
     return X, cats
 
 
+def _columnas_observadas(X: npt.NDArray[np.float64]) -> tuple[list[bool], list[str]]:
+    """``(máscara, nombres descartados)`` de las columnas con algún valor.
+
+    ``HistGradientBoostingRegressor`` no admite una columna numérica **entera**
+    a NaN: su binning intenta calcular los cortes sobre cero valores distintos
+    y muere con ``ValueError: window shape cannot be larger than input array
+    shape``, un mensaje que no dice nada del dato que lo provoca. El caso no es
+    hipotético: basta con que una feature del segmento —``hhi_segmento``,
+    ``plazo_dias``, cualquier agregado histórico— no tenga ni una observación
+    en el corte que se está ajustando.
+
+    Descartarla antes de ajustar es lo correcto además de lo que evita el
+    crash: una columna sin un solo valor no aporta ningún split, así que el
+    modelo resultante es el mismo. Lo que no puede pasar es que el
+    entrenamiento **dependa** de que ninguna llegue vacía.
+    """
+    import numpy as np
+
+    if X.shape[0] == 0:
+        return [True] * X.shape[1], []
+    observadas = ~np.all(np.isnan(X), axis=0)
+    mask = [bool(v) for v in observadas]
+    descartadas = [col for col, keep in zip(FEATURE_COLUMNS, mask, strict=True) if not keep]
+    return mask, descartadas
+
+
+def _aplicar_mascara(X: npt.NDArray[np.float64], mask: list[bool]) -> npt.NDArray[np.float64]:
+    """Subconjunto de columnas de ``X`` según ``mask`` (sin copia si sobra todo)."""
+    import numpy as np
+
+    if all(mask):
+        return X
+    return X[:, np.array(mask, dtype=bool)]
+
+
+def _filtrar(valores: list[bool], mask: list[bool]) -> list[bool]:
+    """Aplica ``mask`` a una lista paralela a ``FEATURE_COLUMNS`` (p. ej. cat_mask)."""
+    return [v for v, keep in zip(valores, mask, strict=True) if keep]
+
+
 def _baseline(fila: FilaDataset, media_global: float) -> float:
     for col in _BASELINE_FALLBACK:
         valor = fila.features.get(col)
@@ -278,11 +319,29 @@ class BajaModel:
                 f"{len(FEATURE_COLUMNS)}): reentrená antes de servirlo"
             )
 
+    @property
+    def mascara_features(self) -> list[bool]:
+        """Columnas de :data:`FEATURE_COLUMNS` que el ajuste llegó a ver.
+
+        Las que estaban **enteras a NaN** en el train se descartan antes de
+        ajustar (:func:`_columnas_observadas`), así que la matriz de predicción
+        tiene que recortarse igual o los árboles recibirían otras columnas en
+        las mismas posiciones. Los artefactos anteriores a este cambio no
+        registran la lista: para ellos la máscara es "todas", que es
+        exactamente lo que hacían.
+        """
+        usadas = self.metadata.get("feature_columns_usadas")
+        if not usadas:
+            return [True] * len(FEATURE_COLUMNS)
+        conjunto = {str(col) for col in usadas}
+        return [col in conjunto for col in FEATURE_COLUMNS]
+
     def predict(self, filas: list[FilaDataset]) -> list[Prediccion]:
         if not filas:
             return []
         self.verificar_features()
-        X, _ = _codificar(filas, self.categorias)
+        X_completa, _ = _codificar(filas, self.categorias)
+        X = _aplicar_mascara(X_completa, self.mascara_features)
         por_quantil = {q: self.modelos[q].predict(X) for q in QUANTILES}
         offset = self.conformal_offset
         out: list[Prediccion] = []
@@ -372,6 +431,63 @@ def _fecha_label(fila: FilaDataset, fechas_label: Mapping[str, str]) -> datetime
     corte, no retrasarlo).
     """
     return _fecha_dt(fechas_label.get(fila.licitacion_id) or fila.fecha)
+
+
+def filtrar_fechas_invalidas(filas: list[FilaDataset]) -> tuple[list[FilaDataset], int]:
+    """Descarta las filas cuya fecha no es parseable. Devuelve ``(filas, n)``.
+
+    Las columnas de fecha son TEXT y la fuente cuela formatos que no son ISO
+    (``'19-12-10'`` reventó el reentrenamiento mensual del 2026-09-01 dentro de
+    :func:`_folds_rolling`). El parseo de :func:`_fecha_dt` es estricto **a
+    propósito** —una fecha inventada mueve un corte temporal y con él la
+    métrica—, pero abortar el entrenamiento entero por una fila es la reacción
+    equivocada: el coste de perderla es una observación, y el de no entrenar es
+    un mes sin modelo.
+
+    Cada descarte se loguea con su id y su valor crudo, y el conteo viaja a las
+    métricas del entrenamiento (``n_descartadas_fecha_invalida``): un descarte
+    silencioso que crezca sin que nadie lo vea sería el mismo problema en
+    versión lenta.
+    """
+    validas: list[FilaDataset] = []
+    descartadas = 0
+    for fila in filas:
+        if fecha_valida(fila.fecha):
+            validas.append(fila)
+            continue
+        descartadas += 1
+        log.warning(
+            "ml_dataset_fecha_invalida",
+            licitacion_id=fila.licitacion_id,
+            fecha=fila.fecha,
+            campo="fecha_anchor",
+        )
+    return validas, descartadas
+
+
+def sanear_fechas_label(fechas_label: Mapping[str, str]) -> tuple[dict[str, str], int]:
+    """Quita del mapa de fechas de etiqueta las que no parsean.
+
+    Mismo criterio que :func:`filtrar_fechas_invalidas`, pero aquí la fila **no
+    se pierde**: sin entrada en el mapa, :func:`_fecha_label` cae al ancla de
+    la fila, que es una fecha válida y nunca posterior a la adjudicación. Es
+    justo el origen más probable de la basura, porque ``fecha_adjudicacion``
+    llega cruda de ``adjudicaciones`` (TEXT, sin CHECK).
+    """
+    limpio: dict[str, str] = {}
+    invalidas = 0
+    for licitacion_id, fecha in fechas_label.items():
+        if fecha_valida(fecha):
+            limpio[licitacion_id] = fecha
+            continue
+        invalidas += 1
+        log.warning(
+            "ml_dataset_fecha_invalida",
+            licitacion_id=licitacion_id,
+            fecha=fecha,
+            campo="fecha_adjudicacion",
+        )
+    return limpio, invalidas
 
 
 def _split_temporal(
@@ -520,10 +636,20 @@ def _buscar_hiper(
     for combo in combos:
         perdidas: list[float] = []
         for train, valid in folds:
-            X_tr, cats = _codificar(train)
-            X_va, _ = _codificar(valid, cats)
+            X_tr_completa, cats = _codificar(train)
+            X_va_completa, _ = _codificar(valid, cats)
+            # La máscara sale del train de ESTE fold: un fold antiguo puede no
+            # tener observaciones de una feature que el más reciente sí tiene.
+            mask, _descartadas = _columnas_observadas(X_tr_completa)
+            X_tr = _aplicar_mascara(X_tr_completa, mask)
+            X_va = _aplicar_mascara(X_va_completa, mask)
             est = _fit_quantil(
-                0.50, X_tr, _y_de(train), _pesos_recencia(train, halflife), cat_mask, combo
+                0.50,
+                X_tr,
+                _y_de(train),
+                _pesos_recencia(train, halflife),
+                _filtrar(cat_mask, mask),
+                combo,
             )
             pred = np.clip(est.predict(X_va), 0.0, _BAJA_MAX)
             perdidas.append(float(mean_pinball_loss(_y_de(valid), pred, alpha=0.50)))
@@ -636,12 +762,16 @@ def entrenar(
     from config import settings
 
     filas_todas, _ = construir_dataset_baja(hasta=hasta)
+    # Una fila con fecha no parseable no puede caer en ningún lado de un corte
+    # temporal; se descarta con log en vez de abortar el entrenamiento (ver
+    # `filtrar_fechas_invalidas`).
+    filas_fechables, descartadas_fecha = filtrar_fechas_invalidas(filas_todas)
     # Una baja negativa (adjudicado por encima del presupuesto: modificados o
     # errores de fuente) sobrevivía en `y` porque el clip solo tenía techo,
     # mientras `predict` acota a [0, _BAJA_MAX]: esas filas tiraban de los tres
     # ajustes hacia una región que el modelo no puede predecir.
-    filas = [f for f in filas_todas if (f.baja or 0.0) >= 0.0]
-    descartadas = len(filas_todas) - len(filas)
+    filas = [f for f in filas_fechables if (f.baja or 0.0) >= 0.0]
+    descartadas = len(filas_fechables) - len(filas)
     if len(filas) < MIN_TRAIN_SAMPLES:
         log.warning("baja_model_insufficient_data", n=len(filas), min=MIN_TRAIN_SAMPLES)
         return {"status": "datos_insuficientes", "n": len(filas)}
@@ -654,7 +784,7 @@ def entrenar(
     cat_mask = [col in CATEGORICAL_COLUMNS for col in FEATURE_COLUMNS]
     # Cuándo pasó a ser observable la etiqueta de cada fila: sin esto los folds
     # se cortan por la publicación y el train ve bajas del futuro.
-    fechas_label = _fechas_adjudicacion(hasta)
+    fechas_label, fechas_label_invalidas = sanear_fechas_label(_fechas_adjudicacion(hasta))
     folds = _folds_rolling(filas, valid_meses, n_folds, fechas_label)
     hiper, n_explorados = _buscar_hiper(folds, cat_mask, n_combos, halflife)
 
@@ -674,17 +804,34 @@ def entrenar(
         if len(ajuste) >= MIN_TRAIN_SAMPLES and len(candidata) >= _MIN_VALID_SAMPLES:
             train_final, calibracion = ajuste, candidata
 
-    X_train, categorias = _codificar(train_final)
+    X_train_completa, categorias = _codificar(train_final)
+    # Cobertura de features: una columna sin un solo valor observado en el
+    # train no se puede binear y tumbaba el ajuste entero. Se descarta aquí,
+    # se registra en la metadata del modelo (para que `predict` recorte igual)
+    # y se reporta en las métricas.
+    mask_features, features_descartadas = _columnas_observadas(X_train_completa)
+    if features_descartadas:
+        log.warning(
+            "baja_model_features_sin_cobertura",
+            descartadas=features_descartadas,
+            n_train=len(train_final),
+        )
+    features_usadas = [
+        col for col, keep in zip(FEATURE_COLUMNS, mask_features, strict=True) if keep
+    ]
+    X_train = _aplicar_mascara(X_train_completa, mask_features)
+    cat_mask_usadas = _filtrar(cat_mask, mask_features)
     y_train = _y_de(train_final)
     pesos = _pesos_recencia(train_final, halflife)
     modelos: dict[float, Any] = {
-        q: _fit_quantil(q, X_train, y_train, pesos, cat_mask, hiper) for q in QUANTILES
+        q: _fit_quantil(q, X_train, y_train, pesos, cat_mask_usadas, hiper) for q in QUANTILES
     }
 
     media_global = float(y_train.mean())
     offset = 0.0
     if calibracion:
-        X_cal, _ = _codificar(calibracion, categorias)
+        X_cal_completa, _ = _codificar(calibracion, categorias)
+        X_cal = _aplicar_mascara(X_cal_completa, mask_features)
         pred_cal = {q: np.clip(modelos[q].predict(X_cal), 0.0, _BAJA_MAX) for q in QUANTILES}
         offset = _offset_conformal(
             np.minimum(pred_cal[0.10], pred_cal[0.50]),
@@ -699,18 +846,29 @@ def entrenar(
     por_fold: list[dict[str, float]] = []
     for i, (train, valid) in enumerate(folds):
         if i == len(folds) - 1:
-            X_va, _ = _codificar(valid, categorias)
+            X_va_completa, _ = _codificar(valid, categorias)
+            X_va = _aplicar_mascara(X_va_completa, mask_features)
             por_fold.append(
                 _metricas_fold(
                     modelos, valid, X_va, media_global, float(np.median(y_train)), offset
                 )
             )
             continue
-        X_tr, cats_f = _codificar(train)
-        X_va, _ = _codificar(valid, cats_f)
+        X_tr_completa, cats_f = _codificar(train)
+        X_va_completa, _ = _codificar(valid, cats_f)
+        mask_f, _descartadas_f = _columnas_observadas(X_tr_completa)
+        X_tr = _aplicar_mascara(X_tr_completa, mask_f)
+        X_va = _aplicar_mascara(X_va_completa, mask_f)
         y_tr = _y_de(train)
         modelos_f = {
-            q: _fit_quantil(q, X_tr, y_tr, _pesos_recencia(train, halflife), cat_mask, hiper)
+            q: _fit_quantil(
+                q,
+                X_tr,
+                y_tr,
+                _pesos_recencia(train, halflife),
+                _filtrar(cat_mask, mask_f),
+                hiper,
+            )
             for q in QUANTILES
         }
         por_fold.append(
@@ -746,6 +904,16 @@ def entrenar(
         "n_valid": len(valid_final),
         "n_calibracion": len(calibracion),
         "n_descartadas_negativas": descartadas,
+        # Filas que no entraron por tener una fecha que no parsea, y entradas
+        # del mapa de fechas de adjudicación ignoradas por lo mismo. Un
+        # descarte silencioso creciendo sin que nadie lo mire sería el mismo
+        # problema que abortaba el entrenamiento, solo que en diferido.
+        "n_descartadas_fecha_invalida": descartadas_fecha,
+        "n_fechas_label_invalidas": fechas_label_invalidas,
+        # Features que llegaron enteras a NaN al train final y quedaron fuera
+        # del ajuste (ver `_columnas_observadas`).
+        "features_descartadas_sin_cobertura": features_descartadas,
+        "n_features_usadas": len(features_usadas),
         "conformal_offset": round(offset, 5),
         "hiper": hiper,
         "hiper_explorados": n_explorados,
@@ -768,7 +936,12 @@ def entrenar(
         modelos,
         categorias,
         metadata={
+            # Layout completo con el que se construyó la matriz (lo verifica
+            # `verificar_features` contra FEATURE_COLUMNS).
             "feature_columns": list(FEATURE_COLUMNS),
+            # Subconjunto que el ajuste llegó a ver: `predict` recorta por él.
+            "feature_columns_usadas": features_usadas,
+            "feature_columns_descartadas": features_descartadas,
             "conformal_offset": offset,
             "metrics": metricas,
         },

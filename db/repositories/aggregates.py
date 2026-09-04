@@ -27,7 +27,7 @@ valida es ``NOT VALID``, no cubre datos previos a la migración). Por eso:
   calculado en Python (``datetime.now(UTC).isoformat()`` — mismo formato que
   ``db.connection.now_utc_iso()``) como parámetro, comparado con ``>=``/``<``
   de forma lexicográfica, igual que los filtros. Se guardan con un rango
-  lexicográfico sargable (``>= '1900' AND < '3000'``, ver ``_iso_guard``) para
+  lexicográfico sargable (``>= '1900' AND < '3000'``, ver ``iso_guard``) para
   excluir filas claramente malformadas del cálculo, replicando el
   ``errors="coerce"`` + ``dropna`` que hacía pandas fila a fila sin renunciar
   al índice btree de la columna.
@@ -43,9 +43,15 @@ from typing import Any
 from db.database import connect_read
 from db.repositories.base import csv_values, loose_distinct_count, rows_to_dicts
 from db.repositories.tecnologia_pliego import NO_SIGNAL_SENTINEL
-from db.sql_fragments import TECHNOLOGY_OBSERVED_SQL
+from db.sql_fragments import (
+    FOLD_TABLE,
+    TECHNOLOGY_OBSERVED_SQL,
+    fold_expr,
+    iso_guard,
+    tecnologia_en_csv_sql,
+)
 from observability.logging import get_logger
-from shared.estados import ESTADOS_CERRADOS, abierta_sql
+from shared.estados import ESTADOS_CERRADOS, abierta_sql, abierta_sql_marcadores
 
 log = get_logger(__name__)
 
@@ -72,37 +78,9 @@ def _lectura(conn: Any | None) -> Iterator[Any]:
             yield abierta
 
 
-def _iso_guard(column: str) -> str:
-    """Cláusula que excluye fechas claramente malformadas (mirror de coerce+dropna).
-
-    Rango lexicográfico y no regex: ``~`` no puede usar el btree y obliga a
-    evaluar el patrón fila a fila sobre todo lo que devuelva el índice de fecha
-    (32 s medidos en prod para 217 filas de resultado). El rango es sargable y
-    equivalente sobre datos ISO: el CHECK de v59 valida el formato en toda
-    escritura nueva y las filas legado se verificaron limpias en prod
-    (0 malformadas en licitaciones/adjudicaciones, 2026-08-02).
-    """
-    return f"({column} >= '1900' AND {column} < '3000')"
-
-
 def _escape_like(s: str) -> str:
     """Escapa comodines de LIKE/ILIKE (``%``, ``_``) en input de usuario."""
     return s.replace("\\", "\\\\").replace("%", r"\%").replace("_", r"\_")
-
-
-# Aproximación SQL de shared/services fold_text (NFKD sin tildes + casefold)
-# sin la extensión ``unaccent`` (no habilitada; habilitarla exige migración con
-# gate humano). Cubre el repertorio acentuado real de los nombres de órganos
-# españoles; cualquier carácter fuera del mapa queda igual (mismo resultado
-# que fold_text para ASCII).
-_FOLD_SRC = "áàäâéèëêíìïîóòöôúùüûñçÁÀÄÂÉÈËÊÍÌÏÎÓÒÖÔÚÙÜÛÑÇ"
-_FOLD_DST = "aaaaeeeeiiiioooouuuuncAAAAEEEEIIIIOOOOUUUUNC"
-_FOLD_TABLE = str.maketrans(_FOLD_SRC, _FOLD_DST)
-
-
-def _fold_expr(column: str) -> str:
-    """Expresión SQL que pliega tildes y mayúsculas de ``column``."""
-    return f"lower(translate({column}, '{_FOLD_SRC}', '{_FOLD_DST}'))"
 
 
 def _in_clause(column: str, values: list[str]) -> str:
@@ -167,6 +145,25 @@ def build_licitaciones_where(
     que "top adjudicatario" y "lead time" midan el histórico completo mientras
     los KPIs de al lado miden el filtro. Sin ``alias`` las columnas van
     desnudas, como en las agregaciones que leen sólo de ``licitaciones``.
+
+    **Semántica compartida con ``LicitacionRepository._base_filters``.** Los dos
+    construyen el mismo filtro para la misma pantalla —éste los KPIs, aquél el
+    listado— con implementaciones distintas (texto contra SQLAlchemy Core), y
+    hasta 2026-09 también con *semánticas* distintas: ``q`` buscaba aquí en
+    título + órgano + id y allí en título + descripción, sin plegar acentos. El
+    mismo texto en la misma caja daba dos recuentos, y ninguno de los dos era
+    explicable. Unificado en:
+
+    - ``q``: título + descripción + órgano + id externo, **con plegado de
+      acentos** en los dos lados de la comparación.
+    - ``tecnologia``: siempre explode del CSV de la fila
+      (:func:`db.sql_fragments.tecnologia_en_csv_sql`), nunca igualdad.
+
+    Las dos implementaciones siguen siendo dos —unificarlas exigiría reescribir
+    el listado o el agregado entero—, pero ``tests/test_s1_paridad_filtros.py``
+    compara la semántica emitida (columnas tocadas y forma del predicado) para
+    los mismos filtros. Si una se mueve sin la otra, falla ahí y no en un
+    recuento que nadie cuadra.
     """
 
     def col(name: str) -> str:
@@ -187,22 +184,7 @@ def build_licitaciones_where(
         params.extend(ccaas)
     tecnologias = csv_values(filters.tecnologia)
     if tecnologias:
-        # ``tecnologia`` guarda un CSV de códigos por fila (``"SAP,SALESFORCE"``),
-        # así que la igualdad se dejaba fuera los expedientes multi-tecnología:
-        # filtrar el ámbito por SAP escondía justo los que además llevan otra.
-        # Mismo explode que usan las agregaciones de tecnologías más abajo.
-        #
-        # Coste: el explode no puede usar ``idx_lic_tecnologia`` (btree de
-        # igualdad, v21), así que las consultas CON filtro de tecnología pasan a
-        # secuencial. Las que no lo llevan no cambian —no se añade cláusula—. Un
-        # índice GIN sobre ``string_to_array(tecnologia, ',')`` lo devolvería a
-        # indexado, pero exige migración y va aparte de este arreglo.
-        placeholders = ",".join("%s" for _ in tecnologias)
-        clauses.append(
-            "EXISTS (SELECT 1 FROM unnest(string_to_array("
-            f"COALESCE({col('tecnologia')}, ''), ',')) AS _tec(code) "
-            f"WHERE trim(_tec.code) IN ({placeholders}))"
-        )
+        clauses.append(tecnologia_en_csv_sql(col("tecnologia"), n=len(tecnologias)))
         params.extend(tecnologias)
     estados = csv_values(filters.estado)
     if estados:
@@ -214,13 +196,14 @@ def build_licitaciones_where(
         clauses.append(f"{col('importe')} >= %s")
         params.append(filters.importe_min)
     if filters.q and filters.q.strip():
-        needle = f"%{_escape_like(filters.q.strip().translate(_FOLD_TABLE).lower())}%"
-        clauses.append(
-            f"({_fold_expr(col('titulo'))} LIKE %s ESCAPE '\\' "
-            f"OR {_fold_expr(col('organo_contratacion'))} LIKE %s ESCAPE '\\' "
-            f"OR {_fold_expr(col('id_externo'))} LIKE %s ESCAPE '\\')"
-        )
-        params.extend([needle, needle, needle])
+        needle = f"%{_escape_like(filters.q.strip().translate(FOLD_TABLE).lower())}%"
+        # ``descripcion`` entró el 2026-09-03 para casar con el listado, que
+        # siempre la había buscado. Un NULL en cualquiera de las cuatro da NULL
+        # en su ``LIKE`` y el ``OR`` lo absorbe, así que no hace falta coalesce.
+        columnas = ("titulo", "descripcion", "organo_contratacion", "id_externo")
+        disyuntos = " OR ".join(f"{fold_expr(col(c))} LIKE %s ESCAPE '\\'" for c in columnas)
+        clauses.append(f"({disyuntos})")
+        params.extend([needle] * len(columnas))
     if filters.cpv:
         clauses.append(f"{col('cpv')} = %s")
         params.append(filters.cpv)
@@ -290,7 +273,7 @@ class AggregateRepository:
             "       COUNT(*) AS n_licitaciones, "
             "       COALESCE(SUM(importe), 0) AS importe "
             "FROM licitaciones "
-            "WHERE " + where + " AND " + _iso_guard("fecha_publicacion") + " "
+            "WHERE " + where + " AND " + iso_guard("fecha_publicacion") + " "
             "GROUP BY mes ORDER BY mes"
         )
         with connect_read() as c:
@@ -360,8 +343,8 @@ class AggregateRepository:
             "NULLIF(upper(regexp_replace(a.nif, '[^A-Za-z0-9]', '', 'g')), ''), "
             "NULLIF(upper(trim(a.nombre)), ''))"
         )
-        adj_guard = _iso_guard("a.fecha_adjudicacion")
-        pub_guard = _iso_guard("l.fecha_publicacion")
+        adj_guard = iso_guard("a.fecha_adjudicacion")
+        pub_guard = iso_guard("l.fecha_publicacion")
         sql = (
             "SELECT "
             "  (SELECT COALESCE(SUM(POWER(cuota * 100, 2)), 0) FROM ( "
@@ -452,7 +435,7 @@ class AggregateRepository:
         """
         where, params = _build_where(filters)
         col = "fecha_publicacion"
-        guard = _iso_guard(col)
+        guard = iso_guard(col)
         sql = (
             "SELECT "
             f"  COUNT(*) FILTER (WHERE {guard} AND {col} >= %s) AS lics_30d, "
@@ -534,7 +517,7 @@ class AggregateRepository:
     ) -> tuple[int, int]:
         """(anul_count, total_count) sobre fecha_publicacion >= hoy-365d."""
         where, params = _build_where(filters)
-        guard = _iso_guard("fecha_publicacion")
+        guard = iso_guard("fecha_publicacion")
         sql = (
             "SELECT "
             "  COUNT(*) FILTER (WHERE estado = 'ANUL') AS anul, "
@@ -609,8 +592,8 @@ class AggregateRepository:
                 total_activas=total_activas,
             )
         where, params = _build_where(filters)
-        pub_guard = _iso_guard("fecha_publicacion")
-        lim_guard = _iso_guard("fecha_limite")
+        pub_guard = iso_guard("fecha_publicacion")
+        lim_guard = iso_guard("fecha_limite")
         # `abierta_sql()` y no `estado IN ('PUB','EV')`: con la lista blanca,
         # `total_activas` daba 0 sobre datos donde el Radar listaba 12 — todos
         # en `ADM`, que no es terminal. Ver `shared/estados.py`.
@@ -674,15 +657,15 @@ class AggregateRepository:
         tiene ventana que acotar —es un recuento global por estado— así que
         viene del snapshot en lugar de calcularse aquí.
 
-        Los ``_iso_guard`` se conservan literalmente aunque el corte por fecha
+        Los ``iso_guard`` se conservan literalmente aunque el corte por fecha
         implique ya el extremo inferior: el techo ``< '3000'`` no lo implica, y
         repetirlos tal cual es lo que hace evidente que las dos ramas cuentan
         lo mismo. Como son rangos sobre la misma columna, Postgres los funde en
         un único recorrido del índice.
         """
         abierta = abierta_sql()
-        pub_guard = _iso_guard("fecha_publicacion")
-        lim_guard = _iso_guard("fecha_limite")
+        pub_guard = iso_guard("fecha_publicacion")
+        lim_guard = iso_guard("fecha_limite")
         sql = (
             "SELECT "
             "  (SELECT COUNT(*) FROM licitaciones "
@@ -738,7 +721,7 @@ class AggregateRepository:
         silenciosos).
         """
         where, params = _build_where(filters)
-        guard = _iso_guard("fecha_publicacion")
+        guard = iso_guard("fecha_publicacion")
 
         if not muestrear:
             total = self._resumen_timeline_total(where, params)
@@ -775,7 +758,7 @@ class AggregateRepository:
 
     def _resumen_timeline_total(self, where: str, params: list[Any]) -> int:
         """Expedientes de la ventana, para poder declarar el recorte."""
-        guard = _iso_guard("fecha_publicacion")
+        guard = iso_guard("fecha_publicacion")
         sql = f"SELECT count(*) FROM licitaciones WHERE {where} AND {guard}"
         with connect_read() as c:
             row = c.execute(sql, params).fetchone()
@@ -791,7 +774,7 @@ class AggregateRepository:
         las servía la BD (arbitrario y no estable entre llamadas); las más
         recientes son además las que el banner quiere enseñar.
         """
-        guard = _iso_guard("fecha_publicacion")
+        guard = iso_guard("fecha_publicacion")
         where = f"{guard} AND fecha_publicacion > %s"
         with connect_read() as c:
             row = c.execute(
@@ -898,7 +881,7 @@ class AggregateRepository:
         self, filters: LicitacionesFilters, *, top_techs: int
     ) -> list[dict[str, Any]]:
         where, params = _build_where(filters)
-        guard = _iso_guard("fecha_publicacion")
+        guard = iso_guard("fecha_publicacion")
         sql = (
             "WITH exploded AS ("
             "  SELECT substr(fecha_publicacion, 1, 7) AS mes, trim(code) AS code, importe "
@@ -982,7 +965,7 @@ class AggregateRepository:
         (``%Y-W%V`` sobre el lunes de la semana).
         """
         where, params = _build_where(filters)
-        guard = _iso_guard("fecha_publicacion")
+        guard = iso_guard("fecha_publicacion")
         sql = (
             "SELECT substr(fecha_publicacion, 1, 10) AS dia, "
             "       COUNT(*) AS count, COALESCE(SUM(importe), 0) AS importe "
@@ -996,7 +979,7 @@ class AggregateRepository:
     def trends_heatmap(self, filters: LicitacionesFilters) -> list[dict[str, Any]]:
         """(mes YYYY-MM, estado, value) para el heatmap mes x estado."""
         where, params = _build_where(filters)
-        guard = _iso_guard("fecha_publicacion")
+        guard = iso_guard("fecha_publicacion")
         sql = (
             "SELECT substr(fecha_publicacion, 1, 7) AS mes, estado, COUNT(*) AS value "
             "FROM licitaciones "
@@ -1016,7 +999,7 @@ class AggregateRepository:
         """Conteos e importes de las ventanas [hoy-365d, ∞) y [hoy-730d, hoy-365d)."""
         where, params = _build_where(filters)
         col = "fecha_publicacion"
-        guard = _iso_guard(col)
+        guard = iso_guard(col)
         sql = (
             "SELECT "
             f"  COUNT(*) FILTER (WHERE {guard} AND {col} >= %s) AS cnt_cur, "
@@ -1100,7 +1083,7 @@ class AggregateRepository:
         """
         where, params = _build_where(filters)
         if q:
-            where += f" AND {_fold_expr('organo_contratacion')} LIKE %s ESCAPE '\\'"
+            where += f" AND {fold_expr('organo_contratacion')} LIKE %s ESCAPE '\\'"
             params.append(f"%{_escape_like(q)}%")
         return where, params
 
@@ -1213,7 +1196,7 @@ class AggregateRepository:
     ) -> tuple[int, list[dict[str, Any]], str | None, str | None]:
         """(total_cpvs, top-N por importe, periodo_inicio, periodo_fin)."""
         where, params = _build_where(filters)
-        guard = _iso_guard("fecha_publicacion")
+        guard = iso_guard("fecha_publicacion")
         base_where = f"{where} AND cpv IS NOT NULL AND {guard}"
         with connect_read() as c:
             row = c.execute(
@@ -1243,7 +1226,7 @@ class AggregateRepository:
         if not cpvs:
             return []
         where, params = _build_where(filters)
-        guard = _iso_guard("fecha_publicacion")
+        guard = iso_guard("fecha_publicacion")
         placeholders = ",".join("%s" for _ in cpvs)
         sql = (
             "SELECT cpv, substr(fecha_publicacion, 1, 7) AS mes, "
@@ -1307,7 +1290,7 @@ class AggregateRepository:
         """{módulo: (n_act, n_prev)} en ventanas de 12 meses consecutivas."""
         where, params = _build_where(filters)
         col = "fecha_publicacion"
-        guard = _iso_guard(col)
+        guard = iso_guard(col)
         selects: list[str] = []
         run_params: list[Any] = []
         for pattern in module_patterns.values():
@@ -1418,7 +1401,7 @@ class AggregateRepository:
     ) -> list[dict[str, Any]]:
         """Serie mensual (mes YYYY-MM, valor) para el forecast de volumen."""
         where, params = _build_where(filters)
-        guard = _iso_guard("fecha_publicacion")
+        guard = iso_guard("fecha_publicacion")
         agg = "COALESCE(SUM(importe), 0)" if metric == "sum" else "COUNT(*)"
         sql = (
             f"SELECT substr(fecha_publicacion, 1, 7) AS mes, {agg} AS valor "
@@ -1574,14 +1557,14 @@ class AggregateRepository:
         Devuelve también el conteo para que el llamante decida si la muestra da
         para percentiles o conviene caer al fallback global.
         """
-        placeholders = ",".join("%s" for _ in cerrados)
-        guard = _iso_guard("fecha_limite")
+        abierta = abierta_sql_marcadores("estado", n=len(cerrados))
+        guard = iso_guard("fecha_limite")
         sql = (
             "SELECT percentile_cont(0.10) WITHIN GROUP (ORDER BY importe), "
             "       percentile_cont(0.90) WITHIN GROUP (ORDER BY importe), "
             "       COUNT(importe) "
             "FROM licitaciones "
-            f"WHERE (estado IS NULL OR estado NOT IN ({placeholders})) "
+            f"WHERE {abierta} "
             f"  AND {guard} AND fecha_limite >= %s "
             "  AND importe IS NOT NULL"
         )
@@ -1721,12 +1704,12 @@ class AggregateRepository:
         referencia de la dimensión ``importe``: si cambia aquí, cambia allí.
         """
         where, params = _build_where(filters or LicitacionesFilters())
-        placeholders = ",".join("%s" for _ in cerrados)
-        guard = _iso_guard("fecha_limite")
+        abierta = abierta_sql_marcadores("estado", n=len(cerrados))
+        guard = iso_guard("fecha_limite")
         sql = (
             f"SELECT {self._SCORING_COLS} FROM licitaciones "
             f"WHERE {where} "
-            f"  AND (estado IS NULL OR estado NOT IN ({placeholders})) "
+            f"  AND {abierta} "
             f"  AND {guard} AND fecha_limite >= %s"
         )
         with connect_read() as c:
@@ -1817,7 +1800,7 @@ class AggregateRepository:
         posteriores operan en Python sobre ese resultado ya reducido.
         """
         where, params = _build_where(filters)
-        guard = _iso_guard("fecha_limite")
+        guard = iso_guard("fecha_limite")
         sql = (
             f"SELECT {self._SCORING_COLS} FROM licitaciones "
             f"WHERE {where} AND {guard} AND fecha_limite > %s AND fecha_limite < %s "

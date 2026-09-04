@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { TenderFlowLogo } from "@/components/layout/tenderflow-logo";
+import { apiMutate } from "@/lib/api-client";
 
 const GENERIC_MESSAGE =
   "Si existe una cuenta local activa, recibirás un enlace de recuperación.";
@@ -35,11 +36,11 @@ function PasswordResetContent() {
     setLoading(true);
     setError(null);
     try {
-      await fetch("/api/v1/auth/password-reset/request", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email }),
-      });
+      // `apiMutate` en vez de `fetch` crudo: adjunta `X-CSRF-Token` cuando hay
+      // sesión y normaliza el error a `ApiError` con el `detail` RFC-7807.
+      // La respuesta sigue siendo indistinguible exista o no la cuenta: la API
+      // devuelve 202 con el mismo cuerpo en ambos casos (y también al limitar).
+      await apiMutate("POST", "/api/v1/auth/password-reset/request", { email });
       setMessage(GENERIC_MESSAGE);
     } catch {
       setError("No se pudo enviar la solicitud. Inténtalo de nuevo.");
@@ -57,15 +58,9 @@ function PasswordResetContent() {
     }
     setLoading(true);
     try {
-      const response = await fetch("/api/v1/auth/password-reset/confirm", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token, password }),
-      });
-      if (!response.ok) {
-        const body = (await response.json().catch(() => ({}))) as { detail?: string };
-        throw new Error(body.detail || "El enlace no es válido o ha caducado.");
-      }
+      // `apiMutate` ya extrae el `detail` RFC-7807 y lo pone en `ApiError.
+      // message`, que es lo que lee el `catch` de abajo.
+      await apiMutate("POST", "/api/v1/auth/password-reset/confirm", { token, password });
       setMessage("Contraseña actualizada. Ya puedes iniciar sesión.");
       window.history.replaceState(window.history.state, "", window.location.pathname);
       setPassword("");

@@ -18,6 +18,7 @@ import { descargarBlob } from "@/lib/export";
 import { formatCurrency, formatDate, formatNumber, formatPercent, truncate } from "@/lib/utils";
 
 import type { CompanyAward, CompanyAwardsData } from "./company-profile-types";
+import { competitiveKeys } from "@/lib/query-keys";
 
 interface CompanyAwardsProps {
   empresaId: number;
@@ -50,7 +51,7 @@ export function CompanyAwards({ empresaId, scopeQuery }: CompanyAwardsProps) {
   }, [debouncedOrgan, debouncedSearch, offset, scopeQuery, sort]);
 
   const { data, isLoading } = useQuery<CompanyAwardsData>({
-    queryKey: ["competitive-company-awards", empresaId, params],
+    queryKey: competitiveKeys.companyAwards(empresaId, params),
     queryFn: () => fetchWithAuth(`/api/v1/competitive/empresas/${empresaId}/adjudicaciones?${params}`),
     placeholderData: keepPreviousData,
   });

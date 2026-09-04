@@ -22,10 +22,11 @@ import type {
   WebhookPingResult,
   WebhookUpdate,
 } from "@/lib/api-types";
+import { webhookKeys } from "@/lib/query-keys";
 
 export type { WebhookCreateResponse, WebhookDelivery, WebhookOut, WebhookPingResult };
 
-const WEBHOOKS_KEY = ["webhooks"] as const;
+const WEBHOOKS_KEY = webhookKeys.all;
 
 /** Cuerpo del alta, tal y como lo declara la API. */
 export type WebhookCreateInput = WebhookCreate;
@@ -52,7 +53,7 @@ export function useWebhooks() {
 /** Tipos de evento válidos, servidos por el backend (la UI no los duplica). */
 export function useWebhookEventTypes() {
   return useQuery({
-    queryKey: ["webhooks", "event-types"],
+    queryKey: webhookKeys.eventTypes,
     queryFn: () =>
       apiGet("/api/v1/webhooks/event-types").then((response) => response.event_types),
     staleTime: 60 * 60_000,
@@ -61,7 +62,7 @@ export function useWebhookEventTypes() {
 
 export function useWebhookDeliveries(webhookId: number | null) {
   return useQuery({
-    queryKey: ["webhooks", "deliveries", webhookId],
+    queryKey: webhookKeys.deliveries(webhookId),
     queryFn: () => fetchWithAuth<WebhookDelivery[]>(`/api/v1/webhooks/${webhookId}/deliveries`),
     enabled: webhookId !== null,
   });

@@ -1,8 +1,16 @@
 /**
- * Las seis vistas de Ops viven en `_components/<x>-view.tsx` y las consumen dos
- * entradas: el espacio `/ops` y el `page.tsx` de la ruta heredada.
+ * Las seis vistas de Ops viven en `_components/<x>-view.tsx` y las monta una
+ * sola entrada: el espacio `/ops`.
  *
- * Este test congela las dos mitades del invariante:
+ * Hasta 2026-09 cada vista tenía además un `page.tsx` de ruta heredada que la
+ * re-exportaba, y este test exigía que ese boundary siguiera existiendo. Los
+ * `redirects()` de `next.config.ts` se resuelven antes que el enrutado por
+ * sistema de ficheros, así que `/observabilidad` nunca llegaba a montar el suyo:
+ * eran seis ficheros que se compilaban y no se ejecutaban, clavados aquí por su
+ * propio test. Lo que preserva un enlace guardado es el 308, y eso es lo que se
+ * comprueba ahora.
+ *
+ * Se conservan las dos mitades del invariante original:
  *
  * 1. **Nadie importa un `page.tsx`.** Mientras `/ops` montaba los `page.tsx` de
  *    las rutas, cada uno era boundary de ruta y componente a la vez, y Next no
@@ -11,7 +19,7 @@
  *    cada ruta, así que `/ops?vista=administracion` montaba el cuerpo entero
  *    sin pasar por ella: las consultas de admin salían para cualquier usuario.
  */
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -21,6 +29,8 @@ import * as React from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { SessionProvider } from "@/lib/auth";
 import { TooltipProvider } from "@/components/ui/tooltip";
+
+import { SPACE_VIEWS, legacyRedirects } from "@/lib/space-views";
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
@@ -32,17 +42,13 @@ import AdministracionView from "../_components/administracion-view";
 import FeatureFlagsView from "../_components/feature-flags-view";
 import ActiveLearningView from "../_components/active-learning-view";
 
-import { metadata as administracionMeta } from "../../administracion/layout";
-import { metadata as featureFlagsMeta } from "../../feature-flags/layout";
-import { metadata as activeLearningMeta } from "../../active-learning/layout";
-import { metadata as observabilidadMeta } from "../../observabilidad/layout";
-import { metadata as calidadDatosMeta } from "../../calidad-datos/layout";
+import { metadata as opsMeta } from "../layout";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const OPS_DIR = path.resolve(HERE, "..");
 const DASHBOARD_DIR = path.resolve(OPS_DIR, "..");
 
-/** ruta heredada → fichero de vista compartida que debe montar. */
+/** ruta absorbida → fichero de vista en `_components` que la sustituye. */
 const ROUTES: Record<string, string> = {
   observabilidad: "observabilidad-view",
   "calidad-datos": "calidad-datos-view",
@@ -52,8 +58,7 @@ const ROUTES: Record<string, string> = {
   webhooks: "webhooks-view",
 };
 
-const read = (...segments: string[]): string =>
-  readFileSync(path.join(...segments), "utf8");
+const read = (...segments: string[]): string => readFileSync(path.join(...segments), "utf8");
 
 describe("vistas de Ops — módulo compartido", () => {
   it("ops/page.tsx no importa ningún page.tsx", () => {
@@ -69,21 +74,34 @@ describe("vistas de Ops — módulo compartido", () => {
     }
   });
 
-  it.each(Object.entries(ROUTES))(
-    "la ruta /%s monta la misma vista compartida",
-    (route, view) => {
-      const source = read(DASHBOARD_DIR, route, "page.tsx");
-      expect(source).toContain(`../ops/_components/${view}`);
+  it.each(Object.entries(ROUTES))("la vista de /%s existe en _components", (_route, view) => {
+    expect(existsSync(path.join(OPS_DIR, "_components", `${view}.tsx`))).toBe(true);
+  });
+
+  it("el espacio tiene título de documento propio", () => {
+    // Las seis rutas absorbidas lo tenían en su layout; retiradas ellas, el
+    // único título que se llega a emitir es el del espacio (WCAG 2.2 §2.4.2).
+    expect(opsMeta.title).toBe("Ops y Admin");
+  });
+});
+
+describe("consolidar no elimina funcionalidad", () => {
+  it("el 308 de cada ruta absorbida sigue llevando a su ?vista=", () => {
+    // Es lo único que mantiene vivo un marcador de `/feature-flags`.
+    const redirects = new Map(legacyRedirects().map((r) => [r.source, r.destination]));
+
+    for (const view of SPACE_VIEWS.ops) {
+      expect(view.from, `la vista ${view.key} debería absorber una ruta`).toBeDefined();
+      expect(redirects.get(`/${view.from}`)).toBe(`/ops?vista=${view.key}`);
+    }
+  });
+
+  it.each(Object.keys(ROUTES))(
+    "/%s no vuelve a existir como ruta a la sombra de su redirect",
+    (route) => {
+      expect(existsSync(path.join(DASHBOARD_DIR, route))).toBe(false);
     },
   );
-
-  it("cada ruta conserva su metadata.title", () => {
-    expect(observabilidadMeta.title).toBe("Observabilidad");
-    expect(calidadDatosMeta.title).toBe("Calidad de Datos");
-    expect(administracionMeta.title).toBe("Administración");
-    expect(featureFlagsMeta.title).toBe("Feature Flags");
-    expect(activeLearningMeta.title).toBe("Active Learning");
-  });
 });
 
 function createWrapper() {

@@ -14,6 +14,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Gauge } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { prediccionKeys } from "@/lib/query-keys";
 
 function pct(v: number): string {
   return `${(v * 100).toFixed(1)}%`;
@@ -63,7 +64,7 @@ const REGIMEN_INFO: Record<
  * On-demand (sin tabla materializada), cacheado ~15 min en el backend. */
 export function CalibracionBajaBlock() {
   const { data, isLoading, isError } = useQuery<CalibracionBajaDTO>({
-    queryKey: ["calibracion-baja"],
+    queryKey: prediccionKeys.calibracion,
     queryFn: () => fetchWithAuth("/api/v1/predicciones/calibracion"),
     staleTime: 10 * 60 * 1000,
   });

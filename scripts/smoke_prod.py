@@ -37,6 +37,7 @@ import json
 import os
 import sys
 import urllib.error
+import urllib.parse
 import urllib.request
 from collections.abc import Callable
 from typing import Any
@@ -82,10 +83,38 @@ def _non_empty_lists(*keys: str) -> Callable[[Any], str | None]:
     return _check
 
 
+# Estados de `schema_revision` (api/routes/health.py) que significan "el código
+# desplegado y el schema aplicado NO son la misma generación". Es el agujero que
+# describe S6.2: `deploy.yml` puede publicar código que exige la revisión N+1
+# sobre una BD en N y todos los gates salen verdes, que es exactamente el
+# incidente de `column "lote_id" of relation "adjudicaciones" does not exist`.
+_SCHEMA_DESALINEADO = ("behind", "ahead")
+
+
 def _status_ok(payload: Any) -> str | None:
-    status = payload.get("status") if isinstance(payload, dict) else None
+    """Valida `/health/ready`: estado global **y** alineación del schema.
+
+    ``degraded`` se sigue aceptando como estado global —Redis o disco tocados no
+    hacen inservible a la API—, pero un ``schema_revision`` desalineado sí es
+    fallo: la superficie responde 200 mientras cualquier consulta que toque una
+    columna nueva revienta.
+
+    Si la clave no viene (una versión de la API anterior a este cambio, o un
+    despliegue a medias), no se inventa un fallo: se deja pasar. Un smoke que
+    falla contra binarios viejos no distingue "roto" de "todavía no desplegado".
+    """
+    if not isinstance(payload, dict):
+        return f"status inesperado: {payload!r}"
+    status = payload.get("status")
     if status not in ("healthy", "ok", "ready", "degraded"):
         return f"status inesperado: {status!r}"
+    schema = payload.get("schema_revision")
+    if isinstance(schema, str) and schema.startswith(_SCHEMA_DESALINEADO):
+        return (
+            f"schema desalineado ({schema}) — el código desplegado y la BD no son "
+            "la misma generación; aplicá migrate.yml (mode=apply) antes de dar el "
+            "deploy por bueno"
+        )
     return None
 
 
@@ -113,11 +142,58 @@ CHECKS: list[Check] = [
 ]
 
 
-def _fetch(base: str, path: str) -> tuple[int, Any]:
+# `http://` solo contra la máquina local: ahí no hay red que interceptar y es el
+# modo en que se usa `make smoke-prod` contra una API levantada a mano. Cualquier
+# otro destino tiene que ir por TLS — este script manda `SMOKE_API_KEY` y la
+# cookie de sesión en cada petición.
+_HOSTS_SIN_TLS = frozenset({"localhost", "127.0.0.1", "::1"})
+
+
+def _resolver_url(base: str, path: str) -> str:
+    """Compone y **valida** la URL final contra la base esperada.
+
+    El guard anterior era un ``startswith(("https://", "http://"))`` sobre la
+    cadena ya concatenada, que acepta ``http://`` contra cualquier host de
+    internet y no comprueba en absoluto que el destino final siga siendo el
+    servicio que se quería sondear. Aquí se exige, en este orden:
+
+    1. ``SMOKE_BASE_URL`` parseable, con esquema ``https`` (o ``http`` solo
+       contra loopback) y con host.
+    2. ``path`` relativo — un ``path`` absoluto (``https://otro-host/...``)
+       reescribiría el destino entero al concatenar.
+    3. La URL resultante conserva esquema, host y puerto de la base.
+
+    El punto 3 es lo que convierte a ``urlopen`` en una llamada de destino
+    conocido: aunque ``CHECKS`` son constantes de este módulo, la comprobación
+    no depende de que sigan siéndolo.
+    """
+    partes_base = urllib.parse.urlsplit(base.rstrip("/"))
+    if partes_base.scheme not in ("https", "http"):
+        raise ValueError(f"SMOKE_BASE_URL debe ser https (o http en local): {base!r}")
+    if not partes_base.hostname:
+        raise ValueError(f"SMOKE_BASE_URL no tiene host: {base!r}")
+    if partes_base.scheme == "http" and partes_base.hostname not in _HOSTS_SIN_TLS:
+        raise ValueError(
+            f"SMOKE_BASE_URL usa http contra un host remoto ({partes_base.hostname}): "
+            "las credenciales del smoke viajarían en claro. Usá https."
+        )
+    if not path.startswith("/") or path.startswith("//"):
+        raise ValueError(f"El path del check debe ser relativo a la base: {path!r}")
+
     url = base.rstrip("/") + path
-    if not url.startswith(("https://", "http://")):
-        raise ValueError(f"SMOKE_BASE_URL debe ser http(s), no: {url!r}")
-    req = urllib.request.Request(url)  # noqa: S310 — esquema validado arriba
+    partes = urllib.parse.urlsplit(url)
+    if (partes.scheme, partes.hostname, partes.port) != (
+        partes_base.scheme,
+        partes_base.hostname,
+        partes_base.port,
+    ):
+        raise ValueError(f"La URL compuesta apunta fuera de SMOKE_BASE_URL: {url!r}")
+    return url
+
+
+def _fetch(base: str, path: str) -> tuple[int, Any]:
+    url = _resolver_url(base, path)
+    req = urllib.request.Request(url)  # noqa: S310 — esquema y host validados arriba
     api_key = os.environ.get("SMOKE_API_KEY", "")
     if api_key:
         req.add_header("X-API-Key", api_key)
@@ -125,12 +201,14 @@ def _fetch(base: str, path: str) -> tuple[int, Any]:
     if cookie:
         req.add_header("Cookie", f"session={cookie}")
     # `url` sale de SMOKE_BASE_URL (config de despliegue, no de un request de
-    # usuario) y el guard de arriba ya rechaza cualquier esquema que no sea
-    # http(s), que es justo lo que la regla teme (`file://`). Este módulo es
-    # stdlib-only a propósito — ver el docstring —, así que cambiar a
-    # `requests`, la alternativa que sugiere la regla, no es una opción.
-    # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected
-    with urllib.request.urlopen(req, timeout=30) as resp:  # noqa: S310 — URL de config propia
+    # usuario) y `_resolver_url` ya fijó esquema, host y puerto contra esa base,
+    # que es más de lo que la regla pide (teme un `file://` o una redirección de
+    # destino). Este módulo es stdlib-only a propósito — ver el docstring —, así
+    # que cambiar a `requests`, la alternativa que sugiere la regla, no es una
+    # opción. El `nosemgrep` va en la MISMA línea del match: en la línea anterior
+    # no lo aplicaba (el hallazgo seguía apareciendo en el escaneo del 2026-08-17
+    # y con él `security.yml` en rojo).
+    with urllib.request.urlopen(req, timeout=30) as resp:  # noqa: S310  # nosemgrep
         body = resp.read()
         return resp.status, json.loads(body) if body else None
 

@@ -15,7 +15,18 @@ from pathlib import Path
 from typing import Any
 from unittest.mock import patch
 
-from db.sql_fragments import universo_tecnologico_sql
+#: El universo tal y como ``v98`` lo congeló. **No** se importa
+#: ``universo_tecnologico_sql``: ese fragmento sigue vivo y ya cambió una vez
+#: (``v99`` le añadió ``ml_tecnologias``), mientras que el cuerpo de una revisión
+#: aplicada describe la vista que existe en producción y es append-only. Comparar
+#: la revisión vieja contra el fragmento de hoy hacía fallar este test cada vez
+#: que el universo evoluciona, que es justo lo que la revisión NO debe seguir.
+_UNIVERSO_V98 = (
+    "(COALESCE(l.analysis_universe, 'technology_observed') = 'technology_observed' "
+    "OR l.analysis_universe IN ('galicia_rss_recent_technology_observed', "
+    "'euskadi_rss_recent_technology_observed') "
+    "OR (l.tecnologia IS NOT NULL AND l.tecnologia <> ''))"
+)
 
 _RUTA = (
     Path(__file__).resolve().parents[1]
@@ -47,7 +58,7 @@ def _sql_emitido(funcion: str, *, dialecto: str = "postgresql") -> list[str]:
 def test_el_cuerpo_nuevo_solo_anade_el_universo_al_de_v94() -> None:
     """La única diferencia con v94 es el tercer término del WHERE."""
     modulo = _cargar()
-    universo = universo_tecnologico_sql("l")
+    universo = _UNIVERSO_V98
 
     assert universo in modulo._CUERPO
     assert universo not in modulo._CUERPO_ANTERIOR

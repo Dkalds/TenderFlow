@@ -62,6 +62,43 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
+      # Overrides de repositorio → $GITHUB_ENV, y SOLO si están definidos.
+      #
+      # Antes esto vivía como `X: ${{ vars.X || 'literal' }}` en el `env:` del
+      # step. Ese literal no es un default: SUSTITUYE al de `config/settings.py`
+      # cuando la variable no está definida, que es el caso normal. Son dos
+      # fuentes de verdad para el mismo valor y gana la del YAML, que ningún
+      # test mira. Aquí ya costó un incidente concreto y documentado: el modelo
+      # `deepseek-v4-pro` quedó EOL en NVIDIA el 2026-08-07 y devolvía 410; el
+      # default de settings ya estaba corregido, pero el literal del workflow lo
+      # pisaba y tumbó el lote entero. Así el default vigente es siempre el del
+      # código, y la variable de repo lo pisa solo cuando alguien la define.
+      # Verificado por scripts/check_env_parity.py.
+      - name: Exportar overrides de repositorio definidos
+        env:
+          IN_ALERT_MIN_LEVEL: ${{ vars.ALERT_MIN_LEVEL }}
+          IN_LLM_TECH_LABELING_ENABLED: ${{ vars.LLM_TECH_LABELING_ENABLED }}
+          IN_LLM_TECH_LABELING_MODEL: ${{ vars.LLM_TECH_LABELING_MODEL }}
+          IN_LLM_TECH_LABELING_BATCH: ${{ vars.LLM_TECH_LABELING_BATCH }}
+          IN_LLM_TECH_FEEDBACK_ENABLED: ${{ vars.LLM_TECH_FEEDBACK_ENABLED }}
+        run: |
+          set -u
+          if [ -n "${IN_ALERT_MIN_LEVEL:-}" ]; then
+            echo "ALERT_MIN_LEVEL=$IN_ALERT_MIN_LEVEL" >> "$GITHUB_ENV"
+          fi
+          if [ -n "${IN_LLM_TECH_LABELING_ENABLED:-}" ]; then
+            echo "LLM_TECH_LABELING_ENABLED=$IN_LLM_TECH_LABELING_ENABLED" >> "$GITHUB_ENV"
+          fi
+          if [ -n "${IN_LLM_TECH_LABELING_MODEL:-}" ]; then
+            echo "LLM_TECH_LABELING_MODEL=$IN_LLM_TECH_LABELING_MODEL" >> "$GITHUB_ENV"
+          fi
+          if [ -n "${IN_LLM_TECH_LABELING_BATCH:-}" ]; then
+            echo "LLM_TECH_LABELING_BATCH=$IN_LLM_TECH_LABELING_BATCH" >> "$GITHUB_ENV"
+          fi
+          if [ -n "${IN_LLM_TECH_FEEDBACK_ENABLED:-}" ]; then
+            echo "LLM_TECH_FEEDBACK_ENABLED=$IN_LLM_TECH_FEEDBACK_ENABLED" >> "$GITHUB_ENV"
+          fi
+
       # INGESTA de PLACSP, sin cerrar la pasada.
       #
       # Este step corría `--daily` a secas, es decir la ingesta MÁS toda la
@@ -80,7 +117,6 @@ jobs:
           ALERT_EMAIL_TO: ${{ secrets.ALERT_EMAIL_TO }}
           ALERT_SMTP_USER: ${{ secrets.ALERT_SMTP_USER }}
           ALERT_SMTP_PASSWORD: ${{ secrets.ALERT_SMTP_PASSWORD }}
-          ALERT_MIN_LEVEL: ${{ vars.ALERT_MIN_LEVEL || 'warn' }}
           GITHUB_TOKEN: ${{ github.token }}
         run: python -m scheduler.run_update --daily --fase ingesta
 
@@ -149,11 +185,26 @@ jobs:
         timeout-minutes: 5
         run: python -m scraper.connectors.watched_company_awards
 
-      # Conectores Fase 5 (RFC 20260611-1). Se omiten hasta que sus
-      # variables estén configuradas tras validar las fuentes vivas
-      # (scripts/probe_pscp.py · python -m scraper.connectors.tacrc --check).
+      # Conectores Fase 5 (RFC 20260611-1). Ya NO llevan gate por variable.
+      #
+      # Llevaban `vars.PSCP_DATASET_ID != ''` / `vars.TACRC_INDEX_URL != ''`, y
+      # un step saltado se ve **exactamente igual que uno que pasa**: check
+      # verde, sin anotación, sin línea en el log. Con esas variables sin
+      # configurar el job salía verde sin que dos de las siete fuentes hubieran
+      # corrido nunca — ausencia de monitorización indistinguible de
+      # monitorización que pasa. Es el mismo antipatrón que `smoke.yml` ya
+      # corrigió («sin esa variable configurada se saltaba **en verde**»).
+      #
+      # Ahora el conector corre siempre y es él quien decide: sin su variable
+      # escribe estado `disabled` en `ops_events` y termina en 0, así que la
+      # ausencia de configuración queda registrada en la tabla que lee
+      # `scheduler/healthcheck.py` en vez de en un hueco del log.
+      #
+      # `continue-on-error` y `timeout-minutes` se mantienen: siguen siendo
+      # fuentes independientes que no deben tumbar el carril diario ni comerse
+      # el presupuesto del job.
       - name: Run PSCP Catalunya connector
-        if: ${{ !cancelled() && vars.PSCP_DATASET_ID != '' }}
+        if: ${{ !cancelled() }}
         continue-on-error: true
         # Presupuesto propio: si la API pública de Catalunya se cuelga o
         # pagina muchísimo, no debe consumir todo el timeout del job y dejar
@@ -165,7 +216,7 @@ jobs:
         run: python -m scraper.connectors.pscp
 
       - name: Run TACRC resoluciones connector
-        if: ${{ !cancelled() && vars.TACRC_INDEX_URL != '' }}
+        if: ${{ !cancelled() }}
         continue-on-error: true
         timeout-minutes: 10
         env:
@@ -188,7 +239,6 @@ jobs:
           ALERT_EMAIL_TO: ${{ secrets.ALERT_EMAIL_TO }}
           ALERT_SMTP_USER: ${{ secrets.ALERT_SMTP_USER }}
           ALERT_SMTP_PASSWORD: ${{ secrets.ALERT_SMTP_PASSWORD }}
-          ALERT_MIN_LEVEL: ${{ vars.ALERT_MIN_LEVEL || 'warn' }}
           GITHUB_TOKEN: ${{ github.token }}
           # Paso post-ingesta `llm_tech_labeling` (categorización por LLM sobre
           # la metadata del anuncio). La key va en el `env:` del step y no en el
@@ -199,14 +249,6 @@ jobs:
           # Flags como `vars` para poder encender/apagar y ajustar el lote desde
           # Actions → Variables, sin tocar código (mismo patrón que pliegos.yml).
           # Con la variable sin definir manda el default de config/settings.py.
-          LLM_TECH_LABELING_ENABLED: ${{ vars.LLM_TECH_LABELING_ENABLED || 'false' }}
-          # Fallback sincronizado con config/settings.py::LLM_TECH_LABELING_MODEL.
-          # El anterior (deepseek-v4-pro) quedó EOL en NVIDIA el 2026-08-07 y
-          # devuelve 410: con la fase activada y sin vars.LLM_TECH_LABELING_MODEL,
-          # este env pisaba el default bueno de settings y el lote entero fallaba.
-          LLM_TECH_LABELING_MODEL: ${{ vars.LLM_TECH_LABELING_MODEL || 'deepseek-ai/deepseek-v4-flash-0731' }}
-          LLM_TECH_LABELING_BATCH: ${{ vars.LLM_TECH_LABELING_BATCH || '200' }}
-          LLM_TECH_FEEDBACK_ENABLED: ${{ vars.LLM_TECH_FEEDBACK_ENABLED || 'false' }}
         run: python -m scheduler.run_update --daily --fase cierre
 
       - name: Healthcheck post-run
@@ -215,5 +257,4 @@ jobs:
           ALERT_EMAIL_TO: ${{ secrets.ALERT_EMAIL_TO }}
           ALERT_SMTP_USER: ${{ secrets.ALERT_SMTP_USER }}
           ALERT_SMTP_PASSWORD: ${{ secrets.ALERT_SMTP_PASSWORD }}
-          ALERT_MIN_LEVEL: ${{ vars.ALERT_MIN_LEVEL || 'warn' }}
         run: python -m scheduler.healthcheck --alert

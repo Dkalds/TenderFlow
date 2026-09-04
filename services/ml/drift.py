@@ -36,11 +36,17 @@ from dataclasses import dataclass
 from typing import Any
 
 from observability.logging import get_logger
+from services.ml.thresholds import PSI_CRIT, PSI_WARN
 
 log = get_logger(__name__)
 
-_PSI_WARN = 0.10
-_PSI_CRIT = 0.25
+# Los dos umbrales PSI salen de `services/ml/thresholds.py`, que es de donde los
+# lee también `scheduler/drift_monitor.py`. Estaban declarados por duplicado en
+# los dos módulos con los mismos valores, que es la forma en que dos vigilantes
+# del mismo fenómeno acaban discrepando: el día que alguien afine uno, el otro
+# sigue avisando con el criterio viejo y nadie sabe cuál manda.
+_PSI_WARN = PSI_WARN
+_PSI_CRIT = PSI_CRIT
 
 # Diferencia admisible entre la tasa de nulos de una feature en entrenamiento y
 # en scoring. El PSI solo compara los valores **presentes**, así que una feature

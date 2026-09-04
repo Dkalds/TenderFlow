@@ -26,7 +26,8 @@ no seis.
 
 from __future__ import annotations
 
-from typing import Any
+from datetime import UTC, date, datetime
+from typing import Any, Literal
 
 from observability.logging import get_logger
 
@@ -56,6 +57,94 @@ CANONICAL_STEPS: list[str] = [
     "sap_active_learning",
     "drift_checks",
 ]
+
+#: Severidad de cada paso canónico.
+#:
+#: ``bloqueante``  el paso es parte del contrato de la pasada: si falla, la
+#:                 pasada está rota y el proceso sale en rojo.
+#: ``advisory``    el paso *informa* sobre el sistema pero no produce nada que
+#:                 la pasada deba entregar. Si falla se notifica igual por email
+#:                 (``_notify_step_failure``) y aparece como ``error`` en el
+#:                 resumen de ``cierre_pasada_completado``, pero NO entra en
+#:                 ``pipeline_post_ingestion_steps_failed`` ni cambia el exit
+#:                 code.
+#:
+#: El 2026-09-01 el canary del catálogo NIM (``llm_models_canary``) tumbó el
+#: cierre entero de ``scrape-daily`` durante días: los otros 14 pasos —incluido
+#: el refresco de la superficie pública— terminaron ``ok``, y aun así el job
+#: salía rojo por un aviso sobre el catálogo de un proveedor LLM. Un rojo que
+#: significa «hay un aviso» y un rojo que significa «la pasada no entregó» no
+#: pueden ser el mismo rojo: el primero enseña al equipo a ignorar el segundo.
+#:
+#: Los cuatro ``advisory`` comparten forma: miran el estado del sistema
+#: (catálogo de modelos, anomalías del corpus, drift del clasificador, cola de
+#: active learning) y su salida es una alerta, no un dato del que dependa
+#: ninguna superficie. Todo lo demás es bloqueante.
+StepTier = Literal["bloqueante", "advisory"]
+
+STEP_TIER: dict[str, StepTier] = {
+    "ml_scoring": "bloqueante",
+    "ml_tecnologias": "bloqueante",
+    "tech_signal_merge": "bloqueante",
+    "llm_tech_labeling": "bloqueante",
+    "analytics_export": "bloqueante",
+    "kpi_precompute": "bloqueante",
+    "aggregates_precompute": "bloqueante",
+    "watchlist_notify": "bloqueante",
+    "digests": "bloqueante",
+    "dlq_retry": "bloqueante",
+    "anomaly_checks": "advisory",
+    "llm_models_canary": "advisory",
+    "retention_cleanup": "bloqueante",
+    "sap_active_learning": "advisory",
+    "drift_checks": "advisory",
+}
+
+#: Estados posibles de un paso en el resumen de la pasada.
+#:
+#: ``ok``       el paso hizo su trabajo.
+#: ``skipped``  el paso decidió no hacer nada y eso es correcto: su ventana de
+#:              cadencia aún no venció (``_run_periodic``), su feature flag está
+#:              apagado, o le falta un insumo declarado (ver ``_run_ml_scoring``).
+#:              **No** es un fallo y no eleva el exit code.
+#: ``error``    el paso lanzó. Eleva el exit code solo si es ``bloqueante``.
+STEP_OK = "ok"
+STEP_SKIPPED = "skipped"
+STEP_ERROR = "error"
+
+
+def step_tier(name: str) -> StepTier:
+    """Severidad declarada de un paso canónico.
+
+    Raises:
+        RuntimeError: si el paso no tiene tier. Es el mismo contrato que la
+            comprobación de implementación (``_run_<name>``): un paso nuevo en
+            ``CANONICAL_STEPS`` sin severidad declarada sería silenciosamente
+            bloqueante o silenciosamente advisory según el default que
+            eligiéramos, y las dos opciones son una decisión tomada por
+            omisión sobre si el job puede salir rojo.
+    """
+    tier = STEP_TIER.get(name)
+    if tier is None:
+        raise RuntimeError(
+            f"CANONICAL_STEPS contiene '{name}' sin tier declarado en STEP_TIER — "
+            "todo paso debe declarar si es 'bloqueante' o 'advisory'"
+        )
+    return tier
+
+
+def pasos_bloqueantes_fallidos(steps: dict[str, str]) -> list[str]:
+    """Pasos que ponen la pasada en rojo: ``error`` **y** ``bloqueante``.
+
+    Un paso desconocido (no está en ``STEP_TIER``) cuenta como bloqueante: si
+    alguien mete un paso por fuera del contrato, el fallo se ve.
+    """
+    return [
+        name
+        for name, estado in steps.items()
+        if estado == STEP_ERROR and STEP_TIER.get(name, "bloqueante") == "bloqueante"
+    ]
+
 
 # `ml_retrain` salió de la lista en 2026-08: vive en
 # `.github/workflows/train-predictivos.yml`. Entrenaba aquí, dentro de un job
@@ -118,29 +207,82 @@ def _run_periodic(name: str, ttl_seconds: int, fn: Any) -> str:
     return "ok"
 
 
-def _run_ml_scoring() -> None:
+def _run_ml_scoring() -> str:
     """Score keyword-route licitaciones (ml_proba IS NULL).
 
     Sin try/except propio: hasta 2026-08 tragaba cualquier excepción a nivel
     debug y reportaba "ok" al ejecutor, así que un scoring roto era invisible.
     El ejecutor canónico ya aísla y alerta los fallos de cada paso.
+
+    **Propaga el resultado del precompute** (2026-09). Hasta ahora este paso
+    reportaba ``ok`` pasara lo que pasara, y eso tapaba un acoplamiento real:
+    ``precompute_ml_proba`` solo comprueba ``SAPClassifier.is_available()`` —un
+    ``Path.exists()`` sobre el disco del runner— y si no hay artefacto devuelve
+    ``{"updated": 0, "skipped_no_model": True}`` sin puntuar nada. El fichero
+    solo estaba ahí porque la fase de ingesta previa, en el MISMO runner, lo
+    había descargado vía ``scraper/pipeline.py::_load_classifiers`` →
+    ``SAPClassifier.ensure_downloaded()``. En cuanto el cierre corre en un
+    runner distinto de la ingesta —que es exactamente lo que hace
+    ``--fase cierre``— no hay modelo, no se puntúa nada y el resumen decía
+    «ok».
+
+    Clave del dict que se lee: ``skipped_no_model`` (bool). Es el contrato con
+    el agente que está arreglando ``scraper/ml_training.py`` para que llame a
+    ``ensure_downloaded()``: cuando ese cambio entre, este paso volverá a
+    reportar ``ok`` solo. Si esa clave desapareciera del dict, este paso
+    reportaría ``ok`` de nuevo — por eso el nombre va documentado aquí y no
+    solo leído.
+
+    Returns:
+        ``"ok"`` si el precompute puntuó (o no tenía nada que puntuar),
+        ``"skipped"`` si reportó que no hay modelo disponible.
     """
     from scraper.ml_training import precompute_ml_proba
 
-    precompute_ml_proba(force=False)
+    resultado = precompute_ml_proba(force=False)
+    if resultado.get("skipped_no_model"):
+        log.warning(
+            "pipeline_ml_scoring_sin_modelo",
+            detalle=(
+                "precompute_ml_proba devolvió skipped_no_model: el artefacto del "
+                "clasificador SAP no está en el disco de este runner. Ninguna "
+                "licitación nueva quedó puntuada en esta pasada."
+            ),
+        )
+        return STEP_SKIPPED
+    return STEP_OK
 
 
-def _run_ml_tecnologias() -> None:
+def _run_ml_tecnologias() -> str:
     """Multi-technology scoring (feature-flagged).
 
-    Sin try/except propio por el mismo motivo que ``_run_ml_scoring``.
+    Sin try/except propio por el mismo motivo que ``_run_ml_scoring``, y
+    propaga el resultado por el mismo motivo: ``precompute_ml_tecnologias``
+    también devuelve ``skipped_no_model`` cuando ``TechnologyClassifier`` no
+    está en el disco del runner.
+
+    Returns:
+        ``"skipped"`` si el flag ``ML_TECH_ENABLED`` está apagado o si el
+        precompute reporta que no hay modelo; ``"ok"`` en caso contrario.
     """
     from config import settings as _settings
 
-    if getattr(_settings, "ML_TECH_ENABLED", False):
-        from scraper.ml_training import precompute_ml_tecnologias
+    if not getattr(_settings, "ML_TECH_ENABLED", False):
+        return STEP_SKIPPED
 
-        precompute_ml_tecnologias(force=False)
+    from scraper.ml_training import precompute_ml_tecnologias
+
+    resultado = precompute_ml_tecnologias(force=False)
+    if resultado.get("skipped_no_model"):
+        log.warning(
+            "pipeline_ml_tecnologias_sin_modelo",
+            detalle=(
+                "precompute_ml_tecnologias devolvió skipped_no_model: el "
+                "artefacto multi-tecnología no está en el disco de este runner."
+            ),
+        )
+        return STEP_SKIPPED
+    return STEP_OK
 
 
 def _run_tech_signal_merge() -> None:
@@ -404,9 +546,9 @@ def _run_drift_checks() -> str:
 def _run_dlq_retry(lane: str = LANE_BULK) -> None:
     """Drena la DLQ. En el carril diario **no** reintenta meses bulk.
 
-    Una entrada ``bulk_YYYYMM`` se reintenta llamando a ``process_month``: la
-    descarga y el reparseo de los ZIP de un mes entero, más su resolución de
-    entidades. Con la DLQ arrastrando varios meses, ese trabajo se comía el
+    Una entrada ``bulk_YYYYMM`` se reintenta corriendo ``PlacspBulkConnector``
+    para ese mes: la descarga y el reparseo de los ZIP de un mes entero, más su
+    resolución de entidades. Con la DLQ arrastrando varios meses, ese trabajo se comía el
     presupuesto entero del job diario y GitHub lo cancelaba a mitad de la
     cadena post-ingesta (runs de 2026-08-01/03: cancelados dentro de
     ``dlq_retry`` reprocesando siete ficheros ``...Completo3_2026MM....atom``).
@@ -489,7 +631,11 @@ def _run_post_ingestion_steps(*, lane: str = LANE_BULK) -> dict[str, str]:
             que no lo declare no pierda trabajo en silencio.
 
     Returns:
-        Dict ``{step_name: "ok" | "error"}`` con el resultado de cada paso.
+        Dict ``{step_name: "ok" | "skipped" | "error"}`` con el resultado de
+        cada paso. Un paso que devuelve la cadena ``"skipped"`` se reporta como
+        tal (ver ``STEP_SKIPPED``): no hizo trabajo, pero tampoco falló. Los
+        demás valores de retorno se ignoran y cuentan como ``"ok"`` — la
+        mayoría de pasos no devuelven nada.
     """
     results: dict[str, str] = {}
     for name in CANONICAL_STEPS:
@@ -499,15 +645,17 @@ def _run_post_ingestion_steps(*, lane: str = LANE_BULK) -> dict[str, str]:
                 f"CANONICAL_STEPS contiene '{name}' sin implementación _run_{name} — "
                 "la constante y las funciones de paso divergieron"
             )
+        # Mismo contrato que la comprobación de implementación: un paso sin
+        # severidad declarada no puede ejecutarse, porque nadie habría decidido
+        # si su fallo pone el job en rojo.
+        step_tier(name)
         try:
-            if name in _LANE_AWARE_STEPS:
-                fn(lane=lane)
-            else:
-                fn()
-            results[name] = "ok"
+            salida = fn(lane=lane) if name in _LANE_AWARE_STEPS else fn()
+            results[name] = STEP_SKIPPED if salida == STEP_SKIPPED else STEP_OK
         except Exception as exc:
-            log.exception("pipeline_step_failed", step=name)
-            results[name] = "error"
+            log.exception("pipeline_step_failed", step=name, tier=STEP_TIER[name])
+            results[name] = STEP_ERROR
+            # Los advisory notifican igual: dejan de tumbar el job, no de avisar.
             _notify_step_failure(name, exc)
 
     return results
@@ -531,13 +679,23 @@ def run_post_ingestion_only(*, lane: str = LANE_DAILY) -> dict[str, Any]:
     verdad.
 
     Returns:
-        Dict con ``steps`` y ``status`` (``ok`` si ningún paso falló).
+        Dict con ``steps``, ``status`` (``ok`` si ningún paso **bloqueante**
+        falló) y ``advisory_failed`` (los pasos advisory en error, que sí
+        notifican por email pero no degradan la pasada — ver ``STEP_TIER``).
     """
     step_results = _run_post_ingestion_steps(lane=lane)
-    fallidos = [name for name, estado in step_results.items() if estado != "ok"]
+    fallidos = pasos_bloqueantes_fallidos(step_results)
+    advisory = [
+        name
+        for name, estado in step_results.items()
+        if estado == STEP_ERROR and name not in fallidos
+    ]
+    if advisory:
+        log.warning("pipeline_advisory_steps_failed", failed=advisory)
     return {
         "status": "ok" if not fallidos else "degraded",
         "steps": step_results,
+        "advisory_failed": advisory,
     }
 
 
@@ -739,8 +897,14 @@ def _finalize_ingestion(results: list[dict[str, Any]], *, label: str) -> dict[st
 def run_bulk_pipeline(months: int = 3) -> dict[str, Any]:
     """Pipeline canónica para el carril bulk (últimos N meses).
 
-    Cuando ``PLACSP_CONNECTOR_ENABLED=True`` (F2), usa ``PlacspBulkConnector``
-    a través de ``run_connector``; si es False, usa el pipeline legacy.
+    Siempre por ``PlacspBulkConnector`` + ``run_connector``. Hasta 2026-09
+    había aquí una rama legacy (``scraper.pipeline.update_recent`` →
+    ``process_month``) gobernada por ``PLACSP_CONNECTOR_ENABLED``; se retiró
+    con la propia ``process_month`` (S2.1): ese camino escribía sin historial
+    (``upsert_licitaciones`` en vez de ``upsert_licitaciones_with_history``),
+    sin lotes, sin documentos, sin detección de duplicados y sin salud de
+    fuente ni columnas de linaje, así que «hacer rollback» a él significaba
+    degradar el dato en silencio, no recuperar un estado bueno.
 
     Un fallo transitorio en algún mes reciente **no** aborta la pipeline: se
     registra en la DLQ, se ejecutan los pasos post-ingesta (incluido el
@@ -757,21 +921,23 @@ def run_bulk_pipeline(months: int = 3) -> dict[str, Any]:
     Raises:
         RuntimeError: Solo si fallan todos los meses de la ingesta.
     """
-    from config import settings as _settings
-
-    if getattr(_settings, "PLACSP_CONNECTOR_ENABLED", False):
-        return _run_bulk_pipeline_connector(months)
-
-    from scraper.pipeline import update_recent
-
-    results = update_recent(months)
-    return _finalize_ingestion(results, label="bulk refresh")
+    return _run_bulk_pipeline_connector(months)
 
 
 def run_backfill_pipeline(year: int, month: int) -> dict[str, Any]:
     """Pipeline canónica para backfill histórico (desde año/mes hasta hoy).
 
-    Aplica la misma tolerancia a fallos parciales que ``run_bulk_pipeline``.
+    Aplica la misma tolerancia a fallos parciales que ``run_bulk_pipeline``, y
+    desde 2026-09 **el mismo camino**: ``PlacspBulkConnector`` mes a mes vía
+    ``run_connector`` (S2.1). Antes delegaba en ``scraper.pipeline.backfill``,
+    que paralelizaba ``process_month`` con un ``ThreadPoolExecutor`` — el
+    camino legacy que no escribía historial, ni lotes, ni documentos, ni
+    linaje, ni salud de fuente, y que además llamaba a la resolución de
+    empresas con ámbito global tras cada mes.
+
+    Se pierde el paralelismo por meses (``BACKFILL_MAX_WORKERS``) a cambio de
+    que el backfill escriba lo mismo que la ingesta viva. Un backfill es una
+    operación manual y rara; una tabla con linaje a medias no lo es.
 
     Args:
         year: Año de inicio del backfill.
@@ -782,18 +948,85 @@ def run_backfill_pipeline(year: int, month: int) -> dict[str, Any]:
         ``failed_months`` y ``steps``.
 
     Raises:
+        ValueError: Si ``year``/``month`` no son un mes válido ≥ 2000.
         RuntimeError: Solo si fallan todos los meses del backfill.
     """
-    from scraper.pipeline import backfill
-
-    results = backfill(year, month)
-    return _finalize_ingestion(results, label="backfill")
+    return _run_bulk_pipeline_connector(desde=(year, month), label="backfill (connector)")
 
 
-def _run_bulk_pipeline_connector(months: int) -> dict[str, Any]:
-    """Implementación del carril bulk usando PlacspBulkConnector (F2).
+def meses_a_procesar(
+    months: int = 3,
+    *,
+    desde: tuple[int, int] | None = None,
+    hoy: date | None = None,
+) -> list[tuple[int, int]]:
+    """Lista de ``(año, mes)`` que recorre el carril bulk.
 
-    Paridad operacional con el camino legacy (``update_recent``):
+    Dos modos, con **orden distinto a propósito**:
+
+    - ``months=N`` (refresco bulk): los N meses más recientes, del más nuevo al
+      más antiguo. Es el orden que ya tenía el bucle: si el job se corta por
+      timeout, lo que sí entró es lo reciente, que es lo que mira el producto.
+    - ``desde=(año, mes)`` (backfill histórico): de ese mes hasta hoy, en orden
+      **cronológico ascendente**. Es el orden que construía
+      ``scraper.pipeline.backfill``, y no es cosmético: el ZIP mensual de
+      PLACSP no trae ``<updated>`` por entry, así que
+      ``fecha_actualizacion_fuente`` va vacía y el desempate entre dos
+      apariciones del mismo expediente en meses distintos lo decide el orden de
+      escritura — gana el último mes procesado. Ascendente, ese último es el
+      más reciente, que es la versión buena.
+
+    Args:
+        months: Número de meses recientes (ignorado si se pasa ``desde``).
+        desde: ``(año, mes)`` de inicio del backfill.
+        hoy: Fecha de referencia; por defecto hoy en UTC. Inyectable para
+            fijar el borde de fin de año en los tests sin congelar el reloj.
+
+    Raises:
+        ValueError: si ``desde`` no es un mes válido de un año ≥ 2000, o si
+            ``months`` no es positivo. Mismo contrato de validación que tenía
+            ``scraper.pipeline.backfill``, que era donde vivía antes.
+    """
+    from dateutil.relativedelta import relativedelta
+
+    referencia = hoy or datetime.now(UTC).date()
+
+    if desde is None:
+        if months < 1:
+            raise ValueError(f"months must be >= 1, got {months}")
+        return [
+            (
+                (referencia - relativedelta(months=i)).year,
+                (referencia - relativedelta(months=i)).month,
+            )
+            for i in range(months)
+        ]
+
+    start_year, start_month = desde
+    if not (1 <= start_month <= 12):
+        raise ValueError(f"start_month must be 1-12, got {start_month}")
+    if start_year < 2000:
+        raise ValueError(f"start_year must be >= 2000, got {start_year}")
+
+    meses: list[tuple[int, int]] = []
+    cur = date(start_year, start_month, 1)
+    fin = date(referencia.year, referencia.month, 1)
+    while cur <= fin:
+        meses.append((cur.year, cur.month))
+        cur += relativedelta(months=1)
+    return meses
+
+
+def _run_bulk_pipeline_connector(
+    months: int = 3,
+    *,
+    desde: tuple[int, int] | None = None,
+    label: str = "bulk refresh (connector)",
+) -> dict[str, Any]:
+    """Carril bulk y backfill sobre ``PlacspBulkConnector`` (F2 + S2.1).
+
+    Paridad operacional con el camino legacy que sustituyó
+    (``update_recent`` / ``backfill`` → ``process_month``):
 
     - Un fallo fatal de ``fetch`` de un mes se marca ``status="error"`` (los
       errores por-entry van a DLQ y **no** fallan el mes — igual que
@@ -801,32 +1034,41 @@ def _run_bulk_pipeline_connector(months: int) -> dict[str, Any]:
     - ``log_extraccion`` por mes con la misma ``fuente`` (``bulk_YYYYMM``) que
       usaba el legacy, para continuidad de la serie en ``extracciones``.
     - El run completo va envuelto en ``record_run`` (observabilidad).
+
+    Y lo que el legacy NO hacía y aquí sí, porque ``run_connector`` lo aporta:
+    historial (``upsert_licitaciones_with_history``), lotes, metadatos de
+    documentos, detección de duplicados, ``source_ingestion_health`` y las
+    columnas de linaje del parser.
+
+    Args:
+        months: Meses recientes a refrescar (ignorado si se pasa ``desde``).
+        desde: ``(año, mes)`` de inicio para el backfill histórico.
+        label: Etiqueta del run en logs y alertas de degradación.
     """
-    from datetime import UTC, datetime
-
-    from dateutil.relativedelta import relativedelta
-
     from db.database import log_extraccion
     from observability import bind_run_context, record_run
     from scraper.connectors.base import run_connector
     from scraper.connectors.placsp import PlacspBulkConnector
     from scraper.pipeline import _summarize
 
-    today = datetime.now(UTC).date()
+    meses = meses_a_procesar(months, desde=desde)
     month_results: list[dict[str, Any]] = []
 
-    run_id = bind_run_context(entrypoint="run_bulk_pipeline_connector", months=months)
+    run_id = bind_run_context(
+        entrypoint="run_bulk_pipeline_connector",
+        months=len(meses),
+        desde=f"{desde[0]}-{desde[1]:02d}" if desde else None,
+    )
     with record_run(run_id) as metrics:
-        for i in range(months):
-            target = today - relativedelta(months=i)
-            connector = PlacspBulkConnector(target.year, target.month)
+        for year, month in meses:
+            connector = PlacspBulkConnector(year, month)
             try:
                 r = run_connector(connector)
                 status = "error" if r.fetch_failed else "ok"
                 month_results.append(
                     {
-                        "year": target.year,
-                        "month": target.month,
+                        "year": year,
+                        "month": month,
                         "status": status,
                         "nuevas": r.nuevas,
                         "actualizadas": r.actualizadas,
@@ -849,23 +1091,23 @@ def _run_bulk_pipeline_connector(months: int) -> dict[str, Any]:
                     except Exception:
                         log.warning(
                             "bulk_connector_log_extraccion_failed",
-                            year=target.year,
-                            month=target.month,
+                            year=year,
+                            month=month,
                         )
             except Exception as exc:
                 log.exception(
                     "bulk_connector_month_failed",
-                    year=target.year,
-                    month=target.month,
+                    year=year,
+                    month=month,
                     error=str(exc),
                 )
                 month_results.append(
                     {
-                        "year": target.year,
-                        "month": target.month,
+                        "year": year,
+                        "month": month,
                         "status": "error",
                     }
                 )
         _summarize(month_results, metrics)
 
-    return _finalize_ingestion(month_results, label="bulk refresh (connector)")
+    return _finalize_ingestion(month_results, label=label)

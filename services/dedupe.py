@@ -206,11 +206,28 @@ def _rango_canonico(row: dict[str, Any]) -> tuple[bool, str, str, str]:
     de los argumentos, o sea por el orden en que la consulta devolvió las filas.
     Eso hacía que la canónica pudiera cambiar entre ejecuciones, y con ella la
     URL que el sitemap publica para ese contrato.
+
+    **``primera_extraccion`` antes que ``fecha_extraccion`` (revisión ``v100``).**
+    El SQL pasó a desempatar por ``coalesce(primera_extraccion,
+    fecha_extraccion, '9999')`` porque ``fecha_extraccion`` la reescribe
+    ``db/upsert.py`` en cada pasada, y este gemelo se quedó atrás: el detector
+    ordenaba por el último avistamiento y la proyección por el primero, así que
+    para un grupo cuyas filas difieren en ese campo cada uno elegía **una
+    canónica distinta**. El detector marcaba entonces como duplicada
+    precisamente la fila que la superficie pública publica, y escondía la que
+    lleva la URL viva. Que el respaldo ``fecha_extraccion`` siga en el
+    ``coalesce`` es lo que mantiene el comportamiento anterior para las filas
+    nuevas, que todavía traen la columna a ``NULL`` (ver ``v100``).
+
+    Diferencia conocida y **anterior** a este arreglo: ``or`` trata la cadena
+    vacía como ausente y ``coalesce`` no. Solo afecta a filas de legado con
+    fechas en cadena vacía y se deja como estaba: cambiarlo movería canónicas
+    que hoy están quietas, que es justo lo que este criterio existe para evitar.
     """
     return (
         str(row.get("fuente")) != "placsp",
         str(row.get("fecha_publicacion") or "9999"),
-        str(row.get("fecha_extraccion") or "9999"),
+        str(row.get("primera_extraccion") or row.get("fecha_extraccion") or "9999"),
         str(row["id_externo"]),
     )
 
@@ -303,12 +320,27 @@ def detect_duplicates(*, fuente: str) -> DedupeResult:
 
 
 def _clave_de_fila(row: dict[str, Any]) -> str | None:
-    """Clave de reemisión de una fila, con su año-mes. ``None`` si no la tiene."""
+    """Clave de reemisión de una fila, con su año-mes. ``None`` si no la tiene.
+
+    ``primera_extraccion`` se pasa **explícitamente** porque el docstring de
+    :func:`db.sql_fragments.periodo_canonico` lo exige a quien lea filas que
+    traen la columna: desde ``v100`` el año-mes de la proyección sale de
+    ``coalesce(fecha_publicacion, primera_extraccion, fecha_extraccion)``, y
+    omitirlo aquí agrupaba por un año-mes que se mueve solo al cruzar de mes —el
+    detector separaba en dos grupos lo que la superficie colapsa en uno, o al
+    revés—. La fila la sirve ``db/repositories/dedupe.py``, que trae la columna
+    en ``_COLUMNAS``; si faltara, ``.get`` devuelve ``None`` y el ``coalesce``
+    cae al respaldo de siempre.
+    """
     return republicacion_key(
         row.get("organo_contratacion"),
         row.get("titulo"),
         row.get("cpv"),
-        periodo=periodo_canonico(row.get("fecha_publicacion"), row.get("fecha_extraccion")),
+        periodo=periodo_canonico(
+            row.get("fecha_publicacion"),
+            row.get("fecha_extraccion"),
+            primera_extraccion=row.get("primera_extraccion"),
+        ),
     )
 
 

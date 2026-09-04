@@ -5,12 +5,23 @@ on:
     branches: ["master", "main", "develop"]
   pull_request:
     branches: ["master", "main", "develop"]
+  # Barrido semanal. Existe por una sola razón: es donde vive ahora la matriz de
+  # Python 3.12 (ver el job `test`). Producción está fijada a `python:3.13.13`
+  # en docker/Dockerfile.api, así que pagar 3.12 en cada PR era duplicar el job
+  # más caro de la suite (25 min) para verificar una versión que no se despliega
+  # en ningún sitio. Semanal basta para detectar que 3.12 dejó de funcionar
+  # antes de que a alguien le haga falta.
+  schedule:
+    - cron: "0 3 * * 1"  # Lunes 03:00 UTC, antes del barrido de security.yml
 
 permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.ref }}
+  # El evento entra en el grupo: sin él, el cron semanal sobre `master` cancela
+  # (cancel-in-progress) el run del push que estuviera en curso sobre la misma
+  # ref, y el commit se queda sin CI.
+  group: ci-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -116,7 +127,15 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.12", "3.13"]
+        # 3.13 en cada PR; 3.12 SOLO en el barrido semanal (`schedule`).
+        #
+        # Producción corre `python:3.13.13-slim-bookworm` (docker/Dockerfile.api,
+        # y `.python-version` fija lo mismo), así que 3.12 no se despliega en
+        # ningún sitio: pagarlo en cada PR duplicaba el job más caro de la suite
+        # —25 minutos de techo, ~3100 tests con `-n auto`— para verificar una
+        # versión que nadie ejecuta. Semanal detecta que 3.12 dejó de funcionar
+        # con semanas de antelación sobre el día en que hiciera falta.
+        python-version: ${{ github.event_name == 'schedule' && fromJSON('["3.12","3.13"]') || fromJSON('["3.13"]') }}
     # Postgres es el único motor desde ADR-021: la suite ya no tiene camino
     # SQLite, así que este job necesita una instancia real. Imagen pgvector
     # porque la migración v56 hace `CREATE EXTENSION vector`.
@@ -159,11 +178,37 @@ jobs:
       # sin fallos de aislamiento. El techo del job son 25 min.
       # Si el paralelo diera falsos rojos, quitar `-n auto` restaura la
       # ejecución en serie sin ningún otro cambio.
+      # `--cov-report=json` es nuevo: lo consume el gate por módulo del step
+      # siguiente, que hasta ahora no ejecutaba nadie.
       - name: Run tests with coverage
         env:
           ENV: dev
           TEST_DATABASE_URL: postgresql://tenderflow:tenderflow@localhost:5432/tenderflow_suite  # pragma: allowlist secret
-        run: pytest -n auto --cov=. --cov-report=term-missing --cov-report=xml --cov-fail-under=78
+        run: >-
+          pytest -n auto --cov=.
+          --cov-report=term-missing --cov-report=xml --cov-report=json
+          --cov-fail-under=78
+
+      # Pisos de cobertura POR MÓDULO (scripts/check_coverage_per_module.py).
+      # Hasta ahora sus umbrales —scraper 75 %, shared 80 %, api 65 %…— no los
+      # enforzaba nadie: el único invocador era `Makefile:66`
+      # (`make check-coverage-modules`), un target manual que no está en
+      # `make check` ni en ningún workflow. El `--cov-fail-under=78` global de
+      # arriba no los sustituye: un módulo puede desplomarse a 40 % y el total
+      # seguir por encima de 78 si otro sube.
+      #
+      # Va aquí y no en `static-analysis`, que es donde pedía el plan, por un
+      # motivo material: el checker lee `coverage.json`, que solo existe después
+      # de correr la suite. `static-analysis` no ejecuta tests (ni debe: es el
+      # job rápido de lint/typecheck, 10 min de techo) y hacerlo depender de
+      # `test` invertiría el orden y le añadiría 25 min. Este es el único job con
+      # los datos delante y no cuesta un runner extra.
+      #
+      # Solo en 3.13: en el barrido semanal la matriz añade 3.12 y el gate
+      # duplicado no aporta nada — la cobertura no depende del intérprete.
+      - name: Coverage floors per module
+        if: matrix.python-version == '3.13'
+        run: python scripts/check_coverage_per_module.py
 
       - name: Upload coverage XML
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

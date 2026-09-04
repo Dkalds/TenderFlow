@@ -2,6 +2,12 @@
 
 La tabla ``saved_filters`` almacena snapshots serializados de ``FiltersState``
 con un nombre legible definido por el usuario.
+
+``organization_id`` es obligatoria y no tiene rama ``None``. La tuvo, y esa
+rama era el bug de clase que documenta ``api/tenancy.py``: quien omitía el
+argumento no obtenía «sin filtrar por organización» como decisión, lo
+obtenía por descuido, y el repositorio caía a una query sin ámbito sin
+decir nada. Ahora un llamador que la omita falla al tipar.
 """
 
 from __future__ import annotations
@@ -16,26 +22,15 @@ def save_filter(
     user_key: str,
     name: str,
     filters_json: str,
-    organization_id: int | None = None,
+    organization_id: int,
     visibility: str = "private",
 ) -> None:
     """Guarda o actualiza un filtro con nombre para el usuario.
 
     Si ya existe una entrada con (user_key, name) la sobreescribe.
+
     """
     with connect() as c:
-        if organization_id is None and visibility == "private":
-            c.execute(
-                """
-                INSERT INTO saved_filters (user_key, name, filters_json, created_at)
-                VALUES (%s, %s, %s, %s)
-                ON CONFLICT(user_key, name) DO UPDATE SET
-                    filters_json = excluded.filters_json,
-                    created_at   = excluded.created_at
-                """,
-                (user_key, name, filters_json, now_utc_iso()),
-            )
-            return
         c.execute(
             """
             INSERT INTO saved_filters
@@ -51,23 +46,16 @@ def save_filter(
         )
 
 
-def list_saved_filters(user_key: str, organization_id: int | None = None) -> list[dict[str, Any]]:
+def list_saved_filters(user_key: str, organization_id: int) -> list[dict[str, Any]]:
     """Devuelve los filtros guardados del usuario, más recientes primero."""
     with connect() as c:
-        if organization_id is None:
-            cur = c.execute(
-                "SELECT id, name, filters_json, created_at, organization_id, visibility "
-                "FROM saved_filters WHERE user_key = %s ORDER BY created_at DESC",
-                (user_key,),
-            )
-        else:
-            cur = c.execute(
-                "SELECT id, name, filters_json, created_at, organization_id, visibility "
-                "FROM saved_filters WHERE organization_id = %s "
-                "AND (visibility = 'organization' OR user_key = %s) "
-                "ORDER BY created_at DESC",
-                (organization_id, user_key),
-            )
+        cur = c.execute(
+            "SELECT id, name, filters_json, created_at, organization_id, visibility "
+            "FROM saved_filters WHERE organization_id = %s "
+            "AND (visibility = 'organization' OR user_key = %s) "
+            "ORDER BY created_at DESC",
+            (organization_id, user_key),
+        )
         cols = [d[0] for d in cur.description]
         return [dict(zip(cols, row, strict=False)) for row in cur.fetchall()]
 
@@ -76,7 +64,7 @@ def delete_saved_filter(
     filter_id: int,
     *,
     user_key: str,
-    organization_id: int | None = None,
+    organization_id: int,
 ) -> bool:
     """Elimina un filtro guardado por ID, siempre acotado a su dueño.
 
@@ -97,17 +85,10 @@ def delete_saved_filter(
     predicado que su hermana ``services/watchlist_rules.py::delete_rule``.
     """
     with connect() as c:
-        if organization_id is None:
-            cur = c.execute(
-                "DELETE FROM saved_filters WHERE id = %s AND user_key = %s",
-                (filter_id, user_key),
-            )
-        else:
-            cur = c.execute(
-                "DELETE FROM saved_filters WHERE id = %s AND organization_id = %s "
-                "AND user_key = %s",
-                (filter_id, organization_id, user_key),
-            )
+        cur = c.execute(
+            "DELETE FROM saved_filters WHERE id = %s AND organization_id = %s AND user_key = %s",
+            (filter_id, organization_id, user_key),
+        )
         return bool(cur.rowcount > 0)
 
 

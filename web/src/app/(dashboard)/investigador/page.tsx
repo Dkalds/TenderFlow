@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -23,10 +22,10 @@ import {
 import { formatCurrency, truncate } from "@/lib/utils";
 import { getJSON, setJSON } from "@/lib/storage";
 import { useFilters } from "@/lib/filters";
-import { getCsrfToken } from "@/lib/api-client";
+import { fetchWithAuth } from "@/lib/api-client";
 import { registrarEvento } from "@/lib/analytics";
 import { descargarBlob } from "@/lib/export";
-import { useChat } from "@/hooks/use-ask";
+import { useAskModels, useChat } from "@/hooks/use-ask";
 import { ChatThread } from "@/components/chat-thread";
 import { SpaceShell } from "@/components/layout/space-shell";
 
@@ -178,19 +177,11 @@ export default function InvestigadorPage() {
     setConfig(loadConfig());
   }, []);
 
-  // Fetch available models
-  const { data: models } = useQuery<string[]>({
-    queryKey: ["ask-models"],
-    queryFn: async () => {
-      const res = await fetch("/api/v1/ask/models", {
-        credentials: "include",
-      });
-      if (!res.ok) return [];
-      const data = await res.json();
-      return Array.isArray(data) ? data : (data.models ?? []);
-    },
-    staleTime: Infinity,
-  });
+  // Catálogo de modelos. Era una segunda `queryFn` bajo la misma clave
+  // `["ask-models"]` que `hooks/use-ask.ts` —sin tipar, con `fetch` crudo y una
+  // rama para un array pelado que la API nunca devuelve—, así que el contenido
+  // del selector dependía de cuál de las dos montara primero. Queda la tipada.
+  const { data: models } = useAskModels();
 
   const updateConfig = useCallback((patch: Partial<InvestigadorConfig>) => {
     setConfig((prev) => {
@@ -249,14 +240,15 @@ export default function InvestigadorPage() {
       setSearchResults(null);
 
       try {
-        const csrf = getCsrfToken();
-        const res = await fetch("/api/v1/search/semantic", {
+        // `fetchWithAuth` adjunta el CSRF en las mutaciones (el ensamblado a
+        // mano de la cabecera era una copia local de eso) y normaliza el error
+        // a `ApiError` con el `detail` RFC-7807.
+        const data = await fetchWithAuth<{
+          hits?: SearchResult[];
+          results?: SearchResult[];
+          items?: SearchResult[];
+        }>("/api/v1/search/semantic", {
           method: "POST",
-          credentials: "include",
-          headers: {
-            "Content-Type": "application/json",
-            ...(csrf ? { "X-CSRF-Token": csrf } : {}),
-          },
           body: JSON.stringify({
             q,
             top_k: config.topK,
@@ -265,8 +257,6 @@ export default function InvestigadorPage() {
           }),
           signal: abort.signal,
         });
-        if (!res.ok) throw new Error(`Error ${res.status}`);
-        const data = await res.json();
         const hits: SearchResult[] = data.hits ?? data.results ?? data.items ?? [];
         setSearchResults(hits);
         // Boca del embudo. `con_resultados` es lo que separa uso de fricción:

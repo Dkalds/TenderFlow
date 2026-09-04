@@ -56,3 +56,24 @@ Makefile
 # coinciden por azar con patrones de claves (ej. "sk_test_..." de un nodo
 # como mockStreamAsk matcheando el regex de Stripe secret key).
 graphify-out/
+
+# ── Frontend: NO va en la imagen de la API ───────────────────────────────
+# `docker/Dockerfile.api` hace `COPY . .`, así que todo lo que no esté aquí
+# entra. `web/` es una app Next que se despliega en Vercel, no en este
+# contenedor, y `web/node_modules` es con diferencia el árbol más grande del
+# repo: engorda la imagen, alarga el build (cada fichero se envía al daemon
+# como contexto) y mete en el escaneo de Trivy un árbol de dependencias JS que
+# este servicio no ejecuta — CVEs de npm reportados sobre una imagen que no
+# tiene node.
+web/
+node_modules/
+**/node_modules/
+
+# ── Tooling de repo, no de runtime ───────────────────────────────────────
+# Workflows y configuración de agentes: no los ejecuta el contenedor, y
+# `.github/workflows/**` es justo donde viven los nombres de los secretos.
+.github/
+.claude/
+.codex/
+.opencode/
+.devcontainer/

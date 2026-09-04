@@ -20,6 +20,7 @@ from pydantic import BaseModel, Field
 from api.concurrency import run_db
 from api.routes.dual_auth import require_any_auth
 from api.tenancy import require_organization, resolve_organization_ctx
+from db.repositories.watchlist_rules import list_rules_rows, set_rule_email
 from observability.logging import get_logger
 from services.organizations import claim_legacy_scope
 from services.watchlist_rules import (
@@ -105,40 +106,9 @@ class WatchlistRulesResult(BaseModel):
     items: list[WatchlistRuleOut]
 
 
-def _rules_with_counts(user_key: str, organization_id: int | None = None) -> list[WatchlistRuleOut]:
+def _rules_with_counts(user_key: str, organization_id: int) -> list[WatchlistRuleOut]:
     """Lista las reglas del usuario con su conteo real de matches y email de entrega."""
-    from db.database import connect_read
-
-    # Intentar obtener las reglas con la columna email (v47).
-    # Si la columna no existe todavia (BD legacy / tests sin migrate), fallback
-    # a la query sin email (tolerancia a schema viejo).
-    try:
-        with connect_read() as c:
-            where = (
-                "user_key = %s"
-                if organization_id is None
-                else "organization_id = %s AND (visibility = 'organization' OR user_key = %s)"
-            )
-            params = (user_key,) if organization_id is None else (organization_id, user_key)
-            cur = c.execute(
-                "SELECT id, user_key, nombre, keyword, cpv, min_importe, ccaa, "
-                "frequency, active, last_notified_at, email, organization_id, visibility "
-                "FROM watchlist_rules WHERE " + where + " ORDER BY id",
-                params,
-            )
-            cols = [d[0] for d in cur.description]
-            rows_raw = [dict(zip(cols, row, strict=False)) for row in cur.fetchall()]
-    except Exception:
-        # Fallback: columna email no disponible (BD sin migrar)
-        with connect_read() as c:
-            cur = c.execute(
-                "SELECT id, user_key, nombre, keyword, cpv, min_importe, ccaa, "
-                "frequency, active, last_notified_at "
-                "FROM watchlist_rules WHERE user_key = %s ORDER BY id",
-                (user_key,),
-            )
-            cols = [d[0] for d in cur.description]
-            rows_raw = [dict(zip(cols, row, strict=False)) for row in cur.fetchall()]
+    rows_raw = list_rules_rows(user_key, organization_id)
 
     rules = [
         WatchlistRule(
@@ -184,8 +154,6 @@ async def post_rule(
     body: WatchlistRuleBody,
     ctx: dict[str, Any] = Depends(require_any_auth),
 ) -> CreatedId:
-    from db.database import connect
-
     ctx = await resolve_organization_ctx(ctx, body.organization_id, write=True)
     user_key = _user_key(ctx)
     email = _ctx_email(ctx)
@@ -201,11 +169,7 @@ async def post_rule(
             visibility=body.visibility,
         )
         if email is not None:
-            with connect() as c:
-                c.execute(
-                    "UPDATE watchlist_rules SET email = %s WHERE id = %s AND user_key = %s",
-                    (email, rule_id, user_key),
-                )
+            set_rule_email(user_key, rule_id, email)
         return rule_id
 
     rule_id = await run_db(_create)
@@ -219,8 +183,6 @@ async def put_rule(
     body: WatchlistRuleBody,
     ctx: dict[str, Any] = Depends(require_any_auth),
 ) -> StatusOk:
-    from db.database import connect
-
     ctx = await resolve_organization_ctx(ctx, body.organization_id, write=True)
     user_key = _user_key(ctx)
     email = _ctx_email(ctx)
@@ -229,11 +191,7 @@ async def put_rule(
     def _update() -> bool:
         ok = update_rule(user_key, rule_id, body.to_rule(), organization_id)
         if ok and email is not None:
-            with connect() as c:
-                c.execute(
-                    "UPDATE watchlist_rules SET email = %s WHERE id = %s AND user_key = %s",
-                    (email, rule_id, user_key),
-                )
+            set_rule_email(user_key, rule_id, email)
         return ok
 
     ok = await run_db(_update)

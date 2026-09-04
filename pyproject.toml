@@ -148,10 +148,14 @@ ignore = [
 "db/**" = ["TID251", "S608"]
 "tests/*" = ["S101", "S106", "S105", "S320", "S311", "S607", "RUF002", "SIM117", "F841", "E402", "TID251"]
 # Archivos con acceso directo legacy (eliminar TID251 al pasar por F5)
-"api/routes/empresas.py" = ["TID251"]
-"api/routes/eventos.py" = ["TID251"]
-"api/routes/exports.py" = ["TID251"]
-"api/routes/watchlist_rules.py" = ["TID251"]
+# 2026-09-03: salen las cuatro rutas de `api/routes/` que quedaban (empresas,
+# eventos, exports, watchlist_rules). Su SQL ya vive en `db/`
+# (`repositories/empresas.py`, `repositories/licitaciones.py`,
+# `repositories/watchlist.py`, `repositories/watchlist_rules.py`), así que la
+# excepción solo protegía deuda inexistente — y una excepción que no cubre
+# nada es peor que ninguna: deja pasar la próxima regresión sin ruido.
+# 32 → 28 entradas. La whitelist solo puede ENCOGER (ADR-022, AGENTS.md §3.10).
+# Ya no queda ninguna ruta de la API aquí: `api/**` está limpio de TID251.
 "scheduler/aggregates_precompute.py" = ["TID251"]
 "scheduler/anomaly_alerts.py" = ["TID251"]
 "scheduler/competitor_alerts.py" = ["TID251"]
@@ -302,7 +306,12 @@ ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-v --tb=short --cov=. --cov-report=term-missing"
+# Sin `--cov` ni `-v` por defecto (2026-09-03): la cobertura la pide CI
+# explicitamente (`--cov=. --cov-fail-under=78` en ci.yml), y forzarla en cada
+# `pytest` local hacia el bucle rapido lo bastante lento como para que la gente
+# dejara de correrlo -- que es como se pudren los gates. Ademas `--cov=.`
+# contradecia la lista curada de `[tool.coverage.run] source`.
+addopts = "--tb=short"
 filterwarnings = [
 ]
 markers = [

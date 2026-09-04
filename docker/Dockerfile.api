@@ -42,7 +42,16 @@ WORKDIR /app
 COPY --from=builder /install /usr/local
 COPY --chown=appuser:appuser . .
 
-RUN pip install --no-cache-dir --no-deps . \
+# El `pip` que viaja en la imagen NO es el de la etapa builder: `COPY
+# --from=builder /install /usr/local` trae las dependencias, pero el `pip` que
+# queda instalado en la etapa runtime es el que trae `python:3.13.13-slim`, y
+# ese es el que Trivy escanea (y por el que reportaba un CVE alto). Actualizarlo
+# aquí es seguro: esta capa instala el proyecto con `--no-deps` desde el
+# checkout, sin `-r requirements.txt` y por tanto sin `--require-hashes`, así
+# que no hay verificación de hashes que un pip nuevo pueda romper. Los pines con
+# hash siguen resolviéndose en la etapa builder, que ya fija `pip>=26.1`.
+RUN pip install --upgrade pip \
+    && pip install --no-cache-dir --no-deps . \
     && find /usr/local/lib/python3.13 -name '__pycache__' -type d -exec rm -rf {} + 2>/dev/null || true \
     && find /usr/local/lib/python3.13 -name '*.pyc' -delete
 

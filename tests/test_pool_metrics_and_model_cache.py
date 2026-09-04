@@ -9,7 +9,7 @@ mismo error, solo que con más código.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, ClassVar
 
 import pytest
 
@@ -113,68 +113,73 @@ class TestPing:
         assert check_db() == "error"
 
 
+class _FakeClassifier:
+    """Doble del SAPClassifier que cuenta cargas.
+
+    ``load`` acepta la ruta porque desde 2026-09 la caché resuelve el artefacto
+    con ``shared.model_artifacts.resolve_active_artifact`` y se la pasa: sin
+    ruta, la API recargaba siempre el mismo fichero local (inexistente en
+    Render) y el rollback de modelo no cambiaba nada de lo servido.
+    """
+
+    cargas: ClassVar[list[object]] = []
+
+    def __init__(self, path: object = None) -> None:
+        self.path = path
+        self.serving_degradado: str | None = None
+
+    @classmethod
+    def load(cls, path: object = None) -> _FakeClassifier:
+        cls.cargas.append(path)
+        return cls(path)
+
+
+def _preparar_cache(monkeypatch: pytest.MonkeyPatch) -> type[_FakeClassifier]:
+    """Clasificador falso + resolvedor inyectado (sin red ni BD)."""
+    _FakeClassifier.cargas = []
+    monkeypatch.setattr("scraper.ml_classifier.SAPClassifier", _FakeClassifier)
+    monkeypatch.setattr("api.model_cache._resolve_artifact", lambda _name: None)
+    import api.model_cache as cache_mod
+
+    cache_mod.invalidate_classifier_cache()
+    return _FakeClassifier
+
+
 class TestClassifierCache:
     def test_loads_once_and_reuses(self, monkeypatch: pytest.MonkeyPatch) -> None:
         import api.model_cache as cache_mod
 
-        cargas: list[int] = []
-
-        class _Fake:
-            @classmethod
-            def load(cls) -> _Fake:
-                cargas.append(1)
-                return cls()
-
-        monkeypatch.setattr("scraper.ml_classifier.SAPClassifier", _Fake)
-        cache_mod.invalidate_classifier_cache()
+        fake = _preparar_cache(monkeypatch)
 
         primero = cache_mod.get_classifier()
         segundo = cache_mod.get_classifier()
 
         assert primero is segundo
-        assert len(cargas) == 1, "el singleton volvió a cargar el modelo"
+        assert len(fake.cargas) == 1, "el singleton volvió a cargar el modelo"
 
     def test_invalidation_forces_a_reload(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Es lo que hace efectivo el rollback de modelo."""
         import api.model_cache as cache_mod
 
-        cargas: list[int] = []
-
-        class _Fake:
-            @classmethod
-            def load(cls) -> _Fake:
-                cargas.append(1)
-                return cls()
-
-        monkeypatch.setattr("scraper.ml_classifier.SAPClassifier", _Fake)
-        cache_mod.invalidate_classifier_cache()
+        fake = _preparar_cache(monkeypatch)
 
         cache_mod.get_classifier()
         cache_mod.invalidate_classifier_cache()
         cache_mod.get_classifier()
 
-        assert len(cargas) == 2
+        assert len(fake.cargas) == 2
 
     def test_ttl_zero_disables_time_based_reload(self, monkeypatch: pytest.MonkeyPatch) -> None:
         import api.model_cache as cache_mod
         from config.settings import settings
 
         monkeypatch.setattr(settings, "API_MODEL_CACHE_TTL_SECONDS", 0.0, raising=False)
-        cargas: list[int] = []
-
-        class _Fake:
-            @classmethod
-            def load(cls) -> _Fake:
-                cargas.append(1)
-                return cls()
-
-        monkeypatch.setattr("scraper.ml_classifier.SAPClassifier", _Fake)
-        cache_mod.invalidate_classifier_cache()
+        fake = _preparar_cache(monkeypatch)
 
         cache_mod.get_classifier()
         cache_mod.get_classifier()
 
-        assert len(cargas) == 1
+        assert len(fake.cargas) == 1
 
     def test_route_helper_delegates_to_the_cache(self, monkeypatch: pytest.MonkeyPatch) -> None:
         from api.routes.licitaciones import _get_classifier

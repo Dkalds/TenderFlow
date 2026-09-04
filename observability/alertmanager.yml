@@ -1,0 +1,122 @@
+# Configuración de Alertmanager (S6.3).
+#
+# Por qué existe: `observability/alert_rules.yml` define diez reglas, dos de
+# ellas `severity: critical` (`ApiErrorRateHigh` y `PgPoolHealthCheckFailed`).
+# Prometheus las EVALUABA —desde ADR-019 corre como servicio en Render y
+# scrapea /metrics— pero `prometheus.render.yml` no tenía bloque `alerting:` y
+# no había Alertmanager en ningún sitio del repo. O sea: las alertas se
+# disparaban dentro de Prometheus y morían ahí. Las etiquetas `severity` solo
+# las consume el enrutado de Alertmanager, así que estaban decorando un
+# enrutado que no existía: se diseñó la capa y no se cableó.
+#
+# `ApiErrorRateHigh` se escribió justo después del incidente del 2026-08-28, en
+# que «la superficie pública devolvió 500 durante horas sin que se disparara
+# nada». Con la regla escrita pero sin receptor, ese incidente habría vuelto a
+# pasar exactamente igual.
+#
+# Sustitución de variables: el ENTRYPOINT de docker/Dockerfile.alertmanager
+# expande `${...}` con `envsubst` antes de arrancar, así que aquí se escriben
+# los nombres de variable y Render inyecta los valores. Alertmanager no
+# interpola variables de entorno por su cuenta.
+
+global:
+  # Reutiliza las MISMAS variables ALERT_* que ya existen en el proyecto
+  # (docs/SECURITY.md las lista como secretos gestionados, y observability/
+  # alerts.py las consume desde Python). No se inventa un segundo juego de
+  # credenciales SMTP: el proyecto tiene un solo buzón remitente.
+  smtp_smarthost: "${ALERT_SMTP_HOST}:${ALERT_SMTP_PORT}"
+  smtp_from: "${ALERT_SMTP_USER}"
+  smtp_auth_username: "${ALERT_SMTP_USER}"
+  smtp_auth_password: "${ALERT_SMTP_PASSWORD}"
+  smtp_require_tls: true
+  # Si una alerta deja de dispararse, Alertmanager espera este tiempo antes de
+  # darla por resuelta. Tiene que ser mayor que el `evaluation_interval` de
+  # Prometheus (30 s) con margen, o una evaluación lenta cerraría y reabriría la
+  # misma alerta en bucle.
+  resolve_timeout: 5m
+
+route:
+  # Agrupar por alerta y severidad: una caída que dispara `ApiErrorRateHigh` y
+  # `PgPoolHealthCheckFailed` a la vez manda dos correos, no veinte.
+  group_by: ["alertname", "severity"]
+  group_wait: 30s
+  group_interval: 5m
+  # Cada 4 h se repite el aviso de una alerta que sigue viva. Más corto sería
+  # ruido durante un incidente largo; más largo y un fallo nocturno se olvida.
+  repeat_interval: 4h
+  receiver: email
+
+  routes:
+    # El Watchdog NO va al correo: dispara siempre, por diseño (`expr:
+    # vector(1)`), y su valor está justo en lo contrario — en que un sistema
+    # externo detecte que DEJÓ de llegar. Un Watchdog que llena el buzón cada 4
+    # horas se filtra a los dos días y con él se pierde la señal.
+    #
+    # Va al webhook (que puede quedar vacío, ver más abajo). Si algún día se
+    # contrata un dead-man's-switch (healthchecks.io, Better Stack, Cronitor),
+    # su URL es lo que va en ALERTMANAGER_WEBHOOK_URL.
+    - matchers:
+        - alertname = "Watchdog"
+      receiver: webhook
+      group_wait: 0s
+      group_interval: 1m
+      repeat_interval: 1m
+      continue: false
+
+    # Las `critical` van al correo Y al webhook. `continue: true` es lo que hace
+    # que no se queden en la primera rama que matchea.
+    - matchers:
+        - severity = "critical"
+      receiver: email
+      continue: true
+    - matchers:
+        - severity = "critical"
+      receiver: webhook
+
+inhibit_rules:
+  # Si la API no responde al scrape (`PgPoolHealthCheckFailed`), todas las
+  # alertas de latencia y de tasa de error sobre esa misma API son consecuencia,
+  # no causa: se silencian para que el correo diga una cosa y no cinco.
+  - source_matchers:
+      - alertname = "PgPoolHealthCheckFailed"
+    target_matchers:
+      - severity =~ "warning|critical"
+      - alertname != "PgPoolHealthCheckFailed"
+      - alertname != "Watchdog"
+    equal: ["env"]
+
+receivers:
+  - name: email
+    email_configs:
+      - to: "${ALERT_EMAIL_TO}"
+        send_resolved: true
+        headers:
+          Subject: '[TenderFlow] [{{ .CommonLabels.severity | toUpper }}] {{ .CommonLabels.alertname }}'
+        html: |
+          <html><body style="font-family:Arial,sans-serif;max-width:600px">
+            <h2>{{ .CommonLabels.alertname }}</h2>
+            {{ range .Alerts }}
+              <div style="border-left:4px solid #e04e4e;padding:8px 12px;background:#fafafa;margin-bottom:12px">
+                <p><b>{{ .Annotations.summary }}</b></p>
+                <p style="white-space:pre-wrap">{{ .Annotations.description }}</p>
+                <p style="font-size:11px;color:#777">
+                  severity={{ .Labels.severity }} · desde {{ .StartsAt }}
+                </p>
+              </div>
+            {{ end }}
+            <p style="font-size:11px;color:#aaa">
+              TenderFlow · Alertmanager · reglas en observability/alert_rules.yml
+            </p>
+          </body></html>
+
+  # Segundo canal, parametrizado y **opcional por diseño**. Vacío por defecto:
+  # con `ALERTMANAGER_WEBHOOK_URL` sin definir, el ENTRYPOINT sustituye la
+  # variable por la URL de descarte de más abajo (un endpoint local que no
+  # existe), Alertmanager registra el fallo de entrega y sigue funcionando. Lo
+  # que NO puede pasar es que la ausencia de webhook impida arrancar: un canal
+  # opcional que rompe el arranque deja sin el canal obligatorio.
+  - name: webhook
+    webhook_configs:
+      - url: "${ALERTMANAGER_WEBHOOK_URL}"
+        send_resolved: true
+        max_alerts: 0

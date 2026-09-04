@@ -80,10 +80,20 @@ vi.mock("@/lib/api-client", () => ({ fetchWithAuth: vi.fn() }));
 // La barra monta DOS queries: el catálogo de `/meta/filters` y el recuento del
 // ámbito. Se distinguen por el primer elemento de la clave; la del recuento
 // además se registra para poder afirmar con qué params salió.
+//
+// El namespace es `"meta"` porque la clave canónica es `metaKeys.filters`
+// (`["meta", "filters"]`, en `@/lib/query-keys`). Aquí va literal y no
+// importado porque los factories de `vi.mock` se elevan por encima de los
+// imports del fichero, así que referenciar el módulo desde dentro reventaría
+// con «Cannot access before initialization». El precio de esa literal es que
+// puede desincronizarse en silencio —ya pasó: al centralizar las claves, esta
+// rama seguía comparando contra `"meta-filters"`, la query devolvía `undefined`
+// y el desplegable de CCAA se pintaba vacío—, así que
+// `test_la_clave_canonica_de_meta_no_ha_cambiado` de abajo lo vigila.
 vi.mock("@tanstack/react-query", () => ({
   keepPreviousData: Symbol("keepPreviousData"),
   useQuery: ({ queryKey }: { queryKey: unknown[] }) => {
-    if (queryKey[0] === "meta-filters") {
+    if (queryKey[0] === "meta") {
       return { data: { estado: [], ccaa: ["Madrid"], tecnologia: ["SAP"], cpv: [] } };
     }
     overviewKeyRef.current = queryKey;
@@ -96,6 +106,19 @@ vi.mock("@/components/export-popover", () => ({ ExportPopover: () => null }));
 vi.mock("@/components/notification-bell", () => ({ NotificationBell: () => null }));
 
 import { ScopeBar } from "@/components/layout/scope-bar";
+import { analyticsKeys, metaKeys } from "@/lib/query-keys";
+
+describe("contrato con las claves de query", () => {
+  it("el namespace de meta y el de analytics siguen siendo los que intercepta el mock", () => {
+    // El mock de `useQuery` de este fichero decide qué devolver mirando
+    // `queryKey[0]`. Si estas dos claves cambian de namespace, el mock deja de
+    // interceptar y los tests del desplegable fallan con «no encuentro la opción
+    // Madrid», que no dice nada de la causa. Este test sí la dice.
+    expect(metaKeys.filters[0]).toBe("meta");
+    expect(analyticsKeys.overview({})[0]).toBe("analytics");
+    expect(metaKeys.filters[0]).not.toBe(analyticsKeys.overview({})[0]);
+  });
+});
 
 const renderBar = () =>
   render(

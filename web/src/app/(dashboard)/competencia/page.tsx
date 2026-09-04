@@ -12,6 +12,14 @@ import { CONSOLE_SPACES } from "@/lib/console-spaces";
  * mismo ámbito, y separarlas obligaba a re-aplicar el filtro al cruzar. Cada
  * vista monta su pantalla original completa: las 34 funciones inventariadas
  * siguen donde estaban, incluido el dossier de empresa y su análisis completo.
+ *
+ * Los cuerpos viven en `_components/`, no en los `page.tsx` de las rutas
+ * absorbidas. Este espacio los importaba de allí (`../competidores/page`,
+ * `../utes/page`) y eso convertía a cada uno en boundary de ruta y componente a
+ * la vez — un `page.tsx` montado a mano no recibe el contrato
+ * `params`/`searchParams` de Next, y además aquellas rutas no se alcanzaban:
+ * los 308 de `next.config.ts` se resuelven antes que el enrutado por ficheros.
+ * Quien preserva los enlaces guardados es el redirect, no el fichero.
  */
 
 const loading = () => (
@@ -22,8 +30,8 @@ const loading = () => (
 );
 
 const VIEWS: Record<string, React.ComponentType> = {
-  competidores: dynamic(() => import("../competidores/page"), { loading }),
-  utes: dynamic(() => import("../utes/page"), { loading }),
+  competidores: dynamic(() => import("./_components/competidores-view"), { loading }),
+  utes: dynamic(() => import("./_components/utes-view"), { loading }),
 };
 
 const SPACE = CONSOLE_SPACES.find((space) => space.key === "competencia")!;

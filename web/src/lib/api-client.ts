@@ -193,6 +193,32 @@ export class ApiError extends Error {
 }
 
 /**
+ * GET autenticado cuyo cuerpo **no** es JSON (ZIP, CSV, PDF…).
+ *
+ * `fetchWithAuth` cierra con `res.json()`, así que un endpoint binario
+ * —`GET /me/data` devuelve el ZIP del export RGPD— no puede pasar por él. Sin
+ * este helper el único camino era un `fetch` crudo dentro de la página, que es
+ * justo lo que prohíbe la regla `no-restricted-syntax` de `eslint.config.mjs`:
+ * sin redirección a login en 401 y sin `ApiError` normalizado.
+ *
+ * No emite telemetría a propósito: las descargas de datos personales son un
+ * derecho RGPD y no uso de producto (ver `lib/export.ts`, `descargarBlob`).
+ */
+export async function fetchBlobWithAuth(url: string, options?: RequestInit): Promise<Blob> {
+  const res = await fetch(url, { credentials: "include", ...options });
+
+  if (!res.ok) {
+    if (res.status === 401 && typeof window !== "undefined") {
+      redirectToLogin();
+    }
+    const body = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new ApiError(res.status, body.detail ?? body.title ?? `API error: ${res.status}`);
+  }
+
+  return res.blob();
+}
+
+/**
  * Rutas GET del esquema generado. Es el conjunto de literales que la API
  * declara, así que un typo o un endpoint retirado no compila.
  */

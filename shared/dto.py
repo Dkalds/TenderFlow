@@ -1,10 +1,33 @@
-"""DTOs Pydantic v2 para la frontera FastAPI ↔ aplicación.
+"""Tipos Pydantic v2 compartidos por MÁS DE UNA ruta de la API.
 
-Define los modelos de datos para serialización/deserialización en la API.
-Estos modelos son el contrato público del sistema.
+Eso es lo que este módulo es. **No** es «el contrato público del sistema»: el
+contrato lo define el esquema OpenAPI que genera FastAPI a partir de todos los
+modelos de respuesta, y la mayoría de ellos vive junto a su ruta en
+``api/routes/*`` (unos 116 de los ~304 ``BaseModel`` del repo) o junto a su
+función de dominio en ``services/analytics/*``. Decir aquí que este fichero era
+el contrato invitaba a dos errores opuestos: creer que basta con leerlo para
+conocer la API, y creer que cualquier DTO nuevo tiene que aterrizar aquí.
 
-Uso:
-    from shared.dto import LicitacionSummary, AdjudicacionDetail
+**El criterio para que un modelo viva en este módulo es la compartición**: lo
+usan dos o más rutas (``PaginatedResponse``, ``StatusOk``, ``CreatedId``…), o
+es una primitiva del contrato que no pertenece a ningún recurso concreto
+(``SafeStr``, ``PgDateTime``, ``MAX_PAGE_LIMIT``). Un modelo de una sola ruta
+se queda en su ruta: traerlo aquí no lo hace más público, solo lo aleja de lo
+que describe.
+
+**Y no puede haber dos modelos con el mismo nombre en el esquema.** Si los hay,
+FastAPI los desambigua con un prefijo de módulo y eso reescribe en bloque
+``components["schemas"]`` de ``web/src/generated/api.d.ts``, rompiendo el
+frontend que lo referencia. Este módulo llegó a tener tres colisiones vivas
+—``LicitacionSummary``, ``LicitacionDetail`` y ``AdjudicacionSummary``
+existían aquí *y* en ``api/routes/licitaciones.py``, con tipos distintos— que
+no explotaron por un pelo: las de aquí no las alcanzaba ninguna ruta, así que
+nunca llegaron al esquema. Se borraron el 2026-09-03, junto con
+``ClusterSummary`` y ``KpiSnapshotDTO``, que tampoco tenían llamadores.
+
+Uso::
+
+    from shared.dto import PaginatedResponse, SafeStr, StatusOk
 """
 
 from __future__ import annotations
@@ -58,57 +81,24 @@ def _reject_nul_bytes(value: Any) -> Any:
 SafeStr = Annotated[str, BeforeValidator(_reject_nul_bytes)]
 
 
-class LicitacionSummary(BaseModel):
-    """Resumen de una licitación (listados, búsquedas)."""
-
-    model_config = ConfigDict(from_attributes=True)
-
-    id_externo: str
-    titulo: str | None = None
-    organo_contratacion: str | None = None
-    importe: float | None = Field(default=None, ge=0)
-    estado: str | None = None
-    fecha_publicacion: PgDateTime | None = None
-    ccaa: str | None = None
-    cpv: str | None = None
-    url: str | None = None
-    tecnologia: str | None = None
-
-
-class LicitacionDetail(LicitacionSummary):
-    """Detalle completo de una licitación."""
-
-    descripcion: str | None = None
-    tipo_contrato: str | None = None
-    moneda: str | None = None
-    provincia: str | None = None
-    duracion_valor: float | None = None
-    duracion_unidad: str | None = None
-    fecha_limite: PgDateTime | None = None
-    fecha_inicio: PgDateTime | None = None
-    fecha_fin: PgDateTime | None = None
-    fecha_extraccion: PgDateTime | None = None
-    nuts_code: str | None = None
-
-
 # ── Superficie pública indexable ──────────────────────────────────────────
 #
 # Estos modelos son deliberadamente **nuevos** y no heredan de
 # `LicitacionSummary`/`LicitacionDetail`. Dos motivos, los dos aprendidos por
 # las malas:
 #
-# 1. **Fuga por herencia.** Los DTO privados llevan `tecnologia` y el de
-#    `api/routes/licitaciones.py` añade `ml_tecnologias`, `ml_proba_max` y
-#    `ml_tech_principal`. Heredar de cualquiera de ellos publicaría la analítica
-#    propia el primer día, con la petición devolviendo 200 y sin que nada
-#    fallara. La proyección pública se construye por allowlist explícita: un
-#    campo nuevo aguas arriba no aparece aquí solo por añadirse.
-# 2. **Colisión de nombres en el OpenAPI.** `shared.dto.LicitacionSummary` y el
-#    `LicitacionSummary` local de `api/routes/licitaciones.py` son modelos
-#    distintos con el mismo nombre. Si dos schemas homónimos llegan al esquema,
-#    FastAPI los renombra con prefijo de módulo y eso reescribe
-#    `components["schemas"]` en `web/src/generated/api.d.ts`, rompiendo en
-#    cascada el frontend que lo referencia. De ahí el sufijo `Publica`.
+# 1. **Fuga por herencia.** El `LicitacionSummary` de
+#    `api/routes/licitaciones.py` lleva `tecnologia`, `ml_tecnologias`,
+#    `ml_proba_max` y `ml_tech_principal`. Heredar de él publicaría la
+#    analítica propia el primer día, con la petición devolviendo 200 y sin que
+#    nada fallara. La proyección pública se construye por allowlist explícita:
+#    un campo nuevo aguas arriba no aparece aquí solo por añadirse.
+# 2. **Colisión de nombres en el OpenAPI.** Dos modelos distintos con el mismo
+#    nombre hacen que FastAPI los renombre con prefijo de módulo, y eso
+#    reescribe `components["schemas"]` en `web/src/generated/api.d.ts`,
+#    rompiendo en cascada el frontend que lo referencia. De ahí el sufijo
+#    `Publica`. (Este módulo tuvo tres homónimos de `api/routes/licitaciones.py`
+#    hasta 2026-09-03; se borraron porque además estaban muertos.)
 #
 # Lo que NO está aquí y no debe añadirse: `ml_proba`, `ml_proba_max`,
 # `ml_tecnologias`, `ml_tech_principal`, `tecnologia`, `raw_keywords`,
@@ -180,31 +170,6 @@ class LicitacionPublica(BaseModel):
     lotes: list[LotePublico] = Field(default_factory=list)
 
 
-class AdjudicacionSummary(BaseModel):
-    """Resumen de una adjudicación."""
-
-    model_config = ConfigDict(from_attributes=True)
-
-    licitacion_id: str
-    nombre: str | None = None
-    nif: str | None = None
-    importe_adjudicado: float | None = Field(default=None, ge=0)
-    fecha_adjudicacion: PgDateTime | None = None
-    ccaa: str | None = None
-
-
-class KpiSnapshotDTO(BaseModel):
-    """Snapshot de KPIs pre-computados."""
-
-    model_config = ConfigDict(from_attributes=True)
-
-    total_licitaciones: int = 0
-    total_adjudicadas: int = 0
-    importe_medio: float | None = None
-    importe_total: float | None = None
-    computed_at: PgDateTime | None = None
-
-
 # ── Contrato de paginación común ───────────────────────────────────────────
 #
 # Los dos envelopes de abajo nacieron dentro de `api/routes/licitaciones.py` y
@@ -214,7 +179,9 @@ class KpiSnapshotDTO(BaseModel):
 # vez de reinventar la forma.
 #
 # Conservan **el nombre exacto** que tenían en la ruta a propósito: FastAPI
-# deriva de él el componente OpenAPI (`PaginatedResponse_LicitacionSummary_`,
+# deriva de él el componente OpenAPI
+# (`PaginatedResponse_LicitacionSummary_`, con el `LicitacionSummary` de la
+# ruta,
 # `CursorPaginatedResponse_LicitacionSummary_`) que `web/src/generated/api.d.ts`
 # ya referencia. Rebautizarlos a `Paginated[T]` habría roto el cliente generado
 # sin ganar nada: el idioma ya existía, solo estaba en el sitio equivocado.
@@ -264,15 +231,6 @@ class CursorPaginatedResponse(BaseModel, Generic[_ItemT]):
     next_cursor: str | None = None
     has_more: bool = False
     limit: int
-
-
-class SearchRequest(BaseModel):
-    """Request de búsqueda del investigador."""
-
-    question: str = Field(min_length=3, max_length=500)
-    top_k: int = Field(default=5, ge=1, le=20)
-    only_filtered: bool = True
-    allowed_ids: list[str] | None = None
 
 
 # ── Envelopes genéricos del contrato (tipado de operaciones opacas) ─────────
@@ -396,24 +354,6 @@ class WatchlistEntry(BaseModel):
 
 
 # ── Clustering (F1) ─────────────────────────────────────────────────────────
-
-
-class ClusterSummary(BaseModel):
-    """Resumen de un cluster generado por `services/clusters.py`."""
-
-    model_config = ConfigDict(from_attributes=True)
-
-    cluster_id: int
-    label: str | None = None
-    size: int = Field(ge=0)
-    centroid_terms: list[str] = Field(default_factory=list)
-    representative_ids: list[str] = Field(default_factory=list)
-    silhouette: float | None = None
-    inertia: float | None = None
-    computed_at: PgDateTime | None = None
-
-
-# ── Cobertura de métricas agregadas ─────────────────────────────────────────
 
 
 class CoberturaMetricaDTO(BaseModel):

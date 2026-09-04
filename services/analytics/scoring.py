@@ -9,7 +9,9 @@ Dimensiones (pesos configurables en ``settings.SCORING_WEIGHTS``, suman 100):
 - **competencia** (25): 1 - clamp((media_ofertas_CPV4-1)/9, 0, 1). Fallback a
   media global o neutral. Datos reales de adjudicaciones 24 meses.
 - **margen** (20): 1 - min(baja_esperada/0.40, 1). Fuente: predicciones_baja.p50
-  → fallback baja histórica CPV-4 → media global → neutral.
+  → fallback baja histórica CPV-4 → media global → neutral. Ese p50 puede venir
+  de un modelo entrenado o del baseline histórico; cuál de los dos lo dice
+  ``signals.margen_origen``.
 - **afinidad** (15, opcional): similitud semántica con el portfolio explícito
   (keywords, CPVs y referencias contractuales) usando embeddings en lote. Si
   no están disponibles, conserva el fallback determinista ``min(hits/3, 1)``
@@ -46,6 +48,8 @@ from db.repositories.aggregates import AggregateRepository, LicitacionesFilters
 from observability.logging import get_logger
 from services.analytics.affinity import build_portfolio, score_affinity_batch
 from services.analytics.scoring_signals import (
+    ORIGEN_DESCONOCIDO,
+    SIGNAL_ERROR,
     CompetenciaStats,
     ImportePercentiles,
     MargenStats,
@@ -131,6 +135,18 @@ class ScoringSignalsHealth(BaseModel):
 
     competencia: str = Field(description="ok | vacia | error")
     margen: str = Field(description="ok | vacia | error")
+    # Campo ADITIVO (2026-09): `margen` dice si la señal funciona; esto dice de
+    # qué está hecha. `predicciones_baja` guarda en las mismas columnas el p50
+    # de un modelo entrenado (`model_version` con versión) y el del baseline
+    # histórico (`model_version` NULL) — dos cosas que no valen lo mismo y que
+    # el consumidor no podía separar. Se añade aparte en vez de ampliar el
+    # vocabulario de `margen` a `ok_modelo`/`ok_baseline` porque `degradado`
+    # compara contra `"ok"` literal: un valor nuevo ahí marcaría degradado todo
+    # score sano. `desconocido` es lo que se publica cuando la señal no cargó.
+    margen_origen: str = Field(
+        default="desconocido",
+        description="modelo | baseline | mixto | sin_predicciones | desconocido",
+    )
     percentiles_fuente: str = Field(description="universo_vivo | global | lote_local | sin_datos")
     afinidad_metodo: str = Field(
         description="semantic_embeddings | keyword_cpv_fallback | unavailable"
@@ -636,9 +652,19 @@ def get_scoring(
     profile_status = "ok"
     if user_key is not None:
         try:
-            from db.repositories.user_profiles import get_user_profile
+            from db.repositories.user_profiles import (
+                get_own_user_profile,
+                get_user_profile,
+            )
 
-            raw_profile = get_user_profile(user_key, organization_id)
+            # El repositorio ya no decide en silencio qué hacer sin
+            # organización: cada semántica tiene su función y aquí se
+            # elige de forma explícita.
+            raw_profile = (
+                get_user_profile(user_key, organization_id)
+                if organization_id is not None
+                else get_own_user_profile(user_key)
+            )
             if raw_profile is not None:
                 profile = ScoringProfile(
                     weights=raw_profile.get("weights"),
@@ -722,6 +748,11 @@ def get_scoring(
         signals=ScoringSignalsHealth(
             competencia=ctx.competencia_stats.status,
             margen=ctx.margen_stats.status,
+            margen_origen=(
+                ctx.margen_stats.origen
+                if ctx.margen_stats.status != SIGNAL_ERROR
+                else ORIGEN_DESCONOCIDO
+            ),
             percentiles_fuente=ctx.percentiles_fuente,
             afinidad_metodo=ctx.affinity_method,
             senal_tecnica="error" if ctx.tech_signal is None else "ok",

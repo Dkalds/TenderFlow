@@ -14,8 +14,12 @@ Expone los endpoints bajo ``/api/v1/``:
 * ``POST /api/v1/feedback``           — requiere X-API-Key
 * ``POST|GET|DELETE /api/v1/webhooks``— requiere X-API-Key + scope
 * ``GET|DELETE /api/v1/me``           — GDPR
-* ``POST /api/v1/exports``            — requiere X-API-Key — crea job PDF async
-* ``GET /api/v1/exports/{id}``        — requiere X-API-Key — descarga PDF
+* ``GET /api/v1/exports/download``    — descarga síncrona CSV/Excel/PDF
+* ``GET /metrics``                    — métricas Prometheus (scope metrics:read)
+
+Los tres endpoints de export asíncrono (``POST /exports``, ``GET`` y
+``DELETE /exports/{id}``) se retiraron el 2026-09-03; ver
+``docs/rfc/2026-09-03-rfc-retirada-exports-asincronos.md``.
 
 Arrancar el servidor::
 
@@ -24,16 +28,13 @@ Arrancar el servidor::
 
 from __future__ import annotations
 
-import uuid
-from collections.abc import AsyncGenerator, Awaitable, Callable
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request, Response
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from prometheus_fastapi_instrumentator import Instrumentator as _PFI
 from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.types import ASGIApp, Receive, Scope, Send
-from structlog.contextvars import bind_contextvars, clear_contextvars
 
 from api.errors import register_exception_handlers
 from api.middleware import (
@@ -42,7 +43,9 @@ from api.middleware import (
     ETagMiddleware,
     RateLimitMiddleware,
     SecurityHeadersMiddleware,
-    _trusted_client_ip,
+    _MaxBodyMiddleware,
+    _RejectNulMiddleware,
+    correlation_id_middleware,
 )
 from api.routes.admin_solicitudes import router as admin_solicitudes_router
 from api.routes.admin_users import router as admin_users_router
@@ -60,6 +63,7 @@ from api.routes.licitaciones import get_licitacion as _get_licitacion_handler
 from api.routes.licitaciones import router as licitaciones_router
 from api.routes.me import router as me_router
 from api.routes.meta import router as meta_router
+from api.routes.metrics import router as metrics_router
 from api.routes.models import router as models_router
 from api.routes.notifications import router as notifications_router
 from api.routes.organization_settings import router as organization_settings_router
@@ -285,163 +289,6 @@ else:
 # ---------------------------------------------------------------------------
 
 
-class _BodyTooLargeError(Exception):
-    """Señal interna para abortar el pipeline cuando el body excede el límite."""
-
-
-class _MaxBodyMiddleware:
-    """Rechaza requests con body > 1 MB usando raw ASGI.
-
-    Comprueba Content-Length (fast path) y acumula tamaño en streaming
-    (slow path) sin buffering completo del body.
-    """
-
-    _MAX_BYTES = 1 * 1024 * 1024  # 1 MB
-    # RFC 7807 como el resto de la API. El 413 se emite en ASGI crudo (el body
-    # se corta antes de llegar al router, así que no hay exception handler que
-    # lo formatee), pero el contrato que ve el cliente es el mismo: un
-    # `application/problem+json` con type/title/status.
-    _413_BODY = (
-        b'{"type":"https://licitaciones-sap/errors/payload-too-large",'
-        b'"title":"Payload Too Large","status":413,'
-        b'"detail":"Request body demasiado grande (m\\u00e1x. 1 MB)."}'
-    )
-
-    def __init__(self, app: ASGIApp) -> None:
-        self.app = app
-
-    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-        if scope["type"] != "http":
-            await self.app(scope, receive, send)
-            return
-
-        # Fast path: rechazar inmediatamente si Content-Length lo delata
-        headers = dict(scope.get("headers") or [])
-        cl_raw = headers.get(b"content-length")
-        if cl_raw is not None:
-            try:
-                if int(cl_raw) > self._MAX_BYTES:
-                    await self._send_413(send)
-                    return
-            except (ValueError, UnicodeDecodeError):
-                pass
-
-        # Slow path: para requests con body, envolver receive para contar bytes
-        method = scope.get("method", "")
-        if method in ("POST", "PUT", "PATCH"):
-            body_size = 0
-            max_bytes = self._MAX_BYTES
-
-            async def limiting_receive() -> dict:  # type: ignore[type-arg]
-                nonlocal body_size
-                message = await receive()
-                if message.get("type") == "http.request":
-                    body_size += len(message.get("body", b""))
-                    if body_size > max_bytes:
-                        raise _BodyTooLargeError
-                return dict(message)
-
-            try:
-                await self.app(scope, limiting_receive, send)
-            except _BodyTooLargeError:
-                await self._send_413(send)
-        else:
-            await self.app(scope, receive, send)
-
-    async def _send_413(self, send: Send) -> None:
-        await send(
-            {
-                "type": "http.response.start",
-                "status": 413,
-                "headers": [
-                    (b"content-type", b"application/problem+json"),
-                    (b"content-length", str(len(self._413_BODY)).encode()),
-                ],
-            }
-        )
-        await send({"type": "http.response.body", "body": self._413_BODY})
-
-
-class _RejectNulMiddleware:
-    """Rechaza el byte NUL en la línea de petición (path y query string).
-
-    Postgres no admite ``\\x00`` en columnas de texto y psycopg lanza
-    ``DataError`` al adaptar el parámetro, así que cualquier filtro de texto que
-    acabe en una query convertía un carácter del cliente en un 500:
-    ``GET /api/v1/competitive/bajas?cpv=%00`` reventaba en
-    ``services/competitive/bajas.py`` y salía por el handler genérico. Lo
-    encontró el fuzzer de contrato en 2026-08; el fallo llevaba semanas vivo.
-
-    El saneo va aquí y no en las ~100 declaraciones ``Query(...)`` de
-    ``api/routes/`` por la misma razón por la que ``shared.dto.SafeStr`` vive en
-    el contrato y no en cada endpoint: acordarse en cada parámetro nuevo no es
-    una defensa, es una lotería. Se comprueban los bytes **crudos** —antes del
-    percent-decode— para cazar tanto ``\\x00`` literal como ``%00``.
-
-    Se rechaza en vez de sanear en silencio: un filtro que se modifica solo y
-    no lo dice devolvería un 200 con el resultado de una consulta que el cliente
-    no pidió.
-    """
-
-    _400_BODY = (
-        b'{"type":"https://licitaciones-sap/errors/bad-request",'
-        b'"title":"Bad Request","status":400,'
-        b'"detail":"La petici\\u00f3n no puede contener el byte NUL (\\\\x00)."}'
-    )
-
-    def __init__(self, app: ASGIApp) -> None:
-        self.app = app
-
-    @staticmethod
-    def _tiene_nul(scope: Scope) -> bool:
-        crudos: list[bytes] = [
-            bytes(scope.get("query_string") or b""),
-            bytes(scope.get("raw_path") or b""),
-        ]
-        for valor in crudos:
-            if b"\x00" in valor or b"%00" in valor.lower():
-                return True
-        # `path` ya viene decodificado por el servidor ASGI: un %00 en la URL
-        # llega aquí como \x00 aunque `raw_path` no esté disponible.
-        return "\x00" in str(scope.get("path") or "")
-
-    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-        if scope["type"] == "http" and self._tiene_nul(scope):
-            await self._send_400(send)
-            return
-        await self.app(scope, receive, send)
-
-    async def _send_400(self, send: Send) -> None:
-        await send(
-            {
-                "type": "http.response.start",
-                "status": 400,
-                "headers": [
-                    (b"content-type", b"application/problem+json"),
-                    (b"content-length", str(len(self._400_BODY)).encode()),
-                ],
-            }
-        )
-        await send({"type": "http.response.body", "body": self._400_BODY})
-
-
-async def correlation_id_middleware(
-    request: Request,
-    call_next: Callable[[Request], Awaitable[Response]],
-) -> Response:
-    """Propaga X-Correlation-Id entre cliente, logs y respuesta."""
-    correlation_id = request.headers.get("X-Correlation-Id") or str(uuid.uuid4())
-
-    # Limpiar y bindear variables de contexto structlog para esta request
-    clear_contextvars()
-    bind_contextvars(correlation_id=correlation_id)
-
-    response = await call_next(request)
-
-    response.headers["X-Correlation-Id"] = correlation_id
-    return response
-
-
 def register_middlewares(target: FastAPI, *, cors_origins: list[str]) -> None:
     """Monta el stack de middlewares del más interno al más externo.
 
@@ -577,6 +424,10 @@ app.include_router(admin_users_router, prefix="/api/v1")
 app.include_router(admin_solicitudes_router, prefix="/api/v1")
 app.include_router(feature_flags_router, prefix="/api/v1")
 app.include_router(ask_router, prefix="/api/v1")
+# Sin prefijo /api/v1: `GET /metrics` es la ruta que Prometheus ya scrapea y
+# la que declaran los dashboards y el render.yaml. Su auth y su formato de
+# exposición viven en `api/routes/metrics.py`.
+app.include_router(metrics_router)
 
 
 # ---------------------------------------------------------------------------
@@ -614,93 +465,3 @@ app.add_api_route(
     methods=["GET"],
     include_in_schema=False,
 )
-
-
-# ---------------------------------------------------------------------------
-# Prometheus /metrics — protegido por IP allowlist o scope metrics:read
-# ---------------------------------------------------------------------------
-
-try:
-    from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
-
-    from observability.prometheus import _prometheus_available
-
-    if _prometheus_available():
-
-        @app.get("/metrics", include_in_schema=False)
-        def _prometheus_metrics(request: Request) -> Response:
-            """Expone métricas Prometheus. Protegido por X-API-Key + IP allowlist.
-
-            Seguridad: en entornos Docker la IP del cliente puede ser la del
-            gateway de la red interna, no 127.0.0.1. Por eso se requiere API
-            key con scope ``metrics:read`` siempre que el ENV no sea ``dev``.
-            En dev, el IP allowlist basta para acceso local sin key.
-
-            La credencial también se acepta como ``Authorization: Bearer`` —
-            Prometheus (prom/prometheus:v2.53) no puede enviar cabeceras
-            custom como ``X-API-Key``, solo el header estándar vía su bloque
-            ``authorization``. Hasta 2026-08 el scrape de Render recibía 401
-            en cada pasada y los SLOs de ADR-019 seguían sin medición.
-            """
-            _metrics_allowed_ips: set[str] = set(
-                ip.strip() for ip in settings.METRICS_ALLOWED_IPS.split(",") if ip.strip()
-            )
-            client_ip = _trusted_client_ip(request)
-            ip_allowed = client_ip in _metrics_allowed_ips
-
-            api_key_raw = request.headers.get("X-API-Key")
-            if not api_key_raw:
-                auth_header = request.headers.get("Authorization", "")
-                if auth_header.startswith("Bearer "):
-                    api_key_raw = auth_header[len("Bearer ") :].strip() or None
-            key_authenticated = False
-            if api_key_raw:
-                from api.auth import hash_api_key
-                from db.connection import now_utc_iso
-                from services import auth as auth_service
-
-                key_hash = hash_api_key(api_key_raw)
-                record = auth_service.lookup_active_key(key_hash)
-                scopes = record.scopes if record is not None else ""
-                scope_set = frozenset(scope.strip() for scope in scopes.split(",") if scope.strip())
-                is_bound = record is not None and record.user_id is not None
-                is_unexpired = record is not None and (
-                    record.expires_at is None or now_utc_iso() <= record.expires_at
-                )
-                # Este handler valida la key por su cuenta en vez de depender de
-                # `require_api_key`, así que la comprobación de propietario
-                # activo hay que repetirla aquí: sin ella, la key de un usuario
-                # dado de baja seguía leyendo las métricas.
-                owner_active = True
-                if record is not None and record.user_id is not None:
-                    from db.users import get_user_by_id
-
-                    owner_active = get_user_by_id(record.user_id) is not None
-                if (
-                    is_unexpired
-                    and owner_active
-                    and (settings.ENV == "dev" or is_bound)
-                    and ("*" in scope_set or "metrics:read" in scope_set)
-                ):
-                    key_authenticated = True
-
-            # En prod/staging: requiere API key siempre (IP allowlist es condición adicional, no suficiente)
-            if settings.ENV in ("prod", "staging"):
-                if not key_authenticated:
-                    return Response(status_code=401, content="Unauthorized")
-            else:
-                # En dev: basta con IP allowlist O API key
-                if not ip_allowed and not key_authenticated:
-                    return Response(status_code=401, content="Unauthorized")
-
-            # Muestrear el estado de los pools de BD justo antes de serializar:
-            # psycopg_pool ya lleva la contabilidad, así que el scrape la lee en
-            # vez de instrumentar cada adquisición de conexión.
-            from observability.runtime_metrics import refresh_db_pool_metrics
-
-            refresh_db_pool_metrics()
-            return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
-
-        log.info("prometheus_metrics_endpoint_enabled", path="/metrics")
-except ImportError:
-    pass

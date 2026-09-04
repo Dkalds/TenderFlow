@@ -21,6 +21,7 @@ from typing import Any, cast
 
 from db.database import connect, connect_read
 from db.repositories.publico import refrescar_vista_canonicas
+from db.sql_fragments import technology_observed_sql
 from observability.logging import get_logger
 from observability.ops_events import record_event
 
@@ -105,19 +106,24 @@ def _load_clustering_data(conn: Any) -> list[tuple[str, str, str]]:
     # Cargar licitaciones de los últimos 12 meses o un máximo de 50,000 para evitar cómputos excesivos.
     # Asume que 'fecha_publicacion' es el campo adecuado para el filtrado.
     # Si no, se podría usar 'id' o 'rowid' con un LIMIT fijo.
-    cutoff_sql = "fecha_publicacion >= to_char(CURRENT_DATE - INTERVAL '12 months', 'YYYY-MM-DD')"
+    cutoff_sql = "l.fecha_publicacion >= to_char(CURRENT_DATE - INTERVAL '12 months', 'YYYY-MM-DD')"
+    # El alias ``l`` no estaba y se añade sólo para poder interpolar el
+    # predicado canónico: ``technology_observed_sql`` siempre califica la
+    # columna, porque el índice parcial de v84 se acopla al texto del
+    # ``COALESCE`` y quitarle el prefijo sería otra grafía más. El alias no
+    # cambia el árbol que ve el planificador.
     return cast(
         "list[tuple[str, str, str]]",
         conn.execute(
             f"""
-        SELECT id_externo, titulo, SUBSTR(descripcion, 1, 500)
-        FROM licitaciones
-        WHERE titulo IS NOT NULL
-          AND COALESCE(analysis_universe, 'technology_observed') = 'technology_observed'
-          AND (fecha_publicacion IS NULL OR {cutoff_sql})
-        ORDER BY fecha_publicacion DESC
+        SELECT l.id_externo, l.titulo, SUBSTR(l.descripcion, 1, 500)
+        FROM licitaciones l
+        WHERE l.titulo IS NOT NULL
+          AND {technology_observed_sql()}
+          AND (l.fecha_publicacion IS NULL OR {cutoff_sql})
+        ORDER BY l.fecha_publicacion DESC
         LIMIT 50000
-        """  # noqa: S608 — cutoff_sql es un fragmento constante sin input de usuario
+        """  # noqa: S608 — los fragmentos interpolados son constantes, sin input de usuario
         ).fetchall(),
     )
 

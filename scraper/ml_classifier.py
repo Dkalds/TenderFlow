@@ -78,6 +78,13 @@ if TYPE_CHECKING:
 
 log = get_logger(__name__)
 
+#: Motivo de degradación cuando el artefacto de la versión activa del registry
+#: no está en esta máquina y se sirve el modelo local, que puede ser anterior.
+#: `api/model_cache.py` lo publica en la respuesta de /explain: servir
+#: explicaciones de un modelo distinto del que dice el registry, en silencio,
+#: es peor que no servirlas.
+DEGRADACION_VERSION_MISMATCH = "serving_version_mismatch"
+
 # Ruta del modelo serializado (formato joblib, extensión .pkl por compatibilidad)
 _MODEL_PATH = Path(__file__).parents[1] / "data" / "models" / "sap_classifier.pkl"
 
@@ -740,10 +747,39 @@ class SAPClassifier:
             if abs(contributions[i]) > 1e-9
         ][:top_k]
 
+        return self._con_degradacion(
+            {
+                "prediction": confidence >= self._threshold,
+                "confidence": confidence,
+                "top_features": top,
+            }
+        )
+
+    def _con_degradacion(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """Añade el motivo de degradación al payload, si lo hay.
+
+        La explicación de /explain sale de un modelo concreto, y cuando el
+        artefacto de la versión activa del registry no está en esta máquina se
+        sirve el local — que puede ser **anterior**. Eso quedaba solo en un
+        ``log.warning`` dentro de un runner efímero, así que desde fuera una
+        explicación degradada era indistinguible de una sana: misma forma,
+        misma confianza, otro modelo.
+
+        El payload sale intacto cuando no hay degradación: un ``warning``
+        siempre presente se aprende a ignorar en dos días, y entonces el aviso
+        deja de avisar.
+        """
+        motivo = getattr(self, "serving_degradado", None)
+        if not motivo:
+            return payload
         return {
-            "prediction": confidence >= self._threshold,
-            "confidence": confidence,
-            "top_features": top,
+            **payload,
+            "degradado": motivo,
+            "warning": (
+                "Degradado: se está sirviendo el modelo local porque el artefacto de la "
+                "versión activa del registry no está disponible en esta instancia. La "
+                "explicación puede corresponder a un modelo anterior."
+            ),
         }
 
     # ── Persistencia ──────────────────────────────────────────────────────
@@ -875,6 +911,9 @@ class SAPClassifier:
         # máquinas (ver ADR-025 sobre identificar artefactos por contenido).
         registry_sha256 = ""
         sirviendo_artefacto_del_registry = False
+        # Motivo de degradación del servicio, si lo hay. Viaja con el objeto
+        # devuelto —no solo al log— porque el caller tiene que poder DECIRLO.
+        degradado_al_cargar: str | None = None
         version_activa: object | None = None
         if path is None:
             try:
@@ -910,6 +949,11 @@ class SAPClassifier:
                                 "se sirve el modelo local, que puede ser anterior."
                             ),
                         )
+                        # Sin esto, un desajuste de versión es invisible desde
+                        # fuera: la API responde con la confianza de siempre
+                        # sobre un modelo que puede ser anterior, y el aviso se
+                        # queda en el log de un runner efímero.
+                        degradado_al_cargar = DEGRADACION_VERSION_MISMATCH
             except Exception as _reg_exc:
                 log.warning("ml_classifier.registry_lookup_failed", error=str(_reg_exc))
 
@@ -940,11 +984,15 @@ class SAPClassifier:
             obj._threshold = settings.ML_CONFIDENCE_THRESHOLD
         if not hasattr(obj, "metadata"):
             obj.metadata = {}
+        # Lo lee `api/model_cache.py::_cargar` para publicarlo en el `warning`
+        # de /explain.
+        obj.serving_degradado = degradado_al_cargar
         log.info(
             "ml_classifier.loaded",
             path=str(target),
             threshold=obj._threshold,
             trained_at=obj.metadata.get("trained_at", "legacy"),
+            degradado=degradado_al_cargar,
         )
         return cast(SAPClassifier, obj)
 

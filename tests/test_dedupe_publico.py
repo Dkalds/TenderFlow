@@ -286,21 +286,80 @@ def test_el_desempate_final_es_la_clave_primaria() -> None:
 
 def test_el_rango_de_python_espeja_el_de_sql() -> None:
     """Las dos definiciones tienen que ordenar igual o el detector y la
-    proyección elegirían canónicas distintas para el mismo contrato."""
+    proyección elegirían canónicas distintas para el mismo contrato.
+
+    El tercer criterio pasó a ser ``coalesce(primera_extraccion,
+    fecha_extraccion, '9999')`` en la revisión ``v100`` —``fecha_extraccion`` la
+    reescribe el upsert en cada pasada, así que no sirve de desempate estable— y
+    el gemelo Python se quedó mirando sólo a ``fecha_extraccion``. Este test
+    falló por esa desalineación real, no porque describiera el mundo viejo: se
+    reescribe contra el fragmento vigente y se le añade abajo el caso que
+    distingue las dos definiciones, que el anterior no tenía.
+    """
     clausula = fila_canonica_sql(alias="l", gemelo="l2", filtro_gemelo="true")
 
     # Mismo orden de criterios, y el mismo relleno para las fechas ausentes.
     assert "l.fuente <> 'placsp'" in clausula
     assert "coalesce(l.fecha_publicacion, '9999')" in clausula
-    assert "coalesce(l.fecha_extraccion, '9999')" in clausula
+    assert "coalesce(l.primera_extraccion, l.fecha_extraccion, '9999')" in clausula
 
     fila = {
         "id_externo": "ted:1",
         "fuente": "ted",
         "fecha_publicacion": None,
+        "primera_extraccion": None,
         "fecha_extraccion": None,
     }
     assert _rango_canonico(fila) == (True, "9999", "9999", "ted:1")
+
+
+def test_el_rango_prefiere_la_primera_extraccion_sobre_la_ultima() -> None:
+    """El caso que separa las dos definiciones, y el que hace caro equivocarse.
+
+    Dos gemelas sin ``fecha_publicacion`` —PSCP no la trae en la mayoría de sus
+    avisos—: la vista desde hace tiempo y la recién aparecida. El SQL ordena por
+    el **primer** avistamiento, que es inmutable; mirar ``fecha_extraccion``
+    —que ``db/upsert.py`` reescribe en cada pasada— hacía que el detector
+    prefiriera la otra. Con las dos definiciones discrepando, el job marcaba
+    como duplicada justo la fila que la superficie publica y escondía la URL
+    viva: el error caro, el de hacer desaparecer un contrato que existe.
+    """
+    veterana = {
+        "id_externo": "pscp:A",
+        "fuente": "pscp",
+        "fecha_publicacion": None,
+        "primera_extraccion": "2024-01-05T00:00:00+00:00",
+        "fecha_extraccion": "2026-09-01T00:00:00+00:00",
+    }
+    recien_vista = {
+        "id_externo": "pscp:B",
+        "fuente": "pscp",
+        "fecha_publicacion": None,
+        "primera_extraccion": "2026-08-30T00:00:00+00:00",
+        "fecha_extraccion": "2026-08-30T00:00:00+00:00",
+    }
+
+    assert _pick_canonical(recien_vista, veterana)[0]["id_externo"] == "pscp:A"
+    assert _pick_canonical(veterana, recien_vista)[0]["id_externo"] == "pscp:A"
+
+
+def test_el_rango_conserva_fecha_extraccion_como_respaldo() -> None:
+    """El tercer término del ``coalesce`` no es decorativo.
+
+    Mientras ``db/upsert.py`` no escriba ``primera_extraccion`` en el INSERT
+    (ver el docstring de la revisión ``v100``), las filas nuevas la traen a
+    ``NULL``. Si el gemelo dejara de mirar ``fecha_extraccion``, esas filas
+    perderían el desempate entero y volverían a decidirse por ``id_externo``.
+    """
+    sin_columna = {
+        "id_externo": "ted:9",
+        "fuente": "ted",
+        "fecha_publicacion": None,
+        "primera_extraccion": None,
+        "fecha_extraccion": "2026-04-01T00:00:00+00:00",
+    }
+
+    assert _rango_canonico(sin_columna)[2] == "2026-04-01T00:00:00+00:00"
 
 
 def _fila(id_externo: str, **campos: Any) -> dict[str, Any]:
@@ -577,6 +636,53 @@ def test_el_periodo_de_python_espeja_el_coalesce_del_sql() -> None:
     assert periodo_canonico(None, "2026-04-01T00:00:00+00:00") == "2026-04"
     assert periodo_canonico("", "2026-04-01T00:00:00+00:00") == ""
     assert periodo_canonico(None, None) == ""
+    # `primera_extraccion` va en medio, igual que en `periodo_publicacion_sql`.
+    assert (
+        periodo_canonico(
+            None, "2026-09-01T00:00:00+00:00", primera_extraccion="2024-01-05T00:00:00+00:00"
+        )
+        == "2024-01"
+    )
+
+
+def test_la_clave_del_detector_usa_la_primera_extraccion_de_la_fila() -> None:
+    """La otra mitad de la desalineación de ``v100``, y la más cara de las dos.
+
+    ``periodo_publicacion_sql`` pasó a respaldar la ``fecha_publicacion``
+    ausente con ``primera_extraccion``, pero ``_clave_de_fila`` seguía llamando
+    a ``periodo_canonico`` sin ese argumento. Como ``fecha_extraccion`` la
+    reescribe el upsert en cada pasada, el año-mes que calculaba el detector
+    **se movía solo al cruzar de mes** mientras el de la proyección quedaba
+    fijo: las dos partían el mismo grupo de gemelas de forma distinta y el job
+    proponía pares que la superficie no colapsa (o dejaba de ver los que sí).
+    """
+    fila = {
+        "organo_contratacion": "Òrgan A",
+        "titulo": "Servei de manteniment",
+        "cpv": "72000000",
+        "fecha_publicacion": None,
+        "primera_extraccion": "2024-01-05T00:00:00+00:00",
+        # El upsert la reescribió el mes pasado; no puede decidir la clave.
+        "fecha_extraccion": "2026-09-01T00:00:00+00:00",
+    }
+
+    clave = _clave_de_fila(fila)
+
+    assert clave is not None
+    assert "|2024-01|" in clave
+
+
+def test_el_repositorio_trae_la_columna_que_el_gemelo_necesita() -> None:
+    """Sin ella en el ``SELECT`` el gemelo no puede espejar nada.
+
+    ``_clave_de_fila`` y ``_rango_canonico`` leen ``primera_extraccion`` del
+    dict de la fila: si la consulta no la trae, ``.get`` devuelve ``None`` y los
+    dos caen al respaldo antiguo en silencio, que es exactamente la divergencia
+    que los dos tests de arriba existen para impedir.
+    """
+    from db.repositories import dedupe as dedupe_repo
+
+    assert "l.primera_extraccion" in dedupe_repo._COLUMNAS
 
 
 def test_el_organo_se_pliega_como_en_sql_y_no_mas() -> None:

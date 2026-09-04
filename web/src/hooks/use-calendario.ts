@@ -15,10 +15,11 @@
 import { useQuery } from "@tanstack/react-query";
 import { fetchWithAuth } from "@/lib/api-client";
 import type { CalendarioEnlace } from "@/lib/api-types";
+import { calendarioKeys } from "@/lib/query-keys";
 
 export function useCalendarioEnlace() {
   return useQuery({
-    queryKey: ["calendario", "enlace"],
+    queryKey: calendarioKeys.enlace,
     queryFn: () => fetchWithAuth<CalendarioEnlace>("/api/v1/exports/calendario/enlace"),
     // La firma no cambia entre renders y el recuento de eventos se mueve con
     // la pasada de ingesta: no hay nada que revalidar al enfocar la ventana.

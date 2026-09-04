@@ -1,8 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEmpresasWatchlist, useToggleEmpresaWatch } from "@/hooks/use-empresas-watchlist";
 import { apiMutate, fetchWithAuth } from "@/lib/api-client";
 import { PanelEmpty, PanelTabs, StatCell, StatStrip } from "@/components/console/panel";
 import { CompanyYearTrend } from "@/components/competitors/company-year-trend";
@@ -34,6 +35,7 @@ import {
 } from "lucide-react";
 import { useDebounce } from "@/hooks/use-debounce";
 import { SpaceShell } from "@/components/layout/space-shell";
+import { empresasKeys } from "@/lib/query-keys";
 
 /* ------------------------------------------------------------------ */
 /*  Types (espejo de /api/v1/empresas y /api/v1/competitive)           */
@@ -84,12 +86,6 @@ interface PerfilEmpresa {
   por_anio?: { anio: number; contratos: number; importe: number }[];
 }
 
-interface WatchlistItem {
-  empresa_id: number;
-  nombre_canonico: string;
-  frequency: string;
-}
-
 interface ReviewItem {
   id: number;
   nombre_original: string;
@@ -105,7 +101,6 @@ interface ReviewItem {
 /* ------------------------------------------------------------------ */
 
 export default function EmpresasPage() {
-  const queryClient = useQueryClient();
   const searchParams = useSearchParams();
   // Deep-link externo: `?q=<empresa>` siembra la búsqueda.
   const [search, setSearch] = useState(() => searchParams?.get("q") ?? "");
@@ -113,13 +108,13 @@ export default function EmpresasPage() {
   const [selectedId, setSelectedId] = useState<number | null>(null);
 
   const { data: stats } = useQuery<EmpresaStats>({
-    queryKey: ["empresas-stats"],
+    queryKey: empresasKeys.stats,
     queryFn: () => fetchWithAuth("/api/v1/empresas/stats"),
     staleTime: 5 * 60 * 1000,
   });
 
   const { data: list, isLoading } = useQuery<{ items: EmpresaRow[] }>({
-    queryKey: ["empresas", debouncedSearch],
+    queryKey: empresasKeys.list(debouncedSearch),
     queryFn: () =>
       fetchWithAuth(
         `/api/v1/empresas?limit=50${debouncedSearch ? `&q=${encodeURIComponent(debouncedSearch)}` : ""}`,
@@ -127,26 +122,8 @@ export default function EmpresasPage() {
     staleTime: 60 * 1000,
   });
 
-  const { data: watchlist } = useQuery<{ items: WatchlistItem[] }>({
-    queryKey: ["watchlist-empresas"],
-    queryFn: () => fetchWithAuth("/api/v1/competitive/watchlist"),
-    staleTime: 60 * 1000,
-  });
-  const watchedIds = useMemo(
-    () => new Set((watchlist?.items ?? []).map((w) => w.empresa_id)),
-    [watchlist],
-  );
-
-  const toggleWatch = useMutation({
-    mutationFn: async (empresa: { empresa_id: number; watched: boolean }) =>
-      empresa.watched
-        ? apiMutate("DELETE", `/api/v1/competitive/watchlist/${empresa.empresa_id}`)
-        : apiMutate("POST", "/api/v1/competitive/watchlist", {
-            empresa_id: empresa.empresa_id,
-            frequency: "daily",
-          }),
-    onSettled: () => queryClient.invalidateQueries({ queryKey: ["watchlist-empresas"] }),
-  });
+  const { watchedIds } = useEmpresasWatchlist();
+  const toggleWatch = useToggleEmpresaWatch();
 
   const pendientes = stats?.revisiones_pendientes ?? 0;
   const [vista, setVista] = useState<"maestro" | "revision">("maestro");
@@ -178,7 +155,7 @@ export default function EmpresasPage() {
             ) : undefined
           }
         />
-        <StatCell label="Vigiladas" value={watchlist ? formatNumber(watchlist.items.length) : "…"} />
+        <StatCell label="Vigiladas" value={formatNumber(watchedIds.size)} />
         <StatCell
           label="Revisiones pendientes"
           value={stats ? formatNumber(stats.revisiones_pendientes) : "…"}
@@ -287,7 +264,7 @@ export default function EmpresasPage() {
                             disabled={toggleWatch.isPending}
                             onClick={(ev) => {
                               ev.stopPropagation();
-                              toggleWatch.mutate({ empresa_id: e.empresa_id, watched });
+                              toggleWatch.mutate({ empresaIds: [e.empresa_id], watched });
                             }}
                           >
                             {watched ? (
@@ -321,12 +298,12 @@ export default function EmpresasPage() {
 
 function EmpresaPerfil({ empresaId }: { empresaId: number }) {
   const { data: detail } = useQuery<EmpresaDetail>({
-    queryKey: ["empresa-detail", empresaId],
+    queryKey: empresasKeys.detail(empresaId),
     queryFn: () => fetchWithAuth(`/api/v1/empresas/${empresaId}`),
   });
 
   const { data: perfil, isLoading } = useQuery<PerfilEmpresa>({
-    queryKey: ["empresa-perfil", empresaId],
+    queryKey: empresasKeys.perfil(empresaId),
     queryFn: () => fetchWithAuth(`/api/v1/competitive/empresas/${empresaId}/perfil`),
   });
 
@@ -510,7 +487,7 @@ function MiniRanking({
 function ReviewQueue() {
   const queryClient = useQueryClient();
   const { data } = useQuery<{ items: ReviewItem[] }>({
-    queryKey: ["empresa-reviews"],
+    queryKey: empresasKeys.reviews,
     queryFn: () => fetchWithAuth("/api/v1/empresas/reviews?limit=20"),
   });
 
@@ -518,9 +495,9 @@ function ReviewQueue() {
     mutationFn: ({ id, accept }: { id: number; accept: boolean }) =>
       apiMutate("POST", `/api/v1/empresas/reviews/${id}`, { accept }),
     onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: ["empresa-reviews"] });
-      queryClient.invalidateQueries({ queryKey: ["empresas-stats"] });
-      queryClient.invalidateQueries({ queryKey: ["empresas"] });
+      queryClient.invalidateQueries({ queryKey: empresasKeys.reviews });
+      queryClient.invalidateQueries({ queryKey: empresasKeys.stats });
+      queryClient.invalidateQueries({ queryKey: empresasKeys.all });
     },
   });
 

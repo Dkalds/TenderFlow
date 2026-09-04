@@ -118,18 +118,41 @@ def main() -> int:
 
 
 def _apply_step_failures(pipeline_result: dict[str, Any], code: int, log: Any) -> int:
-    """Eleva el exit code a 1 si algún paso post-ingesta falló.
+    """Eleva el exit code a 1 si algún paso post-ingesta **bloqueante** falló.
 
     ``_run_post_ingestion_steps`` traga la excepción de cada paso
-    (ml_retrain/drift/digests…) y devuelve ``{step: "ok"|"error"}``. Antes el
+    (drift/digests…) y devuelve ``{step: "ok"|"skipped"|"error"}``. Antes el
     exit code solo miraba la ingesta, así que el run de GitHub Actions salía
     VERDE con pasos rotos y nadie los veía (ya pasó: pasos caídos una semana).
-    Ahora un paso en error hace fallar el run y emite una anotación ``::error``
-    que Actions renderiza en el resumen del run, sin la semántica de "error
-    fatal" de la ingesta. Solo eleva el código; nunca lo baja.
+    Un paso en error hace fallar el run y emite una anotación ``::error`` que
+    Actions renderiza en el resumen, sin la semántica de "error fatal" de la
+    ingesta. Solo eleva el código; nunca lo baja.
+
+    Dos matices nuevos (2026-09):
+
+    - Solo cuentan los pasos **bloqueantes** (``pipeline_runs.STEP_TIER``). Los
+      advisory —canary del catálogo NIM, anomalías, drift, active learning—
+      siguen emitiendo su aviso y su email, pero no tumban la pasada: el
+      2026-09-01 ``llm_models_canary`` dejó ``scrape-daily`` en rojo durante
+      días con los otros 14 pasos en ``ok``.
+    - ``skipped`` no es un fallo. Un paso periódico fuera de su ventana
+      (``_run_periodic``), un feature flag apagado o un precompute sin modelo
+      devuelven ``skipped``; con la comparación anterior (``!= "ok"``) cada uno
+      de ellos habría puesto el job en rojo.
     """
+    from scheduler.pipeline_runs import STEP_TIER, pasos_bloqueantes_fallidos
+
     steps = pipeline_result.get("steps") or {}
-    failed = [name for name, status in steps.items() if status != "ok"]
+    failed = pasos_bloqueantes_fallidos(steps)
+    advisory = [
+        name
+        for name, status in steps.items()
+        if status == "error" and STEP_TIER.get(name, "bloqueante") == "advisory"
+    ]
+    for name in advisory:
+        print(f"::warning title=advisory step failed::{name}", file=sys.stderr)
+    if advisory:
+        log.warning("pipeline_advisory_steps_failed", failed=advisory)
     if not failed:
         return code
     for name in failed:

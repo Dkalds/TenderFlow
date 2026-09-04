@@ -26,6 +26,7 @@ import { ExportPopover } from "@/components/export-popover";
 import { Comparator } from "@/components/comparator";
 import { DetailInspector } from "@/components/detail-inspector";
 import type { LicitacionDetail } from "@/components/detail-panel";
+import { fetchWithAuth } from "@/lib/api-client";
 import { cn, formatCurrency, formatDate, formatNumber, truncate } from "@/lib/utils";
 import { getJSON, setJSON, remove as removeStored } from "@/lib/storage";
 import { useDensity } from "@/lib/density";
@@ -47,6 +48,7 @@ import {
   useDetalleTableState,
   type ScoringResponse,
 } from "./_hooks/use-detalle-table";
+import { analyticsKeys, licitacionKeys, licitacionesKeys } from "@/lib/query-keys";
 
 /**
  * Detalle — tabla de trabajo con inspector en el mismo plano.
@@ -188,16 +190,12 @@ export default function DetallePage() {
   }, []);
 
   const { data, isLoading, error, isFetching, refetch } = useQuery({
-    queryKey: ["licitaciones", queryParams],
-    queryFn: async ({ signal }) => {
-      const search = new URLSearchParams(queryParams);
-      const res = await fetch(`/api/v1/licitaciones?${search}`, {
-        credentials: "include",
-        signal,
-      });
-      if (!res.ok) throw new Error(`Failed to fetch licitaciones: ${res.status}`);
-      return res.json() as Promise<LicitacionesResponse>;
-    },
+    queryKey: licitacionesKeys.list(queryParams),
+    queryFn: ({ signal }) =>
+      fetchWithAuth<LicitacionesResponse>(
+        `/api/v1/licitaciones?${new URLSearchParams(queryParams)}`,
+        { signal },
+      ),
     staleTime: 30_000,
     placeholderData: (previous) => previous,
     retry: 2,
@@ -209,30 +207,23 @@ export default function DetallePage() {
   const pageIds = useMemo(() => pageIdsOf(data?.items), [data]);
 
   const { data: scoring } = useQuery({
-    queryKey: ["scoring-batch", pageIds],
-    queryFn: async ({ signal }) => {
-      const search = new URLSearchParams({ ids: pageIds.join(",") });
-      const res = await fetch(`/api/v1/analytics/scoring?${search}`, {
-        credentials: "include",
-        signal,
-      });
-      if (!res.ok) throw new Error(`Failed to fetch scoring: ${res.status}`);
-      return res.json() as Promise<ScoringResponse>;
-    },
+    queryKey: analyticsKeys.scoringBatch(pageIds),
+    queryFn: ({ signal }) =>
+      fetchWithAuth<ScoringResponse>(
+        `/api/v1/analytics/scoring?${new URLSearchParams({ ids: pageIds.join(",") })}`,
+        { signal },
+      ),
     enabled: pageIds.length > 0,
     staleTime: 5 * 60_000,
     placeholderData: (previous) => previous,
   });
 
   const { data: detailData } = useQuery({
-    queryKey: ["licitacion", detailId],
-    queryFn: async () => {
-      const res = await fetch(`/api/v1/licitaciones/${encodeURIComponent(detailId!)}`, {
-        credentials: "include",
-      });
-      if (!res.ok) throw new Error("Failed to fetch detail");
-      return res.json() as Promise<LicitacionDetail>;
-    },
+    queryKey: licitacionKeys.detail(detailId ?? ""),
+    queryFn: () =>
+      fetchWithAuth<LicitacionDetail>(
+        `/api/v1/licitaciones/${encodeURIComponent(detailId!)}`,
+      ),
     enabled: !!detailId,
   });
 

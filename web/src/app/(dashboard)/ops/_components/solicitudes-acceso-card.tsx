@@ -34,8 +34,9 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { apiMutate } from "@/lib/api-client";
+import { apiMutate, fetchWithAuth } from "@/lib/api-client";
 import { formatDate } from "@/lib/utils";
+import { adminKeys } from "@/lib/query-keys";
 
 interface SolicitudAcceso {
   id: number;
@@ -83,13 +84,7 @@ const LIMITE = 500;
 type Vista = "pendiente" | "historico";
 
 async function cargarSolicitudes(query: string): Promise<SolicitudAcceso[]> {
-  const res = await fetch(`/api/v1/admin/solicitudes-acceso?${query}`, {
-    credentials: "include",
-  });
-  if (res.status === 401) throw new Error("Sesión expirada");
-  if (res.status === 403) throw new Error("Requiere permisos de admin");
-  if (!res.ok) throw new Error(`Error ${res.status}`);
-  return res.json();
+  return fetchWithAuth<SolicitudAcceso[]>(`/api/v1/admin/solicitudes-acceso?${query}`);
 }
 
 export function SolicitudesAccesoCard() {
@@ -100,7 +95,7 @@ export function SolicitudesAccesoCard() {
   // exactamente lo que fallaba: el recorte del servidor ya se había llevado por
   // delante las pendientes viejas antes de que llegaran a este componente.
   const pendientesQuery = useQuery<SolicitudAcceso[]>({
-    queryKey: ["admin-solicitudes-acceso", "pendiente"],
+    queryKey: adminKeys.solicitudes.vista("pendiente"),
     queryFn: () => cargarSolicitudes(`estado=pendiente&limit=${LIMITE}`),
   });
 
@@ -108,20 +103,14 @@ export function SolicitudesAccesoCard() {
   // la de trabajo, y no tiene por qué costar una petición a cada apertura del
   // panel.
   const historicoQuery = useQuery<SolicitudAcceso[]>({
-    queryKey: ["admin-solicitudes-acceso", "historico"],
+    queryKey: adminKeys.solicitudes.vista("historico"),
     queryFn: () => cargarSolicitudes(`limit=${LIMITE}`),
     enabled: vista === "historico",
   });
 
   const grantsQuery = useQuery<AccessGrant[]>({
-    queryKey: ["admin-access-grants"],
-    queryFn: async () => {
-      const response = await fetch("/api/v1/admin/solicitudes-acceso/grants", {
-        credentials: "include",
-      });
-      if (!response.ok) throw new Error(`Error ${response.status}`);
-      return response.json() as Promise<AccessGrant[]>;
-    },
+    queryKey: adminKeys.accessGrants,
+    queryFn: () => fetchWithAuth<AccessGrant[]>("/api/v1/admin/solicitudes-acceso/grants"),
   });
 
   const activa = vista === "pendiente" ? pendientesQuery : historicoQuery;
@@ -140,8 +129,8 @@ export function SolicitudesAccesoCard() {
         conceder: vars.conceder ?? null,
       }),
     onSuccess: (respuesta) => {
-      queryClient.invalidateQueries({ queryKey: ["admin-solicitudes-acceso"] });
-      queryClient.invalidateQueries({ queryKey: ["admin-access-grants"] });
+      queryClient.invalidateQueries({ queryKey: adminKeys.solicitudes.all });
+      queryClient.invalidateQueries({ queryKey: adminKeys.accessGrants });
       // `notificado` distingue tres cosas y las tres importan: no se pidió
       // aviso (`null`), salió (`true`), o se pidió y NO salió (`false`). Sin
       // este reparto, un SMTP mal configurado dejaba al operador convencido de
@@ -164,7 +153,7 @@ export function SolicitudesAccesoCard() {
     mutationFn: (grantId: number) =>
       apiMutate("DELETE", `/api/v1/admin/solicitudes-acceso/grants/${grantId}`),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["admin-access-grants"] });
+      queryClient.invalidateQueries({ queryKey: adminKeys.accessGrants });
       toast.success("Acceso revocado para nuevos inicios de sesión");
     },
     onError: () => toast.error("No se pudo revocar el acceso"),

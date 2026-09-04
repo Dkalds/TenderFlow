@@ -42,14 +42,18 @@ def test_export_openapi_produces_nonempty_paths(tmp_path):
     retendering_path = on_disk["paths"]["/api/v1/analytics/forecast/retendering"]
     assert retendering_path["get"]["deprecated"] is True
 
-    # Jobs de export asíncronos: deprecados en favor de
-    # GET /exports/download?format=pdf, porque su almacén vive en memoria del
-    # proceso y no sobrevive ni a un reinicio ni a una segunda instancia.
-    # Retirarlos sería breaking y requiere RFC, así que el flag es el contrato.
-    assert on_disk["paths"]["/api/v1/exports"]["post"]["deprecated"] is True
-    job_path = on_disk["paths"]["/api/v1/exports/{job_id}"]
-    assert job_path["get"]["deprecated"] is True
-    assert job_path["delete"]["deprecated"] is True
+    # Jobs de export asíncronos: estuvieron marcados `deprecated` hasta que se
+    # retiraron el 2026-09-03 (su almacén vivía en memoria del proceso y no
+    # sobrevivía ni a un reinicio ni a una segunda instancia). El contrato ya
+    # no los anuncia, y lo que se fija aquí es que la retirada fue completa:
+    # si reaparecen en el schema es que ha vuelto el 202+sondeo, y eso vuelve
+    # a ser un cambio del contrato público que exige RFC (AGENTS §5).
+    assert "/api/v1/exports" not in on_disk["paths"]
+    assert "/api/v1/exports/{job_id}" not in on_disk["paths"]
+    # La capacidad que los sustituyó sí es contrato: exportar a PDF sigue
+    # anunciándose, ahora en la respuesta de la descarga síncrona.
+    descarga = on_disk["paths"]["/api/v1/exports/download"]["get"]
+    assert "application/pdf" in descarga["responses"]["200"]["content"]
 
 
 def test_export_openapi_is_deterministic(tmp_path):

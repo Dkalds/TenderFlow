@@ -30,6 +30,7 @@ import type {
   PursuitCommentListResponse,
   PursuitCommentOut,
 } from "@/lib/api-types";
+import { pursuitCommentKeys } from "@/lib/query-keys";
 
 export type PursuitComment = PursuitCommentOut;
 export type PursuitCommentList = PursuitCommentListResponse;
@@ -44,10 +45,7 @@ export const COMMENTS_REFETCH_MS = 20_000;
  */
 export const COMMENTS_PAGE_SIZE = 200;
 
-export const pursuitCommentKeys = {
-  all: ["pursuit-comments"] as const,
-  thread: (pursuitId: number | string) => ["pursuit-comments", String(pursuitId)] as const,
-};
+export { pursuitCommentKeys } from "@/lib/query-keys";
 
 export interface AddPursuitCommentInput extends PursuitCommentCreate {
   /**

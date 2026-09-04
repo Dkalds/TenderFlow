@@ -1,14 +1,16 @@
-"""Tests unitarios para scraper/pipeline.py usando mocks pesados."""
+"""Tests unitarios para scraper/pipeline.py usando mocks pesados.
+
+Los tests de ``process_month`` / ``backfill`` / ``update_recent`` se retiraron
+con esas funciones (S2.1, 2026-09): el carril bulk y el backfill pasaron al
+conector, y su comportamiento vive ahora en
+``tests/test_s2_backfill_connector.py``.
+"""
 
 from __future__ import annotations
 
-from contextlib import ExitStack
-from datetime import UTC, datetime
 from unittest.mock import MagicMock, patch
 
-import pytest
-
-from scraper.pipeline import _resolve_empresas_post_ingestion, _summarize, backfill, process_month
+from scraper.pipeline import _resolve_empresas_post_ingestion, _summarize
 
 
 def test_post_ingestion_scopes_resolution_and_bounds_it():
@@ -49,29 +51,6 @@ def test_daily_fuente_matches_the_model_default():
     default = next(f for f in fields(Licitacion) if f.name == "fuente").default
     assert default == _DAILY_FUENTE
     assert _DAILY_FUENTE != _DAILY_SOURCE
-
-
-def test_backfill_resolves_companies_once_after_parallel_months():
-    today = datetime.now(UTC).date()
-    with (
-        patch("scraper.pipeline.init_db"),
-        patch("scraper.pipeline.bind_run_context", return_value="run-test"),
-        patch("scraper.pipeline.record_run") as record_run,
-        patch("scraper.pipeline.process_month", return_value={"status": "ok"}) as month,
-        patch("scraper.pipeline._resolve_empresas_post_ingestion") as resolve_empresas,
-    ):
-        backfill(today.year, today.month)
-
-    month.assert_called_once_with(
-        today.year,
-        today.month,
-        run_id="run-test",
-        resolve_empresas=False,
-    )
-    # Ámbito global: se llama al completarse cada mes sin saber cuál, y
-    # "placsp_backfill" es una etiqueta de carril, no un `licitaciones.fuente`.
-    resolve_empresas.assert_called_once_with("placsp_backfill", scope_fuente=None)
-    assert record_run.return_value.__enter__.called
 
 
 # ─── _summarize ──────────────────────────────────────────────────────────────
@@ -206,227 +185,6 @@ class TestSummarize:
         assert metrics.notas == "adj_persist_errors:2"
 
 
-# ─── process_month ────────────────────────────────────────────────────────────
-
-_BASE_PATCH = {
-    "scraper.pipeline.download_month": None,
-    "scraper.pipeline.iter_xml_files": None,
-    "scraper.pipeline.parse_atom_bytes": None,
-    "scraper.pipeline.upsert_licitaciones": None,
-    "scraper.pipeline.replace_adjudicaciones_batch": None,
-    "scraper.pipeline.log_extraccion": None,
-    "scraper.pipeline.record_failure": None,
-    "scraper.pipeline.notify": None,
-}
-
-
-def _patch_all(**overrides):
-    """Context manager que parchea todo el entorno de process_month.
-
-    También silencia db.events.append_event y scraper.pipeline.close_pool para
-    evitar que los tests unitarios abran la BD de producción o hagan checkpoints
-    WAL que bloqueen el proceso en Windows.
-    """
-    defaults = {
-        "scraper.pipeline.download_month": MagicMock(return_value="/fake/placsp.zip"),
-        "scraper.pipeline.iter_xml_files": MagicMock(return_value=[]),
-        "scraper.pipeline.parse_atom_bytes": MagicMock(return_value=[]),
-        "scraper.pipeline.upsert_licitaciones": MagicMock(return_value=(0, 0)),
-        "scraper.pipeline.replace_adjudicaciones_batch": MagicMock(return_value=(0, 0, 0)),
-        "scraper.pipeline.log_extraccion": MagicMock(),
-        "scraper.pipeline.record_failure": MagicMock(),
-        "scraper.pipeline.notify": MagicMock(),
-        "scraper.pipeline.close_pool": MagicMock(),
-    }
-    defaults.update(overrides)
-    stack = ExitStack()
-    stack.enter_context(
-        patch.multiple("scraper.pipeline", **{k.split(".")[-1]: v for k, v in defaults.items()})
-    )
-    # Impedir escrituras reales a la BD: append_event se importa lazily dentro
-    # de _process_month_impl, por eso se parchea en el módulo de origen.
-    stack.enter_context(patch("db.events.append_event"))
-    return stack
-
-
-class TestProcessMonth:
-    def test_happy_path_returns_ok(self):
-        with _patch_all():
-            result = process_month(2024, 1)
-        assert result["status"] == "ok"
-        assert result["year"] == 2024
-        assert result["month"] == 1
-
-    def test_zip_none_returns_no_publicado(self):
-        with _patch_all(**{"scraper.pipeline.download_month": MagicMock(return_value=None)}):
-            result = process_month(2024, 1)
-        assert result["status"] == "no_publicado"
-
-    def test_circuit_open_returns_circuit_open(self):
-        from scraper.bulk_downloader import CircuitOpenError
-
-        with _patch_all(
-            **{
-                "scraper.pipeline.download_month": MagicMock(
-                    side_effect=CircuitOpenError("breaker abierto")
-                )
-            }
-        ):
-            result = process_month(2024, 1)
-        assert result["status"] == "circuit_open"
-
-    def test_download_exception_returns_error_descarga(self):
-        with _patch_all(
-            **{
-                "scraper.pipeline.download_month": MagicMock(
-                    side_effect=RuntimeError("fallo de red")
-                )
-            }
-        ):
-            result = process_month(2024, 1)
-        assert result["status"] == "error_descarga"
-
-    def test_persist_exception_returns_error_persistencia(self):
-        with _patch_all(
-            **{
-                "scraper.pipeline.upsert_licitaciones": MagicMock(
-                    side_effect=RuntimeError("DB error")
-                )
-            }
-        ):
-            result = process_month(2024, 1)
-        assert result["status"] == "error_persistencia"
-
-    def test_sap_entries_are_counted(self):
-        lic = MagicMock()
-        lic.id_externo = "SAP-001"
-        fake_files = [("feed.xml", b"<dummy/>")]
-
-        with _patch_all(
-            **{
-                "scraper.pipeline.iter_xml_files": MagicMock(return_value=fake_files),
-                "scraper.pipeline.parse_atom_bytes": MagicMock(return_value=[(lic, [])]),
-                "scraper.pipeline.upsert_licitaciones": MagicMock(return_value=(1, 0)),
-            }
-        ):
-            result = process_month(2024, 1)
-        assert result["status"] == "ok"
-        assert result["tech_matches"] == 1
-        assert result["nuevas"] == 1
-
-    def test_adjudicaciones_are_persisted(self):
-        lic = MagicMock()
-        lic.id_externo = "SAP-002"
-        adj = MagicMock()
-        fake_files = [("feed.xml", b"<dummy/>")]
-
-        with _patch_all(
-            **{
-                "scraper.pipeline.iter_xml_files": MagicMock(return_value=fake_files),
-                "scraper.pipeline.parse_atom_bytes": MagicMock(return_value=[(lic, [adj])]),
-                "scraper.pipeline.upsert_licitaciones": MagicMock(return_value=(1, 0)),
-                "scraper.pipeline.replace_adjudicaciones_batch": MagicMock(return_value=(1, 0, 0)),
-            }
-        ):
-            result = process_month(2024, 1)
-        assert result["adjudicaciones"] == 1
-
-    def test_xml_parse_error_increments_entries_error(self):
-        fake_files = [("bad.xml", b"<broken")]
-
-        with _patch_all(
-            **{
-                "scraper.pipeline.iter_xml_files": MagicMock(return_value=fake_files),
-                "scraper.pipeline.parse_atom_bytes": MagicMock(
-                    side_effect=Exception("XML malformado")
-                ),
-            }
-        ):
-            result = process_month(2024, 1)
-        assert result["entries_error"] == 1
-
-    def test_adj_persist_error_is_logged_but_doesnt_fail(self):
-        lic = MagicMock()
-        lic.id_externo = "SAP-003"
-        adj = MagicMock()
-        fake_files = [("feed.xml", b"<dummy/>")]
-
-        with _patch_all(
-            **{
-                "scraper.pipeline.iter_xml_files": MagicMock(return_value=fake_files),
-                "scraper.pipeline.parse_atom_bytes": MagicMock(return_value=[(lic, [adj])]),
-                "scraper.pipeline.upsert_licitaciones": MagicMock(return_value=(1, 0)),
-                "scraper.pipeline.replace_adjudicaciones_batch": MagicMock(
-                    side_effect=RuntimeError("DB error adj")
-                ),
-            }
-        ):
-            result = process_month(2024, 1)
-        # El error en adj no debe cambiar el status general
-        assert result["status"] == "ok"
-
-    @patch("scraper.pipeline.close_pool")
-    @patch("scraper.pipeline._signal_post_ingestion")
-    @patch("scraper.pipeline.log_extraccion")
-    @patch("scraper.pipeline.replace_adjudicaciones_batch", return_value=(2, 0, 0))
-    @patch("scraper.pipeline.upsert_licitaciones", return_value=(3, 1))
-    @patch("scraper.pipeline.iter_xml_files")
-    @patch("scraper.pipeline.download_month", return_value="/var/tmp/test.zip")  # noqa: S108
-    def test_ok(self, dl, iter_xml, upsert, repl_adj, log_ext, signal, close):
-        from db.upsert import Licitacion
-
-        lic = Licitacion(id_externo="X1", titulo="Test")
-        iter_xml.return_value = [("file.xml", b"<xml/>")]
-
-        with patch("scraper.pipeline.parse_atom_bytes", return_value=[(lic, [{"adj": 1}])]):
-            with patch("scraper.pipeline.log"):
-                result = process_month(2024, 1)
-
-        assert result["status"] == "ok"
-        assert result["tech_matches"] == 1
-        close.assert_called_once()
-
-    @patch("scraper.pipeline.close_pool")
-    @patch("scraper.pipeline.record_failure")
-    @patch("scraper.pipeline.notify")
-    @patch("scraper.pipeline.download_month")
-    def test_circuit_open(self, dl, notify, rec, close):
-        from scraper.bulk_downloader import CircuitOpenError
-
-        dl.side_effect = CircuitOpenError("open")
-        with patch("scraper.pipeline.log"):
-            result = process_month(2024, 1, run_id="r1")
-        assert result["status"] == "circuit_open"
-        close.assert_called_once()
-
-    @patch("scraper.pipeline.close_pool")
-    @patch("scraper.pipeline.record_failure")
-    @patch("scraper.pipeline.download_month")
-    def test_download_error(self, dl, rec, close):
-        dl.side_effect = ConnectionError("fail")
-        with patch("scraper.pipeline.log"):
-            result = process_month(2024, 1)
-        assert result["status"] == "error_descarga"
-
-    @patch("scraper.pipeline.close_pool")
-    @patch("scraper.pipeline.download_month", return_value=None)
-    def test_no_publicado(self, dl, close):
-        with patch("scraper.pipeline.log"):
-            result = process_month(2024, 1)
-        assert result["status"] == "no_publicado"
-
-    @patch("scraper.pipeline.close_pool")
-    @patch("scraper.pipeline.record_failure")
-    @patch("scraper.pipeline.upsert_licitaciones")
-    @patch("scraper.pipeline.iter_xml_files", return_value=[])
-    @patch("scraper.pipeline.download_month", return_value="/var/tmp/t.zip")  # noqa: S108
-    def test_persist_error(self, dl, iter_xml, upsert, rec, close):
-        upsert.side_effect = RuntimeError("db error")
-        with patch("scraper.pipeline.log"):
-            result = process_month(2024, 1)
-        assert result["status"] == "error_persistencia"
-
-
 # ── _signal_post_ingestion ────────────────────────────────────────────────────
 
 
@@ -464,19 +222,6 @@ class TestSignalPostIngestion:
             from scraper.pipeline import _signal_post_ingestion
 
             _signal_post_ingestion("test")
-
-
-# ── backfill — validación de argumentos ──────────────────────────────────────
-
-
-class TestBackfill:
-    def test_invalid_month(self):
-        with pytest.raises(ValueError, match="start_month"):
-            backfill(2024, 13)
-
-    def test_invalid_year(self):
-        with pytest.raises(ValueError, match="start_year"):
-            backfill(1999, 1)
 
 
 # ── process_daily (carril ATOM en vivo) ──────────────────────────────────────
@@ -783,28 +528,6 @@ class TestMlClassifyEntry:
                 with patch("scraper.pipeline.log"):
                     result = _ml_classify_entry(entry)
         assert result is None
-
-
-# ── update_recent ──────────────────────────────────────────────────────────────
-
-
-class TestUpdateRecent:
-    @patch("scraper.pipeline.process_month")
-    @patch("scraper.pipeline._summarize")
-    @patch("scraper.pipeline.record_run")
-    @patch("scraper.pipeline.bind_run_context", return_value="r1")
-    @patch("scraper.pipeline.init_db")
-    def test_update_recent(self, init, bind, record_run_cm, summarize, proc):
-        mock_metrics = MagicMock()
-        record_run_cm.return_value.__enter__ = MagicMock(return_value=mock_metrics)
-        record_run_cm.return_value.__exit__ = MagicMock(return_value=False)
-        proc.return_value = {"status": "ok", "year": 2024, "month": 1}
-
-        with patch("scraper.pipeline.log"):
-            from scraper.pipeline import update_recent
-
-            results = update_recent(months_back=2)
-        assert len(results) == 2
 
 
 # ── _ClassifierHolder / _load_classifiers ────────────────────────────────────

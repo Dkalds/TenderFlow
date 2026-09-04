@@ -23,7 +23,7 @@ import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import { useSession } from "@/lib/auth";
 import { formatDate } from "@/lib/utils";
-import { getCsrfToken } from "@/lib/api-client";
+import { apiMutate, fetchWithAuth } from "@/lib/api-client";
 import { AdminGuard } from "@/components/admin-guard";
 
 interface FeatureFlag {
@@ -63,11 +63,7 @@ function FeatureFlagsContent() {
   useEffect(() => {
     const fetchFlags = async () => {
       try {
-        const res = await fetch("/api/v1/feature-flags", {
-          credentials: "include",
-        });
-        if (!res.ok) return;
-        const data: ApiFlag[] = await res.json();
+        const data = await fetchWithAuth<ApiFlag[]>("/api/v1/feature-flags");
         setApiAvailable(true);
         // Render exactamente lo que devuelve el backend (fuente de verdad).
         setFlags(
@@ -108,20 +104,9 @@ function FeatureFlagsContent() {
         enabled: f.enabled ?? f.defaultEnabled,
         rollout_pct: f.rollout ?? (f.enabled ?? f.defaultEnabled ? 100 : 0),
       }));
-      const csrf = getCsrfToken();
-      const res = await fetch("/api/v1/feature-flags", {
-        method: "PUT",
-        credentials: "include",
-        headers: {
-          "Content-Type": "application/json",
-          ...(csrf ? { "X-CSRF-Token": csrf } : {}),
-        },
-        body: JSON.stringify({ flags: payload }),
-      });
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        throw new Error(body.detail ?? "Error al sincronizar");
-      }
+      // `apiMutate` ya adjunta el CSRF y extrae el `detail` RFC-7807; el
+      // ensamblado a mano de la cabecera era una copia local de eso mismo.
+      await apiMutate("PUT", "/api/v1/feature-flags", { flags: payload });
     } catch (err) {
       setSyncError(err instanceof Error ? err.message : "Error de conexión");
     } finally {

@@ -86,3 +86,43 @@ jobs:
           name: mutation-report
           path: mutation-report.json
           if-no-files-found: ignore
+
+      # El informe NO es bloqueante por diseño (ver la cabecera), pero el job sí
+      # puede reventar — y entonces no hay informe ni nadie que lo eche de menos.
+      # Este workflow no pasaba ninguna variable ALERT_*, así que su único aviso
+      # era el correo por defecto de GitHub al dueño del repo: un cron semanal
+      # roto puede quedarse meses así. `notify` solo escribe al log si el canal
+      # no está configurado, o sea que es seguro dejarlo puesto.
+      #
+      # Va como step del propio job (y no como job aparte) porque las
+      # dependencias ya están instaladas aquí arriba: un job nuevo volvería a
+      # pagar `pip install -r requirements-dev.txt` para mandar un email.
+      - name: Avisar por email si la muestra falló
+        if: ${{ failure() && github.event_name == 'schedule' }}
+        env:
+          ENV: dev
+          APP_PROFILE: scraper
+          ALERT_EMAIL_TO: ${{ secrets.ALERT_EMAIL_TO }}
+          ALERT_SMTP_USER: ${{ secrets.ALERT_SMTP_USER }}
+          ALERT_SMTP_PASSWORD: ${{ secrets.ALERT_SMTP_PASSWORD }}
+          # Vía env, nunca interpolado dentro del `run:` (run-shell-injection).
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          python - <<'PY'
+          import os
+
+          from observability.alerts import AlertLevel, notify
+
+          url = os.environ.get("RUN_URL", "")
+          notify(
+              AlertLevel.WARN,
+              "Mutation sample: la ejecución semanal falló",
+              body=(
+                  "El cron de .github/workflows/mutation-sample.yml no llegó a "
+                  "producir informe. No bloquea ningún merge, pero mientras siga "
+                  "así la rotación semanal de módulos no avanza.\n\n"
+                  f"Run: {url}"
+              ),
+              run_url=url,
+          )
+          PY

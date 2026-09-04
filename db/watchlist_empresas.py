@@ -3,6 +3,12 @@
 ``user_key`` es opaco (hash de email o nombre), igual que en watchlist_cpv.
 El scheduler (scheduler/competitor_alerts.py) consume ``list_all`` y
 actualiza ``last_notified_at`` tras cada notificación.
+
+``organization_id`` es obligatoria y no tiene rama ``None``. La tuvo, y esa
+rama era el bug de clase que documenta ``api/tenancy.py``: quien omitía el
+argumento no obtenía «sin filtrar por organización» como decisión, lo
+obtenía por descuido, y el repositorio caía a una query sin ámbito sin
+decir nada. Ahora un llamador que la omita falla al tipar.
 """
 
 from __future__ import annotations
@@ -16,11 +22,18 @@ from db.repositories.base import rows_to_dicts
 
 @dataclass
 class WatchlistEmpresaEntry:
+    """Entrada de vigilancia. ``organization_id`` va sin default a propósito.
+
+    Con default ``None`` se podía construir una entrada sin ámbito y escribir
+    una fila con organización nula, invisible después para la consulta con
+    ámbito: el favorito existía y el usuario no lo veía en ninguna parte.
+    """
+
     user_key: str
     empresa_id: int
+    organization_id: int
     email: str | None = None
     frequency: str = "daily"  # 'immediate' | 'daily' | 'weekly'
-    organization_id: int | None = None
     visibility: str = "private"
 
 
@@ -50,31 +63,19 @@ def add_entry(entry: WatchlistEmpresaEntry) -> int | None:
         return int(row[0])
 
 
-def remove_entry(user_key: str, empresa_id: int, organization_id: int | None = None) -> bool:
+def remove_entry(user_key: str, empresa_id: int, organization_id: int) -> bool:
     with connect() as c:
-        if organization_id is None:
-            cur = c.execute(
-                "DELETE FROM watchlist_empresas WHERE user_key = %s AND empresa_id = %s",
-                (user_key, empresa_id),
-            )
-        else:
-            cur = c.execute(
-                "DELETE FROM watchlist_empresas WHERE organization_id = %s "
-                "AND empresa_id = %s AND (visibility = 'organization' OR user_key = %s)",
-                (organization_id, empresa_id, user_key),
-            )
+        cur = c.execute(
+            "DELETE FROM watchlist_empresas WHERE organization_id = %s "
+            "AND empresa_id = %s AND (visibility = 'organization' OR user_key = %s)",
+            (organization_id, empresa_id, user_key),
+        )
         return bool(cur.rowcount)
 
 
-def list_entries(user_key: str, organization_id: int | None = None) -> list[dict[str, Any]]:
+def list_entries(user_key: str, organization_id: int) -> list[dict[str, Any]]:
     """Empresas vigiladas por un usuario, con nombre canónico."""
     with connect() as c:
-        if organization_id is None:
-            where = "w.user_key = %s"
-            params: tuple[Any, ...] = (user_key,)
-        else:
-            where = "w.organization_id = %s AND (w.visibility = 'organization' OR w.user_key = %s)"
-            params = (organization_id, user_key)
         return rows_to_dicts(
             c.execute(
                 "SELECT w.id, w.empresa_id, e.nombre_canonico, e.nif_canonico, "
@@ -82,8 +83,10 @@ def list_entries(user_key: str, organization_id: int | None = None) -> list[dict
                 "       w.organization_id, w.visibility "
                 "FROM watchlist_empresas w "
                 "JOIN empresas e ON e.empresa_id = w.empresa_id "
-                "WHERE " + where + " ORDER BY e.nombre_canonico",
-                params,
+                "WHERE w.organization_id = %s "
+                "AND (w.visibility = 'organization' OR w.user_key = %s) "
+                "ORDER BY e.nombre_canonico",
+                (organization_id, user_key),
             )
         )
 

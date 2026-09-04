@@ -171,3 +171,71 @@ jobs:
       - name: Remind about credential rotation
         run: |
           echo "::notice title=Rotación de credenciales::Recuerda rotar la password del rol de BD y API_HMAC_SECRET cada 90 días. Última verificación: $(date -u +%Y-%m-%d). Doc: docs/SECURITY.md"
+
+  # ── Aviso real cuando el barrido semanal falla ─────────────────────────────
+  # Este workflow no tenía ningún canal: un fallo del cron de los lunes solo
+  # producía el correo por defecto de GitHub al dueño del repo, que se pierde
+  # entre las notificaciones de siempre. Y no es teórico — `security.yml` llevó
+  # en rojo desde el 2026-08-17 por UN hallazgo de Semgrep, con lo que el
+  # escaneo semanal completo (incluida la subida de SARIF a code-scanning) pasó
+  # semanas sin producirse y nadie lo notó.
+  #
+  # `notify()` es el mismo transporte que usa el resto del proyecto
+  # (observability/alerts.py) con las mismas variables ALERT_* que
+  # docs/SECURITY.md ya lista como secretos gestionados. Sin ellas configuradas
+  # `notify` solo escribe al log: es seguro dejarlo puesto.
+  notificar-fallo:
+    name: Avisar por email si el barrido falla
+    needs: [semgrep, detect-secrets, bandit, pip-audit, trivy-image]
+    # `always()` para que el job llegue a evaluarse pese al fallo anterior;
+    # `contains(needs.*.result, 'failure')` lo acota a fallos de verdad. Solo en
+    # el cron: un `workflow_dispatch` lo lanza alguien que ya está mirando.
+    if: ${{ always() && github.event_name == 'schedule' && contains(needs.*.result, 'failure') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Enviar alerta
+        env:
+          # ENV=dev: este job no toca la BD ni sirve HTTP; solo necesita que
+          # Settings construya para leer ALERT_MIN_LEVEL.
+          ENV: dev
+          APP_PROFILE: scraper
+          ALERT_EMAIL_TO: ${{ secrets.ALERT_EMAIL_TO }}
+          ALERT_SMTP_USER: ${{ secrets.ALERT_SMTP_USER }}
+          ALERT_SMTP_PASSWORD: ${{ secrets.ALERT_SMTP_PASSWORD }}
+          # Vía env y nunca interpolado dentro del script: es exactamente el
+          # patrón que Semgrep marca como run-shell-injection, y sería irónico
+          # introducirlo en el job que avisa de que Semgrep falló.
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          python - <<'PY'
+          import os
+
+          from observability.alerts import AlertLevel, notify
+
+          url = os.environ.get("RUN_URL", "")
+          notify(
+              AlertLevel.ERROR,
+              "Security scans: el barrido semanal falló",
+              body=(
+                  "Uno o más jobs de .github/workflows/security.yml fallaron en la "
+                  "ejecución programada del lunes.\n\n"
+                  "Mientras siga en rojo NO se sube el SARIF a code-scanning: "
+                  "Semgrep, detect-secrets y Trivy dejan de cubrir nada.\n\n"
+                  f"Run: {url}"
+              ),
+              run_url=url,
+          )
+          PY

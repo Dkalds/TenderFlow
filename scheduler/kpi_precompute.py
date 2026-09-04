@@ -11,6 +11,40 @@ Uso:
     python -m scheduler.kpi_precompute                    # Ejecuta el cálculo
     python -m scheduler.kpi_precompute --latest           # Muestra el último snapshot
     python -m scheduler.kpi_precompute --export-parquet   # Exporta agregados Parquet
+
+Qué universo miden estos KPIs (decisión del 2026-09-03)
+--------------------------------------------------------
+Hasta esta fecha las dieciséis consultas de este módulo escribían a mano la
+forma **estrecha** del predicado de universo —el ``COALESCE`` de
+:data:`db.sql_fragments.TECHNOLOGY_OBSERVED_SQL`— mientras la superficie
+pública, el sitemap y los dos hubs usaban la **ancha**
+(``db.sql_fragments.universo_tecnologico_sql``: además, los universos RSS
+autonómicos y cualquier fila con señal técnica propia). Dos definiciones de "el
+radar" en el mismo producto: el KPI de portada contaba una cosa y la portada
+enseñaba otra.
+
+Se unifica en la **ancha**, que es la que ve el usuario. Consecuencias que hay
+que asumir a sabiendas:
+
+- **Las cifras de ``kpi_snapshots`` cambian.** Todas las métricas de este
+  módulo —``total_licitaciones``, ``importe_total``, ``n_organos``,
+  ``licitaciones_30d`` y sus deltas, las series por CCAA/estado/mes y los cinco
+  Parquet materializados— pasan a contar también las filas de los RSS
+  autonómicos y las de PSCP con etiqueta técnica. El delta va en la dirección
+  de crecer, pero **cuánto sólo se puede medir contra la BD real**, y esta
+  sesión no tiene Postgres: el número que salga en la primera pasada tras el
+  despliegue no es comparable con el de la pasada anterior, y un salto en la
+  serie histórica de ``kpi_snapshots`` en esa fecha es esperado, no una
+  anomalía de ingesta.
+- **Se pierde el índice parcial de ``v84``** para estas consultas: el predicado
+  ancho es un ``OR`` que incluye filas fuera de ese índice, así que el
+  planificador vuelve al seq scan. Es un job nocturno sin SLA de latencia, no
+  una petición HTTP; se acepta a cambio de que el KPI y la portada cuenten lo
+  mismo. Las consultas que sí necesitan el índice usan
+  ``technology_observed_sql`` y siguen donde estaban.
+
+Las métricas ``ov_*`` que añade ``db/repositories/kpi_snapshots.py`` no pasan
+por aquí y **no** filtran universo: ver su propio módulo.
 """
 
 from __future__ import annotations
@@ -19,9 +53,15 @@ import json
 from datetime import UTC, datetime
 from typing import Any
 
+from db.sql_fragments import universo_tecnologico_sql
 from observability.logging import get_logger
 
 log = get_logger(__name__)
+
+#: El universo del radar, en su forma ancha y escrita una sola vez. El alias
+#: ``l`` obliga a que todas las consultas de abajo lo declaren; ver el
+#: docstring del módulo para por qué la ancha y no la estrecha.
+_UNIVERSO = universo_tecnologico_sql("l")
 
 
 # ── Definición de KPIs a pre-calcular ────────────────────────────────────────
@@ -39,59 +79,55 @@ def _compute_all_kpis(conn: Any) -> list[dict[str, Any]]:
     # ── Métricas globales ─────────────────────────────────────────────────
 
     # Total de licitaciones
-    row = conn.execute(
-        "SELECT COUNT(*) FROM licitaciones "
-        "WHERE COALESCE(analysis_universe, 'technology_observed') = 'technology_observed'"
-    ).fetchone()
+    row = conn.execute(f"SELECT COUNT(*) FROM licitaciones l WHERE {_UNIVERSO}").fetchone()  # noqa: S608
     snapshots.append({"metrica": "total_licitaciones", "dimension": "global", "valor": row[0]})
 
     # Importe total y medio
     row = conn.execute(
-        "SELECT SUM(importe), AVG(importe) FROM licitaciones WHERE importe IS NOT NULL "
-        "AND COALESCE(analysis_universe, 'technology_observed') = 'technology_observed'"
+        "SELECT SUM(l.importe), AVG(l.importe) FROM licitaciones l "  # noqa: S608
+        f"WHERE l.importe IS NOT NULL AND {_UNIVERSO}"
     ).fetchone()
     snapshots.append({"metrica": "importe_total", "dimension": "global", "valor": row[0] or 0.0})
     snapshots.append({"metrica": "importe_medio", "dimension": "global", "valor": row[1] or 0.0})
 
     # Órganos distintos
     row = conn.execute(
-        "SELECT COUNT(DISTINCT organo_contratacion) FROM licitaciones "
-        "WHERE organo_contratacion IS NOT NULL "
-        "AND COALESCE(analysis_universe, 'technology_observed') = 'technology_observed'"
+        "SELECT COUNT(DISTINCT l.organo_contratacion) FROM licitaciones l "  # noqa: S608
+        f"WHERE l.organo_contratacion IS NOT NULL AND {_UNIVERSO}"
     ).fetchone()
     snapshots.append({"metrica": "n_organos", "dimension": "global", "valor": row[0]})
 
     # CCAA distintas
     row = conn.execute(
-        "SELECT COUNT(DISTINCT ccaa) FROM licitaciones WHERE ccaa IS NOT NULL "
-        "AND COALESCE(analysis_universe, 'technology_observed') = 'technology_observed'"
+        "SELECT COUNT(DISTINCT l.ccaa) FROM licitaciones l "  # noqa: S608
+        f"WHERE l.ccaa IS NOT NULL AND {_UNIVERSO}"
     ).fetchone()
     snapshots.append({"metrica": "n_ccaa", "dimension": "global", "valor": row[0]})
 
     # Licitaciones últimos 30 días
     row = conn.execute(
-        "SELECT COUNT(*) FROM licitaciones WHERE fecha_publicacion >= "
+        "SELECT COUNT(*) FROM licitaciones l WHERE l.fecha_publicacion >= "  # noqa: S608
         "to_char(CURRENT_DATE - INTERVAL '30 days', 'YYYY-MM-DD') "
-        "AND COALESCE(analysis_universe, 'technology_observed') = 'technology_observed'"
+        f"AND {_UNIVERSO}"
     ).fetchone()
     snapshots.append({"metrica": "licitaciones_30d", "dimension": "global", "valor": row[0]})
 
     # Licitaciones 30d anteriores (para delta)
     row = conn.execute(
-        "SELECT COUNT(*) FROM licitaciones "
-        "WHERE fecha_publicacion >= to_char(CURRENT_DATE - INTERVAL '60 days', 'YYYY-MM-DD') "
-        "  AND fecha_publicacion < to_char(CURRENT_DATE - INTERVAL '30 days', 'YYYY-MM-DD') "
-        "  AND COALESCE(analysis_universe, 'technology_observed') = 'technology_observed'"
+        "SELECT COUNT(*) FROM licitaciones l "  # noqa: S608
+        "WHERE l.fecha_publicacion >= to_char(CURRENT_DATE - INTERVAL '60 days', 'YYYY-MM-DD') "
+        "  AND l.fecha_publicacion < to_char(CURRENT_DATE - INTERVAL '30 days', 'YYYY-MM-DD') "
+        f"  AND {_UNIVERSO}"
     ).fetchone()
     snapshots.append({"metrica": "licitaciones_30d_prev", "dimension": "global", "valor": row[0]})
 
     # ── Por CCAA ──────────────────────────────────────────────────────────
 
     rows = conn.execute(
-        "SELECT ccaa, COUNT(*) as n, SUM(importe) as total "
-        "FROM licitaciones WHERE ccaa IS NOT NULL "
-        "AND COALESCE(analysis_universe, 'technology_observed') = 'technology_observed' "
-        "GROUP BY ccaa ORDER BY n DESC"
+        "SELECT l.ccaa AS ccaa, COUNT(*) as n, SUM(l.importe) as total "  # noqa: S608
+        "FROM licitaciones l WHERE l.ccaa IS NOT NULL "
+        f"AND {_UNIVERSO} "
+        "GROUP BY l.ccaa ORDER BY n DESC"
     ).fetchall()
     ccaa_data = [{"ccaa": r[0], "n": r[1], "importe": r[2]} for r in rows]
     snapshots.append(
@@ -106,9 +142,9 @@ def _compute_all_kpis(conn: Any) -> list[dict[str, Any]]:
     # ── Por estado ────────────────────────────────────────────────────────
 
     rows = conn.execute(
-        "SELECT estado, COUNT(*) FROM licitaciones WHERE estado IS NOT NULL "
-        "AND COALESCE(analysis_universe, 'technology_observed') = 'technology_observed' "
-        "GROUP BY estado ORDER BY 2 DESC"
+        "SELECT l.estado, COUNT(*) FROM licitaciones l WHERE l.estado IS NOT NULL "  # noqa: S608
+        f"AND {_UNIVERSO} "
+        "GROUP BY l.estado ORDER BY 2 DESC"
     ).fetchall()
     estado_data = {r[0]: r[1] for r in rows}
     snapshots.append(
@@ -123,19 +159,19 @@ def _compute_all_kpis(conn: Any) -> list[dict[str, Any]]:
     # ── Adjudicaciones ────────────────────────────────────────────────────
 
     row = conn.execute(
-        "SELECT COUNT(*), COUNT(DISTINCT a.licitacion_id) FROM adjudicaciones a "
+        "SELECT COUNT(*), COUNT(DISTINCT a.licitacion_id) FROM adjudicaciones a "  # noqa: S608
         "JOIN licitaciones l ON l.id_externo = a.licitacion_id "
-        "WHERE COALESCE(l.analysis_universe, 'technology_observed') = 'technology_observed'"
+        f"WHERE {_UNIVERSO}"
     ).fetchone()
     snapshots.append({"metrica": "total_adjudicaciones", "dimension": "global", "valor": row[0]})
     snapshots.append({"metrica": "licitaciones_con_adj", "dimension": "global", "valor": row[1]})
 
     # Top 10 adjudicatarios por importe
     rows = conn.execute(
-        "SELECT a.nombre, COUNT(*) as n, SUM(a.importe_adjudicado) as total "
+        "SELECT a.nombre, COUNT(*) as n, SUM(a.importe_adjudicado) as total "  # noqa: S608
         "FROM adjudicaciones a JOIN licitaciones l ON l.id_externo = a.licitacion_id "
         "WHERE a.nombre IS NOT NULL AND a.importe_adjudicado IS NOT NULL "
-        "AND COALESCE(l.analysis_universe, 'technology_observed') = 'technology_observed' "
+        f"AND {_UNIVERSO} "
         "GROUP BY a.nombre ORDER BY total DESC LIMIT 10"
     ).fetchall()
     top_adj = [{"nombre": r[0], "n": r[1], "importe": r[2]} for r in rows]
@@ -151,11 +187,11 @@ def _compute_all_kpis(conn: Any) -> list[dict[str, Any]]:
     # ── Serie mensual últimos 24 meses ────────────────────────────────────
 
     rows = conn.execute(
-        "SELECT to_char(fecha_publicacion::date, 'YYYY-MM') as mes, "
-        "       COUNT(*) as n, SUM(importe) as total "
-        "FROM licitaciones "
-        "WHERE fecha_publicacion >= to_char(CURRENT_DATE - INTERVAL '24 months', 'YYYY-MM-DD') "
-        "AND COALESCE(analysis_universe, 'technology_observed') = 'technology_observed' "
+        "SELECT to_char(l.fecha_publicacion::date, 'YYYY-MM') as mes, "  # noqa: S608
+        "       COUNT(*) as n, SUM(l.importe) as total "
+        "FROM licitaciones l "
+        "WHERE l.fecha_publicacion >= to_char(CURRENT_DATE - INTERVAL '24 months', 'YYYY-MM-DD') "
+        f"AND {_UNIVERSO} "
         "GROUP BY mes ORDER BY mes"
     ).fetchall()
     serie = [{"mes": r[0], "n": r[1], "importe": r[2]} for r in rows]
@@ -240,36 +276,37 @@ _MAT_QUERIES: dict[str, str] = {
     # silencio. `fecha_publicacion` es texto ISO, de modo que cortar los 7
     # primeros caracteres da el mes en los dos motores sin castear.
     "mat_licitaciones_por_mes": (
-        "SELECT substr(fecha_publicacion, 1, 7) AS mes, "
-        "COUNT(*) AS n, SUM(importe) AS importe_total, AVG(importe) AS importe_medio "
-        "FROM licitaciones WHERE fecha_publicacion IS NOT NULL "
-        "AND COALESCE(analysis_universe, 'technology_observed') = 'technology_observed' "
+        "SELECT substr(l.fecha_publicacion, 1, 7) AS mes, "  # noqa: S608
+        "COUNT(*) AS n, SUM(l.importe) AS importe_total, AVG(l.importe) AS importe_medio "
+        "FROM licitaciones l WHERE l.fecha_publicacion IS NOT NULL "
+        f"AND {_UNIVERSO} "
         "GROUP BY mes ORDER BY mes"
     ),
     "mat_licitaciones_por_ccaa": (
-        "SELECT ccaa, COUNT(*) AS n, SUM(importe) AS importe_total "
-        "FROM licitaciones WHERE ccaa IS NOT NULL "
-        "AND COALESCE(analysis_universe, 'technology_observed') = 'technology_observed' "
-        "GROUP BY ccaa ORDER BY n DESC"
+        "SELECT l.ccaa AS ccaa, COUNT(*) AS n, SUM(l.importe) AS importe_total "  # noqa: S608
+        "FROM licitaciones l WHERE l.ccaa IS NOT NULL "
+        f"AND {_UNIVERSO} "
+        "GROUP BY l.ccaa ORDER BY n DESC"
     ),
     "mat_licitaciones_por_estado": (
-        "SELECT estado, COUNT(*) AS n FROM licitaciones "
-        "WHERE estado IS NOT NULL "
-        "AND COALESCE(analysis_universe, 'technology_observed') = 'technology_observed' "
-        "GROUP BY estado ORDER BY n DESC"
+        "SELECT l.estado AS estado, COUNT(*) AS n FROM licitaciones l "  # noqa: S608
+        "WHERE l.estado IS NOT NULL "
+        f"AND {_UNIVERSO} "
+        "GROUP BY l.estado ORDER BY n DESC"
     ),
     "mat_top_adjudicatarios": (
-        "SELECT a.nombre, COUNT(*) AS n, SUM(a.importe_adjudicado) AS importe_total "
+        "SELECT a.nombre, COUNT(*) AS n, SUM(a.importe_adjudicado) AS importe_total "  # noqa: S608
         "FROM adjudicaciones a JOIN licitaciones l ON l.id_externo = a.licitacion_id "
         "WHERE a.nombre IS NOT NULL AND a.importe_adjudicado IS NOT NULL "
-        "AND COALESCE(l.analysis_universe, 'technology_observed') = 'technology_observed' "
+        f"AND {_UNIVERSO} "
         "GROUP BY a.nombre ORDER BY importe_total DESC LIMIT 50"
     ),
     "mat_licitaciones_por_tipo": (
-        "SELECT tipo_contrato, COUNT(*) AS n, SUM(importe) AS importe_total "
-        "FROM licitaciones WHERE tipo_contrato IS NOT NULL "
-        "AND COALESCE(analysis_universe, 'technology_observed') = 'technology_observed' "
-        "GROUP BY tipo_contrato ORDER BY n DESC"
+        "SELECT l.tipo_contrato AS tipo_contrato, COUNT(*) AS n, "  # noqa: S608
+        "SUM(l.importe) AS importe_total "
+        "FROM licitaciones l WHERE l.tipo_contrato IS NOT NULL "
+        f"AND {_UNIVERSO} "
+        "GROUP BY l.tipo_contrato ORDER BY n DESC"
     ),
 }
 

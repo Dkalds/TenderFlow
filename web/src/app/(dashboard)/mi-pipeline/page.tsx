@@ -18,6 +18,13 @@ import { CONSOLE_SPACES } from "@/lib/console-spaces";
  *
  * El inventario de funciones de las pantallas absorbidas y el destino de cada
  * una está en `docs/redesign/mi-pipeline-inventario.md`.
+ *
+ * Las tres viven en `_components/`. El horizonte se importaba de
+ * `../renovaciones/page`, lo que hacía de aquel fichero boundary de ruta y
+ * componente a la vez: como componente no recibía el contrato
+ * `params`/`searchParams`, y como ruta no se ejecutaba nunca —`/renovaciones`
+ * la redirige `next.config.ts` con un 308, y los redirects de Next corren antes
+ * que el enrutado por sistema de ficheros—.
  */
 
 const loading = () => (
@@ -30,7 +37,7 @@ const loading = () => (
 const VIEWS: Record<string, React.ComponentType> = {
   agenda: dynamic(() => import("./_components/agenda-view"), { loading }),
   embudo: dynamic(() => import("./_components/embudo-view"), { loading }),
-  horizonte: dynamic(() => import("../renovaciones/page"), { loading }),
+  horizonte: dynamic(() => import("./_components/horizonte-view"), { loading }),
 };
 
 /**

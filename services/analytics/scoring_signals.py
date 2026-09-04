@@ -5,7 +5,10 @@ Carga y cachea tres señales agregadas a partir de datos reales:
 - **CompetenciaStats**: media de ofertas recibidas por segmento CPV-4 en 24
   meses, más media global de fallback.
 - **MargenStats**: p50 de baja esperada por licitación (desde ``predicciones_baja``),
-  baja media histórica por CPV-4, y media global de fallback.
+  baja media histórica por CPV-4, y media global de fallback. Distingue por fila
+  si el p50 lo escribió un **modelo** o el **baseline histórico** (columna
+  ``model_version``) y publica el resumen en ``MargenStats.origen``, que la
+  salud de señales expone como ``margen_origen``.
 - **ImportePercentiles**: P10/P90 de importe del universo puntuable, que es la
   referencia contra la que normaliza la dimensión ``importe``.
 
@@ -30,6 +33,7 @@ from typing import Any
 from db.database import connect_read
 from db.repositories.aggregates import AggregateRepository
 from db.repositories.base import rows_to_dicts
+from db.repositories.predicciones import PrediccionesRepository
 from observability.logging import get_logger
 from services._data_cache import SignalAwareCache
 from services.sql_fragments import BAJA_PCT_SQL, TECHNOLOGY_OBSERVED_SQL, VALID_PAIR_LOTE
@@ -37,6 +41,7 @@ from services.sql_fragments import BAJA_PCT_SQL, TECHNOLOGY_OBSERVED_SQL, VALID_
 log = get_logger(__name__)
 
 _repo = AggregateRepository()
+_repo_predicciones = PrediccionesRepository()
 
 # ---------------------------------------------------------------------------
 # Dataclasses frozen (thread-safe, hashable)
@@ -51,6 +56,21 @@ _repo = AggregateRepository()
 SIGNAL_OK = "ok"
 SIGNAL_VACIA = "vacia"
 SIGNAL_ERROR = "error"
+
+# De dónde salió el p50 de baja que alimenta la dimensión ``margen``.
+# ``services/ml/scoring.py`` escribe en ``predicciones_baja`` dos cosas
+# distintas bajo las mismas columnas: filas de un modelo entrenado
+# (``model_version`` con la versión) y filas del **baseline histórico**
+# (``model_version`` NULL), que es la media suavizada del segmento. Aguas
+# arriba ese módulo se esfuerza en distinguirlas —``degradado`` separa el
+# baseline legítimo del baseline por avería—; leerlas aquí sin mirar
+# ``model_version`` tiraba la distinción y hacía imposible responder "¿esto
+# salió de un modelo o de la media histórica?".
+ORIGEN_MODELO = "modelo"
+ORIGEN_BASELINE = "baseline"
+ORIGEN_MIXTO = "mixto"
+ORIGEN_SIN_PREDICCIONES = "sin_predicciones"
+ORIGEN_DESCONOCIDO = "desconocido"
 
 
 @dataclass(frozen=True)
@@ -73,6 +93,31 @@ class MargenStats:
     # baja media global (fallback de último recurso)
     baja_media_global: float | None = None
     status: str = SIGNAL_VACIA
+    # Conteo por origen de las filas de ``predicciones_baja`` leídas. No se
+    # guarda el origen **por fila** a propósito: el score no lo usa (todas las
+    # filas puntúan igual, que es el contrato actual) y un dict paralelo de
+    # cientos de miles de entradas duplicaría el coste de memoria del loader,
+    # que es justo lo que la purga viene a arreglar. Con los dos conteos se
+    # responde la pregunta que la salud tiene que contestar.
+    n_modelo: int = 0
+    n_baseline: int = 0
+
+    @property
+    def origen(self) -> str:
+        """``modelo`` | ``baseline`` | ``mixto`` | ``sin_predicciones``.
+
+        ``mixto`` es un estado real y frecuente durante una transición: el
+        batch escribe baseline mientras no hay versión activa y modelo después,
+        y las filas viejas conviven con las nuevas hasta que la purga o el
+        siguiente upsert las alcanza.
+        """
+        if self.n_modelo and self.n_baseline:
+            return ORIGEN_MIXTO
+        if self.n_modelo:
+            return ORIGEN_MODELO
+        if self.n_baseline:
+            return ORIGEN_BASELINE
+        return ORIGEN_SIN_PREDICCIONES
 
 
 @dataclass(frozen=True)
@@ -187,18 +232,6 @@ def _load_competencia_stats_raw(cutoff_months: int = 24) -> CompetenciaStats:
 def _load_margen_stats_raw(cutoff_months: int = 24) -> MargenStats:
     """Carga sin caché — llamado solo por SignalAwareCache.get()."""
     cutoff = _cutoff_iso(cutoff_months)
-    # p50 de predicciones_baja (baja esperada normalizada 0-1). Sin WHERE a
-    # propósito: el job de ML solo predice licitaciones abiertas (5 k por
-    # corrida), pero el upsert no purga, así que la tabla acumula filas de
-    # expedientes ya cerrados — y esos los sigue puntuando el modo page-aligned
-    # del Detalle, que no recorta por estado ni por plazo. Un JOIN de higiene
-    # contra el universo vivo le quitaría el margen a esas filas en silencio.
-    # Si el conteo que loguea este loader crece más allá de ~200 k, la salida
-    # es purgar por antigüedad en el job de ML, no filtrar aquí.
-    sql_pred = """
-        SELECT licitacion_id, p50
-        FROM predicciones_baja
-    """
     # Baja media histórica por CPV-4 (de adjudicaciones 24 meses), como
     # fracción 0-1 para comparar con la fórmula del scoring. El denominador es
     # el presupuesto real de cada fila de adjudicación (el de su lote si lo
@@ -234,13 +267,30 @@ def _load_margen_stats_raw(cutoff_months: int = 24) -> MargenStats:
     """  # noqa: S608 — fragmentos constantes; el valor va con ?
     inicio = time.perf_counter()
     try:
+        # El SELECT de `predicciones_baja` vive en `db/repositories/predicciones.py`
+        # (ADR-022) desde que hubo que leer también `model_version`: la fila del
+        # modelo y la del baseline histórico se guardan en las mismas columnas y
+        # solo esa distingue una de otra.
+        #
+        # Sin WHERE, igual que antes: el job de ML solo predice licitaciones
+        # abiertas, pero el modo page-aligned del Detalle puntúa filas de
+        # expedientes ya cerrados, y un JOIN de higiene contra el universo vivo
+        # les quitaría el margen en silencio. Lo que impide que la tabla crezca
+        # sin control es la purga del job de ML (`purgar_predicciones_cerradas`),
+        # no un filtro de lectura.
+        rows_pred = _repo_predicciones.baja_p50_con_origen()
+        p50_por_licitacion: dict[str, float] = {}
+        n_modelo = 0
+        n_baseline = 0
+        for r in rows_pred:
+            if r["licitacion_id"] is None or r["p50"] is None:
+                continue
+            p50_por_licitacion[str(r["licitacion_id"])] = float(r["p50"])
+            if r.get("model_version") is None:
+                n_baseline += 1
+            else:
+                n_modelo += 1
         with connect_read() as c:
-            rows_pred: list[dict[str, Any]] = rows_to_dicts(c.execute(sql_pred))
-            p50_por_licitacion = {
-                str(r["licitacion_id"]): float(r["p50"])
-                for r in rows_pred
-                if r["licitacion_id"] is not None and r["p50"] is not None
-            }
             rows_cpv4: list[dict[str, Any]] = rows_to_dicts(c.execute(sql_baja_cpv4, (cutoff,)))
             baja_media_por_cpv4 = {
                 str(r["cpv4"]): float(r["baja_media"])
@@ -259,6 +309,8 @@ def _load_margen_stats_raw(cutoff_months: int = 24) -> MargenStats:
         log.info(
             "scoring_signals_margen_cargada",
             predicciones=len(p50_por_licitacion),
+            predicciones_modelo=n_modelo,
+            predicciones_baseline=n_baseline,
             segmentos=len(baja_media_por_cpv4),
             ms=round((time.perf_counter() - inicio) * 1000, 1),
         )
@@ -269,6 +321,8 @@ def _load_margen_stats_raw(cutoff_months: int = 24) -> MargenStats:
             p50_por_licitacion=p50_por_licitacion,
             baja_media_por_cpv4=baja_media_por_cpv4,
             baja_media_global=baja_media_global,
+            n_modelo=n_modelo,
+            n_baseline=n_baseline,
             status=SIGNAL_OK if hay_datos else SIGNAL_VACIA,
         )
     except Exception as exc:

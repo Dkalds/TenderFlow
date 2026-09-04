@@ -14,8 +14,8 @@ snapshots de ``licitaciones_history``), por eso la única forma de recuperarla
 es volver a leerla de la fuente.
 
 Source-agnóstico:
-- PLACSP (``fuente='placsp'``): re-ejecuta ``process_month`` para los meses
-  afectados (el ZIP mensual contiene la entry con todos los anuncios en
+- PLACSP (``fuente='placsp'``): re-ejecuta ``PlacspBulkConnector`` para los
+  meses afectados (el ZIP mensual contiene la entry con todos los anuncios en
   ``ValidNoticeInfo``; ``_issue_date`` recomputa el ``IssueDate`` mínimo).
 - TED (``fuente='ted'``): re-fetch por rango (``TedConnector`` con ``_since``
   forzado a la fecha más temprana afectada).
@@ -119,12 +119,26 @@ def _print_plan(affected: list[dict[str, Any]], plan: dict[str, Any]) -> None:
 
 
 def _reprocess_placsp(months: list[tuple[int, int]]) -> None:
-    from scraper.pipeline import process_month
+    """Re-ingiere los meses PLACSP indicados por el conector bulk.
+
+    Antes llamaba a ``scraper.pipeline.process_month`` (retirado en S2.1,
+    2026-09). Además del linaje/historial que aquel camino no escribía, aquí
+    importa una cosa concreta: el remedio de este script es corregir
+    ``fecha_publicacion``, y reprocesar por el camino legacy dejaba de paso sin
+    documentos ni lotes a los expedientes que tocaba.
+    """
+    from scraper.connectors.base import run_connector
+    from scraper.connectors.placsp import PlacspBulkConnector
 
     for year, month in months:
         log.info("backfill_reprocess_placsp", year=year, month=month)
-        result = process_month(year, month)
-        print(f"  PLACSP {year}-{month:02d}: {result.get('status')}")
+        result = run_connector(PlacspBulkConnector(year, month))
+        estado = "error_fetch" if result.fetch_failed else "ok"
+        print(
+            f"  PLACSP {year}-{month:02d}: {estado} "
+            f"({result.nuevas} nuevas · {result.actualizadas} actualizadas · "
+            f"{result.errores} errores)"
+        )
 
 
 def _reprocess_ted(desde_iso: str) -> None:

@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { fetchWithAuth } from "@/lib/api-client";
 import { Badge } from "@/components/ui/badge";
 import { formatCurrency } from "@/lib/utils";
+import { prediccionKeys } from "@/lib/query-keys";
 
 interface PrediccionBaja {
   licitacion_id: string;
@@ -26,7 +27,7 @@ function pct(v: number): string {
  *  antes de la adjudicación) contra la baja real observada. */
 export function PrediccionBajaBlock({ licitacionId }: { licitacionId: string }) {
   const { data } = useQuery<PrediccionBaja>({
-    queryKey: ["prediccion-baja", licitacionId],
+    queryKey: prediccionKeys.baja(licitacionId),
     queryFn: () =>
       fetchWithAuth(
         `/api/v1/licitaciones/${encodeURIComponent(licitacionId)}/prediccion-baja`,

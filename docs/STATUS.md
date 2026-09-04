@@ -6,7 +6,7 @@ tags: [status, generado]
 
 <!-- generado por scripts/gen_status.py — no editar a mano -->
 
-Generado: 2026-09-02
+Generado: 2026-09-04
 
 ## Paridad de planos de orquestación (ADR-012)
 
@@ -30,12 +30,8 @@ Generado: 2026-09-02
 
 ## Ratchet TID251 — acceso directo a BD fuera de repositories
 
-**32 archivos** en whitelist (solo puede decrecer).
+**28 archivos** en whitelist (solo puede decrecer).
 
-- `api/routes/empresas.py`
-- `api/routes/eventos.py`
-- `api/routes/exports.py`
-- `api/routes/watchlist_rules.py`
 - `scheduler/aggregates_precompute.py`
 - `scheduler/anomaly_alerts.py`
 - `scheduler/competitor_alerts.py`
@@ -71,7 +67,7 @@ Generado: 2026-09-02
 
 ## Superficie de la API
 
-**176 endpoints** expuestos.
+**173 endpoints** expuestos.
 
 <details><summary>Ver listado</summary>
 
@@ -147,12 +143,9 @@ Generado: 2026-09-02
 | GET | `/api/v1/empresas/stats` |
 | GET | `/api/v1/empresas/{empresa_id}` |
 | GET | `/api/v1/eventos` |
-| POST | `/api/v1/exports` |
 | GET | `/api/v1/exports/calendario.ics` |
 | GET | `/api/v1/exports/calendario/enlace` |
 | GET | `/api/v1/exports/download` |
-| DELETE | `/api/v1/exports/{job_id}` |
-| GET | `/api/v1/exports/{job_id}` |
 | GET | `/api/v1/feature-flags` |
 | PUT | `/api/v1/feature-flags` |
 | POST | `/api/v1/feedback` |

@@ -12,6 +12,10 @@ name: Apply DB migrations (alembic)
 # explícita, nunca un efecto colateral de un push.
 
 on:
+  # El `push` NO aplica nada: activa únicamente el job `drift` de más abajo,
+  # que es de SOLO LECTURA. El apply sigue siendo exclusivamente manual.
+  push:
+    branches: ["master", "main"]
   workflow_dispatch:
     inputs:
       target:
@@ -36,11 +40,127 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # ── Visibilidad del desfase código ↔ schema (S6.2) ─────────────────────────
+  # SOLO LECTURA: `alembic current` + `alembic heads`, sin `upgrade`, sin
+  # `--sql`, sin escribir una sola fila. Existe porque el desfase era invisible:
+  # `migrate.yml` es manual a propósito, así que entre el merge de una revisión
+  # y el día en que alguien se acuerda de lanzarlo, producción corre código que
+  # exige columnas que no existen — y nada lo dice. Con esto, cada push a master
+  # deja el desfase escrito en el resumen del run.
+  #
+  # Por qué no bloquea: el push a master ya ocurrió, y fallar aquí no
+  # desmigraría nada; lo que hace falta es que la información exista y sea
+  # visible. Quien SÍ bloquea es el gate de `deploy.yml`/`smoke.yml` sobre
+  # `schema_revision` de /health/ready — ahí todavía se puede no desplegar.
+  drift:
+    name: Desfase schema (solo lectura)
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      # Sin `DATABASE_ADMIN_URL` este job no puede leer nada, pero tampoco puede
+      # hacer daño: se anota el motivo y se sale en verde. Lo contrario —fallar—
+      # convertiría un job informativo en un bloqueo de master por configuración
+      # ausente.
+      - name: Comparar revisión aplicada con la cabeza del repo
+        env:
+          ENV: prod
+          APP_PROFILE: scraper
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DATABASE_ADMIN_URL: ${{ secrets.DATABASE_ADMIN_URL }}
+          DATABASE_SSL_ROOT_CERT: ${{ secrets.DATABASE_SSL_ROOT_CERT }}
+          LOG_FORMAT: json
+        run: |
+          set -uo pipefail
+          # Solo lectura: sirve cualquiera de las dos credenciales. Se prefiere la
+          # de administración porque tras el cutover de roles el rol de runtime
+          # necesita la política RLS de lectura sobre `alembic_version` que añade
+          # scripts/setup_pg_roles.sql; con la admin este job funciona igual antes
+          # y después.
+          if [ -n "${DATABASE_ADMIN_URL:-}" ]; then
+            export DATABASE_URL="$DATABASE_ADMIN_URL"
+          fi
+          if [ -z "${DATABASE_URL:-}" ]; then
+            echo "::notice title=Desfase de schema sin medir::Sin secrets.DATABASE_ADMIN_URL ni secrets.DATABASE_URL no se puede leer alembic_version."
+            echo "### Desfase de schema: sin medir" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "Falta el secret \`DATABASE_ADMIN_URL\` (o \`DATABASE_URL\`)." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          alembic current > /tmp/current.txt 2>&1 || true
+          alembic heads > /tmp/heads.txt 2>&1 || true
+
+          aplicada=$(grep -oE '^[a-z0-9_]+' /tmp/current.txt | head -n 1)
+          cabeza=$(grep -oE '^[a-z0-9_]+' /tmp/heads.txt | head -n 1)
+
+          {
+            echo "### Desfase de schema (solo lectura)"
+            echo ""
+            echo "| | Revisión |"
+            echo "|---|---|"
+            echo "| Aplicada en producción | \`${aplicada:-ninguna}\` |"
+            echo "| Cabeza del repo | \`${cabeza:-desconocida}\` |"
+            echo ""
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [ -n "$aplicada" ] && [ "$aplicada" = "$cabeza" ]; then
+            echo "El schema está al día." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          {
+            echo "**Pendiente de aplicar.** Revisiones entre la aplicada y la cabeza:"
+            echo ""
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          alembic history --rev-range "current:head" >> "$GITHUB_STEP_SUMMARY" 2>&1 || true
+          {
+            echo '```'
+            echo ""
+            echo "Para aplicarlas: Actions → *Apply DB migrations (alembic)* → \`mode=apply\`."
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "::warning title=Schema por detrás del código::La BD está en '${aplicada:-ninguna}' y el repo en '${cabeza:-desconocida}'. Lanzá migrate.yml con mode=apply antes del próximo deploy."
+
   migrate:
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     # v68 reescribe `licitaciones` (~1,2 GB) al añadir la columna generada
     # STORED: necesita bastante más que los 30 min de los jobs de scrape.
     timeout-minutes: 90
+
+    # `db/alembic/env.py` lee DATABASE_URL del entorno y pasa
+    # DATABASE_SSL_ROOT_CERT como `sslrootcert`: los mismos secrets que ya usan
+    # scrape.yml y scrape-daily.yml.
+    #
+    # Las DOS credenciales viajan como variables separadas, y cada step elige.
+    # Antes esto era `${{ secrets.DATABASE_ADMIN_URL || secrets.DATABASE_URL }}`
+    # repetido cuatro veces, con dos problemas: (1) el fallback era SILENCIOSO —
+    # sin el secret admin, migrar producción usaba el rol de runtime y nadie se
+    # enteraba, que es justo lo que el cutover de docs/SECURITY.md quiere
+    # terminar; (2) es el idioma `|| 'literal'` que scripts/check_env_parity.py
+    # prohíbe ahora en bloques `env:`.
+    env:
+      ENV: prod
+      APP_PROFILE: scraper
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      DATABASE_ADMIN_URL: ${{ secrets.DATABASE_ADMIN_URL }}
+      DATABASE_SSL_ROOT_CERT: ${{ secrets.DATABASE_SSL_ROOT_CERT }}
+      LOG_FORMAT: json
 
     steps:
       - name: Checkout
@@ -57,22 +177,34 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      # `db/alembic/env.py` lee DATABASE_URL del entorno y pasa
-      # DATABASE_SSL_ROOT_CERT como `sslrootcert`: los mismos secrets que ya
-      # usan scrape.yml y scrape-daily.yml, sin credencial nueva que rotar.
-      #
-      # Hoy `DATABASE_URL` es el rol dueño del schema, así que tiene DDL
-      # (docs/runbooks/migracion-persistencia.md). Cuando se complete el paso 3
-      # de ese checklist — `DATABASE_ADMIN_URL` separada y runtime degradado a
-      # `tenderflow_app` sin DDL — este workflow ya la prefiere sin tocar nada.
-      - name: Estado actual del schema
-        env:
-          ENV: prod
-          APP_PROFILE: scraper
-          DATABASE_URL: ${{ secrets.DATABASE_ADMIN_URL || secrets.DATABASE_URL }}
-          DATABASE_SSL_ROOT_CERT: ${{ secrets.DATABASE_SSL_ROOT_CERT }}
-          LOG_FORMAT: json
+      # El fallback deja de ser invisible. No falla el job a propósito: hoy
+      # `DATABASE_ADMIN_URL` no existe como secret (el cutover de roles está
+      # pendiente, docs/SECURITY.md), y convertirlo en error dejaría a
+      # producción sin manera de migrar. Lo que sí hace es que la degradación se
+      # vea: anotación `::warning` + banner en el resumen del run. Cuando el
+      # cutover se complete, cambiar el `exit 0` de abajo por `exit 1`.
+      - name: Credencial de migración
         run: |
+          set -uo pipefail
+          if [ -n "${DATABASE_ADMIN_URL:-}" ]; then
+            echo "Migrando con DATABASE_ADMIN_URL (rol administrador)."
+            exit 0
+          fi
+          echo "::warning title=Migrando con la credencial de runtime::secrets.DATABASE_ADMIN_URL no está definido: este run usa DATABASE_URL, el mismo rol que la app. Mientras siga así, once workflows llevan una credencial con DDL y la RLS de v52 es inerte (el dueño del schema la bypassea). Cutover: scripts/setup_pg_roles.sql + docs/SECURITY.md."
+          {
+            echo "> ⚠️ **Fallback de credencial.** Sin \`DATABASE_ADMIN_URL\`, este run"
+            echo "> migró con \`DATABASE_URL\` — el mismo rol que usa la app en runtime."
+            echo "> Cutover pendiente: \`scripts/setup_pg_roles.sql\` + docs/SECURITY.md."
+            echo ""
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit 0
+
+      - name: Estado actual del schema
+        run: |
+          set -uo pipefail
+          if [ -n "${DATABASE_ADMIN_URL:-}" ]; then
+            export DATABASE_URL="$DATABASE_ADMIN_URL"
+          fi
           echo "=== Revisión aplicada en producción ==="
           alembic current --verbose
           echo "=== Head del repositorio ==="
@@ -81,16 +213,15 @@ jobs:
       - name: Plan — revisiones pendientes
         if: inputs.mode == 'plan'
         env:
-          ENV: prod
-          APP_PROFILE: scraper
-          DATABASE_URL: ${{ secrets.DATABASE_ADMIN_URL || secrets.DATABASE_URL }}
-          DATABASE_SSL_ROOT_CERT: ${{ secrets.DATABASE_SSL_ROOT_CERT }}
-          LOG_FORMAT: json
           # Vía env y no interpolado en el `run`: un input de workflow_dispatch
           # es entrada controlada por el usuario, y expandirlo dentro del script
           # es el patrón de script injection que GitHub desaconseja.
           TARGET: ${{ inputs.target }}
         run: |
+          set -uo pipefail
+          if [ -n "${DATABASE_ADMIN_URL:-}" ]; then
+            export DATABASE_URL="$DATABASE_ADMIN_URL"
+          fi
           echo "=== Se aplicarían (actual -> ${TARGET}) ==="
           alembic history --rev-range "current:${TARGET}" --verbose
           echo
@@ -105,21 +236,20 @@ jobs:
       - name: Apply — alembic upgrade
         if: inputs.mode == 'apply'
         env:
-          ENV: prod
-          APP_PROFILE: scraper
-          DATABASE_URL: ${{ secrets.DATABASE_ADMIN_URL || secrets.DATABASE_URL }}
-          DATABASE_SSL_ROOT_CERT: ${{ secrets.DATABASE_SSL_ROOT_CERT }}
-          LOG_FORMAT: json
           PGOPTIONS: "-c statement_timeout=0 -c lock_timeout=30s"
           TARGET: ${{ inputs.target }}
-        run: alembic upgrade "${TARGET}"
+        run: |
+          set -euo pipefail
+          if [ -n "${DATABASE_ADMIN_URL:-}" ]; then
+            export DATABASE_URL="$DATABASE_ADMIN_URL"
+          fi
+          alembic upgrade "${TARGET}"
 
       - name: Estado final del schema
         if: always()
-        env:
-          ENV: prod
-          APP_PROFILE: scraper
-          DATABASE_URL: ${{ secrets.DATABASE_ADMIN_URL || secrets.DATABASE_URL }}
-          DATABASE_SSL_ROOT_CERT: ${{ secrets.DATABASE_SSL_ROOT_CERT }}
-          LOG_FORMAT: json
-        run: alembic current --verbose
+        run: |
+          set -uo pipefail
+          if [ -n "${DATABASE_ADMIN_URL:-}" ]; then
+            export DATABASE_URL="$DATABASE_ADMIN_URL"
+          fi
+          alembic current --verbose

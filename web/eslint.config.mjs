@@ -64,19 +64,47 @@ const eslintConfig = defineConfig([
       ],
     },
   },
-  // El formato de datos vive en `src/lib/utils.ts` y en ningún otro sitio.
+  // Dos invariantes de `src/lib/**` como única fuente, en un solo bloque: en
+  // flat config el último `rules` que declara una regla gana entera, así que
+  // partirlos en dos bloques con el mismo `files` desactivaría el primero.
+  //
+  // 1. El formato de datos vive en `src/lib/utils.ts` y en ningún otro sitio.
   //
   // Hubo una época de cinco formateadores de euros distintos, cada uno con su
   // criterio de redondeo, y el arreglo fue centralizarlos. Sin una regla que lo
   // sostenga, la dispersión vuelve por goteo: cada componente que necesita una
   // fecha con hora se escribe su `Intl.DateTimeFormat`. Si falta un helper
   // (p. ej. fecha + hora), añadilo a `lib/utils.ts` en vez de inlinearlo.
+  //
+  // 2. La API se consume por el cliente único de `src/lib/api-client.ts`.
+  //
+  // Había ~30 `fetch("/api/…")` crudos repartidos por 14 ficheros. Ninguno
+  // redirigía a /login en 401, ninguno normalizaba el error a `ApiError`,
+  // ninguno extraía el `detail` RFC-7807 y ninguno adjuntaba el CSRF que el
+  // backend exige a toda mutación por cookie — el borrado RGPD de la cuenta
+  // devolvía 403 exactamente por eso. Los helpers (`apiGet`, `apiMutate`,
+  // `fetchWithAuth`, `fetchBlobWithAuth`) hacen las cuatro cosas en un sitio.
+  //
+  // `src/lib/**` queda exento porque es donde viven esos helpers y los tres
+  // casos que no pueden pasar por ellos: el stream SSE de `ask-stream.ts`, la
+  // descarga por blob de `export.ts` y el envío de `report-error.ts`.
   {
     files: ["src/**/*.{ts,tsx}"],
     ignores: ["src/lib/**", "src/**/__tests__/**", "src/**/*.test.{ts,tsx}"],
     rules: {
       "no-restricted-syntax": [
         "error",
+        {
+          selector: "CallExpression[callee.name='fetch'] > Literal:first-child[value=/^\\/api\\//]",
+          message:
+            "Usá el cliente de @/lib/api-client (apiGet, apiMutate, fetchWithAuth, fetchBlobWithAuth). Un fetch crudo a /api no redirige en 401, no normaliza el error a ApiError, no extrae el detail RFC-7807 y no adjunta el CSRF.",
+        },
+        {
+          selector:
+            "CallExpression[callee.name='fetch'] > TemplateLiteral:first-child > TemplateElement:first-child[value.raw=/^\\/api\\//]",
+          message:
+            "Usá el cliente de @/lib/api-client (apiGet, apiMutate, fetchWithAuth, fetchBlobWithAuth). Un fetch crudo a /api no redirige en 401, no normaliza el error a ApiError, no extrae el detail RFC-7807 y no adjunta el CSRF.",
+        },
         {
           selector:
             "NewExpression[callee.object.name='Intl'][callee.property.name=/^(NumberFormat|DateTimeFormat|RelativeTimeFormat)$/]",
