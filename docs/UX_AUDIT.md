@@ -5,6 +5,13 @@ el 2026-08-27. Prioriza por daño al usuario, no por esfuerzo. La **Ola 1** ya e
 implementada; el resto está priorizado abajo y replicado en
 [IMPROVEMENT_BACKLOG.md](IMPROVEMENT_BACKLOG.md).
 
+**Alcance, y una corrección de 2026-09-03.** Hasta esa fecha este documento decía
+auditar `web/` entero y sólo miraba la consola autenticada: los cinco problemas
+estructurales, las tres olas y el continuo son todos del dashboard. La superficie
+pública —la portada, los índices, las fichas y las páginas de evidencia— no había
+pasado nunca por aquí, pese a ser lo único que ve alguien que no ha entrado. Su
+revisión está al final, en «Superficie pública».
+
 **Tamaño, medido el 2026-08-27:** 43 `page.tsx` y **57.438 líneas** de TS/TSX en
 `web/src` excluyendo `src/generated/api.d.ts` (14.109 líneas más, generadas por
 codegen: contarlas infla el número sin que nadie las escriba). El árbol de
@@ -277,3 +284,67 @@ solo registro (`CONSOLE_SPACES`/`SPACE_VIEWS`) y el cromo heredado se demolió.
 los 192 del original), barrido de ortografía, y descomposición de las páginas
 grandes — la vía que funcionó es extraer a `_hooks/`, hecha en `detalle`,
 `mi-watchlist` y `competidores`.
+
+---
+
+## Superficie pública
+
+Revisada el 2026-09-03, por primera vez. La portada estaba bien construida por
+dentro —Server Component, ISR, sin JavaScript salvo un beacon, cifras reales del
+backend, formulario nativo, motion dentro del presupuesto— y aun así fallaba en
+tres frentes que ninguna comprobación técnica veía.
+
+### Roto en producción, no en el código
+
+1. **El aviso legal publicaba un valor de relleno como responsable del
+   tratamiento.** El guard del build sólo comprobaba que las variables
+   `NEXT_PUBLIC_LEGAL_*` no estuvieran vacías. Cerrado: `lib/legal-placeholder.ts`
+   rechaza también los valores de relleno, en el build y en render.
+2. **Tres páginas publicadas y muertas.** `/cobertura`, `/metodologia` y
+   `/seguridad` respondían 307 a `/login`: la misma decisión —«esta página es
+   pública»— estaba escrita en cuatro listas independientes. Cerrado:
+   `lib/rutas-publicas.ts` es la única, y `src/__tests__/rutas-publicas.test.ts`
+   enumera los `page.tsx` del grupo para que la siguiente no nazca huérfana.
+3. **El 404 público mandaba al dashboard**, o sea a `/login` para quien venía de
+   un buscador. Cerrado con `(publico)/not-found.tsx`.
+
+### Por qué se leía como una plantilla
+
+El esqueleto era el de cualquier landing generada: píldora con icono, titular
+centrado, captura con cromo de ventana de tres puntos, tarjetas con icono en
+cuadrado tintado y numerales `01/02/03`, retícula de fondo con máscara radial,
+resplandor en el cierre. La tipografía lo remataba —Space Grotesk sobre Geist, las
+dos fuentes por defecto del sector—. Y la captura del hero enseñaba el producto
+**degradado**: aviso de score degradado, identificadores del backend en crudo y
+la etiqueta interna «ADR-014 · backend».
+
+Cerrado en el mismo cambio: composición editorial (filetes en vez de tarjetas,
+alineación a la izquierda, sin ornamento de fondo), Fraunces como fuente de
+titulares **sólo** en la superficie pública —el dashboard conserva la suya, ver
+`(publico)/layout.tsx`—, `lib/riesgos.ts` traduce los avisos que se pintaban en
+snake_case, y `e2e/capturas-landing.spec.ts` regenera las imágenes desde el seed
+en vez de tomarlas a mano.
+
+### El cambio de fondo
+
+El hero enseñaba una **foto** del producto con datos de demostración. Ahora
+enseña cinco expedientes reales del corpus público, servidos por la API
+(`_components/ultimos-publicados.tsx`). Un producto cuyo argumento es la calidad
+del dato no puede abrir con una imagen de datos inventados.
+
+El copy pasó de 1.697 palabras visibles a 1.119, y el titular de 88 caracteres a
+56. Lo que salió fue jerga —HHI, p10/p50/p90, CODICE, embeddings— que ahora vive
+en las tres páginas de evidencia, enlazadas desde el cuerpo y desde el pie.
+
+### Lo que queda abierto
+
+- **La franja contradice al hero.** La portada cita el tamaño del corpus público
+  mientras la migración v98 —que lo acota al universo tecnológico— siga sin
+  aplicarse en producción (`migrate.yml` es manual). Hasta entonces la cifra es
+  la del censo PSCP bajo un titular que promete lo contrario.
+- **La variante clara de las capturas.** Se sirve una sola imagen, oscura, a
+  quien tiene el sistema en claro. El script ya existe; falta generarlas y añadir
+  el `<source media="(prefers-color-scheme: dark)">`.
+- **Identidad publicada.** Razón social, NIF, domicilio y un buzón de contacto
+  del dominio son variables de entorno que sólo el responsable puede rellenar.
+- **Dominio propio.** El sitio se sirve desde `*.vercel.app`.

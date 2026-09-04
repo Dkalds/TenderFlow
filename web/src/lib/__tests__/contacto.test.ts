@@ -59,8 +59,8 @@ describe("solicitarAccesoHref", () => {
       NEXT_PUBLIC_CONTACT_EMAIL: "acceso@tenderflow.example",
     });
 
-    expect(sinEmail.solicitarAccesoHref("hero")).toBe("/#solicitar-acceso");
-    expect(conEmail.solicitarAccesoHref("hero")).toBe("/#solicitar-acceso");
+    expect(sinEmail.solicitarAccesoHref()).toBe("/#solicitar-acceso");
+    expect(conEmail.solicitarAccesoHref()).toBe("/#solicitar-acceso");
   });
 
   it("no depende del entorno para tener destino", async () => {
@@ -68,8 +68,8 @@ describe("solicitarAccesoHref", () => {
     // documentar decidía si el CTA principal llevaba a alguna parte.
     const { solicitarAccesoHref } = await importarContacto({});
 
-    expect(solicitarAccesoHref("cierre")).not.toContain("login");
-    expect(solicitarAccesoHref("cierre")).not.toContain("mailto");
+    expect(solicitarAccesoHref()).not.toContain("login");
+    expect(solicitarAccesoHref()).not.toContain("mailto");
   });
 
   it("sirve igual desde otra ruta que desde la portada", async () => {
@@ -77,7 +77,7 @@ describe("solicitarAccesoHref", () => {
     // propia landing el navegador lo trata como salto de fragmento.
     const { solicitarAccesoHref, ANCLA_SOLICITUD } = await importarContacto({});
 
-    expect(solicitarAccesoHref("login").startsWith("/#")).toBe(true);
-    expect(solicitarAccesoHref("login")).toBe(`/#${ANCLA_SOLICITUD}`);
+    expect(solicitarAccesoHref().startsWith("/#")).toBe(true);
+    expect(solicitarAccesoHref()).toBe(`/#${ANCLA_SOLICITUD}`);
   });
 });

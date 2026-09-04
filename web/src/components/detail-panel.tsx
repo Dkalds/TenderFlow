@@ -14,6 +14,7 @@ import { cn, formatCurrency, formatDate } from "@/lib/utils";
 import { fuenteLinkLabel } from "@/lib/fuentes";
 import { ExternalLink, Link2, MessageSquare } from "lucide-react";
 import { toast } from "sonner";
+import { riesgoLabel } from "@/lib/riesgos";
 
 interface LicitacionDetail {
   id_externo: string;
@@ -176,7 +177,7 @@ export function DetailPanel({ licitacion: l, onClose, className }: DetailPanelPr
             <div className="flex flex-wrap gap-1.5">
               {l.risk_flags.map((flag) => (
                 <Badge key={flag} variant="destructive" className="text-xs">
-                  {flag}
+                  {riesgoLabel(flag)}
                 </Badge>
               ))}
             </div>

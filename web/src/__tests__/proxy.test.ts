@@ -7,10 +7,11 @@ import { proxy, config } from "@/proxy";
  *
  * `proxy.ts` resuelve tres cosas a la vez —qué rutas se sirven sin sesión, a
  * dónde va quien no la tiene, y qué CSP recibe cada respuesta— y hasta el
- * 2026-08-30 no tenía ni un test. El riesgo no es teórico ni sutil: el propio
- * fichero documenta que añadir `"/"` a `PUBLIC_PREFIXES` abriría la aplicación
- * entera, porque `"/cualquier/cosa".startsWith("/")` es cierto siempre. Era una
- * trampa conocida, escrita, y sin nada debajo que la cazara.
+ * 2026-08-30 no tenía ni un test. El riesgo no es teórico ni sutil: declarar la
+ * portada como prefijo abriría la aplicación entera, porque
+ * `"/cualquier/cosa".startsWith("/")` es cierto siempre. Era una trampa
+ * conocida, escrita, y sin nada debajo que la cazara. La lista vive hoy en
+ * `lib/rutas-publicas.ts`, con su propio test de coherencia.
  *
  * Estos tests fijan el contrato desde fuera, sobre `proxy()`, no sobre sus
  * constantes: así siguen valiendo si mañana la lista se reorganiza.

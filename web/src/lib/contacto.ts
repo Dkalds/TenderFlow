@@ -34,11 +34,15 @@ export const ANCLA_SOLICITUD = "solicitar-acceso";
  * en otra ruta; desde la propia landing el navegador lo trata como salto de
  * fragmento y no recarga nada.
  *
- * `utmContent` sigue distinguiendo desde qué CTA se llegó: lo consume el evento
- * de analytics de la isla `EnlaceSolicitarAcceso`. El correo de contacto ya no
- * decide el destino del CTA principal — se mantiene para el pie y el aviso
- * legal, donde sí es una dirección de contacto y no un embudo.
+ * Sin parámetros. Tuvo uno, `utmContent`, que la función descartaba: desde que
+ * el destino es un ancla de la propia página no hay navegación que etiquetar, y
+ * quien distingue de qué CTA vino el clic es el evento de analytics de la isla
+ * `EnlaceSolicitarAcceso`. Un argumento que se ignora invita a creer que la
+ * atribución viaja en el enlace, que es justo lo que no pasa.
+ *
+ * El correo de contacto ya no decide el destino del CTA principal — se mantiene
+ * para el pie y el aviso legal, donde sí es una dirección y no un embudo.
  */
-export function solicitarAccesoHref(_utmContent: string): string {
+export function solicitarAccesoHref(): string {
   return `/#${ANCLA_SOLICITUD}`;
 }

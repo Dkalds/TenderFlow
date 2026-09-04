@@ -4,15 +4,15 @@ import { test, expect } from "@playwright/test";
  * Guard de la superficie pública y de SEO.
  *
  * Existe por un fallo concreto y fácil de reintroducir: el matcher de
- * `src/middleware.ts` sólo excluye `/api`, `/_next/static`, `/_next/image` y
+ * `src/proxy.ts` sólo excluye `/api`, `/_next/static`, `/_next/image` y
  * `favicon.ico`, así que `robots.txt`, `sitemap.xml` y las rutas de imagen de
  * metadatos pasan por el control de sesión. Hasta que se añadieron a
- * `PUBLIC_PREFIXES` devolvían un 307 a `/login`, con dos consecuencias
+ * `la lista de rutas públicas` devolvían un 307 a `/login`, con dos consecuencias
  * invisibles desde dentro del producto: Google no podía leer el robots, y el
  * unfurler de Slack/LinkedIn/WhatsApp recibía la pantalla de login en lugar de
  * la imagen Open Graph, de modo que cada enlace compartido salía sin preview.
  *
- * Un `PUBLIC_PREFIXES` reordenado o un matcher retocado lo rompen sin que falle
+ * Un `la lista de rutas públicas` reordenado o un matcher retocado lo rompen sin que falle
  * ningún otro test. De ahí que cada bloque compruebe el par completo: lo
  * público responde 200 **y** el dashboard sigue cerrado. La segunda mitad
  * importa tanto como la primera — una exención demasiado ancha (meter `"/"`
@@ -79,8 +79,34 @@ test.describe("Superficie pública sin sesión", () => {
     // `/login` rastreable a propósito: bloqueada por robots, Google no podría
     // leer su `noindex` y nunca la sacaría del índice.
     expect(body).toContain("Allow: /login");
+    // Las tres páginas de evidencia estuvieron publicadas y bloqueadas a la vez:
+    // escritas, desplegadas y fuera del robots, del sitemap y del proxy.
+    for (const ruta of ["/cobertura", "/metodologia", "/seguridad"]) {
+      expect(body, `${ruta} tiene que ser rastreable`).toContain(`Allow: ${ruta}`);
+    }
     expect(body).toContain("Disallow: /");
     expect(body).toContain("Sitemap:");
+  });
+
+  test("las páginas de evidencia se sirven sin sesión", async ({ page }) => {
+    // El fallo que cazan: al no estar declaradas públicas, el proxy respondía
+    // 307 a /login y el visitante anónimo —el público entero de esta
+    // superficie— no podía abrirlas.
+    for (const ruta of ["/cobertura", "/metodologia", "/seguridad"]) {
+      const respuesta = await page.goto(ruta);
+      expect(respuesta?.status(), `${ruta} debe servirse`).toBe(200);
+      expect(new URL(page.url()).pathname, `${ruta} no puede acabar en /login`).toBe(ruta);
+      await expect(page.locator("h1")).toBeVisible();
+    }
+  });
+
+  test("una URL pública inexistente da un 404 con salida", async ({ page }) => {
+    // El 404 subía al de la raíz, cuyo único botón llevaba a /resumen: un 307 a
+    // /login para quien acababa de llegar desde un buscador.
+    const respuesta = await page.goto("/licitaciones/comunidad-que-no-existe");
+    expect(respuesta?.status()).toBe(404);
+    await expect(page.locator('a[href="/cpv"]').first()).toBeVisible();
+    await expect(page.locator('a[href="/resumen"]')).toHaveCount(0);
   });
 
   test("el indice de sitemaps existe y enumera ficheros que se sirven", async ({ request }) => {

@@ -97,6 +97,29 @@ SOLICITUDES_ACCESO_RETENTION_MESES = 24
 SOLICITUDES_ACCESO_RETENTION_DAYS = SOLICITUDES_ACCESO_RETENTION_MESES * 30
 PASSWORD_RESET_RETENTION_DAYS = 7
 
+# Columna de fecha por la que se purga cada tabla. Vive fuera de
+# ``run_retention`` para que un test la pueda cotejar contra el schema real,
+# que es lo que faltaba: hasta 2026-09 ``licitaciones_history`` apuntaba a
+# ``changed_at`` y la columna se llama ``captured_at``. El bucle aísla cada
+# tabla en su savepoint y anota ``-1`` si falla, así que el
+# ``UndefinedColumn`` se tragaba pasada tras pasada: esa retención no purgó
+# nunca y el error salía a diario sin que nadie lo leyera como un error.
+#
+# Hoy no hay daño acumulado —la ventana es de 365 días y la tabla arranca en
+# mayo de 2026, así que no había nada que borrar— pero un error recurrente en
+# el log es exactamente lo que hace invisible al siguiente.
+COLUMNA_FECHA: dict[str, str] = {
+    "extraction_runs": "started_at",
+    "audit_log": "created_at",
+    "licitaciones_history": "captured_at",
+    "access_log": "logged_in_at",
+    "idempotency_keys": "created_at",
+    "webhook_deliveries": "created_at",
+    "solicitudes_acceso": "created_at",
+    # pragma: allowlist secret -- nombre de tabla y de columna, no una credencial
+    "password_reset_tokens": "created_at",  # pragma: allowlist secret
+}
+
 
 def run_retention(
     *,
@@ -132,21 +155,25 @@ def run_retention(
     results: dict[str, int] = {}
 
     rules = [
-        ("extraction_runs", "started_at", runs_days),
-        ("audit_log", "created_at", audit_days),
-        ("licitaciones_history", "changed_at", history_days),
-        ("access_log", "logged_in_at", access_days),
-        ("idempotency_keys", "created_at", idempotency_days),
-        ("webhook_deliveries", "created_at", webhook_deliveries_days),
-        # Datos de contacto de personas que escribieron desde la página
-        # pública. Se borran por plazo con independencia de su estado: una
-        # solicitud de hace dos años está abandonada, atendida o descartada, y
-        # en los tres casos ya no hay finalidad que justifique conservarla.
-        ("solicitudes_acceso", "created_at", solicitudes_acceso_days),
-        # Tokens usados o caducados no aportan valor operativo. La tabla sólo
-        # contiene hashes, pero la minimización también aplica a identificadores
-        # indirectos y a credenciales ya inválidas.
-        ("password_reset_tokens", "created_at", PASSWORD_RESET_RETENTION_DAYS),
+        (tabla, COLUMNA_FECHA[tabla], dias)
+        for tabla, dias in (
+            ("extraction_runs", runs_days),
+            ("audit_log", audit_days),
+            ("licitaciones_history", history_days),
+            ("access_log", access_days),
+            ("idempotency_keys", idempotency_days),
+            ("webhook_deliveries", webhook_deliveries_days),
+            # Datos de contacto de personas que escribieron desde la página
+            # pública. Se borran por plazo con independencia de su estado: una
+            # solicitud de hace dos años está abandonada, atendida o
+            # descartada, y en los tres casos ya no hay finalidad que
+            # justifique conservarla.
+            ("solicitudes_acceso", solicitudes_acceso_days),
+            # Tokens usados o caducados no aportan valor operativo. La tabla
+            # sólo contiene hashes, pero la minimización también aplica a
+            # identificadores indirectos y a credenciales ya inválidas.
+            ("password_reset_tokens", PASSWORD_RESET_RETENTION_DAYS),
+        )
     ]
 
     with connect() as conn:

@@ -1,10 +1,38 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { Fraunces } from "next/font/google";
 import { ThemeProvider } from "next-themes";
 import { TenderFlowLogo } from "@/components/layout/tenderflow-logo";
 import { CONTACT_EMAIL, solicitarAccesoHref } from "@/lib/contacto";
 import { CONTENIDO } from "./_content/landing";
 import { EnlaceSolicitarAcceso } from "./_components/enlace-solicitar-acceso";
+
+/**
+ * Tipografía de titulares de la superficie pública.
+ *
+ * El dashboard usa Space Grotesk como `--font-display`, y para la portada eso
+ * era un problema doble. El de forma: es la fuente a la que converge medio
+ * internet generado —la propia skill `frontend-design` la nombra como ejemplo
+ * de lo que no hay que elegir— y, junto a Geist, dejaba la página con el aspecto
+ * de una plantilla. El de fondo: TenderFlow vende lectura de un mercado, y una
+ * grotesca geométrica no dice nada de eso.
+ *
+ * Fraunces es una serif con eje óptico, del linaje de la prensa económica: a
+ * cuerpo de titular tiene contraste y remates, que es exactamente el tono de
+ * «esto lo escribe alguien que sabe de qué habla». El cuerpo de texto sigue en
+ * Geist —una serif a 14 px en pantalla se lee peor— así que el contraste entre
+ * las dos es deliberado.
+ *
+ * Sólo afecta a esta superficie: la clase que genera `next/font` redefine
+ * `--font-display` en el elemento que envuelve el layout, y las utilidades
+ * `font-display` y `tf-*` de `globals.css` resuelven esa variable **en el sitio
+ * donde se usan**, así que la definición más cercana gana sobre la que el layout
+ * raíz pone en `<html>`. El dashboard no se entera.
+ */
+const fuenteDisplay = Fraunces({
+  variable: "--font-display",
+  subsets: ["latin"],
+});
 
 /**
  * Layout de la superficie pública.
@@ -42,38 +70,81 @@ export const metadata: Metadata = {
   robots: { index: true, follow: true },
 };
 
+/* Piel de los enlaces del pie. `py-1.5` no es decorativo: sin él estos enlaces
+ * miden 16 px de alto y quedan por debajo del mínimo de 24×24 px que exige
+ * WCAG 2.5.8. Estaba copiada carácter a carácter en los cinco.
+ *
+ * Sin `-my-1.5`: ese margen negativo devolvía al renglón la altura que el
+ * padding le daba, y con ocho enlaces repartidos en varias líneas las cajas de
+ * dos filas contiguas se solapaban 8 px. Un objetivo táctil que invade al de
+ * arriba incumple el mismo criterio que el padding venía a satisfacer, así que
+ * la altura se recupera con el `gap-y` del contenedor, no comiéndosela. */
+const ENLACE_PIE =
+  "hover:text-foreground focus-visible:ring-ring inline-flex items-center rounded px-1 " +
+  "py-1.5 transition-colors duration-150 focus-visible:ring-2 focus-visible:outline-none";
+
+/* Orden deliberado: primero la superficie de datos que se puede ver sin cuenta,
+ * después las tres páginas que responden a «de dónde sale esto» y sólo al final
+ * lo legal. */
+const ENLACES_PIE = [
+  { href: "/licitaciones", texto: "Licitaciones" },
+  { href: "/cpv", texto: "Por CPV" },
+  { href: "/cobertura", texto: "Cobertura" },
+  { href: "/metodologia", texto: "Metodología" },
+  { href: "/seguridad", texto: "Seguridad" },
+  { href: "/aviso-legal", texto: "Aviso legal" },
+];
+
 export default function PublicoLayout({ children }: { children: React.ReactNode }) {
   return (
     <ThemeProvider attribute="class" defaultTheme="system" disableTransitionOnChange>
-      <div className="bg-background flex min-h-screen flex-col">
+      {/* `fuenteDisplay.variable` aquí y no en el `<html>` del layout raíz:
+          es lo que acota la fuente de titulares a la superficie pública. */}
+      <div className={`${fuenteDisplay.variable} bg-background flex min-h-screen flex-col`}>
         <header className="tf-glass border-border/60 sticky top-0 z-40 border-b">
-          <div className="mx-auto flex w-full max-w-6xl items-center justify-between px-6 py-3.5">
-            <div className="flex items-center gap-7">
+          {/* El header se reparte en varias filas por debajo de `sm` y vuelve a
+              una sola línea a partir de ahí, con una sola nav en el DOM. Antes
+              era `hidden sm:flex` sin alternativa, así que en un teléfono
+              —donde no cabe el rail del dashboard ni hay menú— las dos páginas
+              que reparten autoridad interna hacia los hubs desaparecían del
+              chrome. Duplicar el menú para la versión estrecha habría sido lo
+              fácil y lo peor: dos veces cada enlace en el HTML que lee un
+              rastreador.
+
+              Sin `order-*`: la primera versión bajaba la nav al último renglón
+              con `order-last`, y eso dejaba el orden de tabulación (logo → nav →
+              acceso, el del DOM) al revés del orden visual (logo → acceso →
+              nav). Quien navega con teclado saltaba a una fila que veía debajo y
+              luego volvía arriba. Dejando mandar al DOM, las dos secuencias
+              coinciden a cualquier ancho. */}
+          <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center gap-x-7 gap-y-2.5 px-6 py-3.5">
+            <Link
+              href="/"
+              aria-label="TenderFlow — inicio"
+              className="focus-visible:ring-ring mr-auto rounded focus-visible:ring-2 focus-visible:outline-none sm:mr-0"
+            >
+              <TenderFlowLogo boxSize={30} />
+            </Link>
+            {/* Estos dos enlaces son la vía por la que la superficie de datos
+              recibe autoridad interna. Sin ellos los hubs solo existen en el
+              sitemap: rastreables, pero sin nada que los respalde. */}
+            <nav
+              aria-label="Secciones"
+              className="flex w-full items-center gap-5 text-sm sm:mr-auto sm:w-auto"
+            >
               <Link
-                href="/"
-                aria-label="TenderFlow — inicio"
-                className="focus-visible:ring-ring rounded focus-visible:ring-2 focus-visible:outline-none"
+                href="/licitaciones"
+                className="text-muted-foreground hover:text-foreground transition-colors duration-150"
               >
-                <TenderFlowLogo boxSize={30} />
+                Licitaciones
               </Link>
-              {/* Estos dos enlaces son la vía por la que la superficie de datos
-                recibe autoridad interna. Sin ellos los hubs solo existen en el
-                sitemap: rastreables, pero sin nada que los respalde. */}
-              <nav aria-label="Secciones" className="hidden items-center gap-5 text-sm sm:flex">
-                <Link
-                  href="/licitaciones"
-                  className="text-muted-foreground hover:text-foreground transition-colors duration-150"
-                >
-                  Licitaciones
-                </Link>
-                <Link
-                  href="/cpv"
-                  className="text-muted-foreground hover:text-foreground transition-colors duration-150"
-                >
-                  Por CPV
-                </Link>
-              </nav>
-            </div>
+              <Link
+                href="/cpv"
+                className="text-muted-foreground hover:text-foreground transition-colors duration-150"
+              >
+                Por CPV
+              </Link>
+            </nav>
             {/* El header llevaba "Iniciar sesión" como único botón, y era el
               CTA más persistente del sitio: acompaña al visitante durante toda
               la página. Para quien llega sin cuenta —el público entero de esta
@@ -101,7 +172,7 @@ export default function PublicoLayout({ children }: { children: React.ReactNode 
                 Iniciar sesión
               </Link>
               <EnlaceSolicitarAcceso
-                href={solicitarAccesoHref("header")}
+                href={solicitarAccesoHref()}
                 ubicacion="header"
                 className="bg-primary text-primary-foreground hover:bg-primary/90 focus-visible:ring-ring focus-visible:ring-offset-background inline-flex h-9 items-center justify-center rounded-md px-4 text-sm font-medium shadow transition-[transform,background-color] duration-150 ease-out focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none active:scale-[0.97]"
               >
@@ -128,43 +199,27 @@ export default function PublicoLayout({ children }: { children: React.ReactNode 
                   Inteligencia de licitaciones públicas de tecnología enterprise en España, sobre fuentes oficiales.
                 </p>
               </div>
-              {/* `py-1.5` no es decorativo: sin él estos enlaces miden 16 px de
-                alto y quedan por debajo del mínimo de 24×24 px que exige
-                WCAG 2.5.8. */}
+              {/* Las tres páginas de evidencia —cobertura, metodología y
+                seguridad— entran aquí porque hasta ahora no las enlazaba nadie:
+                estaban publicadas y sólo se llegaba a ellas escribiendo la URL,
+                cosa que no hace ningún visitante. Son además lo que pregunta
+                quien evalúa el producto, así que el pie es el sitio donde se
+                buscan. */}
               <nav
                 aria-label="Enlaces del pie"
-                className="text-muted-foreground flex flex-wrap items-center gap-x-5 gap-y-1 text-xs font-medium"
+                className="text-muted-foreground -my-1.5 flex flex-wrap items-center gap-x-5 text-xs font-medium"
               >
-                <Link
-                  href="/licitaciones"
-                  className="hover:text-foreground focus-visible:ring-ring -my-1.5 inline-flex items-center rounded px-1 py-1.5 transition-colors duration-150 focus-visible:ring-2 focus-visible:outline-none"
-                >
-                  Licitaciones
-                </Link>
-                <Link
-                  href="/cpv"
-                  className="hover:text-foreground focus-visible:ring-ring -my-1.5 inline-flex items-center rounded px-1 py-1.5 transition-colors duration-150 focus-visible:ring-2 focus-visible:outline-none"
-                >
-                  Por CPV
-                </Link>
-                <Link
-                  href="/aviso-legal"
-                  className="hover:text-foreground focus-visible:ring-ring -my-1.5 inline-flex items-center rounded px-1 py-1.5 transition-colors duration-150 focus-visible:ring-2 focus-visible:outline-none"
-                >
-                  Aviso legal
-                </Link>
+                {ENLACES_PIE.map((enlace) => (
+                  <Link key={enlace.href} href={enlace.href} className={ENLACE_PIE}>
+                    {enlace.texto}
+                  </Link>
+                ))}
                 {CONTACT_EMAIL && (
-                  <a
-                    href={`mailto:${CONTACT_EMAIL}`}
-                    className="hover:text-foreground focus-visible:ring-ring -my-1.5 inline-flex items-center rounded px-1 py-1.5 transition-colors duration-150 focus-visible:ring-2 focus-visible:outline-none"
-                  >
+                  <a href={`mailto:${CONTACT_EMAIL}`} className={ENLACE_PIE}>
                     Contacto
                   </a>
                 )}
-                <Link
-                  href="/login?utm_source=publico&utm_content=footer"
-                  className="hover:text-foreground focus-visible:ring-ring -my-1.5 inline-flex items-center rounded px-1 py-1.5 transition-colors duration-150 focus-visible:ring-2 focus-visible:outline-none"
-                >
+                <Link href="/login?utm_source=publico&utm_content=footer" className={ENLACE_PIE}>
                   Acceder
                 </Link>
               </nav>

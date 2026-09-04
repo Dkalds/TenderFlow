@@ -65,9 +65,15 @@ export function formatCompactCurrency(
 export function formatNumber(
   value: number | null | undefined,
   locale = "es-ES",
+  { agruparSiempre = false }: { agruparSiempre?: boolean } = {},
 ): string {
   if (value == null) return EMPTY;
-  return new Intl.NumberFormat(locale).format(value);
+  // `es-ES` no agrupa los números de cuatro dígitos (`minimumGroupingDigits` es
+  // 2 en este locale), así que "1038" y "417.182" salen con formatos distintos.
+  // Correcto en prosa; malo cuando las cifras se leen como una serie, que es lo
+  // que pasa en la franja de la portada: parecen de familias distintas. Se pide
+  // explícitamente donde estorba, en vez de cambiarlo para toda la aplicación.
+  return new Intl.NumberFormat(locale, agruparSiempre ? { useGrouping: "always" } : {}).format(value);
 }
 
 /**

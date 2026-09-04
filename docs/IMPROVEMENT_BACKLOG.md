@@ -140,6 +140,25 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 
 ## P2 — Media
 
+### [P2] La portada cita el tamaño del censo bajo un titular que promete lo contrario
+- **Área:** producción (acción del usuario) + web/src/app/(publico)/_components/franja-datos.tsx
+- **Problema:** la franja de la portada publica el total del corpus público —medido el 2026-09-03 en producción: 417.182 expedientes— justo encima de una sección titulada «Un radar tecnológico, no un censo de toda la contratación pública». Las dos cosas son honestas por separado: el número sale tal cual de `/publico/sitemap/resumen` (ADR-014) y el titular describe la regla de entrada. Lo que las hace incompatibles es que la migración **v98**, que acota la superficie pública al universo tecnológico, está mergeada y **sin aplicar**: `migrate.yml` es `workflow_dispatch` y el `autoDeploy` de Render no migra. Ver el ítem cerrado del 2026-09-02 en [el archivo](archive/IMPROVEMENT_BACKLOG_CERRADOS.md).
+- **Por qué importa más que un número feo:** es la única cifra que la portada aporta como prueba, en un producto que vende confianza en el dato. Un visitante que compruebe los CPV más frecuentes en `/cpv` encuentra reactivos de laboratorio.
+- **Acceptance criteria:**
+  - `migrate.yml` ejecutado y `alembic current` en v98 (se lee en el log del step "Estado actual del schema").
+  - `/publico/hubs` deja de listar CPV ajenos a tecnología.
+  - La franja de la portada baja a la cifra del universo tecnológico tras la siguiente revalidación.
+  - Search Console verá una caída grande de URLs indexadas: es el objetivo, no un incidente.
+- **Riesgo:** medio — el cambio es de datos publicados, no de código.
+
+### [P2] La portada sirve una captura oscura a quien tiene el sistema en claro
+- **Área:** web/src/app/(publico)/page.tsx, web/e2e/capturas-landing.spec.ts
+- **Problema:** la superficie pública usa `defaultTheme="system"` y no tiene selector de tema, así que un visitante con el sistema en claro ve una página clara con una captura del producto en oscuro incrustada. Las dos imágenes de `_assets/` son las únicas que hay.
+- **Cómo empezar:** el trabajo está a medias hecho. `npm run capturas:landing` regenera las capturas desde el seed con el stack levantado; falta añadirle la variante `light` (el spec ya usa `page.emulateMedia({ colorScheme })`, sólo hay que parametrizarlo) y dar a `CapturaProducto` un `<source media="(prefers-color-scheme: dark)">`. No se anticiparon los ficheros claros a propósito: dos `.webp` que ningún import consume son peso muerto.
+- **Acceptance criteria:** las dos variantes existen, se sirve una sola por visita (no dos descargas), y el spec de capturas las genera juntas.
+- **Files de partida:** [web/e2e/capturas-landing.spec.ts](../web/e2e/capturas-landing.spec.ts), [web/src/app/(publico)/page.tsx](../web/src/app/%28publico%29/page.tsx)
+- **Riesgo:** bajo.
+
 ### [P2] `HistGradientBoosting` revienta si una feature llega entera a NaN
 - **Área:** services/ml/baja_model.py, services/ml/features.py, tests/test_ml_baja_model.py
 - **Problema:** con las versiones pineadas (numpy 2.4.4, scikit-learn 1.9.0), ajustar `HistGradientBoostingRegressor` sobre una matriz con **una columna enteramente NaN** falla con `ValueError: window shape cannot be larger than input array shape` en `sklearn/ensemble/_hist_gradient_boosting/binning.py:82`. La causa es precisa: `_find_binning_thresholds` guarda el caso de una columna **constante** (`if len(distinct_values) == 1: return []`) pero no el de **cero** valores distintos, que es lo que deja una columna todo-NaN tras descartar los missing; entonces `sliding_window_view(distinct_values, 2)` recibe un array vacío. Reproducido aislado: columna todo-NaN → ValueError; columna constante → OK.
@@ -300,6 +319,32 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
   - El docstring de `_run_tech_signal_merge` deja de citar solo `precompute_ml_tecnologias` como fuente del clobber.
 - **Files de partida:** [db/upsert.py](../db/upsert.py) (`_LIC_COALESCE_UPDATE_FIELDS`), [scheduler/pipeline_runs.py](../scheduler/pipeline_runs.py) (`_run_tech_signal_merge`), [services/tech_signal.py](../services/tech_signal.py) (`merge_doc_signals`)
 - **Riesgo:** medio — toca el camino de escritura de la tabla principal.
+
+### [P2] El corpus de PSCP ahoga el dataset del clasificador SAP: no se puede reentrenar, y el modelo servido no discrimina
+- **Área:** scraper/ml_training.py (`train_from_db`), scraper/connectors/pscp.py, scraper/ml_pipeline.py (`validate_training_data`)
+- **Problema:** `train_from_db` construye el dataset con un `SELECT … FROM licitaciones` **sin filtro de fuente**, y la etiqueta es «`raw_keywords` no vacío OR `tecnologia` no vacía». Medido contra producción el 2026-09-04:
+
+  | fuente | filas | positivos | % |
+  |---|---|---|---|
+  | **pscp** | 683.076 | 3.113 | **0,46%** |
+  | placsp | 6.853 | 4.412 | 64% |
+  | bulk_* | 13.095 | 376 | 2,9% |
+  | ted | 2.015 | 140 | 6,9% |
+  | **total** | **705.094** | **8.041** | **1,14%** |
+
+  Dos consecuencias, las dos verificadas:
+  1. **No se puede reentrenar.** `validate_training_data` exige ≥5% de clase minoritaria y aborta con `Minority class is only 1.1% of data`. El run [33855421538](https://github.com/Dkalds/TenderFlow/actions/runs/33855421538) (2026-09-04) murió ahí. El gate hizo su trabajo: no se publicó nada.
+  2. **El modelo servido no discrimina sobre esa población.** El de mayo se entrenó cuando el corpus eran ~4k filas de PLACSP con 64% de positivos. Hoy puntúa 683k registros de PSCP que nunca vio y da **90,64% del corpus por encima del umbral** (0,4657), con 42% de las filas en la banda 0,9-1,0. Un binario que dice «SAP» a 9 de cada 10 es una constante, no un clasificador.
+
+  Esto salió a la luz al arreglar la descarga de modelos (#263): hasta entonces el 96% de las filas tenía `ml_proba` a NULL y no había con qué verlo.
+- **La bifurcación (hay que elegir, no es solo trabajo):**
+  1. **Acotar la población de entrenamiento** por fuente. PLACSP + bulk + TED son 21.963 filas con 4.928 positivos = **22,4%**, muy por encima del suelo: el entrenamiento saldría hoy. Contrapartida: el modelo aprendería de una población distinta de la que puntúa, que es una forma nueva del mismo problema.
+  2. **Arreglar el etiquetado de PSCP**, si esas 683k filas deberían llevar `tecnologia`/`raw_keywords` y no las llevan. Sería un bug de conector, y haría innecesaria la opción 1.
+  3. **Aceptar** y dejar el modelo de mayo, asumiendo que su score no informa sobre PSCP.
+- **Orden sugerido:** mirar primero por qué las filas de PSCP no llevan `tecnologia`. Si es un bug de conector, la opción 2 resuelve las dos consecuencias a la vez; si es correcto (el corpus de PSCP realmente es 99,5% no-TI), entonces la pregunta de verdad es por qué se ingiere entero, y eso conecta con la «contaminación PSCP» de la auditoría de 2026-08.
+- **Files de partida:** [scraper/ml_training.py](../scraper/ml_training.py) (`train_from_db`, la query y la etiqueta), [scraper/ml_pipeline.py](../scraper/ml_pipeline.py) (`validate_training_data`), [scraper/connectors/pscp.py](../scraper/connectors/pscp.py)
+- **Relación:** bloquea el P1 del golden set (ampliarlo no sirve de nada si el dataset de entrenamiento está ahogado) y explica por qué `model_versions` no tiene ninguna fila de `sap_classifier`.
+- **Riesgo:** medio — cambiar la población de entrenamiento cambia qué aprende el clasificador que decide el rescate ML en ingesta.
 
 ### [P2] `baja_model` v2 y `retencion_model` v1 están entrenados y publicados, pero nadie puede decidir si activarlos
 - **Área:** db/model_registry.py, services/ml/baja_model.py, services/ml/calibration.py (acción del usuario)

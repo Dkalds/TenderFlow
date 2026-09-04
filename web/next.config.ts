@@ -1,5 +1,8 @@
 import type { NextConfig } from "next";
 import { legacyRedirects } from "./src/lib/space-views";
+// Ruta relativa y no alias `@/`: los `paths` de tsconfig no se aplican al
+// cargar este fichero, igual que con `space-views` de arriba.
+import { esValorLegalPlaceholder } from "./src/lib/legal-placeholder";
 
 /**
  * Aquí viven solo las cabeceras de seguridad **estáticas**, las que no dependen
@@ -108,6 +111,14 @@ const nextConfig: NextConfig = {
     // —el fallo más silencioso posible para una obligación legal—, así que
     // rompe el build en el mismo sitio y por el mismo criterio que API_BASE_URL:
     // solo en el despliegue donde la ausencia es un incidente.
+    //
+    // "Definida" no basta, y esto no es hipotético: la comprobación anterior era
+    // `!valor?.trim()`, así que las variables del proyecto de Vercel pasaron el
+    // guard llevando dentro el recordatorio de que había que cambiarlas, y
+    // /aviso-legal publicó «Responsable: PLACEHOLDER LOCAL - NO DESPLEGAR, con
+    // NIF X0000000X». Un valor de relleno se rechaza igual que uno vacío; el
+    // criterio vive en `src/lib/legal-placeholder.ts`, que `lib/legal.ts` usa
+    // también en render para que la página nunca imprima uno.
     if (esProduccionVercel) {
       const legales = {
         NEXT_PUBLIC_LEGAL_RESPONSABLE: process.env.NEXT_PUBLIC_LEGAL_RESPONSABLE,
@@ -115,12 +126,12 @@ const nextConfig: NextConfig = {
         NEXT_PUBLIC_LEGAL_DOMICILIO: process.env.NEXT_PUBLIC_LEGAL_DOMICILIO,
         NEXT_PUBLIC_CONTACT_EMAIL: process.env.NEXT_PUBLIC_CONTACT_EMAIL,
       };
-      const faltan = Object.entries(legales)
-        .filter(([, valor]) => !valor?.trim())
-        .map(([nombre]) => nombre);
-      if (faltan.length > 0) {
+      const invalidas = Object.entries(legales)
+        .filter(([, valor]) => esValorLegalPlaceholder(valor))
+        .map(([nombre, valor]) => (valor?.trim() ? `${nombre} (valor de relleno)` : nombre));
+      if (invalidas.length > 0) {
         throw new Error(
-          `Faltan variables del aviso legal en el proyecto de Vercel: ${faltan.join(", ")}. ` +
+          `Variables del aviso legal sin un valor real en el proyecto de Vercel: ${invalidas.join(", ")}. ` +
             "Sin ellas /aviso-legal se publica sin identificar al responsable del " +
             "tratamiento ni ofrecer canal para ejercer derechos.",
         );
