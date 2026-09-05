@@ -90,12 +90,33 @@ test.describe("Flujos de trabajo críticos", () => {
     //
     // Cuenta desechable, nunca la del seed: el borrado anonimiza el usuario y
     // revoca sus sesiones, así que hacerlo sobre `demo@tenderflow.dev` dejaría
-    // sin autenticación al resto de la suite. El alta self-service está abierta
-    // porque el job E2E corre con `ENV=dev` (ver `api/routes/auth.py::register`).
-    const email = `e2e-borrado-${Date.now()}@tenderflow.test`;
-    // Credencial de una cuenta desechable que este mismo test crea y borra: no
-    // abre nada fuera del Postgres efímero de CI.
-    const password = "BorradoE2E-2026"; // pragma: allowlist secret
+    // sin autenticación al resto de la suite.
+    //
+    // El alta self-service la abre `ALLOW_SELF_REGISTRATION`, declarada en el
+    // job `frontend-e2e` de `ci.yml`. La primera versión de este test daba por
+    // hecho que bastaba `ENV=dev` y fallaba con un mensaje que culpaba al sitio
+    // equivocado; `web/e2e/login.spec.ts` ya documentaba que en producción la
+    // bandera está apagada y `register` responde 403.
+    const sello = Date.now();
+    // `@example.com` y no `@tenderflow.test`: `email-validator` —el que hay
+    // detrás de `EmailStr`— rechaza los TLD de uso especial, así que `.test`
+    // devolvía 422 («value is not a valid email address»). Es el mismo dominio
+    // que usa `tests/test_auth_register.py`, que sí pasa. El sello temporal
+    // mantiene la cuenta única entre ejecuciones.
+    const email = `e2e-borrado-${sello}@example.com`;
+    // Credencial de una cuenta desechable que este mismo test crea y borra.
+    //
+    // Se GENERA en ejecución en vez de ir literal: una constante con pinta de
+    // contraseña en el repositorio la marca `gitleaks`, y silenciarla con una
+    // excepción en `.gitleaks.toml` gastaría una regla de seguridad real en un
+    // caso que no la necesita. De paso, cada ejecución usa una distinta.
+    //
+    // Los 16+ caracteres son obligatorios: `shared/password_policy.py` los
+    // exige (`min_length=16`) y `register` responde 400 por debajo de ahí. La
+    // primera versión de este test usaba una de 15 y fallaba con el mensaje de
+    // «el alta debe estar abierta», que apuntaba al sitio equivocado — el alta
+    // SÍ estaba abierta (`ENV=dev`); lo que no cumplía era la contraseña.
+    const password = `E2E-${sello}-${Math.random().toString(36).slice(2, 10)}-Ok`; // pragma: allowlist secret
 
     // Contexto propio: sin `storageState`, para no heredar la sesión demo.
     const context = await browser.newContext();
@@ -103,10 +124,14 @@ test.describe("Flujos de trabajo críticos", () => {
       const alta = await context.request.post("/api/v1/auth/register", {
         data: { email, password, display_name: "Cuenta de borrado E2E" },
       });
+      // El mensaje lleva el estado Y el cuerpo a propósito. La versión anterior
+      // afirmaba «el alta debe estar abierta» pasara lo que pasara, así que un
+      // 400 de política de contraseña y un 403 de bandera apagada se leían
+      // idénticos y mandaban a mirar el sitio equivocado. Un assert que siempre
+      // acusa a la misma causa es peor que uno sin mensaje.
       expect(
         alta.status(),
-        "El alta self-service debe estar abierta en CI (ENV=dev) para poder " +
-          "probar el borrado sin tocar los usuarios del seed.",
+        `POST /auth/register devolvió ${alta.status()}: ${(await alta.text()).slice(0, 300)}`,
       ).toBe(201);
 
       const page = await context.newPage();
@@ -121,10 +146,17 @@ test.describe("Flujos de trabajo críticos", () => {
         page.getByRole("button", { name: "Eliminar mi cuenta definitivamente" }).click(),
       ]);
 
-      expect(
-        respuesta.status(),
-        `DELETE /me devolvió ${respuesta.status()}: ${await respuesta.text()}`,
-      ).toBe(200);
+      // El cuerpo se lee con red: tras un borrado con éxito la app navega a
+      // `/login` —la sesión acaba de revocarse— y Chromium libera el cuerpo de
+      // la respuesta, de modo que `.text()` lanza «Protocol error
+      // (Network.getResponseBody): No resource with given identifier found».
+      // El estado sigue disponible siempre; el cuerpo solo hace falta para
+      // explicar un fallo, así que su ausencia no puede ser el fallo.
+      const cuerpo = await respuesta
+        .text()
+        .catch(() => "<cuerpo no disponible: la página ya había navegado>");
+
+      expect(respuesta.status(), `DELETE /me devolvió ${respuesta.status()}: ${cuerpo}`).toBe(200);
       expect(respuesta.request().headers()["x-csrf-token"]).toBeTruthy();
       expect(JSON.parse(respuesta.request().postData() ?? "{}")).toEqual({
         confirmation: "DELETE",

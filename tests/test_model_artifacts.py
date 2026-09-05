@@ -26,6 +26,38 @@ def _sha(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
+@pytest.fixture
+def cache_dir(tmp_path, monkeypatch) -> Path:
+    """Apunta ``artifact_cache_dir()`` a ``tmp_path`` y devuelve ese directorio.
+
+    Hace falta desde S3.2: la descarga ya no va al ``path`` del registro sino a
+    la caché escribible, que sale de ``settings.DATA_DIR/models``. Sin este
+    redireccionamiento los tests escribirían ``baja_model.pkl`` en el
+    ``data/models/`` del checkout — pisando el artefacto real del que
+    desarrolla y, peor, dejando un fichero que la pasada siguiente encontraría
+    en el camino de «caché ya poblada», con lo que la descarga que se pretende
+    verificar no llegaría a intentarse.
+    """
+    from config.settings import settings
+
+    data_dir = tmp_path / "datadir"
+    monkeypatch.setattr(settings, "DATA_DIR", data_dir, raising=False)
+    return data_dir / "models"
+
+
+def _descarga_falsa(contenido: bytes, destinos: list[Path] | None = None):
+    """``_download_release_asset`` de mentira que deja ``contenido`` en ``dest``."""
+
+    def _fake_download(_asset_name: str, dest: Path) -> bool:
+        if destinos is not None:
+            destinos.append(dest)
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_bytes(contenido)
+        return True
+
+    return _fake_download
+
+
 def test_sin_version_activa_devuelve_none(tmp_db):
     assert resolve_active_artifact("modelo-inexistente") is None
 
@@ -50,52 +82,139 @@ def test_mutacion_del_artefacto_se_detecta(tmp_db, tmp_path):
         resolve_active_artifact("baja")
 
 
-def test_fichero_ausente_sin_sha_devuelve_none(tmp_db, tmp_path):
+def test_fichero_ausente_sin_sha_devuelve_none(tmp_db, tmp_path, cache_dir):
     artefacto = tmp_path / "no-existe.pkl"
     _register("baja", artefacto, "")
 
     assert resolve_active_artifact("baja") is None
 
 
-def test_fichero_ausente_con_sha_intenta_descarga(tmp_db, tmp_path):
-    """Runner efímero: sin fichero local se intenta el asset de la Release."""
-    artefacto = tmp_path / "baja_model.pkl"
+def test_fichero_ausente_con_sha_intenta_descarga(tmp_db, tmp_path, cache_dir):
+    """Runner efímero: sin fichero local se intenta el asset de la Release.
+
+    El asset se sigue pidiendo por el basename del path registrado, pero desde
+    S3.2 el DESTINO ya no es ese path: es la caché escribible. El ``path`` de
+    ``model_versions`` es la ruta de la máquina que ENTRENÓ (un runner de
+    Actions), y el contenedor de la API en Render no tiene disco propio, no
+    lleva ``data/`` en la imagen y puede ni siquiera poder crear ese
+    directorio — descargar ahí era la razón de que ``/explain`` degradase a 503
+    de forma permanente.
+    """
+    registrado = tmp_path / "runner-que-entreno" / "baja_model.pkl"
     contenido = b"modelo-desde-release"
-    _register("baja", artefacto, _sha(contenido))
+    _register("baja", registrado, _sha(contenido))
+
+    pedidos: list[str] = []
+    destinos: list[Path] = []
 
     def _fake_download(asset_name: str, dest: Path) -> bool:
-        assert asset_name == "baja_model.pkl"
-        dest.write_bytes(contenido)
-        return True
+        pedidos.append(asset_name)
+        return _descarga_falsa(contenido, destinos)(asset_name, dest)
 
     with patch("shared.model_artifacts._download_release_asset", side_effect=_fake_download):
         resolved = resolve_active_artifact("baja")
 
-    assert resolved == artefacto
-    assert artefacto.read_bytes() == contenido
+    assert pedidos == ["baja_model.pkl"]
+    assert destinos == [cache_dir / "baja_model.pkl"]
+    assert resolved == cache_dir / "baja_model.pkl"
+    assert resolved.read_bytes() == contenido
+    # La ruta del registro no se toca: en Render puede no ser ni creable.
+    assert not registrado.exists()
 
 
-def test_descarga_deja_el_checksum_colocado(tmp_db, tmp_path):
+def test_descarga_deja_el_checksum_colocado(tmp_db, tmp_path, cache_dir):
     """El asset de la Release llega solo, sin su ``.sha256``.
 
     ``shared.model_integrity.verify_model_integrity`` —el paso previo a
     ``joblib.load``— aborta en ENV=prod si no hay ni pin ni checksum
     co-ubicado, así que sin escribirlo aquí resolver el artefacto cambiaría el
-    fallback a baseline por un RuntimeError a mitad del batch.
+    fallback a baseline por un RuntimeError a mitad del batch. Va junto al
+    artefacto, o sea en la caché (S3.2): «co-ubicado» es literal, es donde lo
+    busca ``verify_model_integrity``.
     """
-    artefacto = tmp_path / "baja_model.pkl"
+    registrado = tmp_path / "runner-que-entreno" / "baja_model.pkl"
     contenido = b"modelo-desde-release"
-    _register("baja", artefacto, _sha(contenido))
+    _register("baja", registrado, _sha(contenido))
 
-    def _fake_download(_asset_name: str, dest: Path) -> bool:
-        dest.write_bytes(contenido)
-        return True
+    with patch(
+        "shared.model_artifacts._download_release_asset",
+        side_effect=_descarga_falsa(contenido),
+    ):
+        resuelto = resolve_active_artifact("baja")
 
-    with patch("shared.model_artifacts._download_release_asset", side_effect=_fake_download):
+    sidecar = cache_dir / "baja_model.sha256"
+    assert sidecar == resuelto.with_suffix(".sha256")
+    assert sidecar.read_text(encoding="utf-8").strip() == _sha(contenido)
+
+
+def test_activar_otra_version_renueva_el_checksum_de_la_cache(tmp_db, tmp_path, cache_dir):
+    """Regresión: la caché reciclaba el ``.sha256`` de la versión anterior.
+
+    Cada versión de ``baja_model``/``retencion_model`` se registra con el MISMO
+    basename (``services/ml/baja_model.py::_MODEL_PATH`` es una ruta fija), así
+    que la entrada de caché ``baja_model.pkl`` se reutiliza al activar una
+    versión nueva. El ``.pkl`` obsoleto sí se borraba; su ``.sha256`` no, y
+    ``_ensure_sidecar_checksum`` respetaba el sidecar existente — con lo que
+    ``verify_model_integrity`` leía el hash de la versión vieja junto al
+    artefacto nuevo y abortaba con «integridad comprometida» en ENV=prod.
+    Activar una versión rompía el servicio en vez de cambiarlo, que es
+    exactamente el fallo que S3.2 vino a arreglar.
+    """
+    from shared.model_integrity import verify_model_integrity
+
+    registrado = tmp_path / "runner-que-entreno" / "baja_model.pkl"
+    vieja, nueva = b"modelo-v1", b"modelo-v2"
+
+    _register("baja", registrado, _sha(vieja))
+    with patch(
+        "shared.model_artifacts._download_release_asset", side_effect=_descarga_falsa(vieja)
+    ):
         resolve_active_artifact("baja")
 
-    sidecar = tmp_path / "baja_model.sha256"
-    assert sidecar.read_text(encoding="utf-8").strip() == _sha(contenido)
+    # `POST /models/baja/activate/2`: otra versión activa, mismo basename.
+    _register("baja", registrado, _sha(nueva))
+    with patch(
+        "shared.model_artifacts._download_release_asset", side_effect=_descarga_falsa(nueva)
+    ):
+        resuelto = resolve_active_artifact("baja")
+
+    assert resuelto.read_bytes() == nueva
+    assert (cache_dir / "baja_model.sha256").read_text(encoding="utf-8").strip() == _sha(nueva)
+    # El invariante de verdad: el artefacto resuelto se puede cargar en prod.
+    verify_model_integrity(
+        resuelto,
+        pinned_sha256="",
+        pin_setting_name="ML_BAJA_SHA256",
+        model_label="baja_model",
+        env="prod",
+    )
+
+
+def test_un_sidecar_huerfano_en_la_cache_no_bloquea_la_descarga(tmp_db, tmp_path, cache_dir):
+    """El ``.sha256`` que sobrevive a su artefacto no manda sobre el nuevo.
+
+    En un checkout ``artifact_cache_dir()`` ES ``data/models/``, donde
+    ``services/ml/promotion.py::_escribir_checksum`` deja el checksum del
+    artefacto publicado. Si el ``.pkl`` desaparece (``data/models/`` está en
+    .gitignore, y en un contenedor el disco es efímero) y el ``.sha256`` no,
+    lo que acaba de bajarse —y de cotejarse contra ``model_versions``— es lo
+    que vale.
+    """
+    registrado = tmp_path / "runner-que-entreno" / "baja_model.pkl"
+    contenido = b"modelo-desde-release"
+    _register("baja", registrado, _sha(contenido))
+
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    (cache_dir / "baja_model.sha256").write_text("hash-de-un-pkl-que-ya-no-esta", encoding="utf-8")
+
+    with patch(
+        "shared.model_artifacts._download_release_asset",
+        side_effect=_descarga_falsa(contenido),
+    ):
+        resuelto = resolve_active_artifact("baja")
+
+    assert resuelto.read_bytes() == contenido
+    assert (cache_dir / "baja_model.sha256").read_text(encoding="utf-8").strip() == _sha(contenido)
 
 
 def test_no_pisa_un_checksum_colocado_existente(tmp_db, tmp_path):
@@ -111,19 +230,22 @@ def test_no_pisa_un_checksum_colocado_existente(tmp_db, tmp_path):
     assert sidecar.read_text(encoding="utf-8") == "un-hash-que-no-cuadra"
 
 
-def test_descarga_con_sha_incorrecto_falla(tmp_db, tmp_path):
-    artefacto = tmp_path / "baja_model.pkl"
-    _register("baja", artefacto, _sha(b"lo-esperado"))
-
-    def _fake_download(asset_name: str, dest: Path) -> bool:
-        dest.write_bytes(b"otra-cosa")
-        return True
+def test_descarga_con_sha_incorrecto_falla(tmp_db, tmp_path, cache_dir):
+    registrado = tmp_path / "runner-que-entreno" / "baja_model.pkl"
+    _register("baja", registrado, _sha(b"lo-esperado"))
 
     with (
-        patch("shared.model_artifacts._download_release_asset", side_effect=_fake_download),
+        patch(
+            "shared.model_artifacts._download_release_asset",
+            side_effect=_descarga_falsa(b"otra-cosa"),
+        ),
         pytest.raises(ModelArtifactMismatch),
     ):
         resolve_active_artifact("baja")
+
+    # Un asset que no cuadra no se legitima con un checksum co-ubicado: sin
+    # sidecar, `verify_model_integrity` seguiría rechazándolo en prod.
+    assert not (cache_dir / "baja_model.sha256").exists()
 
 
 def test_sap_active_learning_es_paso_canonico():

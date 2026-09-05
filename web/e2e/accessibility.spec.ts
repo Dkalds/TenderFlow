@@ -20,6 +20,17 @@ async function expectBasicAccessibility(page: Page): Promise<void> {
     .locator('button, input:not([type="hidden"]), select, textarea, [role="button"], [role="combobox"]')
     .evaluateAll((elements) =>
       elements.flatMap((element) => {
+        // Fuera del árbol de accesibilidad → WCAG 4.1.2 no le exige nombre.
+        // El caso concreto que lo motiva: Radix renderiza junto a cada
+        // Checkbox y Switch un `<input>` nativo oculto para que el control
+        // participe en el envío del formulario, y lo marca `aria-hidden="true"`
+        // con `tabindex="-1"` precisamente para que ningún lector de pantalla
+        // lo vea. Exigirle nombre convertía ese patrón correcto en un rojo, y
+        // un gate que falla sobre lo que está bien hecho se acaba desactivando
+        // entero — que es como se pierden los hallazgos de verdad.
+        if (element.closest('[aria-hidden="true"]')) {
+          return [];
+        }
         const labelledBy = element.getAttribute("aria-labelledby");
         const labelledText = labelledBy
           ? labelledBy

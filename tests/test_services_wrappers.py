@@ -199,35 +199,63 @@ def test_usuarios_lockout_umbral_exacto(tmp_db):
 
 # ---------------------------------------------------------------------------
 # services/saved_filters.py
+#
+# La fachada dejó de aceptar ``organization_id`` opcional (S4.3, 2026-09): con
+# default ``None`` el CRUD de abajo caía a una query sin filtro de
+# organización, y una fachada que lo omitiera reintroduciría ese fail-open.
+# Los tests pasan por tanto una organización real (la FK de v64 rechaza un id
+# inventado) y el de aislamiento cubre las dos dimensiones que existen ahora:
+# dos usuarios de la misma organización, y dos organizaciones distintas.
 # ---------------------------------------------------------------------------
+
+
+def _organizacion_de_pruebas(nombre: str) -> int:
+    """Crea una organización real (con su owner) y devuelve su id.
+
+    ``saved_filters.organization_id`` es FK contra ``organizations``, así que
+    un id inventado revienta el INSERT con ``ForeignKeyViolation`` antes de
+    llegar a comprobar nada de lo que estos tests miran.
+    """
+    from db.repositories.organizations import OrganizationRepository
+    from db.users import create_user
+
+    owner = create_user(
+        email=f"{nombre}@example.test",
+        password_hash="test-hash",  # pragma: allowlist secret -- literal de test
+        display_name=nombre,
+    )
+    return int(OrganizationRepository().create_organization(nombre, owner)["id"])
 
 
 def test_filtros_save_list_roundtrip(tmp_db):
     """Guardar un filtro y listarlo devuelve la entrada esperada."""
     from services.saved_filters import list_saved_filters, save_filter
 
+    organizacion = _organizacion_de_pruebas("filtros-roundtrip")
     user_key = "user-filtros-001"
     payload = json.dumps({"q": "SAP", "estados": ["PUB"]})
 
-    save_filter(user_key, "Mi búsqueda SAP", payload)
+    save_filter(user_key, "Mi búsqueda SAP", payload, organizacion)
 
-    filtros = list_saved_filters(user_key)
+    filtros = list_saved_filters(user_key, organizacion)
     assert isinstance(filtros, list)
     assert len(filtros) == 1
     assert filtros[0]["name"] == "Mi búsqueda SAP"
     assert filtros[0]["filters_json"] == payload
+    assert filtros[0]["organization_id"] == organizacion
 
 
 def test_filtros_save_multiples(tmp_db):
     """Varios filtros del mismo usuario se listan todos."""
     from services.saved_filters import list_saved_filters, save_filter
 
+    organizacion = _organizacion_de_pruebas("filtros-multiples")
     user_key = "user-filtros-002"
     nombres = ["Filtro A", "Filtro B", "Filtro C"]
     for nombre in nombres:
-        save_filter(user_key, nombre, json.dumps({"q": nombre}))
+        save_filter(user_key, nombre, json.dumps({"q": nombre}), organizacion)
 
-    filtros = list_saved_filters(user_key)
+    filtros = list_saved_filters(user_key, organizacion)
     assert len(filtros) == 3
     nombres_guardados = {f["name"] for f in filtros}
     assert nombres_guardados == set(nombres)
@@ -237,11 +265,12 @@ def test_filtros_save_upsert_sobreescribe(tmp_db):
     """Guardar con el mismo (user_key, name) sobreescribe el payload."""
     from services.saved_filters import list_saved_filters, save_filter
 
+    organizacion = _organizacion_de_pruebas("filtros-upsert")
     user_key = "user-filtros-003"
-    save_filter(user_key, "Búsqueda única", json.dumps({"q": "inicial"}))
-    save_filter(user_key, "Búsqueda única", json.dumps({"q": "actualizado"}))
+    save_filter(user_key, "Búsqueda única", json.dumps({"q": "inicial"}), organizacion)
+    save_filter(user_key, "Búsqueda única", json.dumps({"q": "actualizado"}), organizacion)
 
-    filtros = list_saved_filters(user_key)
+    filtros = list_saved_filters(user_key, organizacion)
     assert len(filtros) == 1
     assert json.loads(filtros[0]["filters_json"])["q"] == "actualizado"
 
@@ -250,40 +279,54 @@ def test_filtros_delete_roundtrip(tmp_db):
     """Guardar y luego borrar → lista vacía."""
     from services.saved_filters import delete_saved_filter, list_saved_filters, save_filter
 
+    organizacion = _organizacion_de_pruebas("filtros-delete")
     user_key = "user-filtros-004"
-    save_filter(user_key, "Para borrar", json.dumps({"q": "x"}))
+    save_filter(user_key, "Para borrar", json.dumps({"q": "x"}), organizacion)
 
-    filtros = list_saved_filters(user_key)
+    filtros = list_saved_filters(user_key, organizacion)
     assert len(filtros) == 1
     fid = filtros[0]["id"]
 
-    delete_saved_filter(fid, user_key)
+    delete_saved_filter(fid, user_key, organizacion)
 
-    filtros_tras_borrado = list_saved_filters(user_key)
+    filtros_tras_borrado = list_saved_filters(user_key, organizacion)
     assert filtros_tras_borrado == []
 
 
 def test_filtros_aislamiento_por_usuario(tmp_db):
-    """Los filtros de un usuario no aparecen en el de otro."""
+    """Aislamiento en sus dos dimensiones: entre usuarios y entre organizaciones.
+
+    La primera mitad es el guardrail de siempre (dos usuarios no se ven los
+    filtros). La segunda es la que aparece con la tenencia obligatoria: el
+    MISMO ``user_key`` mirando desde dos organizaciones ve dos listas
+    distintas, no la unión. Fusionarlas era exactamente el bug fail-open —
+    omitir ``organization_id`` devolvía todo lo del ``user_key``, cruzando
+    organizaciones.
+    """
     from services.saved_filters import list_saved_filters, save_filter
 
-    save_filter("user-A", "Solo A", json.dumps({"q": "A"}))
-    save_filter("user-B", "Solo B", json.dumps({"q": "B"}))
+    equipo = _organizacion_de_pruebas("filtros-equipo")
+    otro_equipo = _organizacion_de_pruebas("filtros-otro-equipo")
 
-    filtros_a = list_saved_filters("user-A")
-    filtros_b = list_saved_filters("user-B")
+    save_filter("user-A", "Solo A", json.dumps({"q": "A"}), equipo)
+    save_filter("user-B", "Solo B", json.dumps({"q": "B"}), equipo)
+    save_filter("user-A", "A en el otro equipo", json.dumps({"q": "A2"}), otro_equipo)
 
-    assert len(filtros_a) == 1
-    assert filtros_a[0]["name"] == "Solo A"
-    assert len(filtros_b) == 1
-    assert filtros_b[0]["name"] == "Solo B"
+    filtros_a = list_saved_filters("user-A", equipo)
+    filtros_b = list_saved_filters("user-B", equipo)
+    filtros_a_otro = list_saved_filters("user-A", otro_equipo)
+
+    assert [f["name"] for f in filtros_a] == ["Solo A"]
+    assert [f["name"] for f in filtros_b] == ["Solo B"]
+    assert [f["name"] for f in filtros_a_otro] == ["A en el otro equipo"]
 
 
 def test_filtros_usuario_sin_filtros_devuelve_lista_vacia(tmp_db):
     """Un usuario que nunca guardó filtros recibe lista vacía."""
     from services.saved_filters import list_saved_filters
 
-    resultado = list_saved_filters("usuario-inexistente-xyz")
+    organizacion = _organizacion_de_pruebas("filtros-vacios")
+    resultado = list_saved_filters("usuario-inexistente-xyz", organizacion)
     assert resultado == []
 
 

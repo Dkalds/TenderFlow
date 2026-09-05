@@ -176,15 +176,29 @@ def owned_api_key(api_db):
     email = "calendario@example.com"
     user_id = create_user(email=email, password_hash=hash_password(_PASSWORD))
     token = create_api_key("calendario-key", scopes="*", user_id=user_id)
-    return token, user_key_from_email(email, user_id)
+    return token, user_key_from_email(email, user_id), user_id
 
 
-def test_calendario_ics_devuelve_los_favoritos_con_fecha(client, api_db, owned_api_key):
-    """El .ics incluye un VEVENT por deadline y otro por fin de contrato."""
+def _organizacion_personal(user_id: int) -> int:
+    """La organización con la que el endpoint lee los favoritos.
+
+    Siempre la personal, y a propósito (ver ``_organizacion_del_calendario`` en
+    `api/routes/exports.py`): el enlace de suscripción es una URL firmada que
+    no puede llevar un ``organization_id`` sin invalidar los enlaces ya
+    emitidos. El test resuelve la misma que resolverá la ruta en vez de
+    inventarse una, porque sembrar el favorito en otra organización lo dejaría
+    fuera del calendario — que es justo lo que comprueba el test de abajo.
+    """
+    from services.organizations import resolve_organization
+
+    organization_id, _rol = resolve_organization(user_id, None)
+    return int(organization_id)
+
+
+def _seed_favorito_con_plazos(user_key: str, user_id: int, organization_id: int) -> None:
     import db.database as db_mod
     from db.repositories.watchlist import WatchlistRepository
 
-    token, user_key = owned_api_key
     with db_mod.connect() as c:
         c.execute(
             "INSERT INTO licitaciones "
@@ -198,7 +212,18 @@ def test_calendario_ics_devuelve_los_favoritos_con_fecha(client, api_db, owned_a
                 datetime.now(UTC).isoformat(),
             ),
         )
-    WatchlistRepository().add_item(user_key=user_key, user_id=None, id_externo="EXP-ICS-1")
+    WatchlistRepository().add_item(
+        user_key=user_key,
+        user_id=user_id,
+        id_externo="EXP-ICS-1",
+        organization_id=organization_id,
+    )
+
+
+def test_calendario_ics_devuelve_los_favoritos_con_fecha(client, api_db, owned_api_key):
+    """El .ics incluye un VEVENT por deadline y otro por fin de contrato."""
+    token, user_key, user_id = owned_api_key
+    _seed_favorito_con_plazos(user_key, user_id, _organizacion_personal(user_id))
 
     resp = client.get("/api/v1/exports/calendario.ics", headers={"X-API-Key": token})
 
@@ -210,9 +235,47 @@ def test_calendario_ics_devuelve_los_favoritos_con_fecha(client, api_db, owned_a
     assert cuerpo.count("BEGIN:VEVENT") == 2  # fecha_limite + fecha_fin
 
 
+def test_calendario_ics_no_saca_los_favoritos_de_otra_organizacion(client, api_db, owned_api_key):
+    """El ICS lo sirve un enlace firmado de larga vida y sin sesión.
+
+    Hasta 2026-09 la ruta ejecutaba su propio SQL filtrando sólo por
+    ``wi.user_key``, sin organización ni visibilidad (O0.8 + ADR-022). Ahora lee
+    por ``WatchlistRepository.calendar_items`` con el mismo predicado que
+    ``GET /watchlist/items``: un favorito privado del usuario en OTRA
+    organización no viaja en el calendario personal.
+    """
+    import db.database as db_mod
+    from db.repositories.organizations import OrganizationRepository
+    from db.repositories.watchlist import WatchlistRepository
+
+    token, user_key, user_id = owned_api_key
+    _seed_favorito_con_plazos(user_key, user_id, _organizacion_personal(user_id))
+
+    otra = int(OrganizationRepository().create_organization("Otro equipo", user_id)["id"])
+    with db_mod.connect() as c:
+        c.execute(
+            "INSERT INTO licitaciones "
+            "(id_externo, titulo, fecha_limite, fecha_extraccion) VALUES (%s, %s, %s, %s)",
+            ("EXP-ICS-OTRA", "De otro equipo", "2026-10-30", datetime.now(UTC).isoformat()),
+        )
+    WatchlistRepository().add_item(
+        user_key=user_key,
+        user_id=user_id,
+        id_externo="EXP-ICS-OTRA",
+        organization_id=otra,
+    )
+
+    resp = client.get("/api/v1/exports/calendario.ics", headers={"X-API-Key": token})
+
+    assert resp.status_code == 200, resp.text
+    cuerpo = resp.content.decode()
+    assert "EXP-ICS-1" in cuerpo
+    assert "EXP-ICS-OTRA" not in cuerpo
+
+
 def test_calendario_ics_sin_favoritos_sigue_siendo_valido(client, api_db, owned_api_key):
     """Sin favoritos el .ics existe y está bien formado, no es un 500."""
-    token, _ = owned_api_key
+    token, _user_key, _user_id = owned_api_key
 
     resp = client.get("/api/v1/exports/calendario.ics", headers={"X-API-Key": token})
 
@@ -224,7 +287,7 @@ def test_calendario_ics_sin_favoritos_sigue_siendo_valido(client, api_db, owned_
 
 def test_calendario_ics_exige_la_cabecera_no_la_query(client, api_db, owned_api_key):
     """El token va en X-API-Key y solo ahí: en la URL acabaría en los logs."""
-    token, _ = owned_api_key
+    token, _user_key, _user_id = owned_api_key
 
     resp = client.get(f"/api/v1/exports/calendario.ics?token={token}")
 

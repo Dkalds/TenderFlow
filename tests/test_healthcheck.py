@@ -152,17 +152,95 @@ def test_healthcheck_critical_without_runs(tmp_db):
     assert "sin_runs_registrados" in result["errors"]
 
 
+def _con_fuentes_frescas() -> None:
+    """Registra un run exitoso reciente por cada fuente del inventario (S2.3).
+
+    Desde S2.3 «sano» ya no es «hubo una extracción global reciente»: el
+    informe cruza ``scraper.connectors.REGISTERED_SOURCES`` con
+    ``source_ingestion_health`` y una fuente obligatoria sin registro degrada.
+    Un schema de test recién migrado no tiene ninguna fila, así que sembrar
+    solo el ``extraction_run`` describe un sistema en el que seis de las siete
+    fuentes no han corrido nunca — que es exactamente el estado que el check
+    existe para delatar (seis conectores corren con ``continue-on-error: true``
+    y el carril PLACSP mantiene fresco el run global por su cuenta).
+
+    Por eso el test siembra la salud por fuente en vez de ablandar el umbral:
+    en producción los siete conectores escriben aquí en cada pasada de 4 h
+    (``run_connector`` → ``SourceHealthRepository.mark_completed``), así que
+    exigirlo no es una condición artificial de test.
+    """
+    from db.repositories.source_health import SourceHealthRepository
+    from scraper.connectors import REGISTERED_SOURCES
+
+    repo = SourceHealthRepository()
+    for fuente in REGISTERED_SOURCES:
+        repo.mark_completed(
+            source=fuente.source_id,
+            status="success",
+            fetched=1,
+            parsed=1,
+            discarded=0,
+            errors=0,
+            cursor_value=None,
+        )
+
+
 def test_healthcheck_healthy_after_successful_run(tmp_db):
+    """Sano de verdad: extracción reciente Y todas las fuentes dentro de su SLA."""
     from observability.metrics import record_run
 
     with record_run("run-ok") as m:
         m.months_attempted = 1
         m.months_ok = 1
+    _con_fuentes_frescas()
 
     from scheduler.healthcheck import run_check
 
     result = run_check()
     assert result["status"] == "healthy", result
+    assert {"name": "fuentes_frescas", "ok": True} in result["checks"]
+    assert result["info"]["fuentes_frescura"]["atrasadas"] == []
+    assert result["info"]["fuentes_frescura"]["sin_registro"] == []
+
+
+def test_una_fuente_muerta_degrada_aunque_la_pasada_global_este_fresca(tmp_db):
+    """El motivo entero de S2.3, extremo a extremo.
+
+    PLACSP mantiene fresco el ``extraction_run`` global —es el carril de cada
+    4 h— mientras cualquiera de las otras seis fuentes lleva semanas parada:
+    sus steps corren con ``continue-on-error: true``, así que tampoco ponen el
+    job en rojo. Antes de S2.3 ese estado salía ``healthy``.
+    """
+    from datetime import datetime, timedelta
+    from unittest.mock import patch
+
+    from db.database import connect
+    from observability.metrics import record_run
+
+    with record_run("run-ok-fuentes") as m:
+        m.months_attempted = 1
+        m.months_ok = 1
+    _con_fuentes_frescas()
+
+    # 10 días sin ingerir; el umbral de galicia_rss es 168 h (una semana).
+    with connect() as c:
+        c.execute(
+            "UPDATE source_ingestion_health SET last_success_at = %s WHERE source = %s",
+            ((datetime.now(UTC) - timedelta(days=10)).isoformat(), "galicia_rss"),
+        )
+
+    from scheduler.healthcheck import run_check
+
+    # `notify` se parchea porque el check avisa por email al detectar el
+    # problema; lo que se prueba aquí es el informe, no el transporte.
+    with patch("scheduler.healthcheck.notify"):
+        result = run_check()
+
+    assert result["status"] == "degraded"
+    assert "fuente_atrasada:galicia_rss" in result["warnings"]
+    assert {"name": "fuentes_frescas", "ok": False} in result["checks"]
+    # El check global sigue verde: es justo el punto ciego que S2.3 cierra.
+    assert {"name": "last_run_fresh", "ok": True} in result["checks"]
 
 
 def test_healthcheck_degraded_when_last_run_stale(tmp_db):
@@ -296,6 +374,9 @@ def test_healthcheck_main_returns_0_for_healthy(tmp_db):
     with record_run("run-main-ok") as m:
         m.months_attempted = 1
         m.months_ok = 1
+    # Mismo motivo que en `test_healthcheck_healthy_after_successful_run`: sin
+    # salud por fuente el informe sale `degraded` y `main` devolvería 1.
+    _con_fuentes_frescas()
 
     from scheduler.healthcheck import main
 
