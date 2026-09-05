@@ -445,8 +445,11 @@ aplica `alembic upgrade head` sobre `TEST_DATABASE_URL`, lee
 `information_schema` y `pg_indexes` y escribe tablas, columnas, índices y
 vistas materializadas agrupadas por familia, con cabecera «generado por». (b)
 Los cinco RFC del hecho 25 cambian de `status`; el de relaciones se marca
-`obsolete` o se reescribe contra la arquitectura de información actual. (c) La
-tabla de características del README deja de dar TED por pendiente.
+`obsolete` o se reescribe contra la arquitectura de información actual. (c) El
+README deja de listar `db/migrations.py`, que no existe, y de describir
+`scraper/pipeline.py` como orquestador principal; la cabecera de
+`_content/landing.ts` retira su advertencia sobre el README, que ya da TED por
+activo (README, línea 11).
 
 **Ficheros.** `scripts/gen_schema_doc.py` (nuevo), `docs/database-schema.md`,
 `Makefile`, `.github/workflows/ci.yml`, `docs/rfc/*.md`, `docs/rfc/README.md`,
@@ -461,8 +464,9 @@ tabla de características del README deja de dar TED por pendiente.
 - Los cinco RFC llevan `status: implemented` o `superseded`;
   `docs/rfc/README.md` escribe el criterio: implementado es que el código
   exista, no que el PR se haya mergeado.
-- La cabecera de `_content/landing.ts` deja de advertir de que el README está
-  desactualizado, porque ya no lo está.
+- El README no cita rutas inexistentes y describe `scraper/pipeline.py` como
+  resto legado; la cabecera de `_content/landing.ts` deja de atribuir al
+  README un desfase sobre TED que no tiene.
 
 **Verificación de la ola.** O0.1–O0.4 comprobadas en producción con fecha en
 sus ficheros; `make check`, `make check-api-contract` y `make web-test` verdes

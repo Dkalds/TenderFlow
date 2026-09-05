@@ -136,3 +136,4 @@ intelectual
 foto
 hagas
 colector
+predecesor
