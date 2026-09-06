@@ -1881,6 +1881,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/licitaciones/comparar": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Comparar las fichas de hasta tres expedientes, familia a familia
+         * @description F2.8 — determinista y sin LLM.
+         *
+         *     Una familia vacía **se muestra vacía**, no se omite: que uno de los dos
+         *     pliegos no diga nada de solvencia técnica es exactamente lo que hay que
+         *     ver. Los expedientes sin ficha extraída se declaran en `sin_ficha`, para
+         *     que una columna en blanco no se confunda con un pliego que no exige nada.
+         */
+        post: operations["post_comparar_fichas_api_v1_licitaciones_comparar_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/licitaciones/cursor": {
         parameters: {
             query?: never;
@@ -2970,6 +2995,53 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/pursuits/cartera": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Contratos ganados que siguen en ejecución (F4.3)
+         * @description La cartera, con la ventana de relicitación de cada contrato.
+         *
+         *     Se declara siempre de dónde sale la fecha de fin (`fecha_fin_origen`): una
+         *     publicada por la fuente y una derivada de la duración no valen lo mismo en
+         *     la pantalla donde se decide cuándo preparar una renovación.
+         */
+        get: operations["get_cartera_api_v1_pursuits_cartera_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/pursuits/direccion": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Cuadro de mando de dirección (F4.2) — solo owner y admin
+         * @description El control de rol está **en el servicio**, no en el rail.
+         *
+         *     Un `member` que teclee la URL recibe 403, no una pantalla sin enlace: un
+         *     rail sin enlace es una sugerencia, esto es un permiso.
+         */
+        get: operations["get_direccion_api_v1_pursuits_direccion_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/pursuits/metrics": {
         parameters: {
             query?: never;
@@ -4006,6 +4078,18 @@ export interface components {
             proximo_vencimiento: string | null;
         };
         /**
+         * CeldaComparacion
+         * @description Lo que una ficha dice de una familia.
+         */
+        CeldaComparacion: {
+            /** Ejemplos */
+            ejemplos?: string[];
+            /** Licitacion Id */
+            licitacion_id: string;
+            /** N */
+            n: number;
+        };
+        /**
          * CertificationRequirement
          * @description Certificación exigida (ISO 27001, ENS, partner de fabricante, títulos
          *     de perfil). ``scope`` distingue si la acredita la empresa o el equipo.
@@ -4165,6 +4249,26 @@ export interface components {
             columna: string;
             /** Pct */
             pct: number;
+        };
+        /**
+         * ComparacionFichas
+         * @description La tabla completa.
+         */
+        ComparacionFichas: {
+            /** Filas */
+            filas?: components["schemas"]["FilaComparacion"][];
+            /** Licitacion Ids */
+            licitacion_ids?: string[];
+            /** Sin Ficha */
+            sin_ficha?: string[];
+        };
+        /**
+         * CompararBody
+         * @description Hasta tres expedientes a comparar familia a familia.
+         */
+        CompararBody: {
+            /** Ids */
+            ids: string[];
         };
         /** CompareResult */
         CompareResult: {
@@ -4632,6 +4736,61 @@ export interface components {
             truncado: boolean;
         };
         /**
+         * ContratoCartera
+         * @description Un contrato ganado que sigue vivo.
+         */
+        ContratoCartera: {
+            /** Cpv */
+            cpv?: string | null;
+            /** Fecha Fin Efectiva */
+            fecha_fin_efectiva?: string | null;
+            /** Fecha Fin Origen */
+            fecha_fin_origen?: string | null;
+            /** Fecha Inicio */
+            fecha_inicio?: string | null;
+            /** Id */
+            id: number;
+            /** Importe Adjudicado */
+            importe_adjudicado?: number | null;
+            /** Licitacion Id */
+            licitacion_id: string;
+            /** Meses Restantes */
+            meses_restantes?: number | null;
+            /** Organization Id */
+            organization_id: number;
+            /** Organo Contratacion */
+            organo_contratacion?: string | null;
+            /**
+             * Prorrogas Aplicadas
+             * @default 0
+             */
+            prorrogas_aplicadas: number;
+            /** Pursuit Id */
+            pursuit_id: number;
+            /** Relicitacion Desde */
+            relicitacion_desde?: string | null;
+            /** Relicitacion Hasta */
+            relicitacion_hasta?: string | null;
+            /** Renovacion Pursuit Id */
+            renovacion_pursuit_id?: number | null;
+            /** Tecnologia */
+            tecnologia?: string | null;
+            /** Titulo */
+            titulo?: string | null;
+        };
+        /**
+         * CorteMetrica
+         * @description Una fila de un corte (por tecnología, por órgano).
+         */
+        CorteMetrica: {
+            /** Clave */
+            clave: string;
+            /** N */
+            n: number;
+            /** Valor */
+            valor?: number | null;
+        };
+        /**
          * CpvEntry
          * @description Top CPV code aggregate.
          */
@@ -4715,6 +4874,25 @@ export interface components {
             organo: string;
             /** Tecnologia */
             tecnologia: string;
+        };
+        /**
+         * CuadroDireccion
+         * @description Lo que ve owner o admin en Dirección.
+         */
+        CuadroDireccion: {
+            /**
+             * N Minimo
+             * @default 5
+             */
+            n_minimo: number;
+            /** Organization Id */
+            organization_id: number;
+            /** Tarjetas */
+            tarjetas?: components["schemas"]["TarjetaMetrica"][];
+            /** Win Rate Por Organo */
+            win_rate_por_organo?: components["schemas"]["CorteMetrica"][];
+            /** Win Rate Por Tecnologia */
+            win_rate_por_tecnologia?: components["schemas"]["CorteMetrica"][];
         };
         /**
          * CuentaObjetivo
@@ -5396,6 +5574,23 @@ export interface components {
             positivos: number | null;
             /** Total */
             total: number;
+        };
+        /**
+         * FilaComparacion
+         * @description Una familia, con lo que dice cada pliego.
+         */
+        FilaComparacion: {
+            /** Celdas */
+            celdas?: components["schemas"]["CeldaComparacion"][];
+            /** Etiqueta */
+            etiqueta: string;
+            /** Familia */
+            familia: string;
+            /**
+             * Vacia En Todos
+             * @default false
+             */
+            vacia_en_todos: boolean;
         };
         /** FlagIn */
         FlagIn: {
@@ -8651,6 +8846,27 @@ export interface components {
             sin_resultados?: string | null;
             /** Socios */
             socios?: components["schemas"]["SocioSugerido"][];
+        };
+        /**
+         * TarjetaMetrica
+         * @description Una cifra con todo lo que hace falta para creerla.
+         */
+        TarjetaMetrica: {
+            /** Clave */
+            clave: string;
+            /** Etiqueta */
+            etiqueta: string;
+            /**
+             * N
+             * @default 0
+             */
+            n: number;
+            /** Nota */
+            nota?: string | null;
+            /** Universo */
+            universo: string;
+            /** Valor */
+            valor?: number | null;
         };
         /**
          * TeamRequirement
@@ -13415,6 +13631,50 @@ export interface operations {
             };
         };
     };
+    post_comparar_fichas_api_v1_licitaciones_comparar_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CompararBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ComparacionFichas"];
+                };
+            };
+            /** @description Autenticación inválida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_licitaciones_cursor_api_v1_licitaciones_cursor_get: {
         parameters: {
             query?: {
@@ -15514,6 +15774,90 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["PipelineAgendaResponse"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_cartera_api_v1_pursuits_cartera_get: {
+        parameters: {
+            query?: {
+                organization_id?: number | null;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ContratoCartera"][];
+                };
+            };
+            /** @description No perteneces a esa organización */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_direccion_api_v1_pursuits_direccion_get: {
+        parameters: {
+            query?: {
+                organization_id?: number | null;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CuadroDireccion"];
+                };
+            };
+            /** @description Dirección es para owner y admin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

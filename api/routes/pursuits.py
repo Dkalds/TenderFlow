@@ -19,7 +19,10 @@ from pydantic import BaseModel, Field
 
 from api.concurrency import run_db
 from api.routes.dual_auth import require_any_auth
+from db.repositories.pursuits import PursuitRepository
 from observability.logging import get_logger
+from services.cartera import ContratoCartera, cartera_de_usuario
+from services.direccion import CuadroDireccion, corte_con_minimo, exigir_direccion
 from services.kit_presentacion import KitPresentacion
 from services.organizations import (
     OrganizationAccessError,
@@ -74,6 +77,8 @@ from shared.dto import (
 
 log = get_logger(__name__)
 router = APIRouter(tags=["pursuits"])
+
+_pursuit_repo = PursuitRepository()
 
 
 @router.get("/organizations", response_model=list[OrganizationSummary])
@@ -448,6 +453,62 @@ async def post_pursuit_kit_item(
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except PursuitNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.get(
+    "/pursuits/cartera",
+    summary="Contratos ganados que siguen en ejecución (F4.3)",
+    responses={403: {"description": "No perteneces a esa organización"}},
+)
+async def get_cartera(
+    organization_id: int | None = Query(default=None, ge=1),
+    ctx: dict[str, Any] = Depends(require_any_auth),
+) -> list[ContratoCartera]:
+    """La cartera, con la ventana de relicitación de cada contrato.
+
+    Se declara siempre de dónde sale la fecha de fin (`fecha_fin_origen`): una
+    publicada por la fuente y una derivada de la duración no valen lo mismo en
+    la pantalla donde se decide cuándo preparar una renovación.
+    """
+
+    try:
+        return await run_db(
+            cartera_de_usuario, int(ctx["user_id"]), organization_id=organization_id
+        )
+    except OrganizationAccessError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+
+
+@router.get(
+    "/pursuits/direccion",
+    summary="Cuadro de mando de dirección (F4.2) — solo owner y admin",
+    responses={403: {"description": "Dirección es para owner y admin"}},
+)
+async def get_direccion(
+    organization_id: int | None = Query(default=None, ge=1),
+    ctx: dict[str, Any] = Depends(require_any_auth),
+) -> CuadroDireccion:
+    """El control de rol está **en el servicio**, no en el rail.
+
+    Un `member` que teclee la URL recibe 403, no una pantalla sin enlace: un
+    rail sin enlace es una sugerencia, esto es un permiso.
+    """
+
+    def _trabajo() -> CuadroDireccion:
+        resuelta = exigir_direccion(int(ctx["user_id"]), organization_id)
+        filas = _pursuit_repo.metric_rows(resuelta)
+        return CuadroDireccion(
+            organization_id=resuelta,
+            win_rate_por_tecnologia=corte_con_minimo(filas, clave="tender_tecnologia"),
+            win_rate_por_organo=corte_con_minimo(filas, clave="tender_organo"),
+        )
+
+    try:
+        return await run_db(_trabajo)
+    except OrganizationPermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except OrganizationAccessError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
 
 
 @router.patch("/pursuits/{pursuit_id}", response_model=PursuitDetail)

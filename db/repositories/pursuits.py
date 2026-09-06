@@ -328,7 +328,10 @@ class PursuitRepository:
                 # Vienen en la misma consulta porque el valor ponderado se
                 # calcula sobre exactamente estas filas.
                 "l.importe AS tender_importe, l.fecha_limite AS tender_deadline, "
-                "l.organo_contratacion AS tender_organo "
+                # F4.2: los dos cortes del cuadro de mando (win rate por
+                # tecnología y por órgano) salen de esta misma consulta.
+                "l.organo_contratacion AS tender_organo, "
+                "l.tecnologia AS tender_tecnologia "
                 "FROM pursuits p "
                 "JOIN licitaciones l ON l.id_externo = p.licitacion_id "
                 "WHERE " + " AND ".join(clauses),

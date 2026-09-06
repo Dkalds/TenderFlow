@@ -29,6 +29,13 @@ from db.repositories.adjudicaciones import AdjudicacionRepository
 from db.repositories.documentos import DocumentosRepository
 from db.repositories.licitaciones import LicitacionRepository
 from observability.logging import get_logger
+from services.comparador_fichas import (
+    MAX_EXPEDIENTES as MAX_EXPEDIENTES_COMPARAR,
+)
+from services.comparador_fichas import (
+    ComparacionFichas,
+    comparar,
+)
 from services.rag.paginas import PaginaDocumento, get_pagina
 from services.reportes_dato import COLA_POR_TIPO, TipoReporte, registrar_reporte
 from services.simulador_precio import SimulacionPrecio, simular_precio_de
@@ -39,7 +46,7 @@ from shared.dto import (
     SafeStr,
 )
 from shared.export_safety import sanitize_spreadsheet_record
-from shared.tender_facts import EvidenceRef, TenderFactSheetRecord
+from shared.tender_facts import EvidenceRef, TenderFactSheet, TenderFactSheetRecord
 
 log = get_logger(__name__)
 
@@ -805,6 +812,41 @@ async def get_pagina_documento(
             detail="No hay texto extraído para esa página de ese documento.",
         )
     return pagina
+
+
+class CompararBody(BaseModel):
+    """Hasta tres expedientes a comparar familia a familia."""
+
+    ids: list[SafeStr] = Field(min_length=2, max_length=MAX_EXPEDIENTES_COMPARAR)
+
+
+@router.post(
+    "/licitaciones/comparar",
+    summary="Comparar las fichas de hasta tres expedientes, familia a familia",
+    responses={401: {"description": "Autenticación inválida"}},
+)
+async def post_comparar_fichas(
+    body: CompararBody,
+    _ctx: dict[str, Any] = Depends(require_any_auth),
+) -> ComparacionFichas:
+    """F2.8 — determinista y sin LLM.
+
+    Una familia vacía **se muestra vacía**, no se omite: que uno de los dos
+    pliegos no diga nada de solvencia técnica es exactamente lo que hay que
+    ver. Los expedientes sin ficha extraída se declaran en `sin_ficha`, para
+    que una columna en blanco no se confunda con un pliego que no exige nada.
+    """
+
+    def _trabajo() -> ComparacionFichas:
+        from services.rag.fact_sheet import get_fact_sheet
+
+        fichas: dict[str, TenderFactSheet | None] = {}
+        for id_externo in body.ids:
+            record = get_fact_sheet(str(id_externo))
+            fichas[str(id_externo)] = record.facts if record else None
+        return comparar(fichas)
+
+    return await run_db(_trabajo)
 
 
 @router.get(
