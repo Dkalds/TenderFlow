@@ -352,8 +352,183 @@ def _materialize_schema_ddl(url: str) -> str:
     return "\n".join(lines).replace("public.", "")
 
 
+#: Estrategia de aislamiento de la BD entre tests (C3.4).
+#:
+#: - ``schema`` (por defecto): un schema Postgres nuevo por test. Es lo que se
+#:   hacía hasta 2026-09 y su coste es el DDL completo —unas 50 tablas más sus
+#:   índices— en cada uno de los cientos de tests de integración.
+#: - ``truncate``: un solo schema por sesión (por worker bajo xdist) y
+#:   ``TRUNCATE … RESTART IDENTITY CASCADE`` entre tests.
+#:
+#: **El default sigue siendo ``schema`` a propósito.** El camino rápido está
+#: escrito y cubierto por `tests/test_aislamiento_entre_tests.py`, pero cambiar
+#: el default es una decisión que se toma con la medición delante: hay que
+#: cronometrar `make test-integration` con las dos estrategias en CI y comprobar
+#: que el test de fuga pasa. Ponerlo por defecto sin ese dato sería cambiar el
+#: aislamiento de toda la suite a cambio de una mejora supuesta.
+#:
+#: Para medir:
+#:
+#:     TF_TEST_SCHEMA_STRATEGY=truncate make test-integration
+ESTRATEGIA_SCHEMA = os.environ.get("TF_TEST_SCHEMA_STRATEGY", "schema").strip().lower()
+
+#: Tablas que las migraciones siembran y que un `TRUNCATE` se llevaría por
+#: delante. Se recargan tras cada truncado desde el snapshot de la sesión.
+#:
+#: No se enumeran a mano: se descubre por catálogo qué tablas tienen filas justo
+#: después de aplicar el DDL, que es la definición exacta de "dato de semilla".
+
+
+def _tablas_del_schema(conn, schema: str) -> list[str]:
+    return [
+        r[0]
+        for r in conn.execute(
+            "SELECT tablename FROM pg_tables WHERE schemaname = %s ORDER BY tablename",
+            [schema],
+        ).fetchall()
+    ]
+
+
+def _vistas_materializadas(conn, schema: str) -> list[str]:
+    return [
+        r[0]
+        for r in conn.execute(
+            "SELECT c.relname FROM pg_class c "
+            "JOIN pg_namespace n ON n.oid = c.relnamespace "
+            "WHERE c.relkind = 'm' AND n.nspname = %s",
+            [schema],
+        ).fetchall()
+    ]
+
+
+def _snapshot_semillas(conn, schema: str, tablas: list[str]) -> dict[str, list[tuple]]:
+    """Filas presentes justo tras aplicar el DDL: las que sembró una migración.
+
+    `api_key_tiers` (v28) es el caso conocido, pero enumerarlo a mano obligaría
+    a volver aquí cada vez que una migración siembre algo nuevo — y el fallo
+    sería silencioso: la tabla vacía y el test pasando vacunado.
+    """
+    semillas: dict[str, list[tuple]] = {}
+    for tabla in tablas:
+        # `schema` y `tabla` salen de `pg_tables`, no de una entrada externa;
+        # psycopg no parametriza identificadores. De ahí el S608 silenciado.
+        filas = conn.execute(f'SELECT * FROM "{schema}"."{tabla}"').fetchall()  # noqa: S608
+        if filas:
+            semillas[tabla] = filas
+    return semillas
+
+
+def _restaura_semillas(conn, schema: str, semillas: dict[str, list[tuple]]) -> None:
+    for tabla, filas in semillas.items():
+        if not filas:
+            continue
+        marcadores = ", ".join(["%s"] * len(filas[0]))
+        for fila in filas:
+            # Identificadores del catálogo; los VALORES sí van parametrizados,
+            # que es donde podría entrar algo externo. De ahí el S608 silenciado.
+            conn.execute(
+                f'INSERT INTO "{schema}"."{tabla}" VALUES ({marcadores}) '  # noqa: S608
+                f"ON CONFLICT DO NOTHING",
+                list(fila),
+            )
+
+
+def _limpia_schema(conn, schema: str, tablas: list[str], semillas, vistas) -> None:
+    """Deja el schema como recién migrado, sin volver a crearlo.
+
+    Un solo `TRUNCATE` con todas las tablas y `CASCADE`: hacerlo tabla a tabla
+    fallaría por las claves foráneas y costaría una ida y vuelta por tabla.
+    `RESTART IDENTITY` devuelve las secuencias a 1, sin lo cual un test que
+    asuma `id == 1` pasaría solo si corre el primero.
+    """
+    if tablas:
+        lista = ", ".join(f'"{schema}"."{t}"' for t in tablas)
+        conn.execute(f"TRUNCATE {lista} RESTART IDENTITY CASCADE")
+    _restaura_semillas(conn, schema, semillas)
+    for vista in vistas:
+        conn.execute(f'REFRESH MATERIALIZED VIEW "{schema}"."{vista}"')
+
+
+@pytest.fixture(scope="session")
+def _pg_schema_sesion(_pg_schema_ddl):
+    """Un schema por sesión, reutilizado entre tests (estrategia ``truncate``).
+
+    Se materializa aunque la estrategia sea ``schema``: no cuesta nada crearlo
+    perezosamente, y tenerlo aquí mantiene las dos ramas simétricas.
+    """
+    import psycopg
+
+    base_url, ddl = _pg_schema_ddl
+    schema = f"tf_sesion_{os.getpid()}"
+
+    with psycopg.connect(base_url, autocommit=True) as conn:
+        conn.execute(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE')
+        conn.execute(f'CREATE SCHEMA "{schema}"')
+        conn.execute(f'SET search_path TO "{schema}", public')
+        conn.execute(ddl)
+        tablas = _tablas_del_schema(conn, schema)
+        vistas = _vistas_materializadas(conn, schema)
+        for vista in vistas:
+            conn.execute(f'REFRESH MATERIALIZED VIEW "{schema}"."{vista}"')
+        semillas = _snapshot_semillas(conn, schema, tablas)
+
+    yield base_url, schema, tablas, vistas, semillas
+
+    with psycopg.connect(base_url, autocommit=True) as conn:
+        conn.execute(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE')
+
+
+def _url_con_schema(base_url: str, schema: str) -> str:
+    sep = "&" if "?" in base_url else "?"
+    return f"{base_url}{sep}options=-csearch_path%3D{schema}%2Cpublic"
+
+
 @pytest.fixture()
-def _pg_schema(_pg_schema_ddl):
+def _pg_schema(request, _pg_schema_ddl):
+    """Base de datos limpia para un test. La estrategia decide el cómo."""
+    if ESTRATEGIA_SCHEMA == "truncate":
+        yield from _pg_schema_por_truncado(request)
+        return
+    yield from _pg_schema_por_creacion(_pg_schema_ddl)
+
+
+def _pg_schema_por_truncado(request):
+    """Reutiliza el schema de sesión y lo vacía. Detecta si quedó envenenado.
+
+    El riesgo de compartir schema es que un test que altere el DDL —crear una
+    tabla, borrar una columna— se lo deje al siguiente. `TRUNCATE` no lo
+    arregla. Por eso se compara el conjunto de tablas antes y después: si
+    cambió, el schema se descarta y el siguiente test recibe uno nuevo. Cuesta
+    una consulta a `pg_tables` por test; el fallo que evita cuesta una tarde.
+    """
+    import psycopg
+
+    base_url, schema, tablas, vistas, semillas = request.getfixturevalue("_pg_schema_sesion")
+
+    with psycopg.connect(base_url, autocommit=True) as conn:
+        _limpia_schema(conn, schema, tablas, semillas, vistas)
+
+    scoped_url = _url_con_schema(base_url, schema)
+
+    import db.database as db_mod
+
+    db_mod.close_pool()
+    db_mod.set_pg_test_url(scoped_url)
+    try:
+        yield scoped_url
+    finally:
+        db_mod.close_pool()
+        db_mod.set_pg_test_url(None)
+        with psycopg.connect(base_url, autocommit=True) as conn:
+            if _tablas_del_schema(conn, schema) != tablas:
+                raise AssertionError(
+                    f"el test alteró el DDL del schema compartido {schema!r}. "
+                    "Marcalo con `@pytest.mark.schema_propio` o corré la suite "
+                    "con TF_TEST_SCHEMA_STRATEGY=schema."
+                )
+
+
+def _pg_schema_por_creacion(_pg_schema_ddl):
     """Schema Postgres limpio y aislado para un único test."""
     import psycopg
 

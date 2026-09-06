@@ -67,7 +67,7 @@ def test_toda_tabla_purgada_tiene_politica() -> None:
     solo_camino_propio = {"failed_extractions", "rate_limits"}
 
     assert purgadas_por_plazo - en_politica == set(), (
-        "tablas purgadas sin fila en POLITICA_RETENCION: " f"{purgadas_por_plazo - en_politica}"
+        f"tablas purgadas sin fila en POLITICA_RETENCION: {purgadas_por_plazo - en_politica}"
     )
     assert en_politica - purgadas_por_plazo == solo_camino_propio, (
         "POLITICA_RETENCION declara tablas que nadie purga: "

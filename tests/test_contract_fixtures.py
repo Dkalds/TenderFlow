@@ -80,9 +80,7 @@ def test_cada_fixture_cuadra_con_su_operacion(
     assert not problemas, "fixtures que no cuadran con el contrato:\n" + "\n".join(problemas)
 
 
-def test_un_campo_inventado_falla(
-    entradas: list[dict[str, Any]], openapi: dict[str, Any]
-) -> None:
+def test_un_campo_inventado_falla(entradas: list[dict[str, Any]], openapi: dict[str, Any]) -> None:
     """El control tiene que rechazar lo que vino a rechazar.
 
     Sin este test, un validador que devolviera siempre `[]` pasaría todos los

@@ -38,15 +38,11 @@ class TestAmbito:
         assert personal != equipo
 
     def test_sin_organizacion_es_estable(self) -> None:
-        assert scope("radar_dismissals", user_key="u1") == scope(
-            "radar_dismissals", user_key="u1"
-        )
+        assert scope("radar_dismissals", user_key="u1") == scope("radar_dismissals", user_key="u1")
 
     def test_endpoints_distintos_no_colisionan(self) -> None:
         """Reintentar un favorito no puede devolver la respuesta de una regla."""
-        assert scope("watchlist_items", user_key="u1") != scope(
-            "watchlist_rules", user_key="u1"
-        )
+        assert scope("watchlist_items", user_key="u1") != scope("watchlist_rules", user_key="u1")
 
     def test_el_usuario_nunca_falta(self) -> None:
         """El ámbito no puede ser solo el nombre del endpoint.
@@ -111,9 +107,7 @@ class TestContrato:
     def test_declara_la_cabecera(self, openapi: dict, ruta: str, metodo: str) -> None:
         operacion = openapi["paths"][ruta][metodo]
         cabeceras = {
-            p.get("name")
-            for p in operacion.get("parameters", [])
-            if p.get("in") == "header"
+            p.get("name") for p in operacion.get("parameters", []) if p.get("in") == "header"
         }
         assert "X-Idempotency-Key" in cabeceras, (
             f"{metodo.upper()} {ruta} no declara X-Idempotency-Key en el contrato"

@@ -10,10 +10,10 @@ Definición de los indicadores de nivel de servicio (SLI) y objetivos (SLO) del 
 |----------|-----|---------|------------|
 | Disponibilidad API | Suspendido — la premisa que lo suspendió (plan free) no se sostiene: ver nota de 2026-09-03 | 30 días | `up{service="api"}` + smoke sintético |
 | Frescura de datos | ≤ 36h sin scrape exitoso | 7 días | `scheduler/healthcheck.py` (cada 6h) |
-| Latencia de carga del frontend web | P95 < 3 s | 7 días | Speed Insights RUM; panel/alerta por verificar |
+| Latencia de carga del frontend web | P95 < 3 s | 7 días | Speed Insights RUM (navegador, sin alerta) + `PublicSurfaceSlow` (servidor, desde 2026-09-06) |
 | Tasa de éxito del pipeline | ≥ 95% de runs | 30 días | `extraction_runs` vía healthcheck |
 | Cobertura de datos (importe presente) | ≥ 80% | 30 días | `extraction_runs` vía healthcheck |
-| Tiempo de respuesta API REST | P99 < 500 ms | 7 días | `http_request_duration_seconds` (Prometheus) |
+| Tiempo de respuesta API REST | P99 < 500 ms | 7 días | `http_request_duration_seconds` (Prometheus) + alerta `ApiLatencyP99High` desde 2026-09-06 |
 
 ### Nota sobre la medición real (2026-07-26)
 
@@ -30,7 +30,9 @@ la disponibilidad y la latencia de API. Quedan dos matices:
 - **Latencia del frontend web**: Prometheus no la ve, pero el layout raíz monta
   `@vercel/speed-insights` y ya emite RUM. Falta verificar en Vercel que el plan
   conserva la serie y configurar una alerta; instrumentado no significa
-  operacionalizado.
+  operacionalizado. **Desde 2026-09-06** la mitad servidor de ese camino sí
+  alerta (`PublicSurfaceSlow`), lo que no sustituye a la medición de navegador:
+  una página lenta por su JavaScript no aparece en ninguna de estas reglas.
 - **Disponibilidad de la API**: `render.yaml` declara `plan: free`, con
   spin-down. **Ese fichero no describe el servicio que corre** (ver su propia
   cabecera y la nota de 2026-09-03 más abajo). El 99 % queda como objetivo
@@ -96,7 +98,7 @@ tener SLO.
 | **SLI** | Tiempo de respuesta HTTP P50 / P95 / P99 de la ruta principal del frontend web |
 | **SLO** | P95 < 3 s en cargas con caché caliente |
 | **Medición** | RUM con `@vercel/speed-insights`, montado en `web/src/app/layout.tsx`. La retención efectiva y el panel de producción no se verifican desde el repo |
-| **Alerta** | **No implementada** — Speed Insights recoge la señal, pero no hay alerta versionada |
+| **Alerta** | **Parcial desde 2026-09-06** (C3.3). La mitad **servidor** sí: `PublicSurfaceSlow` (`observability/alert_rules.yml`) dispara si el P95 de `/api/v1/publico/*` pasa de 1 s durante 10 min. La mitad **navegador** —que es la que fija el SLO— sigue sin alerta: Speed Insights no llega a Prometheus y configurarla es acción humana en el panel de Vercel |
 | **Optimizaciones activas** | Caché caliente, agregados server-side y paginación server-side |
 
 ### 4. Tasa de éxito del pipeline de scraping
@@ -125,7 +127,7 @@ tener SLO.
 | **SLI** | Latencia HTTP de `GET /api/v1/licitaciones` P99 |
 | **SLO** | P99 < 500 ms con datasets de hasta 10.000 licitaciones |
 | **Medición** | Prometheus (`prometheus-fastapi-instrumentator`, ver `api/app.py`). El tracing OTLP de `observability/tracing.py` es opcional y opera en modo NoOp sin el extra `[tracing]` |
-| **Alerta** | **No implementada** (ver SLO 3). Sí existe `PgWriteLatencyHigh` sobre la latencia de escritura a BD |
+| **Alerta** | **Implementada el 2026-09-06** (C3.3): `ApiLatencyP99High` en `observability/alert_rules.yml` dispara con P99 > 500 ms sostenido 10 min (dos ventanas de `rate` de 5 m). Excluye `/api/v1/health.*`, así que el healthcheck verde no diluye el percentil. Sigue existiendo `PgWriteLatencyHigh` para la escritura a BD, que suele dispararse con esta cuando la causa es Postgres |
 
 ---
 

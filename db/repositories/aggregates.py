@@ -914,19 +914,34 @@ class AggregateRepository:
             return []
         where, params = _build_where(filters)
         placeholders = ",".join("%s" for _ in tech_codes)
+        # C3.2: el top-N se recorta en SQL, no en Python.
+        #
+        # Hasta 2026-09 este método materializaba **todas** las licitaciones del
+        # label —el corpus tecnológico entero para un label ancho—, las ordenaba
+        # en memoria y devolvía las `limit` primeras. Pagaba en RSS de la API lo
+        # que la BD sabe hacer con un `LIMIT`.
+        #
+        # El `DISTINCT ON` obliga a ordenar primero por `id_externo`, así que el
+        # orden por importe va en la consulta externa. `id_externo` como segundo
+        # criterio no es decorativo: sin él, dos filas con el mismo importe
+        # saldrían en orden indefinido y la lista cambiaría entre peticiones
+        # idénticas. La ordenación de Python que esto sustituye era estable, y
+        # esta lo sigue siendo.
         sql = (
-            "SELECT DISTINCT ON (l.id_externo) "
-            "       l.id_externo, l.titulo, l.organo_contratacion, l.importe, "
-            "       l.estado, l.ccaa, l.fecha_publicacion "
-            "FROM licitaciones l, "
-            "     unnest(string_to_array(COALESCE(l.tecnologia, ''), ',')) AS code "
-            "WHERE " + where + f" AND trim(code) IN ({placeholders}) "
-            "ORDER BY l.id_externo, l.importe DESC NULLS LAST"
+            "SELECT * FROM ("
+            "  SELECT DISTINCT ON (l.id_externo) "
+            "         l.id_externo, l.titulo, l.organo_contratacion, l.importe, "
+            "         l.estado, l.ccaa, l.fecha_publicacion "
+            "  FROM licitaciones l, "
+            "       unnest(string_to_array(COALESCE(l.tecnologia, ''), ',')) AS code "
+            "  WHERE " + where + f" AND trim(code) IN ({placeholders}) "
+            "  ORDER BY l.id_externo, l.importe DESC NULLS LAST"
+            ") AS distintas "
+            "ORDER BY distintas.importe DESC NULLS LAST, distintas.id_externo "
+            "LIMIT %s"
         )
         with connect_read() as c:
-            rows = rows_to_dicts(c.execute(sql, [*params, *tech_codes]))
-        rows.sort(key=lambda r: (r["importe"] is None, -(r["importe"] or 0)))
-        return rows[:limit]
+            return rows_to_dicts(c.execute(sql, [*params, *tech_codes, limit]))
 
     # ── Geography ────────────────────────────────────────────────────────
 

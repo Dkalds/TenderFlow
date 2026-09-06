@@ -39,6 +39,9 @@ check:  ## Lint + typecheck + tests unit+integration (ideal para desarrollo)
 	mypy .
 	pytest tests/ -m "(unit or integration) and not slow" -q
 
+check-analytics-unbounded:  ## Ningún método analítico materializa sin cota (ADR-023, C3.2)
+	python scripts/check_analytics_unbounded.py
+
 check-frontend-invariants:  ## Integridad analítica del frontend (ADR-014, bloqueante)
 	python scripts/check_frontend_invariants.py --strict
 
@@ -139,6 +142,11 @@ LOCK_TARGET := --python-platform x86_64-unknown-linux-gnu --python-version 3.13
 lock:  ## Genera lockfiles reproducibles con hashes (uv pip compile)
 	uv pip compile requirements.in -o requirements.txt --generate-hashes $(LOCK_TARGET) --quiet
 	uv pip compile requirements-dev.in -o requirements-dev.txt --generate-hashes $(LOCK_TARGET) --quiet
+	# C3.1: el corte API / pipeline. `requirements-api.txt` es el que instala
+	# docker/Dockerfile.api en cuanto exista; hasta entonces la imagen sigue
+	# con requirements.txt y `scripts/check_requirements_sync.py` lo avisa.
+	uv pip compile requirements-api.in -o requirements-api.txt --generate-hashes $(LOCK_TARGET) --quiet
+	uv pip compile requirements-pipeline.in -o requirements-pipeline.txt --generate-hashes $(LOCK_TARGET) --quiet
 
 lock-hashes: lock
 

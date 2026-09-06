@@ -79,6 +79,15 @@ jobs:
       # siquiera en CI) a invariante ejecutable. Un hallazgo nuevo se justifica
       # en su línea con `fdi-allow:<categoria>` o se corrige. Vive en este job
       # y no en `frontend` porque el checker es Python y `frontend` es Node.
+      - name: Verify no unbounded analytics scans (ADR-023, C3.2)
+        run: python scripts/check_analytics_unbounded.py
+
+      - name: Verify generated docs (retención, índice RFC, backlog)
+        run: |
+          python scripts/gen_retention_doc.py --check
+          python scripts/gen_rfc_index.py --check
+          python scripts/check_backlog_freshness.py
+
       - name: Verify frontend analytical integrity (ADR-014)
         run: python scripts/check_frontend_invariants.py --strict
 

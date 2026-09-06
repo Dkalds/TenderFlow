@@ -45,9 +45,7 @@ log = get_logger(__name__)
 #: Apagado del listado por offset. Anunciado el 2026-09-06 con la ventana
 #: de 90 días de `DEPRECATION_WINDOW_DAYS`; la sucesora es
 #: `/licitaciones/cursor`, que ya sirve el mismo dato sin `COUNT(*)`.
-SUNSET_LISTADO_POR_OFFSET = sunset_anunciado(
-    date(2027, 1, 15), anunciado=date(2026, 9, 6)
-)
+SUNSET_LISTADO_POR_OFFSET = sunset_anunciado(date(2027, 1, 15), anunciado=date(2026, 9, 6))
 
 router = APIRouter(tags=["licitaciones"])
 

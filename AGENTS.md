@@ -60,6 +60,26 @@ Que `graphify-out/` esté dirty tras hooks o actualizaciones incrementales es
 normal. Leé archivos raw cuando vayas a modificar o depurar código concreto, o
 cuando el grafo no tenga el detalle necesario.
 
+**Peso de `graphify-out/`: se conserva commiteado** (decisión del 2026-09-06,
+C3.7). Medido ese día: **17 MB**, de los que 16 MB son `graph.json`; cuatro
+ficheros versionados, sobre un repositorio empaquetado de 23 MB.
+
+Se evaluaron las tres opciones y las dos alternativas rompen el paso 2 de la
+lista de arriba:
+
+- **Artefacto de CI.** El grafo dejaría de estar en el checkout, que es
+  precisamente donde lo lee un agente sin el CLI — el caso de **todas** las
+  sesiones remotas. Cambiaría un fallback que funciona por uno que exige
+  descargar un artefacto y autenticarse.
+- **Git LFS.** Añade un requisito de instalación a cualquiera que clone, y un
+  `clone` sin LFS deja punteros en vez del grafo: el mismo fallo, en silencio.
+- **Conservarlo.** 17 MB en un repositorio de 23 MB es caro en proporción y
+  barato en absoluto, y mantiene el fallback documentado.
+
+**Disparador de revisión:** si `graphify-out/` supera los **50 MB**, se vuelve a
+decidir. El número no es un límite técnico; es el punto en que el coste del
+clon deja de ser despreciable frente a la comodidad que compra.
+
 ---
 
 ## 2. Mapa de áreas

@@ -61,9 +61,7 @@ def render_block() -> str:
             if regla.tabla == "rate_limits"
             else _COMANDO_GENERAL
         )
-        filas.append(
-            f"| `{regla.tabla}` | {_humaniza(regla.dias)} | {regla.motivo} | {comando} |"
-        )
+        filas.append(f"| `{regla.tabla}` | {_humaniza(regla.dias)} | {regla.motivo} | {comando} |")
 
     cabecera = (
         "Los plazos son configuración (`RETENTION_*` en `config/settings.py`, documentados en\n"

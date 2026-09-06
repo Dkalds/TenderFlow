@@ -69,7 +69,9 @@ def operaciones_del_openapi(doc: dict[str, Any]) -> set[str]:
 # ── Validador de un subconjunto de JSON Schema ───────────────────────────────
 
 
-def _resolver(esquema: dict[str, Any], doc: dict[str, Any], vistos: frozenset[str] = frozenset()) -> dict[str, Any]:
+def _resolver(
+    esquema: dict[str, Any], doc: dict[str, Any], vistos: frozenset[str] = frozenset()
+) -> dict[str, Any]:
     ref = esquema.get("$ref")
     if not isinstance(ref, str) or not ref.startswith("#/") or ref in vistos:
         return esquema
@@ -170,7 +172,9 @@ def validar(
 # ── Manifiesto ───────────────────────────────────────────────────────────────
 
 
-def _esquema_de(doc: dict[str, Any], metodo: str, ruta: str, clase: str, estado: str) -> dict[str, Any] | None:
+def _esquema_de(
+    doc: dict[str, Any], metodo: str, ruta: str, clase: str, estado: str
+) -> dict[str, Any] | None:
     operacion = (doc.get("paths") or {}).get(ruta, {}).get(metodo.lower())
     if not isinstance(operacion, dict):
         return None
@@ -268,8 +272,7 @@ def main() -> int:
         return 1
     if cobertura < args.min_coverage:
         print(
-            f"ERROR: cobertura {cobertura:.0f} % por debajo del mínimo "
-            f"{args.min_coverage:.0f} %.",
+            f"ERROR: cobertura {cobertura:.0f} % por debajo del mínimo {args.min_coverage:.0f} %.",
             file=sys.stderr,
         )
         return 1

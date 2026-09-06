@@ -146,5 +146,5 @@ def test_api_design_no_cita_rutas_http_inexistentes() -> None:
         inexistentes.append(token)
 
     assert not inexistentes, (
-        "docs/api-design.md cita rutas HTTP que la API no expone: " f"{inexistentes}"
+        f"docs/api-design.md cita rutas HTTP que la API no expone: {inexistentes}"
     )

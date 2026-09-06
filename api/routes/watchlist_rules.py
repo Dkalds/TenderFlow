@@ -171,9 +171,7 @@ async def post_rule(
     rule = body.to_rule()
     organization_id = ctx["organization_id"]
 
-    ambito = idem_scope(
-        "watchlist_rules", user_key=user_key, organization_id=organization_id
-    )
+    ambito = idem_scope("watchlist_rules", user_key=user_key, organization_id=organization_id)
     cacheada = await run_db(cached_response, idempotency_key, ambito)
     if cacheada is not None:
         return CreatedId(**cacheada)

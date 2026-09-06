@@ -15,6 +15,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libffi-dev \
     && rm -rf /var/lib/apt/lists/*
 
+# C3.1 — corte API / pipeline, a medio camino a propósito.
+#
+# `requirements-api.in` ya declara el subconjunto que la API necesita de verdad
+# (medido sobre el cono de imports alcanzable desde `api/`, 2026-09-06), y
+# `scripts/check_requirements_sync.py` verifica que el corte no deja ningún
+# paquete sin asignar. Lo que falta es el lockfile: `requirements-api.txt` lo
+# produce `make lock`, que necesita `uv`.
+#
+# **Esta línea pasa a `requirements-api.txt` en el mismo commit que genere ese
+# fichero**, no antes: apuntar a un lockfile inexistente rompe el build de
+# producción, y un Dockerfile que no construye es peor que uno que instala de
+# más. `tests/test_unit_dockerfile_api.py` obliga al cambio en cuanto el
+# fichero aparezca.
 COPY requirements.txt pyproject.toml ./
 RUN pip install --upgrade "pip>=26.1" \
     && pip install --prefix=/install --no-cache-dir -r requirements.txt

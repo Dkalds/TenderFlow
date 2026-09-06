@@ -99,9 +99,7 @@ def main() -> int:
         (texto.find(s) for s in _SECCIONES_ABIERTAS if texto.find(s) != -1),
         default=len(texto),
     )
-    cerrados_en_cabecera = [
-        m.group(1) for m in _FILA_CERRADO.finditer(texto[:cabecera_fin])
-    ]
+    cerrados_en_cabecera = [m.group(1) for m in _FILA_CERRADO.finditer(texto[:cabecera_fin])]
     items = _cuerpo_de_items(texto)
     revisiones = _revisiones_presentes()
 
@@ -120,11 +118,7 @@ def main() -> int:
 
     # 2. Aviso: cita una revisión Alembic que ya está en el árbol.
     for prioridad, titulo, cuerpo in items:
-        citadas = {
-            rev
-            for rev in _REVISION.findall(cuerpo)
-            if rev in revisiones
-        }
+        citadas = {rev for rev in _REVISION.findall(cuerpo) if rev in revisiones}
         if citadas:
             avisos.append(
                 f"[{prioridad}] {titulo!r} cita la/s revisión/es "

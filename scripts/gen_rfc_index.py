@@ -132,8 +132,7 @@ def render_block(rfcs: list[Rfc]) -> str:
     for rfc in sorted(rfcs, key=lambda r: (r.status, r.fichero)):
         evidencia = rfc.evidencia or "—"
         filas.append(
-            f"| [{rfc.titulo}]({rfc.fichero}) | `{rfc.status}` | {rfc.fecha or '—'} "
-            f"| {evidencia} |"
+            f"| [{rfc.titulo}]({rfc.fichero}) | `{rfc.status}` | {rfc.fecha or '—'} | {evidencia} |"
         )
 
     vocabulario = ["| Estado | Significado |", "|---|---|"]

@@ -41,16 +41,34 @@ def main() -> int:
         "--apply", action="store_true", help="Ejecutar la purga (sin este flag es dry-run)"
     )
     parser.add_argument(
-        "--runs-days", type=int, default=_plazo("extraction_runs"), help="Retención extraction_runs (días)"
+        "--runs-days",
+        type=int,
+        default=_plazo("extraction_runs"),
+        help="Retención extraction_runs (días)",
     )
-    parser.add_argument("--audit-days", type=int, default=_plazo("audit_log"), help="Retención audit_log (días)")
-    parser.add_argument("--dlq-days", type=int, default=_plazo("failed_extractions"), help="Retención DLQ resueltos (días)")
     parser.add_argument(
-        "--history-days", type=int, default=_plazo("licitaciones_history"), help="Retención licitaciones_history (días)"
+        "--audit-days", type=int, default=_plazo("audit_log"), help="Retención audit_log (días)"
     )
-    parser.add_argument("--access-days", type=int, default=_plazo("access_log"), help="Retención access_log (días)")
     parser.add_argument(
-        "--idempotency-days", type=int, default=_plazo("idempotency_keys"), help="Retención idempotency_keys (días)"
+        "--dlq-days",
+        type=int,
+        default=_plazo("failed_extractions"),
+        help="Retención DLQ resueltos (días)",
+    )
+    parser.add_argument(
+        "--history-days",
+        type=int,
+        default=_plazo("licitaciones_history"),
+        help="Retención licitaciones_history (días)",
+    )
+    parser.add_argument(
+        "--access-days", type=int, default=_plazo("access_log"), help="Retención access_log (días)"
+    )
+    parser.add_argument(
+        "--idempotency-days",
+        type=int,
+        default=_plazo("idempotency_keys"),
+        help="Retención idempotency_keys (días)",
     )
     parser.add_argument(
         "--webhook-deliveries-days",

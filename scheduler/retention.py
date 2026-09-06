@@ -166,8 +166,7 @@ POLITICA_RETENCION: tuple[ReglaRetencion, ...] = (
     ReglaRetencion(
         "failed_extractions",
         "RETENTION_DLQ_DAYS",
-        "Cola de fallos. Solo se purgan los **resueltos**: un fallo abierto no "
-        "caduca por tiempo.",
+        "Cola de fallos. Solo se purgan los **resueltos**: un fallo abierto no caduca por tiempo.",
     ),
     ReglaRetencion(
         "licitaciones_history",
@@ -202,8 +201,7 @@ POLITICA_RETENCION: tuple[ReglaRetencion, ...] = (
     ReglaRetencion(
         "password_reset_tokens",  # pragma: allowlist secret
         "RETENTION_PASSWORD_RESET_DAYS",
-        "Un token de recuperación caducado no sirve para nada y sí identifica "
-        "a quien lo pidió.",
+        "Un token de recuperación caducado no sirve para nada y sí identifica a quien lo pidió.",
     ),
     ReglaRetencion(
         "rate_limits",
