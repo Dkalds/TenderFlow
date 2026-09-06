@@ -557,3 +557,41 @@ class PursuitRepository:
                 idempotency_key=None,
                 created_at=now_utc_iso(),
             )
+
+    def cruces_con_competidor(
+        self, organization_id: int, empresa_key: str, *, desde_iso: str, limit: int = 100
+    ) -> list[dict[str, Any]]:
+        """F3.2 — expedientes donde coincidimos con un competidor.
+
+        Une **nuestras** oportunidades presentadas con las adjudicaciones
+        observadas del mismo expediente. El `organization_id` va en el `WHERE`
+        y no es opcional: sin él la consulta mezclaría el pipeline de otras
+        organizaciones, que es el fallo de aislamiento que más caro sale en un
+        producto multi-inquilino.
+
+        Sólo oportunidades **presentadas** (`submitted_at` no nulo): sin haber
+        ofertado no hubo cruce, sólo dos empresas mirando el mismo anuncio.
+        """
+        with connect_read() as conn:
+            cur = conn.execute(
+                "SELECT p.licitacion_id, l.titulo, l.organo_contratacion, l.importe, "
+                "       p.offer_price_eur, p.outcome, "
+                "       a.importe_adjudicado, a.fecha_adjudicacion, "
+                "       e.empresa_key AS adjudicatario_key "
+                "FROM pursuits p "
+                "JOIN licitaciones l ON l.id_externo = p.licitacion_id "
+                "LEFT JOIN adjudicaciones a ON a.licitacion_id = p.licitacion_id "
+                "LEFT JOIN empresas e ON e.id = a.empresa_id "
+                "WHERE p.organization_id = %s "
+                "  AND p.submitted_at IS NOT NULL "
+                "  AND p.identified_at >= %s "
+                "  AND (e.empresa_key = %s OR EXISTS ("
+                "        SELECT 1 FROM adjudicaciones a2 "
+                "        JOIN empresas e2 ON e2.id = a2.empresa_id "
+                "        WHERE a2.licitacion_id = p.licitacion_id AND e2.empresa_key = %s"
+                "  )) "
+                "ORDER BY a.fecha_adjudicacion DESC NULLS LAST, p.id DESC "
+                "LIMIT %s",
+                (organization_id, desde_iso, empresa_key, empresa_key, limit),
+            )
+            return rows_to_dicts(cur)

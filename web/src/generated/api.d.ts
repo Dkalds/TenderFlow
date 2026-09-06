@@ -1176,6 +1176,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/competitive/empresas/{empresa_key}/contra-mi": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Expedientes en los que coincidimos con este competidor (F3.2)
+         * @description El historial de cruces, con el límite de lo afirmable declarado.
+         *
+         *     Sin conocer el NIF propio (v2 S2.1) sólo se puede decir «nosotros
+         *     perdimos», no «ellos ganaron contra nosotros»: la respuesta lo dice en
+         *     `sin_nif_propio` para que la pantalla no haga parecer invencible a un rival
+         *     que quizá ni se presentó.
+         */
+        get: operations["get_batallas_api_v1_competitive_empresas__empresa_key__contra_mi_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/competitive/hhi": {
         parameters: {
             query?: never;
@@ -2161,6 +2186,33 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/licitaciones/{id_externo}/guion": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Guion de la oferta técnica: esquema de puntos con citas al pliego
+         * @description F2.6 — sólo esquema, nunca prosa (D33).
+         *
+         *     `POST` y no `GET` porque genera: cuesta una llamada al LLM y consume
+         *     presupuesto. Devuelve 200 con `sin_guion` cuando no hay criterios
+         *     extraídos o no hay texto de pliegos — que no es un error del usuario.
+         *
+         *     El presupuesto se ata al mismo sujeto opaco que el resto de superficies
+         *     LLM, con la `user_key` del auth y nunca el email ni el `user_id` crudo.
+         */
+        post: operations["post_guion_oferta_api_v1_licitaciones__id_externo__guion_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/licitaciones/{id_externo}/reportes": {
         parameters: {
             query?: never;
@@ -2968,6 +3020,34 @@ export interface paths {
          *     pestaña Pliego hoy, no cuando el lote nocturno llegue a ese expediente.
          */
         post: operations["post_pursuit_api_v1_pursuits_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/pursuits/actividad": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Feed de lo que hizo el equipo (F4.5)
+         * @description Paginado **por cursor de id** y no por `offset`.
+         *
+         *     El ledger es append-only, así que el id ya es el orden temporal; con
+         *     `created_at` dos eventos del mismo segundo podrían repetirse o perderse
+         *     entre páginas.
+         *
+         *     Un `member` recibe el feed sin los eventos de administración, y la
+         *     respuesta lo declara (`filtrado_por_rol`) en vez de dejarle creer que no
+         *     ha pasado nada.
+         */
+        get: operations["get_actividad_api_v1_pursuits_actividad_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -3843,6 +3923,56 @@ export interface components {
             group_by: string;
             /** Items */
             items: components["schemas"]["BajaAgregada"][];
+        };
+        /**
+         * Batalla
+         * @description Un expediente en el que coincidimos con el competidor.
+         */
+        Batalla: {
+            /** Baja Ganadora */
+            baja_ganadora?: number | null;
+            /** Fecha */
+            fecha?: string | null;
+            /** Importe */
+            importe?: number | null;
+            /** Licitacion Id */
+            licitacion_id: string;
+            /** Nuestra Baja */
+            nuestra_baja?: number | null;
+            /** Organo Contratacion */
+            organo_contratacion?: string | null;
+            /**
+             * Resultado
+             * @enum {string}
+             */
+            resultado: "perdimos" | "ganamos" | "ellos_ganaron" | "sin_resolver";
+            /** Titulo */
+            titulo?: string | null;
+        };
+        /**
+         * BatallasContraMi
+         * @description El historial de cruces con un competidor.
+         */
+        BatallasContraMi: {
+            /** Batallas */
+            batallas?: components["schemas"]["Batalla"][];
+            /** Empresa Key */
+            empresa_key: string;
+            /**
+             * N
+             * @default 0
+             */
+            n: number;
+            /**
+             * Sin Nif Propio
+             * @default false
+             */
+            sin_nif_propio: boolean;
+            /**
+             * Ventana
+             * @default últimos 24 meses
+             */
+            ventana: string;
         };
         /** Body_post_etiquetas_por_objeto_api_v1_etiquetas_por_objeto_post */
         Body_post_etiquetas_por_objeto_api_v1_etiquetas_por_objeto_post: {
@@ -5478,6 +5608,23 @@ export interface components {
             running: boolean;
         };
         /**
+         * FeedActividad
+         * @description Página del feed, con su cursor.
+         */
+        FeedActividad: {
+            /**
+             * Filtrado Por Rol
+             * @default false
+             */
+            filtrado_por_rol: boolean;
+            /** Items */
+            items?: components["schemas"]["ItemActividad"][];
+            /** Organization Id */
+            organization_id: number;
+            /** Siguiente Cursor */
+            siguiente_cursor?: number | null;
+        };
+        /**
          * FeedbackQueueItem
          * @description Candidato de etiquetado con contexto y confianza del modelo.
          */
@@ -5714,6 +5861,32 @@ export interface components {
              */
             concentracion_top3: number;
         };
+        /**
+         * GuionCriterio
+         * @description Los puntos de un criterio de adjudicación.
+         */
+        GuionCriterio: {
+            /** Criterio */
+            criterio: string;
+            /** Peso Pct */
+            peso_pct?: number | null;
+            /** Puntos */
+            puntos?: components["schemas"]["PuntoGuion"][];
+        };
+        /**
+         * GuionOferta
+         * @description El guion completo.
+         */
+        GuionOferta: {
+            /** Criterios */
+            criterios?: components["schemas"]["GuionCriterio"][];
+            /** Firma */
+            firma?: string | null;
+            /** Licitacion Id */
+            licitacion_id: string;
+            /** Sin Guion */
+            sin_guion?: string | null;
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -5908,6 +6081,26 @@ export interface components {
             q1: number;
             /** Q3 */
             q3: number;
+        };
+        /**
+         * ItemActividad
+         * @description Una línea del feed del equipo.
+         */
+        ItemActividad: {
+            /** Actor */
+            actor?: string | null;
+            /** Cuando */
+            cuando: string;
+            /** Evento */
+            evento: string;
+            /** Id */
+            id: number;
+            /** Licitacion Id */
+            licitacion_id: string;
+            /** Pursuit Id */
+            pursuit_id: number;
+            /** Titulo */
+            titulo?: string | null;
         };
         /**
          * ItemKit
@@ -7358,6 +7551,21 @@ export interface components {
              * @default 0
              */
             total_clasificados: number;
+        };
+        /**
+         * PuntoGuion
+         * @description Un punto a cubrir dentro de un criterio.
+         */
+        PuntoGuion: {
+            /** Evidencia */
+            evidencia?: components["schemas"]["EvidenceRef"][];
+            /**
+             * Sin Base
+             * @default false
+             */
+            sin_base: boolean;
+            /** Texto */
+            texto: string;
         };
         /**
          * PursuitAdjudicacionDetectada
@@ -12227,6 +12435,52 @@ export interface operations {
             };
         };
     };
+    get_batallas_api_v1_competitive_empresas__empresa_key__contra_mi_get: {
+        parameters: {
+            query?: {
+                organization_id?: number | null;
+                /** @description Ventana hacia atrás, en meses */
+                meses?: number;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                empresa_key: string;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BatallasContraMi"];
+                };
+            };
+            /** @description No perteneces a esa organización */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_hhi_api_v1_competitive_hhi_get: {
         parameters: {
             query?: {
@@ -14244,6 +14498,55 @@ export interface operations {
             };
         };
     };
+    post_guion_oferta_api_v1_licitaciones__id_externo__guion_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                id_externo: string;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GuionOferta"];
+                };
+            };
+            /** @description Autenticación inválida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Presupuesto LLM agotado */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     post_reporte_dato_api_v1_licitaciones__id_externo__reportes_post: {
         parameters: {
             query?: never;
@@ -15753,6 +16056,53 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["PursuitSummary"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_actividad_api_v1_pursuits_actividad_get: {
+        parameters: {
+            query?: {
+                organization_id?: number | null;
+                /** @description Cursor: id del último evento de la página anterior */
+                antes_de_id?: number | null;
+                /** @description Filtrar por quién lo hizo */
+                usuario?: number | null;
+                limit?: number;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FeedActividad"];
+                };
+            };
+            /** @description No perteneces a esa organización */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

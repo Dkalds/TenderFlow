@@ -36,6 +36,7 @@ from services.comparador_fichas import (
     ComparacionFichas,
     comparar,
 )
+from services.rag.guion_oferta import GuionOferta, generar_guion
 from services.rag.paginas import PaginaDocumento, get_pagina
 from services.reportes_dato import COLA_POR_TIPO, TipoReporte, registrar_reporte
 from services.simulador_precio import SimulacionPrecio, simular_precio_de
@@ -847,6 +848,39 @@ async def post_comparar_fichas(
         return comparar(fichas)
 
     return await run_db(_trabajo)
+
+
+@router.post(
+    "/licitaciones/{id_externo:path}/guion",
+    summary="Guion de la oferta técnica: esquema de puntos con citas al pliego",
+    responses={
+        401: {"description": "Autenticación inválida"},
+        429: {"description": "Presupuesto LLM agotado"},
+    },
+)
+async def post_guion_oferta(
+    id_externo: str,
+    ctx: dict[str, Any] = Depends(require_any_auth),
+) -> GuionOferta:
+    """F2.6 — sólo esquema, nunca prosa (D33).
+
+    `POST` y no `GET` porque genera: cuesta una llamada al LLM y consume
+    presupuesto. Devuelve 200 con `sin_guion` cuando no hay criterios
+    extraídos o no hay texto de pliegos — que no es un error del usuario.
+
+    El presupuesto se ata al mismo sujeto opaco que el resto de superficies
+    LLM, con la `user_key` del auth y nunca el email ni el `user_id` crudo.
+    """
+    from llm.budget import LLMBudgetExceeded, bind_budget_subject
+
+    def _trabajo() -> GuionOferta:
+        bind_budget_subject(_budget_subject(ctx))
+        return generar_guion(id_externo)
+
+    try:
+        return await run_db(_trabajo)
+    except LLMBudgetExceeded as exc:
+        raise HTTPException(status_code=429, detail=str(exc)) from exc
 
 
 @router.get(

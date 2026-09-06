@@ -27,6 +27,7 @@ from db.watchlist_empresas import (
 )
 from observability.logging import get_logger
 from services.competitive.bajas import baja_de_referencia, bajas_agregadas
+from services.competitive.batallas import BatallasContraMi, batallas_de_usuario
 from services.competitive.mercado import (
     concentracion_hhi,
     cuota_mercado,
@@ -42,6 +43,7 @@ from services.competitive.renovaciones import (
     totales_renovaciones,
 )
 from services.competitive.socios import SugerenciaSocios, sugerir_socios
+from services.organizations import OrganizationAccessError
 from shared.dto import CompetitiveCompanyAwardsDTO, CompetitiveCompanyProfileDTO
 from shared.metric_scope import MetricScope
 
@@ -443,6 +445,37 @@ async def get_partners(
         return sugerir_socios(pd.DataFrame(filas), cpv=cpv, ccaa=ccaa, limit=limit)
 
     return await run_db(_trabajo)
+
+
+@router.get(
+    "/empresas/{empresa_key}/contra-mi",
+    summary="Expedientes en los que coincidimos con este competidor (F3.2)",
+    responses={403: {"description": "No perteneces a esa organización"}},
+)
+async def get_batallas(
+    empresa_key: str,
+    organization_id: int | None = Query(default=None, ge=1),
+    meses: int = Query(24, ge=1, le=120, description="Ventana hacia atrás, en meses"),
+    ctx: dict[str, Any] = Depends(require_any_auth),
+) -> BatallasContraMi:
+    """El historial de cruces, con el límite de lo afirmable declarado.
+
+    Sin conocer el NIF propio (v2 S2.1) sólo se puede decir «nosotros
+    perdimos», no «ellos ganaron contra nosotros»: la respuesta lo dice en
+    `sin_nif_propio` para que la pantalla no haga parecer invencible a un rival
+    que quizá ni se presentó.
+    """
+
+    try:
+        return await run_db(
+            batallas_de_usuario,
+            int(ctx["user_id"]),
+            empresa_key,
+            organization_id=organization_id,
+            meses=meses,
+        )
+    except OrganizationAccessError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
 
 
 @router.get("/watchlist", summary="Empresas vigiladas por el usuario")

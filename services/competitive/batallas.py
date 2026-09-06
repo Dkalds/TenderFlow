@@ -33,6 +33,8 @@ __all__ = [
     "Batalla",
     "BatallasContraMi",
     "CeldaCorte",
+    "batallas_de_usuario",
+    "construir_batallas",
     "corte_por_procedimiento",
     "corte_por_tramo",
     "tramo_de",
@@ -245,3 +247,30 @@ def corte_por_tramo(
 ) -> list[CeldaCorte]:
     """Bajas y adjudicaciones por tramo de importe."""
     return _agrupar(filas, lambda f: tramo_de(f.get("importe")), minimo=minimo)
+
+
+def batallas_de_usuario(
+    user_id: int,
+    empresa_key: str,
+    *,
+    organization_id: int | None = None,
+    meses: int = 24,
+) -> BatallasContraMi:
+    """El historial de cruces con un competidor, con el ámbito ya resuelto.
+
+    La resolución de organización vive aquí y no en la ruta: `api/` no importa
+    `resolve_organization` directamente (lo audita
+    `test_organization_sql_isolation`), porque cada ruta que lo hiciera sería
+    otro sitio donde equivocarse con el ámbito — y éste consulta el pipeline de
+    un equipo.
+    """
+    from datetime import UTC, datetime, timedelta
+
+    from db.repositories.pursuits import PursuitRepository
+    from services.organizations import resolve_organization
+
+    resuelta, _rol = resolve_organization(user_id, organization_id)
+    desde = (datetime.now(UTC) - timedelta(days=30 * meses)).isoformat()
+    cruces = PursuitRepository().cruces_con_competidor(resuelta, empresa_key, desde_iso=desde)
+    resultado = construir_batallas(empresa_key, cruces)
+    return resultado.model_copy(update={"ventana": f"últimos {meses} meses"})
