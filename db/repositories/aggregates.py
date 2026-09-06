@@ -46,6 +46,7 @@ from db.repositories.tecnologia_pliego import NO_SIGNAL_SENTINEL
 from db.sql_fragments import (
     FOLD_TABLE,
     TECHNOLOGY_OBSERVED_SQL,
+    exclude_duplicados_presentacion_sql,
     fold_expr,
     iso_guard,
     tecnologia_en_csv_sql,
@@ -1721,10 +1722,23 @@ class AggregateRepository:
         where, params = _build_where(filters or LicitacionesFilters())
         abierta = abierta_sql_marcadores("estado", n=len(cerrados))
         guard = iso_guard("fecha_limite")
+        # C4.2 / D23 — el Radar enseña un contrato una vez.
+        #
+        # Este universo no excluía **ningún** duplicado, ni siquiera los
+        # `confirmed`. TED acuña un `publication-number` por anuncio y PSCP cae
+        # al `id` de la fila cuando no hay expediente, así que el mismo contrato
+        # llegaba al Radar tantas veces como veces se hubiera reemitido.
+        #
+        # Se usa la variante de presentación (esconde también `pending`) y no la
+        # analítica: el Radar es una lista que alguien lee, no una métrica de
+        # cuota de mercado. El razonamiento completo está en
+        # `exclude_duplicados_presentacion_sql` y en ADR-026.
+        no_duplicada = exclude_duplicados_presentacion_sql("id_externo")
         sql = (
             f"SELECT {self._SCORING_COLS} FROM licitaciones "
             f"WHERE {where} "
             f"  AND {abierta} "
+            f"  AND {no_duplicada} "
             f"  AND {guard} AND fecha_limite >= %s"
         )
         with connect_read() as c:

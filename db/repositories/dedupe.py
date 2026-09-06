@@ -211,3 +211,24 @@ __all__ = [
     "iter_filas_publicables_de_organos",
     "marcar_duplicados",
 ]
+
+
+def canonical_for(id_externo: str) -> str | None:
+    """``canonical_id`` si *id_externo* está marcado como republicación (C4.2).
+
+    Devuelve ``None`` cuando la fila no es duplicada de nada, que es el caso
+    normal. Se consultan los dos estados —``pending`` y ``confirmed``— porque la
+    ficha **enseña** el aviso: es la superficie donde ocultar de más costaría
+    (un enlace guardado dejaría de explicar por qué esa página ya no sale en
+    ningún listado) y donde el usuario puede juzgar por sí mismo si el par es
+    correcto. Es la asimetría de ADR-026 §D23: esconder en el Radar, avisar en
+    el Detalle.
+    """
+    with connect_read() as c:
+        fila = c.execute(
+            "SELECT canonical_id FROM licitaciones_duplicados "
+            "WHERE licitacion_id = %s AND status IN ('pending', 'confirmed') "
+            "ORDER BY confianza DESC LIMIT 1",
+            (id_externo,),
+        ).fetchone()
+    return str(fila[0]) if fila and fila[0] else None

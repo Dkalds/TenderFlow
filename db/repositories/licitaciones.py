@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import Select, and_, func, or_, select, text
 
-from db.database import connect_read, fts_available
+from db.database import connect, connect_read, fts_available
 from db.models import _DIALECT, compile_query, licitacion_tecnologia_score, licitaciones
 from db.repositories.base import csv_values, loose_distinct_strings, rows_to_dicts
 from db.sql_fragments import (
@@ -1160,3 +1160,63 @@ class LicitacionRepository:
         except Exception:
             log.warning("like_search_for_ask_failed", exc_info=True)
             return []
+
+
+# ── Backfill del censo de PSCP (C4.1) ───────────────────────────────────────
+#
+# El SQL vive aquí y no en `scripts/backfill_pscp_censo.py` porque ADR-022 lo
+# pide: todo el SQL en `db/`. El script se queda con lo suyo —los lotes, el
+# dry-run, imprimir el delta— que es donde está su valor.
+
+#: Valor de `analysis_universe` que saca una fila del universo publicable sin
+#: borrarla. Los caminos de lectura lo tratan como "no observado": la vista
+#: `v102_mv_canonicas_clave_inmutable` solo admite `technology_observed` y la
+#: lista explícita de universos regionales, y este no está en ninguna.
+UNIVERSO_CENSO = "pscp_censo"
+
+
+def medir_censo_de_fuente(fuente: str) -> dict[str, int]:
+    """Fotografía del corpus de una fuente: cuánto trae señal tecnológica.
+
+    Medido contra producción el 2026-09-06 para `pscp`: 684.374 filas, de las
+    que **3.117** tienen `tecnologia` — un 0,46 %. Ese es el corpus que ahoga al
+    dataset del clasificador SAP, y el número que este backfill mueve.
+    """
+    with connect_read() as c:
+        fila = c.execute(
+            "SELECT COUNT(*) AS total, "
+            "  COUNT(*) FILTER (WHERE tecnologia IS NOT NULL AND tecnologia <> '') AS con_tec, "
+            "  COUNT(*) FILTER (WHERE analysis_universe = %s) AS ya_marcadas "
+            "FROM licitaciones WHERE fuente = %s",
+            (UNIVERSO_CENSO, fuente),
+        ).fetchone()
+    total = int(fila[0] or 0) if fila else 0
+    con_tec = int(fila[1] or 0) if fila else 0
+    return {
+        "total": total,
+        "con_tecnologia": con_tec,
+        "sin_tecnologia": total - con_tec,
+        "ya_marcadas": int(fila[2] or 0) if fila else 0,
+    }
+
+
+def marcar_censo_de_fuente(fuente: str, *, batch: int) -> int:
+    """Marca UN lote de filas sin señal como censo. Devuelve cuántas marcó.
+
+    Por lotes y no de una: un `UPDATE` sobre 680.000 filas mantiene un lock
+    largo sobre la tabla núcleo y bloquea la ingesta que corra en paralelo.
+    Devuelve 0 cuando no queda nada, que es la condición de parada del bucle.
+    """
+    with connect() as c:
+        cur = c.execute(
+            "UPDATE licitaciones SET analysis_universe = %s "
+            "WHERE id_externo IN ("
+            "  SELECT id_externo FROM licitaciones "
+            "  WHERE fuente = %s "
+            "    AND (tecnologia IS NULL OR tecnologia = '') "
+            "    AND COALESCE(analysis_universe, '') <> %s "
+            "  LIMIT %s"
+            ")",
+            (UNIVERSO_CENSO, fuente, UNIVERSO_CENSO, batch),
+        )
+        return int(cur.rowcount) if hasattr(cur, "rowcount") else 0

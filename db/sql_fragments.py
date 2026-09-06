@@ -225,6 +225,38 @@ def exclude_duplicados_sql(col: str = "l.id_externo") -> str:
     return f"{col} NOT IN {subquery}"
 
 
+def exclude_duplicados_presentacion_sql(col: str = "l.id_externo") -> str:
+    """Como :func:`exclude_duplicados_sql`, pero también esconde los ``pending``.
+
+    **Es para superficies de PRESENTACIÓN, no para métricas** (ADR-026 §D23).
+
+    La diferencia importa porque el error de cada lado es distinto:
+
+    - En el **Radar** o en un listado, mostrar tres veces el mismo contrato
+      —porque TED acuñó un ``publication-number`` por anuncio— es ruido que el
+      usuario ve y no puede arreglar. Esconder de más cuesta que un expediente
+      aparezca una vez en vez de tres; el original sigue ahí.
+    - En **cuota de mercado o HHI**, retirar un contrato que resultó no ser
+      duplicado falsea la métrica para siempre. Por eso `exclude_duplicados_sql`
+      sigue mirando solo ``confirmed``, y no se toca.
+
+    `detect_republicaciones` marca **siempre** ``pending`` y explica por qué no
+    puede marcar ``confirmed``: coincidir en órgano, CPV4, año-mes y título es
+    bastante para decidir qué se enseña, no para retirar un contrato de una
+    métrica. Esta función es exactamente esa distinción, escrita en SQL.
+
+    La superficie pública **no** necesita esto: colapsa por
+    :func:`clave_canonica_sql`, que es la misma clave que
+    ``services.dedupe.republicacion_key``, así que ya publica una sola fila por
+    contrato sin consultar la tabla.
+    """
+    subquery = (
+        "(SELECT licitacion_id FROM licitaciones_duplicados "
+        "WHERE status IN ('confirmed', 'pending'))"
+    )
+    return f"{col} NOT IN {subquery}"
+
+
 # ── Plegado de acentos en SQL ─────────────────────────────────────────────
 # Pares de `translate()` para que una tilde distinta no convierta dos valores
 # iguales en dos valores distintos. Hasta 2026-09 estaban además copiados como

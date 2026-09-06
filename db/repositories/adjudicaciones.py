@@ -489,3 +489,42 @@ class AdjudicacionRepository:
         """
         with connect_read() as c:
             return rows_to_dicts(c.execute(sql))
+
+
+def completitud_por_fuente(*, min_filas: int = 50) -> list[dict[str, Any]]:
+    """Cobertura de los campos de adjudicación, por fuente de ingesta (C4.7).
+
+    Cuatro campos que el producto usa y que no todas las fuentes traen:
+    ``n_ofertas_recibidas`` (competencia), ``oferta_minima`` / ``oferta_maxima``
+    (rango de precio) y ``es_pyme``. Medido contra producción el 2026-09-06, la
+    diferencia entre fuentes no es un matiz:
+
+    - PLACSP: 100 % de ofertas, ~58 % de rango, ~57 % de PYME.
+    - PSCP: 37 % de ofertas y **0 %** de rango y de PYME.
+    - TED: **0 %** de los cuatro.
+
+    Es decir: cualquier análisis de competencia que mezcle fuentes está
+    promediando un 100 % con un 0 % sin decirlo. Publicar la tabla es lo que
+    permite que quien lea el número sepa sobre qué población se calculó.
+
+    ``min_filas`` descarta las fuentes con volumen anecdótico: un backfill con
+    tres adjudicaciones da porcentajes de 0 o 100 que no significan nada.
+
+    No excluye duplicados a propósito: la pregunta es "qué trae cada fuente",
+    no "qué contratos hay". Filtrar por canonicidad mediría otra cosa.
+    """
+    sql = """
+        SELECT l.fuente,
+               COUNT(*)                                   AS filas,
+               COUNT(a.n_ofertas_recibidas)               AS con_n_ofertas,
+               COUNT(a.oferta_minima)                     AS con_oferta_minima,
+               COUNT(a.oferta_maxima)                     AS con_oferta_maxima,
+               COUNT(a.es_pyme)                           AS con_es_pyme
+        FROM adjudicaciones a
+        JOIN licitaciones l ON l.id_externo = a.licitacion_id
+        GROUP BY l.fuente
+        HAVING COUNT(*) >= %s
+        ORDER BY COUNT(*) DESC
+    """
+    with connect_read() as c:
+        return rows_to_dicts(c.execute(sql, (min_filas,)))

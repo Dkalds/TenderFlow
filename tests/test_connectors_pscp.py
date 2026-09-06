@@ -335,3 +335,111 @@ def test_pscp_cursor_avanza_entre_runs_con_timestamps_repetidos(monkeypatch):
     assert f":updated_at = '{same_stamp}'" in where_run2
     assert ":id > 'id-b'" in where_run2
     assert [n.natural_id for n in notices2] == ["C"]
+
+
+# ── C4.1 / D24: el conector acota al universo tecnológico ───────────────────
+
+
+def _conector():
+    from scraper.connectors.pscp import PscpConnector
+
+    return PscpConnector(dataset_id="ybgg-dgi6", domain="ejemplo.cat", app_token="")
+
+
+def _aviso(**campos):
+    from scraper.connectors.base import RawNotice
+
+    record = {"codi_expedient": "EXP-C4", **campos}
+    return RawNotice(natural_id="EXP-C4", payload=record)
+
+
+def test_descarta_el_aviso_sin_senal_tecnologica() -> None:
+    """683.000 filas con 0,46 % de positivos era el corpus que ahogaba al modelo."""
+    conector = _conector()
+    parsed = conector.parse(_aviso(objecte_contracte="Subministrament de reactius de laboratori"))
+    assert parsed is None
+    assert conector.contadores_de_descarte()["pscp_sin_senal_tecnologica"] == 1
+
+
+def test_conserva_el_aviso_con_senal_tecnologica() -> None:
+    conector = _conector()
+    parsed = conector.parse(_aviso(objecte_contracte="Manteniment de la plataforma SAP"))
+    assert parsed is not None
+    assert parsed.licitacion.tecnologia
+    assert conector.contadores_de_descarte()["pscp_sin_senal_tecnologica"] == 0
+
+
+def test_ninguna_fila_persistida_queda_sin_tecnologia() -> None:
+    """El criterio de aceptación de C4.1, sobre el parser.
+
+    «Filas nuevas de PSCP con `tecnologia IS NULL` = 0» se mide contra la BD
+    tras el siguiente run; aquí se fija el invariante que lo hace cierto: el
+    parser no puede devolver una licitación sin `tecnologia`.
+    """
+    conector = _conector()
+    titulos = [
+        "Subministrament de material d'oficina",
+        "Manteniment SAP S/4HANA",
+        "Servei de neteja",
+        "Llicencies de programari SAP",
+    ]
+    persistidas = [conector.parse(_aviso(objecte_contracte=t)) for t in titulos]
+    for parsed in persistidas:
+        if parsed is not None:
+            assert parsed.licitacion.tecnologia, (
+                f"{parsed.licitacion.titulo!r} se persistiría con tecnologia NULL"
+            )
+    assert conector.contadores_de_descarte()["pscp_sin_senal_tecnologica"] == 2
+
+
+# ── C4.4: fechas imposibles ─────────────────────────────────────────────────
+
+
+def test_la_fecha_de_adjudicacion_imposible_se_descarta() -> None:
+    """`1899-12-30` es el cero de la epoch de Excel: una celda vacía, no una fecha.
+
+    Pasaba cualquier validación de formato (cuatro cifras, parsea bien) y ganaba
+    el `LEAST(fecha_publicacion, fecha_adjudicacion)` que ancla el dataset de ML,
+    metiendo la fila en el train de todos los folds.
+    """
+    conector = _conector()
+    parsed = conector.parse(
+        _aviso(
+            objecte_contracte="Manteniment SAP",
+            data_publicacio_anunci="2026-03-01T00:00:00.000",
+            denominacio_adjudicatari="Empresa SL",
+            data_adjudicacio_contracte="1899-12-30T00:00:00.000",
+        )
+    )
+    assert parsed is not None
+    assert parsed.adjudicaciones
+    # Cae al respaldo (la publicación), que es lo que ya hacía con el campo vacío.
+    assert parsed.adjudicaciones[0].fecha_adjudicacion == "2026-03-01"
+    assert conector.contadores_de_descarte()["pscp_fechas_implausibles"] == 1
+
+
+def test_la_fecha_de_adjudicacion_plausible_se_conserva() -> None:
+    conector = _conector()
+    parsed = conector.parse(
+        _aviso(
+            objecte_contracte="Manteniment SAP",
+            data_publicacio_anunci="2026-03-01T00:00:00.000",
+            denominacio_adjudicatari="Empresa SL",
+            data_adjudicacio_contracte="2026-05-20T00:00:00.000",
+        )
+    )
+    assert parsed is not None
+    assert parsed.adjudicaciones[0].fecha_adjudicacion == "2026-05-20"
+    assert conector.contadores_de_descarte()["pscp_fechas_implausibles"] == 0
+
+
+def test_los_contadores_llegan_al_resumen_del_run() -> None:
+    """`descartadas` no distingue el acotado deliberado de un parser roto."""
+    from scraper.connectors.base import ConnectorRunResult
+
+    resultado = ConnectorRunResult(source_id="pscp", fetched=10, parsed=2, descartadas=8)
+    resultado.detalles.update(_conector().contadores_de_descarte())
+    resumen = resultado.as_dict()
+    assert resumen["descartadas"] == 8
+    assert "pscp_sin_senal_tecnologica" in resumen
+    assert "pscp_fechas_implausibles" in resumen

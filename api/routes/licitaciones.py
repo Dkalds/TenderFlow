@@ -27,6 +27,7 @@ from api.auth import AuthContext, require_api_key
 from api.concurrency import run_db, run_ml
 from api.errors import deprecate_route, sunset_anunciado
 from api.routes.dual_auth import require_any_auth
+from db.repositories import dedupe as _dedupe_repo
 from db.repositories.adjudicaciones import AdjudicacionRepository
 from db.repositories.documentos import DocumentosRepository
 from db.repositories.licitaciones import LicitacionRepository
@@ -116,6 +117,17 @@ class LicitacionDetail(LicitacionSummary):
     # mentía. Sin este campo el frontend no tiene de dónde sacar la etiqueta —
     # `id_externo` no sirve, porque PLACSP es el legacy sin namespace.
     fuente: str | None = None
+    # C4.2 / D23 — republicación.
+    #
+    # Un contrato reemitido (TED acuña un `publication-number` por anuncio;
+    # PSCP cae al `id` de la fila cuando no hay expediente) deja de aparecer en
+    # el Radar y en los listados, pero **sigue siendo alcanzable por URL**: un
+    # enlace guardado no puede dar 404 porque un job nocturno decidió que era un
+    # duplicado. Lo que la ficha hace es decirlo, con el id de la canónica para
+    # que el usuario pueda ir al original.
+    #
+    # `None` = no es una republicación conocida.
+    republicacion_de: str | None = None
 
 
 class AdjudicacionSummary(BaseModel):
@@ -487,7 +499,10 @@ async def get_licitacion(
     if _check_etag(request, etag):
         return Response(status_code=304)
 
-    return LicitacionDetail(**{k: data.get(k) for k in LicitacionDetail.model_fields})  # type: ignore[arg-type]
+    canonica = await run_db(_dedupe_repo.canonical_for, id_externo)
+    campos = {k: data.get(k) for k in LicitacionDetail.model_fields}
+    campos["republicacion_de"] = canonica
+    return LicitacionDetail(**campos)  # type: ignore[arg-type]
 
 
 # ── /licitaciones/{id_externo}/explain ───────────────────────────────────

@@ -3216,6 +3216,30 @@ export interface components {
             nombre: string;
         };
         /**
+         * AdjudicacionesPorFuente
+         * @description Cobertura de los campos de adjudicación en UNA fuente de ingesta (C4.7).
+         *
+         *     Existe porque promediar estas cifras entre fuentes miente: medido contra
+         *     producción el 2026-09-06, PLACSP trae el 100 % de `n_ofertas_recibidas` y
+         *     PSCP el 37 %, y ni PSCP ni TED traen **nada** de rango de oferta ni de PYME.
+         *     Un «57 % de cobertura de PYME» global es la media de un 57 % real y de dos
+         *     ceros, y no describe a ninguna de las tres.
+         */
+        AdjudicacionesPorFuente: {
+            /** Filas */
+            filas: number;
+            /** Fuente */
+            fuente: string;
+            /** Pct Es Pyme */
+            pct_es_pyme: number;
+            /** Pct N Ofertas */
+            pct_n_ofertas: number;
+            /** Pct Oferta Maxima */
+            pct_oferta_maxima: number;
+            /** Pct Oferta Minima */
+            pct_oferta_minima: number;
+        };
+        /**
          * AdminUserAction
          * @description Resultado de una acción de moderación sobre un usuario.
          */
@@ -5143,6 +5167,8 @@ export interface components {
             provincia?: string | null;
             /** Raw Keywords */
             raw_keywords?: string | null;
+            /** Republicacion De */
+            republicacion_de?: string | null;
             /** Tecnologia */
             tecnologia?: string | null;
             /** Tipo Contrato */
@@ -6650,6 +6676,8 @@ export interface components {
          * @description Data quality metrics.
          */
         QualityResult: {
+            /** Adjudicaciones Por Fuente */
+            adjudicaciones_por_fuente?: components["schemas"]["AdjudicacionesPorFuente"][];
             /** Cobertura Modulo Sap */
             cobertura_modulo_sap?: number | null;
             /** Cobertura Nif */
@@ -10971,6 +10999,8 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
+                /** @description Reintentar con la misma clave devuelve la misma respuesta sin repetir el efecto. Caduca según `IDEMPOTENCY_TTL_SECONDS`. */
+                "X-Idempotency-Key"?: string | null;
                 "X-CSRF-Token"?: string | null;
             };
             path?: never;
@@ -14011,6 +14041,8 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
+                /** @description Reintentar con la misma clave devuelve la misma respuesta sin repetir el efecto. Caduca según `IDEMPOTENCY_TTL_SECONDS`. */
+                "X-Idempotency-Key"?: string | null;
                 "X-CSRF-Token"?: string | null;
             };
             path?: never;
@@ -14374,6 +14406,8 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
+                /** @description Reintentar con la misma clave devuelve la misma respuesta sin repetir el efecto. Caduca según `IDEMPOTENCY_TTL_SECONDS`. */
+                "X-Idempotency-Key"?: string | null;
                 "X-CSRF-Token"?: string | null;
             };
             path?: never;
@@ -14483,6 +14517,8 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
+                /** @description Reintentar con la misma clave devuelve la misma respuesta sin repetir el efecto. Caduca según `IDEMPOTENCY_TTL_SECONDS`. */
+                "X-Idempotency-Key"?: string | null;
                 "X-CSRF-Token"?: string | null;
             };
             path?: never;

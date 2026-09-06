@@ -142,3 +142,39 @@ def baja_media_delta() -> dict[str, Any]:
         "baja_media_pct_por_licitacion": per_licitacion["baja_media_pct"],
         "n_por_licitacion": per_licitacion["n"],
     }
+
+
+def adjudicaciones_con_fecha_imposible() -> dict[str, Any]:
+    """Adjudicaciones con ``fecha_adjudicacion`` anterior al año plausible (C4.4).
+
+    La mayoría son ``1899-12-30``: el cero de la epoch de Excel, o sea como PSCP
+    exporta una celda vacía. Pasan cualquier validación de formato —cuatro
+    cifras, parsean bien— y ganan el ``LEAST(fecha_publicacion,
+    fecha_adjudicacion)`` que ancla el dataset de ML, así que la fila entra en el
+    train de todos los folds con los acumuladores históricos vacíos.
+
+    Desde C4.4 el conector de PSCP las corta en el origen. Esto cuenta el
+    histórico ya escrito, que el conector no puede ver: sin un número que alguien
+    mire, "cortado en el origen" es una afirmación sin comprobación.
+    """
+    from shared.dates import ANIO_MINIMO_PLAUSIBLE
+
+    corte = f"{ANIO_MINIMO_PLAUSIBLE:04d}-01-01"
+    with connect_read() as c:
+        total = c.execute(
+            "SELECT COUNT(*) FROM adjudicaciones "
+            "WHERE fecha_adjudicacion IS NOT NULL AND fecha_adjudicacion < %s",
+            (corte,),
+        ).fetchone()
+        por_fuente = c.execute(
+            "SELECT l.fuente, COUNT(*) AS filas FROM adjudicaciones a "
+            "JOIN licitaciones l ON l.id_externo = a.licitacion_id "
+            "WHERE a.fecha_adjudicacion IS NOT NULL AND a.fecha_adjudicacion < %s "
+            "GROUP BY l.fuente ORDER BY COUNT(*) DESC",
+            (corte,),
+        ).fetchall()
+    return {
+        "antes_de_1990": int(total[0]) if total else 0,
+        "corte": corte,
+        "por_fuente": [{"fuente": f, "filas": int(n)} for f, n in por_fuente],
+    }

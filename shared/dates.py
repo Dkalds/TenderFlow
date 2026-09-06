@@ -100,3 +100,41 @@ def quarter_start(series: pd.Series) -> pd.Series:
     if getattr(values.dt, "tz", None) is not None:
         values = values.dt.tz_localize(None)
     return values.dt.to_period("Q").dt.to_timestamp()  # type: ignore[return-value]
+
+
+#: Año mínimo plausible para una fecha de contratación pública española (C4.4).
+#:
+#: **Es una afirmación sobre los datos, no sobre el formato.** El
+#: `_ANIO_MINIMO = 1000` de `services/ml/features.py` es otra cosa: nace de la
+#: asimetría de `%Y` entre `strptime` y `strftime`, un hecho del parser que no
+#: admite discusión. Este umbral sí la admite, y por eso vive aparte y con su
+#: propio nombre.
+#:
+#: 1990 no es arbitrario: la contratación pública española no tiene expedientes
+#: electrónicos anteriores, y las fechas por debajo son basura reconocible. La
+#: mayoritaria es `1899-12-30` —el cero de la epoch de Excel, o sea como PSCP
+#: exporta una celda vacía— que pasa cualquier validación de formato porque
+#: tiene cuatro cifras y parsea bien.
+#:
+#: Lo que costaba dejarlas pasar: el ancla del dataset de ML es
+#: `LEAST(fecha_publicacion, fecha_adjudicacion)`, así que una fila con
+#: `1899-12-30` gana el mínimo, entra en el train de **todos** los folds con los
+#: acumuladores históricos vacíos y alimenta el histórico como si precediera a
+#: todo lo demás.
+ANIO_MINIMO_PLAUSIBLE = 1990
+
+
+def es_fecha_plausible(iso: str | None) -> bool:
+    """¿La fecha ISO cae en el rango plausible de la contratación pública?
+
+    Devuelve ``False`` para ``None`` y para cualquier cadena que no empiece por
+    un año de cuatro cifras: si no se puede leer el año, no se puede afirmar que
+    sea plausible.
+    """
+    if not iso or len(iso) < 4:
+        return False
+    try:
+        anio = int(iso[:4])
+    except ValueError:
+        return False
+    return anio >= ANIO_MINIMO_PLAUSIBLE
