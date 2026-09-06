@@ -190,12 +190,32 @@ UMBRAL_FECHAS_IMPOSIBLES = Umbral(
     margen_pct=0.0,
 )
 
+#: Fecha desde la que una fila cuenta como "nueva" para la semántica del
+#: importe: el día en que se aplicó `v112`. Las anteriores están en
+#: `desconocido` por construcción.
+IMPORTE_TIPO_DESDE = "2026-09-06"
+
+#: Filas nuevas con importe y sin base declarada. Umbral 0 y margen 0: a partir
+#: de `v112` todo camino de escritura pasa por un parser que sabe de dónde viene
+#: el número. Una sola fila sin tipo significa que hay un camino que no lo
+#: puebla, y eso no admite tolerancia.
+UMBRAL_IMPORTE_SIN_TIPO = Umbral(
+    "importe/filas_nuevas_sin_tipo",
+    0,
+    "2026-09-06",
+    "filas",
+    "Desde v112 el parser declara la base del importe; una fila nueva sin tipo es un "
+    "camino de escritura que no la puebla.",
+    margen_pct=0.0,
+)
+
 TODOS_LOS_UMBRALES: tuple[Umbral, ...] = (
     *UMBRALES_FECHA_LIMITE.values(),
     UMBRAL_FECHA_LIMITE_POR_DEFECTO,
     UMBRAL_UTE,
     UMBRAL_DELTA_BAJA,
     UMBRAL_FECHAS_IMPOSIBLES,
+    UMBRAL_IMPORTE_SIN_TIPO,
 )
 
 
@@ -271,6 +291,13 @@ def _medir_baja() -> dict[str, Any]:
     return stats
 
 
+def _medir_importe_sin_tipo() -> dict[str, Any]:
+    """Filas nuevas cuyo importe no declara su base (C1.1)."""
+    from db.domain_truth_audit import importe_sin_base_declarada
+
+    return importe_sin_base_declarada(desde=IMPORTE_TIPO_DESDE)
+
+
 def _medir_fechas_imposibles() -> dict[str, Any]:
     """Adjudicaciones con fecha anterior al año plausible (C4.4)."""
     from db.domain_truth_audit import adjudicaciones_con_fecha_imposible
@@ -291,6 +318,7 @@ def medir_todo(max_zips: int) -> dict[str, Any]:
         ("ute", _medir_ute),
         ("baja", _medir_baja),
         ("fechas_imposibles", _medir_fechas_imposibles),
+        ("importe_tipo", _medir_importe_sin_tipo),
     ):
         try:
             secciones[clave] = fn()
@@ -340,6 +368,17 @@ def evaluar(datos: dict[str, Any]) -> list[str]:
             f"baja_media_pct: {delta} puntos entre el cálculo por adjudicación y "
             f"el agregado por licitación; calibrado en {UMBRAL_DELTA_BAJA.medido} "
             f"el {UMBRAL_DELTA_BAJA.fecha}, límite {UMBRAL_DELTA_BAJA.limite}"
+        )
+
+    # C1.1 — importe sin base declarada en filas nuevas.
+    importe = datos.get("importe_tipo", {})
+    sin_tipo = importe.get("sin_tipo")
+    if sin_tipo is not None and UMBRAL_IMPORTE_SIN_TIPO.supera(float(sin_tipo)):
+        violaciones.append(
+            f"importe: {sin_tipo} licitaciones ingeridas desde "
+            f"{importe.get('desde')} tienen importe y no declaran su base "
+            f"(`importe_tipo IS NULL`); umbral {UMBRAL_IMPORTE_SIN_TIPO.limite:.0f}. "
+            f"Hay un camino de escritura que no pasa por el parser de v112."
         )
 
     # C4.4 — fechas de adjudicación imposibles.

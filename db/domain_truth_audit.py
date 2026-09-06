@@ -178,3 +178,39 @@ def adjudicaciones_con_fecha_imposible() -> dict[str, Any]:
         "corte": corte,
         "por_fuente": [{"fuente": f, "filas": int(n)} for f, n in por_fuente],
     }
+
+
+def importe_sin_base_declarada(*, desde: str) -> dict[str, Any]:
+    """Filas nuevas cuyo importe no dice de qué base es (C1.1, ADR-032).
+
+    ``desde`` es la fecha a partir de la cual una fila cuenta como "nueva": la
+    de la migración ``v112``. Las anteriores están en ``desconocido`` por
+    construcción —el parser guardaba el número y tiraba la información de qué
+    elemento CODICE lo produjo— y exigirles una base sería exigir que el pasado
+    se reescriba solo.
+
+    El umbral es **0 sobre las nuevas**: a partir de ``v112`` toda fila con
+    importe pasa por un parser que sí sabe de dónde viene. Una fila nueva sin
+    tipo significa que hay un camino de escritura que no lo puebla, y ese es
+    exactamente el defecto que este control busca.
+    """
+    with connect_read() as c:
+        fila = c.execute(
+            "SELECT COUNT(*) FILTER (WHERE importe IS NOT NULL) AS con_importe, "
+            "  COUNT(*) FILTER (WHERE importe IS NOT NULL AND importe_tipo IS NULL) "
+            "    AS sin_tipo, "
+            "  COUNT(*) FILTER (WHERE importe_tipo = 'desconocido') AS desconocido, "
+            "  COUNT(*) FILTER (WHERE importe_base_sin_iva IS NOT NULL) AS con_base "
+            "FROM licitaciones "
+            "WHERE COALESCE(primera_extraccion, fecha_extraccion) >= %s",
+            (desde,),
+        ).fetchone()
+    if not fila:
+        return {"desde": desde, "con_importe": 0, "sin_tipo": 0, "desconocido": 0, "con_base": 0}
+    return {
+        "desde": desde,
+        "con_importe": int(fila[0] or 0),
+        "sin_tipo": int(fila[1] or 0),
+        "desconocido": int(fila[2] or 0),
+        "con_base": int(fila[3] or 0),
+    }

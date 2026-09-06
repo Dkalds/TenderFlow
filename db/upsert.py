@@ -141,7 +141,29 @@ class Licitacion:
     titulo: str
     descripcion: str | None = None
     organo_contratacion: str | None = None
+    # `importe` es el ALIAS de la base sin IVA cuando la hay, y el importe con
+    # IVA cuando la fuente solo publica ese. Se conserva con ese nombre porque
+    # lo consumen el frontend, los exports, el scoring y varias vistas
+    # materializadas: renombrarlo a cambio de un nombre mejor no compra nada.
+    #
+    # Lo que faltaba, y es lo que arregla C1.1 (ADR-032, D21), es que la fila
+    # dijera DE QUÉ BASE es ese número. `bajas` calculaba
+    # `(importe - adjudicado) / importe` mezclando las dos, así que una baja del
+    # 21 % podía ser exactamente el IVA.
     importe: float | None = None
+    #: `cbc:TaxExclusiveAmount`. La base de comparación: `bajas`, `pricing` y
+    #: `scoring` leen ESTA y excluyen las filas que no la tienen.
+    importe_base_sin_iva: float | None = None
+    #: `cbc:TotalAmount`.
+    importe_con_iva: float | None = None
+    #: `cbc:EstimatedOverallContractAmount` — incluye prórrogas y
+    #: modificaciones. Es el número con el que la Ley 9/2017 determina el
+    #: procedimiento, y no se extraía en absoluto.
+    valor_estimado: float | None = None
+    #: `sin_iva` | `con_iva` | `desconocido`. `None` = la fuente no publicó
+    #: importe. `desconocido` es el histórico anterior a v112, que no se puede
+    #: reinterpretar sin volver a parsear el CODICE original.
+    importe_tipo: str | None = None
     moneda: str = "EUR"
     cpv: str | None = None
     tipo_contrato: str | None = None

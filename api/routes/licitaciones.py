@@ -30,7 +30,7 @@ from api.routes.dual_auth import require_any_auth
 from db.repositories import dedupe as _dedupe_repo
 from db.repositories.adjudicaciones import AdjudicacionRepository
 from db.repositories.documentos import DocumentosRepository
-from db.repositories.licitaciones import LicitacionRepository
+from db.repositories.licitaciones import LicitacionRepository, lotes_de
 from observability.logging import get_logger
 from shared.dto import (
     MAX_PAGE_LIMIT,
@@ -128,6 +128,25 @@ class LicitacionDetail(LicitacionSummary):
     #
     # `None` = no es una republicación conocida.
     republicacion_de: str | None = None
+    # C1.4 — los lotes del expediente. Lista vacía = lote único implícito,
+    # que es el caso mayoritario; no significa «no medido».
+    lotes: list[LoteOut] = Field(default_factory=list)
+
+
+class LoteOut(BaseModel):
+    """Un lote del expediente (C1.4).
+
+    `GET /licitaciones/{id}` devolvía el expediente sin sus lotes, así que un
+    multi-lote se presentaba como uno solo con el presupuesto total —la misma
+    confusión que `EFFECTIVE_BUDGET_SQL` resolvió del lado del cálculo, sin
+    resolver del lado de lo que el usuario ve.
+    """
+
+    numero: str
+    titulo: str | None = None
+    cpv: str | None = None
+    importe: float | None = None
+    fecha_limite: str | None = None
 
 
 class AdjudicacionSummary(BaseModel):
@@ -500,8 +519,10 @@ async def get_licitacion(
         return Response(status_code=304)
 
     canonica = await run_db(_dedupe_repo.canonical_for, id_externo)
+    lotes = await run_db(lotes_de, id_externo)
     campos = {k: data.get(k) for k in LicitacionDetail.model_fields}
     campos["republicacion_de"] = canonica
+    campos["lotes"] = [LoteOut(**lote) for lote in lotes]
     return LicitacionDetail(**campos)  # type: ignore[arg-type]
 
 

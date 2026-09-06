@@ -188,6 +188,17 @@ class BajaAgregada(BaseModel):
 class BajasResult(BaseModel):
     items: list[BajaAgregada]
     group_by: str
+    # C1.1 / ADR-032 — sobre qué base de importe se calcularon estas bajas.
+    #
+    # `sin_iva`: solo filas con base sin IVA declarada.
+    # `mixta`: se excluyó lo que se sabe que lleva IVA, pero el histórico
+    #          anterior a `v112` sigue dentro porque su base no se puede
+    #          determinar sin volver a parsear el CODICE original.
+    #
+    # Una baja es `(presupuesto - adjudicado) / presupuesto`: mezclar bases
+    # hace que una baja del 21 % pueda ser exactamente el IVA. Publicar la
+    # cifra sin decir su base es publicar un número no interpretable.
+    base: str
 
 
 class BajaReferencia(BaseModel):
@@ -200,6 +211,8 @@ class BajaReferencia(BaseModel):
     ofertas_medias: float | None = None
     organo: str | None
     cpv_prefix: str | None
+    #: Base de importe usada. Ver `BajasResult.base`.
+    base: str
 
 
 class CuotaEmpresa(BaseModel):
@@ -265,27 +278,51 @@ async def get_bajas(
     cpv: str | None = Query(None, max_length=8, description="Prefijo CPV"),
     ccaa: str | None = Query(None, max_length=50),
     limit: int = Query(100, ge=1, le=500),
+    solo_base_declarada: bool = Query(
+        False,
+        description=(
+            "Solo filas con base de importe sin IVA declarada. Devuelve `base: "
+            '"sin_iva"` y hoy pocas filas: la columna se puebla con la '
+            "re-ingesta, no con la migración. Por defecto se excluye lo que se "
+            'sabe que lleva IVA y se declara `base: "mixta"`.'
+        ),
+    ),
     _ctx: dict[str, Any] = Depends(require_any_auth),
 ) -> BajasResult:
-    items = await run_db(
+    items, base = await run_db(
         bajas_agregadas,
         group_by=group_by,
         min_contratos=min_contratos,
         cpv_prefix=cpv,
         ccaa=ccaa,
         limit=limit,
+        solo_base_declarada=solo_base_declarada,
     )
-    return BajasResult(items=[BajaAgregada(**item) for item in items], group_by=group_by)
+    return BajasResult(items=[BajaAgregada(**item) for item in items], group_by=group_by, base=base)
 
 
 @router.get("/bajas/referencia", summary="Baja de referencia para un segmento")
 async def get_baja_referencia(
     organo: str | None = Query(None, max_length=300),
     cpv: str | None = Query(None, max_length=8),
+    solo_base_declarada: bool = Query(
+        False, description="Ver el mismo parámetro en `/competitive/bajas`."
+    ),
     _ctx: dict[str, Any] = Depends(require_any_auth),
 ) -> BajaReferencia:
-    """'¿Cuánto hay que bajar para ganar en este órgano/CPV?'"""
-    return BajaReferencia(**await run_db(baja_de_referencia, organo=organo, cpv_prefix=cpv))
+    """'¿Cuánto hay que bajar para ganar en este órgano/CPV?'
+
+    La respuesta declara en `base` sobre qué población de importes se calculó
+    (C1.1): sin ese dato, «la baja media es del 14 %» no se puede interpretar.
+    """
+    return BajaReferencia(
+        **await run_db(
+            baja_de_referencia,
+            organo=organo,
+            cpv_prefix=cpv,
+            solo_base_declarada=solo_base_declarada,
+        )
+    )
 
 
 # ── Mercado ───────────────────────────────────────────────────────────────

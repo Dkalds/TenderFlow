@@ -131,6 +131,15 @@ async def download_export(
     fecha_desde: str | None = Query(None),
     fecha_hasta: str | None = Query(None),
     limit: int = Query(10000, ge=1, le=50000),
+    por_lote: bool = Query(
+        False,
+        description=(
+            "Una fila por LOTE en vez de por expediente (C1.4). Los expedientes "
+            "sin lotes salen igual, con los campos de lote vacíos: un export que "
+            "solo trajera los multi-lote perdería la mayoría del corpus sin "
+            "decirlo. Solo aplica a `csv` y `excel`."
+        ),
+    ),
     _user: dict[str, Any] = Depends(require_any_auth),
 ) -> StreamingResponse:
     """Descarga síncrona (CSV, Excel o PDF) con los filtros actuales.
@@ -157,6 +166,14 @@ async def download_export(
             fecha_hasta=fecha_hasta,
             limit=limit,
         )
+        if por_lote and format != "pdf":
+            # El PDF queda fuera: su maquetación es una tabla por expediente y
+            # expandir a lotes le rompería el layout sin que nadie lo haya
+            # pedido. CSV y Excel sí son tabulares por naturaleza.
+            from db.repositories.licitaciones import licitaciones_por_lote
+
+            ids = [str(r["id_externo"]) for r in rows if r.get("id_externo")]
+            rows = licitaciones_por_lote(ids)
         if format == "excel":
             return (
                 generate_excel(rows),

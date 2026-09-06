@@ -1086,6 +1086,9 @@ export interface paths {
         /**
          * Baja de referencia para un segmento
          * @description '¿Cuánto hay que bajar para ganar en este órgano/CPV?'
+         *
+         *     La respuesta declara en `base` sobre qué población de importes se calculó
+         *     (C1.1): sin ese dato, «la baja media es del 14 %» no se puede interpretar.
          */
         get: operations["get_baja_referencia_api_v1_competitive_bajas_referencia_get"];
         put?: never;
@@ -3401,6 +3404,8 @@ export interface components {
             baja_media_pct?: number | null;
             /** Baja Min Pct */
             baja_min_pct?: number | null;
+            /** Base */
+            base: string;
             /** Contratos */
             contratos?: number | null;
             /** Cpv Prefix */
@@ -3412,6 +3417,8 @@ export interface components {
         };
         /** BajasResult */
         BajasResult: {
+            /** Base */
+            base: string;
             /** Group By */
             group_by: string;
             /** Items */
@@ -5151,6 +5158,8 @@ export interface components {
             id_externo: string;
             /** Importe */
             importe?: number | null;
+            /** Lotes */
+            lotes?: components["schemas"]["LoteOut"][];
             /** Ml Proba Max */
             ml_proba_max?: number | null;
             /** Ml Tech Principal */
@@ -5310,6 +5319,27 @@ export interface components {
             lot_number?: string | null;
             /** Name */
             name?: string | null;
+        };
+        /**
+         * LoteOut
+         * @description Un lote del expediente (C1.4).
+         *
+         *     `GET /licitaciones/{id}` devolvía el expediente sin sus lotes, así que un
+         *     multi-lote se presentaba como uno solo con el presupuesto total —la misma
+         *     confusión que `EFFECTIVE_BUDGET_SQL` resolvió del lado del cálculo, sin
+         *     resolver del lado de lo que el usuario ve.
+         */
+        LoteOut: {
+            /** Cpv */
+            cpv?: string | null;
+            /** Fecha Limite */
+            fecha_limite?: string | null;
+            /** Importe */
+            importe?: number | null;
+            /** Numero */
+            numero: string;
+            /** Titulo */
+            titulo?: string | null;
         };
         /**
          * LotePublico
@@ -6188,6 +6218,11 @@ export interface components {
         };
         /** PriceScenariosResult */
         PriceScenariosResult: {
+            /**
+             * Base
+             * @default mixta
+             */
+            base: string;
             /** Cohort */
             cohort?: string[];
             /**
@@ -10643,6 +10678,8 @@ export interface operations {
                 cpv?: string | null;
                 ccaa?: string | null;
                 limit?: number;
+                /** @description Solo filas con base de importe sin IVA declarada. Devuelve `base: "sin_iva"` y hoy pocas filas: la columna se puebla con la re-ingesta, no con la migración. Por defecto se excluye lo que se sabe que lleva IVA y se declara `base: "mixta"`. */
+                solo_base_declarada?: boolean;
             };
             header?: {
                 "X-CSRF-Token"?: string | null;
@@ -10679,6 +10716,8 @@ export interface operations {
             query?: {
                 organo?: string | null;
                 cpv?: string | null;
+                /** @description Ver el mismo parámetro en `/competitive/bajas`. */
+                solo_base_declarada?: boolean;
             };
             header?: {
                 "X-CSRF-Token"?: string | null;
@@ -11405,6 +11444,8 @@ export interface operations {
                 fecha_desde?: string | null;
                 fecha_hasta?: string | null;
                 limit?: number;
+                /** @description Una fila por LOTE en vez de por expediente (C1.4). Los expedientes sin lotes salen igual, con los campos de lote vacíos: un export que solo trajera los multi-lote perdería la mayoría del corpus sin decirlo. Solo aplica a `csv` y `excel`. */
+                por_lote?: boolean;
             };
             header?: {
                 "X-CSRF-Token"?: string | null;

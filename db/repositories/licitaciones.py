@@ -1220,3 +1220,51 @@ def marcar_censo_de_fuente(fuente: str, *, batch: int) -> int:
             (UNIVERSO_CENSO, fuente, UNIVERSO_CENSO, batch),
         )
         return int(cur.rowcount) if hasattr(cur, "rowcount") else 0
+
+
+def lotes_de(id_externo: str) -> list[dict[str, Any]]:
+    """Lotes de un expediente, ordenados por número (C1.4).
+
+    `db/repositories/publico.py` ya tenía esta consulta para la superficie
+    anónima, pero la ficha autenticada no la usaba: `GET /licitaciones/{id}`
+    devolvía el expediente sin sus lotes, y el frontend no tenía de dónde
+    sacarlos. Un expediente multi-lote se presentaba como uno solo con el
+    presupuesto total, que es la misma confusión que `EFFECTIVE_BUDGET_SQL`
+    resolvió del lado del cálculo.
+
+    Orden numérico cuando el número lo permite: `ORDER BY numero` como texto
+    pone el lote 10 antes del 2. El `CASE` cae al orden textual para los
+    números que no son enteros ("1.A", "Lote 3"), que existen en PLACSP.
+    """
+    sql = (
+        "SELECT numero, titulo, cpv, importe, fecha_limite FROM lotes "
+        "WHERE licitacion_id = %s "
+        "ORDER BY CASE WHEN numero ~ '^[0-9]+$' THEN CAST(numero AS INTEGER) END, numero"
+    )
+    with connect_read() as c:
+        return rows_to_dicts(c.execute(sql, (id_externo,)))
+
+
+def licitaciones_por_lote(ids: list[str]) -> list[dict[str, Any]]:
+    """Una fila por lote para los expedientes dados (C1.4, export).
+
+    Los expedientes **sin** lotes salen igual, con los campos de lote a `NULL`:
+    un export que solo trajera los multi-lote perdería la mayoría del corpus
+    sin decirlo. El `LEFT JOIN` es esa decisión.
+    """
+    if not ids:
+        return []
+    marcadores = ",".join("%s" for _ in ids)
+    sql = (
+        "SELECT l.id_externo, l.titulo, l.organo_contratacion, l.importe, "
+        "       l.cpv, l.estado, l.ccaa, l.fecha_publicacion, l.fecha_limite, l.url, "
+        "       lo.numero AS lote_numero, lo.titulo AS lote_titulo, lo.cpv AS lote_cpv, "
+        "       lo.importe AS lote_importe, lo.fecha_limite AS lote_fecha_limite "
+        "FROM licitaciones l "
+        "LEFT JOIN lotes lo ON lo.licitacion_id = l.id_externo "
+        f"WHERE l.id_externo IN ({marcadores}) "
+        "ORDER BY l.id_externo, "
+        "  CASE WHEN lo.numero ~ '^[0-9]+$' THEN CAST(lo.numero AS INTEGER) END, lo.numero"
+    )
+    with connect_read() as c:
+        return rows_to_dicts(c.execute(sql, ids))
