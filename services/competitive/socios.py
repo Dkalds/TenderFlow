@@ -27,11 +27,11 @@ import pandas as pd
 from pydantic import BaseModel, ConfigDict, Field
 
 from observability.logging import get_logger
-from services.partners import suggest_partners
+from services.partners import segment_winners, suggest_partners
 
 log = get_logger(__name__)
 
-__all__ = ["SocioSugerido", "SugerenciaSocios", "sugerir_socios"]
+__all__ = ["LiderSegmento", "SocioSugerido", "SugerenciaSocios", "sugerir_socios"]
 
 #: Contratos mínimos para proponer a una empresa como socio. Con menos, la
 #: «especialización» que se le atribuye es una casualidad de dos contratos.
@@ -60,12 +60,30 @@ class SocioSugerido(BaseModel):
     motivos: list[str] = Field(min_length=1)
 
 
+class LiderSegmento(BaseModel):
+    """Una empresa que domina el segmento, con su cuota."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    empresa: str
+    empresa_key: str
+    n_contratos: int = Field(ge=0)
+    importe_total: float = Field(ge=0)
+    #: Sobre el importe adjudicado del segmento, 0-100.
+    cuota_pct: float = Field(ge=0, le=100)
+
+
 class SugerenciaSocios(BaseModel):
     """Respuesta del buscador de socios, con su universo declarado."""
 
     model_config = ConfigDict(extra="forbid")
 
     socios: list[SocioSugerido] = Field(default_factory=list)
+    #: Quién manda en el segmento. No son socios —son con quién se compite— y
+    #: por eso van en su propia lista: mezclarlos con las sugerencias haría
+    #: parecer que el producto propone aliarse con el líder, que casi nunca es
+    #: la jugada. Sirven para lo contrario: saber contra quién se va.
+    lideres: list[LiderSegmento] = Field(default_factory=list)
     #: Adjudicaciones sobre las que se calculó. Es el `n` que ADR-014 exige.
     n_adjudicaciones: int = Field(default=0, ge=0)
     cpv: str | None = None
@@ -164,4 +182,49 @@ def sugerir_socios(
             ),
         )
 
-    return SugerenciaSocios(socios=socios, n_adjudicaciones=len(adjudicaciones), cpv=cpv, ccaa=ccaa)
+    return SugerenciaSocios(
+        socios=socios,
+        lideres=_lideres(adjudicaciones),
+        n_adjudicaciones=len(adjudicaciones),
+        cpv=cpv,
+        ccaa=ccaa,
+    )
+
+
+def _lideres(adjudicaciones: pd.DataFrame, *, top: int = 5) -> list[LiderSegmento]:
+    """Los que más adjudican en el segmento, con su cuota.
+
+    Es el otro consumidor que le faltaba a `services/partners.py`. Va aparte de
+    las sugerencias a propósito: el líder de un CPV rara vez busca socios, y
+    proponerlo como uno sería una sugerencia que nadie puede accionar. Sirve
+    para la pregunta contraria — contra quién se va.
+    """
+    try:
+        ranking = segment_winners(adjudicaciones, top_n=top)
+    except Exception:
+        # Los líderes son información añadida: sin ellos la respuesta sigue
+        # sirviendo. La traza distingue «no hay» de «no se pudo».
+        log.warning("socios_lideres_error", exc_info=True)
+        return []
+    if ranking.empty:
+        return []
+
+    lideres: list[LiderSegmento] = []
+    for bruta in ranking.head(top).to_dict("records"):
+        fila: dict[str, Any] = {str(k): v for k, v in bruta.items()}
+        clave = str(fila.get("empresa_key") or "")
+        if not clave:
+            continue
+        lideres.append(
+            LiderSegmento(
+                empresa=str(fila.get("empresa") or clave),
+                empresa_key=clave,
+                n_contratos=int(fila.get("n_contratos") or 0),
+                importe_total=float(fila.get("importe_total") or 0.0),
+                # Acotado: con un `importe_adjudicado` negativo por un dato
+                # malo, la cuota podría salirse del rango que el DTO admite y
+                # tumbar toda la respuesta por una fila corrupta.
+                cuota_pct=max(0.0, min(100.0, float(fila.get("cuota_pct") or 0.0))),
+            )
+        )
+    return lideres

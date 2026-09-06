@@ -242,3 +242,30 @@ class TestSociosUniverso:
             {"id": i, "empresa_key": f"e{i % 4}", "nombre_canonico": f"E{i % 4}"} for i in range(40)
         ]
         assert len(sugerir_socios(_adjudicaciones(filas), limit=2).socios) == 2
+
+
+class TestLideresDelSegmento:
+    """El otro consumidor que le faltaba a `services/partners.py`."""
+
+    def test_van_en_su_propia_lista(self) -> None:
+        """Mezclarlos con las sugerencias haría parecer que el producto
+        propone aliarse con el líder, que casi nunca es la jugada."""
+        filas = [
+            {"id": i, "empresa_key": f"e{i % 3}", "nombre_canonico": f"E{i % 3}"} for i in range(12)
+        ]
+        resultado = sugerir_socios(_adjudicaciones(filas))
+        assert resultado.lideres
+        assert {s.empresa_key for s in resultado.socios} != set()
+        # Son listas distintas, aunque puedan solaparse: responden a preguntas
+        # opuestas —con quién ir, contra quién se va—.
+        assert isinstance(resultado.lideres, list)
+
+    def test_la_cuota_esta_acotada(self) -> None:
+        filas = [{"id": i} for i in range(5)]
+        for lider in sugerir_socios(_adjudicaciones(filas)).lideres:
+            assert 0.0 <= lider.cuota_pct <= 100.0
+
+    def test_sin_adjudicaciones_no_hay_lideres(self) -> None:
+        import pandas as pd
+
+        assert sugerir_socios(pd.DataFrame()).lideres == []

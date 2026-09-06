@@ -67,7 +67,7 @@ Generado: 2026-09-06
 
 ## Superficie de la API
 
-**194 endpoints** expuestos.
+**197 endpoints** expuestos.
 
 <details><summary>Ver listado</summary>
 
@@ -132,6 +132,7 @@ Generado: 2026-09-06
 | GET | `/api/v1/competitive/cuota` |
 | GET | `/api/v1/competitive/empresas/{empresa_id}/adjudicaciones` |
 | GET | `/api/v1/competitive/empresas/{empresa_id}/perfil` |
+| GET | `/api/v1/competitive/empresas/{empresa_key}/contra-mi` |
 | GET | `/api/v1/competitive/hhi` |
 | GET | `/api/v1/competitive/partners` |
 | GET | `/api/v1/competitive/renovaciones` |
@@ -179,6 +180,7 @@ Generado: 2026-09-06
 | GET | `/api/v1/licitaciones/{id_externo:path}/ficha-pliego/estado` |
 | POST | `/api/v1/licitaciones/{id_externo:path}/ficha-pliego/extract` |
 | POST | `/api/v1/licitaciones/{id_externo:path}/ficha-pliego/extract-async` |
+| POST | `/api/v1/licitaciones/{id_externo:path}/guion` |
 | POST | `/api/v1/licitaciones/{id_externo:path}/reportes` |
 | POST | `/api/v1/licitaciones/{id_externo:path}/resumen` |
 | GET | `/api/v1/licitaciones/{id_externo:path}/simulador` |
@@ -221,6 +223,7 @@ Generado: 2026-09-06
 | POST | `/api/v1/publico/solicitudes-acceso` |
 | GET | `/api/v1/pursuits` |
 | POST | `/api/v1/pursuits` |
+| GET | `/api/v1/pursuits/actividad` |
 | GET | `/api/v1/pursuits/agenda` |
 | GET | `/api/v1/pursuits/cartera` |
 | GET | `/api/v1/pursuits/direccion` |

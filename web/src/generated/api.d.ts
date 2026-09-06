@@ -6305,6 +6305,22 @@ export interface components {
             /** Url */
             url?: string | null;
         };
+        /**
+         * LiderSegmento
+         * @description Una empresa que domina el segmento, con su cuota.
+         */
+        LiderSegmento: {
+            /** Cuota Pct */
+            cuota_pct: number;
+            /** Empresa */
+            empresa: string;
+            /** Empresa Key */
+            empresa_key: string;
+            /** Importe Total */
+            importe_total: number;
+            /** N Contratos */
+            n_contratos: number;
+        };
         /** Liveness */
         Liveness: {
             /** Status */
@@ -9061,6 +9077,8 @@ export interface components {
             ccaa?: string | null;
             /** Cpv */
             cpv?: string | null;
+            /** Lideres */
+            lideres?: components["schemas"]["LiderSegmento"][];
             /**
              * N Adjudicaciones
              * @default 0
