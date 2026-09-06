@@ -2201,8 +2201,19 @@ export interface paths {
          *             "estado": ["ADJ", "EV", "PUB", ...],
          *             "ccaa": ["Andalucía", "Cataluña", ...],
          *             "tecnologia": ["SAP", "ORACLE", "MICROSOFT", ...],
-         *             "cpv": ["72000000", ...]
+         *             "cpv": ["72000000", ...],
+         *             "procedimiento": [
+         *                 {"codigo": "1", "etiqueta": "Abierto", "descripcion": "Cualquier..."},
+         *                 ...
+         *             ],
+         *             "tramitacion": [...],
+         *             "tipo_contrato": [...]
          *         }
+         *
+         *     Las cuatro primeras listas son valores presentes en la tabla; las tres
+         *     últimas son el catálogo completo de la lista controlada CODICE
+         *     (``shared/procedimientos.py``), etiqueta y definición incluidas, para que
+         *     la consola no tenga que llevar su propia copia del vocabulario.
          */
         get: operations["get_filter_options_api_v1_meta_filters_get"];
         put?: never;
@@ -3707,6 +3718,25 @@ export interface components {
             umbral_pct: number;
             /** Universo */
             universo?: number | null;
+        };
+        /**
+         * CodigoNoCatalogado
+         * @description Un código de lista controlada que el catálogo no sabe traducir.
+         *
+         *     Lleva el ``n`` porque el trabajo que abre depende de él: un código con tres
+         *     expedientes espera; uno con cuarenta mil es una etiqueta que falta en la
+         *     pantalla de mucha gente.
+         */
+        CodigoNoCatalogado: {
+            /** Codigo */
+            codigo: string;
+            /**
+             * Familia
+             * @description procedimiento | tramitacion | tipo_contrato
+             */
+            familia: string;
+            /** N */
+            n: number;
         };
         /**
          * ColumnCompleteness
@@ -5341,8 +5371,14 @@ export interface components {
             cpv: string[];
             /** Estado */
             estado: string[];
+            /** Procedimiento */
+            procedimiento?: components["schemas"]["OpcionCodificada"][];
             /** Tecnologia */
             tecnologia: string[];
+            /** Tipo Contrato */
+            tipo_contrato?: components["schemas"]["OpcionCodificada"][];
+            /** Tramitacion */
+            tramitacion?: components["schemas"]["OpcionCodificada"][];
         };
         /**
          * MetricScope
@@ -5509,6 +5545,22 @@ export interface components {
         OAuthAuthorizeResult: {
             /** Authorization Url */
             authorization_url: string;
+        };
+        /**
+         * OpcionCodificada
+         * @description Un valor de lista controlada con su etiqueta y su definición corta.
+         *
+         *     Va tipado y no como ``dict[str, str]`` porque el cliente TS se genera de
+         *     aquí (invariante 5) y porque la consola tiene que poder pintar la etiqueta
+         *     y el tooltip sin conocer el vocabulario (invariante 3 de ``web/AGENTS.md``).
+         */
+        OpcionCodificada: {
+            /** Codigo */
+            codigo: string;
+            /** Descripcion */
+            descripcion: string;
+            /** Etiqueta */
+            etiqueta: string;
         };
         /**
          * OrganizationCreate
@@ -6654,6 +6706,8 @@ export interface components {
             cobertura_modulo_sap?: number | null;
             /** Cobertura Nif */
             cobertura_nif?: number | null;
+            /** Codigos No Catalogados */
+            codigos_no_catalogados?: components["schemas"]["CodigoNoCatalogado"][];
             /** Completitud Columnas */
             completitud_columnas?: components["schemas"]["ColumnCompleteness"][];
             /**
@@ -7145,6 +7199,8 @@ export interface components {
             };
             /** Estado */
             estado?: string | null;
+            /** Explicacion */
+            explicacion?: string[];
             /** Fecha Limite */
             fecha_limite?: string | null;
             /** Fecha Publicacion */
