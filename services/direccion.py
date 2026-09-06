@@ -147,3 +147,90 @@ def corte_con_minimo(
     # devolver el corte en distinto orden.
     cortes.sort(key=lambda c: (-c.n, c.clave))
     return cortes
+
+
+# ── F4.5: actividad de la organización ──────────────────────────────────────
+
+
+class ItemActividad(BaseModel):
+    """Una línea del feed del equipo."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: int = Field(ge=1)
+    pursuit_id: int = Field(ge=1)
+    licitacion_id: str
+    titulo: str | None = None
+    evento: str
+    #: Nombre de quien lo hizo. `None` si el usuario se dio de baja: el ledger
+    #: es inmutable pero `pursuits.responsible_user_id` se desvincula, así que
+    #: un evento puede quedarse sin actor con nombre. Se dice «alguien del
+    #: equipo» en vez de inventar uno.
+    actor: str | None = None
+    cuando: str
+
+
+class FeedActividad(BaseModel):
+    """Página del feed, con su cursor."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    organization_id: int = Field(ge=1)
+    items: list[ItemActividad] = Field(default_factory=list)
+    #: `id` desde el que pedir la página siguiente. `None` = no hay más.
+    siguiente_cursor: int | None = None
+    #: `True` cuando se ocultaron los eventos de administración por rol.
+    filtrado_por_rol: bool = False
+
+
+def actividad_de_organizacion(
+    user_id: int,
+    *,
+    organization_id: int | None = None,
+    antes_de_id: int | None = None,
+    solo_usuario: int | None = None,
+    limit: int = 50,
+) -> FeedActividad:
+    """F4.5 — qué hizo el equipo, paginado por cursor.
+
+    Un `member` ve el feed **sin los eventos de administración** (invitaciones,
+    cambios de rol): el feed de actividad no es el sitio donde enterarse de a
+    quién han cambiado de rol. Owner y admin lo ven entero.
+
+    Sin PII de terceros: sólo el nombre de quien actuó, que es miembro de la
+    misma organización y por tanto ya visible en Equipo.
+    """
+    from db.repositories.cuentas import ActividadRepository
+    from services.organizations import resolve_organization
+
+    resuelta, rol = resolve_organization(user_id, organization_id)
+    incluir_admin = str(rol) in ROLES_DIRECCION
+
+    filas = ActividadRepository().feed(
+        resuelta,
+        antes_de_id=antes_de_id,
+        actor_user_id=solo_usuario,
+        incluir_admin=incluir_admin,
+        limit=limit,
+    )
+    items = [
+        ItemActividad(
+            id=int(f["id"]),
+            pursuit_id=int(f["pursuit_id"]),
+            licitacion_id=str(f["licitacion_id"]),
+            titulo=f.get("titulo"),
+            evento=str(f["event_type"]),
+            actor=f.get("actor"),
+            cuando=str(f.get("created_at") or ""),
+        )
+        for f in filas
+    ]
+    return FeedActividad(
+        organization_id=resuelta,
+        items=items,
+        # El cursor sale de la última fila devuelta, no de `len(items)`: con
+        # una página incompleta por el filtro de rol, un cursor calculado por
+        # posición se saltaría eventos.
+        siguiente_cursor=items[-1].id if len(items) == limit else None,
+        filtrado_por_rol=not incluir_admin,
+    )

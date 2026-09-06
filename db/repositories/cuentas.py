@@ -16,6 +16,7 @@ from db.repositories.base import rows_to_dicts
 from db.sql_fragments import plegar_organo
 
 __all__ = [
+    "ActividadRepository",
     "CuentasRepository",
     "EtiquetasRepository",
     "SegmentoRepository",
@@ -325,3 +326,62 @@ class SegmentoRepository:
                 "WHERE status NOT IN ('won', 'lost', 'withdrawn')"
             )
             return [int(row[0]) for row in cur.fetchall()]
+
+
+class ActividadRepository:
+    """Feed de lo que hizo el equipo (F4.5).
+
+    Lee del ledger ``pursuit_events``, no de ``pursuits.updated_at``: la
+    columna dice que algo se tocó, y el ledger dice **qué**. Un feed de
+    actividad que sólo pueda decir «alguien modificó una oportunidad» no es un
+    feed, es un contador.
+    """
+
+    #: Eventos que un `member` **no** ve. Invitaciones y cambios de rol son
+    #: administración, y el feed de actividad no es el sitio donde enterarse de
+    #: quién ha entrado o a quién han cambiado de rol.
+    EVENTOS_ADMIN: frozenset[str] = frozenset(
+        {"membership_added", "membership_updated", "membership_revoked", "invitacion_enviada"}
+    )
+
+    def feed(
+        self,
+        organization_id: int,
+        *,
+        antes_de_id: int | None = None,
+        actor_user_id: int | None = None,
+        incluir_admin: bool = True,
+        limit: int = 50,
+    ) -> list[dict[str, Any]]:
+        """Página del feed, del más reciente al más antiguo.
+
+        Se pagina por ``id`` descendente y no por ``created_at``: el ledger es
+        append-only, así que el id ya es el orden temporal, y con la fecha dos
+        eventos del mismo segundo podrían repetirse o perderse entre páginas.
+        """
+        clauses = ["e.organization_id = %s"]
+        params: list[Any] = [organization_id]
+        if antes_de_id is not None:
+            clauses.append("e.id < %s")
+            params.append(antes_de_id)
+        if actor_user_id is not None:
+            clauses.append("e.actor_user_id = %s")
+            params.append(actor_user_id)
+        if not incluir_admin and self.EVENTOS_ADMIN:
+            marcadores = ", ".join(["%s"] * len(self.EVENTOS_ADMIN))
+            clauses.append(f"e.event_type NOT IN ({marcadores})")
+            params.extend(sorted(self.EVENTOS_ADMIN))
+
+        with connect_read() as conn:
+            cur = conn.execute(
+                "SELECT e.id, e.pursuit_id, e.event_type, e.actor_user_id, e.created_at, "
+                "       u.display_name AS actor, p.licitacion_id, p.status, l.titulo "
+                "FROM pursuit_events e "
+                "JOIN pursuits p ON p.id = e.pursuit_id "
+                "JOIN licitaciones l ON l.id_externo = p.licitacion_id "
+                "LEFT JOIN users u ON u.id = e.actor_user_id "
+                "WHERE " + " AND ".join(clauses) + " "
+                "ORDER BY e.id DESC LIMIT %s",
+                (*params, max(1, min(limit, 200))),
+            )
+            return rows_to_dicts(cur)

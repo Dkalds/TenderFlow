@@ -22,7 +22,13 @@ from api.routes.dual_auth import require_any_auth
 from db.repositories.pursuits import PursuitRepository
 from observability.logging import get_logger
 from services.cartera import ContratoCartera, cartera_de_usuario
-from services.direccion import CuadroDireccion, corte_con_minimo, exigir_direccion
+from services.direccion import (
+    CuadroDireccion,
+    FeedActividad,
+    actividad_de_organizacion,
+    corte_con_minimo,
+    exigir_direccion,
+)
 from services.kit_presentacion import KitPresentacion
 from services.organizations import (
     OrganizationAccessError,
@@ -507,6 +513,43 @@ async def get_direccion(
         return await run_db(_trabajo)
     except OrganizationPermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except OrganizationAccessError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+
+
+@router.get(
+    "/pursuits/actividad",
+    summary="Feed de lo que hizo el equipo (F4.5)",
+    responses={403: {"description": "No perteneces a esa organización"}},
+)
+async def get_actividad(
+    organization_id: int | None = Query(default=None, ge=1),
+    antes_de_id: int | None = Query(
+        default=None, ge=1, description="Cursor: id del último evento de la página anterior"
+    ),
+    usuario: int | None = Query(default=None, ge=1, description="Filtrar por quién lo hizo"),
+    limit: int = Query(50, ge=1, le=200),
+    ctx: dict[str, Any] = Depends(require_any_auth),
+) -> FeedActividad:
+    """Paginado **por cursor de id** y no por `offset`.
+
+    El ledger es append-only, así que el id ya es el orden temporal; con
+    `created_at` dos eventos del mismo segundo podrían repetirse o perderse
+    entre páginas.
+
+    Un `member` recibe el feed sin los eventos de administración, y la
+    respuesta lo declara (`filtrado_por_rol`) en vez de dejarle creer que no
+    ha pasado nada.
+    """
+    try:
+        return await run_db(
+            actividad_de_organizacion,
+            int(ctx["user_id"]),
+            organization_id=organization_id,
+            antes_de_id=antes_de_id,
+            solo_usuario=usuario,
+            limit=limit,
+        )
     except OrganizationAccessError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
 
