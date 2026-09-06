@@ -443,6 +443,35 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/analytics/resumen/desde-mi-ultima-visita": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Diff personal: qué cambió en lo que sigues y en el pipeline de tu equipo
+         * @description F5.4 — lo que ha pasado desde la última vez.
+         *
+         *     **No se cachea.** Es un diff por usuario y por marca temporal: dos
+         *     peticiones del mismo usuario con un minuto de diferencia son dos
+         *     respuestas distintas, y cachearlas sería enseñarle novedades que ya vio o
+         *     esconderle las que acaban de llegar.
+         *
+         *     Cero ítems devuelve la banda igualmente, con `items` vacío: la UI dice
+         *     «sin novedades desde el jueves», que confirma que el producto estaba
+         *     mirando. Una banda ausente se lee como que la pieza está rota.
+         */
+        get: operations["resumen_desde_ultima_visita_api_v1_analytics_resumen_desde_mi_ultima_visita_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/analytics/resumen/hoy": {
         parameters: {
             query?: never;
@@ -1147,6 +1176,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/competitive/empresas/{empresa_key}/contra-mi": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Expedientes en los que coincidimos con este competidor (F3.2)
+         * @description El historial de cruces, con el límite de lo afirmable declarado.
+         *
+         *     Sin conocer el NIF propio (v2 S2.1) sólo se puede decir «nosotros
+         *     perdimos», no «ellos ganaron contra nosotros»: la respuesta lo dice en
+         *     `sin_nif_propio` para que la pantalla no haga parecer invencible a un rival
+         *     que quizá ni se presentó.
+         */
+        get: operations["get_batallas_api_v1_competitive_empresas__empresa_key__contra_mi_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/competitive/hhi": {
         parameters: {
             query?: never;
@@ -1156,6 +1210,35 @@ export interface paths {
         };
         /** Concentración HHI por segmento */
         get: operations["get_hhi_api_v1_competitive_hhi_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/competitive/partners": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Empresas con las que ir a una UTE en este segmento, y por qué
+         * @description F3.3 — el primer consumidor de `services/partners.py`.
+         *
+         *     Devuelve 200 con `sin_resultados` cuando no hay base suficiente, en vez de
+         *     rellenar con las empresas más grandes del corpus: una sugerencia de socio
+         *     sin motivo es sólo un nombre, y el usuario va a llamar por teléfono a
+         *     quien salga aquí.
+         *
+         *     El `LIMIT` de la carga lo pone el repositorio (`LIMITE_COMPETIDORES`), que
+         *     es la regla del escáner AST: ninguna consulta de esta familia trae el
+         *     histórico entero.
+         */
+        get: operations["get_partners_api_v1_competitive_partners_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1232,6 +1315,48 @@ export interface paths {
         post?: never;
         /** Dejar de vigilar una empresa */
         delete: operations["delete_watchlist_api_v1_competitive_watchlist__empresa_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cuentas": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Órganos que la organización sigue como cuenta */
+        get: operations["get_cuentas_api_v1_cuentas_get"];
+        put?: never;
+        /**
+         * Seguir un órgano como cuenta objetivo
+         * @description Idempotente: seguir dos veces el mismo órgano no crea dos cuentas.
+         *
+         *     Devuelve 201 también cuando ya se seguía. Distinguirlo con un 200 obligaría
+         *     al cliente a tratar dos casos que para el usuario son el mismo —«ya lo
+         *     sigo»— y el estado final es idéntico.
+         */
+        post: operations["post_cuenta_api_v1_cuentas_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cuentas/{cuenta_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Dejar de seguir un órgano */
+        delete: operations["delete_cuenta_api_v1_cuentas__cuenta_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1329,6 +1454,104 @@ export interface paths {
         put?: never;
         post?: never;
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/etiquetas": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Etiquetas de la organización */
+        get: operations["get_etiquetas_api_v1_etiquetas_get"];
+        put?: never;
+        /**
+         * Crear una etiqueta
+         * @description Crear una etiqueta que ya existe devuelve la existente, no un error.
+         *
+         *     Dos personas etiquetando a la vez «Q4» quieren la misma etiqueta; un
+         *     conflicto obligaría a una de las dos a resolver algo que no es un problema.
+         */
+        post: operations["post_etiqueta_api_v1_etiquetas_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/etiquetas/aplicar": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Aplicar una etiqueta a un favorito, una oportunidad o una cuenta */
+        post: operations["post_aplicar_etiqueta_api_v1_etiquetas_aplicar_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/etiquetas/por-objeto": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Etiquetas de varios objetos, para pintar una lista de una vez
+         * @description POST y no GET porque la lista de ids puede ser larga.
+         *
+         *     Doscientos `id_externo` de PLACSP no caben cómodamente en una query
+         *     string, y meterlos ahí además los dejaría en los logs de acceso.
+         */
+        post: operations["post_etiquetas_por_objeto_api_v1_etiquetas_por_objeto_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/etiquetas/quitar": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Quitar una etiqueta de un objeto */
+        post: operations["post_quitar_etiqueta_api_v1_etiquetas_quitar_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/etiquetas/{etiqueta_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Borrar una etiqueta y todas sus aplicaciones */
+        delete: operations["delete_etiqueta_api_v1_etiquetas__etiqueta_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1683,6 +1906,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/licitaciones/comparar": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Comparar las fichas de hasta tres expedientes, familia a familia
+         * @description F2.8 — determinista y sin LLM.
+         *
+         *     Una familia vacía **se muestra vacía**, no se omite: que uno de los dos
+         *     pliegos no diga nada de solvencia técnica es exactamente lo que hay que
+         *     ver. Los expedientes sin ficha extraída se declaran en `sin_ficha`, para
+         *     que una columna en blanco no se confunda con un pliego que no exige nada.
+         */
+        post: operations["post_comparar_fichas_api_v1_licitaciones_comparar_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/licitaciones/cursor": {
         parameters: {
             query?: never;
@@ -1696,6 +1944,11 @@ export interface paths {
          *
          *     Más eficiente que offset: no requiere COUNT(*) y no se ve afectado
          *     por inserciones concurrentes.
+         *
+         *     Acepta **los mismos filtros** que `/licitaciones` (F1.1). Hasta ahora sólo
+         *     aceptaba `tecnologia`, de modo que el endpoint recomendado para datasets
+         *     grandes no podía sustituir al que dice reemplazar en cuanto había un filtro
+         *     puesto.
          */
         get: operations["list_licitaciones_cursor_api_v1_licitaciones_cursor_get"];
         put?: never;
@@ -1785,6 +2038,35 @@ export interface paths {
          *     documento (no todas las fuentes/licitaciones tienen adjuntos parseados).
          */
         get: operations["get_documentos_api_v1_licitaciones__id_externo__documentos_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/licitaciones/{id_externo}/documentos/{documento_id}/paginas/{page_number}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Página de un pliego, con el fragmento de la cita localizado
+         * @description F2.5 — el texto de una página del pliego y dónde cae la cita.
+         *
+         *     Con `inicio` y `fin` (los `EvidenceRef.start_offset`/`end_offset` de la
+         *     ficha) la respuesta trae los índices **ya relativos a esta página**. Unos
+         *     offsets incoherentes no son un error del usuario: la página se devuelve
+         *     entera y sin resaltar, y `resaltado_omitido` dice por qué.
+         *
+         *     Sin `:path` en `id_externo`, al revés que sus vecinas: aquí el id va en
+         *     medio de la ruta y un comodín de camino se comería los segmentos
+         *     siguientes. Los ids con barra se piden con la barra codificada.
+         */
+        get: operations["get_pagina_documento_api_v1_licitaciones__id_externo__documentos__documento_id__paginas__page_number__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1904,6 +2186,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/licitaciones/{id_externo}/guion": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Guion de la oferta técnica: esquema de puntos con citas al pliego
+         * @description F2.6 — sólo esquema, nunca prosa (D33).
+         *
+         *     `POST` y no `GET` porque genera: cuesta una llamada al LLM y consume
+         *     presupuesto. Devuelve 200 con `sin_guion` cuando no hay criterios
+         *     extraídos o no hay texto de pliegos — que no es un error del usuario.
+         *
+         *     El presupuesto se ata al mismo sujeto opaco que el resto de superficies
+         *     LLM, con la `user_key` del auth y nunca el email ni el `user_id` crudo.
+         */
+        post: operations["post_guion_oferta_api_v1_licitaciones__id_externo__guion_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/licitaciones/{id_externo}/reportes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reportar un dato incorrecto de un expediente
+         * @description F6.2 — «este dato está mal», desde la ficha.
+         *
+         *     No comprueba que el expediente exista: la corrección más valiosa es
+         *     justamente la de una fila que no debería estar, y un 404 aquí convertiría
+         *     un reporte legítimo en un error del usuario.
+         */
+        post: operations["post_reporte_dato_api_v1_licitaciones__id_externo__reportes_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/licitaciones/{id_externo}/resumen": {
         parameters: {
             query?: never;
@@ -1931,6 +2264,32 @@ export interface paths {
          *     Requiere scope ``ask:read`` (API key) o sesión activa (cookie).
          */
         post: operations["resumen_licitacion_api_v1_licitaciones__id_externo__resumen_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/licitaciones/{id_externo}/simulador": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Puntos de precio que da cada baja, según la fórmula del pliego
+         * @description F2.2 — el simulador de puntuación de la oferta.
+         *
+         *     Devuelve 200 también cuando **no** puede calcular: `sin_calculo` dice por
+         *     qué (sin fórmula extraída, fórmula no calculable, sin puntos de precio) y
+         *     `escenarios` va vacío. Un 404 aquí obligaría al cliente a distinguir «no
+         *     existe el expediente» de «el pliego no publica la fórmula», que son dos
+         *     cosas muy distintas para quien está fijando un precio.
+         */
+        get: operations["get_simulador_precio_api_v1_licitaciones__id_externo__simulador_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -2201,8 +2560,19 @@ export interface paths {
          *             "estado": ["ADJ", "EV", "PUB", ...],
          *             "ccaa": ["Andalucía", "Cataluña", ...],
          *             "tecnologia": ["SAP", "ORACLE", "MICROSOFT", ...],
-         *             "cpv": ["72000000", ...]
+         *             "cpv": ["72000000", ...],
+         *             "procedimiento": [
+         *                 {"codigo": "1", "etiqueta": "Abierto", "descripcion": "Cualquier..."},
+         *                 ...
+         *             ],
+         *             "tramitacion": [...],
+         *             "tipo_contrato": [...]
          *         }
+         *
+         *     Las cuatro primeras listas son valores presentes en la tabla; las tres
+         *     últimas son el catálogo completo de la lista controlada CODICE
+         *     (``shared/procedimientos.py``), etiqueta y definición incluidas, para que
+         *     la consola no tenga que llevar su propia copia del vocabulario.
          */
         get: operations["get_filter_options_api_v1_meta_filters_get"];
         put?: never;
@@ -2491,12 +2861,14 @@ export interface paths {
          * Comunidades y códigos CPV con página de índice
          * @description Alimenta las páginas `/licitaciones` y `/cpv`.
          *
-         *     Ambas listas van filtradas por volumen mínimo en el repositorio: un hub con
-         *     dos licitaciones no es una página, es contenido delgado.
+         *     Alimenta también `/licitaciones/organo/[slug]` desde F6.5.
          *
-         *     Va en un solo endpoint y no en dos porque sus dos consumidores —los índices
-         *     y los enlaces de la portada— quieren las dos listas a la vez, y así una
-         *     página de índice hace una llamada en vez de dos.
+         *     Las tres listas van filtradas por volumen mínimo en el repositorio: un hub
+         *     con dos licitaciones no es una página, es contenido delgado.
+         *
+         *     Va en un solo endpoint y no en tres porque sus consumidores —los índices y
+         *     los enlaces de la portada— quieren todas a la vez, y así una página de
+         *     índice hace una llamada en vez de tres.
          */
         get: operations["hubs_api_v1_publico_hubs_get"];
         put?: never;
@@ -2654,6 +3026,34 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/pursuits/actividad": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Feed de lo que hizo el equipo (F4.5)
+         * @description Paginado **por cursor de id** y no por `offset`.
+         *
+         *     El ledger es append-only, así que el id ya es el orden temporal; con
+         *     `created_at` dos eventos del mismo segundo podrían repetirse o perderse
+         *     entre páginas.
+         *
+         *     Un `member` recibe el feed sin los eventos de administración, y la
+         *     respuesta lo declara (`filtrado_por_rol`) en vez de dejarle creer que no
+         *     ha pasado nada.
+         */
+        get: operations["get_actividad_api_v1_pursuits_actividad_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/pursuits/agenda": {
         parameters: {
             query?: never;
@@ -2669,6 +3069,53 @@ export interface paths {
          *     triaje de señales del propio usuario).
          */
         get: operations["get_pursuits_agenda_api_v1_pursuits_agenda_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/pursuits/cartera": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Contratos ganados que siguen en ejecución (F4.3)
+         * @description La cartera, con la ventana de relicitación de cada contrato.
+         *
+         *     Se declara siempre de dónde sale la fecha de fin (`fecha_fin_origen`): una
+         *     publicada por la fuente y una derivada de la duración no valen lo mismo en
+         *     la pantalla donde se decide cuándo preparar una renovación.
+         */
+        get: operations["get_cartera_api_v1_pursuits_cartera_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/pursuits/direccion": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Cuadro de mando de dirección (F4.2) — solo owner y admin
+         * @description El control de rol está **en el servicio**, no en el rail.
+         *
+         *     Un `member` que teclee la URL recibe 403, no una pantalla sin enlace: un
+         *     rail sin enlace es una sugerencia, esto es un permiso.
+         */
+        get: operations["get_direccion_api_v1_pursuits_direccion_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2765,6 +3212,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/pursuits/{pursuit_id}/ficha.pdf": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Ficha de la oportunidad en PDF (one-pager para dirección)
+         * @description F2.7 — el one-pager que se lleva a un comité.
+         *
+         *     Va por la misma lectura con ámbito que `GET /pursuits/{id}`: un 403 aquí y
+         *     un 403 allí son el mismo control, no dos.
+         */
+        get: operations["get_pursuit_ficha_pdf_api_v1_pursuits__pursuit_id__ficha_pdf_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/pursuits/{pursuit_id}/kit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Kit de presentación: documentos que exige el pliego y cuáles están listos
+         * @description F2.3 — qué hay que entregar, en qué sobre, y qué falta.
+         */
+        get: operations["get_pursuit_kit_api_v1_pursuits__pursuit_id__kit_get"];
+        put?: never;
+        /**
+         * Marcar un documento del kit como listo (o desmarcarlo)
+         * @description Anota el marcado en el ledger y devuelve el kit ya actualizado.
+         *
+         *     Devuelve el kit entero y no un `204`: el checklist es colaborativo, así que
+         *     la respuesta es la ocasión de traer también lo que han marcado otros desde
+         *     que el cliente lo cargó.
+         */
+        post: operations["post_pursuit_kit_item_api_v1_pursuits__pursuit_id__kit_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/radar/dismissals": {
         parameters: {
             query?: never;
@@ -2847,6 +3345,30 @@ export interface paths {
         post?: never;
         /** Eliminar una vista guardada */
         delete: operations["delete_saved_filter_route_api_v1_saved_filters__filter_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/search/global": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Búsqueda unificada para la paleta: expedientes, empresas, órganos y oportunidades
+         * @description F1.2 — un término, cuatro clases de resultado.
+         *
+         *     Un término demasiado corto devuelve 200 con `sin_busqueda`, no un 422: la
+         *     paleta consulta en cada tecla y un error por escribir dos letras sería un
+         *     error en la mitad de las pulsaciones.
+         */
+        get: operations["get_search_global_api_v1_search_global_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -3013,7 +3535,16 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Conteo de matches de unos criterios sin guardar */
+        /**
+         * Conteo de matches de unos criterios sin guardar
+         * @description Cuántos expedientes casan hoy y cuántos casaron cada una de las últimas
+         *     ocho semanas.
+         *
+         *     El total sobre el corpus entero no responde a la pregunta que se hace quien
+         *     crea una regla —«¿cuánto correo me va a llegar?»—: para una regla ancha es
+         *     un número de cinco cifras que no distingue una regla que dispara cuarenta
+         *     veces por semana de una que disparó cuarenta veces en dos años.
+         */
         post: operations["preview_matches_api_v1_watchlist_rules_preview_post"];
         delete?: never;
         options?: never;
@@ -3393,6 +3924,90 @@ export interface components {
             /** Items */
             items: components["schemas"]["BajaAgregada"][];
         };
+        /**
+         * Batalla
+         * @description Un expediente en el que coincidimos con el competidor.
+         */
+        Batalla: {
+            /** Baja Ganadora */
+            baja_ganadora?: number | null;
+            /** Fecha */
+            fecha?: string | null;
+            /** Importe */
+            importe?: number | null;
+            /** Licitacion Id */
+            licitacion_id: string;
+            /** Nuestra Baja */
+            nuestra_baja?: number | null;
+            /** Organo Contratacion */
+            organo_contratacion?: string | null;
+            /**
+             * Resultado
+             * @enum {string}
+             */
+            resultado: "perdimos" | "ganamos" | "ellos_ganaron" | "sin_resolver";
+            /** Titulo */
+            titulo?: string | null;
+        };
+        /**
+         * BatallasContraMi
+         * @description El historial de cruces con un competidor.
+         */
+        BatallasContraMi: {
+            /** Batallas */
+            batallas?: components["schemas"]["Batalla"][];
+            /** Empresa Key */
+            empresa_key: string;
+            /**
+             * N
+             * @default 0
+             */
+            n: number;
+            /**
+             * Sin Nif Propio
+             * @default false
+             */
+            sin_nif_propio: boolean;
+            /**
+             * Ventana
+             * @default últimos 24 meses
+             */
+            ventana: string;
+        };
+        /** Body_post_etiquetas_por_objeto_api_v1_etiquetas_por_objeto_post */
+        Body_post_etiquetas_por_objeto_api_v1_etiquetas_por_objeto_post: {
+            /** Objeto Ids */
+            objeto_ids?: string[];
+            /**
+             * Objeto Tipo
+             * @enum {string}
+             */
+            objeto_tipo: "favorito" | "oportunidad" | "cuenta";
+        };
+        /**
+         * BudgetLineFact
+         * @description F2.4 — una línea del desglose del presupuesto publicado.
+         */
+        BudgetLineFact: {
+            /** Amount Eur */
+            amount_eur?: number | null;
+            /**
+             * Category
+             * @default otro
+             * @enum {string}
+             */
+            category: "salariales" | "directos" | "indirectos" | "beneficio" | "otro";
+            /** Concept */
+            concept: string;
+            /** Confidence */
+            confidence: number;
+            /** Description */
+            description: string;
+            /** Evidence */
+            evidence?: components["schemas"]["EvidenceRef"][];
+            /** Pct */
+            pct?: number | null;
+        };
         /** BulkGetRequest */
         BulkGetRequest: {
             /**
@@ -3416,6 +4031,24 @@ export interface components {
             items: components["schemas"]["LicitacionSummary"][];
             /** Requested */
             requested: number;
+        };
+        /**
+         * BusquedaGlobal
+         * @description La respuesta de la paleta.
+         */
+        BusquedaGlobal: {
+            /** Por Tipo */
+            por_tipo?: {
+                [key: string]: number;
+            };
+            /** Q */
+            q: string;
+            /** Resultados */
+            resultados?: components["schemas"]["ResultadoBusqueda"][];
+            /** Sin Busqueda */
+            sin_busqueda?: string | null;
+            /** Tipos Buscados */
+            tipos_buscados?: string[];
         };
         /**
          * CalendarioEnlace
@@ -3577,6 +4210,18 @@ export interface components {
             proximo_vencimiento: string | null;
         };
         /**
+         * CeldaComparacion
+         * @description Lo que una ficha dice de una familia.
+         */
+        CeldaComparacion: {
+            /** Ejemplos */
+            ejemplos?: string[];
+            /** Licitacion Id */
+            licitacion_id: string;
+            /** N */
+            n: number;
+        };
+        /**
          * CertificationRequirement
          * @description Certificación exigida (ISO 27001, ENS, partner de fabricante, títulos
          *     de perfil). ``scope`` distingue si la acredita la empresa o el equipo.
@@ -3709,6 +4354,25 @@ export interface components {
             universo?: number | null;
         };
         /**
+         * CodigoNoCatalogado
+         * @description Un código de lista controlada que el catálogo no sabe traducir.
+         *
+         *     Lleva el ``n`` porque el trabajo que abre depende de él: un código con tres
+         *     expedientes espera; uno con cuarenta mil es una etiqueta que falta en la
+         *     pantalla de mucha gente.
+         */
+        CodigoNoCatalogado: {
+            /** Codigo */
+            codigo: string;
+            /**
+             * Familia
+             * @description procedimiento | tramitacion | tipo_contrato
+             */
+            familia: string;
+            /** N */
+            n: number;
+        };
+        /**
          * ColumnCompleteness
          * @description Completeness for a single column.
          */
@@ -3717,6 +4381,26 @@ export interface components {
             columna: string;
             /** Pct */
             pct: number;
+        };
+        /**
+         * ComparacionFichas
+         * @description La tabla completa.
+         */
+        ComparacionFichas: {
+            /** Filas */
+            filas?: components["schemas"]["FilaComparacion"][];
+            /** Licitacion Ids */
+            licitacion_ids?: string[];
+            /** Sin Ficha */
+            sin_ficha?: string[];
+        };
+        /**
+         * CompararBody
+         * @description Hasta tres expedientes a comparar familia a familia.
+         */
+        CompararBody: {
+            /** Ids */
+            ids: string[];
         };
         /** CompareResult */
         CompareResult: {
@@ -4184,6 +4868,61 @@ export interface components {
             truncado: boolean;
         };
         /**
+         * ContratoCartera
+         * @description Un contrato ganado que sigue vivo.
+         */
+        ContratoCartera: {
+            /** Cpv */
+            cpv?: string | null;
+            /** Fecha Fin Efectiva */
+            fecha_fin_efectiva?: string | null;
+            /** Fecha Fin Origen */
+            fecha_fin_origen?: string | null;
+            /** Fecha Inicio */
+            fecha_inicio?: string | null;
+            /** Id */
+            id: number;
+            /** Importe Adjudicado */
+            importe_adjudicado?: number | null;
+            /** Licitacion Id */
+            licitacion_id: string;
+            /** Meses Restantes */
+            meses_restantes?: number | null;
+            /** Organization Id */
+            organization_id: number;
+            /** Organo Contratacion */
+            organo_contratacion?: string | null;
+            /**
+             * Prorrogas Aplicadas
+             * @default 0
+             */
+            prorrogas_aplicadas: number;
+            /** Pursuit Id */
+            pursuit_id: number;
+            /** Relicitacion Desde */
+            relicitacion_desde?: string | null;
+            /** Relicitacion Hasta */
+            relicitacion_hasta?: string | null;
+            /** Renovacion Pursuit Id */
+            renovacion_pursuit_id?: number | null;
+            /** Tecnologia */
+            tecnologia?: string | null;
+            /** Titulo */
+            titulo?: string | null;
+        };
+        /**
+         * CorteMetrica
+         * @description Una fila de un corte (por tecnología, por órgano).
+         */
+        CorteMetrica: {
+            /** Clave */
+            clave: string;
+            /** N */
+            n: number;
+            /** Valor */
+            valor?: number | null;
+        };
+        /**
          * CpvEntry
          * @description Top CPV code aggregate.
          */
@@ -4267,6 +5006,61 @@ export interface components {
             organo: string;
             /** Tecnologia */
             tecnologia: string;
+        };
+        /**
+         * CuadroDireccion
+         * @description Lo que ve owner o admin en Dirección.
+         */
+        CuadroDireccion: {
+            /**
+             * N Minimo
+             * @default 5
+             */
+            n_minimo: number;
+            /** Organization Id */
+            organization_id: number;
+            /** Tarjetas */
+            tarjetas?: components["schemas"]["TarjetaMetrica"][];
+            /** Win Rate Por Organo */
+            win_rate_por_organo?: components["schemas"]["CorteMetrica"][];
+            /** Win Rate Por Tecnologia */
+            win_rate_por_tecnologia?: components["schemas"]["CorteMetrica"][];
+        };
+        /**
+         * CuentaObjetivo
+         * @description Un órgano que la organización sigue como cuenta.
+         *
+         *     ``organo_id`` nace vacío: el maestro de órganos (C1.2) todavía no existe y
+         *     la identidad va por el nombre normalizado. El campo está en el contrato
+         *     desde ahora para que ese maestro no obligue a cambiarlo.
+         */
+        CuentaObjetivo: {
+            /** Created At */
+            created_at: string;
+            /** Created By User Id */
+            created_by_user_id?: number | null;
+            /** Id */
+            id: number;
+            /** Nota */
+            nota?: string | null;
+            /** Organization Id */
+            organization_id: number;
+            /** Organo Id */
+            organo_id?: number | null;
+            /** Organo Nombre */
+            organo_nombre: string;
+            /** Organo Norm */
+            organo_norm: string;
+        };
+        /**
+         * CuentaObjetivoCreate
+         * @description Seguir un órgano como cuenta objetivo.
+         */
+        CuentaObjetivoCreate: {
+            /** Nota */
+            nota?: string | null;
+            /** Organo */
+            organo: string;
         };
         /** CuotaEmpresa */
         CuotaEmpresa: {
@@ -4521,6 +5315,21 @@ export interface components {
             /** Titulo */
             titulo: string;
         };
+        /**
+         * EscenarioPuntos
+         * @description Los puntos de precio que da una baja concreta.
+         */
+        EscenarioPuntos: {
+            /** Baja */
+            baja: number;
+            /** Puntos */
+            puntos: number;
+            /**
+             * Temeraria
+             * @default false
+             */
+            temeraria: boolean;
+        };
         /** Estacionalidad */
         Estacionalidad: {
             /** Count */
@@ -4561,6 +5370,76 @@ export interface components {
             estado: string;
             /** N */
             n: number;
+        };
+        /**
+         * Etiqueta
+         * @description Una etiqueta de la organización.
+         */
+        Etiqueta: {
+            /** Color */
+            color: string;
+            /** Created At */
+            created_at: string;
+            /** Created By User Id */
+            created_by_user_id?: number | null;
+            /** Id */
+            id: number;
+            /** Nombre */
+            nombre: string;
+            /** Nombre Norm */
+            nombre_norm: string;
+            /** Organization Id */
+            organization_id: number;
+        };
+        /**
+         * EtiquetaAplicacion
+         * @description Aplicar o quitar una etiqueta de un objeto.
+         */
+        EtiquetaAplicacion: {
+            /** Etiqueta Id */
+            etiqueta_id: number;
+            /** Objeto Id */
+            objeto_id: string;
+            /**
+             * Objeto Tipo
+             * @enum {string}
+             */
+            objeto_tipo: "favorito" | "oportunidad" | "cuenta";
+        };
+        /**
+         * EtiquetaAplicada
+         * @description La etiqueta tal como se pinta junto al objeto: sólo lo que se ve.
+         */
+        EtiquetaAplicada: {
+            /** Color */
+            color: string;
+            /** Id */
+            id: number;
+            /** Nombre */
+            nombre: string;
+        };
+        /**
+         * EtiquetaCreate
+         * @description Alta de etiqueta.
+         */
+        EtiquetaCreate: {
+            /**
+             * Color
+             * @default #64748b
+             */
+            color: string;
+            /** Nombre */
+            nombre: string;
+        };
+        /**
+         * EtiquetasPorObjeto
+         * @description Las etiquetas de varios objetos, indexadas por objeto.
+         */
+        EtiquetasPorObjeto: {
+            /** Por Objeto */
+            por_objeto?: {
+                [key: string]: components["schemas"]["EtiquetaAplicada"][];
+            };
         };
         /**
          * EventoFeedItem
@@ -4631,6 +5510,43 @@ export interface components {
             tecnologia: string;
         };
         /**
+         * ExpectedAward
+         * @description F4.4 — cuándo se espera la adjudicación, y de dónde sale esa fecha.
+         *
+         *     Viaja con su dispersión y su ``n`` a propósito: una fecha sola se lee como
+         *     un compromiso, y esto es una estimación. La regla que decide si se publica
+         *     —y el mínimo de expedientes por debajo del cual **no** hay estimación—
+         *     vive en :mod:`services.analytics.lead_time`.
+         */
+        ExpectedAward: {
+            /**
+             * Fecha
+             * Format: date
+             */
+            fecha: string;
+            /**
+             * Metodo
+             * @default estimacion
+             * @enum {string}
+             */
+            metodo: "hito" | "estimacion";
+            /**
+             * N
+             * @default 0
+             */
+            n: number;
+            /**
+             * P25
+             * Format: date
+             */
+            p25: string;
+            /**
+             * P75
+             * Format: date
+             */
+            p75: string;
+        };
+        /**
          * ExplainFeature
          * @description Término y su contribución a la clasificación (modelo lineal).
          */
@@ -4690,6 +5606,23 @@ export interface components {
             licitacion_id: string;
             /** Running */
             running: boolean;
+        };
+        /**
+         * FeedActividad
+         * @description Página del feed, con su cursor.
+         */
+        FeedActividad: {
+            /**
+             * Filtrado Por Rol
+             * @default false
+             */
+            filtrado_por_rol: boolean;
+            /** Items */
+            items?: components["schemas"]["ItemActividad"][];
+            /** Organization Id */
+            organization_id: number;
+            /** Siguiente Cursor */
+            siguiente_cursor?: number | null;
         };
         /**
          * FeedbackQueueItem
@@ -4790,6 +5723,23 @@ export interface components {
             positivos: number | null;
             /** Total */
             total: number;
+        };
+        /**
+         * FilaComparacion
+         * @description Una familia, con lo que dice cada pliego.
+         */
+        FilaComparacion: {
+            /** Celdas */
+            celdas?: components["schemas"]["CeldaComparacion"][];
+            /** Etiqueta */
+            etiqueta: string;
+            /** Familia */
+            familia: string;
+            /**
+             * Vacia En Todos
+             * @default false
+             */
+            vacia_en_todos: boolean;
         };
         /** FlagIn */
         FlagIn: {
@@ -4910,6 +5860,32 @@ export interface components {
              * @default 0
              */
             concentracion_top3: number;
+        };
+        /**
+         * GuionCriterio
+         * @description Los puntos de un criterio de adjudicación.
+         */
+        GuionCriterio: {
+            /** Criterio */
+            criterio: string;
+            /** Peso Pct */
+            peso_pct?: number | null;
+            /** Puntos */
+            puntos?: components["schemas"]["PuntoGuion"][];
+        };
+        /**
+         * GuionOferta
+         * @description El guion completo.
+         */
+        GuionOferta: {
+            /** Criterios */
+            criterios?: components["schemas"]["GuionCriterio"][];
+            /** Firma */
+            firma?: string | null;
+            /** Licitacion Id */
+            licitacion_id: string;
+            /** Sin Guion */
+            sin_guion?: string | null;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -5067,6 +6043,18 @@ export interface components {
             total: number;
         };
         /**
+         * HubOrgano
+         * @description Un órgano de contratación con página de índice propia (F6.5).
+         */
+        HubOrgano: {
+            /** Nombre */
+            nombre: string;
+            /** Slug */
+            slug: string;
+            /** Total */
+            total: number;
+        };
+        /**
          * Hubs
          * @description Índice de la superficie pública.
          */
@@ -5075,6 +6063,8 @@ export interface components {
             ccaa: components["schemas"]["HubCcaa"][];
             /** Cpv */
             cpv: components["schemas"]["HubCpv"][];
+            /** Organo */
+            organo?: components["schemas"]["HubOrgano"][];
         };
         /**
          * ImporteBox
@@ -5091,6 +6081,77 @@ export interface components {
             q1: number;
             /** Q3 */
             q3: number;
+        };
+        /**
+         * ItemActividad
+         * @description Una línea del feed del equipo.
+         */
+        ItemActividad: {
+            /** Actor */
+            actor?: string | null;
+            /** Cuando */
+            cuando: string;
+            /** Evento */
+            evento: string;
+            /** Id */
+            id: number;
+            /** Licitacion Id */
+            licitacion_id: string;
+            /** Pursuit Id */
+            pursuit_id: number;
+            /** Titulo */
+            titulo?: string | null;
+        };
+        /**
+         * ItemKit
+         * @description Un documento del kit, con su estado y quién lo marcó.
+         */
+        ItemKit: {
+            /** Clave */
+            clave: string;
+            /**
+             * Listo
+             * @default false
+             */
+            listo: boolean;
+            /** Marcado En */
+            marcado_en?: string | null;
+            /** Marcado Por */
+            marcado_por?: number | null;
+            /** Nombre */
+            nombre: string;
+            /**
+             * Sobre
+             * @enum {string}
+             */
+            sobre: "sobre_a" | "sobre_b" | "sobre_c" | "otro";
+            /** Subsanable */
+            subsanable?: boolean | null;
+        };
+        /**
+         * KitItemBody
+         * @description Marcado (o desmarcado) de un documento del kit.
+         */
+        KitItemBody: {
+            /** Clave */
+            clave: string;
+            /** Listo */
+            listo: boolean;
+        };
+        /**
+         * KitPresentacion
+         * @description El kit completo de una oportunidad.
+         */
+        KitPresentacion: {
+            /** Items */
+            items?: components["schemas"]["ItemKit"][];
+            /** Licitacion Id */
+            licitacion_id: string;
+            /**
+             * Sin Extraccion
+             * @default false
+             */
+            sin_extraccion: boolean;
         };
         /** LastExtraction */
         LastExtraction: {
@@ -5244,6 +6305,22 @@ export interface components {
             /** Url */
             url?: string | null;
         };
+        /**
+         * LiderSegmento
+         * @description Una empresa que domina el segmento, con su cuota.
+         */
+        LiderSegmento: {
+            /** Cuota Pct */
+            cuota_pct: number;
+            /** Empresa */
+            empresa: string;
+            /** Empresa Key */
+            empresa_key: string;
+            /** Importe Total */
+            importe_total: number;
+            /** N Contratos */
+            n_contratos: number;
+        };
         /** Liveness */
         Liveness: {
             /** Status */
@@ -5301,6 +6378,31 @@ export interface components {
             /** Titulo */
             titulo?: string | null;
         };
+        /**
+         * MargenImplicito
+         * @description F2.4 — qué margen deja este precio, si el pliego publica tarifas.
+         *
+         *     Sólo existe cuando la ficha trae ``rate_cards`` **con tarifa y horas**: el
+         *     coste estimado es la suma de tarifa por horas de cada perfil, y sin las dos
+         *     mitades no hay coste que restar. Por eso no se calcula «con lo que haya»:
+         *     un margen con la mitad de los perfiles es un margen equivocado, y encima
+         *     optimista, que es la dirección peligrosa.
+         */
+        MargenImplicito: {
+            /** Coste Estimado Eur */
+            coste_estimado_eur: number;
+            /**
+             * Fuente
+             * @default Tarifas máximas por perfil publicadas en el pliego y horas estimadas; es un margen techo, no el coste real de la organización.
+             */
+            fuente: string;
+            /** Margen Eur */
+            margen_eur: number;
+            /** Margen Pct */
+            margen_pct?: number | null;
+            /** Perfiles */
+            perfiles: number;
+        };
         /** MarkAlertsReadRequest */
         MarkAlertsReadRequest: {
             /**
@@ -5341,8 +6443,14 @@ export interface components {
             cpv: string[];
             /** Estado */
             estado: string[];
+            /** Procedimiento */
+            procedimiento?: components["schemas"]["OpcionCodificada"][];
             /** Tecnologia */
             tecnologia: string[];
+            /** Tipo Contrato */
+            tipo_contrato?: components["schemas"]["OpcionCodificada"][];
+            /** Tramitacion */
+            tramitacion?: components["schemas"]["OpcionCodificada"][];
         };
         /**
          * MetricScope
@@ -5503,12 +6611,63 @@ export interface components {
             unread_count: number;
         };
         /**
+         * Novedad
+         * @description Una línea del diff personal.
+         */
+        Novedad: {
+            /** Cuando */
+            cuando: string;
+            /** Detalle */
+            detalle?: string | null;
+            /** Licitacion Id */
+            licitacion_id?: string | null;
+            /** Subtipo */
+            subtipo: string;
+            /** Titulo */
+            titulo: string;
+        };
+        /**
+         * NovedadesDesdeUltimaVisita
+         * @description El diff personal del Resumen.
+         */
+        NovedadesDesdeUltimaVisita: {
+            /** Desde */
+            desde: string;
+            /** Items */
+            items?: components["schemas"]["Novedad"][];
+            /** Por Subtipo */
+            por_subtipo?: {
+                [key: string]: number;
+            };
+            /**
+             * Ventana Recortada
+             * @default false
+             */
+            ventana_recortada: boolean;
+        };
+        /**
          * OAuthAuthorizeResult
          * @description URL de autorización de Google para que el SPA redirija.
          */
         OAuthAuthorizeResult: {
             /** Authorization Url */
             authorization_url: string;
+        };
+        /**
+         * OpcionCodificada
+         * @description Un valor de lista controlada con su etiqueta y su definición corta.
+         *
+         *     Va tipado y no como ``dict[str, str]`` porque el cliente TS se genera de
+         *     aquí (invariante 5) y porque la consola tiene que poder pintar la etiqueta
+         *     y el tooltip sin conocer el vocabulario (invariante 3 de ``web/AGENTS.md``).
+         */
+        OpcionCodificada: {
+            /** Codigo */
+            codigo: string;
+            /** Descripcion */
+            descripcion: string;
+            /** Etiqueta */
+            etiqueta: string;
         };
         /**
          * OrganizationCreate
@@ -5599,22 +6758,71 @@ export interface components {
          *     acota su universo a ellas cuando el usuario no filtra por tecnología a
          *     mano, y la ingesta no cambia —el filtro es una vista sobre el corpus, no
          *     una pérdida de datos.
+         *
+         *     **Ámbito de mercado (F6.1).** El resto de campos de ámbito —CPVs, CCAAs,
+         *     rango de importe, tipos de órgano y procedimientos excluidos— vivían sólo
+         *     en el perfil **personal** (``api/routes/me.py``), así que cada miembro
+         *     tenía que reconfigurar a mano lo que la organización entera comparte, y
+         *     quien no lo hacía veía el mercado sin acotar. Aquí son de la organización,
+         *     y la precedencia es explícita: **perfil personal → organización → global**.
+         *     En todos, la lista vacía significa «sin restricción», nunca «ninguno»: un
+         *     ámbito que se interpretara al revés vaciaría el Radar en silencio el día
+         *     que alguien guardara la configuración sin tocar un campo.
+         *
+         *     No hay migración: ``organizations.settings_json`` es JSON y admite claves
+         *     nuevas. La que D39 pre-autorizaba no hace falta.
          */
         OrganizationSettings: {
+            /** Ccaas */
+            ccaas?: string[];
+            /** Cpvs */
+            cpvs?: string[];
+            /** Importe Max */
+            importe_max?: number | null;
+            /** Importe Min */
+            importe_min?: number | null;
+            /** Probabilidades Etapa */
+            probabilidades_etapa?: {
+                [key: string]: number;
+            };
+            /** Procedimientos Excluidos */
+            procedimientos_excluidos?: string[];
             /** Tecnologias */
             tecnologias?: string[];
+            /** Tipos Organo */
+            tipos_organo?: string[];
         };
         /**
          * OrganizationSettingsOut
          * @description Configuración leída, con la organización a la que pertenece.
          */
         OrganizationSettingsOut: {
+            /** Ccaas */
+            ccaas?: string[];
+            /** Cpvs */
+            cpvs?: string[];
+            /** Importe Max */
+            importe_max?: number | null;
+            /** Importe Min */
+            importe_min?: number | null;
             /** Organization Id */
             organization_id: number;
+            /** Probabilidades Etapa */
+            probabilidades_etapa?: {
+                [key: string]: number;
+            };
+            /** Probabilidades Etapa Default */
+            probabilidades_etapa_default?: {
+                [key: string]: number;
+            };
+            /** Procedimientos Excluidos */
+            procedimientos_excluidos?: string[];
             /** Tecnologias */
             tecnologias?: string[];
             /** Tecnologias Disponibles */
             tecnologias_disponibles?: string[];
+            /** Tipos Organo */
+            tipos_organo?: string[];
         };
         /**
          * OrganizationSummary
@@ -5836,6 +7044,32 @@ export interface components {
              */
             yoy_delta: number;
         };
+        /**
+         * PaginaDocumento
+         * @description Una página del pliego, con el fragmento a resaltar si es válido.
+         */
+        PaginaDocumento: {
+            /** Documento Id */
+            documento_id: number;
+            /** Filename */
+            filename?: string | null;
+            /** Page Number */
+            page_number: number;
+            /** Resaltado Fin */
+            resaltado_fin?: number | null;
+            /** Resaltado Inicio */
+            resaltado_inicio?: number | null;
+            /** Resaltado Omitido */
+            resaltado_omitido?: string | null;
+            /** Texto */
+            texto: string;
+            /** Tipo */
+            tipo?: string | null;
+            /** Total Paginas */
+            total_paginas: number;
+            /** Uri */
+            uri?: string | null;
+        };
         /** PaginatedResponse[AdjudicacionSummary] */
         PaginatedResponse_AdjudicacionSummary_: {
             /** Deprecation Notice */
@@ -5889,6 +7123,18 @@ export interface components {
              * Format: email
              */
             email: string;
+        };
+        /**
+         * PerdidaPorMotivo
+         * @description Cuántas veces se perdió por un motivo, y qué parte del total es.
+         */
+        PerdidaPorMotivo: {
+            /** Motivo */
+            motivo: string;
+            /** N */
+            n: number;
+            /** Pct */
+            pct: number;
         };
         /** PeriodDeltas */
         PeriodDeltas: {
@@ -6146,12 +7392,70 @@ export interface components {
             /** Serving */
             serving?: string | null;
         };
+        /**
+         * PreviewResult
+         * @description Conteo de la regla más su serie de ruido (F5.5).
+         *
+         *     Hereda de `TotalCount` para que `total` siga significando y llamándose lo
+         *     mismo: los tres campos nuevos son **aditivos** y un cliente antiguo sigue
+         *     leyendo la respuesta que leía.
+         */
+        PreviewResult: {
+            /**
+             * Ruido Alto
+             * @default false
+             */
+            ruido_alto: boolean;
+            /** Serie Semanal */
+            serie_semanal?: components["schemas"]["SemanaMatches"][];
+            /** Total */
+            total: number;
+            /**
+             * Umbral Semanal
+             * @default 50
+             */
+            umbral_semanal: number;
+        };
+        /**
+         * PriceFormulaFact
+         * @description F2.2 — la fórmula de valoración del precio, con sus parámetros.
+         *
+         *     ``max_points`` es lo que reparte la fórmula; si el pliego no lo publica, el
+         *     simulador cae al peso del precio (``licitaciones.peso_precio_pct``, v85) y
+         *     lo declara. ``params`` guarda lo específico de cada tipo (los tramos, el
+         *     umbral de temeridad) como números, nunca como texto a interpretar después:
+         *     un simulador que parsee prosa en el momento de calcular es un simulador que
+         *     da un número distinto cada vez que alguien toca el extractor.
+         */
+        PriceFormulaFact: {
+            /** Confidence */
+            confidence: number;
+            /** Description */
+            description: string;
+            /** Evidence */
+            evidence?: components["schemas"]["EvidenceRef"][];
+            /**
+             * Formula Type
+             * @default otra
+             * @enum {string}
+             */
+            formula_type: "proporcional_inversa" | "lineal_por_tramos" | "con_umbral_temeridad" | "otra";
+            /** Max Points */
+            max_points?: number | null;
+            /** Params */
+            params?: {
+                [key: string]: number;
+            };
+            /** Umbral Temeridad */
+            umbral_temeridad?: number | null;
+        };
         /** PriceScenario */
         PriceScenario: {
             /** Basis */
             basis: string;
             /** Discount */
             discount: number;
+            margen_implicito?: components["schemas"]["MargenImplicito"] | null;
             /**
              * Name
              * @enum {string}
@@ -6263,6 +7567,21 @@ export interface components {
              * @default 0
              */
             total_clasificados: number;
+        };
+        /**
+         * PuntoGuion
+         * @description Un punto a cubrir dentro de un criterio.
+         */
+        PuntoGuion: {
+            /** Evidencia */
+            evidencia?: components["schemas"]["EvidenceRef"][];
+            /**
+             * Sin Base
+             * @default false
+             */
+            sin_base: boolean;
+            /** Texto */
+            texto: string;
         };
         /**
          * PursuitAdjudicacionDetectada
@@ -6427,6 +7746,7 @@ export interface components {
             decision_reason?: string | null;
             /** Events */
             events?: components["schemas"]["PursuitEventOut"][];
+            expected_award?: components["schemas"]["ExpectedAward"] | null;
             /** Id */
             id: number;
             /**
@@ -6451,6 +7771,8 @@ export interface components {
             outcome: "pending" | "won" | "lost" | "cancelled";
             /** Outcome Reason */
             outcome_reason?: string | null;
+            /** Outcome Reason Code */
+            outcome_reason_code?: ("precio" | "tecnica" | "solvencia" | "plazo" | "desierto_o_anulado" | "no_presentada" | "otro") | null;
             /** Responsible Name */
             responsible_name?: string | null;
             /** Responsible User Id */
@@ -6464,6 +7786,8 @@ export interface components {
             submitted_at?: string | null;
             /** Tender Deadline */
             tender_deadline?: string | null;
+            /** Tender Organo */
+            tender_organo?: string | null;
             /** Tender Title */
             tender_title?: string | null;
             /**
@@ -6527,10 +7851,35 @@ export interface components {
             median_decision_time_hours?: number | null;
             /** Organization Id */
             organization_id: number;
+            /**
+             * Perdidas N Minimo
+             * @default 5
+             */
+            perdidas_n_minimo: number;
+            /** Perdidas Por Motivo */
+            perdidas_por_motivo?: components["schemas"]["PerdidaPorMotivo"][];
             /** Period From */
             period_from?: string | null;
             /** Period To */
             period_to?: string | null;
+            /**
+             * Pipeline Sin Importe
+             * @default 0
+             */
+            pipeline_sin_importe: number;
+            /**
+             * Pipeline Value Eur
+             * @default 0
+             */
+            pipeline_value_eur: number;
+            /** Prevision Trimestral */
+            prevision_trimestral?: {
+                [key: string]: number;
+            };
+            /** Probabilidades Etapa Usadas */
+            probabilidades_etapa_usadas?: {
+                [key: string]: number;
+            };
             /** Pursuits Identified */
             pursuits_identified: number;
             /** Pursuits Lost */
@@ -6570,6 +7919,7 @@ export interface components {
             decision_at?: string | null;
             /** Decision Reason */
             decision_reason?: string | null;
+            expected_award?: components["schemas"]["ExpectedAward"] | null;
             /** Id */
             id: number;
             /**
@@ -6594,6 +7944,8 @@ export interface components {
             outcome: "pending" | "won" | "lost" | "cancelled";
             /** Outcome Reason */
             outcome_reason?: string | null;
+            /** Outcome Reason Code */
+            outcome_reason_code?: ("precio" | "tecnica" | "solvencia" | "plazo" | "desierto_o_anulado" | "no_presentada" | "otro") | null;
             /** Responsible Name */
             responsible_name?: string | null;
             /** Responsible User Id */
@@ -6607,6 +7959,8 @@ export interface components {
             submitted_at?: string | null;
             /** Tender Deadline */
             tender_deadline?: string | null;
+            /** Tender Organo */
+            tender_organo?: string | null;
             /** Tender Title */
             tender_title?: string | null;
             /**
@@ -6640,6 +7994,8 @@ export interface components {
             outcome?: ("pending" | "won" | "lost" | "cancelled") | null;
             /** Outcome Reason */
             outcome_reason?: string | null;
+            /** Outcome Reason Code */
+            outcome_reason_code?: ("precio" | "tecnica" | "solvencia" | "plazo" | "desierto_o_anulado" | "no_presentada" | "otro") | null;
             /** Responsible User Id */
             responsible_user_id?: number | null;
             /** Status */
@@ -6654,6 +8010,8 @@ export interface components {
             cobertura_modulo_sap?: number | null;
             /** Cobertura Nif */
             cobertura_nif?: number | null;
+            /** Codigos No Catalogados */
+            codigos_no_catalogados?: components["schemas"]["CodigoNoCatalogado"][];
             /** Completitud Columnas */
             completitud_columnas?: components["schemas"]["ColumnCompleteness"][];
             /**
@@ -6703,6 +8061,10 @@ export interface components {
              * @default 0
              */
             pct_titulo: number;
+            /** Reportes Por Tipo */
+            reportes_por_tipo?: {
+                [key: string]: number;
+            };
             /**
              * Total Records
              * @default 0
@@ -6730,6 +8092,22 @@ export interface components {
             };
         };
         /**
+         * RadarDismissal
+         * @description Un descarte vigente, con lo que hace falta para pintarlo.
+         */
+        RadarDismissal: {
+            /** Accion */
+            accion?: string | null;
+            /** Banda */
+            banda?: string | null;
+            /** Hasta */
+            hasta?: string | null;
+            /** Id Externo */
+            id_externo: string;
+            /** Score */
+            score?: number | null;
+        };
+        /**
          * RadarDismissalBody
          * @description Cuerpo del descarte de una señal.
          *
@@ -6745,8 +8123,16 @@ export interface components {
          *     supo» y no se rellena con nada inventado.
          */
         RadarDismissalBody: {
+            /**
+             * Accion
+             * @default descartar
+             * @enum {string}
+             */
+            accion: "descartar" | "silenciar" | "posponer";
             /** Banda */
             banda?: ("Caliente" | "Atractiva" | "Tibia" | "Descarte") | null;
+            /** Dias */
+            dias?: number | null;
             /** Id Externo */
             id_externo: string;
             /** Score */
@@ -6755,10 +8141,35 @@ export interface components {
         /**
          * RadarDismissalsResult
          * @description ``id_externo`` que el usuario tiene descartados, recientes primero.
+         *
+         *     ``ids`` sólo trae los **vigentes**: un silenciado que venció ya no está,
+         *     porque a efectos del Radar ha vuelto a la bandeja. ``detalle`` es aditivo y
+         *     lleva la fecha y la acción de cada uno, para que la consola pueda decir
+         *     «silenciada hasta el 6 de octubre» en vez de sólo «descartada».
          */
         RadarDismissalsResult: {
+            /** Detalle */
+            detalle?: components["schemas"]["RadarDismissal"][];
             /** Ids */
             ids: string[];
+        };
+        /**
+         * RateCardFact
+         * @description F2.4 — tarifa máxima por perfil, con las horas si el pliego las da.
+         */
+        RateCardFact: {
+            /** Confidence */
+            confidence: number;
+            /** Description */
+            description: string;
+            /** Estimated Hours */
+            estimated_hours?: number | null;
+            /** Evidence */
+            evidence?: components["schemas"]["EvidenceRef"][];
+            /** Max Rate Eur Hour */
+            max_rate_eur_hour?: number | null;
+            /** Role */
+            role: string;
         };
         /**
          * RegisterRequest
@@ -6863,6 +8274,60 @@ export interface components {
             importe_en_juego: number;
         };
         /**
+         * ReporteDatoBody
+         * @description Un aviso de que algo del expediente está mal.
+         */
+        ReporteDatoBody: {
+            /** Comentario */
+            comentario?: string | null;
+            /**
+             * Tipo
+             * @enum {string}
+             */
+            tipo: "tecnologia" | "ccaa" | "duplicado" | "importe" | "adjudicatario" | "otro";
+        };
+        /**
+         * ReporteDatoResult
+         * @description Acuse del reporte, con la cola que lo va a revisar.
+         */
+        ReporteDatoResult: {
+            /** Cola */
+            cola: string;
+            /** Created At */
+            created_at: string;
+            /** Id Externo */
+            id_externo: string;
+            /** Tipo */
+            tipo: string;
+        };
+        /**
+         * RequiredDocumentFact
+         * @description F2.3 — un documento que el pliego exige presentar.
+         *
+         *     ``scope`` es el sobre en el que va, que es lo que organiza el trabajo: el
+         *     sobre A se prepara una vez y se reutiliza, el C se escribe para cada
+         *     licitación. Sin él, el kit es una lista plana de veinte cosas sin orden de
+         *     ataque.
+         */
+        RequiredDocumentFact: {
+            /** Confidence */
+            confidence: number;
+            /** Description */
+            description: string;
+            /** Evidence */
+            evidence?: components["schemas"]["EvidenceRef"][];
+            /** Name */
+            name: string;
+            /**
+             * Scope
+             * @default otro
+             * @enum {string}
+             */
+            scope: "sobre_a" | "sobre_b" | "sobre_c" | "otro";
+            /** Subsanable */
+            subsanable?: boolean | null;
+        };
+        /**
          * ResolucionOut
          * @description Resolución de recurso contractual, con la licitación vinculada si la hay.
          */
@@ -6896,6 +8361,40 @@ export interface components {
         ResolucionesResult: {
             /** Items */
             items: components["schemas"]["ResolucionOut"][];
+        };
+        /**
+         * ResultadoBusqueda
+         * @description Un resultado, con lo justo para pintar una fila de la paleta.
+         */
+        ResultadoBusqueda: {
+            /**
+             * Exacto
+             * @default false
+             */
+            exacto: boolean;
+            /** Id */
+            id: string;
+            /** Subtitulo */
+            subtitulo?: string | null;
+            /**
+             * Tipo
+             * @enum {string}
+             */
+            tipo: "expediente" | "empresa" | "organo" | "oportunidad";
+            /** Titulo */
+            titulo: string;
+        };
+        /**
+         * ResultadoEtiquetado
+         * @description Si la operación cambió algo.
+         *
+         *     Tipado y no `dict[str, bool]`: el cliente TS se genera de aquí, y un
+         *     diccionario abierto obliga al frontend a redeclarar la forma a mano
+         *     (invariante 5).
+         */
+        ResultadoEtiquetado: {
+            /** Cambiado */
+            cambiado: boolean;
         };
         /** ResumenHoyResult */
         ResumenHoyResult: {
@@ -7145,6 +8644,8 @@ export interface components {
             };
             /** Estado */
             estado?: string | null;
+            /** Explicacion */
+            explicacion?: string[];
             /** Fecha Limite */
             fecha_limite?: string | null;
             /** Fecha Publicacion */
@@ -7271,6 +8772,16 @@ export interface components {
              * @default true
              */
             with_total: boolean;
+        };
+        /**
+         * SemanaMatches
+         * @description Coincidencias de una semana. `semana` es el lunes, en ISO.
+         */
+        SemanaMatches: {
+            /** N */
+            n: number;
+            /** Semana */
+            semana: string;
         };
         /**
          * SemanticHit
@@ -7407,6 +8918,57 @@ export interface components {
             flags: components["schemas"]["FlagIn"][];
         };
         /**
+         * SimulacionPrecio
+         * @description Respuesta del simulador: puntos por escenario, o el motivo de no calcular.
+         */
+        SimulacionPrecio: {
+            /** Baja Referencia */
+            baja_referencia?: number | null;
+            /** Escenarios */
+            escenarios?: components["schemas"]["EscenarioPuntos"][];
+            /** Formula Tipo */
+            formula_tipo?: string | null;
+            /** Hueco Vs Referencia */
+            hueco_vs_referencia?: number | null;
+            /** Licitacion Id */
+            licitacion_id: string;
+            /** Puntos Precio */
+            puntos_precio?: number | null;
+            /**
+             * Puntos Precio Origen
+             * @default desconocido
+             * @enum {string}
+             */
+            puntos_precio_origen: "pliego" | "peso_precio" | "desconocido";
+            /** Sin Calculo */
+            sin_calculo?: ("sin_formula" | "formula_no_calculable" | "sin_puntos_de_precio") | null;
+        };
+        /**
+         * SocioSugerido
+         * @description Una empresa propuesta, con el motivo por el que se propone.
+         */
+        SocioSugerido: {
+            /** Empresa */
+            empresa: string;
+            /** Empresa Key */
+            empresa_key: string;
+            /**
+             * Es Pyme
+             * @default false
+             */
+            es_pyme: boolean;
+            /** Importe Total */
+            importe_total: number;
+            /** Motivos */
+            motivos: string[];
+            /** N Contratos */
+            n_contratos: number;
+            /** N Organos */
+            n_organos: number;
+            /** Pct Ute */
+            pct_ute: number;
+        };
+        /**
          * SolicitudAccesoOut
          * @description Una solicitud de la cola, tal como la ve el panel.
          */
@@ -7505,6 +9067,48 @@ export interface components {
         StatusOk: {
             /** Status */
             status: string;
+        };
+        /**
+         * SugerenciaSocios
+         * @description Respuesta del buscador de socios, con su universo declarado.
+         */
+        SugerenciaSocios: {
+            /** Ccaa */
+            ccaa?: string | null;
+            /** Cpv */
+            cpv?: string | null;
+            /** Lideres */
+            lideres?: components["schemas"]["LiderSegmento"][];
+            /**
+             * N Adjudicaciones
+             * @default 0
+             */
+            n_adjudicaciones: number;
+            /** Sin Resultados */
+            sin_resultados?: string | null;
+            /** Socios */
+            socios?: components["schemas"]["SocioSugerido"][];
+        };
+        /**
+         * TarjetaMetrica
+         * @description Una cifra con todo lo que hace falta para creerla.
+         */
+        TarjetaMetrica: {
+            /** Clave */
+            clave: string;
+            /** Etiqueta */
+            etiqueta: string;
+            /**
+             * N
+             * @default 0
+             */
+            n: number;
+            /** Nota */
+            nota?: string | null;
+            /** Universo */
+            universo: string;
+            /** Valor */
+            valor?: number | null;
         };
         /**
          * TeamRequirement
@@ -7718,6 +9322,8 @@ export interface components {
         TenderFactSheet: {
             /** Award Criteria */
             award_criteria?: components["schemas"]["WeightedCriterion"][];
+            /** Budget Breakdown */
+            budget_breakdown?: components["schemas"]["BudgetLineFact"][];
             /** Certifications */
             certifications?: components["schemas"]["CertificationRequirement"][];
             /** Critical Deadlines */
@@ -7732,6 +9338,12 @@ export interface components {
             lots?: components["schemas"]["LotFact"][];
             /** Penalties */
             penalties?: components["schemas"]["MonetaryFact"][];
+            /** Price Formula */
+            price_formula?: components["schemas"]["PriceFormulaFact"][];
+            /** Rate Cards */
+            rate_cards?: components["schemas"]["RateCardFact"][];
+            /** Required Documents */
+            required_documents?: components["schemas"]["RequiredDocumentFact"][];
             /** Service Levels */
             service_levels?: components["schemas"]["ServiceLevelFact"][];
             /** Subcontracting */
@@ -7927,14 +9539,6 @@ export interface components {
             titulo?: string | null;
             /** Url */
             url?: string | null;
-        };
-        /**
-         * TotalCount
-         * @description Conteo agregado sin items (previews, badges).
-         */
-        TotalCount: {
-            /** Total */
-            total: number;
         };
         /** TotpCodeRequest */
         TotpCodeRequest: {
@@ -9574,6 +11178,42 @@ export interface operations {
             };
         };
     };
+    resumen_desde_ultima_visita_api_v1_analytics_resumen_desde_mi_ultima_visita_get: {
+        parameters: {
+            query?: {
+                organization_id?: number | null;
+                limit?: number;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NovedadesDesdeUltimaVisita"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     resumen_hoy_api_v1_analytics_resumen_hoy_get: {
         parameters: {
             query?: {
@@ -10813,6 +12453,52 @@ export interface operations {
             };
         };
     };
+    get_batallas_api_v1_competitive_empresas__empresa_key__contra_mi_get: {
+        parameters: {
+            query?: {
+                organization_id?: number | null;
+                /** @description Ventana hacia atrás, en meses */
+                meses?: number;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                empresa_key: string;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BatallasContraMi"];
+                };
+            };
+            /** @description No perteneces a esa organización */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_hhi_api_v1_competitive_hhi_get: {
         parameters: {
             query?: {
@@ -10837,6 +12523,52 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HhiResult"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_partners_api_v1_competitive_partners_get: {
+        parameters: {
+            query?: {
+                /** @description CPV del segmento */
+                cpv?: string | null;
+                /** @description Comunidad Autónoma */
+                ccaa?: string | null;
+                limit?: number;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SugerenciaSocios"];
+                };
+            };
+            /** @description Autenticación inválida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -11042,6 +12774,122 @@ export interface operations {
             };
         };
     };
+    get_cuentas_api_v1_cuentas_get: {
+        parameters: {
+            query?: {
+                organization_id?: number | null;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CuentaObjetivo"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_cuenta_api_v1_cuentas_post: {
+        parameters: {
+            query?: {
+                organization_id?: number | null;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CuentaObjetivoCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CuentaObjetivo"];
+                };
+            };
+            /** @description Un viewer no puede seguir cuentas */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_cuenta_api_v1_cuentas__cuenta_id__delete: {
+        parameters: {
+            query?: {
+                organization_id?: number | null;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                cuenta_id: number;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_empresas_api_v1_empresas_get: {
         parameters: {
             query?: {
@@ -11220,6 +13068,246 @@ export interface operations {
             };
             /** @description Empresa no encontrada */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_etiquetas_api_v1_etiquetas_get: {
+        parameters: {
+            query?: {
+                organization_id?: number | null;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Etiqueta"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_etiqueta_api_v1_etiquetas_post: {
+        parameters: {
+            query?: {
+                organization_id?: number | null;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EtiquetaCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Etiqueta"];
+                };
+            };
+            /** @description La organización llegó al máximo de etiquetas */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_aplicar_etiqueta_api_v1_etiquetas_aplicar_post: {
+        parameters: {
+            query?: {
+                organization_id?: number | null;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EtiquetaAplicacion"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResultadoEtiquetado"];
+                };
+            };
+            /** @description La etiqueta no es de tu organización */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_etiquetas_por_objeto_api_v1_etiquetas_por_objeto_post: {
+        parameters: {
+            query?: {
+                organization_id?: number | null;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Body_post_etiquetas_por_objeto_api_v1_etiquetas_por_objeto_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EtiquetasPorObjeto"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_quitar_etiqueta_api_v1_etiquetas_quitar_post: {
+        parameters: {
+            query?: {
+                organization_id?: number | null;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EtiquetaAplicacion"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResultadoEtiquetado"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_etiqueta_api_v1_etiquetas__etiqueta_id__delete: {
+        parameters: {
+            query?: {
+                organization_id?: number | null;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                etiqueta_id: number;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -11730,6 +13818,24 @@ export interface operations {
                 cierre_desde?: string | null;
                 /** @description Fecha límite de presentación hasta (YYYY-MM-DD), inclusive el día entero: fecha_limite guarda la hora de cierre, así que la cota incluye los expedientes que cierran ese mismo día a cualquier hora. */
                 cierre_hasta?: string | null;
+                /** @description Importe de licitación mínimo, en euros (inclusive) */
+                importe_min?: number | null;
+                /** @description Importe de licitación máximo, en euros (inclusive) */
+                importe_max?: number | null;
+                /** @description CPV por PREFIJO, separados por comas. `72` trae todos los servicios de TI y `7222` una familia dentro. Es prefijo y no igualdad porque nadie recuerda los ocho dígitos. */
+                cpv?: string | null;
+                /** @description Órgano de contratación por subcadena, sin distinguir acentos ni mayúsculas. Varios separados por comas. */
+                organo?: string | null;
+                /** @description Provincia (multi-valor) */
+                provincia?: string | null;
+                /** @description Código CODICE de procedimiento (multi-valor). Las etiquetas y el catálogo completo los sirve `GET /meta/filters`. */
+                procedimiento?: string | null;
+                /** @description Código CODICE de tramitación (multi-valor) */
+                tramitacion?: string | null;
+                /** @description Código CODICE de tipo de contrato (multi-valor) */
+                tipo_contrato?: string | null;
+                /** @description Sólo expedientes cuyo plazo vence dentro de N días. Se calcula en SQL sobre `fecha_limite` y excluye los estados terminales: un expediente ya adjudicado con fecha límite futura no vence, no se puede licitar. */
+                dias_restantes_max?: number | null;
                 /** @description Orden: fecha_publicacion (default), -importe, importe, titulo */
                 sort?: string | null;
                 /** @description Incluir total (false = más rápido para paginación) */
@@ -11813,14 +13919,92 @@ export interface operations {
             };
         };
     };
+    post_comparar_fichas_api_v1_licitaciones_comparar_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CompararBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ComparacionFichas"];
+                };
+            };
+            /** @description Autenticación inválida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_licitaciones_cursor_api_v1_licitaciones_cursor_get: {
         parameters: {
             query?: {
                 /** @description Cursor opaco devuelto en la página anterior */
                 cursor?: string | null;
                 limit?: number;
+                /** @description Búsqueda en título y descripción */
+                q?: string | null;
+                /** @description Código de estado (PUB, EV, ADJ…) */
+                estado?: string | null;
+                /** @description Excluye los expedientes en estado terminal */
+                solo_abiertas?: boolean;
+                /** @description Comunidad Autónoma */
+                ccaa?: string | null;
                 /** @description Tecnología (SAP, ORACLE…) */
                 tecnologia?: string | null;
+                /** @description Fecha publicación desde (YYYY-MM-DD) */
+                fecha_desde?: string | null;
+                /** @description Fecha publicación hasta (YYYY-MM-DD) */
+                fecha_hasta?: string | null;
+                /** @description Fecha límite desde (YYYY-MM-DD) */
+                cierre_desde?: string | null;
+                /** @description Fecha límite hasta (YYYY-MM-DD) */
+                cierre_hasta?: string | null;
+                /** @description Importe mínimo, en euros */
+                importe_min?: number | null;
+                /** @description Importe máximo, en euros */
+                importe_max?: number | null;
+                /** @description CPV por prefijo (multi-valor) */
+                cpv?: string | null;
+                /** @description Órgano por subcadena */
+                organo?: string | null;
+                /** @description Provincia (multi-valor) */
+                provincia?: string | null;
+                /** @description Código CODICE de procedimiento (multi-valor) */
+                procedimiento?: string | null;
+                /** @description Código CODICE de tramitación (multi-valor) */
+                tramitacion?: string | null;
+                /** @description Código CODICE de tipo de contrato (multi-valor) */
+                tipo_contrato?: string | null;
+                /** @description Plazo que vence dentro de N días */
+                dias_restantes_max?: number | null;
             };
             header?: never;
             path?: never;
@@ -12019,6 +14203,62 @@ export interface operations {
             };
             /** @description API key inválida */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_pagina_documento_api_v1_licitaciones__id_externo__documentos__documento_id__paginas__page_number__get: {
+        parameters: {
+            query?: {
+                /** @description Offset absoluto de inicio de la cita */
+                inicio?: number | null;
+                /** @description Offset absoluto de fin de la cita */
+                fin?: number | null;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                id_externo: string;
+                documento_id: number;
+                page_number: number;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaginaDocumento"];
+                };
+            };
+            /** @description Autenticación inválida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description La página no existe para ese documento y licitación */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -12276,6 +14516,101 @@ export interface operations {
             };
         };
     };
+    post_guion_oferta_api_v1_licitaciones__id_externo__guion_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                id_externo: string;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GuionOferta"];
+                };
+            };
+            /** @description Autenticación inválida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Presupuesto LLM agotado */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    post_reporte_dato_api_v1_licitaciones__id_externo__reportes_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                id_externo: string;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReporteDatoBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReporteDatoResult"];
+                };
+            };
+            /** @description Autenticación inválida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     resumen_licitacion_api_v1_licitaciones__id_externo__resumen_post: {
         parameters: {
             query?: never;
@@ -12338,6 +14673,53 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    get_simulador_precio_api_v1_licitaciones__id_externo__simulador_get: {
+        parameters: {
+            query?: {
+                /** @description Bajas a simular, en tanto por uno (0.12 = 12 %). Repetible. Sin ninguna se usan los escenarios de referencia 5/10/15/20/25 %. */
+                baja?: number[];
+                /** @description Baja del rival contra el que medirse (p. ej. el p90 de la predicción) */
+                baja_referencia?: number | null;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                id_externo: string;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SimulacionPrecio"];
+                };
+            };
+            /** @description Autenticación inválida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
             };
         };
     };
@@ -13490,6 +15872,8 @@ export interface operations {
                 ccaa?: string | null;
                 /** @description Prefijo de código CPV */
                 cpv?: string | null;
+                /** @description Slug del órgano de contratación (F6.5) */
+                organo?: string | null;
                 limit?: number;
                 offset?: number;
             };
@@ -13702,6 +16086,53 @@ export interface operations {
             };
         };
     };
+    get_actividad_api_v1_pursuits_actividad_get: {
+        parameters: {
+            query?: {
+                organization_id?: number | null;
+                /** @description Cursor: id del último evento de la página anterior */
+                antes_de_id?: number | null;
+                /** @description Filtrar por quién lo hizo */
+                usuario?: number | null;
+                limit?: number;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FeedActividad"];
+                };
+            };
+            /** @description No perteneces a esa organización */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_pursuits_agenda_api_v1_pursuits_agenda_get: {
         parameters: {
             query?: {
@@ -13729,6 +16160,90 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["PipelineAgendaResponse"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_cartera_api_v1_pursuits_cartera_get: {
+        parameters: {
+            query?: {
+                organization_id?: number | null;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ContratoCartera"][];
+                };
+            };
+            /** @description No perteneces a esa organización */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_direccion_api_v1_pursuits_direccion_get: {
+        parameters: {
+            query?: {
+                organization_id?: number | null;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CuadroDireccion"];
+                };
+            };
+            /** @description Dirección es para owner y admin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -13958,6 +16473,149 @@ export interface operations {
         responses: {
             /** @description Successful Response */
             204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_pursuit_ficha_pdf_api_v1_pursuits__pursuit_id__ficha_pdf_get: {
+        parameters: {
+            query?: {
+                organization_id?: number | null;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                pursuit_id: number;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description El PDF */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/pdf": unknown;
+                };
+            };
+            /** @description La oportunidad es de otra organización */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No existe */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_pursuit_kit_api_v1_pursuits__pursuit_id__kit_get: {
+        parameters: {
+            query?: {
+                organization_id?: number | null;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                pursuit_id: number;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KitPresentacion"];
+                };
+            };
+            /** @description La oportunidad es de otra organización */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_pursuit_kit_item_api_v1_pursuits__pursuit_id__kit_post: {
+        parameters: {
+            query?: {
+                organization_id?: number | null;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                pursuit_id: number;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["KitItemBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KitPresentacion"];
+                };
+            };
+            /** @description La oportunidad es de otra organización */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -14219,6 +16877,53 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["StatusOk"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_search_global_api_v1_search_global_get: {
+        parameters: {
+            query: {
+                /** @description Término de búsqueda */
+                q: string;
+                /** @description Sin él **no se buscan oportunidades**, que no es lo mismo que no encontrar ninguna: la respuesta lo declara en `tipos_buscados`. */
+                organization_id?: number | null;
+                /** @description Máximo por tipo */
+                limit?: number;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BusquedaGlobal"];
+                };
+            };
+            /** @description Autenticación inválida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -14587,7 +17292,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["TotalCount"];
+                    "application/json": components["schemas"]["PreviewResult"];
                 };
             };
             /** @description Validation Error */

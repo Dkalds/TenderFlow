@@ -14,6 +14,7 @@ frecuencia* (→ ``notifications``) se añaden en increments posteriores.
 from __future__ import annotations
 
 from collections.abc import Sequence
+from datetime import UTC, date, datetime, timedelta
 from typing import Any, Literal
 
 from pydantic import BaseModel
@@ -264,6 +265,65 @@ def count_matches(rule: WatchlistRule) -> int:
     with connect_read() as c:
         row = c.execute(sql, params).fetchone()
     return int(row[0]) if row else 0
+
+
+#: Semanas de historia que mira la vista previa de ruido (F5.5).
+SEMANAS_PREVIEW = 8
+
+#: Coincidencias por semana por encima de las cuales la vista previa avisa.
+#:
+#: Cincuenta es aproximadamente «diez al día laborable»: por ahí es donde una
+#: alerta deja de leerse y empieza a archivarse en bloque, que es peor que no
+#: tenerla —el usuario deja de mirar también las buenas—. Es configurable
+#: porque el umbral correcto depende del tamaño del equipo, y se **declara**
+#: en la respuesta para que la UI no tenga que repetirlo.
+UMBRAL_RUIDO_SEMANAL = 50
+
+
+def serie_semanal(rule: WatchlistRule, *, semanas: int = SEMANAS_PREVIEW) -> list[dict[str, Any]]:
+    """Coincidencias por semana de las últimas ``semanas``, antiguas primero.
+
+    El preview de hoy dice cuántos expedientes casan **ahora mismo** contra el
+    corpus entero, que para una regla nueva es un número enorme e inútil: no
+    responde a la pregunta que el usuario tiene, que es «¿cuánto correo me va a
+    llegar por semana?». La serie sí.
+
+    Se agrupa por ``substr(fecha_publicacion, 1, 10)`` reducido a lunes en
+    Python en vez de con ``date_trunc``: la columna es TEXT con filas legacy
+    malformadas (v59) y un CAST a timestamp revienta la consulta entera por una
+    de ellas. El ``iso_guard`` las deja fuera y conserva el índice btree.
+    """
+    desde = (datetime.now(UTC) - timedelta(weeks=semanas)).date()
+    clauses = [
+        *_rule_clauses(rule),
+        licitaciones.c.fecha_publicacion >= desde.isoformat(),
+        licitaciones.c.fecha_publicacion < "3000",
+    ]
+    stmt = select(licitaciones.c.fecha_publicacion).select_from(licitaciones).where(and_(*clauses))
+    sql, params = compile_query(stmt)
+    with connect_read() as c:
+        filas = c.execute(sql, params).fetchall()
+
+    # Semanas completas y contiguas, incluidas las de cero. Una serie que sólo
+    # trae las semanas con coincidencias se lee como constante: ocho puntos
+    # seguidos de 40 cuando en realidad hubo 40 una semana y nada en siete.
+    lunes_de: dict[date, int] = {}
+    hoy = datetime.now(UTC).date()
+    primer_lunes = hoy - timedelta(days=hoy.weekday() + 7 * (semanas - 1))
+    for i in range(semanas):
+        lunes_de[primer_lunes + timedelta(weeks=i)] = 0
+
+    for (raw,) in filas:
+        texto = str(raw or "")[:10]
+        try:
+            dia = date.fromisoformat(texto)
+        except ValueError:
+            continue
+        lunes = dia - timedelta(days=dia.weekday())
+        if lunes in lunes_de:
+            lunes_de[lunes] += 1
+
+    return [{"semana": lunes.isoformat(), "n": n} for lunes, n in sorted(lunes_de.items())]
 
 
 def count_matches_bounded(rules: Sequence[WatchlistRule]) -> list[int]:

@@ -38,7 +38,7 @@ Bandas: ≥75 Caliente / ≥50 Atractiva / ≥25 Tibia / Descarte.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, NamedTuple
 
 import pandas as pd
 from pydantic import BaseModel, Field
@@ -46,7 +46,9 @@ from pydantic import BaseModel, Field
 from config import settings
 from db.repositories.aggregates import AggregateRepository, LicitacionesFilters
 from observability.logging import get_logger
+from services.ambito_mercado import AmbitoMercado, resolver_ambito
 from services.analytics.affinity import build_portfolio, score_affinity_batch
+from services.analytics.scoring_explicacion import HechosDeFila, explicar
 from services.analytics.scoring_signals import (
     ORIGEN_DESCONOCIDO,
     SIGNAL_ERROR,
@@ -57,6 +59,7 @@ from services.analytics.scoring_signals import (
     load_importe_percentiles,
     load_margen_stats,
 )
+from shared.dto import OrganizationSettings
 
 log = get_logger(__name__)
 
@@ -120,6 +123,11 @@ class ScoredOpportunity(BaseModel):
     band: str
     risk_flags: list[str] = Field(default_factory=list)
     desglose: dict[str, float] = Field(default_factory=dict)
+    # Campo ADITIVO (F1.3): el mismo cálculo en castellano, tres o cuatro
+    # frases. Se genera en backend con plantillas —sin LLM— para que la
+    # consola no tenga que interpretar el desglose por su cuenta y para que
+    # las frases sean idénticas en la tarjeta, el inspector y el PDF.
+    explicacion: list[str] = Field(default_factory=list)
 
 
 class ScoringSignalsHealth(BaseModel):
@@ -386,13 +394,41 @@ def _build_context(
 # ---------------------------------------------------------------------------
 
 
+class FilaPuntuada(NamedTuple):
+    """Lo que ``_score_row`` sabe de una fila.
+
+    Era una tupla anónima de cuatro y F1.3 la dejó en cinco, que es donde una
+    tupla posicional deja de leerse: ``_, _, flags, desglose, _`` no dice nada
+    en el sitio donde se usa. Sigue siendo desempaquetable, así que los
+    llamantes que sólo quieren el score no cambian.
+    """
+
+    score: int
+    band: str
+    flags: list[str]
+    desglose: dict[str, float]
+    explicacion: list[str]
+
+
 def _score_row(
     row: pd.Series,
     ctx: _ScoringContext,
-) -> tuple[int, str, list[str], dict[str, float]]:
-    """Devuelve (score 0-100, band, risk_flags, desglose) para una fila."""
+) -> FilaPuntuada:
+    """Devuelve (score 0-100, band, risk_flags, desglose, explicacion) para una fila.
+
+    La explicación (F1.3) se arma **aquí** y no en un segundo paso sobre el
+    desglose: la media de ofertas del CPV y la baja esperada son hechos que
+    esta función tiene delante y que el desglose ya convirtió a puntos. Sin
+    ellos las frases tendrían que rehacer el cálculo hacia atrás —dividir los
+    puntos por el peso para adivinar el hecho—, que es la clase de derivación
+    que ADR-014 prohíbe justo porque nadie la revisa.
+    """
     flags: list[str] = []
     desglose: dict[str, float] = {}
+    # Fracción del peso lograda por dimensión (0-1), para la explicación. Es
+    # lo mismo que `desglose[d] / w[d]` salvo que aquí no hay división por
+    # cero ni pesos redistribuidos que interpretar.
+    fraccion: dict[str, float | None] = {}
     w = ctx.weights
 
     # 1. Importe — sin importe → 50% neutral + flag (penaliza en riesgo, no aquí)
@@ -400,11 +436,16 @@ def _score_row(
     if pd.notna(importe) and ctx.imp_p90 > ctx.imp_p10:
         ratio = max(0.0, min(1.0, (float(importe) - ctx.imp_p10) / (ctx.imp_p90 - ctx.imp_p10)))
         d_importe = ratio * w.get("importe", 0)
+        fraccion["importe"] = ratio
     elif pd.notna(importe):
         d_importe = w.get("importe", 0) * 0.5
+        # Hay importe pero no hay percentiles con los que situarlo: neutral
+        # medido, y sin frase (`None`) porque no se puede decir si es alto.
+        fraccion["importe"] = None
     else:
         d_importe = w.get("importe", 0) * 0.5  # neutral, no 0
         flags.append("sin_importe")
+        fraccion["importe"] = None
     desglose["importe"] = round(d_importe, 2)
 
     # 2. Plazo — sin fecha → 50% neutral + flag
@@ -415,18 +456,22 @@ def _score_row(
     fecha_limite = row.get("fecha_limite_dt") if "fecha_limite_dt" in row.index else None
     if pd.notna(fecha_limite) and fecha_limite is not None:
         days_left = (fecha_limite - ctx.now).days
+        escalon = 0.0
         if 7 <= days_left <= 90:
-            d_plazo = float(w.get("plazo", 0))
+            escalon = 1.0
         elif 0 <= days_left < 7:
-            d_plazo = float(w.get("plazo", 0)) * 0.5
+            escalon = 0.5
         elif 90 < days_left <= 180:
-            d_plazo = float(w.get("plazo", 0)) * 0.7
+            escalon = 0.7
         elif days_left > 180:
-            d_plazo = float(w.get("plazo", 0)) * 0.3
+            escalon = 0.3
         # days_left < 0: vencido → 0.0
+        d_plazo = float(w.get("plazo", 0)) * escalon
+        fraccion["plazo"] = escalon
     else:
         d_plazo = w.get("plazo", 0) * 0.5  # neutral
         flags.append("sin_plazo")
+        fraccion["plazo"] = None
     desglose["plazo"] = round(d_plazo, 2)
 
     # 3. Competencia — media de ofertas por CPV-4 en 24 meses
@@ -439,11 +484,13 @@ def _score_row(
 
     if media_ofertas is not None:
         # 1 oferta media = 100% (sin competencia), ≥10 = 0%
-        fraccion = 1.0 - max(0.0, min(1.0, (media_ofertas - 1.0) / 9.0))
-        d_competencia = fraccion * w.get("competencia", 0)
+        f_competencia = 1.0 - max(0.0, min(1.0, (media_ofertas - 1.0) / 9.0))
+        d_competencia = f_competencia * w.get("competencia", 0)
+        fraccion["competencia"] = f_competencia
     else:
         d_competencia = w.get("competencia", 0) * 0.5  # neutral
         flags.append("sin_historico_competencia")
+        fraccion["competencia"] = None
     desglose["competencia"] = round(d_competencia, 2)
 
     # 4. Margen — baja esperada (baja esperada ≥40% = guerra de precios = 0)
@@ -457,9 +504,11 @@ def _score_row(
     if baja is not None:
         fraccion_margen = 1.0 - min(baja / 0.40, 1.0)
         d_margen = fraccion_margen * w.get("margen", 0)
+        fraccion["margen"] = fraccion_margen
     else:
         d_margen = w.get("margen", 0) * 0.5  # neutral
         flags.append("sin_prediccion")
+        fraccion["margen"] = None
     desglose["margen"] = round(d_margen, 2)
 
     # 5. Afinidad — similitud semántica precalculada en lote; el servicio de
@@ -468,6 +517,7 @@ def _score_row(
         fraccion_af = ctx.affinity_scores.get(id_externo, 0.0)
         d_afinidad = fraccion_af * w["afinidad"]
         desglose["afinidad"] = round(d_afinidad, 2)
+        fraccion["afinidad"] = fraccion_af
     # Sin portfolio, la key se omite del desglose (peso ya redistribuido).
 
     # 6. Señal técnica — cuán confirmada está la tecnología en esta licitación,
@@ -479,13 +529,17 @@ def _score_row(
             # La consulta falló: neutral y sin flag por fila. No es un hueco de
             # esta licitación, y la salud de la respuesta ya lo reporta.
             d_tecnica = w["senal_tecnica"] * 0.5
+            fraccion["senal_tecnica"] = None
         else:
             fuerza = ctx.tech_signal.get(id_externo)
             if fuerza is None:
                 d_tecnica = w["senal_tecnica"] * 0.5
                 flags.append("sin_senal_tecnica")
+                fraccion["senal_tecnica"] = None
             else:
-                d_tecnica = max(0.0, min(1.0, float(fuerza))) * w["senal_tecnica"]
+                f_tecnica = max(0.0, min(1.0, float(fuerza)))
+                d_tecnica = f_tecnica * w["senal_tecnica"]
+                fraccion["senal_tecnica"] = f_tecnica
         desglose["senal_tecnica"] = round(d_tecnica, 2)
     # Peso 0 o ausente (perfiles anteriores a la dimensión): key omitida, igual
     # que afinidad — una barra a cero en la UI se lee como "sin señal", que es
@@ -519,7 +573,18 @@ def _score_row(
     total = dim_sum + d_riesgo
     final = max(0, min(round(total), 100))
 
-    return final, _band(final), flags, desglose
+    explicacion = explicar(
+        HechosDeFila(
+            score=final,
+            fraccion=fraccion,
+            media_ofertas=media_ofertas,
+            baja_esperada=baja,
+            margen_origen=ctx.margen_stats.origen,
+            afinidad_metodo=ctx.affinity_method,
+            risk_flags=tuple(flags),
+        )
+    )
+    return FilaPuntuada(final, _band(final), flags, desglose, explicacion)
 
 
 def score_dataframe(
@@ -552,7 +617,7 @@ def score_dataframe(
     scores: list[int] = []
     bands: list[str] = []
     for _, row in target_df.iterrows():
-        s, band, _flags, _desglose = _score_row(row, ctx)
+        s, band, _flags, _desglose, _explicacion = _score_row(row, ctx)
         ids.append(str(row.get("id_externo", "")))
         scores.append(s)
         bands.append(band)
@@ -565,26 +630,42 @@ def score_dataframe(
 # ---------------------------------------------------------------------------
 
 
+def ambito_del_radar(
+    organization_id: int | None,
+    perfil: dict[str, Any] | None = None,
+) -> AmbitoMercado:
+    """Ámbito de mercado efectivo del Radar (F6.1), con su procedencia.
+
+    Aplica la precedencia declarada de :mod:`services.ambito_mercado`: perfil
+    personal, luego organización, luego nada. Una lectura que falle degrada al
+    ámbito global —el universo entero— y **nunca** a una bandeja vacía: quedarse
+    sin Radar porque una consulta de configuración falló es peor que puntuar de
+    más.
+    """
+    ajustes: OrganizationSettings | None = None
+    if organization_id is not None:
+        try:
+            from db.repositories.organizations import OrganizationRepository
+
+            ajustes = OrganizationSettings.model_validate(
+                OrganizationRepository().get_settings(int(organization_id))
+            )
+        except Exception as exc:
+            log.warning("scoring_org_settings_load_error", error=str(exc))
+    return resolver_ambito(perfil, ajustes)
+
+
 def _tecnologias_de_organizacion(organization_id: int | None) -> str | None:
-    """Familias declaradas por la organización, como CSV para el filtro SQL.
+    """Familias del ámbito, como CSV para el filtro SQL.
 
     Es el ámbito por defecto del Radar cuando el usuario no filtra tecnología
     a mano: una consultora Microsoft no tiene por qué ver el top-24 de SAP.
     ``None`` sin organización, sin configuración o si la lectura falla —el
     Radar degrada al universo entero, nunca a una bandeja vacía.
     """
-    if organization_id is None:
-        return None
-    try:
-        from db.repositories.organizations import OrganizationRepository
-
-        familias = OrganizationRepository().get_settings(int(organization_id)).get("tecnologias")
-    except Exception as exc:
-        log.warning("scoring_org_settings_load_error", error=str(exc))
-        return None
-    if not isinstance(familias, list):
-        return None
-    codigos = [str(f).strip().upper() for f in familias if str(f).strip()]
+    codigos = [
+        t.strip().upper() for t in ambito_del_radar(organization_id).tecnologias if t.strip()
+    ]
     return ",".join(codigos) or None
 
 
@@ -695,7 +776,7 @@ def get_scoring(
 
     scored: list[ScoredOpportunity] = []
     for _, row in work.iterrows():
-        s, band, flags, desglose = _score_row(row, ctx)
+        s, band, flags, desglose, explicacion = _score_row(row, ctx)
         if id_filter is None:
             if s < filters.min_score:
                 continue
@@ -730,6 +811,7 @@ def get_scoring(
                 band=band,
                 risk_flags=flags,
                 desglose=desglose,
+                explicacion=explicacion,
             )
         )
 

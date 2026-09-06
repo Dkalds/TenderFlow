@@ -28,6 +28,9 @@ const RIESGO_LABELS: Record<string, string> = {
   sin_senal_tecnica: "Sin señal técnica",
   sin_titulo: "Sin título",
   fuera_de_rango: "Fuera de tu rango de importe",
+  // F1.4: la única bandera que NO es «sin dato» sino un hecho medido del
+  // órgano. La etiqueta lo dice para que no se lea como un hueco más.
+  organo_anula_frecuente: "Órgano que anula a menudo",
 };
 
 /**

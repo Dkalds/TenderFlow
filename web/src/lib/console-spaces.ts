@@ -121,6 +121,31 @@ export const CONSOLE_SPACES: ConsoleSpace[] = [
     views: SPACE_VIEWS.mercado,
   },
   {
+    key: "cuentas",
+    label: "Cuentas",
+    short: "CTA",
+    slug: "cuentas",
+    description: "Órganos que el equipo trabaja como cuenta, con acción y no solo análisis.",
+    icon: Building2,
+    group: "trabajo",
+    views: SPACE_VIEWS.cuentas,
+  },
+  {
+    key: "direccion",
+    label: "Dirección",
+    short: "DIR",
+    slug: "direccion",
+    description: "Resultado, embudo y actividad del equipo. Solo owner y admin.",
+    icon: LayoutDashboard,
+    group: "organizacion",
+    // `admin` aquí es un filtro de **navegación**: la autorización real la
+    // impone `GET /pursuits/direccion`, que devuelve 403 a un `member` aunque
+    // teclee la URL. Un rail sin enlace es una sugerencia; el 403 es el
+    // permiso.
+    visibility: "admin",
+    views: SPACE_VIEWS.direccion,
+  },
+  {
     key: "competencia",
     label: "Competencia",
     short: "CMP",

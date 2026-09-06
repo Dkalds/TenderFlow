@@ -57,6 +57,27 @@ export const SPACE_VIEWS: Record<string, SpaceView[]> = {
     { key: "agenda", label: "Agenda", from: "pipeline-alertas" },
     { key: "embudo", label: "Embudo" },
     { key: "horizonte", label: "Horizonte", from: "renovaciones" },
+    // F4.3: `won` deja de ser un estado terminal sin vida posterior. La
+    // cartera es la continuación del contrato ganado — su fecha de fin, sus
+    // prórrogas y la ventana en que se espera la relicitación.
+    { key: "cartera", label: "Cartera" },
+  ],
+  // F1.5: Cuentas absorbe `Mercado → Órganos` como `?vista=mercado`.
+  // Consolidar no elimina: el corte analítico sigue estando, y lo que se añade
+  // encima es lo que faltaba —poder seguir un órgano y ver qué tiene el equipo
+  // con él—. Órganos sigue además accesible desde Mercado, porque quien
+  // analiza el mercado no está trabajando cuentas.
+  cuentas: [
+    { key: "seguidas", label: "Cuentas seguidas" },
+    { key: "mercado", label: "Todos los órganos" },
+  ],
+  // F4.2: Dirección absorbe `Mi Pipeline → Embudo` como `?vista=embudo`.
+  // Mismo criterio: el embudo no desaparece de Mi Pipeline, y aquí se le
+  // añaden los cortes que un owner necesita y que allí no caben.
+  direccion: [
+    { key: "resultado", label: "Resultado" },
+    { key: "embudo", label: "Embudo" },
+    { key: "actividad", label: "Actividad del equipo" },
   ],
   ops: [
     { key: "observabilidad", label: "Observabilidad", from: "observabilidad" },
@@ -87,6 +108,8 @@ export const BUILT_SPACE_ROUTES: readonly string[] = [
   "mi-perfil",
   "mi-cuenta",
   "empresas",
+  "cuentas",
+  "direccion",
   "equipo",
   "ops",
 ];

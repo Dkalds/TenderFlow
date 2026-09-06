@@ -10,12 +10,14 @@ import hashlib
 from datetime import date
 from typing import Any, Literal
 
+import pandas as pd
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
 
 from api.concurrency import run_db
 from api.routes.dual_auth import require_any_auth
 from api.tenancy import require_organization, resolve_organization_ctx
+from db.repositories.adjudicaciones import AdjudicacionRepository
 from db.repositories.renovaciones import proximas_renovaciones
 from db.watchlist_empresas import (
     WatchlistEmpresaEntry,
@@ -25,6 +27,7 @@ from db.watchlist_empresas import (
 )
 from observability.logging import get_logger
 from services.competitive.bajas import baja_de_referencia, bajas_agregadas
+from services.competitive.batallas import BatallasContraMi, batallas_de_usuario
 from services.competitive.mercado import (
     concentracion_hhi,
     cuota_mercado,
@@ -39,12 +42,16 @@ from services.competitive.renovaciones import (
     resumen_renovaciones,
     totales_renovaciones,
 )
+from services.competitive.socios import SugerenciaSocios, sugerir_socios
+from services.organizations import OrganizationAccessError
 from shared.dto import CompetitiveCompanyAwardsDTO, CompetitiveCompanyProfileDTO
 from shared.metric_scope import MetricScope
 
 log = get_logger(__name__)
 
 router = APIRouter(prefix="/competitive", tags=["competitive"])
+
+_adj_repo = AdjudicacionRepository()
 
 
 def _user_key(ctx: dict[str, Any]) -> str:
@@ -404,6 +411,71 @@ class WatchlistEmpresaRequest(BaseModel):
     frequency: str = Field("daily", pattern="^(immediate|daily|weekly)$")
     organization_id: int | None = Field(default=None, ge=1)
     visibility: str = Field(default="private", pattern="^(private|organization)$")
+
+
+@router.get(
+    "/partners",
+    summary="Empresas con las que ir a una UTE en este segmento, y por qué",
+    responses={401: {"description": "Autenticación inválida"}},
+)
+async def get_partners(
+    cpv: str | None = Query(None, max_length=8, description="CPV del segmento"),
+    ccaa: str | None = Query(None, max_length=100, description="Comunidad Autónoma"),
+    limit: int = Query(10, ge=1, le=50),
+    _ctx: dict[str, Any] = Depends(require_any_auth),
+) -> SugerenciaSocios:
+    """F3.3 — el primer consumidor de `services/partners.py`.
+
+    Devuelve 200 con `sin_resultados` cuando no hay base suficiente, en vez de
+    rellenar con las empresas más grandes del corpus: una sugerencia de socio
+    sin motivo es sólo un nombre, y el usuario va a llamar por teléfono a
+    quien salga aquí.
+
+    El `LIMIT` de la carga lo pone el repositorio (`LIMITE_COMPETIDORES`), que
+    es la regla del escáner AST: ninguna consulta de esta familia trae el
+    histórico entero.
+    """
+
+    # Consulta **y** agregación en el mismo `run_db`: el ranking de
+    # `suggest_partners` es pandas sobre miles de filas, y hacerlo aquí
+    # bloquearía el event loop para todos los endpoints del proceso mientras
+    # dura. Es la regla que fija `test_async_handlers_no_blocking_io`.
+    def _trabajo() -> SugerenciaSocios:
+        filas = _adj_repo.load_for_competitors(ccaa=ccaa, tecnologia=None)
+        return sugerir_socios(pd.DataFrame(filas), cpv=cpv, ccaa=ccaa, limit=limit)
+
+    return await run_db(_trabajo)
+
+
+@router.get(
+    "/empresas/{empresa_key}/contra-mi",
+    summary="Expedientes en los que coincidimos con este competidor (F3.2)",
+    responses={403: {"description": "No perteneces a esa organización"}},
+)
+async def get_batallas(
+    empresa_key: str,
+    organization_id: int | None = Query(default=None, ge=1),
+    meses: int = Query(24, ge=1, le=120, description="Ventana hacia atrás, en meses"),
+    ctx: dict[str, Any] = Depends(require_any_auth),
+) -> BatallasContraMi:
+    """El historial de cruces, con el límite de lo afirmable declarado.
+
+    Sin conocer el NIF propio (v2 S2.1) sólo se puede decir «nosotros
+    perdimos», no «ellos ganaron contra nosotros»: la respuesta lo dice en
+    `sin_nif_propio` para que la pantalla no haga parecer invencible a un rival
+    que quizá ni se presentó.
+    """
+
+    try:
+        return await run_db(
+            batallas_de_usuario,
+            int(ctx["user_id"]),
+            empresa_key,
+            organization_id=organization_id,
+            meses=meses,
+        )
+    except OrganizationAccessError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
 
 
 @router.get("/watchlist", summary="Empresas vigiladas por el usuario")

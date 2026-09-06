@@ -141,6 +141,14 @@ async def listar_publicas(
     cpv: str | None = Query(
         None, max_length=10, pattern=r"^\d{2,8}$", description="Prefijo de código CPV"
     ),
+    organo: str | None = Query(
+        None,
+        max_length=200,
+        # Mismo patrón que `ccaa`: el hub recibe un slug, no el nombre. Un
+        # nombre crudo con tildes devolvería vacío sin que fallara nada.
+        pattern=r"^[a-z0-9-]+$",
+        description="Slug del órgano de contratación (F6.5)",
+    ),
     limit: int = Query(50, ge=1, le=_MAX_LIMITE_PUBLICO),
     offset: int = Query(0, ge=0, le=1_000_000),
 ) -> PaginatedResponse[LicitacionPublica]:
@@ -157,10 +165,11 @@ async def listar_publicas(
         _repo.listar,
         ccaa_slug=ccaa,
         cpv_prefijo=cpv,
+        organo_slug=organo,
         limite=limit,
         desplazamiento=offset,
     )
-    total = await run_db(_repo.contar, ccaa_slug=ccaa, cpv_prefijo=cpv)
+    total = await run_db(_repo.contar, ccaa_slug=ccaa, cpv_prefijo=cpv, organo_slug=organo)
     response.headers["Cache-Control"] = _CACHE_PUBLICA
     return PaginatedResponse[LicitacionPublica](
         total=total, limit=limit, offset=offset, items=[_a_dto(f) for f in filas]
@@ -212,11 +221,24 @@ class HubCpv(BaseModel):
     total: int = Field(ge=0)
 
 
+class HubOrgano(BaseModel):
+    """Un órgano de contratación con página de índice propia (F6.5)."""
+
+    slug: str
+    nombre: str
+    total: int = Field(ge=0)
+
+
 class Hubs(BaseModel):
     """Índice de la superficie pública."""
 
     ccaa: list[HubCcaa]
     cpv: list[HubCpv]
+    #: Campo ADITIVO (F6.5). Mismo umbral de volumen que los otros dos. No
+    #: expone nada nuevo: el nombre del órgano ya viaja en cada ficha pública,
+    #: así que agruparlo no amplía la superficie — y `check_public_surface`
+    #: sigue en verde.
+    organo: list[HubOrgano] = Field(default_factory=list)
 
 
 @router.get(
@@ -227,14 +249,18 @@ class Hubs(BaseModel):
 async def hubs(response: Response) -> Hubs:
     """Alimenta las páginas `/licitaciones` y `/cpv`.
 
-    Ambas listas van filtradas por volumen mínimo en el repositorio: un hub con
-    dos licitaciones no es una página, es contenido delgado.
+    Alimenta también `/licitaciones/organo/[slug]` desde F6.5.
 
-    Va en un solo endpoint y no en dos porque sus dos consumidores —los índices
-    y los enlaces de la portada— quieren las dos listas a la vez, y así una
-    página de índice hace una llamada en vez de dos.
+    Las tres listas van filtradas por volumen mínimo en el repositorio: un hub
+    con dos licitaciones no es una página, es contenido delgado.
+
+    Va en un solo endpoint y no en tres porque sus consumidores —los índices y
+    los enlaces de la portada— quieren todas a la vez, y así una página de
+    índice hace una llamada en vez de tres.
     """
-    ccaa, cpv = await run_db(_repo.hubs_ccaa), await run_db(_repo.hubs_cpv)
+    ccaa = await run_db(_repo.hubs_ccaa)
+    cpv = await run_db(_repo.hubs_cpv)
+    organo = await run_db(_repo.hubs_organo)
     response.headers["Cache-Control"] = _CACHE_PUBLICA
     return Hubs(
         ccaa=[
@@ -242,6 +268,10 @@ async def hubs(response: Response) -> Hubs:
             for h in ccaa
         ],
         cpv=[HubCpv(codigo=str(h["codigo"]), total=int(h["total"])) for h in cpv],
+        organo=[
+            HubOrgano(slug=str(h["slug"]), nombre=str(h["nombre"]), total=int(h["total"]))
+            for h in organo
+        ],
     )
 
 

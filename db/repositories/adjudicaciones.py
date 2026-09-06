@@ -489,3 +489,85 @@ class AdjudicacionRepository:
         """
         with connect_read() as c:
             return rows_to_dicts(c.execute(sql))
+
+
+#: Mínimo de adjudicaciones con lead-time medible para publicar una estimación.
+#:
+#: F4.4 lo fija en cinco. Por debajo, la mediana de un órgano es la anécdota de
+#: cuatro expedientes y presentarla como «fecha prevista» sería inventarse una
+#: precisión que el dato no tiene (ADR-014). La constante vive aquí, junto a la
+#: consulta que la aplica, para que la UI y el servicio no puedan usar dos
+#: mínimos distintos.
+LEAD_TIME_N_MINIMO = 5
+
+#: Ventana de observación. Dos años: menos deja fuera a órganos que licitan una
+#: o dos veces al año, y más mezcla el ritmo de una ley de contratos con el de
+#: la anterior.
+LEAD_TIME_MESES = 24
+
+
+def lead_time_por_organo(
+    organos: list[str], *, desde_iso: str, n_minimo: int = LEAD_TIME_N_MINIMO
+) -> dict[str, dict[str, Any]]:
+    """``{órgano: {n, p25, p50, p75}}`` en días, sólo para los que llegan al mínimo.
+
+    El lead-time es el hueco entre publicar y adjudicar, que es exactamente lo
+    que hay que sumarle a la fecha límite para saber cuándo se resolverá algo
+    que hoy está abierto. Ya se calculaba —``services/analytics/
+    organo_detail.py`` lo pinta en Mercado— pero en pandas y para un solo
+    órgano; aquí se hace en SQL y para muchos, porque el tablero de
+    oportunidades necesita el de todos los órganos de la página a la vez.
+
+    Los percentiles salen de ``percentile_cont``: interpola, así que con pocos
+    valores da un número más estable que ``percentile_disc``. Sólo cuentan las
+    diferencias **positivas**: una fecha de adjudicación anterior a la de
+    publicación es un dato malo, no un lead-time de cero días.
+
+    Un órgano por debajo de ``n_minimo`` **no sale en el diccionario**. No se
+    devuelve con ``n`` bajo para que el llamante decida: el juicio es siempre
+    el mismo y repartirlo entre llamantes es como se acaba publicando una
+    estimación con n=2 en una pantalla y no en otra.
+    """
+    if not organos:
+        return {}
+    marcadores = ", ".join(["%s"] * len(organos))
+    # `iso_guard` sobre las dos fechas: son TEXT y hay filas legacy
+    # malformadas (v59). Sin él, el CAST revienta la consulta entera por una
+    # fila de 2019 con la fecha en DD/MM/YYYY.
+    sql = (
+        "SELECT organo, "
+        "       COUNT(*) AS n, "
+        "       percentile_cont(0.25) WITHIN GROUP (ORDER BY dias) AS p25, "
+        "       percentile_cont(0.50) WITHIN GROUP (ORDER BY dias) AS p50, "
+        "       percentile_cont(0.75) WITHIN GROUP (ORDER BY dias) AS p75 "
+        "FROM ("
+        "  SELECT l.organo_contratacion AS organo, "
+        "         (a.fecha_adjudicacion::date - l.fecha_publicacion::date) AS dias "
+        "  FROM adjudicaciones a "
+        "  JOIN licitaciones l ON l.id_externo = a.licitacion_id "
+        f" WHERE {iso_guard('a.fecha_adjudicacion')} "
+        f"   AND {iso_guard('l.fecha_publicacion')} "
+        "    AND a.fecha_adjudicacion >= %s "
+        f"   AND l.organo_contratacion IN ({marcadores}) "
+        # Sin esto, un expediente que dos fuentes publican cuenta dos veces en
+        # la muestra del órgano y desplaza su mediana. El guardrail de
+        # `tests/test_dedup_guardrail.py` lo detectó antes de que llegara a
+        # producir una fecha prevista sesgada.
+        f"   AND {exclude_duplicados_sql('l.id_externo')} "
+        ") d "
+        "WHERE dias > 0 "
+        "GROUP BY organo "
+        "HAVING COUNT(*) >= %s"
+    )
+    with connect_read() as c:
+        cur = c.execute(sql, (desde_iso, *organos, n_minimo))
+        filas = rows_to_dicts(cur)
+    return {
+        str(fila["organo"]): {
+            "n": int(fila["n"]),
+            "p25": float(fila["p25"]),
+            "p50": float(fila["p50"]),
+            "p75": float(fila["p75"]),
+        }
+        for fila in filas
+    }

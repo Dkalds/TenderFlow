@@ -16,6 +16,7 @@ from pydantic import BaseModel, Field
 
 from db.repositories.aggregates import AggregateRepository
 from observability.logging import get_logger
+from shared.procedimientos import Familia, no_catalogados
 
 log = get_logger(__name__)
 
@@ -32,6 +33,19 @@ class ColumnCompleteness(BaseModel):
 
     columna: str
     pct: float
+
+
+class CodigoNoCatalogado(BaseModel):
+    """Un código de lista controlada que el catálogo no sabe traducir.
+
+    Lleva el ``n`` porque el trabajo que abre depende de él: un código con tres
+    expedientes espera; uno con cuarenta mil es una etiqueta que falta en la
+    pantalla de mucha gente.
+    """
+
+    familia: str = Field(description="procedimiento | tramitacion | tipo_contrato")
+    codigo: str
+    n: int
 
 
 class QualityResult(BaseModel):
@@ -62,6 +76,16 @@ class QualityResult(BaseModel):
     # scope legacy user_key-only (ver docs/IMPROVEMENT_BACKLOG.md).
     pct_organization_scoped: float = 100.0
     filas_sin_organizacion: int = 0
+    # Campo ADITIVO (F1.7). Un código CODICE sin entrada en el catálogo se
+    # pinta tal cual con el aviso «código no catalogado»; esta lista es lo que
+    # convierte ese aviso disperso por la consola en una cifra que alguien
+    # puede cerrar. Vacía = todo el corpus tiene etiqueta.
+    codigos_no_catalogados: list[CodigoNoCatalogado] = Field(default_factory=list)
+    # Campo ADITIVO (F6.2). `{tipo: n}` de lo que los usuarios han reportado
+    # como incorrecto. Es la otra mitad de esta pantalla: las demás métricas
+    # dicen lo que la máquina sabe que falta; esta, lo que una persona ha visto
+    # mal.
+    reportes_por_tipo: dict[str, int] = Field(default_factory=dict)
 
 
 # ---------------------------------------------------------------------------
@@ -123,9 +147,53 @@ def _organization_scope_coverage() -> tuple[float, int]:
         return 100.0, 0
 
 
+def _codigos_no_catalogados() -> list[CodigoNoCatalogado]:
+    """Códigos de lista controlada presentes en la tabla y sin etiqueta.
+
+    Best-effort como sus vecinas: la vista de calidad no puede caerse entera
+    porque una de sus doce métricas falle. Una consulta caída deja la lista
+    vacía, que es lo mismo que «no se detectó ninguno» — aceptable aquí, donde
+    el hallazgo es la excepción y no el caso normal, y donde el log deja
+    rastro.
+    """
+    try:
+        por_familia = _repo.codigos_codelist()
+    except Exception:
+        log.debug("quality_codelist_unavailable")
+        return []
+
+    hallazgos: list[CodigoNoCatalogado] = []
+    # Se itera el literal y no las claves del repositorio: así la familia entra
+    # tipada en `no_catalogados` y una columna nueva allí no se cuela aquí sin
+    # catálogo que la juzgue.
+    familias: tuple[Familia, ...] = ("procedimiento", "tramitacion", "tipo_contrato")
+    for familia in familias:
+        conteos = por_familia.get(familia, {})
+        hallazgos.extend(
+            CodigoNoCatalogado(familia=familia, codigo=codigo, n=conteos[codigo])
+            for codigo in no_catalogados(familia, list(conteos))
+        )
+    # Por impacto: el código que más expedientes afecta es el que hay que
+    # catalogar primero.
+    hallazgos.sort(key=lambda h: (-h.n, h.familia, h.codigo))
+    return hallazgos
+
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
+
+
+def _reportes_por_tipo() -> dict[str, int]:
+    """Reportes de dato recibidos, por tipo. Best-effort como sus vecinas."""
+    try:
+        from db.repositories.feedback import FeedbackRepository
+        from services.reportes_dato import PREFIJO_SOURCE
+
+        return FeedbackRepository().reportes_abiertos_por_tipo(prefijo=PREFIJO_SOURCE)
+    except Exception:
+        log.debug("quality_reportes_unavailable")
+        return {}
 
 
 def get_quality() -> QualityResult:
@@ -141,6 +209,8 @@ def get_quality() -> QualityResult:
             dlq_count=_dlq_count(),
             pct_organization_scoped=pct_organization_scoped,
             filas_sin_organizacion=filas_sin_organizacion,
+            codigos_no_catalogados=_codigos_no_catalogados(),
+            reportes_por_tipo=_reportes_por_tipo(),
         )
 
     cols: dict[str, int] = stats["cols"]
@@ -188,6 +258,8 @@ def get_quality() -> QualityResult:
         pct_organization_scoped=pct_organization_scoped,
         filas_sin_organizacion=filas_sin_organizacion,
         completitud_columnas=completitud,
+        codigos_no_catalogados=_codigos_no_catalogados(),
+        reportes_por_tipo=_reportes_por_tipo(),
         # cobertura_nif / cobertura_modulo_sap se quedan en su default `None`
         # (no medidas): ver la nota del DTO.
     )

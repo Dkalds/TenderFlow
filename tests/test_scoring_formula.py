@@ -77,7 +77,7 @@ def _row(**kwargs) -> pd.Series:
 
 def test_importe_por_debajo_del_p10_no_puntua():
     ctx = _ctx(weights={**_SOLO, "importe": 100})
-    _, _, flags, desglose = _score_row(_row(importe=500.0), ctx)
+    _, _, flags, desglose, _ = _score_row(_row(importe=500.0), ctx)
 
     assert desglose["importe"] == 0.0
     assert "sin_importe" not in flags
@@ -86,14 +86,14 @@ def test_importe_por_debajo_del_p10_no_puntua():
 def test_importe_por_encima_del_p90_puntua_el_maximo_sin_pasarse():
     """El clamp superior evita que un contrato gigante desborde la dimensión."""
     ctx = _ctx(weights={**_SOLO, "importe": 100})
-    _, _, _, desglose = _score_row(_row(importe=50_000_000.0), ctx)
+    _, _, _, desglose, _ = _score_row(_row(importe=50_000_000.0), ctx)
 
     assert desglose["importe"] == 100.0
 
 
 def test_importe_interpola_linealmente_entre_percentiles():
     ctx = _ctx(weights={**_SOLO, "importe": 100}, p10=0.0, p90=100_000.0)
-    _, _, _, desglose = _score_row(_row(importe=25_000.0), ctx)
+    _, _, _, desglose, _ = _score_row(_row(importe=25_000.0), ctx)
 
     assert desglose["importe"] == pytest.approx(25.0)
 
@@ -101,7 +101,7 @@ def test_importe_interpola_linealmente_entre_percentiles():
 def test_importe_sin_rango_util_queda_neutral_y_sin_flag():
     """P90 == P10 no es un dato ausente: el universo no discrimina por importe."""
     ctx = _ctx(weights={**_SOLO, "importe": 100}, p10=50_000.0, p90=50_000.0)
-    _, _, flags, desglose = _score_row(_row(importe=50_000.0), ctx)
+    _, _, flags, desglose, _ = _score_row(_row(importe=50_000.0), ctx)
 
     assert desglose["importe"] == 50.0
     # El importe está: el hueco es del universo, no de la fila.
@@ -110,7 +110,7 @@ def test_importe_sin_rango_util_queda_neutral_y_sin_flag():
 
 def test_importe_ausente_es_neutral_pero_deja_rastro():
     ctx = _ctx(weights={**_SOLO, "importe": 100})
-    _, _, flags, desglose = _score_row(_row(importe=None), ctx)
+    _, _, flags, desglose, _ = _score_row(_row(importe=None), ctx)
 
     assert desglose["importe"] == 50.0
     assert "sin_importe" in flags
@@ -137,14 +137,14 @@ def test_importe_ausente_es_neutral_pero_deja_rastro():
 def test_plazo_escalones(dias: int, esperado: float):
     ctx = _ctx(weights={**_SOLO, "plazo": 100})
     row = _row(fecha_limite_dt=_AHORA + pd.Timedelta(days=dias))
-    _, _, _, desglose = _score_row(row, ctx)
+    _, _, _, desglose, _ = _score_row(row, ctx)
 
     assert desglose["plazo"] == esperado
 
 
 def test_plazo_ausente_es_neutral_con_flag():
     ctx = _ctx(weights={**_SOLO, "plazo": 100})
-    _, _, flags, desglose = _score_row(_row(fecha_limite_dt=pd.NaT), ctx)
+    _, _, flags, desglose, _ = _score_row(_row(fecha_limite_dt=pd.NaT), ctx)
 
     assert desglose["plazo"] == 50.0
     assert "sin_plazo" in flags
@@ -180,7 +180,7 @@ def test_cortes_de_banda(score: int, banda: str):
 def test_importe_por_debajo_del_minimo_del_perfil_penaliza_quince_puntos():
     """La penalización más grande del sistema: fuera del rango que el usuario puja."""
     ctx = _ctx(weights={**_SOLO, "importe": 100}, importe_min=100_000.0)
-    _, _, flags, desglose = _score_row(_row(importe=5_000.0), ctx)
+    _, _, flags, desglose, _ = _score_row(_row(importe=5_000.0), ctx)
 
     assert desglose["riesgo"] == -15.0
     assert "fuera_de_rango" in flags
@@ -188,7 +188,7 @@ def test_importe_por_debajo_del_minimo_del_perfil_penaliza_quince_puntos():
 
 def test_importe_por_encima_del_maximo_del_perfil_penaliza_igual():
     ctx = _ctx(weights={**_SOLO, "importe": 100}, importe_max=100_000.0)
-    _, _, flags, desglose = _score_row(_row(importe=900_000.0), ctx)
+    _, _, flags, desglose, _ = _score_row(_row(importe=900_000.0), ctx)
 
     assert desglose["riesgo"] == -15.0
     assert "fuera_de_rango" in flags
@@ -196,7 +196,7 @@ def test_importe_por_encima_del_maximo_del_perfil_penaliza_igual():
 
 def test_importe_dentro_del_rango_no_penaliza():
     ctx = _ctx(importe_min=10_000.0, importe_max=100_000.0)
-    _, _, flags, desglose = _score_row(_row(importe=50_000.0), ctx)
+    _, _, flags, desglose, _ = _score_row(_row(importe=50_000.0), ctx)
 
     assert desglose["riesgo"] == 0.0
     assert "fuera_de_rango" not in flags
@@ -205,7 +205,7 @@ def test_importe_dentro_del_rango_no_penaliza():
 def test_sin_importe_no_se_juzga_fuera_de_rango():
     """No se puede penalizar por salirse de un rango que no se puede evaluar."""
     ctx = _ctx(importe_min=10_000.0)
-    _, _, flags, desglose = _score_row(_row(importe=None), ctx)
+    _, _, flags, desglose, _ = _score_row(_row(importe=None), ctx)
 
     assert "fuera_de_rango" not in flags
     assert desglose["riesgo"] == -5.0  # solo sin_importe
@@ -214,7 +214,7 @@ def test_sin_importe_no_se_juzga_fuera_de_rango():
 def test_las_penalizaciones_se_acumulan():
     ctx = _ctx()
     row = _row(importe=None, titulo="", fecha_limite_dt=pd.NaT)
-    _, _, flags, desglose = _score_row(row, ctx)
+    _, _, flags, desglose, _ = _score_row(row, ctx)
 
     assert set(flags) >= {"sin_importe", "sin_titulo", "sin_plazo"}
     assert desglose["riesgo"] == -10.0
@@ -224,7 +224,7 @@ def test_el_score_nunca_baja_de_cero():
     """Con todo en contra, el clamp inferior evita scores negativos."""
     ctx = _ctx(weights={**_SOLO}, importe_max=1.0)
     row = _row(importe=900_000.0, titulo="", fecha_limite_dt=pd.NaT)
-    score, band, _, _ = _score_row(row, ctx)
+    score, band, _, _, _ = _score_row(row, ctx)
 
     assert score == 0
     assert band == "Descarte"
@@ -238,7 +238,7 @@ def test_el_score_nunca_baja_de_cero():
 def test_la_senal_tecnica_escala_con_la_fuerza_de_la_evidencia():
     """Una licitación con la tecnología confirmada en el pliego puntúa más."""
     ctx = _ctx(weights={**_SOLO, "senal_tecnica": 100}, tech_signal={"L1": 0.9})
-    _, _, flags, desglose = _score_row(_row(), ctx)
+    _, _, flags, desglose, _ = _score_row(_row(), ctx)
 
     assert desglose["senal_tecnica"] == pytest.approx(90.0)
     assert "sin_senal_tecnica" not in flags
@@ -247,7 +247,7 @@ def test_la_senal_tecnica_escala_con_la_fuerza_de_la_evidencia():
 def test_la_senal_tecnica_se_clampa_a_uno():
     """Un score fuera de rango en la tabla no puede desbordar la dimensión."""
     ctx = _ctx(weights={**_SOLO, "senal_tecnica": 100}, tech_signal={"L1": 4.2})
-    _, _, _, desglose = _score_row(_row(), ctx)
+    _, _, _, desglose, _ = _score_row(_row(), ctx)
 
     assert desglose["senal_tecnica"] == 100.0
 
@@ -255,7 +255,7 @@ def test_la_senal_tecnica_se_clampa_a_uno():
 def test_sin_evidencia_la_senal_tecnica_es_neutral_con_flag():
     """Política de la casa: un hueco de cobertura propia no penaliza, se señala."""
     ctx = _ctx(weights={**_SOLO, "senal_tecnica": 100}, tech_signal={})
-    _, _, flags, desglose = _score_row(_row(), ctx)
+    _, _, flags, desglose, _ = _score_row(_row(), ctx)
 
     assert desglose["senal_tecnica"] == 50.0
     assert "sin_senal_tecnica" in flags
@@ -264,7 +264,7 @@ def test_sin_evidencia_la_senal_tecnica_es_neutral_con_flag():
 def test_si_la_consulta_de_senal_falla_no_se_culpa_a_la_fila():
     """Contexto None = avería del sistema: neutral, y sin flag que apunte a la fila."""
     ctx = _ctx(weights={**_SOLO, "senal_tecnica": 100}, tech_signal=None)
-    _, _, flags, desglose = _score_row(_row(), ctx)
+    _, _, flags, desglose, _ = _score_row(_row(), ctx)
 
     assert desglose["senal_tecnica"] == 50.0
     assert "sin_senal_tecnica" not in flags
@@ -273,7 +273,7 @@ def test_si_la_consulta_de_senal_falla_no_se_culpa_a_la_fila():
 def test_un_perfil_sin_la_dimension_no_ve_una_barra_muerta():
     """Perfil anterior a la dimensión: la clave se omite, no sale en cero."""
     ctx = _ctx(weights=dict(_SOLO), tech_signal={"L1": 0.9})
-    _, _, _, desglose = _score_row(_row(), ctx)
+    _, _, _, desglose, _ = _score_row(_row(), ctx)
 
     assert "senal_tecnica" not in desglose
 
