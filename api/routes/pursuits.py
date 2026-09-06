@@ -5,7 +5,16 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Query, status
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    Header,
+    HTTPException,
+    Query,
+    Response,
+    status,
+)
 
 from api.concurrency import run_db
 from api.routes.dual_auth import require_any_auth
@@ -33,6 +42,7 @@ from services.pursuits import (
     PursuitTransitionError,
     PursuitValidationError,
     create_pursuit,
+    ficha_pdf,
     get_agenda,
     get_metrics,
     get_pursuit,
@@ -327,6 +337,49 @@ async def get_pursuit_detail(
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except PursuitNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.get(
+    "/pursuits/{pursuit_id}/ficha.pdf",
+    # `response_class`: la respuesta es el fichero, no un 200 JSON que
+    # documentar. Mismo patrón que `api/routes/exports.py`.
+    response_class=Response,
+    summary="Ficha de la oportunidad en PDF (one-pager para dirección)",
+    responses={
+        200: {"content": {"application/pdf": {}}, "description": "El PDF"},
+        403: {"description": "La oportunidad es de otra organización"},
+        404: {"description": "No existe"},
+    },
+)
+async def get_pursuit_ficha_pdf(
+    pursuit_id: int,
+    organization_id: int | None = Query(default=None, ge=1),
+    ctx: dict[str, Any] = Depends(require_any_auth),
+) -> Response:
+    """F2.7 — el one-pager que se lleva a un comité.
+
+    Va por la misma lectura con ámbito que `GET /pursuits/{id}`: un 403 aquí y
+    un 403 allí son el mismo control, no dos.
+    """
+    try:
+        pdf = await run_db(
+            ficha_pdf,
+            int(ctx["user_id"]),
+            pursuit_id,
+            organization_id=organization_id,
+        )
+    except OrganizationAccessError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except PursuitNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return Response(
+        content=pdf,
+        media_type="application/pdf",
+        headers={
+            # `inline`: el usuario quiere verla antes de decidir si la guarda.
+            "Content-Disposition": f'inline; filename="oportunidad-{pursuit_id}.pdf"',
+        },
+    )
 
 
 @router.patch("/pursuits/{pursuit_id}", response_model=PursuitDetail)

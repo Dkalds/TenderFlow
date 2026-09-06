@@ -136,3 +136,6 @@ intelectual
 foto
 hagas
 colector
+interprete
+pospone
+negociable

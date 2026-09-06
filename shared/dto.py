@@ -745,6 +745,31 @@ class PursuitEventOut(BaseModel):
     created_at: PgDateTime
 
 
+class ExpectedAward(BaseModel):
+    """F4.4 — cuándo se espera la adjudicación, y de dónde sale esa fecha.
+
+    Viaja con su dispersión y su ``n`` a propósito: una fecha sola se lee como
+    un compromiso, y esto es una estimación. La regla que decide si se publica
+    —y el mínimo de expedientes por debajo del cual **no** hay estimación—
+    vive en :mod:`services.analytics.lead_time`.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    #: La central, no la optimista.
+    fecha: date
+    #: Extremos del intervalo intercuartílico. Iguales a ``fecha`` cuando el
+    #: método es ``hito``: una fecha publicada no tiene dispersión.
+    p25: date
+    p75: date
+    #: Expedientes del órgano que sostienen la estimación. Con ``metodo="hito"``
+    #: es 0: el dato no viene de una muestra.
+    n: int = Field(default=0, ge=0)
+    #: ``estimacion`` hoy; ``hito`` cuando F2.1 traiga la fecha publicada por
+    #: el procedimiento y sustituya a la estimada.
+    metodo: Literal["hito", "estimacion"] = "estimacion"
+
+
 class PursuitSummary(BaseModel):
     """Oportunidad enriquecida con los datos básicos de su licitación."""
 
@@ -755,6 +780,14 @@ class PursuitSummary(BaseModel):
     licitacion_id: str
     tender_title: str | None = None
     tender_deadline: PgDateTime | None = None
+    #: Campo ADITIVO (F4.4). El órgano de la licitación, que es de donde sale
+    #: `expected_award`: sin él la consola no puede explicar por qué la fecha
+    #: prevista es esa ni enlazar a la cuenta.
+    tender_organo: str | None = None
+    #: Campo ADITIVO (F4.4). `None` = sin estimación, y la UI lo dice; nunca se
+    #: rellena con una fecha de menor calidad. Ver `services/analytics/
+    #: lead_time.py` para por qué el mínimo de expedientes no es negociable.
+    expected_award: ExpectedAward | None = None
     responsible_user_id: int | None = None
     responsible_name: str | None = None
     status: PursuitStatus

@@ -29,6 +29,8 @@ from db.repositories.adjudicaciones import AdjudicacionRepository
 from db.repositories.documentos import DocumentosRepository
 from db.repositories.licitaciones import LicitacionRepository
 from observability.logging import get_logger
+from services.rag.paginas import PaginaDocumento, get_pagina
+from services.reportes_dato import COLA_POR_TIPO, TipoReporte, registrar_reporte
 from shared.dto import (
     MAX_PAGE_LIMIT,
     CursorPaginatedResponse,
@@ -262,6 +264,55 @@ async def list_licitaciones(
             "incluye los expedientes que cierran ese mismo día a cualquier hora."
         ),
     ),
+    importe_min: float | None = Query(
+        None, ge=0, description="Importe de licitación mínimo, en euros (inclusive)"
+    ),
+    importe_max: float | None = Query(
+        None, ge=0, description="Importe de licitación máximo, en euros (inclusive)"
+    ),
+    cpv: str | None = Query(
+        None,
+        max_length=200,
+        description=(
+            "CPV por PREFIJO, separados por comas. `72` trae todos los "
+            "servicios de TI y `7222` una familia dentro. Es prefijo y no "
+            "igualdad porque nadie recuerda los ocho dígitos."
+        ),
+    ),
+    organo: str | None = Query(
+        None,
+        max_length=300,
+        description=(
+            "Órgano de contratación por subcadena, sin distinguir acentos ni "
+            "mayúsculas. Varios separados por comas."
+        ),
+    ),
+    provincia: str | None = Query(None, max_length=200, description="Provincia (multi-valor)"),
+    procedimiento: str | None = Query(
+        None,
+        max_length=100,
+        description=(
+            "Código CODICE de procedimiento (multi-valor). Las etiquetas y el "
+            "catálogo completo los sirve `GET /meta/filters`."
+        ),
+    ),
+    tramitacion: str | None = Query(
+        None, max_length=100, description="Código CODICE de tramitación (multi-valor)"
+    ),
+    tipo_contrato: str | None = Query(
+        None, max_length=100, description="Código CODICE de tipo de contrato (multi-valor)"
+    ),
+    dias_restantes_max: int | None = Query(
+        None,
+        ge=0,
+        le=3650,
+        description=(
+            "Sólo expedientes cuyo plazo vence dentro de N días. Se calcula en "
+            "SQL sobre `fecha_limite` y excluye los estados terminales: un "
+            "expediente ya adjudicado con fecha límite futura no vence, no se "
+            "puede licitar."
+        ),
+    ),
     sort: str | None = Query(
         None, description="Orden: fecha_publicacion (default), -importe, importe, titulo"
     ),
@@ -301,6 +352,15 @@ async def list_licitaciones(
         fecha_hasta=fecha_hasta,
         cierre_desde=cierre_desde,
         cierre_hasta=cierre_hasta,
+        importe_min=importe_min,
+        importe_max=importe_max,
+        cpv=cpv,
+        organo=organo,
+        provincia=provincia,
+        procedimiento=procedimiento,
+        tramitacion=tramitacion,
+        tipo_contrato=tipo_contrato,
+        dias_restantes_max=dias_restantes_max,
         limit=limit,
         offset=offset,
         sort=sort,
@@ -339,14 +399,52 @@ async def list_licitaciones(
 async def list_licitaciones_cursor(
     cursor: str | None = Query(None, description="Cursor opaco devuelto en la página anterior"),
     limit: int = Query(100, ge=1, le=MAX_PAGE_LIMIT),
+    q: str | None = Query(
+        None, max_length=_MAX_QUERY_LENGTH, description="Búsqueda en título y descripción"
+    ),
+    estado: str | None = Query(None, description="Código de estado (PUB, EV, ADJ…)"),
+    solo_abiertas: bool = Query(False, description="Excluye los expedientes en estado terminal"),
+    ccaa: str | None = Query(None, description="Comunidad Autónoma"),
     tecnologia: str | None = Query(None, description="Tecnología (SAP, ORACLE…)"),
+    fecha_desde: str | None = Query(None, description="Fecha publicación desde (YYYY-MM-DD)"),
+    fecha_hasta: str | None = Query(None, description="Fecha publicación hasta (YYYY-MM-DD)"),
+    cierre_desde: str | None = Query(None, description="Fecha límite desde (YYYY-MM-DD)"),
+    cierre_hasta: str | None = Query(None, description="Fecha límite hasta (YYYY-MM-DD)"),
+    importe_min: float | None = Query(None, ge=0, description="Importe mínimo, en euros"),
+    importe_max: float | None = Query(None, ge=0, description="Importe máximo, en euros"),
+    cpv: str | None = Query(None, max_length=200, description="CPV por prefijo (multi-valor)"),
+    organo: str | None = Query(None, max_length=300, description="Órgano por subcadena"),
+    provincia: str | None = Query(None, max_length=200, description="Provincia (multi-valor)"),
+    procedimiento: str | None = Query(
+        None, max_length=100, description="Código CODICE de procedimiento (multi-valor)"
+    ),
+    tramitacion: str | None = Query(
+        None, max_length=100, description="Código CODICE de tramitación (multi-valor)"
+    ),
+    tipo_contrato: str | None = Query(
+        None, max_length=100, description="Código CODICE de tipo de contrato (multi-valor)"
+    ),
+    dias_restantes_max: int | None = Query(
+        None, ge=0, le=3650, description="Plazo que vence dentro de N días"
+    ),
     _ctx: AuthContext = Depends(require_api_key),
 ) -> CursorPaginatedResponse[LicitacionSummary]:
     """Paginación estable por cursor (fecha_publicacion, id_externo).
 
     Más eficiente que offset: no requiere COUNT(*) y no se ve afectado
     por inserciones concurrentes.
+
+    Acepta **los mismos filtros** que `/licitaciones` (F1.1). Hasta ahora sólo
+    aceptaba `tecnologia`, de modo que el endpoint recomendado para datasets
+    grandes no podía sustituir al que dice reemplazar en cuanto había un filtro
+    puesto.
     """
+    _validate_query(q)
+    _validate_date(fecha_desde, "fecha_desde")
+    _validate_date(fecha_hasta, "fecha_hasta")
+    _validate_date(cierre_desde, "cierre_desde")
+    _validate_date(cierre_hasta, "cierre_hasta")
+
     cursor_fecha: str | None = None
     cursor_id: str | None = None
     if cursor:
@@ -356,7 +454,24 @@ async def list_licitaciones_cursor(
         _lic_repo.list_cursor,
         cursor_fecha=cursor_fecha,
         cursor_id=cursor_id,
+        q=q,
+        estado=estado,
+        solo_abiertas=solo_abiertas,
+        ccaa=ccaa,
         tecnologia=tecnologia,
+        fecha_desde=fecha_desde,
+        fecha_hasta=fecha_hasta,
+        cierre_desde=cierre_desde,
+        cierre_hasta=cierre_hasta,
+        importe_min=importe_min,
+        importe_max=importe_max,
+        cpv=cpv,
+        organo=organo,
+        provincia=provincia,
+        procedimiento=procedimiento,
+        tramitacion=tramitacion,
+        tipo_contrato=tipo_contrato,
+        dias_restantes_max=dias_restantes_max,
         limit=limit,
     )
 
@@ -590,6 +705,105 @@ async def get_documentos(
         id_externo=id_externo,
         items=[DocumentoSummary.model_validate(d) for d in items],
     )
+
+
+class ReporteDatoBody(BaseModel):
+    """Un aviso de que algo del expediente está mal."""
+
+    tipo: TipoReporte
+    #: Texto libre y opcional. Va a la nota del reporte y **no** a la
+    #: telemetría: es del usuario y habla de un expediente concreto.
+    comentario: SafeStr | None = Field(default=None, max_length=2000)
+
+
+class ReporteDatoResult(BaseModel):
+    """Acuse del reporte, con la cola que lo va a revisar."""
+
+    id_externo: str
+    tipo: str
+    #: A qué revisión llega (`ml_feedback`, `dedupe`, `empresas`). Se devuelve
+    #: para que la consola pueda decir «lo revisa el equipo de datos» en vez de
+    #: un «gracias» sin contenido.
+    cola: str
+    created_at: str
+
+
+@router.post(
+    "/licitaciones/{id_externo:path}/reportes",
+    status_code=status.HTTP_201_CREATED,
+    summary="Reportar un dato incorrecto de un expediente",
+    responses={401: {"description": "Autenticación inválida"}},
+)
+async def post_reporte_dato(
+    id_externo: str,
+    body: ReporteDatoBody,
+    ctx: dict[str, Any] = Depends(require_any_auth),
+) -> ReporteDatoResult:
+    """F6.2 — «este dato está mal», desde la ficha.
+
+    No comprueba que el expediente exista: la corrección más valiosa es
+    justamente la de una fila que no debería estar, y un 404 aquí convertiría
+    un reporte legítimo en un error del usuario.
+    """
+    user_id = ctx.get("user_id")
+    creado = await run_db(
+        registrar_reporte,
+        id_externo=id_externo,
+        tipo=body.tipo,
+        comentario=body.comentario,
+        user_id=int(user_id) if user_id is not None else None,
+    )
+    return ReporteDatoResult(
+        id_externo=id_externo,
+        tipo=body.tipo,
+        cola=COLA_POR_TIPO[body.tipo],
+        created_at=creado,
+    )
+
+
+@router.get(
+    "/licitaciones/{id_externo}/documentos/{documento_id}/paginas/{page_number}",
+    summary="Página de un pliego, con el fragmento de la cita localizado",
+    responses={
+        401: {"description": "Autenticación inválida"},
+        404: {"description": "La página no existe para ese documento y licitación"},
+    },
+)
+async def get_pagina_documento(
+    id_externo: str,
+    documento_id: int,
+    page_number: int,
+    inicio: int | None = Query(
+        default=None, ge=0, description="Offset absoluto de inicio de la cita"
+    ),
+    fin: int | None = Query(default=None, ge=0, description="Offset absoluto de fin de la cita"),
+    _ctx: dict[str, Any] = Depends(require_any_auth),
+) -> PaginaDocumento:
+    """F2.5 — el texto de una página del pliego y dónde cae la cita.
+
+    Con `inicio` y `fin` (los `EvidenceRef.start_offset`/`end_offset` de la
+    ficha) la respuesta trae los índices **ya relativos a esta página**. Unos
+    offsets incoherentes no son un error del usuario: la página se devuelve
+    entera y sin resaltar, y `resaltado_omitido` dice por qué.
+
+    Sin `:path` en `id_externo`, al revés que sus vecinas: aquí el id va en
+    medio de la ruta y un comodín de camino se comería los segmentos
+    siguientes. Los ids con barra se piden con la barra codificada.
+    """
+    pagina = await run_db(
+        get_pagina,
+        id_externo,
+        documento_id,
+        page_number,
+        inicio=inicio,
+        fin=fin,
+    )
+    if pagina is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No hay texto extraído para esa página de ese documento.",
+        )
+    return pagina
 
 
 @router.get(

@@ -11,6 +11,10 @@ from db.repositories.base import rows_to_dicts
 _PURSUIT_SELECT = (
     "SELECT p.id, p.organization_id, p.licitacion_id, "
     "l.titulo AS tender_title, l.fecha_limite AS tender_deadline, "
+    # F4.4: el órgano es lo que da la fecha prevista de adjudicación
+    # (su lead-time mediano). Viene en la misma consulta porque el
+    # tablero necesita el de todas las filas de la página a la vez.
+    "l.organo_contratacion AS tender_organo, "
     "p.responsible_user_id, u.display_name AS responsible_name, "
     "p.status, p.decision, p.decision_reason, p.offer_price_eur, "
     "p.outcome, p.awarded_amount_eur, p.outcome_reason, "

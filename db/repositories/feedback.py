@@ -152,3 +152,22 @@ class FeedbackRepository:
         with connect() as c:
             cur = c.execute("DELETE FROM ml_feedback WHERE user_id = %s", (user_id,))
             return int(cur.rowcount or 0)
+
+    def reportes_abiertos_por_tipo(self, *, prefijo: str) -> dict[str, int]:
+        """``{tipo: nº de reportes}`` de los reportes de dato de F6.2.
+
+        «Abiertos» hoy es «todos»: la tabla no tiene estado de resolución y
+        añadírselo era una migración que F6.2 no tiene autorizada. Lo que la
+        vista de Calidad puede afirmar con esto es cuántos ha recibido, que es
+        el número que abre el trabajo; cuando exista el estado, esta consulta
+        gana el filtro y la vista no cambia.
+        """
+        with connect_read() as c:
+            cur = c.execute(
+                "SELECT source, COUNT(*) AS n FROM ml_feedback "
+                "WHERE source LIKE %s GROUP BY source ORDER BY n DESC",
+                (f"{prefijo}%",),
+            )
+            return {
+                str(fila["source"])[len(prefijo) :]: int(fila["n"]) for fila in rows_to_dicts(cur)
+            }

@@ -1696,6 +1696,11 @@ export interface paths {
          *
          *     Más eficiente que offset: no requiere COUNT(*) y no se ve afectado
          *     por inserciones concurrentes.
+         *
+         *     Acepta **los mismos filtros** que `/licitaciones` (F1.1). Hasta ahora sólo
+         *     aceptaba `tecnologia`, de modo que el endpoint recomendado para datasets
+         *     grandes no podía sustituir al que dice reemplazar en cuanto había un filtro
+         *     puesto.
          */
         get: operations["list_licitaciones_cursor_api_v1_licitaciones_cursor_get"];
         put?: never;
@@ -1785,6 +1790,35 @@ export interface paths {
          *     documento (no todas las fuentes/licitaciones tienen adjuntos parseados).
          */
         get: operations["get_documentos_api_v1_licitaciones__id_externo__documentos_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/licitaciones/{id_externo}/documentos/{documento_id}/paginas/{page_number}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Página de un pliego, con el fragmento de la cita localizado
+         * @description F2.5 — el texto de una página del pliego y dónde cae la cita.
+         *
+         *     Con `inicio` y `fin` (los `EvidenceRef.start_offset`/`end_offset` de la
+         *     ficha) la respuesta trae los índices **ya relativos a esta página**. Unos
+         *     offsets incoherentes no son un error del usuario: la página se devuelve
+         *     entera y sin resaltar, y `resaltado_omitido` dice por qué.
+         *
+         *     Sin `:path` en `id_externo`, al revés que sus vecinas: aquí el id va en
+         *     medio de la ruta y un comodín de camino se comería los segmentos
+         *     siguientes. Los ids con barra se piden con la barra codificada.
+         */
+        get: operations["get_pagina_documento_api_v1_licitaciones__id_externo__documentos__documento_id__paginas__page_number__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1898,6 +1932,30 @@ export interface paths {
          *     lanzar otra.
          */
         post: operations["extract_tender_fact_sheet_async_api_v1_licitaciones__id_externo__ficha_pliego_extract_async_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/licitaciones/{id_externo}/reportes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reportar un dato incorrecto de un expediente
+         * @description F6.2 — «este dato está mal», desde la ficha.
+         *
+         *     No comprueba que el expediente exista: la corrección más valiosa es
+         *     justamente la de una fila que no debería estar, y un 404 aquí convertiría
+         *     un reporte legítimo en un error del usuario.
+         */
+        post: operations["post_reporte_dato_api_v1_licitaciones__id_externo__reportes_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2776,6 +2834,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/pursuits/{pursuit_id}/ficha.pdf": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Ficha de la oportunidad en PDF (one-pager para dirección)
+         * @description F2.7 — el one-pager que se lleva a un comité.
+         *
+         *     Va por la misma lectura con ámbito que `GET /pursuits/{id}`: un 403 aquí y
+         *     un 403 allí son el mismo control, no dos.
+         */
+        get: operations["get_pursuit_ficha_pdf_api_v1_pursuits__pursuit_id__ficha_pdf_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/radar/dismissals": {
         parameters: {
             query?: never;
@@ -3024,7 +3105,16 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Conteo de matches de unos criterios sin guardar */
+        /**
+         * Conteo de matches de unos criterios sin guardar
+         * @description Cuántos expedientes casan hoy y cuántos casaron cada una de las últimas
+         *     ocho semanas.
+         *
+         *     El total sobre el corpus entero no responde a la pregunta que se hace quien
+         *     crea una regla —«¿cuánto correo me va a llegar?»—: para una regla ancha es
+         *     un número de cinco cifras que no distingue una regla que dispara cuarenta
+         *     veces por semana de una que disparó cuarenta veces en dos años.
+         */
         post: operations["preview_matches_api_v1_watchlist_rules_preview_post"];
         delete?: never;
         options?: never;
@@ -4661,6 +4751,43 @@ export interface components {
             tecnologia: string;
         };
         /**
+         * ExpectedAward
+         * @description F4.4 — cuándo se espera la adjudicación, y de dónde sale esa fecha.
+         *
+         *     Viaja con su dispersión y su ``n`` a propósito: una fecha sola se lee como
+         *     un compromiso, y esto es una estimación. La regla que decide si se publica
+         *     —y el mínimo de expedientes por debajo del cual **no** hay estimación—
+         *     vive en :mod:`services.analytics.lead_time`.
+         */
+        ExpectedAward: {
+            /**
+             * Fecha
+             * Format: date
+             */
+            fecha: string;
+            /**
+             * Metodo
+             * @default estimacion
+             * @enum {string}
+             */
+            metodo: "hito" | "estimacion";
+            /**
+             * N
+             * @default 0
+             */
+            n: number;
+            /**
+             * P25
+             * Format: date
+             */
+            p25: string;
+            /**
+             * P75
+             * Format: date
+             */
+            p75: string;
+        };
+        /**
          * ExplainFeature
          * @description Término y su contribución a la clasificación (modelo lineal).
          */
@@ -5888,6 +6015,32 @@ export interface components {
              */
             yoy_delta: number;
         };
+        /**
+         * PaginaDocumento
+         * @description Una página del pliego, con el fragmento a resaltar si es válido.
+         */
+        PaginaDocumento: {
+            /** Documento Id */
+            documento_id: number;
+            /** Filename */
+            filename?: string | null;
+            /** Page Number */
+            page_number: number;
+            /** Resaltado Fin */
+            resaltado_fin?: number | null;
+            /** Resaltado Inicio */
+            resaltado_inicio?: number | null;
+            /** Resaltado Omitido */
+            resaltado_omitido?: string | null;
+            /** Texto */
+            texto: string;
+            /** Tipo */
+            tipo?: string | null;
+            /** Total Paginas */
+            total_paginas: number;
+            /** Uri */
+            uri?: string | null;
+        };
         /** PaginatedResponse[AdjudicacionSummary] */
         PaginatedResponse_AdjudicacionSummary_: {
             /** Deprecation Notice */
@@ -6198,6 +6351,30 @@ export interface components {
             /** Serving */
             serving?: string | null;
         };
+        /**
+         * PreviewResult
+         * @description Conteo de la regla más su serie de ruido (F5.5).
+         *
+         *     Hereda de `TotalCount` para que `total` siga significando y llamándose lo
+         *     mismo: los tres campos nuevos son **aditivos** y un cliente antiguo sigue
+         *     leyendo la respuesta que leía.
+         */
+        PreviewResult: {
+            /**
+             * Ruido Alto
+             * @default false
+             */
+            ruido_alto: boolean;
+            /** Serie Semanal */
+            serie_semanal?: components["schemas"]["SemanaMatches"][];
+            /** Total */
+            total: number;
+            /**
+             * Umbral Semanal
+             * @default 50
+             */
+            umbral_semanal: number;
+        };
         /** PriceScenario */
         PriceScenario: {
             /** Basis */
@@ -6479,6 +6656,7 @@ export interface components {
             decision_reason?: string | null;
             /** Events */
             events?: components["schemas"]["PursuitEventOut"][];
+            expected_award?: components["schemas"]["ExpectedAward"] | null;
             /** Id */
             id: number;
             /**
@@ -6516,6 +6694,8 @@ export interface components {
             submitted_at?: string | null;
             /** Tender Deadline */
             tender_deadline?: string | null;
+            /** Tender Organo */
+            tender_organo?: string | null;
             /** Tender Title */
             tender_title?: string | null;
             /**
@@ -6622,6 +6802,7 @@ export interface components {
             decision_at?: string | null;
             /** Decision Reason */
             decision_reason?: string | null;
+            expected_award?: components["schemas"]["ExpectedAward"] | null;
             /** Id */
             id: number;
             /**
@@ -6659,6 +6840,8 @@ export interface components {
             submitted_at?: string | null;
             /** Tender Deadline */
             tender_deadline?: string | null;
+            /** Tender Organo */
+            tender_organo?: string | null;
             /** Tender Title */
             tender_title?: string | null;
             /**
@@ -6757,6 +6940,10 @@ export interface components {
              * @default 0
              */
             pct_titulo: number;
+            /** Reportes Por Tipo */
+            reportes_por_tipo?: {
+                [key: string]: number;
+            };
             /**
              * Total Records
              * @default 0
@@ -6784,6 +6971,22 @@ export interface components {
             };
         };
         /**
+         * RadarDismissal
+         * @description Un descarte vigente, con lo que hace falta para pintarlo.
+         */
+        RadarDismissal: {
+            /** Accion */
+            accion?: string | null;
+            /** Banda */
+            banda?: string | null;
+            /** Hasta */
+            hasta?: string | null;
+            /** Id Externo */
+            id_externo: string;
+            /** Score */
+            score?: number | null;
+        };
+        /**
          * RadarDismissalBody
          * @description Cuerpo del descarte de una señal.
          *
@@ -6799,8 +7002,16 @@ export interface components {
          *     supo» y no se rellena con nada inventado.
          */
         RadarDismissalBody: {
+            /**
+             * Accion
+             * @default descartar
+             * @enum {string}
+             */
+            accion: "descartar" | "silenciar" | "posponer";
             /** Banda */
             banda?: ("Caliente" | "Atractiva" | "Tibia" | "Descarte") | null;
+            /** Dias */
+            dias?: number | null;
             /** Id Externo */
             id_externo: string;
             /** Score */
@@ -6809,8 +7020,15 @@ export interface components {
         /**
          * RadarDismissalsResult
          * @description ``id_externo`` que el usuario tiene descartados, recientes primero.
+         *
+         *     ``ids`` sólo trae los **vigentes**: un silenciado que venció ya no está,
+         *     porque a efectos del Radar ha vuelto a la bandeja. ``detalle`` es aditivo y
+         *     lleva la fecha y la acción de cada uno, para que la consola pueda decir
+         *     «silenciada hasta el 6 de octubre» en vez de sólo «descartada».
          */
         RadarDismissalsResult: {
+            /** Detalle */
+            detalle?: components["schemas"]["RadarDismissal"][];
             /** Ids */
             ids: string[];
         };
@@ -6915,6 +7133,33 @@ export interface components {
             importe_alto_riesgo: number;
             /** Importe En Juego */
             importe_en_juego: number;
+        };
+        /**
+         * ReporteDatoBody
+         * @description Un aviso de que algo del expediente está mal.
+         */
+        ReporteDatoBody: {
+            /** Comentario */
+            comentario?: string | null;
+            /**
+             * Tipo
+             * @enum {string}
+             */
+            tipo: "tecnologia" | "ccaa" | "duplicado" | "importe" | "adjudicatario" | "otro";
+        };
+        /**
+         * ReporteDatoResult
+         * @description Acuse del reporte, con la cola que lo va a revisar.
+         */
+        ReporteDatoResult: {
+            /** Cola */
+            cola: string;
+            /** Created At */
+            created_at: string;
+            /** Id Externo */
+            id_externo: string;
+            /** Tipo */
+            tipo: string;
         };
         /**
          * ResolucionOut
@@ -7327,6 +7572,16 @@ export interface components {
              * @default true
              */
             with_total: boolean;
+        };
+        /**
+         * SemanaMatches
+         * @description Coincidencias de una semana. `semana` es el lunes, en ISO.
+         */
+        SemanaMatches: {
+            /** N */
+            n: number;
+            /** Semana */
+            semana: string;
         };
         /**
          * SemanticHit
@@ -7983,14 +8238,6 @@ export interface components {
             titulo?: string | null;
             /** Url */
             url?: string | null;
-        };
-        /**
-         * TotalCount
-         * @description Conteo agregado sin items (previews, badges).
-         */
-        TotalCount: {
-            /** Total */
-            total: number;
         };
         /** TotpCodeRequest */
         TotpCodeRequest: {
@@ -11786,6 +12033,24 @@ export interface operations {
                 cierre_desde?: string | null;
                 /** @description Fecha límite de presentación hasta (YYYY-MM-DD), inclusive el día entero: fecha_limite guarda la hora de cierre, así que la cota incluye los expedientes que cierran ese mismo día a cualquier hora. */
                 cierre_hasta?: string | null;
+                /** @description Importe de licitación mínimo, en euros (inclusive) */
+                importe_min?: number | null;
+                /** @description Importe de licitación máximo, en euros (inclusive) */
+                importe_max?: number | null;
+                /** @description CPV por PREFIJO, separados por comas. `72` trae todos los servicios de TI y `7222` una familia dentro. Es prefijo y no igualdad porque nadie recuerda los ocho dígitos. */
+                cpv?: string | null;
+                /** @description Órgano de contratación por subcadena, sin distinguir acentos ni mayúsculas. Varios separados por comas. */
+                organo?: string | null;
+                /** @description Provincia (multi-valor) */
+                provincia?: string | null;
+                /** @description Código CODICE de procedimiento (multi-valor). Las etiquetas y el catálogo completo los sirve `GET /meta/filters`. */
+                procedimiento?: string | null;
+                /** @description Código CODICE de tramitación (multi-valor) */
+                tramitacion?: string | null;
+                /** @description Código CODICE de tipo de contrato (multi-valor) */
+                tipo_contrato?: string | null;
+                /** @description Sólo expedientes cuyo plazo vence dentro de N días. Se calcula en SQL sobre `fecha_limite` y excluye los estados terminales: un expediente ya adjudicado con fecha límite futura no vence, no se puede licitar. */
+                dias_restantes_max?: number | null;
                 /** @description Orden: fecha_publicacion (default), -importe, importe, titulo */
                 sort?: string | null;
                 /** @description Incluir total (false = más rápido para paginación) */
@@ -11875,8 +12140,42 @@ export interface operations {
                 /** @description Cursor opaco devuelto en la página anterior */
                 cursor?: string | null;
                 limit?: number;
+                /** @description Búsqueda en título y descripción */
+                q?: string | null;
+                /** @description Código de estado (PUB, EV, ADJ…) */
+                estado?: string | null;
+                /** @description Excluye los expedientes en estado terminal */
+                solo_abiertas?: boolean;
+                /** @description Comunidad Autónoma */
+                ccaa?: string | null;
                 /** @description Tecnología (SAP, ORACLE…) */
                 tecnologia?: string | null;
+                /** @description Fecha publicación desde (YYYY-MM-DD) */
+                fecha_desde?: string | null;
+                /** @description Fecha publicación hasta (YYYY-MM-DD) */
+                fecha_hasta?: string | null;
+                /** @description Fecha límite desde (YYYY-MM-DD) */
+                cierre_desde?: string | null;
+                /** @description Fecha límite hasta (YYYY-MM-DD) */
+                cierre_hasta?: string | null;
+                /** @description Importe mínimo, en euros */
+                importe_min?: number | null;
+                /** @description Importe máximo, en euros */
+                importe_max?: number | null;
+                /** @description CPV por prefijo (multi-valor) */
+                cpv?: string | null;
+                /** @description Órgano por subcadena */
+                organo?: string | null;
+                /** @description Provincia (multi-valor) */
+                provincia?: string | null;
+                /** @description Código CODICE de procedimiento (multi-valor) */
+                procedimiento?: string | null;
+                /** @description Código CODICE de tramitación (multi-valor) */
+                tramitacion?: string | null;
+                /** @description Código CODICE de tipo de contrato (multi-valor) */
+                tipo_contrato?: string | null;
+                /** @description Plazo que vence dentro de N días */
+                dias_restantes_max?: number | null;
             };
             header?: never;
             path?: never;
@@ -12075,6 +12374,62 @@ export interface operations {
             };
             /** @description API key inválida */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_pagina_documento_api_v1_licitaciones__id_externo__documentos__documento_id__paginas__page_number__get: {
+        parameters: {
+            query?: {
+                /** @description Offset absoluto de inicio de la cita */
+                inicio?: number | null;
+                /** @description Offset absoluto de fin de la cita */
+                fin?: number | null;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                id_externo: string;
+                documento_id: number;
+                page_number: number;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaginaDocumento"];
+                };
+            };
+            /** @description Autenticación inválida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description La página no existe para ese documento y licitación */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -12316,6 +12671,52 @@ export interface operations {
             };
             /** @description Licitación no encontrada */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_reporte_dato_api_v1_licitaciones__id_externo__reportes_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                id_externo: string;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReporteDatoBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReporteDatoResult"];
+                };
+            };
+            /** @description Autenticación inválida */
+            401: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -14030,6 +14431,57 @@ export interface operations {
             };
         };
     };
+    get_pursuit_ficha_pdf_api_v1_pursuits__pursuit_id__ficha_pdf_get: {
+        parameters: {
+            query?: {
+                organization_id?: number | null;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                pursuit_id: number;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description El PDF */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/pdf": unknown;
+                };
+            };
+            /** @description La oportunidad es de otra organización */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No existe */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_dismissals_api_v1_radar_dismissals_get: {
         parameters: {
             query?: never;
@@ -14643,7 +15095,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["TotalCount"];
+                    "application/json": components["schemas"]["PreviewResult"];
                 };
             };
             /** @description Validation Error */

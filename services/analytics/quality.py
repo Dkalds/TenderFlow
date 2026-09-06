@@ -81,6 +81,11 @@ class QualityResult(BaseModel):
     # convierte ese aviso disperso por la consola en una cifra que alguien
     # puede cerrar. Vacía = todo el corpus tiene etiqueta.
     codigos_no_catalogados: list[CodigoNoCatalogado] = Field(default_factory=list)
+    # Campo ADITIVO (F6.2). `{tipo: n}` de lo que los usuarios han reportado
+    # como incorrecto. Es la otra mitad de esta pantalla: las demás métricas
+    # dicen lo que la máquina sabe que falta; esta, lo que una persona ha visto
+    # mal.
+    reportes_por_tipo: dict[str, int] = Field(default_factory=dict)
 
 
 # ---------------------------------------------------------------------------
@@ -179,6 +184,18 @@ def _codigos_no_catalogados() -> list[CodigoNoCatalogado]:
 # ---------------------------------------------------------------------------
 
 
+def _reportes_por_tipo() -> dict[str, int]:
+    """Reportes de dato recibidos, por tipo. Best-effort como sus vecinas."""
+    try:
+        from db.repositories.feedback import FeedbackRepository
+        from services.reportes_dato import PREFIJO_SOURCE
+
+        return FeedbackRepository().reportes_abiertos_por_tipo(prefijo=PREFIJO_SOURCE)
+    except Exception:
+        log.debug("quality_reportes_unavailable")
+        return {}
+
+
 def get_quality() -> QualityResult:
     """Compute data quality metrics (agregación SQL, ADR-023)."""
     log.info("analytics_quality_start")
@@ -193,6 +210,7 @@ def get_quality() -> QualityResult:
             pct_organization_scoped=pct_organization_scoped,
             filas_sin_organizacion=filas_sin_organizacion,
             codigos_no_catalogados=_codigos_no_catalogados(),
+            reportes_por_tipo=_reportes_por_tipo(),
         )
 
     cols: dict[str, int] = stats["cols"]
@@ -241,6 +259,7 @@ def get_quality() -> QualityResult:
         filas_sin_organizacion=filas_sin_organizacion,
         completitud_columnas=completitud,
         codigos_no_catalogados=_codigos_no_catalogados(),
+        reportes_por_tipo=_reportes_por_tipo(),
         # cobertura_nif / cobertura_modulo_sap se quedan en su default `None`
         # (no medidas): ver la nota del DTO.
     )

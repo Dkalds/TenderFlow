@@ -2,19 +2,25 @@
 
 from __future__ import annotations
 
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from statistics import median
 from typing import Any
 
 from db.database import now_utc_iso
 from db.notifications import insert_user_notification
-from db.repositories.adjudicaciones import AdjudicacionRepository
+from db.repositories.adjudicaciones import (
+    LEAD_TIME_MESES,
+    AdjudicacionRepository,
+    lead_time_por_organo,
+)
 from db.repositories.agenda import SignalCriteria, signal_rows
 from db.repositories.licitaciones import LicitacionRepository
 from db.repositories.pursuits import PursuitConcurrencyError, PursuitRepository
 from db.users import get_user_by_id
 from observability.logging import get_logger
+from services.analytics.lead_time import estimar_adjudicacion
 from services.competitive.renovaciones import proximas_renovaciones
+from services.ficha_pdf import BloqueFicha, FichaOportunidad, construir_pdf
 from services.organizations import require_active_member, resolve_organization
 from services.watchlist_rules import list_rules
 from shared.dto import (
@@ -189,6 +195,41 @@ def _detalle(row: dict[str, Any], organization_id: int, pursuit_id: int) -> Purs
     )
 
 
+def _con_fecha_prevista(rows: list[dict[str, Any]]) -> list[PursuitSummary]:
+    """Añade `expected_award` (F4.4) a las filas ya leídas.
+
+    Una sola consulta para toda la página, no una por oportunidad: el tablero
+    pinta cincuenta tarjetas y el lead-time es por órgano, no por expediente,
+    así que los órganos repetidos —lo normal en una cartera— se resuelven una
+    vez.
+
+    Un fallo aquí **no** tumba el listado: la fecha prevista es información
+    añadida, y quedarse sin tablero de pipeline porque una consulta de
+    percentiles falló sería un mal negocio. Sin ella, cada tarjeta enseña «sin
+    estimación», que es exactamente lo que enseñará también un órgano sin
+    histórico suficiente.
+    """
+    organos = sorted({str(r["tender_organo"]) for r in rows if r.get("tender_organo")})
+    stats: dict[str, dict[str, Any]] = {}
+    if organos:
+        desde = (datetime.now(UTC) - timedelta(days=30 * LEAD_TIME_MESES)).date().isoformat()
+        try:
+            stats = lead_time_por_organo(organos, desde_iso=desde)
+        except Exception as exc:
+            log.warning("pursuit_lead_time_error", error=str(exc)[:200])
+
+    items: list[PursuitSummary] = []
+    for row in rows:
+        resumen = PursuitSummary.model_validate(row)
+        organo = row.get("tender_organo")
+        if organo:
+            resumen.expected_award = estimar_adjudicacion(
+                row.get("tender_deadline"), stats.get(str(organo))
+            )
+        items.append(resumen)
+    return items
+
+
 def list_pursuits(
     user_id: int,
     *,
@@ -208,7 +249,7 @@ def list_pursuits(
     )
     return PursuitListResponse(
         organization_id=resolved_id,
-        items=[PursuitSummary.model_validate(row) for row in rows],
+        items=_con_fecha_prevista(rows),
         total=total,
         limit=limit,
         offset=offset,
@@ -688,4 +729,123 @@ def _agenda_kpis(items: list[PipelineAgendaItem]) -> PipelineAgendaKpis:
         go_no_go_pendientes=sum(1 for item in pursuits if item.decision == "pending"),
         sin_proxima_accion=sum(1 for item in pursuits if not item.next_action),
         senales_nuevas=sum(1 for item in items if item.kind == "senal"),
+    )
+
+
+def ficha_pdf(user_id: int, pursuit_id: int, *, organization_id: int | None = None) -> bytes:
+    """F2.7 — el one-pager de una oportunidad, en PDF.
+
+    Reutiliza :func:`get_pursuit`, que ya resuelve la organización y comprueba
+    la pertenencia: el PDF **no** puede tener su propia ruta de lectura, porque
+    entonces habría dos sitios donde olvidarse del ámbito y sólo uno con test
+    de aislamiento.
+
+    Los bloques sin dato no se rellenan: se omiten con la nota de por qué. Un
+    one-pager con guiones en la mitad de las filas se lee como que el producto
+    no sabe nada; la nota se lee como trazabilidad, que es lo que sí sabe.
+    """
+    detalle = get_pursuit(user_id, pursuit_id, organization_id=organization_id)
+
+    bloques: list[BloqueFicha] = [
+        BloqueFicha(
+            titulo="Expediente",
+            filas=[
+                ("Órgano", detalle.tender_organo or "—"),
+                ("Identificador", detalle.licitacion_id),
+                (
+                    "Fecha límite",
+                    detalle.tender_deadline.date().isoformat()
+                    if detalle.tender_deadline
+                    else "sin publicar",
+                ),
+            ],
+        ),
+        BloqueFicha(
+            titulo="Decisión",
+            filas=[
+                ("Etapa", detalle.status),
+                ("Decisión", detalle.decision),
+                *([("Motivo", detalle.decision_reason)] if detalle.decision_reason else []),
+                ("Responsable", detalle.responsible_name or "sin asignar"),
+                ("Próxima acción", detalle.next_action or "sin definir"),
+                *(
+                    [("Vence", detalle.next_action_due.isoformat())]
+                    if detalle.next_action_due
+                    else []
+                ),
+            ],
+        ),
+    ]
+
+    if detalle.offer_price_eur is not None:
+        bloques.append(
+            BloqueFicha(
+                titulo="Oferta",
+                filas=[("Precio ofertado", f"{detalle.offer_price_eur:,.2f} €")],
+                procedencia="Precio registrado por el equipo, no publicado por la fuente.",
+            )
+        )
+    else:
+        bloques.append(
+            BloqueFicha(
+                titulo="Oferta",
+                nota_vacio="Todavía no se ha registrado precio ofertado.",
+            )
+        )
+
+    if detalle.expected_award is not None:
+        prevista = detalle.expected_award
+        bloques.append(
+            BloqueFicha(
+                titulo="Fecha prevista de adjudicación",
+                filas=[
+                    ("Estimación", prevista.fecha.isoformat()),
+                    ("Rango p25-p75", f"{prevista.p25.isoformat()} — {prevista.p75.isoformat()}"),
+                ],
+                procedencia=(
+                    f"Estimada sumando el lead-time mediano del órgano a la fecha límite, "
+                    f"sobre {prevista.n} adjudicaciones de los últimos 24 meses."
+                ),
+            )
+        )
+    else:
+        bloques.append(
+            BloqueFicha(
+                titulo="Fecha prevista de adjudicación",
+                nota_vacio=(
+                    "Sin estimación: el órgano no tiene adjudicaciones suficientes en los "
+                    "últimos 24 meses para calcular un lead-time fiable."
+                ),
+            )
+        )
+
+    if detalle.adjudicacion is not None:
+        adj = detalle.adjudicacion
+        bloques.append(
+            BloqueFicha(
+                titulo="Adjudicación observada",
+                filas=[
+                    ("Adjudicatario", adj.adjudicatarios[0].nombre if adj.adjudicatarios else "—"),
+                    (
+                        "Fecha",
+                        (adj.adjudicatarios[0].fecha_adjudicacion or "—")
+                        if adj.adjudicatarios
+                        else "—",
+                    ),
+                    (
+                        "Importe adjudicado",
+                        f"{adj.importe_total:,.2f} €" if adj.importe_total is not None else "—",
+                    ),
+                    ("Ofertas recibidas", str(adj.n_ofertas) if adj.n_ofertas is not None else "—"),
+                ],
+                procedencia="Publicado por la fuente; no es el resultado que registró el equipo.",
+            )
+        )
+
+    return construir_pdf(
+        FichaOportunidad(
+            titulo=detalle.tender_title or detalle.licitacion_id,
+            subtitulo=f"Oportunidad #{detalle.id} · organización {detalle.organization_id}",
+            bloques=bloques,
+        )
     )

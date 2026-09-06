@@ -38,7 +38,7 @@ Bandas: ≥75 Caliente / ≥50 Atractiva / ≥25 Tibia / Descarte.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, NamedTuple
 
 import pandas as pd
 from pydantic import BaseModel, Field
@@ -392,10 +392,26 @@ def _build_context(
 # ---------------------------------------------------------------------------
 
 
+class FilaPuntuada(NamedTuple):
+    """Lo que ``_score_row`` sabe de una fila.
+
+    Era una tupla anónima de cuatro y F1.3 la dejó en cinco, que es donde una
+    tupla posicional deja de leerse: ``_, _, flags, desglose, _`` no dice nada
+    en el sitio donde se usa. Sigue siendo desempaquetable, así que los
+    llamantes que sólo quieren el score no cambian.
+    """
+
+    score: int
+    band: str
+    flags: list[str]
+    desglose: dict[str, float]
+    explicacion: list[str]
+
+
 def _score_row(
     row: pd.Series,
     ctx: _ScoringContext,
-) -> tuple[int, str, list[str], dict[str, float], list[str]]:
+) -> FilaPuntuada:
     """Devuelve (score 0-100, band, risk_flags, desglose, explicacion) para una fila.
 
     La explicación (F1.3) se arma **aquí** y no en un segundo paso sobre el
@@ -566,7 +582,7 @@ def _score_row(
             risk_flags=tuple(flags),
         )
     )
-    return final, _band(final), flags, desglose, explicacion
+    return FilaPuntuada(final, _band(final), flags, desglose, explicacion)
 
 
 def score_dataframe(
