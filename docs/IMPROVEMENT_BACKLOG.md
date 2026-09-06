@@ -159,18 +159,6 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 - **Files de partida:** [web/e2e/capturas-landing.spec.ts](../web/e2e/capturas-landing.spec.ts), [web/src/app/(publico)/page.tsx](../web/src/app/%28publico%29/page.tsx)
 - **Riesgo:** bajo.
 
-### [P2] `HistGradientBoosting` revienta si una feature llega entera a NaN
-- **Área:** services/ml/baja_model.py, services/ml/features.py, tests/test_ml_baja_model.py
-- **Problema:** con las versiones pineadas (numpy 2.4.4, scikit-learn 1.9.0), ajustar `HistGradientBoostingRegressor` sobre una matriz con **una columna enteramente NaN** falla con `ValueError: window shape cannot be larger than input array shape` en `sklearn/ensemble/_hist_gradient_boosting/binning.py:82`. La causa es precisa: `_find_binning_thresholds` guarda el caso de una columna **constante** (`if len(distinct_values) == 1: return []`) pero no el de **cero** valores distintos, que es lo que deja una columna todo-NaN tras descartar los missing; entonces `sliding_window_view(distinct_values, 2)` recibe un array vacío. Reproducido aislado: columna todo-NaN → ValueError; columna constante → OK.
-- **Estado de la evidencia (importante):** **no reproduce en CI.** `master` está verde en el mismo commit base (run #830 sobre `5164793`), y CI corre la suite entera sin filtro de marcadores. Sí reproduce en el contenedor de sesiones remotas —sobre un worktree limpio de `5164793` y sobre la rama de trabajo, con Python 3.11 y 3.13 y las versiones pineadas— en `test_entrenar_registra_version_y_metricas`, `test_predicciones_del_modelo_distinguen_segmentos` y `test_scoring_degrada_a_baseline_si_el_layout_no_coincide`. Qué hace que la matriz salga con una columna todo-NaN aquí y no allí **está sin identificar**: el histórico sintético de `_sembrar_historico` es determinista (fechas fijas, CPV/CCAA/tipo/fuente constantes), así que la diferencia tiene que estar en el entorno o en el estado de la BD, no en el fixture.
-- **Por qué merece entrada igualmente:** el docstring de `FEATURES_PENDIENTES_COBERTURA` ya avisa de que "una feature NULL en el 90% de las filas no es neutra". Aquí la consecuencia es peor que un split desperdiciado: al 100% de NULL el ajuste **no arranca**. Cualquier feature nueva con cobertura baja puede tumbar el reentrenamiento en vez de degradarlo.
-- **Acceptance criteria:**
-  - Identificado qué diferencia de entorno produce la columna todo-NaN aquí y no en CI (o descartado como artefacto del contenedor, dejándolo escrito).
-  - `baja_model` descarta las columnas sin ningún valor observado antes del ajuste, con log de cuáles y un test que fije el invariante — el reentrenamiento no puede depender de que ninguna feature llegue vacía.
-- **Files de partida:** [services/ml/baja_model.py](../services/ml/baja_model.py), [services/ml/features.py](../services/ml/features.py)
-- **Riesgo:** bajo — el serving ya degrada al baseline si el modelo no existe, que es el comportamiento previsto para un fallo de entrenamiento.
-
-
 ### [P2] `render.yaml` no gobierna el servicio que corre en producción
 - **Área:** render.yaml, Render Dashboard (acción del usuario)
 - **Problema:** el Blueprint está en el repo, pero el servicio de producción se creó a mano por el dashboard y nunca se vinculó a él, así que el fichero documenta una intención que nadie aplica: editarlo no cambia nada y leerlo puede inducir a error sobre cómo está configurado el servicio real. Lo que sí está activo es `autoDeploy`, y **sin healthcheck configurado** — es decir, un deploy que arranca mal reemplaza igualmente al que funcionaba, sin rollback automático. (Estado observado en la sesión del 2026-08-04; **reconfirmar en el dashboard antes de actuar**, que es barato.)
@@ -496,15 +484,6 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 - **Files de partida:** [db/repositories/aggregates.py](../db/repositories/aggregates.py), [services/analytics/overview.py](../services/analytics/overview.py)
 - **Riesgo:** bajo — cambia un porcentaje mostrado; sin migración de schema.
 
-### [P3] Vigilar el crecimiento de `predicciones_baja`
-- **Área:** services/analytics/scoring_signals, services/ml/scoring, scheduler/jobs/ml_predicciones
-- **Problema:** `_load_margen_stats_raw` carga la tabla entera (`licitacion_id`, `p50`) a un dict en cada refresco de caché. Hoy es barato —el job de ML solo predice licitaciones abiertas, 5 k por corrida— pero el upsert **no purga**, así que la tabla acumula filas de expedientes ya cerrados y crece de forma monótona. No se filtra por universo vivo a propósito: el modo page-aligned del Detalle puntúa filas cerradas y perdería su dimensión de margen en silencio.
-- **Acceptance criteria:**
-  - Vigilar el campo `predicciones` del log `scoring_signals_margen_cargada`.
-  - Si supera ~200 k filas, purgar por antigüedad en el job de ML (no filtrar en el loader).
-- **Files de partida:** [services/analytics/scoring_signals.py](../services/analytics/scoring_signals.py), [services/ml/scoring.py](../services/ml/scoring.py)
-- **Riesgo:** bajo — hoy es solo instrumentación; la purga se decide con el dato medido.
-
 ### [P3] Scroll edge effects en vez de divisores duros bajo el chrome flotante
 - **Área:** web/src/components/layout
 - **Problema:** el chrome flotante es `tf-glass` (translúcido, `position: sticky`) y delimita con un `border-b` fijo, en vez del "scroll edge effect" que pide apple-design §12: un fade/máscara activado por scroll, solo donde el contenido realmente pasa por debajo. Hallazgo F11 de la revisión de las skills de Emil Kowalski (2026-07-25); no bloqueante, es refinamiento visual.
@@ -525,16 +504,6 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
   - `trends` acota rango o expone `freq` de roll-up; documentado en el DTO.
 - **Files de partida:** [api/routes/licitaciones.py](../api/routes/licitaciones.py), [api/routes/analytics.py](../api/routes/analytics.py)
 - **Riesgo:** bajo — aditivo si se hace con defaults generosos.
-
-### [P2] Migrar las llamadas del frontend al cliente OpenAPI tipado
-
-- **Área:** web/src (hooks, componentes y páginas)
-- **Problema:** El 2026-08-10 se añadió `apiGet` (tipado contra el esquema generado) y se migraron los dos hooks que quedaban con interfaces a mano, pero las ~94 llamadas existentes siguen usando `fetchWithAuth`/`apiMutate` con URLs literales y un cast sin validación. Mientras esas llamadas no pasen por el esquema, el job `codegen-drift` de CI custodia un artefacto que no protege el código que lo consume.
-- **Acceptance criteria:**
-  - Las llamadas de ruta estática usan `apiGet`; las de ruta dinámica tipan el retorno con `@/lib/api-types`, nunca con una interfaz local.
-  - Por olas y por carpeta (`hooks/` primero, que es donde se concentran).
-- **Files de partida:** [web/src/lib/api-client.ts](../web/src/lib/api-client.ts), [web/src/lib/api-types.ts](../web/src/lib/api-types.ts)
-- **Riesgo:** bajo — `make web-typecheck` es el guardián.
 
 ### [P2] Aislamiento de la suite: una base por sesión en vez de un schema por test
 
@@ -559,6 +528,21 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 ---
 
 ## Cerrados
+
+- [2026-09-06] **`HistGradientBoosting` revienta si una feature llega entera a NaN**
+  — cerrado al verificar (C9.5) que el código existe: `services/ml/baja_model.py`
+  descarta antes del ajuste las columnas sin ningún valor observado, las registra en
+  la metadata del modelo y `predict` recorta la matriz igual; cubierto por
+  `tests/test_s3_feature_todo_nan.py`. La cabecera del backlog ya lo daba por cerrado
+  y seguía listado en P2 — esa contradicción es justo lo que
+  `scripts/check_backlog_freshness.py` detecta ahora.
+- [2026-09-06] **Vigilar el crecimiento de `predicciones_baja`** — cerrado al
+  verificar (C9.5) que `db/repositories/predicciones.py::purgar_cerradas` purga por
+  antigüedad las filas de expedientes cerrados, para las dos tablas de predicciones.
+- [2026-09-06] **Migrar las llamadas del frontend al cliente OpenAPI tipado** —
+  cerrado al verificar (C9.5) que no queda ningún `fetch("/api/…")` crudo fuera de
+  `web/src/lib/`, y que `web/eslint.config.mjs` lo impide con una regla
+  `no-restricted-syntax` que nombra el cliente a usar en el mensaje de error.
 
 - [2026-09-01] **Revisión integral de la IA del detalle de licitación (10 mejoras en un
   cambio)** — salida de la auditoría de arquitecto del asistente IA. Lo que cambió:

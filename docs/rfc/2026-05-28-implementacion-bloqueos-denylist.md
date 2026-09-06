@@ -2,7 +2,7 @@
 title: "RFC de handoff humano: bloqueos por denylist"
 author: "agent:architect"
 date: 2026-05-28
-status: retired
+status: obsolete
 retired: 2026-07-30
 tags: [rfc, historico]
 ---

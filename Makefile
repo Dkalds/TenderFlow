@@ -45,8 +45,11 @@ check-frontend-invariants:  ## Integridad analítica del frontend (ADR-014, bloq
 check-api-contract:  ## Ratchet del contrato API↔web (ninguna operación nueva opaca)
 	python scripts/check_openapi_contract.py
 
-check-agent-docs:  ## Valida instrucciones, skills, commands, hooks, plugins y markers
+check-agent-docs:  ## Valida instrucciones, skills, commands, hooks, docs generados y backlog
 	python scripts/check_agent_docs.py
+	python scripts/gen_retention_doc.py --check
+	python scripts/gen_rfc_index.py --check
+	python scripts/check_backlog_freshness.py
 
 check-env-parity:  ## Variables obligatorias en prod declaradas en render.yaml y documentadas
 	python scripts/check_env_parity.py

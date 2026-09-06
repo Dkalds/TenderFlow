@@ -151,6 +151,29 @@ export default function AvisoLegal() {
         </p>
       )}
 
+      <h2 className="font-display mt-10 text-xl font-semibold tracking-[-0.02em]">
+        Registro de tratamientos y encargo
+      </h2>
+      {/* C9.4. El registro del art. 30 RGPD es un documento interno: hay que
+          poder enseñarlo a la autoridad de control, no publicarlo. Lo que sí
+          corresponde publicar es que existe y cómo pedirlo — callarlo deja al
+          visitante sin saber que puede solicitarlo. El anexo de encargo (art.
+          28) solo aplica a organizaciones cliente, y por eso se ofrece bajo
+          petición en vez de enlazarse desde una página pública. */}
+      <p className="text-muted-foreground mt-3 text-base leading-relaxed">
+        Mantenemos un{" "}
+        <strong className="text-foreground">registro de actividades de tratamiento</strong> conforme al
+        artículo 30 del RGPD, con la finalidad, la base jurídica, las categorías de datos y el plazo de
+        conservación de cada tratamiento. Los plazos de conservación que aplicamos son los que se anuncian
+        en este aviso, y se aplican de forma automática.
+      </p>
+      <p className="text-muted-foreground mt-3 text-base leading-relaxed">
+        Si sos una organización que usa la plataforma para trabajar con datos personales propios, nosotros
+        actuamos como <strong className="text-foreground">encargados del tratamiento</strong> sobre ese
+        contenido y vos como responsable. El anexo de encargo del artículo 28, con las medidas técnicas y la
+        lista de subencargados, está disponible bajo petición en la dirección de contacto.
+      </p>
+
       <h2 className="font-display mt-10 text-xl font-semibold tracking-[-0.02em]">Contacto</h2>
       <p className="text-muted-foreground mt-3 text-base leading-relaxed">
         Para solicitar la rectificación o la retirada de un contenido concreto de este sitio, escríbenos indicando el

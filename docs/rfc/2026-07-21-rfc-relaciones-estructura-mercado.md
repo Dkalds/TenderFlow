@@ -4,7 +4,8 @@ title: "UX · Relaciones → Estructura de mercado: del hairball a vistas orient
 issue: pendiente (crear issue y renumerar)
 author: agent:architect
 date: 2026-07-21
-status: draft
+status: obsolete
+evidence: Cita `services/organ_concentration.py` y `red_organo_empresa.py`, borrados
 area: web/red-organo-empresa · web/ecosistema-partners · web/components/charts/force-graph · services/analytics
 supersedes: >
   Continúa docs/rfc/2026-06-28-rfc-ux-grafos-red-partners.md (implemented), que

@@ -4,7 +4,8 @@ title: "Meta-RFC · Integridad analítica del frontend — el frontend no fabric
 issue: pendiente (crear issue y renumerar si no coincide)
 author: agent:architect
 date: 2026-06-16
-status: draft
+status: superseded
+evidence: Graduado a `docs/adr/ADR-014-integridad-analitica-frontend.md`
 graduates-to: [[ADR-014-integridad-analitica-frontend|ADR-014]] (si se aprueba)
 ---
 

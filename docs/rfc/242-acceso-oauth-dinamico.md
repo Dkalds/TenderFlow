@@ -4,7 +4,8 @@ title: Conceder acceso OAuth desde el producto con auditoría
 issue: https://github.com/Dkalds/TenderFlow/issues/242
 author: agent:github-copilot
 date: 2026-09-01
-status: approved
+status: implemented
+evidence: `db/access_grants.py`, `db/alembic/versions/v95_access_grants.py`, `api/routes/admin_solicitudes.py`
 ---
 
 ## Contexto

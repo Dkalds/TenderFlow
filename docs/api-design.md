@@ -46,16 +46,44 @@ async def delete(ctx: AuthContext = Depends(require_scope("webhooks:write"))): .
 
 Scopes usados en el proyecto:
 
-| Scope              | Rutas                        |
-|--------------------|------------------------------|
-| `webhooks:read`    | GET webhooks                 |
-| `webhooks:write`   | POST/PATCH/DELETE webhooks   |
-| `watchlist:read`   | GET watchlist feed           |
-| `analytics:read`   | GET analytics                |
-| `exports:read`     | Descargas y estado de exports |
-| `admin`            | POST rollback modelos, verificar auditoría |
-| `data:read`        | Lecturas generales (default al crear key) |
-| `*`                | Acceso total explícito       |
+<!-- BEGIN scopes (generado por scripts/gen_scopes_doc.py — no editar a mano) -->
+
+Los scopes los resuelve `api/scopes.py::required_scope_for_request` a partir del método y la ruta; hoy son **30** familias. Esta tabla se genera con `python scripts/gen_scopes_doc.py` y CI la verifica con `--check`.
+
+| Scope | Métodos | Familias de ruta |
+|---|---|---|
+| `account:delete` | DELETE | `/me` |
+| `account:read` | GET | `/me/data` |
+| `admin` | todos | `/admin/solicitudes-acceso`, `/admin/users`, `/empresas/reviews`, `/feature-flags`, `/security/audit`, `/security/client-error`, `/security/csp-report`, `/security/leaked-key`, `/webhooks`, `/webhooks/event-types` |
+| `analytics:read` | GET | `/analytics/clusters`, `/analytics/compare-periods`, `/analytics/competitors`, `/analytics/forecast`, `/analytics/geography`, `/analytics/organos`, `/analytics/overview`, `/analytics/pipeline`, `/analytics/proyectos-modulos`, `/analytics/quality`, `/analytics/resumen`, `/analytics/scoring`, `/analytics/source-freshness`, `/analytics/tecnologias`, `/analytics/trends`, `/analytics/trends-cpv`, `/analytics/utes` |
+| `api_keys:read` | GET | `/me/keys` |
+| `api_keys:rotate` | POST | `/me/keys` |
+| `ask:read` | GET/POST | `/ask`, `/ask/models` |
+| `competitive:read` | GET | `/competitive/bajas`, `/competitive/cuota`, `/competitive/empresas`, `/competitive/hhi`, `/competitive/renovaciones`, `/competitive/watchlist` |
+| `competitive:write` | POST/DELETE | `/competitive/watchlist` |
+| `data:read` | GET | `/adjudicaciones`, `/auth/me`, `/auth/oauth`, `/eventos`, `/health`, `/health/live`, `/health/ready`, `/meta/filters`, `/meta/last-extraction`, `/predicciones/calibracion`, `/publico/hubs`, `/publico/licitaciones`, `/publico/sitemap`, `/radar/dismissals`, `/resoluciones` |
+| `data:write` | POST/DELETE | `/auth/dev-login`, `/auth/login`, `/auth/logout`, `/auth/logout-all`, `/auth/password-reset`, `/auth/register`, `/auth/totp`, `/publico/solicitudes-acceso`, `/radar/dismissals`, `/search/semantic` |
+| `empresas:read` | GET | `/empresas`, `/empresas/stats` |
+| `exports:read` | GET | `/exports/calendario`, `/exports/calendario.ics`, `/exports/download` |
+| `feature_flags:read` | GET | `/feature-flags` |
+| `feedback:read` | GET | `/feedback/model-info`, `/feedback/queue`, `/feedback/stats` |
+| `feedback:write` | POST | `/feedback` |
+| `licitaciones:read` | GET/POST | `/licitaciones`, `/licitaciones/bulk-get`, `/licitaciones/cursor`, `/licitaciones/search`, `/licitaciones/stream` |
+| `licitaciones:write` | POST | `/licitaciones` |
+| `models:read` | GET/POST | `/models` |
+| `notifications:read` | GET | `/notifications` |
+| `notifications:write` | POST | `/notifications/alerts`, `/notifications/read` |
+| `profile:read` | GET | `/me/profile` |
+| `profile:write` | PUT/DELETE | `/me/profile` |
+| `pursuits:read` | GET | `/organizations`, `/organizations/active`, `/pursuits`, `/pursuits/agenda`, `/pursuits/metrics` |
+| `pursuits:write` | POST/PATCH/PUT/DELETE | `/organizations`, `/pursuits` |
+| `saved_filters:read` | GET | `/saved-filters` |
+| `saved_filters:write` | POST/DELETE | `/saved-filters` |
+| `watchlist:read` | GET | `/watchlist/feed.xml`, `/watchlist/items`, `/watchlist/rules` |
+| `watchlist:write` | POST/PUT/DELETE | `/watchlist/items`, `/watchlist/rules` |
+| `*` | — | Acceso total explícito. Solo para claves de operación. |
+
+<!-- END scopes -->
 
 ## Contrato de errores (RFC 7807)
 
@@ -138,9 +166,9 @@ Respuesta:
 | `me`               | `/me`, `/me/profile`        | Perfil, API keys y export/delete GDPR del usuario autenticado |
 | `meta`             | `/meta`                     | Metadata del sistema (opciones de filtros)       |
 | `models`           | `/models`                   | Versiones de modelos ML, rollback (`admin`)      |
-| `search`           | `/search`                   | Búsqueda full-text (FTS5/tsvector) y semántica    |
+| `search`           | `/search`                   | Búsqueda full-text (`tsvector` + GIN) y semántica    |
 | `security`         | `/security`                 | TOTP, CSRF, auditoría                            |
-| `stream`           | `/stream`                   | SSE streaming genérico                           |
+| `stream`           | `/licitaciones/stream`      | SSE de licitaciones nuevas (no existe un prefijo /stream propio)  |
 | `watchlist_feed`   | `/watchlist`                | Feed de watchlist                                |
 | `watchlist_items`  | `/watchlist/items`          | CRUD de items de watchlist                       |
 | `watchlist_rules`  | `/watchlist/rules`          | Reglas de alertas de watchlist                   |
@@ -148,6 +176,7 @@ Respuesta:
 ## Convenciones de naming
 
 - Sustantivos en plural para colecciones: `/licitaciones`, `/webhooks`, `/exports`.
-- IDs en la ruta: `/webhooks/{id}`, `/exports/{job_id}`.
-- Acciones como sub-recurso: `/webhooks/{id}/test`, `/models/{name}/rollback`.
+- IDs en la ruta: `/webhooks/{webhook_id}`, `/licitaciones/{licitacion_id}`.
+- Acciones como sub-recurso: `/webhooks/{webhook_id}/ping`,
+  `/models/{name}/activate/{version}`.
 - Verbos HTTP semánticos: GET=leer, POST=crear/acción, PATCH=actualizar, DELETE=eliminar.

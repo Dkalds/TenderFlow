@@ -4,7 +4,8 @@ title: Enlaces firmados sin sesión para el calendario ICS y la baja de correos
 issue: (sin issue: decisión tomada en sesión con el mantenedor)
 author: agent:claude-code
 date: 2026-09-02
-status: approved
+status: implemented
+evidence: `shared/signing.py`, `GET /exports/calendario/enlace`
 ---
 
 ## Contexto

@@ -6,20 +6,13 @@ from typing import Any
 
 
 def run() -> dict[str, Any]:
-    """Purge historical data according to the retention policy."""
-    from scheduler.retention import SOLICITUDES_ACCESO_RETENTION_DAYS, run_retention
+    """Purga los datos históricos según la política de retención publicada.
 
-    return run_retention(
-        runs_days=90,
-        audit_days=180,
-        dlq_days=30,
-        history_days=365,
-        access_days=180,
-        idempotency_days=1,
-        webhook_deliveries_days=90,
-        # El único plazo de esta lista que además está publicado en el aviso
-        # legal: sale de la constante, no de un literal, para que no pueda
-        # separarse de lo que se le promete al visitante.
-        solicitudes_acceso_days=SOLICITUDES_ACCESO_RETENTION_DAYS,
-        apply=True,
-    )
+    No pasa ningún plazo: los toma de `scheduler.retention.POLITICA_RETENCION`,
+    que a su vez los lee de `RETENTION_*` en `config/settings.py`. Hasta 2026-09
+    este job repetía los ocho números como literales, de modo que el job y el CLI
+    podían divergir del documento que los publica sin que nada fallara.
+    """
+    from scheduler.retention import run_retention
+
+    return run_retention(apply=True)

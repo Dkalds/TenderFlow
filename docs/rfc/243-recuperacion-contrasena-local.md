@@ -4,7 +4,8 @@ title: Recuperación segura de contraseña para cuentas locales
 issue: https://github.com/Dkalds/TenderFlow/issues/243
 author: agent:github-copilot
 date: 2026-09-01
-status: approved
+status: implemented
+evidence: `db/password_reset.py`, `services/password_reset.py`, `db/alembic/versions/v96_password_reset_tokens.py`
 ---
 
 ## Contexto

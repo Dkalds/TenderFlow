@@ -12,8 +12,10 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from contextlib import contextmanager
+from dataclasses import dataclass
 from typing import Any
 
+from config.settings import settings
 from db.database import connect
 from observability.logging import get_logger
 
@@ -93,9 +95,9 @@ def _count_and_delete(conn: object, table: str, date_col: str, cutoff: str, *, a
 #: Los dos números tienen que coincidir; lo comprueba
 #: `tests/test_retention_solicitudes.py`, porque una divergencia aquí convierte
 #: el aviso en una promesa falsa sin que falle nada.
-SOLICITUDES_ACCESO_RETENTION_MESES = 24
+SOLICITUDES_ACCESO_RETENTION_MESES = settings.RETENTION_SOLICITUDES_ACCESO_MESES
 SOLICITUDES_ACCESO_RETENTION_DAYS = SOLICITUDES_ACCESO_RETENTION_MESES * 30
-PASSWORD_RESET_RETENTION_DAYS = 7
+PASSWORD_RESET_RETENTION_DAYS = settings.RETENTION_PASSWORD_RESET_DAYS
 
 # Columna de fecha por la que se purga cada tabla. Vive fuera de
 # ``run_retention`` para que un test la pueda cotejar contra el schema real,
@@ -121,38 +123,156 @@ COLUMNA_FECHA: dict[str, str] = {
 }
 
 
+@dataclass(frozen=True, slots=True)
+class ReglaRetencion:
+    """Una fila de la política de retención publicada.
+
+    Existe para que `docs/SECURITY.md` se genere en vez de escribirse: hasta
+    2026-09 los plazos vivían solo como argumentos por defecto y no había
+    ningún sitio donde un usuario —o el propio mantenedor— pudiera leer
+    cuánto se conserva cada cosa ni por qué.
+    """
+
+    tabla: str
+    #: Nombre del campo de `Settings` que fija el plazo. Nunca un literal: es
+    #: justo lo que este ítem vino a quitar de este módulo.
+    ajuste: str
+    motivo: str
+    #: Multiplicador para los ajustes expresados en meses.
+    factor_dias: int = 1
+
+    @property
+    def dias(self) -> int:
+        return int(getattr(settings, self.ajuste)) * self.factor_dias
+
+
+#: La política de retención, en un solo sitio y con motivo.
+#:
+#: `scripts/gen_retention_doc.py` la publica en `docs/SECURITY.md` y CI verifica
+#: con `--check` que el documento no se ha quedado atrás.
+POLITICA_RETENCION: tuple[ReglaRetencion, ...] = (
+    ReglaRetencion(
+        "extraction_runs",
+        "RETENTION_EXTRACTION_RUNS_DAYS",
+        "Diagnóstico de la ingesta. Pasado un trimestre, un run concreto ya no "
+        "explica nada que la serie agregada no cuente mejor.",
+    ),
+    ReglaRetencion(
+        "audit_log",
+        "RETENTION_AUDIT_LOG_DAYS",
+        "Trazabilidad de acciones de usuario para investigar un incidente. "
+        "Encadenado por SHA-256: se purga por el extremo antiguo, nunca por el medio.",
+    ),
+    ReglaRetencion(
+        "failed_extractions",
+        "RETENTION_DLQ_DAYS",
+        "Cola de fallos. Solo se purgan los **resueltos**: un fallo abierto no "
+        "caduca por tiempo.",
+    ),
+    ReglaRetencion(
+        "licitaciones_history",
+        "RETENTION_LICITACIONES_HISTORY_DAYS",
+        "Histórico de cambios de un expediente. Un año cubre el ciclo completo "
+        "de licitación y adjudicación.",
+    ),
+    ReglaRetencion(
+        "access_log",
+        "RETENTION_ACCESS_LOG_DAYS",
+        "Accesos a la plataforma. Dato personal: se conserva lo mínimo para "
+        "investigar abuso y no más.",
+    ),
+    ReglaRetencion(
+        "idempotency_keys",
+        "RETENTION_IDEMPOTENCY_KEYS_DAYS",
+        "Solo tienen que sobrevivir al reintento que las justifica.",
+    ),
+    ReglaRetencion(
+        "webhook_deliveries",
+        "RETENTION_WEBHOOK_DELIVERIES_DAYS",
+        "Historial de entregas para depurar un webhook que falla. "
+        "El reintento vive en horas, no en meses.",
+    ),
+    ReglaRetencion(
+        "solicitudes_acceso",
+        "RETENTION_SOLICITUDES_ACCESO_MESES",
+        "**Plazo publicado en el aviso legal.** Cambiarlo cambia una promesa "
+        "hecha al visitante en el momento de la recogida (RGPD art. 13).",
+        factor_dias=30,
+    ),
+    ReglaRetencion(
+        "password_reset_tokens",  # pragma: allowlist secret
+        "RETENTION_PASSWORD_RESET_DAYS",
+        "Un token de recuperación caducado no sirve para nada y sí identifica "
+        "a quien lo pidió.",
+    ),
+    ReglaRetencion(
+        "rate_limits",
+        "RETENTION_IDEMPOTENCY_KEYS_DAYS",
+        "Ventanas de rate limit. Se purgan las **expiradas** en cada pasada, sin "
+        "esperar al plazo: la columna que manda es `reset_at`.",
+    ),
+)
+
+
+def _plazo(tabla: str) -> int:
+    """Plazo configurado para *tabla*, desde `POLITICA_RETENCION`."""
+    for regla in POLITICA_RETENCION:
+        if regla.tabla == tabla:
+            return regla.dias
+    raise KeyError(f"{tabla} no está en POLITICA_RETENCION")
+
+
 def run_retention(
     *,
-    runs_days: int,
-    audit_days: int,
-    dlq_days: int,
-    history_days: int,
-    access_days: int,
-    idempotency_days: int = 1,
-    webhook_deliveries_days: int = 90,
-    solicitudes_acceso_days: int = SOLICITUDES_ACCESO_RETENTION_DAYS,
+    runs_days: int | None = None,
+    audit_days: int | None = None,
+    dlq_days: int | None = None,
+    history_days: int | None = None,
+    access_days: int | None = None,
+    idempotency_days: int | None = None,
+    webhook_deliveries_days: int | None = None,
+    solicitudes_acceso_days: int | None = None,
     apply: bool,
 ) -> dict[str, int]:
     """Purga registros históricos según la política de retención configurada.
 
     No toca las tablas ``licitaciones`` ni ``adjudicaciones``.
 
+    Los plazos salen de `POLITICA_RETENCION` —y por tanto de `RETENTION_*` en
+    `config/settings.py`— salvo que se pasen explícitamente. Ese override existe
+    para el CLI (`scripts/retention_cleanup.py --audit-days 60`) y para los
+    tests; el job programado **no** lo usa, porque un plazo que el job decide
+    por su cuenta es un plazo que `docs/SECURITY.md` no puede publicar.
+
     Args:
-        runs_days: Retención de extraction_runs (días).
-        audit_days: Retención de audit_log (días).
-        dlq_days: Retención de failed_extractions resueltos (días).
-        history_days: Retención de licitaciones_history (días).
-        access_days: Retención de access_log (días).
-        idempotency_days: Retención de idempotency_keys (días).
-        webhook_deliveries_days: Retención de webhook_deliveries (días).
-        solicitudes_acceso_days: Retención de solicitudes_acceso (días). Es el
-            plazo que el aviso legal publica; ver la constante de este módulo.
+        runs_days: Override de extraction_runs (días). `None` = política.
+        audit_days: Override de audit_log (días). `None` = política.
+        dlq_days: Override de failed_extractions resueltos. `None` = política.
+        history_days: Override de licitaciones_history. `None` = política.
+        access_days: Override de access_log. `None` = política.
+        idempotency_days: Override de idempotency_keys. `None` = política.
+        webhook_deliveries_days: Override de webhook_deliveries. `None` = política.
+        solicitudes_acceso_days: Override de solicitudes_acceso. `None` =
+            política, que es el plazo publicado en el aviso legal.
         apply: Si False, modo dry-run (cuenta sin borrar).
 
     Returns:
         Dict tabla → número de registros afectados (-1 si error).
     """
     results: dict[str, int] = {}
+
+    runs_days = _plazo("extraction_runs") if runs_days is None else runs_days
+    audit_days = _plazo("audit_log") if audit_days is None else audit_days
+    dlq_days = _plazo("failed_extractions") if dlq_days is None else dlq_days
+    history_days = _plazo("licitaciones_history") if history_days is None else history_days
+    access_days = _plazo("access_log") if access_days is None else access_days
+    idempotency_days = _plazo("idempotency_keys") if idempotency_days is None else idempotency_days
+    webhook_deliveries_days = (
+        _plazo("webhook_deliveries") if webhook_deliveries_days is None else webhook_deliveries_days
+    )
+    solicitudes_acceso_days = (
+        _plazo("solicitudes_acceso") if solicitudes_acceso_days is None else solicitudes_acceso_days
+    )
 
     rules = [
         (tabla, COLUMNA_FECHA[tabla], dias)
@@ -172,7 +292,7 @@ def run_retention(
             # Tokens usados o caducados no aportan valor operativo. La tabla
             # sólo contiene hashes, pero la minimización también aplica a
             # identificadores indirectos y a credenciales ya inválidas.
-            ("password_reset_tokens", PASSWORD_RESET_RETENTION_DAYS),
+            ("password_reset_tokens", _plazo("password_reset_tokens")),  # pragma: allowlist secret
         )
     ]
 
