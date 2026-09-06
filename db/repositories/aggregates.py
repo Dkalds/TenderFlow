@@ -46,9 +46,11 @@ from db.repositories.tecnologia_pliego import NO_SIGNAL_SENTINEL
 from db.sql_fragments import (
     FOLD_TABLE,
     TECHNOLOGY_OBSERVED_SQL,
+    clave_organo_sql,
     exclude_duplicados_presentacion_sql,
     fold_expr,
     iso_guard,
+    nombre_organo_sql,
     tecnologia_en_csv_sql,
 )
 from observability.logging import get_logger
@@ -1108,9 +1110,14 @@ class AggregateRepository:
     ) -> tuple[int, int, float]:
         """(filas totales, órganos únicos, importe total) del dataset filtrado."""
         where, params = self._organos_where(filters, q_folded)
+        # C1.2 — el conteo de órganos únicos usa la MISMA clave que el ranking.
+        # Si contara por texto crudo mientras el ranking agrupa por `organo_id`,
+        # los porcentajes del ranking se calcularían contra otro denominador y
+        # no sumarían 100.
+        clave = clave_organo_sql("f")
         sql = (
-            "SELECT COUNT(*), COUNT(DISTINCT organo_contratacion), "
-            "COALESCE(SUM(importe), 0) FROM licitaciones WHERE " + where
+            f"SELECT COUNT(*), COUNT(DISTINCT {clave}), "
+            "COALESCE(SUM(f.importe), 0) FROM (SELECT * FROM licitaciones WHERE " + where + ") f"
         )
         with connect_read() as c:
             row = c.execute(sql, params).fetchone()
@@ -1127,13 +1134,30 @@ class AggregateRepository:
         de pandas (empates → primera por orden alfabético) e ignora NULLs.
         """
         where, params = self._organos_where(filters, q_folded)
+        # C1.2 — lectura dual: se agrupa por `organo_id` cuando el maestro lo
+        # resolvió y por nombre plegado cuando no. Antes se agrupaba por el
+        # texto crudo, así que «Ayuntamiento de Madrid» y «AYUNTAMIENTO DE
+        # MADRID» eran dos órganos con dos historiales.
+        #
+        # El `WHERE` va en una subconsulta y no en el `JOIN` porque
+        # `_build_where` emite predicados **sin alias**, y `organos` también
+        # tiene una columna `ccaa`: unirlas al mismo nivel haría ambiguo cada
+        # filtro por comunidad. La subconsulta conserva el contrato del builder
+        # sin tocarlo.
+        clave = clave_organo_sql("f")
+        nombre = nombre_organo_sql("f", "o")
         sql = (
-            "SELECT organo_contratacion, COUNT(*) AS count, "
-            "       COALESCE(SUM(importe), 0) AS importe, "
-            "       mode() WITHIN GROUP (ORDER BY ccaa) AS ccaa_mode "
-            "FROM licitaciones "
-            "WHERE " + where + " AND organo_contratacion IS NOT NULL "
-            "GROUP BY organo_contratacion ORDER BY count DESC, organo_contratacion LIMIT %s"
+            f"SELECT {nombre} AS organo_contratacion, COUNT(*) AS count, "
+            "       COALESCE(SUM(f.importe), 0) AS importe, "
+            "       mode() WITHIN GROUP (ORDER BY f.ccaa) AS ccaa_mode, "
+            "       MAX(o.organo_id) AS organo_id, "
+            "       MAX(o.dir3) AS dir3, "
+            "       MAX(o.url_perfil) AS url_perfil "
+            "FROM (SELECT * FROM licitaciones WHERE " + where + ") f "
+            "LEFT JOIN organos o ON o.organo_id = f.organo_id "
+            "WHERE f.organo_contratacion IS NOT NULL "
+            f"GROUP BY {clave}, {nombre} "
+            f"ORDER BY count DESC, {nombre} LIMIT %s"
         )
         with connect_read() as c:
             return rows_to_dicts(c.execute(sql, [*params, limit]))

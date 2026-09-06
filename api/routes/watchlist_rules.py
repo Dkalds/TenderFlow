@@ -172,27 +172,29 @@ async def post_rule(
     organization_id = ctx["organization_id"]
 
     ambito = idem_scope("watchlist_rules", user_key=user_key, organization_id=organization_id)
-    cacheada = await run_db(cached_response, idempotency_key, ambito)
-    if cacheada is not None:
-        return CreatedId(**cacheada)
+    user_id = int(ctx["user_id"])
 
-    def _create() -> int:
+    def _create() -> dict[str, int]:
+        """Clave, alta de la regla y guardado, en UN salto al threadpool."""
+        cacheada = cached_response(idempotency_key, ambito)
+        if cacheada is not None:
+            return {"id": int(cacheada["id"])}
         rule_id = create_rule(
             user_key,
             rule,
-            user_id=int(ctx["user_id"]),
+            user_id=user_id,
             organization_id=organization_id,
             visibility=body.visibility,
         )
         if email is not None:
             set_rule_email(user_key, rule_id, email)
-        return rule_id
+        payload = CreatedId(id=rule_id).model_dump(mode="json")
+        store_response(idempotency_key, ambito, payload)
+        return payload
 
-    rule_id = await run_db(_create)
-    log.info("watchlist_rule_created", rule_id=rule_id, has_email=email is not None)
-    respuesta = CreatedId(id=rule_id)
-    await run_db(store_response, idempotency_key, ambito, respuesta.model_dump(mode="json"))
-    return respuesta
+    creado = await run_db(_create)
+    log.info("watchlist_rule_created", rule_id=creado["id"], has_email=email is not None)
+    return CreatedId(**creado)
 
 
 @router.put("/{rule_id}", summary="Actualizar una regla propia")

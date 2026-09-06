@@ -204,6 +204,12 @@ class Licitacion:
     # Fuente de ingesta (ADR-009): 'placsp', 'ted', 'pscp_cat'… Las fuentes
     # nuevas namespacean ademas su id_externo como "{fuente}:{id_natural}".
     fuente: str = "placsp"
+    #: Código DIR3 del órgano, **parse-only** (C1.2). No es columna de
+    #: `licitaciones`: el DIR3 vive en el maestro `organos` (v113), que es
+    #: donde identifica a la entidad. Viaja aquí para que la resolución del
+    #: órgano lo tenga sin volver a abrir el XML, igual que
+    #: `Adjudicacion.lote_numero_raw`.
+    organo_dir3: str | None = None
     fecha_extraccion: str = field(default_factory=now_utc_iso)
 
 
@@ -232,7 +238,11 @@ class DocumentoReferencia:
 # Fragmentos SQL pre-computados (evitan recálculo por fila)
 # ---------------------------------------------------------------------------
 
-_LIC_KEYS = tuple(f.name for f in fields(Licitacion))
+# `organo_dir3` es parse-only (ver su docstring): nunca es columna de
+# `licitaciones`, así que se excluye de las columnas del INSERT. Mismo
+# patrón que `lote_numero_raw` en `Adjudicacion`.
+_LIC_PARSE_ONLY_FIELDS = frozenset({"organo_dir3"})
+_LIC_KEYS = tuple(f.name for f in fields(Licitacion) if f.name not in _LIC_PARSE_ONLY_FIELDS)
 _LIC_COLS = ", ".join(_LIC_KEYS)
 _LIC_PLACEHOLDERS = ", ".join("%s" for _ in _LIC_KEYS)
 

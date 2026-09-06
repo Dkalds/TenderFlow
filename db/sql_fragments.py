@@ -832,3 +832,33 @@ def clave_republicacion(
     if componentes is None:
         return None
     return SEPARADOR_REPUBLICACION.join(componentes)
+
+
+def clave_organo_sql(alias: str = "f") -> str:
+    """Clave de agrupación de órgano, con lectura dual (C1.2, ADR-032 §C).
+
+    ``organo_id`` cuando el maestro lo resolvió; el nombre plegado cuando no.
+
+    La lectura dual **no es transitoria por comodidad**: el backfill no puede
+    llegar al 100 % —hay fuentes que publican el órgano de formas que no
+    resuelven, y expedientes antiguos sin nombre utilizable— y un expediente
+    cuyo órgano no resuelve sigue siendo un expediente válido. Agrupar solo por
+    `organo_id` lo dejaría fuera de la analítica; agrupar solo por texto es el
+    defecto que C1.2 vino a arreglar.
+
+    El prefijo (`id:` / `txt:`) evita que un `organo_id` de valor 42 colisione
+    con un órgano cuyo nombre plegado sea literalmente "42".
+    """
+    return (
+        f"COALESCE('id:' || {alias}.organo_id::text, "
+        f"'txt:' || lower(btrim({alias}.organo_contratacion)))"
+    )
+
+
+def nombre_organo_sql(alias_licitaciones: str = "f", alias_maestro: str = "o") -> str:
+    """Nombre a mostrar: el canónico del maestro, o la grafía de la fila.
+
+    Preferir el canónico es lo que hace que el ranking deje de tener dos filas
+    para «Ayuntamiento de Madrid» y «AYUNTAMIENTO DE MADRID».
+    """
+    return f"COALESCE({alias_maestro}.nombre_canonico, {alias_licitaciones}.organo_contratacion)"

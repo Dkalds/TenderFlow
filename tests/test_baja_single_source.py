@@ -136,9 +136,19 @@ def test_bajas_py_uses_the_shared_fragment() -> None:
 
 
 def test_pricing_repository_uses_effective_budget() -> None:
-    """El repositorio de pricing compara contra el presupuesto del lote, no
-    del expediente completo -- ver docstring del módulo."""
+    """El repositorio de pricing compara contra el presupuesto del LOTE.
+
+    Desde C1.1 (ADR-032) el `COALESCE` lleva un término más en medio: la base
+    sin IVA declarada. El orden es lo que importa y por eso se comprueba
+    posicionalmente —lote, base declarada, importe histórico— y no como una
+    cadena literal: el lote sigue mandando, y el `importe` crudo sigue siendo el
+    último recurso.
+    """
     text = (_REPO_ROOT / "db/repositories/pricing.py").read_text(encoding="utf-8")
-    assert "COALESCE(lo.importe, l.importe)" in text
+    base = "COALESCE(lo.importe, l.importe_base_sin_iva, l.importe)"
+    assert base in text, "el presupuesto efectivo dejó de preferir el lote"
+    # Y lo que se sabe que lleva IVA queda fuera de la distribución de bajas:
+    # sin esto, una baja del 21 % podía ser exactamente el impuesto.
+    assert "importe_tipo" in text
     for pattern in _BROKEN_PATTERNS:
         assert not pattern.search(text)

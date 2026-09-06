@@ -98,22 +98,30 @@ async def post_item(
         user_key=_user_key(ctx),
         organization_id=ctx.get("organization_id"),
     )
-    cacheada = await run_db(cached_response, idempotency_key, ambito)
-    if cacheada is not None:
-        return WatchlistFavoriteCreated(**cacheada)
+    user_key = _user_key(ctx)
+    user_id = _user_id(ctx)
+    organization_id = ctx["organization_id"]
 
-    item = await run_db(
-        _repo.add_item,
-        _user_key(ctx),
-        _user_id(ctx),
-        body.id_externo,
-        ctx["organization_id"],
-        body.visibility,
-    )
+    def _trabajo() -> dict[str, Any]:
+        """Comprobar la clave, escribir y guardarla, en UN salto al threadpool.
+
+        Tres `await run_db` seguidos son tres hops del event loop y tres
+        conexiones distintas; `tests/test_async_handlers_no_blocking_io.py` lo
+        prohíbe por lo primero, y lo segundo importa igual: entre la lectura de
+        la clave y su escritura no debe haber una ventana más larga que la
+        necesaria.
+        """
+        cacheada = cached_response(idempotency_key, ambito)
+        if cacheada is not None:
+            return cacheada
+        item = _repo.add_item(user_key, user_id, body.id_externo, organization_id, body.visibility)
+        respuesta = WatchlistFavoriteCreated(**item).model_dump(mode="json")
+        store_response(idempotency_key, ambito, respuesta)
+        return respuesta
+
+    creado = await run_db(_trabajo)
     log.info("watchlist_item_created", id_externo=body.id_externo)
-    respuesta = WatchlistFavoriteCreated(**item)
-    await run_db(store_response, idempotency_key, ambito, respuesta.model_dump(mode="json"))
-    return respuesta
+    return WatchlistFavoriteCreated(**creado)
 
 
 @router.delete(

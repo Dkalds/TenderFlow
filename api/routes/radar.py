@@ -110,23 +110,23 @@ async def post_dismissal(
     ctx: dict[str, Any] = Depends(require_any_auth),
 ) -> RadarDismissalsResult:
     ambito = idem_scope("radar_dismissals", user_key=_user_key(ctx))
-    cacheada = await run_db(cached_response, idempotency_key, ambito)
-    if cacheada is not None:
-        return RadarDismissalsResult(**cacheada)
+    user_key = _user_key(ctx)
 
-    await run_db(
-        radar_dismissals.add,
-        _user_key(ctx),
-        body.id_externo,
-        score=body.score,
-        banda=body.banda,
-    )
+    def _trabajo() -> dict[str, Any]:
+        """Clave, descarte y lectura del listado, en UN salto al threadpool."""
+        cacheada = cached_response(idempotency_key, ambito)
+        if cacheada is not None:
+            return cacheada
+        radar_dismissals.add(user_key, body.id_externo, score=body.score, banda=body.banda)
+        ids = radar_dismissals.list_ids(user_key)
+        respuesta = RadarDismissalsResult(ids=ids).model_dump(mode="json")
+        store_response(idempotency_key, ambito, respuesta)
+        return respuesta
+
+    resultado = await run_db(_trabajo)
     log.info("radar_dismissal_created", id_externo=body.id_externo)
-    _invalidar_ranking(_user_key(ctx))
-    ids = await run_db(radar_dismissals.list_ids, _user_key(ctx))
-    respuesta = RadarDismissalsResult(ids=ids)
-    await run_db(store_response, idempotency_key, ambito, respuesta.model_dump(mode="json"))
-    return respuesta
+    _invalidar_ranking(user_key)
+    return RadarDismissalsResult(**resultado)
 
 
 @router.delete(

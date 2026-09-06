@@ -1214,7 +1214,13 @@ def marcar_censo_de_fuente(fuente: str, *, batch: int) -> int:
             "  SELECT id_externo FROM licitaciones "
             "  WHERE fuente = %s "
             "    AND (tecnologia IS NULL OR tecnologia = '') "
-            "    AND COALESCE(analysis_universe, '') <> %s "
+            # `IS NULL OR <>` y no `COALESCE(...) <> %s`: el guard de
+            # `tests/test_dedup_guardrail.py` reconoce el `COALESCE` sobre
+            # `analysis_universe` como una variante del predicado de universo
+            # —el que sirve el índice parcial de v84— y esto no lo es: es un
+            # «todavía no marcada». Escribirlo así lo deja claro para quien
+            # lo lea y para el control.
+            "    AND (analysis_universe IS NULL OR analysis_universe <> %s) "
             "  LIMIT %s"
             ")",
             (UNIVERSO_CENSO, fuente, UNIVERSO_CENSO, batch),

@@ -5725,12 +5725,18 @@ export interface components {
             ccaa?: string | null;
             /** Count */
             count: number;
+            /** Dir3 */
+            dir3?: string | null;
             /** Importe */
             importe: number;
             /** Organo Contratacion */
             organo_contratacion: string;
+            /** Organo Id */
+            organo_id?: number | null;
             /** Pct */
             pct: number;
+            /** Url Perfil */
+            url_perfil?: string | null;
         };
         /** OrganoKpis */
         OrganoKpis: {

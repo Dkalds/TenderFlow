@@ -478,10 +478,6 @@ async def post_watchlist(
         user_key=_user_key(ctx),
         organization_id=ctx.get("organization_id"),
     )
-    cacheada = await run_db(cached_response, idempotency_key, ambito)
-    if cacheada is not None:
-        return WatchlistEmpresaStatus(**cacheada)
-
     entry = WatchlistEmpresaEntry(
         user_key=_user_key(ctx),
         empresa_id=body.empresa_id,
@@ -490,21 +486,32 @@ async def post_watchlist(
         organization_id=ctx["organization_id"],
         visibility=body.visibility,
     )
+
+    def _trabajo() -> dict[str, Any]:
+        """Clave, alta y guardado de la clave, en UN salto al threadpool."""
+        cacheada = cached_response(idempotency_key, ambito)
+        if cacheada is not None:
+            return cacheada
+        entry_id = add_entry(entry)
+        if entry_id is None:
+            respuesta = WatchlistEmpresaStatus(status="ya_existia", empresa_id=body.empresa_id)
+        else:
+            respuesta = WatchlistEmpresaStatus(status="ok", id=entry_id, empresa_id=body.empresa_id)
+        payload = respuesta.model_dump(mode="json")
+        store_response(idempotency_key, ambito, payload)
+        return payload
+
     try:
-        entry_id = await run_db(add_entry, entry)
+        resultado = await run_db(_trabajo)
     except Exception as exc:
         # FK violada → empresa inexistente
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Empresa no encontrada en el maestro.",
         ) from exc
-    if entry_id is None:
-        respuesta = WatchlistEmpresaStatus(status="ya_existia", empresa_id=body.empresa_id)
-    else:
+    if resultado.get("id") is not None:
         log.info("watchlist_empresa_added", empresa_id=body.empresa_id)
-        respuesta = WatchlistEmpresaStatus(status="ok", id=entry_id, empresa_id=body.empresa_id)
-    await run_db(store_response, idempotency_key, ambito, respuesta.model_dump(mode="json"))
-    return respuesta
+    return WatchlistEmpresaStatus(**resultado)
 
 
 @router.delete("/watchlist/{empresa_id}", summary="Dejar de vigilar una empresa")

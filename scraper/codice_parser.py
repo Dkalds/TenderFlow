@@ -285,6 +285,42 @@ def _importes_del_proyecto(entry: Any, project_xp: str) -> ImportesProyecto:
     return ImportesProyecto(None, None, None, valor_estimado, None)
 
 
+#: Un código DIR3 es una o dos letras seguidas de 7-8 dígitos: `E00003801`,
+#: `L01280796`, `EA0003888`. El regex es la red para cuando CODICE publica el
+#: identificador sin `schemeName`, que pasa.
+_DIR3_RE = re.compile(r"^[A-Z]{1,2}[0-9]{7,8}$")
+
+
+def _dir3_del_organo(entry: Any, cfs: str) -> str | None:
+    """Código DIR3 del órgano de contratación, si CODICE lo publica (C1.2).
+
+    DIR3 es el identificador oficial del Inventario de Unidades Orgánicas. Con
+    él, dos grafías del mismo órgano son el mismo órgano sin discusión; sin él
+    hay que resolver por nombre normalizado y aceptar que algunas fusiones las
+    decide un humano.
+
+    Se prefiere el identificador que declara su esquema (`schemeName` con
+    "DIR3"); si no lo hay, se acepta cualquiera cuya **forma** sea la de un
+    DIR3. Lo que no se hace es tomar el primer `PartyIdentification` que
+    aparezca: en `LocatedContractingParty` puede venir un NIF, y confundir un
+    NIF con un DIR3 crearía órganos fantasma con clave única.
+    """
+    base = f"{cfs}/cacext:LocatedContractingParty/cac:Party/cac:PartyIdentification"
+    nodos = entry.xpath(f"{base}/cbc:ID", namespaces=NS)
+    con_esquema: str | None = None
+    por_forma: str | None = None
+    for nodo in nodos:
+        valor = (nodo.text or "").strip().upper()
+        if not valor:
+            continue
+        esquema = (nodo.get("schemeName") or "").upper()
+        if "DIR3" in esquema:
+            con_esquema = con_esquema or valor
+        elif _DIR3_RE.match(valor):
+            por_forma = por_forma or valor
+    return con_esquema or por_forma
+
+
 def _tender_deadline(root: Any, tendering_process_prefix: str) -> str | None:
     """Extrae el fin del plazo de presentación de ofertas.
 
@@ -528,6 +564,7 @@ def parse_entry(entry: Any) -> Licitacion | None:
         entry,
         f"{cfs}/cacext:LocatedContractingParty/cac:Party/cac:PartyName/cbc:Name",
     )
+    organo_dir3 = _dir3_del_organo(entry, cfs)
 
     project_xp = f"{cfs}/cac:ProcurementProject"
     nombre_proyecto = _text(entry, f"{project_xp}/cbc:Name")
@@ -606,6 +643,7 @@ def parse_entry(entry: Any) -> Licitacion | None:
         titulo=titulo or "(sin título)",
         descripcion=summary,
         organo_contratacion=organo_codice or s.get("organo_contratacion"),
+        organo_dir3=organo_dir3,
         importe=importe if importe is not None else s.get("importe"),
         importe_base_sin_iva=importes.base_sin_iva,
         importe_con_iva=importes.con_iva,
@@ -685,6 +723,7 @@ def parse_entry_unfiltered(entry: Any) -> Licitacion | None:
         entry,
         f"{cfs}/cacext:LocatedContractingParty/cac:Party/cac:PartyName/cbc:Name",
     )
+    organo_dir3 = _dir3_del_organo(entry, cfs)
 
     project_xp = f"{cfs}/cac:ProcurementProject"
     nombre_proyecto = _text(entry, f"{project_xp}/cbc:Name")
@@ -734,6 +773,7 @@ def parse_entry_unfiltered(entry: Any) -> Licitacion | None:
         titulo=titulo or "(sin título)",
         descripcion=summary,
         organo_contratacion=organo_codice or s.get("organo_contratacion"),
+        organo_dir3=organo_dir3,
         importe=importe if importe is not None else s.get("importe"),
         importe_base_sin_iva=importes.base_sin_iva,
         importe_con_iva=importes.con_iva,
