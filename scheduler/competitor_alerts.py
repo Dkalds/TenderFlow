@@ -153,3 +153,41 @@ def check_and_notify() -> int:
     if total_alertas:
         log.info("competitor_alerts_sent", alertas=total_alertas)
     return total_alertas
+
+
+def _en_mi_segmento(adjudicacion: dict[str, Any]) -> list[tuple[int, dict[str, Any]]]:
+    """F3.4 — qué organizaciones tienen esta adjudicación en su terreno.
+
+    Devuelve `(organization_id, motivo)`. La alerta de competidor sin este
+    cruce es un boletín de todo lo que hace una empresa: quien vigila a tres
+    grandes recibe veinte adjudicaciones al día y ninguna le toca. Con él, el
+    aviso puede decir **por qué** le importa —«en un órgano que sigues», «en un
+    CPV donde tienes ofertas abiertas»—, que es lo que hace que se abra.
+    """
+    from db.repositories.cuentas import SegmentoRepository
+    from db.sql_fragments import plegar_organo
+
+    repo = SegmentoRepository()
+    organo_norm = plegar_organo(adjudicacion.get("organo_contratacion"))
+    cpv = adjudicacion.get("cpv")
+
+    hallazgos: list[tuple[int, dict[str, Any]]] = []
+    try:
+        candidatas = repo.organizaciones_activas()
+    except Exception as exc:
+        log.warning("competitor_segmento_orgs_error", error=str(exc)[:200])
+        return []
+
+    for organization_id in candidatas:
+        try:
+            motivo = repo.es_mi_segmento(organization_id, organo_norm=organo_norm, cpv=cpv)
+        except Exception as exc:
+            log.warning(
+                "competitor_segmento_error",
+                organization_id=organization_id,
+                error=str(exc)[:200],
+            )
+            continue
+        if motivo is not None:
+            hallazgos.append((organization_id, motivo))
+    return hallazgos

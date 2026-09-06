@@ -11,8 +11,11 @@ from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
+from api.concurrency import run_db
+from api.routes.dual_auth import require_any_auth
 from api.routes.dual_auth import require_any_auth as require_analytics_auth
 from api.tenancy import require_organization
+from db.notifications import get_last_seen_ts
 from observability.logging import get_logger
 from services.analytics.clusters import ClustersFilters, ClustersResult, get_clusters
 from services.analytics.compare import CompareFilters, CompareResult, get_compare_periods
@@ -73,6 +76,7 @@ from services.analytics.trends import (
 )
 from services.analytics.trends_cpv import TrendsCpvFilters, TrendsCpvResult, get_trends_cpv
 from services.analytics.utes import UTEFilters, UTEResult, get_utes
+from services.novedades import NovedadesDesdeUltimaVisita, desde_ultima_visita
 from services.source_health import SourceFreshnessResult, get_source_freshness
 from shared.cache import cache_response
 
@@ -444,6 +448,39 @@ def resumen_novedades(
 ) -> ResumenNovedadesResult:
     """New licitaciones since user's last visit."""
     return get_resumen_novedades(_user["user_id"])
+
+
+@router.get(
+    "/resumen/desde-mi-ultima-visita",
+    summary="Diff personal: qué cambió en lo que sigues y en el pipeline de tu equipo",
+)
+async def resumen_desde_ultima_visita(
+    organization_id: int | None = Query(default=None, ge=1),
+    limit: int = Query(40, ge=1, le=100),
+    ctx: dict[str, Any] = Depends(require_any_auth),
+) -> NovedadesDesdeUltimaVisita:
+    """F5.4 — lo que ha pasado desde la última vez.
+
+    **No se cachea.** Es un diff por usuario y por marca temporal: dos
+    peticiones del mismo usuario con un minuto de diferencia son dos
+    respuestas distintas, y cachearlas sería enseñarle novedades que ya vio o
+    esconderle las que acaban de llegar.
+
+    Cero ítems devuelve la banda igualmente, con `items` vacío: la UI dice
+    «sin novedades desde el jueves», que confirma que el producto estaba
+    mirando. Una banda ausente se lee como que la pieza está rota.
+    """
+
+    def _trabajo() -> NovedadesDesdeUltimaVisita:
+        user_key = str(ctx["user_key"])
+        return desde_ultima_visita(
+            user_key,
+            last_seen=get_last_seen_ts(user_key),
+            organization_id=organization_id,
+            limit=limit,
+        )
+
+    return await run_db(_trabajo)
 
 
 @router.get("/resumen/hoy", response_model=ResumenHoyResult)

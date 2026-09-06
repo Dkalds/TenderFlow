@@ -15,7 +15,12 @@ from db.database import connect, connect_read, now_utc_iso
 from db.repositories.base import rows_to_dicts
 from db.sql_fragments import plegar_organo
 
-__all__ = ["CuentasRepository", "EtiquetasRepository", "normalizar_nombre"]
+__all__ = [
+    "CuentasRepository",
+    "EtiquetasRepository",
+    "SegmentoRepository",
+    "normalizar_nombre",
+]
 
 
 def normalizar_nombre(valor: str) -> str:
@@ -260,3 +265,63 @@ class EtiquetasRepository:
                 (organization_id, etiqueta_id, objeto_tipo),
             )
             return [str(row[0]) for row in cur.fetchall()]
+
+
+class SegmentoRepository:
+    """Cruce de una adjudicación con lo que una organización tiene abierto.
+
+    Es lo que convierte «un competidor vigilado ha ganado algo» en «ha ganado
+    **en tu terreno**» (F3.4): sin el cruce, la alerta de competidor es un
+    boletín de todo lo que hace una empresa, y quien vigila a tres grandes
+    recibe veinte adjudicaciones al día que no le tocan.
+    """
+
+    def es_mi_segmento(
+        self, organization_id: int, *, organo_norm: str | None, cpv: str | None
+    ) -> dict[str, Any] | None:
+        """Por qué esta adjudicación toca a esta organización, o ``None``.
+
+        Devuelve el **motivo** —cuenta objetivo seguida, u oportunidad abierta
+        en el mismo CPV— y no un booleano, porque el aviso tiene que poder
+        decirlo: «ha ganado en un órgano que sigues» y «ha ganado en un CPV
+        donde tienes tres ofertas abiertas» piden reacciones distintas.
+
+        Se comprueban las dos cosas en una consulta con ``UNION ALL`` y
+        ``LIMIT 1``: basta con una razón, y dos consultas por adjudicación
+        multiplicarían el coste del job por el número de organizaciones.
+        """
+        if not organo_norm and not cpv:
+            return None
+        with connect_read() as conn:
+            cur = conn.execute(
+                "SELECT 'cuenta' AS motivo, organo_nombre AS referencia "
+                "FROM cuentas_objetivo "
+                "WHERE organization_id = %s AND organo_norm = %s "
+                "UNION ALL "
+                "SELECT 'oportunidad_abierta', l.titulo "
+                "FROM pursuits p "
+                "JOIN licitaciones l ON l.id_externo = p.licitacion_id "
+                "WHERE p.organization_id = %s "
+                "  AND p.status NOT IN ('won', 'lost', 'withdrawn') "
+                "  AND l.cpv IS NOT NULL AND %s IS NOT NULL "
+                "  AND substr(l.cpv, 1, 4) = substr(%s, 1, 4) "
+                "LIMIT 1",
+                (organization_id, organo_norm or "", organization_id, cpv, cpv),
+            )
+            filas = rows_to_dicts(cur)
+        return filas[0] if filas else None
+
+    def organizaciones_activas(self) -> list[int]:
+        """Organizaciones con algo que vigilar: una cuenta o una oferta abierta.
+
+        Acota el bucle del job a las que pueden recibir el aviso, en vez de
+        recorrer todas las organizaciones para descartar la mayoría.
+        """
+        with connect_read() as conn:
+            cur = conn.execute(
+                "SELECT DISTINCT organization_id FROM cuentas_objetivo "
+                "UNION "
+                "SELECT DISTINCT organization_id FROM pursuits "
+                "WHERE status NOT IN ('won', 'lost', 'withdrawn')"
+            )
+            return [int(row[0]) for row in cur.fetchall()]

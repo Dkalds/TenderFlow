@@ -443,6 +443,35 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/analytics/resumen/desde-mi-ultima-visita": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Diff personal: qué cambió en lo que sigues y en el pipeline de tu equipo
+         * @description F5.4 — lo que ha pasado desde la última vez.
+         *
+         *     **No se cachea.** Es un diff por usuario y por marca temporal: dos
+         *     peticiones del mismo usuario con un minuto de diferencia son dos
+         *     respuestas distintas, y cachearlas sería enseñarle novedades que ya vio o
+         *     esconderle las que acaban de llegar.
+         *
+         *     Cero ítems devuelve la banda igualmente, con `items` vacío: la UI dice
+         *     «sin novedades desde el jueves», que confirma que el producto estaba
+         *     mirando. Una banda ausente se lee como que la pieza está rota.
+         */
+        get: operations["resumen_desde_ultima_visita_api_v1_analytics_resumen_desde_mi_ultima_visita_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/analytics/resumen/hoy": {
         parameters: {
             query?: never;
@@ -6162,6 +6191,41 @@ export interface components {
             unread_count: number;
         };
         /**
+         * Novedad
+         * @description Una línea del diff personal.
+         */
+        Novedad: {
+            /** Cuando */
+            cuando: string;
+            /** Detalle */
+            detalle?: string | null;
+            /** Licitacion Id */
+            licitacion_id?: string | null;
+            /** Subtipo */
+            subtipo: string;
+            /** Titulo */
+            titulo: string;
+        };
+        /**
+         * NovedadesDesdeUltimaVisita
+         * @description El diff personal del Resumen.
+         */
+        NovedadesDesdeUltimaVisita: {
+            /** Desde */
+            desde: string;
+            /** Items */
+            items?: components["schemas"]["Novedad"][];
+            /** Por Subtipo */
+            por_subtipo?: {
+                [key: string]: number;
+            };
+            /**
+             * Ventana Recortada
+             * @default false
+             */
+            ventana_recortada: boolean;
+        };
+        /**
          * OAuthAuthorizeResult
          * @description URL de autorización de Google para que el SPA redirija.
          */
@@ -10643,6 +10707,42 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["QualityResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    resumen_desde_ultima_visita_api_v1_analytics_resumen_desde_mi_ultima_visita_get: {
+        parameters: {
+            query?: {
+                organization_id?: number | null;
+                limit?: number;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NovedadesDesdeUltimaVisita"];
                 };
             };
             /** @description Validation Error */
