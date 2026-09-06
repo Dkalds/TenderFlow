@@ -892,5 +892,5 @@ hecho.
   preferencias y demanda medida.
 - **Cortes analíticos nuevos en Mercado.** Los dos espacios nuevos (Cuentas,
   Dirección) absorben vistas existentes y añaden acción, no un corte más.
-- **Scraping de portales sin datos abiertos.** La cobertura la decide D16 del
-  complementario; este plan no abre fuentes.
+- **Scraping de portales sin datos abiertos.** La cobertura la decide D16 de
+  v2; este plan no abre fuentes.
