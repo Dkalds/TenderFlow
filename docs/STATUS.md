@@ -6,7 +6,7 @@ tags: [status, generado]
 
 <!-- generado por scripts/gen_status.py — no editar a mano -->
 
-Generado: 2026-09-04
+Generado: 2026-09-06
 
 ## Paridad de planos de orquestación (ADR-012)
 
@@ -67,7 +67,7 @@ Generado: 2026-09-04
 
 ## Superficie de la API
 
-**173 endpoints** expuestos.
+**194 endpoints** expuestos.
 
 <details><summary>Ver listado</summary>
 
@@ -98,6 +98,7 @@ Generado: 2026-09-04
 | GET | `/api/v1/analytics/pipeline` |
 | GET | `/api/v1/analytics/proyectos-modulos` |
 | GET | `/api/v1/analytics/quality` |
+| GET | `/api/v1/analytics/resumen/desde-mi-ultima-visita` |
 | GET | `/api/v1/analytics/resumen/hoy` |
 | GET | `/api/v1/analytics/resumen/novedades` |
 | GET | `/api/v1/analytics/resumen/sankey` |
@@ -132,16 +133,26 @@ Generado: 2026-09-04
 | GET | `/api/v1/competitive/empresas/{empresa_id}/adjudicaciones` |
 | GET | `/api/v1/competitive/empresas/{empresa_id}/perfil` |
 | GET | `/api/v1/competitive/hhi` |
+| GET | `/api/v1/competitive/partners` |
 | GET | `/api/v1/competitive/renovaciones` |
 | GET | `/api/v1/competitive/renovaciones/resumen` |
 | GET | `/api/v1/competitive/watchlist` |
 | POST | `/api/v1/competitive/watchlist` |
 | DELETE | `/api/v1/competitive/watchlist/{empresa_id}` |
+| GET | `/api/v1/cuentas` |
+| POST | `/api/v1/cuentas` |
+| DELETE | `/api/v1/cuentas/{cuenta_id}` |
 | GET | `/api/v1/empresas` |
 | GET | `/api/v1/empresas/reviews` |
 | POST | `/api/v1/empresas/reviews/{review_id}` |
 | GET | `/api/v1/empresas/stats` |
 | GET | `/api/v1/empresas/{empresa_id}` |
+| GET | `/api/v1/etiquetas` |
+| POST | `/api/v1/etiquetas` |
+| POST | `/api/v1/etiquetas/aplicar` |
+| POST | `/api/v1/etiquetas/por-objeto` |
+| POST | `/api/v1/etiquetas/quitar` |
+| DELETE | `/api/v1/etiquetas/{etiqueta_id}` |
 | GET | `/api/v1/eventos` |
 | GET | `/api/v1/exports/calendario.ics` |
 | GET | `/api/v1/exports/calendario/enlace` |
@@ -157,6 +168,7 @@ Generado: 2026-09-04
 | GET | `/api/v1/health/ready` |
 | GET | `/api/v1/licitaciones` |
 | POST | `/api/v1/licitaciones/bulk-get` |
+| POST | `/api/v1/licitaciones/comparar` |
 | GET | `/api/v1/licitaciones/cursor` |
 | POST | `/api/v1/licitaciones/search` |
 | GET | `/api/v1/licitaciones/stream` |
@@ -167,10 +179,13 @@ Generado: 2026-09-04
 | GET | `/api/v1/licitaciones/{id_externo:path}/ficha-pliego/estado` |
 | POST | `/api/v1/licitaciones/{id_externo:path}/ficha-pliego/extract` |
 | POST | `/api/v1/licitaciones/{id_externo:path}/ficha-pliego/extract-async` |
+| POST | `/api/v1/licitaciones/{id_externo:path}/reportes` |
 | POST | `/api/v1/licitaciones/{id_externo:path}/resumen` |
+| GET | `/api/v1/licitaciones/{id_externo:path}/simulador` |
 | GET | `/api/v1/licitaciones/{id_externo:path}/tech-scores` |
 | GET | `/api/v1/licitaciones/{id_externo:path}/tecnologias` |
 | GET | `/api/v1/licitaciones/{id_externo}` |
+| GET | `/api/v1/licitaciones/{id_externo}/documentos/{documento_id}/paginas/{page_number}` |
 | GET | `/api/v1/licitaciones/{licitacion_id:path}/escenarios-precio` |
 | GET | `/api/v1/licitaciones/{licitacion_id:path}/eventos` |
 | GET | `/api/v1/licitaciones/{licitacion_id:path}/prediccion-baja` |
@@ -207,12 +222,17 @@ Generado: 2026-09-04
 | GET | `/api/v1/pursuits` |
 | POST | `/api/v1/pursuits` |
 | GET | `/api/v1/pursuits/agenda` |
+| GET | `/api/v1/pursuits/cartera` |
+| GET | `/api/v1/pursuits/direccion` |
 | GET | `/api/v1/pursuits/metrics` |
 | GET | `/api/v1/pursuits/{pursuit_id}` |
 | PATCH | `/api/v1/pursuits/{pursuit_id}` |
 | GET | `/api/v1/pursuits/{pursuit_id}/comments` |
 | POST | `/api/v1/pursuits/{pursuit_id}/comments` |
 | DELETE | `/api/v1/pursuits/{pursuit_id}/comments/{comment_id}` |
+| GET | `/api/v1/pursuits/{pursuit_id}/ficha.pdf` |
+| GET | `/api/v1/pursuits/{pursuit_id}/kit` |
+| POST | `/api/v1/pursuits/{pursuit_id}/kit` |
 | GET | `/api/v1/radar/dismissals` |
 | POST | `/api/v1/radar/dismissals` |
 | DELETE | `/api/v1/radar/dismissals/{id_externo:path}` |
@@ -220,6 +240,7 @@ Generado: 2026-09-04
 | GET | `/api/v1/saved-filters` |
 | POST | `/api/v1/saved-filters` |
 | DELETE | `/api/v1/saved-filters/{filter_id}` |
+| GET | `/api/v1/search/global` |
 | POST | `/api/v1/search/semantic` |
 | GET | `/api/v1/security/audit/verify` |
 | POST | `/api/v1/security/client-error` |

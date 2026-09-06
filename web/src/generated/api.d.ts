@@ -2809,12 +2809,14 @@ export interface paths {
          * Comunidades y códigos CPV con página de índice
          * @description Alimenta las páginas `/licitaciones` y `/cpv`.
          *
-         *     Ambas listas van filtradas por volumen mínimo en el repositorio: un hub con
-         *     dos licitaciones no es una página, es contenido delgado.
+         *     Alimenta también `/licitaciones/organo/[slug]` desde F6.5.
          *
-         *     Va en un solo endpoint y no en dos porque sus dos consumidores —los índices
-         *     y los enlaces de la portada— quieren las dos listas a la vez, y así una
-         *     página de índice hace una llamada en vez de dos.
+         *     Las tres listas van filtradas por volumen mínimo en el repositorio: un hub
+         *     con dos licitaciones no es una página, es contenido delgado.
+         *
+         *     Va en un solo endpoint y no en tres porque sus consumidores —los índices y
+         *     los enlaces de la portada— quieren todas a la vez, y así una página de
+         *     índice hace una llamada en vez de tres.
          */
         get: operations["hubs_api_v1_publico_hubs_get"];
         put?: never;
@@ -5868,6 +5870,18 @@ export interface components {
             total: number;
         };
         /**
+         * HubOrgano
+         * @description Un órgano de contratación con página de índice propia (F6.5).
+         */
+        HubOrgano: {
+            /** Nombre */
+            nombre: string;
+            /** Slug */
+            slug: string;
+            /** Total */
+            total: number;
+        };
+        /**
          * Hubs
          * @description Índice de la superficie pública.
          */
@@ -5876,6 +5890,8 @@ export interface components {
             ccaa: components["schemas"]["HubCcaa"][];
             /** Cpv */
             cpv: components["schemas"]["HubCpv"][];
+            /** Organo */
+            organo?: components["schemas"]["HubOrgano"][];
         };
         /**
          * ImporteBox
@@ -15535,6 +15551,8 @@ export interface operations {
                 ccaa?: string | null;
                 /** @description Prefijo de código CPV */
                 cpv?: string | null;
+                /** @description Slug del órgano de contratación (F6.5) */
+                organo?: string | null;
                 limit?: number;
                 offset?: number;
             };

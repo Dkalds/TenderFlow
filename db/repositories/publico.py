@@ -49,6 +49,7 @@ from db.sql_fragments import (
     FOLD_SRC,
     exclude_duplicados_sql,
     fila_canonica_sql,
+    fold_expr,
     universo_tecnologico_sql,
 )
 
@@ -242,6 +243,35 @@ VISTA_CANONICAS = "licitaciones_canonicas"
 #: Slug de `l.ccaa` calculado en SQL, equivalente a `slugificar()` de
 #: `web/src/lib/slug.ts`. Las dos implementaciones tienen que coincidir o el
 #: enlace que genera el frontend apuntaría a un hub que no encuentra nada.
+def _organo_slug_sql(alias: str = "l") -> str:
+    """Slug del órgano de contratación, calculado en SQL.
+
+    Mismo tratamiento que el de CCAA y por el mismo motivo: el enlace que
+    genera el frontend lleva un slug, no el nombre. Si el hub comparara contra
+    el nombre crudo, una tilde o un espacio de más devolverían vacío sin que
+    fallara nada — que es exactamente el fallo que el slug de CCAA existe para
+    no repetir.
+
+    Se pliegan acentos, se pasa a minúsculas y se sustituye por guiones todo lo
+    que no sea alfanumérico, colapsando los guiones repetidos y recortando los
+    de los extremos.
+    """
+    # `coalesce` primero: un órgano NULL debe dar cadena vacía, no NULL —con
+    # NULL la comparación del filtro no sería falsa sino desconocida, y el hub
+    # devolvería vacío por una razón distinta de la que parece.
+    #
+    # Se usa `fold_expr` (el helper compartido de `db/sql_fragments.py`) en vez
+    # de repetir el `translate` inline como hace el slug de CCAA de aquí al
+    # lado: es la misma expresión, y tenerla una sola vez es lo que impide que
+    # dentro de un año pliegue distinto en dos sitios.
+    plegado = fold_expr(f"coalesce({alias}.organo_contratacion, '')")
+    return (
+        "trim(both '-' from "
+        f"regexp_replace(regexp_replace({plegado}, '[^a-z0-9]+', '-', 'g'), '-+', '-', 'g')"
+        ")"
+    )
+
+
 def _ccaa_slug_sql(alias: str = "l") -> str:
     """El slug, escrito para un alias concreto.
 
@@ -427,6 +457,7 @@ class PublicoRepository:
         *,
         ccaa_slug: str | None = None,
         cpv_prefijo: str | None = None,
+        organo_slug: str | None = None,
         limite: int = 50,
         desplazamiento: int = 0,
         conn: Any | None = None,
@@ -448,6 +479,20 @@ class PublicoRepository:
             # que ocurrir en Postgres o la paginación mentiría.
             condiciones.append("c.cpv LIKE %s")
             params.append(f"{cpv_prefijo}%")
+        if organo_slug:
+            # El slug del órgano, no su nombre: el enlace que genera el
+            # frontend lleva el slug, y comparar contra el nombre crudo haría
+            # que una tilde distinta devolviera un hub vacío sin que fallara
+            # nada (el mismo fallo que documenta `_ccaa_slug_sql`).
+            condiciones.append(f"{_organo_slug_sql('c')} = %s")
+            params.append(organo_slug)
+        if organo_slug:
+            # El slug del órgano, no su nombre: el enlace que genera el
+            # frontend lleva el slug, y comparar contra el nombre crudo haría
+            # que una tilde distinta devolviera un hub vacío sin que fallara
+            # nada (el mismo fallo que documenta `_ccaa_slug_sql`).
+            condiciones.append(f"{_organo_slug_sql('c')} = %s")
+            params.append(organo_slug)
 
         # La vista decide QUÉ filas se publican y `licitaciones` aporta el resto
         # de columnas. Los filtros y el orden van sobre `c` —no sobre `l`— para
@@ -476,6 +521,7 @@ class PublicoRepository:
         *,
         ccaa_slug: str | None = None,
         cpv_prefijo: str | None = None,
+        organo_slug: str | None = None,
         conn: Any | None = None,
     ) -> int:
         """Cuántos expedientes publicables hay, con los mismos filtros que ``listar``.
@@ -575,6 +621,32 @@ class PublicoRepository:
             "SELECT c.cpv AS codigo, COUNT(*) AS total "
             f"FROM {VISTA_CANONICAS} c WHERE c.cpv IS NOT NULL "
             f"AND c.cpv <> '' GROUP BY c.cpv HAVING COUNT(*) >= {_MIN_POR_HUB} "
+            "ORDER BY total DESC"
+        )
+
+        def _consultar(c: Any) -> list[dict[str, Any]]:
+            return rows_to_dicts(c.execute(sql))
+
+        if conn is not None:
+            return _consultar(conn)
+        with connect_read() as c:
+            return _consultar(c)
+
+    def hubs_organo(self, *, conn: Any | None = None) -> list[dict[str, Any]]:
+        """Órganos con volumen suficiente para tener página propia (F6.5).
+
+        Mismo umbral que los otros dos hubs. No expone nada nuevo: el nombre
+        del órgano ya viaja en cada ficha pública (`_COLS_PUBLICAS`), así que
+        agruparlo no amplía la superficie — que es lo que
+        `scripts/check_public_surface.py` comprueba.
+        """
+        slug = _organo_slug_sql("c")
+        sql = (
+            f"SELECT {slug} AS slug, max(c.organo_contratacion) AS nombre, "
+            "       COUNT(*) AS total "
+            f"FROM {VISTA_CANONICAS} c "
+            "WHERE c.organo_contratacion IS NOT NULL AND c.organo_contratacion <> '' "
+            f"GROUP BY slug HAVING COUNT(*) >= {_MIN_POR_HUB} "
             "ORDER BY total DESC"
         )
 
