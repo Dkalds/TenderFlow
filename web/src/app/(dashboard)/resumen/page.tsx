@@ -29,11 +29,15 @@ import { AtajosAnalisis } from "./_components/atajos-analisis";
  *    «Tu día» ocupa una línea vacía, así que cae igualmente en la primera
  *    pantalla, justo donde explica por qué esa línea está vacía.
  * 2. **Mercado abierto** — lo que exige mirar hoy en el corpus, con el destino
- *    real de cada tarjeta en su pie.
+ *    real de cada tarjeta en su pie. La banda no reparte el espacio a partes
+ *    iguales: lo que tiene plazo (la cola de cierre) ocupa dos tercios y trae
+ *    sus primeras filas, para que lo urgente se resuelva sin salir.
  * 3. **Contexto y salud competitiva** — la foto del ámbito y los indicadores de
- *    concentración, con los deltas entre meses cerrados.
+ *    concentración, con los deltas entre meses cerrados. Aquí baja «Activas»:
+ *    describe el ámbito, no pide nada para hoy.
  * 4. **Composición** — por estado y por órgano; pulsar un estado filtra.
- * 5. **Publicaciones** — la nube y la tabla, con el tope del endpoint declarado.
+ * 5. **Publicaciones** — novedades, los cortes del periodo y la tabla, con el
+ *    tope del endpoint declarado y las filas nuevas marcadas.
  * 6. **Movimientos** — qué contratos se han movido en la ventana.
  * 7. **Análisis completo** — los atajos, que arrastran el ámbito.
  *

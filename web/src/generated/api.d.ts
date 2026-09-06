@@ -6929,6 +6929,8 @@ export interface components {
              * @default 0
              */
             count: number;
+            /** Desde */
+            desde?: string | null;
             /** Sample */
             sample?: components["schemas"]["ResumenNovedadesSample"][];
         };

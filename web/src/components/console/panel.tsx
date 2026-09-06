@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { RotateCcw } from "lucide-react";
 import { cn, formatPercent } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -92,18 +93,36 @@ export function StatCell({
   value,
   hint,
   trend,
+  trendAlert,
   badge,
   loading,
   onClick,
+  href,
   accent,
 }: {
   label: string;
   value: React.ReactNode;
   hint?: React.ReactNode;
   trend?: number;
+  /**
+   * Sube el delta al cuerpo del valor y lo pinta en ámbar. Es para la celda que
+   * ya viene marcada como anómala: con el delta a 11 px, la desviación que la
+   * etiqueta anunciaba había que ir a buscarla — el ojo aterrizaba en el valor
+   * absoluto, que es justo el número que **no** ha cambiado. El signo y el
+   * color siguen saliendo del propio delta, así que una anomalía a la baja se
+   * lee roja igual que antes; lo único que cambia es el tamaño.
+   */
+  trendAlert?: boolean;
   badge?: React.ReactNode;
   loading?: boolean;
   onClick?: () => void;
+  /**
+   * Destino de la celda, cuando lo tiene. Ancla de verdad y no un `onClick` con
+   * `router.push`: la celda que lo estrena venía de ser una tarjeta enlazada, y
+   * degradarla a botón le habría quitado el clic-central, el «abrir en pestaña
+   * nueva» y el destino en la barra de estado — tres cosas que ya tenía.
+   */
+  href?: string;
   accent?: string;
 }) {
   const up = (trend ?? 0) >= 0;
@@ -128,8 +147,13 @@ export function StatCell({
           {trend != null && (
             <span
               className={cn(
-                "tf-tnum flex-none font-mono text-[11px] font-medium leading-none",
-                up ? "text-[hsl(var(--success))]" : "text-destructive",
+                "tf-tnum flex-none font-mono leading-none",
+                trendAlert
+                  ? "text-base font-semibold text-[hsl(var(--warning))]"
+                  : cn(
+                      "text-[11px] font-medium",
+                      up ? "text-[hsl(var(--success))]" : "text-destructive",
+                    ),
               )}
             >
               {/* `formatPercent` y no `toFixed`: éste emite siempre el punto
@@ -151,6 +175,16 @@ export function StatCell({
     </>
   );
 
+  if (href) {
+    return (
+      <Link
+        href={href}
+        className="min-w-0 bg-card px-3.5 py-2.5 text-left transition-colors duration-140 ease-out hover:bg-primary/5"
+      >
+        {body}
+      </Link>
+    );
+  }
   if (onClick) {
     return (
       <button
