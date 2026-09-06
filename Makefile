@@ -42,8 +42,9 @@ check:  ## Lint + typecheck + tests unit+integration (ideal para desarrollo)
 check-frontend-invariants:  ## Integridad analítica del frontend (ADR-014, bloqueante)
 	python scripts/check_frontend_invariants.py --strict
 
-check-api-contract:  ## Ratchet del contrato API↔web (ninguna operación nueva opaca)
+check-api-contract:  ## Ratchet del contrato API↔web + fixtures del frontend
 	python scripts/check_openapi_contract.py
+	python scripts/check_contract_fixtures.py
 
 check-agent-docs:  ## Valida instrucciones, skills, commands, hooks, docs generados y backlog
 	python scripts/check_agent_docs.py

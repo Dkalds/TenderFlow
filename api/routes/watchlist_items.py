@@ -11,12 +11,14 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 from pydantic import BaseModel, Field
 
 from api.concurrency import run_db
 from api.routes.dual_auth import require_any_auth
 from api.tenancy import require_organization, resolve_organization_ctx
+from db.idempotency import cached_response, store_response
+from db.idempotency import scope as idem_scope
 from db.repositories.watchlist import WatchlistRepository
 from observability.logging import get_logger
 from services.organizations import claim_legacy_scope
@@ -79,9 +81,27 @@ async def get_items(
 @router.post("", status_code=status.HTTP_201_CREATED, summary="Añadir un favorito")
 async def post_item(
     body: WatchlistItemBody,
+    idempotency_key: str | None = Header(
+        default=None,
+        alias="X-Idempotency-Key",
+        max_length=200,
+        description=(
+            "Reintentar con la misma clave devuelve la misma respuesta sin repetir el "
+            "efecto. Caduca según `IDEMPOTENCY_TTL_SECONDS`."
+        ),
+    ),
     ctx: dict[str, Any] = Depends(require_any_auth),
 ) -> WatchlistFavoriteCreated:
     ctx = await resolve_organization_ctx(ctx, body.organization_id, write=True)
+    ambito = idem_scope(
+        "watchlist_items",
+        user_key=_user_key(ctx),
+        organization_id=ctx.get("organization_id"),
+    )
+    cacheada = await run_db(cached_response, idempotency_key, ambito)
+    if cacheada is not None:
+        return WatchlistFavoriteCreated(**cacheada)
+
     item = await run_db(
         _repo.add_item,
         _user_key(ctx),
@@ -91,7 +111,9 @@ async def post_item(
         body.visibility,
     )
     log.info("watchlist_item_created", id_externo=body.id_externo)
-    return WatchlistFavoriteCreated(**item)
+    respuesta = WatchlistFavoriteCreated(**item)
+    await run_db(store_response, idempotency_key, ambito, respuesta.model_dump(mode="json"))
+    return respuesta
 
 
 @router.delete(

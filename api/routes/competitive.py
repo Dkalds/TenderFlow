@@ -10,12 +10,14 @@ import hashlib
 from datetime import date
 from typing import Any, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 from pydantic import BaseModel, Field
 
 from api.concurrency import run_db
 from api.routes.dual_auth import require_any_auth
 from api.tenancy import require_organization, resolve_organization_ctx
+from db.idempotency import cached_response, store_response
+from db.idempotency import scope as idem_scope
 from db.repositories.renovaciones import proximas_renovaciones
 from db.watchlist_empresas import (
     WatchlistEmpresaEntry,
@@ -39,7 +41,7 @@ from services.competitive.renovaciones import (
     resumen_renovaciones,
     totales_renovaciones,
 )
-from shared.dto import CompetitiveCompanyAwardsDTO, CompetitiveCompanyProfileDTO
+from shared.dto import MAX_PAGE_LIMIT, CompetitiveCompanyAwardsDTO, CompetitiveCompanyProfileDTO
 from shared.metric_scope import MetricScope
 
 log = get_logger(__name__)
@@ -95,7 +97,12 @@ async def get_renovaciones(
             "Con 'score' el `limit` recorta el top-N real del dataset."
         ),
     ),
-    limit: int = Query(200, ge=1, le=1000),
+    # C8.5: el tope pasa de 1000 a MAX_PAGE_LIMIT (500). Es un estrechamiento
+    # deliberado del contrato público —un cliente que pidiera 800 recibe ahora
+    # 422— y por eso va etiquetado `api-breaking`. El motivo por el que esta
+    # ruta pedía 1000 desapareció cuando `order_by=score` empezó a ordenar en
+    # servidor: el front pide 200 y recibe el top-N real, no una muestra.
+    limit: int = Query(200, ge=1, le=MAX_PAGE_LIMIT),
     offset: int = Query(0, ge=0),
     _ctx: dict[str, Any] = Depends(require_any_auth),
 ) -> RenovacionesResult:
@@ -417,9 +424,27 @@ async def get_watchlist(
 @router.post("/watchlist", status_code=status.HTTP_201_CREATED, summary="Vigilar una empresa")
 async def post_watchlist(
     body: WatchlistEmpresaRequest,
+    idempotency_key: str | None = Header(
+        default=None,
+        alias="X-Idempotency-Key",
+        max_length=200,
+        description=(
+            "Reintentar con la misma clave devuelve la misma respuesta sin repetir el "
+            "efecto. Caduca según `IDEMPOTENCY_TTL_SECONDS`."
+        ),
+    ),
     ctx: dict[str, Any] = Depends(require_any_auth),
 ) -> WatchlistEmpresaStatus:
     ctx = await resolve_organization_ctx(ctx, body.organization_id, write=True)
+    ambito = idem_scope(
+        "competitive_watchlist",
+        user_key=_user_key(ctx),
+        organization_id=ctx.get("organization_id"),
+    )
+    cacheada = await run_db(cached_response, idempotency_key, ambito)
+    if cacheada is not None:
+        return WatchlistEmpresaStatus(**cacheada)
+
     entry = WatchlistEmpresaEntry(
         user_key=_user_key(ctx),
         empresa_id=body.empresa_id,
@@ -437,9 +462,12 @@ async def post_watchlist(
             detail="Empresa no encontrada en el maestro.",
         ) from exc
     if entry_id is None:
-        return WatchlistEmpresaStatus(status="ya_existia", empresa_id=body.empresa_id)
-    log.info("watchlist_empresa_added", empresa_id=body.empresa_id)
-    return WatchlistEmpresaStatus(status="ok", id=entry_id, empresa_id=body.empresa_id)
+        respuesta = WatchlistEmpresaStatus(status="ya_existia", empresa_id=body.empresa_id)
+    else:
+        log.info("watchlist_empresa_added", empresa_id=body.empresa_id)
+        respuesta = WatchlistEmpresaStatus(status="ok", id=entry_id, empresa_id=body.empresa_id)
+    await run_db(store_response, idempotency_key, ambito, respuesta.model_dump(mode="json"))
+    return respuesta
 
 
 @router.delete("/watchlist/{empresa_id}", summary="Dejar de vigilar una empresa")

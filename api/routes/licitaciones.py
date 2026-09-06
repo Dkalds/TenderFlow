@@ -7,6 +7,7 @@ import hashlib
 import json
 import re
 from collections.abc import Generator
+from datetime import date
 from typing import Any
 
 from fastapi import (
@@ -24,6 +25,7 @@ from pydantic import BaseModel, Field
 
 from api.auth import AuthContext, require_api_key
 from api.concurrency import run_db, run_ml
+from api.errors import deprecate_route, sunset_anunciado
 from api.routes.dual_auth import require_any_auth
 from db.repositories.adjudicaciones import AdjudicacionRepository
 from db.repositories.documentos import DocumentosRepository
@@ -39,6 +41,13 @@ from shared.export_safety import sanitize_spreadsheet_record
 from shared.tender_facts import EvidenceRef, TenderFactSheetRecord
 
 log = get_logger(__name__)
+
+#: Apagado del listado por offset. Anunciado el 2026-09-06 con la ventana
+#: de 90 días de `DEPRECATION_WINDOW_DAYS`; la sucesora es
+#: `/licitaciones/cursor`, que ya sirve el mismo dato sin `COUNT(*)`.
+SUNSET_LISTADO_POR_OFFSET = sunset_anunciado(
+    date(2027, 1, 15), anunciado=date(2026, 9, 6)
+)
 
 router = APIRouter(tags=["licitaciones"])
 
@@ -284,9 +293,14 @@ async def list_licitaciones(
     _validate_date(cierre_desde, "cierre_desde")
     _validate_date(cierre_hasta, "cierre_hasta")
 
-    # Cabecera de deprecación
-    response.headers["Deprecation"] = "true"
-    response.headers["Link"] = '</api/v1/licitaciones/cursor>; rel="successor-version"'
+    # Cabecera de deprecación con fecha de apagado (C8.1). Antes emitía
+    # `Deprecation: true` y `Link` pero no `Sunset`: le decía al cliente que se
+    # preparase sin decirle para cuándo, que es la mitad inútil del aviso.
+    deprecate_route(
+        response,
+        sunset=SUNSET_LISTADO_POR_OFFSET,
+        successor="/api/v1/licitaciones/cursor",
+    )
 
     items, total = await run_db(
         _lic_repo.list_paginated,

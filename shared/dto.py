@@ -192,14 +192,17 @@ _ItemT = TypeVar("_ItemT")
 #: parte del contrato (por encima el API responde 422), así que vive con los
 #: DTOs y no en una ruta.
 #:
-#: **No es universal todavía, y decir lo contrario sería falso**: la adopción va
-#: por olas y hay rutas con su propio tope heredado. La conocida es
-#: ``GET /competitive/renovaciones`` (``le=1000``). Bajarla a este valor no es
-#: una limpieza: es un estrechamiento del contrato público —un cliente que hoy
-#: pide 800 empezaría a recibir 422—, y por eso no se hizo de paso. Lo que sí
-#: dejó de tener sentido es el motivo por el que pedía 1000: desde que
-#: ``order_by=score`` ordena en servidor, el front pide 200 y recibe el top-N
-#: real. Unificar el tope es un cambio deliberado, con su nota de contrato.
+#: **Universal desde 2026-09-06** (C8.5). Hasta entonces la adopción iba por olas
+#: y dos rutas mantenían su tope heredado de ``le=1000``:
+#: ``GET /competitive/renovaciones`` y ``GET /admin/users``. Bajarlas no fue una
+#: limpieza sino un estrechamiento del contrato —un cliente que pidiera 800
+#: empezó a recibir 422—, así que se hizo de forma deliberada y etiquetada, y
+#: `scripts/check_api_breaking.py` lo señala como tal. El motivo por el que
+#: renovaciones pedía 1000 había desaparecido antes: desde que ``order_by=score``
+#: ordena en servidor, el front pide 200 y recibe el top-N real.
+#:
+#: Un tope propio en una ruta nueva es cómo vuelve a dispersarse el contrato:
+#: ``tests/test_contrato_paginacion.py`` lo impide.
 MAX_PAGE_LIMIT = 500
 
 #: Página por defecto cuando el endpoint no tiene un motivo para otra cosa.

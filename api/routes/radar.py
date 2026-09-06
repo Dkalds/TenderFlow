@@ -13,12 +13,14 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, Header, HTTPException, status
 from pydantic import BaseModel, Field
 
 from api.concurrency import run_db
 from api.routes.dual_auth import require_any_auth
 from db import radar_dismissals
+from db.idempotency import cached_response, store_response
+from db.idempotency import scope as idem_scope
 from observability.logging import get_logger
 from shared.cache import invalidate_user_scoped
 from shared.dto import SafeStr
@@ -96,8 +98,22 @@ async def get_dismissals(
 )
 async def post_dismissal(
     body: RadarDismissalBody,
+    idempotency_key: str | None = Header(
+        default=None,
+        alias="X-Idempotency-Key",
+        max_length=200,
+        description=(
+            "Reintentar con la misma clave devuelve la misma respuesta sin repetir el "
+            "efecto. Caduca según `IDEMPOTENCY_TTL_SECONDS`."
+        ),
+    ),
     ctx: dict[str, Any] = Depends(require_any_auth),
 ) -> RadarDismissalsResult:
+    ambito = idem_scope("radar_dismissals", user_key=_user_key(ctx))
+    cacheada = await run_db(cached_response, idempotency_key, ambito)
+    if cacheada is not None:
+        return RadarDismissalsResult(**cacheada)
+
     await run_db(
         radar_dismissals.add,
         _user_key(ctx),
@@ -108,7 +124,9 @@ async def post_dismissal(
     log.info("radar_dismissal_created", id_externo=body.id_externo)
     _invalidar_ranking(_user_key(ctx))
     ids = await run_db(radar_dismissals.list_ids, _user_key(ctx))
-    return RadarDismissalsResult(ids=ids)
+    respuesta = RadarDismissalsResult(ids=ids)
+    await run_db(store_response, idempotency_key, ambito, respuesta.model_dump(mode="json"))
+    return respuesta
 
 
 @router.delete(

@@ -173,6 +173,62 @@ Respuesta:
 | `watchlist_items`  | `/watchlist/items`          | CRUD de items de watchlist                       |
 | `watchlist_rules`  | `/watchlist/rules`          | Reglas de alertas de watchlist                   |
 
+## Política de deprecación
+
+Una ruta no se apaga: se deprecia, se anuncia y **después** se apaga. Hasta
+2026-09 el listado por offset emitía `Deprecation: true` sin decir para cuándo,
+que le pide al cliente que se prepare sin darle fecha.
+
+### La ventana es de 90 días
+
+`api/errors.py::DEPRECATION_WINDOW_DAYS`. Es la ventana del **contrato**, no la
+del calendario de quien deprecia: `deprecate_route()` lanza `ValueError` si la
+fecha de apagado cae más cerca. Un aviso más corto convierte el problema de
+quien deprecia en un incidente de quien consume.
+
+### Las tres cabeceras
+
+`deprecate_route(response, sunset=..., successor=..., rfc=...)` escribe:
+
+| Cabecera | Valor | Qué dice |
+|---|---|---|
+| `Deprecation` | `true` (RFC 8594) | La ruta está deprecada. |
+| `Sunset` | fecha HTTP (RFC 8594) | **Cuándo** deja de responder. |
+| `Link` | `rel="successor-version"` y `rel="deprecation"` | Qué usar en su lugar, y la RFC de retirada. |
+
+`Sunset` va en formato de fecha HTTP (IMF-fixdate), no ISO-8601: lo exige
+RFC 8594 y un cliente que parsee la cabecera espera ese formato.
+
+### Qué exige retirar una ruta
+
+1. **RFC de retirada** con fecha, enlazada desde la cabecera `Link`.
+2. `deprecate_route()` en la operación, con `sunset` ≥ hoy + 90 días.
+3. La sucesora existiendo y sirviendo el mismo dato **antes** del anuncio.
+4. La etiqueta `api-breaking` en la PR que finalmente la borre, con la RFC
+   enlazada — lo verifica el job `api-breaking-check`
+   (`scripts/check_api_breaking.py`).
+
+### Qué cuenta como cambio incompatible
+
+No solo borrar una ruta. `scripts/check_api_breaking.py` compara el OpenAPI de
+`master` con el de la PR y considera incompatible:
+
+- Quitar una ruta o un método.
+- Quitar un campo de una respuesta, o cambiarle el tipo.
+- Añadir un campo **requerido** a una petición, o hacer requerido uno que no lo era.
+- Quitar un parámetro, o estrechar su rango (`le`, `ge`, `maxLength`, `enum`).
+- Quitar un código de estado documentado.
+
+Añadir un campo opcional a una respuesta, una ruta nueva o un parámetro
+opcional **no** es incompatible: un cliente que los ignora sigue funcionando.
+
+### Rutas deprecadas hoy
+
+| Ruta | Sunset | Sucesora |
+|---|---|---|
+| `GET /licitaciones` (paginación por offset) | 2027-01-15 | `GET /licitaciones/cursor` |
+
+
 ## Convenciones de naming
 
 - Sustantivos en plural para colecciones: `/licitaciones`, `/webhooks`, `/exports`.
