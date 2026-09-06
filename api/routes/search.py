@@ -24,13 +24,14 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field, field_validator
 
 from api.concurrency import run_db, run_ml
 from api.routes.dual_auth import require_any_auth
 from db.repositories.licitaciones import LicitacionRepository
 from observability.logging import get_logger
+from services.busqueda_global import BusquedaGlobal, buscar_global
 
 log = get_logger(__name__)
 
@@ -216,3 +217,30 @@ async def semantic_search(
         hits=[SemanticHit(**h) for h in hits],
         elapsed_ms=elapsed_ms,
     )
+
+
+@router.get(
+    "/search/global",
+    summary="Búsqueda unificada para la paleta: expedientes, empresas, órganos y oportunidades",
+    responses={401: {"description": "Autenticación inválida"}},
+)
+async def get_search_global(
+    q: str = Query(..., max_length=_MAX_Q_LEN, description="Término de búsqueda"),
+    organization_id: int | None = Query(
+        default=None,
+        ge=1,
+        description=(
+            "Sin él **no se buscan oportunidades**, que no es lo mismo que no "
+            "encontrar ninguna: la respuesta lo declara en `tipos_buscados`."
+        ),
+    ),
+    limit: int = Query(5, ge=1, le=20, description="Máximo por tipo"),
+    _ctx: dict[str, Any] = Depends(require_any_auth),
+) -> BusquedaGlobal:
+    """F1.2 — un término, cuatro clases de resultado.
+
+    Un término demasiado corto devuelve 200 con `sin_busqueda`, no un 422: la
+    paleta consulta en cada tecla y un error por escribir dos letras sería un
+    error en la mitad de las pulsaciones.
+    """
+    return await run_db(buscar_global, q, organization_id=organization_id, limite_por_tipo=limit)

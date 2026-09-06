@@ -1164,6 +1164,35 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/competitive/partners": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Empresas con las que ir a una UTE en este segmento, y por qué
+         * @description F3.3 — el primer consumidor de `services/partners.py`.
+         *
+         *     Devuelve 200 con `sin_resultados` cuando no hay base suficiente, en vez de
+         *     rellenar con las empresas más grandes del corpus: una sugerencia de socio
+         *     sin motivo es sólo un nombre, y el usuario va a llamar por teléfono a
+         *     quien salga aquí.
+         *
+         *     El `LIMIT` de la carga lo pone el repositorio (`LIMITE_COMPETIDORES`), que
+         *     es la regla del escáner AST: ninguna consulta de esta familia trae el
+         *     histórico entero.
+         */
+        get: operations["get_partners_api_v1_competitive_partners_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/competitive/renovaciones": {
         parameters: {
             query?: never;
@@ -1232,6 +1261,48 @@ export interface paths {
         post?: never;
         /** Dejar de vigilar una empresa */
         delete: operations["delete_watchlist_api_v1_competitive_watchlist__empresa_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cuentas": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Órganos que la organización sigue como cuenta */
+        get: operations["get_cuentas_api_v1_cuentas_get"];
+        put?: never;
+        /**
+         * Seguir un órgano como cuenta objetivo
+         * @description Idempotente: seguir dos veces el mismo órgano no crea dos cuentas.
+         *
+         *     Devuelve 201 también cuando ya se seguía. Distinguirlo con un 200 obligaría
+         *     al cliente a tratar dos casos que para el usuario son el mismo —«ya lo
+         *     sigo»— y el estado final es idéntico.
+         */
+        post: operations["post_cuenta_api_v1_cuentas_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cuentas/{cuenta_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Dejar de seguir un órgano */
+        delete: operations["delete_cuenta_api_v1_cuentas__cuenta_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1329,6 +1400,104 @@ export interface paths {
         put?: never;
         post?: never;
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/etiquetas": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Etiquetas de la organización */
+        get: operations["get_etiquetas_api_v1_etiquetas_get"];
+        put?: never;
+        /**
+         * Crear una etiqueta
+         * @description Crear una etiqueta que ya existe devuelve la existente, no un error.
+         *
+         *     Dos personas etiquetando a la vez «Q4» quieren la misma etiqueta; un
+         *     conflicto obligaría a una de las dos a resolver algo que no es un problema.
+         */
+        post: operations["post_etiqueta_api_v1_etiquetas_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/etiquetas/aplicar": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Aplicar una etiqueta a un favorito, una oportunidad o una cuenta */
+        post: operations["post_aplicar_etiqueta_api_v1_etiquetas_aplicar_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/etiquetas/por-objeto": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Etiquetas de varios objetos, para pintar una lista de una vez
+         * @description POST y no GET porque la lista de ids puede ser larga.
+         *
+         *     Doscientos `id_externo` de PLACSP no caben cómodamente en una query
+         *     string, y meterlos ahí además los dejaría en los logs de acceso.
+         */
+        post: operations["post_etiquetas_por_objeto_api_v1_etiquetas_por_objeto_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/etiquetas/quitar": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Quitar una etiqueta de un objeto */
+        post: operations["post_quitar_etiqueta_api_v1_etiquetas_quitar_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/etiquetas/{etiqueta_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Borrar una etiqueta y todas sus aplicaciones */
+        delete: operations["delete_etiqueta_api_v1_etiquetas__etiqueta_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -2998,6 +3167,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/search/global": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Búsqueda unificada para la paleta: expedientes, empresas, órganos y oportunidades
+         * @description F1.2 — un término, cuatro clases de resultado.
+         *
+         *     Un término demasiado corto devuelve 200 con `sin_busqueda`, no un 422: la
+         *     paleta consulta en cada tecla y un error por escribir dos letras sería un
+         *     error en la mitad de las pulsaciones.
+         */
+        get: operations["get_search_global_api_v1_search_global_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/search/semantic": {
         parameters: {
             query?: never;
@@ -3548,6 +3741,16 @@ export interface components {
             /** Items */
             items: components["schemas"]["BajaAgregada"][];
         };
+        /** Body_post_etiquetas_por_objeto_api_v1_etiquetas_por_objeto_post */
+        Body_post_etiquetas_por_objeto_api_v1_etiquetas_por_objeto_post: {
+            /** Objeto Ids */
+            objeto_ids?: string[];
+            /**
+             * Objeto Tipo
+             * @enum {string}
+             */
+            objeto_tipo: "favorito" | "oportunidad" | "cuenta";
+        };
         /**
          * BudgetLineFact
          * @description F2.4 — una línea del desglose del presupuesto publicado.
@@ -3595,6 +3798,24 @@ export interface components {
             items: components["schemas"]["LicitacionSummary"][];
             /** Requested */
             requested: number;
+        };
+        /**
+         * BusquedaGlobal
+         * @description La respuesta de la paleta.
+         */
+        BusquedaGlobal: {
+            /** Por Tipo */
+            por_tipo?: {
+                [key: string]: number;
+            };
+            /** Q */
+            q: string;
+            /** Resultados */
+            resultados?: components["schemas"]["ResultadoBusqueda"][];
+            /** Sin Busqueda */
+            sin_busqueda?: string | null;
+            /** Tipos Buscados */
+            tipos_buscados?: string[];
         };
         /**
          * CalendarioEnlace
@@ -4466,6 +4687,42 @@ export interface components {
             /** Tecnologia */
             tecnologia: string;
         };
+        /**
+         * CuentaObjetivo
+         * @description Un órgano que la organización sigue como cuenta.
+         *
+         *     ``organo_id`` nace vacío: el maestro de órganos (C1.2) todavía no existe y
+         *     la identidad va por el nombre normalizado. El campo está en el contrato
+         *     desde ahora para que ese maestro no obligue a cambiarlo.
+         */
+        CuentaObjetivo: {
+            /** Created At */
+            created_at: string;
+            /** Created By User Id */
+            created_by_user_id?: number | null;
+            /** Id */
+            id: number;
+            /** Nota */
+            nota?: string | null;
+            /** Organization Id */
+            organization_id: number;
+            /** Organo Id */
+            organo_id?: number | null;
+            /** Organo Nombre */
+            organo_nombre: string;
+            /** Organo Norm */
+            organo_norm: string;
+        };
+        /**
+         * CuentaObjetivoCreate
+         * @description Seguir un órgano como cuenta objetivo.
+         */
+        CuentaObjetivoCreate: {
+            /** Nota */
+            nota?: string | null;
+            /** Organo */
+            organo: string;
+        };
         /** CuotaEmpresa */
         CuotaEmpresa: {
             /** Contratos */
@@ -4774,6 +5031,76 @@ export interface components {
             estado: string;
             /** N */
             n: number;
+        };
+        /**
+         * Etiqueta
+         * @description Una etiqueta de la organización.
+         */
+        Etiqueta: {
+            /** Color */
+            color: string;
+            /** Created At */
+            created_at: string;
+            /** Created By User Id */
+            created_by_user_id?: number | null;
+            /** Id */
+            id: number;
+            /** Nombre */
+            nombre: string;
+            /** Nombre Norm */
+            nombre_norm: string;
+            /** Organization Id */
+            organization_id: number;
+        };
+        /**
+         * EtiquetaAplicacion
+         * @description Aplicar o quitar una etiqueta de un objeto.
+         */
+        EtiquetaAplicacion: {
+            /** Etiqueta Id */
+            etiqueta_id: number;
+            /** Objeto Id */
+            objeto_id: string;
+            /**
+             * Objeto Tipo
+             * @enum {string}
+             */
+            objeto_tipo: "favorito" | "oportunidad" | "cuenta";
+        };
+        /**
+         * EtiquetaAplicada
+         * @description La etiqueta tal como se pinta junto al objeto: sólo lo que se ve.
+         */
+        EtiquetaAplicada: {
+            /** Color */
+            color: string;
+            /** Id */
+            id: number;
+            /** Nombre */
+            nombre: string;
+        };
+        /**
+         * EtiquetaCreate
+         * @description Alta de etiqueta.
+         */
+        EtiquetaCreate: {
+            /**
+             * Color
+             * @default #64748b
+             */
+            color: string;
+            /** Nombre */
+            nombre: string;
+        };
+        /**
+         * EtiquetasPorObjeto
+         * @description Las etiquetas de varios objetos, indexadas por objeto.
+         */
+        EtiquetasPorObjeto: {
+            /** Por Objeto */
+            por_objeto?: {
+                [key: string]: components["schemas"]["EtiquetaAplicada"][];
+            };
         };
         /**
          * EventoFeedItem
@@ -7536,6 +7863,40 @@ export interface components {
             /** Items */
             items: components["schemas"]["ResolucionOut"][];
         };
+        /**
+         * ResultadoBusqueda
+         * @description Un resultado, con lo justo para pintar una fila de la paleta.
+         */
+        ResultadoBusqueda: {
+            /**
+             * Exacto
+             * @default false
+             */
+            exacto: boolean;
+            /** Id */
+            id: string;
+            /** Subtitulo */
+            subtitulo?: string | null;
+            /**
+             * Tipo
+             * @enum {string}
+             */
+            tipo: "expediente" | "empresa" | "organo" | "oportunidad";
+            /** Titulo */
+            titulo: string;
+        };
+        /**
+         * ResultadoEtiquetado
+         * @description Si la operación cambió algo.
+         *
+         *     Tipado y no `dict[str, bool]`: el cliente TS se genera de aquí, y un
+         *     diccionario abierto obliga al frontend a redeclarar la forma a mano
+         *     (invariante 5).
+         */
+        ResultadoEtiquetado: {
+            /** Cambiado */
+            cambiado: boolean;
+        };
         /** ResumenHoyResult */
         ResumenHoyResult: {
             /**
@@ -8084,6 +8445,31 @@ export interface components {
             sin_calculo?: ("sin_formula" | "formula_no_calculable" | "sin_puntos_de_precio") | null;
         };
         /**
+         * SocioSugerido
+         * @description Una empresa propuesta, con el motivo por el que se propone.
+         */
+        SocioSugerido: {
+            /** Empresa */
+            empresa: string;
+            /** Empresa Key */
+            empresa_key: string;
+            /**
+             * Es Pyme
+             * @default false
+             */
+            es_pyme: boolean;
+            /** Importe Total */
+            importe_total: number;
+            /** Motivos */
+            motivos: string[];
+            /** N Contratos */
+            n_contratos: number;
+            /** N Organos */
+            n_organos: number;
+            /** Pct Ute */
+            pct_ute: number;
+        };
+        /**
          * SolicitudAccesoOut
          * @description Una solicitud de la cola, tal como la ve el panel.
          */
@@ -8182,6 +8568,25 @@ export interface components {
         StatusOk: {
             /** Status */
             status: string;
+        };
+        /**
+         * SugerenciaSocios
+         * @description Respuesta del buscador de socios, con su universo declarado.
+         */
+        SugerenciaSocios: {
+            /** Ccaa */
+            ccaa?: string | null;
+            /** Cpv */
+            cpv?: string | null;
+            /**
+             * N Adjudicaciones
+             * @default 0
+             */
+            n_adjudicaciones: number;
+            /** Sin Resultados */
+            sin_resultados?: string | null;
+            /** Socios */
+            socios?: components["schemas"]["SocioSugerido"][];
         };
         /**
          * TeamRequirement
@@ -11526,6 +11931,52 @@ export interface operations {
             };
         };
     };
+    get_partners_api_v1_competitive_partners_get: {
+        parameters: {
+            query?: {
+                /** @description CPV del segmento */
+                cpv?: string | null;
+                /** @description Comunidad Autónoma */
+                ccaa?: string | null;
+                limit?: number;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SugerenciaSocios"];
+                };
+            };
+            /** @description Autenticación inválida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_renovaciones_api_v1_competitive_renovaciones_get: {
         parameters: {
             query?: {
@@ -11719,6 +12170,122 @@ export interface operations {
             };
         };
     };
+    get_cuentas_api_v1_cuentas_get: {
+        parameters: {
+            query?: {
+                organization_id?: number | null;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CuentaObjetivo"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_cuenta_api_v1_cuentas_post: {
+        parameters: {
+            query?: {
+                organization_id?: number | null;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CuentaObjetivoCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CuentaObjetivo"];
+                };
+            };
+            /** @description Un viewer no puede seguir cuentas */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_cuenta_api_v1_cuentas__cuenta_id__delete: {
+        parameters: {
+            query?: {
+                organization_id?: number | null;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                cuenta_id: number;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_empresas_api_v1_empresas_get: {
         parameters: {
             query?: {
@@ -11897,6 +12464,246 @@ export interface operations {
             };
             /** @description Empresa no encontrada */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_etiquetas_api_v1_etiquetas_get: {
+        parameters: {
+            query?: {
+                organization_id?: number | null;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Etiqueta"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_etiqueta_api_v1_etiquetas_post: {
+        parameters: {
+            query?: {
+                organization_id?: number | null;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EtiquetaCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Etiqueta"];
+                };
+            };
+            /** @description La organización llegó al máximo de etiquetas */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_aplicar_etiqueta_api_v1_etiquetas_aplicar_post: {
+        parameters: {
+            query?: {
+                organization_id?: number | null;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EtiquetaAplicacion"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResultadoEtiquetado"];
+                };
+            };
+            /** @description La etiqueta no es de tu organización */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_etiquetas_por_objeto_api_v1_etiquetas_por_objeto_post: {
+        parameters: {
+            query?: {
+                organization_id?: number | null;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Body_post_etiquetas_por_objeto_api_v1_etiquetas_por_objeto_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EtiquetasPorObjeto"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_quitar_etiqueta_api_v1_etiquetas_quitar_post: {
+        parameters: {
+            query?: {
+                organization_id?: number | null;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EtiquetaAplicacion"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResultadoEtiquetado"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_etiqueta_api_v1_etiquetas__etiqueta_id__delete: {
+        parameters: {
+            query?: {
+                organization_id?: number | null;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                etiqueta_id: number;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -15240,6 +16047,53 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["StatusOk"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_search_global_api_v1_search_global_get: {
+        parameters: {
+            query: {
+                /** @description Término de búsqueda */
+                q: string;
+                /** @description Sin él **no se buscan oportunidades**, que no es lo mismo que no encontrar ninguna: la respuesta lo declara en `tipos_buscados`. */
+                organization_id?: number | null;
+                /** @description Máximo por tipo */
+                limit?: number;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BusquedaGlobal"];
+                };
+            };
+            /** @description Autenticación inválida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
