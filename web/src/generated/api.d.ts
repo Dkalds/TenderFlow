@@ -11203,6 +11203,13 @@ export interface operations {
                     "application/json": components["schemas"]["NovedadesDesdeUltimaVisita"];
                 };
             };
+            /** @description Sin membresía en la organización pedida */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -12538,7 +12545,7 @@ export interface operations {
     get_partners_api_v1_competitive_partners_get: {
         parameters: {
             query?: {
-                /** @description CPV del segmento */
+                /** @description CPV del segmento, por prefijo (sólo dígitos) */
                 cpv?: string | null;
                 /** @description Comunidad Autónoma */
                 ccaa?: string | null;
@@ -16920,6 +16927,13 @@ export interface operations {
             };
             /** @description Autenticación inválida */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Sin membresía en la organización pedida */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };

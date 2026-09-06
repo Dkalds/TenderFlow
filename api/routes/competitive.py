@@ -419,7 +419,12 @@ class WatchlistEmpresaRequest(BaseModel):
     responses={401: {"description": "Autenticación inválida"}},
 )
 async def get_partners(
-    cpv: str | None = Query(None, max_length=8, description="CPV del segmento"),
+    cpv: str | None = Query(
+        None,
+        max_length=8,
+        pattern=r"^\d{2,8}$",
+        description="CPV del segmento, por prefijo (sólo dígitos)",
+    ),
     ccaa: str | None = Query(None, max_length=100, description="Comunidad Autónoma"),
     limit: int = Query(10, ge=1, le=50),
     _ctx: dict[str, Any] = Depends(require_any_auth),

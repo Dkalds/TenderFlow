@@ -29,6 +29,7 @@ from pydantic import BaseModel, Field, field_validator
 
 from api.concurrency import run_db, run_ml
 from api.routes.dual_auth import require_any_auth
+from api.tenancy import resolve_organization_ctx
 from db.repositories.licitaciones import LicitacionRepository
 from observability.logging import get_logger
 from services.busqueda_global import BusquedaGlobal, buscar_global
@@ -222,7 +223,10 @@ async def semantic_search(
 @router.get(
     "/search/global",
     summary="Búsqueda unificada para la paleta: expedientes, empresas, órganos y oportunidades",
-    responses={401: {"description": "Autenticación inválida"}},
+    responses={
+        401: {"description": "Autenticación inválida"},
+        403: {"description": "Sin membresía en la organización pedida"},
+    },
 )
 async def get_search_global(
     q: str = Query(..., max_length=_MAX_Q_LEN, description="Término de búsqueda"),
@@ -235,7 +239,7 @@ async def get_search_global(
         ),
     ),
     limit: int = Query(5, ge=1, le=20, description="Máximo por tipo"),
-    _ctx: dict[str, Any] = Depends(require_any_auth),
+    ctx: dict[str, Any] = Depends(require_any_auth),
 ) -> BusquedaGlobal:
     """F1.2 — un término, cuatro clases de resultado.
 
@@ -243,4 +247,13 @@ async def get_search_global(
     paleta consulta en cada tecla y un error por escribir dos letras sería un
     error en la mitad de las pulsaciones.
     """
-    return await run_db(buscar_global, q, organization_id=organization_id, limite_por_tipo=limit)
+    # La organización se **resuelve**, no se cree: el filtro de oportunidades
+    # es `WHERE p.organization_id = %s`, así que pasar el valor crudo de la
+    # query convertía la paleta en un enumerador del pipeline ajeno. Sin
+    # `organization_id` no se resuelve nada, porque `None` aquí significa «no
+    # busques oportunidades», no «la organización por defecto».
+    resuelta: int | None = None
+    if organization_id is not None:
+        ambito = await resolve_organization_ctx(ctx, organization_id)
+        resuelta = int(ambito["organization_id"])
+    return await run_db(buscar_global, q, organization_id=resuelta, limite_por_tipo=limit)

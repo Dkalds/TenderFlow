@@ -135,7 +135,7 @@ def sugerir_socios(
 
     ranking = suggest_partners(
         adjudicaciones,
-        keywords=[cpv] if cpv else None,
+        cpv_prefijo=cpv or None,
         ccaa=ccaa,
     )
     if ranking.empty:

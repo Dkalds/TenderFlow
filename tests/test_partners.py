@@ -185,6 +185,31 @@ class TestSuggestPartners:
         result = suggest_partners(df, keywords=["inexistente"])
         assert result.empty
 
+    def test_una_keyword_con_metacaracteres_no_revienta(self):
+        """La keyword llega de la query y se escapa antes de componer el patrón.
+
+        Sin escapar, un `(` levantaba `re.error` dentro del handler —un 500 sin
+        capturar— y un `.*` casaba con todas las adjudicaciones del corpus.
+        """
+        df = _make_df([_normal_row(1, "ACME", 100_000, titulo="Obra civil")])
+        assert suggest_partners(df, keywords=["("]).empty
+        assert suggest_partners(df, keywords=[".*"]).empty
+
+    def test_el_cpv_filtra_por_prefijo_de_columna_y_no_por_el_titulo(self):
+        """Un CPV no es texto libre.
+
+        Buscarlo como subcadena casaba con «Lote 72» y «expediente 72/2026»,
+        así que el ranking salía de un segmento que no era el pedido.
+        """
+        df = _make_df(
+            [
+                _normal_row(1, "ACME", 100_000, cpv="72200000", titulo="Desarrollo"),
+                _normal_row(2, "BETA", 200_000, cpv="45000000", titulo="Obra del lote 72"),
+            ]
+        )
+        result = suggest_partners(df, cpv_prefijo="72")
+        assert list(result["empresa"]) == ["ACME"]
+
 
 # ── segment_winners ──────────────────────────────────────────────────────────
 

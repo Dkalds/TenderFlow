@@ -452,6 +452,39 @@ class PublicoRepository:
         with connect_read() as c:
             return _consultar(c)
 
+    @staticmethod
+    def _filtros(
+        ccaa_slug: str | None,
+        cpv_prefijo: str | None,
+        organo_slug: str | None,
+    ) -> tuple[list[str], list[Any]]:
+        """Las condiciones que comparten ``listar`` y ``contar``.
+
+        Se escriben una sola vez porque el hub necesita que los dos vean el
+        mismo conjunto: cuando ``contar`` se quedó sin el filtro de órgano,
+        devolvía el total del corpus entero junto a los items de un órgano, y
+        el hub paginaba hacia miles de páginas vacías que el CDN cachea y
+        Google indexa.
+        """
+        condiciones: list[str] = []
+        params: list[Any] = []
+        if ccaa_slug:
+            condiciones.append(f"{_ccaa_slug_sql('c')} = %s")
+            params.append(ccaa_slug)
+        if cpv_prefijo:
+            # `LIKE 'prefijo%'` y no `startswith` en Python: el filtrado tiene
+            # que ocurrir en Postgres o la paginación mentiría.
+            condiciones.append("c.cpv LIKE %s")
+            params.append(f"{cpv_prefijo}%")
+        if organo_slug:
+            # El slug del órgano, no su nombre: el enlace que genera el
+            # frontend lleva el slug, y comparar contra el nombre crudo haría
+            # que una tilde distinta devolviera un hub vacío sin que fallara
+            # nada (el mismo fallo que documenta `_ccaa_slug_sql`).
+            condiciones.append(f"{_organo_slug_sql('c')} = %s")
+            params.append(organo_slug)
+        return condiciones, params
+
     def listar(
         self,
         *,
@@ -468,31 +501,7 @@ class PublicoRepository:
         anuncio reemitido aparezca dos veces en la misma página, que es lo que
         hacía el hub de Cataluña.
         """
-        condiciones: list[str] = []
-        params: list[Any] = []
-
-        if ccaa_slug:
-            condiciones.append(f"{_ccaa_slug_sql('c')} = %s")
-            params.append(ccaa_slug)
-        if cpv_prefijo:
-            # `LIKE 'prefijo%'` y no `startswith` en Python: el filtrado tiene
-            # que ocurrir en Postgres o la paginación mentiría.
-            condiciones.append("c.cpv LIKE %s")
-            params.append(f"{cpv_prefijo}%")
-        if organo_slug:
-            # El slug del órgano, no su nombre: el enlace que genera el
-            # frontend lleva el slug, y comparar contra el nombre crudo haría
-            # que una tilde distinta devolviera un hub vacío sin que fallara
-            # nada (el mismo fallo que documenta `_ccaa_slug_sql`).
-            condiciones.append(f"{_organo_slug_sql('c')} = %s")
-            params.append(organo_slug)
-        if organo_slug:
-            # El slug del órgano, no su nombre: el enlace que genera el
-            # frontend lleva el slug, y comparar contra el nombre crudo haría
-            # que una tilde distinta devolviera un hub vacío sin que fallara
-            # nada (el mismo fallo que documenta `_ccaa_slug_sql`).
-            condiciones.append(f"{_organo_slug_sql('c')} = %s")
-            params.append(organo_slug)
+        condiciones, params = self._filtros(ccaa_slug, cpv_prefijo, organo_slug)
 
         # La vista decide QUÉ filas se publican y `licitaciones` aporta el resto
         # de columnas. Los filtros y el orden van sobre `c` —no sobre `l`— para
@@ -537,14 +546,7 @@ class PublicoRepository:
         reemisión, y con Cataluña aportando el 96,6% del corpus la cifra iba
         inflada por la republicación masiva de una sola fuente.
         """
-        condiciones: list[str] = []
-        params: list[Any] = []
-        if ccaa_slug:
-            condiciones.append(f"{_ccaa_slug_sql('c')} = %s")
-            params.append(ccaa_slug)
-        if cpv_prefijo:
-            condiciones.append("c.cpv LIKE %s")
-            params.append(f"{cpv_prefijo}%")
+        condiciones, params = self._filtros(ccaa_slug, cpv_prefijo, organo_slug)
 
         where = f" WHERE {' AND '.join(condiciones)}" if condiciones else ""
         sql = f"SELECT COUNT(*) FROM {VISTA_CANONICAS} c{where}"

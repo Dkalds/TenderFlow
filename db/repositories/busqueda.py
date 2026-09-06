@@ -40,15 +40,24 @@ class BusquedaRepository:
         El id va primero y sin plegar: quien pega un `id_externo` quiere ese
         expediente, y la coincidencia exacta encabeza el resultado.
         """
+        # `exacto` ordena; sin él, el `ORDER BY`/`LIMIT` se aplicaban al
+        # `UNION ALL` entero y ordenaban por `id_externo`, así que la
+        # coincidencia exacta —lo único que el usuario pidió al pegar un id—
+        # podía quedarse fuera del corte cuando había títulos que casaban con
+        # ids lexicográficamente menores.
         with connect_read() as c:
             cur = c.execute(
-                "SELECT id_externo AS id, titulo, organo_contratacion AS subtitulo "
-                "FROM licitaciones "
-                "WHERE id_externo = %s "
-                "UNION ALL "
-                "SELECT id_externo, titulo, organo_contratacion FROM licitaciones "
-                f"WHERE id_externo <> %s AND {fold_expr('titulo')} LIKE %s "
-                "ORDER BY 1 "
+                "SELECT id, titulo, subtitulo FROM ("
+                "  SELECT id_externo AS id, titulo, organo_contratacion AS subtitulo, "
+                "         1 AS exacto "
+                "  FROM licitaciones "
+                "  WHERE id_externo = %s "
+                "  UNION ALL "
+                "  SELECT id_externo, titulo, organo_contratacion, 0 AS exacto "
+                "  FROM licitaciones "
+                f" WHERE id_externo <> %s AND {fold_expr('titulo')} LIKE %s "
+                ") b "
+                "ORDER BY exacto DESC, id "
                 "LIMIT %s",
                 (termino.strip(), termino.strip(), _patron(termino), limite),
             )

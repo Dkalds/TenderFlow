@@ -541,7 +541,14 @@ def lead_time_por_organo(
         "       percentile_cont(0.50) WITHIN GROUP (ORDER BY dias) AS p50, "
         "       percentile_cont(0.75) WITHIN GROUP (ORDER BY dias) AS p75 "
         "FROM ("
-        "  SELECT l.organo_contratacion AS organo, "
+        # `DISTINCT ON (a.licitacion_id)`: una observación por expediente, no
+        # por fila. `adjudicaciones` guarda una fila por lote y adjudicatario
+        # (la unique de v65 incluye `lote_id`), así que un acuerdo marco de
+        # seis lotes aportaba seis `dias` idénticos: por sí solo pasaba el
+        # `HAVING COUNT(*) >= 5` de ADR-014 y devolvía p25=p50=p75 con «n=6»
+        # detrás, una confianza fabricada sobre un único expediente.
+        "  SELECT DISTINCT ON (a.licitacion_id) "
+        "         l.organo_contratacion AS organo, "
         "         (a.fecha_adjudicacion::date - l.fecha_publicacion::date) AS dias "
         "  FROM adjudicaciones a "
         "  JOIN licitaciones l ON l.id_externo = a.licitacion_id "
@@ -554,6 +561,10 @@ def lead_time_por_organo(
         # `tests/test_dedup_guardrail.py` lo detectó antes de que llegara a
         # producir una fecha prevista sesgada.
         f"   AND {exclude_duplicados_sql('l.id_externo')} "
+        # `DISTINCT ON` exige que el `ORDER BY` empiece por su expresión; la
+        # fecha más temprana es la adjudicación del primer lote, que es la que
+        # mide el plazo del procedimiento.
+        "  ORDER BY a.licitacion_id, a.fecha_adjudicacion "
         ") d "
         "WHERE dias > 0 "
         "GROUP BY organo "

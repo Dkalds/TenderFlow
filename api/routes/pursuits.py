@@ -335,6 +335,99 @@ async def get_pursuits_agenda(
         raise HTTPException(status_code=403, detail=str(exc)) from exc
 
 
+@router.get(
+    "/pursuits/cartera",
+    summary="Contratos ganados que siguen en ejecución (F4.3)",
+    responses={403: {"description": "No perteneces a esa organización"}},
+)
+async def get_cartera(
+    organization_id: int | None = Query(default=None, ge=1),
+    ctx: dict[str, Any] = Depends(require_any_auth),
+) -> list[ContratoCartera]:
+    """La cartera, con la ventana de relicitación de cada contrato.
+
+    Se declara siempre de dónde sale la fecha de fin (`fecha_fin_origen`): una
+    publicada por la fuente y una derivada de la duración no valen lo mismo en
+    la pantalla donde se decide cuándo preparar una renovación.
+    """
+
+    try:
+        return await run_db(
+            cartera_de_usuario, int(ctx["user_id"]), organization_id=organization_id
+        )
+    except OrganizationAccessError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+
+
+@router.get(
+    "/pursuits/direccion",
+    summary="Cuadro de mando de dirección (F4.2) — solo owner y admin",
+    responses={403: {"description": "Dirección es para owner y admin"}},
+)
+async def get_direccion(
+    organization_id: int | None = Query(default=None, ge=1),
+    ctx: dict[str, Any] = Depends(require_any_auth),
+) -> CuadroDireccion:
+    """El control de rol está **en el servicio**, no en el rail.
+
+    Un `member` que teclee la URL recibe 403, no una pantalla sin enlace: un
+    rail sin enlace es una sugerencia, esto es un permiso.
+    """
+
+    def _trabajo() -> CuadroDireccion:
+        resuelta = exigir_direccion(int(ctx["user_id"]), organization_id)
+        filas = _pursuit_repo.metric_rows(resuelta)
+        return CuadroDireccion(
+            organization_id=resuelta,
+            win_rate_por_tecnologia=corte_con_minimo(filas, clave="tender_tecnologia"),
+            win_rate_por_organo=corte_con_minimo(filas, clave="tender_organo"),
+        )
+
+    try:
+        return await run_db(_trabajo)
+    except OrganizationPermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except OrganizationAccessError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+
+
+@router.get(
+    "/pursuits/actividad",
+    summary="Feed de lo que hizo el equipo (F4.5)",
+    responses={403: {"description": "No perteneces a esa organización"}},
+)
+async def get_actividad(
+    organization_id: int | None = Query(default=None, ge=1),
+    antes_de_id: int | None = Query(
+        default=None, ge=1, description="Cursor: id del último evento de la página anterior"
+    ),
+    usuario: int | None = Query(default=None, ge=1, description="Filtrar por quién lo hizo"),
+    limit: int = Query(50, ge=1, le=200),
+    ctx: dict[str, Any] = Depends(require_any_auth),
+) -> FeedActividad:
+    """Paginado **por cursor de id** y no por `offset`.
+
+    El ledger es append-only, así que el id ya es el orden temporal; con
+    `created_at` dos eventos del mismo segundo podrían repetirse o perderse
+    entre páginas.
+
+    Un `member` recibe el feed sin los eventos de administración, y la
+    respuesta lo declara (`filtrado_por_rol`) en vez de dejarle creer que no
+    ha pasado nada.
+    """
+    try:
+        return await run_db(
+            actividad_de_organizacion,
+            int(ctx["user_id"]),
+            organization_id=organization_id,
+            antes_de_id=antes_de_id,
+            solo_usuario=usuario,
+            limit=limit,
+        )
+    except OrganizationAccessError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+
+
 @router.get("/pursuits/{pursuit_id}", response_model=PursuitDetail)
 async def get_pursuit_detail(
     pursuit_id: int,
@@ -459,99 +552,6 @@ async def post_pursuit_kit_item(
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except PursuitNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-
-
-@router.get(
-    "/pursuits/cartera",
-    summary="Contratos ganados que siguen en ejecución (F4.3)",
-    responses={403: {"description": "No perteneces a esa organización"}},
-)
-async def get_cartera(
-    organization_id: int | None = Query(default=None, ge=1),
-    ctx: dict[str, Any] = Depends(require_any_auth),
-) -> list[ContratoCartera]:
-    """La cartera, con la ventana de relicitación de cada contrato.
-
-    Se declara siempre de dónde sale la fecha de fin (`fecha_fin_origen`): una
-    publicada por la fuente y una derivada de la duración no valen lo mismo en
-    la pantalla donde se decide cuándo preparar una renovación.
-    """
-
-    try:
-        return await run_db(
-            cartera_de_usuario, int(ctx["user_id"]), organization_id=organization_id
-        )
-    except OrganizationAccessError as exc:
-        raise HTTPException(status_code=403, detail=str(exc)) from exc
-
-
-@router.get(
-    "/pursuits/direccion",
-    summary="Cuadro de mando de dirección (F4.2) — solo owner y admin",
-    responses={403: {"description": "Dirección es para owner y admin"}},
-)
-async def get_direccion(
-    organization_id: int | None = Query(default=None, ge=1),
-    ctx: dict[str, Any] = Depends(require_any_auth),
-) -> CuadroDireccion:
-    """El control de rol está **en el servicio**, no en el rail.
-
-    Un `member` que teclee la URL recibe 403, no una pantalla sin enlace: un
-    rail sin enlace es una sugerencia, esto es un permiso.
-    """
-
-    def _trabajo() -> CuadroDireccion:
-        resuelta = exigir_direccion(int(ctx["user_id"]), organization_id)
-        filas = _pursuit_repo.metric_rows(resuelta)
-        return CuadroDireccion(
-            organization_id=resuelta,
-            win_rate_por_tecnologia=corte_con_minimo(filas, clave="tender_tecnologia"),
-            win_rate_por_organo=corte_con_minimo(filas, clave="tender_organo"),
-        )
-
-    try:
-        return await run_db(_trabajo)
-    except OrganizationPermissionError as exc:
-        raise HTTPException(status_code=403, detail=str(exc)) from exc
-    except OrganizationAccessError as exc:
-        raise HTTPException(status_code=403, detail=str(exc)) from exc
-
-
-@router.get(
-    "/pursuits/actividad",
-    summary="Feed de lo que hizo el equipo (F4.5)",
-    responses={403: {"description": "No perteneces a esa organización"}},
-)
-async def get_actividad(
-    organization_id: int | None = Query(default=None, ge=1),
-    antes_de_id: int | None = Query(
-        default=None, ge=1, description="Cursor: id del último evento de la página anterior"
-    ),
-    usuario: int | None = Query(default=None, ge=1, description="Filtrar por quién lo hizo"),
-    limit: int = Query(50, ge=1, le=200),
-    ctx: dict[str, Any] = Depends(require_any_auth),
-) -> FeedActividad:
-    """Paginado **por cursor de id** y no por `offset`.
-
-    El ledger es append-only, así que el id ya es el orden temporal; con
-    `created_at` dos eventos del mismo segundo podrían repetirse o perderse
-    entre páginas.
-
-    Un `member` recibe el feed sin los eventos de administración, y la
-    respuesta lo declara (`filtrado_por_rol`) en vez de dejarle creer que no
-    ha pasado nada.
-    """
-    try:
-        return await run_db(
-            actividad_de_organizacion,
-            int(ctx["user_id"]),
-            organization_id=organization_id,
-            antes_de_id=antes_de_id,
-            solo_usuario=usuario,
-            limit=limit,
-        )
-    except OrganizationAccessError as exc:
-        raise HTTPException(status_code=403, detail=str(exc)) from exc
 
 
 @router.patch("/pursuits/{pursuit_id}", response_model=PursuitDetail)

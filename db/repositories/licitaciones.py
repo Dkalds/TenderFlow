@@ -401,7 +401,12 @@ class LicitacionRepository:
         if dias_restantes_max is not None:
             tope = (datetime.now(UTC) + timedelta(days=int(dias_restantes_max))).date().isoformat()
             clauses.append(_iso_guard(licitaciones.c.fecha_limite))
-            clauses.append(licitaciones.c.fecha_limite <= _dia_siguiente(tope))
+            # `<` y no `<=`: `_dia_siguiente` produce una cota **exclusiva**
+            # (lo dice su docstring, y así la usan `cierre_hasta` y la rama
+            # FTS). Con `<=` esta rama devolvía un día de más, así que el
+            # mismo filtro daba un universo distinto según si el usuario había
+            # escrito o no en la caja de búsqueda.
+            clauses.append(licitaciones.c.fecha_limite < _dia_siguiente(tope))
             clauses.append(licitaciones.c.fecha_limite >= datetime.now(UTC).date().isoformat())
             clauses.append(abierta_core(licitaciones.c.estado))
 
@@ -823,14 +828,23 @@ class LicitacionRepository:
         return (str(row[0] or ""), str(row[1] or ""), row[2]) if row else None
 
     def get_unlabelled_candidates(self, limit: int = 500) -> list[dict[str, Any]]:
-        """Licitaciones no presentes en ml_feedback para active learning."""
+        """Licitaciones sin etiqueta humana en ml_feedback, para active learning.
+
+        El anti-join filtra por ``source = 'human'``: ``ml_feedback`` es también
+        la cola de los reportes de dato (``services/reportes_dato.py``, que
+        escribe ``source = 'reporte:<tipo>'``), y sin el predicado cualquier
+        usuario sacaba un expediente de la cola de etiquetado con sólo
+        reportarlo. «Sin etiquetar» significa sin etiqueta **humana**, no sin
+        fila.
+        """
         with connect_read() as c:
             cur = c.execute(
                 "SELECT l.id_externo, l.titulo, l.descripcion, l.cpv, l.importe, "
                 "l.organo_contratacion, l.ccaa, l.fecha_publicacion, l.url, "
                 "l.tecnologia, l.ml_tecnologias, l.ml_proba_max, l.ml_tech_principal "
                 "FROM licitaciones l "
-                "LEFT JOIN ml_feedback f ON l.id_externo = f.expediente "
+                "LEFT JOIN ml_feedback f "
+                "  ON l.id_externo = f.expediente AND f.source = 'human' "
                 "WHERE f.expediente IS NULL "
                 "ORDER BY l.fecha_publicacion DESC LIMIT %s",
                 (limit,),
@@ -940,13 +954,17 @@ class LicitacionRepository:
         return salida
 
     def get_unlabelled_random(self, limit: int = 20) -> list[dict[str, Any]]:
+        """Muestra aleatoria sin etiqueta humana. Mismo criterio que
+        :meth:`get_unlabelled_candidates`: ``source = 'human'`` en el anti-join,
+        para que un reporte de dato no vacíe la cola de etiquetado."""
         with connect_read() as c:
             cur = c.execute(
                 "SELECT l.id_externo, l.titulo, l.descripcion, l.cpv, l.importe, "
                 "l.organo_contratacion, l.ccaa, l.fecha_publicacion, l.url, "
                 "l.tecnologia, l.ml_tecnologias, l.ml_proba_max, l.ml_tech_principal "
                 "FROM licitaciones l "
-                "LEFT JOIN ml_feedback f ON l.id_externo = f.expediente "
+                "LEFT JOIN ml_feedback f "
+                "  ON l.id_externo = f.expediente AND f.source = 'human' "
                 "WHERE f.expediente IS NULL "
                 "ORDER BY RANDOM() LIMIT %s",
                 (limit,),

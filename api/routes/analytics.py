@@ -14,7 +14,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from api.concurrency import run_db
 from api.routes.dual_auth import require_any_auth
 from api.routes.dual_auth import require_any_auth as require_analytics_auth
-from api.tenancy import require_organization
+from api.tenancy import require_organization, resolve_organization_ctx
 from db.notifications import get_last_seen_ts
 from observability.logging import get_logger
 from services.analytics.clusters import ClustersFilters, ClustersResult, get_clusters
@@ -453,6 +453,7 @@ def resumen_novedades(
 @router.get(
     "/resumen/desde-mi-ultima-visita",
     summary="Diff personal: qué cambió en lo que sigues y en el pipeline de tu equipo",
+    responses={403: {"description": "Sin membresía en la organización pedida"}},
 )
 async def resumen_desde_ultima_visita(
     organization_id: int | None = Query(default=None, ge=1),
@@ -471,12 +472,21 @@ async def resumen_desde_ultima_visita(
     mirando. Una banda ausente se lee como que la pieza está rota.
     """
 
+    # La banda del equipo se lee del ledger con `WHERE e.organization_id = %s`,
+    # así que la organización se resuelve contra la membresía del usuario en
+    # vez de creerle a la query. `None` significa «sólo lo mío», no «la
+    # organización por defecto», y por eso no se resuelve nada en ese caso.
+    resuelta: int | None = None
+    if organization_id is not None:
+        ambito = await resolve_organization_ctx(ctx, organization_id)
+        resuelta = int(ambito["organization_id"])
+
     def _trabajo() -> NovedadesDesdeUltimaVisita:
         user_key = str(ctx["user_key"])
         return desde_ultima_visita(
             user_key,
             last_seen=get_last_seen_ts(user_key),
-            organization_id=organization_id,
+            organization_id=resuelta,
             limit=limit,
         )
 

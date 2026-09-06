@@ -192,13 +192,44 @@ def _adjudicacion_detectada(row: dict[str, Any]) -> PursuitAdjudicacionDetectada
 
 
 def _detalle(row: dict[str, Any], organization_id: int, pursuit_id: int) -> PursuitDetail:
-    return PursuitDetail.model_validate(
+    detalle = PursuitDetail.model_validate(
         {
             **row,
             "events": _repo.list_events(organization_id, pursuit_id),
             "adjudicacion": _adjudicacion_detectada(row),
         }
     )
+    # La fecha prevista (F4.4) también en el detalle: la fila del repositorio no
+    # trae la columna, así que sin esto `expected_award` era siempre `None` y la
+    # ficha PDF afirmaba «el órgano no tiene adjudicaciones suficientes» junto a
+    # una tarjeta del listado que sí enseñaba la fecha, sobre el mismo
+    # expediente. Una consulta para un órgano: es una vista de detalle.
+    organo = row.get("tender_organo")
+    if organo:
+        stats = _lead_time_por_organo([str(organo)])
+        detalle.expected_award = estimar_adjudicacion(
+            row.get("tender_deadline"), stats.get(str(organo))
+        )
+    return detalle
+
+
+def _lead_time_por_organo(organos: list[str]) -> dict[str, dict[str, Any]]:
+    """Percentiles de lead-time de esos órganos, o ``{}`` si la consulta falla.
+
+    Un fallo aquí **no** tumba a quien llama: la fecha prevista es información
+    añadida, y quedarse sin tablero de pipeline —o sin ficha— porque una
+    consulta de percentiles falló sería un mal negocio. Sin ella se enseña «sin
+    estimación», que es exactamente lo que enseña también un órgano sin
+    histórico suficiente.
+    """
+    if not organos:
+        return {}
+    desde = (datetime.now(UTC) - timedelta(days=30 * LEAD_TIME_MESES)).date().isoformat()
+    try:
+        return lead_time_por_organo(organos, desde_iso=desde)
+    except Exception as exc:
+        log.warning("pursuit_lead_time_error", error=str(exc)[:200])
+        return {}
 
 
 def _con_fecha_prevista(rows: list[dict[str, Any]]) -> list[PursuitSummary]:
@@ -209,20 +240,12 @@ def _con_fecha_prevista(rows: list[dict[str, Any]]) -> list[PursuitSummary]:
     así que los órganos repetidos —lo normal en una cartera— se resuelven una
     vez.
 
-    Un fallo aquí **no** tumba el listado: la fecha prevista es información
-    añadida, y quedarse sin tablero de pipeline porque una consulta de
-    percentiles falló sería un mal negocio. Sin ella, cada tarjeta enseña «sin
-    estimación», que es exactamente lo que enseñará también un órgano sin
-    histórico suficiente.
+    El fallback ante un fallo de la consulta lo pone
+    :func:`_lead_time_por_organo`, que comparte con el detalle.
     """
-    organos = sorted({str(r["tender_organo"]) for r in rows if r.get("tender_organo")})
-    stats: dict[str, dict[str, Any]] = {}
-    if organos:
-        desde = (datetime.now(UTC) - timedelta(days=30 * LEAD_TIME_MESES)).date().isoformat()
-        try:
-            stats = lead_time_por_organo(organos, desde_iso=desde)
-        except Exception as exc:
-            log.warning("pursuit_lead_time_error", error=str(exc)[:200])
+    stats = _lead_time_por_organo(
+        sorted({str(r["tender_organo"]) for r in rows if r.get("tender_organo")})
+    )
 
     items: list[PursuitSummary] = []
     for row in rows:

@@ -23,6 +23,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Final, Literal
 
+from shared.numeric import values_equal
+
 __all__ = [
     "CATALOGO_AVISOS",
     "SUBTIPOS",
@@ -164,8 +166,16 @@ def clasificar_cambio(
     importe_viejo = anterior.get("importe")
     importe_nuevo = actual.get("importe")
     if importe_nuevo is not None and importe_viejo is not None:
+        # `values_equal` y no una tolerancia absoluta propia: `licitaciones.
+        # importe` es `real` (float4) y el valor que vuelve del motor nunca
+        # coincide con el que se escribió. La cota medida en producción es
+        # ~5e-6 **relativa**, o sea ~5 € en un contrato de 1 M€: contra un
+        # 0,005 € absoluto, cada expediente grande con historial producía un
+        # «Importe corregido a 1.000.000 € — Antes era 1.000.000 €» y, como
+        # esta función devuelve al primer acierto, tapaba el aviso genérico
+        # que sí habría nombrado el campo que cambió de verdad.
         try:
-            distinto = abs(float(importe_nuevo) - float(importe_viejo)) > 0.005
+            distinto = not values_equal(float(importe_viejo), float(importe_nuevo))
         except (TypeError, ValueError):
             distinto = False
         if distinto:

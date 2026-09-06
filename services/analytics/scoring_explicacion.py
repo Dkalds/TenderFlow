@@ -168,12 +168,19 @@ def _frase_plazo(fraccion: float) -> str | None:
     # hasta 180, 0.3 más allá, 0.0 vencido. El texto no repite la fecha —la
     # tarjeta ya la enseña— y traduce el escalón a lo único que importa aquí:
     # si da tiempo a preparar la oferta.
+    #
+    # Los escalones se comparan por igualdad aproximada y no con `<=`: 0.3 es
+    # «cierra a más de seis meses» y 0.5 es «cierra esta semana», y un
+    # `fraccion <= 0.55` metía a los dos en la misma frase, diciéndole al que
+    # tría que un expediente a ocho meses vista no le da tiempo.
     if fraccion >= 0.95:
         return "Plazo cómodo para preparar la oferta."
     if fraccion <= 0.01:
         return "Plazo vencido."
-    if fraccion <= 0.55:
+    if abs(fraccion - 0.5) < 0.05:
         return "Plazo justo: queda poco margen para preparar la oferta."
+    if abs(fraccion - 0.3) < 0.05:
+        return "Cierra a más de seis meses vista: hay tiempo, pero también para que cambie."
     return None
 
 
