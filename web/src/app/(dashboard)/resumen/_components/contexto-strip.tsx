@@ -3,11 +3,12 @@
 import { useMemo } from "react";
 import { PanelError, StatCell, StatStrip } from "@/components/console/panel";
 import { useFilteredQuery } from "@/hooks/use-filtered-query";
+import { useScopedHref } from "@/lib/filters";
 import { isAnomaly } from "@/lib/anomaly-detection";
 import { EMPTY, formatCompactCurrency, formatMonth, formatNumber, formatPercent } from "@/lib/utils";
 import { celdaSalud, coberturaSinMedir } from "@/lib/cobertura";
 import type { CeldaSalud, CoberturaMetrica } from "@/lib/cobertura";
-import type { AnalyticsOverview } from "@/lib/api-types";
+import type { AnalyticsOverview, ResumenHoyResult } from "@/lib/api-types";
 
 /**
  * Contexto de mercado y salud competitiva — las dos tiras de `overview`.
@@ -158,9 +159,29 @@ const STRIP_LG = "lg:grid-cols-[repeat(var(--console-stat-columns),minmax(0,1fr)
 const GLOBAL = "corpus completo, no el ámbito";
 
 export function ContextoStrip() {
+  const scopedHref = useScopedHref();
   const overview = useFilteredQuery<OverviewConCobertura>(["analytics", "overview"], "/api/v1/analytics/overview", {
     staleTime: 5 * 60 * 1000,
   });
+
+  // «Activas» bajó aquí desde la banda de arriba: es la foto del ámbito, no
+  // algo que exija una acción hoy, y allí ocupaba un cuarto de la fila urgente
+  // para decir un número que no caduca.
+  //
+  // Viene de otro endpoint que el resto de la tira, y eso no es gratis:
+  // `/resumen/hoy` sólo aplica cuatro de los siete filtros del ámbito
+  // (`alcance.ts`), así que con una búsqueda o un chip de estado activos esta
+  // celda mide un conjunto más ancho que sus vecinas. Se declara en el rótulo
+  // de la sección y no en el pie de la celda: a un séptimo del ancho el pie se
+  // trunca, y un aviso truncado no avisa. Misma clave y mismas opciones que en
+  // `atencion-cards.tsx`: React Query sirve las dos desde una sola petición.
+  const hoy = useFilteredQuery<ResumenHoyResult>(
+    ["analytics", "resumen", "hoy"],
+    "/api/v1/analytics/resumen/hoy",
+    { staleTime: 2 * 60 * 1000 },
+    undefined,
+    true,
+  );
 
   const data = overview.data;
   const loading = overview.isLoading;
@@ -217,14 +238,25 @@ export function ContextoStrip() {
           <h2 id="resumen-contexto" className="text-xs font-semibold">
             Contexto de mercado
           </h2>
-          <span className="text-muted-foreground text-[10.5px]">del ámbito activo · deltas entre meses cerrados</span>
+          <span className="text-muted-foreground text-[10.5px]">
+            del ámbito activo · deltas entre meses cerrados · «Activas» sale de otro endpoint y no
+            aplica búsqueda, estado ni importe
+          </span>
         </div>
-        <StatStrip columns={6} className={STRIP_LG}>
+        <StatStrip columns={7} className={STRIP_LG}>
+          <StatCell
+            label="Activas"
+            loading={hoy.isLoading}
+            value={formatNumber(hoy.data?.total_activas)}
+            href={scopedHref("/detalle?solo_abiertas=true")}
+            hint="sin adjudicar ni cerrar"
+          />
           <StatCell
             label="Total licitaciones"
             loading={loading}
             value={formatNumber(data?.total_licitaciones)}
             trend={comparativa.count}
+            trendAlert={comparativa.anomaliaCount}
             hint={pieDelta}
             badge={comparativa.anomaliaCount ? <BadgeAnomalia meses={historial} /> : undefined}
           />
@@ -233,6 +265,7 @@ export function ContextoStrip() {
             loading={loading}
             value={formatCompactCurrency(data?.importe_total)}
             trend={comparativa.importe}
+            trendAlert={comparativa.anomaliaImporte}
             hint={pieDelta}
             badge={comparativa.anomaliaImporte ? <BadgeAnomalia meses={historial} /> : undefined}
           />

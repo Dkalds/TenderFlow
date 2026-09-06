@@ -1,6 +1,7 @@
 "use client";
 
-import { useFilters } from "@/lib/filters";
+import { useMemo } from "react";
+import { useFilterParams, useFilters } from "@/lib/filters";
 
 /**
  * Qué parte del ámbito aplican de verdad los endpoints del Resumen.
@@ -40,6 +41,32 @@ export function useFiltrosIgnorados(): string[] {
   if (importeMin != null) ignorados.push(ETIQUETAS.importe);
   if (soloAbiertas) ignorados.push(ETIQUETAS.abiertas);
   return ignorados;
+}
+
+/** Los cuatro que `/analytics/resumen/hoy` sí declara. */
+const APLICADOS = ["fecha_desde", "fecha_hasta", "ccaa", "tecnologia"] as const;
+
+/**
+ * El trozo del ámbito que `/analytics/resumen/hoy` aplica de verdad.
+ *
+ * Sirve para pedir a **otro** endpoint el mismo universo que contó ese: la
+ * lista de «Vencen en 48 horas» sale de `GET /licitaciones`, que sí acepta los
+ * siete filtros, así que mandarle el ámbito entero la dejaría más estrecha que
+ * el número que la encabeza — un contador de 37 sobre una lista que sólo puede
+ * enseñar los 4 que sobreviven al chip de estado. Recortando aquí, lista y
+ * número miden lo mismo y el desajuste que queda es **uno solo**, el que
+ * `useFiltrosIgnorados` ya declara para toda la banda.
+ */
+export function useFiltrosDeResumen(): Record<string, string> {
+  const params = useFilterParams();
+  return useMemo(() => {
+    const aplicados: Record<string, string> = {};
+    for (const clave of APLICADOS) {
+      const valor = params[clave];
+      if (valor) aplicados[clave] = valor;
+    }
+    return aplicados;
+  }, [params]);
 }
 
 /** «búsqueda y estado» / «búsqueda, estado y sólo abiertas». */

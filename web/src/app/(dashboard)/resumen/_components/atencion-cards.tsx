@@ -2,51 +2,46 @@
 
 import Link from "next/link";
 import { useMemo } from "react";
-import { Activity, ArrowRight, Clock, Flame, type LucideIcon, Sparkles } from "lucide-react";
-import { Stagger } from "@/components/motion";
+import { ArrowRight, Flame, type LucideIcon, Sparkles } from "lucide-react";
 import { PanelError } from "@/components/console/panel";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAnnounceOnChange } from "@/components/live-region";
 import { useFilteredQuery } from "@/hooks/use-filtered-query";
 import { useScopedHref } from "@/lib/filters";
 import { cn, formatNumber } from "@/lib/utils";
-import type { ResumenNovedadesResult, ResumenHoyResult } from "@/lib/api-types";
-import { NovedadesBanner } from "./novedades-banner";
+import type { ResumenHoyResult } from "@/lib/api-types";
+import { ColaCierre } from "./cola-cierre";
 import { useFiltrosIgnorados } from "./alcance";
 import { AvisoAlcance } from "./aviso-alcance";
 
 /**
- * Mercado abierto — los cuatro contadores que exigen mirar hoy.
+ * Mercado abierto — lo que exige mirar hoy en el corpus.
  *
- * Tres cosas cambian respecto a la versión anterior, y las tres son la misma
- * cosa: que la tarjeta no prometa lo que el enlace no cumple.
+ * Tres cosas siguen siendo verdad desde la versión anterior, y conviene no
+ * perderlas de vista al leer el layout:
  *
- * 1. **El enlace arrastra el ámbito.** Iba con `href="/detalle?…"` a secas, así
- *    que con un chip de CCAA activo la tarjeta contaba Madrid y abría España.
- *    Ahora pasa por `useScopedHref`, que fusiona ámbito y recorte propio.
- * 2. **El destino dice si es exacto.** La cabecera afirmaba que «cada tarjeta
- *    abre su listado ya filtrado» y dos de las cuatro abrían `/detalle` sin
- *    filtro ninguno: «Vencen 48h: 37» llevaba a un listado de 148.000. El
- *    backend no sabía acotar ni por fecha de cierre ni por el P75 de importe, y
- *    fabricarlo en cliente sería inventar el filtrado (ADR-014), así que el pie
- *    marcaba con `≈` los destinos que se quedaban cortos. Ya no hace falta:
- *    `GET /licitaciones` acepta `cierre_desde`/`cierre_hasta` sobre
- *    `fecha_limite`, y `/resumen/hoy` publica el `importe_p75` con el que contó.
- *    El `≈` sobrevive para el único caso que sigue sin poder ser exacto: con
- *    ámbito activo el P75 se recalcula sobre el subconjunto filtrado y el
- *    endpoint no lo publica, así que ahí «Grandes en plazo» vuelve a ser
- *    aproximada y lo dice.
+ * 1. **El enlace arrastra el ámbito.** Todo destino pasa por `useScopedHref`,
+ *    que fusiona ámbito activo y recorte propio: con un chip de CCAA puesto, la
+ *    tarjeta contaba Madrid y abría España.
+ * 2. **El destino dice si es exacto.** El `≈` marca el único caso que no puede
+ *    serlo: con ámbito activo el P75 se recalcula sobre el subconjunto filtrado
+ *    y `/resumen/hoy` no lo publica, así que «Grandes en plazo» abre un listado
+ *    más ancho que su cifra y lo declara.
  * 3. **El alcance del endpoint se declara.** `/analytics/resumen/hoy` sólo
- *    aplica fecha, CCAA y tecnología; con búsqueda o estado en el ámbito, estos
- *    contadores miden otro conjunto que la tira de contexto de abajo. Ver
- *    `alcance.ts`.
+ *    aplica fecha, CCAA y tecnología (ver `alcance.ts`).
+ *
+ * Lo que cambia es el reparto. Las cuatro tarjetas eran del mismo tamaño y
+ * decían lo mismo —un número y una flecha—, así que la banda no tenía tesis: la
+ * más urgente y la más inerte pesaban igual. Ahora la que tiene plazo ocupa dos
+ * tercios y **enseña la cola** (`cola-cierre.tsx`); las dos que se consultan de
+ * pasada se apilan en el tercio restante con su deep-link intacto; y «Total
+ * activas», que no exige ninguna acción hoy, baja a la tira de contexto, que es
+ * donde vive el resto de la foto del ámbito.
  */
 
 const ACCENT = {
-  hot: "var(--score-hot)",
   warm: "var(--score-warm)",
   cold: "var(--score-cold)",
-  primary: "var(--primary)",
 } as const;
 
 interface Tarjeta {
@@ -61,7 +56,6 @@ interface Tarjeta {
   /** Qué abre de verdad. `exacto: false` ⇒ el listado es más ancho que la cifra. */
   target: string;
   exacto: boolean;
-  alert?: boolean;
 }
 
 function UrgentCard({ card, loading }: { card: Tarjeta; loading: boolean }) {
@@ -73,12 +67,11 @@ function UrgentCard({ card, loading }: { card: Tarjeta; loading: boolean }) {
     <Link
       href={scopedHref(card.href)}
       className={cn(
-        "group bg-card/70 flex min-h-[118px] flex-col rounded-xl border px-3.5 py-3 text-left",
+        "group bg-card/70 border-border/60 flex flex-col rounded-xl border px-3.5 py-3 text-left",
         "hover:border-primary/45 transition-[transform,border-color] duration-140 ease-out hover:-translate-y-px",
-        card.alert ? "border-destructive/50" : "border-border/60",
       )}
     >
-      <div className="mb-3 flex items-center gap-2.5">
+      <div className="mb-2 flex items-center gap-2.5">
         <span
           className="grid h-6 w-6 flex-none place-items-center rounded-md"
           style={{ background: `hsl(${ACCENT[card.accent]} / 0.14)`, color }}
@@ -86,16 +79,21 @@ function UrgentCard({ card, loading }: { card: Tarjeta; loading: boolean }) {
           <Icon className="h-3.5 w-3.5" aria-hidden="true" />
         </span>
         <span className="text-[11.5px] font-semibold">{card.title}</span>
+        <div className="flex-1" />
+        <ArrowRight
+          className="text-primary h-3 w-3 flex-none transition-transform duration-140 ease-out group-hover:translate-x-0.5"
+          aria-hidden="true"
+        />
       </div>
       {loading ? (
-        <Skeleton className="h-8 w-20 rounded" />
+        <Skeleton className="h-7 w-16 rounded" />
       ) : (
-        <div className="tf-tnum font-mono text-[30px] leading-none font-semibold" style={{ color }}>
+        <div className="tf-tnum font-mono text-[26px] leading-none font-semibold" style={{ color }}>
           {formatNumber(card.value)}
         </div>
       )}
       <div className="text-muted-foreground mt-1.5 text-[11px] leading-[1.45]">{card.subtitle}</div>
-      <div className="border-border/40 mt-auto flex items-center gap-1.5 border-t pt-2.5">
+      <div className="border-border/40 mt-auto flex items-center gap-1.5 border-t pt-2">
         <span
           className={cn(
             "min-w-0 flex-1 truncate font-mono text-[10.5px]",
@@ -104,10 +102,6 @@ function UrgentCard({ card, loading }: { card: Tarjeta; loading: boolean }) {
         >
           {card.exacto ? card.target : `≈ ${card.target}`}
         </span>
-        <ArrowRight
-          className="text-primary h-3 w-3 flex-none transition-transform duration-140 ease-out group-hover:translate-x-0.5"
-          aria-hidden="true"
-        />
       </div>
     </Link>
   );
@@ -115,12 +109,7 @@ function UrgentCard({ card, loading }: { card: Tarjeta; loading: boolean }) {
 
 export function AtencionCards() {
   const ignorados = useFiltrosIgnorados();
-
-  const novedades = useFilteredQuery<ResumenNovedadesResult>(
-    ["analytics", "resumen", "novedades"],
-    "/api/v1/analytics/resumen/novedades",
-    { staleTime: 5 * 60 * 1000 },
-  );
+  const scopedHref = useScopedHref();
 
   const hoy = useFilteredQuery<ResumenHoyResult>(
     ["analytics", "resumen", "hoy"],
@@ -138,7 +127,7 @@ export function AtencionCards() {
     return `/detalle?fecha_desde=${ayer}`;
   }, []);
 
-  // Deep-link de «Vencen 48h»: `cierre_desde`/`cierre_hasta` acotan
+  // Deep-link de la cola de cierre: `cierre_desde`/`cierre_hasta` acotan
   // `fecha_limite`, la misma columna sobre la que el KPI cuenta.
   //
   // El recorte es por día y el contador por hora, así que el listado va de las
@@ -168,18 +157,6 @@ export function AtencionCards() {
 
   const cards: Tarjeta[] = [
     {
-      key: "vencen",
-      title: "Vencen 48h",
-      value: data?.vencen_48h,
-      subtitle: "Cierran en menos de 2 días",
-      icon: Clock,
-      accent: "hot",
-      href: vencenHref,
-      target: "/detalle · cierra en 48h",
-      exacto: true,
-      alert: Boolean(data && data.vencen_48h > 0),
-    },
-    {
       // Se llamaba «Calientes»: el KPI homónimo de la extinta /pipeline-alertas
       // contaba otra cosa (banda del score ≥ 75). El campo del DTO conserva su
       // nombre porque es contrato; lo que se corrige es lo que lee el usuario.
@@ -189,7 +166,8 @@ export function AtencionCards() {
       subtitle: "Importe ≥ P75, abiertas y en plazo",
       icon: Flame,
       accent: "warm",
-      href: p75 !== null ? `/detalle?solo_abiertas=true&importe_min=${p75}` : "/detalle?solo_abiertas=true",
+      href:
+        p75 !== null ? `/detalle?solo_abiertas=true&importe_min=${p75}` : "/detalle?solo_abiertas=true",
       target: p75 !== null ? "/detalle abiertas · importe ≥ P75" : "/detalle abiertas · sin el corte P75",
       exacto: p75 !== null,
     },
@@ -202,17 +180,6 @@ export function AtencionCards() {
       accent: "cold",
       href: nuevasHref,
       target: "/detalle desde ayer",
-      exacto: true,
-    },
-    {
-      key: "activas",
-      title: "Total activas",
-      value: data?.total_activas,
-      subtitle: "Sin adjudicar ni cerrar",
-      icon: Activity,
-      accent: "primary",
-      href: "/detalle?solo_abiertas=true",
-      target: "/detalle sólo abiertas",
       exacto: true,
     },
   ];
@@ -228,8 +195,6 @@ export function AtencionCards() {
         </span>
       </div>
 
-      <NovedadesBanner data={novedades.data} isLoading={novedades.isLoading} />
-
       <AvisoAlcance ignorados={ignorados} />
 
       {hoy.error ? (
@@ -239,13 +204,20 @@ export function AtencionCards() {
           onRetry={() => void hoy.refetch()}
         />
       ) : (
-        <Stagger className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          {cards.map((card) => (
-            <Stagger.Item key={card.key}>
-              <UrgentCard card={card} loading={hoy.isLoading} />
-            </Stagger.Item>
-          ))}
-        </Stagger>
+        <div className="grid gap-3 lg:grid-cols-3">
+          <ColaCierre
+            className="lg:col-span-2"
+            total={data?.vencen_48h}
+            loading={hoy.isLoading}
+            href={scopedHref(vencenHref)}
+            target="/detalle · cierra en 48h"
+          />
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
+            {cards.map((card) => (
+              <UrgentCard key={card.key} card={card} loading={hoy.isLoading} />
+            ))}
+          </div>
+        </div>
       )}
     </section>
   );

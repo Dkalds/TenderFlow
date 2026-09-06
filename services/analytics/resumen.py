@@ -45,6 +45,16 @@ class ResumenNovedadesSample(BaseModel):
 class ResumenNovedadesResult(BaseModel):
     count: int = 0
     sample: list[ResumenNovedadesSample] = Field(default_factory=list)
+    # Corte contra el que se contó, en ISO-8601 UTC. El recuento salía sin él y
+    # eso dejaba al cliente sin poder señalar *cuáles* son las nuevas: con la
+    # muestra de diez podía marcar diez filas y ninguna más, así que en una
+    # tabla de treinta la fila nueva número once aparecía como vieja. Marcar
+    # parte de las filas es peor que no marcar ninguna, porque la ausencia de
+    # marca se lee como "esta no es nueva". Publicando el corte, el cliente
+    # compara `fecha_publicacion >= desde` y acierta en todas.
+    # `None` cuando no hay corte que publicar (usuario sin `last_login`, o
+    # ilegible): el cliente entonces no marca nada, que es la salida segura.
+    desde: str | None = None
 
 
 class ResumenHoyFilters(BaseModel):
@@ -204,7 +214,8 @@ def get_resumen_novedades(user_id: int) -> ResumenNovedadesResult:
     if pd.isna(ts):
         return ResumenNovedadesResult()
 
-    count, rows = _repo.resumen_novedades(desde_iso=ts.isoformat(), sample_limit=_NOVEDADES_SAMPLE)
+    desde_iso = ts.isoformat()
+    count, rows = _repo.resumen_novedades(desde_iso=desde_iso, sample_limit=_NOVEDADES_SAMPLE)
     sample = [
         ResumenNovedadesSample(
             id_externo=str(row["id_externo"]),
@@ -216,7 +227,7 @@ def get_resumen_novedades(user_id: int) -> ResumenNovedadesResult:
     ]
 
     log.info("analytics_resumen_novedades_done", count=count)
-    return ResumenNovedadesResult(count=count, sample=sample)
+    return ResumenNovedadesResult(count=count, sample=sample, desde=desde_iso)
 
 
 def get_resumen_hoy(filters: ResumenHoyFilters) -> ResumenHoyResult:

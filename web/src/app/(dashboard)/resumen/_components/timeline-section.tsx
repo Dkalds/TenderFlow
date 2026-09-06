@@ -10,8 +10,9 @@ import { useFilteredQuery } from "@/hooks/use-filtered-query";
 import { useFilters } from "@/lib/filters";
 import { cn, formatCurrency, formatDate, formatNumber } from "@/lib/utils";
 import type { TimelineScatterResult } from "@/lib/api-types";
-import { ITEMS_PER_PAGE, TIMELINE_MAX, type TimelineItem } from "./types";
+import { ITEMS_PER_PAGE, TIMELINE_MAX, esNueva, type TimelineItem } from "./types";
 import { PublicacionesPanel } from "./publicaciones-panel";
+import { NovedadesBanner, useNovedades } from "./novedades-banner";
 
 /**
  * Publicaciones del periodo: el panel de cortes y la tabla que lo desglosa.
@@ -21,6 +22,11 @@ import { PublicacionesPanel } from "./publicaciones-panel";
  * defecto. Aquí queda la tabla: siete columnas ordenables, paginación de diez
  * y el tope del endpoint declarado, porque «1–10 de 1.000» se leía como el
  * total del ámbito cuando es el techo de `/resumen/timeline`.
+ *
+ * La línea de novedades entra aquí, encima de lo que desglosa: antes vivía en
+ * la banda urgente de arriba y repetía, en forma de muestra, filas que esta
+ * misma tabla ya enseñaba. Ahora el recuento se queda en una línea y **son las
+ * filas las que se marcan**, con el punto de `esNueva`.
  */
 
 const COLUMNS: {
@@ -40,6 +46,8 @@ const COLUMNS: {
 
 export function TimelineSection() {
   const { rango } = useFilters();
+  const novedades = useNovedades();
+  const corteNovedades = novedades.data?.desde ?? null;
 
   const [pubPage, setPubPage] = useState(0);
   const [pubSortKey, setPubSortKey] = useState<keyof TimelineItem>("fecha_publicacion");
@@ -98,6 +106,8 @@ export function TimelineSection() {
 
   return (
     <div className="mb-5.5 flex flex-col gap-3.5">
+      <NovedadesBanner data={novedades.data} isLoading={novedades.isLoading} />
+
       <PublicacionesPanel />
 
       <Panel>
@@ -197,9 +207,18 @@ export function TimelineSection() {
                       <td className="px-1 py-1.5">
                         <Link
                           href={`/detalle?lic=${encodeURIComponent(item.id_externo)}`}
-                          className="block truncate text-[11.5px] leading-[1.4] font-medium hover:underline"
+                          className="flex min-w-0 items-center gap-2 text-[11.5px] leading-[1.4] font-medium hover:underline"
                         >
-                          {item.titulo}
+                          {esNueva(item.fecha_publicacion, corteNovedades) && (
+                            <>
+                              <span
+                                className="bg-primary h-1.5 w-1.5 flex-none rounded-full"
+                                aria-hidden="true"
+                              />
+                              <span className="sr-only">Nueva desde tu última visita.</span>
+                            </>
+                          )}
+                          <span className="min-w-0 truncate">{item.titulo}</span>
                         </Link>
                       </td>
                       <td className="text-muted-foreground truncate px-1 text-[11px]">
