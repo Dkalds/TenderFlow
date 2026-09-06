@@ -526,6 +526,83 @@ async def get_licitacion(
     return LicitacionDetail(**campos)  # type: ignore[arg-type]
 
 
+# ── /licitaciones/{id_externo}/similares ─────────────────────────────────
+
+
+class SimilarOut(BaseModel):
+    """Un expediente propuesto como predecesor o similar (C1.3)."""
+
+    id_externo: str
+    titulo: str
+    organo_contratacion: str | None = None
+    cpv: str | None = None
+    importe: float | None = None
+    estado: str | None = None
+    fecha_publicacion: str | None = None
+    #: Parecido con el expediente consultado, en la escala del `metodo`.
+    score: float
+    # Solo el predecesor los trae: son la información accionable —quién es el
+    # incumbente y a qué precio ganó— y por eso no se rellenan en los similares,
+    # donde no hay una adjudicación que los respalde.
+    adjudicatario: str | None = None
+    importe_adjudicado: float | None = None
+    fecha_adjudicacion: str | None = None
+    #: Baja del predecesor, calculada sobre base sin IVA cuando la fila la trae
+    #: (C1.1). `None` si no se puede calcular sin mezclar bases.
+    baja_pct: float | None = None
+
+
+class SimilaresResult(BaseModel):
+    """Predecesor y expedientes parecidos."""
+
+    licitacion_id: str
+    # `None` = no hay ninguno que cumpla mismo órgano + mismo CPV4 +
+    # anterioridad. **No se rellena con «el más parecido»**: proponer un
+    # incumbente equivocado hace que alguien prepare su oferta contra un
+    # competidor que no existe.
+    predecesor: SimilarOut | None = None
+    similares: list[SimilarOut] = Field(default_factory=list)
+    #: `embedding` | `fts`. Sin embeddings instalados el orden es peor, y una
+    #: lista ordenada por un criterio que el consumidor no conoce no se puede
+    #: interpretar.
+    metodo: str = "fts"
+    #: Candidatos evaluados. Sin él, `similares: []` no distingue «no hay nada
+    #: parecido» de «no había contra qué comparar».
+    n: int = 0
+
+
+@router.get(
+    "/licitaciones/{id_externo}/similares",
+    response_model=SimilaresResult,
+    summary="Predecesor y expedientes similares",
+)
+async def get_similares(
+    id_externo: str,
+    limit: int = Query(10, ge=1, le=50, description="Máximo de similares"),
+    _ctx: dict[str, Any] = Depends(require_any_auth),
+) -> SimilaresResult:
+    """¿Este contrato ya se licitó antes? ¿Quién lo tiene hoy?
+
+    `services/embeddings.py` sabía buscar textos parecidos desde siempre y
+    ninguna ruta lo exponía (hecho 3 del plan complementario). Esta lo hace, con
+    dos preguntas separadas porque tienen listones de evidencia distintos: ver
+    `services/similares.py`.
+    """
+    from services.similares import buscar
+
+    resultado = await run_db(buscar, id_externo, max_similares=limit)
+    if resultado is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No encontrado.")
+
+    return SimilaresResult(
+        licitacion_id=resultado.licitacion_id,
+        predecesor=(SimilarOut(**vars(resultado.predecesor)) if resultado.predecesor else None),
+        similares=[SimilarOut(**vars(c)) for c in resultado.similares],
+        metodo=resultado.metodo,
+        n=resultado.n,
+    )
+
+
 # ── /licitaciones/{id_externo}/explain ───────────────────────────────────
 
 

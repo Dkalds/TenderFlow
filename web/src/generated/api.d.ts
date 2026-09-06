@@ -1940,6 +1940,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/licitaciones/{id_externo}/similares": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Predecesor y expedientes similares
+         * @description ¿Este contrato ya se licitó antes? ¿Quién lo tiene hoy?
+         *
+         *     `services/embeddings.py` sabía buscar textos parecidos desde siempre y
+         *     ninguna ruta lo exponía (hecho 3 del plan complementario). Esta lo hace, con
+         *     dos preguntas separadas porque tienen listones de evidencia distintos: ver
+         *     `services/similares.py`.
+         */
+        get: operations["get_similares_api_v1_licitaciones__id_externo__similares_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/licitaciones/{id_externo}/tech-scores": {
         parameters: {
             query?: never;
@@ -7476,6 +7501,57 @@ export interface components {
             flags: components["schemas"]["FlagIn"][];
         };
         /**
+         * SimilarOut
+         * @description Un expediente propuesto como predecesor o similar (C1.3).
+         */
+        SimilarOut: {
+            /** Adjudicatario */
+            adjudicatario?: string | null;
+            /** Baja Pct */
+            baja_pct?: number | null;
+            /** Cpv */
+            cpv?: string | null;
+            /** Estado */
+            estado?: string | null;
+            /** Fecha Adjudicacion */
+            fecha_adjudicacion?: string | null;
+            /** Fecha Publicacion */
+            fecha_publicacion?: string | null;
+            /** Id Externo */
+            id_externo: string;
+            /** Importe */
+            importe?: number | null;
+            /** Importe Adjudicado */
+            importe_adjudicado?: number | null;
+            /** Organo Contratacion */
+            organo_contratacion?: string | null;
+            /** Score */
+            score: number;
+            /** Titulo */
+            titulo: string;
+        };
+        /**
+         * SimilaresResult
+         * @description Predecesor y expedientes parecidos.
+         */
+        SimilaresResult: {
+            /** Licitacion Id */
+            licitacion_id: string;
+            /**
+             * Metodo
+             * @default fts
+             */
+            metodo: string;
+            /**
+             * N
+             * @default 0
+             */
+            n: number;
+            predecesor?: components["schemas"]["SimilarOut"] | null;
+            /** Similares */
+            similares?: components["schemas"]["SimilarOut"][];
+        };
+        /**
          * SolicitudAccesoOut
          * @description Una solicitud de la cola, tal como la ve el panel.
          */
@@ -12415,6 +12491,44 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    get_similares_api_v1_licitaciones__id_externo__similares_get: {
+        parameters: {
+            query?: {
+                /** @description Máximo de similares */
+                limit?: number;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                id_externo: string;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SimilaresResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
             };
         };
     };
