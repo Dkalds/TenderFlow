@@ -7,10 +7,24 @@ Cierra dos huecos del subsistema ML:
    artefacto sustituido o desactualizado en disco se servía igual.
 2. **`data/models/` es efímero en los runners de Actions**: una fila de
    ``model_versions`` puede apuntar a un path que no existe en el runner
-   siguiente. Si la fila tiene sha256, se intenta descargar el asset homónimo
-   de la última Release de GitHub — el mismo canal de distribución que ya usa
-   ``sap_classifier`` (``scraper/ml_classifier.py::ensure_downloaded``) — y se
-   verifica contra el hash registrado antes de servirlo.
+   siguiente. Si la fila tiene sha256, el artefacto se **materializa** en la
+   caché escribible y se verifica contra el hash registrado antes de servirlo.
+
+Orden de resolución del artefacto ausente (S8.4)
+------------------------------------------------
+Primero el **almacén de objetos** (``shared/object_store.py``, el mismo bucket
+que guarda los binarios de los pliegos, bajo el prefijo ``modelos/``) y sólo
+después la **Release de GitHub**. El motivo es concreto: la Release exige un
+``GITHUB_TOKEN`` para no chocar con el rate limit anónimo de la API de GitHub
+(60 peticiones/hora por IP), y el contenedor de la API en Render no tiene
+ninguno — así que el camino de la Release es justo el que falla donde más
+falta hace. El bucket no necesita token de GitHub y ya está configurado para
+los pliegos.
+
+El **sha256 se verifica igual por los dos caminos**: la verificación vive
+después de la materialización y no dentro de ella, precisamente para que no
+pueda relajarse en uno solo. Si ninguno de los dos resuelve, se devuelve
+``None`` y el llamante cae a su baseline.
 
 Uso::
 
@@ -135,6 +149,73 @@ def _download_release_asset(asset_name: str, dest: Path) -> bool:
         return False
 
 
+def _download_bucket_asset(asset_name: str, dest: Path) -> bool:
+    """Materializa ``asset_name`` desde el almacén de objetos. True si lo logró.
+
+    Es el primer camino que se intenta (S8.4): no necesita ``GITHUB_TOKEN`` y
+    por eso funciona en el contenedor de la API, que es donde el camino de la
+    Release se queda sin cuota. Devuelve ``False`` —nunca lanza— cuando no hay
+    almacén, no está el objeto o falla la lectura: el llamante sigue a la
+    Release.
+    """
+    try:
+        from shared.object_store import get_object_store, model_artifact_key
+
+        clave = model_artifact_key(asset_name)
+        if clave is None:
+            return False
+        almacen = get_object_store()
+        if not almacen.enabled:
+            return False
+        datos = almacen.get(clave)
+    except Exception as exc:
+        log.warning("model_artifact_bucket_failed", asset=asset_name, error=str(exc))
+        return False
+    if datos is None:
+        log.info("model_artifact_no_en_bucket", asset=asset_name)
+        return False
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_bytes(datos)
+    log.info("model_artifact_downloaded_from_bucket", asset=asset_name, dest=str(dest))
+    return True
+
+
+def _materializar_artefacto(asset_name: str, dest: Path) -> bool:
+    """Bucket primero, Release de GitHub después. ``True`` si ``dest`` existe ya.
+
+    El sha256 NO se comprueba aquí a propósito: lo hace el llamante, una sola
+    vez, sea cual sea el camino que haya funcionado. Con la verificación
+    duplicada dentro de cada camino, añadir un tercero mañana significaría
+    poder olvidarla.
+    """
+    return _download_bucket_asset(asset_name, dest) or _download_release_asset(asset_name, dest)
+
+
+def publish_artifact_to_bucket(path: Path, *, asset_name: str | None = None) -> bool:
+    """Sube un artefacto ya publicado al bucket, para que la API pueda servirlo.
+
+    Contrapartida de :func:`_download_bucket_asset`: sin alguien que suba, el
+    camino del bucket no resuelve nunca. La invoca quien publica una versión
+    (promoción de modelos); es best-effort y su fallo no puede tumbar una
+    promoción que por lo demás fue bien.
+    """
+    try:
+        from shared.object_store import get_object_store, model_artifact_key
+
+        clave = model_artifact_key(asset_name or path.name)
+        if clave is None:
+            return False
+        almacen = get_object_store()
+        if not almacen.enabled:
+            return False
+        almacen.put(clave, path.read_bytes(), content_type="application/octet-stream")
+    except Exception as exc:
+        log.warning("model_artifact_publish_failed", path=str(path), error=str(exc))
+        return False
+    log.info("model_artifact_published_to_bucket", path=str(path))
+    return True
+
+
 def resolve_active_artifact(name: str) -> Path | None:
     """Path del artefacto de la versión activa de ``name``, verificado por sha256.
 
@@ -142,8 +223,9 @@ def resolve_active_artifact(name: str) -> Path | None:
       :class:`ModelArtifactMismatch` (un artefacto equivocado sirviendo
       predicciones es peor que no servirlas).
     - Fichero ausente + sha256 registrado → se busca en la caché local
-      (:func:`artifact_cache_dir`) y, si no está o no cuadra, se descarga de la
-      Release **a esa caché** y se verifica.
+      (:func:`artifact_cache_dir`) y, si no está o no cuadra, se materializa
+      **en esa caché** desde el almacén de objetos y, si ahí no está, desde la
+      Release de GitHub. Se verifica igual venga de donde venga.
     - Sin versión activa, o irresoluble sin hash → ``None`` (el caller decide
       su fallback — p. ej. el baseline histórico).
 
@@ -208,7 +290,7 @@ def resolve_active_artifact(name: str) -> Path | None:
         log.warning("model_artifact_missing_sin_sha256", model=name, path=str(path))
         return None
 
-    if not _download_release_asset(path.name, local):
+    if not _materializar_artefacto(path.name, local):
         log.warning("model_artifact_unresolvable", model=name, path=str(path))
         return None
     actual = _sha256(local)

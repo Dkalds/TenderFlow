@@ -23,17 +23,27 @@ from datetime import UTC, datetime
 from typing import Any, Literal
 from urllib.parse import urlsplit
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Security, status
-from fastapi.responses import Response, StreamingResponse
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    HTTPException,
+    Path,
+    Query,
+    Security,
+    status,
+)
+from fastapi.responses import JSONResponse, Response, StreamingResponse
 from fastapi.security import APIKeyHeader
 
 from api.auth import validate_api_key_credential
 from api.concurrency import run_db
 from api.routes.dual_auth import require_any_auth
-from api.tenancy import resolve_organization_ctx
+from api.tenancy import require_organization, resolve_organization_ctx
+from config.settings import jobs_export_umbral_filas
 from db.repositories.watchlist import WatchlistRepository
 from observability.logging import get_logger
-from shared.dto import CalendarioEnlace
+from shared.dto import CalendarioEnlace, JobEstadoDTO
 
 log = get_logger(__name__)
 
@@ -106,8 +116,35 @@ def _build_pdf(rows: list[dict[str, Any]], title: str) -> bytes:
 # ── Synchronous CSV/Excel download ───────────────────────────────────────────
 
 
-# response_class=StreamingResponse: la respuesta es el fichero (CSV/XLSX/PDF),
-# no hay 200 application/json que documentar.
+def build_pdf_export(payload: dict[str, Any]) -> tuple[bytes, int]:
+    """Consulta + maquetado del PDF de exportación. Devuelve ``(bytes, filas)``.
+
+    Extraída del handler para que el worker de la cola pueda ejecutar
+    exactamente lo mismo que el camino síncrono (``scheduler/worker.py``): si
+    fueran dos implementaciones, el PDF que llega por la cola dejaría de
+    parecerse al que llega por la request en cuanto una de las dos cambiara.
+    """
+    from services.licitaciones import fetch_for_pdf
+
+    ccaa = payload.get("ccaa")
+    rows = fetch_for_pdf(
+        ccaa=ccaa,
+        estado=payload.get("estado"),
+        q=payload.get("q"),
+        tecnologia=payload.get("tecnologia"),
+        fecha_desde=payload.get("fecha_desde"),
+        fecha_hasta=payload.get("fecha_hasta"),
+        limit=int(payload.get("limit") or 10000),
+    )
+    title = "Licitaciones SAP — Exportación"
+    if ccaa:
+        title += f" ({ccaa})"
+    return _build_pdf(rows, title), len(rows)
+
+
+# response_class=StreamingResponse: la respuesta normal es el fichero
+# (CSV/XLSX/PDF), no hay 200 application/json que documentar. El 202 sí lleva
+# modelo: es el mismo cuerpo que sirve `GET /jobs/{id}`.
 @router.get(
     "/download",
     response_class=StreamingResponse,
@@ -119,7 +156,14 @@ def _build_pdf(rows: list[dict[str, Any]], title: str) -> bytes:
                 "application/pdf": {},
             },
             "description": "Fichero exportado con los filtros actuales",
-        }
+        },
+        202: {
+            "model": JobEstadoDTO,
+            "description": (
+                "PDF grande: se encoló; se recoge en el `descarga` de su resultado "
+                "(`/api/v1/exports/descargas/{job_id}`)"
+            ),
+        },
     },
 )
 async def download_export(
@@ -131,16 +175,43 @@ async def download_export(
     fecha_desde: str | None = Query(None),
     fecha_hasta: str | None = Query(None),
     limit: int = Query(10000, ge=1, le=50000),
+    organization_id: int | None = Query(
+        None,
+        ge=1,
+        description="Organización a la que se atribuye la exportación encolada.",
+    ),
     _user: dict[str, Any] = Depends(require_any_auth),
-) -> StreamingResponse:
-    """Descarga síncrona (CSV, Excel o PDF) con los filtros actuales.
+) -> Response:
+    """Descarga (CSV, Excel o PDF) con los filtros actuales.
 
-    ``format=pdf`` es **el** camino para exportar a PDF desde 2026-09-03:
-    devuelve el documento en la propia respuesta, sin la máquina de estados
-    202+poll que sostenía el retirado ``POST /exports``.
+    ``format=pdf`` es **el** camino para exportar a PDF desde 2026-09-03. Por
+    encima de un umbral de filas la maquetación no cabe en una request: la
+    respuesta pasa a ser **202 con el trabajo encolado** y el fichero se recoge
+    en ``GET /exports/descargas/{job_id}``. Por debajo del umbral, y para CSV y
+    Excel, la respuesta sigue siendo el fichero.
+
+    Esta operación **nunca** se parametriza por identificador de trabajo: sus
+    parámetros son los filtros de quien la pide, así que no hay nada de otro
+    usuario que pedir aquí (issue #50, ``tests/test_unit_export_idor.py``). La
+    recogida del encolado, que sí lleva id, es otra ruta con su propia
+    comprobación de dueño.
     """
     from services.exports import generate_csv, generate_excel, get_export_filename
-    from services.licitaciones import fetch_for_pdf
+
+    filtros: dict[str, Any] = {
+        "q": q,
+        "estado": estado,
+        "ccaa": ccaa,
+        "tecnologia": tecnologia,
+        "fecha_desde": fecha_desde,
+        "fecha_hasta": fecha_hasta,
+        "limit": limit,
+    }
+
+    if format == "pdf" and limit > jobs_export_umbral_filas():
+        return await _encolar_export_pdf(
+            filtros, await resolve_organization_ctx(_user, organization_id)
+        )
 
     def _render() -> tuple[bytes, str, int]:
         """Consulta + serialización, fuera del event loop.
@@ -148,6 +219,12 @@ async def download_export(
         Hasta 50 000 filas y, con ``format=pdf``, la maquetación de reportlab:
         segundos de CPU que, ejecutados aquí, congelaban la API entera.
         """
+        if format == "pdf":
+            contenido, filas = build_pdf_export(filtros)
+            return contenido, "application/pdf", filas
+
+        from services.licitaciones import fetch_for_pdf
+
         rows = fetch_for_pdf(
             ccaa=ccaa,
             estado=estado,
@@ -163,11 +240,6 @@ async def download_export(
                 "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 len(rows),
             )
-        if format == "pdf":
-            title = "Licitaciones SAP — Exportación"
-            if ccaa:
-                title += f" ({ccaa})"
-            return _build_pdf(rows, title), "application/pdf", len(rows)
         return generate_csv(rows), "text/csv; charset=utf-8", len(rows)
 
     filename = get_export_filename(format)
@@ -178,6 +250,103 @@ async def download_export(
         io.BytesIO(content),
         media_type=media_type,
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+async def _encolar_export_pdf(payload: dict[str, Any], ctx: dict[str, Any]) -> JSONResponse:
+    """Encola el maquetado y responde 202 con el estado del trabajo."""
+    from api.routes.jobs import a_dto
+    from shared.jobs import TIPO_EXPORT_PDF, enqueue, obtener
+
+    job_id = await run_db(
+        enqueue,
+        TIPO_EXPORT_PDF,
+        payload,
+        organization_id=int(ctx["organization_id"]),
+        # Sin deduplicar: dos peticiones con los mismos filtros son dos
+        # descargas que alguien espera por separado, y el binario se guarda
+        # bajo la clave del job. Compartir uno haría que la segunda descarga
+        # dependiera de que la primera no hubiera caducado todavía.
+        deduplicar=False,
+    )
+    job = await run_db(obtener, job_id)
+    if job is None:  # defensa: acabamos de insertarlo
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="El trabajo se encoló pero no pudo releerse.",
+        )
+    log.info("export_pdf_encolado", job_id=job_id, filas_pedidas=payload.get("limit"))
+    return JSONResponse(
+        status_code=status.HTTP_202_ACCEPTED,
+        content=a_dto(job).model_dump(mode="json"),
+    )
+
+
+@router.get(
+    "/descargas/{job_id}",
+    response_class=StreamingResponse,
+    summary="Recoger el PDF de una exportación encolada",
+    responses={
+        200: {
+            "content": {"application/pdf": {}},
+            "description": "El PDF que maquetó el worker",
+        },
+        401: {"description": "Autenticación inválida"},
+        404: {"description": "El trabajo no existe o no es de esta organización"},
+        409: {"description": "El trabajo todavía no ha terminado"},
+        410: {"description": "El fichero caducó; hay que volver a pedir la exportación"},
+    },
+)
+async def descargar_export_encolado(
+    job_id: int = Path(ge=1, description="Identificador que devolvió el 202 de /download"),
+    ctx: dict[str, Any] = Depends(require_organization()),
+) -> StreamingResponse:
+    """Sirve el PDF que dejó maquetado el worker, mientras siga en caché.
+
+    Es una ruta separada de ``/download`` a propósito. El issue #50 fue un IDOR
+    sobre exports asíncronos: un id global adivinable apuntando al resultado de
+    otro usuario, y su RFC de retirada (2026-09-03) dijo que la máquina 202+poll
+    solo podía volver «con backend compartido». Vuelve ahora con las dos cosas
+    que le faltaban — el estado vive en la tabla ``jobs`` y el binario en la
+    caché compartida, no en un ``dict`` de proceso; y cada lectura comprueba que
+    el trabajo es de la organización de quien lo pide—. Manteniéndola aparte,
+    ``/download`` sigue sin aceptar identificadores ajenos: la ruta que se
+    parametriza por un id es esta, y es la que carga con la comprobación.
+
+    404 —y no 403— cuando el trabajo es de otra organización, por el mismo
+    motivo que en ``GET /jobs/{id}``: un 403 confirmaría que ese id existe.
+    """
+    from services.exports import get_export_filename
+    from shared.cache import get_cache
+    from shared.jobs import CACHE_EXPORTS, TIPO_EXPORT_PDF, clave_cache_export, obtener
+
+    job = await run_db(obtener, job_id)
+    if (
+        job is None
+        or job.tipo != TIPO_EXPORT_PDF
+        or job.organization_id != int(ctx["organization_id"])
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=f"Trabajo {job_id} no encontrado."
+        )
+    if job.estado != "done":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"El trabajo {job_id} está en estado '{job.estado}'; todavía no hay fichero.",
+        )
+
+    contenido = get_cache(CACHE_EXPORTS).get(clave_cache_export(job_id))
+    if not isinstance(contenido, bytes):
+        raise HTTPException(
+            status_code=status.HTTP_410_GONE,
+            detail="El fichero exportado caducó; vuelve a pedir la exportación.",
+        )
+    return StreamingResponse(
+        io.BytesIO(contenido),
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="{get_export_filename("pdf")}"',
+        },
     )
 
 

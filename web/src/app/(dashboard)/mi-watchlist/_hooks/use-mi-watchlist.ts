@@ -22,7 +22,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiMutate, fetchWithAuth } from "@/lib/api-client";
 import { getJSON, setJSON } from "@/lib/storage";
 import { primeraVez, registrarEvento } from "@/lib/analytics";
-import { useMetaCcaas } from "@/hooks/use-meta-filters";
+import { useMetaFilters } from "@/hooks/use-meta-filters";
 import { watchlistKeys } from "@/lib/query-keys";
 import {
   activeRulesOf,
@@ -101,6 +101,8 @@ export interface MiWatchlistState {
   formOpen: boolean;
   setFormOpen: (open: boolean | ((previo: boolean) => boolean)) => void;
   ccaaList: string[];
+  /** Catálogo de tecnologías para el criterio de S4.4; vacío si meta falla. */
+  tecnologiaList: string[];
   rules: ApiRule[] | undefined;
   ruleCount: number;
   rulesLoading: boolean;
@@ -160,9 +162,13 @@ export function useMiWatchlist(): MiWatchlistState {
     onDone: () => qc.invalidateQueries({ queryKey: watchlistKeys.rules }),
   });
 
-  /* ---- CCAA options (best-effort desde meta) ---- */
-  const { data: metaCcaas } = useMetaCcaas();
-  const ccaaList = ccaaOptions(metaCcaas);
+  /* ---- Catálogos de filtros (best-effort desde meta) ---- */
+  // Una sola consulta para CCAA y tecnología: `useMetaFilters` comparte la
+  // clave de caché con el resto de la consola, así que pedir las dos
+  // dimensiones no añade una petición (ver `hooks/use-meta-filters.ts`).
+  const { data: meta } = useMetaFilters();
+  const ccaaList = ccaaOptions(meta?.ccaa);
+  const tecnologiaList = meta?.tecnologia ?? [];
 
   /* ---- Mutations ---- */
   const invalidate = () => qc.invalidateQueries({ queryKey: watchlistKeys.rules });
@@ -201,6 +207,18 @@ export function useMiWatchlist(): MiWatchlistState {
       ccaa: ccaa || null,
       frequency,
       active: true,
+      // El alta rápida no expone los criterios de S4.4 —se afinan en el panel
+      // de edición, sobre una regla que ya tiene conteo con el que comparar—
+      // así que viajan a `null`, que es «este criterio no filtra». La única
+      // excepción es la tecnología del prefill de la command palette: venía en
+      // el ámbito desde el que se pulsó «crear regla», y perderla haría que la
+      // regla naciera más ancha de lo que el usuario estaba mirando.
+      tecnologia: prefilled.tecnologia || null,
+      organo: null,
+      procedimiento: null,
+      tipo_contrato: null,
+      banda_min: null,
+      plazo_min_dias: null,
     });
     setKeyword("");
     setCpv("");
@@ -252,6 +270,7 @@ export function useMiWatchlist(): MiWatchlistState {
     formOpen,
     setFormOpen,
     ccaaList,
+    tecnologiaList,
     rules,
     ruleCount: rules?.length ?? 0,
     rulesLoading,

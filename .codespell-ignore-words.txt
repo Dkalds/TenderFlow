@@ -137,3 +137,4 @@ foto
 hagas
 colector
 dependant
+rige

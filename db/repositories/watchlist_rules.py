@@ -203,7 +203,8 @@ def matches_pendientes(
 
 _RULE_COLS = (
     "id, user_key, nombre, keyword, cpv, min_importe, ccaa, "
-    "frequency, active, last_notified_at, email, organization_id, visibility"
+    "frequency, active, last_notified_at, email, organization_id, visibility, "
+    "tecnologia, organo, procedimiento, tipo_contrato, banda_min, plazo_min_dias"
 )
 
 #: Mismo SELECT sin las columnas de la revisión v47/v64. Existe para bases sin

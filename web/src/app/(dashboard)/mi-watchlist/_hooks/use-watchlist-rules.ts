@@ -17,10 +17,31 @@ import type { WatchlistRuleMatch, WatchlistRuleOut } from "@/lib/api-types";
 
 export type Frequency = "immediate" | "daily" | "weekly";
 
-export type ApiRule = WatchlistRuleOut;
+/** Banda comercial del Radar, de menor a mayor exigencia. */
+export type Banda = "Descarte" | "Tibia" | "Atractiva" | "Caliente";
+
+/**
+ * Criterios de S4.4 que la API ya acepta y devuelve, y que el cliente generado
+ * todavía no describe (`npm run codegen:file` los incorpora al regenerar desde
+ * el OpenAPI de esta rama).
+ *
+ * Se declaran opcionales encima de `WatchlistRuleOut` en vez de re-teclear el
+ * DTO entero: la pantalla compila con el cliente viejo y con el nuevo, y no se
+ * duplica la forma del contrato — que es el anti-patrón que ADR-014 prohíbe.
+ */
+export interface RuleCriteriosS4 {
+  tecnologia: string | null;
+  organo: string | null;
+  procedimiento: string | null;
+  tipo_contrato: string | null;
+  banda_min: Banda | null;
+  plazo_min_dias: number | null;
+}
+
+export type ApiRule = WatchlistRuleOut & Partial<RuleCriteriosS4>;
 export type MatchItem = WatchlistRuleMatch;
 
-export interface RuleBody {
+export interface RuleBody extends RuleCriteriosS4 {
   nombre: string | null;
   keyword: string | null;
   cpv: string | null;
@@ -37,6 +58,12 @@ export interface RuleFormState {
   minImporte: string;
   ccaa: string;
   frequency: Frequency;
+  tecnologia: string;
+  organo: string;
+  procedimiento: string;
+  tipoContrato: string;
+  bandaMin: string;
+  plazoMinDias: string;
 }
 
 /* ── Opciones de formulario ─────────────────────────────────────────── */
@@ -87,6 +114,28 @@ export const FREQ_OPTIONS: { value: Frequency; label: string }[] = [
 ];
 
 /**
+ * Bandas del Radar como umbral mínimo. El texto explica lo que el nombre de la
+ * banda no dice: elegir una acota además al universo puntuable —abiertas y en
+ * plazo—, que es el conjunto sobre el que el Radar calcula esa banda.
+ */
+export const BANDA_OPTIONS: { value: string; label: string }[] = [
+  { value: "__any__", label: "— Cualquiera —" },
+  { value: "Tibia", label: "Tibia o mejor" },
+  { value: "Atractiva", label: "Atractiva o mejor" },
+  { value: "Caliente", label: "Solo Caliente" },
+];
+
+/**
+ * Procedimientos y tipos de contrato que persiste la ingesta (revisión `v85`).
+ * No salen de `/meta/filters` —ese catálogo solo publica estado, CCAA,
+ * tecnología y CPV— así que aquí son las etiquetas del selector, no datos
+ * derivados: el filtro real lo aplica el backend contra la columna.
+ */
+export const PROCEDIMIENTO_OPTIONS = ["abierto", "restringido", "negociado", "menor"];
+
+export const TIPO_CONTRATO_OPTIONS = ["servicios", "suministros", "obras"];
+
+/**
  * Nota bajo el selector: la latencia es de la ingesta, no de la frecuencia
  * elegida, y para un plazo que vence hoy ninguna frecuencia es suficiente.
  */
@@ -125,6 +174,52 @@ export function ruleToFormState(rule: ApiRule): RuleFormState {
     minImporte: rule.min_importe != null ? String(rule.min_importe) : "",
     ccaa: rule.ccaa ?? "",
     frequency: rule.frequency,
+    tecnologia: rule.tecnologia ?? "",
+    organo: rule.organo ?? "",
+    procedimiento: rule.procedimiento ?? "",
+    tipoContrato: rule.tipo_contrato ?? "",
+    bandaMin: rule.banda_min ?? "",
+    plazoMinDias: rule.plazo_min_dias != null ? String(rule.plazo_min_dias) : "",
+  };
+}
+
+/**
+ * ¿La regla filtra algo? Antes bastaba con exigir palabra clave, porque era el
+ * único criterio de texto. Con los de S4.4 una regla legítima puede no tener
+ * ninguna («todo lo de este órgano», «todo lo Caliente en Madrid»), así que la
+ * condición pasa a ser «al menos un criterio»: guardar una regla vacía
+ * notificaría el mercado entero.
+ */
+export function tieneCriterio(form: RuleFormState): boolean {
+  return Boolean(
+    form.keyword.trim() ||
+      form.cpv.trim() ||
+      form.minImporte.trim() ||
+      form.ccaa ||
+      form.tecnologia ||
+      form.organo.trim() ||
+      form.procedimiento ||
+      form.tipoContrato ||
+      form.bandaMin ||
+      form.plazoMinDias.trim(),
+  );
+}
+
+/** Entero del formulario, o `null` si está vacío o no es un número usable. */
+function enteroONulo(value: string): number | null {
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+}
+
+/** Los seis criterios de S4.4 tal y como los espera el contrato. */
+function criteriosDeFormulario(form: RuleFormState): RuleCriteriosS4 {
+  return {
+    tecnologia: form.tecnologia || null,
+    organo: form.organo.trim() || null,
+    procedimiento: form.procedimiento || null,
+    tipo_contrato: form.tipoContrato || null,
+    banda_min: (form.bandaMin || null) as Banda | null,
+    plazo_min_dias: enteroONulo(form.plazoMinDias),
   };
 }
 
@@ -136,13 +231,14 @@ export function ruleToFormState(rule: ApiRule): RuleFormState {
  */
 export function formStateToBody(form: RuleFormState, active: boolean): RuleBody {
   return {
-    nombre: form.keyword.trim() || null,
+    nombre: form.keyword.trim() || form.organo.trim() || form.tecnologia || null,
     keyword: form.keyword.trim() || null,
     cpv: form.cpv.trim() || null,
     min_importe: form.minImporte ? parseFloat(form.minImporte) : null,
     ccaa: form.ccaa || null,
     frequency: form.frequency,
     active,
+    ...criteriosDeFormulario(form),
   };
 }
 
@@ -156,6 +252,15 @@ export function ruleToBody(rule: ApiRule, overrides: Partial<RuleBody> = {}): Ru
     ccaa: rule.ccaa ?? null,
     frequency: rule.frequency ?? "daily",
     active: rule.active ?? true,
+    // Los criterios de S4.4 viajan en CADA cuerpo: un PUT que los omitiera los
+    // borraría, y el sitio donde eso pasa es el switch de activar/pausar, que
+    // manda la regla entera con un `active` distinto.
+    tecnologia: rule.tecnologia ?? null,
+    organo: rule.organo ?? null,
+    procedimiento: rule.procedimiento ?? null,
+    tipo_contrato: rule.tipo_contrato ?? null,
+    banda_min: rule.banda_min ?? null,
+    plazo_min_dias: rule.plazo_min_dias ?? null,
     ...overrides,
   };
 }
@@ -185,6 +290,14 @@ export function prefillToFormState(
     // El ámbito global admite varias CCAA; el formulario solo una.
     ccaa: prefill?.ccaa?.split(",")[0] ?? "",
     frequency: "daily",
+    // El ámbito global también trae tecnología: llega con el mismo nombre que
+    // usa el resto de la consola, así que se prefija igual que la CCAA.
+    tecnologia: prefill?.tecnologia?.split(",")[0] ?? "",
+    organo: "",
+    procedimiento: "",
+    tipoContrato: "",
+    bandaMin: "",
+    plazoMinDias: "",
   };
 }
 

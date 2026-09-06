@@ -365,3 +365,89 @@ def test_precompute_ml_proba_sirve_el_artefacto_resuelto_no_el_local(tmp_path):
     is_available.assert_not_called()
     # `load` reventó a propósito: interesa por dónde pasó, no que puntúe.
     assert resultado["skipped_no_model"] is True
+
+
+# ── S8.4: el bucket antes que la Release ───────────────────────────────────
+#
+# El orden no es cosmético. La Release exige `GITHUB_TOKEN` para no chocar con
+# el rate limit anónimo de la API de GitHub, y el contenedor de la API en
+# Render no tiene ninguno: el camino de la Release es justo el que falla donde
+# más falta hace. El bucket ya está configurado para los binarios de pliegos.
+
+
+@pytest.fixture
+def bucket(tmp_path, monkeypatch):
+    """Almacén de objetos sobre disco, apuntando a un directorio del test."""
+    from shared.object_store import get_object_store, reset_object_store_cache
+
+    monkeypatch.setenv("DOCUMENT_BLOB_DIR", str(tmp_path / "bucket"))
+    monkeypatch.delenv("DOCUMENT_BLOB_BACKEND", raising=False)
+    monkeypatch.delenv("DOCUMENT_BLOB_BUCKET", raising=False)
+    monkeypatch.delenv("MODEL_BLOB_PREFIX", raising=False)
+    reset_object_store_cache()
+    yield get_object_store()
+    reset_object_store_cache()
+
+
+def _publicar_en_bucket(path_registrado: Path, contenido: bytes) -> None:
+    """Deja el artefacto en el bucket con el nombre por el que se pedirá."""
+    from shared.model_artifacts import publish_artifact_to_bucket
+
+    fuente = path_registrado.parent / "publicado" / path_registrado.name
+    fuente.parent.mkdir(parents=True, exist_ok=True)
+    fuente.write_bytes(contenido)
+    assert publish_artifact_to_bucket(fuente) is True
+
+
+def test_el_bucket_resuelve_sin_token_de_github(tmp_db, tmp_path, cache_dir, bucket, monkeypatch):
+    """Criterio de aceptación de S8.4: sin `GITHUB_TOKEN` sigue habiendo modelo."""
+    monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+    registrado = tmp_path / "runner-que-entreno" / "baja_model.pkl"
+    contenido = b"modelo-desde-el-bucket"
+    _register("baja", registrado, _sha(contenido))
+    _publicar_en_bucket(registrado, contenido)
+
+    def _release_prohibida(_asset: str, _dest: Path) -> bool:
+        raise AssertionError("la Release no debería intentarse si el bucket resuelve")
+
+    with patch("shared.model_artifacts._download_release_asset", side_effect=_release_prohibida):
+        resolved = resolve_active_artifact("baja")
+
+    assert resolved == cache_dir / "baja_model.pkl"
+    assert resolved.read_bytes() == contenido
+
+
+def test_si_el_bucket_no_lo_tiene_se_cae_a_la_release(tmp_db, tmp_path, cache_dir, bucket):
+    """El bucket vacío no puede dejar sin modelo a quien lo tiene publicado."""
+    registrado = tmp_path / "runner-que-entreno" / "baja_model.pkl"
+    contenido = b"modelo-desde-release"
+    _register("baja", registrado, _sha(contenido))
+
+    with patch(
+        "shared.model_artifacts._download_release_asset",
+        side_effect=_descarga_falsa(contenido),
+    ) as release:
+        resolved = resolve_active_artifact("baja")
+
+    release.assert_called_once()
+    assert resolved is not None and resolved.read_bytes() == contenido
+
+
+def test_el_sha256_se_verifica_igual_viniendo_del_bucket(tmp_db, tmp_path, cache_dir, bucket):
+    """Servir el artefacto equivocado es peor que no servir ninguno, venga de donde venga."""
+    registrado = tmp_path / "runner-que-entreno" / "baja_model.pkl"
+    _register("baja", registrado, _sha(b"el modelo bueno"))
+    _publicar_en_bucket(registrado, b"otro modelo distinto")
+
+    with (
+        patch("shared.model_artifacts._download_release_asset", return_value=False),
+        pytest.raises(ModelArtifactMismatch),
+    ):
+        resolve_active_artifact("baja")
+
+
+def test_sin_bucket_configurado_el_camino_es_el_de_siempre(tmp_db, tmp_path, cache_dir):
+    """La degradación: sin almacén, S8.4 no cambia nada de lo que ya había."""
+    from shared.model_artifacts import _download_bucket_asset
+
+    assert _download_bucket_asset("baja_model.pkl", tmp_path / "destino.pkl") is False

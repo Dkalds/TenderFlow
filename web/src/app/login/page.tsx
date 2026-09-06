@@ -16,13 +16,25 @@ import { registrarEvento } from "@/lib/analytics";
 
 type Mode = "login" | "register";
 
-const OAUTH_FALLBACK_ERROR = "No se pudo completar el inicio de sesión con Google. Inténtalo de nuevo.";
+const OAUTH_FALLBACK_ERROR = "No se pudo completar el inicio de sesión. Inténtalo de nuevo.";
 
 const OAUTH_ERROR_MESSAGES: Record<string, string> = {
-  invalid_state: "La sesión de inicio con Google caducó o ya se usó. Inténtalo de nuevo.",
+  invalid_state: "La sesión de inicio caducó o ya se usó. Inténtalo de nuevo.",
   oauth_failed: OAUTH_FALLBACK_ERROR,
-  email_not_allowed: "Tu cuenta de Google no tiene acceso a TenderFlow.",
+  email_not_allowed: "Tu cuenta no tiene acceso a TenderFlow.",
 };
+
+/**
+ * ¿Se ofrece el botón de Microsoft?
+ *
+ * El backend solo lo sirve si `OAUTH_MICROSOFT_CLIENT_ID` está configurado
+ * (si no, `/auth/oauth/microsoft/authorize` responde 501). Enseñar el botón en
+ * un despliegue sin configurar sería exactamente la superficie que promete lo
+ * que el backend no hace, así que se gobierna con la misma bandera de entorno
+ * que ya usa la pestaña de alta.
+ */
+const MICROSOFT_HABILITADO =
+  process.env.NEXT_PUBLIC_OAUTH_MICROSOFT === "1" || process.env.NODE_ENV === "development";
 
 /**
  * ¿Se enseña la pestaña de "Crear cuenta"?
@@ -63,6 +75,21 @@ function LoginPageContent() {
   // segundo factor: la sesión ya está creada, solo falta elevarla.
   const [mfaPending, setMfaPending] = useState(() => searchParams.get("mfa") === "required");
   const [mfaCode, setMfaCode] = useState("");
+  // Token del enlace de invitación (`/login?invitacion=...`). El backend además
+  // activa por correo al registrarse o entrar por OAuth; canjearlo aquí cubre
+  // el caso de quien llega con el enlace y ya tenía cuenta.
+  const invitacion = searchParams.get("invitacion");
+
+  /** Canjea la invitación si la hay; nunca bloquea la entrada al producto. */
+  async function canjearInvitacion() {
+    if (!invitacion) return;
+    try {
+      await apiMutate("POST", "/api/v1/organizations/invitations/accept", { token: invitacion });
+    } catch {
+      // Un token caducado, ya usado o de otro correo no puede impedir el login:
+      // la sesión ya es válida y la organización se puede pedir de nuevo.
+    }
+  }
 
   function switchMode(next: Mode) {
     setMode(next);
@@ -95,6 +122,7 @@ function LoginPageContent() {
       // acepta ese subconteo: retrasar la entrada al producto para asegurar una
       // métrica sería exactamente el orden de prioridades equivocado.
       registrarEvento("sesion_iniciada", { metodo: "password" });
+      await canjearInvitacion();
       window.location.href = safeRedirectPath(searchParams.get("redirect"));
     } catch (err) {
       if (err instanceof ApiError) {
@@ -158,6 +186,7 @@ function LoginPageContent() {
       // ve el día que se abra; entonces conviene poder distinguir la primera
       // entrada de las siguientes sin tener que instrumentar nada más.
       registrarEvento("sesion_iniciada", { metodo: "registro" });
+      await canjearInvitacion();
       window.location.href = "/resumen";
     } catch (err) {
       if (err instanceof ApiError) {
@@ -171,16 +200,23 @@ function LoginPageContent() {
     }
   }
 
-  async function handleGoogleLogin() {
+  /**
+   * Arranca el flujo OIDC del proveedor indicado.
+   *
+   * Un solo manejador para los dos: `/auth/oauth/{provider}/authorize` es el
+   * mismo contrato para Google y para Microsoft (D17), así que duplicarlo solo
+   * garantizaría que uno de los dos se quedara atrás en el próximo cambio.
+   */
+  async function handleOAuthLogin(provider: "google" | "microsoft", nombre: string) {
     setError(null);
     setLoading(true);
     try {
       const { authorization_url } = await fetchWithAuth<{ authorization_url: string }>(
-        "/api/v1/auth/oauth/google/authorize",
+        `/api/v1/auth/oauth/${provider}/authorize`,
       );
       window.location.href = authorization_url;
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Error al conectar con Google");
+      setError(err instanceof Error ? err.message : `Error al conectar con ${nombre}`);
       setLoading(false);
     }
   }
@@ -312,10 +348,24 @@ function LoginPageContent() {
               </form>
             ) : (
               <>
+                {invitacion && (
+                  <div
+                    role="status"
+                    className="mb-4 rounded-md border border-dashed border-border bg-muted/30 p-3 text-sm"
+                  >
+                    Tienes una invitación a un equipo de TenderFlow. Entra con el{" "}
+                    <strong>mismo correo</strong> al que se envió y te añadiremos automáticamente.
+                  </div>
+                )}
                 <p className="mb-2 text-xs font-medium text-muted-foreground">
                   Acceso recomendado
                 </p>
-                <Button variant="outline" className="w-full" onClick={handleGoogleLogin} disabled={loading}>
+                <Button
+                  variant="outline"
+                  className="w-full"
+                  onClick={() => void handleOAuthLogin("google", "Google")}
+                  disabled={loading}
+                >
                   <svg aria-hidden="true" className="mr-2 h-4 w-4" viewBox="0 0 24 24">
                     <path
                       d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z"
@@ -336,6 +386,24 @@ function LoginPageContent() {
                   </svg>
                   Continuar con Google
                 </Button>
+
+                {MICROSOFT_HABILITADO && (
+                  <Button
+                    variant="outline"
+                    className="mt-2 w-full"
+                    onClick={() => void handleOAuthLogin("microsoft", "Microsoft")}
+                    disabled={loading}
+                  >
+                    {/* Logo de Microsoft: los cuatro cuadrados de su marca. */}
+                    <svg aria-hidden="true" className="mr-2 h-4 w-4" viewBox="0 0 23 23">
+                      <path d="M1 1h10v10H1z" fill="#F25022" />
+                      <path d="M12 1h10v10H12z" fill="#7FBA00" />
+                      <path d="M1 12h10v10H1z" fill="#00A4EF" />
+                      <path d="M12 12h10v10H12z" fill="#FFB900" />
+                    </svg>
+                    Continuar con Microsoft
+                  </Button>
+                )}
 
                 <div className="relative my-6">
                   <div className="absolute inset-0 flex items-center">

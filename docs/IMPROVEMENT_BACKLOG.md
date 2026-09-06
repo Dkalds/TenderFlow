@@ -20,10 +20,10 @@ estado real de cada ítem en su §8. **Excluye a propósito `backup.yml` y
 
 | Ítem | Estado tras el plan |
 |---|---|
-| [P2] `HistGradientBoosting` revienta con una feature todo-NaN | **Cerrado** — el entrenamiento descarta antes del ajuste las columnas sin ningún valor observado, con log y test |
-| [P2] `render.yaml` no gobierna el servicio de producción | **Parcial** — la cabecera dice ya qué líneas no describen la realidad y con qué fecha se comprobó; vincular el Blueprint sigue siendo acción del usuario |
-| [P2] Migrar las llamadas del frontend al cliente tipado | **Cerrado** — no queda ningún `fetch("/api/…")` crudo fuera de `lib/`, y una regla ESLint impide que vuelva |
-| [P3] Vigilar el crecimiento de `predicciones_baja` | **Cerrado** — el job de ML purga por antigüedad, y el consumidor distingue el p50 del modelo del del baseline histórico |
+| [P2] `HistGradientBoosting` revienta con una feature todo-NaN | **Cerrado y movido** el 2026-09-06 a _Cerrados_ — el entrenamiento descarta antes del ajuste las columnas sin ningún valor observado, con log y test |
+| [P2] `render.yaml` no gobierna el servicio de producción | **Parcial** — la decisión se tomó el 2026-09-06 (O0.2 del plan v2: se vincula el Blueprint y `autoDeploy` se apaga); vincular y verificar en el dashboard sigue siendo acción del usuario |
+| [P2] Migrar las llamadas del frontend al cliente tipado | **Cerrado y movido** el 2026-09-06 a _Cerrados_ — no queda ningún `fetch("/api/…")` crudo fuera de `lib/`, y una regla ESLint impide que vuelva |
+| [P3] Vigilar el crecimiento de `predicciones_baja` | **Cerrado y movido** el 2026-09-06 a _Cerrados_ — el job de ML purga por antigüedad, y el consumidor distingue el p50 del modelo del del baseline histórico |
 | [P3] F5: refactor de repositories (ratchet TID251) | **Progresa** — la whitelist baja de 32 a 28 archivos; el destino sigue siendo vaciarla |
 | [P1] Cobertura de tests de las páginas del frontend | **Parcial** — los pisos por carpeta siguen en pie; el piso de `src/app/**` no llegó a ponerse |
 | [P2] Remediación axe: 4 reglas desactivadas | **Abierto** — sin tocar; sigue pendiente empezar por `nested-interactive` |
@@ -35,7 +35,45 @@ estado real de cada ítem en su §8. **Excluye a propósito `backup.yml` y
 Ítems **nuevos** que salen del plan y no estaban aquí: partir las páginas
 monolito del dashboard (S5.2), el prefetch en servidor con hidratación (S5.1) y
 el grupo de rutas `(privado)` que unifica `Providers`/`Toaster` (S5.9). Los tres
-quedan descritos en el plan con su porqué y su riesgo.
+los recoge hoy el ítem de S7 del plan v2, más abajo.
+
+## Plan de arquitectura 2026-09 **v2** — Ola 0 en curso
+
+El sucesor está en
+[plans/2026-09-plan-arquitectura-v2.md](plans/2026-09-plan-arquitectura-v2.md)
+y es la **fuente única de alcance y criterios** de sus ocho streams: los ítems
+`[Ola 1]` de este backlog existen para que la priorización no exija leerlo
+entero, y remiten al plan en vez de copiarlo (dos copias del mismo criterio
+divergen).
+
+O0.5 se ejecutó el **2026-09-06**: las decisiones D1–D9 y D11–D20 quedan
+cerradas con fecha y evidencia en las tablas §3 de los dos planes, y los ítems
+que el código ya había resuelto bajan a _Cerrados_. Lo que las tablas cierran es
+la **decisión**, no siempre su ejecución: las dos que dependen del dashboard de
+Render siguen abiertas como trabajo —D4 la ejecuta O0.2 (y el P2 de `render.yaml`
+de más abajo es su mitad de infraestructura) y D5 la ejecuta O0.3—, y los
+streams de Ola 1 arrancan con su decisión ya tomada.
+
+**Qué de la Ola 1 entra aquí y qué no.** Hay un ítem `[Ola 1 · Sx]` por cada uno
+de los siete streams que no tienen ya sitio en este backlog: S1, S2, S3, S4, S5,
+S7 y S8.
+
+**S6 no lleva ítem propio**, y no por olvido: tres de sus cinco subítems ya
+tienen entrada aquí y se siguen desde ella —S6.1 desde el P2 «El corpus de PSCP
+ahoga el dataset del clasificador SAP», que es el diagnóstico que el propio
+subítem del plan cita; S6.3 desde el P1 del golden set; S6.5 desde el P2 del
+modelo de baja por lote—, y abrirle un ítem paralelo dejaría dos sitios donde
+mirar lo mismo. Los dos que no tienen entrada (S6.2, etiquetas no circulares;
+S6.4, criterio de promoción escrito) están en el §5 del plan y son de esfuerzo S.
+
+**Lo que esta sección NO dice es cuánto de la Ola 1 está ya escrito.** Los
+streams los están entregando agentes distintos en paralelo mientras se redacta
+esto, así que cualquier foto del estado que tomara este fichero nacería
+caducada — y un backlog que lista como abierto algo ya cerrado es exactamente la
+avería que O0.5 existe para arreglar. Quien manda sobre el estado es el §5 del
+plan, donde cada stream anota lo entregado al cerrarse — la misma convención que
+la Ola 0 ya usa en su §4. Estos ítems los da de baja la consolidación de la ola,
+no una comprobación hecha a mitad de ella.
 
 ## Repaso del 2026-08-27 (auditoría de producto/UX)
 
@@ -88,17 +126,6 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 - **Files de partida:** [scripts/sample_golden_candidates.py](../scripts/sample_golden_candidates.py), [tests/fixtures/golden_set.jsonl](../tests/fixtures/golden_set.jsonl), [services/ml_eval.py](../services/ml_eval.py)
 - **Riesgo:** bajo en código, alto en oportunidad — mientras el set sea pequeño, el gate de promoción bloquea con poca evidencia y el umbral servido tiene una varianza que ninguna mejora del modelo puede compensar.
 
-### [P1] Aprobar un acceso es editar variables de entorno a mano — decisión de auth, necesita RFC
-- **Área:** config/settings.py, api/routes/admin_solicitudes.py, render.yaml, db/ (acción del usuario + RFC)
-- **Problema:** el embudo público ya está entero salvo el último paso. `POST /publico/solicitudes-acceso` registra la petición, `GET/PATCH /admin/solicitudes-acceso` da la cola, y el aviso por correo al solicitante existe (`services/solicitudes_acceso.py::notificar_acceso_concedido`, opt-in por operación) — o sea que **la promesa de `solicitud-recibida/page.tsx` ("la respuesta llega por correo") ya se puede cumplir**, cosa que hasta la PR #215 no era cierta. Lo que sigue abierto es que **conceder el acceso no está en el producto**: la allowlist son dos strings de entorno (`OAUTH_ALLOWED_EMAILS`/`OAUTH_ALLOWED_DOMAINS`, `config/settings.py:258-259`, declaradas con `sync: false` en `render.yaml:110-113`), así que aprobar a alguien es entrar al panel de Render, editar una variable y esperar el redeploy. De ahí salen dos consecuencias: el `notificar` del PATCH es opt-in **precisamente porque el sistema no puede saber si la allowlist ya se editó** (un correo antes de tiempo manda a la persona contra un 403), y no queda rastro de quién concedió qué acceso ni cuándo.
-- **Ojo al leer esto:** la descripción de arriba se escribió contra el **working tree** del 2026-08-27, donde `api/routes/admin_solicitudes.py` y `services/solicitudes_acceso.py` estaban recién tocados y `docs/runbooks/conceder-acceso.md` sin commitear. Si ese trabajo ha aterrizado, la pata del aviso por correo ya está cerrada y lo único que queda abierto de este ítem es la allowlist; confirmá el estado del runbook antes de empezar.
-- **Por qué esto NO es un PR directo:** mover la allowlist a base de datos es (a) una **migración** —tabla nueva, gate humano de AGENTS.md §6— y (b) un cambio en el **camino de autenticación**, que según AGENTS.md §5 exige RFC antes de escribir código. Un agente que "solo" añadiera la tabla ya habría decidido por su cuenta dónde vive la verdad del acceso.
-- **Acceptance criteria:**
-  - RFC en `docs/rfc/` que decida: allowlist en BD frente a seguir en entorno; qué pasa con el fail-closed que hoy garantiza el validador de `config/settings.py` cuando ambas variables están vacías en prod; y si el PATCH pasa a conceder el acceso de verdad (y entonces `notificar` deja de ser opt-in) o se queda como cola de trabajo.
-  - Solo después: migración con OK humano, endpoint, y registro del alta en `db/audit.py` como el resto de acciones de admin.
-- **Files de partida:** [api/routes/admin_solicitudes.py](../api/routes/admin_solicitudes.py), [config/settings.py](../config/settings.py), [services/solicitudes_acceso.py](../services/solicitudes_acceso.py), [render.yaml](../render.yaml)
-- **Riesgo:** alto — es el control de acceso al producto. Un error aquí abre la aplicación o deja fuera a quien ya entraba; por eso el RFC va antes que el código.
-
 ### [P2] Mejorar el ranking de retrieval de producción (MRR 0.689)
 - **Área:** db/search_backend.py, services/licitaciones.py
 - **Problema:** Medido al migrar el eval RAG al motor real (ADR-018) sobre el golden set de 15 preguntas: SQLite/FTS5 da MRR ≈0.78 y Postgres/`tsvector`+`ts_rank_cd` da **0.689**. El `hit_rate@5` es **1.000 en ambos** — producción encuentra siempre el documento esperado dentro del top-5, pero lo ordena peor. No es una regresión de la migración: es la calidad real que ven los usuarios de `/ask` hoy, que nadie medía porque el eval corría sobre FTS5. El eval ratchea en `MRR_MIN = 0.65` (`tests/eval/test_eval_rag.py`), así que una regresión adicional salta. Con SQLite retirado (ADR-021) ya no hay comparación entre motores: 0.75 es el objetivo, no una paridad.
@@ -136,6 +163,30 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
   - 2026-07-26: `setup_pg_roles.sql` endurece el rol de runtime con `NOINHERIT`/`NOBYPASSRLS` y sin `CREATE` en `public`; Alembic v59 revoca `EXECUTE` público sobre la función `SECURITY DEFINER` de RLS. Sigue pendiente ejecutar el checklist contra Supabase.
 - **Riesgo:** bajo — todo el código/tooling es aditivo y ya está testeado; el riesgo real pendiente es que el usuario no ejecute el checklist (backups sin cifrar, credencial sin rotar, rol de privilegios mínimos sin crear).
 
+### [P1] [Ola 1 · S1] Identidad y equipo: invitar sin cuenta previa, OIDC y el ratchet de `user_key`
+- **Área:** api/routes/auth.py, services/organizations.py, db/repositories/organizations.py, db/users.py, shared/identity.py, scripts/check_user_key_ratchet.py
+- **Problema:** una organización no puede incorporar a nadie que no tenga ya cuenta —`add_member_by_email` rechaza el email aunque `organization_memberships.status` admita `invited` desde `v61`—, el único OAuth es Google (un partner con Microsoft 365 no entra con su identidad), y la identidad interna sigue derivándose del email: `user_key` aparece en 60 ficheros (grep 2026-09-05), así que un cambio de email es un cambio de clave primaria de facto.
+- **Decisiones ya tomadas (2026-09-06):** D17 → Entra ID multi-tenant reutilizando `OAUTH_ALLOWED_DOMAINS` y `access_grants`; D18 → ratchet ahora y migración aditiva por olas después (esa segunda fase es T4 del plan, no este ítem).
+- **Acceptance criteria:** los de S1.1–S1.4 del plan v2, sin redefinirlos aquí. Los cuatro subítems son independientes y se pueden entregar por separado; S1.3 (dominio propio) es acción humana.
+- **Files de partida:** [docs/plans/2026-09-plan-arquitectura-v2.md](plans/2026-09-plan-arquitectura-v2.md) (§5, S1), [services/organizations.py](../services/organizations.py), [api/routes/auth.py](../api/routes/auth.py)
+- **Riesgo:** medio — S1.2 toca el login, que es el camino por el que entra todo el mundo; el resto es aditivo.
+
+### [P1] [Ola 1 · S2] La organización no sabe quién es: NIF, capacidad y go/no-go asistido
+- **Área:** services/go_no_go.py, db/repositories/organization_capabilities.py, services/pursuit_awards.py, services/analytics/affinity.py, web/src/app/(dashboard)/equipo
+- **Problema:** `OrganizationSettings` solo guarda `tecnologias`. Sin NIF, `PursuitAdjudicacionDetectada` tiene que pedir confirmación humana para cerrar una oportunidad —lo dice su propio docstring: «el sistema no conoce el NIF de la organización»— y «contra quién» no puede excluir a la propia organización de la lista de competidores. Sin perfil de capacidad, la ficha del pliego (certificaciones, solvencias, equipo) no tiene contra qué contrastarse: el producto extrae el requisito y deja al usuario comprobándolo a mano.
+- **Decisión ya tomada (2026-09-06):** D11 → tablas propias (`organization_nifs`, `organization_capabilities`), no un JSON en `settings_json`, porque el cierre por NIF y el contraste de solvencia se resuelven en SQL.
+- **Acceptance criteria:** los de S2.1–S2.4 del plan v2. El veredicto del checklist nunca decide por el usuario: `cumple | no_cumple | desconocido`, ningún `cumple` sin `EvidenceRef`, y `desconocido` cuando falta el dato — es la misma regla de ADR-014 aplicada a una decisión en vez de a una cifra.
+- **Files de partida:** [docs/plans/2026-09-plan-arquitectura-v2.md](plans/2026-09-plan-arquitectura-v2.md) (§5, S2), [shared/dto.py](../shared/dto.py)
+- **Riesgo:** medio — dos migraciones y una regla de producto nueva; el golden `golden_go_no_go.jsonl` es la red.
+
+### [P1] [Ola 1 · S5] Cola de trabajo y worker: un despliegue mata lo que un usuario pidió
+- **Área:** shared/jobs.py, db/repositories/jobs.py, scheduler/worker.py, api/routes/jobs.py, scheduler/pipeline_runs.py, render.yaml
+- **Problema:** la extracción asíncrona de la ficha corre en `BackgroundTasks` de la API con 30 s de drenado al apagar (`api/app.py`), y `autoDeploy` está activo en el servicio real: un push a `master` en mitad de una extracción la pierde, y el usuario ve un estado que nunca avanza. El cierre post-ingesta son quince pasos secuenciales dentro de un job de Actions cada cuatro horas, donde un paso caído arrastra a los que no dependen de él.
+- **Decisión ya tomada (2026-09-06):** D14 → worker en Render para lo que pide un usuario y Actions para lo programado, sobre la misma tabla de cola. El servicio nuevo exige O0.2 cerrado primero (un solo camino de despliegue).
+- **Acceptance criteria:** los de S5.1–S5.4 del plan v2, incluidos los dos que son medibles sin producción: dos consumidores concurrentes procesan cien jobs exactamente una vez, y `grep -c "BackgroundTasks" api/routes/licitaciones.py` = 0.
+- **Files de partida:** [docs/plans/2026-09-plan-arquitectura-v2.md](plans/2026-09-plan-arquitectura-v2.md) (§5, S5), [scheduler/pipeline_runs.py](../scheduler/pipeline_runs.py), [api/app.py](../api/app.py)
+- **Riesgo:** medio — servicio nuevo en producción y cambio del camino por el que se sirve la ficha.
+
 ---
 
 ## P2 — Media
@@ -159,25 +210,14 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 - **Files de partida:** [web/e2e/capturas-landing.spec.ts](../web/e2e/capturas-landing.spec.ts), [web/src/app/(publico)/page.tsx](../web/src/app/%28publico%29/page.tsx)
 - **Riesgo:** bajo.
 
-### [P2] `HistGradientBoosting` revienta si una feature llega entera a NaN
-- **Área:** services/ml/baja_model.py, services/ml/features.py, tests/test_ml_baja_model.py
-- **Problema:** con las versiones pineadas (numpy 2.4.4, scikit-learn 1.9.0), ajustar `HistGradientBoostingRegressor` sobre una matriz con **una columna enteramente NaN** falla con `ValueError: window shape cannot be larger than input array shape` en `sklearn/ensemble/_hist_gradient_boosting/binning.py:82`. La causa es precisa: `_find_binning_thresholds` guarda el caso de una columna **constante** (`if len(distinct_values) == 1: return []`) pero no el de **cero** valores distintos, que es lo que deja una columna todo-NaN tras descartar los missing; entonces `sliding_window_view(distinct_values, 2)` recibe un array vacío. Reproducido aislado: columna todo-NaN → ValueError; columna constante → OK.
-- **Estado de la evidencia (importante):** **no reproduce en CI.** `master` está verde en el mismo commit base (run #830 sobre `5164793`), y CI corre la suite entera sin filtro de marcadores. Sí reproduce en el contenedor de sesiones remotas —sobre un worktree limpio de `5164793` y sobre la rama de trabajo, con Python 3.11 y 3.13 y las versiones pineadas— en `test_entrenar_registra_version_y_metricas`, `test_predicciones_del_modelo_distinguen_segmentos` y `test_scoring_degrada_a_baseline_si_el_layout_no_coincide`. Qué hace que la matriz salga con una columna todo-NaN aquí y no allí **está sin identificar**: el histórico sintético de `_sembrar_historico` es determinista (fechas fijas, CPV/CCAA/tipo/fuente constantes), así que la diferencia tiene que estar en el entorno o en el estado de la BD, no en el fixture.
-- **Por qué merece entrada igualmente:** el docstring de `FEATURES_PENDIENTES_COBERTURA` ya avisa de que "una feature NULL en el 90% de las filas no es neutra". Aquí la consecuencia es peor que un split desperdiciado: al 100% de NULL el ajuste **no arranca**. Cualquier feature nueva con cobertura baja puede tumbar el reentrenamiento en vez de degradarlo.
-- **Acceptance criteria:**
-  - Identificado qué diferencia de entorno produce la columna todo-NaN aquí y no en CI (o descartado como artefacto del contenedor, dejándolo escrito).
-  - `baja_model` descarta las columnas sin ningún valor observado antes del ajuste, con log de cuáles y un test que fije el invariante — el reentrenamiento no puede depender de que ninguna feature llegue vacía.
-- **Files de partida:** [services/ml/baja_model.py](../services/ml/baja_model.py), [services/ml/features.py](../services/ml/features.py)
-- **Riesgo:** bajo — el serving ya degrada al baseline si el modelo no existe, que es el comportamiento previsto para un fallo de entrenamiento.
-
-
 ### [P2] `render.yaml` no gobierna el servicio que corre en producción
 - **Área:** render.yaml, Render Dashboard (acción del usuario)
 - **Problema:** el Blueprint está en el repo, pero el servicio de producción se creó a mano por el dashboard y nunca se vinculó a él, así que el fichero documenta una intención que nadie aplica: editarlo no cambia nada y leerlo puede inducir a error sobre cómo está configurado el servicio real. Lo que sí está activo es `autoDeploy`, y **sin healthcheck configurado** — es decir, un deploy que arranca mal reemplaza igualmente al que funcionaba, sin rollback automático. (Estado observado en la sesión del 2026-08-04; **reconfirmar en el dashboard antes de actuar**, que es barato.)
-- **Acceptance criteria:**
-  - Confirmado en el dashboard si el servicio está o no vinculado al Blueprint.
-  - `healthCheckPath` configurado y verificado con un deploy deliberadamente fallido (o, si se vincula el Blueprint, que el del fichero quede efectivo).
-  - Si se decide no vincular, dejarlo escrito en `render.yaml` para que el fichero no siga aparentando ser la fuente de verdad.
+- **Progreso 2026-09-06 (O0.2 del plan v2, cierra D4):** la decisión ya está tomada y escrita — **se vincula el Blueprint y manda `render.yaml`**, con `autoDeploy: false` y `deploy.yml` como único disparador, porque es la única de las dos ramas que conserva CI como gate en vez de dejarlo en advisory. Lo que queda de este ítem es **exactamente lo que un agente no puede hacer**: vincular el Blueprint y apagar `autoDeploy` en el dashboard, y comprobar que un push a `master` produce un solo deploy.
+- **Acceptance criteria (lo que queda, todo acción del usuario):**
+  - Blueprint vinculado y `autoDeploy` apagado en el servicio real; la cabecera de `render.yaml` anota la fecha de verificación.
+  - `healthCheckPath` efectivo, verificado con un deploy deliberadamente fallido.
+  - Un push a `master` produce exactamente un deploy, observado siete días.
 - **Files de partida:** [render.yaml](../render.yaml), [.github/workflows/deploy.yml](../.github/workflows/deploy.yml)
 - **Relación:** comparte superficie con el P3 de staging y plan de la API (más abajo); si se toca el servicio, conviene decidir ambos a la vez.
 - **Riesgo:** bajo-medio — vincular un Blueprint a un servicio existente puede recrearlo; hacerlo en ventana y con el healthcheck decidido de antemano.
@@ -211,16 +251,6 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
   - Tras una semana de ejecuciones de `.github/workflows/domain-truth.yml`, comparar los `domain-truth.json` archivados y bajar cada umbral al valor medido con margen, dejando el histórico en el docstring (patrón de `tests/eval/test_eval_rag.py`).
 - **Files de partida:** [scripts/audit_domain_truth.py](../scripts/audit_domain_truth.py)
 - **Riesgo:** bajo — solo umbrales.
-
-### [P2] Persistir procedimiento, tramitación y criterios de adjudicación
-- **Área:** scraper/codice_parser.py, db/alembic, services/ml/features.py
-- **Problema:** el tipo de procedimiento (abierto/negociado/menor), la tramitación (ordinaria/urgente) y el **peso del precio en los criterios de adjudicación** no existen como columnas. Son los tres drivers más fuertes de la baja en contratación pública española, y el RFC de modelos predictivos ya los marcó como gap en junio de 2026 (§Restricciones de datos). Sin ellos, el modelo de baja tiene un techo que no se sube con más features derivadas: el saneamiento de agosto de 2026 agotó lo que se puede extraer de las columnas existentes.
-- **Acceptance criteria:**
-  - `parse_licitaciones` extrae los tres campos de `cac:TenderingProcess` / `cac:AwardingCriterion` (el parser ya lee `TenderSubmissionDeadlinePeriod` de ese mismo bloque, ver `scraper/codice_parser.py`).
-  - Migración append-only con las columnas nuevas + backfill medido sobre los ZIP cacheados; se reporta el % de cobertura real por campo antes de usarlas como feature.
-  - Entran en `FEATURE_COLUMNS` solo si la cobertura supera el 50%, y el reentrenamiento reporta el delta de `mae_p50` contra la versión previa.
-- **Files de partida:** [scraper/codice_parser.py](../scraper/codice_parser.py), [services/ml/features.py](../services/ml/features.py), [db/repositories/ml_dataset.py](../db/repositories/ml_dataset.py)
-- **Riesgo:** medio — toca parser, esquema y dataset de un modelo en producción; el guard de `feature_columns` de `BajaModel` degrada a baseline si se despliega el código sin reentrenar.
 
 ### [P2] Modelo de baja por lote
 - **Área:** services/ml, db/alembic, api/routes/predicciones.py, web/
@@ -378,6 +408,41 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 - **Files de partida:** [shared/model_artifacts.py](../shared/model_artifacts.py), [shared/release_assets.py](../shared/release_assets.py)
 - **Riesgo:** bajo — el fallback a baseline ya está cubierto y testeado.
 
+### [P2] [Ola 1 · S3] Oportunidad por lote, y saber si el Radar prioriza bien
+- **Área:** db/repositories/pursuits.py, services/pursuits.py, services/product_metrics.py, web/src/app/(dashboard)/oportunidades
+- **Problema:** `pursuits` es única por `(organization_id, licitacion_id)`, así que no se puede abrir una oportunidad por lote — que es la unidad sobre la que de verdad se puja, y que los lotes existen desde `v65`. Y el bucle del Radar no se cierra: `score_al_abrir` y `banda_al_abrir` se persisten desde `v93` y **ningún módulo de producción los lee**, o sea que el producto no puede responder si la banda «Caliente» acierta.
+- **Decisión ya tomada (2026-09-06):** D12 → `pursuits.lote_id` nullable con dos únicos parciales (patrón `v65`); `NULL` significa expediente completo y las filas existentes no cambian.
+- **Acceptance criteria:** los de S3.1–S3.3 del plan v2. La precisión por banda solo se pinta con N ≥ 10 y, por debajo, dice «sin datos suficientes» (ADR-014); la propuesta de pesos nunca se aplica sola.
+- **Files de partida:** [docs/plans/2026-09-plan-arquitectura-v2.md](plans/2026-09-plan-arquitectura-v2.md) (§5, S3), [db/repositories/pursuits.py](../db/repositories/pursuits.py)
+- **Relación:** desbloquea el P2 «Modelo de baja por lote» de este backlog (S6.5 del plan sirve las filas por lote que `predicciones_baja` ya guarda desde `v86`).
+- **Riesgo:** medio — cambia la clave única de una tabla viva; `plan` antes de `apply`.
+
+### [P2] [Ola 1 · S4] Eventos y salida: siete almacenes con forma de evento y ningún backbone
+- **Área:** db/events.py, shared/events.py, scheduler/jobs/event_dispatch.py, api/routes/webhooks.py, services/notifications.py, api/routes/watchlist_rules.py
+- **Problema:** conviven `pursuit_events`, `contrato_eventos`, `licitaciones_history`, `user_notifications`, `pending_digests`, `webhook_deliveries` y `domain_events`, y la tabla de event sourcing solo la escriben dos sitios. El equipo se entera por email o abriendo la consola: los webhooks exigen `require_admin` en todas sus rutas y `_VALID_EVENTS` tiene cuatro tipos. Y un cambio en un expediente seguido —`licitaciones_history` guarda `changed_fields`— no genera ninguna alerta.
+- **Decisión ya tomada (2026-09-06):** D13 → plantillas de payload (`json`, `slack_blocks`, `teams_adaptive_card`) sobre el webhook genérico, no integraciones nativas con OAuth de cada plataforma, y webhooks que pueda crear un miembro dentro de su organización.
+- **Acceptance criteria:** los de S4.1–S4.6 del plan v2. El que sostiene lo demás es el ratchet de productores: toda inserción directa en `user_notifications`/`pending_digests` fuera del despachador entra en una lista que solo puede encoger.
+- **Files de partida:** [docs/plans/2026-09-plan-arquitectura-v2.md](plans/2026-09-plan-arquitectura-v2.md) (§5, S4), [db/events.py](../db/events.py), [api/routes/webhooks.py](../api/routes/webhooks.py)
+- **Riesgo:** medio — toca el camino de escritura de pursuits y de reglas.
+
+### [P2] [Ola 1 · S7] Frontend: las tres deudas que dejó a medias el plan de septiembre, más formularios, flags e inspectores
+- **Área:** web/src/app, web/eslint.config.mjs
+- **Problema:** S5.1 (prefetch en servidor con hidratación), S5.2 (partir las páginas monolito) y S5.9 (grupo de rutas `(privado)`) quedaron sin entregar cuando tres agentes murieron por límite de sesión, y dos de ellas se revirtieron a conciencia (§8 del plan anterior). A eso sumaba el §1 del plan v2, medido el 2026-09-05: doce ficheros de `web/src/app` por encima de 300 líneas, ninguna librería de formularios en las seis pantallas con validación, feature flags que se administran en `/ops` y **ninguna vista lee**, e inspectores de Radar y Detalle que solo existen desde `xl`.
+- **Acceptance criteria:** los de S7.1–S7.4 del plan v2, y los de S5.1/S5.2/S5.9 del plan de septiembre tal cual para el primero. La allowlist inicial de `max-lines` son esos doce ficheros y solo puede encoger.
+- **Estado:** lo dice el §5 del plan cuando el stream se cierra, no este ítem — ver la nota de cabecera. S7 se está entregando en esta misma ola.
+- **Files de partida:** [docs/plans/2026-09-plan-arquitectura-v2.md](plans/2026-09-plan-arquitectura-v2.md) (§5, S7 y la tabla de los doce ficheros en §1)
+- **Relación:** S7.1 es la vía por la que avanza el P1 de cobertura de las páginas del frontend: la lógica sale a `_hooks/` testeables en vez de testear el árbol entero.
+- **Riesgo:** medio en S7.1 (routing y datos iniciales), como ya dijo el plan anterior.
+
+### [P2] [Ola 1 · S8] Documentos: solo se leen PDF con texto y texto plano
+- **Área:** scraper/document_fetcher.py, shared/object_store.py, .github/workflows/pliegos.yml, shared/model_artifacts.py
+- **Problema (diagnóstico del §1 del plan v2, medido el 2026-09-05):** `_SUPPORTED_CONTENT_TYPES` admitía dos content-types, así que un pliego en DOCX, ODT o dentro de un ZIP no se procesaba y un PDF escaneado terminaba en error por no haber OCR; y el binario se descartaba tras extraer, de modo que reprocesar exigía volver a PLACSP, cuyas URIs llevan un token que caduca. Es el techo real de la ficha del pliego: lo que no se puede leer no existe para el producto.
+- **Acceptance criteria:** los de S8.1–S8.4 del plan v2, sin redefinirlos aquí. Los cuatro son independientes y se entregan por separado; S8.1 y S8.2 llevan migración y dependencias nuevas, ambas pre-autorizadas por D20.
+- **Estado:** lo dice el §5 del plan cuando el stream se cierra, no este ítem — ver la nota de cabecera. S8 se está entregando en esta misma ola.
+- **Files de partida:** [docs/plans/2026-09-plan-arquitectura-v2.md](plans/2026-09-plan-arquitectura-v2.md) (§5, S8), [scraper/document_fetcher.py](../scraper/document_fetcher.py)
+- **Relación:** S8.4 roza el P3 «Un solo transporte para bajar assets de la Release»: los dos tocan cómo se resuelve un artefacto de modelo, y conviene decidirlos juntos.
+- **Riesgo:** medio — el coste del OCR por página se mide en el primer run nocturno y lo acota el tope de páginas.
+
 ---
 
 ## P3 — Nice to have
@@ -496,15 +561,6 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 - **Files de partida:** [db/repositories/aggregates.py](../db/repositories/aggregates.py), [services/analytics/overview.py](../services/analytics/overview.py)
 - **Riesgo:** bajo — cambia un porcentaje mostrado; sin migración de schema.
 
-### [P3] Vigilar el crecimiento de `predicciones_baja`
-- **Área:** services/analytics/scoring_signals, services/ml/scoring, scheduler/jobs/ml_predicciones
-- **Problema:** `_load_margen_stats_raw` carga la tabla entera (`licitacion_id`, `p50`) a un dict en cada refresco de caché. Hoy es barato —el job de ML solo predice licitaciones abiertas, 5 k por corrida— pero el upsert **no purga**, así que la tabla acumula filas de expedientes ya cerrados y crece de forma monótona. No se filtra por universo vivo a propósito: el modo page-aligned del Detalle puntúa filas cerradas y perdería su dimensión de margen en silencio.
-- **Acceptance criteria:**
-  - Vigilar el campo `predicciones` del log `scoring_signals_margen_cargada`.
-  - Si supera ~200 k filas, purgar por antigüedad en el job de ML (no filtrar en el loader).
-- **Files de partida:** [services/analytics/scoring_signals.py](../services/analytics/scoring_signals.py), [services/ml/scoring.py](../services/ml/scoring.py)
-- **Riesgo:** bajo — hoy es solo instrumentación; la purga se decide con el dato medido.
-
 ### [P3] Scroll edge effects en vez de divisores duros bajo el chrome flotante
 - **Área:** web/src/components/layout
 - **Problema:** el chrome flotante es `tf-glass` (translúcido, `position: sticky`) y delimita con un `border-b` fijo, en vez del "scroll edge effect" que pide apple-design §12: un fade/máscara activado por scroll, solo donde el contenido realmente pasa por debajo. Hallazgo F11 de la revisión de las skills de Emil Kowalski (2026-07-25); no bloqueante, es refinamiento visual.
@@ -526,16 +582,6 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 - **Files de partida:** [api/routes/licitaciones.py](../api/routes/licitaciones.py), [api/routes/analytics.py](../api/routes/analytics.py)
 - **Riesgo:** bajo — aditivo si se hace con defaults generosos.
 
-### [P2] Migrar las llamadas del frontend al cliente OpenAPI tipado
-
-- **Área:** web/src (hooks, componentes y páginas)
-- **Problema:** El 2026-08-10 se añadió `apiGet` (tipado contra el esquema generado) y se migraron los dos hooks que quedaban con interfaces a mano, pero las ~94 llamadas existentes siguen usando `fetchWithAuth`/`apiMutate` con URLs literales y un cast sin validación. Mientras esas llamadas no pasen por el esquema, el job `codegen-drift` de CI custodia un artefacto que no protege el código que lo consume.
-- **Acceptance criteria:**
-  - Las llamadas de ruta estática usan `apiGet`; las de ruta dinámica tipan el retorno con `@/lib/api-types`, nunca con una interfaz local.
-  - Por olas y por carpeta (`hooks/` primero, que es donde se concentran).
-- **Files de partida:** [web/src/lib/api-client.ts](../web/src/lib/api-client.ts), [web/src/lib/api-types.ts](../web/src/lib/api-types.ts)
-- **Riesgo:** bajo — `make web-typecheck` es el guardián.
-
 ### [P2] Aislamiento de la suite: una base por sesión en vez de un schema por test
 
 - **Área:** tests/conftest.py
@@ -556,9 +602,39 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 - **Relación:** la otra mitad de este ítem —el `plan: free` de la API— se separó el 2026-08-27 y subió a P1, porque contradice un SLO escrito y eso no es un nice-to-have. Se decide con coste, igual que ésta.
 - **Riesgo:** bajo técnico, con coste económico — por eso es decisión del usuario.
 
+### [P3] Medir la cobertura de `procedimiento`, `tramitacion` y `peso_precio_pct` y decidir si entran como features
+- **Área:** db/repositories/ml_dataset.py, services/ml/features.py
+- **Problema:** las tres columnas se persisten desde `v85` y el upsert ya las protege del clobber (ver el ítem cerrado del 2026-09-06), pero siguen fuera de `FEATURE_COLUMNS`: el criterio de aceptación las admitía solo con cobertura real por encima del 50 % y **esa cobertura no se ha medido**. Mientras tanto son datos que se escriben y nadie usa. Una feature NULL en el 90 % de las filas no es neutra: gasta un split del GBM en aprender el patrón de ausencia.
+- **Acceptance criteria:**
+  - Medida y anotada la cobertura por campo sobre una BD real (o sobre el reprocesado de los ZIP cacheados), con fecha.
+  - Si supera el 50 %: los cuatro pasos que enumera `FEATURES_PENDIENTES_COBERTURA` en `services/ml/features.py`, incluido reentrenar y reportar el delta de `mae_p50` contra la versión previa. Si no lo supera, queda escrito el número que lo desaconseja.
+- **Files de partida:** [services/ml/features.py](../services/ml/features.py) (`FEATURES_PENDIENTES_COBERTURA`), [db/repositories/ml_dataset.py](../db/repositories/ml_dataset.py)
+- **Riesgo:** bajo — el guard de `feature_columns` de `BajaModel` degrada a baseline si se despliega el código sin reentrenar.
+
+### [P3] Cuatro módulos citan un RFC de retirada de exports que no existe en el repo
+- **Área:** docs/rfc/, api/routes/exports.py, api/app.py, shared/cache.py, tests/test_unit_export_idor.py
+- **Problema:** la retirada de `POST/GET/DELETE /exports` (D7 del plan de septiembre) se ejecutó el 2026-09-03, y los cuatro ficheros que la explican remiten a `docs/rfc/2026-09-03-rfc-retirada-exports-asincronos.md` para el motivo y el plan. Ese fichero **no está en `docs/rfc/`** (comprobado el 2026-09-06). Quien vaya a entender por qué desapareció un endpoint público llega a un enlace muerto, que es la variante documental del callejón sin salida que AGENTS.md §5 prohíbe.
+- **Acceptance criteria:**
+  - O se escribe el RFC con el contenido que las cuatro referencias prometen (motivo, sustituto, fecha), o las cuatro referencias se corrigen para apuntar a donde esté escrito de verdad. Lo que no puede quedarse es la cita a un fichero inexistente.
+- **Files de partida:** [api/routes/exports.py](../api/routes/exports.py), [docs/rfc/README.md](rfc/README.md)
+- **Relación:** O0.7 del plan v2 ya barre el `status` de cinco RFC; éste es del mismo barrido y no estaba en su lista.
+- **Riesgo:** bajo — documentación.
+
 ---
 
 ## Cerrados
+
+**Cerrados el 2026-09-06 por la reconciliación O0.5** — ficha completa de cada
+uno en [el archivo](archive/IMPROVEMENT_BACKLOG_CERRADOS.md), que es donde
+AGENTS.md §0 manda que vivan los cerrados. Ninguno se cerró por lo que decía la
+cabecera de este fichero: los seis se comprobaron contra el código.
+
+- [P1] Aprobar un acceso es editar variables de entorno a mano — RFC 242, `v95_access_grants`, `db/access_grants.py` y las rutas `/admin/solicitudes-acceso/grants` con auditoría.
+- [P2] Persistir procedimiento, tramitación y peso del precio — `v85` + `db/upsert.py`; entrar en `FEATURE_COLUMNS` sigue abierto como P3 propio, y se explica por qué.
+- [P2] `HistGradientBoosting` revienta con una feature todo-NaN — `_columnas_observadas` + `tests/test_s3_feature_todo_nan.py`.
+- [P2] Migrar las llamadas del frontend al cliente OpenAPI tipado — sin `fetch("/api/…")` crudo fuera de `lib/`, con regla ESLint que lo impide.
+- [P3] Vigilar el crecimiento de `predicciones_baja` — purga por antigüedad en el job de ML.
+- Modelos NIM de razonamiento sin `chat_template_kwargs` — arreglado en `9a6014b`; nunca llegó a ser ítem abierto, y se anota para que el backlog refleje el código.
 
 - [2026-09-01] **Revisión integral de la IA del detalle de licitación (10 mejoras en un
   cambio)** — salida de la auditoría de arquitecto del asistente IA. Lo que cambió:

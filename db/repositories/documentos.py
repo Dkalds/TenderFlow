@@ -3,22 +3,56 @@
 Metadatos + texto extraído de los adjuntos (pliegos) de una licitación —
 v56 (``db/alembic/versions/v56_pg_documentos_pgvector.py`` / equivalente
 SQLite en ``db/schema.py``). Ciclo de vida por fila: ``pending`` (metadatos
-insertados por el parser) → ``downloaded``/``error`` (F7, descarga) →
-``extracted`` (F7, texto extraído) → chunks + embeddings (F8).
+insertados por el parser) → ``downloaded``/``error``/``unsupported`` (F7,
+descarga) → ``extracted`` (F7, texto extraído) → chunks + embeddings (F8).
+
+``unsupported`` lo añade ``v103`` y es el estado de un adjunto cuyo formato no
+sabemos leer (un ``.doc`` binario, una hoja de cálculo, un ZIP sin nada
+procesable dentro). Antes caía en ``error``, mezclado con los PDF corruptos y
+las descargas rotas: así no se podía medir cuánta cobertura falta por formato,
+que es lo que ``formato_counts`` publica ahora en ``/analytics/quality``.
+
+``v103`` añade también ``documentos.blob_key`` (clave del binario en
+``shared/object_store.py``) y ``documento_pages.ocr``.
 """
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
+from dataclasses import dataclass
 from typing import Any
 
 from db.database import DocumentoReferencia, connect, connect_read, now_utc_iso
 from db.repositories.base import rows_to_dicts
 from observability.logging import get_logger
+from shared.estados import ESTADOS_CERRADOS
 
 log = get_logger(__name__)
 
 _MAX_ERROR_DETAIL_LEN = 2000
+
+
+@dataclass(frozen=True)
+class DocumentoPagina:
+    """Una página lógica extraída, y de dónde salió su texto.
+
+    ``ocr=True`` significa que el texto lo transcribió ``ocrmypdf`` desde una
+    imagen y no el extractor de texto del PDF. Viaja hasta ``EvidenceRef`` para
+    que quien lee una cita de la ficha sepa que puede llevar erratas de
+    reconocimiento; el resto del pipeline la trata igual.
+
+    Es el tipo de entrada de :meth:`DocumentosRepository.mark_extracted`, y vive
+    aquí —y no en ``scraper/``— porque quien define la forma de una fila es el
+    repositorio que la escribe.
+    """
+
+    texto: str
+    ocr: bool = False
+
+
+def _como_pagina(pagina: str | DocumentoPagina) -> DocumentoPagina:
+    """Acepta el ``list[str]`` histórico además del tipo nuevo."""
+    return pagina if isinstance(pagina, DocumentoPagina) else DocumentoPagina(texto=pagina)
 
 
 def _to_pg_vector_literal(vec: Sequence[float]) -> str:
@@ -273,8 +307,13 @@ class DocumentosRepository:
         """
         with connect_read() as c:
             cur = c.execute(
+                # ``blob_key``/``source_hash`` viajan con la fila porque el
+                # fetcher los necesita en el camino de fallo (recuperar el
+                # binario del almacén) y en el de éxito (calcular la clave), y
+                # una consulta extra por documento multiplicaría por dos los
+                # viajes del lote diario de 300.
                 "SELECT d.id, d.licitacion_id, d.tipo, d.uri, d.filename, "
-                "d.content_type, d.size_bytes "
+                "d.content_type, d.size_bytes, d.source_hash, d.blob_key "
                 "FROM documentos d "
                 "JOIN licitaciones l ON l.id_externo = d.licitacion_id "
                 "WHERE d.status = 'pending' "
@@ -353,7 +392,7 @@ class DocumentosRepository:
         *,
         texto: str,
         sha256: str,
-        pages: list[str] | None = None,
+        pages: Sequence[str | DocumentoPagina] | None = None,
     ) -> None:
         """Texto extraído con éxito. ``sha256`` es del binario descargado —
         usado por el job de embeddings (F8) para saber si el contenido cambió
@@ -362,11 +401,15 @@ class DocumentosRepository:
         Cuando ``pages`` está presente, persiste texto por página y offsets
         absolutos sobre ``texto`` en la misma transacción. Reintentar reemplaza
         el conjunto completo y no duplica evidencia.
+
+        Cada página puede ser una cadena (comportamiento histórico: ``ocr``
+        queda en ``false``) o un :class:`DocumentoPagina`, que además dice si el
+        texto salió del OCR.
         """
         with connect() as c:
             c.execute(
                 "UPDATE documentos SET status = 'extracted', texto = %s, sha256 = %s, "
-                "fetched_at = %s, updated_at = %s WHERE id = %s",
+                "error_detail = NULL, fetched_at = %s, updated_at = %s WHERE id = %s",
                 (texto, sha256, now_utc_iso(), now_utc_iso(), documento_id),
             )
             if pages is not None:
@@ -374,26 +417,28 @@ class DocumentosRepository:
                     "DELETE FROM documento_pages WHERE documento_id = %s",
                     (documento_id,),
                 )
-                page_rows: list[tuple[int, int, str, int, int]] = []
+                page_rows: list[tuple[int, int, str, int, int, bool]] = []
                 offset = 0
-                for page_number, page_text in enumerate(pages, start=1):
+                for page_number, page in enumerate(pages, start=1):
+                    pagina = _como_pagina(page)
                     start_offset = offset
-                    end_offset = start_offset + len(page_text)
+                    end_offset = start_offset + len(pagina.texto)
                     page_rows.append(
                         (
                             documento_id,
                             page_number,
-                            page_text,
+                            pagina.texto,
                             start_offset,
                             end_offset,
+                            pagina.ocr,
                         )
                     )
                     offset = end_offset + 1  # separador ``\n`` del texto agregado
                 if page_rows:
                     c.executemany(
                         "INSERT INTO documento_pages "
-                        "(documento_id, page_number, texto, start_offset, end_offset) "
-                        "VALUES (%s, %s, %s, %s, %s)",
+                        "(documento_id, page_number, texto, start_offset, end_offset, ocr) "
+                        "VALUES (%s, %s, %s, %s, %s, %s)",
                         page_rows,
                     )
 
@@ -401,7 +446,7 @@ class DocumentosRepository:
         """Páginas extraídas y offsets, en orden documental."""
         with connect_read() as c:
             cur = c.execute(
-                "SELECT documento_id, page_number, texto, start_offset, end_offset "
+                "SELECT documento_id, page_number, texto, start_offset, end_offset, ocr "
                 "FROM documento_pages WHERE documento_id = %s ORDER BY page_number",
                 (documento_id,),
             )
@@ -412,7 +457,7 @@ class DocumentosRepository:
         with connect_read() as c:
             cur = c.execute(
                 "SELECT dp.documento_id, dp.page_number, dp.texto, "
-                "dp.start_offset, dp.end_offset, d.tipo, d.filename, d.uri "
+                "dp.start_offset, dp.end_offset, dp.ocr, d.tipo, d.filename, d.uri "
                 "FROM documento_pages dp "
                 "JOIN documentos d ON d.id = dp.documento_id "
                 "WHERE d.licitacion_id = %s "
@@ -430,13 +475,108 @@ class DocumentosRepository:
                 (error_detail[:_MAX_ERROR_DETAIL_LEN], now_utc_iso(), documento_id),
             )
 
+    def mark_unsupported(
+        self,
+        documento_id: int,
+        *,
+        content_type: str | None,
+        error_detail: str,
+    ) -> None:
+        """Formato que no sabemos leer (``v103``).
+
+        Es un estado **terminal por diseño**, como ``error``: reintentarlo con
+        la misma versión del extractor daría el mismo resultado y el documento
+        se comería el lote diario una y otra vez (el mismo razonamiento que la
+        regla de revive de ``upsert_meta``). Lo que sí cambia frente a ``error``
+        es que se conserva el ``content_type``, así que el día que se añada el
+        formato se sabe exactamente cuántas filas resucitar y de qué tipo.
+        """
+        with connect() as c:
+            c.execute(
+                "UPDATE documentos SET status = 'unsupported', content_type = %s, "
+                "error_detail = %s, updated_at = %s WHERE id = %s",
+                (
+                    content_type,
+                    error_detail[:_MAX_ERROR_DETAIL_LEN],
+                    now_utc_iso(),
+                    documento_id,
+                ),
+            )
+
+    # ── Binario conservado en el almacén de objetos (v103, S8.1) ─────────
+
+    def mark_blob(self, documento_id: int, *, blob_key: str) -> None:
+        """Anota dónde quedó guardado el binario del adjunto.
+
+        No toca ``status``: guardar el binario es ortogonal al ciclo de vida de
+        la extracción (puede haberse guardado y haber fallado la extracción, y
+        justo entonces es cuando más falta hace).
+        """
+        with connect() as c:
+            c.execute(
+                "UPDATE documentos SET blob_key = %s, updated_at = %s WHERE id = %s",
+                (blob_key, now_utc_iso(), documento_id),
+            )
+
+    def list_blobs_de_expedientes_cerrados(
+        self, cutoff_iso: str, *, limit: int = 1000
+    ) -> list[dict[str, Any]]:
+        """Binarios purgables: expediente cerrado y sin novedades desde ``cutoff_iso``.
+
+        «Cerrado hace más de N meses» no se puede medir de forma directa: no hay
+        columna con la fecha de cierre. Se usa la última señal que la fuente dio
+        sobre el expediente (``fecha_actualizacion_fuente``, y en su defecto la
+        publicación o la extracción), que para un expediente ya resuelto es el
+        momento en que dejó de moverse. Es una aproximación, y por eso el filtro
+        de estado va primero: purgar el binario de un expediente **abierto**
+        sería el error caro; hacerlo tarde para uno cerrado, no.
+
+        Sólo devuelve filas con ``blob_key``: sin binario guardado no hay nada
+        que purgar.
+        """
+        cerrados = ", ".join(["%s"] * len(ESTADOS_CERRADOS))
+        with connect_read() as c:
+            cur = c.execute(
+                "SELECT d.id, d.blob_key FROM documentos d "
+                "JOIN licitaciones l ON l.id_externo = d.licitacion_id "
+                "WHERE d.blob_key IS NOT NULL "
+                # Marcadores, no literales: los estados salen de ``shared.estados``.
+                f"AND l.estado IN ({cerrados}) "
+                "AND coalesce(l.fecha_actualizacion_fuente, l.fecha_publicacion, "
+                "             l.fecha_extraccion) < %s "
+                "ORDER BY d.id LIMIT %s",
+                (*ESTADOS_CERRADOS, cutoff_iso, max(1, min(int(limit), 10000))),
+            )
+            return rows_to_dicts(cur)
+
+    def clear_blob_keys(self, documento_ids: Iterable[int]) -> int:
+        """Olvida la clave de los binarios ya borrados del almacén.
+
+        Se hace **después** de borrar en el bucket: si el proceso muere entre
+        las dos operaciones, la fila conserva una clave muerta y la purga
+        siguiente la vuelve a intentar (``delete`` devuelve ``False`` y no pasa
+        nada). Al revés se perdería la referencia y el objeto quedaría huérfano
+        en el bucket para siempre.
+        """
+        ids = [int(i) for i in documento_ids]
+        if not ids:
+            return 0
+        marcadores = ", ".join(["%s"] * len(ids))
+        with connect() as c:
+            c.execute(
+                "UPDATE documentos SET blob_key = NULL, updated_at = %s "
+                f"WHERE id IN ({marcadores})",
+                (now_utc_iso(), *ids),
+            )
+        return len(ids)
+
     def get(self, documento_id: int) -> dict[str, Any] | None:
         """Fila completa por id (incluye ``texto``) — usado por el job de embeddings."""
         with connect_read() as c:
             cur = c.execute(
                 "SELECT id, licitacion_id, tipo, uri, filename, content_type, "
                 "size_bytes, sha256, source_hash, texto, status, error_detail, storage_key, "
-                "fetched_at, created_at, updated_at FROM documentos WHERE id = %s",
+                "blob_key, fetched_at, created_at, updated_at FROM documentos WHERE id = %s",
                 (documento_id,),
             )
             rows = rows_to_dicts(cur)
@@ -597,7 +737,16 @@ class DocumentosRepository:
         conocidas del ciclo de vida, con 0 cuando no hay filas, para que el
         formato del informe no dependa de los datos.
         """
-        counts = {"total": 0, "pending": 0, "downloaded": 0, "extracted": 0, "error": 0}
+        counts = {
+            "total": 0,
+            "pending": 0,
+            "downloaded": 0,
+            "extracted": 0,
+            "error": 0,
+            # v103: formato no soportado. Se declara como el resto para que el
+            # informe del cron tenga siempre la misma forma.
+            "unsupported": 0,
+        }
         with connect_read() as c:
             cur = c.execute("SELECT status, COUNT(*) FROM documentos GROUP BY status")
             for status, n in cur.fetchall():
@@ -605,4 +754,29 @@ class DocumentosRepository:
                 counts["total"] += int(n)
             row = c.execute("SELECT COUNT(*) FROM documento_chunks").fetchone()
             counts["chunks"] = int(row[0] if row else 0)
+            row = c.execute("SELECT COUNT(*) FROM documentos WHERE blob_key IS NOT NULL").fetchone()
+            counts["con_binario"] = int(row[0] if row else 0)
         return counts
+
+    def formato_counts(self) -> list[dict[str, Any]]:
+        """Desglose de ``documentos`` por ``content_type`` (S8.2).
+
+        Es la métrica que dice cuánta cobertura falta y de qué formato: sin
+        ella, «un DOCX no se lee» era una anécdota y no un número. El
+        ``content_type`` puede ser ``NULL`` en las filas que nunca llegaron a
+        descargarse (el parser sólo conoce la URI), y se publica como tal en
+        vez de inventarle un valor.
+
+        Orden por volumen descendente: el formato que más falta hace es el que
+        más filas tiene esperando.
+        """
+        with connect_read() as c:
+            cur = c.execute(
+                "SELECT content_type, COUNT(*) AS total, "
+                "COUNT(*) FILTER (WHERE status = 'extracted') AS extracted, "
+                "COUNT(*) FILTER (WHERE status = 'unsupported') AS unsupported, "
+                "COUNT(*) FILTER (WHERE status = 'error') AS error, "
+                "COUNT(*) FILTER (WHERE status IN ('pending', 'downloaded')) AS pendientes "
+                "FROM documentos GROUP BY content_type ORDER BY total DESC, content_type"
+            )
+            return rows_to_dicts(cur)

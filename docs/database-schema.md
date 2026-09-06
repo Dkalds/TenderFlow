@@ -1,700 +1,1214 @@
-# Database Schema — TenderFlow
-
-Documentación del esquema de base de datos del proyecto. El schema lógico
-(tablas/columnas de este documento) es portable; el backend físico en
-**producción es Postgres/Supabase** (psycopg3 + pool gestionado, ver
-[ADR-016](adr/ADR-016-destino-persistencia-supabase.md)), con SQLite local
-como conveniencia de desarrollo (ADR-018; Turso retirado, ADR-020). La
-abstracción de búsqueda (`db/search_backend.py`) resuelve la diferencia FTS5
-(SQLite) vs. `tsvector`+GIN (Postgres) de forma transparente al código
-llamador. Las migraciones canónicas viven en `db/alembic/`; `db/migrations.py`
-es el sistema casero legacy (v1–v32), mantenido solo para BDs SQLite
-existentes.
-
+---
+tags: [database, schema, generado]
 ---
 
-## Diagrama ER
-
-```mermaid
-erDiagram
-    licitaciones {
-        TEXT id_externo PK
-        TEXT titulo
-        TEXT descripcion
-        TEXT organo_contratacion
-        REAL importe
-        TEXT moneda
-        TEXT cpv
-        TEXT tipo_contrato
-        TEXT estado
-        TEXT fecha_publicacion
-        TEXT fecha_limite
-        TEXT url
-        TEXT raw_keywords
-        TEXT provincia
-        TEXT ccaa
-        TEXT nuts_code
-        REAL duracion_valor
-        TEXT duracion_unidad
-        TEXT fecha_inicio
-        TEXT fecha_fin
-        TEXT prorroga_descripcion
-        TEXT fecha_actualizacion_fuente
-        TEXT fecha_extraccion
-    }
-
-    adjudicaciones {
-        INTEGER id PK
-        TEXT licitacion_id FK
-        TEXT nif
-        TEXT nombre
-        TEXT provincia
-        TEXT ccaa
-        TEXT nuts_code
-        REAL importe_adjudicado
-        REAL importe_pagable
-        TEXT fecha_adjudicacion
-        INTEGER es_pyme
-        INTEGER n_ofertas_recibidas
-        REAL oferta_minima
-        REAL oferta_maxima
-        TEXT result_code
-        TEXT result_description
-        INTEGER lote_id FK
-        TEXT fecha_extraccion
-    }
-
-    lotes {
-        INTEGER id PK
-        TEXT licitacion_id FK
-        TEXT numero
-        TEXT titulo
-        TEXT cpv
-        REAL importe
-        TEXT fecha_limite
-        TEXT fecha_extraccion
-    }
-
-    extracciones {
-        INTEGER id PK
-        TEXT fecha
-        TEXT fuente
-        INTEGER nuevas
-        INTEGER actualizadas
-        INTEGER total_revisadas
-        TEXT notas
-    }
-
-    extraction_runs {
-        TEXT run_id PK
-        TEXT started_at
-        TEXT ended_at
-        INTEGER duration_ms
-        TEXT status
-        INTEGER months_attempted
-        INTEGER months_ok
-        INTEGER months_failed
-        INTEGER licitaciones_nuevas
-        INTEGER licitaciones_actualizadas
-        INTEGER adjudicaciones
-        INTEGER errores_parseo
-        INTEGER errores_descarga
-        TEXT notas
-    }
-
-    licitaciones_history {
-        INTEGER id PK
-        TEXT id_externo FK
-        TEXT captured_at
-        TEXT source
-        TEXT snapshot_json
-        TEXT changed_fields
-    }
-
-    licitaciones_fts {
-        TEXT id_externo
-        TEXT titulo
-        TEXT descripcion
-    }
-
-    ingestion_cursors {
-        TEXT source PK
-        TEXT last_seen_updated
-        TEXT last_entry_id
-        TEXT etag
-        TEXT last_modified
-        TEXT updated_at
-    }
-
-    watchlist_cpv {
-        INTEGER id PK
-        TEXT user_key
-        INTEGER user_id FK
-        TEXT cpv_prefix
-        TEXT keyword
-        REAL min_importe
-        TEXT ccaa
-        TEXT email
-        TEXT created_at
-        TEXT last_notified_at
-    }
-
-    users {
-        INTEGER id PK
-        TEXT email
-        TEXT oauth_provider
-        TEXT oauth_sub
-        TEXT display_name
-        TEXT created_at
-        INTEGER is_admin
-    }
-
-    access_log {
-        INTEGER id PK
-        INTEGER user_id FK
-        TEXT email
-        TEXT auth_method
-        TEXT logged_in_at
-    }
-
-    failed_extractions {
-        INTEGER id PK
-        TEXT run_id FK
-        TEXT fuente
-        TEXT scope
-        TEXT error_type
-        TEXT error_message
-        TEXT payload_ref
-        INTEGER retry_count
-        TEXT resolved_at
-        TEXT created_at
-    }
-
-    rate_limits {
-        TEXT key PK
-        REAL ts PK
-    }
-
-    kpi_snapshots {
-        INTEGER id PK
-        TEXT computed_at
-        TEXT metrica
-        TEXT dimension
-        REAL valor
-        TEXT valor_text
-    }
-
-    schema_version {
-        INTEGER version PK
-        TEXT description
-        TEXT applied_at
-    }
-
-    licitaciones ||--o{ adjudicaciones : "tiene"
-    licitaciones ||--o{ licitaciones_history : "registra cambios"
-    licitaciones ||--o{ lotes : "se divide en"
-    lotes ||--o{ adjudicaciones : "se adjudica en"
-    users ||--o{ watchlist_cpv : "gestiona"
-    users ||--o{ access_log : "genera"
-    extraction_runs ||--o{ failed_extractions : "registra"
-```
-
----
-
-## Tablas
-
-### `licitaciones` — Tabla principal
-
-Almacena las licitaciones públicas relacionadas con SAP extraídas de PLACSP.
-
-| Columna | Tipo | Descripción |
-|---------|------|-------------|
-| `id_externo` | TEXT PK | Identificador único de PLACSP (ContractFolderID) |
-| `titulo` | TEXT | Título de la licitación (obligatorio) |
-| `descripcion` | TEXT | Descripción detallada |
-| `organo_contratacion` | TEXT | Nombre del órgano contratante |
-| `importe` | REAL | Importe de licitación en EUR (`real`/float4 en producción, ver nota abajo) |
-| `moneda` | TEXT | Código moneda (default: EUR) |
-| `cpv` | TEXT | Código CPV (Common Procurement Vocabulary) |
-| `tipo_contrato` | TEXT | Código de tipo de contrato (1=obras, 2=servicios, etc.) |
-| `estado` | TEXT | Estado del expediente (PUB, EV, ADJ, RES, etc.) |
-| `fecha_publicacion` | TEXT | Fecha de publicación ISO 8601 |
-| `fecha_limite` | TEXT | Fecha límite de presentación ISO 8601 |
-| `url` | TEXT | URL de la licitación en PLACSP |
-| `raw_keywords` | TEXT | Keywords SAP detectadas (comma-separated) |
-| `provincia` | TEXT | Provincia de ejecución |
-| `ccaa` | TEXT | Comunidad Autónoma de ejecución |
-| `nuts_code` | TEXT | Código NUTS3 de la región |
-| `duracion_valor` | REAL | Duración numérica del contrato |
-| `duracion_unidad` | TEXT | Unidad de duración (ANN/MON/DAY) |
-| `fecha_inicio` | TEXT | Fecha de inicio de ejecución |
-| `fecha_fin` | TEXT | Fecha de fin de ejecución |
-| `prorroga_descripcion` | TEXT | Descripción de posibles prórrogas |
-| `fecha_actualizacion_fuente` | TEXT | Timestamp `<updated>` del feed ATOM |
-| `fecha_extraccion` | TEXT | Fecha de extracción por el scraper |
-
-**Índices:**
-- `idx_fecha_pub` — búsquedas y ordenación por fecha
-- `idx_organo` — filtros por órgano contratante
-- `idx_estado` — filtros por estado del expediente
-- `idx_cpv` — búsquedas por código CPV
-- `idx_ccaa` — filtros geográficos
-
-**Precisión de `importe` / `duracion_valor`:** en producción son `real` (float4,
-~7 cifras significativas) porque la tabla viene del schema SQLite pre-ADR-021,
-donde el tipo era `REAL`. Alembic las declara `sa.Float` → `double precision`,
-así que un bootstrap nuevo (CI incluido) **no** reproduce esa precisión. Los
-conectores escriben float8, de modo que el valor releído no coincide con el
-escrito: toda comparación de estos campos pasa por
-[`shared/numeric.py::values_equal`](../shared/numeric.py) y no por `!=`. La
-migración a `double precision` está en el backlog (P2) y requiere OK humano
-por la ventana de lock.
-
----
-
-### `adjudicaciones` — Adjudicatarios
-
-Contiene los datos de adjudicación de cada licitación (empresa ganadora, importe, etc.).
-
-| Columna | Tipo | Descripción |
-|---------|------|-------------|
-| `id` | INTEGER PK | Clave primaria autoincremental |
-| `licitacion_id` | TEXT FK | Referencia a `licitaciones.id_externo` |
-| `nif` | TEXT | NIF/CIF del adjudicatario |
-| `nombre` | TEXT | Nombre de la empresa adjudicataria |
-| `provincia` | TEXT | Provincia de la empresa |
-| `ccaa` | TEXT | CCAA de la empresa |
-| `nuts_code` | TEXT | Código NUTS3 de la empresa |
-| `importe_adjudicado` | REAL | Importe final adjudicado |
-| `importe_pagable` | REAL | Importe pagable (puede diferir del adjudicado) |
-| `fecha_adjudicacion` | TEXT | Fecha de adjudicación |
-| `es_pyme` | INTEGER | 1 si es PYME, 0 si no, NULL si desconocido |
-| `n_ofertas_recibidas` | INTEGER | Número de ofertas presentadas |
-| `oferta_minima` | REAL | Importe de la oferta más baja recibida |
-| `oferta_maxima` | REAL | Importe de la oferta más alta recibida |
-| `result_code` | TEXT | Código de resultado de la adjudicación |
-| `result_description` | TEXT | Descripción del resultado |
-| `lote_id` | INTEGER FK | Referencia a `lotes.id` (v65_lotes). `NULL` = expediente sin lote parseado (lote único implícito) |
-| `fecha_extraccion` | TEXT | Fecha de extracción |
-
-**Constraints únicas** (v65_lotes sustituye la única constraint original por dos
-índices únicos parciales — una unique simple con `lote_id` habría perdido toda
-protección para el caso sin lote, donde `NULL <> NULL` en SQL):
-- `uq_adjudicaciones_lic_nif_importe_sin_lote` — `(licitacion_id, nif, importe_adjudicado) WHERE lote_id IS NULL`.
-- `uq_adjudicaciones_lic_lote_nif_importe` — `(licitacion_id, lote_id, nif, importe_adjudicado) WHERE lote_id IS NOT NULL`.
-
----
-
-### `lotes` — Lotes de un expediente (v65_lotes)
-
-En contratación pública española un expediente puede dividirse en lotes, cada
-uno con presupuesto, CPV y adjudicatario propios. CODICE los modela como
-`cac:ProcurementProjectLot`; cada adjudicación referencia el suyo vía
-`cac:TenderResult/cac:ProcurementProjectLotReference/cbc:ID`
-(`scraper/codice_parser.py::parse_lotes`).
-
-| Columna | Tipo | Descripción |
-|---------|------|-------------|
-| `id` | INTEGER PK | Autoincremental |
-| `licitacion_id` | TEXT FK | Referencia a `licitaciones.id_externo` |
-| `numero` | TEXT | Número/identificador del lote tal como lo publica la fuente |
-| `titulo` | TEXT | Nombre del lote |
-| `cpv` | TEXT | Código CPV propio del lote |
-| `importe` | REAL | Presupuesto del lote (no del expediente completo) |
-| `fecha_limite` | TEXT | Plazo de presentación propio del lote si lo publica; si no, hereda el del expediente |
-| `fecha_extraccion` | TEXT | Fecha de extracción |
-
-**Constraint único:** `(licitacion_id, numero)`.
-
----
-
-### `extracciones` — Log de ejecuciones
-
-Registro simplificado de cada ejecución del scraper.
-
-| Columna | Tipo | Descripción |
-|---------|------|-------------|
-| `id` | INTEGER PK | Autoincremental |
-| `fecha` | TEXT | Fecha/hora de la extracción (UTC) |
-| `fuente` | TEXT | Identificador de la fuente (bulk_YYYYMM, place_live_atom) |
-| `nuevas` | INTEGER | Licitaciones nuevas insertadas |
-| `actualizadas` | INTEGER | Licitaciones actualizadas |
-| `total_revisadas` | INTEGER | Total de entradas procesadas |
-| `notas` | TEXT | Notas adicionales del run |
-
----
-
-### `extraction_runs` — Métricas detalladas por run
-
-Registro detallado de métricas de cada ejecución del pipeline (migración 1).
-
-| Columna | Tipo | Descripción |
-|---------|------|-------------|
-| `run_id` | TEXT PK | UUID del run |
-| `started_at` | TEXT | Inicio del run (ISO 8601 UTC) |
-| `ended_at` | TEXT | Fin del run |
-| `duration_ms` | INTEGER | Duración en milisegundos |
-| `status` | TEXT | Estado: `running`, `ok`, `partial`, `error` |
-| `months_attempted` | INTEGER | Meses intentados (bulk) |
-| `months_ok` | INTEGER | Meses procesados sin error |
-| `months_failed` | INTEGER | Meses con error |
-| `licitaciones_nuevas` | INTEGER | Total nuevas en el run |
-| `licitaciones_actualizadas` | INTEGER | Total actualizadas |
-| `adjudicaciones` | INTEGER | Total adjudicaciones procesadas |
-| `errores_parseo` | INTEGER | Errores de parseo XML |
-| `errores_descarga` | INTEGER | Errores de descarga HTTP |
-| `notas` | TEXT | Notas del run |
-
----
-
-### `licitaciones_history` — Historial de cambios
-
-Guarda snapshots del estado anterior cuando se detectan cambios en campos clave (migración 5).
-
-| Columna | Tipo | Descripción |
-|---------|------|-------------|
-| `id` | INTEGER PK | Autoincremental |
-| `id_externo` | TEXT FK | Referencia a la licitación |
-| `captured_at` | TEXT | Timestamp en que se capturó el cambio |
-| `source` | TEXT | Fuente que detectó el cambio (`bulk_*`, `place_live_atom`) |
-| `snapshot_json` | TEXT | JSON con el estado **anterior** a los cambios |
-| `changed_fields` | TEXT | Campos que cambiaron (comma-separated) |
-
-**Campos tracked** (definidos en `config.HISTORY_TRACKED_FIELDS`):
-`importe`, `estado`, `fecha_fin`, `fecha_inicio`, `fecha_limite`, `duracion_valor`, `duracion_unidad`, `titulo`, `descripcion`
-
-**Detección de cambios:** `db/upsert.py::_upsert_chunk` compara el registro
-existente con el entrante campo a campo vía `shared.numeric.values_equal`. Los
-campos numéricos se comparan con tolerancia relativa (1e-5): con `!=` exacto,
-el round-trip float8→float4 de `importe` marcaba un cambio en cada re-ingesta y
-llenaba esta tabla de filas sin cambio real (1.785 medidas en 8 días de TED, el
-2026-08-16).
-
----
-
-### `licitaciones_fts` — Índice de búsqueda full-text
-
-Tabla virtual FTS5 para búsqueda full-text sobre títulos y descripciones (migración 7).
-
-Sincronizada automáticamente con `licitaciones` vía triggers (`trg_fts_insert`, `trg_fts_delete`, `trg_fts_update`).
-
----
-
-### `ingestion_cursors` — Cursores de ingesta
-
-Almacena el estado de paginación del feed ATOM en vivo (migración 5).
-
-| Columna | Tipo | Descripción |
-|---------|------|-------------|
-| `source` | TEXT PK | Identificador de la fuente (e.g. `place_live_atom`) |
-| `last_seen_updated` | TEXT | Timestamp del último entry procesado |
-| `last_entry_id` | TEXT | ID del último entry procesado |
-| `etag` | TEXT | ETag HTTP para validación de caché |
-| `last_modified` | TEXT | Last-Modified HTTP |
-| `updated_at` | TEXT | Cuándo se actualizó este cursor |
-
----
-
-### `watchlist_cpv` — Watchlist de usuarios
-
-Reglas de seguimiento personalizadas por usuario (migraciones 2, 3, 4, 8).
-
-| Columna | Tipo | Descripción |
-|---------|------|-------------|
-| `id` | INTEGER PK | Autoincremental |
-| `user_key` | TEXT | Clave de usuario (email o session key) |
-| `user_id` | INTEGER FK | Referencia a `users.id` (opcional) |
-| `cpv_prefix` | TEXT | Prefijo CPV a vigilar (e.g. `72`) |
-| `keyword` | TEXT | Keyword adicional (opcional) |
-| `min_importe` | REAL | Importe mínimo para notificar |
-| `ccaa` | TEXT | CCAA filtro (opcional) |
-| `email` | TEXT | Email de notificación |
-| `created_at` | TEXT | Fecha de creación de la regla |
-| `last_notified_at` | TEXT | Última vez que se envió notificación |
-
----
-
-### `users` — Usuarios del frontend web
-
-Usuarios registrados vía OAuth (migración 8).
-
-| Columna | Tipo | Descripción |
-|---------|------|-------------|
-| `id` | INTEGER PK | Autoincremental |
-| `email` | TEXT UNIQUE | Email del usuario |
-| `oauth_provider` | TEXT | Proveedor OAuth (e.g. `google`) |
-| `oauth_sub` | TEXT | Subject claim del token OAuth |
-| `display_name` | TEXT | Nombre para mostrar |
-| `created_at` | TEXT | Fecha de registro |
-| `is_admin` | INTEGER | 1 si tiene permisos de admin (migración 10) |
-
----
-
-### `access_log` — Log de accesos
-
-Registro de cada inicio de sesión en el frontend web (migración 9).
-
-| Columna | Tipo | Descripción |
-|---------|------|-------------|
-| `id` | INTEGER PK | Autoincremental |
-| `user_id` | INTEGER FK | Referencia a `users.id` |
-| `email` | TEXT | Email del usuario (desnormalizado) |
-| `auth_method` | TEXT | Método: `password`, `oauth`, `oauth+password` |
-| `logged_in_at` | TEXT | Timestamp del acceso |
-
----
-
-### `failed_extractions` — Dead Letter Queue
-
-Registro de entradas que fallaron durante la extracción para reintento (migración 1).
-
-| Columna | Tipo | Descripción |
-|---------|------|-------------|
-| `id` | INTEGER PK | Autoincremental |
-| `run_id` | TEXT FK | Run en que ocurrió el fallo |
-| `fuente` | TEXT | Fuente donde ocurrió |
-| `scope` | TEXT | Fase: `download`, `parse`, `persist_licitaciones`, etc. |
-| `error_type` | TEXT | Tipo de excepción |
-| `error_message` | TEXT | Mensaje de error |
-| `payload_ref` | TEXT | Referencia al payload (nombre de fichero XML, id_externo, etc.) |
-| `retry_count` | INTEGER | Número de reintentos |
-| `resolved_at` | TEXT | Cuándo se resolvió (NULL si pendiente) |
-| `created_at` | TEXT | Cuándo se registró el fallo |
-
-**Índice único parcial:** `(fuente, scope, payload_ref) WHERE resolved_at IS NULL` — evita DLQ duplicados.
-
----
-
-### `rate_limits` — Rate limiting persistente
-
-Ventana deslizante de timestamps por clave para rate limiting anti-bruteforce (migración 12).
-
-| Columna | Tipo | Descripción |
-|---------|------|-------------|
-| `key` | TEXT PK | Clave de la operación (e.g. `login_fail:sha256_session`) |
-| `ts` | REAL PK | Timestamp UNIX del evento |
-
----
-
-### `kpi_snapshots` — KPIs pre-calculados
-
-Snapshots de métricas pre-calculadas para acelerar la carga del frontend web (migración 13).
-
-| Columna | Tipo | Descripción |
-|---------|------|-------------|
-| `id` | INTEGER PK | Autoincremental |
-| `computed_at` | TEXT | Timestamp de cálculo (ISO 8601 UTC) |
-| `metrica` | TEXT | Nombre de la métrica (e.g. `total_licitaciones`) |
-| `dimension` | TEXT | Dimensión (default: `global`, puede ser `ccaa`, etc.) |
-| `valor` | REAL | Valor numérico de la métrica |
-| `valor_text` | TEXT | Valor en JSON para métricas complejas (series, rankings) |
-
-**Métricas disponibles:**
-- `total_licitaciones` — total en BD
-- `importe_total`, `importe_medio` — importes globales
-- `n_organos`, `n_ccaa` — distintos
-- `licitaciones_30d`, `licitaciones_30d_prev` — ventanas temporales
-- `licitaciones_por_ccaa` — JSON con ranking por CCAA
-- `licitaciones_por_estado` — JSON con conteo por estado
-- `total_adjudicaciones`, `licitaciones_con_adj` — adjudicaciones
-- `top10_adjudicatarios` — JSON con top 10 empresas
-- `serie_mensual_24m` — JSON con serie histórica 24 meses
-
----
-
-### `schema_version` — Control de migraciones
-
-| Columna | Tipo | Descripción |
-|---------|------|-------------|
-| `version` | INTEGER PK | Número de versión |
-| `description` | TEXT | Descripción de la migración |
-| `applied_at` | TEXT | Fecha de aplicación (ISO 8601 UTC) |
-
----
-
-## Flujo de datos
-
-```
-PLACSP (XML/ATOM)
-      │
-      ▼
-scraper/bulk_downloader.py   ←── Descarga ZIPs mensuales
-scraper/atom_live.py         ←── Feed ATOM en vivo (cada 4h)
-      │
-      ▼
-scraper/codice_parser.py     ←── Parsea CODICE/UBL XML → Licitacion dataclass
-      │
-      ▼
-scraper/filters.py           ←── Filtra por keywords SAP (+ ML classifier)
-      │
-      ├──── licitaciones ◄─────────── db/database.upsert_licitaciones_with_history()
-      ├──── adjudicaciones ◄────────── db/database.replace_adjudicaciones()
-      ├──── extracciones ◄─────────── db/database.log_extraccion()
-      ├──── licitaciones_history ◄──── (automático si hay cambios)
-      ├──── extraction_runs ◄────────── observability/metrics.record_run()
-      ├──── data/metrics/scraper.prom ◄ observability/prometheus.instrument_run()
-      └──── kpi_snapshots ◄──────────── scheduler/kpi_precompute.run_kpi_precompute()
-                                         (job separado post-scraping)
-      │
-      ▼
-api/routes/analytics.py      ←── Expone KPIs y agregados al frontend web
-```
-
----
-
-### `saved_filters` — Filtros guardados por usuario
-
-Guarda configuraciones de filtros nombradas por usuario para recuperarlas luego (migración 16).
-
-| Columna | Tipo | Descripción |
-|---------|------|-------------|
-| `id` | INTEGER PK | Autoincremental |
-| `user_key` | TEXT | Clave de usuario |
-| `name` | TEXT | Nombre del filtro guardado |
-| `filters_json` | TEXT | JSON con los valores de los filtros |
-| `created_at` | TEXT | Fecha de creación |
-
-**Constraint único:** `(user_key, name)`.
-
----
-
-### `notification_reads` — Lecturas de notificaciones
-
-Registra qué notificaciones ha marcado como leídas cada usuario (migración 17).
-
-| Columna | Tipo | Descripción |
-|---------|------|-------------|
-| `id` | INTEGER PK | Autoincremental |
-| `user_key` | TEXT | Clave de usuario |
-| `notification_id` | TEXT | ID de la notificación/licitación |
-| `read_at` | TEXT | Timestamp de lectura |
-
----
-
-### `pending_digests` — Colas de emails pendientes
-
-Entradas de watchlist pendientes de enviar en el próximo ciclo de digest (migración 18).
-
-| Columna | Tipo | Descripción |
-|---------|------|-------------|
-| `id` | INTEGER PK | Autoincremental |
-| `user_key` | TEXT | Clave de usuario |
-| `recipient_email` | TEXT | Email destinatario |
-| `entry_id` | INTEGER | ID de la entrada watchlist que hizo match |
-| `licitacion_id` | TEXT | ID de la licitación matcheada |
-| `frequency` | TEXT | Frecuencia: `immediate`, `daily`, `weekly` |
-| `matched_at` | TEXT | Cuándo se detectó el match |
-| `sent` | INTEGER | 0 = pendiente, 1 = enviado |
-
----
-
-### `audit_log` — Log de auditoría
-
-Registro de acciones de usuarios para auditoría de seguridad (migración 18).
-
-| Columna | Tipo | Descripción |
-|---------|------|-------------|
-| `id` | INTEGER PK | Autoincremental |
-| `user_key` | TEXT | Clave de usuario |
-| `session_hash` | TEXT | Hash de sesión (anonimizado) |
-| `action` | TEXT | Acción realizada (e.g. `login`, `filter_save`, `export`) |
-| `detail` | TEXT | Detalle adicional en formato libre |
-| `created_at` | TEXT | Timestamp generado por SQLite (`strftime(...,'now')`) |
-
----
-
-### `api_keys` — API Keys de acceso a la REST API
-
-Almacena hashes (SHA-256) de las API Keys emitidas para la API REST (migración 19).
-El token en bruto **nunca** se guarda — solo se usa para verificar cabecera `X-API-Key`.
-
-| Columna | Tipo | Descripción |
-|---------|------|-------------|
-| `id` | INTEGER PK | Autoincremental |
-| `key_hash` | TEXT UNIQUE | SHA-256 hex del token en bruto |
-| `name` | TEXT | Nombre descriptivo de la clave (quién la usa) |
-| `created_at` | TEXT | Fecha de creación |
-| `last_used` | TEXT | Última vez que se usó (actualizado best-effort) |
-| `is_active` | INTEGER | 1 = activa, 0 = revocada |
-
-**Índice parcial:** `idx_api_keys_hash WHERE is_active = 1` — las claves revocadas no se buscan.
-
----
-
-## Versiones del esquema
-
-| Versión | Descripción | Reversible |
-|---------|-------------|-----------|
-| 1 | `extraction_runs` + `failed_extractions` | Sí |
-| 2 | `watchlist_cpv` | Sí |
-| 3 | `watchlist_cpv.last_notified_at` | No (ALTER TABLE) |
-| 4 | `watchlist_cpv.email` | No (ALTER TABLE) |
-| 5 | `ingestion_cursors` + `licitaciones_history` | Sí |
-| 6 | Columnas extra en `licitaciones` (programático `_apply_v6_columns`) | No (ALTER TABLE) |
-| 7 | FTS5 + triggers `trg_fts_*` (programático `_apply_v7_fts`) | Sí |
-| 8 | `users` + `watchlist_cpv.user_id` (programático `_apply_v8_user_id`) | Sí |
-| 9 | `access_log` | Sí |
-| 10 | `users.is_admin` (programático `_apply_v10_is_admin`) | No (ALTER TABLE) |
-| 11 | Índice único parcial en `failed_extractions` para dedup DLQ | Sí |
-| 12 | `rate_limits` | Sí |
-| 13 | `kpi_snapshots` | Sí |
-| 14 | `licitaciones.tecnologia` + backfill SAP (programático `_apply_v14_tecnologia`) | No (ALTER TABLE) |
-| 15 | `watchlist_cpv.frequency` (programático `_apply_v15_frequency`) | No (ALTER TABLE) |
-| 16 | `saved_filters` | Sí |
-| 17 | `notification_reads` | Sí |
-| 18 | `pending_digests` + `audit_log` | Sí |
-| 19 | `api_keys` (REST API key auth) | Sí |
-| 20 | índices compuestos `(ccaa, fecha_publicacion)` y `(estado, fecha_publicacion)` | Sí |
-
-> **Migraciones programáticas:** Las versiones 6, 7, 8, 10, 14 y 15 ejecutan código Python
-> adicional después del SQL (ver `_apply_v*` en `db/migrations.py`). Esto es necesario cuando
-> se requiere lógica condicional (`PRAGMA table_info`) o un rebuild de índice FTS5 que SQLite
-> no permite declarativamente.
->
-> **Nota sobre rollbacks:** Las migraciones que solo añaden columnas (ALTER TABLE ADD COLUMN)
-> no son reversibles en SQLite < 3.35 sin reconstruir la tabla completa.
-> Para revertir esas versiones, restaura desde un backup de la BD.
-
----
-
-## Queries comunes
-
-```sql
--- Licitaciones SAP de los últimos 30 días ordenadas por importe
-SELECT titulo, importe, organo_contratacion, fecha_publicacion
-FROM licitaciones
-WHERE fecha_publicacion >= date('now', '-30 days')
-ORDER BY importe DESC;
-
--- Top 10 empresas adjudicatarias por importe total
-SELECT nombre, COUNT(*) as n, SUM(importe_adjudicado) as total
-FROM adjudicaciones
-WHERE importe_adjudicado IS NOT NULL
-GROUP BY nombre
-ORDER BY total DESC
-LIMIT 10;
-
--- Licitaciones con cambios de importe registrados en historial
-SELECT l.id_externo, l.titulo, h.captured_at, h.changed_fields
-FROM licitaciones_history h
-JOIN licitaciones l ON l.id_externo = h.id_externo
-WHERE h.changed_fields LIKE '%importe%'
-ORDER BY h.captured_at DESC;
-
--- Estado actual del esquema
-SELECT version, description, applied_at
-FROM schema_version
-ORDER BY version;
-
--- Tasa de éxito de los últimos 10 runs
-SELECT run_id, status, licitaciones_nuevas, duration_ms
-FROM extraction_runs
-ORDER BY started_at DESC
-LIMIT 10;
-
--- KPIs pre-calculados más recientes
-SELECT metrica, valor, valor_text, computed_at
-FROM kpi_snapshots
-WHERE computed_at = (SELECT MAX(computed_at) FROM kpi_snapshots)
-ORDER BY metrica;
-```
+# Esquema de base de datos
+
+<!-- generado por scripts/gen_schema_doc.py — no editar a mano -->
+
+Generado: 2026-09-06
+
+Revisión Alembic aplicada: `v103_documentos_blob_ocr`.
+
+Catálogo de una base Postgres recién migrada con `alembic upgrade head`. Se listan
+las tablas de `public` agrupadas por familia, con sus columnas
+(`information_schema.columns`, en orden de `ordinal_position`), sus claves primarias
+y únicas (`pg_constraint`) y sus índices explícitos (`pg_indexes`, sin los que
+respaldan una constraint porque ya se ven arriba). Quedan fuera a propósito la tabla
+de control de Alembic, las claves ajenas y los `CHECK` —que se entienden mejor en la
+migración que los declara— y, por supuesto, cualquier dato.
+
+> Nota histórica: hasta 2026-09 este fichero se mantenía a mano y describía el esquema SQLite, su tabla virtual FTS5 y las versiones v1-v20 del sistema casero `db/migrations.py`, retirados por ADR-016 y ADR-021.
+
+## Resumen
+
+| Familia | Tablas | Columnas | Índices |
+|---|---:|---:|---:|
+| Licitaciones y fuente | 12 | 153 | 50 |
+| Documentos y pliegos | 4 | 40 | 10 |
+| Empresas y mercado | 6 | 34 | 8 |
+| Organizaciones y oportunidades | 5 | 55 | 9 |
+| Identidad, acceso y auditoría | 15 | 102 | 22 |
+| Seguimiento y notificaciones | 12 | 105 | 20 |
+| ML y predicciones | 7 | 55 | 13 |
+| Operación y observabilidad | 5 | 31 | 6 |
+| **Total** | **66** | **575** | **138** |
+
+## Licitaciones y fuente
+
+### `adjudicaciones`
+
+| Columna | Tipo | Nulo |
+|---|---|---|
+| `id` | `integer` | no |
+| `licitacion_id` | `text` | no |
+| `nif` | `text` | sí |
+| `nombre` | `text` | no |
+| `provincia` | `text` | sí |
+| `ccaa` | `text` | sí |
+| `nuts_code` | `text` | sí |
+| `importe_adjudicado` | `double precision` | sí |
+| `importe_pagable` | `double precision` | sí |
+| `fecha_adjudicacion` | `text` | sí |
+| `es_pyme` | `integer` | sí |
+| `n_ofertas_recibidas` | `integer` | sí |
+| `oferta_minima` | `double precision` | sí |
+| `oferta_maxima` | `double precision` | sí |
+| `result_code` | `text` | sí |
+| `result_description` | `text` | sí |
+| `fecha_extraccion` | `text` | no |
+| `empresa_id` | `integer` | sí |
+| `lote_id` | `integer` | sí |
+
+Claves: `PRIMARY KEY (id)` · `UNIQUE (licitacion_id, nif, importe_adjudicado)`
+
+Índices: `idx_adj_ccaa`, `idx_adj_ccaa_nombre`, `idx_adj_empresa`, `idx_adj_fecha`, `idx_adj_lic`, `idx_adj_nif`, `idx_adj_nombre_importe`, `idx_adjudicaciones_lote`, `uq_adjudicaciones_lic_lote_nif_importe` (único), `uq_adjudicaciones_lic_nif_importe_sin_lote` (único)
+
+### `contrato_eventos`
+
+| Columna | Tipo | Nulo |
+|---|---|---|
+| `id` | `integer` | no |
+| `licitacion_id` | `text` | no |
+| `tipo` | `text` | no |
+| `fecha` | `text` | no |
+| `campo` | `text` | sí |
+| `valor_antes` | `text` | sí |
+| `valor_despues` | `text` | sí |
+| `importe_delta` | `double precision` | sí |
+| `detalle` | `text` | sí |
+| `history_id` | `integer` | sí |
+| `created_at` | `text` | no |
+
+Claves: `PRIMARY KEY (id)`
+
+Índices: `idx_eventos_dedupe` (único), `idx_eventos_lic`, `idx_eventos_tipo`
+
+### `extracciones`
+
+| Columna | Tipo | Nulo |
+|---|---|---|
+| `id` | `integer` | no |
+| `fecha` | `text` | no |
+| `fuente` | `text` | no |
+| `nuevas` | `integer` | sí |
+| `actualizadas` | `integer` | sí |
+| `total_revisadas` | `integer` | sí |
+| `notas` | `text` | sí |
+
+Claves: `PRIMARY KEY (id)`
+
+Índices: `idx_extr_fecha`
+
+### `extraction_runs`
+
+| Columna | Tipo | Nulo |
+|---|---|---|
+| `run_id` | `text` | no |
+| `started_at` | `text` | no |
+| `ended_at` | `text` | sí |
+| `duration_ms` | `integer` | sí |
+| `status` | `text` | no |
+| `months_attempted` | `integer` | sí |
+| `months_ok` | `integer` | sí |
+| `months_failed` | `integer` | sí |
+| `licitaciones_nuevas` | `integer` | sí |
+| `licitaciones_actualizadas` | `integer` | sí |
+| `adjudicaciones` | `integer` | sí |
+| `errores_parseo` | `integer` | sí |
+| `errores_descarga` | `integer` | sí |
+| `notas` | `text` | sí |
+
+Claves: `PRIMARY KEY (run_id)`
+
+Índices: `idx_runs_started`, `idx_runs_status`
+
+### `failed_extractions`
+
+| Columna | Tipo | Nulo |
+|---|---|---|
+| `id` | `integer` | no |
+| `run_id` | `text` | sí |
+| `fuente` | `text` | no |
+| `scope` | `text` | sí |
+| `error_type` | `text` | sí |
+| `error_message` | `text` | sí |
+| `payload_ref` | `text` | sí |
+| `retry_count` | `integer` | sí |
+| `resolved_at` | `text` | sí |
+| `created_at` | `text` | no |
+| `last_attempt_at` | `text` | sí |
+| `exhausted_at` | `text` | sí |
+
+Claves: `PRIMARY KEY (id)`
+
+Índices: `idx_fail_exhausted`, `idx_fail_run`, `idx_fail_unique_unresolved` (único), `idx_fail_unresolved`
+
+### `ingestion_cursors`
+
+| Columna | Tipo | Nulo |
+|---|---|---|
+| `source` | `text` | no |
+| `last_seen_updated` | `text` | sí |
+| `last_entry_id` | `text` | sí |
+| `etag` | `text` | sí |
+| `last_modified` | `text` | sí |
+| `updated_at` | `text` | no |
+
+Claves: `PRIMARY KEY (source)`
+
+### `licitaciones`
+
+| Columna | Tipo | Nulo |
+|---|---|---|
+| `id_externo` | `text` | no |
+| `titulo` | `text` | no |
+| `descripcion` | `text` | sí |
+| `organo_contratacion` | `text` | sí |
+| `importe` | `double precision` | sí |
+| `moneda` | `text` | sí |
+| `cpv` | `text` | sí |
+| `tipo_contrato` | `text` | sí |
+| `estado` | `text` | sí |
+| `fecha_publicacion` | `text` | sí |
+| `fecha_limite` | `text` | sí |
+| `url` | `text` | sí |
+| `raw_keywords` | `text` | sí |
+| `provincia` | `text` | sí |
+| `ccaa` | `text` | sí |
+| `nuts_code` | `text` | sí |
+| `duracion_valor` | `double precision` | sí |
+| `duracion_unidad` | `text` | sí |
+| `fecha_inicio` | `text` | sí |
+| `fecha_fin` | `text` | sí |
+| `prorroga_descripcion` | `text` | sí |
+| `ml_proba` | `double precision` | sí |
+| `tecnologia` | `text` | sí |
+| `ml_tecnologias` | `text` | sí |
+| `ml_proba_max` | `double precision` | sí |
+| `ml_tech_principal` | `text` | sí |
+| `fecha_actualizacion_fuente` | `text` | sí |
+| `fuente` | `text` | no |
+| `fecha_extraccion` | `text` | no |
+| `search_vector` | `tsvector` | sí |
+| `filter_version` | `text` | sí |
+| `classifier_model_version` | `text` | sí |
+| `inclusion_reason` | `text` | sí |
+| `analysis_universe` | `text` | sí |
+| `fecha_pub_d` | `date` | sí |
+| `procedimiento` | `text` | sí |
+| `tramitacion` | `text` | sí |
+| `peso_precio_pct` | `double precision` | sí |
+| `primera_extraccion` | `text` | sí |
+
+Claves: `PRIMARY KEY (id_externo)`
+
+Índices: `idx_ccaa`, `idx_cpv`, `idx_estado`, `idx_fecha_pub`, `idx_lic_clave_canonica_v101`, `idx_lic_cursor`, `idx_lic_fecha_act_fuente`, `idx_lic_fecha_extraccion`, `idx_lic_fecha_limite`, `idx_lic_fecha_pub_d`, `idx_lic_fecha_pub_tech`, `idx_lic_fuente`, `idx_lic_importe`, `idx_lic_ml_proba`, `idx_lic_tecnologia`, `idx_lic_universo_cpv`, `idx_licitaciones_analysis_lineage`, `idx_licitaciones_search_vector`, `idx_licitaciones_titulo_trgm`, `idx_ml_tech_principal`, `idx_organo`
+
+### `licitaciones_duplicados`
+
+| Columna | Tipo | Nulo |
+|---|---|---|
+| `licitacion_id` | `text` | no |
+| `canonical_id` | `text` | no |
+| `clave_match` | `text` | sí |
+| `confianza` | `double precision` | no |
+| `status` | `text` | no |
+| `detectado_en` | `text` | no |
+| `resolved_at` | `text` | sí |
+| `resolved_by` | `text` | sí |
+
+Claves: `PRIMARY KEY (licitacion_id)`
+
+Índices: `idx_lic_dup_canonical`, `idx_lic_dup_status`
+
+### `licitaciones_history`
+
+| Columna | Tipo | Nulo |
+|---|---|---|
+| `id` | `integer` | no |
+| `id_externo` | `text` | no |
+| `captured_at` | `text` | no |
+| `source` | `text` | sí |
+| `snapshot_json` | `text` | no |
+| `changed_fields` | `text` | no |
+
+Claves: `PRIMARY KEY (id)`
+
+Índices: `idx_hist_externo`, `idx_lic_history_id_externo`, `idx_licitaciones_history_externo_date`
+
+### `lotes`
+
+| Columna | Tipo | Nulo |
+|---|---|---|
+| `id` | `integer` | no |
+| `licitacion_id` | `text` | no |
+| `numero` | `text` | no |
+| `titulo` | `text` | sí |
+| `cpv` | `text` | sí |
+| `importe` | `double precision` | sí |
+| `fecha_limite` | `text` | sí |
+| `fecha_extraccion` | `text` | no |
+
+Claves: `PRIMARY KEY (id)` · `UNIQUE (licitacion_id, numero)`
+
+Índices: `idx_lotes_licitacion`
+
+### `resoluciones_recurso`
+
+| Columna | Tipo | Nulo |
+|---|---|---|
+| `id` | `integer` | no |
+| `tribunal` | `text` | no |
+| `numero_resolucion` | `text` | no |
+| `numero_recurso` | `text` | sí |
+| `fecha` | `text` | sí |
+| `expediente` | `text` | sí |
+| `organo` | `text` | sí |
+| `sentido` | `text` | sí |
+| `url_pdf` | `text` | sí |
+| `resumen` | `text` | sí |
+| `licitacion_id` | `text` | sí |
+| `fecha_extraccion` | `text` | no |
+
+Claves: `PRIMARY KEY (id)` · `UNIQUE (tribunal, numero_resolucion)`
+
+Índices: `idx_resoluciones_fecha`, `idx_resoluciones_lic`, `idx_resoluciones_sentido`
+
+### `source_ingestion_health`
+
+| Columna | Tipo | Nulo |
+|---|---|---|
+| `source` | `text` | no |
+| `status` | `text` | no |
+| `last_started_at` | `text` | sí |
+| `last_completed_at` | `text` | sí |
+| `last_success_at` | `text` | sí |
+| `fetched` | `integer` | no |
+| `parsed` | `integer` | no |
+| `discarded` | `integer` | no |
+| `errors` | `integer` | no |
+| `cursor_value` | `text` | sí |
+| `updated_at` | `text` | no |
+
+Claves: `PRIMARY KEY (source)`
+
+## Documentos y pliegos
+
+### `documento_chunks`
+
+| Columna | Tipo | Nulo |
+|---|---|---|
+| `id` | `integer` | no |
+| `documento_id` | `integer` | no |
+| `chunk_index` | `integer` | no |
+| `texto` | `text` | no |
+| `embedding` | `vector` | sí |
+| `search_vector` | `tsvector` | sí |
+
+Claves: `PRIMARY KEY (id)` · `UNIQUE (documento_id, chunk_index)`
+
+Índices: `idx_documento_chunks_documento`, `idx_documento_chunks_embedding_hnsw`, `idx_documento_chunks_search_vector`
+
+### `documento_pages`
+
+| Columna | Tipo | Nulo |
+|---|---|---|
+| `id` | `bigint` | no |
+| `documento_id` | `integer` | no |
+| `page_number` | `integer` | no |
+| `texto` | `text` | no |
+| `start_offset` | `integer` | no |
+| `end_offset` | `integer` | no |
+| `ocr` | `boolean` | no |
+
+Claves: `PRIMARY KEY (id)` · `UNIQUE (documento_id, page_number)`
+
+Índices: `idx_documento_pages_document`
+
+### `documentos`
+
+| Columna | Tipo | Nulo |
+|---|---|---|
+| `id` | `integer` | no |
+| `licitacion_id` | `text` | no |
+| `tipo` | `text` | no |
+| `uri` | `text` | no |
+| `filename` | `text` | sí |
+| `content_type` | `text` | sí |
+| `size_bytes` | `integer` | sí |
+| `sha256` | `text` | sí |
+| `texto` | `text` | sí |
+| `status` | `text` | no |
+| `error_detail` | `text` | sí |
+| `storage_key` | `text` | sí |
+| `fetched_at` | `text` | sí |
+| `created_at` | `text` | no |
+| `updated_at` | `text` | no |
+| `source_hash` | `text` | sí |
+| `blob_key` | `text` | sí |
+
+Claves: `PRIMARY KEY (id)` · `UNIQUE (licitacion_id, uri)`
+
+Índices: `idx_documentos_blob_key`, `idx_documentos_licitacion`, `idx_documentos_status`, `idx_documentos_status_created`, `uq_documentos_lic_tipo_hash` (único)
+
+### `tender_fact_sheets`
+
+| Columna | Tipo | Nulo |
+|---|---|---|
+| `licitacion_id` | `text` | no |
+| `status` | `text` | no |
+| `extraction_version` | `text` | no |
+| `model` | `text` | sí |
+| `data_json` | `text` | sí |
+| `field_count` | `integer` | no |
+| `evidence_count` | `integer` | no |
+| `error_detail` | `text` | sí |
+| `extracted_at` | `text` | sí |
+| `updated_at` | `text` | no |
+
+Claves: `PRIMARY KEY (licitacion_id)`
+
+Índices: `idx_tender_fact_sheets_status`
+
+## Empresas y mercado
+
+### `empresa_aliases`
+
+| Columna | Tipo | Nulo |
+|---|---|---|
+| `id` | `integer` | no |
+| `empresa_id` | `integer` | no |
+| `alias_normalizado` | `text` | no |
+| `nif_variante` | `text` | sí |
+| `fuente` | `text` | no |
+| `confianza` | `double precision` | no |
+| `created_at` | `text` | no |
+
+Claves: `PRIMARY KEY (id)`
+
+Índices: `idx_empresa_aliases_alias`, `idx_empresa_aliases_nif`, `idx_empresa_aliases_uniq` (único)
+
+### `empresa_review_queue`
+
+| Columna | Tipo | Nulo |
+|---|---|---|
+| `id` | `integer` | no |
+| `nombre_original` | `text` | no |
+| `alias_normalizado` | `text` | no |
+| `nif` | `text` | sí |
+| `candidato_empresa_id` | `integer` | sí |
+| `score` | `double precision` | no |
+| `status` | `text` | no |
+| `created_at` | `text` | no |
+| `resolved_at` | `text` | sí |
+| `resolved_by` | `text` | sí |
+
+Claves: `PRIMARY KEY (id)`
+
+Índices: `idx_empresa_review_pending` (único), `idx_empresa_review_status`
+
+### `empresas`
+
+| Columna | Tipo | Nulo |
+|---|---|---|
+| `empresa_id` | `integer` | no |
+| `nif_canonico` | `text` | sí |
+| `nombre_canonico` | `text` | no |
+| `es_ute` | `integer` | no |
+| `es_pyme` | `integer` | sí |
+| `grupo_id` | `integer` | sí |
+| `created_at` | `text` | no |
+| `updated_at` | `text` | no |
+
+Claves: `PRIMARY KEY (empresa_id)`
+
+Índices: `idx_empresas_grupo`, `idx_empresas_nif` (único)
+
+### `grupos_empresariales`
+
+| Columna | Tipo | Nulo |
+|---|---|---|
+| `grupo_id` | `integer` | no |
+| `nombre` | `text` | no |
+| `created_at` | `text` | no |
+
+Claves: `PRIMARY KEY (grupo_id)` · `UNIQUE (nombre)`
+
+### `mat_clusters`
+
+| Columna | Tipo | Nulo |
+|---|---|---|
+| `id_externo` | `text` | no |
+| `cluster_id` | `integer` | no |
+| `cluster_label` | `text` | no |
+| `updated_at` | `text` | no |
+
+Claves: `PRIMARY KEY (id_externo)`
+
+Índices: `idx_mat_clusters_cluster`
+
+### `ute_miembros`
+
+| Columna | Tipo | Nulo |
+|---|---|---|
+| `ute_empresa_id` | `integer` | no |
+| `miembro_empresa_id` | `integer` | no |
+
+Claves: `PRIMARY KEY (ute_empresa_id, miembro_empresa_id)`
+
+## Organizaciones y oportunidades
+
+### `organization_memberships`
+
+| Columna | Tipo | Nulo |
+|---|---|---|
+| `id` | `integer` | no |
+| `organization_id` | `integer` | no |
+| `user_id` | `integer` | no |
+| `role` | `text` | no |
+| `status` | `text` | no |
+| `invited_by_user_id` | `integer` | sí |
+| `created_at` | `text` | no |
+| `updated_at` | `text` | no |
+
+Claves: `PRIMARY KEY (id)` · `UNIQUE (organization_id, user_id)`
+
+Índices: `idx_org_memberships_user_status`
+
+### `organizations`
+
+| Columna | Tipo | Nulo |
+|---|---|---|
+| `id` | `integer` | no |
+| `name` | `text` | no |
+| `is_personal` | `boolean` | no |
+| `personal_owner_user_id` | `integer` | sí |
+| `created_by_user_id` | `integer` | sí |
+| `settings_json` | `text` | no |
+| `created_at` | `text` | no |
+| `updated_at` | `text` | no |
+
+Claves: `PRIMARY KEY (id)` · `UNIQUE (personal_owner_user_id)`
+
+### `pursuit_comments`
+
+| Columna | Tipo | Nulo |
+|---|---|---|
+| `id` | `integer` | no |
+| `pursuit_id` | `integer` | no |
+| `organization_id` | `integer` | no |
+| `author_user_id` | `integer` | sí |
+| `body` | `text` | no |
+| `idempotency_key` | `text` | sí |
+| `created_at` | `text` | no |
+
+Claves: `PRIMARY KEY (id)`
+
+Índices: `idx_pursuit_comments_author`, `idx_pursuit_comments_pursuit_id`, `uq_pursuit_comments_idempotency` (único)
+
+### `pursuit_events`
+
+| Columna | Tipo | Nulo |
+|---|---|---|
+| `id` | `integer` | no |
+| `pursuit_id` | `integer` | no |
+| `organization_id` | `integer` | no |
+| `event_type` | `text` | no |
+| `actor_user_id` | `integer` | sí |
+| `payload_json` | `text` | no |
+| `idempotency_key` | `text` | sí |
+| `created_at` | `text` | no |
+
+Claves: `PRIMARY KEY (id)`
+
+Índices: `idx_pursuit_events_org_created`, `idx_pursuit_events_pursuit_created`, `uq_pursuit_events_idempotency` (único)
+
+### `pursuits`
+
+| Columna | Tipo | Nulo |
+|---|---|---|
+| `id` | `integer` | no |
+| `organization_id` | `integer` | no |
+| `licitacion_id` | `text` | no |
+| `responsible_user_id` | `integer` | sí |
+| `status` | `text` | no |
+| `decision` | `text` | no |
+| `decision_reason` | `text` | sí |
+| `offer_price_eur` | `numeric` | sí |
+| `outcome` | `text` | no |
+| `awarded_amount_eur` | `numeric` | sí |
+| `outcome_reason` | `text` | sí |
+| `identified_at` | `text` | no |
+| `decision_at` | `text` | sí |
+| `submitted_at` | `text` | sí |
+| `closed_at` | `text` | sí |
+| `created_by_user_id` | `integer` | sí |
+| `updated_by_user_id` | `integer` | sí |
+| `created_at` | `text` | no |
+| `updated_at` | `text` | no |
+| `version` | `integer` | no |
+| `next_action` | `text` | sí |
+| `next_action_due` | `text` | sí |
+| `score_al_abrir` | `smallint` | sí |
+| `banda_al_abrir` | `text` | sí |
+
+Claves: `PRIMARY KEY (id)` · `UNIQUE (organization_id, licitacion_id)`
+
+Índices: `idx_pursuits_org_responsible`, `idx_pursuits_org_status_updated`
+
+## Identidad, acceso y auditoría
+
+### `access_grants`
+
+| Columna | Tipo | Nulo |
+|---|---|---|
+| `id` | `integer` | no |
+| `kind` | `text` | no |
+| `value` | `text` | no |
+| `active` | `boolean` | no |
+| `granted_by` | `integer` | sí |
+| `created_at` | `timestamp with time zone` | no |
+| `updated_at` | `timestamp with time zone` | no |
+| `revoked_at` | `timestamp with time zone` | sí |
+
+Claves: `PRIMARY KEY (id)` · `UNIQUE (kind, value)`
+
+Índices: `ix_access_grants_active_kind_value`
+
+### `access_log`
+
+| Columna | Tipo | Nulo |
+|---|---|---|
+| `id` | `integer` | no |
+| `user_id` | `integer` | sí |
+| `email` | `text` | sí |
+| `auth_method` | `text` | no |
+| `logged_in_at` | `text` | no |
+
+Claves: `PRIMARY KEY (id)`
+
+Índices: `idx_access_log_time`, `idx_access_log_user`
+
+### `api_key_tiers`
+
+| Columna | Tipo | Nulo |
+|---|---|---|
+| `tier` | `text` | no |
+| `daily_quota` | `integer` | no |
+| `per_minute_limit` | `integer` | no |
+| `description` | `text` | sí |
+
+Claves: `PRIMARY KEY (tier)`
+
+### `api_keys`
+
+| Columna | Tipo | Nulo |
+|---|---|---|
+| `id` | `integer` | no |
+| `key_hash` | `text` | no |
+| `name` | `text` | no |
+| `created_at` | `text` | no |
+| `last_used` | `text` | sí |
+| `is_active` | `integer` | no |
+| `expires_at` | `text` | sí |
+| `prefix` | `text` | sí |
+| `tier` | `text` | no |
+| `user_id` | `integer` | sí |
+| `scopes` | `text` | no |
+
+Claves: `PRIMARY KEY (id)` · `UNIQUE (key_hash)`
+
+Índices: `idx_api_keys_hash`, `idx_api_keys_user_id`
+
+### `audit_chain_state`
+
+| Columna | Tipo | Nulo |
+|---|---|---|
+| `chain_name` | `text` | no |
+| `head_hash` | `text` | no |
+| `entry_count` | `bigint` | no |
+| `state_hmac` | `text` | no |
+| `updated_at` | `text` | no |
+
+Claves: `PRIMARY KEY (chain_name)`
+
+### `audit_log`
+
+| Columna | Tipo | Nulo |
+|---|---|---|
+| `id` | `integer` | no |
+| `user_key` | `text` | no |
+| `session_hash` | `text` | no |
+| `action` | `text` | no |
+| `detail` | `text` | no |
+| `created_at` | `text` | no |
+| `prev_hash` | `text` | sí |
+| `this_hash` | `text` | sí |
+| `hash_version` | `text` | sí |
+
+Claves: `PRIMARY KEY (id)`
+
+Índices: `idx_audit_log_action`, `idx_audit_log_created_id`, `idx_audit_log_user`
+
+### `csp_violations`
+
+| Columna | Tipo | Nulo |
+|---|---|---|
+| `id` | `integer` | no |
+| `blocked_uri` | `text` | sí |
+| `violated_directive` | `text` | sí |
+| `document_uri` | `text` | sí |
+| `source_file` | `text` | sí |
+| `created_at` | `text` | no |
+
+Claves: `PRIMARY KEY (id)`
+
+Índices: `idx_csp_created`
+
+### `idempotency_keys`
+
+| Columna | Tipo | Nulo |
+|---|---|---|
+| `id` | `integer` | no |
+| `idem_key` | `text` | no |
+| `endpoint` | `text` | no |
+| `response_json` | `text` | no |
+| `created_at` | `text` | no |
+
+Claves: `PRIMARY KEY (id)` · `UNIQUE (idem_key, endpoint)`
+
+Índices: `idx_idem_created`, `idx_idem_key`
+
+### `password_reset_tokens`
+
+| Columna | Tipo | Nulo |
+|---|---|---|
+| `id` | `integer` | no |
+| `user_id` | `integer` | no |
+| `token_hash` | `text` | no |
+| `created_at` | `timestamp with time zone` | no |
+| `expires_at` | `timestamp with time zone` | no |
+| `used_at` | `timestamp with time zone` | sí |
+
+Claves: `PRIMARY KEY (id)` · `UNIQUE (token_hash)`
+
+Índices: `ix_password_reset_tokens_user_pending`
+
+### `rate_limits`
+
+| Columna | Tipo | Nulo |
+|---|---|---|
+| `id` | `integer` | no |
+| `key` | `text` | no |
+| `ts` | `double precision` | no |
+
+Claves: `PRIMARY KEY (id)`
+
+Índices: `idx_rate_limits_expires`
+
+### `sessions`
+
+| Columna | Tipo | Nulo |
+|---|---|---|
+| `id` | `integer` | no |
+| `token_hash` | `text` | no |
+| `user_id` | `integer` | no |
+| `created_at` | `text` | no |
+| `expires_at` | `text` | no |
+| `ip` | `text` | sí |
+| `user_agent` | `text` | sí |
+| `revoked` | `integer` | no |
+| `revoked_at` | `text` | sí |
+| `last_seen_at` | `text` | sí |
+| `mfa_verified_at` | `text` | sí |
+
+Claves: `PRIMARY KEY (id)` · `UNIQUE (token_hash)`
+
+Índices: `idx_sessions_expires`, `idx_sessions_token`, `idx_sessions_user`
+
+### `solicitudes_acceso`
+
+| Columna | Tipo | Nulo |
+|---|---|---|
+| `id` | `integer` | no |
+| `email` | `text` | no |
+| `empresa` | `text` | sí |
+| `mensaje` | `text` | sí |
+| `origen` | `text` | sí |
+| `estado` | `text` | no |
+| `consentimiento_at` | `timestamp with time zone` | no |
+| `created_at` | `timestamp with time zone` | no |
+
+Claves: `PRIMARY KEY (id)`
+
+Índices: `ix_solicitudes_acceso_estado_created`, `ux_solicitudes_acceso_pendiente_email` (único)
+
+### `totp_recovery_codes`
+
+| Columna | Tipo | Nulo |
+|---|---|---|
+| `id` | `integer` | no |
+| `user_id` | `integer` | no |
+| `code_hash` | `text` | no |
+| `used` | `integer` | no |
+| `used_at` | `text` | sí |
+| `created_at` | `text` | no |
+
+Claves: `PRIMARY KEY (id)`
+
+Índices: `idx_recovery_user`
+
+### `totp_secrets`
+
+| Columna | Tipo | Nulo |
+|---|---|---|
+| `id` | `integer` | no |
+| `user_id` | `integer` | no |
+| `secret` | `text` | no |
+| `confirmed` | `integer` | no |
+| `created_at` | `text` | no |
+
+Claves: `PRIMARY KEY (id)` · `UNIQUE (user_id)`
+
+Índices: `idx_totp_user`
+
+### `users`
+
+| Columna | Tipo | Nulo |
+|---|---|---|
+| `id` | `integer` | no |
+| `email` | `text` | sí |
+| `oauth_provider` | `text` | sí |
+| `oauth_sub` | `text` | sí |
+| `display_name` | `text` | sí |
+| `created_at` | `text` | no |
+| `password_hash` | `text` | sí |
+| `is_admin` | `integer` | no |
+| `deactivated_at` | `text` | sí |
+| `admin_granted_by` | `text` | sí |
+
+Claves: `PRIMARY KEY (id)` · `UNIQUE (email)` · `UNIQUE (oauth_provider, oauth_sub)`
+
+Índices: `idx_users_email`, `idx_users_oauth`
+
+## Seguimiento y notificaciones
+
+### `notification_reads`
+
+| Columna | Tipo | Nulo |
+|---|---|---|
+| `id` | `integer` | no |
+| `user_key` | `text` | no |
+| `notification_id` | `text` | no |
+| `read_at` | `text` | no |
+
+Claves: `PRIMARY KEY (id)` · `UNIQUE (user_key, notification_id)`
+
+Índices: `idx_notif_reads_user`
+
+### `pending_digests`
+
+| Columna | Tipo | Nulo |
+|---|---|---|
+| `id` | `integer` | no |
+| `user_key` | `text` | no |
+| `recipient_email` | `text` | no |
+| `entry_id` | `integer` | no |
+| `licitacion_id` | `text` | no |
+| `frequency` | `text` | no |
+| `matched_at` | `text` | no |
+| `sent` | `integer` | no |
+
+Claves: `PRIMARY KEY (id)` · `UNIQUE (entry_id, licitacion_id)`
+
+Índices: `idx_pending_digests_recipient`
+
+### `radar_dismissals`
+
+| Columna | Tipo | Nulo |
+|---|---|---|
+| `user_key` | `text` | no |
+| `id_externo` | `text` | no |
+| `created_at` | `timestamp with time zone` | no |
+| `score` | `smallint` | sí |
+| `banda` | `text` | sí |
+
+Claves: `PRIMARY KEY (user_key, id_externo)`
+
+### `saved_filters`
+
+| Columna | Tipo | Nulo |
+|---|---|---|
+| `id` | `integer` | no |
+| `user_key` | `text` | no |
+| `name` | `text` | no |
+| `filters_json` | `text` | no |
+| `created_at` | `text` | no |
+| `organization_id` | `integer` | sí |
+| `visibility` | `text` | no |
+
+Claves: `PRIMARY KEY (id)` · `UNIQUE (user_key, name)`
+
+Índices: `idx_saved_filters_organization`, `idx_saved_filters_user`
+
+### `user_notifications`
+
+| Columna | Tipo | Nulo |
+|---|---|---|
+| `id` | `integer` | no |
+| `user_key` | `text` | no |
+| `created_at` | `text` | no |
+| `type` | `text` | no |
+| `title` | `text` | sí |
+| `body` | `text` | sí |
+| `licitacion_id` | `text` | sí |
+| `rule_id` | `integer` | sí |
+| `read_at` | `text` | sí |
+| `organization_id` | `integer` | sí |
+
+Claves: `PRIMARY KEY (id)` · `UNIQUE (user_key, licitacion_id, type)`
+
+Índices: `idx_user_notif_user_read`, `idx_user_notifications_organization`
+
+### `user_profiles`
+
+| Columna | Tipo | Nulo |
+|---|---|---|
+| `user_key` | `text` | no |
+| `weights_json` | `text` | sí |
+| `afinidad_keywords_json` | `text` | sí |
+| `cpvs_json` | `text` | sí |
+| `ccaa_json` | `text` | sí |
+| `importe_min` | `double precision` | sí |
+| `importe_max` | `double precision` | sí |
+| `updated_at` | `text` | no |
+| `organization_id` | `integer` | sí |
+| `visibility` | `text` | no |
+
+Claves: `PRIMARY KEY (user_key)`
+
+Índices: `idx_user_profiles_organization`
+
+### `watchlist_cpv`
+
+| Columna | Tipo | Nulo |
+|---|---|---|
+| `id` | `integer` | no |
+| `user_key` | `text` | no |
+| `cpv_prefix` | `text` | no |
+| `keyword` | `text` | sí |
+| `min_importe` | `double precision` | sí |
+| `ccaa` | `text` | sí |
+| `created_at` | `text` | no |
+| `last_notified_at` | `text` | sí |
+| `email` | `text` | sí |
+| `user_id` | `integer` | sí |
+| `frequency` | `text` | no |
+| `organization_id` | `integer` | sí |
+| `visibility` | `text` | no |
+
+Claves: `PRIMARY KEY (id)` · `UNIQUE (user_key, cpv_prefix, keyword, ccaa)`
+
+Índices: `idx_watchlist_cpv_organization`, `idx_wl_user`, `idx_wl_user_id`
+
+### `watchlist_empresas`
+
+| Columna | Tipo | Nulo |
+|---|---|---|
+| `id` | `integer` | no |
+| `user_key` | `text` | no |
+| `empresa_id` | `integer` | no |
+| `email` | `text` | sí |
+| `frequency` | `text` | no |
+| `created_at` | `text` | no |
+| `last_notified_at` | `text` | sí |
+| `organization_id` | `integer` | sí |
+| `visibility` | `text` | no |
+
+Claves: `PRIMARY KEY (id)` · `UNIQUE (user_key, empresa_id)`
+
+Índices: `idx_watchlist_empresas_organization`, `idx_wl_emp_user`
+
+### `watchlist_items`
+
+| Columna | Tipo | Nulo |
+|---|---|---|
+| `id` | `integer` | no |
+| `user_key` | `text` | no |
+| `user_id` | `integer` | sí |
+| `id_externo` | `text` | no |
+| `created_at` | `text` | no |
+| `organization_id` | `integer` | sí |
+| `visibility` | `text` | no |
+
+Claves: `PRIMARY KEY (id)` · `UNIQUE (user_key, id_externo)`
+
+Índices: `idx_watchlist_items_organization`, `idx_wl_items_user`
+
+### `watchlist_rules`
+
+| Columna | Tipo | Nulo |
+|---|---|---|
+| `id` | `integer` | no |
+| `user_key` | `text` | no |
+| `user_id` | `integer` | sí |
+| `nombre` | `text` | sí |
+| `keyword` | `text` | sí |
+| `cpv` | `text` | sí |
+| `min_importe` | `double precision` | sí |
+| `ccaa` | `text` | sí |
+| `frequency` | `text` | no |
+| `active` | `integer` | no |
+| `created_at` | `text` | no |
+| `last_notified_at` | `text` | sí |
+| `email` | `text` | sí |
+| `organization_id` | `integer` | sí |
+| `visibility` | `text` | no |
+
+Claves: `PRIMARY KEY (id)`
+
+Índices: `idx_watchlist_rules_organization`, `idx_wl_rules_active`, `idx_wl_rules_user`
+
+### `webhook_deliveries`
+
+| Columna | Tipo | Nulo |
+|---|---|---|
+| `id` | `integer` | no |
+| `webhook_id` | `integer` | no |
+| `event_type` | `text` | no |
+| `status_code` | `integer` | no |
+| `success` | `integer` | no |
+| `payload_size` | `integer` | no |
+| `created_at` | `text` | no |
+
+Claves: `PRIMARY KEY (id)`
+
+Índices: `idx_wh_del_created`, `idx_wh_del_webhook`
+
+### `webhooks`
+
+| Columna | Tipo | Nulo |
+|---|---|---|
+| `id` | `integer` | no |
+| `name` | `text` | no |
+| `url` | `text` | no |
+| `secret` | `text` | no |
+| `event_types` | `text` | no |
+| `active` | `integer` | no |
+| `created_at` | `text` | no |
+| `last_triggered_at` | `text` | sí |
+| `last_status` | `integer` | sí |
+| `failure_count` | `integer` | no |
+
+Claves: `PRIMARY KEY (id)`
+
+Índices: `idx_webhooks_active`
+
+## ML y predicciones
+
+### `feature_store`
+
+| Columna | Tipo | Nulo |
+|---|---|---|
+| `id` | `integer` | no |
+| `entity_type` | `text` | no |
+| `entity_id` | `text` | no |
+| `feature_name` | `text` | no |
+| `value_json` | `text` | no |
+| `version` | `text` | no |
+| `computed_at` | `text` | no |
+
+Claves: `PRIMARY KEY (id)` · `UNIQUE (entity_type, entity_id, feature_name, version)`
+
+Índices: `idx_feature_store_entity`, `idx_feature_store_name`
+
+### `licitacion_tecnologia_pliego`
+
+| Columna | Tipo | Nulo |
+|---|---|---|
+| `licitacion_id` | `text` | no |
+| `tecnologia` | `text` | no |
+| `method` | `text` | no |
+| `score` | `double precision` | no |
+| `matched_terms` | `text` | sí |
+| `evidence_json` | `text` | sí |
+| `signal_version` | `text` | no |
+| `computed_at` | `text` | no |
+| `merged_at` | `text` | sí |
+
+Claves: `PRIMARY KEY (licitacion_id, tecnologia, method)`
+
+### `licitacion_tecnologia_score`
+
+| Columna | Tipo | Nulo |
+|---|---|---|
+| `licitacion_id` | `text` | no |
+| `tecnologia` | `text` | no |
+| `probabilidad` | `real` | no |
+| `threshold_aplicado` | `real` | no |
+| `computed_at` | `text` | no |
+
+Claves: `PRIMARY KEY (licitacion_id, tecnologia)`
+
+Índices: `idx_lts_lic`, `idx_lts_tecnologia`
+
+### `ml_feedback`
+
+| Columna | Tipo | Nulo |
+|---|---|---|
+| `id` | `integer` | no |
+| `expediente` | `text` | no |
+| `relevante` | `integer` | no |
+| `nota` | `text` | no |
+| `created_at` | `text` | no |
+| `tecnologia` | `text` | sí |
+| `tecnologias_secundarias` | `text` | sí |
+| `model_version` | `integer` | sí |
+| `user_id` | `integer` | sí |
+| `source` | `text` | no |
+
+Claves: `PRIMARY KEY (id)`
+
+Índices: `idx_ml_feedback_created_at`, `idx_ml_feedback_expediente`, `idx_ml_feedback_source_human`, `idx_ml_feedback_tecnologia`, `idx_ml_feedback_user_id`
+
+### `model_versions`
+
+| Columna | Tipo | Nulo |
+|---|---|---|
+| `id` | `integer` | no |
+| `name` | `text` | no |
+| `version` | `integer` | no |
+| `path` | `text` | no |
+| `sha256` | `text` | no |
+| `metrics_json` | `text` | no |
+| `trained_at` | `text` | no |
+| `trained_on_n_samples` | `integer` | sí |
+| `trained_on_n_feedbacks` | `integer` | sí |
+| `is_active` | `integer` | no |
+| `notes` | `text` | sí |
+
+Claves: `PRIMARY KEY (id)` · `UNIQUE (name, version)`
+
+Índices: `idx_model_versions_active`
+
+### `predicciones_baja`
+
+| Columna | Tipo | Nulo |
+|---|---|---|
+| `licitacion_id` | `text` | no |
+| `p10` | `double precision` | no |
+| `p50` | `double precision` | no |
+| `p90` | `double precision` | no |
+| `model_version` | `integer` | sí |
+| `computed_at` | `text` | no |
+| `lote_id` | `integer` | sí |
+
+Claves: `PRIMARY KEY (licitacion_id)`
+
+Índices: `idx_pred_baja_computed`, `uq_pred_baja_lic_lote` (único)
+
+### `predicciones_retencion`
+
+| Columna | Tipo | Nulo |
+|---|---|---|
+| `licitacion_id` | `text` | no |
+| `empresa_id` | `integer` | sí |
+| `prob_retencion` | `double precision` | no |
+| `riesgo_cambio` | `double precision` | no |
+| `model_version` | `integer` | sí |
+| `computed_at` | `text` | no |
+
+Claves: `PRIMARY KEY (licitacion_id)`
+
+Índices: `idx_pred_ret_riesgo`
+
+## Operación y observabilidad
+
+### `domain_events`
+
+| Columna | Tipo | Nulo |
+|---|---|---|
+| `id` | `integer` | no |
+| `event_type` | `text` | no |
+| `aggregate_id` | `text` | no |
+| `aggregate_type` | `text` | no |
+| `payload_json` | `text` | no |
+| `actor_id` | `integer` | sí |
+| `created_at` | `text` | no |
+
+Claves: `PRIMARY KEY (id)`
+
+Índices: `idx_domain_events_actor`, `idx_domain_events_aggregate`, `idx_domain_events_created`, `idx_domain_events_type`
+
+### `feature_flags`
+
+| Columna | Tipo | Nulo |
+|---|---|---|
+| `id` | `integer` | no |
+| `name` | `text` | no |
+| `enabled` | `integer` | no |
+| `rollout_pct` | `integer` | no |
+| `user_emails` | `text` | no |
+| `description` | `text` | sí |
+| `updated_at` | `text` | no |
+
+Claves: `PRIMARY KEY (id)` · `UNIQUE (name)`
+
+### `job_locks`
+
+| Columna | Tipo | Nulo |
+|---|---|---|
+| `name` | `text` | no |
+| `acquired_at` | `text` | no |
+| `expires_at` | `text` | no |
+| `holder` | `text` | no |
+
+Claves: `PRIMARY KEY (name)`
+
+### `kpi_snapshots`
+
+| Columna | Tipo | Nulo |
+|---|---|---|
+| `id` | `integer` | no |
+| `computed_at` | `text` | no |
+| `metrica` | `text` | no |
+| `dimension` | `text` | no |
+| `valor` | `double precision` | sí |
+| `valor_text` | `text` | sí |
+
+Claves: `PRIMARY KEY (id)`
+
+Índices: `idx_kpi_snapshots_fecha`
+
+### `ops_events`
+
+| Columna | Tipo | Nulo |
+|---|---|---|
+| `id` | `integer` | no |
+| `ts` | `text` | no |
+| `event_type` | `text` | no |
+| `value` | `double precision` | sí |
+| `plane` | `text` | sí |
+| `pid` | `integer` | sí |
+| `detail` | `text` | sí |
+
+Claves: `PRIMARY KEY (id)`
+
+Índices: `idx_ops_events_type_ts`
+
+## Vistas materializadas
+
+| Vista materializada | Índices |
+|---|---|
+| `licitaciones_canonicas` | `idx_licitaciones_canonicas_ccaa`, `idx_licitaciones_canonicas_cpv`, `idx_licitaciones_canonicas_fecha_pub`, `uq_licitaciones_canonicas_id_externo` (único) |
+
+## Vistas
+
+| Vista | Índices |
+|---|---|
+| `licitaciones_history_2022` | — |
+| `licitaciones_history_2023` | — |
+| `licitaciones_history_2024` | — |
+| `licitaciones_history_2025` | — |
+| `licitaciones_history_2026` | — |

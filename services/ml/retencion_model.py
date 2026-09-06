@@ -9,6 +9,21 @@ Métricas de validación temporal: PR-AUC, Brier score y ECE. Criterios de
 activación del RFC: PR-AUC > prevalencia + 0.15 absoluto y ECE < 0.08.
 Como en el modelo de baja, la versión se registra siempre y la activación
 es manual salvo ``ML_PRED_AUTO_ACTIVATE`` con criterios cumplidos.
+
+Baseline y dispersión (S6.4)
+----------------------------
+v1 se registró sin **ninguna** métrica de baseline: ``pr_auc`` 0.2453 sobre
+prevalencia 0.1099 y nadie podía decir si eso era bueno (backlog P2). Aquí el
+baseline es explícito y es el del **ranking trivial**: el PR-AUC esperado de
+ordenar al azar es la prevalencia de la clase positiva, así que un modelo con
+PR-AUC igual a la prevalencia no ordena nada. Se registra como
+``pr_auc_baseline``.
+
+Y como el gate compara la mejora contra su propio error de medición, hace
+falta una dispersión. El modelo no hace folds —valida sobre el último tramo
+temporal— así que se mide el PR-AUC por **bloques contiguos** de esa ventana
+(:func:`_pr_auc_por_bloques`): mismo papel que la desviación entre folds de
+``baja_model``, calculado sobre lo que hay.
 """
 
 from __future__ import annotations
@@ -31,6 +46,14 @@ MIN_TRAIN_SAMPLES = 150
 _MODEL_PATH = Path(__file__).parents[2] / "data" / "models" / "retencion_model.pkl"
 PR_AUC_MARGEN = 0.15
 ECE_MAX = 0.08
+#: Bloques contiguos en los que se parte la ventana de validación para estimar
+#: la dispersión del PR-AUC. Tres, como los folds por defecto de ``baja_model``
+#: (``ML_BAJA_FOLDS``): con menos, la desviación se calcula sobre dos números;
+#: con más, cada bloque se queda sin positivos y mide ruido de muestreo.
+_BLOQUES_DISPERSION = 3
+#: Bajo esto un bloque no da un PR-AUC interpretable (hace falta al menos un
+#: positivo y un negativo, y unas cuantas filas para que no sea anecdótico).
+_MIN_FILAS_BLOQUE = 20
 
 
 def _matriz(pares: list[ParRetencion]) -> npt.NDArray[np.float64]:
@@ -59,6 +82,47 @@ def _ece(y_true: npt.NDArray[np.float64], y_prob: npt.NDArray[np.float64], bins:
             continue
         ece += abs(float(y_prob[mask].mean()) - float(y_true[mask].mean())) * (mask.sum() / total)
     return ece
+
+
+def _pr_auc_por_bloques(
+    y_true: npt.NDArray[np.float64],
+    y_prob: npt.NDArray[np.float64],
+    *,
+    bloques: int = _BLOQUES_DISPERSION,
+) -> tuple[float | None, list[float]]:
+    """Desviación típica del PR-AUC entre bloques contiguos de validación.
+
+    Los bloques son contiguos y **no** aleatorios porque la validación es
+    temporal: partir al azar mezclaría meses y mediría una dispersión que la
+    serie no tiene. Cada bloque necesita las dos clases y un mínimo de filas;
+    con menos de dos bloques utilizables no hay desviación que calcular y se
+    devuelve ``None`` — que el gate trata como "no se puede distinguir del
+    ruido", no como cero.
+
+    Returns:
+        ``(desviacion, valores_por_bloque)``.
+    """
+    import numpy as np
+    from sklearn.metrics import average_precision_score
+
+    n = len(y_true)
+    tamano = n // bloques
+    if tamano < _MIN_FILAS_BLOQUE:
+        return None, []
+
+    valores: list[float] = []
+    for i in range(bloques):
+        # El último bloque se lleva el resto de la división entera.
+        fin = n if i == bloques - 1 else (i + 1) * tamano
+        yt = y_true[i * tamano : fin]
+        yp = y_prob[i * tamano : fin]
+        if len(set(yt.tolist())) < 2:
+            continue
+        valores.append(float(average_precision_score(yt, yp)))
+
+    if len(valores) < 2:
+        return None, valores
+    return float(np.std(valores)), valores
 
 
 class RetencionModel:
@@ -155,9 +219,17 @@ def entrenar(
     prevalencia = float(y_valid.mean())
     pr_auc = float(average_precision_score(y_valid, proba))
     ece = _ece(y_valid, proba)
+    dispersion, pr_auc_bloques = _pr_auc_por_bloques(y_valid, proba)
     metricas: dict[str, Any] = {
         "pr_auc": round(pr_auc, 4),
         "prevalencia": round(prevalencia, 4),
+        # Baseline explícito: el PR-AUC del ranking trivial es la prevalencia.
+        # Duplica el valor a propósito — `prevalencia` describe los datos y
+        # `pr_auc_baseline` describe el rival, y quien lea el registro tiene
+        # que poder comparar dos números con el mismo nombre de métrica.
+        "pr_auc_baseline": round(prevalencia, 4),
+        "pr_auc_std_folds": round(dispersion, 5) if dispersion is not None else None,
+        "pr_auc_por_bloque": [round(v, 4) for v in pr_auc_bloques],
         "brier": round(float(brier_score_loss(y_valid, proba)), 5),
         "ece": round(ece, 5),
         "n_train": len(train),
@@ -165,7 +237,30 @@ def entrenar(
         "valid_desde": valid[0].fecha_sucesor,
         "valid_hasta": valid[-1].fecha_sucesor,
     }
-    cumple = pr_auc > prevalencia + PR_AUC_MARGEN and ece < ECE_MAX
+
+    # Gate de promoción (S6.4): los dos criterios del RFC entran como motivos
+    # extra y el gate añade la comparación contra la dispersión.
+    from services.ml.promotion import evaluar_promocion_predictiva
+
+    motivos_rfc: list[str] = []
+    if pr_auc <= prevalencia + PR_AUC_MARGEN:
+        motivos_rfc.append(
+            f"pr_auc {pr_auc:.4f} <= prevalencia {prevalencia:.4f} + {PR_AUC_MARGEN} "
+            "(criterio RFC 20260611-2)"
+        )
+    if ece >= ECE_MAX:
+        motivos_rfc.append(f"ece {ece:.5f} >= {ECE_MAX}: las probabilidades no están calibradas")
+
+    decision = evaluar_promocion_predictiva(
+        metrica=pr_auc,
+        baseline=prevalencia,
+        dispersion=dispersion,
+        nombre_metrica="pr_auc",
+        mejor_es_mayor=True,
+        motivos_extra=motivos_rfc,
+    )
+    metricas.update(decision.as_dict())
+    cumple = decision.promocionable
     if activar is None:
         from config import settings
 
@@ -186,7 +281,8 @@ def entrenar(
         metrics=metricas,
         n_samples=len(train),
         activate=bool(activar),
-        notes="cumple criterios RFC 20260611-2" if cumple else "NO cumple criterios — no activar",
+        # Mismo cambio que en `baja_model`: la nota lleva el número que decidió.
+        notes=decision.promotion_reason,
     )
     log.info("retencion_model_trained", version=version, activado=bool(activar), **metricas)
     return {

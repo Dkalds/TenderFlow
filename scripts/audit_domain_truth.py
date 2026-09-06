@@ -10,6 +10,9 @@ defectos identificados (ver docs/IMPROVEMENT_BACKLOG.md):
       importe_adjudicado) con distinto NIF — proxy de UTE mal contada.
   (d) Delta de ``baja_media_pct`` calculada por-adjudicación (código actual)
       vs. agregada por-licitación (el cálculo correcto).
+  (e) Proporción del corpus que el clasificador SAP marca por encima de
+      ``ml_proba > 0.7`` — un binario que dice "SAP" a nueve de cada diez es
+      una constante, no un clasificador (backlog P2, S6.1 del plan 2026-09).
 
 Cada sección es independiente: un fallo en una no bloquea las demás.
 
@@ -69,6 +72,16 @@ MAX_PCT_FILAS_UTE = 8.0
 # licitación. Cuanto mayor, más expedientes multi-lote comparan cada lote
 # contra el presupuesto total del expediente.
 MAX_DELTA_BAJA_PUNTOS = 5.0
+
+# Umbral de "alta probabilidad" del clasificador SAP y proporción máxima de
+# filas puntuadas que puede superarlo. El 2026-09-04 el modelo de mayo daba
+# 90,64% del corpus por encima de su umbral servido: sobre una población que
+# nunca vio (683k filas de PSCP). El criterio de aceptación de S6.1 es que esa
+# proporción baje de la mitad, así que el umbral ES la mitad — no un valor
+# holgado como los de arriba, porque aquí no se vigila un empeoramiento sino
+# que se comprueba una corrección.
+UMBRAL_ML_PROBA_ALTA = 0.7
+MAX_PCT_ML_PROBA_ALTA = 50.0
 
 
 # ── Medición ─────────────────────────────────────────────────────────────────
@@ -143,8 +156,14 @@ def _medir_baja() -> dict[str, Any]:
     return stats
 
 
+def _medir_ml_proba() -> dict[str, Any]:
+    from db.repositories.ml_dataset import distribucion_ml_proba
+
+    return distribucion_ml_proba(UMBRAL_ML_PROBA_ALTA)
+
+
 def medir_todo(max_zips: int) -> dict[str, Any]:
-    """Ejecuta las cuatro secciones aislando el fallo de cada una.
+    """Ejecuta las cinco secciones aislando el fallo de cada una.
 
     Una sección que revienta deja ``{"error": ...}`` en su hueco y no impide
     medir el resto -- la auditoría es más útil parcial que ausente.
@@ -155,6 +174,7 @@ def medir_todo(max_zips: int) -> dict[str, Any]:
         ("multi_lote", lambda: _medir_multi_lote(max_zips)),
         ("ute", _medir_ute),
         ("baja", _medir_baja),
+        ("ml_proba", _medir_ml_proba),
     ):
         try:
             secciones[clave] = fn()
@@ -199,6 +219,26 @@ def evaluar(datos: dict[str, Any]) -> list[str]:
         violaciones.append(
             f"baja_media_pct: {delta} puntos entre el cálculo por adjudicación y "
             f"el agregado por licitación, umbral {MAX_DELTA_BAJA_PUNTOS}"
+        )
+
+    ml = datos.get("ml_proba", {})
+    # Se evalúa sobre las filas PUNTUADAS y no sobre el corpus entero: es lo
+    # que describe al clasificador. Con la mitad del corpus sin score (lo
+    # normal desde que la población está acotada), el porcentaje sobre el total
+    # bajaría solo por dejar de puntuar, que no es la mejora que se busca.
+    pct_alta = ml.get("pct_puntuadas_por_encima")
+    if pct_alta is not None and float(pct_alta) > MAX_PCT_ML_PROBA_ALTA:
+        violaciones.append(
+            f"ml_proba: {pct_alta}% de las filas puntuadas supera "
+            f"{ml.get('umbral')} ({ml.get('por_encima')}/{ml.get('puntuadas')}), "
+            f"umbral {MAX_PCT_ML_PROBA_ALTA}% — el clasificador no discrimina"
+        )
+    fuera = ml.get("fuera_poblacion", {})
+    if int(fuera.get("puntuadas") or 0) > 0:
+        violaciones.append(
+            f"ml_proba: {fuera['puntuadas']} filas fuera de la población del "
+            "clasificador conservan un score; deberían haberse limpiado en "
+            "precompute_ml_proba"
         )
 
     for clave, seccion in datos.items():
@@ -271,6 +311,26 @@ def render(datos: dict[str, Any]) -> None:
         )
         if seccion["delta_puntos"] is not None:
             print(f"  Delta: {seccion['delta_puntos']} puntos porcentuales")
+
+    print("\n── (e) Discriminación del clasificador SAP (ml_proba) ──")
+    seccion = datos["ml_proba"]
+    if "error" in seccion:
+        print(f"  ERROR: {seccion['error']}")
+    else:
+        print(f"  Población de scoring: {seccion['poblacion']}  (umbral {seccion['umbral']})")
+        print(
+            f"  Puntuadas: {seccion['puntuadas']}/{seccion['total_corpus']} filas; "
+            f"por encima del umbral: {seccion['por_encima']}"
+        )
+        print(
+            f"  % de las puntuadas por encima: {seccion['pct_puntuadas_por_encima']}   "
+            f"(% del corpus: {seccion['pct_corpus_por_encima']})"
+        )
+        fuera = seccion["fuera_poblacion"]
+        print(
+            f"  Fuera de población: {fuera['total']} filas, {fuera['puntuadas']} con score "
+            "(deberían ser 0)"
+        )
 
 
 def _alertar(violaciones: list[str], datos: dict[str, Any]) -> None:

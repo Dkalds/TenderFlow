@@ -17,8 +17,9 @@ Sucede a [2026-09-plan-arquitectura.md](2026-09-plan-arquitectura.md), cuyo
 aquí, y los tres ítems de frontend que quedaron a medias (S5.1, S5.2 y S5.9)
 se citan desde el stream S7 con sus criterios originales, sin redefinirlos.
 
-**Estado: PROPUESTO el 2026-09-05.** Nada de este documento está implementado.
-Mismo contrato que sus predecesores: cada stream se ejecuta en su propia rama
+**Estado: PROPUESTO el 2026-09-05; en ejecución desde el 2026-09-06.** La Ola 0
+está en curso y cada ítem anota abajo lo que se entregó y lo que no; el resto
+del documento sigue sin implementar. Mismo contrato que sus predecesores: cada stream se ejecuta en su propia rama
 por un agente independiente, este documento es la fuente única de alcance y
 criterios de aceptación, y un agente que toma un stream trabaja **solo** los
 ficheros de ese stream.
@@ -99,8 +100,13 @@ Los agentes ejecutores asumen ESTO, no lo que digan docs anteriores.
    precio» (revisión `v85_lic_procedimiento_tramitacion` y `db/upsert.py:249`),
    «Aprobar un acceso es editar variables de entorno» (revisión
    `v95_access_grants`, `db/access_grants.py` y las rutas de
-   `/admin/solicitudes-acceso/grants`) y los cuatro que la propia cabecera del
-   backlog marca como cerrados y siguen listados en P2/P3.
+   `/admin/solicitudes-acceso/grants`) y los que la propia cabecera del backlog
+   marca como cerrados y siguen listados en P2/P3. **Corrección del 2026-09-06
+   (O0.5):** esos son **tres**, no cuatro — la cabecera solo marca «Cerrado»
+   `HistGradientBoosting`, «Migrar las llamadas al cliente tipado» y «Vigilar el
+   crecimiento de `predicciones_baja`»; el cuarto que este hecho contaba era el
+   P1 de los enlaces caducados de PLACSP, que ya estaba archivado y no figuraba
+   en P1/P2/P3.
 
 ### API y superficie
 
@@ -266,30 +272,37 @@ por dos caminos, ni empezar ítems cuya decisión sigue abierta.
 
 ### Heredadas del plan de septiembre
 
-D1–D9 siguen sin registrarse como resueltas. Este plan no las redefine; O0.5
-las cierra o las retira. Dos ya están resueltas en el código y solo falta
-anotarlo: **D2** (publicar `TechnologyClassifier`: `train-tech.yml` existe) y
-el ítem del backlog sobre procedimiento y tramitación (`v85`). **D7** (export
-asíncrono) se ejecutó por la vía «retirar» el 2026-09-03.
+**Cerradas el 2026-09-06 por O0.5**, con su columna «Resuelta» y la evidencia de
+cada una en la [tabla §3 del plan de septiembre](2026-09-plan-arquitectura.md#3-decisiones-del-mantenedor).
+Siete las había decidido ya el código y están **ejecutadas** (D1, D2, D3, D6,
+D7, D8 y D9). Las otras dos se cierran adoptando su propuesta y esperan a una
+acción humana en Render: **D5** (Alertmanager) a O0.3, y **D4** a O0.2, que la
+resolvió el mismo 2026-09-06 escribiendo la decisión en `render.yaml` y en
+`deploy.yml` — vincular el Blueprint, `autoDeploy: false` y un solo disparador.
 
 ### Nuevas
 
-| Id | Decisión | Desbloquea |
-|---|---|---|
-| D11 | **Perfil de capacidad.** ¿Vive en `organizations.settings_json` (sin migración) o en tablas propias (`organization_nifs`, `organization_capabilities`)? Propuesta: tablas propias, porque el cierre por NIF y el contraste de solvencia se resuelven en SQL y un JSON no se indexa ni se valida. | S2 |
-| D12 | **Oportunidad por lote.** ¿`pursuits.lote_id` nullable con dos únicos parciales (patrón `v65` de adjudicaciones) o entidad hija `pursuit_lotes`? Propuesta: `lote_id` nullable; `NULL` significa expediente completo y las filas existentes no cambian. | S3 |
-| D13 | **Teams y Slack.** ¿Plantillas de payload sobre el webhook genérico existente, o integraciones nativas con OAuth de cada plataforma? Propuesta: plantillas (`json`, `slack_blocks`, `teams_adaptive_card`) y webhooks que pueda crear un miembro dentro de su organización, no solo el administrador global. | S4 |
-| D14 | **Worker.** ¿Un servicio `worker` en Render (coste de un servicio más) o consumir la cola desde el propio job de Actions cada cuatro horas? Propuesta: worker en Render para lo que pide un usuario (ficha, resumen, export) y Actions para lo programado; la cola es la misma tabla. | S5 |
-| D15 | **Búsqueda semántica.** ¿Servir la fusión RRF que ya existe en `/search/semantic`, o retirar el deslizador y renombrar el endpoint (**RFC**: cambia la semántica del contrato)? Propuesta: servir. | O0.6 |
-| D16 | **Cobertura fuera de PLACSP y TED.** Contratos menores, BOE y los portales de Madrid, Andalucía y Valencia. Propuesta: declararlos fuera de alcance en `/cobertura` con fecha, y abrir un conector solo cuando una organización lo pida por escrito. | T7 |
-| D17 | **OIDC.** ¿Microsoft Entra ID multi-tenant (`common`) con allowlist por dominio, o un registro por tenant de cliente? Propuesta: multi-tenant reutilizando `OAUTH_ALLOWED_DOMAINS` y `access_grants`, que ya existen. | S1 |
-| D18 | **Identidad.** ¿Migrar `user_key` → `user_id` con columna doble y lectura dual, o mantener `user_key` y solo prohibirla en código nuevo? Propuesta: ratchet ahora (S1.4) y migración aditiva por olas (T4). | S1, T4 |
-| D19 | **Retirada de endpoints.** Los tres de analítica sin consumidor y el listado por offset. Es un cambio breaking del contrato público y exige **RFC**. Propuesta: `deprecated=True` ahora y RFC de retirada con fecha a 90 días. | O0.6 |
-| D20 | **Gates §6 pre-autorizados para este plan.** Migraciones `v103+` de S2, S3, S4 y S5 en los términos de cada ítem; edición de `deploy.yml`, `ci.yml`, `pliegos.yml`, `scrape-daily.yml` y `render.yaml` en los términos de O0.2, O0.7, S5 y S8; `.env.example` para las variables que S1, S5 y S8 declaran; dependencias de S7.2 y S8.2. Todo lo demás pide OK puntual. | O0, S1–S8 |
+Cerradas el **2026-09-06** por O0.5, cada una según la propuesta que su propia
+fila escribe: esa propuesta es la decisión del mantenedor para este plan.
+«Resuelta» no es «ejecutada»: salvo D19, lo que sigue es escribir el código en
+el stream que la cita.
 
-Mientras D11–D19 no estén cerradas, los ítems que las citan no se empiezan. Un
-agente que necesite una decisión no tomada la deja escrita en el PR y se
-detiene ahí.
+| Id | Decisión | Desbloquea | Resuelta |
+|---|---|---|---|
+| D11 | **Perfil de capacidad.** ¿Vive en `organizations.settings_json` (sin migración) o en tablas propias (`organization_nifs`, `organization_capabilities`)? Propuesta: tablas propias, porque el cierre por NIF y el contraste de solvencia se resuelven en SQL y un JSON no se indexa ni se valida. | S2 | **2026-09-06 — tablas propias.** Sin implementar: S2.1 y S2.2. |
+| D12 | **Oportunidad por lote.** ¿`pursuits.lote_id` nullable con dos únicos parciales (patrón `v65` de adjudicaciones) o entidad hija `pursuit_lotes`? Propuesta: `lote_id` nullable; `NULL` significa expediente completo y las filas existentes no cambian. | S3 | **2026-09-06 — `lote_id` nullable** con dos únicos parciales. Sin implementar: S3.1. |
+| D13 | **Teams y Slack.** ¿Plantillas de payload sobre el webhook genérico existente, o integraciones nativas con OAuth de cada plataforma? Propuesta: plantillas (`json`, `slack_blocks`, `teams_adaptive_card`) y webhooks que pueda crear un miembro dentro de su organización, no solo el administrador global. | S4 | **2026-09-06 — plantillas**, sin OAuth por plataforma (coherente con §8). Sin implementar: S4.2 y S4.3. |
+| D14 | **Worker.** ¿Un servicio `worker` en Render (coste de un servicio más) o consumir la cola desde el propio job de Actions cada cuatro horas? Propuesta: worker en Render para lo que pide un usuario (ficha, resumen, export) y Actions para lo programado; la cola es la misma tabla. | S5 | **2026-09-06 — worker en Render** para lo que pide un usuario y Actions para lo programado, sobre la misma tabla. Sin implementar: S5; el servicio exige además O0.2 cerrado. |
+| D15 | **Búsqueda semántica.** ¿Servir la fusión RRF que ya existe en `/search/semantic`, o retirar el deslizador y renombrar el endpoint (**RFC**: cambia la semántica del contrato)? Propuesta: servir. | O0.6 | **2026-09-06 — servir** la fusión RRF, y **ya ejecutada** por O0.6a: `api/routes/search.py` publica `source ∈ {rrf, fts, like}` con el camino realmente ejecutado, `alpha` gobierna el peso solo cuando hay fusión, y el deslizador del Investigador deja de mandar a un parámetro inerte. |
+| D16 | **Cobertura fuera de PLACSP y TED.** Contratos menores, BOE y los portales de Madrid, Andalucía y Valencia. Propuesta: declararlos fuera de alcance en `/cobertura` con fecha, y abrir un conector solo cuando una organización lo pida por escrito. | T7 | **2026-09-06 — fuera de alcance declarado**, con conector solo a petición escrita. Sin implementar: T7. |
+| D17 | **OIDC.** ¿Microsoft Entra ID multi-tenant (`common`) con allowlist por dominio, o un registro por tenant de cliente? Propuesta: multi-tenant reutilizando `OAUTH_ALLOWED_DOMAINS` y `access_grants`, que ya existen. | S1 | **2026-09-06 — multi-tenant** reutilizando la allowlist por dominio y `access_grants` (`db/access_grants.py`, ya vivos). Sin implementar: S1.2. |
+| D18 | **Identidad.** ¿Migrar `user_key` → `user_id` con columna doble y lectura dual, o mantener `user_key` y solo prohibirla en código nuevo? Propuesta: ratchet ahora (S1.4) y migración aditiva por olas (T4). | S1, T4 | **2026-09-06 — ratchet ahora, migración por olas después.** Sin implementar: S1.4 y T4. |
+| D19 | **Retirada de endpoints.** Los tres de analítica sin consumidor y el listado por offset. Es un cambio breaking del contrato público y exige **RFC**. Propuesta: `deprecated=True` ahora y RFC de retirada con fecha a 90 días. | O0.6 | **2026-09-06 — `deprecated=True` + RFC, y YA EJECUTADA** en `9a6014b`: las cuatro operaciones llevan `deprecated=True` (`api/routes/analytics.py`, `api/routes/licitaciones.py:203`) y la RFC es `docs/rfc/2026-09-06-rfc-retirada-endpoints-analitica.md`. |
+| D20 | **Gates §6 pre-autorizados para este plan.** Migraciones `v103+` de S2, S3, S4 y S5 en los términos de cada ítem; edición de `deploy.yml`, `ci.yml`, `pliegos.yml`, `scrape-daily.yml` y `render.yaml` en los términos de O0.2, O0.7, S5 y S8; `.env.example` para las variables que S1, S5 y S8 declaran; dependencias de S7.2 y S8.2. Todo lo demás pide OK puntual. | O0, S1–S8 | **2026-09-06 — vigente** en los términos exactos de esta fila y solo para este plan. Lo que no enumera sigue pidiendo OK puntual. |
+
+Con D11–D20 cerradas, ningún ítem de este plan sigue bloqueado por una decisión
+pendiente. La regla se conserva para lo que venga: un agente que necesite una
+decisión no tomada la deja escrita en el PR y se detiene ahí.
 
 ---
 
@@ -392,6 +405,21 @@ en D20; la rotación es acción humana en ventana.
   `predicciones_baja`» están en Cerrados o en el archivo, y no en P1/P2/P3.
 - Ningún stream de Ola 1 que cite una decisión arranca antes de esta fecha.
 
+**Ejecutado el 2026-09-06.** Las dos tablas §3 llevan su columna «Resuelta» con
+fecha y evidencia en sus **20 filas**: las nueve decisiones D1–D9 que pide este
+ítem, las diez D11–D20 del plan v2 —D20 entre ellas— y la fila D10, la de gates
+del plan anterior, que sin la columna dejaría la tabla coja. Los cinco ítems citados
+—y el sexto, `chat_template_kwargs`, que nunca llegó a ser ítem abierto— están
+en la sección _Cerrados_ del backlog, comprobados uno a uno contra el código, no
+contra lo que decía la cabecera. Dos decisiones no se cerraron aquí sino en el
+ítem que las ejecuta, el mismo día y en este mismo árbol: **D4** en O0.2
+(`render.yaml` y `deploy.yml`) y la ejecución de **D15** en O0.6a
+(`api/routes/search.py` sirve ya la fusión RRF). Lo que sigue pendiente de las
+dos es acción humana en Render, no código. Del hecho 5
+se corrigió el conteo: eran tres ítems marcados como cerrados en la cabecera y
+todavía listados, no cuatro. La Ola 1 entra además en el backlog como un ítem
+por stream, para que priorizar no exija leer este documento entero.
+
 ### O0.6 — La superficie no promete lo que el backend no hace
 
 **Qué.** Seis correcciones pequeñas que convierten promesas rotas en contrato.
@@ -482,6 +510,14 @@ tras O0.6; `make check-agent-docs` verde tras O0.7.
 | S6 ML: etiquetas | `claude/v2-s6-ml` | no | libre |
 | S7 Frontend | `claude/v2-s7-frontend` | no | libre; rebasa sobre S1–S4 al final |
 | S8 Documentos | `claude/v2-s8-documentos` | v111 (`documentos.blob_key`, `documento_pages.ocr`) | tras S5 |
+
+**Los números `v103`–`v111` de esa columna son indicativos, no reservas** (nota
+de O0.5, 2026-09-06). Dicen cuántas migraciones lleva cada stream y en qué orden
+se esperan, no qué revisión le toca: las migraciones son append-only y el número
+real es el siguiente libre sobre la cabeza del repo **en el momento del merge**,
+que depende del orden en que se cierren los streams y de lo que entre por fuera
+de este plan. Un agente que fije el número por esta tabla en vez de por la
+cabeza real se choca con quien haya mergeado antes.
 
 **Propiedad exclusiva de ficheros** (un agente por stream, sin solapes):
 

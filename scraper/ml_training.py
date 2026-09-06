@@ -11,9 +11,12 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from observability.logging import get_logger
+
+if TYPE_CHECKING:
+    import pandas as pd
 
 log = get_logger(__name__)
 
@@ -317,69 +320,109 @@ def seed_negatives(
     }
 
 
-def train_from_db() -> dict[str, Any]:
-    """Entrena el clasificador usando datos de la BD activa y lo guarda.
+def etiquetar_dataset_sap(lic: pd.DataFrame, feedback: list[dict[str, Any]]) -> pd.DataFrame:
+    """Añade ``es_relevante`` al DataFrame de entrenamiento del clasificador SAP.
 
     Usa las MISMAS etiquetas que el reentrenamiento semanal
     (``scheduler.concept_drift._fetch_training_dataframe``): etiqueta base por
     keyword/tecnología, SOBRESCRITA por el feedback humano de ``ml_feedback``.
-    Antes este camino —el que produce el asset de la Release que descargan todos
-    los runners— seleccionaba solo ``titulo/descripcion/...`` sin ``es_relevante``,
-    así que ``SAPClassifier.train`` caía a etiquetas 100% del filtro de keywords,
-    ignorando el feedback y divergiendo del camino semanal para el mismo modelo.
-    La lógica se replica inline (no se importa desde ``scheduler`` para no invertir
-    capas: ``scraper`` es capa inferior).
+    La lógica se replica aquí (no se importa desde ``scheduler`` para no
+    invertir capas: ``scraper`` es capa inferior).
 
-    Pendiente (requiere infra de baseline + verificación con BD, ver backlog): el
-    gate de promoción que sí tiene ``maybe_retrain_classifier``. Hoy sigue
-    guardando si el entrenamiento no lanza ``error``.
+    Función aparte de :func:`train_from_db` para poder ejercitarla con un
+    DataFrame en un test unitario, sin BD.
+    """
+    if lic.empty:
+        return lic
+    # Etiqueta base: raw_keywords no vacío OR tecnología detectada.
+    lic = lic.copy()
+    lic["es_relevante"] = (
+        (lic["raw_keywords"].notna() & (lic["raw_keywords"] != ""))
+        | (lic["tecnologia"].notna() & (lic["tecnologia"] != ""))
+    ).astype(int)
+    # Sobrescribir con feedback humano explícito (mayor prioridad).
+    fb_map = {fila["expediente"]: fila["relevante"] for fila in feedback}
+    if fb_map:
+        lic["es_relevante"] = [
+            int(fb_map[ident]) if ident in fb_map else int(etiqueta)
+            for ident, etiqueta in zip(lic["id_externo"], lic["es_relevante"], strict=False)
+        ]
+    return lic
+
+
+def resumen_poblacion_sap(lic: pd.DataFrame) -> dict[str, Any]:
+    """Describe la población de entrenamiento para el registro del modelo.
+
+    Se guarda en ``model_versions.metrics_json`` bajo ``train_population``: sin
+    esto, dos versiones entrenadas sobre poblaciones distintas son
+    indistinguibles en el registro, que es justo la comparación que hay que
+    poder hacer después de acotar (backlog P2).
+    """
+    from db.repositories.ml_dataset import POBLACION_SAP_UNIVERSOS, TRAIN_POPULATION_SAP
+
+    n_filas = len(lic)
+    tiene_etiqueta = n_filas > 0 and "es_relevante" in lic.columns
+    n_positivos = int(lic["es_relevante"].sum()) if tiene_etiqueta else 0
+    return {
+        "nombre": TRAIN_POPULATION_SAP,
+        "universos": list(POBLACION_SAP_UNIVERSOS),
+        "n_filas": n_filas,
+        "n_positivos": n_positivos,
+        "pct_positivos": round(100.0 * n_positivos / n_filas, 2) if n_filas else 0.0,
+    }
+
+
+def train_from_db() -> dict[str, Any]:
+    """Entrena el clasificador usando datos de la BD activa y lo guarda.
+
+    **Población acotada (S6.1).** El dataset ya no es ``licitaciones`` entera:
+    son las fuentes cuyo conector filtró por señal tecnológica antes de
+    persistir (``db.repositories.ml_dataset.filas_entrenamiento_sap``). El
+    corpus completo dejaba la clase minoritaria en 1,14 % y
+    ``validate_training_data`` abortaba; el motivo y la elección están
+    documentados junto al predicado, en ``db/``. La población medida viaja al
+    registro como ``train_population``.
+
+    El gate de promoción (``services.ml.promotion``) decide si el candidato
+    llega a sobrescribir el artefacto que sirve producción.
     """
     import pandas as pd
 
-    from db.database import connect, init_db
+    from db.database import init_db
+    from db.repositories.ml_dataset import feedback_humano_sap, filas_entrenamiento_sap
     from scraper.ml_classifier import SAPClassifier
+    from scraper.ml_pipeline import validate_training_data
 
     init_db()
-    # Dos SELECT planos vía el protocolo DBAPI (execute/fetchall), no
-    # ``pd.read_sql_query``: mismas etiquetas que el camino semanal pero sin
-    # depender de que la conexión sea un connectable de pandas.
-    with connect() as c:
-        lic_cur = c.execute(
-            "SELECT id_externo, titulo, descripcion, raw_keywords, cpv, "
-            "importe, fecha_publicacion, tecnologia FROM licitaciones"
-        )
-        lic_rows = lic_cur.fetchall()
-        lic_cols = [d[0] for d in lic_cur.description]
-        # ``source = 'human'`` por el mismo motivo que en
-        # ``scheduler/concept_drift.py::_fetch_training_dataframe``: el feedback
-        # automático del etiquetado por LLM no puede realimentar al modelo.
-        fb_cur = c.execute("SELECT expediente, relevante FROM ml_feedback WHERE source = 'human'")
-        fb_rows = fb_cur.fetchall()
-        fb_cols = [d[0] for d in fb_cur.description]
+    filas = filas_entrenamiento_sap()
+    if not filas:
+        # Sin filas no hay ni DataFrame con columnas que validar: se corta aquí
+        # con el mismo código de error que devolvería ``train``.
+        log.warning("train_from_db.poblacion_vacia")
+        return {"error": "insufficient_data", "n_samples": 0}
+    lic = etiquetar_dataset_sap(pd.DataFrame(filas), feedback_humano_sap())
+    train_population = resumen_poblacion_sap(lic)
+    log.info("train_from_db.poblacion", **train_population)
 
-    lic = pd.DataFrame(lic_rows, columns=lic_cols)
-    fb = pd.DataFrame(fb_rows, columns=fb_cols)
-
-    if not lic.empty:
-        # Etiqueta base: raw_keywords no vacío OR tecnología detectada.
-        lic["es_relevante"] = (
-            (lic["raw_keywords"].notna() & (lic["raw_keywords"] != ""))
-            | (lic["tecnologia"].notna() & (lic["tecnologia"] != ""))
-        ).astype(int)
-        # Sobrescribir con feedback humano explícito (mayor prioridad).
-        if not fb.empty:
-            fb_map = dict(zip(fb["expediente"], fb["relevante"], strict=False))
-            lic["es_relevante"] = lic.apply(
-                lambda r: (
-                    int(fb_map[r["id_externo"]]) if r["id_externo"] in fb_map else r["es_relevante"]
-                ),
-                axis=1,
-            )
+    # El validador es la puerta que rechazó el dataset ahogado; se ejecuta
+    # aquí, en el camino que produce el asset de la Release, y no solo en el
+    # semanal. Un ValueError suyo es un desenlace legítimo —el dataset no da
+    # para entrenar— y se devuelve como ``error`` en vez de tumbar el job.
+    try:
+        validate_training_data(lic)
+    except ValueError as exc:
+        log.warning("train_from_db.dataset_invalido", error=str(exc), **train_population)
+        return {
+            "error": "dataset_invalido",
+            "detalle": str(exc),
+            "train_population": train_population,
+        }
 
     # Con ``lic`` vacío el clasificador devuelve ``{"error": ...}`` y no se
     # guarda (mismo comportamiento que antes: train decide, no un early-return).
     clf = SAPClassifier()
     metrics = clf.train(lic)
+    metrics["train_population"] = train_population
     if "error" in metrics:
         return metrics
 
@@ -409,18 +452,26 @@ def train_from_db() -> dict[str, Any]:
 
 
 def precompute_ml_proba(*, batch_size: int = 500, force: bool = False) -> dict[str, int]:
-    """Pre-computa ml_proba para todas las licitaciones en la BD.
+    """Pre-computa ``ml_proba`` para la **población del clasificador**.
 
     Actualiza la columna ``ml_proba`` con P(SAP) del clasificador actual.
     Por defecto solo procesa filas donde ``ml_proba IS NULL``; con ``force=True``
     recalcula todas.
+
+    **Puntúa lo mismo que entrena (S6.1).** El corpus que llega a la columna es
+    el de ``db.repositories.ml_dataset.filas_pendientes_ml_proba``, la misma
+    población acotada de ``train_from_db``. Y antes de puntuar se borran los
+    scores que quedaron fuera de ella: eran los del modelo de mayo sobre las
+    683k filas de PSCP, que daba «SAP» a nueve de cada diez (backlog P2). Un
+    score extrapolado a un corpus que el modelo nunca vio no es una predicción.
 
     Args:
         batch_size: Número de filas a procesar por batch (control de memoria).
         force: Si True, sobreescribe valores existentes.
 
     Returns:
-        {"updated": N, "skipped_no_model": bool}
+        ``{"updated": N, "limpiadas_fuera_de_poblacion": M,
+        "quedan_scores_por_limpiar": bool, "skipped_no_model": bool}``
     """
     from scraper.ml_classifier import SAPClassifier
     from scraper.ml_pipeline import _augment_text
@@ -433,26 +484,45 @@ def precompute_ml_proba(*, batch_size: int = 500, force: bool = False) -> dict[s
     artefacto = SAPClassifier.resolve_artifact()
     if artefacto is None:
         log.warning("precompute_ml_proba.no_model")
-        return {"updated": 0, "skipped_no_model": True}
+        return {"updated": 0, "limpiadas_fuera_de_poblacion": 0, "skipped_no_model": True}
 
     try:
         clf = SAPClassifier.load(artefacto)
     except Exception as exc:
         log.error("precompute_ml_proba.load_failed", error=str(exc))
-        return {"updated": 0, "skipped_no_model": True}
+        return {"updated": 0, "limpiadas_fuera_de_poblacion": 0, "skipped_no_model": True}
 
-    from db.database import connect
+    from db.repositories.ml_dataset import (
+        _LIMPIEZA_BATCH,
+        filas_pendientes_ml_proba,
+        guardar_ml_proba,
+        limpiar_ml_proba_fuera_de_poblacion,
+    )
 
-    where = "" if force else "WHERE ml_proba IS NULL"
-    with connect() as c:
-        rows = c.execute(
-            f"SELECT id_externo, titulo, descripcion, cpv, importe, organo_contratacion "
-            f"FROM licitaciones {where}"
-        ).fetchall()
+    # Acotada por diseño (ver `_LIMPIEZA_BATCH`): la primera vez que esto corre
+    # en producción hay ~600k scores heredados que borrar y no caben en una
+    # transacción razonable. Que devuelva el tope significa «quedan más», y eso
+    # se registra: una limpieza que va por su tercera corrida es información,
+    # pero una que lleva veinte es que el borrado no converge y alguien tiene
+    # que mirarlo.
+    limpiadas = limpiar_ml_proba_fuera_de_poblacion()
+    quedan_mas = limpiadas >= _LIMPIEZA_BATCH
+    if limpiadas:
+        log.info(
+            "precompute_ml_proba.fuera_de_poblacion_limpiadas",
+            n=limpiadas,
+            quedan_mas=quedan_mas,
+        )
 
+    rows = filas_pendientes_ml_proba(force=force)
     if not rows:
         log.info("precompute_ml_proba.nothing_to_update")
-        return {"updated": 0, "skipped_no_model": False}
+        return {
+            "updated": 0,
+            "limpiadas_fuera_de_poblacion": limpiadas,
+            "quedan_scores_por_limpiar": quedan_mas,
+            "skipped_no_model": False,
+        }
 
     from config import settings
 
@@ -463,10 +533,14 @@ def precompute_ml_proba(*, batch_size: int = 500, force: bool = False) -> dict[s
         batch = rows[i : i + batch_size]
         texts = [
             _augment_text(
-                (str(r[1] or "") + " " + str(r[2] or "")).strip(),
-                cpv=str(r[3]) if r[3] else None,
-                importe=float(r[4]) if r[4] else None,
-                organo=str(r[5]) if (use_organo and len(r) > 5 and r[5]) else None,
+                (str(r["titulo"] or "") + " " + str(r["descripcion"] or "")).strip(),
+                cpv=str(r["cpv"]) if r["cpv"] else None,
+                importe=float(r["importe"]) if r["importe"] else None,
+                organo=(
+                    str(r["organo_contratacion"])
+                    if (use_organo and r.get("organo_contratacion"))
+                    else None
+                ),
             )
             for r in batch
         ]
@@ -476,16 +550,25 @@ def precompute_ml_proba(*, batch_size: int = 500, force: bool = False) -> dict[s
             log.error("precompute_ml_proba.predict_failed", batch_start=i, error=str(exc))
             continue
 
-        with connect() as c:
-            c.executemany(
-                "UPDATE licitaciones SET ml_proba = %s WHERE id_externo = %s",
-                [(float(proba), row[0]) for row, proba in zip(batch, probas, strict=False)],
-            )
-            c.commit()
-        updated += len(batch)
+        updated += guardar_ml_proba(
+            [
+                (float(proba), str(row["id_externo"]))
+                for row, proba in zip(batch, probas, strict=False)
+            ]
+        )
 
-    log.info("precompute_ml_proba.done", updated=updated)
-    return {"updated": updated, "skipped_no_model": False}
+    log.info(
+        "precompute_ml_proba.done",
+        updated=updated,
+        limpiadas=limpiadas,
+        quedan_mas=quedan_mas,
+    )
+    return {
+        "updated": updated,
+        "limpiadas_fuera_de_poblacion": limpiadas,
+        "quedan_scores_por_limpiar": quedan_mas,
+        "skipped_no_model": False,
+    }
 
 
 def precompute_ml_tecnologias(*, batch_size: int = 500, force: bool = False) -> dict[str, Any]:

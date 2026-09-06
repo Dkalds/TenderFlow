@@ -15,6 +15,12 @@
 #                  Opcional: si se deja vacío o se omite, services.ml_eval lo
 #                  asigna por hash del `id`, de forma estable — añadir ejemplos
 #                  nuevos NO reasigna los que ya estaban.
+#   source       : de dónde salió el ejemplo ("seed", "active_learning",
+#                  "feedback_queue", …). Opcional pero MUY recomendable a
+#                  partir de la campaña de ampliación: con ejemplos venidos de
+#                  sesiones distintas es lo único que permite auditar un lote
+#                  sospechoso sin revisar el fichero entero.
+#   fecha        : cuándo se etiquetó (YYYY-MM-DD). Mismo motivo.
 #
 # TAMAÑO: ESTE SET ES DEMASIADO PEQUEÑO PARA LO QUE SE LE PIDE.
 # De él salen el umbral que se sirve en produccion y `recall_no_keyword`, la

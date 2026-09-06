@@ -24,6 +24,17 @@ class EvidenceRef(BaseModel):
     quote: str = Field(min_length=1, max_length=600)
     start_offset: int | None = Field(default=None, ge=0)
     end_offset: int | None = Field(default=None, ge=0)
+    # S8.3: el texto de esa página lo transcribió el OCR desde una imagen en
+    # vez de leerlo del PDF. Quien lee la cita necesita saberlo — el OCR se
+    # equivoca de otra manera (caracteres, no contexto) y una cifra
+    # reconocida mal es indistinguible de una bien puesta.
+    #
+    # ADITIVO y con default: las fichas ya persistidas se releen sin el campo
+    # (``extra='forbid'`` rechaza claves nuevas, no toleraría claves que
+    # faltan) y el cliente TypeScript generado lo recibe como un booleano más.
+    # Lo rellena ``services/rag/fact_sheet.py`` al validar la cita contra la
+    # página; el LLM nunca lo propone.
+    ocr: bool = False
 
 
 class FactItem(BaseModel):

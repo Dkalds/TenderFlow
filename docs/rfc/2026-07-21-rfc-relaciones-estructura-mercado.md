@@ -4,7 +4,16 @@ title: "UX · Relaciones → Estructura de mercado: del hairball a vistas orient
 issue: pendiente (crear issue y renumerar)
 author: agent:architect
 date: 2026-07-21
-status: draft
+status: obsolete
+obsolete_on: 2026-09-06
+obsolete_reason: >
+  Las tres superficies que este RFC rediseña ya no existen: `web/src/app/(dashboard)/`
+  no tiene `red-organo-empresa` ni `ecosistema-partners`, y `web/src/components/charts/`
+  no tiene `force-graph` (`find web/src -iname "*force*" -o -iname "*red-organo*" -o
+  -iname "*partners*"` no devuelve nada, 2026-09-06). El grafo global se retiró en
+  vez de rediseñarse, así que el problema que el RFC ataca desapareció por otra vía.
+  Reabrirlo exigiría reescribirlo contra la arquitectura de información de hoy
+  (`mercado/`, `competencia/`, `empresas/`), no revivir estas rutas.
 area: web/red-organo-empresa · web/ecosistema-partners · web/components/charts/force-graph · services/analytics
 supersedes: >
   Continúa docs/rfc/2026-06-28-rfc-ux-grafos-red-partners.md (implemented), que

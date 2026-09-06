@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Building2, Check, Loader2, Plus, UserPlus } from "lucide-react";
+import { Building2, Check, Loader2, MailWarning, Plus, RotateCw, UserPlus, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -12,6 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { SpaceShell } from "@/components/layout/space-shell";
+import { formatDate } from "@/lib/utils";
 import {
   type OrganizationMember,
   type OrganizationMembershipStatus,
@@ -24,6 +25,12 @@ import {
   useOrganizationStore,
   useUpdateOrganizationMember,
 } from "@/hooks/use-organization";
+import {
+  type OrganizationInvitation,
+  useOrganizationInvitations,
+  useResendInvitation,
+  useRevokeInvitation,
+} from "./_hooks/use-invitations";
 
 const ROLE_LABELS: Record<OrganizationRole, string> = {
   owner: "Propietario",
@@ -83,16 +90,16 @@ function AddMemberForm({ organizationId }: { organizationId: number }) {
     event.preventDefault();
     if (!email.trim()) return;
     try {
-      await addMember.mutateAsync({ email: email.trim(), role });
-      toast.success("Miembro añadido");
+      // La respuesta es una membresía (la persona ya tenía cuenta) o una
+      // invitación pendiente (no la tenía). `id` solo existe en la segunda:
+      // es lo que distingue las dos ramas sin inventar un campo discriminador.
+      const resultado = await addMember.mutateAsync({ email: email.trim(), role });
+      const invitado = resultado != null && "id" in resultado;
+      toast.success(invitado ? "Invitación enviada por correo" : "Miembro añadido");
       setEmail("");
       setRole("member");
     } catch (error) {
-      toast.error(
-        error instanceof Error
-          ? error.message
-          : "No se pudo añadir. Comprueba que la persona ya tenga cuenta en TenderFlow.",
-      );
+      toast.error(error instanceof Error ? error.message : "No se pudo invitar a esa persona.");
     }
   };
 
@@ -126,7 +133,8 @@ function AddMemberForm({ organizationId }: { organizationId: number }) {
         Añadir
       </Button>
       <p className="w-full text-xs text-muted-foreground">
-        Solo se puede añadir a personas que ya tienen una cuenta activa en TenderFlow.
+        Si la persona ya tiene cuenta, entra al equipo en el acto. Si no, recibe una invitación por
+        correo que caduca a los 7 días.
       </p>
     </form>
   );
@@ -202,6 +210,112 @@ function MemberRow({
   );
 }
 
+
+const INVITATION_STATUS_LABELS: Record<OrganizationInvitation["status"], string> = {
+  invited: "Pendiente",
+  accepted: "Aceptada",
+  revoked: "Revocada",
+  expired: "Caducada",
+};
+
+/**
+ * Invitaciones pendientes: quién falta por entrar y qué se puede hacer con ello.
+ *
+ * Sin esta tabla, invitar a alguien sin cuenta era una acción sin rastro: el
+ * correo salía y la pantalla seguía enseñando el mismo equipo de antes, así que
+ * no había forma de saber si hacía falta reenviarlo ni de retirar una
+ * invitación mandada por error.
+ */
+function PendingInvitations({ organizationId, canManage }: { organizationId: number; canManage: boolean }) {
+  const invitations = useOrganizationInvitations(organizationId, canManage);
+  const resend = useResendInvitation(organizationId);
+  const revoke = useRevokeInvitation(organizationId);
+
+  if (!canManage) return null;
+
+  const rows = invitations.data ?? [];
+
+  const reenviar = async (invitation: OrganizationInvitation) => {
+    try {
+      await resend.mutateAsync(invitation.id);
+      toast.success("Invitación reenviada");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No se pudo reenviar la invitación");
+    }
+  };
+
+  const revocar = async (invitation: OrganizationInvitation) => {
+    try {
+      await revoke.mutateAsync(invitation.id);
+      toast.success("Invitación revocada");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No se pudo revocar la invitación");
+    }
+  };
+
+  return (
+    <Panel>
+      <PanelTitle
+        title="Invitaciones pendientes"
+        hint="personas sin cuenta a las que se ha enviado un enlace"
+      />
+      {invitations.isLoading ? (
+        <Skeleton className="h-10 w-full" />
+      ) : rows.length === 0 ? (
+        <p className="flex items-center gap-2 text-sm text-muted-foreground">
+          <MailWarning className="h-4 w-4" aria-hidden="true" />
+          No hay invitaciones pendientes.
+        </p>
+      ) : (
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Correo</TableHead>
+              <TableHead>Rol</TableHead>
+              <TableHead>Caduca</TableHead>
+              <TableHead>Estado</TableHead>
+              <TableHead className="text-right">Acciones</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {rows.map((invitation) => (
+              <TableRow key={invitation.id}>
+                <TableCell className="font-medium">{invitation.email}</TableCell>
+                <TableCell>{ROLE_LABELS[invitation.role]}</TableCell>
+                <TableCell>{formatDate(invitation.expires_at)}</TableCell>
+                <TableCell>
+                  <Badge variant={invitation.status === "invited" ? "secondary" : "outline"}>
+                    {INVITATION_STATUS_LABELS[invitation.status]}
+                  </Badge>
+                </TableCell>
+                <TableCell className="space-x-1 text-right">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    disabled={resend.isPending}
+                    onClick={() => void reenviar(invitation)}
+                  >
+                    <RotateCw className="mr-1 h-3.5 w-3.5" aria-hidden="true" />
+                    Reenviar
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    disabled={revoke.isPending}
+                    onClick={() => void revocar(invitation)}
+                  >
+                    <X className="mr-1 h-3.5 w-3.5" aria-hidden="true" />
+                    Revocar
+                  </Button>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      )}
+    </Panel>
+  );
+}
 
 /**
  * Matriz de permisos por rol sobre los espacios de la consola.
@@ -368,6 +482,10 @@ export default function EquipoPage() {
           )}
         </CardContent>
       </Card>
+
+      {!activeOrganization?.is_personal && activeOrganizationId != null && (
+        <PendingInvitations organizationId={activeOrganizationId} canManage={canManage} />
+      )}
 
       <PermissionMatrix />
       </div>

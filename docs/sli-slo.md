@@ -129,6 +129,32 @@ tener SLO.
 
 ---
 
+### 7. Coste del OCR de pliegos escaneados
+
+**Sin medir todavía.** El número que va aquí solo existe después del primer run
+nocturno de `pliegos.yml` con OCR activo, y ese run aún no ha ocurrido: este
+apartado deja el hueco abierto en vez de estimarlo, porque una cifra inventada
+en un documento de SLO es peor que ninguna.
+
+| Campo | Valor |
+|-------|-------|
+| **SLI** | Segundos de CPU del runner por página pasada por OCR (`ocrmypdf` + `tesseract`) |
+| **SLO** | Por definir tras la primera medición |
+| **Medición** | Duración del step de extracción de `.github/workflows/pliegos.yml` dividida entre las páginas con `documento_pages.ocr = true` de esa corrida |
+| **Tope de gasto** | `MAX_DOCUMENT_PAGES` acota las páginas por documento; sin ese tope, un escaneado de 400 páginas se come la ventana del job entero |
+| **Alerta** | No aplica hasta tener línea base |
+
+Qué hay que hacer cuando el run ocurra: anotar aquí segundos por página y coste
+por corrida, y decidir si el tope de páginas es el adecuado. S8.3 del
+[plan 2026-09 v2](plans/2026-09-plan-arquitectura-v2.md) lo pide explícitamente,
+y el riesgo que declara ese ítem —«medio, coste de OCR»— no se puede cerrar sin
+este dato.
+
+Lo que sí está fijado por test, sin necesidad del run: un PDF **con** texto no
+pasa por OCR, así que el coste solo lo pagan los escaneados.
+
+---
+
 ## Error budgets
 
 | SLO | Periodo | Budget total | Budget/día |

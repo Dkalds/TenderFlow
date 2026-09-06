@@ -1,4 +1,4 @@
-.PHONY: status product-status job-parity skills-inventory install dev lint format typecheck audit audit-truth-check fuzz-api mutation-sample capture-placsp-fixtures test test-all test-parallel test-unit test-integration test-e2e test-property test-load lock lock-hashes lock-uv install-uv scrape scrape-daily scrape-bulk api doctor seed seed-full seed-reset clean kpi kpi-export-parquet runbook-backup-restore runbook-dlq-replay runbook-rate-limit-reset runbook-model-rollback runbook-disaster-recovery check check-frontend-invariants check-api-contract check-agent-docs audit-truth help migrate migrate-alembic migrate-status migrate-history web-dev web-build web-codegen web-lint web-typecheck web-test-e2e web-test-e2e-ui web-docker cutover
+.PHONY: status schema-doc product-status job-parity skills-inventory install dev lint format typecheck audit audit-truth-check fuzz-api mutation-sample capture-placsp-fixtures test test-all test-parallel test-unit test-integration test-e2e test-property test-load lock lock-hashes lock-uv install-uv scrape scrape-daily scrape-bulk api doctor seed seed-full seed-reset clean kpi kpi-export-parquet runbook-backup-restore runbook-dlq-replay runbook-rate-limit-reset runbook-model-rollback runbook-disaster-recovery check check-frontend-invariants check-api-contract check-agent-docs audit-truth help migrate migrate-alembic migrate-status migrate-history web-dev web-build web-codegen web-lint web-typecheck web-test-e2e web-test-e2e-ui web-docker cutover
 .PHONY: web-test web-test-coverage check-env-parity check-public-surface
 
 # ── Ayuda ────────────────────────────────────────────────────────────────
@@ -231,6 +231,11 @@ doctor:  ## Verifica entorno antes de despliegue
 
 status:  ## Regenera docs/STATUS.md desde el código (paridad de jobs, ratchet, endpoints)
 	python scripts/gen_status.py
+
+# Necesita TEST_DATABASE_URL: el esquema se lee de una BD migrada, no del árbol
+# de migraciones. Es el precio de que el documento no pueda mentir.
+schema-doc:  ## Regenera docs/database-schema.md desde una BD migrada a head
+	python scripts/gen_schema_doc.py
 
 product-status:  ## Métricas de producto: funnel, win rate, euros y tiempo de decisión
 	python scripts/product_status.py

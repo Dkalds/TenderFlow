@@ -1,86 +1,125 @@
-# ⚠️ ANTES DE FIARTE DE ESTE FICHERO: NO gobierna el servicio de producción.
+# Blueprint de Render. **Decisión tomada el 2026-09-06 (O0.2 del plan de
+# arquitectura v2, cierra D4): se vincula el Blueprint y manda este fichero.**
 #
-# El servicio de producción se creó a mano por el dashboard y **nunca se vinculó
-# a este Blueprint**, así que lo de aquí es una intención y no una configuración:
-# editarlo no cambia nada en Render, y leerlo como si fuera la verdad induce a
-# error sobre cómo está configurado el servicio real.
+# Por qué esta opción y no la contraria (declararlo documental, dejar
+# `autoDeploy` activo y borrar `.github/workflows/deploy.yml`): con autoDeploy
+# activo un push a `master` despliega el commit sea cual sea el estado de CI,
+# así que los jobs de CI, los ratchets, el fuzzing y los E2E quedan como advisory
+# —informan, no impiden—. Vincular el Blueprint es la única de las dos ramas que
+# preserva el gate: `autoDeploy: false` + `deploy.yml` como único disparador
+# significa que a producción solo llega lo que alguien lanza a sabiendas sobre
+# un commit verde.
 #
-# ── Estado: VERIFICADO el 2026-08-28 contra la API de Render ────────────────
-# (no contra el dashboard, que sigue sin comprobar; ver "Pregunta abierta").
+# ── Qué es verdad hoy y con qué fecha ──────────────────────────────────────
+# Verificado el 2026-08-28 contra la API de Render (no contra el dashboard, que
+# no expone el vínculo con el Blueprint):
 #
 #   - Nombre lógico del servicio: `tenderflow-api` (coincide con este fichero).
 #   - Host real: `tenderflow-jrtr.onrender.com`. NO es
 #     `tenderflow-api.onrender.com`: el sufijo aleatorio lo pone Render al crear
 #     el servicio a mano. Es el valor que tienen que llevar `vars.SMOKE_BASE_URL`
 #     (smoke.yml, deploy.yml) y `CORS_ALLOWED_ORIGINS`/`FRONTEND_URL`.
-#   - `autoDeploy`: **ACTIVO** en el servicio real.
-#   - `plan`: **standard** en el servicio real.
+#   - `plan`: **standard** en el servicio real (este fichero ya dice `standard`).
+#   - `autoDeploy`: **ACTIVO** en el servicio real. Este fichero dice `false`.
+#   - `healthCheckPath`: el 2026-08-04 el servicio real no tenía ninguno
+#     configurado. Sin re-verificar desde entonces.
 #
-# ── Líneas de este fichero que NO describen la realidad ─────────────────────
-# Se conservan porque son la configuración deseada, no porque estén vigentes:
+# El servicio se creó a mano por el dashboard y **todavía no está vinculado** a
+# este Blueprint. Mientras el checklist de abajo no esté completo, lo que sigue
+# describe el estado **DESEADO**: editarlo no cambia nada en Render. En cuanto
+# el checklist se complete, este fichero pasa a ser la configuración vigente y
+# cualquier cambio aquí sí llega al servicio.
 #
-#   1. `autoDeploy: false` (abajo). El servicio real despliega en cada push a la
-#      rama conectada, con CI en rojo o sin CI: los 12 jobs, los ratchets, el
-#      fuzzing y los E2E son advisory para producción, no un gate. Y un deploy
-#      que arranque mal reemplaza igualmente al que funcionaba.
-#   2. `healthCheckPath: /api/v1/health` (abajo). El 2026-08-04 no había
-#      healthcheck configurado en el servicio real; sin él Render no espera a
-#      que la instancia nueva esté sana antes de cortar la vieja, así que no hay
-#      rollback automático de un arranque roto. Sin re-verificar desde entonces.
-#   3. Los servicios `tenderflow-prometheus`, `tenderflow-grafana` y
-#      `tenderflow-alertmanager` de más abajo: al no estar vinculado el
-#      Blueprint, declararlos aquí NO los crea. Existen en Render solo si
-#      alguien los creó a mano.
+# ── Checklist HUMANO (dashboard de Render, en ventana) ─────────────────────
+# Vincular un Blueprint a un servicio existente puede recrearlo: hacerlo en
+# ventana de baja actividad y con `plan: standard` ya escrito aquí (enlazar con
+# `free` degradaría el servicio a un plan con spin-down).
 #
-# `plan: free` SÍ estaba desalineado y se corrigió a `standard` en este cambio
-# (ver el comentario en la propia línea). `docs/sli-slo.md` todavía suspende el
-# SLO de disponibilidad "mientras `tenderflow-api` use Render Free": ese
-# documento no es de este stream y queda reportado como desajuste pendiente.
+#   [ ] 1. Dashboard → Blueprints → New Blueprint Instance sobre este repo, o
+#          Settings del servicio → vincularlo a este `render.yaml`.
+#   [ ] 2. Settings → Build & Deploy → confirmar que `Auto-Deploy` queda en
+#          **No**. Es lo que impide el segundo camino de despliegue.
+#   [ ] 3. Settings → Health Check Path → confirmar `/api/v1/health`. Sin él
+#          Render corta la instancia vieja antes de saber si la nueva arranca,
+#          y no hay rollback automático de un arranque roto.
+#   [ ] 4. Settings → confirmar `plan` = **standard** después de vincular (es
+#          el valor que se degradaría si el Blueprint entrara con otro).
+#   [ ] 5. Anotar aquí el resultado con su fecha, y cambiar la frase «estado
+#          DESEADO» de arriba por «estado VIGENTE».
+#   [ ] 6. Durante los 7 días siguientes, comprobar en el dashboard que un push
+#          a `master` produce **exactamente un** deploy de `tenderflow-api`
+#          —el que dispara `deploy.yml`, y ninguno más— (criterio de aceptación
+#          de O0.2), y que `smoke.yml` sigue verde en sus 96 ejecuciones de las
+#          primeras 24 h.
 #
-# ── Pregunta abierta (decisión pendiente, no un TODO más) ───────────────────
-# Hay que elegir una de las dos, y hasta que se elija este fichero seguirá
-# mintiendo por omisión:
+# Mientras el paso 2 no esté hecho, conviven los dos caminos: el push
+# despliega por su cuenta y `deploy.yml` dispara otro. Es el estado que O0.2
+# existe para terminar.
 #
-#   (a) **Vincular el Blueprint** y que este fichero mande de verdad. Ojo:
-#       vincular un Blueprint a un servicio existente puede recrearlo — hacerlo
-#       en ventana, con el `plan` ya correcto aquí (por eso el cambio a
-#       `standard`: enlazarlo con `free` degradaría el servicio).
-#   (b) **Declararlo documental**: renombrarlo a algo que no parezca activo y
-#       replicar a mano en el dashboard `autoDeploy: false` y `healthCheckPath`.
+# ── autoDeploy: solo lo apaga `tenderflow-api`, y a propósito ──────────────
+# Los tres servicios de observabilidad no declaran `autoDeploy` y se quedan con
+# el default de Render (activo). No es un descuido: su configuración va HORNEADA
+# en la imagen (`docker/Dockerfile.prometheus`, `docker/Dockerfile.alertmanager`
+# copian los `.yml` dentro), así que un cambio en `observability/alert_rules.yml`
+# solo llega a producción con un build nuevo. Apagarles el autoDeploy
+# significaría que una regla de alerta editada aquí no alerta allí hasta que
+# alguien se acuerde de redesplegar a mano — el fallo silencioso que el plano de
+# alertas existe para terminar. El que necesita el gate es el servicio que
+# atiende internet, y ese es el único que lo lleva.
 #
-# Verificación de dos minutos, en el dashboard de Render (nadie la ha hecho aún
-# — la verificación del 2026-08-28 fue por API, que no expone el vínculo):
-#   1. Settings del servicio → ¿aparece vinculado a un Blueprint?
-#   2. Settings → Build & Deploy → ¿`Auto-Deploy` está en `No`?
-#   3. Settings → Health Check Path → ¿dice `/api/v1/health`?
-#   4. Anotá aquí el resultado con su fecha, para que el siguiente que lea este
-#      fichero no tenga que volver a preguntárselo.
+# Consecuencia que hay que tener presente al contar deploys en el dashboard: un
+# push a `master` sigue redesplegando esos tres. Si ese ruido molesta, la
+# herramienta correcta son los build filters de Render por ruta de fichero, no
+# apagarles el autoDeploy.
+#
+# ── healthCheckPath: qué servicio lo declara y por qué ─────────────────────
+# Verificado sobre este fichero el 2026-09-06:
+#
+#   - `tenderflow-api` (web) → `/api/v1/health`. Es el que atiende internet y
+#     el único cuyo arranque roto se ve desde fuera; sin healthcheck no hay
+#     rollback automático.
+#   - `tenderflow-grafana` (web) → `/api/health`, el de la propia imagen.
+#   - `tenderflow-prometheus` y `tenderflow-alertmanager` (`pserv`) → **no lo
+#     declaran**. No es un olvido: son servicios privados que Render no expone,
+#     escuchan en un puerto fijado por el proyecto (9090 y 9093, este último vía
+#     la variable `PORT` de más abajo) y no se ha verificado desde aquí que el
+#     validador de Blueprints acepte `healthCheckPath` en un `pserv`. Añadirlo a
+#     ciegas arriesga que falle la validación justo en la ventana del paso 1.
+#     Que el Alertmanager esté vivo lo cubre la regla `Watchdog`
+#     (observability/alert_rules.yml), que es precisamente una comprobación
+#     externa del canal — ver docs/runbooks/observability-alerts.md §3.
+#
+# `docs/sli-slo.md` todavía suspende el SLO de disponibilidad «mientras
+# `tenderflow-api` use Render Free»: ese documento no es de este ítem y queda
+# reportado como desajuste pendiente.
 services:
   - type: web
     name: tenderflow-api
     runtime: docker
     dockerfilePath: ./docker/Dockerfile.api
     # `free` hasta 2026-08-28, cuando se verificó por la API de Render que el
-    # servicio real corre en `standard`. Corregirlo aquí es seguro precisamente
-    # porque el Blueprint NO está vinculado: esta línea no dispara ningún cambio
-    # de plan. Y dejarla en `free` era lo peligroso — si algún día se vincula el
-    # Blueprint (opción (a) de la cabecera), un `free` aquí DEGRADARÍA el
+    # servicio real corre en `standard`, que es lo que dice esta línea. Es el
+    # valor que el paso 4 del checklist tiene que reconfirmar DESPUÉS de
+    # vincular: enlazar el Blueprint con `free` escrito aquí degradaría el
     # servicio a un plan con spin-down.
     plan: standard
     region: frankfurt
-    # ⚠️ NO VIGENTE (ver cabecera, punto 1): el servicio real tiene autoDeploy
-    # ACTIVO. Esto es la configuración deseada, no la observada.
+    # Pendiente del paso 2 del checklist: el servicio real tenía autoDeploy
+    # ACTIVO el 2026-08-28. Hasta que se confirme `Auto-Deploy: No`, esta línea
+    # es intención; después es la configuración vigente.
     #
     # Deploy NO automático en cada push: sin esto Render despliega código en
     # cada commit a la rama conectada, incluso con CI en rojo, dejando todo el
-    # aparato de gates (16 jobs, ratchets, fuzzing, E2E) como puramente
-    # advisory para producción. Con autoDeploy:false el deploy se dispara
-    # manualmente o vía deploy hook gateado por el job `test` de CI (ver
-    # docs/runbooks). Un despliegue solo debe ocurrir sobre un commit verde.
+    # aparato de gates (jobs de CI, ratchets, fuzzing, E2E) como puramente
+    # advisory para producción. Con autoDeploy:false el único disparador es
+    # `.github/workflows/deploy.yml`, que corre a mano sobre un commit elegido
+    # y verifica el resultado. Un despliegue solo debe ocurrir sobre un commit
+    # verde.
     autoDeploy: false
-    # ⚠️ NO VIGENTE (ver cabecera, punto 2): el 2026-08-04 el servicio real no
+    # Pendiente del paso 3 del checklist: el 2026-08-04 el servicio real no
     # tenía healthcheck configurado. Sin él Render no espera a que la instancia
-    # nueva esté sana antes de cortar la vieja.
+    # nueva esté sana antes de cortar la vieja, así que un arranque roto
+    # reemplaza igualmente al proceso que funcionaba.
     healthCheckPath: /api/v1/health
     envVars:
       - key: ENV
@@ -217,6 +256,93 @@ services:
       - key: SENTRY_DSN
         sync: false
 
+  # ── Worker de la cola de trabajo (S5.3, decisión D14) ───────────────────
+  # Consume `jobs` (v106): lo que un usuario pide y no cabe en una request —la
+  # ficha del pliego, los embeddings de un expediente abierto, el PDF de una
+  # exportación grande—. Hasta ahora eso corría en los BackgroundTasks del
+  # propio proceso de la API, con 30 s de drenado al apagar: un despliegue en
+  # mitad de una extracción la mataba y el frontend se quedaba sondeando un
+  # trabajo muerto. Con este servicio, el job vuelve a `pending` por TTL y otro
+  # worker lo termina.
+  #
+  # `type: web` y no `type: worker`, y es la parte contraintuitiva: un
+  # background worker de Render NO admite `healthCheckPath`, y el criterio de
+  # aceptación de S5.3 exige que `/health/ready` exista y que Render lo use.
+  # Sin healthcheck, un worker que arranca roto (BD inalcanzable, migración
+  # pendiente) se queda vivo y mudo, que es el modo de fallo que este servicio
+  # viene a terminar. La superficie que publica es solo el router de salud:
+  # `api/app.py` monta ÚNICAMENTE `health` cuando `APP_PROFILE=worker`, así que
+  # esta URL no es una segunda copia de la API.
+  #
+  # Misma imagen y mismo entrypoint que `tenderflow-api` a propósito: el
+  # entrypoint arranca `api.app:app` y lo que cambia el comportamiento es
+  # `APP_PROFILE`. Un Dockerfile propio para el worker significaría dos
+  # imágenes que pueden divergir en dependencias y en versión de código.
+  #
+  # ADR-012 intacto: esto no es un plano de orquestación. No hay cron, ni
+  # intervalos, ni registry de jobs periódicos; el worker solo reacciona a lo
+  # que alguien pidió. Lo programado sigue siendo de GitHub Actions, y el
+  # cierre de `scrape-daily` consume SU cola dentro del propio job.
+  #
+  # `plan: starter` y no `standard`: el trabajo es ráfagas cortas de I/O (la
+  # extracción de la ficha espera al proveedor LLM) y una instancia basta. Si
+  # la cola se acumulara, la respuesta es más instancias, no una más grande —
+  # `SELECT … FOR UPDATE SKIP LOCKED` escala horizontalmente por diseño.
+  - type: web
+    name: tenderflow-worker
+    runtime: docker
+    dockerfilePath: ./docker/Dockerfile.api
+    plan: starter
+    region: frankfurt
+    # Mismo gate que la API: a producción solo llega lo que `deploy.yml` lanza
+    # sobre un commit verde (O0.2). Un worker que se despliega solo mataría
+    # trabajo en vuelo cada vez que alguien mergea.
+    autoDeploy: false
+    healthCheckPath: /api/v1/health/ready
+    envVars:
+      - key: ENV
+        value: prod
+      # La línea que decide todo: con este perfil `api/app.py` monta solo el
+      # router de salud y su lifespan arranca el consumidor de la cola.
+      - key: APP_PROFILE
+        value: worker
+      - key: DATABASE_URL
+        sync: false
+      - key: DATABASE_SSL_ROOT_CERT
+        sync: false
+      # Presupuesto de conexiones: este servicio SUMA al de la API contra el
+      # mismo pooler de Supabase (ver la nota larga de `tenderflow-api`). Con
+      # 2 + 2 el techo del worker es 4 conexiones, que caben en el margen que
+      # deja el 24 de la API bajo el `Pool Size` de 30. Al subirlos, subir
+      # antes el pooler.
+      - key: DB_POOL_SIZE
+        value: "2"
+      - key: DB_READ_POOL_SIZE
+        value: "2"
+      # Redis NO es opcional aquí, aunque el validador de `Settings` solo lo
+      # exija con `APP_PROFILE=api`: el PDF que maqueta este servicio viaja a la
+      # API por la caché compartida (`shared/jobs.py::CACHE_EXPORTS`). Sin
+      # Redis, cada proceso tiene la suya y la descarga encolada nunca aparece.
+      - key: REDIS_URL
+        sync: false
+      - key: REDIS_PASSWORD
+        sync: false
+      # El handler de la ficha llama al proveedor LLM con la misma clave que la
+      # API: es el mismo trabajo, movido de proceso.
+      - key: NVIDIA_API_KEY
+        sync: false
+      # Firma de la cadena de auditoría: obligatoria en prod para cualquier
+      # perfil, porque el worker también escribe.
+      - key: AUDIT_HMAC_KEY
+        sync: false
+      - key: SENTRY_DSN
+        sync: false
+      # Tuning de la cola (config/settings.py, ancla S5). Se dejan con su
+      # defecto salvo el TTL, explícito porque es el que gobierna cuánto tarda
+      # en recuperarse un job que murió con su worker.
+      - key: JOBS_LOCK_TTL_SEGUNDOS
+        value: "900"
+
   # ── Observabilidad (ADR-019) ────────────────────────────────────────────
   # El código expone /metrics desde siempre, pero hasta ahora nadie lo
   # scrapeaba: el único Prometheus vivía en docker-compose.yml apuntando a
@@ -267,6 +393,11 @@ services:
   # estado de notificación (`nflog`). Sin él, cada redeploy reenvía todo lo que
   # siga activo y borra los silencios que alguien haya puesto durante un
   # incidente.
+  #
+  # Cómo llega a existir: si el Blueprint se vincula (checklist de la cabecera),
+  # este bloque lo crea. Mientras no lo esté, hay que darlo de alta a mano — el
+  # procedimiento, con las variables que hay que inyectar y cómo comprobar que
+  # el Watchdog llega, está en docs/runbooks/observability-alerts.md.
   - type: pserv
     name: tenderflow-alertmanager
     runtime: docker
@@ -279,6 +410,17 @@ services:
       mountPath: /alertmanager
       sizeGB: 1
     envVars:
+      # Puerto FIJADO a mano, y no es cosmético. El entrypoint arranca con
+      # `--web.listen-address=0.0.0.0:${PORT:-9093}` y Render inyecta su propio
+      # `PORT` (10000 por defecto) cuando el servicio no lo declara: el
+      # Alertmanager escucharía en 10000 mientras
+      # `observability/prometheus.render.yml` enruta a
+      # `tenderflow-alertmanager:9093`. El síntoma sería el que este servicio
+      # existe para terminar — alertas que se disparan y no llegan a ningún
+      # sitio— y ningún test lo vería. Declararlo aquí gana sobre el default de
+      # Render y deja las dos puntas del cable en el mismo número.
+      - key: PORT
+        value: "9093"
       # Las MISMAS variables ALERT_* que ya usa observability/alerts.py desde
       # Python y que docs/SECURITY.md lista como secretos gestionados. No se
       # inventa un segundo juego de credenciales SMTP: el proyecto tiene un solo

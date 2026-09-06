@@ -47,6 +47,26 @@ const EMPTY_FORM: RuleFormState = {
   minImporte: "",
   ccaa: "",
   frequency: "daily",
+  tecnologia: "",
+  organo: "",
+  procedimiento: "",
+  tipoContrato: "",
+  bandaMin: "",
+  plazoMinDias: "",
+};
+
+/**
+ * Los seis criterios de S4.4, todos a `null`. Se declara una vez porque tres
+ * aserciones distintas comparan un cuerpo completo, y repetirlos habría hecho
+ * que añadir un criterio nuevo fallara en tres sitios con el mismo motivo.
+ */
+const SIN_CRITERIOS_S4 = {
+  tecnologia: null,
+  organo: null,
+  procedimiento: null,
+  tipo_contrato: null,
+  banda_min: null,
+  plazo_min_dias: null,
 };
 
 /* ── Formulario ↔ contrato ──────────────────────────────────────────── */
@@ -56,13 +76,7 @@ describe("ruleToFormState", () => {
     const form = ruleToFormState(
       rule({ id: 1, keyword: null, cpv: null, min_importe: null, ccaa: null }),
     );
-    expect(form).toEqual({
-      keyword: "",
-      cpv: "",
-      minImporte: "",
-      ccaa: "",
-      frequency: "daily",
-    });
+    expect(form).toEqual(EMPTY_FORM);
   });
 
   it("el importe mínimo viaja como texto al input numérico", () => {
@@ -88,6 +102,7 @@ describe("formStateToBody", () => {
       ccaa: null,
       frequency: "daily",
       active: true,
+      ...SIN_CRITERIOS_S4,
     });
   });
 
@@ -129,6 +144,7 @@ describe("ruleToBody", () => {
       ccaa: "Madrid",
       frequency: "daily",
       active: true,
+      ...SIN_CRITERIOS_S4,
     });
   });
 
@@ -182,7 +198,14 @@ describe("prefillToFormState", () => {
   });
 
   it("ignora las claves del ámbito que la regla no tiene", () => {
-    expect(prefillToFormState({ estado: "PUB", tecnologia: "IA" })).toEqual(EMPTY_FORM);
+    expect(prefillToFormState({ estado: "PUB", fuente: "placsp" })).toEqual(EMPTY_FORM);
+  });
+
+  it("la tecnología del ámbito sí llega a la regla (S4.4)", () => {
+    // Antes se descartaba porque la regla no tenía dónde ponerla; ahora la
+    // tiene, y perderla haría que la regla naciera más ancha que lo que el
+    // usuario estaba mirando cuando pulsó «crear regla».
+    expect(prefillToFormState({ tecnologia: "SAP,SALESFORCE" }).tecnologia).toBe("SAP");
   });
 });
 

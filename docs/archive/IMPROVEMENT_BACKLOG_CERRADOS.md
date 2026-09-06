@@ -23,6 +23,84 @@ No se borra nada: el histórico de por qué se hizo cada cosa sigue siendo
 
 ## Cerrados
 
+Los seis primeros los cerró la reconciliación **O0.5** del plan v2 (2026-09-06).
+No se cerraron por lo que decía la cabecera del backlog, sino comprobando cada uno
+contra el código: dos llevaban meses abiertos describiendo un estado que ya no
+existía, que es el callejón sin salida que AGENTS.md §5 prohíbe dejarle al
+siguiente agente.
+
+- [2026-09-06] **P1: aprobar un acceso era editar variables de entorno a mano** — la
+  allowlist de OAuth eran dos strings de entorno (`OAUTH_ALLOWED_EMAILS`/`OAUTH_ALLOWED_DOMAINS`
+  con `sync: false`), así que dar acceso a alguien pasaba por el panel de Render y un
+  redeploy, sin rastro de quién concedió qué. El ítem exigía **RFC antes que código** por
+  tocar el camino de autenticación, y así se hizo: `docs/rfc/242-acceso-oauth-dinamico.md`
+  decide que la verdad del acceso vive en BD, la revisión `v95_access_grants` crea la tabla,
+  `db/access_grants.py` la persiste (concesión por email o por dominio, con `granted_by`,
+  `revoked_at` y reactivación), `api/routes/admin_solicitudes.py` expone
+  `GET/DELETE /admin/solicitudes-acceso/grants` y registra el alta y la revocación con
+  `db.audit.log_event`, y el callback de `api/routes/auth.py` consulta `is_access_granted`
+  además de la allowlist estática. Entregado en #244 (2026-09-01). El fail-closed que el
+  ítem pedía preservar **cambió de sitio, y conviene saber dónde está**: el validador de
+  arranque `config/settings.py::_validate_prod_oauth_domains` ya no rechaza el boot con las
+  dos variables vacías —su cuerpo es `return self`, y su docstring dice por qué: con la
+  verdad en Postgres, una lista estática vacía es un estado legítimo—. Quien deniega ahora es
+  `shared/auth_core.py::oauth_email_allowed`, que con ambas listas vacías solo devuelve
+  `True` en `ENV=dev`, más el callback, que consulta `access_grants` y trata cualquier fallo
+  de BD como denegación. El comodín explícito `OAUTH_ALLOWED_DOMAINS=*` sigue siendo la única
+  vía de login abierto.
+
+- [2026-09-06] **P2: persistir procedimiento, tramitación y peso del precio** — los tres
+  drivers más fuertes de la baja no existían como columna. Hoy sí: `scraper/codice_parser.py`
+  los extrae de `cac:TenderingProcess`/`cac:AwardingCriterion` (`_tendering_process_codes`,
+  `parse_peso_precio`), la revisión `v85_lic_procedimiento_tramitacion` los persiste y el
+  upsert los protege — están en `_LIC_COALESCE_UPDATE_FIELDS` (`db/upsert.py:249`), o sea que
+  una re-ingesta sin el dato **no** borra el que ya había. Lo que este ítem pedía además y
+  **no** se hace, por decisión escrita y no por olvido: entrar en `FEATURE_COLUMNS`. El
+  criterio era «solo si la cobertura supera el 50 %», la cobertura real no se ha medido
+  (exige reprocesar los ZIP cacheados contra una BD) y meterlas sin medir sería afirmar justo
+  lo que el criterio prohíbe; `services/ml/features.py::FEATURES_PENDIENTES_COBERTURA`
+  documenta los cuatro pasos de activación. Esa mitad queda como ítem P3 propio, más arriba.
+
+- [2026-09-06] **P2: `HistGradientBoosting` reventaba con una feature entera a NaN** — con
+  una columna sin un solo valor observado, `_find_binning_thresholds` de scikit-learn muere
+  con `ValueError: window shape cannot be larger than input array shape`, un mensaje que no
+  dice nada del dato que lo provoca. `services/ml/baja_model.py::_columnas_observadas`
+  descarta esas columnas antes de ajustar y registra cuáles; el artefacto guarda
+  `feature_columns_usadas` y `mascara_features` recorta la matriz de predicción igual, para
+  que los árboles no reciban otras columnas en las mismas posiciones (los artefactos
+  anteriores, sin la lista, siguen comportándose como antes). `tests/test_s3_feature_todo_nan.py`
+  fija el invariante. La pregunta abierta del ítem —qué diferencia de entorno lo disparaba
+  aquí y no en CI— dejó de gobernar el cierre: el docstring documenta que basta con que una
+  feature del segmento no tenga observaciones en el corte que se ajusta, así que no era un
+  artefacto del contenedor.
+
+- [2026-09-06] **P2: migrar las llamadas del frontend al cliente OpenAPI tipado** — ya no
+  queda ningún `fetch("/api/…")` crudo fuera de `web/src/lib/`: los tres supervivientes
+  (`lib/ask-stream.ts` ×2, `lib/auth.tsx`) son el propio cliente, que es donde el ítem los
+  permitía. Y la regresión está cerrada por herramienta, no por vigilancia: `eslint.config.mjs`
+  prohíbe con selector propio el literal y el template que empiecen por `/api/`, con el motivo
+  escrito en el mensaje (un fetch crudo no redirige en 401, no normaliza a `ApiError`, no
+  extrae el `detail` RFC-7807 y no adjunta el CSRF).
+
+- [2026-09-06] **P3: vigilar el crecimiento de `predicciones_baja`** — el upsert no purgaba y
+  `services/analytics/scoring_signals.py` carga la tabla entera en cada refresco de caché, así
+  que el ítem pedía vigilar y purgar por antigüedad si superaba ~200 k filas. Hecho:
+  `scheduler/jobs/ml_predicciones.py::purgar_predicciones_cerradas` borra las predicciones de
+  expedientes cerrados hace más de `DIAS_RETENCION_PREDICCIONES`, corre dentro del batch de ML,
+  es fail-open (un fallo de la purga no tumba el scoring) y deja `ml_predicciones_purgadas` en
+  el resumen del job. La vigilancia sigue existiendo por el log `scoring_signals_margen_cargada`.
+
+- [2026-09-06] **Los modelos NIM de razonamiento podían devolver un stream vacío** — nunca fue
+  un ítem abierto de este backlog: el hecho lo levantó el §1 del plan v2 (hecho 22) y se
+  arregló en `9a6014b`. `llm/client.py` envía ahora `chat_template_kwargs` a los modelos
+  marcados como de razonamiento y **solo** a ellos (`REASONING_TEMPLATE_KWARGS`,
+  `chat_template_kwargs_for`), que es una extensión de NIM/vLLM y no un parámetro OpenAI:
+  mandarla a un proveedor que no la entiende es un 400. Sin ella, un modelo de razonamiento
+  gastaba su presupuesto en el bloque de pensamiento y devolvía respuesta vacía, que aguas
+  arriba se lee igual que un proveedor caído. Cubierto por `tests/test_llm_chat_template_kwargs.py`.
+  Se anota aquí para que el backlog refleje el estado del código y no solo lo que alguien
+  llegó a escribir como ítem.
+
 - [2026-09-02] **P1: la superficie pública publicaba el censo de PSCP, no el universo
   tecnológico** — Medido contra producción el 2026-09-01: 415.868 expedientes, 396.583 de
   Cataluña, con reactivos de laboratorio, servicios a empresas y material sanitario como CPV más

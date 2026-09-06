@@ -1,9 +1,21 @@
-"""Lecturas del dataset de los modelos predictivos de baja.
+"""Lecturas del dataset de los modelos de ML: baja predictiva y clasificadores.
 
-Todo el SQL del dataset de ``services/ml/`` vive aquí (ADR-022: el SQL solo
-existe en ``db/``). Antes estaba inline en ``services/ml/features.py`` y
-``services/ml/calibration.py``, ambos en la whitelist congelada del ratchet
-TID251 -- moverlo la encoge, que es la única dirección permitida.
+Todo el SQL del dataset de ``services/ml/`` y de ``scraper/`` vive aquí
+(ADR-022: el SQL solo existe en ``db/``). Antes estaba inline en
+``services/ml/features.py``, ``services/ml/calibration.py``,
+``scraper/ml_training.py`` y ``scraper/tech_classifier.py``, todos en la
+whitelist congelada del ratchet TID251 -- moverlo la encoge, que es la única
+dirección permitida.
+
+El módulo tiene dos mitades que no comparten SQL pero sí motivo:
+
+- **Baja predictiva** (la clase :class:`MlDatasetRepository`): pares
+  presupuesto↔adjudicado por expediente o por lote.
+- **Clasificadores de texto** (las funciones de módulo del final): la
+  población de entrenamiento y de scoring del clasificador SAP binario y del
+  multi-tecnología. Son funciones y no métodos porque no comparten estado con
+  el repositorio de baja; ``db/*.py`` y ``db/repositories/*`` son el mismo
+  estrato (AGENTS.md §3.10) y no se convierte una cosa en la otra por estilo.
 
 **La unidad por defecto es el expediente, no el lote.** Una licitación
 multi-lote tiene varias filas en ``adjudicaciones``; en el camino agregado se
@@ -43,9 +55,13 @@ from __future__ import annotations
 
 from typing import Any
 
-from db.database import connect_read
+from db.database import connect, connect_read
 from db.repositories.base import rows_to_dicts
-from db.sql_fragments import TECHNOLOGY_OBSERVED_SQL, exclude_duplicados_sql
+from db.sql_fragments import (
+    TECHNOLOGY_OBSERVED_SQL,
+    UNIVERSOS_TECNOLOGICOS,
+    exclude_duplicados_sql,
+)
 
 # Exclusión de duplicados cross-fuente. Era una copia literal de la subconsulta
 # —``db/`` no podía depender de ``services/`` (ADR-024)—; desde que la
@@ -555,3 +571,285 @@ class MlDatasetRepository:
         if not row:
             return None
         return "baseline" if row[0] else "modelo"
+
+
+# ── Población de los clasificadores de texto (S6.1) ───────────────────────
+#
+# Por qué existe este corte, con el dato que lo sostiene (backlog P2, medido
+# contra producción el 2026-09-04):
+#
+#     fuente   filas      positivos   %
+#     pscp     683.076    3.113       0,46 %
+#     placsp     6.853    4.412       64 %
+#     bulk_*    13.095      376       2,9 %
+#     ted        2.015      140       6,9 %
+#
+# El conector de PSCP persiste la plataforma catalana **entera** (reactivos,
+# obras, limpieza) y solo etiqueta ``tecnologia`` cuando el título casa con el
+# diccionario; los demás conectores filtran por señal tecnológica ANTES de
+# persistir. Mezclarlos deja el dataset en 1,14 % de clase minoritaria, y
+# ``validate_training_data`` —que exige 5 %— aborta el entrenamiento: es lo que
+# mató el run 33855421538 y por lo que ``model_versions`` no tiene ninguna fila
+# de ``sap_classifier``.
+#
+# De las dos salidas que ofrece el plan (§5 S6.1) se elige **excluir las
+# fuentes sin tecnología** y NO ``universo_tecnologico_sql``, por dos motivos
+# que el diagnóstico sostiene:
+#
+# 1. ``universo_tecnologico_sql`` admite una fila por tener ``tecnologia`` no
+#    vacía, que es exactamente la condición de la etiqueta positiva. Aplicado
+#    como población, las 683k filas de PSCP entrarían **solo** con sus 3.113
+#    positivos: un dataset donde la fuente decide la clase, que es peor
+#    desequilibrio que el original y encima invisible.
+# 2. Ese mismo predicado admite filas por ``ml_tecnologias`` no vacía, o sea
+#    por la salida del propio clasificador. La población de entrenamiento la
+#    elegiría el modelo anterior — la misma circularidad que S6.2 quita de las
+#    etiquetas, reintroducida en las filas.
+#
+# El corte por universo de ingesta deja 21.963 filas con 4.928 positivos
+# (22,4 %), muy por encima del suelo. La contrapartida es real y está asumida
+# en el plan: el modelo aprende de una población distinta de la que puntuaba.
+# Por eso :func:`filas_pendientes_ml_proba` sirve **la misma** población, y
+# :func:`limpiar_ml_proba_fuera_de_poblacion` borra los scores heredados de
+# fuera de ella: un score extrapolado a un corpus que el modelo nunca vio no
+# es una predicción, es un número.
+
+#: Nombre canónico de la población. Viaja al registro del modelo como
+#: ``train_population`` para que una versión diga sobre qué se entrenó.
+TRAIN_POPULATION_SAP = "universos_filtrados_en_ingesta"
+
+#: Universos cuyo conector filtró por señal tecnológica antes de persistir.
+#: Es :data:`db.sql_fragments.UNIVERSOS_TECNOLOGICOS` sin reinterpretarlo: la
+#: lista de universos "estrechos" ya está definida allí y duplicarla aquí sería
+#: la tercera copia del mismo criterio.
+POBLACION_SAP_UNIVERSOS: tuple[str, ...] = UNIVERSOS_TECNOLOGICOS
+
+
+def poblacion_clasificador_sql(alias: str = "l") -> str:
+    """Predicado «esta fila pertenece a la población del clasificador».
+
+    ``COALESCE`` a ``technology_observed`` por el mismo motivo que en
+    :data:`db.sql_fragments.TECHNOLOGY_OBSERVED_SQL`: las filas anteriores al
+    linaje (incluidos los negativos que siembra ``seed_negatives``, que se
+    insertan sin universo) solo pudieron entrar por el filtro histórico.
+
+    No reutiliza el literal de ``TECHNOLOGY_OBSERVED_SQL`` porque aquí hacen
+    falta también los universos regionales, así que el índice parcial de
+    ``v84`` no aplica: estas consultas recorren la tabla entera por diseño
+    —entrenar es leer el corpus— y no hay plan que salvar.
+
+    **Los duplicados confirmados quedan fuera de la población**, y la
+    exclusión vive aquí y no repetida en cada consulta llamadora por dos
+    motivos. El primero es de correción: un expediente republicado que el
+    dedupe ya marcó cuenta dos veces al entrenar, y eso pesa doble esa fila en
+    el ajuste — exactamente el modo de fallo que vigila
+    ``tests/test_dedup_guardrail.py`` («riesgo de inflar métricas
+    competitivas/ML»). El segundo es que «pertenecer a la población del
+    clasificador» es una sola idea: si la exclusión se escribe a mano en cada
+    query, la siguiente que alguien añada nacerá sin ella.
+
+    Efecto en :func:`limpiar_ml_proba_fuera_de_poblacion`, que niega este
+    predicado: un duplicado confirmado con ``ml_proba`` heredado pasa a ser
+    candidato a limpieza, que es lo correcto — el modelo no opina sobre una
+    fila que no es canónica.
+    """
+    universos = ", ".join(f"'{u}'" for u in POBLACION_SAP_UNIVERSOS)
+    universo_sql = f"COALESCE({alias}.analysis_universe, 'technology_observed') IN ({universos})"
+    return f"({universo_sql} AND {exclude_duplicados_sql(f'{alias}.id_externo')})"
+
+
+def filas_entrenamiento_sap() -> list[dict[str, Any]]:
+    """Filas de ``licitaciones`` que entrenan el clasificador SAP binario.
+
+    Devuelve las columnas que consume ``SAPClassifier.train`` (texto, CPV,
+    importe, fecha para el split temporal) más las dos que forman la etiqueta
+    base: ``raw_keywords`` y ``tecnologia``.
+    """
+    sql = f"""
+        SELECT l.id_externo, l.titulo, l.descripcion, l.raw_keywords, l.cpv,
+               l.importe, l.fecha_publicacion, l.tecnologia
+        FROM licitaciones l
+        WHERE {poblacion_clasificador_sql()}
+    """  # Interpola solo el predicado constante del módulo.
+    with connect_read() as c:
+        return rows_to_dicts(c.execute(sql))
+
+
+def feedback_humano_sap() -> list[dict[str, Any]]:
+    """Feedback **humano** de relevancia SAP, por expediente.
+
+    ``source = 'human'`` por el mismo motivo que en
+    ``scheduler/concept_drift.py::_fetch_training_dataframe``: el feedback
+    automático del etiquetado por LLM no puede realimentar al modelo.
+
+    No se filtra por población: un expediente sobre el que un humano se
+    pronunció es información que no sobra, y si queda fuera del universo la
+    unión con :func:`filas_entrenamiento_sap` lo descarta sola.
+    """
+    with connect_read() as c:
+        return rows_to_dicts(
+            c.execute("SELECT expediente, relevante FROM ml_feedback WHERE source = 'human'")
+        )
+
+
+def filas_entrenamiento_tecnologia() -> list[dict[str, Any]]:
+    """Filas que entrenan el clasificador multi-tecnología.
+
+    La población del binario **más** toda fila sobre la que se pronunció una
+    fuente no circular, esté donde esté. Los dos disyuntos hacen falta:
+
+    - el primero deja fuera la masa de PSCP etiquetada solo por keywords, que
+      es la que ahoga el dataset y la que hace circular al entrenamiento;
+    - el segundo garantiza que **ninguna etiqueta humana o del LLM se pierde
+      por el corte**. Descartarlas sería trabajar en contra del gate de
+      publicación, que exige un suelo de etiquetas independientes, y de la
+      campaña de etiquetado que las produce (S6.3).
+
+    ``tecnologia`` viaja como etiqueta de último recurso; las no circulares las
+    aporta ``LicitacionRepository.etiquetas_tecnologia_no_circulares`` (S6.2),
+    que es también quien define qué cuenta como pronunciamiento — este SQL
+    replica su criterio de fuente/método, no lo amplía.
+    """
+    sql = f"""
+        SELECT l.id_externo, l.titulo, l.descripcion, l.cpv, l.importe,
+               l.fecha_publicacion, l.tecnologia, l.raw_keywords
+        FROM licitaciones l
+        WHERE {poblacion_clasificador_sql()}
+           OR EXISTS (
+                  SELECT 1 FROM ml_feedback f
+                  WHERE f.expediente = l.id_externo AND f.source = 'human'
+              )
+           OR EXISTS (
+                  SELECT 1 FROM licitacion_tecnologia_pliego p
+                  WHERE p.licitacion_id = l.id_externo
+                    AND p.method IN ('llm_metadata', 'llm')
+              )
+    """  # Interpola solo el predicado constante del módulo.
+    with connect_read() as c:
+        return rows_to_dicts(c.execute(sql))
+
+
+def filas_pendientes_ml_proba(*, force: bool = False) -> list[dict[str, Any]]:
+    """Filas a las que aplicar ``ml_proba``, dentro de la población del modelo.
+
+    ``force=False`` (default) solo devuelve las que no tienen score. El filtro
+    de población es lo que hace que el clasificador puntúe la misma población
+    sobre la que entrena; ver el bloque de comentario de arriba.
+    """
+    where = "" if force else " AND l.ml_proba IS NULL"
+    sql = f"""
+        SELECT l.id_externo, l.titulo, l.descripcion, l.cpv, l.importe,
+               l.organo_contratacion
+        FROM licitaciones l
+        WHERE {poblacion_clasificador_sql()}{where}
+    """  # Interpola solo fragmentos constantes del módulo.
+    with connect_read() as c:
+        return rows_to_dicts(c.execute(sql))
+
+
+def guardar_ml_proba(pares: list[tuple[float, str]]) -> int:
+    """Persiste ``(proba, id_externo)`` en ``licitaciones.ml_proba``.
+
+    Devuelve cuántas filas se intentaron actualizar (no cuántas cambiaron):
+    el llamador batchea y lo usa para su contador de progreso.
+    """
+    if not pares:
+        return 0
+    with connect() as c:
+        c.executemany("UPDATE licitaciones SET ml_proba = %s WHERE id_externo = %s", pares)
+    return len(pares)
+
+
+#: Filas por pasada de :func:`limpiar_ml_proba_fuera_de_poblacion`. La primera
+#: vez que esto corre en producción hay del orden de 600.000 scores heredados
+#: que borrar (el corpus PSCP del backlog P2), y esa limpieza vive dentro del
+#: cierre post-ingesta, que corre cada cuatro horas sobre la MISMA tabla en la
+#: que escribe el scraper. Un solo ``UPDATE`` sin tope mantendría abierta una
+#: transacción de escritura sobre `licitaciones` durante minutos: o se lo lleva
+#: por delante el `statement_timeout` del rol, o bloquea al scraper. Con tope,
+#: cada pasada hace un trabajo acotado y el resto cae en la siguiente — la
+#: limpieza converge en unas pocas corridas y ninguna es larga.
+#:
+#: Mismo criterio y mismo orden de magnitud que ``_BLOBS_BATCH`` en
+#: ``scheduler/jobs/retention_cleanup.py``, que resuelve el mismo problema.
+_LIMPIEZA_BATCH = 5000
+
+
+def limpiar_ml_proba_fuera_de_poblacion(*, limite: int = _LIMPIEZA_BATCH) -> int:
+    """Borra los ``ml_proba`` de las filas que el modelo ya no puntúa.
+
+    Sin esto, acotar la población no cambiaría nada de lo que se ve: los scores
+    que el modelo de mayo dejó sobre las 683k filas de PSCP seguirían ahí, y
+    seguirían diciendo «SAP» sobre nueve de cada diez (backlog P2). Borrarlos
+    es la parte honesta del cambio -- ``NULL`` significa «este modelo no opina
+    sobre esta fila», que es exactamente el caso.
+
+    Borra como mucho ``limite`` filas por llamada (ver :data:`_LIMPIEZA_BATCH`).
+    Devolver ``limite`` significa «quedan más»: el llamador lo registra y la
+    corrida siguiente sigue por donde ésta lo dejó.
+
+    Idempotente: una vez limpias todas, las pasadas siguientes devuelven 0.
+    """
+    # El `UPDATE ... WHERE id_externo IN (SELECT ... LIMIT n)` es la forma de
+    # acotar un UPDATE en Postgres: `UPDATE` no admite `LIMIT` directamente.
+    sql = f"""
+        UPDATE licitaciones SET ml_proba = NULL
+        WHERE id_externo IN (
+            SELECT l.id_externo FROM licitaciones l
+            WHERE l.ml_proba IS NOT NULL AND NOT {poblacion_clasificador_sql()}
+            LIMIT %s
+        )
+    """  # Interpola solo el predicado constante del módulo; el tope va con %s.
+    with connect() as c:
+        cur = c.execute(sql, (int(limite),))
+        return int(cur.rowcount or 0)
+
+
+def distribucion_ml_proba(umbral: float = 0.7) -> dict[str, Any]:
+    """Reparto de ``ml_proba`` por encima de ``umbral``, dentro y fuera de la población.
+
+    Es la medición del criterio de aceptación de S6.1: un binario que da por
+    SAP a nueve de cada diez filas puntuadas es una constante, no un
+    clasificador. Se devuelven las dos proporciones porque miden cosas
+    distintas: ``pct_puntuadas_por_encima`` describe **al modelo** (de lo que
+    opina, cuánto llama SAP) y ``pct_corpus_por_encima`` describe **la
+    superficie** (cuánto del corpus lleva ese sello).
+    """
+    sql = f"""
+        SELECT {poblacion_clasificador_sql()} AS en_poblacion,
+               COUNT(*) AS total,
+               COUNT(l.ml_proba) AS puntuadas,
+               COUNT(*) FILTER (WHERE l.ml_proba > %s) AS por_encima
+        FROM licitaciones l
+        GROUP BY 1
+    """  # Interpola solo el predicado constante del módulo; el umbral va con %s.
+    with connect_read() as c:
+        filas = c.execute(sql, (float(umbral),)).fetchall()
+
+    bloques = {
+        True: {"total": 0, "puntuadas": 0, "por_encima": 0},
+        False: {"total": 0, "puntuadas": 0, "por_encima": 0},
+    }
+    for en_poblacion, total, puntuadas, por_encima in filas:
+        bloques[bool(en_poblacion)] = {
+            "total": int(total or 0),
+            "puntuadas": int(puntuadas or 0),
+            "por_encima": int(por_encima or 0),
+        }
+
+    total = sum(b["total"] for b in bloques.values())
+    puntuadas = sum(b["puntuadas"] for b in bloques.values())
+    por_encima = sum(b["por_encima"] for b in bloques.values())
+    return {
+        "umbral": float(umbral),
+        "poblacion": TRAIN_POPULATION_SAP,
+        "total_corpus": total,
+        "puntuadas": puntuadas,
+        "por_encima": por_encima,
+        "pct_corpus_por_encima": round(100.0 * por_encima / total, 2) if total else 0.0,
+        "pct_puntuadas_por_encima": (
+            round(100.0 * por_encima / puntuadas, 2) if puntuadas else None
+        ),
+        "dentro_poblacion": bloques[True],
+        "fuera_poblacion": bloques[False],
+    }

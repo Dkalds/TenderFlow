@@ -199,6 +199,23 @@ export interface EventosProducto {
     con_resultados: "si" | "no";
   };
   /**
+   * ¿Se abre alguna de las vistas marcadas `experimental`?
+   *
+   * Es la pregunta que decide si una superficie en validación se gradúa, se
+   * fusiona o se retira, y hasta ahora no había forma de responderla: el
+   * conmutador de vistas emite `espacio_abierto` con la `vista`, pero eso mide
+   * el clic en la pestaña, no que la vista llegara a montarse (se entra también
+   * por URL directa y por el redirect de la ruta heredada).
+   *
+   * `vista` es una clave del registro (`lib/space-views.ts`), cerrada y
+   * categórica — nunca un filtro. `flag` dice bajo qué régimen se pintó: con la
+   * flag encendida, o sin respuesta del backend de flags (el fail-open de
+   * `useFeatureFlag`). Sin esa segunda dimensión, «se abrió» no distinguiría
+   * uso real de uso que sólo existe porque nadie pudo apagarlo. `inactivo` no
+   * es un valor posible aquí: con la flag apagada la vista no se abre.
+   */
+  vista_experimental_abierta: { vista: string; flag: "activo" | "sin_respuesta" };
+  /**
    * Criterio guardado: el momento en que una búsqueda deja de repetirse a mano.
    *
    * Es señal de activación por derecho propio y el complemento de
@@ -233,6 +250,7 @@ export const PROPIEDADES_PERMITIDAS = {
   asistente_feedback: ["modo", "util"],
   export_lanzado: ["formato", "recurso"],
   busqueda_realizada: ["superficie", "con_resultados"],
+  vista_experimental_abierta: ["vista", "flag"],
   vista_guardada: ["primera_vez"],
 } as const satisfies Record<EventoProducto, readonly string[]>;
 

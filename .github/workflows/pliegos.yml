@@ -93,6 +93,29 @@ jobs:
           python-version: "3.13"
           cache: pip
 
+      # OCR de pliegos escaneados (S8.3). `ocrmypdf` es un binario del sistema,
+      # no una dependencia Python: no puede ir en el extra `[pliegos]`. Va solo
+      # en este workflow porque es el único sitio donde se procesan documentos;
+      # la imagen de la API no lo lleva y no lo necesita.
+      #
+      # `tesseract-ocr-spa` no es opcional: sin el paquete de idioma, tesseract
+      # transcribe castellano con el modelo de inglés y devuelve texto que pasa
+      # todas nuestras validaciones y no dice nada. `-eng` va con él porque los
+      # pliegos técnicos mezclan terminología en inglés.
+      #
+      # `continue-on-error`: el OCR es cobertura extra. Si el mirror de apt está
+      # caído, el fetcher degrada solo (`ocr_binario()` devuelve None y un PDF
+      # escaneado vuelve a terminar en `error`, como antes de S8.3) y el lote de
+      # ~44k documentos se drena igual. Romper la ingesta por no poder instalar
+      # un extra sería el intercambio equivocado.
+      - name: Instalar ocrmypdf (OCR de escaneados)
+        continue-on-error: true
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            ocrmypdf tesseract-ocr tesseract-ocr-spa tesseract-ocr-eng
+          ocrmypdf --version
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
@@ -172,8 +195,27 @@ jobs:
           ALERT_SMTP_USER: ${{ secrets.ALERT_SMTP_USER }}
           ALERT_SMTP_PASSWORD: ${{ secrets.ALERT_SMTP_PASSWORD }}
           LOG_FORMAT: json
+          # Almacén de binarios (S8.1). Sin `DOCUMENT_BLOB_BUCKET` definido,
+          # `shared/object_store.py` resuelve a `disabled` y el job se comporta
+          # exactamente como antes de S8: es la degradación buscada, no un
+          # olvido. NO se pone un literal por defecto aquí — sería una segunda
+          # fuente de verdad frente al código, que es el error que ya costó el
+          # incidente del modelo EOL documentado más arriba.
+          DOCUMENT_BLOB_BUCKET: ${{ vars.DOCUMENT_BLOB_BUCKET }}
+          DOCUMENT_BLOB_ENDPOINT_URL: ${{ vars.DOCUMENT_BLOB_ENDPOINT_URL }}
+          DOCUMENT_BLOB_REGION: ${{ vars.DOCUMENT_BLOB_REGION }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.DOCUMENT_BLOB_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.DOCUMENT_BLOB_SECRET_ACCESS_KEY }}
+          # OCR (S8.3). El tope de páginas sale de MAX_DOCUMENT_PAGES, que es
+          # de `config/settings.py` y no se duplica aquí.
+          DOCUMENT_OCR_ENABLED: ${{ vars.DOCUMENT_OCR_ENABLED }}
+          DOCUMENT_OCR_LANGUAGES: ${{ vars.DOCUMENT_OCR_LANGUAGES }}
+          DOCUMENT_OCR_TIMEOUT_SECONDS: ${{ vars.DOCUMENT_OCR_TIMEOUT_SECONDS }}
         run: python -m scheduler.jobs.documentos_embeddings run
 
+      # El informe incluye desde S8 el desglose por formato y la ocupación del
+      # almacén: son las dos cifras que dicen si la cobertura de formatos nueva
+      # está sirviendo de algo, y salen aquí sin abrir la consola.
       - name: Report documento_chunks state
         env:
           ENV: prod
@@ -181,4 +223,9 @@ jobs:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           DATABASE_SSL_ROOT_CERT: ${{ secrets.DATABASE_SSL_ROOT_CERT }}
           LOG_FORMAT: json
+          DOCUMENT_BLOB_BUCKET: ${{ vars.DOCUMENT_BLOB_BUCKET }}
+          DOCUMENT_BLOB_ENDPOINT_URL: ${{ vars.DOCUMENT_BLOB_ENDPOINT_URL }}
+          DOCUMENT_BLOB_REGION: ${{ vars.DOCUMENT_BLOB_REGION }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.DOCUMENT_BLOB_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.DOCUMENT_BLOB_SECRET_ACCESS_KEY }}
         run: python -m scheduler.jobs.documentos_embeddings report

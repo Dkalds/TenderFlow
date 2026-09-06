@@ -112,6 +112,48 @@ STEP_OK = "ok"
 STEP_SKIPPED = "skipped"
 STEP_ERROR = "error"
 
+#: El paso no se ejecutó porque un paso del que depende no dejó su insumo
+#: (S5.4). No es ni ``skipped`` (que significa «decidió no hacer nada y está
+#: bien») ni ``error`` (no falló: no llegó a correr), y por eso tiene nombre
+#: propio: mezclarlo con cualquiera de los dos borraría la única información
+#: útil del resumen, que es distinguir el paso roto de los que arrastró.
+STEP_SKIPPED_DEP = "skipped_por_dependencia"
+
+#: Dependencias explícitas entre pasos canónicos. Ausencia = independiente, que
+#: es el caso de once de los quince: un fallo en ``kpi_precompute`` no puede
+#: impedir que corran las alertas de vigilancia, y hasta S5.4 tampoco lo hacía
+#: —el ejecutor captura por paso—, pero nada lo dejaba escrito.
+#:
+#: Solo se declara lo que el propio código ya justifica:
+#:
+#: - ``digests`` ← ``watchlist_notify``: notify **acumula** en
+#:   ``pending_digests`` y digests las envía. Con notify roto a mitad, el
+#:   digest saldría incompleto Y consumiría su ventana diaria (el lock de
+#:   ``_run_periodic`` no se libera al terminar bien), así que el usuario
+#:   recibiría un correo con menos coincidencias de las que hubo y ninguno
+#:   correcto hasta el día siguiente.
+#: - ``tech_signal_merge`` ← ``ml_tecnologias``: el merge existe para sanar el
+#:   clobber que ``precompute_ml_tecnologias`` acaba de hacer sobre esas mismas
+#:   columnas (ver su docstring). Sin el precompute no hay clobber que sanar, y
+#:   el merge escribiría una señal que el siguiente precompute correcto volvería
+#:   a pisar.
+STEP_DEPS: dict[str, tuple[str, ...]] = {
+    "tech_signal_merge": ("ml_tecnologias",),
+    "digests": ("watchlist_notify",),
+}
+
+
+class ColaNoDisponible(RuntimeError):
+    """No se pudo ENCOLAR el cierre; ningún paso llegó a correr.
+
+    Existe para que el cierre de la pasada no dependa de que la cola esté
+    disponible: el camino por cola (S5.4) se estrenó con la revisión ``v106``, y
+    entre desplegar el código y aplicar la migración hay una ventana en la que
+    ``jobs`` todavía no existe. Sin esta distinción, esa ventana costaría los
+    quince pasos del cierre —incluidas las alertas de vigilancia— en vez de
+    costar solo la traza por paso en la BD.
+    """
+
 
 def step_tier(name: str) -> StepTier:
     """Severidad declarada de un paso canónico.
@@ -131,6 +173,26 @@ def step_tier(name: str) -> StepTier:
             "todo paso debe declarar si es 'bloqueante' o 'advisory'"
         )
     return tier
+
+
+def dependencias_incumplidas(name: str, resultados: dict[str, str]) -> list[str]:
+    """Dependencias de ``name`` que no dejaron su insumo en esta pasada.
+
+    Cuenta como incumplida la que terminó en ``error`` y la que a su vez se
+    saltó por dependencia: si ``ml_tecnologias`` falla, ``tech_signal_merge`` no
+    corre, y cualquier paso que dependiera de él tampoco tendría su insumo.
+    Un ``skipped`` legítimo —ventana de cadencia, flag apagado— **no** arrastra:
+    ese paso decidió no hacer nada y eso es un estado correcto del sistema.
+
+    Una dependencia que todavía no se ha ejecutado no cuenta: el orden de
+    ``CANONICAL_STEPS`` es la única fuente y ahí las dependencias van antes,
+    cosa que fija ``test_s5_cierre_dependencias``.
+    """
+    return [
+        dep
+        for dep in STEP_DEPS.get(name, ())
+        if resultados.get(dep) in (STEP_ERROR, STEP_SKIPPED_DEP)
+    ]
 
 
 def pasos_bloqueantes_fallidos(steps: dict[str, str]) -> list[str]:
@@ -639,19 +701,17 @@ def _run_post_ingestion_steps(*, lane: str = LANE_BULK) -> dict[str, str]:
     """
     results: dict[str, str] = {}
     for name in CANONICAL_STEPS:
-        fn = globals().get(f"_run_{name}")
-        if fn is None:
-            raise RuntimeError(
-                f"CANONICAL_STEPS contiene '{name}' sin implementación _run_{name} — "
-                "la constante y las funciones de paso divergieron"
-            )
         # Mismo contrato que la comprobación de implementación: un paso sin
         # severidad declarada no puede ejecutarse, porque nadie habría decidido
         # si su fallo pone el job en rojo.
         step_tier(name)
+        faltan = dependencias_incumplidas(name, results)
+        if faltan:
+            log.warning("pipeline_step_skipped_por_dependencia", step=name, dependencias=faltan)
+            results[name] = STEP_SKIPPED_DEP
+            continue
         try:
-            salida = fn(lane=lane) if name in _LANE_AWARE_STEPS else fn()
-            results[name] = STEP_SKIPPED if salida == STEP_SKIPPED else STEP_OK
+            results[name] = ejecutar_paso(name, lane=lane)
         except Exception as exc:
             log.exception("pipeline_step_failed", step=name, tier=STEP_TIER[name])
             results[name] = STEP_ERROR
@@ -661,7 +721,133 @@ def _run_post_ingestion_steps(*, lane: str = LANE_BULK) -> dict[str, str]:
     return results
 
 
-def run_post_ingestion_only(*, lane: str = LANE_DAILY) -> dict[str, Any]:
+def ejecutar_paso(name: str, *, lane: str = LANE_BULK) -> str:
+    """Ejecuta UN paso canónico y devuelve ``ok``/``skipped``. Propaga el fallo.
+
+    Es el único sitio donde se resuelve la implementación de un paso por su
+    nombre, y por eso lo comparten los dos caminos del cierre: el que ejecuta en
+    línea (:func:`_run_post_ingestion_steps`) y el que lo hace desde la cola
+    (:func:`ejecutar_paso_encolado`). Si fueran dos resoluciones distintas, un
+    paso podría comportarse de una manera dentro de la cola y de otra fuera.
+    """
+    fn = globals().get(f"_run_{name}")
+    if fn is None:
+        raise RuntimeError(
+            f"CANONICAL_STEPS contiene '{name}' sin implementación _run_{name} — "
+            "la constante y las funciones de paso divergieron"
+        )
+    salida = fn(lane=lane) if name in _LANE_AWARE_STEPS else fn()
+    return STEP_SKIPPED if salida == STEP_SKIPPED else STEP_OK
+
+
+def ejecutar_paso_encolado(job: Any) -> dict[str, Any]:
+    """Handler del tipo ``paso_pipeline`` de la cola (``shared/jobs.py``).
+
+    ``job`` es un ``shared.jobs.Job``; se anota ``Any`` para no importar la cola
+    al cargar este módulo, que es el que arrastra la pipeline entera y también
+    se importa desde ``scripts/check_job_parity.py``.
+    """
+    nombre = str(job.payload["paso"])
+    estado = ejecutar_paso(nombre, lane=str(job.payload.get("lane") or LANE_BULK))
+    return {"paso": nombre, "estado": estado}
+
+
+def _cierre_por_cola(*, lane: str) -> dict[str, str]:
+    """Encola un job por paso canónico y los consume **en este mismo proceso**.
+
+    Es la forma que pedía S5.4 y respeta ADR-012: GitHub Actions sigue siendo el
+    único plano de cron, y el worker de Render ni siquiera reclama estos jobs
+    (``claim`` filtra por tipo). Lo que gana el cierre es que cada paso deja una
+    fila con su estado, su duración y su error: una pasada cortada a mitad se
+    lee paso a paso en la BD en vez de reconstruirse del log de un runner
+    efímero que ya no existe.
+
+    Orden y dependencias: los jobs se encolan en el orden de ``CANONICAL_STEPS``
+    —que sigue siendo la única fuente— y se reclaman por ``run_after, id``, así
+    que salen en ese mismo orden. La comprobación de dependencias se hace sobre
+    los resultados ya acumulados, igual que en el camino en línea.
+
+    Restos de una pasada anterior: si un runner murió a mitad, sus jobs siguen
+    ``pending`` y este bucle los reclamaría ANTES que los suyos (id menor). Se
+    descartan explícitamente en vez de ejecutarlos, por dos motivos: el trabajo
+    que representan lo va a hacer igualmente esta pasada con datos más frescos,
+    y ejecutarlos rompería el orden canónico —``digests`` de la pasada vieja
+    correría antes que ``watchlist_notify`` de esta—, que es justo la garantía
+    sobre la que se apoya la comprobación de dependencias. Sin este descarte,
+    además, los jobs recién encolados se quedaban sin consumir y la cola crecía
+    una tanda por pasada.
+
+    Raises:
+        ColaNoDisponible: si falla el ENCOLADO, es decir antes de que ningún
+            paso haya corrido. Quien llama vuelve entonces al camino en línea:
+            que la cola no esté (una migración sin aplicar) no puede costar el
+            cierre entero de la pasada.
+    """
+    from shared.jobs import TIPO_PASO_PIPELINE, ack, claim, ejecutar, enqueue, fail
+
+    tipos = (TIPO_PASO_PIPELINE,)
+
+    # Los tiers se comprueban ANTES y fuera del try: un paso sin severidad
+    # declarada es un error de programación del propio cierre —nadie decidió si
+    # su fallo pone la pasada en rojo— y tiene que abortar igual que en el
+    # camino en línea, no degradarse a «la cola no está disponible».
+    for name in CANONICAL_STEPS:
+        step_tier(name)
+
+    mios: set[int] = set()
+    try:
+        for name in CANONICAL_STEPS:
+            mios.add(enqueue(TIPO_PASO_PIPELINE, {"paso": name, "lane": lane}, deduplicar=False))
+    except Exception as exc:
+        raise ColaNoDisponible(f"no se pudo encolar el cierre: {exc}") from exc
+
+    results: dict[str, str] = {}
+    # Techo defensivo: además de los propios, el bucle puede encontrarse los
+    # restos de una pasada anterior, y cada uno consume una vuelta.
+    for _ in range(len(CANONICAL_STEPS) * 4):
+        if len(results) >= len(mios):
+            break
+        job = claim("pipeline_cierre", tipos=tipos)
+        if job is None:
+            break
+        nombre = str(job.payload.get("paso") or "")
+        if job.id not in mios:
+            log.warning(
+                "pipeline_step_job_de_pasada_anterior_descartado", step=nombre, job_id=job.id
+            )
+            ack(job.id, {"paso": nombre, "estado": "descartado_pasada_anterior"})
+            continue
+        faltan = dependencias_incumplidas(nombre, results)
+        if faltan:
+            log.warning("pipeline_step_skipped_por_dependencia", step=nombre, dependencias=faltan)
+            results[nombre] = STEP_SKIPPED_DEP
+            ack(job.id, {"paso": nombre, "estado": STEP_SKIPPED_DEP, "dependencias": faltan})
+            continue
+        try:
+            resultado = ejecutar(job)
+        except Exception as exc:
+            log.exception("pipeline_step_failed", step=nombre, tier=STEP_TIER.get(nombre))
+            results[nombre] = STEP_ERROR
+            fail(job.id, f"{type(exc).__name__}: {exc}", intentos=job.intentos, terminal=True)
+            _notify_step_failure(nombre, exc)
+            continue
+        results[nombre] = str((resultado or {}).get("estado") or STEP_OK)
+        ack(job.id, resultado)
+
+    # No debería pasar —esta cola solo la consume este proceso; el worker filtra
+    # por tipo—, pero un paso sin resultado desaparecería del resumen sin que
+    # nada lo dijera, y «no salió en el informe» no puede significar «no pasó
+    # nada».
+    sin_consumir = [n for n in CANONICAL_STEPS if n not in results]
+    if sin_consumir:
+        log.warning("pipeline_cierre_pasos_sin_consumir", pasos=sin_consumir)
+
+    return results
+
+
+def run_post_ingestion_only(
+    *, lane: str = LANE_DAILY, via_cola: bool | None = None
+) -> dict[str, Any]:
     """Solo el cierre de la pasada: los pasos post-ingesta, sin ingerir nada.
 
     Existe para que el workflow pueda ejecutar el cierre **después** de todos
@@ -678,24 +864,54 @@ def run_post_ingestion_only(*, lane: str = LANE_DAILY) -> dict[str, Any]:
     «al final de la pasada de ingesta»; esta función es lo que hace que sea
     verdad.
 
+    Args:
+        lane: carril de la pasada (``daily``/``bulk``).
+        via_cola: si el cierre encola sus pasos (S5.4) o los ejecuta en línea.
+            ``None`` consulta ``JOBS_CIERRE_POR_COLA``, que por defecto es sí.
+            Ponerlo a ``False`` es la salida de escape sin desplegar código.
+
     Returns:
         Dict con ``steps``, ``status`` (``ok`` si ningún paso **bloqueante**
-        falló) y ``advisory_failed`` (los pasos advisory en error, que sí
-        notifican por email pero no degradan la pasada — ver ``STEP_TIER``).
+        falló), ``advisory_failed`` (los pasos advisory en error, que sí
+        notifican por email pero no degradan la pasada — ver ``STEP_TIER``) y
+        ``skipped_por_dependencia`` (los que no llegaron a correr porque el paso
+        del que dependen no dejó su insumo). Las dos listas van separadas a
+        propósito: un advisory en error es «algo que avisar» y un salto por
+        dependencia es «algo que ni se intentó», y meterlos en el mismo cubo
+        haría creer que hubo quince intentos cuando hubo catorce.
     """
-    step_results = _run_post_ingestion_steps(lane=lane)
+    from config.settings import jobs_cierre_por_cola
+
+    usar_cola = jobs_cierre_por_cola() if via_cola is None else via_cola
+    if usar_cola:
+        try:
+            step_results = _cierre_por_cola(lane=lane)
+        except ColaNoDisponible as exc:
+            # Degradación explícita y ruidosa. El cierre es lo que envía las
+            # alertas de vigilancia y los digests: perderlo entero porque la
+            # tabla `jobs` todavía no existe sería cambiar una mejora de
+            # observabilidad por una caída de producto.
+            log.warning("pipeline_cierre_cola_no_disponible", error=str(exc))
+            step_results = _run_post_ingestion_steps(lane=lane)
+    else:
+        step_results = _run_post_ingestion_steps(lane=lane)
+
     fallidos = pasos_bloqueantes_fallidos(step_results)
     advisory = [
         name
         for name, estado in step_results.items()
         if estado == STEP_ERROR and name not in fallidos
     ]
+    saltados = [name for name, estado in step_results.items() if estado == STEP_SKIPPED_DEP]
     if advisory:
         log.warning("pipeline_advisory_steps_failed", failed=advisory)
+    if saltados:
+        log.warning("pipeline_steps_skipped_por_dependencia", skipped=saltados)
     return {
         "status": "ok" if not fallidos else "degraded",
         "steps": step_results,
         "advisory_failed": advisory,
+        "skipped_por_dependencia": saltados,
     }
 
 

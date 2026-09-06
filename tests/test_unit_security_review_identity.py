@@ -518,11 +518,19 @@ def test_login_devuelve_mfa_required_para_que_el_spa_pida_el_codigo() -> None:
 def test_callback_oauth_manda_a_verificar_si_la_cuenta_tiene_mfa() -> None:
     """El callback no puede mandar al dashboard una sesión pendiente de MFA.
 
-    Con Google no hay respuesta JSON que el SPA pueda inspeccionar —es una
+    Con OAuth no hay respuesta JSON que el SPA pueda inspeccionar —es una
     navegación de nivel superior—, así que el destino tiene que llevar la señal
     en la URL. El resto del flujo (login por contraseña) la recibe en el body.
+
+    Se mira ``_oauth_callback_impl`` y no ``google_callback``: desde S1.2 el
+    cuerpo del callback es común a todos los proveedores (D17) y las rutas de
+    Google y Microsoft solo delegan en él. Comprobarlo en el cuerpo compartido
+    cubre además a Microsoft, que antes no existía.
     """
-    fuente = inspect.getsource(auth_routes.google_callback)
+    fuente = inspect.getsource(auth_routes._oauth_callback_impl)
 
     assert "is_totp_required" in fuente
     assert "/login?mfa=required" in fuente
+    # Las dos rutas publicadas pasan por ahí; ninguna reimplementa el gate.
+    for ruta in (auth_routes.google_callback, auth_routes.oauth_callback):
+        assert "_oauth_callback_impl" in inspect.getsource(ruta)

@@ -10,6 +10,25 @@ lock legítimamente— al terminar borraba el lock ajeno y habilitaba una tercer
 ejecución simultánea. Es exactamente el escenario del que este módulo protege.
 Para jobs que puedan exceder su ventana, ``renew`` extiende el TTL sin soltarlo.
 
+**Qué NO sustituye a esto: la cola de trabajo** (``shared/jobs.py``, tabla
+``jobs``, revisión ``v106``). S5.1 del plan de arquitectura 2026-09 v2 dejaba
+abierta la retirada de este módulo «si la cola lo cubre», y se comprobó que no
+lo cubre. Son dos primitivas distintas:
+
+- ``jobs`` modela **unidades de trabajo**: una fila por cosa que hacer, con
+  estado, reintentos y resultado. Su lock es por fila y se suelta al terminar.
+- ``job_locks`` modela **exclusión con nombre**, y sobre todo lo que
+  ``scheduler/pipeline_runs.py::_run_periodic`` necesita: una **ventana
+  temporal**. Ahí el lock *no se libera* al terminar bien, y ese es el
+  mecanismo — mientras dure el TTL, las pasadas siguientes se saltan el paso
+  (es lo que impide que el digest «diario» salga seis veces al día con la
+  pipeline corriendo cada 4 h).
+
+Expresar «no hacer nada durante 24 h y que eso sea correcto» con filas de
+``jobs`` exigiría inventar un vocabulario nuevo para un problema que este
+módulo ya resuelve en cuatro funciones. Además ``scheduler/healthcheck.py``
+publica los locks vivos como diagnóstico. Se queda.
+
 Uso::
 
     from db.job_locks import acquire, release

@@ -1,12 +1,35 @@
 name: Deploy a producción (Render)
 
-# Despliegue manual con verificación encadenada.
+# Despliegue manual con verificación encadenada. **Este workflow es el ÚNICO
+# disparador de despliegues a producción** (O0.2 del plan de arquitectura v2,
+# decisión del 2026-09-06 que cierra D4).
 #
-# `render.yaml` fija `autoDeploy: false` a propósito (un merge no debe llegar
-# solo a producción), pero no existía ningún workflow que disparase el deploy ni
-# que comprobase el resultado: el despliegue era una acción a mano en el
-# dashboard y el único chequeo posterior era el cron de smoke, con lo que un
-# deploy malo podía pasar desapercibido hasta el siguiente ciclo.
+# Por qué único y no uno de dos: con `autoDeploy` activo en Render, un push a
+# `master` despliega por su cuenta el commit que sea, con CI en rojo o sin CI, y
+# además compite con este workflow — un mismo push llega a producir dos deploys.
+# Todo el aparato de gates (jobs de CI, ratchets, fuzzing, E2E) queda entonces como
+# advisory: informa, no impide. Con `autoDeploy: false` en `render.yaml` el
+# único camino es este, que se lanza a mano sobre un commit elegido y verifica
+# el resultado en tres pasos (healthcheck, alineación de schema, smoke).
+#
+# Alcance exacto de «único»: gobierna `tenderflow-api`, que es el servicio que
+# atiende internet y el único con `autoDeploy: false` en `render.yaml`. Los tres
+# servicios de observabilidad (Prometheus, Alertmanager, Grafana) conservan a
+# propósito el autoDeploy por defecto de Render —su configuración va horneada en
+# la imagen, así que una regla de alerta editada solo llega a producción con un
+# build nuevo—, y por tanto un push a `master` los sigue redesplegando. El porqué
+# está en la cabecera de `render.yaml`; se dice aquí para que «único disparador»
+# no se lea como «ningún deploy ocurre sin este workflow».
+#
+# Condición de validez: este fichero solo debe existir mientras `Auto-Deploy`
+# esté en **No** en el servicio real. Es el paso 2 del checklist de la cabecera
+# de `render.yaml`, todavía sin confirmar el 2026-09-06. Si algún día se decide
+# lo contrario —dejar autoDeploy activo—, lo que corresponde es borrar este
+# workflow, no dejar los dos caminos abiertos.
+#
+# Antes de que existiera, el despliegue era una acción a mano en el dashboard y
+# el único chequeo posterior era el cron de smoke, con lo que un deploy malo
+# podía pasar desapercibido hasta el siguiente ciclo.
 #
 # Requiere configurar:
 #   - secrets.RENDER_DEPLOY_HOOK_URL  (Render → tenderflow-api → Settings →
@@ -65,8 +88,9 @@ jobs:
           echo "Deploy encolado (HTTP $codigo)."
 
       # Render no expone el fin del despliegue por el deploy hook, así que se
-      # sondea el healthcheck hasta que la instancia nueva responde. El
-      # `start-period` cubre además el arranque en frío del plan free.
+      # sondea el healthcheck hasta que la instancia nueva responde. Los 15
+      # minutos de margen cubren el build de la imagen, no un spin-down: el
+      # servicio corre en `standard` desde antes del 2026-08-28 (render.yaml).
       - name: Esperar a que la API responda
         if: ${{ !inputs.skip_smoke }}
         env:

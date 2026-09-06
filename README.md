@@ -155,10 +155,10 @@ tenderflow/
 │   ├── check_frontend_invariants.py  # Integridad analítica del frontend (ADR-014)
 │   └── ...                       #   dedupe, retention, coverage, eval_rag_generation
 ├── docs/                         # Documentación técnica
-│   ├── adr/                      #   Architecture Decision Records (ADR-001..016)
+│   ├── adr/                      #   Architecture Decision Records (ADR-001..026)
 │   ├── runbooks/                 #   Playbooks operativos (backup, DLQ, DR, migración, ...)
 │   ├── c4-architecture.md        #   Diagramas C4 (Mermaid)
-│   ├── database-schema.md        #   Esquema ER + tablas + queries
+│   ├── database-schema.md        #   Esquema real de Postgres (generado: `make schema-doc`)
 │   ├── api-design.md             #   Convenciones y contratos de la API REST
 │   ├── testing.md                #   Auto-marking, fixtures, cobertura
 │   ├── sli-slo.md                #   SLIs/SLOs del sistema

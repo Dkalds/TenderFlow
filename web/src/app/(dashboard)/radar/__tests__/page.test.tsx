@@ -424,6 +424,10 @@ describe("RadarPage — foco y teclado", () => {
    * `src/test/setup.ts` responde "no match" a todo, que en esta página significa
    * ficha móvil; la página consulta `matchMedia` porque `inert` es un atributo y
    * no se puede condicionar con un prefijo responsive de Tailwind.
+   *
+   * Ojo: este ancho es `md` **pero no `xl`**, así que es exactamente la franja
+   * en la que el inspector se abre como `Sheet` y la fila activa gana el
+   * disparador «Ver ficha».
    */
   function conAnchoDeTabla(): () => void {
     const original = window.matchMedia;
@@ -512,8 +516,50 @@ describe("RadarPage — foco y teclado", () => {
           boton.dataset.slot !== "radar-score",
       );
 
-      // Solo los tres de la fila activa.
-      expect(enfocables).toHaveLength(3);
+      // Solo los de la fila activa: descartar, seguir, ver ficha y abrir. El
+      // cuarto es el disparador del `Sheet`, que solo existe entre `md` y `xl`
+      // —justo el ancho que simula este stub— porque es la única franja en la
+      // que el inspector no está anclado al lado de la lista.
+      expect(enfocables).toHaveLength(4);
+    } finally {
+      restaurarAncho();
+    }
+  });
+
+  it("el disparador de la ficha solo existe donde el inspector es un Sheet", () => {
+    // Por debajo de `md` no hay inspector (modo tarjeta) y a partir de `xl` está
+    // anclado al lado de la lista: en los dos casos un botón «Ver ficha» sería
+    // un control que no lleva a ninguna parte.
+    tresFilas();
+    const { unmount } = renderRadar();
+    expect(screen.queryByRole("button", { name: /^Ver ficha de / })).not.toBeInTheDocument();
+    unmount();
+
+    const restaurarAncho = conAnchoDeTabla();
+    try {
+      renderRadar();
+      expect(screen.getAllByRole("button", { name: /^Ver ficha de / })).toHaveLength(3);
+    } finally {
+      restaurarAncho();
+    }
+  });
+
+  it("«Ver ficha» abre el inspector como panel sobre la lista", async () => {
+    // El criterio de S7.4: entre `md` y `xl` la ficha se lee sin salir de la
+    // consola. El panel es un diálogo, así que se comprueba por su rol.
+    const restaurarAncho = conAnchoDeTabla();
+    try {
+      tresFilas();
+      renderRadar();
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+
+      fireEvent.click(screen.getAllByRole("button", { name: /^Ver ficha de / })[1]);
+
+      const panel = await screen.findByRole("dialog");
+      // La ficha que se abre es la de la fila cuyo disparador se pulsó, no la
+      // que estuviera seleccionada.
+      expect(panel).toHaveTextContent("Fila dos");
+      expect(panel).toHaveTextContent("Desglose de score");
     } finally {
       restaurarAncho();
     }

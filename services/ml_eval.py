@@ -56,6 +56,15 @@ class GoldenExample:
     importe: float | None = None
     keyword_match: bool | None = None  # ¿lo detectaría el filtro de keywords?
     note: str = ""
+    # Procedencia del ejemplo y cuándo se etiquetó. Vacíos en los ejemplos
+    # semilla, que se escribieron a mano y sin registrar ninguna de las dos
+    # cosas. La campaña de ampliación (S6.3) los rellena: con 300-500 ejemplos
+    # venidos de sesiones distintas, "de dónde salió y cuándo" deja de ser un
+    # adorno y pasa a ser lo único que permite auditar un lote sospechoso sin
+    # revisar el fichero entero. Se conservan aunque nada los lea todavía —
+    # descartarlos al cargar los perdería en la primera reescritura.
+    source: str = ""
+    fecha: str = ""
     # "tune" (elegir el umbral) | "holdout" (reportar). Vacío = sin asignar:
     # `asignar_splits` lo reparte por hash del id. El default NO puede ser una
     # de las dos mitades, o los ejemplos construidos en código se irían todos
@@ -168,6 +177,8 @@ def load_golden_set(path: str | Path | None = None) -> list[GoldenExample]:
                 ),
                 note=str(obj.get("note", "")),
                 split=str(obj.get("split") or ""),
+                source=str(obj.get("source") or ""),
+                fecha=str(obj.get("fecha") or ""),
             )
         )
     examples = asignar_splits(examples)
@@ -178,6 +189,10 @@ def load_golden_set(path: str | Path | None = None) -> list[GoldenExample]:
         n=len(examples),
         n_tune=n_tune,
         n_holdout=len(examples) - n_tune,
+        # Cobertura de procedencia: mientras la campaña de etiquetado (S6.3)
+        # esté a medias, esta cifra dice cuánta parte del set se puede auditar
+        # por lote. Con los ejemplos semilla vale 0 y eso es correcto.
+        n_con_procedencia=sum(1 for e in examples if e.source),
     )
     return examples
 

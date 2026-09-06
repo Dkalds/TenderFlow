@@ -11,19 +11,40 @@
  * no desaparece solo, porque no hay endpoint que lo vuelva a exponer. Un toast
  * efímero para un valor irrecuperable sería una trampa.
  *
- * Vista compartida por la ruta `/webhooks` y por `?vista=webhooks` del espacio
- * Ops. Ver la nota en `observabilidad-view.tsx` sobre por qué el cuerpo no vive
- * en el `page.tsx` de la ruta.
+ * **Dos vistas desde el mismo componente (S4.2).** Un webhook ya no es un
+ * recurso de instancia: pertenece a una organización y lo gestiona cualquier
+ * miembro con permiso de escritura.
+ *
+ * - `WebhooksEquipoView` es la de `/equipo`: los webhooks de TU organización,
+ *   con alta, edición y ping. Es la que usa el 99% de la gente.
+ * - `WebhooksView` (el default, `/ops`) es la vista **global** del
+ *   administrador de la instancia: todas las filas, incluidas las que no
+ *   tienen dueño (las anteriores a la revisión `v108`), en modo lectura de
+ *   estado. Se conserva porque esas integraciones sin organización siguen
+ *   entregando y alguien tiene que poder verlas.
+ *
+ * Los datos se piden aquí y no con `@/hooks/use-webhooks` porque ese hook
+ * describe el listado de instancia y ahora hay dos ámbitos distintos; cuando
+ * el cliente generado se regenere con `organization_id` y `formato`, estas
+ * consultas se mudan allí sin cambiar la pantalla.
  */
 
 import * as React from "react";
 import { AlertTriangle, Copy, Plus, Send, Trash2 } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
 import { MultiSelect } from "@/components/ui/multi-select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -34,19 +55,65 @@ import {
   usePingWebhook,
   useUpdateWebhook,
   useWebhookEventTypes,
-  useWebhooks,
 } from "@/hooks/use-webhooks";
+import { useActiveOrganizationId } from "@/hooks/use-organization";
+import { fetchWithAuth } from "@/lib/api-client";
+import { webhookKeys } from "@/lib/query-keys";
 import { toast } from "sonner";
 import { formatDateTime } from "@/lib/utils";
 
 const EMPTY = "—";
 
+/**
+ * Formatos de plantilla (D13). El backend los sirve en
+ * `GET /webhooks/event-types` junto a los tipos; esta lista es solo el
+ * ETIQUETADO en castellano, que no es dato sino copy — el valor válido lo
+ * sigue decidiendo el backend.
+ */
+const FORMATO_LABEL: Record<string, string> = {
+  json: "JSON (genérico)",
+  slack_blocks: "Slack · Block Kit",
+  teams_adaptive_card: "Teams · Adaptive Card",
+};
+
+/**
+ * Campos que la API ya devuelve y el cliente generado todavía no describe
+ * (`npm run codegen:file` los incorpora en cuanto se regenera desde el
+ * OpenAPI de esta rama). Se declaran opcionales a propósito: la pantalla
+ * compila y funciona con el cliente viejo y con el nuevo, y no hay que
+ * duplicar la forma entera del DTO —que es el anti-patrón de ADR-014.
+ */
+type WebhookAmpliado = WebhookOut & {
+  organization_id?: number | null;
+  created_by?: number | null;
+  formato?: string | null;
+};
+
 function formatDate(value: string | null | undefined): string {
   if (!value) return EMPTY;
   const date = new Date(value);
-  return Number.isNaN(date.getTime())
-    ? EMPTY
-    : formatDateTime(date);
+  return Number.isNaN(date.getTime()) ? EMPTY : formatDateTime(date);
+}
+
+/** Webhooks de una organización (los que gestiona un equipo desde `/equipo`). */
+function useWebhooksDeEquipo(organizationId: number | null) {
+  return useQuery({
+    queryKey: [...webhookKeys.all, "organizacion", organizationId] as const,
+    queryFn: () =>
+      fetchWithAuth<WebhookAmpliado[]>(
+        organizationId == null
+          ? "/api/v1/webhooks"
+          : `/api/v1/webhooks?organization_id=${organizationId}`,
+      ),
+  });
+}
+
+/** Todos los webhooks de la instancia. Solo administradores; vista de `/ops`. */
+function useWebhooksGlobales() {
+  return useQuery({
+    queryKey: [...webhookKeys.all, "global"] as const,
+    queryFn: () => fetchWithAuth<WebhookAmpliado[]>("/api/v1/webhooks/global"),
+  });
 }
 
 /** Aviso persistente con el secret recién creado: no se puede volver a ver. */
@@ -129,11 +196,12 @@ function DeliveriesPanel({ webhookId }: { webhookId: number }) {
   );
 }
 
-function WebhookRow({ webhook }: { webhook: WebhookOut }) {
+function WebhookRow({ webhook, editable }: { webhook: WebhookAmpliado; editable: boolean }) {
   const [open, setOpen] = React.useState(false);
   const update = useUpdateWebhook();
   const remove = useDeleteWebhook();
   const ping = usePingWebhook();
+  const formato = webhook.formato ?? "json";
 
   return (
     <Card>
@@ -142,11 +210,22 @@ function WebhookRow({ webhook }: { webhook: WebhookOut }) {
           <CardTitle className="text-sm">{webhook.name}</CardTitle>
           <p className="text-muted-foreground mt-1 truncate font-mono text-xs">{webhook.url}</p>
           <div className="mt-2 flex flex-wrap items-center gap-1.5">
+            <Badge variant="outline" className="text-[10px]">
+              {FORMATO_LABEL[formato] ?? formato}
+            </Badge>
             {(webhook.event_types ?? []).map((event) => (
               <Badge key={event} variant="secondary" className="font-mono text-[10px]">
                 {event}
               </Badge>
             ))}
+            {/* Un webhook sin organización es anterior a `v108`: entrega igual,
+                pero no lo ve ningún equipo. Etiquetarlo evita que alguien lo dé
+                por perdido y cree un duplicado. */}
+            {webhook.organization_id == null && (
+              <Badge variant="outline" className="text-[10px]">
+                sin organización
+              </Badge>
+            )}
             {/* El backend cuenta los fallos consecutivos; si son visibles, el
                 usuario puede actuar antes de que el webhook se desactive. */}
             {(webhook.failure_count ?? 0) > 0 && (
@@ -160,36 +239,38 @@ function WebhookRow({ webhook }: { webhook: WebhookOut }) {
             {webhook.last_status != null && ` · HTTP ${webhook.last_status}`}
           </p>
         </div>
-        <div className="flex flex-none items-center gap-2">
-          <Switch
-            checked={webhook.active ?? false}
-            onCheckedChange={(active) => update.mutate({ id: webhook.id, active })}
-            aria-label={`${webhook.active ? "Desactivar" : "Activar"} ${webhook.name}`}
-          />
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => ping.mutate(webhook.id)}
-            disabled={ping.isPending}
-            aria-label={`Enviar entrega de prueba a ${webhook.name}`}
-          >
-            <Send className="h-3.5 w-3.5" aria-hidden="true" />
-          </Button>
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={() => {
-              // Confirmación explícita: borrar un webhook rompe una integración
-              // viva del cliente y no se puede deshacer.
-              if (window.confirm(`¿Eliminar el webhook «${webhook.name}»?`)) {
-                remove.mutate(webhook.id);
-              }
-            }}
-            aria-label={`Eliminar ${webhook.name}`}
-          >
-            <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
-          </Button>
-        </div>
+        {editable && (
+          <div className="flex flex-none items-center gap-2">
+            <Switch
+              checked={webhook.active ?? false}
+              onCheckedChange={(active) => update.mutate({ id: webhook.id, active })}
+              aria-label={`${webhook.active ? "Desactivar" : "Activar"} ${webhook.name}`}
+            />
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => ping.mutate(webhook.id)}
+              disabled={ping.isPending}
+              aria-label={`Enviar entrega de prueba a ${webhook.name}`}
+            >
+              <Send className="h-3.5 w-3.5" aria-hidden="true" />
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => {
+                // Confirmación explícita: borrar un webhook rompe una integración
+                // viva del cliente y no se puede deshacer.
+                if (window.confirm(`¿Eliminar el webhook «${webhook.name}»?`)) {
+                  remove.mutate(webhook.id);
+                }
+              }}
+              aria-label={`Eliminar ${webhook.name}`}
+            >
+              <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+            </Button>
+          </div>
+        )}
       </CardHeader>
       <CardContent className="pt-0">
         <Button size="sm" variant="ghost" onClick={() => setOpen((v) => !v)}>
@@ -201,22 +282,36 @@ function WebhookRow({ webhook }: { webhook: WebhookOut }) {
   );
 }
 
-function CreateForm({ onCreated }: { onCreated: (secret: string) => void }) {
+function CreateForm({
+  organizationId,
+  onCreated,
+}: {
+  organizationId: number | null;
+  onCreated: (secret: string) => void;
+}) {
   const { data: eventTypes = [] } = useWebhookEventTypes();
   const create = useCreateWebhook();
   const [name, setName] = React.useState("");
   const [url, setUrl] = React.useState("");
   const [events, setEvents] = React.useState<string[]>([]);
+  const [formato, setFormato] = React.useState("json");
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
     create.mutate(
-      { name: name.trim(), url: url.trim(), event_types: events.length ? events : ["*"] },
+      {
+        name: name.trim(),
+        url: url.trim(),
+        event_types: events.length ? events : ["*"],
+        formato: formato as "json" | "slack_blocks" | "teams_adaptive_card",
+        organization_id: organizationId,
+      },
       {
         onSuccess: (created) => {
           setName("");
           setUrl("");
           setEvents([]);
+          setFormato("json");
           if (created.secret) onCreated(created.secret);
         },
       },
@@ -229,7 +324,7 @@ function CreateForm({ onCreated }: { onCreated: (secret: string) => void }) {
         <CardTitle className="text-sm">Nuevo webhook</CardTitle>
       </CardHeader>
       <CardContent>
-        <form onSubmit={submit} className="grid gap-3 md:grid-cols-[1fr_1.5fr_200px_auto]">
+        <form onSubmit={submit} className="grid gap-3 md:grid-cols-[1fr_1.5fr_200px_200px_auto]">
           <Input
             value={name}
             onChange={(e) => setName(e.target.value)}
@@ -253,6 +348,18 @@ function CreateForm({ onCreated }: { onCreated: (secret: string) => void }) {
             onChange={setEvents}
             placeholder="Todos los eventos"
           />
+          <Select value={formato} onValueChange={setFormato}>
+            <SelectTrigger aria-label="Formato del mensaje">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {Object.entries(FORMATO_LABEL).map(([value, label]) => (
+                <SelectItem key={value} value={value}>
+                  {label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           <Button type="submit" disabled={create.isPending}>
             <Plus className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />
             Crear
@@ -260,24 +367,30 @@ function CreateForm({ onCreated }: { onCreated: (secret: string) => void }) {
         </form>
         <p className="text-muted-foreground mt-2 text-xs">
           La URL debe ser <code className="font-mono">https://</code>. Cada entrega va firmada con HMAC para que tu
-          sistema pueda verificar que viene de aquí.
+          sistema pueda verificar que viene de aquí. Con Slack o Teams, pegá la URL del <em>incoming webhook</em> del
+          canal y elegí su formato: el mensaje llega ya maquetado.
         </p>
       </CardContent>
     </Card>
   );
 }
 
-export default function WebhooksView() {
-  const { data: webhooks, isPending, error } = useWebhooks();
-  const [newSecret, setNewSecret] = React.useState<string | null>(null);
-
+function Listado({
+  webhooks,
+  isPending,
+  error,
+  editable,
+  vacio,
+}: {
+  webhooks: WebhookAmpliado[] | undefined;
+  isPending: boolean;
+  error: unknown;
+  editable: boolean;
+  vacio: string;
+}) {
   return (
-    <div className="mx-auto w-full max-w-4xl space-y-4 p-4">
-      {newSecret && <SecretNotice secret={newSecret} onDismiss={() => setNewSecret(null)} />}
-
-      <CreateForm onCreated={setNewSecret} />
-
-      {error && (
+    <>
+      {error != null && (
         <div role="alert" className="text-destructive text-sm">
           No se pudieron cargar los webhooks.
         </div>
@@ -285,15 +398,76 @@ export default function WebhooksView() {
 
       {isPending && <Skeleton className="h-24 w-full" />}
 
-      {!isPending && !error && !webhooks?.length && (
-        <EmptyState title="Sin webhooks" hint="Creá uno para recibir las alertas en tus propios sistemas." />
+      {!isPending && error == null && !webhooks?.length && (
+        <EmptyState title="Sin webhooks" hint={vacio} />
       )}
 
       <div className="space-y-3">
         {webhooks?.map((webhook) => (
-          <WebhookRow key={webhook.id} webhook={webhook} />
+          <WebhookRow key={webhook.id} webhook={webhook} editable={editable} />
         ))}
       </div>
+    </>
+  );
+}
+
+/**
+ * Webhooks del equipo. Es lo que se monta en `/equipo` para `owner`/`admin`.
+ *
+ * Vive en este fichero y no en `equipo/` porque la maquinaria (alta con
+ * secret, ping, historial de entregas) es exactamente la misma que la vista
+ * global y duplicarla habría dejado dos pantallas que se desincronizan.
+ */
+export function WebhooksEquipoView() {
+  const organizationId = useActiveOrganizationId();
+  const { data, isPending, error } = useWebhooksDeEquipo(organizationId);
+  const [newSecret, setNewSecret] = React.useState<string | null>(null);
+
+  return (
+    <div className="mx-auto w-full max-w-4xl space-y-4 p-4">
+      {newSecret && <SecretNotice secret={newSecret} onDismiss={() => setNewSecret(null)} />}
+
+      <CreateForm organizationId={organizationId} onCreated={setNewSecret} />
+
+      <Listado
+        webhooks={data}
+        isPending={isPending}
+        error={error}
+        editable
+        vacio="Creá uno para recibir en Slack, en Teams o en tus propios sistemas lo que pasa en vuestras oportunidades."
+      />
+    </div>
+  );
+}
+
+/**
+ * Vista global de `/ops`: todos los webhooks de la instancia, en lectura.
+ *
+ * No permite crear ni editar a propósito. Crear un webhook exige decir a qué
+ * organización pertenece, y esa decisión se toma dentro del equipo (en
+ * `/equipo`), no desde una consola que ve todas las organizaciones a la vez.
+ * Lo que esta vista sí resuelve es lo que ninguna otra puede: ver las
+ * integraciones **sin dueño** heredadas de antes de `v108` y el estado de
+ * entrega de todo el conjunto.
+ */
+export default function WebhooksView() {
+  const { data, isPending, error } = useWebhooksGlobales();
+
+  return (
+    <div className="mx-auto w-full max-w-4xl space-y-4 p-4">
+      <p className="text-muted-foreground text-xs">
+        Vista global de la instancia, en solo lectura. Cada equipo gestiona los suyos desde <strong>Equipo →
+        Integraciones</strong>; aquí aparecen además los que no tienen organización, heredados de antes de que los
+        webhooks tuvieran dueño.
+      </p>
+
+      <Listado
+        webhooks={data}
+        isPending={isPending}
+        error={error}
+        editable={false}
+        vacio="No hay ningún webhook registrado en la instancia."
+      />
     </div>
   );
 }

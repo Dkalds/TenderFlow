@@ -98,8 +98,17 @@ crypto = [
 # Instalar con: pip install tenderflow[pliegos]
 # Sin este extra, scraper/document_fetcher.py falla al extraer PDF (import
 # diferido) pero no rompe el resto del pipeline de scraping.
+# python-docx y odfpy los añade S8.2 (plan 2026-09 v2): los pliegos también se
+# publican en Office Open XML y OpenDocument, no solo en PDF. Se importan de
+# forma OPCIONAL (importlib, en scraper/document_fetcher.py): sin ellos el
+# content-type se marca `unsupported` con su valor, que es cobertura medida y
+# no un fallo. El OCR (ocrmypdf) NO es una dependencia Python del proyecto: es
+# un binario del sistema que instala el runner de .github/workflows/pliegos.yml,
+# y su ausencia degrada al comportamiento anterior a S8.3.
 pliegos = [
     "pypdf>=4.0,<7",
+    "python-docx>=1.1,<2",
+    "odfpy>=1.4,<2",
 ]
 
 [tool.setuptools.packages.find]

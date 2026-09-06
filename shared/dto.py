@@ -633,7 +633,14 @@ class OrganizationMembershipUpsert(BaseModel):
 
 
 class OrganizationMemberInvite(BaseModel):
-    """Alta de un miembro por correo; requiere una cuenta activa existente."""
+    """Alta de un miembro por correo.
+
+    Si el correo ya tiene cuenta activa, la persona entra al equipo en el acto
+    (``OrganizationMembershipOut``). Si no la tiene, se crea una invitación
+    pendiente y se le manda un enlace firmado (``OrganizationInvitationOut``):
+    hasta 2026-09 este segundo caso respondía 404 y la única salida era pedirle
+    que se registrara primero.
+    """
 
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
@@ -997,14 +1004,149 @@ class PipelineAgendaResponse(BaseModel):
 
 # ── ANCLA S1 — identidad y equipo (invitaciones, proveedores OAuth) ────────
 
+#: Estado de una invitación tal y como lo ve quien administra el equipo.
+#: ``expired`` no se persiste: es ``expires_at`` en el pasado leído en el
+#: momento de mostrarlo. Un estado derivado que además se guardara obligaría a
+#: un job que lo mantuviera al día, y a explicar qué hacer cuando discrepan.
+OrganizationInvitationStatus = Literal["invited", "accepted", "revoked", "expired"]
+
+
+class OrganizationInvitationOut(BaseModel):
+    """Invitación a un correo que todavía no tiene cuenta en TenderFlow.
+
+    Es la contraparte de :class:`OrganizationMembershipOut` para el intervalo
+    en el que aún no hay persona a la que apuntar: ``organization_memberships``
+    exige ``user_id``, así que hasta que alguien se registra o entra por OAuth
+    con ese correo la intención vive en ``organization_invitations``.
+
+    Nunca lleva el token: el valor bruto existe solo en el correo enviado.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: int = Field(ge=1)
+    organization_id: int = Field(ge=1)
+    email: str
+    role: Literal["admin", "member", "viewer"]
+    status: OrganizationInvitationStatus
+    invited_by_user_id: int | None = None
+    created_at: PgDateTime
+    expires_at: PgDateTime
+    accepted_at: PgDateTime | None = None
+
+
+class OrganizationInvitationAccept(BaseModel):
+    """Canje del token recibido por correo, desde una sesión ya iniciada."""
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    token: str = Field(min_length=16, max_length=512)
+
+
 # ── ANCLA S2 — capacidad de la organización (NIF, solvencia, go/no-go) ─────
 
 # ── ANCLA S3 — oportunidad por lote y calidad del Radar ────────────────────
 
 # ── ANCLA S4 — eventos, webhooks y reglas de watchlist ─────────────────────
+#
+# S4 no aterriza ningún modelo aquí, y es deliberado: el criterio de este
+# módulo es la COMPARTICIÓN entre rutas (ver el docstring), y ninguno de los
+# tipos que S4 introduce la tiene.
+#
+# - ``WebhookOut``, ``WebhookCreate``, ``WebhookUpdate``, ``WebhookDelivery``,
+#   ``WebhookPingResult`` y ``WebhookEventTypes`` los sirve una sola ruta
+#   (``api/routes/webhooks.py``) y ya vivían junto a ella.
+# - Los seis criterios nuevos de la regla (`tecnologia`, `organo`,
+#   `procedimiento`, `tipo_contrato`, `banda_min`, `plazo_min_dias`) son campos
+#   aditivos de ``WatchlistRuleBody``, que es de ``api/routes/watchlist_rules.py``.
+#   ``WatchlistRuleMatch``/``WatchlistRuleMatchesResult`` ya estaban aquí porque
+#   los comparten dos rutas, y no cambian de forma.
+# - El catálogo de eventos y sus plantillas NO son DTOs de HTTP: son el
+#   vocabulario del backbone y viven en ``shared/events.py``, que además tiene
+#   que poder importarse desde el scheduler sin arrastrar FastAPI.
+#
+# Traerlos aquí no los haría más públicos, sólo los alejaría de lo que
+# describen — y añadiría nombres al esquema OpenAPI que ninguna ruta alcanza.
 
 # ── ANCLA S5 — cola de trabajo y worker ────────────────────────────────────
+#
+# Los dos modelos de abajo cumplen el criterio de compartición del docstring:
+# los publican tres rutas de ficheros distintos —``GET /jobs/{id}``
+# (``api/routes/jobs.py``), el 202 de ``…/ficha-pliego/extract-async`` y el de
+# ``…/embeddings-async`` (``api/routes/licitaciones.py``) y el 202 de
+# ``GET /exports/download`` (``api/routes/exports.py``)—, así que dejarlos en
+# una de ellas obligaría a las otras dos a importarla.
+
+
+class JobResultado(BaseModel):
+    """Lo que un job terminado publica, con los campos de cada tipo.
+
+    Un solo modelo con todos los campos opcionales en vez de una unión por
+    tipo, y es una decisión, no pereza: ``dict[str, Any]`` habría dado
+    ``{ [key: string]: unknown }`` en el cliente (invariante §3.5), y una unión
+    discriminada obligaría al frontend a estrechar por tipo para leer un
+    ``descarga`` que solo necesita cuando existe. Cada campo dice qué tipo lo
+    rellena.
+    """
+
+    #: ``export_pdf``: filas que entraron en el documento.
+    filas: int | None = None
+    #: ``export_pdf``: tamaño del PDF maquetado.
+    bytes: int | None = None
+    #: ``export_pdf``: ruta con la que descargarlo mientras siga en caché.
+    descarga: str | None = None
+    #: ``ficha_pliego`` y ``embeddings_expediente``: expediente afectado.
+    licitacion_id: str | None = None
+    #: ``ficha_pliego``: estado en que quedó la fila de ``tender_fact_sheets``.
+    estado_ficha: str | None = None
+    #: ``ficha_pliego``: hechos y citas validadas de la ficha.
+    campos: int | None = None
+    citas: int | None = None
+    #: ``embeddings_expediente``: documentos procesados y chunks escritos.
+    documentos: int | None = None
+    chunks: int | None = None
+
+
+class JobEstadoDTO(BaseModel):
+    """Estado de un trabajo encolado (``GET /jobs/{id}``).
+
+    ``intentos`` se publica porque es lo que distingue «está tardando» de «va
+    por el segundo reintento»: sin ese número, un job que reaparece en
+    ``pending`` tras fallar parece uno recién encolado.
+    """
+
+    id: int
+    tipo: str
+    estado: Literal["pending", "running", "done", "failed"]
+    intentos: int
+    #: Cuándo vuelve a ser reclamable. Con el backoff, es la fecha en la que el
+    #: cliente puede dejar de sondear hasta el siguiente intento.
+    run_after: PgDateTime
+    created_at: PgDateTime
+    updated_at: PgDateTime
+    resultado: JobResultado | None = None
+    error_detail: str | None = None
+
 
 # ── ANCLA S6 — ML: etiquetas y promoción ───────────────────────────────────
 
 # ── ANCLA S8 — documentos: formatos, OCR y almacén de objetos ──────────────
+#
+# S8 no aterriza ningún modelo aquí, y es deliberado: el criterio de este
+# módulo es la COMPARTICIÓN entre rutas (ver el docstring), y ninguno de los
+# tipos que S8 introduce la tiene.
+#
+# - ``DocumentoFormatoCobertura`` (desglose de adjuntos por content-type) lo
+#   sirve una sola ruta, ``GET /analytics/quality``, y vive junto a su función
+#   de dominio en ``services/analytics/quality.py``, como el resto de los
+#   modelos de esa familia.
+# - ``EvidenceRef.ocr`` es un campo aditivo sobre un modelo que ya existía en
+#   ``shared/tender_facts.py``, que es donde vive el contrato de la ficha del
+#   pliego.
+# - ``DocumentoPagina`` (texto de una página + si vino de OCR) es el tipo de
+#   entrada del repositorio, no del contrato HTTP: vive en
+#   ``db/repositories/documentos.py``.
+#
+# Traerlos aquí no los haría más públicos, sólo los alejaría de lo que
+# describen — y añadiría nombres al esquema OpenAPI que ninguna ruta alcanza,
+# que es justo lo que se limpió el 2026-09-03.

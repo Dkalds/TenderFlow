@@ -10,6 +10,7 @@ periódica.
 | Variable                   | Alcance                           | Rotación | Responsable | Dónde vive                  |
 |----------------------------|-----------------------------------|----------|-------------|-----------------------------|
 | `DATABASE_URL`             | Credenciales Postgres/Supabase (user:pass embebidos) | Tras cutover + 90 días | Maintainer | GitHub Secrets + Render env + `.env` |
+| `DATABASE_ADMIN_URL`       | DSN del rol DUEÑO del schema: el único con DDL y el único que bypassa la RLS de `v52` | 90 días | Maintainer | **Solo** GitHub Secrets (lo usa `migrate.yml`). Nunca en Render ni en el `.env` de la API |
 | `DATABASE_SSL_ROOT_CERT`   | Ruta a la CA de Supabase (cert público, no secreto)  | Al rotar CA Supabase   | Maintainer | Repo/volumen |
 | `BACKUP_ENCRYPTION_KEY`    | Passphrase para cifrar dumps de `pg_dump` (backup.yml) | 180 días | Maintainer | GitHub Secrets |
 | `ALERT_EMAIL_TO`           | Destinatario de alertas por email | Al cambiar cuenta    | Maintainer | GitHub Secrets + `.env` |
@@ -66,12 +67,35 @@ Defensas activas (revisión de seguridad 2026-07, ADR-016):
 - **Redacción de DSN**: la password de `DATABASE_URL` se redacta en logs y en las
   rutas de error de conexión (`observability.logging.redact_dsn`).
 
-**Cutover pendiente, requiere coordinación con Supabase:** el script
+**Cutover de roles: pendiente a 2026-09-06.** El script
 `scripts/setup_pg_roles.sql` ya prepara `tenderflow_app` con solo DML,
 `NOINHERIT`, `NOBYPASSRLS` y sin `CREATE` en `public`; las políticas RLS
 explícitas están incluidas. Falta ejecutarlo con el rol administrador, guardar
-`DATABASE_ADMIN_URL` solo para Alembic y cambiar el runtime a ese rol. Ver
-`docs/runbooks/migracion-persistencia.md`.
+`DATABASE_ADMIN_URL` solo para Alembic y cambiar el runtime a ese rol.
+
+**El procedimiento completo, con sus dos controles de aceptación en comandos
+copiables, está en `docs/runbooks/persistence-tripwires.md` (Partes 1 y 2).**
+
+Lo que el repositorio ya deja preparado, para que el cutover no se pueda
+deshacer por descuido:
+
+- `config/settings.py::database_admin_url()` es la única vía de acceso a la
+  credencial de administración, y solo la sirve con `APP_PROFILE=scraper` —el
+  perfil de `migrate.yml`—: cualquier otro perfil, sin declarar o mal escrito,
+  levanta (allowlist, no lista de prohibidos). No es campo de `Settings`: la API
+  no tiene ni atributo que leer. Fijado por `tests/test_settings_admin_url.py`.
+- `scripts/check_env_parity.py` falla si `DATABASE_ADMIN_URL` aparece en
+  `render.yaml` — un servicio que atiende HTTP no puede llevarla en su entorno.
+- `.github/workflows/migrate.yml` la usa y avisa en el resumen del run cuando
+  cae al fallback de `DATABASE_URL`. El paso 10 del runbook convierte ese aviso
+  en error una vez completado el cutover.
+
+Alcance de lo que cierra: el DDL (la app deja de poder alterar el schema) y la
+Data API de Supabase (`anon`/`authenticated` quedan en deny-all). **No** cierra
+el aislamiento entre organizaciones, que sigue viviendo en la capa de
+aplicación; el runbook explica por qué y qué haría falta para moverlo a RLS.
+
+Contexto de la migración a Postgres: `docs/runbooks/migracion-persistencia.md`.
 
 ## Workflow de recordatorio automatizado
 

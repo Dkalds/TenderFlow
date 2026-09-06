@@ -1,0 +1,65 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Adaptive Card 1.5 (subconjunto verificable)",
+  "description": "Subconjunto del esquema publicado en http://adaptivecards.io/schemas/adaptive-card.json, recortado a los elementos que TenderFlow emite (TextBlock y FactSet) y al sobre de adjunto que exige el webhook entrante de Microsoft Teams. Se recorta a propósito: el esquema completo arrastra 40 tipos de elemento y 20 acciones que este producto no genera, y un esquema que nadie entiende no es un contrato, es un adorno. Lo que sí se conserva literal son los campos que Teams rechaza si faltan o vienen mal: type, $schema, version y la forma de body.",
+  "type": "object",
+  "required": ["type", "attachments"],
+  "properties": {
+    "type": { "const": "message" },
+    "attachments": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["contentType", "content"],
+        "properties": {
+          "contentType": { "const": "application/vnd.microsoft.card.adaptive" },
+          "contentUrl": { "type": ["string", "null"] },
+          "content": { "$ref": "#/definitions/adaptiveCard" }
+        }
+      }
+    }
+  },
+  "definitions": {
+    "adaptiveCard": {
+      "type": "object",
+      "required": ["type", "$schema", "version", "body"],
+      "properties": {
+        "type": { "const": "AdaptiveCard" },
+        "$schema": { "const": "http://adaptivecards.io/schemas/adaptive-card.json" },
+        "version": { "enum": ["1.0", "1.1", "1.2", "1.3", "1.4", "1.5"] },
+        "body": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/definitions/elemento" }
+        }
+      }
+    },
+    "elemento": {
+      "type": "object",
+      "required": ["type"],
+      "properties": {
+        "type": { "enum": ["TextBlock", "FactSet"] },
+        "text": { "type": "string" },
+        "weight": { "enum": ["Lighter", "Default", "Bolder"] },
+        "size": { "enum": ["Small", "Default", "Medium", "Large", "ExtraLarge"] },
+        "spacing": {
+          "enum": ["None", "Small", "Default", "Medium", "Large", "ExtraLarge", "Padding"]
+        },
+        "isSubtle": { "type": "boolean" },
+        "wrap": { "type": "boolean" },
+        "facts": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["title", "value"],
+            "properties": {
+              "title": { "type": "string" },
+              "value": { "type": "string" }
+            }
+          }
+        }
+      }
+    }
+  }
+}

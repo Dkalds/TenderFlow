@@ -1069,14 +1069,20 @@ settings = _settings
 # la función de abajo, que se niega a servirla al perfil que atiende HTTP.
 _ADMIN_DB_URL_ENV = "DATABASE_ADMIN_URL"
 
-# Perfiles a los que la función NUNCA entrega la credencial. `api` es el que
-# sirve peticiones de internet: es exactamente el proceso que no debe poder
-# hacer DDL ni saltarse la RLS aunque el operador se equivoque de secret.
-_PERFILES_SIN_CREDENCIAL_ADMIN = frozenset({"api"})
+# Perfiles a los que la función SÍ entrega la credencial. Es una allowlist y no
+# una lista de prohibidos, y la diferencia es la que separa fail-closed de
+# fail-open: con una lista de prohibidos (`{"api"}`), cualquier valor que no
+# estuviera en ella —un `worker` de mañana, un `APP_PROFILE=apiv2` mal escrito,
+# un perfil nuevo que nadie recuerde añadir aquí— recibiría el DSN con DDL sin
+# que nada fallara. Solo `scraper` la necesita: es el perfil con el que corre
+# `.github/workflows/migrate.yml`, el único plano que aplica migraciones.
+_PERFILES_CON_CREDENCIAL_ADMIN = frozenset({"scraper"})
 
-# El default replica el de `Settings.APP_PROFILE`, y `test_settings_admin_url`
-# fija que sigan siendo el mismo. Es fail-closed a propósito: un proceso que no
-# declara perfil se trata como API y no recibe la credencial.
+# Perfil que se asume cuando el proceso no declara ninguno. Replica el de
+# `Settings.APP_PROFILE` y `test_settings_admin_url` fija que sigan siendo el
+# mismo; con la allowlist de arriba el efecto es el mismo mire por donde se
+# mire, pero el mensaje de error nombra un perfil concreto en vez de una cadena
+# vacía.
 _PERFIL_POR_DEFECTO = "api"
 
 
@@ -1087,18 +1093,18 @@ def database_admin_url() -> str | None:
     única vía de acceso, y refleja el entorno del proceso en el momento de la
     llamada (un test puede fijar ``APP_PROFILE`` sin reconstruir el singleton).
 
-    :raises RuntimeError: si ``APP_PROFILE`` es ``api`` o no está definido. Que
-        la API pida esta credencial no es un error de configuración recuperable
-        sino un fallo de diseño en quien llama, y tiene que doler en el acto.
+    :raises RuntimeError: para cualquier ``APP_PROFILE`` que no sea ``scraper``,
+        incluido el caso de no declararlo. Que un proceso distinto del que migra
+        pida esta credencial no es un error de configuración recuperable sino un
+        fallo de diseño en quien llama, y tiene que doler en el acto.
     """
-    perfil = os.environ.get("APP_PROFILE", _PERFIL_POR_DEFECTO).strip().lower()
-    if not perfil:
-        perfil = _PERFIL_POR_DEFECTO
-    if perfil in _PERFILES_SIN_CREDENCIAL_ADMIN:
+    perfil = os.environ.get("APP_PROFILE", "").strip().lower() or _PERFIL_POR_DEFECTO
+    if perfil not in _PERFILES_CON_CREDENCIAL_ADMIN:
+        permitidos = ", ".join(sorted(_PERFILES_CON_CREDENCIAL_ADMIN))
         raise RuntimeError(
             f"{_ADMIN_DB_URL_ENV} no está disponible con APP_PROFILE={perfil!r}: es la "
             "credencial con DDL y sin RLS, reservada a las migraciones "
-            "(.github/workflows/migrate.yml, APP_PROFILE=scraper). La API usa "
+            f"(.github/workflows/migrate.yml, APP_PROFILE={permitidos}). La API usa "
             "DATABASE_URL, que apunta al rol tenderflow_app."
         )
     return os.environ.get(_ADMIN_DB_URL_ENV, "").strip() or None
@@ -1110,3 +1116,150 @@ def ensure_data_dirs() -> None:
     downloads = _settings.DOWNLOADS_DIR
     if downloads is not None:
         downloads.mkdir(exist_ok=True)
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# Plan de arquitectura 2026-09 v2 — anclas por stream
+#
+# Marcadores de coordinación para que varios agentes añadan sus ajustes a este
+# módulo sin pisarse. No son separadores semánticos: cuando el plan cierre, lo
+# que haya debajo se integra con el resto del fichero.
+# ══════════════════════════════════════════════════════════════════════════
+
+# ── ANCLA S1 — identidad y equipo (OIDC genérico, invitaciones) ───────────
+#
+# Microsoft Entra ID (D17: multi-tenant + allowlist por dominio). Van como
+# variables de entorno leídas aquí y no como campos de `Settings` porque
+# `Settings` es un modelo con ~200 campos que se instancia al importar
+# `config`, y estas tres solo las mira el flujo de login: declararlas arriba
+# obligaría a tocar la sección de OAuth que comparten otros streams.
+#
+# Vacío significa «Microsoft no está configurado»: `GET /auth/oauth/microsoft/
+# authorize` responde 501 y la página de login no ofrece el botón, igual que
+# hace Google con `GOOGLE_CLIENT_ID` vacío.
+
+
+def oauth_microsoft_client_id() -> str:
+    """``OAUTH_MICROSOFT_CLIENT_ID`` — id de aplicación registrado en Entra ID."""
+    return os.environ.get("OAUTH_MICROSOFT_CLIENT_ID", "").strip()
+
+
+def oauth_microsoft_client_secret() -> str:
+    """``OAUTH_MICROSOFT_CLIENT_SECRET`` — secreto de cliente de esa aplicación."""
+    return os.environ.get("OAUTH_MICROSOFT_CLIENT_SECRET", "").strip()
+
+
+def oauth_microsoft_tenant() -> str:
+    """``OAUTH_MICROSOFT_TENANT`` — tenant del documento de descubrimiento.
+
+    Default ``common`` por D17: registro multi-tenant, y quién entra lo decide
+    ``OAUTH_ALLOWED_DOMAINS`` + ``access_grants``, que ya existen y ya gobiernan
+    el acceso por Google. Un valor concreto (GUID o dominio) restringe el login
+    a un solo tenant, que es lo que querría un despliegue de un único cliente.
+    """
+    return os.environ.get("OAUTH_MICROSOFT_TENANT", "").strip() or "common"
+
+
+# ── ANCLA S5 — cola de trabajo y worker ──────────────────────────────────
+#
+# Fuera de `Settings` y no dentro, por el mismo motivo que `database_admin_url`
+# de arriba: son ajustes de un componente (el consumidor de la cola) que la API
+# solo necesita para decidir un umbral, no parámetros del entorno de datos. Se
+# leen de `os.environ` en cada llamada para que un test los mueva sin
+# reconstruir el singleton, que es exactamente lo que hace `test_s5_cola.py`.
+
+#: Segundos que un job puede quedarse ``running`` sin que su worker dé señales
+#: antes de que otro lo reclame. Es el tiempo máximo que un despliegue a mitad
+#: de una extracción retrasa el trabajo del usuario, así que no puede ser mucho
+#: mayor que la extracción más larga (la ficha del pliego: 8 PDFs + LLM).
+JOBS_LOCK_TTL_SEGUNDOS_DEFAULT = 900
+
+#: Intentos totales por job, reclamación incluida. Tres son dos reintentos: con
+#: el backoff de abajo, la última oportunidad llega ~90 s después de la primera.
+JOBS_MAX_INTENTOS_DEFAULT = 3
+
+#: Base del backoff exponencial entre reintentos (30 s, 60 s, 120 s…).
+JOBS_BACKOFF_BASE_SEGUNDOS_DEFAULT = 30
+
+#: Espera del worker cuando la cola está vacía. Cinco segundos es el retardo
+#: máximo que ve un usuario que acaba de pulsar «Extraer ficha»; bajarlo cuesta
+#: una consulta más por segundo contra el pooler.
+JOBS_WORKER_POLL_SEGUNDOS_DEFAULT = 5.0
+
+#: A partir de cuántas filas pedidas ``GET /exports/download?format=pdf`` deja
+#: de renderizar en la request y encola (S5.2). El umbral se aplica sobre el
+#: `limit` PEDIDO y no sobre las filas reales: contar antes exigiría ejecutar la
+#: consulta, que es justo el trabajo del que se quiere sacar a la request.
+#:
+#: 20 000 y no un número menor porque el `limit` por defecto de la ruta es
+#: 10 000: con el umbral por debajo de ese valor, la petición **por defecto**
+#: cambiaría de devolver un fichero a devolver un 202, y todo cliente que hoy
+#: espera el PDF en la respuesta se rompería sin haber pedido nada distinto.
+#: Solo una petición explícitamente grande cruza al camino encolado.
+JOBS_EXPORT_UMBRAL_FILAS_DEFAULT = 20000
+
+
+def _entero_env(nombre: str, defecto: int, *, minimo: int = 1) -> int:
+    """Entero de entorno con suelo. Un valor ilegible NO tumba el proceso.
+
+    Un typo en una variable de tuning del worker no puede impedir que el
+    servicio arranque: se ignora y se usa el defecto, que es un valor seguro.
+    """
+    crudo = os.environ.get(nombre, "").strip()
+    if not crudo:
+        return defecto
+    try:
+        valor = int(crudo)
+    except ValueError:
+        return defecto
+    return max(minimo, valor)
+
+
+def _flotante_env(nombre: str, defecto: float, *, minimo: float = 0.1) -> float:
+    """Igual que :func:`_entero_env` para valores fraccionarios."""
+    crudo = os.environ.get(nombre, "").strip()
+    if not crudo:
+        return defecto
+    try:
+        valor = float(crudo)
+    except ValueError:
+        return defecto
+    return max(minimo, valor)
+
+
+def jobs_lock_ttl_segundos() -> int:
+    return _entero_env("JOBS_LOCK_TTL_SEGUNDOS", JOBS_LOCK_TTL_SEGUNDOS_DEFAULT, minimo=10)
+
+
+def jobs_max_intentos() -> int:
+    return _entero_env("JOBS_MAX_INTENTOS", JOBS_MAX_INTENTOS_DEFAULT, minimo=1)
+
+
+def jobs_backoff_base_segundos() -> int:
+    return _entero_env("JOBS_BACKOFF_BASE_SEGUNDOS", JOBS_BACKOFF_BASE_SEGUNDOS_DEFAULT, minimo=1)
+
+
+def jobs_worker_poll_segundos() -> float:
+    return _flotante_env("JOBS_WORKER_POLL_SEGUNDOS", JOBS_WORKER_POLL_SEGUNDOS_DEFAULT, minimo=0.1)
+
+
+def jobs_export_umbral_filas() -> int:
+    return _entero_env("JOBS_EXPORT_UMBRAL_FILAS", JOBS_EXPORT_UMBRAL_FILAS_DEFAULT, minimo=1)
+
+
+def jobs_cierre_por_cola() -> bool:
+    """¿El cierre post-ingesta encola sus pasos en vez de ejecutarlos en línea?
+
+    Por defecto sí (S5.4): cada paso deja una fila en ``jobs`` con su resultado,
+    así que una pasada cortada a mitad se puede leer paso a paso en vez de
+    reconstruirla del log de un runner efímero. ``JOBS_CIERRE_POR_COLA=0``
+    devuelve el cierre al camino en línea — la salida de escape si la cola diera
+    problemas en producción, sin desplegar código.
+    """
+    crudo = os.environ.get("JOBS_CIERRE_POR_COLA", "").strip().lower()
+    if not crudo:
+        return True
+    return crudo not in ("0", "false", "no", "off")
+
+
+# ── ANCLA S8 — documentos: almacén de objetos y OCR ──────────────────────

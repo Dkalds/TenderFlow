@@ -1,314 +1,35 @@
-/**
- * Lógica de la tabla de Detalle, fuera del árbol de render.
- *
- * `detalle/page.tsx` pasaba de las 1.000 líneas y toda su lógica —parámetros de
- * consulta, mezcla de scoring, ciclo de orden, selección, ventana de paginación,
- * CSV— vivía dentro del componente. Testearla exigía montar la página entera:
- * lento, frágil y dependiente de trece componentes de UI que no aportan nada a
- * lo que se quiere verificar. Aquí quedan las funciones puras (testeables sin
- * React) y dos hooks finos que solo les añaden estado y memoización.
- *
- * La página sigue siendo la dueña de las queries: estos hooks no llaman a la
- * red, reciben lo ya descargado. Eso mantiene el invariante de `web/` —los datos
- * vienen de `api/` por HTTP— y hace que el test no necesite servidor.
- */
 "use client";
 
 import { useCallback, useMemo, useState } from "react";
-import { parseAsString, useQueryStates } from "nuqs";
 import type {
   PaginationState,
   RowSelectionState,
   SortingState,
 } from "@tanstack/react-table";
 import type { LicitacionSummary } from "@/lib/api-types";
-
-export const PAGE_SIZE = 25;
-
-/**
- * Columnas que el backend sabe ordenar, y el valor de `sort` que espera.
- *
- * `GET /licitaciones` acepta `sort` con seis valores (`db/repositories/
- * licitaciones.py::_SORT_MAP`) y **descarta en silencio cualquier otro**. Las
- * tres de aquí se ordenan en servidor sobre el total; el resto se ordena en
- * cliente sobre la página cargada, y la tabla lo dice en vez de fingir un orden
- * global.
- */
-export const SERVER_SORT: Record<string, string> = {
-  titulo: "titulo",
-  importe: "importe",
-  fecha_publicacion: "fecha_publicacion",
-};
-
-export interface ScoringItem {
-  id_externo: string;
-  score: number;
-  band: string;
-  desglose: Record<string, number>;
-}
-
-export interface ScoringResponse {
-  opportunities: ScoringItem[];
-}
-
-export interface MergedRow extends LicitacionSummary {
-  score?: number;
-  band?: string;
-  desglose?: Record<string, number>;
-  isNew?: boolean;
-}
-
-/* ── Funciones puras ────────────────────────────────────────────────── */
+import {
+  PAGE_SIZE,
+  type MergedRow,
+  type ScoringItem,
+  type ScoringResponse,
+  buildQueryParams,
+  buildScoreMap,
+  isClientSorted,
+  mergeRows,
+  nextSorting,
+  pageWindowFor,
+  toggleAllPageSelection,
+  toggleRowSelection,
+  totalPagesFor,
+} from "./detalle-table-model";
 
 /**
- * Query string de `GET /licitaciones` para la página y el orden actuales.
+ * Estado de la tabla de Detalle: los dos hooks que le añaden React al modelo
+ * puro de `detalle-table-model.ts`.
  *
- * El prefijo `-` invierte el sentido por defecto de cada columna: para fecha el
- * default es descendente y para importe/título ascendente. Una columna que el
- * backend no sabe ordenar no añade `sort` — se ordenará en cliente.
+ * La página sigue siendo la dueña de las queries: estos hooks no llaman a la
+ * red, reciben lo ya descargado.
  */
-export function buildQueryParams({
-  filterParams,
-  pagination,
-  sorting,
-}: {
-  filterParams: Record<string, string>;
-  pagination: PaginationState;
-  sorting: SortingState;
-}): Record<string, string> {
-  const params: Record<string, string> = {
-    ...filterParams,
-    limit: String(pagination.pageSize),
-    offset: String(pagination.pageIndex * pagination.pageSize),
-  };
-  const active = sorting[0];
-  const serverKey = active ? SERVER_SORT[active.id] : undefined;
-  if (active && serverKey) {
-    const defaultIsDesc = serverKey === "fecha_publicacion";
-    params.sort = active.desc === defaultIsDesc ? serverKey : `-${serverKey}`;
-  }
-  return params;
-}
-
-/** Índice `id_externo → score` de la respuesta de scoring. */
-export function buildScoreMap(
-  scoring: ScoringResponse | undefined | null,
-): Map<string, ScoringItem> {
-  const map = new Map<string, ScoringItem>();
-  for (const item of scoring?.opportunities ?? []) map.set(item.id_externo, item);
-  return map;
-}
-
-/**
- * Filas de la página con su score y la marca de «nueva», ordenadas en cliente
- * solo si la columna activa no la sabe ordenar el backend.
- */
-export function mergeRows({
-  items,
-  scoreMap,
-  lastViewed,
-  activeSort,
-}: {
-  items: LicitacionSummary[];
-  scoreMap: Map<string, ScoringItem>;
-  lastViewed: number;
-  activeSort?: SortingState[number];
-}): MergedRow[] {
-  const rows: MergedRow[] = items.map((row) => {
-    const scored = scoreMap.get(row.id_externo);
-    const published = row.fecha_publicacion ? new Date(row.fecha_publicacion).getTime() : 0;
-    return {
-      ...row,
-      score: scored?.score,
-      band: scored?.band,
-      desglose: scored?.desglose,
-      isNew: published > lastViewed,
-    };
-  });
-
-  if (!activeSort || SERVER_SORT[activeSort.id]) return rows;
-
-  const key = activeSort.id as keyof MergedRow;
-  return rows.sort((a, b) => {
-    const left = a[key];
-    const right = b[key];
-    if (left == null && right == null) return 0;
-    if (left == null) return 1;
-    if (right == null) return -1;
-    const compared =
-      typeof left === "number" && typeof right === "number"
-        ? left - right
-        : String(left).localeCompare(String(right), "es", { sensitivity: "base" });
-    return activeSort.desc ? -compared : compared;
-  });
-}
-
-/** ¿El orden activo es de cliente (sobre la página cargada) y no global? */
-export function isClientSorted(sorting: SortingState): boolean {
-  const active = sorting[0];
-  return Boolean(active && !SERVER_SORT[active.id]);
-}
-
-/** Ciclo de la cabecera: asc → desc → sin orden. */
-export function nextSorting(current: SortingState, columnId: string): SortingState {
-  const active = current[0];
-  if (!active || active.id !== columnId) return [{ id: columnId, desc: false }];
-  if (!active.desc) return [{ id: columnId, desc: true }];
-  return [];
-}
-
-/** Alterna una fila en la selección (ausencia = no seleccionada). */
-export function toggleRowSelection(
-  current: RowSelectionState,
-  id: string,
-): RowSelectionState {
-  const next = { ...current };
-  if (next[id]) delete next[id];
-  else next[id] = true;
-  return next;
-}
-
-/** Marca o desmarca de golpe las filas de la página visible. */
-export function toggleAllPageSelection(
-  current: RowSelectionState,
-  rows: MergedRow[],
-  allSelected: boolean,
-): RowSelectionState {
-  const next = { ...current };
-  for (const row of rows) {
-    if (allSelected) delete next[row.id_externo];
-    else next[row.id_externo] = true;
-  }
-  return next;
-}
-
-/** Ventana de ±2 páginas alrededor de la actual, recortada a los extremos. */
-export function pageWindowFor(pageIndex: number, totalPages: number): number[] {
-  const pages: number[] = [];
-  const start = Math.max(0, pageIndex - 2);
-  const end = Math.min(totalPages - 1, pageIndex + 2);
-  for (let index = start; index <= end; index += 1) pages.push(index);
-  return pages;
-}
-
-export const CSV_HEADERS = [
-  "id_externo",
-  "titulo",
-  "organo_contratacion",
-  "importe",
-  "estado",
-  "fecha_publicacion",
-  "ccaa",
-  "cpv",
-  "tecnologia",
-] as const;
-
-/** CSV de las filas exportadas, con comillas escapadas al estilo RFC 4180. */
-export function buildCsv(rows: LicitacionSummary[]): string {
-  return [
-    CSV_HEADERS.join(","),
-    ...rows.map((row) =>
-      CSV_HEADERS.map((header) => {
-        const value = (row as unknown as Record<string, unknown>)[header];
-        const text = value == null ? "" : String(value);
-        return text.includes(",") || text.includes('"')
-          ? `"${text.replace(/"/g, '""')}"`
-          : text;
-      }).join(","),
-    ),
-  ].join("\n");
-}
-
-/** `id_externo` de las filas visibles — es lo que se pide al endpoint de scoring. */
-export function pageIdsOf(items: LicitacionSummary[] | undefined): string[] {
-  return (items ?? []).map((row) => row.id_externo).filter(Boolean);
-}
-
-/** Número de páginas para un total dado (nunca menos de una). */
-export function totalPagesFor(total: number, pageSize: number): number {
-  return Math.max(1, Math.ceil(total / pageSize));
-}
-
-/* ── Ventana de cierre (recorte local de /detalle) ───────────────────── */
-
-/**
- * Claves de URL del recorte por fecha de cierre.
- *
- * No son ámbito global: no las conoce `lib/filters.ts`, no viajan al resto de
- * pantallas ni las pinta la barra de filtros. Son locales de /detalle, como
- * `?lic=`. Existen para que una superficie que cuenta plazos —la tarjeta
- * «Vencen 48h» de /resumen— pueda abrir **exactamente** el subconjunto que
- * cuenta: el ámbito global sólo sabe acotar por fecha de publicación, así que
- * sin esto el enlace abría el catálogo entero y la cifra prometía algo que el
- * listado no cumplía.
- *
- * Los nombres son los del contrato de `GET /licitaciones`
- * (`api/routes/licitaciones.py::list_licitaciones`) para que el deep-link se
- * pase tal cual a la query sin tabla de traducción.
- */
-export const CIERRE_KEYS = ["cierre_desde", "cierre_hasta"] as const;
-
-const _CIERRE_RE = /^\d{4}-\d{2}-\d{2}$/;
-
-/**
- * Params de API del recorte, descartando lo que no sea `YYYY-MM-DD`.
- *
- * El backend responde 422 a un formato inválido, y un 422 vacía la tabla
- * entera: una URL manipulada a mano no debe poder tumbar la pantalla, así que
- * el valor ilegible se ignora aquí igual que lo ignora el repository.
- */
-export function cierreParams(desde: string | null, hasta: string | null): Record<string, string> {
-  const params: Record<string, string> = {};
-  if (desde && _CIERRE_RE.test(desde)) params.cierre_desde = desde;
-  if (hasta && _CIERRE_RE.test(hasta)) params.cierre_hasta = hasta;
-  return params;
-}
-
-/** Texto del chip que declara el recorte activo, o `null` si no hay ninguno. */
-export function cierreLabel(params: Record<string, string>): string | null {
-  const { cierre_desde: desde, cierre_hasta: hasta } = params;
-  if (desde && hasta) return `Cierra ${desde} → ${hasta}`;
-  if (hasta) return `Cierra hasta ${hasta}`;
-  if (desde) return `Cierra desde ${desde}`;
-  return null;
-}
-
-export interface CierreRecorte {
-  /** Lo que se añade a la query de `GET /licitaciones`. */
-  params: Record<string, string>;
-  /** Texto del chip, o `null` cuando no hay recorte. */
-  label: string | null;
-  /** Quita el recorte de la URL. */
-  clear: () => void;
-}
-
-/**
- * Lee el recorte por ventana de cierre de la URL.
- *
- * `shallow: true` e `history: "replace"` como el resto de los parámetros de la
- * pantalla: ningún Server Component los consume y quitar el recorte no merece
- * una entrada de historial propia.
- */
-export function useCierreRecorte(): CierreRecorte {
-  const [params, setParams] = useQueryStates(
-    { cierre_desde: parseAsString, cierre_hasta: parseAsString },
-    { history: "replace", shallow: true },
-  );
-
-  const apiParams = useMemo(
-    () => cierreParams(params.cierre_desde, params.cierre_hasta),
-    [params.cierre_desde, params.cierre_hasta],
-  );
-
-  const clear = useCallback(
-    () => setParams({ cierre_desde: null, cierre_hasta: null }),
-    [setParams],
-  );
-
-  return { params: apiParams, label: cierreLabel(apiParams), clear };
-}
-
-/* ── Hooks ──────────────────────────────────────────────────────────── */
 
 export interface DetalleTableState {
   sorting: SortingState;
