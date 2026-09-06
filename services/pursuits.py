@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, date, datetime, timedelta
 from statistics import median
-from typing import Any
+from typing import Any, get_args
 
 from db.database import now_utc_iso
 from db.notifications import insert_user_notification
@@ -15,16 +15,20 @@ from db.repositories.adjudicaciones import (
 )
 from db.repositories.agenda import SignalCriteria, signal_rows
 from db.repositories.licitaciones import LicitacionRepository
+from db.repositories.organizations import OrganizationRepository
 from db.repositories.pursuits import PursuitConcurrencyError, PursuitRepository
 from db.users import get_user_by_id
 from observability.logging import get_logger
 from services.analytics.lead_time import estimar_adjudicacion
 from services.competitive.renovaciones import proximas_renovaciones
 from services.ficha_pdf import BloqueFicha, FichaOportunidad, construir_pdf
+from services.kit_presentacion import KitPresentacion, construir_kit, marcar_item
 from services.organizations import require_active_member, resolve_organization
 from services.watchlist_rules import list_rules
 from shared.dto import (
     AgendaUrgencia,
+    OrganizationSettings,
+    PerdidaPorMotivo,
     PipelineAgendaItem,
     PipelineAgendaKpis,
     PipelineAgendaResponse,
@@ -34,11 +38,13 @@ from shared.dto import (
     PursuitDetail,
     PursuitListResponse,
     PursuitMetrics,
+    PursuitOutcomeReasonCode,
     PursuitStatus,
     PursuitSummary,
     PursuitUpdate,
 )
 from shared.identity import user_key_from_email
+from shared.tender_facts import RequiredDocumentFact
 
 _repo = PursuitRepository()
 _adj_repo = AdjudicacionRepository()
@@ -313,6 +319,109 @@ def update_pursuit(
     return _detalle(updated, resolved_id, pursuit_id)
 
 
+#: Los motivos de D37, como tupla, para el mensaje de error de la ruta.
+#: Se derivan del `Literal` del contrato en vez de reescribirse: una lista
+#: paralela sería lo primero en quedarse vieja el día que D37 se revise.
+MOTIVOS_PERDIDA: tuple[str, ...] = get_args(PursuitOutcomeReasonCode)
+
+#: Pérdidas mínimas para publicar el reparto por motivo.
+#:
+#: Cinco es el mismo umbral que el plan pide para el corte de la UI, y vive
+#: aquí —no en la pantalla— porque el juicio es el mismo en el cuadro de mando,
+#: en el informe semanal y en el PDF. Un «60 % por precio» sobre tres casos es
+#: ruido con aspecto de conclusión.
+MINIMO_PERDIDAS_POR_MOTIVO = 5
+
+#: Etiqueta de los cierres anteriores a F3.1. No es un motivo de D37: es la
+#: ausencia de uno, y se cuenta aparte para que no se reparta entre los demás
+#: y los infle.
+SIN_CODIFICAR = "sin_codificar"
+
+
+def _perdidas_por_motivo(rows: list[dict[str, Any]]) -> list[PerdidaPorMotivo]:
+    """Reparto de las pérdidas por motivo, o lista vacía si no hay base.
+
+    Por debajo de `MINIMO_PERDIDAS_POR_MOTIVO` devuelve **vacío**, no los
+    conteos crudos: si los devolviera, cada consumidor tendría que acordarse
+    de aplicar el mínimo y el primero que se olvidara publicaría un porcentaje
+    sobre dos casos.
+    """
+    perdidas = [row for row in rows if row.get("outcome") == "lost"]
+    if len(perdidas) < MINIMO_PERDIDAS_POR_MOTIVO:
+        return []
+    conteo: dict[str, int] = {}
+    for row in perdidas:
+        motivo = str(row.get("outcome_reason_code") or "").strip() or SIN_CODIFICAR
+        conteo[motivo] = conteo.get(motivo, 0) + 1
+    total = len(perdidas)
+    return [
+        PerdidaPorMotivo(motivo=motivo, n=n, pct=n / total)
+        # Por frecuencia y, a igualdad, por nombre: dos consultas idénticas no
+        # pueden devolver el reparto en distinto orden.
+        for motivo, n in sorted(conteo.items(), key=lambda kv: (-kv[1], kv[0]))
+    ]
+
+
+def _trimestre(iso: Any) -> str | None:
+    """``2026-Q4`` a partir de una fecha ISO; ``None`` si no se entiende."""
+    fecha = _a_fecha_simple(iso)
+    return f"{fecha.year}-Q{(fecha.month - 1) // 3 + 1}" if fecha is not None else None
+
+
+def _a_fecha_simple(valor: Any) -> date | None:
+    if valor is None:
+        return None
+    if isinstance(valor, datetime):
+        return valor.date()
+    if isinstance(valor, date):
+        return valor
+    texto = str(valor).strip()[:10]
+    try:
+        return date.fromisoformat(texto)
+    except ValueError:
+        return None
+
+
+def _valor_ponderado(
+    rows: list[dict[str, Any]],
+    ajustes: OrganizationSettings,
+) -> tuple[float, dict[str, float], int, dict[str, int]]:
+    """``(valor, previsión por trimestre, sin importe, probabilidades usadas)``.
+
+    Sólo cuenta oportunidades **abiertas**: una ganada ya está contada en
+    `awarded_amount_eur` y sumarla aquí la contaría dos veces; una perdida no
+    es pipeline. Las probabilidades salen de la configuración de la
+    organización, con los defaults de D34 detrás, y viajan con el resultado
+    porque son supuestos: sin ellos, la cifra no es reproducible (ADR-014).
+
+    Un expediente sin importe publicado **no** se cuenta como cero, se cuenta
+    aparte. Tratarlo como cero baja el pipeline en silencio y hace que la
+    cifra dependa de la cobertura del corpus sin que nadie lo vea.
+    """
+    valor = 0.0
+    prevision: dict[str, float] = {}
+    sin_importe = 0
+    usadas: dict[str, int] = {}
+
+    for row in rows:
+        etapa = str(row.get("status") or "")
+        probabilidad = ajustes.probabilidad_de(etapa)
+        if probabilidad == 0:
+            continue  # etapa terminal o desconocida: fuera del pipeline
+        usadas[etapa] = probabilidad
+        importe = row.get("tender_importe")
+        if importe is None:
+            sin_importe += 1
+            continue
+        aporte = float(importe) * probabilidad / 100
+        valor += aporte
+        trimestre = _trimestre(row.get("tender_deadline"))
+        if trimestre is not None:
+            prevision[trimestre] = round(prevision.get(trimestre, 0.0) + aporte, 2)
+
+    return round(valor, 2), dict(sorted(prevision.items())), sin_importe, usadas
+
+
 def get_metrics(
     user_id: int,
     *,
@@ -336,6 +445,18 @@ def get_metrics(
         for row in rows
         if (hours := _elapsed_hours(row.get("identified_at"), row.get("decision_at"))) is not None
     ]
+    # Ajustes de la organización para el valor ponderado (F4.1). Una lectura
+    # que falle deja los defaults de D34: la cifra sigue siendo correcta y
+    # declarada, sólo que sin la personalización.
+    try:
+        ajustes = OrganizationSettings.model_validate(
+            OrganizationRepository().get_settings(resolved_id)
+        )
+    except Exception as exc:
+        log.warning("pursuit_metrics_settings_error", error=str(exc)[:200])
+        ajustes = OrganizationSettings()
+    valor, prevision, sin_importe, probabilidades = _valor_ponderado(rows, ajustes)
+
     return PursuitMetrics(
         organization_id=resolved_id,
         period_from=period_from,
@@ -349,6 +470,12 @@ def get_metrics(
             float(row["awarded_amount_eur"] or 0) for row in rows if row["outcome"] == "won"
         ),
         median_decision_time_hours=median(decision_hours) if decision_hours else None,
+        perdidas_por_motivo=_perdidas_por_motivo(rows),
+        perdidas_n_minimo=MINIMO_PERDIDAS_POR_MOTIVO,
+        pipeline_value_eur=valor,
+        probabilidades_etapa_usadas=probabilidades,
+        prevision_trimestral=prevision,
+        pipeline_sin_importe=sin_importe,
     )
 
 
@@ -477,6 +604,22 @@ def _normalize_and_validate_update(
         if awarded is None and not str(reason or "").strip():
             raise PursuitValidationError(
                 "Una oportunidad ganada exige importe adjudicado o justificación."
+            )
+    # F3.1 — cerrar en `lost` exige motivo codificado (D37).
+    #
+    # Es obligatorio en el momento del cierre y no después porque después no
+    # se hace: el histórico de motivos que este producto quiere explotar sólo
+    # existe si se captura cuando la persona todavía recuerda por qué perdió.
+    # Los cierres anteriores a v104 quedan sin código y se completan aparte;
+    # esta regla mira `next_outcome`, así que no bloquea editar otra cosa de
+    # una oportunidad ya cerrada.
+    if next_outcome == "lost" and "outcome" in changes:
+        codigo = changes.get("outcome_reason_code", current.get("outcome_reason_code"))
+        if not str(codigo or "").strip():
+            raise PursuitValidationError(
+                "Cerrar una oportunidad como perdida exige un motivo codificado: "
+                + ", ".join(MOTIVOS_PERDIDA)
+                + "."
             )
     return changes
 
@@ -848,4 +991,61 @@ def ficha_pdf(user_id: int, pursuit_id: int, *, organization_id: int | None = No
             subtitulo=f"Oportunidad #{detalle.id} · organización {detalle.organization_id}",
             bloques=bloques,
         )
+    )
+
+
+def _documentos_del_pliego(licitacion_id: str) -> list[RequiredDocumentFact]:
+    """Los documentos exigidos de la ficha, o lista vacía si no hay ficha."""
+    from services.rag.fact_sheet import get_fact_sheet
+
+    record = get_fact_sheet(licitacion_id)
+    return list(record.facts.required_documents) if record and record.facts else []
+
+
+def kit_de_pursuit(
+    user_id: int, pursuit_id: int, *, organization_id: int | None = None
+) -> KitPresentacion:
+    """F2.3 — el kit de una oportunidad, con su estado.
+
+    Pasa por :func:`get_pursuit`, que ya resuelve la organización y comprueba
+    la pertenencia: el kit no puede tener su propia ruta de lectura, porque
+    entonces habría dos sitios donde olvidarse del ámbito.
+    """
+    detalle = get_pursuit(user_id, pursuit_id, organization_id=organization_id)
+    return construir_kit(
+        detalle.licitacion_id,
+        _documentos_del_pliego(detalle.licitacion_id),
+        organization_id=detalle.organization_id,
+        pursuit_id=pursuit_id,
+    )
+
+
+def marcar_kit_de_pursuit(
+    user_id: int,
+    pursuit_id: int,
+    *,
+    clave: str,
+    listo: bool,
+    organization_id: int | None = None,
+) -> KitPresentacion:
+    """Marca un ítem y devuelve el kit actualizado.
+
+    Se resuelve la organización **con permiso de escritura**: marcar es una
+    modificación del trabajo del equipo, y un `viewer` no debe poder decir que
+    la garantía está lista.
+    """
+    resolved_id, _ = resolve_organization(user_id, organization_id, write=True)
+    detalle = get_pursuit(user_id, pursuit_id, organization_id=resolved_id)
+    marcar_item(
+        organization_id=resolved_id,
+        pursuit_id=pursuit_id,
+        actor_user_id=user_id,
+        clave=clave,
+        listo=listo,
+    )
+    return construir_kit(
+        detalle.licitacion_id,
+        _documentos_del_pliego(detalle.licitacion_id),
+        organization_id=resolved_id,
+        pursuit_id=pursuit_id,
     )

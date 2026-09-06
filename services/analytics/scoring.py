@@ -46,6 +46,7 @@ from pydantic import BaseModel, Field
 from config import settings
 from db.repositories.aggregates import AggregateRepository, LicitacionesFilters
 from observability.logging import get_logger
+from services.ambito_mercado import AmbitoMercado, resolver_ambito
 from services.analytics.affinity import build_portfolio, score_affinity_batch
 from services.analytics.scoring_explicacion import HechosDeFila, explicar
 from services.analytics.scoring_signals import (
@@ -58,6 +59,7 @@ from services.analytics.scoring_signals import (
     load_importe_percentiles,
     load_margen_stats,
 )
+from shared.dto import OrganizationSettings
 
 log = get_logger(__name__)
 
@@ -628,26 +630,42 @@ def score_dataframe(
 # ---------------------------------------------------------------------------
 
 
+def ambito_del_radar(
+    organization_id: int | None,
+    perfil: dict[str, Any] | None = None,
+) -> AmbitoMercado:
+    """Ámbito de mercado efectivo del Radar (F6.1), con su procedencia.
+
+    Aplica la precedencia declarada de :mod:`services.ambito_mercado`: perfil
+    personal, luego organización, luego nada. Una lectura que falle degrada al
+    ámbito global —el universo entero— y **nunca** a una bandeja vacía: quedarse
+    sin Radar porque una consulta de configuración falló es peor que puntuar de
+    más.
+    """
+    ajustes: OrganizationSettings | None = None
+    if organization_id is not None:
+        try:
+            from db.repositories.organizations import OrganizationRepository
+
+            ajustes = OrganizationSettings.model_validate(
+                OrganizationRepository().get_settings(int(organization_id))
+            )
+        except Exception as exc:
+            log.warning("scoring_org_settings_load_error", error=str(exc))
+    return resolver_ambito(perfil, ajustes)
+
+
 def _tecnologias_de_organizacion(organization_id: int | None) -> str | None:
-    """Familias declaradas por la organización, como CSV para el filtro SQL.
+    """Familias del ámbito, como CSV para el filtro SQL.
 
     Es el ámbito por defecto del Radar cuando el usuario no filtra tecnología
     a mano: una consultora Microsoft no tiene por qué ver el top-24 de SAP.
     ``None`` sin organización, sin configuración o si la lectura falla —el
     Radar degrada al universo entero, nunca a una bandeja vacía.
     """
-    if organization_id is None:
-        return None
-    try:
-        from db.repositories.organizations import OrganizationRepository
-
-        familias = OrganizationRepository().get_settings(int(organization_id)).get("tecnologias")
-    except Exception as exc:
-        log.warning("scoring_org_settings_load_error", error=str(exc))
-        return None
-    if not isinstance(familias, list):
-        return None
-    codigos = [str(f).strip().upper() for f in familias if str(f).strip()]
+    codigos = [
+        t.strip().upper() for t in ambito_del_radar(organization_id).tecnologias if t.strip()
+    ]
     return ",".join(codigos) or None
 
 

@@ -17,7 +17,7 @@ _PURSUIT_SELECT = (
     "l.organo_contratacion AS tender_organo, "
     "p.responsible_user_id, u.display_name AS responsible_name, "
     "p.status, p.decision, p.decision_reason, p.offer_price_eur, "
-    "p.outcome, p.awarded_amount_eur, p.outcome_reason, "
+    "p.outcome, p.awarded_amount_eur, p.outcome_reason, p.outcome_reason_code, "
     "p.next_action, p.next_action_due, "
     "p.identified_at, p.decision_at, p.submitted_at, p.closed_at, "
     "p.created_at, p.updated_at, p.version, "
@@ -39,6 +39,7 @@ _UPDATABLE_COLUMNS = frozenset(
         "outcome",
         "awarded_amount_eur",
         "outcome_reason",
+        "outcome_reason_code",
         "next_action",
         "next_action_due",
         "decision_at",
@@ -310,18 +311,27 @@ class PursuitRepository:
         period_from: str | None = None,
         period_to: str | None = None,
     ) -> list[dict[str, Any]]:
-        clauses = ["organization_id = %s"]
+        clauses = ["p.organization_id = %s"]
         params: list[Any] = [organization_id]
         if period_from is not None:
-            clauses.append("identified_at >= %s")
+            clauses.append("p.identified_at >= %s")
             params.append(period_from)
         if period_to is not None:
-            clauses.append("identified_at < %s")
+            clauses.append("p.identified_at < %s")
             params.append(period_to)
         with connect_read() as conn:
             cur = conn.execute(
-                "SELECT status, outcome, awarded_amount_eur, identified_at, "
-                "decision_at, submitted_at FROM pursuits WHERE " + " AND ".join(clauses),
+                "SELECT p.status, p.outcome, p.awarded_amount_eur, p.outcome_reason_code, "
+                "p.identified_at, p.decision_at, p.submitted_at, "
+                # F4.1: el importe y el plazo de la licitación son lo que
+                # convierte el conteo del embudo en euros y en trimestres.
+                # Vienen en la misma consulta porque el valor ponderado se
+                # calcula sobre exactamente estas filas.
+                "l.importe AS tender_importe, l.fecha_limite AS tender_deadline, "
+                "l.organo_contratacion AS tender_organo "
+                "FROM pursuits p "
+                "JOIN licitaciones l ON l.id_externo = p.licitacion_id "
+                "WHERE " + " AND ".join(clauses),
                 tuple(params),
             )
             return rows_to_dicts(cur)
@@ -497,3 +507,50 @@ class PursuitRepository:
                 created_at,
             ),
         )
+
+    # ── Kit de presentación (F2.3) ───────────────────────────────────────
+    #
+    # El estado del checklist vive en el ledger, no en columnas: marcar y
+    # desmarcar son eventos, y el estado actual es el último de cada clave.
+    # Eso da gratis «quién marcó qué y cuándo», que en un equipo que se reparte
+    # la oferta es la mitad del valor del checklist.
+
+    KIT_EVENT_TYPE = "kit_item_marcado"
+
+    def kit_events(self, organization_id: int, pursuit_id: int) -> list[dict[str, Any]]:
+        """Eventos del kit de una oportunidad, en orden de escritura.
+
+        Se devuelven todos y los reduce el servicio: son decenas por
+        oportunidad, y un ``DISTINCT ON`` obligaría a extraer la clave de
+        dentro del JSON en el ``ORDER BY``, que es más frágil que ordenar por
+        ``id`` y quedarse con el último.
+        """
+        with connect_read() as conn:
+            cur = conn.execute(
+                "SELECT actor_user_id, payload_json, created_at FROM pursuit_events "
+                "WHERE organization_id = %s AND pursuit_id = %s AND event_type = %s "
+                "ORDER BY id",
+                (organization_id, pursuit_id, self.KIT_EVENT_TYPE),
+            )
+            return rows_to_dicts(cur)
+
+    def append_kit_event(
+        self,
+        *,
+        organization_id: int,
+        pursuit_id: int,
+        actor_user_id: int,
+        payload: dict[str, Any],
+    ) -> None:
+        """Anota un marcado del kit. Sin ``UPDATE``: el ledger es append-only."""
+        with connect() as conn:
+            self._append_event(
+                conn,
+                pursuit_id=pursuit_id,
+                organization_id=organization_id,
+                event_type=self.KIT_EVENT_TYPE,
+                actor_user_id=actor_user_id,
+                payload=payload,
+                idempotency_key=None,
+                created_at=now_utc_iso(),
+            )

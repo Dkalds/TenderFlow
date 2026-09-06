@@ -31,6 +31,7 @@ from db.repositories.licitaciones import LicitacionRepository
 from observability.logging import get_logger
 from services.rag.paginas import PaginaDocumento, get_pagina
 from services.reportes_dato import COLA_POR_TIPO, TipoReporte, registrar_reporte
+from services.simulador_precio import SimulacionPrecio, simular_precio_de
 from shared.dto import (
     MAX_PAGE_LIMIT,
     CursorPaginatedResponse,
@@ -804,6 +805,44 @@ async def get_pagina_documento(
             detail="No hay texto extraído para esa página de ese documento.",
         )
     return pagina
+
+
+@router.get(
+    "/licitaciones/{id_externo:path}/simulador",
+    summary="Puntos de precio que da cada baja, según la fórmula del pliego",
+    responses={401: {"description": "Autenticación inválida"}},
+)
+async def get_simulador_precio(
+    id_externo: str,
+    baja: list[float] = Query(
+        default=[],
+        description=(
+            "Bajas a simular, en tanto por uno (0.12 = 12 %). Repetible. Sin "
+            "ninguna se usan los escenarios de referencia 5/10/15/20/25 %."
+        ),
+    ),
+    baja_referencia: float | None = Query(
+        default=None,
+        ge=0,
+        le=1,
+        description="Baja del rival contra el que medirse (p. ej. el p90 de la predicción)",
+    ),
+    _ctx: dict[str, Any] = Depends(require_any_auth),
+) -> SimulacionPrecio:
+    """F2.2 — el simulador de puntuación de la oferta.
+
+    Devuelve 200 también cuando **no** puede calcular: `sin_calculo` dice por
+    qué (sin fórmula extraída, fórmula no calculable, sin puntos de precio) y
+    `escenarios` va vacío. Un 404 aquí obligaría al cliente a distinguir «no
+    existe el expediente» de «el pliego no publica la fórmula», que son dos
+    cosas muy distintas para quien está fijando un precio.
+    """
+    return await run_db(
+        simular_precio_de,
+        id_externo,
+        bajas=list(baja),
+        baja_referencia=baja_referencia,
+    )
 
 
 @router.get(

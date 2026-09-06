@@ -1995,6 +1995,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/licitaciones/{id_externo}/simulador": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Puntos de precio que da cada baja, según la fórmula del pliego
+         * @description F2.2 — el simulador de puntuación de la oferta.
+         *
+         *     Devuelve 200 también cuando **no** puede calcular: `sin_calculo` dice por
+         *     qué (sin fórmula extraída, fórmula no calculable, sin puntos de precio) y
+         *     `escenarios` va vacío. Un 404 aquí obligaría al cliente a distinguir «no
+         *     existe el expediente» de «el pliego no publica la fórmula», que son dos
+         *     cosas muy distintas para quien está fijando un precio.
+         */
+        get: operations["get_simulador_precio_api_v1_licitaciones__id_externo__simulador_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/licitaciones/{id_externo}/tech-scores": {
         parameters: {
             query?: never;
@@ -2857,6 +2883,34 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/pursuits/{pursuit_id}/kit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Kit de presentación: documentos que exige el pliego y cuáles están listos
+         * @description F2.3 — qué hay que entregar, en qué sobre, y qué falta.
+         */
+        get: operations["get_pursuit_kit_api_v1_pursuits__pursuit_id__kit_get"];
+        put?: never;
+        /**
+         * Marcar un documento del kit como listo (o desmarcarlo)
+         * @description Anota el marcado en el ledger y devuelve el kit ya actualizado.
+         *
+         *     Devuelve el kit entero y no un `204`: el checklist es colaborativo, así que
+         *     la respuesta es la ocasión de traer también lo que han marcado otros desde
+         *     que el cliente lo cargó.
+         */
+        post: operations["post_pursuit_kit_item_api_v1_pursuits__pursuit_id__kit_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/radar/dismissals": {
         parameters: {
             query?: never;
@@ -3493,6 +3547,30 @@ export interface components {
             group_by: string;
             /** Items */
             items: components["schemas"]["BajaAgregada"][];
+        };
+        /**
+         * BudgetLineFact
+         * @description F2.4 — una línea del desglose del presupuesto publicado.
+         */
+        BudgetLineFact: {
+            /** Amount Eur */
+            amount_eur?: number | null;
+            /**
+             * Category
+             * @default otro
+             * @enum {string}
+             */
+            category: "salariales" | "directos" | "indirectos" | "beneficio" | "otro";
+            /** Concept */
+            concept: string;
+            /** Confidence */
+            confidence: number;
+            /** Description */
+            description: string;
+            /** Evidence */
+            evidence?: components["schemas"]["EvidenceRef"][];
+            /** Pct */
+            pct?: number | null;
         };
         /** BulkGetRequest */
         BulkGetRequest: {
@@ -4641,6 +4719,21 @@ export interface components {
             /** Titulo */
             titulo: string;
         };
+        /**
+         * EscenarioPuntos
+         * @description Los puntos de precio que da una baja concreta.
+         */
+        EscenarioPuntos: {
+            /** Baja */
+            baja: number;
+            /** Puntos */
+            puntos: number;
+            /**
+             * Temeraria
+             * @default false
+             */
+            temeraria: boolean;
+        };
         /** Estacionalidad */
         Estacionalidad: {
             /** Count */
@@ -5249,6 +5342,57 @@ export interface components {
             /** Q3 */
             q3: number;
         };
+        /**
+         * ItemKit
+         * @description Un documento del kit, con su estado y quién lo marcó.
+         */
+        ItemKit: {
+            /** Clave */
+            clave: string;
+            /**
+             * Listo
+             * @default false
+             */
+            listo: boolean;
+            /** Marcado En */
+            marcado_en?: string | null;
+            /** Marcado Por */
+            marcado_por?: number | null;
+            /** Nombre */
+            nombre: string;
+            /**
+             * Sobre
+             * @enum {string}
+             */
+            sobre: "sobre_a" | "sobre_b" | "sobre_c" | "otro";
+            /** Subsanable */
+            subsanable?: boolean | null;
+        };
+        /**
+         * KitItemBody
+         * @description Marcado (o desmarcado) de un documento del kit.
+         */
+        KitItemBody: {
+            /** Clave */
+            clave: string;
+            /** Listo */
+            listo: boolean;
+        };
+        /**
+         * KitPresentacion
+         * @description El kit completo de una oportunidad.
+         */
+        KitPresentacion: {
+            /** Items */
+            items?: components["schemas"]["ItemKit"][];
+            /** Licitacion Id */
+            licitacion_id: string;
+            /**
+             * Sin Extraccion
+             * @default false
+             */
+            sin_extraccion: boolean;
+        };
         /** LastExtraction */
         LastExtraction: {
             /** Last Extraction */
@@ -5457,6 +5601,31 @@ export interface components {
             numero: string;
             /** Titulo */
             titulo?: string | null;
+        };
+        /**
+         * MargenImplicito
+         * @description F2.4 — qué margen deja este precio, si el pliego publica tarifas.
+         *
+         *     Sólo existe cuando la ficha trae ``rate_cards`` **con tarifa y horas**: el
+         *     coste estimado es la suma de tarifa por horas de cada perfil, y sin las dos
+         *     mitades no hay coste que restar. Por eso no se calcula «con lo que haya»:
+         *     un margen con la mitad de los perfiles es un margen equivocado, y encima
+         *     optimista, que es la dirección peligrosa.
+         */
+        MargenImplicito: {
+            /** Coste Estimado Eur */
+            coste_estimado_eur: number;
+            /**
+             * Fuente
+             * @default Tarifas máximas por perfil publicadas en el pliego y horas estimadas; es un margen techo, no el coste real de la organización.
+             */
+            fuente: string;
+            /** Margen Eur */
+            margen_eur: number;
+            /** Margen Pct */
+            margen_pct?: number | null;
+            /** Perfiles */
+            perfiles: number;
         };
         /** MarkAlertsReadRequest */
         MarkAlertsReadRequest: {
@@ -5778,22 +5947,71 @@ export interface components {
          *     acota su universo a ellas cuando el usuario no filtra por tecnología a
          *     mano, y la ingesta no cambia —el filtro es una vista sobre el corpus, no
          *     una pérdida de datos.
+         *
+         *     **Ámbito de mercado (F6.1).** El resto de campos de ámbito —CPVs, CCAAs,
+         *     rango de importe, tipos de órgano y procedimientos excluidos— vivían sólo
+         *     en el perfil **personal** (``api/routes/me.py``), así que cada miembro
+         *     tenía que reconfigurar a mano lo que la organización entera comparte, y
+         *     quien no lo hacía veía el mercado sin acotar. Aquí son de la organización,
+         *     y la precedencia es explícita: **perfil personal → organización → global**.
+         *     En todos, la lista vacía significa «sin restricción», nunca «ninguno»: un
+         *     ámbito que se interpretara al revés vaciaría el Radar en silencio el día
+         *     que alguien guardara la configuración sin tocar un campo.
+         *
+         *     No hay migración: ``organizations.settings_json`` es JSON y admite claves
+         *     nuevas. La que D39 pre-autorizaba no hace falta.
          */
         OrganizationSettings: {
+            /** Ccaas */
+            ccaas?: string[];
+            /** Cpvs */
+            cpvs?: string[];
+            /** Importe Max */
+            importe_max?: number | null;
+            /** Importe Min */
+            importe_min?: number | null;
+            /** Probabilidades Etapa */
+            probabilidades_etapa?: {
+                [key: string]: number;
+            };
+            /** Procedimientos Excluidos */
+            procedimientos_excluidos?: string[];
             /** Tecnologias */
             tecnologias?: string[];
+            /** Tipos Organo */
+            tipos_organo?: string[];
         };
         /**
          * OrganizationSettingsOut
          * @description Configuración leída, con la organización a la que pertenece.
          */
         OrganizationSettingsOut: {
+            /** Ccaas */
+            ccaas?: string[];
+            /** Cpvs */
+            cpvs?: string[];
+            /** Importe Max */
+            importe_max?: number | null;
+            /** Importe Min */
+            importe_min?: number | null;
             /** Organization Id */
             organization_id: number;
+            /** Probabilidades Etapa */
+            probabilidades_etapa?: {
+                [key: string]: number;
+            };
+            /** Probabilidades Etapa Default */
+            probabilidades_etapa_default?: {
+                [key: string]: number;
+            };
+            /** Procedimientos Excluidos */
+            procedimientos_excluidos?: string[];
             /** Tecnologias */
             tecnologias?: string[];
             /** Tecnologias Disponibles */
             tecnologias_disponibles?: string[];
+            /** Tipos Organo */
+            tipos_organo?: string[];
         };
         /**
          * OrganizationSummary
@@ -6095,6 +6313,18 @@ export interface components {
              */
             email: string;
         };
+        /**
+         * PerdidaPorMotivo
+         * @description Cuántas veces se perdió por un motivo, y qué parte del total es.
+         */
+        PerdidaPorMotivo: {
+            /** Motivo */
+            motivo: string;
+            /** N */
+            n: number;
+            /** Pct */
+            pct: number;
+        };
         /** PeriodDeltas */
         PeriodDeltas: {
             /**
@@ -6375,12 +6605,46 @@ export interface components {
              */
             umbral_semanal: number;
         };
+        /**
+         * PriceFormulaFact
+         * @description F2.2 — la fórmula de valoración del precio, con sus parámetros.
+         *
+         *     ``max_points`` es lo que reparte la fórmula; si el pliego no lo publica, el
+         *     simulador cae al peso del precio (``licitaciones.peso_precio_pct``, v85) y
+         *     lo declara. ``params`` guarda lo específico de cada tipo (los tramos, el
+         *     umbral de temeridad) como números, nunca como texto a interpretar después:
+         *     un simulador que parsee prosa en el momento de calcular es un simulador que
+         *     da un número distinto cada vez que alguien toca el extractor.
+         */
+        PriceFormulaFact: {
+            /** Confidence */
+            confidence: number;
+            /** Description */
+            description: string;
+            /** Evidence */
+            evidence?: components["schemas"]["EvidenceRef"][];
+            /**
+             * Formula Type
+             * @default otra
+             * @enum {string}
+             */
+            formula_type: "proporcional_inversa" | "lineal_por_tramos" | "con_umbral_temeridad" | "otra";
+            /** Max Points */
+            max_points?: number | null;
+            /** Params */
+            params?: {
+                [key: string]: number;
+            };
+            /** Umbral Temeridad */
+            umbral_temeridad?: number | null;
+        };
         /** PriceScenario */
         PriceScenario: {
             /** Basis */
             basis: string;
             /** Discount */
             discount: number;
+            margen_implicito?: components["schemas"]["MargenImplicito"] | null;
             /**
              * Name
              * @enum {string}
@@ -6681,6 +6945,8 @@ export interface components {
             outcome: "pending" | "won" | "lost" | "cancelled";
             /** Outcome Reason */
             outcome_reason?: string | null;
+            /** Outcome Reason Code */
+            outcome_reason_code?: ("precio" | "tecnica" | "solvencia" | "plazo" | "desierto_o_anulado" | "no_presentada" | "otro") | null;
             /** Responsible Name */
             responsible_name?: string | null;
             /** Responsible User Id */
@@ -6759,10 +7025,35 @@ export interface components {
             median_decision_time_hours?: number | null;
             /** Organization Id */
             organization_id: number;
+            /**
+             * Perdidas N Minimo
+             * @default 5
+             */
+            perdidas_n_minimo: number;
+            /** Perdidas Por Motivo */
+            perdidas_por_motivo?: components["schemas"]["PerdidaPorMotivo"][];
             /** Period From */
             period_from?: string | null;
             /** Period To */
             period_to?: string | null;
+            /**
+             * Pipeline Sin Importe
+             * @default 0
+             */
+            pipeline_sin_importe: number;
+            /**
+             * Pipeline Value Eur
+             * @default 0
+             */
+            pipeline_value_eur: number;
+            /** Prevision Trimestral */
+            prevision_trimestral?: {
+                [key: string]: number;
+            };
+            /** Probabilidades Etapa Usadas */
+            probabilidades_etapa_usadas?: {
+                [key: string]: number;
+            };
             /** Pursuits Identified */
             pursuits_identified: number;
             /** Pursuits Lost */
@@ -6827,6 +7118,8 @@ export interface components {
             outcome: "pending" | "won" | "lost" | "cancelled";
             /** Outcome Reason */
             outcome_reason?: string | null;
+            /** Outcome Reason Code */
+            outcome_reason_code?: ("precio" | "tecnica" | "solvencia" | "plazo" | "desierto_o_anulado" | "no_presentada" | "otro") | null;
             /** Responsible Name */
             responsible_name?: string | null;
             /** Responsible User Id */
@@ -6875,6 +7168,8 @@ export interface components {
             outcome?: ("pending" | "won" | "lost" | "cancelled") | null;
             /** Outcome Reason */
             outcome_reason?: string | null;
+            /** Outcome Reason Code */
+            outcome_reason_code?: ("precio" | "tecnica" | "solvencia" | "plazo" | "desierto_o_anulado" | "no_presentada" | "otro") | null;
             /** Responsible User Id */
             responsible_user_id?: number | null;
             /** Status */
@@ -7033,6 +7328,24 @@ export interface components {
             ids: string[];
         };
         /**
+         * RateCardFact
+         * @description F2.4 — tarifa máxima por perfil, con las horas si el pliego las da.
+         */
+        RateCardFact: {
+            /** Confidence */
+            confidence: number;
+            /** Description */
+            description: string;
+            /** Estimated Hours */
+            estimated_hours?: number | null;
+            /** Evidence */
+            evidence?: components["schemas"]["EvidenceRef"][];
+            /** Max Rate Eur Hour */
+            max_rate_eur_hour?: number | null;
+            /** Role */
+            role: string;
+        };
+        /**
          * RegisterRequest
          * @description Datos para el alta self-service con email + password.
          */
@@ -7160,6 +7473,33 @@ export interface components {
             id_externo: string;
             /** Tipo */
             tipo: string;
+        };
+        /**
+         * RequiredDocumentFact
+         * @description F2.3 — un documento que el pliego exige presentar.
+         *
+         *     ``scope`` es el sobre en el que va, que es lo que organiza el trabajo: el
+         *     sobre A se prepara una vez y se reutiliza, el C se escribe para cada
+         *     licitación. Sin él, el kit es una lista plana de veinte cosas sin orden de
+         *     ataque.
+         */
+        RequiredDocumentFact: {
+            /** Confidence */
+            confidence: number;
+            /** Description */
+            description: string;
+            /** Evidence */
+            evidence?: components["schemas"]["EvidenceRef"][];
+            /** Name */
+            name: string;
+            /**
+             * Scope
+             * @default otro
+             * @enum {string}
+             */
+            scope: "sobre_a" | "sobre_b" | "sobre_c" | "otro";
+            /** Subsanable */
+            subsanable?: boolean | null;
         };
         /**
          * ResolucionOut
@@ -7718,6 +8058,32 @@ export interface components {
             flags: components["schemas"]["FlagIn"][];
         };
         /**
+         * SimulacionPrecio
+         * @description Respuesta del simulador: puntos por escenario, o el motivo de no calcular.
+         */
+        SimulacionPrecio: {
+            /** Baja Referencia */
+            baja_referencia?: number | null;
+            /** Escenarios */
+            escenarios?: components["schemas"]["EscenarioPuntos"][];
+            /** Formula Tipo */
+            formula_tipo?: string | null;
+            /** Hueco Vs Referencia */
+            hueco_vs_referencia?: number | null;
+            /** Licitacion Id */
+            licitacion_id: string;
+            /** Puntos Precio */
+            puntos_precio?: number | null;
+            /**
+             * Puntos Precio Origen
+             * @default desconocido
+             * @enum {string}
+             */
+            puntos_precio_origen: "pliego" | "peso_precio" | "desconocido";
+            /** Sin Calculo */
+            sin_calculo?: ("sin_formula" | "formula_no_calculable" | "sin_puntos_de_precio") | null;
+        };
+        /**
          * SolicitudAccesoOut
          * @description Una solicitud de la cola, tal como la ve el panel.
          */
@@ -8029,6 +8395,8 @@ export interface components {
         TenderFactSheet: {
             /** Award Criteria */
             award_criteria?: components["schemas"]["WeightedCriterion"][];
+            /** Budget Breakdown */
+            budget_breakdown?: components["schemas"]["BudgetLineFact"][];
             /** Certifications */
             certifications?: components["schemas"]["CertificationRequirement"][];
             /** Critical Deadlines */
@@ -8043,6 +8411,12 @@ export interface components {
             lots?: components["schemas"]["LotFact"][];
             /** Penalties */
             penalties?: components["schemas"]["MonetaryFact"][];
+            /** Price Formula */
+            price_formula?: components["schemas"]["PriceFormulaFact"][];
+            /** Rate Cards */
+            rate_cards?: components["schemas"]["RateCardFact"][];
+            /** Required Documents */
+            required_documents?: components["schemas"]["RequiredDocumentFact"][];
             /** Service Levels */
             service_levels?: components["schemas"]["ServiceLevelFact"][];
             /** Subcontracting */
@@ -12798,6 +13172,53 @@ export interface operations {
             };
         };
     };
+    get_simulador_precio_api_v1_licitaciones__id_externo__simulador_get: {
+        parameters: {
+            query?: {
+                /** @description Bajas a simular, en tanto por uno (0.12 = 12 %). Repetible. Sin ninguna se usan los escenarios de referencia 5/10/15/20/25 %. */
+                baja?: number[];
+                /** @description Baja del rival contra el que medirse (p. ej. el p90 de la predicción) */
+                baja_referencia?: number | null;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                id_externo: string;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SimulacionPrecio"];
+                };
+            };
+            /** @description Autenticación inválida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_tech_scores_api_v1_licitaciones__id_externo__tech_scores_get: {
         parameters: {
             query?: never;
@@ -14466,6 +14887,98 @@ export interface operations {
             };
             /** @description No existe */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_pursuit_kit_api_v1_pursuits__pursuit_id__kit_get: {
+        parameters: {
+            query?: {
+                organization_id?: number | null;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                pursuit_id: number;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KitPresentacion"];
+                };
+            };
+            /** @description La oportunidad es de otra organización */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_pursuit_kit_item_api_v1_pursuits__pursuit_id__kit_post: {
+        parameters: {
+            query?: {
+                organization_id?: number | null;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                pursuit_id: number;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["KitItemBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KitPresentacion"];
+                };
+            };
+            /** @description La oportunidad es de otra organización */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };

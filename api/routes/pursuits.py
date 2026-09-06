@@ -15,10 +15,12 @@ from fastapi import (
     Response,
     status,
 )
+from pydantic import BaseModel, Field
 
 from api.concurrency import run_db
 from api.routes.dual_auth import require_any_auth
 from observability.logging import get_logger
+from services.kit_presentacion import KitPresentacion
 from services.organizations import (
     OrganizationAccessError,
     OrganizationMemberNotFoundError,
@@ -46,7 +48,9 @@ from services.pursuits import (
     get_agenda,
     get_metrics,
     get_pursuit,
+    kit_de_pursuit,
     list_pursuits,
+    marcar_kit_de_pursuit,
     update_pursuit,
 )
 from shared.dto import (
@@ -380,6 +384,70 @@ async def get_pursuit_ficha_pdf(
             "Content-Disposition": f'inline; filename="oportunidad-{pursuit_id}.pdf"',
         },
     )
+
+
+class KitItemBody(BaseModel):
+    """Marcado (o desmarcado) de un documento del kit."""
+
+    clave: str = Field(min_length=1, max_length=120)
+    listo: bool
+
+
+@router.get(
+    "/pursuits/{pursuit_id}/kit",
+    summary="Kit de presentación: documentos que exige el pliego y cuáles están listos",
+    responses={403: {"description": "La oportunidad es de otra organización"}},
+)
+async def get_pursuit_kit(
+    pursuit_id: int,
+    organization_id: int | None = Query(default=None, ge=1),
+    ctx: dict[str, Any] = Depends(require_any_auth),
+) -> KitPresentacion:
+    """F2.3 — qué hay que entregar, en qué sobre, y qué falta."""
+    try:
+        return await run_db(
+            kit_de_pursuit,
+            int(ctx["user_id"]),
+            pursuit_id,
+            organization_id=organization_id,
+        )
+    except OrganizationAccessError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except PursuitNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.post(
+    "/pursuits/{pursuit_id}/kit",
+    status_code=status.HTTP_200_OK,
+    summary="Marcar un documento del kit como listo (o desmarcarlo)",
+    responses={403: {"description": "La oportunidad es de otra organización"}},
+)
+async def post_pursuit_kit_item(
+    pursuit_id: int,
+    body: KitItemBody,
+    organization_id: int | None = Query(default=None, ge=1),
+    ctx: dict[str, Any] = Depends(require_any_auth),
+) -> KitPresentacion:
+    """Anota el marcado en el ledger y devuelve el kit ya actualizado.
+
+    Devuelve el kit entero y no un `204`: el checklist es colaborativo, así que
+    la respuesta es la ocasión de traer también lo que han marcado otros desde
+    que el cliente lo cargó.
+    """
+    try:
+        return await run_db(
+            marcar_kit_de_pursuit,
+            int(ctx["user_id"]),
+            pursuit_id,
+            clave=body.clave,
+            listo=body.listo,
+            organization_id=organization_id,
+        )
+    except OrganizationAccessError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except PursuitNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 @router.patch("/pursuits/{pursuit_id}", response_model=PursuitDetail)
