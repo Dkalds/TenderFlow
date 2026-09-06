@@ -126,16 +126,16 @@ def validar(
     if isinstance(tipo, str) and tipo in _TIPOS:
         # `bool` es subclase de `int` en Python; un booleano no es un entero.
         if tipo in ("integer", "number") and isinstance(valor, bool):
-            return fallos + [f"{ruta}: se esperaba {tipo} y llega boolean"]
+            return [*fallos, f"{ruta}: se esperaba {tipo} y llega boolean"]
         if not isinstance(valor, _TIPOS[tipo]):
             recibido = "null" if valor is None else type(valor).__name__
-            return fallos + [f"{ruta}: se esperaba {tipo} y llega {recibido}"]
+            return [*fallos, f"{ruta}: se esperaba {tipo} y llega {recibido}"]
     elif tipo == "null" and valor is not None:
-        return fallos + [f"{ruta}: se esperaba null"]
+        return [*fallos, f"{ruta}: se esperaba null"]
 
     enum = esquema.get("enum")
     if isinstance(enum, list) and valor not in enum:
-        return fallos + [f"{ruta}: {valor!r} no está en {enum}"]
+        return [*fallos, f"{ruta}: {valor!r} no está en {enum}"]
 
     if isinstance(valor, dict):
         propiedades = esquema.get("properties")
@@ -247,10 +247,7 @@ def main() -> int:
             cubiertas.add(_normaliza_ruta(ruta))
 
     consumidas = operaciones_consumidas_por_hooks() & operaciones_del_openapi(doc)
-    if consumidas:
-        cobertura = 100.0 * len(cubiertas & consumidas) / len(consumidas)
-    else:
-        cobertura = 100.0
+    cobertura = 100.0 * len(cubiertas & consumidas) / len(consumidas) if consumidas else 100.0
 
     for e in errores:
         print(f"ERROR {e}", file=sys.stderr)

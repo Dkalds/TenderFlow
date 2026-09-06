@@ -75,4 +75,4 @@ def test_el_listado_por_offset_anuncia_su_apagado() -> None:
     """La única ruta deprecada hoy emitía `Deprecation` sin `Sunset`."""
     from api.routes.licitaciones import SUNSET_LISTADO_POR_OFFSET
 
-    assert SUNSET_LISTADO_POR_OFFSET == date(2027, 1, 15)
+    assert date(2027, 1, 15) == SUNSET_LISTADO_POR_OFFSET

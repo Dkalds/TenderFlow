@@ -16,6 +16,7 @@ Estos tests cubren dos cosas distintas, y la primera es la que más importa:
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from typing import ClassVar
 
 import pytest
 
@@ -92,7 +93,7 @@ class TestCaducidad:
 class TestContrato:
     """Las cuatro rutas declaran la cabecera en el OpenAPI."""
 
-    RUTAS = [
+    RUTAS: ClassVar[list[tuple[str, str]]] = [
         ("/api/v1/watchlist/items", "post"),
         ("/api/v1/watchlist/rules", "post"),
         ("/api/v1/competitive/watchlist", "post"),

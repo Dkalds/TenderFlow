@@ -48,7 +48,9 @@ class Hallazgo:
         return f"{self.donde}: {self.que}"
 
 
-def _resolver(esquema: dict[str, Any], doc: dict[str, Any], _vistos: set[str] | None = None) -> dict[str, Any]:
+def _resolver(
+    esquema: dict[str, Any], doc: dict[str, Any], _vistos: set[str] | None = None
+) -> dict[str, Any]:
     """Sigue `$ref` dentro del mismo documento. Corta los ciclos."""
     vistos = _vistos or set()
     ref = esquema.get("$ref")
@@ -134,9 +136,7 @@ def _campos_planos(
             resuelto = _resolver(sub, doc)
             campos[ruta] = _tipo(resuelto)
             campos.update(
-                _campos_planos(
-                    sub, doc, prefijo=ruta, profundidad=profundidad + 1, vistos=vistos
-                )
+                _campos_planos(sub, doc, prefijo=ruta, profundidad=profundidad + 1, vistos=vistos)
             )
     return campos
 
@@ -193,7 +193,9 @@ def _params(operacion: dict[str, Any], doc: dict[str, Any]) -> dict[str, dict[st
 def _cotas(esquema: dict[str, Any]) -> dict[str, Any]:
     """Cotas de un parámetro, mirando también dentro de su `schema`."""
     fuente = esquema.get("schema") if isinstance(esquema.get("schema"), dict) else esquema
-    return {k: v for k, v in fuente.items() if k in (*_COTAS_SUPERIORES, *_COTAS_INFERIORES, "enum")}
+    return {
+        k: v for k, v in fuente.items() if k in (*_COTAS_SUPERIORES, *_COTAS_INFERIORES, "enum")
+    }
 
 
 def comparar(base: dict[str, Any], head: dict[str, Any]) -> list[Hallazgo]:
@@ -229,9 +231,7 @@ def comparar(base: dict[str, Any], head: dict[str, Any]) -> list[Hallazgo]:
                 campos_head = _campos_planos(resp_head, head)
                 for campo, t_base in campos_base.items():
                     if campo not in campos_head:
-                        hallazgos.append(
-                            Hallazgo(donde, f"la respuesta pierde el campo `{campo}`")
-                        )
+                        hallazgos.append(Hallazgo(donde, f"la respuesta pierde el campo `{campo}`"))
                         continue
                     t_head = campos_head[campo]
                     if t_base != t_head and "desconocido" not in (t_base, t_head):
@@ -268,25 +268,31 @@ def comparar(base: dict[str, Any], head: dict[str, Any]) -> list[Hallazgo]:
                     )
                 cotas_base, cotas_head = _cotas(p_base), _cotas(p_head)
                 for clave in _COTAS_SUPERIORES:
-                    if clave in cotas_base and clave in cotas_head:
-                        if _menor(cotas_head[clave], cotas_base[clave]):
-                            hallazgos.append(
-                                Hallazgo(
-                                    donde,
-                                    f"el parámetro `{nombre}` estrecha `{clave}`: "
-                                    f"{cotas_base[clave]} → {cotas_head[clave]}",
-                                )
+                    if (
+                        clave in cotas_base
+                        and clave in cotas_head
+                        and _menor(cotas_head[clave], cotas_base[clave])
+                    ):
+                        hallazgos.append(
+                            Hallazgo(
+                                donde,
+                                f"el parámetro `{nombre}` estrecha `{clave}`: "
+                                f"{cotas_base[clave]} → {cotas_head[clave]}",
                             )
+                        )
                 for clave in _COTAS_INFERIORES:
-                    if clave in cotas_base and clave in cotas_head:
-                        if _menor(cotas_base[clave], cotas_head[clave]):
-                            hallazgos.append(
-                                Hallazgo(
-                                    donde,
-                                    f"el parámetro `{nombre}` estrecha `{clave}`: "
-                                    f"{cotas_base[clave]} → {cotas_head[clave]}",
-                                )
+                    if (
+                        clave in cotas_base
+                        and clave in cotas_head
+                        and _menor(cotas_base[clave], cotas_head[clave])
+                    ):
+                        hallazgos.append(
+                            Hallazgo(
+                                donde,
+                                f"el parámetro `{nombre}` estrecha `{clave}`: "
+                                f"{cotas_base[clave]} → {cotas_head[clave]}",
                             )
+                        )
                 enum_base = cotas_base.get("enum")
                 enum_head = cotas_head.get("enum")
                 if isinstance(enum_base, list) and isinstance(enum_head, list):
@@ -300,9 +306,7 @@ def comparar(base: dict[str, Any], head: dict[str, Any]) -> list[Hallazgo]:
                         )
             for nombre, p_head in params_head.items():
                 if nombre not in params_base and p_head.get("required"):
-                    hallazgos.append(
-                        Hallazgo(donde, f"nace el parámetro requerido `{nombre}`")
-                    )
+                    hallazgos.append(Hallazgo(donde, f"nace el parámetro requerido `{nombre}`"))
 
     return hallazgos
 
