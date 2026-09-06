@@ -77,6 +77,27 @@ class RotatedKey(BaseModel):
     old_key_expires_at: str
 
 
+class ApiKeyOut(BaseModel):
+    """Una API key del usuario, **sin** el token ni el hash.
+
+    Los campos son la proyección exacta de
+    ``ApiKeyRepository.get_all_for_user``: ``id`` es lo único con lo que el
+    dueño puede señalar qué key rotar en ``POST /me/keys/rotate``, y por eso
+    ese repositorio lo devuelve.
+
+    ``is_active`` llega como ``0``/``1`` de la columna —herencia de SQLite— y
+    aquí se declara ``bool`` porque eso es la representación en disco, no el
+    contrato; Pydantic hace la coerción. Mismo criterio que ``WebhookOut`` en
+    ``api/routes/webhooks.py``.
+    """
+
+    id: int
+    name: str | None = None
+    created_at: str | None = None
+    expires_at: str | None = None
+    is_active: bool | None = None
+
+
 def _user_key(ctx: dict[str, Any]) -> str:
     """Clave opaca y estable por usuario.
 
@@ -239,14 +260,14 @@ def logout_all(ctx: dict[str, Any] = Depends(require_any_auth)) -> SessionsRevok
     summary="Listar mis API keys (sin el secret — solo prefix y metadatos)",
     responses={401: {"description": "API key inválida"}},
 )
-def list_my_keys(ctx: dict[str, Any] = Depends(require_any_auth)) -> list[dict[str, Any]]:
-    """Devuelve las API keys vinculadas al usuario autenticado.
-
-    Para API key auth: usa ``key_id``. For session auth: usa ``user_id``.
-    El ``prefix`` (primeros 8 chars del token original) permite identificar
-    la key en logs/soporte sin exponer el secreto completo.
-    """
-    return _key_repo.get_all_for_user(ctx["user_id"])
+# Devolvía `list[dict[str, Any]]`, que openapi-typescript traduce a `unknown[]`:
+# la pantalla que lista las keys tenía que redeclarar la forma a mano y nada
+# avisaba si la proyección del repositorio cambiaba. El razonamiento va aquí y
+# no en el docstring porque el docstring es la descripción PÚBLICA del endpoint
+# en `/docs`, y la historia de un refactor interno no pinta nada ahí.
+def list_my_keys(ctx: dict[str, Any] = Depends(require_any_auth)) -> list[ApiKeyOut]:
+    """Devuelve las API keys vinculadas al usuario autenticado, sin el secreto."""
+    return [ApiKeyOut(**row) for row in _key_repo.get_all_for_user(ctx["user_id"])]
 
 
 @router.post(

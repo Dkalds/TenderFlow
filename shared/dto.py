@@ -980,3 +980,31 @@ class PipelineAgendaResponse(BaseModel):
     pursuits_truncados: bool
     senales_truncadas: bool
     renovaciones_horizonte_meses: int = Field(ge=1, le=60)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Plan de arquitectura 2026-09 v2 — secciones por stream
+#
+# Cada stream del plan añade SUS modelos bajo SU ancla y no toca las demás:
+# así varios agentes trabajan el mismo fichero sin pisarse. Las anclas son
+# marcadores de coordinación, no separadores semánticos; cuando el plan cierre
+# se consolidan con el resto del fichero.
+# ═══════════════════════════════════════════════════════════════════════════
+
+# ── ANCLA O0.6 — contrato API (tipado de operaciones opacas) ───────────────
+
+# ── ANCLA O0.6-BUSQUEDA — búsqueda semántica y modelos de razonamiento ─────
+
+# ── ANCLA S1 — identidad y equipo (invitaciones, proveedores OAuth) ────────
+
+# ── ANCLA S2 — capacidad de la organización (NIF, solvencia, go/no-go) ─────
+
+# ── ANCLA S3 — oportunidad por lote y calidad del Radar ────────────────────
+
+# ── ANCLA S4 — eventos, webhooks y reglas de watchlist ─────────────────────
+
+# ── ANCLA S5 — cola de trabajo y worker ────────────────────────────────────
+
+# ── ANCLA S6 — ML: etiquetas y promoción ───────────────────────────────────
+
+# ── ANCLA S8 — documentos: formatos, OCR y almacén de objetos ──────────────

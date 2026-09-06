@@ -365,8 +365,13 @@ class WebhookPingResult(BaseModel):
 )
 async def list_all(
     _ctx: dict[str, Any] = Depends(require_admin),
-) -> list[dict[str, Any]]:
-    return await run_db(_repo.list_all)
+) -> list[WebhookOut]:
+    """Listado de webhooks, sin el secret."""
+    # Devolvía `list[dict[str, Any]]` -> `unknown[]` en el cliente, mientras el
+    # detalle de aquí al lado ya devolvía `WebhookOut`. Las dos consultas del
+    # repositorio proyectan las MISMAS columnas: la lista y el detalle
+    # describían la misma fila con dos contratos, uno tipado y otro no.
+    return [WebhookOut(**row) for row in await run_db(_repo.list_all)]
 
 
 @router.get(

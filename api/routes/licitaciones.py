@@ -22,7 +22,6 @@ from fastapi import (
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
-from api.auth import AuthContext, require_api_key
 from api.concurrency import run_db, run_ml
 from api.routes.dual_auth import require_any_auth
 from db.repositories.adjudicaciones import AdjudicacionRepository
@@ -200,7 +199,8 @@ def _get_classifier() -> Any:
 @router.get(
     "/licitaciones",
     response_model=PaginatedResponse[LicitacionSummary],
-    summary="Listado paginado de licitaciones (offset)",
+    summary="[DEPRECADO 2026-12-04] Listado paginado de licitaciones (offset)",
+    deprecated=True,
     responses={
         200: {"description": "Lista de licitaciones"},
         401: {"description": "API key inválida"},
@@ -340,7 +340,7 @@ async def list_licitaciones_cursor(
     cursor: str | None = Query(None, description="Cursor opaco devuelto en la página anterior"),
     limit: int = Query(100, ge=1, le=MAX_PAGE_LIMIT),
     tecnologia: str | None = Query(None, description="Tecnología (SAP, ORACLE…)"),
-    _ctx: AuthContext = Depends(require_api_key),
+    _ctx: dict[str, Any] = Depends(require_any_auth),
 ) -> CursorPaginatedResponse[LicitacionSummary]:
     """Paginación estable por cursor (fecha_publicacion, id_externo).
 
@@ -519,7 +519,7 @@ class ExplainResult(BaseModel):
 async def explain_licitacion(
     id_externo: str,
     top_k: int = Query(5, ge=1, le=20),
-    _ctx: AuthContext = Depends(require_api_key),
+    _ctx: dict[str, Any] = Depends(require_any_auth),
 ) -> ExplainResult:
     """Devuelve los top-K términos que más influyen en la clasificación."""
     result = await run_db(_lic_repo.get_text_for_ml, id_externo)
@@ -807,7 +807,7 @@ class TechScoresResult(BaseModel):
 )
 async def get_tech_scores(
     id_externo: str,
-    _ctx: AuthContext = Depends(require_api_key),
+    _ctx: dict[str, Any] = Depends(require_any_auth),
 ) -> TechScoresResult:
     """Devuelve los scores por tecnología desde ``licitacion_tecnologia_score``.
 
@@ -1006,7 +1006,7 @@ async def bulk_get_licitaciones(
     body: BulkGetRequest,
     response: Response,
     format: str = Query("json", description="Formato de respuesta: json | csv"),
-    _ctx: AuthContext = Depends(require_api_key),
+    _ctx: dict[str, Any] = Depends(require_any_auth),
 ) -> BulkGetResult | StreamingResponse:
     """Recupera hasta 100 licitaciones por ``id_externo`` en una sola request.
 

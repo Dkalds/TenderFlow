@@ -16,9 +16,9 @@ import httpx
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from pydantic import BaseModel, ConfigDict
 
-from api.auth import AuthContext, require_scope
 from api.concurrency import run_db
 from api.middleware import _trusted_client_ip
+from api.routes.dual_auth import require_admin
 from observability.logging import get_logger
 from services.rate_limiting import get_rate_limiter
 
@@ -395,11 +395,17 @@ class AuditChainVerification(BaseModel):
     tags=["admin"],
 )
 async def verify_audit_integrity(
-    auth: AuthContext = Depends(require_scope("admin")),
+    _ctx: dict[str, Any] = Depends(require_admin),
 ) -> AuditChainVerification:
     """Recorre el audit log y verifica que el hash chain no ha sido alterado.
 
-    Requiere autenticación + scope ``admin``.
+    Requiere ser administrador, por sesión o por API key. Antes exigía
+    ``require_scope("admin")``, que solo mira los scopes de una API key: un
+    administrador con sesión de navegador no podía comprobar la integridad de
+    su propio audit log desde la consola, que es justo donde se mira cuando hay
+    una sospecha. ``require_admin`` acepta las dos credenciales y no relaja
+    nada para las keys: en la rama de API key, ``require_any_auth`` solo marca
+    ``is_admin`` si el dueño lo es *y* la key lleva scope ``admin`` o ``*``.
 
     Returns:
         ``{"valid": bool, "checked": int, "first_tampered_id": int|None, "error": str|None}``

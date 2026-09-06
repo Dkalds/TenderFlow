@@ -207,7 +207,8 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Compare Periods
+         * [DEPRECADO 2026-12-04] Comparación entre dos periodos
+         * @deprecated
          * @description Compare two time periods side-by-side.
          */
         get: operations["compare_periods_api_v1_analytics_compare_periods_get"];
@@ -491,7 +492,8 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Resumen Sankey
+         * [DEPRECADO 2026-12-04] Flujo Sankey del resumen
+         * @deprecated
          * @description Sankey flow: tipo_contrato → estado.
          */
         get: operations["resumen_sankey_api_v1_analytics_resumen_sankey_get"];
@@ -531,7 +533,8 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Resumen Top
+         * [DEPRECADO 2026-12-04] Top de licitaciones del resumen
+         * @deprecated
          * @description Top N licitaciones by importe.
          */
         get: operations["resumen_top_api_v1_analytics_resumen_top_get"];
@@ -1642,7 +1645,8 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Listado paginado de licitaciones (offset)
+         * [DEPRECADO 2026-12-04] Listado paginado de licitaciones (offset)
+         * @deprecated
          * @description Devuelve lista paginada con filtros opcionales.
          *
          *     > **Deprecation notice**: Se recomienda usar `/licitaciones/cursor` para
@@ -2097,11 +2101,7 @@ export interface paths {
         };
         /**
          * Listar mis API keys (sin el secret — solo prefix y metadatos)
-         * @description Devuelve las API keys vinculadas al usuario autenticado.
-         *
-         *     Para API key auth: usa ``key_id``. For session auth: usa ``user_id``.
-         *     El ``prefix`` (primeros 8 chars del token original) permite identificar
-         *     la key en logs/soporte sin exponer el secreto completo.
+         * @description Devuelve las API keys vinculadas al usuario autenticado, sin el secreto.
          */
         get: operations["list_my_keys_api_v1_me_keys_get"];
         put?: never;
@@ -2266,7 +2266,13 @@ export interface paths {
         put?: never;
         /**
          * Activar una versión concreta (rollback o promote)
-         * @description Activa la ``version`` indicada. Requiere API key con scope admin.
+         * @description Activa la ``version`` indicada. Requiere ser administrador.
+         *
+         *     Antes exigía ``require_scope("admin")``, que solo entiende de API keys: un
+         *     administrador con sesión de navegador no podía activar ni revertir un
+         *     modelo desde ``/ops``, que es donde el producto pone ese botón. Para una
+         *     API key no cambia nada — ``require_any_auth`` solo la marca ``is_admin``
+         *     si su dueño lo es *y* la key lleva scope ``admin`` o ``*``.
          *
          *     Invalida la caché de proceso del clasificador: sin esto, el cambio de
          *     ``is_active`` quedaba solo en la BD y el proceso seguía sirviendo el modelo
@@ -2883,7 +2889,13 @@ export interface paths {
          * Verificar integridad del audit log (hash chain)
          * @description Recorre el audit log y verifica que el hash chain no ha sido alterado.
          *
-         *     Requiere autenticación + scope ``admin``.
+         *     Requiere ser administrador, por sesión o por API key. Antes exigía
+         *     ``require_scope("admin")``, que solo mira los scopes de una API key: un
+         *     administrador con sesión de navegador no podía comprobar la integridad de
+         *     su propio audit log desde la consola, que es justo donde se mira cuando hay
+         *     una sospecha. ``require_admin`` acepta las dos credenciales y no relaja
+         *     nada para las keys: en la rama de API key, ``require_any_auth`` solo marca
+         *     ``is_admin`` si el dueño lo es *y* la key lleva scope ``admin`` o ``*``.
          *
          *     Returns:
          *         ``{"valid": bool, "checked": int, "first_tampered_id": int|None, "error": str|None}``
@@ -3063,7 +3075,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Listar webhooks (sin secret) */
+        /**
+         * Listar webhooks (sin secret)
+         * @description Listado de webhooks, sin el secret.
+         */
         get: operations["list_all_api_v1_webhooks_get"];
         put?: never;
         /**
@@ -3273,6 +3288,32 @@ export interface components {
             title?: string | null;
             /** Type */
             type: string;
+        };
+        /**
+         * ApiKeyOut
+         * @description Una API key del usuario, **sin** el token ni el hash.
+         *
+         *     Los campos son la proyección exacta de
+         *     ``ApiKeyRepository.get_all_for_user``: ``id`` es lo único con lo que el
+         *     dueño puede señalar qué key rotar en ``POST /me/keys/rotate``, y por eso
+         *     ese repositorio lo devuelve.
+         *
+         *     ``is_active`` llega como ``0``/``1`` de la columna —herencia de SQLite— y
+         *     aquí se declara ``bool`` porque eso es la representación en disco, no el
+         *     contrato; Pydantic hace la coerción. Mismo criterio que ``WebhookOut`` en
+         *     ``api/routes/webhooks.py``.
+         */
+        ApiKeyOut: {
+            /** Created At */
+            created_at?: string | null;
+            /** Expires At */
+            expires_at?: string | null;
+            /** Id */
+            id: number;
+            /** Is Active */
+            is_active?: boolean | null;
+            /** Name */
+            name?: string | null;
         };
         /**
          * AskModelInfo
@@ -11778,9 +11819,13 @@ export interface operations {
                 /** @description Formato de respuesta: json | csv */
                 format?: string;
             };
-            header?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
             path?: never;
-            cookie?: never;
+            cookie?: {
+                session?: string | null;
+            };
         };
         requestBody: {
             content: {
@@ -11822,9 +11867,13 @@ export interface operations {
                 /** @description Tecnología (SAP, ORACLE…) */
                 tecnologia?: string | null;
             };
-            header?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
             path?: never;
-            cookie?: never;
+            cookie?: {
+                session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -12040,11 +12089,15 @@ export interface operations {
             query?: {
                 top_k?: number;
             };
-            header?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
             path: {
                 id_externo: string;
             };
-            cookie?: never;
+            cookie?: {
+                session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -12344,11 +12397,15 @@ export interface operations {
     get_tech_scores_api_v1_licitaciones__id_externo__tech_scores_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
             path: {
                 id_externo: string;
             };
-            cookie?: never;
+            cookie?: {
+                session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -12652,9 +12709,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    }[];
+                    "application/json": components["schemas"]["ApiKeyOut"][];
                 };
             };
             /** @description API key inválida */
@@ -12957,12 +13012,16 @@ export interface operations {
     activate_model_version_api_v1_models__name__activate__version__post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
             path: {
                 name: string;
                 version: number;
             };
-            cookie?: never;
+            cookie?: {
+                session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -13009,9 +13068,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    }[];
+                    "application/json": components["schemas"]["ModelVersionOut"][];
                 };
             };
             /** @description Validation Error */
@@ -14271,9 +14328,13 @@ export interface operations {
     verify_audit_integrity_api_v1_security_audit_verify_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
             path?: never;
-            cookie?: never;
+            cookie?: {
+                session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -14284,6 +14345,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AuditChainVerification"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -14736,9 +14806,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    }[];
+                    "application/json": components["schemas"]["WebhookOut"][];
                 };
             };
             /** @description API key inválida */

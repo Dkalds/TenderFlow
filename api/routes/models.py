@@ -7,8 +7,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
-from api.auth import require_scope
-from api.routes.dual_auth import require_any_auth
+from api.routes.dual_auth import require_admin, require_any_auth
 from db.model_registry import activate_version, get_active, list_versions
 
 router = APIRouter(prefix="/models", tags=["models"])
@@ -53,9 +52,12 @@ def list_model_versions(
     name: str,
     limit: int = Query(50, ge=1, le=500),
     _ctx: Any = Depends(require_any_auth),
-) -> list[dict[str, Any]]:
+) -> list[ModelVersionOut]:
     """Histórico de versiones para auditoría y A/B testing."""
-    return list_versions(name, limit=limit)
+    # Devolvía `list[dict[str, Any]]` -> `unknown[]` en el cliente TS. Las filas
+    # de `list_versions` son exactamente las de `get_active` (misma proyección de
+    # `model_versions`), así que el DTO ya existía y solo faltaba declararlo.
+    return [ModelVersionOut(**row) for row in list_versions(name, limit=limit)]
 
 
 @router.post(
@@ -65,9 +67,15 @@ def list_model_versions(
 def activate_model_version(
     name: str,
     version: int,
-    _ctx: Any = Depends(require_scope("admin")),
+    _ctx: Any = Depends(require_admin),
 ) -> ModelActivated:
-    """Activa la ``version`` indicada. Requiere API key con scope admin.
+    """Activa la ``version`` indicada. Requiere ser administrador.
+
+    Antes exigía ``require_scope("admin")``, que solo entiende de API keys: un
+    administrador con sesión de navegador no podía activar ni revertir un
+    modelo desde ``/ops``, que es donde el producto pone ese botón. Para una
+    API key no cambia nada — ``require_any_auth`` solo la marca ``is_admin``
+    si su dueño lo es *y* la key lleva scope ``admin`` o ``*``.
 
     Invalida la caché de proceso del clasificador: sin esto, el cambio de
     ``is_active`` quedaba solo en la BD y el proceso seguía sirviendo el modelo

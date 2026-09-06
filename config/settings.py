@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ipaddress
+import os
 import warnings
 from pathlib import Path
 from typing import Literal
@@ -1051,6 +1052,56 @@ _settings = _load()
 # ── Singleton accesible para nuevos consumidores ─────────────────────────
 # Uso recomendado: ``from config import settings`` y luego ``settings.DB_PATH``.
 settings = _settings
+
+
+# ── Credencial de administración de la base (O0.4) ───────────────────────
+# `DATABASE_ADMIN_URL` es el DSN del rol DUEÑO del schema: el único que puede
+# hacer DDL y el único que bypassa la RLS de `v52_rls_lockdown`. Existe para que
+# `alembic upgrade` deje de correr con la misma credencial que la app
+# (`scripts/setup_pg_roles.sql`, docs/runbooks/persistence-tripwires.md).
+#
+# Por qué NO es un campo de `Settings`: si lo fuera, cualquier módulo de la API
+# podría leerla con `settings.DATABASE_ADMIN_URL` y el «solo para migraciones»
+# quedaría en una convención que nadie comprueba. Al vivir fuera de la clase,
+# `extra="ignore"` descarta la variable al construir `Settings`, así que el
+# objeto que la API tiene entre manos ni siquiera la contiene: no hay atributo
+# que leer, ni por accidente ni a propósito. El acceso pasa obligatoriamente por
+# la función de abajo, que se niega a servirla al perfil que atiende HTTP.
+_ADMIN_DB_URL_ENV = "DATABASE_ADMIN_URL"
+
+# Perfiles a los que la función NUNCA entrega la credencial. `api` es el que
+# sirve peticiones de internet: es exactamente el proceso que no debe poder
+# hacer DDL ni saltarse la RLS aunque el operador se equivoque de secret.
+_PERFILES_SIN_CREDENCIAL_ADMIN = frozenset({"api"})
+
+# El default replica el de `Settings.APP_PROFILE`, y `test_settings_admin_url`
+# fija que sigan siendo el mismo. Es fail-closed a propósito: un proceso que no
+# declara perfil se trata como API y no recibe la credencial.
+_PERFIL_POR_DEFECTO = "api"
+
+
+def database_admin_url() -> str | None:
+    """DSN del rol administrador, o ``None`` si el cutover sigue pendiente.
+
+    Se lee de ``os.environ`` y no de ``Settings`` por lo explicado arriba: es la
+    única vía de acceso, y refleja el entorno del proceso en el momento de la
+    llamada (un test puede fijar ``APP_PROFILE`` sin reconstruir el singleton).
+
+    :raises RuntimeError: si ``APP_PROFILE`` es ``api`` o no está definido. Que
+        la API pida esta credencial no es un error de configuración recuperable
+        sino un fallo de diseño en quien llama, y tiene que doler en el acto.
+    """
+    perfil = os.environ.get("APP_PROFILE", _PERFIL_POR_DEFECTO).strip().lower()
+    if not perfil:
+        perfil = _PERFIL_POR_DEFECTO
+    if perfil in _PERFILES_SIN_CREDENCIAL_ADMIN:
+        raise RuntimeError(
+            f"{_ADMIN_DB_URL_ENV} no está disponible con APP_PROFILE={perfil!r}: es la "
+            "credencial con DDL y sin RLS, reservada a las migraciones "
+            "(.github/workflows/migrate.yml, APP_PROFILE=scraper). La API usa "
+            "DATABASE_URL, que apunta al rol tenderflow_app."
+        )
+    return os.environ.get(_ADMIN_DB_URL_ENV, "").strip() or None
 
 
 def ensure_data_dirs() -> None:

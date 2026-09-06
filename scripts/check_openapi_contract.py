@@ -45,17 +45,56 @@ ALLOWED_OPAQUE: frozenset[str] = frozenset()
 _SUCCESS_CODES = ("200", "201", "202")
 
 
-def _is_opaque(schema: dict[str, Any]) -> bool:
-    """True si el schema es un objeto sin forma declarada.
+#: Tope de recursión. No hay ciclos posibles —un ``$ref`` corta de inmediato—
+#: pero un esquema patológicamente anidado no debe colgar el gate de CI.
+_MAX_PROFUNDIDAD = 12
+
+
+def _is_opaque(schema: dict[str, Any], _profundidad: int = 0) -> bool:
+    """True si el schema es un objeto sin forma declarada, **a cualquier nivel**.
 
     ``{"type": "object"}`` a secas es lo que FastAPI emite para
     ``-> dict[str, Any]``: openapi-typescript lo traduce a
     ``{ [key: string]: unknown }``.
+
+    Miraba solo el objeto de primer nivel, y por ahí se colaban las respuestas
+    de tipo ``list[dict[str, Any]]``: el esquema de primer nivel es
+    ``{"type": "array", ...}``, que no es un objeto, así que pasaba el ratchet
+    mientras el cliente TS recibía ``unknown[]`` — exactamente el problema que
+    este script existe para impedir. Tres operaciones publicadas vivían en ese
+    hueco (``GET /me/keys``, ``GET /models/{name}/versions`` y
+    ``GET /webhooks``). Ahora se recorren los ``items`` del array y las ramas
+    de las composiciones.
+
+    Una composición se considera opaca solo si TODAS sus ramas no nulas lo son:
+    ``dict[str, Any] | AlgoTipado`` sigue dando al cliente una forma con la que
+    trabajar, y marcarla rompería uniones legítimas.
     """
+    if _profundidad > _MAX_PROFUNDIDAD:
+        return False
     if not schema:
         return True
-    if "$ref" in schema or "allOf" in schema or "anyOf" in schema or "oneOf" in schema:
+
+    # Un `$ref` apunta a un modelo con nombre en `components`: tiene forma por
+    # definición, y además corta cualquier posibilidad de ciclo.
+    if "$ref" in schema:
         return False
+
+    for clave in ("allOf", "anyOf", "oneOf"):
+        ramas = schema.get(clave)
+        if isinstance(ramas, list) and ramas:
+            no_nulas = [r for r in ramas if isinstance(r, dict) and r.get("type") != "null"]
+            if not no_nulas:
+                return False
+            return all(_is_opaque(r, _profundidad + 1) for r in no_nulas)
+
+    if schema.get("type") == "array":
+        items = schema.get("items")
+        # `items` ausente es `list[Any]`: el cliente recibe `unknown[]` igual.
+        if not isinstance(items, dict):
+            return True
+        return _is_opaque(items, _profundidad + 1)
+
     return schema.get("type") == "object" and "properties" not in schema
 
 
