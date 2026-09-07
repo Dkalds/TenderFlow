@@ -33,6 +33,7 @@ from api.routes.dual_auth import require_any_auth
 from api.tenancy import resolve_organization_ctx
 from db.repositories.watchlist import WatchlistRepository
 from observability.logging import get_logger
+from services.organizations import OrganizationAccessError
 from shared.dto import CalendarioEnlace
 
 log = get_logger(__name__)
@@ -108,6 +109,94 @@ def _build_pdf(rows: list[dict[str, Any]], title: str) -> bytes:
 
 # response_class=StreamingResponse: la respuesta es el fichero (CSV/XLSX/PDF),
 # no hay 200 application/json que documentar.
+async def _descargar_pipeline(
+    *,
+    user: dict[str, Any],
+    format: str,
+    organization_id: int | None,
+    estado: str | None,
+    solo_mias: bool,
+    limit: int,
+) -> StreamingResponse:
+    """Export del tablero de oportunidades (C6.7).
+
+    Va por el mismo camino que el resto de exports —`sanitize_spreadsheet_record`
+    incluido— porque el riesgo es el mismo y mayor: aquí los textos los escribe
+    el propio equipo, así que una fórmula no llega por casualidad desde una
+    fuente pública sino que alguien la pudo escribir a propósito en el motivo de
+    una decisión.
+    """
+    from db.repositories.pursuits import PursuitRepository
+    from services.exports import (
+        PURSUIT_COLUMNS,
+        generate_csv,
+        generate_excel,
+        get_export_filename,
+        pursuit_rows,
+    )
+    from services.organizations import resolve_organization
+
+    user_id = int(user["user_id"])
+
+    def _render() -> tuple[bytes, str, int, str]:
+        resolved_id, _role = resolve_organization(user_id, organization_id)
+        nombre = _nombre_organizacion(resolved_id, user_id)
+        filas, _total = PursuitRepository().list_scoped(
+            resolved_id,
+            status=estado,
+            responsible_user_id=user_id if solo_mias else None,
+            limit=max(1, min(int(limit), 50_000)),
+        )
+        registros = pursuit_rows(
+            filas,
+            organizacion=nombre,
+            exportado_en=datetime.now(UTC).date().isoformat(),
+        )
+        if format == "excel":
+            return (
+                generate_excel(registros, columns=PURSUIT_COLUMNS, sheet_name="Pipeline"),
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                len(registros),
+                nombre,
+            )
+        return (
+            generate_csv(registros, columns=PURSUIT_COLUMNS),
+            "text/csv; charset=utf-8",
+            len(registros),
+            nombre,
+        )
+
+    try:
+        content, media_type, n_rows, _nombre = await run_db(_render)
+    except OrganizationAccessError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+
+    filename = get_export_filename(format, prefix="pipeline")  # type: ignore[arg-type]
+    log.info("export_download", format=format, recurso="pursuits", n_rows=n_rows)
+    return StreamingResponse(
+        io.BytesIO(content),
+        media_type=media_type,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+def _nombre_organizacion(organization_id: int, user_id: int) -> str:
+    """Nombre para la columna de procedencia. Best-effort: el export no se cae por esto.
+
+    Se lee con ``get_for_user`` y no por id a secas: es el mismo camino que usa
+    el resto del espacio y no hay ninguna razón para que el export pueda
+    resolver el nombre de una organización que quien lo pide no ve.
+    """
+    try:
+        from db.repositories.organizations import OrganizationRepository
+
+        fila = OrganizationRepository().get_for_user(organization_id, user_id)
+        return str((fila or {}).get("name") or f"organizacion-{organization_id}")
+    except Exception:
+        log.debug("export_nombre_organizacion_failed", exc_info=True)
+        return f"organizacion-{organization_id}"
+
+
 @router.get(
     "/download",
     response_class=StreamingResponse,
@@ -124,6 +213,22 @@ def _build_pdf(rows: list[dict[str, Any]], title: str) -> bytes:
 )
 async def download_export(
     format: Literal["csv", "excel", "pdf"] = Query("csv"),
+    recurso: Literal["licitaciones", "pursuits"] = Query(
+        "licitaciones",
+        description=(
+            "Qué se exporta. `pursuits` es el tablero de Mi Pipeline con los "
+            "filtros de estado y responsable (C6.7); sólo `csv` y `excel`."
+        ),
+    ),
+    organization_id: int | None = Query(
+        None, ge=1, description="Organización del tablero (sólo con recurso=pursuits)"
+    ),
+    estado_pursuit: str | None = Query(
+        None, description="Filtro de estado del tablero (sólo con recurso=pursuits)"
+    ),
+    solo_mias: bool = Query(
+        False, description="Sólo las oportunidades propias (sólo con recurso=pursuits)"
+    ),
     q: str | None = Query(None),
     estado: str | None = Query(None),
     ccaa: str | None = Query(None),
@@ -140,7 +245,7 @@ async def download_export(
             "decirlo. Solo aplica a `csv` y `excel`."
         ),
     ),
-    _user: dict[str, Any] = Depends(require_any_auth),
+    user: dict[str, Any] = Depends(require_any_auth),
 ) -> StreamingResponse:
     """Descarga síncrona (CSV, Excel o PDF) con los filtros actuales.
 
@@ -150,6 +255,24 @@ async def download_export(
     """
     from services.exports import generate_csv, generate_excel, get_export_filename
     from services.licitaciones import fetch_for_pdf
+
+    if recurso == "pursuits":
+        if format == "pdf":
+            # El PDF de expedientes está maquetado para el corpus público; el
+            # tablero tiene otras columnas y otro público. Decirlo es mejor que
+            # entregar un documento que parece el que no es.
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="El export del pipeline no tiene formato PDF: usá csv o excel.",
+            )
+        return await _descargar_pipeline(
+            user=user,
+            format=format,
+            organization_id=organization_id,
+            estado=estado_pursuit,
+            solo_mias=solo_mias,
+            limit=limit,
+        )
 
     def _render() -> tuple[bytes, str, int]:
         """Consulta + serialización, fuera del event loop.
@@ -303,6 +426,40 @@ def _verificar_firma_calendario(user_id: int, token: str) -> bool:
     return verify(_PREFIJO_FIRMA_CALENDARIO + str(int(user_id)).encode("ascii"), token)
 
 
+def _eventos_de_tareas(organization_id: int) -> list[dict[str, Any]]:
+    """Tareas pendientes con fecha, como eventos del calendario (C6.1).
+
+    Sólo las de la organización que el calendario resuelve —la personal— y sólo
+    las pendientes: una tarea hecha en el calendario del mes que viene es ruido
+    que además cuesta explicar.
+
+    Best-effort: si la consulta falla, el calendario sale con el resto de
+    compromisos. Un fallo aquí no puede dejar sin plazos a quien se suscribió.
+    """
+    from db.repositories.pursuit_tasks import PursuitTaskRepository
+
+    try:
+        tareas = PursuitTaskRepository().agenda(organization_id=organization_id, limite=200)
+    except Exception:
+        log.warning("calendario_tareas_failed", organization_id=organization_id, exc_info=True)
+        return []
+    salida: list[dict[str, Any]] = []
+    for tarea in tareas:
+        if not tarea.get("vence"):
+            continue
+        id_ext = str(tarea.get("id_externo") or "")
+        salida.append(
+            {
+                "uid": f"pursuit-task-{int(tarea['id'])}@tenderflow",
+                "dtstart": str(tarea["vence"])[:10],
+                "summary": f"Tarea: {str(tarea.get('titulo') or '')[:120]}",
+                "description": f"Oportunidad #{int(tarea['pursuit_id'])} · Licitacion: {id_ext}",
+                "url": "",
+            }
+        )
+    return salida
+
+
 def _eventos_calendario(user_key: str, user_id: int, organization_id: int) -> list[dict[str, Any]]:
     """Eventos ICS del usuario: pursuits abiertos primero, favoritos después.
 
@@ -360,6 +517,12 @@ def _eventos_calendario(user_key: str, user_id: int, organization_id: int) -> li
                     "url": url,
                 }
             )
+
+    # C6.1: las tareas con fecha son compromisos igual que el plazo del
+    # expediente, y son las que tienen responsable. Van después de los eventos
+    # del propio pursuit para que, en un día con las dos cosas, el plazo salga
+    # primero.
+    events.extend(_eventos_de_tareas(organization_id))
 
     for row in _repo_watchlist.calendar_items(user_key, organization_id, user_id):
         id_ext = str(row.get("id_externo", ""))

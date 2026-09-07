@@ -33,6 +33,13 @@ from services.pursuit_comments import (
     delete_comment,
     list_comments,
 )
+from services.pursuit_tasks import (
+    PursuitTaskNotFoundError,
+    add_task,
+    list_tasks,
+    update_task,
+)
+from services.pursuit_tasks import agenda as tasks_agenda
 from services.pursuits import (
     PursuitConflictError,
     PursuitNotFoundError,
@@ -61,6 +68,11 @@ from shared.dto import (
     PursuitMetrics,
     PursuitStatus,
     PursuitSummary,
+    PursuitTaskAgendaResponse,
+    PursuitTaskCreate,
+    PursuitTaskListResponse,
+    PursuitTaskOut,
+    PursuitTaskUpdate,
     PursuitUpdate,
     StatusOk,
 )
@@ -480,6 +492,35 @@ async def get_pursuits_agenda(
         raise HTTPException(status_code=403, detail=str(exc)) from exc
 
 
+# `/pursuits/tasks/agenda` se declara AQUÍ, antes de `/pursuits/{pursuit_id}`,
+# y no junto al resto de rutas de tareas: FastAPI resuelve por orden de
+# declaración, así que una ruta literal bajo `/pursuits/` que llegue después
+# de la paramétrica nunca se alcanza — la petición entra por `{pursuit_id}`
+# con el valor "tasks" y muere en un 422 que no dice nada.
+@router.get("/pursuits/tasks/agenda", response_model=PursuitTaskAgendaResponse)
+async def get_pursuit_tasks_agenda(
+    organization_id: int | None = Query(default=None, ge=1),
+    solo_mias: bool = Query(default=False, description="Sólo las asignadas a quien pregunta"),
+    limite: int = Query(default=50, ge=1, le=500),
+    ctx: dict[str, Any] = Depends(require_any_auth),
+) -> PursuitTaskAgendaResponse:
+    """Agenda del tablero: tareas pendientes de la organización por urgencia.
+
+    Cada una trae el `id_externo` de su expediente: una lista de tareas que no
+    dice de qué expediente son obliga a abrir cada una para saber si importa.
+    """
+    try:
+        return await run_db(
+            tasks_agenda,
+            int(ctx["user_id"]),
+            organization_id=organization_id,
+            solo_mias=solo_mias,
+            limite=limite,
+        )
+    except OrganizationAccessError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+
+
 @router.get("/pursuits/{pursuit_id}", response_model=PursuitDetail)
 async def get_pursuit_detail(
     pursuit_id: int,
@@ -617,4 +658,101 @@ async def delete_pursuit_comment(
     except (OrganizationAccessError, OrganizationPermissionError) as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except (PursuitNotFoundError, PursuitCommentNotFoundError) as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+# ── Tareas de la oportunidad (C6.1) ──────────────────────────────────────────
+
+
+@router.get("/pursuits/{pursuit_id}/tasks", response_model=PursuitTaskListResponse)
+async def get_pursuit_tasks(
+    pursuit_id: int,
+    organization_id: int | None = Query(default=None, ge=1),
+    incluir_cerradas: bool = Query(
+        default=True,
+        description="Incluir las hechas y canceladas. Una cancelada dice que alguien lo evaluó.",
+    ),
+    ctx: dict[str, Any] = Depends(require_any_auth),
+) -> PursuitTaskListResponse:
+    """Tareas de la oportunidad: pendientes primero y por fecha de vencimiento.
+
+    Hasta 2026-09 una oportunidad tenía **una** próxima acción y era texto
+    libre. Preparar una oferta son diez tareas con responsables y fechas
+    distintas (C6.1).
+    """
+    try:
+        return await run_db(
+            list_tasks,
+            int(ctx["user_id"]),
+            pursuit_id,
+            organization_id=organization_id,
+            incluir_cerradas=incluir_cerradas,
+        )
+    except OrganizationAccessError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except PursuitNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.post(
+    "/pursuits/{pursuit_id}/tasks",
+    response_model=PursuitTaskOut,
+    status_code=status.HTTP_201_CREATED,
+)
+async def post_pursuit_task(
+    pursuit_id: int,
+    body: PursuitTaskCreate,
+    organization_id: int | None = Query(default=None, ge=1),
+    ctx: dict[str, Any] = Depends(require_any_auth),
+) -> PursuitTaskOut:
+    """Crea una tarea y actualiza la próxima acción del expediente.
+
+    `next_action` deja de escribirse a mano: pasa a ser la tarea pendiente más
+    próxima a vencer. Un campo que hay que mantener sincronizado a mano se
+    desincroniza, y el tablero acaba enseñando algo que se terminó hace
+    semanas.
+    """
+    try:
+        return await run_db(
+            add_task,
+            int(ctx["user_id"]),
+            pursuit_id,
+            body,
+            organization_id=organization_id,
+        )
+    except OrganizationAccessError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except PursuitNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.patch(
+    "/pursuits/{pursuit_id}/tasks/{task_id}",
+    response_model=PursuitTaskOut,
+    responses={404: {"description": "La tarea no existe en este espacio"}},
+)
+async def patch_pursuit_task(
+    pursuit_id: int,
+    task_id: int,
+    body: PursuitTaskUpdate,
+    organization_id: int | None = Query(default=None, ge=1),
+    ctx: dict[str, Any] = Depends(require_any_auth),
+) -> PursuitTaskOut:
+    """Cambia una tarea: título, responsable, fecha o estado.
+
+    Los campos ausentes no se tocan; los enviados a `null` sí borran el valor —
+    así se puede desasignar una tarea o quitarle el plazo.
+    """
+    try:
+        return await run_db(
+            update_task,
+            int(ctx["user_id"]),
+            pursuit_id,
+            task_id,
+            body,
+            organization_id=organization_id,
+        )
+    except OrganizationAccessError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except PursuitTaskNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc

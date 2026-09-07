@@ -878,6 +878,96 @@ class PursuitCommentOut(BaseModel):
     can_delete: bool = False
 
 
+#: Estados de una tarea, espejo del `CHECK` de `v122`. `cancelada` no es
+#: borrado: «ya no hace falta» dice que alguien lo evaluó, y el hueco de una
+#: fila borrada es indistinguible de «nadie se acordó».
+PursuitTaskEstado = Literal["pendiente", "hecha", "cancelada"]
+
+#: Longitud del título de una tarea. Corto a propósito: una tarea es una acción
+#: («pedir el aval»), y lo que no cabe aquí es un comentario.
+PURSUIT_TASK_TITULO_MAX_CHARS = 200
+
+
+class PursuitTaskCreate(BaseModel):
+    """Nueva tarea de una oportunidad (C6.1)."""
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    titulo: SafeStr = Field(min_length=1, max_length=PURSUIT_TASK_TITULO_MAX_CHARS)
+    #: Miembro de la organización. `None` = sin asignar, que es un estado
+    #: legítimo: una tarea puede existir antes de saber quién la hará.
+    responsable_user_id: int | None = Field(default=None, ge=1)
+    #: `YYYY-MM-DD`. `None` = sin plazo.
+    vence: date | None = None
+
+
+class PursuitTaskUpdate(BaseModel):
+    """Cambio parcial de una tarea.
+
+    Los campos ausentes no se tocan; enviados a `null` sí borran el valor —por
+    eso `responsable_user_id` y `vence` se distinguen con
+    `model_fields_set`, y no por comparar con `None`: sin esa distinción,
+    desasignar una tarea sería imposible de expresar.
+    """
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    titulo: SafeStr | None = Field(default=None, max_length=PURSUIT_TASK_TITULO_MAX_CHARS)
+    responsable_user_id: int | None = Field(default=None, ge=1)
+    vence: date | None = None
+    estado: PursuitTaskEstado | None = None
+
+
+class PursuitTaskOut(BaseModel):
+    """Tarea tal como la ve el equipo."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: int = Field(ge=1)
+    pursuit_id: int = Field(ge=1)
+    organization_id: int = Field(ge=1)
+    titulo: str
+    responsable_user_id: int | None = None
+    responsable_nombre: str | None = None
+    vence: date | None = None
+    estado: PursuitTaskEstado = "pendiente"
+    created_at: PgDateTime | None = None
+    updated_at: PgDateTime | None = None
+
+
+class PursuitTaskListResponse(BaseModel):
+    """Tareas de una oportunidad, pendientes primero y por urgencia."""
+
+    pursuit_id: int = Field(ge=1)
+    organization_id: int = Field(ge=1)
+    items: list[PursuitTaskOut] = Field(default_factory=list)
+
+
+class PursuitTaskAgendaItem(BaseModel):
+    """Una tarea en la agenda del tablero, con su expediente.
+
+    Lleva `id_externo` porque una lista de tareas que no dice de qué expediente
+    son obliga a abrir cada una para saber si importa.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: int = Field(ge=1)
+    pursuit_id: int = Field(ge=1)
+    id_externo: str | None = None
+    titulo: str
+    responsable_user_id: int | None = None
+    vence: date | None = None
+    estado: PursuitTaskEstado = "pendiente"
+
+
+class PursuitTaskAgendaResponse(BaseModel):
+    """Agenda de tareas pendientes de la organización, por urgencia."""
+
+    organization_id: int = Field(ge=1)
+    items: list[PursuitTaskAgendaItem] = Field(default_factory=list)
+
+
 class PursuitCommentListResponse(BaseModel):
     """Página del hilo, en orden cronológico y paginada desde el más reciente.
 

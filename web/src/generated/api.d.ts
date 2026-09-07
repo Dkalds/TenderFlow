@@ -2968,6 +2968,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/pursuits/tasks/agenda": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Pursuit Tasks Agenda
+         * @description Agenda del tablero: tareas pendientes de la organización por urgencia.
+         *
+         *     Cada una trae el `id_externo` de su expediente: una lista de tareas que no
+         *     dice de qué expediente son obliga a abrir cada una para saber si importa.
+         */
+        get: operations["get_pursuit_tasks_agenda_api_v1_pursuits_tasks_agenda_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/pursuits/{pursuit_id}": {
         parameters: {
             query?: never;
@@ -3034,6 +3057,62 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/api/v1/pursuits/{pursuit_id}/tasks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Pursuit Tasks
+         * @description Tareas de la oportunidad: pendientes primero y por fecha de vencimiento.
+         *
+         *     Hasta 2026-09 una oportunidad tenía **una** próxima acción y era texto
+         *     libre. Preparar una oferta son diez tareas con responsables y fechas
+         *     distintas (C6.1).
+         */
+        get: operations["get_pursuit_tasks_api_v1_pursuits__pursuit_id__tasks_get"];
+        put?: never;
+        /**
+         * Post Pursuit Task
+         * @description Crea una tarea y actualiza la próxima acción del expediente.
+         *
+         *     `next_action` deja de escribirse a mano: pasa a ser la tarea pendiente más
+         *     próxima a vencer. Un campo que hay que mantener sincronizado a mano se
+         *     desincroniza, y el tablero acaba enseñando algo que se terminó hace
+         *     semanas.
+         */
+        post: operations["post_pursuit_task_api_v1_pursuits__pursuit_id__tasks_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/pursuits/{pursuit_id}/tasks/{task_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Patch Pursuit Task
+         * @description Cambia una tarea: título, responsable, fecha o estado.
+         *
+         *     Los campos ausentes no se tocan; los enviados a `null` sí borran el valor —
+         *     así se puede desasignar una tarea o quitarle el plazo.
+         */
+        patch: operations["patch_pursuit_task_api_v1_pursuits__pursuit_id__tasks__task_id__patch"];
         trace?: never;
     };
     "/api/v1/radar/dismissals": {
@@ -7255,6 +7334,116 @@ export interface components {
             updated_at: string;
             /** Version */
             version: number;
+        };
+        /**
+         * PursuitTaskAgendaItem
+         * @description Una tarea en la agenda del tablero, con su expediente.
+         *
+         *     Lleva `id_externo` porque una lista de tareas que no dice de qué expediente
+         *     son obliga a abrir cada una para saber si importa.
+         */
+        PursuitTaskAgendaItem: {
+            /**
+             * Estado
+             * @default pendiente
+             * @enum {string}
+             */
+            estado: "pendiente" | "hecha" | "cancelada";
+            /** Id */
+            id: number;
+            /** Id Externo */
+            id_externo?: string | null;
+            /** Pursuit Id */
+            pursuit_id: number;
+            /** Responsable User Id */
+            responsable_user_id?: number | null;
+            /** Titulo */
+            titulo: string;
+            /** Vence */
+            vence?: string | null;
+        };
+        /**
+         * PursuitTaskAgendaResponse
+         * @description Agenda de tareas pendientes de la organización, por urgencia.
+         */
+        PursuitTaskAgendaResponse: {
+            /** Items */
+            items?: components["schemas"]["PursuitTaskAgendaItem"][];
+            /** Organization Id */
+            organization_id: number;
+        };
+        /**
+         * PursuitTaskCreate
+         * @description Nueva tarea de una oportunidad (C6.1).
+         */
+        PursuitTaskCreate: {
+            /** Responsable User Id */
+            responsable_user_id?: number | null;
+            /** Titulo */
+            titulo: string;
+            /** Vence */
+            vence?: string | null;
+        };
+        /**
+         * PursuitTaskListResponse
+         * @description Tareas de una oportunidad, pendientes primero y por urgencia.
+         */
+        PursuitTaskListResponse: {
+            /** Items */
+            items?: components["schemas"]["PursuitTaskOut"][];
+            /** Organization Id */
+            organization_id: number;
+            /** Pursuit Id */
+            pursuit_id: number;
+        };
+        /**
+         * PursuitTaskOut
+         * @description Tarea tal como la ve el equipo.
+         */
+        PursuitTaskOut: {
+            /** Created At */
+            created_at?: string | null;
+            /**
+             * Estado
+             * @default pendiente
+             * @enum {string}
+             */
+            estado: "pendiente" | "hecha" | "cancelada";
+            /** Id */
+            id: number;
+            /** Organization Id */
+            organization_id: number;
+            /** Pursuit Id */
+            pursuit_id: number;
+            /** Responsable Nombre */
+            responsable_nombre?: string | null;
+            /** Responsable User Id */
+            responsable_user_id?: number | null;
+            /** Titulo */
+            titulo: string;
+            /** Updated At */
+            updated_at?: string | null;
+            /** Vence */
+            vence?: string | null;
+        };
+        /**
+         * PursuitTaskUpdate
+         * @description Cambio parcial de una tarea.
+         *
+         *     Los campos ausentes no se tocan; enviados a `null` sí borran el valor —por
+         *     eso `responsable_user_id` y `vence` se distinguen con
+         *     `model_fields_set`, y no por comparar con `None`: sin esa distinción,
+         *     desasignar una tarea sería imposible de expresar.
+         */
+        PursuitTaskUpdate: {
+            /** Estado */
+            estado?: ("pendiente" | "hecha" | "cancelada") | null;
+            /** Responsable User Id */
+            responsable_user_id?: number | null;
+            /** Titulo */
+            titulo?: string | null;
+            /** Vence */
+            vence?: string | null;
         };
         /**
          * PursuitUpdate
@@ -12104,6 +12293,14 @@ export interface operations {
         parameters: {
             query?: {
                 format?: "csv" | "excel" | "pdf";
+                /** @description Qué se exporta. `pursuits` es el tablero de Mi Pipeline con los filtros de estado y responsable (C6.7); sólo `csv` y `excel`. */
+                recurso?: "licitaciones" | "pursuits";
+                /** @description Organización del tablero (sólo con recurso=pursuits) */
+                organization_id?: number | null;
+                /** @description Filtro de estado del tablero (sólo con recurso=pursuits) */
+                estado_pursuit?: string | null;
+                /** @description Sólo las oportunidades propias (sólo con recurso=pursuits) */
+                solo_mias?: boolean;
                 q?: string | null;
                 estado?: string | null;
                 ccaa?: string | null;
@@ -15040,6 +15237,44 @@ export interface operations {
             };
         };
     };
+    get_pursuit_tasks_agenda_api_v1_pursuits_tasks_agenda_get: {
+        parameters: {
+            query?: {
+                organization_id?: number | null;
+                /** @description Sólo las asignadas a quien pregunta */
+                solo_mias?: boolean;
+                limite?: number;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PursuitTaskAgendaResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_pursuit_detail_api_v1_pursuits__pursuit_id__get: {
         parameters: {
             query?: {
@@ -15220,6 +15455,135 @@ export interface operations {
         responses: {
             /** @description Successful Response */
             204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_pursuit_tasks_api_v1_pursuits__pursuit_id__tasks_get: {
+        parameters: {
+            query?: {
+                organization_id?: number | null;
+                /** @description Incluir las hechas y canceladas. Una cancelada dice que alguien lo evaluó. */
+                incluir_cerradas?: boolean;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                pursuit_id: number;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PursuitTaskListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_pursuit_task_api_v1_pursuits__pursuit_id__tasks_post: {
+        parameters: {
+            query?: {
+                organization_id?: number | null;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                pursuit_id: number;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PursuitTaskCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PursuitTaskOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_pursuit_task_api_v1_pursuits__pursuit_id__tasks__task_id__patch: {
+        parameters: {
+            query?: {
+                organization_id?: number | null;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                pursuit_id: number;
+                task_id: number;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PursuitTaskUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PursuitTaskOut"];
+                };
+            };
+            /** @description La tarea no existe en este espacio */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
