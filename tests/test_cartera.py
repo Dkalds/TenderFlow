@@ -38,6 +38,27 @@ class TestFechaPublicada:
 
 
 class TestDerivadaDeLaDuracion:
+    def test_los_codigos_codice_son_los_que_trae_la_columna(self) -> None:
+        """`duracion_unidad` guarda el `@unitCode`, no una palabra.
+
+        `scraper/codice_parser.py` copia el atributo tal cual: en producción
+        la columna dice `MON`, `ANN` o `DAY`. Buscarlos en castellano devolvía
+        0 para **toda** fila real y la cartera se quedaba sin fecha derivada
+        sin que fallara nada.
+        """
+        assert fin_efectivo(
+            fecha_inicio="2026-01-15", duracion_valor=12, duracion_unidad="MON"
+        ) == ("2027-01-15", "duracion")
+        assert fin_efectivo(fecha_inicio="2026-01-15", duracion_valor=2, duracion_unidad="ANN") == (
+            "2028-01-15",
+            "duracion",
+        )
+        # 400 días son trece meses largos; se truncan a 13.
+        fecha, _o = fin_efectivo(
+            fecha_inicio="2026-01-15", duracion_valor=400, duracion_unidad="DAY"
+        )
+        assert fecha == "2027-02-15"
+
     def test_meses(self) -> None:
         fecha, origen = fin_efectivo(
             fecha_inicio="2026-01-15", duracion_valor=12, duracion_unidad="meses"
@@ -79,7 +100,17 @@ class TestSinFecha:
         assert fin_efectivo(duracion_valor=12, duracion_unidad="meses") == (None, None)
 
     def test_fecha_malformada(self) -> None:
-        assert fin_efectivo(fecha_fin_publicada="31/03/2027") == (None, None)
+        assert fin_efectivo(fecha_fin_publicada="n/d") == (None, None)
+        assert fin_efectivo(fecha_fin_publicada="2027-13-45") == (None, None)
+
+    def test_el_formato_espanol_de_los_conectores_se_entiende(self) -> None:
+        """DD/MM/YYYY no es una fecha malformada: es la que publican varios
+        conectores, y `shared/dates.to_iso_date` la normaliza desde siempre.
+
+        Rechazarla aquí sacaba el contrato de la cartera mientras el mismo
+        valor seguía contando en las pantallas que usaban el parser compartido.
+        """
+        assert fin_efectivo(fecha_fin_publicada="31/03/2027") == ("2027-03-31", "publicada")
 
 
 class TestProrrogas:

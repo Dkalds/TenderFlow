@@ -100,6 +100,15 @@ def crear_etiqueta(
     conflicto que una de las dos tenga que resolver.
     """
     resuelta, _ = resolve_organization(user_id, organization_id, write=True)
+
+    # Primero se busca, después se cuenta. Al revés —que es como estaba— una
+    # organización con el cupo lleno recibía 409 «llegaste al máximo» al pedir
+    # una etiqueta **que ya tenía**: el cupo se aplicaba a una operación que no
+    # iba a crear nada. El límite sólo gobierna las altas de verdad.
+    existente = _etiquetas.get_by_nombre(resuelta, nombre)
+    if existente is not None:
+        return Etiqueta.model_validate(existente), False
+
     if _etiquetas.count(resuelta) >= MAX_ETIQUETAS:
         raise EtiquetaLimiteError(
             f"La organización ya tiene {MAX_ETIQUETAS} etiquetas, que es el máximo. "
@@ -109,14 +118,12 @@ def crear_etiqueta(
     if fila is not None:
         return Etiqueta.model_validate(fila), True
 
-    existentes = _etiquetas.list_for_organization(resuelta)
-    from db.repositories.cuentas import normalizar_nombre
-
-    buscada = normalizar_nombre(nombre)
-    for f in existentes:
-        if str(f["nombre_norm"]) == buscada:
-            return Etiqueta.model_validate(f), False
-    # No debería ocurrir: el INSERT sólo devuelve vacío por conflicto.
+    # `create` sólo devuelve vacío por conflicto, así que otra petición ganó la
+    # carrera entre el `get_by_nombre` de arriba y este INSERT: la etiqueta
+    # existe y es la que el llamante quería. Tampoco aquí es un 409.
+    concurrente = _etiquetas.get_by_nombre(resuelta, nombre)
+    if concurrente is not None:
+        return Etiqueta.model_validate(concurrente), False
     raise EtiquetaLimiteError("No se pudo crear ni recuperar la etiqueta.")
 
 

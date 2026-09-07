@@ -179,7 +179,11 @@ class FeedActividad(BaseModel):
     items: list[ItemActividad] = Field(default_factory=list)
     #: `id` desde el que pedir la página siguiente. `None` = no hay más.
     siguiente_cursor: int | None = None
-    #: `True` cuando se ocultaron los eventos de administración por rol.
+    #: `True` cuando el feed viene **acotado** por el rol de quien pregunta.
+    #: No afirma que se haya ocultado nada: `pursuit_events` todavía no guarda
+    #: eventos de administración, así que hoy el recorte no quita ninguna fila.
+    #: Decir «se ocultaron eventos» a un `member` era describir un filtro que
+    #: no llegó a filtrar.
     filtrado_por_rol: bool = False
 
 

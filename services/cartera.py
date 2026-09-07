@@ -32,6 +32,8 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from db.repositories.cartera import CarteraRepository
 from observability.logging import get_logger
+from shared.dates import a_fecha
+from shared.duracion import meses_de
 
 log = get_logger(__name__)
 
@@ -88,22 +90,19 @@ class ContratoCartera(BaseModel):
     relicitacion_hasta: str | None = None
 
 
-def _a_fecha(valor: Any) -> date | None:
-    texto = str(valor or "")[:10]
-    try:
-        return date.fromisoformat(texto)
-    except ValueError:
-        return None
-
-
-def _menos_meses(fecha: date, meses: int) -> date:
-    """Resta meses sin dependencias externas.
+def _desplazar_meses(fecha: date, meses: int) -> date:
+    """Desplaza ``meses`` (con signo) sin dependencias externas.
 
     Aritmética por meses y no por 30 días: «tres meses antes del 31 de marzo»
     es el 31 de diciembre, no el 31 de diciembre menos un día de deriva. El
     día se recorta al último del mes destino cuando no existe (31 → 28/29).
+
+    Uno con signo y no un par sumar/restar: eran la misma función salvo por un
+    ``+``, y la parte delicada —el recorte a fin de mes y los bisiestos— es
+    justo la que había que arreglar en dos sitios a la vez para que la ventana
+    de relicitación y la fecha de fin siguieran hablando del mismo día.
     """
-    total = fecha.year * 12 + (fecha.month - 1) - meses
+    total = fecha.year * 12 + (fecha.month - 1) + meses
     ano, mes = divmod(total, 12)
     mes += 1
     # Último día del mes destino, sin `calendar`: el día 1 del siguiente menos
@@ -133,54 +132,42 @@ def fin_efectivo(
     preferible a asignarle un año por defecto que luego nadie recordará que se
     inventó aquí.
     """
-    base = _a_fecha(fecha_fin_publicada)
+    base = a_fecha(fecha_fin_publicada)
     origen = "publicada" if base is not None else None
 
     if base is None:
-        inicio = _a_fecha(fecha_inicio)
+        inicio = a_fecha(fecha_inicio)
         meses = _meses_de_duracion(duracion_valor, duracion_unidad)
         if inicio is not None and meses:
-            base = _mas_meses(inicio, meses)
+            base = _desplazar_meses(inicio, meses)
             origen = "duracion"
 
     if base is None:
         return None, None
 
     if prorrogas_meses > 0:
-        base = _mas_meses(base, prorrogas_meses)
+        base = _desplazar_meses(base, prorrogas_meses)
         origen = "prorroga"
 
     return base.isoformat(), origen
 
 
 def _meses_de_duracion(valor: Any, unidad: str | None) -> int:
-    """Duración en meses. Devuelve 0 si no se puede convertir sin adivinar."""
-    try:
-        cantidad = int(float(valor))
-    except (TypeError, ValueError):
-        return 0
-    if cantidad <= 0:
-        return 0
-    normalizada = (unidad or "").strip().lower()
-    if normalizada.startswith("mes"):
-        return cantidad
-    if normalizada.startswith(("ano", "año", "year")):
-        return cantidad * 12
-    if normalizada.startswith("dia"):
-        # Sólo si son múltiplos razonables; 45 días no son «un mes y medio»
-        # para una ventana de aviso, y redondearlo introduciría un error que
-        # nadie podría rastrear.
-        return cantidad // 30 if cantidad >= 30 else 0
-    return 0
+    """Duración en meses enteros. ``0`` si no se puede convertir sin adivinar.
 
+    El vocabulario lo pone ``shared/duracion.py``, que es el que habla la
+    columna: ``duracion_unidad`` guarda el ``@unitCode`` de CODICE (``MON``,
+    ``ANN``, ``DAY``…), no «meses» ni «años». Esta función los buscaba en
+    castellano, así que devolvía 0 para toda fila real y la cartera se quedaba
+    sin fecha de fin derivada — en silencio, porque 0 es también la respuesta
+    legítima a «no se sabe».
 
-def _mas_meses(fecha: date, meses: int) -> date:
-    total = fecha.year * 12 + (fecha.month - 1) + meses
-    ano, mes = divmod(total, 12)
-    mes += 1
-    siguiente = date(ano + 1, 1, 1) if mes == 12 else date(ano, mes + 1, 1)
-    ultimo = (siguiente - timedelta(days=1)).day
-    return date(ano, mes, min(fecha.day, ultimo))
+    Se trunca hacia abajo a propósito: media docena de días no mueve una
+    ventana de relicitación, y redondear hacia arriba adelantaría un aviso sin
+    que nadie pudiera rastrear por qué.
+    """
+    meses = meses_de(valor, unidad)
+    return 0 if meses is None else int(meses)
 
 
 def ventana_relicitacion(fecha_fin: Any) -> tuple[str | None, str | None]:
@@ -190,16 +177,16 @@ def ventana_relicitacion(fecha_fin: Any) -> tuple[str | None, str | None]:
     relicitación entre seis y tres meses antes de que expire el vigente. Se
     devuelve como intervalo justamente para que no se lea como un compromiso.
     """
-    fin = _a_fecha(fecha_fin)
+    fin = a_fecha(fecha_fin)
     if fin is None:
         return None, None
-    desde = _menos_meses(fin, MESES_ANTES_RELICITACION[0])
-    hasta = _menos_meses(fin, MESES_ANTES_RELICITACION[1])
+    desde = _desplazar_meses(fin, -MESES_ANTES_RELICITACION[0])
+    hasta = _desplazar_meses(fin, -MESES_ANTES_RELICITACION[1])
     return desde.isoformat(), hasta.isoformat()
 
 
 def _meses_hasta(fecha_fin: Any) -> int | None:
-    fin = _a_fecha(fecha_fin)
+    fin = a_fecha(fecha_fin)
     if fin is None:
         return None
     hoy = datetime.now(UTC).date()

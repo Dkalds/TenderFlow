@@ -304,11 +304,14 @@ class LicitacionRepository:
                 )
                 clauses.append(sub.exists())
             else:
-                t = tecnologia_predicha
+                # El valor va escapado dentro del patrón: llega de la query y
+                # un `%` lo convertía en comodín. La rama FTS escapa igual, de
+                # modo que las dos casan el mismo conjunto.
+                t = _escape_like(tecnologia_predicha)
                 clauses.append(
                     or_(
-                        licitaciones.c.ml_tech_principal == t,
-                        licitaciones.c.ml_tecnologias == t,
+                        licitaciones.c.ml_tech_principal == tecnologia_predicha,
+                        licitaciones.c.ml_tecnologias == tecnologia_predicha,
                         licitaciones.c.ml_tecnologias.like(f"{t},%"),
                         licitaciones.c.ml_tecnologias.like(f"%,{t},%"),
                         licitaciones.c.ml_tecnologias.like(f"%,{t}"),
@@ -521,6 +524,8 @@ class LicitacionRepository:
                 solo_abiertas=solo_abiertas,
                 ccaa=ccaa,
                 tecnologia=tecnologia,
+                tecnologia_predicha=tecnologia_predicha,
+                min_proba_tech=min_proba_tech,
                 fecha_desde=fecha_desde,
                 fecha_hasta=fecha_hasta,
                 cierre_desde=cierre_desde,
@@ -568,6 +573,8 @@ class LicitacionRepository:
         solo_abiertas: bool,
         ccaa: str | None,
         tecnologia: str | None,
+        tecnologia_predicha: str | None = None,
+        min_proba_tech: float | None = None,
         fecha_desde: str | None,
         fecha_hasta: str | None,
         cierre_desde: str | None,
@@ -589,9 +596,13 @@ class LicitacionRepository:
         """Búsqueda FTS5: usa SQL directo porque FTS MATCH no tiene soporte SA."""
         extra_conditions: list[str] = ["tecnologia IS NOT NULL AND tecnologia != ''"]
         extra_params: list[Any] = []
-        if estado:
-            extra_conditions.append("l.estado = %s")
-            extra_params.append(estado)
+        # `csv_values` y no el valor crudo: la rama SA Core acepta multi-valor
+        # (`?estado=A,B`) y ésta comparaba la cadena entera, de modo que el
+        # mismo filtro devolvía cero al escribir texto en la caja.
+        if estados := csv_values(estado):
+            marcadores = ", ".join(["%s"] * len(estados))
+            extra_conditions.append(f"l.estado IN ({marcadores})")
+            extra_params.extend(estados)
         if solo_abiertas:
             # Mismo criterio y ahora también misma grafía que la rama SA Core y
             # que los agregados: el predicado lo emite `shared.estados`. Antes
@@ -599,9 +610,10 @@ class LicitacionRepository:
             # no protege de que sólo una cambie.
             extra_conditions.append(abierta_sql_marcadores("l.estado", n=len(ESTADOS_CERRADOS)))
             extra_params.extend(ESTADOS_CERRADOS)
-        if ccaa:
-            extra_conditions.append("l.ccaa = %s")
-            extra_params.append(ccaa)
+        if ccaas := csv_values(ccaa):
+            marcadores = ", ".join(["%s"] * len(ccaas))
+            extra_conditions.append(f"l.ccaa IN ({marcadores})")
+            extra_params.extend(ccaas)
         tecnologias = csv_values(tecnologia)
         if tecnologias:
             # Igualdad no: `tecnologia` guarda un CSV por fila, así que buscar
@@ -610,6 +622,32 @@ class LicitacionRepository:
             # escribir texto en la caja cambiaba el universo del filtro.
             extra_conditions.append(tecnologia_en_csv_sql("l.tecnologia", n=len(tecnologias)))
             extra_params.extend(tecnologias)
+
+        # Tecnología **predicha** (el modelo, no la etiqueta). No llegaba hasta
+        # aquí: la rama SA Core la aplicaba y ésta ni siquiera recibía el
+        # parámetro, así que escribir en la caja de búsqueda desactivaba el
+        # filtro en silencio y devolvía expedientes de cualquier tecnología.
+        # Misma semántica que `_base_filters`: con umbral, EXISTS sobre los
+        # scores; sin él, principal o pertenencia al CSV de predichas.
+        if tecnologia_predicha:
+            if min_proba_tech is not None:
+                extra_conditions.append(
+                    "EXISTS (SELECT 1 FROM licitacion_tecnologia_score s "
+                    "WHERE s.licitacion_id = l.id_externo AND s.tecnologia = %s "
+                    "  AND s.probabilidad >= %s)"
+                )
+                extra_params.extend([tecnologia_predicha, float(min_proba_tech)])
+            else:
+                extra_conditions.append(
+                    "(l.ml_tech_principal = %s OR l.ml_tecnologias = %s "
+                    " OR l.ml_tecnologias LIKE %s OR l.ml_tecnologias LIKE %s "
+                    " OR l.ml_tecnologias LIKE %s)"
+                )
+                t = _escape_like(tecnologia_predicha)
+                extra_params.extend(
+                    [tecnologia_predicha, tecnologia_predicha, f"{t},%", f"%,{t},%", f"%,{t}"]
+                )
+
         if fecha_desde and _DATE_RE.match(fecha_desde):
             extra_conditions.append("l.fecha_publicacion >= %s")
             extra_params.append(fecha_desde)
@@ -1228,9 +1266,14 @@ class LicitacionRepository:
         if estado:
             conditions.append("estado = %s")
             params.append(estado)
-        if tecnologia:
-            conditions.append("tecnologia = %s")
-            params.append(tecnologia)
+        if tecnologias := csv_values(tecnologia):
+            # Contención en el CSV, no igualdad: `tecnologia` guarda
+            # "SAP,SALESFORCE", así que `= 'SAP'` escondía justo los
+            # expedientes multi-tecnología. Es el mismo arreglo que ya llevan
+            # el listado, el cursor y la rama FTS; estas dos superficies se
+            # quedaron atrás.
+            conditions.append(tecnologia_en_csv_sql("tecnologia", n=len(tecnologias)))
+            params.extend(tecnologias)
         if fecha_desde:
             conditions.append("fecha_publicacion >= %s")
             params.append(fecha_desde)
@@ -1268,9 +1311,10 @@ class LicitacionRepository:
         if ccaa:
             conditions.append("l.ccaa = %s")
             params.append(ccaa)
-        if tecnologia:
-            conditions.append("l.tecnologia = %s")
-            params.append(tecnologia)
+        if tecnologias := csv_values(tecnologia):
+            # Ver `fetch_for_pdf`: el CSV se explota, no se compara entero.
+            conditions.append(tecnologia_en_csv_sql("l.tecnologia", n=len(tecnologias)))
+            params.extend(tecnologias)
         where = " AND ".join(conditions)
         cols = (
             "l.id_externo, l.titulo, l.organo_contratacion, l.importe, "

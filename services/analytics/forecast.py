@@ -5,6 +5,7 @@ from __future__ import annotations
 import pandas as pd
 
 from observability.logging import get_logger
+from shared.duracion import UNIDAD_A_MESES
 
 log = get_logger(__name__)
 
@@ -19,14 +20,11 @@ BANDA_SIGMAS = 1.5
 MODELO_HOLT_WINTERS = "holt-winters"
 MODELO_LINEAL = "regresion-lineal"
 
-# Conversión de unidades CODICE a meses
-UNIT_TO_MONTHS = {
-    "ANN": 12.0,
-    "MON": 1.0,
-    "DAY": 1.0 / 30.4375,
-    "WEK": 7.0 / 30.4375,
-    "HUR": 1.0 / 730.0,
-}
+# Conversión de unidades CODICE a meses. La tabla vive en `shared/duracion.py`
+# porque `services/cartera.py` la necesita y no puede importar este módulo sin
+# arrastrar pandas; el alias se mantiene porque es el nombre que usan los
+# consumidores de este módulo.
+UNIT_TO_MONTHS = UNIDAD_A_MESES
 
 
 def to_months(valor: float | None, unidad: str | None) -> float | None:

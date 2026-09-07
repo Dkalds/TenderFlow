@@ -89,6 +89,11 @@ def _build_body(secciones: list[tuple[str, list[dict[str, Any]], list[dict[str, 
                     f"  • [{adj.get('fecha_adjudicacion', '?')}] {adj['titulo']}\n"
                     f"    {adj.get('organo_contratacion') or '—'} | {importe}{marca_str}"
                 )
+                # F3.4: por qué le toca a quien lo recibe. Sin esta línea el
+                # boletín enumera todo lo que hace la empresa vigilada y quien
+                # lo lee no puede separar lo suyo del resto.
+                if motivo := adj.get("_motivo_segmento"):
+                    lines.append(f"    ↳ Te toca: {_motivo_legible(motivo)}")
             if len(nuevas) > 10:
                 lines.append(f"  … y {len(nuevas) - 10} más.")
         if vencimientos:
@@ -102,6 +107,27 @@ def _build_body(secciones: list[tuple[str, list[dict[str, Any]], list[dict[str, 
                     f"({v.get('dias_restantes', '?')} días): {v['titulo']} | {importe}"
                 )
     return "\n".join(lines)
+
+
+def _anotar_segmento(adjudicaciones: list[dict[str, Any]], organization_id: Any) -> None:
+    """Marca con ``_motivo_segmento`` las adjudicaciones que tocan a esta
+    organización (F3.4).
+
+    Anota, **no filtra**: la entrada de vigilancia la creó alguien que quiere
+    ver a esa empresa, y esconderle adjudicaciones porque el cruce no casó
+    sería decidir por él. Lo que cambia es que las suyas vienen explicadas.
+    """
+    if organization_id is None or not adjudicaciones:
+        return
+    try:
+        objetivo = int(organization_id)
+    except (TypeError, ValueError):
+        return
+    for adj in adjudicaciones:
+        for org_id, motivo in _en_mi_segmento(adj):
+            if org_id == objetivo:
+                adj["_motivo_segmento"] = motivo
+                break
 
 
 def check_and_notify() -> int:
@@ -135,6 +161,7 @@ def check_and_notify() -> int:
                     error=str(e),
                 )
                 continue
+            _anotar_segmento(nuevas, entry.get("organization_id"))
             if nuevas or vencimientos:
                 secciones.append((entry["nombre_canonico"], nuevas, vencimientos))
             update_last_notified(int(entry["id"]), now_ts)
@@ -163,31 +190,28 @@ def _en_mi_segmento(adjudicacion: dict[str, Any]) -> list[tuple[int, dict[str, A
     grandes recibe veinte adjudicaciones al día y ninguna le toca. Con él, el
     aviso puede decir **por qué** le importa —«en un órgano que sigues», «en un
     CPV donde tienes ofertas abiertas»—, que es lo que hace que se abra.
+
+    Una consulta por adjudicación, no una por organización: la inversa la
+    resuelve el repositorio.
     """
     from db.repositories.cuentas import SegmentoRepository
     from db.sql_fragments import plegar_organo
 
-    repo = SegmentoRepository()
-    organo_norm = plegar_organo(adjudicacion.get("organo_contratacion"))
-    cpv = adjudicacion.get("cpv")
-
-    hallazgos: list[tuple[int, dict[str, Any]]] = []
     try:
-        candidatas = repo.organizaciones_activas()
+        return SegmentoRepository().organizaciones_en_segmento(
+            organo_norm=plegar_organo(adjudicacion.get("organo_contratacion")),
+            cpv=adjudicacion.get("cpv"),
+        )
     except Exception as exc:
-        log.warning("competitor_segmento_orgs_error", error=str(exc)[:200])
+        log.warning("competitor_segmento_error", error=str(exc)[:200])
         return []
 
-    for organization_id in candidatas:
-        try:
-            motivo = repo.es_mi_segmento(organization_id, organo_norm=organo_norm, cpv=cpv)
-        except Exception as exc:
-            log.warning(
-                "competitor_segmento_error",
-                organization_id=organization_id,
-                error=str(exc)[:200],
-            )
-            continue
-        if motivo is not None:
-            hallazgos.append((organization_id, motivo))
-    return hallazgos
+
+def _motivo_legible(motivo: dict[str, Any]) -> str:
+    """El «por qué te importa» que acompaña a una adjudicación en el email."""
+    referencia = str(motivo.get("referencia") or "").strip()
+    if motivo.get("motivo") == "cuenta":
+        return f"en {referencia}, que sigues" if referencia else "en un órgano que sigues"
+    if referencia:
+        return f"mismo CPV que «{referencia[:60]}», que tienes abierta"
+    return "en un CPV donde tienes ofertas abiertas"

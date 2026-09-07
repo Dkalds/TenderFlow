@@ -165,7 +165,7 @@ def _tecnologias_disponibles() -> list[str]:
     return sorted(TECHNOLOGY_KEYWORDS.keys())
 
 
-def _ajustes_guardados(raw: dict[str, Any], organization_id: int) -> OrganizationSettings:
+def ajustes_guardados(raw: dict[str, Any], organization_id: int) -> OrganizationSettings:
     """Los ajustes persistidos, sin dejar que una clave rara tire el resto.
 
     ``settings_json`` es JSON libre y ``OrganizationSettings`` declara
@@ -193,7 +193,7 @@ def _ajustes_guardados(raw: dict[str, Any], organization_id: int) -> Organizatio
 def get_settings(user_id: int, organization_id: int) -> OrganizationSettingsOut:
     """Configuración de la organización; cualquier miembro activo puede leerla."""
     resolve_organization(user_id, organization_id)
-    parsed = _ajustes_guardados(_repo.get_settings(organization_id), organization_id)
+    parsed = ajustes_guardados(_repo.get_settings(organization_id), organization_id)
     return OrganizationSettingsOut(
         organization_id=organization_id,
         **parsed.model_dump(),
@@ -225,7 +225,7 @@ def update_settings(
     # silencio —el administrador veía su configuración aceptada y el Radar
     # seguía sin acotar—.
     merged = _repo.update_settings(organization_id, body.model_dump(mode="json"))
-    guardados = _ajustes_guardados(merged, organization_id)
+    guardados = ajustes_guardados(merged, organization_id)
     return OrganizationSettingsOut(
         organization_id=organization_id,
         **guardados.model_dump(),

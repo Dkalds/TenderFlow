@@ -202,7 +202,12 @@ def desde_ultima_visita(
     # Orden por fecha descendente. Las cuatro fuentes traen ISO, así que el
     # orden lexicográfico es el cronológico; las que vienen sin fecha caen al
     # final en vez de encabezar el diff por ordenar la cadena vacía primero.
-    items.sort(key=lambda n: (n.cuando == "", n.cuando), reverse=True)
+    #
+    # La clave es `!= ""` y no `== ""`: con `reverse=True` la tupla entera se
+    # invierte, así que `(True, "")` quedaba **por encima** de cualquier fecha
+    # real y los sin fecha encabezaban el diff, justo al revés de lo que dice
+    # la línea de arriba. Con `!=`, los que tienen fecha valen `True` y ganan.
+    items.sort(key=lambda n: (n.cuando != "", n.cuando), reverse=True)
     items = items[:limit]
 
     por_subtipo: dict[str, int] = {}

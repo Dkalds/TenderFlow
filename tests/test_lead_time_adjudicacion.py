@@ -72,10 +72,20 @@ class TestAbstencion:
     def test_sin_fecha_limite_no_hay_estimacion(self) -> None:
         assert estimar_adjudicacion(None, ORGANO_CONOCIDO) is None
 
-    @pytest.mark.parametrize("basura", ["", "n/d", "01/10/2026", "2026-13", "  "])
+    @pytest.mark.parametrize("basura", ["", "n/d", "2026-13", "  "])
     def test_fecha_malformada_no_hay_estimacion(self, basura: str) -> None:
-        """Hay filas legacy con la fecha en DD/MM/YYYY (v59)."""
         assert estimar_adjudicacion(basura, ORGANO_CONOCIDO) is None
+
+    def test_el_formato_espanol_si_se_entiende(self) -> None:
+        """Las filas legacy en DD/MM/YYYY (v59) son convertibles, no basura.
+
+        `shared/dates.to_iso_date` las normaliza desde siempre; tratarlas como
+        malformadas dejaba sin fecha prevista a expedientes cuya fecha límite
+        se conocía perfectamente.
+        """
+        estimacion = estimar_adjudicacion("01/10/2026", ORGANO_CONOCIDO)
+        assert estimacion is not None
+        assert estimacion == estimar_adjudicacion("2026-10-01", ORGANO_CONOCIDO)
 
     def test_stats_incompletas_no_hay_estimacion(self) -> None:
         assert estimar_adjudicacion("2026-10-01", {"n": 9, "p50": 60.0}) is None

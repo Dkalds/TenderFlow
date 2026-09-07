@@ -25,6 +25,7 @@ from services.ficha_pdf import BloqueFicha, FichaOportunidad, construir_pdf
 from services.kit_presentacion import KitPresentacion, construir_kit, marcar_item
 from services.organizations import require_active_member, resolve_organization
 from services.watchlist_rules import list_rules
+from shared.dates import a_fecha
 from shared.dto import (
     AgendaUrgencia,
     OrganizationSettings,
@@ -387,22 +388,8 @@ def _perdidas_por_motivo(rows: list[dict[str, Any]]) -> list[PerdidaPorMotivo]:
 
 def _trimestre(iso: Any) -> str | None:
     """``2026-Q4`` a partir de una fecha ISO; ``None`` si no se entiende."""
-    fecha = _a_fecha_simple(iso)
+    fecha = a_fecha(iso)
     return f"{fecha.year}-Q{(fecha.month - 1) // 3 + 1}" if fecha is not None else None
-
-
-def _a_fecha_simple(valor: Any) -> date | None:
-    if valor is None:
-        return None
-    if isinstance(valor, datetime):
-        return valor.date()
-    if isinstance(valor, date):
-        return valor
-    texto = str(valor).strip()[:10]
-    try:
-        return date.fromisoformat(texto)
-    except ValueError:
-        return None
 
 
 def _valor_ponderado(
@@ -420,11 +407,24 @@ def _valor_ponderado(
     Un expediente sin importe publicado **no** se cuenta como cero, se cuenta
     aparte. Tratarlo como cero baja el pipeline en silencio y hace que la
     cifra dependa de la cobertura del corpus sin que nadie lo vea.
+
+    El trimestre lo fija la **fecha prevista de adjudicación** (F4.4) y sólo
+    cae a la fecha límite cuando el órgano no tiene histórico suficiente, que
+    es lo que el contrato dice desde el principio. Repartir por la fecha límite
+    adelantaba la previsión entera uno o dos trimestres: entre presentar y
+    adjudicar hay una mediana de dos o tres meses, así que una oferta que cierra
+    el 20 de diciembre se cobraba en Q4 cuando el ingreso llega en Q1.
     """
     valor = 0.0
     prevision: dict[str, float] = {}
     sin_importe = 0
     usadas: dict[str, int] = {}
+
+    # Una consulta de percentiles para todos los órganos de la página, no una
+    # por oportunidad: el lead-time es por órgano y una cartera repite órganos.
+    stats = _lead_time_por_organo(
+        sorted({str(r["tender_organo"]) for r in rows if r.get("tender_organo")})
+    )
 
     for row in rows:
         etapa = str(row.get("status") or "")
@@ -438,7 +438,10 @@ def _valor_ponderado(
             continue
         aporte = float(importe) * probabilidad / 100
         valor += aporte
-        trimestre = _trimestre(row.get("tender_deadline"))
+        prevista = estimar_adjudicacion(
+            row.get("tender_deadline"), stats.get(str(row.get("tender_organo") or ""))
+        )
+        trimestre = _trimestre(prevista.fecha if prevista else row.get("tender_deadline"))
         if trimestre is not None:
             prevision[trimestre] = round(prevision.get(trimestre, 0.0) + aporte, 2)
 

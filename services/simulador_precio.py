@@ -20,7 +20,7 @@ temeridad. ``otra`` no se calcula, por lo mismo.
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Literal, get_args
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -46,11 +46,8 @@ MotivoSinCalculo = Literal[
     "sin_puntos_de_precio",
 ]
 
-MOTIVOS_SIN_CALCULO: tuple[str, ...] = (
-    "sin_formula",
-    "formula_no_calculable",
-    "sin_puntos_de_precio",
-)
+#: Derivado del `Literal`, no repetido. Ver `services/avisos.py::SUBTIPOS`.
+MOTIVOS_SIN_CALCULO: tuple[str, ...] = get_args(MotivoSinCalculo)
 
 
 class EscenarioPuntos(BaseModel):

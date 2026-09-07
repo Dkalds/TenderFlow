@@ -24,39 +24,16 @@ a que la UI adivine cuál de las dos está mirando.
 
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta
+from datetime import timedelta
 from typing import Any
 
+from shared.dates import a_fecha
 from shared.dto import ExpectedAward
 
 # `ExpectedAward` vive en `shared/dto.py` porque es contrato API↔web
 # (invariante 5) y `shared` no puede importar de `services`. Aquí sólo
 # está la regla que decide si se publica y con qué números.
 __all__ = ["estimar_adjudicacion"]
-
-
-def _a_fecha(valor: Any) -> date | None:
-    """Fecha de un ``date``, ``datetime`` o string ISO; ``None`` si no se puede.
-
-    ``fecha_limite`` es TEXT en la tabla y llega de varias capas —a veces ya
-    parseada, a veces como el string crudo con hora—, así que la conversión se
-    hace aquí una vez en vez de en cada llamante. Un valor malformado devuelve
-    ``None`` y el resultado es «sin estimación», que es lo correcto: no se
-    puede sumar días a una fecha que no se entiende.
-    """
-    if valor is None:
-        return None
-    if isinstance(valor, datetime):
-        return valor.date()
-    if isinstance(valor, date):
-        return valor
-    texto = str(valor).strip()
-    if len(texto) < 10:
-        return None
-    try:
-        return date.fromisoformat(texto[:10])
-    except ValueError:
-        return None
 
 
 def estimar_adjudicacion(
@@ -76,7 +53,7 @@ def estimar_adjudicacion(
     lead-time incluye el plazo de presentación— y ese sesgo es conocido,
     conservador y va en la dirección segura: dice «más tarde», nunca «antes».
     """
-    limite = _a_fecha(fecha_limite)
+    limite = a_fecha(fecha_limite)
     if limite is None or not stats:
         return None
     try:

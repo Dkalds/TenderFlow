@@ -216,8 +216,17 @@ class TestValorPonderado:
         assert _trimestre(fecha) == esperado
 
     def test_fecha_malformada_no_tiene_trimestre(self) -> None:
-        assert _trimestre("01/10/2026") is None
+        assert _trimestre("n/d") is None
+        assert _trimestre("2026-13-45") is None
         assert _trimestre(None) is None
+
+    def test_el_formato_espanol_si_tiene_trimestre(self) -> None:
+        """DD/MM/YYYY lo publican varios conectores y `shared/dates` lo entiende.
+
+        Tratarlo como malformado dejaba fuera de la previsión trimestral a
+        oportunidades con fecha perfectamente conocida.
+        """
+        assert _trimestre("01/10/2026") == "2026-Q4"
 
 
 # ── F3.1 ────────────────────────────────────────────────────────────────────

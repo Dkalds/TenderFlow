@@ -28,6 +28,8 @@ from typing import Any, Final
 
 from pydantic import BaseModel, ConfigDict
 
+from shared.export_safety import sanitize_spreadsheet_value
+
 __all__ = [
     "CABECERAS_CSV",
     "ETAPAS_CRM",
@@ -127,4 +129,9 @@ def a_csv_fila(payload: PayloadCRM) -> list[Any]:
     revise.
     """
     datos = payload.model_dump()
-    return [datos[clave] for clave in CABECERAS_CSV]
+    # Mismo saneado que `services/exports.py` y que el CSV del listado: el
+    # nombre del órgano y el título vienen de la fuente, y un título que
+    # empieza por `=` o `@` es una fórmula que Excel ejecuta al abrir el
+    # fichero. Dos exports de las mismas filas con propiedades de seguridad
+    # distintas es una diferencia que no se ve hasta que alguien abre el malo.
+    return [sanitize_spreadsheet_value(datos[clave]) for clave in CABECERAS_CSV]

@@ -411,7 +411,7 @@ async def get_actividad(
     `created_at` dos eventos del mismo segundo podrían repetirse o perderse
     entre páginas.
 
-    Un `member` recibe el feed sin los eventos de administración, y la
+    Un `member` recibe el feed acotado a los eventos que puede ver, y la
     respuesta lo declara (`filtrado_por_rol`) en vez de dejarle creer que no
     ha pasado nada.
     """

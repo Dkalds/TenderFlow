@@ -21,7 +21,7 @@ módulo resuelve.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Final, Literal
+from typing import Any, Final, Literal, get_args
 
 from shared.numeric import values_equal
 
@@ -48,17 +48,11 @@ SubtipoAviso = Literal[
     "cambio",
 ]
 
-SUBTIPOS: Final[tuple[str, ...]] = (
-    "anulado",
-    "desierto",
-    "plazo_ampliado",
-    "plazo_acortado",
-    "importe_corregido",
-    "adjudicado",
-    "documento_nuevo",
-    "recurso",
-    "cambio",
-)
+#: Se deriva del `Literal` en vez de repetirlo: una lista paralela es lo
+#: primero que se queda vieja, y aquí el precio de que se quede vieja es que un
+#: subtipo nuevo degrade al cajón `cambio` en `etiqueta_de` sin que nada falle.
+#: Es el idioma que ya usan `services/pursuits.py` y `shared/parquet_manifest.py`.
+SUBTIPOS: Final[tuple[str, ...]] = get_args(SubtipoAviso)
 
 #: Etiqueta corta por subtipo, para agrupar el digest y para el icono. El texto
 #: **con los datos concretos** lo compone `clasificar_cambio`; esto es sólo el

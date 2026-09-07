@@ -20,7 +20,7 @@ from fastapi import (
     status,
 )
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from api.auth import AuthContext, require_api_key
 from api.concurrency import run_db, run_ml
@@ -819,6 +819,22 @@ class CompararBody(BaseModel):
     """Hasta tres expedientes a comparar familia a familia."""
 
     ids: list[SafeStr] = Field(min_length=2, max_length=MAX_EXPEDIENTES_COMPARAR)
+
+    @field_validator("ids")
+    @classmethod
+    def _sin_repetidos(cls, valor: list[SafeStr]) -> list[SafeStr]:
+        """Dos ids iguales no son dos columnas.
+
+        El handler indexa las fichas por id, así que ``["A", "A", "B"]``
+        pasaba el ``min_length=2`` como tres expedientes y devolvía una tabla
+        de dos columnas, habiendo pedido la ficha de A dos veces. Se rechaza
+        en el contrato en vez de colapsar en silencio: el cliente pidió algo
+        que la respuesta no iba a cumplir.
+        """
+        vistos = {str(v).strip() for v in valor}
+        if len(vistos) != len(valor):
+            raise ValueError("No se puede comparar un expediente consigo mismo.")
+        return valor
 
 
 @router.post(

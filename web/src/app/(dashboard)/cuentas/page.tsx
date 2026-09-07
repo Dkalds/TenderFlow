@@ -10,7 +10,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { SpaceShell } from "@/components/layout/space-shell";
+import { SpaceShell, useSpaceView } from "@/components/layout/space-shell";
+import { CONSOLE_SPACES } from "@/lib/console-spaces";
 import { apiGet, apiMutate } from "@/lib/api-client";
 import { registrarEvento } from "@/lib/analytics";
 
@@ -162,8 +163,14 @@ function ListaCuentas() {
   );
 }
 
+const SPACE = CONSOLE_SPACES.find((space) => space.key === "cuentas")!;
+
 export default function CuentasPage() {
-  const [vista, setVista] = React.useState("seguidas");
+  // `useSpaceView` y no estado local: la vista vive en `?vista=`, que es lo
+  // que hace que el corte sea enlazable y sobreviva a un refresco. Con
+  // `useState` el deep-link que documenta `space-views.ts` aterrizaba
+  // siempre en la primera vista y la URL nunca cambiaba.
+  const { view: vista, setView: setVista } = useSpaceView(SPACE);
 
   return (
     <SpaceShell spaceKey="cuentas" view={vista} onViewChange={setVista}>

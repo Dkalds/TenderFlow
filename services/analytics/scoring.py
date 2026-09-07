@@ -413,8 +413,15 @@ class FilaPuntuada(NamedTuple):
 def _score_row(
     row: pd.Series,
     ctx: _ScoringContext,
+    *,
+    con_explicacion: bool = True,
 ) -> FilaPuntuada:
     """Devuelve (score 0-100, band, risk_flags, desglose, explicacion) para una fila.
+
+    ``con_explicacion=False`` la omite (lista vacía) para el camino por lotes:
+    ``score_dataframe`` puntúa la ventana entera y descarta el texto, así que
+    componerlo era un ``HechosDeFila``, un dict y hasta ocho f-strings por fila
+    que nadie llegaba a leer.
 
     La explicación (F1.3) se arma **aquí** y no en un segundo paso sobre el
     desglose: la media de ofertas del CPV y la baja esperada son hechos que
@@ -573,16 +580,20 @@ def _score_row(
     total = dim_sum + d_riesgo
     final = max(0, min(round(total), 100))
 
-    explicacion = explicar(
-        HechosDeFila(
-            score=final,
-            fraccion=fraccion,
-            media_ofertas=media_ofertas,
-            baja_esperada=baja,
-            margen_origen=ctx.margen_stats.origen,
-            afinidad_metodo=ctx.affinity_method,
-            risk_flags=tuple(flags),
+    explicacion = (
+        explicar(
+            HechosDeFila(
+                score=final,
+                fraccion=fraccion,
+                media_ofertas=media_ofertas,
+                baja_esperada=baja,
+                margen_origen=ctx.margen_stats.origen,
+                afinidad_metodo=ctx.affinity_method,
+                risk_flags=tuple(flags),
+            )
         )
+        if con_explicacion
+        else []
     )
     return FilaPuntuada(final, _band(final), flags, desglose, explicacion)
 
@@ -617,7 +628,7 @@ def score_dataframe(
     scores: list[int] = []
     bands: list[str] = []
     for _, row in target_df.iterrows():
-        s, band, _flags, _desglose, _explicacion = _score_row(row, ctx)
+        s, band, _flags, _desglose, _explicacion = _score_row(row, ctx, con_explicacion=False)
         ids.append(str(row.get("id_externo", "")))
         scores.append(s)
         bands.append(band)
@@ -646,27 +657,53 @@ def ambito_del_radar(
     if organization_id is not None:
         try:
             from db.repositories.organizations import OrganizationRepository
+            from services.organizations import ajustes_guardados
 
-            ajustes = OrganizationSettings.model_validate(
-                OrganizationRepository().get_settings(int(organization_id))
+            # `ajustes_guardados` y no `model_validate` sobre el blob: el
+            # modelo declara `extra="forbid"`, así que una clave de otra
+            # versión tiraba la configuración entera —tecnologías incluidas— y
+            # el Radar de una consultora SAP volvía al corpus nacional. La
+            # lectura tolerante está escrita una vez, en el servicio dueño.
+            ajustes = ajustes_guardados(
+                OrganizationRepository().get_settings(int(organization_id)),
+                int(organization_id),
             )
         except Exception as exc:
             log.warning("scoring_org_settings_load_error", error=str(exc))
     return resolver_ambito(perfil, ajustes)
 
 
-def _tecnologias_de_organizacion(organization_id: int | None) -> str | None:
-    """Familias del ámbito, como CSV para el filtro SQL.
+def _ambito_como_filtros(
+    organization_id: int | None, tecnologia_manual: str | None
+) -> LicitacionesFilters:
+    """El ámbito de la organización (F6.1), traducido al filtro del universo.
 
-    Es el ámbito por defecto del Radar cuando el usuario no filtra tecnología
-    a mano: una consultora Microsoft no tiene por qué ver el top-24 de SAP.
-    ``None`` sin organización, sin configuración o si la lectura falla —el
-    Radar degrada al universo entero, nunca a una bandeja vacía.
+    Es el ámbito por defecto del Radar cuando el usuario no filtra a mano: una
+    consultora Microsoft no tiene por qué ver el top-24 de SAP. Sin
+    organización, sin configuración o si la lectura falla se devuelve el filtro
+    vacío —el Radar degrada al universo entero, nunca a una bandeja vacía.
+
+    Se resolvían las seis dimensiones del ámbito y se usaba **una**: las CCAA,
+    los CPV y el importe mínimo se calculaban y se tiraban, así que un admin que
+    acotaba su mercado veía el Radar sin acotar y sin ningún aviso.
+
+    ``importe_max``, ``tipos_organo`` y ``procedimientos_excluidos`` siguen sin
+    aplicarse: ``LicitacionesFilters`` no tiene esos campos y añadirlos toca el
+    SQL de ``scoring_candidates``. Se declara aquí para que no se lea como que
+    ya funcionan.
     """
-    codigos = [
-        t.strip().upper() for t in ambito_del_radar(organization_id).tecnologias if t.strip()
-    ]
-    return ",".join(codigos) or None
+    if tecnologia_manual:
+        return LicitacionesFilters(tecnologia=tecnologia_manual)
+    ambito = ambito_del_radar(organization_id)
+    codigos = [t.strip().upper() for t in ambito.tecnologias if t.strip()]
+    cpvs = [c.strip() for c in ambito.cpvs if c.strip()]
+    ccaas = [c.strip() for c in ambito.ccaas if c.strip()]
+    return LicitacionesFilters(
+        tecnologia=",".join(codigos) or None,
+        cpv=",".join(cpvs) or None,
+        ccaa=",".join(ccaas) or None,
+        importe_min=ambito.importe_min,
+    )
 
 
 def get_scoring(
@@ -696,9 +733,7 @@ def get_scoring(
     else:
         rows = _repo.scoring_candidates(
             hoy_iso=pd.Timestamp.now("UTC").strftime("%Y-%m-%d"),
-            filters=LicitacionesFilters(
-                tecnologia=filters.tecnologia or _tecnologias_de_organizacion(organization_id)
-            ),
+            filters=_ambito_como_filtros(organization_id, filters.tecnologia),
         )
 
     if not rows:

@@ -26,7 +26,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Any
 
-from sqlalchemy import Select, and_, func, literal, select, text
+from sqlalchemy import Date, Select, and_, func, literal, select, text
 
 from db.database import connect, connect_read
 from db.models import compile_query, licitaciones
@@ -74,6 +74,40 @@ def bounded_match_counts(clauses_per_rule: Sequence[Sequence[Any]]) -> list[int]
             row = c.execute(sql, params).fetchone()
             counts.append(int(row[0]) if row else 0)
     return counts
+
+
+def weekly_match_counts(clauses: Sequence[Any], *, desde_iso: str) -> dict[str, int]:
+    """``{lunes ISO: n}`` de las coincidencias publicadas desde ``desde_iso``.
+
+    Agrega **en SQL**. La versión anterior vivía en ``services/`` y traía una
+    fila por coincidencia para contarlas en Python: el preview existe justo
+    para reglas amplias —«¿cuánto correo me va a llegar?»—, así que su peor
+    caso es también el más probable, y era un ``fetchall()`` sin ``LIMIT``
+    sobre ocho semanas del corpus, a un endpoint que sólo pide estar
+    autenticado.
+
+    El lunes se calcula con ``date_trunc`` sobre un ``CAST`` que sólo ven las
+    filas que el ``iso_guard`` del llamante ya dejó pasar: ``fecha_publicacion``
+    es TEXT con filas legacy malformadas (v59), y castear la columna entera
+    reventaría la consulta por una fila de 2019 con la fecha en DD/MM/YYYY.
+
+    ADR-022: las cláusulas del filtro las construye
+    ``services.watchlist_rules._rule_clauses``; aquí sólo se agrupan y ejecutan.
+    """
+    semana = func.to_char(
+        func.date_trunc(literal("week"), func.cast(licitaciones.c.fecha_publicacion, Date)),
+        literal("YYYY-MM-DD"),
+    ).label("semana")
+    stmt = (
+        select(semana, func.count().label("n"))
+        .select_from(licitaciones)
+        .where(and_(*clauses, licitaciones.c.fecha_publicacion >= desde_iso))
+        .group_by(semana)
+    )
+    sql, params = compile_query(stmt)
+    with connect_read() as c:
+        filas = c.execute(sql, params).fetchall()
+    return {str(fila[0]): int(fila[1]) for fila in filas}
 
 
 # ── Matches todavía no notificados ────────────────────────────────────────────

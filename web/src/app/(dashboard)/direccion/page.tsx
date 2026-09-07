@@ -7,8 +7,9 @@ import { LayoutDashboard } from "lucide-react";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { SpaceShell } from "@/components/layout/space-shell";
-import { apiGet } from "@/lib/api-client";
+import { SpaceShell, useSpaceView } from "@/components/layout/space-shell";
+import { CONSOLE_SPACES } from "@/lib/console-spaces";
+import { ApiError, apiGet } from "@/lib/api-client";
 
 /**
  * F4.2 — Cuadro de mando de dirección.
@@ -87,8 +88,13 @@ function CorteTabla({
   );
 }
 
+const SPACE = CONSOLE_SPACES.find((space) => space.key === "direccion")!;
+
 export default function DireccionPage() {
-  const [vista, setVista] = React.useState("resultado");
+  // La vista vive en `?vista=`, como en el resto de espacios: con estado
+  // local, `/direccion?vista=embudo` aterrizaba en Resultado y la URL no
+  // cambiaba al conmutar, así que el corte no era enlazable.
+  const { view: vista, setView: setVista } = useSpaceView(SPACE);
   const { data, isLoading, isError, error } = useQuery({
     queryKey: ["direccion"],
     queryFn: () => apiGet("/api/v1/pursuits/direccion" as never) as Promise<Cuadro>,
@@ -100,19 +106,38 @@ export default function DireccionPage() {
       {isLoading ? (
         <Skeleton className="h-64 w-full" />
       ) : isError ? (
+        // 403 es «tu rol no llega»; cualquier otro fallo es un fallo. Enseñarlo
+        // todo como problema de permisos mandaba a un owner a pelearse con un
+        // rol correcto mientras la API estaba caída, y hacía invisible la caída.
         <EmptyState
           icon={LayoutDashboard}
-          title="Dirección es para owner y admin"
+          title={
+            error instanceof ApiError && error.status === 403
+              ? "Dirección es para owner y admin"
+              : "No se ha podido cargar Dirección"
+          }
           hint={
-            error instanceof Error
-              ? error.message
-              : "Tu rol en esta organización no permite ver este espacio."
+            error instanceof ApiError && error.status === 403
+              ? "Tu rol en esta organización no permite ver este espacio."
+              : error instanceof Error
+                ? error.message
+                : "Vuelve a intentarlo en unos segundos."
           }
         />
       ) : vista === "actividad" ? (
         <EmptyState
           title="Actividad del equipo"
           hint="Quién abrió, decidió, presentó y cerró, en «Qué cambió desde tu última visita» del Resumen."
+        />
+      ) : vista === "embudo" ? (
+        // La vista existe en `space-views.ts`; sin esta rama caía al `else` y
+        // pintaba las tablas de Resultado bajo la pestaña Embudo, que es peor
+        // que no tenerla: dos pestañas con el mismo contenido se leen como un
+        // fallo de datos.
+        <EmptyState
+          icon={LayoutDashboard}
+          title="Embudo"
+          hint="El embudo por etapa sigue en Mi Pipeline → Embudo mientras se le añaden aquí los cortes de dirección."
         />
       ) : (
         <div className="flex flex-col gap-8">

@@ -106,20 +106,6 @@ class CuentasRepository:
             )
             return [str(row[0]) for row in cur.fetchall()]
 
-    def organizaciones_que_siguen(self, organo_norm: str) -> list[int]:
-        """Qué organizaciones siguen este órgano. Lo consume el job de alertas.
-
-        Es la consulta inversa de :meth:`organos_seguidos` y existe porque el
-        job recorre publicaciones, no organizaciones: preguntarle a cada
-        organización si sigue cada órgano sería el producto cartesiano.
-        """
-        with connect_read() as conn:
-            cur = conn.execute(
-                "SELECT DISTINCT organization_id FROM cuentas_objetivo WHERE organo_norm = %s",
-                (organo_norm,),
-            )
-            return [int(row[0]) for row in cur.fetchall()]
-
 
 class EtiquetasRepository:
     """Etiquetas libres por organización y sus aplicaciones (D38)."""
@@ -141,6 +127,19 @@ class EtiquetasRepository:
                 (organization_id,),
             ).fetchone()
         return int(row[0]) if row else 0
+
+    def get_by_nombre(self, organization_id: int, nombre: str) -> dict[str, Any] | None:
+        """La etiqueta de ese nombre, o ``None``. Busca por ``nombre_norm``,
+        que es la clave de identidad y tiene la unique de v105 detrás."""
+        with connect_read() as conn:
+            cur = conn.execute(
+                "SELECT id, organization_id, nombre, nombre_norm, color, "
+                "created_by_user_id, created_at "
+                "FROM etiquetas WHERE organization_id = %s AND nombre_norm = %s",
+                (organization_id, normalizar_nombre(nombre)),
+            )
+            filas = rows_to_dicts(cur)
+        return filas[0] if filas else None
 
     def create(
         self, *, organization_id: int, nombre: str, color: str, user_id: int | None
@@ -277,55 +276,56 @@ class SegmentoRepository:
     recibe veinte adjudicaciones al día que no le tocan.
     """
 
-    def es_mi_segmento(
-        self, organization_id: int, *, organo_norm: str | None, cpv: str | None
-    ) -> dict[str, Any] | None:
-        """Por qué esta adjudicación toca a esta organización, o ``None``.
+    def organizaciones_en_segmento(
+        self, *, organo_norm: str | None, cpv: str | None
+    ) -> list[tuple[int, dict[str, Any]]]:
+        """Qué organizaciones tienen esta adjudicación en su terreno, y por qué.
 
-        Devuelve el **motivo** —cuenta objetivo seguida, u oportunidad abierta
-        en el mismo CPV— y no un booleano, porque el aviso tiene que poder
+        Es la consulta **inversa**: el job recorre publicaciones, no
+        organizaciones, así que preguntarle a cada organización activa si esta
+        adjudicación le toca era el producto cartesiano —doscientas
+        organizaciones por veinte adjudicaciones son cuatro mil viajes por
+        pasada—. Aquí sale en una.
+
+        Devuelve el motivo y no un booleano porque el aviso tiene que poder
         decirlo: «ha ganado en un órgano que sigues» y «ha ganado en un CPV
-        donde tienes tres ofertas abiertas» piden reacciones distintas.
+        donde tienes ofertas abiertas» piden reacciones distintas. Si las dos
+        razones valen, gana la cuenta objetivo: es la que el usuario declaró a
+        mano.
 
-        Se comprueban las dos cosas en una consulta con ``UNION ALL`` y
-        ``LIMIT 1``: basta con una razón, y dos consultas por adjudicación
-        multiplicarían el coste del job por el número de organizaciones.
+        El CPV se compara con ``LIKE 'xxxx%'`` y no con ``substr(cpv,1,4)``,
+        que envolvía la columna y dejaba ``idx_cpv`` sin usar.
         """
         if not organo_norm and not cpv:
-            return None
+            return []
+        prefijo_cpv = str(cpv)[:4] if cpv else None
         with connect_read() as conn:
             cur = conn.execute(
-                "SELECT 'cuenta' AS motivo, organo_nombre AS referencia "
-                "FROM cuentas_objetivo "
-                "WHERE organization_id = %s AND organo_norm = %s "
-                "UNION ALL "
-                "SELECT 'oportunidad_abierta', l.titulo "
-                "FROM pursuits p "
-                "JOIN licitaciones l ON l.id_externo = p.licitacion_id "
-                "WHERE p.organization_id = %s "
-                "  AND p.status NOT IN ('won', 'lost', 'withdrawn') "
-                "  AND l.cpv IS NOT NULL AND %s IS NOT NULL "
-                "  AND substr(l.cpv, 1, 4) = substr(%s, 1, 4) "
-                "LIMIT 1",
-                (organization_id, organo_norm or "", organization_id, cpv, cpv),
+                "SELECT DISTINCT ON (organization_id) organization_id, motivo, referencia "
+                "FROM ("
+                "  SELECT organization_id, 0 AS prioridad, 'cuenta' AS motivo, "
+                "         organo_nombre AS referencia "
+                "  FROM cuentas_objetivo "
+                "  WHERE %s IS NOT NULL AND organo_norm = %s "
+                "  UNION ALL "
+                "  SELECT p.organization_id, 1, 'oportunidad_abierta', l.titulo "
+                "  FROM pursuits p "
+                "  JOIN licitaciones l ON l.id_externo = p.licitacion_id "
+                "  WHERE %s IS NOT NULL "
+                "    AND p.status NOT IN ('won', 'lost', 'withdrawn') "
+                "    AND l.cpv LIKE %s "
+                ") m "
+                "ORDER BY organization_id, prioridad",
+                (organo_norm, organo_norm or "", prefijo_cpv, f"{prefijo_cpv or ''}%"),
             )
             filas = rows_to_dicts(cur)
-        return filas[0] if filas else None
-
-    def organizaciones_activas(self) -> list[int]:
-        """Organizaciones con algo que vigilar: una cuenta o una oferta abierta.
-
-        Acota el bucle del job a las que pueden recibir el aviso, en vez de
-        recorrer todas las organizaciones para descartar la mayoría.
-        """
-        with connect_read() as conn:
-            cur = conn.execute(
-                "SELECT DISTINCT organization_id FROM cuentas_objetivo "
-                "UNION "
-                "SELECT DISTINCT organization_id FROM pursuits "
-                "WHERE status NOT IN ('won', 'lost', 'withdrawn')"
+        return [
+            (
+                int(f["organization_id"]),
+                {"motivo": str(f["motivo"]), "referencia": f.get("referencia")},
             )
-            return [int(row[0]) for row in cur.fetchall()]
+            for f in filas
+        ]
 
 
 class ActividadRepository:
@@ -340,6 +340,13 @@ class ActividadRepository:
     #: Eventos que un `member` **no** ve. Invitaciones y cambios de rol son
     #: administración, y el feed de actividad no es el sitio donde enterarse de
     #: quién ha entrado o a quién han cambiado de rol.
+    #:
+    #: Hoy no excluye nada: `pursuit_events` sólo contiene `pursuit.created`,
+    #: `pursuit.updated` y `KIT_EVENT_TYPE` —las membresías se registran en el
+    #: log de auditoría (`db/events.py`), no en este ledger—. El filtro se deja
+    #: puesto porque es el sitio correcto para cuando lleguen, pero la respuesta
+    #: **no** puede decirle a un `member` que se le ocultó algo: ver
+    #: `services/direccion.py::actividad_de_organizacion`.
     EVENTOS_ADMIN: frozenset[str] = frozenset(
         {"membership_added", "membership_updated", "membership_revoked", "invitacion_enviada"}
     )
