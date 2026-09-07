@@ -7,6 +7,7 @@ from typing import Any
 
 from db.database import connect, connect_read, now_utc_iso
 from db.repositories.base import rows_to_dicts
+from db.sql_fragments import empresa_key_sql
 
 # El LEFT JOIN contra ``lotes`` va por la clave de negocio ``(licitacion_id,
 # numero)`` y no por un id guardado: ``db/upsert.py::replace_lotes`` borra y
@@ -685,22 +686,27 @@ class PursuitRepository:
         ofertado no hubo cruce, sólo dos empresas mirando el mismo anuncio.
         """
         with connect_read() as conn:
+            # La clave del competidor se **calcula** sobre la fila de
+            # `adjudicaciones`: `empresas` no tiene ninguna columna que la
+            # contenga, y preguntarle por una era el 500 que reproducía el
+            # fuzzing de contrato en cuanto la ruta tenía datos. El join a
+            # `empresas` sobraba: no se leía nada de esa tabla.
+            clave = empresa_key_sql("a")
+            clave2 = empresa_key_sql("a2")
             cur = conn.execute(
                 "SELECT p.licitacion_id, l.titulo, l.organo_contratacion, l.importe, "
                 "       p.offer_price_eur, p.outcome, "
                 "       a.importe_adjudicado, a.fecha_adjudicacion, "
-                "       e.empresa_key AS adjudicatario_key "
+                f"      {clave} AS adjudicatario_key "
                 "FROM pursuits p "
                 "JOIN licitaciones l ON l.id_externo = p.licitacion_id "
                 "LEFT JOIN adjudicaciones a ON a.licitacion_id = p.licitacion_id "
-                "LEFT JOIN empresas e ON e.empresa_id = a.empresa_id "
                 "WHERE p.organization_id = %s "
                 "  AND p.submitted_at IS NOT NULL "
                 "  AND p.identified_at >= %s "
-                "  AND (e.empresa_key = %s OR EXISTS ("
+                f"  AND ({clave} = %s OR EXISTS ("
                 "        SELECT 1 FROM adjudicaciones a2 "
-                "        JOIN empresas e2 ON e2.empresa_id = a2.empresa_id "
-                "        WHERE a2.licitacion_id = p.licitacion_id AND e2.empresa_key = %s"
+                f"       WHERE a2.licitacion_id = p.licitacion_id AND {clave2} = %s"
                 "  )) "
                 "ORDER BY a.fecha_adjudicacion DESC NULLS LAST, p.id DESC "
                 "LIMIT %s",
