@@ -211,7 +211,33 @@ def _invitation_status(row: dict[str, Any]) -> str:
 
 
 def _to_invitation_dto(row: dict[str, Any]) -> OrganizationInvitationOut:
-    return OrganizationInvitationOut.model_validate({**row, "status": _invitation_status(row)})
+    """Proyección explícita, campo a campo.
+
+    Antes volcaba la fila entera (``{**row, ...}``) y eso fallaba con
+    ``extra_forbidden``: ``organization_invitations`` guarda además
+    ``accepted_user_id`` y ``revoked_at``, contabilidad interna que el estado
+    derivado ya resume y que el contrato no publica. El ``extra="forbid"`` del
+    DTO hizo su trabajo —falló en vez de publicar de más—, pero la red no es el
+    sitio donde se arregla esto: se enumera lo que sale.
+
+    Enumerar también protege del caso que importa. ``db/repositories``
+    proyecta con ``_INVITATION_COLUMNS`` y no con ``SELECT *`` precisamente
+    para que ``token_hash`` no salga de ``db/``; si algún día esa proyección
+    creciera, aquí no se colaría por arrastre.
+    """
+    return OrganizationInvitationOut.model_validate(
+        {
+            "id": row["id"],
+            "organization_id": row["organization_id"],
+            "email": row["email"],
+            "role": row["role"],
+            "status": _invitation_status(row),
+            "invited_by_user_id": row.get("invited_by_user_id"),
+            "created_at": row["created_at"],
+            "expires_at": row["expires_at"],
+            "accepted_at": row.get("accepted_at"),
+        }
+    )
 
 
 def _require_manager(user_id: int, organization_id: int) -> None:
