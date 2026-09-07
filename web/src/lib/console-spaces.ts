@@ -184,6 +184,7 @@ export const CONSOLE_SPACES: ConsoleSpace[] = [
     description: "Maestro canónico, alias y cola de revisión.",
     icon: Building2,
     group: "organizacion",
+    views: SPACE_VIEWS.empresas,
   },
   {
     key: "equipo",

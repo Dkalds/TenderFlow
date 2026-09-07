@@ -16,7 +16,11 @@ from api.concurrency import run_db
 from api.routes.dual_auth import require_any_auth
 from db.audit import log_event
 from db.empresas import apply_review, list_pending_reviews, resolution_stats
-from db.repositories.empresas import EmpresasReadRepository
+from db.repositories.empresas import (
+    EmpresasOrderBy,
+    EmpresasOrderDir,
+    EmpresasReadRepository,
+)
 from observability.logging import get_logger
 
 log = get_logger(__name__)
@@ -44,6 +48,12 @@ class EmpresasListResult(BaseModel):
     items: list[EmpresaListItem]
     limit: int
     offset: int
+    #: Empresas que cumplen el filtro, no las que caben en la página. Es lo que
+    #: permite al buscador decir «1-12 de 1.284» sin inventarse el denominador
+    #: ni tener que traerse el maestro entero para contarlo.
+    total: int
+    sort: EmpresasOrderBy
+    order: EmpresasOrderDir
 
 
 class EmpresasStats(BaseModel):
@@ -131,12 +141,25 @@ async def list_empresas(
     q: str | None = Query(None, max_length=200, description="Nombre, alias o NIF (parcial)"),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
+    sort: EmpresasOrderBy = Query("importe", description="Columna por la que ordenar"),
+    order: EmpresasOrderDir = Query("desc", description="Sentido del orden"),
     _ctx: dict[str, Any] = Depends(require_any_auth),
 ) -> EmpresasListResult:
-    """Lista empresas canónicas ordenadas por importe adjudicado total."""
-    items = await run_db(_repo.list_empresas, q, limit, offset)
+    """Página del maestro, ordenada por la columna pedida, con el total del filtro.
+
+    El orden es del servidor y no del cliente a propósito: ordenar en la
+    página traída sólo reordena las 50 filas que ya se tienen, y con 1.284
+    empresas eso responde a una pregunta distinta de la que hace quien pulsa
+    la cabecera «Importe».
+    """
+    items, total = await run_db(_repo.list_empresas, q, limit, offset, sort, order)
     return EmpresasListResult(
-        items=[EmpresaListItem(**item) for item in items], limit=limit, offset=offset
+        items=[EmpresaListItem(**item) for item in items],
+        limit=limit,
+        offset=offset,
+        total=total,
+        sort=sort,
+        order=order,
     )
 
 
