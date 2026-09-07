@@ -100,6 +100,8 @@ def test_novedades_user_sin_last_login(tmp_db):
 
     assert result.count == 0
     assert result.sample == []
+    # Sin corte que publicar el cliente no marca ninguna fila como nueva.
+    assert result.desde is None
 
 
 def test_novedades_con_new_since(tmp_db):
@@ -144,6 +146,30 @@ def test_novedades_user_no_existe(tmp_db):
 
     assert result.count == 0
     assert result.sample == []
+    assert result.desde is None
+
+
+def test_novedades_publica_el_corte(tmp_db):
+    """`desde` sale en la respuesta y separa de verdad novedades de historia.
+
+    Es el contrato que permite al cliente marcar *todas* las filas nuevas de una
+    tabla y no sólo las de la muestra: se compara `fecha_publicacion >= desde`.
+    """
+    last_login = (datetime.now(UTC) - timedelta(days=2)).isoformat()
+    _insert([_row("NEW1", fecha_pub_offset=-1), _row("OLD1", fecha_pub_offset=-5)])
+
+    with patch("db.users.get_user_by_id", return_value={"id": 1, "last_login": last_login}):
+        result = get_resumen_novedades(1)
+
+    assert result.desde is not None
+    corte = datetime.fromisoformat(result.desde)
+    assert corte.tzinfo is not None, (
+        "el corte viaja con zona horaria o el cliente no puede compararlo"
+    )
+    # El corte cae entre la publicación vieja y la nueva, que es lo que lo hace
+    # utilizable como umbral en cliente.
+    assert datetime.now(UTC) - timedelta(days=5) < corte < datetime.now(UTC) - timedelta(days=1)
+    assert result.count == 1
 
 
 # ---------------------------------------------------------------------------

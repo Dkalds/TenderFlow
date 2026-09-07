@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Contexto de mercado — las seis magnitudes del ámbito activo.
+ * Contexto de mercado — las siete magnitudes del ámbito activo.
  *
  * Dos decisiones viven en esta tira y en ninguna otra:
  *
@@ -40,9 +40,26 @@ export interface MercadoStripProps {
   comparativa: ComparativaMensual;
   /** Meses cerrados que sirven de historia al badge; sólo redacta su tooltip. */
   historial: number;
+  /**
+   * Expedientes activos del ámbito. Llega por props y no de una consulta
+   * propia porque sale de `/resumen/hoy`, otro endpoint, y quien lo pide es el
+   * orquestador — que ya comparte esa clave de React Query con
+   * `atencion-cards.tsx` y así las dos se sirven de una sola petición.
+   */
+  activas: number | null | undefined;
+  activasLoading: boolean;
+  activasHref: string;
 }
 
-export function MercadoStrip({ data, loading, comparativa, historial }: MercadoStripProps) {
+export function MercadoStrip({
+  data,
+  loading,
+  comparativa,
+  historial,
+  activas,
+  activasLoading,
+  activasHref,
+}: MercadoStripProps) {
   const pieDelta = comparativa.etiqueta || "sin dos meses cerrados que comparar";
 
   return (
@@ -52,15 +69,24 @@ export function MercadoStrip({ data, loading, comparativa, historial }: MercadoS
           Contexto de mercado
         </h2>
         <span className="text-muted-foreground text-[10.5px]">
-          del ámbito activo · deltas entre meses cerrados
+          del ámbito activo · deltas entre meses cerrados · «Activas» sale de otro endpoint y no
+          aplica búsqueda, estado ni importe
         </span>
       </div>
-      <StatStrip columns={6} className={STRIP_LG}>
+      <StatStrip columns={7} className={STRIP_LG}>
+        <StatCell
+          label="Activas"
+          loading={activasLoading}
+          value={formatNumber(activas)}
+          href={activasHref}
+          hint="sin adjudicar ni cerrar"
+        />
         <StatCell
           label="Total licitaciones"
           loading={loading}
           value={formatNumber(data?.total_licitaciones)}
           trend={comparativa.count}
+          trendAlert={comparativa.anomaliaCount}
           hint={pieDelta}
           badge={comparativa.anomaliaCount ? <BadgeAnomalia meses={historial} /> : undefined}
         />
@@ -69,6 +95,7 @@ export function MercadoStrip({ data, loading, comparativa, historial }: MercadoS
           loading={loading}
           value={formatCompactCurrency(data?.importe_total)}
           trend={comparativa.importe}
+          trendAlert={comparativa.anomaliaImporte}
           hint={pieDelta}
           badge={comparativa.anomaliaImporte ? <BadgeAnomalia meses={historial} /> : undefined}
         />
