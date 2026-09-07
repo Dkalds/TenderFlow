@@ -30,9 +30,18 @@ class _RepoFalso:
         return self._filas
 
 
-def _fila(source: str, *, horas: float | None, status: str = "success") -> dict[str, Any]:
+def _fila(
+    source: str, *, horas: float | None, status: str = "success", fetched: int = 1
+) -> dict[str, Any]:
     ultimo = None if horas is None else (AHORA - timedelta(hours=horas)).isoformat()
-    return {"source": source, "status": status, "last_success_at": ultimo}
+    # `fetched=1` por defecto: un run sano trae avisos. El cero es el caso raro
+    # —y el que este módulo aprendió a mirar en C4.3—, así que se pide a mano.
+    return {
+        "source": source,
+        "status": status,
+        "last_success_at": ultimo,
+        "fetched": fetched,
+    }
 
 
 def _todas_frescas() -> list[dict[str, Any]]:
@@ -49,7 +58,7 @@ def test_el_inventario_cubre_las_fuentes_vivas() -> None:
         "placsp",
         "ted",
         "galicia_rss",
-        "euskadi_rss",
+        "euskadi",
         "pscp",
         "tacrc",
         "placsp_watched_company_awards",
@@ -62,8 +71,18 @@ def test_placsp_tiene_el_umbral_del_carril_diario() -> None:
 
 
 def test_las_fuentes_de_descubrimiento_tienen_umbral_semanal() -> None:
-    for source_id in ("ted", "galicia_rss", "euskadi_rss", "tacrc"):
+    for source_id in ("ted", "galicia_rss", "tacrc"):
         assert REGISTERED_SOURCES_BY_ID[source_id].max_lag_hours == 168
+
+
+def test_euskadi_dejo_de_ser_una_fuente_de_descubrimiento() -> None:
+    """Pasó de un RSS de ventana corta a un buscador oficial paginado (C4.3).
+
+    El umbral semanal era coherente con «lo que se pierda hoy no vuelve»; con
+    cursor por fecha sobre ~698.000 resultados, lo que se pierde se recupera en
+    el siguiente run, y dos días sin completar sí son señal.
+    """
+    assert REGISTERED_SOURCES_BY_ID["euskadi"].max_lag_hours == 72
 
 
 def test_toda_fuente_declara_por_que_tiene_ese_umbral() -> None:
@@ -179,6 +198,48 @@ def test_una_fila_sin_ningun_run_exitoso_cuenta_como_atrasada() -> None:
 
     assert resultado["atrasadas"] == ["ted"]
     assert resultado["fuentes"]["ted"]["lag_hours"] is None
+
+
+def test_una_fuente_obligatoria_que_no_descarga_nada_esta_rota() -> None:
+    """Cero avisos con ``success`` no es silencio: es un conector que no entiende su fuente.
+
+    Es lo que le pasó a Euskadi durante toda su vida útil (C4.3): 50 avisos en
+    el feed, 0 emitidos por el conector, ``success`` cada día, y ni una fila en
+    `licitaciones`. El chequeo de frescura lo veía fresco.
+    """
+    filas = [f for f in _todas_frescas() if f["source"] != "euskadi"]
+    filas.append(_fila("euskadi", horas=1, fetched=0))
+
+    resultado = comprobar_frescura_fuentes(repo=_RepoFalso(filas), ahora=AHORA)
+
+    assert resultado["esteriles"] == ["euskadi"]
+    assert resultado["fuentes"]["euskadi"]["estado"] == "esteril"
+    assert not resultado["atrasadas"], "estéril y atrasada son diagnósticos distintos"
+
+
+def test_una_fuente_opcional_sin_avisos_no_es_esteril() -> None:
+    """Para una fuente opcional, cero avisos es un estado declarado.
+
+    `placsp_watched_company_awards` sin NIFs vigilados no descarga nada, y eso
+    es correcto: alertar sería pedirle al mantenedor que arregle una decisión.
+    """
+    filas = [f for f in _todas_frescas() if f["source"] != "placsp_watched_company_awards"]
+    filas.append(_fila("placsp_watched_company_awards", horas=1, fetched=0))
+
+    resultado = comprobar_frescura_fuentes(repo=_RepoFalso(filas), ahora=AHORA)
+
+    assert resultado["esteriles"] == []
+
+
+def test_atrasada_gana_a_esteril() -> None:
+    """Si además lleva días sin correr, lo que hay que arreglar es que no corre."""
+    filas = [f for f in _todas_frescas() if f["source"] != "galicia_rss"]
+    filas.append(_fila("galicia_rss", horas=1000, fetched=0))
+
+    resultado = comprobar_frescura_fuentes(repo=_RepoFalso(filas), ahora=AHORA)
+
+    assert resultado["atrasadas"] == ["galicia_rss"]
+    assert resultado["esteriles"] == []
 
 
 def test_una_fecha_ilegible_no_se_cuenta_como_fresca() -> None:

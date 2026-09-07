@@ -161,19 +161,21 @@ jobs:
         timeout-minutes: 10
         run: python -m scraper.connectors.ted
 
-      # RSS oficiales sin credenciales. Su alcance es de descubrimiento reciente
-      # y cada fuente queda aislada para que una indisponibilidad regional no
-      # impida la actualización nacional ni las demás fuentes.
+      # Fuentes autonómicas sin credenciales, cada una aislada para que una
+      # indisponibilidad regional no impida la actualización nacional ni las
+      # demás fuentes. Galicia es un RSS de descubrimiento reciente; Euskadi es
+      # el buscador oficial paginado (C4.3), con más presupuesto de tiempo
+      # porque recorre páginas hasta alcanzar su cursor.
       - name: Run Galicia RSS connector
         if: ${{ !cancelled() }}
         continue-on-error: true
         timeout-minutes: 5
         run: python -m scraper.connectors.galicia
 
-      - name: Run Euskadi RSS connector
+      - name: Run Euskadi official search connector
         if: ${{ !cancelled() }}
         continue-on-error: true
-        timeout-minutes: 5
+        timeout-minutes: 10
         run: python -m scraper.connectors.euskadi
 
       # Carril independiente del radar TI: solo conserva adjudicaciones cuya

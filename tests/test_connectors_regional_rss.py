@@ -1,11 +1,26 @@
-"""Parsing contracts for the official Galicia and Euskadi regional RSS feeds."""
+"""Contrato de parseo de las fuentes autonómicas oficiales.
+
+Galicia sigue siendo un RSS; Euskadi pasó al buscador oficial paginado en C4.3
+(ver el docstring de ``scraper/connectors/euskadi.py``), así que sus casos ya
+no comparten conector.
+
+**Las fixtures de Euskadi están grabadas de la fuente real.** El test anterior
+usaba un enlace inventado (``https://www.euskadi.eus/x?N=100``) que traía el
+``?N=`` que el extractor de ids necesitaba; el feed real no lo trae, así que la
+suite pasaba en verde sobre un conector que en producción ingería **cero**
+filas. Una fixture inventada sólo prueba que el código hace lo que el propio
+autor supuso.
+"""
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
-from scraper.connectors.base import ConnectorRunResult, RawNotice
-from scraper.connectors.euskadi import EuskadiRssConnector
+import pytest
+
+from scraper.connectors.base import ConnectorRunResult
+from scraper.connectors.euskadi import EuskadiApiConnector
 from scraper.connectors.galicia import GaliciaRssConnector
 
 
@@ -53,35 +68,107 @@ def test_galicia_rss_fetches_and_parses_an_official_shape() -> None:
     assert connector.new_cursor() == {"last_seen_updated": "2026-07-29T07:53:00+00:00"}
 
 
-def test_euskadi_uses_a_namespaced_id_and_discards_non_technology_notice() -> None:
-    connector = EuskadiRssConnector()
-    parsed = connector.parse(
-        RawNotice(
-            "100",
-            {
-                "title": "Anuncio Oracle cloud - ID: 100",
-                "link": "https://www.euskadi.eus/x?N=100",
-                "description": "Estado: abierto Importe: 10.000,00 €",
-                "published": "2026-07-29T08:00:00+00:00",
-            },
-        )
-    )
-    ignored = connector.parse(
-        RawNotice(
-            "101",
-            {
-                "title": "Obras en parque",
-                "link": "https://www.euskadi.eus/x?N=101",
-                "description": "Importe: 10.000,00 €",
-                "published": "2026-07-29T08:00:00+00:00",
-            },
-        )
-    )
+def _fixture_euskadi() -> bytes:
+    return (Path(__file__).parent / "fixtures" / "euskadi" / "busqueda_pagina.xml").read_bytes()
 
-    assert parsed is not None
-    assert parsed.licitacion.id_externo == "euskadi_rss:100"
-    assert parsed.licitacion.ccaa == "País Vasco"
-    assert ignored is None
+
+def test_euskadi_lee_los_campos_estructurados_de_la_pagina_real() -> None:
+    """Los ``contratacion_*`` cuelgan de ``<documentMetaData>``, no del ``<item>``.
+
+    Con una búsqueda entre hijos directos el conector leía el id y **todo lo
+    demás en blanco**: filas sin título, sin fecha y sin órgano, persistidas sin
+    que nada fallara.
+    """
+    session = _Session(_fixture_euskadi())
+    connector = EuskadiApiConnector(session=session, page_size=3, max_paginas=1)
+
+    avisos = list(connector.fetch(None))
+
+    assert [a.natural_id for a in avisos] == [
+        "expjaso739369",
+        "expjaso739239",
+        "expjaso739623",
+    ]
+    primero = avisos[0].payload
+    assert primero["expediente"]
+    assert primero["titulo"]
+    assert primero["publicado"] == "2026-09-04"
+    assert primero["estado"] == "AL"
+
+
+def test_euskadi_pide_las_dos_claves_de_paginacion() -> None:
+    """``r01kTgtPg`` sin ``r01kPgCmd`` devuelve 200 y la página 1 otra vez.
+
+    Es un paginador roto en silencio: el run creería haber recorrido veinte
+    páginas y habría releído la primera veinte veces.
+    """
+    session = _Session(_fixture_euskadi())
+    connector = EuskadiApiConnector(session=session, page_size=3, max_paginas=1)
+
+    list(connector.fetch(None))
+
+    params = session.calls[0][1]["params"]
+    assert params["r01kTgtPg"] == params["r01kPgCmd"] == "1"
+    assert "pp:r01PageSize.3" in params["r01kQry"]
+
+
+def test_euskadi_mapea_el_aviso_a_la_licitacion_canonica() -> None:
+    session = _Session(_fixture_euskadi())
+    connector = EuskadiApiConnector(session=session, page_size=3, max_paginas=1)
+    avisos = list(connector.fetch(None))
+
+    lic = connector.parse(avisos[0]).licitacion  # type: ignore[union-attr]
+
+    assert lic.id_externo == "euskadi:expjaso739369"
+    assert lic.fuente == "euskadi"
+    assert lic.ccaa == "País Vasco"
+    assert lic.tecnologia == "ORACLE"
+    # `AL` es «Abierto / Plazo de presentación» en la ficha pública.
+    assert lic.estado == "PUB"
+    assert lic.fecha_publicacion == "2026-09-04"
+    assert lic.fecha_limite == "2026-09-18T23:59:00"
+    assert lic.url.endswith("/expjaso739369/es_doc/index.html")  # type: ignore[union-attr]
+    # El NIF que la fuente antepone no viaja al nombre del órgano.
+    assert not (lic.organo_contratacion or "").startswith(("S", "P", "Q"))
+    # El buscador no publica importe: `None` dice eso, y no «cero».
+    assert lic.importe is None and lic.importe_tipo is None
+
+
+def test_euskadi_descarta_lo_que_no_es_tecnologia() -> None:
+    session = _Session(_fixture_euskadi())
+    connector = EuskadiApiConnector(session=session, page_size=3, max_paginas=1)
+    avisos = list(connector.fetch(None))
+
+    # El tercer aviso de la fixture es una encuesta de Eustat: pasa el fetch y
+    # muere en el filtro, que es donde tiene que morir.
+    assert connector.parse(avisos[2]) is None
+
+
+def test_euskadi_para_cuando_la_pagina_es_toda_mas_vieja_que_el_cursor() -> None:
+    """El resultado viene newest-first: detrás de una página vieja no hay nada nuevo."""
+    session = _Session(_fixture_euskadi())
+    connector = EuskadiApiConnector(session=session, page_size=3, max_paginas=9)
+
+    avisos = list(connector.fetch({"last_seen_updated": "2026-12-31"}))
+
+    assert avisos == []
+    assert len(session.calls) == 1, "una página bastó para saber que no hay nada nuevo"
+
+
+def test_euskadi_el_cursor_es_la_fecha_maxima_vista() -> None:
+    session = _Session(_fixture_euskadi())
+    connector = EuskadiApiConnector(session=session, page_size=3, max_paginas=1)
+
+    list(connector.fetch(None))
+
+    assert connector.new_cursor() == {"last_seen_updated": "2026-09-06"}
+
+
+def test_euskadi_rechaza_una_url_fuera_del_dominio_oficial() -> None:
+    connector = EuskadiApiConnector(base_url="https://example.invalid/buscador.jsp")
+
+    with pytest.raises(ValueError, match="dominio oficial"):
+        list(connector.fetch(None))
 
 
 def test_galicia_cli_initializes_db_and_returns_connector_status(monkeypatch: Any) -> None:

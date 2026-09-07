@@ -20,6 +20,7 @@ Uso::
 
 from __future__ import annotations
 
+import os
 import sys
 from collections import defaultdict
 from pathlib import Path
@@ -27,6 +28,18 @@ from pathlib import Path
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
+
+# `Settings` exige `SIGNING_KEY` en `ENV=prod` (su default) y **este script
+# corre en pre-commit**, donde no hay entorno cargado: sin esto, importar
+# `api.app` revienta con un `ValidationError` que `check_agent_docs` reporta
+# como «matriz de scopes desfasada» — un diagnóstico que manda a mirar el
+# documento equivocado.
+#
+# `setdefault` y no asignación: si quien ejecuta ya eligió un entorno, manda el
+# suyo. Aquí sólo se introspecciona metadata de rutas; no se sirve tráfico ni se
+# firma nada, así que el perfil de desarrollo es el correcto.
+os.environ.setdefault("ENV", "dev")
+os.environ.setdefault("APP_PROFILE", "api")
 _DOC = _REPO_ROOT / "docs" / "api-design.md"
 
 # Delimitadores del bloque generado. Todo lo que hay entre ellos se reescribe;

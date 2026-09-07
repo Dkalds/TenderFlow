@@ -158,11 +158,11 @@ def dispatch_retry(fuente: str, scope: str, run_id: str) -> bool:
 
         return run_connector(GaliciaRssConnector()).errores == 0
 
-    if fuente == "euskadi_rss":
+    if fuente == "euskadi":
         from scraper.connectors.base import run_connector
-        from scraper.connectors.euskadi import EuskadiRssConnector
+        from scraper.connectors.euskadi import EuskadiApiConnector
 
-        return run_connector(EuskadiRssConnector()).errores == 0
+        return run_connector(EuskadiApiConnector()).errores == 0
 
     if fuente == "tacrc":
         from scraper.connectors.tacrc import run as run_tacrc

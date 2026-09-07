@@ -16,7 +16,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from scraper.connectors.base import Connector, ParsedTender, RawNotice, run_connector
-from scraper.connectors.euskadi import EuskadiRssConnector
+from scraper.connectors.euskadi import EuskadiApiConnector
 from scraper.connectors.galicia import GaliciaRssConnector
 from scraper.connectors.watched_company_awards import PlacspWatchedCompanyAwardsConnector
 
@@ -95,10 +95,16 @@ REGISTERED_SOURCES: tuple[RegisteredSource, ...] = (
         ),
     ),
     RegisteredSource(
-        source_id="euskadi_rss",
+        source_id="euskadi",
         modulo="scraper.connectors.euskadi",
-        max_lag_hours=_LAG_SEMANAL,
-        motivo="Mismo criterio que galicia_rss.",
+        max_lag_hours=_LAG_DIARIO_TOLERANTE,
+        motivo=(
+            "Buscador oficial paginado, no un feed de descubrimiento: recorre el "
+            "histórico por cursor de fecha, así que un run perdido se recupera "
+            "solo en el siguiente. SLA más estricto que el de galicia_rss porque "
+            "aquí sí hay un censo detrás (~698.000 resultados) y dejar de mirarlo "
+            "dos días sí es señal."
+        ),
     ),
     RegisteredSource(
         source_id="pscp",
@@ -142,7 +148,7 @@ __all__ = [
     "REGISTERED_SOURCES",
     "REGISTERED_SOURCES_BY_ID",
     "Connector",
-    "EuskadiRssConnector",
+    "EuskadiApiConnector",
     "GaliciaRssConnector",
     "ParsedTender",
     "PlacspWatchedCompanyAwardsConnector",

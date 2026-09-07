@@ -201,6 +201,17 @@ def comprobar_frescura_fuentes(
     - ``sin_registro``: no hay fila. Avisa salvo que la fuente sea
       ``opcional``: repetir cada seis horas que algo nunca se configuró es el
       ruido que acaba desactivando el check.
+    - ``esteril``: el último run salió ``success`` y trajo **cero** avisos. Una
+      fuente obligatoria que no descarga nada no está callada: está rota o mal
+      configurada. **Avisa.**
+
+    Por qué existe ``esteril`` (C4.3). El conector de Euskadi corría a diario
+    desde su alta y no ingirió **nunca** una fila: su extractor de id no
+    reconocía la forma de los enlaces del feed, así que descartaba los 50 avisos
+    antes de emitirlos. Cada run terminaba en ``success`` con ``fetched=0`` y el
+    chequeo de frescura lo daba por fresco — «corrió y no había nada nuevo» y
+    «corrió y no entiende la fuente» se veían exactamente igual. Las fuentes
+    ``opcional`` quedan fuera: para ellas cero avisos es un estado declarado.
 
     Args:
         repo: Repositorio de salud. Inyectable para probar sin BD; por defecto
@@ -208,8 +219,8 @@ def comprobar_frescura_fuentes(
         ahora: Momento de referencia (UTC). Inyectable por lo mismo.
 
     Returns:
-        Dict con ``atrasadas``, ``apagadas``, ``sin_registro`` y ``fuentes``
-        (detalle por fuente: umbral, lag medido y estado reportado).
+        Dict con ``atrasadas``, ``apagadas``, ``sin_registro``, ``esteriles`` y
+        ``fuentes`` (detalle por fuente: umbral, lag medido y estado reportado).
     """
     from scraper.connectors import REGISTERED_SOURCES
 
@@ -224,6 +235,7 @@ def comprobar_frescura_fuentes(
     atrasadas: list[str] = []
     apagadas: list[str] = []
     sin_registro: list[str] = []
+    esteriles: list[str] = []
     detalle: dict[str, Any] = {}
 
     for fuente in REGISTERED_SOURCES:
@@ -249,9 +261,14 @@ def comprobar_frescura_fuentes(
 
         lag = _lag_horas(fila.get("last_success_at"), momento)
         entrada["lag_hours"] = None if lag is None else round(lag, 1)
+        fetched = int(fila.get("fetched") or 0)
+        entrada["fetched"] = fetched
         if lag is None or lag > fuente.max_lag_hours:
             entrada["estado"] = "atrasada"
             atrasadas.append(fuente.source_id)
+        elif estado == "success" and fetched == 0 and not fuente.opcional:
+            entrada["estado"] = "esteril"
+            esteriles.append(fuente.source_id)
         else:
             entrada["estado"] = "fresca"
 
@@ -259,6 +276,7 @@ def comprobar_frescura_fuentes(
         "atrasadas": atrasadas,
         "apagadas": apagadas,
         "sin_registro": sin_registro,
+        "esteriles": esteriles,
         "fuentes": detalle,
     }
 
@@ -282,9 +300,14 @@ def _incorporar_frescura_fuentes(
         return
 
     info["fuentes_frescura"] = resultado
-    problemas = [*resultado["atrasadas"], *resultado["sin_registro"]]
+    problemas = [
+        *resultado["atrasadas"],
+        *resultado["sin_registro"],
+        *resultado.get("esteriles", []),
+    ]
     warnings.extend(f"fuente_atrasada:{s}" for s in resultado["atrasadas"])
     warnings.extend(f"fuente_sin_registro:{s}" for s in resultado["sin_registro"])
+    warnings.extend(f"fuente_esteril:{s}" for s in resultado.get("esteriles", []))
     checks.append({"name": "fuentes_frescas", "ok": not problemas})
 
     if problemas:

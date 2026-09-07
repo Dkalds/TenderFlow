@@ -31,7 +31,7 @@ _DATE_RE = re.compile(r"(\d{1,2})[-/](\d{1,2})[-/](\d{4})(?:\s+(\d{1,2}):(\d{2})
 _ID_RE = re.compile(r"(?:\bID\s*:\s*|[?&]N=)([A-Za-z0-9._/-]+)", re.IGNORECASE)
 
 
-def _parser_seguro() -> etree.XMLParser:
+def parser_seguro() -> etree.XMLParser:
     """Parser XML sin expansión de entidades ni resolución por red.
 
     Hasta 2026-09 el feed se parseaba con ``xml.etree.ElementTree``, que
@@ -125,9 +125,9 @@ class RegionalRssConnector:
         if b"<!doctype" in lowered or b"<!entity" in lowered:
             raise ValueError("El feed regional contiene declaraciones XML no permitidas.")
         # Tamaño acotado + DTD/entidades rechazadas arriba, y aun así el parseo
-        # va con el parser endurecido (ver ``_parser_seguro``): defensa en
+        # va con el parser endurecido (ver ``parser_seguro``): defensa en
         # profundidad, no una u otra.
-        root = etree.fromstring(content, parser=_parser_seguro())
+        root = etree.fromstring(content, parser=parser_seguro())
         previous = str((cursor or {}).get("last_seen_updated") or "")
         for item in root.findall("./channel/item"):
             title = _plain(item.findtext("title"))
