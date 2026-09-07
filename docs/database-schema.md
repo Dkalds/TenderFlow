@@ -6,9 +6,9 @@ tags: [database, schema, generado]
 
 <!-- generado por scripts/gen_schema_doc.py — no editar a mano -->
 
-Generado: 2026-09-06
+Generado: 2026-09-07
 
-Revisión Alembic aplicada: `v103_documentos_blob_ocr`.
+Revisión Alembic aplicada: `v112_organization_capabilities`.
 
 Catálogo de una base Postgres recién migrada con `alembic upgrade head`. Se listan
 las tablas de `public` agrupadas por familia, con sus columnas
@@ -27,12 +27,13 @@ migración que los declara— y, por supuesto, cualquier dato.
 | Licitaciones y fuente | 12 | 153 | 50 |
 | Documentos y pliegos | 4 | 40 | 10 |
 | Empresas y mercado | 6 | 34 | 8 |
-| Organizaciones y oportunidades | 5 | 55 | 9 |
+| Organizaciones y oportunidades | 11 | 102 | 19 |
 | Identidad, acceso y auditoría | 15 | 102 | 22 |
-| Seguimiento y notificaciones | 12 | 105 | 20 |
+| Seguimiento y notificaciones | 12 | 115 | 21 |
 | ML y predicciones | 7 | 55 | 13 |
-| Operación y observabilidad | 5 | 31 | 6 |
-| **Total** | **66** | **575** | **138** |
+| Operación y observabilidad | 6 | 46 | 11 |
+| Otras | 2 | 9 | 1 |
+| **Total** | **75** | **656** | **155** |
 
 ## Licitaciones y fuente
 
@@ -60,7 +61,7 @@ migración que los declara— y, por supuesto, cualquier dato.
 | `empresa_id` | `integer` | sí |
 | `lote_id` | `integer` | sí |
 
-Claves: `PRIMARY KEY (id)` · `UNIQUE (licitacion_id, nif, importe_adjudicado)`
+Claves: `PRIMARY KEY (id)`
 
 Índices: `idx_adj_ccaa`, `idx_adj_ccaa_nombre`, `idx_adj_empresa`, `idx_adj_fecha`, `idx_adj_lic`, `idx_adj_nif`, `idx_adj_nombre_importe`, `idx_adjudicaciones_lote`, `uq_adjudicaciones_lic_lote_nif_importe` (único), `uq_adjudicaciones_lic_nif_importe_sin_lote` (único)
 
@@ -459,6 +460,42 @@ Claves: `PRIMARY KEY (ute_empresa_id, miembro_empresa_id)`
 
 ## Organizaciones y oportunidades
 
+### `organization_certifications`
+
+| Columna | Tipo | Nulo |
+|---|---|---|
+| `id` | `integer` | no |
+| `organization_id` | `integer` | no |
+| `created_at` | `timestamp with time zone` | no |
+| `nombre` | `text` | no |
+| `ambito` | `text` | no |
+| `vigente_hasta` | `date` | sí |
+
+Claves: `PRIMARY KEY (id)`
+
+Índices: `ix_organization_certifications_org`
+
+### `organization_invitations`
+
+| Columna | Tipo | Nulo |
+|---|---|---|
+| `id` | `integer` | no |
+| `organization_id` | `integer` | no |
+| `email` | `text` | no |
+| `role` | `text` | no |
+| `token_hash` | `text` | no |
+| `invited_by_user_id` | `integer` | sí |
+| `created_at` | `timestamp with time zone` | no |
+| `expires_at` | `timestamp with time zone` | no |
+| `accepted_at` | `timestamp with time zone` | sí |
+| `accepted_user_id` | `integer` | sí |
+| `revoked_at` | `timestamp with time zone` | sí |
+| `revoked_by_user_id` | `integer` | sí |
+
+Claves: `PRIMARY KEY (id)` · `UNIQUE (token_hash)`
+
+Índices: `ix_organization_invitations_email_pendiente`, `uq_organization_invitations_pendiente` (único)
+
 ### `organization_memberships`
 
 | Columna | Tipo | Nulo |
@@ -475,6 +512,69 @@ Claves: `PRIMARY KEY (ute_empresa_id, miembro_empresa_id)`
 Claves: `PRIMARY KEY (id)` · `UNIQUE (organization_id, user_id)`
 
 Índices: `idx_org_memberships_user_status`
+
+### `organization_nifs`
+
+| Columna | Tipo | Nulo |
+|---|---|---|
+| `id` | `integer` | no |
+| `organization_id` | `integer` | no |
+| `nif` | `text` | no |
+| `razon_social` | `text` | sí |
+| `principal` | `boolean` | no |
+| `created_by_user_id` | `integer` | sí |
+| `created_at` | `timestamp with time zone` | no |
+| `updated_at` | `timestamp with time zone` | no |
+
+Claves: `PRIMARY KEY (id)` · `UNIQUE (organization_id, nif)`
+
+Índices: `ix_organization_nifs_nif`, `uq_organization_nifs_principal` (único)
+
+### `organization_references`
+
+| Columna | Tipo | Nulo |
+|---|---|---|
+| `id` | `integer` | no |
+| `organization_id` | `integer` | no |
+| `created_at` | `timestamp with time zone` | no |
+| `organo` | `text` | no |
+| `importe_eur` | `numeric` | sí |
+| `anio` | `integer` | no |
+| `tecnologia` | `text` | sí |
+| `expediente_id` | `text` | sí |
+
+Claves: `PRIMARY KEY (id)`
+
+Índices: `ix_organization_references_org`
+
+### `organization_revenues`
+
+| Columna | Tipo | Nulo |
+|---|---|---|
+| `id` | `integer` | no |
+| `organization_id` | `integer` | no |
+| `created_at` | `timestamp with time zone` | no |
+| `ejercicio` | `integer` | no |
+| `importe_eur` | `numeric` | no |
+
+Claves: `PRIMARY KEY (id)` · `UNIQUE (organization_id, ejercicio)`
+
+Índices: `ix_organization_revenues_org`
+
+### `organization_team_profiles`
+
+| Columna | Tipo | Nulo |
+|---|---|---|
+| `id` | `integer` | no |
+| `organization_id` | `integer` | no |
+| `created_at` | `timestamp with time zone` | no |
+| `rol` | `text` | no |
+| `anios` | `numeric` | no |
+| `cantidad` | `integer` | no |
+
+Claves: `PRIMARY KEY (id)`
+
+Índices: `ix_organization_team_profiles_org`
 
 ### `organizations`
 
@@ -552,10 +652,12 @@ Claves: `PRIMARY KEY (id)`
 | `next_action_due` | `text` | sí |
 | `score_al_abrir` | `smallint` | sí |
 | `banda_al_abrir` | `text` | sí |
+| `lote_numero` | `text` | sí |
+| `desglose_al_abrir` | `text` | sí |
 
-Claves: `PRIMARY KEY (id)` · `UNIQUE (organization_id, licitacion_id)`
+Claves: `PRIMARY KEY (id)`
 
-Índices: `idx_pursuits_org_responsible`, `idx_pursuits_org_status_updated`
+Índices: `idx_pursuits_org_responsible`, `idx_pursuits_org_status_updated`, `uq_pursuits_org_lic_lote` (único), `uq_pursuits_org_lic_sin_lote` (único)
 
 ## Identidad, acceso y auditoría
 
@@ -965,6 +1067,13 @@ Claves: `PRIMARY KEY (id)` · `UNIQUE (user_key, id_externo)`
 | `email` | `text` | sí |
 | `organization_id` | `integer` | sí |
 | `visibility` | `text` | no |
+| `tecnologia` | `text` | sí |
+| `organo` | `text` | sí |
+| `organo_norm` | `text` | sí |
+| `procedimiento` | `text` | sí |
+| `tipo_contrato` | `text` | sí |
+| `banda_min` | `text` | sí |
+| `plazo_min_dias` | `integer` | sí |
 
 Claves: `PRIMARY KEY (id)`
 
@@ -1000,10 +1109,13 @@ Claves: `PRIMARY KEY (id)`
 | `last_triggered_at` | `text` | sí |
 | `last_status` | `integer` | sí |
 | `failure_count` | `integer` | no |
+| `organization_id` | `integer` | sí |
+| `created_by` | `integer` | sí |
+| `formato` | `text` | no |
 
 Claves: `PRIMARY KEY (id)`
 
-Índices: `idx_webhooks_active`
+Índices: `idx_webhooks_active`, `idx_webhooks_organizacion`
 
 ## ML y predicciones
 
@@ -1136,10 +1248,12 @@ Claves: `PRIMARY KEY (licitacion_id)`
 | `payload_json` | `text` | no |
 | `actor_id` | `integer` | sí |
 | `created_at` | `text` | no |
+| `organization_id` | `integer` | sí |
+| `dispatched_at` | `text` | sí |
 
 Claves: `PRIMARY KEY (id)`
 
-Índices: `idx_domain_events_actor`, `idx_domain_events_aggregate`, `idx_domain_events_created`, `idx_domain_events_type`
+Índices: `idx_domain_events_actor`, `idx_domain_events_aggregate`, `idx_domain_events_created`, `idx_domain_events_organizacion`, `idx_domain_events_pendientes`, `idx_domain_events_type`
 
 ### `feature_flags`
 
@@ -1165,6 +1279,28 @@ Claves: `PRIMARY KEY (id)` · `UNIQUE (name)`
 | `holder` | `text` | no |
 
 Claves: `PRIMARY KEY (name)`
+
+### `jobs`
+
+| Columna | Tipo | Nulo |
+|---|---|---|
+| `id` | `bigint` | no |
+| `tipo` | `text` | no |
+| `payload_json` | `text` | no |
+| `organization_id` | `integer` | sí |
+| `estado` | `text` | no |
+| `intentos` | `integer` | no |
+| `run_after` | `timestamp with time zone` | no |
+| `locked_by` | `text` | sí |
+| `locked_at` | `timestamp with time zone` | sí |
+| `resultado_json` | `text` | sí |
+| `error_detail` | `text` | sí |
+| `created_at` | `timestamp with time zone` | no |
+| `updated_at` | `timestamp with time zone` | no |
+
+Claves: `PRIMARY KEY (id)`
+
+Índices: `ix_jobs_corriendo`, `ix_jobs_organizacion`, `ix_jobs_pendientes`
 
 ### `kpi_snapshots`
 
@@ -1196,6 +1332,33 @@ Claves: `PRIMARY KEY (id)`
 Claves: `PRIMARY KEY (id)`
 
 Índices: `idx_ops_events_type_ts`
+
+## Otras
+
+### `domain_event_dispatches`
+
+| Columna | Tipo | Nulo |
+|---|---|---|
+| `id` | `integer` | no |
+| `event_id` | `integer` | no |
+| `canal` | `text` | no |
+| `created_at` | `text` | no |
+
+Claves: `PRIMARY KEY (id)` · `UNIQUE (event_id, canal)`
+
+Índices: `idx_domain_event_dispatches_evento`
+
+### `user_event_prefs`
+
+| Columna | Tipo | Nulo |
+|---|---|---|
+| `id` | `integer` | no |
+| `user_key` | `text` | no |
+| `event_type` | `text` | no |
+| `modo` | `text` | no |
+| `updated_at` | `text` | no |
+
+Claves: `PRIMARY KEY (id)` · `UNIQUE (user_key, event_type)`
 
 ## Vistas materializadas
 
