@@ -115,7 +115,16 @@ describe("registrarEvento", () => {
     // Subido de 13 a 14 el 2026-09-01 con `sesion_iniciada`: aporta el
     // denominador que faltaba para interpretar todo el embudo y distingue sus
     // cuatro puertas sin enviar identidad ni otro dato de cardinalidad alta.
-    expect(Object.keys(PROPIEDADES_PERMITIDAS).length).toBeLessThanOrEqual(14);
+    //
+    // Subido de 14 a 15 el 2026-09-07 con `vista_experimental_abierta` (S7.3
+    // del plan 2026-09 v2). Es el evento que contesta la pregunta que decide
+    // el destino de las dos vistas marcadas `experimental`: si nadie las abre,
+    // lo que procede es retirarlas, no seguir manteniéndolas tras un flag. Sin
+    // medirlo, esa decisión se pospone indefinidamente por falta de dato.
+    // `vista` y `flag` son de cardinalidad acotada —el nombre de la vista y si
+    // la API de flags respondió—, así que no reabre el problema que este tope
+    // vigila.
+    expect(Object.keys(PROPIEDADES_PERMITIDAS).length).toBeLessThanOrEqual(15);
   });
 });
 

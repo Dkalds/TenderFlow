@@ -71,6 +71,24 @@ _REPORTEROS = frozenset({"scripts/gen_status.py"})
 # la retira T4, y estas dos entradas se van con ella. Se anotan aquí, y no se
 # ocultan ampliando el escaneo, para que el conteo de ``docs/STATUS.md`` siga
 # diciendo la verdad sobre el tamaño de la deuda.
+#
+# Segunda tanda de excepciones del 2026-09-07, por el mismo motivo y el mismo
+# camino. Las destapó CI, no una revisión: el ratchet hizo exactamente su
+# trabajo el primer día que corrió.
+#
+#   - ``scheduler/jobs/event_dispatch.py`` es el ÚNICO punto donde el
+#     despachador traduce ``user_id`` a ``user_key``, y está centralizado ahí a
+#     propósito: los eventos de ``pursuit.*`` viajan con ids de usuario, pero
+#     ``user_notifications`` y ``pending_digests`` se indexan por ``user_key``.
+#     La alternativa que pide D18 —usar el ``user_id`` del principal— no existe
+#     hasta que T4 añada la columna a esas dos tablas. Tener la traducción en un
+#     solo sitio es además lo que hará barato quitarla: T4 borra esta función,
+#     no treinta llamadas repartidas.
+#   - ``shared/events.py`` no usa ``user_key`` como identidad: lo nombra como
+#     CAMPO del payload de ``watchlist_rule.matched``, un evento de webhook que
+#     ya existía antes del catálogo. Renombrar esa clave sería un cambio
+#     breaking del contrato publicado para quien tenga ese webhook suscrito, así
+#     que se retira cuando se retire la columna, y no antes.
 CONGELADOS: frozenset[str] = frozenset(
     {
         "api/routes/admin_solicitudes.py",
@@ -109,6 +127,7 @@ CONGELADOS: frozenset[str] = frozenset(
         "db/watchlist.py",
         "db/watchlist_empresas.py",
         "llm/budget.py",
+        "scheduler/jobs/event_dispatch.py",
         "scheduler/jobs/watchlist_rules.py",
         "scheduler/watchlist_alerts.py",
         "scheduler/watchlist_rules_alerts.py",
@@ -129,6 +148,7 @@ CONGELADOS: frozenset[str] = frozenset(
         "services/watchlist_rules.py",
         "shared/cache.py",
         "shared/dto.py",
+        "shared/events.py",
         "shared/identity.py",
         "shared/types.py",
         "shared/user_key.py",
