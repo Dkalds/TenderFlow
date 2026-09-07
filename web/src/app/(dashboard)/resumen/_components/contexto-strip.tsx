@@ -3,8 +3,10 @@
 import { useMemo } from "react";
 import { PanelError } from "@/components/console/panel";
 import { useFilteredQuery } from "@/hooks/use-filtered-query";
+import { useScopedHref } from "@/lib/filters";
 import { celdaSalud, coberturaSinMedir } from "@/lib/cobertura";
 import type { CeldaSalud, CoberturaMetrica } from "@/lib/cobertura";
+import type { ResumenHoyResult } from "@/lib/api-types";
 import { compararMeses, mesesCerrados } from "./contexto/comparativa-mensual";
 import { MercadoStrip } from "./contexto/mercado-strip";
 import { SaludStrip, type OverviewConCobertura } from "./contexto/salud-strip";
@@ -37,10 +39,30 @@ export { compararMeses, mesesCerrados };
 export type { ComparativaMensual, MesAgregado } from "./contexto/comparativa-mensual";
 
 export function ContextoStrip() {
+  const scopedHref = useScopedHref();
   const overview = useFilteredQuery<OverviewConCobertura>(
     ["analytics", "overview"],
     "/api/v1/analytics/overview",
     { staleTime: 5 * 60 * 1000 },
+  );
+
+  // «Activas» bajó aquí desde la banda de arriba: es la foto del ámbito, no
+  // algo que exija una acción hoy, y allí ocupaba un cuarto de la fila urgente
+  // para decir un número que no caduca.
+  //
+  // Viene de otro endpoint que el resto de la tira, y eso no es gratis:
+  // `/resumen/hoy` sólo aplica cuatro de los siete filtros del ámbito
+  // (`alcance.ts`), así que con una búsqueda o un chip de estado activos esta
+  // celda mide un conjunto más ancho que sus vecinas. Se declara en el rótulo
+  // de la sección y no en el pie de la celda: a un séptimo del ancho el pie se
+  // trunca, y un aviso truncado no avisa. Misma clave y mismas opciones que en
+  // `atencion-cards.tsx`: React Query sirve las dos desde una sola petición.
+  const hoy = useFilteredQuery<ResumenHoyResult>(
+    ["analytics", "resumen", "hoy"],
+    "/api/v1/analytics/resumen/hoy",
+    { staleTime: 2 * 60 * 1000 },
+    undefined,
+    true,
   );
 
   const data = overview.data;
@@ -81,6 +103,9 @@ export function ContextoStrip() {
         loading={loading}
         comparativa={comparativa}
         historial={historial}
+        activas={hoy.data?.total_activas}
+        activasLoading={hoy.isLoading}
+        activasHref={scopedHref("/detalle?solo_abiertas=true")}
       />
       <SaludStrip data={data} loading={loading} />
     </>

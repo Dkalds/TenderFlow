@@ -10,6 +10,13 @@ import { useWithFilters } from "@/lib/filters";
  * vistas; el Resumen sólo enlaza a ellas para no duplicarlos, y los atajos
  * arrastran el ámbito activo (`useWithFilters`) para no perder el contexto al
  * saltar. La metadata sale de `lib/navigation.ts`, única fuente de verdad.
+ *
+ * Eran cuatro tarjetas de 104 px con icono, título y descripción — el mismo
+ * peso visual que las tarjetas de «Mercado abierto», que sí traen un dato que
+ * caduca. Con eso el pie de la pantalla competía con su cabecera y cuatro
+ * enlaces de navegación ocupaban una banda entera. Vuelven a ser lo que son:
+ * enlaces. La descripción no se pierde, pasa al `title` — la misma información,
+ * a un hover de distancia, en vez de ocupando dos líneas que nadie relee.
  */
 const SLUGS = ["tendencias", "organos", "tecnologias", "proyectos-modulos"] as const;
 
@@ -26,7 +33,7 @@ export function AtajosAnalisis() {
           los gráficos detallados viven en sus vistas · los atajos arrastran el ámbito
         </span>
       </div>
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="flex flex-wrap gap-2">
         {SLUGS.map((slug) => {
           const page = findPage(slug);
           if (!page) return null;
@@ -36,22 +43,15 @@ export function AtajosAnalisis() {
               key={slug}
               href={withFilters(`/${slug}`)}
               aria-label={`Ir a ${page.label}`}
-              className="group flex min-h-[104px] flex-col rounded-xl border border-border/60 bg-card/70 px-3.5 py-3 transition-[transform,border-color] duration-140 ease-out hover:-translate-y-px hover:border-primary/45"
+              title={page.description}
+              className="group border-border/60 hover:border-primary/45 hover:bg-card/70 inline-flex h-8 items-center gap-2 rounded-lg border px-3 text-[11.5px] font-medium transition-[border-color,background-color] duration-140 ease-out"
             >
-              <div className="mb-2.5 flex items-center gap-2.5">
-                <span className="grid h-7 w-7 flex-none place-items-center rounded-lg bg-primary/12 text-primary">
-                  <Icon className="h-3.5 w-3.5" aria-hidden="true" />
-                </span>
-                <div className="flex-1" />
-                <ArrowRight
-                  className="h-3 w-3 flex-none text-muted-foreground transition-[color,transform] duration-140 ease-out group-hover:translate-x-0.5 group-hover:text-primary"
-                  aria-hidden="true"
-                />
-              </div>
-              <div className="mb-1 text-xs font-semibold leading-[1.3]">{page.label}</div>
-              <div className="line-clamp-2 text-[10.5px] leading-[1.45] text-muted-foreground">
-                {page.description}
-              </div>
+              <Icon className="text-muted-foreground h-3.5 w-3.5 flex-none" aria-hidden="true" />
+              {page.label}
+              <ArrowRight
+                className="text-muted-foreground group-hover:text-primary h-3 w-3 flex-none transition-[color,transform] duration-140 ease-out group-hover:translate-x-0.5"
+                aria-hidden="true"
+              />
             </Link>
           );
         })}
