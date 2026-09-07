@@ -167,7 +167,15 @@ export const watchlistKeys = {
 
 export const empresasKeys = {
   all: ["empresas"] as const,
-  list: (search: string) => ["empresas", search] as const,
+  /**
+   * Una página concreta del maestro. Lleva dentro los cuatro parámetros que la
+   * definen —búsqueda, página, columna y sentido— porque el orden y la
+   * paginación los resuelve el servidor: con la clave anterior (sólo la
+   * búsqueda) pasar de página o cambiar de columna devolvía la página
+   * cacheada, y la tabla se quedaba quieta como si el clic no existiera.
+   */
+  list: (search: string, page = 0, sort = "importe", order = "desc") =>
+    ["empresas", search, page, sort, order] as const,
   stats: ["empresas-stats"] as const,
   reviews: ["empresa-reviews"] as const,
   detail: (empresaId: number | string) => ["empresa-detail", empresaId] as const,

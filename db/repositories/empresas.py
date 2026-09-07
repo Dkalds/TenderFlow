@@ -14,10 +14,13 @@ ratchet TID251 tenía ese fichero en la whitelist de excepciones legacy.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 from db.database import connect_read
 from db.repositories.base import rows_to_dicts
+
+EmpresasOrderBy = Literal["nombre", "nif", "contratos", "importe"]
+EmpresasOrderDir = Literal["asc", "desc"]
 
 _LISTA_SELECT = (
     "SELECT e.empresa_id, e.nombre_canonico, e.nif_canonico, e.es_ute, e.es_pyme, "
@@ -35,31 +38,71 @@ _LISTA_WHERE_BUSQUEDA = (
     "(SELECT empresa_id FROM empresa_aliases WHERE alias_normalizado LIKE %s) "
 )
 
-_LISTA_GROUP_ORDER = (
+_LISTA_GROUP = (
     "GROUP BY e.empresa_id, e.nombre_canonico, e.nif_canonico, e.es_ute, e.es_pyme, g.nombre "
-    "ORDER BY importe_total DESC LIMIT %s OFFSET %s"
 )
+
+# Clave del contrato → expresión por la que ordenar. La tabla, y no el
+# parámetro, es lo único que acaba concatenado en el SQL: el ``Literal`` de la
+# ruta ya acota los valores que entran, pero un enum de Pydantic no defiende a
+# la capa que construye la query, y esta tabla sí. ``contratos`` e ``importe``
+# apuntan a los alias de salida del propio SELECT, que Postgres admite en
+# ``ORDER BY`` (es lo que ya hacía el orden fijo por importe).
+_ORDEN_EXPR: dict[str, str] = {
+    "nombre": "LOWER(e.nombre_canonico)",
+    "nif": "e.nif_canonico",
+    "contratos": "n_adjudicaciones",
+    "importe": "importe_total",
+}
+
+_COUNT_SELECT = "SELECT COUNT(*) FROM empresas e "
 
 
 class EmpresasReadRepository:
     """Consultas de lectura del maestro de empresas."""
 
-    def list_empresas(self, q: str | None, limit: int, offset: int) -> list[dict[str, Any]]:
-        """Empresas canónicas con sus agregados de adjudicaciones.
+    def list_empresas(
+        self,
+        q: str | None,
+        limit: int,
+        offset: int,
+        sort: EmpresasOrderBy = "importe",
+        order: EmpresasOrderDir = "desc",
+    ) -> tuple[list[dict[str, Any]], int]:
+        """Página de empresas canónicas con sus agregados, y cuántas hay en total.
 
-        ``q`` busca en nombre canónico, NIF y aliases. Ordena por importe
-        adjudicado total descendente.
+        ``q`` busca en nombre canónico, NIF y aliases. El total viaja con la
+        página porque el buscador pagina: sin él la vista sólo puede decir
+        cuántas filas ha recibido —«14 de 1.284» eran las 14 que cabían— y ese
+        es justo el número que no responde a si queda algo detrás.
+
+        Las dos consultas comparten conexión a propósito, por el mismo motivo
+        que las cuatro de :meth:`get_empresa`: son la misma pantalla.
         """
-        sql = _LISTA_SELECT
+        where = _LISTA_WHERE_BUSQUEDA if q else ""
         params: list[Any] = []
         if q:
-            sql += _LISTA_WHERE_BUSQUEDA
             like = f"%{q.upper()}%"
             params.extend([like, like, like])
-        sql += _LISTA_GROUP_ORDER
-        params.extend([limit, offset])
+
+        # ``NULLS LAST`` en los dos sentidos: un NIF ausente no es el valor más
+        # pequeño, es la fila de la que no se sabe el dato, y en el maestro esa
+        # fila no debe encabezar la página en ninguno de los dos órdenes.
+        # ``empresa_id`` desempata para que paginar sea estable: sin él, dos
+        # empresas con el mismo importe pueden cruzarse entre la página 1 y la
+        # 2 y una de ellas no aparece en ninguna.
+        direction = "ASC" if order == "asc" else "DESC"
+        orden = f"ORDER BY {_ORDEN_EXPR[sort]} {direction} NULLS LAST, e.empresa_id ASC "
+
         with connect_read() as c:
-            return rows_to_dicts(c.execute(sql, params))
+            rows = rows_to_dicts(
+                c.execute(
+                    _LISTA_SELECT + where + _LISTA_GROUP + orden + "LIMIT %s OFFSET %s",
+                    [*params, limit, offset],
+                )
+            )
+            total_row = c.execute(_COUNT_SELECT + where, params).fetchone()
+        return rows, int(total_row[0] if total_row else 0)
 
     def get_empresa(self, empresa_id: int) -> dict[str, Any] | None:
         """Empresa con aliases, miembros de UTE y UTEs en las que participa.
