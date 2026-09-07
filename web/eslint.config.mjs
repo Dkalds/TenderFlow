@@ -120,6 +120,59 @@ const eslintConfig = defineConfig([
       ],
     },
   },
+
+  // ── `title=` nativo fuera de los elementos HTML (C7.4) ──────────────────
+  //
+  // El atributo `title` no se dispara con teclado, su temporización no es
+  // controlable y su estilo no sigue el tema. `components/ui/tooltip.tsx`
+  // existe con la política de delay ya afinada (`docs/frontend-motion.md`).
+  //
+  // La regla mira SÓLO elementos HTML (`<span>`, `<div>`, `<button>`…). Un
+  // `title` sobre un componente propio —`<KpiCard title="…">`— es su API, no
+  // el atributo, y prohibirlo sería una regla que alguien acabaría
+  // desactivando. La diferencia importa: de los 178 `title=` que un grep
+  // cuenta hoy, **116 son props de componente** y sólo 34 son el atributo.
+  //
+  // `abbr` e `iframe` quedan fuera: en el primero el tooltip nativo ES la
+  // semántica de la abreviatura, y en el segundo es el nombre accesible del
+  // marco.
+  //
+  // `ignores` es la deuda de hoy y **sólo puede encoger**. Cada fichero que
+  // sale de la lista es una ola cerrada; ninguno vuelve a entrar.
+  {
+    files: ["src/**/*.tsx"],
+    ignores: [
+      "src/app/(dashboard)/competencia/_components/competidores-view.tsx",
+      "src/app/(dashboard)/detalle/page.tsx",
+      "src/app/(dashboard)/mercado/_components/calendario-view.tsx",
+      "src/app/(dashboard)/mercado/_components/clusters-view.tsx",
+      "src/app/(dashboard)/mercado/_components/organos-view.tsx",
+      "src/app/(dashboard)/mercado/_components/proyectos-modulos-view.tsx",
+      "src/app/(dashboard)/mercado/_components/tecnologias-view.tsx",
+      "src/app/(dashboard)/mercado/_components/tendencias-view.tsx",
+      "src/app/(dashboard)/ops/_components/observabilidad-view.tsx",
+      "src/app/(dashboard)/resumen/_components/contexto-strip.tsx",
+      "src/app/(dashboard)/resumen/_components/eventos-feed.tsx",
+      "src/components/competitors/company-awards.tsx",
+      "src/components/competitors/company-profile-summary.tsx",
+      "src/components/competitors/company-quick-view.tsx",
+      "src/components/competitors/company-year-trend.tsx",
+      "src/components/layout/space-shell.tsx",
+      "src/components/pursuits/pursuit-comments.tsx",
+      "src/components/source-freshness-panel.tsx",
+    ],
+    rules: {
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector:
+            "JSXOpeningElement[name.type='JSXIdentifier'][name.name=/^[a-z]/]:not([name.name='abbr']):not([name.name='iframe']) > JSXAttribute[name.name='title']",
+          message:
+            "El `title` nativo no se abre con teclado ni sigue el tema. Usá `Tooltip` (@/components/ui/tooltip) para texto informativo, o `aria-label` si lo que falta es el nombre accesible del control.",
+        },
+      ],
+    },
+  },
 ]);
 
 export default eslintConfig;

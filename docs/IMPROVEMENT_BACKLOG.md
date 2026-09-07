@@ -412,16 +412,11 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 ### [P3] Migrar los `title=` nativos restantes a `Tooltip`
 - **Área:** web/src (celdas de tabla y textos truncados)
 - **Nota:** este ítem estaba duplicado (había una segunda entrada, "Completar la migración de `title=` nativos a `ui/tooltip.tsx`", con el mismo alcance). Fusionados el 2026-08-10.
-- **Problema:** quedan ~180 `title=` nativos. No se disparan con teclado, su timing no es controlable y su estilo no sigue el tema. `components/ui/tooltip.tsx` existe con la política de delay ya afinada (`docs/frontend-motion.md`). La primera pasada cubrió los controles icon-only y la Ola 1 de UX los de la cabecera; el resto son celdas de tabla y textos truncados informativos.
+- **Actualización 2026-09-07 (C7.4):** el número real son **34**, no ~180. De los 178 que un `grep title=` cuenta hoy, **116 son props de componentes propios** (`<KpiCard title=…>`, `<PanelError title=…>`) — su API, no el atributo — y 28 están en `<abbr>`/`<iframe>`, donde el tooltip nativo es la semántica correcta. Los 34 restantes viven en 18 ficheros y ya hay una regla ESLint que impide añadir más: `web/eslint.config.mjs`, con esos 18 en `ignores` y la nota de que esa lista sólo encoge. Los dos que estaban sobre elementos interactivos —un botón de filtro en `/detalle` y el nombre truncado de órgano en `/mercado`— ya salieron: `aria-label` el primero, `Tooltip` el segundo.
+- **Problema:** quedan 34 `title=` nativos sobre elementos HTML. No se disparan con teclado, su timing no es controlable y su estilo no sigue el tema. `components/ui/tooltip.tsx` existe con la política de delay ya afinada (`docs/frontend-motion.md`). La primera pasada cubrió los controles icon-only y la Ola 1 de UX los de la cabecera; el resto son celdas de tabla y textos truncados informativos.
 - **Acceptance criteria:** ningún `title=` sobre un elemento interactivo; en celdas y textos truncados, o `Tooltip` o texto visible.
 - **Files de partida:** [docs/frontend-motion.md](frontend-motion.md) (sección Tooltip)
 - **Riesgo:** bajo — mecánico, pero masivo: hacerlo por olas.
-
-### [P3] Barrido de ortografía castellana en las cadenas visibles restantes
-- **Área:** web/src (páginas)
-- **Problema:** decenas de cadenas de UI sin tildes ("prediccion", "analisis", "Busqueda", "Ultimos"), y `...` donde corresponde `…`. La Ola 1 cubrió navegación, barra de filtros, TopNav, `es.json` y la meta description; falta el interior de las páginas. En un producto B2B español se lee como descuido, no como estilo.
-- **Acceptance criteria:** sin cadenas de UI sin tilde en `web/src/app/**`; tests actualizados a la par (varios asertan sobre el texto). Ojo con `.codespell-ignore-words.txt`: al acentuar, algunas entradas dejan de hacer falta y conviene retirarlas.
-- **Riesgo:** bajo — pero toca muchos tests; hacerlo por página.
 
 ### [P3] Migrar la resolución de identidad de `competitors.py` a SQL (union-find + unaccent)
 - **Área:** services/analytics/competitors.py, db/repositories/adjudicaciones.py
@@ -528,6 +523,17 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 ---
 
 ## Cerrados
+
+- [2026-09-07] **Barrido de ortografía castellana en las cadenas visibles** —
+  cerrado por medición (C7.8): un barrido de todo `web/src` buscando las palabras que
+  en castellano siempre llevan tilde, restringido a **prosa** (literales con espacios,
+  no identificadores), devuelve **cero**. La Ola 1 cubrió navegación, filtros, TopNav
+  y `es.json`; el interior de las páginas se limpió después. Lo que faltaba no era el
+  barrido sino que siguiera hecho:
+  `web/src/__tests__/ortografia-castellana.test.ts` lo comprueba en cada corrida.
+  Las 94 coincidencias que un grep ingenuo encuentra son castellano correcto
+  (`licitaciones`, `sesiones`, `predicciones`, `solo`), identificadores de test o
+  atributos XML.
 
 - [2026-09-06] **`HistGradientBoosting` revienta si una feature llega entera a NaN**
   — cerrado al verificar (C9.5) que el código existe: `services/ml/baja_model.py`

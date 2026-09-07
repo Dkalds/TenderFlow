@@ -24,6 +24,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { SearchAutocomplete } from "@/components/ui/search-autocomplete";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { ExportPopover } from "@/components/export-popover";
 import { foldText, formatCurrency, formatDate, formatNumber, formatPercent } from "@/lib/utils";
 import { valorOEmpty } from "@/lib/cobertura";
@@ -417,19 +418,28 @@ export default function OrganosView() {
                           rotulado con el nombre de la fila; el `onClick` del
                           `<tr>` se queda como atajo de ratón sobre el resto. */}
                       <TableCell className="py-2 pr-4 max-w-xs">
-                        <button
-                          type="button"
-                          className="block w-full max-w-full cursor-pointer truncate text-left"
-                          title={item.organo_contratacion}
-                          onClick={(e) => {
-                            // Sin esto el clic sube al `<tr>` y el handler corre
-                            // dos veces por pulsación.
-                            e.stopPropagation();
-                            handleOrganoClick(item.organo_contratacion);
-                          }}
-                        >
-                          {item.organo_contratacion}
-                        </button>
+                        {/* `Tooltip` y no `title`: el nombre se trunca por CSS
+                            y el atributo nativo no se abre con teclado ni sigue
+                            el tema (C7.4). El texto completo sigue siendo el
+                            contenido del botón, así que un lector de pantalla
+                            lo lee entero de todas formas. */}
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <button
+                              type="button"
+                              className="block w-full max-w-full cursor-pointer truncate text-left"
+                              onClick={(e) => {
+                                // Sin esto el clic sube al `<tr>` y el handler
+                                // corre dos veces por pulsación.
+                                e.stopPropagation();
+                                handleOrganoClick(item.organo_contratacion);
+                              }}
+                            >
+                              {item.organo_contratacion}
+                            </button>
+                          </TooltipTrigger>
+                          <TooltipContent>{item.organo_contratacion}</TooltipContent>
+                        </Tooltip>
                       </TableCell>
                       <TableCell className="py-2 pr-4 w-40">
                         <div className="flex items-center gap-2">
