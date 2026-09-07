@@ -1,10 +1,20 @@
-"""Tests para Phase 4: búsqueda semántica SSE y endpoint POST /search/semantic."""
+"""Tests para Phase 4: búsqueda semántica SSE y endpoint POST /search/semantic.
+
+El campo ``source`` de la respuesta usa el vocabulario de la API
+(``rrf``/``fts``/``like``, :data:`api.routes.search.SEARCH_SOURCES`), que es el
+que comparte con la UI del Investigador y con el cliente generado. No es el
+nombre interno del motor (``"FTS5"``/``"LIKE"``, que es lo que devuelve
+``services.investigador.search_engine.hybrid_search_docs``): esa distinción es
+la razón de que aquí se importen las constantes en vez de repetir el literal.
+"""
 
 from __future__ import annotations
 
 import json
 import time
 from unittest.mock import patch
+
+from api.routes.search import SOURCE_FTS, SOURCE_LIKE
 
 # ─── helpers ─────────────────────────────────────────────────────────────────
 
@@ -63,7 +73,7 @@ class TestSemanticSearchEndpoint:
         assert resp.status_code == 422
 
     def test_returns_200_with_fts(self, client, auth):
-        """Cuando FTS devuelve hits, se devuelve respuesta 200 con source FTS5."""
+        """Cuando FTS devuelve hits, se devuelve respuesta 200 con source ``fts``."""
         fts_hits = [("LIC-001", 0.92), ("LIC-002", 0.78)]
 
         with (
@@ -81,14 +91,14 @@ class TestSemanticSearchEndpoint:
 
         assert resp.status_code == 200
         data = resp.json()
-        assert data["source"] == "FTS5"
+        assert data["source"] == SOURCE_FTS
         assert len(data["hits"]) == 2
         assert data["hits"][0]["id_externo"] == "LIC-001"
         assert "score" in data["hits"][0]
         assert data["elapsed_ms"] >= 0
 
     def test_falls_back_to_fts_when_hits_present(self, client, auth):
-        """Con FTS hits, devuelve source FTS5."""
+        """Con FTS hits, devuelve source ``fts``."""
         fts_hits = [("LIC-002", 0.65)]
 
         with (
@@ -106,11 +116,11 @@ class TestSemanticSearchEndpoint:
 
         assert resp.status_code == 200
         data = resp.json()
-        assert data["source"] == "FTS5"
+        assert data["source"] == SOURCE_FTS
         assert len(data["hits"]) == 1
 
     def test_falls_back_to_like_when_all_empty(self, client, auth):
-        """Sin FTS hits, usa LIKE."""
+        """Sin FTS hits, usa ``like``."""
         like_hits = [("LIC-001", 0.5)]
 
         with (
@@ -128,7 +138,7 @@ class TestSemanticSearchEndpoint:
             )
 
         assert resp.status_code == 200
-        assert resp.json()["source"] == "LIKE"
+        assert resp.json()["source"] == SOURCE_LIKE
 
     def test_returns_503_on_search_exception(self, client, auth):
         """Si el motor falla, devuelve 503."""

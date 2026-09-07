@@ -393,6 +393,9 @@ class DocumentosRepository:
         texto: str,
         sha256: str,
         pages: Sequence[str | DocumentoPagina] | None = None,
+        content_type: str | None = None,
+        size_bytes: int | None = None,
+        filename: str | None = None,
     ) -> None:
         """Texto extraído con éxito. ``sha256`` es del binario descargado —
         usado por el job de embeddings (F8) para saber si el contenido cambió
@@ -405,12 +408,34 @@ class DocumentosRepository:
         Cada página puede ser una cadena (comportamiento histórico: ``ocr``
         queda en ``false``) o un :class:`DocumentoPagina`, que además dice si el
         texto salió del OCR.
+
+        ``content_type``/``size_bytes``/``filename`` son los metadatos del
+        binario descargado. Se aceptan aquí —y no solo en
+        :meth:`mark_downloaded`, que en el camino de éxito no se llega a
+        llamar— porque si no el ``content_type`` de un documento **bien
+        extraído** se quedaba en ``NULL`` para siempre y el desglose por
+        formato de S8.2 (:meth:`formato_counts`) metía todos los aciertos en el
+        cubo «desconocido»: medía la cobertura que falta contra un denominador
+        que no incluía la que sí hay. ``None`` conserva el valor actual
+        (``COALESCE``): quien no los sepa no los borra.
         """
         with connect() as c:
             c.execute(
                 "UPDATE documentos SET status = 'extracted', texto = %s, sha256 = %s, "
+                "content_type = coalesce(%s, content_type), "
+                "size_bytes = coalesce(%s, size_bytes), "
+                "filename = coalesce(%s, filename), "
                 "error_detail = NULL, fetched_at = %s, updated_at = %s WHERE id = %s",
-                (texto, sha256, now_utc_iso(), now_utc_iso(), documento_id),
+                (
+                    texto,
+                    sha256,
+                    content_type,
+                    size_bytes,
+                    filename,
+                    now_utc_iso(),
+                    now_utc_iso(),
+                    documento_id,
+                ),
             )
             if pages is not None:
                 c.execute(

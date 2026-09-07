@@ -190,9 +190,37 @@ class TestClassifierCache:
         assert _get_classifier() is centinela
 
 
+@pytest.fixture()
+def admin_api_key(api_db) -> str:
+    """API key de un usuario **administrador**.
+
+    ``POST /models/{name}/activate/{version}`` exigía ``require_scope("admin")``
+    —que solo mira los scopes de la credencial— y pasó a ``require_admin``, que
+    mira la identidad: una key solo es admin si su dueño lo es *y* además lleva
+    el scope. La fixture genérica ``api_key`` es huérfana (sin ``user_id``), así
+    que con el criterio nuevo ya no vale: activar un modelo es un rollback en
+    producción y no puede autorizarlo una credencial sin persona detrás.
+    """
+    from api.auth import create_api_key
+    from db.users import create_user, set_admin
+
+    user_id = create_user(email="model-activate@example.test", password_hash="test-hash")
+    set_admin(user_id, True)
+    return create_api_key("model-activate-key", scopes="*", user_id=user_id)
+
+
 class TestActivateInvalidatesCache:
+    def test_non_admin_key_cannot_activate(self, client, api_key) -> None:
+        """La contrapartida del cambio: una key sin dueño admin recibe 403."""
+        resp = client.post(
+            "/api/v1/models/sap_classifier/activate/1",
+            headers={"X-API-Key": api_key},
+        )
+
+        assert resp.status_code == 403
+
     def test_activate_endpoint_invalidates_the_process_cache(
-        self, client, api_key, monkeypatch: pytest.MonkeyPatch
+        self, client, admin_api_key, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Sin esto el cambio de `is_active` se quedaba solo en la BD."""
         from db.model_registry import register_version
@@ -215,7 +243,7 @@ class TestActivateInvalidatesCache:
 
         resp = client.post(
             f"/api/v1/models/sap_classifier/activate/{version_2}",
-            headers={"X-API-Key": api_key},
+            headers={"X-API-Key": admin_api_key},
         )
 
         assert resp.status_code == 200, resp.text
@@ -223,7 +251,7 @@ class TestActivateInvalidatesCache:
         assert invalidaciones == [1], "la ruta no invalidó la caché del proceso"
 
     def test_unknown_version_returns_404_and_does_not_invalidate(
-        self, client, api_key, monkeypatch: pytest.MonkeyPatch
+        self, client, admin_api_key, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         invalidaciones: list[int] = []
         monkeypatch.setattr(
@@ -233,7 +261,7 @@ class TestActivateInvalidatesCache:
 
         resp = client.post(
             "/api/v1/models/sap_classifier/activate/9999",
-            headers={"X-API-Key": api_key},
+            headers={"X-API-Key": admin_api_key},
         )
 
         assert resp.status_code == 404

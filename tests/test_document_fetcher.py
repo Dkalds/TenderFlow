@@ -306,7 +306,15 @@ class TestFetchAndExtract:
         assert row["size_bytes"] == len(b"no es un pdf valido")
         assert "corrupto" in (row["error_detail"] or "")
 
-    def test_unsupported_content_type_marks_error(self, repo):
+    def test_unsupported_content_type_marks_unsupported_not_error(self, repo):
+        """Desde S8.2 (``v103``) «no lo sé leer» dejó de ser «falló».
+
+        El aserto viejo (``status == "error"``) ya no vale porque medía dos
+        cosas distintas con la misma etiqueta: un PDF corrupto es un fallo y un
+        formato sin parser es cobertura que falta. Solo separados se puede
+        contar cuánta falta y de qué tipo (``formato_counts``), así que el
+        estado terminal es ``unsupported`` y conserva el ``content_type``.
+        """
         doc = _seed_documento(repo)
 
         with patch(
@@ -315,9 +323,11 @@ class TestFetchAndExtract:
         ):
             status = fetch_and_extract(doc)
 
-        assert status == "error"
+        assert status == "unsupported"
         row = repo.get(doc["id"])
         assert row is not None
+        assert row["status"] == "unsupported"
+        assert row["content_type"] == "text/html"
         assert "no soportado" in (row["error_detail"] or "")
 
     def test_text_plain_document_extracted(self, repo):

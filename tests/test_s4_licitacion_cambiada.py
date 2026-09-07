@@ -47,7 +47,10 @@ def _historial(id_externo: str, *, snapshot: dict[str, object], changed: str) ->
         )
 
 
-def _seguir(id_externo: str, *, user_key: str = "uk-seguidor", organization_id: int = 1) -> None:
+_UK_SEGUIDOR = "uk-seguidor"
+
+
+def _seguir(id_externo: str, organization_id: int, *, user_key: str = _UK_SEGUIDOR) -> None:
     from db.database import connect
 
     with connect() as c:
@@ -65,12 +68,34 @@ def base(tmp_db):
     return tmp_db
 
 
+@pytest.fixture()
+def org_seguidora(base) -> int:
+    """Organización real a la que pertenece el seguimiento.
+
+    ``watchlist_items.organization_id`` tiene FK contra ``organizations`` desde
+    la revisión v64; el ``organization_id=1`` literal que traía este fichero
+    solo se sostenía porque la suite jamás había corrido contra Postgres. Los
+    dos tests de oportunidades que hay más abajo ya creaban usuario y
+    organización de verdad — esta fixture es ese mismo patrón para los que
+    siguen el expediente por favoritos.
+    """
+    from db.repositories.organizations import OrganizationRepository
+    from db.users import create_user
+
+    user_id = create_user(
+        email="s4-seguidor@example.test",
+        password_hash="test-hash",  # pragma: allowlist secret
+        display_name="Seguidora",
+    )
+    return int(OrganizationRepository().ensure_personal_organization(user_id)["id"])
+
+
 def _eventos_de_cambio() -> list[dict[str, object]]:
     return [e for e in pending_events() if e["event_type"] == "licitacion.cambiada"]
 
 
-def test_un_cambio_de_fecha_limite_en_expediente_seguido_genera_evento(base):
-    _seguir(_ID)
+def test_un_cambio_de_fecha_limite_en_expediente_seguido_genera_evento(org_seguidora):
+    _seguir(_ID, org_seguidora)
     _historial(_ID, snapshot={"fecha_limite": "2026-11-01"}, changed="fecha_limite")
 
     derive_new_events()
@@ -84,20 +109,20 @@ def test_un_cambio_de_fecha_limite_en_expediente_seguido_genera_evento(base):
         "antes": "2026-11-01",
         "despues": "2026-12-01",
     }
-    assert {"user_key": "uk-seguidor", "organization_id": 1} in payload["seguidores"]
+    assert {"user_key": _UK_SEGUIDOR, "organization_id": org_seguidora} in payload["seguidores"]
 
 
-def test_el_despachador_escribe_la_alerta_in_app_con_campo_y_valores(base):
+def test_el_despachador_escribe_la_alerta_in_app_con_campo_y_valores(org_seguidora):
     """Criterio de S4.5: el seguidor ve QUÉ cambió y a QUÉ, no un «algo cambió»."""
     from scheduler.jobs import event_dispatch
     from services.notifications import get_user_alerts
 
-    _seguir(_ID)
+    _seguir(_ID, org_seguidora)
     _historial(_ID, snapshot={"fecha_limite": "2026-11-01"}, changed="fecha_limite")
     derive_new_events()
     event_dispatch.dispatch_pending()
 
-    alertas = get_user_alerts("uk-seguidor", organization_id=1)
+    alertas = get_user_alerts(_UK_SEGUIDOR, organization_id=org_seguidora)
     assert len(alertas) == 1
     assert alertas[0]["licitacion_id"] == _ID
     assert "fecha_limite" in alertas[0]["body"]
@@ -113,10 +138,10 @@ def test_un_cambio_en_expediente_no_seguido_no_genera_evento(base):
     assert _eventos_de_cambio() == []
 
 
-def test_una_reingesta_sin_cambio_real_no_genera_evento(base):
+def test_una_reingesta_sin_cambio_real_no_genera_evento(org_seguidora):
     """``values_equal``: el snapshot dice que cambió pero los valores son el
     mismo número con otra representación (float4 contra float8)."""
-    _seguir(_ID)
+    _seguir(_ID, org_seguidora)
     _historial(_ID, snapshot={"fecha_limite": "2026-12-01"}, changed="fecha_limite")
 
     derive_new_events()
@@ -124,10 +149,10 @@ def test_una_reingesta_sin_cambio_real_no_genera_evento(base):
     assert _eventos_de_cambio() == []
 
 
-def test_los_retoques_de_redaccion_no_despiertan_a_nadie(base):
+def test_los_retoques_de_redaccion_no_despiertan_a_nadie(org_seguidora):
     """``titulo`` y ``descripcion`` no están en los campos seguidos: un cambio
     editorial no es una novedad del expediente."""
-    _seguir(_ID)
+    _seguir(_ID, org_seguidora)
     _historial(_ID, snapshot={"titulo": "Título anterior"}, changed="titulo")
 
     derive_new_events()
@@ -135,12 +160,12 @@ def test_los_retoques_de_redaccion_no_despiertan_a_nadie(base):
     assert _eventos_de_cambio() == []
 
 
-def test_el_cursor_evita_releer_el_historial_entero(base):
+def test_el_cursor_evita_releer_el_historial_entero(org_seguidora):
     """Criterio de S4.5: el productor va sobre el cursor de ``contract_events``.
 
     Una segunda pasada sin filas nuevas no vuelve a emitir el mismo aviso.
     """
-    _seguir(_ID)
+    _seguir(_ID, org_seguidora)
     _historial(_ID, snapshot={"fecha_limite": "2026-11-01"}, changed="fecha_limite")
 
     derive_new_events()

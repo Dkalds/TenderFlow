@@ -855,11 +855,18 @@ def fetch_and_extract(documento: dict[str, Any]) -> str:
 
     from db.repositories.documentos import DocumentoPagina
 
+    # El content-type viaja con el éxito, no solo con el fallo: el camino feliz
+    # nunca pasa por ``mark_downloaded``, así que sin esto el desglose por
+    # formato (S8.2) contaba los `unsupported` con su tipo y los `extracted`
+    # como «desconocido» — el numerador de la cobertura era invisible.
     repo.mark_extracted(
         documento_id,
         texto=texto,
         sha256=sha256,
         pages=[DocumentoPagina(texto=p.texto, ocr=p.ocr) for p in paginas],
+        content_type=content_type,
+        size_bytes=size_bytes,
+        filename=documento.get("filename"),
     )
     log.info(
         "document_fetch_extracted",
@@ -908,5 +915,9 @@ def reextract_from_blob(documento_id: int) -> str:
         texto=texto,
         sha256=hashlib.sha256(content).hexdigest(),
         pages=[DocumentoPagina(texto=p.texto, ocr=p.ocr) for p in paginas],
+        # Re-extraer una fila que estaba en ``unsupported`` la devuelve a
+        # ``extracted``: el desglose por formato tiene que moverse con ella.
+        content_type=content_type,
+        size_bytes=len(content),
     )
     return "extracted"

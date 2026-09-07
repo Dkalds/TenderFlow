@@ -60,6 +60,29 @@ def _sembrar(filas: list[dict[str, object]]) -> None:
 
 
 @pytest.fixture()
+def duenya(tmp_db) -> tuple[int, int]:
+    """Usuario y organización personal reales. Devuelve ``(user_id, org_id)``.
+
+    ``watchlist_rules.organization_id`` tiene FK contra ``organizations`` desde
+    la revisión v64, así que el ``organization_id=1`` literal que usaban estos
+    tests solo pasaba porque la suite nunca había corrido contra Postgres. La
+    FK es correcta y se queda: una regla apunta a una organización que existe o
+    no apunta a ninguna — un id colgado dejaría filas que ninguna consulta con
+    scope organizativo puede volver a encontrar, y que ningún borrado de equipo
+    limpia (la FK es ``ON DELETE CASCADE``).
+    """
+    from db.repositories.organizations import OrganizationRepository
+    from db.users import create_user
+
+    user_id = create_user(
+        email="s4-reglas@example.test",
+        password_hash="test-hash",  # pragma: allowlist secret
+        display_name="Dueña de las reglas",
+    )
+    return user_id, int(OrganizationRepository().ensure_personal_organization(user_id)["id"])
+
+
+@pytest.fixture()
 def corpus(tmp_db):
     """Cuatro expedientes que separan cada criterio de los demás."""
     _sembrar(
@@ -252,9 +275,10 @@ def test_banda_min_mantiene_la_paridad_de_totales(corpus):
 # ── Persistencia ─────────────────────────────────────────────────────────────
 
 
-def test_los_seis_criterios_sobreviven_al_crud(corpus):
+def test_los_seis_criterios_sobreviven_al_crud(corpus, duenya):
     from services.watchlist_rules import create_rule, list_rules, update_rule
 
+    user_id, org_id = duenya
     regla = WatchlistRule(
         nombre="SAP abierto en Alcañiz",
         keyword="SAP",
@@ -265,8 +289,8 @@ def test_los_seis_criterios_sobreviven_al_crud(corpus):
         banda_min="Tibia",
         plazo_min_dias=15,
     )
-    rule_id = create_rule("uk-s4", regla, user_id=1, organization_id=1)
-    guardada = next(r for r in list_rules("uk-s4", 1) if r.id == rule_id)
+    rule_id = create_rule("uk-s4", regla, user_id=user_id, organization_id=org_id)
+    guardada = next(r for r in list_rules("uk-s4", org_id) if r.id == rule_id)
     assert guardada.tecnologia == "SAP"
     assert guardada.organo == "Ayuntamiento de Alcañiz"
     assert guardada.procedimiento == "abierto"
@@ -274,22 +298,23 @@ def test_los_seis_criterios_sobreviven_al_crud(corpus):
     assert guardada.banda_min == "Tibia"
     assert guardada.plazo_min_dias == 15
 
-    assert update_rule("uk-s4", rule_id, regla.model_copy(update={"plazo_min_dias": 5}), 1)
-    reeditada = next(r for r in list_rules("uk-s4", 1) if r.id == rule_id)
+    assert update_rule("uk-s4", rule_id, regla.model_copy(update={"plazo_min_dias": 5}), org_id)
+    reeditada = next(r for r in list_rules("uk-s4", org_id) if r.id == rule_id)
     assert reeditada.plazo_min_dias == 5
 
 
-def test_organo_norm_se_persiste_plegado(corpus):
+def test_organo_norm_se_persiste_plegado(corpus, duenya):
     """La normalización se guarda: aplicarla en cada consulta sobre la columna
     de la tabla grande impediría usar índice."""
     from db.database import connect_read
     from services.watchlist_rules import create_rule
 
+    user_id, org_id = duenya
     rule_id = create_rule(
         "uk-s4-norm",
         WatchlistRule(organo="Ayuntamiento de Alcañiz, S.A."),
-        user_id=1,
-        organization_id=1,
+        user_id=user_id,
+        organization_id=org_id,
     )
     with connect_read() as c:
         fila = c.execute(

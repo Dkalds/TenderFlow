@@ -21,6 +21,17 @@ Las filas anteriores a la revisión ``v108`` no tienen organización. Se tratan
 como **globales**: siguen entregando y siguen viéndose desde la vista de
 ``/ops`` (``GET /webhooks/global``, solo administradores), pero ningún miembro
 las ve ni las edita desde su equipo.
+
+Consecuencia deliberada: **un principal sin fila de usuario ya no gestiona
+webhooks**. Resolver la organización activa empieza por leer el usuario, así
+que una credencial huérfana falla en vez de caer a una vista sin ámbito. No es
+una regresión funcional: ``api/auth.py`` rechaza en prod y staging una API key
+sin dueño (``unbound_api_key_rejected``) y ``create_api_key`` ni siquiera deja
+emitirla, de modo que el único principal sin usuario posible es el de
+desarrollo/tests. Degradar aquí a la vista global para tolerarlo habría dado a
+esa credencial de compatibilidad **más** alcance que a un miembro real —el de
+todas las organizaciones a la vez—, que es exactamente el agujero que S4.2
+viene a cerrar.
 """
 
 from __future__ import annotations

@@ -101,16 +101,33 @@ def test_sin_matches_no_notifica_pero_mueve_ventana(tmp_db):
     assert last is not None  # la ventana se movio aunque no haya matches
 
 
-def test_regla_due_con_matches_dispara_webhook(tmp_db, monkeypatch):
-    """F12·C2c: cada regla con matches nuevos dispara ``watchlist_rule.matched``."""
+# ---------------------------------------------------------------------------
+# S4.1: el aviso a las integraciones sale por el outbox, no por `trigger_event`
+#
+# Estos tres tests espiaban `db.webhooks.trigger_event`, que era como el job
+# entregaba a los webhooks **antes** de S4: una conexión HTTP por suscriptor
+# dentro de la evaluación de las reglas. Ahora el job escribe
+# `watchlist_rule.matched` en `domain_events` y el reparto lo hace
+# `scheduler/jobs/event_dispatch.py`. El monkeypatch sobre `trigger_event`
+# dejó de interceptar nada, así que uno de los tres falló (`assert 0 == 1`) y
+# los otros dos pasaban en vacío — comprobaban el comportamiento de una función
+# que ya nadie llama en este camino. Se reescriben contra el outbox, que es
+# donde vive ahora la garantía; la entrega HTTP en sí tiene sus propios tests
+# en `tests/test_s4_outbox.py`.
+# ---------------------------------------------------------------------------
+
+
+def _eventos_de_regla() -> list[dict]:
+    from db.events import pending_events
+
+    return [e for e in pending_events() if e["event_type"] == "watchlist_rule.matched"]
+
+
+def test_regla_due_con_matches_escribe_el_evento_en_el_outbox(tmp_db):
+    """F12·C2c: cada regla con matches nuevos emite ``watchlist_rule.matched``."""
     from db.database import connect
 
     _, _ = tmp_db
-    calls = []
-    monkeypatch.setattr(
-        "db.webhooks.trigger_event", lambda event_type, payload: calls.append((event_type, payload))
-    )
-
     rid = create_rule("user-a", WatchlistRule(keyword="SAP", frequency="daily"))
     with connect() as c:
         _insert_lic(c, "L1", titulo="Implantacion SAP", fecha=_recent(3))
@@ -118,25 +135,27 @@ def test_regla_due_con_matches_dispara_webhook(tmp_db, monkeypatch):
     n = watchlist_rules_alerts.check_rules_and_notify()
     assert n == 1
 
-    assert len(calls) == 1
-    event_type, payload = calls[0]
-    assert event_type == "watchlist_rule.matched"
+    eventos = _eventos_de_regla()
+    assert len(eventos) == 1
+    payload = eventos[0]["payload"]
     assert payload["rule_id"] == rid
     assert payload["keyword"] == "SAP"
     assert payload["total_matches"] == 1
     assert payload["licitaciones"] == ["L1"]
 
 
-def test_webhook_trigger_failure_no_rompe_notificacion(tmp_db, monkeypatch):
-    """El disparo de webhook es best-effort: si falla, la notificación in-app persiste."""
+def test_fallo_al_registrar_el_evento_no_rompe_la_notificacion(tmp_db, monkeypatch):
+    """El registro del evento es best-effort: si falla, la alerta in-app persiste."""
     from db.database import connect
 
     _, _ = tmp_db
 
-    def _boom(event_type, payload):
-        raise RuntimeError("webhook endpoint unreachable")
+    def _boom(*_args, **_kwargs):
+        raise RuntimeError("outbox no disponible")
 
-    monkeypatch.setattr("db.webhooks.trigger_event", _boom)
+    # El job importa `append_domain_event` dentro del bucle, así que el parche
+    # va sobre el módulo de origen y no sobre una referencia ya resuelta.
+    monkeypatch.setattr("db.events.append_domain_event", _boom)
 
     create_rule("user-a", WatchlistRule(keyword="SAP", frequency="daily"))
     with connect() as c:
@@ -152,16 +171,11 @@ def test_webhook_trigger_failure_no_rompe_notificacion(tmp_db, monkeypatch):
     assert count == 1
 
 
-def test_sin_matches_no_dispara_webhook(tmp_db, monkeypatch):
+def test_sin_matches_no_escribe_evento(tmp_db):
     _, _ = tmp_db
-    calls = []
-    monkeypatch.setattr(
-        "db.webhooks.trigger_event", lambda event_type, payload: calls.append((event_type, payload))
-    )
-
     create_rule("user-a", WatchlistRule(keyword="NOEXISTE"))
     assert watchlist_rules_alerts.check_rules_and_notify() == 0
-    assert calls == []
+    assert _eventos_de_regla() == []
 
 
 def test_solo_matches_posteriores_a_last_notified(tmp_db):
