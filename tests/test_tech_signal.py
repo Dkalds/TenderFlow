@@ -18,13 +18,21 @@ from services.tech_signal import _build_merge_result, merge_doc_signals, score_d
 
 
 def _patched_patterns():
-    return patch.dict(
-        "services.tech_signal._TECH_PATTERNS",
-        {
+    """Fija un diccionario mínimo para los tests de puntuación.
+
+    Antes parcheaba el `dict` de nivel de módulo `_TECH_PATTERNS`. Desde C5.6 los
+    patrones salen del diccionario vigente (`services.tecnologias_diccionario`),
+    que puede venir de la tabla `tecnologias_keywords`, así que lo que hay que
+    fijar es la función que los devuelve — parchear una constante que ya no
+    existe pasaría desapercibido hasta que el test empezara a puntuar contra el
+    diccionario real, que tiene doscientas keywords y otros umbrales.
+    """
+    return patch(
+        "services.tech_signal._tech_patterns",
+        return_value={
             "SAP": re.compile(r"\b(sap|hana)\b", re.IGNORECASE),
             "ORACLE": re.compile(r"\b(oracle)\b", re.IGNORECASE),
         },
-        clear=True,
     )
 
 

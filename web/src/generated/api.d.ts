@@ -3335,6 +3335,93 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/tecnologias/keywords": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Keywords
+         * @description Diccionario vigente, con su versión.
+         *
+         *     `fuente` no es cosmético: dice si lo que gobierna el filtro es la tabla o la
+         *     semilla de respaldo. Sin ese campo, un entorno con la tabla vacía se vería
+         *     idéntico a uno configurado, y nadie sabría que sus ediciones no están
+         *     aplicándose porque nunca se sembró.
+         */
+        get: operations["get_keywords_api_v1_tecnologias_keywords_get"];
+        /**
+         * Put Keyword
+         * @description Añade (o reactiva) una keyword. Queda auditada **con su impacto**.
+         *
+         *     El impacto se mide **antes** de escribir: después, los expedientes ya
+         *     tendrían tecnología asignada en cuanto pasara la siguiente ingesta y el
+         *     número dejaría de ser reconstruible. Es el dato que convierte el registro de
+         *     auditoría en algo revisable — «se añadió `cloud` y trajo 4.200 expedientes»
+         *     explica por sí solo una degradación posterior del radar.
+         */
+        put: operations["put_keyword_api_v1_tecnologias_keywords_put"];
+        post?: never;
+        /**
+         * Delete Keyword
+         * @description Retira una keyword. **Desactiva, no borra**: la decisión es revisable.
+         */
+        delete: operations["delete_keyword_api_v1_tecnologias_keywords_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tecnologias/keywords/impacto": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Impacto
+         * @description «Esta keyword añadiría N expedientes de los últimos 90 días» (D28).
+         *
+         *     Cuenta solo los que **aún no tienen tecnología**: lo que importa es qué
+         *     *añade*, no cuántos la mencionan. «SAP» aparece en miles de expedientes que
+         *     ya están dentro, y ese número no ayudaría a decidir nada.
+         */
+        get: operations["get_impacto_api_v1_tecnologias_keywords_impacto_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tecnologias/keywords/sembrar": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Post Sembrar
+         * @description Vuelca en la tabla las keywords de la semilla que falten. Idempotente.
+         *
+         *     **No reactiva** lo que alguien desactivó a mano: si lo hiciera, cada
+         *     resiembra desharía en silencio una decisión del equipo y la tabla dejaría de
+         *     gobernar de verdad.
+         */
+        post: operations["post_sembrar_api_v1_tecnologias_keywords_sembrar_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/watchlist/feed.xml": {
         parameters: {
             query?: never;
@@ -5011,6 +5098,28 @@ export interface components {
             /** Detail */
             detail: string;
         };
+        /**
+         * DiccionarioOut
+         * @description El diccionario vigente y de dónde sale.
+         */
+        DiccionarioOut: {
+            /**
+             * Fuente
+             * @description `tabla` o `semilla`
+             */
+            fuente: string;
+            /** Items */
+            items: components["schemas"]["KeywordOut"][];
+            /** Keywords */
+            keywords: number;
+            /** Tecnologias */
+            tecnologias: number;
+            /**
+             * Version
+             * @description Hash del contenido; es el `filter_version` del linaje
+             */
+            version: string;
+        };
         /** DocumentoSummary */
         DocumentoSummary: {
             /** Content Type */
@@ -5810,6 +5919,15 @@ export interface components {
             /** Cpv */
             cpv: components["schemas"]["HubCpv"][];
         };
+        /** ImpactoOut */
+        ImpactoOut: {
+            /** Dias */
+            dias: number;
+            /** Expedientes Nuevos */
+            expedientes_nuevos: number;
+            /** Keyword */
+            keyword: string;
+        };
         /**
          * ImporteBox
          * @description Five-number summary of importe for a cluster (box-plot).
@@ -5825,6 +5943,26 @@ export interface components {
             q1: number;
             /** Q3 */
             q3: number;
+        };
+        /** KeywordIn */
+        KeywordIn: {
+            /** Keyword */
+            keyword: string;
+            /** Tecnologia */
+            tecnologia: string;
+        };
+        /** KeywordOut */
+        KeywordOut: {
+            /** Activa */
+            activa: boolean;
+            /** Keyword */
+            keyword: string;
+            /** Origen */
+            origen: string;
+            /** Tecnologia */
+            tecnologia: string;
+            /** Updated At */
+            updated_at?: string | null;
         };
         /** LastExtraction */
         LastExtraction: {
@@ -16318,6 +16456,183 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ClientErroresResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_keywords_api_v1_tecnologias_keywords_get: {
+        parameters: {
+            query?: {
+                incluir_inactivas?: boolean;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DiccionarioOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_keyword_api_v1_tecnologias_keywords_put: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["KeywordIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DiccionarioOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_keyword_api_v1_tecnologias_keywords_delete: {
+        parameters: {
+            query: {
+                tecnologia: string;
+                keyword: string;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DiccionarioOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_impacto_api_v1_tecnologias_keywords_impacto_get: {
+        parameters: {
+            query: {
+                keyword: string;
+                dias?: number;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImpactoOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_sembrar_api_v1_tecnologias_keywords_sembrar_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StatusOk"];
                 };
             };
             /** @description Validation Error */

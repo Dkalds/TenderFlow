@@ -77,6 +77,7 @@ from api.routes.saved_filters import router as saved_filters_router
 from api.routes.search import router as search_router
 from api.routes.security import router as security_router
 from api.routes.stream import router as stream_router
+from api.routes.tecnologias_keywords import router as tecnologias_keywords_router
 from api.routes.watchlist_feed import router as watchlist_feed_router
 from api.routes.watchlist_items import router as watchlist_items_router
 from api.routes.watchlist_rules import router as watchlist_rules_router
@@ -423,6 +424,7 @@ app.include_router(notifications_router, prefix="/api/v1")
 app.include_router(admin_users_router, prefix="/api/v1")
 app.include_router(admin_solicitudes_router, prefix="/api/v1")
 app.include_router(feature_flags_router, prefix="/api/v1")
+app.include_router(tecnologias_keywords_router, prefix="/api/v1")
 app.include_router(ask_router, prefix="/api/v1")
 # Sin prefijo /api/v1: `GET /metrics` es la ruta que Prometheus ya scrapea y
 # la que declaran los dashboards y el render.yaml. Su auth y su formato de

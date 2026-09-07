@@ -68,7 +68,7 @@ Generado: 2026-09-07
 
 ## Superficie de la API
 
-**199 endpoints** expuestos.
+**204 endpoints** expuestos.
 
 <details><summary>Ver listado</summary>
 
@@ -250,6 +250,11 @@ Generado: 2026-09-07
 | GET | `/api/v1/security/client-errors` |
 | POST | `/api/v1/security/csp-report` |
 | POST | `/api/v1/security/leaked-key` |
+| DELETE | `/api/v1/tecnologias/keywords` |
+| GET | `/api/v1/tecnologias/keywords` |
+| PUT | `/api/v1/tecnologias/keywords` |
+| GET | `/api/v1/tecnologias/keywords/impacto` |
+| POST | `/api/v1/tecnologias/keywords/sembrar` |
 | GET | `/api/v1/watchlist/feed.xml` |
 | GET | `/api/v1/watchlist/items` |
 | POST | `/api/v1/watchlist/items` |

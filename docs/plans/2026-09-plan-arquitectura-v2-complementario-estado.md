@@ -28,12 +28,12 @@ como hecho sería la clase de optimismo que obligó a escribir este documento.
 | C2 Cuentas y seguridad | 7 | 2 (C2.5 triaje, C2.8 medido y no aplicado) | 0 | 9 |
 | C3 Plataforma y coste | 5 | 1 (C3.2 ratchet) | 1 (C3.5) | 7 |
 | C4 Ingesta y calidad | 6 | 0 | 1 (C4.3) | 7 |
-| C5 Conocimiento | 4 | 0 | 4 (C5.1, C5.2, C5.6, C5.8) | 8 |
+| C5 Conocimiento | 5 | 0 | 3 (C5.1, C5.2, C5.8) | 8 |
 | C6 Colaboración y captura | 6 | 0 | 1 (C6.3) | 7 |
 | C7 Frontend y accesibilidad | 2 | 2 (C7.2, C7.4) | 4 | 8 |
 | C8 API y contrato | 5 | 0 | 0 | 5 |
 | C9 Documentación y proceso | 6 | 0 | 0 | 6 |
-| **Total** | **44** | **6** | **11** | **61** |
+| **Total** | **45** | **6** | **10** | **61** |
 
 ## Correcciones al plan, registradas
 
@@ -119,7 +119,7 @@ Lo hecho, en `ccb6166` (v119, v120).
 | C5.3 Citas estructuradas (D29) | **Hecho.** Marcador `[doc:N p.M]` validado contra el contexto enviado; `sin_fuentes` se emite siempre; la respuesta **no** se reescribe. `page_number` se persiste al crear el chunk (v119). |
 | C5.4 Feedback persistido | **Hecho** (v120). Hash con sal de servidor; texto solo con opt-in. |
 | C5.5 Caché de respuestas | **Hecho.** Versión del prompt **derivada del prompt**, no un número a mano. |
-| C5.6 Diccionario como dato (D28) | **No hecho.** Esfuerzo L: migración, edición desde `/ops`, preview de impacto y `filter_version` por hash. |
+| C5.6 Diccionario como dato (D28) | **Hecho** (v125). `tecnologias_keywords` manda y `config/keywords.py` queda como semilla y respaldo. `filter_version` sigue siendo el hash del **contenido vigente**, así que editar desde `/ops` cambia el linaje de las filas nuevas sin desplegar. Los patrones compilados dejan de congelarse al importar y se memoizan **por versión**, no por tiempo. Cada cambio se audita con su preview de impacto —expedientes que la keyword *añadiría*, no los que la mencionan— y con el `filter_version` de antes y de después. |
 | C5.7 Versión de embeddings | **Hecho** (v119). Retrieval por versión vigente **con caída** a la anterior; nunca mezcla dos en la misma consulta. |
 | C5.8 Clusters y proyectos | **No hecho.** Pide sesenta días de telemetría que aún no existen. |
 
@@ -166,7 +166,7 @@ generadores con `--check` en CI.
 
 Tres cosas, y ninguna es de código:
 
-1. **Postgres.** Las migraciones v112–v124 no se han aplicado en ninguna sesión;
+1. **Postgres.** Las migraciones v112–v125 no se han aplicado en ninguna sesión;
    las verifica el job `schema-migrations` de CI. Todo lo que dependa de probar
    una migración o la suite de integración está bloqueado en local.
 2. **La aplicación corriendo.** C7.1, C7.3, C7.5 y C7.7 se verifican mirando la
