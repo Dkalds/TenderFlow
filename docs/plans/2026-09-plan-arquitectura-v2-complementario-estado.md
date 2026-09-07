@@ -18,18 +18,22 @@ hecha.
 
 ## Resumen
 
-| Stream | Hechos | Total | Pendiente |
-|---|---|---|---|
-| C1 Datos maestros y semántica | 4 | 4 | el golden de 30 pares de C1.3 (etiquetado humano) |
-| C2 Cuentas y seguridad | 8 | 9 | C2.5 (triaje de avisos: acción del mantenedor) |
-| C3 Plataforma y coste | 6 | 7 | C3.5 (preview por PR: provisionar en Render) |
-| C4 Ingesta y calidad | 5 | 7 | C4.3, C4.6 |
-| C5 Conocimiento | 4 | 8 | C5.1, C5.2, C5.6, C5.8 |
-| C6 Colaboración y captura | 0 | 7 | todos |
-| C7 Frontend y accesibilidad | 4 | 8 | C7.1, C7.3, C7.5, C7.7 |
-| C8 API y contrato | 5 | 5 | — |
-| C9 Documentación y proceso | 6 | 6 | — |
-| **Total** | **42** | **61** | **19** |
+«Parcial» significa que el ítem entrega valor pero **no** cumple todavía todos
+sus criterios de aceptación, y la tabla de su stream dice cuál falta. Contarlo
+como hecho sería la clase de optimismo que obligó a escribir este documento.
+
+| Stream | Hecho | Parcial | No hecho | Total |
+|---|---|---|---|---|
+| C1 Datos maestros y semántica | 3 | 1 (C1.3, falta el golden) | 0 | 4 |
+| C2 Cuentas y seguridad | 7 | 2 (C2.5 triaje, C2.8 medido y no aplicado) | 0 | 9 |
+| C3 Plataforma y coste | 5 | 1 (C3.2 ratchet) | 1 (C3.5) | 7 |
+| C4 Ingesta y calidad | 5 | 0 | 2 (C4.3, C4.6) | 7 |
+| C5 Conocimiento | 4 | 0 | 4 (C5.1, C5.2, C5.6, C5.8) | 8 |
+| C6 Colaboración y captura | 0 | 0 | 7 | 7 |
+| C7 Frontend y accesibilidad | 2 | 2 (C7.2, C7.4) | 4 | 8 |
+| C8 API y contrato | 5 | 0 | 0 | 5 |
+| C9 Documentación y proceso | 6 | 0 | 0 | 6 |
+| **Total** | **37** | **6** | **18** | **61** |
 
 ## Correcciones al plan, registradas
 
