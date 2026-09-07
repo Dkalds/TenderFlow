@@ -646,19 +646,6 @@ def replace_lotes_batch(lotes_por_lic: dict[str, list[Lote]]) -> dict[str, dict[
     }
 
 
-def log_extraccion(
-    fuente: str, nuevas: int, actualizadas: int, total: int, notas: str = ""
-) -> None:
-    """Registra una ejecución de extracción en la tabla ``extracciones``."""
-    with connect() as c:
-        c.execute(
-            "INSERT INTO extracciones "
-            "(fecha, fuente, nuevas, actualizadas, total_revisadas, notas) "
-            "VALUES (%s, %s, %s, %s, %s, %s)",
-            (now_utc_iso(), fuente, nuevas, actualizadas, total, notas),
-        )
-
-
 def estimar_filas(c: Any, tabla: str) -> int | None:
     """Estimación de filas del planner (``pg_class.reltuples``), o None si no sirve.
 

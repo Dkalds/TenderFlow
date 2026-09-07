@@ -14,7 +14,7 @@ commitear**— y para saber qué faltaba hubo que leer los mensajes de commit un
 uno y comprobar el árbol ítem por ítem. Lo que sigue es esa reconstrucción, ya
 hecha.
 
-**Última actualización: 2026-09-07.**
+**Última actualización: 2026-09-07 (segunda pasada).**
 
 ## Resumen
 
@@ -27,13 +27,13 @@ como hecho sería la clase de optimismo que obligó a escribir este documento.
 | C1 Datos maestros y semántica | 3 | 1 (C1.3, falta el golden) | 0 | 4 |
 | C2 Cuentas y seguridad | 7 | 2 (C2.5 triaje, C2.8 medido y no aplicado) | 0 | 9 |
 | C3 Plataforma y coste | 5 | 1 (C3.2 ratchet) | 1 (C3.5) | 7 |
-| C4 Ingesta y calidad | 5 | 0 | 2 (C4.3, C4.6) | 7 |
+| C4 Ingesta y calidad | 6 | 0 | 1 (C4.3) | 7 |
 | C5 Conocimiento | 4 | 0 | 4 (C5.1, C5.2, C5.6, C5.8) | 8 |
-| C6 Colaboración y captura | 0 | 0 | 7 | 7 |
+| C6 Colaboración y captura | 6 | 0 | 1 (C6.3) | 7 |
 | C7 Frontend y accesibilidad | 2 | 2 (C7.2, C7.4) | 4 | 8 |
 | C8 API y contrato | 5 | 0 | 0 | 5 |
 | C9 Documentación y proceso | 6 | 0 | 0 | 6 |
-| **Total** | **37** | **6** | **18** | **61** |
+| **Total** | **44** | **6** | **11** | **61** |
 
 ## Correcciones al plan, registradas
 
@@ -105,7 +105,7 @@ Todo en `70b3c37` (v115–v118) salvo lo indicado.
 | C4.3 Euskadi y Galicia por API | **No hecho.** Exige integrar dos APIs vivas y validar cobertura contra una muestra manual de 50 expedientes por fuente. |
 | C4.4 Fechas imposibles | **Hecho.** 50 adjudicaciones anteriores a 1990, la mayoría `1899-12-30` (cero de la epoch de Excel). |
 | C4.5 Umbrales calibrados | **Hecho**, por fuente. Ver corrección 4. |
-| C4.6 Cuatro tablas de salud a dos | **No hecho.** Lleva migración y toca `scheduler/healthcheck.py`; la vista de compatibilidad no se puede probar sin Postgres. **Medido para quien lo retome**: `extracciones` la escribe `log_extraccion` (2 llamadas en `pipeline_runs`) y la lee `load_extracciones`, que **no la llama nadie** — es una tabla sin lector, y `healthcheck.py` nunca la consulta. |
+| C4.6 Cuatro tablas de salud a dos | **Hecho** (v124). Medido: `extracciones` era una tabla **sin lector** —`load_extracciones` no la llamaba ninguna ruta, job, script ni test— y `healthcheck.py` nunca la consultaba. Se retiran los cuatro escritores (`db/upsert.py`, dos en `pipeline_runs`, uno en el pipeline legacy) y v124 la renombra dejando una **vista** con el nombre antiguo: el histórico no se destruye y una consulta manual sigue funcionando, pero la vista no acepta `INSERT`, así que un escritor olvidado falla en voz alta. Queda el par `source_ingestion_health` + `ops_events`, con `extraction_runs` como detalle por pasada. |
 | C4.7 Completitud por fuente | **Hecho.** PLACSP 100 % de `n_ofertas_recibidas`, PSCP 37 %, TED 0 %. |
 
 ## C5 — Conocimiento
@@ -125,12 +125,19 @@ Lo hecho, en `ccb6166` (v119, v120).
 
 ## C6 — Colaboración y captura
 
-**Ningún ítem empezado.** El stream depende de v2 S3 y S4, que no están
-implementados: C6.2 necesita el outbox de v2 S4.1 para notificar la mención y
-C6.3 el almacén de objetos de v2 S8.1. Los cuatro que no dependen de v2 —C6.1
-(tareas), C6.4 (plantilla go/no-go), C6.5 (mi baja frente al mercado), C6.6
-(notas) y C6.7 (exportar el pipeline)— llevan tres migraciones y superficie de
-UI cuya red son los E2E.
+El stream se dio por bloqueado «hasta v2 S3/S4» y **no lo estaba**: `pursuits`,
+`pursuit_events` y `pursuit_comments` existen en este árbol desde v61/v83/v97.
+Seis de siete, en v121–v123.
+
+| Ítem | Estado |
+|---|---|
+| C6.1 Tareas de la oportunidad | **Hecho** (v121). `next_action` no se retira: se **deriva** de la tarea abierta más urgente, con un camino de escritura propio que no sube `version` ni escribe en el ledger — si lo hiciera, cerrar una tarea daría conflicto de concurrencia a quien editara la oportunidad en otra pestaña. |
+| C6.2 Menciones en comentarios | **Hecho** (v123). Se guardan los `user_id`, no el nombre resuelto. Un nombre ambiguo no resuelve a nadie: notificar a la persona equivocada es peor que un fallo visible. **La entrega** de la notificación espera al outbox de v2 S4.1; `menciones_de_usuario` es la consulta que ese despachador usará. |
+| C6.3 Adjuntos propios | **No hecho.** Necesita el almacén de objetos de v2 S8.1, que no existe. |
+| C6.4 Plantilla go/no-go (D30) | **Hecho** (v122). Cinco criterios fijos, pesos por organización, `riesgo` invertido. Solo se promedian los criterios puntuados —contar los ausentes como cero haría que media ficha dijera siempre «no go»— y la plantilla **señala, no bloquea**. |
+| C6.5 Mi baja frente al mercado | **Hecho.** Solo `importe_base_sin_iva` con `importe_tipo = 'sin_iva'` (C1.1): mezclar bases daría una baja del 21 % que es el IVA. Los segmentos con menos de cinco ofertas salen con `suficiente: false` **y su `n`**. |
+| C6.6 Notas en seguimientos | **Hecho** (v123). La nota es personal aunque el favorito sea de la organización: el filtro es solo `user_key`. |
+| C6.7 Exportar el pipeline | **Hecho.** `exports/download?recurso=pursuits`; organización y fecha como **columnas**, no como preámbulo que rompería el CSV. |
 
 ## C7 — Frontend y accesibilidad
 
@@ -159,7 +166,7 @@ generadores con `--check` en CI.
 
 Tres cosas, y ninguna es de código:
 
-1. **Postgres.** Las migraciones v112–v120 no se han aplicado en ninguna sesión;
+1. **Postgres.** Las migraciones v112–v124 no se han aplicado en ninguna sesión;
    las verifica el job `schema-migrations` de CI. Todo lo que dependa de probar
    una migración o la suite de integración está bloqueado en local.
 2. **La aplicación corriendo.** C7.1, C7.3, C7.5 y C7.7 se verifican mirando la

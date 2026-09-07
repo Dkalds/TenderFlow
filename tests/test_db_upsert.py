@@ -671,23 +671,33 @@ def test_set_cursor_upserts(db):
 
 
 # ---------------------------------------------------------------------------
-# log_extraccion
+# `extracciones`, retirada (C4.6, v124)
 # ---------------------------------------------------------------------------
 
 
-def test_log_extraccion(db):
-    from db.database import connect
-    from db.upsert import log_extraccion
+def test_no_queda_ningun_escritor_de_extracciones():
+    """`log_extraccion` se retiró: era la cuarta tabla de salud, y sin lector.
 
-    log_extraccion("test_fuente", nuevas=5, actualizadas=3, total=8, notas="ok")
-    with connect() as c:
-        row = c.execute(
-            "SELECT fuente, nuevas, actualizadas FROM extracciones WHERE fuente = %s",
-            ["test_fuente"],
-        ).fetchone()
-    assert row is not None
-    assert row[1] == 5
-    assert row[2] == 3
+    Este test **sustituye** a `test_log_extraccion`, que comprobaba que la
+    función escribía en `extracciones`. No se borra cobertura: se cambia de
+    sujeto, porque el invariante que hay que sostener ahora es el contrario —
+    que nadie vuelva a escribir en una tabla que v124 convirtió en vista y que,
+    por ser vista, aceptaría el `INSERT` con un error en producción en vez de
+    fallar aquí.
+
+    Los contadores que aquella función guardaba no se pierden: `run_connector`
+    los deja en `source_ingestion_health` y `record_run` en `extraction_runs`.
+    """
+    import pathlib
+
+    raiz = pathlib.Path(__file__).resolve().parent.parent
+    escritores = [
+        ruta.relative_to(raiz).as_posix()
+        for carpeta in ("db", "scraper", "scheduler", "services", "api")
+        for ruta in (raiz / carpeta).rglob("*.py")
+        if "alembic" not in ruta.as_posix() and "log_extraccion" in ruta.read_text(encoding="utf-8")
+    ]
+    assert escritores == [], f"vuelven a escribir en `extracciones`: {escritores}"
 
 
 # ---------------------------------------------------------------------------

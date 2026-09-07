@@ -75,15 +75,6 @@ erDiagram
         TEXT fecha_extraccion
     }
 
-    extracciones {
-        INTEGER id PK
-        TEXT fecha
-        TEXT fuente
-        INTEGER nuevas
-        INTEGER actualizadas
-        INTEGER total_revisadas
-        TEXT notas
-    }
 
     extraction_runs {
         TEXT run_id PK
@@ -308,19 +299,23 @@ uno con presupuesto, CPV y adjudicatario propios. CODICE los modela como
 
 ---
 
-### `extracciones` — Log de ejecuciones
+### `extracciones` — RETIRADA (C4.6, v124)
 
-Registro simplificado de cada ejecución del scraper.
+**Ya no se escribe.** Era la cuarta tabla de salud de la ingesta y no la leía
+nadie: la escribía `log_extraccion` y su único lector, `load_extracciones`, no
+lo llamaba ninguna ruta, job, script ni test. Lo que guardaba ya se escribía dos
+veces más — los contadores por fuente en `source_ingestion_health` (vía
+`run_connector`) y las métricas por pasada en `extraction_runs` (vía
+`record_run`).
 
-| Columna | Tipo | Descripción |
-|---------|------|-------------|
-| `id` | INTEGER PK | Autoincremental |
-| `fecha` | TEXT | Fecha/hora de la extracción (UTC) |
-| `fuente` | TEXT | Identificador de la fuente (bulk_YYYYMM, place_live_atom) |
-| `nuevas` | INTEGER | Licitaciones nuevas insertadas |
-| `actualizadas` | INTEGER | Licitaciones actualizadas |
-| `total_revisadas` | INTEGER | Total de entradas procesadas |
-| `notas` | TEXT | Notas adicionales del run |
+`v124` renombra la tabla a `extracciones_retirada` y deja una **vista** con el
+nombre antiguo: el histórico no se destruye y una consulta manual sigue
+funcionando, pero la vista no acepta `INSERT`, así que un camino de escritura
+olvidado falla en voz alta en vez de seguir llenándola en silencio. La ola
+siguiente borra vista y tabla.
+
+El par que queda es **`source_ingestion_health` (estado actual por fuente)** y
+**`ops_events` (historial)**, con `extraction_runs` como detalle por pasada.
 
 ---
 
@@ -529,7 +524,6 @@ scraper/filters.py           ←── Filtra por keywords SAP (+ ML classifier)
       │
       ├──── licitaciones ◄─────────── db/database.upsert_licitaciones_with_history()
       ├──── adjudicaciones ◄────────── db/database.replace_adjudicaciones()
-      ├──── extracciones ◄─────────── db/database.log_extraccion()
       ├──── licitaciones_history ◄──── (automático si hay cambios)
       ├──── extraction_runs ◄────────── observability/metrics.record_run()
       ├──── data/metrics/scraper.prom ◄ observability/prometheus.instrument_run()
