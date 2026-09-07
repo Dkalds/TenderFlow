@@ -53,7 +53,15 @@ from collections.abc import Sequence
 from alembic import op
 
 revision: str = "v103_documentos_blob_ocr"
-down_revision: str | Sequence[str] | None = "v102_mv_canonicas_clave_inmutable"
+# Encadenada a ``v106_cartera_y_plantillas_organizacion`` y no a ``v102``, que
+# es de donde nació: el plan de funcionalidades (#272) creció en paralelo desde
+# ``v102`` y llegó antes a master, así que sus cuatro revisiones
+# (``v103_radar_dismissals_hasta`` … ``v106_cartera_y_plantillas_organizacion``)
+# ya están aplicadas allí. Colgar esta cadena por debajo de aquéllas es lo que
+# devuelve una sola cabeza sin reescribir una revisión que ya corrió. El número
+# deja de ordenar el tramo de ``v103`` a ``v106`` —hay dos de cada, uno por rama—,
+# pero manda el encadenado, no el nombre: la cabeza sigue siendo ``v112``.
+down_revision: str | Sequence[str] | None = "v106_cartera_y_plantillas_organizacion"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
