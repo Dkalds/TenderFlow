@@ -164,10 +164,14 @@ class TestParidad:
         ]
         for id_ext, titulo, importe, cpv, organo, prov, proc, tram, tipo, dias in filas:
             conn.execute(
+                # `fecha_extraccion` es NOT NULL desde el baseline y no tiene
+                # DEFAULT: sin ella el INSERT revienta y los 18 casos de esta
+                # clase mueren en el setup, no en el assert.
                 "INSERT INTO licitaciones (id_externo, titulo, importe, cpv, "
                 "organo_contratacion, provincia, procedimiento, tramitacion, "
-                "tipo_contrato, tecnologia, estado, fecha_publicacion, fecha_limite) "
-                "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
+                "tipo_contrato, tecnologia, estado, fecha_publicacion, fecha_limite, "
+                "fecha_extraccion) "
+                "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
                 (
                     id_ext,
                     titulo,
@@ -182,6 +186,7 @@ class TestParidad:
                     "PUB",
                     (base - timedelta(days=5)).date().isoformat(),
                     (base + timedelta(days=dias)).date().isoformat(),
+                    base.isoformat(),
                 ),
             )
 
