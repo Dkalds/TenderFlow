@@ -19,6 +19,8 @@ from services.organizations import require_active_member, resolve_organization
 from services.watchlist_rules import list_rules
 from shared.dto import (
     AgendaUrgencia,
+    BajaPropiaResult,
+    BajaPropiaSegmento,
     PipelineAgendaItem,
     PipelineAgendaKpis,
     PipelineAgendaResponse,
@@ -689,3 +691,57 @@ def _agenda_kpis(items: list[PipelineAgendaItem]) -> PipelineAgendaKpis:
         sin_proxima_accion=sum(1 for item in pursuits if not item.next_action),
         senales_nuevas=sum(1 for item in items if item.kind == "senal"),
     )
+
+
+def baja_propia(
+    user_id: int,
+    *,
+    organization_id: int | None = None,
+    segmento: str = "cpv",
+    limite: int = 50,
+) -> BajaPropiaResult:
+    """Mi baja media por segmento, para compararla con la del mercado (C6.5).
+
+    El mercado lo da `/competitive/bajas/referencia`; esto es la otra mitad, y
+    hasta ahora no existía: el producto sabía cuánto baja el mercado y no cuánto
+    baja el equipo que lo usa.
+
+    Sólo entra lo **presentado** y con base sin IVA declarada, y cada segmento
+    declara su `n`. Los segmentos con menos de cinco ofertas no salen: con
+    menos, un expediente al que se fue muy agresivo convierte «bajamos un 4 %»
+    en «bajamos un 22 %», y alguien planifica la siguiente oferta con eso.
+    """
+    from db.repositories.pursuits import PursuitRepository
+
+    resolved_id, _role = resolve_organization(user_id, organization_id)
+    repo = PursuitRepository()
+    filas = repo.baja_propia_por_segmento(
+        resolved_id,
+        segmento="organo" if segmento == "organo" else "cpv",
+        limite=limite,
+    )
+    return BajaPropiaResult(
+        organization_id=resolved_id,
+        segmento="organo" if segmento == "organo" else "cpv",
+        min_ofertas=repo.MIN_OFERTAS_POR_SEGMENTO,
+        items=[
+            BajaPropiaSegmento(
+                segmento=str(f.get("segmento") or "(sin dato)"),
+                n=int(f.get("n") or 0),
+                baja_propia_pct=_a_float(f.get("baja_propia_pct")),
+                baja_min_pct=_a_float(f.get("baja_min_pct")),
+                baja_max_pct=_a_float(f.get("baja_max_pct")),
+            )
+            for f in filas
+        ],
+    )
+
+
+def _a_float(valor: object) -> float | None:
+    """`Decimal` de Postgres a float, o `None`. Un `0.0` por error sería una baja nula."""
+    if valor is None:
+        return None
+    try:
+        return float(valor)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return None

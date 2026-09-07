@@ -23,9 +23,11 @@ from db.repositories.watchlist import WatchlistRepository
 from observability.logging import get_logger
 from services.organizations import claim_legacy_scope
 from shared.dto import (
+    StatusOk,
     WatchlistFavoriteCreated,
     WatchlistFavoriteItem,
     WatchlistFavoritesResult,
+    WatchlistNotaBody,
 )
 
 log = get_logger(__name__)
@@ -122,6 +124,42 @@ async def post_item(
     creado = await run_db(_trabajo)
     log.info("watchlist_item_created", id_externo=body.id_externo)
     return WatchlistFavoriteCreated(**creado)
+
+
+@router.put(
+    # `PUT` sobre el propio favorito, con la nota en el cuerpo, y no un sufijo
+    # `/nota`: el conversor `:path` de `id_externo` se traga las barras —hay
+    # expedientes de PLACSP con ellas—, así que un sufijo acabaría formando
+    # parte del id. El método distingue esta ruta del `DELETE` de abajo.
+    "/{id_externo:path}",
+    summary="Escribir la nota personal de un favorito",
+    responses={404: {"description": "No tenés un favorito propio para ese expediente"}},
+)
+async def put_item_note(
+    id_externo: str,
+    body: WatchlistNotaBody,
+    ctx: dict[str, Any] = Depends(require_organization(write=True)),
+) -> StatusOk:
+    """Guarda (o borra, con `nota: null`) la nota personal sobre un favorito.
+
+    Un favorito es un booleano: el expediente está marcado o no. La razón —
+    «esperar a que salga el pliego técnico», «ojo: el año pasado quedó
+    desierto»— vivía en un post-it (C6.6).
+
+    **La nota es de quien la escribe**, incluso sobre un favorito compartido con
+    la organización: es el pensamiento de una persona sobre el expediente, no la
+    posición del equipo. Para eso está el hilo de comentarios de la oportunidad.
+    """
+    ok = await run_db(
+        _repo.set_note,
+        _user_key(ctx),
+        id_externo,
+        ctx["organization_id"],
+        body.nota,
+    )
+    if not ok:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Favorito no encontrado.")
+    return StatusOk(status="ok")
 
 
 @router.delete(

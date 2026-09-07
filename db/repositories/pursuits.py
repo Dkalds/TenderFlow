@@ -7,6 +7,7 @@ from typing import Any
 
 from db.database import connect, connect_read, now_utc_iso
 from db.repositories.base import rows_to_dicts
+from services.sql_fragments import BASE_DECLARADA_SQL
 
 _PURSUIT_SELECT = (
     "SELECT p.id, p.organization_id, p.licitacion_id, "
@@ -178,6 +179,59 @@ class PursuitRepository:
             )
             items = rows_to_dicts(cur)
         return items, int(total_row[0] if total_row else 0)
+
+    #: Mínimo de ofertas presentadas por segmento para publicar una baja propia.
+    #: Con menos, la media la mueve un caso: un expediente al que se fue muy
+    #: agresivo convierte «bajamos un 4 %» en «bajamos un 22 %» y alguien
+    #: planifica la siguiente oferta con eso.
+    MIN_OFERTAS_POR_SEGMENTO = 5
+
+    def baja_propia_por_segmento(
+        self,
+        organization_id: int,
+        *,
+        segmento: str = "cpv",
+        limite: int = 50,
+    ) -> list[dict[str, Any]]:
+        """Baja media **propia** por CPV a cuatro dígitos o por órgano (C6.5).
+
+        Compara ``pursuits.offer_price_eur`` con el presupuesto del expediente y
+        agrupa. Sólo cuenta lo **presentado** (``submitted_at``): una oferta que
+        se preparó y no se llegó a presentar no es una baja, es un borrador.
+
+        Sólo entra la base **sin IVA declarada** (C1.1, ADR-032). Mezclar un
+        importe con IVA con una oferta sin él produce una baja del 21 % que no
+        existió, y es exactamente el error que C1.1 vino a impedir: aquí no se
+        puede permitir, porque el número se usa para decidir el precio de la
+        siguiente oferta.
+
+        Devuelve ``n`` por segmento y sólo segmentos con al menos
+        :data:`MIN_OFERTAS_POR_SEGMENTO`.
+        """
+        expresion = (
+            "COALESCE(NULLIF(l.organo_contratacion, ''), '(sin órgano)')"
+            if segmento == "organo"
+            else "LEFT(l.cpv, 4)"
+        )
+        baja = "100.0 * (l.importe_base_sin_iva - p.offer_price_eur) / l.importe_base_sin_iva"
+        with connect_read() as conn:
+            cur = conn.execute(
+                f"SELECT {expresion} AS segmento, COUNT(*) AS n, "
+                f"ROUND(AVG({baja})::numeric, 2) AS baja_propia_pct, "
+                f"ROUND(MIN({baja})::numeric, 2) AS baja_min_pct, "
+                f"ROUND(MAX({baja})::numeric, 2) AS baja_max_pct "
+                "FROM pursuits p "
+                "JOIN licitaciones l ON l.id_externo = p.licitacion_id "
+                "WHERE p.organization_id = %s "
+                "  AND p.offer_price_eur IS NOT NULL "
+                "  AND p.submitted_at IS NOT NULL "
+                f"  AND {BASE_DECLARADA_SQL} "
+                "  AND l.importe_base_sin_iva > 0 "
+                f"GROUP BY 1 HAVING COUNT(*) >= {self.MIN_OFERTAS_POR_SEGMENTO} "
+                "ORDER BY 2 DESC, 1 LIMIT %s",
+                (organization_id, max(1, min(int(limite), 200))),
+            )
+            return rows_to_dicts(cur)
 
     def agenda_rows(
         self,

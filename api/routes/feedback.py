@@ -527,6 +527,10 @@ async def submit_asistente_feedback(
         AsistenteFeedbackRepository,
     )
 
+    # `MOTIVOS`/`VOTOS` son tuplas de constantes, pero `AsistenteFeedbackRepository`
+    # abre conexión en sus métodos: por eso lo que se despacha al threadpool es
+    # el trabajo entero y no sólo la escritura
+    # (`tests/test_async_handlers_no_blocking_io.py`).
     if body.voto not in VOTOS:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -538,18 +542,19 @@ async def submit_asistente_feedback(
             detail=f"motivo debe ser uno de {list(MOTIVOS)}.",
         )
 
-    nuevo_id = await run_db(
-        AsistenteFeedbackRepository().registrar,
-        pregunta=body.pregunta,
-        modo=body.modo,
-        modelo=body.modelo,
-        voto=body.voto,
-        motivo=body.motivo,
-        id_externo=body.id_externo,
-        cached=body.cached,
-        compartir_pregunta=body.compartir_pregunta,
-    )
-    return AsistenteFeedbackResult(id=nuevo_id)
+    def _guardar() -> int | None:
+        return AsistenteFeedbackRepository().registrar(
+            pregunta=body.pregunta,
+            modo=body.modo,
+            modelo=body.modelo,
+            voto=body.voto,
+            motivo=body.motivo,
+            id_externo=body.id_externo,
+            cached=body.cached,
+            compartir_pregunta=body.compartir_pregunta,
+        )
+
+    return AsistenteFeedbackResult(id=await run_db(_guardar))
 
 
 @router.get(
@@ -568,5 +573,7 @@ async def asistente_feedback_stats(
     """
     from db.repositories.asistente_feedback import AsistenteFeedbackRepository
 
-    datos = await run_db(AsistenteFeedbackRepository().resumen, limite=limite)
-    return AsistenteFeedbackResumen(**datos)
+    def _leer() -> dict[str, Any]:
+        return AsistenteFeedbackRepository().resumen(limite=limite)
+
+    return AsistenteFeedbackResumen(**await run_db(_leer))

@@ -314,10 +314,28 @@ class WatchlistFavoriteItem(BaseModel):
     created_at: PgDateTime | None
     organization_id: int | None
     visibility: str | None
+    #: Nota personal de por qué se sigue este expediente (C6.6). Llega `None`
+    #: para todo el mundo salvo su autor, **también** cuando el favorito está
+    #: compartido con la organización: la nota es el pensamiento de una persona,
+    #: no la posición del equipo — para eso está el hilo de la oportunidad.
+    nota: str | None = None
     titulo: str | None
     importe: float | None
     estado: str | None
     fecha_publicacion: str | None
+
+
+#: Una nota es un recordatorio («esperar al pliego técnico»), no un documento.
+WATCHLIST_NOTA_MAX_CHARS = 500
+
+
+class WatchlistNotaBody(BaseModel):
+    """Nota personal sobre un favorito (C6.6)."""
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    #: `None` o cadena vacía borran la nota.
+    nota: SafeStr | None = Field(default=None, max_length=WATCHLIST_NOTA_MAX_CHARS)
 
 
 class WatchlistFavoritesResult(BaseModel):
@@ -886,6 +904,34 @@ PursuitTaskEstado = Literal["pendiente", "hecha", "cancelada"]
 #: Longitud del título de una tarea. Corto a propósito: una tarea es una acción
 #: («pedir el aval»), y lo que no cabe aquí es un comentario.
 PURSUIT_TASK_TITULO_MAX_CHARS = 200
+
+
+class BajaPropiaSegmento(BaseModel):
+    """Baja media propia en un segmento, con su `n` (C6.5)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    segmento: str
+    #: Cuántas ofertas presentadas sostienen la cifra. Va siempre: una media sin
+    #: `n` no se puede interpretar ni comparar con la del mercado.
+    n: int = Field(ge=0)
+    baja_propia_pct: float | None = None
+    baja_min_pct: float | None = None
+    baja_max_pct: float | None = None
+
+
+class BajaPropiaResult(BaseModel):
+    """Mi baja frente al mercado, por CPV a cuatro dígitos o por órgano."""
+
+    organization_id: int = Field(ge=1)
+    #: `cpv` | `organo`.
+    segmento: str
+    #: Mínimo de ofertas presentadas exigido por segmento.
+    min_ofertas: int = Field(ge=1)
+    #: Siempre `sin_iva`: comparar una oferta sin IVA con un presupuesto que lo
+    #: lleva produce una baja del 21 % que no existió (C1.1, ADR-032).
+    base: str = "sin_iva"
+    items: list[BajaPropiaSegmento] = Field(default_factory=list)
 
 
 class PursuitTaskCreate(BaseModel):

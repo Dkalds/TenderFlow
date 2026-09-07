@@ -2948,6 +2948,35 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/pursuits/baja-propia": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Baja Propia
+         * @description Mi baja media por CPV a cuatro dígitos o por órgano (C6.5).
+         *
+         *     El mercado lo da `/competitive/bajas/referencia`; esto es la otra mitad, y
+         *     hasta ahora no existía: el producto sabía cuánto baja el mercado y no cuánto
+         *     baja el equipo que lo usa.
+         *
+         *     Sólo cuenta lo **presentado** y con base sin IVA declarada (C1.1): comparar
+         *     una oferta sin IVA contra un presupuesto que lo lleva produce una baja del
+         *     21 % que no existió. Cada segmento declara su `n` y se ocultan los que no
+         *     llegan al mínimo — con menos de cinco ofertas, la media la mueve un caso.
+         */
+        get: operations["get_baja_propia_api_v1_pursuits_baja_propia_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/pursuits/metrics": {
         parameters: {
             query?: never;
@@ -3326,7 +3355,19 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
-        put?: never;
+        /**
+         * Escribir la nota personal de un favorito
+         * @description Guarda (o borra, con `nota: null`) la nota personal sobre un favorito.
+         *
+         *     Un favorito es un booleano: el expediente está marcado o no. La razón —
+         *     «esperar a que salga el pliego técnico», «ojo: el año pasado quedó
+         *     desierto»— vivía en un post-it (C6.6).
+         *
+         *     **La nota es de quien la escribe**, incluso sobre un favorito compartido con
+         *     la organización: es el pensamiento de una persona sobre el expediente, no la
+         *     posición del equipo. Para eso está el hilo de comentarios de la oportunidad.
+         */
+        put: operations["put_item_note_api_v1_watchlist_items__id_externo__put"];
         post?: never;
         /** Eliminar un favorito propio */
         delete: operations["delete_item_api_v1_watchlist_items__id_externo__delete"];
@@ -3914,6 +3955,41 @@ export interface components {
             importe_total: number;
             /** Ofertas Medias */
             ofertas_medias: number | null;
+        };
+        /**
+         * BajaPropiaResult
+         * @description Mi baja frente al mercado, por CPV a cuatro dígitos o por órgano.
+         */
+        BajaPropiaResult: {
+            /**
+             * Base
+             * @default sin_iva
+             */
+            base: string;
+            /** Items */
+            items?: components["schemas"]["BajaPropiaSegmento"][];
+            /** Min Ofertas */
+            min_ofertas: number;
+            /** Organization Id */
+            organization_id: number;
+            /** Segmento */
+            segmento: string;
+        };
+        /**
+         * BajaPropiaSegmento
+         * @description Baja media propia en un segmento, con su `n` (C6.5).
+         */
+        BajaPropiaSegmento: {
+            /** Baja Max Pct */
+            baja_max_pct?: number | null;
+            /** Baja Min Pct */
+            baja_min_pct?: number | null;
+            /** Baja Propia Pct */
+            baja_propia_pct?: number | null;
+            /** N */
+            n: number;
+            /** Segmento */
+            segmento: string;
         };
         /**
          * BajaReferencia
@@ -9271,6 +9347,8 @@ export interface components {
             id_externo: string;
             /** Importe */
             importe: number | null;
+            /** Nota */
+            nota?: string | null;
             /** Organization Id */
             organization_id: number | null;
             /** Titulo */
@@ -9300,6 +9378,14 @@ export interface components {
              * @default private
              */
             visibility: string;
+        };
+        /**
+         * WatchlistNotaBody
+         * @description Nota personal sobre un favorito (C6.6).
+         */
+        WatchlistNotaBody: {
+            /** Nota */
+            nota?: string | null;
         };
         /**
          * WatchlistRuleBody
@@ -15200,6 +15286,43 @@ export interface operations {
             };
         };
     };
+    get_baja_propia_api_v1_pursuits_baja_propia_get: {
+        parameters: {
+            query?: {
+                organization_id?: number | null;
+                segmento?: string;
+                limite?: number;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BajaPropiaResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_pursuit_metrics_api_v1_pursuits_metrics_get: {
         parameters: {
             query?: {
@@ -16056,6 +16179,55 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["WatchlistFavoriteCreated"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_item_note_api_v1_watchlist_items__id_externo__put: {
+        parameters: {
+            query?: {
+                /** @description Organización activa; por defecto la personal del usuario. */
+                organization_id?: number | null;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                id_externo: string;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WatchlistNotaBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StatusOk"];
+                };
+            };
+            /** @description No tenés un favorito propio para ese expediente */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

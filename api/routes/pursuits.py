@@ -45,6 +45,7 @@ from services.pursuits import (
     PursuitNotFoundError,
     PursuitTransitionError,
     PursuitValidationError,
+    baja_propia,
     create_pursuit,
     get_agenda,
     get_metrics,
@@ -53,6 +54,7 @@ from services.pursuits import (
     update_pursuit,
 )
 from shared.dto import (
+    BajaPropiaResult,
     OrganizationCreate,
     OrganizationMemberInvite,
     OrganizationMembershipOut,
@@ -515,6 +517,36 @@ async def get_pursuit_tasks_agenda(
             int(ctx["user_id"]),
             organization_id=organization_id,
             solo_mias=solo_mias,
+            limite=limite,
+        )
+    except OrganizationAccessError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+
+
+@router.get("/pursuits/baja-propia", response_model=BajaPropiaResult)
+async def get_baja_propia(
+    organization_id: int | None = Query(default=None, ge=1),
+    segmento: str = Query("cpv", pattern="^(cpv|organo)$"),
+    limite: int = Query(50, ge=1, le=200),
+    ctx: dict[str, Any] = Depends(require_any_auth),
+) -> BajaPropiaResult:
+    """Mi baja media por CPV a cuatro dígitos o por órgano (C6.5).
+
+    El mercado lo da `/competitive/bajas/referencia`; esto es la otra mitad, y
+    hasta ahora no existía: el producto sabía cuánto baja el mercado y no cuánto
+    baja el equipo que lo usa.
+
+    Sólo cuenta lo **presentado** y con base sin IVA declarada (C1.1): comparar
+    una oferta sin IVA contra un presupuesto que lo lleva produce una baja del
+    21 % que no existió. Cada segmento declara su `n` y se ocultan los que no
+    llegan al mínimo — con menos de cinco ofertas, la media la mueve un caso.
+    """
+    try:
+        return await run_db(
+            baja_propia,
+            int(ctx["user_id"]),
+            organization_id=organization_id,
+            segmento=segmento,
             limite=limite,
         )
     except OrganizationAccessError as exc:

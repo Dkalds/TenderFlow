@@ -33,7 +33,6 @@ from api.routes.dual_auth import require_any_auth
 from api.tenancy import resolve_organization_ctx
 from db.repositories.watchlist import WatchlistRepository
 from observability.logging import get_logger
-from services.organizations import OrganizationAccessError
 from shared.dto import CalendarioEnlace
 
 log = get_logger(__name__)
@@ -134,12 +133,16 @@ async def _descargar_pipeline(
         get_export_filename,
         pursuit_rows,
     )
-    from services.organizations import resolve_organization
 
-    user_id = int(user["user_id"])
+    # `resolve_organization_ctx` y no el servicio a pelo: es el único punto que
+    # traduce «sin membresía» a un 403, y `tests/test_organization_sql_isolation.py`
+    # exige que las rutas pasen por ahí. Si cada una resolviera la organización a
+    # su manera, la regla de acceso tendría tantas versiones como endpoints.
+    ctx = await resolve_organization_ctx(user, organization_id)
+    user_id = int(ctx["user_id"])
+    resolved_id = int(ctx["organization_id"])
 
     def _render() -> tuple[bytes, str, int, str]:
-        resolved_id, _role = resolve_organization(user_id, organization_id)
         nombre = _nombre_organizacion(resolved_id, user_id)
         filas, _total = PursuitRepository().list_scoped(
             resolved_id,
@@ -166,10 +169,7 @@ async def _descargar_pipeline(
             nombre,
         )
 
-    try:
-        content, media_type, n_rows, _nombre = await run_db(_render)
-    except OrganizationAccessError as exc:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+    content, media_type, n_rows, _nombre = await run_db(_render)
 
     filename = get_export_filename(format, prefix="pipeline")  # type: ignore[arg-type]
     log.info("export_download", format=format, recurso="pursuits", n_rows=n_rows)
