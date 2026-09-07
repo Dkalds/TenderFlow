@@ -685,7 +685,10 @@ class OrganizationCreate(BaseModel):
 
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
-    name: str = Field(min_length=1, max_length=200)
+    #: ``SafeStr`` y no ``str``: el nombre se inserta tal cual en Postgres y un
+    #: byte NUL en el cuerpo salía por el handler genérico como 500. El
+    #: middleware que rechaza el NUL solo mira la línea de petición.
+    name: SafeStr = Field(min_length=1, max_length=200)
 
 
 class OrganizationMembershipUpsert(BaseModel):

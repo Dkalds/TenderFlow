@@ -40,6 +40,7 @@ from shared.dto import (
     EtiquetaAplicada,
     EtiquetaCreate,
     ObjetoEtiquetable,
+    SafeStr,
 )
 
 log = get_logger(__name__)
@@ -258,7 +259,9 @@ async def post_quitar_etiqueta(
 )
 async def post_etiquetas_por_objeto(
     objeto_tipo: ObjetoEtiquetable = Body(embed=True),
-    objeto_ids: list[str] = Body(default_factory=list, embed=True, max_length=200),
+    # ``SafeStr``: estos ids viajan al ``WHERE`` de la consulta. Con ``str`` a
+    # secas, un byte NUL en el cuerpo llegaba a psycopg y salía como 500.
+    objeto_ids: list[SafeStr] = Body(default_factory=list, embed=True, max_length=200),
     organization_id: int | None = Query(default=None, ge=1),
     ctx: dict[str, Any] = Depends(require_any_auth),
 ) -> EtiquetasPorObjeto:
