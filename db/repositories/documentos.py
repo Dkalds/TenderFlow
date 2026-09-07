@@ -564,6 +564,17 @@ class DocumentosRepository:
             "ORDER BY dc.embedding <=> %s::vector "
             "LIMIT %s"
         )
+        from db.columnas import existe
+
+        if not existe("documento_chunks", "embedding_model"):
+            # `v121` todavía no aplicada: producción migra a mano y el código
+            # llega antes. Sin la columna, el filtro por versión reventaría el
+            # retrieval entero; sin filtro, se comporta como antes de C5.7, que
+            # es exactamente el estado en el que está esa base.
+            with connect_read() as c:
+                return rows_to_dicts(
+                    c.execute(sql.format(filtro=""), (vec, licitacion_id, vec, tope))
+                )
         with connect_read() as c:
             # Primero, sólo los chunks del espacio vectorial actual: comparar
             # distancias entre espacios distintos no significa nada.
@@ -637,7 +648,19 @@ class DocumentosRepository:
         pendientes: no consta con qué modelo se calcularon, y eso no es lo
         mismo que constar que están al día.
         """
+        from db.columnas import existe
+
         modelo, version = embedding_signature()
+        if not existe("documento_chunks", "embedding_model"):
+            return {
+                "modelo": modelo,
+                "version": version,
+                "total": 0,
+                "al_dia": 0,
+                "pendientes": 0,
+                "sin_etiqueta": 0,
+                "sin_columna": True,
+            }
         with connect_read() as c:
             fila = c.execute(
                 "SELECT COUNT(*) AS total, "

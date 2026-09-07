@@ -16,6 +16,20 @@ _WATCHLIST_LIC_COLS = (
 )
 
 
+def _nota_disponible() -> bool:
+    """``watchlist_items.nota`` existe (``v123`` aplicada)."""
+    from db.columnas import existe
+
+    return existe("watchlist_items", "nota")
+
+
+def _proyeccion_nota() -> str:
+    """La nota del propio usuario, o ``NULL`` mientras la columna no exista."""
+    if _nota_disponible():
+        return "CASE WHEN wi.user_key = %s THEN wi.nota END AS nota"
+    return "NULL AS nota"
+
+
 class WatchlistRepository:
     """Acceso a las tablas ``watchlist_cpv``, ``watchlist_items`` y ``pending_digests``."""
 
@@ -201,13 +215,22 @@ class WatchlistRepository:
                 # favorito compartido con el equipo. La proyección lo deja
                 # imposible de leer mal; una segunda columna de visibilidad
                 # sería un segundo sitio donde equivocarse.
-                "       CASE WHEN wi.user_key = %s THEN wi.nota END AS nota, "
+                #
+                # Y va condicionada a que `v123` esté aplicada: producción migra
+                # a mano, así que entre el despliegue y la migración hay una
+                # ventana en la que nombrar `wi.nota` dejaría la lista de
+                # favoritos en 500 (ver `db/columnas.py`).
+                "       " + _proyeccion_nota() + ", "
                 "       l.titulo, l.importe, l.estado, l.fecha_publicacion "
                 "FROM watchlist_items wi "
                 "LEFT JOIN licitaciones l ON l.id_externo = wi.id_externo "
                 + self._ITEMS_SCOPE_WHERE
                 + "ORDER BY wi.created_at DESC, wi.id DESC",
-                (user_key, organization_id, user_id, user_key),
+                (
+                    (user_key, organization_id, user_id, user_key)
+                    if _nota_disponible()
+                    else (organization_id, user_id, user_key)
+                ),
             )
             return rows_to_dicts(cur)
 

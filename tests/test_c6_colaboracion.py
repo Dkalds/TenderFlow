@@ -309,7 +309,10 @@ class TestNotasEnFavoritos:
         """
         import db.repositories.watchlist as mod
 
-        fuente = inspect.getsource(mod.WatchlistRepository.list_items)
+        # La proyección vive en `_proyeccion_nota` desde que se hizo tolerante a
+        # que `v123` no esté aplicada todavía (`db/columnas.py`); la regla es la
+        # misma y sigue estando en un solo sitio.
+        fuente = inspect.getsource(mod._proyeccion_nota)
         assert "CASE WHEN wi.user_key = %s THEN wi.nota END AS nota" in fuente
 
     def test_nadie_edita_la_nota_de_otra_persona(self) -> None:

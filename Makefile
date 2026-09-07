@@ -1,5 +1,5 @@
 .PHONY: status product-status job-parity skills-inventory install dev lint format typecheck audit audit-truth-check fuzz-api mutation-sample capture-placsp-fixtures test test-all test-parallel test-unit test-integration test-e2e test-property test-load lock lock-hashes lock-uv install-uv scrape scrape-daily scrape-bulk api doctor seed seed-full seed-reset clean kpi kpi-export-parquet runbook-backup-restore runbook-dlq-replay runbook-rate-limit-reset runbook-model-rollback runbook-disaster-recovery check check-frontend-invariants check-api-contract check-agent-docs audit-truth help migrate migrate-alembic migrate-status migrate-history web-dev web-build web-codegen web-lint web-typecheck web-test-e2e web-test-e2e-ui web-docker cutover
-.PHONY: web-test web-test-coverage check-env-parity check-public-surface check-regional-coverage
+.PHONY: web-test web-test-coverage check-env-parity check-public-surface check-regional-coverage seed-keywords
 
 # ── Ayuda ────────────────────────────────────────────────────────────────
 help:  ## Muestra esta ayuda
@@ -41,6 +41,11 @@ check:  ## Lint + typecheck + tests unit+integration (ideal para desarrollo)
 
 check-analytics-unbounded:  ## Ningún método analítico materializa sin cota (ADR-023, C3.2)
 	python scripts/check_analytics_unbounded.py
+
+seed-keywords:  ## Siembra tecnologias_keywords desde config/keywords.py (C5.6)
+	# Idempotente: si la tabla ya tiene filas no toca nada, y nunca reactiva
+	# una keyword retirada. `--check` informa sin escribir.
+	python scripts/seed_tech_keywords.py
 
 check-regional-coverage:  ## Cobertura del conector de Euskadi contra su muestra (C4.3)
 	# Sale a la red: no va en `make check`. Ver docs/regional-source-coverage.md.

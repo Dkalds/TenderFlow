@@ -61,8 +61,8 @@ Los scopes los resuelve `api/scopes.py::required_scope_for_request` a partir del
 | `ask:read` | GET/POST | `/ask`, `/ask/models` |
 | `competitive:read` | GET | `/competitive/bajas`, `/competitive/cuota`, `/competitive/empresas`, `/competitive/hhi`, `/competitive/renovaciones`, `/competitive/watchlist` |
 | `competitive:write` | POST/DELETE | `/competitive/watchlist` |
-| `data:read` | GET | `/adjudicaciones`, `/auth/me`, `/auth/oauth`, `/eventos`, `/health`, `/health/live`, `/health/ready`, `/me/notification-preferences`, `/me/sessions`, `/meta/filters`, `/meta/last-extraction`, `/predicciones/calibracion`, `/publico/hubs`, `/publico/licitaciones`, `/publico/sitemap`, `/radar/dismissals`, `/resoluciones` |
-| `data:write` | POST/PUT/DELETE | `/auth/dev-login`, `/auth/login`, `/auth/logout`, `/auth/logout-all`, `/auth/password-reset`, `/auth/register`, `/auth/totp`, `/me/notification-preferences`, `/me/sessions`, `/publico/solicitudes-acceso`, `/radar/dismissals`, `/search/semantic` |
+| `data:read` | GET | `/adjudicaciones`, `/auth/me`, `/auth/oauth`, `/eventos`, `/health`, `/health/live`, `/health/ready`, `/me/notification-preferences`, `/me/sessions`, `/meta/filters`, `/meta/last-extraction`, `/predicciones/calibracion`, `/publico/hubs`, `/publico/licitaciones`, `/publico/sitemap`, `/radar/dismissals`, `/resoluciones`, `/tecnologias`, `/tecnologias/impacto` |
+| `data:write` | POST/PUT/DELETE | `/auth/dev-login`, `/auth/login`, `/auth/logout`, `/auth/logout-all`, `/auth/password-reset`, `/auth/register`, `/auth/totp`, `/me/notification-preferences`, `/me/sessions`, `/publico/solicitudes-acceso`, `/radar/dismissals`, `/search/semantic`, `/tecnologias/keywords` |
 | `empresas:read` | GET | `/empresas`, `/empresas/stats` |
 | `exports:read` | GET | `/exports/calendario`, `/exports/calendario.ics`, `/exports/download` |
 | `feature_flags:read` | GET | `/feature-flags` |

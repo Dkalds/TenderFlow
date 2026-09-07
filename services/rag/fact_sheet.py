@@ -11,7 +11,7 @@ from pydantic.fields import FieldInfo
 from db.repositories.documentos import DocumentosRepository
 from db.repositories.tender_fact_sheets import TenderFactSheetsRepository
 from llm.client import DEFAULT_MODEL, stream_llm_response
-from llm.json_utils import extract_json_object
+from llm.json_utils import RespuestaVacia, extract_json_object
 from observability.logging import get_logger
 from shared.tender_facts import EvidenceRef, TenderFactSheet, TenderFactSheetRecord
 
@@ -419,7 +419,18 @@ def extract_fact_sheet(
                 fallback=False,
             )
         )
-        facts, invalid = _parse_facts(extract_json_object(raw))
+        # El fallo se anota con el modelo y el presupuesto que lo produjeron:
+        # sin eso, «no devolvió un objeto JSON» en `error_detail` no dice si el
+        # problema es el modelo, el prompt o el tope de tokens, y hay que ir a
+        # correlacionarlo con producción para saberlo (que es como se
+        # descubrió: 203 fichas fallidas seguidas, todas con el mismo texto).
+        try:
+            objeto = extract_json_object(raw)
+        except RespuestaVacia as exc:
+            raise ValueError(
+                f"{exc} modelo={model} max_tokens=3500 paginas={len(selected)}"
+            ) from exc
+        facts, invalid = _parse_facts(objeto)
         facts, unverifiable = _validate_fact_evidence(facts, pages)
         rejected = invalid + unverifiable
         if rejected:

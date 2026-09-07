@@ -3358,6 +3358,78 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/tecnologias": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Diccionario de tecnologías vigente
+         * @description El diccionario que el filtro está aplicando ahora mismo.
+         */
+        get: operations["get_diccionario_api_v1_tecnologias_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tecnologias/impacto": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Qué añadiría una keyword antes de aplicarla
+         * @description Vista previa de impacto (C5.6).
+         *
+         *     Es la pregunta que hay que poder responder **antes** de aplicar el cambio.
+         *     Sin ella, ampliar el diccionario es una apuesta, y la que sale mal —una
+         *     keyword demasiado genérica— mete miles de filas de ruido en el corpus y no se
+         *     nota hasta que alguien mira una gráfica rara.
+         */
+        get: operations["get_impacto_api_v1_tecnologias_impacto_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tecnologias/keywords": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Añadir o retirar una keyword (solo admin)
+         * @description Cambia el diccionario **sin desplegar** y deja el impacto en `audit_log`.
+         *
+         *     El registro guarda el delta de expedientes, no sólo qué se tocó: seis meses
+         *     después, «se añadió *hcm cloud*» no explica nada y «se añadió *hcm cloud*,
+         *     +38 expedientes en 90 días» sí.
+         *
+         *     El cambio mueve `filter_version` para las filas nuevas, así que el linaje
+         *     sigue separando lo filtrado con un criterio de lo filtrado con otro.
+         */
+        put: operations["put_keyword_api_v1_tecnologias_keywords_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/watchlist/feed.xml": {
         parameters: {
             query?: never;
@@ -5094,6 +5166,18 @@ export interface components {
             /** Detail */
             detail: string;
         };
+        /**
+         * DiccionarioOut
+         * @description El diccionario vigente y de dónde sale.
+         */
+        DiccionarioOut: {
+            /** Huella */
+            huella: string;
+            /** Items */
+            items?: components["schemas"]["KeywordOut"][];
+            /** Origen */
+            origen: string;
+        };
         /** DocumentoSummary */
         DocumentoSummary: {
             /** Content Type */
@@ -5889,6 +5973,26 @@ export interface components {
             cpv: components["schemas"]["HubCpv"][];
         };
         /**
+         * ImpactoOut
+         * @description «Esta keyword añadiría N expedientes de los últimos 90 días».
+         */
+        ImpactoOut: {
+            /** Dias */
+            dias: number;
+            /** Keyword */
+            keyword: string;
+            /**
+             * Nuevos
+             * @default 0
+             */
+            nuevos: number;
+            /**
+             * Ya Etiquetados
+             * @default 0
+             */
+            ya_etiquetados: number;
+        };
+        /**
          * ImporteBox
          * @description Five-number summary of importe for a cluster (box-plot).
          */
@@ -5903,6 +6007,38 @@ export interface components {
             q1: number;
             /** Q3 */
             q3: number;
+        };
+        /**
+         * KeywordBody
+         * @description Alta o retirada de una keyword.
+         */
+        KeywordBody: {
+            /**
+             * Activa
+             * @default true
+             */
+            activa: boolean;
+            /** Keyword */
+            keyword: string;
+            /** Tecnologia */
+            tecnologia: string;
+        };
+        /**
+         * KeywordOut
+         * @description Una keyword del diccionario.
+         */
+        KeywordOut: {
+            /**
+             * Activa
+             * @default true
+             */
+            activa: boolean;
+            /** Id */
+            id?: number | null;
+            /** Keyword */
+            keyword: string;
+            /** Tecnologia */
+            tecnologia: string;
         };
         /** LastExtraction */
         LastExtraction: {
@@ -16314,6 +16450,124 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
+            };
+        };
+    };
+    get_diccionario_api_v1_tecnologias_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DiccionarioOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_impacto_api_v1_tecnologias_impacto_get: {
+        parameters: {
+            query: {
+                keyword: string;
+                dias?: number;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImpactoOut"];
+                };
+            };
+            /** @description No autenticado */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_keyword_api_v1_tecnologias_keywords_put: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["KeywordBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KeywordOut"];
+                };
+            };
+            /** @description Requiere admin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Keyword vacía */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

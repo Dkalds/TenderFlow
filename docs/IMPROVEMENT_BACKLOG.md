@@ -522,6 +522,14 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 
 ---
 
+### [P3] Clusters y proyectos: promover a core o retirar por RFC (C5.8, decisión pendiente de dato)
+- **Área:** web/src/app/(dashboard)/mercado/_components/clusters-view.tsx, services/analytics/clusters.py
+- **Problema:** la vista de clusters existe (`GET /analytics/clusters`, `ClustersFilters`) y nadie sabe si se usa. C5.8 del plan complementario pide decidirlo con sesenta días de telemetría de «vista experimental abierta» (v2 S7.3) y después promover o retirar por RFC.
+- **Medido el 2026-09-07:** la telemetría **no existe**. No hay ningún registro de apertura de vista en el producto: `audit_log` guarda acciones de escritura, no navegación, y el frontend no envía eventos de uso a ninguna parte (`web/src/lib` no tiene cliente de analítica). Los sesenta días no han empezado a contar porque no hay reloj.
+- **Qué hace falta, en orden:** (1) v2 S7.3 —el marcado de vista experimental y su evento de apertura—, (2) sesenta días de recogida, (3) la decisión con la cifra. Sin (1) no hay nada que esperar: hoy la decisión sólo se puede tomar por intuición, que es exactamente lo que C5.8 quería evitar.
+- **Acceptance criteria:** decisión escrita con la cifra de aperturas en sesenta días y la fecha; si se retira, RFC con el motivo y la ruta de borrado; si se promueve, sale de «experimental» en la navegación.
+- **Riesgo:** bajo — retirar una vista sin uso es barato; retirarla sin saber si se usa, no.
+
 ## Cerrados
 
 - [2026-09-07] **Barrido de ortografía castellana en las cadenas visibles** —
