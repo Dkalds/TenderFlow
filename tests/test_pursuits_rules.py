@@ -274,15 +274,19 @@ def test_an_outcome_alone_infers_its_terminal_status(tmp_db):
     pursuit_id = _open(owner, organization_id)
     _reach_submitted(owner, organization_id, pursuit_id)
 
+    # F3.1/D37: cerrar como perdida exige el motivo **codificado**, no sólo el
+    # texto libre. El texto sigue viajando porque explica el caso concreto; el
+    # código es lo que permite agregarlo.
     detail = update_pursuit(
         owner,
         pursuit_id,
-        PursuitUpdate(outcome="lost", outcome_reason="Precio"),
+        PursuitUpdate(outcome="lost", outcome_reason="Precio", outcome_reason_code="precio"),
         organization_id=organization_id,
     )
 
     assert detail.status == "lost"
     assert detail.closed_at is not None
+    assert detail.outcome_reason_code == "precio"
 
 
 def test_a_cancelled_outcome_infers_withdrawn(tmp_db):

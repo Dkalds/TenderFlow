@@ -26,7 +26,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Any
 
-from sqlalchemy import Date, Select, and_, func, literal, select, text
+from sqlalchemy import Select, and_, func, literal, literal_column, select, text
 
 from db.database import connect, connect_read
 from db.models import compile_query, licitaciones
@@ -76,33 +76,35 @@ def bounded_match_counts(clauses_per_rule: Sequence[Sequence[Any]]) -> list[int]
     return counts
 
 
-def weekly_match_counts(clauses: Sequence[Any], *, desde_iso: str) -> dict[str, int]:
-    """``{lunes ISO: n}`` de las coincidencias publicadas desde ``desde_iso``.
+def daily_match_counts(clauses: Sequence[Any], *, desde_iso: str) -> dict[str, int]:
+    """``{día ISO: n}`` de las coincidencias publicadas desde ``desde_iso``.
 
-    Agrega **en SQL**. La versión anterior vivía en ``services/`` y traía una
-    fila por coincidencia para contarlas en Python: el preview existe justo
-    para reglas amplias —«¿cuánto correo me va a llegar?»—, así que su peor
-    caso es también el más probable, y era un ``fetchall()`` sin ``LIMIT``
-    sobre ocho semanas del corpus, a un endpoint que sólo pide estar
-    autenticado.
+    Agrega **en SQL** y por día. La versión anterior vivía en ``services/`` y
+    traía una fila por coincidencia para contarlas en Python: el preview existe
+    justo para reglas amplias —«¿cuánto correo me va a llegar?»—, así que su
+    peor caso es también el más probable, y era un ``fetchall()`` sin ``LIMIT``
+    sobre ocho semanas del corpus, en un endpoint que sólo pide estar
+    autenticado. Aquí el resultado está acotado por construcción: como mucho un
+    día distinto por día de la ventana.
 
-    El lunes se calcula con ``date_trunc`` sobre un ``CAST`` que sólo ven las
-    filas que el ``iso_guard`` del llamante ya dejó pasar: ``fecha_publicacion``
-    es TEXT con filas legacy malformadas (v59), y castear la columna entera
-    reventaría la consulta por una fila de 2019 con la fecha en DD/MM/YYYY.
+    Por día y no por semana con ``date_trunc``: ``fecha_publicacion`` es TEXT
+    con filas legacy malformadas (v59), así que ``substr`` no puede fallar
+    mientras que un ``CAST`` a fecha revienta la consulta entera por una fila de
+    2019 en DD/MM/YYYY. Agrupar los días en semanas es aritmética, y la hace el
+    llamante.
 
     ADR-022: las cláusulas del filtro las construye
     ``services.watchlist_rules._rule_clauses``; aquí sólo se agrupan y ejecutan.
     """
-    semana = func.to_char(
-        func.date_trunc(literal("week"), func.cast(licitaciones.c.fecha_publicacion, Date)),
-        literal("YYYY-MM-DD"),
-    ).label("semana")
+    # Los índices van como literales SQL, no como parámetros: un `%s` sin tipo
+    # es lo que hizo que la primera versión de esta consulta —con `date_trunc`—
+    # muriera en «could not determine data type of parameter $1».
+    dia = func.substr(licitaciones.c.fecha_publicacion, literal_column("1"), literal_column("10"))
     stmt = (
-        select(semana, func.count().label("n"))
+        select(dia.label("dia"), func.count().label("n"))
         .select_from(licitaciones)
         .where(and_(*clauses, licitaciones.c.fecha_publicacion >= desde_iso))
-        .group_by(semana)
+        .group_by(dia)
     )
     sql, params = compile_query(stmt)
     with connect_read() as c:

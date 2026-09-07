@@ -12,12 +12,15 @@ const allViews = (): [string, SpaceView][] =>
   );
 
 describe("SPACE_VIEWS", () => {
-  it("cubre los cuatro espacios multivista con su recuento del rediseño", () => {
-    // Los recuentos son el contrato de `docs/redesign/README.md`: 17 rutas
-    // heredadas repartidas en cuatro espacios. Si uno cambia sin actualizar el
-    // doc, la tabla del README miente.
+  it("cubre los espacios multivista con su recuento del rediseño", () => {
+    // Los recuentos son el contrato de `docs/redesign/README.md`. Si uno cambia
+    // sin actualizar el doc, la tabla del README miente. Cuentas y Dirección
+    // entraron con el plan de funcionalidades 2026-09 y no absorben ninguna
+    // ruta heredada: son espacios nuevos, no consolidaciones.
     expect(Object.keys(SPACE_VIEWS).sort()).toEqual([
       "competencia",
+      "cuentas",
+      "direccion",
       "mercado",
       "mi-pipeline",
       "ops",
@@ -26,6 +29,8 @@ describe("SPACE_VIEWS", () => {
     expect(SPACE_VIEWS.competencia).toHaveLength(2);
     expect(SPACE_VIEWS["mi-pipeline"]).toHaveLength(3);
     expect(SPACE_VIEWS.ops).toHaveLength(6);
+    expect(SPACE_VIEWS.cuentas).toHaveLength(2);
+    expect(SPACE_VIEWS.direccion).toHaveLength(3);
   });
 
   it("absorbe 18 rutas heredadas, todas distintas", () => {
@@ -49,9 +54,9 @@ describe("SPACE_VIEWS", () => {
 });
 
 describe("BUILT_SPACE_ROUTES", () => {
-  it("declara los 14 espacios, sin repetir y sin barra inicial", () => {
-    expect(BUILT_SPACE_ROUTES).toHaveLength(14);
-    expect(new Set(BUILT_SPACE_ROUTES).size).toBe(14);
+  it("declara los 16 espacios, sin repetir y sin barra inicial", () => {
+    expect(BUILT_SPACE_ROUTES).toHaveLength(16);
+    expect(new Set(BUILT_SPACE_ROUTES).size).toBe(16);
     for (const slug of BUILT_SPACE_ROUTES) {
       expect(slug.startsWith("/")).toBe(false);
     }

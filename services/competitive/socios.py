@@ -27,6 +27,7 @@ import pandas as pd
 from pydantic import BaseModel, ConfigDict, Field
 
 from observability.logging import get_logger
+from services.analytics.competitors import cargar_adjudicaciones_resueltas
 from services.partners import segment_winners, suggest_partners
 
 log = get_logger(__name__)
@@ -228,3 +229,16 @@ def _lideres(adjudicaciones: pd.DataFrame, *, top: int = 5) -> list[LiderSegment
             )
         )
     return lideres
+
+
+def socios_del_segmento(
+    *, cpv: str | None = None, ccaa: str | None = None, limit: int = 10
+) -> SugerenciaSocios:
+    """Punto de entrada del endpoint: carga el segmento y lo rankea.
+
+    La carga vive aquí y no en la ruta para que nadie vuelva a alimentar
+    `sugerir_socios` con filas sin resolver la identidad de empresa.
+    """
+    return sugerir_socios(
+        cargar_adjudicaciones_resueltas(ccaa=ccaa), cpv=cpv, ccaa=ccaa, limit=limit
+    )

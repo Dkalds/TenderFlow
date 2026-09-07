@@ -481,7 +481,11 @@ class PublicoRepository:
             # frontend lleva el slug, y comparar contra el nombre crudo haría
             # que una tilde distinta devolviera un hub vacío sin que fallara
             # nada (el mismo fallo que documenta `_ccaa_slug_sql`).
-            condiciones.append(f"{_organo_slug_sql('c')} = %s")
+            #
+            # Sobre `l` y no sobre `c`: la vista canónica no proyecta
+            # `organo_contratacion`. Quien use este filtro tiene que unir
+            # `licitaciones` — `listar` ya lo hacía y `contar` lo hace ahora.
+            condiciones.append(f"{_organo_slug_sql('l')} = %s")
             params.append(organo_slug)
         return condiciones, params
 
@@ -548,8 +552,15 @@ class PublicoRepository:
         """
         condiciones, params = self._filtros(ccaa_slug, cpv_prefijo, organo_slug)
 
+        # El mismo JOIN que `listar`, y por el mismo motivo: el filtro de órgano
+        # vive en `licitaciones`. Se une siempre para que las dos consultas
+        # recorran literalmente el mismo conjunto —que es lo que hace que
+        # `total` y las páginas no puedan discrepar—.
         where = f" WHERE {' AND '.join(condiciones)}" if condiciones else ""
-        sql = f"SELECT COUNT(*) FROM {VISTA_CANONICAS} c{where}"
+        sql = (
+            f"SELECT COUNT(*) FROM {VISTA_CANONICAS} c "
+            f"JOIN licitaciones l ON l.id_externo = c.id_externo{where}"
+        )
 
         def _consultar(c: Any) -> int:
             fila = c.execute(sql, tuple(params)).fetchone()
@@ -642,12 +653,18 @@ class PublicoRepository:
         agruparlo no amplía la superficie — que es lo que
         `scripts/check_public_surface.py` comprueba.
         """
-        slug = _organo_slug_sql("c")
+        # El órgano sale de `licitaciones`, no de la vista: `licitaciones_
+        # canonicas` proyecta `id_externo, titulo, ccaa, cpv, fecha_publicacion,
+        # fecha_extraccion` y nada más, así que `c.organo_contratacion` era un
+        # `UndefinedColumn` —un 500 en una ruta pública—. El JOIN va por la
+        # unique de la vista, que es su índice de refresco concurrente.
+        slug = _organo_slug_sql("l")
         sql = (
-            f"SELECT {slug} AS slug, max(c.organo_contratacion) AS nombre, "
+            f"SELECT {slug} AS slug, max(l.organo_contratacion) AS nombre, "
             "       COUNT(*) AS total "
             f"FROM {VISTA_CANONICAS} c "
-            "WHERE c.organo_contratacion IS NOT NULL AND c.organo_contratacion <> '' "
+            "JOIN licitaciones l ON l.id_externo = c.id_externo "
+            "WHERE l.organo_contratacion IS NOT NULL AND l.organo_contratacion <> '' "
             f"GROUP BY slug HAVING COUNT(*) >= {_MIN_POR_HUB} "
             "ORDER BY total DESC"
         )

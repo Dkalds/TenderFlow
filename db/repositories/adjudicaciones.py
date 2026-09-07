@@ -151,6 +151,10 @@ class AdjudicacionRepository:
         "a.licitacion_id, a.nombre, a.nif, a.empresa_id, a.es_pyme, "
         "a.importe_adjudicado, a.fecha_adjudicacion, a.ccaa, a.n_ofertas_recibidas, "
         "l.organo_contratacion, l.tecnologia, l.estado, l.importe AS importe_licitacion, "
+        # `cpv` y `titulo` los necesita el ranking de socios (F3.3) para acotar
+        # el segmento. Son dos columnas de la misma fila ya unida: traerlas aquí
+        # evita una segunda consulta, y los demás consumidores las ignoran.
+        "l.cpv, l.titulo, "
         "COALESCE(lo.importe, l.importe) AS presupuesto_efectivo, "
         "e.nombre_canonico AS empresa_nombre_master, "
         "e.nif_canonico AS empresa_nif_master, "

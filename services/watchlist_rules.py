@@ -14,7 +14,7 @@ frecuencia* (→ ``notifications``) se añaden en increments posteriores.
 from __future__ import annotations
 
 from collections.abc import Sequence
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import Any, Literal
 
 from pydantic import BaseModel
@@ -25,8 +25,8 @@ from db.models import compile_query, licitaciones
 from db.repositories.base import rows_to_dicts
 from db.repositories.watchlist_rules import (
     bounded_match_counts,
+    daily_match_counts,
     matches_pendientes,
-    weekly_match_counts,
 )
 
 Frequency = Literal["immediate", "daily", "weekly"]
@@ -307,7 +307,17 @@ def serie_semanal(rule: WatchlistRule, *, semanas: int = SEMANAS_PREVIEW) -> lis
         licitaciones.c.fecha_publicacion >= desde.isoformat(),
         licitaciones.c.fecha_publicacion < "3000",
     ]
-    por_semana = weekly_match_counts(clauses, desde_iso=desde.isoformat())
+    # El SQL agrupa por día (acotado por construcción); el lunes se calcula
+    # aquí, que es aritmética y no necesita castear una columna TEXT.
+    por_dia = daily_match_counts(clauses, desde_iso=desde.isoformat())
+    por_semana: dict[str, int] = {}
+    for texto, n in por_dia.items():
+        try:
+            dia = date.fromisoformat(texto)
+        except ValueError:
+            continue  # fila legacy malformada (v59): no cae en ninguna semana
+        lunes = (dia - timedelta(days=dia.weekday())).isoformat()
+        por_semana[lunes] = por_semana.get(lunes, 0) + n
 
     # Semanas completas y contiguas, incluidas las de cero. Una serie que sólo
     # trae las semanas con coincidencias se lee como constante: ocho puntos

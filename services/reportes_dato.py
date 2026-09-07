@@ -30,6 +30,7 @@ from __future__ import annotations
 from typing import Final, Literal, get_args
 
 from db.repositories.feedback import FeedbackRepository
+from db.repositories.licitaciones import PREFIJO_REPORTE
 from observability.logging import get_logger
 
 log = get_logger(__name__)
@@ -51,7 +52,9 @@ TIPOS_REPORTE: Final[tuple[str, ...]] = get_args(TipoReporte)
 
 #: Prefijo de ``ml_feedback.source`` para estas filas. Se comparte con la
 #: consulta de la vista de Calidad, que agrupa por él.
-PREFIJO_SOURCE: Final = "reporte:"
+#: Se importa de `db/`, que es quien la usa en el anti-join de la cola de
+#: active learning: dos copias del prefijo y esa cola se vacía sola.
+PREFIJO_SOURCE: Final = PREFIJO_REPORTE
 
 #: A qué cola de revisión pertenece cada tipo. Es documentación ejecutable: el
 #: test comprueba que todo tipo tiene destino, para que añadir uno nuevo

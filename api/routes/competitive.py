@@ -10,7 +10,6 @@ import hashlib
 from datetime import date
 from typing import Any, Literal
 
-import pandas as pd
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
 
@@ -42,7 +41,7 @@ from services.competitive.renovaciones import (
     resumen_renovaciones,
     totales_renovaciones,
 )
-from services.competitive.socios import SugerenciaSocios, sugerir_socios
+from services.competitive.socios import SugerenciaSocios, socios_del_segmento
 from services.organizations import OrganizationAccessError
 from shared.dto import CompetitiveCompanyAwardsDTO, CompetitiveCompanyProfileDTO
 from shared.metric_scope import MetricScope
@@ -445,11 +444,11 @@ async def get_partners(
     # `suggest_partners` es pandas sobre miles de filas, y hacerlo aquí
     # bloquearía el event loop para todos los endpoints del proceso mientras
     # dura. Es la regla que fija `test_async_handlers_no_blocking_io`.
-    def _trabajo() -> SugerenciaSocios:
-        filas = _adj_repo.load_for_competitors(ccaa=ccaa, tecnologia=None)
-        return sugerir_socios(pd.DataFrame(filas), cpv=cpv, ccaa=ccaa, limit=limit)
-
-    return await run_db(_trabajo)
+    # La carga la hace el servicio: `empresa_key` no sale del SQL, la calcula
+    # la resolución de identidad en pandas, y agrupar por ella sobre las filas
+    # crudas del repositorio era un `KeyError: 'empresa_key'` — un 500 que el
+    # fuzzing de contrato reproducía en cuanto la CCAA tenía datos.
+    return await run_db(socios_del_segmento, cpv=cpv, ccaa=ccaa, limit=limit)
 
 
 @router.get(

@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import re
 from datetime import UTC, date, datetime, timedelta
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Final
 
 from sqlalchemy import Select, and_, func, or_, select, text
 
@@ -218,6 +218,12 @@ _SORT_WHITELIST: dict[str, str] = {
 }
 
 _DEFAULT_SORT = "fecha_publicacion DESC"
+
+
+#: Prefijo de ``ml_feedback.source`` con el que se guardan los reportes de dato
+#: (F6.2). Vive aquí y no en ``services/`` porque quien tiene que conocerlo es el
+#: SQL que decide qué sigue sin etiquetar; ``services.reportes_dato`` lo importa.
+PREFIJO_REPORTE: Final = "reporte:"
 
 
 class LicitacionRepository:
@@ -868,12 +874,16 @@ class LicitacionRepository:
     def get_unlabelled_candidates(self, limit: int = 500) -> list[dict[str, Any]]:
         """Licitaciones sin etiqueta humana en ml_feedback, para active learning.
 
-        El anti-join filtra por ``source = 'human'``: ``ml_feedback`` es también
-        la cola de los reportes de dato (``services/reportes_dato.py``, que
-        escribe ``source = 'reporte:<tipo>'``), y sin el predicado cualquier
-        usuario sacaba un expediente de la cola de etiquetado con sólo
-        reportarlo. «Sin etiquetar» significa sin etiqueta **humana**, no sin
-        fila.
+        «Sin etiquetar» significa **sin etiqueta**, no «sin fila»:
+        ``ml_feedback`` es también la cola de los reportes de dato
+        (``services/reportes_dato.py``, que escribe ``source = 'reporte:<tipo>'``),
+        y sin el predicado cualquier usuario sacaba un expediente de la cola de
+        etiquetado con sólo reportarlo.
+
+        El filtro excluye el prefijo de reporte y **no** compara con ``'human'``:
+        el job de LLM escribe ``llm_batch`` precisamente para vaciar esta cola
+        sin realimentar al modelo (``scheduler/jobs/llm_tech_labeling.py``), así
+        que exigir ``human`` habría devuelto a la cola todo lo que ya etiquetó.
         """
         with connect_read() as c:
             cur = c.execute(
@@ -882,7 +892,7 @@ class LicitacionRepository:
                 "l.tecnologia, l.ml_tecnologias, l.ml_proba_max, l.ml_tech_principal "
                 "FROM licitaciones l "
                 "LEFT JOIN ml_feedback f "
-                "  ON l.id_externo = f.expediente AND f.source = 'human' "
+                f"  ON l.id_externo = f.expediente AND f.source NOT LIKE '{PREFIJO_REPORTE}%%' "
                 "WHERE f.expediente IS NULL "
                 "ORDER BY l.fecha_publicacion DESC LIMIT %s",
                 (limit,),
@@ -992,9 +1002,9 @@ class LicitacionRepository:
         return salida
 
     def get_unlabelled_random(self, limit: int = 20) -> list[dict[str, Any]]:
-        """Muestra aleatoria sin etiqueta humana. Mismo criterio que
-        :meth:`get_unlabelled_candidates`: ``source = 'human'`` en el anti-join,
-        para que un reporte de dato no vacíe la cola de etiquetado."""
+        """Muestra aleatoria sin etiquetar. Mismo criterio que
+        :meth:`get_unlabelled_candidates`: se excluyen las etiquetas (humanas y
+        de LLM), no los reportes de dato."""
         with connect_read() as c:
             cur = c.execute(
                 "SELECT l.id_externo, l.titulo, l.descripcion, l.cpv, l.importe, "
@@ -1002,7 +1012,7 @@ class LicitacionRepository:
                 "l.tecnologia, l.ml_tecnologias, l.ml_proba_max, l.ml_tech_principal "
                 "FROM licitaciones l "
                 "LEFT JOIN ml_feedback f "
-                "  ON l.id_externo = f.expediente AND f.source = 'human' "
+                f"  ON l.id_externo = f.expediente AND f.source NOT LIKE '{PREFIJO_REPORTE}%%' "
                 "WHERE f.expediente IS NULL "
                 "ORDER BY RANDOM() LIMIT %s",
                 (limit,),
