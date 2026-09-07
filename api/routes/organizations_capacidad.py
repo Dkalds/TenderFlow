@@ -15,26 +15,34 @@ organización?»— y que por eso se leen juntas:
 
 Vive aparte de ``api/routes/organization_settings.py`` porque aquello escribe
 en ``organizations.settings_json`` y esto en tablas propias (decisión D11).
+
+**Tenencia.** Como el resto de ``api/routes/``, la organización se resuelve
+pasando por ``api/tenancy.py`` y nunca llamando a ``resolve_organization`` a
+mano (``tests/test_organization_sql_isolation.py`` explica por qué esa regla
+existe). Las dos superficies de ``/organizations/{id}/…`` traen el id en la
+**ruta** y no en la query, así que no encajan con la dependency
+``require_organization`` —FastAPI no puede declarar el mismo nombre como path
+y como query param— y usan ``resolve_organization_ctx`` directamente dentro
+del handler, que es la puerta que el propio módulo de tenencia deja abierta
+para los casos en que el id no viaja en la query.
 """
 
 from __future__ import annotations
 
 import re
+from datetime import datetime
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from api.concurrency import run_db
 from api.routes.dual_auth import require_any_auth
+from api.tenancy import resolve_organization_ctx
 from db.repositories.organization_capabilities import OrganizationCapabilitiesRepository
 from db.repositories.organization_nifs import OrganizationNifRepository
 from services.go_no_go import ChecklistNotFoundError, GoNoGoChecklist, build_checklist
 from services.normalization import normalize_nif
-from services.organizations import (
-    OrganizationAccessError,
-    OrganizationPermissionError,
-    resolve_organization,
-)
+from services.organizations import OrganizationAccessError
 from shared.dto import (
     OrganizationCapabilities,
     OrganizationCapabilitiesOut,
@@ -57,19 +65,28 @@ _NIF_RE = re.compile(r"^[A-Z0-9]{4,32}$")
 _ROLES_GESTORES = frozenset({"owner", "admin"})
 
 
-def _require_manager(user_id: int, organization_id: int, *, write: bool) -> int:
-    """Owner o admin. Devuelve la organización resuelta.
+async def _organizacion_gestionada(
+    ctx: dict[str, Any], organization_id: int | None, *, write: bool
+) -> int:
+    """Organización resuelta por ``api/tenancy.py``, exigiendo owner o admin.
+
+    La resolución NO se hace aquí: la hace ``resolve_organization_ctx``,
+    incondicionalmente, que es el único punto de confianza de la tenencia
+    (``tests/test_organization_sql_isolation.py`` impide que una ruta vuelva a
+    resolverla por su cuenta). Esta función solo añade el escalón de rol que
+    la capacidad de la organización exige por encima de la membresía.
 
     ``write`` distingue las dos llamadas porque no significan lo mismo: la
     lectura de NIFs está restringida a gestores por lo que revela (con qué
     identidad concurre la casa), no porque escriba nada.
     """
-    resolved_id, role = resolve_organization(user_id, organization_id, write=write)
-    if role not in _ROLES_GESTORES:
-        raise OrganizationPermissionError(
-            "Solo owner o admin pueden gestionar la capacidad de la organización."
+    resuelto = await resolve_organization_ctx(ctx, organization_id, write=write)
+    if str(resuelto["organization_role"]) not in _ROLES_GESTORES:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Solo owner o admin pueden gestionar la capacidad de la organización.",
         )
-    return resolved_id
+    return int(resuelto["organization_id"])
 
 
 def _normalizar_nifs(body: OrganizationNifsIn) -> list[dict[str, Any]]:
@@ -118,40 +135,50 @@ def _campos_incompletos(
     return faltan
 
 
-def _capabilities_out(organization_id: int, raw: dict[str, Any]) -> OrganizationCapabilitiesOut:
-    capabilities = OrganizationCapabilities.model_validate(raw)
+def _capabilities_out(
+    organization_id: int, perfil: dict[str, Any], updated_at: datetime | None
+) -> OrganizationCapabilitiesOut:
+    """Compone la respuesta enumerando qué sale, no volcando lo que entró.
+
+    El repositorio devuelve el perfil con las claves exactas del DTO y la
+    marca por separado, así que aquí no hay nada que filtrar: cada campo de la
+    respuesta se nombra una vez.
+    """
+    capabilities = OrganizationCapabilities.model_validate(perfil)
     return OrganizationCapabilitiesOut(
         organization_id=organization_id,
-        updated_at=raw.get("updated_at"),
+        updated_at=updated_at,
         campos_incompletos=_campos_incompletos(capabilities),
-        **capabilities.model_dump(),
+        certificaciones=capabilities.certificaciones,
+        facturacion=capabilities.facturacion,
+        referencias=capabilities.referencias,
+        perfiles_equipo=capabilities.perfiles_equipo,
     )
 
 
 # ── Identidad fiscal ───────────────────────────────────────────────────────
 
 
-def _leer_nifs(user_id: int, organization_id: int) -> OrganizationNifsOut:
-    resolved_id = _require_manager(user_id, organization_id, write=False)
+def _leer_nifs(organization_id: int) -> OrganizationNifsOut:
+    """Lectura pura: la organización llega ya resuelta y autorizada."""
     return OrganizationNifsOut(
-        organization_id=resolved_id,
-        # El repositorio ya devuelve las claves con el nombre del DTO,
+        organization_id=organization_id,
+        # El repositorio selecciona exactamente los campos del DTO,
         # `empresa_id` incluido, así que la validación es directa.
         nifs=[
             OrganizationNifOut.model_validate(fila)
-            for fila in _nif_repo.list_for_organization(resolved_id)
+            for fila in _nif_repo.list_for_organization(organization_id)
         ],
     )
 
 
 def _escribir_nifs(
-    user_id: int, organization_id: int, body: OrganizationNifsIn
+    organization_id: int, body: OrganizationNifsIn, *, actor_user_id: int
 ) -> OrganizationNifsOut:
-    resolved_id = _require_manager(user_id, organization_id, write=True)
     filas = _normalizar_nifs(body)
-    guardadas = _nif_repo.replace_all(resolved_id, nifs=filas, actor_user_id=user_id)
+    guardadas = _nif_repo.replace_all(organization_id, nifs=filas, actor_user_id=actor_user_id)
     return OrganizationNifsOut(
-        organization_id=resolved_id,
+        organization_id=organization_id,
         nifs=[OrganizationNifOut.model_validate(fila) for fila in guardadas],
     )
 
@@ -166,10 +193,8 @@ async def get_organization_nifs(
     ctx: dict[str, Any] = Depends(require_any_auth),
 ) -> OrganizationNifsOut:
     """Identidad fiscal declarada, con su enlace al maestro de empresas."""
-    try:
-        return await run_db(_leer_nifs, int(ctx["user_id"]), organization_id)
-    except (OrganizationAccessError, OrganizationPermissionError) as exc:
-        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    resolved_id = await _organizacion_gestionada(ctx, organization_id, write=False)
+    return await run_db(_leer_nifs, resolved_id)
 
 
 @router.put(
@@ -183,10 +208,9 @@ async def put_organization_nifs(
     ctx: dict[str, Any] = Depends(require_any_auth),
 ) -> OrganizationNifsOut:
     """Reemplaza el conjunto completo de NIFs: manda la lista entera, no un alta."""
+    resolved_id = await _organizacion_gestionada(ctx, organization_id, write=True)
     try:
-        return await run_db(_escribir_nifs, int(ctx["user_id"]), organization_id, body)
-    except (OrganizationAccessError, OrganizationPermissionError) as exc:
-        raise HTTPException(status_code=403, detail=str(exc)) from exc
+        return await run_db(_escribir_nifs, resolved_id, body, actor_user_id=int(ctx["user_id"]))
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
@@ -194,26 +218,22 @@ async def put_organization_nifs(
 # ── Perfil de capacidad ────────────────────────────────────────────────────
 
 
-def _leer_capacidad(user_id: int, organization_id: int) -> OrganizationCapabilitiesOut:
-    # Lectura para cualquier miembro activo, `viewer` incluido: el checklist de
-    # una oportunidad se explica con estos datos y quien solo lee tiene que
-    # poder entender por qué dice «desconocido».
-    resolved_id, _ = resolve_organization(user_id, organization_id)
-    return _capabilities_out(resolved_id, _capabilities_repo.get(resolved_id))
+def _leer_capacidad(organization_id: int) -> OrganizationCapabilitiesOut:
+    perfil, updated_at = _capabilities_repo.get_with_updated_at(organization_id)
+    return _capabilities_out(organization_id, perfil, updated_at)
 
 
 def _escribir_capacidad(
-    user_id: int, organization_id: int, body: OrganizationCapabilities
+    organization_id: int, body: OrganizationCapabilities
 ) -> OrganizationCapabilitiesOut:
-    resolved_id = _require_manager(user_id, organization_id, write=True)
-    guardado = _capabilities_repo.replace(
-        resolved_id,
+    perfil, updated_at = _capabilities_repo.replace(
+        organization_id,
         certificaciones=[item.model_dump() for item in body.certificaciones],
         facturacion=[item.model_dump() for item in body.facturacion],
         referencias=[item.model_dump() for item in body.referencias],
         perfiles_equipo=[item.model_dump() for item in body.perfiles_equipo],
     )
-    return _capabilities_out(resolved_id, guardado)
+    return _capabilities_out(organization_id, perfil, updated_at)
 
 
 @router.get(
@@ -230,10 +250,12 @@ async def get_organization_capabilities(
     ``campos_incompletos`` enumera las familias vacías: son las que hacen que
     el checklist de una oportunidad conteste «desconocido».
     """
-    try:
-        return await run_db(_leer_capacidad, int(ctx["user_id"]), organization_id)
-    except OrganizationAccessError as exc:
-        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    # Lectura para cualquier miembro activo, `viewer` incluido: el checklist de
+    # una oportunidad se explica con estos datos y quien solo lee tiene que
+    # poder entender por qué dice «desconocido». Por eso resuelve la tenencia
+    # sin pasar por `_organizacion_gestionada`.
+    resuelto = await resolve_organization_ctx(ctx, organization_id)
+    return await run_db(_leer_capacidad, int(resuelto["organization_id"]))
 
 
 @router.put(
@@ -247,10 +269,8 @@ async def put_organization_capabilities(
     ctx: dict[str, Any] = Depends(require_any_auth),
 ) -> OrganizationCapabilitiesOut:
     """Reemplaza el perfil completo. Es dato corporativo, no personal."""
-    try:
-        return await run_db(_escribir_capacidad, int(ctx["user_id"]), organization_id, body)
-    except (OrganizationAccessError, OrganizationPermissionError) as exc:
-        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    resolved_id = await _organizacion_gestionada(ctx, organization_id, write=True)
+    return await run_db(_escribir_capacidad, resolved_id, body)
 
 
 # ── Go/no-go ───────────────────────────────────────────────────────────────
@@ -272,12 +292,17 @@ async def get_pursuit_checklist(
     ``desconocido`` es lo que se contesta cuando la ficha no extrajo el hecho o
     la organización no rellenó el campo. No decide el go/no-go: lo propone.
     """
+    # La organización se resuelve **siempre**, aunque el cliente omita el
+    # parámetro: es la resolución la que decide contra qué perfil se contrasta
+    # y en qué organización se busca la oportunidad. `build_checklist` la
+    # vuelve a validar con el id ya explícito, como hace `services/pursuits.py`.
+    resuelto = await resolve_organization_ctx(ctx, organization_id)
     try:
         return await run_db(
             build_checklist,
             int(ctx["user_id"]),
             pursuit_id,
-            organization_id=organization_id,
+            organization_id=int(resuelto["organization_id"]),
         )
     except OrganizationAccessError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc

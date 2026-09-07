@@ -18,25 +18,33 @@ streams converjan, su sitio natural es ``PursuitRepository``.
 from __future__ import annotations
 
 import json
+from datetime import datetime
 from typing import Any
 
 from db.database import connect, connect_read, now_utc_iso
 from db.repositories.base import rows_to_dicts
 
+# Las cuatro consultas seleccionan **exactamente** los campos que publica
+# ``OrganizationCapabilities`` más ``created_at``, que no se publica: sirve
+# para calcular la marca del perfil y se descarta antes de devolver la fila.
+# El ``id`` de la fila no se selecciona en absoluto —nadie lo consume, y los
+# DTO declaran ``extra="forbid"`` justamente para no publicar contabilidad
+# interna de la tabla—. Enumerar aquí lo que sale es lo que hace que la
+# validación de arriba sea directa en vez de una lista de campos a ignorar.
 _CERTIFICACIONES = (
-    "SELECT id, nombre, ambito, vigente_hasta, created_at "
+    "SELECT nombre, ambito, vigente_hasta, created_at "
     "FROM organization_certifications WHERE organization_id = %s ORDER BY nombre"
 )
 _FACTURACION = (
-    "SELECT id, ejercicio, importe_eur, created_at "
+    "SELECT ejercicio, importe_eur, created_at "
     "FROM organization_revenues WHERE organization_id = %s ORDER BY ejercicio DESC"
 )
 _REFERENCIAS = (
-    "SELECT id, organo, importe_eur, anio, tecnologia, expediente_id, created_at "
+    "SELECT organo, importe_eur, anio, tecnologia, expediente_id, created_at "
     "FROM organization_references WHERE organization_id = %s ORDER BY anio DESC, id"
 )
 _PERFILES = (
-    "SELECT id, rol, anios, cantidad, created_at "
+    "SELECT rol, anios, cantidad, created_at "
     "FROM organization_team_profiles WHERE organization_id = %s ORDER BY rol"
 )
 
@@ -54,12 +62,41 @@ class OrganizationCapabilitiesRepository:
     """Lee y reemplaza el perfil de capacidad completo de una organización."""
 
     def get(self, organization_id: int) -> dict[str, Any]:
-        """El perfil entero. Una organización sin perfil devuelve listas vacías."""
+        """El perfil entero, con las claves exactas de ``OrganizationCapabilities``.
+
+        Una organización sin perfil devuelve las cuatro listas vacías. Lo que
+        devuelve es directamente validable con el DTO —``extra="forbid"``
+        incluido—: no lleva ``id`` de fila, ni ``created_at``, ni la marca
+        ``updated_at``, que es metadato del perfil y no un campo suyo. Quien
+        necesite la marca usa :meth:`get_with_updated_at`.
+        """
+        perfil, _ = self.get_with_updated_at(organization_id)
+        return perfil
+
+    def get_with_updated_at(self, organization_id: int) -> tuple[dict[str, Any], datetime | None]:
+        """El perfil y cuándo se escribió por última vez.
+
+        Van juntos en un solo viaje porque la marca sale de los ``created_at``
+        de esas mismas filas: pedirla aparte serían cuatro consultas más para
+        un dato que ya está en la mano.
+
+        La marca del perfil es la escritura más reciente de cualquiera de las
+        cuatro tablas. No hay columna por fila porque el PUT reemplaza el
+        conjunto entero: una marca por fila mediría el reemplazo, no el cambio
+        real.
+        """
         with connect_read() as conn:
             certificaciones = rows_to_dicts(conn.execute(_CERTIFICACIONES, (organization_id,)))
             facturacion = rows_to_dicts(conn.execute(_FACTURACION, (organization_id,)))
             referencias = rows_to_dicts(conn.execute(_REFERENCIAS, (organization_id,)))
             perfiles = rows_to_dicts(conn.execute(_PERFILES, (organization_id,)))
+
+        marcas: list[datetime] = []
+        for grupo in (certificaciones, facturacion, referencias, perfiles):
+            for fila in grupo:
+                marca = fila.pop("created_at", None)
+                if isinstance(marca, datetime):
+                    marcas.append(marca)
 
         for fila in facturacion:
             fila["importe_eur"] = _float(fila["importe_eur"])
@@ -68,23 +105,13 @@ class OrganizationCapabilitiesRepository:
         for fila in perfiles:
             fila["anios"] = _float(fila["anios"])
 
-        # `updated_at` del perfil = la escritura más reciente de cualquiera de
-        # las cuatro tablas. No hay columna por fila porque el PUT reemplaza el
-        # conjunto entero: una marca por fila mediría el reemplazo, no el
-        # cambio real.
-        marcas = [
-            str(fila["created_at"])
-            for grupo in (certificaciones, facturacion, referencias, perfiles)
-            for fila in grupo
-            if fila.get("created_at") is not None
-        ]
-        return {
+        perfil: dict[str, Any] = {
             "certificaciones": certificaciones,
             "facturacion": facturacion,
             "referencias": referencias,
             "perfiles_equipo": perfiles,
-            "updated_at": max(marcas) if marcas else None,
         }
+        return perfil, (max(marcas) if marcas else None)
 
     def replace(
         self,
@@ -94,12 +121,16 @@ class OrganizationCapabilitiesRepository:
         facturacion: list[dict[str, Any]],
         referencias: list[dict[str, Any]],
         perfiles_equipo: list[dict[str, Any]],
-    ) -> dict[str, Any]:
-        """Reemplaza el perfil completo. Todo o nada: una sola transacción.
+    ) -> tuple[dict[str, Any], datetime | None]:
+        """Reemplaza el perfil completo y lo relee. Todo o nada: una transacción.
 
         Un perfil a medias es peor que ninguno: el checklist contestaría
         ``no_cumple`` por un dato que sí existe pero que aún no se ha vuelto a
         insertar.
+
+        Devuelve lo mismo que :meth:`get_with_updated_at` —perfil y marca—
+        porque quien acaba de escribir es justo quien tiene que poder enseñar
+        cuándo se escribió.
         """
         now = now_utc_iso()
         with connect() as conn:
@@ -165,7 +196,7 @@ class OrganizationCapabilitiesRepository:
                     "VALUES (%s, %s, %s, %s, %s)",
                     (organization_id, perfil["rol"], perfil["anios"], perfil["cantidad"], now),
                 )
-        return self.get(organization_id)
+        return self.get_with_updated_at(organization_id)
 
 
 def seal_checklist_evaluated(

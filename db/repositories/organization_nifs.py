@@ -28,8 +28,15 @@ from db.repositories.base import rows_to_dicts
 # y no una normalización en tiempo de consulta. ``LEFT JOIN`` porque una
 # organización que aún no ha ganado nada en el corpus no está en el maestro, y
 # eso no es un error: es una organización nueva.
+#
+# Las columnas son **exactamente** las de ``OrganizationNifOut``. En particular
+# no se selecciona ``n.organization_id`` —la consulta ya filtra por él, así que
+# devolverlo solo serviría para repetir el dato que el llamador acaba de pasar—
+# ni la contabilidad interna de la fila (``created_by_user_id``,
+# ``updated_at``): el DTO declara ``extra="forbid"`` para no publicar de más, y
+# la forma de respetarlo es enumerar lo que sale, no ampliar el DTO.
 _SELECT = (
-    "SELECT n.id, n.organization_id, n.nif, n.razon_social, n.principal, n.created_at, "
+    "SELECT n.id, n.nif, n.razon_social, n.principal, n.created_at, "
     "       e.empresa_id "
     "FROM organization_nifs n "
     "LEFT JOIN empresas e ON e.nif_canonico = n.nif "

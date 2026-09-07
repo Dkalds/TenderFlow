@@ -335,6 +335,15 @@ def test_el_borrado_gdpr_anonimiza_la_invitacion(tmp_db, correos):
 
 
 # ── Contrato HTTP ───────────────────────────────────────────────────────────
+#
+# Aquí los correos invitados son `@example.com`, no `@example.test` como en el
+# resto del fichero. No es cosmético: el cuerpo de `POST .../members` lo valida
+# `OrganizationMemberInvite.email`, que es `EmailStr`, y `email-validator`
+# rechaza los TLD de uso especial de la RFC 6761 (`test`, `local`, `invalid`,
+# `localhost`) porque a ninguno se le puede entregar un correo — y una
+# invitación que no se puede entregar no sirve para nada. Por debajo de la API
+# nadie pasa por ese validador, así que los tests de servicio siguen usando
+# `.test`. La misma distinción está en tests/test_auth_register.py.
 
 
 def _como(user_id: int) -> dict[str, Any]:
@@ -355,12 +364,12 @@ def test_api_invitar_a_un_correo_sin_cuenta_devuelve_201_y_la_invitacion(client,
     try:
         creada = client.post(
             f"/api/v1/organizations/{organization_id}/members",
-            json={"email": "sin-cuenta-api@example.test", "role": "member"},
+            json={"email": "sin-cuenta-api@example.com", "role": "member"},
         )
-        assert creada.status_code == 201
+        assert creada.status_code == 201, creada.text
         cuerpo = creada.json()
         assert cuerpo["status"] == "invited"
-        assert cuerpo["email"] == "sin-cuenta-api@example.test"
+        assert cuerpo["email"] == "sin-cuenta-api@example.com"
         # El token nunca sale en la respuesta: solo viaja en el correo.
         assert "token" not in cuerpo
 
@@ -394,13 +403,41 @@ def test_api_un_member_no_ve_ni_crea_invitaciones(client, api_db, correos):
         assert (
             client.post(
                 f"/api/v1/organizations/{organization_id}/members",
-                json={"email": "otra-api@example.test", "role": "member"},
+                json={"email": "otra-api@example.com", "role": "member"},
             ).status_code
             == 403
         )
         assert client.get(f"/api/v1/organizations/{organization_id}/invitations").status_code == 403
     finally:
         app.dependency_overrides.pop(require_any_auth, None)
+
+
+def test_api_un_correo_no_entregable_se_rechaza_antes_de_crear_nada(client, api_db, correos):
+    """422 de Pydantic, sin fila ni envío: invitar a un `.test` no lleva a ninguna parte.
+
+    Lo que se fija es que el rechazo no deja rastro: ni invitación pendiente ni
+    correo enviado, porque `EmailStr` corta la petición antes de que el handler
+    llegue a crear nada. Ese «antes» es también el motivo de que
+    `test_api_un_member_no_ve_ni_crea_invitaciones` tenga que invitar a un
+    dominio entregable: con uno reservado la respuesta sería 422 y el 403 de
+    permisos no llegaría a comprobarse nunca. Sin un test que lo diga, el 422
+    solo se descubre depurando una respuesta sin cuerpo legible.
+    """
+    from api.app import app
+
+    owner = _user("owner-api-422@example.test")
+    organization_id = _organizacion(owner, "Equipo API 422")
+    app.dependency_overrides[require_any_auth] = lambda: _como(owner)
+    try:
+        respuesta = client.post(
+            f"/api/v1/organizations/{organization_id}/members",
+            json={"email": "nadie@example.test", "role": "member"},
+        )
+        assert respuesta.status_code == 422
+        assert client.get(f"/api/v1/organizations/{organization_id}/invitations").json() == []
+    finally:
+        app.dependency_overrides.pop(require_any_auth, None)
+    assert correos == []
 
 
 def test_api_canjear_el_token_devuelve_la_organizacion(client, api_db, correos):
@@ -410,15 +447,16 @@ def test_api_canjear_el_token_devuelve_la_organizacion(client, api_db, correos):
     organization_id = _organizacion(owner, "Equipo API canje")
     app.dependency_overrides[require_any_auth] = lambda: _como(owner)
     try:
-        client.post(
+        invitacion = client.post(
             f"/api/v1/organizations/{organization_id}/members",
-            json={"email": "canje@example.test", "role": "member"},
+            json={"email": "canje@example.com", "role": "member"},
         )
+        assert invitacion.status_code == 201, invitacion.text
     finally:
         app.dependency_overrides.pop(require_any_auth, None)
 
-    invitada = _user("canje@example.test")
-    principal = {**_como(invitada), "email": "canje@example.test"}
+    invitada = _user("canje@example.com")
+    principal = {**_como(invitada), "email": "canje@example.com"}
     app.dependency_overrides[require_any_auth] = lambda: principal
     try:
         aceptada = client.post(
