@@ -75,15 +75,6 @@ erDiagram
         TEXT fecha_extraccion
     }
 
-    extracciones {
-        INTEGER id PK
-        TEXT fecha
-        TEXT fuente
-        INTEGER nuevas
-        INTEGER actualizadas
-        INTEGER total_revisadas
-        TEXT notas
-    }
 
     extraction_runs {
         TEXT run_id PK
@@ -308,21 +299,24 @@ uno con presupuesto, CPV y adjudicatario propios. CODICE los modela como
 
 ---
 
-### `extracciones` — Log de ejecuciones
+### `extracciones` — **retirada en v119** (C4.6)
 
-Registro simplificado de cada ejecución del scraper.
+Vista de compatibilidad sobre `extracciones_retirada`, que conserva el
+histórico. **No se escribe**: un `INSERT` falla a propósito. El `DROP` va en una
+revisión posterior, cuando pase la ola.
 
-| Columna | Tipo | Descripción |
-|---------|------|-------------|
-| `id` | INTEGER PK | Autoincremental |
-| `fecha` | TEXT | Fecha/hora de la extracción (UTC) |
-| `fuente` | TEXT | Identificador de la fuente (bulk_YYYYMM, place_live_atom) |
-| `nuevas` | INTEGER | Licitaciones nuevas insertadas |
-| `actualizadas` | INTEGER | Licitaciones actualizadas |
-| `total_revisadas` | INTEGER | Total de entradas procesadas |
-| `notas` | TEXT | Notas adicionales del run |
+Contaba por fuente y run lo mismo que ya escribían `record_run` (a
+`extraction_runs`) y `run_connector` (a `source_ingestion_health`) unas líneas
+antes, y no la leía nadie: su único lector —`load_extracciones`— servía a un
+`dashboard/` que ya no existe.
 
----
+Dónde mirar ahora:
+
+| Pregunta | Tabla |
+|---|---|
+| ¿Corrió la pipeline, cuándo y con qué resultado? | `extraction_runs` |
+| ¿Qué trajo cada fuente en su último run? | `source_ingestion_health` |
+| ¿Qué pasó en la infraestructura? | `ops_events` |
 
 ### `extraction_runs` — Métricas detalladas por run
 
@@ -529,7 +523,6 @@ scraper/filters.py           ←── Filtra por keywords SAP (+ ML classifier)
       │
       ├──── licitaciones ◄─────────── db/database.upsert_licitaciones_with_history()
       ├──── adjudicaciones ◄────────── db/database.replace_adjudicaciones()
-      ├──── extracciones ◄─────────── db/database.log_extraccion()
       ├──── licitaciones_history ◄──── (automático si hay cambios)
       ├──── extraction_runs ◄────────── observability/metrics.record_run()
       ├──── data/metrics/scraper.prom ◄ observability/prometheus.instrument_run()

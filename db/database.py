@@ -50,7 +50,6 @@ nivel:
 - ``count_licitaciones()``            — total de filas en la tabla (exacto, o
                                         estimado del planner con ``estimado=True``).
 - ``estimar_filas()``                 — estimación O(1) de filas de una tabla.
-- ``log_extraccion()``                — registra una ejecución de extracción.
 - ``get_cursor()`` / ``set_cursor()`` — lectura/escritura del cursor de
                                         ingesta por fuente.
 - ``get_history()``                   — historial de cambios de una licitación.
@@ -100,7 +99,6 @@ from db.upsert import (
     fts_available,
     get_cursor,
     get_history,
-    log_extraccion,
     replace_adjudicaciones,
     replace_adjudicaciones_batch,
     replace_lotes,
@@ -135,7 +133,6 @@ __all__ = [
     "fts_available",
     "get_cursor",
     "get_history",
-    "log_extraccion",
     "replace_adjudicaciones",
     "replace_adjudicaciones_batch",
     "replace_lotes",

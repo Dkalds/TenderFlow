@@ -77,7 +77,9 @@ decisiones bloqueantes:
   a campo entre legacy y connector). Diferencias documentadas del flip:
   (1) el cursor diario pasa de la clave `place_live_atom` a `placsp`, con
   fallback one-time de lectura del cursor legacy; (2) `licitaciones_history.source`
-  y la `fuente` de `extracciones` del carril diario pasan a `placsp`;
+  y la `fuente` del recuento por fuente del carril diario pasan a `placsp`
+  (entonces en `extracciones`, retirada en v119 — hoy en
+  `source_ingestion_health`);
   (3) el camino connector ejecuta además `services/dedupe.py` post-ingesta
   (el legacy no lo hacía). `scraper/pipeline.py` queda DEPRECATED como camino
   de rollback; el carril **backfill** aún delega en él (sin camino connector).

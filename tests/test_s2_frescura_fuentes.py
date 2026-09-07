@@ -311,3 +311,39 @@ def test_no_poder_medir_la_frescura_no_tumba_el_informe() -> None:
     assert warnings == ["fuentes_frescura_no_medida"]
     assert checks == [{"name": "fuentes_frescas", "ok": True}]
     assert "fuentes_frescura_error" in info
+
+
+# ---------------------------------------------------------------------------
+# La cuarta tabla de salud (C4.6)
+# ---------------------------------------------------------------------------
+
+
+def test_nadie_escribe_en_la_tabla_retirada() -> None:
+    """``extracciones`` se retiró en v119: es una vista, y escribirla falla.
+
+    El guardarraíl es de código y no de base de datos a propósito. En Postgres
+    un ``INSERT`` sobre una vista simple ya falla solo, pero ese error llegaría
+    en producción, a las 4 de la mañana, dentro del camino caliente de la
+    ingesta. Aquí llega en el PR que lo reintroduce.
+
+    Se busca la escritura, no la mención: el docstring de la revisión y esta
+    misma prueba nombran la tabla, y tienen que poder hacerlo.
+    """
+    import re
+    from pathlib import Path
+
+    raiz = Path(__file__).resolve().parents[1]
+    escritura = re.compile(r"(INSERT\s+INTO|UPDATE|DELETE\s+FROM)\s+extracciones\b", re.IGNORECASE)
+    culpables = []
+    for ruta in raiz.rglob("*.py"):
+        partes = set(ruta.parts)
+        if partes & {".venv", "node_modules", "graphify-out", "__pycache__", "versions"}:
+            continue
+        if escritura.search(ruta.read_text(encoding="utf-8", errors="replace")):
+            culpables.append(str(ruta.relative_to(raiz)))
+
+    assert not culpables, (
+        "Escriben en `extracciones`, retirada en v119 (C4.6). Lo que se quería "
+        "registrar ya está en `extraction_runs` (por run) o en "
+        f"`source_ingestion_health` (por fuente): {culpables}"
+    )
