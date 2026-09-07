@@ -58,6 +58,19 @@ export const SPACE_VIEWS: Record<string, SpaceView[]> = {
     { key: "embudo", label: "Embudo" },
     { key: "horizonte", label: "Horizonte", from: "renovaciones" },
   ],
+  // Ajustes (C7.5). Nace con contenido real y no como espacio vacío: por eso el
+  // plan lo secuenció **después** de C2.1 (sesiones), C2.3 (claves) y C2.7
+  // (preferencias) — sin ellos habría sido una pestaña con el tema y poco más.
+  //
+  // `cuenta` absorbe `/mi-cuenta` con la regla de siempre: consolidar no
+  // elimina. La ruta antigua redirige y su cuerpo pasa a ser una vista que las
+  // dos entradas montan, igual que hicieron las seis de Ops.
+  ajustes: [
+    { key: "sesiones", label: "Sesiones" },
+    { key: "claves", label: "API keys" },
+    { key: "notificaciones", label: "Notificaciones" },
+    { key: "cuenta", label: "Datos y cuenta", from: "mi-cuenta" },
+  ],
   ops: [
     { key: "observabilidad", label: "Observabilidad", from: "observabilidad" },
     { key: "calidad", label: "Calidad de datos", from: "calidad-datos" },
@@ -85,7 +98,7 @@ export const BUILT_SPACE_ROUTES: readonly string[] = [
   "mi-pipeline",
   "mi-watchlist",
   "mi-perfil",
-  "mi-cuenta",
+  "ajustes",
   "empresas",
   "equipo",
   "ops",

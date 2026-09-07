@@ -365,16 +365,28 @@ class NotificationPreference(BaseModel):
     organization_id: int | None = None
 
 
+class NotificationTypeOut(BaseModel):
+    """Un tipo de aviso configurable, con su etiqueta legible."""
+
+    tipo: str
+    label: str
+
+
 class NotificationPreferencesResult(BaseModel):
-    """Preferencias explícitas más los valores por defecto que aplican.
+    """Preferencias explícitas, los defectos que aplican y el catálogo de tipos.
 
     `defaults` no es decorativo: la lista de `items` solo trae lo que el usuario
     fijó, y sin conocer el defecto de cada canal el frontend no puede pintar el
     estado real de un ajuste que nadie ha tocado.
+
+    `tipos` tampoco: sin él, la pantalla tendría que llevar su propia lista de
+    avisos, y esa lista se queda atrás en cuanto nace uno nuevo — el usuario
+    deja de poder configurarlo y nada falla (ADR-014).
     """
 
     items: list[NotificationPreference] = Field(default_factory=list)
     defaults: dict[str, str] = Field(default_factory=dict)
+    tipos: list[NotificationTypeOut] = Field(default_factory=list)
 
 
 @router.get(
@@ -394,7 +406,10 @@ async def get_notification_preferences(
 
     user_id = int(ctx.get("user_id") or 0)
     if not user_id:
-        return NotificationPreferencesResult(defaults=dict(prefs.DEFECTOS))
+        return NotificationPreferencesResult(
+            defaults=dict(prefs.DEFECTOS),
+            tipos=[NotificationTypeOut(tipo=t, label=e) for t, e in prefs.TIPOS],
+        )
 
     filas = await run_db(prefs.listar, user_id, organization_id=organization_id)
     return NotificationPreferencesResult(
@@ -408,6 +423,7 @@ async def get_notification_preferences(
             for f in filas
         ],
         defaults=dict(prefs.DEFECTOS),
+        tipos=[NotificationTypeOut(tipo=t, label=e) for t, e in prefs.TIPOS],
     )
 
 
@@ -451,19 +467,52 @@ async def put_notification_preferences(
     return StatusOk(status="ok")
 
 
+class MyApiKeyOut(BaseModel):
+    """Una API key del usuario, sin secreto.
+
+    La ruta devolvía `list[dict[str, Any]]`, así que el esquema generado la
+    describía como una lista de objetos opacos y el frontend tenía que suponer
+    su forma. Tipada, un campo que el backend deja de enviar deja de compilar
+    en la UI en vez de aparecer vacío en pantalla.
+    """
+
+    id: int
+    name: str | None = None
+    tier: str = Field(default="standard", description="Tier de rate limit aplicado (C2.3)")
+    is_active: bool = True
+    created_at: str | None = None
+    expires_at: str | None = None
+
+
+class MyApiKeysResult(BaseModel):
+    items: list[MyApiKeyOut] = Field(default_factory=list)
+
+
 @router.get(
     "/me/keys",
-    summary="Listar mis API keys (sin el secret — solo prefix y metadatos)",
+    summary="Listar mis API keys (sin el secret — solo metadatos y tier)",
     responses={401: {"description": "API key inválida"}},
 )
-def list_my_keys(ctx: dict[str, Any] = Depends(require_any_auth)) -> list[dict[str, Any]]:
+def list_my_keys(ctx: dict[str, Any] = Depends(require_any_auth)) -> MyApiKeysResult:
     """Devuelve las API keys vinculadas al usuario autenticado.
 
     Para API key auth: usa ``key_id``. For session auth: usa ``user_id``.
-    El ``prefix`` (primeros 8 chars del token original) permite identificar
-    la key en logs/soporte sin exponer el secreto completo.
+    Nunca incluye el hash ni el token: el secreto se enseña una sola vez, al
+    crearla.
     """
-    return _key_repo.get_all_for_user(ctx["user_id"])
+    return MyApiKeysResult(
+        items=[
+            MyApiKeyOut(
+                id=int(fila["id"]),
+                name=(str(fila["name"]) if fila.get("name") else None),
+                tier=str(fila.get("tier") or "standard"),
+                is_active=bool(fila.get("is_active", True)),
+                created_at=(str(fila["created_at"]) if fila.get("created_at") else None),
+                expires_at=(str(fila["expires_at"]) if fila.get("expires_at") else None),
+            )
+            for fila in _key_repo.get_all_for_user(ctx["user_id"])
+        ]
+    )
 
 
 class CreateKeyBody(BaseModel):

@@ -152,3 +152,14 @@ export type DocumentosResult = Schemas["DocumentosResult"];
 export type CalendarioEnlace = Schemas["CalendarioEnlace"];
 export type OrganizationSettings = Schemas["OrganizationSettings"];
 export type OrganizationSettingsOut = Schemas["OrganizationSettingsOut"];
+
+// Ajustes (C7.5) — las tres superficies que C2 expuso en el backend y que no
+// consumía nadie: sesiones (C2.1), claves con tier (C2.3) y preferencias de
+// notificación (C2.7).
+export type SessionOut = Schemas["SessionOut"];
+export type SessionsResult = Schemas["SessionsResult"];
+export type MyApiKeyOut = Schemas["MyApiKeyOut"];
+export type MyApiKeysResult = Schemas["MyApiKeysResult"];
+export type CreatedKey = Schemas["CreatedKey"];
+export type NotificationPreference = Schemas["NotificationPreference"];
+export type NotificationPreferencesResult = Schemas["NotificationPreferencesResult"];

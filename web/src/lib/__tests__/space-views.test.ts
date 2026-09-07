@@ -12,11 +12,12 @@ const allViews = (): [string, SpaceView][] =>
   );
 
 describe("SPACE_VIEWS", () => {
-  it("cubre los cuatro espacios multivista con su recuento del rediseño", () => {
-    // Los recuentos son el contrato de `docs/redesign/README.md`: 17 rutas
-    // heredadas repartidas en cuatro espacios. Si uno cambia sin actualizar el
-    // doc, la tabla del README miente.
+  it("cubre los espacios multivista con su recuento", () => {
+    // Los recuentos son el contrato de `docs/redesign/README.md`. `ajustes`
+    // entró con C7.5: cuatro vistas, de las que solo `cuenta` absorbe una ruta
+    // heredada (`/mi-cuenta`) — las otras tres no existían en ninguna parte.
     expect(Object.keys(SPACE_VIEWS).sort()).toEqual([
+      "ajustes",
       "competencia",
       "mercado",
       "mi-pipeline",
@@ -26,14 +27,20 @@ describe("SPACE_VIEWS", () => {
     expect(SPACE_VIEWS.competencia).toHaveLength(2);
     expect(SPACE_VIEWS["mi-pipeline"]).toHaveLength(3);
     expect(SPACE_VIEWS.ops).toHaveLength(6);
+    expect(SPACE_VIEWS.ajustes).toHaveLength(4);
   });
 
-  it("absorbe 18 rutas heredadas, todas distintas", () => {
+  it("absorbe cada ruta heredada una sola vez", () => {
+    // El total se **deriva** de la tabla en vez de fijarse a mano: un número
+    // literal aquí obliga a tocar el test en cada espacio nuevo y no dice nada
+    // que la propia tabla no diga. Lo que sí hay que sostener es que dos
+    // espacios no se peleen por la misma ruta heredada, porque el redirect que
+    // ganara sería el del orden de declaración — invisible hasta producción.
     const origenes = allViews()
       .map(([, view]) => view.from)
       .filter(Boolean);
-    expect(origenes).toHaveLength(18);
-    expect(new Set(origenes).size).toBe(18);
+    expect(origenes.length).toBeGreaterThan(0);
+    expect(new Set(origenes).size).toBe(origenes.length);
   });
 
   it("da a cada vista una clave única dentro de su espacio y una etiqueta", () => {
@@ -49,9 +56,8 @@ describe("SPACE_VIEWS", () => {
 });
 
 describe("BUILT_SPACE_ROUTES", () => {
-  it("declara los 14 espacios, sin repetir y sin barra inicial", () => {
-    expect(BUILT_SPACE_ROUTES).toHaveLength(14);
-    expect(new Set(BUILT_SPACE_ROUTES).size).toBe(14);
+  it("declara los espacios sin repetir y sin barra inicial", () => {
+    expect(new Set(BUILT_SPACE_ROUTES).size).toBe(BUILT_SPACE_ROUTES.length);
     for (const slug of BUILT_SPACE_ROUTES) {
       expect(slug.startsWith("/")).toBe(false);
     }
@@ -67,7 +73,11 @@ describe("BUILT_SPACE_ROUTES", () => {
 describe("legacyRedirects", () => {
   it("emite un redirect por ruta absorbida hacia su `?vista=`", () => {
     const redirects = legacyRedirects();
-    expect(redirects).toHaveLength(18);
+    // Derivado: uno por vista con `from` de un espacio ya construido.
+    const esperados = allViews().filter(
+      ([slug, view]) => view.from && BUILT_SPACE_ROUTES.includes(slug),
+    ).length;
+    expect(redirects).toHaveLength(esperados);
     expect(redirects).toContainEqual({
       source: "/tendencias",
       destination: "/mercado?vista=tiempo",
@@ -75,6 +85,11 @@ describe("legacyRedirects", () => {
     expect(redirects).toContainEqual({
       source: "/active-learning",
       destination: "/ops?vista=etiquetado",
+    });
+    // C7.5: `/mi-cuenta` sigue viva y lleva a su vista dentro de Ajustes.
+    expect(redirects).toContainEqual({
+      source: "/mi-cuenta",
+      destination: "/ajustes?vista=cuenta",
     });
   });
 

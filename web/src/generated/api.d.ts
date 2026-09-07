@@ -2189,12 +2189,12 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Listar mis API keys (sin el secret — solo prefix y metadatos)
+         * Listar mis API keys (sin el secret — solo metadatos y tier)
          * @description Devuelve las API keys vinculadas al usuario autenticado.
          *
          *     Para API key auth: usa ``key_id``. For session auth: usa ``user_id``.
-         *     El ``prefix`` (primeros 8 chars del token original) permite identificar
-         *     la key en logs/soporte sin exponer el secreto completo.
+         *     Nunca incluye el hash ni el token: el secreto se enseña una sola vez, al
+         *     crearla.
          */
         get: operations["list_my_keys_api_v1_me_keys_get"];
         put?: never;
@@ -6395,6 +6395,41 @@ export interface components {
             /** Evidence */
             evidence?: components["schemas"]["EvidenceRef"][];
         };
+        /**
+         * MyApiKeyOut
+         * @description Una API key del usuario, sin secreto.
+         *
+         *     La ruta devolvía `list[dict[str, Any]]`, así que el esquema generado la
+         *     describía como una lista de objetos opacos y el frontend tenía que suponer
+         *     su forma. Tipada, un campo que el backend deja de enviar deja de compilar
+         *     en la UI en vez de aparecer vacío en pantalla.
+         */
+        MyApiKeyOut: {
+            /** Created At */
+            created_at?: string | null;
+            /** Expires At */
+            expires_at?: string | null;
+            /** Id */
+            id: number;
+            /**
+             * Is Active
+             * @default true
+             */
+            is_active: boolean;
+            /** Name */
+            name?: string | null;
+            /**
+             * Tier
+             * @description Tier de rate limit aplicado (C2.3)
+             * @default standard
+             */
+            tier: string;
+        };
+        /** MyApiKeysResult */
+        MyApiKeysResult: {
+            /** Items */
+            items?: components["schemas"]["MyApiKeyOut"][];
+        };
         /** NotificationItem */
         NotificationItem: {
             /** Id */
@@ -6437,11 +6472,15 @@ export interface components {
         };
         /**
          * NotificationPreferencesResult
-         * @description Preferencias explícitas más los valores por defecto que aplican.
+         * @description Preferencias explícitas, los defectos que aplican y el catálogo de tipos.
          *
          *     `defaults` no es decorativo: la lista de `items` solo trae lo que el usuario
          *     fijó, y sin conocer el defecto de cada canal el frontend no puede pintar el
          *     estado real de un ajuste que nadie ha tocado.
+         *
+         *     `tipos` tampoco: sin él, la pantalla tendría que llevar su propia lista de
+         *     avisos, y esa lista se queda atrás en cuanto nace uno nuevo — el usuario
+         *     deja de poder configurarlo y nada falla (ADR-014).
          */
         NotificationPreferencesResult: {
             /** Defaults */
@@ -6450,6 +6489,18 @@ export interface components {
             };
             /** Items */
             items?: components["schemas"]["NotificationPreference"][];
+            /** Tipos */
+            tipos?: components["schemas"]["NotificationTypeOut"][];
+        };
+        /**
+         * NotificationTypeOut
+         * @description Un tipo de aviso configurable, con su etiqueta legible.
+         */
+        NotificationTypeOut: {
+            /** Label */
+            label: string;
+            /** Tipo */
+            tipo: string;
         };
         /** NotificationsResult */
         NotificationsResult: {
@@ -14019,9 +14070,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    }[];
+                    "application/json": components["schemas"]["MyApiKeysResult"];
                 };
             };
             /** @description API key inválida */

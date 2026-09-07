@@ -38,6 +38,25 @@ DEFECTOS: dict[str, str] = {
     "webhook": "off",
 }
 
+#: Tipos de aviso sobre los que se puede expresar una preferencia.
+#:
+#: Es el catálogo que la pantalla de Ajustes necesita para pintar los
+#: interruptores. Vive aquí, junto a los canales y los defectos, y **no** en el
+#: frontend: una lista de tipos hardcodeada en la UI se queda atrás en cuanto
+#: nace un aviso nuevo, y el usuario deja de poder configurarlo sin que nada
+#: falle (ADR-014: nada de hardcode que el backend debe proveer).
+#:
+#: Cuando exista el catálogo de eventos de dominio de ADR-027
+#: (`shared/events.py`, v2), esta tupla pasa a derivarse de él. Mientras tanto
+#: son los avisos que el producto emite de verdad.
+TIPOS: tuple[tuple[str, str], ...] = (
+    ("watchlist_match", "Una licitación encaja con mi watchlist"),
+    ("watchlist_rule.matched", "Una regla guardada encuentra algo"),
+    ("daily_summary", "Resumen diario"),
+    ("pursuit.task_due", "Vence una tarea de una oportunidad"),
+    ("pursuit.mention", "Me mencionan en un comentario"),
+)
+
 
 def frecuencia_por_defecto(canal: str) -> str:
     """Frecuencia cuando no hay fila. Ver :data:`DEFECTOS`."""

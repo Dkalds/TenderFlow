@@ -168,13 +168,18 @@ export const CONSOLE_SPACES: ConsoleSpace[] = [
     group: "personal",
   },
   {
-    key: "mi-cuenta",
-    label: "Mi cuenta",
-    short: "CTA",
-    slug: "mi-cuenta",
-    description: "Exportar mis datos y eliminar la cuenta (GDPR).",
+    // C7.5 — un solo sitio para lo que era de uno mismo y estaba repartido.
+    // Sesiones, claves y preferencias de notificación no tenían pantalla
+    // ninguna (el backend de C2 las expuso y nadie las consumía); «datos y
+    // cuenta» vivía en `/mi-cuenta`, que este espacio absorbe.
+    key: "ajustes",
+    label: "Ajustes",
+    short: "AJU",
+    slug: "ajustes",
+    description: "Sesiones, claves de API, notificaciones y tus datos.",
     icon: ShieldCheck,
     group: "personal",
+    views: SPACE_VIEWS.ajustes,
   },
   {
     key: "empresas",

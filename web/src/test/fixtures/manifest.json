@@ -203,6 +203,27 @@
       "path": "/api/v1/competitive/watchlist/{empresa_id}",
       "kind": "response",
       "status": "200"
+    },
+    {
+      "fixture": "me-sessions.json",
+      "method": "GET",
+      "path": "/api/v1/me/sessions",
+      "kind": "response",
+      "status": "200"
+    },
+    {
+      "fixture": "me-keys.json",
+      "method": "GET",
+      "path": "/api/v1/me/keys",
+      "kind": "response",
+      "status": "200"
+    },
+    {
+      "fixture": "me-notification-preferences.json",
+      "method": "GET",
+      "path": "/api/v1/me/notification-preferences",
+      "kind": "response",
+      "status": "200"
     }
   ]
 }

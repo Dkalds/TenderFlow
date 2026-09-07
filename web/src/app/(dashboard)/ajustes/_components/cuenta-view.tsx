@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Mi cuenta — derechos GDPR ejercitables sin escribir una petición a mano.
+ * Datos y cuenta — derechos GDPR ejercitables sin escribir una petición a mano.
  *
  * `GET /me/data` (export completo en ZIP) y `DELETE /me` (anonimización y
  * borrado) existían desde hacía tiempo sin ninguna superficie: ejercer un
@@ -10,6 +10,12 @@
  * El borrado pide escribir el email literal, no un "¿estás seguro?": es
  * irreversible y anonimiza todo el histórico del usuario, así que la
  * confirmación tiene que costar más que un clic accidental.
+ *
+ * Vista compartida por `/mi-cuenta` (ruta heredada) y por `?vista=cuenta` del
+ * espacio Ajustes (C7.5). El cuerpo vive aquí y no en el `page.tsx` de la ruta
+ * por el mismo motivo que las seis vistas de Ops: un `page.tsx` importado por
+ * otro módulo es a la vez boundary de ruta y componente, y Next no puede
+ * tratarlo como lo primero.
  */
 
 import * as React from "react";
@@ -19,7 +25,6 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-import { SpaceShell } from "@/components/layout/space-shell";
 import { apiMutate, fetchBlobWithAuth } from "@/lib/api-client";
 import { useSession } from "@/lib/auth";
 
@@ -124,17 +129,15 @@ function DeleteAccountCard({ email }: { email: string }) {
   );
 }
 
-export default function MiCuentaPage() {
+export default function CuentaView() {
   const { user, isLoading } = useSession();
 
-  if (isLoading) return <Skeleton className="m-4 h-40 w-full max-w-2xl" />;
+  if (isLoading) return <Skeleton className="h-40 w-full max-w-2xl" />;
 
   return (
-    <SpaceShell spaceKey="mi-cuenta">
-      <div className="mx-auto w-full max-w-2xl space-y-4 p-4">
-        <ExportCard />
-        {user?.email && <DeleteAccountCard email={user.email} />}
-      </div>
-    </SpaceShell>
+    <div className="mx-auto w-full max-w-2xl space-y-4">
+      <ExportCard />
+      {user?.email && <DeleteAccountCard email={user.email} />}
+    </div>
   );
 }

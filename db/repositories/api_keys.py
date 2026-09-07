@@ -144,7 +144,11 @@ class ApiKeyRepository:
         with connect_read() as c:
             try:
                 cur = c.execute(
-                    "SELECT id, name, created_at, expires_at, is_active "
+                    # `tier` desde C2.3: sin él, la pantalla de Ajustes no
+                    # puede decir qué límite tiene cada clave, y el usuario
+                    # descubre su tier por un 429.
+                    "SELECT id, name, created_at, expires_at, is_active, "
+                    "COALESCE(tier, 'standard') AS tier "
                     "FROM api_keys WHERE user_id = %s",
                     (user_id,),
                 )

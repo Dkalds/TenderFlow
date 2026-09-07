@@ -30,10 +30,10 @@ como hecho sería la clase de optimismo que obligó a escribir este documento.
 | C4 Ingesta y calidad | 6 | 0 | 1 (C4.3) | 7 |
 | C5 Conocimiento | 5 | 0 | 3 (C5.1, C5.2, C5.8) | 8 |
 | C6 Colaboración y captura | 6 | 0 | 1 (C6.3) | 7 |
-| C7 Frontend y accesibilidad | 2 | 2 (C7.2, C7.4) | 4 | 8 |
+| C7 Frontend y accesibilidad | 3 | 2 (C7.2, C7.4) | 3 (C7.1, C7.3, C7.7) | 8 |
 | C8 API y contrato | 5 | 0 | 0 | 5 |
 | C9 Documentación y proceso | 6 | 0 | 0 | 6 |
-| **Total** | **45** | **6** | **10** | **61** |
+| **Total** | **46** | **6** | **9** | **61** |
 
 ## Correcciones al plan, registradas
 
@@ -147,7 +147,7 @@ Seis de siete, en v121–v123.
 | C7.2 S5.8 | **Mitad.** La ficha pública entra en el barrido axe. El piso de cobertura de `src/app/**` **no**: `vitest run --coverage` vuelve a morir (sexto intento documentado en `vitest.config.ts`). |
 | C7.3 Primer uso | **No hecho.** Los estados vacíos se verifican mirando la pantalla. |
 | C7.4 `title=` a `Tooltip` | **Regla y ratchet puestos; migración no.** Ver corrección 1. `TooltipTrigger asChild` cambia el foco y el orden de tabulación, y eso se comprueba mirando. |
-| C7.5 Ajustes en un sitio | **No hecho.** Mueve superficie autenticada entera; depende además de C2.1, C2.3 y C2.7, que ya están. |
+| C7.5 Ajustes en un sitio | **Hecho.** El espacio nace con contenido real —por eso el plan lo puso detrás de C2—: sesiones, claves con su tier y preferencias no tenían pantalla ninguna. `/mi-cuenta` se absorbe como `?vista=cuenta` y **su `page.tsx` se retira**: el propio repo prohíbe dejar una página bajo un 308 (`titulos-de-pagina.test.ts`), porque se compila y no se ejecuta jamás. Su test cambia de sujeto al componente que sí se monta. Los tests de espacios pasan a **derivar** los recuentos en vez de fijarlos, que es lo que el ítem pedía. |
 | C7.6 Presupuesto de bundle | **Hecho.** `@next/bundle-analyzer` + `scripts/check_bundle_budget.py` sobre `route-bundle-stats.json`, con `bundle-budget.json` sembrado con 31 rutas medidas. |
 | C7.7 Captura clara en la portada | **No hecho.** Generar los `.webp` exige el stack levantado; el propio `capturas-landing.spec.ts` ya dejó escrito que el `<source>` y los ficheros van en el mismo cambio. |
 | C7.8 Ortografía castellana | **Cerrado + gate.** Ver corrección 2. |

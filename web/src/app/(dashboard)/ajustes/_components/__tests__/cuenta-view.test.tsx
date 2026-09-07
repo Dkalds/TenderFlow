@@ -9,28 +9,30 @@ vi.mock("sonner", () => ({
 const session = { user: { email: "ana@example.test" }, isLoading: false };
 vi.mock("@/lib/auth", () => ({ useSession: () => session }));
 
-// El espacio pinta la cabecera; aquí solo interesa el contenido.
-vi.mock("@/components/layout/space-shell", () => ({
-  SpaceShell: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
-}));
-
-import MiCuentaPage from "@/app/(dashboard)/mi-cuenta/page";
+import CuentaView from "@/app/(dashboard)/ajustes/_components/cuenta-view";
 
 afterEach(() => {
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
 
-describe("Mi cuenta", () => {
+/**
+ * C7.5: `/mi-cuenta` la absorbió el espacio Ajustes como `?vista=cuenta`, así
+ * que su `page.tsx` desapareció —un `page.tsx` bajo una ruta con 308 se compila
+ * y no se ejecuta nunca, y el propio repo lo prohíbe (`titulos-de-pagina.test`)—.
+ * Este test **no se borra**: cambia de sujeto al componente que ahora sí se
+ * monta, y con él sigue cubriendo lo mismo.
+ */
+describe("Datos y cuenta", () => {
   it("ofrece el export de datos, que antes solo se alcanzaba con curl", () => {
-    render(<MiCuentaPage />);
+    render(<CuentaView />);
     expect(screen.getByRole("button", { name: /Descargar mis datos/ })).toBeInTheDocument();
   });
 
   it("el borrado está bloqueado hasta escribir el email exacto", () => {
     // Es irreversible y anonimiza todo el histórico: un "¿estás seguro?" de un
     // clic no es confirmación suficiente.
-    render(<MiCuentaPage />);
+    render(<CuentaView />);
     const boton = screen.getByRole("button", { name: /Eliminar mi cuenta definitivamente/ });
     expect(boton).toBeDisabled();
 
@@ -46,7 +48,7 @@ describe("Mi cuenta", () => {
   });
 
   it("advierte de que el borrado no se puede deshacer", () => {
-    render(<MiCuentaPage />);
+    render(<CuentaView />);
     expect(screen.getByText(/No se puede deshacer/)).toBeInTheDocument();
   });
 
@@ -65,7 +67,7 @@ describe("Mi cuenta", () => {
     );
     vi.stubGlobal("fetch", fetchMock);
 
-    render(<MiCuentaPage />);
+    render(<CuentaView />);
     fireEvent.change(screen.getByLabelText(/para confirmar/), {
       target: { value: "ana@example.test" },
     });
@@ -83,7 +85,7 @@ describe("Mi cuenta", () => {
     const original = session.user;
     // @ts-expect-error — se fuerza el caso de sesión sin email.
     session.user = null;
-    render(<MiCuentaPage />);
+    render(<CuentaView />);
     expect(
       screen.queryByRole("button", { name: /Eliminar mi cuenta definitivamente/ }),
     ).not.toBeInTheDocument();
