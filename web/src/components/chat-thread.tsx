@@ -6,8 +6,9 @@ import { cn } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
 import { MarkdownAnswer } from "@/components/markdown-answer";
 import { registrarEvento } from "@/lib/analytics";
+import { apiMutate } from "@/lib/api-client";
 import type { ChatTurn } from "@/hooks/use-ask";
-import type { DegradedInfo, FuenteDocumento } from "@/lib/ask-stream";
+import type { DegradedInfo, FuenteDocumento, SourcesInfo } from "@/lib/ask-stream";
 
 /** Collapsible block with the pliego/corpus citations of one assistant turn. */
 function FuentesBlock({ fuentes }: { fuentes: FuenteDocumento[] }) {
@@ -64,17 +65,92 @@ function FuentesBlock({ fuentes }: { fuentes: FuenteDocumento[] }) {
 }
 
 /**
- * Pulgares de calidad sobre una respuesta completa del asistente. Solo emiten
- * telemetría categórica (`asistente_feedback`): ni la pregunta ni la respuesta
- * salen del navegador. El voto es local al turno y no se puede repetir.
+ * Citas validadas de un turno (C5.3). El backend ya descartó las que apuntaban
+ * a documentos ausentes del contexto, así que lo que se pinta aquí se sostiene.
+ *
+ * Se listan aparte de `FuentesBlock`: aquel enseña **todo** lo que se le mandó
+ * al modelo, y esto enseña lo que el modelo **usó**. Mezclarlos haría creer que
+ * la respuesta se apoya en catorce fragmentos cuando citó dos.
  */
-export function FeedbackButtons({ modo }: { modo: "pregunta" | "resumen" | "ficha" }) {
+function CitasBlock({ info }: { info: SourcesInfo }) {
+  if (info.sources.length === 0) return null;
+  return (
+    <div className="mt-2 space-y-1">
+      <p className="text-muted-foreground text-xs font-medium">
+        Citado del pliego ({info.sources.length})
+      </p>
+      {info.sources.map((f, i) => (
+        <blockquote
+          key={`${f.documento_id}-${f.page_number ?? "s"}-${i}`}
+          className="border-primary/40 text-muted-foreground border-l-2 pl-2 text-xs"
+        >
+          <span className="text-foreground font-medium">
+            {[f.tipo, f.filename].filter(Boolean).join(" · ") || `Documento ${f.documento_id}`}
+            {f.page_number != null ? `, p. ${f.page_number}` : ""}
+          </span>
+          <span className="block">{f.cita}</span>
+        </blockquote>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * La respuesta no se apoya en ningún fragmento del pliego (C5.3 / D29).
+ *
+ * Se pinta distinto a propósito: una respuesta sin fuentes y una con ellas se
+ * leen igual de seguras, y esa es exactamente la confusión que la cita viene a
+ * evitar. No dice que la respuesta sea falsa — dice que el pliego no la
+ * sostiene, que es lo que se sabe.
+ */
+function SinFuentesNotice() {
+  return (
+    <p className="text-muted-foreground mt-2 flex items-start gap-1.5 text-xs">
+      <TriangleAlert className="mt-0.5 h-3 w-3 shrink-0" aria-hidden="true" />
+      <span>Sin fuentes en el pliego: esta respuesta no cita ningún fragmento de los documentos.</span>
+    </p>
+  );
+}
+
+/**
+ * Pulgares de calidad sobre una respuesta completa del asistente.
+ *
+ * Hasta C5.4 el voto era **solo** un evento de telemetría: no llegaba a ninguna
+ * tabla, así que se le pedía al usuario que evaluase y su evaluación se tiraba.
+ * Ahora también va a `POST /feedback/asistente`, que guarda el **hash** de la
+ * pregunta —no su texto— junto al modo y al voto.
+ *
+ * `pregunta` viaja para poder hashearla en servidor con la sal de la
+ * aplicación; hashearla aquí dejaría la sal en el navegador, que es lo mismo
+ * que no tenerla. Sin `pregunta` (resumen, ficha) se manda la etiqueta del modo:
+ * el turno no tiene pregunta de usuario, y el hash agrupa igual.
+ *
+ * El fallo de red se ignora a propósito: quien vota nos hace un favor, y un
+ * error en su pantalla por nuestra tabla convierte esa cortesía en un problema.
+ */
+export function FeedbackButtons({
+  modo,
+  pregunta,
+  licitacionId,
+}: {
+  modo: "pregunta" | "resumen" | "ficha";
+  pregunta?: string;
+  licitacionId?: string;
+}) {
   const [voted, setVoted] = React.useState<"si" | "no" | null>(null);
 
   const vote = (util: "si" | "no") => {
     if (voted) return;
     setVoted(util);
     registrarEvento("asistente_feedback", { modo, util });
+    void apiMutate("POST", "/api/v1/feedback/asistente", {
+      pregunta: pregunta?.trim() || `[${modo}]`,
+      modo,
+      voto: util,
+      licitacion_id: licitacionId,
+    }).catch(() => {
+      /* el voto ya está reflejado en la UI; un fallo aquí no es del usuario */
+    });
   };
 
   return (
@@ -217,9 +293,11 @@ export function ChatThread({
               <ScopeFallbackNotice />
             ) : null}
             {m.degraded ? <DegradedNotice degraded={m.degraded} /> : null}
+            {m.sources ? <CitasBlock info={m.sources} /> : null}
+            {m.sources?.sinFuentes ? <SinFuentesNotice /> : null}
             {m.fuentes && m.fuentes.length > 0 ? <FuentesBlock fuentes={m.fuentes} /> : null}
             {m.content && !m.degraded && !(isLast && (streaming || loading)) ? (
-              <FeedbackButtons modo="pregunta" />
+              <FeedbackButtons modo="pregunta" pregunta={messages[i - 1]?.content} />
             ) : null}
           </div>
         );

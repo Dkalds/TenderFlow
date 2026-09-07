@@ -146,6 +146,16 @@ try:
         "Chunks con embedding insertados en documento_chunks",
     )
 
+    # ── Caché de respuestas del LLM (C5.5) ─────────────────────────────────
+    # Con `resultado` como label y no dos contadores: un hit sin su miss no
+    # dice nada — la métrica que importa es la RATIO, y para calcularla hacen
+    # falta las dos series con la misma dimensionalidad.
+    llm_cache_hit_total = Counter(
+        "llm_cache_hit_total",
+        "Consultas a la cache de respuestas LLM, por modo y resultado",
+        ["modo", "resultado"],
+    )
+
     # ── Pliegos: señal de tecnología (plan categorización-pliegos) ─────────
     pliego_tech_signal_total = Counter(
         "pliego_tech_signal_total",
@@ -228,6 +238,7 @@ except ImportError:  # pragma: no cover
     llm_budget_exceeded_total = _NoopMetric()  # type: ignore[assignment]
     documentos_fetched_total = _NoopMetric()  # type: ignore[assignment]
     documento_chunks_total = _NoopMetric()  # type: ignore[assignment]
+    llm_cache_hit_total = _NoopMetric()  # type: ignore[assignment]
     pliego_tech_signal_total = _NoopMetric()  # type: ignore[assignment]
     pliego_tech_merge_total = _NoopMetric()  # type: ignore[assignment]
     dedupe_marked_total = _NoopMetric()  # type: ignore[assignment]

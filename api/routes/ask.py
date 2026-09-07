@@ -126,6 +126,14 @@ class AskRequest(BaseModel):
             "de corpus."
         ),
     )
+    force: bool = Field(
+        default=False,
+        description=(
+            "Salta la caché de respuestas y vuelve a preguntar al proveedor. "
+            "Consume presupuesto: es para cuando la respuesta cacheada se sospecha mala, "
+            "no el modo por defecto."
+        ),
+    )
 
 
 class AskModelInfo(BaseModel):
@@ -257,6 +265,41 @@ def _fuentes_documentos(docs: list[dict[str, Any]]) -> list[dict[str, Any]]:
     ]
 
 
+def _huella_contexto(question: str, history: list[ChatMessage], docs: list[dict[str, Any]]) -> str:
+    """Huella del contexto exacto que se le va a mandar al modelo (C5.5).
+
+    Cubre la pregunta, el historial y **la identidad de cada fragmento**, no su
+    texto: los chunks ya están identificados por `(documento_id, chunk_index)` y
+    hashear su contenido entero costaría megabytes de CPU por request para
+    distinguir lo mismo. Un pliego re-indexado cambia los índices de sus chunks,
+    así que la entrada se invalida sola.
+
+    El historial entra completo: la misma última pregunta sobre dos
+    conversaciones distintas es otra pregunta, y servirle a la segunda la
+    respuesta de la primera es exactamente el fallo que una caché mal fechada
+    produce.
+    """
+    import hashlib
+
+    payload = {
+        "q": " ".join((question or "").split()).casefold(),
+        "h": [(m.get("role"), m.get("content")) for m in history],
+        "d": [
+            (
+                d.get("id_externo"),
+                [
+                    (c.get("documento_id"), c.get("chunk_index"), c.get("tipo"))
+                    for c in (d.get("chunks") or [])
+                ],
+            )
+            for d in docs
+        ],
+    }
+    return hashlib.sha256(
+        json.dumps(payload, sort_keys=True, ensure_ascii=False, default=str).encode("utf-8")
+    ).hexdigest()
+
+
 def _sse_event(payload: dict[str, Any]) -> str:
     return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
 
@@ -277,8 +320,13 @@ def _resumen_cache_key(
     """
     import hashlib
 
+    from llm.prompts import prompt_version
+
     payload = {
         "v": _RESUMEN_CACHE_VERSION,
+        # C5.5: el hash del system prompt vigente. `_RESUMEN_CACHE_VERSION` se
+        # sube a mano y por eso puede olvidarse; esto no.
+        "prompt": prompt_version("resumen"),
         "id": id_externo,
         "model": model,
         "doc": {k: v for k, v in doc.items() if k not in ("chunks", "_score")},
@@ -297,6 +345,7 @@ def _stream_sse(
     stream_factory: Callable[[], Iterator[str]],
     degraded_docs: list[dict[str, Any]],
     pre_events: list[dict[str, Any]] | None = None,
+    post_event: Callable[[str], dict[str, Any] | None] | None = None,
 ) -> AsyncGenerator[str, None]:
     """Generator SSE compartido por ``/ask`` y ``/resumen``.
 
@@ -305,6 +354,13 @@ def _stream_sse(
     stream vacío (API key ausente) o timeout, degrada a los documentos del
     contexto sin síntesis (evento SSE ``degraded``, RFC llm-dependencia-
     gestionada).
+
+    ``post_event`` recibe la respuesta completa y devuelve un evento a emitir
+    **antes** de ``[DONE]``; es lo que usa C5.3 para las citas, que solo se
+    pueden validar cuando el texto ha terminado. Solo se llama en el camino de
+    éxito: en una respuesta degradada no hay respuesta que citar, y emitir
+    ``sin_fuentes`` ahí diría que el pliego no sostiene algo que el modelo nunca
+    llegó a escribir.
     """
 
     async def _generate() -> AsyncGenerator[str, None]:
@@ -330,6 +386,11 @@ def _stream_sse(
                 log.warning("ask.llm_stream_error_degrading", error=str(exc))
                 loop.call_soon_threadsafe(queue.put_nowait, ("degraded", "provider_error"))
 
+        # Solo se acumula cuando hay algo que calcular al final: guardar la
+        # respuesta entera en memoria para no usarla sería pagar por nada en el
+        # camino más caliente de la API.
+        respuesta: list[str] = []
+
         for event in pre_events or []:
             yield _sse_event(event)
 
@@ -348,12 +409,23 @@ def _stream_sse(
                     return
 
                 if kind == "done":
+                    if post_event is not None:
+                        try:
+                            evento = post_event("".join(respuesta))
+                        except Exception:
+                            # Un fallo calculando las citas no puede convertir
+                            # una respuesta entregada en un stream roto.
+                            log.warning("ask.post_event_failed", exc_info=True)
+                            evento = None
+                        if evento is not None:
+                            yield _sse_event(evento)
                     yield "data: [DONE]\n\n"
                     return
                 if kind == "degraded":
                     yield _sse_event({"degraded": True, "reason": payload, "docs": degraded_docs})
                     yield "data: [DONE]\n\n"
                     return
+                respuesta.append(payload)
                 yield f"data: {json.dumps({'text': payload})}\n\n"
         finally:
             if not executor_task.done():
@@ -437,28 +509,110 @@ async def _stream_ask(
     if fuentes:
         pre_events.append({"fuentes_documentos": fuentes})
 
-    def _factory() -> Iterator[str]:
-        # El coste solo se conoce dentro de llm/client.py::_record_usage, que no
-        # ve al usuario. Se corre en un thread con contexto propio (to_thread lo
-        # copia), así que dejar ahí el sujeto lo atribuye sin filtrarlo a otras
-        # requests.
-        bind_budget_subject(scope_key)
-        # C2.9: sin esto el cubo de la organización se comprueba pero nunca
-        # se alimenta, y un tope que no acumula no corta nunca.
-        bind_budget_org(org_key)
-        return stream_llm_response(
-            question=request.question,
-            docs=docs,
-            model=request.model,
-            keywords=keywords,
-            history=history,
-            mode=mode,
+    # ── Caché de respuestas (C5.5) ───────────────────────────────────────────
+    #
+    # Solo cuando NO hay historial: una pregunta de seguimiento depende del turno
+    # anterior, y aunque el historial entra en la huella, cachear conversaciones
+    # llenaría el almacén de entradas que no se van a repetir nunca. La caché
+    # existe para la pregunta que veinte personas hacen sobre el mismo pliego.
+    from llm.prompts import prompt_version
+    from observability.runtime_metrics import llm_cache_hit_total
+    from shared.cache import LLM_CACHE_TTL_SECONDS, LLM_NAMESPACE, get_cache, llm_cache_key
+
+    cacheable = not history
+    cache = get_cache(LLM_NAMESPACE) if cacheable else None
+    clave = (
+        llm_cache_key(
+            modo=mode,
+            modelo=request.model,
+            prompt_version=prompt_version(mode, has_corpus_context=bool(docs)),
+            contexto=_huella_contexto(request.question, history, docs),
         )
+        if cacheable
+        else None
+    )
+
+    cacheado: str | None = None
+    if cache is not None and clave is not None and not request.force:
+        try:
+            crudo = cache.get(clave)
+        except Exception:
+            log.debug("ask.cache_get_failed", exc_info=True)
+            crudo = None
+        if isinstance(crudo, str) and crudo.strip():
+            cacheado = crudo
+    if cacheable:
+        llm_cache_hit_total.labels(
+            modo=mode, resultado=("hit" if cacheado is not None else "miss")
+        ).inc()
+
+    if cacheado is not None:
+        texto_cacheado = cacheado
+
+        def _factory() -> Iterator[str]:
+            # Un solo evento: el troceado original no aporta nada y reproducirlo
+            # falsearía una latencia de proveedor que aquí no existe.
+            return iter([texto_cacheado])
+
+    else:
+
+        def _factory() -> Iterator[str]:
+            # El coste solo se conoce dentro de llm/client.py::_record_usage, que no
+            # ve al usuario. Se corre en un thread con contexto propio (to_thread lo
+            # copia), así que dejar ahí el sujeto lo atribuye sin filtrarlo a otras
+            # requests.
+            bind_budget_subject(scope_key)
+            # C2.9: sin esto el cubo de la organización se comprueba pero nunca
+            # se alimenta, y un tope que no acumula no corta nunca.
+            bind_budget_org(org_key)
+            stream = stream_llm_response(
+                question=request.question,
+                docs=docs,
+                model=request.model,
+                keywords=keywords,
+                history=history,
+                mode=mode,
+            )
+            if cache is None or clave is None:
+                return stream
+
+            def _generar_y_cachear() -> Iterator[str]:
+                partes: list[str] = []
+                for token in stream:
+                    partes.append(token)
+                    yield token
+                # Solo se cachea un stream completo con contenido: los caminos
+                # degradados (vacío, excepción, timeout) no dejan entrada. Mismo
+                # criterio que /resumen — cachear una degradación la convierte en
+                # la respuesta oficial durante 24 h.
+                texto = "".join(partes).strip()
+                if texto:
+                    try:
+                        cache.set(clave, texto, ttl=LLM_CACHE_TTL_SECONDS)
+                    except Exception:
+                        log.debug("ask.cache_set_failed", exc_info=True)
+
+            return _generar_y_cachear()
+
+    # C5.3 / D29: solo en modo licitación. En modo general la respuesta se apoya
+    # en metadatos de anuncios, no en páginas de pliego: pedir citas ahí las
+    # inventaría, y marcar `sin_fuentes` diría que falta algo que nunca se pidió.
+    post_event: Callable[[str], dict[str, Any] | None] | None = None
+    if mode == "licitacion":
+        chunks_del_contexto = [c for d in docs for c in (d.get("chunks") or [])]
+
+        def _sources(texto: str) -> dict[str, Any] | None:
+            from services.rag.citas import evento_sources
+
+            return evento_sources(texto, chunks_del_contexto)
+
+        post_event = _sources
 
     return _stream_sse(
         _factory,
         degraded_docs,
         pre_events=pre_events,
+        post_event=post_event,
     )
 
 
@@ -627,6 +781,12 @@ async def resumen_licitacion(
     cache_key = _resumen_cache_key(id_externo, body.model, doc, ctx["documentos"], ficha_at)
     cached_raw = None if body.force else cache.get(cache_key)
     cached_text = str(cached_raw) if isinstance(cached_raw, str) and cached_raw.strip() else None
+
+    from observability.runtime_metrics import llm_cache_hit_total
+
+    llm_cache_hit_total.labels(
+        modo="resumen", resultado=("hit" if cached_text is not None else "miss")
+    ).inc()
 
     resumen_meta = {
         "has_pliego_text": ctx["has_pliego_text"],

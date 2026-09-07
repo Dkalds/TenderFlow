@@ -66,8 +66,8 @@ def espera_para(intento: int) -> timedelta | None:
         return timedelta(0)
     if intento > MAX_INTENTOS:
         return None
-    espera = ESPERA_INICIAL * (2 ** (intento - 2))
-    return min(espera, ESPERA_MAXIMA)
+    espera: timedelta = ESPERA_INICIAL * (2 ** (intento - 2))
+    return espera if espera < ESPERA_MAXIMA else ESPERA_MAXIMA
 
 
 @dataclass(frozen=True, slots=True)

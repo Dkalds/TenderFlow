@@ -14,6 +14,68 @@ DEFAULT_CHUNK_SIZE = 1400
 DEFAULT_OVERLAP_RATIO = 0.15
 
 
+def chunk_text_with_offsets(
+    texto: str,
+    *,
+    chunk_size: int = DEFAULT_CHUNK_SIZE,
+    overlap_ratio: float = DEFAULT_OVERLAP_RATIO,
+) -> list[tuple[str, int]]:
+    """Como :func:`chunk_text`, pero cada chunk trae su offset en ``texto``.
+
+    El offset es lo que permite decir **en qué página** cae un fragmento
+    (C5.3): ``documento_pages`` guarda cada página con su ``start_offset`` sobre
+    el mismo texto, así que la página del chunk es la última cuyo comienzo no lo
+    supera. Sin esto, una cita del asistente solo puede apuntar al documento
+    entero, y un pliego de 200 páginas no es una referencia.
+
+    Es una función aparte y no un parámetro de :func:`chunk_text` porque el job
+    de embeddings compara la salida de aquella contra los chunks persistidos
+    para decidir si recalcula: cambiarle el tipo de retorno rompería esa
+    comparación. Las dos comparten el mismo recorrido, verificado por un test de
+    equivalencia — si se separasen, los offsets dejarían de señalar al chunk que
+    dicen señalar sin que nada fallase.
+
+    Returns:
+        ``[(chunk, offset)]`` en orden; el offset es la posición del primer
+        carácter del chunk dentro del texto ya recortado con ``.strip()``.
+    """
+    recortado = texto.strip()
+    resultado: list[tuple[str, int]] = []
+    cursor = 0
+    for chunk in chunk_text(recortado, chunk_size=chunk_size, overlap_ratio=overlap_ratio):
+        # `find` desde el cursor y no desde cero: con solape, el mismo texto
+        # aparece dos veces y buscar desde el principio devolvería siempre la
+        # primera aparición, colapsando todos los chunks a la misma página.
+        pos = recortado.find(chunk, cursor)
+        if pos < 0:  # pragma: no cover - `chunk_text` solo recorta espacios
+            pos = cursor
+        resultado.append((chunk, pos))
+        cursor = pos + 1
+    return resultado
+
+
+def pagina_de_offset(offset: int, inicios_de_pagina: list[tuple[int, int]]) -> int | None:
+    """Página que contiene ``offset``.
+
+    Args:
+        offset: Posición del chunk dentro del texto del documento.
+        inicios_de_pagina: ``[(start_offset, page_number)]``, en cualquier orden.
+
+    Returns:
+        El ``page_number`` de la última página que empieza en o antes de
+        ``offset``; ``None`` si el documento no tiene páginas persistidas o si
+        el offset cae antes de la primera. Devolver la primera página «por si
+        acaso» convertiría un dato ausente en una cita concreta y equivocada.
+    """
+    candidata: int | None = None
+    mejor_inicio = -1
+    for inicio, pagina in inicios_de_pagina:
+        if inicio <= offset and inicio > mejor_inicio:
+            mejor_inicio = inicio
+            candidata = pagina
+    return candidata
+
+
 def chunk_text(
     texto: str,
     *,

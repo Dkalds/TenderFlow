@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 from pydantic import BaseModel, Field, field_validator
 
 from api.concurrency import run_db, run_ml
-from api.routes.dual_auth import require_any_auth
+from api.routes.dual_auth import require_admin, require_any_auth
 from config.keywords import TECH_LABELS
 from db.audit import log_event
 from db.repositories.feedback import FeedbackRepository
@@ -431,3 +431,155 @@ async def feedback_queue(
         strategy="random",
         model_version=None,
     )
+
+
+# ── Voto sobre las respuestas del asistente (C5.4) ───────────────────────────
+#
+# Vive en este router y no en uno propio porque es el mismo bucle: el feedback
+# de relevancia alimenta al clasificador y este alimenta al RAG. Separarlos
+# obligaría a mirar en dos sitios para responder «¿qué está saliendo mal?».
+
+
+class AsistenteFeedbackRequest(BaseModel):
+    """Voto sobre un turno del asistente.
+
+    ``pregunta`` viaja para poder **hashearla en el servidor**; solo se persiste
+    en claro con ``guardar_texto``. Hashearla en el cliente dejaría la sal en el
+    navegador, que es lo mismo que no tenerla.
+    """
+
+    pregunta: str = Field(..., min_length=1, max_length=4000)
+    modo: str = Field(..., description="pregunta | resumen | ficha")
+    voto: str = Field(..., description="si | no")
+    modelo: str | None = Field(None, max_length=120)
+    licitacion_id: str | None = Field(None, max_length=120)
+    motivo: str | None = Field(None, max_length=40)
+    guardar_texto: bool = Field(
+        False,
+        description=(
+            "Opt-in explícito para conservar el texto de la pregunta. "
+            "Por defecto solo se guarda su hash."
+        ),
+    )
+
+    @field_validator("modo")
+    @classmethod
+    def validar_modo(cls, v: str) -> str:
+        from db.repositories.asistente_feedback import MODOS
+
+        if v not in MODOS:
+            raise ValueError(f"modo debe ser uno de {sorted(MODOS)}")
+        return v
+
+    @field_validator("voto")
+    @classmethod
+    def validar_voto(cls, v: str) -> str:
+        from db.repositories.asistente_feedback import VOTOS
+
+        if v not in VOTOS:
+            raise ValueError(f"voto debe ser uno de {sorted(VOTOS)}")
+        return v
+
+
+class AsistenteFeedbackResponse(BaseModel):
+    registrado: bool = Field(..., description="False si la fila no pudo escribirse")
+
+
+class AsistenteModoStats(BaseModel):
+    modo: str
+    utiles: int
+    no_utiles: int
+    total: int
+
+
+class AsistenteFeedbackResumen(BaseModel):
+    dias: int
+    modos: list[AsistenteModoStats]
+
+
+class AsistentePeorPregunta(BaseModel):
+    pregunta_hash: str
+    modo: str
+    negativos: int
+    total: int
+    ejemplo: str | None = Field(None, description="Solo de las filas con opt-in de texto")
+    ultima_vez: str | None = None
+
+
+@router.post(
+    "/asistente",
+    summary="Votar la calidad de una respuesta del asistente",
+    status_code=status.HTTP_201_CREATED,
+    responses={
+        201: {"description": "Voto registrado"},
+        401: {"description": "API key inválida"},
+        422: {"description": "Body inválido"},
+    },
+)
+async def submit_asistente_feedback(
+    body: AsistenteFeedbackRequest,
+    ctx: dict[str, Any] = Depends(require_any_auth),
+) -> AsistenteFeedbackResponse:
+    """Persiste el voto del chat, que hasta C5.4 moría como evento de telemetría.
+
+    Responde 201 incluso si la fila no pudo escribirse (``registrado: false``):
+    quien vota nos está haciendo un favor, y devolverle un 500 por un fallo de
+    nuestra tabla convierte su cortesía en un error en su pantalla.
+    """
+    from db.repositories.asistente_feedback import registrar
+
+    fila_id = await run_db(
+        registrar,
+        pregunta=body.pregunta,
+        modo=body.modo,
+        voto=body.voto,
+        modelo=body.modelo,
+        licitacion_id=body.licitacion_id,
+        motivo=body.motivo,
+        texto_opt_in=body.guardar_texto,
+        user_id=ctx.get("user_id"),
+    )
+    return AsistenteFeedbackResponse(registrado=fila_id is not None)
+
+
+@router.get(
+    "/asistente/resumen",
+    summary="Ratio de respuestas útiles por modo",
+    responses={401: {"description": "API key inválida"}, 403: {"description": "Requiere admin"}},
+)
+async def asistente_feedback_resumen(
+    dias: int = Query(30, ge=1, le=365),
+    _ctx: dict[str, Any] = Depends(require_admin),
+) -> AsistenteFeedbackResumen:
+    """Panel de `/ops` → Active learning. Publica ratio **y** población."""
+    from db.repositories.asistente_feedback import resumen
+
+    return AsistenteFeedbackResumen(**await run_db(resumen, dias))
+
+
+@router.get(
+    "/asistente/peores",
+    summary="Preguntas con más votos negativos",
+    responses={401: {"description": "API key inválida"}, 403: {"description": "Requiere admin"}},
+)
+async def asistente_feedback_peores(
+    limit: int = Query(20, ge=1, le=200),
+    dias: int = Query(30, ge=1, le=365),
+    _ctx: dict[str, Any] = Depends(require_admin),
+) -> list[AsistentePeorPregunta]:
+    """Agrupadas por hash: una respuesta mala y la misma doscientas veces no
+    pueden leerse igual."""
+    from db.repositories.asistente_feedback import peores_preguntas
+
+    filas = await run_db(peores_preguntas, limit, dias)
+    return [
+        AsistentePeorPregunta(
+            pregunta_hash=str(f["pregunta_hash"]),
+            modo=str(f["modo"]),
+            negativos=int(f["negativos"]),
+            total=int(f["total"]),
+            ejemplo=(str(f["ejemplo"]) if f.get("ejemplo") else None),
+            ultima_vez=(str(f["ultima_vez"]) if f.get("ultima_vez") else None),
+        )
+        for f in filas
+    ]

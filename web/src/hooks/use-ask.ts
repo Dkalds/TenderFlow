@@ -9,6 +9,7 @@ import {
   type ChatMessage,
   type DegradedInfo,
   type FuenteDocumento,
+  type SourcesInfo,
 } from "@/lib/ask-stream";
 import { askKeys } from "@/lib/query-keys";
 
@@ -51,6 +52,12 @@ export interface ChatTurn {
   degraded?: DegradedInfo | null;
   /** Effective scope of the answer (licitación vs corpus fallback). */
   askMeta?: AskMeta | null;
+  /**
+   * Citas validadas del turno (C5.3). Llega al cerrar el stream, así que un
+   * turno en curso no la tiene todavía — la UI no debe leer su ausencia como
+   * «sin fuentes»: eso lo dice `sources.sinFuentes`.
+   */
+  sources?: SourcesInfo | null;
 }
 
 export interface SendOptions {
@@ -131,12 +138,14 @@ export function useChat(opts?: { idExterno?: string }): UseChatResult {
           onFuentes: (fuentes) => updateLastAssistant({ fuentes }),
           onDegraded: (degraded) => updateLastAssistant({ degraded }),
           onAskMeta: (askMeta) => updateLastAssistant({ askMeta }),
+          onSources: (sources) => updateLastAssistant({ sources }),
         });
         updateLastAssistant({
           content: result.answer,
           fuentes: result.fuentes.length > 0 ? result.fuentes : undefined,
           degraded: result.degraded,
           askMeta: result.askMeta,
+          sources: result.sources,
         });
       } catch (err) {
         if (err instanceof DOMException && err.name === "AbortError") return;

@@ -1493,6 +1493,71 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/feedback/asistente": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Votar la calidad de una respuesta del asistente
+         * @description Persiste el voto del chat, que hasta C5.4 moría como evento de telemetría.
+         *
+         *     Responde 201 incluso si la fila no pudo escribirse (``registrado: false``):
+         *     quien vota nos está haciendo un favor, y devolverle un 500 por un fallo de
+         *     nuestra tabla convierte su cortesía en un error en su pantalla.
+         */
+        post: operations["submit_asistente_feedback_api_v1_feedback_asistente_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/feedback/asistente/peores": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Preguntas con más votos negativos
+         * @description Agrupadas por hash: una respuesta mala y la misma doscientas veces no
+         *     pueden leerse igual.
+         */
+        get: operations["asistente_feedback_peores_api_v1_feedback_asistente_peores_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/feedback/asistente/resumen": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Ratio de respuestas útiles por modo
+         * @description Panel de `/ops` → Active learning. Publica ratio **y** población.
+         */
+        get: operations["asistente_feedback_resumen_api_v1_feedback_asistente_resumen_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/feedback/model-info": {
         parameters: {
             query?: never;
@@ -3573,6 +3638,84 @@ export interface components {
             type: string;
         };
         /**
+         * AsistenteFeedbackRequest
+         * @description Voto sobre un turno del asistente.
+         *
+         *     ``pregunta`` viaja para poder **hashearla en el servidor**; solo se persiste
+         *     en claro con ``guardar_texto``. Hashearla en el cliente dejaría la sal en el
+         *     navegador, que es lo mismo que no tenerla.
+         */
+        AsistenteFeedbackRequest: {
+            /**
+             * Guardar Texto
+             * @description Opt-in explícito para conservar el texto de la pregunta. Por defecto solo se guarda su hash.
+             * @default false
+             */
+            guardar_texto: boolean;
+            /** Licitacion Id */
+            licitacion_id?: string | null;
+            /** Modelo */
+            modelo?: string | null;
+            /**
+             * Modo
+             * @description pregunta | resumen | ficha
+             */
+            modo: string;
+            /** Motivo */
+            motivo?: string | null;
+            /** Pregunta */
+            pregunta: string;
+            /**
+             * Voto
+             * @description si | no
+             */
+            voto: string;
+        };
+        /** AsistenteFeedbackResponse */
+        AsistenteFeedbackResponse: {
+            /**
+             * Registrado
+             * @description False si la fila no pudo escribirse
+             */
+            registrado: boolean;
+        };
+        /** AsistenteFeedbackResumen */
+        AsistenteFeedbackResumen: {
+            /** Dias */
+            dias: number;
+            /** Modos */
+            modos: components["schemas"]["AsistenteModoStats"][];
+        };
+        /** AsistenteModoStats */
+        AsistenteModoStats: {
+            /** Modo */
+            modo: string;
+            /** No Utiles */
+            no_utiles: number;
+            /** Total */
+            total: number;
+            /** Utiles */
+            utiles: number;
+        };
+        /** AsistentePeorPregunta */
+        AsistentePeorPregunta: {
+            /**
+             * Ejemplo
+             * @description Solo de las filas con opt-in de texto
+             */
+            ejemplo?: string | null;
+            /** Modo */
+            modo: string;
+            /** Negativos */
+            negativos: number;
+            /** Pregunta Hash */
+            pregunta_hash: string;
+            /** Total */
+            total: number;
+            /** Ultima Vez */
+            ultima_vez?: string | null;
+        };
+        /**
          * AskModelInfo
          * @description Información sobre los modelos LLM disponibles.
          */
@@ -3592,6 +3735,12 @@ export interface components {
              * @description Filtrar licitaciones por CCAA
              */
             ccaa?: string | null;
+            /**
+             * Force
+             * @description Salta la caché de respuestas y vuelve a preguntar al proveedor. Consume presupuesto: es para cuando la respuesta cacheada se sospecha mala, no el modo por defecto.
+             * @default false
+             */
+            force: boolean;
             /**
              * Id Externo
              * @description ID de una licitación específica: el contexto pasa a ser esa licitación (metadatos del anuncio + fragmentos de sus pliegos) en lugar del retrieval de corpus.
@@ -12084,6 +12233,147 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    submit_asistente_feedback_api_v1_feedback_asistente_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AsistenteFeedbackRequest"];
+            };
+        };
+        responses: {
+            /** @description Voto registrado */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AsistenteFeedbackResponse"];
+                };
+            };
+            /** @description API key inválida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Body inválido */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    asistente_feedback_peores_api_v1_feedback_asistente_peores_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                dias?: number;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AsistentePeorPregunta"][];
+                };
+            };
+            /** @description API key inválida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Requiere admin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    asistente_feedback_resumen_api_v1_feedback_asistente_resumen_get: {
+        parameters: {
+            query?: {
+                dias?: number;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AsistenteFeedbackResumen"];
+                };
+            };
+            /** @description API key inválida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Requiere admin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
             };
         };
     };

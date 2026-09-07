@@ -113,6 +113,42 @@ def cache_key(*parts: Any) -> str:
     return "licsap:" + hashlib.md5(raw.encode(), usedforsecurity=False).hexdigest()[:16]
 
 
+#: Namespace de las respuestas del LLM (C5.5).
+LLM_NAMESPACE = "llm_respuestas"
+
+#: TTL de una respuesta cacheada. 24 h, como pide el ítem.
+#:
+#: El límite no es el modelo sino el **corpus**: el contexto se reconstruye en
+#: cada request y su huella entra en la clave, así que un pliego nuevo invalida
+#: la entrada por sí solo. Lo que el TTL cubre es lo que la huella no ve — un
+#: cambio de temperatura del proveedor, un modelo re-desplegado con el mismo
+#: nombre — y para eso un día es suficiente.
+LLM_CACHE_TTL_SECONDS = 86_400
+
+
+def llm_cache_key(
+    *,
+    modo: str,
+    modelo: str,
+    prompt_version: str,
+    contexto: Any,
+) -> str:
+    """Clave de una respuesta del LLM: modo + modelo + versión de prompt + contexto.
+
+    Los cuatro componentes son necesarios y ninguno es redundante:
+
+    - **modo** y **modelo** cambian la respuesta con el mismo contexto.
+    - **prompt_version** es el hash del *system prompt* vigente, no un número a
+      mano. Sin él, cambiar el prompt —como hizo C5.3 al pedir citas— seguiría
+      sirviendo durante 24 h respuestas generadas bajo el prompt anterior, sin
+      las citas que la UI ya espera. Un número manual sirve igual hasta el día
+      que alguien olvide subirlo, que es el día que importa.
+    - **contexto**: la huella de los documentos y fragmentos enviados. Es lo que
+      hace que un pliego recién indexado invalide la entrada.
+    """
+    return cache_key("llm", modo, modelo, prompt_version, contexto)
+
+
 # ---------------------------------------------------------------------------
 # Backend abstracto (duck-typed Protocol)
 # ---------------------------------------------------------------------------

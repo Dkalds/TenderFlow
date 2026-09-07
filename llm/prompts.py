@@ -22,6 +22,7 @@ Modos:
 
 from __future__ import annotations
 
+import hashlib
 import re
 from typing import Any, Literal, TypedDict
 
@@ -110,8 +111,15 @@ _SYSTEM_LICITACION = (
     + (
         "El CONTEXTO contiene los metadatos del anuncio de una única licitación y, si están "
         "disponibles, fragmentos del texto de sus pliegos. Responde sobre esa licitación: "
-        "distingue qué información procede del anuncio y qué procede de los pliegos, y cuando "
-        "uses un fragmento de pliego cita el documento (su tipo o nombre de archivo). "
+        "distingue qué información procede del anuncio y qué procede de los pliegos. "
+        # C5.3 / D29: la referencia deja de ser prosa ("el pliego técnico dice") y
+        # pasa a ser un marcador con la forma exacta que la cabecera del fragmento
+        # imprime. Es lo que permite validarla contra el contexto enviado y
+        # enlazarla a su página; una cita en prosa no se puede comprobar ni seguir.
+        "Cada afirmación que salga de un pliego debe terminar con el marcador del fragmento "
+        "que la sostiene, copiado tal cual de su cabecera: [doc:N p.M] (o [doc:N] si la "
+        "cabecera no trae página). No inventes marcadores ni cites documentos que no estén "
+        "en el CONTEXTO. Los datos que vengan del anuncio no llevan marcador. "
         "Si ni el anuncio ni los pliegos contienen la respuesta, dilo claramente antes de "
         "aportar contexto general. Responde siempre en español y en formato Markdown."
     )
@@ -177,6 +185,20 @@ def build_system_prompt(mode: PromptMode, *, has_corpus_context: bool) -> str:
     return _SYSTEM_GENERAL_WITH_CORPUS if has_corpus_context else _SYSTEM_GENERAL_NO_CORPUS
 
 
+def prompt_version(mode: PromptMode, *, has_corpus_context: bool = True) -> str:
+    """Huella del system prompt vigente para ese modo (C5.5).
+
+    **Derivada del texto, no mantenida a mano.** Un número manual funciona hasta
+    el día que alguien cambia el prompt y olvida subirlo — que es justo el día en
+    que la caché sirve durante 24 h respuestas del prompt anterior. Con el hash,
+    editar el prompt invalida su caché sin que nadie tenga que acordarse.
+
+    Ocho hex: es un discriminante de caché, no una firma.
+    """
+    texto = build_system_prompt(mode, has_corpus_context=has_corpus_context)
+    return hashlib.sha256(texto.encode("utf-8")).hexdigest()[:8]
+
+
 # ── Bloque de contexto ─────────────────────────────────────────────────────────
 
 
@@ -221,6 +243,25 @@ def _neutralize_sandbox_delimiters(text: str) -> str:
     return _SANDBOX_DELIMITER_RE.sub("", text)
 
 
+def marcador_de_chunk(chunk: dict[str, Any]) -> str:
+    """Marcador citable de un fragmento: ``[doc:N p.M]``, o ``""`` si no lo hay.
+
+    Es la **misma** forma que ``services/rag/citas.py`` extrae de la respuesta.
+    Vive aquí, junto al bloque que lo imprime, y no en el módulo de citas,
+    porque el emisor y el lector tienen que coincidir literalmente: si divergen,
+    todas las citas se descartan como inventadas y la respuesta parece infundada
+    aunque el modelo haya hecho lo que se le pidió. El test de ida y vuelta
+    (imprimir → extraer) es lo que impide que se separen.
+    """
+    documento_id = chunk.get("documento_id")
+    if documento_id is None:
+        return ""
+    pagina = chunk.get("page_number")
+    if pagina is None:
+        return f"[doc:{documento_id}]"
+    return f"[doc:{documento_id} p.{pagina}]"
+
+
 def _doc_block(doc: dict[str, Any], keywords: list[str], *, excerpt_chars: int = 300) -> str:
     lines = [
         f"[{doc['id_externo']}] {doc.get('titulo', '')}",
@@ -234,12 +275,9 @@ def _doc_block(doc: dict[str, Any], keywords: list[str], *, excerpt_chars: int =
     lines.append(f"Descripción: {_excerpt(doc.get('descripcion'), keywords, excerpt_chars)}")
     for chunk in doc.get("chunks") or []:
         etiqueta = " ".join(str(chunk[k]) for k in ("tipo", "filename") if chunk.get(k))
-        location = " ".join(
-            str(chunk[k]) for k in ("documento_id", "page_number") if chunk.get(k) is not None
-        )
         lines.append(
             f"--- Fragmento de pliego ({etiqueta or 'documento'}"
-            f"{'; documento/página ' + location if location else ''}) ---"
+            f"{'; ' + marcador_de_chunk(chunk) if marcador_de_chunk(chunk) else ''}) ---"
         )
         lines.append(str(chunk.get("texto", "")))
     return "\n".join(lines)

@@ -63,20 +63,97 @@ def _run_fetch_phase(limit: int = _FETCH_BATCH_SIZE) -> dict[str, int]:
     return counts
 
 
-def _run_embed_phase(limit: int = _EMBED_BATCH_SIZE) -> dict[str, int]:
-    """Chunkea + embebe documentos ``extracted`` que aún no tienen chunks."""
-    from db.repositories.documentos import DocumentosRepository
+def _paginas_del_documento(repo: Any, documento_id: int) -> list[tuple[int, int]]:
+    """`[(start_offset, page_number)]` del documento, o vacío si no hay páginas.
+
+    Un fallo leyendo las páginas no puede tumbar el embedding: sin páginas los
+    chunks se guardan igual y la cita apunta al documento en vez de a la página.
+    """
+    try:
+        paginas = repo.list_pages(documento_id)
+    except Exception:
+        log.warning("documentos_embed_paginas_failed", documento_id=documento_id, exc_info=True)
+        return []
+    return [
+        (int(p.get("start_offset") or 0), int(p["page_number"]))
+        for p in paginas
+        if p.get("page_number") is not None
+    ]
+
+
+def _embeber_documentos(
+    repo: Any, candidatos: list[dict[str, Any]], counts: dict[str, int]
+) -> None:
+    """Chunkea, embebe y persiste cada documento del lote, con su versión."""
+    from config.settings import settings
     from observability.runtime_metrics import documento_chunks_total
-    from services.rag.chunking import chunk_text
+    from services.embeddings import encode_texts
+    from services.rag.chunking import chunk_text_with_offsets, pagina_de_offset
+
+    for doc in candidatos:
+        texto = doc.get("texto")
+        con_offset = chunk_text_with_offsets(texto) if texto else []
+        if not con_offset:
+            counts["sin_texto"] += 1
+            continue
+        chunks = [c for c, _ in con_offset]
+        inicios = _paginas_del_documento(repo, doc["id"])
+        paginas = [pagina_de_offset(off, inicios) if inicios else None for _, off in con_offset]
+        try:
+            embeddings = encode_texts(chunks)
+            n = repo.replace_chunks(
+                doc["id"],
+                chunks,
+                embeddings,
+                embedding_model=settings.EMBEDDING_MODEL,
+                embedding_version=settings.EMBEDDING_VERSION,
+                paginas=paginas,
+            )
+        except Exception as e:
+            log.warning("documentos_embed_failed", documento_id=doc["id"], error=str(e))
+            counts["error"] += 1
+            continue
+        counts["documentos_procesados"] += 1
+        counts["chunks_creados"] += n
+        documento_chunks_total.inc(n)
+
+
+def _run_embed_phase(limit: int = _EMBED_BATCH_SIZE) -> dict[str, int]:
+    """Chunkea + embebe documentos ``extracted`` sin chunks o con versión vieja.
+
+    El segundo grupo es el re-embedding de C5.7 y va **después** del primero: un
+    documento sin ningún chunk no tiene retrieval en absoluto, mientras que uno
+    con la versión anterior sí lo tiene (degradado, pero consistente). Poner el
+    re-embedding delante dejaría a los documentos nuevos esperando detrás de una
+    migración que puede durar días.
+    """
+    from config.settings import settings
+    from db.repositories.documentos import DocumentosRepository
 
     repo = DocumentosRepository()
-    counts = {"documentos_procesados": 0, "chunks_creados": 0, "sin_texto": 0, "error": 0}
+    counts = {
+        "documentos_procesados": 0,
+        "chunks_creados": 0,
+        "sin_texto": 0,
+        "error": 0,
+        "reembebidos": 0,
+    }
 
     candidatos = repo.list_extracted_without_chunks(limit=limit)
-    if not candidatos:
+    obsoletos: list[dict[str, Any]] = []
+    if len(candidatos) < limit and settings.EMBEDDING_VERSION:
+        try:
+            obsoletos = repo.documentos_con_embedding_obsoleto(
+                settings.EMBEDDING_VERSION, limit=limit - len(candidatos)
+            )
+        except Exception:
+            # La columna puede no existir aún (entorno sin v119). El job sigue
+            # haciendo su trabajo normal en vez de caerse por el añadido.
+            log.warning("documentos_embed_version_query_failed", exc_info=True)
+    if not candidatos and not obsoletos:
         return counts
 
-    from services.embeddings import embeddings_available, encode_texts
+    from services.embeddings import embeddings_available
 
     if not embeddings_available():
         # sentence-transformers no instalado ([ml-embeddings] ausente) — se
@@ -86,22 +163,10 @@ def _run_embed_phase(limit: int = _EMBED_BATCH_SIZE) -> dict[str, int]:
         log.warning("documentos_embed_phase_skipped_no_ml_extra")
         return counts
 
-    for doc in candidatos:
-        texto = doc.get("texto")
-        chunks = chunk_text(texto) if texto else []
-        if not chunks:
-            counts["sin_texto"] += 1
-            continue
-        try:
-            embeddings = encode_texts(chunks)
-            n = repo.replace_chunks(doc["id"], chunks, embeddings)
-        except Exception as e:
-            log.warning("documentos_embed_failed", documento_id=doc["id"], error=str(e))
-            counts["error"] += 1
-            continue
-        counts["documentos_procesados"] += 1
-        counts["chunks_creados"] += n
-        documento_chunks_total.inc(n)
+    _embeber_documentos(repo, candidatos, counts)
+    antes = counts["documentos_procesados"]
+    _embeber_documentos(repo, obsoletos, counts)
+    counts["reembebidos"] = counts["documentos_procesados"] - antes
     return counts
 
 
@@ -249,11 +314,30 @@ def run_cli() -> int:
 
 
 def report_cli() -> int:
-    """Informa del estado de ``documentos``/``documento_chunks``."""
+    """Informa del estado de ``documentos``/``documento_chunks``.
+
+    Incluye el reparto de chunks por versión de embedding (C5.7): durante una
+    migración de modelo es la única forma de saber cuánto queda, y sin ella el
+    re-embedding sería un job sin progreso observable.
+    """
+    from config.settings import settings
     from db.repositories.documentos import DocumentosRepository
 
-    counts = DocumentosRepository().status_counts()
+    repo = DocumentosRepository()
+    counts = repo.status_counts()
     log.info("documentos_estado", **counts)
+    try:
+        por_version = repo.chunks_por_version()
+    except Exception:
+        log.warning("documentos_chunks_por_version_failed", exc_info=True)
+        return 0
+    pendientes = sum(int(f["n"]) for f in por_version if f["version"] != settings.EMBEDDING_VERSION)
+    log.info(
+        "documentos_chunks_por_version",
+        vigente=settings.EMBEDDING_VERSION,
+        pendientes=pendientes,
+        reparto={str(f["version"]): int(f["n"]) for f in por_version},
+    )
     return 0
 
 

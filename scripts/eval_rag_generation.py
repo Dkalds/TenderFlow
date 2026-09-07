@@ -6,13 +6,22 @@ CALIDAD de la respuesta generada — no determinista, cuesta dinero por
 ejecución, por eso vive fuera del gate de CI (RFC llm-dependencia-gestionada
 §3: "no se mete un eval de generación LLM en el gate de CI"). Imprime cada
 pregunta, los documentos recuperados y la respuesta generada para revisión
-humana; no hay pass/fail automático.
+humana.
+
+Mide además, sin intervención humana, **la tasa de citas válidas en modo
+licitación** (C5.3 / D29): el objetivo del plan es ≥ 90 % de respuestas con al
+menos una fuente que exista en el contexto enviado. La validación la hace el
+mismo módulo que la ruta (``services/rag/citas``), así que lo que se mide aquí
+es exactamente lo que el usuario recibe. La *calidad* de la respuesta sigue sin
+pass/fail automático: eso es revisión humana.
 
 Uso::
 
     make eval-llm
     # o directamente, con un modelo concreto:
     python scripts/eval_rag_generation.py --model gpt-4o-mini
+    # exigiendo el umbral del plan (devuelve 1 si no se alcanza):
+    python scripts/eval_rag_generation.py --min-citas 0.9
 """
 
 from __future__ import annotations
@@ -61,6 +70,15 @@ def main() -> int:
     parser.add_argument(
         "--limit", type=int, default=5, help="Nº de preguntas del golden set a probar"
     )
+    parser.add_argument(
+        "--min-citas",
+        type=float,
+        default=None,
+        help=(
+            "Tasa mínima de respuestas con fuente válida en modo licitación "
+            "(0-1). Sin este flag solo se informa."
+        ),
+    )
     args = parser.parse_args()
 
     sys.path.insert(0, str(_REPO_ROOT))
@@ -78,6 +96,12 @@ def main() -> int:
 
     _seed_temp_db(entries)
 
+    from services.rag.citas import evento_sources
+
+    con_contexto = 0
+    con_fuente = 0
+    inventadas = 0
+
     for i, entry in enumerate(entries, start=1):
         question = entry["question"]
         docs = search_for_ask(question, top_k=5)
@@ -86,15 +110,45 @@ def main() -> int:
         print(f"  recuperado: {[d['id_externo'] for d in docs]}")
         keywords = [w for w in question.split() if len(w) > 3][:10]
         print("  respuesta:")
+        partes: list[str] = []
         try:
             for chunk in stream_llm_response(question, docs, model, keywords):
+                partes.append(chunk)
                 print(chunk, end="", flush=True)
             print()
         except Exception as e:
             print(f"  [ERROR generando respuesta: {e}]")
+            continue
+
+        chunks = [c for d in docs for c in (d.get("chunks") or [])]
+        if not chunks:
+            # Sin fragmentos de pliego no hay nada que citar: contar esta
+            # respuesta en el denominador castigaría al modelo por un hueco del
+            # corpus, y la métrica dejaría de medir lo que dice medir.
+            print("  [citas: sin fragmentos de pliego en el contexto — fuera de la métrica]")
+            continue
+        con_contexto += 1
+        evento = evento_sources("".join(partes), chunks)
+        inventadas += int(evento["descartadas"])
+        if not evento["sin_fuentes"]:
+            con_fuente += 1
+        print(f"  [citas: {len(evento['sources'])} válidas, {evento['descartadas']} inventadas]")
+
+    print(f"\n{'=' * 70}")
+    if con_contexto:
+        tasa = con_fuente / con_contexto
+        print(
+            f"Citas válidas (C5.3): {con_fuente}/{con_contexto} respuestas "
+            f"= {tasa:.0%}; {inventadas} marcador/es inventado/s. Objetivo del plan: 90 %."
+        )
+        if args.min_citas is not None and tasa < args.min_citas:
+            print(f"FALLO: {tasa:.0%} por debajo del mínimo exigido ({args.min_citas:.0%}).")
+            return 1
+    else:
+        print("Citas válidas (C5.3): sin población — ninguna pregunta trajo pliegos.")
 
     print(
-        f"\n{'=' * 70}\nRevisión manual: ¿las respuestas citan correctamente los documentos "
+        "Revisión manual: ¿las respuestas citan correctamente los documentos "
         "recuperados y responden la pregunta con datos reales (no alucinados)?"
     )
     return 0
