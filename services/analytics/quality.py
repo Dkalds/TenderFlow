@@ -10,6 +10,7 @@ pandas perdía al convertir la columna a ``Timestamp``.
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from typing import Any
 
 import pandas as pd
 from pydantic import BaseModel, Field
@@ -171,7 +172,7 @@ def _adjudicaciones_por_fuente() -> list[AdjudicacionesPorFuente]:
         if n <= 0:
             continue
 
-        def _pct(clave: str, total: int = n, f: dict = fila) -> float:
+        def _pct(clave: str, total: int = n, f: dict[str, Any] = fila) -> float:
             return round(100.0 * int(f.get(clave) or 0) / total, 1)
 
         salida.append(

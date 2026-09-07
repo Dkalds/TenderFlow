@@ -124,6 +124,23 @@ def _build_pdf(rows: list[dict[str, Any]], title: str) -> bytes:
 )
 async def download_export(
     format: Literal["csv", "excel", "pdf"] = Query("csv"),
+    recurso: Literal["licitaciones", "pursuits"] = Query(
+        "licitaciones",
+        description=(
+            "Qué se exporta. `pursuits` baja el tablero de oportunidades de tu "
+            "organización con los filtros del tablero (C6.7); `licitaciones`, el "
+            "corpus con los filtros de búsqueda. No se mezclan: son dos "
+            "colecciones con columnas distintas."
+        ),
+    ),
+    pursuit_status: str | None = Query(
+        None,
+        alias="pursuit_status",
+        description="Filtro de estado del tablero. Solo con `recurso=pursuits`.",
+    ),
+    responsible_user_id: int | None = Query(
+        None, ge=1, description="Filtro de responsable. Solo con `recurso=pursuits`."
+    ),
     q: str | None = Query(None),
     estado: str | None = Query(None),
     ccaa: str | None = Query(None),
@@ -150,6 +167,15 @@ async def download_export(
     """
     from services.exports import generate_csv, generate_excel, get_export_filename
     from services.licitaciones import fetch_for_pdf
+
+    if recurso == "pursuits":
+        return await _download_pursuits(
+            format=format,
+            status_filtro=pursuit_status,
+            responsible_user_id=responsible_user_id,
+            limit=limit,
+            user=_user,
+        )
 
     def _render() -> tuple[bytes, str, int]:
         """Consulta + serialización, fuera del event loop.
@@ -191,6 +217,71 @@ async def download_export(
     content, media_type, n_rows = await run_db(_render)
 
     log.info("export_download", format=format, n_rows=n_rows)
+    return StreamingResponse(
+        io.BytesIO(content),
+        media_type=media_type,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+async def _download_pursuits(
+    *,
+    format: Literal["csv", "excel", "pdf"],
+    status_filtro: str | None,
+    responsible_user_id: int | None,
+    limit: int,
+    user: dict[str, Any],
+) -> StreamingResponse:
+    """Export del tablero de oportunidades (C6.7).
+
+    **PDF queda fuera**: su maquetación es una tabla por expediente del corpus
+    público, y el tablero es otra colección con otras columnas. Reutilizarla
+    daría un documento con las cabeceras de una cosa y los datos de otra.
+
+    La sanitización de fórmulas es la misma de siempre
+    (`shared.export_safety.sanitize_spreadsheet_record`, dentro de
+    `generate_csv`/`generate_excel`): un `decision_reason` que empiece por `=`
+    es una fórmula en Excel, y aquí el texto lo escribe el propio equipo — que
+    es exactamente el caso en que nadie sospecha del fichero.
+    """
+    from db.repositories.pursuits import PursuitRepository
+    from services.exports import (
+        PURSUIT_COLUMNS,
+        generate_csv,
+        generate_excel,
+        get_export_filename,
+    )
+    from services.organizations import OrganizationAccessError, resolve_organization
+
+    if format == "pdf":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="El tablero de oportunidades se exporta en CSV o Excel, no en PDF.",
+        )
+
+    def _render() -> tuple[bytes, str, int]:
+        organizacion, _role = resolve_organization(int(user["user_id"]), None)
+        rows = PursuitRepository().export_rows(
+            organizacion,
+            status=status_filtro,
+            responsible_user_id=responsible_user_id,
+            limit=limit,
+        )
+        if format == "excel":
+            return (
+                generate_excel(rows, PURSUIT_COLUMNS),
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                len(rows),
+            )
+        return generate_csv(rows, PURSUIT_COLUMNS), "text/csv; charset=utf-8", len(rows)
+
+    try:
+        content, media_type, n_rows = await run_db(_render)
+    except OrganizationAccessError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+
+    filename = get_export_filename(format, prefix="oportunidades")
+    log.info("export_download", format=format, recurso="pursuits", n_rows=n_rows)
     return StreamingResponse(
         io.BytesIO(content),
         media_type=media_type,

@@ -2573,6 +2573,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/organizations/go-no-go/weights": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Go No Go Weights */
+        get: operations["get_go_no_go_weights_api_v1_organizations_go_no_go_weights_get"];
+        /**
+         * Put Go No Go Weights
+         * @description Cambia los pesos de la plantilla. Solo owner/admin; queda auditado.
+         */
+        put: operations["put_go_no_go_weights_api_v1_organizations_go_no_go_weights_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/organizations/{organization_id}/delete": {
         parameters: {
             query?: never;
@@ -2982,6 +3003,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/pursuits/mi-baja": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Mi Baja
+         * @description Mi baja media por CPV4 y por órgano, frente a la del mercado.
+         *
+         *     `suficiente` dice si el segmento llega a las cinco ofertas que el ítem
+         *     exige; los que no llegan salen igual **con su `n`**, porque saber que solo
+         *     hay dos es información y no saberlo es lo que engaña.
+         */
+        get: operations["get_mi_baja_api_v1_pursuits_mi_baja_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/pursuits/tasks/agenda": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Tasks Agenda
+         * @description Tareas abiertas de la organización por urgencia (Mi Pipeline → Agenda).
+         */
+        get: operations["get_tasks_agenda_api_v1_pursuits_tasks_agenda_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/pursuits/{pursuit_id}": {
         parameters: {
             query?: never;
@@ -3048,6 +3113,69 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/api/v1/pursuits/{pursuit_id}/go-no-go": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Pursuit Go No Go
+         * @description Puntuación ponderada de la oportunidad y si contradice la decisión tomada.
+         */
+        get: operations["get_pursuit_go_no_go_api_v1_pursuits__pursuit_id__go_no_go_get"];
+        /** Put Pursuit Go No Go */
+        put: operations["put_pursuit_go_no_go_api_v1_pursuits__pursuit_id__go_no_go_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/pursuits/{pursuit_id}/tasks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Pursuit Tasks
+         * @description Tareas de la oportunidad: abiertas primero y por vencimiento.
+         */
+        get: operations["get_pursuit_tasks_api_v1_pursuits__pursuit_id__tasks_get"];
+        put?: never;
+        /**
+         * Post Pursuit Task
+         * @description Crea una tarea y recalcula `next_action`, que pasa a derivarse de estas.
+         */
+        post: operations["post_pursuit_task_api_v1_pursuits__pursuit_id__tasks_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/pursuits/{pursuit_id}/tasks/{task_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Pursuit Task */
+        delete: operations["delete_pursuit_task_api_v1_pursuits__pursuit_id__tasks__task_id__delete"];
+        options?: never;
+        head?: never;
+        /** Patch Pursuit Task */
+        patch: operations["patch_pursuit_task_api_v1_pursuits__pursuit_id__tasks__task_id__patch"];
         trace?: never;
     };
     "/api/v1/radar/dismissals": {
@@ -3265,6 +3393,30 @@ export interface paths {
         post?: never;
         /** Eliminar un favorito propio */
         delete: operations["delete_item_api_v1_watchlist_items__id_externo__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/watchlist/items/{id_externo}/nota": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Escribir o borrar la nota personal de un favorito
+         * @description La nota es de quien la escribe, no de la organización.
+         *
+         *     El repositorio filtra solo por `user_key` a propósito: dos personas que
+         *     siguen el mismo expediente tienen cada una la suya, y un compañero no puede
+         *     sobrescribir la de otro aunque el favorito esté compartido.
+         */
+        put: operations["put_item_nota_api_v1_watchlist_items__id_externo__nota_put"];
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -5425,6 +5577,74 @@ export interface components {
              */
             concentracion_top3: number;
         };
+        /** GoNoGoCriterioOut */
+        GoNoGoCriterioOut: {
+            /** Author Name */
+            author_name?: string | null;
+            /** Criterio */
+            criterio: string;
+            /** Etiqueta */
+            etiqueta: string;
+            /** Invertido */
+            invertido: boolean;
+            /** Motivo */
+            motivo?: string | null;
+            /** Peso */
+            peso?: number | null;
+            /** Puntuacion */
+            puntuacion?: number | null;
+        };
+        /** GoNoGoScoreIn */
+        GoNoGoScoreIn: {
+            /** Criterio */
+            criterio: string;
+            /** Motivo */
+            motivo?: string | null;
+            /** Puntuacion */
+            puntuacion: number;
+        };
+        /** GoNoGoScoreOut */
+        GoNoGoScoreOut: {
+            /** Completa */
+            completa: boolean;
+            /** Criterios */
+            criterios: components["schemas"]["GoNoGoCriterioOut"][];
+            /** Criterios Puntuados */
+            criterios_puntuados: number;
+            /** Decision */
+            decision?: string | null;
+            /** Discrepa */
+            discrepa: boolean;
+            /** Organization Id */
+            organization_id: number;
+            /** Pursuit Id */
+            pursuit_id: number;
+            /** Recomendacion */
+            recomendacion: string;
+            /** Total */
+            total: number;
+            /** Umbral */
+            umbral: number;
+        };
+        /**
+         * GoNoGoWeightsIn
+         * @description Pesos por criterio. Los ausentes conservan su valor guardado.
+         */
+        GoNoGoWeightsIn: {
+            /** Pesos */
+            pesos: {
+                [key: string]: number;
+            };
+        };
+        /** GoNoGoWeightsOut */
+        GoNoGoWeightsOut: {
+            /** Criterios */
+            criterios: components["schemas"]["GoNoGoCriterioOut"][];
+            /** Organization Id */
+            organization_id: number;
+            /** Umbral */
+            umbral: number;
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -5914,6 +6134,36 @@ export interface components {
             window_from?: string | null;
             /** Window To */
             window_to?: string | null;
+        };
+        /** MiBajaOut */
+        MiBajaOut: {
+            /** Base */
+            base: string;
+            /** Ofertas Consideradas */
+            ofertas_consideradas: number;
+            /** Organization Id */
+            organization_id: number;
+            /** Segmentos */
+            segmentos: components["schemas"]["MiBajaSegmento"][];
+        };
+        /** MiBajaSegmento */
+        MiBajaSegmento: {
+            /** Baja Mercado Pct */
+            baja_mercado_pct?: number | null;
+            /** Baja Propia Pct */
+            baja_propia_pct?: number | null;
+            /** Clave */
+            clave: string;
+            /** Contratos Mercado */
+            contratos_mercado: number;
+            /** Delta Pct */
+            delta_pct?: number | null;
+            /** N */
+            n: number;
+            /** Segmento */
+            segmento: string;
+            /** Suficiente */
+            suficiente: boolean;
         };
         /** ModelActivated */
         ModelActivated: {
@@ -7232,6 +7482,72 @@ export interface components {
             updated_at: string;
             /** Version */
             version: number;
+        };
+        /**
+         * PursuitTaskCreate
+         * @description Alta de una tarea. `vence` es `YYYY-MM-DD` o ausente.
+         */
+        PursuitTaskCreate: {
+            /** Responsable User Id */
+            responsable_user_id?: number | null;
+            /** Titulo */
+            titulo: string;
+            /** Vence */
+            vence?: string | null;
+        };
+        /** PursuitTaskOut */
+        PursuitTaskOut: {
+            /** Created At */
+            created_at: string;
+            /** Estado */
+            estado: string;
+            /** Id */
+            id: number;
+            /** Organization Id */
+            organization_id: number;
+            /** Pursuit Id */
+            pursuit_id: number;
+            /** Responsable Name */
+            responsable_name?: string | null;
+            /** Responsable User Id */
+            responsable_user_id?: number | null;
+            /** Titulo */
+            titulo: string;
+            /** Updated At */
+            updated_at: string;
+            /** Vence */
+            vence?: string | null;
+        };
+        /**
+         * PursuitTaskPatch
+         * @description Cambios sobre una tarea. Ausente = no tocar.
+         *
+         *     `limpiar_responsable` y `limpiar_vence` existen porque `null` ya significa
+         *     «no tocar»: sin ellos, quitarle la fecha a una tarea sería imposible, o bien
+         *     no mandarla la borraría sin querer.
+         */
+        PursuitTaskPatch: {
+            /**
+             * Estado
+             * @description pendiente | en_curso | hecha | descartada
+             */
+            estado?: string | null;
+            /**
+             * Limpiar Responsable
+             * @default false
+             */
+            limpiar_responsable: boolean;
+            /**
+             * Limpiar Vence
+             * @default false
+             */
+            limpiar_vence: boolean;
+            /** Responsable User Id */
+            responsable_user_id?: number | null;
+            /** Titulo */
+            titulo?: string | null;
+            /** Vence */
+            vence?: string | null;
         };
         /**
          * PursuitUpdate
@@ -9059,6 +9375,8 @@ export interface components {
             id_externo: string;
             /** Importe */
             importe: number | null;
+            /** Nota */
+            nota?: string | null;
             /** Organization Id */
             organization_id: number | null;
             /** Titulo */
@@ -9088,6 +9406,17 @@ export interface components {
              * @default private
              */
             visibility: string;
+        };
+        /**
+         * WatchlistNotaBody
+         * @description Nota personal de un favorito (C6.6).
+         *
+         *     `None` o cadena vacía la borran: no hace falta un endpoint aparte para
+         *     quitarla, y tener dos formas de borrar es tener una que alguien olvida.
+         */
+        WatchlistNotaBody: {
+            /** Nota */
+            nota?: string | null;
         };
         /**
          * WatchlistRuleBody
@@ -12081,6 +12410,12 @@ export interface operations {
         parameters: {
             query?: {
                 format?: "csv" | "excel" | "pdf";
+                /** @description Qué se exporta. `pursuits` baja el tablero de oportunidades de tu organización con los filtros del tablero (C6.7); `licitaciones`, el corpus con los filtros de búsqueda. No se mezclan: son dos colecciones con columnas distintas. */
+                recurso?: "licitaciones" | "pursuits";
+                /** @description Filtro de estado del tablero. Solo con `recurso=pursuits`. */
+                pursuit_status?: string | null;
+                /** @description Filtro de responsable. Solo con `recurso=pursuits`. */
+                responsible_user_id?: number | null;
                 q?: string | null;
                 estado?: string | null;
                 ccaa?: string | null;
@@ -14325,6 +14660,80 @@ export interface operations {
             };
         };
     };
+    get_go_no_go_weights_api_v1_organizations_go_no_go_weights_get: {
+        parameters: {
+            query?: {
+                organization_id?: number | null;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoNoGoWeightsOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_go_no_go_weights_api_v1_organizations_go_no_go_weights_put: {
+        parameters: {
+            query?: {
+                organization_id?: number | null;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GoNoGoWeightsIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoNoGoWeightsOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     post_delete_organization_api_v1_organizations__organization_id__delete_post: {
         parameters: {
             query?: never;
@@ -15074,6 +15483,77 @@ export interface operations {
             };
         };
     };
+    get_mi_baja_api_v1_pursuits_mi_baja_get: {
+        parameters: {
+            query?: {
+                organization_id?: number | null;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MiBajaOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_tasks_agenda_api_v1_pursuits_tasks_agenda_get: {
+        parameters: {
+            query?: {
+                organization_id?: number | null;
+                limit?: number;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PursuitTaskOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_pursuit_detail_api_v1_pursuits__pursuit_id__get: {
         parameters: {
             query?: {
@@ -15258,6 +15738,240 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_pursuit_go_no_go_api_v1_pursuits__pursuit_id__go_no_go_get: {
+        parameters: {
+            query?: {
+                organization_id?: number | null;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                pursuit_id: number;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoNoGoScoreOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_pursuit_go_no_go_api_v1_pursuits__pursuit_id__go_no_go_put: {
+        parameters: {
+            query?: {
+                organization_id?: number | null;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                pursuit_id: number;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GoNoGoScoreIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoNoGoScoreOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_pursuit_tasks_api_v1_pursuits__pursuit_id__tasks_get: {
+        parameters: {
+            query?: {
+                organization_id?: number | null;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                pursuit_id: number;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PursuitTaskOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_pursuit_task_api_v1_pursuits__pursuit_id__tasks_post: {
+        parameters: {
+            query?: {
+                organization_id?: number | null;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                pursuit_id: number;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PursuitTaskCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PursuitTaskOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_pursuit_task_api_v1_pursuits__pursuit_id__tasks__task_id__delete: {
+        parameters: {
+            query?: {
+                organization_id?: number | null;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                pursuit_id: number;
+                task_id: number;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_pursuit_task_api_v1_pursuits__pursuit_id__tasks__task_id__patch: {
+        parameters: {
+            query?: {
+                organization_id?: number | null;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                pursuit_id: number;
+                task_id: number;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PursuitTaskPatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PursuitTaskOut"];
+                };
             };
             /** @description Validation Error */
             422: {
@@ -15758,6 +16472,55 @@ export interface operations {
         responses: {
             /** @description Successful Response */
             204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_item_nota_api_v1_watchlist_items__id_externo__nota_put: {
+        parameters: {
+            query?: {
+                /** @description Organización activa; por defecto la personal del usuario. */
+                organization_id?: number | null;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                id_externo: string;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WatchlistNotaBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WatchlistNotaBody"];
+                };
+            };
+            /** @description El favorito no es tuyo o no existe */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

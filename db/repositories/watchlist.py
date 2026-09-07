@@ -196,7 +196,7 @@ class WatchlistRepository:
         with connect_read() as c:
             cur = c.execute(
                 "SELECT wi.id, wi.id_externo, wi.created_at, "
-                "       wi.organization_id, wi.visibility, "
+                "       wi.organization_id, wi.visibility, wi.nota, "
                 "       l.titulo, l.importe, l.estado, l.fecha_publicacion "
                 "FROM watchlist_items wi "
                 "LEFT JOIN licitaciones l ON l.id_externo = wi.id_externo "
@@ -254,12 +254,40 @@ class WatchlistRepository:
             )
             cur = c.execute(
                 "SELECT id, user_key, user_id, id_externo, organization_id, "
-                "visibility, created_at "
+                "visibility, nota, created_at "
                 "FROM watchlist_items WHERE user_key = %s AND id_externo = %s",
                 (user_key, id_externo),
             )
             rows = rows_to_dicts(cur)
         return rows[0] if rows else {}
+
+    #: Tope de la nota, igual que el CHECK de v123.
+    MAX_NOTA = 2000
+
+    def set_nota(
+        self,
+        user_key: str,
+        id_externo: str,
+        nota: str | None,
+    ) -> bool:
+        """Escribe (o borra, con `None`) la nota **personal** de un favorito (C6.6).
+
+        El filtro es solo `user_key`, deliberadamente, y no la organización: la
+        nota es de quien la escribe. Un favorito con `visibility='organization'`
+        lo ven todos los miembros, pero la nota no —dos personas que siguen el
+        mismo expediente tienen cada una la suya, en su propia fila—. Acotar por
+        organización aquí permitiría que un compañero sobrescribiera la nota de
+        otro sin que nada fallara.
+
+        `False` si esa persona no tiene ese favorito.
+        """
+        limpia = (nota or "").strip()
+        with connect() as c:
+            cur = c.execute(
+                "UPDATE watchlist_items SET nota = %s WHERE user_key = %s AND id_externo = %s",
+                ((limpia[: self.MAX_NOTA] or None), user_key, id_externo),
+            )
+            return bool(getattr(cur, "rowcount", 0))
 
     def remove_item(
         self,

@@ -68,7 +68,7 @@ Generado: 2026-09-07
 
 ## Superficie de la API
 
-**188 endpoints** expuestos.
+**199 endpoints** expuestos.
 
 <details><summary>Ver listado</summary>
 
@@ -202,6 +202,8 @@ Generado: 2026-09-07
 | GET | `/api/v1/organizations` |
 | POST | `/api/v1/organizations` |
 | GET | `/api/v1/organizations/active` |
+| GET | `/api/v1/organizations/go-no-go/weights` |
+| PUT | `/api/v1/organizations/go-no-go/weights` |
 | POST | `/api/v1/organizations/{organization_id}/delete` |
 | GET | `/api/v1/organizations/{organization_id}/deletion-preview` |
 | POST | `/api/v1/organizations/{organization_id}/leave` |
@@ -222,11 +224,19 @@ Generado: 2026-09-07
 | POST | `/api/v1/pursuits` |
 | GET | `/api/v1/pursuits/agenda` |
 | GET | `/api/v1/pursuits/metrics` |
+| GET | `/api/v1/pursuits/mi-baja` |
+| GET | `/api/v1/pursuits/tasks/agenda` |
 | GET | `/api/v1/pursuits/{pursuit_id}` |
 | PATCH | `/api/v1/pursuits/{pursuit_id}` |
 | GET | `/api/v1/pursuits/{pursuit_id}/comments` |
 | POST | `/api/v1/pursuits/{pursuit_id}/comments` |
 | DELETE | `/api/v1/pursuits/{pursuit_id}/comments/{comment_id}` |
+| GET | `/api/v1/pursuits/{pursuit_id}/go-no-go` |
+| PUT | `/api/v1/pursuits/{pursuit_id}/go-no-go` |
+| GET | `/api/v1/pursuits/{pursuit_id}/tasks` |
+| POST | `/api/v1/pursuits/{pursuit_id}/tasks` |
+| DELETE | `/api/v1/pursuits/{pursuit_id}/tasks/{task_id}` |
+| PATCH | `/api/v1/pursuits/{pursuit_id}/tasks/{task_id}` |
 | GET | `/api/v1/radar/dismissals` |
 | POST | `/api/v1/radar/dismissals` |
 | DELETE | `/api/v1/radar/dismissals/{id_externo:path}` |
@@ -244,6 +254,7 @@ Generado: 2026-09-07
 | GET | `/api/v1/watchlist/items` |
 | POST | `/api/v1/watchlist/items` |
 | DELETE | `/api/v1/watchlist/items/{id_externo:path}` |
+| PUT | `/api/v1/watchlist/items/{id_externo:path}/nota` |
 | GET | `/api/v1/watchlist/rules` |
 | POST | `/api/v1/watchlist/rules` |
 | GET | `/api/v1/watchlist/rules/baja` |

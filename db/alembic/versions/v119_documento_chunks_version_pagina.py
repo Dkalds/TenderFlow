@@ -43,6 +43,7 @@ no existe.
 from __future__ import annotations
 
 from collections.abc import Sequence
+from typing import Any
 
 import sqlalchemy as sa
 from alembic import op
@@ -52,7 +53,7 @@ down_revision: str | Sequence[str] | None = "v118_webhook_deliveries_reintento"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
-COLUMNAS: tuple[tuple[str, object], ...] = (
+COLUMNAS: tuple[tuple[str, type[sa.types.TypeEngine[Any]]], ...] = (
     ("embedding_model", sa.Text),
     ("embedding_version", sa.Text),
     ("page_number", sa.Integer),

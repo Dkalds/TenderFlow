@@ -314,6 +314,10 @@ class WatchlistFavoriteItem(BaseModel):
     created_at: PgDateTime | None
     organization_id: int | None
     visibility: str | None
+    # Nota **personal** del favorito (C6.6). Aunque el favorito sea visible para
+    # toda la organización, la nota no: cada persona tiene su propia fila, así
+    # que aquí solo llega la de quien pregunta.
+    nota: str | None = None
     titulo: str | None
     importe: float | None
     estado: str | None

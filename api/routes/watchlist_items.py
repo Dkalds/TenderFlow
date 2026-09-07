@@ -62,6 +62,16 @@ class WatchlistItemBody(BaseModel):
     visibility: str = Field(default="private", pattern="^(private|organization)$")
 
 
+class WatchlistNotaBody(BaseModel):
+    """Nota personal de un favorito (C6.6).
+
+    `None` o cadena vacía la borran: no hace falta un endpoint aparte para
+    quitarla, y tener dos formas de borrar es tener una que alguien olvida.
+    """
+
+    nota: str | None = Field(default=None, max_length=2000)
+
+
 @router.get("", summary="Listar favoritos del usuario (enriquecidos)")
 async def get_items(
     organization_id: int | None = Query(default=None, ge=1),
@@ -140,3 +150,28 @@ async def delete_item(
     ok = await run_db(_repo.remove_item, _user_key(ctx), id_externo, ctx["organization_id"])
     if not ok:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Favorito no encontrado.")
+
+
+@router.put(
+    # Va ANTES del `DELETE /{id_externo:path}` en el fichero, pero son métodos
+    # distintos: no se ensombrecen. El `:path` es por el mismo motivo que allí —
+    # los identificadores de PLACSP llevan barras.
+    "/{id_externo:path}/nota",
+    summary="Escribir o borrar la nota personal de un favorito",
+    responses={404: {"description": "El favorito no es tuyo o no existe"}},
+)
+async def put_item_nota(
+    id_externo: str,
+    body: WatchlistNotaBody,
+    ctx: dict[str, Any] = Depends(require_organization(write=True)),
+) -> WatchlistNotaBody:
+    """La nota es de quien la escribe, no de la organización.
+
+    El repositorio filtra solo por `user_key` a propósito: dos personas que
+    siguen el mismo expediente tienen cada una la suya, y un compañero no puede
+    sobrescribir la de otro aunque el favorito esté compartido.
+    """
+    ok = await run_db(_repo.set_nota, _user_key(ctx), id_externo, body.nota)
+    if not ok:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Favorito no encontrado.")
+    return body
