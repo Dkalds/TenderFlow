@@ -7,6 +7,7 @@ para subcontratación.
 
 from __future__ import annotations
 
+import re
 from collections import Counter
 from itertools import combinations
 from typing import Any
@@ -131,13 +132,21 @@ def suggest_partners(
     adj: pd.DataFrame,
     *,
     keywords: list[str] | None = None,
+    cpv_prefijo: str | None = None,
     ccaa: str | None = None,
     min_importe: float = 0.0,
 ) -> pd.DataFrame:
-    """Ranking de partners potenciales filtrado por keywords/CCAA.
+    """Ranking de partners potenciales filtrado por keywords/CPV/CCAA.
 
-    Filtra adjudicaciones por keywords en titulo/CPV, agrupa por empresa
-    y calcula métricas de interés para subcontratación.
+    ``keywords`` son texto libre y se buscan como subcadena en título y CPV;
+    se escapan antes de componer el patrón, porque llegan de la query de
+    ``/competitive/partners`` y un ``(`` reventaba la petición entera con un
+    ``re.error`` y un ``.*`` la convertía en «todas las adjudicaciones».
+
+    ``cpv_prefijo`` es la vía correcta para un CPV: compara **por prefijo
+    contra la columna** ``cpv``, no como subcadena del título. Buscar "72"
+    como texto casaba con «Lote 72» y «expediente 72/2026», así que el
+    ranking salía de un segmento que no era el pedido.
 
     Returns:
         DataFrame con columnas: empresa, empresa_key, n_contratos,
@@ -146,14 +155,18 @@ def suggest_partners(
     dff = adj.copy()
 
     if keywords:
-        pattern = "|".join(keywords)
-        titulo_match = dff["titulo"].str.contains(pattern, case=False, na=False)
-        cpv_match = (
-            dff["cpv"].str.contains(pattern, case=False, na=False)
-            if "cpv" in dff.columns
-            else False
-        )
-        dff = dff[titulo_match | cpv_match]
+        pattern = "|".join(re.escape(k) for k in keywords if k)
+        if pattern:
+            titulo_match = dff["titulo"].str.contains(pattern, case=False, na=False)
+            cpv_match = (
+                dff["cpv"].str.contains(pattern, case=False, na=False)
+                if "cpv" in dff.columns
+                else False
+            )
+            dff = dff[titulo_match | cpv_match]
+
+    if cpv_prefijo and "cpv" in dff.columns:
+        dff = dff[dff["cpv"].fillna("").astype(str).str.startswith(cpv_prefijo)]
 
     if ccaa and ccaa != "Todas":
         dff = dff[dff["ccaa"] == ccaa]

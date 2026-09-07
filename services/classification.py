@@ -26,6 +26,7 @@ from services.normalization import fold_text
 
 # Re-export geo helpers for convenience
 from shared.geo import NUTS3_TO_CCAA, nuts_to_ccaa
+from shared.procedimientos import TIPOS_CONTRATO, etiqueta_tipo_contrato
 
 __all__ = [
     "CPV_NAMES",
@@ -318,20 +319,29 @@ def normalizar_estado(fase: str | None) -> str | None:
 
 
 # ── Decoder tipo de contrato ───────────────────────────────────────────
+#
+# El mapa vive en :mod:`shared.procedimientos`, junto al de procedimiento y
+# tramitación, porque los tres salen de listas controladas de la misma fuente y
+# los tres los sirve `GET /meta/filters`. Aquí solo queda el re-export, que es
+# la superficie que ya consumían `services/analytics/organo_detail.py` y los
+# tests.
+#
+# La copia que vivía aquí tenía **40 como «Patrimonial» y 50 como «Privado»**
+# cuando la codelist (`SyndicationContractCode-2.07.gc`) dice 40 =
+# colaboración público-privada, 50 = patrimonial y 8 = privado, y le faltaban
+# el 7, el 8, el 22 y el 32. Es justo el fallo contra el que avisaba v85 al
+# decidir guardar el código crudo: una etiqueta plausible y equivocada.
 TIPO_CONTRATO_LABELS: dict[str, str] = {
-    "1": "Suministros",
-    "2": "Servicios",
-    "3": "Obras",
-    "21": "Gestión servicios públicos",
-    "31": "Concesión obras públicas",
-    "40": "Patrimonial",
-    "50": "Privado",
-    "999": "Otro",
+    codigo: entrada.etiqueta for codigo, entrada in TIPOS_CONTRATO.items()
 }
 
 
 def tipo_contrato_label(code: str | None) -> str:
-    """Devuelve etiqueta legible para un código de tipo de contrato."""
-    if not code:
-        return "—"
-    return TIPO_CONTRATO_LABELS.get(code.strip(), f"Tipo {code}")
+    """Devuelve etiqueta legible para un código de tipo de contrato.
+
+    Sin catalogar devuelve el código tal cual —no ``f"Tipo {code}"``—: la
+    consola necesita distinguir «esto es un código que no sabemos traducir» de
+    una etiqueta cualquiera, y lo hace comparando con el catálogo, no
+    parseando un prefijo.
+    """
+    return etiqueta_tipo_contrato(code)

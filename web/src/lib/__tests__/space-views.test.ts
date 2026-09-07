@@ -12,11 +12,13 @@ const allViews = (): [string, SpaceView][] =>
   );
 
 describe("SPACE_VIEWS", () => {
-  it("cubre los cinco espacios multivista con su recuento del rediseño", () => {
-    // Los recuentos son el contrato de `docs/redesign/README.md`. Si uno
-    // cambia sin actualizar el doc, la tabla del README miente.
+  it("cubre los espacios multivista con su recuento del rediseño", () => {
+    // Los recuentos son el contrato de `docs/redesign/README.md`. Si uno cambia
+    // sin actualizar el doc, la tabla del README miente.
     expect(Object.keys(SPACE_VIEWS).sort()).toEqual([
       "competencia",
+      "cuentas",
+      "direccion",
       "empresas",
       "mercado",
       "mi-pipeline",
@@ -24,16 +26,24 @@ describe("SPACE_VIEWS", () => {
     ]);
     expect(SPACE_VIEWS.mercado).toHaveLength(8);
     expect(SPACE_VIEWS.competencia).toHaveLength(2);
-    expect(SPACE_VIEWS["mi-pipeline"]).toHaveLength(3);
+    expect(SPACE_VIEWS["mi-pipeline"]).toHaveLength(4);
     expect(SPACE_VIEWS.ops).toHaveLength(6);
     expect(SPACE_VIEWS.empresas).toHaveLength(2);
+    expect(SPACE_VIEWS.cuentas).toHaveLength(2);
+    expect(SPACE_VIEWS.direccion).toHaveLength(3);
   });
 
-  it("empresas es el único espacio con vistas que no absorbe ninguna ruta", () => {
-    // Sus dos vistas siempre vivieron dentro de `/empresas`: entran en la
-    // tabla para ser direccionables (`?vista=revision`), no para absorber
-    // nada. Por eso el recuento de rutas heredadas de abajo no sube.
-    expect(SPACE_VIEWS.empresas.every((view) => view.from === undefined)).toBe(true);
+  it("los espacios que no consolidan nada no declaran rutas heredadas", () => {
+    // `empresas` tenía sus dos vistas dentro de `/empresas`; `cuentas` y
+    // `direccion` son espacios nuevos del plan de funcionalidades 2026-09.
+    // Los tres entran en la tabla para ser direccionables (`?vista=`), no para
+    // absorber nada, y por eso el recuento de rutas heredadas de abajo no sube.
+    for (const slug of ["empresas", "cuentas", "direccion"]) {
+      expect(
+        SPACE_VIEWS[slug].every((view) => view.from === undefined),
+        `${slug} no debería absorber rutas`,
+      ).toBe(true);
+    }
   });
 
   it("absorbe 18 rutas heredadas, todas distintas", () => {
@@ -57,9 +67,9 @@ describe("SPACE_VIEWS", () => {
 });
 
 describe("BUILT_SPACE_ROUTES", () => {
-  it("declara los 14 espacios, sin repetir y sin barra inicial", () => {
-    expect(BUILT_SPACE_ROUTES).toHaveLength(14);
-    expect(new Set(BUILT_SPACE_ROUTES).size).toBe(14);
+  it("declara los 16 espacios, sin repetir y sin barra inicial", () => {
+    expect(BUILT_SPACE_ROUTES).toHaveLength(16);
+    expect(new Set(BUILT_SPACE_ROUTES).size).toBe(16);
     for (const slug of BUILT_SPACE_ROUTES) {
       expect(slug.startsWith("/")).toBe(false);
     }

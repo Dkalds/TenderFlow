@@ -115,7 +115,21 @@ describe("registrarEvento", () => {
     // Subido de 13 a 14 el 2026-09-01 con `sesion_iniciada`: aporta el
     // denominador que faltaba para interpretar todo el embudo y distingue sus
     // cuatro puertas sin enviar identidad ni otro dato de cardinalidad alta.
-    expect(Object.keys(PROPIEDADES_PERMITIDAS).length).toBeLessThanOrEqual(14);
+    //
+    // Subido de 14 a 22 el 2026-09-06 por el plan de funcionalidades 2026-09,
+    // que lo fija como métrica de cierre («14 + 8 nuevos, ninguno con
+    // identificador»). Los ocho miden funciones que hoy no existen y que sin
+    // evento propio serían indistinguibles del uso que ya se mide:
+    // `organo_seguido` (trabajar por cuentas y no por expedientes),
+    // `etiqueta_aplicada`, `simulador_usado`, `kit_abierto`,
+    // `guion_generado`, `partners_consultado` (las tres funciones de
+    // `services/partners.py` llevaban meses sin consumidor: este evento dirá
+    // si darles pantalla estuvo justificado), `cartera_abierta` y
+    // `dato_reportado`. El resto de lo que pide el plan viaja como propiedad
+    // de un evento existente, que es lo que evita que el catálogo crezca más.
+    //
+    // El tope sigue pegado al tamaño real: no hay hueco libre.
+    expect(Object.keys(PROPIEDADES_PERMITIDAS).length).toBeLessThanOrEqual(22);
   });
 });
 

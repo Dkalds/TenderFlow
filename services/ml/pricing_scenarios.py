@@ -14,8 +14,12 @@ import numpy as np
 from pydantic import BaseModel, Field
 
 from db.repositories.pricing import PricingRepository
+from observability.logging import get_logger
+from shared.tender_facts import RateCardFact
 
 _MIN_INDICATIVE_N = 8
+
+log = get_logger(__name__)
 
 
 class HistoricalDistribution(BaseModel):
@@ -28,11 +32,42 @@ class HistoricalDistribution(BaseModel):
     observed_interval: tuple[float, float]
 
 
+class MargenImplicito(BaseModel):
+    """F2.4 — qué margen deja este precio, si el pliego publica tarifas.
+
+    Sólo existe cuando la ficha trae ``rate_cards`` **con tarifa y horas**: el
+    coste estimado es la suma de tarifa por horas de cada perfil, y sin las dos
+    mitades no hay coste que restar. Por eso no se calcula «con lo que haya»:
+    un margen con la mitad de los perfiles es un margen equivocado, y encima
+    optimista, que es la dirección peligrosa.
+    """
+
+    #: Coste que se deduce de las tarifas máximas del pliego.
+    coste_estimado_eur: float = Field(ge=0)
+    #: Precio menos coste, en euros. Puede ser negativo: ofertar por debajo de
+    #: coste es una decisión que se toma a veces, y esconderla no ayuda.
+    margen_eur: float
+    #: Sobre el precio ofertado, 0-1. `None` con precio cero.
+    margen_pct: float | None = None
+    #: De dónde sale el coste. Se declara porque las tarifas del pliego son
+    #: **máximos**, no los costes reales de la empresa: el margen es un techo,
+    #: no una previsión.
+    fuente: str = (
+        "Tarifas máximas por perfil publicadas en el pliego y horas estimadas; "
+        "es un margen techo, no el coste real de la organización."
+    )
+    #: Perfiles que sostienen el cálculo.
+    perfiles: int = Field(ge=1)
+
+
 class PriceScenario(BaseModel):
     name: Literal["defensivo", "central", "competitivo"]
     discount: float
     price_eur: float
     basis: str
+    #: Campo ADITIVO (F2.4). `None` cuando el pliego no publica tarifas y
+    #: horas: la UI no enseña la columna en vez de enseñarla vacía.
+    margen_implicito: MargenImplicito | None = None
 
 
 class WinProbabilityGate(BaseModel):
@@ -239,12 +274,17 @@ def get_price_scenarios(
         ("central", distribution.p50_discount, "mediana de la baja observada"),
         ("competitivo", distribution.p75_discount, "percentil 75 de la baja observada"),
     ]
+    # F2.4: el margen implícito sólo aparece si el pliego publicó tarifas Y
+    # horas. Se leen una vez —no una por escenario— y una ficha que no exista
+    # todavía deja los tres escenarios sin margen, que es lo correcto.
+    tarifas = _tarifas_del_pliego(licitacion_id)
     scenarios = [
         PriceScenario(
             name=name,
             discount=discount,
-            price_eur=round(amount * (1.0 - discount), 2),
+            price_eur=(precio := round(amount * (1.0 - discount), 2)),
             basis=basis,
+            margen_implicito=margen_de(precio, tarifas) if tarifas else None,
         )
         for name, discount, basis in quantiles
     ]
@@ -257,3 +297,56 @@ def get_price_scenarios(
         distribution=distribution,
         scenarios=scenarios,
     )
+
+
+def coste_de_tarifas(rate_cards: list[RateCardFact]) -> tuple[float, int] | None:
+    """``(coste, perfiles)`` a partir de las tarifas del pliego, o ``None``.
+
+    Sólo cuentan los perfiles que traen **tarifa y horas**. Si ninguno las
+    trae completas, devuelve ``None`` y no hay margen que enseñar: sumar los
+    que sí y ignorar los que no daría un coste bajo y por tanto un margen
+    alto, que es exactamente el error que nadie querría cometer fijando un
+    precio.
+    """
+    completos = [
+        (float(rc.max_rate_eur_hour), float(rc.estimated_hours))
+        for rc in rate_cards
+        if rc.max_rate_eur_hour is not None and rc.estimated_hours is not None
+    ]
+    if not completos:
+        return None
+    return round(sum(tarifa * horas for tarifa, horas in completos), 2), len(completos)
+
+
+def margen_de(precio_eur: float, rate_cards: list[RateCardFact]) -> MargenImplicito | None:
+    """El margen implícito de un precio, o ``None`` si no se puede calcular."""
+    calculado = coste_de_tarifas(rate_cards)
+    if calculado is None:
+        return None
+    coste, perfiles = calculado
+    margen = round(precio_eur - coste, 2)
+    return MargenImplicito(
+        coste_estimado_eur=coste,
+        margen_eur=margen,
+        margen_pct=round(margen / precio_eur, 4) if precio_eur > 0 else None,
+        perfiles=perfiles,
+    )
+
+
+def _tarifas_del_pliego(licitacion_id: str) -> list[RateCardFact]:
+    """Las tarifas de la ficha, o lista vacía.
+
+    Best-effort: el margen es información añadida y quedarse sin escenarios de
+    precio porque la ficha no se pudo leer sería un mal negocio.
+    """
+    try:
+        from services.rag.fact_sheet import get_fact_sheet
+
+        record = get_fact_sheet(licitacion_id)
+    except Exception:
+        # Sin traza, «este pliego no publica tarifas» y «la ficha no se pudo
+        # leer» serían el mismo hueco en la pantalla, y sólo uno de los dos es
+        # un fallo que alguien tiene que arreglar.
+        log.warning("pricing_tarifas_ficha_error", licitacion_id=licitacion_id, exc_info=True)
+        return []
+    return list(record.facts.rate_cards) if record and record.facts else []

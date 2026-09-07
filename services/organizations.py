@@ -2,8 +2,13 @@
 
 from __future__ import annotations
 
+from typing import Any
+
+from pydantic import ValidationError
+
 from db.repositories.organizations import OrganizationRepository
 from db.users import get_active_user_by_email_ci
+from observability.logging import get_logger
 from shared.dto import (
     OrganizationMembershipOut,
     OrganizationMembershipUpsert,
@@ -11,6 +16,8 @@ from shared.dto import (
     OrganizationSettingsOut,
     OrganizationSummary,
 )
+
+log = get_logger(__name__)
 
 _repo = OrganizationRepository()
 
@@ -158,14 +165,38 @@ def _tecnologias_disponibles() -> list[str]:
     return sorted(TECHNOLOGY_KEYWORDS.keys())
 
 
+def ajustes_guardados(raw: dict[str, Any], organization_id: int) -> OrganizationSettings:
+    """Los ajustes persistidos, sin dejar que una clave rara tire el resto.
+
+    ``settings_json`` es JSON libre y ``OrganizationSettings`` declara
+    ``extra="forbid"``: validar el blob entero haría que una clave de otra
+    versión —o de una que se retire— tirase la configuración completa,
+    tecnologías incluidas. Se validan las claves que este build conoce y las
+    demás se ignoran **al leer**; siguen guardadas, porque el repositorio
+    fusiona en vez de reemplazar.
+    """
+    # Un `null` guardado se trata como «no está»: la clave existía con valor
+    # nulo en filas viejas, y validarla tiraría toda la configuración por un
+    # campo que sólo significaba «sin definir».
+    conocidas = {
+        k: v for k, v in raw.items() if k in OrganizationSettings.model_fields and v is not None
+    }
+    try:
+        return OrganizationSettings.model_validate(conocidas)
+    except ValidationError:
+        log.warning(
+            "organization_settings_invalidos", organization_id=organization_id, exc_info=True
+        )
+        return OrganizationSettings()
+
+
 def get_settings(user_id: int, organization_id: int) -> OrganizationSettingsOut:
     """Configuración de la organización; cualquier miembro activo puede leerla."""
     resolve_organization(user_id, organization_id)
-    raw = _repo.get_settings(organization_id)
-    parsed = OrganizationSettings.model_validate({"tecnologias": raw.get("tecnologias") or []})
+    parsed = ajustes_guardados(_repo.get_settings(organization_id), organization_id)
     return OrganizationSettingsOut(
         organization_id=organization_id,
-        tecnologias=parsed.tecnologias,
+        **parsed.model_dump(),
         tecnologias_disponibles=_tecnologias_disponibles(),
     )
 
@@ -188,9 +219,15 @@ def update_settings(
     desconocidas = sorted(set(body.tecnologias) - disponibles)
     if desconocidas:
         raise ValueError(f"Tecnologías desconocidas: {', '.join(desconocidas)}.")
-    merged = _repo.update_settings(organization_id, {"tecnologias": body.tecnologias})
+    # Se escribe el cuerpo entero, no sólo `tecnologias`: el DTO declara el
+    # ámbito de mercado (F6.1) y las probabilidades por etapa (F4.1), y
+    # guardar una sola clave devolvía 200 habiendo tirado el resto en
+    # silencio —el administrador veía su configuración aceptada y el Radar
+    # seguía sin acotar—.
+    merged = _repo.update_settings(organization_id, body.model_dump(mode="json"))
+    guardados = ajustes_guardados(merged, organization_id)
     return OrganizationSettingsOut(
         organization_id=organization_id,
-        tecnologias=list(merged.get("tecnologias") or []),
+        **guardados.model_dump(),
         tecnologias_disponibles=sorted(disponibles),
     )

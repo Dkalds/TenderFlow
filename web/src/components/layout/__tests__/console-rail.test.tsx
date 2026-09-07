@@ -9,7 +9,7 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
 import { render, screen, cleanup, fireEvent, within } from "@testing-library/react";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { CONSOLE_SPACES } from "@/lib/console-spaces";
+import { ADMIN_ONLY_SPACES, CONSOLE_SPACES } from "@/lib/console-spaces";
 
 const { pathnameRef, adminRef, setTheme, toggleCompact, initDensity, apiMutate, setActiveOrganizationId } =
   vi.hoisted(() => ({
@@ -80,13 +80,23 @@ describe("ConsoleRail", () => {
     }
   });
 
-  it("esconde Ops a quien no es admin, y sólo Ops", () => {
+  it("esconde a quien no es admin los espacios con `visibility: admin`, y sólo ésos", () => {
+    // El recuento sale de `ADMIN_ONLY_SPACES`, que se deriva de las
+    // definiciones: cuando Dirección entró como espacio de owner/admin, un
+    // número fijo aquí decía que se escondía uno cuando ya se escondían dos.
     renderRail("/resumen", false);
-    expect(
-      within(railNav()).queryByRole("link", { name: railName(bySlug("ops")) }),
-    ).not.toBeInTheDocument();
-    expect(railLink(bySlug("mercado"))).toBeInTheDocument();
-    expect(within(railNav()).getAllByRole("link")).toHaveLength(CONSOLE_SPACES.length);
+    for (const space of CONSOLE_SPACES) {
+      const enlace = within(railNav()).queryByRole("link", { name: railName(space) });
+      if (ADMIN_ONLY_SPACES.has(space.key)) {
+        expect(enlace, `${space.slug} no debería verse sin admin`).not.toBeInTheDocument();
+      } else {
+        expect(enlace, `${space.slug} debería verse`).toBeInTheDocument();
+      }
+    }
+    // Los visibles más el monograma que lleva al resumen.
+    expect(within(railNav()).getAllByRole("link")).toHaveLength(
+      CONSOLE_SPACES.length - ADMIN_ONLY_SPACES.size + 1,
+    );
   });
 
   it("marca activo el espacio de la ruta actual", () => {

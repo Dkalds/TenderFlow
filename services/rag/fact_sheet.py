@@ -21,7 +21,13 @@ log = get_logger(__name__)
 # límite del cliente LLM (v3 nunca llegó a producir una ficha) y los hechos se
 # validan uno a uno. Se bumpea para poder distinguir en la BD una fila escrita
 # por el extractor arreglado de las que dejó el roto.
-EXTRACTION_VERSION = "tender-facts-v4"
+#
+# v5: la pregunta pide además las cuatro familias de F2.2/F2.3/F2.4
+# (`price_formula`, `required_documents`, `rate_cards`, `budget_breakdown`).
+# El bump es obligatorio: sin él las fichas escritas por v4 —que no las
+# contienen— se darían por completas, y el simulador de precio, el kit y el
+# margen implícito seguirían vacíos para siempre sobre pliegos ya extraídos.
+EXTRACTION_VERSION = "tender-facts-v5"
 _MAX_CONTEXT_CHARS = 15_000
 _MAX_PAGES = 24
 _TOPIC_TERMS = (
@@ -88,7 +94,11 @@ team_requirements: {role, minimum_years, quantity},
 certifications: {name, scope},
 extensions: {},
 critical_deadlines: {name, date_value},
-technologies: {name}.
+technologies: {name},
+price_formula: {formula_type, max_points, umbral_temeridad, params},
+required_documents: {name, scope, subsanable},
+rate_cards: {role, max_rate_eur_hour, estimated_hours},
+budget_breakdown: {concept, category, amount_eur, pct}.
 lots: un elemento por lote publicado, con lot_number tal como aparece ("1",
 "Lote III") y su presupuesto sin IVA si es inequívoco; vacío si no hay lotes.
 criterion_type: solo "price", "quality", "automatic", "judgement" u "other".
@@ -99,6 +109,18 @@ del servicio" / "99,9% mensual"); sus penalizaciones van en penalties.
 technologies: solo plataformas que el contrato implanta, mantiene, migra o
 licencia ("migración a SAP S/4HANA"), nunca menciones incidentales.
 date_value: fecha ISO AAAA-MM-DD, o null si el pliego no fija una exacta.
+formula_type: solo "proporcional_inversa" (puntos = max * baja_propia /
+baja_mayor), "lineal_por_tramos", "con_umbral_temeridad" u "otra"; usa "otra"
+cuando la fórmula no encaje, nunca la más parecida. params lleva sólo números
+(los tramos, el umbral), jamás prosa; umbral_temeridad en tanto por uno
+(0,25 para un 25%). Una entrada por lote si el pliego publica varias.
+required_documents: scope "sobre_a" (documentación administrativa), "sobre_b"
+(criterios sujetos a juicio de valor), "sobre_c" (criterios automáticos) u
+"otro"; subsanable solo si el pliego lo dice, si no null.
+rate_cards: una entrada por perfil con tarifa máxima publicada; deja
+estimated_hours a null si el pliego no da horas.
+budget_breakdown: una entrada por línea del desglose del presupuesto base, con
+category "salariales", "directos", "indirectos", "beneficio" u "otro".
 Cada evidence es {documento_id, page_number, quote}, con quote copiado
 literalmente del fragmento y de menos de 400 caracteres. Usa null cuando un
 valor tipado no aparezca y listas vacías cuando no haya evidencia.

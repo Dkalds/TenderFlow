@@ -90,12 +90,39 @@ export interface EventosProducto {
     espacio: string;
     origen: "rail" | "rail_movil" | "conmutador";
     vista?: string;
+    /**
+     * F1.8 — se abrió una ayuda del glosario en este espacio. **Sin el
+     * término**: qué palabra no entiende alguien es un dato sobre esa persona,
+     * y para decidir si el glosario sirve basta con saber que se usa y dónde.
+     */
+    glosario_abierto?: "si";
+    /** F2.1 — se miró un hito del procedimiento (apertura de sobres, consultas). */
+    hito_visto?: "si";
+    /** F2.5 — se abrió la página del pliego con la cita resaltada. */
+    evidencia_abierta?: "si";
+    /** F5.4 — se pintó la banda «qué cambió desde tu última visita». */
+    banda?: "desde_ultima_visita";
   };
   /**
    * ¿Se usa el Radar para decidir, o sólo para mirar? Descartar es la decisión
    * que cuesta; recuperar dice cuánto se arrepiente la gente de haberla tomado.
    */
-  radar_triaje: { accion: "descartar" | "recuperar" };
+  radar_triaje: {
+    accion: "descartar" | "recuperar" | "silenciar" | "posponer";
+    /**
+     * F1.3 — ¿alguien lee la explicación del score? Es la pregunta que decide
+     * si las tres frases valen la pena o si el desglose numérico bastaba.
+     */
+    explicacion_abierta?: "si";
+    /**
+     * F1.4 — qué bandera acompañaba a la señal al triarla. Sirve para una sola
+     * pregunta: si `organo_anula_frecuente` predice el descarte, la
+     * penalización está bien calibrada; si no, sobra. Es un vocabulario
+     * cerrado (las banderas de `services/analytics/scoring.py`), nunca un
+     * identificador.
+     */
+    flag?: string;
+  };
   /**
    * ¿Se queda alguien con la señal? El seguimiento se puede activar desde el
    * Radar y desde el Detalle y aquí no se distingue: la pregunta es si la
@@ -107,12 +134,29 @@ export interface EventosProducto {
    * una oportunidad concreta. `primera_vez` separa esa activación del uso de
    * quien ya lo hace a diario.
    */
-  pursuit_creado: { primera_vez: PrimeraVez };
+  pursuit_creado: {
+    primera_vez: PrimeraVez;
+    /**
+     * F4.3 — la oportunidad nació de «preparar renovación» sobre un contrato
+     * en cartera, no de un expediente del Radar. Separa el pipeline de
+     * captación del de retención, que se gestionan distinto.
+     */
+    origen?: "radar" | "renovacion";
+  };
   /**
    * ¿El pipeline se mueve o se abandona en cuanto se crea? `estado` es uno de
    * los ocho del workflow (`PURSUIT_STATUSES`): categórico y cerrado.
    */
-  pursuit_estado_cambiado: { estado: string };
+  pursuit_estado_cambiado: {
+    estado: string;
+    /**
+     * F3.1 — por qué se perdió, de la lista cerrada de D37. Es categórico por
+     * construcción (`precio`, `tecnica`, `solvencia`, `plazo`,
+     * `desierto_o_anulado`, `no_presentada`, `otro`); el texto libre que lo
+     * acompaña se queda en el backend y no viaja aquí.
+     */
+    motivo?: string;
+  };
   /**
    * El **primer** paso del embudo de activación, y el que más pesa: hasta que
    * alguien pone sus pesos y sus keywords, «el Radar puntúa con pesos
@@ -126,7 +170,14 @@ export interface EventosProducto {
    * aquí: los pesos, las keywords y los CPV de alguien son su estrategia
    * comercial, igual que en `regla_creada`.
    */
-  perfil_configurado: { primera_vez: PrimeraVez };
+  perfil_configurado: {
+    primera_vez: PrimeraVez;
+    /**
+     * F6.1 — si se configuró el ámbito personal o el de la organización. Sin
+     * esto, «el ámbito de organización, ¿lo toca alguien?» no tiene respuesta.
+     */
+    nivel?: "personal" | "organizacion";
+  };
   /**
    * El otro final del embudo: el rechazo explícito del onboarding.
    *
@@ -149,7 +200,17 @@ export interface EventosProducto {
    * una línea en el `onSuccess` de esa mutación:
    * `registrarEvento("regla_creada", { primera_vez: primeraVez("regla") })`.
    */
-  regla_creada: { primera_vez: PrimeraVez };
+  regla_creada: {
+    primera_vez: PrimeraVez;
+    /**
+     * F5.5 — la vista previa avisó de que la regla generaría demasiado ruido.
+     * La pregunta es si el aviso cambia la conducta: si `si` domina y las
+     * reglas siguen siendo igual de anchas, el aviso no sirve.
+     */
+    ruido_avisado?: "si" | "no";
+    /** F6.4 — la regla la copió la plantilla de la organización, no la persona. */
+    origen?: "usuario" | "plantilla_org";
+  };
   /**
    * ¿Se usa el asistente, y le sirve a alguien? `resultado: "degradado"` es la
    * respuesta sin síntesis del LLM: si domina, el asistente aparenta funcionar
@@ -160,6 +221,11 @@ export interface EventosProducto {
     modo: "pregunta" | "resumen";
     ambito: "corpus" | "licitacion";
     resultado: "ok" | "degradado" | "error";
+    /**
+     * F2.8 — cuántos expedientes entraron en la pregunta (1, 2 o 3). Es un
+     * conteo acotado por el propio endpoint, no un identificador.
+     */
+    n_expedientes?: "1" | "2" | "3";
   };
   /**
    * ¿Las respuestas de la IA sirven? `asistente_usado` mide uso;
@@ -179,7 +245,16 @@ export interface EventosProducto {
    * `dimensionesDeDescarga`), nunca de la query: ahí van los filtros del
    * usuario.
    */
-  export_lanzado: { formato: "csv" | "xlsx" | "otro"; recurso: string };
+  export_lanzado: {
+    /**
+     * `pdf_oportunidad` (F2.7) y `crm` (F6.3) no son extensiones de fichero
+     * como los tres primeros: son salidas con destinatario —dirección y el
+     * CRM— y por eso valen como formato propio. Mezclarlas en `otro` haría
+     * indistinguible «se llevan la ficha a un comité» de «descargaron algo».
+     */
+    formato: "csv" | "xlsx" | "pdf_oportunidad" | "crm" | "otro";
+    recurso: string;
+  };
   /**
    * La boca real del embudo: ¿alguien llega a buscar algo?
    *
@@ -197,6 +272,19 @@ export interface EventosProducto {
   busqueda_realizada: {
     superficie: "paleta" | "investigador" | "listado";
     con_resultados: "si" | "no";
+    /**
+     * F1.1 — cuántos filtros llevaba puestos, **en tramos**. El número exacto
+     * no aporta y la combinación concreta sí identificaría una estrategia
+     * comercial, que es justo lo que este módulo no manda. Responde a «los
+     * filtros nuevos, ¿los usa alguien, o la gente sigue buscando por texto?».
+     */
+    filtros?: "0" | "1-2" | "3+";
+    /**
+     * F1.2 — qué tipo de entidad abrió el usuario desde la paleta. Dice si la
+     * búsqueda global sirve para lo que se construyó (encontrar empresas y
+     * órganos) o si sigue siendo un salta-a-expediente con más pasos.
+     */
+    tipo_resultado?: "expediente" | "empresa" | "organo" | "oportunidad";
   };
   /**
    * Criterio guardado: el momento en que una búsqueda deja de repetirse a mano.
@@ -205,7 +293,71 @@ export interface EventosProducto {
    * `regla_creada`: una vista guardada dice «vuelvo a esto», una regla dice
    * «avísame de esto». Del criterio no viaja nada, solo que se guardó.
    */
-  vista_guardada: { primera_vez: PrimeraVez };
+  vista_guardada: {
+    primera_vez: PrimeraVez;
+    /** F6.4 — igual que en `regla_creada`. */
+    origen?: "usuario" | "plantilla_org";
+  };
+  /**
+   * F1.5 — ¿se trabaja por cuentas o sólo por expedientes? Seguir un órgano es
+   * la primera acción que declara «este cliente me interesa aunque hoy no
+   * publique nada», y es lo que separa a un comercial de cuentas de alguien
+   * que tría la bandeja. El órgano **no** viaja: sería un identificador y,
+   * peor, revelaría a quién persigue la organización.
+   */
+  organo_seguido: { accion: "seguir" | "dejar_de_seguir" };
+  /**
+   * F1.6 — ¿las etiquetas organizan algo? `objeto` dice sobre qué se aplican;
+   * el nombre de la etiqueta lo escribe el usuario y por tanto no sale de
+   * aquí, igual que las keywords de una regla.
+   */
+  etiqueta_aplicada: { objeto: "favorito" | "oportunidad" | "cuenta" };
+  /**
+   * F2.2 — ¿se usa el simulador de puntuación, y sobre qué fórmulas? Sin
+   * `formula_tipo` no se puede saber si el extractor cubre las fórmulas que la
+   * gente encuentra o sólo las fáciles.
+   */
+  simulador_usado: {
+    formula_tipo:
+      | "proporcional_inversa"
+      | "lineal_por_tramos"
+      | "con_umbral_temeridad"
+      | "otra"
+      | "sin_formula";
+    /** F2.4 — el escenario pudo mostrar margen porque el pliego traía tarifas. */
+    con_tarifas?: "si" | "no";
+  };
+  /**
+   * F2.3 — ¿se abre el kit de presentación, y con cuántos documentos? `items`
+   * en tramos: un kit vacío es un fallo de extracción, y uno de treinta es una
+   * lista que nadie va a leer entera. Las dos cosas hay que poder verlas.
+   */
+  kit_abierto: { items: "0" | "1-5" | "6-15" | "16+" };
+  /**
+   * F2.6 — ¿se genera el guion de la oferta técnica? `criterios` en tramos
+   * dice sobre qué tamaño de pliego se usa. Ni el guion ni el pliego viajan.
+   */
+  guion_generado: { criterios: "1-3" | "4-8" | "9+" };
+  /**
+   * F3.3 — ¿alguien busca socios de UTE? Las tres funciones de
+   * `services/partners.py` llevaban meses sin un solo consumidor; este evento
+   * es lo que dirá si construirles una pantalla estuvo justificado.
+   */
+  partners_consultado: { con_resultados: "si" | "no" };
+  /**
+   * F4.3 — ¿se mira la cartera de contratos ganados? Es la pantalla que
+   * convierte `won` en algo con vida posterior; sin uso, la retención sigue
+   * siendo un asunto de calendario personal.
+   */
+  cartera_abierta: { origen: "rail" | "conmutador" | "alerta" };
+  /**
+   * F6.2 — ¿la gente corrige el dato cuando lo ve mal? Es la señal más directa
+   * de confianza en el corpus: quien reporta espera que se arregle. `tipo` es
+   * la lista cerrada de la ruta; nunca viaja el expediente ni el comentario.
+   */
+  dato_reportado: {
+    tipo: "tecnologia" | "ccaa" | "duplicado" | "importe" | "adjudicatario" | "otro";
+  };
 }
 
 export type EventoProducto = keyof EventosProducto;
@@ -221,20 +373,61 @@ export type EventoProducto = keyof EventosProducto;
  */
 export const PROPIEDADES_PERMITIDAS = {
   sesion_iniciada: ["metodo"],
-  espacio_abierto: ["espacio", "origen", "vista"],
-  radar_triaje: ["accion"],
+  espacio_abierto: [
+    "espacio",
+    "origen",
+    "vista",
+    "glosario_abierto",
+    "hito_visto",
+    "evidencia_abierta",
+    "banda",
+  ],
+  radar_triaje: ["accion", "explicacion_abierta", "flag"],
   licitacion_seguida: ["accion"],
-  pursuit_creado: ["primera_vez"],
-  pursuit_estado_cambiado: ["estado"],
-  perfil_configurado: ["primera_vez"],
+  pursuit_creado: ["primera_vez", "origen"],
+  pursuit_estado_cambiado: ["estado", "motivo"],
+  perfil_configurado: ["primera_vez", "nivel"],
   onboarding_ocultado: ["progreso"],
-  regla_creada: ["primera_vez"],
-  asistente_usado: ["modo", "ambito", "resultado"],
+  regla_creada: ["primera_vez", "ruido_avisado", "origen"],
+  asistente_usado: ["modo", "ambito", "resultado", "n_expedientes"],
   asistente_feedback: ["modo", "util"],
   export_lanzado: ["formato", "recurso"],
-  busqueda_realizada: ["superficie", "con_resultados"],
-  vista_guardada: ["primera_vez"],
+  busqueda_realizada: ["superficie", "con_resultados", "filtros", "tipo_resultado"],
+  vista_guardada: ["primera_vez", "origen"],
+  organo_seguido: ["accion"],
+  etiqueta_aplicada: ["objeto"],
+  simulador_usado: ["formula_tipo", "con_tarifas"],
+  kit_abierto: ["items"],
+  guion_generado: ["criterios"],
+  partners_consultado: ["con_resultados"],
+  cartera_abierta: ["origen"],
+  dato_reportado: ["tipo"],
 } as const satisfies Record<EventoProducto, readonly string[]>;
+
+/**
+ * Cuántos filtros lleva puesta una búsqueda, en el tramo que se publica.
+ *
+ * Existe como función y no inline en cada llamante para que los tramos sean
+ * los mismos en el listado, en la barra de ámbito y en la paleta: tres cortes
+ * distintos del mismo eje harían la serie ilegible.
+ */
+export function tramoDeFiltros(n: number): "0" | "1-2" | "3+" {
+  if (n <= 0) return "0";
+  return n <= 2 ? "1-2" : "3+";
+}
+
+/** Tramo de tamaño para el kit de presentación (F2.3). */
+export function tramoDeItems(n: number): "0" | "1-5" | "6-15" | "16+" {
+  if (n <= 0) return "0";
+  if (n <= 5) return "1-5";
+  return n <= 15 ? "6-15" : "16+";
+}
+
+/** Tramo de criterios de adjudicación para el guion (F2.6). */
+export function tramoDeCriterios(n: number): "1-3" | "4-8" | "9+" {
+  if (n <= 3) return "1-3";
+  return n <= 8 ? "4-8" : "9+";
+}
 
 /** Tope defensivo de longitud: un valor largo delata que alguien coló texto. */
 const MAX_LONGITUD_VALOR = 48;

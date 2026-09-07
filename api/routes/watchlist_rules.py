@@ -24,6 +24,7 @@ from db.repositories.watchlist_rules import list_rules_rows, set_rule_email
 from observability.logging import get_logger
 from services.organizations import claim_legacy_scope
 from services.watchlist_rules import (
+    UMBRAL_RUIDO_SEMANAL,
     Frequency,
     WatchlistRule,
     count_matches,
@@ -32,6 +33,7 @@ from services.watchlist_rules import (
     delete_rule,
     list_matches,
     list_rules,
+    serie_semanal,
     update_rule,
 )
 from shared.dto import (
@@ -228,13 +230,55 @@ async def get_rule_matches(
     )
 
 
+class SemanaMatches(BaseModel):
+    """Coincidencias de una semana. `semana` es el lunes, en ISO."""
+
+    semana: str
+    n: int
+
+
+class PreviewResult(TotalCount):
+    """Conteo de la regla más su serie de ruido (F5.5).
+
+    Hereda de `TotalCount` para que `total` siga significando y llamándose lo
+    mismo: los tres campos nuevos son **aditivos** y un cliente antiguo sigue
+    leyendo la respuesta que leía.
+    """
+
+    #: Ocho semanas, antiguas primero, incluidas las de cero coincidencias. Una
+    #: serie que sólo trae las semanas con datos se lee como constante.
+    serie_semanal: list[SemanaMatches] = Field(default_factory=list)
+    #: El umbral que se aplicó, declarado en vez de repetido en la UI.
+    umbral_semanal: int = UMBRAL_RUIDO_SEMANAL
+    #: `True` si la media semanal de la serie supera el umbral. Lo decide el
+    #: servidor y no el cliente para que el aviso no dependa de qué pantalla
+    #: lo pinte.
+    ruido_alto: bool = False
+
+
 @router.post("/preview", summary="Conteo de matches de unos criterios sin guardar")
 async def preview_matches(
     body: WatchlistRuleBody,
     _ctx: dict[str, Any] = Depends(require_any_auth),
-) -> TotalCount:
-    total = await run_db(count_matches, body.to_rule())
-    return TotalCount(total=total)
+) -> PreviewResult:
+    """Cuántos expedientes casan hoy y cuántos casaron cada una de las últimas
+    ocho semanas.
+
+    El total sobre el corpus entero no responde a la pregunta que se hace quien
+    crea una regla —«¿cuánto correo me va a llegar?»—: para una regla ancha es
+    un número de cinco cifras que no distingue una regla que dispara cuarenta
+    veces por semana de una que disparó cuarenta veces en dos años.
+    """
+    regla = body.to_rule()
+    total = await run_db(count_matches, regla)
+    serie = await run_db(serie_semanal, regla)
+    media = (sum(int(s["n"]) for s in serie) / len(serie)) if serie else 0.0
+    return PreviewResult(
+        total=total,
+        serie_semanal=[SemanaMatches(**s) for s in serie],
+        umbral_semanal=UMBRAL_RUIDO_SEMANAL,
+        ruido_alto=media > UMBRAL_RUIDO_SEMANAL,
+    )
 
 
 # ── Baja desde el correo ────────────────────────────────────────────────────

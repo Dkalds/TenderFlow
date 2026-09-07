@@ -53,6 +53,7 @@ from api.routes.analytics import router as analytics_router
 from api.routes.ask import router as ask_router
 from api.routes.auth import router as auth_router
 from api.routes.competitive import router as competitive_router
+from api.routes.cuentas import router as cuentas_router
 from api.routes.empresas import router as empresas_router
 from api.routes.eventos import router as eventos_router
 from api.routes.exports import router as exports_router
@@ -418,6 +419,7 @@ app.include_router(watchlist_rules_router, prefix="/api/v1")
 app.include_router(watchlist_items_router, prefix="/api/v1")
 app.include_router(exports_router, prefix="/api/v1")
 app.include_router(radar_router, prefix="/api/v1")
+app.include_router(cuentas_router, prefix="/api/v1")
 app.include_router(saved_filters_router, prefix="/api/v1")
 app.include_router(notifications_router, prefix="/api/v1")
 app.include_router(admin_users_router, prefix="/api/v1")

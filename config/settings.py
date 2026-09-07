@@ -573,6 +573,15 @@ class Settings(BaseSettings):
     # sin REDIS_URL en el runner, el presupuesto LLM arranca de 0 en cada
     # corrida y el tope real de gasto es este tamaño de lote (~$0.07 por 200).
     LLM_TECH_LABELING_BATCH: int = 200
+    # F2.6 — tope de tokens por guion de oferta técnica. Es un tope **por
+    # respuesta**, no un presupuesto: el gasto acumulado lo gobierna el
+    # `BudgetGuard` de `llm/budget.py`, atado al sujeto por la ruta.
+    #
+    # 2.500 da para una docena de criterios con sus puntos y sus citas. Subirlo
+    # no mejora el guion: lo que produce un guion largo es un pliego con muchos
+    # criterios, y por encima de doce la pantalla deja de leerse (por eso
+    # `generar_guion` también corta ahí).
+    LLM_GUION_MAX_TOKENS: int = 2500
     # Vuelca además las etiquetas seguras a ml_feedback (source='llm_batch'),
     # que es lo que saca la licitación de la cola humana de active learning
     # (su query es un anti-join contra esa tabla). Independiente del flag de

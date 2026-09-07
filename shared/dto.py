@@ -36,7 +36,15 @@ import re
 from datetime import date, datetime
 from typing import Annotated, Any, Generic, Literal, TypeVar
 
-from pydantic import BaseModel, BeforeValidator, ConfigDict, EmailStr, Field, field_validator
+from pydantic import (
+    BaseModel,
+    BeforeValidator,
+    ConfigDict,
+    EmailStr,
+    Field,
+    field_validator,
+    model_validator,
+)
 
 # Postgres serializa timestamptz a texto sin los minutos del offset cuando son
 # cero (p.ej. "2026-08-01 00:45:48.33444+00"), formato que el parser RFC3339
@@ -586,6 +594,26 @@ PursuitStatus = Literal[
 PursuitDecision = Literal["pending", "go", "no_go"]
 PursuitOutcome = Literal["pending", "won", "lost", "cancelled"]
 
+#: Motivos de pérdida (D37). **Lista cerrada**, y ésa es la decisión: una lista
+#: abierta no se puede agregar, y la pregunta que abre esta función —«¿por qué
+#: perdemos en el CPV 72?»— sólo tiene respuesta si los motivos se pueden
+#: contar. El matiz sigue viajando en `outcome_reason`, que es texto libre y no
+#: se toca.
+#:
+#: `sin_codificar` **no** está aquí: no es un motivo que alguien elija, es la
+#: ausencia de código de los cierres anteriores a v104. Se representa con la
+#: columna a NULL para que no se confunda con un `otro` deliberado, que es una
+#: respuesta distinta y mucho más informativa.
+PursuitOutcomeReasonCode = Literal[
+    "precio",
+    "tecnica",
+    "solvencia",
+    "plazo",
+    "desierto_o_anulado",
+    "no_presentada",
+    "otro",
+]
+
 
 class OrganizationSummary(BaseModel):
     """Organización de trabajo visible para el usuario autenticado."""
@@ -641,6 +669,23 @@ class OrganizationMemberInvite(BaseModel):
     role: Literal["admin", "member", "viewer"] = "member"
 
 
+#: Probabilidad por defecto de cada etapa del embudo, en porcentaje (D34).
+#:
+#: **Son supuestos, no medidas**, y así se declaran en la respuesta: hasta que
+#: F3.1 acumule cierres no hay histórico con el que calibrarlos. Owner y admin
+#: los editan. Se eligen crecientes y sin llegar al 100 % porque una
+#: oportunidad presentada sigue pudiendo perderse; poner `submitted` al 100 %
+#: convertiría el valor ponderado en la suma del pipeline, que es el número
+#: que este campo existe para dejar de publicar.
+PROBABILIDADES_ETAPA_DEFAULT: dict[str, int] = {
+    "identified": 10,
+    "qualifying": 20,
+    "go_no_go": 30,
+    "preparing": 50,
+    "submitted": 60,
+}
+
+
 class OrganizationSettings(BaseModel):
     """Configuración de producto de una organización (``organizations.settings_json``).
 
@@ -650,11 +695,40 @@ class OrganizationSettings(BaseModel):
     acota su universo a ellas cuando el usuario no filtra por tecnología a
     mano, y la ingesta no cambia —el filtro es una vista sobre el corpus, no
     una pérdida de datos.
+
+    **Ámbito de mercado (F6.1).** El resto de campos de ámbito —CPVs, CCAAs,
+    rango de importe, tipos de órgano y procedimientos excluidos— vivían sólo
+    en el perfil **personal** (``api/routes/me.py``), así que cada miembro
+    tenía que reconfigurar a mano lo que la organización entera comparte, y
+    quien no lo hacía veía el mercado sin acotar. Aquí son de la organización,
+    y la precedencia es explícita: **perfil personal → organización → global**.
+    En todos, la lista vacía significa «sin restricción», nunca «ninguno»: un
+    ámbito que se interpretara al revés vaciaría el Radar en silencio el día
+    que alguien guardara la configuración sin tocar un campo.
+
+    No hay migración: ``organizations.settings_json`` es JSON y admite claves
+    nuevas. La que D39 pre-autorizaba no hace falta.
     """
 
     model_config = ConfigDict(extra="forbid")
 
     tecnologias: list[str] = Field(default_factory=list, max_length=30)
+    #: CPVs por **prefijo**, como en el filtro del listado (F1.1): `72` es
+    #: «servicios de TI» entero.
+    cpvs: list[str] = Field(default_factory=list, max_length=50)
+    ccaas: list[str] = Field(default_factory=list, max_length=25)
+    importe_min: float | None = Field(default=None, ge=0)
+    importe_max: float | None = Field(default=None, ge=0)
+    #: Tipos de contrato CODICE que interesan (`shared/procedimientos.py`).
+    tipos_organo: list[str] = Field(default_factory=list, max_length=20)
+    #: Procedimientos que la organización **no** quiere ver. Es una lista de
+    #: exclusión y no de inclusión porque así es como se usa: casi nadie
+    #: enumera los diez procedimientos que le valen, pero mucha gente quiere
+    #: quitar los contratos menores del Radar.
+    procedimientos_excluidos: list[str] = Field(default_factory=list, max_length=20)
+    #: F4.1 — probabilidad por etapa para el valor ponderado del pipeline.
+    #: Vacío = se usan los `PROBABILIDADES_ETAPA_DEFAULT`.
+    probabilidades_etapa: dict[str, int] = Field(default_factory=dict)
 
     @field_validator("tecnologias")
     @classmethod
@@ -666,6 +740,60 @@ class OrganizationSettings(BaseModel):
                 vistas.append(code)
         return vistas
 
+    @field_validator("cpvs", "ccaas", "tipos_organo", "procedimientos_excluidos")
+    @classmethod
+    def _limpia_lista(cls, value: list[str]) -> list[str]:
+        """Sin vacíos ni duplicados, conservando el orden en que se guardaron."""
+        vistas: list[str] = []
+        for raw in value:
+            item = str(raw).strip()
+            if item and item not in vistas:
+                vistas.append(item)
+        return vistas
+
+    @field_validator("probabilidades_etapa")
+    @classmethod
+    def _valida_probabilidades(cls, value: dict[str, int]) -> dict[str, int]:
+        """Sólo etapas conocidas y sólo porcentajes 0-100.
+
+        Una etapa inventada se rechaza en vez de ignorarse: guardarla en
+        silencio dejaría a un admin creyendo que configuró algo que no existe,
+        y el valor ponderado seguiría usando el default sin decirlo.
+        """
+        limpio: dict[str, int] = {}
+        for etapa, pct in value.items():
+            if etapa not in PROBABILIDADES_ETAPA_DEFAULT:
+                raise ValueError(
+                    f"Etapa desconocida: {etapa}. "
+                    f"Válidas: {', '.join(sorted(PROBABILIDADES_ETAPA_DEFAULT))}."
+                )
+            entero = int(pct)
+            if not 0 <= entero <= 100:
+                raise ValueError(f"La probabilidad de {etapa} debe estar entre 0 y 100.")
+            limpio[etapa] = entero
+        return limpio
+
+    @model_validator(mode="after")
+    def _rango_de_importe_coherente(self) -> OrganizationSettings:
+        if (
+            self.importe_min is not None
+            and self.importe_max is not None
+            and self.importe_max < self.importe_min
+        ):
+            raise ValueError("importe_max no puede ser menor que importe_min.")
+        return self
+
+    def probabilidad_de(self, etapa: str) -> int:
+        """Probabilidad efectiva de una etapa: la configurada o el default.
+
+        Una etapa terminal (`won`, `lost`, `withdrawn`) devuelve 0: ya no está
+        en el pipeline, y contarla en el valor ponderado sería sumar dos veces
+        lo ganado (que ya tiene su propio `awarded_amount_eur`).
+        """
+        if etapa not in PROBABILIDADES_ETAPA_DEFAULT:
+            return 0
+        return self.probabilidades_etapa.get(etapa, PROBABILIDADES_ETAPA_DEFAULT[etapa])
+
 
 class OrganizationSettingsOut(OrganizationSettings):
     """Configuración leída, con la organización a la que pertenece."""
@@ -674,6 +802,111 @@ class OrganizationSettingsOut(OrganizationSettings):
     #: Familias válidas del diccionario, para que el cliente pinte el selector
     #: sin copiarse la lista a mano (invariante 3 de ``web/AGENTS.md``).
     tecnologias_disponibles: list[str] = Field(default_factory=list)
+    #: F4.1 — los defaults vigentes, para que el formulario pueda enseñar «10 %
+    #: (por defecto)» en vez de un hueco, y para que el cliente no lleve su
+    #: propia copia de los supuestos de D34.
+    probabilidades_etapa_default: dict[str, int] = Field(
+        default_factory=lambda: dict(PROBABILIDADES_ETAPA_DEFAULT)
+    )
+
+
+# ── Cuentas objetivo y etiquetas (F1.5, F1.6) ───────────────────────────────
+
+
+class CuentaObjetivo(BaseModel):
+    """Un órgano que la organización sigue como cuenta.
+
+    ``organo_id`` nace vacío: el maestro de órganos (C1.2) todavía no existe y
+    la identidad va por el nombre normalizado. El campo está en el contrato
+    desde ahora para que ese maestro no obligue a cambiarlo.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: int = Field(ge=1)
+    organization_id: int = Field(ge=1)
+    organo_nombre: str = Field(min_length=1, max_length=500)
+    organo_norm: str
+    organo_id: int | None = None
+    created_by_user_id: int | None = None
+    created_at: str
+    nota: str | None = Field(default=None, max_length=2000)
+
+
+#: Qué se puede etiquetar (D38). Cerrado: cada tipo tiene su tabla y su forma
+#: de clave, y añadir uno exige decidir cómo se limpia al borrar el objeto.
+ObjetoEtiquetable = Literal["favorito", "oportunidad", "cuenta"]
+
+#: Color hex de una etiqueta. Se valida la forma —no la legibilidad— porque el
+#: contraste lo garantiza el componente, que pinta el texto en blanco o negro
+#: según la luminancia del fondo.
+_COLOR_HEX_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
+
+
+class Etiqueta(BaseModel):
+    """Una etiqueta de la organización."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: int = Field(ge=1)
+    organization_id: int = Field(ge=1)
+    nombre: str = Field(min_length=1, max_length=40)
+    nombre_norm: str
+    color: str
+    created_by_user_id: int | None = None
+    created_at: str
+
+    @field_validator("color")
+    @classmethod
+    def _color_hex(cls, value: str) -> str:
+        if not _COLOR_HEX_RE.match(value):
+            raise ValueError("El color debe ser hexadecimal de seis dígitos (#rrggbb).")
+        return value.lower()
+
+
+class EtiquetaAplicada(BaseModel):
+    """La etiqueta tal como se pinta junto al objeto: sólo lo que se ve."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: int = Field(ge=1)
+    nombre: str
+    color: str
+
+
+class EtiquetaCreate(BaseModel):
+    """Alta de etiqueta."""
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    nombre: str = Field(min_length=1, max_length=40)
+    color: str = Field(default="#64748b")
+
+    @field_validator("color")
+    @classmethod
+    def _color_hex(cls, value: str) -> str:
+        if not _COLOR_HEX_RE.match(value):
+            raise ValueError("El color debe ser hexadecimal de seis dígitos (#rrggbb).")
+        return value.lower()
+
+
+class EtiquetaAplicacion(BaseModel):
+    """Aplicar o quitar una etiqueta de un objeto."""
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    etiqueta_id: int = Field(ge=1)
+    objeto_tipo: ObjetoEtiquetable
+    objeto_id: str = Field(min_length=1, max_length=120)
+
+
+class CuentaObjetivoCreate(BaseModel):
+    """Seguir un órgano como cuenta objetivo."""
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    organo: str = Field(min_length=1, max_length=500)
+    nota: str | None = Field(default=None, max_length=2000)
 
 
 class CalendarioEnlace(BaseModel):
@@ -727,6 +960,10 @@ class PursuitUpdate(BaseModel):
     outcome: PursuitOutcome | None = None
     awarded_amount_eur: float | None = Field(default=None, ge=0)
     outcome_reason: str | None = Field(default=None, max_length=4000)
+    #: F3.1 — obligatorio al cerrar en `lost` (la ruta responde 422 sin él).
+    #: Aquí es opcional porque este mismo patch sirve para editar otras cosas
+    #: de una oportunidad ya cerrada sin tener que reenviar el motivo.
+    outcome_reason_code: PursuitOutcomeReasonCode | None = None
     next_action: str | None = Field(default=None, max_length=300)
     next_action_due: date | None = None
     expected_version: int | None = Field(default=None, ge=1)
@@ -745,6 +982,31 @@ class PursuitEventOut(BaseModel):
     created_at: PgDateTime
 
 
+class ExpectedAward(BaseModel):
+    """F4.4 — cuándo se espera la adjudicación, y de dónde sale esa fecha.
+
+    Viaja con su dispersión y su ``n`` a propósito: una fecha sola se lee como
+    un compromiso, y esto es una estimación. La regla que decide si se publica
+    —y el mínimo de expedientes por debajo del cual **no** hay estimación—
+    vive en :mod:`services.analytics.lead_time`.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    #: La central, no la optimista.
+    fecha: date
+    #: Extremos del intervalo intercuartílico. Iguales a ``fecha`` cuando el
+    #: método es ``hito``: una fecha publicada no tiene dispersión.
+    p25: date
+    p75: date
+    #: Expedientes del órgano que sostienen la estimación. Con ``metodo="hito"``
+    #: es 0: el dato no viene de una muestra.
+    n: int = Field(default=0, ge=0)
+    #: ``estimacion`` hoy; ``hito`` cuando F2.1 traiga la fecha publicada por
+    #: el procedimiento y sustituya a la estimada.
+    metodo: Literal["hito", "estimacion"] = "estimacion"
+
+
 class PursuitSummary(BaseModel):
     """Oportunidad enriquecida con los datos básicos de su licitación."""
 
@@ -755,6 +1017,14 @@ class PursuitSummary(BaseModel):
     licitacion_id: str
     tender_title: str | None = None
     tender_deadline: PgDateTime | None = None
+    #: Campo ADITIVO (F4.4). El órgano de la licitación, que es de donde sale
+    #: `expected_award`: sin él la consola no puede explicar por qué la fecha
+    #: prevista es esa ni enlazar a la cuenta.
+    tender_organo: str | None = None
+    #: Campo ADITIVO (F4.4). `None` = sin estimación, y la UI lo dice; nunca se
+    #: rellena con una fecha de menor calidad. Ver `services/analytics/
+    #: lead_time.py` para por qué el mínimo de expedientes no es negociable.
+    expected_award: ExpectedAward | None = None
     responsible_user_id: int | None = None
     responsible_name: str | None = None
     status: PursuitStatus
@@ -764,6 +1034,9 @@ class PursuitSummary(BaseModel):
     outcome: PursuitOutcome
     awarded_amount_eur: float | None = Field(default=None, ge=0)
     outcome_reason: str | None = None
+    #: `None` = cierre anterior a F3.1, sin codificar. La UI lo ofrece para
+    #: completar; la analítica lo cuenta aparte y no lo reparte entre motivos.
+    outcome_reason_code: PursuitOutcomeReasonCode | None = None
     next_action: str | None = None
     next_action_due: date | None = None
     identified_at: PgDateTime
@@ -891,6 +1164,19 @@ class PursuitCommentListResponse(BaseModel):
     offset: int = Field(ge=0)
 
 
+class PerdidaPorMotivo(BaseModel):
+    """Cuántas veces se perdió por un motivo, y qué parte del total es."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    #: Uno de `PursuitOutcomeReasonCode`, o `sin_codificar` para los cierres
+    #: anteriores a F3.1.
+    motivo: str
+    n: int = Field(ge=0)
+    #: Sobre el total de pérdidas del periodo, 0-1.
+    pct: float = Field(ge=0, le=1)
+
+
 class PursuitMetrics(BaseModel):
     """Métricas reproducibles de funnel y resultado por organización/periodo."""
 
@@ -904,6 +1190,28 @@ class PursuitMetrics(BaseModel):
     win_rate: float | None = Field(default=None, ge=0, le=1)
     awarded_amount_eur: float = Field(default=0, ge=0)
     median_decision_time_hours: float | None = Field(default=None, ge=0)
+    #: Campo ADITIVO (F3.1). Vacío cuando no hay cierres suficientes: la UI
+    #: sólo lo pinta con al menos cinco pérdidas en el corte, porque un
+    #: «60 % por precio» sobre tres casos es ruido con aspecto de conclusión.
+    perdidas_por_motivo: list[PerdidaPorMotivo] = Field(default_factory=list)
+    #: Mínimo aplicado, declarado en vez de repetido en la UI.
+    perdidas_n_minimo: int = Field(default=5, ge=1)
+    #: Campo ADITIVO (F4.1). Suma de importes por la probabilidad de su etapa.
+    #: Sólo cuenta oportunidades **abiertas**: una ganada ya está en
+    #: `awarded_amount_eur` y sumarla aquí la contaría dos veces.
+    pipeline_value_eur: float = Field(default=0, ge=0)
+    #: Los supuestos con los que se calculó, declarados con el número (ADR-014).
+    #: Sin esto, «1,2 M€ de pipeline» es una cifra que nadie puede reproducir.
+    probabilidades_etapa_usadas: dict[str, int] = Field(default_factory=dict)
+    #: Previsión por trimestre, `{"2026-Q4": 340000.0}`, repartiendo el valor
+    #: ponderado por la fecha prevista de adjudicación o, si no la hay, por la
+    #: fecha límite. Vacío cuando ninguna oportunidad abierta tiene fecha.
+    prevision_trimestral: dict[str, float] = Field(default_factory=dict)
+    #: Oportunidades abiertas sin importe publicado, que por tanto **no**
+    #: entran en el valor ponderado. Se publica el hueco en vez de tratar el
+    #: importe ausente como cero: un pipeline que ignora en silencio la mitad
+    #: de su cartera es peor que uno que dice cuánta no pudo valorar.
+    pipeline_sin_importe: int = Field(default=0, ge=0)
 
 
 # ── Agenda de Mi Pipeline ───────────────────────────────────────────────────

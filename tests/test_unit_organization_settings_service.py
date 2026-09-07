@@ -61,6 +61,52 @@ def test_el_owner_escribe_y_recibe_lo_persistido() -> None:
         ) as escribir,
     ):
         out = mod.update_settings(1, 7, OrganizationSettings(tecnologias=["sap", "Oracle"]))
-    escribir.assert_called_once_with(7, {"tecnologias": ["SAP", "ORACLE"]})
+    (_, patch_escrito) = escribir.call_args.args
+    assert patch_escrito["tecnologias"] == ["SAP", "ORACLE"]
     assert out.tecnologias == ["SAP", "ORACLE"]
     assert out.organization_id == 7
+
+
+def test_se_persiste_el_ambito_entero_y_no_solo_las_tecnologias() -> None:
+    """El cuerpo completo llega al repositorio.
+
+    Escribir sólo ``tecnologias`` devolvía 200 habiendo tirado en silencio el
+    ámbito de mercado (F6.1) y las probabilidades por etapa (F4.1): el
+    administrador veía su configuración aceptada y el Radar seguía sin acotar.
+    """
+    ambito = OrganizationSettings(
+        tecnologias=["sap"],
+        cpvs=["72"],
+        importe_min=100_000,
+        procedimientos_excluidos=["6"],
+        probabilidades_etapa={"submitted": 80},
+    )
+    with (
+        patch.object(mod._repo, "get_active_membership", return_value=_membresia("admin")),
+        patch.object(
+            mod._repo, "update_settings", side_effect=lambda _oid, patch_: dict(patch_)
+        ) as escribir,
+    ):
+        out = mod.update_settings(1, 7, ambito)
+    (_, patch_escrito) = escribir.call_args.args
+    assert patch_escrito["cpvs"] == ["72"]
+    assert patch_escrito["importe_min"] == 100_000
+    assert patch_escrito["procedimientos_excluidos"] == ["6"]
+    assert patch_escrito["probabilidades_etapa"] == {"submitted": 80}
+    # Y vuelve leído, no inventado: es lo que el repositorio dejó guardado.
+    assert out.cpvs == ["72"]
+    assert out.probabilidades_etapa == {"submitted": 80}
+
+
+def test_una_clave_desconocida_no_tira_el_resto_de_la_configuracion() -> None:
+    """``settings_json`` admite claves nuevas; una de otra versión no puede
+    dejar a la organización sin tecnologías."""
+    with (
+        patch.object(mod._repo, "get_active_membership", return_value=_membresia("member")),
+        patch.object(
+            mod._repo,
+            "get_settings",
+            return_value={"tecnologias": ["SAP"], "clave_de_otra_version": 1},
+        ),
+    ):
+        assert mod.get_settings(1, 7).tecnologias == ["SAP"]

@@ -9,6 +9,49 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 - Si añadís un ítem nuevo, copiá la plantilla del final.
 - Al cerrarlo, no lo dejes tachado aquí: **movélo entero a la sección _Cerrados_** del final con la fecha y el commit/PR que lo resolvió. Las secciones P1/P2/P3 contienen **solo ítems abiertos**.
 
+## Plan de funcionalidades 2026-09 — ejecutado casi entero
+
+El plan y sus criterios de aceptación están en
+[plans/2026-09-plan-funcionalidades.md](plans/2026-09-plan-funcionalidades.md).
+Treinta y ocho funcionalidades en seis recorridos; **treinta y cinco
+implementadas**, una descartada por su propia decisión y dos bloqueadas por
+dependencias que no existen en este árbol.
+
+Lo que **no** se hizo, y por qué:
+
+| Ítem | Estado | Motivo |
+|---|---|---|
+| F2.1 Hitos del procedimiento | **Descartado por D32** | El spike midió 735 entradas del ATOM en vivo: `OpenTenderEvent` aparece en el **0 %**, muy por debajo del umbral del 30 % que D32 fijaba. Ver [el documento del spike](plans/2026-09-spike-d32-hitos-procedimiento.md). La consecuencia prevista —que la fecha prevista de adjudicación se estime sola— está implementada (F4.4), y `ExpectedAward.metodo` ya admite `hito` para el día que la Plataforma los publique. |
+| F4.6 Plantillas de tareas por etapa | **Bloqueado** | Depende de las tareas de oportunidad (C6.1 del plan complementario), que no existen en este árbol. Construirlo exigiría crear una tabla de tareas, y el gate de F4.6 es «sin gate»: no tiene migración autorizada. Se deja sin empezar en vez de inventar el modelo de datos de otro plan. |
+| F6.6 Boletín público | **Descartado por D36** | La propuesta de D36 es «no hasta que exista dominio propio (v2 S1.3) y política de privacidad para suscriptores». Ninguna de las dos existe. |
+
+Lo que se hizo **con fallback**, porque su dependencia no está en este árbol
+(no hay outbox de eventos, ni maestro de órganos, ni invitaciones de v2):
+
+- **F1.5** guarda la cuenta objetivo en tabla propia con el nombre plegado del
+  órgano, que es lo que el plan prevé hasta que llegue C1.2. La columna
+  `organo_id` nace ya, nullable, para que ese maestro la rellene sin migración.
+- **F5.1–F5.4, F3.4 y F4.3** entregan por los jobs y la campana que ya existen,
+  no por el outbox. El catálogo de subtipos de aviso está escrito una sola vez
+  (`services/avisos.py`), así que enchufarlo al outbox cuando exista es cambiar
+  el productor, no el vocabulario.
+- **F3.2** distingue «nosotros perdimos» de «ellos ganaron»: sin el NIF propio
+  (v2 S2.1) sólo se puede afirmar lo primero, y la respuesta lo declara.
+- **F2.3** entrega el kit sin responsable, que es lo que el plan prevé sin C6.1.
+
+Ítems de **este** backlog que el plan toca:
+
+| Ítem | Estado tras el plan |
+|---|---|
+| [P3] Unificar la definición de «Calientes» | **Sin tocar** — sigue abierto |
+| [P2] Remediación axe: 4 reglas desactivadas | **Sin tocar** — sigue abierto |
+
+Hallazgos nuevos que el plan destapó y ya están corregidos: el
+`TIPO_CONTRATO_LABELS` con dos etiquetas desplazadas y cuatro códigos sin
+traducir; `list_cursor` comparando `tecnologia` por igualdad sobre una columna
+que guarda un CSV; la rama FTS ignorando los filtros; y la consulta de
+lead-time contando dos veces los expedientes duplicados.
+
 ## Plan de arquitectura 2026-09 — ejecutado parcialmente
 
 El diagnóstico de arquitecto del 2026-09-02 y su plan por streams están en

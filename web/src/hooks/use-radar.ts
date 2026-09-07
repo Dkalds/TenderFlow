@@ -166,10 +166,21 @@ export function esBandaConocida(valor: string | null | undefined): valor is Band
   return typeof valor === "string" && BANDAS.includes(valor);
 }
 
+/**
+ * Qué pidió el usuario al quitar la señal de la bandeja (F5.6).
+ *
+ * `descartar` no caduca; `silenciar` y `posponer` necesitan `dias` y las dos
+ * la ocultan hasta esa fecha. Sólo `posponer` deja además un recordatorio.
+ */
+export type AccionDescarte = "descartar" | "silenciar" | "posponer";
+
 export type DescarteRadar = {
   idExterno: string;
   score?: number | null;
   banda?: BandaScore | null;
+  accion?: AccionDescarte;
+  /** Obligatorio para `silenciar` y `posponer`; el servidor lo valida. */
+  dias?: number;
 };
 
 /**
@@ -181,11 +192,16 @@ export type DescarteRadar = {
 export function useDismissRadarTender() {
   const qc = useQueryClient();
   return useMutation<string[], unknown, DescarteRadar, { previous: string[] | undefined }>({
-    mutationFn: ({ idExterno, score, banda }: DescarteRadar) =>
+    mutationFn: ({ idExterno, score, banda, accion = "descartar", dias }: DescarteRadar) =>
       apiMutate<RadarDismissalsResult>("POST", "/api/v1/radar/dismissals", {
         id_externo: idExterno,
         score: score ?? null,
         banda: banda ?? null,
+        accion,
+        // `dias` no viaja en `descartar`: el servidor lo rechaza con 422 si
+        // llega, precisamente para que «silenciar sin días» no acabe siendo un
+        // descarte permanente que el usuario cree temporal.
+        dias: accion === "descartar" ? null : (dias ?? null),
       } satisfies RadarDismissalBody).then((response) => response.ids),
     onMutate: async ({ idExterno }: DescarteRadar) => {
       await qc.cancelQueries({ queryKey: DISMISSALS_KEY });
@@ -195,13 +211,16 @@ export function useDismissRadarTender() {
     },
     onError: (_err, _descarte, ctx) => {
       qc.setQueryData(DISMISSALS_KEY, ctx?.previous);
-      toast.error("No se pudo descartar la señal");
+      toast.error("No se pudo quitar la señal de la bandeja");
     },
-    onSuccess: (ids: string[]) => {
+    onSuccess: (ids: string[], { accion = "descartar" }: DescarteRadar) => {
       qc.setQueryData<string[]>(DISMISSALS_KEY, ids);
       // Se mide el descarte confirmado por el servidor, no el optimista de
       // `onMutate`: un rollback dejaría contada una decisión que no ocurrió.
-      registrarEvento("radar_triaje", { accion: "descartar" });
+      // Las tres acciones se separan porque miden cosas distintas: descartar
+      // es desinterés definitivo, silenciar temporal y posponer trabajo
+      // aplazado.
+      registrarEvento("radar_triaje", { accion });
     },
     onSettled: () => {
       // El ranking se pide con `exclude_dismissed`: hay que volver a pedirlo

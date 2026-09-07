@@ -11,9 +11,13 @@ from db.repositories.base import rows_to_dicts
 _PURSUIT_SELECT = (
     "SELECT p.id, p.organization_id, p.licitacion_id, "
     "l.titulo AS tender_title, l.fecha_limite AS tender_deadline, "
+    # F4.4: el órgano es lo que da la fecha prevista de adjudicación
+    # (su lead-time mediano). Viene en la misma consulta porque el
+    # tablero necesita el de todas las filas de la página a la vez.
+    "l.organo_contratacion AS tender_organo, "
     "p.responsible_user_id, u.display_name AS responsible_name, "
     "p.status, p.decision, p.decision_reason, p.offer_price_eur, "
-    "p.outcome, p.awarded_amount_eur, p.outcome_reason, "
+    "p.outcome, p.awarded_amount_eur, p.outcome_reason, p.outcome_reason_code, "
     "p.next_action, p.next_action_due, "
     "p.identified_at, p.decision_at, p.submitted_at, p.closed_at, "
     "p.created_at, p.updated_at, p.version, "
@@ -35,6 +39,7 @@ _UPDATABLE_COLUMNS = frozenset(
         "outcome",
         "awarded_amount_eur",
         "outcome_reason",
+        "outcome_reason_code",
         "next_action",
         "next_action_due",
         "decision_at",
@@ -306,18 +311,30 @@ class PursuitRepository:
         period_from: str | None = None,
         period_to: str | None = None,
     ) -> list[dict[str, Any]]:
-        clauses = ["organization_id = %s"]
+        clauses = ["p.organization_id = %s"]
         params: list[Any] = [organization_id]
         if period_from is not None:
-            clauses.append("identified_at >= %s")
+            clauses.append("p.identified_at >= %s")
             params.append(period_from)
         if period_to is not None:
-            clauses.append("identified_at < %s")
+            clauses.append("p.identified_at < %s")
             params.append(period_to)
         with connect_read() as conn:
             cur = conn.execute(
-                "SELECT status, outcome, awarded_amount_eur, identified_at, "
-                "decision_at, submitted_at FROM pursuits WHERE " + " AND ".join(clauses),
+                "SELECT p.status, p.outcome, p.awarded_amount_eur, p.outcome_reason_code, "
+                "p.identified_at, p.decision_at, p.submitted_at, "
+                # F4.1: el importe y el plazo de la licitación son lo que
+                # convierte el conteo del embudo en euros y en trimestres.
+                # Vienen en la misma consulta porque el valor ponderado se
+                # calcula sobre exactamente estas filas.
+                "l.importe AS tender_importe, l.fecha_limite AS tender_deadline, "
+                # F4.2: los dos cortes del cuadro de mando (win rate por
+                # tecnología y por órgano) salen de esta misma consulta.
+                "l.organo_contratacion AS tender_organo, "
+                "l.tecnologia AS tender_tecnologia "
+                "FROM pursuits p "
+                "JOIN licitaciones l ON l.id_externo = p.licitacion_id "
+                "WHERE " + " AND ".join(clauses),
                 tuple(params),
             )
             return rows_to_dicts(cur)
@@ -493,3 +510,88 @@ class PursuitRepository:
                 created_at,
             ),
         )
+
+    # ── Kit de presentación (F2.3) ───────────────────────────────────────
+    #
+    # El estado del checklist vive en el ledger, no en columnas: marcar y
+    # desmarcar son eventos, y el estado actual es el último de cada clave.
+    # Eso da gratis «quién marcó qué y cuándo», que en un equipo que se reparte
+    # la oferta es la mitad del valor del checklist.
+
+    KIT_EVENT_TYPE = "kit_item_marcado"
+
+    def kit_events(self, organization_id: int, pursuit_id: int) -> list[dict[str, Any]]:
+        """Eventos del kit de una oportunidad, en orden de escritura.
+
+        Se devuelven todos y los reduce el servicio: son decenas por
+        oportunidad, y un ``DISTINCT ON`` obligaría a extraer la clave de
+        dentro del JSON en el ``ORDER BY``, que es más frágil que ordenar por
+        ``id`` y quedarse con el último.
+        """
+        with connect_read() as conn:
+            cur = conn.execute(
+                "SELECT actor_user_id, payload_json, created_at FROM pursuit_events "
+                "WHERE organization_id = %s AND pursuit_id = %s AND event_type = %s "
+                "ORDER BY id",
+                (organization_id, pursuit_id, self.KIT_EVENT_TYPE),
+            )
+            return rows_to_dicts(cur)
+
+    def append_kit_event(
+        self,
+        *,
+        organization_id: int,
+        pursuit_id: int,
+        actor_user_id: int,
+        payload: dict[str, Any],
+    ) -> None:
+        """Anota un marcado del kit. Sin ``UPDATE``: el ledger es append-only."""
+        with connect() as conn:
+            self._append_event(
+                conn,
+                pursuit_id=pursuit_id,
+                organization_id=organization_id,
+                event_type=self.KIT_EVENT_TYPE,
+                actor_user_id=actor_user_id,
+                payload=payload,
+                idempotency_key=None,
+                created_at=now_utc_iso(),
+            )
+
+    def cruces_con_competidor(
+        self, organization_id: int, empresa_key: str, *, desde_iso: str, limit: int = 100
+    ) -> list[dict[str, Any]]:
+        """F3.2 — expedientes donde coincidimos con un competidor.
+
+        Une **nuestras** oportunidades presentadas con las adjudicaciones
+        observadas del mismo expediente. El `organization_id` va en el `WHERE`
+        y no es opcional: sin él la consulta mezclaría el pipeline de otras
+        organizaciones, que es el fallo de aislamiento que más caro sale en un
+        producto multi-inquilino.
+
+        Sólo oportunidades **presentadas** (`submitted_at` no nulo): sin haber
+        ofertado no hubo cruce, sólo dos empresas mirando el mismo anuncio.
+        """
+        with connect_read() as conn:
+            cur = conn.execute(
+                "SELECT p.licitacion_id, l.titulo, l.organo_contratacion, l.importe, "
+                "       p.offer_price_eur, p.outcome, "
+                "       a.importe_adjudicado, a.fecha_adjudicacion, "
+                "       e.empresa_key AS adjudicatario_key "
+                "FROM pursuits p "
+                "JOIN licitaciones l ON l.id_externo = p.licitacion_id "
+                "LEFT JOIN adjudicaciones a ON a.licitacion_id = p.licitacion_id "
+                "LEFT JOIN empresas e ON e.id = a.empresa_id "
+                "WHERE p.organization_id = %s "
+                "  AND p.submitted_at IS NOT NULL "
+                "  AND p.identified_at >= %s "
+                "  AND (e.empresa_key = %s OR EXISTS ("
+                "        SELECT 1 FROM adjudicaciones a2 "
+                "        JOIN empresas e2 ON e2.id = a2.empresa_id "
+                "        WHERE a2.licitacion_id = p.licitacion_id AND e2.empresa_key = %s"
+                "  )) "
+                "ORDER BY a.fecha_adjudicacion DESC NULLS LAST, p.id DESC "
+                "LIMIT %s",
+                (organization_id, desde_iso, empresa_key, empresa_key, limit),
+            )
+            return rows_to_dicts(cur)

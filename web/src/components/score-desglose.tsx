@@ -56,12 +56,24 @@ export interface ScoreDesgloseProps {
   desglose: Record<string, number> | undefined;
   /** Banderas de riesgo que acompañan al score, si las hay. */
   riesgos?: string[];
+  /**
+   * F1.3 — el mismo cálculo en castellano, generado en backend
+   * (`ScoredOpportunity.explicacion`). Se pinta **encima** de las barras: son
+   * la respuesta a «por qué debería mirar esta», y las barras a «de qué está
+   * hecho el 82», que es la segunda pregunta y no la primera.
+   *
+   * No se deriva aquí ni se reescribe: el frontend no fabrica analítica
+   * (ADR-014), y además así el texto es idéntico en la tarjeta, en el
+   * inspector y en el PDF de F2.7.
+   */
+  explicacion?: string[];
 }
 
-export function ScoreDesglose({ desglose, riesgos }: ScoreDesgloseProps) {
+export function ScoreDesglose({ desglose, riesgos, explicacion }: ScoreDesgloseProps) {
   const filas = desglose ? ordenar(desglose) : [];
+  const frases = explicacion ?? [];
 
-  if (filas.length === 0) {
+  if (filas.length === 0 && frases.length === 0) {
     // "Sin desglose" y no una lista vacía: el hueco silencioso se lee como que
     // la pieza está rota, no como que este expediente no tiene detalle.
     return (
@@ -73,6 +85,19 @@ export function ScoreDesglose({ desglose, riesgos }: ScoreDesgloseProps) {
 
   return (
     <div className="flex flex-col gap-[7px]">
+      {frases.length > 0 && (
+        <ul
+          className={
+            "text-foreground/85 flex flex-col gap-1 text-[11.5px] leading-snug" +
+            (filas.length > 0 ? " border-border/60 mb-1 border-b pb-2" : "")
+          }
+        >
+          {frases.map((frase) => (
+            <li key={frase}>{frase}</li>
+          ))}
+        </ul>
+      )}
+
       {filas.map(([dim, valor]) => (
         <div key={dim} className="grid grid-cols-[96px_1fr_30px] items-center gap-2.5">
           <span className="text-muted-foreground text-[11.5px]">

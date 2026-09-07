@@ -8,13 +8,14 @@ from __future__ import annotations
 from typing import Any, cast
 
 from fastapi import APIRouter, Depends, Response
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from api.concurrency import run_db
 from api.routes.dual_auth import require_any_auth
 from db.repositories.kpi_snapshots import read_meta_cpv
 from db.repositories.licitaciones import LicitacionRepository
 from shared.cache import API_NAMESPACE, cache_key, get_cache, single_flight
+from shared.procedimientos import Familia, opciones
 
 router = APIRouter(prefix="/meta", tags=["meta"])
 
@@ -27,6 +28,19 @@ _LAST_EXTRACTION_CACHE_KEY = cache_key("meta", "last-extraction")
 _LAST_EXTRACTION_TTL = 60
 
 
+class OpcionCodificada(BaseModel):
+    """Un valor de lista controlada con su etiqueta y su definición corta.
+
+    Va tipado y no como ``dict[str, str]`` porque el cliente TS se genera de
+    aquí (invariante 5) y porque la consola tiene que poder pintar la etiqueta
+    y el tooltip sin conocer el vocabulario (invariante 3 de ``web/AGENTS.md``).
+    """
+
+    codigo: str
+    etiqueta: str
+    descripcion: str
+
+
 class MetaFilters(BaseModel):
     """Valores únicos disponibles para los selectores de filtros."""
 
@@ -34,6 +48,15 @@ class MetaFilters(BaseModel):
     ccaa: list[str]
     tecnologia: list[str]
     cpv: list[str]
+    # Campos ADITIVOS (F1.7): las tres listas controladas que la consola
+    # necesita para pintar procedimiento, tramitación y tipo de contrato con
+    # etiqueta legible. No salen de un `SELECT DISTINCT` como las de arriba
+    # sino del catálogo de `shared/procedimientos.py`: un desplegable que solo
+    # ofrece lo que hoy hay en la tabla esconde la opción con cero resultados,
+    # que es información —«no hay ningún negociado abierto»— y no un hueco.
+    procedimiento: list[OpcionCodificada] = Field(default_factory=list)
+    tramitacion: list[OpcionCodificada] = Field(default_factory=list)
+    tipo_contrato: list[OpcionCodificada] = Field(default_factory=list)
 
 
 class LastExtraction(BaseModel):
@@ -50,6 +73,33 @@ def _load_filter_options() -> dict[str, list[str]]:
     repository la calcula en vivo y la respuesta es la misma.
     """
     return _lic_repo.get_filter_options(cpv_values=read_meta_cpv())
+
+
+def _opciones(familia: Familia) -> list[OpcionCodificada]:
+    """Catálogo de una lista controlada, listo para el contrato."""
+    return [
+        OpcionCodificada(codigo=c.codigo, etiqueta=c.etiqueta, descripcion=c.descripcion)
+        for c in opciones(familia)
+    ]
+
+
+def _con_catalogos(dinamicos: dict[str, Any]) -> MetaFilters:
+    """Une los valores leídos de la tabla con los catálogos estáticos.
+
+    Los catálogos se añaden **fuera** del caché a propósito. Si viajaran dentro
+    del ``dict`` cacheado, una entrada escrita antes de este despliegue —el
+    caché vive cinco minutos, el despliegue no lo invalida— se rehidrataría sin
+    esas claves y ``MetaFilters`` las rellenaría con su default vacío: los
+    selectores de procedimiento saldrían en blanco durante esos minutos y sin
+    ningún error que lo delatara. Son constantes del proceso; construirlas en
+    cada respuesta no cuesta una consulta.
+    """
+    return MetaFilters(
+        **dinamicos,
+        procedimiento=_opciones("procedimiento"),
+        tramitacion=_opciones("tramitacion"),
+        tipo_contrato=_opciones("tipo_contrato"),
+    )
 
 
 @router.get(
@@ -72,13 +122,24 @@ async def get_filter_options(
             "estado": ["ADJ", "EV", "PUB", ...],
             "ccaa": ["Andalucía", "Cataluña", ...],
             "tecnologia": ["SAP", "ORACLE", "MICROSOFT", ...],
-            "cpv": ["72000000", ...]
+            "cpv": ["72000000", ...],
+            "procedimiento": [
+                {"codigo": "1", "etiqueta": "Abierto", "descripcion": "Cualquier..."},
+                ...
+            ],
+            "tramitacion": [...],
+            "tipo_contrato": [...]
         }
+
+    Las cuatro primeras listas son valores presentes en la tabla; las tres
+    últimas son el catálogo completo de la lista controlada CODICE
+    (``shared/procedimientos.py``), etiqueta y definición incluidas, para que
+    la consola no tenga que llevar su propia copia del vocabulario.
     """
     cached = get_cache(API_NAMESPACE).get(_FILTERS_CACHE_KEY)
     if cached is not None:
         response.headers["X-Cache"] = "HIT"
-        return MetaFilters(**cast("dict[str, Any]", cached))
+        return _con_catalogos(cast("dict[str, Any]", cached))
 
     # El TTL por sí solo no evita la estampida: las peticiones que llegan con el
     # caché frío fallan todas la comprobación de arriba y todas ejecutan la
@@ -88,13 +149,13 @@ async def get_filter_options(
         cached = get_cache(API_NAMESPACE).get(_FILTERS_CACHE_KEY)
         if cached is not None:
             response.headers["X-Cache"] = "HIT"
-            return MetaFilters(**cast("dict[str, Any]", cached))
+            return _con_catalogos(cast("dict[str, Any]", cached))
 
         result = await run_db(_load_filter_options)
         get_cache(API_NAMESPACE).set(_FILTERS_CACHE_KEY, result, ttl=_FILTERS_TTL)
 
     response.headers["X-Cache"] = "MISS"
-    return MetaFilters(**result)
+    return _con_catalogos(result)
 
 
 @router.get(

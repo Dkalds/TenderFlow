@@ -14,8 +14,18 @@ import {
 import { BUILT_SPACE_ROUTES, SPACE_VIEWS } from "@/lib/space-views";
 
 describe("CONSOLE_SPACES", () => {
-  it("consolida las rutas del dashboard en 14 espacios", () => {
-    expect(CONSOLE_SPACES).toHaveLength(14);
+  // 14 → 16 el 2026-09-06, por el plan de funcionalidades 2026-09. Los dos
+  // nuevos **absorben** una vista existente cada uno, que es la condición que
+  // §6 del plan pone para añadir espacio: Cuentas absorbe `Mercado → Órganos`
+  // como `?vista=mercado` y Dirección absorbe `Mi Pipeline → Embudo` como
+  // `?vista=embudo`. Ninguna de las dos desaparece de su sitio original —
+  // consolidar no elimina—; lo que se añade encima es acción (seguir un
+  // órgano) y cortes que en el embudo de tres barras no caben.
+  //
+  // Un espacio nuevo que sólo fuera un corte analítico más no entraría aquí:
+  // eso es lo que el plan descarta explícitamente en su §6.
+  it("consolida las rutas del dashboard en 16 espacios", () => {
+    expect(CONSOLE_SPACES).toHaveLength(16);
     const absorbed = CONSOLE_SPACES.flatMap((space) => space.views ?? []).filter(
       (view) => view.from,
     );
