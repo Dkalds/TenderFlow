@@ -249,11 +249,17 @@ def run_cli() -> int:
 
 
 def report_cli() -> int:
-    """Informa del estado de ``documentos``/``documento_chunks``."""
+    """Informa del estado de ``documentos``/``documento_chunks``.
+
+    Incluye los pendientes por versión de embedding (C5.7): sin ese número,
+    «¿terminó el re-embebido?» sólo se puede responder mirando si el job dejó
+    de imprimir cosas.
+    """
     from db.repositories.documentos import DocumentosRepository
 
-    counts = DocumentosRepository().status_counts()
-    log.info("documentos_estado", **counts)
+    repo = DocumentosRepository()
+    log.info("documentos_estado", **repo.status_counts())
+    log.info("documentos_embeddings_version", **repo.pendientes_por_version_embedding())
     return 0
 
 

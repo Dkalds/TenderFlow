@@ -47,6 +47,23 @@ def _load_model() -> Any:
     return SentenceTransformer(_MODEL_NAME)
 
 
+def embedding_signature() -> tuple[str, str]:
+    """``(modelo, versión)`` del espacio vectorial vigente (C5.7).
+
+    Es la etiqueta que ``documento_chunks`` guarda con cada vector y la que el
+    retrieval exige al leerlos. Hasta 2026-09, ``EMBEDDING_VERSION`` estaba
+    declarada en ``config/settings.py`` con un comentario que prometía
+    «si cambia, se re-embebe» y **no la leía nadie**.
+
+    El modelo entra en la firma además de la versión porque es lo que de verdad
+    define el espacio: dos vectores de modelos distintos tienen distancias que
+    no son comparables, y ``<=>`` las ordena igual sin quejarse.
+    """
+    from config.settings import settings
+
+    return str(settings.EMBEDDING_MODEL), str(settings.EMBEDDING_VERSION)
+
+
 def embeddings_available() -> bool:
     """Indica si el motor de embeddings está disponible."""
     return _has_sentence_transformers()

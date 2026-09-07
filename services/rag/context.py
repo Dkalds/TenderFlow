@@ -158,6 +158,40 @@ def _select_chunks(
     return selected, len(selected) < len(usable)
 
 
+def _anotar_paginas(repo: DocumentosRepository, chunks: list[dict[str, Any]]) -> None:
+    """Añade ``page_number`` a cada chunk que se pueda localizar (C5.3).
+
+    Una cita sin página no es una cita: manda a leer un PDF de doscientas
+    páginas. El chunking parte del texto completo del documento y no de sus
+    páginas, así que la página se resuelve localizando el arranque del
+    fragmento en ``documento_pages``.
+
+    Best-effort a propósito: si la consulta falla o el fragmento no se
+    encuentra, el chunk se queda sin página y la respuesta sigue saliendo. La
+    alternativa —romper la pregunta porque no se pudo numerar una cita— sería
+    peor que la cita sin número.
+    """
+    fragmentos = [
+        (int(c["documento_id"]), str(c.get("texto") or ""))
+        for c in chunks
+        if c.get("documento_id") is not None
+    ]
+    if not fragmentos:
+        return
+    try:
+        paginas = repo.paginas_de_fragmentos(fragmentos)
+    except Exception:
+        log.warning("rag_context.paginas_failed", exc_info=True)
+        return
+    indice = 0
+    for chunk in chunks:
+        if chunk.get("documento_id") is None:
+            continue
+        if (pagina := paginas.get(indice)) is not None:
+            chunk["page_number"] = pagina
+        indice += 1
+
+
 def build_licitacion_context(
     id_externo: str,
     question: str | None,
@@ -199,6 +233,7 @@ def build_licitacion_context(
         )
         if via_pgvector is not None:
             selected, truncated = via_pgvector
+            _anotar_paginas(repo, selected)
             return LicitacionContext(
                 detail=detail,
                 documentos=documentos,
@@ -219,6 +254,7 @@ def build_licitacion_context(
     selected, truncated = _select_chunks(
         candidates, question, max_chars=max_chars, max_chunks=max_chunks
     )
+    _anotar_paginas(repo, selected)
     return LicitacionContext(
         detail=detail,
         documentos=documentos,

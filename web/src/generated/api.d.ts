@@ -1493,6 +1493,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/feedback/asistente": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Votar una respuesta del asistente
+         * @description Registra un voto sobre una respuesta de `/ask` o `/resumen` (C5.4).
+         *
+         *     Hasta 2026-09 el asistente no tenía forma de saber si acertaba: el bucle de
+         *     active learning que existe mide el clasificador de tecnología, no la
+         *     calidad de una respuesta.
+         *
+         *     El voto se guarda **sin usuario y sin texto libre**. El texto de la pregunta
+         *     sólo viaja si `compartir_pregunta` es `true`, que es lo que separa «cedí mi
+         *     pregunta» de «no me di cuenta».
+         */
+        post: operations["submit_asistente_feedback_api_v1_feedback_asistente_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/feedback/asistente/stats": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Balance de votos del asistente (panel de /ops)
+         * @description Balance global, balance por modelo y las preguntas que más fallan.
+         *
+         *     El balance por modelo es lo que permite responder «¿el modelo nuevo es
+         *     mejor?» con un número en vez de con una impresión.
+         */
+        get: operations["asistente_feedback_stats_api_v1_feedback_asistente_stats_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/feedback/model-info": {
         parameters: {
             query?: never;
@@ -3573,6 +3624,121 @@ export interface components {
             type: string;
         };
         /**
+         * AsistenteFeedbackRequest
+         * @description Voto sobre una respuesta del asistente.
+         *
+         *     Nada de lo que llega aquí identifica a nadie, y es a propósito: la fila que
+         *     se guarda no lleva usuario ni texto libre (ver `v120`).
+         */
+        AsistenteFeedbackRequest: {
+            /**
+             * Cached
+             * @description La respuesta venía de caché. Un voto negativo aquí apunta a la entrada.
+             * @default false
+             */
+            cached: boolean;
+            /**
+             * Compartir Pregunta
+             * @description Cede el texto de la pregunta para mejorar el asistente. Sin esto solo se guarda su huella.
+             * @default false
+             */
+            compartir_pregunta: boolean;
+            /** Id Externo */
+            id_externo?: string | null;
+            /** Modelo */
+            modelo: string;
+            /**
+             * Modo
+             * @description general | licitacion | resumen
+             */
+            modo: string;
+            /**
+             * Motivo
+             * @description incorrecta | incompleta | sin_fuentes | lenta | otro
+             */
+            motivo?: string | null;
+            /** Pregunta */
+            pregunta: string;
+            /**
+             * Voto
+             * @description up | down
+             */
+            voto: string;
+        };
+        /** AsistenteFeedbackResult */
+        AsistenteFeedbackResult: {
+            /** Id */
+            id?: number | null;
+            /**
+             * Status
+             * @default ok
+             */
+            status: string;
+        };
+        /**
+         * AsistenteFeedbackResumen
+         * @description Lo que el panel de ``/ops`` → Active learning necesita para decidir algo.
+         */
+        AsistenteFeedbackResumen: {
+            /**
+             * Negativos
+             * @default 0
+             */
+            negativos: number;
+            /** Pct Positivos */
+            pct_positivos?: number | null;
+            /** Peores Preguntas */
+            peores_preguntas?: components["schemas"]["AsistentePreguntaProblematica"][];
+            /** Por Modelo */
+            por_modelo?: components["schemas"]["AsistenteModeloBalance"][];
+            /**
+             * Positivos
+             * @default 0
+             */
+            positivos: number;
+            /**
+             * Total
+             * @default 0
+             */
+            total: number;
+        };
+        /** AsistenteModeloBalance */
+        AsistenteModeloBalance: {
+            /** Modelo */
+            modelo: string;
+            /**
+             * Negativos
+             * @default 0
+             */
+            negativos: number;
+            /**
+             * Positivos
+             * @default 0
+             */
+            positivos: number;
+        };
+        /** AsistentePreguntaProblematica */
+        AsistentePreguntaProblematica: {
+            /** Modo */
+            modo?: string | null;
+            /**
+             * Negativos
+             * @default 0
+             */
+            negativos: number;
+            /** Pregunta Hash */
+            pregunta_hash: string;
+            /** Pregunta Texto */
+            pregunta_texto?: string | null;
+            /**
+             * Total
+             * @default 0
+             */
+            total: number;
+            /** Ultima Vez */
+            ultima_vez?: string | null;
+        };
+        /**
          * AskModelInfo
          * @description Información sobre los modelos LLM disponibles.
          */
@@ -3592,6 +3758,12 @@ export interface components {
              * @description Filtrar licitaciones por CCAA
              */
             ccaa?: string | null;
+            /**
+             * Force
+             * @description Ignora la caché de respuestas y vuelve a preguntar al modelo. Consume presupuesto de LLM.
+             * @default false
+             */
+            force: boolean;
             /**
              * Id Externo
              * @description ID de una licitación específica: el contexto pasa a ser esa licitación (metadatos del anuncio + fragmentos de sus pliegos) en lugar del retrieval de corpus.
@@ -12084,6 +12256,90 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    submit_asistente_feedback_api_v1_feedback_asistente_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AsistenteFeedbackRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AsistenteFeedbackResult"];
+                };
+            };
+            /** @description No autenticado */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Voto o motivo fuera del vocabulario */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    asistente_feedback_stats_api_v1_feedback_asistente_stats_get: {
+        parameters: {
+            query?: {
+                limite?: number;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AsistenteFeedbackResumen"];
+                };
+            };
+            /** @description No autenticado */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
             };
         };
     };

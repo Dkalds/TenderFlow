@@ -20,6 +20,36 @@ export interface FuenteChunk {
   texto?: string;
   tipo?: string;
   filename?: string;
+  /** Documento del que sale el fragmento. Sin esto no hay a dónde enlazar. */
+  documento_id?: number;
+  /** Página dentro de ese documento, si se pudo localizar el fragmento. */
+  page_number?: number;
+}
+
+/**
+ * Una cita del pliego, plana y enlazable (D29).
+ *
+ * `fuentes_documentos` agrupa por expediente y trae el fragmento entero: sirve
+ * para enseñar el contexto. Esto es lo otro — lo que permite convertir «esto lo
+ * dice el pliego técnico» en un enlace a la página 12.
+ */
+export interface Cita {
+  documento_id: number;
+  page_number: number | null;
+  tipo?: string | null;
+  filename?: string | null;
+  cita: string;
+}
+
+/** Evento `sources`: las citas, y si la respuesta no tenía ninguna. */
+export interface SourcesInfo {
+  citas: Cita[];
+  /**
+   * `true` cuando la respuesta se construyó sólo con los metadatos del anuncio.
+   * La UI debe distinguirla: sin la marca parece lo mismo que una respuesta
+   * respaldada por el pliego.
+   */
+  sinFuentes: boolean;
 }
 
 export interface FuenteDocumento {
@@ -50,11 +80,14 @@ export interface ResumenMeta {
 export interface AskMeta {
   contexto: "licitacion" | "general";
   id_externo?: string | null;
+  /** True cuando la respuesta se sirvió del caché del servidor (sin coste LLM). */
+  cached?: boolean;
 }
 
 export interface AskStreamResult {
   answer: string;
   fuentes: FuenteDocumento[];
+  sources: SourcesInfo | null;
   degraded: DegradedInfo | null;
   resumenMeta: ResumenMeta | null;
   askMeta: AskMeta | null;
@@ -64,6 +97,7 @@ interface StreamCallbacks {
   /** Called with the full accumulated answer each time new text arrives. */
   onToken: (accumulated: string) => void;
   onFuentes?: (fuentes: FuenteDocumento[]) => void;
+  onSources?: (info: SourcesInfo) => void;
   onDegraded?: (info: DegradedInfo) => void;
   onResumenMeta?: (meta: ResumenMeta) => void;
   onAskMeta?: (meta: AskMeta) => void;
@@ -95,6 +129,7 @@ async function consumeStream(res: Response, cb: StreamCallbacks): Promise<AskStr
   const result: AskStreamResult = {
     answer: "",
     fuentes: [],
+    sources: null,
     degraded: null,
     resumenMeta: null,
     askMeta: null,
@@ -107,6 +142,12 @@ async function consumeStream(res: Response, cb: StreamCallbacks): Promise<AskStr
     } else if (Array.isArray(parsed.fuentes_documentos)) {
       result.fuentes = parsed.fuentes_documentos as FuenteDocumento[];
       cb.onFuentes?.(result.fuentes);
+    } else if (Array.isArray(parsed.sources)) {
+      result.sources = {
+        citas: parsed.sources as Cita[],
+        sinFuentes: parsed.sin_fuentes === true,
+      };
+      cb.onSources?.(result.sources);
     } else if (parsed.degraded) {
       result.degraded = {
         reason: String(parsed.reason ?? "unknown"),

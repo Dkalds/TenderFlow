@@ -22,6 +22,7 @@ Modos:
 
 from __future__ import annotations
 
+import hashlib
 import re
 from typing import Any, Literal, TypedDict
 
@@ -110,8 +111,11 @@ _SYSTEM_LICITACION = (
     + (
         "El CONTEXTO contiene los metadatos del anuncio de una única licitación y, si están "
         "disponibles, fragmentos del texto de sus pliegos. Responde sobre esa licitación: "
-        "distingue qué información procede del anuncio y qué procede de los pliegos, y cuando "
-        "uses un fragmento de pliego cita el documento (su tipo o nombre de archivo). "
+        "distingue qué información procede del anuncio y qué procede de los pliegos. "
+        "CADA afirmación que salga de un pliego lleva su referencia al final, entre "
+        "corchetes, con el documento y la página tal y como aparecen en la cabecera del "
+        "fragmento: por ejemplo `[pliego técnico, pág. 12]`. No inventes números de página: "
+        "si la cabecera del fragmento no trae página, cita sólo el documento. "
         "Si ni el anuncio ni los pliegos contienen la respuesta, dilo claramente antes de "
         "aportar contexto general. Responde siempre en español y en formato Markdown."
     )
@@ -162,6 +166,29 @@ _SYSTEM_CLASIFICACION = (
         "lista vacía en vez de forzar la más parecida."
     )
 )
+
+
+#: Huella del contenido de los system prompts. La usa la caché de respuestas
+#: (``llm/cache.py``, C5.5) como parte de la clave: editar un prompt invalida lo
+#: cacheado **solo**, sin que nadie tenga que acordarse de subir un contador.
+#:
+#: Un entero a mano funciona exactamente hasta el primer PR que lo olvida, y a
+#: partir de ahí la caché sirve respuestas de un prompt que ya no existe — un
+#: fallo silencioso que dura lo que dure el TTL.
+PROMPT_VERSION: str = hashlib.sha256(
+    "<<prompt>>".join(
+        (
+            _BASE,
+            _UNTRUSTED_CONTEXT_RULES,
+            _SYSTEM_GENERAL_WITH_CORPUS,
+            _SYSTEM_GENERAL_NO_CORPUS,
+            _SYSTEM_LICITACION,
+            _SYSTEM_RESUMEN,
+            _SYSTEM_EXTRACTION,
+            _SYSTEM_CLASIFICACION,
+        )
+    ).encode("utf-8")
+).hexdigest()[:16]
 
 
 def build_system_prompt(mode: PromptMode, *, has_corpus_context: bool) -> str:
@@ -234,13 +261,13 @@ def _doc_block(doc: dict[str, Any], keywords: list[str], *, excerpt_chars: int =
     lines.append(f"Descripción: {_excerpt(doc.get('descripcion'), keywords, excerpt_chars)}")
     for chunk in doc.get("chunks") or []:
         etiqueta = " ".join(str(chunk[k]) for k in ("tipo", "filename") if chunk.get(k))
-        location = " ".join(
-            str(chunk[k]) for k in ("documento_id", "page_number") if chunk.get(k) is not None
-        )
-        lines.append(
-            f"--- Fragmento de pliego ({etiqueta or 'documento'}"
-            f"{'; documento/página ' + location if location else ''}) ---"
-        )
+        # La página se escribe con su unidad («pág. 12») y no como un número
+        # suelto: el prompt pide citarla tal cual, y «documento/página 41 12»
+        # es lo que producía citas con el id del documento como si fuera la
+        # página.
+        pagina = chunk.get("page_number")
+        situacion = f"; pág. {pagina}" if pagina is not None else ""
+        lines.append(f"--- Fragmento de pliego ({etiqueta or 'documento'}{situacion}) ---")
         lines.append(str(chunk.get("texto", "")))
     return "\n".join(lines)
 

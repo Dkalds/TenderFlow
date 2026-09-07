@@ -94,9 +94,6 @@ class Settings(BaseSettings):
     # β<1 favorece precision. 1.5 prioriza ligeramente recall (perder una
     # licitación SAP cuesta más que una falsa alerta).
     ML_FBETA: float = 1.5
-    # Si True, usar TimeSeriesSplit (sin shuffle) cuando hay fecha_publicacion.
-    # Refleja mejor la performance esperada en producción (datos futuros).
-    ML_USE_TIMESERIES_CV: bool = True
     # Rangos de incertidumbre para la cola de active learning (P(SAP) ∈ [lo, hi]).
     ML_UNCERTAINTY_LO: float = 0.30
     ML_UNCERTAINTY_HI: float = 0.70

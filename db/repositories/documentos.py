@@ -15,6 +15,7 @@ from typing import Any
 from db.database import DocumentoReferencia, connect, connect_read, now_utc_iso
 from db.repositories.base import rows_to_dicts
 from observability.logging import get_logger
+from services.embeddings import embedding_signature
 
 log = get_logger(__name__)
 
@@ -488,13 +489,21 @@ class DocumentosRepository:
             c.execute("DELETE FROM documento_chunks WHERE documento_id = %s", (documento_id,))
             if not chunks:
                 return 0
+            # C5.7: cada fila dice con qué modelo y versión se calculó. Sin
+            # esta marca, cambiar `EMBEDDING_MODEL` deja vectores de dos
+            # espacios distintos en la misma tabla y `<=>` los ordena juntos —
+            # el retrieval devuelve fragmentos plausibles y equivocados, sin
+            # que nada falle.
+            modelo, version = embedding_signature()
             rows = [
-                (documento_id, i, texto, _to_pg_vector_literal(emb))
+                (documento_id, i, texto, _to_pg_vector_literal(emb), modelo, version)
                 for i, (texto, emb) in enumerate(zip(chunks, embeddings, strict=True))
             ]
             c.executemany(
-                "INSERT INTO documento_chunks (documento_id, chunk_index, texto, embedding) "
-                "VALUES (%s, %s, %s, %s::vector)",
+                "INSERT INTO documento_chunks "
+                "(documento_id, chunk_index, texto, embedding, embedding_model, "
+                " embedding_version) "
+                "VALUES (%s, %s, %s, %s::vector, %s, %s)",
                 rows,
             )
         return len(chunks)
@@ -544,17 +553,110 @@ class DocumentosRepository:
         quedan fuera del ranking por un LIMIT previo.
         """
         vec = _to_pg_vector_literal(embedding)
+        tope = max(1, min(int(limit), 200))
+        modelo, version = embedding_signature()
+        sql = (
+            "SELECT dc.documento_id, d.tipo, d.filename, dc.chunk_index, dc.texto, "
+            "1 - (dc.embedding <=> %s::vector) AS score "
+            "FROM documento_chunks dc JOIN documentos d ON d.id = dc.documento_id "
+            "WHERE d.licitacion_id = %s AND dc.embedding IS NOT NULL "
+            "{filtro}"
+            "ORDER BY dc.embedding <=> %s::vector "
+            "LIMIT %s"
+        )
+        with connect_read() as c:
+            # Primero, sólo los chunks del espacio vectorial actual: comparar
+            # distancias entre espacios distintos no significa nada.
+            cur = c.execute(
+                sql.format(filtro="AND dc.embedding_model = %s AND dc.embedding_version = %s "),
+                (vec, licitacion_id, modelo, version, vec, tope),
+            )
+            filas = rows_to_dicts(cur)
+            if filas:
+                return filas
+            # Fallback: no hay nada re-embebido todavía (o son filas anteriores
+            # a v121, sin etiqueta). Un retrieval con vectores viejos es peor
+            # que uno actual y mejor que ninguno — el job de re-embebido lo
+            # corrige, y mientras tanto la ficha sigue respondiendo.
+            log.info(
+                "documento_chunks_fallback_version_embedding",
+                licitacion_id=licitacion_id,
+                modelo=modelo,
+                version=version,
+            )
+            cur = c.execute(sql.format(filtro=""), (vec, licitacion_id, vec, tope))
+            return rows_to_dicts(cur)
+
+    #: Cuántos caracteres del fragmento se usan para localizarlo en la página.
+    #: 120 bastan para que sea único dentro de un pliego y son lo bastante
+    #: pocos como para no cruzar el corte de página en la mayoría de los casos.
+    HUELLA_FRAGMENTO_CHARS = 120
+
+    def paginas_de_fragmentos(self, fragmentos: Sequence[tuple[int, str]]) -> dict[int, int]:
+        """Página de cada fragmento: ``índice -> page_number`` (C5.3).
+
+        ``documento_chunks`` no guarda la página —el chunking parte del texto
+        completo del documento, no de sus páginas— así que la cita se resuelve
+        localizando el arranque del fragmento dentro de ``documento_pages``.
+
+        Una sola consulta para todos los fragmentos, y no una por fragmento:
+        son ocho o doce por respuesta y doce viajes a BD dentro de una petición
+        de chat se notan.
+
+        ``MIN(page_number)``: un fragmento que cruza el corte de página aparece
+        en dos, y la cita correcta es donde **empieza**. Los que no se
+        encuentran simplemente no salen en el diccionario — una cita sin página
+        es mejor que una página inventada.
+        """
+        if not fragmentos:
+            return {}
+        valores = ", ".join(["(%s::int, %s::int, %s::text)"] * len(fragmentos))
+        params: list[Any] = []
+        for indice, (documento_id, texto) in enumerate(fragmentos):
+            params.extend([indice, documento_id, (texto or "")[: self.HUELLA_FRAGMENTO_CHARS]])
         with connect_read() as c:
             cur = c.execute(
-                "SELECT dc.documento_id, d.tipo, d.filename, dc.chunk_index, dc.texto, "
-                "1 - (dc.embedding <=> %s::vector) AS score "
-                "FROM documento_chunks dc JOIN documentos d ON d.id = dc.documento_id "
-                "WHERE d.licitacion_id = %s AND dc.embedding IS NOT NULL "
-                "ORDER BY dc.embedding <=> %s::vector "
-                "LIMIT %s",
-                (vec, licitacion_id, vec, max(1, min(int(limit), 200))),
+                f"WITH frag(idx, documento_id, fragmento) AS (VALUES {valores}) "
+                "SELECT f.idx, MIN(dp.page_number) AS page_number "
+                "FROM frag f "
+                "JOIN documento_pages dp ON dp.documento_id = f.documento_id "
+                " AND f.fragmento <> '' AND position(f.fragmento in dp.texto) > 0 "
+                "GROUP BY f.idx",
+                params,
             )
-            return rows_to_dicts(cur)
+            return {int(fila[0]): int(fila[1]) for fila in cur.fetchall() if fila[1] is not None}
+
+    def pendientes_por_version_embedding(self) -> dict[str, Any]:
+        """Cuántos chunks quedan fuera del espacio vectorial vigente (C5.7).
+
+        Lo consume el informe de ``documentos_embeddings``. Sin este número,
+        «¿terminó el re-embebido?» sólo se puede responder mirando si el job
+        dejó de imprimir cosas.
+
+        Las filas con etiqueta ``NULL`` —anteriores a ``v121``— cuentan como
+        pendientes: no consta con qué modelo se calcularon, y eso no es lo
+        mismo que constar que están al día.
+        """
+        modelo, version = embedding_signature()
+        with connect_read() as c:
+            fila = c.execute(
+                "SELECT COUNT(*) AS total, "
+                "COUNT(*) FILTER (WHERE embedding_model = %s AND embedding_version = %s) "
+                "  AS al_dia, "
+                "COUNT(*) FILTER (WHERE embedding_model IS NULL) AS sin_etiqueta "
+                "FROM documento_chunks",
+                (modelo, version),
+            ).fetchone()
+        total = int(fila[0] or 0) if fila else 0
+        al_dia = int(fila[1] or 0) if fila else 0
+        return {
+            "modelo": modelo,
+            "version": version,
+            "total": total,
+            "al_dia": al_dia,
+            "pendientes": total - al_dia,
+            "sin_etiqueta": int(fila[2] or 0) if fila else 0,
+        }
 
     def list_textos_by_licitacion(
         self, licitacion_id: str, limit: int = 10
