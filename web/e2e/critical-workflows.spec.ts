@@ -135,6 +135,10 @@ test.describe("Flujos de trabajo críticos", () => {
       ).toBe(201);
 
       const page = await context.newPage();
+      // La URL vieja sigue siendo la puerta: desde C7.5 un 308 la lleva a
+      // `/ajustes?vista=cuenta`, con el mismo formulario dentro. Que este
+      // `goto` siga funcionando ES la comprobación de que absorber no rompió
+      // ningún enlace guardado.
       await page.goto("/mi-cuenta");
       await page.getByLabel(/para confirmar/).fill(email);
 

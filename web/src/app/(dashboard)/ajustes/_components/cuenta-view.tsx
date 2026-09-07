@@ -1,15 +1,21 @@
 "use client";
 
 /**
- * Mi cuenta — derechos GDPR ejercitables sin escribir una petición a mano.
+ * Datos y cuenta — derechos RGPD ejercitables sin escribir una petición a mano.
  *
  * `GET /me/data` (export completo en ZIP) y `DELETE /me` (anonimización y
  * borrado) existían desde hacía tiempo sin ninguna superficie: ejercer un
- * derecho reconocido por ley exigía usar curl. Esta pantalla es esa superficie.
+ * derecho reconocido por ley exigía usar curl.
  *
- * El borrado pide escribir el email literal, no un "¿estás seguro?": es
- * irreversible y anonimiza todo el histórico del usuario, así que la
- * confirmación tiene que costar más que un clic accidental.
+ * El borrado pide escribir el email literal, no un «¿estás seguro?»: es
+ * irreversible y anonimiza todo el histórico, así que la confirmación tiene que
+ * costar más que un clic accidental.
+ *
+ * Vive aquí y no en `mi-cuenta/page.tsx` desde C7.5: aquella ruta se absorbió
+ * como `?vista=cuenta` del espacio Ajustes y su `page.tsx` se borró — un
+ * `page.tsx` bajo una ruta redirigida se compila y no se ejecuta jamás, y el
+ * test de títulos lo rechaza por eso. Lo que no se pierde es nada de lo que
+ * hacía: está todo aquí, y `/mi-cuenta` sigue llevando a ello.
  */
 
 import * as React from "react";
@@ -19,9 +25,9 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-import { SpaceShell } from "@/components/layout/space-shell";
 import { apiMutate, fetchBlobWithAuth } from "@/lib/api-client";
 import { useSession } from "@/lib/auth";
+
 
 function ExportCard() {
   const [downloading, setDownloading] = React.useState(false);
@@ -124,17 +130,16 @@ function DeleteAccountCard({ email }: { email: string }) {
   );
 }
 
-export default function MiCuentaPage() {
+
+export default function CuentaView() {
   const { user, isLoading } = useSession();
 
-  if (isLoading) return <Skeleton className="m-4 h-40 w-full max-w-2xl" />;
+  if (isLoading) return <Skeleton className="h-40 w-full max-w-2xl" />;
 
   return (
-    <SpaceShell spaceKey="mi-cuenta">
-      <div className="mx-auto w-full max-w-2xl space-y-4 p-4">
-        <ExportCard />
-        {user?.email && <DeleteAccountCard email={user.email} />}
-      </div>
-    </SpaceShell>
+    <div className="w-full max-w-2xl space-y-4">
+      <ExportCard />
+      {user?.email && <DeleteAccountCard email={user.email} />}
+    </div>
   );
 }
