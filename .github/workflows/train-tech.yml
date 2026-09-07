@@ -110,6 +110,35 @@ jobs:
           ALERT_SMTP_PASSWORD: ${{ secrets.ALERT_SMTP_PASSWORD }}
         run: python -m scheduler.jobs.tech_training_run
 
+      # S6.2: el conteo de etiquetas por origen que dejó el entrenamiento.
+      # `train_from_db` escribe una entrada append-only por run en
+      # `data/models/tech_registry.json` con `label_sources`, y este paso la
+      # sube al summary. Es la única forma de saber, mirando un run, si el
+      # modelo se entrenó con etiquetas humanas o con el regex: este modelo no
+      # se registra en `model_versions` a propósito (ver el docstring de
+      # `scheduler/jobs/tech_training_run.py`).
+      #
+      # `if: always()` y no `success()`: cuando el gate rechaza, el conteo es
+      # justo lo que hay que mirar. Si el job ni entrenó, el fichero no existe
+      # y el paso lo dice sin fallar.
+      - name: Report label sources
+        if: always()
+        run: |
+          set -u
+          REGISTRO=data/models/tech_registry.json
+          {
+            echo "## Etiquetas del entrenamiento"
+            echo
+            if [ -f "$REGISTRO" ]; then
+              echo '```json'
+              # Última entrada del registro: el run que acaba de terminar.
+              python -c "import json,sys; print(json.dumps(json.load(open(sys.argv[1]))[-1], indent=2, ensure_ascii=False))" "$REGISTRO"
+              echo '```'
+            else
+              echo "Sin registro: el job no llegó a entrenar (ver el gate de arriba)."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
       # Los valores van por `env` y no interpolados en el `run:`: una expresión
       # de Actions se sustituye ANTES de que bash lea la línea, así que un
       # backtick o una comilla en el texto rompería el paso (o algo peor).

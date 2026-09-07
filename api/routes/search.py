@@ -1,15 +1,19 @@
 """Búsqueda de texto — POST /api/v1/search/semantic.
 
-Expone el motor FTS+BM25 de :mod:`services.investigador.search_engine` como
-endpoint REST público (requiere API-key).
+Expone el motor de :mod:`services.investigador.search_engine` como endpoint
+REST (requiere API-key o sesión).
 
 Diseño
 ------
-* Full-text search de Postgres (``tsvector``/``ts_rank_cd``; los nombres
-  ``fts5_*`` sobreviven por compatibilidad de contrato) con fallback LIKE.
-* FAISS se retiró en la Fase 3 de reducción de superficie (2026-07-04); la
-  ruta conserva su path público y los campos ``alpha``/``embedding_model``
-  por compatibilidad de contrato, pero ya no hay reranking semántico.
+* Tres caminos, de más a menos informado: fusión RRF (FTS + pgvector sobre
+  ``documento_chunks``), full-text de Postgres (``tsvector``/``ts_rank_cd``;
+  los nombres ``fts5_*`` sobreviven por compatibilidad de contrato) y
+  fallback LIKE. ``source`` dice cuál se ejecutó de verdad.
+* ``alpha`` pondera las dos listas de la fusión (0 = solo léxico, 1 = solo
+  semántico). Entre 2026-07 (retirada de FAISS) y 2026-09 fue un campo
+  legacy sin efecto, y el deslizador del Investigador que lo enviaba era el
+  único control de la UI que el backend ignoraba (D15 del plan de
+  arquitectura 2026-09: servir la fusión que ya existía).
 * ``run_ml`` aísla la latencia en el pool de ML (bulkhead 2 slots).
 
 Ejemplo::
@@ -44,6 +48,16 @@ _MAX_Q_LEN = 500
 _DEFAULT_TOP_K = 10
 _MAX_TOP_K = 50
 
+# Valores posibles de ``SemanticSearchResponse.source``, en el orden en que se
+# intentan los caminos. Son constantes y no un literal suelto porque el
+# Investigador tiene que poder etiquetar los tres sin inventarse un cuarto:
+# ``tests/test_search_semantic_source.py`` comprueba que la tabla de etiquetas
+# de la UI y esta tupla no se separen.
+SOURCE_RRF = "rrf"
+SOURCE_FTS = "fts"
+SOURCE_LIKE = "like"
+SEARCH_SOURCES: tuple[str, ...] = (SOURCE_RRF, SOURCE_FTS, SOURCE_LIKE)
+
 
 # ── Schemas ──────────────────────────────────────────────────────────────────
 
@@ -61,7 +75,11 @@ class SemanticSearchRequest(BaseModel):
         default=0.70,
         ge=0.0,
         le=1.0,
-        description="LEGACY — sin efecto desde la retirada de FAISS (2026-07); se acepta por compatibilidad",
+        description=(
+            "Peso del lado semántico en la fusión RRF: 0 = solo texto completo, "
+            "1 = solo similitud vectorial. Solo tiene efecto cuando la respuesta "
+            "es source=rrf; con source=fts o like no hay nada que ponderar."
+        ),
     )
     embedding_model: str = Field(
         default="",
@@ -108,7 +126,18 @@ class SemanticHit(BaseModel):
     fecha_publicacion: str | None
     ccaa: str | None
     estado: str | None
-    score: float = Field(description="Puntuación de relevancia combinada [0, 1]")
+    score: float = Field(
+        description=(
+            "Relevancia en [0, 1]. La escala DEPENDE de source y no es "
+            "comparable entre búsquedas ni entre fuentes: con rrf se escala "
+            "contra el mejor resultado de esta misma respuesta, que vale 1; "
+            "con fts, contra el mejor candidato del texto completo ANTES de "
+            "aplicar los filtros, así que el máximo de la lista puede quedar "
+            "por debajo de 1; con like es la constante 0.2 en todos los "
+            "resultados, porque la coincidencia literal no ordena por "
+            "relevancia."
+        )
+    )
 
 
 class SemanticSearchResponse(BaseModel):
@@ -116,9 +145,63 @@ class SemanticSearchResponse(BaseModel):
 
     q: str
     top_k: int
-    source: str = Field(description="Motor usado: FTS5 | LIKE")
+    # Tipado ``str`` y no ``Literal``: el conjunto de valores es cerrado y lo
+    # fija ``SEARCH_SOURCES``, pero un Literal en la respuesta convierte
+    # cualquier camino futuro en un 500 de validación en producción.
+    source: str = Field(
+        description=(
+            "Camino REALMENTE ejecutado: rrf (fusión de texto completo y "
+            "similitud vectorial), fts (solo texto completo) o like "
+            "(coincidencia literal). No se declara por configuración."
+        )
+    )
     hits: list[SemanticHit]
     elapsed_ms: int
+
+
+# ── Normalización de los hits de la fusión ───────────────────────────────────
+
+# Campos de ``hybrid_search_docs`` que sí viajan al cliente. El resto de lo que
+# devuelve (``tecnologia``, ``chunks``) es para el RAG, no para esta ruta.
+_HIT_FIELDS = (
+    "id_externo",
+    "titulo",
+    "organo_contratacion",
+    "importe",
+    "descripcion",
+    "url",
+    "fecha_publicacion",
+    "ccaa",
+    "estado",
+)
+
+
+def _hits_from_fused(
+    docs: list[dict[str, Any]],
+    allowed_ids: set[str] | None,
+    top_k: int,
+) -> list[dict[str, Any]]:
+    """Adapta los documentos de la fusión RRF a la forma de ``SemanticHit``.
+
+    El ``rrf_score`` bruto vive en torno a 1/60 y no tiene techo conocido, así
+    que se escala contra el mejor de esta misma respuesta para que el contrato
+    ``score ∈ [0, 1]`` se cumpla sin fingir una escala absoluta que no existe:
+    la descripción del campo dice que es relativo a la respuesta.
+    """
+    if allowed_ids is not None:
+        docs = [d for d in docs if d.get("id_externo") in allowed_ids]
+    docs = docs[:top_k]
+    if not docs:
+        return []
+
+    max_score = max(float(d.get("rrf_score") or 0.0) for d in docs)
+    hits: list[dict[str, Any]] = []
+    for doc in docs:
+        hit: dict[str, Any] = {k: doc.get(k) for k in _HIT_FIELDS}
+        raw = float(doc.get("rrf_score") or 0.0)
+        hit["score"] = round(raw / max_score, 6) if max_score > 0 else 0.0
+        hits.append(hit)
+    return hits
 
 
 # ── Endpoint ─────────────────────────────────────────────────────────────────
@@ -127,11 +210,13 @@ class SemanticSearchResponse(BaseModel):
 @router.post(
     "/search/semantic",
     response_model=SemanticSearchResponse,
-    summary="Búsqueda de texto completo (FTS/BM25)",
+    summary="Búsqueda de texto completo con fusión semántica",
     description=(
-        "Ejecuta una búsqueda de texto completo (Postgres tsvector/ts_rank_cd) "
-        "con fallback LIKE. Los campos alpha/embedding_model son legacy sin "
-        "efecto desde la retirada de FAISS (2026-07)."
+        "Fusiona (RRF) el texto completo de Postgres (tsvector/ts_rank_cd) con "
+        "la similitud vectorial sobre los chunks de pliego, ponderadas por "
+        "alpha. Sin embeddings disponibles degrada a texto completo y, si este "
+        "no encuentra nada, a coincidencia literal; el campo source de la "
+        "respuesta dice cuál de los tres caminos se ejecutó."
     ),
 )
 async def semantic_search(
@@ -160,20 +245,30 @@ async def semantic_search(
         from services.investigador.search_engine import (
             fetch_docs,
             fts5_search,
+            hybrid_search,
             like_search,
         )
 
         # Con filtros activos ampliamos el pool de candidatos y filtramos ANTES de
         # recortar a top_k, para no quedarnos cortos de resultados tras el filtro.
         pool = min(body.top_k * (10 if allowed_ids is not None else 2), 200)
+
+        # La fusión primero: solo devuelve algo cuando hay modelo de embeddings
+        # y chunks embebidos con los que fusionar. Que esté vacía significa que
+        # el camino no existe hoy en esta instalación, no que la consulta no
+        # tenga resultados — por eso se sigue al FTS en vez de responder vacío.
+        fused = hybrid_search(body.q, pool, alpha=body.alpha)
+        if fused:
+            return _hits_from_fused(fused, allowed_ids, body.top_k), SOURCE_RRF
+
         fts_hits = fts5_search(body.q, pool)
 
         if fts_hits:
             ranked = sorted(fts_hits, key=lambda x: x[1], reverse=True)[:pool]
-            source = "FTS5"
+            source = SOURCE_FTS
         else:
             ranked = like_search(body.q, pool)
-            source = "LIKE"
+            source = SOURCE_LIKE
 
         if allowed_ids is not None:
             ranked = [(id_, sc) for id_, sc in ranked if id_ in allowed_ids]
@@ -207,6 +302,11 @@ async def semantic_search(
         q=body.q[:80],
         n=len(hits),
         source=source,
+        # ``alpha`` solo se interpreta cuando ``source`` es rrf; loguear ambos
+        # juntos es lo que permite saber, sin abrir la BD, si el deslizador del
+        # Investigador está gobernando algo o si esa instalación no tiene
+        # embeddings que fusionar.
+        alpha=body.alpha,
         elapsed_ms=elapsed_ms,
         user=ctx.get("user_id"),
     )

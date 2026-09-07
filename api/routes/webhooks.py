@@ -9,13 +9,29 @@ Endpoints:
     POST   /api/v1/webhooks/{id}/ping    — enviar entrega de prueba
     GET    /api/v1/webhooks/{id}/deliveries — historial de entregas
 
-Los webhooks son un recurso compartido a nivel de instancia (sin owner por
-usuario — cualquier integración registrada los ve todos), así que todos los
-endpoints requieren autenticación dual (sesión OAuth o API key,
-``require_any_auth``) **y** ``is_admin`` (F13·C3.1, plan Pliegos+RAG — antes
-requerían ``X-API-Key`` con scope ``webhooks:read``/``webhooks:write``; una
-key con scope ``*`` sigue teniendo acceso, ya que ``require_any_auth`` la
-marca ``is_admin`` en ese caso).
+Desde S4.2 del plan 2026-09 v2 **un webhook pertenece a una organización**:
+lo crea y lo gestiona cualquier miembro con permiso de escritura
+(``require_organization(write=True)``), no el administrador de la instancia. El
+motivo es que la restricción anterior no protegía nada —el recurso no tenía
+dueño, así que la única forma de que un equipo tuviera su canal era que otro se
+lo creara— y a cambio dejaba la integración de Slack o Teams de cada equipo en
+la cola de un administrador.
+
+Las filas anteriores a la revisión ``v108`` no tienen organización. Se tratan
+como **globales**: siguen entregando y siguen viéndose desde la vista de
+``/ops`` (``GET /webhooks/global``, solo administradores), pero ningún miembro
+las ve ni las edita desde su equipo.
+
+Consecuencia deliberada: **un principal sin fila de usuario ya no gestiona
+webhooks**. Resolver la organización activa empieza por leer el usuario, así
+que una credencial huérfana falla en vez de caer a una vista sin ámbito. No es
+una regresión funcional: ``api/auth.py`` rechaza en prod y staging una API key
+sin dueño (``unbound_api_key_rejected``) y ``create_api_key`` ni siquiera deja
+emitirla, de modo que el único principal sin usuario posible es el de
+desarrollo/tests. Degradar aquí a la vista global para tolerarlo habría dado a
+esa credencial de compatibilidad **más** alcance que a un miembro real —el de
+todas las organizaciones a la vez—, que es exactamente el agujero que S4.2
+viene a cerrar.
 """
 
 from __future__ import annotations
@@ -32,12 +48,20 @@ from pydantic import BaseModel, Field, field_validator
 from requests import RequestException
 
 from api.concurrency import run_db
-from api.routes.dual_auth import require_admin
+from api.routes.dual_auth import require_admin, require_any_auth
+from api.tenancy import require_organization, resolve_organization_ctx
 from config.settings import settings
 from db.audit import log_event
+from db.events import registrar_metrica_pendientes
 from db.repositories.webhooks import WebhookRepository
-from db.webhooks import EVENTO_SOLICITUD_ACCESO
 from observability.logging import get_logger
+from shared.events import (
+    FORMATOS,
+    Formato,
+    normalizar_formato,
+    renderizar,
+    suscripciones_validas,
+)
 from shared.outbound_http import pinned_https_request
 from shared.ssrf import validate_outbound_url
 
@@ -45,16 +69,18 @@ log = get_logger(__name__)
 
 router = APIRouter(prefix="/webhooks", tags=["webhooks"])
 
-# `solicitud_acceso.creada` lo emite `publico_solicitudes.py` cuando entra una
-# petición desde la landing. Sin una suscripción a este evento, la cola de
-# acceso —que se atiende a mano— solo se descubre abriendo el panel.
-_VALID_EVENTS = {
-    "watchlist_match",
-    "daily_summary",
-    "watchlist_rule.matched",
-    EVENTO_SOLICITUD_ACCESO,
-    "*",
-}
+#: Vocabulario de suscripción. Sale del catálogo de ``shared/events.py`` —
+#: tipos exactos y comodines de familia (``pursuit.*``, ``licitacion.*``,
+#: ``adjudicacion.*``, ``renovacion.*``, ``ficha.*``)— más los dos nombres
+#: legacy que hay suscritos en producción desde antes del catálogo.
+#:
+#: `solicitud_acceso.creada` (hoy en el catálogo) lo emite
+#: `publico_solicitudes.py` cuando entra una petición desde la landing: sin una
+#: suscripción a ese evento, la cola de acceso —que se atiende a mano— solo se
+#: descubre abriendo el panel.
+_EVENTOS_LEGACY = ("watchlist_match", "daily_summary")
+
+_VALID_EVENTS = frozenset({*suscripciones_validas(), *_EVENTOS_LEGACY})
 _IDEMPOTENCY_KEY_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
 
 
@@ -91,7 +117,21 @@ class WebhookCreate(BaseModel):
     url: str = Field(..., examples=["https://hooks.example.com/licitaciones"])
     event_types: list[str] = Field(
         default_factory=lambda: ["*"],
-        examples=[["watchlist_match"]],
+        examples=[["pursuit.*"]],
+    )
+    # `| None` y no `= "json"` a propósito: el generador del cliente TS trata
+    # una propiedad con `default` como obligatoria en el cuerpo, así que un
+    # default aquí obligaría a TODOS los llamantes existentes a mandar el campo.
+    # `None` es «no me importa el formato» y el servidor lo resuelve a `json`.
+    formato: Formato | None = Field(
+        default=None,
+        description="Plantilla del cuerpo entregado: JSON crudo, Block Kit de "
+        "Slack o Adaptive Card de Teams. Por defecto, JSON.",
+    )
+    organization_id: int | None = Field(
+        default=None,
+        ge=1,
+        description="Organización dueña del webhook; por defecto, la personal del usuario.",
     )
 
     @field_validator("url")
@@ -150,13 +190,16 @@ class WebhookDelivery(BaseModel):
 
 
 class WebhookEventTypes(BaseModel):
-    """Tipos de evento a los que un webhook puede suscribirse.
+    """Tipos de evento a los que un webhook puede suscribirse, y formatos.
 
     Los sirve el backend en vez de que la UI los duplique: la lista es la misma
-    que valida `WebhookCreate.event_types`, así que no pueden divergir.
+    que valida `WebhookCreate.event_types`, así que no pueden divergir. Los
+    formatos viajan aquí por el mismo motivo — el selector de plantilla de la
+    UI ofrecía tres literales escritos a mano.
     """
 
     event_types: list[str]
+    formatos: list[str] = list(FORMATOS)
 
 
 class WebhookUpdate(BaseModel):
@@ -164,6 +207,7 @@ class WebhookUpdate(BaseModel):
     url: str | None = None
     event_types: list[str] | None = None
     active: bool | None = None
+    formato: Formato | None = None
 
     @field_validator("url")
     @classmethod
@@ -192,6 +236,8 @@ class WebhookCreateResponse(BaseModel):
     name: str
     url: str
     event_types: list[str]
+    formato: Formato = "json"
+    organization_id: int | None = None
     secret: str = Field(
         ...,
         description="Secret para verificar firma HMAC (X-Webhook-Signature). "
@@ -202,6 +248,14 @@ class WebhookCreateResponse(BaseModel):
 # ── Endpoints ────────────────────────────────────────────────────────────────
 
 _repo = WebhookRepository()
+
+# `domain_events_pending` se publica al importar el router, que es lo que
+# ocurre al montar la app. El colector vive en `db/events.py` (donde está el
+# SQL, ADR-022) y se registra desde aquí porque este módulo es la superficie
+# HTTP del backbone de eventos y `api/routes/metrics.py` solo sabe serializar
+# el registro, no qué hay que meter en él. Es best-effort: sin
+# `prometheus_client` no hace nada.
+registrar_metrica_pendientes()
 
 
 @router.post(
@@ -217,14 +271,17 @@ _repo = WebhookRepository()
 async def create(
     body: WebhookCreate,
     response: Response,
-    ctx: dict[str, Any] = Depends(require_admin),
+    ctx: dict[str, Any] = Depends(require_any_auth),
     idempotency_key: str | None = Header(None, alias="Idempotency-Key"),
 ) -> WebhookCreateResponse:
-    """Crea un webhook. Devuelve el ``secret`` solo en esta respuesta.
+    """Crea un webhook en tu organización. Devuelve el ``secret`` solo aquí.
 
     Si se incluye ``Idempotency-Key``, una segunda request con la misma
     clave devuelve la respuesta original sin crear un duplicado.
     """
+    ctx = await resolve_organization_ctx(ctx, body.organization_id, write=True)
+    organization_id = int(ctx["organization_id"])
+    formato = normalizar_formato(body.formato)
     response.headers["Cache-Control"] = "no-store"
     endpoint = _idempotency_endpoint(ctx)
     fingerprint = _request_fingerprint(body)
@@ -270,6 +327,8 @@ async def create(
                     name=str(cached["name"]),
                     url=str(cached["url"]),
                     event_types=list(cached["event_types"]),
+                    formato=normalizar_formato(str(cached.get("formato") or "")),
+                    organization_id=organization_id,
                     secret=secret,
                 )
             except (KeyError, TypeError, ValueError):
@@ -282,7 +341,13 @@ async def create(
 
     try:
         webhook_id, secret = await run_db(
-            _repo.create, name=body.name, url=body.url, event_types=body.event_types
+            _repo.create,
+            name=body.name,
+            url=body.url,
+            event_types=body.event_types,
+            organization_id=organization_id,
+            created_by=int(ctx["user_id"]) if ctx.get("user_id") is not None else None,
+            formato=formato,
         )
     except Exception:
         if idempotency_key and reservation_token:
@@ -300,13 +365,19 @@ async def create(
         event_type="webhook.created",
         user_key=_actor_key(ctx),
         resource=f"webhook:{webhook_id}",
-        detail={"name": body.name, "events": body.event_types},
+        detail={
+            "name": body.name,
+            "events": body.event_types,
+            "organization_id": organization_id,
+        },
     )
     response_data = WebhookCreateResponse(
         id=webhook_id,
         name=body.name,
         url=body.url,
         event_types=body.event_types,
+        formato=formato,
+        organization_id=organization_id,
         secret=secret,
     )
 
@@ -322,6 +393,7 @@ async def create(
                 "name": body.name,
                 "url": body.url,
                 "event_types": body.event_types,
+                "formato": formato,
                 "_request_fingerprint": fingerprint,
             },
         )
@@ -347,6 +419,11 @@ class WebhookOut(BaseModel):
     last_triggered_at: str | None
     last_status: int | None
     failure_count: int | None
+    # `None` en las filas anteriores a la revisión v108: son los webhooks
+    # globales de la instancia, sin dueño y visibles solo desde /ops.
+    organization_id: int | None = None
+    created_by: int | None = None
+    formato: Formato = "json"
 
 
 class WebhookPingResult(BaseModel):
@@ -360,13 +437,54 @@ class WebhookPingResult(BaseModel):
 
 @router.get(
     "",
-    summary="Listar webhooks (sin secret)",
+    summary="Listar los webhooks de tu organización (sin secret)",
     responses={401: {"description": "API key inválida"}},
 )
 async def list_all(
+    ctx: dict[str, Any] = Depends(require_organization()),
+) -> list[WebhookOut]:
+    """Listado de webhooks de la organización activa, sin el secret."""
+    # Devolvía `list[dict[str, Any]]` -> `unknown[]` en el cliente, mientras el
+    # detalle de aquí al lado ya devolvía `WebhookOut`. Las dos consultas del
+    # repositorio proyectan las MISMAS columnas: la lista y el detalle
+    # describían la misma fila con dos contratos, uno tipado y otro no.
+    rows = await run_db(_repo.list_for_organization, int(ctx["organization_id"]))
+    return [WebhookOut(**row) for row in rows]
+
+
+@router.get(
+    "/global",
+    summary="Listar TODOS los webhooks de la instancia (vista de /ops)",
+    responses={401: {"description": "API key inválida"}, 403: {"description": "Requiere admin"}},
+)
+async def list_global(
     _ctx: dict[str, Any] = Depends(require_admin),
-) -> list[dict[str, Any]]:
-    return await run_db(_repo.list_all)
+) -> list[WebhookOut]:
+    """Todos los webhooks, de cualquier organización y sin dueño.
+
+    Es la vista que se queda en ``/ops`` cuando la gestión por equipo se muda a
+    ``/equipo``: el administrador de la instancia sigue necesitando ver las
+    integraciones globales (las anteriores a ``v108``, que no tienen
+    organización) y el estado agregado de entregas.
+    """
+    return [WebhookOut(**row) for row in await run_db(_repo.list_all)]
+
+
+@router.get(
+    "/event-types",
+    summary="Tipos de evento a los que suscribirse",
+    responses={401: {"description": "API key inválida"}},
+)
+async def event_types(
+    _ctx: dict[str, Any] = Depends(require_any_auth),
+) -> WebhookEventTypes:
+    """Lista los eventos válidos, derivada de la misma constante que valida el alta.
+
+    Declarada **antes** que ``/{webhook_id}``: FastAPI resuelve por orden de
+    declaración y, con la ruta paramétrica delante, ``/webhooks/event-types``
+    entraba por ella y moría en la validación de ``webhook_id: int`` con un 422.
+    """
+    return WebhookEventTypes(event_types=sorted(_VALID_EVENTS), formatos=list(FORMATOS))
 
 
 @router.get(
@@ -376,9 +494,9 @@ async def list_all(
 )
 async def get_one(
     webhook_id: int,
-    _ctx: dict[str, Any] = Depends(require_admin),
+    ctx: dict[str, Any] = Depends(require_organization()),
 ) -> WebhookOut:
-    wh = await run_db(_repo.get_by_id, webhook_id)
+    wh = await run_db(_repo.get_by_id, webhook_id, organization_id=int(ctx["organization_id"]))
     if wh is None:
         raise HTTPException(status_code=404, detail="Webhook no encontrado.")
     return WebhookOut(**wh)
@@ -396,9 +514,10 @@ async def get_one(
 async def update(
     webhook_id: int,
     body: WebhookUpdate,
-    ctx: dict[str, Any] = Depends(require_admin),
+    ctx: dict[str, Any] = Depends(require_organization(write=True)),
 ) -> WebhookOut:
-    """Actualiza nombre, URL, event_types o active de un webhook existente."""
+    """Actualiza nombre, URL, event_types, formato o active de un webhook."""
+    organization_id = int(ctx["organization_id"])
     found = await run_db(
         _repo.update,
         webhook_id,
@@ -406,6 +525,8 @@ async def update(
         url=body.url,
         event_types=body.event_types,
         active=body.active,
+        formato=body.formato,
+        organization_id=organization_id,
     )
     if not found:
         raise HTTPException(status_code=404, detail="Webhook no encontrado.")
@@ -415,7 +536,7 @@ async def update(
         user_key=_actor_key(ctx),
         resource=f"webhook:{webhook_id}",
     )
-    wh = await run_db(_repo.get_by_id, webhook_id)
+    wh = await run_db(_repo.get_by_id, webhook_id, organization_id=organization_id)
     if wh is None:  # borrado concurrente entre el update y la relectura
         raise HTTPException(status_code=404, detail="Webhook no encontrado.")
     return WebhookOut(**wh)
@@ -432,9 +553,9 @@ async def update(
 )
 async def delete(
     webhook_id: int,
-    ctx: dict[str, Any] = Depends(require_admin),
+    ctx: dict[str, Any] = Depends(require_organization(write=True)),
 ) -> None:
-    if not await run_db(_repo.delete, webhook_id):
+    if not await run_db(_repo.delete, webhook_id, organization_id=int(ctx["organization_id"])):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No existe")
     await run_db(
         log_event,
@@ -456,15 +577,21 @@ async def delete(
 )
 async def ping(
     webhook_id: int,
-    _ctx: dict[str, Any] = Depends(require_admin),
+    ctx: dict[str, Any] = Depends(require_organization(write=True)),
 ) -> WebhookPingResult:
-    """Envía un payload de prueba al URL del webhook para verificar conectividad."""
+    """Envía un payload de prueba al URL del webhook para verificar conectividad.
+
+    El cuerpo va **en el formato configurado** en el webhook: un ping que
+    siempre saliera en JSON no probaría lo único que se quiere probar antes de
+    activar una integración de Slack o Teams — que la plantilla llega y se
+    pinta.
+    """
     import asyncio as _asyncio
     import hashlib
     import hmac as _hmac
     import json
 
-    wh = await run_db(_repo.get_by_id, webhook_id)
+    wh = await run_db(_repo.get_by_id, webhook_id, organization_id=int(ctx["organization_id"]))
     if wh is None:
         raise HTTPException(status_code=404, detail="Webhook no encontrado.")
 
@@ -475,7 +602,12 @@ async def ping(
     from db.database import now_utc_iso
 
     payload = json.dumps(
-        {"event": "ping", "data": {"message": "Test delivery"}, "timestamp": now_utc_iso()},
+        renderizar(
+            "ping",
+            {"message": "Test delivery", "webhook_id": webhook_id},
+            formato=str(wh.get("formato") or ""),
+            timestamp=now_utc_iso(),
+        ),
         ensure_ascii=False,
     ).encode()
     sig = _hmac.new(secret.encode(), payload, hashlib.sha256).hexdigest()
@@ -532,18 +664,6 @@ async def ping(
 
 
 @router.get(
-    "/event-types",
-    summary="Tipos de evento a los que suscribirse",
-    responses={401: {"description": "API key inválida"}},
-)
-async def event_types(
-    _ctx: dict[str, Any] = Depends(require_admin),
-) -> WebhookEventTypes:
-    """Lista los eventos válidos, derivada de la misma constante que valida el alta."""
-    return WebhookEventTypes(event_types=sorted(_VALID_EVENTS))
-
-
-@router.get(
     "/{webhook_id}/deliveries",
     summary="Historial de entregas",
     responses={
@@ -554,10 +674,11 @@ async def event_types(
 async def deliveries(
     webhook_id: int,
     limit: int = Query(50, ge=1, le=200),
-    _ctx: dict[str, Any] = Depends(require_admin),
+    ctx: dict[str, Any] = Depends(require_organization()),
 ) -> list[WebhookDelivery]:
     """Devuelve las últimas entregas realizadas para este webhook."""
-    if await run_db(_repo.get_by_id, webhook_id) is None:
+    scope = int(ctx["organization_id"])
+    if await run_db(_repo.get_by_id, webhook_id, organization_id=scope) is None:
         raise HTTPException(status_code=404, detail="Webhook no encontrado.")
     rows = await run_db(_repo.list_deliveries, webhook_id, limit=limit)
     return [WebhookDelivery(**row) for row in rows]

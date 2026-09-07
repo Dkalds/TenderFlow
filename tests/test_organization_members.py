@@ -137,11 +137,15 @@ def test_post_organization_member_api_contract(client, api_db):
         assert body["email"] == "api-invitee@example.com"
         assert body["display_name"] == "Invitada API"
 
-        not_found = client.post(
+        # Un correo sin cuenta ya no es 404: desde S1.1 se crea una invitación
+        # pendiente y se le manda un enlace firmado (plan 2026-09 v2, §5 S1.1).
+        # El detalle del flujo vive en tests/test_s1_invitaciones.py.
+        invitado = client.post(
             f"/api/v1/organizations/{organization_id}/members",
             json={"email": "sin-cuenta@example.com", "role": "member"},
         )
-        assert not_found.status_code == 404
+        assert invitado.status_code == 201
+        assert invitado.json()["status"] == "invited"
 
         listed = client.get(f"/api/v1/organizations/{organization_id}/members")
         assert listed.status_code == 200

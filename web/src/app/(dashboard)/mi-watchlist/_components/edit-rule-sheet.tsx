@@ -26,21 +26,22 @@ import { RULES_KEY } from "../_hooks/use-mi-watchlist";
 import {
   formStateToBody,
   ruleToFormState,
-  type ApiRule,
-  type RuleBody,
-  type RuleFormState,
+  tieneCriterio,
 } from "../_hooks/use-watchlist-rules";
+import type { ApiRule, RuleBody, RuleFormState } from "../_hooks/watchlist-rule-types";
 import { RuleFormFields } from "./rule-form-fields";
 
 export function EditRuleSheet({
   rule,
   ccaaList,
+  tecnologiaList,
   onClose,
   onSave,
   saving,
 }: {
   rule: ApiRule | null;
   ccaaList: string[];
+  tecnologiaList?: string[];
   onClose: () => void;
   onSave: (id: number, body: RuleBody) => void;
   saving: boolean;
@@ -83,6 +84,7 @@ export function EditRuleSheet({
               value={form}
               onChange={(patch) => setForm((f) => (f ? { ...f, ...patch } : f))}
               ccaaList={ccaaList}
+              tecnologiaList={tecnologiaList}
               idPrefix="edit-wl"
             />
 
@@ -91,7 +93,7 @@ export function EditRuleSheet({
                 type="button"
                 variant="outline"
                 onClick={() => previewMut.mutate(formStateToBody(form, rule.active))}
-                disabled={!form.keyword.trim() || previewMut.isPending}
+                disabled={!tieneCriterio(form) || previewMut.isPending}
               >
                 <FlaskConical className="mr-2 h-4 w-4" />
                 Probar regla
@@ -117,7 +119,7 @@ export function EditRuleSheet({
               </Button>
               <Button
                 type="button"
-                disabled={!form.keyword.trim() || saving}
+                disabled={!tieneCriterio(form) || saving}
                 onClick={() => onSave(rule.id, formStateToBody(form, rule.active))}
               >
                 Guardar cambios

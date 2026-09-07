@@ -6,10 +6,23 @@ No se duplican:
 - Create + Idempotency-Key (en test_ola1_fixes.py)
 
 F13·C3.1 (plan Pliegos+RAG): los endpoints migraron de ``require_scope`` a
-``require_any_auth`` + ``is_admin`` (recurso compartido, sin owner por
-usuario — ver docstring de api/routes/webhooks.py). Los tests de sesión OAuth
-admin/no-admin viven aquí; los de API key restringida (sin scope ``*`` →
-``is_admin=False``) siguen en test_api_improvements.py.
+``require_any_auth``. Los tests de sesión OAuth viven aquí; los de API key
+restringida (sin scope ``*``) siguen en test_api_improvements.py.
+
+S4.2 (plan 2026-09 v2): un webhook pertenece ahora a una **organización** y las
+rutas resuelven la del principal (``require_organization``). Eso obliga a que el
+principal de estos tests exista de verdad en ``users``: resolver la organización
+personal empieza por leer la fila del usuario, y un id inventado moría en
+``ensure_personal_organization`` con ``ValueError("Usuario no encontrado.")``,
+que ``api/errors.py`` enmascara como 400 —el 400 que vio CI en los 16 tests de
+este fichero—.
+
+Que la fixture se actualice, y no la ruta, es deliberado: en prod y staging
+``api/auth.py`` rechaza una API key sin dueño (``unbound_api_key_rejected``) y
+``create_api_key`` ni siquiera deja emitirla, así que **no existe un camino de
+producción con un principal sin usuario**. Degradar la ruta a una vista global
+para tolerarlo habría abierto un modo de acceso sin tenencia que la credencial
+real nunca puede alcanzar.
 """
 
 from __future__ import annotations
@@ -24,21 +37,40 @@ from api.routes.dual_auth import require_any_auth
 # Fixtures client, auth, api_db se heredan de conftest.py
 
 _WEBHOOK_URL = "https://example.com/hook"
-_WEBHOOK_BODY = {"name": "hook", "url": _WEBHOOK_URL, "event_types": ["*"]}
 
 
-def _admin_session():
-    return {"user_id": 1, "email": "admin@test.com", "is_admin": True, "auth_method": "session"}
+def _crear_usuario(email: str) -> int:
+    from db.users import create_user
+
+    return create_user(
+        email=email,
+        password_hash="test-hash",  # pragma: allowlist secret
+        display_name=email.split("@")[0],
+    )
 
 
-def _non_admin_session():
-    return {"user_id": 2, "email": "user@test.com", "is_admin": False, "auth_method": "session"}
+def _sesion(user_id: int, email: str, *, is_admin: bool):
+    return lambda: {
+        "user_id": user_id,
+        "email": email,
+        "is_admin": is_admin,
+        "auth_method": "session",
+        "user_key": f"uk-{user_id}",
+    }
+
+
+@pytest.fixture()
+def admin_user_id(api_db) -> int:
+    """Usuario real para el principal de las pruebas generales."""
+    return _crear_usuario("admin@test.com")
 
 
 @pytest.fixture(autouse=True)
-def _admin_principal():
-    """Las pruebas generales de webhooks se ejecutan como administrador explÃ­cito."""
-    app.dependency_overrides[require_any_auth] = _admin_session
+def _admin_principal(admin_user_id):
+    """Las pruebas generales de webhooks se ejecutan como administrador explícito."""
+    app.dependency_overrides[require_any_auth] = _sesion(
+        admin_user_id, "admin@test.com", is_admin=True
+    )
     yield
     app.dependency_overrides.clear()
 
@@ -233,27 +265,93 @@ def test_webhook_deliveries_tras_ping(client, auth, monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# F13·C3.1: require_any_auth + is_admin (sesión OAuth)
+# F13·C3.1 / S4.2: require_any_auth + tenencia por organización (sesión OAuth)
 # ---------------------------------------------------------------------------
 
 
-def test_session_non_admin_forbidden(client, api_db):
-    """Sesión OAuth sin is_admin → 403 (recurso compartido, no por-usuario)."""
-    app.dependency_overrides[require_any_auth] = _non_admin_session
-    try:
-        resp = client.get("/api/v1/webhooks")
-    finally:
-        app.dependency_overrides.clear()
-    assert resp.status_code == 403
+def test_session_sin_admin_ve_lo_suyo_y_no_lo_ajeno(client, auth, monkeypatch):
+    """Una sesión sin ``is_admin`` gestiona los webhooks de SU organización.
+
+    La afirmación anterior de este test —«sesión sin is_admin → 403»— describía
+    el modelo previo a S4.2, en el que el webhook no tenía dueño: sin tenencia,
+    la única barrera posible era el rol de instancia, y el efecto secundario era
+    que un equipo no podía tener su canal de Slack sin pedírselo a un
+    administrador. Con el webhook ya en una organización, esa barrera la da la
+    tenencia — así que lo que hay que seguir garantizando, y es lo que se
+    comprueba aquí, no es el 403 sino el aislamiento: el principal sin admin
+    entra, pero NO ve el webhook del otro equipo.
+    """
+    creado = _create_webhook(client, auth, monkeypatch, name="del-admin")
+
+    otro_id = _crear_usuario("miembro@test.com")
+    app.dependency_overrides[require_any_auth] = _sesion(
+        otro_id, "miembro@test.com", is_admin=False
+    )
+    resp = client.get("/api/v1/webhooks")
+
+    assert resp.status_code == 200, resp.text
+    assert resp.json() == [], "un miembro de otra organización no puede ver este webhook"
+
+    # Y tampoco por el detalle, que es la vía por la que se escapan estos fallos.
+    assert client.get(f"/api/v1/webhooks/{creado['id']}").status_code == 404
+
+
+def test_la_vista_global_sigue_exigiendo_admin_de_instancia(client, api_db):
+    """El 403 no desaparece del fichero: se muda a la ruta que sí lo merece.
+
+    Al pasar la gestión por equipo de ``require_admin`` a
+    ``require_organization``, el único test que comprobaba que un principal sin
+    ``is_admin`` topa con una barrera de rol dejó de aplicar a ``GET
+    /webhooks``. Pero ``GET /webhooks/global`` —la vista de ``/ops`` que enseña
+    los webhooks de TODAS las organizaciones y los globales sin dueño— sigue
+    siendo de administrador, y se había quedado sin ninguna prueba que lo
+    fijara. Sin este test, degradar ese ``require_admin`` a
+    ``require_any_auth`` pasaría el CI en verde y daría a cualquier usuario la
+    lista de integraciones de todos los equipos.
+    """
+    otro_id = _crear_usuario("sin-admin@test.com")
+    app.dependency_overrides[require_any_auth] = _sesion(
+        otro_id, "sin-admin@test.com", is_admin=False
+    )
+    assert client.get("/api/v1/webhooks/global").status_code == 403
+
+    app.dependency_overrides[require_any_auth] = _sesion(
+        _crear_usuario("otro-admin@test.com"), "otro-admin@test.com", is_admin=True
+    )
+    assert client.get("/api/v1/webhooks/global").status_code == 200
+
+
+def test_un_webhook_global_sin_dueno_no_entra_en_la_vista_de_ningun_equipo(client, api_db):
+    """Las filas anteriores a v108 (``organization_id IS NULL``) son de instancia.
+
+    Es la otra mitad del aislamiento de S4.2 y la que no cubre
+    ``test_s4_webhooks_organizacion.py``, que compara dos organizaciones entre
+    sí: un webhook sin dueño no pertenece a ninguna, así que no puede aparecer
+    en la lista de un equipo ni abrirse por su detalle. Incluirlo daría a
+    cualquier miembro de cualquier organización la integración de la instancia.
+    """
+    from db.repositories.webhooks import WebhookRepository
+
+    global_id, _ = WebhookRepository().create(
+        name="integracion-de-instancia",
+        url=_WEBHOOK_URL,
+        event_types=["*"],
+        organization_id=None,
+    )
+
+    assert client.get("/api/v1/webhooks").json() == []
+    assert client.get(f"/api/v1/webhooks/{global_id}").status_code == 404
+    assert client.get(f"/api/v1/webhooks/{global_id}/deliveries").status_code == 404
+    assert client.patch(f"/api/v1/webhooks/{global_id}", json={"active": False}).status_code == 404
+    assert client.delete(f"/api/v1/webhooks/{global_id}").status_code == 404
+
+    # Y sigue estando donde tiene que estar: la vista de /ops.
+    assert [w["id"] for w in client.get("/api/v1/webhooks/global").json()] == [global_id]
 
 
 def test_session_admin_can_list(client, api_db):
     """Sesión OAuth con is_admin=True → 200, igual que una API key con scope '*'."""
-    app.dependency_overrides[require_any_auth] = _admin_session
-    try:
-        resp = client.get("/api/v1/webhooks")
-    finally:
-        app.dependency_overrides.clear()
+    resp = client.get("/api/v1/webhooks")
     assert resp.status_code == 200
     assert resp.json() == []
 
@@ -261,14 +359,10 @@ def test_session_admin_can_list(client, api_db):
 def test_session_admin_can_create_with_watchlist_rule_matched_event(client, api_db, monkeypatch):
     """F12·C2c: 'watchlist_rule.matched' es un event_type válido al crear."""
     monkeypatch.setattr("api.routes.webhooks.validate_outbound_url", lambda url, **_: url)
-    app.dependency_overrides[require_any_auth] = _admin_session
-    try:
-        resp = client.post(
-            "/api/v1/webhooks",
-            json={"name": "hook", "url": _WEBHOOK_URL, "event_types": ["watchlist_rule.matched"]},
-        )
-    finally:
-        app.dependency_overrides.clear()
+    resp = client.post(
+        "/api/v1/webhooks",
+        json={"name": "hook", "url": _WEBHOOK_URL, "event_types": ["watchlist_rule.matched"]},
+    )
     assert resp.status_code == 201, resp.text
 
 

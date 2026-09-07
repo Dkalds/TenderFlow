@@ -55,6 +55,7 @@ def stream(
     usage_sink: MutableMapping[str, int] | None = None,
     base_url: str | None = None,
     max_tokens: int | None = None,
+    chat_template_kwargs: dict[str, Any] | None = None,
 ) -> Iterator[str]:
     """Streaming OpenAI (o endpoint compatible) con retry y timeout.
 
@@ -68,6 +69,12 @@ def stream(
         base_url: URL base de la API. ``None`` usa el endpoint oficial de OpenAI;
             con un valor (p. ej. NVIDIA NIM) se enruta al endpoint compatible.
         max_tokens: Límite de tokens de salida; ``None`` usa el default del módulo.
+        chat_template_kwargs: Argumentos de la plantilla de chat del servidor,
+            que viajan en ``extra_body``. Es una extensión de NVIDIA NIM y de
+            vLLM, **no** del contrato de OpenAI: enviarla a api.openai.com
+            devuelve 400, así que quien llama solo la pasa para los modelos que
+            la entienden (ver ``llm/client.py``). ``None`` no añade nada al
+            cuerpo, que es lo que tiene que pasar con cualquier otro proveedor.
 
     Yields:
         Fragmentos de texto del modelo.
@@ -110,6 +117,12 @@ def stream(
             }
             if usage_sink is not None:
                 stream_kwargs["stream_options"] = {"include_usage": True}
+            if chat_template_kwargs:
+                # `extra_body` es la vía del SDK de OpenAI para mandar campos que
+                # su propio esquema no conoce. Solo se añade si quien llama pasó
+                # algo: un `extra_body` vacío también viaja en el JSON y algunos
+                # gateways lo rechazan.
+                stream_kwargs["extra_body"] = {"chat_template_kwargs": chat_template_kwargs}
             stream_obj = client.chat.completions.create(**stream_kwargs)
             output_chars = 0
             for chunk in stream_obj:

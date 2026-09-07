@@ -31,8 +31,41 @@ def _get_webhook_master_key() -> str:
     return key
 
 
+#: Columnas que proyectan lista y detalle. Una sola constante porque la
+#: divergencia entre las dos ya produjo un contrato tipado y otro opaco para la
+#: misma fila (ver el docstring de ``list_all``).
+_COLUMNAS = (
+    "id, name, url, event_types, active, created_at, "
+    "last_triggered_at, last_status, failure_count, "
+    "organization_id, created_by, formato"
+)
+
+
+def resolve_stored_secret(webhook_id: int, stored: str) -> str:
+    """Secret efectivo a partir del valor almacenado, sin volver a la BD.
+
+    ``WebhookRepository.get_secret`` hace lo mismo con una consulta propia; el
+    despachador ya trae la columna en la fila del abanico y hacer N consultas
+    más para re-leer lo que tiene delante sería una llamada por entrega.
+    """
+    if is_derived_secret(stored):
+        master_key = _get_webhook_master_key()
+        if master_key:
+            return derive_webhook_secret(master_key, webhook_id)
+    return stored
+
+
 class WebhookRepository:
-    def create(self, *, name: str, url: str, event_types: list[str]) -> tuple[int, str]:
+    def create(
+        self,
+        *,
+        name: str,
+        url: str,
+        event_types: list[str],
+        organization_id: int | None = None,
+        created_by: int | None = None,
+        formato: str = "json",
+    ) -> tuple[int, str]:
         now = now_utc_iso()
         master_key = _get_webhook_master_key()
 
@@ -40,9 +73,20 @@ class WebhookRepository:
             # RETURNING y no lastval(): de este id se deriva el secret HMAC del
             # webhook, así que tiene que ser el de ESTA fila sin ambigüedad.
             row = c.execute(
-                "INSERT INTO webhooks (name, url, secret, event_types, active, created_at) "
-                "VALUES (%s, %s, %s, %s, 1, %s) RETURNING id",
-                (name, url, DERIVED_SECRET_SENTINEL, ",".join(event_types), now),
+                "INSERT INTO webhooks "
+                "(name, url, secret, event_types, active, created_at, "
+                " organization_id, created_by, formato) "
+                "VALUES (%s, %s, %s, %s, 1, %s, %s, %s, %s) RETURNING id",
+                (
+                    name,
+                    url,
+                    DERIVED_SECRET_SENTINEL,
+                    ",".join(event_types),
+                    now,
+                    organization_id,
+                    created_by,
+                    formato,
+                ),
             ).fetchone()
             webhook_id = int(row[0]) if row else 0
 
@@ -61,23 +105,53 @@ class WebhookRepository:
         return webhook_id, secret
 
     def list_all(self) -> list[dict[str, Any]]:
+        """Todos los webhooks de la instancia. Solo lo usa la vista global de ``/ops``.
+
+        Para lo que ve un equipo está ``list_for_organization``: desde S4.2 un
+        miembro gestiona los webhooks de SU organización, y esta consulta —sin
+        predicado de ámbito— enseñaría también los de las demás.
+        """
+        with connect_read() as c:
+            cur = c.execute(f"SELECT {_COLUMNAS} FROM webhooks ORDER BY id")
+            rows = rows_to_dicts(cur)
+        for row in rows:
+            row["event_types"] = _split_event_types(row.get("event_types"))
+        return rows
+
+    def list_for_organization(self, organization_id: int) -> list[dict[str, Any]]:
+        """Webhooks de una organización. Nunca los de otra, ni los globales.
+
+        Los globales (``organization_id IS NULL``) son las filas anteriores a
+        la revisión ``v108``: no tienen dueño y quedan solo en la vista de
+        ``/ops`` a propósito. Incluirlos aquí daría a cualquier miembro de
+        cualquier organización acceso a la integración de la instancia.
+        """
         with connect_read() as c:
             cur = c.execute(
-                "SELECT id, name, url, event_types, active, created_at, "
-                "last_triggered_at, last_status, failure_count FROM webhooks ORDER BY id"
+                f"SELECT {_COLUMNAS} FROM webhooks WHERE organization_id = %s ORDER BY id",
+                (organization_id,),
             )
             rows = rows_to_dicts(cur)
         for row in rows:
             row["event_types"] = _split_event_types(row.get("event_types"))
         return rows
 
-    def get_by_id(self, webhook_id: int) -> dict[str, Any] | None:
+    def get_by_id(
+        self, webhook_id: int, *, organization_id: int | None = None
+    ) -> dict[str, Any] | None:
+        """Detalle de un webhook, opcionalmente acotado a una organización.
+
+        Con ``organization_id`` devuelve ``None`` si la fila es de otra
+        organización: el aislamiento se resuelve en el predicado y no
+        comparando en el handler, que es donde se olvida.
+        """
+        sql = f"SELECT {_COLUMNAS} FROM webhooks WHERE id = %s"
+        params: list[Any] = [webhook_id]
+        if organization_id is not None:
+            sql += " AND organization_id = %s"
+            params.append(organization_id)
         with connect_read() as c:
-            cur = c.execute(
-                "SELECT id, name, url, event_types, active, created_at, "
-                "last_triggered_at, last_status, failure_count FROM webhooks WHERE id = %s",
-                (webhook_id,),
-            )
+            cur = c.execute(sql, params)
             row = cur.fetchone()
             if row is None:
                 return None
@@ -86,9 +160,39 @@ class WebhookRepository:
         result["event_types"] = _split_event_types(result.get("event_types"))
         return result
 
-    def delete(self, webhook_id: int) -> bool:
+    def list_active_subscribers(
+        self, *, organization_id: int | None = None
+    ) -> list[dict[str, Any]]:
+        """Webhooks activos candidatos a recibir un evento.
+
+        Devuelve la fila con ``event_types`` ya troceado y el ``secret``
+        resuelto; el filtro por tipo lo aplica ``shared.events.suscripcion_cubre``
+        (que entiende los comodines de familia) en vez de repetir aquí una
+        comparación de cadenas que solo cubriría el tipo exacto.
+
+        ``organization_id`` acota a los de esa organización **más** los
+        globales sin dueño: un evento de la organización 7 sale por sus
+        webhooks y por la integración de instancia, nunca por los de la 8.
+        """
+        sql = "SELECT id, url, secret, event_types, formato, organization_id FROM webhooks WHERE active = 1"
+        params: list[Any] = []
+        if organization_id is not None:
+            sql += " AND (organization_id = %s OR organization_id IS NULL)"
+            params.append(organization_id)
+        with connect_read() as c:
+            rows = rows_to_dicts(c.execute(sql, params))
+        for row in rows:
+            row["event_types"] = _split_event_types(row.get("event_types"))
+        return rows
+
+    def delete(self, webhook_id: int, *, organization_id: int | None = None) -> bool:
+        sql = "DELETE FROM webhooks WHERE id = %s"
+        params: list[Any] = [webhook_id]
+        if organization_id is not None:
+            sql += " AND organization_id = %s"
+            params.append(organization_id)
         with connect() as c:
-            cur = c.execute("DELETE FROM webhooks WHERE id = %s", (webhook_id,))
+            cur = c.execute(sql, params)
             return cast(bool, cur.rowcount > 0)
 
     def update(
@@ -99,8 +203,14 @@ class WebhookRepository:
         url: str | None,
         event_types: list[str] | None,
         active: bool | None,
+        formato: str | None = None,
+        organization_id: int | None = None,
     ) -> bool:
-        """Actualiza campos opcionales. Devuelve True si encontró el registro."""
+        """Actualiza campos opcionales. Devuelve True si encontró el registro.
+
+        ``organization_id`` acota **a qué fila** se aplica el update, no la
+        cambia: un webhook no se muda de organización, se borra y se crea.
+        """
         sets: list[str] = []
         params: list[Any] = []
         if name is not None:
@@ -115,14 +225,18 @@ class WebhookRepository:
         if active is not None:
             sets.append("active = %s")
             params.append(1 if active else 0)
+        if formato is not None:
+            sets.append("formato = %s")
+            params.append(formato)
         if not sets:
             return True
         params.append(webhook_id)
+        sql = "UPDATE webhooks SET " + ", ".join(sets) + " WHERE id = %s"
+        if organization_id is not None:
+            sql += " AND organization_id = %s"
+            params.append(organization_id)
         with connect() as c:
-            cur = c.execute(
-                "UPDATE webhooks SET " + ", ".join(sets) + " WHERE id = %s",
-                tuple(params),
-            )
+            cur = c.execute(sql, tuple(params))
             return cast(bool, cur.rowcount > 0)
 
     def get_secret(self, webhook_id: int) -> str | None:

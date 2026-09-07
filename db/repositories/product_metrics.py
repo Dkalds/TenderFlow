@@ -39,9 +39,13 @@ class ProductMetricsRepository:
             cur = conn.execute(
                 # `on_clause` lo compone este mismo método a partir de
                 # literales; los valores del periodo viajan con %s.
+                # ``banda_al_abrir`` y ``closed_at`` desde S3.2: la calidad del
+                # Radar se mide sobre las mismas filas que el embudo, para que
+                # `make product-status` no pueda enseñar dos cifras de la misma
+                # organización calculadas sobre universos distintos.
                 "SELECT o.id AS organization_id, o.name AS organization_name, "
                 "p.id, p.outcome, p.submitted_at, p.awarded_amount_eur, "
-                "p.identified_at, p.decision_at "
+                "p.identified_at, p.decision_at, p.closed_at, p.banda_al_abrir "
                 "FROM organizations o "
                 f"LEFT JOIN pursuits p ON {on_clause} "
                 "ORDER BY o.id, p.id",

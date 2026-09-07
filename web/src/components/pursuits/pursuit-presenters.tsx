@@ -71,6 +71,38 @@ export function PursuitDecisionBadge({ decision }: { decision: PursuitDecision }
   return <Badge variant={variant}>{decisionCopy[decision]}</Badge>;
 }
 
+/**
+ * Identidad del lote de una oportunidad, o `null` si es del expediente entero.
+ *
+ * Desde la revisión `v110` un mismo expediente puede tener una oportunidad por
+ * lote, con precio, responsable y decisión propios. Sin esta etiqueta, dos
+ * tarjetas del mismo expediente son indistinguibles en el tablero.
+ *
+ * `lote_numero` es el dato duradero; `lote_id` y `lote_titulo` los resuelve el
+ * backend contra `lotes` en cada lectura y vienen vacíos si el pliego dejó de
+ * publicar ese lote — la oportunidad sigue diciendo para cuál se abrió.
+ */
+export function loteEtiqueta(pursuit: PursuitConLote): string | null {
+  if (!pursuit.lote_numero) return null;
+  const numero = `Lote ${pursuit.lote_numero}`;
+  return pursuit.lote_titulo ? `${numero} · ${pursuit.lote_titulo}` : numero;
+}
+
+export interface PursuitConLote {
+  lote_numero?: string | null;
+  lote_titulo?: string | null;
+}
+
+export function PursuitLoteBadge({ pursuit }: { pursuit: PursuitConLote }) {
+  const etiqueta = loteEtiqueta(pursuit);
+  if (!etiqueta) return null;
+  return (
+    <Badge variant="outline" className="font-mono text-[10px] font-medium">
+      {etiqueta}
+    </Badge>
+  );
+}
+
 export function PursuitOutcomeBadge({ outcome }: { outcome: PursuitOutcome }) {
   const variant = outcome === "won" ? "success" : outcome === "lost" ? "destructive" : outcome === "cancelled" ? "warning" : "secondary";
   return <Badge variant={variant}>{outcomeCopy[outcome]}</Badge>;

@@ -1,0 +1,47 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Slack Block Kit (forma verificable de un mensaje de webhook entrante)",
+  "description": "Slack no publica un JSON Schema oficial de Block Kit, así que esto codifica la FORMA documentada en https://api.slack.com/reference/block-kit para los tres bloques que TenderFlow emite (header, section con fields, context) más el texto de respaldo. Los límites que aparecen aquí no son decorativos: son los que Slack impone y que hacen que el mensaje se rechace — 10 campos por section, 50 bloques por mensaje, 3000 caracteres por texto. El tope de 150 del plain_text de un header no se puede expresar sin condicionar por tipo de bloque, así que lo impone el renderer y lo comprueba el test aparte. `text` de primer nivel es obligatorio a propósito: es lo que se lee en la notificación push y en los clientes que no renderizan bloques, y un mensaje sin él llega vacío al móvil.",
+  "type": "object",
+  "required": ["text", "blocks"],
+  "properties": {
+    "text": { "type": "string", "minLength": 1 },
+    "blocks": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 50,
+      "items": { "$ref": "#/definitions/bloque" }
+    }
+  },
+  "definitions": {
+    "bloque": {
+      "type": "object",
+      "required": ["type"],
+      "properties": {
+        "type": { "enum": ["header", "section", "context", "divider"] },
+        "text": { "$ref": "#/definitions/textoCompuesto" },
+        "fields": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 10,
+          "items": { "$ref": "#/definitions/textoCompuesto" }
+        },
+        "elements": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 10,
+          "items": { "$ref": "#/definitions/textoCompuesto" }
+        }
+      }
+    },
+    "textoCompuesto": {
+      "type": "object",
+      "required": ["type", "text"],
+      "properties": {
+        "type": { "enum": ["plain_text", "mrkdwn"] },
+        "text": { "type": "string", "minLength": 1, "maxLength": 3000 },
+        "emoji": { "type": "boolean" }
+      }
+    }
+  }
+}

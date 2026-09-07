@@ -55,6 +55,30 @@ TS_RANK_WEIGHTS = "{0.1, 0.2, 0.4, 1.0}"
 TS_RANK_NORMALIZATION = 0
 
 
+def fusion_weights(alpha: float | None) -> tuple[float, float]:
+    """Pesos ``(fts, vectorial)`` de la fusión RRF para un ``alpha`` dado.
+
+    ``alpha`` es el peso del lado **semántico**: ``0.0`` = solo FTS, ``1.0`` =
+    solo similitud vectorial. Es el mismo eje que el deslizador del
+    Investigador, que hasta 2026-09 no llegaba al backend.
+
+    ``None`` —el valor por defecto de ``hybrid_search_docs``— devuelve
+    ``(1.0, 1.0)``: la fusión sin ponderar de siempre, que es la que sirve el
+    RAG. Se conserva bit a bit porque multiplicar un float por ``1.0`` no lo
+    altera, así que añadir el peso a la consulta no cambia el ranking de
+    ``/ask`` ni por un ULP.
+
+    El escalado por 2 existe para que ``alpha=0.5`` —"tanto peso a una lista como
+    a la otra"— produzca exactamente ese mismo ``(1.0, 1.0)`` en lugar de
+    ``(0.5, 0.5)``, que ordenaría igual pero con scores de otra magnitud.
+    """
+    if alpha is None:
+        return (1.0, 1.0)
+    if not 0.0 <= alpha <= 1.0:
+        raise ValueError(f"alpha debe estar en [0, 1], recibido {alpha}")
+    return (2.0 * (1.0 - alpha), 2.0 * alpha)
+
+
 def rrf_score(rank: int, k: int = RRF_K) -> float:
     """Score de Reciprocal Rank Fusion para una posición ``rank`` (1-indexado).
 
@@ -327,6 +351,7 @@ class PgTsBackend:
         tecnologia: str | None = None,
         limit: int = 20,
         candidate_k: int = 50,
+        alpha: float | None = None,
     ) -> list[dict[str, Any]]:
         """Retrieval híbrido: FTS (tsvector) + similitud vectorial (``documento_chunks``),
         fusionados con Reciprocal Rank Fusion en una sola query (un round-trip).
@@ -338,11 +363,29 @@ class PgTsBackend:
 
         ``candidate_k`` es el top-k de CADA lista (FTS y vectorial) *antes*
         de fusionar; ``limit`` es el número final de licitaciones devueltas
-        tras la fusión. Solo Postgres — requiere ``search_vector`` (v50) y
-        ``documento_chunks``/pgvector (v56). Fail-open: cualquier error
-        (extensión ausente, tabla vacía) devuelve lista vacía, igual que
-        ``_ts_search``.
+        tras la fusión. ``alpha`` pondera las dos listas (ver
+        ``fusion_weights``): ``None`` es la fusión sin ponderar que consume el
+        RAG y que este parámetro no altera. Solo Postgres — requiere
+        ``search_vector`` (v50) y ``documento_chunks``/pgvector (v56).
+        Fail-open: cualquier error (extensión ausente, tabla vacía) devuelve
+        lista vacía, igual que ``_ts_search``.
         """
+        w_fts, w_vec = fusion_weights(alpha)
+        # Con ``alpha=None`` la consulta es, carácter a carácter, la de siempre:
+        # ni una columna ni un parámetro de más. La igualdad numérica de
+        # multiplicar por 1.0 ya bastaría, pero mantener el SQL idéntico es lo
+        # que hace comprobable que servir el deslizador del Investigador no
+        # cambia el plan de ejecución ni el ranking del RAG.
+        ponderada = alpha is not None
+        w_col = "%s::float8 AS w, " if ponderada else ""
+        union_cols = "w, rnk" if ponderada else "rnk"
+        sum_expr = "SUM(w / (%s + rnk))" if ponderada else "SUM(1.0 / (%s + rnk))"
+        # Solo actúa en los extremos del deslizador: con ``alpha=0`` (o ``1``)
+        # una de las dos listas pesa cero y sus documentos exclusivos entrarían
+        # con score 0, ocupando plazas del ``LIMIT`` por detrás de todo. Sin
+        # ponderar, todos los sumandos son positivos y el filtro sobra.
+        filtro_positivos = "WHERE f.rrf_score > 0\n            " if ponderada else ""
+
         conditions = ["l.search_vector @@ websearch_to_tsquery('spanish', %s)"]
         fts_params: list[Any] = [query]
         if ccaa:
@@ -357,7 +400,7 @@ class PgTsBackend:
         sql = f"""
             WITH fts_ranked AS (
                 SELECT l.id_externo,
-                       ROW_NUMBER() OVER (
+                       {w_col}ROW_NUMBER() OVER (
                            ORDER BY ts_rank_cd(l.search_vector, websearch_to_tsquery('spanish', %s)) DESC
                        ) AS rnk
                 FROM licitaciones l
@@ -367,18 +410,18 @@ class PgTsBackend:
             vec_ranked AS (
                 SELECT d.licitacion_id, dc.id AS chunk_id, dc.chunk_index,
                        dc.texto AS chunk_texto,
-                       ROW_NUMBER() OVER (ORDER BY dc.embedding <=> %s::vector) AS rnk
+                       {w_col}ROW_NUMBER() OVER (ORDER BY dc.embedding <=> %s::vector) AS rnk
                 FROM documento_chunks dc
                 JOIN documentos d ON d.id = dc.documento_id
                 ORDER BY dc.embedding <=> %s::vector
                 LIMIT %s
             ),
             fused AS (
-                SELECT id_externo, SUM(1.0 / (%s + rnk)) AS rrf_score
+                SELECT id_externo, {sum_expr} AS rrf_score
                 FROM (
-                    SELECT id_externo, rnk FROM fts_ranked
+                    SELECT id_externo, {union_cols} FROM fts_ranked
                     UNION ALL
-                    SELECT licitacion_id AS id_externo, rnk FROM vec_ranked
+                    SELECT licitacion_id AS id_externo, {union_cols} FROM vec_ranked
                 ) u
                 GROUP BY id_externo
             ),
@@ -398,13 +441,15 @@ class PgTsBackend:
             FROM fused f
             JOIN licitaciones l ON l.id_externo = f.id_externo
             LEFT JOIN chunks_per_lic c ON c.licitacion_id = f.id_externo
-            ORDER BY f.rrf_score DESC
+            {filtro_positivos}ORDER BY f.rrf_score DESC
             LIMIT %s
         """
         exec_params = [
+            *([w_fts] if ponderada else []),
             query,
             *fts_params,
             candidate_k,
+            *([w_vec] if ponderada else []),
             qvec,
             qvec,
             candidate_k,
@@ -453,6 +498,32 @@ class PgTsBackend:
 # ---------------------------------------------------------------------------
 
 
+def document_embeddings_available() -> bool:
+    """True si ``documento_chunks`` tiene al menos un embedding que fusionar.
+
+    Es lo que separa una fusión RRF real de una fusión con una sola lista:
+    sin chunks embebidos, ``hybrid_search_docs`` devuelve exactamente el orden
+    del FTS y llamarla «híbrida» sería mentir. Los llamadores derivan de aquí
+    la etiqueta de la fuente que sirven, en vez de declararla por
+    configuración.
+
+    Fail-closed: si la tabla no existe (BD anterior a v56), pgvector no está o
+    la conexión falla, la respuesta es «no hay embeddings» — la degradación a
+    FTS es la correcta en los tres casos.
+    """
+    from db.database import connect_read
+
+    try:
+        with connect_read() as conn:
+            row = conn.execute(
+                "SELECT 1 FROM documento_chunks WHERE embedding IS NOT NULL LIMIT 1"
+            ).fetchone()
+            return row is not None
+    except Exception:
+        log.debug("document_embeddings_available_failed", exc_info=True)
+        return False
+
+
 def hybrid_search_docs(
     query: str,
     query_embedding: list[float],
@@ -460,6 +531,8 @@ def hybrid_search_docs(
     ccaa: str | None = None,
     tecnologia: str | None = None,
     limit: int = 20,
+    candidate_k: int = 50,
+    alpha: float | None = None,
 ) -> list[dict[str, Any]]:
     """``PgTsBackend.hybrid_search_docs`` abriendo su propia conexión de lectura.
 
@@ -483,6 +556,8 @@ def hybrid_search_docs(
             ccaa=ccaa,
             tecnologia=tecnologia,
             limit=limit,
+            candidate_k=candidate_k,
+            alpha=alpha,
         )
 
 

@@ -4,8 +4,17 @@ title: "Meta-RFC · Integridad analítica del frontend — el frontend no fabric
 issue: pendiente (crear issue y renumerar si no coincide)
 author: agent:architect
 date: 2026-06-16
-status: draft
-graduates-to: [[ADR-014-integridad-analitica-frontend|ADR-014]] (si se aprueba)
+status: superseded
+superseded_by: [[ADR-014-integridad-analitica-frontend|ADR-014]]
+superseded_on: 2026-09-06
+superseded_reason: >
+  El meta-RFC graduó: la decisión vive en `docs/adr/ADR-014-integridad-analitica-frontend.md`
+  y su guardarraíl es `scripts/check_frontend_invariants.py --strict`, bloqueante
+  en el job `static-analysis` de `.github/workflows/ci.yml` desde 2026-07-28.
+  Un RFC en `draft` cuya decisión ya es un ADR ejecutable en CI solo confunde a
+  quien lo lea. Verificado contra el árbol el 2026-09-06 (O0.7b del plan de
+  arquitectura v2).
+graduates-to: [[ADR-014-integridad-analitica-frontend|ADR-014]] (graduado el 2026-07-28)
 ---
 
 ## Contexto

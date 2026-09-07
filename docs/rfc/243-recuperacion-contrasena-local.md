@@ -4,7 +4,14 @@ title: Recuperación segura de contraseña para cuentas locales
 issue: https://github.com/Dkalds/TenderFlow/issues/243
 author: agent:github-copilot
 date: 2026-09-01
-status: approved
+status: implemented
+implemented_on: 2026-09-06
+implemented_evidence: >
+  Revisión `v96_password_reset_tokens` y las rutas `/password-reset/request` y
+  `/password-reset/confirm` de `api/routes/auth.py`, con limitador por IP y por
+  destinatario (`_password_reset_rate_allowed`). Verificado contra el árbol el
+  2026-09-06 (O0.7b del plan de arquitectura v2): el criterio es que el código
+  exista, no que el PR figure mergeado.
 ---
 
 ## Contexto

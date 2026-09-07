@@ -338,6 +338,24 @@ _LEGITIMATE_SWEEPS: frozenset[str] = frozenset(
         "db/repositories/documentos.py::DocumentosRepository.list_pendientes",
         "db/repositories/tender_fact_sheets.py::"
         "TenderFactSheetsRepository.list_pending_licitaciones",
+        # Fan-out del outbox (S4.5 del plan 2026-09 v2). A diferencia de las dos
+        # de arriba, ésta SÍ contesta «¿a quién?»: es la consulta que, cuando un
+        # expediente seguido cambia, dice a qué seguidores hay que avisar. Un
+        # `WHERE user_key = %s` la dejaría sin sentido —no corre en nombre de
+        # nadie, sino ANTES de saber en nombre de quién—.
+        #
+        # Por qué es segura, comprobado y no supuesto: (1) devuelve sólo
+        # identificadores de destinatario (`user_key`, `organization_id`,
+        # `user_id`), nunca contenido de la watchlist ni de la oportunidad;
+        # (2) su único llamador es `services/contract_events.py`, el productor
+        # del outbox, y no la alcanza ninguna ruta de `api/routes/` —`grep -rn
+        # seguidores api/routes/*.py` no devuelve nada—; (3) lo que hace el
+        # consumidor con cada fila es dirigirle a ESE usuario su propia
+        # notificación, que es el aislamiento hecho aguas abajo.
+        #
+        # Si algún día una ruta HTTP la llama, esta entrada deja de ser cierta
+        # y hay que quitarla: la comprobación es el grep de (2).
+        "db/events.py::seguidores_de_licitacion",
         # Integridad de la cadena de hashes de auditoría (v26): es UNA
         # cadena global (no una por usuario) -- necesita leer la cola/COUNT
         # de audit_log sin filtrar por usuario para verificar continuidad.

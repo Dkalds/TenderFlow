@@ -3,5 +3,7 @@
 *.{woff,woff2,ttf,eot} binary
 *.{zip,gz,tar,bz2} binary
 *.pdf binary
+*.docx binary
+*.odt binary
 *.pkl binary
 *.joblib binary

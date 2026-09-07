@@ -1,30 +1,41 @@
 /**
- * Tests de la lógica de reglas de watchlist (`_hooks/use-watchlist-rules.ts`).
+ * Tests de la lógica de reglas de watchlist.
  *
  * `page.test.tsx` cubre el marcado; aquí van las reglas que el marcado no
  * enseña: que el formulario mande `null` donde el contrato pide `null` y que el
  * listado combinado no repita una licitación capturada por dos reglas a la vez.
+ *
+ * Cubre los tres módulos en que se partió el original al pasar de 300 líneas
+ * —`use-watchlist-rules.ts` (formulario ↔ contrato), `watchlist-matches.ts`
+ * (coincidencias) y `watchlist-rule-options.ts` (catálogos)— porque son un solo
+ * criterio de aceptación: lo que se guarda es lo que el usuario eligió. Partir
+ * la tabla de casos en tres ficheros la dispersaría sin aclarar nada.
  *
  * La migración del `localStorage` se probaba también aquí; vive ahora en
  * `use-legacy-rule-migration.test.tsx`, junto al módulo que se le separó.
  */
 import { describe, it, expect } from "vitest";
 import {
-  CCAA_FALLBACK,
-  FREQ_LABEL,
-  FREQ_OPTIONS,
-  activeRulesOf,
-  ccaaOptions,
-  dedupeMatches,
   formStateToBody,
   parsePrefill,
   prefillToFormState,
   ruleToBody,
   ruleToFormState,
-  type ApiRule,
-  type MatchItem,
-  type RuleFormState,
+  tieneCriterio,
 } from "../_hooks/use-watchlist-rules";
+import {
+  MATCH_COUNT_CAP,
+  activeRulesOf,
+  dedupeMatches,
+  formatMatchCount,
+} from "../_hooks/watchlist-matches";
+import {
+  CCAA_FALLBACK,
+  FREQ_LABEL,
+  FREQ_OPTIONS,
+  ccaaOptions,
+} from "../_hooks/watchlist-rule-options";
+import type { ApiRule, MatchItem, RuleFormState } from "../_hooks/watchlist-rule-types";
 
 /* ── Fixtures ───────────────────────────────────────────────────────── */
 
@@ -47,6 +58,26 @@ const EMPTY_FORM: RuleFormState = {
   minImporte: "",
   ccaa: "",
   frequency: "daily",
+  tecnologia: "",
+  organo: "",
+  procedimiento: "",
+  tipoContrato: "",
+  bandaMin: "",
+  plazoMinDias: "",
+};
+
+/**
+ * Los seis criterios de S4.4, todos a `null`. Se declara una vez porque tres
+ * aserciones distintas comparan un cuerpo completo, y repetirlos habría hecho
+ * que añadir un criterio nuevo fallara en tres sitios con el mismo motivo.
+ */
+const SIN_CRITERIOS_S4 = {
+  tecnologia: null,
+  organo: null,
+  procedimiento: null,
+  tipo_contrato: null,
+  banda_min: null,
+  plazo_min_dias: null,
 };
 
 /* ── Formulario ↔ contrato ──────────────────────────────────────────── */
@@ -56,13 +87,7 @@ describe("ruleToFormState", () => {
     const form = ruleToFormState(
       rule({ id: 1, keyword: null, cpv: null, min_importe: null, ccaa: null }),
     );
-    expect(form).toEqual({
-      keyword: "",
-      cpv: "",
-      minImporte: "",
-      ccaa: "",
-      frequency: "daily",
-    });
+    expect(form).toEqual(EMPTY_FORM);
   });
 
   it("el importe mínimo viaja como texto al input numérico", () => {
@@ -88,6 +113,7 @@ describe("formStateToBody", () => {
       ccaa: null,
       frequency: "daily",
       active: true,
+      ...SIN_CRITERIOS_S4,
     });
   });
 
@@ -129,6 +155,7 @@ describe("ruleToBody", () => {
       ccaa: "Madrid",
       frequency: "daily",
       active: true,
+      ...SIN_CRITERIOS_S4,
     });
   });
 
@@ -143,6 +170,36 @@ describe("ruleToBody", () => {
     expect(body.active).toBe(true);
     expect(body.keyword).toBeNull();
   });
+});
+
+describe("tieneCriterio", () => {
+  // Es lo único que separa «guardar una regla» de «notificar el mercado
+  // entero», y hasta el troceado no tenía prueba propia.
+  it("un formulario vacío no filtra nada", () => {
+    expect(tieneCriterio(EMPTY_FORM)).toBe(false);
+  });
+
+  it("un campo de solo espacios sigue siendo vacío", () => {
+    expect(tieneCriterio({ ...EMPTY_FORM, keyword: "   ", organo: "  " })).toBe(false);
+  });
+
+  it.each([
+    ["keyword", "SAP"],
+    ["cpv", "72000000"],
+    ["minImporte", "50000"],
+    ["ccaa", "Madrid"],
+    ["tecnologia", "SAP"],
+    ["organo", "Ayuntamiento"],
+    ["procedimiento", "abierto"],
+    ["tipoContrato", "servicios"],
+    ["bandaMin", "Caliente"],
+    ["plazoMinDias", "15"],
+  ] as [keyof RuleFormState, string][])(
+    "basta con %s para que la regla filtre",
+    (campo, valor) => {
+      expect(tieneCriterio({ ...EMPTY_FORM, [campo]: valor })).toBe(true);
+    },
+  );
 });
 
 /* ── Prefill desde la command palette ───────────────────────────────── */
@@ -182,7 +239,14 @@ describe("prefillToFormState", () => {
   });
 
   it("ignora las claves del ámbito que la regla no tiene", () => {
-    expect(prefillToFormState({ estado: "PUB", tecnologia: "IA" })).toEqual(EMPTY_FORM);
+    expect(prefillToFormState({ estado: "PUB", fuente: "placsp" })).toEqual(EMPTY_FORM);
+  });
+
+  it("la tecnología del ámbito sí llega a la regla (S4.4)", () => {
+    // Antes se descartaba porque la regla no tenía dónde ponerla; ahora la
+    // tiene, y perderla haría que la regla naciera más ancha que lo que el
+    // usuario estaba mirando cuando pulsó «crear regla».
+    expect(prefillToFormState({ tecnologia: "SAP,SALESFORCE" }).tecnologia).toBe("SAP");
   });
 });
 
@@ -229,6 +293,21 @@ describe("activeRulesOf", () => {
       rule({ id: 2, active: false }),
     ]);
     expect(activas.map((r) => r.id)).toEqual([1]);
+  });
+});
+
+describe("formatMatchCount", () => {
+  it("por debajo del tope se enseña el número exacto", () => {
+    expect(formatMatchCount(0)).toBe("0");
+    expect(formatMatchCount(999)).toBe("999");
+  });
+
+  it("en el tope el conteo solo significa «al menos tantas»", () => {
+    // El backend cuenta sobre un subselect con LIMIT (`MATCH_COUNT_CAP` en
+    // `db/repositories/watchlist_rules.py`): pintar «1000» exacto sería
+    // inventar un denominador que nadie midió (ADR-014).
+    expect(formatMatchCount(MATCH_COUNT_CAP)).toBe("999+");
+    expect(formatMatchCount(MATCH_COUNT_CAP + 500)).toBe("999+");
   });
 });
 

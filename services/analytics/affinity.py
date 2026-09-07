@@ -4,20 +4,36 @@ El portfolio se construye únicamente con señales declaradas: keywords, CPVs y
 referencias/contratos aportados por el perfil. Nunca se infiere una empresa por
 nombre. Si el motor de embeddings no está disponible (o falla), se conserva el
 fallback determinista histórico de coincidencias de keywords.
+
+**S2.4 — de dónde sale el portfolio.** Hasta 2026-09 solo había una fuente: el
+perfil personal de quien mira el Radar. Quien no lo había rellenado —la
+mayoría— veía la afinidad neutral en todas las filas, aunque su organización
+tuviera declaradas referencias y tecnologías desde S2.2. Ahora hay dos fuentes
+y un orden: el perfil personal manda, y la capacidad de la organización lo
+suple cuando no lo hay (:func:`resolve_portfolio`). Cuál de las dos se usó no
+se calla: viaja en ``PortfolioResolution.origen`` para que el desglose del
+Radar pueda decirlo.
 """
 
 from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Literal
 
 import numpy as np
 import pandas as pd
 
 from observability.logging import get_logger
+from shared.dto import OrganizationCapabilities
 
 log = get_logger(__name__)
+
+#: De dónde salió el portfolio con el que se puntuó la afinidad. ``ninguno``
+#: significa que no había ninguna señal declarada —ni personal ni corporativa—
+#: y la afinidad es la que dan las keywords globales de configuración, que no
+#: describen a nadie en particular.
+PortfolioOrigen = Literal["perfil", "organizacion", "ninguno"]
 
 
 @dataclass(frozen=True)
@@ -71,6 +87,102 @@ def build_portfolio(
         cpvs=_clean(cpvs),
         contracts=_clean(contract_texts),
     )
+
+
+@dataclass(frozen=True)
+class PortfolioResolution:
+    """El portfolio con el que se puntúa y de dónde salió."""
+
+    portfolio: AffinityPortfolio
+    origen: PortfolioOrigen
+
+
+def build_portfolio_from_capabilities(
+    capabilities: OrganizationCapabilities,
+    tecnologias: list[str] | None = None,
+) -> AffinityPortfolio:
+    """Portfolio derivado del perfil de capacidad de la organización (S2.2).
+
+    Las referencias entran por dos caminos porque miden cosas distintas: su
+    ``tecnologia`` es una *keyword* (casa por palabra en título y descripción,
+    igual que las del perfil personal) y su texto completo —órgano, tecnología
+    y expediente— es un *contract*, que es lo que el motor de embeddings
+    compara semánticamente. Las familias declaradas en la configuración de la
+    organización se suman como keywords: son lo que dice que vende, aunque
+    todavía no tenga una referencia que lo acredite.
+    """
+    keywords: list[str] = [
+        referencia.tecnologia for referencia in capabilities.referencias if referencia.tecnologia
+    ]
+    keywords.extend(tecnologias or [])
+    contracts: list[str] = []
+    for referencia in capabilities.referencias:
+        partes = [
+            referencia.organo,
+            referencia.tecnologia or "",
+            referencia.expediente_id or "",
+        ]
+        texto = " · ".join(parte for parte in partes if parte)
+        if texto:
+            contracts.append(texto)
+    return AffinityPortfolio(
+        keywords=_clean(keywords),
+        cpvs=(),
+        contracts=_clean(contracts),
+    )
+
+
+def build_organization_portfolio(organization_id: int) -> AffinityPortfolio:
+    """Lee capacidad y familias declaradas de la organización y las convierte.
+
+    Import diferido: ``services/analytics/*`` se importa desde el scorer, que
+    corre en caliente en cada request del Radar, y arrastrar los repositorios
+    en el import del módulo encarecería incluso a quien no tenga organización.
+    """
+    from db.repositories.organization_capabilities import OrganizationCapabilitiesRepository
+    from db.repositories.organizations import OrganizationRepository
+
+    capabilities = OrganizationCapabilities.model_validate(
+        OrganizationCapabilitiesRepository().get(organization_id)
+    )
+    ajustes = OrganizationRepository().get_settings(organization_id)
+    crudas = ajustes.get("tecnologias")
+    tecnologias = [str(valor) for valor in crudas] if isinstance(crudas, list) else []
+    return build_portfolio_from_capabilities(capabilities, tecnologias)
+
+
+def resolve_portfolio(
+    *,
+    keywords: list[str] | None = None,
+    cpvs: list[str] | None = None,
+    organization_id: int | None = None,
+    tiene_perfil: bool = False,
+) -> PortfolioResolution:
+    """Decide con qué portfolio se puntúa y declara de dónde salió.
+
+    Orden: perfil personal → capacidad de la organización → nada. El perfil
+    manda porque es la señal más específica —quien lo rellenó dijo a qué se
+    dedica *él*—, y la organización lo suple en vez de mezclarse con él: una
+    mezcla haría que el Radar de un especialista se pareciera al de su empresa
+    sin que él lo hubiera pedido.
+
+    ``tiene_perfil`` distingue las keywords del usuario de las de
+    ``settings.SCORING_AFINIDAD_KEYWORDS``, que el scorer usa como valor por
+    defecto. Sin esa distinción, cualquier instalación con keywords globales
+    reportaría origen ``perfil`` para todo el mundo.
+    """
+    personal = build_portfolio(keywords=keywords, cpvs=cpvs)
+    if tiene_perfil and personal.available:
+        return PortfolioResolution(portfolio=personal, origen="perfil")
+    if organization_id is not None:
+        try:
+            corporativo = build_organization_portfolio(organization_id)
+        except Exception as exc:
+            log.warning("scoring_affinity_org_portfolio_error", error=str(exc)[:200])
+            corporativo = AffinityPortfolio()
+        if corporativo.available:
+            return PortfolioResolution(portfolio=corporativo, origen="organizacion")
+    return PortfolioResolution(portfolio=personal, origen="ninguno")
 
 
 def _candidate_text(row: pd.Series) -> str:

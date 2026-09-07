@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+import json
+from collections.abc import Mapping, Sequence
 from datetime import UTC, date, datetime, timedelta
 from statistics import median
-from typing import Any, get_args
+from typing import Any, Literal, get_args
+
+from pydantic import BaseModel, ConfigDict, Field
 
 from db.database import now_utc_iso
 from db.notifications import insert_user_notification
@@ -43,8 +47,12 @@ from shared.dto import (
     PursuitStatus,
     PursuitSummary,
     PursuitUpdate,
+    RadarBanda,
+    RadarBandaCalidad,
+    RadarQuality,
 )
 from shared.identity import user_key_from_email
+from shared.scoring_weights import KNOWN_WEIGHT_KEYS, WEIGHTS_TOTAL, validate_scoring_weights
 from shared.tender_facts import RequiredDocumentFact
 
 _repo = PursuitRepository()
@@ -65,6 +73,28 @@ AGENDA_SENALES_POR_REGLA = 25
 AGENDA_REGLAS_MAX = 20
 AGENDA_RENOVACIONES_MAX = 15
 AGENDA_RENOVACIONES_MESES = 6
+
+# ── Calidad del Radar (S3.2) ────────────────────────────────────────────────
+#: Denominador mínimo para publicar un porcentaje por banda. Diez es el suelo
+#: por debajo del cual un win rate es anécdota: con cinco cierres, una sola
+#: oportunidad mueve el número veinte puntos. El cliente no lo reinventa — la
+#: respuesta lo lleva dentro (``RadarQuality.minimo_por_banda``).
+RADAR_QUALITY_MINIMO = 10
+
+#: Orden de presentación de las bandas: de más prioritaria a menos, que es
+#: como el Radar las pinta.
+_ORDEN_BANDAS: tuple[RadarBanda, ...] = ("Caliente", "Atractiva", "Tibia", "Descarte")
+
+# ── Propuesta de pesos (S3.3) ───────────────────────────────────────────────
+#: Cierres con desglose sellado que hacen falta para proponer nada. Veinte no
+#: es un número redondo por gusto: con seis dimensiones y menos de veinte
+#: cierres, la diferencia de medias entre ganadas y perdidas es ruido.
+PESOS_MINIMO_CIERRES = 20
+
+#: Cuánto puede moverse una dimensión de una sola vez, en puntos de peso. El
+#: ajuste es una sugerencia sobre evidencia parcial, no un reentrenamiento:
+#: cinco puntos reordenan la bandeja sin volverla irreconocible.
+PESOS_PASO_MAX = 5
 
 _TRANSITIONS: dict[str, frozenset[str]] = {
     "identified": frozenset({"qualifying", "withdrawn"}),
@@ -106,6 +136,7 @@ def create_pursuit(
         raise PursuitValidationError("La licitación indicada no existe.")
     responsible_user_id = body.responsible_user_id or user_id
     require_active_member(organization_id, responsible_user_id)
+    lote_numero = _resolver_lote(body.licitacion_id, body.lote_id)
     row, created = _repo.create(
         organization_id=organization_id,
         licitacion_id=body.licitacion_id,
@@ -114,10 +145,37 @@ def create_pursuit(
         idempotency_key=idempotency_key,
         score_al_abrir=body.score_al_abrir,
         banda_al_abrir=body.banda_al_abrir,
+        lote_numero=lote_numero,
+        desglose_al_abrir=_serializar_desglose(body.desglose_al_abrir),
     )
     if created:
         _notificar_asignacion(row, actor_user_id=user_id)
     return PursuitSummary.model_validate(row), created
+
+
+def _resolver_lote(licitacion_id: str, lote_id: int | None) -> str | None:
+    """``lote_id`` de la API → ``lote_numero`` persistible, o ``None``.
+
+    ``None`` significa «el expediente completo», que es el caso por defecto y
+    el único que existía antes de la revisión ``v110``. Se traduce a número
+    porque los ids de ``lotes`` se renumeran en cada re-ingesta
+    (``db/upsert.py::replace_lotes``) y una oportunidad tiene que sobrevivir a
+    eso; la comprobación de pertenencia impide abrir un expediente apuntando al
+    lote de otro.
+    """
+    if lote_id is None:
+        return None
+    lote = _repo.lote_by_id(licitacion_id, lote_id)
+    if lote is None:
+        raise PursuitValidationError("El lote indicado no pertenece a esa licitación.")
+    return str(lote["numero"])
+
+
+def _serializar_desglose(desglose: dict[str, float] | None) -> str | None:
+    """El desglose del score, listo para la columna TEXT de ``v110``."""
+    if not desglose:
+        return None
+    return json.dumps(desglose, ensure_ascii=False, sort_keys=True)
 
 
 def _notificar_asignacion(row: dict[str, Any], *, actor_user_id: int) -> None:
@@ -496,12 +554,92 @@ def get_metrics(
             float(row["awarded_amount_eur"] or 0) for row in rows if row["outcome"] == "won"
         ),
         median_decision_time_hours=median(decision_hours) if decision_hours else None,
+        radar_quality=calcular_radar_quality(
+            rows,
+            period_from=period_from,
+            period_to=period_to,
+        ),
         perdidas_por_motivo=_perdidas_por_motivo(rows),
         perdidas_n_minimo=MINIMO_PERDIDAS_POR_MOTIVO,
         pipeline_value_eur=valor,
         probabilidades_etapa_usadas=probabilidades,
         prevision_trimestral=prevision,
         pipeline_sin_importe=sin_importe,
+    )
+
+
+# ── Calidad del Radar: el bucle que v93 dejó abierto ────────────────────────
+
+
+def calcular_radar_quality(
+    rows: Sequence[Mapping[str, Any]],
+    *,
+    period_from: datetime | None = None,
+    period_to: datetime | None = None,
+    minimo: int = RADAR_QUALITY_MINIMO,
+) -> RadarQuality | None:
+    """Precisión y tasa de cierre por banda de entrada del Radar.
+
+    Función pura sobre las filas que ya trae ``metric_rows``: no abre otra
+    consulta a propósito, para que la calidad del Radar y el embudo de la misma
+    respuesta no puedan hablar de universos distintos.
+
+    Devuelve ``None`` cuando ninguna fila lleva banda sellada: es el estado
+    normal para las oportunidades anteriores a la revisión ``v93``, y publicar
+    un objeto con todo a cero diría «el Radar acierta el 0 %» cuando lo cierto
+    es que no se midió.
+    """
+    con_banda = [row for row in rows if row.get("banda_al_abrir") in _ORDEN_BANDAS]
+    if not con_banda:
+        return None
+
+    bandas: list[RadarBandaCalidad] = []
+    for banda in _ORDEN_BANDAS:
+        propias = [row for row in con_banda if row.get("banda_al_abrir") == banda]
+        if not propias:
+            # Una banda sin ninguna oportunidad no se inventa con ceros: no hay
+            # nada que decir de ella (ADR-014).
+            continue
+        ganadas = sum(1 for row in propias if row.get("outcome") == "won")
+        perdidas = sum(1 for row in propias if row.get("outcome") == "lost")
+        resueltas = ganadas + perdidas
+        # "Cerrada" incluye la retirada: dejó de consumir trabajo del equipo.
+        # No entra en la precisión —una retirada no dice quién habría ganado—
+        # pero sí en la tasa de cierre, que mide cuánto de lo priorizado acabó.
+        cerradas = sum(1 for row in propias if row.get("outcome") in ("won", "lost", "cancelled"))
+        abiertas = len(propias)
+        bandas.append(
+            RadarBandaCalidad(
+                banda=banda,
+                abiertas=abiertas,
+                cerradas=cerradas,
+                ganadas=ganadas,
+                perdidas=perdidas,
+                resueltas=resueltas,
+                precision=(ganadas / resueltas) if resueltas >= minimo else None,
+                tasa_cierre=(cerradas / abiertas) if abiertas >= minimo else None,
+                suficiente=resueltas >= minimo,
+            )
+        )
+
+    observadas = [
+        momento
+        for row in con_banda
+        if (momento := _parse_iso_datetime(row.get("identified_at"))) is not None
+    ]
+    pedido = period_from is not None or period_to is not None
+    return RadarQuality(
+        minimo_por_banda=minimo,
+        ventana_desde=period_from or (min(observadas) if observadas else None),
+        ventana_hasta=period_to or (max(observadas) if observadas else None),
+        # Con periodo pedido a medias (solo ``from`` o solo ``to``) el otro
+        # extremo se completa con lo observado, pero el origen sigue siendo el
+        # periodo: es lo que acota la ventana de la que habla la métrica.
+        ventana_origen="periodo_solicitado" if pedido else "historico_observado",
+        bandas=bandas,
+        pursuits_con_banda=len(con_banda),
+        pursuits_total=len(rows),
+        cobertura_pct=(100.0 * len(con_banda) / len(rows)) if rows else None,
     )
 
 
@@ -648,6 +786,23 @@ def _normalize_and_validate_update(
                 + "."
             )
     return changes
+
+
+def _parse_iso_datetime(value: object) -> datetime | None:
+    """``datetime`` UTC de un TEXT ISO de la base, o ``None`` si no lo es.
+
+    Las columnas de fecha son TEXT (ADR-016/021) y pueden venir sin offset;
+    asumir UTC en ese caso es la convención del módulo (``_elapsed_hours``).
+    """
+    if isinstance(value, datetime):
+        return value if value.tzinfo else value.replace(tzinfo=UTC)
+    if not isinstance(value, str):
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
 
 
 def _as_utc_iso(value: datetime | None) -> str | None:
@@ -898,6 +1053,331 @@ def _agenda_kpis(items: list[PipelineAgendaItem]) -> PipelineAgendaKpis:
         go_no_go_pendientes=sum(1 for item in pursuits if item.decision == "pending"),
         sin_proxima_accion=sum(1 for item in pursuits if not item.next_action),
         senales_nuevas=sum(1 for item in items if item.kind == "senal"),
+    )
+
+
+# ── Pesos propuestos, nunca aplicados solos (S3.3) ──────────────────────────
+#
+# El Radar puntúa con seis dimensiones ponderadas, y hasta ahora esos pesos
+# sólo podían moverse a ojo: nadie tenía delante la evidencia de qué dimensión
+# separa de verdad lo que la organización gana de lo que pierde.
+#
+# Lo que sigue construye esa evidencia a partir de los cierres con desglose
+# sellado (``v110``) y la deja como **propuesta**. No hay camino automático que
+# la aplique: cambiar los pesos reordena la bandeja diaria del equipo, y esa es
+# una decisión de quien la firma, no un efecto secundario de haber perdido tres
+# licitaciones. Aplicarla es una llamada aparte que además queda en ``audit_log``.
+
+
+class PesoPropuestoDimension(BaseModel):
+    """Una dimensión del score, con la evidencia que sostiene su ajuste.
+
+    ``media_ganadas``/``media_perdidas`` son la media de esa dimensión en el
+    desglose sellado de las oportunidades ganadas y de las perdidas. ``delta``
+    es su diferencia: positivo significa que la dimensión valía más en lo que se
+    ganó, y por eso su peso sube.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    dimension: str
+    peso_actual: int = Field(ge=0, le=WEIGHTS_TOTAL)
+    peso_propuesto: int = Field(ge=0, le=WEIGHTS_TOTAL)
+    media_ganadas: float
+    media_perdidas: float
+    delta: float
+
+
+class PesosPropuestos(BaseModel):
+    """Propuesta de ajuste de pesos con su base declarada (ADR-014).
+
+    ``estado`` es ``insuficiente`` mientras la organización no acumule
+    ``minimo_cierres`` oportunidades cerradas **con desglose sellado**. En ese
+    estado ``pesos_propuestos`` viaja en ``None`` y ``dimensiones`` vacío: una
+    propuesta que no se sostiene no se enseña con una advertencia al lado, no se
+    enseña.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    organization_id: int = Field(ge=1)
+    estado: Literal["propuesta", "insuficiente"]
+    #: Cierres con desglose que hacen falta para proponer. Viaja con el dato
+    #: para que la pantalla no reinvente el umbral.
+    minimo_cierres: int = Field(ge=1)
+    n_ganadas: int = Field(ge=0)
+    n_perdidas: int = Field(ge=0)
+    #: ``n_ganadas + n_perdidas``: la base real de la propuesta.
+    n_cierres: int = Field(ge=0)
+    #: De dónde salen los pesos vigentes: del perfil de scoring visible en la
+    #: organización, o de la configuración global cuando no hay perfil.
+    origen_pesos_actuales: Literal["perfil", "global"]
+    pesos_actuales: dict[str, int] = Field(default_factory=dict)
+    pesos_propuestos: dict[str, int] | None = None
+    dimensiones: list[PesoPropuestoDimension] = Field(default_factory=list)
+
+
+class PesosPropuestosAplicados(BaseModel):
+    """Resultado de aplicar la propuesta: qué quedó escrito y sobre qué base."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    organization_id: int = Field(ge=1)
+    pesos: dict[str, int]
+    #: Visibilidad con la que quedó el perfil de scoring. Se conserva la que
+    #: tuviera; sólo cuando no había perfil se crea ``organization``, porque la
+    #: propuesta se calcula con los cierres de todo el equipo.
+    visibility: Literal["private", "organization"]
+    n_cierres: int = Field(ge=0)
+
+
+def _media(desgloses: Sequence[Mapping[str, float]], dimension: str) -> float:
+    """Media de una dimensión tratando su ausencia como 0.
+
+    Ausente no es «desconocido»: el desglose omite la dimensión cuando no
+    aportó nada al score (``afinidad`` sin portfolio, ``senal_tecnica`` sin
+    señal técnica), y ese cero es justamente su contribución.
+    """
+    if not desgloses:
+        return 0.0
+    return sum(float(d.get(dimension, 0.0)) for d in desgloses) / len(desgloses)
+
+
+def proponer_pesos(
+    pesos_actuales: Mapping[str, int],
+    ganadas: Sequence[Mapping[str, float]],
+    perdidas: Sequence[Mapping[str, float]],
+    *,
+    paso_max: int = PESOS_PASO_MAX,
+) -> tuple[dict[str, int], list[PesoPropuestoDimension]]:
+    """Pesos propuestos y su evidencia. Pura: sin BD, sin perfil, sin reloj.
+
+    El ajuste es una redistribución, no una subida: los deltas se centran en su
+    media antes de escalarse, así que lo que una dimensión gana lo pierde otra y
+    la suma sigue siendo ``WEIGHTS_TOTAL``. Sin centrar, un periodo en que todas
+    las dimensiones puntuaron más alto en las ganadas subiría todos los pesos a
+    la vez, que en una suma constante no significa nada.
+
+    ``paso_max`` acota el movimiento de la dimensión más separada; el resto se
+    mueve en proporción. Los pesos se recortan a ``[0, WEIGHTS_TOTAL - 1]``: el
+    tope de arriba es lo que impide que ``afinidad`` llegue a 100, que
+    ``validate_scoring_weights`` prohíbe porque deja el resto del score en cero.
+    """
+    dimensiones = sorted(k for k in pesos_actuales if k in KNOWN_WEIGHT_KEYS)
+    deltas = {dim: _media(ganadas, dim) - _media(perdidas, dim) for dim in dimensiones}
+    escala = max((abs(valor) for valor in deltas.values()), default=0.0)
+    ajustes: dict[str, float] = dict.fromkeys(dimensiones, 0.0)
+    if escala == 0.0:
+        # Ninguna dimensión separa ganadas de perdidas: la propuesta honesta es
+        # no mover nada.
+        propuestos = {dim: int(pesos_actuales[dim]) for dim in dimensiones}
+    else:
+        centro = sum(deltas.values()) / len(dimensiones)
+        ajustes = {dim: paso_max * (valor - centro) / escala for dim, valor in deltas.items()}
+        propuestos = _reequilibrar(
+            {
+                dim: max(0, min(WEIGHTS_TOTAL - 1, round(int(pesos_actuales[dim]) + ajustes[dim])))
+                for dim in dimensiones
+            },
+            ajustes,
+        )
+
+    evidencia = [
+        PesoPropuestoDimension(
+            dimension=dim,
+            peso_actual=int(pesos_actuales[dim]),
+            peso_propuesto=propuestos[dim],
+            media_ganadas=round(_media(ganadas, dim), 4),
+            media_perdidas=round(_media(perdidas, dim), 4),
+            delta=round(deltas[dim], 4),
+        )
+        for dim in dimensiones
+    ]
+    return propuestos, evidencia
+
+
+def _reequilibrar(pesos: dict[str, int], ajustes: Mapping[str, float]) -> dict[str, int]:
+    """Corrige el desvío de redondeo para que la suma vuelva a ``WEIGHTS_TOTAL``.
+
+    Reparte la diferencia de uno en uno empezando por la dimensión cuyo ajuste
+    apuntaba más fuerte en esa dirección: así el punto suelto cae donde la
+    evidencia lo pedía y no en la primera clave alfabética. El desempate es el
+    nombre, para que la propuesta sea reproducible.
+    """
+    resultado = dict(pesos)
+    diferencia = WEIGHTS_TOTAL - sum(resultado.values())
+    if diferencia == 0 or not resultado:
+        return resultado
+    paso = 1 if diferencia > 0 else -1
+    candidatos = sorted(resultado, key=lambda dim: (-paso * ajustes.get(dim, 0.0), dim))
+    # Tope de vueltas: con todas las dimensiones en su límite la diferencia no
+    # se puede repartir, y el bucle tiene que terminar igual.
+    intentos = 0
+    tope = (abs(diferencia) + 1) * len(candidatos)
+    while diferencia != 0 and intentos < tope:
+        dim = candidatos[intentos % len(candidatos)]
+        siguiente = resultado[dim] + paso
+        if 0 <= siguiente <= WEIGHTS_TOTAL - 1:
+            resultado[dim] = siguiente
+            diferencia -= paso
+        intentos += 1
+    return resultado
+
+
+def _pesos_vigentes(
+    user_key: str, organization_id: int
+) -> tuple[dict[str, int], Literal["perfil", "global"]]:
+    """Pesos con los que el Radar puntúa hoy, y de dónde salen.
+
+    Mismo orden de precedencia que ``services/analytics/scoring.py``: el perfil
+    visible en la organización manda sobre la configuración global. Si no
+    coincidieran, la propuesta partiría de unos pesos que nadie está usando.
+    """
+    from config import settings
+    from db.repositories.user_profiles import get_user_profile
+
+    perfil = get_user_profile(user_key, organization_id)
+    weights = (perfil or {}).get("weights")
+    if isinstance(weights, dict) and weights:
+        return {str(k): int(v) for k, v in weights.items()}, "perfil"
+    return dict(settings.SCORING_WEIGHTS), "global"
+
+
+def _desgloses_cerrados(
+    organization_id: int,
+) -> tuple[list[dict[str, float]], list[dict[str, float]]]:
+    """Desgloses sellados de las oportunidades ganadas y de las perdidas."""
+    ganadas: list[dict[str, float]] = []
+    perdidas: list[dict[str, float]] = []
+    for row in _repo.closed_scored_rows(organization_id):
+        try:
+            crudo = json.loads(str(row["desglose_al_abrir"]))
+        except (TypeError, ValueError):
+            # Un desglose ilegible no puede sostener nada: se descarta del
+            # numerador Y del denominador, que es lo que evita que la base
+            # declarada mienta.
+            log.warning("pursuit_desglose_ilegible", pursuit_id=row.get("id"))
+            continue
+        if not isinstance(crudo, dict):
+            continue
+        desglose = {str(k): float(v) for k, v in crudo.items() if isinstance(v, int | float)}
+        (ganadas if row.get("outcome") == "won" else perdidas).append(desglose)
+    return ganadas, perdidas
+
+
+def get_weights_proposal(
+    user_id: int,
+    *,
+    user_key: str,
+    organization_id: int | None = None,
+) -> PesosPropuestos:
+    """Propuesta de ajuste de pesos a partir de los cierres de la organización."""
+    resolved_id, _ = resolve_organization(user_id, organization_id)
+    pesos_actuales, origen = _pesos_vigentes(user_key, resolved_id)
+    ganadas, perdidas = _desgloses_cerrados(resolved_id)
+    n_cierres = len(ganadas) + len(perdidas)
+    if n_cierres < PESOS_MINIMO_CIERRES:
+        return PesosPropuestos(
+            organization_id=resolved_id,
+            estado="insuficiente",
+            minimo_cierres=PESOS_MINIMO_CIERRES,
+            n_ganadas=len(ganadas),
+            n_perdidas=len(perdidas),
+            n_cierres=n_cierres,
+            origen_pesos_actuales=origen,
+            pesos_actuales=pesos_actuales,
+            pesos_propuestos=None,
+            dimensiones=[],
+        )
+    propuestos, evidencia = proponer_pesos(pesos_actuales, ganadas, perdidas)
+    return PesosPropuestos(
+        organization_id=resolved_id,
+        estado="propuesta",
+        minimo_cierres=PESOS_MINIMO_CIERRES,
+        n_ganadas=len(ganadas),
+        n_perdidas=len(perdidas),
+        n_cierres=n_cierres,
+        origen_pesos_actuales=origen,
+        pesos_actuales=pesos_actuales,
+        pesos_propuestos=propuestos,
+        dimensiones=evidencia,
+    )
+
+
+def apply_weights_proposal(
+    user_id: int,
+    *,
+    user_key: str,
+    organization_id: int | None = None,
+) -> PesosPropuestosAplicados:
+    """Escribe la propuesta vigente en el perfil de scoring. Un clic explícito.
+
+    No acepta pesos por parámetro a propósito: si el cliente pudiera mandar los
+    suyos, esto sería un ``PUT /me/profile`` con otro nombre y el registro de
+    auditoría diría «aplicó la propuesta» sobre unos números que la propuesta
+    nunca hizo. Recalcula, aplica lo que acaba de calcular y lo deja escrito.
+    """
+    from db.audit import log_event
+    from db.repositories.user_profiles import get_own_user_profile, upsert_user_profile
+    from shared.cache import invalidate_organization_scoped, invalidate_user_scoped
+
+    resolved_id, _ = resolve_organization(user_id, organization_id, write=True)
+    propuesta = get_weights_proposal(user_id, user_key=user_key, organization_id=resolved_id)
+    if propuesta.estado != "propuesta" or propuesta.pesos_propuestos is None:
+        raise PursuitValidationError(
+            "Todavía no hay propuesta que aplicar: hacen falta "
+            f"{PESOS_MINIMO_CIERRES} oportunidades cerradas con desglose y hay "
+            f"{propuesta.n_cierres}."
+        )
+    pesos = propuesta.pesos_propuestos
+    # La propuesta se construye para cumplir la invariante, pero quien escribe
+    # el perfil es este llamador: si un cambio futuro la rompiera, el perfil
+    # quedaría con pesos que el Radar no sabe usar y nadie se enteraría hasta
+    # ver el corpus entero en banda Descarte.
+    validate_scoring_weights(pesos)
+
+    previo = get_own_user_profile(user_key)
+    visibility: Literal["private", "organization"] = (
+        "private" if str((previo or {}).get("visibility") or "") == "private" else "organization"
+    )
+    # El upsert reemplaza el perfil entero (ver su docstring), así que el resto
+    # de los campos se reenvían tal cual: aplicar los pesos no puede borrar de
+    # paso las keywords de afinidad ni los CPV de quien lo aplica.
+    upsert_user_profile(
+        user_key,
+        {
+            "weights": pesos,
+            "afinidad_keywords": (previo or {}).get("afinidad_keywords"),
+            "cpvs": (previo or {}).get("cpvs"),
+            "importe_min": (previo or {}).get("importe_min"),
+            "importe_max": (previo or {}).get("importe_max"),
+        },
+        resolved_id,
+        visibility,
+    )
+    # El ranking cacheado se calculó con los pesos viejos, en el scope propio y
+    # en el de la organización que tuviera antes el perfil.
+    invalidate_user_scoped("analytics", "scoring", user_key)
+    anterior = (previo or {}).get("organization_id")
+    for afectada in {resolved_id, int(anterior) if anterior is not None else None}:
+        if afectada is not None:
+            invalidate_organization_scoped("analytics", "scoring", afectada)
+    log_event(
+        event_type="pursuit.weights_proposal_applied",
+        user_key=user_key,
+        resource=f"organization:{resolved_id}",
+        detail={
+            "pesos_anteriores": propuesta.pesos_actuales,
+            "pesos_aplicados": pesos,
+            "n_ganadas": propuesta.n_ganadas,
+            "n_perdidas": propuesta.n_perdidas,
+        },
+    )
+    return PesosPropuestosAplicados(
+        organization_id=resolved_id,
+        pesos=pesos,
+        visibility=visibility,
+        n_cierres=propuesta.n_cierres,
     )
 
 

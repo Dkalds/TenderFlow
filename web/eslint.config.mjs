@@ -120,6 +120,48 @@ const eslintConfig = defineConfig([
       ],
     },
   },
+  // ── Tamaño de fichero en `src/app/**` (S7.1 del plan 2026-09 v2) ──────────
+  //
+  // El §1 de ese plan contó doce ficheros de `src/app` por encima de 300
+  // líneas y los llamó «la deuda que hace frágil cualquier pantalla nueva»:
+  // una vista de 900 líneas no se revisa, no se prueba por partes y obliga a
+  // leerla entera para cambiar un botón. Al medirlo de verdad no eran doce
+  // sino veintiocho. Hoy queda el de la allowlist de abajo.
+  //
+  // `skipBlankLines`/`skipComments` en `false` a propósito: el objetivo es que
+  // el fichero se pueda leer de una sentada, y un comentario largo también se
+  // lee. Este repo documenta mucho en comentarios —bien— y descontarlos
+  // convertiría el límite en un incentivo para no explicar nada.
+  //
+  // Los tests quedan fuera: un fichero de tests largo es una tabla de casos, y
+  // partirlo por longitud dispersa el criterio en vez de aclararlo.
+  {
+    files: ["src/app/**/*.ts", "src/app/**/*.tsx"],
+    ignores: ["**/__tests__/**", "**/*.test.ts", "**/*.test.tsx"],
+    rules: {
+      "max-lines": [
+        "error",
+        { max: 300, skipBlankLines: false, skipComments: false },
+      ],
+    },
+  },
+  // ALLOWLIST — **solo puede encoger**. No se le añaden entradas: si una
+  // pantalla nueva no cabe en 300 líneas, se parte antes de mergearla.
+  //
+  // Los cuatro que quedaban crecieron el 2026-09-06, durante la propia
+  // ejecución del plan, porque los streams S1 y S4 les añadieron superficie y
+  // sus agentes no llegaron a trocearlas. Tres ya están partidos (2026-09-07):
+  // el login reparte sus cinco caminos de entrada entre `login/_hooks/` y
+  // `login/_components/`; los webhooks, sus piezas entre
+  // `ops/_components/webhooks/` y `ops/_hooks/use-webhooks-ambito.ts`; y las
+  // reglas de watchlist separan formas, catálogos y coincidencias del módulo
+  // que traduce formulario ↔ contrato.
+  //
+  // Queda uno solo, y es deuda con fecha y con dueño, no un permiso permanente.
+  {
+    files: ["src/app/(dashboard)/equipo/page.tsx"],
+    rules: { "max-lines": "off" },
+  },
 ]);
 
 export default eslintConfig;

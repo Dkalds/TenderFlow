@@ -88,6 +88,7 @@ export default function MiWatchlistPage() {
               key={w.editingRule?.id ?? "none"}
               rule={w.editingRule}
               ccaaList={w.ccaaList}
+              tecnologiaList={w.tecnologiaList}
               onClose={() => w.setEditingRule(null)}
               onSave={w.saveEdit}
               saving={w.savingEdit}

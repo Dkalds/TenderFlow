@@ -6,6 +6,18 @@
  * consola no invente una segunda paleta paralela a la del sistema de gráficos.
  */
 
+/**
+ * Rejilla de la tabla — solo a partir de `md`. Por debajo no hay rejilla: la
+ * fila es una ficha en columna (ver `radar-fila.tsx`), y la cabecera de columnas
+ * desaparece porque no habría columnas que rotular.
+ *
+ * Vive aquí y no en uno de los dos componentes que la usan porque cabecera y
+ * fila tienen que compartir exactamente el mismo reparto: si divergen, los
+ * rótulos dejan de caer sobre sus datos.
+ */
+export const RADAR_GRID =
+  "md:grid-cols-[46px_1fr_176px_132px_108px_96px_108px] md:gap-3 md:px-3.5";
+
 /** Banda de scoring que devuelve el backend (`Caliente|Atractiva|Tibia|Descarte`). */
 export const BAND_TOKEN: Record<string, string> = {
   Caliente: "var(--score-hot)",

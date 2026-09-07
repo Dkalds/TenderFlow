@@ -1,4 +1,4 @@
-"""Gate de promoción único para el clasificador SAP.
+"""Gate de promoción: clasificador SAP y modelos predictivos (baja, retención).
 
 Motivación
 ----------
@@ -37,6 +37,22 @@ del modelo activo. Dos problemas:
 
 Además se exige ``metrics_reliable``: con un test de diez filas, un f1 a cuatro
 decimales no es una medición y no puede decidir una promoción.
+
+Los modelos predictivos (S6.4)
+------------------------------
+``baja_model`` y ``retencion_model`` no tienen golden set humano ni
+``recall_no_keyword``: se comparan contra un **baseline** (la regla que se
+sirve mientras no haya versión activa) sobre validación temporal. Para ellos
+el gate es :func:`evaluar_promocion_predictiva`, y su regla es una sola frase:
+
+    una versión solo se promociona si su mejora sobre el baseline supera la
+    dispersión de esa misma métrica entre folds.
+
+Sin esa comparación, «mejora un 3,3 %» no significa nada. Es literalmente el
+caso de ``baja_model`` v2 (backlog P2): ``mae_p50`` 0.12494 contra
+``mae_baseline`` 0.12999 —una mejora de 0.005— con ``mae_p50_std_folds``
+0.01287, dos veces y media esa mejora. Activar ahí es activar ruido, y encima
+sin red que detecte la regresión después.
 """
 
 from __future__ import annotations
@@ -63,6 +79,14 @@ TOLERANCIA_BRIER = 0.05
 MIN_RECALL_NO_KEYWORD = 0.05
 # Cuánto puede empeorar el recall incremental respecto al modelo activo.
 TOLERANCIA_RECALL_NO_KEYWORD = 0.05
+
+# ── Gate de los modelos predictivos (S6.4) ────────────────────────────────
+#: Cuántas veces la dispersión entre folds tiene que caber en la mejora sobre
+#: el baseline para que la mejora sea distinguible de ruido. ``1.0`` es el
+#: mínimo defendible —la mejora iguala a una desviación típica— y ya rechaza
+#: el caso que motivó el criterio (baja v2: mejora 0.005, dispersión 0.0129).
+#: Subirlo endurece el gate; bajarlo de 1.0 sería promocionar dentro del ruido.
+MIN_IMPROVEMENT_OVER_FOLD_DISPERSION = 1.0
 
 
 class _ClasificadorEvaluable(Protocol):
@@ -185,6 +209,124 @@ def evaluar_gate(
         motivos.extend(_motivos_regresion(metrics, metricas_activas))
 
     return motivos
+
+
+@dataclass(frozen=True)
+class DecisionPredictiva:
+    """Veredicto del gate predictivo, con el número que lo justifica.
+
+    ``promotion_reason`` es la frase que se guarda en ``model_versions.notes``
+    y en las métricas: el backlog pedía «el número que lo justifica anotado»,
+    y una nota que solo dice «no cumple criterios» obliga a reconstruir la
+    cuenta a mano cada vez.
+    """
+
+    promocionable: bool
+    promotion_reason: str
+    mejora: float
+    dispersion: float | None
+    margen_exigido: float | None
+    motivos: list[str] = field(default_factory=list)
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "promocionable": self.promocionable,
+            "promotion_reason": self.promotion_reason,
+            "mejora_sobre_baseline": round(self.mejora, 5),
+            "dispersion_entre_folds": (
+                round(self.dispersion, 5) if self.dispersion is not None else None
+            ),
+            "margen_exigido": (
+                round(self.margen_exigido, 5) if self.margen_exigido is not None else None
+            ),
+            "motivos_rechazo": list(self.motivos),
+        }
+
+
+def evaluar_promocion_predictiva(
+    *,
+    metrica: float,
+    baseline: float,
+    dispersion: float | None,
+    nombre_metrica: str,
+    mejor_es_mayor: bool = False,
+    min_improvement_over_fold_dispersion: float = MIN_IMPROVEMENT_OVER_FOLD_DISPERSION,
+    motivos_extra: list[str] | None = None,
+) -> DecisionPredictiva:
+    """Decide si un modelo predictivo puede activarse. Función pura.
+
+    Args:
+        metrica: Valor del candidato (``mae_p50``, ``pr_auc``…).
+        baseline: Mismo valor para la regla que se sirve hoy. Para retención el
+            baseline del ranking trivial es la **prevalencia**: es el PR-AUC
+            esperado de ordenar al azar, así que un PR-AUC igual a la
+            prevalencia no ordena nada.
+        dispersion: Desviación típica de ``metrica`` entre folds (o entre
+            bloques de la ventana de validación). ``None`` significa que nadie
+            la midió, y entonces **no se puede** distinguir la mejora del
+            ruido: el gate rechaza en vez de dar por buena una comparación que
+            no tiene error asociado.
+        nombre_metrica: Solo para redactar ``promotion_reason``.
+        mejor_es_mayor: ``True`` para métricas donde más es mejor (PR-AUC),
+            ``False`` para errores (MAE).
+        min_improvement_over_fold_dispersion: Cuántas dispersiones tiene que
+            medir la mejora. Ver :data:`MIN_IMPROVEMENT_OVER_FOLD_DISPERSION`.
+        motivos_extra: Criterios propios del modelo que ya se evaluaron fuera
+            (cobertura del intervalo, ECE…). Si traen algo, la versión no se
+            promociona por mucho que gane al baseline.
+
+    Returns:
+        :class:`DecisionPredictiva`.
+    """
+    motivos = list(motivos_extra or [])
+    mejora = (metrica - baseline) if mejor_es_mayor else (baseline - metrica)
+    margen = (
+        abs(dispersion) * min_improvement_over_fold_dispersion if dispersion is not None else None
+    )
+
+    if mejora <= 0:
+        motivos.append(f"{nombre_metrica} no bate al baseline ({metrica:.5f} vs {baseline:.5f})")
+    elif margen is None:
+        motivos.append(
+            f"sin dispersion medida de {nombre_metrica}: una mejora sin error asociado "
+            "no se puede distinguir del ruido"
+        )
+    elif mejora < margen:
+        motivos.append(
+            f"mejora de {nombre_metrica} {mejora:.5f} < dispersion entre folds "
+            f"{abs(dispersion or 0.0):.5f} x {min_improvement_over_fold_dispersion:g}: "
+            "indistinguible de ruido"
+        )
+
+    promocionable = not motivos
+    if promocionable:
+        reason = (
+            f"promocionable: mejora de {nombre_metrica} {mejora:.5f} >= "
+            f"{margen:.5f} (dispersion entre folds x{min_improvement_over_fold_dispersion:g})"
+            if margen is not None
+            else f"promocionable: mejora de {nombre_metrica} {mejora:.5f}"
+        )
+    else:
+        reason = "no promocionable — " + "; ".join(motivos)
+
+    log.info(
+        "promotion.predictiva_evaluada",
+        metrica=nombre_metrica,
+        valor=metrica,
+        baseline=baseline,
+        dispersion=dispersion,
+        mejora=mejora,
+        promocionable=promocionable,
+        motivos=motivos,
+    )
+    return DecisionPredictiva(
+        promocionable=promocionable,
+        promotion_reason=reason,
+        mejora=mejora,
+        dispersion=dispersion,
+        margen_exigido=margen,
+        motivos=motivos,
+    )
 
 
 def promote_if_better(
@@ -321,9 +463,12 @@ def _escribir_checksum(path: Path) -> None:
 
 
 __all__ = [
+    "MIN_IMPROVEMENT_OVER_FOLD_DISPERSION",
     "MIN_RECALL_NO_KEYWORD",
+    "DecisionPredictiva",
     "ResultadoPromocion",
     "evaluar_en_golden",
     "evaluar_gate",
+    "evaluar_promocion_predictiva",
     "promote_if_better",
 ]

@@ -29,7 +29,27 @@ jobs:
   static-analysis:
     name: Lint, typecheck & pre-commit
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 12
+    # Postgres aquí no es para tests: `scripts/gen_schema_doc.py --check`
+    # necesita una base sobre la que aplicar `alembic upgrade head` para leer
+    # el catálogo. Sin instancia real el documento volvería a mantenerse a
+    # mano, que es exactamente lo que lo dejó describiendo un motor retirado y
+    # las versiones v1-v20 mientras Alembic iba por la v102. Imagen pgvector
+    # porque v56 hace `CREATE EXTENSION vector`.
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: tenderflow
+          POSTGRES_PASSWORD: tenderflow  # pragma: allowlist secret -- contenedor efímero de CI, no es un secreto real
+          POSTGRES_DB: tenderflow_schema_doc
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -97,6 +117,13 @@ jobs:
           ENV: dev
         run: python scripts/check_job_parity.py
 
+      # D18 fase 1: `user_key` deriva la identidad interna del correo, así que
+      # cambiar de dirección pierde los datos de una persona. La migración a
+      # `user_id` es T4; hasta entonces el gate impide que la deuda crezca —la
+      # lista de ficheros que la usan está congelada y solo puede encoger.
+      - name: Verify user_key ratchet (D18)
+        run: python scripts/check_user_key_ratchet.py
+
       # docs/STATUS.md se deriva del código: paridad de jobs, ratchet TID251,
       # motor de la suite, superficie de la API. Si un hecho se puede calcular,
       # no se escribe a mano — es lo que evitaba que el backlog siguiera
@@ -105,6 +132,15 @@ jobs:
         env:
           ENV: dev
         run: python scripts/gen_status.py --check
+
+      # Misma regla que STATUS.md, aplicada al esquema: docs/database-schema.md
+      # se deriva de una BD migrada a head. Se mantuvo a mano hasta 2026-09 y
+      # acabó documentando tablas y un motor que ya no existían.
+      - name: Verify docs/database-schema.md is in sync with the schema
+        env:
+          ENV: dev
+          TEST_DATABASE_URL: postgresql://tenderflow:tenderflow@localhost:5432/tenderflow_schema_doc  # pragma: allowlist secret
+        run: python scripts/gen_schema_doc.py --check
 
       # Un validador nuevo en Settings que exija una variable en producción pasa
       # CI en verde y revienta al arrancar el contenedor. Aquí se comprueba que

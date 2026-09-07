@@ -30,6 +30,7 @@ from __future__ import annotations
 
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
+from typing import TYPE_CHECKING
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -60,6 +61,7 @@ from api.routes.exports import router as exports_router
 from api.routes.feature_flags import router as feature_flags_router
 from api.routes.feedback import router as feedback_router
 from api.routes.health import router as health_router
+from api.routes.jobs import router as jobs_router
 from api.routes.licitaciones import get_licitacion as _get_licitacion_handler
 from api.routes.licitaciones import router as licitaciones_router
 from api.routes.me import router as me_router
@@ -68,6 +70,7 @@ from api.routes.metrics import router as metrics_router
 from api.routes.models import router as models_router
 from api.routes.notifications import router as notifications_router
 from api.routes.organization_settings import router as organization_settings_router
+from api.routes.organizations_capacidad import router as organizations_capacidad_router
 from api.routes.predicciones import router as predicciones_router
 from api.routes.publico import router as publico_router
 from api.routes.publico_solicitudes import router as publico_solicitudes_router
@@ -86,6 +89,9 @@ from config import settings
 from db.database import init_db
 from observability import configure_logging, configure_sentry, configure_tracing
 from observability.logging import get_logger
+
+if TYPE_CHECKING:  # solo para anotar; el módulo se importa en el lifespan
+    from scheduler.worker import Worker
 
 log = get_logger(__name__)
 
@@ -150,7 +156,26 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     except Exception as exc:
         log.warning("anyio_thread_limiter_failed", error=str(exc))
 
+    # Perfil worker (S5.3): el mismo proceso que responde el healthcheck de
+    # Render consume la cola de trabajo en un hilo daemon. No es un plano de
+    # orquestación (ADR-012): no hay cron ni intervalos, solo lo que un usuario
+    # pidió. El import va aquí dentro para que la API normal no cargue
+    # `scheduler/worker.py` —ni sus handlers— por arrancar.
+    worker: Worker | None = None
+    if settings.APP_PROFILE == "worker":
+        from scheduler.worker import arrancar_en_hilo
+
+        worker = arrancar_en_hilo()
+        log.info("worker_cola_arrancado_en_lifespan")
+
     yield
+
+    # Shutdown — parar el consumidor de la cola antes que nada: lo que no dé
+    # tiempo a terminar vuelve a `pending` por TTL y lo remata otro worker, que
+    # es justo la garantía que este stream vino a dar.
+    if worker is not None:
+        worker.detener()
+        log.info("worker_cola_detenido_en_lifespan")
 
     # Shutdown — drenar background tasks primero
     pending: set[asyncio.Task[object]] = getattr(app.state, "pending_background_tasks", set())
@@ -385,51 +410,68 @@ register_middlewares(app, cors_origins=_cors_origins)
 # Routers
 # ---------------------------------------------------------------------------
 
+# ── Perfil worker: solo salud ────────────────────────────────────────────────
+# El proceso ``APP_PROFILE=worker`` corre la MISMA imagen y el mismo entrypoint
+# (``docker/docker-entrypoint-api.sh`` arranca ``api.app:app``, y no es un
+# fichero de este stream), así que la separación de superficie se decide aquí:
+# el worker monta el router de salud y nada más. Es lo que le da a Render el
+# ``/api/v1/health/ready`` que sondea sin publicar por segunda vez —en otra URL,
+# con otro rate limit y otro CORS— la API entera. El bucle de la cola lo arranca
+# el lifespan de arriba.
+_ES_WORKER = settings.APP_PROFILE == "worker"
+
 app.include_router(health_router, prefix="/api/v1")
-app.include_router(auth_router, prefix="/api/v1")
-app.include_router(
-    stream_router, prefix="/api/v1"
-)  # antes de licitaciones (evita colisión con {id})
-app.include_router(licitaciones_router, prefix="/api/v1")
-app.include_router(empresas_router, prefix="/api/v1")
-app.include_router(competitive_router, prefix="/api/v1")
-app.include_router(eventos_router, prefix="/api/v1")
-app.include_router(resoluciones_router, prefix="/api/v1")
-app.include_router(predicciones_router, prefix="/api/v1")
-# Superficie pública anónima. Cuelga de /api/v1/publico y no de
-# /api/v1/licitaciones porque el catch-all autenticado del final de este
-# fichero ensombrecería cualquier ruta pública bajo ese prefijo, y le
-# devolvería 401 a los rastreadores sin fallar en el arranque.
-app.include_router(publico_router, prefix="/api/v1")
-# Único endpoint público de escritura: la cola de solicitudes de acceso que
-# alimenta el formulario de la landing. Mismo prefijo y mismo motivo.
-app.include_router(publico_solicitudes_router, prefix="/api/v1")
-app.include_router(pursuits_router, prefix="/api/v1")
-app.include_router(organization_settings_router, prefix="/api/v1")
-app.include_router(analytics_router, prefix="/api/v1")
-app.include_router(feedback_router, prefix="/api/v1")
-app.include_router(webhooks_router, prefix="/api/v1")
-app.include_router(me_router, prefix="/api/v1")
-app.include_router(meta_router, prefix="/api/v1")
-app.include_router(models_router, prefix="/api/v1")
-app.include_router(search_router, prefix="/api/v1")
-app.include_router(security_router, prefix="/api/v1")
-app.include_router(watchlist_feed_router, prefix="/api/v1")
-app.include_router(watchlist_rules_router, prefix="/api/v1")
-app.include_router(watchlist_items_router, prefix="/api/v1")
-app.include_router(exports_router, prefix="/api/v1")
-app.include_router(radar_router, prefix="/api/v1")
-app.include_router(cuentas_router, prefix="/api/v1")
-app.include_router(saved_filters_router, prefix="/api/v1")
-app.include_router(notifications_router, prefix="/api/v1")
-app.include_router(admin_users_router, prefix="/api/v1")
-app.include_router(admin_solicitudes_router, prefix="/api/v1")
-app.include_router(feature_flags_router, prefix="/api/v1")
-app.include_router(ask_router, prefix="/api/v1")
-# Sin prefijo /api/v1: `GET /metrics` es la ruta que Prometheus ya scrapea y
-# la que declaran los dashboards y el render.yaml. Su auth y su formato de
-# exposición viven en `api/routes/metrics.py`.
-app.include_router(metrics_router)
+
+if _ES_WORKER:
+    log.info("api_perfil_worker_solo_salud")
+
+if not _ES_WORKER:
+    app.include_router(auth_router, prefix="/api/v1")
+    app.include_router(
+        stream_router, prefix="/api/v1"
+    )  # antes de licitaciones (evita colisión con {id})
+    app.include_router(licitaciones_router, prefix="/api/v1")
+    app.include_router(empresas_router, prefix="/api/v1")
+    app.include_router(competitive_router, prefix="/api/v1")
+    app.include_router(eventos_router, prefix="/api/v1")
+    app.include_router(resoluciones_router, prefix="/api/v1")
+    app.include_router(predicciones_router, prefix="/api/v1")
+    # Superficie pública anónima. Cuelga de /api/v1/publico y no de
+    # /api/v1/licitaciones porque el catch-all autenticado del final de este
+    # fichero ensombrecería cualquier ruta pública bajo ese prefijo, y le
+    # devolvería 401 a los rastreadores sin fallar en el arranque.
+    app.include_router(publico_router, prefix="/api/v1")
+    # Único endpoint público de escritura: la cola de solicitudes de acceso que
+    # alimenta el formulario de la landing. Mismo prefijo y mismo motivo.
+    app.include_router(publico_solicitudes_router, prefix="/api/v1")
+    app.include_router(pursuits_router, prefix="/api/v1")
+    app.include_router(organization_settings_router, prefix="/api/v1")
+    app.include_router(organizations_capacidad_router, prefix="/api/v1")
+    app.include_router(analytics_router, prefix="/api/v1")
+    app.include_router(feedback_router, prefix="/api/v1")
+    app.include_router(webhooks_router, prefix="/api/v1")
+    app.include_router(me_router, prefix="/api/v1")
+    app.include_router(meta_router, prefix="/api/v1")
+    app.include_router(models_router, prefix="/api/v1")
+    app.include_router(search_router, prefix="/api/v1")
+    app.include_router(security_router, prefix="/api/v1")
+    app.include_router(watchlist_feed_router, prefix="/api/v1")
+    app.include_router(watchlist_rules_router, prefix="/api/v1")
+    app.include_router(watchlist_items_router, prefix="/api/v1")
+    app.include_router(exports_router, prefix="/api/v1")
+    app.include_router(radar_router, prefix="/api/v1")
+    app.include_router(cuentas_router, prefix="/api/v1")
+    app.include_router(saved_filters_router, prefix="/api/v1")
+    app.include_router(notifications_router, prefix="/api/v1")
+    app.include_router(admin_users_router, prefix="/api/v1")
+    app.include_router(admin_solicitudes_router, prefix="/api/v1")
+    app.include_router(feature_flags_router, prefix="/api/v1")
+    app.include_router(ask_router, prefix="/api/v1")
+    app.include_router(jobs_router, prefix="/api/v1")
+    # Sin prefijo /api/v1: `GET /metrics` es la ruta que Prometheus ya scrapea y
+    # la que declaran los dashboards y el render.yaml. Su auth y su formato de
+    # exposición viven en `api/routes/metrics.py`.
+    app.include_router(metrics_router)
 
 
 # ---------------------------------------------------------------------------
@@ -461,9 +503,10 @@ async def _root() -> dict[str, str]:
 # registramos un catch-all con el conversor ``:path`` que reutiliza el mismo
 # handler. Va al final (último globalmente) para no ensombrecer las sub-rutas
 # específicas (/explain, /tech-scores, /eventos, /prediccion-baja).
-app.add_api_route(
-    "/api/v1/licitaciones/{id_externo:path}",
-    _get_licitacion_handler,
-    methods=["GET"],
-    include_in_schema=False,
-)
+if not _ES_WORKER:
+    app.add_api_route(
+        "/api/v1/licitaciones/{id_externo:path}",
+        _get_licitacion_handler,
+        methods=["GET"],
+        include_in_schema=False,
+    )

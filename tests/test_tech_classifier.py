@@ -622,26 +622,36 @@ class TestTechnologyClassifierTrain:
 
 class TestTechTrainFromDb:
     def test_reads_from_database(self) -> None:
+        """El SQL vive en ``db/`` desde S6.2 (ADR-022), así que lo que se
+        sustituye es la función del repositorio y no la conexión."""
         from unittest.mock import MagicMock, patch
 
+        filas = [
+            {
+                "id_externo": "id1",
+                "titulo": "titulo",
+                "descripcion": "desc",
+                "cpv": "48000000",
+                "importe": 1000,
+                "fecha_publicacion": "2024-01-01",
+                "tecnologia": "SAP",
+                "raw_keywords": "sap",
+            }
+        ]
         with (
             patch("scraper.tech_classifier.TechnologyClassifier") as mock_cls,
-            patch("db.connection.connect_read") as mock_conn_read,
+            patch("db.repositories.ml_dataset.filas_entrenamiento_tecnologia", return_value=filas),
+            patch("db.repositories.licitaciones.LicitacionRepository") as mock_repo,
+            patch("scraper.tech_classifier.registrar_entrenamiento"),
         ):
-            mock_conn = MagicMock()
-            mock_conn.execute.return_value.fetchall.return_value = [
-                ("id1", "titulo", "desc", "48000000", 1000, "2024-01-01", "SAP", "sap"),
-            ]
-            mock_conn_read.return_value.__enter__ = MagicMock(return_value=mock_conn)
-            mock_conn_read.return_value.__exit__ = MagicMock(return_value=False)
-
+            mock_repo.return_value.etiquetas_tecnologia_no_circulares.return_value = {}
             mock_instance = MagicMock()
             mock_instance.train.return_value = {"f1": 0.9}
             mock_cls.return_value = mock_instance
 
             from scraper.tech_classifier import train_from_db
 
-            result = train_from_db()
+            train_from_db()
             mock_instance.save.assert_called_once()
 
 
@@ -696,9 +706,14 @@ class TestResolverLabelColumn:
             }
         )
         res = _resolver_label_column(df)
-        assert res.circular is False
         assert list(res.df[_LABEL_COL_RESOLVED]) == ["WORKDAY", "ORACLE", "SAP"]
         assert res.counts == {"human": 1, "llm": 1, "keywords": 1, "sin_etiqueta": 0}
+        # Con tres filas —una por fuente— el entrenamiento SÍ es circular: dos
+        # etiquetas independientes no mueven ninguna tecnología al tier
+        # ml_ready, así que lo que certificaría cualquier métrica es la fila del
+        # regex. La prioridad por fuente y la suficiencia son preguntas
+        # distintas; la segunda vive en `test_tech_classifier_etiquetas.py`.
+        assert res.circular is True
 
     def test_no_muta_el_dataframe_original(self) -> None:
         from scraper.tech_classifier import _LABEL_COL_RESOLVED, _resolver_label_column

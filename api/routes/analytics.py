@@ -542,7 +542,12 @@ def resumen_timeline(
     return get_timeline_scatter(filters)
 
 
-@router.get("/resumen/sankey", response_model=SankeyResult)
+@router.get(
+    "/resumen/sankey",
+    response_model=SankeyResult,
+    deprecated=True,
+    summary="[DEPRECADO 2026-12-04] Flujo Sankey del resumen",
+)
 @cache_response(ttl=300, user_scoped=False)
 def resumen_sankey(
     fecha_desde: date | None = Query(default=None, description="Start date (YYYY-MM-DD)"),
@@ -561,7 +566,12 @@ def resumen_sankey(
     return get_sankey_flow(filters)
 
 
-@router.get("/resumen/top", response_model=TopLicitacionesResult)
+@router.get(
+    "/resumen/top",
+    response_model=TopLicitacionesResult,
+    deprecated=True,
+    summary="[DEPRECADO 2026-12-04] Top de licitaciones del resumen",
+)
 @cache_response(ttl=300, user_scoped=False)
 def resumen_top(
     fecha_desde: date | None = Query(default=None, description="Start date (YYYY-MM-DD)"),
@@ -736,7 +746,12 @@ def utes(
     return get_utes(filters)
 
 
-@router.get("/compare-periods", response_model=CompareResult)
+@router.get(
+    "/compare-periods",
+    response_model=CompareResult,
+    deprecated=True,
+    summary="[DEPRECADO 2026-12-04] Comparación entre dos periodos",
+)
 @cache_response(ttl=300, user_scoped=False)
 def compare_periods(
     range_a_desde: date = Query(description="Period A start date"),

@@ -7,6 +7,7 @@ import json
 
 from db.database import init_db
 from services.product_metrics import get_product_status
+from shared.dto import RadarQuality
 
 
 def main() -> None:
@@ -33,12 +34,52 @@ def main() -> None:
         else f"{totals.median_decision_time_hours:.1f} h"
     )
     print("TenderFlow · métricas de producto")
+    print("Unidad de conteo:           oportunidad (una por lote, no por expediente)")
     print(f"Oportunidades identificadas: {totals.pursuits_identified}")
     print(f"Ofertas presentadas:        {totals.pursuits_submitted}")
     print(f"Ganadas / perdidas:         {totals.pursuits_won} / {totals.pursuits_lost}")
     print(f"Win rate resuelto:          {win_rate}")
     print(f"Importe adjudicado:         {totals.awarded_amount_eur:,.2f} EUR")
     print(f"Mediana hasta decisión:     {decision_time}")
+    _print_radar_quality(totals.radar_quality)
+
+
+def _print_radar_quality(calidad: RadarQuality | None) -> None:
+    """Imprime la precisión del Radar por banda, o por qué no se puede.
+
+    Ninguna línea sale sin su denominador (ADR-014): por debajo del mínimo se
+    dice «sin datos suficientes» y se enseña la base, en vez de un porcentaje
+    que una sola oportunidad movería veinte puntos.
+    """
+    print()
+    print("Calidad del Radar (precisión por banda de entrada)")
+    if calidad is None:
+        print(
+            "  Sin datos: ninguna oportunidad lleva banda sellada. Se sella al "
+            "abrirla desde el Radar (revisión v93)."
+        )
+        return
+    desde = calidad.ventana_desde.date().isoformat() if calidad.ventana_desde else "inicio"
+    hasta = calidad.ventana_hasta.date().isoformat() if calidad.ventana_hasta else "hoy"
+    origen = "periodo pedido" if calidad.ventana_origen == "periodo_solicitado" else "histórico"
+    print(f"  Ventana ({origen}): {desde} → {hasta}")
+    print(
+        f"  Cobertura: {calidad.pursuits_con_banda}/{calidad.pursuits_total} "
+        "oportunidades con banda sellada"
+    )
+    for banda in calidad.bandas:
+        if banda.precision is None:
+            detalle = (
+                f"sin datos suficientes ({banda.resueltas}/{calidad.minimo_por_banda} resueltas)"
+            )
+        else:
+            detalle = f"{banda.precision:.1%} ({banda.ganadas}/{banda.resueltas} resueltas)"
+        cierre = (
+            "n/d"
+            if banda.tasa_cierre is None
+            else f"{banda.tasa_cierre:.1%} ({banda.cerradas}/{banda.abiertas})"
+        )
+        print(f"  {banda.banda:<10} precisión: {detalle} · cierre: {cierre}")
 
 
 if __name__ == "__main__":

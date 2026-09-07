@@ -47,6 +47,7 @@ from db.repositories.tecnologia_pliego import NO_SIGNAL_SENTINEL
 from db.sql_fragments import (
     FOLD_TABLE,
     TECHNOLOGY_OBSERVED_SQL,
+    empresa_key_sql,
     fold_expr,
     iso_guard,
     tecnologia_en_csv_sql,
@@ -339,11 +340,7 @@ class AggregateRepository:
         ``empresa_id`` — la resolución de entidad ya hecha en ingesta — como
         primera opción cuando existe.
         """
-        empresa_key = (
-            "COALESCE(a.empresa_id::text, "
-            "NULLIF(upper(regexp_replace(a.nif, '[^A-Za-z0-9]', '', 'g')), ''), "
-            "NULLIF(upper(trim(a.nombre)), ''))"
-        )
+        empresa_key = empresa_key_sql("a")
         adj_guard = iso_guard("a.fecha_adjudicacion")
         pub_guard = iso_guard("l.fecha_publicacion")
         sql = (

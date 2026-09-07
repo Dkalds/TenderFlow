@@ -46,10 +46,11 @@ def _run_fetch_phase(limit: int = _FETCH_BATCH_SIZE) -> dict[str, int]:
 
     repo = DocumentosRepository()
     pendientes = repo.list_pendientes(limit=limit)
-    # ``skipped`` (breaker abierto) se declara aquí para que el informe del cron
-    # tenga siempre la misma forma: un lote entero saltado debe verse como 300
-    # skipped, no como una clave ausente.
-    counts: dict[str, int] = {"extracted": 0, "error": 0, "skipped": 0}
+    # ``skipped`` (breaker abierto) y ``unsupported`` (formato que no sabemos
+    # leer, S8.2) se declaran aquí para que el informe del cron tenga siempre la
+    # misma forma: un lote entero saltado debe verse como 300 skipped, no como
+    # una clave ausente.
+    counts: dict[str, int] = {"extracted": 0, "error": 0, "skipped": 0, "unsupported": 0}
     for doc in pendientes:
         try:
             status = fetch_and_extract(doc)
@@ -235,6 +236,11 @@ def run_cli() -> int:
     Un PDF corrupto suelto es normal y esperado; que **todos** los documentos
     del lote fallen sin ninguno extraído señala un problema sistémico
     (SSRF/red/breaker abierto) que sí debe romper el workflow.
+
+    ``unsupported`` cuenta como lote procesado (S8.2): un lote entero de
+    formatos que no sabemos leer es cobertura que falta —visible en el desglose
+    por formato del informe— y no un fallo de la tubería, así que no puede dejar
+    el workflow en rojo todas las noches.
     """
     from db.database import init_db
 
@@ -242,18 +248,43 @@ def run_cli() -> int:
     resumen = run()
 
     fetch = resumen["fetch"]
-    if fetch.get("error") and not fetch.get("extracted"):
+    if fetch.get("error") and not (fetch.get("extracted") or fetch.get("unsupported")):
         log.error("documentos_embeddings_cli_batch_failed", fetch=fetch)
         return 1
     return 0
 
 
 def report_cli() -> int:
-    """Informa del estado de ``documentos``/``documento_chunks``."""
-    from db.repositories.documentos import DocumentosRepository
+    """Informa del estado de ``documentos``/``documento_chunks``.
 
-    counts = DocumentosRepository().status_counts()
+    Desde S8 el informe incluye el desglose por formato (``formato_counts``) y
+    la ocupación del almacén de binarios: `pliegos.yml` los pide en su resumen
+    y son las dos cifras que dicen si la cobertura de formatos y el almacén
+    están haciendo su trabajo, sin abrir la consola.
+    """
+    from db.repositories.documentos import DocumentosRepository
+    from shared.object_store import store_stats
+
+    repo = DocumentosRepository()
+    counts = repo.status_counts()
     log.info("documentos_estado", **counts)
+
+    for fila in repo.formato_counts():
+        log.info(
+            "documentos_por_formato",
+            content_type=fila.get("content_type") or "desconocido",
+            total=fila.get("total"),
+            extracted=fila.get("extracted"),
+            unsupported=fila.get("unsupported"),
+            error=fila.get("error"),
+            pendientes=fila.get("pendientes"),
+        )
+
+    stats = store_stats()
+    if stats is None:
+        log.info("documentos_blob_store_no_medido")
+    else:
+        log.info("documentos_blob_store", objetos=stats.objetos, bytes=stats.bytes)
     return 0
 
 

@@ -14,7 +14,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import type { Frequency, RuleBody } from "./use-watchlist-rules";
+import type { Frequency, RuleBody } from "./watchlist-rule-types";
 
 export interface LegacyRule {
   keyword?: string;
@@ -43,6 +43,15 @@ export function legacyToBody(r: LegacyRule): RuleBody {
     ccaa: r.ccaa || null,
     frequency: LEGACY_FREQ[r.frequency ?? "diaria"] ?? "daily",
     active: r.active ?? true,
+    // El `localStorage` legacy es anterior a los criterios de S4.4 y no puede
+    // traerlos: `null` es «este criterio no filtra», así que la regla migrada
+    // devuelve exactamente lo que devolvía en el navegador.
+    tecnologia: null,
+    organo: null,
+    procedimiento: null,
+    tipo_contrato: null,
+    banda_min: null,
+    plazo_min_dias: null,
   };
 }
 

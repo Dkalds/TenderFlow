@@ -25,6 +25,7 @@ from observability.logging import get_logger
 from services.organizations import claim_legacy_scope
 from services.watchlist_rules import (
     UMBRAL_RUIDO_SEMANAL,
+    Banda,
     Frequency,
     WatchlistRule,
     count_matches,
@@ -69,7 +70,13 @@ def _ctx_email(ctx: dict[str, Any]) -> str | None:
 
 
 class WatchlistRuleBody(BaseModel):
-    """Cuerpo de creacion/edicion de una regla (sin id, con limites de tamano)."""
+    """Cuerpo de creacion/edicion de una regla (sin id, con limites de tamano).
+
+    Los seis campos de S4.4 (`tecnologia`, `organo`, `procedimiento`,
+    `tipo_contrato`, `banda_min` y `plazo_min_dias`) son opcionales y `None`
+    significa «este criterio no filtra»: por eso una regla creada antes de esta
+    revisión sigue devolviendo exactamente lo mismo.
+    """
 
     nombre: str | None = Field(default=None, max_length=120)
     keyword: str | None = Field(default=None, max_length=200)
@@ -80,6 +87,16 @@ class WatchlistRuleBody(BaseModel):
     active: bool = True
     organization_id: int | None = Field(default=None, ge=1)
     visibility: str = Field(default="private", pattern="^(private|organization)$")
+    tecnologia: str | None = Field(default=None, max_length=60)
+    organo: str | None = Field(default=None, max_length=200)
+    procedimiento: str | None = Field(default=None, max_length=80)
+    tipo_contrato: str | None = Field(default=None, max_length=80)
+    banda_min: Banda | None = Field(
+        default=None,
+        description="Banda mínima del Radar. Acota además al universo puntuable "
+        "(abiertas y en plazo), que es el conjunto sobre el que el Radar puntúa.",
+    )
+    plazo_min_dias: int | None = Field(default=None, ge=0, le=365)
 
     def to_rule(self) -> WatchlistRule:
         return WatchlistRule(**self.model_dump())
@@ -122,6 +139,12 @@ def _rules_with_counts(user_key: str, organization_id: int) -> list[WatchlistRul
             ccaa=r.get("ccaa"),
             frequency=r.get("frequency") or "daily",
             active=bool(r.get("active", 1)),
+            tecnologia=r.get("tecnologia"),
+            organo=r.get("organo"),
+            procedimiento=r.get("procedimiento"),
+            tipo_contrato=r.get("tipo_contrato"),
+            banda_min=r.get("banda_min"),
+            plazo_min_dias=r.get("plazo_min_dias"),
         )
         for r in rows_raw
     ]

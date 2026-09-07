@@ -27,10 +27,16 @@ Para romperla, :meth:`TechnologyClassifier.train` prefiere una etiqueta
      trae ninguna de las dos anteriores, el entrenamiento es circular y se
      emite ``log.warning("tech_classifier.circular_labels")``.
 
-Hoy :func:`train_from_db` **no** trae las dos primeras columnas (su SELECT vive
-en este módulo por herencia y el SQL nuevo debe ir a ``db/``); ver su docstring
-para la query que falta. Mientras tanto el entrenamiento avisa de que es
-circular en vez de fingir métricas honestas.
+:func:`train_from_db` trae las tres: la base desde
+``db.repositories.ml_dataset.filas_entrenamiento_tecnologia`` y las dos
+independientes desde
+``LicitacionRepository.etiquetas_tecnologia_no_circulares``, ambas con el SQL
+en ``db/`` (ADR-022). Cuando las independientes no aportan ninguna fila el
+entrenamiento sigue, pero avisa de que es circular en vez de fingir métricas
+honestas. El conteo por origen viaja en ``label_sources`` hasta el registro de
+entrenamientos (``data/models/tech_registry.json`` y, en CI, el step summary
+del run), que es donde se lee después si un artefacto concreto se entrenó con
+etiquetas humanas o con el regex.
 
 Diseño (3 tiers según número de positivos en la etiqueta resuelta):
 
@@ -88,6 +94,11 @@ if TYPE_CHECKING:
 log = get_logger(__name__)
 
 _MODEL_PATH = Path(__file__).parents[1] / "data" / "models" / "tech_classifier.pkl"
+#: Registro append-only de entrenamientos del multi-tecnología. Fichero propio
+#: y no el del binario: son dos modelos con métricas incomparables, y mezclar
+#: sus historiales obligaría a filtrar por nombre para leer cualquiera de los
+#: dos. Ver :func:`registrar_entrenamiento`.
+_REGISTRY_PATH = _MODEL_PATH.parent / "tech_registry.json"
 _TIER_ML_READY = "ml_ready"
 _TIER_FRAGILE = "fragile"
 _TIER_RULES = "rules"
@@ -128,8 +139,11 @@ class LabelResolution(NamedTuple):
             añadida cuando hubo que resolver varias fuentes; el original si no).
         column: Nombre de la columna a pasar a ``_build_multilabel_dataset``.
             Cadena vacía si el DataFrame no trae ninguna fuente de etiqueta.
-        circular: ``True`` si **toda** la etiqueta sale de las keywords, es
-            decir, si el entrenamiento imita al regex que ve el mismo texto.
+        circular: ``True`` si la etiqueta que **decide** el entrenamiento sale
+            de las keywords, es decir, si el modelo imita al regex que ve el
+            mismo texto. Ver :func:`_es_circular` para la regla exacta: no es
+            "ninguna etiqueta independiente", es "ninguna cantidad de etiquetas
+            independientes capaz de mover una tecnología al tier ``ml_ready``".
         counts: Filas resueltas por cada origen (``human``/``llm``/``keywords``/
             ``sin_etiqueta``).
     """
@@ -148,6 +162,44 @@ class _Split(NamedTuple):
     test: _NDArray
     stratified: bool
     reason: str
+
+
+def _suelo_etiquetas_independientes() -> int:
+    """Cuántas etiquetas no circulares hacen falta para que entrenar signifique algo.
+
+    Es ``ML_TECH_MIN_POS_READY``, el mismo número que exige ``train`` para
+    promover una tecnología al tier ``ml_ready`` y el mismo que aplica el gate
+    de publicación (``scheduler/jobs/tech_training_run.py``). No es un umbral
+    nuevo: por debajo de él **ninguna** tecnología puede alcanzar ese tier con
+    filas independientes, así que todo tier ``ml_ready`` que salga estaría
+    certificado por keywords.
+    """
+    return int(getattr(settings, "ML_TECH_MIN_POS_READY", 50))
+
+
+def _es_circular(counts: dict[str, int]) -> bool:
+    """¿Decide el regex este entrenamiento?
+
+    Regla, en dos preguntas y en este orden:
+
+    1. **¿Hay alguna fila etiquetada por keywords?** Si no, no hay nada que
+       imitar: un dataset pequeño pero enteramente humano no es circular, es
+       pequeño. Confundir las dos cosas haría saltar el aviso justo cuando el
+       etiquetado va bien.
+    2. **¿Llegan las independientes al suelo?** Si no, las pocas que hay no
+       pueden mover ninguna tecnología al tier ``ml_ready``
+       (:func:`_suelo_etiquetas_independientes`), así que lo que certifique
+       cualquier métrica serán las filas del regex.
+
+    Antes bastaba **una** fila independiente para apagar el flag. Con las 33
+    etiquetas humanas y ~1.400 filas de keywords de producción (2026-09-03) eso
+    daba ``labels_circulares = False`` sobre un modelo que es el regex con un
+    redondeo humano encima — el motivo por el que el gate de publicación no
+    podía fiarse del flag y tuvo que repetir la cuenta por su cuenta.
+    """
+    if counts.get("keywords", 0) == 0:
+        return False
+    return counts.get("human", 0) + counts.get("llm", 0) < _suelo_etiquetas_independientes()
 
 
 def _tiene_etiqueta(value: Any) -> bool:  # Any: celda cruda de pandas (str/None/NaN)
@@ -277,15 +329,17 @@ def _resolver_label_column(df: pd.DataFrame) -> LabelResolution:
     out = df.copy(deep=False)
     out[_LABEL_COL_RESOLVED] = resueltas
 
-    circular = counts["human"] + counts["llm"] == 0
+    circular = _es_circular(counts)
     if circular:
         log.warning(
             "tech_classifier.circular_labels",
             label_column=_LABEL_COL_RESOLVED,
             counts=counts,
+            suelo=_suelo_etiquetas_independientes(),
             motivo=(
-                "Las columnas independientes existen pero no traen ninguna "
-                "etiqueta: todo el entrenamiento cae en keywords y es circular."
+                "Las columnas independientes existen pero no llegan al suelo de "
+                "etiquetas que hace falta para mover una tecnologia al tier "
+                "ml_ready: lo que decide el entrenamiento son las filas del regex."
             ),
         )
     elif counts["keywords"]:
@@ -598,6 +652,10 @@ class TechnologyClassifier:
                 "n_samples": n_rows,
                 "label_column": resolution.column,
                 "labels_circulares": resolution.circular,
+                # También en el camino de error: el registro tiene que poder
+                # decir con qué etiquetas se intentó, o el rechazo no informa.
+                "label_source_counts": dict(resolution.counts),
+                "label_sources": dict(resolution.counts),
             }
 
         # None y no 0.0 cuando no hay nada medido (sin test set, o sin ninguna
@@ -621,7 +679,13 @@ class TechnologyClassifier:
             "n_samples": n_rows,
             "label_column": resolution.column,
             "labels_circulares": resolution.circular,
+            # Dos nombres para el mismo conteo, a propósito y acotado:
+            # ``label_source_counts`` es el que ya lee el gate de
+            # ``scheduler/jobs/tech_training_run.py`` y no se renombra desde
+            # aquí; ``label_sources`` es el nombre con el que el conteo viaja
+            # al registro de entrenamientos y al step summary del workflow.
             "label_source_counts": dict(resolution.counts),
+            "label_sources": dict(resolution.counts),
             "split_estratificado": split.stratified,
             "per_tech": per_tech,
         }
@@ -1118,6 +1182,11 @@ def train_from_db() -> dict[str, Any]:
     ``tech_classifier.circular_labels``: el entrenamiento es circular y sus
     métricas no significan lo que parecen.
 
+    **Población acotada (S6.1).** La query base es la misma que la del
+    clasificador binario (``filas_entrenamiento_tecnologia``): las fuentes cuyo
+    conector filtró por señal tecnológica antes de persistir. El motivo, con el
+    dato que lo sostiene, está junto al predicado en ``db/``.
+
     El parámetro ``db_path`` y el fallback ``sqlite3.connect()`` se retiraron
     con ADR-021: ningún llamador pasaba una ruta, y ese fallback fue el
     vehículo de un bug real —hasta ADR-020 la condición era
@@ -1127,26 +1196,9 @@ def train_from_db() -> dict[str, Any]:
     """
     import pandas as pd
 
-    from db.connection import connect_read
+    from db.repositories.ml_dataset import filas_entrenamiento_tecnologia
 
-    with connect_read() as conn:
-        cols = conn.execute(
-            "SELECT id_externo, titulo, descripcion, cpv, importe, "
-            "fecha_publicacion, tecnologia, raw_keywords FROM licitaciones"
-        ).fetchall()
-    # conn.description puede no estar disponible en todos los drivers;
-    # forzamos nombres de columnas explícitos en el mismo orden que la query.
-    _col_names = [
-        "id_externo",
-        "titulo",
-        "descripcion",
-        "cpv",
-        "importe",
-        "fecha_publicacion",
-        "tecnologia",
-        "raw_keywords",
-    ]
-    df = pd.DataFrame([dict(zip(_col_names, row, strict=False)) for row in cols])
+    df = pd.DataFrame(filas_entrenamiento_tecnologia())
 
     # Etiquetas independientes del regex. Si la consulta falla el
     # entrenamiento sigue (degradando a circular, con su warning), pero no se
@@ -1160,7 +1212,7 @@ def train_from_db() -> dict[str, Any]:
         externas = {}
 
     if externas and not df.empty:
-        for columna in ("tecnologia_humana", "tecnologia_llm"):
+        for columna in (_LABEL_COL_HUMAN, _LABEL_COL_LLM):
             df[columna] = [
                 externas.get(str(ident), {}).get(columna) for ident in df["id_externo"].tolist()
             ]
@@ -1172,6 +1224,44 @@ def train_from_db() -> dict[str, Any]:
     )
     clf = TechnologyClassifier()
     metrics = clf.train(df)
+    registrar_entrenamiento(metrics)
     if "error" not in metrics:
         clf.save()
     return metrics
+
+
+def registrar_entrenamiento(metrics: dict[str, Any], path: Path | None = None) -> Path:
+    """Anota el entrenamiento en el registro append-only del multi-tecnología.
+
+    Existe porque este modelo **no** se registra en ``model_versions`` —su
+    ``load`` no consulta el registry, así que una fila ``is_active`` allí sería
+    un metadato decorativo (ver ``scheduler/jobs/tech_training_run.py``)— y sin
+    ningún registro no queda rastro de con qué etiquetas se entrenó cada
+    artefacto publicado. Lo que interesa auditar es exactamente eso:
+    ``label_sources``, el conteo por origen de la etiqueta.
+
+    Comparte mecanismo (no fichero) con el registro del binario:
+    ``scraper.ml_training._append_to_registry``.
+
+    **Dónde vive de verdad cada entrada.** ``data/models/`` está en
+    ``.gitignore`` y el runner es efímero, así que en CI el fichero arranca
+    vacío y contiene una sola entrada: la del run. El histórico solo se acumula
+    en local. Lo que persiste del run es el **step summary**, donde
+    ``train-tech.yml`` vuelca esta entrada — por eso la entrada tiene que ser
+    autosuficiente (fecha, columna elegida, conteo por origen) y no un delta
+    contra la anterior.
+    """
+    from scraper.ml_training import _append_to_registry
+
+    entrada: dict[str, Any] = {
+        "trained_at": datetime.now(UTC).isoformat(),
+        "modelo": "tech_classifier",
+        "label_sources": dict(metrics.get("label_sources") or {}),
+        "label_column": metrics.get("label_column"),
+        "labels_circulares": metrics.get("labels_circulares"),
+        "n_samples": metrics.get("n_samples"),
+        "n_models": metrics.get("n_models"),
+        "macro_f1_all_labels": metrics.get("macro_f1_all_labels"),
+        "error": metrics.get("error"),
+    }
+    return _append_to_registry(entrada, path=path or _REGISTRY_PATH)

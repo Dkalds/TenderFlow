@@ -21,6 +21,16 @@ Incremental e idempotente: cursor en ``ingestion_cursors``
 Nota: las renovaciones (Fase 2) no necesitan estos eventos para reflejar
 prórrogas — la fila actual de licitaciones ya contiene la fecha_fin
 extendida. Los eventos aportan el *cuándo y cuánto* del cambio.
+
+**Alertas de expediente seguido (S4.5).** El mismo recorrido emite además un
+evento ``licitacion.cambiada`` en el outbox cuando el expediente que cambió lo
+sigue alguien: está en los favoritos de un usuario o es una oportunidad abierta
+de alguna organización. Se hace aquí, dentro de ``derive_new_events``, y no en
+un productor aparte, por dos razones que son la misma: este bucle **ya** tiene
+el cursor de ``ingestion_cursors`` que evita releer el historial entero, y
+**ya** compara antes/después con ``values_equal``, que es lo que impide que una
+re-ingesta sin cambio real genere un aviso. Un segundo productor habría tenido
+que duplicar las dos cosas y habrían divergido.
 """
 
 from __future__ import annotations
@@ -31,6 +41,7 @@ from typing import Any
 from pydantic import BaseModel
 
 from db.database import connect, connect_read, get_cursor, set_cursor
+from db.events import append_domain_event, seguidores_de_licitacion
 from db.repositories.aggregates import LicitacionesFilters, build_licitaciones_where
 from db.repositories.base import rows_to_dicts
 from observability.logging import get_logger
@@ -76,6 +87,121 @@ _ESTADO_EVENTO = {
 
 # Campos de historial que generan evento (titulo/descripcion son ruido editorial)
 _CAMPOS_EVENTO = ("estado", "importe", "fecha_fin", "duracion_valor", "duracion_unidad")
+
+#: Campos cuyo cambio se avisa a quien sigue el expediente (S4.5).
+#:
+#: Es un superconjunto de :data:`_CAMPOS_EVENTO` con ``fecha_limite``, ``cpv``
+#: y ``url``: al seguidor de un expediente le importa sobre todo que le hayan
+#: movido el plazo, que es justo el campo que NO genera evento de contrato
+#: (mover el plazo no modifica el contrato, modifica la oportunidad). Siguen
+#: fuera ``titulo`` y ``descripcion`` por lo mismo que arriba — un retoque de
+#: redacción no es una novedad.
+_CAMPOS_SEGUIDOS = (
+    "estado",
+    "importe",
+    "fecha_limite",
+    "fecha_fin",
+    "duracion_valor",
+    "duracion_unidad",
+    "cpv",
+    "url",
+)
+
+#: Columnas de la fila actual que hacen de estado «después» del último cambio.
+_COLS_ESTADO_ACTUAL = (
+    "estado",
+    "importe",
+    "fecha_fin",
+    "duracion_valor",
+    "duracion_unidad",
+    "fecha_limite",
+    "cpv",
+    "url",
+    "titulo",
+)
+
+
+def _emitir_cambio_seguido(
+    conn: Any,
+    *,
+    id_externo: str,
+    history_id: int,
+    antes: dict[str, Any],
+    despues: dict[str, Any],
+    changed: list[str],
+) -> bool:
+    """Escribe ``licitacion.cambiada`` si el expediente lo sigue alguien.
+
+    Devuelve ``True`` si emitió. Tres cortes, y los tres importan:
+
+    1. Sin campos con cambio **real** (``values_equal``), no hay evento: una
+       re-ingesta que reescribe los mismos valores no despierta a nadie.
+    2. Sin seguidores, no hay evento. La consulta es lo último que se hace, no
+       lo primero, porque el 99% de las filas de historial son de expedientes
+       que no sigue nadie y descartarlas por los campos es más barato.
+    3. El evento va en la transacción del cursor (``conn``): si la pasada se
+       revierte, el aviso se va con ella. Es el outbox, no un efecto lateral.
+    """
+    valores: dict[str, dict[str, Any]] = {}
+    for campo in changed:
+        if campo not in _CAMPOS_SEGUIDOS:
+            continue
+        valor_antes = antes.get(campo)
+        valor_despues = despues.get(campo)
+        if values_equal(valor_antes, valor_despues):
+            continue
+        valores[campo] = {"antes": valor_antes, "despues": valor_despues}
+    if not valores:
+        return False
+
+    seguidores = seguidores_de_licitacion(id_externo)
+    if not seguidores:
+        return False
+
+    from db.users import get_user_by_id
+    from shared.identity import user_key_from_email
+
+    resueltos: list[dict[str, Any]] = []
+    vistos: set[tuple[str, int]] = set()
+    for fila in seguidores:
+        organization_id = int(fila.get("organization_id") or 0)
+        if not organization_id:
+            continue
+        user_key = fila.get("user_key")
+        if not user_key:
+            bruto = fila.get("user_id")
+            if bruto is None:
+                continue
+            user_id = int(bruto)
+            usuario = get_user_by_id(user_id)
+            if usuario is None:
+                continue
+            user_key = user_key_from_email(usuario.get("email"), user_id)
+        clave = (str(user_key), organization_id)
+        if clave in vistos:
+            continue
+        vistos.add(clave)
+        resueltos.append({"user_key": str(user_key), "organization_id": organization_id})
+
+    if not resueltos:
+        return False
+
+    append_domain_event(
+        "licitacion.cambiada",
+        id_externo,
+        "licitacion",
+        {
+            "id_externo": id_externo,
+            "licitacion_id": id_externo,
+            "titulo": despues.get("titulo") or antes.get("titulo"),
+            "changed_fields": sorted(valores),
+            "valores": valores,
+            "history_id": history_id,
+            "seguidores": resueltos,
+        },
+        conn=conn,
+    )
+    return True
 
 
 def _classify(campo: str, antes: Any, despues: Any) -> tuple[str, float | None, str] | None:
@@ -139,6 +265,7 @@ def derive_new_events(batch_size: int = 1000) -> int:
             return 0
 
         inserted = 0
+        avisados = 0
         max_id = last_id
         for i, row in enumerate(rows):
             max_id = max(max_id, int(row["id"]))
@@ -158,22 +285,28 @@ def derive_new_events(batch_size: int = 1000) -> int:
                         despues_state = None
                     break
             if despues_state is None:
+                # La proyección incluye `fecha_limite`, `cpv`, `url` y `titulo`
+                # además de los cinco campos de contrato: el aviso al seguidor
+                # (S4.5) los necesita para decir qué cambió y a qué.
                 cur_row = c.execute(
-                    "SELECT estado, importe, fecha_fin, duracion_valor, duracion_unidad "
+                    "SELECT " + ", ".join(_COLS_ESTADO_ACTUAL) + " "
                     "FROM licitaciones WHERE id_externo = %s",
                     (row["id_externo"],),
                 ).fetchone()
                 if cur_row is None:
                     continue
-                despues_state = dict(
-                    zip(
-                        ("estado", "importe", "fecha_fin", "duracion_valor", "duracion_unidad"),
-                        cur_row,
-                        strict=False,
-                    )
-                )
+                despues_state = dict(zip(_COLS_ESTADO_ACTUAL, cur_row, strict=False))
 
             changed = [f.strip() for f in (row["changed_fields"] or "").split(",")]
+            if _emitir_cambio_seguido(
+                c,
+                id_externo=str(row["id_externo"]),
+                history_id=int(row["id"]),
+                antes=snapshot,
+                despues=despues_state,
+                changed=changed,
+            ):
+                avisados += 1
             for campo in changed:
                 if campo not in _CAMPOS_EVENTO:
                     continue
@@ -205,8 +338,13 @@ def derive_new_events(batch_size: int = 1000) -> int:
                 inserted += 1
 
     set_cursor(_CURSOR_SOURCE, last_entry_id=str(max_id))
-    if inserted:
-        log.info("contract_events_derived", inserted=inserted, hasta_history_id=max_id)
+    if inserted or avisados:
+        log.info(
+            "contract_events_derived",
+            inserted=inserted,
+            cambios_seguidos=avisados,
+            hasta_history_id=max_id,
+        )
     return inserted
 
 

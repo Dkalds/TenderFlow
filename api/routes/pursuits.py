@@ -32,13 +32,17 @@ from services.direccion import (
 from services.kit_presentacion import KitPresentacion
 from services.organizations import (
     OrganizationAccessError,
-    OrganizationMemberNotFoundError,
+    OrganizationInvitationNotFoundError,
     OrganizationPermissionError,
-    add_member_by_email,
+    accept_invitation_token,
     create_organization,
     get_active_organization,
+    invite_member_by_email,
+    list_invitations,
     list_members,
     list_organizations,
+    resend_invitation,
+    revoke_invitation,
     upsert_membership,
 )
 from services.pursuit_comments import (
@@ -48,15 +52,19 @@ from services.pursuit_comments import (
     list_comments,
 )
 from services.pursuits import (
+    PesosPropuestos,
+    PesosPropuestosAplicados,
     PursuitConflictError,
     PursuitNotFoundError,
     PursuitTransitionError,
     PursuitValidationError,
+    apply_weights_proposal,
     create_pursuit,
     ficha_pdf,
     get_agenda,
     get_metrics,
     get_pursuit,
+    get_weights_proposal,
     kit_de_pursuit,
     list_pursuits,
     marcar_kit_de_pursuit,
@@ -64,6 +72,8 @@ from services.pursuits import (
 )
 from shared.dto import (
     OrganizationCreate,
+    OrganizationInvitationAccept,
+    OrganizationInvitationOut,
     OrganizationMemberInvite,
     OrganizationMembershipOut,
     OrganizationMembershipUpsert,
@@ -79,6 +89,7 @@ from shared.dto import (
     PursuitStatus,
     PursuitSummary,
     PursuitUpdate,
+    StatusOk,
 )
 
 log = get_logger(__name__)
@@ -137,21 +148,53 @@ async def get_organization_members(
 
 
 @router.post(
+    "/organizations/invitations/accept",
+    response_model=OrganizationSummary,
+)
+async def post_accept_organization_invitation(
+    body: OrganizationInvitationAccept,
+    ctx: dict[str, Any] = Depends(require_any_auth),
+) -> OrganizationSummary:
+    """Canjea el enlace de invitación recibido por correo.
+
+    Devuelve la organización a la que se acaba de entrar. El enlace es de un
+    solo uso, caduca a los siete días y solo vale para la dirección a la que se
+    envió.
+    """
+    try:
+        return await run_db(
+            accept_invitation_token,
+            int(ctx["user_id"]),
+            ctx.get("email"),
+            body.token,
+        )
+    except OrganizationInvitationNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except OrganizationPermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+
+
+@router.post(
     "/organizations/{organization_id}/members",
-    response_model=OrganizationMembershipOut,
+    response_model=OrganizationMembershipOut | OrganizationInvitationOut,
     status_code=status.HTTP_201_CREATED,
 )
 async def post_organization_member(
     organization_id: int,
     body: OrganizationMemberInvite,
     ctx: dict[str, Any] = Depends(require_any_auth),
-) -> OrganizationMembershipOut:
-    """Incorpora por correo a un usuario ya registrado. No crea invitaciones
-    para correos sin cuenta: el alta requiere que la persona se registre.
+) -> OrganizationMembershipOut | OrganizationInvitationOut:
+    """Incorpora a alguien al equipo por su correo.
+
+    Si ya tiene cuenta activa, entra en el acto y la respuesta es su membresía.
+    Si no la tiene, se crea una invitación pendiente, se le envía un enlace
+    firmado y la respuesta es esa invitación: hasta 2026-09 este segundo caso
+    respondía 404 y no había forma de incorporar a nadie que no se hubiera
+    registrado antes por su cuenta.
     """
     try:
         return await run_db(
-            add_member_by_email,
+            invite_member_by_email,
             int(ctx["user_id"]),
             organization_id,
             str(body.email),
@@ -159,8 +202,62 @@ async def post_organization_member(
         )
     except (OrganizationAccessError, OrganizationPermissionError) as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
-    except OrganizationMemberNotFoundError as exc:
+
+
+@router.get(
+    "/organizations/{organization_id}/invitations",
+    response_model=list[OrganizationInvitationOut],
+)
+async def get_organization_invitations(
+    organization_id: int,
+    ctx: dict[str, Any] = Depends(require_any_auth),
+) -> list[OrganizationInvitationOut]:
+    """Invitaciones pendientes del equipo.
+
+    Restringido a owner y admin: son direcciones de correo de personas que
+    todavía no pertenecen a la organización.
+    """
+    try:
+        return await run_db(list_invitations, int(ctx["user_id"]), organization_id)
+    except (OrganizationAccessError, OrganizationPermissionError) as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+
+
+@router.post(
+    "/organizations/{organization_id}/invitations/{invitation_id}/resend",
+    response_model=OrganizationInvitationOut,
+)
+async def post_resend_organization_invitation(
+    organization_id: int,
+    invitation_id: int,
+    ctx: dict[str, Any] = Depends(require_any_auth),
+) -> OrganizationInvitationOut:
+    """Vuelve a enviar el correo con un enlace nuevo; el anterior deja de valer."""
+    try:
+        return await run_db(resend_invitation, int(ctx["user_id"]), organization_id, invitation_id)
+    except (OrganizationAccessError, OrganizationPermissionError) as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except OrganizationInvitationNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.delete(
+    "/organizations/{organization_id}/invitations/{invitation_id}",
+    response_model=StatusOk,
+)
+async def delete_organization_invitation(
+    organization_id: int,
+    invitation_id: int,
+    ctx: dict[str, Any] = Depends(require_any_auth),
+) -> StatusOk:
+    """Anula una invitación pendiente sin borrar su rastro."""
+    try:
+        await run_db(revoke_invitation, int(ctx["user_id"]), organization_id, invitation_id)
+    except (OrganizationAccessError, OrganizationPermissionError) as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except OrganizationInvitationNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return StatusOk(status="ok")
 
 
 @router.put(
@@ -335,6 +432,35 @@ async def get_pursuits_agenda(
         raise HTTPException(status_code=403, detail=str(exc)) from exc
 
 
+@router.get("/pursuits/weights-proposal", response_model=PesosPropuestos)
+async def get_pursuits_weights_proposal(
+    organization_id: int | None = Query(default=None, ge=1),
+    ctx: dict[str, Any] = Depends(require_any_auth),
+) -> PesosPropuestos:
+    """Propone un ajuste de los pesos del Radar a partir de lo ganado y perdido.
+
+    Compara, dimensión a dimensión, el desglose del score que tenían las
+    oportunidades ganadas frente al de las perdidas: la dimensión que valía más
+    en las ganadas sube y la que valía más en las perdidas baja, en una
+    redistribución que sigue sumando 100.
+
+    Sólo cuentan las oportunidades cerradas cuyo desglose quedó sellado al
+    abrirlas. Por debajo del mínimo devuelve `estado: "insuficiente"` con su
+    base, y ninguna propuesta: un ajuste sobre cuatro cierres no es evidencia.
+
+    Es una propuesta. No se aplica sola.
+    """
+    try:
+        return await run_db(
+            get_weights_proposal,
+            int(ctx["user_id"]),
+            user_key=str(ctx["user_key"]),
+            organization_id=organization_id,
+        )
+    except OrganizationAccessError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+
+
 @router.get(
     "/pursuits/cartera",
     summary="Contratos ganados que siguen en ejecución (F4.3)",
@@ -357,6 +483,32 @@ async def get_cartera(
         )
     except OrganizationAccessError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
+
+
+@router.post("/pursuits/weights-proposal/apply", response_model=PesosPropuestosAplicados)
+async def post_pursuits_weights_proposal_apply(
+    organization_id: int | None = Query(default=None, ge=1),
+    ctx: dict[str, Any] = Depends(require_any_auth),
+) -> PesosPropuestosAplicados:
+    """Aplica la propuesta vigente al perfil de scoring. Queda en el audit log.
+
+    No admite pesos en el cuerpo: recalcula la propuesta y escribe exactamente
+    esa, de modo que lo aplicado y lo que se enseñó no puedan divergir. El resto
+    del perfil (keywords de afinidad, CPV, rango de importe) se conserva.
+
+    Responde 422 mientras la propuesta sea insuficiente.
+    """
+    try:
+        return await run_db(
+            apply_weights_proposal,
+            int(ctx["user_id"]),
+            user_key=str(ctx["user_key"]),
+            organization_id=organization_id,
+        )
+    except (OrganizationAccessError, OrganizationPermissionError) as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except PursuitValidationError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @router.get(

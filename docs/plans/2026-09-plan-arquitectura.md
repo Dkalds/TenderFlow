@@ -100,24 +100,33 @@ Los agentes ejecutores asumen ESTO, no lo que digan docs anteriores:
 - **Ola 2 — Lo que depende de una decisión o de una migración.** Cada ítem
   lleva la decisión que lo desbloquea.
 
-## 3. Decisiones del mantenedor (pendientes)
+## 3. Decisiones del mantenedor
 
-| Id | Decisión | Desbloquea |
-|---|---|---|
-| D1 | ¿Entra la señal ML/LLM/pliego en el universo público? Propuesta: sí, cuando `ml_tecnologias` no está vacío **y** el método tiene score sobre umbral; la revisión `v99` reconstruye `licitaciones_canonicas` con ese predicado. | S1.6 |
-| D2 | `TechnologyClassifier`: publicarlo con workflow propio (como `train-model.yml`) o poner `ML_TECH_ENABLED=False` y que el paso reporte `skipped`, nunca `ok`. Propuesta: publicar; el evaluador y el golden ya existen. | S3.1 |
-| D3 | ¿La API sirve modelos? Propuesta: sí, con un único resolvedor (`resolve_active_artifact`) y descarga a directorio escribible; alternativa: retirar `/models/*/activate` y `/explain`. | S3.2 |
-| D4 | Render: vincular el Blueprint en ventana o replicar a mano `healthCheckPath` y anotar en `render.yaml` que el dashboard manda. | S6.1 |
-| D5 | Alertas: desplegar Alertmanager como `pserv` con receptor de email más un segundo canal, o retirar `alert_rules.yml` y declarar que el único plano es `ops_events` + email. Propuesta: Alertmanager. | S6.3 |
-| D6 | Borrar las 17 rutas del dashboard que `next.config.ts` redirige (no ocultar: borrar). Propuesta: sí. | S5.3 |
-| D7 | Endpoints asíncronos de export (`POST /exports`, `GET /exports/{id}`): retirar del contrato (**RFC**, contrato breaking) o mover el store a Redis. Propuesta: retirar. | S4.9 |
-| D8 | CSRF: adoptar `shared/csrf.py` (con `kid` y rotación) como único formato de token (**RFC**, decisión de auth) o borrarlo y quedarse con el HMAC plano. Propuesta: adoptar. | S4.6 |
-| D9 | Matriz CI Python: quitar 3.12 del PR (producción es 3.13) y dejarlo en un cron semanal. | S6.5 |
-| D10 | Gates §6 pre-autorizados para este plan: migración `v99` (MV universo, S1.6); migración `v100` (`primera_extraccion`, S1.7); edición de `scrape-daily.yml`, `scrape-bulk.yml`, `pliegos.yml`, `deploy.yml`, `ci.yml`, `security.yml`, `train-predictivos.yml`, `migrate.yml` en los términos de S6 y O0; `docker/Dockerfile.api` (pip); `.gitignore`, `.dockerignore`; retirada de dependencias d3 y `react-virtuoso` (S5.6). Todo lo demás sigue pidiendo OK puntual. | O0.4, S1, S5, S6 |
+**Cerradas el 2026-09-06** por O0.5 del [plan v2](2026-09-plan-arquitectura-v2.md).
+La columna «Resuelta» no registra la intención: registra lo que el código ya
+decidió, con la fecha del commit que lo hizo, o —cuando el código no decide— la
+adopción de la propuesta que la propia fila escribe. Una decisión resuelta no
+significa ejecutada en producción: donde falta ejecución, la celda dice cuál es
+el ítem que la ejecuta.
 
-Mientras D1..D9 no estén cerradas, los ítems que las citan no se empiezan. Un
-agente que necesite una decisión no tomada la deja escrita en el PR y se
-detiene ahí.
+| Id | Decisión | Desbloquea | Resuelta |
+|---|---|---|---|
+| D1 | ¿Entra la señal ML/LLM/pliego en el universo público? Propuesta: sí, cuando `ml_tecnologias` no está vacío **y** el método tiene score sobre umbral; la revisión `v99` reconstruye `licitaciones_canonicas` con ese predicado. | S1.6 | **2026-09-04 — sí.** La ejecutó `v99_mv_canonicas_universo_ml` (#265): `ml_tecnologias` no vacío es el cuarto disyunto de `universo_tecnologico_sql`. Pertenecer al universo es un `OR`; la precedencia solo decide qué etiqueta se muestra. |
+| D2 | `TechnologyClassifier`: publicarlo con workflow propio (como `train-model.yml`) o poner `ML_TECH_ENABLED=False` y que el paso reporte `skipped`, nunca `ok`. Propuesta: publicar; el evaluador y el golden ya existen. | S3.1 | **2026-09-04 — publicar.** `.github/workflows/train-tech.yml` (#263) entrena y publica el artefacto con cron mensual, y su gate no publica un modelo entrenado sobre el regex de los conectores. |
+| D3 | ¿La API sirve modelos? Propuesta: sí, con un único resolvedor (`resolve_active_artifact`) y descarga a directorio escribible; alternativa: retirar `/models/*/activate` y `/explain`. | S3.2 | **2026-09-04 — sí, sirve.** Resolvedor único en `shared/model_artifacts.resolve_active_artifact` (#265, con el bug de artefactos corregido en #271); `/models/{name}/activate` y `/explain` siguen publicados, y O0.6 les quitó el guard que los hacía inalcanzables desde el navegador: `activate` pasó a `require_admin` (`api/routes/models.py`) y `/explain` a `require_any_auth` (`api/routes/licitaciones.py`), que no es lo mismo — explicar una predicción no es una acción de administrador. |
+| D4 | Render: vincular el Blueprint en ventana o replicar a mano `healthCheckPath` y anotar en `render.yaml` que el dashboard manda. | S6.1 | **2026-09-06 — vincular el Blueprint**, cerrada por O0.2 del plan v2 el mismo día que esta tabla. `render.yaml` declara la decisión en su cabecera con `autoDeploy: false`, y `deploy.yml` queda como único disparador: es la rama que conserva CI como gate real. **Ejecución pendiente y humana**: vincular el Blueprint y apagar `autoDeploy` en el dashboard (el fichero anota que el servicio real lo tenía activo), más los siete días de comprobación que pide O0.2. |
+| D5 | Alertas: desplegar Alertmanager como `pserv` con receptor de email más un segundo canal, o retirar `alert_rules.yml` y declarar que el único plano es `ops_events` + email. Propuesta: Alertmanager. | S6.3 | **2026-09-06 — Alertmanager** (la propuesta). El cableado ya está escrito: `alerting:` en `observability/prometheus.render.yml`, el `pserv tenderflow-alertmanager` en `render.yaml` y `docker/Dockerfile.alertmanager`. Crear el servicio es O0.3 del plan v2 (acción humana). |
+| D6 | Borrar las 17 rutas del dashboard que `next.config.ts` redirige (no ocultar: borrar). Propuesta: sí. | S5.3 | **2026-09-04 — sí, borradas** (#265). Ninguna de las rutas que emite `legacyRedirects()` (`web/src/lib/space-views.ts`) resuelve ya a una página: ninguna tiene `page.tsx` bajo `web/src/app/(dashboard)`. El único directorio que sobrevive con ese nombre es `competidores/`, y solo por su hijo `empresa/[empresaId]` —que sigue vivo y no se redirige, documentado en §8—; `/competidores` a secas no tiene página y redirige. |
+| D7 | Endpoints asíncronos de export (`POST /exports`, `GET /exports/{id}`): retirar del contrato (**RFC**, contrato breaking) o mover el store a Redis. Propuesta: retirar. | S4.9 | **2026-09-03 — retirar, ya ejecutada** (entregada en #265). Los tres endpoints de job y su almacén en memoria no existen; el sustituto es `GET /exports/download?format=pdf`. Pendiente de otro stream: el RFC que citan cuatro módulos (`docs/rfc/2026-09-03-rfc-retirada-exports-asincronos.md`) **no está en el repo** — anotado en el backlog. |
+| D8 | CSRF: adoptar `shared/csrf.py` (con `kid` y rotación) como único formato de token (**RFC**, decisión de auth) o borrarlo y quedarse con el HMAC plano. Propuesta: adoptar. | S4.6 | **2026-09-04 — adoptar** (#265; el módulo fecha su historia el 2026-09-03, que es la de la rama). `shared/csrf.py` es el formato único y `api/routes/auth.py` y `api/routes/dual_auth.py` llaman ahí; el formato viejo se acepta solo durante el periodo de gracia. |
+| D9 | Matriz CI Python: quitar 3.12 del PR (producción es 3.13) y dejarlo en un cron semanal. | S6.5 | **2026-09-04 — sí** (#265). `ci.yml` resuelve la matriz a `["3.13"]` salvo en `schedule`, donde añade `3.12`; los gates de cobertura corren solo en 3.13. |
+| D10 | Gates §6 pre-autorizados para este plan: migración `v99` (MV universo, S1.6); migración `v100` (`primera_extraccion`, S1.7); edición de `scrape-daily.yml`, `scrape-bulk.yml`, `pliegos.yml`, `deploy.yml`, `ci.yml`, `security.yml`, `train-predictivos.yml`, `migrate.yml` en los términos de S6 y O0; `docker/Dockerfile.api` (pip); `.gitignore`, `.dockerignore`; retirada de dependencias d3 y `react-virtuoso` (S5.6). Todo lo demás sigue pidiendo OK puntual. | O0.4, S1, S5, S6 | **2026-09-04 — pre-autorización ejercida** en la ejecución de este plan (§8). No se extiende al plan v2: allí la sustituye D20, que enumera sus propios gates. |
+
+D1–D9 quedan cerradas: ningún ítem de este plan sigue bloqueado por una
+decisión pendiente. La regla que las gobernaba se conserva porque sigue
+aplicando a los planes que vengan — un agente que necesite una decisión no
+tomada la deja escrita en el PR y se detiene ahí, en vez de decidir por su
+cuenta.
 
 ---
 

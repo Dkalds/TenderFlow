@@ -23,6 +23,54 @@ with connect() as c:
 EOF
 ```
 
+## Criterio de promoción: cuándo una versión puede activarse
+
+Antes de activar nada (y antes de revertir «porque el nuevo va peor»), el
+criterio escrito es este, y no la intuición de quien mire el número:
+
+- **Clasificador SAP** (`sap_classifier`): lo decide `services/ml/promotion.py`
+  contra el golden set humano. Bloquea por `recall_no_keyword` — un modelo que
+  no pesca nada que las keywords no pesquen no aporta sobre `matches_sap()`,
+  que es gratis.
+- **Modelos predictivos** (`baja_model`, `retencion_model`): lo decide
+  `services.ml.promotion.evaluar_promocion_predictiva`. Una versión solo se
+  promociona si **su mejora sobre el baseline supera la dispersión de esa misma
+  métrica entre folds** (`MIN_IMPROVEMENT_OVER_FOLD_DISPERSION`, hoy 1.0). Los
+  criterios del RFC 20260611-2 (mejora relativa ≥10% y cobertura del intervalo
+  en [75, 85]% para baja; PR-AUC > prevalencia + 0.15 y ECE < 0.08 para
+  retención) siguen siendo condición necesaria y entran en la misma decisión.
+
+  El caso que motivó el criterio: `baja_model` v2 mejoraba el baseline un 3,3%
+  (`mae_p50` 0.12494 vs 0.12999, o sea 0.005) con `mae_p50_std_folds` = 0.01287
+  — dos veces y media esa mejora. Activar ahí es activar ruido.
+
+  El baseline de retención es el **ranking trivial**: el PR-AUC esperado de
+  ordenar al azar es la prevalencia, y se registra como `pr_auc_baseline`.
+
+Cada versión guarda el veredicto y su número en `notes` y en `metrics_json`
+(`promotion_reason`, `mejora_sobre_baseline`, `dispersion_entre_folds`,
+`margen_exigido`). Para leerlo:
+
+```bash
+python - <<'EOF'
+from db.model_registry import list_versions
+
+for fila in list_versions("baja_model"):
+    metricas = fila.get("metrics") or {}
+    print(f"v{fila['version']}  activa={fila['is_active']}")
+    print(f"  {fila.get('notes')}")
+    print(
+        f"  mejora={metricas.get('mejora_sobre_baseline')} "
+        f"dispersion={metricas.get('dispersion_entre_folds')} "
+        f"margen_exigido={metricas.get('margen_exigido')}"
+    )
+EOF
+```
+
+Una versión que **no** supera el criterio queda registrada igual, con
+`promotion_reason` explicando cuál de las dos cuentas falló: el histórico es lo
+que permite ver si la siguiente mejora de verdad o repite la anterior.
+
 ## Ver modelos en disco
 
 ```bash

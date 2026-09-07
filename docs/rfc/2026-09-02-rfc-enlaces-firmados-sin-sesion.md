@@ -4,7 +4,15 @@ title: Enlaces firmados sin sesión para el calendario ICS y la baja de correos
 issue: (sin issue: decisión tomada en sesión con el mantenedor)
 author: agent:claude-code
 date: 2026-09-02
-status: approved
+status: implemented
+implemented_on: 2026-09-06
+implemented_evidence: >
+  `shared/signing.py` firma con `kid` rotable; `api/routes/exports.py` sirve
+  `GET /exports/calendario.ics` con enlace firmado (`_PREFIJO_FIRMA_CALENDARIO`)
+  además de la cabecera, y `services/email_digest.py` firma el `user_key` del
+  enlace de baja. Verificado contra el árbol el 2026-09-06 (O0.7b del plan de
+  arquitectura v2): el criterio es que el código exista, no que el PR figure
+  mergeado.
 ---
 
 ## Contexto

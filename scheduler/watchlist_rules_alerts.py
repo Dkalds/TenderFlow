@@ -9,8 +9,9 @@ criterios y:
    bandeja in-app del usuario.
 2. Si la regla tiene ``email`` configurado, encola en ``pending_digests``
    para que ``send_pending_digests`` lo entregue por email.
-3. Dispara el evento ``watchlist_rule.matched`` a los webhooks externos
-   suscritos (best-effort, no bloquea si falla).
+3. Escribe ``watchlist_rule.matched`` en el outbox (``domain_events``); las
+   entregas a webhooks externos las hace después
+   ``scheduler/jobs/event_dispatch.py``, fuera de este bucle.
 
 Ya NO llama a ``notify()`` global (que mandaba todo al ALERT_EMAIL_TO).
 La entrega por email queda sujeta a la frecuencia de la regla; ``immediate``
@@ -47,14 +48,28 @@ _FREQ_INTERVAL = {"daily": timedelta(days=1), "weekly": timedelta(days=7)}
 _VENTANA_GRACIA_DIAS = 2
 
 
+#: Columnas de una regla activa. Incluye los seis criterios de S4.4: sin ellos
+#: el job evaluaría una regla MÁS ANCHA que la que el usuario escribió y
+#: notificaría lo que la pantalla no enseña.
+_COLS_ACTIVAS = (
+    "id, user_key, nombre, keyword, cpv, min_importe, ccaa, "
+    "frequency, active, last_notified_at, email, organization_id, visibility, "
+    "tecnologia, organo, procedimiento, tipo_contrato, banda_min, plazo_min_dias"
+)
+
+#: La misma proyección sin las columnas de v47/v64/v109, para bases sin migrar.
+_COLS_ACTIVAS_LEGACY = (
+    "id, user_key, nombre, keyword, cpv, min_importe, ccaa, frequency, active, last_notified_at"
+)
+
+
 def _load_active_rules() -> list[dict[str, Any]]:
-    # Intentar con la columna email (v47). Fallback a query sin email en BDs legacy.
+    # Intentar con las columnas completas. Fallback a la proyección corta en
+    # BDs legacy (sin v47/v64/v109).
     try:
         with connect_read() as c:
             cur = c.execute(
-                "SELECT id, user_key, nombre, keyword, cpv, min_importe, ccaa, "
-                "frequency, active, last_notified_at, email, organization_id, visibility "
-                "FROM watchlist_rules WHERE active = 1"
+                f"SELECT {_COLS_ACTIVAS} FROM watchlist_rules WHERE active = 1"  # noqa: S608
             )
             cols = [d[0] for d in cur.description]
             rows = cur.fetchall()
@@ -62,9 +77,7 @@ def _load_active_rules() -> list[dict[str, Any]]:
     except Exception:
         with connect_read() as c:
             cur = c.execute(
-                "SELECT id, user_key, nombre, keyword, cpv, min_importe, ccaa, "
-                "frequency, active, last_notified_at "
-                "FROM watchlist_rules WHERE active = 1"
+                f"SELECT {_COLS_ACTIVAS_LEGACY} FROM watchlist_rules WHERE active = 1"  # noqa: S608
             )
             cols = [d[0] for d in cur.description]
             rows = cur.fetchall()
@@ -130,6 +143,12 @@ def _row_to_rule(row: dict[str, Any]) -> WatchlistRule:
         active=True,
         organization_id=row.get("organization_id"),
         visibility=row.get("visibility") or "private",
+        tecnologia=row.get("tecnologia"),
+        organo=row.get("organo"),
+        procedimiento=row.get("procedimiento"),
+        tipo_contrato=row.get("tipo_contrato"),
+        banda_min=row.get("banda_min"),
+        plazo_min_dias=row.get("plazo_min_dias"),
     )
 
 
@@ -308,12 +327,21 @@ def check_rules_and_notify(*, limit_per_rule: int = 50) -> int:
             has_email=bool(email),
         )
 
-        # B5: dispara webhook a suscriptores externos (best-effort, no bloquea).
+        # El aviso a las integraciones externas ya no se entrega desde aquí:
+        # se escribe en el outbox (`domain_events`) y lo reparte
+        # `scheduler/jobs/event_dispatch.py`. Antes este bucle abría una
+        # conexión HTTP por webhook suscrito **dentro** de la evaluación de las
+        # reglas, así que un receptor lento retrasaba las alertas de todos los
+        # demás usuarios y una entrega fallida no dejaba rastro de qué la había
+        # originado. Sigue siendo best-effort: la alerta in-app ya está escrita
+        # y no puede caerse porque el evento no se pueda registrar.
         try:
-            from db.webhooks import trigger_event
+            from db.events import append_domain_event
 
-            trigger_event(
+            append_domain_event(
                 "watchlist_rule.matched",
+                rule_id,
+                "watchlist_rule",
                 {
                     "rule_id": rule_id,
                     "user_key": user_key,
@@ -323,9 +351,10 @@ def check_rules_and_notify(*, limit_per_rule: int = 50) -> int:
                     "total_matches": len(new_matches),
                     "licitaciones": [lic.get("id_externo") for lic in new_matches],
                 },
+                organization_id=rule.organization_id,
             )
         except Exception:
-            log.warning("webhook_trigger_failed", exc_info=True)
+            log.warning("watchlist_rule_event_failed", exc_info=True)
 
         alerted += 1
 

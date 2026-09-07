@@ -294,6 +294,27 @@ ISO_MIN = "1900"
 ISO_MAX = "3000"
 
 
+def empresa_key_sql(alias: str = "a") -> str:
+    """Clave de competidor de una fila de ``adjudicaciones``.
+
+    No es una columna: ``empresas`` no tiene ninguna. Replica lo que hace
+    ``services/adjudicaciones.py`` —NIF normalizado, y el nombre normalizado
+    como último recurso— anteponiendo ``empresa_id``, que es la resolución de
+    entidad ya hecha en ingesta, cuando la fila la trae.
+
+    Sube aquí porque la necesitan dos consultas que no se conocen entre sí: el
+    HHI de ``aggregates`` y las batallas de F3.2 en ``pursuits``. Dos
+    definiciones distintas de «quién es este competidor» darían dos respuestas
+    distintas a la misma pregunta, y la segunda ya nació preguntándole a
+    ``empresas.empresa_key``, que no existe.
+    """
+    return (
+        f"COALESCE({alias}.empresa_id::text, "
+        f"NULLIF(upper(regexp_replace({alias}.nif, '[^A-Za-z0-9]', '', 'g')), ''), "
+        f"NULLIF(upper(trim({alias}.nombre)), ''))"
+    )
+
+
 def iso_guard(column: str) -> str:
     """Cláusula que excluye fechas claramente malformadas (mirror de coerce+dropna).
 

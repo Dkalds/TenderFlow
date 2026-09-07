@@ -21,6 +21,19 @@ Este script convierte esa afirmación en invariante verificado. Por cada job de
 - ``loop``     → nada que verificar (solo corre en Docker Compose, y se
   considera una decisión explícita, no un olvido).
 
+Desde S5 comprueba además **la cola de trabajo** (``shared/jobs.py``), que es el
+otro sitio donde un trabajo puede quedarse sin nadie que lo ejecute:
+
+- Cada tipo de :data:`shared.jobs.TIPOS_A_DEMANDA` debe tener su handler
+  resoluble (``modulo:funcion``). Un tipo con handler roto se encolaría desde la
+  API y giraría hasta agotar intentos, con el usuario mirando un spinner.
+- El **plano worker** debe estar declarado en ``render.yaml``: un servicio con
+  ``APP_PROFILE=worker``. Sin él, la cola a demanda no la consume nadie en
+  producción — que es exactamente la clase de «job muerto» que este script
+  existe para detectar, solo que en el plano nuevo.
+- Los tipos programados (``TIPOS_PROGRAMADOS``) NO exigen worker: los consume el
+  propio job de Actions dentro del cierre de la pasada (ADR-012).
+
 Uso::
 
     python scripts/check_job_parity.py          # falla con exit 1 si hay huecos
@@ -57,6 +70,19 @@ _ALIAS_PIPELINE: dict[str, str] = {
 _SCHEDULE_TRIGGER = re.compile(r"^\s*schedule:\s*$", re.MULTILINE)
 _CRON_LINE = re.compile(r"^\s*-\s*cron:", re.MULTILINE)
 
+_RENDER_YAML = _ROOT / "render.yaml"
+
+# `- key: APP_PROFILE` seguido de su `value: worker`. Se busca con una expresión
+# y no parseando YAML a propósito: este script corre en el gate y no debe
+# depender de que PyYAML esté instalado en el entorno que lo lanza. El par
+# key/value de un `envVars` de Render son dos líneas contiguas, así que una
+# expresión sobre esas dos líneas es tan fiable como el parseo y no añade
+# dependencia.
+_APP_PROFILE_WORKER = re.compile(
+    r"-\s*key:\s*APP_PROFILE\s*\n\s*value:\s*[\"']?worker[\"']?\s*$",
+    re.MULTILINE,
+)
+
 
 def _modules_invoked_by_workflows() -> tuple[set[str], set[str]]:
     """(módulos en workflows CON schedule, módulos en workflows SIN schedule).
@@ -77,6 +103,66 @@ def _modules_invoked_by_workflows() -> tuple[set[str], set[str]]:
         else:
             dispatch_only.update(found)
     return scheduled, dispatch_only
+
+
+def plano_worker_declarado() -> bool:
+    """¿Hay en ``render.yaml`` un servicio con ``APP_PROFILE=worker``?
+
+    Es la comprobación de S5.3: la cola a demanda solo tiene consumidor en
+    producción si ese servicio existe. No se verifica contra la API de Render
+    —este script corre en CI sin credenciales—, así que lo que se afirma es que
+    el Blueprint lo declara; que el Blueprint esté vinculado es el checklist
+    humano de la cabecera de ``render.yaml`` (O0.2).
+    """
+    if not _RENDER_YAML.is_file():
+        return False
+    return bool(_APP_PROFILE_WORKER.search(_RENDER_YAML.read_text(encoding="utf-8")))
+
+
+def check_cola() -> tuple[list[dict[str, Any]], list[str]]:
+    """Paridad de la cola de trabajo: handler resoluble y plano declarado."""
+    import importlib
+
+    from shared.jobs import TIPOS_A_DEMANDA, TIPOS_PROGRAMADOS
+
+    hay_worker = plano_worker_declarado()
+    rows: list[dict[str, Any]] = []
+    problems: list[str] = []
+
+    for tipos, plano, exige_worker in (
+        (TIPOS_A_DEMANDA, "worker", True),
+        (TIPOS_PROGRAMADOS, "pipeline", False),
+    ):
+        for nombre, declarado in tipos.items():
+            modulo_nombre, _, funcion_nombre = declarado.handler.partition(":")
+            try:
+                modulo = importlib.import_module(modulo_nombre)
+            except Exception as exc:  # import roto: el handler no existe de facto
+                problems.append(
+                    f"{nombre}: el handler '{declarado.handler}' no se pudo importar ({exc})"
+                )
+            else:
+                if not callable(getattr(modulo, funcion_nombre, None)):
+                    problems.append(
+                        f"{nombre}: el handler '{declarado.handler}' no existe — el job se "
+                        "encolaría y giraría hasta agotar intentos"
+                    )
+            cubierto_por = ""
+            if exige_worker and not hay_worker:
+                problems.append(
+                    f"{nombre}: tipo a demanda sin plano worker — ningún servicio de "
+                    "render.yaml declara APP_PROFILE=worker, así que en producción "
+                    "nadie consume la cola"
+                )
+            elif exige_worker:
+                cubierto_por = "render.yaml (APP_PROFILE=worker)"
+            else:
+                cubierto_por = "cierre de la pasada (Actions)"
+            rows.append(
+                {"job": nombre, "plane": plano, "cubierto_por": cubierto_por, "heavy": False}
+            )
+
+    return rows, problems
 
 
 def check() -> tuple[list[dict[str, Any]], list[str]]:
@@ -140,6 +226,12 @@ def check() -> tuple[list[dict[str, Any]], list[str]]:
                 "heavy": job.heavy,
             }
         )
+
+    # Los tipos de la cola van al final para no desplazar los índices del
+    # registry, sobre los que ya hay tests que leen `rows[0]`.
+    filas_cola, problemas_cola = check_cola()
+    rows.extend(filas_cola)
+    problems.extend(problemas_cola)
 
     return rows, problems
 

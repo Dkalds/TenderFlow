@@ -56,8 +56,8 @@ def test_usuarios_set_admin_is_admin_roundtrip(tmp_db):
 
     uid = get_or_create_oauth_user(
         email="bob@example.com",
-        oauth_provider="github",
-        oauth_sub="gh-bob-42",
+        oauth_provider="microsoft",
+        oauth_sub="ms-bob-42",
     )
     # Por defecto no es admin
     assert is_admin(uid) is False
@@ -92,8 +92,8 @@ def test_usuarios_list_users_respeta_limit(tmp_db):
     for i in range(3):
         get_or_create_oauth_user(
             email=f"limit_user_{i}@example.com",
-            oauth_provider="github",
-            oauth_sub=f"gh-limit-{i}",
+            oauth_provider="microsoft",
+            oauth_sub=f"ms-limit-{i}",
         )
     resultado = list_users(limit=1)
     assert len(resultado) <= 1
@@ -133,8 +133,8 @@ def test_usuarios_deactivate_idempotente(tmp_db):
 
     uid = get_or_create_oauth_user(
         email="eve@example.com",
-        oauth_provider="github",
-        oauth_sub="gh-eve-2",
+        oauth_provider="microsoft",
+        oauth_sub="ms-eve-2",
     )
     deactivate_user(uid)
     deactivate_user(uid)  # segunda llamada — no debe explotar

@@ -61,12 +61,23 @@ _NO_APLICA_AL_SERVICIO_WEB = frozenset(
 # quedan anotados aquí y en docs/IMPROVEMENT_BACKLOG.md en vez de arreglados de
 # tapadillo. La lista solo puede encoger: al documentarlas, borrá la entrada.
 #
-# ALERTMANAGER_WEBHOOK_URL: la añade el Alertmanager (S6.3). Línea propuesta
-# para `.env.example`, a la espera del OK humano:
-#     # Segundo canal de alertas — dead-man's-switch del Watchdog. Opcional:
-#     # vacío deshabilita el receptor `webhook` sin romper el de email.
-#     # ALERTMANAGER_WEBHOOK_URL=https://hc-ping.com/<uuid>
-_DOCUMENTACION_PENDIENTE = frozenset({"FRONTEND_URL", "SENTRY_DSN", "ALERTMANAGER_WEBHOOK_URL"})
+# ALERTMANAGER_WEBHOOK_URL salió de la lista el 2026-09-06: O0.3 del plan de
+# arquitectura v2 documenta la variable en `.env.example` con el gate `.env*`
+# pre-autorizado por D20.
+_DOCUMENTACION_PENDIENTE = frozenset({"FRONTEND_URL", "SENTRY_DSN"})
+
+# ── Variables PROHIBIDAS en render.yaml (O0.4) ───────────────────────────────
+# El sentido inverso del chequeo de arriba: no que falte, sino que no puede
+# estar. `DATABASE_ADMIN_URL` es el DSN del rol dueño del schema —con DDL y sin
+# RLS—, y existe justamente para que las migraciones dejen de correr con la
+# credencial de la app. Declararla en un servicio de `render.yaml` volvería a
+# ponerla en el entorno de un proceso que sirve HTTP y anularía el cutover
+# entero sin que ningún test lo notara.
+#
+# `config/settings.py` cierra la puerta del lado del código (no es campo de
+# `Settings`, y `database_admin_url()` se niega a servirla con APP_PROFILE=api);
+# esta lista cierra la del despliegue.
+_PROHIBIDAS_EN_RENDER = frozenset({"DATABASE_ADMIN_URL"})
 
 WORKFLOWS_DIR = REPO_ROOT / ".github" / "workflows"
 
@@ -231,6 +242,19 @@ def main() -> int:
         print(
             "\nAñadilas a render.yaml (con `sync: false` si el valor se pone en el "
             "dashboard). Sin esto, el contenedor arranca y muere en el validador.\n"
+        )
+
+    prohibidas = sorted(declaradas & _PROHIBIDAS_EN_RENDER)
+    if prohibidas:
+        fallos = True
+        print("[check-env-parity] Variables que render.yaml NO puede declarar:\n")
+        for nombre in prohibidas:
+            print(f"  - {nombre}")
+        print(
+            "\nEs la credencial administradora de la BD (DDL, sin RLS). Solo la usa\n"
+            ".github/workflows/migrate.yml; ningún servicio de Render debe tenerla en\n"
+            "su entorno. Ver config/settings.database_admin_url y\n"
+            "docs/runbooks/persistence-tripwires.md.\n"
         )
 
     sin_documentar = sorted(declaradas - documentadas - _DOCUMENTACION_PENDIENTE)

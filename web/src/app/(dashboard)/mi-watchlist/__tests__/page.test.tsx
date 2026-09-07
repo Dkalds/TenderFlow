@@ -101,7 +101,9 @@ describe("MiWatchlistPage — edición de reglas", () => {
 
     expect(await screen.findByText("Editar regla")).toBeInTheDocument();
     const dialog = within(screen.getByRole("dialog"));
-    const keywordInput = dialog.getByLabelText("Palabra clave *") as HTMLInputElement;
+    // Sin asterisco: desde S4.4 la palabra clave dejó de ser obligatoria — una
+    // regla puede filtrar solo por órgano, tecnología o banda del Radar.
+    const keywordInput = dialog.getByLabelText("Palabra clave") as HTMLInputElement;
     expect(keywordInput.value).toBe("SAP");
     const cpvInput = dialog.getByLabelText("Filtro CPV") as HTMLInputElement;
     expect(cpvInput.value).toBe("72000000");
@@ -121,7 +123,7 @@ describe("MiWatchlistPage — edición de reglas", () => {
     await screen.findByText("Editar regla");
 
     const dialog = within(screen.getByRole("dialog"));
-    const keywordInput = dialog.getByLabelText("Palabra clave *");
+    const keywordInput = dialog.getByLabelText("Palabra clave");
     fireEvent.change(keywordInput, { target: { value: "SAP S/4HANA" } });
     fireEvent.click(dialog.getByRole("button", { name: "Guardar cambios" }));
 

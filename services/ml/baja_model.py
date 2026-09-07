@@ -30,6 +30,13 @@ todavía no habían ocurrido.
 relativo, la versión se registra pero NO se activa, y el serving sigue siendo
 el baseline.
 
+**Y el criterio que faltaba (S6.4)**: además de la mejora relativa, la mejora
+**absoluta** tiene que superar la dispersión de ``mae_p50`` entre folds
+(``services.ml.promotion.evaluar_promocion_predictiva``). Con v2 esa cuenta
+salía 0.005 contra 0.0129: una mejora dos veces y media menor que su propio
+error de medición. El motivo, con su número, queda en
+``model_versions.notes`` como ``promotion_reason``.
+
 Los intervalos se **conformalizan** (split-CQR) sobre un bloque temporal que
 el ajuste no vio: la cobertura del 80% pasa a cumplirse por construcción en vez
 de depender de que los tres cuantiles salgan bien calibrados por su cuenta.
@@ -925,10 +932,34 @@ def entrenar(
         "categorias": {col: len(categorias[col]) for col in CATEGORICAL_COLUMNS},
     }
 
-    cumple = (
-        mejora >= MEJORA_MINIMA_RELATIVA
-        and COBERTURA_OBJETIVO[0] <= cobertura <= COBERTURA_OBJETIVO[1]
+    # Gate de promoción (S6.4). Los dos criterios del RFC —mejora relativa y
+    # cobertura en rango— siguen siendo condición necesaria y entran como
+    # `motivos_extra`; lo que añade `evaluar_promocion_predictiva` es la
+    # comparación que faltaba: la mejora absoluta contra la dispersión de
+    # `mae_p50` entre folds. Sin ella, v2 mejoraba 0.005 con una dispersión de
+    # 0.0129 y "mejora un 3,3%" sonaba a resultado.
+    from services.ml.promotion import evaluar_promocion_predictiva
+
+    motivos_rfc: list[str] = []
+    if mejora < MEJORA_MINIMA_RELATIVA:
+        motivos_rfc.append(
+            f"mejora relativa {mejora:.4f} < {MEJORA_MINIMA_RELATIVA} (criterio RFC 20260611-2)"
+        )
+    if not COBERTURA_OBJETIVO[0] <= cobertura <= COBERTURA_OBJETIVO[1]:
+        motivos_rfc.append(
+            f"cobertura del intervalo 80% {cobertura:.4f} fuera de {COBERTURA_OBJETIVO}"
+        )
+
+    decision = evaluar_promocion_predictiva(
+        metrica=metricas["mae_p50"],
+        baseline=metricas["mae_baseline"],
+        dispersion=metricas["mae_p50_std_folds"],
+        nombre_metrica="mae_p50",
+        mejor_es_mayor=False,
+        motivos_extra=motivos_rfc,
     )
+    metricas.update(decision.as_dict())
+    cumple = decision.promocionable
     if activar is None:
         activar = bool(getattr(settings, "ML_PRED_AUTO_ACTIVATE", False)) and cumple
 
@@ -958,7 +989,10 @@ def entrenar(
         metrics=metricas,
         n_samples=len(train_final),
         activate=bool(activar),
-        notes="cumple criterios RFC 20260611-2" if cumple else "NO bate baseline — no activar",
+        # La nota **es** el motivo, con su número. Antes decía "NO bate
+        # baseline — no activar" para cualquier rechazo, así que quien miraba
+        # `model_versions` tenía que recalcular a mano por qué.
+        notes=decision.promotion_reason,
     )
     log.info(
         "baja_model_trained",

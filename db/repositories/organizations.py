@@ -3,10 +3,20 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime
 from typing import Any
 
-from db.database import connect, connect_read, now_utc_iso
+from db.database import connect, connect_read, now_utc, now_utc_iso
 from db.repositories.base import rows_to_dicts
+
+#: Columnas de una invitación que salen del repositorio. Se enumeran (en vez de
+#: ``SELECT *``) porque ``token_hash`` **no** puede salir de ``db/``: es el
+#: único secreto de la tabla y ninguna capa de arriba lo necesita para nada que
+#: no sea la búsqueda por token, que se resuelve aquí dentro.
+_INVITATION_COLUMNS = (
+    "id, organization_id, email, role, invited_by_user_id, created_at, "
+    "expires_at, accepted_at, accepted_user_id, revoked_at"
+)
 
 
 class OrganizationRepository:
@@ -166,6 +176,180 @@ class OrganizationRepository:
             )
             return rows_to_dicts(cur)
 
+    # ── Invitaciones a correos sin cuenta (v104) ───────────────────────────
+
+    def create_invitation(
+        self,
+        organization_id: int,
+        email: str,
+        role: str,
+        *,
+        token_hash: str,
+        invited_by_user_id: int,
+        expires_at: datetime,
+    ) -> dict[str, Any]:
+        """Crea la invitación, reemplazando la pendiente del mismo correo.
+
+        Reinvitar antes de que caduque la anterior es lo que hace cualquiera
+        que crea que el correo se perdió, y el único parcial de v104 lo
+        rechazaría con un error de integridad. Aquí se revoca la pendiente y se
+        emite una nueva: el token viejo deja de valer en el acto, que es
+        justamente lo que espera quien pulsa «reenviar».
+        """
+        now = now_utc()
+        with connect() as conn:
+            conn.execute(
+                "UPDATE organization_invitations SET revoked_at = %s "
+                "WHERE organization_id = %s AND lower(email) = lower(%s) "
+                "AND accepted_at IS NULL AND revoked_at IS NULL",
+                (now, organization_id, email),
+            )
+            cur = conn.execute(
+                "INSERT INTO organization_invitations "
+                "(organization_id, email, role, token_hash, invited_by_user_id, "
+                " created_at, expires_at) "
+                "VALUES (%s, %s, %s, %s, %s, %s, %s) "
+                f"RETURNING {_INVITATION_COLUMNS}",
+                (
+                    organization_id,
+                    email.strip().lower(),
+                    role,
+                    token_hash,
+                    invited_by_user_id,
+                    now,
+                    expires_at,
+                ),
+            )
+            rows = rows_to_dicts(cur)
+        return rows[0]
+
+    def list_invitations(
+        self, organization_id: int, *, only_pending: bool = True
+    ) -> list[dict[str, Any]]:
+        """Invitaciones de la organización, las vivas primero."""
+        sql = (
+            f"SELECT {_INVITATION_COLUMNS} FROM organization_invitations WHERE organization_id = %s"
+        )
+        if only_pending:
+            sql += " AND accepted_at IS NULL AND revoked_at IS NULL"
+        sql += " ORDER BY created_at DESC, id DESC"
+        with connect_read() as conn:
+            return rows_to_dicts(conn.execute(sql, (organization_id,)))
+
+    def get_invitation(self, organization_id: int, invitation_id: int) -> dict[str, Any] | None:
+        with connect_read() as conn:
+            rows = rows_to_dicts(
+                conn.execute(
+                    f"SELECT {_INVITATION_COLUMNS} FROM organization_invitations "
+                    "WHERE id = %s AND organization_id = %s",
+                    (invitation_id, organization_id),
+                )
+            )
+        return rows[0] if rows else None
+
+    def get_pending_invitation_by_token(self, token_hash: str) -> dict[str, Any] | None:
+        """Invitación viva y sin caducar que corresponde a ese token.
+
+        Una fila aceptada, revocada o caducada devuelve ``None``: el «un solo
+        uso» del token es esta condición, no la firma del token.
+        """
+        with connect_read() as conn:
+            rows = rows_to_dicts(
+                conn.execute(
+                    f"SELECT {_INVITATION_COLUMNS} FROM organization_invitations "
+                    "WHERE token_hash = %s AND accepted_at IS NULL "
+                    "AND revoked_at IS NULL AND expires_at > %s",
+                    (token_hash, now_utc()),
+                )
+            )
+        return rows[0] if rows else None
+
+    def revoke_invitation(self, organization_id: int, invitation_id: int, actor_id: int) -> bool:
+        """Anula una invitación pendiente. ``False`` si ya no lo estaba."""
+        with connect() as conn:
+            cur = conn.execute(
+                "UPDATE organization_invitations SET revoked_at = %s, revoked_by_user_id = %s "
+                "WHERE id = %s AND organization_id = %s "
+                "AND accepted_at IS NULL AND revoked_at IS NULL",
+                (now_utc(), actor_id, invitation_id, organization_id),
+            )
+            return int(getattr(cur, "rowcount", 0) or 0) > 0
+
+    def accept_invitations_for_email(self, email: str, user_id: int) -> list[dict[str, Any]]:
+        """Convierte en membresías activas las invitaciones vivas de ese correo.
+
+        Es el camino que se dispara al registrarse o al entrar por OAuth: la
+        persona demostró que controla el correo al que se invitó, así que no
+        hace falta el token. Todo ocurre en una transacción para que una
+        invitación no pueda quedar marcada como aceptada sin su membresía.
+
+        El ``ON CONFLICT`` no toca una fila ``owner``: la propiedad de una
+        organización no se degrada por aceptar una invitación (el mismo
+        invariante que ``_guard_owner_row`` aplica en el alta).
+        """
+        now = now_utc()
+        with connect() as conn:
+            pendientes = rows_to_dicts(
+                conn.execute(
+                    f"SELECT {_INVITATION_COLUMNS} FROM organization_invitations "
+                    "WHERE lower(email) = lower(%s) AND accepted_at IS NULL "
+                    "AND revoked_at IS NULL AND expires_at > %s "
+                    "ORDER BY id FOR UPDATE",
+                    (email, now),
+                )
+            )
+            aceptadas: list[dict[str, Any]] = []
+            for invitacion in pendientes:
+                conn.execute(
+                    "INSERT INTO organization_memberships "
+                    "(organization_id, user_id, role, status, invited_by_user_id, "
+                    " created_at, updated_at) VALUES (%s, %s, %s, 'active', %s, %s, %s) "
+                    "ON CONFLICT(organization_id, user_id) DO UPDATE SET "
+                    "role = excluded.role, status = 'active', "
+                    "updated_at = excluded.updated_at "
+                    "WHERE organization_memberships.role <> 'owner'",
+                    (
+                        invitacion["organization_id"],
+                        user_id,
+                        invitacion["role"],
+                        invitacion["invited_by_user_id"],
+                        now_utc_iso(),
+                        now_utc_iso(),
+                    ),
+                )
+                cur = conn.execute(
+                    "UPDATE organization_invitations "
+                    "SET accepted_at = %s, accepted_user_id = %s WHERE id = %s "
+                    f"RETURNING {_INVITATION_COLUMNS}",
+                    (now, user_id, invitacion["id"]),
+                )
+                aceptadas.extend(rows_to_dicts(cur))
+        return aceptadas
+
+    def anonymize_invitations_for_user(self, user_id: int) -> None:
+        """Borra del rastro de invitaciones el correo de quien ejerce el olvido.
+
+        No se borra la fila: la organización tiene derecho a saber que hubo una
+        invitación y quién la emitió. Lo que desaparece es el dato personal —el
+        correo— y el vínculo con la cuenta.
+        """
+        with connect() as conn:
+            row = conn.execute("SELECT email FROM users WHERE id = %s", (user_id,)).fetchone()
+            email = str(row[0]) if row and row[0] else None
+            if email is not None:
+                conn.execute(
+                    "UPDATE organization_invitations "
+                    "SET email = '', token_hash = 'anonimizado:' || id::text, "
+                    "    revoked_at = COALESCE(revoked_at, accepted_at, %s) "
+                    "WHERE lower(email) = lower(%s)",
+                    (now_utc(), email),
+                )
+            conn.execute(
+                "UPDATE organization_invitations SET accepted_user_id = NULL "
+                "WHERE accepted_user_id = %s",
+                (user_id,),
+            )
+
     def get_settings(self, organization_id: int) -> dict[str, Any]:
         """``settings_json`` deserializado; ``{}`` si la fila no existe o está corrupta."""
         with connect_read() as conn:
@@ -269,19 +453,43 @@ class OrganizationRepository:
         return changed
 
     def export_memberships_for_user(self, user_id: int) -> list[dict[str, Any]]:
+        """Vínculos de esta persona con organizaciones, incluidas las invitaciones.
+
+        La invitación pendiente a su correo es un dato personal suyo que el
+        sistema guarda —dice a qué organización se le invitó, con qué rol y
+        quién lo hizo— y por tanto entra en la portabilidad (RGPD Art. 20). Sale
+        con la misma forma que una membresía y ``status = 'invited'``, que es
+        exactamente lo que representa; el token nunca sale de ``db/``.
+        """
         with connect_read() as conn:
             cur = conn.execute(
                 "SELECT m.organization_id, o.name AS organization_name, "
                 "m.user_id, m.role, m.status, m.created_at, m.updated_at "
                 "FROM organization_memberships m "
                 "JOIN organizations o ON o.id = m.organization_id "
-                "WHERE m.user_id = %s ORDER BY m.organization_id",
-                (user_id,),
+                "WHERE m.user_id = %s "
+                "UNION ALL "
+                "SELECT i.organization_id, o.name AS organization_name, "
+                "%s::int AS user_id, i.role, 'invited'::text AS status, "
+                "i.created_at::text, i.created_at::text "
+                "FROM organization_invitations i "
+                "JOIN organizations o ON o.id = i.organization_id "
+                "JOIN users u ON u.id = %s "
+                "WHERE lower(i.email) = lower(u.email) "
+                "AND i.accepted_at IS NULL AND i.revoked_at IS NULL "
+                "ORDER BY 1",
+                (user_id, user_id, user_id),
             )
             return rows_to_dicts(cur)
 
     def remove_memberships_for_user(self, user_id: int) -> None:
-        """Elimina vínculos personales; no borra datos corporativos."""
+        """Elimina vínculos personales; no borra datos corporativos.
+
+        Las invitaciones pendientes a su correo se anonimizan en la misma
+        operación: si no, el derecho al olvido dejaría su dirección escrita en
+        una tabla que nadie mira hasta que alguien abre ``/equipo``.
+        """
+        self.anonymize_invitations_for_user(user_id)
         with connect() as conn:
             conn.execute(
                 "DELETE FROM organization_memberships WHERE user_id = %s",

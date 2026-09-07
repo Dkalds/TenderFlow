@@ -187,6 +187,9 @@ def _validated_evidence(
         page_start = int(page.get("start_offset") or 0)
         evidence.start_offset = page_start + exact_pos
         evidence.end_offset = evidence.start_offset + len(evidence.quote)
+    # La procedencia la pone la página persistida, no el LLM (S8.3): el modelo
+    # no sabe —ni debe adivinar— si el texto que se le dio venía de un OCR.
+    evidence.ocr = bool(page.get("ocr"))
     return evidence
 
 
@@ -322,9 +325,10 @@ def ensure_documents_ready(licitacion_id: str) -> dict[str, int]:
     candidates.sort(key=lambda row: _DOC_TIPO_PRIORITY.get(str(row.get("tipo")), 2))
 
     # ``skipped`` lo devuelve el fetcher cuando el breaker está abierto: no se
-    # llegó a intentar la descarga y la fila sigue ``pending``. Se declara para
-    # que el diagnóstico pueda distinguirlo de un fallo real.
-    counts = {"attempted": 0, "extracted": 0, "error": 0, "skipped": 0}
+    # llegó a intentar la descarga y la fila sigue ``pending``. ``unsupported``
+    # (S8.2) es un formato que no sabemos leer. Ambos se declaran para que el
+    # diagnóstico pueda distinguirlos de un fallo real.
+    counts = {"attempted": 0, "extracted": 0, "error": 0, "skipped": 0, "unsupported": 0}
     for row in candidates[:_ONDEMAND_MAX_DOCUMENTS]:
         counts["attempted"] += 1
         try:
@@ -361,6 +365,17 @@ def _missing_pages_detail(licitacion_id: str, fetched: dict[str, int]) -> str:
             "PLACSP no está respondiendo ahora mismo, así que no se ha llegado "
             "a descargar ningún pliego. Los documentos siguen en cola: "
             "reintentá en unos minutos o esperá al job nocturno."
+        )
+    # S8.2: un formato que no sabemos leer no es una descarga fallida, y
+    # mandar a alguien a esperar «a la ingesta diaria» por un .doc binario es
+    # mandarlo a esperar para siempre. Se dice lo que pasa de verdad.
+    no_soportados = [row for row in rows if row.get("status") == "unsupported"]
+    if no_soportados and not any(row.get("status") == "error" for row in rows):
+        formatos = sorted({str(row.get("content_type") or "desconocido") for row in no_soportados})
+        return (
+            f"Los pliegos de esta licitación están en un formato que todavía no "
+            f"se sabe leer ({', '.join(formatos)}); no hay texto del que extraer "
+            "la ficha."
         )
     errores = sum(1 for row in rows if row.get("status") == "error")
     return (

@@ -6,7 +6,7 @@ tags: [status, generado]
 
 <!-- generado por scripts/gen_status.py — no editar a mano -->
 
-Generado: 2026-09-06
+Generado: 2026-09-07
 
 ## Paridad de planos de orquestación (ADR-012)
 
@@ -25,8 +25,12 @@ Generado: 2026-09-06
 | `llm_models_canary` | pipeline | CANONICAL_STEPS[llm_models_canary] |
 | `anomaly_checks` | pipeline | CANONICAL_STEPS[anomaly_checks] |
 | `drift_report` | pipeline | CANONICAL_STEPS[drift_checks] |
+| `ficha_pliego` | worker | render.yaml (APP_PROFILE=worker) |
+| `embeddings_expediente` | worker | render.yaml (APP_PROFILE=worker) |
+| `export_pdf` | worker | render.yaml (APP_PROFILE=worker) |
+| `paso_pipeline` | pipeline | cierre de la pasada (Actions) |
 
-**13 jobs, todos con plano verificado.**
+**17 jobs, todos con plano verificado.**
 
 ## Ratchet TID251 — acceso directo a BD fuera de repositories
 
@@ -61,13 +65,19 @@ Generado: 2026-09-06
 - `services/resoluciones.py`
 - `services/watchlist_rules.py`
 
+## Ratchet `user_key` — identidad derivada del correo (D18, fase 1)
+
+**64 ficheros** de producción usan `user_key` (lista congelada: 64; solo puede decrecer).
+
+`scripts/check_user_key_ratchet.py` falla ante un fichero nuevo que la use. Llega a cero con T4, que migra a `user_id` con columna doble y lectura dual; hasta entonces cambiar de correo pierde los datos que cuelgan de esa clave. No cuenta `tests/` ni `db/alembic/versions/`.
+
 ## Motor de la suite de tests (ADR-018)
 
 ✅ la suite corre contra Postgres y el job es bloqueante
 
 ## Superficie de la API
 
-**197 endpoints** expuestos.
+**214 endpoints** expuestos.
 
 <details><summary>Ver listado</summary>
 
@@ -120,6 +130,8 @@ Generado: 2026-09-06
 | GET | `/api/v1/auth/me` |
 | GET | `/api/v1/auth/oauth/google/authorize` |
 | GET | `/api/v1/auth/oauth/google/callback` |
+| GET | `/api/v1/auth/oauth/{provider}/authorize` |
+| GET | `/api/v1/auth/oauth/{provider}/callback` |
 | POST | `/api/v1/auth/password-reset/confirm` |
 | POST | `/api/v1/auth/password-reset/request` |
 | POST | `/api/v1/auth/register` |
@@ -157,6 +169,7 @@ Generado: 2026-09-06
 | GET | `/api/v1/eventos` |
 | GET | `/api/v1/exports/calendario.ics` |
 | GET | `/api/v1/exports/calendario/enlace` |
+| GET | `/api/v1/exports/descargas/{job_id}` |
 | GET | `/api/v1/exports/download` |
 | GET | `/api/v1/feature-flags` |
 | PUT | `/api/v1/feature-flags` |
@@ -167,6 +180,7 @@ Generado: 2026-09-06
 | GET | `/api/v1/health` |
 | GET | `/api/v1/health/live` |
 | GET | `/api/v1/health/ready` |
+| GET | `/api/v1/jobs/{job_id}` |
 | GET | `/api/v1/licitaciones` |
 | POST | `/api/v1/licitaciones/bulk-get` |
 | POST | `/api/v1/licitaciones/comparar` |
@@ -175,6 +189,7 @@ Generado: 2026-09-06
 | GET | `/api/v1/licitaciones/stream` |
 | GET | `/api/v1/licitaciones/{id_externo:path}` |
 | GET | `/api/v1/licitaciones/{id_externo:path}/documentos` |
+| POST | `/api/v1/licitaciones/{id_externo:path}/embeddings-async` |
 | GET | `/api/v1/licitaciones/{id_externo:path}/explain` |
 | GET | `/api/v1/licitaciones/{id_externo:path}/ficha-pliego` |
 | GET | `/api/v1/licitaciones/{id_externo:path}/ficha-pliego/estado` |
@@ -209,9 +224,17 @@ Generado: 2026-09-06
 | GET | `/api/v1/organizations` |
 | POST | `/api/v1/organizations` |
 | GET | `/api/v1/organizations/active` |
+| POST | `/api/v1/organizations/invitations/accept` |
+| GET | `/api/v1/organizations/{organization_id}/capabilities` |
+| PUT | `/api/v1/organizations/{organization_id}/capabilities` |
+| GET | `/api/v1/organizations/{organization_id}/invitations` |
+| DELETE | `/api/v1/organizations/{organization_id}/invitations/{invitation_id}` |
+| POST | `/api/v1/organizations/{organization_id}/invitations/{invitation_id}/resend` |
 | GET | `/api/v1/organizations/{organization_id}/members` |
 | POST | `/api/v1/organizations/{organization_id}/members` |
 | PUT | `/api/v1/organizations/{organization_id}/members/{member_user_id}` |
+| GET | `/api/v1/organizations/{organization_id}/nifs` |
+| PUT | `/api/v1/organizations/{organization_id}/nifs` |
 | GET | `/api/v1/organizations/{organization_id}/settings` |
 | PUT | `/api/v1/organizations/{organization_id}/settings` |
 | GET | `/api/v1/predicciones/calibracion` |
@@ -228,8 +251,11 @@ Generado: 2026-09-06
 | GET | `/api/v1/pursuits/cartera` |
 | GET | `/api/v1/pursuits/direccion` |
 | GET | `/api/v1/pursuits/metrics` |
+| GET | `/api/v1/pursuits/weights-proposal` |
+| POST | `/api/v1/pursuits/weights-proposal/apply` |
 | GET | `/api/v1/pursuits/{pursuit_id}` |
 | PATCH | `/api/v1/pursuits/{pursuit_id}` |
+| GET | `/api/v1/pursuits/{pursuit_id}/checklist` |
 | GET | `/api/v1/pursuits/{pursuit_id}/comments` |
 | POST | `/api/v1/pursuits/{pursuit_id}/comments` |
 | DELETE | `/api/v1/pursuits/{pursuit_id}/comments/{comment_id}` |
@@ -263,6 +289,7 @@ Generado: 2026-09-06
 | GET | `/api/v1/webhooks` |
 | POST | `/api/v1/webhooks` |
 | GET | `/api/v1/webhooks/event-types` |
+| GET | `/api/v1/webhooks/global` |
 | DELETE | `/api/v1/webhooks/{webhook_id}` |
 | GET | `/api/v1/webhooks/{webhook_id}` |
 | PATCH | `/api/v1/webhooks/{webhook_id}` |

@@ -83,6 +83,30 @@ jobs:
             echo "La versión queda en \`model_versions\` para inspección y rollback."
           } >> "$GITHUB_STEP_SUMMARY"
 
+      # S6.1: la medición del cambio de población, después de que
+      # `precompute_ml_proba` haya reescrito la columna con el modelo nuevo.
+      # No bloquea —el artefacto ya está entrenado y el gate ya decidió—, pero
+      # deja en el run el número que dice si el clasificador discrimina: la
+      # proporción de filas puntuadas por encima de 0.7. El 2026-09-04 era el
+      # 90,64%, con el modelo puntuando 683k filas de PSCP que nunca vio.
+      - name: Medir la discriminación del clasificador
+        if: steps.train.outputs.promoted == 'true'
+        continue-on-error: true
+        env:
+          ENV: prod
+          APP_PROFILE: scraper
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DATABASE_SSL_ROOT_CERT: ${{ secrets.DATABASE_SSL_ROOT_CERT }}
+        run: |
+          {
+            echo "## Auditoría de verdad del dato (post-entrenamiento)"
+            echo
+            echo '```'
+            python scripts/audit_domain_truth.py --check 2>&1 \
+              || echo "(algún umbral superado — ver las líneas de arriba)"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Verify model artifact
         if: steps.train.outputs.promoted == 'true'
         run: |

@@ -207,7 +207,8 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Compare Periods
+         * [DEPRECADO 2026-12-04] Comparación entre dos periodos
+         * @deprecated
          * @description Compare two time periods side-by-side.
          */
         get: operations["compare_periods_api_v1_analytics_compare_periods_get"];
@@ -520,7 +521,8 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Resumen Sankey
+         * [DEPRECADO 2026-12-04] Flujo Sankey del resumen
+         * @deprecated
          * @description Sankey flow: tipo_contrato → estado.
          */
         get: operations["resumen_sankey_api_v1_analytics_resumen_sankey_get"];
@@ -560,7 +562,8 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Resumen Top
+         * [DEPRECADO 2026-12-04] Top de licitaciones del resumen
+         * @deprecated
          * @description Top N licitaciones by importe.
          */
         get: operations["resumen_top_api_v1_analytics_resumen_top_get"];
@@ -928,6 +931,53 @@ export interface paths {
          * @description Handle Google OAuth callback: exchange code, validate, set session.
          */
         get: operations["google_callback_api_v1_auth_oauth_google_callback_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/oauth/{provider}/authorize": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Oauth Authorize
+         * @description URL de autorización del proveedor OIDC indicado (``google``, ``microsoft``).
+         *
+         *     Devuelve JSON con ``authorization_url`` para que el SPA redirija. El
+         *     verifier PKCE queda en una cookie HttpOnly de vida corta, limitada al
+         *     callback de ese proveedor; el ``state`` firmado no lleva material sensible.
+         */
+        get: operations["oauth_authorize_api_v1_auth_oauth__provider__authorize_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/oauth/{provider}/callback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Oauth Callback
+         * @description Callback OIDC: canjea el código, valida el token y abre la sesión.
+         *
+         *     Siempre redirige (éxito → /resumen, error → /login?error=<slug>): el
+         *     navegador llega aquí por navegación de nivel superior, no por fetch.
+         */
+        get: operations["oauth_callback_api_v1_auth_oauth__provider__callback_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1644,6 +1694,39 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/exports/descargas/{job_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Recoger el PDF de una exportación encolada
+         * @description Sirve el PDF que dejó maquetado el worker, mientras siga en caché.
+         *
+         *     Es una ruta separada de ``/download`` a propósito. El issue #50 fue un IDOR
+         *     sobre exports asíncronos: un id global adivinable apuntando al resultado de
+         *     otro usuario, y su RFC de retirada (2026-09-03) dijo que la máquina 202+poll
+         *     solo podía volver «con backend compartido». Vuelve ahora con las dos cosas
+         *     que le faltaban — el estado vive en la tabla ``jobs`` y el binario en la
+         *     caché compartida, no en un ``dict`` de proceso; y cada lectura comprueba que
+         *     el trabajo es de la organización de quien lo pide—. Manteniéndola aparte,
+         *     ``/download`` sigue sin aceptar identificadores ajenos: la ruta que se
+         *     parametriza por un id es esta, y es la que carga con la comprobación.
+         *
+         *     404 —y no 403— cuando el trabajo es de otra organización, por el mismo
+         *     motivo que en ``GET /jobs/{id}``: un 403 confirmaría que ese id existe.
+         */
+        get: operations["descargar_export_encolado_api_v1_exports_descargas__job_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/exports/download": {
         parameters: {
             query?: never;
@@ -1653,11 +1736,19 @@ export interface paths {
         };
         /**
          * Download Export
-         * @description Descarga síncrona (CSV, Excel o PDF) con los filtros actuales.
+         * @description Descarga (CSV, Excel o PDF) con los filtros actuales.
          *
-         *     ``format=pdf`` es **el** camino para exportar a PDF desde 2026-09-03:
-         *     devuelve el documento en la propia respuesta, sin la máquina de estados
-         *     202+poll que sostenía el retirado ``POST /exports``.
+         *     ``format=pdf`` es **el** camino para exportar a PDF desde 2026-09-03. Por
+         *     encima de un umbral de filas la maquetación no cabe en una request: la
+         *     respuesta pasa a ser **202 con el trabajo encolado** y el fichero se recoge
+         *     en ``GET /exports/descargas/{job_id}``. Por debajo del umbral, y para CSV y
+         *     Excel, la respuesta sigue siendo el fichero.
+         *
+         *     Esta operación **nunca** se parametriza por identificador de trabajo: sus
+         *     parámetros son los filtros de quien la pide, así que no hay nada de otro
+         *     usuario que pedir aquí (issue #50, ``tests/test_unit_export_idor.py``). La
+         *     recogida del encolado, que sí lleva id, es otra ruta con su propia
+         *     comprobación de dueño.
          */
         get: operations["download_export_api_v1_exports_download_get"];
         put?: never;
@@ -1862,6 +1953,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/jobs/{job_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Estado de un trabajo encolado
+         * @description Devuelve el estado del trabajo: si sigue en cola, si falló o su resultado.
+         *
+         *     El trabajo de otra organización responde **404 y no 403**: un 403 confirma
+         *     que ese id existe, y con ids correlativos eso convierte la ruta en un
+         *     contador del trabajo ajeno. Lo mismo vale para el trabajo del sistema (los
+         *     pasos del cierre de la pasada, sin organización): no se sirve a nadie por
+         *     aquí.
+         */
+        get: operations["get_job_api_v1_jobs__job_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/licitaciones": {
         parameters: {
             query?: never;
@@ -1870,7 +1987,8 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Listado paginado de licitaciones (offset)
+         * [DEPRECADO 2026-12-04] Listado paginado de licitaciones (offset)
+         * @deprecated
          * @description Devuelve lista paginada con filtros opcionales.
          *
          *     > **Deprecation notice**: Se recomienda usar `/licitaciones/cursor` para
@@ -2080,6 +2198,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/licitaciones/{id_externo}/embeddings-async": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Encolar el cálculo de embeddings de los pliegos del expediente
+         * @description Calcula los embeddings de los pliegos de ESTE expediente, ya.
+         *
+         *     El cron nocturno (``documentos_embeddings``) drena la cola global por lotes
+         *     de 50, así que un expediente recién ingerido puede tardar días en tener
+         *     chunks — y sin chunks el RAG del resumen y la búsqueda dentro del pliego no
+         *     tienen de dónde leer. Esta ruta adelanta el del expediente que alguien está
+         *     mirando. Idempotente: si ya hay uno en cola devuelve el mismo ``job_id``.
+         */
+        post: operations["enqueue_expediente_embeddings_api_v1_licitaciones__id_externo__embeddings_async_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/licitaciones/{id_externo}/explain": {
         parameters: {
             query?: never;
@@ -2129,8 +2273,18 @@ export interface paths {
         };
         /**
          * ¿Hay una extracción de ficha en curso?
-         * @description Estado efímero del BackgroundTask de extracción (para el polling de la
-         *     UI). El resultado en sí se lee de ``…/ficha-pliego``.
+         * @description Estado de la extracción para el polling de la UI. El resultado en sí se
+         *     lee de ``…/ficha-pliego``.
+         *
+         *     Consulta la cola, no una bandera en la caché del proceso: aquella era
+         *     invisible desde cualquier otra instancia de la API y desaparecía con el
+         *     reinicio, así que decía «no hay extracción» mientras la había.
+         *
+         *     ``running`` mira la cola entera y ``job_id`` solo la organización de quien
+         *     pregunta: la ficha del pliego es dato compartido, así que una extracción
+         *     ajena en curso es una respuesta correcta a «¿hay algo en marcha?» (y evita
+         *     lanzar una segunda contra el mismo expediente), pero el identificador de
+         *     ese trabajo no es suyo y su ``GET /jobs/{id}`` daría 404.
          */
         get: operations["get_tender_fact_sheet_state_api_v1_licitaciones__id_externo__ficha_pliego_estado_get"];
         put?: never;
@@ -2174,15 +2328,15 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Lanzar la extracción de la ficha en background
+         * Encolar la extracción de la ficha
          * @description Variante asíncrona de ``…/ficha-pliego/extract`` para la UI.
          *
          *     El camino síncrono descarga hasta 8 PDFs y llama al LLM dentro de la
          *     request — minutos de spinner con la conexión abierta. Aquí la request
-         *     devuelve 202 al instante y el trabajo corre como BackgroundTask; el
-         *     cliente hace polling de ``…/ficha-pliego/estado`` y relee la ficha al
-         *     terminar. Idempotente: con una extracción ya en curso responde 202 sin
-         *     lanzar otra.
+         *     devuelve 202 al instante con el ``job_id`` del trabajo encolado; el cliente
+         *     sondea ``…/ficha-pliego/estado`` (o ``GET /jobs/{job_id}`` para el detalle)
+         *     y relee la ficha al terminar. Idempotente: con una extracción ya en cola
+         *     responde 202 con el mismo ``job_id``.
          */
         post: operations["extract_tender_fact_sheet_async_api_v1_licitaciones__id_externo__ficha_pliego_extract_async_post"];
         delete?: never;
@@ -2461,11 +2615,7 @@ export interface paths {
         };
         /**
          * Listar mis API keys (sin el secret — solo prefix y metadatos)
-         * @description Devuelve las API keys vinculadas al usuario autenticado.
-         *
-         *     Para API key auth: usa ``key_id``. For session auth: usa ``user_id``.
-         *     El ``prefix`` (primeros 8 chars del token original) permite identificar
-         *     la key en logs/soporte sin exponer el secreto completo.
+         * @description Devuelve las API keys vinculadas al usuario autenticado, sin el secreto.
          */
         get: operations["list_my_keys_api_v1_me_keys_get"];
         put?: never;
@@ -2641,7 +2791,13 @@ export interface paths {
         put?: never;
         /**
          * Activar una versión concreta (rollback o promote)
-         * @description Activa la ``version`` indicada. Requiere API key con scope admin.
+         * @description Activa la ``version`` indicada. Requiere ser administrador.
+         *
+         *     Antes exigía ``require_scope("admin")``, que solo entiende de API keys: un
+         *     administrador con sesión de navegador no podía activar ni revertir un
+         *     modelo desde ``/ops``, que es donde el producto pone ese botón. Para una
+         *     API key no cambia nada — ``require_any_auth`` solo la marca ``is_admin``
+         *     si su dueño lo es *y* la key lleva scope ``admin`` o ``*``.
          *
          *     Invalida la caché de proceso del clasificador: sin esto, el cambio de
          *     ``is_active`` quedaba solo en la BD y el proceso seguía sirviendo el modelo
@@ -2763,6 +2919,120 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/organizations/invitations/accept": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Post Accept Organization Invitation
+         * @description Canjea el enlace de invitación recibido por correo.
+         *
+         *     Devuelve la organización a la que se acaba de entrar. El enlace es de un
+         *     solo uso, caduca a los siete días y solo vale para la dirección a la que se
+         *     envió.
+         */
+        post: operations["post_accept_organization_invitation_api_v1_organizations_invitations_accept_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{organization_id}/capabilities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Perfil de capacidad de la organización
+         * @description Certificaciones, facturación, referencias y perfiles de equipo declarados.
+         *
+         *     ``campos_incompletos`` enumera las familias vacías: son las que hacen que
+         *     el checklist de una oportunidad conteste «desconocido».
+         */
+        get: operations["get_organization_capabilities_api_v1_organizations__organization_id__capabilities_get"];
+        /**
+         * Declarar el perfil de capacidad (owner/admin)
+         * @description Reemplaza el perfil completo. Es dato corporativo, no personal.
+         */
+        put: operations["put_organization_capabilities_api_v1_organizations__organization_id__capabilities_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{organization_id}/invitations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Organization Invitations
+         * @description Invitaciones pendientes del equipo.
+         *
+         *     Restringido a owner y admin: son direcciones de correo de personas que
+         *     todavía no pertenecen a la organización.
+         */
+        get: operations["get_organization_invitations_api_v1_organizations__organization_id__invitations_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{organization_id}/invitations/{invitation_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Organization Invitation
+         * @description Anula una invitación pendiente sin borrar su rastro.
+         */
+        delete: operations["delete_organization_invitation_api_v1_organizations__organization_id__invitations__invitation_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{organization_id}/invitations/{invitation_id}/resend": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Post Resend Organization Invitation
+         * @description Vuelve a enviar el correo con un enlace nuevo; el anterior deja de valer.
+         */
+        post: operations["post_resend_organization_invitation_api_v1_organizations__organization_id__invitations__invitation_id__resend_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/organizations/{organization_id}/members": {
         parameters: {
             query?: never;
@@ -2775,8 +3045,13 @@ export interface paths {
         put?: never;
         /**
          * Post Organization Member
-         * @description Incorpora por correo a un usuario ya registrado. No crea invitaciones
-         *     para correos sin cuenta: el alta requiere que la persona se registre.
+         * @description Incorpora a alguien al equipo por su correo.
+         *
+         *     Si ya tiene cuenta activa, entra en el acto y la respuesta es su membresía.
+         *     Si no la tiene, se crea una invitación pendiente, se le envía un enlace
+         *     firmado y la respuesta es esa invitación: hasta 2026-09 este segundo caso
+         *     respondía 404 y no había forma de incorporar a nadie que no se hubiera
+         *     registrado antes por su cuenta.
          */
         post: operations["post_organization_member_api_v1_organizations__organization_id__members_post"];
         delete?: never;
@@ -2795,6 +3070,30 @@ export interface paths {
         get?: never;
         /** Put Organization Member */
         put: operations["put_organization_member_api_v1_organizations__organization_id__members__member_user_id__put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{organization_id}/nifs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * NIFs con los que concurre la organización (owner/admin)
+         * @description Identidad fiscal declarada, con su enlace al maestro de empresas.
+         */
+        get: operations["get_organization_nifs_api_v1_organizations__organization_id__nifs_get"];
+        /**
+         * Declarar los NIFs de la organización (owner/admin)
+         * @description Reemplaza el conjunto completo de NIFs: manda la lista entera, no un alta.
+         */
+        put: operations["put_organization_nifs_api_v1_organizations__organization_id__nifs_put"];
         post?: never;
         delete?: never;
         options?: never;
@@ -3149,6 +3448,63 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/pursuits/weights-proposal": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Pursuits Weights Proposal
+         * @description Propone un ajuste de los pesos del Radar a partir de lo ganado y perdido.
+         *
+         *     Compara, dimensión a dimensión, el desglose del score que tenían las
+         *     oportunidades ganadas frente al de las perdidas: la dimensión que valía más
+         *     en las ganadas sube y la que valía más en las perdidas baja, en una
+         *     redistribución que sigue sumando 100.
+         *
+         *     Sólo cuentan las oportunidades cerradas cuyo desglose quedó sellado al
+         *     abrirlas. Por debajo del mínimo devuelve `estado: "insuficiente"` con su
+         *     base, y ninguna propuesta: un ajuste sobre cuatro cierres no es evidencia.
+         *
+         *     Es una propuesta. No se aplica sola.
+         */
+        get: operations["get_pursuits_weights_proposal_api_v1_pursuits_weights_proposal_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/pursuits/weights-proposal/apply": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Post Pursuits Weights Proposal Apply
+         * @description Aplica la propuesta vigente al perfil de scoring. Queda en el audit log.
+         *
+         *     No admite pesos en el cuerpo: recalcula la propuesta y escribe exactamente
+         *     esa, de modo que lo aplicado y lo que se enseñó no puedan divergir. El resto
+         *     del perfil (keywords de afinidad, CPV, rango de importe) se conserva.
+         *
+         *     Responde 422 mientras la propuesta sea insuficiente.
+         */
+        post: operations["post_pursuits_weights_proposal_apply_api_v1_pursuits_weights_proposal_apply_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/pursuits/{pursuit_id}": {
         parameters: {
             query?: never;
@@ -3168,6 +3524,30 @@ export interface paths {
          * @description Aplica una transición validada y añade un único evento.
          */
         patch: operations["patch_pursuit_api_v1_pursuits__pursuit_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/pursuits/{pursuit_id}/checklist": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Contraste de la ficha del pliego con la capacidad declarada
+         * @description Veredicto por requisito: ``cumple``, ``no_cumple`` o ``desconocido``.
+         *
+         *     Ningún ``cumple`` se emite sin la cita del pliego que lo respalda, y
+         *     ``desconocido`` es lo que se contesta cuando la ficha no extrajo el hecho o
+         *     la organización no rellenó el campo. No decide el go/no-go: lo propone.
+         */
+        get: operations["get_pursuit_checklist_api_v1_pursuits__pursuit_id__checklist_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/pursuits/{pursuit_id}/comments": {
@@ -3389,8 +3769,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Búsqueda de texto completo (FTS/BM25)
-         * @description Ejecuta una búsqueda de texto completo (Postgres tsvector/ts_rank_cd) con fallback LIKE. Los campos alpha/embedding_model son legacy sin efecto desde la retirada de FAISS (2026-07).
+         * Búsqueda de texto completo con fusión semántica
+         * @description Fusiona (RRF) el texto completo de Postgres (tsvector/ts_rank_cd) con la similitud vectorial sobre los chunks de pliego, ponderadas por alpha. Sin embeddings disponibles degrada a texto completo y, si este no encuentra nada, a coincidencia literal; el campo source de la respuesta dice cuál de los tres caminos se ejecutó.
          */
         post: operations["semantic_search_api_v1_search_semantic_post"];
         delete?: never;
@@ -3410,7 +3790,13 @@ export interface paths {
          * Verificar integridad del audit log (hash chain)
          * @description Recorre el audit log y verifica que el hash chain no ha sido alterado.
          *
-         *     Requiere autenticación + scope ``admin``.
+         *     Requiere ser administrador, por sesión o por API key. Antes exigía
+         *     ``require_scope("admin")``, que solo mira los scopes de una API key: un
+         *     administrador con sesión de navegador no podía comprobar la integridad de
+         *     su propio audit log desde la consola, que es justo donde se mira cuando hay
+         *     una sospecha. ``require_admin`` acepta las dos credenciales y no relaja
+         *     nada para las keys: en la rama de API key, ``require_any_auth`` solo marca
+         *     ``is_admin`` si el dueño lo es *y* la key lleva scope ``admin`` o ``*``.
          *
          *     Returns:
          *         ``{"valid": bool, "checked": int, "first_tampered_id": int|None, "error": str|None}``
@@ -3599,12 +3985,15 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Listar webhooks (sin secret) */
+        /**
+         * Listar los webhooks de tu organización (sin secret)
+         * @description Listado de webhooks de la organización activa, sin el secret.
+         */
         get: operations["list_all_api_v1_webhooks_get"];
         put?: never;
         /**
          * Create
-         * @description Crea un webhook. Devuelve el ``secret`` solo en esta respuesta.
+         * @description Crea un webhook en tu organización. Devuelve el ``secret`` solo aquí.
          *
          *     Si se incluye ``Idempotency-Key``, una segunda request con la misma
          *     clave devuelve la respuesta original sin crear un duplicado.
@@ -3626,8 +4015,37 @@ export interface paths {
         /**
          * Tipos de evento a los que suscribirse
          * @description Lista los eventos válidos, derivada de la misma constante que valida el alta.
+         *
+         *     Declarada **antes** que ``/{webhook_id}``: FastAPI resuelve por orden de
+         *     declaración y, con la ruta paramétrica delante, ``/webhooks/event-types``
+         *     entraba por ella y moría en la validación de ``webhook_id: int`` con un 422.
          */
         get: operations["event_types_api_v1_webhooks_event_types_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/webhooks/global": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Listar TODOS los webhooks de la instancia (vista de /ops)
+         * @description Todos los webhooks, de cualquier organización y sin dueño.
+         *
+         *     Es la vista que se queda en ``/ops`` cuando la gestión por equipo se muda a
+         *     ``/equipo``: el administrador de la instancia sigue necesitando ver las
+         *     integraciones globales (las anteriores a ``v108``, que no tienen
+         *     organización) y el estado agregado de entregas.
+         */
+        get: operations["list_global_api_v1_webhooks_global_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -3653,7 +4071,7 @@ export interface paths {
         head?: never;
         /**
          * Actualizar campos de un webhook
-         * @description Actualiza nombre, URL, event_types o active de un webhook existente.
+         * @description Actualiza nombre, URL, event_types, formato o active de un webhook.
          */
         patch: operations["update_api_v1_webhooks__webhook_id__patch"];
         trace?: never;
@@ -3690,6 +4108,11 @@ export interface paths {
         /**
          * Enviar una entrega de prueba
          * @description Envía un payload de prueba al URL del webhook para verificar conectividad.
+         *
+         *     El cuerpo va **en el formato configurado** en el webhook: un ping que
+         *     siempre saliera en JSON no probaría lo único que se quiere probar antes de
+         *     activar una integración de Slack o Teams — que la plantilla llega y se
+         *     pinta.
          */
         post: operations["ping_api_v1_webhooks__webhook_id__ping_post"];
         delete?: never;
@@ -3809,6 +4232,32 @@ export interface components {
             title?: string | null;
             /** Type */
             type: string;
+        };
+        /**
+         * ApiKeyOut
+         * @description Una API key del usuario, **sin** el token ni el hash.
+         *
+         *     Los campos son la proyección exacta de
+         *     ``ApiKeyRepository.get_all_for_user``: ``id`` es lo único con lo que el
+         *     dueño puede señalar qué key rotar en ``POST /me/keys/rotate``, y por eso
+         *     ese repositorio lo devuelve.
+         *
+         *     ``is_active`` llega como ``0``/``1`` de la columna —herencia de SQLite— y
+         *     aquí se declara ``bool`` porque eso es la representación en disco, no el
+         *     contrato; Pydantic hace la coerción. Mismo criterio que ``WebhookOut`` en
+         *     ``api/routes/webhooks.py``.
+         */
+        ApiKeyOut: {
+            /** Created At */
+            created_at?: string | null;
+            /** Expires At */
+            expires_at?: string | null;
+            /** Id */
+            id: number;
+            /** Is Active */
+            is_active?: boolean | null;
+            /** Name */
+            name?: string | null;
         };
         /**
          * AskModelInfo
@@ -4259,6 +4708,50 @@ export interface components {
              * @enum {string}
              */
             role: "user" | "assistant";
+        };
+        /**
+         * ChecklistFamiliaResultado
+         * @description Veredicto agregado de una familia y los requisitos que lo componen.
+         */
+        ChecklistFamiliaResultado: {
+            /** Etiqueta */
+            etiqueta: string;
+            /**
+             * Familia
+             * @enum {string}
+             */
+            familia: "certifications" | "economic_solvency" | "technical_solvency" | "team_requirements";
+            /** Items */
+            items?: components["schemas"]["ChecklistItem"][];
+            /**
+             * Veredicto
+             * @enum {string}
+             */
+            veredicto: "cumple" | "no_cumple" | "desconocido";
+        };
+        /**
+         * ChecklistItem
+         * @description Un requisito del pliego contrastado con el perfil de la organización.
+         */
+        ChecklistItem: {
+            /** Dato Organizacion */
+            dato_organizacion?: string | null;
+            /** Evidencia */
+            evidencia?: components["schemas"]["EvidenceRef"][];
+            /**
+             * Familia
+             * @enum {string}
+             */
+            familia: "certifications" | "economic_solvency" | "technical_solvency" | "team_requirements";
+            /** Motivo */
+            motivo: string;
+            /** Requisito */
+            requisito: string;
+            /**
+             * Veredicto
+             * @enum {string}
+             */
+            veredicto: "cumple" | "no_cumple" | "desconocido";
         };
         /**
          * ClusterEntry
@@ -5144,6 +5637,45 @@ export interface components {
             /** Detail */
             detail: string;
         };
+        /**
+         * DocumentoFormatoCobertura
+         * @description Cuántos adjuntos hay de cada formato y cuántos se supieron leer (S8.2).
+         *
+         *     Sin este desglose, «los pliegos en DOCX no se leen» era una anécdota: el
+         *     ``status`` mezclaba en ``error`` los formatos no soportados con los PDF
+         *     corruptos y las descargas caducadas. ``unsupported`` (``v103``) los separa
+         *     y esto los publica, así que la decisión de añadir un formato se toma sobre
+         *     el número de expedientes que desbloquea.
+         */
+        DocumentoFormatoCobertura: {
+            /** Content Type */
+            content_type?: string | null;
+            /**
+             * Error
+             * @default 0
+             */
+            error: number;
+            /**
+             * Extracted
+             * @default 0
+             */
+            extracted: number;
+            /**
+             * Pendientes
+             * @default 0
+             */
+            pendientes: number;
+            /**
+             * Total
+             * @default 0
+             */
+            total: number;
+            /**
+             * Unsupported
+             * @default 0
+             */
+            unsupported: number;
+        };
         /** DocumentoSummary */
         DocumentoSummary: {
             /** Content Type */
@@ -5505,6 +6037,11 @@ export interface components {
             documento_id: number;
             /** End Offset */
             end_offset?: number | null;
+            /**
+             * Ocr
+             * @default false
+             */
+            ocr: boolean;
             /** Page Number */
             page_number: number;
             /** Quote */
@@ -5564,6 +6101,16 @@ export interface components {
             p75: string;
         };
         /**
+         * ExpedienteJobEncolado
+         * @description 202 de las acciones de expediente que se resuelven en la cola.
+         */
+        ExpedienteJobEncolado: {
+            /** Job Id */
+            job_id: number;
+            /** Licitacion Id */
+            licitacion_id: string;
+        };
+        /**
          * ExplainFeature
          * @description Término y su contribución a la clasificación (modelo lineal).
          */
@@ -5619,6 +6166,8 @@ export interface components {
          * @description Estado del proceso de extracción de la ficha (no del dato persistido).
          */
         FactSheetExtractionState: {
+            /** Job Id */
+            job_id?: number | null;
             /** Licitacion Id */
             licitacion_id: string;
             /** Running */
@@ -5877,6 +6426,44 @@ export interface components {
              * @default 0
              */
             concentracion_top3: number;
+        };
+        /**
+         * GoNoGoChecklist
+         * @description Contraste completo de una oportunidad contra la capacidad declarada.
+         */
+        GoNoGoChecklist: {
+            /**
+             * Cumple
+             * @default 0
+             */
+            cumple: number;
+            /**
+             * Desconocido
+             * @default 0
+             */
+            desconocido: number;
+            /** Extraction Version */
+            extraction_version?: string | null;
+            /** Familias */
+            familias?: components["schemas"]["ChecklistFamiliaResultado"][];
+            /** Ficha Actualizada */
+            ficha_actualizada?: string | null;
+            /** Ficha Estado */
+            ficha_estado?: string | null;
+            /** Licitacion Id */
+            licitacion_id: string;
+            /**
+             * No Cumple
+             * @default 0
+             */
+            no_cumple: number;
+            /** Organization Id */
+            organization_id: number;
+            /**
+             * Total Requisitos
+             * @default 0
+             */
+            total_requisitos: number;
         };
         /**
          * GuionCriterio
@@ -6144,6 +6731,76 @@ export interface components {
             sobre: "sobre_a" | "sobre_b" | "sobre_c" | "otro";
             /** Subsanable */
             subsanable?: boolean | null;
+        };
+        /**
+         * JobEstadoDTO
+         * @description Estado de un trabajo encolado (``GET /jobs/{id}``).
+         *
+         *     ``intentos`` se publica porque es lo que distingue «está tardando» de «va
+         *     por el segundo reintento»: sin ese número, un job que reaparece en
+         *     ``pending`` tras fallar parece uno recién encolado.
+         */
+        JobEstadoDTO: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Error Detail */
+            error_detail?: string | null;
+            /**
+             * Estado
+             * @enum {string}
+             */
+            estado: "pending" | "running" | "done" | "failed";
+            /** Id */
+            id: number;
+            /** Intentos */
+            intentos: number;
+            resultado?: components["schemas"]["JobResultado"] | null;
+            /**
+             * Run After
+             * Format: date-time
+             */
+            run_after: string;
+            /** Tipo */
+            tipo: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * JobResultado
+         * @description Lo que un job terminado publica, con los campos de cada tipo.
+         *
+         *     Un solo modelo con todos los campos opcionales en vez de una unión por
+         *     tipo, y es una decisión, no pereza: ``dict[str, Any]`` habría dado
+         *     ``{ [key: string]: unknown }`` en el cliente (invariante §3.5), y una unión
+         *     discriminada obligaría al frontend a estrechar por tipo para leer un
+         *     ``descarga`` que solo necesita cuando existe. Cada campo dice qué tipo lo
+         *     rellena.
+         */
+        JobResultado: {
+            /** Bytes */
+            bytes?: number | null;
+            /** Campos */
+            campos?: number | null;
+            /** Chunks */
+            chunks?: number | null;
+            /** Citas */
+            citas?: number | null;
+            /** Descarga */
+            descarga?: string | null;
+            /** Documentos */
+            documentos?: number | null;
+            /** Estado Ficha */
+            estado_ficha?: string | null;
+            /** Filas */
+            filas?: number | null;
+            /** Licitacion Id */
+            licitacion_id?: string | null;
         };
         /**
          * KitItemBody
@@ -6687,6 +7344,60 @@ export interface components {
             etiqueta: string;
         };
         /**
+         * OrganizationCapabilities
+         * @description Perfil de capacidad de la organización: con qué puede acreditarse.
+         *
+         *     Es dato **corporativo**, no personal: pertenece a la organización y no a
+         *     quien lo teclea, así que ni se exporta ni se borra con la cuenta de un
+         *     usuario (RGPD Art. 17/20 cubren datos personales).
+         */
+        OrganizationCapabilities: {
+            /** Certificaciones */
+            certificaciones?: components["schemas"]["OrganizationCertification"][];
+            /** Facturacion */
+            facturacion?: components["schemas"]["OrganizationFacturacion"][];
+            /** Perfiles Equipo */
+            perfiles_equipo?: components["schemas"]["OrganizationTeamProfile"][];
+            /** Referencias */
+            referencias?: components["schemas"]["OrganizationReferencia"][];
+        };
+        /**
+         * OrganizationCapabilitiesOut
+         * @description Perfil leído, con qué falta por rellenar.
+         */
+        OrganizationCapabilitiesOut: {
+            /** Campos Incompletos */
+            campos_incompletos?: ("certificaciones" | "facturacion" | "referencias" | "perfiles_equipo")[];
+            /** Certificaciones */
+            certificaciones?: components["schemas"]["OrganizationCertification"][];
+            /** Facturacion */
+            facturacion?: components["schemas"]["OrganizationFacturacion"][];
+            /** Organization Id */
+            organization_id: number;
+            /** Perfiles Equipo */
+            perfiles_equipo?: components["schemas"]["OrganizationTeamProfile"][];
+            /** Referencias */
+            referencias?: components["schemas"]["OrganizationReferencia"][];
+            /** Updated At */
+            updated_at?: string | null;
+        };
+        /**
+         * OrganizationCertification
+         * @description Certificación que la organización puede acreditar.
+         */
+        OrganizationCertification: {
+            /**
+             * Ambito
+             * @default company
+             * @enum {string}
+             */
+            ambito: "company" | "team";
+            /** Nombre */
+            nombre: string;
+            /** Vigente Hasta */
+            vigente_hasta?: string | null;
+        };
+        /**
          * OrganizationCreate
          * @description Alta de un espacio compartido.
          */
@@ -6695,8 +7406,75 @@ export interface components {
             name: string;
         };
         /**
+         * OrganizationFacturacion
+         * @description Facturación de un ejercicio cerrado.
+         */
+        OrganizationFacturacion: {
+            /** Ejercicio */
+            ejercicio: number;
+            /** Importe Eur */
+            importe_eur: number;
+        };
+        /**
+         * OrganizationInvitationAccept
+         * @description Canje del token recibido por correo, desde una sesión ya iniciada.
+         */
+        OrganizationInvitationAccept: {
+            /** Token */
+            token: string;
+        };
+        /**
+         * OrganizationInvitationOut
+         * @description Invitación a un correo que todavía no tiene cuenta en TenderFlow.
+         *
+         *     Es la contraparte de :class:`OrganizationMembershipOut` para el intervalo
+         *     en el que aún no hay persona a la que apuntar: ``organization_memberships``
+         *     exige ``user_id``, así que hasta que alguien se registra o entra por OAuth
+         *     con ese correo la intención vive en ``organization_invitations``.
+         *
+         *     Nunca lleva el token: el valor bruto existe solo en el correo enviado.
+         */
+        OrganizationInvitationOut: {
+            /** Accepted At */
+            accepted_at?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Email */
+            email: string;
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+            /** Id */
+            id: number;
+            /** Invited By User Id */
+            invited_by_user_id?: number | null;
+            /** Organization Id */
+            organization_id: number;
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "admin" | "member" | "viewer";
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "invited" | "accepted" | "revoked" | "expired";
+        };
+        /**
          * OrganizationMemberInvite
-         * @description Alta de un miembro por correo; requiere una cuenta activa existente.
+         * @description Alta de un miembro por correo.
+         *
+         *     Si el correo ya tiene cuenta activa, la persona entra al equipo en el acto
+         *     (``OrganizationMembershipOut``). Si no la tiene, se crea una invitación
+         *     pendiente y se le manda un enlace firmado (``OrganizationInvitationOut``):
+         *     hasta 2026-09 este segundo caso respondía 404 y la única salida era pedirle
+         *     que se registrara primero.
          */
         OrganizationMemberInvite: {
             /**
@@ -6764,6 +7542,87 @@ export interface components {
             status: "active" | "invited" | "suspended" | "revoked";
             /** User Id */
             user_id: number;
+        };
+        /**
+         * OrganizationNif
+         * @description Un NIF/CIF con el que la organización se presenta a licitación.
+         *
+         *     Son varios y no uno: un grupo concursa con la matriz, con filiales y en
+         *     UTE, y el cierre por NIF tiene que reconocer a todas. ``principal`` marca
+         *     la razón social con la que se presenta por defecto; el resto son igual de
+         *     válidas para decidir si una adjudicación es suya.
+         */
+        OrganizationNif: {
+            /** Nif */
+            nif: string;
+            /**
+             * Principal
+             * @default false
+             */
+            principal: boolean;
+            /** Razon Social */
+            razon_social?: string | null;
+        };
+        /**
+         * OrganizationNifOut
+         * @description Un NIF ya persistido, resuelto contra el maestro de empresas.
+         */
+        OrganizationNifOut: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Empresa Id */
+            empresa_id?: number | null;
+            /** Id */
+            id: number;
+            /** Nif */
+            nif: string;
+            /**
+             * Principal
+             * @default false
+             */
+            principal: boolean;
+            /** Razon Social */
+            razon_social?: string | null;
+        };
+        /**
+         * OrganizationNifsIn
+         * @description Cuerpo del PUT: el conjunto completo de NIFs, no un alta suelta.
+         *
+         *     Reemplazar entero evita el endpoint de borrado por id y hace que la
+         *     pantalla mande siempre lo que el usuario ve, que es lo que espera.
+         */
+        OrganizationNifsIn: {
+            /** Nifs */
+            nifs?: components["schemas"]["OrganizationNif"][];
+        };
+        /**
+         * OrganizationNifsOut
+         * @description Identidad fiscal completa de una organización.
+         */
+        OrganizationNifsOut: {
+            /** Nifs */
+            nifs?: components["schemas"]["OrganizationNifOut"][];
+            /** Organization Id */
+            organization_id: number;
+        };
+        /**
+         * OrganizationReferencia
+         * @description Contrato ejecutado que sirve de referencia de solvencia técnica.
+         */
+        OrganizationReferencia: {
+            /** Anio */
+            anio: number;
+            /** Expediente Id */
+            expediente_id?: string | null;
+            /** Importe Eur */
+            importe_eur?: number | null;
+            /** Organo */
+            organo: string;
+            /** Tecnologia */
+            tecnologia?: string | null;
         };
         /**
          * OrganizationSettings
@@ -6862,6 +7721,18 @@ export interface components {
              * @enum {string}
              */
             role: "owner" | "admin" | "member" | "viewer";
+        };
+        /**
+         * OrganizationTeamProfile
+         * @description Perfil disponible en plantilla, con experiencia y cuántas personas.
+         */
+        OrganizationTeamProfile: {
+            /** Anios */
+            anios: number;
+            /** Cantidad */
+            cantidad: number;
+            /** Rol */
+            rol: string;
         };
         /**
          * OrganoAggregate
@@ -7198,6 +8069,90 @@ export interface components {
              * @default 0
              */
             total: number;
+        };
+        /**
+         * PesoPropuestoDimension
+         * @description Una dimensión del score, con la evidencia que sostiene su ajuste.
+         *
+         *     ``media_ganadas``/``media_perdidas`` son la media de esa dimensión en el
+         *     desglose sellado de las oportunidades ganadas y de las perdidas. ``delta``
+         *     es su diferencia: positivo significa que la dimensión valía más en lo que se
+         *     ganó, y por eso su peso sube.
+         */
+        PesoPropuestoDimension: {
+            /** Delta */
+            delta: number;
+            /** Dimension */
+            dimension: string;
+            /** Media Ganadas */
+            media_ganadas: number;
+            /** Media Perdidas */
+            media_perdidas: number;
+            /** Peso Actual */
+            peso_actual: number;
+            /** Peso Propuesto */
+            peso_propuesto: number;
+        };
+        /**
+         * PesosPropuestos
+         * @description Propuesta de ajuste de pesos con su base declarada (ADR-014).
+         *
+         *     ``estado`` es ``insuficiente`` mientras la organización no acumule
+         *     ``minimo_cierres`` oportunidades cerradas **con desglose sellado**. En ese
+         *     estado ``pesos_propuestos`` viaja en ``None`` y ``dimensiones`` vacío: una
+         *     propuesta que no se sostiene no se enseña con una advertencia al lado, no se
+         *     enseña.
+         */
+        PesosPropuestos: {
+            /** Dimensiones */
+            dimensiones?: components["schemas"]["PesoPropuestoDimension"][];
+            /**
+             * Estado
+             * @enum {string}
+             */
+            estado: "propuesta" | "insuficiente";
+            /** Minimo Cierres */
+            minimo_cierres: number;
+            /** N Cierres */
+            n_cierres: number;
+            /** N Ganadas */
+            n_ganadas: number;
+            /** N Perdidas */
+            n_perdidas: number;
+            /** Organization Id */
+            organization_id: number;
+            /**
+             * Origen Pesos Actuales
+             * @enum {string}
+             */
+            origen_pesos_actuales: "perfil" | "global";
+            /** Pesos Actuales */
+            pesos_actuales?: {
+                [key: string]: number;
+            };
+            /** Pesos Propuestos */
+            pesos_propuestos?: {
+                [key: string]: number;
+            } | null;
+        };
+        /**
+         * PesosPropuestosAplicados
+         * @description Resultado de aplicar la propuesta: qué quedó escrito y sobre qué base.
+         */
+        PesosPropuestosAplicados: {
+            /** N Cierres */
+            n_cierres: number;
+            /** Organization Id */
+            organization_id: number;
+            /** Pesos */
+            pesos: {
+                [key: string]: number;
+            };
+            /**
+             * Visibility
+             * @enum {string}
+             */
+            visibility: "private" | "organization";
         };
         /**
          * PipelineAgendaItem
@@ -7608,8 +8563,9 @@ export interface components {
          *     importe adjudicado se escribían a mano aunque la ingesta ya traía
          *     adjudicatario, importe y número de ofertas del mismo expediente. La ficha
          *     la muestra como propuesta —«este expediente se adjudicó a X por Y €»— y la
-         *     persona confirma el resultado; el sistema no decide por ella quién ganó
-         *     porque no conoce el NIF de la organización.
+         *     persona confirma el resultado. Desde S2 el sistema **sí** puede proponer
+         *     cuál es (``resultado_sugerido``, calculado por NIF), pero sigue sin
+         *     cerrarla: la propuesta llega preseleccionada y quien decide es la persona.
          */
         PursuitAdjudicacionDetectada: {
             /** Adjudicatarios */
@@ -7622,6 +8578,8 @@ export interface components {
             importe_total?: number | null;
             /** N Ofertas */
             n_ofertas?: number | null;
+            /** Resultado Sugerido */
+            resultado_sugerido?: ("won" | "lost") | null;
         };
         /**
          * PursuitAdjudicatario
@@ -7723,8 +8681,14 @@ export interface components {
         PursuitCreate: {
             /** Banda Al Abrir */
             banda_al_abrir?: ("Caliente" | "Atractiva" | "Tibia" | "Descarte") | null;
+            /** Desglose Al Abrir */
+            desglose_al_abrir?: {
+                [key: string]: number;
+            } | null;
             /** Licitacion Id */
             licitacion_id: string;
+            /** Lote Id */
+            lote_id?: number | null;
             /** Organization Id */
             organization_id?: number | null;
             /** Responsible User Id */
@@ -7773,6 +8737,12 @@ export interface components {
             identified_at: string;
             /** Licitacion Id */
             licitacion_id: string;
+            /** Lote Id */
+            lote_id?: number | null;
+            /** Lote Numero */
+            lote_numero?: string | null;
+            /** Lote Titulo */
+            lote_titulo?: string | null;
             /** Next Action */
             next_action?: string | null;
             /** Next Action Due */
@@ -7857,6 +8827,12 @@ export interface components {
         /**
          * PursuitMetrics
          * @description Métricas reproducibles de funnel y resultado por organización/periodo.
+         *
+         *     **Cada cifra cuenta oportunidades, no expedientes.** Desde la revisión
+         *     ``v110`` un mismo expediente puede tener varias oportunidades abiertas —una
+         *     por lote—, así que «4 identificadas» pueden ser dos expedientes de dos lotes
+         *     cada uno. ``unidad_de_conteo`` lo dice en el propio contrato para que
+         *     ninguna pantalla tenga que suponerlo (ADR-014).
          */
         PursuitMetrics: {
             /**
@@ -7905,6 +8881,13 @@ export interface components {
             pursuits_submitted: number;
             /** Pursuits Won */
             pursuits_won: number;
+            radar_quality?: components["schemas"]["RadarQuality"] | null;
+            /**
+             * Unidad De Conteo
+             * @default oportunidad
+             * @constant
+             */
+            unidad_de_conteo: "oportunidad";
             /** Win Rate */
             win_rate?: number | null;
         };
@@ -7946,6 +8929,12 @@ export interface components {
             identified_at: string;
             /** Licitacion Id */
             licitacion_id: string;
+            /** Lote Id */
+            lote_id?: number | null;
+            /** Lote Numero */
+            lote_numero?: string | null;
+            /** Lote Titulo */
+            lote_titulo?: string | null;
             /** Next Action */
             next_action?: string | null;
             /** Next Action Due */
@@ -8023,6 +9012,10 @@ export interface components {
          * @description Data quality metrics.
          */
         QualityResult: {
+            /** Blob Store Bytes */
+            blob_store_bytes?: number | null;
+            /** Blob Store Objetos */
+            blob_store_objetos?: number | null;
             /** Cobertura Modulo Sap */
             cobertura_modulo_sap?: number | null;
             /** Cobertura Nif */
@@ -8036,6 +9029,8 @@ export interface components {
              * @default 0
              */
             dlq_count: number;
+            /** Documentos Por Formato */
+            documentos_por_formato?: components["schemas"]["DocumentoFormatoCobertura"][];
             /**
              * Fechas No Iso
              * @default 0
@@ -8109,6 +9104,42 @@ export interface components {
             };
         };
         /**
+         * RadarBandaCalidad
+         * @description Qué le pasó a la organización con lo que el Radar puso en una banda.
+         *
+         *     Cada porcentaje viaja con su denominador y solo se calcula cuando ese
+         *     denominador aguanta (ADR-014): ``precision`` mide sobre ``resueltas``
+         *     (ganadas + perdidas, las únicas que tienen veredicto) y ``tasa_cierre``
+         *     sobre ``abiertas``. Por debajo del mínimo llegan en ``None``, que el
+         *     cliente pinta como «sin datos suficientes» — nunca como cero.
+         */
+        RadarBandaCalidad: {
+            /** Abiertas */
+            abiertas: number;
+            /**
+             * Banda
+             * @enum {string}
+             */
+            banda: "Caliente" | "Atractiva" | "Tibia" | "Descarte";
+            /** Cerradas */
+            cerradas: number;
+            /** Ganadas */
+            ganadas: number;
+            /** Perdidas */
+            perdidas: number;
+            /** Precision */
+            precision?: number | null;
+            /** Resueltas */
+            resueltas: number;
+            /**
+             * Suficiente
+             * @default false
+             */
+            suficiente: boolean;
+            /** Tasa Cierre */
+            tasa_cierre?: number | null;
+        };
+        /**
          * RadarDismissal
          * @description Un descarte vigente, con lo que hace falta para pintarlo.
          */
@@ -8169,6 +9200,40 @@ export interface components {
             detalle?: components["schemas"]["RadarDismissal"][];
             /** Ids */
             ids: string[];
+        };
+        /**
+         * RadarQuality
+         * @description Precisión del Radar por banda de entrada, con su ventana y su cobertura.
+         *
+         *     Cierra el bucle que la revisión ``v93`` dejó abierto: ``score_al_abrir`` y
+         *     ``banda_al_abrir`` se escribían desde agosto de 2026 y ningún módulo de
+         *     producción los leía, así que el producto no sabía responder a su propia
+         *     promesa —«el Radar ordena bien»— ni siquiera con acceso a la base.
+         *
+         *     Solo mide oportunidades con banda sellada. Las anteriores a ``v93`` tienen
+         *     ``NULL`` y **no se rellenan**: por eso ``pursuits_con_banda`` viaja junto a
+         *     ``pursuits_total``, para que la pantalla pueda decir sobre cuánto habla.
+         */
+        RadarQuality: {
+            /** Bandas */
+            bandas?: components["schemas"]["RadarBandaCalidad"][];
+            /** Cobertura Pct */
+            cobertura_pct?: number | null;
+            /** Minimo Por Banda */
+            minimo_por_banda: number;
+            /** Pursuits Con Banda */
+            pursuits_con_banda: number;
+            /** Pursuits Total */
+            pursuits_total: number;
+            /** Ventana Desde */
+            ventana_desde?: string | null;
+            /** Ventana Hasta */
+            ventana_hasta?: string | null;
+            /**
+             * Ventana Origen
+             * @enum {string}
+             */
+            ventana_origen: "periodo_solicitado" | "historico_observado";
         };
         /**
          * RateCardFact
@@ -8823,7 +9888,7 @@ export interface components {
             organo_contratacion: string | null;
             /**
              * Score
-             * @description Puntuación de relevancia combinada [0, 1]
+             * @description Relevancia en [0, 1]. La escala DEPENDE de source y no es comparable entre búsquedas ni entre fuentes: con rrf se escala contra el mejor resultado de esta misma respuesta, que vale 1; con fts, contra el mejor candidato del texto completo ANTES de aplicar los filtros, así que el máximo de la lista puede quedar por debajo de 1; con like es la constante 0.2 en todos los resultados, porque la coincidencia literal no ordena por relevancia.
              */
             score: number;
             /** Titulo */
@@ -8838,7 +9903,7 @@ export interface components {
         SemanticSearchRequest: {
             /**
              * Alpha
-             * @description LEGACY — sin efecto desde la retirada de FAISS (2026-07); se acepta por compatibilidad
+             * @description Peso del lado semántico en la fusión RRF: 0 = solo texto completo, 1 = solo similitud vectorial. Solo tiene efecto cuando la respuesta es source=rrf; con source=fts o like no hay nada que ponderar.
              * @default 0.7
              */
             alpha: number;
@@ -8893,7 +9958,7 @@ export interface components {
             q: string;
             /**
              * Source
-             * @description Motor usado: FTS5 | LIKE
+             * @description Camino REALMENTE ejecutado: rrf (fusión de texto completo y similitud vectorial), fts (solo texto completo) o like (coincidencia literal). No se declara por configuración.
              */
             source: string;
             /** Top K */
@@ -10008,6 +11073,11 @@ export interface components {
         /**
          * WatchlistRuleBody
          * @description Cuerpo de creacion/edicion de una regla (sin id, con limites de tamano).
+         *
+         *     Los seis campos de S4.4 (`tecnologia`, `organo`, `procedimiento`,
+         *     `tipo_contrato`, `banda_min` y `plazo_min_dias`) son opcionales y `None`
+         *     significa «este criterio no filtra»: por eso una regla creada antes de esta
+         *     revisión sigue devolviendo exactamente lo mismo.
          */
         WatchlistRuleBody: {
             /**
@@ -10015,6 +11085,11 @@ export interface components {
              * @default true
              */
             active: boolean;
+            /**
+             * Banda Min
+             * @description Banda mínima del Radar. Acota además al universo puntuable (abiertas y en plazo), que es el conjunto sobre el que el Radar puntúa.
+             */
+            banda_min?: ("Caliente" | "Atractiva" | "Tibia" | "Descarte") | null;
             /** Ccaa */
             ccaa?: string | null;
             /** Cpv */
@@ -10033,6 +11108,16 @@ export interface components {
             nombre?: string | null;
             /** Organization Id */
             organization_id?: number | null;
+            /** Organo */
+            organo?: string | null;
+            /** Plazo Min Dias */
+            plazo_min_dias?: number | null;
+            /** Procedimiento */
+            procedimiento?: string | null;
+            /** Tecnologia */
+            tecnologia?: string | null;
+            /** Tipo Contrato */
+            tipo_contrato?: string | null;
             /**
              * Visibility
              * @default private
@@ -10086,6 +11171,8 @@ export interface components {
              * @default true
              */
             active: boolean;
+            /** Banda Min */
+            banda_min?: ("Caliente" | "Atractiva" | "Tibia" | "Descarte") | null;
             /** Ccaa */
             ccaa?: string | null;
             /** Cpv */
@@ -10110,6 +11197,16 @@ export interface components {
             nombre?: string | null;
             /** Organization Id */
             organization_id?: number | null;
+            /** Organo */
+            organo?: string | null;
+            /** Plazo Min Dias */
+            plazo_min_dias?: number | null;
+            /** Procedimiento */
+            procedimiento?: string | null;
+            /** Tecnologia */
+            tecnologia?: string | null;
+            /** Tipo Contrato */
+            tipo_contrato?: string | null;
             /**
              * Visibility
              * @default private
@@ -10142,15 +11239,25 @@ export interface components {
             /**
              * Event Types
              * @example [
-             *       "watchlist_match"
+             *       "pursuit.*"
              *     ]
              */
             event_types?: string[];
+            /**
+             * Formato
+             * @description Plantilla del cuerpo entregado: JSON crudo, Block Kit de Slack o Adaptive Card de Teams. Por defecto, JSON.
+             */
+            formato?: ("json" | "slack_blocks" | "teams_adaptive_card") | null;
             /**
              * Name
              * @example mi-integracion-slack
              */
             name: string;
+            /**
+             * Organization Id
+             * @description Organización dueña del webhook; por defecto, la personal del usuario.
+             */
+            organization_id?: number | null;
             /**
              * Url
              * @example https://hooks.example.com/licitaciones
@@ -10161,10 +11268,18 @@ export interface components {
         WebhookCreateResponse: {
             /** Event Types */
             event_types: string[];
+            /**
+             * Formato
+             * @default json
+             * @enum {string}
+             */
+            formato: "json" | "slack_blocks" | "teams_adaptive_card";
             /** Id */
             id: number;
             /** Name */
             name: string;
+            /** Organization Id */
+            organization_id?: number | null;
             /**
              * Secret
              * @description Secret para verificar firma HMAC (X-Webhook-Signature). Solo se devuelve en la creación; guárdalo de forma segura.
@@ -10200,14 +11315,25 @@ export interface components {
         };
         /**
          * WebhookEventTypes
-         * @description Tipos de evento a los que un webhook puede suscribirse.
+         * @description Tipos de evento a los que un webhook puede suscribirse, y formatos.
          *
          *     Los sirve el backend en vez de que la UI los duplique: la lista es la misma
-         *     que valida `WebhookCreate.event_types`, así que no pueden divergir.
+         *     que valida `WebhookCreate.event_types`, así que no pueden divergir. Los
+         *     formatos viajan aquí por el mismo motivo — el selector de plantilla de la
+         *     UI ofrecía tres literales escritos a mano.
          */
         WebhookEventTypes: {
             /** Event Types */
             event_types: string[];
+            /**
+             * Formatos
+             * @default [
+             *       "json",
+             *       "slack_blocks",
+             *       "teams_adaptive_card"
+             *     ]
+             */
+            formatos: string[];
         };
         /**
          * WebhookOut
@@ -10218,10 +11344,18 @@ export interface components {
             active: boolean | null;
             /** Created At */
             created_at: string | null;
+            /** Created By */
+            created_by?: number | null;
             /** Event Types */
             event_types: string[];
             /** Failure Count */
             failure_count: number | null;
+            /**
+             * Formato
+             * @default json
+             * @enum {string}
+             */
+            formato: "json" | "slack_blocks" | "teams_adaptive_card";
             /** Id */
             id: number;
             /** Last Status */
@@ -10230,6 +11364,8 @@ export interface components {
             last_triggered_at: string | null;
             /** Name */
             name: string | null;
+            /** Organization Id */
+            organization_id?: number | null;
             /** Url */
             url: string;
         };
@@ -10253,6 +11389,8 @@ export interface components {
             active?: boolean | null;
             /** Event Types */
             event_types?: string[] | null;
+            /** Formato */
+            formato?: ("json" | "slack_blocks" | "teams_adaptive_card") | null;
             /** Name */
             name?: string | null;
             /** Url */
@@ -12033,6 +13171,73 @@ export interface operations {
             };
         };
     };
+    oauth_authorize_api_v1_auth_oauth__provider__authorize_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                provider: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OAuthAuthorizeResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    oauth_callback_api_v1_auth_oauth__provider__callback_get: {
+        parameters: {
+            query: {
+                code: string;
+                state: string;
+            };
+            header?: never;
+            path: {
+                provider: string;
+            };
+            cookie?: {
+                oauth_pkce?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            302: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     confirm_password_reset_api_v1_auth_password_reset_confirm_post: {
         parameters: {
             query?: never;
@@ -13482,6 +14687,73 @@ export interface operations {
             };
         };
     };
+    descargar_export_encolado_api_v1_exports_descargas__job_id__get: {
+        parameters: {
+            query?: {
+                /** @description Organización activa; por defecto la personal del usuario. */
+                organization_id?: number | null;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                /** @description Identificador que devolvió el 202 de /download */
+                job_id: number;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description El PDF que maquetó el worker */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/pdf": unknown;
+                };
+            };
+            /** @description Autenticación inválida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description El trabajo no existe o no es de esta organización */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description El trabajo todavía no ha terminado */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description El fichero caducó; hay que volver a pedir la exportación */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     download_export_api_v1_exports_download_get: {
         parameters: {
             query?: {
@@ -13493,6 +14765,8 @@ export interface operations {
                 fecha_desde?: string | null;
                 fecha_hasta?: string | null;
                 limit?: number;
+                /** @description Organización a la que se atribuye la exportación encolada. */
+                organization_id?: number | null;
             };
             header?: {
                 "X-CSRF-Token"?: string | null;
@@ -13513,6 +14787,15 @@ export interface operations {
                     "application/pdf": unknown;
                     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": unknown;
                     "text/csv": unknown;
+                };
+            };
+            /** @description PDF grande: se encoló; se recoge en el `descarga` de su resultado (`/api/v1/exports/descargas/{job_id}`) */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobEstadoDTO"];
                 };
             };
             /** @description Validation Error */
@@ -13823,6 +15106,59 @@ export interface operations {
             };
         };
     };
+    get_job_api_v1_jobs__job_id__get: {
+        parameters: {
+            query?: {
+                /** @description Organización activa; por defecto la personal del usuario. */
+                organization_id?: number | null;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                /** @description Identificador devuelto por el 202 que lo encoló */
+                job_id: number;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobEstadoDTO"];
+                };
+            };
+            /** @description Autenticación inválida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description El trabajo no existe o no es de esta organización */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_licitaciones_api_v1_licitaciones_get: {
         parameters: {
             query?: {
@@ -13914,9 +15250,13 @@ export interface operations {
                 /** @description Formato de respuesta: json | csv */
                 format?: string;
             };
-            header?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
             path?: never;
-            cookie?: never;
+            cookie?: {
+                session?: string | null;
+            };
         };
         requestBody: {
             content: {
@@ -14036,9 +15376,13 @@ export interface operations {
                 /** @description Plazo que vence dentro de N días */
                 dias_restantes_max?: number | null;
             };
-            header?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
             path?: never;
-            cookie?: never;
+            cookie?: {
+                session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -14305,16 +15649,72 @@ export interface operations {
             };
         };
     };
+    enqueue_expediente_embeddings_api_v1_licitaciones__id_externo__embeddings_async_post: {
+        parameters: {
+            query?: {
+                /** @description Organización activa; por defecto la personal del usuario. */
+                organization_id?: number | null;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                id_externo: string;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Cálculo encolado (o ya en cola) */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExpedienteJobEncolado"];
+                };
+            };
+            /** @description Autenticación inválida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Licitación no encontrada */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     explain_licitacion_api_v1_licitaciones__id_externo__explain_get: {
         parameters: {
             query?: {
                 top_k?: number;
             };
-            header?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
             path: {
                 id_externo: string;
             };
-            cookie?: never;
+            cookie?: {
+                session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -14410,7 +15810,10 @@ export interface operations {
     };
     get_tender_fact_sheet_state_api_v1_licitaciones__id_externo__ficha_pliego_estado_get: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Organización activa; por defecto la personal del usuario. */
+                organization_id?: number | null;
+            };
             header?: {
                 "X-CSRF-Token"?: string | null;
             };
@@ -14499,7 +15902,10 @@ export interface operations {
     };
     extract_tender_fact_sheet_async_api_v1_licitaciones__id_externo__ficha_pliego_extract_async_post: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Organización activa; por defecto la personal del usuario. */
+                organization_id?: number | null;
+            };
             header?: {
                 "X-CSRF-Token"?: string | null;
             };
@@ -14512,7 +15918,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Extracción lanzada (o ya en curso) */
+            /** @description Extracción encolada (o ya en cola) */
             202: {
                 headers: {
                     [name: string]: unknown;
@@ -14756,11 +16162,15 @@ export interface operations {
     get_tech_scores_api_v1_licitaciones__id_externo__tech_scores_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
             path: {
                 id_externo: string;
             };
-            cookie?: never;
+            cookie?: {
+                session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -15064,9 +16474,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    }[];
+                    "application/json": components["schemas"]["ApiKeyOut"][];
                 };
             };
             /** @description API key inválida */
@@ -15369,12 +16777,16 @@ export interface operations {
     activate_model_version_api_v1_models__name__activate__version__post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
             path: {
                 name: string;
                 version: number;
             };
-            cookie?: never;
+            cookie?: {
+                session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -15421,9 +16833,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    }[];
+                    "application/json": components["schemas"]["ModelVersionOut"][];
                 };
             };
             /** @description Validation Error */
@@ -15652,6 +17062,224 @@ export interface operations {
             };
         };
     };
+    post_accept_organization_invitation_api_v1_organizations_invitations_accept_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OrganizationInvitationAccept"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrganizationSummary"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_organization_capabilities_api_v1_organizations__organization_id__capabilities_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                organization_id: number;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrganizationCapabilitiesOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_organization_capabilities_api_v1_organizations__organization_id__capabilities_put: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                organization_id: number;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OrganizationCapabilities"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrganizationCapabilitiesOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_organization_invitations_api_v1_organizations__organization_id__invitations_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                organization_id: number;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrganizationInvitationOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_organization_invitation_api_v1_organizations__organization_id__invitations__invitation_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                organization_id: number;
+                invitation_id: number;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StatusOk"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_resend_organization_invitation_api_v1_organizations__organization_id__invitations__invitation_id__resend_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                organization_id: number;
+                invitation_id: number;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrganizationInvitationOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_organization_members_api_v1_organizations__organization_id__members_get: {
         parameters: {
             query?: never;
@@ -15712,7 +17340,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["OrganizationMembershipOut"];
+                    "application/json": components["schemas"]["OrganizationMembershipOut"] | components["schemas"]["OrganizationInvitationOut"];
                 };
             };
             /** @description Validation Error */
@@ -15753,6 +17381,80 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["OrganizationMembershipOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_organization_nifs_api_v1_organizations__organization_id__nifs_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                organization_id: number;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrganizationNifsOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_organization_nifs_api_v1_organizations__organization_id__nifs_put: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                organization_id: number;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OrganizationNifsIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrganizationNifsOut"];
                 };
             };
             /** @description Validation Error */
@@ -16323,6 +18025,76 @@ export interface operations {
             };
         };
     };
+    get_pursuits_weights_proposal_api_v1_pursuits_weights_proposal_get: {
+        parameters: {
+            query?: {
+                organization_id?: number | null;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PesosPropuestos"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_pursuits_weights_proposal_apply_api_v1_pursuits_weights_proposal_apply_post: {
+        parameters: {
+            query?: {
+                organization_id?: number | null;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PesosPropuestosAplicados"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_pursuit_detail_api_v1_pursuits__pursuit_id__get: {
         parameters: {
             query?: {
@@ -16389,6 +18161,43 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PursuitDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_pursuit_checklist_api_v1_pursuits__pursuit_id__checklist_get: {
+        parameters: {
+            query?: {
+                organization_id?: number | null;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                pursuit_id: number;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoNoGoChecklist"];
                 };
             };
             /** @description Validation Error */
@@ -17013,9 +18822,13 @@ export interface operations {
     verify_audit_integrity_api_v1_security_audit_verify_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
             path?: never;
-            cookie?: never;
+            cookie?: {
+                session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -17026,6 +18839,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AuditChainVerification"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -17461,7 +19283,10 @@ export interface operations {
     };
     list_all_api_v1_webhooks_get: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Organización activa; por defecto la personal del usuario. */
+                organization_id?: number | null;
+            };
             header?: {
                 "X-CSRF-Token"?: string | null;
             };
@@ -17478,9 +19303,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    }[];
+                    "application/json": components["schemas"]["WebhookOut"][];
                 };
             };
             /** @description API key inválida */
@@ -17600,9 +19423,59 @@ export interface operations {
             };
         };
     };
-    get_one_api_v1_webhooks__webhook_id__get: {
+    list_global_api_v1_webhooks_global_get: {
         parameters: {
             query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WebhookOut"][];
+                };
+            };
+            /** @description API key inválida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Requiere admin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_one_api_v1_webhooks__webhook_id__get: {
+        parameters: {
+            query?: {
+                /** @description Organización activa; por defecto la personal del usuario. */
+                organization_id?: number | null;
+            };
             header?: {
                 "X-CSRF-Token"?: string | null;
             };
@@ -17651,7 +19524,10 @@ export interface operations {
     };
     delete_api_v1_webhooks__webhook_id__delete: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Organización activa; por defecto la personal del usuario. */
+                organization_id?: number | null;
+            };
             header?: {
                 "X-CSRF-Token"?: string | null;
             };
@@ -17705,7 +19581,10 @@ export interface operations {
     };
     update_api_v1_webhooks__webhook_id__patch: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Organización activa; por defecto la personal del usuario. */
+                organization_id?: number | null;
+            };
             header?: {
                 "X-CSRF-Token"?: string | null;
             };
@@ -17767,6 +19646,8 @@ export interface operations {
         parameters: {
             query?: {
                 limit?: number;
+                /** @description Organización activa; por defecto la personal del usuario. */
+                organization_id?: number | null;
             };
             header?: {
                 "X-CSRF-Token"?: string | null;
@@ -17816,7 +19697,10 @@ export interface operations {
     };
     ping_api_v1_webhooks__webhook_id__ping_post: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Organización activa; por defecto la personal del usuario. */
+                organization_id?: number | null;
+            };
             header?: {
                 "X-CSRF-Token"?: string | null;
             };

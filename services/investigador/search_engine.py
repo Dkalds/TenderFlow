@@ -1,8 +1,18 @@
-"""Motor de búsqueda híbrido — FTS5/BM25 + LIKE fallback.
+"""Motor de búsqueda del Investigador — RRF (FTS + pgvector), FTS y LIKE.
 
-Encapsula búsqueda FTS5/BM25 (léxica) y LIKE fallback con lógica de
-reranking. FAISS se eliminó en Fase 3 del plan de reducción de superficie
-(2026-07-04): /ask no lo usaba; /search ya degrada a FTS5+BM25 solo.
+Encapsula los tres caminos de recuperación, de más a menos informado:
+
+1. ``hybrid_search``: fusión Reciprocal Rank Fusion de la lista FTS y la
+   lista de similitud vectorial sobre ``documento_chunks`` (pgvector), con el
+   peso relativo de ambas gobernado por ``alpha``.
+2. ``fts5_search``: ``tsvector``/``ts_rank_cd`` (los nombres ``fts5_*``
+   sobreviven por contrato; el motor es Postgres desde ADR-021).
+3. ``like_search``: coincidencia literal, último recurso.
+
+FAISS se eliminó en la Fase 3 del plan de reducción de superficie
+(2026-07-04). Lo que le sucede no es un índice en memoria sino la fusión RRF
+en SQL de ``db/search_backend.py``, que existía desde el plan Pliegos+RAG y
+hasta 2026-09 solo consumía ``/ask``.
 """
 
 from __future__ import annotations
@@ -224,6 +234,54 @@ def fts5_search(question: str, top_k: int) -> list[tuple[str, float]]:
 def like_search(question: str, top_k: int) -> list[tuple[str, float]]:
     """LIKE fallback para cuando FTS5 no está disponible."""
     return _repo.like_fallback_search(question, top_k)
+
+
+def hybrid_search(question: str, top_k: int, *, alpha: float | None = None) -> list[dict[str, Any]]:
+    """Fusión RRF (FTS + pgvector) para una consulta, o ``[]`` si no aplica.
+
+    Devuelve licitaciones completas (los mismos campos que ``fetch_docs``, más
+    ``tecnologia``, ``rrf_score`` y ``chunks``) ya ordenadas por la fusión.
+
+    ``[]`` significa «este camino no está disponible o no encontró nada» y el
+    llamador debe degradar a FTS: no hay modelo de embeddings instalado
+    (extra ``[ml]``), no hay un solo chunk embebido en la BD, la consulta no
+    se pudo codificar, o el SQL falló (``hybrid_search_docs`` es fail-open).
+    Las dos comprobaciones previas —modelo y corpus— son lo que permite al
+    llamador etiquetar la fuente por el camino REALMENTE ejecutado en vez de
+    por configuración.
+
+    Nota: esto NO mira ``settings.RAG_HYBRID_ENABLED``. Ese flag existe para
+    decidir si ``/ask`` cambia de recuperación por debajo de un LLM que ya
+    responde; aquí la única pregunta es si hay embeddings con los que fusionar.
+    """
+    from services.embeddings import embeddings_available, encode_texts
+
+    if not embeddings_available():
+        return []
+
+    from db.search_backend import document_embeddings_available, hybrid_search_docs
+
+    if not document_embeddings_available():
+        return []
+
+    try:
+        query_embedding = encode_texts([question])[0].tolist()
+    except Exception as e:
+        log.debug("hybrid_search.embed_failed", error=str(e))
+        return []
+
+    try:
+        docs = hybrid_search_docs(
+            question,
+            query_embedding,
+            limit=top_k,
+            candidate_k=max(top_k, 50),
+            alpha=alpha,
+        )
+    except Exception as e:
+        log.debug("hybrid_search.query_failed", error=str(e))
+        return []
+    return docs
 
 
 def fetch_docs(ids: list[str], allowed_ids: set[str] | None = None) -> dict[str, dict[str, Any]]:

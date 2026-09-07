@@ -35,6 +35,24 @@ class ColumnCompleteness(BaseModel):
     pct: float
 
 
+class DocumentoFormatoCobertura(BaseModel):
+    """Cuántos adjuntos hay de cada formato y cuántos se supieron leer (S8.2).
+
+    Sin este desglose, «los pliegos en DOCX no se leen» era una anécdota: el
+    ``status`` mezclaba en ``error`` los formatos no soportados con los PDF
+    corruptos y las descargas caducadas. ``unsupported`` (``v103``) los separa
+    y esto los publica, así que la decisión de añadir un formato se toma sobre
+    el número de expedientes que desbloquea.
+    """
+
+    content_type: str | None = None
+    total: int = 0
+    extracted: int = 0
+    unsupported: int = 0
+    error: int = 0
+    pendientes: int = 0
+
+
 class CodigoNoCatalogado(BaseModel):
     """Un código de lista controlada que el catálogo no sabe traducir.
 
@@ -76,6 +94,14 @@ class QualityResult(BaseModel):
     # scope legacy user_key-only (ver docs/IMPROVEMENT_BACKLOG.md).
     pct_organization_scoped: float = 100.0
     filas_sin_organizacion: int = 0
+    # ── Documentos (S8) ────────────────────────────────────────────────
+    documentos_por_formato: list[DocumentoFormatoCobertura] = Field(default_factory=list)
+    # Ocupación del almacén de binarios (``shared/object_store.py``). `None` =
+    # NO MEDIDO —no hay almacén configurado, o listarlo falló—, con el mismo
+    # criterio que `cobertura_nif`: publicar un 0 medido de algo que nadie mide
+    # se lee como «el bucket está vacío», que es otra afirmación.
+    blob_store_objetos: int | None = None
+    blob_store_bytes: int | None = None
     # Campo ADITIVO (F1.7). Un código CODICE sin entrada en el catálogo se
     # pinta tal cual con el aviso «código no catalogado»; esta lista es lo que
     # convierte ese aviso disperso por la consola en una cifra que alguien
@@ -184,6 +210,40 @@ def _codigos_no_catalogados() -> list[CodigoNoCatalogado]:
 # ---------------------------------------------------------------------------
 
 
+def _documentos_por_formato() -> list[DocumentoFormatoCobertura]:
+    """Desglose de adjuntos por content-type (best-effort).
+
+    Best-effort como ``_dlq_count``: la pantalla de calidad no puede caerse
+    entera porque el desglose de un bloque no esté disponible. Una lista vacía
+    significa «no hay documentos o no se pudo consultar», y el frontend ya
+    distingue una lista vacía de una métrica ausente.
+    """
+    try:
+        from db.repositories.documentos import DocumentosRepository
+
+        return [
+            DocumentoFormatoCobertura.model_validate(fila)
+            for fila in DocumentosRepository().formato_counts()
+        ]
+    except Exception:
+        log.debug("quality_documentos_por_formato_unavailable")
+        return []
+
+
+def _blob_store_ocupacion() -> tuple[int | None, int | None]:
+    """(objetos, bytes) del almacén de binarios, o ``(None, None)`` si no se mide."""
+    try:
+        from shared.object_store import store_stats
+
+        stats = store_stats()
+    except Exception:
+        log.debug("quality_blob_store_unavailable")
+        return None, None
+    if stats is None:
+        return None, None
+    return stats.objetos, stats.bytes
+
+
 def _reportes_por_tipo() -> dict[str, int]:
     """Reportes de dato recibidos, por tipo. Best-effort como sus vecinas."""
     try:
@@ -201,6 +261,12 @@ def get_quality() -> QualityResult:
     log.info("analytics_quality_start")
     stats = _repo.quality_completitud()
     pct_organization_scoped, filas_sin_organizacion = _organization_scope_coverage()
+    documentos_por_formato = _documentos_por_formato()
+    blob_objetos, blob_bytes = _blob_store_ocupacion()
+    # Se resuelven una sola vez y no una por rama: las dos ramas las publican,
+    # y cada una de estas dos llamadas es una consulta.
+    codigos_no_catalogados = _codigos_no_catalogados()
+    reportes_por_tipo = _reportes_por_tipo()
 
     total = stats["total"]
     if total == 0:
@@ -209,8 +275,11 @@ def get_quality() -> QualityResult:
             dlq_count=_dlq_count(),
             pct_organization_scoped=pct_organization_scoped,
             filas_sin_organizacion=filas_sin_organizacion,
-            codigos_no_catalogados=_codigos_no_catalogados(),
-            reportes_por_tipo=_reportes_por_tipo(),
+            documentos_por_formato=documentos_por_formato,
+            blob_store_objetos=blob_objetos,
+            blob_store_bytes=blob_bytes,
+            codigos_no_catalogados=codigos_no_catalogados,
+            reportes_por_tipo=reportes_por_tipo,
         )
 
     cols: dict[str, int] = stats["cols"]
@@ -258,8 +327,11 @@ def get_quality() -> QualityResult:
         pct_organization_scoped=pct_organization_scoped,
         filas_sin_organizacion=filas_sin_organizacion,
         completitud_columnas=completitud,
-        codigos_no_catalogados=_codigos_no_catalogados(),
-        reportes_por_tipo=_reportes_por_tipo(),
+        documentos_por_formato=documentos_por_formato,
+        blob_store_objetos=blob_objetos,
+        blob_store_bytes=blob_bytes,
+        codigos_no_catalogados=codigos_no_catalogados,
+        reportes_por_tipo=reportes_por_tipo,
         # cobertura_nif / cobertura_modulo_sap se quedan en su default `None`
         # (no medidas): ver la nota del DTO.
     )

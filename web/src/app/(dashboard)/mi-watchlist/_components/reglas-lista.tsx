@@ -11,7 +11,7 @@
 import { Eye } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import type { ApiRule, RuleBody } from "../_hooks/use-watchlist-rules";
+import type { ApiRule, RuleBody } from "../_hooks/watchlist-rule-types";
 import { ReglaCard } from "./regla-card";
 
 export function ReglasLista({

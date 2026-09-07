@@ -179,6 +179,62 @@ def render_digest(
     return "\n".join(texto).rstrip() + "\n", "".join(partes_html)
 
 
+# ── Correo de un solo evento (S4.6) ─────────────────────────────────────────
+#
+# El digest agrupa coincidencias de reglas; una asignación o un comentario no
+# es eso: es un hecho suelto que exige una respuesta de una persona concreta.
+# Reutilizar `render_digest` para uno solo daba un correo con cabecera de
+# «N licitaciones nuevas» y un bloque de uno, que se lee como spam.
+
+
+def asunto_evento(titulo_evento: str, licitacion_id: str | None) -> str:
+    """Asunto del correo de un evento personal."""
+    if licitacion_id:
+        return f"TenderFlow · {titulo_evento} ({licitacion_id})"
+    return f"TenderFlow · {titulo_evento}"
+
+
+def render_evento(
+    *,
+    titulo: str,
+    cuerpo: str,
+    licitacion_id: str | None,
+    base_url: str | None = None,
+) -> tuple[str, str]:
+    """Devuelve ``(texto_plano, html)`` del correo de un evento.
+
+    Sin motor de plantillas, igual que el digest y el correo de acceso
+    concedido: el proyecto no tiene Jinja y añadir una dependencia para un
+    tercer correo no compensa.
+    """
+    enlace = (
+        enlace_ficha({"id_externo": licitacion_id}, base_url)
+        if licitacion_id and base_url
+        else None
+    )
+
+    texto = [titulo, "", cuerpo]
+    if enlace:
+        texto.extend(["", enlace])
+    texto.extend(["", "Gestiona qué avisos recibes por correo en tu perfil de TenderFlow."])
+
+    titulo_html = html.escape(titulo)
+    if enlace:
+        titulo_html = (
+            f'<a href="{html.escape(enlace, quote=True)}" '
+            f'style="color:#1d4ed8;text-decoration:none">{titulo_html}</a>'
+        )
+    partes = [
+        '<!DOCTYPE html><html><body style="font-family:Arial,sans-serif;'
+        'max-width:640px;margin:0 auto;color:#1f2733;line-height:1.5">',
+        f'<p style="font-size:15px;font-weight:600">{titulo_html}</p>',
+        f'<p style="font-size:14px;color:#55606e">{html.escape(cuerpo)}</p>',
+        '<p style="color:#8a93a0;font-size:12px;margin-top:24px">TenderFlow · '
+        "gestiona qué avisos recibes por correo en tu perfil.</p></body></html>",
+    ]
+    return "\n".join(texto).rstrip() + "\n", "".join(partes)
+
+
 # ── Baja de los correos ─────────────────────────────────────────────────────
 # El enlace del pie pausa todas las reglas de quien lo pulsa sin pedirle sesión:
 # quien quiere dejar de recibir correo no quiere antes hacer login. Lo que

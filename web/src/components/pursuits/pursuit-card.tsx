@@ -2,11 +2,28 @@ import Link from "next/link";
 import { ArrowRight, CalendarClock, UserRound } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { PursuitCommentsButton } from "@/components/pursuits/pursuit-comments";
-import { PursuitDecisionBadge, PursuitStatusBadge, daysUntil, formatDate } from "@/components/pursuits/pursuit-presenters";
+import { PursuitDecisionBadge, PursuitLoteBadge, PursuitStatusBadge, daysUntil, formatDate, loteEtiqueta } from "@/components/pursuits/pursuit-presenters";
 import type { Pursuit } from "@/hooks/use-pursuits";
 
-export function PursuitCard({ pursuit }: { pursuit: Pursuit }) {
+/**
+ * `enExpediente` lo pone el tablero cuando la tarjeta ya va debajo de la
+ * cabecera de su expediente: repetir ahí el título de la licitación tres veces
+ * seguidas convierte el grupo en ruido, y lo que distingue a esas tarjetas es
+ * el lote.
+ */
+export function PursuitCard({
+  pursuit,
+  enExpediente = false,
+}: {
+  pursuit: Pursuit;
+  enExpediente?: boolean;
+}) {
   const deadline = daysUntil(pursuit.tender_deadline);
+  const lote = loteEtiqueta(pursuit);
+  const titulo =
+    enExpediente && lote
+      ? lote
+      : (pursuit.tender_title ?? `Licitación ${pursuit.licitacion_id}`);
   return (
     <Card className="group relative overflow-hidden hover:-translate-y-0.5">
       <CardContent className="p-0">
@@ -14,8 +31,13 @@ export function PursuitCard({ pursuit }: { pursuit: Pursuit }) {
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
               <Link href={`/oportunidades/${pursuit.id}`} className="font-semibold leading-snug hover:text-primary hover:underline">
-                {pursuit.tender_title ?? `Licitación ${pursuit.licitacion_id}`}
+                {titulo}
               </Link>
+              {!enExpediente && lote ? (
+                <div className="mt-1.5">
+                  <PursuitLoteBadge pursuit={pursuit} />
+                </div>
+              ) : null}
               <p className="mt-1 truncate text-xs text-muted-foreground">Referencia {pursuit.licitacion_id}</p>
             </div>
             <PursuitStatusBadge status={pursuit.status} />

@@ -58,8 +58,8 @@ _NVIDIA_BASE_URL = os.environ.get("NVIDIA_BASE_URL", "https://integrate.api.nvid
 # reasoning ANTES de la respuesta final, y esa traza consume el presupuesto de
 # `max_tokens` del provider (900 en /ask, 1500 en /resumen). Si la traza se lo
 # come entero, el stream llega vacío y /ask degrada — mismo síntoma que un
-# proveedor caído. Se controla con `chat_template_kwargs`, que este cliente
-# todavía NO envía (ver docs/IMPROVEMENT_BACKLOG.md).
+# proveedor caído. Se controla con `chat_template_kwargs`, que este cliente SÍ
+# envía desde 2026-09-06 (ver `REASONING_TEMPLATE_KWARGS` más abajo).
 AVAILABLE_MODELS: list[str] = [
     # ── NVIDIA NIM (free tier: sin coste, limitado por RPM/créditos de la key) ─
     # 284B totales / 13B activos. Tier "flash": el de menor coste computacional
@@ -114,6 +114,52 @@ _PROVIDER_KEY_ENV: dict[str, str] = {
     "anthropic": "ANTHROPIC_API_KEY",
     "nvidia": "NVIDIA_API_KEY",
 }
+
+# ── Modo non-thinking de los NIM de razonamiento ───────────────────────────
+#
+# Registro EXPLÍCITO, no una heurística sobre el nombre. Un `"nemotron" in
+# model` funcionaría hoy y mentiría el día que NVIDIA publique un nemotron sin
+# traza de razonamiento, o un modelo de razonamiento con otro nombre: el fallo
+# sería un stream vacío intermitente, que es exactamente el síntoma que este
+# diccionario existe para eliminar. Cada entrada se apunta a mano al añadir un
+# modelo a `AVAILABLE_MODELS`, y `tests/test_llm_chat_template_kwargs.py`
+# comprueba que ningún modelo del catálogo se queda sin decisión consciente.
+#
+# El valor es el que espera la plantilla de chat del servidor NIM; `thinking:
+# False` suprime la traza y deja el `max_tokens` entero para la respuesta.
+# Verificado contra las model cards de NVIDIA el 2026-09-06: si NVIDIA cambia
+# la clave, el síntoma vuelve a ser el stream vacío, no un 400, así que
+# `make eval-llm` con uno de estos modelos es la comprobación real.
+REASONING_TEMPLATE_KWARGS: dict[str, dict[str, Any]] = {
+    "nvidia/nemotron-3-super-120b-a12b": {"thinking": False},
+    "nvidia/nemotron-3-ultra-550b-a55b": {"thinking": False},
+    "minimaxai/minimax-m3": {"thinking": False},
+}
+
+# Modelos del catálogo que NO son de razonamiento. Existe para que el test de
+# cobertura pueda distinguir "decidido que no lo es" de "nadie lo miró".
+NON_REASONING_MODELS: frozenset[str] = frozenset(
+    {
+        "deepseek-ai/deepseek-v4-flash-0731",
+        "gpt-4o-mini",
+        "gpt-4o",
+        "gpt-3.5-turbo",
+        "claude-sonnet-4-5",
+        "claude-haiku-4-5",
+    }
+)
+
+
+def chat_template_kwargs_for(model: str) -> dict[str, Any] | None:
+    """Argumentos de plantilla de chat para ``model``, o ``None``.
+
+    Devuelve algo distinto de ``None`` **solo** para los modelos NIM de
+    razonamiento: `chat_template_kwargs` es una extensión de NIM/vLLM y
+    mandársela a OpenAI o a Anthropic es un 400.
+    """
+    kwargs = REASONING_TEMPLATE_KWARGS.get(model)
+    return dict(kwargs) if kwargs is not None else None
+
 
 # Límites de entrada
 #
@@ -421,6 +467,7 @@ def _stream_single_model(
                 usage_sink=usage,
                 base_url=_NVIDIA_BASE_URL,
                 max_tokens=max_tokens,
+                chat_template_kwargs=chat_template_kwargs_for(model),
             )
         else:
             raise ValueError(f"Proveedor desconocido para modelo '{model}'")

@@ -51,6 +51,22 @@ def _stale_whitelist_entries(whitelist: list[str]) -> list[str]:
     return [f for f in whitelist if "*" not in f and not (_ROOT / f).exists()]
 
 
+def _user_key_ratchet() -> tuple[int, int]:
+    """``(ficheros que usan user_key hoy, tamaño de la lista congelada)``.
+
+    D18 fase 1: la identidad interna se deriva del correo y se está retirando.
+    El número vive aquí y no en AGENTS.md porque es calculable, y porque es el
+    único indicador de si T4 avanza: mientras no llegue a cero, cambiar de
+    correo sigue costando los datos de una persona.
+    """
+    sys.path.insert(0, str(_ROOT / "scripts"))
+    import check_user_key_ratchet
+
+    return len(check_user_key_ratchet._ficheros_con_user_key()), len(
+        check_user_key_ratchet.CONGELADOS
+    )
+
+
 def _jobs_table() -> tuple[list[dict], list[str]]:
     sys.path.insert(0, str(_ROOT / "scripts"))
     import check_job_parity
@@ -162,7 +178,18 @@ def render() -> str:
         lines += [f"- ~~`{f}`~~" for f in stale]
         lines += [""]
     lines += [f"- `{f}`" for f in whitelist if f not in stale]
+    usan_user_key, congelados = _user_key_ratchet()
     lines += [
+        "",
+        "## Ratchet `user_key` — identidad derivada del correo (D18, fase 1)",
+        "",
+        f"**{usan_user_key} ficheros** de producción usan `user_key` "
+        f"(lista congelada: {congelados}; solo puede decrecer).",
+        "",
+        "`scripts/check_user_key_ratchet.py` falla ante un fichero nuevo que la "
+        "use. Llega a cero con T4, que migra a `user_id` con columna doble y "
+        "lectura dual; hasta entonces cambiar de correo pierde los datos que "
+        "cuelgan de esa clave. No cuenta `tests/` ni `db/alembic/versions/`.",
         "",
         "## Motor de la suite de tests (ADR-018)",
         "",
