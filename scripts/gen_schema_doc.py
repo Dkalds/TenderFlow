@@ -408,7 +408,8 @@ def _dsn() -> str:
         "TEST_DATABASE_URL no configurada (ni en el entorno ni en .env): "
         "este generador necesita un Postgres real sobre el que aplicar "
         "`alembic upgrade head`. Ejemplo:\n"
-        "  TEST_DATABASE_URL=postgresql://tenderflow:tenderflow@localhost:5432/tenderflow"
+        "  TEST_DATABASE_URL="
+        "postgresql://tenderflow:tenderflow@localhost:5432/tenderflow"  # pragma: allowlist secret
     )
 
 

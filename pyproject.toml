@@ -374,6 +374,10 @@ skips = [
     "B108",  # hardcoded tmp dir — paths de modelos bajo control interno
     "B105",  # hardcoded password — cadenas vacías como defaults, no secrets
     "B403",  # import pickle — aceptado para faiss cache interno
+    # `import subprocess` a secas, sin llamada: la llamada la juzga B603, que ya
+    # está arriba. Lo trae `scraper/document_fetcher.py`, que invoca `ocrmypdf`
+    # con binario y argumentos fijos.
+    "B404",  # import subprocess — la invocación va con argv fijo, sin shell
     "B301",  # pickle — aceptado para faiss cache interno
     "B112",  # try-except-continue — aceptado en best-effort loops
     "B310",  # urllib urlopen — URLs controladas internamente

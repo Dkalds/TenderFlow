@@ -879,7 +879,11 @@ _PROVIDERS: dict[str, _OAuthProvider] = {
         credentials=_google_credentials,
         static_endpoints=_OAuthEndpoints(
             authorize_url="https://accounts.google.com/o/oauth2/v2/auth",
-            token_url="https://oauth2.googleapis.com/token",  # noqa: S106 - URL pública, no un secreto
+            # No es una contraseña: es la URL pública del endpoint de token de
+            # Google. Tanto ruff (S106) como bandit (B106) miran el nombre del
+            # argumento, no el valor. La razón va aquí arriba y no detrás del
+            # `nosec` porque bandit lee todo lo que le sigue como ids de test.
+            token_url="https://oauth2.googleapis.com/token",  # noqa: S106  # nosec B106
             # Google verifica con su propio camino: estos dos no se usan y se
             # dejan por completitud del registro.
             jwks_uri="https://www.googleapis.com/oauth2/v3/certs",
