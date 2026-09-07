@@ -245,9 +245,10 @@ class TestParidad:
 
         with connect() as c:
             c.execute(
+                # Mismo motivo que en `_sembrar`: `fecha_extraccion` es NOT NULL.
                 "INSERT INTO licitaciones (id_externo, titulo, tecnologia, estado, "
-                "fecha_publicacion) VALUES (%s, %s, %s, %s, %s)",
-                ("E4", "Sin importe", "SAP", "PUB", "2026-09-01"),
+                "fecha_publicacion, fecha_extraccion) VALUES (%s, %s, %s, %s, %s, %s)",
+                ("E4", "Sin importe", "SAP", "PUB", "2026-09-01", "2026-09-01"),
             )
         assert "E4" not in self._ids_offset(importe_min=0)
         assert "E4" in self._ids_offset()
