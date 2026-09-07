@@ -1296,7 +1296,12 @@ export interface paths {
         };
         /**
          * Buscar empresas del maestro
-         * @description Lista empresas canónicas ordenadas por importe adjudicado total.
+         * @description Página del maestro, ordenada por la columna pedida, con el total del filtro.
+         *
+         *     El orden es del servidor y no del cliente a propósito: ordenar en la
+         *     página traída sólo reordena las 50 filas que ya se tienen, y con 1.284
+         *     empresas eso responde a una pregunta distinta de la que hace quien pulsa
+         *     la cabecera «Importe».
          */
         get: operations["list_empresas_api_v1_empresas_get"];
         put?: never;
@@ -5016,6 +5021,18 @@ export interface components {
             limit: number;
             /** Offset */
             offset: number;
+            /**
+             * Order
+             * @enum {string}
+             */
+            order: "asc" | "desc";
+            /**
+             * Sort
+             * @enum {string}
+             */
+            sort: "nombre" | "nif" | "contratos" | "importe";
+            /** Total */
+            total: number;
         };
         /**
          * EmpresasStats
@@ -12256,6 +12273,10 @@ export interface operations {
                 q?: string | null;
                 limit?: number;
                 offset?: number;
+                /** @description Columna por la que ordenar */
+                sort?: "nombre" | "nif" | "contratos" | "importe";
+                /** @description Sentido del orden */
+                order?: "asc" | "desc";
             };
             header?: {
                 "X-CSRF-Token"?: string | null;

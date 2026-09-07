@@ -12,12 +12,12 @@ const allViews = (): [string, SpaceView][] =>
   );
 
 describe("SPACE_VIEWS", () => {
-  it("cubre los cuatro espacios multivista con su recuento del rediseño", () => {
-    // Los recuentos son el contrato de `docs/redesign/README.md`: 17 rutas
-    // heredadas repartidas en cuatro espacios. Si uno cambia sin actualizar el
-    // doc, la tabla del README miente.
+  it("cubre los cinco espacios multivista con su recuento del rediseño", () => {
+    // Los recuentos son el contrato de `docs/redesign/README.md`. Si uno
+    // cambia sin actualizar el doc, la tabla del README miente.
     expect(Object.keys(SPACE_VIEWS).sort()).toEqual([
       "competencia",
+      "empresas",
       "mercado",
       "mi-pipeline",
       "ops",
@@ -26,6 +26,14 @@ describe("SPACE_VIEWS", () => {
     expect(SPACE_VIEWS.competencia).toHaveLength(2);
     expect(SPACE_VIEWS["mi-pipeline"]).toHaveLength(3);
     expect(SPACE_VIEWS.ops).toHaveLength(6);
+    expect(SPACE_VIEWS.empresas).toHaveLength(2);
+  });
+
+  it("empresas es el único espacio con vistas que no absorbe ninguna ruta", () => {
+    // Sus dos vistas siempre vivieron dentro de `/empresas`: entran en la
+    // tabla para ser direccionables (`?vista=revision`), no para absorber
+    // nada. Por eso el recuento de rutas heredadas de abajo no sube.
+    expect(SPACE_VIEWS.empresas.every((view) => view.from === undefined)).toBe(true);
   });
 
   it("absorbe 18 rutas heredadas, todas distintas", () => {

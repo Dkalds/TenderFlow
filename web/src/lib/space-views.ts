@@ -58,6 +58,15 @@ export const SPACE_VIEWS: Record<string, SpaceView[]> = {
     { key: "embudo", label: "Embudo" },
     { key: "horizonte", label: "Horizonte", from: "renovaciones" },
   ],
+  // Empresas no absorbe ninguna ruta heredada: sus dos vistas siempre
+  // convivieron dentro de `/empresas`. Están aquí para que la cola de revisión
+  // sea direccionable —`/empresas?vista=revision` es lo que se pega en un
+  // mensaje cuando hay matches que resolver— y para que el conmutador sea el
+  // mismo gesto que en Mercado o en Ops, y no unas pestañas propias.
+  empresas: [
+    { key: "maestro", label: "Maestro" },
+    { key: "revision", label: "Revisión" },
+  ],
   ops: [
     { key: "observabilidad", label: "Observabilidad", from: "observabilidad" },
     { key: "calidad", label: "Calidad de datos", from: "calidad-datos" },

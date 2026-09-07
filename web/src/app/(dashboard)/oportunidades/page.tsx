@@ -2,28 +2,16 @@
 
 import * as React from "react";
 import Link from "next/link";
-import {
-  BriefcaseBusiness,
-  CircleCheckBig,
-  CircleX,
-  type LucideIcon,
-  RadioTower,
-  Search,
-  Trophy,
-} from "lucide-react";
+import { BriefcaseBusiness, CircleCheckBig, CircleX, type LucideIcon, RadioTower, Search, Trophy } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PursuitCard } from "@/components/pursuits/pursuit-card";
 import { formatEur } from "@/components/pursuits/pursuit-presenters";
 import { PanelEmpty, PanelError } from "@/components/console/panel";
-import {
-  type Pursuit,
-  type PursuitStatus,
-  usePursuitMetrics,
-  usePursuits,
-} from "@/hooks/use-pursuits";
+import { usePursuitMetrics, usePursuits } from "@/hooks/use-pursuits";
 import { SpaceShell } from "@/components/layout/space-shell";
 import { cn } from "@/lib/utils";
+import { LANES, agruparPorExpediente } from "./_lib/carriles";
 
 /**
  * Oportunidades — tablero de ejecución.
@@ -54,21 +42,6 @@ import { cn } from "@/lib/utils";
  * expedientes parece un error de la pantalla.
  */
 
-const LANES: { title: string; statuses: PursuitStatus[]; description: string }[] = [
-  {
-    title: "Por decidir",
-    statuses: ["identified", "qualifying", "go_no_go"],
-    description: "Identificadas, cualificando o en GO/NO-GO",
-  },
-  { title: "En preparación", statuses: ["preparing"], description: "Trabajo activo de la oferta" },
-  { title: "Presentadas", statuses: ["submitted"], description: "Pendientes de resultado" },
-  {
-    title: "Cerradas",
-    statuses: ["won", "lost", "withdrawn"],
-    description: "Ganadas, perdidas o retiradas",
-  },
-];
-
 function Metric({
   icon: Icon,
   label,
@@ -83,55 +56,23 @@ function Metric({
   loading: boolean;
 }) {
   return (
-    <div className="flex min-w-0 items-center gap-3 bg-card px-4 py-3">
-      <span className="grid h-8 w-8 flex-none place-items-center rounded-lg bg-primary/10 text-primary">
+    <div className="bg-card flex min-w-0 items-center gap-3 px-4 py-3">
+      <span className="bg-primary/10 text-primary grid h-8 w-8 flex-none place-items-center rounded-lg">
         <Icon className="h-4 w-4" aria-hidden="true" />
       </span>
       <div className="min-w-0">
-        <div className="mb-1.5 truncate font-mono text-[8.5px] font-semibold uppercase tracking-[0.11em] text-muted-foreground">
+        <div className="text-muted-foreground mb-1.5 truncate font-mono text-[8.5px] font-semibold tracking-[0.11em] uppercase">
           {label}
         </div>
         {loading ? (
           <Skeleton className="h-5 w-16 rounded" />
         ) : (
-          <div className="tf-tnum font-mono text-[19px] font-semibold leading-none">
-            {value ?? "—"}
-          </div>
+          <div className="tf-tnum font-mono text-[19px] leading-none font-semibold">{value ?? "—"}</div>
         )}
-        <div className="mt-1 truncate text-[10px] leading-[1.3] text-muted-foreground/80">
-          {hint}
-        </div>
+        <div className="text-muted-foreground/80 mt-1 truncate text-[10px] leading-[1.3]">{hint}</div>
       </div>
     </div>
   );
-}
-
-interface GrupoExpediente {
-  licitacionId: string;
-  titulo: string;
-  items: Pursuit[];
-}
-
-/**
- * Agrupa las tarjetas de un carril por expediente, conservando el orden en que
- * llegaron: el backend ya ordena por `updated_at`, y reordenar aquí sería
- * fabricar un criterio que el listado no dio.
- */
-function agruparPorExpediente(items: Pursuit[]): GrupoExpediente[] {
-  const grupos = new Map<string, GrupoExpediente>();
-  for (const item of items) {
-    const grupo = grupos.get(item.licitacion_id);
-    if (grupo) {
-      grupo.items.push(item);
-    } else {
-      grupos.set(item.licitacion_id, {
-        licitacionId: item.licitacion_id,
-        titulo: item.tender_title ?? `Licitación ${item.licitacion_id}`,
-        items: [item],
-      });
-    }
-  }
-  return [...grupos.values()];
 }
 
 export default function OportunidadesPage() {
@@ -151,7 +92,7 @@ export default function OportunidadesPage() {
   const search = (
     <label className="relative block w-56 flex-none" htmlFor="pursuit-search">
       <Search
-        className="pointer-events-none absolute left-2.5 top-1.5 h-3.5 w-3.5 text-muted-foreground"
+        className="text-muted-foreground pointer-events-none absolute top-1.5 left-2.5 h-3.5 w-3.5"
         aria-hidden="true"
       />
       <span className="sr-only">Buscar oportunidad</span>
@@ -172,7 +113,7 @@ export default function OportunidadesPage() {
       <div className="flex h-full min-h-0 flex-col">
         <section
           aria-label="Resumen de oportunidades"
-          className="grid flex-none grid-cols-2 gap-px border-b border-border/70 bg-border/60 lg:grid-cols-4"
+          className="border-border/70 bg-border/60 grid flex-none grid-cols-2 gap-px border-b lg:grid-cols-4"
         >
           <Metric
             icon={BriefcaseBusiness}
@@ -214,20 +155,19 @@ export default function OportunidadesPage() {
           </div>
         ) : empty ? (
           <div className="grid flex-1 place-items-center p-10">
-            <div className="max-w-[480px] rounded-xl border border-dashed border-border/60 px-8 py-11 text-center">
-              <span className="mx-auto mb-3.5 grid h-11 w-11 place-items-center rounded-[11px] bg-muted-foreground/10 text-muted-foreground">
+            <div className="border-border/60 max-w-[480px] rounded-xl border border-dashed px-8 py-11 text-center">
+              <span className="bg-muted-foreground/10 text-muted-foreground mx-auto mb-3.5 grid h-11 w-11 place-items-center rounded-[11px]">
                 <BriefcaseBusiness className="h-5 w-5" aria-hidden="true" />
               </span>
-              <h3 className="mb-1.5 font-display text-[15px] font-semibold leading-[1.3]">
+              <h3 className="font-display mb-1.5 text-[15px] leading-[1.3] font-semibold">
                 Todavía no hay oportunidades
               </h3>
-              <p className="mb-4 text-[12.5px] leading-[1.6] text-muted-foreground text-pretty">
-                Convierte una señal del Radar en una oportunidad de equipo para empezar a hacerle
-                seguimiento.
+              <p className="text-muted-foreground mb-4 text-[12.5px] leading-[1.6] text-pretty">
+                Convierte una señal del Radar en una oportunidad de equipo para empezar a hacerle seguimiento.
               </p>
               <Link
                 href="/radar"
-                className="tf-pressable inline-flex h-8 items-center gap-1.5 rounded-lg border border-primary/50 bg-linear-to-b from-primary to-[hsl(20_84%_55%)] px-3.5 text-[12.5px] font-semibold text-primary-foreground"
+                className="tf-pressable border-primary/50 from-primary text-primary-foreground inline-flex h-8 items-center gap-1.5 rounded-lg border bg-linear-to-b to-[hsl(20_84%_55%)] px-3.5 text-[12.5px] font-semibold"
               >
                 <RadioTower className="h-3.5 w-3.5" aria-hidden="true" />
                 Ir al Radar
@@ -235,16 +175,12 @@ export default function OportunidadesPage() {
             </div>
           </div>
         ) : (
-          <div className="grid min-h-0 flex-1 grid-cols-1 gap-px bg-border/50 md:grid-cols-2 xl:grid-cols-4">
+          <div className="bg-border/50 grid min-h-0 flex-1 grid-cols-1 gap-px md:grid-cols-2 xl:grid-cols-4">
             {LANES.map((lane) => {
               const laneItems = items.filter((item) => lane.statuses.includes(item.status));
               return (
-                <section
-                  key={lane.title}
-                  aria-label={lane.title}
-                  className="flex min-w-0 flex-col bg-background"
-                >
-                  <div className="flex-none border-b border-border/40 px-3.5 pb-2.5 pt-3">
+                <section key={lane.title} aria-label={lane.title} className="bg-background flex min-w-0 flex-col">
+                  <div className="border-border/40 flex-none border-b px-3.5 pt-3 pb-2.5">
                     <div className="flex items-baseline gap-2">
                       <h2 className="text-[12.5px] font-semibold">{lane.title}</h2>
                       <div className="flex-1" />
@@ -259,9 +195,7 @@ export default function OportunidadesPage() {
                         {laneItems.length}
                       </span>
                     </div>
-                    <p className="mt-1 text-[10.5px] leading-[1.4] text-muted-foreground">
-                      {lane.description}
-                    </p>
+                    <p className="text-muted-foreground mt-1 text-[10.5px] leading-[1.4]">{lane.description}</p>
                   </div>
                   <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-3 py-2.5">
                     {pursuits.isLoading ? (
@@ -277,13 +211,11 @@ export default function OportunidadesPage() {
                           <section
                             key={grupo.licitacionId}
                             aria-label={grupo.titulo}
-                            className="rounded-xl border border-border/50 bg-muted/20 p-1.5"
+                            className="border-border/50 bg-muted/20 rounded-xl border p-1.5"
                           >
-                            <div className="px-1.5 pb-1.5 pt-1">
-                              <p className="truncate text-[11.5px] font-semibold leading-snug">
-                                {grupo.titulo}
-                              </p>
-                              <p className="mt-0.5 text-[10.5px] text-muted-foreground">
+                            <div className="px-1.5 pt-1 pb-1.5">
+                              <p className="truncate text-[11.5px] leading-snug font-semibold">{grupo.titulo}</p>
+                              <p className="text-muted-foreground mt-0.5 text-[10.5px]">
                                 {grupo.items.length} oportunidades de este expediente
                               </p>
                             </div>
