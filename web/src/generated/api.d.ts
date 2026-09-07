@@ -2559,6 +2559,34 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/organizations/gonogo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Gonogo Ajustes
+         * @description Plantilla de go/no-go de la organización: pesos y umbral (C6.4, D30).
+         */
+        get: operations["get_gonogo_ajustes_api_v1_organizations_gonogo_get"];
+        /**
+         * Put Gonogo Ajustes
+         * @description Cambia los pesos y el umbral. Sólo owner/admin, y queda auditado.
+         *
+         *     La plantilla decide contra qué se juzgan las oportunidades del equipo
+         *     entero: quien la toca cambia el criterio de todos, así que el cambio deja
+         *     rastro con el valor anterior y el nuevo.
+         */
+        put: operations["put_gonogo_ajustes_api_v1_organizations_gonogo_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/organizations/{organization_id}/delete": {
         parameters: {
             query?: never;
@@ -3083,6 +3111,35 @@ export interface paths {
          * @description Borra un comentario propio; owner y admin pueden borrar cualquiera.
          */
         delete: operations["delete_pursuit_comment_api_v1_pursuits__pursuit_id__comments__comment_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/pursuits/{pursuit_id}/gonogo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Put Pursuit Gonogo
+         * @description Puntúa la oportunidad con la plantilla vigente (C6.4, D30).
+         *
+         *     Hasta 2026-09 la decisión más cara del proceso —presentarse o no— se
+         *     registraba como una etiqueta y un párrafo de texto libre, así que «¿en qué
+         *     nos equivocamos al decidir?» no tenía respuesta: no constaba contra qué se
+         *     decidió.
+         *
+         *     El total se calcula con los pesos de **este momento** y se guarda. Los pesos
+         *     cambian; recalcularlo al leer haría que cambiar uno reescribiera decisiones
+         *     ya tomadas.
+         */
+        put: operations["put_pursuit_gonogo_api_v1_pursuits__pursuit_id__gonogo_put"];
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -5603,6 +5660,69 @@ export interface components {
              */
             concentracion_top3: number;
         };
+        /**
+         * GoNoGoAjustes
+         * @description Plantilla de la organización: pesos y umbral (owner/admin).
+         */
+        GoNoGoAjustes: {
+            pesos: components["schemas"]["GoNoGoPesos"];
+            /** Umbral */
+            umbral: number;
+        };
+        /**
+         * GoNoGoPesos
+         * @description Pesos de la organización. Deben sumar 100.
+         */
+        GoNoGoPesos: {
+            /** Capacidad */
+            capacidad: number;
+            /** Competencia */
+            competencia: number;
+            /** Encaje Estrategico */
+            encaje_estrategico: number;
+            /** Rentabilidad */
+            rentabilidad: number;
+            /** Riesgo */
+            riesgo: number;
+        };
+        /**
+         * GoNoGoPuntuaciones
+         * @description Las cinco puntuaciones de D30, de 1 a 5 (C6.4).
+         *
+         *     `riesgo` va **al derecho** como los demás: 5 es «poco riesgo». Invertir uno
+         *     solo de los cinco es la forma más rápida de que alguien rellene el
+         *     formulario al revés sin darse cuenta.
+         */
+        GoNoGoPuntuaciones: {
+            /** Capacidad */
+            capacidad: number;
+            /** Competencia */
+            competencia: number;
+            /** Encaje Estrategico */
+            encaje_estrategico: number;
+            /** Rentabilidad */
+            rentabilidad: number;
+            /** Riesgo */
+            riesgo: number;
+        };
+        /**
+         * GoNoGoResult
+         * @description Puntuación de un expediente, con el umbral vigente al puntuarlo.
+         */
+        GoNoGoResult: {
+            /**
+             * Bajo Umbral
+             * @default false
+             */
+            bajo_umbral: boolean;
+            puntuaciones: components["schemas"]["GoNoGoPuntuaciones"];
+            /** Pursuit Id */
+            pursuit_id: number;
+            /** Total */
+            total: number;
+            /** Umbral */
+            umbral: number;
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -7157,6 +7277,8 @@ export interface components {
             created_at: string;
             /** Id */
             id: number;
+            /** Mentions */
+            mentions?: number[];
             /** Organization Id */
             organization_id: number;
             /** Pursuit Id */
@@ -14574,6 +14696,85 @@ export interface operations {
             };
         };
     };
+    get_gonogo_ajustes_api_v1_organizations_gonogo_get: {
+        parameters: {
+            query?: {
+                organization_id?: number | null;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoNoGoAjustes"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_gonogo_ajustes_api_v1_organizations_gonogo_put: {
+        parameters: {
+            query?: {
+                organization_id?: number | null;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GoNoGoAjustes"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoNoGoAjustes"];
+                };
+            };
+            /** @description Sólo owner o admin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Los pesos no suman 100 */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     post_delete_organization_api_v1_organizations__organization_id__delete_post: {
         parameters: {
             query?: never;
@@ -15591,6 +15792,52 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
+            };
+        };
+    };
+    put_pursuit_gonogo_api_v1_pursuits__pursuit_id__gonogo_put: {
+        parameters: {
+            query?: {
+                organization_id?: number | null;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                pursuit_id: number;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GoNoGoPuntuaciones"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoNoGoResult"];
+                };
+            };
+            /** @description La oportunidad no existe en este espacio */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Faltan criterios o están fuera de 1-5 */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

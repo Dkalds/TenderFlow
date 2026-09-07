@@ -428,3 +428,252 @@ class TestBajaPropia:
         assert orden.index("/api/v1/pursuits/baja-propia") < orden.index(
             "/api/v1/pursuits/{pursuit_id}"
         )
+
+
+# ---------------------------------------------------------------------------
+# C6.2 — Menciones en comentarios
+# ---------------------------------------------------------------------------
+
+
+def _miembros() -> list[dict[str, Any]]:
+    return [
+        {"user_id": 1, "status": "active", "display_name": "Ana Pérez", "email": "ana@acme.es"},
+        {"user_id": 2, "status": "active", "display_name": "Bruno Gil", "email": "bruno@acme.es"},
+        {"user_id": 3, "status": "invited", "display_name": "Clara Ruiz", "email": "clara@acme.es"},
+        {"user_id": 4, "status": "revoked", "display_name": "Diego Paz", "email": "diego@acme.es"},
+    ]
+
+
+class TestParseoDeMenciones:
+    def test_resuelve_por_nombre_visible_y_por_email(self) -> None:
+        from services.menciones import resolver
+
+        assert resolver("@Ana Pérez ¿lo tenemos?", _miembros()) == [1]
+        assert resolver("gracias @bruno", _miembros()) == [2]
+
+    def test_los_acentos_y_las_mayusculas_no_cambian_a_quien_se_menciona(self) -> None:
+        from services.menciones import resolver
+
+        assert resolver("@ana perez mirá esto", _miembros()) == [1]
+
+    def test_lo_ambiguo_no_resuelve(self) -> None:
+        """Elegir una de las dos Anas es peor que no elegir: la mención llega a
+        quien no era y la destinataria no se entera."""
+        from services.menciones import resolver
+
+        dos_anas = [
+            {"user_id": 1, "status": "active", "display_name": "Ana", "email": "ana@acme.es"},
+            {"user_id": 9, "status": "active", "display_name": "Ana", "email": "ana2@acme.es"},
+        ]
+
+        assert resolver("@ana ¿lo miras?", dos_anas) == []
+
+    def test_el_nombre_mas_largo_gana_al_mas_corto(self) -> None:
+        from services.menciones import resolver
+
+        equipo = [
+            {"user_id": 1, "status": "active", "display_name": "Ana", "email": "a@acme.es"},
+            {"user_id": 2, "status": "active", "display_name": "Ana María", "email": "am@acme.es"},
+        ]
+
+        assert resolver("@Ana María revisa el pliego", equipo) == [2]
+
+    def test_no_se_menciona_a_quien_no_esta_activo(self) -> None:
+        """Un `invited` todavía no ha entrado y un `revoked` ya no está."""
+        from services.menciones import resolver
+
+        assert resolver("@clara @diego", _miembros()) == []
+
+    def test_una_arroba_que_no_es_nadie_no_menciona(self) -> None:
+        from services.menciones import resolver
+
+        assert resolver("nos vemos @mañana en la reunión", _miembros()) == []
+
+    def test_no_se_repite_a_la_misma_persona(self) -> None:
+        from services.menciones import resolver
+
+        assert resolver("@ana @Ana Pérez @ana", _miembros()) == [1]
+
+
+class TestNotificacionDeMenciones:
+    def test_va_al_outbox_y_no_a_un_envio_directo(self) -> None:
+        """El despachador decide el canal según las preferencias de cada persona
+        (C2.7); escribir un correo aquí saltaría esa decisión."""
+        from unittest.mock import patch as _patch
+
+        from services.menciones import notificar
+
+        with _patch("db.events.append_event") as evento:
+            enviados = notificar(
+                mencionados=[2, 3],
+                autor_user_id=1,
+                organization_id=7,
+                pursuit_id=11,
+                comment_id=99,
+            )
+
+        assert enviados == 2
+        tipos = {llamada.args[0] for llamada in evento.call_args_list}
+        assert tipos == {"pursuit.mentioned"}
+        assert all(c.args[1] == 11 for c in evento.call_args_list)
+
+    def test_mencionarse_a_uno_mismo_no_notifica(self) -> None:
+        """Es una forma de escribir, no una petición de atención."""
+        from unittest.mock import patch as _patch
+
+        from services.menciones import notificar
+
+        with _patch("db.events.append_event") as evento:
+            enviados = notificar(
+                mencionados=[1], autor_user_id=1, organization_id=7, pursuit_id=1, comment_id=1
+            )
+
+        assert enviados == 0
+        assert not evento.called
+
+    def test_un_fallo_del_outbox_no_tumba_el_comentario(self) -> None:
+        from unittest.mock import patch as _patch
+
+        from services.menciones import notificar
+
+        with _patch("db.events.append_event", side_effect=RuntimeError("bd caída")):
+            assert (
+                notificar(
+                    mencionados=[2], autor_user_id=1, organization_id=7, pursuit_id=1, comment_id=1
+                )
+                == 0
+            )
+
+
+class TestPersistenciaDeMenciones:
+    def test_se_guardan_los_ids_y_no_el_texto_resuelto(self) -> None:
+        """Si alguien cambia su nombre visible, la mención sigue apuntando a la
+        misma persona."""
+        import db.repositories.pursuit_comments as mod
+
+        fuente = inspect.getsource(mod.PursuitCommentRepository.create)
+        assert "mentions_json" in fuente
+        assert "json.dumps(mentions" in fuente
+
+    def test_un_reintento_idempotente_no_vuelve_a_avisar(self) -> None:
+        import services.pursuit_comments as mod
+
+        fuente = inspect.getsource(mod.add_comment)
+        assert "if created and mencionados:" in fuente
+
+    def test_una_fila_corrupta_no_rompe_el_hilo(self) -> None:
+        from services.pursuit_comments import _menciones
+
+        assert _menciones(None) == []
+        assert _menciones("no-es-json") == []
+        assert _menciones("[1, 2]") == [1, 2]
+
+    def test_el_contrato_expone_las_menciones(self) -> None:
+        from shared.dto import PursuitCommentOut
+
+        assert "mentions" in PursuitCommentOut.model_fields
+
+
+# ---------------------------------------------------------------------------
+# C6.4 — Plantilla de go/no-go ponderada (D30)
+# ---------------------------------------------------------------------------
+
+
+class TestPlantillaGoNoGo:
+    def test_los_cinco_criterios_son_los_de_d30(self) -> None:
+        """Cerrados a propósito: un formulario que cada equipo amplía deja de
+        poder compararse consigo mismo el trimestre siguiente."""
+        from services.gonogo import CRITERIOS
+
+        assert CRITERIOS == (
+            "encaje_estrategico",
+            "capacidad",
+            "competencia",
+            "rentabilidad",
+            "riesgo",
+        )
+
+    def test_los_pesos_tienen_que_sumar_cien(self) -> None:
+        """Sin eso el total deja de ser «sobre 100» y dos equipos —o el mismo
+        antes y después— dejan de poder compararse."""
+        from services.gonogo import PESOS_POR_DEFECTO, GoNoGoError, validar_pesos
+
+        assert sum(PESOS_POR_DEFECTO.values()) == 100
+        with pytest.raises(GoNoGoError, match="suman"):
+            validar_pesos({**PESOS_POR_DEFECTO, "riesgo": 10})
+
+    def test_media_plantilla_rellenada_no_puntua(self) -> None:
+        """Un total con tres criterios de cinco parece comparable y no lo es."""
+        from services.gonogo import GoNoGoError, validar_puntuaciones
+
+        with pytest.raises(GoNoGoError, match="Faltan"):
+            validar_puntuaciones({"capacidad": 3, "riesgo": 4})
+
+    def test_la_escala_va_de_uno_a_cinco(self) -> None:
+        from services.gonogo import CRITERIOS, GoNoGoError, validar_puntuaciones
+
+        with pytest.raises(GoNoGoError, match="entre"):
+            validar_puntuaciones({**{c: 3 for c in CRITERIOS}, "riesgo": 6})
+
+    def test_todo_unos_no_da_cero(self) -> None:
+        """«0 sobre 100» a quien puntuó todo con unos le dice que no puntuó."""
+        from services.gonogo import CRITERIOS, PESOS_POR_DEFECTO, total_ponderado
+
+        assert total_ponderado({c: 1 for c in CRITERIOS}, PESOS_POR_DEFECTO) == 20.0
+        assert total_ponderado({c: 5 for c in CRITERIOS}, PESOS_POR_DEFECTO) == 100.0
+
+    def test_unos_ajustes_corruptos_no_dejan_sin_plantilla(self) -> None:
+        from services.gonogo import PESOS_POR_DEFECTO, UMBRAL_POR_DEFECTO, ajustes_de
+
+        assert ajustes_de({}) == (PESOS_POR_DEFECTO, UMBRAL_POR_DEFECTO)
+        assert ajustes_de({"gonogo": "no-es-un-dict"}) == (PESOS_POR_DEFECTO, UMBRAL_POR_DEFECTO)
+        assert ajustes_de({"gonogo": {"pesos": {"capacidad": 100}}})[0] == PESOS_POR_DEFECTO
+
+    def test_el_total_se_congela_y_no_se_recalcula(self) -> None:
+        """Recalcularlo al leer haría que cambiar un peso reescribiera decisiones
+        ya tomadas: expedientes rechazados por bajos aparecerían por encima."""
+        import db.repositories.pursuits as mod
+
+        fuente = inspect.getsource(mod.PursuitRepository.guardar_gonogo)
+        assert "UPDATE pursuits SET gonogo_json = %s, gonogo_total = %s" in fuente
+        assert "AND organization_id = %s" in fuente
+
+    def test_solo_owner_o_admin_cambian_la_plantilla(self) -> None:
+        """Quien la toca cambia el criterio con el que se juzga al equipo entero."""
+        import services.gonogo as mod
+
+        assert set(mod.ROLES_QUE_EDITAN) == {"owner", "admin"}
+        fuente = inspect.getsource(mod.guardar_ajustes)
+        assert "ROLES_QUE_EDITAN" in fuente
+        assert "log_event(" in fuente and '"antes"' in fuente and '"despues"' in fuente
+
+    def test_la_metrica_de_producto_cuenta_los_go_bajos(self) -> None:
+        import scripts.product_status as mod
+
+        fuente = inspect.getsource(mod._imprimir_gonogo)
+        assert "go_bajo_umbral" in fuente
+        # Cero puntuados no es «cero problemas».
+        assert "sin puntuar" in fuente
+
+    def test_las_rutas_existen(self) -> None:
+        from api.app import app
+
+        rutas = {r.path for r in app.routes if hasattr(r, "path")}
+        assert "/api/v1/organizations/gonogo" in rutas
+        assert "/api/v1/pursuits/{pursuit_id}/gonogo" in rutas
+
+    def test_el_riesgo_se_puntua_al_derecho(self) -> None:
+        """Invertir uno solo de los cinco es la forma más rápida de que alguien
+        rellene el formulario al revés sin darse cuenta."""
+        from services.gonogo import PESOS_POR_DEFECTO, total_ponderado
+
+        base = {
+            "encaje_estrategico": 3,
+            "capacidad": 3,
+            "competencia": 3,
+            "rentabilidad": 3,
+            "riesgo": 1,
+        }
+        mejor = {**base, "riesgo": 5}
+
+        assert total_ponderado(mejor, PESOS_POR_DEFECTO) > total_ponderado(base, PESOS_POR_DEFECTO)

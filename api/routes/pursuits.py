@@ -11,6 +11,10 @@ from pydantic import BaseModel
 from api.concurrency import run_db
 from api.routes.dual_auth import require_any_auth, require_recent_session
 from observability.logging import get_logger
+from services.gonogo import GoNoGoError
+from services.gonogo import guardar_ajustes as guardar_ajustes_gonogo
+from services.gonogo import leer_ajustes as leer_ajustes_gonogo
+from services.gonogo import puntuar as puntuar_gonogo
 from services.organizations import (
     OrganizationAccessError,
     OrganizationLifecycleError,
@@ -55,6 +59,10 @@ from services.pursuits import (
 )
 from shared.dto import (
     BajaPropiaResult,
+    GoNoGoAjustes,
+    GoNoGoPesos,
+    GoNoGoPuntuaciones,
+    GoNoGoResult,
     OrganizationCreate,
     OrganizationMemberInvite,
     OrganizationMembershipOut,
@@ -553,6 +561,55 @@ async def get_baja_propia(
         raise HTTPException(status_code=403, detail=str(exc)) from exc
 
 
+@router.get("/organizations/gonogo", response_model=GoNoGoAjustes)
+async def get_gonogo_ajustes(
+    organization_id: int | None = Query(default=None, ge=1),
+    ctx: dict[str, Any] = Depends(require_any_auth),
+) -> GoNoGoAjustes:
+    """Plantilla de go/no-go de la organización: pesos y umbral (C6.4, D30)."""
+    try:
+        pesos, umbral = await run_db(leer_ajustes_gonogo, int(ctx["user_id"]), organization_id)
+    except OrganizationAccessError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    return GoNoGoAjustes(pesos=GoNoGoPesos(**pesos), umbral=umbral)
+
+
+@router.put(
+    "/organizations/gonogo",
+    response_model=GoNoGoAjustes,
+    responses={
+        403: {"description": "Sólo owner o admin"},
+        422: {"description": "Los pesos no suman 100"},
+    },
+)
+async def put_gonogo_ajustes(
+    body: GoNoGoAjustes,
+    organization_id: int | None = Query(default=None, ge=1),
+    ctx: dict[str, Any] = Depends(require_any_auth),
+) -> GoNoGoAjustes:
+    """Cambia los pesos y el umbral. Sólo owner/admin, y queda auditado.
+
+    La plantilla decide contra qué se juzgan las oportunidades del equipo
+    entero: quien la toca cambia el criterio de todos, así que el cambio deja
+    rastro con el valor anterior y el nuevo.
+    """
+    try:
+        pesos, umbral = await run_db(
+            guardar_ajustes_gonogo,
+            int(ctx["user_id"]),
+            body.pesos.model_dump(),
+            body.umbral,
+            organization_id=organization_id,
+        )
+    except OrganizationAccessError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except OrganizationPermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except GoNoGoError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return GoNoGoAjustes(pesos=GoNoGoPesos(**pesos), umbral=umbral)
+
+
 @router.get("/pursuits/{pursuit_id}", response_model=PursuitDetail)
 async def get_pursuit_detail(
     pursuit_id: int,
@@ -788,3 +845,51 @@ async def patch_pursuit_task(
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except PursuitTaskNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.put(
+    "/pursuits/{pursuit_id}/gonogo",
+    response_model=GoNoGoResult,
+    responses={
+        404: {"description": "La oportunidad no existe en este espacio"},
+        422: {"description": "Faltan criterios o están fuera de 1-5"},
+    },
+)
+async def put_pursuit_gonogo(
+    pursuit_id: int,
+    body: GoNoGoPuntuaciones,
+    organization_id: int | None = Query(default=None, ge=1),
+    ctx: dict[str, Any] = Depends(require_any_auth),
+) -> GoNoGoResult:
+    """Puntúa la oportunidad con la plantilla vigente (C6.4, D30).
+
+    Hasta 2026-09 la decisión más cara del proceso —presentarse o no— se
+    registraba como una etiqueta y un párrafo de texto libre, así que «¿en qué
+    nos equivocamos al decidir?» no tenía respuesta: no constaba contra qué se
+    decidió.
+
+    El total se calcula con los pesos de **este momento** y se guarda. Los pesos
+    cambian; recalcularlo al leer haría que cambiar uno reescribiera decisiones
+    ya tomadas.
+    """
+    try:
+        datos = await run_db(
+            puntuar_gonogo,
+            int(ctx["user_id"]),
+            pursuit_id,
+            body.model_dump(),
+            organization_id=organization_id,
+        )
+    except OrganizationAccessError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except GoNoGoError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except PursuitNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return GoNoGoResult(
+        pursuit_id=datos["pursuit_id"],
+        puntuaciones=GoNoGoPuntuaciones(**datos["puntuaciones"]),
+        total=datos["total"],
+        umbral=datos["umbral"],
+        bajo_umbral=datos["bajo_umbral"],
+    )

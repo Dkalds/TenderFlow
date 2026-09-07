@@ -892,6 +892,14 @@ class PursuitCommentOut(BaseModel):
     author_user_id: int | None = None
     author_name: str | None = None
     body: str
+    #: `user_id` mencionados en el cuerpo (C6.2). Los **ids**, no el texto
+    #: resuelto: si alguien cambia su nombre visible, la mención sigue apuntando
+    #: a la misma persona. La interfaz resuelve el nombre al pintar.
+    #:
+    #: `[]` es «se buscaron y no había»; los comentarios anteriores a `v124`
+    #: llegan también como `[]` porque nadie las buscó — la distinción sólo
+    #: importa en la base, no en el contrato.
+    mentions: list[int] = Field(default_factory=list)
     created_at: PgDateTime
     can_delete: bool = False
 
@@ -904,6 +912,60 @@ PursuitTaskEstado = Literal["pendiente", "hecha", "cancelada"]
 #: Longitud del título de una tarea. Corto a propósito: una tarea es una acción
 #: («pedir el aval»), y lo que no cabe aquí es un comentario.
 PURSUIT_TASK_TITULO_MAX_CHARS = 200
+
+
+class GoNoGoPuntuaciones(BaseModel):
+    """Las cinco puntuaciones de D30, de 1 a 5 (C6.4).
+
+    `riesgo` va **al derecho** como los demás: 5 es «poco riesgo». Invertir uno
+    solo de los cinco es la forma más rápida de que alguien rellene el
+    formulario al revés sin darse cuenta.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    encaje_estrategico: int = Field(ge=1, le=5)
+    capacidad: int = Field(ge=1, le=5)
+    competencia: int = Field(ge=1, le=5)
+    rentabilidad: int = Field(ge=1, le=5)
+    riesgo: int = Field(ge=1, le=5)
+
+
+class GoNoGoResult(BaseModel):
+    """Puntuación de un expediente, con el umbral vigente al puntuarlo."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    pursuit_id: int = Field(ge=1)
+    puntuaciones: GoNoGoPuntuaciones
+    #: Total ponderado sobre 100. Se **congela**: recalcularlo al leer haría que
+    #: cambiar un peso reescribiera decisiones pasadas.
+    total: float = Field(ge=0, le=100)
+    umbral: float = Field(ge=0, le=100)
+    #: `True` cuando el total no llega al umbral. No bloquea la decisión: la
+    #: toman las personas. Sirve para verla.
+    bajo_umbral: bool = False
+
+
+class GoNoGoPesos(BaseModel):
+    """Pesos de la organización. Deben sumar 100."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    encaje_estrategico: int = Field(ge=0, le=100)
+    capacidad: int = Field(ge=0, le=100)
+    competencia: int = Field(ge=0, le=100)
+    rentabilidad: int = Field(ge=0, le=100)
+    riesgo: int = Field(ge=0, le=100)
+
+
+class GoNoGoAjustes(BaseModel):
+    """Plantilla de la organización: pesos y umbral (owner/admin)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    pesos: GoNoGoPesos
+    umbral: float = Field(ge=0, le=100)
 
 
 class BajaPropiaSegmento(BaseModel):

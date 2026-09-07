@@ -39,6 +39,39 @@ def main() -> None:
     print(f"Win rate resuelto:          {win_rate}")
     print(f"Importe adjudicado:         {totals.awarded_amount_eur:,.2f} EUR")
     print(f"Mediana hasta decisión:     {decision_time}")
+    _imprimir_gonogo()
+
+
+def _imprimir_gonogo() -> None:
+    """«Go por debajo del umbral» (C6.4, D30).
+
+    No es una alerta ni un bloqueo: la decisión de presentarse la toman las
+    personas. Es una cifra que, mirada mes a mes, distingue dos cosas que desde
+    dentro se sienten igual — una plantilla mal calibrada (todo puntúa bajo y aun
+    así se gana) de una falta de disciplina (se dice `go` a lo que el propio
+    equipo puntuó mal, y se pierde).
+
+    Best-effort: `product-status` es un informe, y una métrica que no se puede
+    calcular no puede llevarse por delante las otras seis.
+    """
+    from db.repositories.pursuits import PursuitRepository
+    from services.gonogo import UMBRAL_POR_DEFECTO
+
+    try:
+        datos = PursuitRepository().go_bajo_umbral(umbral=UMBRAL_POR_DEFECTO)
+    except Exception as exc:
+        print(f"Go/no-go:                   no medido ({str(exc)[:60]})")
+        return
+    if not datos["puntuados"]:
+        # Cero puntuados no es «cero problemas»: es que nadie usa la plantilla.
+        print("Go/no-go:                   sin puntuar (0 expedientes)")
+        return
+    media = "n/d" if datos["media"] is None else f"{datos['media']:.1f}"
+    print(
+        f"Go bajo umbral ({datos['umbral']:.0f}):     "
+        f"{datos['go_bajo_umbral']} de {datos['go']} go · "
+        f"{datos['puntuados']} puntuados · media {media}"
+    )
 
 
 if __name__ == "__main__":

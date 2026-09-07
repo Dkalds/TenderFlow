@@ -186,6 +186,61 @@ class PursuitRepository:
     #: planifica la siguiente oferta con eso.
     MIN_OFERTAS_POR_SEGMENTO = 5
 
+    def guardar_gonogo(
+        self,
+        organization_id: int,
+        pursuit_id: int,
+        *,
+        puntuaciones_json: str,
+        total: float,
+        ahora: str,
+    ) -> bool:
+        """Escribe la puntuación go/no-go. ``False`` si el expediente no es de esa organización.
+
+        El total se **congela**: los pesos de la organización cambian, y
+        recalcularlo al leer reescribiría el pasado — expedientes rechazados por
+        debajo del umbral aparecerían por encima, y la revisión de decisiones
+        mediría contra un criterio que no era el vigente.
+        """
+        with connect() as conn:
+            cur = conn.execute(
+                "UPDATE pursuits SET gonogo_json = %s, gonogo_total = %s, gonogo_at = %s, "
+                "updated_at = %s WHERE id = %s AND organization_id = %s",
+                (puntuaciones_json, total, ahora, ahora, pursuit_id, organization_id),
+            )
+            return bool(cur.rowcount > 0)
+
+    def go_bajo_umbral(self, *, umbral: float) -> dict[str, Any]:
+        """Cuántas decisiones ``go`` se tomaron por debajo del umbral (C6.4).
+
+        Es la métrica de `make product-status`. No bloquea nada —la decisión es
+        de las personas— pero un equipo que dice `go` sistemáticamente a
+        expedientes que su propia plantilla puntúa bajo tiene o una plantilla
+        mal calibrada o un problema de disciplina, y las dos cosas se arreglan
+        antes si se ven.
+
+        Sin organización: es una métrica de producto sobre todo el sistema, no
+        el tablero de nadie.
+        """
+        with connect_read() as conn:
+            fila = conn.execute(
+                "SELECT COUNT(*) AS puntuados, "
+                "COUNT(*) FILTER (WHERE decision = 'go') AS go, "
+                "COUNT(*) FILTER (WHERE decision = 'go' AND gonogo_total < %s) AS go_bajo, "
+                "ROUND(AVG(gonogo_total)::numeric, 1) AS media "
+                "FROM pursuits WHERE gonogo_total IS NOT NULL",
+                (umbral,),
+            ).fetchone()
+        if fila is None:
+            return {"puntuados": 0, "go": 0, "go_bajo_umbral": 0, "media": None, "umbral": umbral}
+        return {
+            "puntuados": int(fila[0] or 0),
+            "go": int(fila[1] or 0),
+            "go_bajo_umbral": int(fila[2] or 0),
+            "media": float(fila[3]) if fila[3] is not None else None,
+            "umbral": umbral,
+        }
+
     def baja_propia_por_segmento(
         self,
         organization_id: int,

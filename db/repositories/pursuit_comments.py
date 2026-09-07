@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from db.database import connect, connect_read, now_utc_iso
@@ -14,7 +15,7 @@ from db.repositories.base import rows_to_dicts
 _COMMENT_SELECT = (
     "SELECT c.id, c.pursuit_id, c.organization_id, c.author_user_id, "
     "COALESCE(NULLIF(u.display_name, ''), u.email) AS author_name, "
-    "c.body, c.created_at "
+    "c.body, c.mentions_json, c.created_at "
     "FROM pursuit_comments c "
     "LEFT JOIN users u ON u.id = c.author_user_id "
 )
@@ -64,6 +65,7 @@ class PursuitCommentRepository:
         author_user_id: int,
         body: str,
         idempotency_key: str | None = None,
+        mentions: list[int] | None = None,
     ) -> tuple[dict[str, Any], bool]:
         """Inserta el comentario; reintentar con la misma clave devuelve el original.
 
@@ -77,12 +79,27 @@ class PursuitCommentRepository:
                 existing = self._by_idempotency_key(conn, pursuit_id, idempotency_key)
                 if existing is not None:
                     return existing, False
+            # `None` y `[]` no son lo mismo: `NULL` es «nadie las buscó»
+            # (comentarios anteriores a v124) y `[]` es «se buscaron y no
+            # había». Ver el docstring de la revisión.
+            menciones_json = (
+                json.dumps(mentions, ensure_ascii=False) if mentions is not None else None
+            )
             inserted = conn.execute(
                 "INSERT INTO pursuit_comments "
-                "(pursuit_id, organization_id, author_user_id, body, idempotency_key, created_at) "
-                "VALUES (%s, %s, %s, %s, %s, %s) "
+                "(pursuit_id, organization_id, author_user_id, body, mentions_json, "
+                " idempotency_key, created_at) "
+                "VALUES (%s, %s, %s, %s, %s, %s, %s) "
                 "ON CONFLICT DO NOTHING RETURNING id",
-                (pursuit_id, organization_id, author_user_id, body, idempotency_key, now),
+                (
+                    pursuit_id,
+                    organization_id,
+                    author_user_id,
+                    body,
+                    menciones_json,
+                    idempotency_key,
+                    now,
+                ),
             ).fetchone()
             if inserted is None:
                 # Carrera entre dos reintentos con la misma clave: gana el primero.
