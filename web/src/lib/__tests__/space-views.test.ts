@@ -14,23 +14,36 @@ const allViews = (): [string, SpaceView][] =>
 describe("SPACE_VIEWS", () => {
   it("cubre los espacios multivista con su recuento del rediseño", () => {
     // Los recuentos son el contrato de `docs/redesign/README.md`. Si uno cambia
-    // sin actualizar el doc, la tabla del README miente. Cuentas y Dirección
-    // entraron con el plan de funcionalidades 2026-09 y no absorben ninguna
-    // ruta heredada: son espacios nuevos, no consolidaciones.
+    // sin actualizar el doc, la tabla del README miente.
     expect(Object.keys(SPACE_VIEWS).sort()).toEqual([
       "competencia",
       "cuentas",
       "direccion",
+      "empresas",
       "mercado",
       "mi-pipeline",
       "ops",
     ]);
     expect(SPACE_VIEWS.mercado).toHaveLength(8);
     expect(SPACE_VIEWS.competencia).toHaveLength(2);
-    expect(SPACE_VIEWS["mi-pipeline"]).toHaveLength(3);
+    expect(SPACE_VIEWS["mi-pipeline"]).toHaveLength(4);
     expect(SPACE_VIEWS.ops).toHaveLength(6);
+    expect(SPACE_VIEWS.empresas).toHaveLength(2);
     expect(SPACE_VIEWS.cuentas).toHaveLength(2);
     expect(SPACE_VIEWS.direccion).toHaveLength(3);
+  });
+
+  it("los espacios que no consolidan nada no declaran rutas heredadas", () => {
+    // `empresas` tenía sus dos vistas dentro de `/empresas`; `cuentas` y
+    // `direccion` son espacios nuevos del plan de funcionalidades 2026-09.
+    // Los tres entran en la tabla para ser direccionables (`?vista=`), no para
+    // absorber nada, y por eso el recuento de rutas heredadas de abajo no sube.
+    for (const slug of ["empresas", "cuentas", "direccion"]) {
+      expect(
+        SPACE_VIEWS[slug].every((view) => view.from === undefined),
+        `${slug} no debería absorber rutas`,
+      ).toBe(true);
+    }
   });
 
   it("absorbe 18 rutas heredadas, todas distintas", () => {

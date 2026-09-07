@@ -51,6 +51,7 @@ export function SpaceShell({
   spaceKey,
   view,
   onViewChange,
+  viewBadges,
   actions,
   bleed,
   children,
@@ -58,6 +59,14 @@ export function SpaceShell({
   spaceKey: string;
   view?: string;
   onViewChange?: (view: string) => void;
+  /**
+   * Contador por vista, para la vista que tiene trabajo esperando dentro. Lo
+   * estrena Empresas: cuántos matches dudosos hay en la cola sólo se veía
+   * entrando en ella, así que quien no entraba no sabía que existían. Es
+   * opcional en todos los espacios y una vista sin entrada aquí se pinta
+   * exactamente igual que antes.
+   */
+  viewBadges?: Record<string, React.ReactNode>;
   actions?: React.ReactNode;
   /**
    * Sin relleno ni scroll propio: la pantalla gobierna su superficie entera.
@@ -101,6 +110,18 @@ export function SpaceShell({
                   )}
                 >
                   {item.label}
+                  {viewBadges?.[item.key] != null && (
+                    <span
+                      className={cn(
+                        "tf-tnum ml-1.5 rounded px-1 py-0.5 font-mono text-tf-micro font-medium",
+                        on
+                          ? "bg-primary/16 text-primary"
+                          : "bg-muted-foreground/12 text-muted-foreground",
+                      )}
+                    >
+                      {viewBadges[item.key]}
+                    </span>
+                  )}
                   {item.visibility === "experimental" && (
                     // Marca la vista en vez de esconderla: ocultarla la
                     // convertiría en código muerto, y presentarla como una

@@ -82,6 +82,14 @@ completa, así que no se ha tocado una sola de sus funciones:
 | `/mercado` | 8 | tendencias · tendencias-cpv · calendario · geografía · tecnologías · órganos · clusters · proyectos-modulos |
 | `/competencia` | 2 | competidores · utes |
 | `/ops` | 5 | observabilidad · calidad-datos · administración · feature-flags · active-learning |
+| `/empresas` | 2 | ninguna — ver abajo |
+
+`/empresas` es el único de la tabla que no absorbe ninguna ruta: sus dos
+vistas (maestro y cola de revisión) siempre convivieron dentro de la misma
+pantalla y eran unas pestañas propias. Pasan a `?vista=` para que la cola sea
+direccionable —`/empresas?vista=revision` es lo que se pega en un mensaje
+cuando hay matches que resolver— y para que cambiar de vista sea el mismo
+gesto que en el resto de espacios.
 
 `/mi-pipeline` estuvo en esta tabla (2 vistas montando las pantallas
 originales); desde 2026-08-13 está **rediseñado a fondo** — ver arriba y su
@@ -90,7 +98,7 @@ redirect sigue vivo hacia `?vista=agenda`) y `/renovaciones` vive como vista
 `horizonte`.
 
 **Con cabecera de espacio** y su pantalla intacta: `/oportunidades`,
-`/investigador`, `/mi-watchlist`, `/mi-perfil`, `/empresas`, `/equipo`.
+`/investigador`, `/mi-watchlist`, `/mi-perfil`, `/equipo`.
 
 **Retiradas**: `/red-organo-empresa` y `/ecosistema-partners` (antes
 consolidadas bajo `/relaciones`) se borraron por completo — pantallas,

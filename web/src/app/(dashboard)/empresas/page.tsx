@@ -1,579 +1,254 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEmpresasWatchlist, useToggleEmpresaWatch } from "@/hooks/use-empresas-watchlist";
-import { apiMutate, fetchWithAuth } from "@/lib/api-client";
-import { PanelEmpty, PanelTabs, StatCell, StatStrip } from "@/components/console/panel";
-import { CompanyYearTrend } from "@/components/competitors/company-year-trend";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Skeleton } from "@/components/ui/skeleton";
-import { EmptyState } from "@/components/ui/empty-state";
-import { Separator } from "@/components/ui/separator";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import { formatCurrency, formatNumber, truncate } from "@/lib/utils";
-import { valorOEmpty } from "@/lib/cobertura";
-import {
-  Check,
-  Eye,
-  EyeOff,
-  Handshake,
-  Search,
-  ShieldQuestion,
-  X,
-} from "lucide-react";
+import { toast } from "sonner";
+import { useAdmin } from "@/hooks/use-admin";
 import { useDebounce } from "@/hooks/use-debounce";
-import { SpaceShell } from "@/components/layout/space-shell";
-import { empresasKeys } from "@/lib/query-keys";
+import { useEmpresasWatchlist, useToggleEmpresaWatch } from "@/hooks/use-empresas-watchlist";
+import { useSortToggle } from "@/hooks/use-sort-toggle";
+import { SpaceShell, useSpaceView } from "@/components/layout/space-shell";
+import { CONSOLE_SPACES } from "@/lib/console-spaces";
+import { ApiError } from "@/lib/api-client";
+import { formatNumber, formatPercent } from "@/lib/utils";
+import { ContextLine } from "./_components/context-line";
+import { EmpresaPerfil } from "./_components/empresa-perfil";
+import { MaestroList } from "./_components/maestro-list";
+import { ReviewQueue } from "./_components/review-queue";
+import {
+  useEmpresaDetail,
+  useEmpresaPerfil,
+  useEmpresasList,
+  useEmpresasStats,
+  type EmpresaSortKey,
+} from "./_hooks/use-maestro";
+import { UNDO_MS, useReviewQueue, type ConfidenceFilter } from "./_hooks/use-review-queue";
 
-/* ------------------------------------------------------------------ */
-/*  Types (espejo de /api/v1/empresas y /api/v1/competitive)           */
-/* ------------------------------------------------------------------ */
+/**
+ * Empresas — maestro canónico, ficha y cola de revisión.
+ *
+ * Dos vistas del mismo dato en `?vista=`: el maestro con su ficha al lado, y
+ * la cola de matches dudosos. Tres decisiones gobiernan la pantalla:
+ *
+ * 1. **El orden y la paginación son del servidor.** Ordenar en cliente sobre
+ *    la página traída reordena 12 filas de 1.284, que contesta a una pregunta
+ *    distinta de la que hace quien pulsa «Importe».
+ * 2. **Una sola alarma por fila.** En la cola, el NIF divergente; la similitud
+ *    es una barra neutra. Dos códigos de color sobre la misma fila no dicen
+ *    dos cosas, dicen ninguna.
+ * 3. **El error es por bloque.** El maestro y la cola vienen de endpoints
+ *    distintos: que caiga uno no puede tumbar el otro.
+ */
 
-interface EmpresaRow {
-  empresa_id: number;
-  nombre_canonico: string;
-  nif_canonico: string | null;
-  es_ute: number;
-  es_pyme: number | null;
-  grupo: string | null;
-  n_adjudicaciones: number;
-  importe_total: number;
-}
+/** Por debajo de este % de importe resuelto, las cuotas de Competencia mienten. */
+const UMBRAL_RESUELTO = 95;
 
-interface EmpresaStats {
-  adjudicaciones_total: number;
-  adjudicaciones_enlazadas: number;
-  pct_filas: number;
-  pct_importe: number;
-  empresas: number;
-  revisiones_pendientes: number;
-}
-
-interface EmpresaDetail {
-  empresa_id: number;
-  nombre_canonico: string;
-  nif_canonico: string | null;
-  es_ute: number;
-  grupo: string | null;
-  aliases: { alias_normalizado: string; nif_variante: string | null; fuente: string }[];
-  ute_miembros: { empresa_id: number; nombre_canonico: string }[];
-  participa_en_utes: { empresa_id: number; nombre_canonico: string }[];
-}
-
-interface PerfilEmpresa {
-  totales: {
-    contratos: number;
-    importe_total: number;
-    ofertas_medias: number | null;
-    primera_adjudicacion: string | null;
-    ultima_adjudicacion: string | null;
-  };
-  por_cpv: { cpv2: string; contratos: number; importe: number }[];
-  por_ccaa: { ccaa: string; contratos: number; importe: number }[];
-  organos_principales: { organo: string; contratos: number; importe: number }[];
-  por_anio?: { anio: number; contratos: number; importe: number }[];
-}
-
-interface ReviewItem {
-  id: number;
-  nombre_original: string;
-  nif: string | null;
-  score: number;
-  candidato_empresa_id: number | null;
-  candidato_nombre: string | null;
-  candidato_nif: string | null;
-}
-
-/* ------------------------------------------------------------------ */
-/*  Page                                                               */
-/* ------------------------------------------------------------------ */
+/** Las columnas de texto entran A→Z; las de cifra, de mayor a menor. */
+const SENTIDO_INICIAL = (key: EmpresaSortKey): "asc" | "desc" => (key === "nombre" || key === "nif" ? "asc" : "desc");
 
 export default function EmpresasPage() {
+  const space = CONSOLE_SPACES.find((candidate) => candidate.key === "empresas")!;
+  const { view, setView } = useSpaceView(space);
+  const isAdmin = useAdmin();
+
+  // Deep-link externo: `?q=` desde los grafos de Relaciones y desde el botón
+  // «Maestro ↗» de Competencia. Se marca en el buscador mientras no se toque,
+  // para que se vea de dónde sale el filtro con el que se ha aterrizado.
   const searchParams = useSearchParams();
-  // Deep-link externo: `?q=<empresa>` siembra la búsqueda.
   const [search, setSearch] = useState(() => searchParams?.get("q") ?? "");
+  const [fromDeepLink, setFromDeepLink] = useState(() => Boolean(searchParams?.get("q")));
   const debouncedSearch = useDebounce(search, 300);
+
+  const [page, setPage] = useState(0);
+  const { sortKey, sortDir, toggleSort } = useSortToggle<EmpresaSortKey>("importe", "desc", SENTIDO_INICIAL);
   const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [filtroConfianza, setFiltroConfianza] = useState<ConfidenceFilter>("all");
 
-  const { data: stats } = useQuery<EmpresaStats>({
-    queryKey: empresasKeys.stats,
-    queryFn: () => fetchWithAuth("/api/v1/empresas/stats"),
-    staleTime: 5 * 60 * 1000,
-  });
-
-  const { data: list, isLoading } = useQuery<{ items: EmpresaRow[] }>({
-    queryKey: empresasKeys.list(debouncedSearch),
-    queryFn: () =>
-      fetchWithAuth(
-        `/api/v1/empresas?limit=50${debouncedSearch ? `&q=${encodeURIComponent(debouncedSearch)}` : ""}`,
-      ),
-    staleTime: 60 * 1000,
-  });
-
+  const stats = useEmpresasStats();
+  const lista = useEmpresasList({ search: debouncedSearch, page, sort: sortKey, order: sortDir });
   const { watchedIds } = useEmpresasWatchlist();
   const toggleWatch = useToggleEmpresaWatch();
+  const onCommitError = useCallback(() => toast.error("No se pudo guardar la decisión · la fila vuelve a la cola"), []);
+  const revisiones = useReviewQueue({
+    enabled: view === "revision" && isAdmin,
+    onCommitError,
+  });
 
-  const pendientes = stats?.revisiones_pendientes ?? 0;
-  const [vista, setVista] = useState<"maestro" | "revision">("maestro");
+  const rows = useMemo(() => lista.data?.items ?? [], [lista.data]);
+
+  // Primera fila seleccionada al cargar, derivando en vez de sincronizando con
+  // un efecto: sin selección explícita, la ficha es la de la primera fila. Eso
+  // ahorra el panel «ninguna empresa seleccionada», que ocupaba media pantalla
+  // para no decir nada, y evita el render extra de un `setState` en efecto.
+  const activeId = selectedId ?? rows[0]?.empresa_id ?? null;
+
+  const detail = useEmpresaDetail(activeId);
+  const perfil = useEmpresaPerfil(activeId);
+
+  const onSort = useCallback(
+    (key: EmpresaSortKey) => {
+      toggleSort(key);
+      setPage(0);
+    },
+    [toggleSort],
+  );
+
+  // Buscar es empezar de nuevo: vuelve a la primera página y suelta la
+  // selección, para que la ficha sea la primera del resultado y no una fila
+  // que ya no está en la lista. Paginar, en cambio, no la suelta: el usuario
+  // eligió una ficha y pasar de página no es dejar de mirarla.
+  const onSearchChange = useCallback((value: string) => {
+    setSearch(value);
+    setFromDeepLink(false);
+    setPage(0);
+    setSelectedId(null);
+  }, []);
+
+  const onToggleWatch = useCallback(
+    (empresaId: number, watched: boolean) => {
+      toggleWatch.mutate(
+        { empresaIds: [empresaId], watched },
+        {
+          onSuccess: () =>
+            toast.success(watched ? "Retirada de la vigilancia" : "Añadida a la vigilancia · alerta diaria"),
+          onError: () => toast.error("No se pudo cambiar la vigilancia"),
+        },
+      );
+    },
+    [toggleWatch],
+  );
+
+  const { decidir, deshacer } = revisiones;
+  const onDecidir = useCallback(
+    (ids: number[], accept: boolean, descripcion: string) => {
+      decidir(ids, accept);
+      // La ventana del toast y la del envío son la misma: mientras se pueda
+      // pulsar «Deshacer», la escritura todavía no ha salido.
+      toast(descripcion, {
+        duration: UNDO_MS,
+        action: { label: "Deshacer", onClick: () => deshacer() },
+      });
+    },
+    [decidir, deshacer],
+  );
+
+  const pendientes = stats.data?.revisiones_pendientes ?? 0;
+  const pctImporte = stats.data?.pct_importe;
+  const bajoUmbral = pctImporte != null && pctImporte < UMBRAL_RESUELTO;
+
+  const contexto = [
+    {
+      key: "canonicas",
+      label: "Canónicas",
+      value: stats.data ? formatNumber(stats.data.empresas, "es-ES", { agruparSiempre: true }) : "…",
+      title: "Empresas en el maestro",
+    },
+    {
+      key: "resuelto",
+      label: "Importe resuelto",
+      value: pctImporte != null ? formatPercent(pctImporte) : "…",
+      warn: bajoUmbral,
+      title: stats.data
+        ? `${formatNumber(stats.data.adjudicaciones_enlazadas, "es-ES", { agruparSiempre: true })} de ${formatNumber(stats.data.adjudicaciones_total, "es-ES", { agruparSiempre: true })} adjudicaciones enlazadas. Por debajo del ${UMBRAL_RESUELTO}% las cuotas de Competencia arrastran el error. Abre la cola de revisión`
+        : "Cobertura de la resolución de entidades",
+      onClick: () => setView("revision"),
+    },
+    {
+      key: "vigiladas",
+      label: "Vigiladas",
+      value: formatNumber(watchedIds.size),
+      title: "Empresas con alerta diaria",
+    },
+    {
+      key: "revisiones",
+      label: "Revisiones",
+      value: stats.data ? formatNumber(pendientes) : "…",
+      title: "Matches dudosos pendientes · abre la cola",
+      onClick: () => setView("revision"),
+    },
+  ];
 
   return (
-    <SpaceShell spaceKey="empresas">
-      <div className="space-y-6">
-      {/* Tira de cobertura del maestro. El importe resuelto se pone en ámbar
-          por debajo del 95%: si un 8% del importe no está enlazado, las cuotas
-          de Competencia arrastran ese error sin decirlo. */}
-      <StatStrip>
-        <StatCell label="Empresas canónicas" value={stats ? formatNumber(stats.empresas) : "…"} />
-        <StatCell
-          label="Importe resuelto"
-          value={stats ? `${stats.pct_importe.toFixed(1)}%` : "…"}
-          hint={
-            stats
-              ? `${formatNumber(stats.adjudicaciones_enlazadas)} de ${formatNumber(stats.adjudicaciones_total)} adjudicaciones`
-              : undefined
-          }
-          accent={
-            stats && stats.pct_importe < 95 ? "hsl(var(--warning))" : undefined
-          }
-          badge={
-            stats && stats.pct_importe < 95 ? (
-              <span className="inline-flex h-4 flex-none items-center rounded border border-[hsl(var(--warning)/0.38)] bg-[hsl(var(--warning)/0.14)] px-1 font-mono text-[8.5px] font-semibold text-[hsl(var(--warning))]">
-                BAJO 95%
-              </span>
-            ) : undefined
-          }
-        />
-        <StatCell label="Vigiladas" value={formatNumber(watchedIds.size)} />
-        <StatCell
-          label="Revisiones pendientes"
-          value={stats ? formatNumber(stats.revisiones_pendientes) : "…"}
-          hint={pendientes > 0 ? "hay matches dudosos por resolver" : "nada pendiente"}
-          onClick={pendientes > 0 ? () => setVista("revision") : undefined}
-        />
-      </StatStrip>
-
-      {/* La cola de revisión deja de ser un bloque que aparece y desaparece
-          según haya trabajo: es una vista con contador, así que se sabe que
-          existe aunque hoy esté vacía. */}
-      <PanelTabs
-        label="Vistas del maestro"
-        value={vista}
-        onChange={setVista}
-        tabs={[
-          { key: "maestro" as const, label: "Maestro" },
-          { key: "revision" as const, label: "Cola de revisión", badge: pendientes },
-        ]}
-      />
-
-      {vista === "revision" ? (
-        pendientes > 0 ? (
-          <ReviewQueue />
+    <SpaceShell
+      spaceKey="empresas"
+      view={view}
+      onViewChange={setView}
+      viewBadges={{ revision: pendientes > 0 ? formatNumber(pendientes) : undefined }}
+      actions={<ContextLine items={contexto} />}
+      bleed
+    >
+      {view === "revision" ? (
+        isAdmin ? (
+          <ReviewQueue
+            items={revisiones.items}
+            loading={revisiones.isLoading}
+            error={revisiones.isError}
+            errorDetail={detalleDeError(revisiones.error, "/api/v1/empresas/reviews")}
+            onRetry={() => void revisiones.refetch()}
+            filtro={filtroConfianza}
+            onFiltroChange={setFiltroConfianza}
+            onDecidir={onDecidir}
+          />
         ) : (
-          <PanelEmpty message="No hay matches dudosos pendientes de revisar." />
+          // La cola reescribe el maestro para toda la organización, así que la
+          // API la reserva a administradores. Se dice, en lugar de dejar que
+          // el 403 se pinte como un fallo de carga.
+          <div className="px-6 py-20 text-center">
+            <p className="text-tf-body text-foreground mb-1.5 font-medium">Cola reservada a administradores</p>
+            <p className="text-tf-meta text-muted-foreground mx-auto max-w-[46ch]">
+              Resolver un match dudoso reescribe el maestro canónico y recalcula las cuotas de Competencia para todos.
+              Hay {formatNumber(pendientes)} pendientes.
+            </p>
+          </div>
         )
       ) : (
-      <>
-      {/* Buscador + tabla */}
-      <Card>
-        <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <CardTitle>Buscador</CardTitle>
-            <CardDescription>
-              Por nombre canónico, alias o NIF. Ordenado por importe adjudicado total.
-            </CardDescription>
+        <div className="flex h-full min-h-0">
+          <MaestroList
+            search={search}
+            onSearchChange={onSearchChange}
+            fromDeepLink={fromDeepLink}
+            rows={rows}
+            total={lista.data?.total ?? 0}
+            page={page}
+            onPageChange={setPage}
+            sortKey={sortKey}
+            sortDir={sortDir}
+            onSort={onSort}
+            selectedId={activeId}
+            onSelect={setSelectedId}
+            watchedIds={watchedIds}
+            onToggleWatch={onToggleWatch}
+            watchPending={toggleWatch.isPending}
+            loading={lista.isLoading}
+            error={lista.isError}
+            errorDetail={detalleDeError(lista.error, "/api/v1/empresas")}
+            onRetry={() => void lista.refetch()}
+          />
+          <div className="bg-card/40 flex min-w-0 flex-1 flex-col">
+            {activeId == null && !lista.isLoading ? (
+              <div className="grid flex-1 place-items-center p-10">
+                <p className="text-tf-body text-muted-foreground">Ninguna empresa coincide con la búsqueda</p>
+              </div>
+            ) : (
+              <EmpresaPerfil
+                detail={detail.data}
+                perfil={perfil.data}
+                loading={lista.isLoading || detail.isLoading}
+                watched={activeId != null && watchedIds.has(activeId)}
+                onToggleWatch={() => activeId != null && onToggleWatch(activeId, watchedIds.has(activeId))}
+                watchPending={toggleWatch.isPending}
+                onOpenGrupo={onSearchChange}
+                onOpenEmpresa={setSelectedId}
+              />
+            )}
           </div>
-          <div className="relative w-full sm:w-80">
-            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Indra, B28599033, accenture…"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="pl-8"
-            />
-          </div>
-        </CardHeader>
-        <CardContent>
-          {isLoading ? (
-            <Skeleton className="h-[320px] w-full" />
-          ) : (list?.items ?? []).length === 0 ? (
-            <EmptyState
-              icon={Search}
-              title="Sin resultados"
-              hint="Prueba con otro nombre o NIF, o ejecuta el backfill del maestro."
-            />
-          ) : (
-            <div className="max-h-[420px] overflow-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Empresa</TableHead>
-                    <TableHead>NIF</TableHead>
-                    <TableHead className="text-right">Contratos</TableHead>
-                    <TableHead className="text-right">Importe total</TableHead>
-                    <TableHead className="w-24 text-right">Vigilar</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {(list?.items ?? []).map((e) => {
-                    const watched = watchedIds.has(e.empresa_id);
-                    return (
-                      <TableRow
-                        key={e.empresa_id}
-                        className={
-                          selectedId === e.empresa_id
-                            ? "cursor-pointer bg-primary/5"
-                            : "cursor-pointer"
-                        }
-                        onClick={() => setSelectedId(e.empresa_id)}
-                      >
-                        <TableCell className="max-w-[300px]">
-                          <div className="flex items-center gap-1.5">
-                            <span className="truncate text-sm font-medium">
-                              {e.nombre_canonico}
-                            </span>
-                            {e.es_ute ? <Badge variant="outline">UTE</Badge> : null}
-                            {e.es_pyme ? <Badge variant="secondary">PYME</Badge> : null}
-                          </div>
-                        </TableCell>
-                        <TableCell className="font-mono text-xs text-muted-foreground">
-                          {e.nif_canonico ?? "—"}
-                        </TableCell>
-                        <TableCell className="text-right text-sm">
-                          {formatNumber(e.n_adjudicaciones)}
-                        </TableCell>
-                        <TableCell className="text-right text-sm font-medium">
-                          {formatCurrency(e.importe_total)}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            aria-label={watched ? "Dejar de vigilar" : "Vigilar empresa"}
-                            disabled={toggleWatch.isPending}
-                            onClick={(ev) => {
-                              ev.stopPropagation();
-                              toggleWatch.mutate({ empresaIds: [e.empresa_id], watched });
-                            }}
-                          >
-                            {watched ? (
-                              <Eye className="h-4 w-4 text-primary" />
-                            ) : (
-                              <EyeOff className="h-4 w-4 text-muted-foreground" />
-                            )}
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {selectedId != null && <EmpresaPerfil empresaId={selectedId} />}
-      </>
+        </div>
       )}
-      </div>
     </SpaceShell>
   );
 }
 
-/* ------------------------------------------------------------------ */
-/*  Perfil de empresa seleccionada                                     */
-/* ------------------------------------------------------------------ */
-
-function EmpresaPerfil({ empresaId }: { empresaId: number }) {
-  const { data: detail } = useQuery<EmpresaDetail>({
-    queryKey: empresasKeys.detail(empresaId),
-    queryFn: () => fetchWithAuth(`/api/v1/empresas/${empresaId}`),
-  });
-
-  const { data: perfil, isLoading } = useQuery<PerfilEmpresa>({
-    queryKey: empresasKeys.perfil(empresaId),
-    queryFn: () => fetchWithAuth(`/api/v1/competitive/empresas/${empresaId}/perfil`),
-  });
-
-  if (isLoading || !detail) {
-    return <Skeleton className="h-[380px] w-full" />;
-  }
-
-  const totales = perfil?.totales;
-
-  return (
-    <Card>
-      <CardHeader>
-        <div className="flex flex-wrap items-center gap-2">
-          <CardTitle>{detail.nombre_canonico}</CardTitle>
-          {detail.es_ute ? <Badge variant="outline">UTE</Badge> : null}
-          {detail.grupo && <Badge variant="secondary">Grupo {detail.grupo}</Badge>}
-        </div>
-        <CardDescription className="font-mono">
-          {detail.nif_canonico ?? "Sin NIF canónico"}
-          {totales?.primera_adjudicacion &&
-            ` · activa de ${totales.primera_adjudicacion.slice(0, 10)} a ${totales.ultima_adjudicacion?.slice(0, 10) ?? "hoy"}`}
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-6">
-        {/* Totales */}
-        <div className="grid gap-4 sm:grid-cols-3">
-          <div>
-            <p className="text-xs font-medium uppercase text-muted-foreground">Contratos</p>
-            <p className="font-mono text-xl font-bold">
-              {formatNumber(totales?.contratos ?? 0)}
-            </p>
-          </div>
-          <div>
-            <p className="text-xs font-medium uppercase text-muted-foreground">
-              Importe adjudicado
-            </p>
-            <p className="font-mono text-xl font-bold">
-              {valorOEmpty(totales?.importe_total, formatCurrency)}
-            </p>
-          </div>
-          <div>
-            <p className="text-xs font-medium uppercase text-muted-foreground">
-              Ofertas medias (presión)
-            </p>
-            <p className="font-mono text-xl font-bold">{totales?.ofertas_medias ?? "—"}</p>
-          </div>
-        </div>
-
-        <Separator />
-
-        {/* Trayectoria temporal: ¿crece o decae? (señal competitiva) */}
-        {(perfil?.por_anio?.length ?? 0) > 0 && (
-          <>
-            <CompanyYearTrend rows={perfil!.por_anio!} />
-            <Separator />
-          </>
-        )}
-
-        {/* Desgloses */}
-        <div className="grid gap-6 lg:grid-cols-3">
-          <MiniRanking
-            title="Por familia CPV"
-            rows={(perfil?.por_cpv ?? []).map((r) => ({
-              label: `CPV ${r.cpv2}`,
-              contratos: r.contratos,
-              importe: r.importe,
-            }))}
-          />
-          <MiniRanking
-            title="Por territorio"
-            rows={(perfil?.por_ccaa ?? []).map((r) => ({
-              label: r.ccaa,
-              contratos: r.contratos,
-              importe: r.importe,
-            }))}
-          />
-          <MiniRanking
-            title="Órganos principales"
-            rows={(perfil?.organos_principales ?? []).map((r) => ({
-              label: truncate(r.organo, 38),
-              contratos: r.contratos,
-              importe: r.importe,
-            }))}
-          />
-        </div>
-
-        {/* UTEs y aliases */}
-        {(detail.ute_miembros.length > 0 ||
-          detail.participa_en_utes.length > 0 ||
-          detail.aliases.length > 1) && (
-          <>
-            <Separator />
-            <div className="grid gap-6 lg:grid-cols-2">
-              {detail.ute_miembros.length > 0 && (
-                <div>
-                  <h3 className="mb-2 flex items-center gap-2 text-sm font-semibold">
-                    <Handshake className="h-4 w-4" /> Miembros de la UTE
-                  </h3>
-                  <div className="flex flex-wrap gap-1.5">
-                    {detail.ute_miembros.map((m) => (
-                      <Badge key={m.empresa_id} variant="secondary">
-                        {m.nombre_canonico}
-                      </Badge>
-                    ))}
-                  </div>
-                </div>
-              )}
-              {detail.participa_en_utes.length > 0 && (
-                <div>
-                  <h3 className="mb-2 flex items-center gap-2 text-sm font-semibold">
-                    <Handshake className="h-4 w-4" /> Participa en UTEs
-                  </h3>
-                  <div className="flex flex-wrap gap-1.5">
-                    {detail.participa_en_utes.map((u) => (
-                      <Badge key={u.empresa_id} variant="secondary">
-                        {u.nombre_canonico}
-                      </Badge>
-                    ))}
-                  </div>
-                </div>
-              )}
-              {detail.aliases.length > 1 && (
-                <div>
-                  <h3 className="mb-2 text-sm font-semibold">
-                    Aliases vistos en fuente ({detail.aliases.length})
-                  </h3>
-                  <div className="flex flex-wrap gap-1.5">
-                    {detail.aliases.slice(0, 12).map((a, i) => (
-                      <Badge key={i} variant="outline" className="font-normal">
-                        {a.alias_normalizado}
-                      </Badge>
-                    ))}
-                    {detail.aliases.length > 12 && (
-                      <span className="text-xs text-muted-foreground">
-                        +{detail.aliases.length - 12} más
-                      </span>
-                    )}
-                  </div>
-                </div>
-              )}
-            </div>
-          </>
-        )}
-      </CardContent>
-    </Card>
-  );
-}
-
-function MiniRanking({
-  title,
-  rows,
-}: {
-  title: string;
-  rows: { label: string; contratos: number; importe: number }[];
-}) {
-  return (
-    <div>
-      <h3 className="mb-2 text-sm font-semibold">{title}</h3>
-      {rows.length === 0 ? (
-        <p className="text-sm text-muted-foreground">Sin datos.</p>
-      ) : (
-        <ul className="space-y-1.5">
-          {rows.slice(0, 6).map((r) => (
-            <li key={r.label} className="flex items-center justify-between gap-2 text-sm">
-              <span className="truncate">{r.label}</span>
-              <span className="shrink-0 font-mono text-xs text-muted-foreground">
-                {formatNumber(r.contratos)} · {formatCurrency(r.importe)}
-              </span>
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/*  Cola de revisión de matches fuzzy                                  */
-/* ------------------------------------------------------------------ */
-
-function ReviewQueue() {
-  const queryClient = useQueryClient();
-  const { data } = useQuery<{ items: ReviewItem[] }>({
-    queryKey: empresasKeys.reviews,
-    queryFn: () => fetchWithAuth("/api/v1/empresas/reviews?limit=20"),
-  });
-
-  const resolve = useMutation({
-    mutationFn: ({ id, accept }: { id: number; accept: boolean }) =>
-      apiMutate("POST", `/api/v1/empresas/reviews/${id}`, { accept }),
-    onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: empresasKeys.reviews });
-      queryClient.invalidateQueries({ queryKey: empresasKeys.stats });
-      queryClient.invalidateQueries({ queryKey: empresasKeys.all });
-    },
-  });
-
-  const items = data?.items ?? [];
-  if (items.length === 0) return null;
-
-  return (
-    <Card className="border-amber-500/40">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <ShieldQuestion className="h-4 w-4 text-amber-500" />
-          Revisión de matches dudosos
-        </CardTitle>
-        <CardDescription>
-          El resolutor no enlaza automáticamente nombres casi idénticos o NIFs en conflicto.
-          ¿Es la misma empresa? <Check className="inline h-3 w-3" /> la une al candidato;{" "}
-          <X className="inline h-3 w-3" /> crea una empresa nueva.
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Visto en fuente</TableHead>
-              <TableHead>Candidato existente</TableHead>
-              <TableHead className="text-right">Similitud</TableHead>
-              <TableHead className="w-28 text-right">Decisión</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {items.map((r) => (
-              <TableRow key={r.id}>
-                <TableCell className="max-w-[260px]">
-                  <span className="block truncate text-sm">{r.nombre_original}</span>
-                  {r.nif && (
-                    <span className="font-mono text-xs text-muted-foreground">{r.nif}</span>
-                  )}
-                </TableCell>
-                <TableCell className="max-w-[260px]">
-                  <span className="block truncate text-sm">{r.candidato_nombre ?? "—"}</span>
-                  {r.candidato_nif && (
-                    <span className="font-mono text-xs text-muted-foreground">
-                      {r.candidato_nif}
-                    </span>
-                  )}
-                </TableCell>
-                <TableCell className="text-right font-mono text-sm">
-                  {(r.score * 100).toFixed(0)}%
-                </TableCell>
-                <TableCell className="text-right">
-                  <div className="flex justify-end gap-1">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      aria-label="Misma empresa (unir al candidato)"
-                      disabled={resolve.isPending}
-                      onClick={() => resolve.mutate({ id: r.id, accept: true })}
-                    >
-                      <Check className="h-4 w-4 text-green-600" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      aria-label="Empresa distinta (crear nueva)"
-                      disabled={resolve.isPending}
-                      onClick={() => resolve.mutate({ id: r.id, accept: false })}
-                    >
-                      <X className="h-4 w-4 text-destructive" />
-                    </Button>
-                  </div>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </CardContent>
-    </Card>
-  );
+/** Código y ruta del fallo, que es lo que sirve para reportarlo. */
+function detalleDeError(error: unknown, ruta: string): string {
+  return error instanceof ApiError ? `${error.status} · ${ruta}` : ruta;
 }
