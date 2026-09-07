@@ -2133,7 +2133,19 @@ export interface paths {
          */
         get: operations["list_my_keys_api_v1_me_keys_get"];
         put?: never;
-        post?: never;
+        /**
+         * Crear una API key personal
+         * @description Acuña una API key personal (C2.3, D25).
+         *
+         *     Hasta 2026-09 `create_api_key` existía y **solo la usaba un script**:
+         *     `/me/keys` listaba y rotaba, pero no creaba. Para tener una clave había que
+         *     pedírsela al mantenedor.
+         *
+         *     Exige sesión reciente, igual que la rotación y el borrado de cuenta: acuñar
+         *     una credencial es la primera cosa que haría alguien con una cookie robada,
+         *     porque sobrevive al cierre de sesión.
+         */
+        post: operations["create_my_key_api_v1_me_keys_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2172,6 +2184,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/me/notification-preferences": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Mis preferencias de notificación
+         * @description Qué avisos quiere recibir el usuario, y por dónde.
+         *
+         *     Ninguna tabla las modelaba (hecho 13 del plan complementario) y el
+         *     despachador de eventos de v2 S4.6 las necesita.
+         */
+        get: operations["get_notification_preferences_api_v1_me_notification_preferences_get"];
+        /**
+         * Fijar mis preferencias de notificación
+         * @description Guarda las preferencias enviadas. Idempotente por `(org, tipo, canal)`.
+         *
+         *     Un `PUT` que solo **añade o pisa** lo enviado, sin borrar lo que no viene:
+         *     el frontend manda lo que el usuario tocó, y una semántica de reemplazo total
+         *     haría que abrir Ajustes en una pantalla estrecha —donde no caben todos los
+         *     tipos— borrase los ajustes que no se llegaron a renderizar.
+         */
+        put: operations["put_notification_preferences_api_v1_me_notification_preferences_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/me/profile": {
         parameters: {
             query?: never;
@@ -2204,6 +2248,54 @@ export interface paths {
          * @description Elimina el perfil de scoring. El scoring vuelve a los settings globales.
          */
         delete: operations["delete_profile_api_v1_me_profile_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/me/sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Listar mis sesiones activas
+         * @description Sesiones abiertas del usuario, con la actual marcada.
+         *
+         *     `db/sessions.py::list_active_sessions` existía desde siempre y **nadie la
+         *     llamaba** (hecho 7 del plan complementario): el usuario solo tenía
+         *     `POST /auth/logout-all`, o sea cerrar todas o ninguna.
+         */
+        get: operations["list_my_sessions_api_v1_me_sessions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/me/sessions/{session_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Revocar UNA sesión propia
+         * @description Cierra una sesión concreta sin tocar las demás.
+         *
+         *     Exige sesión reciente (`require_recent_session`), igual que el borrado de
+         *     cuenta: cerrar la sesión de otro dispositivo es la acción que alguien con
+         *     una cookie robada usaría para expulsar al dueño.
+         */
+        delete: operations["delete_my_session_api_v1_me_sessions__session_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -2416,6 +2508,79 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/organizations/{organization_id}/delete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Borrar la organización (confirmación literal)
+         * @description Borra la organización y su dato corporativo (C2.2, ADR-030 §D).
+         *
+         *     `POST /delete` y no `DELETE`: el borrado exige un cuerpo con la confirmación
+         *     literal, y un `DELETE` con cuerpo lo tratan mal bastantes clientes y proxies.
+         *
+         *     Exige además sesión reciente: se lleva trabajo de otras personas y no tiene
+         *     deshacer.
+         *
+         *     Qué cae con ella: **dato corporativo** — oportunidades, comentarios,
+         *     capacidades, claves de organización. Qué sobrevive: el dato personal de cada
+         *     miembro, que cuelga de su cuenta.
+         */
+        post: operations["post_delete_organization_api_v1_organizations__organization_id__delete_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{organization_id}/deletion-preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Qué se borraría con la organización
+         * @description El recuento que la confirmación tiene que enseñar antes de pedirla.
+         */
+        get: operations["get_deletion_preview_api_v1_organizations__organization_id__deletion_preview_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{organization_id}/leave": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Salir de la organización
+         * @description Salida voluntaria (C2.2).
+         *
+         *     La membresía queda `revoked`, no borrada: un comentario firmado por alguien
+         *     que ya no está sigue siendo suyo (ADR-030 §D).
+         */
+        post: operations["post_leave_organization_api_v1_organizations__organization_id__leave_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/organizations/{organization_id}/members": {
         parameters: {
             query?: never;
@@ -2467,6 +2632,33 @@ export interface paths {
         /** Cambiar la configuración de la organización (owner/admin) */
         put: operations["put_organization_settings_api_v1_organizations__organization_id__settings_put"];
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{organization_id}/transfer-ownership": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Traspasar la propiedad de la organización
+         * @description Mueve el rol `owner` a otro miembro (C2.2).
+         *
+         *     Hasta 2026-09 no existía: `_guard_owner_row` lo reconocía en su propio
+         *     docstring, y una organización cuyo owner se iba quedaba sin nadie que
+         *     pudiera administrarla.
+         *
+         *     El owner saliente queda como `admin`: quien monta un equipo no debería
+         *     perder el acceso al traspasarlo.
+         */
+        post: operations["post_transfer_ownership_api_v1_organizations__organization_id__transfer_ownership_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2925,6 +3117,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/security/client-errors": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Errores de JavaScript del navegador, agregados
+         * @description Lo que falla en el navegador, con un destino que alguien mira (C2.6).
+         *
+         *     Hasta 2026-09 esto terminaba en un `log.warning` de Render: no se podía
+         *     agregar, nadie lo miraba salvo durante un incidente, y se rotaba a los pocos
+         *     días. Las filas llevan huella, no identidad — sin IP, sin email, sin query
+         *     string.
+         */
+        get: operations["list_client_errors_api_v1_security_client_errors_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/watchlist/feed.xml": {
         parameters: {
             query?: never;
@@ -3164,6 +3381,35 @@ export interface paths {
         get: operations["deliveries_api_v1_webhooks__webhook_id__deliveries_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/webhooks/{webhook_id}/deliveries/{delivery_id}/redeliver": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reenviar una entrega fallida
+         * @description Vuelve a intentar una entrega concreta (C2.4).
+         *
+         *     **202 y no 200**: no se reenvía dentro de la request. Abrir una conexión
+         *     HTTP a un endpoint que puede estar caído dejaría al operador esperando el
+         *     timeout, y el reintento tiene que sobrevivir a que cierre la pestaña. Se
+         *     marca `pending` con el próximo intento en el pasado y el job la recoge.
+         *
+         *     No reinicia el contador de intentos: hacerlo convertiría este botón en una
+         *     forma de reintentar indefinidamente un endpoint muerto, que es justo lo que
+         *     el tope de `MAX_INTENTOS` evita.
+         */
+        post: operations["redeliver_api_v1_webhooks__webhook_id__deliveries__delivery_id__redeliver_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3665,6 +3911,33 @@ export interface components {
              * @enum {string}
              */
             role: "user" | "assistant";
+        };
+        /**
+         * ClientErrorRow
+         * @description Un error de cliente agregado por huella (C2.6).
+         */
+        ClientErrorRow: {
+            /** Build */
+            build?: string | null;
+            /** Fingerprint */
+            fingerprint: string;
+            /** Mensaje */
+            mensaje?: string | null;
+            /** Ocurrencias */
+            ocurrencias: number;
+            /** Origen */
+            origen?: string | null;
+            /** Primera Vez */
+            primera_vez?: string | null;
+            /** Ruta */
+            ruta?: string | null;
+            /** Ultima Vez */
+            ultima_vez?: string | null;
+        };
+        /** ClientErroresResult */
+        ClientErroresResult: {
+            /** Items */
+            items?: components["schemas"]["ClientErrorRow"][];
         };
         /**
          * ClusterEntry
@@ -4293,12 +4566,40 @@ export interface components {
             total_cpvs: number;
         };
         /**
+         * CreateKeyBody
+         * @description Petición de creación de API key (C2.3, D25).
+         */
+        CreateKeyBody: {
+            /** Expires Days */
+            expires_days?: number | null;
+            /** Name */
+            name: string;
+            /** Scopes */
+            scopes?: string | null;
+        };
+        /**
          * CreatedId
          * @description Respuesta de creación con el id asignado.
          */
         CreatedId: {
             /** Id */
             id: number;
+        };
+        /**
+         * CreatedKey
+         * @description Clave recién creada. **El secreto viaja una sola vez.**
+         */
+        CreatedKey: {
+            /** Api Key */
+            api_key: string;
+            /** Expires At */
+            expires_at?: string | null;
+            /** Id */
+            id?: number | null;
+            /** Name */
+            name: string;
+            /** Organization Id */
+            organization_id?: number | null;
         };
         /**
          * CrossGeoEntry
@@ -4392,6 +4693,14 @@ export interface components {
              * @constant
              */
             confirmation: "DELETE";
+        };
+        /**
+         * DeleteOrganizationBody
+         * @description Borrado de organización, con confirmación literal (C2.2).
+         */
+        DeleteOrganizationBody: {
+            /** Confirmacion */
+            confirmacion: string;
         };
         /**
          * DetailMessage
@@ -5565,6 +5874,46 @@ export interface components {
             /** Titulo */
             titulo?: string | null;
         };
+        /**
+         * NotificationPreference
+         * @description Una preferencia de notificación (C2.7).
+         *
+         *     `organization_id` `None` = la preferencia del usuario **en todas partes**.
+         *     Con organización, solo en ese equipo: alguien que quiere el digest diario de
+         *     su consultora y nada de su cooperativa no puede expresarlo con una fila.
+         */
+        NotificationPreference: {
+            /**
+             * Canal
+             * @enum {string}
+             */
+            canal: "email" | "in_app" | "webhook";
+            /**
+             * Frecuencia
+             * @enum {string}
+             */
+            frecuencia: "immediate" | "daily" | "off";
+            /** Organization Id */
+            organization_id?: number | null;
+            /** Tipo */
+            tipo: string;
+        };
+        /**
+         * NotificationPreferencesResult
+         * @description Preferencias explícitas más los valores por defecto que aplican.
+         *
+         *     `defaults` no es decorativo: la lista de `items` solo trae lo que el usuario
+         *     fijó, y sin conocer el defecto de cada canal el frontend no puede pintar el
+         *     estado real de un ajuste que nadie ha tocado.
+         */
+        NotificationPreferencesResult: {
+            /** Defaults */
+            defaults?: {
+                [key: string]: string;
+            };
+            /** Items */
+            items?: components["schemas"]["NotificationPreference"][];
+        };
         /** NotificationsResult */
         NotificationsResult: {
             /** Alerts */
@@ -5598,6 +5947,32 @@ export interface components {
         OrganizationCreate: {
             /** Name */
             name: string;
+        };
+        /**
+         * OrganizationDeletionSummary
+         * @description Qué se borró (o se borraría) con la organización.
+         *
+         *     Es lo que la confirmación enseña **antes** de pedirla: «vas a borrar 14
+         *     oportunidades y 37 comentarios» es una advertencia; «¿seguro?» no.
+         *
+         *     Un `-1` significa que ese recuento no se pudo hacer, no que sea cero.
+         */
+        OrganizationDeletionSummary: {
+            /**
+             * Comentarios
+             * @default 0
+             */
+            comentarios: number;
+            /**
+             * Miembros
+             * @default 0
+             */
+            miembros: number;
+            /**
+             * Oportunidades
+             * @default 0
+             */
+            oportunidades: number;
         };
         /**
          * OrganizationMemberInvite
@@ -7481,6 +7856,36 @@ export interface components {
             target?: string | null;
         };
         /**
+         * SessionOut
+         * @description Una sesión activa del usuario (C2.1).
+         *
+         *     **No lleva el token ni el hash completo.** El token abre la sesión; el hash
+         *     no abre nada pero tampoco hay razón para publicarlo. `id` es un prefijo del
+         *     hash: estable, no reversible, y suficiente para revocar.
+         */
+        SessionOut: {
+            /**
+             * Actual
+             * @default false
+             */
+            actual: boolean;
+            /** Created At */
+            created_at?: string | null;
+            /** Expires At */
+            expires_at?: string | null;
+            /** Id */
+            id: string;
+            /** Ip */
+            ip?: string | null;
+            /** User Agent */
+            user_agent?: string | null;
+        };
+        /** SessionsResult */
+        SessionsResult: {
+            /** Items */
+            items?: components["schemas"]["SessionOut"][];
+        };
+        /**
          * SessionsRevoked
          * @description Resultado de revocar sesiones (logout-all, borrado de cuenta).
          */
@@ -8103,6 +8508,14 @@ export interface components {
         TotpSetupResult: {
             /** Otpauth Uri */
             otpauth_uri: string;
+        };
+        /**
+         * TransferOwnershipBody
+         * @description Traspaso de propiedad (C2.2).
+         */
+        TransferOwnershipBody: {
+            /** Nuevo Owner User Id */
+            nuevo_owner_user_id: number;
         };
         /**
          * TreemapItem
@@ -12866,6 +13279,48 @@ export interface operations {
             };
         };
     };
+    create_my_key_api_v1_me_keys_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateKeyBody"];
+            };
+        };
+        responses: {
+            /** @description Clave creada. El secreto solo se muestra aquí. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CreatedKey"];
+                };
+            };
+            /** @description Sesión no reciente, o scopes por encima del rol */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description TTL fuera del rango permitido */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     rotate_my_key_api_v1_me_keys_rotate_post: {
         parameters: {
             query?: {
@@ -12912,6 +13367,79 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_notification_preferences_api_v1_me_notification_preferences_get: {
+        parameters: {
+            query?: {
+                /** @description Acota a una organización */
+                organization_id?: number | null;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationPreferencesResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_notification_preferences_api_v1_me_notification_preferences_put: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NotificationPreference"][];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StatusOk"];
+                };
             };
             /** @description Validation Error */
             422: {
@@ -13018,6 +13546,82 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["StatusOk"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_my_sessions_api_v1_me_sessions_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionsResult"];
+                };
+            };
+            /** @description No autenticado */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_my_session_api_v1_me_sessions__session_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description La sesión no existe o no es tuya */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -13431,6 +14035,157 @@ export interface operations {
             };
         };
     };
+    post_delete_organization_api_v1_organizations__organization_id__delete_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                organization_id: number;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeleteOrganizationBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrganizationDeletionSummary"];
+                };
+            };
+            /** @description No sos el owner */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description La organización no existe */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Confirmación incorrecta, o es la personal */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_deletion_preview_api_v1_organizations__organization_id__deletion_preview_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                organization_id: number;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrganizationDeletionSummary"];
+                };
+            };
+            /** @description No sos el owner */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_leave_organization_api_v1_organizations__organization_id__leave_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                organization_id: number;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StatusOk"];
+                };
+            };
+            /** @description No sos miembro */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Sos el owner, o es tu organización personal */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_organization_members_api_v1_organizations__organization_id__members_get: {
         parameters: {
             query?: never;
@@ -13607,6 +14362,66 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["OrganizationSettingsOut"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_transfer_ownership_api_v1_organizations__organization_id__transfer_ownership_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                organization_id: number;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TransferOwnershipBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StatusOk"];
+                };
+            };
+            /** @description No sos el owner */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description El destinatario no es miembro activo */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description La organización personal no se traspasa */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -14481,6 +15296,37 @@ export interface operations {
             };
         };
     };
+    list_client_errors_api_v1_security_client_errors_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClientErroresResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     watchlist_feed_api_v1_watchlist_feed_xml_get: {
         parameters: {
             query?: {
@@ -15253,6 +16099,63 @@ export interface operations {
             };
             /** @description No encontrado */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    redeliver_api_v1_webhooks__webhook_id__deliveries__delivery_id__redeliver_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                webhook_id: number;
+                delivery_id: number;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Encolada para reenvío */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StatusOk"];
+                };
+            };
+            /** @description API key inválida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Webhook o entrega no encontrados */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description La entrega ya se completó */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

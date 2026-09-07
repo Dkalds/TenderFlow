@@ -38,6 +38,7 @@ from db.audit import log_event
 from db.repositories.webhooks import WebhookRepository
 from db.webhooks import EVENTO_SOLICITUD_ACCESO
 from observability.logging import get_logger
+from shared.dto import StatusOk
 from shared.outbound_http import pinned_https_request
 from shared.ssrf import validate_outbound_url
 
@@ -541,6 +542,52 @@ async def event_types(
 ) -> WebhookEventTypes:
     """Lista los eventos válidos, derivada de la misma constante que valida el alta."""
     return WebhookEventTypes(event_types=sorted(_VALID_EVENTS))
+
+
+@router.post(
+    "/{webhook_id}/deliveries/{delivery_id}/redeliver",
+    summary="Reenviar una entrega fallida",
+    status_code=202,
+    responses={
+        202: {"description": "Encolada para reenvío"},
+        401: {"description": "API key inválida"},
+        404: {"description": "Webhook o entrega no encontrados"},
+        409: {"description": "La entrega ya se completó"},
+    },
+)
+async def redeliver(
+    webhook_id: int,
+    delivery_id: int,
+    _ctx: dict[str, Any] = Depends(require_admin),
+) -> StatusOk:
+    """Vuelve a intentar una entrega concreta (C2.4).
+
+    **202 y no 200**: no se reenvía dentro de la request. Abrir una conexión
+    HTTP a un endpoint que puede estar caído dejaría al operador esperando el
+    timeout, y el reintento tiene que sobrevivir a que cierre la pestaña. Se
+    marca `pending` con el próximo intento en el pasado y el job la recoge.
+
+    No reinicia el contador de intentos: hacerlo convertiría este botón en una
+    forma de reintentar indefinidamente un endpoint muerto, que es justo lo que
+    el tope de `MAX_INTENTOS` evita.
+    """
+    from db.database import now_utc_iso
+    from db.repositories.webhooks import encolar_reintento
+
+    if await run_db(_repo.get_by_id, webhook_id) is None:
+        raise HTTPException(status_code=404, detail="Webhook no encontrado.")
+
+    encolada = await run_db(encolar_reintento, delivery_id, ahora=now_utc_iso())
+    if not encolada:
+        # 409 y no 404: la entrega puede existir y estar ya `delivered`, y
+        # decirle al operador «no existe» le haría buscar un problema que no hay.
+        raise HTTPException(
+            status_code=409,
+            detail="La entrega no existe o ya se completó.",
+        )
+
+    log.info("webhook_redeliver_encolada", webhook_id=webhook_id, delivery_id=delivery_id)
+    return StatusOk(status="encolada")
 
 
 @router.get(

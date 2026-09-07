@@ -43,12 +43,25 @@ _KEY_PREFIX = "llm:budget"
 _TTL_SECONDS = {"daily": 3 * 86400, "monthly": 40 * 86400}
 
 BudgetMode = Literal["monitor", "enforce"]
-BudgetScope = Literal["global", "user"]
+BudgetScope = Literal["global", "user", "org"]
 
 # Sujeto al que atribuir el gasto cuando el llamador no puede pasarlo explícito.
 # El coste real solo se conoce dentro de ``llm/client.py::_record_usage``, que no
 # recibe al usuario; el borde HTTP lo deja aquí antes de arrancar el stream.
 _current_subject: ContextVar[str | None] = ContextVar("llm_budget_subject", default=None)
+# Organización a la que atribuir el gasto (C2.9). Mismo mecanismo y mismo
+# motivo que el de arriba: `llm/client.py::_record_usage` calcula el coste
+# real y no recibe ni al usuario ni a su organización.
+_current_org: ContextVar[str | None] = ContextVar("llm_budget_org", default=None)
+
+
+def bind_budget_org(org_key: str | None) -> None:
+    """Fija la organización del gasto para el contexto actual (C2.9).
+
+    Gemela de :func:`bind_budget_subject`, con las mismas reglas: sin token de
+    reset, pensada para un contexto ya copiado.
+    """
+    _current_org.set(org_key or None)
 
 
 def bind_budget_subject(scope_key: str | None) -> None:
@@ -73,7 +86,10 @@ class LLMBudgetExceeded(RuntimeError):
         self.scope = scope
         # El mensaje llega al usuario en el 429: sin distinguir el ámbito, quien
         # agota su propia cuota cree que el servicio entero está caído.
-        ambito = "de tu cuenta" if scope == "user" else "global"
+        ambito = {
+            "user": "de tu cuenta",
+            "org": "de tu organización",
+        }.get(scope, "global")
         super().__init__(
             f"Presupuesto LLM {window} {ambito} agotado "
             f"({spent:.4f} USD >= {limit:.4f} USD). "
@@ -94,6 +110,7 @@ class BudgetGuard:
         daily_limit_usd: float,
         monthly_limit_usd: float,
         daily_limit_usd_per_user: float = 0.0,
+        daily_limit_usd_per_org: float = 0.0,
         mode: BudgetMode = "monitor",
         clock: Callable[[], float] | None = None,
         redis_client: Any | None = None,
@@ -101,6 +118,7 @@ class BudgetGuard:
         self.daily_limit_usd = daily_limit_usd
         self.monthly_limit_usd = monthly_limit_usd
         self.daily_limit_usd_per_user = daily_limit_usd_per_user
+        self.daily_limit_usd_per_org = daily_limit_usd_per_org
         self.mode: BudgetMode = mode
         self._clock = clock or time.time
         self._redis = redis_client
@@ -149,6 +167,15 @@ class BudgetGuard:
         if scope_key:
             return f"{_KEY_PREFIX}:u:{scope_key}:{window}:{stamp}"
         return f"{_KEY_PREFIX}:{window}:{stamp}"
+
+    def _org(self, org_key: str | None) -> str | None:
+        """Organización efectiva: la explícita gana sobre la del contexto.
+
+        El prefijo `org:` va aquí y en un solo sitio: sin él, una organización
+        con id "7" y un usuario con `user_key` "7" compartirían acumulador.
+        """
+        efectiva = org_key or _current_org.get()
+        return f"org:{efectiva}" if efectiva else None
 
     def _subject(self, scope_key: str | None) -> str | None:
         """Sujeto efectivo: el explícito gana sobre el del contexto."""
@@ -200,12 +227,21 @@ class BudgetGuard:
                 self._drop_redis()
         self._mem_incr(key, cost_usd, ttl)
 
-    def record(self, cost_usd: float, scope_key: str | None = None) -> None:
+    def record(
+        self, cost_usd: float, scope_key: str | None = None, org_key: str | None = None
+    ) -> None:
         """Suma ``cost_usd`` al acumulado de ambas ventanas (best-effort).
 
         Con sujeto (explícito o del contexto) alimenta además su acumulador
-        diario. Solo el diario: el tope por usuario es diario, un contador
-        mensual por sujeto sería estado que nadie lee.
+        diario, y con organización el de ella. Solo los diarios: los topes por
+        sujeto y por organización son diarios, y un contador mensual que nadie
+        lee es estado que hay que purgar sin ganar nada.
+
+        **Un cubo que no se alimenta nunca corta.** Es el modo de fallo de
+        cualquier tope por ámbito: la comprobación existe, el límite está
+        configurado, y el acumulador se queda en cero porque `record` no lo
+        toca. Por eso el cubo de organización se escribe aquí y no solo se
+        comprueba en `check`.
         """
         if cost_usd <= 0:
             return
@@ -214,6 +250,9 @@ class BudgetGuard:
         subject = self._subject(scope_key)
         if subject:
             self._incr(self._key("daily", subject), cost_usd, _TTL_SECONDS["daily"])
+        org = self._org(org_key)
+        if org:
+            self._incr(self._key("daily", org), cost_usd, _TTL_SECONDS["daily"])
 
     def _check_window(
         self, window: str, limit: float, scope: BudgetScope, subject: str | None
@@ -225,7 +264,7 @@ class BudgetGuard:
             return
         # La métrica no tiene label de ámbito (su definición es de otro módulo):
         # el sufijo en `window` distingue las series sin tocar el contrato.
-        label = window if scope == "global" else f"{window}_user"
+        label = window if scope == "global" else f"{window}_{scope}"
         llm_budget_exceeded_total.labels(window=label, mode=self.mode).inc()
         if self.mode == "enforce":
             raise LLMBudgetExceeded(window, spent, limit, scope=scope)
@@ -237,7 +276,7 @@ class BudgetGuard:
             limit_usd=limit,
         )
 
-    def check(self, scope_key: str | None = None) -> None:
+    def check(self, scope_key: str | None = None, org_key: str | None = None) -> None:
         """Verifica los presupuestos; lanza :class:`LLMBudgetExceeded` en enforce.
 
         Con sujeto se verifica también su ventana diaria. El orden importa: los
@@ -250,6 +289,14 @@ class BudgetGuard:
         """
         self._check_window("daily", self.daily_limit_usd, "global", None)
         self._check_window("monthly", self.monthly_limit_usd, "global", None)
+        # C2.9 — el cubo de la ORGANIZACIÓN va antes que el del usuario, por el
+        # mismo criterio que pone el global el primero: agotar el de la
+        # organización corta a todo su equipo, y el del usuario solo a uno. El
+        # 429 dice cuál se agotó, así que quien lo recibe sabe si esperar o
+        # hablar con su administrador.
+        org = self._org(org_key)
+        if org:
+            self._check_window("daily", self.daily_limit_usd_per_org, "org", org)
         subject = self._subject(scope_key)
         if subject:
             self._check_window("daily", self.daily_limit_usd_per_user, "user", subject)
@@ -273,6 +320,7 @@ def get_budget_guard() -> BudgetGuard:
                     daily_limit_usd=settings.LLM_BUDGET_USD_DAILY,
                     monthly_limit_usd=settings.LLM_BUDGET_USD_MONTHLY,
                     daily_limit_usd_per_user=settings.LLM_BUDGET_USD_DAILY_PER_USER,
+                    daily_limit_usd_per_org=settings.LLM_BUDGET_USD_DAILY_PER_ORG,
                     mode=settings.LLM_BUDGET_MODE,
                 )
     return _guard

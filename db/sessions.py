@@ -266,6 +266,44 @@ def purge_expired_sessions() -> int:
         return cur.rowcount if hasattr(cur, "rowcount") else 0
 
 
+#: Longitud del identificador público de una sesión (C2.1).
+#:
+#: Un prefijo del hash SHA-256, no el token: el token abre la sesión y no puede
+#: salir del navegador ni una vez. El hash tampoco se expone entero — no abre
+#: nada, pero no hay razón para publicarlo y sí para no acostumbrarse a hacerlo.
+#: Doce caracteres hexadecimales son 48 bits: la colisión entre las sesiones
+#: activas de UN usuario es una posibilidad teórica sin consecuencia práctica, y
+#: el `DELETE` valida además la pertenencia.
+SESSION_PUBLIC_ID_LEN = 12
+
+
+def session_public_id(token_hash: str) -> str:
+    """Identificador estable y no reversible de una sesión, para la API."""
+    return token_hash[:SESSION_PUBLIC_ID_LEN]
+
+
+def revoke_session_by_public_id(user_id: int, public_id: str) -> bool:
+    """Revoca UNA sesión del usuario por su id público (C2.1).
+
+    Devuelve ``False`` si no existe o no es suya. El `user_id` en el `WHERE` no
+    es decorativo: sin él, cualquiera con un id público cerraría la sesión de
+    otro, y esos ids se pueden enumerar.
+
+    Las demás sesiones no se tocan — es la diferencia con `revoke_all_sessions`,
+    que hasta 2026-09 era la única forma de cerrar una sesión que no fuera la
+    propia.
+    """
+    if not public_id or len(public_id) < SESSION_PUBLIC_ID_LEN:
+        return False
+    with connect() as c:
+        cur = c.execute(
+            "UPDATE sessions SET revoked = 1, revoked_at = %s "
+            "WHERE user_id = %s AND revoked = 0 AND left(token_hash, %s) = %s",
+            (now_utc_iso(), user_id, SESSION_PUBLIC_ID_LEN, public_id),
+        )
+        return bool(getattr(cur, "rowcount", 0))
+
+
 def list_active_sessions(user_id: int) -> list[dict[str, Any]]:
     """Lista sesiones activas y no expiradas de un usuario."""
     now = datetime.now(UTC).isoformat()

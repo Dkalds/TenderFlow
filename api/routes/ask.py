@@ -178,6 +178,17 @@ def _budget_subject(user: dict[str, Any]) -> str | None:
     return raw if isinstance(raw, str) and raw else None
 
 
+def _budget_org(user: dict[str, Any]) -> str | None:
+    """Organización a la que atribuir el gasto (C2.9).
+
+    `None` cuando la petición no tiene organización resuelta —una API key sin
+    ámbito, por ejemplo—: entonces solo aplican el global y el del usuario, que
+    es el comportamiento anterior.
+    """
+    raw = user.get("organization_id")
+    return str(raw) if raw not in (None, "") else None
+
+
 def _check_budget(user: dict[str, Any]) -> None:
     """Check eager del presupuesto ANTES de abrir el SSE: con enforce y ventana
     agotada respondemos 429 sin llamar al proveedor ni hacer retrieval
@@ -188,7 +199,7 @@ def _check_budget(user: dict[str, Any]) -> None:
     from llm.budget import LLMBudgetExceeded, get_budget_guard
 
     try:
-        get_budget_guard().check(_budget_subject(user))
+        get_budget_guard().check(_budget_subject(user), _budget_org(user))
     except LLMBudgetExceeded as exc:
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
@@ -394,9 +405,11 @@ def _prepare_ask_context(request: AskRequest) -> tuple[list[dict[str, Any]], Pro
     return docs, mode
 
 
-async def _stream_ask(request: AskRequest, scope_key: str | None) -> AsyncGenerator[str, None]:
+async def _stream_ask(
+    request: AskRequest, scope_key: str | None, org_key: str | None = None
+) -> AsyncGenerator[str, None]:
     """Prepara contexto + historial y devuelve el stream SSE del LLM."""
-    from llm.budget import bind_budget_subject
+    from llm.budget import bind_budget_org, bind_budget_subject
     from llm.client import stream_llm_response
 
     _validate_model(request.model)
@@ -430,6 +443,9 @@ async def _stream_ask(request: AskRequest, scope_key: str | None) -> AsyncGenera
         # copia), así que dejar ahí el sujeto lo atribuye sin filtrarlo a otras
         # requests.
         bind_budget_subject(scope_key)
+        # C2.9: sin esto el cubo de la organización se comprueba pero nunca
+        # se alimenta, y un tope que no acumula no corta nunca.
+        bind_budget_org(org_key)
         return stream_llm_response(
             question=request.question,
             docs=docs,
@@ -488,7 +504,7 @@ async def ask_question(
 
     _check_budget(user)
 
-    generator = await _stream_ask(body, _budget_subject(user))
+    generator = await _stream_ask(body, _budget_subject(user), _budget_org(user))
 
     return StreamingResponse(
         generator,
@@ -548,7 +564,7 @@ async def resumen_licitacion(
 
     _check_budget(user)
 
-    from llm.budget import bind_budget_subject
+    from llm.budget import bind_budget_org, bind_budget_subject
     from llm.client import stream_llm_response
     from services.rag.context import (
         LicitacionContext,
@@ -557,6 +573,7 @@ async def resumen_licitacion(
     )
 
     scope_key = _budget_subject(user)
+    org_key = _budget_org(user)
 
     # Igual que en `/ask`: el armado del contexto toca BD y no puede correr en
     # el event loop. `primary_doc_from_context` también va a BD, así que viaja
@@ -629,8 +646,10 @@ async def resumen_licitacion(
     else:
 
         def _factory() -> Iterator[str]:
-            # Ver _stream_ask: el sujeto viaja por contexto hasta _record_usage.
+            # Ver _stream_ask: sujeto y organización viajan por contexto hasta
+            # _record_usage, que es donde se conoce el coste real.
             bind_budget_subject(scope_key)
+            bind_budget_org(org_key)
 
             def _generate_and_cache() -> Iterator[str]:
                 parts: list[str] = []
