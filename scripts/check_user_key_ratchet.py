@@ -55,7 +55,17 @@ _EXCLUIDOS = ("tests/", "db/alembic/versions/")
 #: Ficheros que *informan* sobre el ratchet en vez de usar `user_key`. Este
 #: script y el generador de `docs/STATUS.md` nombran el símbolo para poder
 #: contarlo: incluirlos sería contar el termómetro como parte de la fiebre.
-_REPORTEROS = frozenset({"scripts/gen_status.py"})
+_REPORTEROS = frozenset(
+    {
+        "scripts/gen_status.py",
+        # Llega con #272. Su docstring nombra ``user_key`` para decir que
+        # ninguna consulta del módulo la acepta —cuentas objetivo y etiquetas
+        # son de organización, no de usuario—. Mencionar la deuda para negarla
+        # no es tenerla, y congelarlo habría inflado el conteo de STATUS.md con
+        # un fichero que no tiene nada que migrar.
+        "db/repositories/cuentas.py",
+    }
+)
 
 # ── RATCHET: ficheros de producción que todavía usan ``user_key`` ───────────
 # Medido con este mismo script el 2026-09-06 sobre la cabeza del repo.
@@ -89,6 +99,23 @@ _REPORTEROS = frozenset({"scripts/gen_status.py"})
 #     ya existía antes del catálogo. Renombrar esa clave sería un cambio
 #     breaking del contrato publicado para quien tenga ese webhook suscrito, así
 #     que se retira cuando se retire la columna, y no antes.
+#
+# Tercera tanda del 2026-09-07, al fusionar master: la trae #272 (plan de
+# funcionalidades), que creció en paralelo a este gate y por tanto sin poder
+# respetarlo. El criterio no es nuevo, es el de las dos tandas anteriores:
+#
+#   - ``db/repositories/novedades.py`` y ``services/novedades.py`` leen
+#     ``watchlist_items.user_key`` para contestar «qué ha cambiado en lo que
+#     sigo». Es la misma columna que consulta ``db/events.py`` y se retira con
+#     ella en T4; hasta entonces no hay ``user_id`` por el que filtrar.
+#   - ``services/cuentas.py`` traduce ``user_id`` a ``user_key`` en un único
+#     punto —``_copiar_para_miembro``— porque ``create_rule`` y ``save_filter``
+#     siguen tecleadas por ``user_key``. Cuando T4 les cambie la clave, la
+#     traducción se va con ellas: es una línea, no treinta.
+#
+# La alternativa era rehacer código de producto ya fusionado para satisfacer un
+# gate que se escribió después: eso no retira deuda, la muda de sitio y arriesga
+# funcionalidad que ya está en master.
 CONGELADOS: frozenset[str] = frozenset(
     {
         "api/routes/admin_solicitudes.py",
@@ -118,6 +145,7 @@ CONGELADOS: frozenset[str] = frozenset(
         "db/radar_dismissals.py",
         "db/repositories/agenda.py",
         "db/repositories/audit.py",
+        "db/repositories/novedades.py",
         "db/repositories/organizations.py",
         "db/repositories/pursuits.py",
         "db/repositories/user_profiles.py",
@@ -136,10 +164,12 @@ CONGELADOS: frozenset[str] = frozenset(
         "services/analytics/scoring.py",
         "services/audit.py",
         "services/contract_events.py",
+        "services/cuentas.py",
         "services/deadline_reminders.py",
         "services/email_digest.py",
         "services/gdpr.py",
         "services/notifications.py",
+        "services/novedades.py",
         "services/organizations.py",
         "services/pursuit_awards.py",
         "services/pursuits.py",
