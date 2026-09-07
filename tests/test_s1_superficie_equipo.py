@@ -13,19 +13,36 @@ from pathlib import Path
 import pytest
 
 _WEB = Path(__file__).resolve().parents[1] / "web" / "src" / "app"
-_LOGIN = _WEB / "login" / "page.tsx"
-_EQUIPO = _WEB / "(dashboard)" / "equipo" / "page.tsx"
-_HOOK_INVITACIONES = _WEB / "(dashboard)" / "equipo" / "_hooks" / "use-invitations.ts"
+_LOGIN = _WEB / "login"
+_EQUIPO = _WEB / "(dashboard)" / "equipo"
+_HOOK_INVITACIONES = _EQUIPO / "_hooks" / "use-invitations.ts"
+
+
+def _codigo(raiz: Path) -> str:
+    """Todo el TS/TSX de una pantalla, concatenado.
+
+    Se mira el subárbol y no un ``page.tsx`` suelto porque las dos pantallas
+    están partidas en ``_hooks/`` y ``_components/`` (S7.1 del plan): el botón
+    de Microsoft vive hoy en un componente y el canje de la invitación en un
+    hook. Lo que estos tests fijan es un acuerdo entre el backend y **la
+    pantalla**, no entre el backend y un fichero concreto; atarlo a una ruta
+    convertía cada troceado en un rojo que no significaba nada.
+    """
+    return "\n".join(
+        p.read_text(encoding="utf-8")
+        for p in sorted(raiz.rglob("*.ts*"))
+        if "__tests__" not in p.parts
+    )
 
 
 @pytest.fixture()
 def login() -> str:
-    return _LOGIN.read_text(encoding="utf-8")
+    return _codigo(_LOGIN)
 
 
 @pytest.fixture()
 def equipo() -> str:
-    return _EQUIPO.read_text(encoding="utf-8")
+    return _codigo(_EQUIPO)
 
 
 class TestPantallaDeLogin:
@@ -34,10 +51,33 @@ class TestPantallaDeLogin:
         assert "Continuar con Microsoft" in login
 
     def test_usa_la_ruta_parametrizada_por_proveedor(self, login: str) -> None:
-        """Un solo camino: duplicarlo dejaría a uno de los dos atrás."""
+        """Un solo camino: duplicarlo dejaría a uno de los dos atrás.
+
+        Se fija la PROPIEDAD y no el nombre del manejador. Fijaba
+        ``handleOAuthLogin("google"`` y el troceado de S7.1 lo convirtió en una
+        prop (``onLogin``), así que el test se puso rojo sin que nada de lo que
+        vigila hubiera cambiado. Lo que importa es que exista una única URL
+        parametrizada y que ningún sitio del código construya la de un
+        proveedor a mano — que es como uno de los dos se quedaría atrás.
+        """
         assert "/api/v1/auth/oauth/${provider}/authorize" in login
-        assert 'handleOAuthLogin("google"' in login
-        assert 'handleOAuthLogin("microsoft"' in login
+
+        # Los comentarios sí pueden citar la ruta concreta (uno explica el 501
+        # de Microsoft sin configurar), así que se miran solo las líneas de
+        # código.
+        codigo = "\n".join(
+            linea
+            for linea in login.splitlines()
+            if not linea.lstrip().startswith(("//", "*", "/*"))
+        )
+        for proveedor in ("google", "microsoft"):
+            assert f"/auth/oauth/{proveedor}/authorize" not in codigo, (
+                f"la URL de {proveedor} se construye a mano en algún sitio: "
+                "el día que el flujo cambie, ese camino se queda atrás"
+            )
+            assert f'"{proveedor}"' in codigo, (
+                f"{proveedor} ya no se ofrece como proveedor en la pantalla"
+            )
 
     def test_el_boton_de_microsoft_depende_de_que_este_configurado(self, login: str) -> None:
         """Sin `OAUTH_MICROSOFT_CLIENT_ID` el backend responde 501."""

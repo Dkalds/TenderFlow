@@ -27,10 +27,8 @@ import {
   formStateToBody,
   ruleToFormState,
   tieneCriterio,
-  type ApiRule,
-  type RuleBody,
-  type RuleFormState,
 } from "../_hooks/use-watchlist-rules";
+import type { ApiRule, RuleBody, RuleFormState } from "../_hooks/watchlist-rule-types";
 import { RuleFormFields } from "./rule-form-fields";
 
 export function EditRuleSheet({

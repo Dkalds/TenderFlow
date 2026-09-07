@@ -14,7 +14,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import type { Frequency, RuleBody } from "./use-watchlist-rules";
+import type { Frequency, RuleBody } from "./watchlist-rule-types";
 
 export interface LegacyRule {
   keyword?: string;

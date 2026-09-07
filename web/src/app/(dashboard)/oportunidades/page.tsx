@@ -16,7 +16,12 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { PursuitCard } from "@/components/pursuits/pursuit-card";
 import { formatEur } from "@/components/pursuits/pursuit-presenters";
 import { PanelEmpty, PanelError } from "@/components/console/panel";
-import { type PursuitStatus, usePursuitMetrics, usePursuits } from "@/hooks/use-pursuits";
+import {
+  type Pursuit,
+  type PursuitStatus,
+  usePursuitMetrics,
+  usePursuits,
+} from "@/hooks/use-pursuits";
 import { SpaceShell } from "@/components/layout/space-shell";
 import { cn } from "@/lib/utils";
 
@@ -39,6 +44,14 @@ import { cn } from "@/lib/utils";
  * `pursuits_submitted` toda la que llegó a presentarse), mientras que el badge
  * de cada carril cuenta el **estado actual**. Sin ese matiz, "Identificadas 4"
  * encima de un carril "Por decidir 1" se lee como tres tarjetas perdidas.
+ *
+ * Desde la revisión `v110` la unidad de todo esto es la **oportunidad**, no el
+ * expediente: un expediente dividido en lotes puede tener una oportunidad por
+ * lote. Por eso los carriles agrupan por expediente —las tarjetas de un mismo
+ * expediente van juntas y bajo su título, distinguidas por el lote— y la tira
+ * declara su unidad de conteo, que además viaja en el propio contrato
+ * (`unidad_de_conteo`). Sin las dos cosas, "Oportunidades 6" sobre tres
+ * expedientes parece un error de la pantalla.
  */
 
 const LANES: { title: string; statuses: PursuitStatus[]; description: string }[] = [
@@ -93,6 +106,34 @@ function Metric({
   );
 }
 
+interface GrupoExpediente {
+  licitacionId: string;
+  titulo: string;
+  items: Pursuit[];
+}
+
+/**
+ * Agrupa las tarjetas de un carril por expediente, conservando el orden en que
+ * llegaron: el backend ya ordena por `updated_at`, y reordenar aquí sería
+ * fabricar un criterio que el listado no dio.
+ */
+function agruparPorExpediente(items: Pursuit[]): GrupoExpediente[] {
+  const grupos = new Map<string, GrupoExpediente>();
+  for (const item of items) {
+    const grupo = grupos.get(item.licitacion_id);
+    if (grupo) {
+      grupo.items.push(item);
+    } else {
+      grupos.set(item.licitacion_id, {
+        licitacionId: item.licitacion_id,
+        titulo: item.tender_title ?? `Licitación ${item.licitacion_id}`,
+        items: [item],
+      });
+    }
+  }
+  return [...grupos.values()];
+}
+
 export default function OportunidadesPage() {
   const [query, setQuery] = React.useState("");
   const pursuits = usePursuits();
@@ -136,7 +177,7 @@ export default function OportunidadesPage() {
           <Metric
             icon={BriefcaseBusiness}
             label="Oportunidades"
-            hint="Total creadas, abiertas y cerradas"
+            hint="Total creadas: una por lote, no por expediente"
             value={metrics.data?.pursuits_identified}
             loading={metrics.isLoading}
           />
@@ -229,7 +270,31 @@ export default function OportunidadesPage() {
                         <Skeleton className="h-28 rounded-xl" />
                       </>
                     ) : laneItems.length ? (
-                      laneItems.map((pursuit) => <PursuitCard key={pursuit.id} pursuit={pursuit} />)
+                      agruparPorExpediente(laneItems).map((grupo) =>
+                        grupo.items.length === 1 ? (
+                          <PursuitCard key={grupo.items[0].id} pursuit={grupo.items[0]} />
+                        ) : (
+                          <section
+                            key={grupo.licitacionId}
+                            aria-label={grupo.titulo}
+                            className="rounded-xl border border-border/50 bg-muted/20 p-1.5"
+                          >
+                            <div className="px-1.5 pb-1.5 pt-1">
+                              <p className="truncate text-[11.5px] font-semibold leading-snug">
+                                {grupo.titulo}
+                              </p>
+                              <p className="mt-0.5 text-[10.5px] text-muted-foreground">
+                                {grupo.items.length} oportunidades de este expediente
+                              </p>
+                            </div>
+                            <div className="flex flex-col gap-2">
+                              {grupo.items.map((pursuit) => (
+                                <PursuitCard key={pursuit.id} pursuit={pursuit} enExpediente />
+                              ))}
+                            </div>
+                          </section>
+                        ),
+                      )
                     ) : (
                       <PanelEmpty message="Sin oportunidades en esta fase." />
                     )}

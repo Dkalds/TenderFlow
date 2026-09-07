@@ -126,7 +126,7 @@ const eslintConfig = defineConfig([
   // líneas y los llamó «la deuda que hace frágil cualquier pantalla nueva»:
   // una vista de 900 líneas no se revisa, no se prueba por partes y obliga a
   // leerla entera para cambiar un botón. Al medirlo de verdad no eran doce
-  // sino veintiocho. Hoy quedan los cuatro de la allowlist de abajo.
+  // sino veintiocho. Hoy queda el de la allowlist de abajo.
   //
   // `skipBlankLines`/`skipComments` en `false` a propósito: el objetivo es que
   // el fichero se pueda leer de una sentada, y un comentario largo también se
@@ -148,19 +148,18 @@ const eslintConfig = defineConfig([
   // ALLOWLIST — **solo puede encoger**. No se le añaden entradas: si una
   // pantalla nueva no cabe en 300 líneas, se parte antes de mergearla.
   //
-  // Los cuatro que quedan crecieron el 2026-09-06, durante la propia ejecución
-  // del plan, porque los streams S1 y S4 les añadieron superficie (el botón de
-  // Microsoft y las invitaciones en las dos primeras; el formato de plantilla
-  // de webhooks y los campos nuevos de regla en las dos últimas) y sus agentes
-  // no llegaron a trocearlas. Es deuda con fecha y con dueño, no un permiso
-  // permanente.
+  // Los cuatro que quedaban crecieron el 2026-09-06, durante la propia
+  // ejecución del plan, porque los streams S1 y S4 les añadieron superficie y
+  // sus agentes no llegaron a trocearlas. Tres ya están partidos (2026-09-07):
+  // el login reparte sus cinco caminos de entrada entre `login/_hooks/` y
+  // `login/_components/`; los webhooks, sus piezas entre
+  // `ops/_components/webhooks/` y `ops/_hooks/use-webhooks-ambito.ts`; y las
+  // reglas de watchlist separan formas, catálogos y coincidencias del módulo
+  // que traduce formulario ↔ contrato.
+  //
+  // Queda uno solo, y es deuda con fecha y con dueño, no un permiso permanente.
   {
-    files: [
-      "src/app/login/page.tsx",
-      "src/app/(dashboard)/equipo/page.tsx",
-      "src/app/(dashboard)/ops/_components/webhooks-view.tsx",
-      "src/app/(dashboard)/mi-watchlist/_hooks/use-watchlist-rules.ts",
-    ],
+    files: ["src/app/(dashboard)/equipo/page.tsx"],
     rules: { "max-lines": "off" },
   },
 ]);

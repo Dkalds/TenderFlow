@@ -29,11 +29,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  FREQ_NOTE,
-  FREQ_OPTIONS,
-  type Frequency,
-} from "../_hooks/use-watchlist-rules";
+import { FREQ_NOTE, FREQ_OPTIONS } from "../_hooks/watchlist-rule-options";
+import type { Frequency } from "../_hooks/watchlist-rule-types";
 import type { NuevaReglaForm } from "../_hooks/use-mi-watchlist";
 
 export function NuevaReglaCard({

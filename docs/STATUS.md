@@ -77,7 +77,7 @@ Generado: 2026-09-07
 
 ## Superficie de la API
 
-**183 endpoints** expuestos.
+**190 endpoints** expuestos.
 
 <details><summary>Ver listado</summary>
 
@@ -208,12 +208,16 @@ Generado: 2026-09-07
 | POST | `/api/v1/organizations` |
 | GET | `/api/v1/organizations/active` |
 | POST | `/api/v1/organizations/invitations/accept` |
+| GET | `/api/v1/organizations/{organization_id}/capabilities` |
+| PUT | `/api/v1/organizations/{organization_id}/capabilities` |
 | GET | `/api/v1/organizations/{organization_id}/invitations` |
 | DELETE | `/api/v1/organizations/{organization_id}/invitations/{invitation_id}` |
 | POST | `/api/v1/organizations/{organization_id}/invitations/{invitation_id}/resend` |
 | GET | `/api/v1/organizations/{organization_id}/members` |
 | POST | `/api/v1/organizations/{organization_id}/members` |
 | PUT | `/api/v1/organizations/{organization_id}/members/{member_user_id}` |
+| GET | `/api/v1/organizations/{organization_id}/nifs` |
+| PUT | `/api/v1/organizations/{organization_id}/nifs` |
 | GET | `/api/v1/organizations/{organization_id}/settings` |
 | PUT | `/api/v1/organizations/{organization_id}/settings` |
 | GET | `/api/v1/predicciones/calibracion` |
@@ -227,8 +231,11 @@ Generado: 2026-09-07
 | POST | `/api/v1/pursuits` |
 | GET | `/api/v1/pursuits/agenda` |
 | GET | `/api/v1/pursuits/metrics` |
+| GET | `/api/v1/pursuits/weights-proposal` |
+| POST | `/api/v1/pursuits/weights-proposal/apply` |
 | GET | `/api/v1/pursuits/{pursuit_id}` |
 | PATCH | `/api/v1/pursuits/{pursuit_id}` |
+| GET | `/api/v1/pursuits/{pursuit_id}/checklist` |
 | GET | `/api/v1/pursuits/{pursuit_id}/comments` |
 | POST | `/api/v1/pursuits/{pursuit_id}/comments` |
 | DELETE | `/api/v1/pursuits/{pursuit_id}/comments/{comment_id}` |

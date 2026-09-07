@@ -7,9 +7,9 @@ import { LiveRegion } from "@/components/live-region";
 
 /**
  * Los metadatos de `/login` viven en un layout y no en la página porque
- * `login/page.tsx` es un Client Component (usa `useSearchParams` para el
- * `?redirect=` y el estado del formulario) y un `"use client"` no puede
- * exportar `metadata`.
+ * `login/page.tsx` es un Client Component (su `useLoginForm` lee
+ * `useSearchParams` para el `?redirect=` y guarda el estado del formulario) y
+ * un `"use client"` no puede exportar `metadata`.
  *
  * El `canonical` es lo que aporta valor real aquí: sin sesión, el proxy de
  * borde manda a `/login?redirect=<ruta>` desde **cada** ruta del dashboard, y a eso

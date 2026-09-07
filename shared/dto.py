@@ -586,6 +586,44 @@ PursuitStatus = Literal[
 PursuitDecision = Literal["pending", "go", "no_go"]
 PursuitOutcome = Literal["pending", "won", "lost", "cancelled"]
 
+#: Vocabulario de bandas del Radar, y **la declaración canónica de este
+#: enumerado**. Lo fija ``_band()`` en ``services/analytics/scoring.py``; la
+#: revisión ``v93`` lo guardó deliberadamente como TEXT para que la banda pueda
+#: moverse sin migrar.
+#:
+#: Queda **una copia viva**: ``Banda`` en ``services/watchlist_rules.py``, que
+#: publica ``banda_min`` en el contrato. Hoy no produce deriva porque su orden
+#: se alineó con este a mano, pero eso es lo que aplaza el problema, no lo que
+#: lo cierra: sustituirla por ``from shared.dto import RadarBanda`` está
+#: pendiente y no se hizo aquí sólo porque ese fichero está en vuelo en otra
+#: rama. Mientras exista, cualquier reordenación de una de las dos listas
+#: vuelve a poner el gate de deriva a suertes.
+#:
+#: **Orden canónico: de mayor a menor interés comercial** (``Caliente`` →
+#: ``Descarte``), el mismo en que ``_band()`` va comparando umbrales de arriba
+#: abajo. Un ``Literal`` es un CONJUNTO —``typing.Literal`` compara y hashea
+#: por conjunto—, así que este orden no significa nada para el tipo: significa
+#: para el *contrato generado*, que es una lista y sí tiene orden. Quien
+#: necesite comparar bandas entre sí usa una escala ordinal explícita, no este
+#: orden (ver ``ORDEN_BANDAS`` en ``services/watchlist_rules.py``).
+#:
+#: **No vuelvas a escribir ``Literal["Caliente", …]`` en otro fichero: importa
+#: este alias.** Precisamente porque son iguales por conjunto, dos
+#: declaraciones de las mismas cuatro bandas en distinto orden son el MISMO
+#: tipo (``==`` y ``hash()`` coinciden), y las cachés de ``typing`` van por
+#: igualdad: en CPython 3.13 —el intérprete del CI— ``Banda | None`` pasa por
+#: ``typing.Union``, que está memoizado, así que la segunda declaración
+#: recupera la primera y el enumerado sale en el orden de quien se importase
+#: antes. Eso dependía del orden de importación de los routers: el mismo código
+#: generaba dos ``api/openapi.json`` distintos y el job «Codegen Drift Check»
+#: fallaba al azar sobre una línea de ``web/src/generated/api.d.ts`` que nadie
+#: había tocado. (En 3.14 ``|`` ya no pasa por esa caché y cada declaración
+#: conserva su orden — que es peor, no mejor: el drift solo aparece en CI.) Un
+#: gate que falla por azar deja de leerse, y este es el que impide que el
+#: cliente TS y la API se separen. Una sola declaración cierra el problema en
+#: cualquier versión; alinear copias a mano solo lo aplaza hasta la siguiente.
+RadarBanda = Literal["Caliente", "Atractiva", "Tibia", "Descarte"]
+
 
 class OrganizationSummary(BaseModel):
     """Organización de trabajo visible para el usuario autenticado."""
@@ -718,7 +756,21 @@ class PursuitCreate(BaseModel):
     organization_id: int | None = Field(default=None, ge=1)
     responsible_user_id: int | None = Field(default=None, ge=1)
     score_al_abrir: int | None = Field(default=None, ge=0, le=100)
-    banda_al_abrir: Literal["Caliente", "Atractiva", "Tibia", "Descarte"] | None = None
+    banda_al_abrir: RadarBanda | None = None
+    #: Lote del expediente por el que se puja. ``None`` es «el expediente
+    #: completo», que es lo único que existía hasta la revisión ``v110`` y
+    #: sigue siendo el caso por defecto. Es el ``id`` de ``lotes`` que el
+    #: cliente tiene en pantalla; el servicio comprueba que ese lote pertenezca
+    #: a ``licitacion_id`` y persiste su número, que es la parte estable (los
+    #: ids de ``lotes`` se renumeran en cada re-ingesta).
+    lote_id: int | None = Field(default=None, ge=1)
+    #: Valor de cada dimensión del score en el momento de abrir, tal como lo
+    #: pintó el desglose del Radar. Mismo razonamiento que ``score_al_abrir``:
+    #: no se puede recalcular después (depende del universo y de los pesos de
+    #: aquel día), y sin él no hay forma de proponer un ajuste de pesos a
+    #: partir de lo que la organización ganó y perdió. Acotado: el desglose
+    #: tiene siete dimensiones y la columna es TEXT, no un almacén libre.
+    desglose_al_abrir: dict[str, float] | None = Field(default=None, max_length=20)
 
 
 class PursuitUpdate(BaseModel):
@@ -760,6 +812,14 @@ class PursuitSummary(BaseModel):
     id: int = Field(ge=1)
     organization_id: int = Field(ge=1)
     licitacion_id: str
+    #: Lote por el que se puja, o ``None`` para el expediente completo. Lo
+    #: durable es ``lote_numero`` (la clave de negocio del lote dentro del
+    #: expediente); ``lote_id`` y ``lote_titulo`` los resuelve el repositorio
+    #: contra ``lotes`` en cada lectura y quedan en ``None`` si el pliego dejó
+    #: de publicar ese lote — la oportunidad sigue diciendo para cuál se abrió.
+    lote_numero: str | None = None
+    lote_id: int | None = None
+    lote_titulo: str | None = None
     tender_title: str | None = None
     tender_deadline: PgDateTime | None = None
     responsible_user_id: int | None = None
@@ -806,8 +866,9 @@ class PursuitAdjudicacionDetectada(BaseModel):
     importe adjudicado se escribían a mano aunque la ingesta ya traía
     adjudicatario, importe y número de ofertas del mismo expediente. La ficha
     la muestra como propuesta —«este expediente se adjudicó a X por Y €»— y la
-    persona confirma el resultado; el sistema no decide por ella quién ganó
-    porque no conoce el NIF de la organización.
+    persona confirma el resultado. Desde S2 el sistema **sí** puede proponer
+    cuál es (``resultado_sugerido``, calculado por NIF), pero sigue sin
+    cerrarla: la propuesta llega preseleccionada y quien decide es la persona.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -816,6 +877,13 @@ class PursuitAdjudicacionDetectada(BaseModel):
     adjudicatarios: list[PursuitAdjudicatario] = Field(default_factory=list)
     importe_total: float | None = Field(default=None, ge=0)
     n_ofertas: int | None = Field(default=None, ge=0)
+    #: Resultado que el sistema propone preseleccionar, cruzando los NIFs de
+    #: ``organization_nifs`` con los de los adjudicatarios publicados (S2.1).
+    #: ``None`` es «no lo sé» y no «no ganó»: sale así cuando la organización
+    #: no ha declarado ningún NIF o cuando la fuente no publicó el del
+    #: adjudicatario. Se calcula en lectura y no se persiste — lo persistido
+    #: es lo que confirma la persona, en ``pursuits.outcome``.
+    resultado_sugerido: Literal["won", "lost"] | None = None
     #: ``True`` cuando el pursuit sigue abierto: es entonces cuando la ficha
     #: debe proponer el cierre. En un pursuit ya cerrado la adjudicación es
     #: contexto, no una acción pendiente.
@@ -899,11 +967,23 @@ class PursuitCommentListResponse(BaseModel):
 
 
 class PursuitMetrics(BaseModel):
-    """Métricas reproducibles de funnel y resultado por organización/periodo."""
+    """Métricas reproducibles de funnel y resultado por organización/periodo.
+
+    **Cada cifra cuenta oportunidades, no expedientes.** Desde la revisión
+    ``v110`` un mismo expediente puede tener varias oportunidades abiertas —una
+    por lote—, así que «4 identificadas» pueden ser dos expedientes de dos lotes
+    cada uno. ``unidad_de_conteo`` lo dice en el propio contrato para que
+    ninguna pantalla tenga que suponerlo (ADR-014).
+    """
 
     organization_id: int = Field(ge=1)
     period_from: PgDateTime | None = None
     period_to: PgDateTime | None = None
+    #: Constante del contrato: qué cuenta una unidad de estas métricas. Es un
+    #: ``Literal`` de un solo valor a propósito — el día que se cuente por
+    #: expediente habrá que añadir el otro valor y el cliente dejará de
+    #: compilar, en vez de seguir pintando un número que cambió de significado.
+    unidad_de_conteo: Literal["oportunidad"] = "oportunidad"
     pursuits_identified: int = Field(ge=0)
     pursuits_submitted: int = Field(ge=0)
     pursuits_won: int = Field(ge=0)
@@ -911,6 +991,10 @@ class PursuitMetrics(BaseModel):
     win_rate: float | None = Field(default=None, ge=0, le=1)
     awarded_amount_eur: float = Field(default=0, ge=0)
     median_decision_time_hours: float | None = Field(default=None, ge=0)
+    #: Qué tal prioriza el Radar en esta organización. ``None`` cuando ninguna
+    #: oportunidad del periodo lleva banda sellada (``v93``): el bucle no está
+    #: cerrado y no hay nada que afirmar.
+    radar_quality: RadarQuality | None = None
 
 
 # ── Agenda de Mi Pipeline ───────────────────────────────────────────────────
@@ -1045,7 +1129,242 @@ class OrganizationInvitationAccept(BaseModel):
 
 # ── ANCLA S2 — capacidad de la organización (NIF, solvencia, go/no-go) ─────
 
+#: Ámbito de una certificación: la acredita la empresa o una persona del
+#: equipo. Es el mismo vocabulario que ``CertificationRequirement.scope`` de
+#: ``shared/tender_facts.py`` menos ``other``, que en el pliego significa «no
+#: se sabe» y en el perfil de la organización no tendría sentido declarar.
+OrganizationCapabilityScope = Literal["company", "team"]
+
+#: Familias del perfil que el checklist puede contrastar. Viaja en
+#: ``OrganizationCapabilitiesOut.campos_incompletos`` para que la UI señale qué
+#: falta rellenar antes de que el go/no-go conteste «desconocido».
+OrganizationCapabilityField = Literal[
+    "certificaciones",
+    "facturacion",
+    "referencias",
+    "perfiles_equipo",
+]
+
+
+class OrganizationNif(BaseModel):
+    """Un NIF/CIF con el que la organización se presenta a licitación.
+
+    Son varios y no uno: un grupo concursa con la matriz, con filiales y en
+    UTE, y el cierre por NIF tiene que reconocer a todas. ``principal`` marca
+    la razón social con la que se presenta por defecto; el resto son igual de
+    válidas para decidir si una adjudicación es suya.
+    """
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    #: Se guarda ya normalizado (``services.normalization.normalize_nif``):
+    #: sin espacios, guiones ni puntos y en mayúsculas. Comparar «B-12345678»
+    #: con «B12345678» en SQL exigiría normalizar la columna en cada consulta.
+    nif: SafeStr = Field(min_length=4, max_length=32)
+    razon_social: SafeStr | None = Field(default=None, max_length=300)
+    principal: bool = False
+
+
+class OrganizationNifsIn(BaseModel):
+    """Cuerpo del PUT: el conjunto completo de NIFs, no un alta suelta.
+
+    Reemplazar entero evita el endpoint de borrado por id y hace que la
+    pantalla mande siempre lo que el usuario ve, que es lo que espera.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    nifs: list[OrganizationNif] = Field(default_factory=list, max_length=25)
+
+
+class OrganizationNifOut(OrganizationNif):
+    """Un NIF ya persistido, resuelto contra el maestro de empresas."""
+
+    id: int = Field(ge=1)
+    #: ``empresas.empresa_id`` cuando el maestro conoce ese NIF. Es lo que
+    #: permite excluir a la propia organización de «contra quién»: sin esta
+    #: resolución habría que comparar nombres, y los nombres no son claves.
+    empresa_id: int | None = None
+    created_at: PgDateTime
+
+
+class OrganizationNifsOut(BaseModel):
+    """Identidad fiscal completa de una organización."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    organization_id: int = Field(ge=1)
+    nifs: list[OrganizationNifOut] = Field(default_factory=list)
+
+
+class OrganizationCertification(BaseModel):
+    """Certificación que la organización puede acreditar."""
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    nombre: SafeStr = Field(min_length=1, max_length=300)
+    ambito: OrganizationCapabilityScope = "company"
+    #: ``None`` significa «sin caducidad declarada», no «vigente para
+    #: siempre»: el checklist la da por vigente porque no tiene motivo para
+    #: decir lo contrario, y lo dice en el motivo del veredicto.
+    vigente_hasta: date | None = None
+
+
+class OrganizationFacturacion(BaseModel):
+    """Facturación de un ejercicio cerrado."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    ejercicio: int = Field(ge=1990, le=2100)
+    importe_eur: float = Field(ge=0)
+
+
+class OrganizationReferencia(BaseModel):
+    """Contrato ejecutado que sirve de referencia de solvencia técnica."""
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    organo: SafeStr = Field(min_length=1, max_length=300)
+    importe_eur: float | None = Field(default=None, ge=0)
+    anio: int = Field(ge=1990, le=2100)
+    #: Familia del diccionario (``SAP``, ``MICROSOFT``…) o el nombre tal cual
+    #: si la organización trabaja con algo que el diccionario no tiene.
+    tecnologia: SafeStr | None = Field(default=None, max_length=100)
+    #: ``licitaciones.id_externo`` cuando la referencia salió de la propia
+    #: plataforma. Que sea opcional es deliberado: el histórico de una
+    #: organización empieza mucho antes de que use TenderFlow.
+    expediente_id: SafeStr | None = Field(default=None, max_length=200)
+
+
+class OrganizationTeamProfile(BaseModel):
+    """Perfil disponible en plantilla, con experiencia y cuántas personas."""
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    rol: SafeStr = Field(min_length=1, max_length=200)
+    anios: float = Field(ge=0, le=60)
+    cantidad: int = Field(ge=1, le=9999)
+
+
+class OrganizationCapabilities(BaseModel):
+    """Perfil de capacidad de la organización: con qué puede acreditarse.
+
+    Es dato **corporativo**, no personal: pertenece a la organización y no a
+    quien lo teclea, así que ni se exporta ni se borra con la cuenta de un
+    usuario (RGPD Art. 17/20 cubren datos personales).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    certificaciones: list[OrganizationCertification] = Field(default_factory=list, max_length=50)
+    #: Los tres últimos ejercicios son lo que piden los pliegos españoles para
+    #: la solvencia económica; guardar más no aporta y guardar menos obliga a
+    #: pedirlo otra vez.
+    facturacion: list[OrganizationFacturacion] = Field(default_factory=list, max_length=3)
+    referencias: list[OrganizationReferencia] = Field(default_factory=list, max_length=100)
+    perfiles_equipo: list[OrganizationTeamProfile] = Field(default_factory=list, max_length=50)
+
+
+class OrganizationCapabilitiesOut(OrganizationCapabilities):
+    """Perfil leído, con qué falta por rellenar."""
+
+    organization_id: int = Field(ge=1)
+    updated_at: PgDateTime | None = None
+    #: Familias vacías. La UI las marca para que se entienda por qué el
+    #: checklist de una oportunidad contesta «desconocido» en esa familia.
+    campos_incompletos: list[OrganizationCapabilityField] = Field(default_factory=list)
+
+
 # ── ANCLA S3 — oportunidad por lote y calidad del Radar ────────────────────
+#
+# Los dos modelos de abajo cumplen el criterio de compartición del docstring:
+# ``PursuitMetrics`` (aquí) los anida y ``services/product_metrics.py`` los
+# reutiliza para ``make product-status``, que sirve la misma métrica sin pasar
+# por HTTP. Los campos de lote son aditivos sobre ``PursuitCreate`` y
+# ``PursuitSummary``, que ya vivían arriba.
+#
+# Lo que S3 NO aterriza aquí: los modelos de la propuesta de pesos
+# (``PesosPropuestos`` y compañía). Los publica una sola ruta
+# —``GET /pursuits/weights-proposal``— y viven junto a su función de dominio en
+# ``services/pursuits.py``, como los de ``services/analytics/*``.
+
+# ``RadarBanda`` (el vocabulario de bandas) NO se declara aquí: vive junto a
+# los demás vocabularios de pursuits, arriba, porque ``PursuitCreate`` ya lo
+# usaba y una segunda declaración es exactamente lo que hacía indeterminista el
+# enumerado del contrato. Ver el comentario de ese alias.
+
+
+class RadarBandaCalidad(BaseModel):
+    """Qué le pasó a la organización con lo que el Radar puso en una banda.
+
+    Cada porcentaje viaja con su denominador y solo se calcula cuando ese
+    denominador aguanta (ADR-014): ``precision`` mide sobre ``resueltas``
+    (ganadas + perdidas, las únicas que tienen veredicto) y ``tasa_cierre``
+    sobre ``abiertas``. Por debajo del mínimo llegan en ``None``, que el
+    cliente pinta como «sin datos suficientes» — nunca como cero.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    banda: RadarBanda
+    #: Oportunidades abiertas desde esa banda en la ventana.
+    abiertas: int = Field(ge=0)
+    #: De esas, las que llegaron a un estado terminal (won/lost/withdrawn).
+    cerradas: int = Field(ge=0)
+    ganadas: int = Field(ge=0)
+    perdidas: int = Field(ge=0)
+    #: ``ganadas + perdidas``. Denominador honesto de ``precision``: una
+    #: oportunidad retirada no dice nada sobre si el Radar acertó.
+    resueltas: int = Field(ge=0)
+    #: ``ganadas / resueltas``. ``None`` si ``resueltas < minimo_por_banda``.
+    precision: float | None = Field(default=None, ge=0, le=1)
+    #: ``cerradas / abiertas``. ``None`` si ``abiertas < minimo_por_banda``.
+    tasa_cierre: float | None = Field(default=None, ge=0, le=1)
+    #: ``resueltas >= minimo_por_banda``. Lo decide el backend: el frontend
+    #: presenta, no deriva analítica.
+    suficiente: bool = False
+
+
+class RadarQuality(BaseModel):
+    """Precisión del Radar por banda de entrada, con su ventana y su cobertura.
+
+    Cierra el bucle que la revisión ``v93`` dejó abierto: ``score_al_abrir`` y
+    ``banda_al_abrir`` se escribían desde agosto de 2026 y ningún módulo de
+    producción los leía, así que el producto no sabía responder a su propia
+    promesa —«el Radar ordena bien»— ni siquiera con acceso a la base.
+
+    Solo mide oportunidades con banda sellada. Las anteriores a ``v93`` tienen
+    ``NULL`` y **no se rellenan**: por eso ``pursuits_con_banda`` viaja junto a
+    ``pursuits_total``, para que la pantalla pueda decir sobre cuánto habla.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    #: Denominador mínimo para publicar un porcentaje. Viaja con el dato para
+    #: que el cliente no reinvente el umbral.
+    minimo_por_banda: int = Field(ge=1)
+    #: Ventana de ``identified_at`` que se midió. Con periodo pedido son sus
+    #: extremos; sin él, la primera y la última oportunidad observadas.
+    ventana_desde: PgDateTime | None = None
+    ventana_hasta: PgDateTime | None = None
+    ventana_origen: Literal["periodo_solicitado", "historico_observado"]
+    #: Una entrada por banda con alguna oportunidad; las bandas sin nada no se
+    #: inventan con ceros.
+    bandas: list[RadarBandaCalidad] = Field(default_factory=list)
+    #: Oportunidades de la ventana con banda sellada (el universo real de esta
+    #: métrica) y oportunidades de la ventana en total.
+    pursuits_con_banda: int = Field(ge=0)
+    pursuits_total: int = Field(ge=0)
+    #: ``pursuits_con_banda / pursuits_total * 100``. ``None`` cuando no hay
+    #: ninguna oportunidad en la ventana: cobertura no medida, que no es cero.
+    cobertura_pct: float | None = Field(default=None, ge=0, le=100)
+
+
+# ``PursuitMetrics`` se declara arriba —donde vive el resto del recurso— y
+# anota ``radar_quality: RadarQuality | None`` antes de que esta clase exista.
+# Pydantic deja ese modelo incompleto hasta que la referencia se resuelve, y
+# esta llamada es la que la resuelve contra el namespace del módulo.
+PursuitMetrics.model_rebuild()
 
 # ── ANCLA S4 — eventos, webhooks y reglas de watchlist ─────────────────────
 #

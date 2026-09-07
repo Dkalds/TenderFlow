@@ -24,17 +24,15 @@ import { getJSON, setJSON } from "@/lib/storage";
 import { primeraVez, registrarEvento } from "@/lib/analytics";
 import { useMetaFilters } from "@/hooks/use-meta-filters";
 import { watchlistKeys } from "@/lib/query-keys";
-import {
-  activeRulesOf,
-  ccaaOptions,
-  dedupeMatches,
-  parsePrefill,
-  prefillToFormState,
-  type ApiRule,
-  type Frequency,
-  type MatchItem,
-  type RuleBody,
-} from "./use-watchlist-rules";
+import { parsePrefill, prefillToFormState } from "./use-watchlist-rules";
+import { activeRulesOf, dedupeMatches } from "./watchlist-matches";
+import { ccaaOptions } from "./watchlist-rule-options";
+import type {
+  ApiRule,
+  Frequency,
+  MatchItem,
+  RuleBody,
+} from "./watchlist-rule-types";
 import {
   LEGACY_KEY,
   MIGRATED_FLAG,

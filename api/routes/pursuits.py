@@ -32,14 +32,18 @@ from services.pursuit_comments import (
     list_comments,
 )
 from services.pursuits import (
+    PesosPropuestos,
+    PesosPropuestosAplicados,
     PursuitConflictError,
     PursuitNotFoundError,
     PursuitTransitionError,
     PursuitValidationError,
+    apply_weights_proposal,
     create_pursuit,
     get_agenda,
     get_metrics,
     get_pursuit,
+    get_weights_proposal,
     list_pursuits,
     update_pursuit,
 )
@@ -401,6 +405,61 @@ async def get_pursuits_agenda(
         )
     except OrganizationAccessError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
+
+
+@router.get("/pursuits/weights-proposal", response_model=PesosPropuestos)
+async def get_pursuits_weights_proposal(
+    organization_id: int | None = Query(default=None, ge=1),
+    ctx: dict[str, Any] = Depends(require_any_auth),
+) -> PesosPropuestos:
+    """Propone un ajuste de los pesos del Radar a partir de lo ganado y perdido.
+
+    Compara, dimensión a dimensión, el desglose del score que tenían las
+    oportunidades ganadas frente al de las perdidas: la dimensión que valía más
+    en las ganadas sube y la que valía más en las perdidas baja, en una
+    redistribución que sigue sumando 100.
+
+    Sólo cuentan las oportunidades cerradas cuyo desglose quedó sellado al
+    abrirlas. Por debajo del mínimo devuelve `estado: "insuficiente"` con su
+    base, y ninguna propuesta: un ajuste sobre cuatro cierres no es evidencia.
+
+    Es una propuesta. No se aplica sola.
+    """
+    try:
+        return await run_db(
+            get_weights_proposal,
+            int(ctx["user_id"]),
+            user_key=str(ctx["user_key"]),
+            organization_id=organization_id,
+        )
+    except OrganizationAccessError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+
+
+@router.post("/pursuits/weights-proposal/apply", response_model=PesosPropuestosAplicados)
+async def post_pursuits_weights_proposal_apply(
+    organization_id: int | None = Query(default=None, ge=1),
+    ctx: dict[str, Any] = Depends(require_any_auth),
+) -> PesosPropuestosAplicados:
+    """Aplica la propuesta vigente al perfil de scoring. Queda en el audit log.
+
+    No admite pesos en el cuerpo: recalcula la propuesta y escribe exactamente
+    esa, de modo que lo aplicado y lo que se enseñó no puedan divergir. El resto
+    del perfil (keywords de afinidad, CPV, rango de importe) se conserva.
+
+    Responde 422 mientras la propuesta sea insuficiente.
+    """
+    try:
+        return await run_db(
+            apply_weights_proposal,
+            int(ctx["user_id"]),
+            user_key=str(ctx["user_key"]),
+            organization_id=organization_id,
+        )
+    except (OrganizationAccessError, OrganizationPermissionError) as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except PursuitValidationError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @router.get("/pursuits/{pursuit_id}", response_model=PursuitDetail)

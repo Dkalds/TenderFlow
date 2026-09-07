@@ -16,13 +16,10 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn, formatCurrency } from "@/lib/utils";
-import {
-  FREQ_LABEL,
-  formatMatchCount,
-  ruleToBody,
-  type ApiRule,
-  type RuleBody,
-} from "../_hooks/use-watchlist-rules";
+import { ruleToBody } from "../_hooks/use-watchlist-rules";
+import { formatMatchCount } from "../_hooks/watchlist-matches";
+import { FREQ_LABEL } from "../_hooks/watchlist-rule-options";
+import type { ApiRule, RuleBody } from "../_hooks/watchlist-rule-types";
 
 export function ReglaCard({
   rule,

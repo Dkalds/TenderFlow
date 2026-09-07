@@ -15,7 +15,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatCurrency, formatDate, truncate } from "@/lib/utils";
-import type { MatchItem } from "../_hooks/use-watchlist-rules";
+import type { MatchItem } from "../_hooks/watchlist-rule-types";
 
 export function ResultadosCombinados({
   combined,

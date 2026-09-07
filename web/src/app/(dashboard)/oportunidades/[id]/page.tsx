@@ -10,10 +10,12 @@ import { PursuitEditor } from "@/components/pursuits/pursuit-editor";
 import { PriceScenariosPanel } from "@/components/pursuits/price-scenarios";
 import {
   PursuitDecisionBadge,
+  PursuitLoteBadge,
   PursuitOutcomeBadge,
   PursuitStatusBadge,
   daysUntil,
   formatDate,
+  loteEtiqueta,
 } from "@/components/pursuits/pursuit-presenters";
 import { TenderFactSheetPanel } from "@/components/pursuits/tender-fact-sheet";
 import { AdjudicacionDetectada } from "@/components/pursuits/adjudicacion-detectada";
@@ -77,6 +79,9 @@ export default function OpportunityDetailPage() {
           <PursuitStatusBadge status={pursuit.status} />
           <PursuitDecisionBadge decision={pursuit.decision} />
           <PursuitOutcomeBadge outcome={pursuit.outcome} />
+          {/* El lote va con los estados y no en el título: dos oportunidades
+              del mismo expediente comparten título y sólo el lote las separa. */}
+          <PursuitLoteBadge pursuit={pursuit} />
           <div className="flex-1" />
           <span className="text-[11px] text-muted-foreground">
             Última actualización {formatDate(pursuit.updated_at)}
@@ -156,6 +161,12 @@ export default function OpportunityDetailPage() {
               <Panel>
                 <SectionTitle>Contexto de la licitación</SectionTitle>
                 <dl className="space-y-2.5 text-xs">
+                  <div>
+                    <dt className="text-[10.5px] text-muted-foreground">Alcance</dt>
+                    <dd className="font-semibold">
+                      {loteEtiqueta(pursuit) ?? "Expediente completo"}
+                    </dd>
+                  </div>
                   <div>
                     <dt className="text-[10.5px] text-muted-foreground">Fecha límite</dt>
                     <dd className="font-semibold">{formatDate(pursuit.tender_deadline)}</dd>

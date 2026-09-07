@@ -11,7 +11,7 @@ se añade).
 
 from __future__ import annotations
 
-from typing import Any, Literal
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
@@ -21,7 +21,7 @@ from api.routes.dual_auth import require_any_auth
 from db import radar_dismissals
 from observability.logging import get_logger
 from shared.cache import invalidate_user_scoped
-from shared.dto import SafeStr
+from shared.dto import RadarBanda, SafeStr
 
 log = get_logger(__name__)
 
@@ -41,13 +41,6 @@ def _invalidar_ranking(user_key: str) -> None:
     hasta que expirase el TTL, y el hueco no lo ocuparía la siguiente.
     """
     invalidate_user_scoped("analytics", "scoring", user_key)
-
-
-#: Vocabulario cerrado de bandas. Lo fija `_band()` en
-#: `services/analytics/scoring.py`; aquí se valida para que un cliente no pueda
-#: sembrar la tabla con etiquetas inventadas y volver inservible el análisis de
-#: «qué banda concentra los descartes», que es para lo que existe la columna.
-BANDAS_SCORE = ("Caliente", "Atractiva", "Tibia", "Descarte")
 
 
 class RadarDismissalBody(BaseModel):
@@ -72,7 +65,13 @@ class RadarDismissalBody(BaseModel):
     # fuzzer de contrato; el mismo precedente que `/licitaciones/bulk-get`.
     id_externo: SafeStr = Field(max_length=120)
     score: int | None = Field(default=None, ge=0, le=100)
-    banda: Literal["Caliente", "Atractiva", "Tibia", "Descarte"] | None = None
+    #: Vocabulario cerrado: un cliente no puede sembrar la tabla con etiquetas
+    #: inventadas y volver inservible el análisis de «qué banda concentra los
+    #: descartes», que es para lo que existe la columna. Se importa de
+    #: ``shared.dto`` en vez de reescribir el ``Literal`` aquí — declararlo dos
+    #: veces es lo que hacía indeterminista el enumerado del contrato; el
+    #: porqué está en el comentario de ``RadarBanda``.
+    banda: RadarBanda | None = None
 
 
 class RadarDismissalsResult(BaseModel):

@@ -10,6 +10,8 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from db.repositories.product_metrics import ProductMetricsRepository
+from services.pursuits import calcular_radar_quality
+from shared.dto import RadarQuality
 
 
 class OrganizationProductMetrics(BaseModel):
@@ -22,6 +24,11 @@ class OrganizationProductMetrics(BaseModel):
     win_rate: float | None = Field(default=None, ge=0, le=1)
     awarded_amount_eur: float = Field(ge=0)
     median_decision_time_hours: float | None = Field(default=None, ge=0)
+    #: Precisión del Radar por banda de entrada (S3.2). ``None`` mientras
+    #: ninguna oportunidad de la organización lleve banda sellada (``v93``):
+    #: el bucle está abierto y no hay nada que afirmar. Es el mismo cálculo que
+    #: sirve ``GET /pursuits/metrics``, no una segunda versión de la métrica.
+    radar_quality: RadarQuality | None = None
 
 
 class ProductStatus(BaseModel):
@@ -48,10 +55,28 @@ def _hours(start: object, end: object) -> float | None:
     return elapsed if elapsed >= 0 else None
 
 
+def _as_datetime(value: str | None) -> datetime | None:
+    """Extremo del periodo (ISO, tal como llega por CLI) como ``datetime`` UTC.
+
+    Hace falta para que ``radar_quality`` declare la ventana **pedida** y no la
+    observada: son cosas distintas y el informe tiene que decir cuál mira.
+    """
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
+
+
 def _aggregate(
     organization_id: int | None,
     organization_name: str,
     rows: list[dict[str, Any]],
+    *,
+    period_from: str | None = None,
+    period_to: str | None = None,
 ) -> OrganizationProductMetrics:
     pursuits = [row for row in rows if row.get("id") is not None]
     won = sum(row.get("outcome") == "won" for row in pursuits)
@@ -76,6 +101,13 @@ def _aggregate(
             if row.get("outcome") == "won"
         ),
         median_decision_time_hours=median(decision_hours) if decision_hours else None,
+        # Sobre `pursuits`, no sobre `rows`: la fila sin match del LEFT JOIN no
+        # es una oportunidad y no puede entrar en el denominador de cobertura.
+        radar_quality=calcular_radar_quality(
+            pursuits,
+            period_from=_as_datetime(period_from),
+            period_to=_as_datetime(period_to),
+        ),
     )
 
 
@@ -89,10 +121,17 @@ def build_product_status(
     for row in rows:
         grouped[(int(row["organization_id"]), str(row["organization_name"]))].append(row)
     organizations = [
-        _aggregate(org_id, name, org_rows) for (org_id, name), org_rows in sorted(grouped.items())
+        _aggregate(org_id, name, org_rows, period_from=period_from, period_to=period_to)
+        for (org_id, name), org_rows in sorted(grouped.items())
     ]
     all_pursuits = [row for row in rows if row.get("id") is not None]
-    totals = _aggregate(None, "Todas las organizaciones", all_pursuits)
+    totals = _aggregate(
+        None,
+        "Todas las organizaciones",
+        all_pursuits,
+        period_from=period_from,
+        period_to=period_to,
+    )
     return ProductStatus(
         generated_at=datetime.now(UTC).isoformat(),
         period_from=period_from,

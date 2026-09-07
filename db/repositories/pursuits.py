@@ -8,8 +8,15 @@ from typing import Any
 from db.database import connect, connect_read, now_utc_iso
 from db.repositories.base import rows_to_dicts
 
+# El LEFT JOIN contra ``lotes`` va por la clave de negocio ``(licitacion_id,
+# numero)`` y no por un id guardado: ``db/upsert.py::replace_lotes`` borra y
+# reinserta los lotes del expediente en cada re-ingesta, así que sus ids cambian
+# y sólo el número sobrevive (ver el docstring de la revisión ``v110``). Un lote
+# que el pliego deja de publicar da ``lote_id``/``lote_titulo`` NULL sin tocar
+# la oportunidad, que conserva el número para el que se abrió.
 _PURSUIT_SELECT = (
     "SELECT p.id, p.organization_id, p.licitacion_id, "
+    "p.lote_numero, lo.id AS lote_id, lo.titulo AS lote_titulo, "
     "l.titulo AS tender_title, l.fecha_limite AS tender_deadline, "
     "p.responsible_user_id, u.display_name AS responsible_name, "
     "p.status, p.decision, p.decision_reason, p.offer_price_eur, "
@@ -22,6 +29,8 @@ _PURSUIT_SELECT = (
     "(SELECT COUNT(*) FROM pursuit_comments c WHERE c.pursuit_id = p.id) AS comments_count "
     "FROM pursuits p "
     "JOIN licitaciones l ON l.id_externo = p.licitacion_id "
+    "LEFT JOIN lotes lo ON lo.licitacion_id = p.licitacion_id "
+    "AND lo.numero = p.lote_numero "
     "LEFT JOIN users u ON u.id = p.responsible_user_id "
 )
 
@@ -48,7 +57,12 @@ _ESTADOS_TERMINALES_SQL = "('won', 'lost', 'withdrawn')"
 
 _AGENDA_SELECT = (
     "SELECT p.id AS pursuit_id, p.licitacion_id, "
-    "l.titulo, l.fecha_limite AS tender_deadline, l.importe AS importe_eur, "
+    # Mismo criterio que ``calendar_rows``: dos lotes del mismo expediente son
+    # dos compromisos distintos y la agenda los pintaría con el mismo texto.
+    "CASE WHEN p.lote_numero IS NULL THEN l.titulo "
+    "     ELSE COALESCE(l.titulo, p.licitacion_id) || ' · Lote ' || p.lote_numero "
+    "END AS titulo, "
+    "l.fecha_limite AS tender_deadline, l.importe AS importe_eur, "
     "l.organo_contratacion AS organo, l.ccaa, l.tecnologia, l.url, "
     "p.responsible_user_id, u.display_name AS responsible_name, "
     "p.status, p.decision, p.next_action, p.next_action_due, p.version "
@@ -75,6 +89,23 @@ class PursuitRepository:
                 is not None
             )
 
+    def lote_by_id(self, licitacion_id: str, lote_id: int) -> dict[str, Any] | None:
+        """El lote ``lote_id`` **si pertenece** a ``licitacion_id``, o ``None``.
+
+        La comprobación de pertenencia va en el mismo WHERE a propósito: el
+        cliente manda el id que tiene en pantalla y sin este filtro se podría
+        abrir una oportunidad del expediente A apuntando a un lote del B.
+        Devuelve ``numero``, que es lo que se persiste (los ids de ``lotes`` se
+        renumeran en cada re-ingesta; ver ``v110``).
+        """
+        with connect_read() as conn:
+            cur = conn.execute(
+                "SELECT id, numero, titulo FROM lotes WHERE id = %s AND licitacion_id = %s",
+                (lote_id, licitacion_id),
+            )
+            rows = rows_to_dicts(cur)
+        return rows[0] if rows else None
+
     def create(
         self,
         *,
@@ -85,31 +116,55 @@ class PursuitRepository:
         idempotency_key: str | None = None,
         score_al_abrir: int | None = None,
         banda_al_abrir: str | None = None,
+        lote_numero: str | None = None,
+        desglose_al_abrir: str | None = None,
     ) -> tuple[dict[str, Any], bool]:
         """Crea idempotentemente y registra exactamente un evento inicial.
 
-        ``score_al_abrir``/``banda_al_abrir`` sellan la puntuación que motivó la
-        decisión (revisión ``v93``). Sólo se escriben en el INSERT: si el pursuit
-        ya existía, se conservan los de la primera vez, que es cuando alguien
-        decidió de verdad — reescribirlos en el camino idempotente falsearía la
-        medida con el score de un momento en que nadie decidió nada.
+        La unidad es ``(organización, expediente, lote)``: dos lotes distintos
+        del mismo expediente son dos oportunidades, y ``lote_numero`` ``NULL``
+        es «el expediente completo». Cada caso tiene su índice único parcial
+        (``v110``), así que el ``ON CONFLICT`` lleva el mismo predicado que el
+        índice sobre el que resuelve — sin él, Postgres no puede inferir el
+        árbitro y el INSERT falla.
+
+        ``score_al_abrir``/``banda_al_abrir``/``desglose_al_abrir`` sellan la
+        puntuación que motivó la decisión (revisiones ``v93`` y ``v110``). Sólo
+        se escriben en el INSERT: si el pursuit ya existía, se conservan los de
+        la primera vez, que es cuando alguien decidió de verdad — reescribirlos
+        en el camino idempotente falsearía la medida con el score de un momento
+        en que nadie decidió nada.
         """
         now = now_utc_iso()
+        conflicto = (
+            "(organization_id, licitacion_id) WHERE lote_numero IS NULL"
+            if lote_numero is None
+            else "(organization_id, licitacion_id, lote_numero) WHERE lote_numero IS NOT NULL"
+        )
         with connect() as conn:
-            existing = self._get_scoped(conn, organization_id, licitacion_id=licitacion_id)
+            existing = self._get_scoped(
+                conn,
+                organization_id,
+                licitacion_id=licitacion_id,
+                lote_numero=lote_numero,
+            )
             if existing is not None:
                 return existing, False
 
             inserted = conn.execute(
+                # `conflicto` lo compone este mismo método a partir de dos
+                # literales; ningún valor de usuario entra en el SQL.
                 "INSERT INTO pursuits "
-                "(organization_id, licitacion_id, responsible_user_id, "
+                "(organization_id, licitacion_id, lote_numero, responsible_user_id, "
                 " identified_at, created_by_user_id, updated_by_user_id, "
-                " created_at, updated_at, score_al_abrir, banda_al_abrir) "
-                "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) "
-                "ON CONFLICT(organization_id, licitacion_id) DO NOTHING RETURNING id",
+                " created_at, updated_at, score_al_abrir, banda_al_abrir, "
+                " desglose_al_abrir) "
+                "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) "
+                f"ON CONFLICT {conflicto} DO NOTHING RETURNING id",
                 (
                     organization_id,
                     licitacion_id,
+                    lote_numero,
                     responsible_user_id,
                     now,
                     actor_user_id,
@@ -118,11 +173,17 @@ class PursuitRepository:
                     now,
                     score_al_abrir,
                     banda_al_abrir,
+                    desglose_al_abrir,
                 ),
             ).fetchone()
             was_created = inserted is not None
 
-            pursuit = self._get_scoped(conn, organization_id, licitacion_id=licitacion_id)
+            pursuit = self._get_scoped(
+                conn,
+                organization_id,
+                licitacion_id=licitacion_id,
+                lote_numero=lote_numero,
+            )
             if pursuit is None:
                 raise RuntimeError("No se pudo crear la oportunidad.")
             if was_created:
@@ -134,6 +195,7 @@ class PursuitRepository:
                     actor_user_id=actor_user_id,
                     payload={
                         "licitacion_id": licitacion_id,
+                        "lote_numero": lote_numero,
                         "responsible_user_id": responsible_user_id,
                         "status": "identified",
                     },
@@ -316,9 +378,38 @@ class PursuitRepository:
             params.append(period_to)
         with connect_read() as conn:
             cur = conn.execute(
+                # ``banda_al_abrir`` y ``closed_at`` viajan aquí desde S3.2: la
+                # calidad del Radar se calcula sobre exactamente las mismas
+                # filas que el resto del embudo, para que las dos cifras de la
+                # misma respuesta no puedan hablar de universos distintos.
                 "SELECT status, outcome, awarded_amount_eur, identified_at, "
-                "decision_at, submitted_at FROM pursuits WHERE " + " AND ".join(clauses),
+                "decision_at, submitted_at, closed_at, banda_al_abrir "
+                "FROM pursuits WHERE " + " AND ".join(clauses),
                 tuple(params),
+            )
+            return rows_to_dicts(cur)
+
+    def closed_scored_rows(
+        self,
+        organization_id: int,
+        *,
+        limit: int = 2000,
+    ) -> list[dict[str, Any]]:
+        """Oportunidades cerradas con desenlace y desglose sellado (S3.3).
+
+        Sólo ``won``/``lost``: una retirada no dice si el Radar puntuó bien.
+        Sólo con ``desglose_al_abrir`` informado — las abiertas antes de la
+        revisión ``v110`` tienen NULL y no se pueden reconstruir, así que el
+        servicio declara sobre cuántas habla en vez de rellenarlas.
+        """
+        with connect_read() as conn:
+            cur = conn.execute(
+                "SELECT id, outcome, desglose_al_abrir, banda_al_abrir, closed_at "
+                "FROM pursuits "
+                "WHERE organization_id = %s AND outcome IN ('won', 'lost') "
+                "AND desglose_al_abrir IS NOT NULL "
+                "ORDER BY closed_at DESC NULLS LAST, id DESC LIMIT %s",
+                (organization_id, max(1, min(int(limit), 20000))),
             )
             return rows_to_dicts(cur)
 
@@ -416,12 +507,26 @@ class PursuitRepository:
 
     def calendar_rows(self, user_id: int) -> list[dict[str, Any]]:
         """Pursuits abiertos de todas las organizaciones activas del usuario,
-        con las fechas que un calendario externo debe mostrar."""
+        con las fechas que un calendario externo debe mostrar.
+
+        ``titulo`` llega **ya compuesto con el lote** («Título · Lote 3») y no
+        como el título pelado del expediente. Desde la revisión ``v110`` un
+        mismo expediente puede tener una oportunidad por lote, y el ICS pinta
+        una línea por fecha con ese texto: sin el lote, dos compromisos
+        distintos aparecen en el calendario del equipo como el mismo evento
+        repetido. Se compone aquí porque este SQL es el único sitio donde
+        conviven el título y el número del lote, y ``lote_numero`` viaja además
+        aparte para quien necesite el dato crudo.
+        """
         with connect_read() as conn:
             cur = conn.execute(
                 "SELECT p.id AS pursuit_id, p.licitacion_id, p.next_action, "
                 "p.next_action_due, o.name AS organization_name, "
-                "l.titulo, l.fecha_limite, l.fecha_fin, l.url "
+                "p.lote_numero, "
+                "CASE WHEN p.lote_numero IS NULL THEN l.titulo "
+                "     ELSE COALESCE(l.titulo, p.licitacion_id) || ' · Lote ' || p.lote_numero "
+                "END AS titulo, "
+                "l.fecha_limite, l.fecha_fin, l.url "
                 "FROM pursuits p "
                 "JOIN organization_memberships m ON m.organization_id = p.organization_id "
                 "AND m.user_id = %s AND m.status = 'active' "
@@ -442,13 +547,20 @@ class PursuitRepository:
         *,
         pursuit_id: int | None = None,
         licitacion_id: str | None = None,
+        lote_numero: str | None = None,
     ) -> dict[str, Any] | None:
         if pursuit_id is not None:
             suffix = " WHERE p.organization_id = %s AND p.id = %s"
             params: tuple[Any, ...] = (organization_id, pursuit_id)
         elif licitacion_id is not None:
-            suffix = " WHERE p.organization_id = %s AND p.licitacion_id = %s"
-            params = (organization_id, licitacion_id)
+            # ``IS NOT DISTINCT FROM`` y no ``=``: el caso «expediente
+            # completo» es ``lote_numero`` NULL, y ``NULL = NULL`` no encuentra
+            # la fila que sí existe — el pursuit se duplicaría en cada intento.
+            suffix = (
+                " WHERE p.organization_id = %s AND p.licitacion_id = %s "
+                "AND p.lote_numero IS NOT DISTINCT FROM %s"
+            )
+            params = (organization_id, licitacion_id, lote_numero)
         else:
             raise ValueError("Se requiere pursuit_id o licitacion_id.")
         cur = conn.execute(_PURSUIT_SELECT + suffix, params)

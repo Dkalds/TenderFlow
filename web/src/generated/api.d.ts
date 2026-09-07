@@ -2568,6 +2568,33 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/organizations/{organization_id}/capabilities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Perfil de capacidad de la organización
+         * @description Certificaciones, facturación, referencias y perfiles de equipo declarados.
+         *
+         *     ``campos_incompletos`` enumera las familias vacías: son las que hacen que
+         *     el checklist de una oportunidad conteste «desconocido».
+         */
+        get: operations["get_organization_capabilities_api_v1_organizations__organization_id__capabilities_get"];
+        /**
+         * Declarar el perfil de capacidad (owner/admin)
+         * @description Reemplaza el perfil completo. Es dato corporativo, no personal.
+         */
+        put: operations["put_organization_capabilities_api_v1_organizations__organization_id__capabilities_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/organizations/{organization_id}/invitations": {
         parameters: {
             query?: never;
@@ -2668,6 +2695,30 @@ export interface paths {
         get?: never;
         /** Put Organization Member */
         put: operations["put_organization_member_api_v1_organizations__organization_id__members__member_user_id__put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{organization_id}/nifs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * NIFs con los que concurre la organización (owner/admin)
+         * @description Identidad fiscal declarada, con su enlace al maestro de empresas.
+         */
+        get: operations["get_organization_nifs_api_v1_organizations__organization_id__nifs_get"];
+        /**
+         * Declarar los NIFs de la organización (owner/admin)
+         * @description Reemplaza el conjunto completo de NIFs: manda la lista entera, no un alta.
+         */
+        put: operations["put_organization_nifs_api_v1_organizations__organization_id__nifs_put"];
         post?: never;
         delete?: never;
         options?: never;
@@ -2945,6 +2996,63 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/pursuits/weights-proposal": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Pursuits Weights Proposal
+         * @description Propone un ajuste de los pesos del Radar a partir de lo ganado y perdido.
+         *
+         *     Compara, dimensión a dimensión, el desglose del score que tenían las
+         *     oportunidades ganadas frente al de las perdidas: la dimensión que valía más
+         *     en las ganadas sube y la que valía más en las perdidas baja, en una
+         *     redistribución que sigue sumando 100.
+         *
+         *     Sólo cuentan las oportunidades cerradas cuyo desglose quedó sellado al
+         *     abrirlas. Por debajo del mínimo devuelve `estado: "insuficiente"` con su
+         *     base, y ninguna propuesta: un ajuste sobre cuatro cierres no es evidencia.
+         *
+         *     Es una propuesta. No se aplica sola.
+         */
+        get: operations["get_pursuits_weights_proposal_api_v1_pursuits_weights_proposal_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/pursuits/weights-proposal/apply": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Post Pursuits Weights Proposal Apply
+         * @description Aplica la propuesta vigente al perfil de scoring. Queda en el audit log.
+         *
+         *     No admite pesos en el cuerpo: recalcula la propuesta y escribe exactamente
+         *     esa, de modo que lo aplicado y lo que se enseñó no puedan divergir. El resto
+         *     del perfil (keywords de afinidad, CPV, rango de importe) se conserva.
+         *
+         *     Responde 422 mientras la propuesta sea insuficiente.
+         */
+        post: operations["post_pursuits_weights_proposal_apply_api_v1_pursuits_weights_proposal_apply_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/pursuits/{pursuit_id}": {
         parameters: {
             query?: never;
@@ -2964,6 +3072,30 @@ export interface paths {
          * @description Aplica una transición validada y añade un único evento.
          */
         patch: operations["patch_pursuit_api_v1_pursuits__pursuit_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/pursuits/{pursuit_id}/checklist": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Contraste de la ficha del pliego con la capacidad declarada
+         * @description Veredicto por requisito: ``cumple``, ``no_cumple`` o ``desconocido``.
+         *
+         *     Ningún ``cumple`` se emite sin la cita del pliego que lo respalda, y
+         *     ``desconocido`` es lo que se contesta cuando la ficha no extrajo el hecho o
+         *     la organización no rellenó el campo. No decide el go/no-go: lo propone.
+         */
+        get: operations["get_pursuit_checklist_api_v1_pursuits__pursuit_id__checklist_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/pursuits/{pursuit_id}/comments": {
@@ -3926,6 +4058,50 @@ export interface components {
              * @enum {string}
              */
             role: "user" | "assistant";
+        };
+        /**
+         * ChecklistFamiliaResultado
+         * @description Veredicto agregado de una familia y los requisitos que lo componen.
+         */
+        ChecklistFamiliaResultado: {
+            /** Etiqueta */
+            etiqueta: string;
+            /**
+             * Familia
+             * @enum {string}
+             */
+            familia: "certifications" | "economic_solvency" | "technical_solvency" | "team_requirements";
+            /** Items */
+            items?: components["schemas"]["ChecklistItem"][];
+            /**
+             * Veredicto
+             * @enum {string}
+             */
+            veredicto: "cumple" | "no_cumple" | "desconocido";
+        };
+        /**
+         * ChecklistItem
+         * @description Un requisito del pliego contrastado con el perfil de la organización.
+         */
+        ChecklistItem: {
+            /** Dato Organizacion */
+            dato_organizacion?: string | null;
+            /** Evidencia */
+            evidencia?: components["schemas"]["EvidenceRef"][];
+            /**
+             * Familia
+             * @enum {string}
+             */
+            familia: "certifications" | "economic_solvency" | "technical_solvency" | "team_requirements";
+            /** Motivo */
+            motivo: string;
+            /** Requisito */
+            requisito: string;
+            /**
+             * Veredicto
+             * @enum {string}
+             */
+            veredicto: "cumple" | "no_cumple" | "desconocido";
         };
         /**
          * ClusterEntry
@@ -5284,6 +5460,44 @@ export interface components {
              */
             concentracion_top3: number;
         };
+        /**
+         * GoNoGoChecklist
+         * @description Contraste completo de una oportunidad contra la capacidad declarada.
+         */
+        GoNoGoChecklist: {
+            /**
+             * Cumple
+             * @default 0
+             */
+            cumple: number;
+            /**
+             * Desconocido
+             * @default 0
+             */
+            desconocido: number;
+            /** Extraction Version */
+            extraction_version?: string | null;
+            /** Familias */
+            familias?: components["schemas"]["ChecklistFamiliaResultado"][];
+            /** Ficha Actualizada */
+            ficha_actualizada?: string | null;
+            /** Ficha Estado */
+            ficha_estado?: string | null;
+            /** Licitacion Id */
+            licitacion_id: string;
+            /**
+             * No Cumple
+             * @default 0
+             */
+            no_cumple: number;
+            /** Organization Id */
+            organization_id: number;
+            /**
+             * Total Requisitos
+             * @default 0
+             */
+            total_requisitos: number;
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -5954,12 +6168,76 @@ export interface components {
             authorization_url: string;
         };
         /**
+         * OrganizationCapabilities
+         * @description Perfil de capacidad de la organización: con qué puede acreditarse.
+         *
+         *     Es dato **corporativo**, no personal: pertenece a la organización y no a
+         *     quien lo teclea, así que ni se exporta ni se borra con la cuenta de un
+         *     usuario (RGPD Art. 17/20 cubren datos personales).
+         */
+        OrganizationCapabilities: {
+            /** Certificaciones */
+            certificaciones?: components["schemas"]["OrganizationCertification"][];
+            /** Facturacion */
+            facturacion?: components["schemas"]["OrganizationFacturacion"][];
+            /** Perfiles Equipo */
+            perfiles_equipo?: components["schemas"]["OrganizationTeamProfile"][];
+            /** Referencias */
+            referencias?: components["schemas"]["OrganizationReferencia"][];
+        };
+        /**
+         * OrganizationCapabilitiesOut
+         * @description Perfil leído, con qué falta por rellenar.
+         */
+        OrganizationCapabilitiesOut: {
+            /** Campos Incompletos */
+            campos_incompletos?: ("certificaciones" | "facturacion" | "referencias" | "perfiles_equipo")[];
+            /** Certificaciones */
+            certificaciones?: components["schemas"]["OrganizationCertification"][];
+            /** Facturacion */
+            facturacion?: components["schemas"]["OrganizationFacturacion"][];
+            /** Organization Id */
+            organization_id: number;
+            /** Perfiles Equipo */
+            perfiles_equipo?: components["schemas"]["OrganizationTeamProfile"][];
+            /** Referencias */
+            referencias?: components["schemas"]["OrganizationReferencia"][];
+            /** Updated At */
+            updated_at?: string | null;
+        };
+        /**
+         * OrganizationCertification
+         * @description Certificación que la organización puede acreditar.
+         */
+        OrganizationCertification: {
+            /**
+             * Ambito
+             * @default company
+             * @enum {string}
+             */
+            ambito: "company" | "team";
+            /** Nombre */
+            nombre: string;
+            /** Vigente Hasta */
+            vigente_hasta?: string | null;
+        };
+        /**
          * OrganizationCreate
          * @description Alta de un espacio compartido.
          */
         OrganizationCreate: {
             /** Name */
             name: string;
+        };
+        /**
+         * OrganizationFacturacion
+         * @description Facturación de un ejercicio cerrado.
+         */
+        OrganizationFacturacion: {
+            /** Ejercicio */
+            ejercicio: number;
+            /** Importe Eur */
+            importe_eur: number;
         };
         /**
          * OrganizationInvitationAccept
@@ -6090,6 +6368,87 @@ export interface components {
             user_id: number;
         };
         /**
+         * OrganizationNif
+         * @description Un NIF/CIF con el que la organización se presenta a licitación.
+         *
+         *     Son varios y no uno: un grupo concursa con la matriz, con filiales y en
+         *     UTE, y el cierre por NIF tiene que reconocer a todas. ``principal`` marca
+         *     la razón social con la que se presenta por defecto; el resto son igual de
+         *     válidas para decidir si una adjudicación es suya.
+         */
+        OrganizationNif: {
+            /** Nif */
+            nif: string;
+            /**
+             * Principal
+             * @default false
+             */
+            principal: boolean;
+            /** Razon Social */
+            razon_social?: string | null;
+        };
+        /**
+         * OrganizationNifOut
+         * @description Un NIF ya persistido, resuelto contra el maestro de empresas.
+         */
+        OrganizationNifOut: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Empresa Id */
+            empresa_id?: number | null;
+            /** Id */
+            id: number;
+            /** Nif */
+            nif: string;
+            /**
+             * Principal
+             * @default false
+             */
+            principal: boolean;
+            /** Razon Social */
+            razon_social?: string | null;
+        };
+        /**
+         * OrganizationNifsIn
+         * @description Cuerpo del PUT: el conjunto completo de NIFs, no un alta suelta.
+         *
+         *     Reemplazar entero evita el endpoint de borrado por id y hace que la
+         *     pantalla mande siempre lo que el usuario ve, que es lo que espera.
+         */
+        OrganizationNifsIn: {
+            /** Nifs */
+            nifs?: components["schemas"]["OrganizationNif"][];
+        };
+        /**
+         * OrganizationNifsOut
+         * @description Identidad fiscal completa de una organización.
+         */
+        OrganizationNifsOut: {
+            /** Nifs */
+            nifs?: components["schemas"]["OrganizationNifOut"][];
+            /** Organization Id */
+            organization_id: number;
+        };
+        /**
+         * OrganizationReferencia
+         * @description Contrato ejecutado que sirve de referencia de solvencia técnica.
+         */
+        OrganizationReferencia: {
+            /** Anio */
+            anio: number;
+            /** Expediente Id */
+            expediente_id?: string | null;
+            /** Importe Eur */
+            importe_eur?: number | null;
+            /** Organo */
+            organo: string;
+            /** Tecnologia */
+            tecnologia?: string | null;
+        };
+        /**
          * OrganizationSettings
          * @description Configuración de producto de una organización (``organizations.settings_json``).
          *
@@ -6137,6 +6496,18 @@ export interface components {
              * @enum {string}
              */
             role: "owner" | "admin" | "member" | "viewer";
+        };
+        /**
+         * OrganizationTeamProfile
+         * @description Perfil disponible en plantilla, con experiencia y cuántas personas.
+         */
+        OrganizationTeamProfile: {
+            /** Anios */
+            anios: number;
+            /** Cantidad */
+            cantidad: number;
+            /** Rol */
+            rol: string;
         };
         /**
          * OrganoAggregate
@@ -6435,6 +6806,90 @@ export interface components {
              * @default 0
              */
             total: number;
+        };
+        /**
+         * PesoPropuestoDimension
+         * @description Una dimensión del score, con la evidencia que sostiene su ajuste.
+         *
+         *     ``media_ganadas``/``media_perdidas`` son la media de esa dimensión en el
+         *     desglose sellado de las oportunidades ganadas y de las perdidas. ``delta``
+         *     es su diferencia: positivo significa que la dimensión valía más en lo que se
+         *     ganó, y por eso su peso sube.
+         */
+        PesoPropuestoDimension: {
+            /** Delta */
+            delta: number;
+            /** Dimension */
+            dimension: string;
+            /** Media Ganadas */
+            media_ganadas: number;
+            /** Media Perdidas */
+            media_perdidas: number;
+            /** Peso Actual */
+            peso_actual: number;
+            /** Peso Propuesto */
+            peso_propuesto: number;
+        };
+        /**
+         * PesosPropuestos
+         * @description Propuesta de ajuste de pesos con su base declarada (ADR-014).
+         *
+         *     ``estado`` es ``insuficiente`` mientras la organización no acumule
+         *     ``minimo_cierres`` oportunidades cerradas **con desglose sellado**. En ese
+         *     estado ``pesos_propuestos`` viaja en ``None`` y ``dimensiones`` vacío: una
+         *     propuesta que no se sostiene no se enseña con una advertencia al lado, no se
+         *     enseña.
+         */
+        PesosPropuestos: {
+            /** Dimensiones */
+            dimensiones?: components["schemas"]["PesoPropuestoDimension"][];
+            /**
+             * Estado
+             * @enum {string}
+             */
+            estado: "propuesta" | "insuficiente";
+            /** Minimo Cierres */
+            minimo_cierres: number;
+            /** N Cierres */
+            n_cierres: number;
+            /** N Ganadas */
+            n_ganadas: number;
+            /** N Perdidas */
+            n_perdidas: number;
+            /** Organization Id */
+            organization_id: number;
+            /**
+             * Origen Pesos Actuales
+             * @enum {string}
+             */
+            origen_pesos_actuales: "perfil" | "global";
+            /** Pesos Actuales */
+            pesos_actuales?: {
+                [key: string]: number;
+            };
+            /** Pesos Propuestos */
+            pesos_propuestos?: {
+                [key: string]: number;
+            } | null;
+        };
+        /**
+         * PesosPropuestosAplicados
+         * @description Resultado de aplicar la propuesta: qué quedó escrito y sobre qué base.
+         */
+        PesosPropuestosAplicados: {
+            /** N Cierres */
+            n_cierres: number;
+            /** Organization Id */
+            organization_id: number;
+            /** Pesos */
+            pesos: {
+                [key: string]: number;
+            };
+            /**
+             * Visibility
+             * @enum {string}
+             */
+            visibility: "private" | "organization";
         };
         /**
          * PipelineAgendaItem
@@ -6772,8 +7227,9 @@ export interface components {
          *     importe adjudicado se escribían a mano aunque la ingesta ya traía
          *     adjudicatario, importe y número de ofertas del mismo expediente. La ficha
          *     la muestra como propuesta —«este expediente se adjudicó a X por Y €»— y la
-         *     persona confirma el resultado; el sistema no decide por ella quién ganó
-         *     porque no conoce el NIF de la organización.
+         *     persona confirma el resultado. Desde S2 el sistema **sí** puede proponer
+         *     cuál es (``resultado_sugerido``, calculado por NIF), pero sigue sin
+         *     cerrarla: la propuesta llega preseleccionada y quien decide es la persona.
          */
         PursuitAdjudicacionDetectada: {
             /** Adjudicatarios */
@@ -6786,6 +7242,8 @@ export interface components {
             importe_total?: number | null;
             /** N Ofertas */
             n_ofertas?: number | null;
+            /** Resultado Sugerido */
+            resultado_sugerido?: ("won" | "lost") | null;
         };
         /**
          * PursuitAdjudicatario
@@ -6887,8 +7345,14 @@ export interface components {
         PursuitCreate: {
             /** Banda Al Abrir */
             banda_al_abrir?: ("Caliente" | "Atractiva" | "Tibia" | "Descarte") | null;
+            /** Desglose Al Abrir */
+            desglose_al_abrir?: {
+                [key: string]: number;
+            } | null;
             /** Licitacion Id */
             licitacion_id: string;
+            /** Lote Id */
+            lote_id?: number | null;
             /** Organization Id */
             organization_id?: number | null;
             /** Responsible User Id */
@@ -6936,6 +7400,12 @@ export interface components {
             identified_at: string;
             /** Licitacion Id */
             licitacion_id: string;
+            /** Lote Id */
+            lote_id?: number | null;
+            /** Lote Numero */
+            lote_numero?: string | null;
+            /** Lote Titulo */
+            lote_titulo?: string | null;
             /** Next Action */
             next_action?: string | null;
             /** Next Action Due */
@@ -7016,6 +7486,12 @@ export interface components {
         /**
          * PursuitMetrics
          * @description Métricas reproducibles de funnel y resultado por organización/periodo.
+         *
+         *     **Cada cifra cuenta oportunidades, no expedientes.** Desde la revisión
+         *     ``v110`` un mismo expediente puede tener varias oportunidades abiertas —una
+         *     por lote—, así que «4 identificadas» pueden ser dos expedientes de dos lotes
+         *     cada uno. ``unidad_de_conteo`` lo dice en el propio contrato para que
+         *     ninguna pantalla tenga que suponerlo (ADR-014).
          */
         PursuitMetrics: {
             /**
@@ -7039,6 +7515,13 @@ export interface components {
             pursuits_submitted: number;
             /** Pursuits Won */
             pursuits_won: number;
+            radar_quality?: components["schemas"]["RadarQuality"] | null;
+            /**
+             * Unidad De Conteo
+             * @default oportunidad
+             * @constant
+             */
+            unidad_de_conteo: "oportunidad";
             /** Win Rate */
             win_rate?: number | null;
         };
@@ -7079,6 +7562,12 @@ export interface components {
             identified_at: string;
             /** Licitacion Id */
             licitacion_id: string;
+            /** Lote Id */
+            lote_id?: number | null;
+            /** Lote Numero */
+            lote_numero?: string | null;
+            /** Lote Titulo */
+            lote_titulo?: string | null;
             /** Next Action */
             next_action?: string | null;
             /** Next Action Due */
@@ -7236,6 +7725,42 @@ export interface components {
             };
         };
         /**
+         * RadarBandaCalidad
+         * @description Qué le pasó a la organización con lo que el Radar puso en una banda.
+         *
+         *     Cada porcentaje viaja con su denominador y solo se calcula cuando ese
+         *     denominador aguanta (ADR-014): ``precision`` mide sobre ``resueltas``
+         *     (ganadas + perdidas, las únicas que tienen veredicto) y ``tasa_cierre``
+         *     sobre ``abiertas``. Por debajo del mínimo llegan en ``None``, que el
+         *     cliente pinta como «sin datos suficientes» — nunca como cero.
+         */
+        RadarBandaCalidad: {
+            /** Abiertas */
+            abiertas: number;
+            /**
+             * Banda
+             * @enum {string}
+             */
+            banda: "Caliente" | "Atractiva" | "Tibia" | "Descarte";
+            /** Cerradas */
+            cerradas: number;
+            /** Ganadas */
+            ganadas: number;
+            /** Perdidas */
+            perdidas: number;
+            /** Precision */
+            precision?: number | null;
+            /** Resueltas */
+            resueltas: number;
+            /**
+             * Suficiente
+             * @default false
+             */
+            suficiente: boolean;
+            /** Tasa Cierre */
+            tasa_cierre?: number | null;
+        };
+        /**
          * RadarDismissalBody
          * @description Cuerpo del descarte de una señal.
          *
@@ -7265,6 +7790,40 @@ export interface components {
         RadarDismissalsResult: {
             /** Ids */
             ids: string[];
+        };
+        /**
+         * RadarQuality
+         * @description Precisión del Radar por banda de entrada, con su ventana y su cobertura.
+         *
+         *     Cierra el bucle que la revisión ``v93`` dejó abierto: ``score_al_abrir`` y
+         *     ``banda_al_abrir`` se escribían desde agosto de 2026 y ningún módulo de
+         *     producción los leía, así que el producto no sabía responder a su propia
+         *     promesa —«el Radar ordena bien»— ni siquiera con acceso a la base.
+         *
+         *     Solo mide oportunidades con banda sellada. Las anteriores a ``v93`` tienen
+         *     ``NULL`` y **no se rellenan**: por eso ``pursuits_con_banda`` viaja junto a
+         *     ``pursuits_total``, para que la pantalla pueda decir sobre cuánto habla.
+         */
+        RadarQuality: {
+            /** Bandas */
+            bandas?: components["schemas"]["RadarBandaCalidad"][];
+            /** Cobertura Pct */
+            cobertura_pct?: number | null;
+            /** Minimo Por Banda */
+            minimo_por_banda: number;
+            /** Pursuits Con Banda */
+            pursuits_con_banda: number;
+            /** Pursuits Total */
+            pursuits_total: number;
+            /** Ventana Desde */
+            ventana_desde?: string | null;
+            /** Ventana Hasta */
+            ventana_hasta?: string | null;
+            /**
+             * Ventana Origen
+             * @enum {string}
+             */
+            ventana_origen: "periodo_solicitado" | "historico_observado";
         };
         /**
          * RegisterRequest
@@ -14130,6 +14689,80 @@ export interface operations {
             };
         };
     };
+    get_organization_capabilities_api_v1_organizations__organization_id__capabilities_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                organization_id: number;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrganizationCapabilitiesOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_organization_capabilities_api_v1_organizations__organization_id__capabilities_put: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                organization_id: number;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OrganizationCapabilities"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrganizationCapabilitiesOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_organization_invitations_api_v1_organizations__organization_id__invitations_get: {
         parameters: {
             query?: never;
@@ -14338,6 +14971,80 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["OrganizationMembershipOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_organization_nifs_api_v1_organizations__organization_id__nifs_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                organization_id: number;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrganizationNifsOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_organization_nifs_api_v1_organizations__organization_id__nifs_put: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                organization_id: number;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OrganizationNifsIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrganizationNifsOut"];
                 };
             };
             /** @description Validation Error */
@@ -14775,6 +15482,76 @@ export interface operations {
             };
         };
     };
+    get_pursuits_weights_proposal_api_v1_pursuits_weights_proposal_get: {
+        parameters: {
+            query?: {
+                organization_id?: number | null;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PesosPropuestos"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_pursuits_weights_proposal_apply_api_v1_pursuits_weights_proposal_apply_post: {
+        parameters: {
+            query?: {
+                organization_id?: number | null;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PesosPropuestosAplicados"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_pursuit_detail_api_v1_pursuits__pursuit_id__get: {
         parameters: {
             query?: {
@@ -14841,6 +15618,43 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PursuitDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_pursuit_checklist_api_v1_pursuits__pursuit_id__checklist_get: {
+        parameters: {
+            query?: {
+                organization_id?: number | null;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                pursuit_id: number;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoNoGoChecklist"];
                 };
             };
             /** @description Validation Error */

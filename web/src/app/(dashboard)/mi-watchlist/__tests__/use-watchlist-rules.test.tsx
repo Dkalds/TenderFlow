@@ -1,30 +1,41 @@
 /**
- * Tests de la lógica de reglas de watchlist (`_hooks/use-watchlist-rules.ts`).
+ * Tests de la lógica de reglas de watchlist.
  *
  * `page.test.tsx` cubre el marcado; aquí van las reglas que el marcado no
  * enseña: que el formulario mande `null` donde el contrato pide `null` y que el
  * listado combinado no repita una licitación capturada por dos reglas a la vez.
+ *
+ * Cubre los tres módulos en que se partió el original al pasar de 300 líneas
+ * —`use-watchlist-rules.ts` (formulario ↔ contrato), `watchlist-matches.ts`
+ * (coincidencias) y `watchlist-rule-options.ts` (catálogos)— porque son un solo
+ * criterio de aceptación: lo que se guarda es lo que el usuario eligió. Partir
+ * la tabla de casos en tres ficheros la dispersaría sin aclarar nada.
  *
  * La migración del `localStorage` se probaba también aquí; vive ahora en
  * `use-legacy-rule-migration.test.tsx`, junto al módulo que se le separó.
  */
 import { describe, it, expect } from "vitest";
 import {
-  CCAA_FALLBACK,
-  FREQ_LABEL,
-  FREQ_OPTIONS,
-  activeRulesOf,
-  ccaaOptions,
-  dedupeMatches,
   formStateToBody,
   parsePrefill,
   prefillToFormState,
   ruleToBody,
   ruleToFormState,
-  type ApiRule,
-  type MatchItem,
-  type RuleFormState,
+  tieneCriterio,
 } from "../_hooks/use-watchlist-rules";
+import {
+  MATCH_COUNT_CAP,
+  activeRulesOf,
+  dedupeMatches,
+  formatMatchCount,
+} from "../_hooks/watchlist-matches";
+import {
+  CCAA_FALLBACK,
+  FREQ_LABEL,
+  FREQ_OPTIONS,
+  ccaaOptions,
+} from "../_hooks/watchlist-rule-options";
+import type { ApiRule, MatchItem, RuleFormState } from "../_hooks/watchlist-rule-types";
 
 /* ── Fixtures ───────────────────────────────────────────────────────── */
 
@@ -161,6 +172,36 @@ describe("ruleToBody", () => {
   });
 });
 
+describe("tieneCriterio", () => {
+  // Es lo único que separa «guardar una regla» de «notificar el mercado
+  // entero», y hasta el troceado no tenía prueba propia.
+  it("un formulario vacío no filtra nada", () => {
+    expect(tieneCriterio(EMPTY_FORM)).toBe(false);
+  });
+
+  it("un campo de solo espacios sigue siendo vacío", () => {
+    expect(tieneCriterio({ ...EMPTY_FORM, keyword: "   ", organo: "  " })).toBe(false);
+  });
+
+  it.each([
+    ["keyword", "SAP"],
+    ["cpv", "72000000"],
+    ["minImporte", "50000"],
+    ["ccaa", "Madrid"],
+    ["tecnologia", "SAP"],
+    ["organo", "Ayuntamiento"],
+    ["procedimiento", "abierto"],
+    ["tipoContrato", "servicios"],
+    ["bandaMin", "Caliente"],
+    ["plazoMinDias", "15"],
+  ] as [keyof RuleFormState, string][])(
+    "basta con %s para que la regla filtre",
+    (campo, valor) => {
+      expect(tieneCriterio({ ...EMPTY_FORM, [campo]: valor })).toBe(true);
+    },
+  );
+});
+
 /* ── Prefill desde la command palette ───────────────────────────────── */
 
 describe("parsePrefill", () => {
@@ -252,6 +293,21 @@ describe("activeRulesOf", () => {
       rule({ id: 2, active: false }),
     ]);
     expect(activas.map((r) => r.id)).toEqual([1]);
+  });
+});
+
+describe("formatMatchCount", () => {
+  it("por debajo del tope se enseña el número exacto", () => {
+    expect(formatMatchCount(0)).toBe("0");
+    expect(formatMatchCount(999)).toBe("999");
+  });
+
+  it("en el tope el conteo solo significa «al menos tantas»", () => {
+    // El backend cuenta sobre un subselect con LIMIT (`MATCH_COUNT_CAP` en
+    // `db/repositories/watchlist_rules.py`): pintar «1000» exacto sería
+    // inventar un denominador que nadie midió (ADR-014).
+    expect(formatMatchCount(MATCH_COUNT_CAP)).toBe("999+");
+    expect(formatMatchCount(MATCH_COUNT_CAP + 500)).toBe("999+");
   });
 });
 

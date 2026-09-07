@@ -34,9 +34,8 @@ import {
   FREQ_OPTIONS,
   PROCEDIMIENTO_OPTIONS,
   TIPO_CONTRATO_OPTIONS,
-  type Frequency,
-  type RuleFormState,
-} from "../_hooks/use-watchlist-rules";
+} from "../_hooks/watchlist-rule-options";
+import type { Frequency, RuleFormState } from "../_hooks/watchlist-rule-types";
 
 /** Valor del `Select` que significa «sin filtro». Radix no admite `""`. */
 const SIN_FILTRO = "__any__";
