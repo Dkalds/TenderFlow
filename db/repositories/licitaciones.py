@@ -7,8 +7,8 @@ Las queries complejas usan SQLAlchemy Core para construcción type-safe
 from __future__ import annotations
 
 import re
-from datetime import date, timedelta
-from typing import TYPE_CHECKING, Any
+from datetime import UTC, date, datetime, timedelta
+from typing import TYPE_CHECKING, Any, Final
 
 from sqlalchemy import Select, and_, func, or_, select, text
 
@@ -21,11 +21,17 @@ from db.sql_fragments import (
     FOLD_TABLE,
     ISO_MAX,
     ISO_MIN,
+    fold_expr,
     iso_guard,
     tecnologia_en_csv_sql,
 )
 from observability.logging import get_logger
-from shared.estados import ESTADOS_CERRADOS, abierta_core, abierta_sql_marcadores
+from shared.estados import (
+    ESTADOS_CERRADOS,
+    abierta_core,
+    abierta_sql,
+    abierta_sql_marcadores,
+)
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -99,6 +105,34 @@ _COLUMNAS_BUSQUEDA = (
     licitaciones.c.organo_contratacion,
     licitaciones.c.id_externo,
 )
+
+
+def _normaliza_codigo(code: str) -> str:
+    """Código de lista controlada listo para comparar: sin ceros a la izquierda.
+
+    La fuente publica ``01`` y ``1`` para el mismo procedimiento según el
+    emisor. Es la misma normalización que hace ``shared/procedimientos.py`` al
+    traducirlos a etiqueta; si el filtro no la aplicara, «Abierto» dejaría
+    fuera a la mitad de los expedientes de algunos órganos y el desplegable
+    parecería roto.
+    """
+    limpio = code.strip()
+    return str(int(limpio)) if limpio.isdigit() else limpio
+
+
+def _codigo_en(column: Any, values: list[str]) -> Any:
+    """``column`` coincide con alguno de ``values``, comparando normalizado.
+
+    La normalización se aplica **a los dos lados**: al valor que llega del
+    usuario en Python, y a la columna en SQL con el mismo ``ltrim``. Hacerlo
+    sólo en Python dejaría fuera las filas guardadas como ``01``.
+    """
+    codigos = {_normaliza_codigo(v) for v in values if v and v.strip()}
+    if not codigos:
+        return text("1=1")
+    # `NULLIF`+`COALESCE`: `ltrim('0','0')` deja '', que no es ningún código.
+    normalizada = func.coalesce(func.nullif(func.ltrim(func.trim(column), "0"), ""), "0")
+    return normalizada.in_(sorted(codigos))
 
 
 def _any_of(column: Any, values: list[str]) -> Any:
@@ -186,6 +220,12 @@ _SORT_WHITELIST: dict[str, str] = {
 _DEFAULT_SORT = "fecha_publicacion DESC"
 
 
+#: Prefijo de ``ml_feedback.source`` con el que se guardan los reportes de dato
+#: (F6.2). Vive aquí y no en ``services/`` porque quien tiene que conocerlo es el
+#: SQL que decide qué sigue sin etiquetar; ``services.reportes_dato`` lo importa.
+PREFIJO_REPORTE: Final = "reporte:"
+
+
 class LicitacionRepository:
     """Acceso de lectura a la tabla ``licitaciones``."""
 
@@ -205,6 +245,15 @@ class LicitacionRepository:
         fecha_hasta: str | None = None,
         cierre_desde: str | None = None,
         cierre_hasta: str | None = None,
+        importe_min: float | None = None,
+        importe_max: float | None = None,
+        cpv: str | None = None,
+        organo: str | None = None,
+        provincia: str | None = None,
+        procedimiento: str | None = None,
+        tramitacion: str | None = None,
+        tipo_contrato: str | None = None,
+        dias_restantes_max: int | None = None,
         only_classified: bool = True,
     ) -> list[Any]:
         """Devuelve lista de cláusulas SA Core para WHERE.
@@ -261,11 +310,14 @@ class LicitacionRepository:
                 )
                 clauses.append(sub.exists())
             else:
-                t = tecnologia_predicha
+                # El valor va escapado dentro del patrón: llega de la query y
+                # un `%` lo convertía en comodín. La rama FTS escapa igual, de
+                # modo que las dos casan el mismo conjunto.
+                t = _escape_like(tecnologia_predicha)
                 clauses.append(
                     or_(
-                        licitaciones.c.ml_tech_principal == t,
-                        licitaciones.c.ml_tecnologias == t,
+                        licitaciones.c.ml_tech_principal == tecnologia_predicha,
+                        licitaciones.c.ml_tecnologias == tecnologia_predicha,
                         licitaciones.c.ml_tecnologias.like(f"{t},%"),
                         licitaciones.c.ml_tecnologias.like(f"%,{t},%"),
                         licitaciones.c.ml_tecnologias.like(f"%,{t}"),
@@ -293,6 +345,79 @@ class LicitacionRepository:
             clauses.append(licitaciones.c.fecha_limite >= cierre_desde)
         if hasta_exclusivo:
             clauses.append(licitaciones.c.fecha_limite < hasta_exclusivo)
+
+        # ── F1.1: los ocho filtros que faltaban ──────────────────────────
+        #
+        # Todos son aditivos y ninguno cambia el resultado cuando no se pasa,
+        # así que el listado de siempre sigue devolviendo lo mismo. Van aquí
+        # —y no en cada llamante— porque `_base_filters` es lo que comparten
+        # el listado, el cursor y el export: es la única forma de que el test
+        # de paridad pueda exigir el mismo `COUNT(*)` en los tres.
+
+        # Importe: NULL queda fuera en cuanto se pide cualquiera de las cotas.
+        # Es lo correcto y hay que decirlo: «de 100k a 500k» no puede incluir
+        # expedientes sin importe publicado, aunque alguno lo tuviera.
+        if importe_min is not None:
+            clauses.append(licitaciones.c.importe >= float(importe_min))
+        if importe_max is not None:
+            clauses.append(licitaciones.c.importe <= float(importe_max))
+
+        # CPV **por prefijo**: es como se usa de verdad. `72` es «servicios de
+        # TI» entero y `7222` una familia dentro. Igualdad exacta obligaría a
+        # conocer los ocho dígitos, que nadie recuerda.
+        cpvs = csv_values(cpv)
+        if cpvs:
+            clauses.append(or_(*[licitaciones.c.cpv.like(f"{_escape_like(c)}%") for c in cpvs]))
+
+        # Órgano: coincidencia por subcadena y plegada, igual que la búsqueda
+        # libre. El autocompletado manda el nombre normalizado, pero un usuario
+        # que escribe «ayuntamiento de madrid» a mano tiene que encontrarlo
+        # igual — y hasta que exista el maestro de órganos (C1.2) el nombre es
+        # todo lo que hay.
+        organos = csv_values(organo)
+        if organos:
+            clauses.append(
+                or_(
+                    *[
+                        _plegado(licitaciones.c.organo_contratacion).like(
+                            f"%{_escape_like(o.translate(FOLD_TABLE).lower())}%"
+                        )
+                        for o in organos
+                    ]
+                )
+            )
+
+        provincias = csv_values(provincia)
+        if provincias:
+            clauses.append(_any_of(licitaciones.c.provincia, provincias))
+
+        # Códigos CODICE. Se comparan **normalizados** (sin ceros a la
+        # izquierda) porque la fuente publica `01` y `1` para lo mismo según el
+        # emisor: sin esto, filtrar por «Abierto» perdería la mitad de los
+        # expedientes de algunos órganos. Es la misma normalización que aplica
+        # `shared/procedimientos.py` al traducirlos.
+        for columna, valores in (
+            (licitaciones.c.procedimiento, csv_values(procedimiento)),
+            (licitaciones.c.tramitacion, csv_values(tramitacion)),
+            (licitaciones.c.tipo_contrato, csv_values(tipo_contrato)),
+        ):
+            if valores:
+                clauses.append(_codigo_en(columna, valores))
+
+        # Plazo restante en días, calculado en SQL sobre `fecha_limite` y sin
+        # los estados terminales: un expediente adjudicado con fecha límite
+        # futura no «vence en 5 días», ya no se puede licitar.
+        if dias_restantes_max is not None:
+            tope = (datetime.now(UTC) + timedelta(days=int(dias_restantes_max))).date().isoformat()
+            clauses.append(_iso_guard(licitaciones.c.fecha_limite))
+            # `<` y no `<=`: `_dia_siguiente` produce una cota **exclusiva**
+            # (lo dice su docstring, y así la usan `cierre_hasta` y la rama
+            # FTS). Con `<=` esta rama devolvía un día de más, así que el
+            # mismo filtro daba un universo distinto según si el usuario había
+            # escrito o no en la caja de búsqueda.
+            clauses.append(licitaciones.c.fecha_limite < _dia_siguiente(tope))
+            clauses.append(licitaciones.c.fecha_limite >= datetime.now(UTC).date().isoformat())
+            clauses.append(abierta_core(licitaciones.c.estado))
 
         return clauses
 
@@ -347,6 +472,15 @@ class LicitacionRepository:
         fecha_hasta: str | None = None,
         cierre_desde: str | None = None,
         cierre_hasta: str | None = None,
+        importe_min: float | None = None,
+        importe_max: float | None = None,
+        cpv: str | None = None,
+        organo: str | None = None,
+        provincia: str | None = None,
+        procedimiento: str | None = None,
+        tramitacion: str | None = None,
+        tipo_contrato: str | None = None,
+        dias_restantes_max: int | None = None,
         limit: int = 50,
         offset: int = 0,
         sort: str | None = None,
@@ -377,6 +511,15 @@ class LicitacionRepository:
             fecha_hasta=fecha_hasta,
             cierre_desde=cierre_desde,
             cierre_hasta=cierre_hasta,
+            importe_min=importe_min,
+            importe_max=importe_max,
+            cpv=cpv,
+            organo=organo,
+            provincia=provincia,
+            procedimiento=procedimiento,
+            tramitacion=tramitacion,
+            tipo_contrato=tipo_contrato,
+            dias_restantes_max=dias_restantes_max,
         )
 
         # Usar FTS5 para búsquedas de texto si disponible
@@ -387,10 +530,21 @@ class LicitacionRepository:
                 solo_abiertas=solo_abiertas,
                 ccaa=ccaa,
                 tecnologia=tecnologia,
+                tecnologia_predicha=tecnologia_predicha,
+                min_proba_tech=min_proba_tech,
                 fecha_desde=fecha_desde,
                 fecha_hasta=fecha_hasta,
                 cierre_desde=cierre_desde,
                 cierre_hasta=cierre_hasta,
+                importe_min=importe_min,
+                importe_max=importe_max,
+                cpv=cpv,
+                organo=organo,
+                provincia=provincia,
+                procedimiento=procedimiento,
+                tramitacion=tramitacion,
+                tipo_contrato=tipo_contrato,
+                dias_restantes_max=dias_restantes_max,
                 limit=limit,
                 offset=offset,
                 order=order,
@@ -425,10 +579,21 @@ class LicitacionRepository:
         solo_abiertas: bool,
         ccaa: str | None,
         tecnologia: str | None,
+        tecnologia_predicha: str | None = None,
+        min_proba_tech: float | None = None,
         fecha_desde: str | None,
         fecha_hasta: str | None,
         cierre_desde: str | None,
         cierre_hasta: str | None,
+        importe_min: float | None = None,
+        importe_max: float | None = None,
+        cpv: str | None = None,
+        organo: str | None = None,
+        provincia: str | None = None,
+        procedimiento: str | None = None,
+        tramitacion: str | None = None,
+        tipo_contrato: str | None = None,
+        dias_restantes_max: int | None = None,
         limit: int,
         offset: int,
         order: Any,
@@ -437,9 +602,13 @@ class LicitacionRepository:
         """Búsqueda FTS5: usa SQL directo porque FTS MATCH no tiene soporte SA."""
         extra_conditions: list[str] = ["tecnologia IS NOT NULL AND tecnologia != ''"]
         extra_params: list[Any] = []
-        if estado:
-            extra_conditions.append("l.estado = %s")
-            extra_params.append(estado)
+        # `csv_values` y no el valor crudo: la rama SA Core acepta multi-valor
+        # (`?estado=A,B`) y ésta comparaba la cadena entera, de modo que el
+        # mismo filtro devolvía cero al escribir texto en la caja.
+        if estados := csv_values(estado):
+            marcadores = ", ".join(["%s"] * len(estados))
+            extra_conditions.append(f"l.estado IN ({marcadores})")
+            extra_params.extend(estados)
         if solo_abiertas:
             # Mismo criterio y ahora también misma grafía que la rama SA Core y
             # que los agregados: el predicado lo emite `shared.estados`. Antes
@@ -447,9 +616,10 @@ class LicitacionRepository:
             # no protege de que sólo una cambie.
             extra_conditions.append(abierta_sql_marcadores("l.estado", n=len(ESTADOS_CERRADOS)))
             extra_params.extend(ESTADOS_CERRADOS)
-        if ccaa:
-            extra_conditions.append("l.ccaa = %s")
-            extra_params.append(ccaa)
+        if ccaas := csv_values(ccaa):
+            marcadores = ", ".join(["%s"] * len(ccaas))
+            extra_conditions.append(f"l.ccaa IN ({marcadores})")
+            extra_params.extend(ccaas)
         tecnologias = csv_values(tecnologia)
         if tecnologias:
             # Igualdad no: `tecnologia` guarda un CSV por fila, así que buscar
@@ -458,6 +628,32 @@ class LicitacionRepository:
             # escribir texto en la caja cambiaba el universo del filtro.
             extra_conditions.append(tecnologia_en_csv_sql("l.tecnologia", n=len(tecnologias)))
             extra_params.extend(tecnologias)
+
+        # Tecnología **predicha** (el modelo, no la etiqueta). No llegaba hasta
+        # aquí: la rama SA Core la aplicaba y ésta ni siquiera recibía el
+        # parámetro, así que escribir en la caja de búsqueda desactivaba el
+        # filtro en silencio y devolvía expedientes de cualquier tecnología.
+        # Misma semántica que `_base_filters`: con umbral, EXISTS sobre los
+        # scores; sin él, principal o pertenencia al CSV de predichas.
+        if tecnologia_predicha:
+            if min_proba_tech is not None:
+                extra_conditions.append(
+                    "EXISTS (SELECT 1 FROM licitacion_tecnologia_score s "
+                    "WHERE s.licitacion_id = l.id_externo AND s.tecnologia = %s "
+                    "  AND s.probabilidad >= %s)"
+                )
+                extra_params.extend([tecnologia_predicha, float(min_proba_tech)])
+            else:
+                extra_conditions.append(
+                    "(l.ml_tech_principal = %s OR l.ml_tecnologias = %s "
+                    " OR l.ml_tecnologias LIKE %s OR l.ml_tecnologias LIKE %s "
+                    " OR l.ml_tecnologias LIKE %s)"
+                )
+                t = _escape_like(tecnologia_predicha)
+                extra_params.extend(
+                    [tecnologia_predicha, tecnologia_predicha, f"{t},%", f"%,{t},%", f"%,{t}"]
+                )
+
         if fecha_desde and _DATE_RE.match(fecha_desde):
             extra_conditions.append("l.fecha_publicacion >= %s")
             extra_params.append(fecha_desde)
@@ -479,6 +675,63 @@ class LicitacionRepository:
         if hasta_exclusivo:
             extra_conditions.append("l.fecha_limite < %s")
             extra_params.append(hasta_exclusivo)
+
+        # ── F1.1 en la rama FTS ──────────────────────────────────────────
+        #
+        # Esta rama vuelve a escribir en SQL crudo lo que la rama SA Core
+        # expresa con `_base_filters`, porque `MATCH` no tiene equivalente en
+        # SA. La duplicación es conocida y peligrosa —así fue como `tecnologia`
+        # acabó comparándose por igualdad aquí y por CSV allí—, y por eso el
+        # test de paridad de F1.1 compara el `COUNT(*)` de las dos ramas con
+        # los mismos filtros: si una se queda atrás, falla.
+        if importe_min is not None:
+            extra_conditions.append("l.importe >= %s")
+            extra_params.append(float(importe_min))
+        if importe_max is not None:
+            extra_conditions.append("l.importe <= %s")
+            extra_params.append(float(importe_max))
+
+        cpvs = csv_values(cpv)
+        if cpvs:
+            extra_conditions.append("(" + " OR ".join(["l.cpv LIKE %s" for _ in cpvs]) + ")")
+            extra_params.extend(f"{_escape_like(c)}%" for c in cpvs)
+
+        organos = csv_values(organo)
+        if organos:
+            plegado = fold_expr("l.organo_contratacion")
+            extra_conditions.append(
+                "(" + " OR ".join([f"{plegado} LIKE %s" for _ in organos]) + ")"
+            )
+            extra_params.extend(
+                f"%{_escape_like(o.translate(FOLD_TABLE).lower())}%" for o in organos
+            )
+
+        provincias = csv_values(provincia)
+        if provincias:
+            marcadores = ", ".join(["%s"] * len(provincias))
+            extra_conditions.append(f"l.provincia IN ({marcadores})")
+            extra_params.extend(provincias)
+
+        for columna, valores in (
+            ("l.procedimiento", csv_values(procedimiento)),
+            ("l.tramitacion", csv_values(tramitacion)),
+            ("l.tipo_contrato", csv_values(tipo_contrato)),
+        ):
+            codigos = sorted({_normaliza_codigo(v) for v in valores if v.strip()})
+            if codigos:
+                marcadores = ", ".join(["%s"] * len(codigos))
+                normalizada = f"COALESCE(NULLIF(ltrim(trim({columna}), '0'), ''), '0')"
+                extra_conditions.append(f"{normalizada} IN ({marcadores})")
+                extra_params.extend(codigos)
+
+        if dias_restantes_max is not None:
+            tope = (datetime.now(UTC) + timedelta(days=int(dias_restantes_max))).date().isoformat()
+            extra_conditions.append(iso_guard("l.fecha_limite"))
+            extra_conditions.append("l.fecha_limite >= %s")
+            extra_params.append(datetime.now(UTC).date().isoformat())
+            extra_conditions.append("l.fecha_limite < %s")
+            extra_params.append(_dia_siguiente(tope))
+            extra_conditions.append(abierta_sql("l.estado"))
 
         # Compilar order clause a string para insertar en FTS SQL
         compiled_order = str(order.compile(dialect=_DIALECT))
@@ -509,19 +762,56 @@ class LicitacionRepository:
         *,
         cursor_fecha: str | None = None,
         cursor_id: str | None = None,
+        q: str | None = None,
+        estado: str | None = None,
+        solo_abiertas: bool = False,
+        ccaa: str | None = None,
         tecnologia: str | None = None,
+        fecha_desde: str | None = None,
+        fecha_hasta: str | None = None,
+        cierre_desde: str | None = None,
+        cierre_hasta: str | None = None,
+        importe_min: float | None = None,
+        importe_max: float | None = None,
+        cpv: str | None = None,
+        organo: str | None = None,
+        provincia: str | None = None,
+        procedimiento: str | None = None,
+        tramitacion: str | None = None,
+        tipo_contrato: str | None = None,
+        dias_restantes_max: int | None = None,
         limit: int = 100,
     ) -> list[dict[str, Any]]:
-        """Paginación por cursor (fecha_publicacion, id_externo) DESC."""
-        clauses = [
-            and_(
-                licitaciones.c.tecnologia.isnot(None),
-                licitaciones.c.tecnologia != "",
-            )
-        ]
+        """Paginación por cursor (fecha_publicacion, id_externo) DESC.
 
-        if tecnologia:
-            clauses.append(licitaciones.c.tecnologia == tecnologia)
+        Los filtros salen de :meth:`_base_filters`, los mismos que el listado
+        por offset. Antes esta función tenía su propio par de cláusulas
+        —``tecnologia`` por **igualdad**, cuando la columna guarda un CSV— así
+        que el endpoint «recomendado para datasets grandes» filtraba distinto
+        que el que dice sustituir: pedir SAP aquí escondía los expedientes que
+        además llevan otra tecnología. Compartir el constructor es lo que hace
+        cierto el test de paridad de F1.1.
+        """
+        clauses = self._base_filters(
+            q=q,
+            estado=estado,
+            solo_abiertas=solo_abiertas,
+            ccaa=ccaa,
+            tecnologia=tecnologia,
+            fecha_desde=fecha_desde,
+            fecha_hasta=fecha_hasta,
+            cierre_desde=cierre_desde,
+            cierre_hasta=cierre_hasta,
+            importe_min=importe_min,
+            importe_max=importe_max,
+            cpv=cpv,
+            organo=organo,
+            provincia=provincia,
+            procedimiento=procedimiento,
+            tramitacion=tramitacion,
+            tipo_contrato=tipo_contrato,
+            dias_restantes_max=dias_restantes_max,
+        )
 
         if cursor_fecha is not None and cursor_id is not None:
             clauses.append(
@@ -582,14 +872,27 @@ class LicitacionRepository:
         return (str(row[0] or ""), str(row[1] or ""), row[2]) if row else None
 
     def get_unlabelled_candidates(self, limit: int = 500) -> list[dict[str, Any]]:
-        """Licitaciones no presentes en ml_feedback para active learning."""
+        """Licitaciones sin etiqueta humana en ml_feedback, para active learning.
+
+        «Sin etiquetar» significa **sin etiqueta**, no «sin fila»:
+        ``ml_feedback`` es también la cola de los reportes de dato
+        (``services/reportes_dato.py``, que escribe ``source = 'reporte:<tipo>'``),
+        y sin el predicado cualquier usuario sacaba un expediente de la cola de
+        etiquetado con sólo reportarlo.
+
+        El filtro excluye el prefijo de reporte y **no** compara con ``'human'``:
+        el job de LLM escribe ``llm_batch`` precisamente para vaciar esta cola
+        sin realimentar al modelo (``scheduler/jobs/llm_tech_labeling.py``), así
+        que exigir ``human`` habría devuelto a la cola todo lo que ya etiquetó.
+        """
         with connect_read() as c:
             cur = c.execute(
                 "SELECT l.id_externo, l.titulo, l.descripcion, l.cpv, l.importe, "
                 "l.organo_contratacion, l.ccaa, l.fecha_publicacion, l.url, "
                 "l.tecnologia, l.ml_tecnologias, l.ml_proba_max, l.ml_tech_principal "
                 "FROM licitaciones l "
-                "LEFT JOIN ml_feedback f ON l.id_externo = f.expediente "
+                "LEFT JOIN ml_feedback f "
+                f"  ON l.id_externo = f.expediente AND f.source NOT LIKE '{PREFIJO_REPORTE}%%' "
                 "WHERE f.expediente IS NULL "
                 "ORDER BY l.fecha_publicacion DESC LIMIT %s",
                 (limit,),
@@ -699,13 +1002,17 @@ class LicitacionRepository:
         return salida
 
     def get_unlabelled_random(self, limit: int = 20) -> list[dict[str, Any]]:
+        """Muestra aleatoria sin etiquetar. Mismo criterio que
+        :meth:`get_unlabelled_candidates`: se excluyen las etiquetas (humanas y
+        de LLM), no los reportes de dato."""
         with connect_read() as c:
             cur = c.execute(
                 "SELECT l.id_externo, l.titulo, l.descripcion, l.cpv, l.importe, "
                 "l.organo_contratacion, l.ccaa, l.fecha_publicacion, l.url, "
                 "l.tecnologia, l.ml_tecnologias, l.ml_proba_max, l.ml_tech_principal "
                 "FROM licitaciones l "
-                "LEFT JOIN ml_feedback f ON l.id_externo = f.expediente "
+                "LEFT JOIN ml_feedback f "
+                f"  ON l.id_externo = f.expediente AND f.source NOT LIKE '{PREFIJO_REPORTE}%%' "
                 "WHERE f.expediente IS NULL "
                 "ORDER BY RANDOM() LIMIT %s",
                 (limit,),
@@ -969,9 +1276,14 @@ class LicitacionRepository:
         if estado:
             conditions.append("estado = %s")
             params.append(estado)
-        if tecnologia:
-            conditions.append("tecnologia = %s")
-            params.append(tecnologia)
+        if tecnologias := csv_values(tecnologia):
+            # Contención en el CSV, no igualdad: `tecnologia` guarda
+            # "SAP,SALESFORCE", así que `= 'SAP'` escondía justo los
+            # expedientes multi-tecnología. Es el mismo arreglo que ya llevan
+            # el listado, el cursor y la rama FTS; estas dos superficies se
+            # quedaron atrás.
+            conditions.append(tecnologia_en_csv_sql("tecnologia", n=len(tecnologias)))
+            params.extend(tecnologias)
         if fecha_desde:
             conditions.append("fecha_publicacion >= %s")
             params.append(fecha_desde)
@@ -1009,9 +1321,10 @@ class LicitacionRepository:
         if ccaa:
             conditions.append("l.ccaa = %s")
             params.append(ccaa)
-        if tecnologia:
-            conditions.append("l.tecnologia = %s")
-            params.append(tecnologia)
+        if tecnologias := csv_values(tecnologia):
+            # Ver `fetch_for_pdf`: el CSV se explota, no se compara entero.
+            conditions.append(tecnologia_en_csv_sql("l.tecnologia", n=len(tecnologias)))
+            params.extend(tecnologias)
         where = " AND ".join(conditions)
         cols = (
             "l.id_externo, l.titulo, l.organo_contratacion, l.importe, "

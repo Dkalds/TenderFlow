@@ -23,7 +23,7 @@ antiguo deja de compilar, la pregunta es *dónde ha ido esa capacidad*, no
 | Rail de 56px | `components/layout/console-rail.tsx` | La sidebar de 248px con sus once secciones, más el menú de cuenta del TopNav (organización activa, densidad, tema, cerrar sesión) |
 | Barra de ámbito de 52px | `components/layout/scope-bar.tsx` | La `GlobalFilterBar` entera (mismos seis controles, mismo contrato por página), el buscador ⌘K, exportar, notificaciones y el indicador de frescura |
 | Marco | `components/layout/console-frame.tsx` | Decide entre superficie de consola y cromo heredado según `isConsoleRoute` |
-| Mapa de espacios | `lib/console-spaces.ts` + `lib/space-views.ts` | Las 25 rutas → 13 espacios; gobierna rail, redirects y qué ruta usa qué cromo |
+| Mapa de espacios | `lib/console-spaces.ts` + `lib/space-views.ts` | Las 25 rutas → 16 espacios; gobierna rail, redirects y qué ruta usa qué cromo |
 | Historial del ámbito | `lib/scope-history.ts` | Deshacer / rehacer sobre cualquier cambio de filtro, venga de donde venga |
 
 `TopNav`, `Sidebar` y `GlobalFilterBar` siguen en el árbol con sus tests: son la
@@ -44,7 +44,11 @@ Mientras un espacio no esté construido, el rail enlaza a la primera ruta que
 absorberá y no hay redirect: mandar `/tendencias` a un `/mercado` inexistente
 cambiaría una pantalla viva por un 404.
 
-### Estado: los 13 espacios, cubriendo las 25 rutas
+### Estado: los 16 espacios, cubriendo las 25 rutas
+
+Catorce venían del rediseño. **Cuentas** y **Dirección** los añadió el plan
+de funcionalidades 2026-09: son espacios nuevos, no consolidaciones, así que
+no absorben ninguna ruta heredada y no aparecen en la tabla de redirects.
 
 **Rediseñadas a fondo**, con su superficie reconstruida:
 

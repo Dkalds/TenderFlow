@@ -11,7 +11,7 @@ El tipo de notificacion incluye la ventana para garantizar el UNIQUE
 
 from __future__ import annotations
 
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 from db.database import connect_read
@@ -259,4 +259,66 @@ def check_all_users_deadlines() -> int:
         total += check_pursuit_deadlines()
     except Exception as exc:
         log.warning("pursuit_deadline_check_error", error=str(exc)[:200])
+    try:
+        total += check_radar_postponements()
+    except Exception as exc:
+        log.warning("radar_postponement_check_error", error=str(exc)[:200])
     return total
+
+
+def check_radar_postponements() -> int:
+    """F5.6 — avisa de los aplazamientos del Radar que vencen.
+
+    «Recuérdamelo en N días» sólo es una promesa si alguien la cumple. Este
+    check convierte cada aplazamiento vencido en una alerta in-app, con la
+    misma idempotencia que el resto: el ``type_`` lleva la fecha del
+    vencimiento, así que la clave ``UNIQUE(user_key, licitacion_id, type)``
+    impide repetirla aunque el job pase cada hora, y un segundo aplazamiento
+    del mismo expediente —con otra fecha— sí genera su propio aviso.
+
+    Ventana de dos días hacia atrás: cubre de sobra la cadencia del pipeline
+    (varias pasadas al día) y evita recorrer el histórico entero en cada
+    ejecución. Un aplazamiento cuyo vencimiento caiga en una caída del
+    scheduler de más de 48 h se pierde; a cambio, no se avisa en masa de
+    recordatorios de hace meses el día que el job vuelva a arrancar, que es el
+    fallo más ruidoso de los dos.
+
+    Devuelve cuántas alertas escribió.
+    """
+    from db import radar_dismissals
+
+    desde = (datetime.now(UTC) - timedelta(days=2)).isoformat()
+    try:
+        vencidos = radar_dismissals.pospuestos_vencidos(desde_iso=desde)
+    except Exception as exc:
+        log.warning("radar_postponement_query_error", error=str(exc)[:200])
+        return 0
+
+    escritas = 0
+    sin_organizacion = 0
+    for fila in vencidos:
+        organization_id = fila.get("organization_id")
+        if organization_id is None:
+            # Alerta sin ámbito = alerta que no aparece en ninguna campana y
+            # que además gasta la clave única. Se cuenta y se descarta; ver el
+            # mismo razonamiento en `_get_watchlist_items`.
+            sin_organizacion += 1
+            continue
+        vencimiento = str(fila.get("hasta") or "")[:10]
+        escritas += int(
+            insert_user_notification(
+                user_key=str(fila["user_key"]),
+                type_=f"radar_recordatorio_{vencimiento}",
+                title="Vuelve a tu Radar la licitación que aplazaste",
+                body=("Pediste que te la recordáramos hoy. Ya está otra vez en la bandeja."),
+                licitacion_id=str(fila["id_externo"]),
+                organization_id=int(organization_id),
+            )
+        )
+    if escritas or sin_organizacion:
+        log.info(
+            "radar_postponement_notifications_written",
+            count=escritas,
+            sin_organizacion=sin_organizacion,
+        )
+    return escritas

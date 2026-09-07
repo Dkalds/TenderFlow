@@ -131,7 +131,11 @@ export function RadarFila({
           </PopoverTrigger>
           <PopoverContent align="start" className="w-[300px]" onClick={(e) => e.stopPropagation()}>
             <p className="mb-2.5 text-[11.5px] font-semibold">Cómo se compone esta puntuación</p>
-            <ScoreDesglose desglose={tender.desglose} riesgos={tender.risk_flags} />
+            <ScoreDesglose
+              desglose={tender.desglose}
+              riesgos={tender.risk_flags}
+              explicacion={tender.explicacion}
+            />
             <p className="text-muted-foreground mt-2.5 text-[10.5px] leading-relaxed">
               Ordena el Radar sobre el corpus abierto. No es una recomendación comercial: mide
               encaje con tu perfil, no probabilidad de ganar.

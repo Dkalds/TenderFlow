@@ -116,15 +116,32 @@ describe("registrarEvento", () => {
     // denominador que faltaba para interpretar todo el embudo y distingue sus
     // cuatro puertas sin enviar identidad ni otro dato de cardinalidad alta.
     //
-    // Subido de 14 a 15 el 2026-09-07 con `vista_experimental_abierta` (S7.3
-    // del plan 2026-09 v2). Es el evento que contesta la pregunta que decide
-    // el destino de las dos vistas marcadas `experimental`: si nadie las abre,
-    // lo que procede es retirarlas, no seguir manteniéndolas tras un flag. Sin
-    // medirlo, esa decisión se pospone indefinidamente por falta de dato.
-    // `vista` y `flag` son de cardinalidad acotada —el nombre de la vista y si
-    // la API de flags respondió—, así que no reabre el problema que este tope
-    // vigila.
-    expect(Object.keys(PROPIEDADES_PERMITIDAS).length).toBeLessThanOrEqual(15);
+    // Subido de 14 a 22 el 2026-09-06 por el plan de funcionalidades 2026-09,
+    // que lo fija como métrica de cierre («14 + 8 nuevos, ninguno con
+    // identificador»). Los ocho miden funciones que hoy no existen y que sin
+    // evento propio serían indistinguibles del uso que ya se mide:
+    // `organo_seguido` (trabajar por cuentas y no por expedientes),
+    // `etiqueta_aplicada`, `simulador_usado`, `kit_abierto`,
+    // `guion_generado`, `partners_consultado` (las tres funciones de
+    // `services/partners.py` llevaban meses sin consumidor: este evento dirá
+    // si darles pantalla estuvo justificado), `cartera_abierta` y
+    // `dato_reportado`. El resto de lo que pide el plan viaja como propiedad
+    // de un evento existente, que es lo que evita que el catálogo crezca más.
+    //
+    // Subido de 22 a 23 el 2026-09-07 con `vista_experimental_abierta` (S7.3
+    // del plan de arquitectura 2026-09 v2). Es el evento que contesta la
+    // pregunta que decide el destino de las dos vistas marcadas
+    // `experimental`: si nadie las abre, lo que procede es retirarlas, no
+    // seguir manteniéndolas tras un flag. Sin medirlo, esa decisión se pospone
+    // indefinidamente por falta de dato. `vista` y `flag` son de cardinalidad
+    // acotada —el nombre de la vista y si la API de flags respondió—, así que
+    // no reabre el problema que este tope vigila.
+    //
+    // Los dos planes de 2026-09 se desarrollaron en paralelo y cada uno subió
+    // el tope contando sólo sus eventos; 23 es la suma real de los dos
+    // catálogos, no el máximo de las dos cifras. El tope sigue pegado al
+    // tamaño real: no hay hueco libre.
+    expect(Object.keys(PROPIEDADES_PERMITIDAS).length).toBeLessThanOrEqual(23);
   });
 });
 

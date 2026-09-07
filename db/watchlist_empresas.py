@@ -97,7 +97,7 @@ def list_all() -> list[dict[str, Any]]:
         return rows_to_dicts(
             c.execute(
                 "SELECT w.id, w.user_key, w.empresa_id, e.nombre_canonico, "
-                "       w.email, w.frequency, w.last_notified_at "
+                "       w.email, w.frequency, w.last_notified_at, w.organization_id "
                 "FROM watchlist_empresas w "
                 "JOIN empresas e ON e.empresa_id = w.empresa_id "
                 "WHERE w.email IS NOT NULL AND w.email != ''"

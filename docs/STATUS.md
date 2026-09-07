@@ -6,7 +6,7 @@ tags: [status, generado]
 
 <!-- generado por scripts/gen_status.py — no editar a mano -->
 
-Generado: 2026-09-07
+Generado: 2026-09-06
 
 ## Paridad de planos de orquestación (ADR-012)
 
@@ -25,12 +25,8 @@ Generado: 2026-09-07
 | `llm_models_canary` | pipeline | CANONICAL_STEPS[llm_models_canary] |
 | `anomaly_checks` | pipeline | CANONICAL_STEPS[anomaly_checks] |
 | `drift_report` | pipeline | CANONICAL_STEPS[drift_checks] |
-| `ficha_pliego` | worker | render.yaml (APP_PROFILE=worker) |
-| `embeddings_expediente` | worker | render.yaml (APP_PROFILE=worker) |
-| `export_pdf` | worker | render.yaml (APP_PROFILE=worker) |
-| `paso_pipeline` | pipeline | cierre de la pasada (Actions) |
 
-**17 jobs, todos con plano verificado.**
+**13 jobs, todos con plano verificado.**
 
 ## Ratchet TID251 — acceso directo a BD fuera de repositories
 
@@ -65,19 +61,13 @@ Generado: 2026-09-07
 - `services/resoluciones.py`
 - `services/watchlist_rules.py`
 
-## Ratchet `user_key` — identidad derivada del correo (D18, fase 1)
-
-**61 ficheros** de producción usan `user_key` (lista congelada: 61; solo puede decrecer).
-
-`scripts/check_user_key_ratchet.py` falla ante un fichero nuevo que la use. Llega a cero con T4, que migra a `user_id` con columna doble y lectura dual; hasta entonces cambiar de correo pierde los datos que cuelgan de esa clave. No cuenta `tests/` ni `db/alembic/versions/`.
-
 ## Motor de la suite de tests (ADR-018)
 
 ✅ la suite corre contra Postgres y el job es bloqueante
 
 ## Superficie de la API
 
-**190 endpoints** expuestos.
+**197 endpoints** expuestos.
 
 <details><summary>Ver listado</summary>
 
@@ -108,6 +98,7 @@ Generado: 2026-09-07
 | GET | `/api/v1/analytics/pipeline` |
 | GET | `/api/v1/analytics/proyectos-modulos` |
 | GET | `/api/v1/analytics/quality` |
+| GET | `/api/v1/analytics/resumen/desde-mi-ultima-visita` |
 | GET | `/api/v1/analytics/resumen/hoy` |
 | GET | `/api/v1/analytics/resumen/novedades` |
 | GET | `/api/v1/analytics/resumen/sankey` |
@@ -129,8 +120,6 @@ Generado: 2026-09-07
 | GET | `/api/v1/auth/me` |
 | GET | `/api/v1/auth/oauth/google/authorize` |
 | GET | `/api/v1/auth/oauth/google/callback` |
-| GET | `/api/v1/auth/oauth/{provider}/authorize` |
-| GET | `/api/v1/auth/oauth/{provider}/callback` |
 | POST | `/api/v1/auth/password-reset/confirm` |
 | POST | `/api/v1/auth/password-reset/request` |
 | POST | `/api/v1/auth/register` |
@@ -143,21 +132,31 @@ Generado: 2026-09-07
 | GET | `/api/v1/competitive/cuota` |
 | GET | `/api/v1/competitive/empresas/{empresa_id}/adjudicaciones` |
 | GET | `/api/v1/competitive/empresas/{empresa_id}/perfil` |
+| GET | `/api/v1/competitive/empresas/{empresa_key}/contra-mi` |
 | GET | `/api/v1/competitive/hhi` |
+| GET | `/api/v1/competitive/partners` |
 | GET | `/api/v1/competitive/renovaciones` |
 | GET | `/api/v1/competitive/renovaciones/resumen` |
 | GET | `/api/v1/competitive/watchlist` |
 | POST | `/api/v1/competitive/watchlist` |
 | DELETE | `/api/v1/competitive/watchlist/{empresa_id}` |
+| GET | `/api/v1/cuentas` |
+| POST | `/api/v1/cuentas` |
+| DELETE | `/api/v1/cuentas/{cuenta_id}` |
 | GET | `/api/v1/empresas` |
 | GET | `/api/v1/empresas/reviews` |
 | POST | `/api/v1/empresas/reviews/{review_id}` |
 | GET | `/api/v1/empresas/stats` |
 | GET | `/api/v1/empresas/{empresa_id}` |
+| GET | `/api/v1/etiquetas` |
+| POST | `/api/v1/etiquetas` |
+| POST | `/api/v1/etiquetas/aplicar` |
+| POST | `/api/v1/etiquetas/por-objeto` |
+| POST | `/api/v1/etiquetas/quitar` |
+| DELETE | `/api/v1/etiquetas/{etiqueta_id}` |
 | GET | `/api/v1/eventos` |
 | GET | `/api/v1/exports/calendario.ics` |
 | GET | `/api/v1/exports/calendario/enlace` |
-| GET | `/api/v1/exports/descargas/{job_id}` |
 | GET | `/api/v1/exports/download` |
 | GET | `/api/v1/feature-flags` |
 | PUT | `/api/v1/feature-flags` |
@@ -168,24 +167,27 @@ Generado: 2026-09-07
 | GET | `/api/v1/health` |
 | GET | `/api/v1/health/live` |
 | GET | `/api/v1/health/ready` |
-| GET | `/api/v1/jobs/{job_id}` |
 | GET | `/api/v1/licitaciones` |
 | POST | `/api/v1/licitaciones/bulk-get` |
+| POST | `/api/v1/licitaciones/comparar` |
 | GET | `/api/v1/licitaciones/cursor` |
 | POST | `/api/v1/licitaciones/search` |
 | GET | `/api/v1/licitaciones/stream` |
 | GET | `/api/v1/licitaciones/{id_externo:path}` |
 | GET | `/api/v1/licitaciones/{id_externo:path}/documentos` |
-| POST | `/api/v1/licitaciones/{id_externo:path}/embeddings-async` |
 | GET | `/api/v1/licitaciones/{id_externo:path}/explain` |
 | GET | `/api/v1/licitaciones/{id_externo:path}/ficha-pliego` |
 | GET | `/api/v1/licitaciones/{id_externo:path}/ficha-pliego/estado` |
 | POST | `/api/v1/licitaciones/{id_externo:path}/ficha-pliego/extract` |
 | POST | `/api/v1/licitaciones/{id_externo:path}/ficha-pliego/extract-async` |
+| POST | `/api/v1/licitaciones/{id_externo:path}/guion` |
+| POST | `/api/v1/licitaciones/{id_externo:path}/reportes` |
 | POST | `/api/v1/licitaciones/{id_externo:path}/resumen` |
+| GET | `/api/v1/licitaciones/{id_externo:path}/simulador` |
 | GET | `/api/v1/licitaciones/{id_externo:path}/tech-scores` |
 | GET | `/api/v1/licitaciones/{id_externo:path}/tecnologias` |
 | GET | `/api/v1/licitaciones/{id_externo}` |
+| GET | `/api/v1/licitaciones/{id_externo}/documentos/{documento_id}/paginas/{page_number}` |
 | GET | `/api/v1/licitaciones/{licitacion_id:path}/escenarios-precio` |
 | GET | `/api/v1/licitaciones/{licitacion_id:path}/eventos` |
 | GET | `/api/v1/licitaciones/{licitacion_id:path}/prediccion-baja` |
@@ -207,17 +209,9 @@ Generado: 2026-09-07
 | GET | `/api/v1/organizations` |
 | POST | `/api/v1/organizations` |
 | GET | `/api/v1/organizations/active` |
-| POST | `/api/v1/organizations/invitations/accept` |
-| GET | `/api/v1/organizations/{organization_id}/capabilities` |
-| PUT | `/api/v1/organizations/{organization_id}/capabilities` |
-| GET | `/api/v1/organizations/{organization_id}/invitations` |
-| DELETE | `/api/v1/organizations/{organization_id}/invitations/{invitation_id}` |
-| POST | `/api/v1/organizations/{organization_id}/invitations/{invitation_id}/resend` |
 | GET | `/api/v1/organizations/{organization_id}/members` |
 | POST | `/api/v1/organizations/{organization_id}/members` |
 | PUT | `/api/v1/organizations/{organization_id}/members/{member_user_id}` |
-| GET | `/api/v1/organizations/{organization_id}/nifs` |
-| PUT | `/api/v1/organizations/{organization_id}/nifs` |
 | GET | `/api/v1/organizations/{organization_id}/settings` |
 | PUT | `/api/v1/organizations/{organization_id}/settings` |
 | GET | `/api/v1/predicciones/calibracion` |
@@ -229,16 +223,19 @@ Generado: 2026-09-07
 | POST | `/api/v1/publico/solicitudes-acceso` |
 | GET | `/api/v1/pursuits` |
 | POST | `/api/v1/pursuits` |
+| GET | `/api/v1/pursuits/actividad` |
 | GET | `/api/v1/pursuits/agenda` |
+| GET | `/api/v1/pursuits/cartera` |
+| GET | `/api/v1/pursuits/direccion` |
 | GET | `/api/v1/pursuits/metrics` |
-| GET | `/api/v1/pursuits/weights-proposal` |
-| POST | `/api/v1/pursuits/weights-proposal/apply` |
 | GET | `/api/v1/pursuits/{pursuit_id}` |
 | PATCH | `/api/v1/pursuits/{pursuit_id}` |
-| GET | `/api/v1/pursuits/{pursuit_id}/checklist` |
 | GET | `/api/v1/pursuits/{pursuit_id}/comments` |
 | POST | `/api/v1/pursuits/{pursuit_id}/comments` |
 | DELETE | `/api/v1/pursuits/{pursuit_id}/comments/{comment_id}` |
+| GET | `/api/v1/pursuits/{pursuit_id}/ficha.pdf` |
+| GET | `/api/v1/pursuits/{pursuit_id}/kit` |
+| POST | `/api/v1/pursuits/{pursuit_id}/kit` |
 | GET | `/api/v1/radar/dismissals` |
 | POST | `/api/v1/radar/dismissals` |
 | DELETE | `/api/v1/radar/dismissals/{id_externo:path}` |
@@ -246,6 +243,7 @@ Generado: 2026-09-07
 | GET | `/api/v1/saved-filters` |
 | POST | `/api/v1/saved-filters` |
 | DELETE | `/api/v1/saved-filters/{filter_id}` |
+| GET | `/api/v1/search/global` |
 | POST | `/api/v1/search/semantic` |
 | GET | `/api/v1/security/audit/verify` |
 | POST | `/api/v1/security/client-error` |
@@ -265,7 +263,6 @@ Generado: 2026-09-07
 | GET | `/api/v1/webhooks` |
 | POST | `/api/v1/webhooks` |
 | GET | `/api/v1/webhooks/event-types` |
-| GET | `/api/v1/webhooks/global` |
 | DELETE | `/api/v1/webhooks/{webhook_id}` |
 | GET | `/api/v1/webhooks/{webhook_id}` |
 | PATCH | `/api/v1/webhooks/{webhook_id}` |

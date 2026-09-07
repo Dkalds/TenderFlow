@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 from db.repositories.adjudicaciones import LIMITE_COMPETIDORES
 from observability.logging import get_logger
 from services.adjudicaciones import load_for_competitors
-from services.normalization import normalize_company, normalize_nif
+from services.normalization import normalize_company, normalize_nif, parse_ute_members
 
 log = get_logger(__name__)
 
@@ -366,6 +366,40 @@ def _identity_summary(df: pd.DataFrame) -> pd.DataFrame:
         | summary["nombres_variantes"].str.len().gt(1)
     )
     return summary.drop(columns=["master_nifs"])
+
+
+def cargar_adjudicaciones_resueltas(
+    *, ccaa: str | None = None, tecnologia: str | None = None
+) -> pd.DataFrame:
+    """Adjudicaciones del segmento **con la identidad de empresa resuelta**.
+
+    `empresa_key` no sale del SQL: la calcula `_prepare_company_identity`
+    (union-find sobre NIF y nombre normalizados), así que cualquier consumidor
+    que agrupe por ella tiene que pasar por aquí. Agrupar sobre las filas
+    crudas del repositorio era un `KeyError: 'empresa_key'`, es decir un 500.
+    """
+    df, _truncado = _load_df(CompetitorFilters(ccaa=ccaa, tecnologia=tecnologia))
+    if df.empty:
+        return df
+
+    # Adaptación de nombres, no cálculo nuevo. `services/partners.py` se
+    # escribió contra un DataFrame que ningún cargador producía —era código sin
+    # consumidor hasta F3.3—, así que documenta `empresa_key`, `nombre_canonico`
+    # e `id` mientras la identidad resuelta se llama `_competitor_key` y el
+    # nombre preferido `empresa`. Traducir aquí, en el borde, evita que dos
+    # módulos discutan sobre cómo se llama la misma columna.
+    adaptado = df.copy()
+    adaptado["empresa_key"] = adaptado[_GROUP_KEY].astype("string")
+    adaptado["nombre_canonico"] = adaptado["empresa"]
+    # `id` sólo se usa para contar filas; la clave del expediente sirve y no
+    # obliga a proyectar la primaria de `adjudicaciones`.
+    adaptado["id"] = adaptado["licitacion_id"]
+    # `es_ute` no es una columna de la tabla: se deduce del nombre del
+    # adjudicatario, que es de donde `build_partnership_graph` ya la saca.
+    adaptado["es_ute"] = _optional_text_column(adaptado, "nombre").apply(
+        lambda n: len(parse_ute_members(n)) >= 2
+    )
+    return adaptado
 
 
 def _load_df(filters: CompetitorFilters) -> tuple[pd.DataFrame, bool]:

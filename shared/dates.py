@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from zoneinfo import ZoneInfo
 
 import pandas as pd
@@ -44,6 +44,36 @@ def to_iso_date(raw: str | None) -> str | None:
     # Formato no reconocido — devolver como está y loguear
     _log.debug("date_unrecognized_format", raw=raw)
     return raw
+
+
+def a_fecha(valor: object) -> date | None:
+    """Un ``date`` a partir de lo que sea que traiga la fila, o ``None``.
+
+    Las columnas de fecha son TEXT y llegan de varias capas: a veces ya
+    parseadas por el driver (``datetime``/``date``), a veces como el string
+    crudo con hora, y a veces en el DD/MM/YYYY que publican algunos
+    conectores. Se resuelven aquí, junto a :func:`to_iso_date`, porque cuatro
+    módulos escribieron su propia versión de estas cinco líneas y ya no
+    coincidían: una rechazaba los strings de menos de diez caracteres, otra
+    troceaba a ciegas y ninguna salvo ésta entendía el formato español, así
+    que el mismo contrato entraba en una pantalla y desaparecía de otra.
+
+    ``None`` significa «no se entiende», nunca una fecha inventada: quien
+    llama enseña «sin estimación», que es lo correcto.
+    """
+    if valor is None:
+        return None
+    if isinstance(valor, datetime):
+        return valor.date()
+    if isinstance(valor, date):
+        return valor
+    iso = to_iso_date(str(valor).strip())
+    if not iso:
+        return None
+    try:
+        return date.fromisoformat(iso[:10])
+    except ValueError:
+        return None
 
 
 def to_iso_datetime(raw_date: str | None, raw_time: str | None = None) -> str | None:

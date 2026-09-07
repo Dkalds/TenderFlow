@@ -19,6 +19,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from db.database import connect_read
+from db.radar_dismissals import VIGENTE_SQL
 from db.repositories.base import rows_to_dicts
 from db.sql_fragments import ISO_MAX
 from shared.estados import abierta_sql
@@ -74,8 +75,15 @@ def signal_rows(
         _FECHA_LIMITE_VIVA_SQL,
         "NOT EXISTS (SELECT 1 FROM pursuits p "
         "WHERE p.organization_id = %s AND p.licitacion_id = l.id_externo)",
+        # `VIGENTE_SQL` y no la mera existencia de la fila: desde v103 un
+        # descarte puede caducar (`posponer`, `silenciar`). Sin el predicado,
+        # posponer siete días escondía el expediente de la Agenda para
+        # siempre, y el recordatorio de vencimiento avisaba de que «ya está
+        # otra vez en la bandeja» señalando a algo que la Agenda no volvía a
+        # enseñar. Es el tercer lector del mismo juicio, y por eso comparte
+        # la grafía con los otros dos.
         "NOT EXISTS (SELECT 1 FROM radar_dismissals rd "
-        "WHERE rd.user_key = %s AND rd.id_externo = l.id_externo)",
+        f"WHERE rd.user_key = %s AND rd.id_externo = l.id_externo AND {VIGENTE_SQL})",
     ]
     params: list[Any] = [organization_id, user_key]
     if criteria.keyword:

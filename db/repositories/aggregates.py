@@ -38,7 +38,8 @@ from __future__ import annotations
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import Any
+from types import MappingProxyType
+from typing import Any, Final
 
 from db.database import connect_read
 from db.repositories.base import csv_values, loose_distinct_count, rows_to_dicts
@@ -1364,6 +1365,46 @@ class AggregateRepository:
         "tipo_contrato",
         "provincia",
     )
+
+    # Columnas de lista controlada CODICE. La familia (la clave) es la que
+    # entiende `shared/procedimientos.py`; el valor, la columna que la guarda.
+    _CODELIST_COLS: Final = MappingProxyType(
+        {
+            "procedimiento": "procedimiento",
+            "tramitacion": "tramitacion",
+            "tipo_contrato": "tipo_contrato",
+        }
+    )
+
+    def codigos_codelist(self) -> dict[str, dict[str, int]]:
+        """``{familia: {código crudo: nº de expedientes}}`` para las tres
+        columnas de lista controlada.
+
+        Devuelve los códigos **sin juzgarlos**: qué códigos existen es un hecho
+        de la tabla y por tanto de `db/`; cuáles de ellos tienen etiqueta es
+        una regla de dominio y vive en `services/analytics/quality.py` con el
+        catálogo delante. Partirlo así evita que el SQL tenga que incrustar la
+        lista de códigos conocidos y quedarse desincronizado del catálogo.
+
+        Se normaliza en SQL lo mismo que normaliza el catálogo (trim y ceros a
+        la izquierda) para que ``01`` y ``1`` no se cuenten como dos códigos.
+        """
+        resultado: dict[str, dict[str, int]] = {}
+        with connect_read() as c:
+            for familia, col in self._CODELIST_COLS.items():
+                # `ltrim(x, '0')` deja '' para un '0' o '000' literales, que no
+                # es ningún código; `NULLIF` + `COALESCE` lo devuelve a '0'.
+                normalizado = f"COALESCE(NULLIF(ltrim(trim({col}), '0'), ''), '0')"
+                sql = (
+                    f"SELECT {normalizado} AS codigo, COUNT(*) AS n "
+                    "FROM licitaciones "
+                    f"WHERE {col} IS NOT NULL AND trim({col}) != '' "
+                    "GROUP BY 1 ORDER BY n DESC"
+                )
+                resultado[familia] = {
+                    str(fila["codigo"]): int(fila["n"]) for fila in rows_to_dicts(c.execute(sql))
+                }
+        return resultado
 
     def quality_completitud(self) -> dict[str, Any]:
         """Total, conteos de completitud por columna y formato ISO de fechas.

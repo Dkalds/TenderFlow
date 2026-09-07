@@ -28,7 +28,11 @@ from sqlalchemy import and_, func, or_, select, text
 from db.database import connect, connect_read
 from db.models import compile_query, licitaciones
 from db.repositories.base import rows_to_dicts
-from db.repositories.watchlist_rules import bounded_match_counts, matches_pendientes
+from db.repositories.watchlist_rules import (
+    bounded_match_counts,
+    daily_match_counts,
+    matches_pendientes,
+)
 from db.sql_fragments import FOLD_TABLE, fold_expr, iso_guard
 from services.dedupe import normalize_organo
 from shared.estados import abierta_core
@@ -487,6 +491,66 @@ def count_matches(rule: WatchlistRule, *, hoy_iso: str | None = None) -> int:
     with connect_read() as c:
         row = c.execute(sql, params).fetchone()
     return int(row[0]) if row else 0
+
+
+#: Semanas de historia que mira la vista previa de ruido (F5.5).
+SEMANAS_PREVIEW = 8
+
+#: Coincidencias por semana por encima de las cuales la vista previa avisa.
+#:
+#: Cincuenta es aproximadamente «diez al día laborable»: por ahí es donde una
+#: alerta deja de leerse y empieza a archivarse en bloque, que es peor que no
+#: tenerla —el usuario deja de mirar también las buenas—. Es configurable
+#: porque el umbral correcto depende del tamaño del equipo, y se **declara**
+#: en la respuesta para que la UI no tenga que repetirlo.
+UMBRAL_RUIDO_SEMANAL = 50
+
+
+def serie_semanal(rule: WatchlistRule, *, semanas: int = SEMANAS_PREVIEW) -> list[dict[str, Any]]:
+    """Coincidencias por semana de las últimas ``semanas``, antiguas primero.
+
+    El preview de hoy dice cuántos expedientes casan **ahora mismo** contra el
+    corpus entero, que para una regla nueva es un número enorme e inútil: no
+    responde a la pregunta que el usuario tiene, que es «¿cuánto correo me va a
+    llegar por semana?». La serie sí.
+
+    El recuento por semana lo hace Postgres (``db.repositories.watchlist_rules.
+    weekly_match_counts``): traer una fila por coincidencia para contarlas aquí
+    era un ``fetchall()`` sin techo justo en el caso para el que existe el
+    preview —una regla amplia—. El ``iso_guard`` de las cláusulas deja fuera las
+    filas legacy malformadas (v59), que es lo que permite castear la columna
+    TEXT sin que una fecha en DD/MM/YYYY reviente la consulta.
+
+    ADR-022: aquí se construyen las cláusulas; el SQL se ejecuta en ``db/``.
+    """
+    desde = (datetime.now(UTC) - timedelta(weeks=semanas)).date()
+    clauses = [
+        *_rule_clauses(rule),
+        licitaciones.c.fecha_publicacion >= desde.isoformat(),
+        licitaciones.c.fecha_publicacion < "3000",
+    ]
+    # El SQL agrupa por día (acotado por construcción); el lunes se calcula
+    # aquí, que es aritmética y no necesita castear una columna TEXT.
+    por_dia = daily_match_counts(clauses, desde_iso=desde.isoformat())
+    por_semana: dict[str, int] = {}
+    for texto, n in por_dia.items():
+        try:
+            dia = date.fromisoformat(texto)
+        except ValueError:
+            continue  # fila legacy malformada (v59): no cae en ninguna semana
+        lunes = (dia - timedelta(days=dia.weekday())).isoformat()
+        por_semana[lunes] = por_semana.get(lunes, 0) + n
+
+    # Semanas completas y contiguas, incluidas las de cero. Una serie que sólo
+    # trae las semanas con coincidencias se lee como constante: ocho puntos
+    # seguidos de 40 cuando en realidad hubo 40 una semana y nada en siete.
+    hoy = datetime.now(UTC).date()
+    primer_lunes = hoy - timedelta(days=hoy.weekday() + 7 * (semanas - 1))
+    serie: list[dict[str, Any]] = []
+    for i in range(semanas):
+        lunes = (primer_lunes + timedelta(weeks=i)).isoformat()
+        serie.append({"semana": lunes, "n": por_semana.get(lunes, 0)})
+    return serie
 
 
 def count_matches_bounded(rules: Sequence[WatchlistRule]) -> list[int]:
