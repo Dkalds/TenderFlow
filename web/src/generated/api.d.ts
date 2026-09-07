@@ -8909,7 +8909,7 @@ export interface components {
              * Banda Min
              * @description Banda mínima del Radar. Acota además al universo puntuable (abiertas y en plazo), que es el conjunto sobre el que el Radar puntúa.
              */
-            banda_min?: ("Descarte" | "Tibia" | "Atractiva" | "Caliente") | null;
+            banda_min?: ("Caliente" | "Atractiva" | "Tibia" | "Descarte") | null;
             /** Ccaa */
             ccaa?: string | null;
             /** Cpv */
@@ -8992,7 +8992,7 @@ export interface components {
              */
             active: boolean;
             /** Banda Min */
-            banda_min?: ("Descarte" | "Tibia" | "Atractiva" | "Caliente") | null;
+            banda_min?: ("Caliente" | "Atractiva" | "Tibia" | "Descarte") | null;
             /** Ccaa */
             ccaa?: string | null;
             /** Cpv */

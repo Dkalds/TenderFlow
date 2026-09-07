@@ -35,11 +35,25 @@ from shared.estados import abierta_core
 
 Frequency = Literal["immediate", "daily", "weekly"]
 
-#: Bandas comerciales del Radar, de menor a mayor. El vocabulario lo fija
-#: ``services/analytics/scoring._band``; el ORDEN vive aquí porque ``banda_min``
-#: es lo único del producto que necesita compararlas entre sí.
-Banda = Literal["Descarte", "Tibia", "Atractiva", "Caliente"]
+#: Bandas comerciales del Radar. El vocabulario lo fija
+#: ``services/analytics/scoring._band``.
+#:
+#: **El orden de los argumentos de este ``Literal`` tiene que coincidir con el
+#: de los otros tres sitios que declaran las mismas cuatro bandas**
+#: (``api/routes/radar.py`` y dos DTO de ``shared/dto.py``), y no es una manía
+#: de estilo: ``typing.Literal`` compara y hashea por CONJUNTO, así que
+#: ``Literal["Descarte", …]`` y ``Literal["Caliente", …]`` son iguales para
+#: Pydantic, que reutiliza el esquema del primero que construye. Cuál sea el
+#: primero depende del orden en que se importan los routers, de modo que el
+#: enumerado salía unas veces en un orden y otras en el contrario: el job
+#: «Codegen Drift Check» fallaba de forma intermitente sobre una línea de
+#: ``web/src/generated/api.d.ts`` que nadie había tocado. Un gate que falla por
+#: azar deja de leerse.
+Banda = Literal["Caliente", "Atractiva", "Tibia", "Descarte"]
 
+#: La escala ordinal, de menor a mayor, que es lo que ``banda_min`` necesita
+#: para comparar. Vive aquí y no en el orden del ``Literal`` de arriba
+#: precisamente porque aquel no puede llevar significado: es un conjunto.
 ORDEN_BANDAS: tuple[Banda, ...] = ("Descarte", "Tibia", "Atractiva", "Caliente")
 
 #: Techo de filas que se puntúan para resolver ``banda_min``. Es el mismo que
