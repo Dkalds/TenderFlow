@@ -63,7 +63,11 @@ log = get_logger(__name__)
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
-_SESSION_COOKIE = "session"
+#: Nombre de la cookie de sesión. Público porque `api/routes/me.py` lo
+#: necesita para marcar cuál de las sesiones listadas es la actual (C2.1), y
+#: dos literales "session" en el árbol es exactamente cómo divergen.
+SESSION_COOKIE = "session"
+_SESSION_COOKIE = SESSION_COOKIE
 _CSRF_COOKIE = "csrf_token"
 _OAUTH_PKCE_COOKIE = "oauth_pkce"
 _OAUTH_TELEMETRY_COOKIE = "oauth_login"

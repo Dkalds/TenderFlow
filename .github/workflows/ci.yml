@@ -91,6 +91,12 @@ jobs:
       - name: Verify frontend analytical integrity (ADR-014)
         run: python scripts/check_frontend_invariants.py --strict
 
+      # C2.8: el ratchet de estilos inline. No endurece la CSP por sí solo —
+      # eso exige llegar a cero primero—, pero impide que el número suba y
+      # deje el endurecimiento más lejos que ayer.
+      - name: Verify inline style ratchet (C2.8)
+        run: python scripts/check_inline_styles.py
+
       # Misma lección otra vez: el guard de la superficie pública estaba
       # escrito y pasando limpio, pero no lo invocaba nadie (ni el Makefile, ni
       # este workflow, ni pre-commit) mientras varios docstrings afirmaban que

@@ -38,6 +38,7 @@ def build_default_registry() -> list[ScheduledJob]:
     from scheduler.jobs.recent_bulk import run as run_recent_bulk
     from scheduler.jobs.retention_cleanup import run as run_retention_cleanup
     from scheduler.jobs.watchlist_rules import run as run_watchlist_rules
+    from scheduler.jobs.webhook_reintentos import run as run_webhook_reintentos
     from scheduler.watchlist_alerts import send_pending_digests
 
     return [
@@ -123,6 +124,18 @@ def build_default_registry() -> list[ScheduledJob]:
             interval_env="SCHEDULER_DLQ_RETRY_INTERVAL_MINUTES",
             default_interval_minutes=720,
             initial_offset_minutes=30,
+        ),
+        ScheduledJob(
+            # Ligero: una petición HTTP por entrega pendiente, casi siempre
+            # cero. La cadencia efectiva en producción la marca la pasada
+            # canónica; este intervalo gobierna el plano APScheduler, donde el
+            # backoff de un minuto sí se nota.
+            name="webhook_reintentos",
+            plane="pipeline",
+            fn=run_webhook_reintentos,
+            interval_env="SCHEDULER_WEBHOOK_RETRY_INTERVAL_MINUTES",
+            default_interval_minutes=5,
+            initial_offset_minutes=2,
         ),
         ScheduledJob(
             name="digest_daily",

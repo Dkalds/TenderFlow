@@ -31,6 +31,7 @@ from __future__ import annotations
 import ast
 import hashlib
 import json
+import os
 import re
 import subprocess
 import sys
@@ -500,16 +501,26 @@ def check_scopes_doc() -> None:
     ellas. Si el import falla (entorno sin dependencias de API), es un warning:
     un control que no se pudo ejecutar no es un control verde, pero tampoco un
     fallo del documento.
+
+    El subproceso hereda `ENV=dev` cuando el entorno no trae ninguno. Sin eso,
+    `config/settings.py` asume `prod` y exige `SIGNING_KEY`, asi que en
+    pre-commit —que corre con el entorno limpio— el control moria antes de mirar
+    el documento y reportaba un traceback de arranque como si la matriz de
+    scopes estuviera desfasada. Este script solo necesita la tabla de rutas: no
+    firma nada.
     """
     script = ROOT / "scripts" / "gen_scopes_doc.py"
     if not script.exists():
         fail("scripts/gen_scopes_doc.py", "no existe; docs/api-design.md quedaria sin generar")
         return
+    entorno = {**os.environ}
+    entorno.setdefault("ENV", "dev")
     proc = subprocess.run(
         [sys.executable, str(script), "--check"],
         cwd=ROOT,
         capture_output=True,
         text=True,
+        env=entorno,
     )
     if proc.returncode == 0:
         return
@@ -518,6 +529,13 @@ def check_scopes_doc() -> None:
         warn(
             "docs/api-design.md",
             "no se pudo verificar la matriz de scopes (faltan dependencias de la API)",
+        )
+        return
+    if "ValidationError" in salida:
+        # Un settings que no valida es un problema del entorno, no del doc.
+        warn(
+            "docs/api-design.md",
+            "no se pudo verificar la matriz de scopes (config/settings.py no valida en este entorno)",
         )
         return
     fail("docs/api-design.md", salida.splitlines()[0] if salida else "matriz de scopes desfasada")

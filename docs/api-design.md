@@ -54,15 +54,15 @@ Los scopes los resuelve `api/scopes.py::required_scope_for_request` a partir del
 |---|---|---|
 | `account:delete` | DELETE | `/me` |
 | `account:read` | GET | `/me/data` |
-| `admin` | todos | `/admin/solicitudes-acceso`, `/admin/users`, `/empresas/reviews`, `/feature-flags`, `/security/audit`, `/security/client-error`, `/security/csp-report`, `/security/leaked-key`, `/webhooks`, `/webhooks/event-types` |
+| `admin` | todos | `/admin/solicitudes-acceso`, `/admin/users`, `/empresas/reviews`, `/feature-flags`, `/security/audit`, `/security/client-error`, `/security/client-errors`, `/security/csp-report`, `/security/leaked-key`, `/webhooks`, `/webhooks/event-types` |
 | `analytics:read` | GET | `/analytics/clusters`, `/analytics/compare-periods`, `/analytics/competitors`, `/analytics/forecast`, `/analytics/geography`, `/analytics/organos`, `/analytics/overview`, `/analytics/pipeline`, `/analytics/proyectos-modulos`, `/analytics/quality`, `/analytics/resumen`, `/analytics/scoring`, `/analytics/source-freshness`, `/analytics/tecnologias`, `/analytics/trends`, `/analytics/trends-cpv`, `/analytics/utes` |
-| `api_keys:read` | GET | `/me/keys` |
+| `api_keys:read` | GET/POST | `/me/keys` |
 | `api_keys:rotate` | POST | `/me/keys` |
 | `ask:read` | GET/POST | `/ask`, `/ask/models` |
 | `competitive:read` | GET | `/competitive/bajas`, `/competitive/cuota`, `/competitive/empresas`, `/competitive/hhi`, `/competitive/renovaciones`, `/competitive/watchlist` |
 | `competitive:write` | POST/DELETE | `/competitive/watchlist` |
-| `data:read` | GET | `/adjudicaciones`, `/auth/me`, `/auth/oauth`, `/eventos`, `/health`, `/health/live`, `/health/ready`, `/meta/filters`, `/meta/last-extraction`, `/predicciones/calibracion`, `/publico/hubs`, `/publico/licitaciones`, `/publico/sitemap`, `/radar/dismissals`, `/resoluciones` |
-| `data:write` | POST/DELETE | `/auth/dev-login`, `/auth/login`, `/auth/logout`, `/auth/logout-all`, `/auth/password-reset`, `/auth/register`, `/auth/totp`, `/publico/solicitudes-acceso`, `/radar/dismissals`, `/search/semantic` |
+| `data:read` | GET | `/adjudicaciones`, `/auth/me`, `/auth/oauth`, `/eventos`, `/health`, `/health/live`, `/health/ready`, `/me/notification-preferences`, `/me/sessions`, `/meta/filters`, `/meta/last-extraction`, `/predicciones/calibracion`, `/publico/hubs`, `/publico/licitaciones`, `/publico/sitemap`, `/radar/dismissals`, `/resoluciones` |
+| `data:write` | POST/PUT/DELETE | `/auth/dev-login`, `/auth/login`, `/auth/logout`, `/auth/logout-all`, `/auth/password-reset`, `/auth/register`, `/auth/totp`, `/me/notification-preferences`, `/me/sessions`, `/publico/solicitudes-acceso`, `/radar/dismissals`, `/search/semantic` |
 | `empresas:read` | GET | `/empresas`, `/empresas/stats` |
 | `exports:read` | GET | `/exports/calendario`, `/exports/calendario.ics`, `/exports/download` |
 | `feature_flags:read` | GET | `/feature-flags` |

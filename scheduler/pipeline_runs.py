@@ -51,6 +51,7 @@ CANONICAL_STEPS: list[str] = [
     "watchlist_notify",
     "digests",
     "dlq_retry",
+    "webhook_reintentos",
     "anomaly_checks",
     "llm_models_canary",
     "retention_cleanup",
@@ -93,6 +94,10 @@ STEP_TIER: dict[str, StepTier] = {
     "watchlist_notify": "bloqueante",
     "digests": "bloqueante",
     "dlq_retry": "bloqueante",
+    # advisory: un receptor externo caído no es un fallo de la pasada. Que
+    # el reenvío no salga significa que el endpoint del cliente sigue sin
+    # responder, y sacar la pasada en rojo por eso enseña a ignorar el rojo.
+    "webhook_reintentos": "advisory",
     "anomaly_checks": "advisory",
     "llm_models_canary": "advisory",
     "retention_cleanup": "bloqueante",
@@ -558,6 +563,17 @@ def _run_dlq_retry(lane: str = LANE_BULK) -> None:
     from scheduler.dlq_retry import retry_failed_extractions
 
     retry_failed_extractions(include_bulk=lane != LANE_DAILY)
+
+
+def _run_webhook_reintentos() -> dict[str, Any]:
+    """Reenvía las entregas de webhook pendientes (C2.4).
+
+    Sin cadencia propia: cada pasada drena lo que venció, y lo que no entre en
+    el tope sale en la siguiente.
+    """
+    from scheduler.jobs.webhook_reintentos import run as run_webhook_reintentos
+
+    return run_webhook_reintentos()
 
 
 def _run_anomaly_checks() -> None:

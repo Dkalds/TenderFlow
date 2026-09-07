@@ -6,7 +6,7 @@ tags: [status, generado]
 
 <!-- generado por scripts/gen_status.py — no editar a mano -->
 
-Generado: 2026-09-04
+Generado: 2026-09-06
 
 ## Paridad de planos de orquestación (ADR-012)
 
@@ -19,6 +19,7 @@ Generado: 2026-09-04
 | `ml_retrain_baja` | actions | python -m scheduler.jobs.ml_predicciones |
 | `documentos_embeddings` | actions | python -m scheduler.jobs.documentos_embeddings |
 | `dlq_retry` | pipeline | CANONICAL_STEPS[dlq_retry] |
+| `webhook_reintentos` | pipeline | CANONICAL_STEPS[webhook_reintentos] |
 | `digest_daily` | pipeline | CANONICAL_STEPS[digests] |
 | `watchlist_rules` | pipeline | CANONICAL_STEPS[watchlist_notify] |
 | `llm_tech_labeling` | pipeline | CANONICAL_STEPS[llm_tech_labeling] |
@@ -26,7 +27,7 @@ Generado: 2026-09-04
 | `anomaly_checks` | pipeline | CANONICAL_STEPS[anomaly_checks] |
 | `drift_report` | pipeline | CANONICAL_STEPS[drift_checks] |
 
-**13 jobs, todos con plano verificado.**
+**14 jobs, todos con plano verificado.**
 
 ## Ratchet TID251 — acceso directo a BD fuera de repositories
 
@@ -67,7 +68,7 @@ Generado: 2026-09-04
 
 ## Superficie de la API
 
-**173 endpoints** expuestos.
+**185 endpoints** expuestos.
 
 <details><summary>Ver listado</summary>
 
@@ -171,16 +172,22 @@ Generado: 2026-09-04
 | GET | `/api/v1/licitaciones/{id_externo:path}/tech-scores` |
 | GET | `/api/v1/licitaciones/{id_externo:path}/tecnologias` |
 | GET | `/api/v1/licitaciones/{id_externo}` |
+| GET | `/api/v1/licitaciones/{id_externo}/similares` |
 | GET | `/api/v1/licitaciones/{licitacion_id:path}/escenarios-precio` |
 | GET | `/api/v1/licitaciones/{licitacion_id:path}/eventos` |
 | GET | `/api/v1/licitaciones/{licitacion_id:path}/prediccion-baja` |
 | DELETE | `/api/v1/me` |
 | GET | `/api/v1/me/data` |
 | GET | `/api/v1/me/keys` |
+| POST | `/api/v1/me/keys` |
 | POST | `/api/v1/me/keys/rotate` |
+| GET | `/api/v1/me/notification-preferences` |
+| PUT | `/api/v1/me/notification-preferences` |
 | DELETE | `/api/v1/me/profile` |
 | GET | `/api/v1/me/profile` |
 | PUT | `/api/v1/me/profile` |
+| GET | `/api/v1/me/sessions` |
+| DELETE | `/api/v1/me/sessions/{session_id}` |
 | GET | `/api/v1/meta/filters` |
 | GET | `/api/v1/meta/last-extraction` |
 | GET | `/api/v1/models/{name}` |
@@ -192,11 +199,15 @@ Generado: 2026-09-04
 | GET | `/api/v1/organizations` |
 | POST | `/api/v1/organizations` |
 | GET | `/api/v1/organizations/active` |
+| POST | `/api/v1/organizations/{organization_id}/delete` |
+| GET | `/api/v1/organizations/{organization_id}/deletion-preview` |
+| POST | `/api/v1/organizations/{organization_id}/leave` |
 | GET | `/api/v1/organizations/{organization_id}/members` |
 | POST | `/api/v1/organizations/{organization_id}/members` |
 | PUT | `/api/v1/organizations/{organization_id}/members/{member_user_id}` |
 | GET | `/api/v1/organizations/{organization_id}/settings` |
 | PUT | `/api/v1/organizations/{organization_id}/settings` |
+| POST | `/api/v1/organizations/{organization_id}/transfer-ownership` |
 | GET | `/api/v1/predicciones/calibracion` |
 | GET | `/api/v1/publico/hubs` |
 | GET | `/api/v1/publico/licitaciones` |
@@ -223,6 +234,7 @@ Generado: 2026-09-04
 | POST | `/api/v1/search/semantic` |
 | GET | `/api/v1/security/audit/verify` |
 | POST | `/api/v1/security/client-error` |
+| GET | `/api/v1/security/client-errors` |
 | POST | `/api/v1/security/csp-report` |
 | POST | `/api/v1/security/leaked-key` |
 | GET | `/api/v1/watchlist/feed.xml` |
@@ -243,6 +255,7 @@ Generado: 2026-09-04
 | GET | `/api/v1/webhooks/{webhook_id}` |
 | PATCH | `/api/v1/webhooks/{webhook_id}` |
 | GET | `/api/v1/webhooks/{webhook_id}/deliveries` |
+| POST | `/api/v1/webhooks/{webhook_id}/deliveries/{delivery_id}/redeliver` |
 | POST | `/api/v1/webhooks/{webhook_id}/ping` |
 | GET | `/docs/oauth2-redirect` |
 | GET | `/metrics` |

@@ -136,3 +136,5 @@ intelectual
 foto
 hagas
 colector
+predecesor
+confirmacion

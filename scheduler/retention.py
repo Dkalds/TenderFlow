@@ -120,6 +120,10 @@ COLUMNA_FECHA: dict[str, str] = {
     "solicitudes_acceso": "created_at",
     # pragma: allowlist secret -- nombre de tabla y de columna, no una credencial
     "password_reset_tokens": "created_at",  # pragma: allowlist secret
+    # C2.6: la huella se purga por su ÚLTIMA ocurrencia, no por la primera.
+    # Un error que sigue pasando cada día no puede caducar por haber
+    # empezado hace un mes.
+    "client_errors": "ultima_vez",
 }
 
 
@@ -202,6 +206,12 @@ POLITICA_RETENCION: tuple[ReglaRetencion, ...] = (
         "password_reset_tokens",  # pragma: allowlist secret
         "RETENTION_PASSWORD_RESET_DAYS",
         "Un token de recuperación caducado no sirve para nada y sí identifica a quien lo pidió.",
+    ),
+    ReglaRetencion(
+        "client_errors",
+        "RETENTION_CLIENT_ERRORS_DAYS",
+        "Huella sin PII de un fallo de JavaScript. No hace falta guardarla más de "
+        "lo que dura investigar una regresión.",
     ),
     ReglaRetencion(
         "rate_limits",
@@ -291,6 +301,7 @@ def run_retention(
             # sólo contiene hashes, pero la minimización también aplica a
             # identificadores indirectos y a credenciales ya inválidas.
             ("password_reset_tokens", _plazo("password_reset_tokens")),  # pragma: allowlist secret
+            ("client_errors", _plazo("client_errors")),
         )
     ]
 

@@ -591,6 +591,17 @@ class Settings(BaseSettings):
     # cuenta consuma la ventana diaria de todos (denegación de servicio por
     # agotamiento de presupuesto). <= 0 lo desactiva, igual que sus hermanos.
     LLM_BUDGET_USD_DAILY_PER_USER: float = 1.0
+    # C2.9 — cubo por ORGANIZACIÓN, además del de usuario.
+    #
+    # El tope por usuario evita que una cuenta agote la ventana global,
+    # pero no que una organización con veinte cuentas lo haga entre todas:
+    # veinte por 1 USD son 20, cuatro veces el tope diario global. Sin este
+    # cubo, el reparto entre clientes lo decide quién pregunta primero.
+    #
+    # 5,0 = el tope diario global: por defecto una sola organización puede
+    # agotarlo, que es el comportamiento de hoy. Bajarlo es la decisión de
+    # reparto, y se toma con datos de uso, no de antemano.
+    LLM_BUDGET_USD_DAILY_PER_ORG: float = 5.0
     # monitor: superar el presupuesto solo alerta (métrica + warning), no corta.
     # enforce: /ask responde 429 sin llamar al proveedor. Default enforce: en
     # monitor los topes de arriba no son un límite de gasto, solo un indicador,

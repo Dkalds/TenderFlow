@@ -149,6 +149,7 @@ producto existe para conservar.
 | `webhook_deliveries` | 90 días (3 meses) | Historial de entregas para depurar un webhook que falla. El reintento vive en horas, no en meses. | `python scripts/retention_cleanup.py --apply` |
 | `solicitudes_acceso` | 720 días (24 meses) | **Plazo publicado en el aviso legal.** Cambiarlo cambia una promesa hecha al visitante en el momento de la recogida (RGPD art. 13). | `python scripts/retention_cleanup.py --apply` |
 | `password_reset_tokens` | 7 días | Un token de recuperación caducado no sirve para nada y sí identifica a quien lo pidió. | `python scripts/retention_cleanup.py --apply` |
+| `client_errors` | 30 días (1 mes) | Huella sin PII de un fallo de JavaScript. No hace falta guardarla más de lo que dura investigar una regresión. | `python scripts/retention_cleanup.py --apply` |
 | `rate_limits` | 1 día | Ventanas de rate limit. Se purgan las **expiradas** en cada pasada, sin esperar al plazo: la columna que manda es `reset_at`. | `python scripts/retention_cleanup.py --apply` (por `reset_at`, no por plazo) |
 
 <!-- END retencion -->
@@ -181,4 +182,3 @@ cuándo se retiró.
 **Medición.** «Cero avisos altos abiertos más de siete días» se comprueba en la
 pestaña de seguridad del repositorio y se anota con fecha. No hay comando que lo
 derive del árbol: los avisos son estado de GitHub, no del repositorio.
-
