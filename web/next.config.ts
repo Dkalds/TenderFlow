@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import bundleAnalyzer from "@next/bundle-analyzer";
 import { legacyRedirects } from "./src/lib/space-views";
 // Ruta relativa y no alias `@/`: los `paths` de tsconfig no se aplican al
 // cargar este fichero, igual que con `space-views` de arriba.
@@ -174,4 +175,20 @@ const nextConfig: NextConfig = {
   ...(process.env.VERCEL ? {} : { output: "standalone" as const }),
 };
 
-export default nextConfig;
+/**
+ * Analizador de bundle (C7.6).
+ *
+ * Detrás de `ANALYZE=true` para que un `npm run build` normal no pague la
+ * generación de los informes. El **gate** de CI no es este plugin sino
+ * `scripts/check_bundle_budget.py`, que mide el First Load JS por ruta desde
+ * `.next/app-build-manifest.json` y lo compara con `bundle-budget.json`: un
+ * techo que solo puede bajar. El plugin es la herramienta para *entender* una
+ * regresión que el gate ya detectó — sin él, «esta ruta engordó 40 KB» no dice
+ * qué la engordó.
+ */
+const withBundleAnalyzer = bundleAnalyzer({
+  enabled: process.env.ANALYZE === "true",
+  openAnalyzer: false,
+});
+
+export default withBundleAnalyzer(nextConfig);

@@ -409,19 +409,14 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 - **Files de partida:** [db/repositories/aggregates.py](../db/repositories/aggregates.py), [config/settings.py](../config/settings.py)
 - **Riesgo:** bajo si se hace oportunista; medio si alguien intenta el big-bang.
 
-### [P3] Migrar los `title=` nativos restantes a `Tooltip`
+### [P3] Migrar los 33 `title=` nativos restantes a `Tooltip`
 - **Área:** web/src (celdas de tabla y textos truncados)
 - **Nota:** este ítem estaba duplicado (había una segunda entrada, "Completar la migración de `title=` nativos a `ui/tooltip.tsx`", con el mismo alcance). Fusionados el 2026-08-10.
-- **Problema:** quedan ~180 `title=` nativos. No se disparan con teclado, su timing no es controlable y su estilo no sigue el tema. `components/ui/tooltip.tsx` existe con la política de delay ya afinada (`docs/frontend-motion.md`). La primera pasada cubrió los controles icon-only y la Ola 1 de UX los de la cabecera; el resto son celdas de tabla y textos truncados informativos.
-- **Acceptance criteria:** ningún `title=` sobre un elemento interactivo; en celdas y textos truncados, o `Tooltip` o texto visible.
-- **Files de partida:** [docs/frontend-motion.md](frontend-motion.md) (sección Tooltip)
-- **Riesgo:** bajo — mecánico, pero masivo: hacerlo por olas.
-
-### [P3] Barrido de ortografía castellana en las cadenas visibles restantes
-- **Área:** web/src (páginas)
-- **Problema:** decenas de cadenas de UI sin tildes ("prediccion", "analisis", "Busqueda", "Ultimos"), y `...` donde corresponde `…`. La Ola 1 cubrió navegación, barra de filtros, TopNav, `es.json` y la meta description; falta el interior de las páginas. En un producto B2B español se lee como descuido, no como estilo.
-- **Acceptance criteria:** sin cadenas de UI sin tilde en `web/src/app/**`; tests actualizados a la par (varios asertan sobre el texto). Ojo con `.codespell-ignore-words.txt`: al acentuar, algunas entradas dejan de hacer falta y conviene retirarlas.
-- **Riesgo:** bajo — pero toca muchos tests; hacerlo por página.
+- **La cifra estaba mal.** Este ítem decía «~180» y el plan complementario (C7.4) contó «152 apariciones de `title=` en `.tsx`». Las dos salen de un grep que mezcla tres cosas: `title` como **prop de un componente** (`<KpiCard title="…">`, que no genera atributo HTML y es la mayoría), `title=` dentro de **tests**, y `title=` sobre un **elemento nativo**, que es el único caso del problema. Medido el 2026-09-07 con `scripts/check_title_attrs.py`, que distingue por la minúscula inicial de la etiqueta —la misma regla que usa JSX—: **33 en 18 ficheros**. O sea que no hay «olas de ≥ 50» que hacer, y el ítem es más pequeño de lo que aparentaba.
+- **Ya puesto (C7.4):** regla ESLint que prohíbe `title=` sobre elemento nativo salvo `<abbr>`/`<iframe>`, con los 18 ficheros de hoy como deuda declarada en `web/eslint.config.mjs` (`deudaTitleNativo`, solo puede encoger), y `scripts/check_title_attrs.py` en CI para que el total no suba mientras se migran.
+- **Acceptance criteria:** `deudaTitleNativo` vacío y `MAX_TITLE_NATIVO` a 0; en celdas y textos truncados, o `Tooltip` o texto visible.
+- **Files de partida:** [docs/frontend-motion.md](frontend-motion.md) (sección Tooltip), `scripts/check_title_attrs.py --listar`
+- **Riesgo:** bajo por sitio, pero **no verificable sin ver la pantalla**: `TooltipTrigger asChild` cambia el foco y el orden de tabulación de la celda, y eso se comprueba mirando, no compilando. Por eso C7.4 dejó la regla puesta y la migración sin hacer.
 
 ### [P3] Migrar la resolución de identidad de `competitors.py` a SQL (union-find + unaccent)
 - **Área:** services/analytics/competitors.py, db/repositories/adjudicaciones.py
@@ -528,6 +523,18 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 ---
 
 ## Cerrados
+
+- [2026-09-07] **Barrido de ortografía castellana en las cadenas visibles**
+  — cerrado al medirlo (C7.8): **cero** cadenas de UI sin tilde y **cero** `...`
+  donde corresponde `…`. La ola anterior lo había cerrado y el backlog no se
+  actualizó. `scripts/check_ortografia_ui.py` lo mantiene cerrado en CI, mirando
+  solo texto JSX visible y props de copy — un grep sobre el fichero entero
+  marcaría `"tecnologia"` y `"organo"`, que aquí son **nombres de campo de la
+  API** y acentuarlos rompería las peticiones.
+  El primer borrador de ese script daba 38 hallazgos y **los 38 eran correctos**:
+  llevaba en la lista los plurales en `-ciones`, que no llevan tilde
+  («licitación» → «licitaciones»). La lista quedó con los singulares agudos y
+  con los plurales que sí la conservan («órganos», «tecnologías»).
 
 - [2026-09-06] **`HistGradientBoosting` revienta si una feature llega entera a NaN**
   — cerrado al verificar (C9.5) que el código existe: `services/ml/baja_model.py`

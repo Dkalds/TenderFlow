@@ -101,6 +101,30 @@ test.describe("Accesibilidad básica sin sesión", () => {
       await expectBasicAccessibility(page);
     });
   }
+
+  // La ficha pública que S5.8 pedía y faltaba (C7.2). Es la página que más
+  // tráfico anónimo recibe —es la que indexa el buscador— y la única de la
+  // superficie pública con contenido por expediente en vez de plantilla fija.
+  //
+  // La URL se **navega**, no se construye: es `/licitaciones/{ccaa}/{slug}/{ref}`
+  // y hardcodearla ataría el test al slug de un expediente sembrado, que cambia
+  // en cuanto cambie su título. Si el hub no tiene fichas, el test falla en el
+  // `expect` con un mensaje que dice por qué, en vez de barrer una página vacía
+  // y pasar en verde sin haber comprobado nada.
+  test("una ficha pública conserva landmarks y nombres accesibles", async ({ page }) => {
+    await page.goto("/licitaciones");
+    const hub = page.locator('a[href^="/licitaciones/"]').first();
+    await expect(hub, "el índice público no lista ninguna CCAA").toBeVisible({ timeout: 20_000 });
+    await hub.click();
+
+    const ficha = page.locator('main a[href^="/licitaciones/"]').filter({ hasNotText: "" }).first();
+    await expect(ficha, "el hub de CCAA no lista ninguna ficha").toBeVisible({ timeout: 20_000 });
+    await ficha.click();
+
+    await expect(page.locator("main#main-content")).toBeVisible({ timeout: 20_000 });
+    await expect(page).toHaveURL(/\/licitaciones\/[^/]+\/[^/]+\/[^/]+/);
+    await expectBasicAccessibility(page);
+  });
 });
 
 test.describe("Accesibilidad básica con sesión", () => {

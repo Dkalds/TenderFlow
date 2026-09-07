@@ -97,6 +97,17 @@ jobs:
       - name: Verify inline style ratchet (C2.8)
         run: python scripts/check_inline_styles.py
 
+      # C7.4: `title` nativo. La regla ESLint impide que aparezcan en ficheros
+      # limpios; este contador impide que crezcan en los que aún los tienen.
+      - name: Verify native title ratchet (C7.4)
+        run: python scripts/check_title_attrs.py
+
+      # C7.8: el barrido de tildes ya estaba hecho al medirlo; esto lo mantiene
+      # cerrado. Solo mira texto visible y props de copy — `"tecnologia"` como
+      # clave de la API no es una falta de ortografía.
+      - name: Verify Spanish spelling of UI copy (C7.8)
+        run: python scripts/check_ortografia_ui.py
+
       # Misma lección otra vez: el guard de la superficie pública estaba
       # escrito y pasando limpio, pero no lo invocaba nadie (ni el Makefile, ni
       # este workflow, ni pre-commit) mientras varios docstrings afirmaban que
@@ -726,6 +737,32 @@ jobs:
 
       - name: Build
         run: npm run build
+
+      # C7.6: el presupuesto de First Load JS por ruta. Va DESPUÉS del build
+      # porque lee `.next/diagnostics/route-bundle-stats.json`, que la build
+      # escribe. El techo de `web/bundle-budget.json` solo puede bajar: una ruta
+      # que engorda falla aquí, no en el móvil de un cliente.
+      - name: Bundle budget (C7.6)
+        working-directory: ${{ github.workspace }}
+        # `python3` y no `python`: el runner de ubuntu trae el primero, y este
+        # job no instala Python porque no lo necesita para nada más.
+        run: python3 scripts/check_bundle_budget.py
+
+      # El informe del analizador se adjunta al job para poder responder «¿qué
+      # la engordó?» sin tener que reproducir la build en local.
+      - name: Bundle analyzer report
+        if: always()
+        working-directory: web
+        run: ANALYZE=true npm run build
+        continue-on-error: true
+
+      - name: Upload bundle analyzer report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-bundle-analyzer
+          path: web/.next/analyze/
+          if-no-files-found: ignore
 
   # ── Frontend E2E: Playwright contra backend real (BLOQUEANTE) ───────
   # Antes era un smoke con `continue-on-error: true`, es decir, un job que no

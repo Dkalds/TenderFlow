@@ -45,6 +45,8 @@ check-analytics-unbounded:  ## Ningún método analítico materializa sin cota (
 check-frontend-invariants:  ## Integridad analítica del frontend (ADR-014, bloqueante)
 	python scripts/check_frontend_invariants.py --strict
 	python scripts/check_inline_styles.py
+	python scripts/check_title_attrs.py
+	python scripts/check_ortografia_ui.py
 
 check-api-contract:  ## Ratchet del contrato API↔web + fixtures del frontend
 	python scripts/check_openapi_contract.py

@@ -538,7 +538,16 @@ def check_scopes_doc() -> None:
             "no se pudo verificar la matriz de scopes (config/settings.py no valida en este entorno)",
         )
         return
-    fail("docs/api-design.md", salida.splitlines()[0] if salida else "matriz de scopes desfasada")
+    # La primera línea de la salida suele ser una traza JSON del arranque de la
+    # app, no el motivo: reportarla convertía «la matriz está desfasada» en
+    # `{"event": "brotli_compression_enabled", …}`, que no dice qué hacer. Se
+    # busca la última línea que no sea JSON estructurado.
+    utiles = [
+        linea
+        for linea in salida.splitlines()
+        if linea.strip() and not linea.lstrip().startswith("{")
+    ]
+    fail("docs/api-design.md", utiles[-1] if utiles else "matriz de scopes desfasada")
 
 
 def main() -> int:
