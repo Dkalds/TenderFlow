@@ -31,6 +31,8 @@ mantiene ``KNOWN_5XX`` a cero: una referencia inventada tiene que acabar en un
 
 from __future__ import annotations
 
+from typing import Literal
+
 from fastapi import APIRouter, HTTPException, Query, Response, status
 from pydantic import BaseModel, Field
 
@@ -338,3 +340,114 @@ async def entradas_sitemap(
         )
         for f in filas
     ]
+
+
+# ---------------------------------------------------------------------------
+# Cobertura declarada (T7 / D16)
+# ---------------------------------------------------------------------------
+
+#: Vocabulario de estados del contrato público.
+#:
+#: Es una copia deliberada de ``scraper.connectors.EstadoCobertura``, y no un
+#: import: ``scraper.connectors`` arrastra ``requests``, ``lxml`` y el
+#: diccionario propietario de ``scraper.filters`` al importarse, y este proceso
+#: es la API, no el scraper (mismo criterio que ``api/model_cache.py`` y
+#: ``api/routes/feedback.py``, que también difieren ese import al uso). La copia
+#: no puede derivar en silencio: ``tests/test_t7_cobertura.py`` compara los dos
+#: vocabularios, y además Pydantic rechazaría en el acto un estado que el
+#: inventario declarara y este ``Literal`` no.
+EstadoCoberturaApi = Literal["activa", "opcional", "fuera_de_alcance"]
+
+
+class FuenteCobertura(BaseModel):
+    """Una fuente de ingesta tal como se declara hacia fuera.
+
+    Ni ``modulo`` ni ``motivo`` viajan aquí: el primero es una ruta de import y
+    el segundo es el razonamiento operativo de por qué el umbral es ese y no
+    otro. Lo que sí viaja es ``alcance``, que es la frase que impide leer un
+    feed de descubrimiento como si fuera un censo de mercado.
+    """
+
+    source_id: str
+    nombre: str
+    estado: EstadoCoberturaApi
+    alcance: str
+    #: Horas sin una ingesta correcta a partir de las cuales la fuente se
+    #: considera atrasada. Es el compromiso de frescura, no la cadencia: el
+    #: carril principal corre cada cuatro horas y su umbral son treinta y seis.
+    max_lag_hours: int = Field(ge=0)
+
+
+class AmbitoFueraDeAlcance(BaseModel):
+    """Un ámbito declarado fuera del producto, con su fecha y su decisión."""
+
+    ambito: str
+    motivo: str
+    decision: str
+    desde: str
+
+
+class Cobertura(BaseModel):
+    """Lo que entra, con qué alcance, y lo que queda fuera desde cuándo.
+
+    Las dos listas van juntas a propósito: separadas, una página podría pintar
+    la primera y olvidar la segunda, que es la mitad que un lector necesita para
+    saber si el producto le sirve.
+
+    No hay ni un recuento aquí, y es una decisión, no un olvido: sumar estas
+    fuentes daría un número que se leería como cuota de mercado, y los feeds
+    regionales son cobertura de descubrimiento (ver
+    ``docs/regional-source-coverage.md``).
+    """
+
+    fuentes: list[FuenteCobertura]
+    fuera_de_alcance: list[AmbitoFueraDeAlcance]
+    #: Cómo entra algo que hoy está fuera. Va en la respuesta y no en el copy de
+    #: la página porque es parte de la declaración, no de su maquetación.
+    via_de_entrada: str
+
+
+@router.get(
+    "/publico/cobertura",
+    response_model=Cobertura,
+    summary="Fuentes declaradas, su alcance y lo que queda fuera",
+)
+async def cobertura(response: Response) -> Cobertura:
+    """Alimenta la página `/cobertura`.
+
+    Único endpoint de este router que no toca la base: la cobertura declarada
+    es una constante del despliegue (``scraper.connectors``), no un agregado del
+    corpus. Por eso también es el único que no puede quedarse sin respuesta
+    porque Postgres esté lento.
+
+    El import va dentro de la función y no arriba: importar
+    ``scraper.connectors`` en el arranque de la API traería ``requests``,
+    ``lxml`` y el diccionario propietario de ``scraper.filters`` a un proceso
+    que no ingiere nada.
+    """
+    from scraper.connectors import (
+        FUERA_DE_ALCANCE,
+        REGISTERED_SOURCES,
+        VIA_DE_ENTRADA_FUERA_DE_ALCANCE,
+    )
+
+    response.headers["Cache-Control"] = _CACHE_PUBLICA
+    return Cobertura(
+        fuentes=[
+            FuenteCobertura(
+                source_id=f.source_id,
+                nombre=f.nombre,
+                estado=f.estado,
+                alcance=f.alcance,
+                max_lag_hours=f.max_lag_hours,
+            )
+            for f in REGISTERED_SOURCES
+        ],
+        fuera_de_alcance=[
+            AmbitoFueraDeAlcance(
+                ambito=a.ambito, motivo=a.motivo, decision=a.decision, desde=a.desde
+            )
+            for a in FUERA_DE_ALCANCE
+        ],
+        via_de_entrada=VIA_DE_ENTRADA_FUERA_DE_ALCANCE,
+    )

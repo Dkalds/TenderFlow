@@ -100,6 +100,83 @@ describe("AdjudicacionDetectada", () => {
     expect(mutateAsync.mock.calls[0][0]).toMatchObject({ status: "withdrawn" });
   });
 
+  it("sin propuesta del backend no preselecciona nada", () => {
+    // `resultado_sugerido: null` es el caso previo a S2.1 —sin NIFs declarados,
+    // o sin NIF publicado del adjudicatario— y la tarjeta se comporta igual.
+    render(<AdjudicacionDetectada pursuit={base} />);
+    expect(screen.queryByRole("radio")).toBeNull();
+    expect(screen.getByText(/el sistema no sabe cuál de estas empresas sois/)).toBeInTheDocument();
+  });
+
+  describe("con resultado sugerido por NIF (S2.1)", () => {
+    const conPropuesta = (resultado_sugerido: "won" | "lost") =>
+      ({
+        ...base,
+        adjudicacion: { ...base.adjudicacion!, resultado_sugerido },
+      }) as Pursuit;
+
+    it("preselecciona la propuesta sin cerrar la oportunidad", () => {
+      render(<AdjudicacionDetectada pursuit={conPropuesta("won")} />);
+
+      expect(screen.getByRole("radio", { name: "La ganamos" })).toBeChecked();
+      expect(screen.getByRole("radio", { name: "La perdimos" })).not.toBeChecked();
+      // Preseleccionar no es cerrar: nada se manda hasta que alguien confirma.
+      expect(mutateAsync).not.toHaveBeenCalled();
+    });
+
+    it("preselecciona también «perdida» cuando es lo que dice el NIF", () => {
+      render(<AdjudicacionDetectada pursuit={conPropuesta("lost")} />);
+      expect(screen.getByRole("radio", { name: "La perdimos" })).toBeChecked();
+      expect(screen.getByRole("button", { name: /Confirmar como perdida/ })).toBeInTheDocument();
+    });
+
+    it("confirmar acepta la propuesta y cierra con ella", () => {
+      render(<AdjudicacionDetectada pursuit={conPropuesta("won")} />);
+      fireEvent.click(screen.getByRole("button", { name: /Confirmar como ganada/ }));
+
+      expect(mutateAsync).toHaveBeenCalledTimes(1);
+      expect(mutateAsync.mock.calls[0][0]).toMatchObject({
+        outcome: "won",
+        awarded_amount_eur: 120000,
+        expected_version: 4,
+      });
+    });
+
+    it("la persona puede contradecir la propuesta antes de confirmar", () => {
+      render(<AdjudicacionDetectada pursuit={conPropuesta("won")} />);
+      fireEvent.click(screen.getByRole("radio", { name: "La perdimos" }));
+
+      expect(screen.getByRole("radio", { name: "La perdimos" })).toBeChecked();
+      fireEvent.click(screen.getByRole("button", { name: /Confirmar como perdida/ }));
+
+      const payload = mutateAsync.mock.calls[0][0];
+      expect(payload.outcome).toBe("lost");
+      expect(payload).not.toHaveProperty("awarded_amount_eur");
+    });
+
+    it("no arrastra la elección de una oportunidad a la siguiente", () => {
+      // La ruta reutiliza el componente al saltar de ficha en ficha: heredar la
+      // elección preseleccionaría un resultado que nadie ha propuesto aquí.
+      const { rerender } = render(<AdjudicacionDetectada pursuit={conPropuesta("won")} />);
+      fireEvent.click(screen.getByRole("radio", { name: "La perdimos" }));
+
+      rerender(
+        <AdjudicacionDetectada pursuit={{ ...conPropuesta("won"), id: 2 } as Pursuit} />,
+      );
+      expect(screen.getByRole("radio", { name: "La ganamos" })).toBeChecked();
+    });
+
+    it("sin la oferta presentada la propuesta no se puede confirmar", () => {
+      render(
+        <AdjudicacionDetectada
+          pursuit={{ ...conPropuesta("won"), status: "qualifying" } as Pursuit}
+        />,
+      );
+      expect(screen.queryByRole("radio")).toBeNull();
+      expect(screen.getByText(/Oferta presentada/)).toBeInTheDocument();
+    });
+  });
+
   it("en una oportunidad ya cerrada la adjudicación es sólo contexto", () => {
     render(
       <AdjudicacionDetectada

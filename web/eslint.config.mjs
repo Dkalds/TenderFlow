@@ -145,23 +145,19 @@ const eslintConfig = defineConfig([
       ],
     },
   },
-  // ALLOWLIST — **solo puede encoger**. No se le añaden entradas: si una
-  // pantalla nueva no cabe en 300 líneas, se parte antes de mergearla.
+  // ALLOWLIST — **vacía desde el 2026-09-08, y así se queda**. Solo podía
+  // encoger, y encogió hasta desaparecer: los cuatro ficheros que crecieron el
+  // 2026-09-06 durante la ejecución del plan están partidos. El login reparte
+  // sus cinco caminos de entrada entre `login/_hooks/` y `login/_components/`;
+  // los webhooks, sus piezas entre `ops/_components/webhooks/` y
+  // `ops/_hooks/use-webhooks-ambito.ts`; las reglas de watchlist separan
+  // formas, catálogos y coincidencias del módulo que traduce formulario ↔
+  // contrato; y `/equipo` baja sus cinco bloques a `equipo/_components/` con
+  // las etiquetas en `equipo/_lib/etiquetas.ts`.
   //
-  // Los cuatro que quedaban crecieron el 2026-09-06, durante la propia
-  // ejecución del plan, porque los streams S1 y S4 les añadieron superficie y
-  // sus agentes no llegaron a trocearlas. Tres ya están partidos (2026-09-07):
-  // el login reparte sus cinco caminos de entrada entre `login/_hooks/` y
-  // `login/_components/`; los webhooks, sus piezas entre
-  // `ops/_components/webhooks/` y `ops/_hooks/use-webhooks-ambito.ts`; y las
-  // reglas de watchlist separan formas, catálogos y coincidencias del módulo
-  // que traduce formulario ↔ contrato.
-  //
-  // Queda uno solo, y es deuda con fecha y con dueño, no un permiso permanente.
-  {
-    files: ["src/app/(dashboard)/equipo/page.tsx"],
-    rules: { "max-lines": "off" },
-  },
+  // No se le añaden entradas: si una pantalla nueva no cabe en 300 líneas, se
+  // parte antes de mergearla. Reabrir esta lista es volver a tener deuda sin
+  // dueño, que es exactamente lo que costó cerrarla.
 ]);
 
 export default eslintConfig;

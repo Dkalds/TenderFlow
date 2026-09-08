@@ -27,6 +27,22 @@ vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 vi.mock("@/lib/api-client", () => ({
   fetchWithAuth: vi.fn(),
   apiMutate: vi.fn(),
+  // La tarjeta de pesos propuestos (S3.3) pide `GET /pursuits/weights-proposal`
+  // por el cliente tipado. Sin esta entrada el doble del módulo no exporta
+  // `apiGet` y la página revienta al montarla, que no es lo que mide este
+  // fichero. Se responde «insuficiente», el estado por defecto de una
+  // organización sin veinte cierres.
+  apiGet: vi.fn().mockResolvedValue({
+    estado: "insuficiente",
+    n_cierres: 0,
+    n_ganadas: 0,
+    n_perdidas: 0,
+    minimo_cierres: 20,
+    organization_id: 7,
+    origen_pesos_actuales: "global",
+    pesos_actuales: {},
+    dimensiones: [],
+  }),
 }));
 
 vi.mock("@/lib/analytics", async (importOriginal) => {
