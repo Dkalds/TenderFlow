@@ -117,8 +117,19 @@ test.describe("Accesibilidad básica sin sesión", () => {
     await expect(hub, "el índice público no lista ninguna CCAA").toBeVisible({ timeout: 20_000 });
     await hub.click();
 
-    const ficha = page.locator('main a[href^="/licitaciones/"]').filter({ hasNotText: "" }).first();
-    await expect(ficha, "el hub de CCAA no lista ninguna ficha").toBeVisible({ timeout: 20_000 });
+    // El hub de una CCAA enlaza también a las **otras** CCAA y a sí mismo, y
+    // todos esos `href` empiezan por `/licitaciones/`. Un `.first()` sobre ese
+    // prefijo elegía tantas veces un enlace lateral como una ficha, y entonces
+    // la URL se quedaba en `/licitaciones/madrid`: eso —y no un fallo de la
+    // página— es lo que dejaba el test en flaky. El filtro `hasNotText: ""`
+    // que pretendía descartarlos no descarta nada: todo elemento contiene la
+    // cadena vacía.
+    //
+    // La ficha es lo único que cuelga **por debajo** del hub, así que el
+    // prefijo se deriva de la ruta en la que se acaba de aterrizar.
+    const rutaHub = new URL(page.url()).pathname.replace(/\/$/, "");
+    const ficha = page.locator(`main a[href^="${rutaHub}/"]`).first();
+    await expect(ficha, `el hub ${rutaHub} no lista ninguna ficha`).toBeVisible({ timeout: 20_000 });
     await ficha.click();
 
     await expect(page.locator("main#main-content")).toBeVisible({ timeout: 20_000 });

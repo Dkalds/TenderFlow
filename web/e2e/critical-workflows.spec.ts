@@ -34,6 +34,16 @@ test.describe("Flujos de trabajo críticos", () => {
     // el 2026-09-08 poniendo la selección en un botón hermano en capa, así que
     // el test vuelve a correr. La fila se localiza ahora por `data-active`,
     // que es lo que la identifica desde que dejó de ser un control.
+    //
+    // El presupuesto es explícito porque el de por defecto no le cabe: el
+    // cuerpo declara **dos** esperas de 20 s —el Radar con datos reales tarda,
+    // y por eso las escribió así quien lo escribió— y los 30 s de Playwright
+    // no cubren ni esas dos solas, sin contar `goto`, `reload` y los sondeos.
+    // Al agotarse, el `finally` heredaba un reloj ya vencido y el fallo se
+    // reportaba en la limpieza, no en la aserción: por eso parecía otra cosa.
+    // Con el modo `serial` del bloque, además, arrastraba sin ejecutar a los
+    // dos tests siguientes.
+    test.setTimeout(90_000);
     await removeWatchlistItem(page, context, SEED_LICITACION.radarId);
 
     try {
