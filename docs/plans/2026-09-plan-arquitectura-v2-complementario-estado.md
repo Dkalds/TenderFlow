@@ -15,7 +15,7 @@ uno y comprobar el árbol ítem por ítem. Lo que sigue es esa reconstrucción, 
 hecha.
 
 **Última actualización: 2026-09-08 (cuarta pasada: el E2E, y las rutas sí se
-prueban sin Postgres).**
+prueban sin Postgres). Los 15 checks del PR #288 están en verde.**
 
 ## Resumen
 
@@ -356,7 +356,7 @@ Seis de siete, en v122–v124.
 
 | Ítem | Estado |
 |---|---|
-| C7.1 Remediación axe | **Parcial: una regla de cuatro y dos `fixme` de cuatro.** `nested-interactive` sale (la fila del Radar deja de ser un `role="button"` con cinco botones dentro; la selección pasa a un `<button>` hermano en capa) y con ella los dos `fixme` de `critical-workflows`. Quedan `color-contrast`, `scrollable-region-focusable` y `target-size`, que son la ola de UX/móvil y sí exigen pantalla; los dos `fixme` que restan describen funcionalidad que no existe (la watchlist desborda a 375 px, la agenda móvil no está). **Y la nota que dejó el ítem era falsa**: ver la cuarta pasada. |
+| C7.1 Remediación axe | **Parcial: una regla de cuatro y dos `fixme` de cuatro, estos ya verdes en CI.** `nested-interactive` sale (la fila del Radar deja de ser un `role="button"` con cinco botones dentro; la selección pasa a un `<button>` hermano en capa) y con ella los dos `fixme` de `critical-workflows`, que **corren y pasan**: el E2E queda en 100 pasando, 0 fallando y ningún «did not run». Quedan `color-contrast`, `scrollable-region-focusable` y `target-size`, que son la ola de UX/móvil y sí exigen pantalla; los dos `fixme` que restan describen funcionalidad que no existe (la watchlist desborda a 375 px, la agenda móvil no está). **Y la nota que dejó el ítem era falsa**: ver la cuarta pasada, donde reactivar esos dos destapó cuatro causas encadenadas y un 429 de producción. |
 | C7.2 S5.8 | **Hecho** (2026-09-08). La ficha pública entra en el barrido axe, y el piso de `src/app/**` queda fijado **al valor medido**: 35.06 lines / 30.15 functions / 30.74 branches, con el buffer de ~3 puntos de siempre. El número no salió de esta máquina —el séptimo intento local murió como los seis anteriores— sino del `lcov` que publica el job `frontend` de CI, agregado por subárbol. La agregación se validó antes de fiarse de ella: el mismo método sobre `src/hooks/**` reproduce los 69.32 / 61.21 que vitest había reportado en ese run. `statements` se deja sin fijar a propósito: el `lcov` no lo lleva y derivarlo de `lines` sería inventarlo — en ese mismo run `hooks` lo tiene por encima de `lines` y el global por debajo. |
 | C7.3 Primer uso | **No hecho.** Los estados vacíos se verifican mirando la pantalla. |
 | C7.4 `title=` a `Tooltip` | **Regla, ratchet corregido y ocho migrados; el resto no.** Ver corrección 1, que a su vez estaba mal: el contador subcontaba (2026-09-08). De 39 reales quedan **36**. Migrados: `space-shell` a `<abbr>` —que es donde `title` sí es semántico, y además va dentro de un `<button>`, así que un tooltip ahí sería `nested-interactive`—; `estado-global-row`, `mercado-strip`, `eventos-feed` y `pursuit-comments` a `<Tooltip>`; y los tres `<button title=>` de `empresa-perfil` y `review-queue`, que son el caso limpio porque un botón ya es focusable. **Sin `tabIndex`**: ESLint (`jsx-a11y/no-noninteractive-tabindex`) tiene razón en que un `<span>` focusable que no hace nada al pulsarlo es otra violación, no una mejora — cambiar `title` por eso sería mover el problema. Lo que sí entregan los tooltips es el **táctil**, que es la mitad del reproche del ratchet. Los 36 que quedan están casi todos en celdas de tabla y heatmaps: hacerlos focusables cambia el orden de tabulación de la rejilla entera y eso se decide mirando la pantalla. |
@@ -459,10 +459,11 @@ repositorios (378 líneas de SQL) y los `downgrade()` de las catorce migraciones
 que son la mayor parte de las 129 restantes de `db/**`. Escribir esos a ciegas
 es lo que produjo los tres bugs de la tercera pasada, así que no se hace.
 
-**Cerrado el 2026-09-08**: CI mide **622 líneas sin cubrir sobre 3127, el 80 %**,
-y el job `Tests (Postgres)` pasa —6437 tests, 0 fallando—. El umbral son 625, así
-que el margen es de tres líneas: quien añada código nuevo a este PR mire el
-número antes de darlo por hecho.
+**Cerrado el 2026-09-08**: CI mide **616 líneas sin cubrir sobre 3140, el 80 %**,
+y el job `Tests (Postgres)` pasa —6453 tests, 0 fallando—. El umbral son 628 (el
+80 % de 3140), así que el margen es de doce líneas: quien añada código nuevo a
+este PR mire el número antes de darlo por hecho, porque el umbral **sube** con
+cada línea que se toque.
 
 ## Lo que bloquea al resto
 
