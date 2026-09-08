@@ -17,7 +17,7 @@ Todos los RFCs siguen esta estructura.
 
 <!-- BEGIN indice-rfc (generado por scripts/gen_rfc_index.py — no editar a mano) -->
 
-**71 RFC**, de los cuales **17** siguen abiertos. `approved` 2 · `implemented` 48 · `obsolete` 4 · `partially-implemented` 15 · `superseded` 2.
+**72 RFC**, de los cuales **17** siguen abiertos. `approved` 2 · `implemented` 49 · `obsolete` 4 · `partially-implemented` 15 · `superseded` 2.
 
 **Criterio de `implemented`: que el código exista en el árbol, no que el PR se haya mergeado.** Un RFC cuyo código está pero cuyo PR quedó abierto está implementado; uno cuyo PR se mergeó sin dejar código, no.
 
@@ -86,6 +86,7 @@ Esta tabla se genera con `python scripts/gen_rfc_index.py`; CI la verifica con `
 | [Validación de la precisión del dedupe cross-fuente y linaje de datos como contrato testeable](2026-06-30-rfc-validacion-dedupe-linaje-datos.md) | `implemented` | 2026-06-30 | — |
 | [Scoring de oportunidades genérico (sin tecnología hardcodeada)](2026-07-04-rfc-scoring-generico.md) | `implemented` | 2026-07-04 | — |
 | [Enlaces firmados sin sesión para el calendario ICS y la baja de correos](2026-09-02-rfc-enlaces-firmados-sin-sesion.md) | `implemented` | 2026-09-02 | `shared/signing.py` firma con `kid` rotable; `api/routes/exports.py` sirve `GET /exports/calendario.ics` con enlace firmado (`_PREFIJO_FIRMA_CALENDARIO`) además de la cabecera, y `services/email_digest.py` firma el `user_key` del enlace de baja. Verificado contra el árbol el 2026-09-06 (O0.7b del plan de arquitectura v2): el criterio es que el código exista, no que el PR figure mergeado. |
+| [Dos cambios incompatibles del contrato - el sobre de /me/keys y el tope universal de paginacion](2026-09-08-rfc-cambios-incompatibles-me-keys-y-max-page-limit.md) | `implemented` | 2026-09-08 | `api/routes/me.py::MyApiKeysResult` (sobre con `tier`), `shared/dto.py::MAX_PAGE_LIMIT` y su adopcion en `api/routes/admin_users.py` y `api/routes/competitive.py`. El detector de `scripts/check_api_breaking.py` los lista en la PR #288, que es donde esta RFC se enlaza con la etiqueta `api-breaking`. |
 | [Conceder acceso OAuth desde el producto con auditoría](242-acceso-oauth-dinamico.md) | `implemented` | 2026-09-01 | Revisión `v95_access_grants` (tabla `access_grants`), `db/access_grants.py` y las rutas `/admin/solicitudes-acceso/grants` de `api/routes/admin_solicitudes.py`. Verificado contra el árbol el 2026-09-06 (O0.7b del plan de arquitectura v2): el criterio es que el código exista, no que el PR figure mergeado. |
 | [Recuperación segura de contraseña para cuentas locales](243-recuperacion-contrasena-local.md) | `implemented` | 2026-09-01 | Revisión `v96_password_reset_tokens` y las rutas `/password-reset/request` y `/password-reset/confirm` de `api/routes/auth.py`, con limitador por IP y por destinatario (`_password_reset_rate_allowed`). Verificado contra el árbol el 2026-09-06 (O0.7b del plan de arquitectura v2): el criterio es que el código exista, no que el PR figure mergeado. |
 | [Implementar CSRF tokens para sesiones del dashboard](057-csrf-tokens-dashboard.md) | `obsolete` | 2026-05-24 | — |

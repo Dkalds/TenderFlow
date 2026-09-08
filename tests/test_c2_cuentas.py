@@ -398,7 +398,7 @@ class TestCicloDeVidaDeLaOrganizacion:
         fuente = inspect.getsource(mod.OrganizationRepository.traspasar_propiedad)
         # Las dos escrituras dentro del mismo `with connect()`.
         assert fuente.count("with connect()") == 1
-        assert fuente.count("UPDATE organization_members") == 2
+        assert fuente.count("UPDATE organization_memberships") == 2
 
     def test_el_traspaso_exige_miembro_activo(self) -> None:
         """Invitar y traspasar son cosas distintas."""

@@ -269,10 +269,12 @@ async def download_export(
             fecha_hasta=fecha_hasta,
             limit=limit,
         )
-        if por_lote and format != "pdf":
-            # El PDF queda fuera: su maquetación es una tabla por expediente y
-            # expandir a lotes le rompería el layout sin que nadie lo haya
-            # pedido. CSV y Excel sí son tabulares por naturaleza.
+        if por_lote:
+            # Aquí `format` ya solo puede ser `csv` o `excel`: el PDF salió por
+            # el retorno de arriba. Queda fuera a propósito —su maquetación es
+            # una tabla por expediente y expandir a lotes le rompería el layout
+            # sin que nadie lo haya pedido—, y comprobarlo otra vez sería una
+            # condición que nunca es falsa, que es lo que mypy señaló.
             from db.repositories.licitaciones import licitaciones_por_lote
 
             ids = [str(r["id_externo"]) for r in rows if r.get("id_externo")]

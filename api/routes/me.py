@@ -306,7 +306,7 @@ async def list_my_sessions(
 )
 async def delete_my_session(
     session_id: str,
-    ctx: dict[str, Any] = Depends(require_recent_session),
+    ctx: dict[str, Any] = Depends(require_recent_session()),
 ) -> None:
     """Cierra una sesión concreta sin tocar las demás.
 

@@ -1,3 +1,4 @@
+import type { ReactElement } from "react";
 import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import {
@@ -6,6 +7,17 @@ import {
 } from "@/components/pursuits/pursuit-comments";
 import type { PursuitComment } from "@/hooks/use-pursuit-comments";
 import type { Pursuit } from "@/hooks/use-pursuits";
+import { TooltipProvider } from "@/components/ui/tooltip";
+
+/** Monta con el `TooltipProvider` que en uso real pone `components/providers.tsx`.
+ *
+ * La marca de tiempo de cada comentario pasó de `title=` nativo a `<Tooltip>`
+ * con C7.4, y Radix exige el provider como ancestro. Va en un helper y no en
+ * cada `render` para que el próximo test no tenga que acordarse.
+ */
+function montar(ui: ReactElement) {
+  return render(<TooltipProvider>{ui}</TooltipProvider>);
+}
 
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
@@ -116,7 +128,7 @@ afterEach(() => {
 
 describe("PursuitCommentsThread", () => {
   it("shows the empty state when the thread has no comments", () => {
-    render(<PursuitCommentsThread pursuitId={1} />);
+    montar(<PursuitCommentsThread pursuitId={1} />);
 
     expect(screen.getByRole("status")).toHaveTextContent("Todavía no hay comentarios");
   });
@@ -129,7 +141,7 @@ describe("PursuitCommentsThread", () => {
     ];
     state.total = 3;
 
-    render(<PursuitCommentsThread pursuitId={1} />);
+    montar(<PursuitCommentsThread pursuitId={1} />);
 
     expect(screen.getByText("Ana Gómez")).toBeInTheDocument();
     expect(screen.getByText("Luis")).toBeInTheDocument();
@@ -142,7 +154,7 @@ describe("PursuitCommentsThread", () => {
     state.items = [comment()];
     state.total = 5;
 
-    render(<PursuitCommentsThread pursuitId={1} />);
+    montar(<PursuitCommentsThread pursuitId={1} />);
 
     expect(screen.getByText(/más recientes de 5/)).toBeInTheDocument();
   });
@@ -150,14 +162,14 @@ describe("PursuitCommentsThread", () => {
   it("offers a retry when the thread cannot be loaded", () => {
     state.error = new Error("sin red");
 
-    render(<PursuitCommentsThread pursuitId={1} />);
+    montar(<PursuitCommentsThread pursuitId={1} />);
 
     fireEvent.click(screen.getByRole("button", { name: /Reintentar/ }));
     expect(refetch).toHaveBeenCalledTimes(1);
   });
 
   it("publishes the trimmed draft with an idempotency key and clears the box", async () => {
-    render(<PursuitCommentsThread pursuitId={1} />);
+    montar(<PursuitCommentsThread pursuitId={1} />);
     const button = screen.getByRole("button", { name: /Publicar/ });
     expect(button).toBeDisabled();
 
@@ -173,7 +185,7 @@ describe("PursuitCommentsThread", () => {
 
   it("sends with Ctrl+Enter and keeps the draft and its key when the send fails", async () => {
     addMutate.mockRejectedValueOnce(new Error("sin red"));
-    render(<PursuitCommentsThread pursuitId={1} />);
+    montar(<PursuitCommentsThread pursuitId={1} />);
 
     fireEvent.change(composer(), { target: { value: "hola" } });
     fireEvent.keyDown(composer(), { key: "Enter", ctrlKey: true });
@@ -190,7 +202,7 @@ describe("PursuitCommentsThread", () => {
   it("asks for confirmation before deleting a comment", async () => {
     state.items = [comment()];
     state.total = 1;
-    render(<PursuitCommentsThread pursuitId={1} />);
+    montar(<PursuitCommentsThread pursuitId={1} />);
 
     fireEvent.click(screen.getByRole("button", { name: "Borrar comentario" }));
     expect(deleteMutate).not.toHaveBeenCalled();
@@ -206,7 +218,7 @@ describe("PursuitCommentsThread", () => {
 
 describe("PursuitCommentsButton", () => {
   it("shows the count carried by the opportunity and opens the thread in a side panel", () => {
-    render(<PursuitCommentsButton pursuit={{ ...basePursuit, comments_count: 3 }} />);
+    montar(<PursuitCommentsButton pursuit={{ ...basePursuit, comments_count: 3 }} />);
 
     fireEvent.click(screen.getByRole("button", { name: /3 comentarios/ }));
 
@@ -217,7 +229,7 @@ describe("PursuitCommentsButton", () => {
   });
 
   it("invites to comment when the thread is empty", () => {
-    render(<PursuitCommentsButton pursuit={basePursuit} />);
+    montar(<PursuitCommentsButton pursuit={basePursuit} />);
 
     expect(screen.getByRole("button", { name: /Comentar/ })).toBeInTheDocument();
   });

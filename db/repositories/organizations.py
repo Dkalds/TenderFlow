@@ -542,7 +542,7 @@ class OrganizationRepository:
         """Miembros ACTIVOS con ese rol."""
         with connect_read() as c:
             fila = c.execute(
-                "SELECT COUNT(*) FROM organization_members "
+                "SELECT COUNT(*) FROM organization_memberships "
                 "WHERE organization_id = %s AND role = %s AND status = 'active'",
                 (organization_id, rol),
             ).fetchone()
@@ -562,7 +562,7 @@ class OrganizationRepository:
         """
         with connect() as c:
             destino = c.execute(
-                "SELECT 1 FROM organization_members "
+                "SELECT 1 FROM organization_memberships "
                 "WHERE organization_id = %s AND user_id = %s AND status = 'active'",
                 (organization_id, a_user_id),
             ).fetchone()
@@ -570,12 +570,12 @@ class OrganizationRepository:
                 return False
             ahora = now_utc_iso()
             c.execute(
-                "UPDATE organization_members SET role = 'owner', updated_at = %s "
+                "UPDATE organization_memberships SET role = 'owner', updated_at = %s "
                 "WHERE organization_id = %s AND user_id = %s",
                 (ahora, organization_id, a_user_id),
             )
             c.execute(
-                "UPDATE organization_members SET role = 'admin', updated_at = %s "
+                "UPDATE organization_memberships SET role = 'admin', updated_at = %s "
                 "WHERE organization_id = %s AND user_id = %s",
                 (ahora, organization_id, de_user_id),
             )
@@ -590,7 +590,7 @@ class OrganizationRepository:
         """
         with connect() as c:
             cur = c.execute(
-                "UPDATE organization_members SET status = 'revoked', updated_at = %s "
+                "UPDATE organization_memberships SET status = 'revoked', updated_at = %s "
                 "WHERE organization_id = %s AND user_id = %s AND status = 'active'",
                 (now_utc_iso(), organization_id, user_id),
             )
@@ -614,7 +614,7 @@ class OrganizationRepository:
                 ),
                 (
                     "miembros",
-                    "SELECT COUNT(*) FROM organization_members "
+                    "SELECT COUNT(*) FROM organization_memberships "
                     "WHERE organization_id = %s AND status = 'active'",
                 ),
                 # C6.3: los adjuntos propios son lo único de esta lista que
