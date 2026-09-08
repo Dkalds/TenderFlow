@@ -85,6 +85,23 @@ export default defineConfig({
         "src/lib/**": { statements: 90, branches: 82, functions: 92, lines: 91 },
         "src/hooks/**": { statements: 72, branches: 66, functions: 64, lines: 72 },
         "src/components/**": { statements: 64, branches: 58, functions: 62, lines: 66 },
+        // `src/app/**` — el piso que pedían S5.8 del plan de septiembre y C7.2
+        // del complementario, y que hasta 2026-09-08 no existía.
+        //
+        // No es que faltara la línea: es que **la suite nunca se había podido
+        // ejecutar entera** para medirlo. Los cinco intentos que documentan los
+        // comentarios de arriba murieron con `Failed to start … worker` y
+        // vitest devolvió exit 0 con «no tests», que es cobertura falsa. Con la
+        // suite corriendo de verdad (177 ficheros, 2002 tests) el agregado del
+        // árbol completo, calculado sobre `coverage/lcov.info`, es
+        // **34,98 % de líneas · 29,92 % de funciones · 30,67 % de ramas**.
+        //
+        // El piso va ~3 puntos por debajo, el mismo margen anti-flapping que
+        // los otros tres. Es bajo y lo dice: aquí viven las páginas del App
+        // Router, que son la mayor parte del frontend y la peor cubierta. Lo
+        // que este número impide no es que la cobertura sea baja —eso ya lo
+        // era— sino que **baje**, que es lo que el ítem pedía. Solo sube.
+        "src/app/**": { statements: 32, branches: 27, functions: 27, lines: 32 },
       },
       reporter: ["text", "text-summary", "lcov"],
     },
