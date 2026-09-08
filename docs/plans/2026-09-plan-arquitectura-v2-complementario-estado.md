@@ -98,8 +98,9 @@ contado lo primero como lo segundo.
 
 ## Cuarta pasada (2026-09-08): el E2E, y una suposición que costó 333 líneas
 
-Dos hallazgos, y los dos empezaron por mirar algo que ya estaba publicado y que
-nadie había abierto.
+Tres hallazgos, y los dos primeros empezaron por mirar algo que ya estaba
+publicado y que nadie había abierto: el log de la API que el job de E2E sube
+como artefacto.
 
 ### El E2E: la causa no era la que decía el commit que lo reactivó
 
@@ -155,7 +156,40 @@ La lección, que es la misma que ya está escrita arriba con otras palabras: un
 Un test que muere por timeout no dice «esto está roto», dice «pregunta por qué».
 Y un test E2E que lleva meses en `fixme` acumula varias causas a la vez: aquí
 fueron cuatro —el `inert`, el presupuesto, el título duplicado y el filtro de la
-bandeja—, y cada pasada de CI solo revela la primera.
+bandeja—, y cada pasada de CI solo revela la primera. Reactivar un `fixme` no es
+un cambio de una línea: es abrir una cola de defectos que llevaba tapada tanto
+tiempo como el test.
+
+### Y detrás de él, un 429 que rompía el export en producción
+
+Arreglado «seguir», el bloque serial dejó correr por fin **el otro `fixme`** —el
+export del ámbito—, que hasta entonces siempre había salido como «did not run».
+Falló, y el log de la API volvió a ser el que lo explicó: tres intentos, **tres
+`429`**, ni una descarga servida.
+
+La causa es la combinación de dos decisiones que por separado están bien:
+
+- el cubo de cuota es **uno por cliente** (`api:{cliente}`), a propósito, para
+  que no se pueda esquivar variando los path params — está escrito en el
+  comentario de `dispatch`;
+- el tope se elige **por ruta**: 10 para `/exports/download`, que sirve hasta
+  50.000 filas.
+
+Juntas, el contador de *todo* el tráfico del cliente se comparaba contra el tope
+del endpoint caro. Cargar el dashboard son decenas de llamadas, así que al
+pulsar «Exportar CSV» el cubo iba muy por encima de 10 y la descarga respondía
+429 **a alguien que no había exportado nada**. En producción eso rompía el
+export para cualquiera que hubiese mirado la pantalla antes de pedirlo.
+
+Nadie lo veía por dos motivos que se tapaban entre sí: `conftest.py` desactiva
+el rate limiter en toda la suite —para que las pruebas no se estorben— y el
+único camino que lo ejercitaba llevaba meses en `fixme`. Es el mismo patrón que
+los dos 5xx de la tercera pasada: el código existía y la ruta no funcionaba.
+
+Cada regla pesada pasa a tener **cubo propio**, con la etiqueta tomada de la
+regla y no de la petición, de modo que las dos intenciones se conservan: el tope
+bajo sigue aplicando sobre las llamadas que lo motivan, y dos ids distintos de
+`/explain` siguen compartiendo cubo.
 
 ### Las rutas sí se prueban sin Postgres
 
