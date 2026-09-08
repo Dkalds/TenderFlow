@@ -57,16 +57,14 @@ test.describe("Flujos de trabajo críticos", () => {
 
     try {
       await page.goto("/radar");
-      await expect(page.getByText(SEED_LICITACION.tituloRadar).first()).toBeVisible({
-        timeout: 20_000,
-      });
       const fila = await seleccionarFila(page, SEED_LICITACION.tituloRadar);
       await fila.getByRole("button", { name: /^Seguir / }).click();
 
       await expect.poll(() => watchlistContains(page, SEED_LICITACION.radarId)).toBe(true);
 
-      // Tras recargar no hay fila activa, así que hay que volver a seleccionar:
-      // «Dejar de seguir» está tan `inert` como lo estaba «Seguir».
+      // Se vuelve a seleccionar tras recargar en vez de dar por hecho el estado:
+      // «Dejar de seguir» está tan `inert` como lo estaba «Seguir», y si la
+      // recarga restaura la selección, volver a pulsar no cambia nada.
       await page.reload();
       const filaTrasRecarga = await seleccionarFila(page, SEED_LICITACION.tituloRadar);
       await filaTrasRecarga.getByRole("button", { name: /^Dejar de seguir / }).click();
@@ -226,8 +224,17 @@ async function deleteSavedView(page: Page, context: BrowserContext, name: string
  * botón en capa que introdujo C7.1 (`aria-label="Seleccionar …"`).
  */
 async function seleccionarFila(page: Page, titulo: string): Promise<Locator> {
-  const fila = page.getByText(titulo).first().locator("xpath=ancestor::*[@data-active][1]");
-  await fila.getByRole("button", { name: /^Seleccionar / }).click();
+  // El ancla es el botón en capa y no el texto del título: al seleccionar una
+  // fila se abre el inspector, que **repite** ese título en el panel lateral.
+  // Un `getByText(titulo).first()` acertaba con la lista vacía de selección y
+  // pasaba a resolver al panel en cuanto había una fila activa —tras el
+  // `reload()`, que restaura la selección—, y el ancestro del panel no tiene
+  // `data-active`: el locator no resolvía a nada y `click()` esperaba en
+  // silencio. `aria-label="Seleccionar …"` solo existe en las filas del Radar.
+  const seleccion = page.getByRole("button", { name: `Seleccionar ${titulo}` });
+  await expect(seleccion).toBeVisible({ timeout: 20_000 });
+  await seleccion.click();
+  const fila = seleccion.locator("xpath=ancestor::*[@data-active][1]");
   await expect(fila).toHaveAttribute("data-active", "true");
   return fila;
 }
