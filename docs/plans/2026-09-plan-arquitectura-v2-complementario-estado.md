@@ -258,6 +258,44 @@ Las que siguen sin poder medirse aquí —cobertura de `organo_id`, tamaño de l
 imagen, duración de `test-integration`, `importe_tipo` nulo— necesitan Postgres o
 el runner de CI, y están en la lista de bloqueos.
 
+## El gate que sigue en rojo: cobertura del diff
+
+CI exige **≥ 80 % de cobertura sobre las líneas que la PR cambia**
+(`diff-cover`, job `Tests (Postgres)`). Este trabajo va al **63 %**: 1141 de
+3127 líneas nuevas sin cubrir. Los otros doce checks están en verde.
+
+No es una cifra que se pueda subir desde aquí, y el reparto dice por qué:
+
+| Área | Líneas nuevas sin cubrir |
+|---|---:|
+| `db/repositories/**` | 378 |
+| `api/routes/**` | 333 |
+| `services/**` | 276 |
+| `db/**` (resto) | 129 |
+| otros | 25 |
+
+Las 507 de repositorios y `db/` son SQL: en este repo se prueban contra
+Postgres, y esta sesión no tiene ninguno. Escribirlas a ciegas es exactamente lo
+que produjo los tres bugs que hubo que arreglar en esta misma pasada —una tabla
+mal escrita, una columna inexistente y una dependencia sin llamar—, así que no
+se hace.
+
+Lo que sí se cubrió aquí, porque son decisiones y no consultas:
+
+- `services/mi_baja.py` (C6.5): **0 % → 100 %**. Salió del stream sin un solo
+  test; ahora fijan las cuatro cosas que el ítem pide —`base: sin_iva`, el `n`
+  de cada segmento, que un segmento sin referencia de mercado salga igual, y
+  que el tope corte por los de menos población—.
+- `services/pursuit_attachments.py` (C6.3): **57.8 % → 79 %**, ejecutando el
+  orden binario→fila, la limpieza del objeto huérfano cuando el pursuit no era
+  de esa organización, y el rechazo sin bucket.
+- `web/src/hooks/use-ajustes.ts` (C7.5): de 0 a ocho tests, que es lo que
+  devolvió `src/hooks/**` por encima de su piso.
+
+**Para cerrarlo hace falta una sesión con Postgres**: cubrir la capa de
+repositorios es la mitad del déficit, y la otra mitad son rutas cuyos tests, en
+este repo, también levantan base.
+
 ## Lo que bloquea al resto
 
 Cinco cosas, y ninguna es de código. Actualizado el 2026-09-08.
