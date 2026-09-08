@@ -79,6 +79,21 @@ function buildCsp(nonce: string | null): string {
   return [
     "default-src 'self'",
     scriptSrc,
+    // C2.8 — `'unsafe-inline'` sigue aquí, y no por olvido.
+    //
+    // En CSP nivel 3, en cuanto `style-src` lleva un nonce o un hash el
+    // navegador **ignora** `'unsafe-inline'`. Y la app tiene 94 atributos
+    // `style={{...}}` en 33 ficheros (medido el 2026-09-06), de los que 12
+    // llevan valores calculados cuyo hash cambia en cada render, más los
+    // estilos que recharts genera al pintar los SVG en 18 ficheros. Añadir
+    // el nonce hoy no endurecería la política: rompería la página.
+    //
+    // El desbloqueo es bajar ese número, y lo vigila
+    // `scripts/check_inline_styles.py` con un techo que solo baja. Cuando
+    // llegue a cero, esta línea pasa a `style-src 'self' 'nonce-${nonce}'`.
+    //
+    // El riesgo residual sigue acotado por `script-src`, que sí es estricto:
+    // `'unsafe-inline'` en estilos no ejecuta código.
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data: https://lh3.googleusercontent.com",
     "font-src 'self' data:",

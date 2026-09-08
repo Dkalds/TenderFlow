@@ -13,12 +13,13 @@ import time
 from typing import Any
 
 import httpx
-from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
-from pydantic import BaseModel, ConfigDict
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
+from pydantic import BaseModel, ConfigDict, Field
 
 from api.concurrency import run_db
 from api.middleware import _trusted_client_ip
 from api.routes.dual_auth import require_admin
+from db.repositories.client_errors import registrar as registrar_client_error
 from observability.logging import get_logger
 from services.rate_limiting import get_rate_limiter
 
@@ -288,16 +289,36 @@ async def client_error(request: Request) -> None:
     digest = reporte.digest if _DIGEST_VALIDO.fullmatch(reporte.digest) else ""
     source = reporte.source if reporte.source in _ORIGENES_CLIENTE else "desconocido"
 
+    ruta = _ruta_sin_query(reporte.path)
+
     log.warning(
         "client_error",
         source=source,
         context=reporte.context.strip()[:_MAX_CONTEXT],
         message=message,
-        path=_ruta_sin_query(reporte.path),
+        path=ruta,
         digest=digest,
         stack=reporte.stack[:_MAX_STACK],
         user_agent=request.headers.get("user-agent", "")[:_MAX_USER_AGENT],
     )
+
+    # C2.6 / D26 — además del log, la tabla. El log se rota a los pocos días y
+    # no se puede agregar: mil ocurrencias del mismo fallo son mil líneas que
+    # nadie cuenta. `client_errors` las agrupa por huella y `/ops` las enseña.
+    #
+    # Falla en silencio a propósito: este endpoint existe para recoger fallos, y
+    # que un fallo al guardar un fallo devolviera error al navegador sería
+    # cerrar el único canal que queda cuando el frontend ya está roto.
+    try:
+        await run_db(
+            registrar_client_error,
+            mensaje=message,
+            ruta=ruta,
+            origen=source,
+            build=digest or None,
+        )
+    except Exception:
+        log.debug("client_error_persistencia_fallo", exc_info=True)
 
 
 # ── GitHub Secret Scanning partner endpoint ───────────────────────────────────
@@ -415,3 +436,46 @@ async def verify_audit_integrity(
     # Recorre audit_log entero recalculando el HMAC fila a fila: O(n) en CPU y
     # en memoria sobre una tabla que solo crece. Nunca sobre el event loop.
     return AuditChainVerification.model_validate(await run_db(verify_hash_chain))
+
+
+class ClientErrorRow(BaseModel):
+    """Un error de cliente agregado por huella (C2.6)."""
+
+    fingerprint: str
+    origen: str | None = None
+    ruta: str | None = None
+    mensaje: str | None = None
+    build: str | None = None
+    ocurrencias: int
+    primera_vez: str | None = None
+    ultima_vez: str | None = None
+
+
+class ClientErroresResult(BaseModel):
+    items: list[ClientErrorRow] = Field(default_factory=list)
+
+
+@router.get(
+    "/client-errors",
+    summary="Errores de JavaScript del navegador, agregados",
+)
+async def list_client_errors(
+    limit: int = Query(100, ge=1, le=500),
+    _ctx: dict[str, Any] = Depends(require_admin),
+) -> ClientErroresResult:
+    """Lo que falla en el navegador, con un destino que alguien mira (C2.6).
+
+    Hasta 2026-09 esto terminaba en un `log.warning` de Render: no se podía
+    agregar, nadie lo miraba salvo durante un incidente, y se rotaba a los pocos
+    días. Las filas llevan huella, no identidad — sin IP, sin email, sin query
+    string.
+
+    Guarda `require_admin` y no `require_scope("admin")` por lo mismo que
+    `/audit/verify` unas líneas más arriba: esta vista se mira desde `/ops` con
+    sesión de navegador, y un guard que solo lee scopes de API key la dejaría
+    inalcanzable justo para quien la va a usar.
+    """
+    from db.repositories.client_errors import listar
+
+    filas = await run_db(listar, limit=limit)
+    return ClientErroresResult(items=[ClientErrorRow(**fila) for fila in filas])

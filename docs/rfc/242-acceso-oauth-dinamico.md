@@ -11,6 +11,7 @@ implemented_evidence: >
   rutas `/admin/solicitudes-acceso/grants` de `api/routes/admin_solicitudes.py`.
   Verificado contra el árbol el 2026-09-06 (O0.7b del plan de arquitectura v2):
   el criterio es que el código exista, no que el PR figure mergeado.
+evidence: `db/access_grants.py`, `db/alembic/versions/v95_access_grants.py`, `api/routes/admin_solicitudes.py`
 ---
 
 ## Contexto

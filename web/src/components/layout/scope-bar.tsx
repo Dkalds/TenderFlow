@@ -550,6 +550,18 @@ export function ScopeBar() {
             <ScopeChip key={`${chip.key}-${chip.value}`} chip={chip} />
           ))}
 
+          {/* Primer uso (C7.3): sin un solo chip, «Ámbito» y «+ Añadir» no
+              dicen de qué van. La explicación se pinta justo cuando hace falta
+              y desaparece con el primer filtro — no es un tour que haya que
+              cerrar ni un estado que haya que recordar por usuario, que son las
+              dos cosas que convierten el onboarding en deuda. */}
+          {chips.length === 0 && (
+            <span className="text-muted-foreground hidden truncate text-[11px] sm:inline">
+              Todo el corpus. Acotá por fecha, CCAA, tecnología o importe y el resto de la
+              consola lo respeta.
+            </span>
+          )}
+
           <Popover open={editorOpen} onOpenChange={setEditorOpen}>
             <PopoverTrigger asChild>
               <button

@@ -13,6 +13,7 @@ implemented_evidence: >
   enlace de baja. Verificado contra el árbol el 2026-09-06 (O0.7b del plan de
   arquitectura v2): el criterio es que el código exista, no que el PR figure
   mergeado.
+evidence: `shared/signing.py`, `GET /exports/calendario/enlace`
 ---
 
 ## Contexto

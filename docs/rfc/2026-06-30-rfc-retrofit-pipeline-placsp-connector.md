@@ -13,6 +13,7 @@ implemented_evidence: >
   La bifurcación de ingesta que motivó el RFC ya no existe. Verificado contra el
   árbol el 2026-09-06 (O0.7b del plan de arquitectura v2): el criterio es que el
   código exista, no que el PR figure mergeado.
+evidence: `scraper/connectors/placsp.py`, `scheduler/pipeline_runs.py`
 accepted_on: 2026-07-05
 accepted_reason: >
   Blueprint aprobado como Fase 2 del plan de deuda arquitectónica (2026-07-05).

@@ -44,7 +44,6 @@ from db.database import (
     close_pool,
     get_cursor,
     init_db,
-    log_extraccion,
     replace_adjudicaciones_batch,
     set_cursor,
     upsert_licitaciones_with_history,
@@ -459,20 +458,6 @@ def process_daily(*, run_id: str | None = None) -> dict[str, Any]:
         last_seen_updated=newest,
         etag=meta.get("etag"),
         last_modified=meta.get("last_modified"),
-    )
-
-    # Log de extracción
-    log_extraccion(
-        fuente=fuente,
-        nuevas=upsert_result.nuevas,
-        actualizadas=upsert_result.actualizadas,
-        total=len(encontradas),
-        notas=(
-            f"matches:{len(encontradas)} adj:{n_adj} "
-            f"inserted:{upsert_result.nuevas} modified:{len(upsert_result.modified)} "
-            f"unchanged:{len(upsert_result.unchanged)} errors:{entries_error} "
-            f"pages:{meta['pages_fetched']}"
-        ),
     )
 
     log.info(

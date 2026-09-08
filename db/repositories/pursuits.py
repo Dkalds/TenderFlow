@@ -8,6 +8,7 @@ from typing import Any
 from db.database import connect, connect_read, now_utc_iso
 from db.repositories.base import rows_to_dicts
 from db.sql_fragments import empresa_key_sql
+from services.sql_fragments import BASE_DECLARADA_SQL
 
 # El LEFT JOIN contra ``lotes`` va por la clave de negocio ``(licitacion_id,
 # numero)`` y no por un id guardado: ``db/upsert.py::replace_lotes`` borra y
@@ -246,6 +247,114 @@ class PursuitRepository:
             )
             items = rows_to_dicts(cur)
         return items, int(total_row[0] if total_row else 0)
+
+    #: Mínimo de ofertas presentadas por segmento para publicar una baja propia.
+    #: Con menos, la media la mueve un caso: un expediente al que se fue muy
+    #: agresivo convierte «bajamos un 4 %» en «bajamos un 22 %» y alguien
+    #: planifica la siguiente oferta con eso.
+    MIN_OFERTAS_POR_SEGMENTO = 5
+
+    def guardar_gonogo(
+        self,
+        organization_id: int,
+        pursuit_id: int,
+        *,
+        puntuaciones_json: str,
+        total: float,
+        ahora: str,
+    ) -> bool:
+        """Escribe la puntuación go/no-go. ``False`` si el expediente no es de esa organización.
+
+        El total se **congela**: los pesos de la organización cambian, y
+        recalcularlo al leer reescribiría el pasado — expedientes rechazados por
+        debajo del umbral aparecerían por encima, y la revisión de decisiones
+        mediría contra un criterio que no era el vigente.
+        """
+        with connect() as conn:
+            cur = conn.execute(
+                "UPDATE pursuits SET gonogo_json = %s, gonogo_total = %s, gonogo_at = %s, "
+                "updated_at = %s WHERE id = %s AND organization_id = %s",
+                (puntuaciones_json, total, ahora, ahora, pursuit_id, organization_id),
+            )
+            return bool(cur.rowcount > 0)
+
+    def go_bajo_umbral(self, *, umbral: float) -> dict[str, Any]:
+        """Cuántas decisiones ``go`` se tomaron por debajo del umbral (C6.4).
+
+        Es la métrica de `make product-status`. No bloquea nada —la decisión es
+        de las personas— pero un equipo que dice `go` sistemáticamente a
+        expedientes que su propia plantilla puntúa bajo tiene o una plantilla
+        mal calibrada o un problema de disciplina, y las dos cosas se arreglan
+        antes si se ven.
+
+        Sin organización: es una métrica de producto sobre todo el sistema, no
+        el tablero de nadie.
+        """
+        with connect_read() as conn:
+            fila = conn.execute(
+                "SELECT COUNT(*) AS puntuados, "
+                "COUNT(*) FILTER (WHERE decision = 'go') AS go, "
+                "COUNT(*) FILTER (WHERE decision = 'go' AND gonogo_total < %s) AS go_bajo, "
+                "ROUND(AVG(gonogo_total)::numeric, 1) AS media "
+                "FROM pursuits WHERE gonogo_total IS NOT NULL",
+                (umbral,),
+            ).fetchone()
+        if fila is None:
+            return {"puntuados": 0, "go": 0, "go_bajo_umbral": 0, "media": None, "umbral": umbral}
+        return {
+            "puntuados": int(fila[0] or 0),
+            "go": int(fila[1] or 0),
+            "go_bajo_umbral": int(fila[2] or 0),
+            "media": float(fila[3]) if fila[3] is not None else None,
+            "umbral": umbral,
+        }
+
+    def baja_propia_por_segmento(
+        self,
+        organization_id: int,
+        *,
+        segmento: str = "cpv",
+        limite: int = 50,
+    ) -> list[dict[str, Any]]:
+        """Baja media **propia** por CPV a cuatro dígitos o por órgano (C6.5).
+
+        Compara ``pursuits.offer_price_eur`` con el presupuesto del expediente y
+        agrupa. Sólo cuenta lo **presentado** (``submitted_at``): una oferta que
+        se preparó y no se llegó a presentar no es una baja, es un borrador.
+
+        Sólo entra la base **sin IVA declarada** (C1.1, ADR-032). Mezclar un
+        importe con IVA con una oferta sin él produce una baja del 21 % que no
+        existió, y es exactamente el error que C1.1 vino a impedir: aquí no se
+        puede permitir, porque el número se usa para decidir el precio de la
+        siguiente oferta.
+
+        Devuelve ``n`` por segmento y sólo segmentos con al menos
+        :data:`MIN_OFERTAS_POR_SEGMENTO`.
+        """
+        expresion = (
+            "COALESCE(NULLIF(l.organo_contratacion, ''), '(sin órgano)')"
+            if segmento == "organo"
+            else "LEFT(l.cpv, 4)"
+        )
+        baja = "100.0 * (l.importe_base_sin_iva - p.offer_price_eur) / l.importe_base_sin_iva"
+        with connect_read() as conn:
+            cur = conn.execute(
+                f"SELECT {expresion} AS segmento, COUNT(*) AS n, "
+                f"ROUND(AVG({baja})::numeric, 2) AS baja_propia_pct, "
+                f"ROUND(MIN({baja})::numeric, 2) AS baja_min_pct, "
+                f"ROUND(MAX({baja})::numeric, 2) AS baja_max_pct "
+                "FROM pursuits p "
+                "JOIN licitaciones l ON l.id_externo = p.licitacion_id "
+                "WHERE p.organization_id = %s "
+                "  AND p.offer_price_eur IS NOT NULL "
+                "  AND p.submitted_at IS NOT NULL "
+                f"  AND {BASE_DECLARADA_SQL} "
+                "  AND l.importe_base_sin_iva > 0 "
+                f"GROUP BY 1 HAVING COUNT(*) >= {self.MIN_OFERTAS_POR_SEGMENTO} "
+                "ORDER BY 2 DESC, 1 LIMIT %s",
+                (organization_id, max(1, min(int(limite), 200))),
+            )
+            return rows_to_dicts(cur)
 
     def agenda_rows(
         self,

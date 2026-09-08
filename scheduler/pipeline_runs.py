@@ -977,11 +977,12 @@ def _run_daily_pipeline_connector(*, con_cierre: bool = True) -> dict[str, Any]:
     - Los errores por-entry (parse → DLQ) **no** marcan el run como fallido —
       igual que ``entries_error`` en legacy. Solo un fallo fatal de ``fetch``
       produce ``status="error_fetch"`` (mismo nombre de status que legacy).
-    - Escribe ``log_extraccion`` (tabla ``extracciones``, fuente ``placsp``) y
-      envuelve el run en ``record_run`` para que la página de observabilidad
-      siga viendo los runs diarios tras el flip.
+    - Envuelve el run en ``record_run`` para que la página de observabilidad
+      siga viendo los runs diarios tras el flip. El recuento por fuente lo
+      escribe ``run_connector`` en ``source_ingestion_health``; la tabla
+      ``extracciones`` que además se escribía aquí se retiró en v119 (C4.6)
+      porque repetía esos mismos números y no la leía nadie.
     """
-    from db.database import log_extraccion
     from observability import bind_run_context, record_run
     from scraper.connectors.base import run_connector
     from scraper.connectors.placsp import PlacspAtomConnector
@@ -1011,23 +1012,6 @@ def _run_daily_pipeline_connector(*, con_cierre: bool = True) -> dict[str, Any]:
             metrics.licitaciones_nuevas = run_result.nuevas
             metrics.licitaciones_actualizadas = run_result.actualizadas
         metrics.notas = f"daily_connector|{status}"
-
-        if not run_result.fetch_failed:
-            try:
-                log_extraccion(
-                    fuente=run_result.source_id,
-                    nuevas=run_result.nuevas,
-                    actualizadas=run_result.actualizadas,
-                    total=run_result.parsed,
-                    notas=(
-                        f"connector matches:{run_result.parsed} "
-                        f"adj:{run_result.adjudicaciones} "
-                        f"inserted:{run_result.nuevas} modified:{run_result.actualizadas} "
-                        f"errors:{run_result.errores}"
-                    ),
-                )
-            except Exception:
-                log.warning("daily_connector_log_extraccion_failed")
 
     step_results = _run_post_ingestion_steps(lane=LANE_DAILY) if con_cierre else {}
 
@@ -1247,8 +1231,9 @@ def _run_bulk_pipeline_connector(
     - Un fallo fatal de ``fetch`` de un mes se marca ``status="error"`` (los
       errores por-entry van a DLQ y **no** fallan el mes — igual que
       ``entries_error`` en ``process_month``).
-    - ``log_extraccion`` por mes con la misma ``fuente`` (``bulk_YYYYMM``) que
-      usaba el legacy, para continuidad de la serie en ``extracciones``.
+    - Una fila de ``source_ingestion_health`` por mes con la misma ``fuente``
+      (``bulk_YYYYMM``) que usaba el legacy, escrita por ``run_connector``. La
+      escritura paralela a ``extracciones`` se retiró en v119 (C4.6).
     - El run completo va envuelto en ``record_run`` (observabilidad).
 
     Y lo que el legacy NO hacía y aquí sí, porque ``run_connector`` lo aporta:
@@ -1261,7 +1246,6 @@ def _run_bulk_pipeline_connector(
         desde: ``(año, mes)`` de inicio para el backfill histórico.
         label: Etiqueta del run en logs y alertas de degradación.
     """
-    from db.database import log_extraccion
     from observability import bind_run_context, record_run
     from scraper.connectors.base import run_connector
     from scraper.connectors.placsp import PlacspBulkConnector
@@ -1292,24 +1276,6 @@ def _run_bulk_pipeline_connector(
                         "entries_error": r.errores,
                     }
                 )
-                if not r.fetch_failed:
-                    try:
-                        log_extraccion(
-                            fuente=r.source_id,
-                            nuevas=r.nuevas,
-                            actualizadas=r.actualizadas,
-                            total=r.parsed,
-                            notas=(
-                                f"connector matches:{r.parsed} adj:{r.adjudicaciones} "
-                                f"errors:{r.errores}"
-                            ),
-                        )
-                    except Exception:
-                        log.warning(
-                            "bulk_connector_log_extraccion_failed",
-                            year=year,
-                            month=month,
-                        )
             except Exception as exc:
                 log.exception(
                     "bulk_connector_month_failed",

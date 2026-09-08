@@ -17,7 +17,16 @@ from typing import Any
 from db.database import connect_read
 from db.repositories.base import rows_to_dicts
 from services.dedupe import exclude_duplicados_sql
-from services.sql_fragments import BAJA_PCT_SQL, TECHNOLOGY_OBSERVED_SQL, VALID_PAIR_LOTE, round_sql
+from services.sql_fragments import (
+    BAJA_PCT_SQL,
+    BASE_DECLARADA_SQL,
+    BASE_MIXTA,
+    BASE_SIN_IVA,
+    SIN_IVA_CONOCIDO_SQL,
+    TECHNOLOGY_OBSERVED_SQL,
+    VALID_PAIR_LOTE,
+    round_sql,
+)
 
 _GROUP_COLUMNS = {
     "empresa": ("a.empresa_id", "COALESCE(e.nombre_canonico, a.nombre)"),
@@ -27,6 +36,26 @@ _GROUP_COLUMNS = {
 }
 
 
+def _filtro_de_base(solo_base_declarada: bool) -> tuple[str, str]:
+    """Devuelve ``(predicado_sql, etiqueta)`` de la base de comparación (C1.1).
+
+    Dos modos, y el default es el honesto:
+
+    - **Por defecto** (``False``): excluye lo que se SABE que lleva IVA y
+      conserva el histórico `desconocido`. Es la corrección disponible hoy — no
+      recupera el pasado, pero deja de mezclar lo identificado. La respuesta
+      declara ``base: "mixta"``, porque llamarla "sin IVA" sería la misma
+      mentira que este ítem vino a quitar, con otra etiqueta.
+    - **``solo_base_declarada=True``**: solo filas con base sin IVA declarada.
+      Hace verdad un ``base: "sin_iva"`` y hoy devuelve poco: la columna se
+      puebla con la re-ingesta, no con la migración `v112`. Cuando la cobertura
+      sea suficiente, este pasa a ser el default y el otro modo se retira.
+    """
+    if solo_base_declarada:
+        return BASE_DECLARADA_SQL, BASE_SIN_IVA
+    return SIN_IVA_CONOCIDO_SQL, BASE_MIXTA
+
+
 def bajas_agregadas(
     *,
     group_by: str = "empresa",
@@ -34,7 +63,8 @@ def bajas_agregadas(
     cpv_prefix: str | None = None,
     ccaa: str | None = None,
     limit: int = 100,
-) -> list[dict[str, Any]]:
+    solo_base_declarada: bool = False,
+) -> tuple[list[dict[str, Any]], str]:
     """Baja media/mediana-aproximada por dimensión.
 
     ``baja_pct`` = (presupuesto - adjudicado) / presupuesto * 100, con
@@ -46,6 +76,7 @@ def bajas_agregadas(
     if group_by not in _GROUP_COLUMNS:
         raise ValueError(f"group_by inválido: {group_by!r} (válidos: {sorted(_GROUP_COLUMNS)})")
     id_col, label_col = _GROUP_COLUMNS[group_by]
+    filtro_base, base = _filtro_de_base(solo_base_declarada)
 
     select_id = f"{id_col} AS grupo_id," if id_col else ""
     group_cols = f"{id_col}, {label_col}" if id_col else label_col
@@ -66,6 +97,7 @@ def bajas_agregadas(
         LEFT JOIN lotes lo ON lo.id = a.lote_id
         LEFT JOIN empresas e ON e.empresa_id = a.empresa_id
         WHERE {VALID_PAIR_LOTE} AND {TECHNOLOGY_OBSERVED_SQL} AND {exclude_duplicados_sql()}
+          AND {filtro_base}
     """  # noqa: S608
     params: list[Any] = []
     if cpv_prefix:
@@ -83,18 +115,25 @@ def bajas_agregadas(
     params.extend([max(1, int(min_contratos)), max(1, min(int(limit), 500))])
 
     with connect_read() as c:
-        return rows_to_dicts(c.execute(sql, params))
+        return rows_to_dicts(c.execute(sql, params)), base
 
 
 def baja_de_referencia(
-    *, organo: str | None = None, cpv_prefix: str | None = None
+    *,
+    organo: str | None = None,
+    cpv_prefix: str | None = None,
+    solo_base_declarada: bool = False,
 ) -> dict[str, Any]:
     """Baja media y rango en un segmento concreto (órgano y/o CPV).
 
     Es el dato accionable al preparar una oferta: "en este órgano, para este
     CPV, la baja ganadora media es X%". Devuelve también la distribución de
     ofertas recibidas como indicador de presión competitiva.
+
+    ``base`` en la respuesta declara sobre qué población se calculó: ver
+    :func:`_filtro_de_base`. Sin ese campo, la cifra no se puede interpretar.
     """
+    filtro_base, base = _filtro_de_base(solo_base_declarada)
     sql = f"""
         SELECT COUNT(*) AS contratos,
                {round_sql(f"AVG({BAJA_PCT_SQL})", 2)} AS baja_media_pct,
@@ -105,6 +144,7 @@ def baja_de_referencia(
         JOIN licitaciones l ON l.id_externo = a.licitacion_id
         LEFT JOIN lotes lo ON lo.id = a.lote_id
         WHERE {VALID_PAIR_LOTE} AND {TECHNOLOGY_OBSERVED_SQL} AND {exclude_duplicados_sql()}
+          AND {filtro_base}
     """  # noqa: S608 — VALID_PAIR_LOTE es un fragmento constante; valores con ?
     params: list[Any] = []
     if organo:
@@ -119,4 +159,5 @@ def baja_de_referencia(
     result = rows[0] if rows else {}
     result["organo"] = organo
     result["cpv_prefix"] = cpv_prefix
+    result["base"] = base
     return result

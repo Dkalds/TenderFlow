@@ -99,6 +99,15 @@ jobs:
       # siquiera en CI) a invariante ejecutable. Un hallazgo nuevo se justifica
       # en su línea con `fdi-allow:<categoria>` o se corrige. Vive en este job
       # y no en `frontend` porque el checker es Python y `frontend` es Node.
+      - name: Verify no unbounded analytics scans (ADR-023, C3.2)
+        run: python scripts/check_analytics_unbounded.py
+
+      - name: Verify generated docs (retención, índice RFC, backlog)
+        run: |
+          python scripts/gen_retention_doc.py --check
+          python scripts/gen_rfc_index.py --check
+          python scripts/check_backlog_freshness.py
+
       - name: Verify frontend analytical integrity (ADR-014)
         run: python scripts/check_frontend_invariants.py --strict
 
@@ -646,6 +655,65 @@ jobs:
       # superficie opaca crezca.
       - name: API contract ratchet (no new opaque responses)
         run: python scripts/check_openapi_contract.py
+
+  # ── Contrato: cambios incompatibles y fixtures del frontend (C8.2, C8.3) ──
+  #
+  # `codegen-drift` verifica que openapi.json y api.d.ts están SINCRONIZADOS.
+  # Esto es otra pregunta: ¿el contrato cambió de forma que rompa a un cliente
+  # ya desplegado? Borrar un campo de una respuesta pasa `codegen-drift` en
+  # verde, porque los dos artefactos se regeneran juntos y el diff cuadra.
+  api-contract-compat:
+    name: API contract (breaking changes · fixtures)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # Solo en PR: comparar `master` consigo mismo no dice nada.
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Hace falta el commit base para exportar su OpenAPI.
+          fetch-depth: 0
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install -e .
+
+      - name: Export OpenAPI (PR)
+        env:
+          ENV: dev
+        run: python scripts/export_openapi.py /tmp/openapi-head.json
+
+      - name: Export OpenAPI (base)
+        env:
+          ENV: dev
+        run: |
+          set -euo pipefail
+          git worktree add /tmp/base "origin/${{ github.base_ref }}"
+          # El script se ejecuta desde el árbol base, no desde el de la PR: lo
+          # que interesa es el contrato que la base publica hoy.
+          (cd /tmp/base && python scripts/export_openapi.py /tmp/openapi-base.json)
+
+      - name: Detect breaking changes
+        run: |
+          set -euo pipefail
+          ARGS=(--base /tmp/openapi-base.json --head /tmp/openapi-head.json)
+          if [ "${{ contains(github.event.pull_request.labels.*.name, 'api-breaking') }}" = "true" ]; then
+            # La etiqueta autoriza el cambio; la RFC dice dónde está documentado.
+            # Sin RFC el script falla igual, que es lo que se quiere: romper el
+            # contrato sin dejar rastro escrito no es una opción.
+            ARGS+=(--allow-breaking --rfc "${{ github.event.pull_request.html_url }}")
+          fi
+          python scripts/check_api_breaking.py "${ARGS[@]}"
+
+      - name: Frontend fixtures match the contract
+        run: python scripts/check_contract_fixtures.py --openapi /tmp/openapi-head.json
 
   # ── Frontend: typecheck, lint, unit tests, build ────────────────────
   frontend:

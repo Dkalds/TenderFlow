@@ -532,16 +532,11 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 ### [P3] Migrar los `title=` nativos restantes a `Tooltip`
 - **Área:** web/src (celdas de tabla y textos truncados)
 - **Nota:** este ítem estaba duplicado (había una segunda entrada, "Completar la migración de `title=` nativos a `ui/tooltip.tsx`", con el mismo alcance). Fusionados el 2026-08-10.
-- **Problema:** quedan ~180 `title=` nativos. No se disparan con teclado, su timing no es controlable y su estilo no sigue el tema. `components/ui/tooltip.tsx` existe con la política de delay ya afinada (`docs/frontend-motion.md`). La primera pasada cubrió los controles icon-only y la Ola 1 de UX los de la cabecera; el resto son celdas de tabla y textos truncados informativos.
+- **Actualización 2026-09-07 (C7.4):** el número real son **34**, no ~180. De los 178 que un `grep title=` cuenta hoy, **116 son props de componentes propios** (`<KpiCard title=…>`, `<PanelError title=…>`) — su API, no el atributo — y 28 están en `<abbr>`/`<iframe>`, donde el tooltip nativo es la semántica correcta. Los 34 restantes viven en 18 ficheros y ya hay una regla ESLint que impide añadir más: `web/eslint.config.mjs`, con esos 18 en `ignores` y la nota de que esa lista sólo encoge. Los dos que estaban sobre elementos interactivos —un botón de filtro en `/detalle` y el nombre truncado de órgano en `/mercado`— ya salieron: `aria-label` el primero, `Tooltip` el segundo.
+- **Problema:** quedan 34 `title=` nativos sobre elementos HTML. No se disparan con teclado, su timing no es controlable y su estilo no sigue el tema. `components/ui/tooltip.tsx` existe con la política de delay ya afinada (`docs/frontend-motion.md`). La primera pasada cubrió los controles icon-only y la Ola 1 de UX los de la cabecera; el resto son celdas de tabla y textos truncados informativos.
 - **Acceptance criteria:** ningún `title=` sobre un elemento interactivo; en celdas y textos truncados, o `Tooltip` o texto visible.
 - **Files de partida:** [docs/frontend-motion.md](frontend-motion.md) (sección Tooltip)
 - **Riesgo:** bajo — mecánico, pero masivo: hacerlo por olas.
-
-### [P3] Barrido de ortografía castellana en las cadenas visibles restantes
-- **Área:** web/src (páginas)
-- **Problema:** decenas de cadenas de UI sin tildes ("prediccion", "analisis", "Busqueda", "Ultimos"), y `...` donde corresponde `…`. La Ola 1 cubrió navegación, barra de filtros, TopNav, `es.json` y la meta description; falta el interior de las páginas. En un producto B2B español se lee como descuido, no como estilo.
-- **Acceptance criteria:** sin cadenas de UI sin tilde en `web/src/app/**`; tests actualizados a la par (varios asertan sobre el texto). Ojo con `.codespell-ignore-words.txt`: al acentuar, algunas entradas dejan de hacer falta y conviene retirarlas.
-- **Riesgo:** bajo — pero toca muchos tests; hacerlo por página.
 
 ### [P3] Migrar la resolución de identidad de `competitors.py` a SQL (union-find + unaccent)
 - **Área:** services/analytics/competitors.py, db/repositories/adjudicaciones.py
@@ -665,12 +660,24 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 
 ---
 
+### [P3] Clusters y proyectos: promover a core o retirar por RFC (C5.8, decisión pendiente de dato)
+- **Área:** web/src/app/(dashboard)/mercado/_components/clusters-view.tsx, services/analytics/clusters.py
+- **Problema:** la vista de clusters existe (`GET /analytics/clusters`, `ClustersFilters`) y nadie sabe si se usa. C5.8 del plan complementario pide decidirlo con sesenta días de telemetría de «vista experimental abierta» (v2 S7.3) y después promover o retirar por RFC.
+- **Medido el 2026-09-07:** la telemetría **no existe**. No hay ningún registro de apertura de vista en el producto: `audit_log` guarda acciones de escritura, no navegación, y el frontend no envía eventos de uso a ninguna parte (`web/src/lib` no tiene cliente de analítica). Los sesenta días no han empezado a contar porque no hay reloj.
+- **Qué hace falta, en orden:** (1) v2 S7.3 —el marcado de vista experimental y su evento de apertura—, (2) sesenta días de recogida, (3) la decisión con la cifra. Sin (1) no hay nada que esperar: hoy la decisión sólo se puede tomar por intuición, que es exactamente lo que C5.8 quería evitar.
+- **Acceptance criteria:** decisión escrita con la cifra de aperturas en sesenta días y la fecha; si se retira, RFC con el motivo y la ruta de borrado; si se promueve, sale de «experimental» en la navegación.
+- **Riesgo:** bajo — retirar una vista sin uso es barato; retirarla sin saber si se usa, no.
+
 ## Cerrados
 
 **Cerrados el 2026-09-06 por la reconciliación O0.5** — ficha completa de cada
 uno en [el archivo](archive/IMPROVEMENT_BACKLOG_CERRADOS.md), que es donde
 AGENTS.md §0 manda que vivan los cerrados. Ninguno se cerró por lo que decía la
-cabecera de este fichero: los seis se comprobaron contra el código.
+cabecera de este fichero: los seis se comprobaron contra el código. Tres de
+ellos —el de `HistGradientBoosting`, el de `predicciones_baja` y el del cliente
+OpenAPI— los volvió a verificar C9.5 por su cuenta y con el mismo resultado; esa
+contradicción entre cabecera y listado es justo la que
+`scripts/check_backlog_freshness.py` detecta ahora.
 
 - [P1] Aprobar un acceso es editar variables de entorno a mano — RFC 242, `v95_access_grants`, `db/access_grants.py` y las rutas `/admin/solicitudes-acceso/grants` con auditoría.
 - [P2] Persistir procedimiento, tramitación y peso del precio — `v85` + `db/upsert.py`; entrar en `FEATURE_COLUMNS` sigue abierto como P3 propio, y se explica por qué.
@@ -678,6 +685,17 @@ cabecera de este fichero: los seis se comprobaron contra el código.
 - [P2] Migrar las llamadas del frontend al cliente OpenAPI tipado — sin `fetch("/api/…")` crudo fuera de `lib/`, con regla ESLint que lo impide.
 - [P3] Vigilar el crecimiento de `predicciones_baja` — purga por antigüedad en el job de ML.
 - Modelos NIM de razonamiento sin `chat_template_kwargs` — arreglado en `9a6014b`; nunca llegó a ser ítem abierto, y se anota para que el backlog refleje el código.
+
+- [2026-09-07] **Barrido de ortografía castellana en las cadenas visibles** —
+  cerrado por medición (C7.8): un barrido de todo `web/src` buscando las palabras que
+  en castellano siempre llevan tilde, restringido a **prosa** (literales con espacios,
+  no identificadores), devuelve **cero**. La Ola 1 cubrió navegación, filtros, TopNav
+  y `es.json`; el interior de las páginas se limpió después. Lo que faltaba no era el
+  barrido sino que siguiera hecho:
+  `web/src/__tests__/ortografia-castellana.test.ts` lo comprueba en cada corrida.
+  Las 94 coincidencias que un grep ingenuo encuentra son castellano correcto
+  (`licitaciones`, `sesiones`, `predicciones`, `solo`), identificadores de test o
+  atributos XML.
 
 - [2026-09-01] **Revisión integral de la IA del detalle de licitación (10 mejoras en un
   cambio)** — salida de la auditoría de arquitecto del asistente IA. Lo que cambió:

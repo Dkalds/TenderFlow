@@ -225,6 +225,38 @@ def exclude_duplicados_sql(col: str = "l.id_externo") -> str:
     return f"{col} NOT IN {subquery}"
 
 
+def exclude_duplicados_presentacion_sql(col: str = "l.id_externo") -> str:
+    """Como :func:`exclude_duplicados_sql`, pero también esconde los ``pending``.
+
+    **Es para superficies de PRESENTACIÓN, no para métricas** (ADR-026 §D23).
+
+    La diferencia importa porque el error de cada lado es distinto:
+
+    - En el **Radar** o en un listado, mostrar tres veces el mismo contrato
+      —porque TED acuñó un ``publication-number`` por anuncio— es ruido que el
+      usuario ve y no puede arreglar. Esconder de más cuesta que un expediente
+      aparezca una vez en vez de tres; el original sigue ahí.
+    - En **cuota de mercado o HHI**, retirar un contrato que resultó no ser
+      duplicado falsea la métrica para siempre. Por eso `exclude_duplicados_sql`
+      sigue mirando solo ``confirmed``, y no se toca.
+
+    `detect_republicaciones` marca **siempre** ``pending`` y explica por qué no
+    puede marcar ``confirmed``: coincidir en órgano, CPV4, año-mes y título es
+    bastante para decidir qué se enseña, no para retirar un contrato de una
+    métrica. Esta función es exactamente esa distinción, escrita en SQL.
+
+    La superficie pública **no** necesita esto: colapsa por
+    :func:`clave_canonica_sql`, que es la misma clave que
+    ``services.dedupe.republicacion_key``, así que ya publica una sola fila por
+    contrato sin consultar la tabla.
+    """
+    subquery = (
+        "(SELECT licitacion_id FROM licitaciones_duplicados "
+        "WHERE status IN ('confirmed', 'pending'))"
+    )
+    return f"{col} NOT IN {subquery}"
+
+
 # ── Plegado de acentos en SQL ─────────────────────────────────────────────
 # Pares de `translate()` para que una tilde distinta no convierta dos valores
 # iguales en dos valores distintos. Hasta 2026-09 estaban además copiados como
@@ -821,3 +853,33 @@ def clave_republicacion(
     if componentes is None:
         return None
     return SEPARADOR_REPUBLICACION.join(componentes)
+
+
+def clave_organo_sql(alias: str = "f") -> str:
+    """Clave de agrupación de órgano, con lectura dual (C1.2, ADR-032 §C).
+
+    ``organo_id`` cuando el maestro lo resolvió; el nombre plegado cuando no.
+
+    La lectura dual **no es transitoria por comodidad**: el backfill no puede
+    llegar al 100 % —hay fuentes que publican el órgano de formas que no
+    resuelven, y expedientes antiguos sin nombre utilizable— y un expediente
+    cuyo órgano no resuelve sigue siendo un expediente válido. Agrupar solo por
+    `organo_id` lo dejaría fuera de la analítica; agrupar solo por texto es el
+    defecto que C1.2 vino a arreglar.
+
+    El prefijo (`id:` / `txt:`) evita que un `organo_id` de valor 42 colisione
+    con un órgano cuyo nombre plegado sea literalmente "42".
+    """
+    return (
+        f"COALESCE('id:' || {alias}.organo_id::text, "
+        f"'txt:' || lower(btrim({alias}.organo_contratacion)))"
+    )
+
+
+def nombre_organo_sql(alias_licitaciones: str = "f", alias_maestro: str = "o") -> str:
+    """Nombre a mostrar: el canónico del maestro, o la grafía de la fila.
+
+    Preferir el canónico es lo que hace que el ranking deje de tener dos filas
+    para «Ayuntamiento de Madrid» y «AYUNTAMIENTO DE MADRID».
+    """
+    return f"COALESCE({alias_maestro}.nombre_canonico, {alias_licitaciones}.organo_contratacion)"

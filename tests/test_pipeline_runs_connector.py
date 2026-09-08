@@ -6,7 +6,7 @@ camino legacy que los 16 tests de contrato/paridad de datos no tocan:
 - ``ingestion_result`` con ``inserted``/``modified`` como **listas** (contrato
   legacy; ``run_update._log_daily_summary`` hace ``len()``/``join()``).
 - Errores por-entry no fallan el run; solo un fetch fatal → ``error_fetch``.
-- ``log_extraccion`` + ``record_run`` escritos en el camino connector.
+- ``record_run`` y el recuento por fuente escritos en el camino connector.
 - Fallback one-time del cursor legacy ``place_live_atom`` → ``placsp``.
 """
 
@@ -55,8 +55,12 @@ class TestDailyConnectorWrapper:
         # bug: el wrapper devolvía ints y len(int) → TypeError).
         run_update._log_daily_summary(result, MagicMock())
 
-    def test_writes_log_extraccion_and_extraction_run(self, tmp_db):
-        """El camino connector alimenta extracciones y extraction_runs."""
+    def test_writes_extraction_run_and_source_health(self, tmp_db):
+        """El camino connector alimenta extraction_runs y source_ingestion_health.
+
+        La tercera escritura —``extracciones``— se retiró en v119 (C4.6): repetía
+        estos mismos números y no la leía nadie.
+        """
         db_mod, _ = tmp_db
         from scheduler.pipeline_runs import _run_daily_pipeline_connector
 
@@ -67,7 +71,9 @@ class TestDailyConnectorWrapper:
             _run_daily_pipeline_connector()
 
         with db_mod.connect_read() as conn:
-            fuentes = [r[0] for r in conn.execute("SELECT fuente FROM extracciones").fetchall()]
+            fuentes = [
+                r[0] for r in conn.execute("SELECT source FROM source_ingestion_health").fetchall()
+            ]
             runs = conn.execute("SELECT status, notas FROM extraction_runs").fetchall()
 
         assert fuentes == ["placsp"]

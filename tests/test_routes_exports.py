@@ -73,7 +73,10 @@ def _descargar(formato: str = "pdf", **filtros: Any) -> tuple[Any, bytes]:
     parametros = {**_SIN_FILTROS, **filtros, "format": formato}
 
     async def _correr() -> tuple[Any, bytes]:
-        respuesta = await exports_mod.download_export(**parametros, _user={"user_id": 1})
+        respuesta = await exports_mod.download_export(**parametros, user={"user_id": 1})
+        # `user` y ya no `_user`: desde C6.7 el handler lo usa —el export del
+        # pipeline resuelve la organización de quien pide— y el guion bajo
+        # significaba lo contrario.
         cuerpo = b"".join([trozo async for trozo in respuesta.body_iterator])
         return respuesta, cuerpo
 

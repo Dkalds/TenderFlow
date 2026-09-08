@@ -24,12 +24,17 @@ describe("CONSOLE_SPACES", () => {
   //
   // Un espacio nuevo que sólo fuera un corte analítico más no entraría aquí:
   // eso es lo que el plan descarta explícitamente en su §6.
+  //
+  // Siguen siendo 16 tras C7.5: `mi-cuenta` dejó de ser espacio propio y pasó
+  // a ser la vista «Datos y cuenta» de Ajustes, que ocupa su hueco en el rail.
+  // Un espacio entra y otro sale, así que el número no se mueve.
   it("consolida las rutas del dashboard en 16 espacios", () => {
     expect(CONSOLE_SPACES).toHaveLength(16);
     const absorbed = CONSOLE_SPACES.flatMap((space) => space.views ?? []).filter(
       (view) => view.from,
     );
-    expect(absorbed).toHaveLength(18);
+    // 19 y no 18: `mi-cuenta` es la decimonovena ruta absorbida.
+    expect(absorbed).toHaveLength(19);
   });
 
   it("da a cada espacio clave y slug únicos, y una etiqueta corta de 2-3 letras", () => {
@@ -152,7 +157,7 @@ describe("isSpaceImplemented / landingHref", () => {
 
 describe("LEGACY_REDIRECTS", () => {
   it("manda cada ruta absorbida a la vista que la sustituye", () => {
-    expect(LEGACY_REDIRECTS).toHaveLength(18);
+    expect(LEGACY_REDIRECTS).toHaveLength(19);
     expect(LEGACY_REDIRECTS).toContainEqual({
       from: "/competidores",
       to: "/competencia?vista=competidores",

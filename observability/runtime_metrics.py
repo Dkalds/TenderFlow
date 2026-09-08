@@ -134,6 +134,21 @@ try:
         ["window", "mode"],  # window: daily | monthly · mode: monitor | enforce
     )
 
+    # ── Caché de respuestas del LLM (C5.5) ────────────────────────────────
+    # Dos contadores y no uno con etiqueta `result`: `llm_cache_hit_total` que
+    # contara también los fallos sería un nombre que miente, y el ratio se
+    # calcula igual de bien con los dos.
+    llm_cache_hit_total = Counter(
+        "llm_cache_hit_total",
+        "Respuestas del LLM servidas desde caché",
+        ["mode"],
+    )
+    llm_cache_miss_total = Counter(
+        "llm_cache_miss_total",
+        "Preguntas al LLM que no estaban en caché",
+        ["mode"],
+    )
+
     # ── Pliegos: fetch + chunking/embeddings (plan Pliegos+RAG, F8) ────────
     documentos_fetched_total = Counter(
         "documentos_fetched_total",
@@ -226,6 +241,8 @@ except ImportError:  # pragma: no cover
     parser_entries_total = _NoopMetric()  # type: ignore[assignment]
     upsert_rows_dropped_total = _NoopMetric()  # type: ignore[assignment]
     llm_budget_exceeded_total = _NoopMetric()  # type: ignore[assignment]
+    llm_cache_hit_total = _NoopMetric()  # type: ignore[assignment]
+    llm_cache_miss_total = _NoopMetric()  # type: ignore[assignment]
     documentos_fetched_total = _NoopMetric()  # type: ignore[assignment]
     documento_chunks_total = _NoopMetric()  # type: ignore[assignment]
     pliego_tech_signal_total = _NoopMetric()  # type: ignore[assignment]

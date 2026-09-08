@@ -12,6 +12,7 @@ implemented_evidence: >
   destinatario (`_password_reset_rate_allowed`). Verificado contra el árbol el
   2026-09-06 (O0.7b del plan de arquitectura v2): el criterio es que el código
   exista, no que el PR figure mergeado.
+evidence: `db/password_reset.py`, `services/password_reset.py`, `db/alembic/versions/v96_password_reset_tokens.py`
 ---
 
 ## Contexto

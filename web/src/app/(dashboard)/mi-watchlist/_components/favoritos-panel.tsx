@@ -9,6 +9,7 @@
  * Favoritos no paga la petición.
  */
 
+import Link from "next/link";
 import { Trash2, Star } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -41,16 +42,22 @@ export function FavoritosPanel() {
   }
 
   if (!items || items.length === 0) {
+    // C7.3: antes decía dónde había que ir y no llevaba. Una instrucción sin
+    // botón obliga a quien acaba de llegar a buscar en el rail la pantalla que
+    // le acaban de nombrar.
     return (
       <Card className="border-dashed">
         <CardContent className="flex flex-col items-center justify-center py-12 text-center">
-          <Star className="h-12 w-12 text-muted-foreground/50 mb-4" />
-          <p className="text-lg font-medium text-muted-foreground">
+          <Star className="text-muted-foreground/50 mb-4 h-12 w-12" />
+          <p className="text-muted-foreground text-lg font-medium">
             No tienes licitaciones marcadas como favoritas
           </p>
-          <p className="text-sm text-muted-foreground/70 mt-1">
-            Marca licitaciones con la estrella desde la tabla de Detalle.
+          <p className="text-muted-foreground/70 mt-1 text-sm">
+            Marcá una con la estrella y aparecerá aquí, con su plazo y su estado.
           </p>
+          <Button asChild variant="outline" size="sm" className="mt-4">
+            <Link href="/detalle">Buscar licitaciones</Link>
+          </Button>
         </CardContent>
       </Card>
     );

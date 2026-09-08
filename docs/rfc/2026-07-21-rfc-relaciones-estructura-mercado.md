@@ -14,6 +14,7 @@ obsolete_reason: >
   vez de rediseñarse, así que el problema que el RFC ataca desapareció por otra vía.
   Reabrirlo exigiría reescribirlo contra la arquitectura de información de hoy
   (`mercado/`, `competencia/`, `empresas/`), no revivir estas rutas.
+evidence: Cita `services/organ_concentration.py` y `red_organo_empresa.py`, borrados
 area: web/red-organo-empresa · web/ecosistema-partners · web/components/charts/force-graph · services/analytics
 supersedes: >
   Continúa docs/rfc/2026-06-28-rfc-ux-grafos-red-partners.md (implemented), que

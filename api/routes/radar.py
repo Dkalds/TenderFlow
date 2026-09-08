@@ -14,13 +14,15 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from typing import Any, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, Header, HTTPException, status
 from pydantic import BaseModel, Field, model_validator
 
 from api.concurrency import run_db
 from api.routes.dual_auth import require_any_auth
 from api.tenancy import resolve_organization_ctx
 from db import radar_dismissals
+from db.idempotency import cached_response, store_response
+from db.idempotency import scope as idem_scope
 from observability.logging import get_logger
 from shared.cache import invalidate_user_scoped
 from shared.dto import RadarBanda, SafeStr
@@ -68,8 +70,18 @@ async def _resultado(user_key: str) -> RadarDismissalsResult:
     consultas separadas pueden además discrepar si un descarte vence entre
     ellas.
     """
-    filas = await run_db(radar_dismissals.list_detalle, user_key)
-    detalle = [RadarDismissal(**fila) for fila in filas]
+    return await run_db(_resultado_sync, user_key)
+
+
+def _resultado_sync(user_key: str) -> RadarDismissalsResult:
+    """La parte síncrona de `_resultado`, reutilizable dentro del threadpool.
+
+    El POST idempotente necesita leer el listado en el **mismo** salto en el que
+    escribe el descarte y guarda la respuesta: si volviera a `_resultado` haría un
+    segundo salto, y lo que se cachea bajo la clave de idempotencia podría no ser
+    lo que la escritura acababa de dejar.
+    """
+    detalle = [RadarDismissal(**fila) for fila in radar_dismissals.list_detalle(user_key)]
     return RadarDismissalsResult(ids=[d.id_externo for d in detalle], detalle=detalle)
 
 
@@ -180,6 +192,15 @@ async def get_dismissals(
 )
 async def post_dismissal(
     body: RadarDismissalBody,
+    idempotency_key: str | None = Header(
+        default=None,
+        alias="X-Idempotency-Key",
+        max_length=200,
+        description=(
+            "Reintentar con la misma clave devuelve la misma respuesta sin repetir el "
+            "efecto. Caduca según `IDEMPOTENCY_TTL_SECONDS`."
+        ),
+    ),
     ctx: dict[str, Any] = Depends(require_any_auth),
 ) -> RadarDismissalsResult:
     hasta = (
@@ -187,26 +208,39 @@ async def post_dismissal(
         if body.dias is not None
         else None
     )
-    await run_db(
-        radar_dismissals.add,
-        _user_key(ctx),
-        body.id_externo,
-        score=body.score,
-        banda=body.banda,
-        hasta=hasta,
-        organization_id=await _organizacion_activa(ctx) if body.accion == "posponer" else None,
-        # `descartar` no escribe acción: la fila queda como las de v76, y así
-        # `accion IS NULL` sigue significando exactamente «permanente».
-        accion=None if body.accion == "descartar" else body.accion,
-    )
+    organization_id = await _organizacion_activa(ctx) if body.accion == "posponer" else None
+    user_key = _user_key(ctx)
+    ambito = idem_scope("radar_dismissals", user_key=user_key)
+
+    def _trabajo() -> dict[str, Any]:
+        """Clave, descarte y lectura del listado, en UN salto al threadpool."""
+        cacheada = cached_response(idempotency_key, ambito)
+        if cacheada is not None:
+            return cacheada
+        radar_dismissals.add(
+            user_key,
+            body.id_externo,
+            score=body.score,
+            banda=body.banda,
+            hasta=hasta,
+            organization_id=organization_id,
+            # `descartar` no escribe acción: la fila queda como las de v76, y así
+            # `accion IS NULL` sigue significando exactamente «permanente».
+            accion=None if body.accion == "descartar" else body.accion,
+        )
+        respuesta = _resultado_sync(user_key).model_dump(mode="json")
+        store_response(idempotency_key, ambito, respuesta)
+        return respuesta
+
+    resultado = await run_db(_trabajo)
     log.info(
         "radar_dismissal_created",
         id_externo=body.id_externo,
         accion=body.accion,
         dias=body.dias,
     )
-    _invalidar_ranking(_user_key(ctx))
-    return await _resultado(_user_key(ctx))
+    _invalidar_ranking(user_key)
+    return RadarDismissalsResult(**resultado)
 
 
 @router.delete(

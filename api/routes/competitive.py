@@ -10,12 +10,14 @@ import hashlib
 from datetime import date
 from typing import Any, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 from pydantic import BaseModel, Field
 
 from api.concurrency import run_db
 from api.routes.dual_auth import require_any_auth
 from api.tenancy import require_organization, resolve_organization_ctx
+from db.idempotency import cached_response, store_response
+from db.idempotency import scope as idem_scope
 from db.repositories.adjudicaciones import AdjudicacionRepository
 from db.repositories.renovaciones import proximas_renovaciones
 from db.watchlist_empresas import (
@@ -43,7 +45,11 @@ from services.competitive.renovaciones import (
 )
 from services.competitive.socios import SugerenciaSocios, socios_del_segmento
 from services.organizations import OrganizationAccessError
-from shared.dto import CompetitiveCompanyAwardsDTO, CompetitiveCompanyProfileDTO
+from shared.dto import (
+    MAX_PAGE_LIMIT,
+    CompetitiveCompanyAwardsDTO,
+    CompetitiveCompanyProfileDTO,
+)
 from shared.metric_scope import MetricScope
 
 log = get_logger(__name__)
@@ -101,7 +107,12 @@ async def get_renovaciones(
             "Con 'score' el `limit` recorta el top-N real del dataset."
         ),
     ),
-    limit: int = Query(200, ge=1, le=1000),
+    # C8.5: el tope pasa de 1000 a MAX_PAGE_LIMIT (500). Es un estrechamiento
+    # deliberado del contrato público —un cliente que pidiera 800 recibe ahora
+    # 422— y por eso va etiquetado `api-breaking`. El motivo por el que esta
+    # ruta pedía 1000 desapareció cuando `order_by=score` empezó a ordenar en
+    # servidor: el front pide 200 y recibe el top-N real, no una muestra.
+    limit: int = Query(200, ge=1, le=MAX_PAGE_LIMIT),
     offset: int = Query(0, ge=0),
     _ctx: dict[str, Any] = Depends(require_any_auth),
 ) -> RenovacionesResult:
@@ -187,6 +198,17 @@ class BajaAgregada(BaseModel):
 class BajasResult(BaseModel):
     items: list[BajaAgregada]
     group_by: str
+    # C1.1 / ADR-032 — sobre qué base de importe se calcularon estas bajas.
+    #
+    # `sin_iva`: solo filas con base sin IVA declarada.
+    # `mixta`: se excluyó lo que se sabe que lleva IVA, pero el histórico
+    #          anterior a `v112` sigue dentro porque su base no se puede
+    #          determinar sin volver a parsear el CODICE original.
+    #
+    # Una baja es `(presupuesto - adjudicado) / presupuesto`: mezclar bases
+    # hace que una baja del 21 % pueda ser exactamente el IVA. Publicar la
+    # cifra sin decir su base es publicar un número no interpretable.
+    base: str
 
 
 class BajaReferencia(BaseModel):
@@ -199,6 +221,8 @@ class BajaReferencia(BaseModel):
     ofertas_medias: float | None = None
     organo: str | None
     cpv_prefix: str | None
+    #: Base de importe usada. Ver `BajasResult.base`.
+    base: str
 
 
 class CuotaEmpresa(BaseModel):
@@ -264,27 +288,51 @@ async def get_bajas(
     cpv: str | None = Query(None, max_length=8, description="Prefijo CPV"),
     ccaa: str | None = Query(None, max_length=50),
     limit: int = Query(100, ge=1, le=500),
+    solo_base_declarada: bool = Query(
+        False,
+        description=(
+            "Solo filas con base de importe sin IVA declarada. Devuelve `base: "
+            '"sin_iva"` y hoy pocas filas: la columna se puebla con la '
+            "re-ingesta, no con la migración. Por defecto se excluye lo que se "
+            'sabe que lleva IVA y se declara `base: "mixta"`.'
+        ),
+    ),
     _ctx: dict[str, Any] = Depends(require_any_auth),
 ) -> BajasResult:
-    items = await run_db(
+    items, base = await run_db(
         bajas_agregadas,
         group_by=group_by,
         min_contratos=min_contratos,
         cpv_prefix=cpv,
         ccaa=ccaa,
         limit=limit,
+        solo_base_declarada=solo_base_declarada,
     )
-    return BajasResult(items=[BajaAgregada(**item) for item in items], group_by=group_by)
+    return BajasResult(items=[BajaAgregada(**item) for item in items], group_by=group_by, base=base)
 
 
 @router.get("/bajas/referencia", summary="Baja de referencia para un segmento")
 async def get_baja_referencia(
     organo: str | None = Query(None, max_length=300),
     cpv: str | None = Query(None, max_length=8),
+    solo_base_declarada: bool = Query(
+        False, description="Ver el mismo parámetro en `/competitive/bajas`."
+    ),
     _ctx: dict[str, Any] = Depends(require_any_auth),
 ) -> BajaReferencia:
-    """'¿Cuánto hay que bajar para ganar en este órgano/CPV?'"""
-    return BajaReferencia(**await run_db(baja_de_referencia, organo=organo, cpv_prefix=cpv))
+    """'¿Cuánto hay que bajar para ganar en este órgano/CPV?'
+
+    La respuesta declara en `base` sobre qué población de importes se calculó
+    (C1.1): sin ese dato, «la baja media es del 14 %» no se puede interpretar.
+    """
+    return BajaReferencia(
+        **await run_db(
+            baja_de_referencia,
+            organo=organo,
+            cpv_prefix=cpv,
+            solo_base_declarada=solo_base_declarada,
+        )
+    )
 
 
 # ── Mercado ───────────────────────────────────────────────────────────────
@@ -493,9 +541,23 @@ async def get_watchlist(
 @router.post("/watchlist", status_code=status.HTTP_201_CREATED, summary="Vigilar una empresa")
 async def post_watchlist(
     body: WatchlistEmpresaRequest,
+    idempotency_key: str | None = Header(
+        default=None,
+        alias="X-Idempotency-Key",
+        max_length=200,
+        description=(
+            "Reintentar con la misma clave devuelve la misma respuesta sin repetir el "
+            "efecto. Caduca según `IDEMPOTENCY_TTL_SECONDS`."
+        ),
+    ),
     ctx: dict[str, Any] = Depends(require_any_auth),
 ) -> WatchlistEmpresaStatus:
     ctx = await resolve_organization_ctx(ctx, body.organization_id, write=True)
+    ambito = idem_scope(
+        "competitive_watchlist",
+        user_key=_user_key(ctx),
+        organization_id=ctx.get("organization_id"),
+    )
     entry = WatchlistEmpresaEntry(
         user_key=_user_key(ctx),
         empresa_id=body.empresa_id,
@@ -504,18 +566,32 @@ async def post_watchlist(
         organization_id=ctx["organization_id"],
         visibility=body.visibility,
     )
+
+    def _trabajo() -> dict[str, Any]:
+        """Clave, alta y guardado de la clave, en UN salto al threadpool."""
+        cacheada = cached_response(idempotency_key, ambito)
+        if cacheada is not None:
+            return cacheada
+        entry_id = add_entry(entry)
+        if entry_id is None:
+            respuesta = WatchlistEmpresaStatus(status="ya_existia", empresa_id=body.empresa_id)
+        else:
+            respuesta = WatchlistEmpresaStatus(status="ok", id=entry_id, empresa_id=body.empresa_id)
+        payload = respuesta.model_dump(mode="json")
+        store_response(idempotency_key, ambito, payload)
+        return payload
+
     try:
-        entry_id = await run_db(add_entry, entry)
+        resultado = await run_db(_trabajo)
     except Exception as exc:
         # FK violada → empresa inexistente
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Empresa no encontrada en el maestro.",
         ) from exc
-    if entry_id is None:
-        return WatchlistEmpresaStatus(status="ya_existia", empresa_id=body.empresa_id)
-    log.info("watchlist_empresa_added", empresa_id=body.empresa_id)
-    return WatchlistEmpresaStatus(status="ok", id=entry_id, empresa_id=body.empresa_id)
+    if resultado.get("id") is not None:
+        log.info("watchlist_empresa_added", empresa_id=body.empresa_id)
+    return WatchlistEmpresaStatus(**resultado)
 
 
 @router.delete("/watchlist/{empresa_id}", summary="Dejar de vigilar una empresa")

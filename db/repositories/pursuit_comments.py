@@ -2,22 +2,37 @@
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from db.database import connect, connect_read, now_utc_iso
 from db.repositories.base import rows_to_dicts
 
+
 # El nombre visible del autor se resuelve aquí y no en el frontend: los
 # miembros de un espacio ya ven el correo de sus compañeros en
 # ``/organizations/{id}/members``, así que usarlo de respaldo cuando no hay
 # ``display_name`` no expone nada nuevo.
-_COMMENT_SELECT = (
-    "SELECT c.id, c.pursuit_id, c.organization_id, c.author_user_id, "
-    "COALESCE(NULLIF(u.display_name, ''), u.email) AS author_name, "
-    "c.body, c.created_at "
-    "FROM pursuit_comments c "
-    "LEFT JOIN users u ON u.id = c.author_user_id "
-)
+def _comment_select() -> str:
+    """``SELECT`` del hilo, con ``mentions_json`` sólo si la columna ya existe.
+
+    Las migraciones de producción se aplican a mano y el código llega con el
+    despliegue: entre las dos cosas hay una ventana en la que `v124` puede no
+    estar puesta. Nombrar la columna a pelo dejaría el hilo de comentarios en
+    500 durante esa ventana — y el hilo es de lo más usado del espacio de
+    trabajo. Ver ``db/columnas.py``.
+    """
+    from db.columnas import proyeccion
+
+    return (
+        "SELECT c.id, c.pursuit_id, c.organization_id, c.author_user_id, "
+        "COALESCE(NULLIF(u.display_name, ''), u.email) AS author_name, "
+        "c.body, "
+        + proyeccion("pursuit_comments", "mentions_json", prefijo="c.")
+        + ", c.created_at "
+        "FROM pursuit_comments c "
+        "LEFT JOIN users u ON u.id = c.author_user_id "
+    )
 
 
 class PursuitCommentRepository:
@@ -45,7 +60,7 @@ class PursuitCommentRepository:
                 (organization_id, pursuit_id),
             ).fetchone()
             cur = conn.execute(
-                _COMMENT_SELECT + "WHERE c.organization_id = %s AND c.pursuit_id = %s "
+                _comment_select() + "WHERE c.organization_id = %s AND c.pursuit_id = %s "
                 "ORDER BY c.id DESC LIMIT %s OFFSET %s",
                 (organization_id, pursuit_id, limit, offset),
             )
@@ -64,6 +79,7 @@ class PursuitCommentRepository:
         author_user_id: int,
         body: str,
         idempotency_key: str | None = None,
+        mentions: list[int] | None = None,
     ) -> tuple[dict[str, Any], bool]:
         """Inserta el comentario; reintentar con la misma clave devuelve el original.
 
@@ -77,12 +93,27 @@ class PursuitCommentRepository:
                 existing = self._by_idempotency_key(conn, pursuit_id, idempotency_key)
                 if existing is not None:
                     return existing, False
+            # `None` y `[]` no son lo mismo: `NULL` es «nadie las buscó»
+            # (comentarios anteriores a v124) y `[]` es «se buscaron y no
+            # había». Ver el docstring de la revisión.
+            menciones_json = (
+                json.dumps(mentions, ensure_ascii=False) if mentions is not None else None
+            )
             inserted = conn.execute(
                 "INSERT INTO pursuit_comments "
-                "(pursuit_id, organization_id, author_user_id, body, idempotency_key, created_at) "
-                "VALUES (%s, %s, %s, %s, %s, %s) "
+                "(pursuit_id, organization_id, author_user_id, body, mentions_json, "
+                " idempotency_key, created_at) "
+                "VALUES (%s, %s, %s, %s, %s, %s, %s) "
                 "ON CONFLICT DO NOTHING RETURNING id",
-                (pursuit_id, organization_id, author_user_id, body, idempotency_key, now),
+                (
+                    pursuit_id,
+                    organization_id,
+                    author_user_id,
+                    body,
+                    menciones_json,
+                    idempotency_key,
+                    now,
+                ),
             ).fetchone()
             if inserted is None:
                 # Carrera entre dos reintentos con la misma clave: gana el primero.
@@ -132,7 +163,7 @@ class PursuitCommentRepository:
         conn: Any, organization_id: int, pursuit_id: int, comment_id: int
     ) -> dict[str, Any] | None:
         cur = conn.execute(
-            _COMMENT_SELECT + "WHERE c.organization_id = %s AND c.pursuit_id = %s AND c.id = %s",
+            _comment_select() + "WHERE c.organization_id = %s AND c.pursuit_id = %s AND c.id = %s",
             (organization_id, pursuit_id, comment_id),
         )
         rows = rows_to_dicts(cur)
@@ -143,7 +174,7 @@ class PursuitCommentRepository:
         conn: Any, pursuit_id: int, idempotency_key: str
     ) -> dict[str, Any] | None:
         cur = conn.execute(
-            _COMMENT_SELECT + "WHERE c.pursuit_id = %s AND c.idempotency_key = %s",
+            _comment_select() + "WHERE c.pursuit_id = %s AND c.idempotency_key = %s",
             (pursuit_id, idempotency_key),
         )
         rows = rows_to_dicts(cur)

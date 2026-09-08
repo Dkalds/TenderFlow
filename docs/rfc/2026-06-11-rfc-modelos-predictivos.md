@@ -4,7 +4,7 @@ title: Fase 6 — Modelos predictivos: baja ganadora y probabilidad de adjudicac
 issue: N/A (roadmap interno, Crítica 5 analítica predictiva)
 author: agent:architect
 date: 2026-06-11
-status: implemented (v1)
+status: partially-implemented
 supersedes:
 ---
 

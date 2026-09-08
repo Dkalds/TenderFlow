@@ -15,7 +15,7 @@ from __future__ import annotations
 import re
 import unicodedata
 from collections.abc import Iterator
-from typing import Any
+from typing import Any, NamedTuple
 
 from lxml import etree
 
@@ -235,6 +235,90 @@ def _issue_date(entry: Any, cfs: str) -> str | None:
     )
     normalized = [d for d in (to_iso_date(raw) for raw in dates) if d]
     return min(normalized) if normalized else None
+
+
+#: Vocabulario de `licitaciones.importe_tipo` (ADR-032, D21).
+TIPO_SIN_IVA = "sin_iva"
+TIPO_CON_IVA = "con_iva"
+TIPO_DESCONOCIDO = "desconocido"
+
+
+class ImportesProyecto(NamedTuple):
+    """Los tres importes de un proyecto CODICE, con la base declarada.
+
+    Hasta 2026-09 el parser devolvía **un** número: `TaxExclusiveAmount` o, si
+    faltaba, `TotalAmount`. El primero es la base sin IVA y el segundo lo
+    incluye, y la fila no guardaba cuál de los dos había sido. `bajas` calculaba
+    `(importe - adjudicado) / importe` sobre una mezcla de los dos, así que una
+    baja del 21 % podía ser exactamente el IVA.
+
+    `importe` se conserva como alias de la base sin IVA para no romper a los
+    consumidores (frontend, exports, scoring, vistas materializadas); lo que
+    cambia es que ahora viene acompañado de `tipo`.
+    """
+
+    importe: float | None
+    base_sin_iva: float | None
+    con_iva: float | None
+    valor_estimado: float | None
+    tipo: str | None
+
+
+def _importes_del_proyecto(entry: Any, project_xp: str) -> ImportesProyecto:
+    """Extrae los tres importes por separado y declara de cuál sale `importe`.
+
+    El fallback a `TotalAmount` se conserva —una fila con importe con IVA es más
+    útil que una sin importe— pero deja de ser invisible: `tipo` lo dice, y los
+    cálculos comparativos filtran por él.
+    """
+    presupuesto = f"{project_xp}/cac:BudgetAmount"
+    base_sin_iva = _float(entry, f"{presupuesto}/cbc:TaxExclusiveAmount")
+    con_iva = _float(entry, f"{presupuesto}/cbc:TotalAmount")
+    # El valor estimado incluye prórrogas y modificaciones: es el número con el
+    # que la Ley 9/2017 determina el procedimiento, y no se extraía en absoluto.
+    valor_estimado = _float(entry, f"{presupuesto}/cbc:EstimatedOverallContractAmount")
+
+    if base_sin_iva is not None:
+        return ImportesProyecto(base_sin_iva, base_sin_iva, con_iva, valor_estimado, TIPO_SIN_IVA)
+    if con_iva is not None:
+        return ImportesProyecto(con_iva, None, con_iva, valor_estimado, TIPO_CON_IVA)
+    return ImportesProyecto(None, None, None, valor_estimado, None)
+
+
+#: Un código DIR3 es una o dos letras seguidas de 7-8 dígitos: `E00003801`,
+#: `L01280796`, `EA0003888`. El regex es la red para cuando CODICE publica el
+#: identificador sin `schemeName`, que pasa.
+_DIR3_RE = re.compile(r"^[A-Z]{1,2}[0-9]{7,8}$")
+
+
+def _dir3_del_organo(entry: Any, cfs: str) -> str | None:
+    """Código DIR3 del órgano de contratación, si CODICE lo publica (C1.2).
+
+    DIR3 es el identificador oficial del Inventario de Unidades Orgánicas. Con
+    él, dos grafías del mismo órgano son el mismo órgano sin discusión; sin él
+    hay que resolver por nombre normalizado y aceptar que algunas fusiones las
+    decide un humano.
+
+    Se prefiere el identificador que declara su esquema (`schemeName` con
+    "DIR3"); si no lo hay, se acepta cualquiera cuya **forma** sea la de un
+    DIR3. Lo que no se hace es tomar el primer `PartyIdentification` que
+    aparezca: en `LocatedContractingParty` puede venir un NIF, y confundir un
+    NIF con un DIR3 crearía órganos fantasma con clave única.
+    """
+    base = f"{cfs}/cacext:LocatedContractingParty/cac:Party/cac:PartyIdentification"
+    nodos = entry.xpath(f"{base}/cbc:ID", namespaces=NS)
+    con_esquema: str | None = None
+    por_forma: str | None = None
+    for nodo in nodos:
+        valor = (nodo.text or "").strip().upper()
+        if not valor:
+            continue
+        esquema = (nodo.get("schemeName") or "").upper()
+        if "DIR3" in esquema:
+            con_esquema = con_esquema or valor
+        elif _DIR3_RE.match(valor):
+            por_forma = por_forma or valor
+    return con_esquema or por_forma
 
 
 def _tender_deadline(root: Any, tendering_process_prefix: str) -> str | None:
@@ -480,6 +564,7 @@ def parse_entry(entry: Any) -> Licitacion | None:
         entry,
         f"{cfs}/cacext:LocatedContractingParty/cac:Party/cac:PartyName/cbc:Name",
     )
+    organo_dir3 = _dir3_del_organo(entry, cfs)
 
     project_xp = f"{cfs}/cac:ProcurementProject"
     nombre_proyecto = _text(entry, f"{project_xp}/cbc:Name")
@@ -488,16 +573,9 @@ def parse_entry(entry: Any) -> Licitacion | None:
         entry,
         f"{project_xp}/cac:RequiredCommodityClassification/cbc:ItemClassificationCode",
     )
-    # TaxExclusiveAmount suele ser el importe sin IVA (licitación base)
-    importe = _float(
-        entry,
-        f"{project_xp}/cac:BudgetAmount/cbc:TaxExclusiveAmount",
-    )
-    if importe is None:
-        importe = _float(
-            entry,
-            f"{project_xp}/cac:BudgetAmount/cbc:TotalAmount",
-        )
+    # C1.1 / ADR-032: los tres importes por separado, con la base declarada.
+    importes = _importes_del_proyecto(entry, project_xp)
+    importe = importes.importe
     moneda = None
     moneda_attr = entry.xpath(
         f"{project_xp}/cac:BudgetAmount/cbc:TaxExclusiveAmount/@currencyID",
@@ -565,7 +643,12 @@ def parse_entry(entry: Any) -> Licitacion | None:
         titulo=titulo or "(sin título)",
         descripcion=summary,
         organo_contratacion=organo_codice or s.get("organo_contratacion"),
+        organo_dir3=organo_dir3,
         importe=importe if importe is not None else s.get("importe"),
+        importe_base_sin_iva=importes.base_sin_iva,
+        importe_con_iva=importes.con_iva,
+        valor_estimado=importes.valor_estimado,
+        importe_tipo=importes.tipo,
         moneda=moneda or s.get("moneda") or "EUR",
         cpv=cpv,
         tipo_contrato=tipo,
@@ -640,6 +723,7 @@ def parse_entry_unfiltered(entry: Any) -> Licitacion | None:
         entry,
         f"{cfs}/cacext:LocatedContractingParty/cac:Party/cac:PartyName/cbc:Name",
     )
+    organo_dir3 = _dir3_del_organo(entry, cfs)
 
     project_xp = f"{cfs}/cac:ProcurementProject"
     nombre_proyecto = _text(entry, f"{project_xp}/cbc:Name")
@@ -648,9 +732,9 @@ def parse_entry_unfiltered(entry: Any) -> Licitacion | None:
         entry,
         f"{project_xp}/cac:RequiredCommodityClassification/cbc:ItemClassificationCode",
     )
-    importe = _float(entry, f"{project_xp}/cac:BudgetAmount/cbc:TaxExclusiveAmount")
-    if importe is None:
-        importe = _float(entry, f"{project_xp}/cac:BudgetAmount/cbc:TotalAmount")
+    # C1.1 / ADR-032: los tres importes por separado, con la base declarada.
+    importes = _importes_del_proyecto(entry, project_xp)
+    importe = importes.importe
     moneda_attr = entry.xpath(
         f"{project_xp}/cac:BudgetAmount/cbc:TaxExclusiveAmount/@currencyID",
         namespaces=NS,
@@ -689,7 +773,12 @@ def parse_entry_unfiltered(entry: Any) -> Licitacion | None:
         titulo=titulo or "(sin título)",
         descripcion=summary,
         organo_contratacion=organo_codice or s.get("organo_contratacion"),
+        organo_dir3=organo_dir3,
         importe=importe if importe is not None else s.get("importe"),
+        importe_base_sin_iva=importes.base_sin_iva,
+        importe_con_iva=importes.con_iva,
+        valor_estimado=importes.valor_estimado,
+        importe_tipo=importes.tipo,
         moneda=moneda or s.get("moneda") or "EUR",
         cpv=cpv,
         tipo_contrato=tipo,

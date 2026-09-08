@@ -36,21 +36,30 @@ class PricingRepository:
         (aritméticamente imposible si el ratio se calculase bien) se excluía
         como outlier en vez de corregirse -- perdiendo esa fila de la
         distribución en lugar de arreglar el denominador.
+
+        **Base del importe (C1.1, ADR-032).** Prefiere `importe_base_sin_iva`
+        cuando la fila la trae y **excluye** las que se sabe que llevan IVA
+        (`importe_tipo = 'con_iva'`). Sin eso, la distribución de bajas mezclaba
+        denominadores con y sin IVA: una baja del 21 % podía ser exactamente el
+        impuesto. El histórico `desconocido` sigue entrando —su base no se puede
+        determinar sin volver a parsear el CODICE— y por eso el resultado
+        declara `base` en vez de afirmar que es sin IVA.
         """
         # S608 no aplica: el único fragmento interpolado es una constante de
         # ``db/sql_fragments.py``; el valor va con %s.
         sql = (
             "SELECT a.licitacion_id, a.importe_adjudicado, a.n_ofertas_recibidas, "
             "       a.fecha_adjudicacion, l.organo_contratacion, l.cpv, "
-            "       COALESCE(lo.importe, l.importe) AS importe_licitacion "
+            "       COALESCE(lo.importe, l.importe_base_sin_iva, l.importe) AS importe_licitacion "
             "FROM adjudicaciones a "
             "JOIN licitaciones l ON l.id_externo = a.licitacion_id "
             "LEFT JOIN lotes lo ON lo.id = a.lote_id "
             "WHERE a.importe_adjudicado IS NOT NULL "
             "  AND a.importe_adjudicado > 0 "
-            "  AND COALESCE(lo.importe, l.importe) IS NOT NULL "
-            "  AND COALESCE(lo.importe, l.importe) > 0 "
-            "  AND a.importe_adjudicado <= COALESCE(lo.importe, l.importe) "
+            "  AND COALESCE(lo.importe, l.importe_base_sin_iva, l.importe) IS NOT NULL "
+            "  AND COALESCE(lo.importe, l.importe_base_sin_iva, l.importe) > 0 "
+            "  AND a.importe_adjudicado <= COALESCE(lo.importe, l.importe_base_sin_iva, l.importe) "
+            "  AND COALESCE(l.importe_tipo, 'desconocido') <> 'con_iva' "
             f"  AND {TECHNOLOGY_OBSERVED_SQL} "
             "ORDER BY a.fecha_adjudicacion DESC "
             "LIMIT %s"

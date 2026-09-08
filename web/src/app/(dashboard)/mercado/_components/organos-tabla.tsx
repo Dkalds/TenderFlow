@@ -17,6 +17,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { formatCurrency, formatNumber, formatPercent } from "@/lib/utils";
 
 import type { OrganoItem } from "../_hooks/use-organos-view";
@@ -75,19 +76,28 @@ export function OrganosTabla({
                     onClick={() => onOrganoClick(item.organo_contratacion)}
                   >
                     <TableCell className="py-2 pr-4 max-w-xs">
-                      <button
-                        type="button"
-                        className="block w-full max-w-full cursor-pointer truncate text-left"
-                        title={item.organo_contratacion}
-                        onClick={(e) => {
-                          // Sin esto el clic sube al `<tr>` y el handler corre
-                          // dos veces por pulsación.
-                          e.stopPropagation();
-                          onOrganoClick(item.organo_contratacion);
-                        }}
-                      >
-                        {item.organo_contratacion}
-                      </button>
+                      {/* `Tooltip` y no `title`: el nombre se trunca por CSS y
+                          el atributo nativo no se abre con teclado ni sigue el
+                          tema (C7.4). El texto completo sigue siendo el
+                          contenido del botón, así que un lector de pantalla lo
+                          lee entero de todas formas. */}
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <button
+                            type="button"
+                            className="block w-full max-w-full cursor-pointer truncate text-left"
+                            onClick={(e) => {
+                              // Sin esto el clic sube al `<tr>` y el handler
+                              // corre dos veces por pulsación.
+                              e.stopPropagation();
+                              onOrganoClick(item.organo_contratacion);
+                            }}
+                          >
+                            {item.organo_contratacion}
+                          </button>
+                        </TooltipTrigger>
+                        <TooltipContent>{item.organo_contratacion}</TooltipContent>
+                      </Tooltip>
                     </TableCell>
                     <TableCell className="py-2 pr-4 w-40">
                       <div className="flex items-center gap-2">

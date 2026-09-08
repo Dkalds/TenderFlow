@@ -437,3 +437,59 @@ class WebhookRepository:
                     "DELETE FROM idempotency_keys WHERE idem_key = %s AND endpoint = %s",
                     (key, endpoint),
                 )
+
+
+def marcar_para_reintento(
+    delivery_id: int, *, estado: str, proximo_intento: str | None, error: str | None
+) -> bool:
+    """Actualiza el estado de una entrega tras un intento (C2.4).
+
+    Devuelve `False` si la entrega no existe. El `intentos + 1` va aquí y no en
+    el llamante para que dos procesos no puedan contar el mismo intento dos
+    veces con un `SELECT` de por medio.
+    """
+    with connect() as c:
+        cur = c.execute(
+            "UPDATE webhook_deliveries "
+            "SET estado = %s, proximo_intento = %s, error_detail = %s, "
+            "    intentos = COALESCE(intentos, 0) + 1 "
+            "WHERE id = %s",
+            (estado, proximo_intento, error, delivery_id),
+        )
+        return bool(getattr(cur, "rowcount", 0))
+
+
+def encolar_reintento(delivery_id: int, *, ahora: str) -> bool:
+    """Pone una entrega en cola para reenviarla **ya** (C2.4, re-entrega manual).
+
+    Es lo que hace `POST /webhooks/{id}/deliveries/{delivery_id}/redeliver`: no
+    reenvía en la request —eso bloquearía al operador mientras se abre una
+    conexión HTTP a un endpoint que puede estar caído— sino que la marca
+    `pending` con `proximo_intento` en el pasado, y el job la recoge.
+
+    **No reinicia `intentos`.** Reiniciarlo convertiría el botón de re-entrega
+    en una forma de reintentar indefinidamente un endpoint muerto, que es justo
+    lo que el tope de `MAX_INTENTOS` evita.
+    """
+    with connect() as c:
+        cur = c.execute(
+            "UPDATE webhook_deliveries SET estado = 'pending', proximo_intento = %s "
+            "WHERE id = %s AND estado <> 'delivered'",
+            (ahora, delivery_id),
+        )
+        return bool(getattr(cur, "rowcount", 0))
+
+
+def pendientes_de_reintento(*, ahora: str, limit: int = 100) -> list[dict[str, Any]]:
+    """Entregas cuyo `proximo_intento` ya venció. Las lee el job de reintento."""
+    with connect_read() as c:
+        return rows_to_dicts(
+            c.execute(
+                "SELECT id, webhook_id, event_type, payload_json, delivery_uid, intentos "
+                "FROM webhook_deliveries "
+                "WHERE estado = 'pending' AND proximo_intento IS NOT NULL "
+                "  AND proximo_intento <= %s "
+                "ORDER BY proximo_intento LIMIT %s",
+                (ahora, limit),
+            )
+        )

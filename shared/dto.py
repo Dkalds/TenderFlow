@@ -200,14 +200,17 @@ _ItemT = TypeVar("_ItemT")
 #: parte del contrato (por encima el API responde 422), así que vive con los
 #: DTOs y no en una ruta.
 #:
-#: **No es universal todavía, y decir lo contrario sería falso**: la adopción va
-#: por olas y hay rutas con su propio tope heredado. La conocida es
-#: ``GET /competitive/renovaciones`` (``le=1000``). Bajarla a este valor no es
-#: una limpieza: es un estrechamiento del contrato público —un cliente que hoy
-#: pide 800 empezaría a recibir 422—, y por eso no se hizo de paso. Lo que sí
-#: dejó de tener sentido es el motivo por el que pedía 1000: desde que
-#: ``order_by=score`` ordena en servidor, el front pide 200 y recibe el top-N
-#: real. Unificar el tope es un cambio deliberado, con su nota de contrato.
+#: **Universal desde 2026-09-06** (C8.5). Hasta entonces la adopción iba por olas
+#: y dos rutas mantenían su tope heredado de ``le=1000``:
+#: ``GET /competitive/renovaciones`` y ``GET /admin/users``. Bajarlas no fue una
+#: limpieza sino un estrechamiento del contrato —un cliente que pidiera 800
+#: empezó a recibir 422—, así que se hizo de forma deliberada y etiquetada, y
+#: `scripts/check_api_breaking.py` lo señala como tal. El motivo por el que
+#: renovaciones pedía 1000 había desaparecido antes: desde que ``order_by=score``
+#: ordena en servidor, el front pide 200 y recibe el top-N real.
+#:
+#: Un tope propio en una ruta nueva es cómo vuelve a dispersarse el contrato:
+#: ``tests/test_contrato_paginacion.py`` lo impide.
 MAX_PAGE_LIMIT = 500
 
 #: Página por defecto cuando el endpoint no tiene un motivo para otra cosa.
@@ -319,10 +322,28 @@ class WatchlistFavoriteItem(BaseModel):
     created_at: PgDateTime | None
     organization_id: int | None
     visibility: str | None
+    #: Nota personal de por qué se sigue este expediente (C6.6). Llega `None`
+    #: para todo el mundo salvo su autor, **también** cuando el favorito está
+    #: compartido con la organización: la nota es el pensamiento de una persona,
+    #: no la posición del equipo — para eso está el hilo de la oportunidad.
+    nota: str | None = None
     titulo: str | None
     importe: float | None
     estado: str | None
     fecha_publicacion: str | None
+
+
+#: Una nota es un recordatorio («esperar al pliego técnico»), no un documento.
+WATCHLIST_NOTA_MAX_CHARS = 500
+
+
+class WatchlistNotaBody(BaseModel):
+    """Nota personal sobre un favorito (C6.6)."""
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    #: `None` o cadena vacía borran la nota.
+    nota: SafeStr | None = Field(default=None, max_length=WATCHLIST_NOTA_MAX_CHARS)
 
 
 class WatchlistFavoritesResult(BaseModel):
@@ -1222,8 +1243,188 @@ class PursuitCommentOut(BaseModel):
     author_user_id: int | None = None
     author_name: str | None = None
     body: str
+    #: `user_id` mencionados en el cuerpo (C6.2). Los **ids**, no el texto
+    #: resuelto: si alguien cambia su nombre visible, la mención sigue apuntando
+    #: a la misma persona. La interfaz resuelve el nombre al pintar.
+    #:
+    #: `[]` es «se buscaron y no había»; los comentarios anteriores a `v124`
+    #: llegan también como `[]` porque nadie las buscó — la distinción sólo
+    #: importa en la base, no en el contrato.
+    mentions: list[int] = Field(default_factory=list)
     created_at: PgDateTime
     can_delete: bool = False
+
+
+#: Estados de una tarea, espejo del `CHECK` de `v122`. `cancelada` no es
+#: borrado: «ya no hace falta» dice que alguien lo evaluó, y el hueco de una
+#: fila borrada es indistinguible de «nadie se acordó».
+PursuitTaskEstado = Literal["pendiente", "hecha", "cancelada"]
+
+#: Longitud del título de una tarea. Corto a propósito: una tarea es una acción
+#: («pedir el aval»), y lo que no cabe aquí es un comentario.
+PURSUIT_TASK_TITULO_MAX_CHARS = 200
+
+
+class GoNoGoPuntuaciones(BaseModel):
+    """Las cinco puntuaciones de D30, de 1 a 5 (C6.4).
+
+    `riesgo` va **al derecho** como los demás: 5 es «poco riesgo». Invertir uno
+    solo de los cinco es la forma más rápida de que alguien rellene el
+    formulario al revés sin darse cuenta.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    encaje_estrategico: int = Field(ge=1, le=5)
+    capacidad: int = Field(ge=1, le=5)
+    competencia: int = Field(ge=1, le=5)
+    rentabilidad: int = Field(ge=1, le=5)
+    riesgo: int = Field(ge=1, le=5)
+
+
+class GoNoGoResult(BaseModel):
+    """Puntuación de un expediente, con el umbral vigente al puntuarlo."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    pursuit_id: int = Field(ge=1)
+    puntuaciones: GoNoGoPuntuaciones
+    #: Total ponderado sobre 100. Se **congela**: recalcularlo al leer haría que
+    #: cambiar un peso reescribiera decisiones pasadas.
+    total: float = Field(ge=0, le=100)
+    umbral: float = Field(ge=0, le=100)
+    #: `True` cuando el total no llega al umbral. No bloquea la decisión: la
+    #: toman las personas. Sirve para verla.
+    bajo_umbral: bool = False
+
+
+class GoNoGoPesos(BaseModel):
+    """Pesos de la organización. Deben sumar 100."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    encaje_estrategico: int = Field(ge=0, le=100)
+    capacidad: int = Field(ge=0, le=100)
+    competencia: int = Field(ge=0, le=100)
+    rentabilidad: int = Field(ge=0, le=100)
+    riesgo: int = Field(ge=0, le=100)
+
+
+class GoNoGoAjustes(BaseModel):
+    """Plantilla de la organización: pesos y umbral (owner/admin)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    pesos: GoNoGoPesos
+    umbral: float = Field(ge=0, le=100)
+
+
+class BajaPropiaSegmento(BaseModel):
+    """Baja media propia en un segmento, con su `n` (C6.5)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    segmento: str
+    #: Cuántas ofertas presentadas sostienen la cifra. Va siempre: una media sin
+    #: `n` no se puede interpretar ni comparar con la del mercado.
+    n: int = Field(ge=0)
+    baja_propia_pct: float | None = None
+    baja_min_pct: float | None = None
+    baja_max_pct: float | None = None
+
+
+class BajaPropiaResult(BaseModel):
+    """Mi baja frente al mercado, por CPV a cuatro dígitos o por órgano."""
+
+    organization_id: int = Field(ge=1)
+    #: `cpv` | `organo`.
+    segmento: str
+    #: Mínimo de ofertas presentadas exigido por segmento.
+    min_ofertas: int = Field(ge=1)
+    #: Siempre `sin_iva`: comparar una oferta sin IVA con un presupuesto que lo
+    #: lleva produce una baja del 21 % que no existió (C1.1, ADR-032).
+    base: str = "sin_iva"
+    items: list[BajaPropiaSegmento] = Field(default_factory=list)
+
+
+class PursuitTaskCreate(BaseModel):
+    """Nueva tarea de una oportunidad (C6.1)."""
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    titulo: SafeStr = Field(min_length=1, max_length=PURSUIT_TASK_TITULO_MAX_CHARS)
+    #: Miembro de la organización. `None` = sin asignar, que es un estado
+    #: legítimo: una tarea puede existir antes de saber quién la hará.
+    responsable_user_id: int | None = Field(default=None, ge=1)
+    #: `YYYY-MM-DD`. `None` = sin plazo.
+    vence: date | None = None
+
+
+class PursuitTaskUpdate(BaseModel):
+    """Cambio parcial de una tarea.
+
+    Los campos ausentes no se tocan; enviados a `null` sí borran el valor —por
+    eso `responsable_user_id` y `vence` se distinguen con
+    `model_fields_set`, y no por comparar con `None`: sin esa distinción,
+    desasignar una tarea sería imposible de expresar.
+    """
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    titulo: SafeStr | None = Field(default=None, max_length=PURSUIT_TASK_TITULO_MAX_CHARS)
+    responsable_user_id: int | None = Field(default=None, ge=1)
+    vence: date | None = None
+    estado: PursuitTaskEstado | None = None
+
+
+class PursuitTaskOut(BaseModel):
+    """Tarea tal como la ve el equipo."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: int = Field(ge=1)
+    pursuit_id: int = Field(ge=1)
+    organization_id: int = Field(ge=1)
+    titulo: str
+    responsable_user_id: int | None = None
+    responsable_nombre: str | None = None
+    vence: date | None = None
+    estado: PursuitTaskEstado = "pendiente"
+    created_at: PgDateTime | None = None
+    updated_at: PgDateTime | None = None
+
+
+class PursuitTaskListResponse(BaseModel):
+    """Tareas de una oportunidad, pendientes primero y por urgencia."""
+
+    pursuit_id: int = Field(ge=1)
+    organization_id: int = Field(ge=1)
+    items: list[PursuitTaskOut] = Field(default_factory=list)
+
+
+class PursuitTaskAgendaItem(BaseModel):
+    """Una tarea en la agenda del tablero, con su expediente.
+
+    Lleva `id_externo` porque una lista de tareas que no dice de qué expediente
+    son obliga a abrir cada una para saber si importa.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: int = Field(ge=1)
+    pursuit_id: int = Field(ge=1)
+    id_externo: str | None = None
+    titulo: str
+    responsable_user_id: int | None = None
+    vence: date | None = None
+    estado: PursuitTaskEstado = "pendiente"
+
+
+class PursuitTaskAgendaResponse(BaseModel):
+    """Agenda de tareas pendientes de la organización, por urgencia."""
+
+    organization_id: int = Field(ge=1)
+    items: list[PursuitTaskAgendaItem] = Field(default_factory=list)
 
 
 class PursuitCommentListResponse(BaseModel):

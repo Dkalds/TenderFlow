@@ -10,6 +10,7 @@ pandas perdía al convertir la columna a ``Timestamp``.
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from typing import Any
 
 import pandas as pd
 from pydantic import BaseModel, Field
@@ -33,6 +34,24 @@ class ColumnCompleteness(BaseModel):
 
     columna: str
     pct: float
+
+
+class AdjudicacionesPorFuente(BaseModel):
+    """Cobertura de los campos de adjudicación en UNA fuente de ingesta (C4.7).
+
+    Existe porque promediar estas cifras entre fuentes miente: medido contra
+    producción el 2026-09-06, PLACSP trae el 100 % de `n_ofertas_recibidas` y
+    PSCP el 37 %, y ni PSCP ni TED traen **nada** de rango de oferta ni de PYME.
+    Un «57 % de cobertura de PYME» global es la media de un 57 % real y de dos
+    ceros, y no describe a ninguna de las tres.
+    """
+
+    fuente: str
+    filas: int
+    pct_n_ofertas: float
+    pct_oferta_minima: float
+    pct_oferta_maxima: float
+    pct_es_pyme: float
 
 
 class DocumentoFormatoCobertura(BaseModel):
@@ -94,6 +113,10 @@ class QualityResult(BaseModel):
     # scope legacy user_key-only (ver docs/IMPROVEMENT_BACKLOG.md).
     pct_organization_scoped: float = 100.0
     filas_sin_organizacion: int = 0
+    # C4.7 — completitud de adjudicaciones POR FUENTE. Lista vacía = no medido
+    # (la consulta falló o no hay adjudicaciones), no «todo a cero»: la misma
+    # regla que `cobertura_nif` unas líneas más arriba.
+    adjudicaciones_por_fuente: list[AdjudicacionesPorFuente] = Field(default_factory=list)
     # ── Documentos (S8) ────────────────────────────────────────────────
     documentos_por_formato: list[DocumentoFormatoCobertura] = Field(default_factory=list)
     # Ocupación del almacén de binarios (``shared/object_store.py``). `None` =
@@ -171,6 +194,43 @@ def _organization_scope_coverage() -> tuple[float, int]:
     except Exception:
         log.debug("quality_organization_scope_unavailable")
         return 100.0, 0
+
+
+def _adjudicaciones_por_fuente() -> list[AdjudicacionesPorFuente]:
+    """Cobertura por fuente, tolerante a fallo.
+
+    Un error aquí no puede tumbar la pantalla entera de calidad del dato: se
+    devuelve la lista vacía y el resto de métricas se sirve igual, que es el
+    mismo criterio que `_dlq_count`.
+    """
+    from db.repositories.adjudicaciones import completitud_por_fuente
+
+    try:
+        filas = completitud_por_fuente()
+    except Exception:
+        log.warning("analytics_quality_adjudicaciones_por_fuente_fallo", exc_info=True)
+        return []
+
+    salida: list[AdjudicacionesPorFuente] = []
+    for fila in filas:
+        n = int(fila.get("filas") or 0)
+        if n <= 0:
+            continue
+
+        def _pct(clave: str, total: int = n, f: dict[str, Any] = fila) -> float:
+            return round(100.0 * int(f.get(clave) or 0) / total, 1)
+
+        salida.append(
+            AdjudicacionesPorFuente(
+                fuente=str(fila.get("fuente") or "(sin fuente)"),
+                filas=n,
+                pct_n_ofertas=_pct("con_n_ofertas"),
+                pct_oferta_minima=_pct("con_oferta_minima"),
+                pct_oferta_maxima=_pct("con_oferta_maxima"),
+                pct_es_pyme=_pct("con_es_pyme"),
+            )
+        )
+    return salida
 
 
 def _codigos_no_catalogados() -> list[CodigoNoCatalogado]:
@@ -327,6 +387,7 @@ def get_quality() -> QualityResult:
         pct_organization_scoped=pct_organization_scoped,
         filas_sin_organizacion=filas_sin_organizacion,
         completitud_columnas=completitud,
+        adjudicaciones_por_fuente=_adjudicaciones_por_fuente(),
         documentos_por_formato=documentos_por_formato,
         blob_store_objetos=blob_objetos,
         blob_store_bytes=blob_bytes,

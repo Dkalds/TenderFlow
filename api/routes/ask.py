@@ -126,6 +126,13 @@ class AskRequest(BaseModel):
             "de corpus."
         ),
     )
+    force: bool = Field(
+        default=False,
+        description=(
+            "Ignora la caché de respuestas y vuelve a preguntar al modelo. "
+            "Consume presupuesto de LLM."
+        ),
+    )
 
 
 class AskModelInfo(BaseModel):
@@ -178,6 +185,17 @@ def _budget_subject(user: dict[str, Any]) -> str | None:
     return raw if isinstance(raw, str) and raw else None
 
 
+def _budget_org(user: dict[str, Any]) -> str | None:
+    """Organización a la que atribuir el gasto (C2.9).
+
+    `None` cuando la petición no tiene organización resuelta —una API key sin
+    ámbito, por ejemplo—: entonces solo aplican el global y el del usuario, que
+    es el comportamiento anterior.
+    """
+    raw = user.get("organization_id")
+    return str(raw) if raw not in (None, "") else None
+
+
 def _check_budget(user: dict[str, Any]) -> None:
     """Check eager del presupuesto ANTES de abrir el SSE: con enforce y ventana
     agotada respondemos 429 sin llamar al proveedor ni hacer retrieval
@@ -188,7 +206,7 @@ def _check_budget(user: dict[str, Any]) -> None:
     from llm.budget import LLMBudgetExceeded, get_budget_guard
 
     try:
-        get_budget_guard().check(_budget_subject(user))
+        get_budget_guard().check(_budget_subject(user), _budget_org(user))
     except LLMBudgetExceeded as exc:
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
@@ -244,6 +262,41 @@ def _fuentes_documentos(docs: list[dict[str, Any]]) -> list[dict[str, Any]]:
         for d in docs
         if d.get("chunks")
     ]
+
+
+#: Cuántos caracteres de la cita viajan al cliente. Suficiente para que se
+#: reconozca el pasaje sin convertir el evento en una copia del pliego.
+_CITA_CHARS = 320
+
+
+def _citas(docs: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Evento ``sources`` (D29, C5.3): lo citable, plano y enlazable.
+
+    ``fuentes_documentos`` ya viajaba, pero agrupado por expediente y con el
+    texto entero de cada fragmento: sirve para enseñar el contexto, no para
+    enlazar «esto lo dice el pliego técnico en la página 12». Esto es lo
+    segundo — una lista plana de ``(documento_id, page_number, cita)`` que la
+    UI puede convertir en un enlace a la página.
+
+    Sólo entran los fragmentos con ``documento_id``: sin él no hay a dónde
+    enlazar, y una cita que no se puede abrir es una nota al pie decorativa.
+    """
+    salida: list[dict[str, Any]] = []
+    for doc in docs:
+        for chunk in doc.get("chunks") or []:
+            if chunk.get("documento_id") is None:
+                continue
+            texto = str(chunk.get("texto") or "").strip()
+            salida.append(
+                {
+                    "documento_id": chunk["documento_id"],
+                    "page_number": chunk.get("page_number"),
+                    "tipo": chunk.get("tipo"),
+                    "filename": chunk.get("filename"),
+                    "cita": texto[:_CITA_CHARS],
+                }
+            )
+    return salida
 
 
 def _sse_event(payload: dict[str, Any]) -> str:
@@ -394,9 +447,12 @@ def _prepare_ask_context(request: AskRequest) -> tuple[list[dict[str, Any]], Pro
     return docs, mode
 
 
-async def _stream_ask(request: AskRequest, scope_key: str | None) -> AsyncGenerator[str, None]:
+async def _stream_ask(
+    request: AskRequest, scope_key: str | None, org_key: str | None = None
+) -> AsyncGenerator[str, None]:
     """Prepara contexto + historial y devuelve el stream SSE del LLM."""
-    from llm.budget import bind_budget_subject
+    from llm import cache as llm_cache
+    from llm.budget import bind_budget_org, bind_budget_subject
     from llm.client import stream_llm_response
 
     _validate_model(request.model)
@@ -424,20 +480,63 @@ async def _stream_ask(request: AskRequest, scope_key: str | None) -> AsyncGenera
     if fuentes:
         pre_events.append({"fuentes_documentos": fuentes})
 
-    def _factory() -> Iterator[str]:
-        # El coste solo se conoce dentro de llm/client.py::_record_usage, que no
-        # ve al usuario. Se corre en un thread con contexto propio (to_thread lo
-        # copia), así que dejar ahí el sujeto lo atribuye sin filtrarlo a otras
-        # requests.
-        bind_budget_subject(scope_key)
-        return stream_llm_response(
-            question=request.question,
-            docs=docs,
-            model=request.model,
-            keywords=keywords,
-            history=history,
-            mode=mode,
-        )
+    # C5.3/D29: las citas van SIEMPRE en modo licitación, incluso vacías. Una
+    # respuesta sobre un expediente sin un solo fragmento citable es una
+    # respuesta construida con los metadatos del anuncio, y el usuario tiene
+    # que poder distinguirla de una respaldada por el pliego. El silencio no lo
+    # distingue: parece lo mismo que una respuesta bien citada.
+    citas = _citas(docs)
+    if mode == "licitacion" or citas:
+        pre_events.append({"sources": citas, "sin_fuentes": not citas})
+
+    # C5.5: la misma pregunta sobre el mismo expediente no se paga dos veces.
+    # La clave lleva modo, modelo, versión de prompt y huella del contexto; el
+    # usuario **no** entra a propósito (ver `llm/cache.py`).
+    clave_cache = llm_cache.clave(
+        modo=mode,
+        modelo=request.model,
+        pregunta=request.question,
+        docs=docs,
+        historial=history,
+    )
+    texto_cacheado = None if request.force else llm_cache.leer(clave_cache, modo=mode)
+    pre_events[0]["ask_meta"]["cached"] = texto_cacheado is not None
+
+    if texto_cacheado is not None:
+
+        def _factory() -> Iterator[str]:
+            """Acierto: se sirve el texto guardado, sin proveedor y sin coste."""
+            return iter([texto_cacheado])
+
+    else:
+
+        def _factory() -> Iterator[str]:
+            # El coste solo se conoce dentro de llm/client.py::_record_usage, que no
+            # ve al usuario. Se corre en un thread con contexto propio (to_thread lo
+            # copia), así que dejar ahí el sujeto lo atribuye sin filtrarlo a otras
+            # requests.
+            bind_budget_subject(scope_key)
+            # C2.9: sin esto el cubo de la organización se comprueba pero nunca
+            # se alimenta, y un tope que no acumula no corta nunca.
+            bind_budget_org(org_key)
+
+            def _generar_y_cachear() -> Iterator[str]:
+                partes: list[str] = []
+                for token in stream_llm_response(
+                    question=request.question,
+                    docs=docs,
+                    model=request.model,
+                    keywords=keywords,
+                    history=history,
+                    mode=mode,
+                ):
+                    partes.append(token)
+                    yield token
+                # Sólo un stream completo con contenido deja entrada: cachear un
+                # degradado lo volvería permanente durante 24 h.
+                llm_cache.guardar(clave_cache, "".join(partes))
+
+            return _generar_y_cachear()
 
     return _stream_sse(
         _factory,
@@ -488,7 +587,7 @@ async def ask_question(
 
     _check_budget(user)
 
-    generator = await _stream_ask(body, _budget_subject(user))
+    generator = await _stream_ask(body, _budget_subject(user), _budget_org(user))
 
     return StreamingResponse(
         generator,
@@ -548,7 +647,7 @@ async def resumen_licitacion(
 
     _check_budget(user)
 
-    from llm.budget import bind_budget_subject
+    from llm.budget import bind_budget_org, bind_budget_subject
     from llm.client import stream_llm_response
     from services.rag.context import (
         LicitacionContext,
@@ -557,6 +656,7 @@ async def resumen_licitacion(
     )
 
     scope_key = _budget_subject(user)
+    org_key = _budget_org(user)
 
     # Igual que en `/ask`: el armado del contexto toca BD y no puede correr en
     # el event loop. `primary_doc_from_context` también va a BD, así que viaja
@@ -629,8 +729,10 @@ async def resumen_licitacion(
     else:
 
         def _factory() -> Iterator[str]:
-            # Ver _stream_ask: el sujeto viaja por contexto hasta _record_usage.
+            # Ver _stream_ask: sujeto y organización viajan por contexto hasta
+            # _record_usage, que es donde se conoce el coste real.
             bind_budget_subject(scope_key)
+            bind_budget_org(org_key)
 
             def _generate_and_cache() -> Iterator[str]:
                 parts: list[str] = []

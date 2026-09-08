@@ -16,6 +16,20 @@ _WATCHLIST_LIC_COLS = (
 )
 
 
+def _nota_disponible() -> bool:
+    """``watchlist_items.nota`` existe (``v123`` aplicada)."""
+    from db.columnas import existe
+
+    return existe("watchlist_items", "nota")
+
+
+def _proyeccion_nota() -> str:
+    """La nota del propio usuario, o ``NULL`` mientras la columna no exista."""
+    if _nota_disponible():
+        return "CASE WHEN wi.user_key = %s THEN wi.nota END AS nota"
+    return "NULL AS nota"
+
+
 class WatchlistRepository:
     """Acceso a las tablas ``watchlist_cpv``, ``watchlist_items`` y ``pending_digests``."""
 
@@ -197,12 +211,26 @@ class WatchlistRepository:
             cur = c.execute(
                 "SELECT wi.id, wi.id_externo, wi.created_at, "
                 "       wi.organization_id, wi.visibility, "
+                # C6.6: la nota es de quien la escribió, incluso sobre un
+                # favorito compartido con el equipo. La proyección lo deja
+                # imposible de leer mal; una segunda columna de visibilidad
+                # sería un segundo sitio donde equivocarse.
+                #
+                # Y va condicionada a que `v123` esté aplicada: producción migra
+                # a mano, así que entre el despliegue y la migración hay una
+                # ventana en la que nombrar `wi.nota` dejaría la lista de
+                # favoritos en 500 (ver `db/columnas.py`).
+                "       " + _proyeccion_nota() + ", "
                 "       l.titulo, l.importe, l.estado, l.fecha_publicacion "
                 "FROM watchlist_items wi "
                 "LEFT JOIN licitaciones l ON l.id_externo = wi.id_externo "
                 + self._ITEMS_SCOPE_WHERE
                 + "ORDER BY wi.created_at DESC, wi.id DESC",
-                (organization_id, user_id, user_key),
+                (
+                    (user_key, organization_id, user_id, user_key)
+                    if _nota_disponible()
+                    else (organization_id, user_id, user_key)
+                ),
             )
             return rows_to_dicts(cur)
 
@@ -260,6 +288,31 @@ class WatchlistRepository:
             )
             rows = rows_to_dicts(cur)
         return rows[0] if rows else {}
+
+    def set_note(
+        self,
+        user_key: str,
+        id_externo: str,
+        organization_id: int,
+        nota: str | None,
+    ) -> bool:
+        """Escribe (o borra, con ``None``) la nota **propia** de un favorito.
+
+        El ``WHERE`` exige ``user_key``: a diferencia de ``remove_item``, que
+        acepta borrar un favorito compartido de la organización, aquí nadie
+        edita la nota de otra persona. Un favorito compartido con nota ajena
+        seguiría siendo suyo.
+
+        Devuelve ``False`` si no hay favorito propio para ese expediente.
+        """
+        limpia = (nota or "").strip() or None
+        with connect() as c:
+            cur = c.execute(
+                "UPDATE watchlist_items SET nota = %s "
+                "WHERE organization_id = %s AND id_externo = %s AND user_key = %s",
+                (limpia, organization_id, id_externo, user_key),
+            )
+            return bool(cur.rowcount > 0)
 
     def remove_item(
         self,

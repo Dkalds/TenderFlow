@@ -18,7 +18,7 @@ from fastapi import (
 from pydantic import BaseModel, Field
 
 from api.concurrency import run_db
-from api.routes.dual_auth import require_any_auth
+from api.routes.dual_auth import require_any_auth, require_recent_session
 from db.repositories.pursuits import PursuitRepository
 from observability.logging import get_logger
 from services.cartera import ContratoCartera, cartera_de_usuario
@@ -29,12 +29,19 @@ from services.direccion import (
     corte_con_minimo,
     exigir_direccion,
 )
+from services.gonogo import GoNoGoError
+from services.gonogo import guardar_ajustes as guardar_ajustes_gonogo
+from services.gonogo import leer_ajustes as leer_ajustes_gonogo
+from services.gonogo import puntuar as puntuar_gonogo
 from services.kit_presentacion import KitPresentacion
 from services.organizations import (
     OrganizationAccessError,
     OrganizationInvitationNotFoundError,
+    OrganizationLifecycleError,
+    OrganizationMemberNotFoundError,
     OrganizationPermissionError,
     accept_invitation_token,
+    borrar_organizacion,
     create_organization,
     get_active_organization,
     invite_member_by_email,
@@ -42,7 +49,10 @@ from services.organizations import (
     list_members,
     list_organizations,
     resend_invitation,
+    resumen_de_borrado,
     revoke_invitation,
+    salir_de_organizacion,
+    transferir_propiedad,
     upsert_membership,
 )
 from services.pursuit_comments import (
@@ -51,6 +61,13 @@ from services.pursuit_comments import (
     delete_comment,
     list_comments,
 )
+from services.pursuit_tasks import (
+    PursuitTaskNotFoundError,
+    add_task,
+    list_tasks,
+    update_task,
+)
+from services.pursuit_tasks import agenda as tasks_agenda
 from services.pursuits import (
     PesosPropuestos,
     PesosPropuestosAplicados,
@@ -59,6 +76,7 @@ from services.pursuits import (
     PursuitTransitionError,
     PursuitValidationError,
     apply_weights_proposal,
+    baja_propia,
     create_pursuit,
     ficha_pdf,
     get_agenda,
@@ -71,6 +89,11 @@ from services.pursuits import (
     update_pursuit,
 )
 from shared.dto import (
+    BajaPropiaResult,
+    GoNoGoAjustes,
+    GoNoGoPesos,
+    GoNoGoPuntuaciones,
+    GoNoGoResult,
     OrganizationCreate,
     OrganizationInvitationAccept,
     OrganizationInvitationOut,
@@ -88,6 +111,11 @@ from shared.dto import (
     PursuitMetrics,
     PursuitStatus,
     PursuitSummary,
+    PursuitTaskAgendaResponse,
+    PursuitTaskCreate,
+    PursuitTaskListResponse,
+    PursuitTaskOut,
+    PursuitTaskUpdate,
     PursuitUpdate,
     StatusOk,
 )
@@ -131,6 +159,169 @@ async def get_active_organization_route(
         )
     except OrganizationAccessError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
+
+
+class TransferOwnershipBody(BaseModel):
+    """Traspaso de propiedad (C2.2)."""
+
+    #: Miembro **activo** que pasa a ser owner. Invitar y traspasar son cosas
+    #: distintas: hacerlas de una convertiría un error de tipeo en el email en
+    #: una organización cuyo owner no existe.
+    nuevo_owner_user_id: int
+
+
+class DeleteOrganizationBody(BaseModel):
+    """Borrado de organización, con confirmación literal (C2.2)."""
+
+    #: Hay que escribir `BORRAR`. Un botón no basta: la acción no tiene deshacer
+    #: y se lleva trabajo de otras personas.
+    confirmacion: str
+
+
+class OrganizationDeletionSummary(BaseModel):
+    """Qué se borró (o se borraría) con la organización.
+
+    Es lo que la confirmación enseña **antes** de pedirla: «vas a borrar 14
+    oportunidades y 37 comentarios» es una advertencia; «¿seguro?» no.
+
+    Un `-1` significa que ese recuento no se pudo hacer, no que sea cero.
+    """
+
+    oportunidades: int = 0
+    comentarios: int = 0
+    miembros: int = 0
+
+
+@router.post(
+    "/organizations/{organization_id}/transfer-ownership",
+    summary="Traspasar la propiedad de la organización",
+    responses={
+        403: {"description": "No sos el owner"},
+        404: {"description": "El destinatario no es miembro activo"},
+        409: {"description": "La organización personal no se traspasa"},
+    },
+)
+async def post_transfer_ownership(
+    organization_id: int,
+    body: TransferOwnershipBody,
+    ctx: dict[str, Any] = Depends(require_any_auth),
+) -> StatusOk:
+    """Mueve el rol `owner` a otro miembro (C2.2).
+
+    Hasta 2026-09 no existía: `_guard_owner_row` lo reconocía en su propio
+    docstring, y una organización cuyo owner se iba quedaba sin nadie que
+    pudiera administrarla.
+
+    El owner saliente queda como `admin`: quien monta un equipo no debería
+    perder el acceso al traspasarlo.
+    """
+    try:
+        await run_db(
+            transferir_propiedad,
+            organization_id=organization_id,
+            actor_user_id=int(ctx["user_id"]),
+            nuevo_owner_user_id=body.nuevo_owner_user_id,
+        )
+    except OrganizationPermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except OrganizationMemberNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except OrganizationLifecycleError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return StatusOk(status="ok")
+
+
+@router.post(
+    "/organizations/{organization_id}/leave",
+    summary="Salir de la organización",
+    responses={
+        404: {"description": "No sos miembro"},
+        409: {"description": "Sos el owner, o es tu organización personal"},
+    },
+)
+async def post_leave_organization(
+    organization_id: int,
+    ctx: dict[str, Any] = Depends(require_any_auth),
+) -> StatusOk:
+    """Salida voluntaria (C2.2).
+
+    La membresía queda `revoked`, no borrada: un comentario firmado por alguien
+    que ya no está sigue siendo suyo (ADR-030 §D).
+    """
+    try:
+        await run_db(
+            salir_de_organizacion,
+            organization_id=organization_id,
+            user_id=int(ctx["user_id"]),
+        )
+    except OrganizationMemberNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except OrganizationLifecycleError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return StatusOk(status="ok")
+
+
+@router.get(
+    "/organizations/{organization_id}/deletion-preview",
+    summary="Qué se borraría con la organización",
+    responses={403: {"description": "No sos el owner"}},
+)
+async def get_deletion_preview(
+    organization_id: int,
+    ctx: dict[str, Any] = Depends(require_any_auth),
+) -> OrganizationDeletionSummary:
+    """El recuento que la confirmación tiene que enseñar antes de pedirla."""
+    try:
+        conteos = await run_db(
+            resumen_de_borrado,
+            organization_id=organization_id,
+            actor_user_id=int(ctx["user_id"]),
+        )
+    except OrganizationPermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    return OrganizationDeletionSummary(**conteos)
+
+
+@router.post(
+    "/organizations/{organization_id}/delete",
+    summary="Borrar la organización (confirmación literal)",
+    responses={
+        403: {"description": "No sos el owner"},
+        404: {"description": "La organización no existe"},
+        409: {"description": "Confirmación incorrecta, o es la personal"},
+    },
+)
+async def post_delete_organization(
+    organization_id: int,
+    body: DeleteOrganizationBody,
+    ctx: dict[str, Any] = Depends(require_recent_session()),
+) -> OrganizationDeletionSummary:
+    """Borra la organización y su dato corporativo (C2.2, ADR-030 §D).
+
+    `POST /delete` y no `DELETE`: el borrado exige un cuerpo con la confirmación
+    literal, y un `DELETE` con cuerpo lo tratan mal bastantes clientes y proxies.
+
+    Exige además sesión reciente: se lleva trabajo de otras personas y no tiene
+    deshacer.
+
+    Qué cae con ella: **dato corporativo** — oportunidades, comentarios,
+    capacidades, claves de organización. Qué sobrevive: el dato personal de cada
+    miembro, que cuelga de su cuenta.
+    """
+    try:
+        conteos = await run_db(
+            borrar_organizacion,
+            organization_id=organization_id,
+            actor_user_id=int(ctx["user_id"]),
+            confirmacion=body.confirmacion,
+        )
+    except OrganizationPermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except OrganizationMemberNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except OrganizationLifecycleError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return OrganizationDeletionSummary(**conteos)
 
 
 @router.get(
@@ -430,6 +621,114 @@ async def get_pursuits_agenda(
         )
     except OrganizationAccessError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
+
+
+# `/pursuits/tasks/agenda` se declara AQUÍ, antes de `/pursuits/{pursuit_id}`,
+# y no junto al resto de rutas de tareas: FastAPI resuelve por orden de
+# declaración, así que una ruta literal bajo `/pursuits/` que llegue después
+# de la paramétrica nunca se alcanza — la petición entra por `{pursuit_id}`
+# con el valor "tasks" y muere en un 422 que no dice nada.
+@router.get("/pursuits/tasks/agenda", response_model=PursuitTaskAgendaResponse)
+async def get_pursuit_tasks_agenda(
+    organization_id: int | None = Query(default=None, ge=1),
+    solo_mias: bool = Query(default=False, description="Sólo las asignadas a quien pregunta"),
+    limite: int = Query(default=50, ge=1, le=500),
+    ctx: dict[str, Any] = Depends(require_any_auth),
+) -> PursuitTaskAgendaResponse:
+    """Agenda del tablero: tareas pendientes de la organización por urgencia.
+
+    Cada una trae el `id_externo` de su expediente: una lista de tareas que no
+    dice de qué expediente son obliga a abrir cada una para saber si importa.
+    """
+    try:
+        return await run_db(
+            tasks_agenda,
+            int(ctx["user_id"]),
+            organization_id=organization_id,
+            solo_mias=solo_mias,
+            limite=limite,
+        )
+    except OrganizationAccessError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+
+
+@router.get("/pursuits/baja-propia", response_model=BajaPropiaResult)
+async def get_baja_propia(
+    organization_id: int | None = Query(default=None, ge=1),
+    segmento: str = Query("cpv", pattern="^(cpv|organo)$"),
+    limite: int = Query(50, ge=1, le=200),
+    ctx: dict[str, Any] = Depends(require_any_auth),
+) -> BajaPropiaResult:
+    """Mi baja media por CPV a cuatro dígitos o por órgano (C6.5).
+
+    El mercado lo da `/competitive/bajas/referencia`; esto es la otra mitad, y
+    hasta ahora no existía: el producto sabía cuánto baja el mercado y no cuánto
+    baja el equipo que lo usa.
+
+    Sólo cuenta lo **presentado** y con base sin IVA declarada (C1.1): comparar
+    una oferta sin IVA contra un presupuesto que lo lleva produce una baja del
+    21 % que no existió. Cada segmento declara su `n` y se ocultan los que no
+    llegan al mínimo — con menos de cinco ofertas, la media la mueve un caso.
+    """
+    try:
+        return await run_db(
+            baja_propia,
+            int(ctx["user_id"]),
+            organization_id=organization_id,
+            segmento=segmento,
+            limite=limite,
+        )
+    except OrganizationAccessError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+
+
+@router.get("/organizations/gonogo", response_model=GoNoGoAjustes)
+async def get_gonogo_ajustes(
+    organization_id: int | None = Query(default=None, ge=1),
+    ctx: dict[str, Any] = Depends(require_any_auth),
+) -> GoNoGoAjustes:
+    """Plantilla de go/no-go de la organización: pesos y umbral (C6.4, D30)."""
+    try:
+        pesos, umbral = await run_db(leer_ajustes_gonogo, int(ctx["user_id"]), organization_id)
+    except OrganizationAccessError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    return GoNoGoAjustes(pesos=GoNoGoPesos(**pesos), umbral=umbral)
+
+
+@router.put(
+    "/organizations/gonogo",
+    response_model=GoNoGoAjustes,
+    responses={
+        403: {"description": "Sólo owner o admin"},
+        422: {"description": "Los pesos no suman 100"},
+    },
+)
+async def put_gonogo_ajustes(
+    body: GoNoGoAjustes,
+    organization_id: int | None = Query(default=None, ge=1),
+    ctx: dict[str, Any] = Depends(require_any_auth),
+) -> GoNoGoAjustes:
+    """Cambia los pesos y el umbral. Sólo owner/admin, y queda auditado.
+
+    La plantilla decide contra qué se juzgan las oportunidades del equipo
+    entero: quien la toca cambia el criterio de todos, así que el cambio deja
+    rastro con el valor anterior y el nuevo.
+    """
+    try:
+        pesos, umbral = await run_db(
+            guardar_ajustes_gonogo,
+            int(ctx["user_id"]),
+            body.pesos.model_dump(),
+            body.umbral,
+            organization_id=organization_id,
+        )
+    except OrganizationAccessError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except OrganizationPermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except GoNoGoError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return GoNoGoAjustes(pesos=GoNoGoPesos(**pesos), umbral=umbral)
 
 
 @router.get("/pursuits/weights-proposal", response_model=PesosPropuestos)
@@ -825,3 +1124,145 @@ async def delete_pursuit_comment(
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except (PursuitNotFoundError, PursuitCommentNotFoundError) as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.get("/pursuits/{pursuit_id}/tasks", response_model=PursuitTaskListResponse)
+async def get_pursuit_tasks(
+    pursuit_id: int,
+    organization_id: int | None = Query(default=None, ge=1),
+    incluir_cerradas: bool = Query(
+        default=True,
+        description="Incluir las hechas y canceladas. Una cancelada dice que alguien lo evaluó.",
+    ),
+    ctx: dict[str, Any] = Depends(require_any_auth),
+) -> PursuitTaskListResponse:
+    """Tareas de la oportunidad: pendientes primero y por fecha de vencimiento.
+
+    Hasta 2026-09 una oportunidad tenía **una** próxima acción y era texto
+    libre. Preparar una oferta son diez tareas con responsables y fechas
+    distintas (C6.1).
+    """
+    try:
+        return await run_db(
+            list_tasks,
+            int(ctx["user_id"]),
+            pursuit_id,
+            organization_id=organization_id,
+            incluir_cerradas=incluir_cerradas,
+        )
+    except OrganizationAccessError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except PursuitNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.post(
+    "/pursuits/{pursuit_id}/tasks",
+    response_model=PursuitTaskOut,
+    status_code=status.HTTP_201_CREATED,
+)
+async def post_pursuit_task(
+    pursuit_id: int,
+    body: PursuitTaskCreate,
+    organization_id: int | None = Query(default=None, ge=1),
+    ctx: dict[str, Any] = Depends(require_any_auth),
+) -> PursuitTaskOut:
+    """Crea una tarea y actualiza la próxima acción del expediente.
+
+    `next_action` deja de escribirse a mano: pasa a ser la tarea pendiente más
+    próxima a vencer. Un campo que hay que mantener sincronizado a mano se
+    desincroniza, y el tablero acaba enseñando algo que se terminó hace
+    semanas.
+    """
+    try:
+        return await run_db(
+            add_task,
+            int(ctx["user_id"]),
+            pursuit_id,
+            body,
+            organization_id=organization_id,
+        )
+    except OrganizationAccessError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except PursuitNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.patch(
+    "/pursuits/{pursuit_id}/tasks/{task_id}",
+    response_model=PursuitTaskOut,
+    responses={404: {"description": "La tarea no existe en este espacio"}},
+)
+async def patch_pursuit_task(
+    pursuit_id: int,
+    task_id: int,
+    body: PursuitTaskUpdate,
+    organization_id: int | None = Query(default=None, ge=1),
+    ctx: dict[str, Any] = Depends(require_any_auth),
+) -> PursuitTaskOut:
+    """Cambia una tarea: título, responsable, fecha o estado.
+
+    Los campos ausentes no se tocan; los enviados a `null` sí borran el valor —
+    así se puede desasignar una tarea o quitarle el plazo.
+    """
+    try:
+        return await run_db(
+            update_task,
+            int(ctx["user_id"]),
+            pursuit_id,
+            task_id,
+            body,
+            organization_id=organization_id,
+        )
+    except OrganizationAccessError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except PursuitTaskNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.put(
+    "/pursuits/{pursuit_id}/gonogo",
+    response_model=GoNoGoResult,
+    responses={
+        404: {"description": "La oportunidad no existe en este espacio"},
+        422: {"description": "Faltan criterios o están fuera de 1-5"},
+    },
+)
+async def put_pursuit_gonogo(
+    pursuit_id: int,
+    body: GoNoGoPuntuaciones,
+    organization_id: int | None = Query(default=None, ge=1),
+    ctx: dict[str, Any] = Depends(require_any_auth),
+) -> GoNoGoResult:
+    """Puntúa la oportunidad con la plantilla vigente (C6.4, D30).
+
+    Hasta 2026-09 la decisión más cara del proceso —presentarse o no— se
+    registraba como una etiqueta y un párrafo de texto libre, así que «¿en qué
+    nos equivocamos al decidir?» no tenía respuesta: no constaba contra qué se
+    decidió.
+
+    El total se calcula con los pesos de **este momento** y se guarda. Los pesos
+    cambian; recalcularlo al leer haría que cambiar uno reescribiera decisiones
+    ya tomadas.
+    """
+    try:
+        datos = await run_db(
+            puntuar_gonogo,
+            int(ctx["user_id"]),
+            pursuit_id,
+            body.model_dump(),
+            organization_id=organization_id,
+        )
+    except OrganizationAccessError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except GoNoGoError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except PursuitNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return GoNoGoResult(
+        pursuit_id=datos["pursuit_id"],
+        puntuaciones=GoNoGoPuntuaciones(**datos["puntuaciones"]),
+        total=datos["total"],
+        umbral=datos["umbral"],
+        bajo_umbral=datos["bajo_umbral"],
+    )

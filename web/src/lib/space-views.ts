@@ -88,6 +88,18 @@ export const SPACE_VIEWS: Record<string, SpaceView[]> = {
     { key: "maestro", label: "Maestro" },
     { key: "revision", label: "Revisión" },
   ],
+  // C7.5: los ajustes personales estaban repartidos entre la paleta de
+  // comandos (tema), la barra superior (organización activa), `/mi-cuenta`
+  // (RGPD) y ninguna parte (sesiones, claves, notificaciones — sus endpoints
+  // existían desde el stream C2 sin pantalla).
+  ajustes: [
+    { key: "apariencia", label: "Apariencia" },
+    { key: "organizacion", label: "Organización" },
+    { key: "notificaciones", label: "Notificaciones" },
+    { key: "sesiones", label: "Sesiones" },
+    { key: "claves", label: "Claves de API" },
+    { key: "cuenta", label: "Datos y cuenta", from: "mi-cuenta" },
+  ],
   ops: [
     { key: "observabilidad", label: "Observabilidad", from: "observabilidad" },
     { key: "calidad", label: "Calidad de datos", from: "calidad-datos" },
@@ -115,7 +127,7 @@ export const BUILT_SPACE_ROUTES: readonly string[] = [
   "mi-pipeline",
   "mi-watchlist",
   "mi-perfil",
-  "mi-cuenta",
+  "ajustes",
   "empresas",
   "cuentas",
   "direccion",

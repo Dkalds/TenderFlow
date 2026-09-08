@@ -116,7 +116,7 @@ def _correr_bucle(**kwargs: Any) -> list[str]:
 
     ``bulk_YYYYMM`` ES el ``source_id`` del conector, así que la lista
     devuelta es a la vez la secuencia de meses y la etiqueta con la que se
-    escriben ``extracciones`` y la DLQ.
+    escriben ``source_ingestion_health`` y la DLQ.
     """
     from scheduler.pipeline_runs import _run_bulk_pipeline_connector
 
@@ -128,7 +128,6 @@ def _correr_bucle(**kwargs: Any) -> list[str]:
 
     with (
         patch("scraper.connectors.base.run_connector", side_effect=_fake_run_connector),
-        patch("db.database.log_extraccion"),
         patch("observability.bind_run_context", return_value="run-test"),
         patch("observability.record_run", return_value=nullcontext(MagicMock())),
         patch("scraper.pipeline._summarize"),
@@ -176,7 +175,6 @@ def test_un_mes_que_revienta_no_aborta_los_siguientes() -> None:
 
     with (
         patch("scraper.connectors.base.run_connector", side_effect=_fake_run_connector),
-        patch("db.database.log_extraccion"),
         patch("observability.bind_run_context", return_value="run-test"),
         patch("observability.record_run", return_value=nullcontext(MagicMock())),
         patch("scraper.pipeline._summarize"),

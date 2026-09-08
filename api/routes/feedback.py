@@ -431,3 +431,149 @@ async def feedback_queue(
         strategy="random",
         model_version=None,
     )
+
+
+# ── Asistente: voto sobre una respuesta (C5.4) ───────────────────────────────
+
+
+class AsistenteFeedbackRequest(BaseModel):
+    """Voto sobre una respuesta del asistente.
+
+    Nada de lo que llega aquí identifica a nadie, y es a propósito: la fila que
+    se guarda no lleva usuario ni texto libre (ver `v120`).
+    """
+
+    pregunta: str = Field(..., min_length=3, max_length=2000)
+    modo: str = Field(..., description="general | licitacion | resumen")
+    modelo: str = Field(..., max_length=200)
+    voto: str = Field(..., description="up | down")
+    motivo: str | None = Field(
+        default=None,
+        description="incorrecta | incompleta | sin_fuentes | lenta | otro",
+    )
+    id_externo: str | None = Field(default=None, max_length=200)
+    cached: bool = Field(
+        default=False,
+        description="La respuesta venía de caché. Un voto negativo aquí apunta a la entrada.",
+    )
+    compartir_pregunta: bool = Field(
+        default=False,
+        description=(
+            "Cede el texto de la pregunta para mejorar el asistente. Sin esto solo "
+            "se guarda su huella."
+        ),
+    )
+
+
+class AsistenteFeedbackResult(BaseModel):
+    id: int | None = None
+    status: str = "ok"
+
+
+class AsistenteModeloBalance(BaseModel):
+    modelo: str
+    positivos: int = 0
+    negativos: int = 0
+
+
+class AsistentePreguntaProblematica(BaseModel):
+    pregunta_hash: str
+    #: Sólo si alguien cedió el texto con opt-in explícito.
+    pregunta_texto: str | None = None
+    modo: str | None = None
+    negativos: int = 0
+    total: int = 0
+    ultima_vez: str | None = None
+
+
+class AsistenteFeedbackResumen(BaseModel):
+    """Lo que el panel de ``/ops`` → Active learning necesita para decidir algo."""
+
+    positivos: int = 0
+    negativos: int = 0
+    total: int = 0
+    #: ``None`` cuando no hay ni un voto: un 0 % sin datos asusta y no significa nada.
+    pct_positivos: float | None = None
+    por_modelo: list[AsistenteModeloBalance] = Field(default_factory=list)
+    peores_preguntas: list[AsistentePreguntaProblematica] = Field(default_factory=list)
+
+
+@router.post(
+    "/asistente",
+    summary="Votar una respuesta del asistente",
+    status_code=status.HTTP_201_CREATED,
+    responses={
+        401: {"description": "No autenticado"},
+        422: {"description": "Voto o motivo fuera del vocabulario"},
+    },
+)
+async def submit_asistente_feedback(
+    body: AsistenteFeedbackRequest,
+    _ctx: dict[str, Any] = Depends(require_any_auth),
+) -> AsistenteFeedbackResult:
+    """Registra un voto sobre una respuesta de `/ask` o `/resumen` (C5.4).
+
+    Hasta 2026-09 el asistente no tenía forma de saber si acertaba: el bucle de
+    active learning que existe mide el clasificador de tecnología, no la
+    calidad de una respuesta.
+
+    El voto se guarda **sin usuario y sin texto libre**. El texto de la pregunta
+    sólo viaja si `compartir_pregunta` es `true`, que es lo que separa «cedí mi
+    pregunta» de «no me di cuenta».
+    """
+    from db.repositories.asistente_feedback import (
+        MOTIVOS,
+        VOTOS,
+        AsistenteFeedbackRepository,
+    )
+
+    # `MOTIVOS`/`VOTOS` son tuplas de constantes, pero `AsistenteFeedbackRepository`
+    # abre conexión en sus métodos: por eso lo que se despacha al threadpool es
+    # el trabajo entero y no sólo la escritura
+    # (`tests/test_async_handlers_no_blocking_io.py`).
+    if body.voto not in VOTOS:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"voto debe ser uno de {list(VOTOS)}.",
+        )
+    if body.motivo is not None and body.motivo not in MOTIVOS:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"motivo debe ser uno de {list(MOTIVOS)}.",
+        )
+
+    def _guardar() -> int | None:
+        return AsistenteFeedbackRepository().registrar(
+            pregunta=body.pregunta,
+            modo=body.modo,
+            modelo=body.modelo,
+            voto=body.voto,
+            motivo=body.motivo,
+            id_externo=body.id_externo,
+            cached=body.cached,
+            compartir_pregunta=body.compartir_pregunta,
+        )
+
+    return AsistenteFeedbackResult(id=await run_db(_guardar))
+
+
+@router.get(
+    "/asistente/stats",
+    summary="Balance de votos del asistente (panel de /ops)",
+    responses={401: {"description": "No autenticado"}},
+)
+async def asistente_feedback_stats(
+    limite: int = Query(20, ge=1, le=200),
+    _ctx: dict[str, Any] = Depends(require_any_auth),
+) -> AsistenteFeedbackResumen:
+    """Balance global, balance por modelo y las preguntas que más fallan.
+
+    El balance por modelo es lo que permite responder «¿el modelo nuevo es
+    mejor?» con un número en vez de con una impresión.
+    """
+    from db.repositories.asistente_feedback import AsistenteFeedbackRepository
+
+    def _leer() -> dict[str, Any]:
+        return AsistenteFeedbackRepository().resumen(limite=limite)
+
+    return AsistenteFeedbackResumen(**await run_db(_leer))

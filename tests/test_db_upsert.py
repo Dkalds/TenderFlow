@@ -671,26 +671,6 @@ def test_set_cursor_upserts(db):
 
 
 # ---------------------------------------------------------------------------
-# log_extraccion
-# ---------------------------------------------------------------------------
-
-
-def test_log_extraccion(db):
-    from db.database import connect
-    from db.upsert import log_extraccion
-
-    log_extraccion("test_fuente", nuevas=5, actualizadas=3, total=8, notas="ok")
-    with connect() as c:
-        row = c.execute(
-            "SELECT fuente, nuevas, actualizadas FROM extracciones WHERE fuente = %s",
-            ["test_fuente"],
-        ).fetchone()
-    assert row is not None
-    assert row[1] == 5
-    assert row[2] == 3
-
-
-# ---------------------------------------------------------------------------
 # FTS
 # ---------------------------------------------------------------------------
 

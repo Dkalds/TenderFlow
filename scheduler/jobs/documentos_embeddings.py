@@ -261,6 +261,10 @@ def report_cli() -> int:
     la ocupación del almacén de binarios: `pliegos.yml` los pide en su resumen
     y son las dos cifras que dicen si la cobertura de formatos y el almacén
     están haciendo su trabajo, sin abrir la consola.
+
+    Incluye además los pendientes por versión de embedding (C5.7): sin ese
+    número, «¿terminó el re-embebido?» sólo se puede responder mirando si el
+    job dejó de imprimir cosas.
     """
     from db.repositories.documentos import DocumentosRepository
     from shared.object_store import store_stats
@@ -268,6 +272,7 @@ def report_cli() -> int:
     repo = DocumentosRepository()
     counts = repo.status_counts()
     log.info("documentos_estado", **counts)
+    log.info("documentos_embeddings_version", **repo.pendientes_por_version_embedding())
 
     for fila in repo.formato_counts():
         log.info(

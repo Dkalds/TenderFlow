@@ -1,0 +1,307 @@
+{
+  "fuente": "euskadi",
+  "capturada": "2026-09-06",
+  "metodo": "50 expedientes tomados al azar (semilla 20260906) de las ocho primeras paginas del buscador oficial, cada uno verificado abriendo su ficha publica y comprobando que muestra el mismo numero de expediente.",
+  "expedientes": [
+    {
+      "content_name": "expcm529906",
+      "expediente": "SER/20260000003854",
+      "ficha_confirma_expediente": true,
+      "publicado": "2026-09-04"
+    },
+    {
+      "content_name": "expjaso739425",
+      "expediente": "2026-03137",
+      "ficha_confirma_expediente": true,
+      "publicado": "2026-09-04"
+    },
+    {
+      "content_name": "expjaso739369",
+      "expediente": "SG 15/27",
+      "ficha_confirma_expediente": true,
+      "publicado": "2026-09-04"
+    },
+    {
+      "content_name": "expgebizkaia3549629",
+      "expediente": "B055-2026-00004",
+      "ficha_confirma_expediente": true,
+      "publicado": "2026-09-03"
+    },
+    {
+      "content_name": "expcm530020",
+      "expediente": "20261639 - SE",
+      "ficha_confirma_expediente": true,
+      "publicado": "2026-09-04"
+    },
+    {
+      "content_name": "expcm530050",
+      "expediente": "20261403 - EI",
+      "ficha_confirma_expediente": true,
+      "publicado": "2026-09-04"
+    },
+    {
+      "content_name": "expjaso739409",
+      "expediente": "2026.42",
+      "ficha_confirma_expediente": true,
+      "publicado": "2026-09-03"
+    },
+    {
+      "content_name": "expcm529861",
+      "expediente": "4643/2026",
+      "ficha_confirma_expediente": true,
+      "publicado": "2026-09-03"
+    },
+    {
+      "content_name": "expcm529961",
+      "expediente": "SER/20260000005832",
+      "ficha_confirma_expediente": true,
+      "publicado": "2026-09-04"
+    },
+    {
+      "content_name": "expcm529828",
+      "expediente": "2026_Kon_txi_0402",
+      "ficha_confirma_expediente": true,
+      "publicado": "2026-09-03"
+    },
+    {
+      "content_name": "expjaso735706",
+      "expediente": "1932",
+      "ficha_confirma_expediente": true,
+      "publicado": "2026-09-03"
+    },
+    {
+      "content_name": "expjaso739703",
+      "expediente": "AD2026/26",
+      "ficha_confirma_expediente": true,
+      "publicado": "2026-09-04"
+    },
+    {
+      "content_name": "expjaso738102",
+      "expediente": "CO/21/26",
+      "ficha_confirma_expediente": true,
+      "publicado": "2026-09-01"
+    },
+    {
+      "content_name": "expcm530044",
+      "expediente": "20261689 - SE",
+      "ficha_confirma_expediente": true,
+      "publicado": "2026-09-04"
+    },
+    {
+      "content_name": "expjaso737643",
+      "expediente": "2026/CO_ASUM/0011",
+      "ficha_confirma_expediente": true,
+      "publicado": "2026-09-04"
+    },
+    {
+      "content_name": "expcm529963",
+      "expediente": "SER/20260000006246",
+      "ficha_confirma_expediente": true,
+      "publicado": "2026-09-04"
+    },
+    {
+      "content_name": "expjaso720466",
+      "expediente": "C02/010/2026",
+      "ficha_confirma_expediente": true,
+      "publicado": "2026-09-02"
+    },
+    {
+      "content_name": "expcm529941",
+      "expediente": "SUM/20260000005761",
+      "ficha_confirma_expediente": true,
+      "publicado": "2026-09-04"
+    },
+    {
+      "content_name": "expcm530009",
+      "expediente": "SER/20260000004895",
+      "ficha_confirma_expediente": true,
+      "publicado": "2026-09-04"
+    },
+    {
+      "content_name": "expjaso739650",
+      "expediente": "URRUZUNO 25-26 Idazle egonaldian",
+      "ficha_confirma_expediente": true,
+      "publicado": "2026-09-04"
+    },
+    {
+      "content_name": "expapjaso739652",
+      "expediente": null,
+      "ficha_confirma_expediente": false,
+      "publicado": "2026-09-04"
+    },
+    {
+      "content_name": "expjaso739256",
+      "expediente": "26/072-1",
+      "ficha_confirma_expediente": true,
+      "publicado": "2026-09-02"
+    },
+    {
+      "content_name": "expcm530046",
+      "expediente": "20261929 - SE",
+      "ficha_confirma_expediente": true,
+      "publicado": "2026-09-04"
+    },
+    {
+      "content_name": "expcm529976",
+      "expediente": "SER/20260000004694",
+      "ficha_confirma_expediente": true,
+      "publicado": "2026-09-04"
+    },
+    {
+      "content_name": "expcm529969",
+      "expediente": "SER/20260000005543",
+      "ficha_confirma_expediente": true,
+      "publicado": "2026-09-04"
+    },
+    {
+      "content_name": "expcm529893",
+      "expediente": "SUM/20260000005970",
+      "ficha_confirma_expediente": true,
+      "publicado": "2026-09-04"
+    },
+    {
+      "content_name": "expcm529908",
+      "expediente": "SER/20260000006105",
+      "ficha_confirma_expediente": true,
+      "publicado": "2026-09-04"
+    },
+    {
+      "content_name": "expjaso739382",
+      "expediente": "2026-02002",
+      "ficha_confirma_expediente": true,
+      "publicado": "2026-09-04"
+    },
+    {
+      "content_name": "expcm530030",
+      "expediente": "20262234 - SE",
+      "ficha_confirma_expediente": true,
+      "publicado": "2026-09-04"
+    },
+    {
+      "content_name": "expcm529917",
+      "expediente": "SER/20260000006285",
+      "ficha_confirma_expediente": true,
+      "publicado": "2026-09-04"
+    },
+    {
+      "content_name": "expjaso739245",
+      "expediente": "2026071EI",
+      "ficha_confirma_expediente": true,
+      "publicado": "2026-09-02"
+    },
+    {
+      "content_name": "expjaso739370",
+      "expediente": "KN2026000037",
+      "ficha_confirma_expediente": true,
+      "publicado": "2026-09-04"
+    },
+    {
+      "content_name": "expcm529872",
+      "expediente": "6855/2026",
+      "ficha_confirma_expediente": true,
+      "publicado": "2026-09-03"
+    },
+    {
+      "content_name": "expcm529962",
+      "expediente": "SER/20260000005854",
+      "ficha_confirma_expediente": true,
+      "publicado": "2026-09-04"
+    },
+    {
+      "content_name": "expgeeibar21582",
+      "expediente": "KO3000-001689/2026",
+      "ficha_confirma_expediente": true,
+      "publicado": "2026-09-02"
+    },
+    {
+      "content_name": "expjaso739379",
+      "expediente": "2026072EI",
+      "ficha_confirma_expediente": true,
+      "publicado": "2026-09-03"
+    },
+    {
+      "content_name": "expcm530042",
+      "expediente": "20261605 - SE",
+      "ficha_confirma_expediente": true,
+      "publicado": "2026-09-04"
+    },
+    {
+      "content_name": "expcm529849",
+      "expediente": "6284/2026",
+      "ficha_confirma_expediente": true,
+      "publicado": "2026-09-03"
+    },
+    {
+      "content_name": "expcm529869",
+      "expediente": "6784/2026",
+      "ficha_confirma_expediente": true,
+      "publicado": "2026-09-03"
+    },
+    {
+      "content_name": "expjaso739394",
+      "expediente": "831/2026",
+      "ficha_confirma_expediente": true,
+      "publicado": "2026-09-04"
+    },
+    {
+      "content_name": "expcm529995",
+      "expediente": "SUM/20260000006163",
+      "ficha_confirma_expediente": true,
+      "publicado": "2026-09-04"
+    },
+    {
+      "content_name": "expcm529922",
+      "expediente": "SUM/20260000006181",
+      "ficha_confirma_expediente": true,
+      "publicado": "2026-09-04"
+    },
+    {
+      "content_name": "expjaso737604",
+      "expediente": "2026/CO_ASER/0106",
+      "ficha_confirma_expediente": true,
+      "publicado": "2026-09-04"
+    },
+    {
+      "content_name": "expjaso739298",
+      "expediente": "6/2026",
+      "ficha_confirma_expediente": true,
+      "publicado": "2026-09-01"
+    },
+    {
+      "content_name": "expcm529994",
+      "expediente": "SUM/20260000004115",
+      "ficha_confirma_expediente": true,
+      "publicado": "2026-09-04"
+    },
+    {
+      "content_name": "expjaso739326",
+      "expediente": "EJIE-2026-110",
+      "ficha_confirma_expediente": true,
+      "publicado": "2026-09-02"
+    },
+    {
+      "content_name": "expjaso739392",
+      "expediente": "2026077EI",
+      "ficha_confirma_expediente": true,
+      "publicado": "2026-09-03"
+    },
+    {
+      "content_name": "expcm529984",
+      "expediente": "SER/20260000005905",
+      "ficha_confirma_expediente": true,
+      "publicado": "2026-09-04"
+    },
+    {
+      "content_name": "expcm530045",
+      "expediente": "20261723 - SE",
+      "ficha_confirma_expediente": true,
+      "publicado": "2026-09-04"
+    },
+    {
+      "content_name": "expjaso739313",
+      "expediente": "2026COHO0006",
+      "ficha_confirma_expediente": true,
+      "publicado": "2026-09-01"
+    }
+  ]
+}

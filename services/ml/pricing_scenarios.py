@@ -92,6 +92,15 @@ class PriceScenariosResult(BaseModel):
     distribution: HistoricalDistribution | None = None
     scenarios: list[PriceScenario] = Field(default_factory=list)
     win_probability_gate: WinProbabilityGate = Field(default_factory=WinProbabilityGate)
+    # C1.1 / ADR-032 — sobre qué base de importe se calculó la distribución.
+    #
+    # `mixta`: se excluyeron las filas que se sabe que llevan IVA
+    # (`importe_tipo = 'con_iva'`), pero el histórico anterior a `v112` sigue
+    # dentro porque su base no se puede determinar sin volver a parsear el
+    # CODICE original. Publicar una baja sin decir su base es publicar un número
+    # que no se puede interpretar: el 21 % de IVA cabe entero dentro del rango
+    # de bajas plausibles.
+    base: str = "mixta"
     methodology: str = "Distribución empírica de bajas en adjudicaciones comparables observadas."
     disclaimer: str = (
         "Estos escenarios NO son una P(ganar) causal ni garantizan adjudicación. "

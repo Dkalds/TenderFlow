@@ -418,7 +418,10 @@ def test_pscp_parse_puebla_la_recencia_con_el_updated_at():
     conector = PscpConnector(dataset_id="ybgg-dgi6", domain="ejemplo.cat", app_token="")
     record = {
         "codi_expedient": "EXP-1",
-        "objecte_contracte": "Servei de manteniment",
+        # Con señal tecnológica a propósito: desde C4.1 el conector descarta lo
+        # que no la tiene, y este test es sobre `:updated_at`, no sobre el
+        # filtro. Un título genérico haría que fallara por el motivo equivocado.
+        "objecte_contracte": "Servei de manteniment SAP",
         ":updated_at": "2026-06-11T10:23:45.000",
     }
 

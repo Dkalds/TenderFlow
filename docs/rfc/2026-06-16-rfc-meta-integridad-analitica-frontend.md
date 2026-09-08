@@ -15,6 +15,7 @@ superseded_reason: >
   quien lo lea. Verificado contra el árbol el 2026-09-06 (O0.7b del plan de
   arquitectura v2).
 graduates-to: [[ADR-014-integridad-analitica-frontend|ADR-014]] (graduado el 2026-07-28)
+evidence: Graduado a `docs/adr/ADR-014-integridad-analitica-frontend.md`
 ---
 
 ## Contexto

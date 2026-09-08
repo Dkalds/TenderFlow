@@ -60,6 +60,26 @@ Que `graphify-out/` esté dirty tras hooks o actualizaciones incrementales es
 normal. Leé archivos raw cuando vayas a modificar o depurar código concreto, o
 cuando el grafo no tenga el detalle necesario.
 
+**Peso de `graphify-out/`: se conserva commiteado** (decisión del 2026-09-06,
+C3.7). Medido ese día: **17 MB**, de los que 16 MB son `graph.json`; cuatro
+ficheros versionados, sobre un repositorio empaquetado de 23 MB.
+
+Se evaluaron las tres opciones y las dos alternativas rompen el paso 2 de la
+lista de arriba:
+
+- **Artefacto de CI.** El grafo dejaría de estar en el checkout, que es
+  precisamente donde lo lee un agente sin el CLI — el caso de **todas** las
+  sesiones remotas. Cambiaría un fallback que funciona por uno que exige
+  descargar un artefacto y autenticarse.
+- **Git LFS.** Añade un requisito de instalación a cualquiera que clone, y un
+  `clone` sin LFS deja punteros en vez del grafo: el mismo fallo, en silencio.
+- **Conservarlo.** 17 MB en un repositorio de 23 MB es caro en proporción y
+  barato en absoluto, y mantiene el fallback documentado.
+
+**Disparador de revisión:** si `graphify-out/` supera los **50 MB**, se vuelve a
+decidir. El número no es un límite técnico; es el punto en que el coste del
+clon deja de ser despreciable frente a la comodidad que compra.
+
 ---
 
 ## 2. Mapa de áreas
@@ -205,6 +225,27 @@ Para todo lo demás (editar código de feature, añadir tests, refactor local), 
 - [docs/adr/](docs/adr/), [docs/runbooks/](docs/runbooks/),
   [docs/sli-slo.md](docs/sli-slo.md) y [docs/SECURITY.md](docs/SECURITY.md):
   decisiones y operación.
+- [docs/COSTES.md](docs/COSTES.md): coste mensual por proveedor, umbral de
+  alerta y fecha de medición.
+- [docs/legal/registro-tratamientos.md](docs/legal/registro-tratamientos.md) y
+  [docs/legal/anexo-encargo-tratamiento.md](docs/legal/anexo-encargo-tratamiento.md):
+  registro del art. 30 RGPD y anexo de encargo para clientes B2B. Ambos tienen
+  casillas que **solo puede rellenar el propietario** (identidad societaria,
+  DPA de cada encargado); están marcadas como tales y no se inventan.
+- Decisiones estructurales vigentes que aún no tienen implementación completa:
+  [ADR-027](docs/adr/ADR-027-backbone-de-eventos-outbox.md) (outbox sobre
+  `domain_events`), [ADR-028](docs/adr/ADR-028-cola-de-trabajo-y-worker.md)
+  (cola y worker; acota ADR-012),
+  [ADR-029](docs/adr/ADR-029-almacen-de-objetos.md) (almacén de objetos;
+  revoca «texto por página, sin blob store»),
+  [ADR-030](docs/adr/ADR-030-identidad-user-id-y-oidc.md) (`user_id` como
+  identidad interna, OIDC, y quién posee el dato personal frente al
+  corporativo), [ADR-031](docs/adr/ADR-031-seguimiento-unificado.md)
+  (tabla `follows`) y
+  [ADR-032](docs/adr/ADR-032-semantica-del-importe-y-maestro-de-organos.md)
+  (semántica del importe y maestro de órganos). **Leelos antes de tocar
+  eventos, notificaciones, documentos binarios, identidad, seguimiento o
+  importes**: fijan la forma que esos cambios deben tener.
 
 `AGENTS.md` es la fuente común; `CLAUDE.md` y
 `.github/copilot-instructions.md` solo adaptan plataformas. Los commands viven

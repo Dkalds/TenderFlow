@@ -37,7 +37,11 @@ export function DetalleBarra({
         <button
           type="button"
           onClick={onClearCierre}
-          title="Quitar el recorte por fecha de cierre"
+          // `aria-label` y no `title`: el texto visible es la etiqueta del
+          // recorte más una «×», así que sin esto un lector de pantalla
+          // anuncia el botón sin decir qué hace. `title` no se dispara con
+          // teclado (C7.4).
+          aria-label="Quitar el recorte por fecha de cierre"
           className="tf-pressable inline-flex h-6 items-center gap-1.5 rounded-md border border-primary/26 bg-primary/10 px-2 text-[11px] font-medium text-primary transition-colors duration-140 ease-out hover:bg-primary/20"
         >
           {cierreLabel}

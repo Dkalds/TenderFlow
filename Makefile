@@ -1,5 +1,5 @@
 .PHONY: status schema-doc product-status job-parity skills-inventory install dev lint format typecheck audit audit-truth-check fuzz-api mutation-sample capture-placsp-fixtures test test-all test-parallel test-unit test-integration test-e2e test-property test-load lock lock-hashes lock-uv install-uv scrape scrape-daily scrape-bulk api doctor seed seed-full seed-reset clean kpi kpi-export-parquet runbook-backup-restore runbook-dlq-replay runbook-rate-limit-reset runbook-model-rollback runbook-disaster-recovery check check-frontend-invariants check-api-contract check-agent-docs audit-truth help migrate migrate-alembic migrate-status migrate-history web-dev web-build web-codegen web-lint web-typecheck web-test-e2e web-test-e2e-ui web-docker cutover
-.PHONY: web-test web-test-coverage check-env-parity check-public-surface
+.PHONY: web-test web-test-coverage check-env-parity check-public-surface check-regional-coverage seed-keywords
 
 # ── Ayuda ────────────────────────────────────────────────────────────────
 help:  ## Muestra esta ayuda
@@ -39,14 +39,30 @@ check:  ## Lint + typecheck + tests unit+integration (ideal para desarrollo)
 	mypy .
 	pytest tests/ -m "(unit or integration) and not slow" -q
 
+check-analytics-unbounded:  ## Ningún método analítico materializa sin cota (ADR-023, C3.2)
+	python scripts/check_analytics_unbounded.py
+
+seed-keywords:  ## Siembra tecnologias_keywords desde config/keywords.py (C5.6)
+	# Idempotente: si la tabla ya tiene filas no toca nada, y nunca reactiva
+	# una keyword retirada. `--check` informa sin escribir.
+	python scripts/seed_tech_keywords.py
+
+check-regional-coverage:  ## Cobertura del conector de Euskadi contra su muestra (C4.3)
+	# Sale a la red: no va en `make check`. Ver docs/regional-source-coverage.md.
+	python scripts/check_regional_coverage.py
+
 check-frontend-invariants:  ## Integridad analítica del frontend (ADR-014, bloqueante)
 	python scripts/check_frontend_invariants.py --strict
 
-check-api-contract:  ## Ratchet del contrato API↔web (ninguna operación nueva opaca)
+check-api-contract:  ## Ratchet del contrato API↔web + fixtures del frontend
 	python scripts/check_openapi_contract.py
+	python scripts/check_contract_fixtures.py
 
-check-agent-docs:  ## Valida instrucciones, skills, commands, hooks, plugins y markers
+check-agent-docs:  ## Valida instrucciones, skills, commands, hooks, docs generados y backlog
 	python scripts/check_agent_docs.py
+	python scripts/gen_retention_doc.py --check
+	python scripts/gen_rfc_index.py --check
+	python scripts/check_backlog_freshness.py
 
 check-env-parity:  ## Variables obligatorias en prod declaradas en render.yaml y documentadas
 	python scripts/check_env_parity.py
@@ -135,6 +151,11 @@ LOCK_TARGET := --python-platform x86_64-unknown-linux-gnu --python-version 3.13
 lock:  ## Genera lockfiles reproducibles con hashes (uv pip compile)
 	uv pip compile requirements.in -o requirements.txt --generate-hashes $(LOCK_TARGET) --quiet
 	uv pip compile requirements-dev.in -o requirements-dev.txt --generate-hashes $(LOCK_TARGET) --quiet
+	# C3.1: el corte API / pipeline. `requirements-api.txt` es el que instala
+	# docker/Dockerfile.api en cuanto exista; hasta entonces la imagen sigue
+	# con requirements.txt y `scripts/check_requirements_sync.py` lo avisa.
+	uv pip compile requirements-api.in -o requirements-api.txt --generate-hashes $(LOCK_TARGET) --quiet
+	uv pip compile requirements-pipeline.in -o requirements-pipeline.txt --generate-hashes $(LOCK_TARGET) --quiet
 
 lock-hashes: lock
 

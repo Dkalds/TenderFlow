@@ -1,0 +1,91 @@
+# Dependencias de la imagen de la API (C3.1).
+#
+# Compilar con `make lock`. La imagen expuesta a internet instala ESTE fichero;
+# lo que no esté aquí no viaja a producción de la API, y por tanto no hay que
+# parchearlo cuando salga un aviso.
+#
+# ── Cómo se decidió el corte ─────────────────────────────────────────────────
+#
+# No por intuición: se midió el cono de dependencias alcanzable desde
+# `api/` (2026-09-06). Un paquete entra aquí si alguna ruta lo importa, aunque
+# sea de forma perezosa dentro de la función. Los imports lazy son justo los que
+# un corte por "parece de ML" se lleva por delante, y su fallo aparece en
+# producción en la primera request que toca esa rama, no en el build.
+#
+# Lo que la medición encontró, y conviene saber antes de mover nada:
+#
+# - `scikit-learn` **sí** lo necesita la API: `/licitaciones/{id}/explain` y la
+#   cola de active learning de `/feedback` cargan el clasificador en proceso
+#   (`api/model_cache.py`, `api/concurrency.run_ml`). No es solo del pipeline.
+# - `statsmodels` y `networkx` tienen fallback silencioso: sin ellos,
+#   `/analytics/forecast` degrada de Holt-Winters a regresión lineal y las
+#   comunidades de partners desaparecen. Sacarlos de la imagen es una decisión
+#   de PRODUCTO (servir peor a cambio de ~50 MB), no de empaquetado, así que se
+#   quedan hasta que alguien la tome. Ver docs/COSTES.md.
+# - `pypdf` lo necesita `POST /ficha-pliego/extract`, que descarga y extrae bajo
+#   demanda. Vivía en el extra `[pliegos]` y se subió a runtime por eso.
+#
+# Lo que la API NO necesita está en requirements-pipeline.in.
+
+# ── Servidor y contrato HTTP ─────────────────────────────────────────────────
+# Los techos de fastapi/starlette/uvicorn NO son arbitrarios: desde fastapi
+# 0.141 los routers montados aparecen en `app.routes` como `_IncludedRouter`
+# opacos y la API devuelve 500 en todas las rutas. Ver requirements.in.
+fastapi>=0.110.0,<0.137
+starlette>=1.0.1,<1.4
+uvicorn>=0.30.0,<0.47
+brotli-asgi>=1.4.0,<2
+pydantic-settings>=2.0.0,<3
+email-validator>=2.0.0,<3
+
+# ── Persistencia ─────────────────────────────────────────────────────────────
+psycopg[binary]>=3.2,<4
+psycopg-pool>=3.2,<4
+alembic>=1.13.0,<2
+
+# ── Autenticación y secretos ─────────────────────────────────────────────────
+bcrypt>=4.0,<6
+argon2-cffi>=23.1.0,<26
+cryptography>=50.0.0,<51
+cachetools>=5.3.0,<8
+
+# ── Observabilidad ───────────────────────────────────────────────────────────
+structlog>=24.1.0,<27
+prometheus_client>=0.19.0,<1
+prometheus-fastapi-instrumentator>=8.0.0,<9
+
+# ── Salida HTTP: webhooks, OAuth, descarga de pliegos ────────────────────────
+requests>=2.31.0,<3
+httpx>=0.27.0,<1
+
+# ── Rate limiting distribuido ────────────────────────────────────────────────
+redis>=5.0,<9
+
+# ── Analítica servida en request ─────────────────────────────────────────────
+pandas>=2.1.0,<4
+python-dateutil>=2.8.2,<3
+statsmodels>=0.14.0,<1
+networkx>=3.0,<4
+
+# ── ML servido en request (/explain, cola de feedback) ────────────────────────
+# Techo <1.9 por la regresión de HistGradientBoostingRegressor con una columna
+# entera a NaN. El detalle está en requirements.in y en
+# tests/test_s3_feature_todo_nan.py.
+scikit-learn>=1.3.0,<1.9
+
+# ── Exports ──────────────────────────────────────────────────────────────────
+reportlab>=4.0,<6
+pillow>=12.3,<13
+openpyxl>=3.1.0,<4
+
+# ── Extracción de pliegos bajo demanda ───────────────────────────────────────
+pypdf>=4.0,<7
+
+# ── LLM (/ask) ───────────────────────────────────────────────────────────────
+openai>=1.30.0,<4
+
+# ── Almacén de objetos y artefactos de modelo (ADR-029) ──────────────────────
+boto3>=1.43.56,<1.44
+
+# ── Config ───────────────────────────────────────────────────────────────────
+python-dotenv>=1.0.0,<2
