@@ -127,11 +127,47 @@ valor tipado no aparezca y listas vacías cuando no haya evidencia.
 """.strip()
 
 
-def _page_score(page: dict[str, Any]) -> int:
-    text = str(page.get("texto") or "").casefold()
-    topic_hits = sum(text.count(term.casefold()) for term in _TOPIC_TERMS)
-    tech_hits = sum(text.count(term.casefold()) for term in _TECH_TERMS)
-    return topic_hits + tech_hits
+#: La consulta con la que se rankean las páginas de la ficha (C5.2).
+#:
+#: Los mismos términos de arriba, pero como **consulta** y no como puntuación
+#: propia: hasta 2026-09 la ficha contaba apariciones de substring
+#: (`_page_score`) mientras el resto del RAG rankeaba por embeddings, de modo
+#: que el producto tenía dos selectores de páginas del mismo pliego que podían
+#: elegir páginas distintas y nadie sabía cuál iba mejor.
+#:
+#: `smart_match` es el único selector desde entonces: usa pgvector si hay
+#: embeddings y cae solo a coincidencia por substring si no los hay, que es
+#: aproximadamente lo que `_page_score` hacía. El fallback ya no es un segundo
+#: criterio de este módulo sino el que ya declara `services/embeddings.py`.
+_SELECTION_QUERY = " ".join((*_TOPIC_TERMS, *_TECH_TERMS))
+
+#: Mismo umbral laxo que `services/rag/context.py`: el ranking decide QUÉ entra
+#: y lo que queda por debajo sólo entra si sobra presupuesto.
+_RANK_THRESHOLD = 0.25
+
+
+def _rank_pages(pages: list[dict[str, Any]]) -> tuple[list[int], str]:
+    """Índices de ``pages`` por relevancia, y el método que los produjo.
+
+    El método se devuelve —y se registra— porque una ficha extraída sobre
+    páginas elegidas por embeddings y otra sobre páginas elegidas por substring
+    no son comparables, y el golden de C5.1 mide las dos sin saberlo si no se
+    anota cuál fue.
+    """
+    from services.embeddings import embeddings_available, smart_match
+
+    metodo = "embedding" if embeddings_available() else "substring"
+    corpus = [str(p.get("texto") or "") for p in pages]
+    try:
+        matches = smart_match(_SELECTION_QUERY, corpus, threshold=_RANK_THRESHOLD)
+    except Exception:
+        # `smart_match` ya cae a substring por su cuenta; que además reviente
+        # deja el orden documental, que es peor ficha pero sigue siendo ficha.
+        log.warning("fact_sheet_rank_failed", exc_info=True)
+        return list(range(len(pages))), "documental"
+    ordenados = [i for i, _score in matches]
+    vistos = set(ordenados)
+    return ordenados + [i for i in range(len(pages)) if i not in vistos], metodo
 
 
 def _select_pages(pages: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -141,11 +177,23 @@ def _select_pages(pages: list[dict[str, Any]]) -> list[dict[str, Any]]:
     first_per_doc: dict[int, dict[str, Any]] = {}
     for page in pages:
         first_per_doc.setdefault(int(page["documento_id"]), page)
+    # La portada de cada documento entra siempre: no es un segundo criterio de
+    # relevancia sino la cabecera que identifica el pliego (objeto, expediente,
+    # órgano), y sin ella el modelo no sabe de qué documento son los hechos.
+    portadas = list(first_per_doc.values())
+    orden, metodo = _rank_pages(pages)
+    posicion = {id(pages[i]): n for n, i in enumerate(orden)}
+    log.info(
+        "fact_sheet_page_ranking",
+        metodo=metodo,
+        paginas=len(pages),
+        portadas=len(portadas),
+    )
     ranked = sorted(
         pages,
         key=lambda p: (
-            p not in first_per_doc.values(),
-            -_page_score(p),
+            p not in portadas,
+            posicion.get(id(p), len(pages)),
             int(p["documento_id"]),
             int(p["page_number"]),
         ),

@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { TooltipProvider } from "@/components/ui/tooltip";
 
 const fetchWithAuth = vi.hoisted(() => vi.fn((_url: string) => new Promise(() => {})));
 vi.mock("@/lib/api-client", () => ({ fetchWithAuth }));
@@ -26,9 +27,14 @@ function feedKey() {
 function renderFeed(data?: unknown) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
   if (data !== undefined) qc.setQueryData(feedKey(), data);
+  // `TooltipProvider`: desde C7.4 el delta de importe usa `Tooltip` en vez de
+  // `title`, y Radix exige el provider —en la app lo pone `components/providers`,
+  // que este render aislado no monta.
   return render(
     <QueryClientProvider client={qc}>
-      <EventosFeed />
+      <TooltipProvider>
+        <EventosFeed />
+      </TooltipProvider>
     </QueryClientProvider>,
   );
 }

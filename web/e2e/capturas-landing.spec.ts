@@ -39,13 +39,18 @@ import { SEED_LICITACION } from "./fixtures";
  * emular la preferencia del sistema es exactamente lo que hará el navegador de
  * un visitante.
  *
- * Se capturan **los dos ficheros que la portada importa hoy**, en oscuro. La
- * variante clara —servirla con un `<source media="(prefers-color-scheme: dark)">`
- * para que quien tiene el sistema en claro no vea una consola oscura— es el paso
- * siguiente y no se anticipa aquí: añadir al repositorio dos `.webp` que ningún
- * import consume es peso muerto, y el orden correcto es generarlos y usarlos en
- * el mismo cambio. Cuando toque, esta constante crece y `CapturaProducto` gana
- * un `<source>`.
+ * Se capturan las cuatro variantes: ancha y estrecha, cada una en oscuro y en
+ * claro (C7.7). Quien tiene el sistema en claro veía hasta 2026-09 una consola
+ * oscura en la portada, que es enseñar un producto que no es el suyo.
+ *
+ * Los nombres los consume `CapturaProducto` con un `<source
+ * media="(prefers-color-scheme: light)">`: el tema se elige en el `<picture>` y
+ * no con CSS, por lo mismo que el ancho —con CSS el navegador se baja las dos.
+ *
+ * **Requiere el stack completo** (Postgres sembrado + API + `npm run dev`): las
+ * capturas son de `/radar` y `/detalle` con los expedientes del seed. Sin él no
+ * hay nada que capturar, y por eso los `.webp` claros entran al repositorio en
+ * la misma corrida que los genera y no antes.
  *
  * El recorte estrecho no es la misma imagen reducida: una consola de escritorio
  * a 375 px deja el texto de la tabla por debajo de 2 px. Se captura el panel de
@@ -89,33 +94,43 @@ async function guardarWebp(png: Buffer, nombre: string): Promise<void> {
   await writeFile(path.join(DESTINO, nombre), webp);
 }
 
+/** Sufijo del fichero por tema. El oscuro no lo lleva: es el nombre que la
+ *  portada ya importaba, y renombrarlo obligaría a tocar el import por un
+ *  cambio que no aporta nada. */
+const TEMAS = [
+  { colorScheme: "dark", sufijo: "" },
+  { colorScheme: "light", sufijo: "-claro" },
+] as const;
+
 test.describe("Capturas de la landing", () => {
   test.skip(!process.env.CAPTURAS, "Herramienta, no test: se ejecuta con CAPTURAS=1");
   test.skip(({ browserName }) => browserName !== "chromium", "Una sola familia de capturas");
 
-  test("bandeja del Radar", async ({ page }) => {
-    await page.emulateMedia({ colorScheme: "dark" });
-    await page.setViewportSize(ESCRITORIO);
-    await page.goto("/radar");
+  for (const { colorScheme, sufijo } of TEMAS) {
+    test(`bandeja del Radar (${colorScheme})`, async ({ page }) => {
+      await page.emulateMedia({ colorScheme });
+      await page.setViewportSize(ESCRITORIO);
+      await page.goto("/radar");
 
-    // La fila del expediente con histórico: sin ella la bandeja podría estar
-    // aún cargando y la captura saldría con esqueletos.
-    await page.getByText(SEED_LICITACION.tituloRadar).first().waitFor();
-    // Abrir su panel de detalle, que es la mitad derecha de la composición.
-    await page.getByText(SEED_LICITACION.tituloRadar).first().click();
-    await page.getByText("Desglose de score").waitFor();
+      // La fila del expediente con histórico: sin ella la bandeja podría estar
+      // aún cargando y la captura saldría con esqueletos.
+      await page.getByText(SEED_LICITACION.tituloRadar).first().waitFor();
+      // Abrir su panel de detalle, que es la mitad derecha de la composición.
+      await page.getByText(SEED_LICITACION.tituloRadar).first().click();
+      await page.getByText("Desglose de score").waitFor();
 
-    const png = await page.screenshot({ animations: "disabled" });
-    await guardarWebp(png, "radar-hero.webp");
-  });
+      const png = await page.screenshot({ animations: "disabled" });
+      await guardarWebp(png, `radar-hero${sufijo}.webp`);
+    });
 
-  test("recorte estrecho del detalle", async ({ page }) => {
-    await page.emulateMedia({ colorScheme: "dark" });
-    await page.setViewportSize(MOVIL);
-    await page.goto(`/detalle?lic=${SEED_LICITACION.radarId}`);
-    await page.getByText("Desglose de score").waitFor();
+    test(`recorte estrecho del detalle (${colorScheme})`, async ({ page }) => {
+      await page.emulateMedia({ colorScheme });
+      await page.setViewportSize(MOVIL);
+      await page.goto(`/detalle?lic=${SEED_LICITACION.radarId}`);
+      await page.getByText("Desglose de score").waitFor();
 
-    const png = await page.screenshot({ animations: "disabled" });
-    await guardarWebp(png, "radar-hero-movil.webp");
-  });
+      const png = await page.screenshot({ animations: "disabled" });
+      await guardarWebp(png, `radar-hero-movil${sufijo}.webp`);
+    });
+  }
 });

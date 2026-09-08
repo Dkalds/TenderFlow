@@ -101,6 +101,40 @@ test.describe("Accesibilidad básica sin sesión", () => {
       await expectBasicAccessibility(page);
     });
   }
+
+  // La ficha pública de un expediente (C7.2). Faltaba, y es la página que más
+  // veces se abre desde un buscador: los índices sólo llevan a ella.
+  //
+  // La URL no se escribe a mano —`/licitaciones/[ccaa]/[slug]/[ref]` la componen
+  // el nombre de la comunidad y el título, así que un literal caducaría con el
+  // seed— sino que se llega navegando, que además comprueba que el camino del
+  // visitante existe.
+  test("una ficha pública conserva landmarks y nombres accesibles", async ({ page }) => {
+    await page.goto("/licitaciones");
+    await expect(page.locator("main#main-content")).toBeVisible({ timeout: 20_000 });
+
+    const hub = page.locator('main a[href^="/licitaciones/"]').first();
+    await expect(hub).toBeVisible({ timeout: 20_000 });
+    await hub.click();
+    await expect(page.locator("main#main-content")).toBeVisible({ timeout: 20_000 });
+
+    // En el hub de la comunidad, el enlace a una ficha lleva dos segmentos más.
+    const ficha = page.locator('main a[href*="/licitaciones/"]').filter({
+      hasNot: page.locator("[aria-hidden='true']"),
+    });
+    const href = await ficha
+      .evaluateAll((enlaces) =>
+        enlaces
+          .map((a) => a.getAttribute("href") ?? "")
+          .find((h) => h.split("/").filter(Boolean).length >= 4),
+      )
+      .catch(() => undefined);
+    test.skip(!href, "El seed no publicó ninguna ficha en esta comunidad");
+
+    await page.goto(href as string);
+    await expect(page.locator("main#main-content")).toBeVisible({ timeout: 20_000 });
+    await expectBasicAccessibility(page);
+  });
 });
 
 test.describe("Accesibilidad básica con sesión", () => {

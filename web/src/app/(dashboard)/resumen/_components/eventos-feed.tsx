@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { Panel, PanelEmpty, PanelError, PanelTitle } from "@/components/console/panel";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useFilteredQuery } from "@/hooks/use-filtered-query";
 import { useFilters } from "@/lib/filters";
 import { formatCurrency, formatDate, truncate } from "@/lib/utils";
@@ -52,13 +53,18 @@ const MAX_FILAS = 8;
 function ImporteDelta({ value }: { value: number | null | undefined }) {
   if (value == null || value === 0) return null;
   return (
-    <span
-      title="Variación del importe del contrato"
-      className="tf-tnum flex-none font-mono text-[10.5px] font-semibold"
-    >
-      {value > 0 ? "+" : ""}
-      {formatCurrency(value)}
-    </span>
+    // `Tooltip` y no `title` (C7.4): la cifra sola no dice de qué es, y el
+    // atributo nativo no se abre con teclado. El `<span>` sigue siendo el
+    // mismo elemento —`asChild` clona sobre él— así que el layout no cambia.
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span className="tf-tnum flex-none font-mono text-[10.5px] font-semibold">
+          {value > 0 ? "+" : ""}
+          {formatCurrency(value)}
+        </span>
+      </TooltipTrigger>
+      <TooltipContent>Variación del importe del contrato</TooltipContent>
+    </Tooltip>
   );
 }
 

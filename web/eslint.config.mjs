@@ -181,20 +181,46 @@ const eslintConfig = defineConfig([
   //
   // `ignores` es la deuda de hoy y **sólo puede encoger**. Cada fichero que
   // sale de la lista es una ola cerrada; ninguno vuelve a entrar.
+  //
+  // 2026-09-08 — las rutas cambian sin que la deuda crezca. El plan de
+  // arquitectura v2 partió por tamaño (S7.1) nueve de las vistas listadas, y el
+  // `title=` se fue con el trozo que se llevó el markup: `tecnologias-view` →
+  // `tecnologias-{detalle,heatmap,tablas}`, `tendencias-view` →
+  // `tendencias-heatmap`, `observabilidad-view` →
+  // `observabilidad/estado-global-row`, `contexto-strip` →
+  // `contexto/mercado-strip`, `detalle/page` → `detalle/_components/*`,
+  // `calendario-view` → `calendario-heatmap`, `clusters-view` →
+  // `clusters-tablas`, `proyectos-modulos-view` → `proyectos-tablas`,
+  // `competidores-view` → `competidores-{bajas,heatmap}`, y los de `empresas`
+  // y `mercado/organo-top-scored` nacieron ya partidos del mismo movimiento.
+  // Las nueve entradas viejas salen porque sus ficheros ya no tienen ninguno.
+  //
+  // El conteo sigue siendo el de la ola de C7.4 —31 atributos aquí más los que
+  // quedan en los ocho ficheros que no se tocaron—, no uno nuevo. La siguiente
+  // ola es la que los convierte a `Tooltip`.
   {
     files: ["src/**/*.tsx"],
     ignores: [
-      "src/app/(dashboard)/competencia/_components/competidores-view.tsx",
-      "src/app/(dashboard)/detalle/page.tsx",
-      "src/app/(dashboard)/mercado/_components/calendario-view.tsx",
-      "src/app/(dashboard)/mercado/_components/clusters-view.tsx",
-      "src/app/(dashboard)/mercado/_components/organos-view.tsx",
-      "src/app/(dashboard)/mercado/_components/proyectos-modulos-view.tsx",
-      "src/app/(dashboard)/mercado/_components/tecnologias-view.tsx",
-      "src/app/(dashboard)/mercado/_components/tendencias-view.tsx",
-      "src/app/(dashboard)/ops/_components/observabilidad-view.tsx",
+      "src/app/(dashboard)/competencia/_components/competidores-bajas.tsx",
+      "src/app/(dashboard)/competencia/_components/competidores-heatmap.tsx",
+      "src/app/(dashboard)/detalle/_components/detalle-fila.tsx",
+      "src/app/(dashboard)/detalle/_components/detalle-pie.tsx",
+      "src/app/(dashboard)/empresas/_components/context-line.tsx",
+      "src/app/(dashboard)/empresas/_components/empresa-perfil-piezas.tsx",
+      "src/app/(dashboard)/empresas/_components/empresa-perfil.tsx",
+      "src/app/(dashboard)/empresas/_components/maestro-list.tsx",
+      "src/app/(dashboard)/empresas/_components/review-queue.tsx",
+      "src/app/(dashboard)/mercado/_components/calendario-heatmap.tsx",
+      "src/app/(dashboard)/mercado/_components/clusters-tablas.tsx",
+      "src/app/(dashboard)/mercado/_components/organo-top-scored.tsx",
+      "src/app/(dashboard)/mercado/_components/proyectos-tablas.tsx",
+      "src/app/(dashboard)/mercado/_components/tecnologias-detalle.tsx",
+      "src/app/(dashboard)/mercado/_components/tecnologias-heatmap.tsx",
+      "src/app/(dashboard)/mercado/_components/tecnologias-tablas.tsx",
+      "src/app/(dashboard)/mercado/_components/tendencias-heatmap.tsx",
+      "src/app/(dashboard)/ops/_components/observabilidad/estado-global-row.tsx",
       "src/app/(dashboard)/resumen/_components/contexto-strip.tsx",
-      "src/app/(dashboard)/resumen/_components/eventos-feed.tsx",
+      "src/app/(dashboard)/resumen/_components/contexto/mercado-strip.tsx",
       "src/components/competitors/company-awards.tsx",
       "src/components/competitors/company-profile-summary.tsx",
       "src/components/competitors/company-quick-view.tsx",
