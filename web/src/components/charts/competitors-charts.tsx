@@ -138,10 +138,10 @@ export const CompetitorsScatterChart = React.memo(function CompetitorsScatterCha
             tick={{ fontSize: 11 }}
             tickFormatter={(v: number) => formatCurrency(v)}
           >
-            <Label value="Ticket Medio" position="bottom" offset={0} style={{ fontSize: 12 }} />
+            <Label value="Ticket Medio" position="bottom" offset={0} className="text-[12px]" />
           </XAxis>
           <YAxis type="number" dataKey="n_organos" name="Organos" tick={{ fontSize: 11 }}>
-            <Label value="N. Organos" angle={-90} position="left" offset={0} style={{ fontSize: 12 }} />
+            <Label value="N. Organos" angle={-90} position="left" offset={0} className="text-[12px]" />
           </YAxis>
           <ZAxis range={[40, 400]} />
           <Tooltip
@@ -162,7 +162,7 @@ export const CompetitorsScatterChart = React.memo(function CompetitorsScatterCha
             <LabelList
               dataKey="nombre"
               position="top"
-              style={{ fontSize: 12 }}
+              className="text-[12px]"
               content={({ x, y, value }) => {
                 if (!top5Names.has(value as string)) return null;
                 return (
@@ -243,7 +243,7 @@ export const CompetitorsPositioningChart = React.memo(function CompetitorsPositi
             tick={{ fontSize: 11 }}
             tickFormatter={(v: number) => `${v.toFixed(0)}%`}
           >
-            <Label value="Baja Media %" position="bottom" offset={10} style={{ fontSize: 12 }} />
+            <Label value="Baja Media %" position="bottom" offset={10} className="text-[12px]" />
           </XAxis>
           <YAxis
             type="number"
@@ -259,7 +259,7 @@ export const CompetitorsPositioningChart = React.memo(function CompetitorsPositi
               angle={-90}
               position="left"
               offset={0}
-              style={{ fontSize: 12 }}
+              className="text-[12px]"
             />
           </YAxis>
           <ZAxis dataKey="count" range={[40, 600]} name="Contratos" />

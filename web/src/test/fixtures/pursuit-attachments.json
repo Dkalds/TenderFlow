@@ -1,0 +1,35 @@
+{
+  "pursuit_id": 1,
+  "organization_id": 1,
+  "max_bytes": 26214400,
+  "tipos_admitidos": [
+    "application/pdf",
+    "text/plain"
+  ],
+  "items": [
+    {
+      "id": 1,
+      "pursuit_id": 1,
+      "organization_id": 1,
+      "filename": "memoria-tecnica.pdf",
+      "content_type": "application/pdf",
+      "bytes": 184320,
+      "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "indexable": false,
+      "uploaded_by_user_id": 1,
+      "created_at": "2026-09-08T09:12:00Z"
+    },
+    {
+      "id": 2,
+      "pursuit_id": 1,
+      "organization_id": 1,
+      "filename": "deuc-firmado.pdf",
+      "content_type": "application/pdf",
+      "bytes": 51200,
+      "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "indexable": true,
+      "uploaded_by_user_id": 1,
+      "created_at": "2026-09-07T17:40:00Z"
+    }
+  ]
+}

@@ -1362,21 +1362,31 @@ async def post_pursuit_attachment_link(
     `POST` y no `GET` porque emitir una credencial de acceso —aunque dure quince
     minutos— no es una lectura: no debe cachearse ni quedarse en el historial.
     """
+    usuario = int(ctx["user_id"])
+
+    def _trabajo() -> tuple[str, int] | None:
+        """Comprobación de pertenencia y firma, en UN salto al threadpool.
+
+        La firma es HMAC —barata— pero carga las claves de firma la primera vez,
+        y eso es I/O. Junto a la consulta va en el mismo salto: dos `await` para
+        una operación que el usuario percibe como una sola son dos ventanas en
+        las que el event loop puede quedarse esperando.
+        """
+        adjuntos = listar_adjuntos(usuario, pursuit_id, organization_id=organization_id)
+        if not any(a.id == attachment_id for a in adjuntos.items):
+            return None
+        return firmar_descarga_adjunto(attachment_id)
+
     try:
-        adjuntos = await run_db(
-            listar_adjuntos,
-            int(ctx["user_id"]),
-            pursuit_id,
-            organization_id=organization_id,
-        )
+        firmado = await run_db(_trabajo)
     except OrganizationAccessError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except PursuitNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-    if not any(a.id == attachment_id for a in adjuntos.items):
+    if firmado is None:
         raise HTTPException(status_code=404, detail="El adjunto no existe en esta oportunidad.")
 
-    token, expira = firmar_descarga_adjunto(attachment_id)
+    token, expira = firmado
     ruta = f"/api/v1/pursuits/attachments/{attachment_id}/descarga"
     firma = quote(token, safe="")
     return PursuitAttachmentDownloadLink(url=f"{ruta}?exp={expira}&sig={firma}", expira=expira)

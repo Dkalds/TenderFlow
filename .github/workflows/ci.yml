@@ -757,6 +757,32 @@ jobs:
       - name: Build
         run: npm run build
 
+      # ── Presupuesto de bundle (C7.6) ────────────────────────────────────
+      # El peso de cada ruta es un número que solo baja. Los límites están
+      # medidos y versionados en `web/bundle-budget.json`; el script los compara
+      # contra los artefactos del build de arriba, así que no cuesta una segunda
+      # compilación.
+      - name: Presupuesto de bundle
+        run: npm run bundle:check
+
+      # El informe solo se genera cuando el presupuesto ha saltado: cuesta una
+      # pasada extra de build y, con el gate en verde, nadie lo abre. Cuando
+      # salta, es la respuesta a la única pregunta que sigue («¿qué entró?»), y
+      # tenerlo adjunto evita reproducirlo a mano.
+      - name: Informe del analizador (solo si el presupuesto falla)
+        if: failure()
+        env:
+          ANALYZE: "1"
+        run: npm run build
+
+      - name: Adjuntar informe del analizador
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: web-bundle-analyzer
+          path: web/.next/analyze/
+          if-no-files-found: ignore
+
   # ── Frontend E2E: Playwright contra backend real (BLOQUEANTE) ───────
   # Antes era un smoke con `continue-on-error: true`, es decir, un job que no
   # podía suspender: sin backend todas las rutas redirigían a /login y los

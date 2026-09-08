@@ -1,0 +1,7 @@
+[
+  {
+    "enabled": false,
+    "flag": "ejemplo",
+    "rollout_pct": 1
+  }
+]

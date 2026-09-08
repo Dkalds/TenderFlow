@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import bundleAnalyzer from "@next/bundle-analyzer";
 import { legacyRedirects } from "./src/lib/space-views";
 // Ruta relativa y no alias `@/`: los `paths` de tsconfig no se aplican al
 // cargar este fichero, igual que con `space-views` de arriba.
@@ -174,4 +175,21 @@ const nextConfig: NextConfig = {
   ...(process.env.VERCEL ? {} : { output: "standalone" as const }),
 };
 
-export default nextConfig;
+/**
+ * Analizador de bundle (C7.6).
+ *
+ * Apagado salvo `ANALYZE=1`: el treemap cuesta una pasada extra de build y en
+ * el bucle normal no aporta nada. El job de CI lo enciende y adjunta el HTML,
+ * que es donde sirve — cuando un umbral salta, la pregunta siguiente es
+ * siempre «¿qué entró?», y sin el informe hay que reproducirlo a mano.
+ *
+ * El umbral **no** lo pone este plugin: lo comprueba
+ * `scripts/check-bundle-budget.mjs` sobre la salida del build. Son dos cosas
+ * distintas —medir y decidir— y el plugin solo hace la primera.
+ */
+const withBundleAnalyzer = bundleAnalyzer({
+  enabled: process.env.ANALYZE === "1",
+  openAnalyzer: false,
+});
+
+export default withBundleAnalyzer(nextConfig);

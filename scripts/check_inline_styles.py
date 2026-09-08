@@ -45,7 +45,7 @@ _STYLE_ATTR = re.compile(r"style=\{\{")
 #:
 #: Bajarlo es el trabajo que desbloquea C2.8; subirlo es declarar que se acepta
 #: seguir con `'unsafe-inline'` en `style-src`, y eso no se hace de pasada.
-MAX_ESTILOS_INLINE = 94
+MAX_ESTILOS_INLINE = 92
 
 
 def contar() -> dict[str, int]:

@@ -54,29 +54,29 @@ Los scopes los resuelve `api/scopes.py::required_scope_for_request` a partir del
 |---|---|---|
 | `account:delete` | DELETE | `/me` |
 | `account:read` | GET | `/me/data` |
-| `admin` | todos | `/admin/solicitudes-acceso`, `/admin/users`, `/empresas/reviews`, `/feature-flags`, `/security/audit`, `/security/client-error`, `/security/client-errors`, `/security/csp-report`, `/security/leaked-key`, `/webhooks`, `/webhooks/event-types` |
+| `admin` | todos | `/admin/solicitudes-acceso`, `/admin/users`, `/empresas/reviews`, `/feature-flags`, `/security/audit`, `/security/client-error`, `/security/client-errors`, `/security/csp-report`, `/security/leaked-key`, `/webhooks`, `/webhooks/event-types`, `/webhooks/global` |
 | `analytics:read` | GET | `/analytics/clusters`, `/analytics/compare-periods`, `/analytics/competitors`, `/analytics/forecast`, `/analytics/geography`, `/analytics/organos`, `/analytics/overview`, `/analytics/pipeline`, `/analytics/proyectos-modulos`, `/analytics/quality`, `/analytics/resumen`, `/analytics/scoring`, `/analytics/source-freshness`, `/analytics/tecnologias`, `/analytics/trends`, `/analytics/trends-cpv`, `/analytics/utes` |
 | `api_keys:read` | GET/POST | `/me/keys` |
 | `api_keys:rotate` | POST | `/me/keys` |
 | `ask:read` | GET/POST | `/ask`, `/ask/models` |
-| `competitive:read` | GET | `/competitive/bajas`, `/competitive/cuota`, `/competitive/empresas`, `/competitive/hhi`, `/competitive/renovaciones`, `/competitive/watchlist` |
+| `competitive:read` | GET | `/competitive/bajas`, `/competitive/cuota`, `/competitive/empresas`, `/competitive/hhi`, `/competitive/partners`, `/competitive/renovaciones`, `/competitive/watchlist` |
 | `competitive:write` | POST/DELETE | `/competitive/watchlist` |
-| `data:read` | GET | `/adjudicaciones`, `/auth/me`, `/auth/oauth`, `/eventos`, `/health`, `/health/live`, `/health/ready`, `/me/notification-preferences`, `/me/sessions`, `/meta/filters`, `/meta/last-extraction`, `/predicciones/calibracion`, `/publico/hubs`, `/publico/licitaciones`, `/publico/sitemap`, `/radar/dismissals`, `/resoluciones`, `/tecnologias`, `/tecnologias/impacto` |
-| `data:write` | POST/PUT/DELETE | `/auth/dev-login`, `/auth/login`, `/auth/logout`, `/auth/logout-all`, `/auth/password-reset`, `/auth/register`, `/auth/totp`, `/me/notification-preferences`, `/me/sessions`, `/publico/solicitudes-acceso`, `/radar/dismissals`, `/search/semantic`, `/tecnologias/keywords` |
+| `data:read` | GET | `/adjudicaciones`, `/auth/me`, `/auth/oauth`, `/cuentas`, `/etiquetas`, `/eventos`, `/health`, `/health/live`, `/health/ready`, `/jobs`, `/me/notification-preferences`, `/me/sessions`, `/meta/filters`, `/meta/last-extraction`, `/predicciones/calibracion`, `/publico/hubs`, `/publico/licitaciones`, `/publico/sitemap`, `/radar/dismissals`, `/resoluciones`, `/search/global`, `/tecnologias`, `/tecnologias/impacto` |
+| `data:write` | POST/PUT/DELETE | `/auth/dev-login`, `/auth/login`, `/auth/logout`, `/auth/logout-all`, `/auth/password-reset`, `/auth/register`, `/auth/totp`, `/cuentas`, `/etiquetas`, `/etiquetas/aplicar`, `/etiquetas/por-objeto`, `/etiquetas/quitar`, `/me/notification-preferences`, `/me/sessions`, `/publico/solicitudes-acceso`, `/radar/dismissals`, `/search/semantic`, `/tecnologias/keywords` |
 | `empresas:read` | GET | `/empresas`, `/empresas/stats` |
-| `exports:read` | GET | `/exports/calendario`, `/exports/calendario.ics`, `/exports/download` |
+| `exports:read` | GET | `/exports/calendario`, `/exports/calendario.ics`, `/exports/descargas`, `/exports/download` |
 | `feature_flags:read` | GET | `/feature-flags` |
 | `feedback:read` | GET | `/feedback/asistente`, `/feedback/model-info`, `/feedback/queue`, `/feedback/stats` |
 | `feedback:write` | POST | `/feedback`, `/feedback/asistente` |
 | `licitaciones:read` | GET/POST | `/licitaciones`, `/licitaciones/bulk-get`, `/licitaciones/cursor`, `/licitaciones/search`, `/licitaciones/stream` |
-| `licitaciones:write` | POST | `/licitaciones` |
+| `licitaciones:write` | POST | `/licitaciones`, `/licitaciones/comparar` |
 | `models:read` | GET/POST | `/models` |
 | `notifications:read` | GET | `/notifications` |
 | `notifications:write` | POST | `/notifications/alerts`, `/notifications/read` |
 | `profile:read` | GET | `/me/profile` |
 | `profile:write` | PUT/DELETE | `/me/profile` |
-| `pursuits:read` | GET | `/organizations`, `/organizations/active`, `/organizations/gonogo`, `/pursuits`, `/pursuits/agenda`, `/pursuits/baja-propia`, `/pursuits/metrics`, `/pursuits/tasks` |
-| `pursuits:write` | POST/PATCH/PUT/DELETE | `/organizations`, `/organizations/gonogo`, `/pursuits` |
+| `pursuits:read` | GET | `/organizations`, `/organizations/active`, `/organizations/gonogo`, `/pursuits`, `/pursuits/actividad`, `/pursuits/agenda`, `/pursuits/attachments`, `/pursuits/baja-propia`, `/pursuits/cartera`, `/pursuits/direccion`, `/pursuits/metrics`, `/pursuits/tasks`, `/pursuits/weights-proposal` |
+| `pursuits:write` | POST/PATCH/PUT/DELETE | `/organizations`, `/organizations/gonogo`, `/organizations/invitations`, `/pursuits`, `/pursuits/attachments`, `/pursuits/weights-proposal` |
 | `saved_filters:read` | GET | `/saved-filters` |
 | `saved_filters:write` | POST/DELETE | `/saved-filters` |
 | `watchlist:read` | GET | `/watchlist/feed.xml`, `/watchlist/items`, `/watchlist/rules` |

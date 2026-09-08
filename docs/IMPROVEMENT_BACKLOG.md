@@ -118,6 +118,62 @@ plan, donde cada stream anota lo entregado al cerrarse — la misma convención 
 la Ola 0 ya usa en su §4. Estos ítems los da de baja la consolidación de la ola,
 no una comprobación hecha a mitad de ella.
 
+## Plan complementario 2026-09 (C1–C9) — fusionado, con tres cabos sueltos
+
+El plan está en
+[plans/2026-09-plan-arquitectura-v2-complementario.md](plans/2026-09-plan-arquitectura-v2-complementario.md)
+y es la fuente única de su alcance. Sus nueve streams se fusionaron sobre el
+árbol del plan v2 el **2026-09-08**; lo que queda abierto es esto y sólo esto,
+anotado aquí porque no se pudo verificar en la máquina donde se ejecutó y no
+porque falte decidir nada.
+
+### [P2] C7.1 — la remediación axe sigue pendiente de una corrida real
+
+- **Área:** web/e2e/accessibility.spec.ts, web/src/app/(dashboard)/radar/_components
+- **Problema:** siguen las cuatro reglas en `disableRules` (`color-contrast`,
+  `nested-interactive`, `scrollable-region-focusable`, `target-size`) y los
+  cuatro `test.fixme`. La causa de `nested-interactive` está localizada —la fila
+  del Radar es `role="button"` con `tabIndex={0}` y contiene los botones de
+  descartar, seguir y abrir— y su arreglo correcto es el patrón `grid`
+  (`role="grid"` en la lista, `role="row"` en la fila, `role="gridcell"` en las
+  celdas), que es la única combinación de roles que axe acepta con
+  descendientes interactivos.
+- **Por qué no se hizo:** el criterio de aceptación es `disableRules([])`
+  comprobado por una corrida de axe, y axe necesita la aplicación levantada con
+  Postgres sembrado y Playwright. La máquina donde se fusionó el plan no tiene
+  Postgres. Quitar las reglas sin poder correr axe habría dejado un gate en el
+  estado que este repo evita a propósito: verde sin haber comprobado nada, o
+  rojo sin saber por qué.
+- **Acceptance criteria:** los del ítem C7.1 del plan. La fila del Radar cambia
+  de modelo de foco, así que el cambio va con su E2E de teclado y lector.
+- **Riesgo:** medio — toca la interacción de la pantalla más usada.
+
+### [P3] C7.7 — faltan las capturas claras de la portada
+
+- **Área:** web/e2e/capturas-landing.spec.ts, web/src/app/(publico)/_assets
+- **Hecho:** el generador ya produce las cuatro variantes (ancha y estrecha ×
+  oscuro y claro).
+- **Falta:** los dos `.webp` claros y el `<source media="(prefers-color-scheme:
+  light)">` de `CapturaProducto`. Van en la misma corrida, por lo que ya avisaba
+  el propio spec: un `.webp` que ningún import consume es peso muerto.
+- **Cómo cerrarlo:** con el stack completo levantado (Postgres sembrado, API y
+  `npm run dev`), `npm run capturas:landing` y commitear los cuatro ficheros con
+  el `<source>` en el mismo cambio.
+- **Riesgo:** nulo.
+
+### [P1] `docs/database-schema.md` no incluye las tablas de C1–C6
+
+- **Área:** docs/database-schema.md, scripts/gen_schema_doc.py
+- **Problema:** el fichero es el catálogo **generado** contra una base migrada,
+  y en la fusión se conservó el de v2 (revisión `v112_organization_capabilities`)
+  porque la rama complementaria editaba la versión anterior escrita a mano, que
+  v2 ya había sustituido. Le faltan `organos`, `pursuit_tasks`, `client_errors`,
+  `tecnologias_keywords`, `pursuit_attachments` y las demás de v113–v127.
+- **Cómo cerrarlo:** `make schema-doc` contra un Postgres con `alembic upgrade
+  head`. CI ya lo verifica con `gen_schema_doc.py --check`, así que el job de
+  esquema estará en rojo hasta que se regenere.
+- **Riesgo:** nulo — es un documento generado, no código.
+
 ## Repaso del 2026-08-27 (auditoría de producto/UX)
 
 Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citaban. Lo que cambió:

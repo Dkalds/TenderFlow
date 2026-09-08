@@ -6,7 +6,7 @@ tags: [status, generado]
 
 <!-- generado por scripts/gen_status.py — no editar a mano -->
 
-Generado: 2026-09-07
+Generado: 2026-09-08
 
 ## Paridad de planos de orquestación (ADR-012)
 
@@ -67,7 +67,7 @@ Generado: 2026-09-07
 
 ## Ratchet `user_key` — identidad derivada del correo (D18, fase 1)
 
-**64 ficheros** de producción usan `user_key` (lista congelada: 64; solo puede decrecer).
+**67 ficheros** de producción usan `user_key` (lista congelada: 67; solo puede decrecer).
 
 `scripts/check_user_key_ratchet.py` falla ante un fichero nuevo que la use. Llega a cero con T4, que migra a `user_id` con columna doble y lectura dual; hasta entonces cambiar de correo pierde los datos que cuelgan de esa clave. No cuenta `tests/` ni `db/alembic/versions/`.
 
@@ -77,7 +77,7 @@ Generado: 2026-09-07
 
 ## Superficie de la API
 
-**214 endpoints** expuestos.
+**246 endpoints** expuestos.
 
 <details><summary>Ver listado</summary>
 
@@ -174,6 +174,8 @@ Generado: 2026-09-07
 | GET | `/api/v1/feature-flags` |
 | PUT | `/api/v1/feature-flags` |
 | POST | `/api/v1/feedback` |
+| POST | `/api/v1/feedback/asistente` |
+| GET | `/api/v1/feedback/asistente/stats` |
 | GET | `/api/v1/feedback/model-info` |
 | GET | `/api/v1/feedback/queue` |
 | GET | `/api/v1/feedback/stats` |
@@ -203,16 +205,22 @@ Generado: 2026-09-07
 | GET | `/api/v1/licitaciones/{id_externo:path}/tecnologias` |
 | GET | `/api/v1/licitaciones/{id_externo}` |
 | GET | `/api/v1/licitaciones/{id_externo}/documentos/{documento_id}/paginas/{page_number}` |
+| GET | `/api/v1/licitaciones/{id_externo}/similares` |
 | GET | `/api/v1/licitaciones/{licitacion_id:path}/escenarios-precio` |
 | GET | `/api/v1/licitaciones/{licitacion_id:path}/eventos` |
 | GET | `/api/v1/licitaciones/{licitacion_id:path}/prediccion-baja` |
 | DELETE | `/api/v1/me` |
 | GET | `/api/v1/me/data` |
 | GET | `/api/v1/me/keys` |
+| POST | `/api/v1/me/keys` |
 | POST | `/api/v1/me/keys/rotate` |
+| GET | `/api/v1/me/notification-preferences` |
+| PUT | `/api/v1/me/notification-preferences` |
 | DELETE | `/api/v1/me/profile` |
 | GET | `/api/v1/me/profile` |
 | PUT | `/api/v1/me/profile` |
+| GET | `/api/v1/me/sessions` |
+| DELETE | `/api/v1/me/sessions/{session_id}` |
 | GET | `/api/v1/meta/filters` |
 | GET | `/api/v1/meta/last-extraction` |
 | GET | `/api/v1/models/{name}` |
@@ -224,12 +232,17 @@ Generado: 2026-09-07
 | GET | `/api/v1/organizations` |
 | POST | `/api/v1/organizations` |
 | GET | `/api/v1/organizations/active` |
+| GET | `/api/v1/organizations/gonogo` |
+| PUT | `/api/v1/organizations/gonogo` |
 | POST | `/api/v1/organizations/invitations/accept` |
 | GET | `/api/v1/organizations/{organization_id}/capabilities` |
 | PUT | `/api/v1/organizations/{organization_id}/capabilities` |
+| POST | `/api/v1/organizations/{organization_id}/delete` |
+| GET | `/api/v1/organizations/{organization_id}/deletion-preview` |
 | GET | `/api/v1/organizations/{organization_id}/invitations` |
 | DELETE | `/api/v1/organizations/{organization_id}/invitations/{invitation_id}` |
 | POST | `/api/v1/organizations/{organization_id}/invitations/{invitation_id}/resend` |
+| POST | `/api/v1/organizations/{organization_id}/leave` |
 | GET | `/api/v1/organizations/{organization_id}/members` |
 | POST | `/api/v1/organizations/{organization_id}/members` |
 | PUT | `/api/v1/organizations/{organization_id}/members/{member_user_id}` |
@@ -237,6 +250,7 @@ Generado: 2026-09-07
 | PUT | `/api/v1/organizations/{organization_id}/nifs` |
 | GET | `/api/v1/organizations/{organization_id}/settings` |
 | PUT | `/api/v1/organizations/{organization_id}/settings` |
+| POST | `/api/v1/organizations/{organization_id}/transfer-ownership` |
 | GET | `/api/v1/predicciones/calibracion` |
 | GET | `/api/v1/publico/hubs` |
 | GET | `/api/v1/publico/licitaciones` |
@@ -248,20 +262,32 @@ Generado: 2026-09-07
 | POST | `/api/v1/pursuits` |
 | GET | `/api/v1/pursuits/actividad` |
 | GET | `/api/v1/pursuits/agenda` |
+| DELETE | `/api/v1/pursuits/attachments/{attachment_id}` |
+| GET | `/api/v1/pursuits/attachments/{attachment_id}/descarga` |
+| PUT | `/api/v1/pursuits/attachments/{attachment_id}/indexable` |
+| GET | `/api/v1/pursuits/baja-propia` |
 | GET | `/api/v1/pursuits/cartera` |
 | GET | `/api/v1/pursuits/direccion` |
 | GET | `/api/v1/pursuits/metrics` |
+| GET | `/api/v1/pursuits/tasks/agenda` |
 | GET | `/api/v1/pursuits/weights-proposal` |
 | POST | `/api/v1/pursuits/weights-proposal/apply` |
 | GET | `/api/v1/pursuits/{pursuit_id}` |
 | PATCH | `/api/v1/pursuits/{pursuit_id}` |
+| GET | `/api/v1/pursuits/{pursuit_id}/attachments` |
+| POST | `/api/v1/pursuits/{pursuit_id}/attachments` |
+| POST | `/api/v1/pursuits/{pursuit_id}/attachments/{attachment_id}/enlace` |
 | GET | `/api/v1/pursuits/{pursuit_id}/checklist` |
 | GET | `/api/v1/pursuits/{pursuit_id}/comments` |
 | POST | `/api/v1/pursuits/{pursuit_id}/comments` |
 | DELETE | `/api/v1/pursuits/{pursuit_id}/comments/{comment_id}` |
 | GET | `/api/v1/pursuits/{pursuit_id}/ficha.pdf` |
+| PUT | `/api/v1/pursuits/{pursuit_id}/gonogo` |
 | GET | `/api/v1/pursuits/{pursuit_id}/kit` |
 | POST | `/api/v1/pursuits/{pursuit_id}/kit` |
+| GET | `/api/v1/pursuits/{pursuit_id}/tasks` |
+| POST | `/api/v1/pursuits/{pursuit_id}/tasks` |
+| PATCH | `/api/v1/pursuits/{pursuit_id}/tasks/{task_id}` |
 | GET | `/api/v1/radar/dismissals` |
 | POST | `/api/v1/radar/dismissals` |
 | DELETE | `/api/v1/radar/dismissals/{id_externo:path}` |
@@ -273,12 +299,17 @@ Generado: 2026-09-07
 | POST | `/api/v1/search/semantic` |
 | GET | `/api/v1/security/audit/verify` |
 | POST | `/api/v1/security/client-error` |
+| GET | `/api/v1/security/client-errors` |
 | POST | `/api/v1/security/csp-report` |
 | POST | `/api/v1/security/leaked-key` |
+| GET | `/api/v1/tecnologias` |
+| GET | `/api/v1/tecnologias/impacto` |
+| PUT | `/api/v1/tecnologias/keywords` |
 | GET | `/api/v1/watchlist/feed.xml` |
 | GET | `/api/v1/watchlist/items` |
 | POST | `/api/v1/watchlist/items` |
 | DELETE | `/api/v1/watchlist/items/{id_externo:path}` |
+| PUT | `/api/v1/watchlist/items/{id_externo:path}` |
 | GET | `/api/v1/watchlist/rules` |
 | POST | `/api/v1/watchlist/rules` |
 | GET | `/api/v1/watchlist/rules/baja` |
@@ -294,6 +325,7 @@ Generado: 2026-09-07
 | GET | `/api/v1/webhooks/{webhook_id}` |
 | PATCH | `/api/v1/webhooks/{webhook_id}` |
 | GET | `/api/v1/webhooks/{webhook_id}/deliveries` |
+| POST | `/api/v1/webhooks/{webhook_id}/deliveries/{delivery_id}/redeliver` |
 | POST | `/api/v1/webhooks/{webhook_id}/ping` |
 | GET | `/docs/oauth2-redirect` |
 | GET | `/metrics` |

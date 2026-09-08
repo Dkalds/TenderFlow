@@ -1,0 +1,139 @@
+{
+  "_": "Generado por scripts/check-bundle-budget.mjs --write. Los límites SOLO bajan.",
+  "margen": 0.05,
+  "medido_el": "2026-09-08",
+  "rutas": {
+    "/": {
+      "medido": 539073,
+      "limite": 566027
+    },
+    "/_not-found": {
+      "medido": 509635,
+      "limite": 535117
+    },
+    "/ajustes": {
+      "medido": 1055251,
+      "limite": 1108014
+    },
+    "/aviso-legal": {
+      "medido": 523012,
+      "limite": 549163
+    },
+    "/cobertura": {
+      "medido": 524325,
+      "limite": 550542
+    },
+    "/competencia": {
+      "medido": 1054690,
+      "limite": 1107425
+    },
+    "/competidores/empresa/[empresaId]": {
+      "medido": 1083024,
+      "limite": 1137176
+    },
+    "/cpv": {
+      "medido": 524325,
+      "limite": 550542
+    },
+    "/cpv/[codigo]": {
+      "medido": 524325,
+      "limite": 550542
+    },
+    "/cuentas": {
+      "medido": 1056307,
+      "limite": 1109123
+    },
+    "/detalle": {
+      "medido": 1181066,
+      "limite": 1240120
+    },
+    "/direccion": {
+      "medido": 1055423,
+      "limite": 1108195
+    },
+    "/empresas": {
+      "medido": 1085844,
+      "limite": 1140137
+    },
+    "/equipo": {
+      "medido": 1071122,
+      "limite": 1124679
+    },
+    "/investigador": {
+      "medido": 1075354,
+      "limite": 1129122
+    },
+    "/licitaciones": {
+      "medido": 524325,
+      "limite": 550542
+    },
+    "/licitaciones/[ccaa]": {
+      "medido": 524325,
+      "limite": 550542
+    },
+    "/licitaciones/[ccaa]/[slug]/[ref]": {
+      "medido": 523012,
+      "limite": 549163
+    },
+    "/licitadores": {
+      "medido": 1047058,
+      "limite": 1099411
+    },
+    "/login": {
+      "medido": 698250,
+      "limite": 733163
+    },
+    "/mercado": {
+      "medido": 1056156,
+      "limite": 1108964
+    },
+    "/metodologia": {
+      "medido": 524325,
+      "limite": 550542
+    },
+    "/mi-perfil": {
+      "medido": 1083738,
+      "limite": 1137925
+    },
+    "/mi-pipeline": {
+      "medido": 1054959,
+      "limite": 1107707
+    },
+    "/mi-watchlist": {
+      "medido": 1081123,
+      "limite": 1135180
+    },
+    "/oportunidades": {
+      "medido": 1079211,
+      "limite": 1133172
+    },
+    "/oportunidades/[id]": {
+      "medido": 1128832,
+      "limite": 1185274
+    },
+    "/ops": {
+      "medido": 1062339,
+      "limite": 1115456
+    },
+    "/radar": {
+      "medido": 1089231,
+      "limite": 1143693
+    },
+    "/restablecer-contrasena": {
+      "medido": 688116,
+      "limite": 722522
+    },
+    "/resumen": {
+      "medido": 1544482,
+      "limite": 1621707
+    },
+    "/seguridad": {
+      "medido": 524325,
+      "limite": 550542
+    },
+    "/solicitud-recibida": {
+      "medido": 524704,
+      "limite": 550940
+    }
+  }
+}

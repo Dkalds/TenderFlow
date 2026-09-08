@@ -116,6 +116,22 @@ _REPORTEROS = frozenset(
 # La alternativa era rehacer código de producto ya fusionado para satisfacer un
 # gate que se escribió después: eso no retira deuda, la muda de sitio y arriesga
 # funcionalidad que ya está en master.
+#
+# 2026-09-08 — tres ficheros más, por lo mismo y con un matiz. Llegan de
+# `claude/plan-arquitectura-complementario-b5888b`, escrita sobre `master` =
+# `17169ce`, es decir **antes** de que este ratchet existiera: no son código
+# nuevo que ignore el gate, es código que se escribió sin él.
+#
+#   - ``db/idempotency.py`` es el único de los tres que de verdad carga la
+#     deuda: el ámbito de una clave de idempotencia se teclea por el
+#     ``user_key`` derivado del correo, que es lo que le llega desde las rutas.
+#     Se va con T4, como el resto.
+#   - ``services/gonogo.py`` y ``services/tech_dictionary.py`` NO derivan nada
+#     del correo: pasan ``user_key=f"user:{user_id}"`` a ``db.audit.log_event``,
+#     que es exactamente la forma que D18 persigue. Están aquí porque el ratchet
+#     cuenta el identificador y no su semántica, y porque el parámetro de
+#     ``log_event`` se llama así; cuando T4 lo renombre, los dos salen sin tocar
+#     una línea de producto.
 CONGELADOS: frozenset[str] = frozenset(
     {
         "api/routes/admin_solicitudes.py",
@@ -141,6 +157,7 @@ CONGELADOS: frozenset[str] = frozenset(
         "api/routes/webhooks.py",
         "db/audit.py",
         "db/events.py",
+        "db/idempotency.py",
         "db/notifications.py",
         "db/radar_dismissals.py",
         "db/repositories/agenda.py",
@@ -168,12 +185,14 @@ CONGELADOS: frozenset[str] = frozenset(
         "services/deadline_reminders.py",
         "services/email_digest.py",
         "services/gdpr.py",
+        "services/gonogo.py",
         "services/notifications.py",
         "services/novedades.py",
         "services/organizations.py",
         "services/pursuit_awards.py",
         "services/pursuits.py",
         "services/saved_filters.py",
+        "services/tech_dictionary.py",
         "services/watchlist.py",
         "services/watchlist_rules.py",
         "shared/cache.py",
