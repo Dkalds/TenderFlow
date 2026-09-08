@@ -93,7 +93,7 @@ _GOLDEN_SIN_LOTE: dict[str, Any] = {
             "falta calibración (Brier score y curva por deciles) frente al baseline",
         ],
     },
-        # `base` entra con C1.1 / ADR-032: la respuesta declara sobre qué base de
+    # `base` entra con C1.1 / ADR-032: la respuesta declara sobre qué base de
     # importe se calculó la distribución. Es aditivo —ningún campo cambia de
     # significado— y por eso el golden lo incorpora en vez de excluirlo: lo que
     # este test protege es que S3.1 no altere la respuesta SIN lote, no que el
