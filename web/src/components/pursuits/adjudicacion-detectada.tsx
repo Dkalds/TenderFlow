@@ -137,6 +137,12 @@ export function AdjudicacionDetectada({ pursuit }: { pursuit: Pursuit }) {
                     onChange={() => setEleccion({ id: pursuit.id, valor: opcion })}
                     disabled={update.isPending}
                     className="h-3.5 w-3.5 accent-primary"
+                    // El `<label>` que envuelve al input ya le da nombre en el
+                    // navegador, pero `jsx-a11y/control-has-associated-label` no
+                    // puede verlo: el texto llega por `{ETIQUETA[opcion]}` y la
+                    // regla es estática. El `aria-label` lo dice explícitamente
+                    // y coincide con lo que se lee, así que no hay dos nombres.
+                    aria-label={ETIQUETA[opcion]}
                   />
                   {ETIQUETA[opcion]}
                 </label>
