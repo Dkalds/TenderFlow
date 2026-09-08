@@ -485,7 +485,17 @@ def _compute_hhi(shares: pd.Series) -> float:
 
 
 def get_competitors(filters: CompetitorFilters) -> CompetitorResult:
-    """Compute competitor rankings, HHI, and single-bid percentage."""
+    """Compute competitor rankings, HHI, and single-bid percentage.
+
+    Deliberadamente **no** excluye a la organización que consulta, aunque desde
+    S2.1 su identidad fiscal se conozca (``organization_nifs``). Esto es
+    análisis de mercado: la cuota, el HHI y el porcentaje de oferta única
+    describen un mercado del que la propia organización forma parte, y quitarla
+    de la muestra daría una concentración que no es la real y una cuota propia
+    que nadie podría leer. La exclusión pertenece a las listas que responden
+    «con quién ir» y «contra quién se va» —``services/competitive/socios.py``,
+    que sí la aplica— y no a la fotografía del mercado.
+    """
     log.info("analytics_competitors_start", filters=filters.model_dump(exclude_none=True))
     df, truncado = _load_df(filters)
     df = _apply_filters(df, filters)

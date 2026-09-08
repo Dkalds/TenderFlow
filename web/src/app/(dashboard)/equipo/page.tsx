@@ -1,493 +1,88 @@
 "use client";
 
-import * as React from "react";
-import { Building2, Check, Loader2, MailWarning, Plus, RotateCw, UserPlus, X } from "lucide-react";
-import { toast } from "sonner";
-import { Button } from "@/components/ui/button";
+/**
+ * `/equipo` — quién trabaja en la organización y qué puede acreditar.
+ *
+ * La página era un fichero de 494 líneas y el último inquilino de la allowlist
+ * de `max-lines`: sus cinco bloques viven ahora en `_components/` y sus
+ * etiquetas en `_lib/etiquetas.ts`. Lo que queda aquí es el reparto en dos
+ * pestañas y el estado que las dos comparten —qué organización está activa y si
+ * quien mira puede gestionarla—, que es justo lo que no se puede bajar a un
+ * trozo sin duplicarlo.
+ *
+ * La pestaña «Organización» es el destino que S2.1 y S2.2 le habían dado a sus
+ * tarjetas de NIF y capacidad: existían y estaban probadas, pero ninguna
+ * pantalla las montaba.
+ */
+
+import { Plus } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Panel, PanelTitle } from "@/components/console/panel";
-import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Badge } from "@/components/ui/badge";
-import { Skeleton } from "@/components/ui/skeleton";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { SpaceShell } from "@/components/layout/space-shell";
-import { formatDate } from "@/lib/utils";
 import {
-  type OrganizationMember,
-  type OrganizationMembershipStatus,
-  type OrganizationRole,
   useActiveOrganizationId,
-  useAddOrganizationMember,
-  useCreateOrganization,
-  useOrganizationMembers,
   useOrganizations,
   useOrganizationStore,
-  useUpdateOrganizationMember,
 } from "@/hooks/use-organization";
-import {
-  type OrganizationInvitation,
-  useOrganizationInvitations,
-  useResendInvitation,
-  useRevokeInvitation,
-} from "./_hooks/use-invitations";
-
-const ROLE_LABELS: Record<OrganizationRole, string> = {
-  owner: "Propietario",
-  admin: "Administrador",
-  member: "Miembro",
-  viewer: "Solo lectura",
-};
-
-const STATUS_LABELS: Record<OrganizationMembershipStatus, string> = {
-  active: "Activo",
-  invited: "Invitado",
-  suspended: "Suspendido",
-  revoked: "Revocado",
-};
-
-function CreateOrganizationForm() {
-  const [name, setName] = React.useState("");
-  const createOrganization = useCreateOrganization();
-
-  const submit = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (!name.trim()) return;
-    try {
-      await createOrganization.mutateAsync(name.trim());
-      toast.success("Organización creada");
-      setName("");
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "No se pudo crear la organización");
-    }
-  };
-
-  return (
-    <form onSubmit={submit} className="flex flex-wrap items-end gap-2">
-      <label className="min-w-56 flex-1 space-y-1.5 text-sm font-medium" htmlFor="new-org-name">
-        Nombre del espacio
-        <Input
-          id="new-org-name"
-          placeholder="Ej. Equipo Comercial"
-          value={name}
-          onChange={(event) => setName(event.target.value)}
-        />
-      </label>
-      <Button type="submit" size="sm" disabled={createOrganization.isPending || !name.trim()}>
-        {createOrganization.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-        Crear espacio
-      </Button>
-    </form>
-  );
-}
-
-function AddMemberForm({ organizationId }: { organizationId: number }) {
-  const [email, setEmail] = React.useState("");
-  const [role, setRole] = React.useState<"admin" | "member" | "viewer">("member");
-  const addMember = useAddOrganizationMember(organizationId);
-
-  const submit = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (!email.trim()) return;
-    try {
-      // La respuesta es una membresía (la persona ya tenía cuenta) o una
-      // invitación pendiente (no la tenía). `id` solo existe en la segunda:
-      // es lo que distingue las dos ramas sin inventar un campo discriminador.
-      const resultado = await addMember.mutateAsync({ email: email.trim(), role });
-      const invitado = resultado != null && "id" in resultado;
-      toast.success(invitado ? "Invitación enviada por correo" : "Miembro añadido");
-      setEmail("");
-      setRole("member");
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "No se pudo invitar a esa persona.");
-    }
-  };
-
-  return (
-    <form onSubmit={submit} className="flex flex-wrap items-end gap-2 rounded-lg border border-dashed border-border p-3">
-      <label className="min-w-56 flex-1 space-y-1.5 text-sm font-medium" htmlFor="member-email">
-        Correo de la persona
-        <Input
-          id="member-email"
-          type="email"
-          placeholder="persona@empresa.com"
-          value={email}
-          onChange={(event) => setEmail(event.target.value)}
-        />
-      </label>
-      <label className="space-y-1.5 text-sm font-medium" htmlFor="member-role">
-        Rol
-        <Select value={role} onValueChange={(value) => setRole(value as "admin" | "member" | "viewer")}>
-          <SelectTrigger id="member-role" className="w-40">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="admin">Administrador</SelectItem>
-            <SelectItem value="member">Miembro</SelectItem>
-            <SelectItem value="viewer">Solo lectura</SelectItem>
-          </SelectContent>
-        </Select>
-      </label>
-      <Button type="submit" size="sm" disabled={addMember.isPending || !email.trim()}>
-        {addMember.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <UserPlus className="h-4 w-4" />}
-        Añadir
-      </Button>
-      <p className="w-full text-xs text-muted-foreground">
-        Si la persona ya tiene cuenta, entra al equipo en el acto. Si no, recibe una invitación por
-        correo que caduca a los 7 días.
-      </p>
-    </form>
-  );
-}
-
-function MemberRow({
-  member,
-  organizationId,
-  canManage,
-}: {
-  member: OrganizationMember;
-  organizationId: number;
-  canManage: boolean;
-}) {
-  const updateMember = useUpdateOrganizationMember(organizationId);
-  const isOwner = member.role === "owner";
-
-  const changeRole = async (role: "admin" | "member" | "viewer") => {
-    try {
-      await updateMember.mutateAsync({ user_id: member.user_id, role, status: member.status });
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "No se pudo cambiar el rol");
-    }
-  };
-
-  const changeStatus = async (status: "active" | "revoked") => {
-    try {
-      await updateMember.mutateAsync({ user_id: member.user_id, role: member.role, status });
-      toast.success(status === "active" ? "Miembro reactivado" : "Miembro revocado");
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "No se pudo actualizar el estado");
-    }
-  };
-
-  return (
-    <TableRow>
-      <TableCell>
-        <div className="font-medium">{member.display_name ?? `Usuario ${member.user_id}`}</div>
-        <div className="text-xs text-muted-foreground">{member.email ?? "—"}</div>
-      </TableCell>
-      <TableCell>
-        {canManage && !isOwner ? (
-          <Select value={member.role} onValueChange={(value) => void changeRole(value as "admin" | "member" | "viewer")}>
-            <SelectTrigger className="h-8 w-36 text-xs">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="admin">Administrador</SelectItem>
-              <SelectItem value="member">Miembro</SelectItem>
-              <SelectItem value="viewer">Solo lectura</SelectItem>
-            </SelectContent>
-          </Select>
-        ) : (
-          <Badge variant={isOwner ? "default" : "secondary"}>{ROLE_LABELS[member.role]}</Badge>
-        )}
-      </TableCell>
-      <TableCell>
-        <Badge variant={member.status === "active" ? "success" : "outline"}>{STATUS_LABELS[member.status]}</Badge>
-      </TableCell>
-      <TableCell className="text-right">
-        {canManage && !isOwner && (
-          <Button
-            variant="ghost"
-            size="sm"
-            disabled={updateMember.isPending}
-            onClick={() => void changeStatus(member.status === "active" ? "revoked" : "active")}
-          >
-            {member.status === "active" ? "Revocar" : "Reactivar"}
-          </Button>
-        )}
-      </TableCell>
-    </TableRow>
-  );
-}
-
-
-const INVITATION_STATUS_LABELS: Record<OrganizationInvitation["status"], string> = {
-  invited: "Pendiente",
-  accepted: "Aceptada",
-  revoked: "Revocada",
-  expired: "Caducada",
-};
-
-/**
- * Invitaciones pendientes: quién falta por entrar y qué se puede hacer con ello.
- *
- * Sin esta tabla, invitar a alguien sin cuenta era una acción sin rastro: el
- * correo salía y la pantalla seguía enseñando el mismo equipo de antes, así que
- * no había forma de saber si hacía falta reenviarlo ni de retirar una
- * invitación mandada por error.
- */
-function PendingInvitations({ organizationId, canManage }: { organizationId: number; canManage: boolean }) {
-  const invitations = useOrganizationInvitations(organizationId, canManage);
-  const resend = useResendInvitation(organizationId);
-  const revoke = useRevokeInvitation(organizationId);
-
-  if (!canManage) return null;
-
-  const rows = invitations.data ?? [];
-
-  const reenviar = async (invitation: OrganizationInvitation) => {
-    try {
-      await resend.mutateAsync(invitation.id);
-      toast.success("Invitación reenviada");
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "No se pudo reenviar la invitación");
-    }
-  };
-
-  const revocar = async (invitation: OrganizationInvitation) => {
-    try {
-      await revoke.mutateAsync(invitation.id);
-      toast.success("Invitación revocada");
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "No se pudo revocar la invitación");
-    }
-  };
-
-  return (
-    <Panel>
-      <PanelTitle
-        title="Invitaciones pendientes"
-        hint="personas sin cuenta a las que se ha enviado un enlace"
-      />
-      {invitations.isLoading ? (
-        <Skeleton className="h-10 w-full" />
-      ) : rows.length === 0 ? (
-        <p className="flex items-center gap-2 text-sm text-muted-foreground">
-          <MailWarning className="h-4 w-4" aria-hidden="true" />
-          No hay invitaciones pendientes.
-        </p>
-      ) : (
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Correo</TableHead>
-              <TableHead>Rol</TableHead>
-              <TableHead>Caduca</TableHead>
-              <TableHead>Estado</TableHead>
-              <TableHead className="text-right">Acciones</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {rows.map((invitation) => (
-              <TableRow key={invitation.id}>
-                <TableCell className="font-medium">{invitation.email}</TableCell>
-                <TableCell>{ROLE_LABELS[invitation.role]}</TableCell>
-                <TableCell>{formatDate(invitation.expires_at)}</TableCell>
-                <TableCell>
-                  <Badge variant={invitation.status === "invited" ? "secondary" : "outline"}>
-                    {INVITATION_STATUS_LABELS[invitation.status]}
-                  </Badge>
-                </TableCell>
-                <TableCell className="space-x-1 text-right">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    disabled={resend.isPending}
-                    onClick={() => void reenviar(invitation)}
-                  >
-                    <RotateCw className="mr-1 h-3.5 w-3.5" aria-hidden="true" />
-                    Reenviar
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    disabled={revoke.isPending}
-                    onClick={() => void revocar(invitation)}
-                  >
-                    <X className="mr-1 h-3.5 w-3.5" aria-hidden="true" />
-                    Revocar
-                  </Button>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      )}
-    </Panel>
-  );
-}
-
-/**
- * Matriz de permisos por rol sobre los espacios de la consola.
- *
- * Los cuatro roles eran una etiqueta junto al nombre: sabías que alguien era
- * «viewer» y no qué podía hacer. La matriz responde la pregunta que de verdad
- * se hace quien invita a alguien — a qué le está dando acceso.
- *
- * Es documentación de la política que aplica el backend, no la política: lo que
- * manda son sus comprobaciones de permisos.
- */
-const ROLES = ["owner", "admin", "member", "viewer"] as const;
-type Role = (typeof ROLES)[number];
-
-const PERMISSIONS: { capability: string; detail: string; roles: Role[] }[] = [
-  { capability: "Ver los espacios de análisis", detail: "Radar, Mercado, Competencia", roles: ["owner", "admin", "member", "viewer"] },
-  { capability: "Guardar vistas y watchlists propias", detail: "Mi Watchlist, Mi perfil de scoring", roles: ["owner", "admin", "member"] },
-  { capability: "Abrir y editar oportunidades", detail: "decisión, responsable, precio", roles: ["owner", "admin", "member"] },
-  { capability: "Invitar y quitar miembros", detail: "Equipo", roles: ["owner", "admin"] },
-  { capability: "Cambiar el rol de otros", detail: "Equipo", roles: ["owner"] },
-  { capability: "Ops y administración", detail: "DLQ, claves API, feature flags", roles: ["owner"] },
-];
-
-function PermissionMatrix() {
-  return (
-    <Panel>
-      <PanelTitle
-        title="Qué puede hacer cada rol"
-        hint="documenta la política que aplica el backend"
-      />
-      <div className="overflow-x-auto">
-        <table className="w-full border-collapse text-xs">
-          <thead>
-            <tr className="border-b border-border/70">
-              <th scope="col" className="px-2 py-2 text-left font-mono text-[9px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
-                Capacidad
-              </th>
-              {ROLES.map((role) => (
-                <th
-                  key={role}
-                  scope="col"
-                  className="w-24 px-2 py-2 text-center font-mono text-[9px] font-semibold uppercase tracking-[0.1em] text-muted-foreground"
-                >
-                  {ROLE_LABELS[role]}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {PERMISSIONS.map((permission) => (
-              <tr key={permission.capability} className="border-b border-border/25">
-                <td className="px-2 py-2">
-                  <div className="font-medium">{permission.capability}</div>
-                  <div className="text-[10.5px] text-muted-foreground">{permission.detail}</div>
-                </td>
-                {ROLES.map((role) => {
-                  const allowed = permission.roles.includes(role);
-                  return (
-                    <td key={role} className="px-2 py-2 text-center">
-                      <span className="sr-only">{allowed ? "Permitido" : "No permitido"}</span>
-                      {allowed ? (
-                        <Check className="mx-auto h-3.5 w-3.5 text-[hsl(var(--success))]" aria-hidden="true" />
-                      ) : (
-                        <span className="text-muted-foreground/40" aria-hidden="true">
-                          ·
-                        </span>
-                      )}
-                    </td>
-                  );
-                })}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </Panel>
-  );
-}
+import { CrearOrganizacionForm } from "./_components/crear-organizacion-form";
+import { InvitacionesPendientes } from "./_components/invitaciones-pendientes";
+import { MatrizPermisos } from "./_components/matriz-permisos";
+import { MiembrosCard } from "./_components/miembros-card";
+import { OrganizacionTab } from "./_components/organizacion-tab";
 
 export default function EquipoPage() {
   const organizations = useOrganizations();
   const activeOrganizationId = useActiveOrganizationId();
   const setActiveOrganizationId = useOrganizationStore((state) => state.setActiveOrganizationId);
-  const members = useOrganizationMembers(activeOrganizationId);
   const activeOrganization = organizations.data?.find((organization) => organization.id === activeOrganizationId);
   const canManage = activeOrganization ? ["owner", "admin"].includes(activeOrganization.role) : false;
+  const isPersonal = activeOrganization?.is_personal ?? false;
 
   return (
     <SpaceShell spaceKey="equipo">
       <div className="space-y-5">
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Plus className="h-4 w-4 text-primary" />
-            Crear organización
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <CreateOrganizationForm />
-        </CardContent>
-      </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Plus className="h-4 w-4 text-primary" />
+              Crear organización
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <CrearOrganizacionForm />
+          </CardContent>
+        </Card>
 
-      <Card>
-        <CardHeader className="flex-row items-center justify-between gap-3 space-y-0">
-          <CardTitle className="flex items-center gap-2">
-            <Building2 className="h-4 w-4 text-primary" />
-            Organización activa
-          </CardTitle>
-          <Select
-            value={activeOrganizationId ? String(activeOrganizationId) : ""}
-            onValueChange={(value) => setActiveOrganizationId(value ? Number(value) : null)}
-          >
-            <SelectTrigger className="w-56">
-              <SelectValue placeholder="Selecciona una organización" />
-            </SelectTrigger>
-            <SelectContent>
-              {organizations.data?.map((organization) => (
-                <SelectItem key={organization.id} value={String(organization.id)}>
-                  {organization.name} · {ROLE_LABELS[organization.role]}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {activeOrganization?.is_personal ? (
-            <p className="rounded-lg border border-dashed border-border bg-muted/30 p-4 text-sm text-muted-foreground">
-              Esta es tu organización personal: no admite miembros adicionales. Crea un espacio compartido arriba para
-              trabajar en equipo.
-            </p>
-          ) : (
-            <>
-              {canManage && activeOrganizationId != null && <AddMemberForm organizationId={activeOrganizationId} />}
-              {members.isLoading ? (
-                <div className="grid gap-3">
-                  <Skeleton className="h-10 w-full" />
-                  <Skeleton className="h-10 w-full" />
-                </div>
-              ) : (members.data ?? []).length === 0 ? (
-                <p className="text-sm text-muted-foreground">Todavía no hay miembros en esta organización.</p>
-              ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Persona</TableHead>
-                      <TableHead>Rol</TableHead>
-                      <TableHead>Estado</TableHead>
-                      <TableHead className="text-right">Acciones</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {(members.data ?? []).map((member) => (
-                      <MemberRow
-                        key={member.user_id}
-                        member={member}
-                        organizationId={activeOrganizationId as number}
-                        canManage={canManage}
-                      />
-                    ))}
-                  </TableBody>
-                </Table>
-              )}
-            </>
-          )}
-        </CardContent>
-      </Card>
+        <Tabs defaultValue="miembros">
+          <TabsList>
+            <TabsTrigger value="miembros">Miembros</TabsTrigger>
+            <TabsTrigger value="organizacion">Organización</TabsTrigger>
+          </TabsList>
 
-      {!activeOrganization?.is_personal && activeOrganizationId != null && (
-        <PendingInvitations organizationId={activeOrganizationId} canManage={canManage} />
-      )}
+          <TabsContent value="miembros" className="space-y-5">
+            <MiembrosCard
+              organizations={organizations.data ?? []}
+              activeOrganization={activeOrganization}
+              activeOrganizationId={activeOrganizationId}
+              onSelectOrganization={setActiveOrganizationId}
+              canManage={canManage}
+            />
 
-      <PermissionMatrix />
+            {!isPersonal && activeOrganizationId != null && (
+              <InvitacionesPendientes organizationId={activeOrganizationId} canManage={canManage} />
+            )}
+
+            <MatrizPermisos />
+          </TabsContent>
+
+          <TabsContent value="organizacion">
+            <OrganizacionTab
+              organizationId={activeOrganizationId}
+              canManage={canManage}
+              isPersonal={isPersonal}
+            />
+          </TabsContent>
+        </Tabs>
       </div>
     </SpaceShell>
   );

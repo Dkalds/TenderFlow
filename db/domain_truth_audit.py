@@ -142,3 +142,81 @@ def baja_media_delta() -> dict[str, Any]:
         "baja_media_pct_por_licitacion": per_licitacion["baja_media_pct"],
         "n_por_licitacion": per_licitacion["n"],
     }
+
+
+# Columnas de fecha guardadas como texto. Las seis primeras son las que
+# protege el CHECK de ``v59``; las dos últimas de ``licitaciones`` no lo tienen
+# —``fecha_extraccion`` y ``primera_extraccion`` se escriben desde el propio
+# scraper, así que nadie vio la necesidad— y por eso se miden aparte: son las
+# únicas donde una fecha malformada puede entrar hoy sin que nada la pare.
+FECHAS_TEXTO_CON_CHECK: tuple[tuple[str, str], ...] = (
+    ("licitaciones", "fecha_publicacion"),
+    ("licitaciones", "fecha_limite"),
+    ("licitaciones", "fecha_inicio"),
+    ("licitaciones", "fecha_fin"),
+    ("licitaciones", "fecha_actualizacion_fuente"),
+    ("adjudicaciones", "fecha_adjudicacion"),
+)
+FECHAS_TEXTO_SIN_CHECK: tuple[tuple[str, str], ...] = (
+    ("licitaciones", "fecha_extraccion"),
+    ("licitaciones", "primera_extraccion"),
+)
+
+# Mismo patrón que ``v59``: prefijo ISO-8601, equivalente Postgres del
+# ``GLOB '????-??-??*'`` de SQLite. Se re-teclea aquí y no se importa de la
+# revisión porque una migración no es API: Alembic la ejecuta una vez y su
+# módulo no está pensado para importarse desde runtime.
+_ISO_PREFIX = r"^[0-9]{4}-[0-9]{2}-[0-9]{2}"
+
+
+def fechas_no_iso() -> dict[str, Any]:
+    """Cuenta, por columna, las fechas de texto que no empiezan por ISO-8601.
+
+    **Por qué esto no lo cubre ya `iso_guard`.** El fragmento de
+    ``db/sql_fragments.py`` es un rango *lexicográfico* (``>= '1900' AND <
+    '3000'``), sargable a propósito para poder usar el btree. Un valor como
+    ``'20/01/2026'`` entra en ese rango y no es ISO: la guarda que protege las
+    consultas calientes es, por diseño, ciega a la mitad de los formatos malos.
+
+    **Por qué el CHECK tampoco.** ``v59`` añadió las restricciones como ``NOT
+    VALID``: aplican a toda escritura nueva pero **nunca validaron el histórico**
+    —hacerlo VALID habría abortado la migración en producción— y nadie ha
+    corrido el ``VALIDATE CONSTRAINT`` que su propio docstring deja escrito.
+    Así que este contador es literalmente **el número de filas que hoy impiden
+    promover esos seis CHECK**, y por tanto el que hay que ver en cero antes de
+    convertir estas columnas a ``timestamptz`` (T2 del plan de arquitectura v2).
+
+    Un NULL no cuenta: ausencia de fecha es otro defecto, y ya lo mide
+    ``fecha_limite_gap_by_source``.
+    """
+    columnas = [(t, c, True) for t, c in FECHAS_TEXTO_CON_CHECK] + [
+        (t, c, False) for t, c in FECHAS_TEXTO_SIN_CHECK
+    ]
+    resultados: list[dict[str, Any]] = []
+    total_no_iso = 0
+
+    with connect_read() as c:
+        for tabla, columna, tiene_check in columnas:
+            sql = f"""
+                SELECT COUNT(*) AS total,
+                       COUNT(*) FILTER (
+                           WHERE {columna} IS NOT NULL AND {columna} !~ %s
+                       ) AS no_iso
+                FROM {tabla}
+            """
+            fila = rows_to_dicts(c.execute(sql, [_ISO_PREFIX]))[0]
+            no_iso = int(fila["no_iso"] or 0)
+            total = int(fila["total"] or 0)
+            total_no_iso += no_iso
+            resultados.append(
+                {
+                    "tabla": tabla,
+                    "columna": columna,
+                    "tiene_check": tiene_check,
+                    "total": total,
+                    "no_iso": no_iso,
+                    "pct_no_iso": round(100.0 * no_iso / total, 3) if total else 0.0,
+                }
+            )
+
+    return {"por_columna": resultados, "total_no_iso": total_no_iso}

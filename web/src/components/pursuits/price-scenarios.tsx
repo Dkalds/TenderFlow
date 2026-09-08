@@ -1,10 +1,12 @@
 "use client";
 
+import { useParams } from "next/navigation";
 import { Calculator, ShieldAlert } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { usePriceScenarios } from "@/hooks/use-price-scenarios";
+import { usePursuit } from "@/hooks/use-pursuits";
 import { formatCurrency, formatPercent } from "@/lib/utils";
 
 const names = {
@@ -18,10 +20,41 @@ const eur = (value: number): string => formatCurrency(value);
 
 const percent = (value: number): string => formatPercent(value * 100);
 
-export function PriceScenariosPanel({ licitacionId }: { licitacionId: string }) {
-  const query = usePriceScenarios(licitacionId);
+/**
+ * Escenarios de precio de la oportunidad abierta.
+ *
+ * Si la oportunidad se abrió **por lote** (S3.1), el precio que hay que
+ * proponer es el de ese lote: el panel pide su escenario, no el del expediente
+ * completo. `loteId` explícito manda; cuando no se pasa —el caso de hoy, que
+ * monta el panel con el expediente a secas— el lote sale del pursuit de la
+ * ruta, que ya está en la caché de react-query porque la página no llega a
+ * renderizar esta pestaña hasta tenerlo (misma clave: no hay segunda llamada).
+ *
+ * `loteId === null` es distinto de `undefined`: null significa «el expediente
+ * entero, y lo sé», y no dispara la resolución por ruta.
+ */
+export function PriceScenariosPanel({
+  licitacionId,
+  loteId,
+  loteNumero,
+}: {
+  licitacionId: string;
+  loteId?: number | null;
+  loteNumero?: string | null;
+}) {
+  const params = useParams<{ id: string }>();
+  const pursuitId = params?.id ?? null;
+  const explicito = loteId !== undefined;
+  const pursuit = usePursuit(explicito ? null : pursuitId);
+  const lote = explicito ? (loteId ?? null) : (pursuit.data?.lote_id ?? null);
+  const numero = explicito ? (loteNumero ?? null) : (pursuit.data?.lote_numero ?? null);
+  // Mientras no se sepa si hay lote no se pide nada: pedir el del expediente y
+  // sustituirlo por el del lote es enseñar un precio equivocado y corregirlo a
+  // la vista del usuario.
+  const resolviendo = !explicito && pursuitId !== null && pursuit.isLoading;
+  const query = usePriceScenarios(licitacionId, lote, { enabled: !resolviendo });
 
-  if (query.isLoading) {
+  if (resolviendo || query.isLoading) {
     return <Skeleton className="h-56 w-full" />;
   }
   if (query.error) {
@@ -53,13 +86,27 @@ export function PriceScenariosPanel({ licitacionId }: { licitacionId: string }) 
               Escenarios de precio
             </CardTitle>
             <CardDescription className="mt-1">
-              Cuantiles de bajas observadas en adjudicaciones comparables.
+              {lote != null
+                ? `Cuantiles de bajas observadas, sobre el presupuesto del lote ${numero ?? lote}.`
+                : "Cuantiles de bajas observadas en adjudicaciones comparables."}
             </CardDescription>
           </div>
-          <Badge variant={qualityVariant}>Muestra {data.sample_quality}</Badge>
+          <div className="flex flex-wrap items-center gap-2">
+            {lote != null && <Badge variant="outline">Lote {numero ?? lote}</Badge>}
+            <Badge variant={qualityVariant}>Muestra {data.sample_quality}</Badge>
+          </div>
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
+        {/* El lote se abrió, pero el pliego ya no lo publica: el `lote_id` que
+            resuelve el backend viene NULL y sólo sobrevive su número (v110).
+            Los escenarios son entonces los del expediente, y decirlo es más
+            barato que dejar que alguien fije un precio creyendo otra cosa. */}
+        {lote == null && numero != null && (
+          <p className="rounded-lg border border-dashed p-3 text-xs text-muted-foreground">
+            El lote {numero} ya no figura publicado; estos escenarios son del expediente completo.
+          </p>
+        )}
         {data.scenarios?.length ? (
           <div className="grid gap-3 md:grid-cols-3">
             {data.scenarios.map((scenario) => (

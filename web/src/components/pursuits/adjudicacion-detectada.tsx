@@ -9,12 +9,20 @@
  * a la ficha, y sin outcomes fiables la fase de precio calibrado no puede
  * empezar.
  *
- * Lo que este componente **no** hace es decidir quién ganó. El sistema no
- * conoce el NIF de la organización que usa la herramienta, así que deducir
- * «ganada» de que exista una adjudicación sería fabricar justo el dato que las
- * métricas de producto existen para medir. Propone, con los datos publicados a
- * la vista, y la persona confirma.
+ * Lo que este componente **no** hace es decidir quién ganó. Desde S2.1 el
+ * backend sí propone un resultado (`resultado_sugerido`, cruzando los NIFs que
+ * la organización declaró con los de los adjudicatarios publicados), y la ficha
+ * lo trae **preseleccionado**: el atajo se lo lleva el caso normal, que es que
+ * la propuesta acierte. Pero preseleccionar no es cerrar — la opción se puede
+ * cambiar y el cierre exige una confirmación explícita—, porque el resultado
+ * es justo el dato que las métricas de producto existen para medir y un cierre
+ * automático equivocado lo contamina sin que nadie se entere.
+ *
+ * Con `resultado_sugerido: null` —la organización no ha declarado NIFs, o la
+ * fuente no publicó el del adjudicatario— la tarjeta se comporta como antes de
+ * S2.1: dos botones y ninguna preselección. `null` es «no lo sé», no «no ganó».
  */
+import { useState } from "react";
 import { CircleCheck, Trophy } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -22,13 +30,23 @@ import { useUpdatePursuit, type Pursuit } from "@/hooks/use-pursuits";
 import { EMPTY, formatCurrency } from "@/lib/utils";
 import { formatDate } from "@/components/pursuits/pursuit-presenters";
 
+type Resultado = "won" | "lost";
+
 function nombresDe(adjudicatarios: { nombre: string }[]): string {
   return adjudicatarios.map((a) => a.nombre).join(", ");
 }
 
+const ETIQUETA: Record<Resultado, string> = { won: "La ganamos", lost: "La perdimos" };
+
 export function AdjudicacionDetectada({ pursuit }: { pursuit: Pursuit }) {
   const adjudicacion = pursuit.adjudicacion;
   const update = useUpdatePursuit(pursuit.id);
+  const sugerido = adjudicacion?.resultado_sugerido ?? null;
+  // Sólo se guarda lo que la persona ha cambiado; la preselección sale de la
+  // propuesta en cada render. Va atada al `id` porque la ruta reutiliza el
+  // componente al saltar de una oportunidad a otra, y arrastrar la elección
+  // anterior preseleccionaría un resultado que nadie ha propuesto aquí.
+  const [eleccion, setEleccion] = useState<{ id: number; valor: Resultado } | null>(null);
 
   // Sin adjudicación publicada no hay nada que proponer. Es el caso normal de
   // una oportunidad viva, no un estado de error.
@@ -37,8 +55,10 @@ export function AdjudicacionDetectada({ pursuit }: { pursuit: Pursuit }) {
   const adjudicatarios = adjudicacion.adjudicatarios ?? [];
   const puedeCerrar = adjudicacion.cierre_pendiente && pursuit.status === "submitted";
   const motivo = `Adjudicación publicada por la fuente: ${nombresDe(adjudicatarios) || "sin adjudicatario publicado"}`;
+  const seleccion: Resultado =
+    (eleccion?.id === pursuit.id ? eleccion.valor : null) ?? sugerido ?? "lost";
 
-  const cerrar = async (outcome: "won" | "lost") => {
+  const cerrar = async (outcome: Resultado) => {
     try {
       await update.mutateAsync({
         outcome,
@@ -96,7 +116,45 @@ export function AdjudicacionDetectada({ pursuit }: { pursuit: Pursuit }) {
         </p>
       )}
 
-      {puedeCerrar ? (
+      {puedeCerrar && sugerido ? (
+        <div className="space-y-2.5">
+          <fieldset className="border-0 p-0">
+            <legend className="mb-1.5 text-[11.5px] leading-[1.5] text-muted-foreground">
+              Por el NIF de tu organización, esto parece una oportunidad{" "}
+              <span className="font-medium text-foreground">
+                {sugerido === "won" ? "ganada" : "perdida"}
+              </span>
+              . Cámbialo si no es así: el cierre lo confirmas tú.
+            </legend>
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
+              {(["won", "lost"] as const).map((opcion) => (
+                <label key={opcion} className="flex items-center gap-1.5 text-[12.5px]">
+                  <input
+                    type="radio"
+                    name={`adjudicacion-resultado-${pursuit.id}`}
+                    value={opcion}
+                    checked={seleccion === opcion}
+                    onChange={() => setEleccion({ id: pursuit.id, valor: opcion })}
+                    disabled={update.isPending}
+                    className="h-3.5 w-3.5 accent-primary"
+                    // El `<label>` que envuelve al input ya le da nombre en el
+                    // navegador, pero `jsx-a11y/control-has-associated-label` no
+                    // puede verlo: el texto llega por `{ETIQUETA[opcion]}` y la
+                    // regla es estática. El `aria-label` lo dice explícitamente
+                    // y coincide con lo que se lee, así que no hay dos nombres.
+                    aria-label={ETIQUETA[opcion]}
+                  />
+                  {ETIQUETA[opcion]}
+                </label>
+              ))}
+            </div>
+          </fieldset>
+          <Button size="sm" disabled={update.isPending} onClick={() => void cerrar(seleccion)}>
+            <CircleCheck aria-hidden="true" />
+            {seleccion === "won" ? "Confirmar como ganada" : "Confirmar como perdida"}
+          </Button>
+        </div>
+      ) : puedeCerrar ? (
         <div className="flex flex-wrap items-center gap-2">
           <Button size="sm" disabled={update.isPending} onClick={() => void cerrar("won")}>
             <CircleCheck aria-hidden="true" />

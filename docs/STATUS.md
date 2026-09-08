@@ -6,7 +6,7 @@ tags: [status, generado]
 
 <!-- generado por scripts/gen_status.py — no editar a mano -->
 
-Generado: 2026-09-07
+Generado: 2026-09-08
 
 ## Paridad de planos de orquestación (ADR-012)
 
@@ -77,7 +77,7 @@ Generado: 2026-09-07
 
 ## Superficie de la API
 
-**214 endpoints** expuestos.
+**217 endpoints** expuestos.
 
 <details><summary>Ver listado</summary>
 
@@ -99,6 +99,7 @@ Generado: 2026-09-07
 | GET | `/api/v1/analytics/clusters` |
 | GET | `/api/v1/analytics/compare-periods` |
 | GET | `/api/v1/analytics/competitors` |
+| GET | `/api/v1/analytics/forecast/estacionalidad` |
 | GET | `/api/v1/analytics/forecast/retendering` |
 | GET | `/api/v1/analytics/forecast/volume` |
 | GET | `/api/v1/analytics/geography` |
@@ -238,6 +239,7 @@ Generado: 2026-09-07
 | GET | `/api/v1/organizations/{organization_id}/settings` |
 | PUT | `/api/v1/organizations/{organization_id}/settings` |
 | GET | `/api/v1/predicciones/calibracion` |
+| GET | `/api/v1/publico/cobertura` |
 | GET | `/api/v1/publico/hubs` |
 | GET | `/api/v1/publico/licitaciones` |
 | GET | `/api/v1/publico/licitaciones/{ref}` |
@@ -265,6 +267,7 @@ Generado: 2026-09-07
 | GET | `/api/v1/radar/dismissals` |
 | POST | `/api/v1/radar/dismissals` |
 | DELETE | `/api/v1/radar/dismissals/{id_externo:path}` |
+| GET | `/api/v1/radar/proximas` |
 | GET | `/api/v1/resoluciones` |
 | GET | `/api/v1/saved-filters` |
 | POST | `/api/v1/saved-filters` |

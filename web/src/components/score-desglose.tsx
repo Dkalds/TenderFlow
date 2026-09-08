@@ -40,6 +40,25 @@ export const DESGLOSE_LABELS: Record<string, string> = {
 /** Orden estable: el del scoring, no el que devuelva `Object.entries`. */
 const ORDEN = Object.keys(DESGLOSE_LABELS);
 
+/**
+ * Contra qué se midió la afinidad (S2.4, `ScoringSignalsHealth.afinidad_origen`).
+ *
+ * La barra «Afinidad» dice cuánto encaja; esto dice **con qué**, que es lo que
+ * cambia su significado. Desde S2.4 el portfolio puede salir de dos sitios: el
+ * perfil personal de quien mira, o la capacidad declarada de su organización
+ * (referencias y familias de `/equipo`). No es lo mismo «encaja con lo que tú
+ * dijiste que haces» que «encaja con lo que ha hecho tu empresa», y quien lee
+ * el desglose para decidir si puja merece saber cuál de las dos está viendo.
+ *
+ * `ninguno` no se calla ni se pinta como avería: es la explicación de por qué
+ * la fila «Afinidad» puede no estar, y el camino para arreglarlo.
+ */
+const AFINIDAD_ORIGEN_TEXTO: Record<string, string> = {
+  perfil: "Afinidad medida contra tu perfil personal.",
+  organizacion: "Afinidad medida contra la capacidad declarada de tu organización.",
+  ninguno: "Ni tu perfil ni tu organización declaran a qué os dedicáis: la afinidad no mide encaje.",
+};
+
 function ordenar(desglose: Record<string, number>): [string, number][] {
   return Object.entries(desglose).sort(([a], [b]) => {
     const ia = ORDEN.indexOf(a);
@@ -67,11 +86,27 @@ export interface ScoreDesgloseProps {
    * inspector y en el PDF de F2.7.
    */
   explicacion?: string[];
+  /**
+   * S2.4 — `perfil | organizacion | ninguno`, tal cual lo emite
+   * `ScoringSignalsHealth.afinidad_origen`. Es de la respuesta entera, no de
+   * la fila: viaja en `signals`, no en `ScoredOpportunity`.
+   *
+   * Opcional a propósito: un valor desconocido (o ausente) no pinta nada en
+   * vez de inventar una procedencia. El frontend no fabrica analítica
+   * (ADR-014); aquí solo rotula lo que el backend ya declaró.
+   */
+  afinidadOrigen?: string | null;
 }
 
-export function ScoreDesglose({ desglose, riesgos, explicacion }: ScoreDesgloseProps) {
+export function ScoreDesglose({
+  desglose,
+  riesgos,
+  explicacion,
+  afinidadOrigen,
+}: ScoreDesgloseProps) {
   const filas = desglose ? ordenar(desglose) : [];
   const frases = explicacion ?? [];
+  const origenTexto = afinidadOrigen ? AFINIDAD_ORIGEN_TEXTO[afinidadOrigen] : undefined;
 
   if (filas.length === 0 && frases.length === 0) {
     // "Sin desglose" y no una lista vacía: el hueco silencioso se lee como que
@@ -121,6 +156,14 @@ export function ScoreDesglose({ desglose, riesgos, explicacion }: ScoreDesgloseP
           </span>
         </div>
       ))}
+
+      {origenTexto && (
+        // Bajo las barras y antes de los avisos: es una nota sobre una de las
+        // dimensiones, no una dimensión más ni una alerta.
+        <p data-slot="afinidad-origen" className="text-muted-foreground text-[10.5px] leading-snug">
+          {origenTexto}
+        </p>
+      )}
 
       {riesgos && riesgos.length > 0 && (
         <div className="mt-1 flex flex-wrap gap-1.5">

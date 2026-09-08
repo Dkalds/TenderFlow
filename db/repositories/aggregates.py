@@ -114,6 +114,14 @@ class LicitacionesFilters:
     importe_min: float | None = None
     q: str | None = None
     cpv: str | None = None
+    # Un órgano concreto, por igualdad exacta sobre ``organo_contratacion`` —
+    # la misma comparación que ya usan los drill-downs
+    # (``licitaciones_por_organo``, ``AdjudicacionRepository.load_por_organo``),
+    # que reciben el nombre como argumento aparte. Aquí viaja dentro de los
+    # filtros para que una agregación acotada a un órgano no necesite un
+    # parámetro extra en cada firma. No es lo mismo que ``q``: aquélla es
+    # búsqueda difusa sobre cuatro columnas, ésta es "este órgano y no otro".
+    organo: str | None = None
     # "Sólo las que siguen abiertas": descarta los estados terminales en vez de
     # enumerar los abiertos (ver shared/estados.py). No es redundante con
     # ``estado``: ése fija uno concreto, éste excluye el cierre y deja pasar
@@ -209,6 +217,9 @@ def build_licitaciones_where(
     if filters.cpv:
         clauses.append(f"{col('cpv')} = %s")
         params.append(filters.cpv)
+    if filters.organo and filters.organo.strip():
+        clauses.append(f"{col('organo_contratacion')} = %s")
+        params.append(filters.organo.strip())
 
     return " AND ".join(clauses), params
 
@@ -1449,6 +1460,42 @@ class AggregateRepository:
         )
         with connect_read() as c:
             return rows_to_dicts(c.execute(sql, params))
+
+    def publicaciones_mensuales(
+        self, filters: LicitacionesFilters, *, mes_desde: str, mes_hasta: str
+    ) -> list[dict[str, Any]]:
+        """(mes ``YYYY-MM``, publicaciones) dentro de una ventana cerrada de meses.
+
+        Hermana de :meth:`forecast_monthly`, con dos diferencias que justifican
+        que no sea la misma consulta: la ventana va acotada en meses (no en
+        fechas del filtro, que la estacionalidad necesita conservar libres) y
+        el agregado es siempre un conteo — no hay variante ``sum``, porque una
+        estacionalidad de importes la dominaría un único expediente grande.
+
+        Los meses vacíos **no** se rellenan: sólo vuelven los que tienen filas.
+        Decidir si un mes ausente es un cero real o un mes fuera de cobertura es
+        del servicio, que es quien sabe qué tramo pidió.
+
+        ``mes_desde``/``mes_hasta`` llegan como ``YYYY-MM`` y se traducen a un
+        rango **sargable** sobre la columna (``>= 'YYYY-MM-01'`` y ``<`` el día
+        uno del mes siguiente), no a un ``substr(...) >= ...``: ese predicado no
+        puede usar el btree de la fecha y obliga a evaluar la función fila a
+        fila, que es el mismo motivo por el que ``iso_guard`` es un rango y no
+        una regex.
+        """
+        where, params = _build_where(filters)
+        guard = iso_guard("fecha_publicacion")
+        anio_fin, mes_fin = (int(p) for p in mes_hasta.split("-"))
+        tras_el_fin = f"{anio_fin + mes_fin // 12:04d}-{mes_fin % 12 + 1:02d}-01"
+        sql = (
+            "SELECT substr(fecha_publicacion, 1, 7) AS mes, COUNT(*) AS publicaciones "
+            "FROM licitaciones "
+            f"WHERE {where} AND {guard} "
+            "  AND fecha_publicacion >= %s AND fecha_publicacion < %s "
+            "GROUP BY mes ORDER BY mes"
+        )
+        with connect_read() as c:
+            return rows_to_dicts(c.execute(sql, [*params, f"{mes_desde}-01", tras_el_fin]))
 
     def retendering_universe(self, filters: LicitacionesFilters) -> list[dict[str, Any]]:
         """Proyección acotada para el forecast de re-licitación (ADR-023).

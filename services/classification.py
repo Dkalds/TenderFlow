@@ -30,6 +30,7 @@ from shared.procedimientos import TIPOS_CONTRATO, etiqueta_tipo_contrato
 
 __all__ = [
     "CPV_NAMES",
+    "ESTADOS_PRE_LICITACION",
     "ESTADO_LABELS",
     "NUTS3_TO_CCAA",
     "PROJECT_TYPES",
@@ -229,6 +230,22 @@ ESTADO_LABELS: dict[str, str] = {
     "EJEC": "En ejecución",
     "CPM": "Consulta preliminar",
 }
+
+#: Estados en los que el órgano ya anunció que va a comprar pero **todavía no
+#: hay pliego ni plazo al que presentarse**: el anuncio previo del art. 134
+#: LCSP (``PRE``) y la consulta preliminar de mercado (``CPM``). Es el universo
+#: de la bandeja «Próximas» del Radar (T5 del plan 2026-09 v2).
+#:
+#: Se declara aquí, junto a :data:`ESTADO_LABELS`, para que ni la ruta ni el
+#: repositorio vuelvan a teclear los dos códigos: son los mismos que normalizó
+#: ``db/alembic/versions/v91_normaliza_estado_licitaciones.py`` y los mismos
+#: que traducen ``_FASE_ESTADO`` («anunci previ» → ``PRE``, «consulta
+#: preliminar» → ``CPM``) y ``scraper/connectors/ted.py`` (avisos ``pin-*`` →
+#: ``PRE``).
+#:
+#: No es un juicio de «abierta»: eso lo decide :func:`shared.estados.abierta_sql`
+#: por exclusión de los terminales, y ninguno de estos dos está en esa lista.
+ESTADOS_PRE_LICITACION: tuple[str, ...] = ("PRE", "CPM")
 
 
 def estado_label(code: str | None) -> str:

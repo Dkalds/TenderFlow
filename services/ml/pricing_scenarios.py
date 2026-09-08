@@ -3,6 +3,11 @@
 No estima P(ganar): el histórico solo contiene adjudicatarios y no ofrece
 labels de ofertas perdedoras vinculadas al portfolio del usuario. La salida
 expone tamaño muestral, cohorte usada y cuantiles para evitar falsa precisión.
+
+**Por lote (S3.1).** Un expediente dividido en lotes no se puja entero: se puja
+un lote, con su presupuesto. Con ``lote_id`` el denominador de los tres
+escenarios es el importe **de ese lote** y no el del expediente; sin él, el
+cálculo y la respuesta son exactamente los de siempre.
 """
 
 from __future__ import annotations
@@ -83,6 +88,9 @@ class WinProbabilityGate(BaseModel):
     )
 
 
+_METHODOLOGY_EXPEDIENTE = "Distribución empírica de bajas en adjudicaciones comparables observadas."
+
+
 class PriceScenariosResult(BaseModel):
     licitacion_id: str
     tender_amount_eur: float
@@ -92,15 +100,33 @@ class PriceScenariosResult(BaseModel):
     distribution: HistoricalDistribution | None = None
     scenarios: list[PriceScenario] = Field(default_factory=list)
     win_probability_gate: WinProbabilityGate = Field(default_factory=WinProbabilityGate)
-    methodology: str = "Distribución empírica de bajas en adjudicaciones comparables observadas."
+    methodology: str = _METHODOLOGY_EXPEDIENTE
     disclaimer: str = (
         "Estos escenarios NO son una P(ganar) causal ni garantizan adjudicación. "
         "Son referencias descriptivas del histórico observado; no incluyen ofertas perdedoras."
     )
+    #: Campos ADITIVOS (S3.1). Con valor **solo** cuando el escenario es el de
+    #: un lote: ahí ``tender_amount_eur`` es el presupuesto de ese lote y no el
+    #: del expediente, y quien lo consume tiene que poder verlo sin adivinarlo.
+    #:
+    #: Van con ``null`` en el caso del expediente en vez de desaparecer de la
+    #: respuesta. Omitirlos —con un ``model_serializer`` de envoltura— dejaba la
+    #: respuesta del expediente byte a byte como antes de S3.1, pero vacía el
+    #: esquema OpenAPI del modelo entero (Pydantic no sabe deducir la forma de
+    #: salida de un serializador propio, y ``PriceScenariosResult`` pasaba a
+    #: publicarse sin una sola propiedad). Entre un payload idéntico y un
+    #: contrato tipado gana el contrato: el invariante 5 de AGENTS.md existe
+    #: para que el frontend no tenga que redeclarar la forma a mano.
+    lote_id: int | None = None
+    #: Identidad estable del lote (``lotes.numero``): ``lotes.id`` se renumera
+    #: en cada re-ingesta (ver la cabecera de la revisión ``v110``).
+    lote_numero: str | None = None
 
 
 class PricingDataSource(Protocol):
     def get_target(self, licitacion_id: str) -> dict[str, Any] | None: ...
+
+    def get_lote_target(self, licitacion_id: str, lote_id: int) -> dict[str, Any] | None: ...
 
     def load_history(self, *, limit: int = 10_000) -> list[dict[str, Any]]: ...
 
@@ -225,41 +251,119 @@ def _distribution(discounts: list[float]) -> HistoricalDistribution:
     )
 
 
+@dataclass(frozen=True)
+class _Ambito:
+    """La unidad sobre la que se puja: el expediente entero, o uno de sus lotes."""
+
+    amount: float
+    organ: str
+    cpv4: str
+    lote_id: int | None
+    lote_numero: str | None
+    methodology: str
+
+
+def _ambito_expediente(target: dict[str, Any]) -> _Ambito:
+    return _Ambito(
+        amount=float(target.get("importe") or 0.0),
+        organ=str(target.get("organo_contratacion") or "").strip().casefold(),
+        cpv4=_cpv4(target.get("cpv")),
+        lote_id=None,
+        lote_numero=None,
+        methodology=_METHODOLOGY_EXPEDIENTE,
+    )
+
+
+def _ambito_lote(lote: dict[str, Any]) -> _Ambito:
+    """Ámbito de un lote. El importe es el suyo; si no lo publica, no hay otro.
+
+    Repartir el presupuesto del expediente entre sus lotes daría un
+    denominador inventado y tres precios con él (ADR-014: sin denominador no se
+    pinta). Un lote sin importe cae por el mismo camino que un expediente sin
+    importe: ``sample_quality='insuficiente'`` y ningún escenario.
+    """
+    cpv_lote = _cpv4(lote.get("cpv_lote"))
+    cpv4 = cpv_lote or _cpv4(lote.get("cpv_expediente"))
+    numero = lote.get("lote_numero")
+    lote_numero = None if numero is None else str(numero)
+    identificador = int(lote["lote_id"])
+    partes = [
+        "Distribución empírica de bajas en adjudicaciones comparables observadas; "
+        f"el denominador es el importe del lote {lote_numero or identificador}.",
+    ]
+    if not cpv_lote and cpv4:
+        partes.append(" El CPV se hereda del expediente: el lote no publica uno propio.")
+    # F2.4 no se puede servir por lote: ``rate_cards`` sale de la ficha del
+    # pliego, que describe el expediente. Restarle a un precio de lote el coste
+    # de todos los perfiles del expediente daría un margen falso —y negativo—,
+    # así que aquí no hay margen implícito y se dice por qué.
+    partes.append(" Sin margen implícito: las tarifas del pliego son del expediente completo.")
+    return _Ambito(
+        amount=float(lote.get("importe") or 0.0),
+        organ=str(lote.get("organo_contratacion") or "").strip().casefold(),
+        cpv4=cpv4,
+        lote_id=identificador,
+        lote_numero=lote_numero,
+        methodology="".join(partes),
+    )
+
+
 def get_price_scenarios(
     licitacion_id: str,
     *,
+    lote_id: int | None = None,
     expected_competition: int | None = None,
     repository: PricingDataSource | None = None,
 ) -> PriceScenariosResult | None:
-    """Calcula tres referencias de precio; ``None`` significa licitación inexistente."""
+    """Calcula tres referencias de precio; ``None`` significa que no hay objeto.
+
+    Sin ``lote_id`` el objeto es el expediente y ``None`` significa "licitación
+    inexistente", como siempre. Con ``lote_id`` el objeto es ese lote y
+    ``None`` significa que **no pertenece a esa licitación** (o que ni el uno ni
+    la otra existen): el repositorio comprueba la pertenencia en el mismo
+    WHERE, así que no hay forma de servir el lote de otro expediente.
+    """
     repo = repository or PricingRepository()
-    target = repo.get_target(licitacion_id)
-    if target is None:
-        return None
-    amount = float(target.get("importe") or 0.0)
+    if lote_id is None:
+        target = repo.get_target(licitacion_id)
+        if target is None:
+            return None
+        ambito = _ambito_expediente(target)
+    else:
+        lote = repo.get_lote_target(licitacion_id, lote_id)
+        if lote is None:
+            return None
+        ambito = _ambito_lote(lote)
+
+    base: dict[str, Any] = {
+        "licitacion_id": licitacion_id,
+        "expected_competition": expected_competition,
+        "lote_id": ambito.lote_id,
+        "lote_numero": ambito.lote_numero,
+        "methodology": ambito.methodology,
+    }
+    amount = ambito.amount
     if amount <= 0:
         return PriceScenariosResult(
-            licitacion_id=licitacion_id,
             tender_amount_eur=amount,
-            expected_competition=expected_competition,
             sample_quality="insuficiente",
+            **base,
         )
 
     history = _normalise_history(repo.load_history())
     cohort, dimensions = _select_cohort(
         history,
-        organ=str(target.get("organo_contratacion") or "").strip().casefold(),
-        cpv4=_cpv4(target.get("cpv")),
+        organ=ambito.organ,
+        cpv4=ambito.cpv4,
         amount=amount,
         expected_competition=expected_competition,
     )
     if not cohort:
         return PriceScenariosResult(
-            licitacion_id=licitacion_id,
             tender_amount_eur=amount,
-            expected_competition=expected_competition,
             cohort=dimensions,
             sample_quality="insuficiente",
+            **base,
         )
 
     distribution = _distribution([row.discount for row in cohort])
@@ -276,8 +380,9 @@ def get_price_scenarios(
     ]
     # F2.4: el margen implícito sólo aparece si el pliego publicó tarifas Y
     # horas. Se leen una vez —no una por escenario— y una ficha que no exista
-    # todavía deja los tres escenarios sin margen, que es lo correcto.
-    tarifas = _tarifas_del_pliego(licitacion_id)
+    # todavía deja los tres escenarios sin margen, que es lo correcto. Por lote
+    # no se leen siquiera: ver el comentario de ``_ambito_lote``.
+    tarifas = _tarifas_del_pliego(licitacion_id) if ambito.lote_id is None else []
     scenarios = [
         PriceScenario(
             name=name,
@@ -289,13 +394,12 @@ def get_price_scenarios(
         for name, discount, basis in quantiles
     ]
     return PriceScenariosResult(
-        licitacion_id=licitacion_id,
         tender_amount_eur=amount,
-        expected_competition=expected_competition,
         cohort=dimensions,
         sample_quality=quality,
         distribution=distribution,
         scenarios=scenarios,
+        **base,
     )
 
 

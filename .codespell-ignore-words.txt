@@ -26,6 +26,7 @@ comercial
 commitees
 componentes
 conector
+confirmas
 contener
 contiguos
 controlable

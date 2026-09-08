@@ -23,6 +23,37 @@ class PricingRepository:
             )
         return rows[0] if rows else None
 
+    def get_lote_target(self, licitacion_id: str, lote_id: int) -> dict[str, Any] | None:
+        """El lote ``lote_id`` **si pertenece** a ``licitacion_id``, o ``None``.
+
+        La comprobación de pertenencia va en el mismo WHERE que la búsqueda,
+        igual que en ``PursuitRepository.lote_by_id``: el cliente manda el id
+        que tiene en pantalla y sin ese filtro se serviría el escenario de
+        precio del lote de otro expediente.
+
+        ``importe`` es el del lote y **no** se rellena con el del expediente:
+        un lote sin importe propio no tiene denominador, y repartir el
+        presupuesto total entre sus lotes sería inventarlo (ADR-014). El CPV
+        sí se devuelve por partida doble —el del lote y el del expediente— para
+        que la capa de dominio pueda declarar cuál usó: un lote sin CPV propio
+        sigue siendo el mismo objeto de contrato que su expediente, y quedarse
+        sin la dimensión más informativa de la cohorte por eso empobrece el
+        resultado sin ganar honestidad.
+        """
+        with connect_read() as connection:
+            rows = rows_to_dicts(
+                connection.execute(
+                    "SELECT l.id_externo, lo.id AS lote_id, lo.numero AS lote_numero, "
+                    "       lo.titulo AS lote_titulo, l.organo_contratacion, "
+                    "       lo.cpv AS cpv_lote, l.cpv AS cpv_expediente, lo.importe "
+                    "FROM lotes lo "
+                    "JOIN licitaciones l ON l.id_externo = lo.licitacion_id "
+                    "WHERE lo.id = %s AND lo.licitacion_id = %s",
+                    (lote_id, licitacion_id),
+                )
+            )
+        return rows[0] if rows else None
+
     def load_history(self, *, limit: int = 10_000) -> list[dict[str, Any]]:
         """Devuelve adjudicaciones comparables con presupuesto y precio positivos.
 

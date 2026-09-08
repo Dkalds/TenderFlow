@@ -77,6 +77,7 @@ export function RadarLista({
   onFollow,
   onOpenPursuit,
   onOpenFicha,
+  afinidadOrigen,
 }: {
   listRef: React.RefObject<HTMLDivElement | null>;
   rows: RadarTender[];
@@ -94,6 +95,9 @@ export function RadarLista({
   onFollow: (tender: RadarTender) => void;
   onOpenPursuit: (tender: RadarTender) => void;
   onOpenFicha: (index: number) => void;
+  /** Origen del portfolio de afinidad (S2.4). Viaja de la respuesta a cada
+   *  desglose: es de la petición, no de la fila. */
+  afinidadOrigen?: string | null;
 }) {
   const showEmpty = !isLoading && !error && rows.length === 0;
 
@@ -142,6 +146,7 @@ export function RadarLista({
               onFollow={onFollow}
               onOpenPursuit={onOpenPursuit}
               onOpenFicha={onOpenFicha}
+              afinidadOrigen={afinidadOrigen}
             />
           );
         })

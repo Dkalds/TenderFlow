@@ -15,7 +15,10 @@ Dimensiones (pesos configurables en ``settings.SCORING_WEIGHTS``, suman 100):
 - **afinidad** (15, opcional): similitud semántica con el portfolio explícito
   (keywords, CPVs y referencias contractuales) usando embeddings en lote. Si
   no están disponibles, conserva el fallback determinista ``min(hits/3, 1)``
-  y coincidencia CPV. Sin portfolio, el peso se redistribuye.
+  y coincidencia CPV. Sin portfolio, el peso se redistribuye. El portfolio sale
+  del perfil personal y, cuando no lo hay, de la capacidad declarada de la
+  organización (S2.4, ``affinity.resolve_portfolio``); cuál de las dos lo dice
+  ``signals.afinidad_origen``.
 - **senal_tecnica** (10): fuerza de la evidencia de tecnología, como el máximo
   entre el score derivado del texto de los pliegos y la probabilidad del
   clasificador. Sin señal → 50% neutral + flag. Es genérica: puntúa la
@@ -47,7 +50,7 @@ from config import settings
 from db.repositories.aggregates import AggregateRepository, LicitacionesFilters
 from observability.logging import get_logger
 from services.ambito_mercado import AmbitoMercado, resolver_ambito
-from services.analytics.affinity import build_portfolio, score_affinity_batch
+from services.analytics.affinity import PortfolioOrigen, resolve_portfolio, score_affinity_batch
 from services.analytics.scoring_explicacion import HechosDeFila, explicar
 from services.analytics.scoring_signals import (
     ORIGEN_DESCONOCIDO,
@@ -159,6 +162,20 @@ class ScoringSignalsHealth(BaseModel):
     afinidad_metodo: str = Field(
         description="semantic_embeddings | keyword_cpv_fallback | unavailable"
     )
+    # Campo ADITIVO (S2.4): `afinidad_metodo` dice *cómo* se comparó; esto dice
+    # *contra qué*. Hasta ahora el portfolio salía sólo del perfil personal, y
+    # quien no lo había rellenado —la mayoría— veía la afinidad neutral aunque
+    # su organización tuviera referencias declaradas desde S2.2. Ahora la
+    # capacidad corporativa suple al perfil ausente, y quién puso el portfolio
+    # cambia lo que significa la dimensión: no es lo mismo «encaja con lo que
+    # tú dijiste que haces» que «encaja con lo que ha hecho tu empresa».
+    # `ninguno` no es una avería —por eso no entra en `degradado`—: es que no
+    # hay ninguna señal declarada y la afinidad se apoya en las keywords
+    # globales de configuración, que no describen a nadie en particular.
+    afinidad_origen: str = Field(
+        default="ninguno",
+        description="perfil | organizacion | ninguno",
+    )
     senal_tecnica: str = Field(default="ok", description="ok | error")
     perfil: str = Field(default="ok", description="ok | error")
 
@@ -220,6 +237,10 @@ class _ScoringContext:
     affinity_method: str
     competencia_stats: CompetenciaStats
     margen_stats: MargenStats
+    # De dónde salió el portfolio de este request (S2.4). Se resuelve **una
+    # vez** al construir el contexto, no por fila: leer la capacidad de la
+    # organización son cinco SELECT y hay hasta 500 filas por request.
+    affinity_origen: PortfolioOrigen = "ninguno"
     percentiles_fuente: str = "sin_datos"
     # Fuerza de la señal técnica por id. None = la consulta falló (todas las
     # filas quedan neutras y la salud lo reporta); {} = consultada y sin datos
@@ -320,6 +341,7 @@ def _build_context(
     *,
     importe_percentiles: ImportePercentiles | None = None,
     tecnologia: str | None = None,
+    organization_id: int | None = None,
 ) -> _ScoringContext:
     """Lee settings (o perfil de usuario) y carga señales para construir un contexto.
 
@@ -330,6 +352,12 @@ def _build_context(
     entero, y por tanto una referencia sesgada por los filtros del request.
     ``tecnologia`` (el filtro activo del request) decide de qué tecnología se
     mide la fuerza de la señal técnica.
+
+    ``organization_id`` habilita el fallback de S2.4: sin perfil personal, el
+    portfolio de afinidad sale de la capacidad declarada de la organización.
+    Esta función corre **una vez por request** —los percentiles y las señales
+    ya se cargan aquí por eso mismo—, así que la lectura de capacidad se paga
+    una vez y no una por licitación puntuada.
     """
     if profile is not None and profile.weights:
         weights_raw = dict(profile.weights)
@@ -342,11 +370,26 @@ def _build_context(
         keywords = list(settings.SCORING_AFINIDAD_KEYWORDS)
 
     cpvs = list(profile.cpvs or []) if profile is not None else []
-    # `contracts` sigue en `build_portfolio` para cuando haya de dónde sacarlos
-    # (pursuits ganados), pero no se lee del perfil: la columna no existe, así
-    # que `raw_profile.get("contracts")` era siempre None y la rama de
-    # referencias contractuales, inalcanzable.
-    portfolio = build_portfolio(keywords=keywords, cpvs=cpvs)
+    # `contracts` no se lee del perfil personal: la columna no existe, así que
+    # `raw_profile.get("contracts")` era siempre None y la rama de referencias
+    # contractuales, inalcanzable. Las referencias que sí existen son las de la
+    # organización (S2.2), y entran por `resolve_portfolio`.
+    #
+    # `tiene_perfil` distingue las keywords **del usuario** de las de
+    # `settings.SCORING_AFINIDAD_KEYWORDS`, que es el valor por defecto de
+    # `keywords` unas líneas más arriba. Sin esa distinción, una instalación
+    # con keywords globales reportaría origen `perfil` para todo el mundo y la
+    # capacidad de la organización no llegaría a leerse nunca.
+    tiene_perfil = profile is not None and (
+        profile.afinidad_keywords is not None or bool(profile.cpvs)
+    )
+    resolucion = resolve_portfolio(
+        keywords=keywords,
+        cpvs=cpvs,
+        organization_id=organization_id,
+        tiene_perfil=tiene_perfil,
+    )
+    portfolio = resolucion.portfolio
     eff_weights = _effective_weights(
         weights_raw,
         [*portfolio.keywords, *portfolio.cpvs, *portfolio.contracts],
@@ -378,11 +421,14 @@ def _build_context(
         imp_p90=imp_p90,
         percentiles_fuente=percentiles_fuente,
         weights=eff_weights,
-        keywords=keywords,
+        # Las del portfolio con el que de verdad se puntuó, que con el fallback
+        # de S2.4 pueden ser las de la organización y no las que entraron.
+        keywords=list(portfolio.keywords),
         affinity_scores=affinity_batch.scores,
         affinity_method=affinity_batch.method,
         competencia_stats=comp_stats,
         margen_stats=margen_stats,
+        affinity_origen=resolucion.origen,
         tech_signal=tech_signal,
         importe_min=profile.importe_min if profile else None,
         importe_max=profile.importe_max if profile else None,
@@ -802,6 +848,7 @@ def get_scoring(
         profile=profile,
         importe_percentiles=load_importe_percentiles(),
         tecnologia=filters.tecnologia,
+        organization_id=organization_id,
     )
 
     # Page-aligned mode: la restricción por ids ya viene aplicada desde SQL.
@@ -872,6 +919,7 @@ def get_scoring(
             ),
             percentiles_fuente=ctx.percentiles_fuente,
             afinidad_metodo=ctx.affinity_method,
+            afinidad_origen=ctx.affinity_origen,
             senal_tecnica="error" if ctx.tech_signal is None else "ok",
             perfil=profile_status,
         ),

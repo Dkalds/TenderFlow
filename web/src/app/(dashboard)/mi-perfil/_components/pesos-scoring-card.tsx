@@ -12,7 +12,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Slider } from "@/components/ui/slider";
 
-const WEIGHT_LABELS: Record<string, string> = {
+/** Compartido con la tarjeta de pesos propuestos: una sola lista de rótulos. */
+export const WEIGHT_LABELS: Record<string, string> = {
   importe: "Importe",
   plazo: "Plazo",
   competencia: "Competencia",
