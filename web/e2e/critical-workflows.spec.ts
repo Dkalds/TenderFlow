@@ -1,4 +1,4 @@
-import { test, expect, type BrowserContext, type Page } from "@playwright/test";
+import { test, expect, type BrowserContext, type Locator, type Page } from "@playwright/test";
 import { SEED_LICITACION } from "./fixtures";
 
 /** Mutaciones críticas con persistencia real en Postgres. */
@@ -28,12 +28,21 @@ test.describe("Flujos de trabajo críticos", () => {
   });
 
   test("seguir una licitación persiste y se puede deshacer", async ({ page, context }) => {
-    // Estuvo en `fixme` desde que se escribió, y con motivo escrito: la fila
-    // era un `role="button"` con botones DENTRO —el mismo `nested-interactive`
-    // que señalaba axe— y el click en «Seguir» no registraba. C7.1 lo arregló
-    // el 2026-09-08 poniendo la selección en un botón hermano en capa, así que
-    // el test vuelve a correr. La fila se localiza ahora por `data-active`,
-    // que es lo que la identifica desde que dejó de ser un control.
+    // Estuvo en `fixme` desde que se escribió, con la sospecha de que la causa
+    // era el `nested-interactive` de la fila. No lo era, y por eso al quitar esa
+    // regla el test siguió sin pasar: **las acciones de una fila inactiva son
+    // `inert`** (`radar-acciones.tsx`, `inerte = enTabla && !isActive`), y a
+    // partir de `md` además llevan `pointer-events-none`. `inert` las saca del
+    // árbol de accesibilidad, así que `getByRole("button", {name: /^Seguir /})`
+    // no resolvía a nada y `click()` esperaba —sin error— hasta agotar el
+    // presupuesto del test. El log de la API del job lo confirma: los `GET
+    // /watchlist/items` responden 200 en 30 ms y **no hay ni un POST**.
+    //
+    // No es un fallo de la aplicación: revelar las acciones solo en la fila
+    // activa es una decisión del componente, escrita en su propio docstring. Lo
+    // que faltaba era que el test hiciera lo que hace una persona —seleccionar
+    // la fila y después pulsar—, y eso es justo lo que el botón en capa de C7.1
+    // hace posible expresar.
     //
     // El presupuesto es explícito porque el de por defecto no le cabe: el
     // cuerpo declara **dos** esperas de 20 s —el Radar con datos reales tarda,
@@ -51,15 +60,16 @@ test.describe("Flujos de trabajo críticos", () => {
       await expect(page.getByText(SEED_LICITACION.tituloRadar).first()).toBeVisible({
         timeout: 20_000,
       });
-      const row = page.getByText(SEED_LICITACION.tituloRadar).first().locator("xpath=ancestor::*[@data-active][1]");
-      await row.getByRole("button", { name: /^Seguir / }).click();
+      const fila = await seleccionarFila(page, SEED_LICITACION.tituloRadar);
+      await fila.getByRole("button", { name: /^Seguir / }).click();
 
       await expect.poll(() => watchlistContains(page, SEED_LICITACION.radarId)).toBe(true);
+
+      // Tras recargar no hay fila activa, así que hay que volver a seleccionar:
+      // «Dejar de seguir» está tan `inert` como lo estaba «Seguir».
       await page.reload();
-      await expect(page.getByRole("button", { name: /^Dejar de seguir / }).first()).toBeVisible({
-        timeout: 20_000,
-      });
-      await page.getByRole("button", { name: /^Dejar de seguir / }).first().click();
+      const filaTrasRecarga = await seleccionarFila(page, SEED_LICITACION.tituloRadar);
+      await filaTrasRecarga.getByRole("button", { name: /^Dejar de seguir / }).click();
       await expect.poll(() => watchlistContains(page, SEED_LICITACION.radarId)).toBe(false);
     } finally {
       await removeWatchlistItem(page, context, SEED_LICITACION.radarId);
@@ -205,6 +215,21 @@ async function deleteSavedView(page: Page, context: BrowserContext, name: string
   for (const view of body.items.filter((candidate) => candidate.name === name)) {
     await page.request.delete(`/api/v1/saved-filters/${view.id}`, { headers });
   }
+}
+
+/**
+ * Deja seleccionada la fila del Radar cuyo título es *titulo* y la devuelve.
+ *
+ * Hace falta porque las acciones de una fila inactiva son `inert` y, en la
+ * tabla, `pointer-events-none`: sin seleccionarla primero, «Seguir» no está en
+ * el árbol de accesibilidad y el locator no resuelve nunca. Seleccionar es el
+ * botón en capa que introdujo C7.1 (`aria-label="Seleccionar …"`).
+ */
+async function seleccionarFila(page: Page, titulo: string): Promise<Locator> {
+  const fila = page.getByText(titulo).first().locator("xpath=ancestor::*[@data-active][1]");
+  await fila.getByRole("button", { name: /^Seleccionar / }).click();
+  await expect(fila).toHaveAttribute("data-active", "true");
+  return fila;
 }
 
 async function watchlistContains(page: Page, idExterno: string): Promise<boolean> {
