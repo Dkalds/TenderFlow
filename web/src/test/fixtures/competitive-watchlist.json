@@ -1,0 +1,16 @@
+{
+  "items": [
+    {
+      "created_at": null,
+      "email": null,
+      "empresa_id": 1,
+      "frequency": null,
+      "id": 1,
+      "last_notified_at": null,
+      "nif_canonico": null,
+      "nombre_canonico": "texto",
+      "organization_id": null,
+      "visibility": null
+    }
+  ]
+}

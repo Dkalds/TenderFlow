@@ -9,6 +9,7 @@
  */
 
 import { cn } from "@/lib/utils";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { formatTime } from "@/lib/utils";
 import type { EstadoGlobalSalud } from "../../_hooks/use-observabilidad";
 
@@ -32,11 +33,21 @@ const COLOR: Record<EstadoGlobalSalud, string> = {
 
 export function StatusDot({ status }: { status: EstadoGlobalSalud }) {
   return (
-    <span
-      className={cn("inline-block h-3 w-3 rounded-full", COLOR[status])}
-      aria-label={`Estado: ${ETIQUETA[status]}`}
-      title={ETIQUETA[status]}
-    />
+    <Tooltip>
+      <TooltipTrigger asChild>
+        {/* `role="img"` porque el color es la única forma de leer el estado con
+            la vista, y un `aria-label` sobre un `<span>` sin rol no lo exponen
+            los lectores de pantalla de forma fiable. Sin `tabIndex`: una parada
+            de tabulación que no hace nada al pulsarla es otra violación
+            (`jsx-a11y/no-noninteractive-tabindex`), no una mejora. */}
+        <span
+          role="img"
+          className={cn("inline-block h-3 w-3 rounded-full", COLOR[status])}
+          aria-label={`Estado: ${ETIQUETA[status]}`}
+        />
+      </TooltipTrigger>
+      <TooltipContent>{ETIQUETA[status]}</TooltipContent>
+    </Tooltip>
   );
 }
 

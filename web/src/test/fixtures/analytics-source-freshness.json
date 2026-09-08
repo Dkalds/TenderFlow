@@ -1,0 +1,12 @@
+{
+  "generated_at": "texto",
+  "healthy_sources": 1,
+  "healthy_sources_pct": 1.0,
+  "sources": [
+    {
+      "source": "texto",
+      "status": "texto"
+    }
+  ],
+  "total_sources": 1
+}

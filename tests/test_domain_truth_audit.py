@@ -14,11 +14,10 @@ from __future__ import annotations
 from typing import Any
 
 from scripts.audit_domain_truth import (
-    MAX_DELTA_BAJA_PUNTOS,
     MAX_FECHAS_NO_ISO,
-    MAX_PCT_FILAS_UTE,
-    MAX_PCT_SIN_FECHA_LIMITE,
     MIN_LICITACIONES_PARA_EVALUAR,
+    UMBRAL_DELTA_BAJA,
+    UMBRAL_UTE,
     evaluar,
 )
 
@@ -148,17 +147,22 @@ def test_evaluar_detecta_fuente_sin_plazo() -> None:
         fecha_limite={
             "por_fuente": [
                 {
-                    "fuente": "placsp",
+                    # C4.5: el umbral es POR FUENTE y sale del valor medido.
+                    # `ted` está calibrado en 65,6 % (límite 72,16), así que 80
+                    # es una regresión de verdad. `placsp` está en 93,1 % con
+                    # tope 100 y ya no puede superarse: usar aquella fuente
+                    # convertiría este test en uno que no puede fallar.
+                    "fuente": "ted",
                     "total": MIN_LICITACIONES_PARA_EVALUAR + 1,
                     "sin_fecha_limite": MIN_LICITACIONES_PARA_EVALUAR,
-                    "pct_sin_fecha_limite": MAX_PCT_SIN_FECHA_LIMITE + 10,
+                    "pct_sin_fecha_limite": 80.0,
                 }
             ]
         }
     )
     violaciones = evaluar(datos)
     assert len(violaciones) == 1
-    assert "placsp" in violaciones[0]
+    assert "ted" in violaciones[0]
 
 
 def test_evaluar_ignora_fuentes_con_poco_volumen() -> None:
@@ -181,11 +185,11 @@ def test_evaluar_ignora_fuentes_con_poco_volumen() -> None:
 def test_evaluar_detecta_ute_y_baja() -> None:
     datos = _datos(
         ute={
-            "pct_filas_afectadas": MAX_PCT_FILAS_UTE + 1,
+            "pct_filas_afectadas": UMBRAL_UTE.limite + 1,
             "filas_afectadas": 100,
             "total_filas": 500,
         },
-        baja={"delta_puntos": MAX_DELTA_BAJA_PUNTOS + 1},
+        baja={"delta_puntos": UMBRAL_DELTA_BAJA.limite + 1},
     )
     violaciones = evaluar(datos)
     assert len(violaciones) == 2

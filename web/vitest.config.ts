@@ -74,6 +74,35 @@ export default defineConfig({
       // `lib/__tests__/filters.test.ts`, y los desenlaces del stream de `/ask`
       // en `ask-stream.test.ts`) pasan ejecutados en solitario, pero un fichero
       // que pasa no es un denominador global: los pisos siguen sin tocarse.
+      // 2026-09-07 (C7.2 / S5.8): sexto intento, mismo desenlace. El ítem pide
+      // un piso propio para `src/app/**` «al valor medido», y **ese valor sigue
+      // sin poder medirse en esta máquina**: `vitest run --coverage` sobre los
+      // 109 ficheros se queda sin emitir una sola línea y hay que matarlo.
+      //
+      // No se puso un piso proyectado, y se hizo bien: la aritmética sobre las
+      // tres carpetas medidas habría sido inventarse el número que el ítem pide
+      // medir. Lo que faltaba era el número de CI, y ese llegó — ver el bloque
+      // de abajo. La otra mitad del ítem (axe sobre la superficie pública,
+      // incluida la ficha) está en `web/e2e/accessibility.spec.ts`.
+      // 2026-09-08 (C7.2 / S5.8): **el número apareció**, y no en esta máquina.
+      // El séptimo intento local murió igual que los seis anteriores, pero el
+      // job `frontend` de CI sí corre la cobertura entera y publica su `lcov`
+      // como artefacto. Descargándolo y agregándolo por subárbol sale:
+      //
+      //   src/app/**   lines 35.06 (1489/4247) · functions 30.15 (572/1897)
+      //                branches 30.74 (1480/4814)
+      //
+      // Que la agregación es correcta no es una suposición: el mismo cálculo
+      // sobre `src/hooks/**` da 69.32 / 61.21 / 67.86, y vitest había reportado
+      // 69.31 / 61.2 en ese mismo run. Se reproduce su número antes de fiarse
+      // del que no se puede contrastar.
+      //
+      // `statements` **no** se fija para `src/app/**`, a propósito. El `lcov` no
+      // lo lleva, y derivarlo de `lines` sería inventarlo: en este mismo run
+      // `src/hooks/**` tiene statements POR ENCIMA de lines (70.51 vs 69.31) y
+      // el global POR DEBAJO (52.82 vs 53.48), o sea que no hay relación fija
+      // que aplicar. Lo publica vitest la primera vez que este umbral corra en
+      // CI, y entonces añadirlo es una línea.
       thresholds: {
         statements: 38,
         branches: 28,
@@ -85,6 +114,11 @@ export default defineConfig({
         "src/lib/**": { statements: 90, branches: 82, functions: 92, lines: 91 },
         "src/hooks/**": { statements: 72, branches: 66, functions: 64, lines: 72 },
         "src/components/**": { statements: 64, branches: 58, functions: 62, lines: 66 },
+        // El buffer de siempre (~3 puntos) sobre lo medido arriba. Solo sube:
+        // `src/app/**` es donde viven las ~18.700 líneas de páginas cliente que
+        // durante meses estuvieron fuera del denominador, y este piso es lo que
+        // impide que vuelvan a salirse sin que nadie lo decida.
+        "src/app/**": { branches: 27, functions: 27, lines: 32 },
       },
       reporter: ["text", "text-summary", "lcov"],
     },

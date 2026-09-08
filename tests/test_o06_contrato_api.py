@@ -117,15 +117,44 @@ def test_ninguna_operacion_publicada_es_opaca(spec: dict[str, Any]) -> None:
 def test_las_tres_operaciones_del_hecho_8_devuelven_dtos(
     spec: dict[str, Any], ruta: str, metodo: str
 ) -> None:
-    """Las tres devolvían ``list[dict[str, Any]]``; ahora son arrays de modelo.
+    """Las tres devolvían ``list[dict[str, Any]]``; ahora llevan modelo.
 
-    Se comprueba la forma exacta —array cuyos ``items`` son un ``$ref``— y no
-    solo que el ratchet pase: un ``list[str]`` también pasaría el ratchet y no
-    sería lo que estas rutas tienen que devolver.
+    Se comprueba la forma exacta y no solo que el ratchet pase: un ``list[str]``
+    también pasaría el ratchet y no sería lo que estas rutas tienen que
+    devolver.
+
+    Dos formas valen, y las dos son un modelo:
+
+    - array cuyos ``items`` son un ``$ref`` (``/models/{name}/versions``,
+      ``/webhooks``);
+    - un ``$ref`` a un sobre con la lista dentro (``/me/keys``, desde C2.3).
+
+    ``/me/keys`` pasó al sobre al añadir el ``tier`` de la clave: es el formato
+    que el resto del contrato usa cuando la respuesta puede crecer con
+    metadatos —``Paginated[T]``, ``WebhookEventTypes``— y añadirle un campo a un
+    array desnudo obliga a un cambio incompatible. El hook de ``/ops`` ya
+    aceptaba ``{items}`` antes de que existiera.
     """
     esquema = spec["paths"][ruta][metodo]["responses"]["200"]["content"]["application/json"][
         "schema"
     ]
+    if "$ref" in esquema:
+        modelo = esquema["$ref"].rsplit("/", 1)[-1]
+        propiedades = spec["components"]["schemas"][modelo].get("properties", {})
+        lista = next(
+            (
+                p
+                for p in propiedades.values()
+                if p.get("type") == "array" and "$ref" in p.get("items", {})
+            ),
+            None,
+        )
+        assert lista is not None, (
+            f"{metodo.upper()} {ruta} devuelve {modelo}, que no lleva ninguna "
+            "lista tipada dentro: el cliente TS no sabría qué hay en la colección"
+        )
+        return
+
     assert esquema.get("type") == "array", f"{metodo.upper()} {ruta} ya no devuelve una lista"
     assert "$ref" in esquema.get("items", {}), (
         f"{metodo.upper()} {ruta} devuelve una lista sin modelo: el cliente TS recibiría unknown[]"

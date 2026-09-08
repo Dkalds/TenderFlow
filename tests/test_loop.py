@@ -219,7 +219,11 @@ class TestJobRegistry:
         assert "watchlist_rules" in names
         assert "llm_tech_labeling" in names
         assert "llm_models_canary" in names
-        assert len(registry) == 13
+        # 13 -> 14 con `webhook_reintentos` (C2.4): hasta entonces
+        # `trigger_event` no dejaba nada `pending` y ningún job leía la cola,
+        # así que un endpoint caído perdía la entrega en el primer fallo.
+        assert "webhook_reintentos" in names
+        assert len(registry) == 14
 
     def test_heavy_jobs_marked_correctly(self):
         from scheduler.jobs import build_default_registry

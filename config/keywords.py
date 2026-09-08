@@ -97,6 +97,18 @@ SAP_KEYWORDS: list[str] = [
 
 # Keywords por tecnología (multi-vendor).
 # El scraper filtra licitaciones que coincidan con al menos una tecnología.
+# ── SEMILLA, no fuente de verdad (C5.6, D28, v126) ──────────────────────────
+#
+# Desde v126 el diccionario vigente vive en la tabla `tecnologias_keywords` y se
+# edita desde `/ops` sin desplegar. Esto es la **semilla**: lo que se vuelca en
+# la tabla cuando está vacía (`services.tecnologias_diccionario.
+# sembrar_desde_semilla`) y el respaldo si la base de datos no responde — sin
+# él, un fallo de lectura dejaría el filtro sin diccionario, y un filtro sin
+# diccionario no descarta nada: mete el censo entero.
+#
+# Añadir aquí una keyword ya **no** basta para que entre en producción: hay que
+# resembrar. Lo que sí sigue estando aquí es la revisión en código de qué
+# términos son legítimos, que es lo que una tabla editable no da.
 TECHNOLOGY_KEYWORDS: dict[str, list[str]] = {
     "SAP": SAP_KEYWORDS,
     "SALESFORCE": [

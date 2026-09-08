@@ -4,6 +4,7 @@ import * as React from "react";
 import { RadioTower } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { RadarTender } from "@/hooks/use-radar";
+import { RadarEsqueleto } from "./radar-esqueleto";
 import { RadarFila } from "./radar-fila";
 import { RADAR_GRID } from "./radar-shared";
 
@@ -106,15 +107,7 @@ export function RadarLista({
       {error ? (
         <RadarError error={error as Error} onRetry={onRetry} />
       ) : isLoading ? (
-        <div className="flex flex-col gap-2.5 p-3.5">
-          {Array.from({ length: 9 }, (_, index) => (
-            <span
-              key={index}
-              className="tf-shimmer block h-11 rounded-lg"
-              style={{ opacity: 1 - index * 0.07 }}
-            />
-          ))}
-        </div>
+        <RadarEsqueleto barras={9} />
       ) : showEmpty ? (
         <div className="px-5 py-20 text-center">
           <RadioTower className="mx-auto mb-3 h-6 w-6 text-muted-foreground/60" aria-hidden="true" />

@@ -177,10 +177,16 @@ def test_primary_doc_from_context_shape(repo):
 class _FakeRepo:
     def __init__(self, rows):
         self.rows = rows
-        self.calls: list[tuple[str, int]] = []
+        self.calls: list[tuple[str, int, str | None]] = []
 
-    def search_chunks_by_embedding(self, licitacion_id, embedding, *, limit):
-        self.calls.append((licitacion_id, limit))
+    def search_chunks_by_embedding(
+        self, licitacion_id, embedding, *, limit, embedding_version=None
+    ):
+        # `embedding_version` llegó con C5.7. Se registra en la llamada porque
+        # es el contrato que impide mezclar dos modelos en la misma consulta:
+        # si el selector dejara de pasarlo, el repositorio buscaría en todo el
+        # corpus y compararía vectores de espacios distintos.
+        self.calls.append((licitacion_id, limit, embedding_version))
         return self.rows
 
 
@@ -211,7 +217,9 @@ def test_pgvector_selection_orders_documentally_and_respects_budget(monkeypatch)
     # Entran los 2 mejores por score; el orden final es documental.
     assert [(c["documento_id"], c["chunk_index"]) for c in selected] == [(1, 3), (2, 0)]
     assert truncated is True
-    assert repo.calls == [("EXP-PGV", 24)]
+    from config.settings import settings
+
+    assert repo.calls == [("EXP-PGV", 24, settings.EMBEDDING_VERSION)]
 
 
 def test_pgvector_selection_returns_none_without_engine(monkeypatch):

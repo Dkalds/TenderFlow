@@ -85,6 +85,14 @@ _ALLOWLIST: dict[str, str] = {
         "filas raras; excluir duplicados cross-fuente esconderia justo el tipo "
         "de caso que busca."
     ),
+    "adjudicaciones.completitud_por_fuente": (
+        "C4.7: mide QUE TRAE CADA FUENTE, no que contratos hay. Deduplicar "
+        "cambiaria la pregunta: una fila descartada por duplicada sigue siendo "
+        "una fila que esa fuente publico con o sin `n_ofertas_recibidas`, y es "
+        "eso lo que la tabla de completitud describe. Ademas el sesgo iria en "
+        "la direccion equivocada: las fuentes con mas duplicados perderian mas "
+        "filas y su cobertura se calcularia sobre una muestra distinta."
+    ),
     # --- Auditadas y corregidas el 2026-08-18 ------------------------------
     # Al ampliar el escaner a db/ aparecieron 7 funciones sin la clausula. Se
     # audito una por una y NINGUNA queda pendiente:

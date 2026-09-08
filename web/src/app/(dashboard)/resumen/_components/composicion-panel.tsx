@@ -147,7 +147,7 @@ export function ComposicionPanel() {
         porEstado.length === 0 ? (
           <PanelEmpty message="Sin expedientes en el ámbito seleccionado." height={ALTO} />
         ) : (
-          <div style={{ minHeight: ALTO }}>
+          <div className="min-h-[232px]">
             {porEstado.map((estado) => (
               <Barra
                 key={estado.estado}
@@ -170,7 +170,7 @@ export function ComposicionPanel() {
       ) : topOrganos.length === 0 ? (
         <PanelEmpty message="Sin órganos en el ámbito seleccionado." height={ALTO} />
       ) : (
-        <div style={{ minHeight: ALTO }}>
+        <div className="min-h-[232px]">
           {topOrganos.map((organo, indice) => (
             <Barra
               key={organo.organo_contratacion}

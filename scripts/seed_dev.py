@@ -436,6 +436,32 @@ def step_adjudicaciones() -> None:
     print(f"[seed] Adjudicaciones: {total} insertadas")
 
 
+def step_superficie_publica() -> int:
+    """Refresca `licitaciones_canonicas` para que la superficie pública exista.
+
+    Es una **vista materializada** (`v94`), no una vista: sembrar filas en
+    `licitaciones` no la cambia. En producción la refresca el paso
+    `aggregates_precompute` al final de cada pasada de ingesta, pero el seed no
+    ejecuta pipeline, así que hasta ahora dejaba la superficie pública vacía.
+
+    Lo que eso significaba: `/licitaciones` llamaba a `notFound()` —«un índice
+    sin nada que indexar es contenido delgado»— y las seis páginas públicas se
+    servían como 404 sobre una base recién sembrada. Nadie lo notó porque el
+    E2E que recorre esa superficie se saltaba en las PR; la primera vez que
+    corrió de verdad (2026-09-08) falló justo ahí, diciendo «el índice público
+    no lista ninguna CCAA», que era exactamente el caso.
+
+    Devuelve las filas publicables. Si sale 0 con licitaciones sembradas, el
+    problema es el umbral de sustancia de la vista, no este paso — y el número
+    lo dice en vez de callarlo.
+    """
+    from db.repositories.publico import refrescar_vista_canonicas
+
+    filas = refrescar_vista_canonicas()
+    print(f"[seed] Superficie pública: {filas} licitaciones canónicas publicables")
+    return filas
+
+
 def step_usuario_demo() -> tuple[int, str]:
     """Crea usuario demo y devuelve (user_id, raw_api_key).
 
@@ -561,6 +587,9 @@ def main() -> int:
 
         n = step_licitaciones()
         step_adjudicaciones()
+        # Después de insertar y antes de dar el seed por bueno: la vista es
+        # materializada y sin refrescarla la superficie pública no existe.
+        step_superficie_publica()
         step_usuario_demo()
         step_usuario_admin()
 

@@ -19,14 +19,20 @@ from scheduler.pipeline_runs import (
     step_tier,
 )
 
-# Los cuatro pasos que informan sobre el sistema en vez de entregar algo de lo
+# Los cinco pasos que informan sobre el sistema en vez de entregar algo de lo
 # que dependa una superficie. Su fallo notifica por email y se ve en el
 # resumen, pero no puede poner el job en rojo.
+#
+# `webhook_reintentos` entró con C2.4 y es advisory por lo mismo: una entrega
+# que no se pudo reintentar sigue `pending` y la recoge la pasada siguiente, así
+# que un fallo aquí no rompe el contrato de la pasada — a diferencia de
+# `dlq_retry`, cuyo fallo deja el corpus incompleto.
 PASOS_ADVISORY = {
     "llm_models_canary",
     "anomaly_checks",
     "drift_checks",
     "sap_active_learning",
+    "webhook_reintentos",
 }
 
 PASOS_BLOQUEANTES = {

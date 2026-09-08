@@ -39,9 +39,13 @@ from services.ml.scoring import LoteDesconocidoError, prediccion_baja
 _LICITACION = "TARGET"
 _OTRO = "OTRO-EXPEDIENTE"
 
-# Los dos campos que S3.1 añade al DTO. Se comparan aparte para que el golden
-# de abajo siga siendo, literalmente, lo que servía el módulo anterior.
-_ADITIVOS = ("lote_id", "lote_numero")
+# Los campos que se le han AÑADIDO al DTO desde que se capturó el golden. Se
+# comparan aparte para que el de abajo siga siendo, literalmente, lo que servía
+# el módulo anterior: `lote_id` y `lote_numero` los puso S3.1, y `base` lo puso
+# C1.1 para que una baja diga sobre qué base de importe se calculó —publicarla
+# sin decirlo es publicar un número que no se puede interpretar, porque el 21 %
+# de IVA cabe entero dentro del rango de bajas plausibles—.
+_ADITIVOS = ("lote_id", "lote_numero", "base")
 
 # Respuesta exacta de `get_price_scenarios("TARGET", expected_competition=3)`
 # con `_historial()` como histórico, tal y como la serializaba el módulo antes
@@ -216,10 +220,12 @@ def test_sin_lote_la_respuesta_es_exactamente_la_de_antes_de_s3_1() -> None:
     # Mismo orden de claves: `json.loads` lo conserva, así que esto cierra la
     # única diferencia que la igualdad de dicts dejaría pasar.
     assert list(previos) == list(_GOLDEN_SIN_LOTE)
-    # Y lo único que se le añadió al payload son los dos campos nuevos, nulos.
+    # Y lo único que se le añadió al payload son los campos aditivos: los dos de
+    # S3.1 a `null` —no hay lote— y la base declarada de C1.1.
     assert {clave: servido[clave] for clave in _ADITIVOS} == {
         "lote_id": None,
         "lote_numero": None,
+        "base": "mixta",
     }
 
 

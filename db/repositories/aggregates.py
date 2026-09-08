@@ -47,9 +47,12 @@ from db.repositories.tecnologia_pliego import NO_SIGNAL_SENTINEL
 from db.sql_fragments import (
     FOLD_TABLE,
     TECHNOLOGY_OBSERVED_SQL,
+    clave_organo_sql,
     empresa_key_sql,
+    exclude_duplicados_presentacion_sql,
     fold_expr,
     iso_guard,
+    nombre_organo_sql,
     tecnologia_en_csv_sql,
 )
 from observability.logging import get_logger
@@ -923,19 +926,34 @@ class AggregateRepository:
             return []
         where, params = _build_where(filters)
         placeholders = ",".join("%s" for _ in tech_codes)
+        # C3.2: el top-N se recorta en SQL, no en Python.
+        #
+        # Hasta 2026-09 este método materializaba **todas** las licitaciones del
+        # label —el corpus tecnológico entero para un label ancho—, las ordenaba
+        # en memoria y devolvía las `limit` primeras. Pagaba en RSS de la API lo
+        # que la BD sabe hacer con un `LIMIT`.
+        #
+        # El `DISTINCT ON` obliga a ordenar primero por `id_externo`, así que el
+        # orden por importe va en la consulta externa. `id_externo` como segundo
+        # criterio no es decorativo: sin él, dos filas con el mismo importe
+        # saldrían en orden indefinido y la lista cambiaría entre peticiones
+        # idénticas. La ordenación de Python que esto sustituye era estable, y
+        # esta lo sigue siendo.
         sql = (
-            "SELECT DISTINCT ON (l.id_externo) "
-            "       l.id_externo, l.titulo, l.organo_contratacion, l.importe, "
-            "       l.estado, l.ccaa, l.fecha_publicacion "
-            "FROM licitaciones l, "
-            "     unnest(string_to_array(COALESCE(l.tecnologia, ''), ',')) AS code "
-            "WHERE " + where + f" AND trim(code) IN ({placeholders}) "
-            "ORDER BY l.id_externo, l.importe DESC NULLS LAST"
+            "SELECT * FROM ("
+            "  SELECT DISTINCT ON (l.id_externo) "
+            "         l.id_externo, l.titulo, l.organo_contratacion, l.importe, "
+            "         l.estado, l.ccaa, l.fecha_publicacion "
+            "  FROM licitaciones l, "
+            "       unnest(string_to_array(COALESCE(l.tecnologia, ''), ',')) AS code "
+            "  WHERE " + where + f" AND trim(code) IN ({placeholders}) "
+            "  ORDER BY l.id_externo, l.importe DESC NULLS LAST"
+            ") AS distintas "
+            "ORDER BY distintas.importe DESC NULLS LAST, distintas.id_externo "
+            "LIMIT %s"
         )
         with connect_read() as c:
-            rows = rows_to_dicts(c.execute(sql, [*params, *tech_codes]))
-        rows.sort(key=lambda r: (r["importe"] is None, -(r["importe"] or 0)))
-        return rows[:limit]
+            return rows_to_dicts(c.execute(sql, [*params, *tech_codes, limit]))
 
     # ── Geography ────────────────────────────────────────────────────────
 
@@ -1101,9 +1119,14 @@ class AggregateRepository:
     ) -> tuple[int, int, float]:
         """(filas totales, órganos únicos, importe total) del dataset filtrado."""
         where, params = self._organos_where(filters, q_folded)
+        # C1.2 — el conteo de órganos únicos usa la MISMA clave que el ranking.
+        # Si contara por texto crudo mientras el ranking agrupa por `organo_id`,
+        # los porcentajes del ranking se calcularían contra otro denominador y
+        # no sumarían 100.
+        clave = clave_organo_sql("f")
         sql = (
-            "SELECT COUNT(*), COUNT(DISTINCT organo_contratacion), "
-            "COALESCE(SUM(importe), 0) FROM licitaciones WHERE " + where
+            f"SELECT COUNT(*), COUNT(DISTINCT {clave}), "
+            "COALESCE(SUM(f.importe), 0) FROM (SELECT * FROM licitaciones WHERE " + where + ") f"
         )
         with connect_read() as c:
             row = c.execute(sql, params).fetchone()
@@ -1120,13 +1143,30 @@ class AggregateRepository:
         de pandas (empates → primera por orden alfabético) e ignora NULLs.
         """
         where, params = self._organos_where(filters, q_folded)
+        # C1.2 — lectura dual: se agrupa por `organo_id` cuando el maestro lo
+        # resolvió y por nombre plegado cuando no. Antes se agrupaba por el
+        # texto crudo, así que «Ayuntamiento de Madrid» y «AYUNTAMIENTO DE
+        # MADRID» eran dos órganos con dos historiales.
+        #
+        # El `WHERE` va en una subconsulta y no en el `JOIN` porque
+        # `_build_where` emite predicados **sin alias**, y `organos` también
+        # tiene una columna `ccaa`: unirlas al mismo nivel haría ambiguo cada
+        # filtro por comunidad. La subconsulta conserva el contrato del builder
+        # sin tocarlo.
+        clave = clave_organo_sql("f")
+        nombre = nombre_organo_sql("f", "o")
         sql = (
-            "SELECT organo_contratacion, COUNT(*) AS count, "
-            "       COALESCE(SUM(importe), 0) AS importe, "
-            "       mode() WITHIN GROUP (ORDER BY ccaa) AS ccaa_mode "
-            "FROM licitaciones "
-            "WHERE " + where + " AND organo_contratacion IS NOT NULL "
-            "GROUP BY organo_contratacion ORDER BY count DESC, organo_contratacion LIMIT %s"
+            f"SELECT {nombre} AS organo_contratacion, COUNT(*) AS count, "
+            "       COALESCE(SUM(f.importe), 0) AS importe, "
+            "       mode() WITHIN GROUP (ORDER BY f.ccaa) AS ccaa_mode, "
+            "       MAX(o.organo_id) AS organo_id, "
+            "       MAX(o.dir3) AS dir3, "
+            "       MAX(o.url_perfil) AS url_perfil "
+            "FROM (SELECT * FROM licitaciones WHERE " + where + ") f "
+            "LEFT JOIN organos o ON o.organo_id = f.organo_id "
+            "WHERE f.organo_contratacion IS NOT NULL "
+            f"GROUP BY {clave}, {nombre} "
+            f"ORDER BY count DESC, {nombre} LIMIT %s"
         )
         with connect_read() as c:
             return rows_to_dicts(c.execute(sql, [*params, limit]))
@@ -1791,10 +1831,23 @@ class AggregateRepository:
         where, params = _build_where(filters or LicitacionesFilters())
         abierta = abierta_sql_marcadores("estado", n=len(cerrados))
         guard = iso_guard("fecha_limite")
+        # C4.2 / D23 — el Radar enseña un contrato una vez.
+        #
+        # Este universo no excluía **ningún** duplicado, ni siquiera los
+        # `confirmed`. TED acuña un `publication-number` por anuncio y PSCP cae
+        # al `id` de la fila cuando no hay expediente, así que el mismo contrato
+        # llegaba al Radar tantas veces como veces se hubiera reemitido.
+        #
+        # Se usa la variante de presentación (esconde también `pending`) y no la
+        # analítica: el Radar es una lista que alguien lee, no una métrica de
+        # cuota de mercado. El razonamiento completo está en
+        # `exclude_duplicados_presentacion_sql` y en ADR-026.
+        no_duplicada = exclude_duplicados_presentacion_sql("id_externo")
         sql = (
             f"SELECT {self._SCORING_COLS} FROM licitaciones "
             f"WHERE {where} "
             f"  AND {abierta} "
+            f"  AND {no_duplicada} "
             f"  AND {guard} AND fecha_limite >= %s"
         )
         with connect_read() as c:

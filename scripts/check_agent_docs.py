@@ -31,7 +31,9 @@ from __future__ import annotations
 import ast
 import hashlib
 import json
+import os
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -48,6 +50,15 @@ INSTRUCTION_FILES = [
     "docs/windows-happy-path.md",
     ".agents/rules/graphify.md",
     ".agents/workflows/graphify.md",
+]
+
+# Documentacion de arquitectura y contrato: no son instrucciones de agente, pero
+# un humano las lee para decidir donde tocar y hasta 2026-09 nadie verificaba las
+# rutas que citan (C9.2 del plan complementario). Solo entran en check_paths: no
+# declaran targets de Make ni hooks, asi que el resto de controles no aplica.
+DOCS_ARQUITECTURA = [
+    "docs/api-design.md",
+    "docs/c4-architecture.md",
 ]
 
 COMMANDS_DIR = ROOT / ".claude/commands"
@@ -120,6 +131,10 @@ def looks_like_path(token: str) -> bool:
     if any(c in token for c in "*?{}<>$ |"):
         return False
     if token.startswith(("http", "mailto:", "#")):
+        return False
+    # `/exports/calendario.ics`, `/watchlist/feed.xml`: rutas HTTP, no ficheros.
+    # Las rutas del repositorio se citan siempre relativas a la raíz.
+    if token.startswith("/"):
         return False
     # Dependencias instaladas: existen o no según el entorno, no según el doc.
     if token.startswith("node_modules/") or "/node_modules/" in token:
@@ -319,7 +334,7 @@ def check_skill_trees() -> None:
 
 
 def check_paths() -> None:
-    for rel in INSTRUCTION_FILES:
+    for rel in [*INSTRUCTION_FILES, *DOCS_ARQUITECTURA]:
         text = read(rel)
         base = (ROOT / rel).parent
         for token in set(BACKTICK.findall(text)):
@@ -478,6 +493,71 @@ def check_manual_test_markers() -> None:
         )
 
 
+def check_scopes_doc() -> None:
+    """La matriz de scopes de `docs/api-design.md` la genera `gen_scopes_doc.py`.
+
+    Se invoca en subproceso porque importar `api.app` desde aqui arrastraria
+    FastAPI y sus dependencias a un script que hoy corre en pre-commit sin
+    ellas. Si el import falla (entorno sin dependencias de API), es un warning:
+    un control que no se pudo ejecutar no es un control verde, pero tampoco un
+    fallo del documento.
+
+    El subproceso hereda `ENV=dev` cuando el entorno no trae ninguno. Sin eso,
+    `config/settings.py` asume `prod` y exige `SIGNING_KEY`, asi que en
+    pre-commit —que corre con el entorno limpio— el control moria antes de mirar
+    el documento y reportaba un traceback de arranque como si la matriz de
+    scopes estuviera desfasada. Este script solo necesita la tabla de rutas: no
+    firma nada.
+    """
+    script = ROOT / "scripts" / "gen_scopes_doc.py"
+    if not script.exists():
+        fail("scripts/gen_scopes_doc.py", "no existe; docs/api-design.md quedaria sin generar")
+        return
+    entorno = {**os.environ}
+    entorno.setdefault("ENV", "dev")
+    proc = subprocess.run(
+        [sys.executable, str(script), "--check"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        # Explícito: en Windows `text=True` decodifica con la codepage local y
+        # el log estructurado del arranque de la API —que lleva acentos y flechas—
+        # reventaba el hilo lector con un `UnicodeDecodeError`. La excepción salía
+        # por stderr y la salida capturada quedaba vacía, así que las ramas de
+        # abajo que buscan `ValidationError` o `ModuleNotFoundError` no
+        # encontraban nada y el fallo se leía como «la matriz está desfasada».
+        encoding="utf-8",
+        errors="replace",
+        env=entorno,
+    )
+    if proc.returncode == 0:
+        return
+    salida = (proc.stderr or proc.stdout).strip()
+    if "ModuleNotFoundError" in salida or "ImportError" in salida:
+        warn(
+            "docs/api-design.md",
+            "no se pudo verificar la matriz de scopes (faltan dependencias de la API)",
+        )
+        return
+    if "ValidationError" in salida:
+        # Un settings que no valida es un problema del entorno, no del doc.
+        warn(
+            "docs/api-design.md",
+            "no se pudo verificar la matriz de scopes (config/settings.py no valida en este entorno)",
+        )
+        return
+    # La primera línea de la salida suele ser una traza JSON del arranque de la
+    # app, no el motivo: reportarla convertía «la matriz está desfasada» en
+    # `{"event": "brotli_compression_enabled", …}`, que no dice qué hacer. Se
+    # busca la última línea que no sea JSON estructurado.
+    utiles = [
+        linea
+        for linea in salida.splitlines()
+        if linea.strip() and not linea.lstrip().startswith("{")
+    ]
+    fail("docs/api-design.md", utiles[-1] if utiles else "matriz de scopes desfasada")
+
+
 def main() -> int:
     verbose = "--verbose" in sys.argv
     targets = make_targets()
@@ -486,6 +566,7 @@ def main() -> int:
     check_claude_skills()
     check_skill_trees()
     check_paths()
+    check_scopes_doc()
     check_hooks_and_absolute_paths()
     check_hook_parity()
     check_opencode_plugins()

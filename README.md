@@ -90,7 +90,6 @@ tenderflow/
 │   ├── database.py               #   Fachada principal (init, connect, upsert)
 │   ├── search_backend.py         #   Abstracción FTS: tsvector+GIN (Postgres)
 │   ├── upsert.py                 #   Upsert idempotente con historial
-│   ├── migrations.py             #   Migraciones DDL caseras (legacy, v1–v32)
 │   ├── repositories/             #   Patrón Repository (licitaciones, adjudicaciones, ...)
 │   ├── alembic/                  #   Migraciones Alembic (sistema canónico, DDL versionadas)
 │   ├── certs/                    #   CA de Supabase para `sslmode=verify-full`
@@ -108,7 +107,8 @@ tenderflow/
 │   ├── errors.py                 #   Errores RFC 7807 (Problem Details)
 │   └── routes/                   #   licitaciones, ask (RAG), analytics, competitive, search, ...
 ├── scraper/                      # Pipeline de extracción de datos
-│   ├── pipeline.py               #   Orquestador principal (bulk + daily)
+│   ├── pipeline.py               #   Carril diario legacy + clasificación ML compartida
+│   │                             #   (el orquestador vivo es scheduler/pipeline_runs.py)
 │   ├── connectors/                #   Framework multi-fuente (ADR-009): placsp, pscp, tacrc, ted
 │   ├── bulk_downloader.py        #   Descarga ZIPs mensuales de PLACSP
 │   ├── codice_parser.py          #   Parser ATOM/CODICE (formato UBL)

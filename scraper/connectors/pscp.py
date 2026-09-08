@@ -34,6 +34,7 @@ from observability import get_logger
 from scraper.connectors.base import ParsedTender, RawNotice
 from scraper.filters import matches_technology
 from services.classification import normalizar_estado
+from shared.dates import ANIO_MINIMO_PLAUSIBLE, es_fecha_plausible
 from shared.geo import nuts_to_ccaa
 
 if TYPE_CHECKING:
@@ -203,6 +204,13 @@ class PscpConnector:
         self._session = session or requests.Session()
         self._max_pub_date: str | None = None
         self._max_pub_id: str | None = None
+        #: Fechas de adjudicación descartadas por implausibles en este run
+        #: (C4.4). Lo lee el resumen del run; se reinicia en cada `fetch`.
+        self._fechas_implausibles = 0
+        #: Avisos descartados por no traer señal tecnológica (C4.1 / D24).
+        #: El framework ya cuenta `descartadas` en total; este contador dice
+        #: **por qué**, que es lo que hace accionable la cifra.
+        self._sin_senal_tecnologica = 0
 
     # ── fetch ────────────────────────────────────────────────────────────
 
@@ -347,7 +355,30 @@ class PscpConnector:
             cpv = cpv.split(",")[0].split(";")[0].strip() or None
         importe = _number(record, "importe") or _number(record, "importe_adjudicacion")
 
+        # C4.1 / D24 — el conector acota al universo tecnológico.
+        #
+        # Hasta 2026-09 este parser persistía el aviso **aunque no encontrara
+        # ninguna keyword**: 683.000 filas con un 0,46 % de positivos. Ese corpus
+        # no es dato de más, es el que ahoga al clasificador SAP — un modelo
+        # entrenado sobre él aprende a decir «no» y acierta el 99,5 % de las
+        # veces sin discriminar nada.
+        #
+        # El descarte lo cuenta el framework (`ConnectorResult.descartadas`) y
+        # acaba en `source_ingestion_health.discarded`, así que la decisión es
+        # medible en el siguiente run en vez de invisible.
+        #
+        # Se pasa `titulo` solo porque el dataset de la Generalitat no trae una
+        # descripción aparte: `descripcio` ya entra como el segundo candidato del
+        # concepto `titulo` en `_FIELD_CANDIDATES`. Si algún día trae una, va
+        # aquí como segundo argumento.
         _, tech_matches = matches_technology(titulo, None)
+        if not tech_matches:
+            self._sin_senal_tecnologica += 1
+            log.debug(
+                "pscp_descartado_sin_senal_tecnologica",
+                expediente=raw.natural_id,
+            )
+            return None
         tecnologias = sorted(tech_matches)
         keywords = sorted({kw for kws in tech_matches.values() for kw in kws})
 
@@ -386,13 +417,61 @@ class PscpConnector:
                     nombre=adjudicatario,
                     nif=_text(record, "nif_adjudicatario"),
                     importe_adjudicado=_number(record, "importe_adjudicacion"),
-                    fecha_adjudicacion=_date(record, "fecha_adjudicacion") or lic.fecha_publicacion,
+                    fecha_adjudicacion=self._fecha_adjudicacion_plausible(
+                        _date(record, "fecha_adjudicacion"),
+                        respaldo=lic.fecha_publicacion,
+                        expediente=raw.natural_id,
+                    ),
                     n_ofertas_recibidas=int(n_ofertas) if n_ofertas is not None else None,
                     nuts_code=nuts,
                     ccaa=ccaa,
                 )
             )
         return ParsedTender(licitacion=lic, adjudicaciones=adjudicaciones)
+
+    def _fecha_adjudicacion_plausible(
+        self, fecha: str | None, *, respaldo: str | None, expediente: str
+    ) -> str | None:
+        """Descarta la fecha de adjudicación si no es plausible (C4.4).
+
+        Este conector es el origen conocido de las 47 filas con
+        `fecha_adjudicacion` imposible medidas contra producción el 2026-09-03:
+        la mayoría son `1899-12-30`, el cero de la epoch de Excel — así es como
+        PSCP exporta una celda vacía. Pasan cualquier validación de formato
+        porque tienen cuatro cifras y parsean bien.
+
+        Se corta **aquí** y no en el SQL del dataset porque aquí se sabe de dónde
+        viene el valor: en `db/repositories/ml_dataset.py` ya es una fecha sin
+        procedencia y el filtro tendría que adivinar. Cortar en el origen deja
+        además el contador en el resumen del run, donde alguien lo mira.
+
+        Cuando la fecha no es plausible se cae al respaldo (la publicación), que
+        es lo que este parser ya hacía cuando el campo venía vacío. No se
+        inventa nada: se trata un `1899-12-30` como lo que es, un vacío.
+        """
+        if fecha is not None and not es_fecha_plausible(fecha):
+            self._fechas_implausibles += 1
+            log.warning(
+                "pscp_fecha_adjudicacion_implausible",
+                expediente=expediente,
+                fecha=fecha,
+                anio_minimo=ANIO_MINIMO_PLAUSIBLE,
+            )
+            return respaldo
+        return fecha or respaldo
+
+    def contadores_de_descarte(self) -> dict[str, int]:
+        """Descartes de este run, por motivo (C4.1, C4.4).
+
+        Los lee `run_connector` y acaban en el resumen del run. `descartadas` a
+        secas no distingue el acotado al universo tecnológico —que es la
+        decisión D24 funcionando— de un parser roto que devuelve `None` para
+        todo, y las dos cifras se parecen mucho desde fuera.
+        """
+        return {
+            "pscp_sin_senal_tecnologica": self._sin_senal_tecnologica,
+            "pscp_fechas_implausibles": self._fechas_implausibles,
+        }
 
     # ── cursor ───────────────────────────────────────────────────────────
 

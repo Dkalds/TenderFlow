@@ -157,6 +157,11 @@ class TestRunEmbedPhase:
             "chunks_creados": 0,
             "sin_texto": 0,
             "error": 0,
+            # C5.7: cuántos chunks se rehicieron por cambio de versión de
+            # embedding. Sin candidatos no hay nada que reembeber, pero la clave
+            # tiene que estar: un job de re-embedding sin contador es un job sin
+            # progreso observable, que es lo que el ítem vino a arreglar.
+            "reembebidos": 0,
         }
 
     def test_second_run_is_idempotent_noop(self, repo):
@@ -179,6 +184,11 @@ class TestRunEmbedPhase:
             "chunks_creados": 0,
             "sin_texto": 0,
             "error": 0,
+            # C5.7: cuántos chunks se rehicieron por cambio de versión de
+            # embedding. Sin candidatos no hay nada que reembeber, pero la clave
+            # tiene que estar: un job de re-embedding sin contador es un job sin
+            # progreso observable, que es lo que el ítem vino a arreglar.
+            "reembebidos": 0,
         }
         mock_encode.assert_called_once()  # la segunda corrida no reembebe nada
 

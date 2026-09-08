@@ -44,7 +44,7 @@ Lo que se hizo **con fallback**, porque su dependencia no está en este árbol
 | Ítem | Estado tras el plan |
 |---|---|
 | [P3] Unificar la definición de «Calientes» | **Sin tocar** — sigue abierto |
-| [P2] Remediación axe: 4 reglas desactivadas | **Sin tocar** — sigue abierto |
+| [P2] Remediación axe: 4 reglas desactivadas | **3 reglas** — `nested-interactive` reactivada el 2026-09-08 (C7.1) |
 
 Hallazgos nuevos que el plan destapó y ya están corregidos: el
 `TIPO_CONTRATO_LABELS` con dos etiquetas desplazadas y cuatro códigos sin
@@ -69,7 +69,7 @@ estado real de cada ítem en su §8. **Excluye a propósito `backup.yml` y
 | [P3] Vigilar el crecimiento de `predicciones_baja` | **Cerrado y movido** el 2026-09-06 a _Cerrados_ — el job de ML purga por antigüedad, y el consumidor distingue el p50 del modelo del del baseline histórico |
 | [P3] F5: refactor de repositories (ratchet TID251) | **Progresa** — la whitelist baja de 32 a 28 archivos; el destino sigue siendo vaciarla |
 | [P1] Cobertura de tests de las páginas del frontend | **Parcial** — los pisos por carpeta siguen en pie; el piso de `src/app/**` no llegó a ponerse |
-| [P2] Remediación axe: 4 reglas desactivadas | **Abierto** — sin tocar; sigue pendiente empezar por `nested-interactive` |
+| [P2] Remediación axe: 4 reglas desactivadas | **Abierto, encogiendo** — `nested-interactive` reactivada (C7.1); quedan `color-contrast`, `scrollable-region-focusable` y `target-size`, que son la ola móvil |
 | [P2] Contrato de paginación común | **Abierto** — el agente que lo tenía asignado murió por límite de sesión |
 | [P3] Los dos módulos-dios (`aggregates.py`, `settings.py`) | **Abierto** — sigue vigente la regla oportunista |
 | [P3] Unificar la definición de «Calientes» | **Abierto** |
@@ -358,7 +358,8 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 - **Files de partida:** [.env.example](../.env.example), [scripts/check_env_parity.py](../scripts/check_env_parity.py)
 - **Riesgo:** bajo — documentación.
 
-### [P2] Remediación axe pendiente: reactivar las 4 reglas desactivadas del E2E de accesibilidad
+### [P2] Remediación axe pendiente: reactivar las reglas desactivadas del E2E de accesibilidad
+- **Avance 2026-09-08 (C7.1):** `nested-interactive` **reactivada**. La causaba una sola cosa —la fila del Radar era un `role="button"` con cinco botones dentro— y se corrige poniendo la selección en un botón hermano en capa, con las acciones por encima. Con ella se van los **dos** `test.fixme` de `critical-workflows.spec.ts`: «seguir una licitación» era su consecuencia funcional directa, y «exportar el ámbito» resultó ser otro bug distinto —`lib/export.ts` revocaba el object URL en la misma vuelta del event loop que el `click()`, así que el Chromium headless de CI abortaba la descarga antes de empezarla—. Quedan tres reglas y dos `test.fixme`, los de móvil.
 - **Área:** web/e2e/accessibility.spec.ts, web/src (radar, detalle, watchlist, mi-pipeline)
 - **Problema:** el E2E de axe (WCAG 2.2 AA sobre /login, /resumen, /radar y /detalle) nació exigiendo cero violaciones antes de la remediación, y bloqueaba CI con deuda real: `color-contrast` (textos ≤10.5px con opacidad/tokens tenues en las filas del Radar y el detalle), `nested-interactive` (filas-botón del Radar con botones dentro), `scrollable-region-focusable` y `target-size` (<24px). El 2026-09-01 se acotó el gate con `disableRules([...])` — el resto de WCAG-AA y los checks estructurales (landmarks, lang, skip-link, ids únicos, controles con nombre) siguen bloqueando. Los dos ofensores de /resumen sí se arreglaron en ese momento (hint de `StatCell` sin `/80`, chips de Primeros pasos a texto pleno).
 - **Relación:** los dos `test.fixme` de `responsive.spec.ts` (watchlist desborda 274px a 375px; la agenda de /mi-pipeline no tiene fichas móviles) son la misma ola — «móvil es consulta y triaje», decidido 2026-09-01. También los dos `test.fixme` de `critical-workflows.spec.ts`: «seguir una licitación» (el click en «Seguir» dentro de la fila-botón del Radar no registra — consecuencia funcional directa del `nested-interactive`, no solo cosmética) y «exportar el ámbito» (el evento `download` no llega en el Chromium de CI; flujo de descarga por diagnosticar bajo Playwright). Ambos eran estrenos en rojo: el `describe` serial los saltaba mientras fallara el primero.
@@ -531,19 +532,14 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 - **Files de partida:** [db/repositories/aggregates.py](../db/repositories/aggregates.py), [config/settings.py](../config/settings.py)
 - **Riesgo:** bajo si se hace oportunista; medio si alguien intenta el big-bang.
 
-### [P3] Migrar los `title=` nativos restantes a `Tooltip`
+### [P3] Migrar los 33 `title=` nativos restantes a `Tooltip`
 - **Área:** web/src (celdas de tabla y textos truncados)
 - **Nota:** este ítem estaba duplicado (había una segunda entrada, "Completar la migración de `title=` nativos a `ui/tooltip.tsx`", con el mismo alcance). Fusionados el 2026-08-10.
-- **Problema:** quedan ~180 `title=` nativos. No se disparan con teclado, su timing no es controlable y su estilo no sigue el tema. `components/ui/tooltip.tsx` existe con la política de delay ya afinada (`docs/frontend-motion.md`). La primera pasada cubrió los controles icon-only y la Ola 1 de UX los de la cabecera; el resto son celdas de tabla y textos truncados informativos.
-- **Acceptance criteria:** ningún `title=` sobre un elemento interactivo; en celdas y textos truncados, o `Tooltip` o texto visible.
-- **Files de partida:** [docs/frontend-motion.md](frontend-motion.md) (sección Tooltip)
-- **Riesgo:** bajo — mecánico, pero masivo: hacerlo por olas.
-
-### [P3] Barrido de ortografía castellana en las cadenas visibles restantes
-- **Área:** web/src (páginas)
-- **Problema:** decenas de cadenas de UI sin tildes ("prediccion", "analisis", "Busqueda", "Ultimos"), y `...` donde corresponde `…`. La Ola 1 cubrió navegación, barra de filtros, TopNav, `es.json` y la meta description; falta el interior de las páginas. En un producto B2B español se lee como descuido, no como estilo.
-- **Acceptance criteria:** sin cadenas de UI sin tilde en `web/src/app/**`; tests actualizados a la par (varios asertan sobre el texto). Ojo con `.codespell-ignore-words.txt`: al acentuar, algunas entradas dejan de hacer falta y conviene retirarlas.
-- **Riesgo:** bajo — pero toca muchos tests; hacerlo por página.
+- **La cifra estaba mal.** Este ítem decía «~180» y el plan complementario (C7.4) contó «152 apariciones de `title=` en `.tsx`». Las dos salen de un grep que mezcla tres cosas: `title` como **prop de un componente** (`<KpiCard title="…">`, que no genera atributo HTML y es la mayoría), `title=` dentro de **tests**, y `title=` sobre un **elemento nativo**, que es el único caso del problema. Medido el 2026-09-07 con `scripts/check_title_attrs.py`, que distingue por la minúscula inicial de la etiqueta —la misma regla que usa JSX—: **33 en 18 ficheros**. O sea que no hay «olas de ≥ 50» que hacer, y el ítem es más pequeño de lo que aparentaba.
+- **Ya puesto (C7.4):** regla ESLint que prohíbe `title=` sobre elemento nativo salvo `<abbr>`/`<iframe>`, con los 18 ficheros de hoy como deuda declarada en `web/eslint.config.mjs` (`deudaTitleNativo`, solo puede encoger), y `scripts/check_title_attrs.py` en CI para que el total no suba mientras se migran.
+- **Acceptance criteria:** `deudaTitleNativo` vacío y `MAX_TITLE_NATIVO` a 0; en celdas y textos truncados, o `Tooltip` o texto visible.
+- **Files de partida:** [docs/frontend-motion.md](frontend-motion.md) (sección Tooltip), `scripts/check_title_attrs.py --listar`
+- **Riesgo:** bajo por sitio, pero **no verificable sin ver la pantalla**: `TooltipTrigger asChild` cambia el foco y el orden de tabulación de la celda, y eso se comprueba mirando, no compilando. Por eso C7.4 dejó la regla puesta y la migración sin hacer.
 
 ### [P3] Migrar la resolución de identidad de `competitors.py` a SQL (union-find + unaccent)
 - **Área:** services/analytics/competitors.py, db/repositories/adjudicaciones.py
@@ -680,6 +676,18 @@ cabecera de este fichero: los seis se comprobaron contra el código.
 - [P2] Migrar las llamadas del frontend al cliente OpenAPI tipado — sin `fetch("/api/…")` crudo fuera de `lib/`, con regla ESLint que lo impide.
 - [P3] Vigilar el crecimiento de `predicciones_baja` — purga por antigüedad en el job de ML.
 - Modelos NIM de razonamiento sin `chat_template_kwargs` — arreglado en `9a6014b`; nunca llegó a ser ítem abierto, y se anota para que el backlog refleje el código.
+- [2026-09-07] **Barrido de ortografía castellana en las cadenas visibles**
+  — cerrado al medirlo (C7.8): **cero** cadenas de UI sin tilde y **cero** `...`
+  donde corresponde `…`. La ola anterior lo había cerrado y el backlog no se
+  actualizó. `scripts/check_ortografia_ui.py` lo mantiene cerrado en CI, mirando
+  solo texto JSX visible y props de copy — un grep sobre el fichero entero
+  marcaría `"tecnologia"` y `"organo"`, que aquí son **nombres de campo de la
+  API** y acentuarlos rompería las peticiones.
+  El primer borrador de ese script daba 38 hallazgos y **los 38 eran correctos**:
+  llevaba en la lista los plurales en `-ciones`, que no llevan tilde
+  («licitación» → «licitaciones»). La lista quedó con los singulares agudos y
+  con los plurales que sí la conservan («órganos», «tecnologías»).
+
 
 - [2026-09-01] **Revisión integral de la IA del detalle de licitación (10 mejoras en un
   cambio)** — salida de la auditoría de arquitecto del asistente IA. Lo que cambió:

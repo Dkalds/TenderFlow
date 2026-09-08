@@ -26,11 +26,6 @@ def load_calidad_runs(limit: int = 90) -> list[dict[str, Any]]:
     return _repo.load_calidad_runs(limit)
 
 
-def load_extracciones() -> list[dict[str, Any]]:
-    """Carga el historial de extracciones (fecha, fuente, nuevas)."""
-    return _repo.load_extracciones()
-
-
 def persist_run(
     run_id: str,
     started_at: str,

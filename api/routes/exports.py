@@ -168,6 +168,23 @@ def build_pdf_export(payload: dict[str, Any]) -> tuple[bytes, int]:
 )
 async def download_export(
     format: Literal["csv", "excel", "pdf"] = Query("csv"),
+    recurso: Literal["licitaciones", "pursuits"] = Query(
+        "licitaciones",
+        description=(
+            "Qué se exporta. `pursuits` baja el tablero de oportunidades de tu "
+            "organización con los filtros del tablero (C6.7); `licitaciones`, el "
+            "corpus con los filtros de búsqueda. No se mezclan: son dos "
+            "colecciones con columnas distintas."
+        ),
+    ),
+    pursuit_status: str | None = Query(
+        None,
+        alias="pursuit_status",
+        description="Filtro de estado del tablero. Solo con `recurso=pursuits`.",
+    ),
+    responsible_user_id: int | None = Query(
+        None, ge=1, description="Filtro de responsable. Solo con `recurso=pursuits`."
+    ),
     q: str | None = Query(None),
     estado: str | None = Query(None),
     ccaa: str | None = Query(None),
@@ -179,6 +196,15 @@ async def download_export(
         None,
         ge=1,
         description="Organización a la que se atribuye la exportación encolada.",
+    ),
+    por_lote: bool = Query(
+        False,
+        description=(
+            "Una fila por LOTE en vez de por expediente (C1.4). Los expedientes "
+            "sin lotes salen igual, con los campos de lote vacíos: un export que "
+            "solo trajera los multi-lote perdería la mayoría del corpus sin "
+            "decirlo. Solo aplica a `csv` y `excel`."
+        ),
     ),
     _user: dict[str, Any] = Depends(require_any_auth),
 ) -> Response:
@@ -213,6 +239,15 @@ async def download_export(
             filtros, await resolve_organization_ctx(_user, organization_id)
         )
 
+    if recurso == "pursuits":
+        return await _download_pursuits(
+            format=format,
+            status_filtro=pursuit_status,
+            responsible_user_id=responsible_user_id,
+            limit=limit,
+            user=_user,
+        )
+
     def _render() -> tuple[bytes, str, int]:
         """Consulta + serialización, fuera del event loop.
 
@@ -234,6 +269,16 @@ async def download_export(
             fecha_hasta=fecha_hasta,
             limit=limit,
         )
+        if por_lote:
+            # Aquí `format` ya solo puede ser `csv` o `excel`: el PDF salió por
+            # el retorno de arriba. Queda fuera a propósito —su maquetación es
+            # una tabla por expediente y expandir a lotes le rompería el layout
+            # sin que nadie lo haya pedido—, y comprobarlo otra vez sería una
+            # condición que nunca es falsa, que es lo que mypy señaló.
+            from db.repositories.licitaciones import licitaciones_por_lote
+
+            ids = [str(r["id_externo"]) for r in rows if r.get("id_externo")]
+            rows = licitaciones_por_lote(ids)
         if format == "excel":
             return (
                 generate_excel(rows),
@@ -347,6 +392,56 @@ async def descargar_export_encolado(
         headers={
             "Content-Disposition": f'attachment; filename="{get_export_filename("pdf")}"',
         },
+    )
+
+
+async def _download_pursuits(
+    *,
+    format: Literal["csv", "excel", "pdf"],
+    status_filtro: str | None,
+    responsible_user_id: int | None,
+    limit: int,
+    user: dict[str, Any],
+) -> StreamingResponse:
+    """Export del tablero de oportunidades (C6.7).
+
+    **PDF queda fuera**: su maquetación es una tabla por expediente del corpus
+    público, y el tablero es otra colección con otras columnas. Reutilizarla
+    daría un documento con las cabeceras de una cosa y los datos de otra.
+
+    La sanitización de fórmulas es la misma de siempre
+    (`shared.export_safety.sanitize_spreadsheet_record`, dentro de
+    `generate_csv`/`generate_excel`): un `decision_reason` que empiece por `=`
+    es una fórmula en Excel, y aquí el texto lo escribe el propio equipo — que
+    es exactamente el caso en que nadie sospecha del fichero.
+    """
+    from services.exports import get_export_filename, render_pursuits_export
+    from services.organizations import OrganizationAccessError
+
+    if format == "pdf":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="El tablero de oportunidades se exporta en CSV o Excel, no en PDF.",
+        )
+
+    try:
+        content, media_type, n_rows = await run_db(
+            render_pursuits_export,
+            int(user["user_id"]),
+            formato=format,
+            status=status_filtro,
+            responsible_user_id=responsible_user_id,
+            limit=limit,
+        )
+    except OrganizationAccessError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+
+    filename = get_export_filename(format, prefix="oportunidades")
+    log.info("export_download", format=format, recurso="pursuits", n_rows=n_rows)
+    return StreamingResponse(
+        io.BytesIO(content),
+        media_type=media_type,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
 

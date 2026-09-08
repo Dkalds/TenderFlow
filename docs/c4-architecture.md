@@ -45,7 +45,7 @@ C4Container
         Container(web, "Web frontend", "Next.js 16", "UI analítica y exploración")
         Container(api, "API REST", "FastAPI", "API pública v1 con auth por API-Key, incl. /ask (RAG)")
         Container(scraper, "Scraper", "Python", "connectors/: PLACSP bulk+Atom, PSCP, TACRC, TED")
-        Container(sched, "Scheduler", "APScheduler", "KPI/aggregates precompute, drift, retrain, alertas")
+        Container(sched, "Scheduler (plano cron)", "GitHub Actions en producción; APScheduler solo en local/dev", "Ingesta programada, KPI/aggregates precompute, drift, retrain, retención, alertas. Un solo plano activo por entorno (ADR-012); el trabajo a demanda va al worker de ADR-028")
         ContainerDb(db, "Postgres / Supabase", "Database", "Datos operacionales (ADR-016); motor único también en dev/CI (ADR-018/ADR-021)")
         ContainerDb(duckdb, "DuckDB (in-mem)", "Engine", "Queries OLAP sobre attach de la BD operacional")
         ContainerDb(parquet, "Parquet snapshots", "FS", "Materializaciones históricas")

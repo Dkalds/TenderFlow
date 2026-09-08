@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { TooltipProvider } from "@/components/ui/tooltip";
 
 const fetchWithAuth = vi.hoisted(() => vi.fn((_url: string) => new Promise(() => {})));
 vi.mock("@/lib/api-client", () => ({ fetchWithAuth }));
@@ -26,9 +27,15 @@ function feedKey() {
 function renderFeed(data?: unknown) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
   if (data !== undefined) qc.setQueryData(feedKey(), data);
+  // `TooltipProvider` porque `ImporteDelta` envuelve su cifra en un `<Tooltip>`
+  // desde C7.4 (antes era un `title=` nativo, que no existe para el táctil). En
+  // uso real el provider lo pone `components/providers.tsx`; aquí el componente
+  // se monta suelto.
   return render(
     <QueryClientProvider client={qc}>
-      <EventosFeed />
+      <TooltipProvider>
+        <EventosFeed />
+      </TooltipProvider>
     </QueryClientProvider>,
   );
 }

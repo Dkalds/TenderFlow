@@ -1,4 +1,4 @@
-import { test, expect, type BrowserContext, type Page } from "@playwright/test";
+import { test, expect, type BrowserContext, type Locator, type Page } from "@playwright/test";
 import { SEED_LICITACION } from "./fixtures";
 
 /** Mutaciones críticas con persistencia real en Postgres. */
@@ -28,28 +28,53 @@ test.describe("Flujos de trabajo críticos", () => {
   });
 
   test("seguir una licitación persiste y se puede deshacer", async ({ page, context }) => {
-    // Estreno en rojo (nunca corrió: el serial lo saltaba tras el fallo de la
-    // vista guardada): el flujo de seguir desde la fila del Radar consume el
-    // timeout completo — la fila es un role=button con botones DENTRO, el
-    // mismo nested-interactive que señala axe, y el click en «Seguir» no
-    // registra. Se remedia con la fila del Radar (backlog «Remediación axe»).
-    test.fixme(true, "Seguir desde la fila del Radar no registra — nested-interactive del Radar");
+    // Estuvo en `fixme` desde que se escribió, con la sospecha de que la causa
+    // era el `nested-interactive` de la fila. No lo era, y por eso al quitar esa
+    // regla el test siguió sin pasar: **las acciones de una fila inactiva son
+    // `inert`** (`radar-acciones.tsx`, `inerte = enTabla && !isActive`), y a
+    // partir de `md` además llevan `pointer-events-none`. `inert` las saca del
+    // árbol de accesibilidad, así que `getByRole("button", {name: /^Seguir /})`
+    // no resolvía a nada y `click()` esperaba —sin error— hasta agotar el
+    // presupuesto del test. El log de la API del job lo confirma: los `GET
+    // /watchlist/items` responden 200 en 30 ms y **no hay ni un POST**.
+    //
+    // No es un fallo de la aplicación: revelar las acciones solo en la fila
+    // activa es una decisión del componente, escrita en su propio docstring. Lo
+    // que faltaba era que el test hiciera lo que hace una persona —seleccionar
+    // la fila y después pulsar—, y eso es justo lo que el botón en capa de C7.1
+    // hace posible expresar. Con eso el `POST /watchlist/items` aparece en el
+    // log de la API del job (201, 22 ms) donde antes no había ninguno.
+    //
+    // El presupuesto es explícito porque el de por defecto no le cabe: el
+    // cuerpo declara **dos** esperas de 20 s —el Radar con datos reales tarda,
+    // y por eso las escribió así quien lo escribió— y los 30 s de Playwright
+    // no cubren ni esas dos solas, sin contar `goto`, `reload` y los sondeos.
+    // Al agotarse, el `finally` heredaba un reloj ya vencido y el fallo se
+    // reportaba en la limpieza, no en la aserción: por eso parecía otra cosa.
+    // Con el modo `serial` del bloque, además, arrastraba sin ejecutar a los
+    // dos tests siguientes.
+    test.setTimeout(90_000);
     await removeWatchlistItem(page, context, SEED_LICITACION.radarId);
 
     try {
       await page.goto("/radar");
-      await expect(page.getByText(SEED_LICITACION.tituloRadar).first()).toBeVisible({
-        timeout: 20_000,
-      });
-      const row = page.getByText(SEED_LICITACION.tituloRadar).first().locator("xpath=ancestor::*[@role='button'][1]");
-      await row.getByRole("button", { name: /^Seguir / }).click();
+      const fila = await seleccionarFila(page, SEED_LICITACION.tituloRadar);
+      await fila.getByRole("button", { name: /^Seguir / }).click();
 
       await expect.poll(() => watchlistContains(page, SEED_LICITACION.radarId)).toBe(true);
+
+      // **Seguir un expediente lo saca de la bandeja.** Lo introdujo #289:
+      // `use-radar-consola.ts` filtra el segmento `bandeja` con
+      // `!followedIds.has(...)`, así que buscar ahí la fila que se acaba de
+      // seguir es buscarla donde el producto acaba de decidir que no esté. Vive
+      // en «Siguiendo», y ahí es donde se deshace.
+      //
+      // Se vuelve a seleccionar además de cambiar de segmento: «Dejar de
+      // seguir» está tan `inert` como lo estaba «Seguir».
       await page.reload();
-      await expect(page.getByRole("button", { name: /^Dejar de seguir / }).first()).toBeVisible({
-        timeout: 20_000,
-      });
-      await page.getByRole("button", { name: /^Dejar de seguir / }).first().click();
+      await page.getByRole("button", { name: /^Siguiendo/ }).click();
+      const filaTrasRecarga = await seleccionarFila(page, SEED_LICITACION.tituloRadar);
+      await filaTrasRecarga.getByRole("button", { name: /^Dejar de seguir / }).click();
       await expect.poll(() => watchlistContains(page, SEED_LICITACION.radarId)).toBe(false);
     } finally {
       await removeWatchlistItem(page, context, SEED_LICITACION.radarId);
@@ -57,12 +82,13 @@ test.describe("Flujos de trabajo críticos", () => {
   });
 
   test("exportar el ámbito descarga un CSV servido por la API", async ({ page }) => {
-    // Estreno en rojo (tercero del serial, nunca había corrido): el click en
-    // «Exportar ámbito» no dispara el evento `download` en el Chromium de CI
-    // (3 retries, 30s cada uno). Hay que diagnosticar el flujo de descarga
-    // bajo Playwright — ver backlog «Remediación axe pendiente», donde se
-    // rastrea junto al resto de estrenos de esta suite.
-    test.fixme(true, "El evento download no llega en CI — flujo de exportación por diagnosticar");
+    // Estuvo en `fixme` con el diagnóstico «el evento download no llega en CI».
+    // Eso era el síntoma; la causa estaba en `lib/export.ts::volcarBlob`, que
+    // revocaba el object URL en la **misma vuelta del event loop** que el
+    // `click()` del ancla. El navegador arranca la descarga de forma asíncrona:
+    // en un portátil rápido casi siempre ganaba la descarga, en el Chromium
+    // headless de CI casi siempre perdía y el fichero no llegaba nunca. La
+    // revocación pasa al siguiente tick (2026-09-08, C7.1).
     await page.goto("/resumen?tecnologia=SAP");
     await page.getByRole("button", { name: "Exportar ámbito" }).click();
 
@@ -194,6 +220,35 @@ async function deleteSavedView(page: Page, context: BrowserContext, name: string
   for (const view of body.items.filter((candidate) => candidate.name === name)) {
     await page.request.delete(`/api/v1/saved-filters/${view.id}`, { headers });
   }
+}
+
+/**
+ * Deja seleccionada la fila del Radar cuyo título es *titulo* y la devuelve.
+ *
+ * Hace falta porque las acciones de una fila inactiva son `inert` y, en la
+ * tabla, `pointer-events-none`: sin seleccionarla primero, «Seguir» no está en
+ * el árbol de accesibilidad y el locator no resuelve nunca. Seleccionar es el
+ * botón en capa que introdujo C7.1 (`aria-label="Seleccionar …"`).
+ */
+async function seleccionarFila(page: Page, titulo: string): Promise<Locator> {
+  // `[data-active]` es lo que **define** una fila del Radar, y en esta pantalla
+  // no lo lleva nada más (`radar-fila.tsx` es su único emisor). Localizarla así
+  // resuelve de una vez los dos locators que fallaron antes: no depende del
+  // título —que el inspector repite en el panel lateral en cuanto hay una fila
+  // activa, y por eso un `getByText(...).first()` se iba al panel tras el
+  // `reload()`— ni del contenedor, que cambió al añadirse el segmento
+  // «Próximas».
+  //
+  // El botón se toma por su `data-slot` y no por su nombre accesible: ese
+  // nombre lo compone el título del expediente, así que atarse a él hace que el
+  // test dependa de que la cadena del seed no cambie ni un carácter.
+  const fila = page.locator("[data-active]").filter({ hasText: titulo }).first();
+  await expect(fila, `la fila «${titulo}» no aparece en el Radar`).toBeVisible({
+    timeout: 20_000,
+  });
+  await fila.locator('[data-slot="radar-fila-seleccion"]').click();
+  await expect(fila).toHaveAttribute("data-active", "true");
+  return fila;
 }
 
 async function watchlistContains(page: Page, idExterno: string): Promise<boolean> {

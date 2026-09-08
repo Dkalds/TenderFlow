@@ -51,7 +51,7 @@ repos:
           - "--disable-error-code=str-bytes-safe"
           - "--disable-error-code=operator"
           - "--disable-error-code=untyped-decorator"
-        files: '^(scraper|db|scheduler|dashboard)/.*\.py$|^config/.*\.py$'
+        files: '^(scraper|db|scheduler)/.*\.py$|^config/.*\.py$'
 
   - repo: local
     hooks:
@@ -107,7 +107,7 @@ repos:
     hooks:
       - id: bandit
         args: ["-c", "pyproject.toml", "-r"]
-        files: '^(api|db|scraper|scheduler|dashboard|shared|config)/.*\.py$'
+        files: '^(api|db|scraper|scheduler|shared|config)/.*\.py$'
         exclude: '^tests/'
 
   - repo: local

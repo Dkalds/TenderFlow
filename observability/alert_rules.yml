@@ -252,3 +252,70 @@ groups:
           description: >
             El scrape de Prometheus a tenderflow-api devuelve 0 durante 2 minutos.
             Verificar DATABASE_URL, pool psycopg y Supabase status.
+
+  - name: api_latency
+    # SLO 6 (P99 < 500 ms) y la mitad servidor del SLO 3, que hasta 2026-09-06
+    # no tenian NINGUNA regla -- `docs/sli-slo.md` lo reconocia en las dos
+    # fichas con un "Alerta: No implementada". Un SLO sin alerta no es un
+    # objetivo de servicio: es una frase.
+    #
+    # La metrica la emite prometheus-fastapi-instrumentator (api/app.py), que
+    # va con `excluded_handlers=[/api/v1/health.*, /metrics]`: el healthcheck
+    # verde no diluye el percentil, igual que no diluye el error rate de
+    # ApiErrorRateHigh.
+    rules:
+      - alert: ApiLatencyP99High
+        # `histogram_quantile` sobre el rate del bucket, agrupado por `le`. Se
+        # mide sobre TODO el trafico y no por handler a proposito: un handler
+        # lento en una ruta que nadie llama no gasta error budget, y agrupar por
+        # handler multiplicaria la alerta por cada ruta de las 145.
+        #
+        # Ventana de 5m para el rate y `for: 10m`: hacen falta dos ventanas
+        # completas por encima del umbral. Un pico de un despliegue o un
+        # backfill puntual no despierta a nadie.
+        expr: >-
+          histogram_quantile(
+            0.99,
+            sum by (le) (rate(http_request_duration_seconds_bucket[5m]))
+          ) > 0.5
+        for: 10m
+        labels:
+          severity: warning
+          slo: "6"
+        annotations:
+          summary: "API: P99 por encima de 500 ms durante 10m"
+          description: >
+            El P99 de http_request_duration_seconds supera el SLO 6 (500 ms)
+            sostenido durante diez minutos. Mirar el panel api_red.json para
+            ver que handler carga el percentil, y despues el pool de Postgres
+            (PgReadLatencyHigh suele dispararse con esta si la causa es la BD).
+
+      - alert: PublicSurfaceSlow
+        # La superficie publica es la que Google rastrea y la que ve un
+        # visitante sin cuenta. Su latencia de SERVIDOR si es scrapeable; la del
+        # NAVEGADOR (SLO 3, P95 < 3 s) la mide Speed Insights en Vercel y no
+        # llega hasta aqui -- configurar esa alerta sigue siendo accion humana
+        # en el panel de Vercel, y `docs/sli-slo.md` lo dice.
+        #
+        # Umbral mas alto que el general (1 s frente a 500 ms) porque estas
+        # rutas leen `licitaciones_canonicas` y sirven paginas completas, no
+        # fragmentos de API. Lo que vigila es la degradacion del camino que
+        # tumbo la superficie publica el 2026-08-28 por falta de indice.
+        expr: >-
+          histogram_quantile(
+            0.95,
+            sum by (le) (
+              rate(http_request_duration_seconds_bucket{handler=~"/api/v1/publico.*"}[5m])
+            )
+          ) > 1
+        for: 10m
+        labels:
+          severity: warning
+          slo: "3"
+        annotations:
+          summary: "Superficie publica: P95 por encima de 1 s durante 10m"
+          description: >
+            Las rutas /api/v1/publico/* tardan mas de 1 s en el P95 durante diez
+            minutos. Es el camino de lectura mas fragil de los seis (ADR-026):
+            revisar primero la frescura y los indices de la vista materializada
+            licitaciones_canonicas.

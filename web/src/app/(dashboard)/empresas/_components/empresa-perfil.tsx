@@ -6,6 +6,7 @@ import { cn, formatCurrency, formatNumber } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { EmpresaDetail, PerfilEmpresa } from "../_hooks/use-maestro";
 import { Ranking, Relacionadas, Separador, SubTitulo, Total, Trayectoria } from "./empresa-perfil-piezas";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 export interface EmpresaPerfilProps {
   detail: EmpresaDetail | undefined;
@@ -79,14 +80,18 @@ export function EmpresaPerfil({
           {detail.grupo && (
             <>
               <span className="text-muted-foreground/60">·</span>
-              <button
-                type="button"
-                onClick={() => onOpenGrupo(detail.grupo!)}
-                title="Filtrar el maestro por grupo"
-                className="text-tf-meta text-primary font-sans font-medium hover:underline"
-              >
-                Grupo {detail.grupo}
-              </button>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    onClick={() => onOpenGrupo(detail.grupo!)}
+                    className="text-tf-meta text-primary font-sans font-medium hover:underline"
+                  >
+                    Grupo {detail.grupo}
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>Filtrar el maestro por grupo</TooltipContent>
+              </Tooltip>
             </>
           )}
           {totales?.primera_adjudicacion && (

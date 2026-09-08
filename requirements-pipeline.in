@@ -1,0 +1,35 @@
+# Dependencias del plano de ingesta y ML (C3.1).
+#
+# Compilar con `make lock`. Lo instalan los runners de GitHub Actions
+# (`scrape-daily.yml`, `pliegos.yml`, los jobs de ML) y el worker de ADR-028
+# cuando exista. **No** viaja a la imagen de la API.
+#
+# Incluye todo lo de la API porque el pipeline comparte persistencia,
+# observabilidad y modelos con ella: un job que escribe en `licitaciones`
+# necesita el mismo `psycopg` y el mismo `structlog`. Lo que añade abajo es lo
+# que solo el pipeline usa.
+-r requirements-api.in
+
+# ── Parseo CODICE/ATOM ───────────────────────────────────────────────────────
+# Solo `scraper/`: seis ficheros, cero en el cono de la API (medido 2026-09-06).
+# Es el paquete más grande que la imagen expuesta a internet deja de instalar.
+lxml>=5.0.0,<7
+
+# ── Resiliencia de la ingesta ────────────────────────────────────────────────
+# Reintentos y circuit breaker de las descargas contra PLACSP y las fuentes
+# regionales. La API no reintenta nada de esto: responde o falla.
+tenacity>=8.2.0,<10
+pybreaker>=1.0.0,<2
+
+# ── Extras que solo el pipeline instala ──────────────────────────────────────
+#
+# No se listan aquí como paquetes sino como extras del proyecto, para que la
+# resolución la haga `pyproject.toml` y no haya dos declaraciones del mismo
+# rango. El runner los instala con:
+#
+#     pip install -r requirements-pipeline.txt
+#     pip install -e ".[ml,pliegos]"
+#
+# `[ml]` arrastra sentence-transformers y con él PyTorch (~2 GB). Que eso no
+# entre en la imagen de la API es la mitad del motivo de este fichero; la otra
+# mitad es que tampoco entre lxml.

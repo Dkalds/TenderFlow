@@ -1,0 +1,15 @@
+{
+  "items": [
+    {
+      "created_at": null,
+      "estado": null,
+      "fecha_publicacion": null,
+      "id": 1,
+      "id_externo": "texto",
+      "importe": null,
+      "organization_id": null,
+      "titulo": null,
+      "visibility": null
+    }
+  ]
+}

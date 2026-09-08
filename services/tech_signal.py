@@ -17,7 +17,6 @@ import json
 import re
 from typing import Any
 
-from config import TECHNOLOGY_KEYWORDS
 from db.database import now_utc_iso
 from db.events import append_event
 from db.repositories.tecnologia_pliego import TechSignal, TecnologiaPliegoRepository
@@ -27,17 +26,21 @@ from shared.tender_facts import TenderFactSheetRecord
 
 log = get_logger(__name__)
 
-# Mismo criterio word-boundary que scraper/filters.py (evita falsos positivos
-# tipo 'sap' dentro de 'desaparecer'); reconstruido aquí en vez de importar el
-# `_TECH_PATTERNS` privado de filters.py -- ambos derivan del mismo
-# TECHNOLOGY_KEYWORDS, así que no hay riesgo de divergencia de contenido.
-_TECH_PATTERNS: dict[str, re.Pattern[str]] = {
-    tech: re.compile(
-        r"\b(" + "|".join(re.escape(k) for k in keywords) + r")\b",
-        flags=re.IGNORECASE,
-    )
-    for tech, keywords in TECHNOLOGY_KEYWORDS.items()
-}
+
+def _tech_patterns() -> dict[str, re.Pattern[str]]:
+    """Patrones del diccionario vigente, compartidos con `scraper/filters.py`.
+
+    Antes cada módulo compilaba los suyos desde `TECHNOLOGY_KEYWORDS` con el
+    argumento de que «ambos derivan de lo mismo, así que no divergen». Con el
+    diccionario en base de datos (C5.6) eso deja de ser cierto: dos procesos
+    podrían tener versiones distintas cacheadas. Ahora los dos piden a
+    `services.tecnologias_diccionario`, que memoiza por versión — así que
+    comparten contenido *y* momento.
+    """
+    from services.tecnologias_diccionario import patrones
+
+    return patrones()
+
 
 # Un pliego técnico que menciona una tecnología es señal más fuerte que una
 # mención de pasada en el legal (plantillas administrativas repiten términos
@@ -61,15 +64,15 @@ def score_documents(pages: list[dict[str, Any]]) -> dict[str, TechSignal]:
     hace falta un mapa aparte documento→tipo. Devuelve solo las tecnologías
     que superan ``_MIN_WEIGHTED_HITS``.
     """
-    weighted_hits: dict[str, float] = dict.fromkeys(_TECH_PATTERNS, 0.0)
-    matched: dict[str, set[str]] = {tech: set() for tech in _TECH_PATTERNS}
+    weighted_hits: dict[str, float] = dict.fromkeys(_tech_patterns(), 0.0)
+    matched: dict[str, set[str]] = {tech: set() for tech in _tech_patterns()}
 
     for page in pages:
         text = str(page.get("texto") or "")
         if not text:
             continue
         weight = _DOC_TYPE_WEIGHT.get(str(page.get("tipo") or ""), _DEFAULT_DOC_WEIGHT)
-        for tech, pattern in _TECH_PATTERNS.items():
+        for tech, pattern in _tech_patterns().items():
             hits = pattern.findall(text)
             if not hits:
                 continue

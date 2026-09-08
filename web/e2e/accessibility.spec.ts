@@ -58,18 +58,18 @@ async function expectBasicAccessibility(page: Page): Promise<void> {
 
   const result = await new AxeBuilder({ page })
     .withTags(["wcag2a", "wcag2aa", "wcag21aa", "wcag22aa"])
-    // Ratchet, no aspiración: estas cuatro reglas fallan HOY en /radar y
-    // /detalle (contraste de textos pequeños, filas interactivas anidadas,
-    // regiones scrolleables sin foco, targets <24px) y su remediación es la
-    // ola de UX/móvil en curso, no un fix de CI. El resto de WCAG-AA más los
-    // checks estructurales de arriba SÍ bloquean. Backlog: «Remediación axe
-    // pendiente» en docs/IMPROVEMENT_BACKLOG.md — la lista solo puede encoger.
-    .disableRules([
-      "color-contrast",
-      "nested-interactive",
-      "scrollable-region-focusable",
-      "target-size",
-    ])
+    // Ratchet, no aspiración: estas reglas fallan HOY en /radar y /detalle
+    // (contraste de textos pequeños, regiones scrolleables sin foco, targets
+    // <24px) y su remediación es la ola de UX/móvil en curso, no un fix de CI.
+    // El resto de WCAG-AA más los checks estructurales de arriba SÍ bloquean.
+    // Backlog: «Remediación axe pendiente» en docs/IMPROVEMENT_BACKLOG.md — la
+    // lista solo puede encoger.
+    //
+    // `nested-interactive` SALIÓ el 2026-09-08 (C7.1, que la nombra como la
+    // primera). La causaba una sola cosa: la fila del Radar era un
+    // `role="button"` con cinco botones dentro. Ahora la selección es un botón
+    // hermano en capa, así que la regla vuelve a bloquear.
+    .disableRules(["color-contrast", "scrollable-region-focusable", "target-size"])
     .analyze();
   const violations = result.violations.map((violation) => ({
     id: violation.id,
@@ -101,6 +101,41 @@ test.describe("Accesibilidad básica sin sesión", () => {
       await expectBasicAccessibility(page);
     });
   }
+
+  // La ficha pública que S5.8 pedía y faltaba (C7.2). Es la página que más
+  // tráfico anónimo recibe —es la que indexa el buscador— y la única de la
+  // superficie pública con contenido por expediente en vez de plantilla fija.
+  //
+  // La URL se **navega**, no se construye: es `/licitaciones/{ccaa}/{slug}/{ref}`
+  // y hardcodearla ataría el test al slug de un expediente sembrado, que cambia
+  // en cuanto cambie su título. Si el hub no tiene fichas, el test falla en el
+  // `expect` con un mensaje que dice por qué, en vez de barrer una página vacía
+  // y pasar en verde sin haber comprobado nada.
+  test("una ficha pública conserva landmarks y nombres accesibles", async ({ page }) => {
+    await page.goto("/licitaciones");
+    const hub = page.locator('a[href^="/licitaciones/"]').first();
+    await expect(hub, "el índice público no lista ninguna CCAA").toBeVisible({ timeout: 20_000 });
+    await hub.click();
+
+    // El hub de una CCAA enlaza también a las **otras** CCAA y a sí mismo, y
+    // todos esos `href` empiezan por `/licitaciones/`. Un `.first()` sobre ese
+    // prefijo elegía tantas veces un enlace lateral como una ficha, y entonces
+    // la URL se quedaba en `/licitaciones/madrid`: eso —y no un fallo de la
+    // página— es lo que dejaba el test en flaky. El filtro `hasNotText: ""`
+    // que pretendía descartarlos no descarta nada: todo elemento contiene la
+    // cadena vacía.
+    //
+    // La ficha es lo único que cuelga **por debajo** del hub, así que el
+    // prefijo se deriva de la ruta en la que se acaba de aterrizar.
+    const rutaHub = new URL(page.url()).pathname.replace(/\/$/, "");
+    const ficha = page.locator(`main a[href^="${rutaHub}/"]`).first();
+    await expect(ficha, `el hub ${rutaHub} no lista ninguna ficha`).toBeVisible({ timeout: 20_000 });
+    await ficha.click();
+
+    await expect(page.locator("main#main-content")).toBeVisible({ timeout: 20_000 });
+    await expect(page).toHaveURL(/\/licitaciones\/[^/]+\/[^/]+\/[^/]+/);
+    await expectBasicAccessibility(page);
+  });
 });
 
 test.describe("Accesibilidad básica con sesión", () => {

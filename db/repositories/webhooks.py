@@ -437,3 +437,137 @@ class WebhookRepository:
                     "DELETE FROM idempotency_keys WHERE idem_key = %s AND endpoint = %s",
                     (key, endpoint),
                 )
+
+
+def marcar_para_reintento(
+    delivery_id: int, *, estado: str, proximo_intento: str | None, error: str | None
+) -> bool:
+    """Actualiza el estado de una entrega tras un intento (C2.4).
+
+    Devuelve `False` si la entrega no existe. El `intentos + 1` va aquí y no en
+    el llamante para que dos procesos no puedan contar el mismo intento dos
+    veces con un `SELECT` de por medio.
+    """
+    with connect() as c:
+        cur = c.execute(
+            "UPDATE webhook_deliveries "
+            "SET estado = %s, proximo_intento = %s, error_detail = %s, "
+            "    intentos = COALESCE(intentos, 0) + 1 "
+            "WHERE id = %s",
+            (estado, proximo_intento, error, delivery_id),
+        )
+        return bool(getattr(cur, "rowcount", 0))
+
+
+def encolar_reintento(delivery_id: int, *, ahora: str) -> bool:
+    """Pone una entrega en cola para reenviarla **ya** (C2.4, re-entrega manual).
+
+    Es lo que hace `POST /webhooks/{id}/deliveries/{delivery_id}/redeliver`: no
+    reenvía en la request —eso bloquearía al operador mientras se abre una
+    conexión HTTP a un endpoint que puede estar caído— sino que la marca
+    `pending` con `proximo_intento` en el pasado, y el job la recoge.
+
+    **No reinicia `intentos`.** Reiniciarlo convertiría el botón de re-entrega
+    en una forma de reintentar indefinidamente un endpoint muerto, que es justo
+    lo que el tope de `MAX_INTENTOS` evita.
+    """
+    with connect() as c:
+        cur = c.execute(
+            "UPDATE webhook_deliveries SET estado = 'pending', proximo_intento = %s "
+            "WHERE id = %s AND estado <> 'delivered'",
+            (ahora, delivery_id),
+        )
+        return bool(getattr(cur, "rowcount", 0))
+
+
+def pendientes_de_reintento(*, ahora: str, limit: int = 100) -> list[dict[str, Any]]:
+    """Entregas cuyo `proximo_intento` ya venció. Las lee el job de reintento."""
+    with connect_read() as c:
+        return rows_to_dicts(
+            c.execute(
+                "SELECT id, webhook_id, event_type, payload_json, delivery_uid, intentos "
+                "FROM webhook_deliveries "
+                "WHERE estado = 'pending' AND proximo_intento IS NOT NULL "
+                "  AND proximo_intento <= %s "
+                "ORDER BY proximo_intento LIMIT %s",
+                (ahora, limit),
+            )
+        )
+
+
+def crear_entrega(
+    *,
+    webhook_id: int,
+    event_type: str,
+    payload_json: str,
+    delivery_uid: str,
+    estado: str,
+    status_code: int,
+    success: bool,
+    proximo_intento: str | None,
+    error: str | None,
+) -> int | None:
+    """Registra el **primer** intento de una entrega y devuelve su id (C2.4).
+
+    Separada de `WebhookRepository.record_delivery` porque son dos cosas
+    distintas: aquella escribe el histórico de una entrega que ya terminó
+    (`ping`), y esta abre una entrega que puede tener vida por delante. Guarda
+    el cuerpo (`payload_json`) porque sin él un reintento tendría que
+    reconstruirlo, y un cuerpo reconstruido no es el mismo cuerpo: la firma que
+    el receptor validó dejaría de cuadrar.
+
+    Devuelve `None` si el INSERT falla (tabla sin migrar, por ejemplo): la
+    entrega ya salió, y no poder anotarla no puede tumbar el disparo del evento.
+    """
+    with connect() as c:
+        try:
+            cur = c.execute(
+                "INSERT INTO webhook_deliveries "
+                "(webhook_id, event_type, status_code, success, payload_size, created_at, "
+                " payload_json, delivery_uid, estado, proximo_intento, error_detail, intentos) "
+                "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 1) "
+                "RETURNING id",
+                (
+                    webhook_id,
+                    event_type,
+                    status_code,
+                    1 if success else 0,
+                    len(payload_json.encode("utf-8")),
+                    now_utc_iso(),
+                    payload_json,
+                    delivery_uid,
+                    estado,
+                    proximo_intento,
+                    error,
+                ),
+            )
+            fila = cur.fetchone()
+            return int(fila[0]) if fila else None
+        except Exception:
+            log.warning("webhook_delivery_insert_failed", webhook_id=webhook_id, exc_info=True)
+            return None
+
+
+def marcar_webhook_tras_intento(webhook_id: int, *, status_code: int, exito: bool) -> None:
+    """Actualiza `webhooks` tras un intento, **sin** desactivar por un fallo suelto.
+
+    El comportamiento anterior sumaba `failure_count` en cada fallo y
+    desactivaba al décimo. Con reintentos eso cuenta el mismo evento hasta seis
+    veces: un receptor caído media hora desactivaba el webhook aunque el
+    reintento fuese a entregarlo. La desactivación pasa a
+    `desactivar_por_agotamiento`, que la llama quien sabe que ya no hay más
+    intentos.
+    """
+    ahora = now_utc_iso()
+    with connect() as c:
+        if exito:
+            c.execute(
+                "UPDATE webhooks SET last_triggered_at = %s, last_status = %s, "
+                "failure_count = 0 WHERE id = %s",
+                (ahora, status_code, webhook_id),
+            )
+        else:
+            c.execute(
+                "UPDATE webhooks SET last_triggered_at = %s, last_status = %s WHERE id = %s",
+                (ahora, status_code, webhook_id),
+            )

@@ -6,9 +6,9 @@ tags: [database, schema, generado]
 
 <!-- generado por scripts/gen_schema_doc.py — no editar a mano -->
 
-Generado: 2026-09-07
+Generado: 2026-09-08
 
-Revisión Alembic aplicada: `v112_organization_capabilities`.
+Revisión Alembic aplicada: `v127_pursuit_attachments`.
 
 Catálogo de una base Postgres recién migrada con `alembic upgrade head`. Se listan
 las tablas de `public` agrupadas por familia, con sus columnas
@@ -24,16 +24,16 @@ migración que los declara— y, por supuesto, cualquier dato.
 
 | Familia | Tablas | Columnas | Índices |
 |---|---:|---:|---:|
-| Licitaciones y fuente | 12 | 153 | 50 |
-| Documentos y pliegos | 4 | 40 | 10 |
+| Licitaciones y fuente | 11 | 151 | 51 |
+| Documentos y pliegos | 4 | 43 | 11 |
 | Empresas y mercado | 6 | 34 | 8 |
-| Organizaciones y oportunidades | 11 | 103 | 20 |
-| Identidad, acceso y auditoría | 15 | 102 | 22 |
-| Seguimiento y notificaciones | 12 | 118 | 22 |
+| Organizaciones y oportunidades | 14 | 127 | 27 |
+| Identidad, acceso y auditoría | 15 | 104 | 23 |
+| Seguimiento y notificaciones | 12 | 125 | 24 |
 | ML y predicciones | 7 | 55 | 13 |
 | Operación y observabilidad | 6 | 46 | 11 |
-| Otras | 8 | 55 | 4 |
-| **Total** | **81** | **706** | **160** |
+| Otras | 18 | 138 | 22 |
+| **Total** | **93** | **823** | **190** |
 
 ## Licitaciones y fuente
 
@@ -84,22 +84,6 @@ Claves: `PRIMARY KEY (id)`
 Claves: `PRIMARY KEY (id)`
 
 Índices: `idx_eventos_dedupe` (único), `idx_eventos_lic`, `idx_eventos_tipo`
-
-### `extracciones`
-
-| Columna | Tipo | Nulo |
-|---|---|---|
-| `id` | `integer` | no |
-| `fecha` | `text` | no |
-| `fuente` | `text` | no |
-| `nuevas` | `integer` | sí |
-| `actualizadas` | `integer` | sí |
-| `total_revisadas` | `integer` | sí |
-| `notas` | `text` | sí |
-
-Claves: `PRIMARY KEY (id)`
-
-Índices: `idx_extr_fecha`
 
 ### `extraction_runs`
 
@@ -201,10 +185,15 @@ Claves: `PRIMARY KEY (source)`
 | `tramitacion` | `text` | sí |
 | `peso_precio_pct` | `double precision` | sí |
 | `primera_extraccion` | `text` | sí |
+| `importe_base_sin_iva` | `double precision` | sí |
+| `importe_con_iva` | `double precision` | sí |
+| `valor_estimado` | `double precision` | sí |
+| `importe_tipo` | `text` | sí |
+| `organo_id` | `integer` | sí |
 
 Claves: `PRIMARY KEY (id_externo)`
 
-Índices: `idx_ccaa`, `idx_cpv`, `idx_estado`, `idx_fecha_pub`, `idx_lic_clave_canonica_v101`, `idx_lic_cursor`, `idx_lic_fecha_act_fuente`, `idx_lic_fecha_extraccion`, `idx_lic_fecha_limite`, `idx_lic_fecha_pub_d`, `idx_lic_fecha_pub_tech`, `idx_lic_fuente`, `idx_lic_importe`, `idx_lic_ml_proba`, `idx_lic_tecnologia`, `idx_lic_universo_cpv`, `idx_licitaciones_analysis_lineage`, `idx_licitaciones_search_vector`, `idx_licitaciones_titulo_trgm`, `idx_ml_tech_principal`, `idx_organo`
+Índices: `idx_ccaa`, `idx_cpv`, `idx_estado`, `idx_fecha_pub`, `idx_lic_clave_canonica_v101`, `idx_lic_cursor`, `idx_lic_fecha_act_fuente`, `idx_lic_fecha_extraccion`, `idx_lic_fecha_limite`, `idx_lic_fecha_pub_d`, `idx_lic_fecha_pub_tech`, `idx_lic_fuente`, `idx_lic_importe`, `idx_lic_importe_base_sin_iva`, `idx_lic_ml_proba`, `idx_lic_organo_id`, `idx_lic_tecnologia`, `idx_lic_universo_cpv`, `idx_licitaciones_analysis_lineage`, `idx_licitaciones_search_vector`, `idx_licitaciones_titulo_trgm`, `idx_ml_tech_principal`, `idx_organo`
 
 ### `licitaciones_duplicados`
 
@@ -306,10 +295,13 @@ Claves: `PRIMARY KEY (source)`
 | `texto` | `text` | no |
 | `embedding` | `vector` | sí |
 | `search_vector` | `tsvector` | sí |
+| `embedding_model` | `text` | sí |
+| `embedding_version` | `text` | sí |
+| `page_number` | `integer` | sí |
 
 Claves: `PRIMARY KEY (id)` · `UNIQUE (documento_id, chunk_index)`
 
-Índices: `idx_documento_chunks_documento`, `idx_documento_chunks_embedding_hnsw`, `idx_documento_chunks_search_vector`
+Índices: `idx_documento_chunks_documento`, `idx_documento_chunks_embedding_hnsw`, `idx_documento_chunks_search_vector`, `idx_documento_chunks_version`
 
 ### `documento_pages`
 
@@ -591,6 +583,39 @@ Claves: `PRIMARY KEY (id)`
 
 Claves: `PRIMARY KEY (id)` · `UNIQUE (personal_owner_user_id)`
 
+### `pursuit_attachments`
+
+| Columna | Tipo | Nulo |
+|---|---|---|
+| `id` | `integer` | no |
+| `pursuit_id` | `integer` | no |
+| `organization_id` | `integer` | no |
+| `blob_key` | `text` | no |
+| `filename` | `text` | no |
+| `content_type` | `text` | no |
+| `size_bytes` | `bigint` | no |
+| `sha256` | `text` | no |
+| `uploaded_by_user_id` | `integer` | sí |
+| `indexable` | `boolean` | no |
+| `created_at` | `text` | no |
+
+Claves: `PRIMARY KEY (id)` · `UNIQUE (blob_key)`
+
+Índices: `idx_pursuit_attachments_org`, `idx_pursuit_attachments_pursuit`
+
+### `pursuit_comment_mentions`
+
+| Columna | Tipo | Nulo |
+|---|---|---|
+| `id` | `integer` | no |
+| `comment_id` | `integer` | no |
+| `user_id` | `integer` | no |
+| `created_at` | `text` | no |
+
+Claves: `PRIMARY KEY (id)`
+
+Índices: `idx_pursuit_comment_mentions_user`, `uq_pursuit_comment_mentions` (único)
+
 ### `pursuit_comments`
 
 | Columna | Tipo | Nulo |
@@ -623,6 +648,24 @@ Claves: `PRIMARY KEY (id)`
 Claves: `PRIMARY KEY (id)`
 
 Índices: `idx_pursuit_events_org_created`, `idx_pursuit_events_pursuit_created`, `uq_pursuit_events_idempotency` (único)
+
+### `pursuit_tasks`
+
+| Columna | Tipo | Nulo |
+|---|---|---|
+| `id` | `integer` | no |
+| `pursuit_id` | `integer` | no |
+| `organization_id` | `integer` | no |
+| `titulo` | `text` | no |
+| `responsable_user_id` | `integer` | sí |
+| `vence` | `text` | sí |
+| `estado` | `text` | no |
+| `created_at` | `text` | no |
+| `updated_at` | `text` | no |
+
+Claves: `PRIMARY KEY (id)`
+
+Índices: `idx_pursuit_tasks_agenda`, `idx_pursuit_tasks_pursuit`, `idx_pursuit_tasks_responsable`
 
 ### `pursuits`
 
@@ -719,10 +762,12 @@ Claves: `PRIMARY KEY (tier)`
 | `tier` | `text` | no |
 | `user_id` | `integer` | sí |
 | `scopes` | `text` | no |
+| `organization_id` | `integer` | sí |
+| `created_by` | `integer` | sí |
 
 Claves: `PRIMARY KEY (id)` · `UNIQUE (key_hash)`
 
-Índices: `idx_api_keys_hash`, `idx_api_keys_user_id`
+Índices: `idx_api_keys_hash`, `idx_api_keys_organization`, `idx_api_keys_user_id`
 
 ### `audit_chain_state`
 
@@ -1049,6 +1094,7 @@ Claves: `PRIMARY KEY (id)` · `UNIQUE (user_key, empresa_id)`
 | `created_at` | `text` | no |
 | `organization_id` | `integer` | sí |
 | `visibility` | `text` | no |
+| `nota` | `text` | sí |
 
 Claves: `PRIMARY KEY (id)` · `UNIQUE (user_key, id_externo)`
 
@@ -1096,10 +1142,16 @@ Claves: `PRIMARY KEY (id)`
 | `success` | `integer` | no |
 | `payload_size` | `integer` | no |
 | `created_at` | `text` | no |
+| `delivery_uid` | `text` | sí |
+| `payload_json` | `text` | sí |
+| `error_detail` | `text` | sí |
+| `proximo_intento` | `text` | sí |
+| `estado` | `text` | sí |
+| `intentos` | `integer` | no |
 
 Claves: `PRIMARY KEY (id)`
 
-Índices: `idx_wh_del_created`, `idx_wh_del_webhook`
+Índices: `idx_wh_del_created`, `idx_wh_del_reintento`, `idx_wh_del_uid` (único), `idx_wh_del_webhook`
 
 ### `webhooks`
 
@@ -1341,6 +1393,43 @@ Claves: `PRIMARY KEY (id)`
 
 ## Otras
 
+### `asistente_feedback`
+
+| Columna | Tipo | Nulo |
+|---|---|---|
+| `id` | `integer` | no |
+| `pregunta_hash` | `text` | no |
+| `modo` | `text` | no |
+| `modelo` | `text` | sí |
+| `licitacion_id` | `text` | sí |
+| `voto` | `text` | no |
+| `motivo` | `text` | sí |
+| `pregunta_texto` | `text` | sí |
+| `user_id` | `integer` | sí |
+| `created_at` | `text` | no |
+
+Claves: `PRIMARY KEY (id)`
+
+Índices: `idx_asistente_feedback_created`, `idx_asistente_feedback_hash`
+
+### `client_errors`
+
+| Columna | Tipo | Nulo |
+|---|---|---|
+| `id` | `integer` | no |
+| `fingerprint` | `text` | no |
+| `origen` | `text` | sí |
+| `ruta` | `text` | sí |
+| `mensaje` | `text` | sí |
+| `build` | `text` | sí |
+| `ocurrencias` | `integer` | no |
+| `primera_vez` | `text` | no |
+| `ultima_vez` | `text` | no |
+
+Claves: `PRIMARY KEY (id)`
+
+Índices: `idx_client_errors_fingerprint` (único), `idx_client_errors_ultima_vez`
+
 ### `contratos_cartera`
 
 | Columna | Tipo | Nulo |
@@ -1420,6 +1509,125 @@ Claves: `PRIMARY KEY (id)` · `UNIQUE (etiqueta_id, objeto_tipo, objeto_id)`
 
 Índices: `idx_etiquetas_aplicadas_objeto`
 
+### `extracciones_retirada`
+
+| Columna | Tipo | Nulo |
+|---|---|---|
+| `id` | `integer` | no |
+| `fecha` | `text` | no |
+| `fuente` | `text` | no |
+| `nuevas` | `integer` | sí |
+| `actualizadas` | `integer` | sí |
+| `total_revisadas` | `integer` | sí |
+| `notas` | `text` | sí |
+
+Claves: `PRIMARY KEY (id)`
+
+Índices: `idx_extr_fecha`
+
+### `go_no_go_scores`
+
+| Columna | Tipo | Nulo |
+|---|---|---|
+| `id` | `integer` | no |
+| `pursuit_id` | `integer` | no |
+| `organization_id` | `integer` | no |
+| `criterio` | `text` | no |
+| `puntuacion` | `integer` | no |
+| `motivo` | `text` | sí |
+| `author_user_id` | `integer` | sí |
+| `created_at` | `text` | no |
+| `updated_at` | `text` | no |
+
+Claves: `PRIMARY KEY (id)`
+
+Índices: `uq_go_no_go_scores` (único)
+
+### `go_no_go_weights`
+
+| Columna | Tipo | Nulo |
+|---|---|---|
+| `id` | `integer` | no |
+| `organization_id` | `integer` | no |
+| `criterio` | `text` | no |
+| `peso` | `double precision` | no |
+| `updated_at` | `text` | no |
+
+Claves: `PRIMARY KEY (id)`
+
+Índices: `uq_go_no_go_weights` (único)
+
+### `notification_preferences`
+
+| Columna | Tipo | Nulo |
+|---|---|---|
+| `id` | `integer` | no |
+| `user_id` | `integer` | no |
+| `organization_id` | `integer` | sí |
+| `tipo` | `text` | no |
+| `canal` | `text` | no |
+| `frecuencia` | `text` | no |
+| `created_at` | `text` | no |
+| `updated_at` | `text` | no |
+
+Claves: `PRIMARY KEY (id)`
+
+Índices: `idx_notif_pref_uniq` (único), `idx_notif_pref_user`
+
+### `organo_aliases`
+
+| Columna | Tipo | Nulo |
+|---|---|---|
+| `id` | `integer` | no |
+| `organo_id` | `integer` | no |
+| `alias_normalizado` | `text` | no |
+| `alias_original` | `text` | sí |
+| `dir3_variante` | `text` | sí |
+| `fuente` | `text` | no |
+| `confianza` | `double precision` | no |
+| `created_at` | `text` | no |
+
+Claves: `PRIMARY KEY (id)`
+
+Índices: `idx_organo_aliases_alias`, `idx_organo_aliases_uniq` (único)
+
+### `organo_review_queue`
+
+| Columna | Tipo | Nulo |
+|---|---|---|
+| `id` | `integer` | no |
+| `nombre_original` | `text` | no |
+| `alias_normalizado` | `text` | no |
+| `dir3` | `text` | sí |
+| `candidato_organo_id` | `integer` | sí |
+| `score` | `double precision` | no |
+| `status` | `text` | no |
+| `created_at` | `text` | no |
+| `resolved_at` | `text` | sí |
+| `resolved_by` | `text` | sí |
+
+Claves: `PRIMARY KEY (id)`
+
+Índices: `idx_organo_review_pending` (único), `idx_organo_review_status`
+
+### `organos`
+
+| Columna | Tipo | Nulo |
+|---|---|---|
+| `organo_id` | `integer` | no |
+| `dir3` | `text` | sí |
+| `nombre_canonico` | `text` | no |
+| `nombre_normalizado` | `text` | no |
+| `ccaa` | `text` | sí |
+| `tipo` | `text` | sí |
+| `url_perfil` | `text` | sí |
+| `created_at` | `text` | no |
+| `updated_at` | `text` | no |
+
+Claves: `PRIMARY KEY (organo_id)`
+
+Índices: `idx_organos_ccaa`, `idx_organos_dir3` (único), `idx_organos_nombre_norm` (único)
+
 ### `plantillas_aplicadas`
 
 | Columna | Tipo | Nulo |
@@ -1448,6 +1656,23 @@ Claves: `PRIMARY KEY (id)`
 
 Índices: `idx_plantillas_org`
 
+### `tecnologias_keywords`
+
+| Columna | Tipo | Nulo |
+|---|---|---|
+| `id` | `integer` | no |
+| `tecnologia` | `text` | no |
+| `keyword` | `text` | no |
+| `activa` | `boolean` | no |
+| `origen` | `text` | no |
+| `created_by_user_id` | `integer` | sí |
+| `created_at` | `text` | no |
+| `updated_at` | `text` | no |
+
+Claves: `PRIMARY KEY (id)`
+
+Índices: `idx_tecnologias_keywords_activas`, `uq_tecnologias_keywords` (único)
+
 ### `user_event_prefs`
 
 | Columna | Tipo | Nulo |
@@ -1470,6 +1695,7 @@ Claves: `PRIMARY KEY (id)` · `UNIQUE (user_key, event_type)`
 
 | Vista | Índices |
 |---|---|
+| `extracciones` | — |
 | `licitaciones_history_2022` | — |
 | `licitaciones_history_2023` | — |
 | `licitaciones_history_2024` | — |

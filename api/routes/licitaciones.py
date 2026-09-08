@@ -7,6 +7,7 @@ import hashlib
 import json
 import re
 from collections.abc import Generator
+from datetime import date
 from typing import Any
 
 from fastapi import (
@@ -22,11 +23,13 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, field_validator
 
 from api.concurrency import run_db, run_ml
+from api.errors import deprecate_route, sunset_anunciado
 from api.routes.dual_auth import require_any_auth
 from api.tenancy import require_organization
+from db.repositories import dedupe as _dedupe_repo
 from db.repositories.adjudicaciones import AdjudicacionRepository
 from db.repositories.documentos import DocumentosRepository
-from db.repositories.licitaciones import LicitacionRepository
+from db.repositories.licitaciones import LicitacionRepository, lotes_de
 from observability.logging import get_logger
 from services.comparador_fichas import (
     MAX_EXPEDIENTES as MAX_EXPEDIENTES_COMPARAR,
@@ -49,6 +52,11 @@ from shared.export_safety import sanitize_spreadsheet_record
 from shared.tender_facts import EvidenceRef, TenderFactSheet, TenderFactSheetRecord
 
 log = get_logger(__name__)
+
+#: Apagado del listado por offset. Anunciado el 2026-09-06 con la ventana
+#: de 90 días de `DEPRECATION_WINDOW_DAYS`; la sucesora es
+#: `/licitaciones/cursor`, que ya sirve el mismo dato sin `COUNT(*)`.
+SUNSET_LISTADO_POR_OFFSET = sunset_anunciado(date(2027, 1, 15), anunciado=date(2026, 9, 6))
 
 router = APIRouter(tags=["licitaciones"])
 
@@ -119,6 +127,36 @@ class LicitacionDetail(LicitacionSummary):
     # mentía. Sin este campo el frontend no tiene de dónde sacar la etiqueta —
     # `id_externo` no sirve, porque PLACSP es el legacy sin namespace.
     fuente: str | None = None
+    # C4.2 / D23 — republicación.
+    #
+    # Un contrato reemitido (TED acuña un `publication-number` por anuncio;
+    # PSCP cae al `id` de la fila cuando no hay expediente) deja de aparecer en
+    # el Radar y en los listados, pero **sigue siendo alcanzable por URL**: un
+    # enlace guardado no puede dar 404 porque un job nocturno decidió que era un
+    # duplicado. Lo que la ficha hace es decirlo, con el id de la canónica para
+    # que el usuario pueda ir al original.
+    #
+    # `None` = no es una republicación conocida.
+    republicacion_de: str | None = None
+    # C1.4 — los lotes del expediente. Lista vacía = lote único implícito,
+    # que es el caso mayoritario; no significa «no medido».
+    lotes: list[LoteOut] = Field(default_factory=list)
+
+
+class LoteOut(BaseModel):
+    """Un lote del expediente (C1.4).
+
+    `GET /licitaciones/{id}` devolvía el expediente sin sus lotes, así que un
+    multi-lote se presentaba como uno solo con el presupuesto total —la misma
+    confusión que `EFFECTIVE_BUDGET_SQL` resolvió del lado del cálculo, sin
+    resolver del lado de lo que el usuario ve.
+    """
+
+    numero: str
+    titulo: str | None = None
+    cpv: str | None = None
+    importe: float | None = None
+    fecha_limite: str | None = None
 
 
 class AdjudicacionSummary(BaseModel):
@@ -344,9 +382,14 @@ async def list_licitaciones(
     _validate_date(cierre_desde, "cierre_desde")
     _validate_date(cierre_hasta, "cierre_hasta")
 
-    # Cabecera de deprecación
-    response.headers["Deprecation"] = "true"
-    response.headers["Link"] = '</api/v1/licitaciones/cursor>; rel="successor-version"'
+    # Cabecera de deprecación con fecha de apagado (C8.1). Antes emitía
+    # `Deprecation: true` y `Link` pero no `Sunset`: le decía al cliente que se
+    # preparase sin decirle para cuándo, que es la mitad inútil del aviso.
+    deprecate_route(
+        response,
+        sunset=SUNSET_LISTADO_POR_OFFSET,
+        successor="/api/v1/licitaciones/cursor",
+    )
 
     items, total = await run_db(
         _lic_repo.list_paginated,
@@ -599,7 +642,89 @@ async def get_licitacion(
     if _check_etag(request, etag):
         return Response(status_code=304)
 
-    return LicitacionDetail(**{k: data.get(k) for k in LicitacionDetail.model_fields})  # type: ignore[arg-type]
+    canonica = await run_db(_dedupe_repo.canonical_for, id_externo)
+    lotes = await run_db(lotes_de, id_externo)
+    campos = {k: data.get(k) for k in LicitacionDetail.model_fields}
+    campos["republicacion_de"] = canonica
+    campos["lotes"] = [LoteOut(**lote) for lote in lotes]
+    return LicitacionDetail(**campos)  # type: ignore[arg-type]
+
+
+# ── /licitaciones/{id_externo}/similares ─────────────────────────────────
+
+
+class SimilarOut(BaseModel):
+    """Un expediente propuesto como predecesor o similar (C1.3)."""
+
+    id_externo: str
+    titulo: str
+    organo_contratacion: str | None = None
+    cpv: str | None = None
+    importe: float | None = None
+    estado: str | None = None
+    fecha_publicacion: str | None = None
+    #: Parecido con el expediente consultado, en la escala del `metodo`.
+    score: float
+    # Solo el predecesor los trae: son la información accionable —quién es el
+    # incumbente y a qué precio ganó— y por eso no se rellenan en los similares,
+    # donde no hay una adjudicación que los respalde.
+    adjudicatario: str | None = None
+    importe_adjudicado: float | None = None
+    fecha_adjudicacion: str | None = None
+    #: Baja del predecesor, calculada sobre base sin IVA cuando la fila la trae
+    #: (C1.1). `None` si no se puede calcular sin mezclar bases.
+    baja_pct: float | None = None
+
+
+class SimilaresResult(BaseModel):
+    """Predecesor y expedientes parecidos."""
+
+    licitacion_id: str
+    # `None` = no hay ninguno que cumpla mismo órgano + mismo CPV4 +
+    # anterioridad. **No se rellena con «el más parecido»**: proponer un
+    # incumbente equivocado hace que alguien prepare su oferta contra un
+    # competidor que no existe.
+    predecesor: SimilarOut | None = None
+    similares: list[SimilarOut] = Field(default_factory=list)
+    #: `embedding` | `fts`. Sin embeddings instalados el orden es peor, y una
+    #: lista ordenada por un criterio que el consumidor no conoce no se puede
+    #: interpretar.
+    metodo: str = "fts"
+    #: Candidatos evaluados. Sin él, `similares: []` no distingue «no hay nada
+    #: parecido» de «no había contra qué comparar».
+    n: int = 0
+
+
+@router.get(
+    "/licitaciones/{id_externo}/similares",
+    response_model=SimilaresResult,
+    summary="Predecesor y expedientes similares",
+)
+async def get_similares(
+    id_externo: str,
+    limit: int = Query(10, ge=1, le=50, description="Máximo de similares"),
+    _ctx: dict[str, Any] = Depends(require_any_auth),
+) -> SimilaresResult:
+    """¿Este contrato ya se licitó antes? ¿Quién lo tiene hoy?
+
+    `services/embeddings.py` sabía buscar textos parecidos desde siempre y
+    ninguna ruta lo exponía (hecho 3 del plan complementario). Esta lo hace, con
+    dos preguntas separadas porque tienen listones de evidencia distintos: ver
+    `services/similares.py`.
+    """
+    from services.similares import buscar
+
+    resultado = await run_db(buscar, id_externo, max_similares=limit)
+    if resultado is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No encontrado.")
+
+    return SimilaresResult(
+        licitacion_id=resultado.licitacion_id,
+        predecesor=(SimilarOut(**vars(resultado.predecesor)) if resultado.predecesor else None),
+        similares=[SimilarOut(**vars(c)) for c in resultado.similares],
+        metodo=resultado.metodo,
+        n=resultado.n,
+    )
 
 
 # ── /licitaciones/{id_externo}/explain ───────────────────────────────────

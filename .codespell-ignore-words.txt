@@ -26,7 +26,9 @@ comercial
 commitees
 componentes
 conector
+confirmacion
 confirmas
+consideren
 contener
 contiguos
 controlable
@@ -81,6 +83,7 @@ instruccion
 intelectual
 interpolar
 interprete
+invalide
 licitacion
 licitaciones
 limite

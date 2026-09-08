@@ -1,13 +1,16 @@
-"""Manejo de errores RFC 7807 (Problem Details for HTTP APIs).
+"""Manejo de errores RFC 7807 y deprecación de rutas.
 
-Registrar con ``register_exception_handlers(app)`` en la creación de la app.
+Registrar los manejadores con ``register_exception_handlers(app)`` en la
+creación de la app; marcar una ruta deprecada con ``deprecate_route``.
 """
 
 from __future__ import annotations
 
+from datetime import UTC, date, datetime, timedelta
+from email.utils import format_datetime
 from typing import Any
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -137,6 +140,88 @@ def problem_503(detail: str = "Servicio temporalmente no disponible.") -> Proble
         status=503,
         detail=detail,
     )
+
+
+# ── Deprecación de rutas (C8.1) ──────────────────────────────────────────────
+
+#: Ventana mínima entre anunciar la deprecación y apagar la ruta.
+#:
+#: Noventa días es lo que tarda un consumidor externo en enterarse, planificar y
+#: desplegar. La ventana es del **contrato**, no del calendario de quien
+#: deprecia: acortarla convierte el aviso en un incidente ajeno.
+DEPRECATION_WINDOW_DAYS = 90
+
+
+def sunset_anunciado(sunset: date, *, anunciado: date | None = None) -> date:
+    """Valida y devuelve una fecha de apagado. Se llama **al declararla**.
+
+    Se ejecuta en tiempo de import del módulo que define la constante, así que
+    un plazo demasiado corto rompe el arranque —donde se ve— y no una request
+    de un usuario.
+
+    Args:
+        sunset: Día a partir del cual la ruta puede dejar de existir.
+        anunciado: Día en que se anunció la deprecación. Por defecto, hoy. Se
+            pasa explícito para que una fecha declarada hace meses siga siendo
+            válida cuando la ventana ya se consumió: lo que la política exige es
+            que hubiera 90 días **desde el anuncio**, no que sigan quedando.
+
+    Raises:
+        ValueError: Si entre el anuncio y el apagado no cabe la ventana.
+    """
+    origen = anunciado or datetime.now(UTC).date()
+    if sunset - origen < timedelta(days=DEPRECATION_WINDOW_DAYS):
+        raise ValueError(
+            f"sunset={sunset.isoformat()} deja menos de {DEPRECATION_WINDOW_DAYS} días "
+            f"desde {origen.isoformat()}. La ventana de deprecación es del contrato, "
+            f"no del calendario de quien deprecia."
+        )
+    return sunset
+
+
+def deprecate_route(
+    response: Response,
+    *,
+    sunset: date,
+    successor: str | None = None,
+    rfc: str | None = None,
+) -> None:
+    """Marca la respuesta como perteneciente a una ruta deprecada.
+
+    Escribe tres cabeceras estándar, y la que faltaba era la segunda:
+
+    - ``Deprecation: true`` (RFC 8594) — la ruta está deprecada.
+    - ``Sunset: <fecha HTTP>`` (RFC 8594) — **cuándo deja de responder**. Hasta
+      2026-09 la única ruta deprecada emitía ``Deprecation`` sin ``Sunset``, que
+      le dice al cliente que se prepare sin decirle para cuándo.
+    - ``Link`` — la sucesora (``rel="successor-version"``) y, si la hay, la RFC
+      que documenta la retirada (``rel="deprecation"``).
+
+    La ventana de 90 días **no** se comprueba aquí: se comprueba al declarar la
+    fecha, con ``sunset_anunciado()``. La diferencia importa. Validar en cada
+    request convertiría una fecha que se acerca en un 500 en producción: el día
+    que faltasen 89 días, la ruta deprecada dejaría de responder de golpe — que
+    es exactamente el apagón sin aviso que esta política existe para evitar.
+
+    Args:
+        response: La ``Response`` de FastAPI de la operación.
+        sunset: Día a partir del cual la ruta puede dejar de existir.
+        successor: Ruta que la sustituye, si existe.
+        rfc: URL o ruta de la RFC de retirada.
+    """
+    response.headers["Deprecation"] = "true"
+    # RFC 8594 exige formato de fecha HTTP (IMF-fixdate), no ISO-8601.
+    response.headers["Sunset"] = format_datetime(
+        datetime.combine(sunset, datetime.min.time(), tzinfo=UTC), usegmt=True
+    )
+
+    enlaces: list[str] = []
+    if successor:
+        enlaces.append(f'<{successor}>; rel="successor-version"')
+    if rfc:
+        enlaces.append(f'<{rfc}>; rel="deprecation"')
+    if enlaces:
+        response.headers["Link"] = ", ".join(enlaces)
 
 
 # ── Exception handlers ───────────────────────────────────────────────────────

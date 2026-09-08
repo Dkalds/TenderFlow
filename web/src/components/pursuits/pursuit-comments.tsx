@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { PanelEmpty, PanelError } from "@/components/console/panel";
 import {
   type PursuitComment,
@@ -106,13 +107,17 @@ function CommentItem({
               tú
             </span>
           )}
-          <time
-            dateTime={comment.created_at}
-            title={formatDateTime(comment.created_at)}
-            className="text-[10.5px] text-muted-foreground"
-          >
-            {formatRelativeTime(comment.created_at)}
-          </time>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <time
+                dateTime={comment.created_at}
+                className="text-[10.5px] text-muted-foreground"
+              >
+                {formatRelativeTime(comment.created_at)}
+              </time>
+            </TooltipTrigger>
+            <TooltipContent>{formatDateTime(comment.created_at)}</TooltipContent>
+          </Tooltip>
           <div className="flex-1" />
           {comment.can_delete && !confirming && (
             <button

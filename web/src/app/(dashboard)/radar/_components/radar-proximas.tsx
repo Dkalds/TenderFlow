@@ -7,6 +7,7 @@ import { GlosarioHint } from "@/components/ui/glosario-hint";
 import { estadoLabel } from "@/lib/estados";
 import { formatDate, cn } from "@/lib/utils";
 import type { RadarProxima, RadarProximasConsola } from "../_hooks/use-radar-proximas";
+import { RadarEsqueleto } from "./radar-esqueleto";
 import { shortEur } from "./radar-shared";
 
 /**
@@ -211,15 +212,7 @@ export function RadarProximas({ consola }: { consola: RadarProximasConsola }) {
         {error ? (
           <ProximasError error={error as Error} onRetry={refetch} />
         ) : isLoading ? (
-          <div className="flex flex-col gap-2.5 p-3.5">
-            {Array.from({ length: 5 }, (_, index) => (
-              <span
-                key={index}
-                className="tf-shimmer block h-11 rounded-lg"
-                style={{ opacity: 1 - index * 0.07 }}
-              />
-            ))}
-          </div>
+          <RadarEsqueleto barras={5} />
         ) : items.length === 0 ? (
           <ProximasVacia />
         ) : (

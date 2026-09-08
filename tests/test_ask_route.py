@@ -21,6 +21,29 @@ from fastapi.testclient import TestClient
 # ── Fixtures ──────────────────────────────────────────────────────────────────
 
 
+@pytest.fixture(autouse=True)
+def _sin_respuesta_cacheada():
+    """Vacía la caché de respuestas del LLM (C5.5) antes de cada test.
+
+    Cinco tests de este fichero hacen **la misma pregunta**. Con la caché en
+    medio, los primeros la llenan y los siguientes reciben la respuesta guardada
+    sin llegar al proveedor: `test_ask_llm_error_degrada_a_docs_sin_sintesis`
+    parcheaba un `stream_llm_response` que revienta, y nunca se llamaba, así que
+    el evento `degraded` no se emitía y el test fallaba por una razón que no
+    tiene nada que ver con lo que prueba.
+
+    El aislamiento va aquí y no en cada test —ni pasando `force=true`, que
+    cambiaría el caso probado— porque el problema es de la suite: ningún test
+    puede depender de si otro corrió antes.
+    """
+    from shared.cache import LLM_NAMESPACE, get_cache, reset_cache
+
+    get_cache(LLM_NAMESPACE).clear()
+    reset_cache(LLM_NAMESPACE)
+    yield
+    reset_cache(LLM_NAMESPACE)
+
+
 @pytest.fixture()
 def ask_client(api_db):
     """TestClient con una API key que tiene scope ask:read."""

@@ -22,9 +22,10 @@ from db.repositories.product_metrics import ProductMetricsRepository
 
 
 def test_bajas_agregadas_con_cpv_y_ccaa(tmp_db):
-    filas = bajas_mod.bajas_agregadas(cpv_prefix="7220", ccaa="Madrid")
+    filas, base = bajas_mod.bajas_agregadas(cpv_prefix="7220", ccaa="Madrid")
 
     assert filas == []
+    assert base == "mixta"
 
 
 def test_proximas_renovaciones_con_todos_sus_filtros(tmp_db):

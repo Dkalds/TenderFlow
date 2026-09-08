@@ -141,7 +141,29 @@ class Licitacion:
     titulo: str
     descripcion: str | None = None
     organo_contratacion: str | None = None
+    # `importe` es el ALIAS de la base sin IVA cuando la hay, y el importe con
+    # IVA cuando la fuente solo publica ese. Se conserva con ese nombre porque
+    # lo consumen el frontend, los exports, el scoring y varias vistas
+    # materializadas: renombrarlo a cambio de un nombre mejor no compra nada.
+    #
+    # Lo que faltaba, y es lo que arregla C1.1 (ADR-032, D21), es que la fila
+    # dijera DE QUÉ BASE es ese número. `bajas` calculaba
+    # `(importe - adjudicado) / importe` mezclando las dos, así que una baja del
+    # 21 % podía ser exactamente el IVA.
     importe: float | None = None
+    #: `cbc:TaxExclusiveAmount`. La base de comparación: `bajas`, `pricing` y
+    #: `scoring` leen ESTA y excluyen las filas que no la tienen.
+    importe_base_sin_iva: float | None = None
+    #: `cbc:TotalAmount`.
+    importe_con_iva: float | None = None
+    #: `cbc:EstimatedOverallContractAmount` — incluye prórrogas y
+    #: modificaciones. Es el número con el que la Ley 9/2017 determina el
+    #: procedimiento, y no se extraía en absoluto.
+    valor_estimado: float | None = None
+    #: `sin_iva` | `con_iva` | `desconocido`. `None` = la fuente no publicó
+    #: importe. `desconocido` es el histórico anterior a v113, que no se puede
+    #: reinterpretar sin volver a parsear el CODICE original.
+    importe_tipo: str | None = None
     moneda: str = "EUR"
     cpv: str | None = None
     tipo_contrato: str | None = None
@@ -182,6 +204,12 @@ class Licitacion:
     # Fuente de ingesta (ADR-009): 'placsp', 'ted', 'pscp_cat'… Las fuentes
     # nuevas namespacean ademas su id_externo como "{fuente}:{id_natural}".
     fuente: str = "placsp"
+    #: Código DIR3 del órgano, **parse-only** (C1.2). No es columna de
+    #: `licitaciones`: el DIR3 vive en el maestro `organos` (v114), que es
+    #: donde identifica a la entidad. Viaja aquí para que la resolución del
+    #: órgano lo tenga sin volver a abrir el XML, igual que
+    #: `Adjudicacion.lote_numero_raw`.
+    organo_dir3: str | None = None
     fecha_extraccion: str = field(default_factory=now_utc_iso)
 
 
@@ -210,7 +238,11 @@ class DocumentoReferencia:
 # Fragmentos SQL pre-computados (evitan recálculo por fila)
 # ---------------------------------------------------------------------------
 
-_LIC_KEYS = tuple(f.name for f in fields(Licitacion))
+# `organo_dir3` es parse-only (ver su docstring): nunca es columna de
+# `licitaciones`, así que se excluye de las columnas del INSERT. Mismo
+# patrón que `lote_numero_raw` en `Adjudicacion`.
+_LIC_PARSE_ONLY_FIELDS = frozenset({"organo_dir3"})
+_LIC_KEYS = tuple(f.name for f in fields(Licitacion) if f.name not in _LIC_PARSE_ONLY_FIELDS)
 _LIC_COLS = ", ".join(_LIC_KEYS)
 _LIC_PLACEHOLDERS = ", ".join("%s" for _ in _LIC_KEYS)
 
@@ -612,19 +644,6 @@ def replace_lotes_batch(lotes_por_lic: dict[str, list[Lote]]) -> dict[str, dict[
         licitacion_id: replace_lotes(licitacion_id, items)
         for licitacion_id, items in lotes_por_lic.items()
     }
-
-
-def log_extraccion(
-    fuente: str, nuevas: int, actualizadas: int, total: int, notas: str = ""
-) -> None:
-    """Registra una ejecución de extracción en la tabla ``extracciones``."""
-    with connect() as c:
-        c.execute(
-            "INSERT INTO extracciones "
-            "(fecha, fuente, nuevas, actualizadas, total_revisadas, notas) "
-            "VALUES (%s, %s, %s, %s, %s, %s)",
-            (now_utc_iso(), fuente, nuevas, actualizadas, total, notas),
-        )
 
 
 def estimar_filas(c: Any, tabla: str) -> int | None:

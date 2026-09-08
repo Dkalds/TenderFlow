@@ -534,7 +534,10 @@ describe("RadarPage — foco y teclado", () => {
     tresFilas();
 
     const { container } = renderRadar();
-    const filas = container.querySelectorAll<HTMLElement>("[data-active]");
+    // El control de la fila es la capa de selección, no la fila: desde C7.1 la
+    // fila es un contenedor y el `role="button"` con botones dentro —que es lo
+    // que axe llama `nested-interactive`— ya no existe.
+    const filas = container.querySelectorAll<HTMLElement>('[data-slot="radar-fila-seleccion"]');
     act(() => filas[2].focus());
 
     // El keydown se dispara sobre la fila enfocada, como hace el navegador: de
@@ -593,8 +596,12 @@ describe("RadarPage — foco y teclado", () => {
           boton.tabIndex !== -1 &&
           // El disparador del desglose del score es visible en todas las filas
           // —es la explicación del número que ordena la bandeja— así que es una
-          // parada legítima y no es lo que este test vigila.
-          boton.dataset.slot !== "radar-score",
+          // parada legítima y no es lo que este test vigila. La capa de
+          // selección de la fila (C7.1) es lo mismo: una parada por fila,
+          // visible y con foco propio, que sustituye al `role="button"` que la
+          // fila tenía antes. Lo que este test cuenta son las acciones.
+          boton.dataset.slot !== "radar-score" &&
+          boton.dataset.slot !== "radar-fila-seleccion",
       );
 
       // Solo los de la fila activa: descartar, seguir, ver ficha y abrir. El
@@ -657,7 +664,10 @@ describe("RadarPage — foco y teclado", () => {
       (boton) =>
         !boton.closest("[inert]") &&
         boton.tabIndex !== -1 &&
-        boton.dataset.slot !== "radar-score",
+        boton.dataset.slot !== "radar-score" &&
+        // Ver el test de arriba: la capa de selección es la parada de la fila,
+        // no una de sus acciones.
+        boton.dataset.slot !== "radar-fila-seleccion",
     );
 
     expect(enfocables).toHaveLength(9);

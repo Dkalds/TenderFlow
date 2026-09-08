@@ -17,6 +17,8 @@ from __future__ import annotations
 
 import hashlib
 import re
+import threading
+import time
 import uuid
 from collections.abc import Awaitable, Callable
 
@@ -266,6 +268,75 @@ SOLICITUDES_PATH = "/api/v1/publico/solicitudes-acceso"
 SOLICITUDES_MAX_CALLS = 5
 
 
+#: Cuánto se cachea el tier de una API key, en segundos (C2.3).
+#:
+#: El middleware corre **antes del routing**, en cada request. Consultar
+#: `api_keys` + `api_key_tiers` en cada una convertiría el rate limiter en el
+#: componente más caro del camino. Sesenta segundos es la ventana del propio
+#: límite: un cambio de tier tarda como mucho un minuto en aplicarse, y esa
+#: latencia es aceptable para una operación que hace un administrador a mano.
+_TIER_CACHE_TTL_S = 60.0
+
+#: `{key_hash: (limite_o_None, expira_epoch)}`. Cabe en memoria: son tantas
+#: entradas como claves activas haya llamando, no como requests.
+_tier_cache: dict[str, tuple[int | None, float]] = {}
+_tier_cache_lock = threading.Lock()
+
+
+def _tier_limit(key_hash: str) -> int | None:
+    """Límite por minuto del tier de la clave, cacheado. `None` = sin tope propio."""
+    ahora = time.time()
+    with _tier_cache_lock:
+        entrada = _tier_cache.get(key_hash)
+        if entrada and entrada[1] > ahora:
+            return entrada[0]
+
+    try:
+        from db.repositories.api_keys import tier_limit_por_hash
+
+        limite = tier_limit_por_hash(key_hash)
+    except Exception:
+        # Un fallo de BD aquí no puede tumbar el rate limiter: se cae al default
+        # del middleware, que es más restrictivo que `enterprise` y más
+        # permisivo que `free`. Errar hacia el default deja la API respondiendo.
+        log.debug("rate_limit_tier_lookup_fallo", exc_info=True)
+        return None
+
+    with _tier_cache_lock:
+        _tier_cache[key_hash] = (limite, ahora + _TIER_CACHE_TTL_S)
+        # Poda perezosa: sin ella el dict crece con cada clave que alguna vez
+        # llamó, incluidas las rotadas.
+        if len(_tier_cache) > 2_000:
+            for k in [k for k, (_, exp) in _tier_cache.items() if exp <= ahora]:
+                del _tier_cache[k]
+    return limite
+
+
+def reset_tier_cache() -> None:
+    """Vacía la caché de tiers. Para tests que cambian el tier de una clave."""
+    with _tier_cache_lock:
+        _tier_cache.clear()
+
+
+def _tier_bucket(request: Request, client: str) -> tuple[str, int | None] | None:
+    """Bucket y tope de una request con API key, o `None` si no la lleva.
+
+    El bucket va por **clave**, no por IP: dos claves detrás del mismo NAT no
+    tienen por qué compartir cuota, y una clave que rota de IP no debería
+    estrenar cuota por eso. Es además lo que hace que el tier signifique algo —
+    un límite por IP no se puede atribuir a un cliente.
+    """
+    raw = request.headers.get("x-api-key") or ""
+    if not raw:
+        return None
+    from api.auth import hash_api_key
+
+    key_hash = hash_api_key(raw)
+    # Los primeros 16 caracteres del hash como identificador del bucket: ni el
+    # token ni el hash entero salen a una clave de Redis que alguien pueda leer.
+    return f"apikey:{key_hash[:16]}", _tier_limit(key_hash)
+
+
 def _rate_bucket(path: str, client: str) -> tuple[str, int | None]:
     """Clave de cuota y tope propio para ``path``.
 
@@ -279,18 +350,34 @@ def _rate_bucket(path: str, client: str) -> tuple[str, int | None]:
     return f"api:{client}", None
 
 
-def _effective_max_calls(path: str, default: int) -> int:
-    """Límite de requests por ventana aplicable a ``path``.
+def _regla_pesada(path: str) -> tuple[str, int] | None:
+    """Regla de endpoint pesado aplicable a ``path``: ``(etiqueta, límite)``.
 
-    Si varias reglas matchean gana la **más restrictiva** (el mínimo):
-    pasarse de estricto cuesta un 429 recuperable, quedarse corto deja el
-    endpoint caro sin la protección que se le quiso poner.
+    Si varias matchean gana la **más restrictiva** (el mínimo): pasarse de
+    estricto cuesta un 429 recuperable, quedarse corto deja el endpoint caro sin
+    la protección que se le quiso poner.
+
+    La **etiqueta** identifica la regla, no la petición: es el path exacto de la
+    tabla o el patrón que casó. Sirve para que cada regla tenga su propio cubo
+    (ver `dispatch`) sin reintroducir el bypass por path params que el cubo por
+    cliente evita — dos ids distintos de `/explain` casan el mismo patrón y por
+    tanto comparten cubo.
     """
-    limits = [limit for pattern, limit in _HEAVY_ENDPOINT_PATTERNS if pattern.match(path)]
+    reglas: list[tuple[str, int]] = [
+        (pattern.pattern, limit)
+        for pattern, limit in _HEAVY_ENDPOINT_PATTERNS
+        if pattern.match(path)
+    ]
     exact = _HEAVY_ENDPOINT_LIMITS.get(path)
     if exact is not None:
-        limits.append(exact)
-    return min(limits) if limits else default
+        reglas.append((path, exact))
+    return min(reglas, key=lambda r: r[1]) if reglas else None
+
+
+def _effective_max_calls(path: str, default: int) -> int:
+    """Límite de requests por ventana aplicable a ``path``."""
+    regla = _regla_pesada(path)
+    return regla[1] if regla else default
 
 
 class RateLimitMiddleware(BaseHTTPMiddleware):
@@ -342,9 +429,31 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         # BaseHTTPMiddleware se ejecuta antes del routing: un bucket por
         # cliente evita el bypass por path params variables. La superficie
         # pública lleva el suyo aparte (ver `_rate_bucket`).
-        rate_key, tope_propio = _rate_bucket(path, client)
-        # Endpoints pesados (ML inference, exports) tienen límite inferior.
-        effective_max = _effective_max_calls(path, tope_propio or self._max)
+        # C2.3 — una request con API key se limita por SU clave y por el
+        # tier que declara `api_key_tiers`, no por la IP compartida.
+        por_clave = _tier_bucket(request, client)
+        rate_key, tope_propio = por_clave or _rate_bucket(path, client)
+        # Endpoints pesados (ML inference, exports): límite inferior **y cubo
+        # propio**.
+        #
+        # El cubo propio no es un detalle. Hasta 2026-09-08 el tope bajo se
+        # aplicaba sobre el cubo compartido `api:{cliente}`, que cuenta **todo**
+        # el tráfico de ese cliente: cargar el dashboard son decenas de
+        # llamadas, así que al pulsar «Exportar CSV» el contador ya iba muy por
+        # encima de 10 y la descarga respondía 429. Lo destapó el E2E de
+        # exportación (el log de la API del job: tres intentos, tres 429), y en
+        # producción rompía el export para cualquiera que hubiera mirado la
+        # pantalla antes de pedirlo.
+        #
+        # La etiqueta viene de la regla y no del path, así que el bypass por
+        # path params que motivó el cubo por cliente sigue cerrado.
+        regla = _regla_pesada(path)
+        if regla is None:
+            effective_max = tope_propio or self._max
+        else:
+            etiqueta, limite = regla
+            rate_key = f"pesado:{etiqueta}:{rate_key}"
+            effective_max = min(limite, tope_propio or self._max)
         allowed = get_rate_limiter().check(
             rate_key,
             max_calls=effective_max,

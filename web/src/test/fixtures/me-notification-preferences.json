@@ -1,0 +1,25 @@
+{
+  "items": [
+    {
+      "tipo": "watchlist_match",
+      "canal": "email",
+      "frecuencia": "daily",
+      "organization_id": null
+    }
+  ],
+  "defaults": {
+    "in_app": "immediate",
+    "email": "daily",
+    "webhook": "off"
+  },
+  "tipos": [
+    {
+      "tipo": "watchlist_match",
+      "label": "Una licitación encaja con mi watchlist"
+    },
+    {
+      "tipo": "daily_summary",
+      "label": "Resumen diario"
+    }
+  ]
+}
