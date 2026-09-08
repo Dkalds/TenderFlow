@@ -105,13 +105,14 @@ def test_market_aggregates_exclude_watched_company_awards_universe(db):
 
     scope = metric_scope()
     ranking = cuota_mercado()
-    bajas = bajas_agregadas(min_contratos=1)
+    bajas, base = bajas_agregadas(min_contratos=1)
 
     assert scope.denominator_records == 1
     assert scope.denominator_amount_eur == 100.0
     assert len(ranking) == 1
     assert ranking[0]["empresa"] != "Empresa vigilada S.L."
     assert bajas[0]["contratos"] == 1
+    assert base == "mixta"
 
     with db.connect_read() as c:
         watched_empresa_id = c.execute(
@@ -364,10 +365,13 @@ def test_bajas_agregadas_por_empresa(db):
         )
     resolve(db)
 
-    items = bajas_agregadas(group_by="empresa", min_contratos=3)
+    items, base = bajas_agregadas(group_by="empresa", min_contratos=3)
     assert len(items) == 1
     assert items[0]["baja_media_pct"] == 20.0
     assert items[0]["contratos"] == 3
+    # C1.1: la respuesta declara sobre qué base compara. `mixta` es el default
+    # honesto mientras el histórico siga en `desconocido`.
+    assert base == "mixta"
 
 
 def test_bajas_descarta_outliers_e_invalidos(db):
@@ -377,7 +381,7 @@ def test_bajas_descarta_outliers_e_invalidos(db):
     insert_contract(db, "B-11", "Weird SL", importe=0, adjudicado=50000)  # sin presupuesto
     resolve(db)
 
-    assert bajas_agregadas(group_by="empresa", min_contratos=1) == []
+    assert bajas_agregadas(group_by="empresa", min_contratos=1) == ([], "mixta")
 
 
 def test_baja_de_referencia_por_organo(db):
@@ -458,9 +462,10 @@ def test_bajas_usa_presupuesto_del_lote_no_del_expediente(db):
     )
     resolve(db)
 
-    items = bajas_agregadas(group_by="empresa", min_contratos=1)
+    items, base = bajas_agregadas(group_by="empresa", min_contratos=1)
     assert len(items) == 1
     assert items[0]["baja_media_pct"] == 25.0
+    assert base == "mixta"
 
 
 def test_baja_de_referencia_usa_presupuesto_del_lote(db):
@@ -484,9 +489,10 @@ def test_bajas_sin_lote_sigue_usando_presupuesto_del_expediente(db):
     insert_contract(db, "LB-03", "Sin Lote SL", importe=100_000, adjudicado=80_000)
     resolve(db)
 
-    items = bajas_agregadas(group_by="empresa", min_contratos=1)
+    items, base = bajas_agregadas(group_by="empresa", min_contratos=1)
     assert len(items) == 1
     assert items[0]["baja_media_pct"] == 20.0
+    assert base == "mixta"
 
 
 # ---------------------------------------------------------------------------

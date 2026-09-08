@@ -55,7 +55,7 @@ def _caducada(created_at: str | None) -> bool:
     return datetime.now(UTC) - marca > timedelta(seconds=settings.IDEMPOTENCY_TTL_SECONDS)
 
 
-def scope(nombre: str, *, user_key: str, organization_id: int | None = None) -> str:
+def scope(nombre: str, *, actor: str, organization_id: int | None = None) -> str:
     """Ámbito de una clave de idempotencia: nunca es solo el nombre del endpoint.
 
     La clave la elige el cliente, así que dos usuarios pueden mandar la misma.
@@ -63,8 +63,13 @@ def scope(nombre: str, *, user_key: str, organization_id: int | None = None) -> 
     respuesta del primero — una fuga de datos entre cuentas a través de un
     mecanismo que existe para evitar duplicados. Por eso el ámbito lleva
     siempre la identidad de quien escribe, y la organización cuando la hay.
+
+    El parámetro se llama `actor` (D18): a este ámbito le da igual de qué clase
+    es la identidad que recibe —solo la concatena—, y nombrarlo por la
+    representación en retirada metía el fichero en un ratchet donde no tenía
+    nada que migrar.
     """
-    partes = [nombre, user_key]
+    partes = [nombre, actor]
     if organization_id is not None:
         partes.append(str(organization_id))
     return ":".join(partes)

@@ -196,7 +196,7 @@ async def post_rule(
     rule = body.to_rule()
     organization_id = ctx["organization_id"]
 
-    ambito = idem_scope("watchlist_rules", user_key=user_key, organization_id=organization_id)
+    ambito = idem_scope("watchlist_rules", actor=user_key, organization_id=organization_id)
     user_id = int(ctx["user_id"])
 
     def _create() -> dict[str, int]:

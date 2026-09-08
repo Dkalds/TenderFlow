@@ -555,7 +555,7 @@ async def post_watchlist(
     ctx = await resolve_organization_ctx(ctx, body.organization_id, write=True)
     ambito = idem_scope(
         "competitive_watchlist",
-        user_key=_user_key(ctx),
+        actor=_user_key(ctx),
         organization_id=ctx.get("organization_id"),
     )
     entry = WatchlistEmpresaEntry(

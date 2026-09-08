@@ -194,7 +194,7 @@ async def post_dismissal(
     ctx: dict[str, Any] = Depends(require_any_auth),
 ) -> RadarDismissalsResult:
     user_key = _user_key(ctx)
-    ambito = idem_scope("radar_dismissals", user_key=user_key)
+    ambito = idem_scope("radar_dismissals", actor=user_key)
     hasta = (
         (datetime.now(UTC) + timedelta(days=body.dias)).isoformat()
         if body.dias is not None

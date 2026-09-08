@@ -30,10 +30,10 @@ como hecho sería la clase de optimismo que obligó a escribir este documento.
 | C4 Ingesta y calidad | 6 | 0 | 1 (C4.3) | 7 |
 | C5 Conocimiento | 5 | 0 | 3 (C5.1, C5.2, C5.8) | 8 |
 | C6 Colaboración y captura | **7** | 0 | **0** | 7 |
-| C7 Frontend y accesibilidad | 3 | 2 (C7.2, C7.4) | 3 (C7.1, C7.3, C7.7) | 8 |
+| C7 Frontend y accesibilidad | **4** | **1** (C7.4) | 3 (C7.1, C7.3, C7.7) | 8 |
 | C8 API y contrato | 5 | 0 | 0 | 5 |
 | C9 Documentación y proceso | 6 | 0 | 0 | 6 |
-| **Total** | **47** | **6** | **8** | **61** |
+| **Total** | **48** | **5** | **8** | **61** |
 
 ## Tercera pasada (2026-09-08): la fusión sobre `master`
 
@@ -213,7 +213,7 @@ Seis de siete, en v122–v124.
 | Ítem | Estado |
 |---|---|
 | C7.1 Remediación axe | **No hecho.** Las cuatro reglas y los cuatro `test.fixme` exigen ver la aplicación corriendo. |
-| C7.2 S5.8 | **Mitad.** La ficha pública entra en el barrido axe. El piso de cobertura de `src/app/**` **no**: `vitest run --coverage` vuelve a morir (sexto intento documentado en `vitest.config.ts`). |
+| C7.2 S5.8 | **Hecho** (2026-09-08). La ficha pública entra en el barrido axe, y el piso de `src/app/**` queda fijado **al valor medido**: 35.06 lines / 30.15 functions / 30.74 branches, con el buffer de ~3 puntos de siempre. El número no salió de esta máquina —el séptimo intento local murió como los seis anteriores— sino del `lcov` que publica el job `frontend` de CI, agregado por subárbol. La agregación se validó antes de fiarse de ella: el mismo método sobre `src/hooks/**` reproduce los 69.32 / 61.21 que vitest había reportado en ese run. `statements` se deja sin fijar a propósito: el `lcov` no lo lleva y derivarlo de `lines` sería inventarlo — en ese mismo run `hooks` lo tiene por encima de `lines` y el global por debajo. |
 | C7.3 Primer uso | **No hecho.** Los estados vacíos se verifican mirando la pantalla. |
 | C7.4 `title=` a `Tooltip` | **Regla, ratchet corregido y ocho migrados; el resto no.** Ver corrección 1, que a su vez estaba mal: el contador subcontaba (2026-09-08). De 39 reales quedan **36**. Migrados: `space-shell` a `<abbr>` —que es donde `title` sí es semántico, y además va dentro de un `<button>`, así que un tooltip ahí sería `nested-interactive`—; `estado-global-row`, `mercado-strip`, `eventos-feed` y `pursuit-comments` a `<Tooltip>`; y los tres `<button title=>` de `empresa-perfil` y `review-queue`, que son el caso limpio porque un botón ya es focusable. **Sin `tabIndex`**: ESLint (`jsx-a11y/no-noninteractive-tabindex`) tiene razón en que un `<span>` focusable que no hace nada al pulsarlo es otra violación, no una mejora — cambiar `title` por eso sería mover el problema. Lo que sí entregan los tooltips es el **táctil**, que es la mitad del reproche del ratchet. Los 36 que quedan están casi todos en celdas de tabla y heatmaps: hacerlos focusables cambia el orden de tabulación de la rejilla entera y eso se decide mirando la pantalla. |
 | C7.5 Ajustes en un sitio | **Hecho.** El espacio nace con contenido real —por eso el plan lo puso detrás de C2—: sesiones, claves con su tier y preferencias no tenían pantalla ninguna. `/mi-cuenta` se absorbe como `?vista=cuenta` y **su `page.tsx` se retira**: el propio repo prohíbe dejar una página bajo un 308 (`titulos-de-pagina.test.ts`), porque se compila y no se ejecuta jamás. Su test cambia de sujeto al componente que sí se monta. Los tests de espacios pasan a **derivar** los recuentos en vez de fijarlos, que es lo que el ítem pedía. |
@@ -252,7 +252,7 @@ documento de estado sin números es una opinión.
 | 5xx en el fuzzing de la API | 0 | **2 encontrados y corregidos** | job `API contract fuzzing` |
 | Lint del frontend | 0 errores | **0** (7 avisos preexistentes) | `npm run lint` |
 | Typecheck del frontend | limpio | **limpio** | `npm run typecheck` |
-| Cobertura del frontend | piso medido para `src/app/**` | **no medida** — ver bloqueo 4 | `npm run test:coverage` |
+| Cobertura de `src/app/**` | piso medido | **35.06 / 30.15 / 30.74** (lines/funcs/branches), piso en 32/27/27 | `lcov` del job `frontend` |
 
 Las que siguen sin poder medirse aquí —cobertura de `organo_id`, tamaño de la
 imagen, duración de `test-integration`, `importe_tipo` nulo— necesitan Postgres o
@@ -262,23 +262,34 @@ el runner de CI, y están en la lista de bloqueos.
 
 Cinco cosas, y ninguna es de código. Actualizado el 2026-09-08.
 
-1. **Postgres.** Las migraciones v113–v127 no se han aplicado en ninguna sesión;
-   las verifica el job `schema-migrations-postgres` de CI. Todo lo que dependa de
-   probar una migración o la suite de integración está bloqueado en local: en
-   esta máquina no hay Docker ni cluster local, y la única `DATABASE_URL` del
-   entorno apunta a **producción**, que no se toca para correr tests que crean y
-   borran schemas.
+1. **Postgres.** Las migraciones v113–v127 no se han aplicado en ninguna sesión
+   local; las aplicó en verde el job `schema-migrations-postgres` de CI. Todo lo
+   que dependa de probar una migración o la suite de integración está bloqueado
+   aquí: en esta máquina no hay Docker ni cluster local, y la única
+   `DATABASE_URL` del entorno apunta a **producción**, que no se toca para correr
+   tests que crean y borran schemas.
+
+   Consecuencia menor pero anotable: **`docs/database-schema.md` se queda en
+   `v112`**. Lo genera `scripts/gen_schema_doc.py` leyendo el catálogo de una
+   base ya migrada, así que regenerarlo exige la base que aquí no hay. Editarlo
+   a mano sería peor —su cabecera dice «no editar a mano» y el fichero es el
+   volcado de un catálogo, no una descripción—; se regenera en la primera sesión
+   con Postgres delante.
 2. **La aplicación corriendo.** C7.1, C7.3 y C7.7 se verifican mirando la
    pantalla. Sin API ni datos sembrados no hay pantalla.
 3. **Etiquetado humano.** C1.3 (30 pares), C5.1 (40 pliegos) y C5.8 (60 días de
    telemetría) piden dato que nadie ha producido todavía. C5.2 cuelga de C5.1:
    sin golden no hay forma de saber si unificar el selector empeora la ficha.
-4. **La cobertura del frontend, en esta máquina.** `vitest --coverage` lleva seis
-   intentos documentados muriendo con fallos de arranque del pool; el séptimo
-   (2026-09-08) corrió 115 de ≥120 ficheros y el gate de `run-vitest.mjs` lo
-   marcó como **no ejecutado**, que es su trabajo. Mientras el número no salga
-   —de aquí o del job `frontend` de CI— C7.2 no puede fijar el piso de
-   `src/app/**` sin inventárselo.
+4. ~~**La cobertura del frontend, en esta máquina.**~~ **Resuelto por otra vía
+   (2026-09-08).** El séptimo intento local murió como los seis anteriores, pero
+   el número no tenía por qué salir de aquí: el job `frontend` de CI corre la
+   cobertura entera y publica su `lcov` como artefacto. Descargado y agregado
+   por subárbol da `src/app/**` en lines 35.06 / functions 30.15 / branches
+   30.74, y la agregación se validó reproduciendo con el mismo método los
+   69.32 / 61.21 de `src/hooks/**` que vitest había reportado en ese run.
+   C7.2 queda cerrado. El `statements` de `src/app/**` sigue sin fijarse porque
+   el `lcov` no lo lleva y derivarlo sería inventarlo — lo publicará vitest la
+   primera vez que el umbral corra.
 5. **O0.2 sin cerrar.** El Blueprint de Render no está vinculado al servicio: seis
    casillas sin marcar en la cabecera de `render.yaml`. C3.5 lo tiene como
    prerrequisito explícito.

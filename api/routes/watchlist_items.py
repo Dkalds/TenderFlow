@@ -105,7 +105,7 @@ async def post_item(
     ctx = await resolve_organization_ctx(ctx, body.organization_id, write=True)
     ambito = idem_scope(
         "watchlist_items",
-        user_key=_user_key(ctx),
+        actor=_user_key(ctx),
         organization_id=ctx.get("organization_id"),
     )
     user_key = _user_key(ctx)

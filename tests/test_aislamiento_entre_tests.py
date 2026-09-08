@@ -38,10 +38,16 @@ def _contar(db_mod, id_externo: str) -> int:
 
 def _insertar(db_mod, id_externo: str) -> None:
     with db_mod.connect() as c:
+        # `fecha_extraccion` es NOT NULL y no tiene default: sin ella el INSERT
+        # falla con `NotNullViolation` y el test no llega a probar el
+        # aislamiento, que es lo suyo. Se descubrió al correr esta suite contra
+        # Postgres por primera vez — la sesión que escribió el test no tenía
+        # base delante, y sin ella un INSERT incompleto no se distingue de uno
+        # bueno. Mismo valor fijo que usan los demás tests de integración.
         c.execute(
-            "INSERT INTO licitaciones (id_externo, titulo, fuente) VALUES (%s, %s, %s) "
-            "ON CONFLICT (id_externo) DO NOTHING",
-            (id_externo, "Fuga entre tests", "test"),
+            "INSERT INTO licitaciones (id_externo, titulo, fuente, fecha_extraccion) "
+            "VALUES (%s, %s, %s, %s) ON CONFLICT (id_externo) DO NOTHING",
+            (id_externo, "Fuga entre tests", "test", "2026-01-01"),
         )
 
 
@@ -75,9 +81,11 @@ def test_las_secuencias_vuelven_a_empezar(tmp_db) -> None:
     """
     db_mod, _ = tmp_db
     with db_mod.connect() as c:
+        # `fecha_extraccion` es NOT NULL sin default: ver `_insertar`.
         c.execute(
-            "INSERT INTO licitaciones (id_externo, titulo, fuente) VALUES (%s, %s, %s)",
-            ("SECUENCIA-C3.4", "Reinicio de secuencia", "test"),
+            "INSERT INTO licitaciones (id_externo, titulo, fuente, fecha_extraccion) "
+            "VALUES (%s, %s, %s, %s)",
+            ("SECUENCIA-C3.4", "Reinicio de secuencia", "test", "2026-01-01"),
         )
         fila = c.execute(
             "SELECT id FROM licitaciones WHERE id_externo = %s", ("SECUENCIA-C3.4",)

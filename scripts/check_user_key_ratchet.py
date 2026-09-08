@@ -116,6 +116,31 @@ _REPORTEROS = frozenset(
 # La alternativa era rehacer código de producto ya fusionado para satisfacer un
 # gate que se escribió después: eso no retira deuda, la muda de sitio y arriesga
 # funcionalidad que ya está en master.
+#
+# Cuarta tanda del 2026-09-08, al fusionar el plan complementario. Las dos
+# entradas son **el mismo caso**, y es el más benigno de todos los de esta lista:
+# ninguna de las dos usa `user_key` como identidad. Las dos escriben
+#
+#     log_event(..., user_key=str(<el user_id del principal>))
+#
+# o sea que ya hacen exactamente lo que D18 pide —«usa el `user_id` del
+# principal»— y lo que lleva el nombre viejo es el **parámetro de
+# `db/audit.py::log_event`**, que está congelado desde la primera medición y
+# cuyo renombrado es trabajo de T4, no de estos dos ficheros.
+#
+#   - ``api/routes/tecnologias_keywords.py`` (C5.6): tres llamadas de auditoría
+#     al editar el diccionario.
+#   - ``services/go_no_go_puntuacion.py`` (C6.4): una, al cambiar los pesos.
+#
+# El escaneo es por subcadena a propósito (ver arriba), así que no distingue
+# «usa la identidad vieja» de «pasa la nueva a un parámetro con el nombre
+# viejo». Anotarlo es más honesto que ampliar el escaneo para esconderlo: el
+# día que `log_event` cambie de firma, estas dos salen solas.
+#
+# `db/idempotency.py` **no** está en la lista: llegó con el mismo plan y su
+# `scope()` recibía la identidad en un parámetro propio, así que ahí sí había
+# algo que arreglar y se llama `actor`. Un fichero que se puede sacar de este
+# ratchet se saca; solo se anota lo que no.
 CONGELADOS: frozenset[str] = frozenset(
     {
         "api/routes/admin_solicitudes.py",
@@ -139,6 +164,7 @@ CONGELADOS: frozenset[str] = frozenset(
         "api/routes/watchlist_items.py",
         "api/routes/watchlist_rules.py",
         "api/routes/webhooks.py",
+        "api/routes/tecnologias_keywords.py",
         "db/audit.py",
         "db/events.py",
         "db/notifications.py",
@@ -173,6 +199,7 @@ CONGELADOS: frozenset[str] = frozenset(
         "services/organizations.py",
         "services/pursuit_awards.py",
         "services/pursuits.py",
+        "services/go_no_go_puntuacion.py",
         "services/saved_filters.py",
         "services/watchlist.py",
         "services/watchlist_rules.py",
