@@ -28,12 +28,16 @@ test.describe("Flujos de trabajo críticos", () => {
   });
 
   test("seguir una licitación persiste y se puede deshacer", async ({ page, context }) => {
-    // Estreno en rojo (nunca corrió: el serial lo saltaba tras el fallo de la
-    // vista guardada): el flujo de seguir desde la fila del Radar consume el
-    // timeout completo — la fila es un role=button con botones DENTRO, el
-    // mismo nested-interactive que señala axe, y el click en «Seguir» no
-    // registra. Se remedia con la fila del Radar (backlog «Remediación axe»).
-    test.fixme(true, "Seguir desde la fila del Radar no registra — nested-interactive del Radar");
+    // Estuvo en `fixme` hasta 2026-09-08 con esta explicación: el click en
+    // «Seguir» no registraba porque la fila era un `role="button"` con botones
+    // DENTRO —el mismo `nested-interactive` que señalaba axe— y el flujo se
+    // comía el timeout entero.
+    //
+    // C7.1 retira esa causa: la bandeja es ahora una rejilla (`grid`/`row`/
+    // `gridcell`), que es el patrón que admite controles dentro de una fila
+    // enfocable, y el atajo global de Intro cede la tecla a la fila igual que
+    // antes. El test se reactiva porque lo que lo bloqueaba ya no está; quien
+    // lo verifica de verdad es este job, que sí levanta la aplicación.
     await removeWatchlistItem(page, context, SEED_LICITACION.radarId);
 
     try {

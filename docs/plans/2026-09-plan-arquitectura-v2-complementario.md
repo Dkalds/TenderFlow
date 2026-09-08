@@ -31,7 +31,7 @@ en el mensaje del commit de fusión, no aquí.
 
 | Ítem | Estado | Motivo |
 |---|---|---|
-| C7.1 remediación axe | **No hecho** | Su aceptación es `disableRules([])` comprobado por una corrida de axe, que exige la aplicación levantada con Postgres sembrado y Playwright. La causa de `nested-interactive` está localizada (la fila del Radar es `role="button"` con botones dentro) y el arreglo correcto es el patrón `grid`; queda con ficha en el backlog. |
+| C7.1 remediación axe | **1 de 4 reglas** | `nested-interactive` cerrada: la bandeja del Radar pasa al patrón de rejilla de la APG (`grid` / `row` / `gridcell`) y la regla sale de `disableRules`, junto con su `test.fixme`. Las otras tres —`color-contrast`, `scrollable-region-focusable`, `target-size`— exigen **medir** sobre la aplicación pintada: una corrida de axe con Postgres sembrado y Playwright. Ficha en el backlog. |
 | C7.7 captura clara | **A medias** | El generador ya emite los cuatro `.webp` (ancha/estrecha × oscuro/claro). Faltan los binarios claros y el `<source media="(prefers-color-scheme: light)">`, que van en la misma corrida porque un `.webp` sin import es peso muerto. |
 | C2.5 triaje de avisos | **Acción del mantenedor** | La política con plazos ya está en `docs/SECURITY.md`; cerrar los avisos abiertos es trabajo en la pestaña de seguridad de GitHub, como el propio ítem dice. |
 

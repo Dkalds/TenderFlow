@@ -41,6 +41,9 @@ export function RadarAcciones({
   return (
     <div
       data-slot="radar-acciones"
+      // La cuarta celda de la fila (C7.1): es la que contiene los botones, y
+      // por tanto la razón por la que la fila dejó de ser un `button`.
+      role="gridcell"
       // `md:opacity-0` esconde el bloque pero lo deja en el orden
       // de tabulación: 23 filas inactivas × 3 botones eran 69
       // paradas invisibles, sin foco visible (WCAG 2.4.7). `inert`
@@ -49,7 +52,7 @@ export function RadarAcciones({
       // siguen siendo alcanzables.
       inert={inerte}
       className={cn(
-        "flex items-center justify-end gap-2 border-t border-border/40 pt-2.5",
+        "border-border/40 flex items-center justify-end gap-2 border-t pt-2.5",
         "md:gap-1.5 md:border-t-0 md:pt-0",
         isActive
           ? "md:animate-in md:fade-in-0 md:slide-in-from-right-2 md:duration-[170ms]"
@@ -68,7 +71,7 @@ export function RadarAcciones({
             // 36×36 en móvil. Los 26 px de la consola cumplen el
             // mínimo de WCAG 2.5.8 (24×24) pero se fallan con el
             // pulgar, y aquí el error cuesta una señal descartada.
-            className="tf-pressable grid h-9 w-9 place-items-center rounded-md border border-border/80 bg-card text-muted-foreground transition-colors duration-140 ease-out hover:border-destructive/50 hover:text-destructive md:h-6.5 md:w-6.5"
+            className="tf-pressable border-border/80 bg-card text-muted-foreground hover:border-destructive/50 hover:text-destructive grid h-9 w-9 place-items-center rounded-md border transition-colors duration-140 ease-out md:h-6.5 md:w-6.5"
           >
             <X className="h-4 w-4 md:h-3 md:w-3" aria-hidden="true" />
           </button>
@@ -92,10 +95,7 @@ export function RadarAcciones({
                 : "border-border/80 bg-card text-muted-foreground hover:text-foreground",
             )}
           >
-            <Star
-              className={cn("h-4 w-4 md:h-3 md:w-3", followed && "fill-current")}
-              aria-hidden="true"
-            />
+            <Star className={cn("h-4 w-4 md:h-3 md:w-3", followed && "fill-current")} aria-hidden="true" />
           </button>
         </TooltipTrigger>
         <TooltipContent>Seguir · S</TooltipContent>
@@ -110,7 +110,7 @@ export function RadarAcciones({
                 event.stopPropagation();
                 onOpenFicha();
               }}
-              className="tf-pressable grid h-9 w-9 place-items-center rounded-md border border-border/80 bg-card text-muted-foreground transition-colors duration-140 ease-out hover:text-foreground md:h-6.5 md:w-6.5"
+              className="tf-pressable border-border/80 bg-card text-muted-foreground hover:text-foreground grid h-9 w-9 place-items-center rounded-md border transition-colors duration-140 ease-out md:h-6.5 md:w-6.5"
             >
               <PanelRight className="h-4 w-4 md:h-3 md:w-3" aria-hidden="true" />
             </button>
@@ -129,7 +129,7 @@ export function RadarAcciones({
             // En móvil ocupa el resto de la línea: es la acción
             // que se busca, y el borde derecho es donde cae el
             // pulgar. En la tabla vuelve a su ancho de contenido.
-            className="tf-pressable h-9 flex-1 whitespace-nowrap rounded-md border border-primary/35 bg-primary/14 px-2.5 text-[12px] font-semibold text-primary transition-colors duration-140 ease-out hover:bg-primary/24 md:h-6.5 md:flex-none md:text-[11px]"
+            className="tf-pressable border-primary/35 bg-primary/14 text-primary hover:bg-primary/24 h-9 flex-1 rounded-md border px-2.5 text-[12px] font-semibold whitespace-nowrap transition-colors duration-140 ease-out md:h-6.5 md:flex-none md:text-[11px]"
           >
             Abrir
           </button>

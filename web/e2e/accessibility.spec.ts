@@ -58,18 +58,19 @@ async function expectBasicAccessibility(page: Page): Promise<void> {
 
   const result = await new AxeBuilder({ page })
     .withTags(["wcag2a", "wcag2aa", "wcag21aa", "wcag22aa"])
-    // Ratchet, no aspiración: estas cuatro reglas fallan HOY en /radar y
-    // /detalle (contraste de textos pequeños, filas interactivas anidadas,
-    // regiones scrolleables sin foco, targets <24px) y su remediación es la
-    // ola de UX/móvil en curso, no un fix de CI. El resto de WCAG-AA más los
-    // checks estructurales de arriba SÍ bloquean. Backlog: «Remediación axe
-    // pendiente» en docs/IMPROVEMENT_BACKLOG.md — la lista solo puede encoger.
-    .disableRules([
-      "color-contrast",
-      "nested-interactive",
-      "scrollable-region-focusable",
-      "target-size",
-    ])
+    // Ratchet, no aspiración: estas reglas fallan HOY en /radar y /detalle
+    // (contraste de textos pequeños, regiones scrolleables sin foco, targets
+    // <24px) y su remediación es la ola de UX/móvil en curso, no un fix de CI.
+    // El resto de WCAG-AA más los checks estructurales de arriba SÍ bloquean.
+    // Backlog: «Remediación axe pendiente» en docs/IMPROVEMENT_BACKLOG.md — la
+    // lista solo puede encoger.
+    //
+    // 2026-09-08 — sale `nested-interactive` (C7.1). Su causa era la fila del
+    // Radar: `role="button"` con los botones de descartar, seguir y abrir
+    // dentro. La bandeja pasa al patrón de rejilla de la APG —`grid` en la
+    // lista, `row` en la fila, `gridcell` en sus grupos—, que es la estructura
+    // que admite controles dentro de una fila enfocable.
+    .disableRules(["color-contrast", "scrollable-region-focusable", "target-size"])
     .analyze();
   const violations = result.violations.map((violation) => ({
     id: violation.id,

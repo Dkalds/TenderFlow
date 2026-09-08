@@ -6,7 +6,7 @@ import { formatNumber } from "@/lib/utils";
 import { RadarAvisoSenales } from "./_components/radar-aviso-senales";
 import { RadarControles } from "./_components/radar-controles";
 import { RadarInspectorPanel } from "./_components/radar-inspector-panel";
-import { RadarCabecera, RadarLista } from "./_components/radar-lista";
+import { RadarLista } from "./_components/radar-lista";
 import { RadarPie } from "./_components/radar-pie";
 import { useAnchoDeTabla, useModoInspector } from "./_hooks/use-media-query";
 import { useRadarConsola } from "./_hooks/use-radar-consola";
@@ -78,7 +78,7 @@ export default function RadarPage() {
   return (
     <div className="flex h-[calc(100vh-52px)] min-h-0">
       {/* El borde derecho solo separa de algo cuando el inspector existe. */}
-      <section className="flex min-w-0 flex-1 flex-col xl:border-r xl:border-border/70">
+      <section className="xl:border-border/70 flex min-w-0 flex-1 flex-col xl:border-r">
         <RadarControles
           segment={consola.segment}
           onSegment={consola.setSegment}
@@ -90,8 +90,6 @@ export default function RadarPage() {
         />
 
         <RadarAvisoSenales signals={consola.signals} />
-
-        <RadarCabecera />
 
         <RadarLista
           listRef={listRef}

@@ -446,6 +446,50 @@ describe("RadarPage — foco y teclado", () => {
     };
   }
 
+  it("la bandeja es una rejilla, no una lista de botones anidados (C7.1)", () => {
+    // La regla `nested-interactive` de axe estaba desactivada por esto: la fila
+    // era `role="button"` y contenía los botones de descartar, seguir y abrir.
+    // Un rol interactivo que envuelve controles no siempre los anuncia y
+    // reparte el foco de formas distintas según la tecnología de apoyo.
+    //
+    // El patrón de la APG para «filas enfocables con acciones dentro» es la
+    // rejilla, y es lo que este test fija para que no se vuelva atrás sin
+    // enterarse — axe sólo lo vería en el E2E, que necesita la app levantada.
+    tresFilas();
+
+    const { container } = renderRadar();
+
+    const rejilla = container.querySelector('[role="grid"]');
+    expect(rejilla, "la bandeja con filas expone una rejilla").not.toBeNull();
+    // Tres filas más la cabecera.
+    expect(rejilla?.getAttribute("aria-rowcount")).toBe("4");
+
+    const filas = container.querySelectorAll('[role="row"]');
+    expect(filas).toHaveLength(4);
+
+    const fila = container.querySelector('[role="row"][data-active]');
+    expect(fila, "las filas de datos son `row`").not.toBeNull();
+    expect(fila?.getAttribute("role")).not.toBe("button");
+    // Sigue siendo enfocable: la selección por foco no dependía del rol.
+    expect(fila?.getAttribute("tabindex")).toBe("0");
+    // Y sus botones viven dentro de una celda, no dentro de un control.
+    const celdas = fila?.querySelectorAll('[role="gridcell"]') ?? [];
+    expect(celdas.length).toBeGreaterThanOrEqual(4);
+    expect(fila?.querySelector('[role="gridcell"] button')).not.toBeNull();
+  });
+
+  it("sin filas no hay rejilla que anunciar", () => {
+    // Un `grid` cuyo contenido son esqueletos de carga —o nada— promete una
+    // estructura que todavía no existe, y sus hijos no serían filas:
+    // `aria-required-children`. El vacío se declara aquí porque `radarState` es
+    // de módulo y conserva lo que dejó el caso anterior.
+    radarState.data = { items: [], signals: SIGNALS_SANAS };
+
+    const { container } = renderRadar();
+    expect(container.querySelector('[role="grid"]')).toBeNull();
+    expect(container.querySelector('[role="rowgroup"]')).toBeNull();
+  });
+
   it("Intro abre la fila enfocada, no la que quedó seleccionada", async () => {
     // Tabular hasta la séptima fila y pulsar Intro abría la primera: el atajo
     // vivía solo en el listener de `window`, que actúa sobre `selected`, y Tab

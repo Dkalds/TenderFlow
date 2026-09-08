@@ -10,10 +10,17 @@ import type { RadarTender } from "@/hooks/use-radar";
  * `preventDefault()` —cancelando ese botón— y abría una oportunidad sobre la
  * fila *seleccionada*, que no tiene por qué ser la que se está mirando.
  *
- * Las filas entran aquí por su `role="button"`: su Intro lo resuelve el
+ * Las filas entran aquí por su `role="row"`: su Intro lo resuelve el
  * `onKeyDown` de la fila, que sí sabe sobre qué índice está actuando.
+ *
+ * Hasta C7.1 la fila entraba por `[role="button"]`, y al pasar a la rejilla
+ * —`grid`/`row`/`gridcell`, para que sus botones dejaran de estar anidados
+ * dentro de un rol interactivo— dejó de casar con este selector: Intro abría la
+ * oportunidad dos veces, una por la fila y otra por el atajo global. Lo cazó
+ * `page.test.tsx` («Intro abre la fila enfocada, no la que quedó
+ * seleccionada»), que es exactamente para lo que estaba escrito.
  */
-const CONTROLES_CON_INTRO_PROPIO = 'a, button, select, [role="button"]';
+const CONTROLES_CON_INTRO_PROPIO = 'a, button, select, [role="button"], [role="row"]';
 
 /**
  * Teclado de la consola: J/K (o flechas) recorren, S sigue, X descarta, ⏎ abre.

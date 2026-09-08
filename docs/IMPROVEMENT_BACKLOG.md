@@ -127,26 +127,26 @@ y es la fuente única de su alcance. Sus nueve streams se fusionaron sobre el
 anotado aquí porque no se pudo verificar en la máquina donde se ejecutó y no
 porque falte decidir nada.
 
-### [P2] C7.1 — la remediación axe sigue pendiente de una corrida real
+### [P2] C7.1 — quedan tres de las cuatro reglas axe
 
 - **Área:** web/e2e/accessibility.spec.ts, web/src/app/(dashboard)/radar/_components
-- **Problema:** siguen las cuatro reglas en `disableRules` (`color-contrast`,
-  `nested-interactive`, `scrollable-region-focusable`, `target-size`) y los
-  cuatro `test.fixme`. La causa de `nested-interactive` está localizada —la fila
-  del Radar es `role="button"` con `tabIndex={0}` y contiene los botones de
-  descartar, seguir y abrir— y su arreglo correcto es el patrón `grid`
-  (`role="grid"` en la lista, `role="row"` en la fila, `role="gridcell"` en las
-  celdas), que es la única combinación de roles que axe acepta con
-  descendientes interactivos.
-- **Por qué no se hizo:** el criterio de aceptación es `disableRules([])`
-  comprobado por una corrida de axe, y axe necesita la aplicación levantada con
-  Postgres sembrado y Playwright. La máquina donde se fusionó el plan no tiene
-  Postgres. Quitar las reglas sin poder correr axe habría dejado un gate en el
-  estado que este repo evita a propósito: verde sin haber comprobado nada, o
-  rojo sin saber por qué.
-- **Acceptance criteria:** los del ítem C7.1 del plan. La fila del Radar cambia
-  de modelo de foco, así que el cambio va con su E2E de teclado y lector.
-- **Riesgo:** medio — toca la interacción de la pantalla más usada.
+- **Hecho (2026-09-08):** `nested-interactive`, que era la que el plan manda
+  atacar primero y la única con causa localizada. La fila del Radar era
+  `role="button"` con los botones de descartar, seguir y abrir dentro; la
+  bandeja pasa al patrón de rejilla de la APG —`grid` en la lista, `row` en la
+  fila, `gridcell` en sus cuatro grupos—, que es la estructura que admite
+  controles dentro de una fila enfocable. Sale de `disableRules`, y con ella el
+  `test.fixme` de «Seguir desde la fila del Radar» (4 → 3).
+- **Falta:** `color-contrast`, `scrollable-region-focusable` y `target-size`, y
+  los tres `test.fixme` restantes (uno de descarga en CI, dos de la ola móvil).
+- **Por qué no se cerraron:** las tres exigen **medir** sobre la aplicación
+  pintada —contraste calculado, qué regiones scrollean, qué targets quedan por
+  debajo de 24 px—, y eso es una corrida de axe con la app levantada, Postgres
+  sembrado y Playwright. La máquina donde se fusionó el plan no tiene Postgres.
+  Quitarlas a ciegas dejaría el gate en el estado que este repo evita: verde sin
+  haber comprobado nada, o rojo sin saber por qué.
+- **Acceptance criteria:** los del ítem C7.1 del plan; `disableRules([])`.
+- **Riesgo:** medio — `color-contrast` y `target-size` mueven diseño visual.
 
 ### [P3] C7.7 — faltan las capturas claras de la portada
 

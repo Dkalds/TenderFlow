@@ -54,7 +54,19 @@ export function RadarFila({
   return (
     <div
       data-active={isActive}
-      role="button"
+      // `row` y no `button` (C7.1). La fila contiene botones —descartar,
+      // seguir, abrir— y una fila con rol interactivo que envuelve controles es
+      // justo lo que la regla `nested-interactive` de axe prohíbe: el lector de
+      // pantalla no siempre anuncia los de dentro, y el foco se comporta de
+      // formas distintas según la tecnología.
+      //
+      // La rejilla (`grid` en `radar-lista.tsx`, `gridcell` en los grupos de
+      // abajo) es el patrón que la APG define para exactamente esto: filas
+      // enfocables con acciones dentro. No se pierde nada de lo que la fila
+      // hacía —`tabIndex`, selección al enfocar, Intro y Espacio siguen aquí—
+      // y se gana que sus botones existan para quien no usa ratón.
+      role="row"
+      aria-rowindex={index + 2}
       tabIndex={0}
       aria-current={isActive ? "true" : undefined}
       onClick={() => onSelect(index)}
@@ -85,7 +97,7 @@ export function RadarFila({
       // ocupa dos líneas y recortarla a 44 px la dejaría sin nada.
       style={{ "--tf-radar-fila": `${rowHeight}px` } as React.CSSProperties}
       className={cn(
-        "relative flex cursor-pointer flex-col gap-2 border-b border-border/40 px-3 py-3 transition-colors duration-110 ease-out",
+        "border-border/40 relative flex cursor-pointer flex-col gap-2 border-b px-3 py-3 transition-colors duration-110 ease-out",
         "md:grid md:h-[var(--tf-radar-fila)] md:items-center md:py-0",
         RADAR_GRID,
         isActive ? "bg-primary/9" : "hover:bg-primary/5",
@@ -97,7 +109,10 @@ export function RadarFila({
         style={{ background: isActive ? bandColor(tender.band) : "transparent" }}
       />
 
-      <div className="flex min-w-0 items-center gap-3 md:contents">
+      {/* Cada grupo es una celda. A partir de `md` se disuelven con
+          `md:contents` y sus hijos caen en las columnas de la rejilla; el
+          rol describe la estructura, que no depende de esa disolución. */}
+      <div role="gridcell" className="flex min-w-0 items-center gap-3 md:contents">
         {/* El score abre su propio desglose. Es un `Popover` y no
             un `title` nativo por dos razones: el `title` no se
             dispara con teclado y aquí el contenido no es una
@@ -117,28 +132,24 @@ export function RadarFila({
               className="focus-visible:ring-ring flex flex-none cursor-pointer flex-col items-start gap-0.5 rounded-sm focus-visible:ring-2 focus-visible:outline-none"
             >
               <span
-                className="tf-tnum font-mono text-[15px] font-semibold leading-none"
+                className="tf-tnum font-mono text-[15px] leading-none font-semibold"
                 style={{ color: bandColor(tender.band) }}
               >
                 {tender.score != null ? Math.round(tender.score) : "—"}
               </span>
               {/* "s/p" era un código que nadie fuera del equipo
                   podía descifrar, en mono de 8 px. */}
-              <span className="text-muted-foreground font-mono text-[8px] font-medium uppercase leading-none tracking-[0.04em]">
+              <span className="text-muted-foreground font-mono text-[8px] leading-none font-medium tracking-[0.04em] uppercase">
                 {tender.band ?? "sin puntuar"}
               </span>
             </button>
           </PopoverTrigger>
           <PopoverContent align="start" className="w-[300px]" onClick={(e) => e.stopPropagation()}>
             <p className="mb-2.5 text-[11.5px] font-semibold">Cómo se compone esta puntuación</p>
-            <ScoreDesglose
-              desglose={tender.desglose}
-              riesgos={tender.risk_flags}
-              explicacion={tender.explicacion}
-            />
+            <ScoreDesglose desglose={tender.desglose} riesgos={tender.risk_flags} explicacion={tender.explicacion} />
             <p className="text-muted-foreground mt-2.5 text-[10.5px] leading-relaxed">
-              Ordena el Radar sobre el corpus abierto. No es una recomendación comercial: mide
-              encaje con tu perfil, no probabilidad de ganar.
+              Ordena el Radar sobre el corpus abierto. No es una recomendación comercial: mide encaje con tu perfil, no
+              probabilidad de ganar.
             </p>
           </PopoverContent>
         </Popover>
@@ -146,7 +157,7 @@ export function RadarFila({
         <div className="min-w-0 flex-1">
           <div className="flex min-w-0 items-center gap-[7px]">
             {isNew && (
-              <span className="flex-none rounded border border-[hsl(var(--success)/0.3)] bg-[hsl(var(--success)/0.12)] px-1 py-0.5 font-mono text-[8px] font-semibold uppercase tracking-[0.06em] text-[hsl(var(--success))]">
+              <span className="flex-none rounded border border-[hsl(var(--success)/0.3)] bg-[hsl(var(--success)/0.12)] px-1 py-0.5 font-mono text-[8px] font-semibold tracking-[0.06em] text-[hsl(var(--success))] uppercase">
                 Nueva
               </span>
             )}
@@ -162,9 +173,9 @@ export function RadarFila({
                 distintas que escriben `display`. */}
             <span
               className={cn(
-                "min-w-0 line-clamp-2 text-[13px] leading-[1.35] tracking-[-0.005em]",
+                "line-clamp-2 min-w-0 text-[13px] leading-[1.35] tracking-[-0.005em]",
                 "md:line-clamp-1 md:leading-[1.3]",
-                isActive ? "font-semibold text-foreground" : "font-medium",
+                isActive ? "text-foreground font-semibold" : "font-medium",
               )}
             >
               {tender.titulo}
@@ -172,10 +183,8 @@ export function RadarFila({
           </div>
           {/* Flujo inline, no flex: `text-overflow` se ignora en un
               contenedor flex y la línea se cortaría a medias. */}
-          <div className="mt-0.5 block truncate font-mono text-[10.5px] leading-[1.3] text-muted-foreground/80">
-            {[tender.id_externo, tender.cpv ? `CPV ${tender.cpv}` : null, tender.ccaa]
-              .filter(Boolean)
-              .join(" · ")}
+          <div className="text-muted-foreground/80 mt-0.5 block truncate font-mono text-[10.5px] leading-[1.3]">
+            {[tender.id_externo, tender.cpv ? `CPV ${tender.cpv}` : null, tender.ccaa].filter(Boolean).join(" · ")}
           </div>
         </div>
       </div>
@@ -183,8 +192,8 @@ export function RadarFila({
       {/* Órgano y tecnología son las dos columnas que se subordinan
           en móvil: siguen ahí, en una línea secundaria bajo el
           título, en vez de competir con score, plazo e importe. */}
-      <div className="flex min-w-0 items-center justify-between gap-2 md:contents">
-        <span className="min-w-0 flex-1 truncate text-xs leading-[1.35] text-muted-foreground">
+      <div role="gridcell" className="flex min-w-0 items-center justify-between gap-2 md:contents">
+        <span className="text-muted-foreground min-w-0 flex-1 truncate text-xs leading-[1.35]">
           {tender.organo_contratacion ?? "—"}
         </span>
 
@@ -193,23 +202,18 @@ export function RadarFila({
             {tech}
           </span>
         ) : (
-          <span className="flex-none text-[11px] text-muted-foreground/60">—</span>
+          <span className="text-muted-foreground/60 flex-none text-[11px]">—</span>
         )}
       </div>
 
-      <div className="flex items-center justify-between gap-3 md:contents">
-        <span className="tf-tnum font-mono text-[13px] font-semibold md:text-right">
-          {shortEur(tender.importe)}
-        </span>
+      <div role="gridcell" className="flex items-center justify-between gap-3 md:contents">
+        <span className="tf-tnum font-mono text-[13px] font-semibold md:text-right">{shortEur(tender.importe)}</span>
 
         <div className="flex flex-none flex-col items-end gap-1.5">
-          <span
-            className="tf-tnum font-mono text-xs font-semibold leading-none"
-            style={{ color: urg.color }}
-          >
+          <span className="tf-tnum font-mono text-xs leading-none font-semibold" style={{ color: urg.color }}>
             {days != null ? `${days} d` : "—"}
           </span>
-          <span className="block h-0.5 w-14 overflow-hidden rounded-sm bg-muted-foreground/20">
+          <span className="bg-muted-foreground/20 block h-0.5 w-14 overflow-hidden rounded-sm">
             <span
               className="block h-full w-full origin-left transition-transform duration-[420ms] ease-out"
               style={{ background: urg.color, transform: `scaleX(${urg.ratio})` }}
