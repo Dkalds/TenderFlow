@@ -38,6 +38,7 @@ aquí, una vez, y se cachean::
     DOCUMENT_BLOB_PREFIX      prefijo de las claves (defecto: documentos/)
     DOCUMENT_BLOB_DIR         raíz del backend de sistema de ficheros
     MODEL_BLOB_PREFIX         prefijo de los artefactos de modelo (defecto: modelos/)
+    PURSUIT_BLOB_PREFIX       prefijo de los adjuntos propios (defecto: adjuntos/)
 
 ``auto`` resuelve a ``filesystem`` si hay ``DOCUMENT_BLOB_DIR``, a ``s3`` si hay
 ``DOCUMENT_BLOB_BUCKET``, y a ``disabled`` si no hay ninguna de las dos.
