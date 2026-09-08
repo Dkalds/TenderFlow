@@ -5,6 +5,9 @@ describe("fuenteLinkLabel", () => {
   it("names each known portal after itself", () => {
     expect(fuenteLinkLabel("placsp")).toBe("Ver en PLACSP");
     expect(fuenteLinkLabel("pscp")).toBe("Ver en PSCP");
+    expect(fuenteLinkLabel("euskadi")).toBe("Ver en Contratación Pública de Euskadi");
+    // El `source_id` anterior a C4.3 sigue etiquetado: las filas ya ingeridas
+    // conservan el suyo.
     expect(fuenteLinkLabel("euskadi_rss")).toBe("Ver en Contratación Pública de Euskadi");
     expect(fuenteLinkLabel("galicia_rss")).toBe("Ver en Contratos de Galicia");
   });

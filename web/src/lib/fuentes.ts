@@ -23,6 +23,10 @@ const ETIQUETAS: Record<string, string> = {
   placsp: "Ver en PLACSP",
   ted: "Ver en TED",
   pscp: "Ver en PSCP",
+  euskadi: "Ver en Contratación Pública de Euskadi",
+  // `euskadi_rss` es el `source_id` anterior a C4.3. Se mantiene porque las
+  // filas ya ingeridas conservan el suyo, y una fila sin etiqueta enseña el
+  // código crudo en la ficha.
   euskadi_rss: "Ver en Contratación Pública de Euskadi",
   galicia_rss: "Ver en Contratos de Galicia",
 };

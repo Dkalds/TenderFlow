@@ -81,7 +81,9 @@ def test_opcional_sigue_derivandose_del_estado() -> None:
         assert REGISTERED_SOURCES_BY_ID[source_id].estado == "opcional"
         assert REGISTERED_SOURCES_BY_ID[source_id].opcional
 
-    for source_id in ("placsp", "ted", "galicia_rss", "euskadi_rss"):
+    # `euskadi` y no `euskadi_rss`: C4.3 cambió el RSS por la API oficial
+    # paginada y con ella el `source_id`.
+    for source_id in ("placsp", "ted", "galicia_rss", "euskadi"):
         assert REGISTERED_SOURCES_BY_ID[source_id].estado == "activa"
         assert not REGISTERED_SOURCES_BY_ID[source_id].opcional
 

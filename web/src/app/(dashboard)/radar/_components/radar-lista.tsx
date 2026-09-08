@@ -70,6 +70,24 @@ function RadarError({ error, onRetry }: { error: Error; onRetry: () => void }) {
   );
 }
 
+/**
+ * Rampa de opacidad de los esqueletos de carga: nueve pasos que se apagan hacia
+ * abajo, para que la lista parezca profundidad y no una tabla de bloques
+ * iguales. Van como clases porque un `style` inline es lo que impide endurecer
+ * el CSP (C2.8).
+ */
+const DEGRADADO_ESQUELETO = [
+  "opacity-100",
+  "opacity-[0.93]",
+  "opacity-[0.86]",
+  "opacity-[0.79]",
+  "opacity-[0.72]",
+  "opacity-[0.65]",
+  "opacity-[0.58]",
+  "opacity-[0.51]",
+  "opacity-[0.44]",
+] as const;
+
 /** Lista de señales con sus tres estados: fallo, carga y bandeja al día. */
 export function RadarLista({
   listRef,
@@ -135,12 +153,12 @@ export function RadarLista({
         <RadarError error={error as Error} onRetry={onRetry} />
       ) : isLoading ? (
         <div className="flex flex-col gap-2.5 p-3.5">
-          {Array.from({ length: 9 }, (_, index) => (
-            <span
-              key={index}
-              className="tf-shimmer block h-11 rounded-lg"
-              style={{ opacity: 1 - index * 0.07 }}
-            />
+          {/* La opacidad decreciente va en clases y no en `style` (C2.8): cada
+              atributo `style` que queda aleja el momento en que `style-src`
+              puede dejar de llevar `'unsafe-inline'`. Son nueve valores fijos,
+              así que la rampa se escribe una vez y se indexa. */}
+          {DEGRADADO_ESQUELETO.map((opacidad, index) => (
+            <span key={index} className={cn("tf-shimmer block h-11 rounded-lg", opacidad)} />
           ))}
         </div>
       ) : showEmpty ? (
