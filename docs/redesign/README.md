@@ -80,11 +80,23 @@ completa, así que no se ha tocado una sola de sus funciones:
 | Espacio | Vistas | Rutas absorbidas |
 | --- | --- | --- |
 | `/mercado` | 8 | tendencias · tendencias-cpv · calendario · geografía · tecnologías · órganos · clusters · proyectos-modulos |
+| `/ops` | 6 | observabilidad · calidad-datos · administración · feature-flags · active-learning · jobs |
+| `/ajustes` | 6 | mi-cuenta |
+| `/mi-pipeline` | 4 | agenda · renovaciones |
+| `/direccion` | 3 | ninguna |
 | `/competencia` | 2 | competidores · utes |
-| `/ops` | 5 | observabilidad · calidad-datos · administración · feature-flags · active-learning |
 | `/empresas` | 2 | ninguna — ver abajo |
+| `/cuentas` | 2 | ninguna |
 
-`/empresas` es el único de la tabla que no absorbe ninguna ruta: sus dos
+**Ocho espacios, 19 rutas absorbidas.** Los recuentos son un contrato:
+`src/lib/__tests__/space-views.test.ts` los fija uno a uno, así que esta tabla
+no puede quedarse atrás sin que la suite lo diga. `/ajustes` es el último en
+entrar (C7.5 del plan complementario), y absorbe `/mi-cuenta`.
+
+`/empresas`, `/cuentas` y `/direccion` no absorben ninguna ruta: entran en la
+tabla para ser direccionables por `?vista=`, no para consolidar nada.
+
+`/empresas` es el caso original de eso: sus dos
 vistas (maestro y cola de revisión) siempre convivieron dentro de la misma
 pantalla y eran unas pestañas propias. Pasan a `?vista=` para que la cola sea
 direccionable —`/empresas?vista=revision` es lo que se pega en un mensaje

@@ -16,6 +16,10 @@ describe("SPACE_VIEWS", () => {
     // Los recuentos son el contrato de `docs/redesign/README.md`. Si uno cambia
     // sin actualizar el doc, la tabla del README miente.
     expect(Object.keys(SPACE_VIEWS).sort()).toEqual([
+      // `ajustes` es de C7.5: reúne tema, densidad, organización activa,
+      // preferencias de notificación, sesiones, claves de API y los datos de la
+      // cuenta, que vivían en cuatro sitios y uno de ellos en ninguno.
+      "ajustes",
       "competencia",
       "cuentas",
       "direccion",
@@ -24,6 +28,7 @@ describe("SPACE_VIEWS", () => {
       "mi-pipeline",
       "ops",
     ]);
+    expect(SPACE_VIEWS.ajustes).toHaveLength(6);
     expect(SPACE_VIEWS.mercado).toHaveLength(8);
     expect(SPACE_VIEWS.competencia).toHaveLength(2);
     expect(SPACE_VIEWS["mi-pipeline"]).toHaveLength(4);
@@ -46,12 +51,15 @@ describe("SPACE_VIEWS", () => {
     }
   });
 
-  it("absorbe 18 rutas heredadas, todas distintas", () => {
+  it("absorbe 19 rutas heredadas, todas distintas", () => {
+    // 18 → 19 con C7.5: `ajustes` absorbe `/mi-cuenta` como su vista «Datos y
+    // cuenta». Consolidar no elimina — la ruta antigua sigue resolviendo, por
+    // el redirect que este mismo fichero comprueba abajo.
     const origenes = allViews()
       .map(([, view]) => view.from)
       .filter(Boolean);
-    expect(origenes).toHaveLength(18);
-    expect(new Set(origenes).size).toBe(18);
+    expect(origenes).toHaveLength(19);
+    expect(new Set(origenes).size).toBe(19);
   });
 
   it("da a cada vista una clave única dentro de su espacio y una etiqueta", () => {
@@ -85,7 +93,7 @@ describe("BUILT_SPACE_ROUTES", () => {
 describe("legacyRedirects", () => {
   it("emite un redirect por ruta absorbida hacia su `?vista=`", () => {
     const redirects = legacyRedirects();
-    expect(redirects).toHaveLength(18);
+    expect(redirects).toHaveLength(19);
     expect(redirects).toContainEqual({
       source: "/tendencias",
       destination: "/mercado?vista=tiempo",
