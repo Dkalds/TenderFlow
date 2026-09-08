@@ -240,6 +240,34 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/analytics/forecast/estacionalidad": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Forecast Estacionalidad Organo
+         * @description Calendario de compra de un órgano: publicaciones por mes del calendario.
+         *
+         *     La respuesta declara su universo (ventana pedida, tramo cubierto, meses con
+         *     publicaciones y total) y **no trae curva** cuando el tramo cubierto no llega
+         *     a doce meses: ahí ``suficiente`` es ``false``, ``motivo`` explica por qué y
+         *     ``meses`` viene vacío (ADR-014, el corte lo decide el servicio).
+         *
+         *     ``meses`` no baja de 12 por la misma razón: pedir una ventana más corta que
+         *     el ciclo que se quiere medir solo puede devolver "insuficiente".
+         */
+        get: operations["forecast_estacionalidad_organo_api_v1_analytics_forecast_estacionalidad_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/analytics/forecast/retendering": {
         parameters: {
             query?: never;
@@ -2605,6 +2633,9 @@ export interface paths {
         /**
          * Escenarios descriptivos de precio sobre adjudicaciones comparables
          * @description Devuelve cuantiles históricos; deliberadamente no devuelve P(ganar).
+         *
+         *     Con ``lote_id`` los tres precios se calculan sobre el presupuesto de ese
+         *     lote (S3.1). Sin él, sobre el del expediente, como siempre.
          */
         get: operations["get_escenarios_precio_api_v1_licitaciones__licitacion_id__escenarios_precio_get"];
         put?: never;
@@ -3464,6 +3495,36 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/publico/cobertura": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Fuentes declaradas, su alcance y lo que queda fuera
+         * @description Alimenta la página `/cobertura`.
+         *
+         *     Único endpoint de este router que no toca la base: la cobertura declarada
+         *     es una constante del despliegue (``scraper.connectors``), no un agregado del
+         *     corpus. Por eso también es el único que no puede quedarse sin respuesta
+         *     porque Postgres esté lento.
+         *
+         *     El import va dentro de la función y no arriba: importar
+         *     ``scraper.connectors`` en el arranque de la API traería ``requests``,
+         *     ``lxml`` y el diccionario propietario de ``scraper.filters`` a un proceso
+         *     que no ingiere nada.
+         */
+        get: operations["cobertura_api_v1_publico_cobertura_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/publico/hubs": {
         parameters: {
             query?: never;
@@ -4229,6 +4290,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/radar/proximas": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Bandeja «Próximas»: anuncios previos y consultas preliminares abiertos
+         * @description Lista **sólo** ``PRE`` y ``CPM`` abiertos, con su fecha prevista si la hay.
+         *
+         *     Los dos códigos salen de ``services.classification.ESTADOS_PRE_LICITACION``
+         *     y no se teclean aquí. «Abierto» es el mismo juicio que en el resto del
+         *     Radar (``shared.estados``): por exclusión de los terminales, no por lista
+         *     blanca.
+         *
+         *     **Esta bandeja está casi siempre vacía o muy corta, y eso es el dato.** El
+         *     spike de T5 (``docs/plans/2026-09-spike-planes-anuales-placsp.md``) midió
+         *     1.403 entradas del feed vivo de PLACSP: ``PRE`` es el 0,14 % y ``CPM`` ni
+         *     siquiera está en la lista de estados de sindicación —el ``CPM`` de la base
+         *     entra por las plataformas autonómicas vía la migración ``v91``—. Una
+         *     respuesta con cero elementos no es un fallo del endpoint.
+         */
+        get: operations["get_proximas_api_v1_radar_proximas_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/resoluciones": {
         parameters: {
             query?: never;
@@ -4974,6 +5067,20 @@ export interface components {
             type: string;
         };
         /**
+         * AmbitoFueraDeAlcance
+         * @description Un ámbito declarado fuera del producto, con su fecha y su decisión.
+         */
+        AmbitoFueraDeAlcance: {
+            /** Ambito */
+            ambito: string;
+            /** Decision */
+            decision: string;
+            /** Desde */
+            desde: string;
+            /** Motivo */
+            motivo: string;
+        };
+        /**
          * AsistenteFeedbackRequest
          * @description Voto sobre un turno del asistente.
          *
@@ -5642,6 +5749,27 @@ export interface components {
              * @default 0
              */
             total: number;
+        };
+        /**
+         * Cobertura
+         * @description Lo que entra, con qué alcance, y lo que queda fuera desde cuándo.
+         *
+         *     Las dos listas van juntas a propósito: separadas, una página podría pintar
+         *     la primera y olvidar la segunda, que es la mitad que un lector necesita para
+         *     saber si el producto le sirve.
+         *
+         *     No hay ni un recuento aquí, y es una decisión, no un olvido: sumar estas
+         *     fuentes daría un número que se leería como cuota de mercado, y los feeds
+         *     regionales son cobertura de descubrimiento (ver
+         *     ``docs/regional-source-coverage.md``).
+         */
+        Cobertura: {
+            /** Fuentes */
+            fuentes: components["schemas"]["FuenteCobertura"][];
+            /** Fuera De Alcance */
+            fuera_de_alcance: components["schemas"]["AmbitoFueraDeAlcance"][];
+            /** Via De Entrada */
+            via_de_entrada: string;
         };
         /**
          * CoberturaMetricaDTO
@@ -6785,6 +6913,65 @@ export interface components {
             /** Mes */
             mes: number;
         };
+        /**
+         * EstacionalidadMes
+         * @description Una casilla del calendario de compra, con su denominador al lado.
+         */
+        EstacionalidadMes: {
+            /** Anios Observados */
+            anios_observados: number;
+            /** Media */
+            media: number;
+            /** Mes */
+            mes: number;
+            /** Publicaciones */
+            publicaciones: number;
+        };
+        /**
+         * EstacionalidadOrganoResult
+         * @description Publicaciones por mes de calendario de un órgano, con su universo declarado.
+         *
+         *     ADR-014: el resultado declara la ventana pedida, el tramo realmente
+         *     cubierto, cuántos meses de ese tramo tienen publicaciones y el total; y
+         *     cuando el tramo cubierto no llega a
+         *     :data:`MIN_MESES_ESTACIONALIDAD`, ``meses`` viene **vacío** con
+         *     ``suficiente=False``. La pantalla no tiene que decidir nada: si no hay
+         *     curva es porque no la hay.
+         */
+        EstacionalidadOrganoResult: {
+            /** Mes Desde */
+            mes_desde?: string | null;
+            /** Mes Hasta */
+            mes_hasta?: string | null;
+            /** Meses */
+            meses?: components["schemas"]["EstacionalidadMes"][];
+            /**
+             * Meses Con Publicaciones
+             * @default 0
+             */
+            meses_con_publicaciones: number;
+            /** Motivo */
+            motivo?: string | null;
+            /**
+             * N Meses
+             * @default 0
+             */
+            n_meses: number;
+            /** Organo */
+            organo: string;
+            /**
+             * Suficiente
+             * @default false
+             */
+            suficiente: boolean;
+            /**
+             * Total Publicaciones
+             * @default 0
+             */
+            total_publicaciones: number;
+            /** Ventana Meses */
+            ventana_meses: number;
+        };
         /** EstadoBody */
         EstadoBody: {
             /** Conceder */
@@ -7270,6 +7457,30 @@ export interface components {
             modelo?: string | null;
             /** Series */
             series?: components["schemas"]["ForecastSeriesPoint"][];
+        };
+        /**
+         * FuenteCobertura
+         * @description Una fuente de ingesta tal como se declara hacia fuera.
+         *
+         *     Ni ``modulo`` ni ``motivo`` viajan aquí: el primero es una ruta de import y
+         *     el segundo es el razonamiento operativo de por qué el umbral es ese y no
+         *     otro. Lo que sí viaja es ``alcance``, que es la frase que impide leer un
+         *     feed de descubrimiento como si fuera un censo de mercado.
+         */
+        FuenteCobertura: {
+            /** Alcance */
+            alcance: string;
+            /**
+             * Estado
+             * @enum {string}
+             */
+            estado: "activa" | "opcional" | "fuera_de_alcance";
+            /** Max Lag Hours */
+            max_lag_hours: number;
+            /** Nombre */
+            nombre: string;
+            /** Source Id */
+            source_id: string;
         };
         /**
          * FunnelStep
@@ -9525,6 +9736,10 @@ export interface components {
             importe_adjudicado?: number | null;
             /** Licitacion Id */
             licitacion_id: string;
+            /** Lote Id */
+            lote_id?: number | null;
+            /** Lote Numero */
+            lote_numero?: string | null;
             /** Model Version */
             model_version?: string | null;
             /** P10 */
@@ -9533,6 +9748,8 @@ export interface components {
             p50?: number | null;
             /** P90 */
             p90?: number | null;
+            /** Prediccion Ambito */
+            prediccion_ambito?: string | null;
             /** Serving */
             serving?: string | null;
         };
@@ -9627,6 +9844,10 @@ export interface components {
             expected_competition?: number | null;
             /** Licitacion Id */
             licitacion_id: string;
+            /** Lote Id */
+            lote_id?: number | null;
+            /** Lote Numero */
+            lote_numero?: string | null;
             /**
              * Methodology
              * @default Distribución empírica de bajas en adjudicaciones comparables observadas.
@@ -10497,6 +10718,68 @@ export interface components {
             ids: string[];
         };
         /**
+         * RadarProxima
+         * @description Una compra anunciada que todavía no ha salido a licitación.
+         *
+         *     No lleva ``score`` ni ``band``: el scoring del Radar ordena expedientes con
+         *     plazo vivo, y aquí no hay plazo al que presentarse. Puntuar estas filas
+         *     exigiría inventar la dimensión que falta, que es justo lo que ADR-014
+         *     prohíbe; la bandeja se ordena por fecha prevista y lo dice.
+         */
+        RadarProxima: {
+            /** Ccaa */
+            ccaa?: string | null;
+            /** Cpv */
+            cpv?: string | null;
+            /** Estado */
+            estado?: string | null;
+            /** Fecha Prevista */
+            fecha_prevista?: string | null;
+            /** Fecha Publicacion */
+            fecha_publicacion?: string | null;
+            /** Id Externo */
+            id_externo: string;
+            /** Importe */
+            importe?: number | null;
+            /** Organo Contratacion */
+            organo_contratacion?: string | null;
+            /** Tecnologia */
+            tecnologia?: string | null;
+            /** Titulo */
+            titulo?: string | null;
+            /** Url */
+            url?: string | null;
+        };
+        /**
+         * RadarProximasResult
+         * @description La bandeja «Próximas» con su universo declarado.
+         *
+         *     ``total`` y ``con_fecha_prevista`` son del universo entero, no de la página
+         *     servida: sin ese denominador el cliente no puede decir «3 de 47 traen
+         *     fecha» sin derivarlo de lo que le llegó, que es la fabricación de analítica
+         *     que prohíbe ADR-014.
+         */
+        RadarProximasResult: {
+            /** Con Fecha Prevista */
+            con_fecha_prevista: number;
+            /** Estados */
+            estados: string[];
+            /**
+             * Fecha Prevista Origen
+             * @default planned_period_start
+             * @constant
+             */
+            fecha_prevista_origen: "planned_period_start";
+            /** Items */
+            items: components["schemas"]["RadarProxima"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Total */
+            total: number;
+        };
+        /**
          * RadarQuality
          * @description Precisión del Radar por banda de entrada, con su ventana y su cobertura.
          *
@@ -11082,6 +11365,12 @@ export interface components {
              * @description semantic_embeddings | keyword_cpv_fallback | unavailable
              */
             afinidad_metodo: string;
+            /**
+             * Afinidad Origen
+             * @description perfil | organizacion | ninguno
+             * @default ninguno
+             */
+            afinidad_origen: string;
             /**
              * Competencia
              * @description ok | vacia | error
@@ -13308,6 +13597,50 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CompetitorResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    forecast_estacionalidad_organo_api_v1_analytics_forecast_estacionalidad_get: {
+        parameters: {
+            query: {
+                /** @description Órgano de contratación (nombre exacto) */
+                organo: string;
+                /** @description Tamaño de la ventana en meses (por defecto 36) */
+                meses?: number;
+                /** @description Ancla de la ventana (YYYY-MM-DD); por defecto hoy */
+                hasta?: string | null;
+                /** @description Filter by CCAA */
+                ccaa?: string | null;
+                /** @description Filter by tecnologia */
+                tecnologia?: string | null;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EstacionalidadOrganoResult"];
                 };
             };
             /** @description Validation Error */
@@ -17850,6 +18183,7 @@ export interface operations {
     get_escenarios_precio_api_v1_licitaciones__licitacion_id__escenarios_precio_get: {
         parameters: {
             query?: {
+                lote_id?: number | null;
                 competencia_esperada?: number | null;
             };
             header?: {
@@ -17873,7 +18207,7 @@ export interface operations {
                     "application/json": components["schemas"]["PriceScenariosResult"];
                 };
             };
-            /** @description Licitación inexistente */
+            /** @description Licitación (o lote) inexistente */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -17935,7 +18269,9 @@ export interface operations {
     };
     get_prediccion_baja_api_v1_licitaciones__licitacion_id__prediccion_baja_get: {
         parameters: {
-            query?: never;
+            query?: {
+                lote_id?: number | null;
+            };
             header?: {
                 "X-CSRF-Token"?: string | null;
             };
@@ -19647,6 +19983,26 @@ export interface operations {
             };
         };
     };
+    cobertura_api_v1_publico_cobertura_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Cobertura"];
+                };
+            };
+        };
+    };
     hubs_api_v1_publico_hubs_get: {
         parameters: {
             query?: never;
@@ -21221,6 +21577,49 @@ export interface operations {
         responses: {
             /** @description Successful Response */
             204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_proximas_api_v1_radar_proximas_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Compras anunciadas que aún no han salido a licitación */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RadarProximasResult"];
+                };
+            };
+            /** @description No autenticado */
+            401: {
                 headers: {
                     [name: string]: unknown;
                 };

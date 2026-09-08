@@ -202,6 +202,11 @@ def comprobar_frescura_fuentes(
       ``opcional``: repetir cada seis horas que algo nunca se configuró es el
       ruido que acaba desactivando el check.
 
+    Las fuentes con ``estado == "fuera_de_alcance"`` (T7/D16) no se miden ni
+    aparecen en el detalle: están declaradas fuera del producto en
+    `/cobertura`, así que exigirles frescura sería alertar de que no hacen lo
+    que se decidió que no hicieran.
+
     Args:
         repo: Repositorio de salud. Inyectable para probar sin BD; por defecto
             ``SourceHealthRepository``.
@@ -227,6 +232,9 @@ def comprobar_frescura_fuentes(
     detalle: dict[str, Any] = {}
 
     for fuente in REGISTERED_SOURCES:
+        if fuente.estado == "fuera_de_alcance":
+            continue
+
         entrada: dict[str, Any] = {
             "max_lag_hours": fuente.max_lag_hours,
             "opcional": fuente.opcional,

@@ -31,6 +31,7 @@ export function RadarFila({
   onFollow,
   onOpenPursuit,
   onOpenFicha,
+  afinidadOrigen,
 }: {
   tender: RadarTender;
   index: number;
@@ -38,6 +39,13 @@ export function RadarFila({
   isFollowed: boolean;
   isNew: boolean;
   rowHeight: number;
+  /**
+   * De dónde sale el portfolio con el que se calculó la afinidad (S2.4). Es
+   * de la respuesta entera, no de la fila: el scorer lo resuelve una vez por
+   * petición. Sin él el desglose calla, que es lo correcto contra un backend
+   * que aún no lo mande.
+   */
+  afinidadOrigen?: string | null;
   /** A partir de `md` las acciones ocultas salen del orden de tabulación. */
   enTabla: boolean;
   conFicha: boolean;
@@ -143,6 +151,7 @@ export function RadarFila({
               desglose={tender.desglose}
               riesgos={tender.risk_flags}
               explicacion={tender.explicacion}
+              afinidadOrigen={afinidadOrigen}
             />
             <p className="text-muted-foreground mt-2.5 text-[10.5px] leading-relaxed">
               Ordena el Radar sobre el corpus abierto. No es una recomendación comercial: mide

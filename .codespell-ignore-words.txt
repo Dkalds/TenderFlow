@@ -27,6 +27,7 @@ commitees
 componentes
 conector
 confirmacion
+confirmas
 consideren
 contener
 contiguos

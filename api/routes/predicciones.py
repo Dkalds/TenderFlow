@@ -6,6 +6,18 @@
   ``model_version`` NULL = baseline histórico, no modelo. Si la licitación
   ya está adjudicada, además incluye ``baja_real``/``importe_adjudicado``
   para comparar la estimación (si la hubo) contra el resultado real.
+
+Las dos operaciones sobre una licitación —``prediccion-baja`` y
+``escenarios-precio``— aceptan ``lote_id`` (S3.1), porque un expediente
+dividido en lotes no se puja entero: se puja un lote, con su presupuesto.
+``lote_id`` ausente = expediente completo, con exactamente el mismo cálculo y
+los mismos valores de siempre (``prediccion-baja`` ni siquiera cambia el
+payload, porque serializa con ``exclude_unset``; ``escenarios-precio`` le suma
+los dos campos nuevos a ``null``, que es el precio de mantener el esquema
+OpenAPI intacto — ver el comentario de ``PriceScenariosResult.lote_id``).
+``lote_id`` de otro expediente = 404. No confundir con el ``incluir_lote`` de
+``/predicciones/calibracion``, que es otra cosa: un bloque de diagnóstico
+agregado, no un cambio de unidad.
 """
 
 from __future__ import annotations
@@ -19,7 +31,7 @@ from api.concurrency import run_db
 from api.routes.dual_auth import require_any_auth
 from services.ml.calibration import CalibracionBajaDTO, calibracion_baja_dto
 from services.ml.pricing_scenarios import PriceScenariosResult, get_price_scenarios
-from services.ml.scoring import prediccion_baja
+from services.ml.scoring import LoteDesconocidoError, prediccion_baja
 from shared.cache import cache_response
 
 router = APIRouter(tags=["predicciones"])
@@ -48,6 +60,19 @@ class PrediccionBajaResult(BaseModel):
     serving: str | None = None
     baja_real: float | None = None
     importe_adjudicado: float | None = None
+    #: Campos ADITIVOS (S3.1), presentes solo cuando se pidió un lote. Como la
+    #: ruta serializa con ``exclude_unset``, en el camino sin lote no aparecen:
+    #: la respuesta del expediente completo es exactamente la de siempre.
+    lote_id: int | None = None
+    #: ``lotes.numero``, la identidad estable del lote (``lotes.id`` se
+    #: renumera en cada re-ingesta; ver la cabecera de la revisión ``v110``).
+    lote_numero: str | None = None
+    #: Granularidad **de la estimación**, que no siempre es la que se pidió:
+    #: ``lote`` si el batch materializó una fila de ese lote, ``expediente`` si
+    #: se sirve la del expediente entero a falta de modelo por lote (v86 dejó
+    #: la columna, el switch sigue pendiente de medir su ``mae_p50``).
+    #: ``baja_real``/``importe_adjudicado`` sí son siempre del lote pedido.
+    prediccion_ambito: str | None = None
 
 
 @router.get(
@@ -68,13 +93,26 @@ class PrediccionBajaResult(BaseModel):
 )
 async def get_prediccion_baja(
     licitacion_id: str,
+    lote_id: int | None = None,
     _ctx: dict[str, Any] = Depends(require_any_auth),
 ) -> PrediccionBajaResult:
-    data = await run_db(prediccion_baja, licitacion_id)
+    try:
+        data = await run_db(prediccion_baja, licitacion_id, lote_id)
+    except LoteDesconocidoError as exc:
+        # 404 y no 422: el lote es un recurso que se pide por id, y "ese lote
+        # no está en este expediente" es exactamente un no-encontrado. El
+        # mensaje se separa del de abajo porque son dos cosas distintas —id
+        # equivocado vs. sin datos todavía— y confundirlas manda a quien
+        # depura a buscar el fallo donde no está.
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     if data is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Sin predicción ni adjudicación registrada para esa licitación.",
+            detail=(
+                "Sin predicción ni adjudicación registrada para esa licitación."
+                if lote_id is None
+                else "Sin predicción ni adjudicación registrada para ese lote."
+            ),
         )
     return PrediccionBajaResult(**data)
 
@@ -113,14 +151,19 @@ async def get_calibracion_baja(
     "/licitaciones/{licitacion_id:path}/escenarios-precio",
     summary="Escenarios descriptivos de precio sobre adjudicaciones comparables",
     response_model=PriceScenariosResult,
-    responses={404: {"description": "Licitación inexistente"}},
+    responses={404: {"description": "Licitación (o lote) inexistente"}},
 )
 async def get_escenarios_precio(
     licitacion_id: str,
+    lote_id: int | None = None,
     competencia_esperada: int | None = None,
     _ctx: dict[str, Any] = Depends(require_any_auth),
 ) -> PriceScenariosResult:
-    """Devuelve cuantiles históricos; deliberadamente no devuelve P(ganar)."""
+    """Devuelve cuantiles históricos; deliberadamente no devuelve P(ganar).
+
+    Con ``lote_id`` los tres precios se calculan sobre el presupuesto de ese
+    lote (S3.1). Sin él, sobre el del expediente, como siempre.
+    """
     if competencia_esperada is not None and competencia_esperada < 1:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -129,11 +172,19 @@ async def get_escenarios_precio(
     data = await run_db(
         get_price_scenarios,
         licitacion_id,
+        lote_id=lote_id,
         expected_competition=competencia_esperada,
     )
     if data is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Licitación no encontrada.",
+            detail=(
+                "Licitación no encontrada."
+                if lote_id is None
+                # Cubre las dos formas de no encontrarlo —lote de otro
+                # expediente, o expediente inexistente— porque desde fuera son
+                # la misma: ese lote no está aquí.
+                else "Lote no encontrado en esa licitación."
+            ),
         )
     return data

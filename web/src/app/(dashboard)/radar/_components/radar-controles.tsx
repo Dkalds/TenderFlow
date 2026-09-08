@@ -11,8 +11,13 @@ import {
 
 /**
  * Segmentos y orden. En móvil envuelve en varias líneas en vez de desbordar:
- * son ocho controles y ninguno se puede esconder sin quitarle al usuario el
+ * son nueve controles y ninguno se puede esconder sin quitarle al usuario el
  * cambio de bandeja o el criterio de orden.
+ *
+ * El orden **sólo aplica a las bandejas puntuadas**. «Próximas» (T5) no tiene
+ * score ni plazo —son expedientes sin pliego— y la ordena el servidor por
+ * fecha prevista: dejar los tres botones activos ahí ofrecería un criterio que
+ * no cambiaría nada, que es peor que no ofrecerlo.
  */
 export function RadarControles({
   segment,
@@ -25,14 +30,22 @@ export function RadarControles({
 }: {
   segment: SegmentKey;
   onSegment: (segment: SegmentKey) => void;
-  counts: Record<SegmentKey, number>;
+  /** `null` = todavía no se sabe; se pinta «—» y no un cero que afirma. */
+  counts: Record<SegmentKey, number | null>;
   sort: SortKey;
   onSort: (sort: SortKey) => void;
   dismissedCount: number;
   onRestoreAll: () => void;
 }) {
+  const conOrden = segment !== "proximas";
   return (
-    <div className="flex min-h-11 flex-none flex-wrap items-center gap-x-0.5 gap-y-1.5 border-b border-border/60 px-3 py-2 md:h-11 md:flex-nowrap md:px-3.5 md:py-0">
+    // La línea única se aplaza de `md` a `lg`. Con cuatro segmentos cabía en
+    // 768 px; con el quinto («Próximas») los ocho controles suman ~740 px antes
+    // de descontar lo que se lleva la navegación lateral, así que a `md` el
+    // `flex-nowrap` los desbordaría — y el desbordamiento del `main` es justo lo
+    // que mide `e2e/responsive.spec.ts`. Entre `md` y `lg` envuelve en dos
+    // líneas, igual que en móvil; a partir de `lg` vuelve a ser una.
+    <div className="flex min-h-11 flex-none flex-wrap items-center gap-x-0.5 gap-y-1.5 border-b border-border/60 px-3 py-2 md:px-3.5 lg:h-11 lg:flex-nowrap lg:py-0">
       {SEGMENTS.map((item) => {
         const on = segment === item.key;
         return (
@@ -58,7 +71,7 @@ export function RadarControles({
                 on ? "bg-primary/16 text-primary" : "bg-muted-foreground/12 text-muted-foreground",
               )}
             >
-              {counts[item.key]}
+              {counts[item.key] ?? "—"}
             </span>
           </button>
         );
@@ -76,28 +89,36 @@ export function RadarControles({
           Restaurar {dismissedCount} descartada{dismissedCount === 1 ? "" : "s"}
         </button>
       )}
-      <span className="mr-1.5 flex-none font-mono text-[8.5px] font-semibold uppercase tracking-[0.11em] text-muted-foreground/70">
-        Orden
-      </span>
-      {SORTS.map((item) => {
-        const on = sort === item.key;
-        return (
-          <button
-            key={item.key}
-            type="button"
-            onClick={() => onSort(item.key)}
-            aria-pressed={on}
-            className={cn(
-              "tf-pressable h-7 flex-none rounded-md border px-2 text-[11px] font-medium transition-colors duration-150 ease-out md:h-6",
-              on
-                ? "border-primary/25 bg-primary/10 text-primary"
-                : "border-transparent text-muted-foreground hover:text-foreground",
-            )}
-          >
-            {item.label}
-          </button>
-        );
-      })}
+      {conOrden ? (
+        <>
+          <span className="mr-1.5 flex-none font-mono text-[8.5px] font-semibold uppercase tracking-[0.11em] text-muted-foreground/70">
+            Orden
+          </span>
+          {SORTS.map((item) => {
+            const on = sort === item.key;
+            return (
+              <button
+                key={item.key}
+                type="button"
+                onClick={() => onSort(item.key)}
+                aria-pressed={on}
+                className={cn(
+                  "tf-pressable h-7 flex-none rounded-md border px-2 text-[11px] font-medium transition-colors duration-150 ease-out md:h-6",
+                  on
+                    ? "border-primary/25 bg-primary/10 text-primary"
+                    : "border-transparent text-muted-foreground hover:text-foreground",
+                )}
+              >
+                {item.label}
+              </button>
+            );
+          })}
+        </>
+      ) : (
+        <span className="mr-1.5 flex-none font-mono text-[8.5px] font-semibold uppercase tracking-[0.11em] text-muted-foreground/70">
+          Orden · fecha prevista
+        </span>
+      )}
     </div>
   );
 }

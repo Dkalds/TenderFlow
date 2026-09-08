@@ -17,9 +17,23 @@ Sucede a [2026-09-plan-arquitectura.md](2026-09-plan-arquitectura.md), cuyo
 aquí, y los tres ítems de frontend que quedaron a medias (S5.1, S5.2 y S5.9)
 se citan desde el stream S7 con sus criterios originales, sin redefinirlos.
 
-**Estado: PROPUESTO el 2026-09-05; en ejecución desde el 2026-09-06.** La Ola 0
-está en curso y cada ítem anota abajo lo que se entregó y lo que no; el resto
-del documento sigue sin implementar. Mismo contrato que sus predecesores: cada stream se ejecuta en su propia rama
+**Estado: PROPUESTO el 2026-09-05; en ejecución desde el 2026-09-06.**
+
+**Actualización del 2026-09-08.** La Ola 0 y los ocho streams de la Ola 1 están
+entregados; cada ítem anota abajo lo suyo. Esta tanda cerró lo que la anterior
+dejó a medias, y el patrón era el mismo en los siete casos: **motor escrito,
+probado y sin ningún llamador ni pantalla que lo alcanzara** — la funcionalidad
+no existía para el usuario aunque sus tests estuvieran verdes. Ver las notas de
+S2, S3 y S7.1.
+
+De la Ola 2 se ejecutan **T5 y T7**, los dos únicos ítems sin gate **[§6]**.
+**T1, T2, T3, T4 y T6 quedan sin escribir por decisión del mantenedor del
+2026-09-08**, con su diseño y su DDL en
+[2026-09-ola2-migraciones-propuestas.md](2026-09-ola2-migraciones-propuestas.md):
+D20 no pre-autoriza esas migraciones y producción sigue once revisiones por
+detrás. La cabeza del repo no se mueve de `v112` en esta tanda.
+
+Mismo contrato que sus predecesores: cada stream se ejecuta en su propia rama
 por un agente independiente, este documento es la fuente única de alcance y
 criterios de aceptación, y un agente que toma un stream trabaja **solo** los
 ficheros de ese stream.
@@ -604,6 +618,34 @@ E2E de login con los dos proveedores en CI (proveedor simulado).
 
 ### S2 — Organización con capacidad: NIF, solvencia y go/no-go asistido
 
+> **2026-09-08 — cerrado el hueco entre lo escrito y lo enchufado.** El stream
+> se entregó con el motor completo pero con **cuatro piezas que no tenía
+> ningún llamador de producción**, así que la funcionalidad no existía para el
+> usuario aunque sus tests estuvieran verdes:
+>
+> - `resultado_sugerido()` no se llamaba: `services/pursuits.py` construía
+>   `PursuitAdjudicacionDetectada` sin él y la API devolvía siempre `null`.
+>   Ahora la ficha propone preseleccionado y el cierre sigue exigiendo un clic.
+> - `IdentidadFiscal.reconoce` no la usaba ningún módulo de competencia. La
+>   exclusión llega ahora a socios y a líderes —descartando la fila, **no el
+>   denominador**: `cuota_pct` sigue siendo la del mercado real— y `get_partners`
+>   pasa por fin el `user_id` que hacía falta. Se decidió **no** excluir en
+>   `services/analytics/competitors.py`: cuota, HHI y % de oferta única
+>   describen un mercado del que la propia organización forma parte, y quitarla
+>   daría una concentración falsa.
+> - `construir_batallas` aceptaba `nif_propio` «para S2.1» y su único llamador
+>   nunca lo pasaba, así que `sin_nif_propio` salía `True` incluso con el NIF
+>   declarado: el aviso «no sabemos cuál es tu empresa» salía siempre, y un
+>   aviso que sale siempre deja de leerse.
+> - La pestaña «Organización» de `/equipo` (S2.1 y S2.2) existía con test
+>   propio y **ninguna pantalla la montaba**. La monta S7.1 al trocear la
+>   página.
+>
+> Sigue vivo y anotado: `services/competitive/batallas.py` no distingue el caso
+> en que el adjudicatario observado somos nosotros y la oportunidad está
+> marcada `lost` — una contradicción que ahora se podría detectar y no se
+> detecta.
+
 **Objetivo:** que la ficha del pliego tenga contra qué contrastarse, y que el
 cierre de una oportunidad sepa quién ganó.
 
@@ -641,6 +683,16 @@ cierre de una oportunidad sepa quién ganó.
    o la organización no rellenó el campo; cada evaluación se sella una vez por
    versión de ficha en `pursuit_events` (`checklist_evaluated`); el checklist
    declara `extraction_version` y fecha de la ficha que evaluó.
+   **Matiz del 2026-09-08 sobre «permite marcar a mano».** La pantalla no añade
+   un override por requisito: **no hay endpoint que lo persista**, y guardarlo
+   en `localStorage` rompe el invariante 2 de `web/AGENTS.md` (el estado de
+   usuario es server-side). «Marcar a mano» se resuelve con el selector de
+   Decisión que ya existe, y el pie del panel dice explícitamente que el
+   checklist no decide y dónde se decide. Un override por requisito sería tabla
+   y endpoint nuevos — otro ítem, con su gate. El panel degrada además a
+   `desconocido` cualquier `cumple` que llegue sin `EvidenceRef`: el backend ya
+   lo garantiza, pero un `cumple` sin cita en pantalla sería la peor mentira
+   posible de esta pestaña.
 4. **Afinidad desde la capacidad.** `services/analytics/affinity.py` construye
    el portfolio a partir de las referencias y tecnologías de la organización
    cuando el usuario no tiene perfil personal. Esfuerzo S.
@@ -653,6 +705,36 @@ organización con NIF, abre una oportunidad y ve el resultado sugerido.
 **Riesgo:** medio en S2.3 (regla de producto nueva; el golden es la red).
 
 ### S3 — Oportunidad por lote y bucle del Radar
+
+> **2026-09-08 — cerrados los tres huecos que quedaban.** Igual que en S2, el
+> stream se entregó con el cálculo hecho y sin consumidor:
+>
+> - `escenarios-precio` y `prediccion-baja` **no aceptaban `lote_id`**, que es
+>   la mitad del criterio de S3.1. Ya lo aceptan, sin migración: las columnas
+>   (`predicciones_baja.lote_id` de `v86`, `lotes.importe` de `v65`) existían.
+>   Un lote sin importe propio **no hereda el denominador del expediente**: se
+>   sirve `sample_quality="insuficiente"` y cero escenarios, porque dividir por
+>   el presupuesto del expediente daría una baja diez veces menor que la real.
+>   El CPV sí se hereda, y se declara en `methodology`.
+> - `RadarQualityNota` y `RadarQualityResumen` existían y su único import era
+>   su propio test. S3.2 los monta en el Radar.
+> - La propuesta de pesos tenía endpoint, `audit_log` y umbral de veinte
+>   cierres, y ninguna pantalla la pedía. S3.3 la pone en `/mi-perfil`.
+>
+> **Divergencia consciente de S3.1 respecto de la letra del plan.** El ítem
+> pide `pursuits.lote_id` con FK a `lotes`; `v110` persiste `lote_numero TEXT`
+> y resuelve `lote_id` al leer y escribir. El motivo está en la cabecera de la
+> revisión: `db/upsert.py::replace_lotes` reemplaza los lotes con DELETE+INSERT
+> en cada reingesta, así que `lotes.id` **no es identidad estable** y cualquier
+> `ON DELETE` rompería o el pursuit o la ingesta. `lote_id` sigue siendo lo que
+> viaja por la API. El efecto funcional se cumple; el criterio literal, no.
+>
+> **Un bug latente corregido de paso:** la lectura sin lote de
+> `services/ml/scoring.prediccion_baja` era `WHERE licitacion_id = %s` sin
+> `AND lote_id IS NULL`. Hoy da igual —el único escritor no rellena la columna—
+> pero el día que el batch materialice por lote, pedir el expediente habría
+> contestado con el intervalo de un lote cualquiera, sin error y sin forma de
+> notarlo en pantalla.
 
 **Objetivo:** que se pueda pujar por lo que de verdad se puja, y que el
 producto responda si el Radar prioriza bien.
@@ -845,6 +927,17 @@ que puntúa, con etiquetas que no sean su propia salida.
    S3.1). Esfuerzo S.
    *Aceptación:* un expediente con tres lotes devuelve tres predicciones o
    `insuficiente` por lote; sin `lote_id` devuelve la del expediente como hoy.
+   **Entregado el 2026-09-08 junto con S3.1**, con un matiz que hay que leer:
+   la premisa del ítem —«las filas por lote que `predicciones_baja` ya
+   guarda»— **es falsa**. `v86` dejó la columna `lote_id` preparada, pero el
+   único escritor (`score_predicciones_baja`) no la rellena y su
+   `ON CONFLICT(licitacion_id)` ni siquiera dejaría convivir dos filas del
+   mismo expediente. Así que hoy, con `lote_id`, la ruta sirve la estimación
+   agregada **declarándolo** en `prediccion_ambito="expediente"` en vez de
+   fingir un dato de lote que no existe. Lo que sí es del lote siempre es la
+   `baja_real`, que sale de `lotes.importe` y de las adjudicaciones de ese
+   lote. Cuando el batch materialice por lote —pendiente de medir su
+   `mae_p50`— la ruta servirá la fila real sin más cambios.
 
 **Verificación:** `make check`; `train-model.yml` y `train-tech.yml` verdes
 con registro de población y etiquetas.
@@ -864,6 +957,18 @@ tres deudas que hoy hacen frágil cualquier pantalla nueva.
    Esfuerzo L.
    *Aceptación:* las de esos tres ítems; además, `max-lines` corre en
    `make web-lint` y la lista está en `eslint.config`.
+   **Cerrado el 2026-09-08: la allowlist está vacía.** Quedaba
+   `equipo/page.tsx` con 494 líneas; sus cinco bloques bajan a
+   `equipo/_components/` (`crear-organizacion-form`, `miembros-card`,
+   `invitaciones-pendientes`, `matriz-permisos`) y sus etiquetas a
+   `equipo/_lib/etiquetas.ts`, dejando la página en 89 líneas de reparto en
+   pestañas. Ningún fichero de `web/src/app` pasa de 300 —el mayor, con 299,
+   es `ops/_hooks/use-active-learning.ts`— y el bloque de excepciones de
+   `web/eslint.config.mjs` desaparece en vez de encoger.
+   **Efecto lateral que no estaba en el criterio:** al montar las pestañas
+   apareció que `equipo/_components/organizacion-tab.tsx` —la pestaña
+   «Organización» que S2.1 y S2.2 dan por entregada, con su test propio— **no
+   la montaba ninguna pantalla**. Ahora sí.
 2. **Formularios con esquema.** `zod` y `react-hook-form` (**[§6]** deps,
    pre-autorizado) para los seis formularios con validación: login, reglas,
    perfil, equipo, oportunidad y webhooks. Esfuerzo M.
@@ -936,6 +1041,30 @@ formato en su resumen.
 
 ## 6. Ola 2 — Lo que depende de una decisión o de una migración grande
 
+> **Estado del 2026-09-08.** El mantenedor decidió ejecutar de esta ola **solo
+> lo que no toca schema**: **T5** y **T7**, los dos únicos ítems sin gate
+> **[§6]**. Los cinco restantes —**T1, T2, T3, T4 y T6**— llevan migración, y
+> D20 pre-autoriza migraciones únicamente para S2–S5, así que siguen pidiendo
+> OK puntual (AGENTS.md §6). Pesa además que producción va once revisiones por
+> detrás: apilar cinco más sobre `v98`–`v112` sin aplicar convierte el primer
+> despliegue en un salto de dieciséis.
+>
+> El diseño de esas cinco, con el DDL propuesto, el riesgo de cada una y las
+> trampas que hay que conocer antes de escribirlas, está en
+> [2026-09-ola2-migraciones-propuestas.md](2026-09-ola2-migraciones-propuestas.md).
+> **Ninguna de esas revisiones existe**: la cabeza del repo sigue en `v112`.
+>
+> Ese documento identifica además **tres trozos que no necesitan el OK** porque
+> no tocan schema y son prerrequisito de su ítem. El primero, la categoría
+> «fechas no ISO» de `scripts/audit_domain_truth.py` (T2), **ya está hecho** —
+> es la sección (f), y cuenta exactamente las filas que hoy impiden promover a
+> VALID los seis CHECK que `v59` dejó `NOT VALID`. Los otros dos (la tercera
+> categoría del guardrail de literales de T3 y la extracción de `_build_pdf`
+> con adjuntos SMTP de T6) quedan sin hacer a propósito: el de T3 solo tiene
+> sentido cuando los cuatro productores estén cortados, y el de T6 sería
+> infraestructura sin consumidor, que es justo el defecto que esta tanda vino a
+> corregir.
+
 ### T1 — Seguimiento unificado (depende de S4)
 
 **Qué.** Tabla `follows(id, organization_id, user_id, target_type ∈
@@ -1005,6 +1134,36 @@ Esfuerzo L · **[§6]** migración.
 
 ### T5 — Pre-radar y calendario de compra
 
+> **2026-09-08 — entregados la estacionalidad y el spike; la bandeja
+> «Próximas», no.** El spike terminó en
+> [2026-09-spike-planes-anuales-placsp.md](2026-09-spike-planes-anuales-placsp.md)
+> con **NO-GO** y con la fuente real medida, no supuesta: 1.403 entradas del
+> feed que ya consume el scraper, **cero** elementos de plan anual, y de los 61
+> expedientes con anuncio previo la mediana de anticipación es **un día** (el
+> 42 % avisa con cero días o menos). Un pre-radar construido sobre eso no
+> avisaría de nada.
+>
+> La bandeja «Próximas» entra como un segmento más de los controles del Radar
+> y no tras «Todas»: es la otra mitad del Radar —lo que todavía no se puede
+> ofertar— y esconderla la convertiría en una pestaña que nadie encuentra. Los
+> dos códigos se declaran una sola vez, en
+> `services/classification.ESTADOS_PRE_LICITACION`, para que ni la ruta ni el
+> repositorio los vuelvan a teclear; «abierta» la sigue decidiendo
+> `shared.estados.abierta_sql` **por exclusión de los terminales**, no por
+> lista blanca, que es el defecto que ya costó que el resumen contara cero
+> activas mientras el Radar listaba doce. Su contador arranca en `null` y no en
+> `0`: el caso normal de esta bandeja es estar vacía, y un cero mientras carga
+> afirmaría algo que todavía no se sabe.
+>
+> La estacionalidad va en `services/analytics/forecast_svc.get_estacionalidad_organo`
+> con el corte de doce meses aplicado **en el servicio**: por debajo devuelve
+> `suficiente=False` y `meses=[]`, así que un cliente que ignore la bandera no
+> tiene serie que pintar (ADR-014 impuesto por construcción, no por convención).
+> El denominador es por mes de calendario y no un `n` común, porque una ventana
+> de 36 meses que empieza en marzo tiene tres marzos y dos febreros — **el mismo
+> bug sigue vivo en `services/analytics/organo_detail.py:253-255`** y queda
+> anotado, no corregido.
+
 **Qué.** Vista «Próximas» en el Radar con los estados `PRE` y `CPM` (ya
 normalizados por `v91`) y los avisos `pin-*` de TED; estacionalidad por
 órgano en `services/analytics/forecast_svc.py` (publicaciones por mes de los
@@ -1036,6 +1195,28 @@ desde el despachador. Esfuerzo M.
 
 ### T7 — Cobertura declarada (D16)
 
+> **2026-09-08 — entregado.** `RegisteredSource` gana el tercer estado
+> (`activa | opcional | fuera_de_alcance`) conservando `opcional` como
+> propiedad derivada, para que `scheduler/healthcheck.py` y
+> `tests/test_s2_frescura_fuentes.py` sigan preguntando lo mismo y obteniendo
+> la misma respuesta. `GET /api/v1/publico/cobertura` sirve las siete fuentes
+> con su estado y las exclusiones fechadas de D16 (contratos menores, BOE,
+> portales autonómicos), y `/cobertura` deja de nombrar PLACSP, TED, Galicia y
+> Euskadi en un párrafo escrito a mano.
+>
+> **Lo que este ítem hace de verdad** es cerrar una divergencia que no fallaba:
+> había siete fuentes en `REGISTERED_SOURCES`, cuatro en la prosa de la página
+> y tres en la tabla de `docs/regional-source-coverage.md`. Ninguna copia se
+> enteraba de que las otras cambiaban. Ahora la única copia es la que el
+> healthcheck ya usa para alertar — la que no puede quedarse atrás sin que
+> alguien lo note. El doc conserva la regla dura (los feeds regionales nunca se
+> suman como cuota ni como censo) y retira su tabla.
+>
+> El tercer estado no es decorativo: `healthcheck` salta las fuentes
+> `fuera_de_alcance`, así que retirar una deja de alertar cada seis horas igual
+> que una retirada mal. Hoy no cambia nada —ninguna está en ese estado— y hay
+> test que lo fija.
+
 **Qué.** `/cobertura` lista las fuentes con estado `activa | opcional | fuera
 de alcance` leído de `REGISTERED_SOURCES`, más la lista estática de lo que
 queda fuera con fecha: contratos menores, BOE, portales autonómicos no
@@ -1062,18 +1243,33 @@ anotan cifras a mano en este fichero.
 | Rutas que la web necesita y solo aceptan API key | 4 (+2 solo `admin` por key) | 0 | grep `require_api_key` en `api/routes/licitaciones.py`; tests de O0.6 |
 | Operaciones publicadas que generan `unknown[]` | 3 | 0 | `check_openapi_contract` recursivo |
 | Controles de UI sin efecto en el backend | 1 (`alpha`) | 0 | test de `source` en O0.6a |
-| Tipos de evento de webhook | 4 | catálogo completo (≥ 12) | `GET /webhooks/event-types` |
+| Tipos de evento de webhook | 4 → **11 medido el 2026-09-08** | catálogo completo (≥ 12) | `GET /webhooks/event-types` |
 | Productores de notificación fuera del despachador | por medir en S4.1 | 0 | ratchet de S4.1 |
 | Trabajos pesados en `BackgroundTasks` de la API | 1 | 0 | grep en `api/routes/` |
-| Ficheros con `user_key` | 60 | ratchet que solo baja; 0 tras T4 | `make status` |
+| Ficheros con `user_key` | 60 → **64 medido el 2026-09-08** | ratchet que solo baja; 0 tras T4 | `make status` |
 | Primitivas de seguimiento | 6 tablas / 22 endpoints | 1 tabla / 3 endpoints, más reglas | `git ls-files`, OpenAPI |
-| Ficheros de `web/src/app` con más de 300 líneas | 12 | 0 | `max-lines` en `make web-lint` |
+| Ficheros de `web/src/app` con más de 300 líneas | 12 → **0 el 2026-09-08** | 0 | `max-lines` en `make web-lint` |
 | Golden set SAP | 27 | ≥ 300 | `wc -l tests/fixtures/golden_set.jsonl` |
 | Formatos de documento soportados | 2 | 5 más OCR | `_SUPPORTED_CONTENT_TYPES` |
 | Docs con hechos que el código desmiente | schema doc + 5 RFC + 5 ítems del backlog | 0 | O0.5 y O0.7 |
 | Organizaciones con NIF y capacidad rellenada | 0 (no existe) | todas las que abren oportunidades | `make product-status` |
 | Precisión de la banda «Caliente» medible | no | sí, con n ≥ 10 | `GET /pursuits/metrics` |
 | Proveedores OAuth | 1 | 2 | `GET /auth/oauth/{provider}/authorize` |
+
+**Dos objetivos que la medición del 2026-09-08 obliga a matizar**, en vez de
+retocar la cifra para que cuadre:
+
+- **Tipos de evento de webhook: 11, y el catálogo está completo.** El «≥ 12» de
+  esta tabla era una estimación; la enumeración que manda es la de S4.1, que
+  lista **diez** tipos, y `shared/events.CATALOGO` los tiene los diez más
+  `solicitud_acceso.creada`. Llegar a doce exigiría inventar dos eventos sin
+  consumidor, que es exactamente lo que este plan vino a dejar de hacer. **El
+  criterio de aceptación de S4.1 se cumple; el número de esta fila no, y es el
+  número el que estaba mal.**
+- **Ficheros con `user_key`: 64, no 60.** El ratchet lo dice desde que se
+  escribió (`scripts/check_user_key_ratchet.py:75-118` anota las tres tandas de
+  excepciones) y `docs/STATUS.md` también. La regla del plan es volver a medir,
+  no corregir a mano: esta es la medición.
 
 ## 8. Lo que NO se hace
 

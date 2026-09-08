@@ -23,6 +23,7 @@ import {
   useRestoreRadarTender,
 } from "@/hooks/use-radar";
 import { daysLeft } from "../_components/radar-shared";
+import { type RadarProximasConsola, useRadarProximas } from "./use-radar-proximas";
 
 /**
  * Estado y acciones de la consola del Radar, fuera del árbol de render.
@@ -38,6 +39,10 @@ import { daysLeft } from "../_components/radar-shared";
 
 export const SEGMENTS = [
   { key: "bandeja", label: "Bandeja" },
+  // T5. Va justo detrás de la bandeja y no al final: es la otra mitad del
+  // Radar —lo que todavía no se puede ofertar— y esconderla tras «Todas» la
+  // convertiría en una pestaña que nadie encuentra.
+  { key: "proximas", label: "Próximas" },
   { key: "siguiendo", label: "Siguiendo" },
   { key: "descartadas", label: "Descartadas" },
   { key: "todas", label: "Todas" },
@@ -59,7 +64,15 @@ export interface RadarConsola {
   rows: RadarTender[];
   active: RadarTender | undefined;
   activeIndex: number;
-  counts: Record<SegmentKey, number>;
+  /**
+   * `null` = todavía no se sabe. Un «0» mientras carga afirma que no hay nada,
+   * que es justo lo que la bandeja «Próximas» no puede decir por defecto: su
+   * caso normal es estar vacía y el usuario no podría distinguir «vacía» de
+   * «aún no ha llegado».
+   */
+  counts: Record<SegmentKey, number | null>;
+  /** Datos de la bandeja «Próximas» (T5), que no comparte forma con las demás. */
+  proximas: RadarProximasConsola;
   signals: ScoringSignals | null | undefined;
   isLoading: boolean;
   error: unknown;
@@ -124,18 +137,29 @@ export function useRadarConsola(): RadarConsola {
   // intersección con un top-24 del que ya salieron.
   const descartadas = useRadarDismissedTenders(dismissedIds, segment === "descartadas");
 
+  // «Próximas» sale de su propio endpoint (`/radar/proximas`): son estados sin
+  // score ni plazo, así que no comparten ni el tipo ni el ranking con el resto
+  // de segmentos. Su contador es el `total` del servidor sobre el corpus, no la
+  // longitud de la página recibida.
+  const proximas = useRadarProximas();
+
   const counts = React.useMemo(
     () => ({
       bandeja: all.filter((t) => !dismissed.has(t.id_externo) && !followedIds.has(t.id_externo))
         .length,
+      proximas: proximas.total,
       siguiendo: all.filter((t) => followedIds.has(t.id_externo)).length,
       descartadas: dismissedIds.length,
       todas: all.length,
     }),
-    [all, dismissed, dismissedIds, followedIds],
+    [all, dismissed, dismissedIds, followedIds, proximas.total],
   );
 
   const rows = React.useMemo(() => {
+    // La bandeja «Próximas» la pinta `RadarProximas` con sus propias filas: no
+    // hay `RadarTender` que devolver aquí, y fabricar uno vacío dejaría al
+    // inspector enseñando la ficha de la señal anterior.
+    if (segment === "proximas") return [];
     // El backend ya excluyó las descartadas; el filtro cliente cubre la ventana
     // entre la mutación optimista y el refetch del ranking.
     const base = segment === "descartadas" ? descartadas.items : all;
@@ -236,6 +260,7 @@ export function useRadarConsola(): RadarConsola {
     active,
     activeIndex,
     counts,
+    proximas,
     signals: data?.signals,
     isLoading,
     error,

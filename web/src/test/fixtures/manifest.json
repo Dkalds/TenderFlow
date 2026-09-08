@@ -224,6 +224,20 @@
       "path": "/api/v1/me/notification-preferences",
       "kind": "response",
       "status": "200"
+    },
+    {
+      "fixture": "pursuits-weights-proposal.json",
+      "method": "GET",
+      "path": "/api/v1/pursuits/weights-proposal",
+      "kind": "response",
+      "status": "200"
+    },
+    {
+      "fixture": "feature-flags.json",
+      "method": "GET",
+      "path": "/api/v1/feature-flags",
+      "kind": "response",
+      "status": "200"
     }
   ]
 }

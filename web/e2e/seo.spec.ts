@@ -100,6 +100,59 @@ test.describe("Superficie pública sin sesión", () => {
     }
   });
 
+  test("la cobertura declarada la sirve el backend, no un párrafo de la página", async ({ page }) => {
+    // El fallo que caza: `/cobertura` nombraba PLACSP, TED, Galicia y Euskadi
+    // a mano cuando el repositorio ya registraba siete fuentes. Una página de
+    // prosa no se entera de que el código cambió, no falla nada, y el
+    // visitante lee una declaración de universo que es falsa.
+    //
+    // Por eso no se comprueba "que haya algo": se pide el inventario a la API
+    // y se exige que la página tenga TODO lo que la API declara. Una fuente
+    // nueva entra en este test por existir.
+    const respuesta = await page.request.get("/api/v1/publico/cobertura");
+    expect(respuesta.status(), "la cobertura es superficie anónima").toBe(200);
+    const declarada = await respuesta.json();
+    expect(declarada.fuentes.length).toBeGreaterThan(0);
+    expect(declarada.fuera_de_alcance.length).toBeGreaterThan(0);
+
+    await page.goto("/cobertura");
+    const cuerpo = await page.locator("body").innerText();
+
+    for (const fuente of declarada.fuentes) {
+      expect(cuerpo, `falta la fuente ${fuente.source_id}`).toContain(fuente.nombre);
+      // El identificador de ingesta va visible a propósito: es el que aparece
+      // en una alerta, así que sirve para hablar de una fuente con soporte.
+      expect(cuerpo, `falta el identificador ${fuente.source_id}`).toContain(fuente.source_id);
+    }
+    for (const excluido of declarada.fuera_de_alcance) {
+      expect(cuerpo, `falta la exclusión ${excluido.ambito}`).toContain(excluido.ambito);
+      // Con fecha: sin ella, "fuera de alcance" se lee como "aún no hemos
+      // llegado", que es una promesa distinta y caduca sola.
+      expect(cuerpo, `la exclusión ${excluido.ambito} no lleva decisión`).toContain(
+        excluido.decision,
+      );
+      await expect(page.locator(`time[datetime="${excluido.desde}"]`).first()).toBeVisible();
+    }
+    // Cómo entra algo que hoy está fuera. Lo declara el backend junto a las
+    // exclusiones, y sin ello la lista es un "no" sin puerta.
+    expect(cuerpo).toContain(declarada.via_de_entrada);
+  });
+
+  test("la cobertura no publica ninguna cifra de cuota", async ({ page }) => {
+    // Regla dura de `docs/regional-source-coverage.md`: los feeds regionales
+    // son cobertura de descubrimiento, cada uno con su ventana y su universo.
+    // Sumarlos daría un número con aspecto de censo, y en la página que declara
+    // el universo del producto ese número sería la mentira más cara posible.
+    await page.goto("/cobertura");
+    const cuerpo = await page.locator("body").innerText();
+
+    expect(cuerpo, "ningún porcentaje en la página de cobertura").not.toMatch(
+      /\d+([.,]\d+)?\s*%/,
+    );
+    // La ausencia se explica en vez de dejarse notar.
+    expect(cuerpo.toLowerCase()).toContain("cuota de mercado");
+  });
+
   test("una URL pública inexistente da un 404 con salida", async ({ page }) => {
     // El 404 subía al de la raíz, cuyo único botón llevaba a /resumen: un 307 a
     // /login para quien acababa de llegar desde un buscador.

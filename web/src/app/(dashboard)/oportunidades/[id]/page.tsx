@@ -18,6 +18,7 @@ import {
   loteEtiqueta,
 } from "@/components/pursuits/pursuit-presenters";
 import { TenderFactSheetPanel } from "@/components/pursuits/tender-fact-sheet";
+import { ChecklistGoNoGo } from "@/components/pursuits/checklist-go-no-go";
 import { AdjudicacionDetectada } from "@/components/pursuits/adjudicacion-detectada";
 import { ExpedientePanel } from "@/components/pursuits/expediente-panel";
 import { PursuitActivity } from "@/components/pursuits/pursuit-activity";
@@ -156,6 +157,10 @@ export default function OpportunityDetailPage() {
                   adjudicación de este expediente. */}
               <AdjudicacionDetectada pursuit={pursuit} />
               <PursuitEditor pursuit={pursuit} />
+              {/* El contraste va **debajo** del formulario: es lo que sostiene
+                  la decisión, no lo que la sustituye, y subirlo empujaría el
+                  único control que el usuario abre esta ficha para tocar. */}
+              <ChecklistGoNoGo pursuitId={pursuit.id} licitacionId={pursuit.licitacion_id} />
             </div>
             <aside className="flex flex-col gap-3.5">
               <Panel>

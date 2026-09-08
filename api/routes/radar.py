@@ -1,12 +1,19 @@
-"""Rutas /api/v1/radar — estado de triaje del Radar, persistido por usuario.
+"""Rutas /api/v1/radar — triaje del Radar y bandeja «Próximas».
 
 El descarte de señales vivía en ``React.useState``: el usuario triaba las 24
 señales de la bandeja, recargaba, y volvían las 24 (invariante 2 de
-``docs/frontend-data-invariants.md``). Estas rutas son su respaldo server-side.
+``docs/frontend-data-invariants.md``). ``/radar/dismissals`` es su respaldo
+server-side.
 
-CRUD simple sobre una tabla user-scoped: llaman a ``db.*`` directamente sin
-capa de servicio intermedia, según ADR-024 (una capa que no transforma nada no
-se añade).
+``/radar/proximas`` (T5) es la otra bandeja de la misma consola: las compras
+que el órgano ya anunció pero que todavía no han salido a licitación. Vive aquí
+y no en ``/licitaciones`` porque necesita una columna que el listado no publica
+—``fecha_inicio``, la fecha prevista— y porque su universo es un juicio del
+Radar, no un filtro más del catálogo.
+
+CRUD simple sobre lecturas ya resueltas en ``db/``: llaman a ``db.*``
+directamente sin capa de servicio intermedia, según ADR-024 (una capa que no
+transforma nada no se añade).
 """
 
 from __future__ import annotations
@@ -14,7 +21,7 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from typing import Any, Literal
 
-from fastapi import APIRouter, Depends, Header, HTTPException, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 from pydantic import BaseModel, Field, model_validator
 
 from api.concurrency import run_db
@@ -23,11 +30,15 @@ from api.tenancy import resolve_organization_ctx
 from db import radar_dismissals
 from db.idempotency import cached_response, store_response
 from db.idempotency import scope as idem_scope
+from db.repositories.licitaciones import LicitacionRepository
 from observability.logging import get_logger
+from services.classification import ESTADOS_PRE_LICITACION
 from shared.cache import invalidate_user_scoped
 from shared.dto import RadarBanda, SafeStr
 
 log = get_logger(__name__)
+
+_lic_repo = LicitacionRepository()
 
 router = APIRouter(prefix="/radar", tags=["radar"])
 
@@ -265,3 +276,127 @@ async def delete_dismissal(
             detail="La señal no estaba descartada.",
         )
     _invalidar_ranking(_user_key(ctx))
+
+
+# ── /radar/proximas — la bandeja «Próximas» (T5) ──────────────────────────
+
+#: De dónde sale ``fecha_prevista``. Hoy tiene un solo valor, y ése es el
+#: motivo de que exista: deja escrito en el contrato que la fecha **se lee** de
+#: ``ProcurementProject/PlannedPeriod/cbc:StartDate`` y no se calcula. El
+#: precedente es ``db/sql_fragments.FECHA_FIN_ORIGEN_SQL``, que nació porque el
+#: 94 % del horizonte de renovaciones se estimaba y la UI lo presentaba como
+#: fecha firme. Si algún día hay una segunda procedencia, el cliente podrá
+#: distinguirlas en vez de enterarse por un cambio silencioso de significado.
+FechaPrevistaOrigen = Literal["planned_period_start"]
+
+
+class RadarProxima(BaseModel):
+    """Una compra anunciada que todavía no ha salido a licitación.
+
+    No lleva ``score`` ni ``band``: el scoring del Radar ordena expedientes con
+    plazo vivo, y aquí no hay plazo al que presentarse. Puntuar estas filas
+    exigiría inventar la dimensión que falta, que es justo lo que ADR-014
+    prohíbe; la bandeja se ordena por fecha prevista y lo dice.
+    """
+
+    id_externo: str
+    titulo: str | None = None
+    organo_contratacion: str | None = None
+    importe: float | None = None
+    #: ``PRE`` o ``CPM``, en crudo. La etiqueta la pone el cliente con su propia
+    #: tabla (``web/src/lib/estados.ts``), igual que en el resto de la API.
+    estado: str | None = None
+    fecha_publicacion: str | None = None
+    #: Fecha prevista de la compra, o ``None`` cuando la fuente no la publica —
+    #: que es el caso mayoritario. ``None`` significa «sin fecha» y no se
+    #: sustituye por una estimación: ver :data:`FechaPrevistaOrigen`.
+    fecha_prevista: str | None = None
+    ccaa: str | None = None
+    cpv: str | None = None
+    url: str | None = None
+    tecnologia: str | None = None
+
+
+class RadarProximasResult(BaseModel):
+    """La bandeja «Próximas» con su universo declarado.
+
+    ``total`` y ``con_fecha_prevista`` son del universo entero, no de la página
+    servida: sin ese denominador el cliente no puede decir «3 de 47 traen
+    fecha» sin derivarlo de lo que le llegó, que es la fabricación de analítica
+    que prohíbe ADR-014.
+    """
+
+    items: list[RadarProxima]
+    #: Cuántos expedientes cumplen el filtro en total.
+    total: int
+    #: De esos ``total``, cuántos traen fecha prevista publicada.
+    con_fecha_prevista: int
+    limit: int
+    offset: int
+    #: Los códigos que definen la bandeja, tal como los aplicó el servidor. El
+    #: cliente no los reescribe: si mañana el universo cambia, la cabecera de la
+    #: pantalla cambia con él en vez de seguir prometiendo lo de ayer.
+    estados: list[str]
+    fecha_prevista_origen: FechaPrevistaOrigen = "planned_period_start"
+
+
+@router.get(
+    "/proximas",
+    summary="Bandeja «Próximas»: anuncios previos y consultas preliminares abiertos",
+    responses={
+        200: {"description": "Compras anunciadas que aún no han salido a licitación"},
+        401: {"description": "No autenticado"},
+    },
+)
+async def get_proximas(
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    _ctx: dict[str, Any] = Depends(require_any_auth),
+) -> RadarProximasResult:
+    """Lista **sólo** ``PRE`` y ``CPM`` abiertos, con su fecha prevista si la hay.
+
+    Los dos códigos salen de ``services.classification.ESTADOS_PRE_LICITACION``
+    y no se teclean aquí. «Abierto» es el mismo juicio que en el resto del
+    Radar (``shared.estados``): por exclusión de los terminales, no por lista
+    blanca.
+
+    **Esta bandeja está casi siempre vacía o muy corta, y eso es el dato.** El
+    spike de T5 (``docs/plans/2026-09-spike-planes-anuales-placsp.md``) midió
+    1.403 entradas del feed vivo de PLACSP: ``PRE`` es el 0,14 % y ``CPM`` ni
+    siquiera está en la lista de estados de sindicación —el ``CPM`` de la base
+    entra por las plataformas autonómicas vía la migración ``v91``—. Una
+    respuesta con cero elementos no es un fallo del endpoint.
+    """
+    items, total, con_fecha = await run_db(
+        _lic_repo.proximas,
+        estados=ESTADOS_PRE_LICITACION,
+        limit=limit,
+        offset=offset,
+    )
+    return RadarProximasResult(
+        items=[
+            RadarProxima(
+                id_externo=str(fila["id_externo"]),
+                titulo=fila.get("titulo"),
+                organo_contratacion=fila.get("organo_contratacion"),
+                importe=fila.get("importe"),
+                estado=fila.get("estado"),
+                fecha_publicacion=fila.get("fecha_publicacion"),
+                # El renombrado es el contrato: la columna se llama
+                # `fecha_inicio` porque guarda el inicio de ejecución previsto,
+                # y en esta bandeja se lee como «para cuándo está prevista la
+                # compra». Es el mismo dato con el nombre que tiene aquí.
+                fecha_prevista=fila.get("fecha_inicio"),
+                ccaa=fila.get("ccaa"),
+                cpv=fila.get("cpv"),
+                url=fila.get("url"),
+                tecnologia=fila.get("tecnologia"),
+            )
+            for fila in items
+        ],
+        total=total,
+        con_fecha_prevista=con_fecha,
+        limit=limit,
+        offset=offset,
+        estados=list(ESTADOS_PRE_LICITACION),
+    )

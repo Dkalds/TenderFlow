@@ -7,6 +7,7 @@ Las queries complejas usan SQLAlchemy Core para construcción type-safe
 from __future__ import annotations
 
 import re
+from collections.abc import Sequence
 from datetime import UTC, date, datetime, timedelta
 from typing import TYPE_CHECKING, Any, Final
 
@@ -185,6 +186,26 @@ _SUMMARY_COLS = [
     licitaciones.c.ml_tecnologias,
     licitaciones.c.ml_proba_max,
     licitaciones.c.ml_tech_principal,
+]
+
+# Columnas de la bandeja «Próximas» del Radar (T5). Es ``_SUMMARY_COLS`` menos
+# lo que un anuncio previo nunca trae (las tres columnas de ML: nadie ha
+# clasificado un expediente que aún no tiene pliego) y **más
+# ``fecha_inicio``**, que es la única razón por la que esta lista no puede salir
+# del listado normal: ``_SUMMARY_COLS`` no la lleva, y sin ella la bandeja no
+# puede decir para cuándo está prevista la compra.
+_PROXIMAS_COLS = [
+    licitaciones.c.id_externo,
+    licitaciones.c.titulo,
+    licitaciones.c.organo_contratacion,
+    licitaciones.c.importe,
+    licitaciones.c.estado,
+    licitaciones.c.fecha_publicacion,
+    licitaciones.c.fecha_inicio,
+    licitaciones.c.ccaa,
+    licitaciones.c.cpv,
+    licitaciones.c.url,
+    licitaciones.c.tecnologia,
 ]
 
 _SORT_MAP: dict[str, Any] = {
@@ -570,6 +591,94 @@ class LicitacionRepository:
             items = rows_to_dicts(c.execute(data_sql, data_params))
 
         return items, total
+
+    def proximas(
+        self,
+        *,
+        estados: Sequence[str],
+        limit: int = 50,
+        offset: int = 0,
+    ) -> tuple[list[dict[str, Any]], int, int]:
+        """Compras anunciadas que aún no han salido a licitación.
+
+        Devuelve ``(items, total, con_fecha_prevista)``. Los tres números son
+        del **universo entero** que cumple el filtro, no de la página: el
+        llamante tiene que poder decir «X de Y traen fecha prevista» sin
+        derivarlo de las filas que le llegaron (ADR-014 — sin denominador no se
+        pinta una proporción).
+
+        ``estados`` lo elige el llamante (la ruta pasa
+        ``services.classification.ESTADOS_PRE_LICITACION``, es decir ``PRE`` y
+        ``CPM``) y no se enumera aquí: este estrato posee el SQL, no el juicio
+        de qué es una compra anunciada.
+
+        «Abierta» significa lo mismo que en el resto del Radar —el predicado de
+        :func:`shared.estados.abierta_core`, que excluye los terminales— y se
+        aplica aunque hoy sea redundante: ni ``PRE`` ni ``CPM`` están en
+        ``ESTADOS_CERRADOS``. Escribirlo es lo que hace que el día que uno de
+        esos dos códigos pase a contar como cerrado, la bandeja lo respete sin
+        que nadie tenga que acordarse de esta consulta.
+
+        La **fecha prevista es ``licitaciones.fecha_inicio``** y sale de
+        ``ProcurementProject/PlannedPeriod/cbc:StartDate``
+        (``scraper/codice_parser.py:526,667``). Es el inicio de ejecución
+        previsto del contrato, no una fecha de licitación: es lo único que la
+        fuente publica para un expediente sin pliego, y no se deriva ni se
+        estima nada a partir de ella. Cuando falta, la fila viaja con ``None``.
+
+        El orden es por fecha prevista ascendente **con las nulas al final**:
+        lo que tiene fecha se lee como un calendario, y lo que no la tiene queda
+        detrás ordenado por publicación reciente en vez de encabezar la lista
+        con un hueco. No se inventa una fecha para las nulas ni se las esconde:
+        son el caso mayoritario y la bandeja tiene que saber pintarlas.
+        """
+        if not estados:
+            return [], 0, 0
+
+        clauses = [
+            _any_of(licitaciones.c.estado, list(estados)),
+            abierta_core(licitaciones.c.estado),
+        ]
+        base: Select[Any] = select(*_PROXIMAS_COLS).select_from(licitaciones).where(and_(*clauses))
+
+        # Un solo viaje para las dos cifras: contarlas por separado permitiría
+        # que discreparan si entra una fila entre las dos consultas, y la
+        # proporción «X de Y» dejaría de sumar. `count(col)` no cuenta NULL,
+        # que es exactamente la definición de «trae fecha prevista».
+        conteos_stmt = (
+            select(
+                func.count(),
+                func.count(licitaciones.c.fecha_inicio),
+            )
+            .select_from(licitaciones)
+            .where(and_(*clauses))
+        )
+        data_stmt = (
+            base.order_by(
+                # `nullslast` explícito y no el defecto del motor: en Postgres
+                # los NULL van últimos en ASC por defecto, pero ese defecto no
+                # es el mismo en DESC, y aquí el orden es parte del contrato de
+                # la bandeja y no una casualidad del dialecto.
+                licitaciones.c.fecha_inicio.asc().nullslast(),
+                licitaciones.c.fecha_publicacion.desc(),
+                # Desempate estable: sin él dos filas con la misma fecha pueden
+                # cambiar de sitio entre páginas y una de ellas no salir nunca.
+                licitaciones.c.id_externo.asc(),
+            )
+            .limit(limit)
+            .offset(offset)
+        )
+
+        conteos_sql, conteos_params = compile_query(conteos_stmt)
+        data_sql, data_params = compile_query(data_stmt)
+
+        with connect_read() as c:
+            fila = c.execute(conteos_sql, conteos_params).fetchone()
+            total = int(fila[0]) if fila else 0
+            con_fecha = int(fila[1]) if fila else 0
+            items = rows_to_dicts(c.execute(data_sql, data_params))
+
+        return items, total, con_fecha
 
     def _list_fts(
         self,

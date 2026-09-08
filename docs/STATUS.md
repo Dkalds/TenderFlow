@@ -68,7 +68,7 @@ Generado: 2026-09-08
 
 ## Ratchet `user_key` — identidad derivada del correo (D18, fase 1)
 
-**66 ficheros** de producción usan `user_key` (lista congelada: 66; solo puede decrecer).
+**68 ficheros** de producción usan `user_key` (lista congelada: 66; solo puede decrecer).
 
 `scripts/check_user_key_ratchet.py` falla ante un fichero nuevo que la use. Llega a cero con T4, que migra a `user_id` con columna doble y lectura dual; hasta entonces cambiar de correo pierde los datos que cuelgan de esa clave. No cuenta `tests/` ni `db/alembic/versions/`.
 
@@ -78,7 +78,7 @@ Generado: 2026-09-08
 
 ## Superficie de la API
 
-**251 endpoints** expuestos.
+**254 endpoints** expuestos.
 
 <details><summary>Ver listado</summary>
 
@@ -100,6 +100,7 @@ Generado: 2026-09-08
 | GET | `/api/v1/analytics/clusters` |
 | GET | `/api/v1/analytics/compare-periods` |
 | GET | `/api/v1/analytics/competitors` |
+| GET | `/api/v1/analytics/forecast/estacionalidad` |
 | GET | `/api/v1/analytics/forecast/retendering` |
 | GET | `/api/v1/analytics/forecast/volume` |
 | GET | `/api/v1/analytics/geography` |
@@ -254,6 +255,7 @@ Generado: 2026-09-08
 | PUT | `/api/v1/organizations/{organization_id}/settings` |
 | POST | `/api/v1/organizations/{organization_id}/transfer-ownership` |
 | GET | `/api/v1/predicciones/calibracion` |
+| GET | `/api/v1/publico/cobertura` |
 | GET | `/api/v1/publico/hubs` |
 | GET | `/api/v1/publico/licitaciones` |
 | GET | `/api/v1/publico/licitaciones/{ref}` |
@@ -295,6 +297,7 @@ Generado: 2026-09-08
 | GET | `/api/v1/radar/dismissals` |
 | POST | `/api/v1/radar/dismissals` |
 | DELETE | `/api/v1/radar/dismissals/{id_externo:path}` |
+| GET | `/api/v1/radar/proximas` |
 | GET | `/api/v1/resoluciones` |
 | GET | `/api/v1/saved-filters` |
 | POST | `/api/v1/saved-filters` |

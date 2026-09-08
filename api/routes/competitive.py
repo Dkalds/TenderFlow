@@ -474,7 +474,7 @@ async def get_partners(
     ),
     ccaa: str | None = Query(None, max_length=100, description="Comunidad Autónoma"),
     limit: int = Query(10, ge=1, le=50),
-    _ctx: dict[str, Any] = Depends(require_any_auth),
+    ctx: dict[str, Any] = Depends(require_any_auth),
 ) -> SugerenciaSocios:
     """F3.3 — el primer consumidor de `services/partners.py`.
 
@@ -496,7 +496,14 @@ async def get_partners(
     # la resolución de identidad en pandas, y agrupar por ella sobre las filas
     # crudas del repositorio era un `KeyError: 'empresa_key'` — un 500 que el
     # fuzzing de contrato reproducía en cuanto la CCAA tenía datos.
-    return await run_db(socios_del_segmento, cpv=cpv, ccaa=ccaa, limit=limit)
+    #
+    # `user_id` va para que S2.1 pueda excluir a la propia organización de sus
+    # propias sugerencias de socio. Quién es esa organización lo resuelve el
+    # servicio, no esta ruta: `api/` no importa `resolve_organization` y lo
+    # audita `test_organization_sql_isolation`.
+    return await run_db(
+        socios_del_segmento, cpv=cpv, ccaa=ccaa, limit=limit, user_id=int(ctx["user_id"])
+    )
 
 
 @router.get(

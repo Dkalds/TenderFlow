@@ -1,0 +1,15 @@
+{
+  "organization_id": 1,
+  "estado": "insuficiente",
+  "minimo_cierres": 20,
+  "n_ganadas": 3,
+  "n_perdidas": 5,
+  "n_cierres": 8,
+  "origen_pesos_actuales": "global",
+  "pesos_actuales": {
+    "encaje": 30,
+    "capacidad": 25
+  },
+  "pesos_propuestos": null,
+  "dimensiones": []
+}

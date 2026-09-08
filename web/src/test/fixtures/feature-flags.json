@@ -1,0 +1,15 @@
+[
+  {
+    "flag": "radar_proximas",
+    "enabled": true,
+    "rollout_pct": 100,
+    "description": "Panel de próximos vencimientos en el Radar.",
+    "updated_at": "2026-09-08T10:00:00Z"
+  },
+  {
+    "flag": "ficha_pliego_async",
+    "enabled": false,
+    "rollout_pct": 0,
+    "updated_at": null
+  }
+]

@@ -28,6 +28,7 @@ from services.competitive.renovaciones import proximas_renovaciones
 from services.ficha_pdf import BloqueFicha, FichaOportunidad, construir_pdf
 from services.kit_presentacion import KitPresentacion, construir_kit, marcar_item
 from services.organizations import require_active_member, resolve_organization
+from services.pursuit_awards import resultado_sugerido
 from services.watchlist_rules import list_rules
 from shared.dates import a_fecha
 from shared.dto import (
@@ -214,13 +215,46 @@ def _notificar_asignacion(row: dict[str, Any], *, actor_user_id: int) -> None:
         )
 
 
-def _adjudicacion_detectada(row: dict[str, Any]) -> PursuitAdjudicacionDetectada | None:
+def _resultado_sugerido(
+    organization_id: int | None,
+    adjudicatarios: Sequence[PursuitAdjudicatario],
+) -> Literal["won", "lost"] | None:
+    """La propuesta de cierre por NIF (S2.1), o ``None`` si no se puede afirmar.
+
+    ``organization_id`` llega opcional porque el ámbito lo resuelve quien llama
+    (:func:`_detalle`, con la organización ya validada) y no la fila: sin
+    organización resuelta no hay identidad fiscal contra la que cruzar, y lo
+    honesto es no proponer nada. ``None`` significa siempre «no lo sé», nunca
+    «no ganó».
+
+    Nunca lanza: la propuesta es información añadida sobre una adjudicación que
+    la ficha ya muestra, y quedarse sin ficha porque falló la lectura de
+    ``organization_nifs`` sería un mal negocio —el mismo criterio que
+    :func:`_lead_time_por_organo`—.
+    """
+    if organization_id is None:
+        return None
+    try:
+        return resultado_sugerido(organization_id, adjudicatarios)
+    except Exception as exc:
+        log.warning("pursuit_resultado_sugerido_error", error=str(exc)[:200])
+        return None
+
+
+def _adjudicacion_detectada(
+    row: dict[str, Any], *, organization_id: int | None = None
+) -> PursuitAdjudicacionDetectada | None:
     """Lo que la ingesta ya sabe del resultado del expediente, o ``None``.
 
     Se calcula en lectura y no se persiste: la adjudicación vive en su tabla y
     puede corregirse con la siguiente pasada; copiarla al pursuit congelaría un
     dato que no es suyo. Las filas se agregan lo justo para la ficha —importe
     total y máximo de ofertas— sin resolver a empresa canónica.
+
+    Desde S2.1 la ficha además llega con el resultado **propuesto**
+    (``resultado_sugerido``), cruzando los NIFs declarados por la organización
+    con los de los adjudicatarios publicados. Propone y no cierra: lo que se
+    persiste sigue siendo lo que confirma una persona.
     """
     licitacion_id = str(row["licitacion_id"])
     filas = _adj_repo.list_for_licitacion(licitacion_id)
@@ -229,23 +263,25 @@ def _adjudicacion_detectada(row: dict[str, Any]) -> PursuitAdjudicacionDetectada
     licitacion = _lic_repo.get_by_id(licitacion_id) or {}
     importes = [float(f["importe_adjudicado"]) for f in filas if f.get("importe_adjudicado")]
     ofertas = [int(f["n_ofertas_recibidas"]) for f in filas if f.get("n_ofertas_recibidas")]
+    adjudicatarios = [
+        PursuitAdjudicatario(
+            nombre=str(f.get("nombre") or "Adjudicatario sin nombre publicado"),
+            nif=f.get("nif"),
+            importe_adjudicado=f.get("importe_adjudicado"),
+            fecha_adjudicacion=(
+                str(f["fecha_adjudicacion"])[:10] if f.get("fecha_adjudicacion") else None
+            ),
+            n_ofertas_recibidas=f.get("n_ofertas_recibidas"),
+            lote_id=f.get("lote_id"),
+        )
+        for f in filas
+    ]
     return PursuitAdjudicacionDetectada(
         estado_licitacion=licitacion.get("estado"),
-        adjudicatarios=[
-            PursuitAdjudicatario(
-                nombre=str(f.get("nombre") or "Adjudicatario sin nombre publicado"),
-                nif=f.get("nif"),
-                importe_adjudicado=f.get("importe_adjudicado"),
-                fecha_adjudicacion=(
-                    str(f["fecha_adjudicacion"])[:10] if f.get("fecha_adjudicacion") else None
-                ),
-                n_ofertas_recibidas=f.get("n_ofertas_recibidas"),
-                lote_id=f.get("lote_id"),
-            )
-            for f in filas
-        ],
+        adjudicatarios=adjudicatarios,
         importe_total=sum(importes) if importes else None,
         n_ofertas=max(ofertas) if ofertas else None,
+        resultado_sugerido=_resultado_sugerido(organization_id, adjudicatarios),
         cierre_pendiente=str(row.get("status")) not in _ESTADOS_TERMINALES,
     )
 
@@ -255,7 +291,7 @@ def _detalle(row: dict[str, Any], organization_id: int, pursuit_id: int) -> Purs
         {
             **row,
             "events": _repo.list_events(organization_id, pursuit_id),
-            "adjudicacion": _adjudicacion_detectada(row),
+            "adjudicacion": _adjudicacion_detectada(row, organization_id=organization_id),
         }
     )
     # La fecha prevista (F4.4) también en el detalle: la fila del repositorio no
