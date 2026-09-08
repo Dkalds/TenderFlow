@@ -58,7 +58,11 @@ export const SECCIONES: SeccionEvidencia[] = [
   {
     titulo: "Calidad visible",
     texto: [
-      "Las fuentes oficiales no siempre publican órgano, importe, CPV o documentos con la misma completitud. TenderFlow conserva los vacíos, mide su cobertura y evita rellenarlos con estimaciones presentadas como hechos.",
+      // Ojo al reescribir esto: `lib/legal-placeholder.ts` busca sus frases por
+      // subcadena, y la versión anterior decía «evita rellenarlos», que contiene
+      // «a rellenar» y hacía saltar el detector de texto de relleno sobre un
+      // párrafo que dice justo lo contrario. El test de esta carpeta lo fija.
+      "Las fuentes oficiales no siempre publican órgano, importe, CPV o documentos con la misma completitud. TenderFlow conserva los vacíos, mide su cobertura y no los tapa con estimaciones presentadas como hechos.",
     ],
     puntos: [
       "La señal tecnológica distingue título, clasificador y pliegos cuando están disponibles.",
