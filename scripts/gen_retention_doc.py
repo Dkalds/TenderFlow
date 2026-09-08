@@ -17,12 +17,27 @@ Uso::
 
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
+
+# `ENV=dev` por defecto, y antes de que nada importe `config.settings`.
+#
+# `POLITICA_RETENCION` cuelga de `Settings`, que en `ENV=prod` exige
+# `SIGNING_KEY` para firmar tokens CSRF y OAuth. Eso es correcto para el
+# servicio y absurdo para esto: generar una tabla de plazos en un documento no
+# firma nada. Sin este defecto, `make check-agent-docs` reventaba en CI con un
+# `ValidationError` de un secreto que el runner no tiene ni debe tener —y el
+# mensaje hablaba de tokens CSRF, que no tiene nada que ver con lo que falla—.
+#
+# `setdefault` y no asignación: quien exporte `ENV` a propósito manda.
+# Es el mismo criterio que `scripts/check_agent_docs.py` aplica al invocar
+# `gen_scopes_doc.py`.
+os.environ.setdefault("ENV", "dev")
 
 _DOC = _REPO_ROOT / "docs" / "SECURITY.md"
 

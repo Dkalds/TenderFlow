@@ -18407,11 +18407,15 @@ export interface operations {
     delete_my_session_api_v1_me_sessions__session_id__delete: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
             path: {
                 session_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
