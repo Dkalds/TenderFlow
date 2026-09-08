@@ -130,17 +130,32 @@ coincidencia y `.first()` acertaba; tras el `reload()` —que restaura la
 selección— hay dos, y la primera puede ser la del panel, cuyo ancestro no tiene
 `data-active`.
 
-La búsqueda pasa a acotarse al contenedor `[data-slot="radar-lista"]`, y el
-botón se toma por `[data-slot="radar-fila-seleccion"]`. Un intento intermedio lo
-localizaba por su nombre accesible (`Seleccionar {título}`) y **también falló**,
-esta vez rápido y con mensaje —«element(s) not found»—: ese nombre lo compone el
-título del expediente, así que atarse a él hace que el test dependa de que la
-cadena del seed no cambie ni un carácter. Los `data-slot` son los que el propio
-componente declara para esto.
+Dos intentos de arreglar eso fallaron antes de dar con el bueno, y los dos
+enseñan algo. El primero localizaba el botón por su **nombre accesible**
+(`Seleccionar {título}`): falló rápido y con mensaje —«element(s) not found»—,
+porque ese nombre lo compone el título del expediente y atarse a él hace que el
+test dependa de que la cadena del seed no cambie ni un carácter. El segundo
+acotaba la búsqueda al contenedor `[data-slot="radar-lista"]`, y falló por lo
+que viene abajo. Lo que acabó funcionando es localizar la fila por
+`[data-active]` —lo que la **define**, y que en esa pantalla no emite nada más—
+y pulsar `[data-slot="radar-fila-seleccion"]`.
+
+Y un tercer motivo, este de producto y no del test: **#289 cambió el Radar bajo
+él**. `use-radar-consola.ts` filtra ahora el segmento `bandeja` con
+`!followedIds.has(...)`, o sea que **seguir un expediente lo saca de la lista** y
+lo manda a «Siguiendo»; el test buscaba la fila recién seguida justo donde el
+producto acababa de decidir que no estuviera; ahora cambia de segmento antes de
+deshacerlo, que es lo que hace una persona. Ese mismo cambio añadió el segmento
+«Próximas», y `RadarLista` y `RadarProximas` son **excluyentes** —cuando una está
+montada la otra no existe en el DOM—: por eso acotar por contenedor tampoco
+valía.
 
 La lección, que es la misma que ya está escrita arriba con otras palabras: un
 `click()` de Playwright sobre un locator que no resuelve **no falla, espera**.
 Un test que muere por timeout no dice «esto está roto», dice «pregunta por qué».
+Y un test E2E que lleva meses en `fixme` acumula varias causas a la vez: aquí
+fueron cuatro —el `inert`, el presupuesto, el título duplicado y el filtro de la
+bandeja—, y cada pasada de CI solo revela la primera.
 
 ### Las rutas sí se prueban sin Postgres
 
@@ -353,7 +368,7 @@ Las que siguen sin poder medirse aquí —cobertura de `organo_id`, tamaño de l
 imagen, duración de `test-integration`, `importe_tipo` nulo— necesitan Postgres o
 el runner de CI, y están en la lista de bloqueos.
 
-## El gate que sigue en rojo: cobertura del diff
+## El gate de cobertura del diff, ya cerrado
 
 CI exige **≥ 80 % de cobertura sobre las líneas que la PR cambia**
 (`diff-cover`, job `Tests (Postgres)`). En la tercera pasada iba al **65 %**:
@@ -410,10 +425,10 @@ repositorios (378 líneas de SQL) y los `downgrade()` de las catorce migraciones
 que son la mayor parte de las 129 restantes de `db/**`. Escribir esos a ciegas
 es lo que produjo los tres bugs de la tercera pasada, así que no se hace.
 
-El umbral son 625 líneas y quedan 632: **siete**. Los dos últimos lotes de tests
-—las ramas degradadas de `_resolver_menciones` y `_tier_limit`— entraron después
-de esa medición y valen más que eso, así que el gate lo cierra la siguiente
-pasada de CI. Que quede escrito el número exacto y no «casi»: 632 y 625.
+**Cerrado el 2026-09-08**: CI mide **622 líneas sin cubrir sobre 3127, el 80 %**,
+y el job `Tests (Postgres)` pasa —6437 tests, 0 fallando—. El umbral son 625, así
+que el margen es de tres líneas: quien añada código nuevo a este PR mire el
+número antes de darlo por hecho.
 
 ## Lo que bloquea al resto
 
