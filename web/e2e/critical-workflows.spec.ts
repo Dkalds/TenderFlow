@@ -63,10 +63,16 @@ test.describe("Flujos de trabajo críticos", () => {
 
       await expect.poll(() => watchlistContains(page, SEED_LICITACION.radarId)).toBe(true);
 
-      // Se vuelve a seleccionar tras recargar en vez de dar por hecho el estado:
-      // «Dejar de seguir» está tan `inert` como lo estaba «Seguir», y si la
-      // recarga restaura la selección, volver a pulsar no cambia nada.
+      // **Seguir un expediente lo saca de la bandeja.** Lo introdujo #289:
+      // `use-radar-consola.ts` filtra el segmento `bandeja` con
+      // `!followedIds.has(...)`, así que buscar ahí la fila que se acaba de
+      // seguir es buscarla donde el producto acaba de decidir que no esté. Vive
+      // en «Siguiendo», y ahí es donde se deshace.
+      //
+      // Se vuelve a seleccionar además de cambiar de segmento: «Dejar de
+      // seguir» está tan `inert` como lo estaba «Seguir».
       await page.reload();
+      await page.getByRole("button", { name: /^Siguiendo/ }).click();
       const filaTrasRecarga = await seleccionarFila(page, SEED_LICITACION.tituloRadar);
       await filaTrasRecarga.getByRole("button", { name: /^Dejar de seguir / }).click();
       await expect.poll(() => watchlistContains(page, SEED_LICITACION.radarId)).toBe(false);
@@ -225,17 +231,18 @@ async function deleteSavedView(page: Page, context: BrowserContext, name: string
  * botón en capa que introdujo C7.1 (`aria-label="Seleccionar …"`).
  */
 async function seleccionarFila(page: Page, titulo: string): Promise<Locator> {
-  // Se busca dentro de `radar-lista` y no en la página entera porque al
-  // seleccionar una fila se abre el inspector, que **repite** el título en el
-  // panel lateral: con la lista sin selección había una coincidencia y
-  // `.first()` acertaba, pero tras el `reload()` —que restaura la selección—
-  // hay dos, y el ancestro del panel no tiene `data-active`.
+  // `[data-active]` es lo que **define** una fila del Radar, y en esta pantalla
+  // no lo lleva nada más (`radar-fila.tsx` es su único emisor). Localizarla así
+  // resuelve de una vez los dos locators que fallaron antes: no depende del
+  // título —que el inspector repite en el panel lateral en cuanto hay una fila
+  // activa, y por eso un `getByText(...).first()` se iba al panel tras el
+  // `reload()`— ni del contenedor, que cambió al añadirse el segmento
+  // «Próximas».
   //
-  // El botón se toma por su `data-slot` y no por su nombre accesible: el nombre
-  // lo compone el título del expediente, así que atarse a él hace que el test
-  // dependa de que la cadena del seed no cambie ni un carácter.
-  const lista = page.locator('[data-slot="radar-lista"]');
-  const fila = lista.getByText(titulo).first().locator("xpath=ancestor::*[@data-active][1]");
+  // El botón se toma por su `data-slot` y no por su nombre accesible: ese
+  // nombre lo compone el título del expediente, así que atarse a él hace que el
+  // test dependa de que la cadena del seed no cambie ni un carácter.
+  const fila = page.locator("[data-active]").filter({ hasText: titulo }).first();
   await expect(fila, `la fila «${titulo}» no aparece en el Radar`).toBeVisible({
     timeout: 20_000,
   });
