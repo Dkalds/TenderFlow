@@ -92,19 +92,35 @@ test.describe("Regresión visual de la portada", () => {
     "Sin baselines commiteados todavía: ver la cabecera de este fichero"
   );
 
-  test("la portada coincide con su baseline", async ({ page }) => {
-    await page.goto("/");
-    await expect(page.locator("main").first()).toBeVisible({ timeout: 20000 });
-    await page.waitForLoadState("networkidle");
+  /**
+   * Los dos temas, no solo el oscuro (C7.7).
+   *
+   * La portada la ve un desconocido con la preferencia que tenga su sistema, y
+   * hasta 2026-09 el único baseline era el del tema por defecto: una regresión
+   * en claro —un contraste que se pierde, una captura que no encaja con el
+   * fondo— no la veía nadie hasta que alguien la abría con el sistema en claro.
+   *
+   * El tema se fuerza con `emulateMedia` y no tocando `localStorage` porque los
+   * providers son `next-themes` con `defaultTheme="system"`: emular la
+   * preferencia del sistema es exactamente lo que hará el navegador de quien
+   * llegue. Mismo criterio que `capturas-landing.spec.ts`.
+   */
+  for (const colorScheme of ["dark", "light"] as const) {
+    test(`la portada en ${colorScheme} coincide con su baseline`, async ({ page }) => {
+      await page.emulateMedia({ colorScheme });
+      await page.goto("/");
+      await expect(page.locator("main").first()).toBeVisible({ timeout: 20000 });
+      await page.waitForLoadState("networkidle");
 
-    await expect(page).toHaveScreenshot("portada.png", {
-      fullPage: true,
-      maxDiffPixelRatio: 0.02,
-      // La franja de cifras trae tres números del corpus y la fecha del último
-      // expediente: cambian con la ingesta y no son diseño. Enmascararlos es lo
-      // que hace que este baseline dure más de un día.
-      mask: [page.getByLabel("El corpus en cifras")],
-      animations: "disabled",
+      await expect(page).toHaveScreenshot(`portada-${colorScheme}.png`, {
+        fullPage: true,
+        maxDiffPixelRatio: 0.02,
+        // La franja de cifras trae tres números del corpus y la fecha del último
+        // expediente: cambian con la ingesta y no son diseño. Enmascararlos es lo
+        // que hace que este baseline dure más de un día.
+        mask: [page.getByLabel("El corpus en cifras")],
+        animations: "disabled",
+      });
     });
-  });
+  }
 });

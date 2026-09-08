@@ -32,7 +32,7 @@ en el mensaje del commit de fusión, no aquí.
 | Ítem | Estado | Motivo |
 |---|---|---|
 | C7.1 remediación axe | **1 de 4 reglas** | `nested-interactive` cerrada: la bandeja del Radar pasa al patrón de rejilla de la APG (`grid` / `row` / `gridcell`) y la regla sale de `disableRules`, junto con su `test.fixme`. Las otras tres —`color-contrast`, `scrollable-region-focusable`, `target-size`— exigen **medir** sobre la aplicación pintada: una corrida de axe con Postgres sembrado y Playwright. Ficha en el backlog. |
-| C7.7 captura clara | **A medias** | El generador ya emite los cuatro `.webp` (ancha/estrecha × oscuro/claro). Faltan los binarios claros y el `<source media="(prefers-color-scheme: light)">`, que van en la misma corrida porque un `.webp` sin import es peso muerto. |
+| C7.7 captura clara | **Código completo, faltan los artefactos** | Sus dos criterios de aceptación están implementados: `capturas:landing` emite las cuatro variantes y `visual.spec.ts` cubre la portada en oscuro y claro. Lo que falta son los dos `.webp` claros y el `<source media="(prefers-color-scheme: light)">`, que no son código sino capturas de la aplicación levantada, y entran en la misma corrida que las genere. |
 | C2.5 triaje de avisos | **Acción del mantenedor** | La política con plazos ya está en `docs/SECURITY.md`; cerrar los avisos abiertos es trabajo en la pestaña de seguridad de GitHub, como el propio ítem dice. |
 
 `docs/database-schema.md` sigue describiendo el esquema hasta

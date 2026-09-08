@@ -164,11 +164,16 @@ porque falte decidir nada.
 ### [P3] C7.7 — faltan las capturas claras de la portada
 
 - **Área:** web/e2e/capturas-landing.spec.ts, web/src/app/(publico)/_assets
-- **Hecho:** el generador ya produce las cuatro variantes (ancha y estrecha ×
-  oscuro y claro).
+- **Hecho:** los **dos criterios de aceptación del ítem**, que son de código:
+  `capturas:landing` produce las cuatro variantes (ancha y estrecha × oscuro y
+  claro), y `visual.spec.ts` cubre la portada en los dos temas —hasta ahora solo
+  tenía baseline del tema por defecto, así que una regresión en claro no la veía
+  nadie hasta abrirla con el sistema en claro—.
 - **Falta:** los dos `.webp` claros y el `<source media="(prefers-color-scheme:
-  light)">` de `CapturaProducto`. Van en la misma corrida, por lo que ya avisaba
-  el propio spec: un `.webp` que ningún import consume es peso muerto.
+  light)">` de `CapturaProducto`. Son **artefactos**, no código: hay que tomarlos
+  contra la aplicación levantada. Van en la misma corrida que los genere, por lo
+  que ya avisaba el propio spec: un `.webp` que ningún import consume es peso
+  muerto, y un `<source>` que apunta a un fichero inexistente rompe la imagen.
 - **Cómo cerrarlo:** con el stack completo levantado (Postgres sembrado, API y
   `npm run dev`), `npm run capturas:landing` y commitear los cuatro ficheros con
   el `<source>` en el mismo cambio.
