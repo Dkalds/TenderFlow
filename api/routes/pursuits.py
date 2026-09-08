@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from typing import Any
+from urllib.parse import quote
 
 from fastapi import (
     APIRouter,
@@ -12,6 +13,7 @@ from fastapi import (
     Header,
     HTTPException,
     Query,
+    Request,
     Response,
     status,
 )
@@ -55,6 +57,17 @@ from services.organizations import (
     transferir_propiedad,
     upsert_membership,
 )
+from services.pursuit_attachments import (
+    AttachmentError,
+    AttachmentNotFoundError,
+    AttachmentStoreError,
+)
+from services.pursuit_attachments import borrar as borrar_adjunto
+from services.pursuit_attachments import descargar as descargar_adjunto
+from services.pursuit_attachments import firmar_descarga as firmar_descarga_adjunto
+from services.pursuit_attachments import listar as listar_adjuntos
+from services.pursuit_attachments import marcar_indexable as marcar_adjunto_indexable
+from services.pursuit_attachments import subir as subir_adjunto
 from services.pursuit_comments import (
     PursuitCommentNotFoundError,
     add_comment,
@@ -102,6 +115,10 @@ from shared.dto import (
     OrganizationMembershipUpsert,
     OrganizationSummary,
     PipelineAgendaResponse,
+    PursuitAttachmentDownloadLink,
+    PursuitAttachmentIndexable,
+    PursuitAttachmentListResponse,
+    PursuitAttachmentOut,
     PursuitCommentCreate,
     PursuitCommentListResponse,
     PursuitCommentOut,
@@ -879,6 +896,114 @@ async def get_actividad(
         raise HTTPException(status_code=403, detail=str(exc)) from exc
 
 
+# Adjuntos propios de la oportunidad (C6.3). Las tres rutas que no cuelgan de
+# `{pursuit_id}` van AQUÍ, delante de `/pursuits/{pursuit_id}`: FastAPI resuelve
+# por orden de declaración, así que una literal bajo `/pursuits/` declarada
+# después nunca se alcanza — la petición entra por la paramétrica con el valor
+# "attachments" y muere en un 422 que no dice nada.
+@router.get(
+    "/pursuits/attachments/{attachment_id}/descarga",
+    response_class=Response,
+    summary="Descargar un adjunto propio con enlace firmado",
+    responses={
+        200: {"content": {"application/octet-stream": {}}, "description": "El fichero"},
+        403: {"description": "Firma inválida o caducada"},
+        404: {"description": "El adjunto ya no existe"},
+    },
+)
+async def download_pursuit_attachment(
+    attachment_id: int,
+    exp: int = Query(..., description="Epoch de caducidad; va dentro de la firma"),
+    sig: str = Query(..., max_length=400, description="Firma del par (adjunto, caducidad)"),
+) -> Response:
+    """Sirve el binario a quien traiga un enlace vigente.
+
+    **Sin sesión a propósito.** El navegador tiene que poder pedir el fichero
+    directamente, y una descarga que arrastra la cookie no es lo que se quiere.
+    La autorización es la firma, que nombra el adjunto concreto y su caducidad:
+    cambiar el `exp` de la URL invalida la firma en vez de alargar el permiso.
+
+    403 y no 401 cuando ha caducado: no falta credencial, es que la que hay ya
+    no vale, y ofrecer un `WWW-Authenticate` aquí sólo confundiría al cliente.
+    """
+    try:
+        datos, filename, content_type = await run_db(
+            descargar_adjunto, attachment_id, int(exp), sig
+        )
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except AttachmentNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except AttachmentStoreError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    # `filename*` en UTF-8: los nombres llevan tildes y `filename=` a secas los
+    # entrega mojibake en Windows.
+    disposicion = f"attachment; filename*=UTF-8''{quote(filename)}"
+    return Response(
+        content=datos,
+        media_type=content_type,
+        headers={"Content-Disposition": disposicion},
+    )
+
+
+@router.put(
+    "/pursuits/attachments/{attachment_id}/indexable",
+    response_model=PursuitAttachmentOut,
+    summary="Autorizar (o retirar) que el asistente lea un adjunto",
+    responses={403: {"description": "No perteneces a esa organización"}, 404: {}},
+)
+async def put_pursuit_attachment_indexable(
+    attachment_id: int,
+    body: PursuitAttachmentIndexable,
+    organization_id: int | None = Query(default=None, ge=1),
+    ctx: dict[str, Any] = Depends(require_any_auth),
+) -> PursuitAttachmentOut:
+    """Opt-in por fichero, nunca por organización.
+
+    La decisión no es la misma para el DEUC —que no dice nada que el pliego no
+    diga— que para la propuesta económica, y una preferencia de organización
+    obligaría a tomarla una vez para las dos.
+    """
+    try:
+        return await run_db(
+            marcar_adjunto_indexable,
+            int(ctx["user_id"]),
+            attachment_id,
+            indexable=body.indexable,
+            organization_id=organization_id,
+        )
+    except OrganizationAccessError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except AttachmentNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.delete(
+    "/pursuits/attachments/{attachment_id}",
+    status_code=204,
+    summary="Borrar un adjunto propio",
+    responses={403: {"description": "No perteneces a esa organización"}, 404: {}},
+)
+async def delete_pursuit_attachment(
+    attachment_id: int,
+    organization_id: int | None = Query(default=None, ge=1),
+    ctx: dict[str, Any] = Depends(require_any_auth),
+) -> Response:
+    """Quita la fila y su objeto del bucket."""
+    try:
+        await run_db(
+            borrar_adjunto,
+            int(ctx["user_id"]),
+            attachment_id,
+            organization_id=organization_id,
+        )
+    except OrganizationAccessError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except AttachmentNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return Response(status_code=204)
+
+
 @router.get("/pursuits/{pursuit_id}", response_model=PursuitDetail)
 async def get_pursuit_detail(
     pursuit_id: int,
@@ -1124,6 +1249,137 @@ async def delete_pursuit_comment(
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except (PursuitNotFoundError, PursuitCommentNotFoundError) as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.get(
+    "/pursuits/{pursuit_id}/attachments",
+    response_model=PursuitAttachmentListResponse,
+    summary="Adjuntos propios de la oportunidad (C6.3)",
+    responses={403: {"description": "No perteneces a esa organización"}, 404: {}},
+)
+async def get_pursuit_attachments(
+    pursuit_id: int,
+    organization_id: int | None = Query(default=None, ge=1),
+    ctx: dict[str, Any] = Depends(require_any_auth),
+) -> PursuitAttachmentListResponse:
+    """Lo que el equipo ha subido, más los límites que acepta subir.
+
+    Los límites viajan en la respuesta para que el formulario pueda rechazar un
+    fichero grande **antes** de subirlo, y no tras dos minutos de espera.
+    """
+    try:
+        return await run_db(
+            listar_adjuntos,
+            int(ctx["user_id"]),
+            pursuit_id,
+            organization_id=organization_id,
+        )
+    except OrganizationAccessError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except PursuitNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.post(
+    "/pursuits/{pursuit_id}/attachments",
+    response_model=PursuitAttachmentOut,
+    status_code=201,
+    summary="Subir un adjunto propio",
+    responses={
+        403: {"description": "No perteneces a esa organización"},
+        404: {"description": "La oportunidad no existe en este espacio"},
+        413: {"description": "El fichero supera el máximo"},
+        415: {"description": "Tipo de fichero no admitido"},
+        503: {"description": "No hay almacén de objetos configurado"},
+    },
+)
+async def post_pursuit_attachment(
+    pursuit_id: int,
+    request: Request,
+    filename: str = Query(..., max_length=200, description="Nombre con el que se descargará"),
+    organization_id: int | None = Query(default=None, ge=1),
+    ctx: dict[str, Any] = Depends(require_any_auth),
+) -> PursuitAttachmentOut:
+    """Guarda un documento del equipo junto a la oportunidad.
+
+    **El cuerpo es el fichero en crudo**, con su tipo en `Content-Type` y su
+    nombre en `?filename=`. No es `multipart/form-data` por una razón concreta:
+    ese formato exige `python-multipart`, una dependencia de runtime que la API
+    no declara hoy, y añadirla para subir un fichero por petición es pagar un
+    paquete —y su superficie de parseo— por un sobre que aquí no lleva nada más.
+    Un cuerpo binario es además lo que un `fetch(file)` manda sin envolver.
+
+    El binario se lee entero en memoria a propósito: el tope son 25 MB, que cabe
+    de sobra, y trocearlo obligaría a escribir en el bucket antes de saber si el
+    fichero pasa los límites — o sea, a dejar basura cada vez que alguien
+    arrastra el ZIP equivocado.
+
+    Subir dos veces el mismo fichero no duplica nada: la clave del objeto es su
+    huella y la fila tiene única `(pursuit_id, sha256)`.
+    """
+    contenido = await request.body()
+    try:
+        return await run_db(
+            subir_adjunto,
+            int(ctx["user_id"]),
+            pursuit_id,
+            contenido=contenido,
+            filename=filename,
+            content_type=request.headers.get("content-type", ""),
+            organization_id=organization_id,
+        )
+    except OrganizationAccessError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except PursuitNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except AttachmentError as exc:
+        # 413 y 415 dicen QUÉ límite se pasó; un 422 genérico obligaría a leer
+        # el texto para saber si hay que comprimir o convertir.
+        codigo = 413 if "bytes" in str(exc) else 415
+        raise HTTPException(status_code=codigo, detail=str(exc)) from exc
+    except AttachmentStoreError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@router.post(
+    "/pursuits/{pursuit_id}/attachments/{attachment_id}/enlace",
+    response_model=PursuitAttachmentDownloadLink,
+    summary="Enlace de descarga firmado y con caducidad",
+    responses={403: {"description": "No perteneces a esa organización"}, 404: {}},
+)
+async def post_pursuit_attachment_link(
+    pursuit_id: int,
+    attachment_id: int,
+    organization_id: int | None = Query(default=None, ge=1),
+    ctx: dict[str, Any] = Depends(require_any_auth),
+) -> PursuitAttachmentDownloadLink:
+    """Emite el enlace que la pestaña Expediente pone detrás del nombre.
+
+    Se emite **con sesión** y se consume **sin ella**: aquí es donde se
+    comprueba que quien pide pertenece a la organización dueña del adjunto, y
+    por eso la descarga puede prescindir de la cookie.
+
+    `POST` y no `GET` porque emitir una credencial de acceso —aunque dure quince
+    minutos— no es una lectura: no debe cachearse ni quedarse en el historial.
+    """
+    try:
+        adjuntos = await run_db(
+            listar_adjuntos,
+            int(ctx["user_id"]),
+            pursuit_id,
+            organization_id=organization_id,
+        )
+    except OrganizationAccessError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except PursuitNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    if not any(a.id == attachment_id for a in adjuntos.items):
+        raise HTTPException(status_code=404, detail="El adjunto no existe en esta oportunidad.")
+
+    token, expira = firmar_descarga_adjunto(attachment_id)
+    ruta = f"/api/v1/pursuits/attachments/{attachment_id}/descarga"
+    firma = quote(token, safe="")
+    return PursuitAttachmentDownloadLink(url=f"{ruta}?exp={expira}&sig={firma}", expira=expira)
 
 
 @router.get("/pursuits/{pursuit_id}/tasks", response_model=PursuitTaskListResponse)

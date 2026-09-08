@@ -467,6 +467,42 @@ def model_artifact_key(asset_name: str) -> str | None:
     return f"{prefijo or DEFAULT_MODEL_PREFIX}{nombre}"
 
 
+#: Prefijo de los adjuntos propios de una oportunidad (C6.3). Separado del de
+#: los pliegos por la misma razón que el de modelos: su ciclo de vida es otro.
+#: Un pliego es dato público que la retención purga a los 24 meses; la propuesta
+#: que preparó el equipo es dato corporativo y se borra cuando se borra la
+#: organización, no cuando el expediente envejece.
+DEFAULT_PURSUIT_PREFIX: Final = "adjuntos/"
+
+
+def pursuit_attachment_key(organization_id: int, sha256: str) -> str | None:
+    """Clave de un adjunto propio: ``adjuntos/{organization_id}/{sha256}``.
+
+    La organización va **en la clave** y no sólo en la fila. Dos motivos: el
+    listado del bucket por prefijo se puede acotar a un cliente sin consultar la
+    base —que es lo que hace barato responder a un borrado de organización— y un
+    error de programación que pierda el ``WHERE`` no puede entregar el objeto de
+    otro equipo, porque su ruta ni siquiera se puede construir.
+
+    El sha256 y no el id de la fila: el mismo fichero subido dos veces es un
+    objeto, no dos. ``None`` si la huella no es un token seguro — nunca se
+    construye una clave con texto que venga de fuera.
+    """
+    huella = (sha256 or "").strip().lower()
+    if not huella or not _SAFE_TOKEN.match(huella):
+        return None
+    try:
+        org = int(organization_id)
+    except (TypeError, ValueError):
+        return None
+    if org <= 0:
+        return None
+    prefijo = os.environ.get("PURSUIT_BLOB_PREFIX", DEFAULT_PURSUIT_PREFIX).strip()
+    if prefijo and not prefijo.endswith("/"):
+        prefijo += "/"
+    return f"{prefijo or DEFAULT_PURSUIT_PREFIX}{org}/{huella}"
+
+
 def store_stats() -> ObjectStoreStats | None:
     """Ocupación del almacén, o ``None`` si no hay almacén o falla.
 
@@ -515,6 +551,7 @@ def disk_usage_bytes(path: Path) -> int:
 __all__ = [
     "DEFAULT_MODEL_PREFIX",
     "DEFAULT_PREFIX",
+    "DEFAULT_PURSUIT_PREFIX",
     "FilesystemObjectStore",
     "NullObjectStore",
     "ObjectStore",
@@ -530,6 +567,7 @@ __all__ = [
     "load_config",
     "model_artifact_key",
     "purge_keys",
+    "pursuit_attachment_key",
     "reset_object_store_cache",
     "store_stats",
 ]

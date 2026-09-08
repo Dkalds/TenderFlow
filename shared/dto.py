@@ -1427,6 +1427,62 @@ class PursuitTaskAgendaResponse(BaseModel):
     items: list[PursuitTaskAgendaItem] = Field(default_factory=list)
 
 
+class PursuitAttachmentOut(BaseModel):
+    """Un adjunto propio de la oportunidad (C6.3).
+
+    No lleva la ``blob_key``: es la ruta interna en el bucket y publicarla
+    invitaría a construir descargas por fuera del enlace firmado, que es donde
+    viven la caducidad y la comprobación de organización.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: int = Field(ge=1)
+    pursuit_id: int = Field(ge=1)
+    organization_id: int = Field(ge=1)
+    filename: str
+    content_type: str
+    bytes: int = Field(ge=1)
+    #: Huella del contenido. Va en el contrato porque es lo que permite al
+    #: cliente saber que el fichero que iba a subir ya está, sin subirlo.
+    sha256: str
+    #: Opt-in por adjunto para que el asistente lo lea. Por defecto, no.
+    indexable: bool = False
+    uploaded_by_user_id: int | None = None
+    created_at: PgDateTime | None = None
+
+
+class PursuitAttachmentListResponse(BaseModel):
+    """Adjuntos de una oportunidad, y los límites que acepta subir.
+
+    Los límites viajan en la respuesta y no sólo en la documentación: así el
+    formulario puede rechazar un fichero de 40 MB antes de subirlo, y no
+    después de dos minutos de espera y un 422.
+    """
+
+    pursuit_id: int = Field(ge=1)
+    organization_id: int = Field(ge=1)
+    items: list[PursuitAttachmentOut] = Field(default_factory=list)
+    max_bytes: int = Field(ge=1)
+    tipos_admitidos: list[str] = Field(default_factory=list)
+
+
+class PursuitAttachmentIndexable(BaseModel):
+    """Cambio del opt-in del RAG para un adjunto."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    indexable: bool
+
+
+class PursuitAttachmentDownloadLink(BaseModel):
+    """Enlace de descarga firmado y con caducidad."""
+
+    url: str
+    #: Epoch en segundos. El cliente puede pedir otro cuando se acerque.
+    expira: int
+
+
 class PursuitCommentListResponse(BaseModel):
     """Página del hilo, en orden cronológico y paginada desde el más reciente.
 

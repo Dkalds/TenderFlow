@@ -198,7 +198,9 @@ export default function OpportunityDetailPage() {
           </div>
         )}
 
-        {tab === "expediente" && <ExpedientePanel licitacionId={pursuit.licitacion_id} />}
+        {tab === "expediente" && (
+          <ExpedientePanel licitacionId={pursuit.licitacion_id} pursuitId={pursuit.id} />
+        )}
 
         {tab === "pliego" && <TenderFactSheetPanel licitacionId={pursuit.licitacion_id} />}
         {tab === "precio" && <PriceScenariosPanel licitacionId={pursuit.licitacion_id} />}

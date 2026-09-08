@@ -626,8 +626,44 @@ def borrar_organizacion(
             "`DELETE /me` si es lo que querés."
         )
 
+    # Los binarios de los adjuntos propios (C6.3) se purgan ANTES de borrar la
+    # fila: después, el `ON DELETE CASCADE` ya se ha llevado las claves y el
+    # bucket se queda con objetos que nadie puede volver a nombrar. Es la única
+    # parte del dato corporativo que no vive en Postgres, así que es la única
+    # que el cascade no alcanza.
+    _purgar_adjuntos_de_organizacion(organization_id)
+
     if not _repo.borrar(organization_id):
         raise OrganizationMemberNotFoundError("La organización no existe.")
 
     log.info("organization_deleted", organization_id=organization_id, **conteos)
     return conteos
+
+
+def _purgar_adjuntos_de_organizacion(organization_id: int) -> None:
+    """Quita del almacén los binarios de los adjuntos propios de la organización.
+
+    Best-effort y con su propio log: un bucket caído no puede impedir que el
+    owner cierre su organización —eso convertiría un derecho en un trámite
+    dependiente de un tercero—, pero tampoco puede pasar en silencio, porque lo
+    que queda es dato del cliente en un sistema del que ya se fue.
+    """
+    from db.repositories.pursuit_attachments import PursuitAttachmentRepository
+    from shared.object_store import purge_keys
+
+    try:
+        filas = PursuitAttachmentRepository().de_organizacion(organization_id)
+        claves = [str(f["blob_key"]) for f in filas if f.get("blob_key")]
+        borrados = purge_keys(claves) if claves else 0
+        log.info(
+            "organization_adjuntos_purgados",
+            organization_id=organization_id,
+            candidatos=len(claves),
+            borrados=borrados,
+        )
+    except Exception:
+        log.warning(
+            "organization_adjuntos_purge_failed",
+            organization_id=organization_id,
+            exc_info=True,
+        )

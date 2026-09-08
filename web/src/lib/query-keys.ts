@@ -207,6 +207,11 @@ export const pursuitCommentKeys = {
   thread: (pursuitId: number | string) => ["pursuit-comments", String(pursuitId)] as const,
 };
 
+export const pursuitAttachmentKeys = {
+  all: ["pursuit-attachments"] as const,
+  list: (pursuitId: number | string) => ["pursuit-attachments", String(pursuitId)] as const,
+};
+
 export const organizationKeys = {
   all: ["organizations"] as const,
   members: (organizationId: number | null) => ["organization-members", organizationId] as const,

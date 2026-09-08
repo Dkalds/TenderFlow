@@ -18,6 +18,7 @@
 import { ExternalLink } from "lucide-react";
 import Link from "next/link";
 import { DocumentosBlock } from "@/components/documentos-block";
+import { AdjuntosBlock } from "@/components/pursuits/adjuntos-block";
 import { EventosTimeline } from "@/components/eventos-timeline";
 import { ResolucionesBlock } from "@/components/resoluciones-block";
 import { TecnologiasBlock } from "@/components/tecnologias-block";
@@ -38,7 +39,13 @@ function Fact({ label, value }: { label: string; value: React.ReactNode }) {
   );
 }
 
-export function ExpedientePanel({ licitacionId }: { licitacionId: string }) {
+export function ExpedientePanel({
+  licitacionId,
+  pursuitId,
+}: {
+  licitacionId: string;
+  pursuitId: number;
+}) {
   const { data: licitacion, isLoading, error, refetch } = useLicitacion(licitacionId);
 
   if (isLoading) return <PanelLoading height={320} />;
@@ -115,6 +122,15 @@ export function ExpedientePanel({ licitacionId }: { licitacionId: string }) {
               responde (los tokens de PLACSP rotan) o cuando no hemos indexado
               ningún pliego todavía. */}
           <DocumentosBlock licitacionId={licitacionId} fichaUrl={l.url} />
+        </Panel>
+
+        {/* Los del equipo, aparte de los del órgano (C6.3). Separados y no
+            mezclados en la lista de arriba porque las reglas son otras: sólo
+            los ve la organización, la descarga va por enlace firmado y el
+            asistente no los lee salvo permiso por fichero. */}
+        <Panel>
+          <SectionTitle>Documentos del equipo</SectionTitle>
+          <AdjuntosBlock pursuitId={pursuitId} />
         </Panel>
       </div>
 

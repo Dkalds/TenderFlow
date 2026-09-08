@@ -3680,6 +3680,78 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/pursuits/attachments/{attachment_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Borrar un adjunto propio
+         * @description Quita la fila y su objeto del bucket.
+         */
+        delete: operations["delete_pursuit_attachment_api_v1_pursuits_attachments__attachment_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/pursuits/attachments/{attachment_id}/descarga": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Descargar un adjunto propio con enlace firmado
+         * @description Sirve el binario a quien traiga un enlace vigente.
+         *
+         *     **Sin sesión a propósito.** El navegador tiene que poder pedir el fichero
+         *     directamente, y una descarga que arrastra la cookie no es lo que se quiere.
+         *     La autorización es la firma, que nombra el adjunto concreto y su caducidad:
+         *     cambiar el `exp` de la URL invalida la firma en vez de alargar el permiso.
+         *
+         *     403 y no 401 cuando ha caducado: no falta credencial, es que la que hay ya
+         *     no vale, y ofrecer un `WWW-Authenticate` aquí sólo confundiría al cliente.
+         */
+        get: operations["download_pursuit_attachment_api_v1_pursuits_attachments__attachment_id__descarga_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/pursuits/attachments/{attachment_id}/indexable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Autorizar (o retirar) que el asistente lea un adjunto
+         * @description Opt-in por fichero, nunca por organización.
+         *
+         *     La decisión no es la misma para el DEUC —que no dice nada que el pliego no
+         *     diga— que para la propuesta económica, y una preferencia de organización
+         *     obligaría a tomarla una vez para las dos.
+         */
+        put: operations["put_pursuit_attachment_indexable_api_v1_pursuits_attachments__attachment_id__indexable_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/pursuits/baja-propia": {
         parameters: {
             query?: never;
@@ -3875,6 +3947,75 @@ export interface paths {
          * @description Aplica una transición validada y añade un único evento.
          */
         patch: operations["patch_pursuit_api_v1_pursuits__pursuit_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/pursuits/{pursuit_id}/attachments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Adjuntos propios de la oportunidad (C6.3)
+         * @description Lo que el equipo ha subido, más los límites que acepta subir.
+         *
+         *     Los límites viajan en la respuesta para que el formulario pueda rechazar un
+         *     fichero grande **antes** de subirlo, y no tras dos minutos de espera.
+         */
+        get: operations["get_pursuit_attachments_api_v1_pursuits__pursuit_id__attachments_get"];
+        put?: never;
+        /**
+         * Subir un adjunto propio
+         * @description Guarda un documento del equipo junto a la oportunidad.
+         *
+         *     **El cuerpo es el fichero en crudo**, con su tipo en `Content-Type` y su
+         *     nombre en `?filename=`. No es `multipart/form-data` por una razón concreta:
+         *     ese formato exige `python-multipart`, una dependencia de runtime que la API
+         *     no declara hoy, y añadirla para subir un fichero por petición es pagar un
+         *     paquete —y su superficie de parseo— por un sobre que aquí no lleva nada más.
+         *     Un cuerpo binario es además lo que un `fetch(file)` manda sin envolver.
+         *
+         *     El binario se lee entero en memoria a propósito: el tope son 25 MB, que cabe
+         *     de sobra, y trocearlo obligaría a escribir en el bucket antes de saber si el
+         *     fichero pasa los límites — o sea, a dejar basura cada vez que alguien
+         *     arrastra el ZIP equivocado.
+         *
+         *     Subir dos veces el mismo fichero no duplica nada: la clave del objeto es su
+         *     huella y la fila tiene única `(pursuit_id, sha256)`.
+         */
+        post: operations["post_pursuit_attachment_api_v1_pursuits__pursuit_id__attachments_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/pursuits/{pursuit_id}/attachments/{attachment_id}/enlace": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Enlace de descarga firmado y con caducidad
+         * @description Emite el enlace que la pestaña Expediente pone detrás del nombre.
+         *
+         *     Se emite **con sesión** y se consume **sin ella**: aquí es donde se
+         *     comprueba que quien pide pertenece a la organización dueña del adjunto, y
+         *     por eso la descarga puede prescindir de la cookie.
+         *
+         *     `POST` y no `GET` porque emitir una credencial de acceso —aunque dure quince
+         *     minutos— no es una lectura: no debe cachearse ni quedarse en el historial.
+         */
+        post: operations["post_pursuit_attachment_link_api_v1_pursuits__pursuit_id__attachments__attachment_id__enlace_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/pursuits/{pursuit_id}/checklist": {
@@ -9653,6 +9794,77 @@ export interface components {
             nif?: string | null;
             /** Nombre */
             nombre: string;
+        };
+        /**
+         * PursuitAttachmentDownloadLink
+         * @description Enlace de descarga firmado y con caducidad.
+         */
+        PursuitAttachmentDownloadLink: {
+            /** Expira */
+            expira: number;
+            /** Url */
+            url: string;
+        };
+        /**
+         * PursuitAttachmentIndexable
+         * @description Cambio del opt-in del RAG para un adjunto.
+         */
+        PursuitAttachmentIndexable: {
+            /** Indexable */
+            indexable: boolean;
+        };
+        /**
+         * PursuitAttachmentListResponse
+         * @description Adjuntos de una oportunidad, y los límites que acepta subir.
+         *
+         *     Los límites viajan en la respuesta y no sólo en la documentación: así el
+         *     formulario puede rechazar un fichero de 40 MB antes de subirlo, y no
+         *     después de dos minutos de espera y un 422.
+         */
+        PursuitAttachmentListResponse: {
+            /** Items */
+            items?: components["schemas"]["PursuitAttachmentOut"][];
+            /** Max Bytes */
+            max_bytes: number;
+            /** Organization Id */
+            organization_id: number;
+            /** Pursuit Id */
+            pursuit_id: number;
+            /** Tipos Admitidos */
+            tipos_admitidos?: string[];
+        };
+        /**
+         * PursuitAttachmentOut
+         * @description Un adjunto propio de la oportunidad (C6.3).
+         *
+         *     No lleva la ``blob_key``: es la ruta interna en el bucket y publicarla
+         *     invitaría a construir descargas por fuera del enlace firmado, que es donde
+         *     viven la caducidad y la comprobación de organización.
+         */
+        PursuitAttachmentOut: {
+            /** Bytes */
+            bytes: number;
+            /** Content Type */
+            content_type: string;
+            /** Created At */
+            created_at?: string | null;
+            /** Filename */
+            filename: string;
+            /** Id */
+            id: number;
+            /**
+             * Indexable
+             * @default false
+             */
+            indexable: boolean;
+            /** Organization Id */
+            organization_id: number;
+            /** Pursuit Id */
+            pursuit_id: number;
+            /** Sha256 */
+            sha256: string;
+            /** Uploaded By User Id */
+            uploaded_by_user_id?: number | null;
         };
         /**
          * PursuitCommentCreate
@@ -19789,6 +20001,160 @@ export interface operations {
             };
         };
     };
+    delete_pursuit_attachment_api_v1_pursuits_attachments__attachment_id__delete: {
+        parameters: {
+            query?: {
+                organization_id?: number | null;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                attachment_id: number;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No perteneces a esa organización */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    download_pursuit_attachment_api_v1_pursuits_attachments__attachment_id__descarga_get: {
+        parameters: {
+            query: {
+                /** @description Epoch de caducidad; va dentro de la firma */
+                exp: number;
+                /** @description Firma del par (adjunto, caducidad) */
+                sig: string;
+            };
+            header?: never;
+            path: {
+                attachment_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description El fichero */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/octet-stream": unknown;
+                };
+            };
+            /** @description Firma inválida o caducada */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description El adjunto ya no existe */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_pursuit_attachment_indexable_api_v1_pursuits_attachments__attachment_id__indexable_put: {
+        parameters: {
+            query?: {
+                organization_id?: number | null;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                attachment_id: number;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PursuitAttachmentIndexable"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PursuitAttachmentOut"];
+                };
+            };
+            /** @description No perteneces a esa organización */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_baja_propia_api_v1_pursuits_baja_propia_get: {
         parameters: {
             query?: {
@@ -20122,6 +20488,183 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["PursuitDetail"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_pursuit_attachments_api_v1_pursuits__pursuit_id__attachments_get: {
+        parameters: {
+            query?: {
+                organization_id?: number | null;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                pursuit_id: number;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PursuitAttachmentListResponse"];
+                };
+            };
+            /** @description No perteneces a esa organización */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_pursuit_attachment_api_v1_pursuits__pursuit_id__attachments_post: {
+        parameters: {
+            query: {
+                /** @description Nombre con el que se descargará */
+                filename: string;
+                organization_id?: number | null;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                pursuit_id: number;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PursuitAttachmentOut"];
+                };
+            };
+            /** @description No perteneces a esa organización */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description La oportunidad no existe en este espacio */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description El fichero supera el máximo */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Tipo de fichero no admitido */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description No hay almacén de objetos configurado */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    post_pursuit_attachment_link_api_v1_pursuits__pursuit_id__attachments__attachment_id__enlace_post: {
+        parameters: {
+            query?: {
+                organization_id?: number | null;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                pursuit_id: number;
+                attachment_id: number;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PursuitAttachmentDownloadLink"];
+                };
+            };
+            /** @description No perteneces a esa organización */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

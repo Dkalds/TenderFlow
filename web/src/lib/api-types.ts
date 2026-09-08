@@ -119,6 +119,10 @@ export type PursuitUpdate = Schemas["PursuitUpdate"];
 // Hilo de comentarios de una oportunidad (v97): el chat del equipo sobre un
 // expediente. `can_delete` viene calculado por la API para quien pregunta.
 export type PursuitCommentOut = Schemas["PursuitCommentOut"];
+/** Adjuntos propios de la oportunidad (C6.3). */
+export type PursuitAttachmentOut = Schemas["PursuitAttachmentOut"];
+export type PursuitAttachmentListResponse = Schemas["PursuitAttachmentListResponse"];
+export type PursuitAttachmentDownloadLink = Schemas["PursuitAttachmentDownloadLink"];
 export type PursuitCommentCreate = Schemas["PursuitCommentCreate"];
 export type PursuitCommentListResponse = Schemas["PursuitCommentListResponse"];
 export type PipelineAgendaResponse = Schemas["PipelineAgendaResponse"];

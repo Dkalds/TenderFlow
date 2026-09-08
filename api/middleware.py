@@ -591,6 +591,27 @@ class _MaxBodyMiddleware:
     """
 
     _MAX_BYTES = 1 * 1024 * 1024  # 1 MB
+
+    #: Excepción por ruta: la subida de adjuntos propios (C6.3) manda el fichero
+    #: como cuerpo, así que el tope de 1 MB —pensado para JSON— la haría
+    #: imposible. El techo de esa ruta es el del propio adjunto, y lo decide
+    #: `services/pursuit_attachments.MAX_BYTES`, no un número escrito aquí: dos
+    #: límites distintos para la misma operación es un 413 que nadie entiende,
+    #: porque el que salta no es el que dice la documentación.
+    #:
+    #: Se compara con el path COMPLETO y con el sufijo exacto, no con un
+    #: `in`: `…/attachments` es la ruta de subida y `…/attachments/7/enlace` no,
+    #: y esta excepción no puede derramarse a rutas vecinas.
+    _RUTA_ADJUNTOS = re.compile(r"^/api/v1/pursuits/\d+/attachments$")
+
+    @classmethod
+    def _limite_para(cls, path: str) -> int:
+        if cls._RUTA_ADJUNTOS.match(path or ""):
+            from services.pursuit_attachments import MAX_BYTES
+
+            return int(MAX_BYTES)
+        return cls._MAX_BYTES
+
     # RFC 7807 como el resto de la API. El 413 se emite en ASGI crudo (el body
     # se corta antes de llegar al router, así que no hay exception handler que
     # lo formatee), pero el contrato que ve el cliente es el mismo: un
@@ -611,10 +632,11 @@ class _MaxBodyMiddleware:
 
         # Fast path: rechazar inmediatamente si Content-Length lo delata
         headers = dict(scope.get("headers") or [])
+        limite = self._limite_para(str(scope.get("path") or ""))
         cl_raw = headers.get(b"content-length")
         if cl_raw is not None:
             try:
-                if int(cl_raw) > self._MAX_BYTES:
+                if int(cl_raw) > limite:
                     await self._send_413(send)
                     return
             except (ValueError, UnicodeDecodeError):
@@ -624,7 +646,7 @@ class _MaxBodyMiddleware:
         method = scope.get("method", "")
         if method in ("POST", "PUT", "PATCH"):
             body_size = 0
-            max_bytes = self._MAX_BYTES
+            max_bytes = limite
 
             async def limiting_receive() -> dict:  # type: ignore[type-arg]
                 nonlocal body_size
