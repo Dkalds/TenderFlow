@@ -216,24 +216,38 @@ export function ReviewQueue({
                   {/* Con texto y no con ✓/✕: en una cola donde cada clic
                       reescribe el maestro, saber qué hace el botón no puede
                       depender de dejar el ratón quieto encima. */}
-                  <button
-                    type="button"
-                    onClick={() => onDecidir([item.id], true, `Unida a «${item.candidato_nombre ?? "—"}»`)}
-                    title="Misma empresa: unir al candidato"
-                    className="tf-pressable border-border/70 text-tf-meta text-foreground hover:border-primary/50 h-7 rounded-md border px-2.5 font-medium transition-colors"
-                  >
-                    Unir
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      onDecidir([item.id], false, `Creada como empresa nueva · «${item.nombre_original ?? "—"}»`)
-                    }
-                    title="Empresa distinta: crear nueva"
-                    className="tf-pressable text-tf-meta text-muted-foreground hover:border-border/70 hover:text-foreground h-7 rounded-md border border-transparent px-2.5 font-medium transition-colors"
-                  >
-                    Nueva
-                  </button>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          onDecidir([item.id], true, `Unida a «${item.candidato_nombre ?? "—"}»`)
+                        }
+                        className="tf-pressable border-border/70 text-tf-meta text-foreground hover:border-primary/50 h-7 rounded-md border px-2.5 font-medium transition-colors"
+                      >
+                        Unir
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent>Misma empresa: unir al candidato</TooltipContent>
+                  </Tooltip>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          onDecidir(
+                            [item.id],
+                            false,
+                            `Creada como empresa nueva · «${item.nombre_original ?? "—"}»`
+                          )
+                        }
+                        className="tf-pressable text-tf-meta text-muted-foreground hover:border-border/70 hover:text-foreground h-7 rounded-md border border-transparent px-2.5 font-medium transition-colors"
+                      >
+                        Nueva
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent>Empresa distinta: crear nueva</TooltipContent>
+                  </Tooltip>
                 </div>
               </div>
             );

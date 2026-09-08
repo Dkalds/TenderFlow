@@ -18,6 +18,7 @@
  */
 
 import { StatCell, StatStrip } from "@/components/console/panel";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { formatCompactCurrency, formatNumber } from "@/lib/utils";
 import type { AnalyticsOverview } from "@/lib/api-types";
 import type { ComparativaMensual } from "./comparativa-mensual";
@@ -25,12 +26,16 @@ import { STRIP_LG } from "./tiras";
 
 function BadgeAnomalia({ meses }: { meses: number }) {
   return (
-    <span
-      title={`El último mes cerrado se aleja 2σ o más de la media de los ${meses} meses anteriores del ámbito. Señal calculada en el navegador sobre la serie mensual, no un dato del backend.`}
-      className="inline-flex h-4 flex-none items-center rounded border border-[hsl(var(--warning)/0.38)] bg-[hsl(var(--warning)/0.14)] px-1 font-mono text-[8.5px] font-semibold tracking-[0.04em] text-[hsl(var(--warning))]"
-    >
-      ANOMALÍA
-    </span>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span className="inline-flex h-4 flex-none items-center rounded border border-[hsl(var(--warning)/0.38)] bg-[hsl(var(--warning)/0.14)] px-1 font-mono text-[8.5px] font-semibold tracking-[0.04em] text-[hsl(var(--warning))]">
+          ANOMALÍA
+        </span>
+      </TooltipTrigger>
+      <TooltipContent className="max-w-xs">
+        {`El último mes cerrado se aleja 2σ o más de la media de los ${meses} meses anteriores del ámbito. Señal calculada en el navegador sobre la serie mensual, no un dato del backend.`}
+      </TooltipContent>
+    </Tooltip>
   );
 }
 

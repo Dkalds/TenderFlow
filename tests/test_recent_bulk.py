@@ -204,7 +204,7 @@ class TestRunRecentBulk:
                 "scraper.connectors.base.run_connector",
                 side_effect=_resultados_por_mes([{"year": 2026, "month": 5, "status": "error"}]),
             ),
-                patch("observability.bind_run_context", return_value="run-test"),
+            patch("observability.bind_run_context", return_value="run-test"),
             patch("observability.record_run", return_value=nullcontext(MagicMock())),
             patch("scraper.pipeline._summarize"),
             pytest.raises(RuntimeError, match="bulk refresh"),

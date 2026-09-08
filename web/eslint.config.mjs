@@ -67,27 +67,48 @@ const restriccionTitleNativo = {
     "El `title` nativo no existe para teclado ni táctil: usá <Tooltip> de @/components/ui/tooltip. En <abbr> e <iframe> sí es semántico y está permitido.",
 };
 
-//: Ficheros con `title=` nativo el 2026-09-07. **Solo puede encoger**: al
-//: migrar uno a `<Tooltip>`, borrá su línea. Mientras tanto,
-//: `scripts/check_title_attrs.py` impide que el total suba.
+//: Ficheros con `title=` nativo. **Solo puede encoger**: al migrar uno a
+//: `<Tooltip>`, borrá su línea. `scripts/check_title_attrs.py` impide que el
+//: total suba, y es él quien manda: la lista de abajo dice *dónde* está la
+//: deuda, el ratchet dice *cuánta*.
+//:
+//: Regenerada el 2026-09-08 (22 ficheros, 33 `title=`) al fusionar el plan
+//: complementario sobre `master`. La lista anterior tenía 18 ficheros y once
+//: de ellos ya no existían con ese nombre: #272/#274 partieron las vistas
+//: grandes —`observabilidad-view.tsx` en `observabilidad/`, `contexto-strip.tsx`
+//: en `contexto/`, `tecnologias-view.tsx` en tabla + heatmap + detalle— y la
+//: misma deuda quedó en rutas nuevas que la lista no cubría, con ESLint en rojo
+//: sin que nadie hubiera añadido un `title=`. Regenerar no es ampliar: el total
+//: no sube, y de hecho bajó de 38 a 33 en el mismo cambio.
+//:
+//: Cinco salieron aquí (`space-shell` a `<abbr>`, que es donde `title` sí es
+//: semántico; `estado-global-row`, `mercado-strip`, `eventos-feed` y
+//: `pursuit-comments` a `<Tooltip>`). Los 33 que quedan están casi todos en
+//: celdas de tabla y en heatmaps, donde el disparador tendría que ser una celda
+//: focusable: eso cambia el orden de tabulación de la rejilla entera y se
+//: decide mirando la pantalla, no leyendo el diff.
 const deudaTitleNativo = [
-      "src/app/(dashboard)/competencia/_components/competidores-view.tsx",
-      "src/app/(dashboard)/detalle/page.tsx",
-      "src/app/(dashboard)/mercado/_components/calendario-view.tsx",
-      "src/app/(dashboard)/mercado/_components/clusters-view.tsx",
-      "src/app/(dashboard)/mercado/_components/organos-view.tsx",
-      "src/app/(dashboard)/mercado/_components/proyectos-modulos-view.tsx",
-      "src/app/(dashboard)/mercado/_components/tecnologias-view.tsx",
-      "src/app/(dashboard)/mercado/_components/tendencias-view.tsx",
-      "src/app/(dashboard)/ops/_components/observabilidad-view.tsx",
-      "src/app/(dashboard)/resumen/_components/contexto-strip.tsx",
-      "src/app/(dashboard)/resumen/_components/eventos-feed.tsx",
+      "src/app/(dashboard)/competencia/_components/competidores-bajas.tsx",
+      "src/app/(dashboard)/competencia/_components/competidores-heatmap.tsx",
+      "src/app/(dashboard)/detalle/_components/detalle-barra.tsx",
+      "src/app/(dashboard)/detalle/_components/detalle-fila.tsx",
+      "src/app/(dashboard)/detalle/_components/detalle-pie.tsx",
+      "src/app/(dashboard)/empresas/_components/context-line.tsx",
+      "src/app/(dashboard)/empresas/_components/empresa-perfil-piezas.tsx",
+      "src/app/(dashboard)/empresas/_components/maestro-list.tsx",
+      "src/app/(dashboard)/mercado/_components/calendario-heatmap.tsx",
+      "src/app/(dashboard)/mercado/_components/clusters-tablas.tsx",
+      "src/app/(dashboard)/mercado/_components/organo-top-scored.tsx",
+      "src/app/(dashboard)/mercado/_components/organos-tabla.tsx",
+      "src/app/(dashboard)/mercado/_components/proyectos-tablas.tsx",
+      "src/app/(dashboard)/mercado/_components/tecnologias-detalle.tsx",
+      "src/app/(dashboard)/mercado/_components/tecnologias-heatmap.tsx",
+      "src/app/(dashboard)/mercado/_components/tecnologias-tablas.tsx",
+      "src/app/(dashboard)/mercado/_components/tendencias-heatmap.tsx",
       "src/components/competitors/company-awards.tsx",
       "src/components/competitors/company-profile-summary.tsx",
       "src/components/competitors/company-quick-view.tsx",
       "src/components/competitors/company-year-trend.tsx",
-      "src/components/layout/space-shell.tsx",
-      "src/components/pursuits/pursuit-comments.tsx",
       "src/components/source-freshness-panel.tsx",
 ];
 

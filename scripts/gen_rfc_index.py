@@ -60,8 +60,8 @@ class Rfc:
     status: str
     fecha: str
     #: Ruta o rutas donde vive el código que lo implementa, si el RFC lo declara
-    #: en `evidence:`. El criterio es el de `docs/rfc/README.md`: implementado
-    #: significa que el código existe, no que el PR se haya mergeado.
+    #: (ver `_CAMPOS_EVIDENCIA`). El criterio es el de `docs/rfc/README.md`:
+    #: implementado significa que el código existe, no que el PR se haya mergeado.
     evidencia: str
 
 
@@ -69,7 +69,38 @@ def _campo(frontmatter: str, nombre: str) -> str:
     m = re.search(rf"^{nombre}:\s*(.+)$", frontmatter, re.M)
     if not m:
         return ""
-    return m.group(1).strip().strip('"').strip("'")
+    valor = m.group(1).strip().strip('"').strip("'")
+    if valor == ">":
+        # Bloque plegado de YAML (`campo: >` y el texto indentado debajo). Se
+        # recoge hasta la siguiente clave de primer nivel y se colapsa a una
+        # línea: la tabla del índice es una fila por RFC.
+        resto = frontmatter[m.end() :]
+        lineas: list[str] = []
+        for linea in resto.splitlines():
+            if linea.strip() and not linea.startswith((" ", "\t")):
+                break
+            if linea.strip():
+                lineas.append(linea.strip())
+        valor = " ".join(lineas)
+    return valor
+
+
+#: De dónde sale la columna «Evidencia», en orden de preferencia.
+#:
+#: `evidence` es el campo que este índice estrenó. `implemented_evidence` y
+#: `superseded_reason` los escribió O0.7b del plan v2 sobre los mismos RFC, con
+#: más detalle —fecha de verificación incluida—. Al fusionar los dos trabajos no
+#: se elige uno y se tira el otro: se leen los tres, porque un RFC con evidencia
+#: escrita y una tabla que dice «—» es peor que no tener tabla.
+_CAMPOS_EVIDENCIA = ("evidence", "implemented_evidence", "superseded_reason")
+
+
+def _evidencia(frontmatter: str) -> str:
+    for nombre in _CAMPOS_EVIDENCIA:
+        valor = _campo(frontmatter, nombre)
+        if valor:
+            return valor
+    return ""
 
 
 def leer_rfcs() -> tuple[list[Rfc], list[str]]:
@@ -102,7 +133,7 @@ def leer_rfcs() -> tuple[list[Rfc], list[str]]:
                 titulo=titulo,
                 status=status,
                 fecha=_campo(frontmatter, "date"),
-                evidencia=_campo(frontmatter, "evidence"),
+                evidencia=_evidencia(frontmatter),
             )
         )
     return rfcs, errores
@@ -120,8 +151,9 @@ def render_block(rfcs: list[Rfc]) -> str:
         "**Criterio de `implemented`: que el código exista en el árbol, no que el PR se "
         "haya mergeado.** Un RFC cuyo código está pero cuyo PR quedó abierto está "
         "implementado; uno cuyo PR se mergeó sin dejar código, no.\n\n"
-        "La columna «Evidencia» sale del campo `evidence:` del frontmatter del propio "
-        "RFC. Un RFC `implemented` sin evidencia declarada no falla el check, pero "
+        "La columna «Evidencia» sale del frontmatter del propio RFC (`evidence:`, "
+        "`implemented_evidence:` o `superseded_reason:`, el primero que traiga). "
+        "Un RFC `implemented` sin evidencia declarada no falla el check, pero "
         "obliga a quien lo lea a buscarla: declarala.\n\n"
         "Esta tabla se genera con `python scripts/gen_rfc_index.py`; CI la verifica con "
         "`--check`, y un RFC sin `status` —o con uno fuera del vocabulario— lo hace "

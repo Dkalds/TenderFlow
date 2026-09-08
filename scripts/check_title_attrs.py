@@ -45,22 +45,71 @@ from pathlib import Path
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 _WEB_SRC = _REPO_ROOT / "web" / "src"
 
-#: `<tag ... title=`. La etiqueta en minúscula es lo que distingue un elemento
-#: nativo de un componente de React, que por convención va en PascalCase — la
-#: misma regla que usa el propio JSX para decidir si emite un tag o llama a una
-#: función, así que no es una heurística: es la semántica del lenguaje.
-_TITLE_NATIVO = re.compile(r"<([a-z][a-zA-Z0-9]*)\b[^>]*?\btitle=", re.DOTALL)
+#: `title=` como atributo, no como parte de otro identificador.
+_ATRIBUTO_TITLE = re.compile(r"(?<![\w.$])title\s*=")
+
+#: Apertura de etiqueta. La etiqueta en minúscula es lo que distingue un
+#: elemento nativo de un componente de React, que por convención va en
+#: PascalCase — la misma regla que usa el propio JSX para decidir si emite un
+#: tag o llama a una función, así que no es una heurística: es la semántica del
+#: lenguaje.
+_APERTURA = re.compile(r"<([A-Za-z][\w.]*)")
 
 #: Donde `title` **no** es un tooltip sino semántica del elemento: la expansión
 #: de una abreviatura y el nombre accesible de un marco embebido.
 _EXENTOS = frozenset({"abbr", "iframe"})
 
-#: Techo vigente. Medido el 2026-09-07. **Solo puede bajar.**
-MAX_TITLE_NATIVO = 33
+#: Techo vigente: 36, medido el 2026-09-08 con el escaneo corregido. **Solo
+#: puede bajar.**
+#:
+#: La medición del 2026-09-07 decía 33 y era **corta**. Su regex era
+#: `<tag[^>]*?title=`, y `[^>]` no puede cruzar el `>` de una flecha: un
+#: `<button onClick={() => …} title="…">` —que es la forma normal de un botón en
+#: este repo— quedaba fuera del recuento. ESLint sí los veía, porque mira el AST,
+#: así que el ratchet decía «verde» mientras `npm run lint` señalaba ficheros que
+#: el contador no nombraba. Se corrige el escaneo y se vuelve a medir, que es lo
+#: que el plan manda hacer con una cifra equivocada (§0: «las cifras llevan fecha
+#: y se vuelven a medir, no se corrigen a mano»).
+#:
+#: Con el escaneo bueno salían **39**. Los tres que la regex escondía estaban
+#: sobre `<button>` —el caso limpio, porque un botón ya es focusable— y se
+#: migraron en el mismo cambio: quedan 36.
+MAX_TITLE_NATIVO = 36
 
 
 def _es_test(ruta: Path) -> bool:
     return "__tests__" in ruta.as_posix() or ruta.name.endswith((".test.tsx", ".spec.tsx"))
+
+
+def _etiqueta_de(texto: str, pos: int) -> str | None:
+    """Etiqueta cuya lista de atributos contiene el `title=` que hay en ``pos``.
+
+    Retrocede desde el atributo hasta el `<` que abre su etiqueta, saltando los
+    bloques `{...}` de las props: dentro de una prop puede haber `>` (una
+    flecha), `<` (una comparación) y hasta JSX anidado, y ninguno abre la
+    etiqueta que estamos buscando. Es lo que la regex anterior no sabía hacer.
+
+    Devuelve ``None`` si no encuentra apertura en un margen razonable — un
+    `title=` dentro de un literal de cadena, por ejemplo.
+    """
+    profundidad = 0
+    i = pos - 1
+    limite = max(0, pos - 4000)
+    while i >= limite:
+        c = texto[i]
+        if c == "}":
+            profundidad += 1
+        elif c == "{":
+            if profundidad:
+                profundidad -= 1
+        elif profundidad == 0 and c == "<":
+            m = _APERTURA.match(texto, i)
+            return m.group(1) if m else None
+        elif profundidad == 0 and c == ">":
+            # Una etiqueta ya cerrada antes del atributo: no es la nuestra.
+            return None
+        i -= 1
+    return None
 
 
 def contar() -> dict[str, int]:
@@ -69,13 +118,15 @@ def contar() -> dict[str, int]:
     for fichero in sorted(_WEB_SRC.rglob("*.tsx")):
         if _es_test(fichero):
             continue
-        etiquetas = [
-            m.group(1)
-            for m in _TITLE_NATIVO.finditer(fichero.read_text(encoding="utf-8"))
-            if m.group(1) not in _EXENTOS
-        ]
-        if etiquetas:
-            conteo[fichero.relative_to(_REPO_ROOT).as_posix()] = len(etiquetas)
+        texto = fichero.read_text(encoding="utf-8")
+        n = 0
+        for m in _ATRIBUTO_TITLE.finditer(texto):
+            etiqueta = _etiqueta_de(texto, m.start())
+            # Minúscula = elemento nativo; PascalCase = prop de un componente.
+            if etiqueta and etiqueta[0].islower() and etiqueta not in _EXENTOS:
+                n += 1
+        if n:
+            conteo[fichero.relative_to(_REPO_ROOT).as_posix()] = n
     return conteo
 
 

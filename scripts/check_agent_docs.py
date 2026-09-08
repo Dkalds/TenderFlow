@@ -520,6 +520,14 @@ def check_scopes_doc() -> None:
         cwd=ROOT,
         capture_output=True,
         text=True,
+        # Explícito: en Windows `text=True` decodifica con la codepage local y
+        # el log estructurado del arranque de la API —que lleva acentos y flechas—
+        # reventaba el hilo lector con un `UnicodeDecodeError`. La excepción salía
+        # por stderr y la salida capturada quedaba vacía, así que las ramas de
+        # abajo que buscan `ValidationError` o `ModuleNotFoundError` no
+        # encontraban nada y el fallo se leía como «la matriz está desfasada».
+        encoding="utf-8",
+        errors="replace",
         env=entorno,
     )
     if proc.returncode == 0:

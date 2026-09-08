@@ -203,6 +203,25 @@ escaneo: es un aviso sobre un artefacto que GitHub sigue viendo en el
 historial. Se cierran en bloque, con una nota que diga cuál fue el fichero y
 cuándo se retiró.
 
-**Medición.** «Cero avisos altos abiertos más de siete días» se comprueba en la
-pestaña de seguridad del repositorio y se anota con fecha. No hay comando que lo
-derive del árbol: los avisos son estado de GitHub, no del repositorio.
+**Medición.** `python scripts/check_security_alerts.py`. Los avisos son estado
+de GitHub y no del repositorio, así que el script los **consulta** con `gh` en
+vez de derivarlos; lo que aporta el árbol es lo que convierte una lista en un
+triaje: si el manifiesto del aviso sigue existiendo, y qué versión fija el
+manifiesto que sí está vivo. Sin `gh` autenticado dice **NO MEDIDO** y sale con
+0 — no «cumplido», que es la confusión que hace que la siguiente vulnerabilidad
+de verdad se pierda entre los fantasmas.
+
+### Triaje del 2026-09-08
+
+Los tres avisos abiertos (dos altos, uno moderado) son **los tres fantasmas**:
+
+| # | Sev. | Paquete | Manifiesto | Veredicto |
+|---|---|---|---|---|
+| 107 | alta | `cryptography` | `uv.lock` | El manifiesto no está en el árbol. `requirements.txt` fija `cryptography==50.0.0` y el aviso se parchea en `49.0.0`: lo desplegado no es vulnerable. |
+| 106 | moderada | `cryptography` | `uv.lock` | Igual que el anterior. |
+| 105 | alta | `transformers` | `uv.lock` | Ningún manifiesto vivo lo declara. Solo llega como transitiva de `sentence-transformers`, que es el extra opcional `[ml]` y no entra en el conjunto fijado. |
+
+Ninguno tiene parche que aplicar, así que **el plazo de siete días no cuenta**:
+lo que queda es descartarlos con motivo en la propia pestaña, que es acción del
+mantenedor —esta sesión no cierra avisos de seguridad por su cuenta— y que la
+sección «Avisos fantasma» de arriba ya prescribe.

@@ -17,11 +17,11 @@ Todos los RFCs siguen esta estructura.
 
 <!-- BEGIN indice-rfc (generado por scripts/gen_rfc_index.py — no editar a mano) -->
 
-**70 RFC**, de los cuales **16** siguen abiertos. `approved` 1 · `implemented` 48 · `obsolete` 4 · `partially-implemented` 15 · `superseded` 2.
+**71 RFC**, de los cuales **17** siguen abiertos. `approved` 2 · `implemented` 48 · `obsolete` 4 · `partially-implemented` 15 · `superseded` 2.
 
 **Criterio de `implemented`: que el código exista en el árbol, no que el PR se haya mergeado.** Un RFC cuyo código está pero cuyo PR quedó abierto está implementado; uno cuyo PR se mergeó sin dejar código, no.
 
-La columna «Evidencia» sale del campo `evidence:` del frontmatter del propio RFC. Un RFC `implemented` sin evidencia declarada no falla el check, pero obliga a quien lo lea a buscarla: declarala.
+La columna «Evidencia» sale del frontmatter del propio RFC (`evidence:`, `implemented_evidence:` o `superseded_reason:`, el primero que traiga). Un RFC `implemented` sin evidencia declarada no falla el check, pero obliga a quien lo lea a buscarla: declarala.
 
 Esta tabla se genera con `python scripts/gen_rfc_index.py`; CI la verifica con `--check`, y un RFC sin `status` —o con uno fuera del vocabulario— lo hace fallar.
 
@@ -39,6 +39,7 @@ Esta tabla se genera con `python scripts/gen_rfc_index.py`; CI la verifica con `
 | RFC | Estado | Fecha | Evidencia |
 |---|---|---|---|
 | [Plan integral ejecutable para 7 mejoras transversales (typing, CI tests, markers, migraciones, observabilidad, DX Windows, graphify)](2026-05-28-rfc-plan-integral-7-mejoras.md) | `approved` | 2026-05-28 | — |
+| [Retirada de tres endpoints de analítica sin consumidor y del listado por offset](2026-09-06-rfc-retirada-endpoints-analitica.md) | `approved` | 2026-09-06 | — |
 | [Documentar la fachada db.database](001-documentar-facade-db-database.md) | `implemented` | 2026-05-24 | — |
 | [Add PEP 561 py.typed marker to shared/ package](040-py-typed-marker-shared.md) | `implemented` | 2026-05-24 | — |
 | [Fortalecer validación de secretos y contraseñas en arranque](042-rotar-secretos-fortalecer-passwords.md) | `implemented` | 2026-05-24 | — |
@@ -81,16 +82,16 @@ Esta tabla se genera con `python scripts/gen_rfc_index.py`; CI la verifica con `
 | [UX · Active Learning — más contexto por item, etiquetado multi-tecnología y desglose de probabilidades por clase](2026-06-28-rfc-ux-active-learning-multi-tech.md) | `implemented` | 2026-06-28 | — |
 | [UX · Grafos Red Órgano-Empresa y Ecosistema Partners — rehacer la capa de visualización (ForceGraph) y cerrar el drill-down](2026-06-28-rfc-ux-grafos-red-partners.md) | `implemented` | 2026-06-28 | — |
 | [LLM como dependencia gestionada — presupuesto, circuit-breaker, fallback degradado y eval de RAG](2026-06-30-rfc-llm-dependencia-gestionada.md) | `implemented` | 2026-06-30 | — |
-| [Retrofit del pipeline PLACSP sobre el contrato Connector (cerrar la bifurcación de ingesta)](2026-06-30-rfc-retrofit-pipeline-placsp-connector.md) | `implemented` | 2026-06-30 | `scraper/connectors/placsp.py`, `scheduler/pipeline_runs.py` |
+| [Retrofit del pipeline PLACSP sobre el contrato Connector (cerrar la bifurcación de ingesta)](2026-06-30-rfc-retrofit-pipeline-placsp-connector.md) | `implemented` | 2026-06-30 | `scraper/connectors/placsp.py` define `PlacspAtomConnector` y `PlacspBulkConnector` sobre el contrato de `scraper/connectors/base.py`, junto a los demás conectores del mismo paquete (TED, PSCP, Euskadi, Galicia, TACRC…). La bifurcación de ingesta que motivó el RFC ya no existe. Verificado contra el árbol el 2026-09-06 (O0.7b del plan de arquitectura v2): el criterio es que el código exista, no que el PR figure mergeado. |
 | [Validación de la precisión del dedupe cross-fuente y linaje de datos como contrato testeable](2026-06-30-rfc-validacion-dedupe-linaje-datos.md) | `implemented` | 2026-06-30 | — |
 | [Scoring de oportunidades genérico (sin tecnología hardcodeada)](2026-07-04-rfc-scoring-generico.md) | `implemented` | 2026-07-04 | — |
-| [Enlaces firmados sin sesión para el calendario ICS y la baja de correos](2026-09-02-rfc-enlaces-firmados-sin-sesion.md) | `implemented` | 2026-09-02 | `shared/signing.py`, `GET /exports/calendario/enlace` |
-| [Conceder acceso OAuth desde el producto con auditoría](242-acceso-oauth-dinamico.md) | `implemented` | 2026-09-01 | `db/access_grants.py`, `db/alembic/versions/v95_access_grants.py`, `api/routes/admin_solicitudes.py` |
-| [Recuperación segura de contraseña para cuentas locales](243-recuperacion-contrasena-local.md) | `implemented` | 2026-09-01 | `db/password_reset.py`, `services/password_reset.py`, `db/alembic/versions/v96_password_reset_tokens.py` |
+| [Enlaces firmados sin sesión para el calendario ICS y la baja de correos](2026-09-02-rfc-enlaces-firmados-sin-sesion.md) | `implemented` | 2026-09-02 | `shared/signing.py` firma con `kid` rotable; `api/routes/exports.py` sirve `GET /exports/calendario.ics` con enlace firmado (`_PREFIJO_FIRMA_CALENDARIO`) además de la cabecera, y `services/email_digest.py` firma el `user_key` del enlace de baja. Verificado contra el árbol el 2026-09-06 (O0.7b del plan de arquitectura v2): el criterio es que el código exista, no que el PR figure mergeado. |
+| [Conceder acceso OAuth desde el producto con auditoría](242-acceso-oauth-dinamico.md) | `implemented` | 2026-09-01 | Revisión `v95_access_grants` (tabla `access_grants`), `db/access_grants.py` y las rutas `/admin/solicitudes-acceso/grants` de `api/routes/admin_solicitudes.py`. Verificado contra el árbol el 2026-09-06 (O0.7b del plan de arquitectura v2): el criterio es que el código exista, no que el PR figure mergeado. |
+| [Recuperación segura de contraseña para cuentas locales](243-recuperacion-contrasena-local.md) | `implemented` | 2026-09-01 | Revisión `v96_password_reset_tokens` y las rutas `/password-reset/request` y `/password-reset/confirm` de `api/routes/auth.py`, con limitador por IP y por destinatario (`_password_reset_rate_allowed`). Verificado contra el árbol el 2026-09-06 (O0.7b del plan de arquitectura v2): el criterio es que el código exista, no que el PR figure mergeado. |
 | [Implementar CSRF tokens para sesiones del dashboard](057-csrf-tokens-dashboard.md) | `obsolete` | 2026-05-24 | — |
 | [Añadir dashboard como scrape target de Prometheus](060-prometheus-dashboard-scrape.md) | `obsolete` | 2026-05-24 | — |
 | [RFC de handoff humano: bloqueos por denylist](2026-05-28-implementacion-bloqueos-denylist.md) | `obsolete` | 2026-05-28 | — |
-| [UX · Relaciones → Estructura de mercado: del hairball a vistas orientadas a preguntas (concentración, ego-network, drill-down de arista)](2026-07-21-rfc-relaciones-estructura-mercado.md) | `obsolete` | 2026-07-21 | Cita `services/organ_concentration.py` y `red_organo_empresa.py`, borrados |
+| [UX · Relaciones → Estructura de mercado: del hairball a vistas orientadas a preguntas (concentración, ego-network, drill-down de arista)](2026-07-21-rfc-relaciones-estructura-mercado.md) | `obsolete` | 2026-07-21 | — |
 | [Fase 5 — Conectores autonómicos (PSCP Catalunya primero) y resoluciones TACRC](2026-06-11-rfc-conectores-autonomicos-tacrc.md) | `partially-implemented` | 2026-06-11 | — |
 | [Fase 6 — Modelos predictivos: baja ganadora y probabilidad de adjudicación](2026-06-11-rfc-modelos-predictivos.md) | `partially-implemented` | 2026-06-11 | — |
 | [UX/KPIs · Active Learning — cerrar el bucle (impacto en el modelo) y etiquetado multi-clase](2026-06-16-rfc-ux-active-learning.md) | `partially-implemented` | 2026-06-16 | — |
@@ -106,8 +107,8 @@ Esta tabla se genera con `python scripts/gen_rfc_index.py`; CI la verifica con `
 | [UX/KPIs · Resumen — deltas consistentes, KPIs accionables y arreglo de CCAA cubiertas](2026-06-16-rfc-ux-resumen.md) | `partially-implemented` | 2026-06-16 | — |
 | [UX/KPIs · Tendencias CPV — forecast por CPV (no global) y drill-down](2026-06-16-rfc-ux-tendencias-cpv.md) | `partially-implemented` | 2026-06-16 | — |
 | [UX/KPIs · Tendencias — heatmap real Mes×Estado, banda de forecast theme-safe, drill-down](2026-06-16-rfc-ux-tendencias.md) | `partially-implemented` | 2026-06-16 | — |
-| [Meta-RFC · Integridad analítica del frontend — el frontend no fabrica datos; backend = única fuente de verdad analítica](2026-06-16-rfc-meta-integridad-analitica-frontend.md) | `superseded` | 2026-06-16 | Graduado a `docs/adr/ADR-014-integridad-analitica-frontend.md` |
-| [Plan de migración de persistencia pre-cocido con disparador binario (SQLite/Turso → Postgres)](2026-06-30-rfc-plan-migracion-persistencia-pre-cocido.md) | `superseded` | 2026-06-30 | — |
+| [Meta-RFC · Integridad analítica del frontend — el frontend no fabrica datos; backend = única fuente de verdad analítica](2026-06-16-rfc-meta-integridad-analitica-frontend.md) | `superseded` | 2026-06-16 | El meta-RFC graduó: la decisión vive en `docs/adr/ADR-014-integridad-analitica-frontend.md` y su guardarraíl es `scripts/check_frontend_invariants.py --strict`, bloqueante en el job `static-analysis` de `.github/workflows/ci.yml` desde 2026-07-28. Un RFC en `draft` cuya decisión ya es un ADR ejecutable en CI solo confunde a quien lo lea. Verificado contra el árbol el 2026-09-06 (O0.7b del plan de arquitectura v2). |
+| [Plan de migración de persistencia pre-cocido con disparador binario (SQLite/Turso → Postgres)](2026-06-30-rfc-plan-migracion-persistencia-pre-cocido.md) | `superseded` | 2026-06-30 | Decisión de migración tomada sin esperar tripwires (2026-07-05). El destino es Supabase + psycopg3. La ejecución está documentada en ADR-016 y el plan de fases en AGENTS.md §0. Este RFC escala a ejecución directa. |
 
 <!-- END indice-rfc -->
 
