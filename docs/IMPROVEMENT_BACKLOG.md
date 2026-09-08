@@ -139,6 +139,19 @@ porque falte decidir nada.
   `test.fixme` de «Seguir desde la fila del Radar» (4 → 3).
 - **Falta:** `color-contrast`, `scrollable-region-focusable` y `target-size`, y
   los tres `test.fixme` restantes (uno de descarga en CI, dos de la ola móvil).
+- **Y una segunda fila con el mismo defecto**, encontrada al arreglar la del
+  Radar: `mi-pipeline/_components/agenda/agenda-fila.tsx` es también un
+  `role="button"` con tres botones dentro. No hace fallar el gate —el spec de
+  axe no visita `/mi-pipeline`—, pero es el mismo fallo. Su lista va agrupada
+  por bandas de urgencia con cabeceras `sticky`, así que meterla en una rejilla
+  (`grid` > `rowgroup` por banda > `row`) cambia el bloque contenedor del
+  `sticky`: la cabecera pasaría a pegarse dentro de su banda en vez de en toda
+  la lista. Probablemente sea lo deseable, pero es comportamiento visual y hay
+  que verlo antes de darlo por bueno.
+- **Cómo verificarlo sin levantar la aplicación:** el patrón ya está probado en
+  `radar/__tests__/axe-estructura.test.tsx` — axe-core corre en jsdom y evalúa
+  las reglas estructurales. Las tres que quedan **no** se pueden comprobar ahí
+  (necesitan layout), pero `nested-interactive` sí.
 - **Por qué no se cerraron:** las tres exigen **medir** sobre la aplicación
   pintada —contraste calculado, qué regiones scrollean, qué targets quedan por
   debajo de 24 px—, y eso es una corrida de axe con la app levantada, Postgres
