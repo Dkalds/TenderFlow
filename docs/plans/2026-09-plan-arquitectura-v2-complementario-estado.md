@@ -269,12 +269,14 @@ Cinco cosas, y ninguna es de código. Actualizado el 2026-09-08.
    `DATABASE_URL` del entorno apunta a **producción**, que no se toca para correr
    tests que crean y borran schemas.
 
-   Consecuencia menor pero anotable: **`docs/database-schema.md` se queda en
-   `v112`**. Lo genera `scripts/gen_schema_doc.py` leyendo el catálogo de una
-   base ya migrada, así que regenerarlo exige la base que aquí no hay. Editarlo
-   a mano sería peor —su cabecera dice «no editar a mano» y el fichero es el
-   volcado de un catálogo, no una descripción—; se regenera en la primera sesión
-   con Postgres delante.
+   `docs/database-schema.md` **sí** está al día, y por la misma vía que la
+   cobertura del frontend: no hacía falta la base aquí, hacía falta la base en
+   algún sitio. El job de CI que lo verifica imprime el diff completo entre lo
+   commiteado y lo derivado de su Postgres ya migrado; aplicado, el documento
+   queda en `v127_pursuit_attachments`. Editarlo a mano habría sido lo
+   incorrecto —su cabecera dice «no editar a mano» y es el volcado de un
+   catálogo, no una descripción—; aplicar el diff que produce el generador
+   contra una base real no lo es.
 2. **La aplicación corriendo.** C7.1, C7.3 y C7.7 se verifican mirando la
    pantalla. Sin API ni datos sembrados no hay pantalla.
 3. **Etiquetado humano.** C1.3 (30 pares), C5.1 (40 pliegos) y C5.8 (60 días de
