@@ -9,6 +9,88 @@ const jsxA11yRecommendedAsError = Object.fromEntries(
   Object.keys(jsxA11y.configs.recommended.rules).map((rule) => [rule, "error"]),
 );
 
+
+// Las cuatro restricciones de sintaxis que aplican a TODO `src` salvo `src/lib`
+// y los tests. Viven en una constante porque hay dos bloques que las declaran:
+// el de abajo, y el que añade la quinta (`title` nativo, C7.4) sobre un
+// conjunto de ficheros más estrecho. En flat config el último bloque que
+// declara una regla la gana **entera**, así que el segundo tiene que repetir
+// estas cuatro o las desactivaría sin decirlo. Repetirlas copiándolas sería
+// deuda esperando a divergir; repetirlas por referencia no puede divergir.
+const restriccionesDeSintaxis = [
+  {
+    selector: "CallExpression[callee.name='fetch'] > Literal:first-child[value=/^\\/api\\//]",
+    message:
+      "Usá el cliente de @/lib/api-client (apiGet, apiMutate, fetchWithAuth, fetchBlobWithAuth). Un fetch crudo a /api no redirige en 401, no normaliza el error a ApiError, no extrae el detail RFC-7807 y no adjunta el CSRF.",
+  },
+  {
+    selector:
+      "CallExpression[callee.name='fetch'] > TemplateLiteral:first-child > TemplateElement:first-child[value.raw=/^\\/api\\//]",
+    message:
+      "Usá el cliente de @/lib/api-client (apiGet, apiMutate, fetchWithAuth, fetchBlobWithAuth). Un fetch crudo a /api no redirige en 401, no normaliza el error a ApiError, no extrae el detail RFC-7807 y no adjunta el CSRF.",
+  },
+  {
+    selector:
+      "NewExpression[callee.object.name='Intl'][callee.property.name=/^(NumberFormat|DateTimeFormat|RelativeTimeFormat)$/]",
+    message:
+      "Usá los helpers de @/lib/utils (formatCurrency, formatNumber, formatDate…). Si falta uno, añadilo allí.",
+  },
+  {
+    selector:
+      "CallExpression[callee.property.name=/^(toLocaleString|toLocaleDateString|toLocaleTimeString)$/]",
+    message:
+      "Usá los helpers de @/lib/utils (formatNumber, formatDate…) en vez de toLocaleString.",
+  },
+];
+
+// Quinta restricción: `title=` sobre un elemento nativo es un tooltip
+// inaccesible (C7.4).
+//
+// El atributo `title` de HTML no se puede enfocar con el teclado, no se puede
+// abrir sin ratón y los lectores de pantalla lo anuncian de forma
+// inconsistente. Cuando lleva la única copia de un dato —el nombre completo de
+// un órgano truncado, la fecha exacta detrás de un «hace 3 días»— ese dato no
+// existe para quien no usa ratón. `components/ui/tooltip.tsx` (Radix) sí lo es.
+//
+// `<abbr>` e `<iframe>` quedan fuera: ahí `title` es semántica del elemento (la
+// expansión de la abreviatura, el nombre accesible del marco), no un tooltip.
+//
+// El selector exige etiqueta en minúscula porque eso es lo que distingue un
+// elemento nativo de un componente en JSX: `<KpiCard title="…">` es una prop y
+// no genera atributo HTML. Confundir las dos cosas es lo que hacía que el
+// conteo por grep del plan diera 152 donde el problema real son 33
+// (`scripts/check_title_attrs.py` mide el número real y hace de techo).
+const restriccionTitleNativo = {
+  selector:
+    "JSXOpeningElement[name.type='JSXIdentifier'][name.name=/^[a-z]/]:not([name.name='abbr']):not([name.name='iframe']) > JSXAttribute[name.name='title']",
+  message:
+    "El `title` nativo no existe para teclado ni táctil: usá <Tooltip> de @/components/ui/tooltip. En <abbr> e <iframe> sí es semántico y está permitido.",
+};
+
+//: Ficheros con `title=` nativo el 2026-09-07. **Solo puede encoger**: al
+//: migrar uno a `<Tooltip>`, borrá su línea. Mientras tanto,
+//: `scripts/check_title_attrs.py` impide que el total suba.
+const deudaTitleNativo = [
+      "src/app/(dashboard)/competencia/_components/competidores-view.tsx",
+      "src/app/(dashboard)/detalle/page.tsx",
+      "src/app/(dashboard)/mercado/_components/calendario-view.tsx",
+      "src/app/(dashboard)/mercado/_components/clusters-view.tsx",
+      "src/app/(dashboard)/mercado/_components/organos-view.tsx",
+      "src/app/(dashboard)/mercado/_components/proyectos-modulos-view.tsx",
+      "src/app/(dashboard)/mercado/_components/tecnologias-view.tsx",
+      "src/app/(dashboard)/mercado/_components/tendencias-view.tsx",
+      "src/app/(dashboard)/ops/_components/observabilidad-view.tsx",
+      "src/app/(dashboard)/resumen/_components/contexto-strip.tsx",
+      "src/app/(dashboard)/resumen/_components/eventos-feed.tsx",
+      "src/components/competitors/company-awards.tsx",
+      "src/components/competitors/company-profile-summary.tsx",
+      "src/components/competitors/company-quick-view.tsx",
+      "src/components/competitors/company-year-trend.tsx",
+      "src/components/layout/space-shell.tsx",
+      "src/components/pursuits/pursuit-comments.tsx",
+      "src/components/source-freshness-panel.tsx",
+];
+
 const eslintConfig = defineConfig([
   ...nextVitals,
   ...nextTs,
@@ -92,32 +174,23 @@ const eslintConfig = defineConfig([
     files: ["src/**/*.{ts,tsx}"],
     ignores: ["src/lib/**", "src/**/__tests__/**", "src/**/*.test.{ts,tsx}"],
     rules: {
-      "no-restricted-syntax": [
-        "error",
-        {
-          selector: "CallExpression[callee.name='fetch'] > Literal:first-child[value=/^\\/api\\//]",
-          message:
-            "Usá el cliente de @/lib/api-client (apiGet, apiMutate, fetchWithAuth, fetchBlobWithAuth). Un fetch crudo a /api no redirige en 401, no normaliza el error a ApiError, no extrae el detail RFC-7807 y no adjunta el CSRF.",
-        },
-        {
-          selector:
-            "CallExpression[callee.name='fetch'] > TemplateLiteral:first-child > TemplateElement:first-child[value.raw=/^\\/api\\//]",
-          message:
-            "Usá el cliente de @/lib/api-client (apiGet, apiMutate, fetchWithAuth, fetchBlobWithAuth). Un fetch crudo a /api no redirige en 401, no normaliza el error a ApiError, no extrae el detail RFC-7807 y no adjunta el CSRF.",
-        },
-        {
-          selector:
-            "NewExpression[callee.object.name='Intl'][callee.property.name=/^(NumberFormat|DateTimeFormat|RelativeTimeFormat)$/]",
-          message:
-            "Usá los helpers de @/lib/utils (formatCurrency, formatNumber, formatDate…). Si falta uno, añadilo allí.",
-        },
-        {
-          selector:
-            "CallExpression[callee.property.name=/^(toLocaleString|toLocaleDateString|toLocaleTimeString)$/]",
-          message:
-            "Usá los helpers de @/lib/utils (formatNumber, formatDate…) en vez de toLocaleString.",
-        },
-      ],
+      "no-restricted-syntax": ["error", ...restriccionesDeSintaxis],
+    },
+  },
+  // La quinta restricción, sobre los `.tsx` que ya no tienen `title` nativo.
+  // Las cuatro de arriba se repiten por referencia: sin ellas, este bloque las
+  // desactivaría en todos estos ficheros (flat config: el último bloque que
+  // declara la regla la gana entera).
+  {
+    files: ["src/**/*.tsx"],
+    ignores: [
+      "src/lib/**",
+      "src/**/__tests__/**",
+      "src/**/*.test.tsx",
+      ...deudaTitleNativo,
+    ],
+    rules: {
+      "no-restricted-syntax": ["error", ...restriccionesDeSintaxis, restriccionTitleNativo],
     },
   },
   // ── Tamaño de fichero en `src/app/**` (S7.1 del plan 2026-09 v2) ──────────

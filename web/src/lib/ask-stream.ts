@@ -33,6 +33,29 @@ export interface DegradedInfo {
   docs: Record<string, unknown>[];
 }
 
+/** Una cita del asistente ya validada por el backend contra el contexto enviado. */
+export interface Fuente {
+  documento_id: number;
+  page_number: number | null;
+  cita: string;
+  tipo?: string | null;
+  filename?: string | null;
+}
+
+/**
+ * Evento `sources` (C5.3): las citas de la respuesta, validadas en servidor.
+ *
+ * `sinFuentes` llega **siempre** en modo licitación, también cuando no hay
+ * ninguna: sin ese campo, «el pliego no lo sostiene» y «el evento no llegó» se
+ * pintarían igual, que es justo lo que la cita venía a evitar.
+ */
+export interface SourcesInfo {
+  sources: Fuente[];
+  sinFuentes: boolean;
+  /** Marcadores que apuntaban a documentos ausentes del contexto. */
+  descartadas: number;
+}
+
 export interface ResumenMeta {
   has_pliego_text: boolean;
   truncated: boolean;
@@ -58,6 +81,7 @@ export interface AskStreamResult {
   degraded: DegradedInfo | null;
   resumenMeta: ResumenMeta | null;
   askMeta: AskMeta | null;
+  sources: SourcesInfo | null;
 }
 
 interface StreamCallbacks {
@@ -67,6 +91,7 @@ interface StreamCallbacks {
   onDegraded?: (info: DegradedInfo) => void;
   onResumenMeta?: (meta: ResumenMeta) => void;
   onAskMeta?: (meta: AskMeta) => void;
+  onSources?: (info: SourcesInfo) => void;
 }
 
 export interface AskParams extends StreamCallbacks {
@@ -98,6 +123,7 @@ async function consumeStream(res: Response, cb: StreamCallbacks): Promise<AskStr
     degraded: null,
     resumenMeta: null,
     askMeta: null,
+    sources: null,
   };
 
   const handleParsed = (parsed: Record<string, unknown>): void => {
@@ -119,6 +145,15 @@ async function consumeStream(res: Response, cb: StreamCallbacks): Promise<AskStr
     } else if (parsed.ask_meta && typeof parsed.ask_meta === "object") {
       result.askMeta = parsed.ask_meta as AskMeta;
       cb.onAskMeta?.(result.askMeta);
+    } else if (Array.isArray(parsed.sources)) {
+      // Llega al final del stream, cuando la respuesta ya está completa: las
+      // citas solo se pueden validar sobre el texto entero.
+      result.sources = {
+        sources: parsed.sources as Fuente[],
+        sinFuentes: parsed.sin_fuentes === true,
+        descartadas: typeof parsed.descartadas === "number" ? parsed.descartadas : 0,
+      };
+      cb.onSources?.(result.sources);
     }
   };
 

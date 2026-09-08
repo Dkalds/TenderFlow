@@ -8,6 +8,9 @@ from typing import Any
 
 from db.database import connect, connect_read, now_utc, now_utc_iso
 from db.repositories.base import rows_to_dicts
+from observability.logging import get_logger
+
+log = get_logger(__name__)
 
 #: Columnas de una invitación que salen del repositorio. Se enumeran (en vez de
 #: ``SELECT *``) porque ``token_hash`` **no** puede salir de ``db/``: es el
@@ -519,3 +522,120 @@ class OrganizationRepository:
         )
         rows = rows_to_dicts(cur)
         return rows[0] if rows else None
+
+    # ── Ciclo de vida de la organización (C2.2, ADR-030 §D) ─────────────────
+
+    def es_personal(self, organization_id: int) -> bool:
+        """¿Es la organización personal de alguien?
+
+        La personal no se traspasa ni se borra: es el contenedor por defecto de
+        una cuenta, y borrarla dejaría al usuario sin sitio donde escribir.
+        Borrar la cuenta es otra operación, con su propio endpoint.
+        """
+        with connect_read() as c:
+            fila = c.execute(
+                "SELECT is_personal FROM organizations WHERE id = %s", (organization_id,)
+            ).fetchone()
+        return bool(fila and fila[0])
+
+    def contar_por_rol(self, organization_id: int, rol: str) -> int:
+        """Miembros ACTIVOS con ese rol."""
+        with connect_read() as c:
+            fila = c.execute(
+                "SELECT COUNT(*) FROM organization_members "
+                "WHERE organization_id = %s AND role = %s AND status = 'active'",
+                (organization_id, rol),
+            ).fetchone()
+        return int(fila[0]) if fila else 0
+
+    def traspasar_propiedad(self, organization_id: int, *, de_user_id: int, a_user_id: int) -> bool:
+        """Mueve el rol `owner` de un miembro a otro, en UNA transacción.
+
+        Las dos escrituras van juntas a propósito: una organización con dos
+        owners es un estado que ningún flujo sabe leer, y una sin ninguno no la
+        puede administrar nadie. Si el `UPDATE` de destino falla, el de origen
+        se deshace con él.
+
+        Devuelve `False` si el destino no es miembro activo — invitar y
+        traspasar son cosas distintas, y hacerlas de una convertiría un error de
+        tipeo en el email en una organización cuyo owner no existe.
+        """
+        with connect() as c:
+            destino = c.execute(
+                "SELECT 1 FROM organization_members "
+                "WHERE organization_id = %s AND user_id = %s AND status = 'active'",
+                (organization_id, a_user_id),
+            ).fetchone()
+            if not destino:
+                return False
+            ahora = now_utc_iso()
+            c.execute(
+                "UPDATE organization_members SET role = 'owner', updated_at = %s "
+                "WHERE organization_id = %s AND user_id = %s",
+                (ahora, organization_id, a_user_id),
+            )
+            c.execute(
+                "UPDATE organization_members SET role = 'admin', updated_at = %s "
+                "WHERE organization_id = %s AND user_id = %s",
+                (ahora, organization_id, de_user_id),
+            )
+        return True
+
+    def salir(self, organization_id: int, user_id: int) -> bool:
+        """Marca la membresía como `revoked`. No borra: el histórico se conserva.
+
+        Un comentario firmado por alguien que ya no está sigue siendo suyo
+        (ADR-030 §D: el dato corporativo sobrevive con el autor anonimizado, no
+        desaparece con él).
+        """
+        with connect() as c:
+            cur = c.execute(
+                "UPDATE organization_members SET status = 'revoked', updated_at = %s "
+                "WHERE organization_id = %s AND user_id = %s AND status = 'active'",
+                (now_utc_iso(), organization_id, user_id),
+            )
+            return bool(getattr(cur, "rowcount", 0))
+
+    def contar_dato_corporativo(self, organization_id: int) -> dict[str, int]:
+        """Cuánto trabajo se llevaría por delante el borrado.
+
+        Es lo que la confirmación literal enseña antes de pedirla: «vas a borrar
+        14 oportunidades y 37 comentarios» es una advertencia; «¿seguro?» no.
+        """
+        conteos: dict[str, int] = {}
+        with connect_read() as c:
+            for etiqueta, sql in (
+                ("oportunidades", "SELECT COUNT(*) FROM pursuits WHERE organization_id = %s"),
+                (
+                    "comentarios",
+                    "SELECT COUNT(*) FROM pursuit_comments pc "
+                    "JOIN pursuits p ON p.id = pc.pursuit_id "
+                    "WHERE p.organization_id = %s",
+                ),
+                (
+                    "miembros",
+                    "SELECT COUNT(*) FROM organization_members "
+                    "WHERE organization_id = %s AND status = 'active'",
+                ),
+            ):
+                try:
+                    fila = c.execute(sql, (organization_id,)).fetchone()
+                    conteos[etiqueta] = int(fila[0]) if fila else 0
+                except Exception:
+                    # Una tabla que aún no existe no puede impedir que el owner
+                    # vea el resto del recuento.
+                    log.debug("conteo_dato_corporativo_fallo", tabla=etiqueta, exc_info=True)
+                    conteos[etiqueta] = -1
+        return conteos
+
+    def borrar(self, organization_id: int) -> bool:
+        """Borra la organización. El `ON DELETE CASCADE` se lleva lo suyo.
+
+        Lo que cae con ella es **dato corporativo** (ADR-030 §D): oportunidades,
+        comentarios, capacidades, claves de organización. Lo personal de cada
+        miembro —perfil, favoritos, reglas, notas privadas— cuelga del usuario y
+        sobrevive.
+        """
+        with connect() as c:
+            cur = c.execute("DELETE FROM organizations WHERE id = %s", (organization_id,))
+            return bool(getattr(cur, "rowcount", 0))

@@ -82,11 +82,19 @@ def _select_chunks_pgvector(
     if not embeddings_available():
         return None
     try:
+        from config.settings import settings
+
         query_vec = encode_texts([question])[0]
         rows = repo.search_chunks_by_embedding(
             licitacion_id,
             [float(x) for x in query_vec],
             limit=max(max_chunks * 3, 24),
+            # C5.7: la consulta se embebe con el modelo vigente, así que pide
+            # los chunks de esa misma versión. El repositorio cae a las
+            # anteriores cuando el expediente aún no se ha re-embebido — sin
+            # esa caída, cambiar de modelo dejaría sin retrieval a todo el
+            # corpus hasta terminar la migración.
+            embedding_version=settings.EMBEDDING_VERSION,
         )
     except Exception:
         log.warning("rag_context.pgvector_failed", licitacion_id=licitacion_id, exc_info=True)

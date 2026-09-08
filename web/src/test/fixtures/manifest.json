@@ -1,0 +1,229 @@
+{
+  "_comentario": "Cada fixture declara la operacion del OpenAPI contra la que se valida. Lo verifica scripts/check_contract_fixtures.py.",
+  "fixtures": [
+    {
+      "fixture": "organizations.json",
+      "method": "GET",
+      "path": "/api/v1/organizations",
+      "kind": "response",
+      "status": "200"
+    },
+    {
+      "fixture": "pursuits-list.json",
+      "method": "GET",
+      "path": "/api/v1/pursuits",
+      "kind": "response",
+      "status": "200"
+    },
+    {
+      "fixture": "pursuits-agenda.json",
+      "method": "GET",
+      "path": "/api/v1/pursuits/agenda",
+      "kind": "response",
+      "status": "200"
+    },
+    {
+      "fixture": "pursuits-metrics.json",
+      "method": "GET",
+      "path": "/api/v1/pursuits/metrics",
+      "kind": "response",
+      "status": "200"
+    },
+    {
+      "fixture": "meta-filters.json",
+      "method": "GET",
+      "path": "/api/v1/meta/filters",
+      "kind": "response",
+      "status": "200"
+    },
+    {
+      "fixture": "meta-last-extraction.json",
+      "method": "GET",
+      "path": "/api/v1/meta/last-extraction",
+      "kind": "response",
+      "status": "200"
+    },
+    {
+      "fixture": "analytics-scoring.json",
+      "method": "GET",
+      "path": "/api/v1/analytics/scoring",
+      "kind": "response",
+      "status": "200"
+    },
+    {
+      "fixture": "analytics-source-freshness.json",
+      "method": "GET",
+      "path": "/api/v1/analytics/source-freshness",
+      "kind": "response",
+      "status": "200"
+    },
+    {
+      "fixture": "ask-models.json",
+      "method": "GET",
+      "path": "/api/v1/ask/models",
+      "kind": "response",
+      "status": "200"
+    },
+    {
+      "fixture": "competitive-watchlist.json",
+      "method": "GET",
+      "path": "/api/v1/competitive/watchlist",
+      "kind": "response",
+      "status": "200"
+    },
+    {
+      "fixture": "watchlist-items.json",
+      "method": "GET",
+      "path": "/api/v1/watchlist/items",
+      "kind": "response",
+      "status": "200"
+    },
+    {
+      "fixture": "webhooks-list.json",
+      "method": "GET",
+      "path": "/api/v1/webhooks",
+      "kind": "response",
+      "status": "200"
+    },
+    {
+      "fixture": "webhook-event-types.json",
+      "method": "GET",
+      "path": "/api/v1/webhooks/event-types",
+      "kind": "response",
+      "status": "200"
+    },
+    {
+      "fixture": "radar-dismissals.json",
+      "method": "GET",
+      "path": "/api/v1/radar/dismissals",
+      "kind": "response",
+      "status": "200"
+    },
+    {
+      "fixture": "feedback-stats.json",
+      "method": "GET",
+      "path": "/api/v1/feedback/stats",
+      "kind": "response",
+      "status": "200"
+    },
+    {
+      "fixture": "calendario-enlace.json",
+      "method": "GET",
+      "path": "/api/v1/exports/calendario/enlace",
+      "kind": "response",
+      "status": "200"
+    },
+    {
+      "fixture": "licitacion-detalle.json",
+      "method": "GET",
+      "path": "/api/v1/licitaciones/{id_externo}",
+      "kind": "response",
+      "status": "200"
+    },
+    {
+      "fixture": "licitacion-documentos.json",
+      "method": "GET",
+      "path": "/api/v1/licitaciones/{id_externo}/documentos",
+      "kind": "response",
+      "status": "200"
+    },
+    {
+      "fixture": "licitacion-ficha-pliego.json",
+      "method": "GET",
+      "path": "/api/v1/licitaciones/{id_externo}/ficha-pliego",
+      "kind": "response",
+      "status": "200"
+    },
+    {
+      "fixture": "licitacion-ficha-estado.json",
+      "method": "GET",
+      "path": "/api/v1/licitaciones/{id_externo}/ficha-pliego/estado",
+      "kind": "response",
+      "status": "200"
+    },
+    {
+      "fixture": "licitacion-escenarios-precio.json",
+      "method": "GET",
+      "path": "/api/v1/licitaciones/{licitacion_id}/escenarios-precio",
+      "kind": "response",
+      "status": "200"
+    },
+    {
+      "fixture": "organization-members.json",
+      "method": "GET",
+      "path": "/api/v1/organizations/{organization_id}/members",
+      "kind": "response",
+      "status": "200"
+    },
+    {
+      "fixture": "organization-settings.json",
+      "method": "GET",
+      "path": "/api/v1/organizations/{organization_id}/settings",
+      "kind": "response",
+      "status": "200"
+    },
+    {
+      "fixture": "pursuit-detalle.json",
+      "method": "GET",
+      "path": "/api/v1/pursuits/{pursuit_id}",
+      "kind": "response",
+      "status": "200"
+    },
+    {
+      "fixture": "pursuit-comments.json",
+      "method": "GET",
+      "path": "/api/v1/pursuits/{pursuit_id}/comments",
+      "kind": "response",
+      "status": "200"
+    },
+    {
+      "fixture": "webhook-detalle.json",
+      "method": "GET",
+      "path": "/api/v1/webhooks/{webhook_id}",
+      "kind": "response",
+      "status": "200"
+    },
+    {
+      "fixture": "webhook-deliveries.json",
+      "method": "GET",
+      "path": "/api/v1/webhooks/{webhook_id}/deliveries",
+      "kind": "response",
+      "status": "200"
+    },
+    {
+      "fixture": "webhook-ping.json",
+      "method": "POST",
+      "path": "/api/v1/webhooks/{webhook_id}/ping",
+      "kind": "response",
+      "status": "200"
+    },
+    {
+      "fixture": "competitive-watchlist-delete.json",
+      "method": "DELETE",
+      "path": "/api/v1/competitive/watchlist/{empresa_id}",
+      "kind": "response",
+      "status": "200"
+    },
+    {
+      "fixture": "me-sessions.json",
+      "method": "GET",
+      "path": "/api/v1/me/sessions",
+      "kind": "response",
+      "status": "200"
+    },
+    {
+      "fixture": "me-keys.json",
+      "method": "GET",
+      "path": "/api/v1/me/keys",
+      "kind": "response",
+      "status": "200"
+    },
+    {
+      "fixture": "me-notification-preferences.json",
+      "method": "GET",
+      "path": "/api/v1/me/notification-preferences",
+      "kind": "response",
+      "status": "200"
+    }
+  ]
+}

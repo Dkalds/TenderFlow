@@ -51,6 +51,7 @@ CANONICAL_STEPS: list[str] = [
     "watchlist_notify",
     "digests",
     "dlq_retry",
+    "webhook_reintentos",
     "anomaly_checks",
     "llm_models_canary",
     "retention_cleanup",
@@ -93,6 +94,10 @@ STEP_TIER: dict[str, StepTier] = {
     "watchlist_notify": "bloqueante",
     "digests": "bloqueante",
     "dlq_retry": "bloqueante",
+    # advisory: un receptor externo caído no es un fallo de la pasada. Que
+    # el reenvío no salga significa que el endpoint del cliente sigue sin
+    # responder, y sacar la pasada en rojo por eso enseña a ignorar el rojo.
+    "webhook_reintentos": "advisory",
     "anomaly_checks": "advisory",
     "llm_models_canary": "advisory",
     "retention_cleanup": "bloqueante",
@@ -622,6 +627,17 @@ def _run_dlq_retry(lane: str = LANE_BULK) -> None:
     retry_failed_extractions(include_bulk=lane != LANE_DAILY)
 
 
+def _run_webhook_reintentos() -> dict[str, Any]:
+    """Reenvía las entregas de webhook pendientes (C2.4).
+
+    Sin cadencia propia: cada pasada drena lo que venció, y lo que no entre en
+    el tope sale en la siguiente.
+    """
+    from scheduler.jobs.webhook_reintentos import run as run_webhook_reintentos
+
+    return run_webhook_reintentos()
+
+
 def _run_anomaly_checks() -> None:
     from scheduler.anomaly_alerts import run_anomaly_checks
 
@@ -977,11 +993,10 @@ def _run_daily_pipeline_connector(*, con_cierre: bool = True) -> dict[str, Any]:
     - Los errores por-entry (parse → DLQ) **no** marcan el run como fallido —
       igual que ``entries_error`` en legacy. Solo un fallo fatal de ``fetch``
       produce ``status="error_fetch"`` (mismo nombre de status que legacy).
-    - Escribe ``log_extraccion`` (tabla ``extracciones``, fuente ``placsp``) y
+    - Deja los contadores por fuente en ``source_ingestion_health`` (vía ``run_connector``) y
       envuelve el run en ``record_run`` para que la página de observabilidad
       siga viendo los runs diarios tras el flip.
     """
-    from db.database import log_extraccion
     from observability import bind_run_context, record_run
     from scraper.connectors.base import run_connector
     from scraper.connectors.placsp import PlacspAtomConnector
@@ -1011,23 +1026,6 @@ def _run_daily_pipeline_connector(*, con_cierre: bool = True) -> dict[str, Any]:
             metrics.licitaciones_nuevas = run_result.nuevas
             metrics.licitaciones_actualizadas = run_result.actualizadas
         metrics.notas = f"daily_connector|{status}"
-
-        if not run_result.fetch_failed:
-            try:
-                log_extraccion(
-                    fuente=run_result.source_id,
-                    nuevas=run_result.nuevas,
-                    actualizadas=run_result.actualizadas,
-                    total=run_result.parsed,
-                    notas=(
-                        f"connector matches:{run_result.parsed} "
-                        f"adj:{run_result.adjudicaciones} "
-                        f"inserted:{run_result.nuevas} modified:{run_result.actualizadas} "
-                        f"errors:{run_result.errores}"
-                    ),
-                )
-            except Exception:
-                log.warning("daily_connector_log_extraccion_failed")
 
     step_results = _run_post_ingestion_steps(lane=LANE_DAILY) if con_cierre else {}
 
@@ -1247,7 +1245,7 @@ def _run_bulk_pipeline_connector(
     - Un fallo fatal de ``fetch`` de un mes se marca ``status="error"`` (los
       errores por-entry van a DLQ y **no** fallan el mes — igual que
       ``entries_error`` en ``process_month``).
-    - ``log_extraccion`` por mes con la misma ``fuente`` (``bulk_YYYYMM``) que
+    - ``source_ingestion_health`` por mes con la misma ``fuente`` (``bulk_YYYYMM``) que
       usaba el legacy, para continuidad de la serie en ``extracciones``.
     - El run completo va envuelto en ``record_run`` (observabilidad).
 
@@ -1261,7 +1259,6 @@ def _run_bulk_pipeline_connector(
         desde: ``(año, mes)`` de inicio para el backfill histórico.
         label: Etiqueta del run en logs y alertas de degradación.
     """
-    from db.database import log_extraccion
     from observability import bind_run_context, record_run
     from scraper.connectors.base import run_connector
     from scraper.connectors.placsp import PlacspBulkConnector
@@ -1292,24 +1289,6 @@ def _run_bulk_pipeline_connector(
                         "entries_error": r.errores,
                     }
                 )
-                if not r.fetch_failed:
-                    try:
-                        log_extraccion(
-                            fuente=r.source_id,
-                            nuevas=r.nuevas,
-                            actualizadas=r.actualizadas,
-                            total=r.parsed,
-                            notas=(
-                                f"connector matches:{r.parsed} adj:{r.adjudicaciones} "
-                                f"errors:{r.errores}"
-                            ),
-                        )
-                    except Exception:
-                        log.warning(
-                            "bulk_connector_log_extraccion_failed",
-                            year=year,
-                            month=month,
-                        )
             except Exception as exc:
                 log.exception(
                     "bulk_connector_month_failed",

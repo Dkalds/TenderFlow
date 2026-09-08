@@ -146,3 +146,63 @@ retención.
 
 Abrir un issue **privado** (Security advisory) en GitHub con etiqueta
 `security`. No divulgar públicamente antes del parche. Respuesta en 72h.
+
+---
+
+## Retención de datos
+
+<!-- BEGIN retencion (generado por scripts/gen_retention_doc.py — no editar a mano) -->
+
+Los plazos son configuración (`RETENTION_*` en `config/settings.py`, documentados en
+`.env.example`) y la política vive en `scheduler/retention.py::POLITICA_RETENCION`.
+Esta tabla se genera con `python scripts/gen_retention_doc.py`; CI la verifica con
+`--check`, así que no puede quedarse atrás respecto del código que purga.
+
+El job programado `retention_cleanup` la aplica a diario. Las tablas
+`licitaciones` y `adjudicaciones` **no** se purgan: son el dato público que el
+producto existe para conservar.
+
+| Tabla | Plazo | Motivo | Comando |
+|---|---|---|---|
+| `extraction_runs` | 90 días (3 meses) | Diagnóstico de la ingesta. Pasado un trimestre, un run concreto ya no explica nada que la serie agregada no cuente mejor. | `python scripts/retention_cleanup.py --apply` |
+| `audit_log` | 180 días (6 meses) | Trazabilidad de acciones de usuario para investigar un incidente. Encadenado por SHA-256: se purga por el extremo antiguo, nunca por el medio. | `python scripts/retention_cleanup.py --apply` |
+| `failed_extractions` | 30 días (1 mes) | Cola de fallos. Solo se purgan los **resueltos**: un fallo abierto no caduca por tiempo. | `python scripts/retention_cleanup.py --apply` |
+| `licitaciones_history` | 365 días (1 año) | Histórico de cambios de un expediente. Un año cubre el ciclo completo de licitación y adjudicación. | `python scripts/retention_cleanup.py --apply` |
+| `access_log` | 180 días (6 meses) | Accesos a la plataforma. Dato personal: se conserva lo mínimo para investigar abuso y no más. | `python scripts/retention_cleanup.py --apply` |
+| `idempotency_keys` | 1 día | Solo tienen que sobrevivir al reintento que las justifica. | `python scripts/retention_cleanup.py --apply` |
+| `webhook_deliveries` | 90 días (3 meses) | Historial de entregas para depurar un webhook que falla. El reintento vive en horas, no en meses. | `python scripts/retention_cleanup.py --apply` |
+| `solicitudes_acceso` | 720 días (24 meses) | **Plazo publicado en el aviso legal.** Cambiarlo cambia una promesa hecha al visitante en el momento de la recogida (RGPD art. 13). | `python scripts/retention_cleanup.py --apply` |
+| `password_reset_tokens` | 7 días | Un token de recuperación caducado no sirve para nada y sí identifica a quien lo pidió. | `python scripts/retention_cleanup.py --apply` |
+| `client_errors` | 30 días (1 mes) | Huella sin PII de un fallo de JavaScript. No hace falta guardarla más de lo que dura investigar una regresión. | `python scripts/retention_cleanup.py --apply` |
+| `rate_limits` | 1 día | Ventanas de rate limit. Se purgan las **expiradas** en cada pasada, sin esperar al plazo: la columna que manda es `reset_at`. | `python scripts/retention_cleanup.py --apply` (por `reset_at`, no por plazo) |
+
+<!-- END retencion -->
+
+---
+
+## Política de vulnerabilidades
+
+Un aviso de seguridad sin plazo se queda abierto. Estos son los plazos, contados
+desde que el aviso aparece en la pestaña de seguridad del repositorio:
+
+| Severidad | Plazo máximo hasta el parche | Qué pasa si se agota |
+|---|---|---|
+| Crítica | 48 horas | Se para el trabajo en curso hasta cerrarlo. |
+| Alta | 7 días naturales | Bloquea el merge de features nuevas en el área afectada. |
+| Moderada | 30 días naturales | Entra en el backlog con fecha límite explícita. |
+| Baja | Sin plazo fijo | Se agrupa con la siguiente actualización de dependencias. |
+
+**Excepciones.** Un aviso que no aplica —la ruta vulnerable no se ejecuta, la
+dependencia es de desarrollo y no viaja a producción— se **descarta con
+motivo escrito** en el propio aviso. Descartar sin motivo no está permitido:
+es indistinguible de ignorar.
+
+**Avisos fantasma.** Un aviso contra un fichero de lock que ya no existe en el
+árbol (por ejemplo el `uv.lock` retirado) no es un falso positivo del
+escaneo: es un aviso sobre un artefacto que GitHub sigue viendo en el
+historial. Se cierran en bloque, con una nota que diga cuál fue el fichero y
+cuándo se retiró.
+
+**Medición.** «Cero avisos altos abiertos más de siete días» se comprueba en la
+pestaña de seguridad del repositorio y se anota con fecha. No hay comando que lo
+derive del árbol: los avisos son estado de GitHub, no del repositorio.

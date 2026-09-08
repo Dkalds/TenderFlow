@@ -136,3 +136,62 @@ Un test escanea el árbol y falla si el literal reaparece fuera de su dueño.
   comparables sin declararlo.
 - Cualquier ADR futuro que añada un camino de lectura actualiza la tabla de §A
   en el mismo cambio.
+
+---
+
+## Addendum 2026-09-06 — Qué se hace con una republicación (D23)
+
+Lo pedía el plan complementario (C4.2): `detect_republicaciones` marcaba
+**siempre** `pending` y ADR-026 no decía qué hacer con esas filas, así que cada
+superficie hacía una cosa distinta sin haberlo decidido.
+
+### El hecho, medido
+
+Un contrato reemitido produce varias filas: TED acuña un `publication-number`
+por anuncio —uno por corrigendo, otro por la adjudicación— y el conector de
+PSCP cae al `id` de la fila cuando el registro no trae `codi_expedient`.
+`detect_republicaciones` las empareja por órgano + CPV4 + año-mes + título.
+
+Antes de este addendum:
+
+| Superficie | Qué hacía con una republicación |
+|---|---|
+| Superficie pública | La colapsaba, pero **por otro camino**: `fila_canonica_sql` agrupa por `clave_canonica_sql`, que es la misma clave que `republicacion_key`. Correcto por coincidencia, no por decisión. |
+| Radar | La mostraba **N veces**: `scoring_candidates` no excluía ningún duplicado, ni siquiera los `confirmed`. |
+| Analítica competitiva | La contaba (solo excluye `confirmed`), y así debe seguir. |
+| Ficha de detalle | La servía sin decir que lo era. |
+
+### La regla
+
+**Presentación esconde; métrica cuenta; la ficha avisa.**
+
+| Superficie | Regla | Implementación |
+|---|---|---|
+| Radar, listados | Esconde `pending` **y** `confirmed` | `exclude_duplicados_presentacion_sql` |
+| Superficie pública | Colapsa por clave canónica | `fila_canonica_sql` (sin cambios) |
+| Cuota, HHI, bajas | Esconde **solo** `confirmed` | `exclude_duplicados_sql` (sin cambios) |
+| Ficha de detalle | La sirve **y lo dice** | `LicitacionDetail.republicacion_de` |
+
+### Por qué esta asimetría y no una regla única
+
+Porque los dos errores no cuestan lo mismo.
+
+- **Esconder de más en el Radar** cuesta que un expediente aparezca una vez en
+  vez de tres. El original sigue publicado y la ficha del duplicado sigue
+  respondiendo.
+- **Esconder de más en una métrica competitiva** retira un contrato de la cuota
+  de mercado de una empresa. Si el par resulta ser un falso positivo —dos lotes
+  de un acuerdo marco comparten órgano, CPV4, mes y título con facilidad— la
+  métrica queda mal para siempre y nadie se entera.
+
+Esa diferencia es la razón por la que `detect_republicaciones` no puede marcar
+`confirmed` y a la vez sí puede gobernar lo que se enseña. Dos preguntas
+distintas, dos umbrales de evidencia distintos.
+
+### Por qué la ficha no devuelve 404
+
+Un enlace guardado, un resultado de Google o un favorito no pueden romperse
+porque un job nocturno decidiera que esa fila es un duplicado —sobre todo
+tratándose de `pending`, que por definición nadie ha confirmado—. La ficha
+responde, y `republicacion_de` le da al usuario el id de la canónica para que
+juzgue por sí mismo.

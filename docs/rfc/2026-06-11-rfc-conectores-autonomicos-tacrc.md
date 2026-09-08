@@ -4,7 +4,7 @@ title: Fase 5 — Conectores autonómicos (PSCP Catalunya primero) y resolucione
 issue: N/A (roadmap interno, Crítica 4 cobertura de datos)
 author: agent:architect
 date: 2026-06-11
-status: implemented (v1)
+status: partially-implemented
 supersedes:
 ---
 

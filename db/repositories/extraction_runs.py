@@ -46,12 +46,6 @@ class ExtractionRunRepository:
             )
             return rows_to_dicts(cur)
 
-    def load_extracciones(self) -> list[dict[str, Any]]:
-        """Carga el historial de extracciones (fecha, fuente, nuevas)."""
-        with connect_read() as c:
-            cur = c.execute("SELECT fecha, fuente, nuevas FROM extracciones ORDER BY fecha DESC")
-            return rows_to_dicts(cur)
-
     def persist_run(
         self,
         *,

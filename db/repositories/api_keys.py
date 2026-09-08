@@ -144,7 +144,11 @@ class ApiKeyRepository:
         with connect_read() as c:
             try:
                 cur = c.execute(
-                    "SELECT id, name, created_at, expires_at, is_active "
+                    # `tier` desde C2.3: sin él, la pantalla de Ajustes no
+                    # puede decir qué límite tiene cada clave, y el usuario
+                    # descubre su tier por un 429.
+                    "SELECT id, name, created_at, expires_at, is_active, "
+                    "COALESCE(tier, 'standard') AS tier "
                     "FROM api_keys WHERE user_id = %s",
                     (user_id,),
                 )
@@ -302,3 +306,33 @@ class ApiKeyRepository:
                     "UPDATE api_keys SET expires_at = %s WHERE id = %s",
                     (expires_at, key_id),
                 )
+
+
+def tier_limit_por_hash(key_hash: str) -> int | None:
+    """Requests/minuto que el tier de esta API key permite (C2.3, D25).
+
+    ``api_key_tiers`` existe desde ``v28`` con tres tiers sembrados y una
+    columna ``tier`` en ``api_keys``, y **ninguna ruta ni middleware la leía**:
+    una clave `free` y una `enterprise` recibían exactamente el mismo rate
+    limit. Esta función es lo que faltaba para que el tier signifique algo.
+
+    Devuelve:
+        - El límite por minuto del tier.
+        - ``None`` si la clave no existe, está inactiva, o su tier declara
+          ``per_minute_limit = 0`` — que es como ``enterprise`` dice «sin
+          límite». ``None`` significa «usa el default del middleware», no «cero
+          requests»: confundir esas dos cosas dejaría fuera al tier que más
+          paga.
+    """
+    with connect_read() as c:
+        fila = c.execute(
+            "SELECT t.per_minute_limit FROM api_keys k "
+            "JOIN api_key_tiers t ON t.tier = k.tier "
+            "WHERE k.key_hash = %s AND k.is_active = 1 "
+            "LIMIT 1",
+            (key_hash,),
+        ).fetchone()
+    if not fila or not fila[0]:
+        return None
+    limite = int(fila[0])
+    return limite if limite > 0 else None

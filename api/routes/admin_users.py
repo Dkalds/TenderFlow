@@ -23,7 +23,7 @@ from db.users import (
 )
 from observability.logging import get_logger
 from services.gdpr import revoke_all_api_keys_for_user
-from shared.dto import StatusOk
+from shared.dto import MAX_PAGE_LIMIT, StatusOk
 
 log = get_logger(__name__)
 
@@ -77,7 +77,11 @@ def admin_list_users(
     # Sin cota, un `limit` negativo llegaba tal cual al `LIMIT` de la query y
     # Postgres respondía con InvalidRowCountInLimitClause -> 500. Acotarlo aquí
     # lo convierte en el 422 que corresponde a un parámetro inválido.
-    limit: int = Query(200, ge=1, le=1000),
+    # C8.5: un solo tope de página en toda la API (`MAX_PAGE_LIMIT`). Esta ruta
+    # es de administración, así que el estrechamiento no afecta a ningún
+    # consumidor externo, pero un tope propio aquí es exactamente cómo vuelve a
+    # dispersarse el contrato.
+    limit: int = Query(200, ge=1, le=MAX_PAGE_LIMIT),
     admin: dict[str, Any] = Depends(require_admin),
 ) -> list[AdminUserOut]:
     """Lista todos los usuarios (solo admin)."""

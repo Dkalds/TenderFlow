@@ -6,6 +6,9 @@ from typing import Any
 
 from db.database import connect, connect_read, now_utc_iso
 from db.repositories.base import rows_to_dicts
+from observability.logging import get_logger
+
+log = get_logger(__name__)
 
 # El nombre visible del autor se resuelve aquí y no en el frontend: los
 # miembros de un espacio ya ven el correo de sus compañeros en
@@ -126,6 +129,75 @@ class PursuitCommentRepository:
                 "UPDATE pursuit_comments SET author_user_id = NULL WHERE author_user_id = %s",
                 (user_id,),
             )
+
+    # ── Menciones (C6.2, v124) ───────────────────────────────────────────
+
+    def guardar_menciones(self, comment_id: int, user_ids: list[int]) -> int:
+        """Persiste a quién menciona un comentario. Devuelve cuántas se guardaron.
+
+        Se guardan los **ids**, no el nombre resuelto: congelar el nombre dentro
+        del texto significa que cuando la persona cambia su `display_name`, el
+        comentario menciona a alguien que ya no se llama así y sin forma de saber
+        a quién apuntaba.
+
+        No lanza: un fallo aquí no puede tumbar el comentario, que ya está
+        escrito. Perder la mención degrada la notificación; perder el comentario
+        pierde el trabajo.
+        """
+        if not user_ids:
+            return 0
+        try:
+            with connect() as conn:
+                for user_id in user_ids:
+                    conn.execute(
+                        "INSERT INTO pursuit_comment_mentions (comment_id, user_id, created_at) "
+                        "VALUES (%s, %s, %s) ON CONFLICT DO NOTHING",
+                        (comment_id, int(user_id), now_utc_iso()),
+                    )
+        except Exception:
+            log.warning("pursuit_menciones_insert_failed", comment_id=comment_id, exc_info=True)
+            return 0
+        return len(user_ids)
+
+    def menciones_de(self, comment_ids: list[int]) -> dict[int, list[int]]:
+        """`{comment_id: [user_id]}` para un lote de comentarios.
+
+        Por lote y no de uno en uno: el hilo se pinta entero y una consulta por
+        comentario sería una tormenta de consultas por carga de pantalla.
+        """
+        if not comment_ids:
+            return {}
+        with connect_read() as conn:
+            cur = conn.execute(
+                "SELECT comment_id, user_id FROM pursuit_comment_mentions "
+                "WHERE comment_id = ANY(%s) ORDER BY comment_id, id",
+                (list(comment_ids),),
+            )
+            filas = rows_to_dicts(cur)
+        salida: dict[int, list[int]] = {}
+        for f in filas:
+            salida.setdefault(int(f["comment_id"]), []).append(int(f["user_id"]))
+        return salida
+
+    def menciones_de_usuario(self, user_id: int, *, limit: int = 50) -> list[dict[str, Any]]:
+        """En qué comentarios se ha mencionado a alguien, del más reciente atrás.
+
+        Es la consulta del destinatario, y la que alimenta la notificación
+        cuando exista el outbox de v2 S4.1. Va acotada por el `organization_id`
+        del propio comentario: una mención solo existe dentro de la organización
+        donde se escribió, así que no hace falta un filtro extra que alguien
+        pueda olvidar.
+        """
+        with connect_read() as conn:
+            cur = conn.execute(
+                "SELECT m.comment_id, c.pursuit_id, c.organization_id, c.body, "
+                "       c.created_at, c.author_user_id "
+                "FROM pursuit_comment_mentions m "
+                "JOIN pursuit_comments c ON c.id = m.comment_id "
+                "WHERE m.user_id = %s ORDER BY m.id DESC LIMIT %s",
+                (user_id, max(1, min(int(limit), 200))),
+            )
+            return rows_to_dicts(cur)
 
     @staticmethod
     def _get_scoped(

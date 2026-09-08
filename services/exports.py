@@ -28,6 +28,41 @@ _DEFAULT_COLUMNS = [
 ]
 
 
+#: Columnas del export del tablero de oportunidades (C6.7).
+#:
+#: `organizacion_id` y `exportado_en` van **como columnas** y no como preámbulo
+#: del fichero: una línea de cabecera antes de los nombres de columna rompe a
+#: pandas, a Excel y a cualquier consumidor que espere un CSV, mientras que una
+#: columna la lee todo el mundo y sobrevive a que alguien filtre y reenvíe media
+#: hoja — que es justo cuando importa saber de qué organización y de qué día es
+#: el dato.
+PURSUIT_COLUMNS = [
+    "id",
+    "licitacion_id",
+    "tender_title",
+    "organo_contratacion",
+    "cpv",
+    "tender_deadline",
+    "responsable",
+    "status",
+    "decision",
+    "decision_reason",
+    "offer_price_eur",
+    "outcome",
+    "awarded_amount_eur",
+    "outcome_reason",
+    "next_action",
+    "next_action_due",
+    "identified_at",
+    "decision_at",
+    "submitted_at",
+    "closed_at",
+    "updated_at",
+    "organizacion_id",
+    "exportado_en",
+]
+
+
 def generate_csv(
     records: list[dict[str, object]],
     columns: list[str] | None = None,

@@ -53,6 +53,17 @@ class OrganoEntry(BaseModel):
     importe: float
     pct: float
     ccaa: str | None = None
+    # C1.2 — identidad del órgano en el maestro, cuando resolvió.
+    #
+    # `None` no significa "no medido": significa que esta fila se agrupó por
+    # nombre plegado porque el backfill no la resolvió, y eso es un estado
+    # legítimo y visible. La lectura dual está en `clave_organo_sql`.
+    organo_id: int | None = None
+    #: Código DIR3 del Inventario de Unidades Orgánicas.
+    dir3: str | None = None
+    #: Perfil del contratante en PLACSP. Es lo que hace que la página de órgano
+    #: pueda enlazar al original en vez de solo nombrarlo.
+    url_perfil: str | None = None
 
 
 class TreemapItem(BaseModel):
@@ -115,6 +126,9 @@ def get_organos(filters: OrganosFilters) -> OrganosResult:
             importe=float(r["importe"] or 0),
             pct=round(int(r["count"]) / total * 100, 2),
             ccaa=r.get("ccaa_mode"),
+            organo_id=r.get("organo_id"),
+            dir3=r.get("dir3"),
+            url_perfil=r.get("url_perfil"),
         )
         for r in ranking[: filters.limit]
     ]

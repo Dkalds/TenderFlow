@@ -46,16 +46,44 @@ async def delete(ctx: AuthContext = Depends(require_scope("webhooks:write"))): .
 
 Scopes usados en el proyecto:
 
-| Scope              | Rutas                        |
-|--------------------|------------------------------|
-| `webhooks:read`    | GET webhooks                 |
-| `webhooks:write`   | POST/PATCH/DELETE webhooks   |
-| `watchlist:read`   | GET watchlist feed           |
-| `analytics:read`   | GET analytics                |
-| `exports:read`     | Descargas y estado de exports |
-| `admin`            | POST rollback modelos, verificar auditoría |
-| `data:read`        | Lecturas generales (default al crear key) |
-| `*`                | Acceso total explícito       |
+<!-- BEGIN scopes (generado por scripts/gen_scopes_doc.py — no editar a mano) -->
+
+Los scopes los resuelve `api/scopes.py::required_scope_for_request` a partir del método y la ruta; hoy son **30** familias. Esta tabla se genera con `python scripts/gen_scopes_doc.py` y CI la verifica con `--check`.
+
+| Scope | Métodos | Familias de ruta |
+|---|---|---|
+| `account:delete` | DELETE | `/me` |
+| `account:read` | GET | `/me/data` |
+| `admin` | todos | `/admin/solicitudes-acceso`, `/admin/users`, `/empresas/reviews`, `/feature-flags`, `/security/audit`, `/security/client-error`, `/security/client-errors`, `/security/csp-report`, `/security/leaked-key`, `/webhooks`, `/webhooks/event-types` |
+| `analytics:read` | GET | `/analytics/clusters`, `/analytics/compare-periods`, `/analytics/competitors`, `/analytics/forecast`, `/analytics/geography`, `/analytics/organos`, `/analytics/overview`, `/analytics/pipeline`, `/analytics/proyectos-modulos`, `/analytics/quality`, `/analytics/resumen`, `/analytics/scoring`, `/analytics/source-freshness`, `/analytics/tecnologias`, `/analytics/trends`, `/analytics/trends-cpv`, `/analytics/utes` |
+| `api_keys:read` | GET/POST | `/me/keys` |
+| `api_keys:rotate` | POST | `/me/keys` |
+| `ask:read` | GET/POST | `/ask`, `/ask/models` |
+| `competitive:read` | GET | `/competitive/bajas`, `/competitive/cuota`, `/competitive/empresas`, `/competitive/hhi`, `/competitive/renovaciones`, `/competitive/watchlist` |
+| `competitive:write` | POST/DELETE | `/competitive/watchlist` |
+| `data:read` | GET | `/adjudicaciones`, `/auth/me`, `/auth/oauth`, `/eventos`, `/health`, `/health/live`, `/health/ready`, `/me/notification-preferences`, `/me/sessions`, `/meta/filters`, `/meta/last-extraction`, `/predicciones/calibracion`, `/publico/hubs`, `/publico/licitaciones`, `/publico/sitemap`, `/radar/dismissals`, `/resoluciones`, `/tecnologias/keywords` |
+| `data:write` | POST/PUT/DELETE | `/auth/dev-login`, `/auth/login`, `/auth/logout`, `/auth/logout-all`, `/auth/password-reset`, `/auth/register`, `/auth/totp`, `/me/notification-preferences`, `/me/sessions`, `/publico/solicitudes-acceso`, `/radar/dismissals`, `/search/semantic`, `/tecnologias/keywords` |
+| `empresas:read` | GET | `/empresas`, `/empresas/stats` |
+| `exports:read` | GET | `/exports/calendario`, `/exports/calendario.ics`, `/exports/download` |
+| `feature_flags:read` | GET | `/feature-flags` |
+| `feedback:read` | GET | `/feedback/asistente`, `/feedback/model-info`, `/feedback/queue`, `/feedback/stats` |
+| `feedback:write` | POST | `/feedback`, `/feedback/asistente` |
+| `licitaciones:read` | GET/POST | `/licitaciones`, `/licitaciones/bulk-get`, `/licitaciones/cursor`, `/licitaciones/search`, `/licitaciones/stream` |
+| `licitaciones:write` | POST | `/licitaciones` |
+| `models:read` | GET/POST | `/models` |
+| `notifications:read` | GET | `/notifications` |
+| `notifications:write` | POST | `/notifications/alerts`, `/notifications/read` |
+| `profile:read` | GET | `/me/profile` |
+| `profile:write` | PUT/DELETE | `/me/profile` |
+| `pursuits:read` | GET | `/organizations`, `/organizations/active`, `/organizations/go-no-go`, `/pursuits`, `/pursuits/agenda`, `/pursuits/metrics`, `/pursuits/mi-baja`, `/pursuits/tasks` |
+| `pursuits:write` | POST/PATCH/PUT/DELETE | `/organizations`, `/organizations/go-no-go`, `/pursuits` |
+| `saved_filters:read` | GET | `/saved-filters` |
+| `saved_filters:write` | POST/DELETE | `/saved-filters` |
+| `watchlist:read` | GET | `/watchlist/feed.xml`, `/watchlist/items`, `/watchlist/rules` |
+| `watchlist:write` | POST/PUT/DELETE | `/watchlist/items`, `/watchlist/rules` |
+| `*` | — | Acceso total explícito. Solo para claves de operación. |
+
+<!-- END scopes -->
 
 ## Contrato de errores (RFC 7807)
 
@@ -138,16 +166,73 @@ Respuesta:
 | `me`               | `/me`, `/me/profile`        | Perfil, API keys y export/delete GDPR del usuario autenticado |
 | `meta`             | `/meta`                     | Metadata del sistema (opciones de filtros)       |
 | `models`           | `/models`                   | Versiones de modelos ML, rollback (`admin`)      |
-| `search`           | `/search`                   | Búsqueda full-text (FTS5/tsvector) y semántica    |
+| `search`           | `/search`                   | Búsqueda full-text (`tsvector` + GIN) y semántica    |
 | `security`         | `/security`                 | TOTP, CSRF, auditoría                            |
-| `stream`           | `/stream`                   | SSE streaming genérico                           |
+| `stream`           | `/licitaciones/stream`      | SSE de licitaciones nuevas (no existe un prefijo /stream propio)  |
 | `watchlist_feed`   | `/watchlist`                | Feed de watchlist                                |
 | `watchlist_items`  | `/watchlist/items`          | CRUD de items de watchlist                       |
 | `watchlist_rules`  | `/watchlist/rules`          | Reglas de alertas de watchlist                   |
 
+## Política de deprecación
+
+Una ruta no se apaga: se deprecia, se anuncia y **después** se apaga. Hasta
+2026-09 el listado por offset emitía `Deprecation: true` sin decir para cuándo,
+que le pide al cliente que se prepare sin darle fecha.
+
+### La ventana es de 90 días
+
+`api/errors.py::DEPRECATION_WINDOW_DAYS`. Es la ventana del **contrato**, no la
+del calendario de quien deprecia: `deprecate_route()` lanza `ValueError` si la
+fecha de apagado cae más cerca. Un aviso más corto convierte el problema de
+quien deprecia en un incidente de quien consume.
+
+### Las tres cabeceras
+
+`deprecate_route(response, sunset=..., successor=..., rfc=...)` escribe:
+
+| Cabecera | Valor | Qué dice |
+|---|---|---|
+| `Deprecation` | `true` (RFC 8594) | La ruta está deprecada. |
+| `Sunset` | fecha HTTP (RFC 8594) | **Cuándo** deja de responder. |
+| `Link` | `rel="successor-version"` y `rel="deprecation"` | Qué usar en su lugar, y la RFC de retirada. |
+
+`Sunset` va en formato de fecha HTTP (IMF-fixdate), no ISO-8601: lo exige
+RFC 8594 y un cliente que parsee la cabecera espera ese formato.
+
+### Qué exige retirar una ruta
+
+1. **RFC de retirada** con fecha, enlazada desde la cabecera `Link`.
+2. `deprecate_route()` en la operación, con `sunset` ≥ hoy + 90 días.
+3. La sucesora existiendo y sirviendo el mismo dato **antes** del anuncio.
+4. La etiqueta `api-breaking` en la PR que finalmente la borre, con la RFC
+   enlazada — lo verifica el job `api-breaking-check`
+   (`scripts/check_api_breaking.py`).
+
+### Qué cuenta como cambio incompatible
+
+No solo borrar una ruta. `scripts/check_api_breaking.py` compara el OpenAPI de
+`master` con el de la PR y considera incompatible:
+
+- Quitar una ruta o un método.
+- Quitar un campo de una respuesta, o cambiarle el tipo.
+- Añadir un campo **requerido** a una petición, o hacer requerido uno que no lo era.
+- Quitar un parámetro, o estrechar su rango (`le`, `ge`, `maxLength`, `enum`).
+- Quitar un código de estado documentado.
+
+Añadir un campo opcional a una respuesta, una ruta nueva o un parámetro
+opcional **no** es incompatible: un cliente que los ignora sigue funcionando.
+
+### Rutas deprecadas hoy
+
+| Ruta | Sunset | Sucesora |
+|---|---|---|
+| `GET /licitaciones` (paginación por offset) | 2027-01-15 | `GET /licitaciones/cursor` |
+
+
 ## Convenciones de naming
 
 - Sustantivos en plural para colecciones: `/licitaciones`, `/webhooks`, `/exports`.
-- IDs en la ruta: `/webhooks/{id}`, `/exports/{job_id}`.
-- Acciones como sub-recurso: `/webhooks/{id}/test`, `/models/{name}/rollback`.
+- IDs en la ruta: `/webhooks/{webhook_id}`, `/licitaciones/{licitacion_id}`.
+- Acciones como sub-recurso: `/webhooks/{webhook_id}/ping`,
+  `/models/{name}/activate/{version}`.
 - Verbos HTTP semánticos: GET=leer, POST=crear/acción, PATCH=actualizar, DELETE=eliminar.

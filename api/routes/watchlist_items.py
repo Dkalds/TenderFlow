@@ -11,12 +11,14 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 from pydantic import BaseModel, Field
 
 from api.concurrency import run_db
 from api.routes.dual_auth import require_any_auth
 from api.tenancy import require_organization, resolve_organization_ctx
+from db.idempotency import cached_response, store_response
+from db.idempotency import scope as idem_scope
 from db.repositories.watchlist import WatchlistRepository
 from observability.logging import get_logger
 from services.organizations import claim_legacy_scope
@@ -60,6 +62,16 @@ class WatchlistItemBody(BaseModel):
     visibility: str = Field(default="private", pattern="^(private|organization)$")
 
 
+class WatchlistNotaBody(BaseModel):
+    """Nota personal de un favorito (C6.6).
+
+    `None` o cadena vacía la borran: no hace falta un endpoint aparte para
+    quitarla, y tener dos formas de borrar es tener una que alguien olvida.
+    """
+
+    nota: str | None = Field(default=None, max_length=2000)
+
+
 @router.get("", summary="Listar favoritos del usuario (enriquecidos)")
 async def get_items(
     organization_id: int | None = Query(default=None, ge=1),
@@ -79,19 +91,47 @@ async def get_items(
 @router.post("", status_code=status.HTTP_201_CREATED, summary="Añadir un favorito")
 async def post_item(
     body: WatchlistItemBody,
+    idempotency_key: str | None = Header(
+        default=None,
+        alias="X-Idempotency-Key",
+        max_length=200,
+        description=(
+            "Reintentar con la misma clave devuelve la misma respuesta sin repetir el "
+            "efecto. Caduca según `IDEMPOTENCY_TTL_SECONDS`."
+        ),
+    ),
     ctx: dict[str, Any] = Depends(require_any_auth),
 ) -> WatchlistFavoriteCreated:
     ctx = await resolve_organization_ctx(ctx, body.organization_id, write=True)
-    item = await run_db(
-        _repo.add_item,
-        _user_key(ctx),
-        _user_id(ctx),
-        body.id_externo,
-        ctx["organization_id"],
-        body.visibility,
+    ambito = idem_scope(
+        "watchlist_items",
+        user_key=_user_key(ctx),
+        organization_id=ctx.get("organization_id"),
     )
+    user_key = _user_key(ctx)
+    user_id = _user_id(ctx)
+    organization_id = ctx["organization_id"]
+
+    def _trabajo() -> dict[str, Any]:
+        """Comprobar la clave, escribir y guardarla, en UN salto al threadpool.
+
+        Tres `await run_db` seguidos son tres hops del event loop y tres
+        conexiones distintas; `tests/test_async_handlers_no_blocking_io.py` lo
+        prohíbe por lo primero, y lo segundo importa igual: entre la lectura de
+        la clave y su escritura no debe haber una ventana más larga que la
+        necesaria.
+        """
+        cacheada = cached_response(idempotency_key, ambito)
+        if cacheada is not None:
+            return cacheada
+        item = _repo.add_item(user_key, user_id, body.id_externo, organization_id, body.visibility)
+        respuesta = WatchlistFavoriteCreated(**item).model_dump(mode="json")
+        store_response(idempotency_key, ambito, respuesta)
+        return respuesta
+
+    creado = await run_db(_trabajo)
     log.info("watchlist_item_created", id_externo=body.id_externo)
-    return WatchlistFavoriteCreated(**item)
+    return WatchlistFavoriteCreated(**creado)
 
 
 @router.delete(
@@ -110,3 +150,28 @@ async def delete_item(
     ok = await run_db(_repo.remove_item, _user_key(ctx), id_externo, ctx["organization_id"])
     if not ok:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Favorito no encontrado.")
+
+
+@router.put(
+    # Va ANTES del `DELETE /{id_externo:path}` en el fichero, pero son métodos
+    # distintos: no se ensombrecen. El `:path` es por el mismo motivo que allí —
+    # los identificadores de PLACSP llevan barras.
+    "/{id_externo:path}/nota",
+    summary="Escribir o borrar la nota personal de un favorito",
+    responses={404: {"description": "El favorito no es tuyo o no existe"}},
+)
+async def put_item_nota(
+    id_externo: str,
+    body: WatchlistNotaBody,
+    ctx: dict[str, Any] = Depends(require_organization(write=True)),
+) -> WatchlistNotaBody:
+    """La nota es de quien la escribe, no de la organización.
+
+    El repositorio filtra solo por `user_key` a propósito: dos personas que
+    siguen el mismo expediente tienen cada una la suya, y un compañero no puede
+    sobrescribir la de otro aunque el favorito esté compartido.
+    """
+    ok = await run_db(_repo.set_nota, _user_key(ctx), id_externo, body.nota)
+    if not ok:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Favorito no encontrado.")
+    return body

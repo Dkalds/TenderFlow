@@ -25,11 +25,17 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import uuid
 from typing import Any, cast
 
 import requests
 
 from db.database import connect, now_utc_iso
+from db.repositories.webhooks import (
+    crear_entrega,
+    marcar_para_reintento,
+    marcar_webhook_tras_intento,
+)
 from observability.logging import get_logger
 from shared.crypto import DERIVED_SECRET_SENTINEL, derive_webhook_secret, is_derived_secret
 from shared.outbound_http import pinned_https_request
@@ -145,11 +151,74 @@ def delete_webhook(webhook_id: int) -> bool:
         return cast(bool, cur.rowcount > 0)
 
 
+def _cabeceras(*, secret: str, body: bytes, event_type: str, delivery_uid: str) -> dict[str, str]:
+    """Cabeceras de una entrega. La firma se calcula **sobre el cuerpo dado**.
+
+    De ahí que el cuerpo se guarde en ``webhook_deliveries.payload_json`` en vez
+    de reconstruirse en el reintento: un ``timestamp`` regenerado cambiaría el
+    JSON, y con él la firma, así que el receptor vería dos mensajes distintos
+    donde hubo un evento. ``X-Webhook-Delivery`` es estable entre intentos por
+    el mismo motivo — es lo que permite al receptor deduplicar.
+    """
+    return {
+        "Content-Type": "application/json",
+        "X-Webhook-Signature": f"sha256={_sign(secret, body)}",
+        "X-Webhook-Event": event_type,
+        "X-Webhook-Delivery": delivery_uid,
+        "User-Agent": "licitaciones-sap-webhook/1.0",
+    }
+
+
+def _intentar_entrega(
+    *, url: str, headers: dict[str, str], body: bytes, allowed_hosts: frozenset[str]
+) -> tuple[int, str | None]:
+    """Un intento HTTP. Devuelve ``(status_code, error)``; ``0`` es «sin respuesta»."""
+    try:
+        resp = pinned_https_request(
+            "POST",
+            url,
+            headers=headers,
+            body=body,
+            timeout_seconds=_DELIVERY_TIMEOUT_S,
+            allowed_hosts=allowed_hosts or None,
+        )
+        try:
+            return resp.status_code, None
+        finally:
+            resp.close()
+    except (requests.RequestException, ValueError) as exc:
+        return 0, str(exc)
+
+
+def _aplicar_decision(*, webhook_id: int, status_code: int, exito: bool, decision: Any) -> None:
+    """Traduce la decisión de reintento al estado del **webhook** (no de la entrega).
+
+    Los tres casos no son intercambiables:
+
+    - éxito → ``failure_count`` a cero.
+    - fallo con reintento por delante → solo ``last_status``. Sumar aquí
+      contaría el mismo evento hasta seis veces y desactivaría el webhook por
+      media hora de caída del receptor, que es justo lo que el reintento existe
+      para absorber.
+    - fallo definitivo → suma y, en el umbral, desactiva.
+    """
+    if exito or decision.desactivar:
+        _record_delivery(webhook_id, status_code, exito)
+    else:
+        marcar_webhook_tras_intento(webhook_id, status_code=status_code, exito=False)
+
+
 def trigger_event(event_type: str, payload: dict[str, Any]) -> int:
     """Dispara ``event_type`` a todos los webhooks activos suscritos.
 
-    Devuelve el número de entregas exitosas (HTTP 2xx).
+    Devuelve el número de entregas exitosas **en el primer intento** (HTTP 2xx).
+    Las que fallan quedan en ``webhook_deliveries`` con estado ``pending`` y
+    fecha del siguiente intento; las reenvía
+    ``scheduler.jobs.webhook_reintentos``. Antes de C2.4 se perdían: un receptor
+    en despliegue no recibía los eventos de esos minutos y nadie se lo decía.
     """
+    from services.webhook_retry import decidir
+
     body = json.dumps(
         {"event": event_type, "data": payload, "timestamp": now_utc_iso()},
         ensure_ascii=False,
@@ -175,39 +244,100 @@ def trigger_event(event_type: str, payload: dict[str, Any]) -> int:
                 raise ValueError("WEBHOOK_ALLOWED_HOSTS no está configurado")
             validate_outbound_url(url, allowed_hosts=allowed_hosts or None)
         except ValueError as exc:
+            # Un bloqueo SSRF no se reintenta: el destino no va a dejar de ser
+            # una IP privada dentro de seis horas, y encolarlo solo repetiría la
+            # resolución DNS que se acaba de rechazar.
             log.warning("webhook_trigger_ssrf_blocked", webhook_id=wid, error=str(exc))
             _record_delivery(wid, 0, False)
             continue
 
+        delivery_uid = uuid.uuid4().hex
         secret = _resolve_secret(wid, stored_secret)
-        signature = _sign(secret, body)
-        headers = {
-            "Content-Type": "application/json",
-            "X-Webhook-Signature": f"sha256={signature}",
-            "X-Webhook-Event": event_type,
-            "User-Agent": "licitaciones-sap-webhook/1.0",
-        }
-        try:
-            resp = pinned_https_request(
-                "POST",
-                url,
-                headers=headers,
-                body=body,
-                timeout_seconds=_DELIVERY_TIMEOUT_S,
-                allowed_hosts=allowed_hosts or None,
-            )
-            try:
-                ok = 200 <= resp.status_code < 300
-                _record_delivery(wid, resp.status_code, ok)
-                if ok:
-                    successful += 1
-            finally:
-                resp.close()
-        except (requests.RequestException, ValueError) as exc:
-            log.warning("webhook_delivery_failed", webhook_id=wid, error=str(exc))
-            _record_delivery(wid, 0, False)
+        headers = _cabeceras(
+            secret=secret, body=body, event_type=event_type, delivery_uid=delivery_uid
+        )
+        status_code, error = _intentar_entrega(
+            url=url, headers=headers, body=body, allowed_hosts=allowed_hosts
+        )
+        ok = 200 <= status_code < 300
+        if not ok and error:
+            log.warning("webhook_delivery_failed", webhook_id=wid, error=error)
+
+        decision = decidir(exito=ok, intentos_hechos=1)
+        crear_entrega(
+            webhook_id=wid,
+            event_type=event_type,
+            payload_json=body.decode("utf-8"),
+            delivery_uid=delivery_uid,
+            estado=decision.estado,
+            status_code=status_code,
+            success=ok,
+            proximo_intento=(
+                decision.proximo_intento.isoformat() if decision.proximo_intento else None
+            ),
+            error=error,
+        )
+        _aplicar_decision(webhook_id=wid, status_code=status_code, exito=ok, decision=decision)
+        if ok:
+            successful += 1
 
     return successful
+
+
+def reenviar(entrega: dict[str, Any]) -> bool:
+    """Reintenta una entrega pendiente. Devuelve si esta vez salió.
+
+    La usa ``scheduler.jobs.webhook_reintentos``. El cuerpo y el identificador
+    son los de la entrega original —no se regeneran—, así que el receptor ve el
+    mismo mensaje con la misma firma y puede deduplicar por
+    ``X-Webhook-Delivery``.
+    """
+    from services.webhook_retry import decidir
+
+    wid = int(entrega["webhook_id"])
+    entrega_id = int(entrega["id"])
+    with connect() as c:
+        fila = c.execute("SELECT url, secret FROM webhooks WHERE id = %s", (wid,)).fetchone()
+    if fila is None:
+        marcar_para_reintento(
+            entrega_id, estado="failed", proximo_intento=None, error="webhook borrado"
+        )
+        return False
+
+    url, stored_secret = fila[0], fila[1]
+    body = cast(str, entrega["payload_json"]).encode("utf-8")
+    try:
+        allowed_hosts = _allowed_webhook_hosts()
+        validate_outbound_url(url, allowed_hosts=allowed_hosts or None)
+    except ValueError as exc:
+        # Definitivo, no pendiente: reencolarlo repetiría el mismo rechazo cada
+        # ventana hasta agotar los seis intentos sin haber salido a la red.
+        marcar_para_reintento(
+            entrega_id, estado="failed", proximo_intento=None, error=f"SSRF: {exc}"
+        )
+        return False
+
+    headers = _cabeceras(
+        secret=_resolve_secret(wid, stored_secret),
+        body=body,
+        event_type=cast(str, entrega["event_type"]),
+        delivery_uid=cast(str, entrega["delivery_uid"]),
+    )
+    status_code, error = _intentar_entrega(
+        url=url, headers=headers, body=body, allowed_hosts=allowed_hosts
+    )
+    ok = 200 <= status_code < 300
+    decision = decidir(exito=ok, intentos_hechos=int(entrega.get("intentos") or 1) + 1)
+    marcar_para_reintento(
+        entrega_id,
+        estado=decision.estado,
+        proximo_intento=(
+            decision.proximo_intento.isoformat() if decision.proximo_intento else None
+        ),
+        error=error,
+    )
+    _aplicar_decision(webhook_id=wid, status_code=status_code, exito=ok, decision=decision)
+    return ok
 
 
 def _record_delivery(webhook_id: int, status_code: int, success: bool) -> None:

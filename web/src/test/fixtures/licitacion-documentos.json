@@ -1,0 +1,11 @@
+{
+  "id_externo": "texto",
+  "items": [
+    {
+      "id": 1,
+      "status": "texto",
+      "tipo": "texto",
+      "uri": "texto"
+    }
+  ]
+}

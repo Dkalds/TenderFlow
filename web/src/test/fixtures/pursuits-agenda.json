@@ -1,0 +1,15 @@
+{
+  "kpis": {
+    "go_no_go_pendientes": 1,
+    "senales_nuevas": 1,
+    "sin_proxima_accion": 1,
+    "vence_semana": 1,
+    "vence_semana_importe_eur": 1.0
+  },
+  "organization_id": 1,
+  "pursuits_total": 1,
+  "pursuits_truncados": true,
+  "renovaciones_horizonte_meses": 1,
+  "senales_truncadas": true,
+  "solo_mios": true
+}

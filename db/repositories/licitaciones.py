@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Any, Final
 
 from sqlalchemy import Select, and_, func, or_, select, text
 
-from db.database import connect_read, fts_available
+from db.database import connect, connect_read, fts_available
 from db.models import _DIALECT, compile_query, licitacion_tecnologia_score, licitaciones
 from db.repositories.base import csv_values, loose_distinct_strings, rows_to_dicts
 from db.sql_fragments import (
@@ -1473,3 +1473,117 @@ class LicitacionRepository:
         except Exception:
             log.warning("like_search_for_ask_failed", exc_info=True)
             return []
+
+
+# ── Backfill del censo de PSCP (C4.1) ───────────────────────────────────────
+#
+# El SQL vive aquí y no en `scripts/backfill_pscp_censo.py` porque ADR-022 lo
+# pide: todo el SQL en `db/`. El script se queda con lo suyo —los lotes, el
+# dry-run, imprimir el delta— que es donde está su valor.
+
+#: Valor de `analysis_universe` que saca una fila del universo publicable sin
+#: borrarla. Los caminos de lectura lo tratan como "no observado": la vista
+#: `v102_mv_canonicas_clave_inmutable` solo admite `technology_observed` y la
+#: lista explícita de universos regionales, y este no está en ninguna.
+UNIVERSO_CENSO = "pscp_censo"
+
+
+def medir_censo_de_fuente(fuente: str) -> dict[str, int]:
+    """Fotografía del corpus de una fuente: cuánto trae señal tecnológica.
+
+    Medido contra producción el 2026-09-06 para `pscp`: 684.374 filas, de las
+    que **3.117** tienen `tecnologia` — un 0,46 %. Ese es el corpus que ahoga al
+    dataset del clasificador SAP, y el número que este backfill mueve.
+    """
+    with connect_read() as c:
+        fila = c.execute(
+            "SELECT COUNT(*) AS total, "
+            "  COUNT(*) FILTER (WHERE tecnologia IS NOT NULL AND tecnologia <> '') AS con_tec, "
+            "  COUNT(*) FILTER (WHERE analysis_universe = %s) AS ya_marcadas "
+            "FROM licitaciones WHERE fuente = %s",
+            (UNIVERSO_CENSO, fuente),
+        ).fetchone()
+    total = int(fila[0] or 0) if fila else 0
+    con_tec = int(fila[1] or 0) if fila else 0
+    return {
+        "total": total,
+        "con_tecnologia": con_tec,
+        "sin_tecnologia": total - con_tec,
+        "ya_marcadas": int(fila[2] or 0) if fila else 0,
+    }
+
+
+def marcar_censo_de_fuente(fuente: str, *, batch: int) -> int:
+    """Marca UN lote de filas sin señal como censo. Devuelve cuántas marcó.
+
+    Por lotes y no de una: un `UPDATE` sobre 680.000 filas mantiene un lock
+    largo sobre la tabla núcleo y bloquea la ingesta que corra en paralelo.
+    Devuelve 0 cuando no queda nada, que es la condición de parada del bucle.
+    """
+    with connect() as c:
+        cur = c.execute(
+            "UPDATE licitaciones SET analysis_universe = %s "
+            "WHERE id_externo IN ("
+            "  SELECT id_externo FROM licitaciones "
+            "  WHERE fuente = %s "
+            "    AND (tecnologia IS NULL OR tecnologia = '') "
+            # `IS NULL OR <>` y no `COALESCE(...) <> %s`: el guard de
+            # `tests/test_dedup_guardrail.py` reconoce el `COALESCE` sobre
+            # `analysis_universe` como una variante del predicado de universo
+            # —el que sirve el índice parcial de v84— y esto no lo es: es un
+            # «todavía no marcada». Escribirlo así lo deja claro para quien
+            # lo lea y para el control.
+            "    AND (analysis_universe IS NULL OR analysis_universe <> %s) "
+            "  LIMIT %s"
+            ")",
+            (UNIVERSO_CENSO, fuente, UNIVERSO_CENSO, batch),
+        )
+        return int(cur.rowcount) if hasattr(cur, "rowcount") else 0
+
+
+def lotes_de(id_externo: str) -> list[dict[str, Any]]:
+    """Lotes de un expediente, ordenados por número (C1.4).
+
+    `db/repositories/publico.py` ya tenía esta consulta para la superficie
+    anónima, pero la ficha autenticada no la usaba: `GET /licitaciones/{id}`
+    devolvía el expediente sin sus lotes, y el frontend no tenía de dónde
+    sacarlos. Un expediente multi-lote se presentaba como uno solo con el
+    presupuesto total, que es la misma confusión que `EFFECTIVE_BUDGET_SQL`
+    resolvió del lado del cálculo.
+
+    Orden numérico cuando el número lo permite: `ORDER BY numero` como texto
+    pone el lote 10 antes del 2. El `CASE` cae al orden textual para los
+    números que no son enteros ("1.A", "Lote 3"), que existen en PLACSP.
+    """
+    sql = (
+        "SELECT numero, titulo, cpv, importe, fecha_limite FROM lotes "
+        "WHERE licitacion_id = %s "
+        "ORDER BY CASE WHEN numero ~ '^[0-9]+$' THEN CAST(numero AS INTEGER) END, numero"
+    )
+    with connect_read() as c:
+        return rows_to_dicts(c.execute(sql, (id_externo,)))
+
+
+def licitaciones_por_lote(ids: list[str]) -> list[dict[str, Any]]:
+    """Una fila por lote para los expedientes dados (C1.4, export).
+
+    Los expedientes **sin** lotes salen igual, con los campos de lote a `NULL`:
+    un export que solo trajera los multi-lote perdería la mayoría del corpus
+    sin decirlo. El `LEFT JOIN` es esa decisión.
+    """
+    if not ids:
+        return []
+    marcadores = ",".join("%s" for _ in ids)
+    sql = (
+        "SELECT l.id_externo, l.titulo, l.organo_contratacion, l.importe, "
+        "       l.cpv, l.estado, l.ccaa, l.fecha_publicacion, l.fecha_limite, l.url, "
+        "       lo.numero AS lote_numero, lo.titulo AS lote_titulo, lo.cpv AS lote_cpv, "
+        "       lo.importe AS lote_importe, lo.fecha_limite AS lote_fecha_limite "
+        "FROM licitaciones l "
+        "LEFT JOIN lotes lo ON lo.licitacion_id = l.id_externo "
+        f"WHERE l.id_externo IN ({marcadores}) "
+        "ORDER BY l.id_externo, "
+        "  CASE WHEN lo.numero ~ '^[0-9]+$' THEN CAST(lo.numero AS INTEGER) END, lo.numero"
+    )
+    with connect_read() as c:
+        return rows_to_dicts(c.execute(sql, ids))

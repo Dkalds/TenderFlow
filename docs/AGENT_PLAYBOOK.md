@@ -167,7 +167,7 @@ controles disponibles y reportá los tests como no ejecutados (AGENTS.md §4).
 | **DLQ** | Dead Letter Queue — registros que el upsert no pudo procesar. Reintento manual con runbook [dlq-replay.md](runbooks/dlq-replay.md). |
 | **KPI precompute** | Job batch que pre-calcula métricas para el dashboard (evita queries pesadas en runtime). Ver `scheduler/kpi_precompute.py`. |
 | **Watchlist** | Suscripción de usuario a criterios (CPV, keyword, CCAA, importe mínimo) → email automático. |
-| **FAISS** | Índice vectorial para similitud semántica entre licitaciones (sentence-transformers + faiss-cpu, opcional). |
+| **pgvector** | Índice vectorial para similitud semántica entre licitaciones y para el retrieval de pliegos (`documento_chunks`). Sustituyó a FAISS, retirado el 2026-07-04: el motor de búsqueda es Postgres y solo Postgres (`tsvector`, `pg_trgm`, pgvector). |
 | **FTS** | Full-text search con `tsvector`/`ts_rank_cd` de Postgres, usado por `services/investigador/` (el nombre `fts5_*` sobrevive en algunas firmas por compatibilidad de contrato). |
 | **Concept drift** | Detección de cambios en distribución de keywords/labels — `scheduler/concept_drift.py`. |
 | **ETag** | Header HTTP para cache de exports PDF (ver [ADR-006](adr/ADR-006-etag-pdf-export-ratelimit-redis.md)). |

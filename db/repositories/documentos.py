@@ -629,11 +629,28 @@ class DocumentosRepository:
             )
             return rows_to_dicts(cur)
 
-    def replace_chunks(self, documento_id: int, chunks: list[str], embeddings: Any) -> int:
+    def replace_chunks(
+        self,
+        documento_id: int,
+        chunks: list[str],
+        embeddings: Any,
+        *,
+        embedding_model: str | None = None,
+        embedding_version: str | None = None,
+        paginas: list[int | None] | None = None,
+    ) -> int:
         """Reemplaza (delete+insert) los chunks+embeddings de un documento.
 
         ``embeddings`` es indexable fila a fila (``np.ndarray`` de shape
         (n, dim) o lista de vectores), alineado 1:1 con ``chunks``.
+
+        ``embedding_model``/``embedding_version`` marcan de qué espacio vectorial
+        es cada fila (C5.7): sin ellos, cambiar de modelo obliga a borrar todo el
+        índice antes de poder volver a buscar, porque dos modelos no comparten
+        geometría y el operador ``<=>`` entre vectores de espacios distintos
+        devuelve un orden que no significa nada. ``paginas`` (C5.3) alinea 1:1
+        con ``chunks`` y puede llevar ``None`` donde el documento no tenga
+        páginas persistidas.
 
         Transaccional dentro de una sola conexión: el DELETE corre primero,
         así que un fallo a mitad de los INSERTs no deja un estado "medio
@@ -648,21 +665,75 @@ class DocumentosRepository:
                 f"chunks ({len(chunks)}) y embeddings ({len(embeddings)}) "
                 "deben tener la misma longitud"
             )
+        if paginas is not None and len(paginas) != len(chunks):
+            raise ValueError(
+                f"paginas ({len(paginas)}) y chunks ({len(chunks)}) deben tener la misma longitud"
+            )
 
         with connect() as c:
             c.execute("DELETE FROM documento_chunks WHERE documento_id = %s", (documento_id,))
             if not chunks:
                 return 0
             rows = [
-                (documento_id, i, texto, _to_pg_vector_literal(emb))
+                (
+                    documento_id,
+                    i,
+                    texto,
+                    _to_pg_vector_literal(emb),
+                    embedding_model,
+                    embedding_version,
+                    (paginas[i] if paginas is not None else None),
+                )
                 for i, (texto, emb) in enumerate(zip(chunks, embeddings, strict=True))
             ]
             c.executemany(
-                "INSERT INTO documento_chunks (documento_id, chunk_index, texto, embedding) "
-                "VALUES (%s, %s, %s, %s::vector)",
+                "INSERT INTO documento_chunks "
+                "(documento_id, chunk_index, texto, embedding, embedding_model, "
+                " embedding_version, page_number) "
+                "VALUES (%s, %s, %s, %s::vector, %s, %s, %s)",
                 rows,
             )
         return len(chunks)
+
+    def documentos_con_embedding_obsoleto(
+        self, version_vigente: str, *, limit: int = 50
+    ) -> list[dict[str, Any]]:
+        """Documentos cuyos chunks no están en la versión vigente (C5.7).
+
+        Incluye los de versión ``NULL`` —los escritos antes de v120, de origen
+        desconocido— porque tratarlos como vigentes afirmaría de qué modelo
+        salieron, que es justo lo que no consta.
+
+        Es la contraparte de ``list_extracted_without_chunks``: aquel busca
+        documentos **sin** índice, este busca los que lo tienen desactualizado.
+        Separados porque el primero es el camino normal del pipeline y este solo
+        tiene trabajo cuando alguien cambia de modelo.
+        """
+        with connect_read() as c:
+            cur = c.execute(
+                "SELECT d.id, d.licitacion_id, d.texto FROM documentos d "
+                "WHERE d.status = 'extracted' AND EXISTS ("
+                "  SELECT 1 FROM documento_chunks dc "
+                "  WHERE dc.documento_id = d.id AND dc.embedding IS NOT NULL "
+                "    AND (dc.embedding_version IS DISTINCT FROM %s)"
+                ") ORDER BY d.updated_at LIMIT %s",
+                (version_vigente, max(1, min(int(limit), 1000))),
+            )
+            return rows_to_dicts(cur)
+
+    def chunks_por_version(self) -> list[dict[str, Any]]:
+        """`[{version, n}]` de los chunks con embedding. Lo imprime el informe.
+
+        Sin esta cuenta, «cambiar de modelo» es una operación sin progreso
+        visible: no habría forma de saber cuánto queda ni si el job avanza.
+        """
+        with connect_read() as c:
+            cur = c.execute(
+                "SELECT COALESCE(embedding_version, 'desconocida') AS version, COUNT(*) AS n "
+                "FROM documento_chunks WHERE embedding IS NOT NULL "
+                "GROUP BY 1 ORDER BY 2 DESC"
+            )
+            return rows_to_dicts(cur)
 
     # ── Lectura para el contexto LLM (resumen IA + chat contextualizado) ─
     # ``list_by_licitacion`` (más arriba) sirve tanto al bloque Documentos de
@@ -680,7 +751,8 @@ class DocumentosRepository:
         """
         with connect_read() as c:
             cur = c.execute(
-                "SELECT dc.documento_id, d.tipo, d.filename, dc.chunk_index, dc.texto "
+                "SELECT dc.documento_id, d.tipo, d.filename, dc.chunk_index, dc.texto, "
+                "dc.page_number "
                 "FROM documento_chunks dc JOIN documentos d ON d.id = dc.documento_id "
                 "WHERE d.licitacion_id = %s "
                 "ORDER BY CASE d.tipo WHEN 'legal' THEN 0 WHEN 'technical' THEN 1 ELSE 2 END, "
@@ -695,6 +767,7 @@ class DocumentosRepository:
         embedding: Sequence[float],
         *,
         limit: int = 24,
+        embedding_version: str | None = None,
     ) -> list[dict[str, Any]]:
         """Chunks de la licitación ordenados por cercanía coseno a ``embedding``.
 
@@ -707,18 +780,34 @@ class DocumentosRepository:
         Sin tope de candidatos: el índice recorre todos los chunks de la
         licitación, así que los documentos tardíos de expedientes grandes ya no
         quedan fuera del ranking por un LIMIT previo.
+
+        ``embedding_version`` (C5.7) acota la búsqueda al espacio vectorial
+        vigente. **Con caída a la versión anterior**: si el expediente todavía no
+        se ha re-embebido, filtrar sin más lo dejaría sin retrieval durante toda
+        la migración —peor que servir vectores de la versión previa, que al menos
+        son consistentes entre sí—. Lo que no se hace nunca es mezclarlas en la
+        misma consulta: el orden resultante no significaría nada.
         """
         vec = _to_pg_vector_literal(embedding)
+        tope = max(1, min(int(limit), 200))
+        base = (
+            "SELECT dc.documento_id, d.tipo, d.filename, dc.chunk_index, dc.texto, "
+            "dc.page_number, dc.embedding_version, "
+            "1 - (dc.embedding <=> %s::vector) AS score "
+            "FROM documento_chunks dc JOIN documentos d ON d.id = dc.documento_id "
+            "WHERE d.licitacion_id = %s AND dc.embedding IS NOT NULL "
+        )
+        cola = "ORDER BY dc.embedding <=> %s::vector LIMIT %s"
         with connect_read() as c:
-            cur = c.execute(
-                "SELECT dc.documento_id, d.tipo, d.filename, dc.chunk_index, dc.texto, "
-                "1 - (dc.embedding <=> %s::vector) AS score "
-                "FROM documento_chunks dc JOIN documentos d ON d.id = dc.documento_id "
-                "WHERE d.licitacion_id = %s AND dc.embedding IS NOT NULL "
-                "ORDER BY dc.embedding <=> %s::vector "
-                "LIMIT %s",
-                (vec, licitacion_id, vec, max(1, min(int(limit), 200))),
-            )
+            if embedding_version:
+                cur = c.execute(
+                    base + "AND dc.embedding_version = %s " + cola,
+                    (vec, licitacion_id, embedding_version, vec, tope),
+                )
+                filas = rows_to_dicts(cur)
+                if filas:
+                    return filas
+            cur = c.execute(base + cola, (vec, licitacion_id, vec, tope))
             return rows_to_dicts(cur)
 
     def list_textos_by_licitacion(

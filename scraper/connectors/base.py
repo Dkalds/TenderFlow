@@ -239,6 +239,14 @@ class ConnectorRunResult:
     # Los errores por-aviso (parse → DLQ) NO lo activan: esos son recuperables
     # y no deben marcar el run entero como fallido.
     fetch_failed: bool = False
+    # Contadores propios del conector, por MOTIVO (C4.1, C4.4).
+    #
+    # `descartadas` dice cuántos avisos no se persistieron; no dice por qué, y
+    # sin el porqué la cifra no es accionable: "PSCP descartó 400.000" puede ser
+    # el acotado al universo tecnológico funcionando o el parser roto. Cada
+    # conector los expone con `contadores_de_descarte()` y el framework los
+    # arrastra al resumen sin saber qué significan.
+    detalles: dict[str, int] = field(default_factory=dict)
 
     def as_dict(self) -> dict[str, int | str]:
         return {
@@ -250,6 +258,7 @@ class ConnectorRunResult:
             "actualizadas": self.actualizadas,
             "adjudicaciones": self.adjudicaciones,
             "errores": self.errores,
+            **self.detalles,
         }
 
 
@@ -553,6 +562,16 @@ def run_connector(connector: Connector, *, batch_size: int = 200) -> ConnectorRu
 
     if result.parsed or result.adjudicaciones:
         _post_ingestion(source_id)
+
+    # Contadores por motivo del conector, si los expone (C4.1, C4.4). El
+    # `getattr` evita obligar a todos los conectores a declararlo en el Protocol,
+    # igual que `cursor_advances_incrementally` unas líneas más arriba.
+    contadores = getattr(connector, "contadores_de_descarte", None)
+    if callable(contadores):
+        try:
+            result.detalles.update(contadores())
+        except Exception:
+            log.debug("connector_contadores_fallaron", source=source_id, exc_info=True)
 
     log.info("connector_run_done", **result.as_dict())
     _record_source_completed(result)

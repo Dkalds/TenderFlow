@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 
-from config import SAP_KEYWORDS, TECHNOLOGY_KEYWORDS
+from config import SAP_KEYWORDS
 from observability.logging import get_logger
 
 log = get_logger(__name__)
@@ -16,14 +16,22 @@ _SAP_PATTERN = re.compile(
     flags=re.IGNORECASE,
 )
 
-# Patrones compilados por tecnología
-_TECH_PATTERNS: dict[str, re.Pattern[str]] = {
-    tech: re.compile(
-        r"\b(" + "|".join(re.escape(k) for k in keywords) + r")\b",
-        flags=re.IGNORECASE,
-    )
-    for tech, keywords in TECHNOLOGY_KEYWORDS.items()
-}
+
+def _tech_patterns() -> dict[str, re.Pattern[str]]:
+    """Patrones por tecnología del diccionario **vigente** (C5.6).
+
+    Era un `dict` de nivel de módulo compilado al importar. Con el diccionario
+    en base de datos eso lo congelaba en el arranque del proceso: una keyword
+    añadida desde `/ops` no habría entrado hasta el siguiente despliegue, que es
+    exactamente lo que el ítem viene a quitar.
+
+    No es caro: `services.tecnologias_diccionario.patrones()` memoiza por
+    versión del diccionario, así que la compilación ocurre una vez por cambio y
+    no una vez por texto.
+    """
+    from services.tecnologias_diccionario import patrones
+
+    return patrones()
 
 
 def matches_sap(*texts: str | None) -> tuple[bool, list[str]]:
@@ -50,7 +58,7 @@ def matches_technology(
         (coincide, {tecnología: [keywords_encontradas]})
     """
     result: dict[str, list[str]] = {}
-    for tech, pattern in _TECH_PATTERNS.items():
+    for tech, pattern in _tech_patterns().items():
         found: set[str] = set()
         for text in texts:
             if not text:

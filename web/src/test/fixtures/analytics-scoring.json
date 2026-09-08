@@ -1,0 +1,11 @@
+{
+  "opportunities": [
+    {
+      "band": "texto",
+      "id_externo": "texto",
+      "score": 1
+    }
+  ],
+  "signals": null,
+  "total_scored": 0
+}

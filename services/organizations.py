@@ -33,6 +33,9 @@ _repo = OrganizationRepository()
 INVITATION_TTL_DAYS = 7
 
 
+log = get_logger(__name__)
+
+
 class OrganizationAccessError(PermissionError):
     """El usuario no es miembro activo de la organización."""
 
@@ -491,3 +494,140 @@ def update_settings(
         **guardados.model_dump(),
         tecnologias_disponibles=sorted(disponibles),
     )
+
+
+# ── Ciclo de vida de la organización (C2.2, ADR-030 §D) ─────────────────────
+#
+# Hasta 2026-09 no había traspaso de owner ni borrado de organización: cero
+# coincidencias de `transfer` y `delete_organization` (hecho 8 del plan), y el
+# propio `_guard_owner_row` lo reconocía en su docstring — «la transferencia de
+# propiedad queda fuera de alcance a propósito».
+#
+# La consecuencia práctica: una organización cuyo owner se va queda sin nadie
+# que pueda administrarla, y una que ya no se usa no se puede cerrar. Las dos
+# son situaciones que ocurren solas con el tiempo.
+
+#: Texto que el owner tiene que escribir para borrar una organización.
+#:
+#: El nombre de la propia organización, no un «SÍ» genérico: obliga a mirar cuál
+#: se está borrando. Con dos pestañas abiertas y dos organizaciones parecidas,
+#: un «¿seguro?» no distingue nada.
+CONFIRMACION_BORRADO = "BORRAR"
+
+
+class OrganizationLifecycleError(ValueError):
+    """Una transición del ciclo de vida que no se puede hacer."""
+
+
+def transferir_propiedad(
+    *, organization_id: int, actor_user_id: int, nuevo_owner_user_id: int
+) -> None:
+    """Traspasa la propiedad a otro miembro activo (C2.2).
+
+    Reglas, y cada una responde a un modo de fallo concreto:
+
+    - **Solo el owner traspasa.** Un admin que pudiera hacerlo se autoascendería.
+    - **El destino tiene que ser miembro activo.** Invitar y traspasar son cosas
+      distintas: hacerlas de una convertiría un error de tipeo en el email en
+      una organización cuyo owner no existe.
+    - **La personal no se traspasa.** Es el contenedor por defecto de una
+      cuenta; regalarla dejaría al usuario sin sitio donde escribir.
+    - El owner saliente queda como `admin`, no fuera: quien monta un equipo no
+      debería perder el acceso al traspasarlo.
+    """
+    if actor_user_id == nuevo_owner_user_id:
+        raise OrganizationLifecycleError("El owner ya eres tú.")
+
+    membresia = _repo.get_active_membership(organization_id, actor_user_id)
+    if membresia is None or str(membresia["role"]) != "owner":
+        raise OrganizationPermissionError("Solo el owner puede traspasar la propiedad.")
+
+    if _repo.es_personal(organization_id):
+        raise OrganizationLifecycleError(
+            "La organización personal no se puede traspasar: es el contenedor "
+            "por defecto de tu cuenta."
+        )
+
+    if not _repo.traspasar_propiedad(
+        organization_id, de_user_id=actor_user_id, a_user_id=nuevo_owner_user_id
+    ):
+        raise OrganizationMemberNotFoundError(
+            "El destinatario no es miembro activo de esta organización. Invitalo primero."
+        )
+    log.info(
+        "organization_ownership_transferred",
+        organization_id=organization_id,
+        de=actor_user_id,
+        a=nuevo_owner_user_id,
+    )
+
+
+def salir_de_organizacion(*, organization_id: int, user_id: int) -> None:
+    """Salida voluntaria de un miembro (C2.2).
+
+    El owner **no puede irse sin traspasar**: dejar una organización sin owner la
+    deja sin nadie que pueda administrarla, y el estado no tiene salida desde el
+    producto. El mensaje lo dice en vez de devolver un 403 mudo.
+    """
+    membresia = _repo.get_active_membership(organization_id, user_id)
+    if membresia is None:
+        raise OrganizationMemberNotFoundError("No eres miembro de esta organización.")
+
+    if str(membresia["role"]) == "owner":
+        raise OrganizationLifecycleError(
+            "Sos el owner: traspasá la propiedad a otro miembro antes de salir, "
+            "o borrá la organización."
+        )
+
+    if _repo.es_personal(organization_id):
+        raise OrganizationLifecycleError("No podés salir de tu organización personal.")
+
+    _repo.salir(organization_id, user_id)
+    log.info("organization_member_left", organization_id=organization_id, user_id=user_id)
+
+
+def resumen_de_borrado(*, organization_id: int, actor_user_id: int) -> dict[str, int]:
+    """Qué se llevaría por delante el borrado. Lo enseña la confirmación.
+
+    «Vas a borrar 14 oportunidades y 37 comentarios» es una advertencia;
+    «¿seguro?» no es nada.
+    """
+    membresia = _repo.get_active_membership(organization_id, actor_user_id)
+    if membresia is None or str(membresia["role"]) != "owner":
+        raise OrganizationPermissionError("Solo el owner puede borrar la organización.")
+    return _repo.contar_dato_corporativo(organization_id)
+
+
+def borrar_organizacion(
+    *, organization_id: int, actor_user_id: int, confirmacion: str
+) -> dict[str, int]:
+    """Borra la organización y su dato corporativo (C2.2, ADR-030 §D).
+
+    Exige que el owner escriba :data:`CONFIRMACION_BORRADO`. Una confirmación
+    literal y no un botón porque la acción no tiene deshacer y se lleva trabajo
+    de otras personas.
+
+    **Qué se borra y qué no** lo fija ADR-030 §D: el dato corporativo
+    —oportunidades, comentarios, capacidades, claves de organización— muere con
+    ella, porque sin la organización no tiene dueño. El dato personal de cada
+    miembro —perfil, favoritos, reglas, notas privadas— cuelga del usuario y
+    sobrevive.
+
+    Devuelve el recuento de lo borrado, para el registro de auditoría.
+    """
+    if confirmacion.strip() != CONFIRMACION_BORRADO:
+        raise OrganizationLifecycleError(f"Para borrar hay que escribir «{CONFIRMACION_BORRADO}».")
+
+    conteos = resumen_de_borrado(organization_id=organization_id, actor_user_id=actor_user_id)
+
+    if _repo.es_personal(organization_id):
+        raise OrganizationLifecycleError(
+            "La organización personal no se borra: borrá la cuenta con "
+            "`DELETE /me` si es lo que querés."
+        )
+
+    if not _repo.borrar(organization_id):
+        raise OrganizationMemberNotFoundError("La organización no existe.")
+
+    log.info("organization_deleted", organization_id=organization_id, **conteos)
+    return conteos

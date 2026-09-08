@@ -5,7 +5,9 @@ status: accepted
 date: 2026-07-28
 deciders: "Daniel Kalitovics"
 supersedes: ADR-017
+superseded_parcialmente_por: ADR-026
 related:
+  - "[[ADR-026-caminos-de-lectura-y-precedencia-tecnologica]]"
   - "[[ADR-017-camino-lectura-analitico]]"
   - "[[ADR-013-jerarquia-materializaciones-analiticas]]"
   - "[[ADR-012-plano-unico-orquestacion]]"

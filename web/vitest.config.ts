@@ -74,6 +74,21 @@ export default defineConfig({
       // `lib/__tests__/filters.test.ts`, y los desenlaces del stream de `/ask`
       // en `ask-stream.test.ts`) pasan ejecutados en solitario, pero un fichero
       // que pasa no es un denominador global: los pisos siguen sin tocarse.
+      // 2026-09-07 (C7.2 / S5.8): sexto intento, mismo desenlace. El ítem pide
+      // un piso propio para `src/app/**` «al valor medido», y **ese valor sigue
+      // sin poder medirse en esta máquina**: `vitest run --coverage` sobre los
+      // 109 ficheros se queda sin emitir una sola línea y hay que matarlo.
+      //
+      // No se pone un piso para `src/app/**`. Poner uno proyectado —aritmética
+      // sobre las tres carpetas que sí están medidas— sería inventarse el
+      // número que el ítem pide medir, y CI lo descubriría en rojo con un fallo
+      // que no señala ninguna regresión real. La mitad del ítem que sí se pudo
+      // hacer (axe sobre la superficie pública, incluida la ficha) está en
+      // `web/e2e/accessibility.spec.ts`.
+      //
+      // Para cerrarlo hace falta el número que publique el job `frontend` de
+      // CI, que sí corre la cobertura entera. Con él, añadir aquí
+      // `"src/app/**": {…}` con el buffer de 2-3 puntos es una línea.
       thresholds: {
         statements: 38,
         branches: 28,

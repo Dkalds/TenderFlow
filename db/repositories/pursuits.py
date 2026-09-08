@@ -351,6 +351,38 @@ class PursuitRepository:
             )
             return self._get_scoped(conn, organization_id, pursuit_id=pursuit_id)
 
+    def set_next_action_derivada(
+        self,
+        organization_id: int,
+        pursuit_id: int,
+        *,
+        titulo: str | None,
+        vence: str | None,
+    ) -> None:
+        """Refleja en `next_action` la tarea abierta más urgente (C6.1).
+
+        **No pasa por `update()` a propósito**, y las tres diferencias importan:
+
+        - No incrementa `version`. `next_action` deja de ser una decisión del
+          usuario y pasa a ser un campo derivado; hacerlo subir la versión haría
+          que marcar una tarea como hecha provocase un conflicto de concurrencia
+          a quien estuviera editando la oportunidad en otra pestaña.
+        - No escribe en `pursuit_events`. El ledger registra decisiones; un
+          campo recalculado no lo es, y anotarlo llenaría el historial de ruido
+          justo donde se lee la historia de la decisión.
+        - No toca `updated_by_user_id`. Quien cerró una tarea no ha «modificado
+          la oportunidad»: atribuírselo falsearía el rastro.
+
+        La tarea sigue siendo la fuente; esto es una copia para los consumidores
+        que ya leían el campo.
+        """
+        with connect() as conn:
+            conn.execute(
+                "UPDATE pursuits SET next_action = %s, next_action_due = %s "
+                "WHERE organization_id = %s AND id = %s",
+                (titulo, vence, organization_id, pursuit_id),
+            )
+
     def list_events(self, organization_id: int, pursuit_id: int) -> list[dict[str, Any]]:
         with connect_read() as conn:
             cur = conn.execute(
@@ -584,6 +616,81 @@ class PursuitRepository:
         cur = conn.execute(_PURSUIT_SELECT + suffix, params)
         rows = rows_to_dicts(cur)
         return rows[0] if rows else None
+
+    def ofertas_presentadas(self, organization_id: int) -> list[dict[str, Any]]:
+        """Oportunidades con oferta presentada, para «mi baja» (C6.5).
+
+        El presupuesto es **`importe_base_sin_iva`** y no `importe`: la columna
+        genérica mezcla bases desde antes de v113 y el histórico quedó en
+        `desconocido` a propósito. Calcular una baja propia sobre una población
+        mixta reintroduciría el defecto que ADR-032 corrigió en la del mercado —
+        una baja del 21 % que en realidad es el IVA—, y esta cifra se usa para
+        decidir a qué precio ofertar.
+
+        Por eso se filtra por `importe_tipo = 'sin_iva'` en vez de caer a
+        `importe`: hoy devuelve poco y crecerá con la re-ingesta. Devolver más
+        filas a costa de que la media mienta sería el peor cambio posible en un
+        número que gobierna una oferta.
+        """
+        with connect_read() as conn:
+            cur = conn.execute(
+                "SELECT p.id, p.licitacion_id, p.offer_price_eur, "
+                "       l.cpv, l.organo_contratacion, "
+                "       l.importe_base_sin_iva AS presupuesto "
+                "FROM pursuits p JOIN licitaciones l ON l.id_externo = p.licitacion_id "
+                "WHERE p.organization_id = %s AND p.offer_price_eur IS NOT NULL "
+                "  AND l.importe_tipo = 'sin_iva' AND l.importe_base_sin_iva > 0",
+                (organization_id,),
+            )
+            return rows_to_dicts(cur)
+
+    def export_rows(
+        self,
+        organization_id: int,
+        *,
+        status: str | None = None,
+        responsible_user_id: int | None = None,
+        limit: int = 10_000,
+    ) -> list[dict[str, Any]]:
+        """Filas del tablero para el export CSV/Excel (C6.7).
+
+        Mismos filtros que `list_scoped` —el export tiene que traer lo que el
+        usuario está viendo, no otra cosa— pero sin paginar y con las columnas
+        legibles: nombre del responsable en vez de su id, título del expediente
+        en vez de solo su referencia.
+
+        `organizacion_id` y `exportado_en` viajan **como columnas** y no como
+        preámbulo del fichero: una línea de cabecera antes de los nombres de
+        columna rompe a pandas, a Excel y a cualquier consumidor que espere un
+        CSV; una columna la lee todo el mundo y sobrevive a que alguien filtre y
+        reenvíe media hoja.
+        """
+        clauses = ["p.organization_id = %s"]
+        params: list[Any] = [organization_id]
+        if status is not None:
+            clauses.append("p.status = %s")
+            params.append(status)
+        if responsible_user_id is not None:
+            clauses.append("p.responsible_user_id = %s")
+            params.append(responsible_user_id)
+        ahora = now_utc_iso()
+        with connect_read() as conn:
+            cur = conn.execute(
+                "SELECT p.id, p.licitacion_id, l.titulo AS tender_title, "
+                "l.organo_contratacion, l.cpv, l.fecha_limite AS tender_deadline, "
+                "u.display_name AS responsable, p.status, p.decision, p.decision_reason, "
+                "p.offer_price_eur, p.outcome, p.awarded_amount_eur, p.outcome_reason, "
+                "p.next_action, p.next_action_due, p.identified_at, p.decision_at, "
+                "p.submitted_at, p.closed_at, p.updated_at, "
+                "%s AS organizacion_id, %s AS exportado_en "
+                "FROM pursuits p "
+                "JOIN licitaciones l ON l.id_externo = p.licitacion_id "
+                "LEFT JOIN users u ON u.id = p.responsible_user_id "
+                "WHERE " + " AND ".join(clauses) + " "
+                "ORDER BY p.updated_at DESC, p.id DESC LIMIT %s",
+                tuple([organization_id, ahora, *params, max(1, min(int(limit), 50_000))]),
+            )
+            return rows_to_dicts(cur)
 
     @staticmethod
     def _event_key_exists(conn: Any, pursuit_id: int, idempotency_key: str) -> bool:

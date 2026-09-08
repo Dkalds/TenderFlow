@@ -3,15 +3,10 @@
 La lógica de retención vive en ``scheduler.retention``. Este script es el
 entrypoint CLI para ejecución manual o desde cron externo.
 
-Tablas afectadas (NO toca licitaciones ni adjudicaciones):
-    - extraction_runs      — runs del pipeline        (default: >90 días)
-    - audit_log            — acciones de usuario      (default: >180 días)
-    - failed_extractions   — DLQ resueltos            (default: >30 días)
-    - licitaciones_history — histórico de cambios     (default: >365 días)
-    - access_log           — log de accesos           (default: >180 días)
-    - idempotency_keys     — claves de idempotencia   (default: >1 día)
-    - webhook_deliveries   — historial de entregas    (default: >90 días)
-    - rate_limits          — ventanas de rate limit   (expiradas — siempre)
+Tablas afectadas (NO toca licitaciones ni adjudicaciones): las de
+``scheduler.retention.POLITICA_RETENCION``. Los plazos por defecto son los
+publicados en ``docs/SECURITY.md``; los flags ``--*-days`` los sobrescriben
+para una ejecución puntual.
 
 Uso:
     python scripts/retention_cleanup.py           # dry-run (muestra qué borraría)
@@ -30,7 +25,12 @@ _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
 
-from scheduler.retention import run_retention  # noqa: E402
+from scheduler.retention import POLITICA_RETENCION, run_retention  # noqa: E402
+
+
+def _plazo(tabla: str) -> int:
+    """Plazo publicado para *tabla*. Los defaults del CLI son la política."""
+    return next(r.dias for r in POLITICA_RETENCION if r.tabla == tabla)
 
 
 def main() -> int:
@@ -41,21 +41,39 @@ def main() -> int:
         "--apply", action="store_true", help="Ejecutar la purga (sin este flag es dry-run)"
     )
     parser.add_argument(
-        "--runs-days", type=int, default=90, help="Retención extraction_runs (días)"
+        "--runs-days",
+        type=int,
+        default=_plazo("extraction_runs"),
+        help="Retención extraction_runs (días)",
     )
-    parser.add_argument("--audit-days", type=int, default=180, help="Retención audit_log (días)")
-    parser.add_argument("--dlq-days", type=int, default=30, help="Retención DLQ resueltos (días)")
     parser.add_argument(
-        "--history-days", type=int, default=365, help="Retención licitaciones_history (días)"
+        "--audit-days", type=int, default=_plazo("audit_log"), help="Retención audit_log (días)"
     )
-    parser.add_argument("--access-days", type=int, default=180, help="Retención access_log (días)")
     parser.add_argument(
-        "--idempotency-days", type=int, default=1, help="Retención idempotency_keys (días)"
+        "--dlq-days",
+        type=int,
+        default=_plazo("failed_extractions"),
+        help="Retención DLQ resueltos (días)",
+    )
+    parser.add_argument(
+        "--history-days",
+        type=int,
+        default=_plazo("licitaciones_history"),
+        help="Retención licitaciones_history (días)",
+    )
+    parser.add_argument(
+        "--access-days", type=int, default=_plazo("access_log"), help="Retención access_log (días)"
+    )
+    parser.add_argument(
+        "--idempotency-days",
+        type=int,
+        default=_plazo("idempotency_keys"),
+        help="Retención idempotency_keys (días)",
     )
     parser.add_argument(
         "--webhook-deliveries-days",
         type=int,
-        default=90,
+        default=_plazo("webhook_deliveries"),
         help="Retención webhook_deliveries (días)",
     )
     args = parser.parse_args()

@@ -10,14 +10,19 @@ from __future__ import annotations
 
 from typing import Any
 
+from db.repositories.organizations import OrganizationRepository
 from db.repositories.pursuit_comments import PursuitCommentRepository
 from db.repositories.pursuits import PursuitRepository
+from observability.logging import get_logger
 from services.organizations import OrganizationPermissionError, resolve_organization
 from services.pursuits import PursuitNotFoundError
 from shared.dto import PursuitCommentCreate, PursuitCommentListResponse, PursuitCommentOut
 
 _repo = PursuitCommentRepository()
 _pursuits = PursuitRepository()
+_organizations = OrganizationRepository()
+
+log = get_logger(__name__)
 
 # Roles que pueden borrar comentarios ajenos.
 _MODERATOR_ROLES = frozenset({"owner", "admin"})
@@ -60,14 +65,60 @@ def add_comment(
     """Publica un comentario. Un ``viewer`` no escribe: el rol es de solo lectura."""
     resolved_id, role = resolve_organization(user_id, organization_id, write=True)
     _require_pursuit(resolved_id, pursuit_id)
-    row, _created = _repo.create(
+    row, created = _repo.create(
         organization_id=resolved_id,
         pursuit_id=pursuit_id,
         author_user_id=user_id,
         body=body.body,
         idempotency_key=idempotency_key,
     )
+    # C6.2: las menciones se resuelven **solo al crear**. Un reintento
+    # idempotente devuelve el comentario original y no vuelve a resolver: si lo
+    # hiciera, alguien que cambió de nombre entre el primer envío y el reintento
+    # quedaría mencionado o desmencionado por un corte de red.
+    if created:
+        _resolver_menciones(resolved_id, int(row["id"]), body.body)
     return _to_out(row, user_id, role)
+
+
+def _resolver_menciones(organization_id: int, comment_id: int, texto: str) -> list[int]:
+    """Resuelve `@nombre` contra los miembros activos y persiste los ids (C6.2).
+
+    Los miembros se piden **acotados a la organización del comentario**, así que
+    mencionar a alguien de fuera es imposible por construcción y no por una
+    comprobación posterior que se pueda olvidar. Un nombre ambiguo no resuelve a
+    nadie (ver `services/pursuit_menciones.resolver`).
+
+    No lanza: el comentario ya está escrito, y perderlo por no poder resolver
+    una mención sería el peor intercambio posible.
+    """
+    from services.pursuit_menciones import resolver
+
+    try:
+        miembros = _organizations.list_members(organization_id)
+    except Exception:
+        log.warning("pursuit_menciones_miembros_failed", exc_info=True)
+        return []
+    # `list_members` devuelve `user_id` y `status`; el resolutor quiere `id` y
+    # solo los **activos**: mencionar a alguien que ya salió del equipo le
+    # mandaría una notificación a una cuenta que no debería recibirla.
+    activos = [
+        {"id": int(m["user_id"]), "display_name": m.get("display_name") or m.get("email")}
+        for m in miembros
+        if str(m.get("status") or "active") == "active"
+    ]
+    resolucion = resolver(texto, activos)
+    if resolucion.user_ids:
+        _repo.guardar_menciones(comment_id, resolucion.user_ids)
+    if resolucion.ambiguos:
+        # Se registra, no se adivina: saber que el equipo tiene dos «Ana» es lo
+        # que permite arreglarlo, y elegir una notificaría a la equivocada.
+        log.info(
+            "pursuit_menciones_ambiguas",
+            comment_id=comment_id,
+            ambiguos=resolucion.ambiguos,
+        )
+    return resolucion.user_ids
 
 
 def delete_comment(

@@ -14,22 +14,23 @@ import {
 import { BUILT_SPACE_ROUTES, SPACE_VIEWS } from "@/lib/space-views";
 
 describe("CONSOLE_SPACES", () => {
-  // 14 → 16 el 2026-09-06, por el plan de funcionalidades 2026-09. Los dos
-  // nuevos **absorben** una vista existente cada uno, que es la condición que
-  // §6 del plan pone para añadir espacio: Cuentas absorbe `Mercado → Órganos`
-  // como `?vista=mercado` y Dirección absorbe `Mi Pipeline → Embudo` como
-  // `?vista=embudo`. Ninguna de las dos desaparece de su sitio original —
-  // consolidar no elimina—; lo que se añade encima es acción (seguir un
-  // órgano) y cortes que en el embudo de tres barras no caben.
-  //
-  // Un espacio nuevo que sólo fuera un corte analítico más no entraría aquí:
-  // eso es lo que el plan descarta explícitamente en su §6.
-  it("consolida las rutas del dashboard en 16 espacios", () => {
-    expect(CONSOLE_SPACES).toHaveLength(16);
+  // 14 → 16 el 2026-09-06 (plan de funcionalidades) y 17 con `ajustes` (C7.5).
+  // La condición para añadir espacio no ha cambiado: cada uno **absorbe** una
+  // vista existente —Cuentas absorbe `Mercado → Órganos`, Dirección absorbe
+  // `Mi Pipeline → Embudo`, Ajustes absorbe `/mi-cuenta`— y ninguna desaparece
+  // de su sitio original, porque consolidar no elimina. Un espacio que sólo
+  // fuera un corte analítico más no entraría: eso es lo que el plan descarta.
+  it("consolida las rutas del dashboard, y cada absorbida una sola vez", () => {
+    // El recuento se **deriva**. Fijarlo a mano obliga a tocar el test cada vez
+    // que un espacio absorbe una ruta, y no dice nada que las tablas no digan.
+    // Lo que sí hay que sostener: ningún espacio se queda sin slug y ninguna
+    // ruta heredada la reclaman dos, porque el redirect ganador sería el del
+    // orden de declaración.
+    expect(CONSOLE_SPACES.length).toBeGreaterThan(0);
     const absorbed = CONSOLE_SPACES.flatMap((space) => space.views ?? []).filter(
       (view) => view.from,
     );
-    expect(absorbed).toHaveLength(18);
+    expect(new Set(absorbed.map((view) => view.from)).size).toBe(absorbed.length);
   });
 
   it("da a cada espacio clave y slug únicos, y una etiqueta corta de 2-3 letras", () => {
@@ -152,10 +153,21 @@ describe("isSpaceImplemented / landingHref", () => {
 
 describe("LEGACY_REDIRECTS", () => {
   it("manda cada ruta absorbida a la vista que la sustituye", () => {
-    expect(LEGACY_REDIRECTS).toHaveLength(18);
+    // Derivado de las tablas, no fijado a mano: un literal aquí obliga a tocar
+    // el test cada vez que un espacio absorbe una ruta.
+    const absorbidas = CONSOLE_SPACES.flatMap((space) => space.views ?? []).filter(
+      (view) => view.from,
+    );
+    expect(LEGACY_REDIRECTS).toHaveLength(absorbidas.length);
     expect(LEGACY_REDIRECTS).toContainEqual({
       from: "/competidores",
       to: "/competencia?vista=competidores",
+    });
+    // C7.5: `/mi-cuenta` la absorbe Ajustes, y su `page.tsx` se retiró — un
+    // `page.tsx` bajo un 308 se compila y no se ejecuta nunca.
+    expect(LEGACY_REDIRECTS).toContainEqual({
+      from: "/mi-cuenta",
+      to: "/ajustes?vista=cuenta",
     });
     expect(LEGACY_REDIRECTS).toContainEqual({
       from: "/pipeline-alertas",
