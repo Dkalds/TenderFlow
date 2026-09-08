@@ -44,7 +44,7 @@ Lo que se hizo **con fallback**, porque su dependencia no está en este árbol
 | Ítem | Estado tras el plan |
 |---|---|
 | [P3] Unificar la definición de «Calientes» | **Sin tocar** — sigue abierto |
-| [P2] Remediación axe: 4 reglas desactivadas | **Sin tocar** — sigue abierto |
+| [P2] Remediación axe: 4 reglas desactivadas | **3 reglas** — `nested-interactive` reactivada el 2026-09-08 (C7.1) |
 
 Hallazgos nuevos que el plan destapó y ya están corregidos: el
 `TIPO_CONTRATO_LABELS` con dos etiquetas desplazadas y cuatro códigos sin
@@ -69,7 +69,7 @@ estado real de cada ítem en su §8. **Excluye a propósito `backup.yml` y
 | [P3] Vigilar el crecimiento de `predicciones_baja` | **Cerrado y movido** el 2026-09-06 a _Cerrados_ — el job de ML purga por antigüedad, y el consumidor distingue el p50 del modelo del del baseline histórico |
 | [P3] F5: refactor de repositories (ratchet TID251) | **Progresa** — la whitelist baja de 32 a 28 archivos; el destino sigue siendo vaciarla |
 | [P1] Cobertura de tests de las páginas del frontend | **Parcial** — los pisos por carpeta siguen en pie; el piso de `src/app/**` no llegó a ponerse |
-| [P2] Remediación axe: 4 reglas desactivadas | **Abierto** — sin tocar; sigue pendiente empezar por `nested-interactive` |
+| [P2] Remediación axe: 4 reglas desactivadas | **Abierto, encogiendo** — `nested-interactive` reactivada (C7.1); quedan `color-contrast`, `scrollable-region-focusable` y `target-size`, que son la ola móvil |
 | [P2] Contrato de paginación común | **Abierto** — el agente que lo tenía asignado murió por límite de sesión |
 | [P3] Los dos módulos-dios (`aggregates.py`, `settings.py`) | **Abierto** — sigue vigente la regla oportunista |
 | [P3] Unificar la definición de «Calientes» | **Abierto** |
@@ -357,7 +357,8 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 - **Files de partida:** [.env.example](../.env.example), [scripts/check_env_parity.py](../scripts/check_env_parity.py)
 - **Riesgo:** bajo — documentación.
 
-### [P2] Remediación axe pendiente: reactivar las 4 reglas desactivadas del E2E de accesibilidad
+### [P2] Remediación axe pendiente: reactivar las reglas desactivadas del E2E de accesibilidad
+- **Avance 2026-09-08 (C7.1):** `nested-interactive` **reactivada**. La causaba una sola cosa —la fila del Radar era un `role="button"` con cinco botones dentro— y se corrige poniendo la selección en un botón hermano en capa, con las acciones por encima. Con ella se van los **dos** `test.fixme` de `critical-workflows.spec.ts`: «seguir una licitación» era su consecuencia funcional directa, y «exportar el ámbito» resultó ser otro bug distinto —`lib/export.ts` revocaba el object URL en la misma vuelta del event loop que el `click()`, así que el Chromium headless de CI abortaba la descarga antes de empezarla—. Quedan tres reglas y dos `test.fixme`, los de móvil.
 - **Área:** web/e2e/accessibility.spec.ts, web/src (radar, detalle, watchlist, mi-pipeline)
 - **Problema:** el E2E de axe (WCAG 2.2 AA sobre /login, /resumen, /radar y /detalle) nació exigiendo cero violaciones antes de la remediación, y bloqueaba CI con deuda real: `color-contrast` (textos ≤10.5px con opacidad/tokens tenues en las filas del Radar y el detalle), `nested-interactive` (filas-botón del Radar con botones dentro), `scrollable-region-focusable` y `target-size` (<24px). El 2026-09-01 se acotó el gate con `disableRules([...])` — el resto de WCAG-AA y los checks estructurales (landmarks, lang, skip-link, ids únicos, controles con nombre) siguen bloqueando. Los dos ofensores de /resumen sí se arreglaron en ese momento (hint de `StatCell` sin `/80`, chips de Primeros pasos a texto pleno).
 - **Relación:** los dos `test.fixme` de `responsive.spec.ts` (watchlist desborda 274px a 375px; la agenda de /mi-pipeline no tiene fichas móviles) son la misma ola — «móvil es consulta y triaje», decidido 2026-09-01. También los dos `test.fixme` de `critical-workflows.spec.ts`: «seguir una licitación» (el click en «Seguir» dentro de la fila-botón del Radar no registra — consecuencia funcional directa del `nested-interactive`, no solo cosmética) y «exportar el ámbito» (el evento `download` no llega en el Chromium de CI; flujo de descarga por diagnosticar bajo Playwright). Ambos eran estrenos en rojo: el `describe` serial los saltaba mientras fallara el primero.

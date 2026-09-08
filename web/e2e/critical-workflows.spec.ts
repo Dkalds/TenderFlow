@@ -28,12 +28,12 @@ test.describe("Flujos de trabajo críticos", () => {
   });
 
   test("seguir una licitación persiste y se puede deshacer", async ({ page, context }) => {
-    // Estreno en rojo (nunca corrió: el serial lo saltaba tras el fallo de la
-    // vista guardada): el flujo de seguir desde la fila del Radar consume el
-    // timeout completo — la fila es un role=button con botones DENTRO, el
-    // mismo nested-interactive que señala axe, y el click en «Seguir» no
-    // registra. Se remedia con la fila del Radar (backlog «Remediación axe»).
-    test.fixme(true, "Seguir desde la fila del Radar no registra — nested-interactive del Radar");
+    // Estuvo en `fixme` desde que se escribió, y con motivo escrito: la fila
+    // era un `role="button"` con botones DENTRO —el mismo `nested-interactive`
+    // que señalaba axe— y el click en «Seguir» no registraba. C7.1 lo arregló
+    // el 2026-09-08 poniendo la selección en un botón hermano en capa, así que
+    // el test vuelve a correr. La fila se localiza ahora por `data-active`,
+    // que es lo que la identifica desde que dejó de ser un control.
     await removeWatchlistItem(page, context, SEED_LICITACION.radarId);
 
     try {
@@ -41,7 +41,7 @@ test.describe("Flujos de trabajo críticos", () => {
       await expect(page.getByText(SEED_LICITACION.tituloRadar).first()).toBeVisible({
         timeout: 20_000,
       });
-      const row = page.getByText(SEED_LICITACION.tituloRadar).first().locator("xpath=ancestor::*[@role='button'][1]");
+      const row = page.getByText(SEED_LICITACION.tituloRadar).first().locator("xpath=ancestor::*[@data-active][1]");
       await row.getByRole("button", { name: /^Seguir / }).click();
 
       await expect.poll(() => watchlistContains(page, SEED_LICITACION.radarId)).toBe(true);
@@ -57,12 +57,13 @@ test.describe("Flujos de trabajo críticos", () => {
   });
 
   test("exportar el ámbito descarga un CSV servido por la API", async ({ page }) => {
-    // Estreno en rojo (tercero del serial, nunca había corrido): el click en
-    // «Exportar ámbito» no dispara el evento `download` en el Chromium de CI
-    // (3 retries, 30s cada uno). Hay que diagnosticar el flujo de descarga
-    // bajo Playwright — ver backlog «Remediación axe pendiente», donde se
-    // rastrea junto al resto de estrenos de esta suite.
-    test.fixme(true, "El evento download no llega en CI — flujo de exportación por diagnosticar");
+    // Estuvo en `fixme` con el diagnóstico «el evento download no llega en CI».
+    // Eso era el síntoma; la causa estaba en `lib/export.ts::volcarBlob`, que
+    // revocaba el object URL en la **misma vuelta del event loop** que el
+    // `click()` del ancla. El navegador arranca la descarga de forma asíncrona:
+    // en un portátil rápido casi siempre ganaba la descarga, en el Chromium
+    // headless de CI casi siempre perdía y el fichero no llegaba nunca. La
+    // revocación pasa al siguiente tick (2026-09-08, C7.1).
     await page.goto("/resumen?tecnologia=SAP");
     await page.getByRole("button", { name: "Exportar ámbito" }).click();
 

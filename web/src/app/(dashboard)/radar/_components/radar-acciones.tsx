@@ -49,7 +49,11 @@ export function RadarAcciones({
       // siguen siendo alcanzables.
       inert={inerte}
       className={cn(
-        "flex items-center justify-end gap-2 border-t border-border/40 pt-2.5",
+        // `relative z-10`: por encima del botón en capa que selecciona la fila
+        // (ver `radar-fila.tsx`). Sin esto, la capa se comería los clics de
+        // «Seguir» y «Descartar», que es el mismo síntoma que tenía el
+        // `nested-interactive` de antes por otro motivo.
+        "relative z-10 flex items-center justify-end gap-2 border-t border-border/40 pt-2.5",
         "md:gap-1.5 md:border-t-0 md:pt-0",
         isActive
           ? "md:animate-in md:fade-in-0 md:slide-in-from-right-2 md:duration-[170ms]"

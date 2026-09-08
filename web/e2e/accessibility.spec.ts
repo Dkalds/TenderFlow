@@ -58,18 +58,18 @@ async function expectBasicAccessibility(page: Page): Promise<void> {
 
   const result = await new AxeBuilder({ page })
     .withTags(["wcag2a", "wcag2aa", "wcag21aa", "wcag22aa"])
-    // Ratchet, no aspiración: estas cuatro reglas fallan HOY en /radar y
-    // /detalle (contraste de textos pequeños, filas interactivas anidadas,
-    // regiones scrolleables sin foco, targets <24px) y su remediación es la
-    // ola de UX/móvil en curso, no un fix de CI. El resto de WCAG-AA más los
-    // checks estructurales de arriba SÍ bloquean. Backlog: «Remediación axe
-    // pendiente» en docs/IMPROVEMENT_BACKLOG.md — la lista solo puede encoger.
-    .disableRules([
-      "color-contrast",
-      "nested-interactive",
-      "scrollable-region-focusable",
-      "target-size",
-    ])
+    // Ratchet, no aspiración: estas reglas fallan HOY en /radar y /detalle
+    // (contraste de textos pequeños, regiones scrolleables sin foco, targets
+    // <24px) y su remediación es la ola de UX/móvil en curso, no un fix de CI.
+    // El resto de WCAG-AA más los checks estructurales de arriba SÍ bloquean.
+    // Backlog: «Remediación axe pendiente» en docs/IMPROVEMENT_BACKLOG.md — la
+    // lista solo puede encoger.
+    //
+    // `nested-interactive` SALIÓ el 2026-09-08 (C7.1, que la nombra como la
+    // primera). La causaba una sola cosa: la fila del Radar era un
+    // `role="button"` con cinco botones dentro. Ahora la selección es un botón
+    // hermano en capa, así que la regla vuelve a bloquear.
+    .disableRules(["color-contrast", "scrollable-region-focusable", "target-size"])
     .analyze();
   const violations = result.violations.map((violation) => ({
     id: violation.id,

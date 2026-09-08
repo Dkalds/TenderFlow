@@ -76,8 +76,18 @@ function nombreAnunciado(respuesta: Response): string | null {
  * Es la única parte que sigue necesitando el ancla invisible: no hay API de
  * navegador para "guardar esto" que funcione en todos los navegadores que
  * soportamos. El ancla se cuelga del documento porque Firefox ignora el click
- * sobre un nodo que no está en el árbol, y el object URL se libera acto seguido
- * para no dejar el blob retenido en memoria durante toda la sesión.
+ * sobre un nodo que no está en el árbol.
+ *
+ * El object URL se libera **en el siguiente tick**, no acto seguido. Revocarlo
+ * en la misma vuelta del event loop que el `click()` es una carrera: el
+ * navegador arranca la descarga de forma asíncrona y, si la URL ya no existe
+ * cuando lo hace, la aborta sin decir nada. En un portátil rápido casi siempre
+ * gana la descarga; en el Chromium headless de CI casi siempre perdía, y por
+ * eso el E2E de exportación estuvo en `fixme` con el diagnóstico «el evento
+ * download no llega» — que era el síntoma, no la causa.
+ *
+ * `setTimeout` y no `queueMicrotask`: el microtask corre antes de ceder al
+ * navegador, así que no resolvería nada.
  */
 function volcarBlob(nombre: string, blob: Blob): void {
   const objectUrl = URL.createObjectURL(blob);
@@ -87,7 +97,7 @@ function volcarBlob(nombre: string, blob: Blob): void {
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
-  URL.revokeObjectURL(objectUrl);
+  setTimeout(() => URL.revokeObjectURL(objectUrl), 0);
 }
 
 /**

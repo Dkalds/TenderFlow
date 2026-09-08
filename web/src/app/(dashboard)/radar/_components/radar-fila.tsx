@@ -54,46 +54,54 @@ export function RadarFila({
   return (
     <div
       data-active={isActive}
-      role="button"
-      tabIndex={0}
       aria-current={isActive ? "true" : undefined}
-      onClick={() => onSelect(index)}
-      // Tabular movía el foco sin mover la selección, así que el
-      // inspector, la banda lateral y los atajos globales seguían
-      // hablando de otra fila. Foco y selección son la misma cosa:
-      // lo que estás mirando es sobre lo que actúas.
-      onFocus={() => onSelect(index)}
-      onKeyDown={(event) => {
-        // Solo la tecla que llega a la fila, no la que sube desde
-        // sus botones: Intro sobre «Descartar» ya descarta, y
-        // dejarla pasar aquí abriría además la oportunidad.
-        if (event.target !== event.currentTarget) return;
-        if (event.key === " ") {
-          event.preventDefault();
-          onSelect(index);
-        } else if (event.key === "Enter") {
-          // Intro sobre la fila lo resuelve la fila, con su propio
-          // `index`: el listener de `window` trabaja sobre `active`
-          // y abría un pursuit —escritura en backend y navegación—
-          // sobre la fila seleccionada, no sobre la enfocada.
-          event.preventDefault();
-          onSelect(index);
-          onOpenPursuit(tender);
-        }
-      }}
       // El alto fijo de fila es de la tabla: en la ficha el título
       // ocupa dos líneas y recortarla a 44 px la dejaría sin nada.
       style={{ "--tf-radar-fila": `${rowHeight}px` } as React.CSSProperties}
       className={cn(
-        "relative flex cursor-pointer flex-col gap-2 border-b border-border/40 px-3 py-3 transition-colors duration-110 ease-out",
+        "relative flex flex-col gap-2 border-b border-border/40 px-3 py-3 transition-colors duration-110 ease-out",
         "md:grid md:h-[var(--tf-radar-fila)] md:items-center md:py-0",
         RADAR_GRID,
         isActive ? "bg-primary/9" : "hover:bg-primary/5",
       )}
     >
+      {/* Seleccionar la fila es un botón EN CAPA, hermano de las
+          acciones y no su ancestro. Antes la fila entera era
+          `role="button"` con cinco botones dentro: eso es
+          `nested-interactive` —la regla que C7.1 saca primero de
+          `disableRules`— y es también por lo que «Seguir» no
+          registraba desde la fila.
+          El contenido que sí actúa (la puntuación y las acciones)
+          sube con `relative z-10`; el resto queda debajo, así que
+          un clic en el título sigue seleccionando. */}
+      <button
+        type="button"
+        data-slot="radar-fila-seleccion"
+        aria-label={`Seleccionar ${tender.titulo}`}
+        onClick={() => onSelect(index)}
+        // Tabular movía el foco sin mover la selección, así que el
+        // inspector, la banda lateral y los atajos globales seguían
+        // hablando de otra fila. Foco y selección son la misma cosa:
+        // lo que estás mirando es sobre lo que actúas.
+        onFocus={() => onSelect(index)}
+        onKeyDown={(event) => {
+          // Espacio lo resuelve el click nativo del botón. Intro lo
+          // resuelve la fila, con su propio `index`: el listener de
+          // `window` trabaja sobre `active` y abría un pursuit
+          // —escritura en backend y navegación— sobre la fila
+          // seleccionada, no sobre la enfocada. `preventDefault`
+          // evita además el click sintético que Intro dispararía.
+          if (event.key !== "Enter") return;
+          event.preventDefault();
+          onSelect(index);
+          onOpenPursuit(tender);
+        }}
+        className="focus-visible:ring-ring absolute inset-0 cursor-pointer focus-visible:ring-2 focus-visible:ring-inset focus-visible:outline-none"
+      />
+
       <span
         aria-hidden="true"
-        className="absolute inset-y-0 left-0 w-0.5 transition-colors duration-110 ease-out"
+        className="pointer-events-none absolute inset-y-0 left-0 w-0.5 transition-colors duration-110 ease-out"
         style={{ background: isActive ? bandColor(tender.band) : "transparent" }}
       />
 
@@ -114,7 +122,7 @@ export function RadarFila({
                   ? `Ver de qué está hecha la puntuación ${Math.round(tender.score)}`
                   : "Este expediente no está puntuado"
               }
-              className="focus-visible:ring-ring flex flex-none cursor-pointer flex-col items-start gap-0.5 rounded-sm focus-visible:ring-2 focus-visible:outline-none"
+              className="focus-visible:ring-ring relative z-10 flex flex-none cursor-pointer flex-col items-start gap-0.5 rounded-sm focus-visible:ring-2 focus-visible:outline-none"
             >
               <span
                 className="tf-tnum font-mono text-[15px] font-semibold leading-none"

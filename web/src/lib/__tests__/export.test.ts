@@ -50,7 +50,13 @@ beforeEach(() => {
   });
 });
 
-afterEach(() => {
+afterEach(async () => {
+  // `volcarBlob` revoca el object URL en el siguiente tick a propósito (ver su
+  // docstring). Sin esperar aquí, esa revocación cae **en el test siguiente**,
+  // después de que `beforeEach` haya vaciado `liberadas`, y el de al lado ve un
+  // `blob:` que no es suyo. Es la misma clase de fuga entre tests que vigila
+  // `tests/test_aislamiento_entre_tests.py` en el backend.
+  await new Promise((listo) => setTimeout(listo, 0));
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
@@ -156,6 +162,9 @@ describe("triggerDownload", () => {
     // Con un blob el navegador ya no ve `Content-Disposition`: el nombre sale
     // del atributo `download` o el fichero se guarda con el UUID del blob.
     expect(anclas[0].getAttribute("download")).toBe("licitaciones_20260828.xlsx");
+    // Diferida a propósito: ver `volcarBlob`. Revocar en la misma vuelta del
+    // event loop abortaba la descarga en el Chromium headless de CI.
+    await new Promise((listo) => setTimeout(listo, 0));
     expect(liberadas).toEqual(["blob:mock/0"]);
   });
 
@@ -212,11 +221,14 @@ describe("triggerDownload", () => {
 });
 
 describe("descargarBlob", () => {
-  it("entrega el fichero con el nombre pedido y libera el object URL", () => {
+  it("entrega el fichero con el nombre pedido y libera el object URL", async () => {
     descargarBlob("investigador_resultados_1.csv", new Blob(["a,b\n"]), "investigador");
 
     expect(anclas).toHaveLength(1);
     expect(anclas[0].getAttribute("download")).toBe("investigador_resultados_1.csv");
+    // Diferida a propósito: ver `volcarBlob`. Revocar en la misma vuelta del
+    // event loop abortaba la descarga en el Chromium headless de CI.
+    await new Promise((listo) => setTimeout(listo, 0));
     expect(liberadas).toEqual(["blob:mock/0"]);
   });
 
