@@ -14,6 +14,7 @@ from __future__ import annotations
 from typing import Any
 
 from scripts.audit_domain_truth import (
+    MAX_FECHAS_NO_ISO,
     MIN_LICITACIONES_PARA_EVALUAR,
     UMBRAL_DELTA_BAJA,
     UMBRAL_UTE,
@@ -209,3 +210,94 @@ def test_evaluar_no_dispara_por_la_seccion_de_zips() -> None:
     eso no puede convertirse en una alerta sobre el dato."""
     datos = _datos(multi_lote={"disponible": False, "motivo": "Sin ZIP cacheados en /data"})
     assert evaluar(datos) == []
+
+
+# ── (f) Fechas no ISO ────────────────────────────────────────────────────────
+
+
+def _fechas_iso(*columnas: tuple[str, str, int]) -> dict[str, Any]:
+    """Sección (f) sintética: cada tupla es (tabla, columna, nº no ISO)."""
+    return {
+        "por_columna": [
+            {
+                "tabla": tabla,
+                "columna": columna,
+                "tiene_check": True,
+                "total": 1000,
+                "no_iso": no_iso,
+                "pct_no_iso": round(100.0 * no_iso / 1000, 3),
+            }
+            for tabla, columna, no_iso in columnas
+        ],
+        "total_no_iso": sum(no_iso for _, _, no_iso in columnas),
+    }
+
+
+def test_evaluar_no_dispara_con_todas_las_fechas_iso() -> None:
+    datos = _datos(fechas_iso=_fechas_iso(("licitaciones", "fecha_publicacion", 0)))
+    assert evaluar(datos) == []
+
+
+def test_evaluar_detecta_una_sola_fecha_no_iso() -> None:
+    """El umbral es cero: una fila basta. Las escrituras nuevas ya no pueden
+    producirlas, así que cualquier cuenta > 0 es histórico que solo encoge."""
+    datos = _datos(fechas_iso=_fechas_iso(("licitaciones", "fecha_limite", 1)))
+    violaciones = evaluar(datos)
+    assert len(violaciones) == 1
+    assert "fechas_iso" in violaciones[0]
+    assert "licitaciones.fecha_limite=1" in violaciones[0]
+    assert str(MAX_FECHAS_NO_ISO) in violaciones[0]
+
+
+def test_evaluar_nombra_las_tres_peores_columnas() -> None:
+    """El mensaje va a un email: si nombra las diez columnas no se lee. Nombra
+    las tres con más filas y deja el total para el resto."""
+    datos = _datos(
+        fechas_iso=_fechas_iso(
+            ("licitaciones", "fecha_publicacion", 5),
+            ("licitaciones", "fecha_limite", 90),
+            ("licitaciones", "fecha_inicio", 40),
+            ("adjudicaciones", "fecha_adjudicacion", 70),
+        )
+    )
+    violaciones = evaluar(datos)
+    assert len(violaciones) == 1
+    mensaje = violaciones[0]
+    assert "205 fechas" in mensaje
+    assert "licitaciones.fecha_limite=90" in mensaje
+    assert "adjudicaciones.fecha_adjudicacion=70" in mensaje
+    assert "licitaciones.fecha_inicio=40" in mensaje
+    assert "fecha_publicacion" not in mensaje
+
+
+def test_fechas_no_iso_ve_lo_que_el_CHECK_de_v59_no_protege(tmp_db) -> None:
+    """`primera_extraccion` no tiene CHECK, así que es la única puerta por la
+    que una fecha malformada puede entrar hoy. La sección (f) tiene que verla.
+
+    Las seis columnas con CHECK no se pueden usar en este test: `v59` rechaza
+    la escritura, que es justo lo que se quiere. Lo que `v59` NO hizo es
+    validar el histórico —la restricción es `NOT VALID`—, y ese histórico es lo
+    que esta medición cuenta en producción.
+    """
+    from db.domain_truth_audit import fechas_no_iso
+
+    db_mod, _ = tmp_db
+    with db_mod.connect() as conn:
+        _insertar_licitacion(conn, "LIC-ISO-OK")
+        _insertar_licitacion(conn, "LIC-ISO-MAL")
+        conn.execute(
+            "UPDATE licitaciones SET primera_extraccion = %s WHERE id_externo = %s",
+            ("01/07/2026", "LIC-ISO-MAL"),
+        )
+        conn.execute(
+            "UPDATE licitaciones SET primera_extraccion = %s WHERE id_externo = %s",
+            ("2026-07-01T00:00:00+00:00", "LIC-ISO-OK"),
+        )
+
+    resultado = fechas_no_iso()
+    por_columna = {(f["tabla"], f["columna"]): f for f in resultado["por_columna"]}
+    assert por_columna[("licitaciones", "primera_extraccion")]["no_iso"] == 1
+    assert por_columna[("licitaciones", "fecha_publicacion")]["no_iso"] == 0
+    assert resultado["total_no_iso"] == 1
+    # Un NULL no es una fecha malformada: eso lo mide la sección (a).
+    assert por_columna[("licitaciones", "fecha_limite")]["no_iso"] == 0

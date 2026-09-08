@@ -22,6 +22,7 @@ from __future__ import annotations
 from typing import Any
 
 from db.database import connect, connect_read, now_utc_iso
+from db.repositories.predicciones import PrediccionesRepository
 from observability.logging import get_logger
 from services.dedupe import exclude_duplicados_sql, normalize_organo
 from services.ml.baja_model import (
@@ -392,7 +393,18 @@ def _baja_real(c: Any, licitacion_id: str) -> tuple[float, float] | None:
     return (presupuesto_efectivo - total_adjudicado) / presupuesto_efectivo, total_adjudicado
 
 
-def prediccion_baja(licitacion_id: str) -> dict[str, Any] | None:
+class LoteDesconocidoError(ValueError):
+    """El lote pedido no existe o no pertenece a esa licitación.
+
+    Se distingue de ``None`` a propósito: ``None`` es "no hay ni predicción ni
+    adjudicación para lo que pediste" y esto es "lo que pediste no existe". Con
+    un solo 404 genérico, pedir el lote de otro expediente y pedir un lote que
+    aún no se ha scoreado darían el mismo mensaje, y solo uno de los dos es un
+    error de quien llama.
+    """
+
+
+def prediccion_baja(licitacion_id: str, lote_id: int | None = None) -> dict[str, Any] | None:
     """Lectura de la predicción materializada y/o la baja real de una licitación.
 
     - Publicada/abierta: solo estimación del batch (p10/p50/p90).
@@ -401,11 +413,28 @@ def prediccion_baja(licitacion_id: str) -> dict[str, Any] | None:
     - Adjudicada sin estimación previa (adjudicada antes de que corriera el
       batch): solo la baja real.
     - Ninguna de las dos → ``None`` (404).
+
+    Con ``lote_id`` la unidad pasa a ser el lote (S3.1): ver
+    :func:`_prediccion_baja_lote`. Sin él, ni una línea cambia respecto de
+    antes de S3.1.
+
+    Raises:
+        LoteDesconocidoError: Si ``lote_id`` no pertenece a ``licitacion_id``.
     """
+    if lote_id is not None:
+        return _prediccion_baja_lote(licitacion_id, lote_id)
     with connect_read() as c:
+        # `lote_id IS NULL` pide explícitamente la fila del expediente entero.
+        # Hoy es redundante —el único escritor (`score_predicciones_baja`) no
+        # rellena la columna y el `ON CONFLICT(licitacion_id)` ni siquiera
+        # dejaría convivir dos filas—, pero sin el predicado esta consulta
+        # devuelve la primera fila que salga: el día que el batch materialice
+        # por lote, pedir el expediente contestaría con el intervalo de un lote
+        # cualquiera, sin error y sin forma de notarlo en pantalla. Un
+        # `SELECT ... fetchone()` sin ORDER BY no tiene fila «correcta».
         cur = c.execute(
             "SELECT p10, p50, p90, model_version, computed_at "
-            "FROM predicciones_baja WHERE licitacion_id = %s",
+            "FROM predicciones_baja WHERE licitacion_id = %s AND lote_id IS NULL",
             (licitacion_id,),
         )
         pred_row = cur.fetchone()
@@ -430,3 +459,90 @@ def prediccion_baja(licitacion_id: str) -> dict[str, Any] | None:
         data["baja_real"] = baja_real
         data["importe_adjudicado"] = importe_adjudicado
     return data
+
+
+def _prediccion_baja_lote(licitacion_id: str, lote_id: int) -> dict[str, Any] | None:
+    """Predicción y baja real **de un lote** (S3.1).
+
+    Las dos mitades no tienen hoy la misma calidad, y la respuesta lo declara
+    en vez de disimularlo:
+
+    - **La baja real sí es del lote.** ``adjudicaciones.lote_id`` existe desde
+      v65 y ``lotes.importe`` es el denominador correcto, así que
+      ``baja_real``/``importe_adjudicado`` describen exactamente ese lote. Si
+      el pliego no publica el importe del lote, no hay denominador y no hay
+      baja real: no se sustituye por el del expediente (ADR-014).
+    - **La estimación todavía no.** v86 dejó ``predicciones_baja.lote_id``
+      preparada, pero el batch sigue materializando una fila agregada por
+      expediente (el switch está condicionado a medir antes el ``mae_p50`` por
+      lote). Si existe fila del lote se sirve esa; si no, se sirve la del
+      expediente marcada ``prediccion_ambito='expediente'``. Es una
+      aproximación declarada —la baja es un ratio, no un importe, así que
+      aplicar la del expediente a un lote es discutible pero no absurdo—, y
+      404 en su lugar dejaría la pantalla del lote sin nada que enseñar
+      teniendo un dato que sí existe.
+
+    ``None`` (→ 404) solo cuando el lote no tiene ni estimación ni
+    adjudicación, igual que en el camino del expediente.
+
+    Raises:
+        LoteDesconocidoError: Si el lote no pertenece a esa licitación.
+    """
+    repo = PrediccionesRepository()
+    lote = repo.lote_de(licitacion_id, lote_id)
+    if lote is None:
+        raise LoteDesconocidoError(
+            f"El lote {lote_id} no pertenece a la licitación {licitacion_id}."
+        )
+
+    ambito = "lote"
+    pred = repo.prediccion_materializada(licitacion_id, lote_id)
+    if pred is None:
+        pred = repo.prediccion_materializada(licitacion_id)
+        ambito = "expediente"
+    real = _baja_real_lote(repo, licitacion_id, lote_id)
+    if pred is None and real is None:
+        return None
+
+    numero = lote.get("numero")
+    data: dict[str, Any] = {
+        "licitacion_id": licitacion_id,
+        "lote_id": lote_id,
+        "lote_numero": None if numero is None else str(numero),
+    }
+    if pred is not None:
+        model_version = pred["model_version"]
+        data.update(
+            p10=pred["p10"],
+            p50=pred["p50"],
+            p90=pred["p90"],
+            model_version=model_version,
+            computed_at=pred["computed_at"],
+            serving="modelo" if model_version else "baseline",
+            prediccion_ambito=ambito,
+        )
+    if real is not None:
+        data["baja_real"], data["importe_adjudicado"] = real
+    return data
+
+
+def _baja_real_lote(
+    repo: PrediccionesRepository, licitacion_id: str, lote_id: int
+) -> tuple[float, float] | None:
+    """``(baja_pct, importe_adjudicado)`` del lote, o ``None``.
+
+    ``None`` cubre los tres casos en los que no hay baja que afirmar: el lote
+    no publica importe, nadie lo ha adjudicado todavía, o el importe publicado
+    es cero. Ninguno se rellena con el expediente.
+    """
+    fila = repo.baja_real_de_lote(licitacion_id, lote_id)
+    if fila is None:
+        return None
+    presupuesto = fila.get("presupuesto")
+    adjudicado = fila.get("total_adjudicado")
+    if presupuesto is None or adjudicado is None:
+        return None
+    presupuesto, adjudicado = float(presupuesto), float(adjudicado)
+    if presupuesto <= 0 or adjudicado <= 0:
+        return None
+    return (presupuesto - adjudicado) / presupuesto, adjudicado

@@ -21,10 +21,14 @@ from services.analytics.clusters import ClustersFilters, ClustersResult, get_clu
 from services.analytics.compare import CompareFilters, CompareResult, get_compare_periods
 from services.analytics.competitors import CompetitorFilters, CompetitorResult, get_competitors
 from services.analytics.forecast_svc import (
+    VENTANA_ESTACIONALIDAD_MESES,
+    EstacionalidadFilters,
+    EstacionalidadOrganoResult,
     ForecastFilters,
     ForecastVolumeResult,
     RetenderingFilters,
     RetenderingResult,
+    get_estacionalidad_organo,
     get_forecast_volume,
     get_retendering_forecast,
 )
@@ -613,6 +617,44 @@ def forecast_volume_endpoint(
         tecnologia=tecnologia,
     )
     return get_forecast_volume(filters)
+
+
+@router.get("/forecast/estacionalidad", response_model=EstacionalidadOrganoResult)
+@cache_response(ttl=600, user_scoped=False)
+def forecast_estacionalidad_organo(
+    organo: str = Query(description="Órgano de contratación (nombre exacto)"),
+    meses: int = Query(
+        default=VENTANA_ESTACIONALIDAD_MESES,
+        ge=12,
+        le=120,
+        description="Tamaño de la ventana en meses (por defecto 36)",
+    ),
+    hasta: date | None = Query(
+        default=None, description="Ancla de la ventana (YYYY-MM-DD); por defecto hoy"
+    ),
+    ccaa: str | None = Query(default=None, description="Filter by CCAA"),
+    tecnologia: str | None = Query(default=None, description="Filter by tecnologia"),
+    _user: dict[str, Any] = Depends(require_analytics_auth),
+) -> EstacionalidadOrganoResult:
+    """Calendario de compra de un órgano: publicaciones por mes del calendario.
+
+    La respuesta declara su universo (ventana pedida, tramo cubierto, meses con
+    publicaciones y total) y **no trae curva** cuando el tramo cubierto no llega
+    a doce meses: ahí ``suficiente`` es ``false``, ``motivo`` explica por qué y
+    ``meses`` viene vacío (ADR-014, el corte lo decide el servicio).
+
+    ``meses`` no baja de 12 por la misma razón: pedir una ventana más corta que
+    el ciclo que se quiere medir solo puede devolver "insuficiente".
+    """
+    return get_estacionalidad_organo(
+        EstacionalidadFilters(
+            organo=organo,
+            meses=meses,
+            hasta=hasta,
+            ccaa=ccaa,
+            tecnologia=tecnologia,
+        )
+    )
 
 
 @router.get(

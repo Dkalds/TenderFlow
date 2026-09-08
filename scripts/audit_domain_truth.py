@@ -14,7 +14,11 @@ defectos identificados (ver docs/IMPROVEMENT_BACKLOG.md):
   (f) Proporción del corpus que el clasificador SAP marca por encima de
       ``ml_proba > 0.7`` — un binario que dice "SAP" a nueve de cada diez es
       una constante, no un clasificador (backlog P2, S6.1 del plan 2026-09).
-  (g) Licitaciones con importe y sin base declarada — ``importe_tipo`` (C1.1).
+  (g) Fechas guardadas como texto que no empiezan por ISO-8601. Es el contador
+      que pide T2 del plan de arquitectura v2 («cuenta cero fechas no ISO») y,
+      de paso, el número exacto de filas que hoy impiden promover a VALID los
+      seis CHECK que ``v59`` dejó ``NOT VALID``.
+  (h) Licitaciones con importe y sin base declarada — ``importe_tipo`` (C1.1).
 
 Cada sección es independiente: un fallo en una no bloquea las demás.
 
@@ -234,6 +238,14 @@ TODOS_LOS_UMBRALES: tuple[Umbral, ...] = (
     UMBRAL_IMPORTE_SIN_TIPO,
 )
 
+# Fechas no ISO toleradas: CERO, y no por severidad gratuita. Las escrituras
+# nuevas ya no pueden producirlas en las seis columnas con CHECK (``v59``), así
+# que cualquier cuenta > 0 es histórico anterior al cutover — un conjunto que
+# solo puede encoger. Es el mismo criterio del resto de ratchets del repo: no
+# se vigila un empeoramiento, se comprueba una corrección. Mientras no sea
+# cero, T2 no puede convertir estas columnas a `timestamptz` sin perder filas.
+MAX_FECHAS_NO_ISO = 0
+
 
 # ── Medición ─────────────────────────────────────────────────────────────────
 
@@ -327,8 +339,14 @@ def _medir_ml_proba() -> dict[str, Any]:
     return distribucion_ml_proba(UMBRAL_ML_PROBA_ALTA)
 
 
+def _medir_fechas_iso() -> dict[str, Any]:
+    from db.domain_truth_audit import fechas_no_iso
+
+    return fechas_no_iso()
+
+
 def medir_todo(max_zips: int) -> dict[str, Any]:
-    """Ejecuta las siete secciones aislando el fallo de cada una.
+    """Ejecuta las ocho secciones aislando el fallo de cada una.
 
     Una sección que revienta deja ``{"error": ...}`` en su hueco y no impide
     medir el resto -- la auditoría es más útil parcial que ausente.
@@ -341,6 +359,7 @@ def medir_todo(max_zips: int) -> dict[str, Any]:
         ("baja", _medir_baja),
         ("ml_proba", _medir_ml_proba),
         ("fechas_imposibles", _medir_fechas_imposibles),
+        ("fechas_iso", _medir_fechas_iso),
         ("importe_tipo", _medir_importe_sin_tipo),
     ):
         try:
@@ -433,6 +452,23 @@ def evaluar(datos: dict[str, Any]) -> list[str]:
             f"ml_proba: {fuera['puntuadas']} filas fuera de la población del "
             "clasificador conservan un score; deberían haberse limpiado en "
             "precompute_ml_proba"
+        )
+
+    fechas = datos.get("fechas_iso", {})
+    total_no_iso = int(fechas.get("total_no_iso") or 0)
+    if total_no_iso > MAX_FECHAS_NO_ISO:
+        peores = ", ".join(
+            f"{f['tabla']}.{f['columna']}={f['no_iso']}"
+            for f in sorted(
+                (f for f in fechas.get("por_columna", []) if f["no_iso"]),
+                key=lambda f: int(f["no_iso"]),
+                reverse=True,
+            )[:3]
+        )
+        violaciones.append(
+            f"fechas_iso: {total_no_iso} fechas de texto no empiezan por ISO-8601 "
+            f"({peores}), umbral {MAX_FECHAS_NO_ISO} — bloquean el VALIDATE "
+            "CONSTRAINT de v59 y la conversión a timestamptz de T2"
         )
 
     for clave, seccion in datos.items():
@@ -537,6 +573,20 @@ def render(datos: dict[str, Any]) -> None:
             f"  Fuera de población: {fuera['total']} filas, {fuera['puntuadas']} con score "
             "(deberían ser 0)"
         )
+
+    print("\n── (g) Fechas de texto que no empiezan por ISO-8601 ──")
+    seccion = datos["fechas_iso"]
+    if "error" in seccion:
+        print(f"  ERROR: {seccion['error']}")
+    else:
+        for fila in seccion["por_columna"]:
+            check = "CHECK v59" if fila["tiene_check"] else "sin CHECK"
+            print(
+                f"  {fila['tabla']}.{fila['columna']:<28} "
+                f"no_iso={fila['no_iso']:>7}/{fila['total']:<8} "
+                f"({fila['pct_no_iso']}%)  [{check}]"
+            )
+        print(f"  Total no ISO: {seccion['total_no_iso']}  (objetivo {MAX_FECHAS_NO_ISO})")
 
 
 def explicar_umbrales() -> None:

@@ -27,6 +27,10 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from observability.logging import get_logger
+
+log = get_logger(__name__)
+
 __all__ = [
     "MIN_POR_CELDA",
     "TRAMOS_IMPORTE",
@@ -263,6 +267,12 @@ def batallas_de_usuario(
     `test_organization_sql_isolation`), porque cada ruta que lo hiciera sería
     otro sitio donde equivocarse con el ámbito — y éste consulta el pipeline de
     un equipo.
+
+    El ``nif_propio`` sale de la identidad fiscal que S2.1 dejó declarable. Sin
+    él —y así estuvo desde que `construir_batallas` aceptó el parámetro— la
+    pantalla decía «no sabemos cuál es tu empresa» aunque la organización
+    tuviera su NIF puesto: el aviso salía siempre, y un aviso que sale siempre
+    deja de leerse.
     """
     from datetime import UTC, datetime, timedelta
 
@@ -272,5 +282,23 @@ def batallas_de_usuario(
     resuelta, _rol = resolve_organization(user_id, organization_id)
     desde = (datetime.now(UTC) - timedelta(days=30 * meses)).isoformat()
     cruces = PursuitRepository().cruces_con_competidor(resuelta, empresa_key, desde_iso=desde)
-    resultado = construir_batallas(empresa_key, cruces)
+    resultado = construir_batallas(empresa_key, cruces, nif_propio=_nif_principal(resuelta))
     return resultado.model_copy(update={"ventana": f"últimos {meses} meses"})
+
+
+def _nif_principal(organization_id: int) -> str | None:
+    """El NIF declarado por la organización, o ``None`` si no declaró ninguno.
+
+    Un fallo de lectura degrada a ``None`` en vez de tumbar la pantalla: el
+    historial contra un competidor sigue siendo útil sin saber quiénes somos, y
+    quedarse sin él porque falló `organization_nifs` sería cambiar un aviso por
+    una caída. Mismo criterio que `services/competitive/socios.py::_identidad_de`.
+    """
+    from services.pursuit_awards import identidad_fiscal
+
+    try:
+        identidad = identidad_fiscal(organization_id)
+    except Exception:
+        log.warning("batallas.nif_propio_no_leido", organization_id=organization_id)
+        return None
+    return next(iter(sorted(identidad.nifs)), None)

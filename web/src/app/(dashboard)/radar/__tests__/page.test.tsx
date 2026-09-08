@@ -27,8 +27,13 @@ vi.mock("sonner", () => {
 });
 
 const createPursuit = vi.fn().mockResolvedValue({ id: 7, organization_id: 3 });
+// La franja de calidad del Radar (S3.2) lee `radar_quality` de
+// `GET /pursuits/metrics`. Sin métrica no se pinta, que es el caso por defecto
+// de casi todos los tests de este fichero.
+const metricsState: { data?: { radar_quality?: unknown } } = { data: undefined };
 vi.mock("@/hooks/use-pursuits", () => ({
   useCreatePursuit: () => ({ mutateAsync: createPursuit, isPending: false }),
+  usePursuitMetrics: () => metricsState,
 }));
 
 const addWatchlist = vi.fn();
@@ -68,6 +73,11 @@ const SIGNALS_SANAS: ScoringSignals = {
   margen_origen: "modelo",
   percentiles_fuente: "universo_vivo",
   afinidad_metodo: "keyword_cpv_fallback",
+  // `afinidad_metodo` dice **cómo** se calculó la afinidad; `afinidad_origen`,
+  // **con qué portfolio** (S2.4): el perfil personal si lo hay, y si no el de
+  // la organización. El caso sano es el perfil propio. Lleva `default` en el
+  // esquema, así que el servidor siempre lo manda y el tipo generado lo exige.
+  afinidad_origen: "perfil",
   perfil: "ok",
   senal_tecnica: "ok",
 };
@@ -189,6 +199,7 @@ beforeEach(() => {
   radarState.isLoading = false;
   radarState.error = null;
   watchedItems.length = 0;
+  metricsState.data = undefined;
 });
 
 afterEach(() => {
@@ -384,6 +395,76 @@ describe("RadarPage", () => {
     renderRadar();
 
     expect(screen.getByRole("button", { name: /^Descartadas\s*3$/ })).toBeInTheDocument();
+  });
+
+  it("dice si la banda que ordena la lista acierta, cuando hay con qué decirlo", () => {
+    // S3.2: la métrica existía en `GET /pursuits/metrics` y su componente
+    // estaba escrito y probado, pero ninguna pantalla lo montaba. Aquí se fija
+    // que el Radar lo enseña — y que sin métrica no aparece nada, que es lo que
+    // comprueban por omisión el resto de tests de este fichero.
+    metricsState.data = {
+      radar_quality: {
+        minimo_por_banda: 10,
+        ventana_desde: "2026-06-01T00:00:00Z",
+        ventana_hasta: "2026-08-31T00:00:00Z",
+        ventana_origen: "historico_observado",
+        bandas: [
+          {
+            banda: "Caliente",
+            abiertas: 16,
+            cerradas: 12,
+            ganadas: 8,
+            perdidas: 4,
+            resueltas: 12,
+            precision: 8 / 12,
+            tasa_cierre: 0.75,
+            suficiente: true,
+          },
+        ],
+        pursuits_con_banda: 21,
+        pursuits_total: 40,
+        cobertura_pct: 52.5,
+      },
+    };
+
+    renderRadar();
+
+    expect(
+      screen.getByText(/Precisión de la banda Caliente en tu organización/),
+    ).toBeInTheDocument();
+    expect(screen.getByText("8/12")).toBeInTheDocument();
+  });
+
+  it("sin métrica de calidad no aparece la franja", () => {
+    renderRadar();
+
+    expect(screen.queryByText(/Precisión de la banda/)).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /Ver todas las bandas/ }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("ofrece la bandeja «Próximas» y no le inventa un contador mientras carga", () => {
+    // T5. El stub de `@/lib/api-client` devuelve `{}` a cualquier
+    // `fetchWithAuth`, así que aquí `/radar/proximas` no trae `total`: el
+    // segmento tiene que decir «—» y no «0». Un cero afirma que no hay ninguna
+    // compra anunciada, que es justo lo que todavía no se sabe.
+    renderRadar();
+
+    expect(screen.getByRole("button", { name: /^Próximas\s*—$/ })).toBeInTheDocument();
+  });
+
+  it("«Próximas» cambia de bandeja entera: ni score, ni orden, ni inspector", () => {
+    // No es un filtro sobre la misma lista. Son `PRE`/`CPM`, expedientes sin
+    // pliego: no tienen score que ordenar ni ficha de señal que inspeccionar, y
+    // ofrecer los controles de la otra bandeja prometería algo que no hacen.
+    renderRadar();
+    fireEvent.click(screen.getByRole("button", { name: /^Próximas/ }));
+
+    expect(screen.queryByText("Mantenimiento SAP")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Plazo" })).not.toBeInTheDocument();
+    expect(screen.queryByText(/Selecciona una señal/)).not.toBeInTheDocument();
+    expect(screen.getByText(/todavía\s+no han salido a licitación/)).toBeInTheDocument();
   });
 
   it("avisa también cuando el importe se normaliza contra el histórico completo", () => {

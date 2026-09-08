@@ -1,18 +1,42 @@
 # Cobertura regional de contratación
 
-Última medición: **2026-09-06** (C4.3). Los números de esta página salen de
-ejecutar `python scripts/check_regional_coverage.py`; no son estimaciones.
+## La regla, que no cambia
 
-| Fuente | Conector | Alcance honesto | Limitación principal |
-|---|---|---|---|
-| Catalunya (PSCP) | `PscpConnector` | Dataset Socrata incremental, sólo avisos con señal tecnológica (C4.1) | Depende del dataset configurado y de sus campos publicados. |
-| Galicia | `GaliciaRssConnector` | Publicaciones recientes del RSS oficial, filtradas por señal tecnológica | El feed no es histórico ni comunica todos los cambios de expediente. **Su cobertura real llega por PLACSP** (ver abajo). |
-| País Vasco | `EuskadiApiConnector` | Buscador oficial paginado, recorrido por cursor de fecha | El buscador no publica importe: esas filas llegan sin `importe` y con `importe_tipo` a `NULL`. |
+**Los feeds regionales nunca se suman como cuota de mercado ni como censo.**
+Son cobertura de *descubrimiento*: cada uno tiene su propia ventana, su propio
+filtro y su propio universo, y sumarlos produce un número que parece un censo
+sin serlo. El panel de SLA muestra la fuente y su universo; la página pública
+`/cobertura` no publica ninguna cifra agregada, y su ausencia es deliberada.
 
-Los conectores usan `run_connector`: IDs namespaceados, upsert idempotente, DLQ
-por aviso y estado de salud/frescura en `source_ingestion_health`. El panel de
-SLA debe mostrar la fuente y su universo, nunca sumar estos feeds como una cuota
-de mercado completa.
+Los conectores regionales usan `run_connector`: IDs namespaceados, upsert
+idempotente, DLQ por aviso y estado de salud/frescura en
+`source_ingestion_health`.
+
+## Dónde vive el alcance de cada fuente
+
+En `scraper/connectors/__init__.py`, dentro de `REGISTERED_SOURCES`. Cada
+`RegisteredSource` declara su `nombre`, su `alcance` (qué universo cubre y qué
+no), su `estado` (`activa` | `opcional` | `fuera_de_alcance`) y el
+`max_lag_hours` a partir del cual se considera atrasada.
+
+Este documento tenía una tabla con esos mismos datos para tres de las fuentes.
+La tabla es lo que T7 retira: había siete fuentes registradas y tres filas
+aquí, y nada fallaba por la diferencia. El alcance vive donde vive el
+inventario que el healthcheck ya consume, y de ahí sale por dos caminos:
+
+- `GET /api/v1/publico/cobertura` — el contrato público (`api/routes/publico.py`).
+- `/cobertura` — la página que lo pinta (`web/src/app/(publico)/cobertura/`).
+
+## Lo que queda fuera (D16, 2026-09-06)
+
+También se declara en `scraper/connectors/__init__.py`, en `FUERA_DE_ALCANCE`:
+contratos menores, BOE y los portales autonómicos no integrados. Cada entrada
+lleva su motivo, la decisión que lo fijó y la fecha, y la vía de entrada es una
+petición escrita — no un descubrimiento propio ni una fecha comprometida.
+
+Un ámbito excluido **no** se registra como `RegisteredSource`: no tiene módulo,
+ni SLA, ni fila de salud, y el healthcheck lo reclamaría cada seis horas como
+una fuente muerta.
 
 ## País Vasco: del RSS al buscador oficial
 
@@ -55,27 +79,3 @@ expediente en la fuente y queda marcado.
 La muestra envejece: el conector recorre de más nuevo a más viejo, así que con
 el tiempo hay que subir `--paginas` o refrescarla. El script distingue «no
 encontrado» de «fuera de la ventana recorrida».
-
-## Galicia: la cobertura real es PLACSP
-
-La propia plataforma gallega lo dice en su web: los contratos del sector público
-gallego se publican **por interconexión** en PLACSP. Medido sobre una página en
-vivo del feed 643 (235 entradas, 2026-09-06): **17 con señal gallega (7,2 %)** y
-**0** con señal vasca. Es decir:
-
-- Galicia ya entra por `placsp`, que es el conector con el contrato más rico
-  (CODICE completo, importes con su base, lotes, adjudicaciones). Montarle una
-  API propia duplicaría filas con peor dato.
-- Euskadi **no** entra por ahí, y por eso sí necesita canal propio.
-
-El RSS gallego se conserva como descubrimiento. Su aportación medida es baja: en
-el feed del 2026-09-06, 63 avisos y **0** con señal tecnológica, y cero filas
-históricas en producción. No está roto —el extractor de ids funciona— pero
-tampoco es la vía por la que llega Galicia.
-
-## Cuando una fuente deja de traer nada
-
-`scheduler/healthcheck.py` clasifica como **estéril** la fuente obligatoria cuyo
-último run salió `success` con cero avisos descargados. Es exactamente la forma
-que tuvo el fallo de Euskadi durante toda su vida útil: correr todos los días,
-no entender la fuente, y no distinguirse de «hoy no había nada».

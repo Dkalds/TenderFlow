@@ -200,6 +200,19 @@ export const pursuitKeys = {
   detail: (id: string) => ["pursuits", "detail", id] as const,
   metrics: ["pursuits", "metrics"] as const,
   agenda: ["pursuits", "agenda"] as const,
+  /**
+   * Contraste ficha × capacidad de una oportunidad
+   * (`GET /pursuits/{id}/checklist`, S2.3).
+   */
+  checklist: (pursuitId: number | string) =>
+    ["pursuits", "checklist", String(pursuitId)] as const,
+  /**
+   * Propuesta de pesos a partir de los cierres con desglose sellado
+   * (`GET /pursuits/weights-proposal`, S3.3). Cuelga de la raíz `pursuits`
+   * a propósito: cerrar una oportunidad cambia su base, y la invalidación
+   * por prefijo que ya hacen las mutaciones de pursuits la alcanza.
+   */
+  weightsProposal: ["pursuits", "weights-proposal"] as const,
 };
 
 export const pursuitCommentKeys = {

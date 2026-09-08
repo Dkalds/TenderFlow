@@ -17,6 +17,7 @@ import { usePerfilScoring } from "./_hooks/use-perfil-scoring";
 import { AmbitoPerfilCard } from "./_components/ambito-perfil-card";
 import { CpvsInteresCard, KeywordsAfinidadCard } from "./_components/afinidad-cards";
 import { GdprSection } from "./_components/gdpr-section";
+import { PesosPropuestosCard } from "./_components/pesos-propuestos-card";
 import { PesosScoringCard } from "./_components/pesos-scoring-card";
 import { RangoImporteCard } from "./_components/rango-importe-card";
 import { TecnologiasOrganizacionCard } from "./_components/tecnologias-organizacion-card";
@@ -67,6 +68,10 @@ export default function MiPerfilPage() {
           onWeightChange={perfil.handleWeightChange}
           onReset={perfil.handleResetWeights}
         />
+
+        {/* Pegada a los sliders que propone cambiar: leerla en otro sitio
+            obligaría a recordar los seis números de arriba. */}
+        <PesosPropuestosCard />
 
         <KeywordsAfinidadCard
           keywords={perfil.keywords}
