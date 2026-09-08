@@ -31,19 +31,22 @@ def test_rechaza_lo_que_supera_el_tope() -> None:
     grande = b"x" * (adj.MAX_BYTES + 1)
     with pytest.raises(adj.AttachmentError) as exc:
         adj._validar(grande, "memoria.pdf", "application/pdf")
-    # El mensaje nombra "bytes" porque el router lo usa para elegir 413 y no 415.
-    assert "bytes" in str(exc.value)
+    # El código va en la excepción y no se deduce del texto: el router lo usa
+    # tal cual, y así reescribir el mensaje no cambia la respuesta HTTP.
+    assert exc.value.codigo == 413
 
 
 def test_rechaza_un_tipo_fuera_de_la_allowlist() -> None:
     with pytest.raises(adj.AttachmentError) as exc:
         adj._validar(b"PK\x03\x04", "expediente.zip", "application/zip")
-    assert "bytes" not in str(exc.value), "un tipo inválido no puede acabar en un 413"
+    assert exc.value.codigo == 415, "un tipo inválido no puede acabar en un 413"
 
 
 def test_rechaza_el_fichero_vacio() -> None:
-    with pytest.raises(adj.AttachmentError):
+    """Ni 413 ni 415: un fichero vacío no es un problema de tamaño ni de tipo."""
+    with pytest.raises(adj.AttachmentError) as exc:
         adj._validar(b"", "vacio.pdf", "application/pdf")
+    assert exc.value.codigo == 422
 
 
 def test_acepta_pdf_y_limpia_el_nombre() -> None:

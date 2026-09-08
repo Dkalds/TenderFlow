@@ -1334,9 +1334,10 @@ async def post_pursuit_attachment(
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except AttachmentError as exc:
         # 413 y 415 dicen QUÉ límite se pasó; un 422 genérico obligaría a leer
-        # el texto para saber si hay que comprimir o convertir.
-        codigo = 413 if "bytes" in str(exc) else 415
-        raise HTTPException(status_code=codigo, detail=str(exc)) from exc
+        # el texto para saber si hay que comprimir o convertir. El código lo
+        # decide quien conoce el motivo —el servicio—, no un `in` sobre el
+        # mensaje, que es una regla que se rompe al reescribir una frase.
+        raise HTTPException(status_code=exc.codigo, detail=str(exc)) from exc
     except AttachmentStoreError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 

@@ -76,7 +76,17 @@ _PREFIJO_FIRMA = b"pursuit-adjunto:"
 
 
 class AttachmentError(ValueError):
-    """El fichero no cumple los límites (tamaño o tipo)."""
+    """El fichero no cumple los límites.
+
+    Lleva el ``codigo`` HTTP que le corresponde porque el router tiene que
+    distinguir «pesa demasiado» (413) de «no es un tipo admitido» (415), y
+    deducirlo del texto del mensaje —que es lo que hacía— se rompe en cuanto
+    alguien reescribe una frase.
+    """
+
+    def __init__(self, mensaje: str, *, codigo: int = 415) -> None:
+        super().__init__(mensaje)
+        self.codigo = codigo
 
 
 class AttachmentNotFoundError(LookupError):
@@ -107,10 +117,11 @@ def _to_out(fila: dict[str, Any]) -> PursuitAttachmentOut:
 def _validar(contenido: bytes, filename: str, content_type: str) -> tuple[str, str]:
     """Comprueba tamaño y tipo. Devuelve ``(filename_limpio, content_type)``."""
     if not contenido:
-        raise AttachmentError("El fichero está vacío.")
+        raise AttachmentError("El fichero está vacío.", codigo=422)
     if len(contenido) > MAX_BYTES:
         raise AttachmentError(
-            f"El fichero ocupa {len(contenido)} bytes y el máximo son {MAX_BYTES}."
+            f"El fichero ocupa {len(contenido)} bytes y el máximo son {MAX_BYTES}.",
+            codigo=413,
         )
     tipo = (content_type or "").split(";", 1)[0].strip().lower()
     if tipo not in TIPOS_ADMITIDOS:
@@ -123,7 +134,7 @@ def _validar(contenido: bytes, filename: str, content_type: str) -> tuple[str, s
     limpio = (filename or "").replace("\\", "/").split("/")[-1]
     limpio = " ".join(limpio.split())[:200]
     if not limpio:
-        raise AttachmentError("El fichero no trae nombre.")
+        raise AttachmentError("El fichero no trae nombre.", codigo=422)
     return limpio, tipo
 
 
