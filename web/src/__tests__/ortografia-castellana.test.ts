@@ -27,10 +27,22 @@ import { describe, expect, it } from "vitest";
 
 const RAIZ = path.resolve(__dirname, "..");
 
-/** Palabras que en prosa castellana no pueden aparecer sin tilde. */
+/**
+ * Palabras que en prosa castellana no pueden aparecer sin tilde.
+ *
+ * Cada entrada es la forma **sin** tilde de una palabra que sí la lleva. Ojo con
+ * los plurales: `tecnología → tecnologías` y `página → páginas` la conservan y
+ * por eso están, pero los acabados en `-ción` la pierden al pluralizar
+ * (`predicción → predicciones`, `licitación → licitaciones`), así que su plural
+ * NO va en esta lista — incluirlo marca castellano correcto.
+ *
+ * `predicciones` estuvo aquí hasta 2026-09-08 y no había disparado por
+ * casualidad: la primera frase del producto que la usaba bien
+ * —«Las predicciones conservan versión y fecha de cálculo», en /metodologia—
+ * puso el test en rojo. Un control que marca lo correcto se acaba desactivando.
+ */
 const SIEMPRE_CON_TILDE = [
   "prediccion",
-  "predicciones",
   "analisis",
   "busqueda",
   "busquedas",

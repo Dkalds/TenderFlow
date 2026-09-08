@@ -41,6 +41,7 @@ import {
   organizationKeys,
   perfilKeys,
   prediccionKeys,
+  pursuitAttachmentKeys,
   pursuitCommentKeys,
   pursuitKeys,
   radarKeys,
@@ -214,6 +215,11 @@ const FABRICAS: readonly Fabrica[] = [
     nombre: "pursuitCommentKeys",
     raiz: pursuitCommentKeys.all,
     miembros: [{ nombre: "pursuitCommentKeys.thread", clave: pursuitCommentKeys.thread(7) }],
+  },
+  {
+    nombre: "pursuitAttachmentKeys",
+    raiz: pursuitAttachmentKeys.all,
+    miembros: [{ nombre: "pursuitAttachmentKeys.list", clave: pursuitAttachmentKeys.list(7) }],
   },
   {
     nombre: "organizationKeys",
