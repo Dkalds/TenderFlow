@@ -79,19 +79,26 @@ def test_las_secuencias_vuelven_a_empezar(tmp_db) -> None:
     contadores donde los dejó el test anterior — y un test que compruebe el id
     asignado pasaría o fallaría según en qué posición de la suite corriera.
     """
+    # Se comprueba sobre `ops_events` y no sobre `licitaciones`, que es lo que
+    # decía este test cuando se escribió: `licitaciones` **no tiene** columna
+    # `id`, su clave primaria es `id_externo` (TEXT), así que no hay ninguna
+    # secuencia que reiniciar y el SELECT fallaba con `UndefinedColumn`. Nadie
+    # lo vio porque la sesión que lo escribió no tenía Postgres delante.
+    #
+    # `ops_events` sí lleva `id` serial y solo dos columnas obligatorias, así
+    # que ejercita exactamente lo que el test dice ejercitar sin arrastrar
+    # claves ajenas.
     db_mod, _ = tmp_db
     with db_mod.connect() as c:
-        # `fecha_extraccion` es NOT NULL sin default: ver `_insertar`.
         c.execute(
-            "INSERT INTO licitaciones (id_externo, titulo, fuente, fecha_extraccion) "
-            "VALUES (%s, %s, %s, %s)",
-            ("SECUENCIA-C3.4", "Reinicio de secuencia", "test", "2026-01-01"),
+            "INSERT INTO ops_events (ts, event_type) VALUES (%s, %s)",
+            ("2026-01-01T00:00:00Z", "secuencia_c3_4"),
         )
         fila = c.execute(
-            "SELECT id FROM licitaciones WHERE id_externo = %s", ("SECUENCIA-C3.4",)
+            "SELECT id FROM ops_events WHERE event_type = %s", ("secuencia_c3_4",)
         ).fetchone()
     assert int(fila[0]) == 1, (
-        f"la secuencia de `licitaciones` no reinició (id={fila[0]}) con estrategia "
+        f"la secuencia de `ops_events` no reinició (id={fila[0]}) con estrategia "
         f"{ESTRATEGIA_SCHEMA!r}"
     )
 

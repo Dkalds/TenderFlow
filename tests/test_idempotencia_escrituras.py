@@ -27,22 +27,22 @@ from db.idempotency import _caducada, scope
 class TestAmbito:
     def test_incluye_al_usuario(self) -> None:
         """Dos usuarios con la misma clave no comparten respuesta."""
-        a = scope("watchlist_items", user_key="usuario-a")
-        b = scope("watchlist_items", user_key="usuario-b")
+        a = scope("watchlist_items", actor="usuario-a")
+        b = scope("watchlist_items", actor="usuario-b")
         assert a != b
 
     def test_incluye_a_la_organizacion(self) -> None:
         """El mismo humano en dos organizaciones escribe en dos sitios."""
-        personal = scope("watchlist_items", user_key="u1", organization_id=1)
-        equipo = scope("watchlist_items", user_key="u1", organization_id=2)
+        personal = scope("watchlist_items", actor="u1", organization_id=1)
+        equipo = scope("watchlist_items", actor="u1", organization_id=2)
         assert personal != equipo
 
     def test_sin_organizacion_es_estable(self) -> None:
-        assert scope("radar_dismissals", user_key="u1") == scope("radar_dismissals", user_key="u1")
+        assert scope("radar_dismissals", actor="u1") == scope("radar_dismissals", actor="u1")
 
     def test_endpoints_distintos_no_colisionan(self) -> None:
         """Reintentar un favorito no puede devolver la respuesta de una regla."""
-        assert scope("watchlist_items", user_key="u1") != scope("watchlist_rules", user_key="u1")
+        assert scope("watchlist_items", actor="u1") != scope("watchlist_rules", actor="u1")
 
     def test_el_usuario_nunca_falta(self) -> None:
         """El ámbito no puede ser solo el nombre del endpoint.
@@ -51,7 +51,7 @@ class TestAmbito:
         mecanismo de idempotencia se convierte en una caché compartida entre
         cuentas.
         """
-        ambito = scope("watchlist_items", user_key="clave-de-usuario")
+        ambito = scope("watchlist_items", actor="clave-de-usuario")
         assert "clave-de-usuario" in ambito
         assert ambito != "watchlist_items"
 
