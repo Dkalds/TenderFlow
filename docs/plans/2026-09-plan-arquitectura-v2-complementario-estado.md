@@ -261,8 +261,10 @@ el runner de CI, y están en la lista de bloqueos.
 ## El gate que sigue en rojo: cobertura del diff
 
 CI exige **≥ 80 % de cobertura sobre las líneas que la PR cambia**
-(`diff-cover`, job `Tests (Postgres)`). Este trabajo va al **63 %**: 1141 de
-3127 líneas nuevas sin cubrir. Los otros doce checks están en verde.
+(`diff-cover`, job `Tests (Postgres)`). Este trabajo va al **65 %**: 1073 de
+3127 líneas nuevas sin cubrir. Los otros doce checks están en verde, incluidos
+la suite de integración —**6129 tests pasando, 0 fallando**— y el E2E de
+Playwright.
 
 No es una cifra que se pueda subir desde aquí, y el reparto dice por qué:
 
@@ -292,9 +294,12 @@ Lo que sí se cubrió aquí, porque son decisiones y no consultas:
 - `web/src/hooks/use-ajustes.ts` (C7.5): de 0 a ocho tests, que es lo que
   devolvió `src/hooks/**` por encima de su piso.
 
-**Para cerrarlo hace falta una sesión con Postgres**: cubrir la capa de
-repositorios es la mitad del déficit, y la otra mitad son rutas cuyos tests, en
-este repo, también levantan base.
+**Para cerrarlo hace falta una sesión con Postgres.** Las cuentas, para que
+quien la abra sepa a qué se enfrenta: hay que cubrir ~470 líneas más. Cubrir
+`services/**` entero aporta ~210 y deja el gate en ~72 %, así que **no basta**;
+hacen falta además las rutas (`api/routes/**`, 333 líneas), y en este repo los
+tests de ruta levantan base. La capa de repositorios (378) es la mitad del
+déficit y no tiene otra forma de probarse.
 
 ## Lo que bloquea al resto
 
