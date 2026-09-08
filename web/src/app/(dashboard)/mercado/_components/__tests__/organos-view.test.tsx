@@ -172,9 +172,13 @@ describe("Órganos — el ámbito llega a las dos peticiones", () => {
 
     renderPage();
 
-    // La fila del listado completo lleva el nombre del órgano en su `title`.
+    // El nombre del órgano es el contenido del botón de la fila. Se busca por
+    // texto y no por rol: `findByRole` construye el árbol de accesibilidad de
+    // toda la tabla en cada intento, y con el reintento de `findBy` eso se le
+    // comía los 30 s del caso en una máquina cargada. (Antes iba por el `title`,
+    // que C7.4 retiró en favor de un `Tooltip`.)
     fireEvent.click(
-      await screen.findByRole("button", { name: "ORG A" }, { timeout: ESPERA_MS }),
+      await screen.findByText("ORG A", { selector: "button" }, { timeout: ESPERA_MS }),
     );
 
     await waitFor(() => expect(urlDetalle()).toBeDefined(), { timeout: ESPERA_MS });
@@ -192,7 +196,7 @@ describe("Órganos — el ámbito llega a las dos peticiones", () => {
     const { rerenderPage } = renderPage();
 
     fireEvent.click(
-      await screen.findByRole("button", { name: "ORG A" }, { timeout: ESPERA_MS }),
+      await screen.findByText("ORG A", { selector: "button" }, { timeout: ESPERA_MS }),
     );
     await waitFor(() => expect(urlDetalle()).toBeDefined(), { timeout: ESPERA_MS });
 
