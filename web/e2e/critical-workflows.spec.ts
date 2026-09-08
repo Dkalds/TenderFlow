@@ -42,7 +42,8 @@ test.describe("Flujos de trabajo críticos", () => {
     // activa es una decisión del componente, escrita en su propio docstring. Lo
     // que faltaba era que el test hiciera lo que hace una persona —seleccionar
     // la fila y después pulsar—, y eso es justo lo que el botón en capa de C7.1
-    // hace posible expresar.
+    // hace posible expresar. Con eso el `POST /watchlist/items` aparece en el
+    // log de la API del job (201, 22 ms) donde antes no había ninguno.
     //
     // El presupuesto es explícito porque el de por defecto no le cabe: el
     // cuerpo declara **dos** esperas de 20 s —el Radar con datos reales tarda,
@@ -224,17 +225,21 @@ async function deleteSavedView(page: Page, context: BrowserContext, name: string
  * botón en capa que introdujo C7.1 (`aria-label="Seleccionar …"`).
  */
 async function seleccionarFila(page: Page, titulo: string): Promise<Locator> {
-  // El ancla es el botón en capa y no el texto del título: al seleccionar una
-  // fila se abre el inspector, que **repite** ese título en el panel lateral.
-  // Un `getByText(titulo).first()` acertaba con la lista vacía de selección y
-  // pasaba a resolver al panel en cuanto había una fila activa —tras el
-  // `reload()`, que restaura la selección—, y el ancestro del panel no tiene
-  // `data-active`: el locator no resolvía a nada y `click()` esperaba en
-  // silencio. `aria-label="Seleccionar …"` solo existe en las filas del Radar.
-  const seleccion = page.getByRole("button", { name: `Seleccionar ${titulo}` });
-  await expect(seleccion).toBeVisible({ timeout: 20_000 });
-  await seleccion.click();
-  const fila = seleccion.locator("xpath=ancestor::*[@data-active][1]");
+  // Se busca dentro de `radar-lista` y no en la página entera porque al
+  // seleccionar una fila se abre el inspector, que **repite** el título en el
+  // panel lateral: con la lista sin selección había una coincidencia y
+  // `.first()` acertaba, pero tras el `reload()` —que restaura la selección—
+  // hay dos, y el ancestro del panel no tiene `data-active`.
+  //
+  // El botón se toma por su `data-slot` y no por su nombre accesible: el nombre
+  // lo compone el título del expediente, así que atarse a él hace que el test
+  // dependa de que la cadena del seed no cambie ni un carácter.
+  const lista = page.locator('[data-slot="radar-lista"]');
+  const fila = lista.getByText(titulo).first().locator("xpath=ancestor::*[@data-active][1]");
+  await expect(fila, `la fila «${titulo}» no aparece en el Radar`).toBeVisible({
+    timeout: 20_000,
+  });
+  await fila.locator('[data-slot="radar-fila-seleccion"]').click();
   await expect(fila).toHaveAttribute("data-active", "true");
   return fila;
 }

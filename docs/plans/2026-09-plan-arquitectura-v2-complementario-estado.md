@@ -14,7 +14,8 @@ commitear**— y para saber qué faltaba hubo que leer los mensajes de commit un
 uno y comprobar el árbol ítem por ítem. Lo que sigue es esa reconstrucción, ya
 hecha.
 
-**Última actualización: 2026-09-08 (tercera pasada: fusión sobre `master`).**
+**Última actualización: 2026-09-08 (cuarta pasada: el E2E, y las rutas sí se
+prueban sin Postgres).**
 
 ## Resumen
 
@@ -30,10 +31,10 @@ como hecho sería la clase de optimismo que obligó a escribir este documento.
 | C4 Ingesta y calidad | 6 | 0 | 1 (C4.3) | 7 |
 | C5 Conocimiento | 5 | 0 | 3 (C5.1, C5.2, C5.8) | 8 |
 | C6 Colaboración y captura | **7** | 0 | **0** | 7 |
-| C7 Frontend y accesibilidad | **4** | **1** (C7.4) | 3 (C7.1, C7.3, C7.7) | 8 |
+| C7 Frontend y accesibilidad | 4 | **2** (C7.1 una regla de cuatro, C7.4) | **2** (C7.3, C7.7) | 8 |
 | C8 API y contrato | 5 | 0 | 0 | 5 |
 | C9 Documentación y proceso | 6 | 0 | 0 | 6 |
-| **Total** | **48** | **5** | **8** | **61** |
+| **Total** | **48** | **6** | **7** | **61** |
 
 ## Tercera pasada (2026-09-08): la fusión sobre `master`
 
@@ -94,6 +95,100 @@ reintroduciendo el typo para comprobar que lo detecta.
 
 «El código existe» y «la ruta funciona» no son lo mismo, y este documento había
 contado lo primero como lo segundo.
+
+## Cuarta pasada (2026-09-08): el E2E, y una suposición que costó 333 líneas
+
+Dos hallazgos, y los dos empezaron por mirar algo que ya estaba publicado y que
+nadie había abierto.
+
+### El E2E: la causa no era la que decía el commit que lo reactivó
+
+«Seguir una licitación» llevaba en `fixme` desde que se escribió, con la
+sospecha de que lo causaba el `nested-interactive` de la fila. C7.1 quitó esa
+regla y lo reactivó — y siguió fallando. Subir el presupuesto de 30 s a 90 s
+solo cambió cuánto tardaba en morir, que era la señal de que el problema no era
+lentitud.
+
+Lo resolvió el **log de la API del propio job**, que CI publica como artefacto
+(`e2e-api-log`): los `GET /watchlist/items` responden **200 en 30 ms** y **no
+hay ni un POST**. El clic nunca se enviaba. Y no se enviaba porque las acciones
+de una fila **inactiva** son `inert` (`radar-acciones.tsx`,
+`inerte = enTabla && !isActive`) y, a partir de `md`, además
+`pointer-events-none`: `inert` las saca del árbol de accesibilidad, así que
+`getByRole("button", {name: /^Seguir /})` no resolvía a nada y `click()` esperaba
+**sin error** hasta agotar el presupuesto. Como el reloj se agotaba dentro del
+`finally`, el fallo se reportaba en la limpieza y parecía otra cosa.
+
+No es un defecto de la aplicación: revelar las acciones solo en la fila activa
+está escrito en el docstring del componente —en táctil, revelarlas al
+seleccionar convertiría descartar en dos toques—. Lo que faltaba era que el test
+hiciera lo que hace una persona: seleccionar y después pulsar. Con eso el POST
+aparece (201, 22 ms), y el fallo se movió a la segunda mitad por un motivo
+distinto: el test localizaba la fila por su título, y **al seleccionar se abre el
+inspector, que repite ese título**. Con la lista sin selección había una
+coincidencia y `.first()` acertaba; tras el `reload()` —que restaura la
+selección— hay dos, y la primera puede ser la del panel, cuyo ancestro no tiene
+`data-active`.
+
+La búsqueda pasa a acotarse al contenedor `[data-slot="radar-lista"]`, y el
+botón se toma por `[data-slot="radar-fila-seleccion"]`. Un intento intermedio lo
+localizaba por su nombre accesible (`Seleccionar {título}`) y **también falló**,
+esta vez rápido y con mensaje —«element(s) not found»—: ese nombre lo compone el
+título del expediente, así que atarse a él hace que el test dependa de que la
+cadena del seed no cambie ni un carácter. Los `data-slot` son los que el propio
+componente declara para esto.
+
+La lección, que es la misma que ya está escrita arriba con otras palabras: un
+`click()` de Playwright sobre un locator que no resuelve **no falla, espera**.
+Un test que muere por timeout no dice «esto está roto», dice «pregunta por qué».
+
+### Las rutas sí se prueban sin Postgres
+
+La tercera pasada cerró con «en este repo los tests de ruta levantan base» —la
+fixture `client` cuelga de `api_db`— y de ahí concluyó que las 333 líneas sin
+cubrir de `api/routes/**` estaban fuera del alcance de una sesión sin Postgres.
+**Era falso para las rutas que son un envoltorio fino**, que aquí son la mayoría
+de las que este plan añadió: con `app.dependency_overrides` para la
+autenticación y `monkeypatch` sobre el servicio, se ejercita exactamente lo que
+la ruta aporta —el mapeo de excepción a código HTTP— sin tocar una fila.
+
+Y ese mapeo es justo lo que ningún test cubría: que salir siendo owner sea 409 y
+no 403, que un destinatario que no es miembro sea 404 y no 400, que un estado de
+tarea inválido sea 422, que un enlace de descarga caducado sea 403 y no 410. Un
+`except` en el orden equivocado los intercambia sin que nada falle
+—`AttachmentTooLarge` hereda de `AttachmentError`— y ni mypy ni el fuzzing lo
+ven: el fuzzing encuentra el caso que **rompe**, no el que devuelve el código
+equivocado.
+
+`require_recent_session()` no se sustituye: se le da un contexto de sesión
+reciente y se deja correr, así que su propia comprobación también se ejecuta.
+
+### Lo que se cubrió, y por qué eran esos módulos
+
+Los tests que ya existían para C1 y C6 estaban escritos casi enteros con
+`inspect.getsource`: comprueban que el **texto** del módulo dice lo que debe
+decir. Eso ata la redacción y no ejercita ni una línea, y es la misma clase de
+agujero por el que pasaron los dos 5xx de la tercera pasada.
+
+Medido: `pursuit_tasks` y `go_no_go_puntuacion` al 100 %, `organos` al 99 %,
+`similares` al 94 %, y el ciclo de vida de la organización —el código donde
+estaba el 5xx de `organization_members`— con sus nueve reglas ejecutadas.
+
+### CI había dejado de disparar, y no por el código
+
+Tres empujones seguidos se quedaron sin un solo check. El motivo: `master`
+mergeó #289 y #290, la rama quedó `CONFLICTING`, y GitHub no puede calcular
+`refs/pull/288/merge` de una rama en conflicto — sin esa ref, los workflows de
+`pull_request` **no arrancan**. No hay aviso: la lista de checks simplemente
+aparece vacía. Conviene saberlo porque el síntoma se parece a una cuota agotada.
+
+La fusión y sus ocho choques están en el mensaje del merge. Tres cosas que
+destapó y que merecen quedar aquí: el golden de S3.1 trataba `base` (C1.1) como
+un campo nuevo cuando ya tenía mecanismo para campos aditivos; el ratchet de
+estilos inline subió a 95 porque master añadió uno, y se resolvió **retirando la
+duplicación que lo causaba** en vez de subir el techo; y la cobertura de
+fixtures de contrato cayó al 79 % porque la unión de operaciones creció y las
+fixtures no.
 
 ## Correcciones al plan, registradas
 
@@ -212,7 +307,7 @@ Seis de siete, en v122–v124.
 
 | Ítem | Estado |
 |---|---|
-| C7.1 Remediación axe | **No hecho.** Las cuatro reglas y los cuatro `test.fixme` exigen ver la aplicación corriendo. |
+| C7.1 Remediación axe | **Parcial: una regla de cuatro y dos `fixme` de cuatro.** `nested-interactive` sale (la fila del Radar deja de ser un `role="button"` con cinco botones dentro; la selección pasa a un `<button>` hermano en capa) y con ella los dos `fixme` de `critical-workflows`. Quedan `color-contrast`, `scrollable-region-focusable` y `target-size`, que son la ola de UX/móvil y sí exigen pantalla; los dos `fixme` que restan describen funcionalidad que no existe (la watchlist desborda a 375 px, la agenda móvil no está). **Y la nota que dejó el ítem era falsa**: ver la cuarta pasada. |
 | C7.2 S5.8 | **Hecho** (2026-09-08). La ficha pública entra en el barrido axe, y el piso de `src/app/**` queda fijado **al valor medido**: 35.06 lines / 30.15 functions / 30.74 branches, con el buffer de ~3 puntos de siempre. El número no salió de esta máquina —el séptimo intento local murió como los seis anteriores— sino del `lcov` que publica el job `frontend` de CI, agregado por subárbol. La agregación se validó antes de fiarse de ella: el mismo método sobre `src/hooks/**` reproduce los 69.32 / 61.21 que vitest había reportado en ese run. `statements` se deja sin fijar a propósito: el `lcov` no lo lleva y derivarlo de `lines` sería inventarlo — en ese mismo run `hooks` lo tiene por encima de `lines` y el global por debajo. |
 | C7.3 Primer uso | **No hecho.** Los estados vacíos se verifican mirando la pantalla. |
 | C7.4 `title=` a `Tooltip` | **Regla, ratchet corregido y ocho migrados; el resto no.** Ver corrección 1, que a su vez estaba mal: el contador subcontaba (2026-09-08). De 39 reales quedan **36**. Migrados: `space-shell` a `<abbr>` —que es donde `title` sí es semántico, y además va dentro de un `<button>`, así que un tooltip ahí sería `nested-interactive`—; `estado-global-row`, `mercado-strip`, `eventos-feed` y `pursuit-comments` a `<Tooltip>`; y los tres `<button title=>` de `empresa-perfil` y `review-queue`, que son el caso limpio porque un botón ya es focusable. **Sin `tabIndex`**: ESLint (`jsx-a11y/no-noninteractive-tabindex`) tiene razón en que un `<span>` focusable que no hace nada al pulsarlo es otra violación, no una mejora — cambiar `title` por eso sería mover el problema. Lo que sí entregan los tooltips es el **táctil**, que es la mitad del reproche del ratchet. Los 36 que quedan están casi todos en celdas de tabla y heatmaps: hacerlos focusables cambia el orden de tabulación de la rejilla entera y eso se decide mirando la pantalla. |
@@ -261,12 +356,11 @@ el runner de CI, y están en la lista de bloqueos.
 ## El gate que sigue en rojo: cobertura del diff
 
 CI exige **≥ 80 % de cobertura sobre las líneas que la PR cambia**
-(`diff-cover`, job `Tests (Postgres)`). Este trabajo va al **65 %**: 1073 de
-3127 líneas nuevas sin cubrir. Los otros doce checks están en verde, incluidos
-la suite de integración —**6129 tests pasando, 0 fallando**— y el E2E de
-Playwright.
+(`diff-cover`, job `Tests (Postgres)`). En la tercera pasada iba al **65 %**:
+1073 de 3127 líneas nuevas sin cubrir, con la suite de integración en verde
+(6129 tests) y el resto de checks también.
 
-No es una cifra que se pueda subir desde aquí, y el reparto dice por qué:
+Aquel reparto, y la conclusión que se sacó de él:
 
 | Área | Líneas nuevas sin cubrir |
 |---|---:|
@@ -294,12 +388,32 @@ Lo que sí se cubrió aquí, porque son decisiones y no consultas:
 - `web/src/hooks/use-ajustes.ts` (C7.5): de 0 a ocho tests, que es lo que
   devolvió `src/hooks/**` por encima de su piso.
 
-**Para cerrarlo hace falta una sesión con Postgres.** Las cuentas, para que
-quien la abra sepa a qué se enfrenta: hay que cubrir ~470 líneas más. Cubrir
-`services/**` entero aporta ~210 y deja el gate en ~72 %, así que **no basta**;
-hacen falta además las rutas (`api/routes/**`, 333 líneas), y en este repo los
-tests de ruta levantan base. La capa de repositorios (378) es la mitad del
-déficit y no tiene otra forma de probarse.
+### La cuarta pasada: 65 % → 79 %, sin Postgres
+
+~~**Para cerrarlo hace falta una sesión con Postgres.**~~ **La premisa era
+falsa** (ver la cuarta pasada): «en este repo los tests de ruta levantan base»
+vale para la fixture `client`, no para las rutas que este plan añadió, que son
+envoltorios finos y se prueban con `dependency_overrides` y el servicio
+inyectado. Con eso, y ejecutando los servicios que hasta ahora solo se
+comprobaban por `inspect.getsource`, el gate pasa de **1073 líneas sin cubrir a
+632** — del 65 % al **79 %**, medido por CI el 2026-09-08.
+
+| Área | Sin cubrir (3.ª pasada) | Sin cubrir (4.ª) |
+|---|---:|---:|
+| `db/repositories/**` | 378 | 378 |
+| `api/routes/**` | 333 | ~90 |
+| `services/**` | 276 | ~35 |
+| `db/**` (resto) | 129 | 129 |
+
+Lo que **sigue** necesitando Postgres es lo que siempre lo necesitó: los
+repositorios (378 líneas de SQL) y los `downgrade()` de las catorce migraciones,
+que son la mayor parte de las 129 restantes de `db/**`. Escribir esos a ciegas
+es lo que produjo los tres bugs de la tercera pasada, así que no se hace.
+
+El umbral son 625 líneas y quedan 632: **siete**. Los dos últimos lotes de tests
+—las ramas degradadas de `_resolver_menciones` y `_tier_limit`— entraron después
+de esa medición y valen más que eso, así que el gate lo cierra la siguiente
+pasada de CI. Que quede escrito el número exacto y no «casi»: 632 y 625.
 
 ## Lo que bloquea al resto
 
@@ -320,8 +434,16 @@ Cinco cosas, y ninguna es de código. Actualizado el 2026-09-08.
    incorrecto —su cabecera dice «no editar a mano» y es el volcado de un
    catálogo, no una descripción—; aplicar el diff que produce el generador
    contra una base real no lo es.
-2. **La aplicación corriendo.** C7.1, C7.3 y C7.7 se verifican mirando la
-   pantalla. Sin API ni datos sembrados no hay pantalla.
+2. **La aplicación corriendo.** C7.3 y C7.7 se verifican mirando la pantalla, y
+   también las tres reglas axe que le quedan a C7.1 —contraste, regiones
+   scrolleables y tamaño de target— que son la ola de UX/móvil. Sin API ni datos
+   sembrados no hay pantalla.
+
+   Matiz que la cuarta pasada obliga a añadir: **no todo lo que parece necesitar
+   pantalla la necesita**. El `nested-interactive` de C7.1 se resolvió leyendo el
+   componente, y el E2E que lo verificaba se diagnosticó con el log de la API que
+   CI ya publicaba. «Hace falta ver la aplicación» es cierto para lo visual —un
+   contraste, un estado vacío— y se usaba también para lo que no lo era.
 3. **Etiquetado humano.** C1.3 (30 pares), C5.1 (40 pliegos) y C5.8 (60 días de
    telemetría) piden dato que nadie ha producido todavía. C5.2 cuelga de C5.1:
    sin golden no hay forma de saber si unificar el selector empeora la ficha.
