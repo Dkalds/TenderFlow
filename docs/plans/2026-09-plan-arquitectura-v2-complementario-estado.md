@@ -204,6 +204,31 @@ universal. C9 dejó los seis ADR (027–032), los docs que el código desmentía
 retención publicada desde constantes, el registro de tratamientos y los dos
 generadores con `--check` en CI.
 
+## Métricas de cierre, medidas el 2026-09-08
+
+La §4 del plan pide que estas cifras las reproduzca un comando y que **no** se
+anoten a mano en aquel fichero. Aquí sí, con el comando al lado, porque un
+documento de estado sin números es una opinión.
+
+| Métrica | Objetivo | Hoy | Comando |
+|---|---|---|---|
+| `title=` nativo en `.tsx` | 0, por olas | **36** (eran 39 al corregir el escaneo) | `python scripts/check_title_attrs.py` |
+| Estilos inline en JSX | ratchet que solo baja | **94** (97 tras la fusión) | `python scripts/check_inline_styles.py` |
+| Ortografía de la UI | 0 | **0** | `python scripts/check_ortografia_ui.py` |
+| Operaciones de API opacas | 0 | **0** | `python scripts/check_openapi_contract.py` |
+| Cobertura de fixtures de contrato | ≥ 80 % | **82 %** (31/38) | `python scripts/check_contract_fixtures.py` |
+| Escaneos analíticos sin cota | 0 fuera de la allowlist | **0**, con 8 excepciones declaradas | `python scripts/check_analytics_unbounded.py` |
+| Avisos de seguridad abiertos fuera de plazo | 0 | **0** — los 3 abiertos son fantasmas | `python scripts/check_security_alerts.py` |
+| Cabezas Alembic | 1 | **1** (`v127_pursuit_attachments`) | `alembic heads` |
+| Suite unitaria de Python | verde | **3983 pasan, 0 fallan** | `pytest -m "unit and not slow"` |
+| Lint del frontend | 0 errores | **0** (7 avisos preexistentes) | `npm run lint` |
+| Typecheck del frontend | limpio | **limpio** | `npm run typecheck` |
+| Cobertura del frontend | piso medido para `src/app/**` | **no medida** — ver bloqueo 4 | `npm run test:coverage` |
+
+Las que siguen sin poder medirse aquí —cobertura de `organo_id`, tamaño de la
+imagen, duración de `test-integration`, `importe_tipo` nulo— necesitan Postgres o
+el runner de CI, y están en la lista de bloqueos.
+
 ## Lo que bloquea al resto
 
 Cinco cosas, y ninguna es de código. Actualizado el 2026-09-08.

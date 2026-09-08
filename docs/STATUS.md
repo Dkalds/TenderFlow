@@ -78,7 +78,7 @@ Generado: 2026-09-08
 
 ## Superficie de la API
 
-**245 endpoints** expuestos.
+**251 endpoints** expuestos.
 
 <details><summary>Ver listado</summary>
 
@@ -263,6 +263,10 @@ Generado: 2026-09-08
 | GET | `/api/v1/pursuits` |
 | POST | `/api/v1/pursuits` |
 | GET | `/api/v1/pursuits/actividad` |
+| DELETE | `/api/v1/pursuits/adjuntos/{attachment_id}` |
+| GET | `/api/v1/pursuits/adjuntos/{attachment_id}/descargar` |
+| GET | `/api/v1/pursuits/adjuntos/{attachment_id}/enlace` |
+| PUT | `/api/v1/pursuits/adjuntos/{attachment_id}/indexable` |
 | GET | `/api/v1/pursuits/agenda` |
 | GET | `/api/v1/pursuits/cartera` |
 | GET | `/api/v1/pursuits/direccion` |
@@ -273,6 +277,8 @@ Generado: 2026-09-08
 | POST | `/api/v1/pursuits/weights-proposal/apply` |
 | GET | `/api/v1/pursuits/{pursuit_id}` |
 | PATCH | `/api/v1/pursuits/{pursuit_id}` |
+| GET | `/api/v1/pursuits/{pursuit_id}/adjuntos` |
+| POST | `/api/v1/pursuits/{pursuit_id}/adjuntos` |
 | GET | `/api/v1/pursuits/{pursuit_id}/checklist` |
 | GET | `/api/v1/pursuits/{pursuit_id}/comments` |
 | POST | `/api/v1/pursuits/{pursuit_id}/comments` |

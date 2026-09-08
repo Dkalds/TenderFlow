@@ -3668,6 +3668,100 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/pursuits/adjuntos/{attachment_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Adjunto
+         * @description Borra el adjunto y su binario del almacén.
+         */
+        delete: operations["delete_adjunto_api_v1_pursuits_adjuntos__attachment_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/pursuits/adjuntos/{attachment_id}/descargar": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Adjunto Descarga
+         * @description Sirve el binario si la firma vale y no ha caducado.
+         *
+         *     **403 y no 410** para el enlace caducado: 410 diría que el recurso existió y
+         *     ya no está, y el fichero sigue ahí — lo que caducó es el permiso.
+         *
+         *     Sigue exigiendo sesión: la firma acota *qué* adjunto y *hasta cuándo*, no
+         *     sustituye a la autenticación. Un enlace reenviado por correo no abre nada a
+         *     quien no pertenezca ya a la organización.
+         */
+        get: operations["get_adjunto_descarga_api_v1_pursuits_adjuntos__attachment_id__descargar_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/pursuits/adjuntos/{attachment_id}/enlace": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Adjunto Enlace
+         * @description Emite un enlace de descarga **firmado y con caducidad**.
+         *
+         *     La autorización se comprueba **aquí**, con la sesión delante; el enlace que
+         *     sale ya no la necesita, y por eso dura diez minutos y no un día.
+         */
+        get: operations["get_adjunto_enlace_api_v1_pursuits_adjuntos__attachment_id__enlace_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/pursuits/adjuntos/{attachment_id}/indexable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Put Adjunto Indexable
+         * @description Levanta o baja el opt-in del RAG **para un adjunto concreto**.
+         *
+         *     Por adjunto y no por organización: una propuesta puede llevar el CV de
+         *     alguien y el pliego técnico en el mismo expediente, y un permiso global
+         *     obligaría a decidir por el conjunto.
+         */
+        put: operations["put_adjunto_indexable_api_v1_pursuits_adjuntos__attachment_id__indexable_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/pursuits/agenda": {
         parameters: {
             query?: never;
@@ -3878,6 +3972,41 @@ export interface paths {
          * @description Aplica una transición validada y añade un único evento.
          */
         patch: operations["patch_pursuit_api_v1_pursuits__pursuit_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/pursuits/{pursuit_id}/adjuntos": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Pursuit Adjuntos
+         * @description Adjuntos propios de la oportunidad, recientes primero.
+         */
+        get: operations["get_pursuit_adjuntos_api_v1_pursuits__pursuit_id__adjuntos_get"];
+        put?: never;
+        /**
+         * Post Pursuit Adjunto
+         * @description Sube un adjunto: **cuerpo crudo**, no `multipart/form-data`.
+         *
+         *     El fichero viaja como cuerpo de la petición y su nombre en `X-Filename`. Es
+         *     una decisión, no una limitación: `multipart` obligaría a añadir
+         *     `python-multipart` —una dependencia que este plan no pre-autoriza (D31)— para
+         *     parsear un formato que aquí solo transportaría un campo. El cliente hace
+         *     `fetch(url, {method: 'POST', body: file, headers: {'Content-Type': file.type,
+         *     'X-Filename': file.name}})`, y el servidor recibe exactamente los bytes.
+         *
+         *     El tamaño se comprueba **dos veces**: contra `Content-Length` antes de leer
+         *     —para no traer 500 MB a memoria y rechazarlos después— y contra los bytes
+         *     reales, porque la cabecera la escribe el cliente.
+         */
+        post: operations["post_pursuit_adjunto_api_v1_pursuits__pursuit_id__adjuntos_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/pursuits/{pursuit_id}/checklist": {
@@ -9646,6 +9775,56 @@ export interface components {
             nif?: string | null;
             /** Nombre */
             nombre: string;
+        };
+        /** PursuitAttachmentIndexableIn */
+        PursuitAttachmentIndexableIn: {
+            /** Indexable */
+            indexable: boolean;
+        };
+        /**
+         * PursuitAttachmentLink
+         * @description Ruta firmada de descarga y el instante en que deja de valer (epoch).
+         */
+        PursuitAttachmentLink: {
+            /** Expira En */
+            expira_en: number;
+            /** Path */
+            path: string;
+        };
+        /**
+         * PursuitAttachmentOut
+         * @description Un adjunto propio. **Nunca** lleva la `blob_key`.
+         *
+         *     La clave del objeto es una coordenada interna del bucket: publicarla
+         *     invitaría a construir URLs a mano contra el almacen, que es justo lo que el
+         *     enlace firmado de `GET /pursuits/adjuntos/{id}/enlace` evita.
+         */
+        PursuitAttachmentOut: {
+            /** Content Type */
+            content_type: string;
+            /** Created At */
+            created_at: string;
+            /** Filename */
+            filename: string;
+            /** Id */
+            id: number;
+            /**
+             * Indexable
+             * @default false
+             */
+            indexable: boolean;
+            /** Organization Id */
+            organization_id: number;
+            /** Pursuit Id */
+            pursuit_id: number;
+            /** Sha256 */
+            sha256: string;
+            /** Size Bytes */
+            size_bytes: number;
+            /** Uploaded By Name */
+            uploaded_by_name?: string | null;
+            /** Uploaded By User Id */
+            uploaded_by_user_id?: number | null;
         };
         /**
          * PursuitCommentCreate
@@ -19752,6 +19931,174 @@ export interface operations {
             };
         };
     };
+    delete_adjunto_api_v1_pursuits_adjuntos__attachment_id__delete: {
+        parameters: {
+            query?: {
+                organization_id?: number | null;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                attachment_id: number;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_adjunto_descarga_api_v1_pursuits_adjuntos__attachment_id__descargar_get: {
+        parameters: {
+            query: {
+                /** @description Caducidad del enlace (epoch); es parte de lo firmado */
+                exp: number;
+                /** @description Firma HMAC emitida por `/enlace` */
+                t: string;
+                organization_id?: number | null;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                attachment_id: number;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description El fichero */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/octet-stream": unknown;
+                };
+            };
+            /** @description Enlace caducado o firma inválida */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No existe, o no es de tu organización */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_adjunto_enlace_api_v1_pursuits_adjuntos__attachment_id__enlace_get: {
+        parameters: {
+            query?: {
+                organization_id?: number | null;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                attachment_id: number;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PursuitAttachmentLink"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_adjunto_indexable_api_v1_pursuits_adjuntos__attachment_id__indexable_put: {
+        parameters: {
+            query?: {
+                organization_id?: number | null;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                attachment_id: number;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PursuitAttachmentIndexableIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PursuitAttachmentOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_pursuits_agenda_api_v1_pursuits_agenda_get: {
         parameters: {
             query?: {
@@ -20129,6 +20476,124 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
+            };
+        };
+    };
+    get_pursuit_adjuntos_api_v1_pursuits__pursuit_id__adjuntos_get: {
+        parameters: {
+            query?: {
+                organization_id?: number | null;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                pursuit_id: number;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PursuitAttachmentOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_pursuit_adjunto_api_v1_pursuits__pursuit_id__adjuntos_post: {
+        parameters: {
+            query?: {
+                organization_id?: number | null;
+            };
+            header: {
+                /** @description Nombre original del fichero. Se sanea antes de guardarlo. */
+                "X-Filename": string;
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                pursuit_id: number;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Adjunto registrado */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PursuitAttachmentOut"];
+                };
+            };
+            /** @description No perteneces a esa organización, o eres viewer */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description La oportunidad no existe en tu organización */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Ese mismo fichero ya está subido aquí */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Supera el tope por fichero o el de la organización */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Tipo de fichero no admitido */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description No hay almacén de objetos configurado */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
