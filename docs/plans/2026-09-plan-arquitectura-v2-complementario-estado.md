@@ -66,7 +66,34 @@ queda en **3983 pasando, 0 fallando**.
 da por verde—: no hay Docker ni Postgres local en esta máquina, y la única
 `DATABASE_URL` del entorno apunta a **producción**, que no se toca. Las
 migraciones `v113`–`v127` y la suite de integración las verifica el job
-`schema-migrations-postgres` de CI.
+`schema-migrations-postgres` de CI, que las **aplicó en verde**.
+
+### Dos ítems que figuraban como hechos y devolvían 500
+
+Y es la razón por la que este documento no dice «hecho» a la ligera. El fuzzing
+de la API en CI encontró dos 5xx, y los dos eran bugs del propio plan:
+
+1. **C2.2 apuntaba a una tabla que no existe.** La tabla se llama
+   `organization_memberships` desde `v61`; seis sentencias del ciclo de vida de
+   la organización escribían `organization_members`. `transfer-ownership` y
+   `leave` devolvían **500** —solo cuando quien llamaba era realmente el owner,
+   porque los demás recibían 403 antes de llegar al SQL— y el recuento de
+   miembros del preview de borrado devolvía **-1 en silencio**, tapado por el
+   `try/except` que está ahí para otra cosa.
+2. **C2.1 pasaba una factoría de dependencia sin llamar.**
+   `Depends(require_recent_session)` en vez de `require_recent_session()`:
+   FastAPI inyectaba la función interna como contexto y
+   `DELETE /me/sessions/{id}` daba 500 en **todas** sus llamadas.
+
+Ninguno lo veían mypy ni ruff —uno vive dentro de una cadena SQL y el otro es
+una función que se pasa donde cabe una función—, y los tests de esas rutas
+mockean el repositorio. Los dos tienen ahora guardarraíl estructural
+(`tests/test_tablas_citadas_existen.py` y
+`tests/test_depends_factories_llamadas.py`), y el primero se verificó
+reintroduciendo el typo para comprobar que lo detecta.
+
+«El código existe» y «la ruta funciona» no son lo mismo, y este documento había
+contado lo primero como lo segundo.
 
 ## Correcciones al plan, registradas
 
@@ -220,7 +247,9 @@ documento de estado sin números es una opinión.
 | Escaneos analíticos sin cota | 0 fuera de la allowlist | **0**, con 8 excepciones declaradas | `python scripts/check_analytics_unbounded.py` |
 | Avisos de seguridad abiertos fuera de plazo | 0 | **0** — los 3 abiertos son fantasmas | `python scripts/check_security_alerts.py` |
 | Cabezas Alembic | 1 | **1** (`v127_pursuit_attachments`) | `alembic heads` |
-| Suite unitaria de Python | verde | **3983 pasan, 0 fallan** | `pytest -m "unit and not slow"` |
+| Suite unitaria de Python | verde | **3983 pasan, 0 fallan** (más los guardarraíles nuevos) | `pytest -m "unit and not slow"` |
+| Typecheck de Python | limpio | **limpio** (929 ficheros) | `mypy .` |
+| 5xx en el fuzzing de la API | 0 | **2 encontrados y corregidos** | job `API contract fuzzing` |
 | Lint del frontend | 0 errores | **0** (7 avisos preexistentes) | `npm run lint` |
 | Typecheck del frontend | limpio | **limpio** | `npm run typecheck` |
 | Cobertura del frontend | piso medido para `src/app/**` | **no medida** — ver bloqueo 4 | `npm run test:coverage` |
