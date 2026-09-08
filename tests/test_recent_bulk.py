@@ -115,7 +115,6 @@ def test_partial_failure_runs_post_ingestion_and_reports_degraded():
     with (
         patch("scheduler.pipeline_runs.meses_a_procesar", return_value=[(2026, 5), (2026, 6)]),
         patch("scraper.connectors.base.run_connector", side_effect=_resultados_por_mes(results)),
-        patch("db.database.log_extraccion"),
         patch("observability.bind_run_context", return_value="run-test"),
         patch("observability.record_run", return_value=nullcontext(MagicMock())),
         patch("scraper.pipeline._summarize"),
@@ -145,7 +144,6 @@ def test_total_failure_raises_runtimeerror():
     with (
         patch("scheduler.pipeline_runs.meses_a_procesar", return_value=[(2026, 5), (2026, 6)]),
         patch("scraper.connectors.base.run_connector", side_effect=_resultados_por_mes(results)),
-        patch("db.database.log_extraccion"),
         patch("observability.bind_run_context", return_value="run-test"),
         patch("observability.record_run", return_value=nullcontext(MagicMock())),
         patch("scraper.pipeline._summarize"),
@@ -206,8 +204,7 @@ class TestRunRecentBulk:
                 "scraper.connectors.base.run_connector",
                 side_effect=_resultados_por_mes([{"year": 2026, "month": 5, "status": "error"}]),
             ),
-            patch("db.database.log_extraccion"),
-            patch("observability.bind_run_context", return_value="run-test"),
+                patch("observability.bind_run_context", return_value="run-test"),
             patch("observability.record_run", return_value=nullcontext(MagicMock())),
             patch("scraper.pipeline._summarize"),
             pytest.raises(RuntimeError, match="bulk refresh"),

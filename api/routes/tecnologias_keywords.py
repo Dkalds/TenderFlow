@@ -135,7 +135,8 @@ async def put_keyword(
     )
     invalidar()
     _diccionario, version_despues = await run_db(vigente, forzar=True)
-    log_event(
+    await run_db(
+        log_event,
         event_type="tecnologias_keyword.added",
         user_key=str(admin.get("user_id", "")),
         resource=f"tecnologia:{body.tecnologia}",
@@ -165,7 +166,8 @@ async def delete_keyword(
         )
     invalidar()
     _diccionario, version_despues = await run_db(vigente, forzar=True)
-    log_event(
+    await run_db(
+        log_event,
         event_type="tecnologias_keyword.removed",
         user_key=str(admin.get("user_id", "")),
         resource=f"tecnologia:{tecnologia}",
@@ -189,7 +191,8 @@ async def post_sembrar(
     gobernar de verdad.
     """
     insertadas = await run_db(sembrar_desde_semilla)
-    log_event(
+    await run_db(
+        log_event,
         event_type="tecnologias_keyword.seeded",
         user_key=str(admin.get("user_id", "")),
         resource="tecnologias_keywords",

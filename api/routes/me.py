@@ -324,7 +324,8 @@ async def delete_my_session(
         # un enumerador quiere saber.
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Sesión no encontrada.")
 
-    log_event(
+    await run_db(
+        log_event,
         event_type="auth.session_revoked",
         user_key=_actor_key(ctx),
         resource=f"user:{user_id}",
@@ -622,7 +623,8 @@ async def create_my_key(
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
-    log_event(
+    await run_db(
+        log_event,
         event_type="api_key.created",
         user_key=_actor_key(ctx),
         resource=f"user:{user_id}",

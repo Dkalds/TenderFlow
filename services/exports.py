@@ -119,3 +119,42 @@ def get_export_filename(format: ExportFormat, prefix: str = "licitaciones") -> s
     """Return a filename like ``licitaciones_20260529.csv``."""
     date_str = datetime.now().strftime("%Y%m%d")
     return f"{prefix}_{date_str}.{_EXTENSIONS.get(format, 'csv')}"
+
+
+def render_pursuits_export(
+    user_id: int,
+    *,
+    formato: str,
+    status: str | None = None,
+    responsible_user_id: int | None = None,
+    limit: int = 10000,
+    organization_id: int | None = None,
+) -> tuple[bytes, str, int]:
+    """``(bytes, media_type, n_filas)`` del tablero de oportunidades (C6.7).
+
+    Vive aquí y no en la ruta porque la ruta no puede resolver la organización
+    por su cuenta: el repo lo prohíbe para que exista **un** sitio donde se
+    decide con qué organización se lee (`tests/test_organization_sql_isolation.py`).
+
+    La sanitización de fórmulas es la de siempre —`generate_csv`/`generate_excel`
+    la aplican—: un `decision_reason` que empiece por `=` es una fórmula en
+    Excel, y aquí el texto lo escribe el propio equipo, que es justo el caso en
+    que nadie sospecha del fichero.
+    """
+    from db.repositories.pursuits import PursuitRepository
+    from services.organizations import resolve_organization
+
+    organizacion, _role = resolve_organization(user_id, organization_id)
+    rows = PursuitRepository().export_rows(
+        organizacion,
+        status=status,
+        responsible_user_id=responsible_user_id,
+        limit=limit,
+    )
+    if formato == "excel":
+        return (
+            generate_excel(rows, PURSUIT_COLUMNS),
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            len(rows),
+        )
+    return generate_csv(rows, PURSUIT_COLUMNS), "text/csv; charset=utf-8", len(rows)

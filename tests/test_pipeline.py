@@ -229,12 +229,11 @@ class TestSignalPostIngestion:
 
 class TestProcessDaily:
     @patch("scraper.pipeline._signal_post_ingestion")
-    @patch("scraper.pipeline.log_extraccion")
     @patch("scraper.pipeline.set_cursor")
     @patch("scraper.pipeline.replace_adjudicaciones_batch", return_value=(1, 0, 0))
     @patch("scraper.pipeline.get_cursor", return_value=None)
     @patch("scraper.pipeline.init_db")
-    def test_no_entries(self, init, get_cur, repl, set_cur, log_ext, signal):
+    def test_no_entries(self, init, get_cur, repl, set_cur, signal):
         mock_meta = {
             "pages_fetched": 1,
             "entries_seen": 0,
@@ -252,12 +251,11 @@ class TestProcessDaily:
         assert result["tech_matches"] == 0
 
     @patch("scraper.pipeline._signal_post_ingestion")
-    @patch("scraper.pipeline.log_extraccion")
     @patch("scraper.pipeline.set_cursor")
     @patch("scraper.pipeline.replace_adjudicaciones_batch", return_value=(1, 0, 0))
     @patch("scraper.pipeline.get_cursor", return_value={"last_seen_updated": "2024-01-01"})
     @patch("scraper.pipeline.init_db")
-    def test_with_entries(self, init, get_cur, repl, set_cur, log_ext, signal):
+    def test_with_entries(self, init, get_cur, repl, set_cur, signal):
         from db.upsert import Licitacion, UpsertResult
 
         lic = Licitacion(id_externo="D1", titulo="Daily test")
@@ -301,13 +299,12 @@ class TestProcessDaily:
         assert result["status"] == "error_fetch"
 
     @patch("scraper.pipeline._signal_post_ingestion")
-    @patch("scraper.pipeline.log_extraccion")
     @patch("scraper.pipeline.set_cursor")
     @patch("scraper.pipeline.record_failure")
     @patch("scraper.pipeline.replace_adjudicaciones_batch", return_value=(0, 0, 0))
     @patch("scraper.pipeline.get_cursor", return_value={"last_seen_updated": "2024-01-01"})
     @patch("scraper.pipeline.init_db")
-    def test_persist_error(self, init, get_cur, repl, rec, set_cur, log_ext, signal):
+    def test_persist_error(self, init, get_cur, repl, rec, set_cur, signal):
         entry_elem = MagicMock()
         entries = [(entry_elem, "2024-01-02")]
         meta = {

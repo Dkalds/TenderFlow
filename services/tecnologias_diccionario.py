@@ -72,9 +72,15 @@ def _leer() -> tuple[dict[str, list[str]], str]:
     try:
         de_bd = TecnologiasKeywordsRepository().diccionario_activo()
     except Exception:
-        # Ya se registra en el repositorio; aquí solo se decide caer a la
-        # semilla. Que una BD caída deje el filtro sin diccionario sería peor
-        # que servir uno de hace un minuto.
+        # Caer a la semilla es la degradación correcta: que una BD caída deje el
+        # filtro sin diccionario sería peor que servir uno de hace un minuto.
+        #
+        # Pero se registra AQUÍ y no solo en el repositorio, porque la
+        # consecuencia se decide aquí: con la semilla, `filter_version` vuelve a
+        # ser el hash del código y las filas que se ingieran mientras tanto
+        # quedan marcadas con un linaje que no es el vigente. Sin esta traza,
+        # una BD caída y un diccionario que no se ha tocado se ven igual.
+        log.warning("tecnologias_diccionario_desde_semilla", exc_info=True)
         de_bd = {}
     efectivo = de_bd or semilla()
     return efectivo, _hash_de(efectivo)

@@ -1165,6 +1165,9 @@ export interface paths {
         /**
          * Baja de referencia para un segmento
          * @description '¿Cuánto hay que bajar para ganar en este órgano/CPV?'
+         *
+         *     La respuesta declara en `base` sobre qué población de importes se calculó
+         *     (C1.1): sin ese dato, «la baja media es del 14 %» no se puede interpretar.
          */
         get: operations["get_baja_referencia_api_v1_competitive_bajas_referencia_get"];
         put?: never;
@@ -1809,6 +1812,71 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/feedback/asistente": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Votar la calidad de una respuesta del asistente
+         * @description Persiste el voto del chat, que hasta C5.4 moría como evento de telemetría.
+         *
+         *     Responde 201 incluso si la fila no pudo escribirse (``registrado: false``):
+         *     quien vota nos está haciendo un favor, y devolverle un 500 por un fallo de
+         *     nuestra tabla convierte su cortesía en un error en su pantalla.
+         */
+        post: operations["submit_asistente_feedback_api_v1_feedback_asistente_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/feedback/asistente/peores": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Preguntas con más votos negativos
+         * @description Agrupadas por hash: una respuesta mala y la misma doscientas veces no
+         *     pueden leerse igual.
+         */
+        get: operations["asistente_feedback_peores_api_v1_feedback_asistente_peores_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/feedback/asistente/resumen": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Ratio de respuestas útiles por modo
+         * @description Panel de `/ops` → Active learning. Publica ratio **y** población.
+         */
+        get: operations["asistente_feedback_resumen_api_v1_feedback_asistente_resumen_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/feedback/model-info": {
         parameters: {
             query?: never;
@@ -2429,6 +2497,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/licitaciones/{id_externo}/similares": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Predecesor y expedientes similares
+         * @description ¿Este contrato ya se licitó antes? ¿Quién lo tiene hoy?
+         *
+         *     `services/embeddings.py` sabía buscar textos parecidos desde siempre y
+         *     ninguna ruta lo exponía (hecho 3 del plan complementario). Esta lo hace, con
+         *     dos preguntas separadas porque tienen listones de evidencia distintos: ver
+         *     `services/similares.py`.
+         */
+        get: operations["get_similares_api_v1_licitaciones__id_externo__similares_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/licitaciones/{id_externo}/simulador": {
         parameters: {
             query?: never;
@@ -2614,12 +2707,28 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Listar mis API keys (sin el secret — solo prefix y metadatos)
-         * @description Devuelve las API keys vinculadas al usuario autenticado, sin el secreto.
+         * Listar mis API keys (sin el secret — solo metadatos y tier)
+         * @description Devuelve las API keys vinculadas al usuario autenticado.
+         *
+         *     Para API key auth: usa ``key_id``. For session auth: usa ``user_id``.
+         *     Nunca incluye el hash ni el token: el secreto se enseña una sola vez, al
+         *     crearla.
          */
         get: operations["list_my_keys_api_v1_me_keys_get"];
         put?: never;
-        post?: never;
+        /**
+         * Crear una API key personal
+         * @description Acuña una API key personal (C2.3, D25).
+         *
+         *     Hasta 2026-09 `create_api_key` existía y **solo la usaba un script**:
+         *     `/me/keys` listaba y rotaba, pero no creaba. Para tener una clave había que
+         *     pedírsela al mantenedor.
+         *
+         *     Exige sesión reciente, igual que la rotación y el borrado de cuenta: acuñar
+         *     una credencial es la primera cosa que haría alguien con una cookie robada,
+         *     porque sobrevive al cierre de sesión.
+         */
+        post: operations["create_my_key_api_v1_me_keys_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2658,6 +2767,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/me/notification-preferences": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Mis preferencias de notificación
+         * @description Qué avisos quiere recibir el usuario, y por dónde.
+         *
+         *     Ninguna tabla las modelaba (hecho 13 del plan complementario) y el
+         *     despachador de eventos de v2 S4.6 las necesita.
+         */
+        get: operations["get_notification_preferences_api_v1_me_notification_preferences_get"];
+        /**
+         * Fijar mis preferencias de notificación
+         * @description Guarda las preferencias enviadas. Idempotente por `(org, tipo, canal)`.
+         *
+         *     Un `PUT` que solo **añade o pisa** lo enviado, sin borrar lo que no viene:
+         *     el frontend manda lo que el usuario tocó, y una semántica de reemplazo total
+         *     haría que abrir Ajustes en una pantalla estrecha —donde no caben todos los
+         *     tipos— borrase los ajustes que no se llegaron a renderizar.
+         */
+        put: operations["put_notification_preferences_api_v1_me_notification_preferences_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/me/profile": {
         parameters: {
             query?: never;
@@ -2690,6 +2831,54 @@ export interface paths {
          * @description Elimina el perfil de scoring. El scoring vuelve a los settings globales.
          */
         delete: operations["delete_profile_api_v1_me_profile_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/me/sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Listar mis sesiones activas
+         * @description Sesiones abiertas del usuario, con la actual marcada.
+         *
+         *     `db/sessions.py::list_active_sessions` existía desde siempre y **nadie la
+         *     llamaba** (hecho 7 del plan complementario): el usuario solo tenía
+         *     `POST /auth/logout-all`, o sea cerrar todas o ninguna.
+         */
+        get: operations["list_my_sessions_api_v1_me_sessions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/me/sessions/{session_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Revocar UNA sesión propia
+         * @description Cierra una sesión concreta sin tocar las demás.
+         *
+         *     Exige sesión reciente (`require_recent_session`), igual que el borrado de
+         *     cuenta: cerrar la sesión de otro dispositivo es la acción que alguien con
+         *     una cookie robada usaría para expulsar al dueño.
+         */
+        delete: operations["delete_my_session_api_v1_me_sessions__session_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -2919,6 +3108,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/organizations/go-no-go/weights": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Go No Go Weights */
+        get: operations["get_go_no_go_weights_api_v1_organizations_go_no_go_weights_get"];
+        /**
+         * Put Go No Go Weights
+         * @description Cambia los pesos de la plantilla. Solo owner/admin; queda auditado.
+         */
+        put: operations["put_go_no_go_weights_api_v1_organizations_go_no_go_weights_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/organizations/invitations/accept": {
         parameters: {
             query?: never;
@@ -2963,6 +3173,56 @@ export interface paths {
          * @description Reemplaza el perfil completo. Es dato corporativo, no personal.
          */
         put: operations["put_organization_capabilities_api_v1_organizations__organization_id__capabilities_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{organization_id}/delete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Borrar la organización (confirmación literal)
+         * @description Borra la organización y su dato corporativo (C2.2, ADR-030 §D).
+         *
+         *     `POST /delete` y no `DELETE`: el borrado exige un cuerpo con la confirmación
+         *     literal, y un `DELETE` con cuerpo lo tratan mal bastantes clientes y proxies.
+         *
+         *     Exige además sesión reciente: se lleva trabajo de otras personas y no tiene
+         *     deshacer.
+         *
+         *     Qué cae con ella: **dato corporativo** — oportunidades, comentarios,
+         *     capacidades, claves de organización. Qué sobrevive: el dato personal de cada
+         *     miembro, que cuelga de su cuenta.
+         */
+        post: operations["post_delete_organization_api_v1_organizations__organization_id__delete_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{organization_id}/deletion-preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Qué se borraría con la organización
+         * @description El recuento que la confirmación tiene que enseñar antes de pedirla.
+         */
+        get: operations["get_deletion_preview_api_v1_organizations__organization_id__deletion_preview_get"];
+        put?: never;
         post?: never;
         delete?: never;
         options?: never;
@@ -3027,6 +3287,29 @@ export interface paths {
          * @description Vuelve a enviar el correo con un enlace nuevo; el anterior deja de valer.
          */
         post: operations["post_resend_organization_invitation_api_v1_organizations__organization_id__invitations__invitation_id__resend_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{organization_id}/leave": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Salir de la organización
+         * @description Salida voluntaria (C2.2).
+         *
+         *     La membresía queda `revoked`, no borrada: un comentario firmado por alguien
+         *     que ya no está sigue siendo suyo (ADR-030 §D).
+         */
+        post: operations["post_leave_organization_api_v1_organizations__organization_id__leave_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3113,6 +3396,33 @@ export interface paths {
         /** Cambiar la configuración de la organización (owner/admin) */
         put: operations["put_organization_settings_api_v1_organizations__organization_id__settings_put"];
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{organization_id}/transfer-ownership": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Traspasar la propiedad de la organización
+         * @description Mueve el rol `owner` a otro miembro (C2.2).
+         *
+         *     Hasta 2026-09 no existía: `_guard_owner_row` lo reconocía en su propio
+         *     docstring, y una organización cuyo owner se iba quedaba sin nadie que
+         *     pudiera administrarla.
+         *
+         *     El owner saliente queda como `admin`: quien monta un equipo no debería
+         *     perder el acceso al traspasarlo.
+         */
+        post: operations["post_transfer_ownership_api_v1_organizations__organization_id__transfer_ownership_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3448,6 +3758,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/pursuits/mi-baja": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Mi Baja
+         * @description Mi baja media por CPV4 y por órgano, frente a la del mercado.
+         *
+         *     `suficiente` dice si el segmento llega a las cinco ofertas que el ítem
+         *     exige; los que no llegan salen igual **con su `n`**, porque saber que solo
+         *     hay dos es información y no saberlo es lo que engaña.
+         */
+        get: operations["get_mi_baja_api_v1_pursuits_mi_baja_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/pursuits/tasks/agenda": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Tasks Agenda
+         * @description Tareas abiertas de la organización por urgencia (Mi Pipeline → Agenda).
+         */
+        get: operations["get_tasks_agenda_api_v1_pursuits_tasks_agenda_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/pursuits/weights-proposal": {
         parameters: {
             query?: never;
@@ -3620,6 +3974,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/pursuits/{pursuit_id}/go-no-go": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Pursuit Go No Go
+         * @description Puntuación ponderada de la oportunidad y si contradice la decisión tomada.
+         */
+        get: operations["get_pursuit_go_no_go_api_v1_pursuits__pursuit_id__go_no_go_get"];
+        /** Put Pursuit Go No Go */
+        put: operations["put_pursuit_go_no_go_api_v1_pursuits__pursuit_id__go_no_go_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/pursuits/{pursuit_id}/kit": {
         parameters: {
             query?: never;
@@ -3646,6 +4021,48 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/api/v1/pursuits/{pursuit_id}/tasks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Pursuit Tasks
+         * @description Tareas de la oportunidad: abiertas primero y por vencimiento.
+         */
+        get: operations["get_pursuit_tasks_api_v1_pursuits__pursuit_id__tasks_get"];
+        put?: never;
+        /**
+         * Post Pursuit Task
+         * @description Crea una tarea y recalcula `next_action`, que pasa a derivarse de estas.
+         */
+        post: operations["post_pursuit_task_api_v1_pursuits__pursuit_id__tasks_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/pursuits/{pursuit_id}/tasks/{task_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Pursuit Task */
+        delete: operations["delete_pursuit_task_api_v1_pursuits__pursuit_id__tasks__task_id__delete"];
+        options?: never;
+        head?: never;
+        /** Patch Pursuit Task */
+        patch: operations["patch_pursuit_task_api_v1_pursuits__pursuit_id__tasks__task_id__patch"];
         trace?: never;
     };
     "/api/v1/radar/dismissals": {
@@ -3810,6 +4227,123 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/security/client-errors": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Errores de JavaScript del navegador, agregados
+         * @description Lo que falla en el navegador, con un destino que alguien mira (C2.6).
+         *
+         *     Hasta 2026-09 esto terminaba en un `log.warning` de Render: no se podía
+         *     agregar, nadie lo miraba salvo durante un incidente, y se rotaba a los pocos
+         *     días. Las filas llevan huella, no identidad — sin IP, sin email, sin query
+         *     string.
+         *
+         *     `require_admin` y no `require_scope("admin")` por el mismo motivo que
+         *     `verify_audit_integrity` unas líneas más arriba: esta vista se mira desde
+         *     la consola, con sesión de navegador, y el guardián por scope solo entiende
+         *     de API keys.
+         */
+        get: operations["list_client_errors_api_v1_security_client_errors_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tecnologias/keywords": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Keywords
+         * @description Diccionario vigente, con su versión.
+         *
+         *     `fuente` no es cosmético: dice si lo que gobierna el filtro es la tabla o la
+         *     semilla de respaldo. Sin ese campo, un entorno con la tabla vacía se vería
+         *     idéntico a uno configurado, y nadie sabría que sus ediciones no están
+         *     aplicándose porque nunca se sembró.
+         */
+        get: operations["get_keywords_api_v1_tecnologias_keywords_get"];
+        /**
+         * Put Keyword
+         * @description Añade (o reactiva) una keyword. Queda auditada **con su impacto**.
+         *
+         *     El impacto se mide **antes** de escribir: después, los expedientes ya
+         *     tendrían tecnología asignada en cuanto pasara la siguiente ingesta y el
+         *     número dejaría de ser reconstruible. Es el dato que convierte el registro de
+         *     auditoría en algo revisable — «se añadió `cloud` y trajo 4.200 expedientes»
+         *     explica por sí solo una degradación posterior del radar.
+         */
+        put: operations["put_keyword_api_v1_tecnologias_keywords_put"];
+        post?: never;
+        /**
+         * Delete Keyword
+         * @description Retira una keyword. **Desactiva, no borra**: la decisión es revisable.
+         */
+        delete: operations["delete_keyword_api_v1_tecnologias_keywords_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tecnologias/keywords/impacto": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Impacto
+         * @description «Esta keyword añadiría N expedientes de los últimos 90 días» (D28).
+         *
+         *     Cuenta solo los que **aún no tienen tecnología**: lo que importa es qué
+         *     *añade*, no cuántos la mencionan. «SAP» aparece en miles de expedientes que
+         *     ya están dentro, y ese número no ayudaría a decidir nada.
+         */
+        get: operations["get_impacto_api_v1_tecnologias_keywords_impacto_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tecnologias/keywords/sembrar": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Post Sembrar
+         * @description Vuelca en la tabla las keywords de la semilla que falten. Idempotente.
+         *
+         *     **No reactiva** lo que alguien desactivó a mano: si lo hiciera, cada
+         *     resiembra desharía en silencio una decisión del equipo y la tabla dejaría de
+         *     gobernar de verdad.
+         */
+        post: operations["post_sembrar_api_v1_tecnologias_keywords_sembrar_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/watchlist/feed.xml": {
         parameters: {
             query?: never;
@@ -3868,6 +4402,30 @@ export interface paths {
         post?: never;
         /** Eliminar un favorito propio */
         delete: operations["delete_item_api_v1_watchlist_items__id_externo__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/watchlist/items/{id_externo}/nota": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Escribir o borrar la nota personal de un favorito
+         * @description La nota es de quien la escribe, no de la organización.
+         *
+         *     El repositorio filtra solo por `user_key` a propósito: dos personas que
+         *     siguen el mismo expediente tienen cada una la suya, y un compañero no puede
+         *     sobrescribir la de otro aunque el favorito esté compartido.
+         */
+        put: operations["put_item_nota_api_v1_watchlist_items__id_externo__nota_put"];
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -4096,6 +4654,35 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/webhooks/{webhook_id}/deliveries/{delivery_id}/redeliver": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reenviar una entrega fallida
+         * @description Vuelve a intentar una entrega concreta (C2.4).
+         *
+         *     **202 y no 200**: no se reenvía dentro de la request. Abrir una conexión
+         *     HTTP a un endpoint que puede estar caído dejaría al operador esperando el
+         *     timeout, y el reintento tiene que sobrevivir a que cierre la pestaña. Se
+         *     marca `pending` con el próximo intento en el pasado y el job la recoge.
+         *
+         *     No reinicia el contador de intentos: hacerlo convertiría este botón en una
+         *     forma de reintentar indefinidamente un endpoint muerto, que es justo lo que
+         *     el tope de `MAX_INTENTOS` evita.
+         */
+        post: operations["redeliver_api_v1_webhooks__webhook_id__deliveries__delivery_id__redeliver_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/webhooks/{webhook_id}/ping": {
         parameters: {
             query?: never;
@@ -4175,6 +4762,30 @@ export interface components {
             nombre: string;
         };
         /**
+         * AdjudicacionesPorFuente
+         * @description Cobertura de los campos de adjudicación en UNA fuente de ingesta (C4.7).
+         *
+         *     Existe porque promediar estas cifras entre fuentes miente: medido contra
+         *     producción el 2026-09-06, PLACSP trae el 100 % de `n_ofertas_recibidas` y
+         *     PSCP el 37 %, y ni PSCP ni TED traen **nada** de rango de oferta ni de PYME.
+         *     Un «57 % de cobertura de PYME» global es la media de un 57 % real y de dos
+         *     ceros, y no describe a ninguna de las tres.
+         */
+        AdjudicacionesPorFuente: {
+            /** Filas */
+            filas: number;
+            /** Fuente */
+            fuente: string;
+            /** Pct Es Pyme */
+            pct_es_pyme: number;
+            /** Pct N Ofertas */
+            pct_n_ofertas: number;
+            /** Pct Oferta Maxima */
+            pct_oferta_maxima: number;
+            /** Pct Oferta Minima */
+            pct_oferta_minima: number;
+        };
+        /**
          * AdminUserAction
          * @description Resultado de una acción de moderación sobre un usuario.
          */
@@ -4234,30 +4845,82 @@ export interface components {
             type: string;
         };
         /**
-         * ApiKeyOut
-         * @description Una API key del usuario, **sin** el token ni el hash.
+         * AsistenteFeedbackRequest
+         * @description Voto sobre un turno del asistente.
          *
-         *     Los campos son la proyección exacta de
-         *     ``ApiKeyRepository.get_all_for_user``: ``id`` es lo único con lo que el
-         *     dueño puede señalar qué key rotar en ``POST /me/keys/rotate``, y por eso
-         *     ese repositorio lo devuelve.
-         *
-         *     ``is_active`` llega como ``0``/``1`` de la columna —herencia de SQLite— y
-         *     aquí se declara ``bool`` porque eso es la representación en disco, no el
-         *     contrato; Pydantic hace la coerción. Mismo criterio que ``WebhookOut`` en
-         *     ``api/routes/webhooks.py``.
+         *     ``pregunta`` viaja para poder **hashearla en el servidor**; solo se persiste
+         *     en claro con ``guardar_texto``. Hashearla en el cliente dejaría la sal en el
+         *     navegador, que es lo mismo que no tenerla.
          */
-        ApiKeyOut: {
-            /** Created At */
-            created_at?: string | null;
-            /** Expires At */
-            expires_at?: string | null;
-            /** Id */
-            id: number;
-            /** Is Active */
-            is_active?: boolean | null;
-            /** Name */
-            name?: string | null;
+        AsistenteFeedbackRequest: {
+            /**
+             * Guardar Texto
+             * @description Opt-in explícito para conservar el texto de la pregunta. Por defecto solo se guarda su hash.
+             * @default false
+             */
+            guardar_texto: boolean;
+            /** Licitacion Id */
+            licitacion_id?: string | null;
+            /** Modelo */
+            modelo?: string | null;
+            /**
+             * Modo
+             * @description pregunta | resumen | ficha
+             */
+            modo: string;
+            /** Motivo */
+            motivo?: string | null;
+            /** Pregunta */
+            pregunta: string;
+            /**
+             * Voto
+             * @description si | no
+             */
+            voto: string;
+        };
+        /** AsistenteFeedbackResponse */
+        AsistenteFeedbackResponse: {
+            /**
+             * Registrado
+             * @description False si la fila no pudo escribirse
+             */
+            registrado: boolean;
+        };
+        /** AsistenteFeedbackResumen */
+        AsistenteFeedbackResumen: {
+            /** Dias */
+            dias: number;
+            /** Modos */
+            modos: components["schemas"]["AsistenteModoStats"][];
+        };
+        /** AsistenteModoStats */
+        AsistenteModoStats: {
+            /** Modo */
+            modo: string;
+            /** No Utiles */
+            no_utiles: number;
+            /** Total */
+            total: number;
+            /** Utiles */
+            utiles: number;
+        };
+        /** AsistentePeorPregunta */
+        AsistentePeorPregunta: {
+            /**
+             * Ejemplo
+             * @description Solo de las filas con opt-in de texto
+             */
+            ejemplo?: string | null;
+            /** Modo */
+            modo: string;
+            /** Negativos */
+            negativos: number;
+            /** Pregunta Hash */
+            pregunta_hash: string;
+            /** Total */
+            total: number;
+            /** Ultima Vez */
+            ultima_vez?: string | null;
         };
         /**
          * AskModelInfo
@@ -4279,6 +4942,12 @@ export interface components {
              * @description Filtrar licitaciones por CCAA
              */
             ccaa?: string | null;
+            /**
+             * Force
+             * @description Salta la caché de respuestas y vuelve a preguntar al proveedor. Consume presupuesto: es para cuando la respuesta cacheada se sospecha mala, no el modo por defecto.
+             * @default false
+             */
+            force: boolean;
             /**
              * Id Externo
              * @description ID de una licitación específica: el contexto pasa a ser esa licitación (metadatos del anuncio + fragmentos de sus pliegos) en lugar del retrieval de corpus.
@@ -4362,6 +5031,8 @@ export interface components {
             baja_media_pct?: number | null;
             /** Baja Min Pct */
             baja_min_pct?: number | null;
+            /** Base */
+            base: string;
             /** Contratos */
             contratos?: number | null;
             /** Cpv Prefix */
@@ -4373,6 +5044,8 @@ export interface components {
         };
         /** BajasResult */
         BajasResult: {
+            /** Base */
+            base: string;
             /** Group By */
             group_by: string;
             /** Items */
@@ -4752,6 +5425,33 @@ export interface components {
              * @enum {string}
              */
             veredicto: "cumple" | "no_cumple" | "desconocido";
+        };
+        /**
+         * ClientErrorRow
+         * @description Un error de cliente agregado por huella (C2.6).
+         */
+        ClientErrorRow: {
+            /** Build */
+            build?: string | null;
+            /** Fingerprint */
+            fingerprint: string;
+            /** Mensaje */
+            mensaje?: string | null;
+            /** Ocurrencias */
+            ocurrencias: number;
+            /** Origen */
+            origen?: string | null;
+            /** Primera Vez */
+            primera_vez?: string | null;
+            /** Ruta */
+            ruta?: string | null;
+            /** Ultima Vez */
+            ultima_vez?: string | null;
+        };
+        /** ClientErroresResult */
+        ClientErroresResult: {
+            /** Items */
+            items?: components["schemas"]["ClientErrorRow"][];
         };
         /**
          * ClusterEntry
@@ -5474,12 +6174,40 @@ export interface components {
             total_cpvs: number;
         };
         /**
+         * CreateKeyBody
+         * @description Petición de creación de API key (C2.3, D25).
+         */
+        CreateKeyBody: {
+            /** Expires Days */
+            expires_days?: number | null;
+            /** Name */
+            name: string;
+            /** Scopes */
+            scopes?: string | null;
+        };
+        /**
          * CreatedId
          * @description Respuesta de creación con el id asignado.
          */
         CreatedId: {
             /** Id */
             id: number;
+        };
+        /**
+         * CreatedKey
+         * @description Clave recién creada. **El secreto viaja una sola vez.**
+         */
+        CreatedKey: {
+            /** Api Key */
+            api_key: string;
+            /** Expires At */
+            expires_at?: string | null;
+            /** Id */
+            id?: number | null;
+            /** Name */
+            name: string;
+            /** Organization Id */
+            organization_id?: number | null;
         };
         /**
          * CrossGeoEntry
@@ -5630,12 +6358,42 @@ export interface components {
             confirmation: "DELETE";
         };
         /**
+         * DeleteOrganizationBody
+         * @description Borrado de organización, con confirmación literal (C2.2).
+         */
+        DeleteOrganizationBody: {
+            /** Confirmacion */
+            confirmacion: string;
+        };
+        /**
          * DetailMessage
          * @description Mensaje informativo de una operación (misma clave que los errores HTTP).
          */
         DetailMessage: {
             /** Detail */
             detail: string;
+        };
+        /**
+         * DiccionarioOut
+         * @description El diccionario vigente y de dónde sale.
+         */
+        DiccionarioOut: {
+            /**
+             * Fuente
+             * @description `tabla` o `semilla`
+             */
+            fuente: string;
+            /** Items */
+            items: components["schemas"]["KeywordOut"][];
+            /** Keywords */
+            keywords: number;
+            /** Tecnologias */
+            tecnologias: number;
+            /**
+             * Version
+             * @description Hash del contenido; es el `filter_version` del linaje
+             */
+            version: string;
         };
         /**
          * DocumentoFormatoCobertura
@@ -6465,6 +7223,74 @@ export interface components {
              */
             total_requisitos: number;
         };
+        /** GoNoGoCriterioOut */
+        GoNoGoCriterioOut: {
+            /** Author Name */
+            author_name?: string | null;
+            /** Criterio */
+            criterio: string;
+            /** Etiqueta */
+            etiqueta: string;
+            /** Invertido */
+            invertido: boolean;
+            /** Motivo */
+            motivo?: string | null;
+            /** Peso */
+            peso?: number | null;
+            /** Puntuacion */
+            puntuacion?: number | null;
+        };
+        /** GoNoGoScoreIn */
+        GoNoGoScoreIn: {
+            /** Criterio */
+            criterio: string;
+            /** Motivo */
+            motivo?: string | null;
+            /** Puntuacion */
+            puntuacion: number;
+        };
+        /** GoNoGoScoreOut */
+        GoNoGoScoreOut: {
+            /** Completa */
+            completa: boolean;
+            /** Criterios */
+            criterios: components["schemas"]["GoNoGoCriterioOut"][];
+            /** Criterios Puntuados */
+            criterios_puntuados: number;
+            /** Decision */
+            decision?: string | null;
+            /** Discrepa */
+            discrepa: boolean;
+            /** Organization Id */
+            organization_id: number;
+            /** Pursuit Id */
+            pursuit_id: number;
+            /** Recomendacion */
+            recomendacion: string;
+            /** Total */
+            total: number;
+            /** Umbral */
+            umbral: number;
+        };
+        /**
+         * GoNoGoWeightsIn
+         * @description Pesos por criterio. Los ausentes conservan su valor guardado.
+         */
+        GoNoGoWeightsIn: {
+            /** Pesos */
+            pesos: {
+                [key: string]: number;
+            };
+        };
+        /** GoNoGoWeightsOut */
+        GoNoGoWeightsOut: {
+            /** Criterios */
+            criterios: components["schemas"]["GoNoGoCriterioOut"][];
+            /** Organization Id */
+            organization_id: number;
+            /** Umbral */
+            umbral: number;
+        };
         /**
          * GuionCriterio
          * @description Los puntos de un criterio de adjudicación.
@@ -6670,6 +7496,15 @@ export interface components {
             /** Organo */
             organo?: components["schemas"]["HubOrgano"][];
         };
+        /** ImpactoOut */
+        ImpactoOut: {
+            /** Dias */
+            dias: number;
+            /** Expedientes Nuevos */
+            expedientes_nuevos: number;
+            /** Keyword */
+            keyword: string;
+        };
         /**
          * ImporteBox
          * @description Five-number summary of importe for a cluster (box-plot).
@@ -6802,6 +7637,26 @@ export interface components {
             /** Licitacion Id */
             licitacion_id?: string | null;
         };
+        /** KeywordIn */
+        KeywordIn: {
+            /** Keyword */
+            keyword: string;
+            /** Tecnologia */
+            tecnologia: string;
+        };
+        /** KeywordOut */
+        KeywordOut: {
+            /** Activa */
+            activa: boolean;
+            /** Keyword */
+            keyword: string;
+            /** Origen */
+            origen: string;
+            /** Tecnologia */
+            tecnologia: string;
+            /** Updated At */
+            updated_at?: string | null;
+        };
         /**
          * KitItemBody
          * @description Marcado (o desmarcado) de un documento del kit.
@@ -6862,6 +7717,8 @@ export interface components {
             id_externo: string;
             /** Importe */
             importe?: number | null;
+            /** Lotes */
+            lotes?: components["schemas"]["LoteOut"][];
             /** Ml Proba Max */
             ml_proba_max?: number | null;
             /** Ml Tech Principal */
@@ -6878,6 +7735,8 @@ export interface components {
             provincia?: string | null;
             /** Raw Keywords */
             raw_keywords?: string | null;
+            /** Republicacion De */
+            republicacion_de?: string | null;
             /** Tecnologia */
             tecnologia?: string | null;
             /** Tipo Contrato */
@@ -7037,6 +7896,27 @@ export interface components {
             name?: string | null;
         };
         /**
+         * LoteOut
+         * @description Un lote del expediente (C1.4).
+         *
+         *     `GET /licitaciones/{id}` devolvía el expediente sin sus lotes, así que un
+         *     multi-lote se presentaba como uno solo con el presupuesto total —la misma
+         *     confusión que `EFFECTIVE_BUDGET_SQL` resolvió del lado del cálculo, sin
+         *     resolver del lado de lo que el usuario ve.
+         */
+        LoteOut: {
+            /** Cpv */
+            cpv?: string | null;
+            /** Fecha Limite */
+            fecha_limite?: string | null;
+            /** Importe */
+            importe?: number | null;
+            /** Numero */
+            numero: string;
+            /** Titulo */
+            titulo?: string | null;
+        };
+        /**
          * LotePublico
          * @description Lote de una licitación. La tabla `lotes` no tiene campos de persona.
          */
@@ -7158,6 +8038,36 @@ export interface components {
             /** Window To */
             window_to?: string | null;
         };
+        /** MiBajaOut */
+        MiBajaOut: {
+            /** Base */
+            base: string;
+            /** Ofertas Consideradas */
+            ofertas_consideradas: number;
+            /** Organization Id */
+            organization_id: number;
+            /** Segmentos */
+            segmentos: components["schemas"]["MiBajaSegmento"][];
+        };
+        /** MiBajaSegmento */
+        MiBajaSegmento: {
+            /** Baja Mercado Pct */
+            baja_mercado_pct?: number | null;
+            /** Baja Propia Pct */
+            baja_propia_pct?: number | null;
+            /** Clave */
+            clave: string;
+            /** Contratos Mercado */
+            contratos_mercado: number;
+            /** Delta Pct */
+            delta_pct?: number | null;
+            /** N */
+            n: number;
+            /** Segmento */
+            segmento: string;
+            /** Suficiente */
+            suficiente: boolean;
+        };
         /** ModelActivated */
         ModelActivated: {
             /** Activated */
@@ -7250,6 +8160,51 @@ export interface components {
             /** Evidence */
             evidence?: components["schemas"]["EvidenceRef"][];
         };
+        /**
+         * MyApiKeyOut
+         * @description Una API key del usuario, sin secreto.
+         *
+         *     La ruta devolvía `list[dict[str, Any]]`, así que el esquema generado la
+         *     describía como una lista de objetos opacos y el frontend tenía que suponer
+         *     su forma. Tipada, un campo que el backend deja de enviar deja de compilar
+         *     en la UI en vez de aparecer vacío en pantalla.
+         *
+         *     Los campos son la proyección exacta de
+         *     ``ApiKeyRepository.get_all_for_user``: ``id`` es lo único con lo que el
+         *     dueño puede señalar qué key rotar en ``POST /me/keys/rotate``, y por eso
+         *     ese repositorio lo devuelve.
+         *
+         *     ``is_active`` llega como ``0``/``1`` de la columna —herencia de SQLite— y
+         *     aquí se declara ``bool`` porque eso es la representación en disco, no el
+         *     contrato; Pydantic hace la coerción. Mismo criterio que ``WebhookOut`` en
+         *     ``api/routes/webhooks.py``.
+         */
+        MyApiKeyOut: {
+            /** Created At */
+            created_at?: string | null;
+            /** Expires At */
+            expires_at?: string | null;
+            /** Id */
+            id: number;
+            /**
+             * Is Active
+             * @default true
+             */
+            is_active: boolean;
+            /** Name */
+            name?: string | null;
+            /**
+             * Tier
+             * @description Tier de rate limit aplicado (C2.3)
+             * @default standard
+             */
+            tier: string;
+        };
+        /** MyApiKeysResult */
+        MyApiKeysResult: {
+            /** Items */
+            items?: components["schemas"]["MyApiKeyOut"][];
+        };
         /** NotificationItem */
         NotificationItem: {
             /** Id */
@@ -7265,6 +8220,62 @@ export interface components {
             read: boolean;
             /** Titulo */
             titulo?: string | null;
+        };
+        /**
+         * NotificationPreference
+         * @description Una preferencia de notificación (C2.7).
+         *
+         *     `organization_id` `None` = la preferencia del usuario **en todas partes**.
+         *     Con organización, solo en ese equipo: alguien que quiere el digest diario de
+         *     su consultora y nada de su cooperativa no puede expresarlo con una fila.
+         */
+        NotificationPreference: {
+            /**
+             * Canal
+             * @enum {string}
+             */
+            canal: "email" | "in_app" | "webhook";
+            /**
+             * Frecuencia
+             * @enum {string}
+             */
+            frecuencia: "immediate" | "daily" | "off";
+            /** Organization Id */
+            organization_id?: number | null;
+            /** Tipo */
+            tipo: string;
+        };
+        /**
+         * NotificationPreferencesResult
+         * @description Preferencias explícitas, los defectos que aplican y el catálogo de tipos.
+         *
+         *     `defaults` no es decorativo: la lista de `items` solo trae lo que el usuario
+         *     fijó, y sin conocer el defecto de cada canal el frontend no puede pintar el
+         *     estado real de un ajuste que nadie ha tocado.
+         *
+         *     `tipos` tampoco: sin él, la pantalla tendría que llevar su propia lista de
+         *     avisos, y esa lista se queda atrás en cuanto nace uno nuevo — el usuario
+         *     deja de poder configurarlo y nada falla (ADR-014).
+         */
+        NotificationPreferencesResult: {
+            /** Defaults */
+            defaults?: {
+                [key: string]: string;
+            };
+            /** Items */
+            items?: components["schemas"]["NotificationPreference"][];
+            /** Tipos */
+            tipos?: components["schemas"]["NotificationTypeOut"][];
+        };
+        /**
+         * NotificationTypeOut
+         * @description Un tipo de aviso configurable, con su etiqueta legible.
+         */
+        NotificationTypeOut: {
+            /** Label */
+            label: string;
+            /** Tipo */
+            tipo: string;
         };
         /** NotificationsResult */
         NotificationsResult: {
@@ -7404,6 +8415,32 @@ export interface components {
         OrganizationCreate: {
             /** Name */
             name: string;
+        };
+        /**
+         * OrganizationDeletionSummary
+         * @description Qué se borró (o se borraría) con la organización.
+         *
+         *     Es lo que la confirmación enseña **antes** de pedirla: «vas a borrar 14
+         *     oportunidades y 37 comentarios» es una advertencia; «¿seguro?» no.
+         *
+         *     Un `-1` significa que ese recuento no se pudo hacer, no que sea cero.
+         */
+        OrganizationDeletionSummary: {
+            /**
+             * Comentarios
+             * @default 0
+             */
+            comentarios: number;
+            /**
+             * Miembros
+             * @default 0
+             */
+            miembros: number;
+            /**
+             * Oportunidades
+             * @default 0
+             */
+            oportunidades: number;
         };
         /**
          * OrganizationFacturacion
@@ -7765,12 +8802,18 @@ export interface components {
             ccaa?: string | null;
             /** Count */
             count: number;
+            /** Dir3 */
+            dir3?: string | null;
             /** Importe */
             importe: number;
             /** Organo Contratacion */
             organo_contratacion: string;
+            /** Organo Id */
+            organo_id?: number | null;
             /** Pct */
             pct: number;
+            /** Url Perfil */
+            url_perfil?: string | null;
         };
         /** OrganoKpis */
         OrganoKpis: {
@@ -8438,6 +9481,11 @@ export interface components {
         };
         /** PriceScenariosResult */
         PriceScenariosResult: {
+            /**
+             * Base
+             * @default mixta
+             */
+            base: string;
             /** Cohort */
             cohort?: string[];
             /**
@@ -8978,6 +10026,72 @@ export interface components {
             version: number;
         };
         /**
+         * PursuitTaskCreate
+         * @description Alta de una tarea. `vence` es `YYYY-MM-DD` o ausente.
+         */
+        PursuitTaskCreate: {
+            /** Responsable User Id */
+            responsable_user_id?: number | null;
+            /** Titulo */
+            titulo: string;
+            /** Vence */
+            vence?: string | null;
+        };
+        /** PursuitTaskOut */
+        PursuitTaskOut: {
+            /** Created At */
+            created_at: string;
+            /** Estado */
+            estado: string;
+            /** Id */
+            id: number;
+            /** Organization Id */
+            organization_id: number;
+            /** Pursuit Id */
+            pursuit_id: number;
+            /** Responsable Name */
+            responsable_name?: string | null;
+            /** Responsable User Id */
+            responsable_user_id?: number | null;
+            /** Titulo */
+            titulo: string;
+            /** Updated At */
+            updated_at: string;
+            /** Vence */
+            vence?: string | null;
+        };
+        /**
+         * PursuitTaskPatch
+         * @description Cambios sobre una tarea. Ausente = no tocar.
+         *
+         *     `limpiar_responsable` y `limpiar_vence` existen porque `null` ya significa
+         *     «no tocar»: sin ellos, quitarle la fecha a una tarea sería imposible, o bien
+         *     no mandarla la borraría sin querer.
+         */
+        PursuitTaskPatch: {
+            /**
+             * Estado
+             * @description pendiente | en_curso | hecha | descartada
+             */
+            estado?: string | null;
+            /**
+             * Limpiar Responsable
+             * @default false
+             */
+            limpiar_responsable: boolean;
+            /**
+             * Limpiar Vence
+             * @default false
+             */
+            limpiar_vence: boolean;
+            /** Responsable User Id */
+            responsable_user_id?: number | null;
+            /** Titulo */
+            titulo?: string | null;
+            /** Vence */
+            vence?: string | null;
+        };
+        /**
          * PursuitUpdate
          * @description Patch parcial de una oportunidad con control optimista opcional.
          */
@@ -9012,6 +10126,8 @@ export interface components {
          * @description Data quality metrics.
          */
         QualityResult: {
+            /** Adjudicaciones Por Fuente */
+            adjudicaciones_por_fuente?: components["schemas"]["AdjudicacionesPorFuente"][];
             /** Blob Store Bytes */
             blob_store_bytes?: number | null;
             /** Blob Store Objetos */
@@ -9982,6 +11098,36 @@ export interface components {
             target?: string | null;
         };
         /**
+         * SessionOut
+         * @description Una sesión activa del usuario (C2.1).
+         *
+         *     **No lleva el token ni el hash completo.** El token abre la sesión; el hash
+         *     no abre nada pero tampoco hay razón para publicarlo. `id` es un prefijo del
+         *     hash: estable, no reversible, y suficiente para revocar.
+         */
+        SessionOut: {
+            /**
+             * Actual
+             * @default false
+             */
+            actual: boolean;
+            /** Created At */
+            created_at?: string | null;
+            /** Expires At */
+            expires_at?: string | null;
+            /** Id */
+            id: string;
+            /** Ip */
+            ip?: string | null;
+            /** User Agent */
+            user_agent?: string | null;
+        };
+        /** SessionsResult */
+        SessionsResult: {
+            /** Items */
+            items?: components["schemas"]["SessionOut"][];
+        };
+        /**
          * SessionsRevoked
          * @description Resultado de revocar sesiones (logout-all, borrado de cuenta).
          */
@@ -10000,6 +11146,57 @@ export interface components {
         SetFlagsBody: {
             /** Flags */
             flags: components["schemas"]["FlagIn"][];
+        };
+        /**
+         * SimilarOut
+         * @description Un expediente propuesto como predecesor o similar (C1.3).
+         */
+        SimilarOut: {
+            /** Adjudicatario */
+            adjudicatario?: string | null;
+            /** Baja Pct */
+            baja_pct?: number | null;
+            /** Cpv */
+            cpv?: string | null;
+            /** Estado */
+            estado?: string | null;
+            /** Fecha Adjudicacion */
+            fecha_adjudicacion?: string | null;
+            /** Fecha Publicacion */
+            fecha_publicacion?: string | null;
+            /** Id Externo */
+            id_externo: string;
+            /** Importe */
+            importe?: number | null;
+            /** Importe Adjudicado */
+            importe_adjudicado?: number | null;
+            /** Organo Contratacion */
+            organo_contratacion?: string | null;
+            /** Score */
+            score: number;
+            /** Titulo */
+            titulo: string;
+        };
+        /**
+         * SimilaresResult
+         * @description Predecesor y expedientes parecidos.
+         */
+        SimilaresResult: {
+            /** Licitacion Id */
+            licitacion_id: string;
+            /**
+             * Metodo
+             * @default fts
+             */
+            metodo: string;
+            /**
+             * N
+             * @default 0
+             */
+            n: number;
+            predecesor?: components["schemas"]["SimilarOut"] | null;
+            /** Similares */
+            similares?: components["schemas"]["SimilarOut"][];
         };
         /**
          * SimulacionPrecio
@@ -10648,6 +11845,14 @@ export interface components {
             otpauth_uri: string;
         };
         /**
+         * TransferOwnershipBody
+         * @description Traspaso de propiedad (C2.2).
+         */
+        TransferOwnershipBody: {
+            /** Nuevo Owner User Id */
+            nuevo_owner_user_id: number;
+        };
+        /**
          * TreemapItem
          * @description Single cell in the organo → tipo_contrato treemap breakdown.
          */
@@ -11040,6 +12245,8 @@ export interface components {
             id_externo: string;
             /** Importe */
             importe: number | null;
+            /** Nota */
+            nota?: string | null;
             /** Organization Id */
             organization_id: number | null;
             /** Titulo */
@@ -11069,6 +12276,17 @@ export interface components {
              * @default private
              */
             visibility: string;
+        };
+        /**
+         * WatchlistNotaBody
+         * @description Nota personal de un favorito (C6.6).
+         *
+         *     `None` o cadena vacía la borran: no hace falta un endpoint aparte para
+         *     quitarla, y tener dos formas de borrar es tener una que alguien olvida.
+         */
+        WatchlistNotaBody: {
+            /** Nota */
+            nota?: string | null;
         };
         /**
          * WatchlistRuleBody
@@ -13486,6 +14704,8 @@ export interface operations {
                 cpv?: string | null;
                 ccaa?: string | null;
                 limit?: number;
+                /** @description Solo filas con base de importe sin IVA declarada. Devuelve `base: "sin_iva"` y hoy pocas filas: la columna se puebla con la re-ingesta, no con la migración. Por defecto se excluye lo que se sabe que lleva IVA y se declara `base: "mixta"`. */
+                solo_base_declarada?: boolean;
             };
             header?: {
                 "X-CSRF-Token"?: string | null;
@@ -13522,6 +14742,8 @@ export interface operations {
             query?: {
                 organo?: string | null;
                 cpv?: string | null;
+                /** @description Ver el mismo parámetro en `/competitive/bajas`. */
+                solo_base_declarada?: boolean;
             };
             header?: {
                 "X-CSRF-Token"?: string | null;
@@ -13934,6 +15156,8 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
+                /** @description Reintentar con la misma clave devuelve la misma respuesta sin repetir el efecto. Caduca según `IDEMPOTENCY_TTL_SECONDS`. */
+                "X-Idempotency-Key"?: string | null;
                 "X-CSRF-Token"?: string | null;
             };
             path?: never;
@@ -14758,6 +15982,12 @@ export interface operations {
         parameters: {
             query?: {
                 format?: "csv" | "excel" | "pdf";
+                /** @description Qué se exporta. `pursuits` baja el tablero de oportunidades de tu organización con los filtros del tablero (C6.7); `licitaciones`, el corpus con los filtros de búsqueda. No se mezclan: son dos colecciones con columnas distintas. */
+                recurso?: "licitaciones" | "pursuits";
+                /** @description Filtro de estado del tablero. Solo con `recurso=pursuits`. */
+                pursuit_status?: string | null;
+                /** @description Filtro de responsable. Solo con `recurso=pursuits`. */
+                responsible_user_id?: number | null;
                 q?: string | null;
                 estado?: string | null;
                 ccaa?: string | null;
@@ -14767,6 +15997,8 @@ export interface operations {
                 limit?: number;
                 /** @description Organización a la que se atribuye la exportación encolada. */
                 organization_id?: number | null;
+                /** @description Una fila por LOTE en vez de por expediente (C1.4). Los expedientes sin lotes salen igual, con los campos de lote vacíos: un export que solo trajera los multi-lote perdería la mayoría del corpus sin decirlo. Solo aplica a `csv` y `excel`. */
+                por_lote?: boolean;
             };
             header?: {
                 "X-CSRF-Token"?: string | null;
@@ -14919,6 +16151,147 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    submit_asistente_feedback_api_v1_feedback_asistente_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AsistenteFeedbackRequest"];
+            };
+        };
+        responses: {
+            /** @description Voto registrado */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AsistenteFeedbackResponse"];
+                };
+            };
+            /** @description API key inválida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Body inválido */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    asistente_feedback_peores_api_v1_feedback_asistente_peores_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                dias?: number;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AsistentePeorPregunta"][];
+                };
+            };
+            /** @description API key inválida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Requiere admin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    asistente_feedback_resumen_api_v1_feedback_asistente_resumen_get: {
+        parameters: {
+            query?: {
+                dias?: number;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AsistenteFeedbackResumen"];
+                };
+            };
+            /** @description API key inválida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Requiere admin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
             };
         };
     };
@@ -16112,6 +17485,44 @@ export interface operations {
             };
         };
     };
+    get_similares_api_v1_licitaciones__id_externo__similares_get: {
+        parameters: {
+            query?: {
+                /** @description Máximo de similares */
+                limit?: number;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                id_externo: string;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SimilaresResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_simulador_precio_api_v1_licitaciones__id_externo__simulador_get: {
         parameters: {
             query?: {
@@ -16474,7 +17885,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ApiKeyOut"][];
+                    "application/json": components["schemas"]["MyApiKeysResult"];
                 };
             };
             /** @description API key inválida */
@@ -16492,6 +17903,48 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
+            };
+        };
+    };
+    create_my_key_api_v1_me_keys_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateKeyBody"];
+            };
+        };
+        responses: {
+            /** @description Clave creada. El secreto solo se muestra aquí. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CreatedKey"];
+                };
+            };
+            /** @description Sesión no reciente, o scopes por encima del rol */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description TTL fuera del rango permitido */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
@@ -16541,6 +17994,79 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_notification_preferences_api_v1_me_notification_preferences_get: {
+        parameters: {
+            query?: {
+                /** @description Acota a una organización */
+                organization_id?: number | null;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationPreferencesResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_notification_preferences_api_v1_me_notification_preferences_put: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NotificationPreference"][];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StatusOk"];
+                };
             };
             /** @description Validation Error */
             422: {
@@ -16647,6 +18173,82 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["StatusOk"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_my_sessions_api_v1_me_sessions_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionsResult"];
+                };
+            };
+            /** @description No autenticado */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_my_session_api_v1_me_sessions__session_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description La sesión no existe o no es tuya */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -17062,6 +18664,80 @@ export interface operations {
             };
         };
     };
+    get_go_no_go_weights_api_v1_organizations_go_no_go_weights_get: {
+        parameters: {
+            query?: {
+                organization_id?: number | null;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoNoGoWeightsOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_go_no_go_weights_api_v1_organizations_go_no_go_weights_put: {
+        parameters: {
+            query?: {
+                organization_id?: number | null;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GoNoGoWeightsIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoNoGoWeightsOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     post_accept_organization_invitation_api_v1_organizations_invitations_accept_post: {
         parameters: {
             query?: never;
@@ -17173,6 +18849,108 @@ export interface operations {
             };
         };
     };
+    post_delete_organization_api_v1_organizations__organization_id__delete_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                organization_id: number;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeleteOrganizationBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrganizationDeletionSummary"];
+                };
+            };
+            /** @description No sos el owner */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description La organización no existe */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Confirmación incorrecta, o es la personal */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_deletion_preview_api_v1_organizations__organization_id__deletion_preview_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                organization_id: number;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrganizationDeletionSummary"];
+                };
+            };
+            /** @description No sos el owner */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_organization_invitations_api_v1_organizations__organization_id__invitations_get: {
         parameters: {
             query?: never;
@@ -17268,6 +19046,55 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["OrganizationInvitationOut"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_leave_organization_api_v1_organizations__organization_id__leave_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                organization_id: number;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StatusOk"];
+                };
+            };
+            /** @description No sos miembro */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Sos el owner, o es tu organización personal */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -17530,6 +19357,66 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["OrganizationSettingsOut"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_transfer_ownership_api_v1_organizations__organization_id__transfer_ownership_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                organization_id: number;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TransferOwnershipBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StatusOk"];
+                };
+            };
+            /** @description No sos el owner */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description El destinatario no es miembro activo */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description La organización personal no se traspasa */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -18025,6 +19912,77 @@ export interface operations {
             };
         };
     };
+    get_mi_baja_api_v1_pursuits_mi_baja_get: {
+        parameters: {
+            query?: {
+                organization_id?: number | null;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MiBajaOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_tasks_agenda_api_v1_pursuits_tasks_agenda_get: {
+        parameters: {
+            query?: {
+                organization_id?: number | null;
+                limit?: number;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PursuitTaskOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_pursuits_weights_proposal_api_v1_pursuits_weights_proposal_get: {
         parameters: {
             query?: {
@@ -18379,6 +20337,84 @@ export interface operations {
             };
         };
     };
+    get_pursuit_go_no_go_api_v1_pursuits__pursuit_id__go_no_go_get: {
+        parameters: {
+            query?: {
+                organization_id?: number | null;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                pursuit_id: number;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoNoGoScoreOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_pursuit_go_no_go_api_v1_pursuits__pursuit_id__go_no_go_put: {
+        parameters: {
+            query?: {
+                organization_id?: number | null;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                pursuit_id: number;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GoNoGoScoreIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoNoGoScoreOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_pursuit_kit_api_v1_pursuits__pursuit_id__kit_get: {
         parameters: {
             query?: {
@@ -18471,6 +20507,162 @@ export interface operations {
             };
         };
     };
+    get_pursuit_tasks_api_v1_pursuits__pursuit_id__tasks_get: {
+        parameters: {
+            query?: {
+                organization_id?: number | null;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                pursuit_id: number;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PursuitTaskOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_pursuit_task_api_v1_pursuits__pursuit_id__tasks_post: {
+        parameters: {
+            query?: {
+                organization_id?: number | null;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                pursuit_id: number;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PursuitTaskCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PursuitTaskOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_pursuit_task_api_v1_pursuits__pursuit_id__tasks__task_id__delete: {
+        parameters: {
+            query?: {
+                organization_id?: number | null;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                pursuit_id: number;
+                task_id: number;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_pursuit_task_api_v1_pursuits__pursuit_id__tasks__task_id__patch: {
+        parameters: {
+            query?: {
+                organization_id?: number | null;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                pursuit_id: number;
+                task_id: number;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PursuitTaskPatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PursuitTaskOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_dismissals_api_v1_radar_dismissals_get: {
         parameters: {
             query?: never;
@@ -18508,6 +20700,8 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
+                /** @description Reintentar con la misma clave devuelve la misma respuesta sin repetir el efecto. Caduca según `IDEMPOTENCY_TTL_SECONDS`. */
+                "X-Idempotency-Key"?: string | null;
                 "X-CSRF-Token"?: string | null;
             };
             path?: never;
@@ -18852,6 +21046,218 @@ export interface operations {
             };
         };
     };
+    list_client_errors_api_v1_security_client_errors_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClientErroresResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_keywords_api_v1_tecnologias_keywords_get: {
+        parameters: {
+            query?: {
+                incluir_inactivas?: boolean;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DiccionarioOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_keyword_api_v1_tecnologias_keywords_put: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["KeywordIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DiccionarioOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_keyword_api_v1_tecnologias_keywords_delete: {
+        parameters: {
+            query: {
+                tecnologia: string;
+                keyword: string;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DiccionarioOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_impacto_api_v1_tecnologias_keywords_impacto_get: {
+        parameters: {
+            query: {
+                keyword: string;
+                dias?: number;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImpactoOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_sembrar_api_v1_tecnologias_keywords_sembrar_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StatusOk"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     watchlist_feed_api_v1_watchlist_feed_xml_get: {
         parameters: {
             query?: {
@@ -18938,6 +21344,8 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
+                /** @description Reintentar con la misma clave devuelve la misma respuesta sin repetir el efecto. Caduca según `IDEMPOTENCY_TTL_SECONDS`. */
+                "X-Idempotency-Key"?: string | null;
                 "X-CSRF-Token"?: string | null;
             };
             path?: never;
@@ -19007,6 +21415,55 @@ export interface operations {
             };
         };
     };
+    put_item_nota_api_v1_watchlist_items__id_externo__nota_put: {
+        parameters: {
+            query?: {
+                /** @description Organización activa; por defecto la personal del usuario. */
+                organization_id?: number | null;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                id_externo: string;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WatchlistNotaBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WatchlistNotaBody"];
+                };
+            };
+            /** @description El favorito no es tuyo o no existe */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_rules_api_v1_watchlist_rules_get: {
         parameters: {
             query?: {
@@ -19047,6 +21504,8 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
+                /** @description Reintentar con la misma clave devuelve la misma respuesta sin repetir el efecto. Caduca según `IDEMPOTENCY_TTL_SECONDS`. */
+                "X-Idempotency-Key"?: string | null;
                 "X-CSRF-Token"?: string | null;
             };
             path?: never;
@@ -19679,6 +22138,63 @@ export interface operations {
             };
             /** @description No encontrado */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    redeliver_api_v1_webhooks__webhook_id__deliveries__delivery_id__redeliver_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                webhook_id: number;
+                delivery_id: number;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Encolada para reenvío */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StatusOk"];
+                };
+            };
+            /** @description API key inválida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Webhook o entrega no encontrados */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description La entrega ya se completó */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

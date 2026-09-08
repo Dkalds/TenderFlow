@@ -12,6 +12,7 @@ from fastapi import (
     Header,
     HTTPException,
     Query,
+    Request,
     Response,
     status,
 )
@@ -148,6 +149,39 @@ class PursuitTaskOut(BaseModel):
     estado: str
     created_at: str
     updated_at: str
+
+
+class PursuitAttachmentOut(BaseModel):
+    """Un adjunto propio. **Nunca** lleva la `blob_key`.
+
+    La clave del objeto es una coordenada interna del bucket: publicarla
+    invitaría a construir URLs a mano contra el almacen, que es justo lo que el
+    enlace firmado de `GET /pursuits/adjuntos/{id}/enlace` evita.
+    """
+
+    id: int
+    pursuit_id: int
+    organization_id: int
+    filename: str
+    content_type: str
+    size_bytes: int
+    sha256: str
+    uploaded_by_user_id: int | None = None
+    uploaded_by_name: str | None = None
+    #: Opt-in del RAG por adjunto (C6.3). `false` mientras nadie lo levante.
+    indexable: bool = False
+    created_at: str
+
+
+class PursuitAttachmentLink(BaseModel):
+    """Ruta firmada de descarga y el instante en que deja de valer (epoch)."""
+
+    path: str
+    expira_en: int
+
+
+class PursuitAttachmentIndexableIn(BaseModel):
+    indexable: bool
 
 
 class GoNoGoCriterioOut(BaseModel):
@@ -882,6 +916,153 @@ async def get_tasks_agenda(
     return [PursuitTaskOut.model_validate(f) for f in filas]
 
 
+# ── Adjuntos propios (C6.3) ────----------------------------------------------
+#
+# Estas cuatro cuelgan de `/pursuits/adjuntos/{attachment_id}` y no de
+# `/pursuits/{pursuit_id}/adjuntos/{id}`: el adjunto ya sabe de qué oportunidad
+# es, y repetir el `pursuit_id` en la URL crea un segundo sitio donde el cliente
+# puede equivocarse sin que el servidor lo note. Por eso van aquí arriba, con
+# las demás estáticas.
+
+
+@router.get("/pursuits/adjuntos/{attachment_id}/enlace", response_model=PursuitAttachmentLink)
+async def get_adjunto_enlace(
+    attachment_id: int,
+    organization_id: int | None = Query(default=None, ge=1),
+    ctx: dict[str, Any] = Depends(require_any_auth),
+) -> PursuitAttachmentLink:
+    """Emite un enlace de descarga **firmado y con caducidad**.
+
+    La autorización se comprueba **aquí**, con la sesión delante; el enlace que
+    sale ya no la necesita, y por eso dura diez minutos y no un día.
+    """
+    from services.pursuit_attachments import firmar_descarga, obtener
+
+    try:
+        fila = await run_db(
+            obtener,
+            int(ctx["user_id"]),
+            attachment_id,
+            organization_id=organization_id,
+        )
+    except OrganizationAccessError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    if fila is None:
+        raise HTTPException(status_code=404, detail="Adjunto no encontrado.")
+
+    enlace = firmar_descarga(attachment_id)
+    return PursuitAttachmentLink(path=enlace.path, expira_en=enlace.expira_en)
+
+
+@router.get(
+    "/pursuits/adjuntos/{attachment_id}/descargar",
+    response_class=Response,
+    responses={
+        200: {"content": {"application/octet-stream": {}}, "description": "El fichero"},
+        403: {"description": "Enlace caducado o firma inválida"},
+        404: {"description": "No existe, o no es de tu organización"},
+    },
+)
+async def get_adjunto_descarga(
+    attachment_id: int,
+    exp: int = Query(description="Caducidad del enlace (epoch); es parte de lo firmado"),
+    t: str = Query(description="Firma HMAC emitida por `/enlace`"),
+    organization_id: int | None = Query(default=None, ge=1),
+    ctx: dict[str, Any] = Depends(require_any_auth),
+) -> Response:
+    """Sirve el binario si la firma vale y no ha caducado.
+
+    **403 y no 410** para el enlace caducado: 410 diría que el recurso existió y
+    ya no está, y el fichero sigue ahí — lo que caducó es el permiso.
+
+    Sigue exigiendo sesión: la firma acota *qué* adjunto y *hasta cuándo*, no
+    sustituye a la autenticación. Un enlace reenviado por correo no abre nada a
+    quien no pertenezca ya a la organización.
+    """
+    from services.pursuit_attachments import descargar, verificar_descarga
+
+    if not verificar_descarga(attachment_id, exp=exp, token=t):
+        raise HTTPException(
+            status_code=403,
+            detail="El enlace de descarga ha caducado o su firma no es válida.",
+        )
+
+    try:
+        resultado = await run_db(
+            descargar,
+            int(ctx["user_id"]),
+            attachment_id,
+            organization_id=organization_id,
+        )
+    except OrganizationAccessError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    if resultado is None:
+        raise HTTPException(status_code=404, detail="Adjunto no encontrado.")
+
+    fila, contenido = resultado
+    nombre = str(fila["filename"])
+    return Response(
+        content=contenido,
+        media_type=str(fila["content_type"]),
+        headers={"Content-Disposition": f'attachment; filename="{nombre}"'},
+    )
+
+
+@router.put(
+    "/pursuits/adjuntos/{attachment_id}/indexable",
+    response_model=PursuitAttachmentOut,
+)
+async def put_adjunto_indexable(
+    attachment_id: int,
+    body: PursuitAttachmentIndexableIn,
+    organization_id: int | None = Query(default=None, ge=1),
+    ctx: dict[str, Any] = Depends(require_any_auth),
+) -> PursuitAttachmentOut:
+    """Levanta o baja el opt-in del RAG **para un adjunto concreto**.
+
+    Por adjunto y no por organización: una propuesta puede llevar el CV de
+    alguien y el pliego técnico en el mismo expediente, y un permiso global
+    obligaría a decidir por el conjunto.
+    """
+    from services.pursuit_attachments import marcar_indexable
+
+    try:
+        fila = await run_db(
+            marcar_indexable,
+            int(ctx["user_id"]),
+            attachment_id,
+            indexable=body.indexable,
+            organization_id=organization_id,
+        )
+    except (OrganizationAccessError, OrganizationPermissionError) as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    if fila is None:
+        raise HTTPException(status_code=404, detail="Adjunto no encontrado.")
+    return PursuitAttachmentOut.model_validate(fila)
+
+
+@router.delete(
+    "/pursuits/adjuntos/{attachment_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def delete_adjunto(
+    attachment_id: int,
+    organization_id: int | None = Query(default=None, ge=1),
+    ctx: dict[str, Any] = Depends(require_any_auth),
+) -> None:
+    """Borra el adjunto y su binario del almacén."""
+    from services.pursuit_attachments import borrar
+
+    try:
+        borrado = await run_db(
+            borrar, int(ctx["user_id"]), attachment_id, organization_id=organization_id
+        )
+    except (OrganizationAccessError, OrganizationPermissionError) as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    if not borrado:
+        raise HTTPException(status_code=404, detail="Adjunto no encontrado.")
+
+
 # ── Plantilla go/no-go (C6.4, D30) ───────────────────────────────────────────
 
 
@@ -1264,6 +1445,124 @@ async def delete_pursuit_task(
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except (PursuitNotFoundError, PursuitTaskNotFoundError) as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.get(
+    "/pursuits/{pursuit_id}/adjuntos",
+    response_model=list[PursuitAttachmentOut],
+)
+async def get_pursuit_adjuntos(
+    pursuit_id: int,
+    organization_id: int | None = Query(default=None, ge=1),
+    ctx: dict[str, Any] = Depends(require_any_auth),
+) -> list[PursuitAttachmentOut]:
+    """Adjuntos propios de la oportunidad, recientes primero."""
+    from services.pursuit_attachments import listar
+
+    try:
+        filas = await run_db(
+            listar, int(ctx["user_id"]), pursuit_id, organization_id=organization_id
+        )
+    except OrganizationAccessError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except PursuitNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return [PursuitAttachmentOut.model_validate(f) for f in filas]
+
+
+@router.post(
+    "/pursuits/{pursuit_id}/adjuntos",
+    response_model=PursuitAttachmentOut,
+    status_code=status.HTTP_201_CREATED,
+    responses={
+        201: {"description": "Adjunto registrado"},
+        403: {"description": "No perteneces a esa organización, o eres viewer"},
+        404: {"description": "La oportunidad no existe en tu organización"},
+        409: {"description": "Ese mismo fichero ya está subido aquí"},
+        413: {"description": "Supera el tope por fichero o el de la organización"},
+        415: {"description": "Tipo de fichero no admitido"},
+        503: {"description": "No hay almacén de objetos configurado"},
+    },
+)
+async def post_pursuit_adjunto(
+    request: Request,
+    pursuit_id: int,
+    x_filename: str = Header(
+        alias="X-Filename",
+        max_length=255,
+        description="Nombre original del fichero. Se sanea antes de guardarlo.",
+    ),
+    organization_id: int | None = Query(default=None, ge=1),
+    ctx: dict[str, Any] = Depends(require_any_auth),
+) -> PursuitAttachmentOut:
+    """Sube un adjunto: **cuerpo crudo**, no `multipart/form-data`.
+
+    El fichero viaja como cuerpo de la petición y su nombre en `X-Filename`. Es
+    una decisión, no una limitación: `multipart` obligaría a añadir
+    `python-multipart` —una dependencia que este plan no pre-autoriza (D31)— para
+    parsear un formato que aquí solo transportaría un campo. El cliente hace
+    `fetch(url, {method: 'POST', body: file, headers: {'Content-Type': file.type,
+    'X-Filename': file.name}})`, y el servidor recibe exactamente los bytes.
+
+    El tamaño se comprueba **dos veces**: contra `Content-Length` antes de leer
+    —para no traer 500 MB a memoria y rechazarlos después— y contra los bytes
+    reales, porque la cabecera la escribe el cliente.
+    """
+    from db.repositories.pursuit_attachments import PursuitAttachmentExists
+    from services.pursuit_attachments import (
+        MAX_BYTES,
+        AttachmentError,
+        AttachmentStoreUnavailable,
+        AttachmentTooLarge,
+        AttachmentTypeRejected,
+        subir,
+    )
+
+    declarado = request.headers.get("content-length")
+    if declarado and declarado.isdigit() and int(declarado) > MAX_BYTES:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=f"El fichero declara {declarado} bytes y el tope es {MAX_BYTES}.",
+        )
+
+    datos = await request.body()
+    content_type = request.headers.get("content-type") or ""
+
+    try:
+        fila = await run_db(
+            subir,
+            int(ctx["user_id"]),
+            pursuit_id,
+            filename=x_filename,
+            content_type=content_type,
+            data=datos,
+            organization_id=organization_id,
+        )
+    except (OrganizationAccessError, OrganizationPermissionError) as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except PursuitNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except PursuitAttachmentExists as exc:
+        raise HTTPException(
+            status_code=409,
+            detail="Ese mismo fichero ya está adjunto a esta oportunidad.",
+        ) from exc
+    except AttachmentStoreUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except AttachmentTooLarge as exc:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail=str(exc)
+        ) from exc
+    except AttachmentTypeRejected as exc:
+        raise HTTPException(
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, detail=str(exc)
+        ) from exc
+    except AttachmentError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    if fila is None:
+        raise HTTPException(status_code=404, detail="Oportunidad no encontrada.")
+    return PursuitAttachmentOut.model_validate(fila)
 
 
 @router.get("/organizations/go-no-go/weights", response_model=GoNoGoWeightsOut)

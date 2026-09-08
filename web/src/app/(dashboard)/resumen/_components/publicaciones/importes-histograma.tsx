@@ -34,7 +34,7 @@ export function ImportesHistograma({ histograma, total, maximo }: ImportesHistog
 
   return (
     <>
-      <div style={{ minHeight: ALTO }}>
+      <div className="min-h-[288px]">
         {histograma.map((bin, indice) => {
           const pct = total ? (bin.count / total) * 100 : 0;
           return (

@@ -399,7 +399,15 @@ class TestOrdenDeRutas:
     """
 
     @pytest.mark.parametrize(
-        "estatica", ["/api/v1/pursuits/mi-baja", "/api/v1/pursuits/tasks/agenda"]
+        "estatica",
+        [
+            "/api/v1/pursuits/mi-baja",
+            "/api/v1/pursuits/tasks/agenda",
+            "/api/v1/pursuits/adjuntos/{attachment_id}",
+            "/api/v1/pursuits/adjuntos/{attachment_id}/enlace",
+            "/api/v1/pursuits/adjuntos/{attachment_id}/descargar",
+            "/api/v1/pursuits/adjuntos/{attachment_id}/indexable",
+        ],
     )
     def test_la_estatica_va_antes_que_la_parametrica(self, estatica: str) -> None:
         from api.app import app
@@ -419,3 +427,261 @@ class TestOrdenDeRutas:
             "/api/v1/organizations/go-no-go/weights",
         ):
             assert ruta in rutas, f"falta {ruta}"
+
+
+class TestAdjuntosPropios:
+    """C6.3 — la propuesta del equipo vive en el producto, no en el disco de alguien.
+
+    El ítem estuvo bloqueado hasta que `master` trajo el almacén de objetos de
+    v2 S8.1. Lo que se prueba aquí es lo que el plan pide como criterio: límite
+    de tamaño y de tipos, un enlace caducado que devuelve 403, y que el RAG no
+    indexe adjuntos propios salvo opt-in por adjunto.
+    """
+
+    # ── Límite de tipos ──────────────────────────────────────────────────
+
+    def test_el_tipo_va_por_lista_blanca(self) -> None:
+        """Una lista negra es una carrera que se pierde: basta un formato nuevo."""
+        from services.pursuit_attachments import TIPOS_PERMITIDOS, AttachmentTypeRejected, validar
+
+        assert "application/x-msdownload" not in TIPOS_PERMITIDOS
+        assert "image/svg+xml" not in TIPOS_PERMITIDOS, "SVG es XML con scripts"
+        assert "text/html" not in TIPOS_PERMITIDOS
+        with pytest.raises(AttachmentTypeRejected):
+            validar(filename="a.exe", content_type="application/x-msdownload", size_bytes=10)
+
+    def test_el_tipo_y_la_extension_tienen_que_concordar(self) -> None:
+        """Confiar solo en el `Content-Type` es confiar en quien sube el fichero."""
+        from services.pursuit_attachments import AttachmentTypeRejected, validar
+
+        with pytest.raises(AttachmentTypeRejected):
+            validar(filename="propuesta.exe", content_type="application/pdf", size_bytes=10)
+        nombre, tipo = validar(
+            filename="propuesta.pdf", content_type="application/pdf", size_bytes=10
+        )
+        assert (nombre, tipo) == ("propuesta.pdf", "application/pdf")
+
+    def test_el_content_type_con_parametros_se_normaliza(self) -> None:
+        from services.pursuit_attachments import validar
+
+        _, tipo = validar(
+            filename="notas.txt", content_type="text/plain; charset=utf-8", size_bytes=5
+        )
+        assert tipo == "text/plain"
+
+    # ── Límite de tamaño ─────────────────────────────────────────────────
+
+    def test_el_tope_por_fichero_se_aplica(self) -> None:
+        from services.pursuit_attachments import MAX_BYTES, AttachmentTooLarge, validar
+
+        with pytest.raises(AttachmentTooLarge):
+            validar(filename="grande.pdf", content_type="application/pdf", size_bytes=MAX_BYTES + 1)
+
+    def test_un_fichero_vacio_no_es_un_adjunto(self) -> None:
+        from services.pursuit_attachments import AttachmentError, validar
+
+        with pytest.raises(AttachmentError):
+            validar(filename="vacio.pdf", content_type="application/pdf", size_bytes=0)
+
+    def test_el_tope_tambien_vive_en_la_base(self) -> None:
+        """Una ruta nueva que olvide validar choca contra el CHECK de v127."""
+        import inspect as _inspect
+
+        from db.alembic.versions import v127_pursuit_attachments as mig
+
+        fuente = _inspect.getsource(mig.upgrade)
+        assert "ck_pursuit_attachments_size" in fuente
+        assert "26214400" in fuente, "25 MiB, el mismo MAX_BYTES del servicio"
+
+    # ── Nombre de fichero ────────────────────────────────────────────────
+
+    @pytest.mark.parametrize(
+        ("entrada", "esperado"),
+        [
+            ("../../etc/passwd", "passwd"),
+            ("C:\\Users\\yo\\propuesta.pdf", "propuesta.pdf"),
+            ("informe final.pdf", "informe final.pdf"),
+            ("licitación (2).pdf", "licitación (2).pdf"),
+            ('mal"nombre.pdf', "mal_nombre.pdf"),
+            ("", "adjunto"),
+        ],
+    )
+    def test_el_nombre_se_sanea(self, entrada: str, esperado: str) -> None:
+        """Viaja en `Content-Disposition`: no puede llevar rutas ni comillas."""
+        from services.pursuit_attachments import sanear_nombre
+
+        assert sanear_nombre(entrada) == esperado
+
+    # ── Clave del objeto ─────────────────────────────────────────────────
+
+    def test_la_clave_lleva_la_organizacion_y_la_huella(self) -> None:
+        """El prefijo por organización es lo que permite una supresión sin BD."""
+        from services.pursuit_attachments import blob_key
+
+        clave = blob_key(organization_id=7, pursuit_id=42, sha256="a" * 64)
+        assert clave.endswith("/7/42/" + "a" * 64)
+
+    def test_los_adjuntos_no_comparten_prefijo_con_los_pliegos(self) -> None:
+        """Un pliego lo purga la retención a los 24 meses; una propuesta no."""
+        from services.pursuit_attachments import attachments_prefix
+        from shared.object_store import blob_prefix
+
+        assert attachments_prefix() != blob_prefix()
+
+    # ── Enlace firmado y caducidad ───────────────────────────────────────
+
+    def test_un_enlace_vigente_verifica(self) -> None:
+        from urllib.parse import parse_qs, urlsplit
+
+        from services.pursuit_attachments import firmar_descarga, verificar_descarga
+
+        enlace = firmar_descarga(99)
+        query = parse_qs(urlsplit(enlace.path).query)
+        assert verificar_descarga(99, exp=int(query["exp"][0]), token=query["t"][0])
+
+    def test_un_enlace_caducado_no_verifica(self) -> None:
+        """El criterio del plan: un enlace caducado devuelve 403."""
+        from urllib.parse import parse_qs, urlsplit
+
+        from services.pursuit_attachments import firmar_descarga, verificar_descarga
+
+        enlace = firmar_descarga(99, ttl=-1)
+        query = parse_qs(urlsplit(enlace.path).query)
+        assert not verificar_descarga(99, exp=int(query["exp"][0]), token=query["t"][0])
+
+    def test_estirar_la_caducidad_invalida_la_firma(self) -> None:
+        """La caducidad va DENTRO de lo firmado; suelta, se editaría en la URL."""
+        from urllib.parse import parse_qs, urlsplit
+
+        from services.pursuit_attachments import firmar_descarga, verificar_descarga
+
+        enlace = firmar_descarga(99)
+        query = parse_qs(urlsplit(enlace.path).query)
+        estirado = int(query["exp"][0]) + 86400
+        assert not verificar_descarga(99, exp=estirado, token=query["t"][0])
+
+    def test_la_firma_de_un_adjunto_no_vale_para_otro(self) -> None:
+        from urllib.parse import parse_qs, urlsplit
+
+        from services.pursuit_attachments import firmar_descarga, verificar_descarga
+
+        enlace = firmar_descarga(99)
+        query = parse_qs(urlsplit(enlace.path).query)
+        assert not verificar_descarga(100, exp=int(query["exp"][0]), token=query["t"][0])
+
+    def test_la_descarga_responde_403_y_no_410_al_caducar(self) -> None:
+        """410 diría que el fichero ya no está, y sigue ahí: caducó el permiso."""
+        import api.routes.pursuits as mod
+
+        fuente = inspect.getsource(mod.get_adjunto_descarga)
+        assert "status_code=403" in fuente
+        # Contra el código, no contra el texto: el docstring nombra el 410 justo
+        # para explicar por qué no se usa, y buscar la cadena suelta lo confunde
+        # con una respuesta declarada.
+        assert "status_code=410" not in fuente
+        assert "410: {" not in fuente
+        assert "403: {" in fuente
+
+    def test_la_descarga_sigue_exigiendo_sesion(self) -> None:
+        """La firma acota qué y hasta cuándo; no sustituye a autenticarse."""
+        import api.routes.pursuits as mod
+
+        firma = inspect.signature(mod.get_adjunto_descarga).parameters
+        assert "ctx" in firma, "un enlace reenviado no puede abrir nada por sí solo"
+
+    # ── El RAG no los indexa ─────────────────────────────────────────────
+
+    def test_el_opt_in_del_rag_nace_apagado(self) -> None:
+        import inspect as _inspect
+
+        from db.alembic.versions import v127_pursuit_attachments as mig
+
+        fuente = _inspect.getsource(mig.upgrade)
+        assert '"indexable"' in fuente
+        assert 'sa.text("false")' in fuente
+
+    def test_ningun_camino_de_indexacion_mira_la_tabla(self) -> None:
+        """La garantía es estructural: el RAG lee `documentos`, no adjuntos propios."""
+        import inspect as _inspect
+
+        import scheduler.jobs.documentos_embeddings as job
+        import services.embeddings as emb
+
+        for modulo in (job, emb):
+            assert "pursuit_attachments" not in _inspect.getsource(modulo), (
+                f"{modulo.__name__} no puede alcanzar los adjuntos propios sin opt-in"
+            )
+
+    def test_el_opt_in_es_por_adjunto_y_no_por_organizacion(self) -> None:
+        from db.repositories.pursuit_attachments import PursuitAttachmentsRepository
+
+        firma = inspect.signature(PursuitAttachmentsRepository.set_indexable).parameters
+        assert {"attachment_id", "organization_id", "indexable"} <= set(firma)
+
+    # ── Almacén y frontera de organización ───────────────────────────────
+
+    def test_sin_bucket_no_se_acepta_la_subida(self) -> None:
+        """`NullObjectStore.put` no lanza: aceptar sería prometer una descarga."""
+        import api.routes.pursuits as mod
+
+        fuente = inspect.getsource(mod.post_pursuit_adjunto)
+        assert "AttachmentStoreUnavailable" in fuente
+        assert "status_code=503" in fuente
+
+    def test_la_pertenencia_se_comprueba_en_el_insert(self) -> None:
+        from db.repositories.pursuit_attachments import PursuitAttachmentsRepository
+
+        fuente = inspect.getsource(PursuitAttachmentsRepository.create)
+        assert "FROM pursuits p WHERE p.id = %s AND p.organization_id = %s" in fuente
+
+    def test_toda_lectura_lleva_la_organizacion(self) -> None:
+        from db.repositories.pursuit_attachments import PursuitAttachmentsRepository
+
+        for metodo in ("get", "list_for_pursuit", "delete", "set_indexable"):
+            fuente = inspect.getsource(getattr(PursuitAttachmentsRepository, metodo))
+            assert "organization_id = %s" in fuente, f"{metodo} sin frontera de organización"
+
+    def test_un_rechazo_no_deja_bytes_en_el_bucket(self) -> None:
+        """Si el pursuit no era suyo, el objeto recién escrito se borra."""
+        import services.pursuit_attachments as mod
+
+        fuente = inspect.getsource(mod.subir)
+        assert "almacen.delete(clave)" in fuente
+
+    def test_primero_la_fila_y_despues_el_binario_al_borrar(self) -> None:
+        """Al revés quedaría una fila apuntando a un objeto que ya no existe."""
+        import services.pursuit_attachments as mod
+
+        fuente = inspect.getsource(mod.borrar)
+        assert fuente.index("PursuitAttachmentsRepository().delete") < fuente.index(
+            "get_object_store().delete"
+        )
+
+    # ── GDPR: dato corporativo ───────────────────────────────────────────
+
+    def test_borrar_la_organizacion_purga_sus_adjuntos(self) -> None:
+        import services.organizations as mod
+
+        fuente = inspect.getsource(mod.borrar_organizacion)
+        assert "purgar_organizacion" in fuente
+        assert fuente.index("purgar_organizacion") < fuente.index("_repo.borrar")
+
+    def test_la_advertencia_de_borrado_cuenta_los_adjuntos(self) -> None:
+        from db.repositories.organizations import OrganizationRepository
+
+        fuente = inspect.getsource(OrganizationRepository.contar_dato_corporativo)
+        assert "pursuit_attachments" in fuente
+
+    def test_el_dto_no_publica_la_clave_del_objeto(self) -> None:
+        """La `blob_key` es una coordenada del bucket, no del contrato."""
+        from api.routes.pursuits import PursuitAttachmentOut
+
+        assert "blob_key" not in PursuitAttachmentOut.model_fields
+
+    def test_subir_no_necesita_python_multipart(self) -> None:
+        """D31 no pre-autoriza esa dependencia; el cuerpo crudo evita añadirla."""
+        import api.routes.pursuits as mod
+
+        fuente = inspect.getsource(mod.post_pursuit_adjunto)
+        assert "UploadFile" not in fuente
+        assert "await request.body()" in fuente

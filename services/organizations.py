@@ -626,6 +626,23 @@ def borrar_organizacion(
             "`DELETE /me` si es lo que querés."
         )
 
+    # Los binarios del bucket, ANTES de borrar la fila: el `ON DELETE CASCADE`
+    # se lleva `pursuit_attachments`, y sin esas filas ya no habría forma de
+    # saber qué objetos quedaron huérfanos en el almacén. Un fallo del bucket no
+    # bloquea el borrado —el derecho de supresión no puede depender de que S3
+    # responda— pero queda en el log con las claves que hay que repasar.
+    try:
+        from services.pursuit_attachments import purgar_organizacion
+
+        conteos["adjuntos_purgados"] = purgar_organizacion(organization_id)
+    except Exception as exc:  # degradar: la supresión no depende de que S3 responda
+        log.error(
+            "organization_delete_adjuntos_failed",
+            organization_id=organization_id,
+            error=str(exc)[:200],
+        )
+        conteos["adjuntos_purgados"] = -1
+
     if not _repo.borrar(organization_id):
         raise OrganizationMemberNotFoundError("La organización no existe.")
 

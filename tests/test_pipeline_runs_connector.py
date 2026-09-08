@@ -6,7 +6,9 @@ camino legacy que los 16 tests de contrato/paridad de datos no tocan:
 - ``ingestion_result`` con ``inserted``/``modified`` como **listas** (contrato
   legacy; ``run_update._log_daily_summary`` hace ``len()``/``join()``).
 - Errores por-entry no fallan el run; solo un fetch fatal → ``error_fetch``.
-- ``log_extraccion`` + ``record_run`` escritos en el camino connector.
+- ``record_run`` escrito en el camino connector. (``log_extraccion`` se
+  retiró con la tabla `extracciones` en C4.6/`v125`: era la cuarta tabla de
+  salud y no la leía nadie.)
 - Fallback one-time del cursor legacy ``place_live_atom`` → ``placsp``.
 """
 
@@ -55,8 +57,17 @@ class TestDailyConnectorWrapper:
         # bug: el wrapper devolvía ints y len(int) → TypeError).
         run_update._log_daily_summary(result, MagicMock())
 
-    def test_writes_log_extraccion_and_extraction_run(self, tmp_db):
-        """El camino connector alimenta extracciones y extraction_runs."""
+    def test_writes_extraction_run_and_no_longer_extracciones(self, tmp_db):
+        """El camino connector alimenta `extraction_runs` — y ya no `extracciones`.
+
+        Hasta C4.6 escribía las dos. `v125` renombró `extracciones` a
+        `extracciones_retirada` y dejó una **vista** con el nombre antiguo, de
+        modo que el histórico sigue consultable y ningún escritor nuevo puede
+        colarse: una vista no acepta `INSERT` y falla en voz alta.
+
+        Que la vista siga vacía después de una pasada es la comprobación de que
+        no queda ningún escritor olvidado.
+        """
         db_mod, _ = tmp_db
         from scheduler.pipeline_runs import _run_daily_pipeline_connector
 
@@ -67,13 +78,13 @@ class TestDailyConnectorWrapper:
             _run_daily_pipeline_connector()
 
         with db_mod.connect_read() as conn:
-            fuentes = [r[0] for r in conn.execute("SELECT fuente FROM extracciones").fetchall()]
             runs = conn.execute("SELECT status, notas FROM extraction_runs").fetchall()
+            residuo = conn.execute("SELECT COUNT(*) FROM extracciones").fetchone()
 
-        assert fuentes == ["placsp"]
         assert len(runs) == 1
         assert runs[0][0] == "ok"
         assert "daily_connector" in (runs[0][1] or "")
+        assert int(residuo[0]) == 0, "la pasada escribió en una tabla retirada"
 
     def test_fetch_failure_maps_to_error_fetch_without_raising(self, tmp_db):
         """Fetch fatal → status error_fetch (nombre legacy), notify, sin raise."""

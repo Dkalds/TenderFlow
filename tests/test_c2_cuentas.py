@@ -325,6 +325,40 @@ class TestCspEstilosInline:
             "el momento en que `style-src` puede dejar de llevar `'unsafe-inline'`"
         )
 
+    def test_la_altura_de_panel_en_clase_no_se_separa_de_su_constante(self) -> None:
+        """Tres `style={{ minHeight: ALTO }}` pasaron a `min-h-[Npx]`.
+
+        Es la clase de estilo inline que se puede retirar sin romper nada: `ALTO`
+        es una constante de módulo, no un valor calculado, y una clase Tailwind
+        compila a hoja de estilos. Pero el literal de la clase y la constante son
+        dos sitios, y este test los ata: la constante sigue viva porque
+        `PanelLoading`/`PanelEmpty` la reciben como `height`.
+        """
+        import re
+        from pathlib import Path
+
+        web = Path(__file__).resolve().parent.parent / "web" / "src"
+        casos = [
+            (
+                web / "app/(dashboard)/resumen/_components/composicion-panel.tsx",
+                web / "app/(dashboard)/resumen/_components/composicion-panel.tsx",
+            ),
+            (
+                web / "app/(dashboard)/resumen/_components/publicaciones/importes-histograma.tsx",
+                web / "app/(dashboard)/resumen/_components/publicaciones/publicaciones-data.ts",
+            ),
+        ]
+        for fichero_clase, fichero_constante in casos:
+            uso = fichero_clase.read_text(encoding="utf-8")
+            fuente = fichero_constante.read_text(encoding="utf-8")
+            declarada = re.search(r"const ALTO = (\d+)", fuente)
+            assert declarada, f"ALTO no se declara en {fichero_constante.name}"
+            clases = set(re.findall(r"min-h-\[(\d+)px\]", uso))
+            assert clases == {declarada.group(1)}, (
+                f"{fichero_clase.name} usa min-h-{clases} y su ALTO vale "
+                f"{declarada.group(1)}: se han separado"
+            )
+
     def test_el_csp_explica_por_que_sigue_unsafe_inline(self) -> None:
         """Un relajamiento sin motivo escrito se hereda sin revisarse."""
         from pathlib import Path

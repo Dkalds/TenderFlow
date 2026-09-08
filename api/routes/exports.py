@@ -413,14 +413,8 @@ async def _download_pursuits(
     es una fórmula en Excel, y aquí el texto lo escribe el propio equipo — que
     es exactamente el caso en que nadie sospecha del fichero.
     """
-    from db.repositories.pursuits import PursuitRepository
-    from services.exports import (
-        PURSUIT_COLUMNS,
-        generate_csv,
-        generate_excel,
-        get_export_filename,
-    )
-    from services.organizations import OrganizationAccessError, resolve_organization
+    from services.exports import get_export_filename, render_pursuits_export
+    from services.organizations import OrganizationAccessError
 
     if format == "pdf":
         raise HTTPException(
@@ -428,24 +422,15 @@ async def _download_pursuits(
             detail="El tablero de oportunidades se exporta en CSV o Excel, no en PDF.",
         )
 
-    def _render() -> tuple[bytes, str, int]:
-        organizacion, _role = resolve_organization(int(user["user_id"]), None)
-        rows = PursuitRepository().export_rows(
-            organizacion,
+    try:
+        content, media_type, n_rows = await run_db(
+            render_pursuits_export,
+            int(user["user_id"]),
+            formato=format,
             status=status_filtro,
             responsible_user_id=responsible_user_id,
             limit=limit,
         )
-        if format == "excel":
-            return (
-                generate_excel(rows, PURSUIT_COLUMNS),
-                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                len(rows),
-            )
-        return generate_csv(rows, PURSUIT_COLUMNS), "text/csv; charset=utf-8", len(rows)
-
-    try:
-        content, media_type, n_rows = await run_db(_render)
     except OrganizationAccessError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
 

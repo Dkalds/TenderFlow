@@ -97,6 +97,21 @@ _PURE_CALLS: frozenset[str] = frozenset(
         # la abren son `cached_response`/`store_response`, y esas van dentro de
         # la función que se despacha con `run_db`.
         "idem_scope",
+        # `services.pursuit_attachments`: firmar y verificar un enlace de
+        # descarga es un HMAC-SHA256 sobre veinte bytes (`shared/signing.py`).
+        # No abre conexión y no puede: la comprobación de que el adjunto existe
+        # y es de tu organización es la que sí va a BD, y esa se despacha con
+        # `run_db` unas líneas más abajo en los dos handlers.
+        "firmar_descarga",
+        "verificar_descarga",
+        # `db.sessions.session_public_id`: `token_hash[:N]`. El id público de
+        # una sesión es un prefijo del hash que ya está en la fila leída, no una
+        # segunda consulta.
+        "session_public_id",
+        # `services.tecnologias_diccionario.invalidar`: vacía la memoización en
+        # proceso bajo un lock. Quien va a BD justo después es `vigente(...)`, y
+        # esa sí se despacha con `run_db`.
+        "invalidar",
     }
 )
 

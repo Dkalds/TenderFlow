@@ -617,6 +617,14 @@ class OrganizationRepository:
                     "SELECT COUNT(*) FROM organization_members "
                     "WHERE organization_id = %s AND status = 'active'",
                 ),
+                # C6.3: los adjuntos propios son lo único de esta lista que
+                # además vive fuera de Postgres. Contarlos aquí es lo que hace
+                # que la advertencia diga «y 12 ficheros» en vez de callarse
+                # que la propuesta que subió el equipo se va con la organización.
+                (
+                    "adjuntos",
+                    "SELECT COUNT(*) FROM pursuit_attachments WHERE organization_id = %s",
+                ),
             ):
                 try:
                     fila = c.execute(sql, (organization_id,)).fetchone()
