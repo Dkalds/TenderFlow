@@ -350,18 +350,34 @@ def _rate_bucket(path: str, client: str) -> tuple[str, int | None]:
     return f"api:{client}", None
 
 
-def _effective_max_calls(path: str, default: int) -> int:
-    """Límite de requests por ventana aplicable a ``path``.
+def _regla_pesada(path: str) -> tuple[str, int] | None:
+    """Regla de endpoint pesado aplicable a ``path``: ``(etiqueta, límite)``.
 
-    Si varias reglas matchean gana la **más restrictiva** (el mínimo):
-    pasarse de estricto cuesta un 429 recuperable, quedarse corto deja el
-    endpoint caro sin la protección que se le quiso poner.
+    Si varias matchean gana la **más restrictiva** (el mínimo): pasarse de
+    estricto cuesta un 429 recuperable, quedarse corto deja el endpoint caro sin
+    la protección que se le quiso poner.
+
+    La **etiqueta** identifica la regla, no la petición: es el path exacto de la
+    tabla o el patrón que casó. Sirve para que cada regla tenga su propio cubo
+    (ver `dispatch`) sin reintroducir el bypass por path params que el cubo por
+    cliente evita — dos ids distintos de `/explain` casan el mismo patrón y por
+    tanto comparten cubo.
     """
-    limits = [limit for pattern, limit in _HEAVY_ENDPOINT_PATTERNS if pattern.match(path)]
+    reglas: list[tuple[str, int]] = [
+        (pattern.pattern, limit)
+        for pattern, limit in _HEAVY_ENDPOINT_PATTERNS
+        if pattern.match(path)
+    ]
     exact = _HEAVY_ENDPOINT_LIMITS.get(path)
     if exact is not None:
-        limits.append(exact)
-    return min(limits) if limits else default
+        reglas.append((path, exact))
+    return min(reglas, key=lambda r: r[1]) if reglas else None
+
+
+def _effective_max_calls(path: str, default: int) -> int:
+    """Límite de requests por ventana aplicable a ``path``."""
+    regla = _regla_pesada(path)
+    return regla[1] if regla else default
 
 
 class RateLimitMiddleware(BaseHTTPMiddleware):
@@ -417,8 +433,27 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         # tier que declara `api_key_tiers`, no por la IP compartida.
         por_clave = _tier_bucket(request, client)
         rate_key, tope_propio = por_clave or _rate_bucket(path, client)
-        # Endpoints pesados (ML inference, exports) tienen límite inferior.
-        effective_max = _effective_max_calls(path, tope_propio or self._max)
+        # Endpoints pesados (ML inference, exports): límite inferior **y cubo
+        # propio**.
+        #
+        # El cubo propio no es un detalle. Hasta 2026-09-08 el tope bajo se
+        # aplicaba sobre el cubo compartido `api:{cliente}`, que cuenta **todo**
+        # el tráfico de ese cliente: cargar el dashboard son decenas de
+        # llamadas, así que al pulsar «Exportar CSV» el contador ya iba muy por
+        # encima de 10 y la descarga respondía 429. Lo destapó el E2E de
+        # exportación (el log de la API del job: tres intentos, tres 429), y en
+        # producción rompía el export para cualquiera que hubiera mirado la
+        # pantalla antes de pedirlo.
+        #
+        # La etiqueta viene de la regla y no del path, así que el bypass por
+        # path params que motivó el cubo por cliente sigue cerrado.
+        regla = _regla_pesada(path)
+        if regla is None:
+            effective_max = tope_propio or self._max
+        else:
+            etiqueta, limite = regla
+            rate_key = f"pesado:{etiqueta}:{rate_key}"
+            effective_max = min(limite, tope_propio or self._max)
         allowed = get_rate_limiter().check(
             rate_key,
             max_calls=effective_max,
