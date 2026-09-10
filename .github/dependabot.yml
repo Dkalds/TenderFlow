@@ -25,6 +25,13 @@ updates:
       - dependency-name: "fastapi"
       - dependency-name: "starlette"
       - dependency-name: "uvicorn"
+      # scikit-learn 1.9.x: regresión de HistGradientBoostingRegressor con una
+      # columna numérica 100% NaN (detalle en requirements.in). El techo `<1.9`
+      # de los .in no basta por sí solo: Dependabot lo ensancha al proponer la
+      # versión (en #294 pasó a `<1.10` y así llegó a master). La 1.10 no se
+      # ignora: su PR tiene que pasar tests/test_s3_feature_todo_nan.py.
+      - dependency-name: "scikit-learn"
+        versions: [">=1.9, <1.10"]
     groups:
       minor-and-patch:
         update-types:
