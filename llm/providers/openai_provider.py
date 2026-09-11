@@ -12,6 +12,8 @@ Hardening (B11):
     - Retry automático (3 intentos, backoff exponencial) ante errores transitorios
       (``ConnectionError``, ``TimeoutError``, errores HTTP 429/500/502/503).
     - Log de tokens estimados pre-request y error detallado post-failure.
+    - Una key rechazada (HTTP 401/403) **lanza** ``LLMAuthError`` sin reintentar,
+      en vez de acabar en stream vacío como el resto de fallos.
 """
 
 from __future__ import annotations
@@ -20,6 +22,7 @@ from collections.abc import Iterator, MutableMapping
 from typing import Any
 
 from llm.prompts import ChatMessage
+from llm.providers import AUTH_HTTP_CODES, LLMAuthError
 from observability.logging import get_logger
 
 log = get_logger(__name__)
@@ -148,6 +151,12 @@ def stream(
             # re-lanzamos para que el consumidor perciba el corte del stream.
             if yielded:
                 raise
+            status_code = getattr(exc, "status_code", None)
+            if status_code in AUTH_HTTP_CODES:
+                # Ver `LLMAuthError`: reintentar no arregla una key rechazada, y
+                # devolver vacío escondería la causa.
+                log.error("llm_openai.auth_rejected", model=model, status_code=status_code)
+                raise LLMAuthError(model=model, status_code=int(status_code)) from exc
             if attempt < max_attempts and _is_retryable(exc):
                 import time
 

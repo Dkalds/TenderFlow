@@ -268,3 +268,66 @@ def test_anthropic_stream_warning_on_missing_key() -> None:
     """anthropic_provider.stream emite warning cuando api_key está vacía."""
     result = list(anth.stream(SYSTEM, MESSAGES, "claude-sonnet", ""))
     assert result == []
+
+
+# ── Key rechazada: se lanza, ni se reintenta ni se disfraza de vacío ──────────
+
+
+class _HTTPStatusError(Exception):
+    """Imita los errores de estado de los SDK: solo importa ``status_code``."""
+
+    def __init__(self, status_code: int) -> None:
+        super().__init__(f"Error code: {status_code}")
+        self.status_code = status_code
+
+
+def test_openai_stream_rejected_key_raises_without_retry() -> None:
+    """Un 401 es la key, no la red: reintentar no lo arregla, y el stream vacío
+    que devolvía antes escondió la causa seis días (scrape diario, 2026-09)."""
+    import pytest
+
+    from llm.providers import LLMAuthError
+
+    call_count = [0]
+    mock_openai_module = MagicMock()
+
+    def failing_create(*args, **kwargs):
+        call_count[0] += 1
+        raise _HTTPStatusError(401)
+
+    mock_openai_module.OpenAI.return_value.chat.completions.create.side_effect = failing_create
+
+    with (
+        patch.dict("sys.modules", {"openai": mock_openai_module}),
+        patch("time.sleep"),
+        pytest.raises(LLMAuthError) as info,
+    ):
+        list(oai.stream(SYSTEM, MESSAGES, "deepseek-ai/deepseek-v4-flash-0731", "key-rechazada"))
+
+    assert call_count[0] == 1
+    assert info.value.status_code == 401
+    assert "deepseek-ai/deepseek-v4-flash-0731" in str(info.value)
+
+
+def test_anthropic_stream_rejected_key_raises_without_retry() -> None:
+    import pytest
+
+    from llm.providers import LLMAuthError
+
+    call_count = [0]
+    mock_anthropic_module = MagicMock()
+
+    def failing_stream(*args, **kwargs):
+        call_count[0] += 1
+        raise _HTTPStatusError(403)
+
+    mock_anthropic_module.Anthropic.return_value.messages.stream.side_effect = failing_stream
+
+    with (
+        patch.dict("sys.modules", {"anthropic": mock_anthropic_module}),
+        patch("time.sleep"),
+        pytest.raises(LLMAuthError),
+    ):
+        list(anth.stream(SYSTEM, MESSAGES, "claude-sonnet", "key-rechazada"))
+
+    assert call_count[0] == 1

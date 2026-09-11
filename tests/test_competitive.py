@@ -843,6 +843,50 @@ def test_competitor_alerts_sin_entradas(db):
     assert check_and_notify() == 0
 
 
+def test_segmento_cruza_cuenta_objetivo_y_oportunidad_abierta(db):
+    """F3.4: la consulta inversa del segmento, contra Postgres de verdad.
+
+    No tenía test, y cada llamada fallaba con «could not determine data type of
+    parameter $1» (``%s IS NOT NULL`` sin cast). ``_en_mi_segmento`` se lo
+    tragaba como lista vacía y el «por qué te importa» no llegaba a ningún
+    email de competidores.
+    """
+    from db.database import connect
+    from db.repositories.cuentas import CuentasRepository, SegmentoRepository
+    from db.sql_fragments import plegar_organo
+
+    por_cuenta = _organizacion_de_pruebas("segmento-cuenta")
+    por_oportunidad = _organizacion_de_pruebas("segmento-oportunidad")
+    CuentasRepository().follow(
+        organization_id=por_cuenta, organo_nombre="Ayuntamiento de Segmento", user_id=None
+    )
+    with connect() as c:
+        c.execute(
+            "INSERT INTO licitaciones (id_externo, titulo, cpv, fecha_extraccion) "
+            "VALUES (%s, %s, %s, %s)",
+            ("SEG-01", "Soporte SAP", "72260000", "2026-09-01"),
+        )
+        c.execute(
+            "INSERT INTO pursuits (organization_id, licitacion_id, status, created_at, "
+            " updated_at) VALUES (%s, %s, 'identified', '2026-09-01', '2026-09-01')",
+            (por_oportunidad, "SEG-01"),
+        )
+
+    segmento = SegmentoRepository()
+    organo = plegar_organo("Ayuntamiento de Segmento")
+
+    ambos = dict(segmento.organizaciones_en_segmento(organo_norm=organo, cpv="72261000"))
+    assert ambos[por_cuenta]["motivo"] == "cuenta"
+    assert ambos[por_oportunidad] == {"motivo": "oportunidad_abierta", "referencia": "Soporte SAP"}
+
+    # Con uno de los dos criterios a None: ese parámetro sin tipo es justo el
+    # que Postgres no sabía resolver.
+    solo_cpv = segmento.organizaciones_en_segmento(organo_norm=None, cpv="72261000")
+    assert [org for org, _ in solo_cpv] == [por_oportunidad]
+    solo_organo = segmento.organizaciones_en_segmento(organo_norm=organo, cpv=None)
+    assert [org for org, _ in solo_organo] == [por_cuenta]
+
+
 def test_totales_renovaciones_incluye_kpis_de_riesgo(db):
     """Los cuatro KPIs del panel se calculan en servidor sobre el dataset completo.
 
