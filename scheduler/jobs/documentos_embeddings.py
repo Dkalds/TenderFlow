@@ -14,7 +14,9 @@ resto del scraper):
 2. **Embed**: documentos ``extracted`` sin chunks → ``services.rag.chunking.chunk_text``
    → ``services.embeddings.encode_texts`` → ``documento_chunks``.
 3. **Facts**: licitaciones con páginas y sin ficha → extracción Pydantic
-   verificable (solo cuando ``PLIEGO_FACTS_ENABLED=True``).
+   verificable (solo cuando ``PLIEGO_FACTS_ENABLED=True``). Una credencial
+   rechazada (``LLMAuthError``) corta el lote en el primer rechazo, y un
+   lote sin ninguna ficha útil pone el workflow en rojo (``run_cli``).
 4. **Tech signal**: licitaciones con páginas y sin señal de tecnología
    vigente → ``services.tech_signal.score_documents`` (keywords) → fusión
    inmediata hacia ``ml_tecnologias`` para ese lote
@@ -26,6 +28,7 @@ salta con un warning (no rompe la fase de fetch, que solo necesita ``[pliegos]``
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Any
 
 from observability.logging import get_logger
@@ -171,16 +174,24 @@ def _run_embed_phase(limit: int = _EMBED_BATCH_SIZE) -> dict[str, int]:
     return counts
 
 
-def _run_facts_phase(limit: int = _FACTS_BATCH_SIZE) -> dict[str, int]:
-    """Extrae fichas tipadas; fail-open por licitación y con gate de gasto."""
+def _run_facts_phase(limit: int = _FACTS_BATCH_SIZE) -> dict[str, Any]:
+    """Extrae fichas tipadas; fail-open por licitación y con gate de gasto.
+
+    La excepción es una credencial rechazada: ``LLMAuthError`` corta el lote en
+    el primer rechazo, porque la misma key fallaría en todo lo que queda, y
+    deja la causa en ``counts["credencial_rechazada"]`` para que ``run_cli`` la
+    nombre en la alerta.
+    """
     from config import settings
 
-    counts = {"procesadas": 0, "needs_review": 0, "error": 0, "disabled": 0}
+    # Any: contadores enteros más la causa textual de ``credencial_rechazada``.
+    counts: dict[str, Any] = {"procesadas": 0, "needs_review": 0, "error": 0, "disabled": 0}
     if not settings.PLIEGO_FACTS_ENABLED:
         counts["disabled"] = 1
         return counts
 
     from db.repositories.tender_fact_sheets import TenderFactSheetsRepository
+    from llm.providers import LLMAuthError
     from services.rag.fact_sheet import EXTRACTION_VERSION, extract_fact_sheet
     from services.tech_signal import ingest_llm_technologies
 
@@ -192,6 +203,19 @@ def _run_facts_phase(limit: int = _FACTS_BATCH_SIZE) -> dict[str, int]:
                 licitacion_id,
                 model=settings.PLIEGO_FACTS_MODEL,
             )
+        except LLMAuthError as exc:
+            # Del run #50 (2026-08-31) al #60 (2026-09-10) cada licitación del
+            # lote repitió el mismo 401 y quedó con su ficha en `failed`, que la
+            # manda al final de la cola de pendientes. Cortando aquí solo paga una.
+            counts["error"] += 1
+            counts["credencial_rechazada"] = str(exc)
+            log.error(
+                "documentos_facts_auth_rejected",
+                licitacion_id=licitacion_id,
+                pendientes_sin_procesar=len(pendientes) - counts["procesadas"],
+                error=str(exc),
+            )
+            break
         except Exception as exc:
             counts["error"] += 1
             log.warning(
@@ -212,6 +236,20 @@ def _run_facts_phase(limit: int = _FACTS_BATCH_SIZE) -> dict[str, int]:
                 error=str(exc),
             )
     return counts
+
+
+def facts_failed_systemically(counts: Mapping[str, object]) -> bool:
+    """True si la fase de fichas no sirvió de nada por una causa común.
+
+    Mismo criterio que ``llm_tech_labeling.batch_failed_systemically``: una
+    ficha que el modelo no sabe extraer es normal y se cuenta como error
+    suelto; que el lote entero falle sin dejar ni una ficha no lo es. Una
+    credencial rechazada lo es siempre, aunque antes del rechazo se hubiera
+    extraído alguna ficha: la corrida siguiente fallará entera con la misma key.
+    """
+    if counts.get("credencial_rechazada"):
+        return True
+    return bool(counts.get("error")) and not counts.get("procesadas")
 
 
 def _run_tech_signal_phase(limit: int = _TECH_SIGNAL_BATCH_SIZE) -> dict[str, int]:
@@ -295,8 +333,31 @@ def run() -> dict[str, Any]:
 # heredoc del YAML para que pase por ruff/mypy/tests como el resto del código.
 
 
+def _alertar_fichas_fallidas(facts: Mapping[str, object]) -> None:
+    """Log de error y alerta que nombra la causa del fallo de la fase de fichas."""
+    from observability.alerts import notify
+
+    causa = facts.get("credencial_rechazada")
+    if causa:
+        cuerpo = f"{causa}. El lote de fichas se cortó en el primer rechazo."
+    else:
+        cuerpo = (
+            f"Las {facts.get('error')} extracciones del lote fallaron sin dejar "
+            "ninguna ficha; el motivo de cada una está en `documentos_facts_failed` "
+            "en el log del run."
+        )
+    log.error("documentos_embeddings_cli_facts_failed", facts=dict(facts))
+    notify(
+        "error",
+        "Pliegos: fallo sistémico en la fase de fichas",
+        cuerpo,
+        procesadas=facts.get("procesadas"),
+        error=facts.get("error"),
+    )
+
+
 def run_cli() -> int:
-    """Corre el job y falla solo si el lote entero de fetch se cayó.
+    """Corre el job y falla si el lote entero de fetch o de fichas se cayó.
 
     Un PDF corrupto suelto es normal y esperado; que **todos** los documentos
     del lote fallen sin ninguno extraído señala un problema sistémico
@@ -306,17 +367,33 @@ def run_cli() -> int:
     formatos que no sabemos leer es cobertura que falta —visible en el desglose
     por formato del informe— y no un fallo de la tubería, así que no puede dejar
     el workflow en rojo todas las noches.
+
+    La fase de fichas se juzga con ``facts_failed_systemically``. Hasta el
+    2026-09-10 no se miraba: once noches seguidas con todas las llamadas al LLM
+    en 401 salieron en verde, porque cada fallo se contaba como error suelto.
+    Además del rojo se manda una alerta, que es la que dice la causa: el correo
+    de GitHub solo dice que el run falló.
+
+    Las dos comprobaciones se evalúan siempre, aunque la primera ya falle: una
+    noche con el fetch y las fichas rotos tiene que avisar de las dos cosas.
     """
     from db.database import init_db
 
     init_db()
     resumen = run()
+    fallo = False
 
     fetch = resumen["fetch"]
     if fetch.get("error") and not (fetch.get("extracted") or fetch.get("unsupported")):
         log.error("documentos_embeddings_cli_batch_failed", fetch=fetch)
-        return 1
-    return 0
+        fallo = True
+
+    facts = resumen["facts"]
+    if facts_failed_systemically(facts):
+        _alertar_fichas_fallidas(facts)
+        fallo = True
+
+    return 1 if fallo else 0
 
 
 def report_cli() -> int:
