@@ -71,7 +71,7 @@ networkx>=3.0,<4
 # Techo <1.9 por la regresión de HistGradientBoostingRegressor con una columna
 # entera a NaN. El detalle está en requirements.in y en
 # tests/test_s3_feature_todo_nan.py.
-scikit-learn>=1.3.0,<1.10
+scikit-learn>=1.3.0,<1.9
 
 # ── Exports ──────────────────────────────────────────────────────────────────
 reportlab>=4.0,<6
