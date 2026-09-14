@@ -25,6 +25,13 @@ updates:
       - dependency-name: "fastapi"
       - dependency-name: "starlette"
       - dependency-name: "uvicorn"
+      # scikit-learn 1.9.x: regresión de HistGradientBoostingRegressor con una
+      # columna numérica 100% NaN (detalle en requirements.in). El techo `<1.9`
+      # de los .in no basta por sí solo: Dependabot lo ensancha al proponer la
+      # versión (en #294 pasó a `<1.10` y así llegó a master). La 1.10 no se
+      # ignora: su PR tiene que pasar tests/test_s3_feature_todo_nan.py.
+      - dependency-name: "scikit-learn"
+        versions: [">=1.9, <1.10"]
     groups:
       minor-and-patch:
         update-types:
@@ -44,6 +51,15 @@ updates:
     labels:
       - "dependencies"
       - "javascript"
+    # eslint 10 rompe `npm ci` (ERESOLVE, ver PR #284, 2026-09-08):
+    # eslint-plugin-jsx-a11y@6.10.2 —dependencia de eslint-config-next@16.3.3—
+    # solo declara peer `eslint@"^3..^9"`, y no hay versión de
+    # eslint-plugin-jsx-a11y ni de eslint-config-next todavía que soporte
+    # eslint 10. Bloqueado en upstream, no es arreglable desde este repo; se
+    # quita el ignore cuando esa cadena de peers lo soporte.
+    ignore:
+      - dependency-name: "eslint"
+        update-types: ["version-update:semver-major"]
     # `all` aquí es explicitud, no un arreglo: para npm equivale al conjunto
     # de dependencias declaradas, que es lo que el bloque ya cubría por
     # defecto. El escalón `indirect` que sí alcanza transitivas existe en

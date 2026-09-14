@@ -18,6 +18,10 @@ Contratos de fallo (importantes para no corromper el estado):
 - Sin ``NVIDIA_API_KEY`` el provider no emite nada y ``classify_licitacion``
   lanza: la corrida cuenta N errores y no marca nada como procesado, que es
   una degradación visible en vez de silenciosa.
+- Con la key **rechazada** (401/403) el provider lanza ``LLMAuthError`` y el
+  lote se corta en el primer item: la misma key fallaría en todos los demás.
+  La causa queda en ``counts["credencial_rechazada"]`` y llega así al mensaje
+  del paso canónico, que es el cuerpo del email de alerta.
 - Si el lote entero se cae, ``batch_failed_systemically`` lo detecta y el paso
   canónico lanza, de forma que ``_run_periodic`` suelte la ventana diaria y la
   siguiente pasada reintente en vez de dar el día por consumido.
@@ -139,6 +143,7 @@ def run() -> dict[str, Any]:
 
     from db.repositories.tecnologia_pliego import TecnologiaPliegoRepository
     from llm.budget import LLMBudgetExceeded, get_budget_guard
+    from llm.providers import LLMAuthError
     from observability.ops_events import record_event
     from observability.runtime_metrics import pliego_tech_signal_total
     from services.llm_tech_labeling import METHOD, classify_licitacion, signal_version
@@ -170,6 +175,21 @@ def run() -> dict[str, Any]:
         try:
             scores = classify_licitacion(lic, model=model)
             repo.upsert_signals(licitacion_id, method=METHOD, signal_version=version, scores=scores)
+        except LLMAuthError as exc:
+            # La key rechazada lo será igual para todo lo que queda del lote:
+            # seguir solo repetiría la misma llamada fallida (el run
+            # 34517205501 hizo 200). Se corta aquí y la causa viaja en el
+            # recuento, que es lo que acaba en el mensaje del paso y su email.
+            counts["error"] += 1
+            counts["credencial_rechazada"] = str(exc)
+            pliego_tech_signal_total.labels(method=METHOD, status="error").inc()
+            log.error(
+                "llm_tech_labeling_auth_rejected",
+                licitacion_id=licitacion_id,
+                pendientes_sin_procesar=len(pendientes) - len(procesadas),
+                error=str(exc),
+            )
+            break
         except Exception as exc:
             counts["error"] += 1
             pliego_tech_signal_total.labels(method=METHOD, status="error").inc()

@@ -50,7 +50,7 @@ def test_provider_for_nvidia_models():
 
     assert provider_for("deepseek-ai/deepseek-v4-flash-0731") == "nvidia"
     assert provider_for("nvidia/nemotron-3-super-120b-a12b") == "nvidia"
-    assert provider_for("minimaxai/minimax-m3") == "nvidia"
+    assert provider_for("nvidia/nemotron-3-ultra-550b-a55b") == "nvidia"
     assert provider_for("meta/llama-3.1-70b-instruct") == "nvidia"
 
 
@@ -570,6 +570,38 @@ def test_all_candidates_failed_raises_last_error(monkeypatch):
 
         with pytest.raises(RuntimeError, match="proveedor caído"):
             list(stream_llm_response("pregunta de prueba", [], "gpt-4o-mini", []))
+
+
+def test_rejected_key_skips_the_rest_of_its_provider(monkeypatch):
+    """Una key rechazada lo es para todos los modelos de su proveedor: la cadena
+    no gasta otra llamada en el segundo NIM y pasa directamente al siguiente."""
+    from llm.providers import LLMAuthError
+
+    _sin_claves_nvidia_anthropic(monkeypatch)
+    monkeypatch.setenv("NVIDIA_API_KEY", "key-rechazada")  # pragma: allowlist secret
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")  # pragma: allowlist secret
+
+    intentados: list[str] = []
+
+    def rejected_key(system, messages, model, api_key, **kwargs) -> Iterator[str]:
+        intentados.append(model)
+        raise LLMAuthError(model=model, status_code=401)
+        yield  # pragma: no cover
+
+    def working_anthropic(system, messages, model, api_key, **kwargs) -> Iterator[str]:
+        yield "rescatado"
+
+    with (
+        patch("llm.providers.openai_provider.stream", rejected_key),
+        patch("llm.providers.anthropic_provider.stream", working_anthropic),
+    ):
+        from llm.client import DEFAULT_MODEL, stream_llm_response
+
+        result = list(stream_llm_response("pregunta de prueba", [], DEFAULT_MODEL, []))
+
+    assert result == ["rescatado"]
+    assert DEFAULT_MODEL in intentados
+    assert "nvidia/nemotron-3-super-120b-a12b" not in intentados
 
 
 def test_fallback_models_are_available_and_priced():
