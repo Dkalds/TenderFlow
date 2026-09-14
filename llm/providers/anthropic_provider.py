@@ -12,6 +12,7 @@ Los prompts se montan en ``llm/prompts.py`` (fuente única): este módulo recibe
 Hardening (B11):
     - Timeout de 30 s en la llamada a la API.
     - Retry automático (3 intentos, backoff exponencial) ante errores transitorios.
+      Es la única capa: el SDK se crea con ``max_retries=0``.
     - Log de API key missing como warning en vez de silencio.
 """
 
@@ -28,7 +29,8 @@ _MAX_TOKENS = 1024
 _TEMPERATURE = 0.2
 _REQUEST_TIMEOUT = 30.0
 
-_RETRYABLE_HTTP_CODES = frozenset({429, 500, 502, 503, 504})
+# El 408 lo reintentaba el SDK antes de `max_retries=0`; ver `openai_provider`.
+_RETRYABLE_HTTP_CODES = frozenset({408, 429, 500, 502, 503, 504})
 
 
 def _is_retryable(exc: Exception) -> bool:
@@ -91,9 +93,14 @@ def stream(
 
     for attempt in range(1, max_attempts + 1):
         try:
+            # `max_retries=0` por lo mismo que en `openai_provider`: el SDK
+            # reintenta 2 veces por defecto dentro de cada llamada y este bucle
+            # ya es la capa de retry. Con las dos, un timeout persistente eran
+            # 9 peticiones de 30 s (~4,5 min) en vez de 3 (~93 s).
             client = anthropic.Anthropic(
                 api_key=api_key,
                 timeout=_REQUEST_TIMEOUT,
+                max_retries=0,
             )
             with client.messages.stream(
                 model=model,
