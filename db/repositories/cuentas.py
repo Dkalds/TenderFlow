@@ -295,6 +295,14 @@ class SegmentoRepository:
 
         El CPV se compara con ``LIKE 'xxxx%'`` y no con ``substr(cpv,1,4)``,
         que envolvía la columna y dejaba ``idx_cpv`` sin usar.
+
+        Los ``%s::text IS NOT NULL`` llevan el cast a propósito. psycopg manda
+        los ``str`` y los ``None`` sin tipo (``unknown``), y en un ``IS NOT
+        NULL`` Postgres no tiene de dónde inferirlo: sin el cast cada llamada
+        fallaba con «could not determine data type of parameter $1», y
+        ``_en_mi_segmento`` lo convertía en lista vacía. El «por qué te
+        importa» de F3.4 no llegaba a ningún email (run 34517205501: nueve
+        adjudicaciones, nueve fallos).
         """
         if not organo_norm and not cpv:
             return []
@@ -306,12 +314,12 @@ class SegmentoRepository:
                 "  SELECT organization_id, 0 AS prioridad, 'cuenta' AS motivo, "
                 "         organo_nombre AS referencia "
                 "  FROM cuentas_objetivo "
-                "  WHERE %s IS NOT NULL AND organo_norm = %s "
+                "  WHERE %s::text IS NOT NULL AND organo_norm = %s "
                 "  UNION ALL "
                 "  SELECT p.organization_id, 1, 'oportunidad_abierta', l.titulo "
                 "  FROM pursuits p "
                 "  JOIN licitaciones l ON l.id_externo = p.licitacion_id "
-                "  WHERE %s IS NOT NULL "
+                "  WHERE %s::text IS NOT NULL "
                 "    AND p.status NOT IN ('won', 'lost', 'withdrawn') "
                 "    AND l.cpv LIKE %s "
                 ") m "

@@ -13,6 +13,7 @@ Hardening (B11):
     - Timeout de 30 s en la llamada a la API.
     - Retry automático (3 intentos, backoff exponencial) ante errores transitorios.
     - Log de API key missing como warning en vez de silencio.
+    - Una key rechazada (HTTP 401/403) **lanza** ``LLMAuthError`` sin reintentar.
 """
 
 from __future__ import annotations
@@ -20,6 +21,7 @@ from __future__ import annotations
 from collections.abc import Iterator, MutableMapping
 
 from llm.prompts import ChatMessage
+from llm.providers import AUTH_HTTP_CODES, LLMAuthError
 from observability.logging import get_logger
 
 log = get_logger(__name__)
@@ -124,6 +126,12 @@ def stream(
             # re-lanzamos para que el consumidor perciba el corte del stream.
             if yielded:
                 raise
+            status_code = getattr(exc, "status_code", None)
+            if status_code in AUTH_HTTP_CODES:
+                # Ver `LLMAuthError`: reintentar no arregla una key rechazada, y
+                # devolver vacío escondería la causa.
+                log.error("llm_anthropic.auth_rejected", model=model, status_code=status_code)
+                raise LLMAuthError(model=model, status_code=int(status_code)) from exc
             if attempt < max_attempts and _is_retryable(exc):
                 import time
 

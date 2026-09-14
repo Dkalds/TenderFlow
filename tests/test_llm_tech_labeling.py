@@ -215,6 +215,63 @@ class TestPipelineStepReleasesTheWindow:
         ):
             _run_llm_tech_labeling()
 
+    def test_rejected_key_reaches_the_step_message(self):
+        """El mensaje del paso es el cuerpo del email de alerta: tiene que
+        nombrar la causa, no solo el recuento de errores."""
+        from scheduler.pipeline_runs import _run_llm_tech_labeling
+
+        rechazado = {
+            "scored": 0,
+            "no_signal": 0,
+            "error": 1,
+            "disabled": 0,
+            "credencial_rechazada": "El proveedor rechazó la API key (HTTP 401) para m",
+        }
+        with (
+            patch("scheduler.jobs.llm_tech_labeling.run", return_value=rechazado),
+            patch("scheduler.pipeline_runs._run_periodic", side_effect=lambda _n, _t, fn: fn()),
+            pytest.raises(RuntimeError, match=r"HTTP 401"),
+        ):
+            _run_llm_tech_labeling()
+
+
+class TestRejectedKeyStopsTheBatch:
+    """Con la key rechazada el lote se corta en el primer item y dice por qué.
+
+    Sin BD: repositorio, guard y ``record_event`` se sustituyen, porque lo que
+    se prueba es el bucle del job y no la persistencia.
+    """
+
+    def test_first_rejection_stops_the_batch_and_names_the_cause(self, monkeypatch):
+        from unittest.mock import MagicMock
+
+        from llm.providers import LLMAuthError
+        from scheduler.jobs.llm_tech_labeling import batch_failed_systemically, run
+
+        monkeypatch.setattr(settings, "LLM_TECH_LABELING_ENABLED", True, raising=False)
+        repo = MagicMock()
+        repo.list_metadata_pending_llm_signal.return_value = [
+            {"id_externo": f"EXP-K{i}", "titulo": "t", "descripcion": "d"} for i in range(3)
+        ]
+        rechazo = LLMAuthError(model=settings.LLM_TECH_LABELING_MODEL, status_code=401)
+
+        with (
+            patch(
+                "db.repositories.tecnologia_pliego.TecnologiaPliegoRepository", return_value=repo
+            ),
+            patch("llm.budget.get_budget_guard"),
+            patch("observability.ops_events.record_event"),
+            patch("services.llm_tech_labeling.stream_llm_response", side_effect=rechazo) as llm,
+        ):
+            counts = run()
+
+        # Antes: una llamada 401 por item del lote (200 en producción).
+        assert llm.call_count == 1
+        assert counts["error"] == 1
+        assert "HTTP 401" in counts["credencial_rechazada"]
+        repo.upsert_signals.assert_not_called()
+        assert batch_failed_systemically(counts) is True
+
 
 # ── Selección de pendientes y job (requieren Postgres) ────────────────────
 

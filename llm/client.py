@@ -24,6 +24,7 @@ from collections.abc import Iterator
 from typing import Any
 
 from llm.prompts import ChatMessage, PromptMode, build_messages
+from llm.providers import LLMAuthError
 from observability.logging import get_logger
 
 log = get_logger(__name__)
@@ -44,7 +45,7 @@ _NVIDIA_BASE_URL = os.environ.get("NVIDIA_BASE_URL", "https://integrate.api.nvid
 #
 # Los modelos NVIDIA NIM se validaron contra el catálogo vivo
 # (GET https://integrate.api.nvidia.com/v1/models, público, sin auth) el
-# 2026-09-02. NVIDIA retira modelos sin aviso: `deepseek-ai/deepseek-v4-pro` —
+# 2026-09-10. NVIDIA retira modelos sin aviso: `deepseek-ai/deepseek-v4-pro` —
 # el default anterior — llegó a su end-of-life el 2026-08-07T09:00Z y desde
 # entonces devuelve 410, lo que dejó la IA caída seis días en silencio. Antes de
 # tocar esta lista, verificá contra ese endpoint que el id sigue existiendo.
@@ -54,7 +55,11 @@ _NVIDIA_BASE_URL = os.environ.get("NVIDIA_BASE_URL", "https://integrate.api.nvid
 # `z-ai` entero: no queda ningún GLM que ofertar). Era el segundo eslabón de
 # `FALLBACK_MODELS`, así que se sustituyó allí — ver el comentario de esa lista.
 #
-# Los tres modelos NIM marcados abajo como "razonamiento" generan una traza de
+# Tercero, también por el canary: `minimaxai/minimax-m3` ya no está en el
+# catálogo el 2026-09-10 (el 2026-09-05 seguía; tampoco queda otro MiniMax). No
+# estaba en `FALLBACK_MODELS`, así que solo sale de la oferta.
+#
+# Los dos modelos NIM marcados abajo como "razonamiento" generan una traza de
 # reasoning ANTES de la respuesta final, y esa traza consume el presupuesto de
 # `max_tokens` del provider (900 en /ask, 1500 en /resumen). Si la traza se lo
 # come entero, el stream llega vacío y /ask degrada — mismo síntoma que un
@@ -69,8 +74,6 @@ AVAILABLE_MODELS: list[str] = [
     "nvidia/nemotron-3-super-120b-a12b",
     # 550B / 55B activos, 1M contexto. Razonamiento. El más lento del lote.
     "nvidia/nemotron-3-ultra-550b-a55b",
-    # 428B / 23B activos, 1M contexto. Razonamiento; afinado a coding/agentes.
-    "minimaxai/minimax-m3",
     # ── Proveedores de pago (requieren OPENAI_API_KEY / ANTHROPIC_API_KEY) ────
     "gpt-4o-mini",
     "gpt-4o",
@@ -133,7 +136,6 @@ _PROVIDER_KEY_ENV: dict[str, str] = {
 REASONING_TEMPLATE_KWARGS: dict[str, dict[str, Any]] = {
     "nvidia/nemotron-3-super-120b-a12b": {"thinking": False},
     "nvidia/nemotron-3-ultra-550b-a55b": {"thinking": False},
-    "minimaxai/minimax-m3": {"thinking": False},
 }
 
 # Modelos del catálogo que NO son de razonamiento. Existe para que el test de
@@ -192,7 +194,6 @@ _PRICE_PER_MTOK: dict[str, tuple[float, float]] = {
     "deepseek-ai/deepseek-v4-flash-0731": (0.10, 0.40),
     "nvidia/nemotron-3-super-120b-a12b": (0.20, 0.80),
     "nvidia/nemotron-3-ultra-550b-a55b": (0.90, 3.60),
-    "minimaxai/minimax-m3": (0.30, 1.20),
     "gpt-4o-mini": (0.15, 0.60),
     "gpt-4o": (2.50, 10.00),
     "gpt-3.5-turbo": (0.50, 1.50),
@@ -527,7 +528,8 @@ def stream_llm_response(
         fallback: Con ``True`` (default), si ``model`` falla ANTES de emitir el
             primer token (excepción o stream vacío) se intentan en orden los
             ``FALLBACK_MODELS`` cuyo proveedor tenga API key. Nunca se cambia
-            de modelo con tokens ya emitidos.
+            de modelo con tokens ya emitidos. Tras un ``LLMAuthError`` se
+            saltan los demás modelos de ese proveedor: comparten la key.
 
     Yields:
         Fragmentos de texto del modelo a medida que llegan.
@@ -537,6 +539,8 @@ def stream_llm_response(
                     ``question``/``docs``/``history`` están fuera de rango.
         LLMBudgetExceeded: Si el presupuesto está agotado y
                     ``LLM_BUDGET_MODE=enforce`` (RFC llm-dependencia-gestionada).
+        LLMAuthError: Si el proveedor rechazó la key (401/403) y ningún
+                    candidato posterior emitió nada.
     """
     _validate_request(question, docs, model, history, mode)
 
@@ -555,10 +559,17 @@ def stream_llm_response(
         candidates += [m for m in FALLBACK_MODELS if m != model]
 
     last_error: Exception | None = None
+    # Proveedores cuya key ya rechazó un candidato de esta misma petición: la
+    # rechazará igual para cualquier otro de sus modelos, así que la cadena salta
+    # directamente al siguiente proveedor en vez de gastar otra llamada.
+    rechazados: set[str] = set()
     for position, candidate in enumerate(candidates):
+        proveedor = provider_for(candidate)
+        if proveedor in rechazados:
+            continue
         # El modelo pedido se intenta siempre (si le falta la key, su stream
         # vacío activa el fallback); los de la cadena solo si tienen key.
-        if position > 0 and not _provider_key_available(provider_for(candidate)):
+        if position > 0 and not _provider_key_available(proveedor):
             continue
         emitted = False
         try:
@@ -570,7 +581,11 @@ def stream_llm_response(
                 # Con tokens ya entregados no hay fallback limpio: propagar.
                 raise
             last_error = exc
-            _note_fallback(candidate, "error")
+            if isinstance(exc, LLMAuthError):
+                rechazados.add(proveedor)
+                _note_fallback(candidate, "auth")
+            else:
+                _note_fallback(candidate, "error")
             continue
         if emitted:
             return
