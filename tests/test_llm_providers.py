@@ -6,7 +6,10 @@ y ``tests/test_llm_prompts.py`` para el montaje de prompts).
 
 from __future__ import annotations
 
+from typing import Any
 from unittest.mock import MagicMock, patch
+
+import pytest
 
 import llm.providers.anthropic_provider as anth
 import llm.providers.openai_provider as oai
@@ -331,3 +334,83 @@ def test_anthropic_stream_rejected_key_raises_without_retry() -> None:
         list(anth.stream(SYSTEM, MESSAGES, "claude-sonnet", "key-rechazada"))
 
     assert call_count[0] == 1
+
+
+# ── Una sola capa de retry: el SDK no reintenta por dentro ────────────────────
+#
+# El provider ya tiene su bucle de 3 intentos con backoff. Con el default del
+# SDK (`max_retries=2`) cada intento del provider eran hasta 3 peticiones HTTP
+# de 30 s: en producción (2026-09-05/06) `llm_openai.retry` salía cada ~92 s y
+# `llm_openai.failed` llegaba a los ~4,5 min — 9 peticiones por pregunta.
+
+
+@pytest.mark.parametrize("base_url", [None, "https://integrate.api.nvidia.com/v1"])
+def test_openai_client_disables_sdk_retries(base_url: str | None) -> None:
+    """Cada intento del provider crea el cliente con ``max_retries=0`` (OpenAI y NIM)."""
+    mock_openai_module = MagicMock()
+    mock_openai_module.OpenAI.return_value.chat.completions.create.side_effect = ConnectionError(
+        "network unreachable"
+    )
+
+    with patch.dict("sys.modules", {"openai": mock_openai_module}), patch("time.sleep"):
+        list(oai.stream(SYSTEM, MESSAGES, "gpt-4o", "sk-fake", base_url=base_url))
+
+    calls = mock_openai_module.OpenAI.call_args_list
+    assert [c.kwargs["max_retries"] for c in calls] == [0, 0, 0]
+    assert all(c.kwargs["timeout"] == oai._REQUEST_TIMEOUT for c in calls)
+    assert all(c.kwargs["base_url"] == base_url for c in calls)
+
+
+def test_anthropic_client_disables_sdk_retries() -> None:
+    """Cada intento del provider crea el cliente con ``max_retries=0``."""
+    mock_anthropic_module = MagicMock()
+    mock_anthropic_module.Anthropic.return_value.messages.stream.side_effect = ConnectionError(
+        "network unreachable"
+    )
+
+    with patch.dict("sys.modules", {"anthropic": mock_anthropic_module}), patch("time.sleep"):
+        list(anth.stream(SYSTEM, MESSAGES, "claude-sonnet", "ant-fake"))
+
+    calls = mock_anthropic_module.Anthropic.call_args_list
+    assert [c.kwargs["max_retries"] for c in calls] == [0, 0, 0]
+    assert all(c.kwargs["timeout"] == anth._REQUEST_TIMEOUT for c in calls)
+
+
+def test_openai_sdk_timeout_is_one_http_request_per_attempt() -> None:
+    """Con el SDK real, un timeout persistente son 3 peticiones HTTP, no 9.
+
+    Es el incidente de producción reproducido de punta a punta: el transporte
+    lanza ``httpx.ReadTimeout`` y el SDK lo convierte en ``APITimeoutError``
+    ("Request timed out."). Si una versión futura del SDK renombra o ignora
+    ``max_retries``, este test lo detecta; el de arriba, con el SDK mockeado, no.
+    """
+    openai = pytest.importorskip("openai")
+    import httpx
+
+    seen: list[httpx.Request] = []
+
+    def _always_timeout(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        raise httpx.ReadTimeout("timed out", request=request)
+
+    real_client_cls = openai.OpenAI
+
+    def _client_with_mock_transport(**kwargs: Any) -> Any:
+        transport = httpx.MockTransport(_always_timeout)
+        return real_client_cls(**kwargs, http_client=httpx.Client(transport=transport))
+
+    with patch.object(openai, "OpenAI", _client_with_mock_transport), patch("time.sleep"):
+        result = list(oai.stream(SYSTEM, MESSAGES, "gpt-4o", "sk-fake-key"))
+
+    assert result == []
+    assert len(seen) == 3
+
+
+@pytest.mark.parametrize("provider", [oai, anth], ids=["openai", "anthropic"])
+def test_http_408_is_retryable(provider: Any) -> None:
+    """El 408 lo reintentaba el SDK; con ``max_retries=0`` lo cubre el provider.
+
+    Ninguno de los dos SDK tiene subclase para el 408 (llega como
+    ``APIStatusError`` genérico), así que solo se reconoce por el código.
+    """
+    assert provider._is_retryable(_HTTPStatusError(408))

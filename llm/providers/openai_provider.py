@@ -10,7 +10,9 @@ Los prompts se montan en ``llm/prompts.py`` (fuente única): este módulo recibe
 Hardening (B11):
     - Timeout de 30 s en la llamada a la API.
     - Retry automático (3 intentos, backoff exponencial) ante errores transitorios
-      (``ConnectionError``, ``TimeoutError``, errores HTTP 429/500/502/503).
+      (``ConnectionError``, ``TimeoutError``, errores HTTP 408/429/500/502/503/504).
+      Es la única capa: el SDK se crea con ``max_retries=0``, así que un fallo
+      persistente cuesta 3 peticiones y no 9 (peor caso ≈ 93 s).
     - Log de tokens estimados pre-request y error detallado post-failure.
     - Una key rechazada (HTTP 401/403) **lanza** ``LLMAuthError`` sin reintentar,
       en vez de acabar en stream vacío como el resto de fallos.
@@ -33,8 +35,10 @@ _REQUEST_TIMEOUT = 30.0
 _MAX_TOKENS = 900
 _TEMPERATURE = 0.2
 
-# Errores HTTP de OpenAI que ameritan retry
-_RETRYABLE_HTTP_CODES = frozenset({429, 500, 502, 503, 504})
+# Errores HTTP de OpenAI que ameritan retry. El 408 lo reintentaba el SDK; con
+# `max_retries=0` le toca a este bucle, y el SDK no tiene subclase para él (llega
+# como `APIStatusError` genérico), así que solo se reconoce por el código.
+_RETRYABLE_HTTP_CODES = frozenset({408, 429, 500, 502, 503, 504})
 
 
 def _is_retryable(exc: Exception) -> bool:
@@ -110,7 +114,20 @@ def stream(
 
     for attempt in range(1, max_attempts + 1):
         try:
-            client = OpenAI(api_key=api_key, timeout=_REQUEST_TIMEOUT, base_url=base_url)
+            # `max_retries=0`: este bucle es la única capa de retry. El SDK
+            # reintenta por defecto 2 veces DENTRO de cada llamada, así que cada
+            # intento de aquí llegaba a 3 peticiones de 30 s: en producción
+            # (2026-09-05/06) `llm_openai.retry` salía cada ~92 s y `failed` a
+            # los ~4,5 min, más del doble del `ASK_LLM_TIMEOUT_SECONDS` de `/ask`
+            # (120 s), que degradaba sin que el fallback de `llm/client.py`
+            # llegara a arrancar. Con una sola capa el peor caso son 3 intentos
+            # de 30 s más 1 s + 2 s de backoff: ≈ 93 s.
+            client = OpenAI(
+                api_key=api_key,
+                timeout=_REQUEST_TIMEOUT,
+                base_url=base_url,
+                max_retries=0,
+            )
             stream_kwargs: dict[str, Any] = {
                 "model": model,
                 "messages": chat_messages,
