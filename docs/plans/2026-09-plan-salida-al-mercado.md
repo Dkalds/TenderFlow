@@ -67,7 +67,7 @@ verificar desde el repositorio se dice.
 
 Todas están en el roadmap H0 de la revisión. Ninguna es código.
 
-- [ ] Aplicar v98 → v131 en producción con `plan` antes de `apply`, por tandas, verificando `/health/ready → schema: ok` ([runbooks/disaster-recovery.md §5](../runbooks/disaster-recovery.md)).
+- [ ] Aplicar v98 → **v132** en producción con `plan` antes de `apply`, por tandas, verificando `/health/ready → schema: ok` ([runbooks/disaster-recovery.md §5](../runbooks/disaster-recovery.md)).
 - [ ] Vincular el Blueprint de Render, `autoDeploy: false`, un solo disparador.
 - [ ] Receptor de guardia en `ALERTMANAGER_WEBHOOK_URL` ([runbooks/observability-alerts.md §8](../runbooks/observability-alerts.md)).
 - [ ] Ejecutar `scripts/setup_pg_roles.sql`; runtime con `tenderflow_app`. **Hasta entonces el respaldo RLS de v128 está inerte** si el rol actual tiene `BYPASSRLS`.
