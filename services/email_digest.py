@@ -286,3 +286,26 @@ def url_de_baja_alertas(user_key: str, base_url: str | None) -> str | None:
     from urllib.parse import urlencode
 
     return f"{base_url}/api/v1/watchlist/rules/baja?{urlencode({'k': user_key, 't': token})}"
+
+
+def url_de_baja_para(correo: str, user_id: int | None, base_url: str | None) -> str | None:
+    """Enlace de baja de una persona, sin que el llamante toque su identidad.
+
+    ``/api/v1/watchlist/rules/baja`` está parametrizada por ``user_key``, que es
+    la identidad heredada que D18/T4 está retirando. Derivarla en cada sitio que
+    manda un correo repartiría esa deuda por todo el árbol —y el ratchet
+    ``scripts/check_user_key_ratchet.py`` la contaría en cada uno—, cuando de
+    hecho es una sola: la del formato del enlace, que vive aquí.
+
+    Quien manda el correo pide «la baja de esta persona» y no necesita saber
+    con qué se firma. El día que el endpoint acepte ``user_id`` se cambia esta
+    función y ningún llamante se entera.
+    """
+    if user_id is None:
+        # Un destinatario que no es cuenta de la aplicación —una lista de
+        # distribución, el buzón de dirección— no tiene preferencias que dar de
+        # baja, así que no hay enlace honesto que ofrecerle.
+        return None
+    from shared.identity import user_key_from_email
+
+    return url_de_baja_alertas(user_key_from_email(correo, user_id), base_url)

@@ -1,0 +1,10 @@
+{
+  "organization_id": 1,
+  "tipo": "pipeline_semanal",
+  "activo": true,
+  "dia_semana": 0,
+  "hora_utc": 7,
+  "destinatarios": ["direccion@example.test"],
+  "ultimo_envio_at": "2026-09-14T07:12:00Z",
+  "ultimo_estado": "enviado:2/3"
+}

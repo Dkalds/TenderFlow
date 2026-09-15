@@ -9,7 +9,7 @@ instinto **ya arrastran** esos campos:
 
 - ``LicitacionRepository.get_by_id`` es un ``SELECT *`` (db/repositories/licitaciones.py),
   así que devuelve ``ml_proba``, ``inclusion_reason``, ``filter_version``… enteros.
-- ``_SUMMARY_COLS`` y el DTO ``LicitacionSummary`` de ``api/routes/licitaciones.py``
+- ``_SUMMARY_COLS`` y el DTO ``LicitacionSummary`` de ``api/routes/licitaciones/``
   incluyen ``ml_tecnologias``, ``ml_proba_max`` y ``ml_tech_principal``.
 
 O sea que la fuga no requiere un error de diseño: basta con reutilizar lo que ya
@@ -207,12 +207,24 @@ def _lineas_de_docstring(contenido: str) -> frozenset[int]:
 
 
 def _es_publico(ruta: Path) -> bool:
-    """En ``api/routes/`` solo se escanean los módulos del router público."""
+    """En ``api/routes/`` solo se escanean los módulos del router público.
+
+    Se mira el **primer** segmento bajo ``api/routes/``, no el nombre del
+    fichero, porque un router puede ser un paquete: ``api/routes/licitaciones/``
+    son seis módulos que no son públicos y que este guard tiene que saltarse
+    igual que se saltaba el fichero único que había antes. Mirando sólo
+    ``ruta.parent.name == "routes"`` un paquete entraba entero al escaneo y
+    aparecían decenas de hallazgos por nombrar ``tecnologia`` en un router
+    autenticado, que es justo lo que este guard **no** persigue.
+    """
     if ruta.suffix != ".py":
         return True
-    if ruta.parent.name != "routes":
+    raiz_rutas = REPO_ROOT / "api" / "routes"
+    try:
+        relativa = ruta.relative_to(raiz_rutas)
+    except ValueError:
         return True
-    return ruta.stem.startswith(PREFIJO_MODULO_PUBLICO)
+    return relativa.parts[0].removesuffix(".py").startswith(PREFIJO_MODULO_PUBLICO)
 
 
 def _ficheros() -> list[Path]:

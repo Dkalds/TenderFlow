@@ -1,0 +1,18 @@
+{
+  "items": [
+    {
+      "id": 1,
+      "user_key": "abcdef0123456789",
+      "user_id": 1,
+      "organization_id": 1,
+      "target_type": "organo",
+      "target_id": "Ministerio de Prueba",
+      "kind": "seguir",
+      "visibility": "private",
+      "channels": null,
+      "hasta": null,
+      "created_at": "2026-09-01T10:00:00Z"
+    }
+  ],
+  "total": 1
+}

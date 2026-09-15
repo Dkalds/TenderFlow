@@ -81,7 +81,7 @@ C4Component
         Component(app, "app.py", "FastAPI", "Composición de routers + middlewares")
         Component(mw, "middleware.py", "Starlette MW", "CSP/HSTS, rate-limit, cost, access log")
         Component(auth, "auth.py", "Depends", "X-API-Key + scopes")
-        Component(routes_lic, "routes/licitaciones.py", "Router", "Listados, búsqueda, cursor")
+        Component(routes_lic, "routes/licitaciones/", "Paquete de routers", "Por familias: listado, ficha, documentos, pliegos, analítica, adjudicaciones")
         Component(routes_meta, "routes/meta.py", "Router", "Opciones de filtros")
         Component(routes_models, "routes/models.py", "Router", "/v1/models — registry")
         Component(routes_webhooks, "routes/webhooks.py", "Router", "Suscripciones de eventos")

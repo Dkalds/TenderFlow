@@ -11,13 +11,23 @@ Aquí se fija el invariante completo, que tiene dos mitades y se rompe si solo
 se mira una:
 
 1. Todo endpoint que recibe el id por la ruta **tiene que aceptar barras**.
-2. El conversor ``:path`` es **voraz**. Si se le pone al detalle
-   (``/licitaciones/{id_externo}``, declarado en ``api/routes/licitaciones.py``
-   *antes* que sus hermanas) se traga todas las sub-rutas: ``/documentos``,
-   ``/explain``, ``/tech-scores``… pasarían a resolver a ``get_licitacion`` con
-   un ``id_externo`` del tipo ``"PA-S 2026/000058/documentos"``. Por eso el
-   detalle conserva el conversor por defecto y el catch-all con ``:path`` vive
-   en ``api/app.py``, registrado el último de todos (commit bc40933).
+2. El conversor ``:path`` es **voraz**. El detalle lo lleva —tiene que
+   aceptar barras como cualquier otra—, y por eso su ruta se traga todas las
+   sub-rutas si se declara antes que ellas: ``/documentos``, ``/explain``,
+   ``/tech-scores``… resolverían a ``get_licitacion`` con un ``id_externo``
+   del tipo ``"PA-S 2026/000058/documentos"``. Lo que lo impide es **el orden
+   de registro**: el detalle vive en ``router_detalle``
+   (``api/routes/licitaciones``) y ``api/app.py`` lo incluye el último de
+   todos, detrás incluso de ``eventos``, ``predicciones`` y ``ask``, que
+   cuelgan del mismo prefijo desde otros módulos.
+
+   Hasta 2026-09 esto era un ``app.add_api_route(..., include_in_schema=False)``
+   suelto al final de ``api/app.py``: el detalle funcionaba pero el **esquema**
+   publicaba la variante de segmento simple —la rota—, y ``/similares`` y la
+   página de un documento, que nunca tuvieron fallback, daban 404. Los
+   invariantes estructurales (un solo parámetro, catch-all el último) los fija
+   ``tests/test_licitaciones_identificador.py``; aquí se comprueba el
+   enrutado real.
 
 Por eso estos tests comprueban **a qué handler** resuelve cada ruta y no solo
 que no haya 404: un 404 detecta la mitad 1, pero la mitad 2 falla en silencio
@@ -40,6 +50,10 @@ ID_SIN_BARRAS = "SIMPLE-123"
 # (método, sub-ruta, handler que debe atenderla)
 SUBRECURSOS: list[tuple[str, str, str]] = [
     ("GET", "/documentos", "get_documentos"),
+    # `/similares` faltaba en esta lista y ahí sobrevivió el bug: era la única
+    # sub-ruta declarada con el conversor por defecto, así que daba 404 con un
+    # id con barras mientras sus hermanas funcionaban.
+    ("GET", "/similares", "get_similares"),
     ("GET", "/explain", "explain_licitacion"),
     ("GET", "/ficha-pliego", "get_tender_fact_sheet"),
     ("POST", "/ficha-pliego/extract", "extract_tender_fact_sheet"),
@@ -87,7 +101,7 @@ def _url(id_externo: str, sub: str = "") -> str:
 
 class TestDetalleLicitacion:
     def test_detalle_con_barras_llega_al_handler(self, resolve):
-        """El catch-all de ``api/app.py`` recoge los ids con '/'.
+        """El detalle, registrado el último, recoge los ids con '/'.
 
         Es lo que sostiene la pantalla de Detalle del dashboard
         (``web/src/app/(dashboard)/detalle/page.tsx``) para los expedientes de
@@ -102,9 +116,10 @@ class TestDetalleLicitacion:
 class TestSubrecursosNoAbsorbidos:
     """El detalle no puede ensombrecer a sus hermanas.
 
-    Si alguien "arregla" el detalle poniéndole ``:path`` en el router, estos
-    tests caen en bloque: es la señal de que el arreglo va en ``api/app.py``,
-    al final del todo, y no en el propio router.
+    Si alguien mueve ``router_detalle`` delante de los demás routers en
+    ``api/app.py`` —o declara la ruta glotona dentro del router normal— estos
+    tests caen en bloque. El arreglo nunca es quitarle el ``:path`` al detalle:
+    es devolverlo al final del registro.
     """
 
     @pytest.mark.parametrize(("metodo", "sub", "handler"), SUBRECURSOS)

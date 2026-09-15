@@ -256,7 +256,39 @@ opcional **no** es incompatible: un cliente que los ignora sigue funcionando.
 ## Convenciones de naming
 
 - Sustantivos en plural para colecciones: `/licitaciones`, `/webhooks`, `/exports`.
-- IDs en la ruta: `/webhooks/{webhook_id}`, `/licitaciones/{licitacion_id}`.
+- IDs en la ruta: `/webhooks/{webhook_id}`, `/licitaciones/{id_externo}`.
 - Acciones como sub-recurso: `/webhooks/{webhook_id}/ping`,
   `/models/{name}/activate/{version}`.
 - Verbos HTTP semánticos: GET=leer, POST=crear/acción, PATCH=actualizar, DELETE=eliminar.
+
+### Un expediente se nombra `{id_externo:path}`, siempre
+
+Los `id_externo` de PLACSP llevan **barras y espacios** (`PA-S 2026/000058`).
+El servidor ASGI decodifica el `%2F` antes del enrutado, así que el conversor
+por defecto de Starlette (`[^/]+`) no ve el identificador entero y la ruta
+devuelve un 404 que no depende de los datos sino de cómo se declaró.
+
+Por eso toda ruta que direccione un expediente —esté en el paquete
+`api/routes/licitaciones/` o en `eventos.py`, `predicciones.py` o `ask.py`—
+declara `{id_externo:path}`, con ese nombre. Lo comprueba
+`tests/test_licitaciones_identificador.py`, que falla ante cualquier variante.
+
+El campo `licitacion_id` sigue existiendo en **cuerpos** de respuesta
+(`TimelineResult`, `SimilaresResult`): lo que se unificó es cómo se direcciona
+el expediente, no cómo se llama dentro del JSON.
+
+**El detalle es glotón.** `GET /licitaciones/{id_externo:path}` casa también
+con `/licitaciones/X/eventos`, y Starlette se queda con la primera ruta que
+case. Vive por eso en su propio `router_detalle` que `api/app.py` incluye el
+último de todos. Si añadís un router que cuelgue de `/licitaciones/{...}`,
+inclúyelo **antes** de esa línea.
+
+### Los routers grandes se parten por familias
+
+`api/routes/licitaciones/` es un paquete, no un módulo: `listado`, `ficha`,
+`documentos`, `pliegos`, `analitica` y `adjudicaciones`, más `_base` (lo que
+comparten) y `modelos` (los DTO que usa más de una). El criterio para partir no
+es el número de líneas: es que el orden de declaración dentro del fichero
+decidiera el comportamiento sin que se viera. El orden de inclusión está
+escrito en el `__init__.py` del paquete y hay un test que comprueba que ninguna
+familia se queda fuera.

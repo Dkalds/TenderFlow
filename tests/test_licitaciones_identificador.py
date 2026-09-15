@@ -109,6 +109,69 @@ def test_el_esquema_no_deja_rastro_del_nombre_viejo() -> None:
     )
 
 
+# ── El paquete por familias ─────────────────────────────────────────────────
+
+
+def test_ninguna_familia_se_queda_sin_incluir() -> None:
+    """Un módulo de familia con router y sin ``include_router`` es invisible.
+
+    Es el modo de fallo propio de partir un router en paquete: el módulo
+    importa, pasa mypy, pasa ruff, y sus endpoints sencillamente no existen. No
+    lo detecta ningún test de esos endpoints —no hay a qué llamarlos— salvo que
+    alguien los cubriera uno a uno. Esto lo detecta en un sitio.
+    """
+    import importlib
+    import pkgutil
+
+    import api.routes.licitaciones as paquete
+
+    registradas = {str(r.path) for r in paquete.router.routes}
+    registradas |= {str(r.path) for r in paquete.router_detalle.routes}
+
+    huerfanas: list[str] = []
+    for info in pkgutil.iter_modules(paquete.__path__):
+        if info.name.startswith("_") or info.name == "modelos":
+            continue
+        modulo = importlib.import_module(f"{paquete.__name__}.{info.name}")
+        propio = getattr(modulo, "router", None)
+        if propio is None:
+            continue
+        for ruta in propio.routes:
+            if str(ruta.path) not in registradas:
+                huerfanas.append(f"{info.name}: {ruta.path}")
+
+    assert not huerfanas, (
+        "Estas rutas existen en su familia pero el paquete no las incluye, así "
+        "que no responden: " + "; ".join(huerfanas)
+    )
+
+
+def test_el_paquete_sigue_sirviendo_los_nombres_que_el_arbol_importa() -> None:
+    """Partir el módulo no puede obligar a tocar a quien lo importaba.
+
+    Hay tests y scripts que hacen ``from api.routes.licitaciones import
+    LicitacionSummary`` (y ``SimilaresResult``, ``_get_classifier``,
+    ``SUNSET_LISTADO_POR_OFFSET``…). Una reorganización interna no es motivo
+    para cambiarles el import.
+    """
+    import api.routes.licitaciones as paquete
+
+    for nombre in (
+        "AdjudicacionSummary",
+        "LicitacionDetail",
+        "LicitacionSummary",
+        "LoteOut",
+        "SUNSET_LISTADO_POR_OFFSET",
+        "SimilarOut",
+        "SimilaresResult",
+        "_get_classifier",
+        "get_licitacion",
+        "router",
+        "router_detalle",
+    ):
+        assert hasattr(paquete, nombre), f"El paquete dejó de exportar {nombre}"
+
+
 # ── Camino real con un id con barra ─────────────────────────────────────────
 
 

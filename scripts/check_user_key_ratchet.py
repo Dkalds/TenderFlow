@@ -178,7 +178,11 @@ CONGELADOS: frozenset[str] = frozenset(
         "api/routes/exports.py",
         "api/routes/feature_flags.py",
         "api/routes/feedback.py",
-        "api/routes/licitaciones.py",
+        # `api/routes/licitaciones.py` se partió en paquete por familias
+        # (2026-09). El único uso de `user_key` era `_budget_subject`, que
+        # atribuye el gasto LLM, y se fue entero con la familia `pliegos`.
+        # La deuda no creció: cambió de fichero.
+        "api/routes/licitaciones/pliegos.py",
         "api/routes/me.py",
         "api/routes/notifications.py",
         "api/routes/pursuits.py",

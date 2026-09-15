@@ -144,7 +144,7 @@
     {
       "fixture": "licitacion-escenarios-precio.json",
       "method": "GET",
-      "path": "/api/v1/licitaciones/{licitacion_id}/escenarios-precio",
+      "path": "/api/v1/licitaciones/{id_externo}/escenarios-precio",
       "kind": "response",
       "status": "200"
     },
@@ -236,6 +236,20 @@
       "fixture": "feature-flags.json",
       "method": "GET",
       "path": "/api/v1/feature-flags",
+      "kind": "response",
+      "status": "200"
+    },
+    {
+      "fixture": "follows.json",
+      "method": "GET",
+      "path": "/api/v1/follows",
+      "kind": "response",
+      "status": "200"
+    },
+    {
+      "fixture": "report-schedule.json",
+      "method": "GET",
+      "path": "/api/v1/organizations/{organization_id}/report-schedule",
       "kind": "response",
       "status": "200"
     }

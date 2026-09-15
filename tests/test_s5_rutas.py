@@ -26,14 +26,20 @@ _PASSWORD = "Cola-2026-Segura"  # pragma: allowlist secret # gitleaks:allow
 
 
 def test_licitaciones_no_usa_background_tasks() -> None:
-    """``grep -c "BackgroundTasks" api/routes/licitaciones.py`` = 0.
+    """``grep -c "BackgroundTasks" api/routes/licitaciones`` = 0.
 
     Es el criterio de aceptación de S5.2 tal cual. El motivo, no la letra: un
     BackgroundTask vive en el proceso de la API y muere con el despliegue, y el
     trabajo que corría ahí (la extracción de la ficha) tardaba minutos.
+
+    El fichero pasó a ser un paquete por familias (2026-09), así que se recorre
+    entero: mirar sólo un módulo dejaría que el patrón volviese por otro.
     """
-    texto = (_RAIZ / "api/routes/licitaciones.py").read_text(encoding="utf-8")
-    assert texto.count("BackgroundTasks") == 0
+    modulos = sorted((_RAIZ / "api/routes/licitaciones").glob("*.py"))
+    assert modulos, "El paquete api/routes/licitaciones no tiene módulos"
+    for modulo in modulos:
+        texto = modulo.read_text(encoding="utf-8")
+        assert texto.count("BackgroundTasks") == 0, modulo.name
 
 
 def test_exports_solo_usa_background_tasks_para_el_last_used_de_la_api_key() -> None:

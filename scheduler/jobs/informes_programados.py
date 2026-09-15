@@ -114,9 +114,8 @@ def _enviar(fila: dict[str, Any], informe: Any, destinos: list[tuple[int | None,
     """Manda el informe a cada destinatario. Devuelve cuántos salieron."""
     from observability.mailer import Adjunto, Mensaje, enviar
     from services.app_urls import frontend_base_url
-    from services.email_digest import url_de_baja_alertas
+    from services.email_digest import url_de_baja_para
     from services.informes import nombre_pdf, render_html, render_pdf
-    from shared.identity import user_key_from_email
 
     try:
         pdf = render_pdf(informe)
@@ -137,11 +136,7 @@ def _enviar(fila: dict[str, Any], informe: Any, destinos: list[tuple[int | None,
     base = frontend_base_url() or ""
     enviados = 0
     for user_id, correo in destinos:
-        url_baja = (
-            url_de_baja_alertas(user_key_from_email(correo, user_id), base)
-            if user_id is not None
-            else None
-        )
+        url_baja = url_de_baja_para(correo, user_id, base)
         resultado = enviar(
             Mensaje(
                 to=correo,
