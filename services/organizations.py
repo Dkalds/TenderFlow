@@ -23,7 +23,7 @@ from shared.dto import (
     OrganizationSummary,
 )
 from shared.signing import sign, verify
-from shared.tenant_context import tenant_scope
+from shared.tenant_context import set_organization, tenant_scope
 
 log = get_logger(__name__)
 
@@ -59,10 +59,36 @@ def resolve_organization(
     *,
     write: bool = False,
 ) -> tuple[int, str]:
-    """Resuelve organización explícita o personal y valida el rol."""
+    """Resuelve organización explícita o personal, valida el rol y **arma la RLS**.
+
+    Lo tercero no es un efecto secundario escondido: es la única forma de que
+    el respaldo de ADR-034 cubra todo. Antes, fijar el ámbito era trabajo del
+    llamante —lo hacía ``api/tenancy.py`` y nadie más—, y la vertical de
+    pursuits, que resuelve desde ``services/pursuits.py``, corría **sin
+    ámbito**. El predicado de ``v128`` deja pasar todo cuando el GUC está
+    vacío, así que aquello no rompía nada: apagaba el respaldo en silencio, en
+    las tablas con los datos más sensibles del producto. Un guardarraíl que se
+    apaga solo cuando alguien olvida una línea no es un guardarraíl.
+
+    Poniéndolo aquí es imposible resolver una organización sin quedar acotado
+    a ella, que es exactamente el invariante que se quería.
+
+    **Por qué funciona desde dentro de ``run_db``.** ``to_thread.run_sync``
+    copia el contexto del llamante para el hilo, así que lo que se fija aquí lo
+    ven las consultas que vienen después *en esa misma llamada* —que es donde
+    corren, justo detrás de la resolución— y muere al volver: ni se filtra a la
+    corrutina de la petición ni al siguiente uso del hilo del pool. Está
+    comprobado en ``tests/test_tenant_context.py``.
+
+    ``api/tenancy.py`` sigue fijándolo por su cuenta al volver del hilo, y hace
+    falta: sus rutas resuelven en un ``run_db`` y consultan en otro, y la copia
+    del contexto no cruza esa frontera.
+    """
     if organization_id is None:
         personal = _repo.ensure_personal_organization(user_id)
-        return int(personal["id"]), str(personal["role"])
+        resuelta = int(personal["id"])
+        set_organization(resuelta)
+        return resuelta, str(personal["role"])
 
     membership = _repo.get_active_membership(organization_id, user_id)
     if membership is None:
@@ -70,6 +96,9 @@ def resolve_organization(
     role = str(membership["role"])
     if write and role == "viewer":
         raise OrganizationPermissionError("El rol viewer es de solo lectura.")
+    # Después de validar, nunca antes: el ámbito acota lo que se puede leer, y
+    # la membresía hay que poder leerla a través de organizaciones.
+    set_organization(organization_id)
     return organization_id, role
 
 

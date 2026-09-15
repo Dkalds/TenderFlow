@@ -59,7 +59,7 @@ verificar desde el repositorio se dice.
 | S-UI | «Descargar PDF» en la oportunidad; control `SeguirBoton` único sobre `/follows`, estrenado en el panel de órgano | **parcial** — ver §4 |
 | S-INF | Informe semanal por organización (T6, v132): programación día/hora/destinatarios, correo HTML con PDF adjunto, opt-out por usuario, paso canónico advisory | **hecho** |
 | S-ROUTER | Paquete `api/routes/licitaciones/` por familias; `{id_externo:path}` en toda ruta de expediente; el catch-all del detalle sale de `api/app.py` | **hecho** |
-| S-PURSUIT | Vertical de pursuits bajo `api/tenancy` | **no hecho** — ver §4 |
+| S-PURSUIT | El respaldo RLS cubre también la vertical de pursuits: el ámbito lo arma `resolve_organization`, no el llamante | **hecho** |
 
 ---
 
@@ -100,9 +100,6 @@ Todas están en el roadmap H0 de la revisión. Ninguna es código.
   producción, y eso es una ejecución humana (§3). Mover la lectura antes
   convertiría un fallo del backfill en favoritos que desaparecen, que es
   exactamente el riesgo que la fase aditiva existe para no correr.
-- **Vertical de pursuits bajo `api/tenancy`.** No empezado. El respaldo que
-  motivaba parte de esto —la RLS por tenant— ya está puesto (v128), así que lo
-  que queda es la uniformidad del código, no una brecha de aislamiento.
 
 ---
 
@@ -138,5 +135,6 @@ se pretendía.
 |---|---|
 | 2026-09-14 | S-RLS, S-SES, S-WHK, S-NIF, S-ML, S-COB, S-ORG y S-OPS en el árbol con pruebas verdes; S-UID, S-TAX, S-MAIL, S-CRON y S-AUD en curso. |
 | 2026-09-15 | **T6 (informes programados)** cerrado: v132, `services/informes.py`, adjuntos en el transporte y la extracción de `_build_pdf` que el plan de Ola 2 marcaba como su prerrequisito. Queda documentado en [informes-programados.md](../informes-programados.md). |
+| 2026-09-15 | **S-PURSUIT** cerrado, y la premisa de este plan sobre él era falsa. Aquí decía que «el respaldo que motivaba parte de esto —la RLS por tenant— ya está puesto (v128), así que lo que queda es la uniformidad del código, no una brecha de aislamiento». No lo estaba: el ámbito de `shared.tenant_context` lo fijaba únicamente `api/tenancy.py`, y las 47 rutas de pursuits resuelven desde `services/pursuits.py`, así que corrían **sin ámbito**. Como el predicado de v128 deja pasar todo con el GUC vacío, el respaldo no fallaba: estaba apagado, en silencio, justo en las tablas de oportunidades, comentarios, tareas y adjuntos. Ningún test lo vio porque falla abierto. Se cerró armando el ámbito dentro de `services.organizations.resolve_organization` —resolver y quedar acotado pasan a ser la misma operación, y deja de depender de que 47 handlers se acuerden—, con test de regresión bajo el rol sin `BYPASSRLS`. |
 | 2026-09-15 | **S-ROUTER** cerrado, y no salió gratis: se dio por «refactor sin cambio de comportamiento» y resultó tener dos bugs vivos. `GET /licitaciones/{id}/similares` y la página de un documento daban **404** con los `id_externo` de PLACSP que llevan barra —la mayoría— porque eran las dos únicas sub-rutas con el conversor por defecto; y el detalle sólo funcionaba por un `add_api_route(include_in_schema=False)` al final de `api/app.py`, que dejaba el **esquema** publicando la variante rota. Ahora `{id_externo:path}` en las 25 rutas (las tres que decían `licitacion_id` incluidas), el detalle en su propio router incluido el último, y `tests/test_licitaciones_identificador.py` fija el orden. El módulo de 1.612 líneas es un paquete de seis familias. De paso, el ratchet de `user_key` tenía un hueco: sus tests comprobaban que *sabría* detectar un fichero nuevo pero no lo corrían contra el árbol, así que T6 lo había roto y sólo habría caído en CI. |
 | 2026-09-15 | **Ola 1 cerrada**: S-UID, S-TAX, S-MAIL, S-CRON y S-AUD terminados. De Ola 2 entran S-FOLLOW (v130), S-SOFT (v131), S-PUB y la mitad de S-UI. Quedan fuera S-ROUTER y S-PURSUIT (§4); S-INF entra el mismo día, en la fila de arriba. Tres hallazgos de los guardarraíles nuevos, corregidos aquí: `.net` llevaba en el diccionario desde su primera versión **sin poder clasificar nada** (`\\b` antes de un punto no casa tras un espacio); las menciones de un comentario seguían sirviendo su texto después de borrarlo; y los CIF de los fixtures no tenían letra de control válida, así que la resolución de entidades los anulaba. |

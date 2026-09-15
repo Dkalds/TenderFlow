@@ -12,7 +12,13 @@ Qué se prueba
 4. ``api.concurrency.run_db`` lleva el ámbito al hilo del pool y la
    transacción que abre allí queda acotada.
 5. Una ruta que pasa por ``api/tenancy.py`` fija el ámbito y no filtra nada
-   de otra organización.
+   de otra organización — y **también** una que no pasa por ahí: la vertical de
+   pursuits resuelve dentro de ``services/pursuits.py``, y durante un tiempo eso
+   significó que sus peticiones corrían **sin ámbito**. El predicado de ``v128``
+   deja pasar todo cuando el GUC está vacío, así que el respaldo no estaba roto:
+   estaba apagado, en silencio y justo en la vertical con los datos más
+   sensibles. Se cerró armando el ámbito dentro de
+   ``services.organizations.resolve_organization``.
 6. Estructural: toda tabla con ``organization_id`` está en el conjunto
    ``FORCE + políticas`` de ``v128`` o en la lista de exclusiones de este
    archivo. Una tabla nueva no entra sin decisión.
@@ -361,10 +367,10 @@ def test_ruta_acotada_fija_el_ambito_y_no_filtra_otra_organizacion(
 ) -> None:
     """``GET /watchlist/items`` usa ``require_organization()``: la petición queda acotada.
 
-    Se elige esta ruta y no ``/pursuits`` porque la vertical de pursuits
-    resuelve la organización dentro de ``services/pursuits.py`` (excepción
-    documentada en ``test_organization_sql_isolation.py``) y por tanto no pasa
-    por ``api/tenancy.py``.
+    Se elige esta ruta porque es el caso canónico de ``require_organization()``.
+    La vertical de pursuits, que resuelve dentro de ``services/pursuits.py`` y
+    no pasa por ``api/tenancy.py``, tiene su propio test más abajo: durante un
+    tiempo fue una excepción sin cubrir, y por ahí se coló el hueco.
 
     La organización activa es una **compartida**, distinta de la personal. Es
     el caso que hace visible la otra mitad del contrato: la ruta ejecuta
@@ -434,6 +440,71 @@ def test_ruta_acotada_fija_el_ambito_y_no_filtra_otra_organizacion(
             "SELECT organization_id FROM watchlist_items WHERE user_key = 'rls-legacy'"
         ).fetchone()
     assert legada is not None and legada[0] == s["org_a"]
+
+
+# ── 5-bis: ruta que NO pasa por api/tenancy.py (la vertical de pursuits) ───
+
+
+def test_la_vertical_de_pursuits_tambien_acota_la_peticion(
+    client: Any, rol_runtime: str, tmp_db: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``GET /pursuits`` resuelve en ``services/pursuits.py`` y aun así queda acotada.
+
+    Regresión de un hueco que estuvo abierto y callado. Las rutas de pursuits
+    —las 47— no usan ``require_organization()``: llaman al servicio, que
+    resuelve la organización con ``resolve_organization`` ya dentro del hilo de
+    ``run_db``. El ámbito de ``shared.tenant_context`` no se fijaba en ninguna
+    parte de ese camino, así que ``db/connection.py`` no emitía
+    ``SET LOCAL app.organization_id`` y las políticas de ``v128`` evaluaban su
+    predicado con el GUC vacío.
+
+    Y el predicado de ``v128`` **deja pasar todo** cuando está vacío (es lo que
+    permite al scraper y a los scripts escribir sin ámbito). O sea: el respaldo
+    RLS no fallaba, no existía — en la vertical que guarda oportunidades,
+    comentarios, tareas y adjuntos, que es la más sensible del producto. Falla
+    abierto, por eso ningún test lo vio: todo seguía funcionando.
+
+    El arreglo no fue reescribir 47 handlers sino armar el ámbito dentro de
+    ``services.organizations.resolve_organization``, que es por donde pasan
+    todos. Un ContextVar fijado dentro de ``to_thread.run_sync`` vive el resto
+    de esa llamada y muere con ella —lo comprueba
+    ``tests/test_tenant_context.py``—, así que las consultas que vienen después
+    en el mismo ``run_db`` lo ven y ninguna petición se lo lleva a otra.
+    """
+    import db.connection as conn_mod
+    from api.app import app
+    from api.routes.dual_auth import require_any_auth
+
+    db_mod, _ = tmp_db
+    s = _sembrar(db_mod)
+
+    ambitos: list[int | None] = []
+    real = conn_mod.current_organization
+
+    def _espia() -> int | None:
+        valor = real()
+        ambitos.append(valor)
+        return valor
+
+    monkeypatch.setattr(conn_mod, "current_organization", _espia)
+    app.dependency_overrides[require_any_auth] = lambda: {
+        "user_id": s["user_a"],
+        "auth_method": "session",
+        "user_key": "rls-a",
+    }
+    try:
+        resp = client.get("/api/v1/pursuits")
+        assert resp.status_code == 200, resp.text
+        licitaciones = {item["licitacion_id"] for item in resp.json()["items"]}
+    finally:
+        app.dependency_overrides.pop(require_any_auth, None)
+
+    assert licitaciones == {"LIC-RLS-A"}
+    assert s["org_a"] in ambitos, (
+        "La petición corrió sin ámbito: las políticas de v128 la dejaron pasar "
+        f"por el hueco del GUC vacío, no por pertenecer a la organización. {ambitos}"
+    )
+    assert s["org_b"] not in ambitos
 
 
 # ── 6: estructural ─────────────────────────────────────────────────────────

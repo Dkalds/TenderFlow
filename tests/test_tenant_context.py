@@ -88,6 +88,44 @@ def test_run_db_lleva_el_ambito_al_hilo_del_pool() -> None:
     assert current_organization() is None
 
 
+def test_el_ambito_fijado_dentro_del_hilo_vive_esa_llamada_y_muere_con_ella() -> None:
+    """La otra dirección, y de la que depende el respaldo RLS de pursuits.
+
+    ``services.organizations.resolve_organization`` fija el ámbito **desde
+    dentro** de ``run_db``, porque es ahí donde resuelve. Eso sólo sirve si se
+    cumplen tres cosas a la vez, y las tres las comprueba este test:
+
+    1. lo que se fija dentro lo ven las consultas que vienen después en esa
+       misma llamada —si no, la resolución armaría un respaldo que nadie usa—;
+    2. no vuelve a la corrutina de la petición, que seguiría creyéndose sin
+       ámbito y con razón;
+    3. no lo hereda el siguiente trabajo que caiga en ese hilo del pool, que
+       es lo que convertiría un detalle de implementación en una fuga de datos
+       entre organizaciones.
+
+    Son garantías de ``contextvars`` + ``anyio``, no del proyecto. Por eso se
+    fijan aquí: el día que cambien, este test lo dice y no producción.
+    """
+    from api.concurrency import run_db
+
+    def _fija_y_relee() -> tuple[int | None, int | None]:
+        antes = current_organization()
+        set_organization(7)
+        return antes, current_organization()
+
+    async def _main() -> tuple[tuple[int | None, int | None], int | None, int | None]:
+        primera = await run_db(_fija_y_relee)
+        fuera = current_organization()
+        segunda = await run_db(_fija_y_relee)
+        return primera, fuera, segunda[0]
+
+    primera, fuera, antes_de_la_segunda = anyio.run(_main)
+
+    assert primera == (None, 7), "lo fijado dentro no se ve en la misma llamada"
+    assert fuera is None, "el ámbito del hilo se filtró a la corrutina de la petición"
+    assert antes_de_la_segunda is None, "el hilo del pool arrastró el ámbito anterior"
+
+
 def test_el_ambito_no_se_contagia_entre_tareas_concurrentes() -> None:
     """Cada tarea nace con su copia del contexto: una petición no ve la de otra."""
 

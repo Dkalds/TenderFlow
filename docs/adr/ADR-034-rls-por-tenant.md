@@ -53,10 +53,11 @@ base. No sustituye al filtro, y no autoriza a quitarlo.
 ### B. El ámbito viaja en un `ContextVar` y se aplica con `SET LOCAL`
 
 `shared/tenant_context.py` guarda la organización activa en un
-`contextvars.ContextVar`. `api/tenancy.py::resolve_organization_ctx` la fija
-tras resolver la organización; `anyio` copia el contexto al hilo del pool
-(`api.concurrency.run_db`), y `db/connection.py` lo lee al abrir cada
-transacción:
+`contextvars.ContextVar`. Lo fija
+`services/organizations.py::resolve_organization` —resolver una organización y
+quedar acotado a ella son la misma operación, no dos—; `anyio` copia el
+contexto al hilo del pool (`api.concurrency.run_db`), y `db/connection.py` lo
+lee al abrir cada transacción:
 
 - `connect()` emite `SET LOCAL app.organization_id = '<id>'` como primera
   sentencia; psycopg ya abre la transacción implícita, y el `SET LOCAL` muere
@@ -131,14 +132,28 @@ esos tests lo dirían.
   añade uno. Sin ámbito no cambia nada. Se acepta: es el precio de que el
   respaldo exista, y las lecturas calientes sin organización (públicas,
   analítica) no lo pagan.
-- **Cobertura.** Solo las rutas que pasan por `api/tenancy.py` fijan ámbito.
-  La vertical de pursuits resuelve la organización dentro de
-  `services/pursuits.py` (excepción documentada en
-  `tests/test_organization_sql_isolation.py`) y hoy **no** lleva respaldo;
-  moverla a `require_organization()` es el siguiente paso natural. Un
-  `conn.commit()` a mitad de bloque cierra la transacción y con ella el
-  ámbito (hoy solo lo hace `db/repositories/predicciones.py`, camino del
-  scheduler).
+- **Cobertura.** Toda petición que resuelva una organización queda acotada,
+  venga de `api/tenancy.py` o de un servicio.
+
+  No fue así al principio, y conviene recordar por qué: hasta 2026-09 el
+  ámbito lo fijaba únicamente `api/tenancy.py`, y la vertical de pursuits
+  —que resuelve desde `services/pursuits.py`— corría **sin** respaldo. Como el
+  predicado de `v128` deja pasar todo cuando el GUC está vacío, aquello no
+  rompía nada: apagaba la RLS en silencio, en las tablas de oportunidades,
+  comentarios, tareas y adjuntos. Un guardarraíl que se desactiva solo cuando
+  alguien olvida una línea no es un guardarraíl, así que el ámbito se armó
+  dentro de `resolve_organization`, que es por donde pasan las dos vías.
+
+  Funciona desde dentro de `run_db` porque `to_thread.run_sync` copia el
+  contexto para el hilo: lo fijado allí lo ven las consultas que vienen
+  después en esa misma llamada y muere al volver, sin filtrarse a la petición
+  ni al siguiente uso del hilo (`tests/test_tenant_context.py`).
+  `api/tenancy.py` lo sigue fijando además al volver del hilo, y hace falta:
+  sus rutas resuelven en un `run_db` y consultan en otro.
+
+  Queda un límite conocido: un `conn.commit()` a mitad de bloque cierra la
+  transacción y con ella el ámbito (hoy solo lo hace
+  `db/repositories/predicciones.py`, camino del scheduler).
 - **Modo de fallo nuevo.** Una escritura transversal no declarada dentro de
   una petición acotada falla con `InsufficientPrivilege: new row violates
   row-level security policy`. Es el comportamiento deseado; la corrección es

@@ -241,3 +241,62 @@ def test_viewer_role_cannot_write(client, api_db):
             json={"id_externo": "VIEWER-CANNOT-ADD", "organization_id": org_id},
         )
     assert resp.status_code == 403, resp.text
+
+
+# ── El ámbito de tenencia lo arma la propia resolución (ADR-034) ────────────
+
+
+def test_resolver_deja_armado_el_ambito_de_la_organizacion(tmp_db):
+    """Resolver y quedar acotado son la misma operación, no dos.
+
+    Mientras fijar el ámbito fue trabajo del llamante, la vertical de pursuits
+    —que resuelve desde ``services/pursuits.py``— corría sin él, y el predicado
+    de v128 la dejaba pasar entera porque deja pasar todo con el GUC vacío.
+    Ver ``tests/test_rls_tenant_scope_integration.py``.
+    """
+    from services.organizations import resolve_organization
+    from shared.tenant_context import current_organization, tenant_scope
+
+    user_id = _user("ambito-resuelto@example.test")
+    organizations = OrganizationRepository()
+    equipo = int(organizations.create_organization("Equipo ámbito", user_id)["id"])
+
+    with tenant_scope(None):
+        resuelta, _ = resolve_organization(user_id, equipo)
+        assert resuelta == equipo
+        assert current_organization() == equipo
+
+
+def test_resolver_sin_organizacion_acota_a_la_personal(tmp_db):
+    """Omitir ``organization_id`` no es «sin ámbito»: es el ámbito personal."""
+    from services.organizations import resolve_organization
+    from shared.tenant_context import current_organization, tenant_scope
+
+    user_id = _user("ambito-personal@example.test")
+
+    with tenant_scope(None):
+        resuelta, _ = resolve_organization(user_id, None)
+        assert current_organization() == resuelta
+
+
+def test_una_resolucion_rechazada_no_deja_ambito(tmp_db):
+    """Lo importante del orden: primero se valida, después se acota.
+
+    Si el ámbito se fijara antes de comprobar la membresía, un 403 dejaría la
+    petición acotada a una organización ajena. No pasaría nada malo con la
+    excepción en vuelo, pero sí con cualquier lectura posterior en ese mismo
+    hilo: quedaría mirando datos de otro equipo.
+    """
+    import pytest as _pytest
+
+    from services.organizations import OrganizationAccessError, resolve_organization
+    from shared.tenant_context import current_organization, tenant_scope
+
+    intruso = _user("ambito-intruso@example.test")
+    duena = _user("ambito-duena@example.test")
+    ajena = int(OrganizationRepository().create_organization("Ajena", duena)["id"])
+
+    with tenant_scope(None):
+        with _pytest.raises(OrganizationAccessError):
+            resolve_organization(intruso, ajena)
+        assert current_organization() is None
