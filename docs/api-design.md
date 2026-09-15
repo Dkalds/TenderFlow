@@ -278,8 +278,8 @@ El campo `licitacion_id` sigue existiendo en **cuerpos** de respuesta
 el expediente, no cómo se llama dentro del JSON.
 
 **El detalle es glotón.** `GET /licitaciones/{id_externo:path}` casa también
-con `/licitaciones/X/eventos`, y Starlette se queda con la primera ruta que
-case. Vive por eso en su propio `router_detalle` que `api/app.py` incluye el
+con todo lo que cuelga de él —`/licitaciones/{id_externo}/eventos` y el resto—,
+y Starlette se queda con la primera ruta que case. Vive por eso en su propio `router_detalle` que `api/app.py` incluye el
 último de todos. Si añadís un router que cuelgue de `/licitaciones/{...}`,
 inclúyelo **antes** de esa línea.
 

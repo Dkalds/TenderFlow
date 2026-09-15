@@ -6,7 +6,7 @@ tags: [status, generado]
 
 <!-- generado por scripts/gen_status.py — no editar a mano -->
 
-Generado: 2026-09-08
+Generado: 2026-09-15
 
 ## Paridad de planos de orquestación (ADR-012)
 
@@ -68,7 +68,7 @@ Generado: 2026-09-08
 
 ## Ratchet `user_key` — identidad derivada del correo (D18, fase 1)
 
-**66 ficheros** de producción usan `user_key` (lista congelada: 66; solo puede decrecer).
+**69 ficheros** de producción usan `user_key` (lista congelada: 69; solo puede decrecer).
 
 `scripts/check_user_key_ratchet.py` falla ante un fichero nuevo que la use. Llega a cero con T4, que migra a `user_id` con columna doble y lectura dual; hasta entonces cambiar de correo pierde los datos que cuelgan de esa clave. No cuenta `tests/` ni `db/alembic/versions/`.
 
@@ -78,7 +78,7 @@ Generado: 2026-09-08
 
 ## Superficie de la API
 
-**254 endpoints** expuestos.
+**261 endpoints** expuestos.
 
 <details><summary>Ver listado</summary>
 
@@ -182,6 +182,9 @@ Generado: 2026-09-08
 | GET | `/api/v1/feedback/model-info` |
 | GET | `/api/v1/feedback/queue` |
 | GET | `/api/v1/feedback/stats` |
+| GET | `/api/v1/follows` |
+| POST | `/api/v1/follows` |
+| DELETE | `/api/v1/follows/{target_type}/{target_id:path}` |
 | GET | `/api/v1/health` |
 | GET | `/api/v1/health/live` |
 | GET | `/api/v1/health/ready` |
@@ -194,24 +197,23 @@ Generado: 2026-09-08
 | GET | `/api/v1/licitaciones/stream` |
 | GET | `/api/v1/licitaciones/{id_externo:path}` |
 | GET | `/api/v1/licitaciones/{id_externo:path}/documentos` |
+| GET | `/api/v1/licitaciones/{id_externo:path}/documentos/{documento_id}/paginas/{page_number}` |
 | POST | `/api/v1/licitaciones/{id_externo:path}/embeddings-async` |
+| GET | `/api/v1/licitaciones/{id_externo:path}/escenarios-precio` |
+| GET | `/api/v1/licitaciones/{id_externo:path}/eventos` |
 | GET | `/api/v1/licitaciones/{id_externo:path}/explain` |
 | GET | `/api/v1/licitaciones/{id_externo:path}/ficha-pliego` |
 | GET | `/api/v1/licitaciones/{id_externo:path}/ficha-pliego/estado` |
 | POST | `/api/v1/licitaciones/{id_externo:path}/ficha-pliego/extract` |
 | POST | `/api/v1/licitaciones/{id_externo:path}/ficha-pliego/extract-async` |
 | POST | `/api/v1/licitaciones/{id_externo:path}/guion` |
+| GET | `/api/v1/licitaciones/{id_externo:path}/prediccion-baja` |
 | POST | `/api/v1/licitaciones/{id_externo:path}/reportes` |
 | POST | `/api/v1/licitaciones/{id_externo:path}/resumen` |
+| GET | `/api/v1/licitaciones/{id_externo:path}/similares` |
 | GET | `/api/v1/licitaciones/{id_externo:path}/simulador` |
 | GET | `/api/v1/licitaciones/{id_externo:path}/tech-scores` |
 | GET | `/api/v1/licitaciones/{id_externo:path}/tecnologias` |
-| GET | `/api/v1/licitaciones/{id_externo}` |
-| GET | `/api/v1/licitaciones/{id_externo}/documentos/{documento_id}/paginas/{page_number}` |
-| GET | `/api/v1/licitaciones/{id_externo}/similares` |
-| GET | `/api/v1/licitaciones/{licitacion_id:path}/escenarios-precio` |
-| GET | `/api/v1/licitaciones/{licitacion_id:path}/eventos` |
-| GET | `/api/v1/licitaciones/{licitacion_id:path}/prediccion-baja` |
 | DELETE | `/api/v1/me` |
 | GET | `/api/v1/me/data` |
 | GET | `/api/v1/me/keys` |
@@ -238,6 +240,7 @@ Generado: 2026-09-08
 | GET | `/api/v1/organizations/go-no-go/weights` |
 | PUT | `/api/v1/organizations/go-no-go/weights` |
 | POST | `/api/v1/organizations/invitations/accept` |
+| GET | `/api/v1/organizations/{organization_id}/audit` |
 | GET | `/api/v1/organizations/{organization_id}/capabilities` |
 | PUT | `/api/v1/organizations/{organization_id}/capabilities` |
 | POST | `/api/v1/organizations/{organization_id}/delete` |
@@ -251,6 +254,8 @@ Generado: 2026-09-08
 | PUT | `/api/v1/organizations/{organization_id}/members/{member_user_id}` |
 | GET | `/api/v1/organizations/{organization_id}/nifs` |
 | PUT | `/api/v1/organizations/{organization_id}/nifs` |
+| GET | `/api/v1/organizations/{organization_id}/report-schedule` |
+| PUT | `/api/v1/organizations/{organization_id}/report-schedule` |
 | GET | `/api/v1/organizations/{organization_id}/settings` |
 | PUT | `/api/v1/organizations/{organization_id}/settings` |
 | POST | `/api/v1/organizations/{organization_id}/transfer-ownership` |
@@ -322,6 +327,7 @@ Generado: 2026-09-08
 | GET | `/api/v1/watchlist/rules` |
 | POST | `/api/v1/watchlist/rules` |
 | GET | `/api/v1/watchlist/rules/baja` |
+| POST | `/api/v1/watchlist/rules/baja` |
 | POST | `/api/v1/watchlist/rules/preview` |
 | DELETE | `/api/v1/watchlist/rules/{rule_id}` |
 | PUT | `/api/v1/watchlist/rules/{rule_id}` |
@@ -336,6 +342,7 @@ Generado: 2026-09-08
 | GET | `/api/v1/webhooks/{webhook_id}/deliveries` |
 | POST | `/api/v1/webhooks/{webhook_id}/deliveries/{delivery_id}/redeliver` |
 | POST | `/api/v1/webhooks/{webhook_id}/ping` |
+| POST | `/api/v1/webhooks/{webhook_id}/rotate-secret` |
 | GET | `/docs/oauth2-redirect` |
 | GET | `/metrics` |
 

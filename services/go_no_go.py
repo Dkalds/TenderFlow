@@ -40,7 +40,7 @@ from db.repositories.pursuits import PursuitRepository
 from db.repositories.tender_fact_sheets import TenderFactSheetsRepository
 from observability.logging import get_logger
 from services.normalization import fold_text
-from services.organizations import resolve_organization
+from services.organizations import alcance_resuelto
 from shared.dto import (
     OrganizationCapabilities,
     OrganizationCertification,
@@ -700,45 +700,45 @@ def build_checklist(
     hoy: date | None = None,
 ) -> GoNoGoChecklist:
     """Checklist de una oportunidad, sellado una vez por versión de ficha."""
-    resolved_id, _ = resolve_organization(user_id, organization_id)
-    row = _pursuit_repo.get(resolved_id, pursuit_id)
-    if row is None:
-        raise ChecklistNotFoundError("Oportunidad no encontrada.")
+    with alcance_resuelto(user_id, organization_id) as (resolved_id, _):
+        row = _pursuit_repo.get(resolved_id, pursuit_id)
+        if row is None:
+            raise ChecklistNotFoundError("Oportunidad no encontrada.")
 
-    licitacion_id = str(row["licitacion_id"])
-    raw = _fact_sheets_repo.get(licitacion_id)
-    record = TenderFactSheetRecord.model_validate(raw) if raw else None
-    capabilities = OrganizationCapabilities.model_validate(_capabilities_repo.get(resolved_id))
-    checklist = evaluate(
-        licitacion_id=licitacion_id,
-        organization_id=resolved_id,
-        record=record,
-        capabilities=capabilities,
-        hoy=hoy or date.today(),
-    )
+        licitacion_id = str(row["licitacion_id"])
+        raw = _fact_sheets_repo.get(licitacion_id)
+        record = TenderFactSheetRecord.model_validate(raw) if raw else None
+        capabilities = OrganizationCapabilities.model_validate(_capabilities_repo.get(resolved_id))
+        checklist = evaluate(
+            licitacion_id=licitacion_id,
+            organization_id=resolved_id,
+            record=record,
+            capabilities=capabilities,
+            hoy=hoy or date.today(),
+        )
 
-    # Sin ficha no hay nada que sellar: el ledger contaría «se evaluó» de algo
-    # que no se pudo evaluar.
-    if record is not None:
-        payload: dict[str, Any] = {
-            "licitacion_id": licitacion_id,
-            "extraction_version": checklist.extraction_version,
-            "ficha_actualizada": checklist.ficha_actualizada,
-            "cumple": checklist.cumple,
-            "no_cumple": checklist.no_cumple,
-            "desconocido": checklist.desconocido,
-            "familias": {
-                resultado.familia: resultado.veredicto for resultado in checklist.familias
-            },
-        }
-        try:
-            seal_checklist_evaluated(
-                pursuit_id=pursuit_id,
-                organization_id=resolved_id,
-                actor_user_id=user_id,
-                payload=payload,
-                idempotency_key=_clave_de_sellado(checklist),
-            )
-        except Exception as exc:  # el ledger no puede tumbar la lectura
-            log.warning("checklist_seal_failed", pursuit_id=pursuit_id, error=str(exc)[:200])
-    return checklist
+        # Sin ficha no hay nada que sellar: el ledger contaría «se evaluó» de algo
+        # que no se pudo evaluar.
+        if record is not None:
+            payload: dict[str, Any] = {
+                "licitacion_id": licitacion_id,
+                "extraction_version": checklist.extraction_version,
+                "ficha_actualizada": checklist.ficha_actualizada,
+                "cumple": checklist.cumple,
+                "no_cumple": checklist.no_cumple,
+                "desconocido": checklist.desconocido,
+                "familias": {
+                    resultado.familia: resultado.veredicto for resultado in checklist.familias
+                },
+            }
+            try:
+                seal_checklist_evaluated(
+                    pursuit_id=pursuit_id,
+                    organization_id=resolved_id,
+                    actor_user_id=user_id,
+                    payload=payload,
+                    idempotency_key=_clave_de_sellado(checklist),
+                )
+            except Exception as exc:  # el ledger no puede tumbar la lectura
+                log.warning("checklist_seal_failed", pursuit_id=pursuit_id, error=str(exc)[:200])
+        return checklist

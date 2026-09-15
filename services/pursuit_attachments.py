@@ -30,7 +30,7 @@ from db.repositories.pursuit_attachments import (
 )
 from db.repositories.pursuits import PursuitRepository
 from observability.logging import get_logger
-from services.organizations import resolve_organization
+from services.organizations import alcance_resuelto
 from services.pursuits import PursuitNotFoundError
 from shared.object_store import get_object_store
 
@@ -219,9 +219,9 @@ def listar(
     user_id: int, pursuit_id: int, *, organization_id: int | None = None
 ) -> list[dict[str, Any]]:
     """Adjuntos de la oportunidad, recientes primero."""
-    resuelta, _role = resolve_organization(user_id, organization_id)
-    _require_pursuit(resuelta, pursuit_id)
-    return PursuitAttachmentsRepository().list_for_pursuit(pursuit_id, organization_id=resuelta)
+    with alcance_resuelto(user_id, organization_id) as (resuelta, _role):
+        _require_pursuit(resuelta, pursuit_id)
+        return PursuitAttachmentsRepository().list_for_pursuit(pursuit_id, organization_id=resuelta)
 
 
 def obtener(
@@ -233,8 +233,8 @@ def obtener(
     que la resolución viva en un servicio o en `api/tenancy.py`, y no repartida
     por los handlers (`tests/test_organization_sql_isolation.py`).
     """
-    resuelta, _role = resolve_organization(user_id, organization_id)
-    return PursuitAttachmentsRepository().get(attachment_id, organization_id=resuelta)
+    with alcance_resuelto(user_id, organization_id) as (resuelta, _role):
+        return PursuitAttachmentsRepository().get(attachment_id, organization_id=resuelta)
 
 
 def marcar_indexable(
@@ -245,10 +245,10 @@ def marcar_indexable(
     organization_id: int | None = None,
 ) -> dict[str, Any] | None:
     """Levanta o baja el opt-in del RAG para UN adjunto. `viewer` no escribe."""
-    resuelta, _role = resolve_organization(user_id, organization_id, write=True)
-    return PursuitAttachmentsRepository().set_indexable(
-        attachment_id, organization_id=resuelta, indexable=indexable
-    )
+    with alcance_resuelto(user_id, organization_id, write=True) as (resuelta, _role):
+        return PursuitAttachmentsRepository().set_indexable(
+            attachment_id, organization_id=resuelta, indexable=indexable
+        )
 
 
 def subir(
@@ -268,81 +268,83 @@ def subir(
     objeto sin fila, que `purge_keys` recoge.
     """
     # `write=True`: un `viewer` no sube ficheros, igual que no crea tareas.
-    resuelta, _role = resolve_organization(user_id, organization_id, write=True)
-    _require_pursuit(resuelta, pursuit_id)
-    organization_id_resuelta = resuelta
+    with alcance_resuelto(user_id, organization_id, write=True) as (resuelta, _role):
+        _require_pursuit(resuelta, pursuit_id)
+        organization_id_resuelta = resuelta
 
-    nombre, tipo = validar(filename=filename, content_type=content_type, size_bytes=len(data))
+        nombre, tipo = validar(filename=filename, content_type=content_type, size_bytes=len(data))
 
-    almacen = get_object_store()
-    if not almacen.enabled:
-        # Sin bucket, `NullObjectStore.put` no lanza y devolvería un adjunto que
-        # no se puede descargar nunca. Aceptar la subida sería mentir.
-        raise AttachmentStoreUnavailable(
-            "No hay almacén de objetos configurado: los adjuntos propios "
-            "necesitan DOCUMENT_BLOB_BUCKET o DOCUMENT_BLOB_DIR."
+        almacen = get_object_store()
+        if not almacen.enabled:
+            # Sin bucket, `NullObjectStore.put` no lanza y devolvería un adjunto que
+            # no se puede descargar nunca. Aceptar la subida sería mentir.
+            raise AttachmentStoreUnavailable(
+                "No hay almacén de objetos configurado: los adjuntos propios "
+                "necesitan DOCUMENT_BLOB_BUCKET o DOCUMENT_BLOB_DIR."
+            )
+
+        repo = PursuitAttachmentsRepository()
+        ocupado = repo.ocupacion(organization_id_resuelta)
+        if ocupado["bytes"] + len(data) > MAX_BYTES_POR_ORGANIZACION:
+            raise AttachmentTooLarge(
+                f"La organización ocupa {ocupado['bytes']} bytes y el tope es "
+                f"{MAX_BYTES_POR_ORGANIZACION}. Borrá adjuntos antes de subir más."
+            )
+
+        huella = hashlib.sha256(data).hexdigest()
+        clave = blob_key(
+            organization_id=organization_id_resuelta, pursuit_id=pursuit_id, sha256=huella
         )
-
-    repo = PursuitAttachmentsRepository()
-    ocupado = repo.ocupacion(organization_id_resuelta)
-    if ocupado["bytes"] + len(data) > MAX_BYTES_POR_ORGANIZACION:
-        raise AttachmentTooLarge(
-            f"La organización ocupa {ocupado['bytes']} bytes y el tope es "
-            f"{MAX_BYTES_POR_ORGANIZACION}. Borrá adjuntos antes de subir más."
-        )
-
-    huella = hashlib.sha256(data).hexdigest()
-    clave = blob_key(organization_id=organization_id_resuelta, pursuit_id=pursuit_id, sha256=huella)
-    almacen.put(clave, data, content_type=tipo)
-    try:
-        fila = repo.create(
+        almacen.put(clave, data, content_type=tipo)
+        try:
+            fila = repo.create(
+                pursuit_id=pursuit_id,
+                organization_id=organization_id_resuelta,
+                blob_key=clave,
+                filename=nombre,
+                content_type=tipo,
+                size_bytes=len(data),
+                sha256=huella,
+                uploaded_by_user_id=user_id,
+            )
+        except PursuitAttachmentExists:
+            # El objeto ya estaba y el `put` lo ha reescrito con los mismos bytes
+            # (misma huella): no hay nada que limpiar.
+            raise
+        if fila is None:
+            # El pursuit no era de esta organización: el objeto que acabamos de
+            # escribir no lo referencia nadie, y dejarlo sería filtrar bytes de un
+            # intento rechazado en el bucket del cliente.
+            almacen.delete(clave)
+            return None
+        log.info(
+            "pursuit_attachment_subido",
             pursuit_id=pursuit_id,
             organization_id=organization_id_resuelta,
-            blob_key=clave,
-            filename=nombre,
+            bytes=len(data),
             content_type=tipo,
-            size_bytes=len(data),
-            sha256=huella,
-            uploaded_by_user_id=user_id,
         )
-    except PursuitAttachmentExists:
-        # El objeto ya estaba y el `put` lo ha reescrito con los mismos bytes
-        # (misma huella): no hay nada que limpiar.
-        raise
-    if fila is None:
-        # El pursuit no era de esta organización: el objeto que acabamos de
-        # escribir no lo referencia nadie, y dejarlo sería filtrar bytes de un
-        # intento rechazado en el bucket del cliente.
-        almacen.delete(clave)
-        return None
-    log.info(
-        "pursuit_attachment_subido",
-        pursuit_id=pursuit_id,
-        organization_id=organization_id_resuelta,
-        bytes=len(data),
-        content_type=tipo,
-    )
-    return fila
+        return fila
 
 
 def descargar(
     user_id: int, attachment_id: int, *, organization_id: int | None = None
 ) -> tuple[dict[str, Any], bytes] | None:
     """``(fila, bytes)`` del adjunto, o ``None`` si no existe o no es suyo."""
-    resuelta, _role = resolve_organization(user_id, organization_id)
-    repo = PursuitAttachmentsRepository()
-    fila = repo.get(attachment_id, organization_id=resuelta)
-    if fila is None:
-        return None
-    contenido = get_object_store().get(str(fila["blob_key"]))
-    if contenido is None:
-        log.warning(
-            "pursuit_attachment_sin_binario",
-            attachment_id=attachment_id,
-            blob_key=fila["blob_key"],
-        )
-        return None
-    return fila, contenido
+    with alcance_resuelto(user_id, organization_id) as (resuelta, _role):
+        repo = PursuitAttachmentsRepository()
+        fila = repo.get(attachment_id, organization_id=resuelta)
+        if fila is None:
+            return None
+        contenido = get_object_store().get(str(fila["blob_key"]))
+        if contenido is None:
+            log.warning(
+                "pursuit_attachment_sin_binario",
+                attachment_id=attachment_id,
+                blob_key=fila["blob_key"],
+            )
+            return None
+        return fila, contenido
 
 
 def borrar(user_id: int, attachment_id: int, *, organization_id: int | None = None) -> bool:
@@ -360,12 +362,12 @@ def borrar(user_id: int, attachment_id: int, *, organization_id: int | None = No
     cambio es que un miembro de la organización ya no pueda destruir el pliego
     anotado de otro con un clic.
     """
-    resuelta, _role = resolve_organization(user_id, organization_id, write=True)
-    clave = PursuitAttachmentsRepository().delete(attachment_id, organization_id=resuelta)
-    if clave is None:
-        return False
-    log.info("pursuit_attachment_borrado", attachment_id=attachment_id, blob_conservado=True)
-    return True
+    with alcance_resuelto(user_id, organization_id, write=True) as (resuelta, _role):
+        clave = PursuitAttachmentsRepository().delete(attachment_id, organization_id=resuelta)
+        if clave is None:
+            return False
+        log.info("pursuit_attachment_borrado", attachment_id=attachment_id, blob_conservado=True)
+        return True
 
 
 def purgar_organizacion(organization_id: int) -> int:

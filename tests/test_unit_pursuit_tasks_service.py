@@ -76,6 +76,22 @@ class _PursuitsDoble:
         )
 
 
+def _alcance(resolucion):
+    """Doble de ``alcance_resuelto``: mismo contrato, sin base de datos.
+
+    Es un context manager porque el real lo es: acota el bloque y lo suelta al
+    salir (ADR-034). Sustituirlo por una función que devuelve la tupla haría
+    pasar el test y no probaría la forma que el servicio usa.
+    """
+    from contextlib import contextmanager
+
+    @contextmanager
+    def _cm(user_id, organization_id=None, *, write=False):
+        yield resolucion(user_id, organization_id, write=write)
+
+    return _cm
+
+
 @pytest.fixture
 def mod(monkeypatch: pytest.MonkeyPatch):
     """El módulo con sus dependencias sustituidas y una organización resuelta."""
@@ -88,7 +104,7 @@ def mod(monkeypatch: pytest.MonkeyPatch):
         resoluciones.append({"user_id": user_id, "org": organization_id, "write": write})
         return 7, "member"
 
-    monkeypatch.setattr(modulo, "resolve_organization", _resolve)
+    monkeypatch.setattr(modulo, "alcance_resuelto", _alcance(_resolve))
     monkeypatch.setattr(
         modulo,
         "require_active_member",

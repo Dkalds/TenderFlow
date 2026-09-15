@@ -5,6 +5,8 @@ from __future__ import annotations
 import hashlib
 import html
 import secrets
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from urllib.parse import quote
@@ -23,7 +25,7 @@ from shared.dto import (
     OrganizationSummary,
 )
 from shared.signing import sign, verify
-from shared.tenant_context import set_organization, tenant_scope
+from shared.tenant_context import tenant_scope
 
 log = get_logger(__name__)
 
@@ -59,36 +61,22 @@ def resolve_organization(
     *,
     write: bool = False,
 ) -> tuple[int, str]:
-    """Resuelve organización explícita o personal, valida el rol y **arma la RLS**.
+    """Resuelve organización explícita o personal y valida el rol.
 
-    Lo tercero no es un efecto secundario escondido: es la única forma de que
-    el respaldo de ADR-034 cubra todo. Antes, fijar el ámbito era trabajo del
-    llamante —lo hacía ``api/tenancy.py`` y nadie más—, y la vertical de
-    pursuits, que resuelve desde ``services/pursuits.py``, corría **sin
-    ámbito**. El predicado de ``v128`` deja pasar todo cuando el GUC está
-    vacío, así que aquello no rompía nada: apagaba el respaldo en silencio, en
-    las tablas con los datos más sensibles del producto. Un guardarraíl que se
-    apaga solo cuando alguien olvida una línea no es un guardarraíl.
+    **No fija el ámbito de tenencia.** Se intentó —parecía la forma de que el
+    respaldo RLS cubriera todo sin depender de que el llamante se acordara— y
+    está mal: ``set_organization`` no tiene final. Dentro de ``run_db`` muere
+    con la copia del contexto del hilo, pero un llamante síncrono (un script,
+    un job, la propia suite) deja el ámbito clavado para todo lo que venga
+    después en ese hilo, incluido trabajo de otra organización o de ninguna.
+    Un ámbito sin final no es un ámbito.
 
-    Poniéndolo aquí es imposible resolver una organización sin quedar acotado
-    a ella, que es exactamente el invariante que se quería.
-
-    **Por qué funciona desde dentro de ``run_db``.** ``to_thread.run_sync``
-    copia el contexto del llamante para el hilo, así que lo que se fija aquí lo
-    ven las consultas que vienen después *en esa misma llamada* —que es donde
-    corren, justo detrás de la resolución— y muere al volver: ni se filtra a la
-    corrutina de la petición ni al siguiente uso del hilo del pool. Está
-    comprobado en ``tests/test_tenant_context.py``.
-
-    ``api/tenancy.py`` sigue fijándolo por su cuenta al volver del hilo, y hace
-    falta: sus rutas resuelven en un ``run_db`` y consultan en otro, y la copia
-    del contexto no cruza esa frontera.
+    Quien necesite el respaldo lo abre con :func:`alcance_resuelto`, que es un
+    context manager y por tanto lo cierra.
     """
     if organization_id is None:
         personal = _repo.ensure_personal_organization(user_id)
-        resuelta = int(personal["id"])
-        set_organization(resuelta)
-        return resuelta, str(personal["role"])
+        return int(personal["id"]), str(personal["role"])
 
     membership = _repo.get_active_membership(organization_id, user_id)
     if membership is None:
@@ -96,10 +84,35 @@ def resolve_organization(
     role = str(membership["role"])
     if write and role == "viewer":
         raise OrganizationPermissionError("El rol viewer es de solo lectura.")
-    # Después de validar, nunca antes: el ámbito acota lo que se puede leer, y
-    # la membresía hay que poder leerla a través de organizaciones.
-    set_organization(organization_id)
     return organization_id, role
+
+
+@contextmanager
+def alcance_resuelto(
+    user_id: int,
+    organization_id: int | None,
+    *,
+    write: bool = False,
+) -> Iterator[tuple[int, str]]:
+    """Resuelve la organización y deja el bloque **acotado** a ella (ADR-034).
+
+    Es :func:`resolve_organization` con el respaldo RLS puesto y, sobre todo,
+    quitado al salir: dentro del bloque cada transacción que abra
+    ``db/connection.py`` emite ``SET LOCAL app.organization_id``, y al salir el
+    ámbito vuelve a lo que hubiera, también si el cuerpo lanza.
+
+    Lo usan las verticales que resuelven desde ``services/`` en vez de pasar
+    por ``api/tenancy.py``. La de pursuits es la grande, y estuvo sin respaldo:
+    como el predicado de ``v128`` deja pasar todo con el GUC vacío, sus
+    peticiones corrían sin RLS y nada fallaba. Ver
+    ``tests/test_rls_tenant_scope_integration.py``.
+
+    El ámbito se abre **después** de validar la membresía, nunca antes: si se
+    abriera antes, un 403 dejaría el bloque mirando datos de otro equipo.
+    """
+    resuelta, rol = resolve_organization(user_id, organization_id, write=write)
+    with tenant_scope(resuelta):
+        yield resuelta, rol
 
 
 def require_active_member(organization_id: int, user_id: int) -> None:

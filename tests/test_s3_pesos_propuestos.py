@@ -141,10 +141,29 @@ def _filas_cerradas(ganadas: int, perdidas: int) -> list[dict[str, Any]]:
     return filas
 
 
+def _alcance(resolucion):
+    """Doble de ``alcance_resuelto``: mismo contrato, sin base de datos.
+
+    Es un context manager porque el real lo es: acota el bloque y lo suelta al
+    salir (ADR-034). Sustituirlo por una función que devuelve la tupla haría
+    pasar el test y no probaría la forma que el servicio usa.
+    """
+    from contextlib import contextmanager
+
+    @contextmanager
+    def _cm(user_id, organization_id=None, *, write=False):
+        yield resolucion(user_id, organization_id, write=write)
+
+    return _cm
+
+
 @pytest.fixture
 def _organizacion_suplantada(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
-        pursuits_svc, "resolve_organization", lambda *_a, **_k: (7, "owner"), raising=True
+        pursuits_svc,
+        "alcance_resuelto",
+        _alcance(lambda *_a, **_k: (7, "owner")),
+        raising=True,
     )
     monkeypatch.setattr(
         pursuits_svc, "_pesos_vigentes", lambda *_a, **_k: (dict(_PESOS_BASE), "global")

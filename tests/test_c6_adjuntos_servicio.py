@@ -17,6 +17,7 @@ Ninguno necesita Postgres: son decisiones del servicio, no consultas.
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 from typing import Any
 from unittest.mock import patch
 
@@ -97,10 +98,23 @@ class _RepoFalso:
 PDF = b"%PDF-1.7 contenido de prueba"
 
 
+@contextmanager
+def _alcance_falso(user_id: Any, organization_id: Any = None, *, write: bool = False):
+    """Doble de ``alcance_resuelto``: la organización 7, sin base de datos.
+
+    Context manager y no función porque el real lo es: acota el bloque con el
+    ámbito de tenencia y lo suelta al salir (ADR-034). Un doble que devolviera
+    la tupla a secas haría pasar el test sin ejercitar la forma que el servicio
+    usa —``with ... as (resuelta, rol)``— y el día que alguien la cambiara aquí
+    no se enteraría nadie.
+    """
+    yield 7, "owner"
+
+
 def _entorno(mod: Any, almacen: _AlmacenFalso, repo: _RepoFalso, *, pursuit_existe: bool = True):
     """Parchea organización, pursuit, repositorio y almacén."""
     return (
-        patch.object(mod, "resolve_organization", return_value=(7, "owner")),
+        patch.object(mod, "alcance_resuelto", _alcance_falso),
         patch.object(
             mod,
             "_require_pursuit",

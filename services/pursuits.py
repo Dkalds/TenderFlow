@@ -27,7 +27,7 @@ from services.analytics.lead_time import estimar_adjudicacion
 from services.competitive.renovaciones import proximas_renovaciones
 from services.ficha_pdf import BloqueFicha, FichaOportunidad, construir_pdf
 from services.kit_presentacion import KitPresentacion, construir_kit, marcar_item
-from services.organizations import require_active_member, resolve_organization
+from services.organizations import alcance_resuelto, require_active_member
 from services.pursuit_awards import resultado_sugerido
 from services.watchlist_rules import list_rules
 from shared.audit_events import PURSUIT_WEIGHTS_PROPOSAL_APPLIED
@@ -133,26 +133,26 @@ def create_pursuit(
     *,
     idempotency_key: str | None = None,
 ) -> tuple[PursuitSummary, bool]:
-    organization_id, _ = resolve_organization(user_id, body.organization_id, write=True)
-    if not _repo.licitacion_exists(body.licitacion_id):
-        raise PursuitValidationError("La licitación indicada no existe.")
-    responsible_user_id = body.responsible_user_id or user_id
-    require_active_member(organization_id, responsible_user_id)
-    lote_numero = _resolver_lote(body.licitacion_id, body.lote_id)
-    row, created = _repo.create(
-        organization_id=organization_id,
-        licitacion_id=body.licitacion_id,
-        responsible_user_id=responsible_user_id,
-        actor_user_id=user_id,
-        idempotency_key=idempotency_key,
-        score_al_abrir=body.score_al_abrir,
-        banda_al_abrir=body.banda_al_abrir,
-        lote_numero=lote_numero,
-        desglose_al_abrir=_serializar_desglose(body.desglose_al_abrir),
-    )
-    if created:
-        _notificar_asignacion(row, actor_user_id=user_id)
-    return PursuitSummary.model_validate(row), created
+    with alcance_resuelto(user_id, body.organization_id, write=True) as (organization_id, _):
+        if not _repo.licitacion_exists(body.licitacion_id):
+            raise PursuitValidationError("La licitación indicada no existe.")
+        responsible_user_id = body.responsible_user_id or user_id
+        require_active_member(organization_id, responsible_user_id)
+        lote_numero = _resolver_lote(body.licitacion_id, body.lote_id)
+        row, created = _repo.create(
+            organization_id=organization_id,
+            licitacion_id=body.licitacion_id,
+            responsible_user_id=responsible_user_id,
+            actor_user_id=user_id,
+            idempotency_key=idempotency_key,
+            score_al_abrir=body.score_al_abrir,
+            banda_al_abrir=body.banda_al_abrir,
+            lote_numero=lote_numero,
+            desglose_al_abrir=_serializar_desglose(body.desglose_al_abrir),
+        )
+        if created:
+            _notificar_asignacion(row, actor_user_id=user_id)
+        return PursuitSummary.model_validate(row), created
 
 
 def _resolver_lote(licitacion_id: str, lote_id: int | None) -> str | None:
@@ -365,21 +365,21 @@ def list_pursuits(
     limit: int = 50,
     offset: int = 0,
 ) -> PursuitListResponse:
-    resolved_id, _ = resolve_organization(user_id, organization_id)
-    rows, total = _repo.list_scoped(
-        resolved_id,
-        status=status,
-        responsible_user_id=responsible_user_id,
-        limit=limit,
-        offset=offset,
-    )
-    return PursuitListResponse(
-        organization_id=resolved_id,
-        items=_con_fecha_prevista(rows),
-        total=total,
-        limit=limit,
-        offset=offset,
-    )
+    with alcance_resuelto(user_id, organization_id) as (resolved_id, _):
+        rows, total = _repo.list_scoped(
+            resolved_id,
+            status=status,
+            responsible_user_id=responsible_user_id,
+            limit=limit,
+            offset=offset,
+        )
+        return PursuitListResponse(
+            organization_id=resolved_id,
+            items=_con_fecha_prevista(rows),
+            total=total,
+            limit=limit,
+            offset=offset,
+        )
 
 
 def get_pursuit(
@@ -388,11 +388,11 @@ def get_pursuit(
     *,
     organization_id: int | None = None,
 ) -> PursuitDetail:
-    resolved_id, _ = resolve_organization(user_id, organization_id)
-    row = _repo.get(resolved_id, pursuit_id)
-    if row is None:
-        raise PursuitNotFoundError("Oportunidad no encontrada.")
-    return _detalle(row, resolved_id, pursuit_id)
+    with alcance_resuelto(user_id, organization_id) as (resolved_id, _):
+        row = _repo.get(resolved_id, pursuit_id)
+        if row is None:
+            raise PursuitNotFoundError("Oportunidad no encontrada.")
+        return _detalle(row, resolved_id, pursuit_id)
 
 
 def update_pursuit(
@@ -403,40 +403,40 @@ def update_pursuit(
     organization_id: int | None = None,
     idempotency_key: str | None = None,
 ) -> PursuitDetail:
-    resolved_id, _ = resolve_organization(user_id, organization_id, write=True)
-    current = _repo.get(resolved_id, pursuit_id)
-    if current is None:
-        raise PursuitNotFoundError("Oportunidad no encontrada.")
+    with alcance_resuelto(user_id, organization_id, write=True) as (resolved_id, _):
+        current = _repo.get(resolved_id, pursuit_id)
+        if current is None:
+            raise PursuitNotFoundError("Oportunidad no encontrada.")
 
-    requested = body.model_dump(exclude_unset=True)
-    expected_version = int(requested.pop("expected_version", current["version"]))
-    changes = _normalize_and_validate_update(current, requested, resolved_id)
-    event_payload = {
-        "changes": {
-            field: {"from": current.get(field), "to": value}
-            for field, value in changes.items()
-            if field not in {"decision_at", "submitted_at", "closed_at"}
-        },
-        "from_version": expected_version,
-        "to_version": expected_version + (1 if changes else 0),
-    }
-    try:
-        updated = _repo.update(
-            organization_id=resolved_id,
-            pursuit_id=pursuit_id,
-            actor_user_id=user_id,
-            changes=changes,
-            expected_version=expected_version,
-            event_payload=event_payload,
-            idempotency_key=idempotency_key,
-        )
-    except PursuitConcurrencyError as exc:
-        raise PursuitConflictError(str(exc)) from exc
-    if updated is None:
-        raise PursuitNotFoundError("Oportunidad no encontrada.")
-    if changes.get("responsible_user_id") is not None:
-        _notificar_asignacion(updated, actor_user_id=user_id)
-    return _detalle(updated, resolved_id, pursuit_id)
+        requested = body.model_dump(exclude_unset=True)
+        expected_version = int(requested.pop("expected_version", current["version"]))
+        changes = _normalize_and_validate_update(current, requested, resolved_id)
+        event_payload = {
+            "changes": {
+                field: {"from": current.get(field), "to": value}
+                for field, value in changes.items()
+                if field not in {"decision_at", "submitted_at", "closed_at"}
+            },
+            "from_version": expected_version,
+            "to_version": expected_version + (1 if changes else 0),
+        }
+        try:
+            updated = _repo.update(
+                organization_id=resolved_id,
+                pursuit_id=pursuit_id,
+                actor_user_id=user_id,
+                changes=changes,
+                expected_version=expected_version,
+                event_payload=event_payload,
+                idempotency_key=idempotency_key,
+            )
+        except PursuitConcurrencyError as exc:
+            raise PursuitConflictError(str(exc)) from exc
+        if updated is None:
+            raise PursuitNotFoundError("Oportunidad no encontrada.")
+        if changes.get("responsible_user_id") is not None:
+            _notificar_asignacion(updated, actor_user_id=user_id)
+        return _detalle(updated, resolved_id, pursuit_id)
 
 
 #: Los motivos de D37, como tupla, para el mensaje de error de la ruta.
@@ -553,57 +553,58 @@ def get_metrics(
 ) -> PursuitMetrics:
     if period_from and period_to and period_to <= period_from:
         raise PursuitValidationError("period_to debe ser posterior a period_from.")
-    resolved_id, _ = resolve_organization(user_id, organization_id)
-    rows = _repo.metric_rows(
-        resolved_id,
-        period_from=_as_utc_iso(period_from),
-        period_to=_as_utc_iso(period_to),
-    )
-    won = sum(1 for row in rows if row["outcome"] == "won")
-    lost = sum(1 for row in rows if row["outcome"] == "lost")
-    resolved = won + lost
-    decision_hours = [
-        hours
-        for row in rows
-        if (hours := _elapsed_hours(row.get("identified_at"), row.get("decision_at"))) is not None
-    ]
-    # Ajustes de la organización para el valor ponderado (F4.1). Una lectura
-    # que falle deja los defaults de D34: la cifra sigue siendo correcta y
-    # declarada, sólo que sin la personalización.
-    try:
-        ajustes = OrganizationSettings.model_validate(
-            OrganizationRepository().get_settings(resolved_id)
+    with alcance_resuelto(user_id, organization_id) as (resolved_id, _):
+        rows = _repo.metric_rows(
+            resolved_id,
+            period_from=_as_utc_iso(period_from),
+            period_to=_as_utc_iso(period_to),
         )
-    except Exception as exc:
-        log.warning("pursuit_metrics_settings_error", error=str(exc)[:200])
-        ajustes = OrganizationSettings()
-    valor, prevision, sin_importe, probabilidades = _valor_ponderado(rows, ajustes)
+        won = sum(1 for row in rows if row["outcome"] == "won")
+        lost = sum(1 for row in rows if row["outcome"] == "lost")
+        resolved = won + lost
+        decision_hours = [
+            hours
+            for row in rows
+            if (hours := _elapsed_hours(row.get("identified_at"), row.get("decision_at")))
+            is not None
+        ]
+        # Ajustes de la organización para el valor ponderado (F4.1). Una lectura
+        # que falle deja los defaults de D34: la cifra sigue siendo correcta y
+        # declarada, sólo que sin la personalización.
+        try:
+            ajustes = OrganizationSettings.model_validate(
+                OrganizationRepository().get_settings(resolved_id)
+            )
+        except Exception as exc:
+            log.warning("pursuit_metrics_settings_error", error=str(exc)[:200])
+            ajustes = OrganizationSettings()
+        valor, prevision, sin_importe, probabilidades = _valor_ponderado(rows, ajustes)
 
-    return PursuitMetrics(
-        organization_id=resolved_id,
-        period_from=period_from,
-        period_to=period_to,
-        pursuits_identified=len(rows),
-        pursuits_submitted=sum(1 for row in rows if row.get("submitted_at") is not None),
-        pursuits_won=won,
-        pursuits_lost=lost,
-        win_rate=(won / resolved) if resolved else None,
-        awarded_amount_eur=sum(
-            float(row["awarded_amount_eur"] or 0) for row in rows if row["outcome"] == "won"
-        ),
-        median_decision_time_hours=median(decision_hours) if decision_hours else None,
-        radar_quality=calcular_radar_quality(
-            rows,
+        return PursuitMetrics(
+            organization_id=resolved_id,
             period_from=period_from,
             period_to=period_to,
-        ),
-        perdidas_por_motivo=_perdidas_por_motivo(rows),
-        perdidas_n_minimo=MINIMO_PERDIDAS_POR_MOTIVO,
-        pipeline_value_eur=valor,
-        probabilidades_etapa_usadas=probabilidades,
-        prevision_trimestral=prevision,
-        pipeline_sin_importe=sin_importe,
-    )
+            pursuits_identified=len(rows),
+            pursuits_submitted=sum(1 for row in rows if row.get("submitted_at") is not None),
+            pursuits_won=won,
+            pursuits_lost=lost,
+            win_rate=(won / resolved) if resolved else None,
+            awarded_amount_eur=sum(
+                float(row["awarded_amount_eur"] or 0) for row in rows if row["outcome"] == "won"
+            ),
+            median_decision_time_hours=median(decision_hours) if decision_hours else None,
+            radar_quality=calcular_radar_quality(
+                rows,
+                period_from=period_from,
+                period_to=period_to,
+            ),
+            perdidas_por_motivo=_perdidas_por_motivo(rows),
+            perdidas_n_minimo=MINIMO_PERDIDAS_POR_MOTIVO,
+            pipeline_value_eur=valor,
+            probabilidades_etapa_usadas=probabilidades,
+            prevision_trimestral=prevision,
+            pipeline_sin_importe=sin_importe,
+        )
 
 
 # ── Calidad del Radar: el bucle que v93 dejó abierto ────────────────────────
@@ -696,46 +697,46 @@ def get_agenda(
     solo agrupa por la banda que ya viene puesta. Las señales reutilizan el
     triaje del Radar: seguir = crear pursuit, descartar = ``radar_dismissals``.
     """
-    resolved_id, _ = resolve_organization(user_id, organization_id)
-    hoy = datetime.now(UTC).date()
+    with alcance_resuelto(user_id, organization_id) as (resolved_id, _):
+        hoy = datetime.now(UTC).date()
 
-    pursuit_rows, pursuits_truncados = _repo.agenda_rows(
-        resolved_id,
-        responsible_user_id=user_id if solo_mios else None,
-        tecnologia=tecnologia,
-        ccaa=ccaa,
-        limit=AGENDA_PURSUITS_MAX,
-    )
-    items = [_pursuit_item(row, hoy) for row in pursuit_rows]
+        pursuit_rows, pursuits_truncados = _repo.agenda_rows(
+            resolved_id,
+            responsible_user_id=user_id if solo_mios else None,
+            tecnologia=tecnologia,
+            ccaa=ccaa,
+            limit=AGENDA_PURSUITS_MAX,
+        )
+        items = [_pursuit_item(row, hoy) for row in pursuit_rows]
 
-    senal_items, senales_truncadas = _agenda_senales(
-        user_key,
-        resolved_id,
-        hoy,
-        tecnologia=tecnologia,
-        ccaa=ccaa,
-    )
-    items.extend(senal_items)
-    items.extend(
-        _agenda_renovaciones(
-            _repo.licitacion_ids(resolved_id),
+        senal_items, senales_truncadas = _agenda_senales(
+            user_key,
+            resolved_id,
             hoy,
             tecnologia=tecnologia,
             ccaa=ccaa,
         )
-    )
+        items.extend(senal_items)
+        items.extend(
+            _agenda_renovaciones(
+                _repo.licitacion_ids(resolved_id),
+                hoy,
+                tecnologia=tecnologia,
+                ccaa=ccaa,
+            )
+        )
 
-    items.sort(key=_agenda_orden)
-    return PipelineAgendaResponse(
-        organization_id=resolved_id,
-        solo_mios=solo_mios,
-        items=items,
-        kpis=_agenda_kpis(items),
-        pursuits_total=len(pursuit_rows),
-        pursuits_truncados=pursuits_truncados,
-        senales_truncadas=senales_truncadas,
-        renovaciones_horizonte_meses=AGENDA_RENOVACIONES_MESES,
-    )
+        items.sort(key=_agenda_orden)
+        return PipelineAgendaResponse(
+            organization_id=resolved_id,
+            solo_mios=solo_mios,
+            items=items,
+            kpis=_agenda_kpis(items),
+            pursuits_total=len(pursuit_rows),
+            pursuits_truncados=pursuits_truncados,
+            senales_truncadas=senales_truncadas,
+            renovaciones_horizonte_meses=AGENDA_RENOVACIONES_MESES,
+        )
 
 
 def _normalize_and_validate_update(
@@ -1310,36 +1311,36 @@ def get_weights_proposal(
     organization_id: int | None = None,
 ) -> PesosPropuestos:
     """Propuesta de ajuste de pesos a partir de los cierres de la organización."""
-    resolved_id, _ = resolve_organization(user_id, organization_id)
-    pesos_actuales, origen = _pesos_vigentes(user_key, resolved_id)
-    ganadas, perdidas = _desgloses_cerrados(resolved_id)
-    n_cierres = len(ganadas) + len(perdidas)
-    if n_cierres < PESOS_MINIMO_CIERRES:
+    with alcance_resuelto(user_id, organization_id) as (resolved_id, _):
+        pesos_actuales, origen = _pesos_vigentes(user_key, resolved_id)
+        ganadas, perdidas = _desgloses_cerrados(resolved_id)
+        n_cierres = len(ganadas) + len(perdidas)
+        if n_cierres < PESOS_MINIMO_CIERRES:
+            return PesosPropuestos(
+                organization_id=resolved_id,
+                estado="insuficiente",
+                minimo_cierres=PESOS_MINIMO_CIERRES,
+                n_ganadas=len(ganadas),
+                n_perdidas=len(perdidas),
+                n_cierres=n_cierres,
+                origen_pesos_actuales=origen,
+                pesos_actuales=pesos_actuales,
+                pesos_propuestos=None,
+                dimensiones=[],
+            )
+        propuestos, evidencia = proponer_pesos(pesos_actuales, ganadas, perdidas)
         return PesosPropuestos(
             organization_id=resolved_id,
-            estado="insuficiente",
+            estado="propuesta",
             minimo_cierres=PESOS_MINIMO_CIERRES,
             n_ganadas=len(ganadas),
             n_perdidas=len(perdidas),
             n_cierres=n_cierres,
             origen_pesos_actuales=origen,
             pesos_actuales=pesos_actuales,
-            pesos_propuestos=None,
-            dimensiones=[],
+            pesos_propuestos=propuestos,
+            dimensiones=evidencia,
         )
-    propuestos, evidencia = proponer_pesos(pesos_actuales, ganadas, perdidas)
-    return PesosPropuestos(
-        organization_id=resolved_id,
-        estado="propuesta",
-        minimo_cierres=PESOS_MINIMO_CIERRES,
-        n_ganadas=len(ganadas),
-        n_perdidas=len(perdidas),
-        n_cierres=n_cierres,
-        origen_pesos_actuales=origen,
-        pesos_actuales=pesos_actuales,
-        pesos_propuestos=propuestos,
-        dimensiones=evidencia,
-    )
 
 
 def apply_weights_proposal(
@@ -1359,64 +1360,66 @@ def apply_weights_proposal(
     from db.repositories.user_profiles import get_own_user_profile, upsert_user_profile
     from shared.cache import invalidate_organization_scoped, invalidate_user_scoped
 
-    resolved_id, _ = resolve_organization(user_id, organization_id, write=True)
-    propuesta = get_weights_proposal(user_id, user_key=user_key, organization_id=resolved_id)
-    if propuesta.estado != "propuesta" or propuesta.pesos_propuestos is None:
-        raise PursuitValidationError(
-            "Todavía no hay propuesta que aplicar: hacen falta "
-            f"{PESOS_MINIMO_CIERRES} oportunidades cerradas con desglose y hay "
-            f"{propuesta.n_cierres}."
-        )
-    pesos = propuesta.pesos_propuestos
-    # La propuesta se construye para cumplir la invariante, pero quien escribe
-    # el perfil es este llamador: si un cambio futuro la rompiera, el perfil
-    # quedaría con pesos que el Radar no sabe usar y nadie se enteraría hasta
-    # ver el corpus entero en banda Descarte.
-    validate_scoring_weights(pesos)
+    with alcance_resuelto(user_id, organization_id, write=True) as (resolved_id, _):
+        propuesta = get_weights_proposal(user_id, user_key=user_key, organization_id=resolved_id)
+        if propuesta.estado != "propuesta" or propuesta.pesos_propuestos is None:
+            raise PursuitValidationError(
+                "Todavía no hay propuesta que aplicar: hacen falta "
+                f"{PESOS_MINIMO_CIERRES} oportunidades cerradas con desglose y hay "
+                f"{propuesta.n_cierres}."
+            )
+        pesos = propuesta.pesos_propuestos
+        # La propuesta se construye para cumplir la invariante, pero quien escribe
+        # el perfil es este llamador: si un cambio futuro la rompiera, el perfil
+        # quedaría con pesos que el Radar no sabe usar y nadie se enteraría hasta
+        # ver el corpus entero en banda Descarte.
+        validate_scoring_weights(pesos)
 
-    previo = get_own_user_profile(user_key)
-    visibility: Literal["private", "organization"] = (
-        "private" if str((previo or {}).get("visibility") or "") == "private" else "organization"
-    )
-    # El upsert reemplaza el perfil entero (ver su docstring), así que el resto
-    # de los campos se reenvían tal cual: aplicar los pesos no puede borrar de
-    # paso las keywords de afinidad ni los CPV de quien lo aplica.
-    upsert_user_profile(
-        user_key,
-        {
-            "weights": pesos,
-            "afinidad_keywords": (previo or {}).get("afinidad_keywords"),
-            "cpvs": (previo or {}).get("cpvs"),
-            "importe_min": (previo or {}).get("importe_min"),
-            "importe_max": (previo or {}).get("importe_max"),
-        },
-        resolved_id,
-        visibility,
-    )
-    # El ranking cacheado se calculó con los pesos viejos, en el scope propio y
-    # en el de la organización que tuviera antes el perfil.
-    invalidate_user_scoped("analytics", "scoring", user_key)
-    anterior = (previo or {}).get("organization_id")
-    for afectada in {resolved_id, int(anterior) if anterior is not None else None}:
-        if afectada is not None:
-            invalidate_organization_scoped("analytics", "scoring", afectada)
-    log_event(
-        event_type=PURSUIT_WEIGHTS_PROPOSAL_APPLIED,
-        user_key=user_key,
-        resource=f"organization:{resolved_id}",
-        detail={
-            "pesos_anteriores": propuesta.pesos_actuales,
-            "pesos_aplicados": pesos,
-            "n_ganadas": propuesta.n_ganadas,
-            "n_perdidas": propuesta.n_perdidas,
-        },
-    )
-    return PesosPropuestosAplicados(
-        organization_id=resolved_id,
-        pesos=pesos,
-        visibility=visibility,
-        n_cierres=propuesta.n_cierres,
-    )
+        previo = get_own_user_profile(user_key)
+        visibility: Literal["private", "organization"] = (
+            "private"
+            if str((previo or {}).get("visibility") or "") == "private"
+            else "organization"
+        )
+        # El upsert reemplaza el perfil entero (ver su docstring), así que el resto
+        # de los campos se reenvían tal cual: aplicar los pesos no puede borrar de
+        # paso las keywords de afinidad ni los CPV de quien lo aplica.
+        upsert_user_profile(
+            user_key,
+            {
+                "weights": pesos,
+                "afinidad_keywords": (previo or {}).get("afinidad_keywords"),
+                "cpvs": (previo or {}).get("cpvs"),
+                "importe_min": (previo or {}).get("importe_min"),
+                "importe_max": (previo or {}).get("importe_max"),
+            },
+            resolved_id,
+            visibility,
+        )
+        # El ranking cacheado se calculó con los pesos viejos, en el scope propio y
+        # en el de la organización que tuviera antes el perfil.
+        invalidate_user_scoped("analytics", "scoring", user_key)
+        anterior = (previo or {}).get("organization_id")
+        for afectada in {resolved_id, int(anterior) if anterior is not None else None}:
+            if afectada is not None:
+                invalidate_organization_scoped("analytics", "scoring", afectada)
+        log_event(
+            event_type=PURSUIT_WEIGHTS_PROPOSAL_APPLIED,
+            user_key=user_key,
+            resource=f"organization:{resolved_id}",
+            detail={
+                "pesos_anteriores": propuesta.pesos_actuales,
+                "pesos_aplicados": pesos,
+                "n_ganadas": propuesta.n_ganadas,
+                "n_perdidas": propuesta.n_perdidas,
+            },
+        )
+        return PesosPropuestosAplicados(
+            organization_id=resolved_id,
+            pesos=pesos,
+            visibility=visibility,
+            n_cierres=propuesta.n_cierres,
+        )
 
 
 def ficha_pdf(user_id: int, pursuit_id: int, *, organization_id: int | None = None) -> bytes:
@@ -1578,18 +1581,18 @@ def marcar_kit_de_pursuit(
     modificación del trabajo del equipo, y un `viewer` no debe poder decir que
     la garantía está lista.
     """
-    resolved_id, _ = resolve_organization(user_id, organization_id, write=True)
-    detalle = get_pursuit(user_id, pursuit_id, organization_id=resolved_id)
-    marcar_item(
-        organization_id=resolved_id,
-        pursuit_id=pursuit_id,
-        actor_user_id=user_id,
-        clave=clave,
-        listo=listo,
-    )
-    return construir_kit(
-        detalle.licitacion_id,
-        _documentos_del_pliego(detalle.licitacion_id),
-        organization_id=resolved_id,
-        pursuit_id=pursuit_id,
-    )
+    with alcance_resuelto(user_id, organization_id, write=True) as (resolved_id, _):
+        detalle = get_pursuit(user_id, pursuit_id, organization_id=resolved_id)
+        marcar_item(
+            organization_id=resolved_id,
+            pursuit_id=pursuit_id,
+            actor_user_id=user_id,
+            clave=clave,
+            listo=listo,
+        )
+        return construir_kit(
+            detalle.licitacion_id,
+            _documentos_del_pliego(detalle.licitacion_id),
+            organization_id=resolved_id,
+            pursuit_id=pursuit_id,
+        )

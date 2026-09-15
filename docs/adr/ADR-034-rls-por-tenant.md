@@ -53,11 +53,12 @@ base. No sustituye al filtro, y no autoriza a quitarlo.
 ### B. El ámbito viaja en un `ContextVar` y se aplica con `SET LOCAL`
 
 `shared/tenant_context.py` guarda la organización activa en un
-`contextvars.ContextVar`. Lo fija
-`services/organizations.py::resolve_organization` —resolver una organización y
-quedar acotado a ella son la misma operación, no dos—; `anyio` copia el
-contexto al hilo del pool (`api.concurrency.run_db`), y `db/connection.py` lo
-lee al abrir cada transacción:
+`contextvars.ContextVar`. Lo abren dos piezas, siempre **con final**:
+`api/tenancy.py::resolve_organization_ctx` para las rutas que pasan por ahí, y
+`services/organizations.py::alcance_resuelto` —un context manager que resuelve
+y acota el bloque— para las verticales que resuelven desde `services/`. `anyio`
+copia el contexto al hilo del pool (`api.concurrency.run_db`), y
+`db/connection.py` lo lee al abrir cada transacción:
 
 - `connect()` emite `SET LOCAL app.organization_id = '<id>'` como primera
   sentencia; psycopg ya abre la transacción implícita, y el `SET LOCAL` muere
@@ -140,16 +141,21 @@ esos tests lo dirían.
   —que resuelve desde `services/pursuits.py`— corría **sin** respaldo. Como el
   predicado de `v128` deja pasar todo cuando el GUC está vacío, aquello no
   rompía nada: apagaba la RLS en silencio, en las tablas de oportunidades,
-  comentarios, tareas y adjuntos. Un guardarraíl que se desactiva solo cuando
-  alguien olvida una línea no es un guardarraíl, así que el ámbito se armó
-  dentro de `resolve_organization`, que es por donde pasan las dos vías.
+  comentarios, tareas y adjuntos.
 
-  Funciona desde dentro de `run_db` porque `to_thread.run_sync` copia el
-  contexto para el hilo: lo fijado allí lo ven las consultas que vienen
-  después en esa misma llamada y muere al volver, sin filtrarse a la petición
-  ni al siguiente uso del hilo (`tests/test_tenant_context.py`).
-  `api/tenancy.py` lo sigue fijando además al volver del hilo, y hace falta:
-  sus rutas resuelven en un `run_db` y consultan en otro.
+  El primer arreglo fue fijar el ámbito dentro de `resolve_organization`, para
+  que fuera imposible resolver sin quedar acotado. Estaba mal y la suite lo
+  dijo: un `set_organization` **no tiene final**. Dentro de `run_db` muere con
+  la copia del contexto del hilo, pero llamado desde código síncrono —un
+  script, un job, la propia suite— deja el ámbito clavado para todo lo que
+  venga después en ese hilo, incluido trabajo de otra organización o de
+  ninguna. Un ámbito sin final no es un ámbito; es una fuga con otro nombre.
+
+  Lo que hay ahora es `alcance_resuelto`, un context manager que resuelve,
+  acota el bloque y lo suelta al salir, también si el cuerpo lanza. Lo usan las
+  ~28 entradas de la vertical de pursuits (oportunidades, comentarios, tareas,
+  adjuntos, go/no-go). El ámbito se abre **después** de validar la membresía:
+  si se abriera antes, un 403 dejaría el bloque mirando datos de otro equipo.
 
   Queda un límite conocido: un `conn.commit()` a mitad de bloque cierra la
   transacción y con ella el ámbito (hoy solo lo hace
