@@ -110,21 +110,34 @@ no siempre los mismos:
 
 | Test | Síntoma |
 |---|---|
-| `test_webhooks_rotate_secret.py` (dos o tres, rotando) | 401 en una petición cuya sustitución de `require_any_auth` el test acaba de instalar |
+| `test_webhooks_rotate_secret.py` (dos, rotando cuáles) | 401 en una petición cuya sustitución de `require_any_auth` el test acaba de instalar |
 | `test_ops_events.py::test_healthcheck_ops_events_tabla_ausente` | `ops_events_missing` no llega a `True` tras borrar la tabla |
 
-Qué está establecido: los tres pasan en solitario, pasan con `-p no:randomly`,
-y pasan en una tirada en paralelo acotada a sus vecinos más probables
-(los ficheros que también vacían `app.dependency_overrides`). En tres tiradas
-completas fallaron tests **distintos** del mismo fichero cada vez, que es la
-firma de contaminación entre tests, no de una regresión.
+**Estado a 2026-09-15.** El de `ops_events` lleva cinco tiradas completas sin
+aparecer; se deja en la tabla hasta acumular alguna más, porque «no lo he
+vuelto a ver» no es «lo arreglé». Los de webhooks siguen: dos por tirada, no
+siempre los mismos dos.
 
-Qué se ha hecho: `_sin_ssrf` deja de vaciar `app.dependency_overrides` entero
+Qué está establecido y qué se ha descartado:
+
+- Pasan en solitario (13/13), pasan con `-p no:randomly`, y pasan con `-n 4`
+  sobre los 23 ficheros que tocan `app.dependency_overrides` (288/288). O sea
+  que el vecino que contamina no está en ese conjunto.
+- El 401 lo emite `require_any_auth` **ejecutándose**, no un middleware: el
+  cuerpo es su `detail` literal. Así que en ese instante la sustitución no
+  estaba en `app.dependency_overrides`, aunque el test la instale en la línea
+  anterior.
+- Ningún test recarga `api.routes.dual_auth` ni `api.app` (los únicos
+  `importlib.reload` de la suite son `db.users` y `scheduler.watchlist_alerts`),
+  así que la hipótesis de «dos objetos `require_any_auth` distintos» queda
+  descartada.
+
+Qué se ha hecho: `_sin_ssrf` dejó de vaciar `app.dependency_overrides` entero
 —vaciaba un diccionario global compartido con otros veintiún ficheros— y la
-aserción de `_crear` ahora dice qué mirar cuando falla. Con eso el fichero deja
-de ser una **fuente** de contaminación; que siga siendo **víctima** de alguna
-otra no se ha logrado reproducir, y por tanto no se ha arreglado. Queda como
-ítem abierto, no como algo cerrado en silencio.
+aserción de `_crear` dice qué mirar cuando falla. Con eso el fichero deja de
+ser una **fuente** de contaminación; que siga siendo **víctima** de alguna otra
+no se ha logrado reproducir, y por tanto no se ha arreglado. Queda como ítem
+abierto, no como algo cerrado en silencio.
 
 ## 5. Estado de ejecución
 
