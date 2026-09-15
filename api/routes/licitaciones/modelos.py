@@ -1,14 +1,22 @@
-"""Modelos de respuesta que **comparte más de una familia**.
+"""Lo que **comparte más de una familia** del router de licitaciones. Nada más.
 
-``LicitacionSummary`` la devuelven el listado, la búsqueda y el bulk-get;
-``LicitacionDetail`` y ``LoteOut``, la ficha; ``AdjudicacionSummary``, tanto
-``/adjudicaciones`` como el detalle; ``DocumentoSummary``, la familia de
-documentos. Los modelos de una sola familia se quedan en su módulo: bajarlos
-aquí convertiría este fichero en el cajón de sastre que el paquete evita.
+``LicitacionSummary`` es lo que devuelven el listado, la búsqueda y el
+bulk-get; ``LicitacionDetail`` la extiende y la sirve la ficha. Viven juntas
+porque una hereda de la otra: separar una clase de su base entre dos módulos
+por seguir una regla sale peor que la regla. ``LoteOut`` las acompaña por lo
+mismo — sólo lo construye la ficha, pero es el tipo de un campo de
+``LicitacionDetail`` —.
 
-Tres de estos tienen homónimos en ``shared/dto.py`` con tipos distintos, y hay
-un ratchet que lo vigila (``tests/test_shared_dto.py``). No es descuido: los de
-allí son el contrato de la superficie pública y los de aquí el de la interna.
+Lo que **no** está aquí: ``AdjudicacionSummary`` vive en ``adjudicaciones`` y
+``DocumentoSummary`` en ``documentos``, cada uno con su única familia. Un
+módulo de «modelos» al que todo el mundo añade es el fichero de 1.600 líneas
+con otro nombre, y el paquete existe justamente para no tenerlo.
+
+Estos modelos tuvieron homónimos en ``shared/dto.py`` con tipos distintos, y
+de ahí vienen los ratchets de ``tests/test_shared_dto.py`` y
+``tests/test_contract_dto.py`` (ambos vacíos hoy): los de allí son el contrato
+de la superficie pública y los de aquí el de la interna, y dos clases con el
+mismo nombre y campos distintos hacen que nadie sepa cuál está leyendo.
 """
 
 from __future__ import annotations
@@ -33,6 +41,22 @@ class LicitacionSummary(BaseModel):
     ml_tecnologias: str | None = None
     ml_proba_max: float | None = None
     ml_tech_principal: str | None = None
+
+
+class LoteOut(BaseModel):
+    """Un lote del expediente (C1.4).
+
+    `GET /licitaciones/{id}` devolvía el expediente sin sus lotes, así que un
+    multi-lote se presentaba como uno solo con el presupuesto total —la misma
+    confusión que `EFFECTIVE_BUDGET_SQL` resolvió del lado del cálculo, sin
+    resolver del lado de lo que el usuario ve.
+    """
+
+    numero: str
+    titulo: str | None = None
+    cpv: str | None = None
+    importe: float | None = None
+    fecha_limite: str | None = None
 
 
 class LicitacionDetail(LicitacionSummary):
@@ -67,47 +91,3 @@ class LicitacionDetail(LicitacionSummary):
     # C1.4 — los lotes del expediente. Lista vacía = lote único implícito,
     # que es el caso mayoritario; no significa «no medido».
     lotes: list[LoteOut] = Field(default_factory=list)
-
-
-class LoteOut(BaseModel):
-    """Un lote del expediente (C1.4).
-
-    `GET /licitaciones/{id}` devolvía el expediente sin sus lotes, así que un
-    multi-lote se presentaba como uno solo con el presupuesto total —la misma
-    confusión que `EFFECTIVE_BUDGET_SQL` resolvió del lado del cálculo, sin
-    resolver del lado de lo que el usuario ve.
-    """
-
-    numero: str
-    titulo: str | None = None
-    cpv: str | None = None
-    importe: float | None = None
-    fecha_limite: str | None = None
-
-
-class AdjudicacionSummary(BaseModel):
-    id: int
-    licitacion_id: str
-    nombre: str
-    nif: str | None = None
-    importe_adjudicado: float | None = None
-    fecha_adjudicacion: str | None = None
-    ccaa: str | None = None
-    es_pyme: int | None = None
-    n_ofertas_recibidas: int | None = None
-
-
-class DocumentoSummary(BaseModel):
-    id: int
-    tipo: str
-    uri: str
-    filename: str | None = None
-    content_type: str | None = None
-    size_bytes: int | None = None
-    status: str
-    created_at: str | None = None
-
-
-# `PaginatedResponse` y `CursorPaginatedResponse` viven en `shared/dto.py`
-# (contrato de paginación común del API). Se importan arriba: la forma que
-# estas rutas ya usaban es la que ahora comparten las demás.

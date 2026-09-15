@@ -57,6 +57,7 @@ from api.routes.licitaciones._base import (
     _get_classifier,
     _make_etag,
 )
+from api.routes.licitaciones.adjudicaciones import AdjudicacionSummary
 from api.routes.licitaciones.analitica import (
     ExplainFeature,
     ExplainPayload,
@@ -68,6 +69,7 @@ from api.routes.licitaciones.analitica import (
 )
 from api.routes.licitaciones.documentos import (
     DocumentosResult,
+    DocumentoSummary,
     ReporteDatoBody,
     ReporteDatoResult,
 )
@@ -84,8 +86,6 @@ from api.routes.licitaciones.listado import (
     SearchRequest,
 )
 from api.routes.licitaciones.modelos import (
-    AdjudicacionSummary,
-    DocumentoSummary,
     LicitacionDetail,
     LicitacionSummary,
     LoteOut,

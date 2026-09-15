@@ -14,15 +14,13 @@ from fastapi import (
     Depends,
     Query,
 )
+from pydantic import BaseModel
 
 from api.concurrency import run_db
 from api.routes.dual_auth import require_any_auth
 from api.routes.licitaciones._base import (
     _adj_repo,
     _validate_date,
-)
-from api.routes.licitaciones.modelos import (
-    AdjudicacionSummary,
 )
 from observability.logging import get_logger
 from shared.dto import (
@@ -36,6 +34,18 @@ router = APIRouter(tags=["licitaciones"])
 
 
 # ── /adjudicaciones ───────────────────────────────────────────────────────
+
+
+class AdjudicacionSummary(BaseModel):
+    id: int
+    licitacion_id: str
+    nombre: str
+    nif: str | None = None
+    importe_adjudicado: float | None = None
+    fecha_adjudicacion: str | None = None
+    ccaa: str | None = None
+    es_pyme: int | None = None
+    n_ofertas_recibidas: int | None = None
 
 
 @router.get(

@@ -23,9 +23,6 @@ from api.routes.dual_auth import require_any_auth
 from api.routes.licitaciones._base import (
     _doc_repo,
 )
-from api.routes.licitaciones.modelos import (
-    DocumentoSummary,
-)
 from observability.logging import get_logger
 from services.rag.paginas import PaginaDocumento, get_pagina
 from services.reportes_dato import COLA_POR_TIPO, TipoReporte, registrar_reporte
@@ -39,6 +36,22 @@ router = APIRouter(tags=["licitaciones"])
 
 
 # ── /licitaciones/{id_externo}/documentos ─────────────────────────────────
+
+
+class DocumentoSummary(BaseModel):
+    id: int
+    tipo: str
+    uri: str
+    filename: str | None = None
+    content_type: str | None = None
+    size_bytes: int | None = None
+    status: str
+    created_at: str | None = None
+
+
+# `PaginatedResponse` y `CursorPaginatedResponse` viven en `shared/dto.py`
+# (contrato de paginación común del API). Se importan arriba: la forma que
+# estas rutas ya usaban es la que ahora comparten las demás.
 
 
 class DocumentosResult(BaseModel):

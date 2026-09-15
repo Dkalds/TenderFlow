@@ -1,8 +1,9 @@
 """Familia **ficha**: el expediente como objeto.
 
-El detalle, sus parecidos y la comparación entre varios. El detalle vive en
-``router_detalle`` y no en ``router``: ver el comentario de ese router en
-``_base.py``.
+El detalle, sus parecidos y la comparación entre varios. El detalle no cuelga
+de ``router`` sino de ``router_detalle``, declarado unas líneas más abajo con
+el motivo al lado: su ruta es glotona y tiene que registrarse la última de
+todas.
 """
 
 from __future__ import annotations
@@ -49,6 +50,7 @@ from shared.tender_facts import TenderFactSheet
 log = get_logger(__name__)
 
 router = APIRouter(tags=["licitaciones"])
+
 
 #: Router aparte **sólo** para `GET /licitaciones/{id_externo:path}`.
 #:
