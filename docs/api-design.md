@@ -6,6 +6,28 @@ más abajo) — es un URI opaco, no una URL real, y no se ha renombrado porque
 requeriría coordinar a los consumidores de la API (ver
 [ADR-015](adr/ADR-015-identidad-tenderflow.md)).
 
+## Qué parte de esta API es un contrato
+
+`api/openapi.json` lleva las más de doscientas operaciones que la aplicación
+expone, y la mayoría son internas: alimentan una pestaña de la consola, la
+administración o el registro de modelos. Enseñarle ese fichero entero a un
+integrador tiene dos efectos, los dos malos: cada endpoint se convierte en una
+promesa que no se puede romper, y el cliente no sabe cuál usar.
+
+La lista de lo que **sí** es contrato, con el motivo de cada línea, está en
+[`api/superficie_publica.py`](../api/superficie_publica.py). Con ella,
+`make openapi` produce dos ficheros:
+
+| Fichero | Qué lleva | Para quién |
+|---|---|---|
+| `api/openapi.json` | todo, con `x-public: true` en las operaciones con contrato | el codegen del frontend, y quien necesite ver la superficie completa |
+| `api/openapi-public.json` | sólo esas operaciones y los esquemas que alcanzan | **el que se publica** a integradores |
+
+Añadir una operación al contrato es una línea. **Quitarla no**: retirar algo de
+ahí rompe a quien lo use, y va por RFC con fecha —
+`tests/test_superficie_publica.py` falla en las dos direcciones para que el
+cambio sea visible en el diff y no un descuido.
+
 ## Base URL
 
 ```

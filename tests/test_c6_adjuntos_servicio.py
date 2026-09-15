@@ -7,7 +7,8 @@ dos simulados, porque lo que deciden es un orden y qué hacen cuando algo falla:
 
 - el binario se escribe **antes** que la fila, y si la fila no se puede crear
   —el pursuit no era de esa organización— el objeto recién escrito se borra;
-- al borrar, el orden es el contrario: primero la fila;
+- al borrar **no** hay orden que fijar desde v131: la fila se marca y el
+  binario se conserva, porque borrarlo haría irreversible el borrado lógico;
 - sin bucket la subida se rechaza en vez de prometer una descarga imposible;
 - una fila cuyo binario ya no está en el almacén no devuelve bytes vacíos.
 
@@ -71,13 +72,25 @@ class _RepoFalso:
         return fila
 
     def get(self, attachment_id: int, *, organization_id: int) -> dict[str, Any] | None:
-        return self.filas.get(attachment_id)
+        fila = self.filas.get(attachment_id)
+        return None if fila is None or fila.get("deleted_at") else fila
 
     def delete(self, attachment_id: int, *, organization_id: int) -> str | None:
-        fila = self.filas.pop(attachment_id, None)
-        return None if fila is None else str(fila["blob_key"])
+        """Borrado **lógico** desde v131: marca, no saca la fila del diccionario.
+
+        El doble replica lo que hace el repositorio de verdad, o el test diría
+        que el objeto quedó huérfano cuando en realidad su fila sigue ahí
+        apuntándolo — que es la diferencia entera entre las dos versiones.
+        """
+        fila = self.filas.get(attachment_id)
+        if fila is None or fila.get("deleted_at") is not None:
+            return None
+        fila["deleted_at"] = "2026-09-15T00:00:00+00:00"
+        return str(fila["blob_key"])
 
     def keys_de_organizacion(self, organization_id: int) -> list[str]:
+        # Incluye las borradas a propósito: su objeto sigue en el almacén y la
+        # purga de la organización tiene que llevárselo igual.
         return [str(f["blob_key"]) for f in self.filas.values()]
 
 
@@ -187,15 +200,25 @@ class TestDescargarYBorrar:
             almacen.objetos.clear()  # el objeto desapareció del bucket
             assert mod.descargar(1, 1) is None
 
-    def test_borrar_va_primero_a_la_fila_y_despues_al_binario(self) -> None:
+    def test_borrar_marca_la_fila_y_conserva_el_binario(self) -> None:
+        """v131: borrado lógico, y el objeto del almacén **se queda**.
+
+        Antes esto fijaba «primero la fila, después el binario». El orden ya no
+        existe porque el segundo paso tampoco: borrar el objeto haría
+        irreversible lo que la marca hace reversible, y restaurar la fila daría
+        una descarga rota.
+        """
         import services.pursuit_attachments as mod
 
         almacen, repo = _AlmacenFalso(), _RepoFalso()
         with (a := _entorno(mod, almacen, repo))[0], a[1], a[2], a[3]:
             mod.subir(1, 42, filename="p.pdf", content_type="application/pdf", data=PDF)
             assert mod.borrar(1, 1) is True
-            assert repo.filas == {}
-            assert almacen.objetos == {}
+            # Fuera de las lecturas...
+            assert repo.get(1, organization_id=1) is None
+            # ...pero el binario sigue, y la fila que lo apunta también.
+            assert almacen.objetos != {}
+            assert almacen.borrados == []
 
     def test_borrar_lo_que_no_es_tuyo_devuelve_false(self) -> None:
         import services.pursuit_attachments as mod

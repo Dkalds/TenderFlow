@@ -40,6 +40,8 @@ porque el filtro compila con límites de palabra (véase
 
 from __future__ import annotations
 
+import re
+from collections.abc import Iterable
 from typing import Literal
 
 # Palabras clave para filtrar licitaciones SAP
@@ -1231,3 +1233,39 @@ if not (set(TECH_CATEGORIAS) == set(TECH_LABELS) == set(TECH_LABEL_TIPO)):
     raise ValueError(
         "TECHNOLOGY_KEYWORDS, TECH_CATEGORIAS y TECH_LABEL_TIPO deben declarar los mismos labels"
     )
+
+
+# ── Límites de palabra para keywords que no empiezan (o acaban) en letra ────
+#
+# El patrón de siempre era ``\b(kw1|kw2|...)\b``, y con él **`.net` no puede
+# casar nunca**: `\b` antes de un punto exige un carácter de palabra pegado, así
+# que `\b\.net` sólo casa dentro de otra palabra (`asp.net`) y jamás en
+# «plataforma .NET», que es como aparece en los pliegos. La keyword estaba en el
+# diccionario desde su primera versión y no clasificaba nada; sólo se vio al
+# escribir el test que compila cada término.
+#
+# Lo mismo le pasaría, del otro lado, a `c++` o a `c#`: `\b` después de `+` o
+# `#` no casa detrás de un espacio.
+#
+# La regla es la misma de antes donde antes servía —letra pegada a letra— y se
+# relaja sólo en el extremo donde el término no empieza ni acaba en carácter de
+# palabra. El punto se excluye a la izquierda a propósito: así `.net` sigue sin
+# casar dentro de `asp.net`, que es un producto distinto con su propia entrada.
+
+
+def con_limites(keyword: str) -> str:
+    """Fragmento de regex para ``keyword`` con el límite correcto a cada lado."""
+    escapada = re.escape(keyword)
+    izquierda = r"\b" if keyword[:1].isalnum() or keyword[:1] == "_" else r"(?<![\w.])"
+    derecha = r"\b" if keyword[-1:].isalnum() or keyword[-1:] == "_" else r"(?!\w)"
+    return f"{izquierda}{escapada}{derecha}"
+
+
+def patron_de_keywords(keywords: Iterable[str], *, flags: int = re.IGNORECASE) -> re.Pattern[str]:
+    """Regex que casa cualquiera de ``keywords``, cada una con sus límites.
+
+    Fuente única del criterio: `services/tecnologias_diccionario.patrones`,
+    `scraper/filters` y los tests compilan por aquí, de modo que arreglar un
+    caso como `.net` lo arregla en los tres a la vez.
+    """
+    return re.compile("|".join(con_limites(k) for k in keywords if k), flags=flags)

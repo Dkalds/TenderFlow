@@ -90,6 +90,21 @@ Dos particularidades:
 - **Sin duplicados entre labels.** Una keyword pertenece a un único label; el
   test `tests/test_taxonomia_tecnologica.py` fija el conjunto de excepciones
   intencionales (hoy vacío).
+- **Los términos que no empiezan (o no acaban) en letra llevan otro límite.**
+  El patrón de siempre era `\b(kw1|kw2|…)\b`, y con él **`.net` no podía casar
+  nunca**: `\b` antes de un punto exige un carácter de palabra pegado, así que
+  sólo casaba dentro de otra palabra (`asp.net`) y jamás en «plataforma .NET»,
+  que es como aparece en los pliegos. La keyword estaba en el diccionario desde
+  su primera versión sin clasificar nada, y sólo se vio al escribir el test que
+  compila cada término contra sí mismo (2026-09-15).
+
+  Desde entonces el patrón lo construye `config.keywords.patron_de_keywords`,
+  que pone `\b` donde el término empieza o acaba en carácter de palabra y una
+  aserción negativa donde no. Lo usan el diccionario vigente
+  (`services.tecnologias_diccionario.patrones`), el filtro del scraper y el
+  test, para que arreglar un caso lo arregle en los tres. El punto se excluye a
+  la izquierda a propósito: `.net` sigue sin casar dentro de `asp.net`, que es
+  un producto distinto con su propia entrada.
 - **Fuera lo que no es TI** aunque lo parezca: «teleasistencia» (servicio
   social), «gestión documental» a secas (custodia física), «página web» a secas
   (aparece en descripciones como «consultar en la página web»).

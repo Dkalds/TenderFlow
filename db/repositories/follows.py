@@ -33,6 +33,7 @@ impide que quien registre mañana el correo que tú usabas herede lo que seguía
 from __future__ import annotations
 
 import json
+from datetime import datetime
 from typing import Any, Literal
 
 from db.database import connect, connect_read
@@ -66,7 +67,10 @@ def _fila(row: dict[str, Any]) -> dict[str, Any]:
     salida = dict(row)
     for campo in ("created_at", "hasta"):
         valor = salida.get(campo)
-        salida[campo] = valor.isoformat() if hasattr(valor, "isoformat") else valor
+        # `TIMESTAMPTZ` vuelve como `datetime`; el DTO lo quiere en ISO. El
+        # `isinstance` y no un `hasattr` porque mypy no estrecha con lo segundo.
+        if isinstance(valor, datetime):
+            salida[campo] = valor.isoformat()
     crudo = salida.pop("channels_json", None)
     try:
         salida["channels"] = json.loads(crudo) if crudo else None

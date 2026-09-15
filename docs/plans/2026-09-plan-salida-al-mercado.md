@@ -36,23 +36,30 @@ verificar desde el repositorio se dice.
 | Stream | Bloqueo | Qué entrega | Estado |
 |---|---|---|---|
 | S-RLS | V | `shared/tenant_context.py`, `SET LOCAL app.organization_id` en `db/connection.py`, políticas por tenant con `FORCE` (v128), tests de aislamiento, ADR-034 | **hecho** |
-| S-UID | V | `user_id` en las tablas que aún dependían de `user_key`, backfill por email, lectura y escritura dual (v129), test de cambio de correo | _en curso al escribir esto; ver §5_ |
+| S-UID | V | `user_id` en las tablas que aún dependían de `user_key`, backfill por email, lectura y escritura dual (v129), test de cambio de correo | **hecho** |
 | S-SES | V | Sesiones deslizantes con techo absoluto, `remember` en el login, cookie y CSRF alineados | **hecho** |
 | S-WHK | Plataforma | Firma v2 con timestamp y ventana de replay, rotación de secreto, doc de verificación | **hecho** |
 | S-NIF | II/V | `nif_valido` / `clasificar_nif` (DNI, NIE, CIF); rechazo en NIF de organización; resolución de entidades no casa por NIF malformado; NIF vigilados inválidos se descartan | **hecho** |
 | S-ML | III | Las cuatro columnas ML sobreviven a la re-ingesta; el merge nocturno acota candidatos | **hecho** |
-| S-TAX | III | Taxonomía por categorías (ERP, CRM, cloud/infra, ciberseguridad, datos/IA, desarrollo, GIS, sanidad digital, administración electrónica) con vocabulario es/ca/eu/gl | _en curso_ |
-| S-MAIL | Plataforma | `observability/mailer.py` con backends SMTP / Resend / Postmark / consola, `List-Unsubscribe`, runbook de correo | _en curso_ |
+| S-TAX | III | Taxonomía por categorías (ERP, CRM, cloud/infra, ciberseguridad, datos/IA, desarrollo, GIS, sanidad digital, administración electrónica) con vocabulario es/ca/eu/gl | **hecho** |
+| S-MAIL | Plataforma | `observability/mailer.py` con backends SMTP / Resend / Postmark / consola, `List-Unsubscribe`, runbook de correo | **hecho** |
 | S-CRON | IV | `SCHEDULER_PLANE=worker`, ADR-033, runbook de cutover | **hecho** (código); el cutover es acción humana |
-| S-AUD | V | Catálogo de eventos de auditoría, cobertura de mutaciones de organización/auth/exports, export por organización | _en curso_ |
+| S-AUD | V | Catálogo de eventos de auditoría, cobertura de mutaciones de organización/auth/exports, export por organización | **hecho** |
 | S-COB | II | `dominios_documentos` en el inventario de fuentes, `make medir-solape`, `db/repositories/cobertura.py` | **hecho** |
 | S-ORG | II | Paso canónico `organos_resolve` (resolución incremental), cobertura y cola en `/analytics/quality` | **hecho** |
 | S-OPS | IV | Runbook de DR para Postgres, subencargados, resumen de seguridad, receptor de guardia documentado | **hecho** (docs); el receptor real es acción humana |
 
-Ola 2 (tras la integración de lo anterior): `follows` (T1, v130), informes
-programados (T6), superficie pública de la API (`x-public`), borrado lógico en
-hijas de la oportunidad (v131), componente «Seguir» único y PDF desde la UI,
-router de licitaciones por familias, vertical de pursuits bajo `api/tenancy`.
+### Ola 2
+
+| Stream | Qué entrega | Estado |
+|---|---|---|
+| S-FOLLOW | `follows` (v130) con backfill y escritura doble desde las tres tablas de origen, endpoints `/follows`, `scripts/check_follows_paridad.py` | **hecho** (fase aditiva de ADR-031 §B; la lectura no se mueve hasta que la paridad dé cero contra producción) |
+| S-SOFT | `deleted_at` en comentarios, tareas y adjuntos (v131), con el guardarraíl que exige el filtro en toda lectura | **hecho** |
+| S-PUB | `api/superficie_publica.py`, `x-public` en el spec completo y `api/openapi-public.json` filtrado | **hecho** |
+| S-UI | «Descargar PDF» en la oportunidad; control `SeguirBoton` único sobre `/follows`, estrenado en el panel de órgano | **parcial** — ver §4 |
+| S-INF | Informes programados por organización (T6) | **no hecho** — ver §4 |
+| S-ROUTER | Router de licitaciones por familias y un solo identificador | **no hecho** — ver §4 |
+| S-PURSUIT | Vertical de pursuits bajo `api/tenancy` | **no hecho** — ver §4 |
 
 ---
 
@@ -83,6 +90,27 @@ Todas están en el roadmap H0 de la revisión. Ninguna es código.
 - **SAML/SCIM, P(ganar), broker de mensajería, microservicios, inglés en la UI:** siguen fuera (§8 del plan v2 y §«Lo que no haría» de la revisión).
 - **Aligerar la imagen de la API** (sacar scikit-learn del proceso): exige partir los requirements y retirar el `/explain` síncrono por RFC; queda propuesto, no hecho.
 
+### Lo de Ola 2 que se queda fuera, y qué falta exactamente
+
+- **Migrar los tres controles «Seguir» existentes a `/follows`** (S-UI, parcial).
+  El componente único existe y se usa donde antes no había nada —seguir un
+  órgano—, pero la estrella del expediente, el botón de empresa y el descarte
+  del radar siguen leyendo de su tabla. Y tienen que seguir: ADR-031 §B pone
+  como condición que `scripts/check_follows_paridad.py` dé **cero** contra
+  producción, y eso es una ejecución humana (§3). Mover la lectura antes
+  convertiría un fallo del backfill en favoritos que desaparecen, que es
+  exactamente el riesgo que la fase aditiva existe para no correr.
+- **Informes programados por organización (T6).** No empezado. Necesita tabla
+  de programaciones, un paso en la pipeline y la plantilla del correo; el
+  mailer (S-MAIL) es su prerrequisito y ya está.
+- **Router de licitaciones por familias y un solo identificador.** No empezado.
+  Es una refactorización grande de `api/routes/licitaciones.py` sin cambio de
+  comportamiento: alto riesgo de regresión y ningún valor visible para el
+  cliente mientras el resto de la Ola 2 esté sin cerrar. Se prioriza después.
+- **Vertical de pursuits bajo `api/tenancy`.** No empezado. El respaldo que
+  motivaba parte de esto —la RLS por tenant— ya está puesto (v128), así que lo
+  que queda es la uniformidad del código, no una brecha de aislamiento.
+
 ---
 
 ## 5. Estado de ejecución
@@ -93,3 +121,4 @@ se pretendía.
 | Fecha | Qué |
 |---|---|
 | 2026-09-14 | S-RLS, S-SES, S-WHK, S-NIF, S-ML, S-COB, S-ORG y S-OPS en el árbol con pruebas verdes; S-UID, S-TAX, S-MAIL, S-CRON y S-AUD en curso. |
+| 2026-09-15 | **Ola 1 cerrada**: S-UID, S-TAX, S-MAIL, S-CRON y S-AUD terminados. De Ola 2 entran S-FOLLOW (v130), S-SOFT (v131), S-PUB y la mitad de S-UI. Quedan fuera S-INF, S-ROUTER y S-PURSUIT (§4). Tres hallazgos de los guardarraíles nuevos, corregidos aquí: `.net` llevaba en el diccionario desde su primera versión **sin poder clasificar nada** (`\\b` antes de un punto no casa tras un espacio); las menciones de un comentario seguían sirviendo su texto después de borrarlo; y los CIF de los fixtures no tenían letra de control válida, así que la resolución de entidades los anulaba. |

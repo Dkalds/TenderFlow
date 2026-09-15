@@ -53,11 +53,20 @@ def _como(user_id: int) -> None:
 
 @pytest.fixture(autouse=True)
 def _sin_ssrf(monkeypatch):
-    """La allowlist SSRF tiene sus propios tests; aquí solo estorbaría."""
+    """La allowlist SSRF tiene sus propios tests; aquí solo estorbaría.
+
+    Al salir se retira **sólo** la sustitución que puso este fichero, no todas.
+    El `app.dependency_overrides.clear()` que había aquí vaciaba un diccionario
+    global compartido con los otros veintiún ficheros que lo usan: con la suite
+    en paralelo (`-n 4`, que reparte tests sueltos), el teardown de un test de
+    aquí podía dejar sin sustitución a otro módulo que la hubiera instalado en
+    un fixture de ámbito mayor. Es la clase de fallo que sólo aparece en la
+    suite completa, con otro test distinto cada vez.
+    """
     monkeypatch.setattr("api.routes.webhooks.validate_outbound_url", lambda url, **_: url)
     monkeypatch.setattr("db.webhooks.validate_outbound_url", lambda url, **_: None)
     yield
-    app.dependency_overrides.clear()
+    app.dependency_overrides.pop(require_any_auth, None)
 
 
 def _crear(client, *, organization_id: int, event_types: list[str] | None = None) -> dict:
@@ -70,7 +79,12 @@ def _crear(client, *, organization_id: int, event_types: list[str] | None = None
             "organization_id": organization_id,
         },
     )
-    assert respuesta.status_code == 201, respuesta.text
+    assert respuesta.status_code == 201, (
+        f"{respuesta.text}\n"
+        "Un 401 aquí significa que la sustitución de `require_any_auth` no está "
+        "puesta: o falta el `_como(...)` del test, o alguien vació "
+        "`app.dependency_overrides` entero."
+    )
     return respuesta.json()
 
 

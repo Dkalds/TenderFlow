@@ -29,6 +29,7 @@ from config.keywords import (
     TECH_LABEL_TIPO,
     TECH_LABELS,
     TECHNOLOGY_KEYWORDS,
+    patron_de_keywords,
 )
 from scraper.filters import matches_technology
 
@@ -128,11 +129,16 @@ class TestForma:
         assert set(TECH_CATEGORIAS) == set(TECH_LABELS) == set(TECH_LABEL_TIPO)
 
     def test_toda_keyword_compila_con_limites_de_palabra(self) -> None:
-        """Mismo patrón que `services.tecnologias_diccionario.patrones`."""
+        """Toda keyword tiene que poder casar consigo misma.
+
+        Se compila por `config.keywords.patron_de_keywords`, que es el mismo
+        camino que usa `services.tecnologias_diccionario.patrones`: probar con
+        una copia del patrón dejaría pasar justo la clase de fallo que este test
+        encontró —`.net` en el diccionario desde el primer día, sin clasificar
+        nada, porque `\\b` antes de un punto no casa tras un espacio—.
+        """
         for label, kws in TECHNOLOGY_KEYWORDS.items():
-            patron = re.compile(
-                r"\b(" + "|".join(re.escape(k) for k in kws) + r")\b", flags=re.IGNORECASE
-            )
+            patron = patron_de_keywords(kws)
             for kw in kws:
                 assert patron.search(f"objeto: {kw}."), (label, kw)
 
@@ -383,7 +389,7 @@ class TestDeteccionRegional:
 
 def _patrones_solo_fabricantes() -> dict[str, re.Pattern[str]]:
     return {
-        tec: re.compile(r"\b(" + "|".join(re.escape(k) for k in kws) + r")\b", flags=re.IGNORECASE)
+        tec: patron_de_keywords(kws)
         for tec, kws in TECHNOLOGY_KEYWORDS.items()
         if TECH_LABEL_TIPO[tec] == "fabricante"
     }
