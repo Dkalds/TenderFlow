@@ -77,6 +77,7 @@ Todas están en el roadmap H0 de la revisión. Ninguna es código.
 - [ ] Etiquetar 300 ejemplos del golden set (`scripts/sample_golden_candidates.py`).
 - [ ] Decidir la activación de `baja_model` v2 y `retencion_model` v1 con el gate de `services/ml/promotion.py`.
 - [ ] Ejecutar `make medir-solape` contra producción y anotar el número en el ítem de D16.
+- [ ] Mirar la serie `follows_paridad_faltan` en `ops_events` y, si lleva 30 días en cero, ejecutar el cutover de «Seguir» ([runbooks/cutover-follows.md](../runbooks/cutover-follows.md)). Ya no hay que ejecutar nada para medirlo: el paso `follows_paridad` lo hace a diario.
 - [ ] Cutover del cron al worker ([runbooks/cutover-cron-al-worker.md](../runbooks/cutover-cron-al-worker.md)).
 - [ ] Backfill del maestro de órganos (`scripts/backfill_organos.py --apply`); a partir de ahí lo incremental lo hace la pipeline.
 
@@ -96,10 +97,16 @@ Todas están en el roadmap H0 de la revisión. Ninguna es código.
   El componente único existe y se usa donde antes no había nada —seguir un
   órgano—, pero la estrella del expediente, el botón de empresa y el descarte
   del radar siguen leyendo de su tabla. Y tienen que seguir: ADR-031 §B pone
-  como condición que `scripts/check_follows_paridad.py` dé **cero** contra
-  producción, y eso es una ejecución humana (§3). Mover la lectura antes
-  convertiría un fallo del backfill en favoritos que desaparecen, que es
+  como condición que la paridad dé **cero** contra producción. Mover la lectura
+  antes convertiría un fallo del backfill en favoritos que desaparecen, que es
   exactamente el riesgo que la fase aditiva existe para no correr.
+
+  Lo que sí se ha cerrado (2026-09-15) es el otro lado del bloqueo: la medición
+  era «acción humana — ejecutar el script contra producción», y un número que
+  hay que ir a buscar no es un número que exista. Ahora la mide el paso
+  `follows_paridad` de la pipeline, a diario, en `ops_events`. La acción humana
+  que queda es leer la serie y decidir, con el procedimiento escrito en
+  [runbooks/cutover-follows.md](../runbooks/cutover-follows.md).
 
 ---
 

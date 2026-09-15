@@ -36,6 +36,10 @@ PASOS_ADVISORY = {
     "informes_programados",
     "llm_models_canary",
     "anomaly_checks",
+    # Mide la paridad de `follows` (ADR-031 §B) y no repara nada: que esté rota
+    # no rompe la pasada ni lo nota ningún cliente. Lo que bloquea es la
+    # migración, y eso lo decide una persona leyendo la serie.
+    "follows_paridad",
     "drift_checks",
     "sap_active_learning",
     "webhook_reintentos",

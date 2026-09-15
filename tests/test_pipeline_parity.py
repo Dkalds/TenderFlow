@@ -116,6 +116,7 @@ class TestCanonicalPipelineSteps:
             "scheduler.pipeline_runs._run_dlq_retry": _make_mock("dlq_retry"),
             "scheduler.pipeline_runs._run_webhook_reintentos": _make_mock("webhook_reintentos"),
             "scheduler.pipeline_runs._run_anomaly_checks": _make_mock("anomaly_checks"),
+            "scheduler.pipeline_runs._run_follows_paridad": _make_mock("follows_paridad"),
             "scheduler.pipeline_runs._run_llm_models_canary": _make_mock("llm_models_canary"),
             "scheduler.pipeline_runs._run_retention_cleanup": _make_mock("retention_cleanup"),
             "scheduler.pipeline_runs._run_sap_active_learning": _make_mock("sap_active_learning"),

@@ -55,6 +55,7 @@ CANONICAL_STEPS: list[str] = [
     "dlq_retry",
     "webhook_reintentos",
     "anomaly_checks",
+    "follows_paridad",
     "llm_models_canary",
     "retention_cleanup",
     "sap_active_learning",
@@ -111,6 +112,10 @@ STEP_TIER: dict[str, StepTier] = {
     # responder, y sacar la pasada en rojo por eso enseña a ignorar el rojo.
     "webhook_reintentos": "advisory",
     "anomaly_checks": "advisory",
+    # Mide, no repara: que la paridad de `follows` esté rota no rompe la
+    # pasada ni lo nota ningún cliente. Lo que bloquea es la migración de
+    # ADR-031 §B, y eso lo decide una persona mirando la serie.
+    "follows_paridad": "advisory",
     "llm_models_canary": "advisory",
     "retention_cleanup": "bloqueante",
     "sap_active_learning": "advisory",
@@ -696,6 +701,18 @@ def _run_anomaly_checks() -> None:
     from scheduler.anomaly_alerts import run_anomaly_checks
 
     run_anomaly_checks()
+
+
+def _run_follows_paridad() -> str:
+    """Paridad `follows` ↔ tablas de origen (ADR-031 §B), una vez al día.
+
+    Diaria y no cada cuatro horas: compara tres tablas enteras y el número no
+    se mueve en horas. Lo que interesa es la serie —«lleva N días en cero»—,
+    no el instante.
+    """
+    from scheduler.jobs.follows_paridad import run as run_follows_paridad
+
+    return _run_periodic("follows_paridad", _SEGUNDOS_DIA, run_follows_paridad)
 
 
 def _run_llm_models_canary() -> str:
