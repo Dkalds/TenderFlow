@@ -167,6 +167,24 @@ class OrganizationRepository:
         with connect_read() as conn:
             return self._organization_with_role(conn, organization_id, user_id)
 
+    def get_by_id(self, organization_id: int) -> dict[str, Any] | None:
+        """La organización, sin pasar por la membresía de nadie.
+
+        Las lecturas existentes (`get_for_user`, `list_for_user`) resuelven
+        además el rol de quien pregunta, que es lo correcto para una petición
+        HTTP. Los informes programados los genera el scheduler, donde no hay
+        quien pregunte: sólo hace falta el nombre para el asunto del correo.
+        """
+        with connect_read() as conn:
+            filas = rows_to_dicts(
+                conn.execute(
+                    "SELECT id, name, is_personal, created_at, updated_at "
+                    "FROM organizations WHERE id = %s",
+                    (organization_id,),
+                )
+            )
+        return filas[0] if filas else None
+
     def list_members(self, organization_id: int) -> list[dict[str, Any]]:
         with connect_read() as conn:
             cur = conn.execute(

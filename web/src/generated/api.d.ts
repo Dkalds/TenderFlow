@@ -3483,6 +3483,37 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/organizations/{organization_id}/report-schedule": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Cuándo sale el informe semanal de esta organización
+         * @description Devuelve los valores por defecto cuando todavía no hay programación.
+         *
+         *     No crea la fila: quien sólo abre la pantalla a mirar no debería dejar nada
+         *     escrito.
+         */
+        get: operations["get_report_schedule_api_v1_organizations__organization_id__report_schedule_get"];
+        /**
+         * Programar el informe semanal (owner/admin)
+         * @description Activa, cambia el día y la hora, o fija la lista de destinatarios.
+         *
+         *     Cambiar la programación **no** reenvía el informe de esta semana: el
+         *     repositorio no toca ``ultimo_envio_at``. Mover el informe del lunes al
+         *     martes es cambiar de día, no pedir dos.
+         */
+        put: operations["put_report_schedule_api_v1_organizations__organization_id__report_schedule_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/organizations/{organization_id}/settings": {
         parameters: {
             query?: never;
@@ -11165,6 +11196,68 @@ export interface components {
             importe_alto_riesgo: number;
             /** Importe En Juego */
             importe_en_juego: number;
+        };
+        /**
+         * ReportSchedule
+         * @description Cuándo y a quién sale el informe semanal de una organización (T6).
+         *
+         *     `dia_semana` es 0 = lunes, como `datetime.weekday()` y como el `CHECK` de
+         *     v132. No es el `DOW` de Postgres (0 = domingo): mezclar las dos
+         *     numeraciones desplaza el informe seis días, y por eso se dice aquí además
+         *     de en la migración.
+         */
+        ReportSchedule: {
+            /**
+             * Activo
+             * @default false
+             */
+            activo: boolean;
+            /** Destinatarios */
+            destinatarios?: string[] | null;
+            /**
+             * Dia Semana
+             * @default 0
+             */
+            dia_semana: number;
+            /**
+             * Hora Utc
+             * @default 7
+             */
+            hora_utc: number;
+        };
+        /**
+         * ReportScheduleOut
+         * @description La programación leída, con lo que hizo el último envío.
+         */
+        ReportScheduleOut: {
+            /**
+             * Activo
+             * @default false
+             */
+            activo: boolean;
+            /** Destinatarios */
+            destinatarios?: string[] | null;
+            /**
+             * Dia Semana
+             * @default 0
+             */
+            dia_semana: number;
+            /**
+             * Hora Utc
+             * @default 7
+             */
+            hora_utc: number;
+            /** Organization Id */
+            organization_id: number;
+            /**
+             * Tipo
+             * @default pipeline_semanal
+             */
+            tipo: string;
+            /** Ultimo Envio At */
+            ultimo_envio_at?: string | null;
+            /** Ultimo Estado */
+            ultimo_estado?: string | null;
         };
         /**
          * ReporteDatoBody
@@ -20231,6 +20324,87 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["OrganizationNifsOut"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_report_schedule_api_v1_organizations__organization_id__report_schedule_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                organization_id: number;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReportScheduleOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_report_schedule_api_v1_organizations__organization_id__report_schedule_put: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                organization_id: number;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReportSchedule"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReportScheduleOut"];
+                };
+            };
+            /** @description El informe lo programa quien puede ver Dirección */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

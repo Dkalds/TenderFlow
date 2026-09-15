@@ -57,7 +57,7 @@ verificar desde el repositorio se dice.
 | S-SOFT | `deleted_at` en comentarios, tareas y adjuntos (v131), con el guardarraíl que exige el filtro en toda lectura | **hecho** |
 | S-PUB | `api/superficie_publica.py`, `x-public` en el spec completo y `api/openapi-public.json` filtrado | **hecho** |
 | S-UI | «Descargar PDF» en la oportunidad; control `SeguirBoton` único sobre `/follows`, estrenado en el panel de órgano | **parcial** — ver §4 |
-| S-INF | Informes programados por organización (T6) | **no hecho** — ver §4 |
+| S-INF | Informe semanal por organización (T6, v132): programación día/hora/destinatarios, correo HTML con PDF adjunto, opt-out por usuario, paso canónico advisory | **hecho** |
 | S-ROUTER | Router de licitaciones por familias y un solo identificador | **no hecho** — ver §4 |
 | S-PURSUIT | Vertical de pursuits bajo `api/tenancy` | **no hecho** — ver §4 |
 
@@ -100,9 +100,6 @@ Todas están en el roadmap H0 de la revisión. Ninguna es código.
   producción, y eso es una ejecución humana (§3). Mover la lectura antes
   convertiría un fallo del backfill en favoritos que desaparecen, que es
   exactamente el riesgo que la fase aditiva existe para no correr.
-- **Informes programados por organización (T6).** No empezado. Necesita tabla
-  de programaciones, un paso en la pipeline y la plantilla del correo; el
-  mailer (S-MAIL) es su prerrequisito y ya está.
 - **Router de licitaciones por familias y un solo identificador.** No empezado.
   Es una refactorización grande de `api/routes/licitaciones.py` sin cambio de
   comportamiento: alto riesgo de regresión y ningún valor visible para el
@@ -144,4 +141,5 @@ se pretendía.
 | Fecha | Qué |
 |---|---|
 | 2026-09-14 | S-RLS, S-SES, S-WHK, S-NIF, S-ML, S-COB, S-ORG y S-OPS en el árbol con pruebas verdes; S-UID, S-TAX, S-MAIL, S-CRON y S-AUD en curso. |
-| 2026-09-15 | **Ola 1 cerrada**: S-UID, S-TAX, S-MAIL, S-CRON y S-AUD terminados. De Ola 2 entran S-FOLLOW (v130), S-SOFT (v131), S-PUB y la mitad de S-UI. Quedan fuera S-INF, S-ROUTER y S-PURSUIT (§4). Tres hallazgos de los guardarraíles nuevos, corregidos aquí: `.net` llevaba en el diccionario desde su primera versión **sin poder clasificar nada** (`\\b` antes de un punto no casa tras un espacio); las menciones de un comentario seguían sirviendo su texto después de borrarlo; y los CIF de los fixtures no tenían letra de control válida, así que la resolución de entidades los anulaba. |
+| 2026-09-15 | **T6 (informes programados)** cerrado: v132, `services/informes.py`, adjuntos en el transporte y la extracción de `_build_pdf` que el plan de Ola 2 marcaba como su prerrequisito. Queda documentado en [informes-programados.md](../informes-programados.md). |
+| 2026-09-15 | **Ola 1 cerrada**: S-UID, S-TAX, S-MAIL, S-CRON y S-AUD terminados. De Ola 2 entran S-FOLLOW (v130), S-SOFT (v131), S-PUB y la mitad de S-UI. Quedan fuera S-ROUTER y S-PURSUIT (§4); S-INF entra el mismo día, en la fila de arriba. Tres hallazgos de los guardarraíles nuevos, corregidos aquí: `.net` llevaba en el diccionario desde su primera versión **sin poder clasificar nada** (`\\b` antes de un punto no casa tras un espacio); las menciones de un comentario seguían sirviendo su texto después de borrarlo; y los CIF de los fixtures no tenían letra de control válida, así que la resolución de entidades los anulaba. |

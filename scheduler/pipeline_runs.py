@@ -51,6 +51,7 @@ CANONICAL_STEPS: list[str] = [
     "aggregates_precompute",
     "watchlist_notify",
     "digests",
+    "informes_programados",
     "dlq_retry",
     "webhook_reintentos",
     "anomaly_checks",
@@ -99,6 +100,11 @@ STEP_TIER: dict[str, StepTier] = {
     "aggregates_precompute": "bloqueante",
     "watchlist_notify": "bloqueante",
     "digests": "bloqueante",
+    # advisory: el informe semanal es una función opcional que cada
+    # organización activa por su cuenta. Un ESP caído no puede tumbar la
+    # pasada de ingesta — y la ventana de envío es de un día entero, así que
+    # la pasada siguiente lo recupera sola.
+    "informes_programados": "advisory",
     "dlq_retry": "bloqueante",
     # advisory: un receptor externo caído no es un fallo de la pasada. Que
     # el reenvío no salga significa que el endpoint del cliente sigue sin
@@ -584,6 +590,22 @@ def _run_digests() -> dict[str, str]:
         lambda: send_pending_digests("weekly"),
     )
     return resultado
+
+
+def _run_informes_programados() -> str:
+    """Envía los informes semanales cuya ventana está abierta (T6).
+
+    Sin cadencia propia (`_run_periodic`) y eso es deliberado: la cadencia la
+    pone cada organización en `organization_report_schedules`, y el filtro de
+    «ya enviado en esta ventana» vive en el SQL del repositorio. Envolverlo
+    además en un lock de periodo global haría que dos organizaciones con la
+    misma hora compitieran por él y una se quedara sin informe.
+    """
+    from scheduler.jobs.informes_programados import ejecutar
+
+    resumen = ejecutar()
+    log.info("pipeline_informes_programados_completed", **resumen.as_dict())
+    return STEP_OK if resumen.programadas else STEP_SKIPPED
 
 
 def _run_retention_cleanup() -> str:

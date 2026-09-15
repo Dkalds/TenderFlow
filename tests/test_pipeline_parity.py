@@ -119,6 +119,7 @@ class TestCanonicalPipelineSteps:
             "scheduler.pipeline_runs._run_llm_models_canary": _make_mock("llm_models_canary"),
             "scheduler.pipeline_runs._run_retention_cleanup": _make_mock("retention_cleanup"),
             "scheduler.pipeline_runs._run_sap_active_learning": _make_mock("sap_active_learning"),
+            "scheduler.pipeline_runs._run_informes_programados": _make_mock("informes_programados"),
             "scheduler.pipeline_runs._run_drift_checks": _make_mock("drift_checks"),
         }
 

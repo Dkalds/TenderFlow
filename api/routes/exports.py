@@ -44,76 +44,19 @@ from config.settings import jobs_export_umbral_filas
 from db.audit import log_event
 from db.repositories.watchlist import WatchlistRepository
 from observability.logging import get_logger
+
+# El maquetador del PDF vivía aquí como `_build_pdf` hasta 2026-09-15. Se
+# mudó a `services/` porque los informes programados (T6) adjuntan un PDF que
+# nadie pide por HTTP, y un job del scheduler no puede importar `api/routes/`
+# para maquetar una tabla. Conserva el nombre local para no mover de sitio lo
+# que ya tenía consumidores, tests incluidos.
+from services.pdf_tabular import construir_pdf_tabular as _build_pdf
 from shared.audit_events import EXPORT_CALENDAR_LINK_CREATED, EXPORT_DOWNLOADED
 from shared.dto import CalendarioEnlace, JobEstadoDTO
 
 log = get_logger(__name__)
 
 router = APIRouter(prefix="/exports", tags=["exports"])
-
-# ── Generador PDF ─────────────────────────────────────────────────────────────
-
-
-def _build_pdf(rows: list[dict[str, Any]], title: str) -> bytes:
-    """Genera un PDF tabular simple con reportlab."""
-    from reportlab.lib import colors
-    from reportlab.lib.pagesizes import A4, landscape
-    from reportlab.lib.styles import getSampleStyleSheet
-    from reportlab.platypus import (
-        Paragraph,
-        SimpleDocTemplate,
-        Spacer,
-        Table,
-        TableStyle,
-    )
-
-    buf = io.BytesIO()
-    doc = SimpleDocTemplate(buf, pagesize=landscape(A4), rightMargin=20, leftMargin=20)
-    styles = getSampleStyleSheet()
-    story: list[Any] = []
-
-    story.append(Paragraph(title, styles["Title"]))
-    story.append(
-        Paragraph(datetime.now(UTC).strftime("Generado: %Y-%m-%d %H:%M UTC"), styles["Normal"])
-    )
-    story.append(Spacer(1, 12))
-
-    if not rows:
-        story.append(Paragraph("Sin resultados.", styles["Normal"]))
-    else:
-        keys = list(rows[0].keys())
-        header = [str(k) for k in keys]
-        table_data = [header] + [[str(r.get(k, "")) for k in keys] for r in rows[:500]]
-
-        col_widths = [max(len(str(r[i])) for r in table_data) * 5.5 for i in range(len(keys))]
-        col_widths = [max(40.0, min(w, 180.0)) for w in col_widths]
-
-        t = Table(table_data, colWidths=col_widths, repeatRows=1)
-        t.setStyle(
-            TableStyle(
-                [
-                    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1a5276")),
-                    ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-                    ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-                    ("FONTSIZE", (0, 0), (-1, -1), 8),
-                    (
-                        "ROWBACKGROUNDS",
-                        (0, 1),
-                        (-1, -1),
-                        [colors.white, colors.HexColor("#eaf0fb")],
-                    ),
-                    ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#aab7c4")),
-                    ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                    ("LEFTPADDING", (0, 0), (-1, -1), 4),
-                    ("RIGHTPADDING", (0, 0), (-1, -1), 4),
-                ]
-            )
-        )
-        story.append(t)
-
-    doc.build(story)
-    return buf.getvalue()
-
 
 # ── Synchronous CSV/Excel download ───────────────────────────────────────────
 

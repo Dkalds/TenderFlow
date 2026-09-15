@@ -21,6 +21,10 @@ Lo que hace por cada mensaje, sea cual sea el backend:
 - Garantiza un par texto + HTML: si el llamante solo pasa HTML, deriva el
   texto plano (:func:`texto_desde_html`) conservando los enlaces. Ningún
   correo sale solo en HTML: es la señal de spam más barata de evitar.
+- Con ``adjuntos`` monta un ``multipart/mixed`` por SMTP y manda el contenido
+  en base64 por los dos ESP. Sin adjuntos el correo conserva la forma de
+  siempre (``multipart/alternative``): cambiarla para todo el mundo por una
+  funcionalidad que la mayoría de los correos no usa sería riesgo gratis.
 - Con ``unsubscribe_url`` añade ``List-Unsubscribe: <url>`` y
   ``List-Unsubscribe-Post: List-Unsubscribe=One-Click`` (RFC 8058), que es lo
   que Gmail y Yahoo exigen a quien envía correo masivo desde 2024.
@@ -40,11 +44,13 @@ logs; ``observability/logging.py`` redacta además el valor de
 
 from __future__ import annotations
 
+import base64
 import json
 import re
 import smtplib
 from collections.abc import Mapping
 from dataclasses import dataclass, field
+from email.mime.application import MIMEApplication
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.utils import formataddr, formatdate, make_msgid
@@ -71,6 +77,31 @@ _TAG_RESEND_RE = re.compile(r"[^A-Za-z0-9_-]+")
 
 
 @dataclass(frozen=True)
+class Adjunto:
+    """Un fichero que viaja con el correo.
+
+    Existe desde 2026-09-15 porque los informes programados (T6) lo necesitan:
+    hasta entonces el transporte montaba un ``MIMEMultipart("alternative")`` y
+    no había forma de adjuntar nada, ni por SMTP ni por los dos ESP. Se dejó
+    sin hacer a propósito mientras no hubo consumidor
+    (`docs/plans/2026-09-ola2-migraciones-propuestas.md` §T6); ahora lo hay.
+
+    ``contenido`` son bytes y no una ruta: quien genera el PDF lo tiene en
+    memoria, y hacerle escribir un fichero temporal sólo para que el mailer lo
+    vuelva a leer añadiría un modo de fallo (disco lleno, permisos) a un camino
+    que no lo tenía.
+    """
+
+    filename: str
+    contenido: bytes
+    content_type: str = "application/pdf"
+
+    @property
+    def tamano(self) -> int:
+        return len(self.contenido)
+
+
+@dataclass(frozen=True)
 class Mensaje:
     """Un correo tal y como lo describe el llamante, sin decisiones de transporte.
 
@@ -89,6 +120,7 @@ class Mensaje:
     tags: list[str] = field(default_factory=list)
     reply_to: str | None = None
     unsubscribe_url: str | None = None
+    adjuntos: list[Adjunto] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -123,6 +155,7 @@ class _Preparado:
     headers: dict[str, str]
     tags: list[str]
     message_id: str
+    adjuntos: list[Adjunto]
 
 
 # ── Texto plano a partir de HTML ─────────────────────────────────────────────
@@ -273,6 +306,10 @@ def _normalizar(mensaje: Mensaje, settings: Any) -> _Preparado | ResultadoEnvio:
         headers=headers,
         tags=[t for t in mensaje.tags if t],
         message_id=message_id,
+        # Un adjunto sin bytes o sin nombre no es un adjunto: por SMTP sale
+        # como una parte vacía y por HTTP lo rechaza el ESP con un 422 que
+        # tumbaría el correo entero por algo que no aporta nada.
+        adjuntos=[a for a in mensaje.adjuntos if a.contenido and a.filename.strip()],
     )
 
 
@@ -290,7 +327,34 @@ def _no_configurado(backend: str, faltan: list[str]) -> ResultadoEnvio:
 
 
 def _construir_mime(prep: _Preparado) -> MIMEMultipart:
-    msg = MIMEMultipart("alternative")
+    """El árbol MIME: ``alternative`` a secas, o ``mixed`` envolviéndolo.
+
+    Sin adjuntos se conserva el mensaje de siempre —``multipart/alternative``
+    con texto y HTML— porque cambiar la forma del correo que ya sale a
+    producción por una funcionalidad que ese correo no usa es riesgo gratis.
+
+    Con adjuntos, el `alternative` pasa a ser la **primera parte** de un
+    ``multipart/mixed``. El orden importa y es la trampa clásica: colgar el
+    texto, el HTML y el PDF como tres hermanos de un `mixed` hace que el
+    cliente enseñe el texto plano *y* el HTML uno detrás de otro, en vez de
+    elegir. Las alternativas van juntas dentro de su propio contenedor.
+    """
+    cuerpo = MIMEMultipart("alternative")
+    cuerpo.attach(MIMEText(prep.text, "plain", "utf-8"))
+    if prep.html is not None:
+        cuerpo.attach(MIMEText(prep.html, "html", "utf-8"))
+
+    if prep.adjuntos:
+        msg = MIMEMultipart("mixed")
+        msg.attach(cuerpo)
+        for adjunto in prep.adjuntos:
+            _, _, subtipo = adjunto.content_type.partition("/")
+            parte = MIMEApplication(adjunto.contenido, _subtype=subtipo or "octet-stream")
+            parte.add_header("Content-Disposition", "attachment", filename=adjunto.filename)
+            msg.attach(parte)
+    else:
+        msg = cuerpo
+
     msg["Subject"] = prep.subject
     msg["From"] = prep.from_header
     msg["To"] = prep.to
@@ -300,9 +364,6 @@ def _construir_mime(prep: _Preparado) -> MIMEMultipart:
         msg["Reply-To"] = prep.reply_to
     for nombre, valor in prep.headers.items():
         msg[nombre] = valor
-    msg.attach(MIMEText(prep.text, "plain", "utf-8"))
-    if prep.html is not None:
-        msg.attach(MIMEText(prep.html, "html", "utf-8"))
     return msg
 
 
@@ -419,6 +480,18 @@ def _enviar_resend(prep: _Preparado, settings: Any) -> ResultadoEnvio:
         payload["tags"] = [
             {"name": "category", "value": _TAG_RESEND_RE.sub("-", tag)} for tag in prep.tags
         ]
+    if prep.adjuntos:
+        # Resend quiere el contenido en base64 dentro del JSON; no hay subida
+        # aparte. Es también el motivo del tope de `_MAX_ADJUNTO_BYTES`: base64
+        # infla un tercio y el límite del proveedor es sobre la petición entera.
+        payload["attachments"] = [
+            {
+                "filename": a.filename,
+                "content": base64.b64encode(a.contenido).decode("ascii"),
+                "content_type": a.content_type,
+            }
+            for a in prep.adjuntos
+        ]
 
     try:
         status, datos = _post_json(
@@ -463,6 +536,15 @@ def _enviar_postmark(prep: _Preparado, settings: Any) -> ResultadoEnvio:
         payload["ReplyTo"] = prep.reply_to
     if prep.tags:
         payload["Tag"] = prep.tags[0]
+    if prep.adjuntos:
+        payload["Attachments"] = [
+            {
+                "Name": a.filename,
+                "Content": base64.b64encode(a.contenido).decode("ascii"),
+                "ContentType": a.content_type,
+            }
+            for a in prep.adjuntos
+        ]
 
     try:
         status, datos = _post_json(
@@ -507,6 +589,9 @@ def _enviar_console(prep: _Preparado) -> ResultadoEnvio:
         message_id=prep.message_id,
         headers=dict(prep.headers),
         tags=list(prep.tags),
+        # Nombre y tamaño, no el contenido: un PDF en base64 en el log no lo
+        # lee nadie y sí llena el disco de quien desarrolla.
+        adjuntos=[f"{a.filename} ({a.tamano} B)" for a in prep.adjuntos],
         texto=prep.text,
     )
     return ResultadoEnvio(ok=True, provider_id=prep.message_id, backend="console")

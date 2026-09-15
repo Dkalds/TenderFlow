@@ -55,6 +55,12 @@ TIPOS: tuple[tuple[str, str], ...] = (
     ("daily_summary", "Resumen diario"),
     ("pursuit.task_due", "Vence una tarea de una oportunidad"),
     ("pursuit.mention", "Me mencionan en un comentario"),
+    # T6. Es el opt-out del informe semanal: la programación (día, hora,
+    # destinatarios) es de la organización, pero decir «a mí no» es de cada
+    # persona, y su sitio es éste y no una segunda pantalla. Con el defecto
+    # `daily` del canal email, quien no diga nada lo recibe — que es lo que su
+    # owner activó al programarlo.
+    ("informe_semanal", "Informe semanal de pipeline de mi organización"),
 )
 
 

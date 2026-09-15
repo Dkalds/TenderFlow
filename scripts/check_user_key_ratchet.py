@@ -141,8 +141,32 @@ _REPORTEROS = frozenset(
 # `scope()` recibía la identidad en un parámetro propio, así que ahí sí había
 # algo que arreglar y se llama `actor`. Un fichero que se puede sacar de este
 # ratchet se saca; solo se anota lo que no.
+#
+# ── Los tres de `follows` (T1, v130), añadidos el 2026-09-15 ────────────────
+#
+# Son la excepción que el propio encabezado contempla («si de verdad no hay
+# alternativa»), y el motivo es que `follows` **es** la migración de identidad,
+# no un consumidor más de la vieja:
+#
+#   - La tabla nace con `user_key` y `user_id` juntos porque su backfill sale de
+#     tres tablas tecleadas por `user_key`, y porque su `UNIQUE (user_key,
+#     target_type, target_id, kind)` es lo que impide duplicar un seguimiento
+#     durante la ventana de escritura doble. Sin la columna no hay migración
+#     que medir.
+#   - El predicado de lectura es el dual de ADR-030 fase 2, el mismo que v129
+#     puso en las otras once tablas: la fila es tuya por `user_id`, o por
+#     `user_key` si el backfill no pudo resolver el id.
+#   - `scripts/check_follows_paridad.py` compara por `user_key` porque es la
+#     única clave que las cuatro tablas comparten hoy; ésa es justamente la
+#     medición que ADR-031 §B exige antes de mover una lectura.
+#
+# Las tres salen de aquí con la fase 3 de ADR-030, que es cuando `user_key` se
+# retira de verdad — no antes, y no fichero a fichero.
 CONGELADOS: frozenset[str] = frozenset(
     {
+        "api/routes/follows.py",
+        "db/repositories/follows.py",
+        "scripts/check_follows_paridad.py",
         "api/routes/admin_solicitudes.py",
         "api/routes/admin_users.py",
         "api/routes/analytics.py",

@@ -882,6 +882,39 @@ class OrganizationSettings(BaseModel):
         return self.probabilidades_etapa.get(etapa, PROBABILIDADES_ETAPA_DEFAULT[etapa])
 
 
+class ReportSchedule(BaseModel):
+    """Cuándo y a quién sale el informe semanal de una organización (T6).
+
+    `dia_semana` es 0 = lunes, como `datetime.weekday()` y como el `CHECK` de
+    v132. No es el `DOW` de Postgres (0 = domingo): mezclar las dos
+    numeraciones desplaza el informe seis días, y por eso se dice aquí además
+    de en la migración.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    activo: bool = False
+    dia_semana: int = Field(default=0, ge=0, le=6)
+    #: Hora **UTC**. La interfaz la traduce al enseñarla; el scheduler razona en
+    #: UTC de punta a punta (ADR-033).
+    hora_utc: int = Field(default=7, ge=0, le=23)
+    #: `None` o vacío = «los owner y admin de la organización». Dejarlo vacío es
+    #: lo que hace que dar de alta a un administrador nuevo no exija acordarse
+    #: de editar esta lista.
+    destinatarios: list[EmailStr] | None = Field(default=None, max_length=25)
+
+
+class ReportScheduleOut(ReportSchedule):
+    """La programación leída, con lo que hizo el último envío."""
+
+    organization_id: int = Field(ge=1)
+    tipo: str = "pipeline_semanal"
+    ultimo_envio_at: PgDateTime | None = None
+    #: `enviado:2/3`, `vacio`, `sin_destinatarios`, `fallido`. Es lo que
+    #: responde «¿por qué no me llegó el informe?» sin abrir los logs.
+    ultimo_estado: str | None = None
+
+
 class OrganizationSettingsOut(OrganizationSettings):
     """Configuración leída, con la organización a la que pertenece."""
 

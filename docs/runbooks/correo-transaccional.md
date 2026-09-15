@@ -31,6 +31,7 @@ Todo el correo del proyecto —de operación y de producto— entra por
 | Invitación a una organización | `services/organizations.py` | `enviar_email_transaccional` |
 | Recuperación de contraseña | `services/password_reset.py` | `enviar_email_transaccional` |
 | Aviso de acceso concedido | `services/solicitudes_acceso.py` | `enviar_email_transaccional` |
+| **Informe semanal de pipeline** (con PDF adjunto) | `scheduler/jobs/informes_programados.py` | `mailer.enviar(Mensaje(..., adjuntos=[...]))` |
 
 Lo que el mailer garantiza a todos, sea cual sea el backend:
 
@@ -46,6 +47,20 @@ Lo que el mailer garantiza a todos, sea cual sea el backend:
   `POST` en la misma ruta atiende al cliente de correo que ejecuta la baja en
   un clic (Gmail, Yahoo y Outlook mandan ese POST sin cookies y no siguen
   redirecciones, de ahí que el POST responda 200 y no 303).
+- **Adjuntos** (`Mensaje.adjuntos`, desde 2026-09-15). Por SMTP el
+  `multipart/alternative` de siempre pasa a ser la primera parte de un
+  `multipart/mixed`; por los dos ESP el contenido viaja en base64 dentro del
+  JSON. **Sin adjuntos el correo conserva la forma de siempre**, y eso es
+  deliberado: cambiar la estructura MIME de todo el correo por una función que
+  la mayoría de los mensajes no usa sería riesgo gratis.
+
+  La trampa que esto evita: colgar texto, HTML y PDF como tres hermanos de un
+  `mixed` hace que el cliente enseñe el texto plano **y** el HTML uno detrás de
+  otro en vez de elegir. Las alternativas van juntas en su propio contenedor,
+  y hay test que lo fija (`tests/test_informes_programados.py`).
+
+  Un adjunto sin bytes o sin nombre se descarta antes de salir: por SMTP sería
+  una parte vacía y por HTTP un 422 del ESP que tumbaría el correo entero.
 - **Nunca propaga.** Un proveedor caído devuelve un `ResultadoEnvio` con
   `ok=False`; quien llama lo registra. No hay reintentos en esta capa.
 

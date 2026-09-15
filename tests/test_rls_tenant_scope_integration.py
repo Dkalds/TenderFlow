@@ -66,6 +66,7 @@ TABLAS_EXCLUIDAS: dict[str, str] = {
 _REVISIONES_CON_TABLAS: tuple[str, ...] = (
     "v128_rls_tenant_policies",
     "v130_follows",
+    "v132_informes_programados",
 )
 
 

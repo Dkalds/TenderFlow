@@ -8,7 +8,7 @@ tags: [database, schema, generado]
 
 Generado: 2026-09-15
 
-Revisión Alembic aplicada: `v131_borrado_logico_pursuit_hijas`.
+Revisión Alembic aplicada: `v132_informes_programados`.
 
 Catálogo de una base Postgres recién migrada con `alembic upgrade head`. Se listan
 las tablas de `public` agrupadas por familia, con sus columnas
@@ -27,13 +27,13 @@ migración que los declara— y, por supuesto, cualquier dato.
 | Licitaciones y fuente | 11 | 151 | 51 |
 | Documentos y pliegos | 4 | 43 | 11 |
 | Empresas y mercado | 6 | 34 | 8 |
-| Organizaciones y oportunidades | 14 | 130 | 30 |
+| Organizaciones y oportunidades | 15 | 141 | 31 |
 | Identidad, acceso y auditoría | 15 | 105 | 24 |
 | Seguimiento y notificaciones | 12 | 132 | 33 |
 | ML y predicciones | 7 | 55 | 13 |
 | Operación y observabilidad | 6 | 46 | 11 |
 | Otras | 19 | 150 | 28 |
-| **Total** | **94** | **846** | **209** |
+| **Total** | **95** | **857** | **210** |
 
 ## Licitaciones y fuente
 
@@ -538,6 +538,26 @@ Claves: `PRIMARY KEY (id)` · `UNIQUE (organization_id, nif)`
 Claves: `PRIMARY KEY (id)`
 
 Índices: `ix_organization_references_org`
+
+### `organization_report_schedules`
+
+| Columna | Tipo | Nulo |
+|---|---|---|
+| `id` | `integer` | no |
+| `organization_id` | `integer` | no |
+| `tipo` | `text` | no |
+| `activo` | `boolean` | no |
+| `dia_semana` | `smallint` | no |
+| `hora_utc` | `smallint` | no |
+| `destinatarios_json` | `text` | sí |
+| `ultimo_envio_at` | `timestamp with time zone` | sí |
+| `ultimo_estado` | `text` | sí |
+| `created_at` | `timestamp with time zone` | no |
+| `updated_at` | `timestamp with time zone` | no |
+
+Claves: `PRIMARY KEY (id)` · `UNIQUE (organization_id, tipo)`
+
+Índices: `idx_report_schedules_pendientes`
 
 ### `organization_revenues`
 
