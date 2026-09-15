@@ -15,6 +15,12 @@ Nace **apagado** para todas las organizaciones. Un informe que empieza a
 enviarse solo, a una lista deducida, el día que se despliega la migración, es
 correo que nadie pidió.
 
+Desde **Mi perfil → «Informe semanal por correo»**, junto al resto de ajustes
+de organización de esa página. La tarjeta no se pinta para quien no es owner ni
+admin, y por eso mismo no pide los datos: el `GET` le respondería 403.
+
+Debajo, lo mismo por API:
+
 ```
 PUT /api/v1/organizations/{id}/report-schedule
 { "activo": true, "dia_semana": 0, "hora_utc": 7, "destinatarios": null }
@@ -24,7 +30,9 @@ PUT /api/v1/organizations/{id}/report-schedule
   v132; **no** como el `DOW` de Postgres, donde 0 es domingo. Mezclar las dos
   numeraciones desplaza el informe seis días.
 - **`hora_utc`.** El scheduler razona en UTC de punta a punta (ADR-033); la
-  interfaz traduce al enseñarlo.
+  interfaz traduce al enseñarlo, y lo hace sobre la **próxima** entrega y no
+  sobre una semana de referencia fija, para que el horario de verano no
+  desplace la traducción una hora medio año.
 - **`destinatarios: null`** significa «los owner y admin de la organización»,
   resueltos en cada envío. Es lo que hace que dar de alta a un administrador
   nuevo no exija acordarse de editar esta lista. Una lista explícita la
@@ -105,3 +113,4 @@ de ingesta, y la ventana de un día la recupera sola.
 | Paso de la pipeline | `informes_programados` en `scheduler/pipeline_runs.py` |
 | Adjuntos en el transporte | `observability/mailer.py` (`Adjunto`) |
 | Opt-out | `notification_preferences`, tipo `informe_semanal` |
+| Pantalla de programación | `web/src/app/(dashboard)/mi-perfil/_components/informe-semanal-card.tsx`, `web/src/hooks/use-report-schedule.ts` |

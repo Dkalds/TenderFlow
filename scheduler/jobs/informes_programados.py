@@ -112,8 +112,8 @@ def _destinatarios(fila: dict[str, Any]) -> list[tuple[int | None, str]]:
 
 def _enviar(fila: dict[str, Any], informe: Any, destinos: list[tuple[int | None, str]]) -> int:
     """Manda el informe a cada destinatario. Devuelve cuántos salieron."""
-    from config import settings
     from observability.mailer import Adjunto, Mensaje, enviar
+    from services.app_urls import frontend_base_url
     from services.email_digest import url_de_baja_alertas
     from services.informes import nombre_pdf, render_html, render_pdf
     from shared.identity import user_key_from_email
@@ -127,7 +127,14 @@ def _enviar(fila: dict[str, Any], informe: Any, destinos: list[tuple[int | None,
         log.warning("informe_pdf_fallido", organization_id=fila["organization_id"], exc_info=True)
         adjuntos = []
 
-    base = str(getattr(settings, "FRONTEND_URL", "") or "")
+    # `frontend_base_url()` y no `settings.FRONTEND_URL`: esa variable existe en
+    # `render.yaml` pero **no** está declarada en `config/settings.py`, así que
+    # un `getattr` sobre ella siempre daba "" y el enlace de baja nunca se
+    # construía —el correo salía sin `List-Unsubscribe`, justo lo contrario de
+    # lo que promete `docs/informes-programados.md`—. Lo cazó el guard
+    # `test_unit_settings_getattr_guard`. El helper deduce el origen de
+    # `CORS_ALLOWED_ORIGINS`, que es lo que hacen los digests de watchlist.
+    base = frontend_base_url() or ""
     enviados = 0
     for user_id, correo in destinos:
         url_baja = (

@@ -25,6 +25,7 @@ Y tres cosas que el ítem no pide pero rompen en producción si no se fijan:
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from html import escape
 from typing import Any
 from unittest.mock import patch
 
@@ -397,6 +398,46 @@ def test_el_correo_sale_con_el_pdf_adjunto(tmp_db: Any) -> None:
     assert adjunto.filename.endswith(".pdf")
     assert adjunto.contenido.startswith(b"%PDF")
     assert adjunto.content_type == "application/pdf"
+
+
+def test_el_correo_lleva_enlace_de_baja_con_el_origen_real(tmp_db: Any) -> None:
+    """Regresión: el enlace de baja salía vacío y el correo sin `List-Unsubscribe`.
+
+    La primera versión leía ``getattr(settings, "FRONTEND_URL", "")``, y esa
+    variable **no** está declarada en ``config/settings.py`` (existe en
+    ``render.yaml`` y nada más), así que el `getattr` siempre devolvía "" y
+    ``url_de_baja_alertas`` devolvía ``None`` en producción. El correo salía
+    sin la cabecera RFC 8058 que `docs/informes-programados.md` promete, y
+    nada fallaba: el fallo era silencioso por construcción.
+
+    El origen se deduce ahora con ``services.app_urls.frontend_base_url()``,
+    que es de donde ya lo sacan los digests de watchlist.
+    """
+    db_mod, _ = tmp_db
+    from db.repositories import report_schedules
+    from observability.mailer import ResultadoEnvio
+    from scheduler.jobs.informes_programados import ejecutar
+
+    user_id, org_id = _organizacion(db_mod, "baja@example.test")
+    _pursuit(db_mod, org_id, user_id, id_externo="BAJA-1")
+    report_schedules.guardar(org_id, activo=True, dia_semana=0, hora_utc=7, destinatarios=None)
+
+    with (
+        patch("services.app_urls.frontend_base_url", return_value="https://app.example.test"),
+        patch("services.email_digest.token_de_baja", return_value="firma"),
+        patch(
+            "observability.mailer.enviar", return_value=ResultadoEnvio(ok=True, backend="console")
+        ) as enviar,
+    ):
+        ejecutar(AHORA)
+
+    mensaje = enviar.call_args.args[0]
+    assert mensaje.unsubscribe_url is not None
+    assert mensaje.unsubscribe_url.startswith("https://app.example.test/")
+    # El mismo enlace en el pie del HTML, no sólo en la cabecera: quien lo
+    # busca con el ratón tiene que encontrarlo. Se compara escapado porque en
+    # el HTML el `&` del query string va como `&amp;`, que es lo correcto.
+    assert escape(mensaje.unsubscribe_url, quote=False) in mensaje.html
 
 
 def test_el_mime_pone_el_adjunto_fuera_de_las_alternativas() -> None:
