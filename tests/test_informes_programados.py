@@ -330,6 +330,29 @@ def test_antes_de_la_hora_no_entra(tmp_db: Any) -> None:
     assert report_schedules.pendientes(AHORA) == []
 
 
+def test_una_ventana_de_tarde_sigue_abierta_de_madrugada(tmp_db: Any) -> None:
+    """Regresión: el filtro por hora en SQL cerraba las ventanas tardías antes.
+
+    Con `hora_utc <= EXTRACT(HOUR)`, una programación de los lunes a las 20:00
+    desaparecía de `pendientes()` en la pasada de las 03:00 del martes — que es
+    justo cuando su ventana lleva siete horas abierta y el informe todavía no
+    ha salido. El filtro parecía barato y le costaba el informe de la semana a
+    cualquiera que lo programase por la tarde.
+    """
+    db_mod, _ = tmp_db
+    from db.repositories import report_schedules
+
+    _owner, org_id = _organizacion(db_mod, "tarde@example.test")
+    report_schedules.guardar(org_id, activo=True, dia_semana=0, hora_utc=20, destinatarios=None)
+
+    martes_de_madrugada = datetime(2026, 9, 15, 3, 0, tzinfo=UTC)
+    pendiente = report_schedules.pendientes(martes_de_madrugada)
+    assert [f["organization_id"] for f in pendiente] == [org_id]
+
+    # Y 24 h después de abrirse, ya no: la ventana dura un día.
+    assert report_schedules.pendientes(datetime(2026, 9, 15, 21, 0, tzinfo=UTC)) == []
+
+
 def test_cambiar_la_programacion_no_reenvia_lo_ya_enviado(tmp_db: Any) -> None:
     """Mover el informe de día es cambiar de día, no pedir dos esta semana."""
     db_mod, _ = tmp_db

@@ -134,15 +134,16 @@ def pendientes(ahora: datetime | None = None, *, limit: int = 200) -> list[dict[
     with connect_read() as c:
         filas = rows_to_dicts(
             c.execute(
+                # El filtro es sólo `activo` (índice parcial de v132) y la
+                # ventana se decide en Python. Filtrar además por
+                # `hora_utc <= EXTRACT(HOUR)` parecía barato y estaba **mal**:
+                # una programación de los lunes a las 20:00 desaparecía en la
+                # pasada de las 03:00 del martes, que es exactamente cuando su
+                # ventana sigue abierta. La tabla tiene como mucho una fila por
+                # organización activa, así que no hay nada que optimizar aquí.
                 f"SELECT {_COLS} FROM organization_report_schedules "
-                "WHERE activo "
-                # `(weekday - dia_semana) % 7` en SQL sería ilegible; se filtra
-                # por hora aquí —que descarta el 95 % de las filas y usa el
-                # índice— y el día se comprueba en Python, sobre una lista que
-                # como mucho tiene una fila por organización.
-                "AND hora_utc <= %s "
-                "ORDER BY organization_id LIMIT %s",
-                (instante.hour, max(1, min(int(limit), 1000))),
+                "WHERE activo ORDER BY organization_id LIMIT %s",
+                (max(1, min(int(limit), 1000)),),
             )
         )
 
