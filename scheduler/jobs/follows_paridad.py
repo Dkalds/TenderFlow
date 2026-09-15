@@ -64,9 +64,10 @@ def ejecutar() -> Resumen:
 
     resumen = Resumen()
     try:
-        # `detalle=0`: los ejemplos son `user_key` y `target_id` de personas
-        # reales, y esto va a un registro que se consulta sin más ceremonia. El
-        # que quiera los ejemplos corre el script a mano y los ve en su pantalla.
+        # `detalle=0`: los ejemplos identifican a personas y a expedientes
+        # concretos, y esto va a un registro que se consulta sin más ceremonia.
+        # El que quiera los ejemplos corre el script a mano y los ve en su
+        # pantalla.
         diferencias = medir(detalle=0)
     except Exception:
         log.warning("follows_paridad_medicion_fallida", exc_info=True)

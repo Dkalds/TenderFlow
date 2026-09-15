@@ -110,41 +110,44 @@ Todas están en el roadmap H0 de la revisión. Ninguna es código.
 
 ---
 
-## 4-bis. Lo que queda en rojo y no se ha podido cerrar
+## 4-bis. Los tests que fallaban en paralelo: causa y arreglo
 
-Tres tests fallan **sólo** en la suite completa en paralelo (`pytest -n 4`), y
-no siempre los mismos:
+**Cerrado el 2026-09-15.** Durante cinco tiradas completas, `pytest -n 4` dejó
+dos tests de `tests/test_webhooks_rotate_secret.py` en rojo — nunca los mismos
+dos— con un 401 en una petición cuya sustitución de `require_any_auth` el test
+acababa de instalar. Pasaban en solitario, con `-p no:randomly`, y con `-n 4`
+sobre los 23 ficheros que tocan `app.dependency_overrides`.
 
-| Test | Síntoma |
-|---|---|
-| `test_webhooks_rotate_secret.py` (dos, rotando cuáles) | 401 en una petición cuya sustitución de `require_any_auth` el test acaba de instalar |
-| `test_ops_events.py::test_healthcheck_ops_events_tabla_ausente` | `ops_events_missing` no llega a `True` tras borrar la tabla |
+**La causa.** `tests/test_unit_dockerfile_api.py` comprueba que importar
+`api.app` no arrastra `torch` ni `lxml` —el corte de la imagen de la API—, y
+para medirlo borraba `api.app` de `sys.modules` y lo reimportaba. No reponía el
+original. `api/app.py` crea el objeto `app` al importarse y una veintena de
+ficheros de test hacen `from api.app import app` **en la colección**, así que a
+partir de ese punto convivían dos objetos `app`: el que aquellos capturaron y
+el que resuelve el fixture `client`. Sus `dependency_overrides` son
+diccionarios distintos. El test instalaba su sustitución en un `app` que ya no
+respondía, y la petición salía sin autenticar.
 
-**Estado a 2026-09-15.** El de `ops_events` lleva cinco tiradas completas sin
-aparecer; se deja en la tabla hasta acumular alguna más, porque «no lo he
-vuelto a ver» no es «lo arreglé». Los de webhooks siguen: dos por tirada, no
-siempre los mismos dos.
+El orden aleatorio decidía si esos dos tests corrían antes de los de webhooks
+en el mismo worker. De ahí que fallaran dos por tirada y nunca los mismos.
 
-Qué está establecido y qué se ha descartado:
+**Por qué costó.** El síntoma —un 401— señala a la autenticación, y el fallo
+estaba en `sys.modules`. Las tres hipótesis razonables (un vecino que vacía
+`dependency_overrides`, un middleware, dos objetos `require_any_auth`
+distintos) eran falsas y se descartaron una a una. Lo resolvió imprimir
+`id(app)` desde el test que fallaba, en una tirada completa instrumentada: el
+`app` del módulo y el del `TestClient` tenían identidades distintas.
 
-- Pasan en solitario (13/13), pasan con `-p no:randomly`, y pasan con `-n 4`
-  sobre los 23 ficheros que tocan `app.dependency_overrides` (288/288). O sea
-  que el vecino que contamina no está en ese conjunto.
-- El 401 lo emite `require_any_auth` **ejecutándose**, no un middleware: el
-  cuerpo es su `detail` literal. Así que en ese instante la sustitución no
-  estaba en `app.dependency_overrides`, aunque el test la instale en la línea
-  anterior.
-- Ningún test recarga `api.routes.dual_auth` ni `api.app` (los únicos
-  `importlib.reload` de la suite son `db.users` y `scheduler.watchlist_alerts`),
-  así que la hipótesis de «dos objetos `require_any_auth` distintos» queda
-  descartada.
+**El arreglo.** `_api_app_descargada` repone el módulo original al salir —y el
+atributo del paquete, que es la mitad que se olvida: `from api.app import app`
+resuelve por `sys.modules` y `import api.app as m` por el atributo, así que
+reponer sólo uno deja el fallo vivo y más raro—. Y un fixture autouse en
+`tests/conftest.py` compara las dos identidades antes y después de cada test:
+si alguien vuelve a dejar un `api.app` recargado, falla **ese** test con el
+motivo escrito, en vez de un 401 tres ficheros más allá. No fuerza el import de
+la API si el test no la tocó.
 
-Qué se ha hecho: `_sin_ssrf` dejó de vaciar `app.dependency_overrides` entero
-—vaciaba un diccionario global compartido con otros veintiún ficheros— y la
-aserción de `_crear` dice qué mirar cuando falla. Con eso el fichero deja de
-ser una **fuente** de contaminación; que siga siendo **víctima** de alguna otra
-no se ha logrado reproducir, y por tanto no se ha arreglado. Queda como ítem
-abierto, no como algo cerrado en silencio.
+Tirada completa tras el arreglo: **6.880 pasan, 0 fallan** (`-n 4`).
 
 ## 5. Estado de ejecución
 
