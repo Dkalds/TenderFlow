@@ -60,6 +60,25 @@ SUNSET_LISTADO_POR_OFFSET = sunset_anunciado(date(2027, 1, 15), anunciado=date(2
 
 router = APIRouter(tags=["licitaciones"])
 
+#: Router aparte **sólo** para `GET /licitaciones/{id_externo:path}`.
+#:
+#: Un `id_externo` de PLACSP lleva barras y espacios ("PA-S 2026/000058"), así
+#: que el detalle necesita el conversor `:path`. Pero `:path` es glotón:
+#: `/licitaciones/{id:path}` también casa con `/licitaciones/X/eventos` y con
+#: todos los demás hijos, y el que se declara antes gana. Por eso esta ruta se
+#: registra en un router propio que `api/app.py` incluye **el último de todos**,
+#: después de `eventos`, `predicciones` y `ask`, que también cuelgan de
+#: `/licitaciones/{...}` y viven en otros módulos.
+#:
+#: Antes esto era un `app.add_api_route(..., include_in_schema=False)` al final
+#: de `api/app.py`: funcionaba, pero (a) dejaba el detalle **fuera del esquema**
+#: con la forma correcta —el spec publicaba la variante de segmento simple, que
+#: es la que se rompe con esos ids—, (b) metía conocimiento de una ruta
+#: concreta en el ensamblado de la aplicación y (c) su corrección dependía de
+#: un orden que nadie comprobaba. Ahora el orden lo fija
+#: `tests/test_licitaciones_identificador.py`.
+router_detalle = APIRouter(tags=["licitaciones"])
+
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 _MAX_QUERY_LENGTH = 200
 
@@ -608,10 +627,11 @@ async def search_licitaciones(
 
 
 # ── /licitaciones/{id_externo} ────────────────────────────────────────────
+# Va en `router_detalle` y no en `router`: ver el comentario de ese router.
 
 
-@router.get(
-    "/licitaciones/{id_externo}",
+@router_detalle.get(
+    "/licitaciones/{id_externo:path}",
     response_model=LicitacionDetail,
     summary="Detalle de una licitación",
     responses={
@@ -696,7 +716,7 @@ class SimilaresResult(BaseModel):
 
 
 @router.get(
-    "/licitaciones/{id_externo}/similares",
+    "/licitaciones/{id_externo:path}/similares",
     response_model=SimilaresResult,
     summary="Predecesor y expedientes similares",
 )
@@ -896,7 +916,7 @@ async def post_reporte_dato(
 
 
 @router.get(
-    "/licitaciones/{id_externo}/documentos/{documento_id}/paginas/{page_number}",
+    "/licitaciones/{id_externo:path}/documentos/{documento_id}/paginas/{page_number}",
     summary="Página de un pliego, con el fragmento de la cita localizado",
     responses={
         401: {"description": "Autenticación inválida"},

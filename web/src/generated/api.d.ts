@@ -2363,6 +2363,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/licitaciones/{id_externo}/escenarios-precio": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Escenarios descriptivos de precio sobre adjudicaciones comparables
+         * @description Devuelve cuantiles históricos; deliberadamente no devuelve P(ganar).
+         *
+         *     Con ``lote_id`` los tres precios se calculan sobre el presupuesto de ese
+         *     lote (S3.1). Sin él, sobre el del expediente, como siempre.
+         */
+        get: operations["get_escenarios_precio_api_v1_licitaciones__id_externo__escenarios_precio_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/licitaciones/{id_externo}/eventos": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Línea de tiempo de un contrato
+         * @description Hitos del ciclo de vida: publicación → adjudicación → formalización →
+         *     modificaciones/prórrogas → anulación, ordenados cronológicamente.
+         */
+        get: operations["get_timeline_api_v1_licitaciones__id_externo__eventos_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/licitaciones/{id_externo}/explain": {
         parameters: {
             query?: never;
@@ -2505,6 +2549,23 @@ export interface paths {
          *     LLM, con la `user_key` del auth y nunca el email ni el `user_id` crudo.
          */
         post: operations["post_guion_oferta_api_v1_licitaciones__id_externo__guion_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/licitaciones/{id_externo}/prediccion-baja": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Intervalo de baja esperada (p10/p50/p90) */
+        get: operations["get_prediccion_baja_api_v1_licitaciones__id_externo__prediccion_baja_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -2658,67 +2719,6 @@ export interface paths {
          *     en el texto de los pliegos con su evidencia (términos o citas).
          */
         get: operations["get_tecnologias_api_v1_licitaciones__id_externo__tecnologias_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/licitaciones/{licitacion_id}/escenarios-precio": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Escenarios descriptivos de precio sobre adjudicaciones comparables
-         * @description Devuelve cuantiles históricos; deliberadamente no devuelve P(ganar).
-         *
-         *     Con ``lote_id`` los tres precios se calculan sobre el presupuesto de ese
-         *     lote (S3.1). Sin él, sobre el del expediente, como siempre.
-         */
-        get: operations["get_escenarios_precio_api_v1_licitaciones__licitacion_id__escenarios_precio_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/licitaciones/{licitacion_id}/eventos": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Línea de tiempo de un contrato
-         * @description Hitos del ciclo de vida: publicación → adjudicación → formalización →
-         *     modificaciones/prórrogas → anulación, ordenados cronológicamente.
-         */
-        get: operations["get_timeline_api_v1_licitaciones__licitacion_id__eventos_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/licitaciones/{licitacion_id}/prediccion-baja": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Intervalo de baja esperada (p10/p50/p90) */
-        get: operations["get_prediccion_baja_api_v1_licitaciones__licitacion_id__prediccion_baja_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -18051,6 +18051,93 @@ export interface operations {
             };
         };
     };
+    get_escenarios_precio_api_v1_licitaciones__id_externo__escenarios_precio_get: {
+        parameters: {
+            query?: {
+                lote_id?: number | null;
+                competencia_esperada?: number | null;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                id_externo: string;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PriceScenariosResult"];
+                };
+            };
+            /** @description Licitación (o lote) inexistente */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_timeline_api_v1_licitaciones__id_externo__eventos_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                id_externo: string;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TimelineResult"];
+                };
+            };
+            /** @description Licitación no encontrada */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     explain_licitacion_api_v1_licitaciones__id_externo__explain_get: {
         parameters: {
             query?: {
@@ -18351,6 +18438,50 @@ export interface operations {
             };
         };
     };
+    get_prediccion_baja_api_v1_licitaciones__id_externo__prediccion_baja_get: {
+        parameters: {
+            query?: {
+                lote_id?: number | null;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                id_externo: string;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PrediccionBajaResult"];
+                };
+            };
+            /** @description Sin predicción para esa licitación */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     post_reporte_dato_api_v1_licitaciones__id_externo__reportes_post: {
         parameters: {
             query?: never;
@@ -18628,137 +18759,6 @@ export interface operations {
                 content?: never;
             };
             /** @description No encontrado */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_escenarios_precio_api_v1_licitaciones__licitacion_id__escenarios_precio_get: {
-        parameters: {
-            query?: {
-                lote_id?: number | null;
-                competencia_esperada?: number | null;
-            };
-            header?: {
-                "X-CSRF-Token"?: string | null;
-            };
-            path: {
-                licitacion_id: string;
-            };
-            cookie?: {
-                session?: string | null;
-            };
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PriceScenariosResult"];
-                };
-            };
-            /** @description Licitación (o lote) inexistente */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_timeline_api_v1_licitaciones__licitacion_id__eventos_get: {
-        parameters: {
-            query?: never;
-            header?: {
-                "X-CSRF-Token"?: string | null;
-            };
-            path: {
-                licitacion_id: string;
-            };
-            cookie?: {
-                session?: string | null;
-            };
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["TimelineResult"];
-                };
-            };
-            /** @description Licitación no encontrada */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_prediccion_baja_api_v1_licitaciones__licitacion_id__prediccion_baja_get: {
-        parameters: {
-            query?: {
-                lote_id?: number | null;
-            };
-            header?: {
-                "X-CSRF-Token"?: string | null;
-            };
-            path: {
-                licitacion_id: string;
-            };
-            cookie?: {
-                session?: string | null;
-            };
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PrediccionBajaResult"];
-                };
-            };
-            /** @description Sin predicción para esa licitación */
             404: {
                 headers: {
                     [name: string]: unknown;

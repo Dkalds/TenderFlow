@@ -63,8 +63,8 @@ from api.routes.feedback import router as feedback_router
 from api.routes.follows import router as follows_router
 from api.routes.health import router as health_router
 from api.routes.jobs import router as jobs_router
-from api.routes.licitaciones import get_licitacion as _get_licitacion_handler
 from api.routes.licitaciones import router as licitaciones_router
+from api.routes.licitaciones import router_detalle as licitaciones_detalle_router
 from api.routes.me import router as me_router
 from api.routes.meta import router as meta_router
 from api.routes.metrics import router as metrics_router
@@ -495,6 +495,13 @@ if not _ES_WORKER:
     # la que declaran los dashboards y el render.yaml. Su auth y su formato de
     # exposición viven en `api/routes/metrics.py`.
     app.include_router(metrics_router)
+    # ÚLTIMO A PROPÓSITO. `GET /licitaciones/{id_externo:path}` es glotón y
+    # casaría con `/licitaciones/X/eventos`, `/prediccion-baja`, `/resumen` y
+    # el resto de hijos que viven en otros módulos. Registrarlo al final hace
+    # que sólo recoja lo que ningún hermano reclamó, que es exactamente lo que
+    # tiene que hacer un detalle. Lo fija `tests/test_licitaciones_identificador.py`;
+    # no muevas esta línea sin leerlo.
+    app.include_router(licitaciones_detalle_router, prefix="/api/v1")
 
 
 # ---------------------------------------------------------------------------
@@ -516,20 +523,3 @@ async def _root() -> dict[str, str]:
         "docs": "/api/docs",
         "health": "/api/v1/health",
     }
-
-
-# ---------------------------------------------------------------------------
-# Fallback detalle — ids con '/' (p.ej. "PA-S 2026/000058")
-# ---------------------------------------------------------------------------
-# La ruta /api/v1/licitaciones/{id_externo} usa el conversor por defecto
-# ([^/]+), que no admite barras. Como algunos id_externo contienen '/',
-# registramos un catch-all con el conversor ``:path`` que reutiliza el mismo
-# handler. Va al final (último globalmente) para no ensombrecer las sub-rutas
-# específicas (/explain, /tech-scores, /eventos, /prediccion-baja).
-if not _ES_WORKER:
-    app.add_api_route(
-        "/api/v1/licitaciones/{id_externo:path}",
-        _get_licitacion_handler,
-        methods=["GET"],
-        include_in_schema=False,
-    )

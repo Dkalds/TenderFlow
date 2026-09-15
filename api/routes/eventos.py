@@ -54,23 +54,26 @@ class TimelineResult(BaseModel):
 
 
 @router.get(
-    "/licitaciones/{licitacion_id:path}/eventos",
+    "/licitaciones/{id_externo:path}/eventos",
     summary="Línea de tiempo de un contrato",
     responses={404: {"description": "Licitación no encontrada"}},
 )
 async def get_timeline(
-    licitacion_id: str,
+    id_externo: str,
     _ctx: dict[str, Any] = Depends(require_any_auth),
 ) -> TimelineResult:
     """Hitos del ciclo de vida: publicación → adjudicación → formalización →
     modificaciones/prórrogas → anulación, ordenados cronológicamente."""
-    if not await run_db(_repo_licitaciones.exists, licitacion_id):
+    if not await run_db(_repo_licitaciones.exists, id_externo):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Licitación no encontrada."
         )
-    items = await run_db(timeline, licitacion_id)
+    items = await run_db(timeline, id_externo)
+    # El campo de la respuesta sigue llamándose `licitacion_id`: renombrarlo
+    # sería un cambio del contrato, y lo que se está unificando es cómo se
+    # **direcciona** el expediente en la URL, no cómo se llama en el cuerpo.
     return TimelineResult(
-        licitacion_id=licitacion_id, items=[TimelineEvento(**item) for item in items]
+        licitacion_id=id_externo, items=[TimelineEvento(**item) for item in items]
     )
 
 
