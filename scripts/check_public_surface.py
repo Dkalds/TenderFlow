@@ -46,6 +46,10 @@ Uso::
 Allowlist por línea: añadí ``cps-allow`` (o ``cps-allow:categoria``) en un
 comentario de la línea, con el motivo. Como en
 ``scripts/check_frontend_invariants.py``, del que este guard copia la forma.
+
+No confundir con ``api/contrato_publico.py``, que declara qué operaciones de la
+API son contrato con un integrador autenticado. Esto de aquí es la restricción
+de producto sobre el dato ANÓNIMO; aquello es compatibilidad de la API.
 """
 
 from __future__ import annotations

@@ -113,6 +113,29 @@ Todas están en el roadmap H0 de la revisión. Ninguna es código.
 
 ---
 
+## 4-bis. Lo que queda en rojo y no se ha podido cerrar
+
+Tres tests fallan **sólo** en la suite completa en paralelo (`pytest -n 4`), y
+no siempre los mismos:
+
+| Test | Síntoma |
+|---|---|
+| `test_webhooks_rotate_secret.py` (dos o tres, rotando) | 401 en una petición cuya sustitución de `require_any_auth` el test acaba de instalar |
+| `test_ops_events.py::test_healthcheck_ops_events_tabla_ausente` | `ops_events_missing` no llega a `True` tras borrar la tabla |
+
+Qué está establecido: los tres pasan en solitario, pasan con `-p no:randomly`,
+y pasan en una tirada en paralelo acotada a sus vecinos más probables
+(los ficheros que también vacían `app.dependency_overrides`). En tres tiradas
+completas fallaron tests **distintos** del mismo fichero cada vez, que es la
+firma de contaminación entre tests, no de una regresión.
+
+Qué se ha hecho: `_sin_ssrf` deja de vaciar `app.dependency_overrides` entero
+—vaciaba un diccionario global compartido con otros veintiún ficheros— y la
+aserción de `_crear` ahora dice qué mirar cuando falla. Con eso el fichero deja
+de ser una **fuente** de contaminación; que siga siendo **víctima** de alguna
+otra no se ha logrado reproducir, y por tanto no se ha arreglado. Queda como
+ítem abierto, no como algo cerrado en silencio.
+
 ## 5. Estado de ejecución
 
 Se actualiza al cerrar cada stream. Cuenta lo que hay en el árbol, no lo que

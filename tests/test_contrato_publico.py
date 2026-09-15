@@ -5,7 +5,7 @@ Qué protege cada test
 1. **Que lo declarado existe.** Una operación en la lista que ya no está en la
    app significa que el spec público publica una ruta muerta: el integrador
    escribe el cliente y recibe un 404. Como la lista vive lejos del código
-   (a propósito, ver `api/superficie_publica.py`), esta comprobación es lo que
+   (a propósito, ver `api/contrato_publico.py`), esta comprobación es lo que
    impide que se desincronice.
 2. **Que el spec público es usable.** Sin el cierre transitivo de `$ref`, el
    fichero sale con referencias colgando y ningún generador de clientes lo
@@ -24,9 +24,9 @@ from typing import Any
 
 import pytest
 
-from api.superficie_publica import (
+from api.contrato_publico import (
+    CONTRATO_PUBLICO,
     EXTENSION,
-    SUPERFICIE_PUBLICA,
     claves_publicas,
     filtrar_publico,
     marcar_publicas,
@@ -109,18 +109,18 @@ def test_toda_operacion_declarada_existe_en_la_app(schema: dict[str, Any]) -> No
     assert not fantasmas, (
         "Operación(es) declaradas públicas que la app ya no expone. El spec "
         "público las publicaría y el cliente que las use recibiría un 404. "
-        f"Corregí `api/superficie_publica.py`: {fantasmas}"
+        f"Corregí `api/contrato_publico.py`: {fantasmas}"
     )
 
 
 def test_cada_operacion_declara_su_motivo() -> None:
     """Una línea sin motivo es una línea que nadie podrá revisar."""
-    sin_motivo = [f"{op.metodo} {op.ruta}" for op in SUPERFICIE_PUBLICA if len(op.porque) < 15]
+    sin_motivo = [f"{op.metodo} {op.ruta}" for op in CONTRATO_PUBLICO if len(op.porque) < 15]
     assert not sin_motivo, sin_motivo
 
 
 def test_no_hay_duplicados() -> None:
-    assert len(claves_publicas()) == len(SUPERFICIE_PUBLICA)
+    assert len(claves_publicas()) == len(CONTRATO_PUBLICO)
 
 
 # ── 2. El spec público es usable ────────────────────────────────────────────
@@ -128,7 +128,7 @@ def test_no_hay_duplicados() -> None:
 
 def test_el_spec_publico_no_deja_referencias_colgando(schema: dict[str, Any]) -> None:
     """El fallo que sólo se ve al generar el cliente, o sea, en casa del cliente."""
-    from api.superficie_publica import _refs
+    from api.contrato_publico import _refs
 
     publico = filtrar_publico(schema)
     disponibles = set(publico["components"]["schemas"])
@@ -174,7 +174,7 @@ def test_la_marca_x_public_llega_al_spec_completo(schema: dict[str, Any]) -> Non
     """La marca viaja en el artefacto que ya existía, no sólo en el filtrado."""
     copia = dict(schema)
     marcadas = marcar_publicas(copia)
-    assert marcadas == len(SUPERFICIE_PUBLICA)
+    assert marcadas == len(CONTRATO_PUBLICO)
 
     con_marca = {
         (metodo.lower(), ruta)

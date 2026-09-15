@@ -15,7 +15,7 @@ integrador tiene dos efectos, los dos malos: cada endpoint se convierte en una
 promesa que no se puede romper, y el cliente no sabe cuál usar.
 
 La lista de lo que **sí** es contrato, con el motivo de cada línea, está en
-[`api/superficie_publica.py`](../api/superficie_publica.py). Con ella,
+[`api/contrato_publico.py`](../api/contrato_publico.py). Con ella,
 `make openapi` produce dos ficheros:
 
 | Fichero | Qué lleva | Para quién |
@@ -25,7 +25,7 @@ La lista de lo que **sí** es contrato, con el motivo de cada línea, está en
 
 Añadir una operación al contrato es una línea. **Quitarla no**: retirar algo de
 ahí rompe a quien lo use, y va por RFC con fecha —
-`tests/test_superficie_publica.py` falla en las dos direcciones para que el
+`tests/test_contrato_publico.py` falla en las dos direcciones para que el
 cambio sea visible en el diff y no un descuido.
 
 ## Base URL

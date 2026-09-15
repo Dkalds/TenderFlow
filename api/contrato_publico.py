@@ -32,8 +32,17 @@ reparte la respuesta a «qué prometemos» entre treinta ficheros, donde nadie l
 lee entera. Lo que hace falta aquí es justo lo contrario: **un sitio que un
 humano pueda leer de arriba abajo antes de firmar un contrato**, con el motivo
 al lado de cada línea. El riesgo de que la lista se desincronice del código lo
-cubre ``tests/test_superficie_publica.py``, que falla si una operación
+cubre ``tests/test_contrato_publico.py``, que falla si una operación
 declarada ya no existe.
+
+No confundir con ``make check-public-surface``
+----------------------------------------------
+``scripts/check_public_surface.py`` vigila otra cosa completamente distinta: que
+la superficie **anónima** del sitio (``/publico/*``, la que indexa Google) no
+publique adjudicatarios, NIF ni analítica propia. Aquello es una restricción de
+producto sobre qué dato se enseña sin autenticar; esto es la lista de
+operaciones con contrato de compatibilidad para quien integra con su clave. Se
+parecen en el nombre y no tienen nada que ver.
 
 Qué **no** entra, y por qué
 ---------------------------
@@ -82,7 +91,7 @@ class OperacionPublica:
 _P = OperacionPublica
 
 #: El contrato. Ordenado por bloques, no alfabéticamente: se lee por temas.
-SUPERFICIE_PUBLICA: tuple[OperacionPublica, ...] = (
+CONTRATO_PUBLICO: tuple[OperacionPublica, ...] = (
     # ── El dato, que es el producto ────────────────────────────────────────
     _P("GET", "/api/v1/licitaciones", "el listado con filtros: la puerta de entrada"),
     _P("GET", "/api/v1/licitaciones/cursor", "paginación estable para volcados completos"),
@@ -137,7 +146,7 @@ SUPERFICIE_PUBLICA: tuple[OperacionPublica, ...] = (
 
 def claves_publicas() -> frozenset[tuple[str, str]]:
     """``{(metodo_en_minúsculas, ruta)}`` del contrato."""
-    return frozenset(op.clave for op in SUPERFICIE_PUBLICA)
+    return frozenset(op.clave for op in CONTRATO_PUBLICO)
 
 
 def marcar_publicas(schema: dict[str, Any]) -> int:
@@ -183,7 +192,7 @@ def filtrar_publico(schema: dict[str, Any]) -> dict[str, Any]:
     La poda de ``components/schemas`` es **transitiva**: un DTO referencia a
     otros y quedarse sólo con los de primer nivel produciría un fichero con
     ``$ref`` colgando, que ningún generador de clientes acepta.
-    ``tests/test_superficie_publica.py`` comprueba que no queda ninguno suelto.
+    ``tests/test_contrato_publico.py`` comprueba que no queda ninguno suelto.
 
     Lo que se conserva fuera de ``paths``: ``openapi``, ``info``, ``servers``,
     ``tags`` y ``components/securitySchemes`` — sin el último, el fichero no
@@ -260,6 +269,6 @@ def filtrar_publico(schema: dict[str, Any]) -> dict[str, Any]:
         "Las operaciones con soporte y contrato de compatibilidad. El resto de "
         "la API existe y funciona, pero es interna: cambia sin aviso y no debe "
         "integrarse. La lista y el motivo de cada línea están en "
-        "`api/superficie_publica.py`; quitar una operación de aquí va por RFC."
+        "`api/contrato_publico.py`; quitar una operación de aquí va por RFC."
     )
     return publico

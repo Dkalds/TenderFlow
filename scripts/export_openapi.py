@@ -13,7 +13,7 @@ Escribe **dos** ficheros:
 * ``api/openapi-public.json`` — sólo esas operaciones, con los esquemas que
   alcanzan. **Es el que se le enseña a un integrador.** Sin él, las más de
   doscientas operaciones del completo quedan publicadas por igual y cambiar
-  cualquiera pasa a romper a alguien; ver ``api/superficie_publica.py``.
+  cualquiera pasa a romper a alguien; ver ``api/contrato_publico.py``.
 
 Uso::
 
@@ -50,7 +50,7 @@ def export_openapi(dest: Path) -> dict[str, object]:
     """
     sys.path.insert(0, str(_REPO_ROOT))
     from api.app import app
-    from api.superficie_publica import filtrar_publico, marcar_publicas
+    from api.contrato_publico import filtrar_publico, marcar_publicas
 
     schema: dict[str, object] = app.openapi()
     marcar_publicas(schema)
@@ -61,7 +61,7 @@ def export_openapi(dest: Path) -> dict[str, object]:
 
 def operaciones_publicas(schema: dict[str, object]) -> int:
     """Cuántas operaciones del schema llevan la marca ``x-public``."""
-    from api.superficie_publica import EXTENSION
+    from api.contrato_publico import EXTENSION
 
     rutas = schema.get("paths")
     if not isinstance(rutas, dict):
@@ -88,13 +88,13 @@ def main() -> int:
         # Un público vacío no es un fichero pequeño: es un contrato borrado.
         print(
             "ERROR: ninguna operación quedó marcada como pública. Las rutas de "
-            "`api/superficie_publica.py` no casan con las de la app.",
+            "`api/contrato_publico.py` no casan con las de la app.",
             file=sys.stderr,
         )
         return 1
     publico = dest.with_name(f"{dest.stem}-public{dest.suffix}")
     print(f"OpenAPI exportado: {dest} ({n_paths} paths)")
-    print(f"Superficie pública: {publico} ({publicas} operaciones)")
+    print(f"Contrato público: {publico} ({publicas} operaciones)")
     return 0
 
 
