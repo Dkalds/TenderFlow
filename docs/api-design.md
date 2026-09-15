@@ -94,8 +94,8 @@ Los scopes los resuelve `api/scopes.py::required_scope_for_request` a partir del
 | `licitaciones:read` | GET/POST | `/licitaciones`, `/licitaciones/bulk-get`, `/licitaciones/cursor`, `/licitaciones/search`, `/licitaciones/stream` |
 | `licitaciones:write` | POST | `/licitaciones`, `/licitaciones/comparar` |
 | `models:read` | GET/POST | `/models` |
-| `notifications:read` | GET | `/notifications` |
-| `notifications:write` | POST | `/notifications/alerts`, `/notifications/read` |
+| `notifications:read` | GET | `/notifications`, `/notifications/baja` |
+| `notifications:write` | POST | `/notifications/alerts`, `/notifications/baja`, `/notifications/read` |
 | `profile:read` | GET | `/me/profile` |
 | `profile:write` | PUT/DELETE | `/me/profile` |
 | `pursuits:read` | GET | `/organizations`, `/organizations/active`, `/organizations/go-no-go`, `/pursuits`, `/pursuits/actividad`, `/pursuits/adjuntos`, `/pursuits/agenda`, `/pursuits/cartera`, `/pursuits/direccion`, `/pursuits/metrics`, `/pursuits/mi-baja`, `/pursuits/tasks`, `/pursuits/weights-proposal` |
