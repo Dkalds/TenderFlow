@@ -51,11 +51,9 @@ from api.routes.licitaciones import (
 )
 from api.routes.licitaciones._base import (
     SUNSET_LISTADO_POR_OFFSET,
-    _check_etag,
     _decode_cursor,
     _encode_cursor,
     _get_classifier,
-    _make_etag,
 )
 from api.routes.licitaciones.adjudicaciones import AdjudicacionSummary
 from api.routes.licitaciones.analitica import (
@@ -140,11 +138,9 @@ __all__ = [
     "TechScoresResult",
     "TecnologiaDetalle",
     "TecnologiasSenalResult",
-    "_check_etag",
     "_decode_cursor",
     "_encode_cursor",
     "_get_classifier",
-    "_make_etag",
     "get_licitacion",
     "router",
     "router_detalle",

@@ -266,37 +266,29 @@ def test_el_detalle_no_se_come_a_sus_hermanos(cliente_autenticado) -> None:
         assert "titulo" not in cuerpo, f"el detalle se comió {nombre}: {cuerpo}"
 
 
-def test_el_304_del_detalle_lleva_su_etag(cliente_autenticado) -> None:
-    """RFC 7232 §4.1 exige el `ETag` en el 304, y el handler lo perdía.
+def test_el_detalle_revalida_con_un_solo_etag(cliente_autenticado) -> None:
+    """Una sola implementación de ETag en la ruta, y contesta el 304.
 
-    FastAPI sólo fusiona las cabeceras del `Response` inyectado cuando el
-    handler **no** devuelve un `Response` propio, y el 304 devolvía uno nuevo.
-
-    El `Cache-Control` no se comprueba contra lo que pone el handler: lo fija
-    `ETagMiddleware`, que para tráfico autenticado lo pone en
-    `private, no-cache` a propósito —ningún caché compartido debe guardar una
-    respuesta autenticada—. El `max-age=60` que el handler traía era papel
-    mojado; se quitó al arreglar esto.
+    El handler tenía la suya —`_make_etag`/`_check_etag`— además de la de
+    `ETagMiddleware`, y se midió que no servía: la respuesta 200 salía con
+    **dos** valores en la cabecera `ETag` y el 304 lo contestaba siempre el
+    middleware, porque el `==` exacto del handler no casaba con los dos valores
+    que el cliente devolvía. La rama 304 escrita en el handler no se ejecutaba
+    nunca. Se quitó; esto fija que no vuelva.
     """
     with cliente_autenticado as c:
         primera = c.get(f"/api/v1/licitaciones/{ID_CON_BARRA}")
         assert primera.status_code == 200, primera.text
         etag = primera.headers.get("ETag")
         assert etag
+        assert "," not in etag, f"dos implementaciones de ETag otra vez: {etag}"
 
         segunda = c.get(f"/api/v1/licitaciones/{ID_CON_BARRA}", headers={"If-None-Match": etag})
 
     assert segunda.status_code == 304, segunda.text
-    devuelto = segunda.headers.get("ETag")
-    assert devuelto
-    # `in` y no `==`: en el 200 la cabecera lleva **dos** valores —el del
-    # handler y el que añade el middleware de compresión al reescribir el
-    # cuerpo—, así que `etag` es la lista y `devuelto` el del handler.
-    assert devuelto in etag
-    # Lo que importa del `Cache-Control` es que **no** anuncie frescura: quien
-    # lo fija es `ETagMiddleware`, y el `private` de delante depende de que la
-    # petición traiga cookie o API key —aquí la autenticación se simula con un
-    # override de la dependencia, así que el middleware no la ve—.
+    assert segunda.headers.get("ETag") == etag
+    # El `Cache-Control` lo decide el middleware; lo que importa es que no
+    # anuncie frescura para una respuesta autenticada.
     cache = segunda.headers.get("Cache-Control") or ""
     assert "no-cache" in cache, cache
     assert "max-age" not in cache, cache

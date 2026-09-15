@@ -12,6 +12,8 @@ from typing import Any
 
 import pytest
 
+from tests.dobles_tenencia import alcance_doble, alcance_fijo
+
 
 class _RepoDoble:
     def __init__(
@@ -49,22 +51,6 @@ class _PursuitsDoble:
         return self.pursuit
 
 
-def _alcance(resolucion):
-    """Doble de ``alcance_resuelto``: mismo contrato, sin base de datos.
-
-    Es un context manager porque el real lo es: acota el bloque y lo suelta al
-    salir (ADR-034). Sustituirlo por una función que devuelve la tupla haría
-    pasar el test y no probaría la forma que el servicio usa.
-    """
-    from contextlib import contextmanager
-
-    @contextmanager
-    def _cm(user_id, organization_id=None, *, write=False):
-        yield resolucion(user_id, organization_id, write=write)
-
-    return _cm
-
-
 @pytest.fixture
 def mod(monkeypatch: pytest.MonkeyPatch):
     import services.go_no_go_puntuacion as modulo
@@ -73,7 +59,7 @@ def mod(monkeypatch: pytest.MonkeyPatch):
         def _resolve(user_id: int, organization_id: Any = None, *, write: bool = False):
             return 7, rol
 
-        monkeypatch.setattr(modulo, "alcance_resuelto", _alcance(_resolve))
+        monkeypatch.setattr(modulo, "alcance_resuelto", alcance_doble(_resolve))
         return modulo
 
     modulo.con_rol = _hacer  # type: ignore[attr-defined]
@@ -121,9 +107,7 @@ class TestPesos:
     ) -> None:
         import services.go_no_go_puntuacion as mod
 
-        monkeypatch.setattr(
-            mod, "alcance_resuelto", _alcance(lambda u, o=None, *, write=False: (7, rol))
-        )
+        monkeypatch.setattr(mod, "alcance_resuelto", alcance_fijo(rol=rol))
         repo = _RepoDoble(pesos={})
         monkeypatch.setattr(mod, "_repo", repo)
 

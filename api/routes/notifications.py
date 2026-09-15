@@ -190,7 +190,7 @@ def _apagar_por_enlace(user_id: int, tipo: str, token: str) -> tuple[bool, str |
     van en el mismo salto porque la primera es HMAC (CPU) y la segunda una
     escritura, y las dos en el event loop lo bloquearían.
     """
-    from db.repositories.notification_preferences import TIPOS, guardar
+    from db.repositories.notification_preferences import TIPOS, apagar_canal
     from services.app_urls import url_absoluta
     from services.email_digest import verificar_token_de_baja_de_tipo
 
@@ -199,8 +199,10 @@ def _apagar_por_enlace(user_id: int, tipo: str, token: str) -> tuple[bool, str |
     if not verificar_token_de_baja_de_tipo(user_id, tipo, token):
         return False, None
     # Sólo el canal `email`: quien se da de baja del correo no está pidiendo
-    # dejar de verlo en la aplicación.
-    guardar(user_id, tipo=tipo, canal="email", frecuencia="off")
+    # dejar de verlo en la aplicación. Y `apagar_canal` y no `guardar`, porque
+    # la preferencia de una organización concreta gana sobre la global: apagar
+    # sólo la global dejaba el enlace sin efecto para quien tuviera una.
+    apagar_canal(user_id, tipo=tipo, canal="email")
     return True, url_absoluta("/ajustes?baja=1")
 
 

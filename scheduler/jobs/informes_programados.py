@@ -215,14 +215,22 @@ def ejecutar(ahora: datetime | None = None) -> Resumen:
             enviados = _enviar(fila, informe, destinos)
             resumen.enviados += enviados
             if not enviados:
-                # **No se sella.** El mailer no lanza ante un fallo del ESP:
-                # devuelve `ResultadoEnvio(ok=False)`, así que una caída del
-                # proveedor llegaba hasta aquí y estampaba `ultimo_envio_at`.
-                # Con eso `pendientes()` ya no devolvía la fila y la
-                # organización se quedaba sin informe **esa semana entera**,
-                # justo lo contrario de lo que promete la ventana de un día.
-                # Dejándola sin sellar, la pasada siguiente lo recupera.
+                # Constancia **sin** sellar la ventana, que son dos cosas
+                # distintas. El mailer no lanza ante un fallo del ESP: devuelve
+                # `ResultadoEnvio(ok=False)`, así que una caída del proveedor
+                # llegaba a `marcar_envio` y estampaba `ultimo_envio_at`; con
+                # eso `pendientes()` dejaba de devolver la fila y la
+                # organización se quedaba sin informe la semana entera. Pero
+                # limitarse a no sellar dejaba `ultimo_estado` con el
+                # `enviado:3/3` de la semana pasada, diciéndole a quien mira
+                # que el correo salió. Así la pasada siguiente reintenta y el
+                # diagnóstico dice la verdad.
                 resumen.fallidos += 1
+                report_schedules.marcar_estado(int(fila["id"]), estado="fallido")
+                record_event(
+                    "informe_semanal_fallido",
+                    detail=f"organization_id={organization_id}",
+                )
                 log.warning(
                     "informe_no_salio_ninguno",
                     organization_id=organization_id,

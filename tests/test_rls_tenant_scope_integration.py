@@ -511,6 +511,62 @@ def test_la_vertical_de_pursuits_tambien_acota_la_peticion(
     assert s["org_b"] not in ambitos
 
 
+# ── 5-ter: resolver y devolver el id no acota nada ──────────────────────────
+
+
+def test_direccion_acota_la_peticion_entera(
+    client: Any, rol_runtime: str, tmp_db: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Regresión de la trampa de envolver una función que sólo resuelve.
+
+    ``exigir_direccion`` hacía ``with alcance_resuelto(...) as (resuelta, rol):
+    ... return resuelta``. Parecía acotado y no lo estaba: el ``with`` se cierra
+    al devolver, así que el ámbito se soltaba **antes** de que el llamante
+    consultara nada. Dirección y las dos rutas de T6 seguían corriendo sin
+    respaldo RLS con el código leyéndose como si lo tuvieran.
+
+    Es la misma clase de fallo que el hueco original —falla abierto, porque el
+    predicado de v128 deja pasar todo con el GUC vacío— y por eso se mide el
+    ámbito y no el resultado: un 200 con las filas correctas lo dan las dos
+    versiones.
+
+    El arreglo fue convertirla en context manager (``direccion_resuelta``), y
+    la regla general es que el ámbito tiene que seguir abierto donde están las
+    consultas.
+    """
+    import db.connection as conn_mod
+    from api.app import app
+    from api.routes.dual_auth import require_any_auth
+
+    db_mod, _ = tmp_db
+    s = _sembrar(db_mod)
+
+    ambitos: list[int | None] = []
+    real = conn_mod.current_organization
+
+    def _espia() -> int | None:
+        valor = real()
+        ambitos.append(valor)
+        return valor
+
+    monkeypatch.setattr(conn_mod, "current_organization", _espia)
+    app.dependency_overrides[require_any_auth] = lambda: {
+        "user_id": s["user_a"],
+        "auth_method": "session",
+        "user_key": "rls-a",
+    }
+    try:
+        resp = client.get("/api/v1/pursuits/direccion")
+        assert resp.status_code == 200, resp.text
+    finally:
+        app.dependency_overrides.pop(require_any_auth, None)
+
+    assert s["org_a"] in ambitos, (
+        "Dirección corrió sin ámbito: el `with` se cerró al devolver el id y la "
+        f"consulta quedó fuera. {ambitos}"
+    )
+
+
 # ── 6: estructural ─────────────────────────────────────────────────────────
 
 

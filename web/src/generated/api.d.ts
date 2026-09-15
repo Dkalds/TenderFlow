@@ -11265,6 +11265,13 @@ export interface components {
         /**
          * ReportScheduleOut
          * @description La programación leída, con lo que hizo el último envío.
+         *
+         *     `extra="ignore"`, a diferencia del DTO de entrada: el repositorio devuelve
+         *     la fila entera —`id`, `created_at`, `updated_at`, que el job sí usa— y con
+         *     el `forbid` heredado **las dos rutas respondían 500** en cuanto existía una
+         *     fila. La entrada conserva el `forbid` porque se valida contra
+         *     `ReportSchedule`, no contra esta subclase: un campo inventado en el `PUT`
+         *     sigue siendo un 422.
          */
         ReportScheduleOut: {
             /**

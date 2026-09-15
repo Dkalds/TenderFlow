@@ -534,7 +534,12 @@ class PursuitRepository:
             return rows_to_dicts(cur)
 
     def deadline_rows(
-        self, *, organization_id: int | None = None, limit: int = 5000
+        self,
+        *,
+        organization_id: int | None = None,
+        desde: str | None = None,
+        hasta: str | None = None,
+        limit: int = 5000,
     ) -> list[dict[str, Any]]:
         """Pursuits abiertos con responsable y alguna fecha que recordar.
 
@@ -543,13 +548,18 @@ class PursuitRepository:
         compromisos del pursuit, no del favorito, y hasta 2026-09 ninguna
         generaba recordatorio: sólo los favoritos de la watchlist lo hacían.
 
-        ``organization_id`` acota en SQL. Sin él —el despachador de
-        recordatorios las quiere todas— el ``LIMIT`` corta por ``p.id`` sobre
-        el corpus entero, así que un llamante que filtrara en Python se
-        quedaría sin nada en cuanto hubiera más de ``limit`` pursuits abiertos
-        por delante de los suyos. Le pasaba al informe semanal (T6): las
-        organizaciones creadas después del corte veían su sección de plazos
-        vacía y sin error en ninguna parte.
+        Los tres filtros van **en SQL** y el orden es por fecha, no por
+        ``p.id``. Es lo que hace que el ``LIMIT`` sea inofensivo: corta lo más
+        lejano en el tiempo, que es lo que a nadie le urge.
+
+        Ordenado por ``p.id`` el tope cortaba por antigüedad de la fila, así
+        que un plazo dentro de tres días sobre un pursuit recién creado quedaba
+        fuera de la rodaja y su aviso no se enviaba nunca — sin error y sin
+        métrica. Le pasaba a los dos llamantes: al informe semanal (T6), cuya
+        sección de plazos salía vacía, y al despachador de recordatorios.
+
+        ``organization_id`` acota además por tenant; el despachador lo omite
+        porque las quiere todas.
         """
         condiciones = [
             "p.status NOT IN " + _ESTADOS_TERMINALES_SQL,
@@ -559,6 +569,15 @@ class PursuitRepository:
         if organization_id is not None:
             condiciones.append("p.organization_id = %s")
             parametros.append(int(organization_id))
+        if desde is not None and hasta is not None:
+            # Las dos columnas son `text` ISO, así que el rango se compara como
+            # cadena sobre los diez primeros caracteres: `fecha_limite` puede
+            # traer la hora y `next_action_due` no.
+            condiciones.append(
+                "(LEFT(l.fecha_limite, 10) BETWEEN %s AND %s "
+                " OR LEFT(p.next_action_due, 10) BETWEEN %s AND %s)"
+            )
+            parametros += [desde, hasta, desde, hasta]
         parametros.append(max(1, min(int(limit), 20000)))
         with connect_read() as conn:
             cur = conn.execute(
@@ -569,7 +588,10 @@ class PursuitRepository:
                 "JOIN licitaciones l ON l.id_externo = p.licitacion_id "
                 "JOIN users ru ON ru.id = p.responsible_user_id "
                 "WHERE " + " AND ".join(condiciones) + " "
-                "ORDER BY p.id LIMIT %s",
+                "ORDER BY LEAST("
+                "  COALESCE(LEFT(l.fecha_limite, 10), '9999-12-31'),"
+                "  COALESCE(LEFT(p.next_action_due, 10), '9999-12-31')"
+                ") LIMIT %s",
                 tuple(parametros),
             )
             return rows_to_dicts(cur)

@@ -10,12 +10,11 @@ con otro nombre.
 from __future__ import annotations
 
 import base64
-import hashlib
 import re
 from datetime import date
 from typing import Any
 
-from fastapi import HTTPException, Request, status
+from fastapi import HTTPException, status
 
 from api.errors import sunset_anunciado
 from db.repositories.adjudicaciones import AdjudicacionRepository
@@ -81,21 +80,6 @@ def _decode_cursor(cursor: str) -> tuple[str, str]:
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Cursor inválido.",
         ) from exc
-
-
-# ── ETag helpers ──────────────────────────────────────────────────────────
-
-
-def _make_etag(data: dict[str, Any]) -> str:
-    """Genera un ETag débil basado en SHA-256 del contenido."""
-    content = str(sorted(data.items()))
-    return f'W/"{hashlib.sha256(content.encode()).hexdigest()}"'
-
-
-def _check_etag(request: Request, etag: str) -> bool:
-    """True si el cliente envió If-None-Match que coincide."""
-    client_etag = request.headers.get("If-None-Match", "")
-    return client_etag == etag
 
 
 # ── SAPClassifier singleton ───────────────────────────────────────────────

@@ -140,6 +140,45 @@ def guardar(
         )
 
 
+def apagar_canal(user_id: int, *, tipo: str, canal: str) -> int:
+    """Apaga ``(tipo, canal)`` para el usuario **en todas sus organizaciones**.
+
+    Es lo que ejecuta el enlace de baja de un correo, y tiene que ser «todas»
+    por cómo funciona :func:`resolver`: la preferencia de una organización
+    concreta gana sobre la global. Escribir sólo la global —que es lo que hacía
+    la primera versión de la baja por tipo— dejaba sin efecto el enlace para
+    quien alguna vez hubiera guardado su preferencia desde una organización:
+    la fila con `organization_id` seguía diciendo `daily` y el correo seguía
+    llegando. Un enlace de baja que no da de baja es peor que no tenerlo.
+
+    Escribe además la fila global, para que el defecto del canal tampoco lo
+    reactive, y devuelve cuántas filas quedaron apagadas.
+    """
+    if canal not in CANALES:
+        raise ValueError(f"canal inválido: {canal!r} (válidos: {CANALES})")
+    ahora = now_utc_iso()
+    with connect() as c:
+        c.execute(
+            "UPDATE notification_preferences SET frecuencia = 'off', updated_at = %s "
+            "WHERE user_id = %s AND tipo = %s AND canal = %s AND frecuencia <> 'off'",
+            (ahora, user_id, tipo, canal),
+        )
+        c.execute(
+            "INSERT INTO notification_preferences "
+            "(user_id, organization_id, tipo, canal, frecuencia, created_at, updated_at) "
+            "VALUES (%s, NULL, %s, %s, 'off', %s, %s) "
+            "ON CONFLICT (user_id, COALESCE(organization_id, 0), tipo, canal) DO UPDATE SET "
+            "  frecuencia = 'off', updated_at = excluded.updated_at",
+            (user_id, tipo, canal, ahora, ahora),
+        )
+        fila = c.execute(
+            "SELECT COUNT(*) FROM notification_preferences "
+            "WHERE user_id = %s AND tipo = %s AND canal = %s AND frecuencia = 'off'",
+            (user_id, tipo, canal),
+        ).fetchone()
+    return int(fila[0]) if fila else 0
+
+
 def borrar_de_usuario(user_id: int) -> int:
     """Borra las preferencias del usuario. Lo llama el borrado GDPR."""
     with connect() as c:

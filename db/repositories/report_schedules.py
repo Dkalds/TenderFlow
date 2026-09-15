@@ -124,7 +124,7 @@ def guardar(
     return _fila(filas[0])
 
 
-def pendientes(ahora: datetime | None = None, *, limit: int = 2000) -> list[dict[str, Any]]:
+def pendientes(ahora: datetime | None = None) -> list[dict[str, Any]]:
     """Programaciones activas cuya ventana está abierta y sin enviar.
 
     Ver la cabecera del módulo: el filtro de «ya enviado» va aquí y no en el
@@ -141,18 +141,22 @@ def pendientes(ahora: datetime | None = None, *, limit: int = 2000) -> list[dict
                 # pasada de las 03:00 del martes, que es exactamente cuando su
                 # ventana sigue abierta. La tabla tiene como mucho una fila por
                 # organización activa, así que no hay nada que optimizar aquí.
+                # **Sin `LIMIT`**, y el motivo merece quedar escrito porque se
+                # intentó dos veces al revés. El tope se aplica en SQL y la
+                # ventana se decide en Python, así que cualquier tope corta
+                # antes de saber a quién le toca: con `ORDER BY
+                # organization_id` las organizaciones de id alto no recibían
+                # informe **nunca**, y cambiarlo a `ultimo_envio_at NULLS
+                # FIRST` sólo movió la inanición —una organización cuyo envío
+                # falla siempre se queda con `ultimo_envio_at` a NULL y ocupa
+                # la cabeza de la lista para siempre—.
+                #
+                # La tabla tiene como mucho una fila por organización **con el
+                # informe activo**, y son filas pequeñas. Leerlas todas es más
+                # barato que el fallo silencioso que evita.
                 f"SELECT {_COLS} FROM organization_report_schedules "
-                # `ultimo_envio_at` ASC con NULLS FIRST y no `organization_id`:
-                # el `LIMIT` se aplica **antes** de que Python decida qué
-                # ventana está abierta, así que ordenar por id convertía el
-                # tope en inanición permanente —pasado el tope, las mismas
-                # organizaciones de id bajo se leían cada pasada y las de id
-                # alto no recibían informe nunca, sin error ni evento—. Por
-                # fecha de último envío, el tope rota: quien lleva más sin
-                # recibirlo va primero.
-                "WHERE activo ORDER BY ultimo_envio_at ASC NULLS FIRST, organization_id "
-                "LIMIT %s",
-                (max(1, min(int(limit), 5000)),),
+                "WHERE activo ORDER BY organization_id",
+                (),
             )
         )
 
@@ -171,6 +175,27 @@ def pendientes(ahora: datetime | None = None, *, limit: int = 2000) -> list[dict
             continue
         listas.append(fila)
     return listas
+
+
+def marcar_estado(schedule_id: int, *, estado: str) -> None:
+    """Deja constancia de lo que pasó **sin cerrar la ventana**.
+
+    Separado de :func:`marcar_envio` porque son dos cosas distintas que antes
+    iban juntas: `ultimo_estado` es diagnóstico —lo lee quien pregunta «¿por
+    qué no me llegó?»— y `ultimo_envio_at` es el cierre de la ventana, que
+    impide reintentar.
+
+    Cuando el proveedor de correo falla hay que escribir lo primero y no lo
+    segundo: si se sella, la organización se queda sin informe esa semana; si
+    no se deja constancia, `ultimo_estado` sigue mostrando el `enviado:3/3` de
+    la semana pasada y le dice a quien mira que el correo salió.
+    """
+    with connect() as c:
+        c.execute(
+            "UPDATE organization_report_schedules "
+            "SET ultimo_estado = %s, updated_at = now() WHERE id = %s",
+            (estado[:60], schedule_id),
+        )
 
 
 def marcar_envio(schedule_id: int, *, estado: str) -> None:

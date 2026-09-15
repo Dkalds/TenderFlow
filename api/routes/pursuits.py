@@ -29,7 +29,7 @@ from services.direccion import (
     FeedActividad,
     actividad_de_organizacion,
     corte_con_minimo,
-    exigir_direccion,
+    direccion_resuelta,
 )
 from services.kit_presentacion import KitPresentacion
 from services.organizations import (
@@ -927,13 +927,15 @@ async def get_direccion(
     """
 
     def _trabajo() -> CuadroDireccion:
-        resuelta = exigir_direccion(int(ctx["user_id"]), organization_id)
-        filas = _pursuit_repo.metric_rows(resuelta)
-        return CuadroDireccion(
-            organization_id=resuelta,
-            win_rate_por_tecnologia=corte_con_minimo(filas, clave="tender_tecnologia"),
-            win_rate_por_organo=corte_con_minimo(filas, clave="tender_organo"),
-        )
+        # El `with` tiene que envolver la consulta, no sólo la resolución: el
+        # ámbito de tenencia vive mientras el bloque está abierto.
+        with direccion_resuelta(int(ctx["user_id"]), organization_id) as resuelta:
+            filas = _pursuit_repo.metric_rows(resuelta)
+            return CuadroDireccion(
+                organization_id=resuelta,
+                win_rate_por_tecnologia=corte_con_minimo(filas, clave="tender_tecnologia"),
+                win_rate_por_organo=corte_con_minimo(filas, clave="tender_organo"),
+            )
 
     try:
         return await run_db(_trabajo)

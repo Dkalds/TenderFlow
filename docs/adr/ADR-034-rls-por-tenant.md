@@ -166,12 +166,24 @@ esos tests lo dirían.
   poder mirar a través de organizaciones, y ese es el `TABLAS_EXCLUIDAS` del
   test estructural.
 
-  La primera versión de este párrafo decía «toda petición que resuelva una
-  organización queda acotada» cuando siete módulos todavía no lo hacían —entre
-  ellos `direccion.py`, que es la entrada de `organization_report_schedules`,
-  una tabla creada **con** RLS en v132—. Se anota porque un ADR que promete
-  más cobertura de la que hay es peor que uno que admite el hueco: el
-  siguiente lector deja de comprobar.
+  **La trampa, que costó dos intentos.** Envolver una función que sólo
+  *resuelve* no acota nada: `exigir_direccion` hacía
+  `with alcance_resuelto(...) as (resuelta, rol): ... return resuelta`, y el
+  `with` se cierra al devolver, así que el ámbito se soltaba antes de que el
+  llamante consultara. Dirección y las dos rutas de T6 seguían sin respaldo con
+  el código leyéndose como si lo tuvieran. Ahora es un context manager
+  (`direccion_resuelta`) y el bloque envuelve la consulta.
+
+  La regla, entonces: **el ámbito tiene que seguir abierto donde están las
+  consultas**. Una función que resuelve para que consulte otro es un context
+  manager, no una que devuelve el id.
+
+  Y se anota que este párrafo ya prometió de más dos veces —primero cuando
+  siete módulos no estaban cubiertos, después cuando Dirección lo parecía y no
+  lo estaba— porque un ADR que exagera la cobertura es peor que uno que admite
+  el hueco: el siguiente lector deja de comprobar. Comprobarlo son tres líneas:
+  un espía sobre `db.connection.current_organization` en una petición real dice
+  si el ámbito estaba puesto, y es lo que hacen los tests de §5-bis y §5-ter.
 
   Queda un límite conocido: un `conn.commit()` a mitad de bloque cierra la
   transacción y con ella el ámbito (hoy solo lo hace

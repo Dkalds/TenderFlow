@@ -152,12 +152,18 @@ def construir(
     from db.repositories.pursuits import PursuitRepository
 
     instante = (ahora or datetime.now(UTC)).astimezone(UTC)
-    hasta = instante.date()
-    # `- 1` porque los dos extremos son inclusivos: `desde <= fecha <= hasta`
-    # sobre `hasta - 7` abarca **ocho** fechas distintas, y con el informe
-    # saliendo cada lunes, lo cerrado el lunes anterior contaba en dos informes
-    # seguidos. Ganadas, perdidas, nuevas e importe se duplicaban en la costura,
-    # y la cabecera «Del X al Y» anunciaba una semana de ocho días.
+    # Días **completos**: la ventana acaba ayer, no hoy.
+    #
+    # Con `hasta = hoy` y los dos extremos inclusivos, `hoy - 7` abarcaba ocho
+    # fechas y lo cerrado en la costura salía en dos informes seguidos.
+    # Estrechar `desde` a `hoy - 6` arreglaba el solape y abría un agujero peor:
+    # el informe se genera por la mañana, así que lo que se cierre esa misma
+    # tarde no lo ve el informe de hoy —ya salió— ni el de la semana que viene,
+    # cuya ventana empieza mañana. Desaparecía de la serie para siempre.
+    #
+    # Cerrando en ayer, las ventanas son contiguas y ninguna incluye un día que
+    # todavía está pasando.
+    hasta = instante.date() - timedelta(days=1)
     desde = hasta - timedelta(days=DIAS_VENTANA - 1)
 
     repo = PursuitRepository()
@@ -193,7 +199,10 @@ def construir(
         elif resultado == "lost":
             informe.perdidas += 1
 
-    informe.vencimientos = _vencimientos(repo, organization_id, hasta)
+    # `instante.date()` y no `hasta`: la ventana mira al pasado y cierra ayer
+    # —días completos—, pero el horizonte de plazos mira al futuro y se cuenta
+    # desde hoy. Pasarle `hasta` sumaba un día a todos los «faltan N días».
+    informe.vencimientos = _vencimientos(repo, organization_id, instante.date())
     return informe
 
 
@@ -211,7 +220,9 @@ def _vencimientos(repo: Any, organization_id: int, hoy: date) -> list[Vencimient
     """
     limite = hoy + timedelta(days=DIAS_VENCIMIENTO)
     salida: list[Vencimiento] = []
-    for fila in repo.deadline_rows(organization_id=organization_id):
+    for fila in repo.deadline_rows(
+        organization_id=organization_id, desde=hoy.isoformat(), hasta=limite.isoformat()
+    ):
         # De las dos fechas gana la más próxima: las dos son compromisos, y el
         # informe avisa del primero que llega.
         candidatas = [
@@ -257,11 +268,6 @@ def _filas_vencimiento(informe: InformeSemanal) -> list[dict[str, Any]]:
     ]
 
 
-def _euros(valor: float) -> str:
-    """Importe con separador de miles español: ``1.250.000 €``."""
-    return f"{valor:,.0f} €".replace(",", ".")
-
-
 def render_html(informe: InformeSemanal, *, url_baja: str | None = None) -> str:
     """El cuerpo del correo. HTML de tabla, sin CSS externo ni imágenes.
 
@@ -270,6 +276,7 @@ def render_html(informe: InformeSemanal, *, url_baja: str | None = None) -> str:
     informe que dependa de ellas llega roto. Y sin píxel de seguimiento, que es
     la razón *de verdad* por la que aquí no hay ninguna imagen.
     """
+    from services.email_digest import _importe
 
     def _tabla(titulo: str, filas: list[dict[str, Any]]) -> str:
         if not filas:
@@ -303,10 +310,10 @@ def render_html(informe: InformeSemanal, *, url_baja: str | None = None) -> str:
         f"<b>{informe.nuevas}</b> nuevas esta semana · "
         f"<b>{informe.ganadas}</b> ganadas · <b>{informe.perdidas}</b> perdidas"
         + (
-            # Separador de miles a la española: `1,250,000 €` se lee en
-            # castellano como 1,25 € y este informe se reenvía a un comité. Es
-            # la convención que ya usa `_importe` en `services/email_digest.py`.
-            f" · <b>{_euros(informe.importe_ganado)}</b> adjudicados"
+            # `_importe` de `email_digest`: separador de miles español, que
+            # es la convención del resto del correo del producto. Tener aquí
+            # una copia era garantizar que la próxima vez sólo se cambie una.
+            f" · <b>{_importe(informe.importe_ganado)}</b> adjudicados"
             if informe.importe_ganado
             else ""
         )
@@ -359,22 +366,22 @@ def leer_programacion(user_id: int, organization_id: int | None) -> dict[str, An
     del equipo y quién lo recibe lo decide quien puede ver esa pantalla.
     """
     from db.repositories import report_schedules
-    from services.direccion import exigir_direccion
+    from services.direccion import direccion_resuelta
 
-    resuelta = exigir_direccion(user_id, organization_id)
-    fila = report_schedules.get(resuelta)
-    if fila is None:
-        return {
-            "organization_id": resuelta,
-            "tipo": "pipeline_semanal",
-            "activo": False,
-            "dia_semana": 0,
-            "hora_utc": 7,
-            "destinatarios": None,
-            "ultimo_envio_at": None,
-            "ultimo_estado": None,
-        }
-    return fila
+    with direccion_resuelta(user_id, organization_id) as resuelta:
+        fila = report_schedules.get(resuelta)
+        if fila is None:
+            return {
+                "organization_id": resuelta,
+                "tipo": "pipeline_semanal",
+                "activo": False,
+                "dia_semana": 0,
+                "hora_utc": 7,
+                "destinatarios": None,
+                "ultimo_envio_at": None,
+                "ultimo_estado": None,
+            }
+        return fila
 
 
 def guardar_programacion(
@@ -388,14 +395,14 @@ def guardar_programacion(
 ) -> dict[str, Any]:
     """Alta o edición. Exige rol de Dirección, igual que la lectura."""
     from db.repositories import report_schedules
-    from services.direccion import exigir_direccion
+    from services.direccion import direccion_resuelta
 
-    resuelta = exigir_direccion(user_id, organization_id)
     limpios = [c.strip() for c in (destinatarios or []) if c and c.strip()]
-    return report_schedules.guardar(
-        resuelta,
-        activo=activo,
-        dia_semana=dia_semana,
-        hora_utc=hora_utc,
-        destinatarios=limpios or None,
-    )
+    with direccion_resuelta(user_id, organization_id) as resuelta:
+        return report_schedules.guardar(
+            resuelta,
+            activo=activo,
+            dia_semana=dia_semana,
+            hora_utc=hora_utc,
+            destinatarios=limpios or None,
+        )

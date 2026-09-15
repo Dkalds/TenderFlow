@@ -149,10 +149,12 @@ def test_el_informe_declara_universo_ventana_y_fecha_del_dato(tmp_db: Any) -> No
 
     informe = construir(org_id, organizacion="ACME", ahora=AHORA)
     assert str(org_id) in informe.universo
-    # Siete fechas, no ocho. Los dos extremos son inclusivos, así que
-    # `hasta - 7` abarcaba del 07 al 14 —ocho días— y lo cerrado el lunes
-    # anterior contaba en dos informes seguidos.
-    assert informe.ventana.startswith("Del 2026-09-08 al 2026-09-14")
+    # Siete días **completos**, acabando ayer. Con `hasta = hoy` los extremos
+    # inclusivos daban ocho fechas y lo de la costura salía dos veces;
+    # estrechando `desde` en vez de mover `hasta`, lo que se cerrara hoy por la
+    # tarde no habría salido en ningún informe (el de hoy ya se generó por la
+    # mañana y el de la semana que viene empieza mañana).
+    assert informe.ventana.startswith("Del 2026-09-07 al 2026-09-13")
     assert informe.fecha_dato == "2026-09-14 07:30 UTC"
 
     html = render_html(informe)
@@ -835,3 +837,44 @@ def test_el_nombre_de_la_organizacion_no_se_interpreta_como_marcado(tmp_db: Any)
         pdf = render_pdf(informe)
         assert pdf.startswith(b"%PDF"), nombre
         assert len(pdf) > 500, nombre
+
+
+def test_la_baja_apaga_tambien_la_preferencia_de_una_organizacion(tmp_db: Any) -> None:
+    """Regresión: la baja escribía la fila global y `resolver` prefiere la de organización.
+
+    `notification_preferences.resolver` ordena `NULLS LAST`, así que la fila con
+    `organization_id` concreto gana sobre la global — es lo que permite querer
+    el digest de una consultora y no el de la cooperativa. La primera versión
+    de la baja por tipo escribía sólo la global, de modo que quien alguna vez
+    hubiera guardado su preferencia desde una organización seguía recibiendo el
+    correo después de darse de baja. El mismo fallo que la baja vino a
+    arreglar, un nivel más abajo.
+    """
+    db_mod, _ = tmp_db
+    from api.routes.notifications import _apagar_por_enlace
+    from db.repositories import notification_preferences as prefs
+    from services.email_digest import token_de_baja_de_tipo
+
+    user_id, org_id = _organizacion(db_mod, "baja-org@example.test")
+    prefs.guardar(
+        user_id,
+        tipo="informe_semanal",
+        canal="email",
+        frecuencia="daily",
+        organization_id=org_id,
+    )
+    assert (
+        prefs.resolver(user_id, tipo="informe_semanal", canal="email", organization_id=org_id)
+        == "daily"
+    )
+
+    token = token_de_baja_de_tipo(user_id, "informe_semanal")
+    assert token is not None
+    valida, _ = _apagar_por_enlace(user_id, "informe_semanal", token)
+
+    assert valida
+    # Con la organización resuelta, que es como lo pregunta `_destinatarios`.
+    assert (
+        prefs.resolver(user_id, tipo="informe_semanal", canal="email", organization_id=org_id)
+        == "off"
+    )

@@ -15,8 +15,6 @@ from fastapi import (
     Depends,
     HTTPException,
     Query,
-    Request,
-    Response,
     status,
 )
 from pydantic import BaseModel, Field, field_validator
@@ -24,9 +22,7 @@ from pydantic import BaseModel, Field, field_validator
 from api.concurrency import run_db
 from api.routes.dual_auth import require_any_auth
 from api.routes.licitaciones._base import (
-    _check_etag,
     _lic_repo,
-    _make_etag,
 )
 from api.routes.licitaciones.modelos import (
     LicitacionDetail,
@@ -89,8 +85,6 @@ router_detalle = APIRouter(tags=["licitaciones"])
 )
 async def get_licitacion(
     id_externo: str,
-    request: Request,
-    response: Response,
     _ctx: dict[str, Any] = Depends(require_any_auth),
 ) -> Any:
     """Devuelve todos los campos de una licitación por su ID externo.
@@ -101,22 +95,18 @@ async def get_licitacion(
     if data is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No encontrado.")
 
-    etag = _make_etag(data)
-    response.headers["ETag"] = etag
-    # Sin `Cache-Control` aquí: lo fija `ETagMiddleware`, que para tráfico
-    # autenticado —y esta ruta siempre lo es— lo pone en `private, no-cache`
-    # para que ningún caché compartido guarde la respuesta. El
-    # `private, max-age=60` que había era papel mojado: el middleware lo
-    # pisaba en cada respuesta, así que prometía una frescura que el cliente
-    # nunca recibió.
-
-    if _check_etag(request, etag):
-        # El `ETag` se repite aquí y no se hereda del `response` inyectado:
-        # FastAPI sólo fusiona sus cabeceras cuando el handler **no** devuelve
-        # un `Response` propio (`routing.py`: `if isinstance(raw_response,
-        # Response): response = raw_response`, y el `extend` vive en el `else`).
-        # Sin esto el 304 salía sin `ETag`, que RFC 7232 §4.1 exige.
-        return Response(status_code=304, headers={"ETag": etag})
+    # Sin ETag ni `Cache-Control` propios: los pone `ETagMiddleware`
+    # (`api/middleware.py`), que ya hashea el cuerpo de todo JSON y contesta el
+    # 304 por su cuenta.
+    #
+    # Este handler tenía los suyos y no servían de nada. Medido: la respuesta
+    # 200 salía con **dos** valores en la cabecera `ETag` —el del handler y el
+    # del middleware—, y el 304 lo contestaba siempre el middleware, porque
+    # `_check_etag` comparaba con `==` exacto contra su propio hash mientras el
+    # cliente devolvía los dos. O sea que la rama 304 de aquí no se ejecutaba
+    # nunca, y el `Cache-Control: private, max-age=60` que ponía lo sobrescribía
+    # el middleware en cada respuesta. Dos implementaciones de lo mismo en una
+    # ruta, y la que se leía en el código era la que no corría.
 
     canonica = await run_db(_dedupe_repo.canonical_for, id_externo)
     lotes = await run_db(lotes_de, id_externo)

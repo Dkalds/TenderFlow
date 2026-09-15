@@ -191,8 +191,12 @@ def check_pursuit_deadlines() -> int:
     ningún recordatorio: sólo la watchlist lo hacía, y ni siquiera ella corría
     en producción porque nada llamaba a :func:`check_all_users_deadlines`.
     """
-    rows = PursuitRepository().deadline_rows()
     hoy = datetime.now(UTC).date()
+    # El horizonte es la mayor de sus ventanas: más allá no hay aviso que
+    # mandar, y pedirlo en SQL es lo que impide que el `LIMIT` corte un plazo
+    # de mañana por ser de un pursuit creado ayer.
+    horizonte = hoy + timedelta(days=max([*_DEADLINE_WINDOWS, *_ACCION_WINDOWS]))
+    rows = PursuitRepository().deadline_rows(desde=hoy.isoformat(), hasta=horizonte.isoformat())
     written = 0
     for row in rows:
         email = row.get("responsible_email")

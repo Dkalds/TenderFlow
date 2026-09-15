@@ -22,6 +22,8 @@ enlace es una sugerencia; esto es un permiso.
 
 from __future__ import annotations
 
+from collections.abc import Iterator
+from contextlib import contextmanager
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -93,20 +95,30 @@ class CuadroDireccion(BaseModel):
     n_minimo: int = MINIMO_POR_CORTE
 
 
-def exigir_direccion(user_id: int, organization_id: int | None) -> int:
-    """Resuelve la organización y comprueba que el rol puede ver Dirección.
+@contextmanager
+def direccion_resuelta(user_id: int, organization_id: int | None) -> Iterator[int]:
+    """Resuelve, comprueba el rol de Dirección y **acota el bloque** (ADR-034).
 
-    Devuelve el ``organization_id`` resuelto. Lanza
-    :class:`OrganizationPermissionError`, que la ruta convierte en 403 — el
-    mismo error que el resto de operaciones restringidas, para que no haya dos
-    formas de negar un permiso.
+    Es un context manager y no una función que devuelve el id, y la diferencia
+    no es de estilo. La versión anterior hacía ``with alcance_resuelto(...) as
+    (resuelta, rol): ... return resuelta``, o sea que soltaba el ámbito **antes**
+    de que el llamante consultara nada: Dirección y las dos rutas de T6 seguían
+    corriendo sin respaldo RLS aunque el código pareciera acotado. Se midió con
+    un espía sobre ``db.connection.current_organization`` y salía vacío.
+
+    Es la trampa de envolver una función que sólo resuelve: el ámbito tiene que
+    seguir abierto donde están las consultas, y ésas están en quien llama.
+
+    Lanza :class:`OrganizationPermissionError`, que la ruta convierte en 403 —
+    el mismo error que el resto de operaciones restringidas, para que no haya
+    dos formas de negar un permiso.
     """
     with alcance_resuelto(user_id, organization_id) as (resuelta, rol):
         if str(rol) not in ROLES_DIRECCION:
             raise OrganizationPermissionError(
                 "Dirección es para owner y admin: tu rol en esta organización no lo permite."
             )
-        return resuelta
+        yield resuelta
 
 
 def corte_con_minimo(

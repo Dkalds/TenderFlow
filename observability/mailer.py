@@ -320,9 +320,13 @@ def _normalizar(mensaje: Mensaje, settings: Any) -> _Preparado | ResultadoEnvio:
         # información y perderlo entero por el peso del PDF sería cambiar un
         # problema pequeño por uno grande. Queda en el log porque «el informe
         # llegó sin PDF» es una pregunta que alguien hará.
+        # Sin la dirección: el resto del árbol registra identidades de forma
+        # opaca (un prefijo del identificador, o el id numérico) y
+        # `put_report_schedule` va a propósito de no copiar los correos al
+        # rastro de auditoría. El asunto basta para saber qué envío fue.
         log.warning(
             "correo_adjuntos_demasiado_grandes",
-            to=destino[:64],
+            asunto=mensaje.subject[:80],
             bytes=sum(a.tamano for a in adjuntos),
             tope=_MAX_ADJUNTOS_BYTES,
         )

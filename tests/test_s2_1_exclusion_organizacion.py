@@ -28,6 +28,7 @@ from services.competitive.socios import (
 )
 from services.organizations import OrganizationAccessError
 from services.pursuit_awards import IdentidadFiscal
+from tests.dobles_tenencia import alcance_doble, alcance_fijo
 
 _NIF_PROPIO = "B12345678"  # pragma: allowlist secret
 _NIF_AJENO = "A87654321"  # pragma: allowlist secret
@@ -163,23 +164,6 @@ class TestExclusionEnLaRespuesta:
 # ── El punto de entrada del endpoint ───────────────────────────────────────
 
 
-def _alcance(resolucion):
-    """Doble de ``alcance_resuelto``: mismo contrato, sin base de datos.
-
-    Context manager y no función porque el real lo es: además de resolver,
-    acota el bloque con el ámbito de tenencia y lo suelta al salir (ADR-034).
-    Un doble que devolviera la tupla a secas haría pasar el test sin ejercitar
-    la forma ``with ... as (org, rol)`` que el servicio usa.
-    """
-    from contextlib import contextmanager
-
-    @contextmanager
-    def _cm(user_id, organization_id=None, *, write=False):
-        yield resolucion(user_id, organization_id, write=write)
-
-    return _cm
-
-
 class TestSociosDelSegmento:
     def _df(self) -> pd.DataFrame:
         return _resueltas([{"id": i, "_nif_key": _NIF_PROPIO} for i in range(5)])
@@ -206,7 +190,7 @@ class TestSociosDelSegmento:
 
         with (
             patch(_CARGA, return_value=self._df()),
-            patch("services.competitive.socios.alcance_resuelto", _alcance(_anotando)),
+            patch("services.competitive.socios.alcance_resuelto", alcance_doble(_anotando)),
             patch("services.competitive.socios.identidad_fiscal", return_value=_PROPIA),
         ):
             resultado = socios_del_segmento(user_id=3, organization_id=7)
@@ -220,7 +204,7 @@ class TestSociosDelSegmento:
             patch(_CARGA, return_value=self._df()),
             patch(
                 "services.competitive.socios.alcance_resuelto",
-                _alcance(lambda *_a, **_k: (7, "owner")),
+                alcance_fijo(),
             ),
             patch(
                 "services.competitive.socios.identidad_fiscal",
