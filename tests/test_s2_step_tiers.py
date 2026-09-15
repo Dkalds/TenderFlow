@@ -28,6 +28,7 @@ from scheduler.pipeline_runs import (
 # que un fallo aquí no rompe el contrato de la pasada — a diferencia de
 # `dlq_retry`, cuyo fallo deja el corpus incompleto.
 PASOS_ADVISORY = {
+    "organos_resolve",
     "llm_models_canary",
     "anomaly_checks",
     "drift_checks",

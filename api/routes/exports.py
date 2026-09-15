@@ -41,8 +41,10 @@ from api.concurrency import run_db
 from api.routes.dual_auth import require_any_auth
 from api.tenancy import require_organization, resolve_organization_ctx
 from config.settings import jobs_export_umbral_filas
+from db.audit import log_event
 from db.repositories.watchlist import WatchlistRepository
 from observability.logging import get_logger
+from shared.audit_events import EXPORT_CALENDAR_LINK_CREATED, EXPORT_DOWNLOADED
 from shared.dto import CalendarioEnlace, JobEstadoDTO
 
 log = get_logger(__name__)
@@ -290,6 +292,15 @@ async def download_export(
     filename = get_export_filename(format)
     content, media_type, n_rows = await run_db(_render)
 
+    # Que alguien se llevó datos, cuántas filas y en qué forma; no los filtros,
+    # que pueden llevar texto libre del usuario.
+    await run_db(
+        log_event,
+        event_type=EXPORT_DOWNLOADED,
+        user_id=int(_user["user_id"]),
+        resource=f"user:{int(_user['user_id'])}",
+        detail={"recurso": recurso, "format": format, "n_rows": n_rows, "por_lote": por_lote},
+    )
     log.info("export_download", format=format, n_rows=n_rows)
     return StreamingResponse(
         io.BytesIO(content),
@@ -386,6 +397,18 @@ async def descargar_export_encolado(
             status_code=status.HTTP_410_GONE,
             detail="El fichero exportado caducó; vuelve a pedir la exportación.",
         )
+    await run_db(
+        log_event,
+        event_type=EXPORT_DOWNLOADED,
+        user_id=int(ctx["user_id"]),
+        resource=f"org:{int(ctx['organization_id'])}",
+        detail={
+            "organization_id": int(ctx["organization_id"]),
+            "recurso": "licitaciones",
+            "format": "pdf",
+            "job_id": job_id,
+        },
+    )
     return StreamingResponse(
         io.BytesIO(contenido),
         media_type="application/pdf",
@@ -437,6 +460,13 @@ async def _download_pursuits(
         raise HTTPException(status_code=403, detail=str(exc)) from exc
 
     filename = get_export_filename(format, prefix="oportunidades")
+    await run_db(
+        log_event,
+        event_type=EXPORT_DOWNLOADED,
+        user_id=int(user["user_id"]),
+        resource=f"user:{int(user['user_id'])}",
+        detail={"recurso": "pursuits", "format": format, "n_rows": n_rows},
+    )
     log.info("export_download", format=format, recurso="pursuits", n_rows=n_rows)
     return StreamingResponse(
         io.BytesIO(content),
@@ -663,6 +693,15 @@ async def calendario_enlace(
     organization_id = await _organizacion_del_calendario(ctx)
     eventos = await run_db(_eventos_calendario, user_key, user_id, organization_id)
     query = urlencode({"u": user_id, "t": _firma_calendario(user_id)})
+    # Emitir el enlace firmado es dar acceso sin sesión al calendario: se
+    # anota como cualquier otra credencial. La firma no viaja al rastro.
+    await run_db(
+        log_event,
+        event_type=EXPORT_CALENDAR_LINK_CREATED,
+        user_id=user_id,
+        resource=f"user:{user_id}",
+        detail={"organization_id": organization_id, "eventos": len(eventos)},
+    )
     return CalendarioEnlace(path=f"/api/v1/exports/calendario.ics?{query}", eventos=len(eventos))
 
 

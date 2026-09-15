@@ -346,13 +346,25 @@ def descargar(
 
 
 def borrar(user_id: int, attachment_id: int, *, organization_id: int | None = None) -> bool:
-    """Borra la fila y su objeto. ``False`` si no existía o no era suyo."""
+    """Retira el adjunto de la oportunidad. ``False`` si no existía o no era suyo.
+
+    Desde v131 el borrado es **lógico**: la fila se marca y el objeto del
+    almacén **se conserva**. La llamada a ``get_object_store().delete()`` que
+    había aquí se retiró a propósito, no por olvido: borrar el binario haría
+    irreversible lo que la marca hace reversible, y una restauración daría una
+    descarga rota.
+
+    El coste es de almacenamiento y está asumido (ADR sin escribir, decisión de
+    v131): quien lo recupere será un barrido de huérfanos, que puede mirar
+    ``deleted_at`` y aplicar la retención que se decida. Lo que se compra a
+    cambio es que un miembro de la organización ya no pueda destruir el pliego
+    anotado de otro con un clic.
+    """
     resuelta, _role = resolve_organization(user_id, organization_id, write=True)
     clave = PursuitAttachmentsRepository().delete(attachment_id, organization_id=resuelta)
     if clave is None:
         return False
-    get_object_store().delete(clave)
-    log.info("pursuit_attachment_borrado", attachment_id=attachment_id)
+    log.info("pursuit_attachment_borrado", attachment_id=attachment_id, blob_conservado=True)
     return True
 
 

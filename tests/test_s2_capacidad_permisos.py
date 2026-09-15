@@ -47,8 +47,8 @@ from shared.dto import (
 # constantes y no en línea porque `ruff format` reflujo las expresiones y dejó
 # el pragma separado de su literal; detect-secrets los lee como cadenas
 # hexadecimales de alta entropía y hay que marcarlos donde estén.
-_NIF_AJENO = "A87654321"  # pragma: allowlist secret
-_NIF_PROPIO = "B12345678"  # pragma: allowlist secret
+_NIF_AJENO = "A87654323"  # pragma: allowlist secret
+_NIF_PROPIO = "B12345674"  # pragma: allowlist secret
 
 
 def _user(email: str) -> int:
@@ -115,7 +115,7 @@ def test_put_nifs_normaliza_y_persiste(tmp_db):
         organizacion,
         OrganizationNifsIn(
             nifs=[
-                OrganizationNif(nif="b-12.345.678", razon_social="Acme SL", principal=True),
+                OrganizationNif(nif="b-12.345.674", razon_social="Acme SL", principal=True),
                 OrganizationNif(
                     nif=_NIF_AJENO, razon_social="Acme Filial SL"
                 ),  # pragma: allowlist secret
@@ -323,3 +323,32 @@ def test_el_put_reemplaza_el_perfil_entero(tmp_db):
     assert vaciado.certificaciones == []
     assert len(vaciado.facturacion) == 1
     assert "referencias" in vaciado.campos_incompletos
+
+
+def test_put_nifs_rechaza_letra_de_control_incorrecta(tmp_db):
+    """La forma es correcta pero la letra de control no: 422 con el motivo."""
+    _db_mod, _ = tmp_db
+    owner = _user("owner-nif-control@example.test")
+    organizacion = _organizacion("Equipo control NIF", owner)
+
+    with pytest.raises(ValueError, match="letra de control"):
+        _escribir_nifs(
+            organizacion,
+            OrganizationNifsIn(nifs=[OrganizationNif(nif="B12345678")]),  # pragma: allowlist secret
+            actor_user_id=owner,
+        )
+
+
+def test_put_nifs_rechaza_identificador_extranjero(tmp_db):
+    _db_mod, _ = tmp_db
+    owner = _user("owner-nif-extranjero@example.test")
+    organizacion = _organizacion("Equipo NIF extranjero", owner)
+
+    with pytest.raises(ValueError, match="DNI, NIE ni CIF"):
+        _escribir_nifs(
+            organizacion,
+            OrganizationNifsIn(
+                nifs=[OrganizationNif(nif="DE123456789")]
+            ),  # pragma: allowlist secret
+            actor_user_id=owner,
+        )

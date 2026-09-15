@@ -5,9 +5,13 @@ tablas que otros repos también leen -- ``licitacion_tecnologia_pliego`` es la
 tabla que esta feature posee).
 
 Plan "categorización alimentada por los pliegos" (2026-08-04): la señal
-(keywords o LLM) vive en tabla propia para sobrevivir al clobber que
-``db/upsert.py`` hace en cada re-scrape sobre ``licitaciones.ml_*`` -- el
-merge se re-aplica después de cada ``precompute_ml_tecnologias``.
+(keywords o LLM) vive en tabla propia para que ningún paso que reescriba
+``licitaciones.ml_*`` (``precompute_ml_tecnologias``, una limpieza manual) la
+pierda: el merge la vuelve a aplicar allí donde el resumen ya no la refleja.
+``db/upsert.py`` dejó de nulear esas columnas en cada re-scrape el 2026-09-14
+(están en ``_LIC_COALESCE_UPDATE_FIELDS``), así que la pasada sin ids de
+``list_signals_for_merge`` ya no barre la tabla: acota a lo pendiente o
+perdido.
 """
 
 from __future__ import annotations
@@ -191,31 +195,72 @@ class TecnologiaPliegoRepository:
     def list_signals_for_merge(
         self, *, min_score: float, licitacion_ids: list[str] | None = None
     ) -> list[dict[str, Any]]:
-        """Filas de señal candidatas al merge (``score >= min_score``),
-        opcionalmente acotadas a un subconjunto de licitaciones (tras
-        puntuar un lote nuevo). Sin acotar, cubre todas -- usado por el
-        re-merge nightly completo tras ``precompute_ml_tecnologias``."""
+        """Filas de señal candidatas al merge (``score >= min_score``).
+
+        Con ``licitacion_ids``, cubre exactamente esas licitaciones (tras
+        puntuar un lote nuevo: el llamador ya decidió el lote). Sin acotar,
+        cubre solo las licitaciones que **necesitan** el merge, no todas:
+
+        - con alguna señal aún sin ``merged_at`` (primera fusión), o
+        - cuyo resumen ML (``ml_tecnologias``/``ml_proba_max``/
+          ``ml_tech_principal``) está a NULL o no contiene la tecnología de
+          la señal -- el resumen perdió lo que ya se fusionó (un
+          ``precompute_ml_tecnologias(force=True)``, una limpieza manual) y
+          hay que repararlo.
+
+        Hasta 2026-09-14 era un barrido de toda la tabla cada 4 h, porque
+        ``db/upsert.py`` nuleaba las columnas ML en cada re-ingesta y este
+        merge era lo que las curaba; con las columnas protegidas por COALESCE
+        la pasada sin ids no tiene nada que sanar en la inmensa mayoría de
+        las corridas, y este predicado es lo que lo hace visible (ver
+        ``licitaciones_reparadas`` en ``services.tech_signal.merge_doc_signals``).
+
+        Devuelve TODAS las filas (``score >= min_score``) de cada licitación
+        candidata, no solo la fila pendiente: el merge recalcula el resumen
+        de la licitación entera, y con una fila de menos daría un CSV distinto
+        al del barrido completo. Un solo viaje a la BD en ambos caminos.
+        """
         params: list[Any] = [min_score]
-        extra = ""
         if licitacion_ids:
             placeholders = ",".join("%s" for _ in licitacion_ids)
-            extra = f" AND licitacion_id IN ({placeholders})"
+            extra = f" AND p.licitacion_id IN ({placeholders})"
             params.extend(licitacion_ids)
+        else:
+            # ``string_to_array`` y no ``LIKE``: la pertenencia al CSV es
+            # exacta (``SAP`` no "está" en ``SAP_BW``) y no hay comodines que
+            # escapar. Con ``ml_tecnologias`` a NULL el ``= ANY`` da NULL y la
+            # rama ``IS NULL`` anterior ya la ha seleccionado.
+            extra = (
+                " AND p.licitacion_id IN ("
+                "  SELECT q.licitacion_id FROM licitacion_tecnologia_pliego q"
+                "  JOIN licitaciones l ON l.id_externo = q.licitacion_id"
+                "  WHERE q.score >= %s AND ("
+                "    q.merged_at IS NULL"
+                "    OR l.ml_tecnologias IS NULL"
+                "    OR l.ml_proba_max IS NULL"
+                "    OR l.ml_tech_principal IS NULL"
+                "    OR NOT (q.tecnologia = ANY(string_to_array(l.ml_tecnologias, ',')))"
+                "  )"
+                ")"
+            )
+            params.append(min_score)
         with connect_read() as c:
             cur = c.execute(
-                "SELECT licitacion_id, tecnologia, method, score, matched_terms, "
-                "evidence_json, signal_version, merged_at "
-                f"FROM licitacion_tecnologia_pliego WHERE score >= %s{extra} "
-                "ORDER BY licitacion_id",
+                "SELECT p.licitacion_id, p.tecnologia, p.method, p.score, p.matched_terms, "
+                "p.evidence_json, p.signal_version, p.merged_at "
+                f"FROM licitacion_tecnologia_pliego p WHERE p.score >= %s{extra} "
+                "ORDER BY p.licitacion_id",
                 params,
             )
             return rows_to_dicts(cur)
 
     def stamp_merged(self, rows: list[tuple[str, str, str]], *, merged_at: str) -> None:
-        """Marca ``merged_at`` la primera vez -- solo dedupe del evento de
-        auditoría, nunca condición de si el merge se aplica (el merge se
-        re-aplica entero en cada corrida nightly para sanar el clobber de
-        ``db/upsert.py``)."""
+        """Marca ``merged_at`` la primera vez. Sirve para dos cosas: dedupe
+        del evento de auditoría (una fila estampada no reemite) y, desde
+        2026-09-14, primera mitad del predicado de candidatas de
+        ``list_signals_for_merge`` sin ids (una fila sin estampar siempre
+        entra). No decide si el merge se aplica: para una licitación
+        seleccionada el merge recalcula siempre, estampada o no."""
         if not rows:
             return
         with connect() as c:

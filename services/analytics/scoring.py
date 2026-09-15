@@ -756,11 +756,14 @@ def get_scoring(
     filters: ScoringFilters,
     user_key: str | None = None,
     organization_id: int | None = None,
+    *,
+    user_id: int | None = None,
 ) -> ScoringResult:
     """Puntúa licitaciones y devuelve resultados filtrados/ordenados.
 
     Si ``user_key`` se pasa, carga el perfil del usuario y aplica sus pesos/keywords.
     Sin perfil, usa los settings globales (comportamiento anterior).
+    ``user_id`` (v129) hace dual la lectura del perfil y de los descartes.
     """
     log.info(
         "analytics_scoring_start",
@@ -799,7 +802,7 @@ def get_scoring(
         try:
             from db import radar_dismissals
 
-            descartadas = set(radar_dismissals.list_ids(user_key))
+            descartadas = set(radar_dismissals.list_ids(user_key, user_id=user_id))
         except Exception as exc:
             log.warning("scoring_dismissals_load_error", error=str(exc))
             descartadas = set()
@@ -823,9 +826,9 @@ def get_scoring(
             # organización: cada semántica tiene su función y aquí se
             # elige de forma explícita.
             raw_profile = (
-                get_user_profile(user_key, organization_id)
+                get_user_profile(user_key, organization_id, user_id=user_id)
                 if organization_id is not None
-                else get_own_user_profile(user_key)
+                else get_own_user_profile(user_key, user_id=user_id)
             )
             if raw_profile is not None:
                 profile = ScoringProfile(

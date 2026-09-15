@@ -34,6 +34,7 @@ _SENSITIVE_ENV_VARS = (
     "DASHBOARD_PASSWORD",
     "DASHBOARD_PASSWORD_HASH",
     "ALERT_SMTP_PASSWORD",
+    "EMAIL_API_KEY",  # clave del ESP (Resend/Postmark) de observability/mailer.py
     "GOOGLE_CLIENT_SECRET",
     "API_HMAC_SECRET",
     "SIGNING_KEY",

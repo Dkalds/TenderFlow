@@ -15,12 +15,14 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from api.concurrency import run_db
 from api.routes.dual_auth import require_any_auth
+from db.audit import log_event
 from services.organizations import (
     OrganizationAccessError,
     OrganizationPermissionError,
     get_settings,
     update_settings,
 )
+from shared.audit_events import ORG_SETTINGS_UPDATED
 from shared.dto import OrganizationSettings, OrganizationSettingsOut
 
 router = APIRouter(tags=["pursuits"])
@@ -52,8 +54,18 @@ async def put_organization_settings(
     ctx: dict[str, Any] = Depends(require_any_auth),
 ) -> OrganizationSettingsOut:
     try:
-        return await run_db(update_settings, int(ctx["user_id"]), organization_id, body)
+        guardados = await run_db(update_settings, int(ctx["user_id"]), organization_id, body)
     except (OrganizationAccessError, OrganizationPermissionError) as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    # Qué claves se tocaron, no su contenido: el rastro dice «cambió la
+    # estrategia» y la configuración vigente ya la sirve el GET.
+    await run_db(
+        log_event,
+        event_type=ORG_SETTINGS_UPDATED,
+        user_id=int(ctx["user_id"]),
+        resource=f"org:{organization_id}",
+        detail={"organization_id": organization_id, "campos": sorted(body.model_fields_set)},
+    )
+    return guardados

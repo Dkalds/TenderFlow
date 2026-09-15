@@ -22,6 +22,7 @@ from typing import Any
 from db.database import connect, now_utc_iso
 from db.database import get_table_columns as _get_cols
 from observability.logging import get_logger
+from shared.audit_events import es_evento_conocido
 
 log = get_logger(__name__)
 
@@ -101,6 +102,8 @@ def log_action(
     session_hash: str,
     action: str,
     detail: str = "",
+    *,
+    user_id: int | None = None,
 ) -> None:
     """Persiste una acción de usuario en ``audit_log``. No lanza excepciones.
 
@@ -112,6 +115,10 @@ def log_action(
         session_hash: Hash truncado de la sesión de usuario.
         action: Nombre de la acción (ver módulo docstring).
         detail: Información adicional en texto libre (sin PII).
+        user_id: Identidad interna del actor (v129, ADR-030 §D: la auditoría
+            guarda ids). Va en su columna y **fuera del hash**: la cadena
+            firma exactamente lo que firmaba antes, así que las filas
+            anteriores siguen verificando.
     """
     import json
 
@@ -123,6 +130,10 @@ def log_action(
             has_hash_chain = "prev_hash" in cols_info and "this_hash" in cols_info
             has_hash_version = "hash_version" in cols_info
             has_chain_state = bool(_get_cols(c, "audit_chain_state"))
+            # v129: columna opcional para bases a medio migrar.
+            col_uid = ", user_id" if "user_id" in cols_info else ""
+            val_uid = ", %s" if col_uid else ""
+            params_uid: tuple[int | None, ...] = (user_id,) if col_uid else ()
 
             if has_hash_chain:
                 _serialize_audit_chain_write(c)
@@ -152,16 +163,36 @@ def log_action(
                 if has_hash_version:
                     c.execute(
                         "INSERT INTO audit_log "
-                        "(user_key, session_hash, action, detail, created_at, prev_hash, this_hash, hash_version) "
-                        "VALUES (%s, %s, %s, %s, %s, %s, %s, 'hmac-sha256-v1')",
-                        (user_key, session_hash, action, detail, now, prev_hash, this_hash),
+                        "(user_key, session_hash, action, detail, created_at, prev_hash, "
+                        f" this_hash, hash_version{col_uid}) "
+                        f"VALUES (%s, %s, %s, %s, %s, %s, %s, 'hmac-sha256-v1'{val_uid})",
+                        (
+                            user_key,
+                            session_hash,
+                            action,
+                            detail,
+                            now,
+                            prev_hash,
+                            this_hash,
+                            *params_uid,
+                        ),
                     )
                 else:
                     c.execute(
                         "INSERT INTO audit_log "
-                        "(user_key, session_hash, action, detail, created_at, prev_hash, this_hash) "
-                        "VALUES (%s, %s, %s, %s, %s, %s, %s)",
-                        (user_key, session_hash, action, detail, now, prev_hash, this_hash),
+                        "(user_key, session_hash, action, detail, created_at, prev_hash, "
+                        f" this_hash{col_uid}) "
+                        f"VALUES (%s, %s, %s, %s, %s, %s, %s{val_uid})",
+                        (
+                            user_key,
+                            session_hash,
+                            action,
+                            detail,
+                            now,
+                            prev_hash,
+                            this_hash,
+                            *params_uid,
+                        ),
                     )
                 if has_chain_state:
                     next_count = entry_count + 1
@@ -181,9 +212,10 @@ def log_action(
                         )
             else:
                 c.execute(
-                    "INSERT INTO audit_log (user_key, session_hash, action, detail, created_at) "
-                    "VALUES (%s, %s, %s, %s, %s)",
-                    (user_key, session_hash, action, detail, now),
+                    "INSERT INTO audit_log "
+                    f"(user_key, session_hash, action, detail, created_at{col_uid}) "
+                    f"VALUES (%s, %s, %s, %s, %s{val_uid})",
+                    (user_key, session_hash, action, detail, now, *params_uid),
                 )
     except Exception as exc:
         log.warning("audit_log_persist_failed", action=action, error=str(exc))
@@ -201,6 +233,7 @@ def log_event(
     ip: str | None = None,
     resource: str | None = None,
     detail: str | dict[str, Any] = "",
+    user_id: int | None = None,
 ) -> None:
     """Variante extendida de :func:`log_action` con outcome + ip + resource (E8).
 
@@ -213,11 +246,25 @@ def log_event(
         ip: IP del cliente, ya redactada/truncada si aplica.
         resource: Identificador del recurso afectado (e.g. ``webhook:42``).
         detail: Texto libre o dict serializable. Se persiste como JSON si dict.
+        user_id: Identidad interna del actor, si hay principal (v129).
 
     Diseñado para no lanzar excepciones — auditoría no debe romper la app.
     También incrementa el counter Prometheus ``audit_events_total``.
+
+    El tipo se contrasta con ``shared.audit_events`` de forma **blanda**: un
+    tipo fuera del catálogo se registra igual y deja un aviso en el log. Es
+    un bug del llamante, no un motivo para perder el rastro.
     """
     import json
+
+    if not es_evento_conocido(event_type):
+        log.warning("audit_event_type_unknown", event_type=event_type)
+
+    # Quien ya tiene ``user_id`` no tiene por qué repetirlo como clave: la
+    # columna ``user_key`` queda con el id en texto, que es la forma que el
+    # backfill de v129 resuelve y la que llevan los llamadores más recientes.
+    if not user_key and user_id is not None:
+        user_key = str(user_id)
 
     if isinstance(detail, dict):
         try:
@@ -244,6 +291,7 @@ def log_event(
         session_hash=session_hash or "-",
         action=event_type,
         detail=structured_detail,
+        user_id=user_id,
     )
 
     # Métrica Prometheus (no rompe si runtime_metrics no está disponible)
@@ -262,6 +310,7 @@ def list_recent(
     *,
     user_key: str | None = None,
     action: str | None = None,
+    user_id: int | None = None,
 ) -> list[dict[str, Any]]:
     """Devuelve entradas recientes del audit log (para el panel de Observabilidad).
 
@@ -269,12 +318,20 @@ def list_recent(
         limit: Máximo de entradas a devolver.
         user_key: Filtra por usuario si se proporciona.
         action: Filtra por tipo de acción si se proporciona.
+        user_id: Filtra por identidad interna (v129); combinado con
+            ``user_key`` es la lectura dual, solo o sin clave es ``user_id = %s``.
     """
     clauses: list[str] = []
     params: list[Any] = []
-    if user_key:
+    if user_key and user_id is not None:
+        clauses.append("(user_id = %s OR (user_key = %s AND user_id IS NULL))")
+        params.extend([user_id, user_key])
+    elif user_key:
         clauses.append("user_key = %s")
         params.append(user_key)
+    elif user_id is not None:
+        clauses.append("user_id = %s")
+        params.append(user_id)
     if action:
         clauses.append("action = %s")
         params.append(action)

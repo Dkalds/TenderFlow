@@ -15,6 +15,21 @@ _WATCHLIST_LIC_COLS = (
     "cpv, importe, ccaa, estado, fecha_publicacion, url"
 )
 
+# ── Identidad dual (ADR-030 fase 2, v129) ────────────────────────────────────
+#
+# Cada tabla de usuario lleva ``user_id`` (la identidad interna) junto a
+# ``user_key`` (la clave derivada del correo, en retirada). El predicado se
+# escribe UNA vez y recibe siempre la misma terna ``(user_id, user_key,
+# user_id)``:
+#
+# * con ``user_id`` conocido: la fila es del usuario si lleva su id, o si
+#   —sin id todavía, porque el backfill de v129 no pudo resolverla— lleva su
+#   clave. Una fila con OTRO id y la misma clave no es suya: es lo que impide
+#   que quien registre después el correo antiguo herede los datos del anterior;
+# * con ``user_id = None`` (API keys sin dueño, jobs, llamadores legacy) se
+#   reduce a ``user_key = %s``, exactamente lo que había antes.
+_IDENT = "(user_id = %s OR (user_key = %s AND (user_id IS NULL OR %s::int IS NULL)))"
+
 
 class WatchlistRepository:
     """Acceso a las tablas ``watchlist_cpv``, ``watchlist_items`` y ``pending_digests``."""
@@ -71,16 +86,22 @@ class WatchlistRepository:
         licitacion_id: str,
         frequency: str,
         matched_at: str,
+        user_id: int | None = None,
     ) -> bool:
-        """Persiste una coincidencia en ``pending_digests``."""
+        """Persiste una coincidencia en ``pending_digests``.
+
+        ``user_id`` se escribe junto a ``user_key`` cuando el productor lo
+        conoce (escritura doble de ADR-030 fase 2).
+        """
         try:
             with connect() as c:
                 c.execute(
                     "INSERT INTO pending_digests "
-                    "(user_key, recipient_email, entry_id, licitacion_id, frequency, matched_at) "
-                    "VALUES (%s, %s, %s, %s, %s, %s) "
+                    "(user_key, user_id, recipient_email, entry_id, licitacion_id, "
+                    " frequency, matched_at) "
+                    "VALUES (%s, %s, %s, %s, %s, %s, %s) "
                     "ON CONFLICT(entry_id, licitacion_id) DO NOTHING",
-                    (user_key, recipient, entry_id, licitacion_id, frequency, matched_at),
+                    (user_key, user_id, recipient, entry_id, licitacion_id, frequency, matched_at),
                 )
             return True
         except Exception as exc:
@@ -102,6 +123,10 @@ class WatchlistRepository:
         sólo si no la hay se cae al legado. Antes se unía sólo a ``watchlist_cpv``
         por ``id``, y un digest de reglas salía con los criterios de una entrada
         ajena que casualmente compartía número.
+
+        Desde v129 la correlación admite también ``user_id``: una regla creada
+        tras un cambio de correo lleva otra ``user_key`` que el digest que la
+        cita, y sin el id el correo saldría sin sus criterios.
         """
         with connect_read() as c:
             cur = c.execute(
@@ -116,7 +141,9 @@ class WatchlistRepository:
                 "       r.nombre AS rule_nombre "
                 "FROM pending_digests pd "
                 "LEFT JOIN licitaciones l ON l.id_externo = pd.licitacion_id "
-                "LEFT JOIN watchlist_rules r ON r.id = pd.entry_id AND r.user_key = pd.user_key "
+                "LEFT JOIN watchlist_rules r ON r.id = pd.entry_id "
+                "  AND (r.user_key = pd.user_key "
+                "       OR (pd.user_id IS NOT NULL AND r.user_id = pd.user_id)) "
                 "LEFT JOIN watchlist_cpv w ON w.id = pd.entry_id AND r.id IS NULL "
                 "WHERE pd.sent = 0 AND pd.frequency = %s "
                 "ORDER BY pd.recipient_email, pd.entry_id",
@@ -135,22 +162,25 @@ class WatchlistRepository:
                 digest_ids,
             )
 
-    def export_by_user_key(self, user_key: str) -> list[dict[str, Any]]:
+    def export_by_user_key(self, user_key: str, user_id: int | None = None) -> list[dict[str, Any]]:
         """Exporta entradas de watchlist CPV del usuario (GDPR Art. 15/20).
 
         Histórico: hasta 2026-08 consultaba una tabla ``watchlist`` inexistente
         con el error tragado por un ``except``, así que el export devolvía
         siempre ``[]``. Sin ``except``: si la query falla, el export debe
         fallar, no fingir que el usuario no tiene datos.
+
+        Con ``user_id`` la lectura es dual (v129): un export que sólo mirase la
+        clave del correo actual dejaría fuera lo guardado con el anterior.
         """
         with connect_read() as c:
             cur = c.execute(
-                "SELECT * FROM watchlist_cpv WHERE user_key = %s LIMIT 5000",
-                (user_key,),
+                f"SELECT * FROM watchlist_cpv WHERE {_IDENT} LIMIT 5000",
+                (user_id, user_key, user_id),
             )
             return rows_to_dicts(cur)
 
-    def anonymize_by_user_key(self, user_key: str) -> None:
+    def anonymize_by_user_key(self, user_key: str, user_id: int | None = None) -> None:
         """Anonimiza la watchlist CPV del usuario (GDPR Art. 17).
 
         ``watchlist_cpv`` no tiene columna ``name``; la PII real es
@@ -161,8 +191,8 @@ class WatchlistRepository:
         with connect() as c:
             c.execute(
                 "UPDATE watchlist_cpv SET user_key = 'DELETED', email = NULL, "
-                "user_id = NULL WHERE user_key = %s",
-                (user_key,),
+                f"user_id = NULL WHERE {_IDENT}",
+                (user_id, user_key, user_id),
             )
 
     # ------------------------------------------------------------------
@@ -177,9 +207,14 @@ class WatchlistRepository:
     # Los llamadores reciben el valor ya resuelto por ``api.tenancy``
     # (``ctx["organization_id"]``, que nunca es ``None``).
 
+    # El predicado de identidad es el dual de v129 (``_IDENT``, con alias): el
+    # anterior, ``wi.user_id = %s OR wi.user_key = %s``, dejaba ver una fila
+    # con OTRO ``user_id`` a quien compartiera su clave. Va escrito como
+    # literal y no compuesto desde ``_IDENT`` porque el escáner de
+    # ``tests/test_user_key_sql_isolation.py`` sólo pliega literales.
     _ITEMS_SCOPE_WHERE = (
-        "WHERE wi.organization_id = %s AND "
-        "(wi.visibility = 'organization' OR wi.user_id = %s OR wi.user_key = %s) "
+        "WHERE wi.organization_id = %s AND (wi.visibility = 'organization' OR "
+        "(wi.user_id = %s OR (wi.user_key = %s AND (wi.user_id IS NULL OR %s::int IS NULL)))) "
     )
 
     def list_items(
@@ -202,7 +237,7 @@ class WatchlistRepository:
                 "LEFT JOIN licitaciones l ON l.id_externo = wi.id_externo "
                 + self._ITEMS_SCOPE_WHERE
                 + "ORDER BY wi.created_at DESC, wi.id DESC",
-                (organization_id, user_id, user_key),
+                (organization_id, user_id, user_key, user_id),
             )
             return rows_to_dicts(cur)
 
@@ -227,7 +262,7 @@ class WatchlistRepository:
                 "JOIN licitaciones l ON l.id_externo = wi.id_externo "
                 + self._ITEMS_SCOPE_WHERE
                 + "AND (l.fecha_limite IS NOT NULL OR l.fecha_fin IS NOT NULL)",
-                (organization_id, user_id, user_key),
+                (organization_id, user_id, user_key, user_id),
             )
             return rows_to_dicts(cur)
 
@@ -241,10 +276,23 @@ class WatchlistRepository:
     ) -> dict[str, Any]:
         """Añade un favorito de forma idempotente.
 
-        Si el par ``(user_key, id_externo)`` ya existe, no duplica ni falla:
-        devuelve el registro existente sin tocarlo.
+        Si el usuario ya tiene ese ``id_externo`` no duplica ni falla: devuelve
+        el registro existente sin tocarlo. «Ya lo tiene» se decide con la
+        identidad dual y no sólo con ``UNIQUE(user_key, id_externo)``: tras un
+        cambio de correo la clave nueva no choca con la fila antigua, y el
+        ``ON CONFLICT`` habría dejado el mismo expediente dos veces en la lista.
         """
         with connect() as c:
+            existente = c.execute(
+                "SELECT id, user_key, user_id, id_externo, organization_id, "
+                "visibility, nota, created_at "
+                f"FROM watchlist_items WHERE {_IDENT} AND id_externo = %s "
+                "ORDER BY CASE WHEN user_key = %s THEN 0 ELSE 1 END, id LIMIT 1",
+                (user_id, user_key, user_id, id_externo, user_key),
+            )
+            rows = rows_to_dicts(existente)
+            if rows:
+                return rows[0]
             c.execute(
                 "INSERT INTO watchlist_items "
                 "(user_key, user_id, id_externo, organization_id, visibility) "
@@ -259,6 +307,22 @@ class WatchlistRepository:
                 (user_key, id_externo),
             )
             rows = rows_to_dicts(cur)
+
+        # Escritura doble hacia `follows` (ADR-031 §B, fase aditiva): el
+        # favorito sigue viviendo aquí y se lee de aquí; `follows` es la copia
+        # que la unificación va a necesitar, y mantenerla al día desde el
+        # primer día es lo que hace medible la paridad. No lanza nunca (ver
+        # `db/repositories/follows.py::registrar`).
+        from db.repositories import follows as _follows
+
+        _follows.registrar(
+            user_key=user_key,
+            user_id=user_id,
+            organization_id=organization_id,
+            target_type="licitacion",
+            target_id=id_externo,
+            visibility=visibility,
+        )
         return rows[0] if rows else {}
 
     #: Tope de la nota, igual que el CHECK de v124.
@@ -269,6 +333,7 @@ class WatchlistRepository:
         user_key: str,
         id_externo: str,
         nota: str | None,
+        user_id: int | None = None,
     ) -> bool:
         """Escribe (o borra, con `None`) la nota **personal** de un favorito (C6.6).
 
@@ -284,8 +349,8 @@ class WatchlistRepository:
         limpia = (nota or "").strip()
         with connect() as c:
             cur = c.execute(
-                "UPDATE watchlist_items SET nota = %s WHERE user_key = %s AND id_externo = %s",
-                ((limpia[: self.MAX_NOTA] or None), user_key, id_externo),
+                f"UPDATE watchlist_items SET nota = %s WHERE {_IDENT} AND id_externo = %s",
+                ((limpia[: self.MAX_NOTA] or None), user_id, user_key, user_id, id_externo),
             )
             return bool(getattr(cur, "rowcount", 0))
 
@@ -294,23 +359,38 @@ class WatchlistRepository:
         user_key: str,
         id_externo: str,
         organization_id: int,
+        user_id: int | None = None,
     ) -> bool:
         """Elimina un favorito propio. ``True`` si borró algo."""
+        from db.repositories import follows as _follows
+
         with connect() as c:
             cur = c.execute(
                 "DELETE FROM watchlist_items WHERE organization_id = %s "
-                "AND id_externo = %s AND (visibility = 'organization' OR user_key = %s)",
-                (organization_id, id_externo, user_key),
+                f"AND id_externo = %s AND (visibility = 'organization' OR {_IDENT})",
+                (organization_id, id_externo, user_id, user_key, user_id),
             )
-            return bool(cur.rowcount > 0)
+            borrado = bool(cur.rowcount > 0)
 
-    def export_items_by_user_key(self, user_key: str) -> list[dict[str, Any]]:
+        # Se limpia `follows` aunque aquí no hubiera nada: si las dos tablas
+        # divergieron, esta es la ocasión de cuadrarlas.
+        _follows.olvidar(
+            user_key=user_key,
+            user_id=user_id,
+            target_type="licitacion",
+            target_id=id_externo,
+        )
+        return borrado
+
+    def export_items_by_user_key(
+        self, user_key: str, user_id: int | None = None
+    ) -> list[dict[str, Any]]:
         """Exporta los favoritos (watchlist_items) del usuario (GDPR)."""
         with connect_read() as c:
             try:
                 cur = c.execute(
-                    "SELECT * FROM watchlist_items WHERE user_key = %s LIMIT 5000",
-                    (user_key,),
+                    f"SELECT * FROM watchlist_items WHERE {_IDENT} LIMIT 5000",
+                    (user_id, user_key, user_id),
                 )
                 return rows_to_dicts(cur)
             except Exception:
@@ -319,7 +399,7 @@ class WatchlistRepository:
                 log.warning("watchlist_export_items_failed", exc_info=True)
                 return []
 
-    def anonymize_items_by_user_key(self, user_key: str) -> None:
+    def anonymize_items_by_user_key(self, user_key: str, user_id: int | None = None) -> None:
         """Anonimiza (borra) los favoritos del usuario (GDPR).
 
         A diferencia de ``watchlist`` (que tiene columna ``name`` a anonimizar
@@ -330,8 +410,8 @@ class WatchlistRepository:
         with connect() as c:
             try:
                 c.execute(
-                    "DELETE FROM watchlist_items WHERE user_key = %s",
-                    (user_key,),
+                    f"DELETE FROM watchlist_items WHERE {_IDENT}",
+                    (user_id, user_key, user_id),
                 )
             except Exception:
                 log.debug("watchlist_items_anonymize_failed", exc_info=True)

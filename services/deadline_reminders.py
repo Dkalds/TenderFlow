@@ -29,8 +29,11 @@ _DEADLINE_WINDOWS = [30, 7, 1]
 _ACCION_WINDOWS = [7, 1, 0]
 
 
-def _get_watchlist_items(user_key: str) -> dict[str, int]:
+def _get_watchlist_items(user_key: str, user_id: int | None = None) -> dict[str, int]:
     """``id_externo -> organization_id`` de los favoritos del usuario.
+
+    Con ``user_id`` (v129) la lectura es dual: sin él, los favoritos guardados
+    bajo la clave de un correo anterior no tendrían recordatorio.
 
     Devuelve un mapa y no una lista porque el recordatorio **hereda la
     organización del favorito que lo origina**. La campana lee
@@ -51,8 +54,9 @@ def _get_watchlist_items(user_key: str) -> dict[str, int]:
     """
     with connect_read() as c:
         cur = c.execute(
-            "SELECT id_externo, organization_id FROM watchlist_items WHERE user_key = %s",
-            (user_key,),
+            "SELECT id_externo, organization_id FROM watchlist_items "
+            "WHERE (user_id = %s OR (user_key = %s AND (user_id IS NULL OR %s::int IS NULL)))",
+            (user_id, user_key, user_id),
         )
         filas = cur.fetchall()
     items = {str(row[0]): int(row[1]) for row in filas if row[1] is not None}
@@ -92,7 +96,7 @@ def _deadline_type(days_left: int, field: str) -> str:
     return f"{prefix}_{days_left}"
 
 
-def check_deadlines_and_notify(user_key: str) -> int:
+def check_deadlines_and_notify(user_key: str, *, user_id: int | None = None) -> int:
     """Genera notificaciones de deadline para los favoritos del usuario.
 
     Idempotente: upsert (ON CONFLICT DO NOTHING) en user_notifications (UNIQUE por user_key, licitacion_id, type).
@@ -106,7 +110,7 @@ def check_deadlines_and_notify(user_key: str) -> int:
     Returns:
         Numero de notificaciones nuevas escritas.
     """
-    favoritos = _get_watchlist_items(user_key)
+    favoritos = _get_watchlist_items(user_key, user_id)
     if not favoritos:
         return 0
 
@@ -158,6 +162,7 @@ def check_deadlines_and_notify(user_key: str) -> int:
                         licitacion_id=lic_id,
                         organization_id=organization_id,
                         created_at=now_ts,
+                        user_id=user_id,
                     )
                 )
 
@@ -213,6 +218,7 @@ def check_pursuit_deadlines() -> int:
                         f"{str(row.get('fecha_limite'))[:10]} ({dias} dias).",
                         licitacion_id=lic_id,
                         organization_id=organization_id,
+                        user_id=int(responsable),
                     )
                 )
 
@@ -231,6 +237,7 @@ def check_pursuit_deadlines() -> int:
                         body=f"Oportunidad '{titulo[:80]}'.",
                         licitacion_id=lic_id,
                         organization_id=organization_id,
+                        user_id=int(responsable),
                     )
                 )
     if written:
@@ -245,16 +252,20 @@ def check_all_users_deadlines() -> int:
     Llamado desde ``_run_watchlist_notify`` (pipeline canónica, cada pasada).
     Returns: total de notificaciones escritas.
     """
+    # ``MAX(user_id)``: una clave con filas resueltas y sin resolver por el
+    # backfill de v129 es UN usuario, no dos pasadas.
     with connect_read() as c:
-        cur = c.execute("SELECT DISTINCT user_key FROM watchlist_items")
-        user_keys = [row[0] for row in cur.fetchall()]
+        cur = c.execute("SELECT user_key, MAX(user_id) FROM watchlist_items GROUP BY user_key")
+        usuarios = [
+            (str(row[0]), int(row[1]) if row[1] is not None else None) for row in cur.fetchall()
+        ]
 
     total = 0
-    for user_key in user_keys:
+    for user_key, user_id in usuarios:
         try:
-            total += check_deadlines_and_notify(str(user_key))
+            total += check_deadlines_and_notify(user_key, user_id=user_id)
         except Exception as exc:
-            log.warning("deadline_check_error", user_key=str(user_key)[:8], error=str(exc))
+            log.warning("deadline_check_error", user_key=user_key[:8], error=str(exc))
     try:
         total += check_pursuit_deadlines()
     except Exception as exc:
@@ -313,6 +324,7 @@ def check_radar_postponements() -> int:
                 body=("Pediste que te la recordáramos hoy. Ya está otra vez en la bandeja."),
                 licitacion_id=str(fila["id_externo"]),
                 organization_id=int(organization_id),
+                user_id=fila.get("user_id"),
             )
         )
     if escritas or sin_organizacion:

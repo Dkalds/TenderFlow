@@ -281,4 +281,5 @@ def _copiar_para_miembro(
             str(contenido.get("nombre") or "Vista del equipo"),
             json.dumps(contenido.get("criterio") or {}, ensure_ascii=False),
             organization_id,
+            user_id=user_id,
         )

@@ -122,10 +122,11 @@ export const CONTENIDO: ContenidoLanding = {
     },
   ],
 
-  // Única enumeración de las trece familias en toda la página.
+  // Única enumeración de las familias en toda la página (canon: config/keywords.py).
   familiasTitulo:
-    "Solo entra el expediente con señal de tecnología enterprise: trece familias de " +
-    "producto, más los servicios TI y software (CPV 48 y 72) de PLACSP y TED.",
+    "Solo entra el expediente con señal de tecnología: trece familias de fabricante y nueve " +
+    "categorías de TI —también en catalán, euskera y gallego—, más los servicios TI y " +
+    "software (CPV 48 y 72) de PLACSP y TED.",
   familias: [
     "SAP",
     "Salesforce",
@@ -140,6 +141,15 @@ export const CONTENIDO: ContenidoLanding = {
     "Sopra",
     "Sage",
     "Infor",
+    "ERP",
+    "CRM",
+    "Cloud e infraestructura",
+    "Ciberseguridad",
+    "Datos e IA",
+    "Desarrollo de software",
+    "GIS y geoinformación",
+    "Sanidad digital",
+    "Administración electrónica",
   ],
 
   capturaTitulo: "La bandeja de cada mañana",

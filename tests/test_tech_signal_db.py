@@ -289,7 +289,13 @@ class TestMergeManyWithLockBatch:
 
         result = merge_doc_signals(licitacion_ids=["ORPHAN-1"])
 
-        assert result == {"licitaciones_merged": 1, "events_emitted": 1, "errors": 0}
+        assert result == {
+            "licitaciones_merged": 1,
+            "events_emitted": 1,
+            "errors": 0,
+            "licitaciones_candidatas": 1,
+            "licitaciones_reparadas": 0,
+        }
         with connect() as c:
             row = c.execute(
                 "SELECT ml_tecnologias, ml_tech_principal "
@@ -404,6 +410,75 @@ class TestListSignalsForMerge:
         rows = repo.list_signals_for_merge(min_score=0.5, licitacion_ids=["MRG-2"])
         assert {r["licitacion_id"] for r in rows} == {"MRG-2"}
 
+    def test_without_ids_only_returns_licitaciones_that_need_the_merge(self, repo):
+        """La pasada sin ids (``tech_signal_merge`` cada 4 h) ya no barre toda
+        la tabla: una licitación cuya señal ya está fusionada y cuyo resumen
+        ML la refleja no vuelve a salir."""
+        _insert_licitacion("INC-MERGED")
+        _insert_licitacion("INC-PENDING")
+        for licitacion_id in ("INC-MERGED", "INC-PENDING"):
+            repo.upsert_signals(
+                licitacion_id,
+                method="keywords",
+                signal_version="v1",
+                scores={"META4": TechSignal(score=0.8, matched_terms=["meta4"])},
+            )
+        merge_doc_signals(licitacion_ids=["INC-MERGED"])  # fusiona y estampa merged_at
+
+        rows = repo.list_signals_for_merge(min_score=0.5)
+
+        assert {r["licitacion_id"] for r in rows} == {"INC-PENDING"}
+
+    def test_without_ids_returns_all_rows_of_a_candidate_licitacion(self, repo):
+        """Una licitación con una tecnología ya fusionada y otra pendiente
+        entra con TODAS sus filas: el merge recalcula el resumen entero y con
+        una fila de menos daría un CSV distinto al del barrido completo."""
+        _insert_licitacion("INC-MIXED")
+        repo.upsert_signals(
+            "INC-MIXED",
+            method="keywords",
+            signal_version="v1",
+            scores={"META4": TechSignal(score=0.8, matched_terms=["meta4"])},
+        )
+        merge_doc_signals(licitacion_ids=["INC-MIXED"])
+        repo.upsert_signals(
+            "INC-MIXED",
+            method="llm",
+            signal_version="tender-facts-v2",
+            scores={"SAP": TechSignal(score=0.9, evidence=[])},
+        )
+
+        rows = repo.list_signals_for_merge(min_score=0.5)
+
+        assert {(r["tecnologia"], r["method"]) for r in rows} == {
+            ("META4", "keywords"),
+            ("SAP", "llm"),
+        }
+
+    def test_without_ids_reselects_a_merged_signal_missing_from_the_summary(self, repo):
+        """Un ``precompute_ml_tecnologias(force=True)`` reescribe el CSV sin la
+        señal del pliego aunque ``merged_at`` esté puesto: la candidata se
+        detecta porque el resumen no contiene la tecnología, no solo porque
+        esté a NULL."""
+        _insert_licitacion("INC-FORCED")
+        repo.upsert_signals(
+            "INC-FORCED",
+            method="keywords",
+            signal_version="v1",
+            scores={"META4": TechSignal(score=0.8, matched_terms=["meta4"])},
+        )
+        merge_doc_signals(licitacion_ids=["INC-FORCED"])
+        with connect() as c:
+            c.execute(
+                "UPDATE licitaciones SET ml_tecnologias = 'SAP', ml_proba_max = 0.7, "
+                "ml_tech_principal = 'SAP' WHERE id_externo = %s",
+                ("INC-FORCED",),
+            )
+
+        rows = repo.list_signals_for_merge(min_score=0.5)
+
+        assert {r["licitacion_id"] for r in rows} == {"INC-FORCED"}
+
 
 class TestStampMerged:
     def test_only_updates_rows_that_were_still_null(self, repo):
@@ -440,7 +515,8 @@ class TestMergeReapplicableAfterClobber:
             ).fetchone()
         assert row[0] == "META4"
 
-        # Simula el clobber de un re-scrape (db/upsert.py) / precompute_ml_tecnologias.
+        # Simula el clobber de un precompute_ml_tecnologias(force=True) o de una
+        # limpieza manual -- db/upsert.py ya no lo hace (COALESCE, 2026-09-14).
         with connect() as c:
             c.execute(
                 "UPDATE licitaciones SET ml_tecnologias = NULL, ml_proba_max = NULL, "
@@ -448,14 +524,59 @@ class TestMergeReapplicableAfterClobber:
                 ("HEAL-1",),
             )
 
-        second = merge_doc_signals()  # nightly: cubre TODAS, no solo HEAL-1
+        second = merge_doc_signals()  # pasada sin ids: selecciona lo perdido
         assert second["events_emitted"] == 0  # ya se emitió antes -- no duplica
+        assert second["licitaciones_candidatas"] == 1
+        assert second["licitaciones_reparadas"] == 1  # señal ya estampada, resumen perdido
 
         with connect() as c:
             row = c.execute(
                 "SELECT ml_tecnologias FROM licitaciones WHERE id_externo = %s", ("HEAL-1",)
             ).fetchone()
         assert row[0] == "META4"  # curado
+
+    def test_pass_without_ids_only_touches_licitaciones_that_need_it(self, repo):
+        """Acceptance del ítem cerrado el 2026-09-14: con una fusionada y otra
+        pendiente, la pasada sin ids fusiona solo la pendiente y reporta cero
+        reparaciones -- el contador con el que se mide «cero reparaciones en
+        siete días»."""
+        _insert_licitacion("NIGHT-MERGED")
+        _insert_licitacion("NIGHT-PENDING")
+        for licitacion_id in ("NIGHT-MERGED", "NIGHT-PENDING"):
+            repo.upsert_signals(
+                licitacion_id,
+                method="keywords",
+                signal_version="v1",
+                scores={"META4": TechSignal(score=0.8, matched_terms=["meta4"])},
+            )
+        merge_doc_signals(licitacion_ids=["NIGHT-MERGED"])
+        centinela = "2026-01-01T00:00:00+00:00"
+        with connect() as c:
+            c.execute(
+                "UPDATE licitacion_tecnologia_score SET computed_at = %s WHERE licitacion_id = %s",
+                (centinela, "NIGHT-MERGED"),
+            )
+
+        result = merge_doc_signals()
+
+        assert result["licitaciones_candidatas"] == 1
+        assert result["licitaciones_merged"] == 1
+        assert result["events_emitted"] == 1
+        assert result["licitaciones_reparadas"] == 0
+        with connect() as c:
+            rows = c.execute(
+                "SELECT licitacion_id, computed_at FROM licitacion_tecnologia_score "
+                "WHERE licitacion_id LIKE 'NIGHT-%' ORDER BY licitacion_id"
+            ).fetchall()
+        por_id = {str(r[0]): str(r[1]) for r in rows}
+        assert por_id["NIGHT-MERGED"] == centinela  # no se tocó
+        assert por_id["NIGHT-PENDING"] != centinela
+        with connect() as c:
+            row = c.execute(
+                "SELECT ml_tecnologias FROM licitaciones WHERE id_externo = %s",
+                ("NIGHT-PENDING",),
+            ).fetchone()
+        assert row[0] == "META4"
 
 
 class TestTechSignalJobPhase:

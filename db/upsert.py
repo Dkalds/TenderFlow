@@ -273,6 +273,22 @@ _LIC_PLACEHOLDERS = ", ".join("%s" for _ in _LIC_KEYS)
 # accesorio: invalida el denominador de las métricas.
 # `classifier_model_version` va con ellas porque responde a la misma pregunta
 # (con qué versión se decidió esto) y la nulea el mismo tipo de re-ingesta.
+#
+# Las cuatro columnas ML (2026-09-14) entran por un motivo distinto: un
+# conector NUNCA las calcula. `ml_proba` la escribe el scoring SAP
+# (`guardar_ml_proba`, desde `scraper/ml_training.py::precompute_ml_proba`) y
+# las tres de tecnología las escriben `precompute_ml_tecnologias` y el merge
+# de la señal de pliego (`db/repositories/tecnologia_pliego.py`), siempre con
+# un UPDATE de valores explícitos que sigue pisando lo que haya. La
+# `Licitacion` que construye un conector las trae a `None` porque no tiene
+# opinión, no porque quiera borrarlas -- y sin COALESCE cada pasada del ATOM
+# (cada 4 h, reenviando los mismos expedientes) las nuleaba, y
+# `tech_signal_merge` tenía que barrer la tabla entera para curarlas a ciegas.
+# La única ruta que las trae no nulas desde la ingesta es
+# `scraper/pipeline.py::_apply_tech_prediction` (clasificador cargado en el
+# proceso), y ese valor explícito sí gana. Quien necesite VACIAR un score viejo
+# lo hace con su propio UPDATE (`limpiar_ml_proba_fuera_de_poblacion`,
+# `precompute_ml_tecnologias`), nunca a través del upsert de ingesta.
 _LIC_COALESCE_UPDATE_FIELDS = frozenset(
     {
         "fecha_limite",
@@ -284,6 +300,11 @@ _LIC_COALESCE_UPDATE_FIELDS = frozenset(
         "classifier_model_version",
         "inclusion_reason",
         "analysis_universe",
+        # ── Columnas ML: las escriben los pasos ML, nunca un conector ──
+        "ml_proba",
+        "ml_tecnologias",
+        "ml_proba_max",
+        "ml_tech_principal",
     }
 )
 

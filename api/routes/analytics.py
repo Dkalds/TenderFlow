@@ -266,6 +266,7 @@ def scoring(
         filters,
         user_key=user_key,
         organization_id=int(_user["organization_id"]),
+        user_id=int(_user["user_id"]),
     )
 
 
@@ -487,11 +488,13 @@ async def resumen_desde_ultima_visita(
 
     def _trabajo() -> NovedadesDesdeUltimaVisita:
         user_key = str(ctx["user_key"])
+        user_id = int(ctx["user_id"])
         return desde_ultima_visita(
             user_key,
-            last_seen=get_last_seen_ts(user_key),
+            last_seen=get_last_seen_ts(user_key, user_id=user_id),
             organization_id=resuelta,
             limit=limit,
+            user_id=user_id,
         )
 
     return await run_db(_trabajo)

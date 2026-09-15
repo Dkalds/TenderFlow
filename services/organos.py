@@ -166,6 +166,112 @@ def resolver(
     return Resolucion(organo_id, "nuevo")
 
 
+@dataclass(slots=True)
+class ResumenResolucion:
+    """Qué hizo una pasada de :func:`resolver_pendientes`.
+
+    ``agotado_por_tiempo`` distingue «no quedaba nada» de «me quedé sin
+    presupuesto»: la primera es el estado normal de la pipeline cada 4 h, la
+    segunda es la señal de que el backfill (``scripts/backfill_organos.py``)
+    tiene trabajo que la pasada incremental no debe hacer.
+    """
+
+    grafias_vistas: int = 0
+    por_dir3: int = 0
+    por_nombre: int = 0
+    creadas: int = 0
+    encoladas_revision: int = 0
+    sin_nombre: int = 0
+    filas_actualizadas: int = 0
+    agotado_por_tiempo: bool = False
+
+    @property
+    def asignadas(self) -> int:
+        """Grafías que acabaron con un ``organo_id`` firme."""
+        return self.por_dir3 + self.por_nombre + self.creadas
+
+    def as_dict(self) -> dict[str, int | bool]:
+        return {
+            "grafias_vistas": self.grafias_vistas,
+            "por_dir3": self.por_dir3,
+            "por_nombre": self.por_nombre,
+            "creadas": self.creadas,
+            "encoladas_revision": self.encoladas_revision,
+            "sin_nombre": self.sin_nombre,
+            "asignadas": self.asignadas,
+            "filas_actualizadas": self.filas_actualizadas,
+            "agotado_por_tiempo": self.agotado_por_tiempo,
+        }
+
+
+#: Presupuesto por defecto de una pasada incremental, en segundos. Mismo
+#: criterio que ``services.entity_resolution.HOOK_TIME_BUDGET_S``: el paso
+#: corre dentro del cierre de la pipeline y no puede quedarse con el step.
+PRESUPUESTO_PASADA_S = 120.0
+
+
+def resolver_pendientes(
+    *,
+    max_grafias: int = 500,
+    presupuesto_s: float = PRESUPUESTO_PASADA_S,
+    batch: int = 2_000,
+    aplicar: bool = True,
+) -> ResumenResolucion:
+    """Resuelve, por volumen descendente, las grafías sin ``organo_id``.
+
+    Es **la misma** decisión que ejecuta ``scripts/backfill_organos.py`` —el
+    script delega aquí desde 2026-09-14— y también lo que corre el paso
+    canónico ``organos_resolve`` en cada cierre de la pipeline: hasta esa
+    fecha nada resolvía las filas ingeridas *después* del backfill, así que el
+    maestro se degradaba con cada pasada del ATOM y la analítica volvía a
+    agrupar por texto para todo lo nuevo.
+
+    Idempotente y reanudable: solo mira filas con ``organo_id IS NULL`` y se
+    detiene por cuenta (``max_grafias``) o por reloj (``presupuesto_s``), lo
+    que llegue antes. Con ``aplicar=False`` cuenta lo que haría sin escribir
+    (el *dry-run* del script).
+    """
+    import time
+
+    from db.repositories import organos as repo_organos
+
+    inicio = time.monotonic()
+    resumen = ResumenResolucion()
+    for fila in repo_organos.grafias_sin_resolver(limit=max_grafias):
+        if time.monotonic() - inicio > presupuesto_s:
+            resumen.agotado_por_tiempo = True
+            break
+        resumen.grafias_vistas += 1
+        nombre = str(fila.get("nombre") or "")
+        resolucion = resolver(nombre, ccaa=fila.get("ccaa"), crear_si_falta=aplicar)
+        if resolucion is None:
+            resumen.sin_nombre += 1
+            continue
+        if resolucion.via == "dir3":
+            resumen.por_dir3 += 1
+        elif resolucion.via == "nombre":
+            resumen.por_nombre += 1
+        elif resolucion.via == "revision":
+            resumen.encoladas_revision += 1
+        elif resolucion.via == "nuevo":
+            resumen.creadas += 1
+        if not aplicar or resolucion.organo_id is None:
+            continue
+        # La asignación va por lotes sobre la grafía cruda, que es como está en
+        # la tabla: `lower(btrim(...))` es el mismo predicado que la descubrió.
+        plano = str(fila.get("nombre_plano") or "")
+        while True:
+            n = repo_organos.asignar_a_licitaciones(
+                resolucion.organo_id, nombre_normalizado=plano, limit=batch
+            )
+            if n <= 0:
+                break
+            resumen.filas_actualizadas += n
+    if resumen.grafias_vistas:
+        log.info("organos_resolver_pendientes", **resumen.as_dict())
+    return resumen
+
+
 def _candidato_mas_parecido(normalizado: str) -> tuple[int | None, float]:
     """Órgano existente más parecido a *normalizado*, con su score.
 

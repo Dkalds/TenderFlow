@@ -18,6 +18,7 @@ from db.repositories.pursuits import PursuitRepository
 from services import go_no_go_template as plantilla
 from services.organizations import OrganizationPermissionError, resolve_organization
 from services.pursuits import PursuitNotFoundError
+from shared.audit_events import GO_NO_GO_WEIGHTS_UPDATED
 
 _repo = GoNoGoRepository()
 _pursuits = PursuitRepository()
@@ -134,7 +135,7 @@ def _auditar(organization_id: int, user_id: int, pesos: dict[str, float]) -> Non
     from db.audit import log_event
 
     log_event(
-        event_type="go_no_go.weights_updated",
+        event_type=GO_NO_GO_WEIGHTS_UPDATED,
         user_key=f"user:{user_id}",
         resource=f"organization:{organization_id}",
         detail={"pesos": {k: float(v) for k, v in pesos.items() if k in plantilla.CRITERIOS}},

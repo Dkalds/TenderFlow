@@ -60,6 +60,7 @@ from api.routes.eventos import router as eventos_router
 from api.routes.exports import router as exports_router
 from api.routes.feature_flags import router as feature_flags_router
 from api.routes.feedback import router as feedback_router
+from api.routes.follows import router as follows_router
 from api.routes.health import router as health_router
 from api.routes.jobs import router as jobs_router
 from api.routes.licitaciones import get_licitacion as _get_licitacion_handler
@@ -69,6 +70,7 @@ from api.routes.meta import router as meta_router
 from api.routes.metrics import router as metrics_router
 from api.routes.models import router as models_router
 from api.routes.notifications import router as notifications_router
+from api.routes.organization_audit import router as organization_audit_router
 from api.routes.organization_settings import router as organization_settings_router
 from api.routes.organizations_capacidad import router as organizations_capacidad_router
 from api.routes.predicciones import router as predicciones_router
@@ -91,7 +93,8 @@ from db.database import init_db
 from observability import configure_logging, configure_sentry, configure_tracing
 from observability.logging import get_logger
 
-if TYPE_CHECKING:  # solo para anotar; el módulo se importa en el lifespan
+if TYPE_CHECKING:  # solo para anotar; los módulos se importan en el lifespan
+    from scheduler.cron_plane import CronPlane
     from scheduler.worker import Worker
 
 log = get_logger(__name__)
@@ -163,13 +166,29 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     # pidió. El import va aquí dentro para que la API normal no cargue
     # `scheduler/worker.py` —ni sus handlers— por arrancar.
     worker: Worker | None = None
+    cron: CronPlane | None = None
     if settings.APP_PROFILE == "worker":
         from scheduler.worker import arrancar_en_hilo
 
         worker = arrancar_en_hilo()
         log.info("worker_cola_arrancado_en_lifespan")
 
+        # Plano de cron (ADR-033): el MISMO proceso asume además el reloj
+        # cuando `SCHEDULER_PLANE=worker`. Sin esa variable devuelve None y el
+        # worker sigue siendo sólo el consumidor de la cola, que es el estado
+        # anterior al cutover. La exclusión con Actions no depende de esta
+        # línea: la sostienen la variable y los locks de `db.job_locks`.
+        from scheduler.cron_plane import arrancar_en_hilo as arrancar_cron
+
+        cron = arrancar_cron()
+
     yield
+
+    # Shutdown — el reloj primero: parar de *encolar* trabajo nuevo antes de
+    # drenar lo que ya hay evita terminar con la cola más llena que al empezar.
+    if cron is not None:
+        cron.detener()
+        log.info("worker_cron_detenido_en_lifespan")
 
     # Shutdown — parar el consumidor de la cola antes que nada: lo que no dé
     # tiempo a terminar vuelve a `pending` por TTL y lo remata otro worker, que
@@ -448,6 +467,7 @@ if not _ES_WORKER:
     app.include_router(pursuits_router, prefix="/api/v1")
     app.include_router(organization_settings_router, prefix="/api/v1")
     app.include_router(organizations_capacidad_router, prefix="/api/v1")
+    app.include_router(organization_audit_router, prefix="/api/v1")
     app.include_router(analytics_router, prefix="/api/v1")
     app.include_router(feedback_router, prefix="/api/v1")
     app.include_router(webhooks_router, prefix="/api/v1")
@@ -459,6 +479,7 @@ if not _ES_WORKER:
     app.include_router(watchlist_feed_router, prefix="/api/v1")
     app.include_router(watchlist_rules_router, prefix="/api/v1")
     app.include_router(watchlist_items_router, prefix="/api/v1")
+    app.include_router(follows_router, prefix="/api/v1")
     app.include_router(exports_router, prefix="/api/v1")
     app.include_router(radar_router, prefix="/api/v1")
     app.include_router(cuentas_router, prefix="/api/v1")

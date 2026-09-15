@@ -106,6 +106,7 @@ class TestCanonicalPipelineSteps:
             "scheduler.pipeline_runs._run_tech_signal_merge": _make_mock("tech_signal_merge"),
             "scheduler.pipeline_runs._run_llm_tech_labeling": _make_mock("llm_tech_labeling"),
             "scheduler.pipeline_runs._run_analytics_export": _make_mock("analytics_export"),
+            "scheduler.pipeline_runs._run_organos_resolve": _make_mock("organos_resolve"),
             "scheduler.pipeline_runs._run_kpi_precompute": _make_mock("kpi_precompute"),
             "scheduler.pipeline_runs._run_aggregates_precompute": _make_mock(
                 "aggregates_precompute"

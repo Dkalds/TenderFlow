@@ -64,7 +64,18 @@ class PursuitAttachmentsRepository:
                 " size_bytes, sha256, uploaded_by_user_id, indexable, created_at) "
                 "SELECT p.id, p.organization_id, %s, %s, %s, %s, %s, %s, false, %s "
                 "FROM pursuits p WHERE p.id = %s AND p.organization_id = %s "
-                "ON CONFLICT (blob_key) DO NOTHING "
+                # `DO UPDATE` y no `DO NOTHING` desde v131: `blob_key` lleva la
+                # huella del contenido y es UNIQUE, así que tras un borrado
+                # lógico la fila sigue ocupando la clave. Con `DO NOTHING`, ese
+                # fichero no se podría volver a subir **nunca** — y el usuario
+                # vería un 409 sin nada a la vista que lo explique. El `WHERE`
+                # acota la resurrección a las filas borradas: si el adjunto está
+                # vivo, sigue siendo el 409 de siempre.
+                "ON CONFLICT (blob_key) DO UPDATE SET "
+                " deleted_at = NULL, filename = EXCLUDED.filename, "
+                " uploaded_by_user_id = EXCLUDED.uploaded_by_user_id, "
+                " created_at = EXCLUDED.created_at "
+                "WHERE pursuit_attachments.deleted_at IS NOT NULL "
                 "RETURNING id",
                 (
                     blob_key,
@@ -85,7 +96,7 @@ class PursuitAttachmentsRepository:
                 # existía (409). Sin esta consulta, un reintento legítimo se
                 # leería como «no existe».
                 ya = c.execute(
-                    "SELECT 1 FROM pursuit_attachments WHERE blob_key = %s",
+                    "SELECT 1 FROM pursuit_attachments WHERE blob_key = %s AND deleted_at IS NULL",
                     (blob_key,),
                 ).fetchone()
                 if ya is not None:
@@ -99,7 +110,7 @@ class PursuitAttachmentsRepository:
         with connect_read() as c:
             filas = rows_to_dicts(
                 c.execute(
-                    _SELECT + "WHERE a.id = %s AND a.organization_id = %s",
+                    _SELECT + "WHERE a.id = %s AND a.organization_id = %s AND a.deleted_at IS NULL",
                     (attachment_id, organization_id),
                 )
             )
@@ -113,24 +124,32 @@ class PursuitAttachmentsRepository:
             return rows_to_dicts(
                 c.execute(
                     _SELECT + "WHERE a.pursuit_id = %s AND a.organization_id = %s "
-                    "ORDER BY a.id DESC LIMIT %s",
+                    "AND a.deleted_at IS NULL ORDER BY a.id DESC LIMIT %s",
                     (pursuit_id, organization_id, limit),
                 )
             )
 
     def delete(self, attachment_id: int, *, organization_id: int) -> str | None:
-        """Borra la fila y devuelve la ``blob_key`` que quedó huérfana.
+        """Marca el adjunto como borrado (v131). Devuelve su ``blob_key``, o ``None``.
 
-        Devuelve la clave —en vez de borrar el objeto aquí— para que el orden
-        sea siempre «primero la fila, después el binario»: si el borrado del
-        objeto falla, queda basura en el bucket, que es recuperable. Al revés
-        quedaría una fila apuntando a un objeto que ya no está, y eso lo ve el
-        usuario como una descarga rota.
+        **El objeto del almacén no se toca, y eso es la mitad del cambio.** Antes
+        esto borraba la fila y devolvía la clave para que el servicio borrara
+        después el binario; con borrado lógico, borrar el binario haría
+        irreversible justo lo que la revisión viene a hacer reversible — la fila
+        seguiría ahí, apuntando a un objeto que ya no está, y restaurarla daría
+        una descarga rota.
+
+        La clave se sigue devolviendo porque es lo que distingue «se borró» de
+        «no existía o no era tuyo», que es lo que el servicio necesita saber
+        para devolver 204 o 404. Quien limpia el almacén es el barrido de
+        huérfanos, cuando exista; hasta entonces el objeto se conserva, y eso es
+        un coste de almacenamiento consciente.
         """
         with connect() as c:
             cur = c.execute(
-                "DELETE FROM pursuit_attachments "
-                "WHERE id = %s AND organization_id = %s RETURNING blob_key",
+                "UPDATE pursuit_attachments SET deleted_at = now() "
+                "WHERE id = %s AND organization_id = %s AND deleted_at IS NULL "
+                "RETURNING blob_key",
                 (attachment_id, organization_id),
             )
             fila = cur.fetchone()
@@ -145,7 +164,8 @@ class PursuitAttachmentsRepository:
         with connect() as c:
             cur = c.execute(
                 "UPDATE pursuit_attachments SET indexable = %s "
-                "WHERE id = %s AND organization_id = %s RETURNING id",
+                "WHERE id = %s AND organization_id = %s AND deleted_at IS NULL "
+                "RETURNING id",
                 (indexable, attachment_id, organization_id),
             )
             if cur.fetchone() is None:

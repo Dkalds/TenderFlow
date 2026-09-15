@@ -37,3 +37,41 @@ petición escrita — no un descubrimiento propio ni una fecha comprometida.
 Un ámbito excluido **no** se registra como `RegisteredSource`: no tiene módulo,
 ni SLA, ni fila de salud, y el healthcheck lo reclamaría cada seis horas como
 una fuente muerta.
+
+## Cómo medir el solape antes de abrir un conector (2026-09-14)
+
+D16 se decidió sin saber cuánto de la contratación TI de Madrid, Andalucía y
+la Comunidad Valenciana llega ya a PLACSP por agregación (`estado = 'AGR'`) o
+por publicación directa. Ese número existe ahora:
+
+```bash
+make medir-solape                                   # últimos 12 meses, las tres CCAA de D16
+python scripts/medir_solape_agregados.py --meses 24 --ccaa Aragón --json
+```
+
+Contra `DATABASE_URL` (solo lectura), imprime por CCAA el total de expedientes,
+los del universo tecnológico, cuántos de esos son avisos agregados y por qué
+conector entró cada uno; y para cada CCAA de interés, los quince órganos con
+más expedientes TI y su mezcla de fuentes. El SQL vive en
+`db/repositories/cobertura.py` y usa el mismo predicado de universo que la
+superficie pública y la analítica, así que la cifra es comparable con el resto
+del producto.
+
+**Cómo se lee.** Un porcentaje alto de agregados en una CCAA sin conector
+propio significa que su portal ya vierte en PLACSP y un conector aportaría
+poco; un porcentaje bajo con órganos grandes ausentes de la lista es la señal
+contraria. D16 se revisa con ese número anotado en el ítem del backlog, no con
+una intuición. La regla dura de arriba no cambia: los feeds regionales siguen
+sin sumarse como censo.
+
+## Dominios de documentos por fuente (2026-09-14)
+
+`DOCUMENT_ALLOWED_HOSTS` —la allowlist SSRF de `scraper/document_fetcher.py`—
+deja de ser un literal aislado: cada `RegisteredSource` declara
+`dominios_documentos`, y `dominios_documentos_por_defecto()` los une para las
+fuentes que no están fuera de alcance. Un test exige que el valor por defecto
+de settings coincida con esa unión. Hoy solo PLACSP emite referencias a
+documentos (`scraper/codice_parser.py`); TED enlaza la página del comprador,
+no el adjunto, y PSCP, Galicia, Euskadi y TACRC no extraen enlaces todavía.
+Cuando un conector empiece a emitirlos, declara su dominio en el inventario y
+el test dirá qué falta en la allowlist.

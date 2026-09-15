@@ -16,6 +16,7 @@ from api.routes.dual_auth import require_admin, require_any_auth
 from db.audit import log_event
 from observability.logging import get_logger
 from services.feature_flags import list_flags, set_flag
+from shared.audit_events import FEATURE_FLAG_SET
 from shared.dto import SafeStr, StatusOk
 
 log = get_logger(__name__)
@@ -81,7 +82,7 @@ def set_feature_flags(
             description=str(existing.get("description") or ""),
         )
         log_event(
-            event_type="feature_flag.set",
+            event_type=FEATURE_FLAG_SET,
             user_key=str(admin.get("user_id", "")),
             resource=f"feature_flag:{f.flag}",
             detail=f"enabled={f.enabled} rollout_pct={f.rollout_pct}",

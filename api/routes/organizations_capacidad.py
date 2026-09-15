@@ -38,11 +38,13 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from api.concurrency import run_db
 from api.routes.dual_auth import require_any_auth
 from api.tenancy import resolve_organization_ctx
+from db.audit import log_event
 from db.repositories.organization_capabilities import OrganizationCapabilitiesRepository
 from db.repositories.organization_nifs import OrganizationNifRepository
 from services.go_no_go import ChecklistNotFoundError, GoNoGoChecklist, build_checklist
-from services.normalization import normalize_nif
+from services.normalization import clasificar_nif, normalize_nif
 from services.organizations import OrganizationAccessError
+from shared.audit_events import ORG_CAPABILITIES_UPDATED, ORG_NIFS_UPDATED
 from shared.dto import (
     OrganizationCapabilities,
     OrganizationCapabilitiesOut,
@@ -103,6 +105,18 @@ def _normalizar_nifs(body: OrganizationNifsIn) -> list[dict[str, Any]]:
         normalizado = normalize_nif(entrada.nif)
         if normalizado is None or not _NIF_RE.match(normalizado):
             raise ValueError(f"NIF no válido: {entrada.nif!r}.")
+        # La forma (regex) es el CHECK de la tabla; la letra de control es la
+        # regla del NIF español (2026-09-14). Una organización que se declara
+        # con un CIF erróneo cerraría oportunidades contra un adjudicatario que
+        # no existe, así que se rechaza con el motivo en vez de guardarlo.
+        tipo = clasificar_nif(normalizado)
+        if tipo == "invalido":
+            raise ValueError(
+                f"NIF no válido: {entrada.nif!r} tiene forma española pero la "
+                "letra de control no cuadra."
+            )
+        if tipo == "extranjero":
+            raise ValueError(f"NIF no válido: {entrada.nif!r} no es un DNI, NIE ni CIF español.")
         if normalizado in vistos:
             raise ValueError(f"NIF repetido: {normalizado}.")
         vistos.add(normalizado)
@@ -210,9 +224,21 @@ async def put_organization_nifs(
     """Reemplaza el conjunto completo de NIFs: manda la lista entera, no un alta."""
     resolved_id = await _organizacion_gestionada(ctx, organization_id, write=True)
     try:
-        return await run_db(_escribir_nifs, resolved_id, body, actor_user_id=int(ctx["user_id"]))
+        guardados = await run_db(
+            _escribir_nifs, resolved_id, body, actor_user_id=int(ctx["user_id"])
+        )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    # Cuántos, no cuáles: el conjunto vigente lo sirve el GET y el rastro solo
+    # tiene que decir que cambió y quién lo cambió.
+    await run_db(
+        log_event,
+        event_type=ORG_NIFS_UPDATED,
+        user_id=int(ctx["user_id"]),
+        resource=f"org:{resolved_id}",
+        detail={"organization_id": resolved_id, "nifs": len(guardados.nifs)},
+    )
+    return guardados
 
 
 # ── Perfil de capacidad ────────────────────────────────────────────────────
@@ -270,7 +296,21 @@ async def put_organization_capabilities(
 ) -> OrganizationCapabilitiesOut:
     """Reemplaza el perfil completo. Es dato corporativo, no personal."""
     resolved_id = await _organizacion_gestionada(ctx, organization_id, write=True)
-    return await run_db(_escribir_capacidad, resolved_id, body)
+    perfil = await run_db(_escribir_capacidad, resolved_id, body)
+    await run_db(
+        log_event,
+        event_type=ORG_CAPABILITIES_UPDATED,
+        user_id=int(ctx["user_id"]),
+        resource=f"org:{resolved_id}",
+        detail={
+            "organization_id": resolved_id,
+            "certificaciones": len(body.certificaciones),
+            "facturacion": len(body.facturacion),
+            "referencias": len(body.referencias),
+            "perfiles_equipo": len(body.perfiles_equipo),
+        },
+    )
+    return perfil
 
 
 # ── Go/no-go ───────────────────────────────────────────────────────────────

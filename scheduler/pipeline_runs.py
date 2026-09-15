@@ -11,12 +11,12 @@ Secuencia canónica::
             → DLQ retry → anomaly checks → retention cleanup
             → ML retrain → drift checks
 
-``tech_signal_merge`` corre justo después de ``ml_tecnologias``: re-aplica la
+``tech_signal_merge`` corre justo después de ``ml_tecnologias``: aplica la
 señal de tecnología detectada en los pliegos (``services/tech_signal.py``)
-sobre ``ml_tecnologias``/``licitacion_tecnologia_score``, sanando el clobber
-que ``precompute_ml_tecnologias`` acaba de hacer sobre esas mismas columnas
-(``db/upsert.py`` también las resetea en cada re-scrape -- ver docstring de
-``_run_tech_signal_merge``).
+sobre ``ml_tecnologias``/``licitacion_tecnologia_score`` allí donde el resumen
+ML aún no la refleja -- lo que ``precompute_ml_tecnologias`` acaba de
+reescribir, o lo que nunca se fusionó. ``db/upsert.py`` ya no resetea esas
+columnas en cada re-scrape (ver docstring de ``_run_tech_signal_merge``).
 
 ``digests``, ``retention_cleanup`` y ``drift_checks`` tienen **cadencia
 propia** (ver ``_run_periodic``): la pipeline corre cada 4h, pero un digest
@@ -46,6 +46,7 @@ CANONICAL_STEPS: list[str] = [
     "tech_signal_merge",
     "llm_tech_labeling",
     "analytics_export",
+    "organos_resolve",
     "kpi_precompute",
     "aggregates_precompute",
     "watchlist_notify",
@@ -89,6 +90,11 @@ STEP_TIER: dict[str, StepTier] = {
     "tech_signal_merge": "bloqueante",
     "llm_tech_labeling": "bloqueante",
     "analytics_export": "bloqueante",
+    # advisory: el maestro de órganos (ADR-032) mejora la analítica pero no
+    # produce nada que la pasada deba entregar; una grafía que no resuelve
+    # sigue agregándose por texto. Va antes de los precomputes para que estos
+    # agrupen por los ids recién asignados.
+    "organos_resolve": "advisory",
     "kpi_precompute": "bloqueante",
     "aggregates_precompute": "bloqueante",
     "watchlist_notify": "bloqueante",
@@ -353,15 +359,19 @@ def _run_ml_tecnologias() -> str:
 
 
 def _run_tech_signal_merge() -> None:
-    """Re-aplica la señal de pliego sobre TODAS las licitaciones con señal.
+    """Fusiona la señal de pliego que el resumen ML aún no refleja.
 
-    ``precompute_ml_tecnologias`` (paso anterior) sobreescribe
-    ``ml_tecnologias``/``ml_proba_max``/``ml_tech_principal`` para toda fila
-    con ``ml_proba_max IS NULL`` -- lo mismo que ``db/upsert.py`` hace en cada
-    re-scrape (ver docstring de ``_LIC_UPDATES``). Sin este paso, un merge ya
-    aplicado revertiría a la señal de solo-título en la primera re-ingesta o
-    el primer precompute posterior. Barato (≤ ~11k licitaciones con pliegos
-    procesados) y fail-open por licitación -- no hace falta ``try/except``
+    Sin ids, ``merge_doc_signals`` ya no barre todas las licitaciones con
+    señal: ``list_signals_for_merge`` selecciona solo las que tienen alguna
+    señal sin ``merged_at`` o cuyo resumen (``ml_tecnologias``/
+    ``ml_proba_max``/``ml_tech_principal``) está a NULL o no contiene la
+    tecnología detectada. Desde 2026-09-14 las cuatro columnas ML están en
+    ``_LIC_COALESCE_UPDATE_FIELDS`` (``db/upsert.py``), así que una re-ingesta
+    ya no las nulea; lo que queda por sanar aquí son los caminos que
+    reescriben el resumen por UPDATE explícito sin la señal:
+    ``precompute_ml_tecnologias`` (paso anterior; con ``force=True`` toca todas
+    las filas, sin él solo las que tienen ``ml_proba_max IS NULL``) y cualquier
+    limpieza manual. Fail-open por licitación -- no hace falta ``try/except``
     aquí porque ``merge_doc_signals`` ya captura y cuenta los fallos.
 
     El resultado se loguea en vez de descartarse: este paso se comió 14 de los
@@ -369,7 +379,10 @@ def _run_tech_signal_merge() -> None:
     ver ``merge_many_with_lock``) y desde fuera era invisible -- ni duración ni
     recuento de errores, solo un warning suelto por licitación rota. Con
     ``elapsed_ms`` y ``errors`` en el log, la próxima deriva se ve en el propio
-    runner.
+    runner. ``licitaciones_reparadas`` es el contador con el que se mide el
+    cierre del ítem del backlog («cero reparaciones en siete días»): cada
+    unidad es una licitación cuya señal ya estaba fusionada y cuyo resumen
+    hubo que reescribir.
     """
     import time as _time
 
@@ -410,6 +423,25 @@ def _run_llm_tech_labeling() -> str:
             raise RuntimeError(f"El lote de etiquetado por LLM falló entero: {counts}")
 
     return _run_periodic("llm_tech_labeling", _SEGUNDOS_DIA, _run_and_check)
+
+
+def _run_organos_resolve() -> str:
+    """Resuelve ``organo_id`` de las grafías nuevas (ADR-032 §C, 2026-09-14).
+
+    Hasta esta fecha solo ``scripts/backfill_organos.py`` llamaba al resolutor,
+    así que cada pasada del ATOM dejaba filas nuevas sin órgano y el maestro
+    se degradaba solo. Acotado por cuenta y por reloj (settings
+    ``ORGANOS_RESOLVE_*``): el backlog grande sigue siendo del script.
+    """
+    from config import settings as _settings
+    from services.organos import resolver_pendientes
+
+    resumen = resolver_pendientes(
+        max_grafias=int(_settings.ORGANOS_RESOLVE_MAX_GRAFIAS),
+        presupuesto_s=float(_settings.ORGANOS_RESOLVE_BUDGET_S),
+    )
+    log.info("pipeline_organos_resolve_completed", **resumen.as_dict())
+    return STEP_OK if resumen.grafias_vistas else STEP_SKIPPED
 
 
 def _run_analytics_export() -> None:

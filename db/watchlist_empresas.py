@@ -9,6 +9,9 @@ rama era el bug de clase que documenta ``api/tenancy.py``: quien omitía el
 argumento no obtenía «sin filtrar por organización» como decisión, lo
 obtenía por descuido, y el repositorio caía a una query sin ámbito sin
 decir nada. Ahora un llamador que la omita falla al tipar.
+
+Desde v129 (ADR-030 fase 2) la fila lleva también ``user_id`` y la lectura es
+dual: ver ``db/repositories/watchlist.py``.
 """
 
 from __future__ import annotations
@@ -18,6 +21,10 @@ from typing import Any
 
 from db.database import connect, now_utc_iso
 from db.repositories.base import rows_to_dicts
+
+#: Predicado de identidad dual. Parámetros: ``(user_id, user_key, user_id)``.
+_IDENT = "(user_id = %s OR (user_key = %s AND (user_id IS NULL OR %s::int IS NULL)))"
+_IDENT_W = "(w.user_id = %s OR (w.user_key = %s AND (w.user_id IS NULL OR %s::int IS NULL)))"
 
 
 @dataclass
@@ -35,23 +42,26 @@ class WatchlistEmpresaEntry:
     email: str | None = None
     frequency: str = "daily"  # 'immediate' | 'daily' | 'weekly'
     visibility: str = "private"
+    user_id: int | None = None
 
 
 def add_entry(entry: WatchlistEmpresaEntry) -> int | None:
     """Añade una empresa a la watchlist del usuario. Devuelve el id o None si ya existía."""
     with connect() as c:
         existing = c.execute(
-            "SELECT id FROM watchlist_empresas WHERE user_key = %s AND empresa_id = %s",
-            (entry.user_key, entry.empresa_id),
+            f"SELECT id FROM watchlist_empresas WHERE {_IDENT} AND empresa_id = %s",
+            (entry.user_id, entry.user_key, entry.user_id, entry.empresa_id),
         ).fetchone()
         if existing is not None:
             return None
         row = c.execute(
             "INSERT INTO watchlist_empresas "
-            "(user_key, empresa_id, email, frequency, created_at, organization_id, visibility) "
-            "VALUES (%s, %s, %s, %s, %s, %s, %s) RETURNING id",
+            "(user_key, user_id, empresa_id, email, frequency, created_at, "
+            " organization_id, visibility) "
+            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s) RETURNING id",
             (
                 entry.user_key,
+                entry.user_id,
                 entry.empresa_id,
                 entry.email,
                 entry.frequency,
@@ -60,20 +70,49 @@ def add_entry(entry: WatchlistEmpresaEntry) -> int | None:
                 entry.visibility,
             ),
         ).fetchone()
-        return int(row[0])
+        nuevo_id = int(row[0])
+
+    # Escritura doble hacia `follows` (ADR-031 §B, fase aditiva). `target_id` es
+    # texto porque el objetivo es polimórfico; no lanza nunca, por lo mismo que
+    # en `db/radar_dismissals.py`.
+    from db.repositories import follows as _follows
+
+    _follows.registrar(
+        user_key=entry.user_key,
+        user_id=entry.user_id,
+        organization_id=entry.organization_id,
+        target_type="empresa",
+        target_id=str(entry.empresa_id),
+        visibility=entry.visibility,
+    )
+    return nuevo_id
 
 
-def remove_entry(user_key: str, empresa_id: int, organization_id: int) -> bool:
+def remove_entry(
+    user_key: str, empresa_id: int, organization_id: int, *, user_id: int | None = None
+) -> bool:
     with connect() as c:
         cur = c.execute(
             "DELETE FROM watchlist_empresas WHERE organization_id = %s "
-            "AND empresa_id = %s AND (visibility = 'organization' OR user_key = %s)",
-            (organization_id, empresa_id, user_key),
+            f"AND empresa_id = %s AND (visibility = 'organization' OR {_IDENT})",
+            (organization_id, empresa_id, user_id, user_key, user_id),
         )
-        return bool(cur.rowcount)
+        borrado = bool(cur.rowcount)
+
+    from db.repositories import follows as _follows
+
+    _follows.olvidar(
+        user_key=user_key,
+        user_id=user_id,
+        target_type="empresa",
+        target_id=str(empresa_id),
+    )
+    return borrado
 
 
-def list_entries(user_key: str, organization_id: int) -> list[dict[str, Any]]:
+def list_entries(
+    user_key: str, organization_id: int, *, user_id: int | None = None
+) -> list[dict[str, Any]]:
     """Empresas vigiladas por un usuario, con nombre canónico."""
     with connect() as c:
         return rows_to_dicts(
@@ -84,9 +123,9 @@ def list_entries(user_key: str, organization_id: int) -> list[dict[str, Any]]:
                 "FROM watchlist_empresas w "
                 "JOIN empresas e ON e.empresa_id = w.empresa_id "
                 "WHERE w.organization_id = %s "
-                "AND (w.visibility = 'organization' OR w.user_key = %s) "
+                f"AND (w.visibility = 'organization' OR {_IDENT_W}) "
                 "ORDER BY e.nombre_canonico",
-                (organization_id, user_key),
+                (organization_id, user_id, user_key, user_id),
             )
         )
 
@@ -96,7 +135,7 @@ def list_all() -> list[dict[str, Any]]:
     with connect() as c:
         return rows_to_dicts(
             c.execute(
-                "SELECT w.id, w.user_key, w.empresa_id, e.nombre_canonico, "
+                "SELECT w.id, w.user_key, w.user_id, w.empresa_id, e.nombre_canonico, "
                 "       w.email, w.frequency, w.last_notified_at, w.organization_id "
                 "FROM watchlist_empresas w "
                 "JOIN empresas e ON e.empresa_id = w.empresa_id "

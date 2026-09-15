@@ -31,7 +31,8 @@ _PURSUIT_SELECT = (
     "p.created_at, p.updated_at, p.version, "
     # Contador del hilo de comentarios en la misma consulta: el tablero lo
     # pinta en cada tarjeta y una llamada por oportunidad no escala (v97).
-    "(SELECT COUNT(*) FROM pursuit_comments c WHERE c.pursuit_id = p.id) AS comments_count "
+    "(SELECT COUNT(*) FROM pursuit_comments c "
+    " WHERE c.pursuit_id = p.id AND c.deleted_at IS NULL) AS comments_count "
     "FROM pursuits p "
     "JOIN licitaciones l ON l.id_externo = p.licitacion_id "
     "LEFT JOIN lotes lo ON lo.licitacion_id = p.licitacion_id "

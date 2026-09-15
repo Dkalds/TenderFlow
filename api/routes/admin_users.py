@@ -23,11 +23,26 @@ from db.users import (
 )
 from observability.logging import get_logger
 from services.gdpr import revoke_all_api_keys_for_user
+from shared.audit_events import (
+    USER_ADMIN_CHANGED,
+    USER_ANONYMIZE,
+    USER_DEACTIVATE,
+    USER_REACTIVATE,
+)
 from shared.dto import MAX_PAGE_LIMIT, StatusOk
 
 log = get_logger(__name__)
 
 router = APIRouter(prefix="/admin/users", tags=["admin"])
+
+#: Acción del cuerpo → tipo de evento del catálogo. Antes se componía
+#: ``f"user.{action}"``, que es justo lo que un catálogo cerrado no puede
+#: validar.
+_EVENTO_POR_ACCION: dict[str, str] = {
+    "deactivate": USER_DEACTIVATE,
+    "reactivate": USER_REACTIVATE,
+    "anonymize": USER_ANONYMIZE,
+}
 
 
 class SetAdminBody(BaseModel):
@@ -120,7 +135,7 @@ def admin_set_admin(
     # una promoción desde aquí sobrevive al siguiente login con Google.
     set_admin(user_id, body.is_admin, granted_by="panel")
     log_event(
-        event_type="user.admin_changed",
+        event_type=USER_ADMIN_CHANGED,
         user_key=str(admin.get("user_id", "")),
         resource=f"user:{user_id}",
         detail=f"is_admin={body.is_admin}",
@@ -173,7 +188,7 @@ def admin_deactivate_user(
         )
 
     log_event(
-        event_type=f"user.{body.action}",
+        event_type=_EVENTO_POR_ACCION[body.action],
         user_key=str(admin.get("user_id", "")),
         resource=f"user:{user_id}",
         detail=detail,

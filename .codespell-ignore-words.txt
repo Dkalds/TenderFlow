@@ -3,6 +3,7 @@ abstracto
 accesible
 aceptable
 admisible
+als
 ambiguos
 analisis
 ans
@@ -10,12 +11,14 @@ anual
 aplicable
 arquitectural
 assertIn
+assistent
 asume
 autor
 auxiliar
 avance
 barrer
 caracteres
+certificat
 clases
 cliente
 colateral
@@ -80,6 +83,7 @@ inicial
 inmutable
 inmutables
 instruccion
+integrat
 intelectual
 interpolar
 interprete
@@ -90,6 +94,7 @@ limite
 manifiesto
 manifiestos
 mappin
+marketin
 mata
 medias
 mis
@@ -109,6 +114,7 @@ potencial
 predecesor
 previos
 procede
+profund
 purgable
 registr
 registre

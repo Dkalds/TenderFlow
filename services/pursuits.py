@@ -30,6 +30,7 @@ from services.kit_presentacion import KitPresentacion, construir_kit, marcar_ite
 from services.organizations import require_active_member, resolve_organization
 from services.pursuit_awards import resultado_sugerido
 from services.watchlist_rules import list_rules
+from shared.audit_events import PURSUIT_WEIGHTS_PROPOSAL_APPLIED
 from shared.dates import a_fecha
 from shared.dto import (
     AgendaUrgencia,
@@ -200,6 +201,7 @@ def _notificar_asignacion(row: dict[str, Any], *, actor_user_id: int) -> None:
         titulo = str(row.get("tender_title") or row.get("licitacion_id") or "")[:80]
         insert_user_notification(
             user_key=user_key_from_email(usuario.get("email"), int(responsable)),
+            user_id=int(responsable),
             type_=TIPO_NOTIFICACION_ASIGNACION,
             title=f"Te han asignado: {titulo}",
             body=f"{quien} te asignó esta oportunidad. Ábrela para ver la decisión pendiente "
@@ -1399,7 +1401,7 @@ def apply_weights_proposal(
         if afectada is not None:
             invalidate_organization_scoped("analytics", "scoring", afectada)
     log_event(
-        event_type="pursuit.weights_proposal_applied",
+        event_type=PURSUIT_WEIGHTS_PROPOSAL_APPLIED,
         user_key=user_key,
         resource=f"organization:{resolved_id}",
         detail={

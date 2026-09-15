@@ -22,6 +22,7 @@ from api.routes.dual_auth import require_admin
 from db.repositories.client_errors import registrar as registrar_client_error
 from observability.logging import get_logger
 from services.rate_limiting import get_rate_limiter
+from shared.audit_events import API_KEY_REVOKED
 
 log = get_logger(__name__)
 
@@ -374,6 +375,18 @@ async def leaked_key_notification(
 
         key_hash = hash_api_key(token)
         revoked = revoke_api_key(key_hash)
+        # Una revocación que no pidió el dueño tiene que quedar en el rastro:
+        # es la única forma de que después entienda por qué su clave dejó de
+        # funcionar. Va el prefijo del hash, nunca el token.
+        from db.audit import log_event
+
+        await run_db(
+            log_event,
+            event_type=API_KEY_REVOKED,
+            outcome="success" if revoked else "failure",
+            resource=f"api_key:{key_hash[:12]}",
+            detail={"reason": "leaked", "source": "github_secret_scanning", "revoked": revoked},
+        )
 
         log.warning(
             "leaked_key_notification",

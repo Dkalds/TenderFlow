@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import re
 
+from config.keywords import TECH_CATEGORIAS
 from services.normalization import fold_text
 
 # Re-export geo helpers for convenience
@@ -154,21 +155,12 @@ def detect_modules(text: str | None) -> list[str]:
 
 
 # ── Etiquetas de tecnología ─────────────────────────────────────────────
-TECHNOLOGY_LABELS: dict[str, str] = {
-    "SAP": "SAP",
-    "SALESFORCE": "Salesforce",
-    "ORACLE": "Oracle",
-    "MICROSOFT": "Microsoft Dynamics / Azure",
-    "SERVICENOW": "ServiceNow",
-    "WORKDAY": "Workday",
-    "IBM": "IBM",
-    "OPENTEXT": "OpenText",
-    "UNIT4": "Unit4",
-    "META4": "Meta4",
-    "SOPRA": "Sopra",
-    "SAGE": "Sage",
-    "INFOR": "Infor",
-}
+#
+# Era una copia a mano de las trece claves de ``TECHNOLOGY_KEYWORDS``. Con las
+# categorías de la taxonomía (2026-09-14) la copia habría dejado nueve labels
+# sin etiqueta legible —``tecnologia_label`` los devolvería en crudo— sin que
+# nada fallase. Se deriva del único mapa: ``config.keywords.TECH_CATEGORIAS``.
+TECHNOLOGY_LABELS: dict[str, str] = dict(TECH_CATEGORIAS)
 
 
 def tecnologia_label(code: str | None) -> str:

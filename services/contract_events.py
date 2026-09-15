@@ -168,11 +168,11 @@ def _emitir_cambio_seguido(
         if not organization_id:
             continue
         user_key = fila.get("user_key")
+        bruto = fila.get("user_id")
+        user_id = int(bruto) if bruto is not None else None
         if not user_key:
-            bruto = fila.get("user_id")
-            if bruto is None:
+            if user_id is None:
                 continue
-            user_id = int(bruto)
             usuario = get_user_by_id(user_id)
             if usuario is None:
                 continue
@@ -181,7 +181,12 @@ def _emitir_cambio_seguido(
         if clave in vistos:
             continue
         vistos.add(clave)
-        resueltos.append({"user_key": str(user_key), "organization_id": organization_id})
+        # ``user_id`` viaja en el payload (v129) para que el despachador
+        # escriba la alerta con las dos identidades; ``None`` si el favorito
+        # no se pudo resolver por email.
+        resueltos.append(
+            {"user_key": str(user_key), "organization_id": organization_id, "user_id": user_id}
+        )
 
     if not resueltos:
         return False

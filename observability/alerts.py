@@ -1,6 +1,12 @@
-"""Envío de alertas por email (SMTP) o al log estructurado.
+"""Envío de alertas por email o al log estructurado.
 
-Variables de entorno necesarias para email:
+El transporte vive en :mod:`observability.mailer` (``EMAIL_BACKEND``: ``smtp``,
+``resend``, ``postmark`` o ``console``; ver
+``docs/runbooks/correo-transaccional.md``). Este módulo conserva la API que
+usan los llamantes —:func:`notify`, :func:`enviar_email_transaccional`,
+:func:`_send_smtp`— y el contrato de fallo, el log y la métrica de entrega.
+
+Variables de entorno necesarias para el backend ``smtp`` (el default):
 
 - ``ALERT_EMAIL_TO``       : destinatario, p.ej. dkalitovicsd@gmail.com
 - ``ALERT_SMTP_USER``      : cuenta remitente, p.ej. dkalitovicsd@gmail.com
@@ -21,11 +27,9 @@ Cómo obtener la contraseña de aplicación de Gmail
 
 from __future__ import annotations
 
-import smtplib
 import textwrap
+from collections.abc import Sequence
 from datetime import UTC
-from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
 from enum import IntEnum
 from typing import Any
 
@@ -127,14 +131,18 @@ def _entregar_email(
     evento: str = "alert_email",
     etiqueta_destino: str = "ALERT_EMAIL_TO",
     destino_log: str | None = None,
+    unsubscribe_url: str | None = None,
+    tags: Sequence[str] = (),
 ) -> bool:
-    """Entrega un email por SMTP con STARTTLS. Devuelve si salió de aquí.
+    """Entrega un email por el backend configurado. Devuelve si salió de aquí.
 
-    Punto único de transporte del proyecto: lo comparten las alertas de
+    Punto único de entrada al correo del proyecto: lo comparten las alertas de
     operación (:func:`_send_smtp`) y los emails de producto
-    (:func:`enviar_email_transaccional`). Tener dos implementaciones de SMTP
-    significaba que arreglar el timeout, el STARTTLS o el manejo de error en una
-    dejaba la otra atrás.
+    (:func:`enviar_email_transaccional`). El transporte —SMTP, Resend, Postmark
+    o consola, según ``EMAIL_BACKEND``— vive en :mod:`observability.mailer`;
+    aquí quedan el contrato de fallo, el log y la métrica, que es lo que los
+    llamantes y sus tests conocen. ``unsubscribe_url`` pone los encabezados
+    ``List-Unsubscribe`` (RFC 8058) y ``tags`` etiqueta el envío en el ESP.
 
     **Nunca propaga.** Un buzón mal configurado o un SMTP caído no pueden
     tumbar a quien llama: los dos usos son efectos secundarios de una operación
@@ -164,61 +172,66 @@ def _entregar_email(
     suyo ("se registra si salió y a qué dominio, NUNCA la dirección completa"),
     y ningún test lo veía porque el del servicio mockea el transporte entero.
     """
-    from config import settings
+    from observability.mailer import Mensaje, enviar
 
-    user = settings.ALERT_SMTP_USER.strip()
-    password = settings.ALERT_SMTP_PASSWORD.get_secret_value().strip()
-    host = settings.ALERT_SMTP_HOST.strip()
-    port = settings.ALERT_SMTP_PORT
     destino = recipient.strip()
-
-    if not (destino and user and password):
-        log.debug(
-            "alert_smtp_not_configured",
-            missing=[
-                k
-                for k, v in {
-                    etiqueta_destino: destino,
-                    "ALERT_SMTP_USER": user,
-                    "ALERT_SMTP_PASSWORD": password,
-                }.items()
-                if not v
-            ],
-        )
+    if not destino:
+        log.debug("alert_smtp_not_configured", missing=[etiqueta_destino])
         _contar_fallo_entrega("not_configured")
         return False
 
-    msg = MIMEMultipart("alternative")
-    msg["Subject"] = subject
-    msg["From"] = user
-    msg["To"] = destino
-    msg.attach(MIMEText(texto, "plain", "utf-8"))
-    msg.attach(MIMEText(html, "html", "utf-8"))
-
-    try:
-        with smtplib.SMTP(host, port, timeout=15) as server:
-            server.ehlo()
-            server.starttls()
-            server.login(user, password)
-            server.sendmail(user, [destino], msg.as_string())
+    resultado = enviar(
+        Mensaje(
+            to=destino,
+            subject=subject,
+            text=texto,
+            html=html,
+            tags=list(tags),
+            unsubscribe_url=unsubscribe_url,
+        )
+    )
+    if resultado.ok:
         log.info(
             f"{evento}_sent",
             to=destino if destino_log is None else destino_log,
             subject=subject,
+            backend=resultado.backend,
+            provider_id=resultado.provider_id,
         )
         return True
-    except smtplib.SMTPException as e:
-        log.warning(f"{evento}_failed", error=str(e))
-        _contar_fallo_entrega("smtp")
-        return False
-    except OSError as e:
-        log.warning(f"{evento}_network_error", error=str(e))
-        _contar_fallo_entrega("network")
-        return False
+
+    # Los nombres de evento (`*_failed`, `*_network_error`) y las etiquetas de
+    # la métrica (`smtp`, `network`, `not_configured`) son los que ya existían;
+    # `provider` e `invalid` son nuevos y solo aparecen con los backends HTTP.
+    motivo = resultado.motivo or "unknown"
+    if motivo == "not_configured":
+        log.debug("alert_smtp_not_configured", backend=resultado.backend, error=resultado.error)
+    elif motivo == "network":
+        log.warning(f"{evento}_network_error", backend=resultado.backend, error=resultado.error)
+    else:
+        log.warning(
+            f"{evento}_failed", backend=resultado.backend, motivo=motivo, error=resultado.error
+        )
+    _contar_fallo_entrega(motivo)
+    return False
 
 
-def enviar_email_transaccional(*, to_addr: str, subject: str, texto: str, html: str) -> bool:
+def enviar_email_transaccional(
+    *,
+    to_addr: str,
+    subject: str,
+    texto: str,
+    html: str,
+    unsubscribe_url: str | None = None,
+    tags: Sequence[str] = (),
+) -> bool:
     """Envía un email **de producto** a una persona, no una alerta de operación.
+
+    ``unsubscribe_url`` es la URL de baja del correo (la del pie del digest):
+    cuando viene, el mensaje sale con ``List-Unsubscribe`` y
+    ``List-Unsubscribe-Post`` para que el cliente de correo ofrezca «Cancelar
+    suscripción» en vez de «Marcar como spam». ``tags`` etiqueta el envío en
+    el proveedor cuando ``EMAIL_BACKEND`` es un ESP.
 
     Existe porque :func:`notify` no sirve para esto por tres motivos, y los tres
     se notan en el buzón de quien lo recibe: el asunto sale como
@@ -228,11 +241,11 @@ def enviar_email_transaccional(*, to_addr: str, subject: str, texto: str, html: 
     podría no salir según cómo esté configurado el umbral de las alertas de
     infraestructura, que no tiene nada que ver.
 
-    Comparte credenciales SMTP con las alertas a propósito: el proyecto tiene un
-    solo buzón remitente y añadir un segundo juego de variables sería
-    configuración nueva para un beneficio que hoy no existe. Si algún día el
-    correo de producto necesita su propio remitente, este es el punto donde
-    cambiarlo.
+    Comparte backend y remitente con las alertas a propósito: el proyecto tiene
+    un solo remitente (``EMAIL_FROM``, o la cuenta SMTP si está vacío) y un
+    segundo juego de variables sería configuración nueva para un beneficio que
+    hoy no existe. Si algún día el correo de producto necesita su propio
+    remitente, este es el punto donde cambiarlo.
 
     Al log va **el dominio y no la dirección**: aquí el destinatario es una
     persona, no un buzón de operación, y el dominio basta para diagnosticar un
@@ -246,6 +259,8 @@ def enviar_email_transaccional(*, to_addr: str, subject: str, texto: str, html: 
         evento="email_producto",
         etiqueta_destino="destinatario",
         destino_log=to_addr.rpartition("@")[2] or "desconocido",
+        unsubscribe_url=unsubscribe_url,
+        tags=tags,
     )
 
 
@@ -257,7 +272,11 @@ def _send_smtp(
     *,
     to_addr: str | None = None,
 ) -> None:
-    """Envía el email usando SMTP con STARTTLS.
+    """Envía la alerta por el backend de correo configurado (``EMAIL_BACKEND``).
+
+    Conserva el nombre histórico: es lo que parchean los tests y lo que buscan
+    los llamantes, y con ``EMAIL_BACKEND=smtp`` (el default) sigue siendo
+    literalmente cierto.
 
     ``to_addr`` sobreescribe la variable de entorno ``ALERT_EMAIL_TO``
     cuando se especifica (útil para notificaciones por destinatario).

@@ -112,7 +112,7 @@ async def get_notifications(
 
     samples = novedades.sample if novedades else []
     candidate_ids = [s.id_externo for s in samples]
-    unread_ids = set(await run_db(get_unread_ids, user_key, candidate_ids))
+    unread_ids = set(await run_db(get_unread_ids, user_key, candidate_ids, user_id=user_id))
 
     items = [
         NotificationItem(
@@ -126,7 +126,7 @@ async def get_notifications(
     ]
 
     # Alertas in-app (reglas + deadlines) -- Feature A
-    raw_alerts = await run_db(get_user_alerts, user_key, 30, resolved_id)
+    raw_alerts = await run_db(get_user_alerts, user_key, 30, resolved_id, user_id=user_id)
     alerts = [
         AlertItem(
             id=int(a["id"]),
@@ -141,7 +141,7 @@ async def get_notifications(
         )
         for a in raw_alerts
     ]
-    alerts_unread = await run_db(get_alerts_unread_count, user_key, resolved_id)
+    alerts_unread = await run_db(get_alerts_unread_count, user_key, resolved_id, user_id=user_id)
 
     return NotificationsResult(
         items=items,
@@ -158,7 +158,7 @@ async def post_mark_read(
     ctx: dict[str, Any] = Depends(require_any_auth),
 ) -> StatusOk:
     if body.ids:
-        await run_db(mark_all_read, _user_key(ctx), body.ids)
+        await run_db(mark_all_read, _user_key(ctx), body.ids, user_id=_user_id_int(ctx))
     return StatusOk(status="ok")
 
 
@@ -169,9 +169,10 @@ async def post_mark_alerts_read(
 ) -> StatusOk:
     ctx = await resolve_organization_ctx(ctx, body.organization_id, write=True)
     user_key = _user_key(ctx)
+    user_id = _user_id_int(ctx)
     resolved_id = ctx["organization_id"]
     if body.all:
-        await run_db(mark_all_alerts_read, user_key, resolved_id)
+        await run_db(mark_all_alerts_read, user_key, resolved_id, user_id=user_id)
     elif body.ids:
-        await run_db(mark_alerts_read, user_key, body.ids, resolved_id)
+        await run_db(mark_alerts_read, user_key, body.ids, resolved_id, user_id=user_id)
     return StatusOk(status="ok")

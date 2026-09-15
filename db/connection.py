@@ -33,6 +33,7 @@ from pydantic import SecretStr
 
 from config import settings
 from observability.logging import get_logger
+from shared.tenant_context import current_organization
 
 log = get_logger(__name__)
 
@@ -559,6 +560,91 @@ def close_pool() -> None:
 
 
 # ---------------------------------------------------------------------------
+# Ámbito de organización (RLS por tenant, ADR-034)
+# ---------------------------------------------------------------------------
+
+# Variable que leen las políticas ``tenant_scope_*`` de ``v128``. Es un GUC
+# «placeholder» (nombre con punto, sin registrar): Postgres lo acepta en
+# cualquier sesión sin configuración previa.
+_TENANT_GUC = "app.organization_id"
+
+
+def _tenant_scope_sql(organization_id: int) -> str:
+    """``SET LOCAL`` que acota la transacción en curso a ``organization_id``.
+
+    Va como literal y no como parámetro a propósito: ``SET`` no admite
+    placeholders, y el camino de lectura necesita enviarlo en la misma
+    sentencia que su ``BEGIN`` (protocolo simple, sin parámetros) para no
+    pagar un viaje más. Es seguro porque el valor es un ``int`` validado por
+    ``shared.tenant_context`` y se vuelve a coaccionar aquí.
+    """
+    return f"SET LOCAL {_TENANT_GUC} = '{int(organization_id)}'"
+
+
+def _apply_tenant_scope_write(conn: _PgConnAdapter) -> None:
+    """Primera sentencia de un bloque ``connect()`` con ámbito fijado.
+
+    psycopg abre la transacción implícita con el primer ``execute`` (la
+    conexión de escritura no está en autocommit), así que el ``SET LOCAL``
+    vive exactamente hasta el ``commit``/``rollback`` de cierre y nunca se
+    queda en la conexión al devolverla al pool. Sin ámbito no emite nada: el
+    scheduler, los scripts y los tests sin scope no pagan ningún viaje.
+
+    Límite conocido: un ``conn.commit()`` a mitad de bloque (hoy solo lo hace
+    ``db/repositories/predicciones.py``, camino del scheduler) cierra la
+    transacción y con ella el ámbito; lo que venga después corre sin
+    respaldo RLS, no roto.
+    """
+    organization_id = current_organization()
+    if organization_id is None:
+        return
+    conn._conn.execute(_tenant_scope_sql(organization_id))
+
+
+def _begin_tenant_scope_read(conn: _PgConnAdapter) -> bool:
+    """Abre la transacción con ámbito en el camino de lectura. True si lo hizo.
+
+    La conexión de lectura está en **autocommit** (ver ``connect_read``), y
+    fuera de una transacción ``SET LOCAL`` es un no-op con WARNING. Por eso,
+    solo cuando hay ámbito, se abre una explícita y se fija la variable en la
+    **misma sentencia** — dos comandos, un viaje, gracias al protocolo simple
+    que psycopg usa cuando no hay parámetros. La transacción hereda el
+    ``default_transaction_read_only=on`` de la sesión, así que la garantía de
+    solo lectura se mantiene. El cierre (``_end_tenant_scope_read``) cuesta el
+    otro viaje: una lectura con ámbito pasa de 1 a 3 round-trips; una sin
+    ámbito sigue en 1.
+    """
+    organization_id = current_organization()
+    if organization_id is None:
+        return False
+    conn._conn.execute(f"BEGIN; {_tenant_scope_sql(organization_id)}")
+    return True
+
+
+def _end_tenant_scope_read(conn: _PgConnAdapter) -> None:
+    """Cierra la transacción de lectura con ámbito antes de devolver la conexión.
+
+    ``ROLLBACK`` y no ``COMMIT``: no hay nada que persistir, y funciona igual
+    si una query del bloque dejó la transacción en error. Se hace aquí y no se
+    delega en el pool porque ``psycopg_pool`` sí revierte una transacción
+    abierta al recibir la conexión, pero lo registra como WARNING en cada
+    devolución. Si ni siquiera el ``ROLLBACK`` llega (conexión rota), se
+    cierra la conexión para que el pool la descarte en vez de reutilizarla con
+    el ``SET LOCAL`` de otra organización a medio deshacer.
+    """
+    try:
+        conn.rollback()
+    except Exception:
+        log.warning("tenant_scope_rollback_failed", exc_info=True)
+        try:
+            conn._conn.close()
+        except Exception:
+            # Cerrar una conexión ya rota puede fallar a su vez; el pool la
+            # descartará igual. Queda constancia por si el patrón se repite.
+            log.debug("tenant_scope_close_failed", exc_info=True)
+
+
+# ---------------------------------------------------------------------------
 # Context managers públicos
 # ---------------------------------------------------------------------------
 
@@ -572,6 +658,11 @@ def connect() -> Iterator[Any]:
 
     Toma la conexión del pool de escritura; para lecturas usá ``connect_read``,
     que además impide escribir por esa vía.
+
+    Si la petición fijó organización (``shared.tenant_context``), la primera
+    sentencia de la transacción es ``SET LOCAL app.organization_id`` y las
+    políticas RLS de ``v128`` hacen invisibles las filas de otras
+    organizaciones y rechazan insertarlas (ADR-034).
     """
     import time as _time
 
@@ -592,6 +683,7 @@ def connect() -> Iterator[Any]:
     n_writers = inc_writers()
     record_writers_high_if_needed(n_writers)
     try:
+        _apply_tenant_scope_write(conn)
         yield conn
         t0 = _time.monotonic()
         conn.commit()
@@ -628,6 +720,12 @@ def connect_read() -> Iterator[Any]:
     de escritura (2201 → 6 viajes por lote), que nunca se auditó en lectura.
     En autocommit un SELECT no abre transacción, así que ``putconn`` tampoco
     tiene nada que revertir al devolver la conexión.
+
+    La excepción es una lectura **con organización fijada** (ADR-034): ahí sí
+    se abre una transacción explícita para que el ``SET LOCAL
+    app.organization_id`` tenga efecto, y se cierra con ``ROLLBACK`` antes de
+    devolver la conexión — ver ``_begin_tenant_scope_read``. Cuesta dos viajes
+    más por lectura acotada; la lectura sin ámbito no cambia.
     """
     import time as _time
 
@@ -635,9 +733,13 @@ def connect_read() -> Iterator[Any]:
 
     conn = _get_conn(read_only=True)
     t0 = _time.monotonic()
+    scoped = False
     try:
+        scoped = _begin_tenant_scope_read(conn)
         yield conn
     finally:
+        if scoped:
+            _end_tenant_scope_read(conn)
         db_read_duration_seconds.observe(_time.monotonic() - t0)
         _return_conn(conn)
 

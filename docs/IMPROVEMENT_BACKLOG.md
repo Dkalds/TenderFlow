@@ -210,6 +210,7 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 - **Área:** api/routes/auth.py, services/organizations.py, db/repositories/organizations.py, db/users.py, shared/identity.py, scripts/check_user_key_ratchet.py
 - **Problema:** una organización no puede incorporar a nadie que no tenga ya cuenta —`add_member_by_email` rechaza el email aunque `organization_memberships.status` admita `invited` desde `v61`—, el único OAuth es Google (un partner con Microsoft 365 no entra con su identidad), y la identidad interna sigue derivándose del email: `user_key` aparece en 60 ficheros (grep 2026-09-05), así que un cambio de email es un cambio de clave primaria de facto.
 - **Decisiones ya tomadas (2026-09-06):** D17 → Entra ID multi-tenant reutilizando `OAUTH_ALLOWED_DOMAINS` y `access_grants`; D18 → ratchet ahora y migración aditiva por olas después (esa segunda fase es T4 del plan, no este ítem).
+- **Progreso T4 (2026-09-14, v129 · ADR-030 fase 2):** `user_id` junto a `user_key` en las doce tablas de usuario (nueve nuevas + FK e índice en las tres que ya la tenían), backfill por email en SQL y lectura dual + escritura doble en `db/`, `services/notifications.py`, `services/watchlist_rules.py` y los productores de alertas; GDPR exporta y borra por id o por clave (y cubre por fin `saved_filters`). Test de aceptación del ADR: `tests/test_user_id_cambio_email_integration.py`. **Queda la fase 3** (dejar de escribir `user_key`, recrear las PK de `user_profiles`/`radar_dismissals`, retirar `user_key` del payload de `watchlist_rule.matched` con RFC, y llevar el ratchet a cero).
 - **Acceptance criteria:** los de S1.1–S1.4 del plan v2, sin redefinirlos aquí. Los cuatro subítems son independientes y se pueden entregar por separado; S1.3 (dominio propio) es acción humana.
 - **Files de partida:** [docs/plans/2026-09-plan-arquitectura-v2.md](plans/2026-09-plan-arquitectura-v2.md) (§5, S1), [services/organizations.py](../services/organizations.py), [api/routes/auth.py](../api/routes/auth.py)
 - **Riesgo:** medio — S1.2 toca el login, que es el camino por el que entra todo el mundo; el resto es aditivo.
@@ -384,17 +385,6 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 - **Files de partida:** [services/rag/fact_sheet.py](../services/rag/fact_sheet.py), [services/rag/context.py](../services/rag/context.py), [db/repositories/documentos.py](../db/repositories/documentos.py)
 - **Riesgo:** medio — toca el camino que produce el dato más confiable del producto; por eso va detrás del eval.
 
-### [P2] Cada re-ingesta nulea las cuatro columnas ML, y `tech_signal_merge` lo cura a ciegas cada 4h
-- **Área:** db/upsert.py, scheduler/pipeline_runs.py, services/tech_signal.py
-- **Problema:** `_LIC_UPDATES` genera `k=excluded.k` para todos los campos salvo los cuatro de `_LIC_COALESCE_UPDATE_FIELDS` (`fecha_limite`, `procedimiento`, `tramitacion`, `peso_precio_pct`). `ml_proba`, `ml_tecnologias`, `ml_proba_max` y `ml_tech_principal` **no** están, así que cada re-ingesta de un expediente las pisa con lo que trajo el parser — NULL siempre que el proceso de ingesta no tenga clasificador cargado. `tech_signal_merge` existe para sanar eso, pero corre `merge_doc_signals()` **sin ids**: un barrido de la tabla entera (72.235 filas en `licitacion_tecnologia_score`, medido 2026-09-03) cada 4 h, incluso en las pasadas que no ingirieron nada — y `atom_live` reporta `entries_collected: 0` en la gran mayoría de ellas. La forma incremental ya existe y ya se usa desde `scheduler/jobs/documentos_embeddings.py`.
-- **Por qué NO se hizo con el arreglo de la descarga de modelos (2026-09-03):** añadir esas cuatro columnas al `COALESCE` cambia la semántica de escritura de ~700k filas, e impediría además que un re-scoring legítimo limpie un valor viejo. Es una decisión de contrato de datos, no un fix de transporte; bundlearla habría hecho irrevisable el diff del bug.
-- **Acceptance criteria:**
-  - Decidido y escrito si el clobber se corta en origen (COALESCE) o se sigue sanando aguas abajo.
-  - Si se mantiene el merge: el carril diario le pasa los `licitacion_ids` que la pasada tocó, y el barrido completo baja a cadencia diaria (`_run_periodic`).
-  - El docstring de `_run_tech_signal_merge` deja de citar solo `precompute_ml_tecnologias` como fuente del clobber.
-- **Files de partida:** [db/upsert.py](../db/upsert.py) (`_LIC_COALESCE_UPDATE_FIELDS`), [scheduler/pipeline_runs.py](../scheduler/pipeline_runs.py) (`_run_tech_signal_merge`), [services/tech_signal.py](../services/tech_signal.py) (`merge_doc_signals`)
-- **Riesgo:** medio — toca el camino de escritura de la tabla principal.
-
 ### [P2] El corpus de PSCP ahoga el dataset del clasificador SAP: no se puede reentrenar, y el modelo servido no discrimina
 - **Área:** scraper/ml_training.py (`train_from_db`), scraper/connectors/pscp.py, scraper/ml_pipeline.py (`validate_training_data`)
 - **Problema:** `train_from_db` construye el dataset con un `SELECT … FROM licitaciones` **sin filtro de fuente**, y la etiqueta es «`raw_keywords` no vacío OR `tecnologia` no vacía». Medido contra producción el 2026-09-04:
@@ -420,6 +410,7 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 - **Files de partida:** [scraper/ml_training.py](../scraper/ml_training.py) (`train_from_db`, la query y la etiqueta), [scraper/ml_pipeline.py](../scraper/ml_pipeline.py) (`validate_training_data`), [scraper/connectors/pscp.py](../scraper/connectors/pscp.py)
 - **Relación:** bloquea el P1 del golden set (ampliarlo no sirve de nada si el dataset de entrenamiento está ahogado) y explica por qué `model_versions` no tiene ninguna fila de `sap_classifier`.
 - **Riesgo:** medio — cambiar la población de entrenamiento cambia qué aprende el clasificador que decide el rescate ML en ingesta.
+- **Progreso parcial (2026-09-14, Ola 1 · Taxonomía):** parte del 0,46 % era vocabulario, no población: el diccionario solo tenía castellano y la PSCP publica en catalán. `config/keywords.py` añade nueve categorías de TI con formas en catalán, euskera y gallego ([docs/taxonomia-tecnologica.md](taxonomia-tecnologica.md)); tras resembrar, la tasa de positivos de PSCP hay que volver a medirla antes de decidir la bifurcación. No toca la población de entrenamiento ni `validate_training_data`.
 
 ### [P2] `baja_model` v2 y `retencion_model` v1 están entrenados y publicados, pero nadie puede decidir si activarlos
 - **Área:** db/model_registry.py, services/ml/baja_model.py, services/ml/calibration.py (acción del usuario)
@@ -687,6 +678,16 @@ cabecera de este fichero: los seis se comprobaron contra el código.
   llevaba en la lista los plurales en `-ciones`, que no llevan tilde
   («licitación» → «licitaciones»). La lista quedó con los singulares agudos y
   con los plurales que sí la conservan («órganos», «tecnologías»).
+- [2026-09-14] **P2: cada re-ingesta nuleaba las cuatro columnas ML, y `tech_signal_merge`
+  lo curaba a ciegas cada 4 h** — decidido: el clobber se corta en origen. `ml_proba`,
+  `ml_tecnologias`, `ml_proba_max` y `ml_tech_principal` entran en
+  `_LIC_COALESCE_UPDATE_FIELDS` (`db/upsert.py`): el `None` de un conector es «sin opinión», y
+  los pasos ML siguen escribiendo por UPDATE explícito. `merge_doc_signals()` sin ids deja de
+  barrer la tabla: `list_signals_for_merge` acota a licitaciones con señal sin `merged_at` o con
+  resumen ML a NULL o sin la tecnología detectada, y devuelve
+  `licitaciones_candidatas`/`licitaciones_reparadas`, que el paso loguea — «cero reparaciones en
+  siete días» se lee ahí. Ficha completa en
+  [el archivo](archive/IMPROVEMENT_BACKLOG_CERRADOS.md).
 
 
 - [2026-09-01] **Revisión integral de la IA del detalle de licitación (10 mejoras en un

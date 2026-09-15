@@ -39,6 +39,11 @@ from db.solicitudes_acceso import (
 )
 from observability.logging import get_logger
 from services.solicitudes_acceso import notificar_acceso_concedido
+from shared.audit_events import (
+    ACCESS_GRANT_GRANTED,
+    ACCESS_GRANT_REVOKED,
+    SOLICITUD_ACCESO_ESTADO,
+)
 
 log = get_logger(__name__)
 
@@ -155,14 +160,14 @@ async def cambiar_estado(
             actualizada = actualizar_estado(solicitud_id, body.estado)
         if actualizada:
             log_event(
-                event_type="solicitud_acceso.estado",
+                event_type=SOLICITUD_ACCESO_ESTADO,
                 user_key=str(admin.get("user_id", "")),
                 resource=f"solicitud_acceso:{solicitud_id}",
                 detail=body.estado,
             )
             if body.conceder is not None:
                 log_event(
-                    event_type="access_grant.granted",
+                    event_type=ACCESS_GRANT_GRANTED,
                     user_key=str(admin.get("user_id", "")),
                     resource=f"access_grant:{grant_id}",
                     detail={"kind": grant["kind"]},
@@ -210,7 +215,7 @@ async def revocar_grant(
         raise HTTPException(status_code=404, detail="concesión no encontrada o ya revocada")
     await run_db(
         log_event,
-        event_type="access_grant.revoked",
+        event_type=ACCESS_GRANT_REVOKED,
         user_key=str(admin.get("user_id", "")),
         resource=f"access_grant:{grant_id}",
         detail={"kind": grant["kind"]},

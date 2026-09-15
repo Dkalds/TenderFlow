@@ -139,19 +139,31 @@ class TestSaveFilter:
         es que la columna viaje en el INSERT -- se comprueba sobre el SQL
         emitido, no solo contando parámetros, para que siga valiendo si cambia
         el formato del literal.
+
+        Desde v129 el upsert intenta primero un ``UPDATE`` por identidad dual
+        (``user_id`` o ``user_key``) y sólo inserta si no tocó ninguna fila:
+        aquí se simula ese caso (``rowcount = 0``) y se comprueban las dos
+        sentencias.
         """
         from db.saved_filters import save_filter
 
         mock_conn = MagicMock()
+        mock_conn.execute.return_value.rowcount = 0
         mock_connect.return_value.__enter__ = MagicMock(return_value=mock_conn)
         mock_connect.return_value.__exit__ = MagicMock(return_value=False)
 
         save_filter("user1", "my_filter", '{"q":"test"}', 3)
-        mock_conn.execute.assert_called_once()
-        sql = " ".join(mock_conn.execute.call_args[0][0].split())
-        assert "organization_id" in sql
-        assert mock_conn.execute.call_args[0][1] == (
+        assert mock_conn.execute.call_count == 2
+        update_sql = " ".join(mock_conn.execute.call_args_list[0][0][0].split())
+        assert update_sql.startswith("UPDATE saved_filters")
+        assert "organization_id = %s" in update_sql
+        assert "user_key = %s" in update_sql
+        insert_sql = " ".join(mock_conn.execute.call_args_list[1][0][0].split())
+        assert "INSERT INTO saved_filters" in insert_sql
+        assert "organization_id" in insert_sql
+        assert mock_conn.execute.call_args_list[1][0][1] == (
             "user1",
+            None,
             "my_filter",
             '{"q":"test"}',
             "2024-01-01T00:00:00Z",
@@ -202,7 +214,8 @@ class TestListSavedFilters:
         sql = " ".join(mock_conn.execute.call_args[0][0].split())
         assert "organization_id = %s" in sql
         assert "user_key = %s" in sql
-        assert mock_conn.execute.call_args[0][1] == (3, "user1")
+        # v129: la identidad viaja como terna ``(user_id, user_key, user_id)``.
+        assert mock_conn.execute.call_args[0][1] == (3, None, "user1", None)
 
 
 class TestDeleteSavedFilter:
@@ -230,7 +243,7 @@ class TestDeleteSavedFilter:
         sql = " ".join(mock_conn.execute.call_args[0][0].split())
         assert "organization_id = %s" in sql
         assert "user_key = %s" in sql
-        assert mock_conn.execute.call_args[0][1] == (42, 3, "user1")
+        assert mock_conn.execute.call_args[0][1] == (42, 3, None, "user1", None)
 
     @patch("db.saved_filters.connect")
     def test_delete_reports_a_miss_instead_of_faking_success(self, mock_connect):
@@ -258,6 +271,10 @@ class TestDeleteSavedFilter:
         el ``OR`` dejaba que cualquier miembro borrase la vista compartida de
         un compañero. Se comprueba sobre el SQL emitido —no contando
         parámetros— para que la asercion siga valiendo si cambia el formato.
+
+        El predicado de identidad dual de v129 lleva su propio ``OR`` (id o
+        clave), así que lo que se vigila es que ``visibility`` no entre en el
+        borrado: la pertenencia al equipo no es alternativa a ser el dueño.
         """
         from db.saved_filters import delete_saved_filter
 
@@ -269,8 +286,8 @@ class TestDeleteSavedFilter:
         assert delete_saved_filter(7, user_key="user1", organization_id=3) is True
         sql = " ".join(mock_conn.execute.call_args[0][0].split())
         assert "user_key = %s" in sql
-        assert " OR " not in sql.upper()
-        assert mock_conn.execute.call_args[0][1] == (7, 3, "user1")
+        assert "visibility" not in sql.lower()
+        assert mock_conn.execute.call_args[0][1] == (7, 3, None, "user1", None)
 
 
 class TestDeleteSavedFilterOwnership:

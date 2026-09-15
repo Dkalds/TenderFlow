@@ -80,7 +80,7 @@ class PursuitTasksRepository:
     def get(self, organization_id: int, task_id: int) -> dict[str, Any] | None:
         with connect_read() as c:
             cur = c.execute(
-                _SELECT + " WHERE t.id = %s AND t.organization_id = %s",
+                _SELECT + " WHERE t.id = %s AND t.organization_id = %s AND t.deleted_at IS NULL",
                 (task_id, organization_id),
             )
             filas = rows_to_dicts(cur)
@@ -96,6 +96,7 @@ class PursuitTasksRepository:
         with connect_read() as c:
             cur = c.execute(
                 _SELECT + " WHERE t.pursuit_id = %s AND t.organization_id = %s "
+                "AND t.deleted_at IS NULL "
                 "ORDER BY (t.estado IN ('hecha', 'descartada')), "
                 "         t.vence IS NULL, t.vence, t.id",
                 (pursuit_id, organization_id),
@@ -107,6 +108,7 @@ class PursuitTasksRepository:
         with connect_read() as c:
             cur = c.execute(
                 _SELECT + " WHERE t.organization_id = %s AND t.estado IN ('pendiente', 'en_curso') "
+                "AND t.deleted_at IS NULL "
                 "ORDER BY t.vence IS NULL, t.vence, t.id LIMIT %s",
                 (organization_id, max(1, min(int(limit), 500))),
             )
@@ -158,7 +160,7 @@ class PursuitTasksRepository:
         with connect() as c:
             cur = c.execute(
                 "UPDATE pursuit_tasks SET " + ", ".join(sets) + " "
-                "WHERE id = %s AND organization_id = %s",
+                "WHERE id = %s AND organization_id = %s AND deleted_at IS NULL",
                 tuple(params),
             )
             if not getattr(cur, "rowcount", 0):
@@ -166,9 +168,16 @@ class PursuitTasksRepository:
         return self.get(organization_id, task_id)
 
     def delete(self, organization_id: int, task_id: int) -> bool:
+        """Marca la tarea como borrada (v131). `False` si no existía o ya lo estaba.
+
+        Borrado lógico por lo mismo que en el hilo de comentarios: la tarea es
+        trabajo del equipo en un espacio compartido, y un `DELETE` dejaba que un
+        compañero la hiciera desaparecer sin que quedara quién ni cuándo.
+        """
         with connect() as c:
             cur = c.execute(
-                "DELETE FROM pursuit_tasks WHERE id = %s AND organization_id = %s",
+                "UPDATE pursuit_tasks SET deleted_at = now() "
+                "WHERE id = %s AND organization_id = %s AND deleted_at IS NULL",
                 (task_id, organization_id),
             )
             return bool(getattr(cur, "rowcount", 0))
@@ -178,7 +187,7 @@ class PursuitTasksRepository:
         with connect_read() as c:
             cur = c.execute(
                 _SELECT + " WHERE t.pursuit_id = %s AND t.organization_id = %s "
-                "AND t.estado IN ('pendiente', 'en_curso') "
+                "AND t.estado IN ('pendiente', 'en_curso') AND t.deleted_at IS NULL "
                 "ORDER BY t.vence IS NULL, t.vence, t.id LIMIT 1",
                 (pursuit_id, organization_id),
             )
@@ -194,7 +203,10 @@ class PursuitTasksRepository:
         """
         with connect_read() as c:
             cur = c.execute(
+                # El despachador tampoco puede avisar de una tarea borrada:
+                # sería un correo sobre trabajo que ya nadie ve en la ficha.
                 _SELECT + " WHERE t.vence = %s AND t.estado IN ('pendiente', 'en_curso') "
+                "AND t.deleted_at IS NULL "
                 "ORDER BY t.organization_id, t.id",
                 (fecha,),
             )

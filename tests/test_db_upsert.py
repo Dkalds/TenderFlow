@@ -214,6 +214,116 @@ def test_upsert_with_history_tracks_fecha_limite_extension(db):
     assert snapshot["fecha_limite"] == "2026-08-15T21:59:00+00:00"
 
 
+# ---------------------------------------------------------------------------
+# Columnas ML: una re-ingesta sin opinión no borra lo que los pasos ML escribieron
+# ---------------------------------------------------------------------------
+
+
+def _leer_columnas_ml(id_externo: str) -> tuple:
+    from db.database import connect
+
+    with connect() as c:
+        return c.execute(
+            "SELECT ml_proba, ml_tecnologias, ml_proba_max, ml_tech_principal, estado "
+            "FROM licitaciones WHERE id_externo = %s",
+            [id_externo],
+        ).fetchone()
+
+
+def _escribir_columnas_ml_por_el_camino_real(id_externo: str) -> None:
+    """Deja las cuatro columnas ML como las dejan los pasos que las poseen:
+    ``ml_proba`` vía ``guardar_ml_proba`` (scoring SAP) y las tres de
+    tecnología vía el merge por lotes (``merge_many_with_lock``), que emite el
+    mismo UPDATE explícito que ``precompute_ml_tecnologias``."""
+    from db.repositories.ml_dataset import guardar_ml_proba
+    from db.repositories.tecnologia_pliego import TecnologiaPliegoRepository
+    from services.tech_signal import _build_merge_result
+
+    guardar_ml_proba([(0.87, id_externo)])
+    outcome = TecnologiaPliegoRepository().merge_many_with_lock(
+        [id_externo],
+        lambda _lic, state: _build_merge_result(
+            state, pliego_scores={"META4": 0.8}, threshold_aplicado=0.5
+        ),
+    )
+    assert outcome.errors == {}
+
+
+def test_upsert_keeps_ml_columns_when_reingest_lacks_them(db):
+    """Un conector nunca calcula las columnas ML: la ``Licitacion`` que
+    construye las trae a ``None``, y eso significa «sin opinión», no «borrar».
+    Hasta 2026-09-14 cada pasada del ATOM las nuleaba y ``tech_signal_merge``
+    las curaba a ciegas cada 4 h."""
+    from db.upsert import upsert_licitaciones
+
+    upsert_licitaciones([make_licitacion()])
+    _escribir_columnas_ml_por_el_camino_real("TEST-001")
+
+    # Forma de conector: mismo expediente, estado nuevo, columnas ML a None.
+    nuevas, actualizadas = upsert_licitaciones([make_licitacion(estado="ADJ")])
+
+    assert (nuevas, actualizadas) == (0, 1)
+    ml_proba, ml_tecnologias, ml_proba_max, ml_tech_principal, estado = _leer_columnas_ml(
+        "TEST-001"
+    )
+    assert estado == "ADJ"  # la re-ingesta sí se aplicó
+    assert ml_proba == pytest.approx(0.87)
+    assert ml_tecnologias == "META4"
+    assert ml_proba_max == pytest.approx(0.8)
+    assert ml_tech_principal == "META4"
+
+
+def test_upsert_overrides_ml_columns_when_reingest_carries_them(db):
+    """COALESCE no congela el valor: el camino de ingesta con clasificador
+    cargado (``scraper/pipeline.py::_apply_tech_prediction``) construye la
+    ``Licitacion`` con valores explícitos, y esos sí pisan lo almacenado."""
+    from db.upsert import upsert_licitaciones
+
+    upsert_licitaciones([make_licitacion()])
+    _escribir_columnas_ml_por_el_camino_real("TEST-001")
+
+    upsert_licitaciones(
+        [
+            make_licitacion(
+                ml_proba=0.12,
+                ml_tecnologias="SAP,ORACLE",
+                ml_proba_max=0.95,
+                ml_tech_principal="SAP",
+            )
+        ]
+    )
+
+    ml_proba, ml_tecnologias, ml_proba_max, ml_tech_principal, _estado = _leer_columnas_ml(
+        "TEST-001"
+    )
+    assert ml_proba == pytest.approx(0.12)
+    assert ml_tecnologias == "SAP,ORACLE"
+    assert ml_proba_max == pytest.approx(0.95)
+    assert ml_tech_principal == "SAP"
+
+
+def test_upsert_with_history_keeps_ml_columns_and_does_not_snapshot_them(db):
+    """El camino con historial comparte ``_LIC_UPDATES`` con el simple, así
+    que hereda la protección; y como las columnas ML no están en
+    ``HISTORY_TRACKED_FIELDS``, conservarlas no fabrica una fila de historial."""
+    from db.upsert import upsert_licitaciones_with_history
+
+    upsert_licitaciones_with_history([make_licitacion()], source="placsp")
+    _escribir_columnas_ml_por_el_camino_real("TEST-001")
+
+    result = upsert_licitaciones_with_history([make_licitacion()], source="placsp")
+
+    assert result.unchanged == ["TEST-001"]
+    assert result.modified == []
+    ml_proba, ml_tecnologias, ml_proba_max, ml_tech_principal, _estado = _leer_columnas_ml(
+        "TEST-001"
+    )
+    assert ml_proba == pytest.approx(0.87)
+    assert ml_tecnologias == "META4"
+    assert ml_proba_max == pytest.approx(0.8)
+    assert ml_tech_principal == "META4"
+
+
 def test_upsert_empty_list(db):
     from db.upsert import upsert_licitaciones
 
@@ -318,7 +428,7 @@ def test_replace_adjudicaciones_drops_constraint_violation(db):
     bad = Adjudicacion(
         licitacion_id="TEST-001",
         nombre="Empresa X",
-        nif="B99999999",
+        nif="B99999997",
         fecha_adjudicacion="14/06/2026",  # no-ISO: viola CHECK GLOB
     )
     persisted, dropped = replace_adjudicaciones("TEST-001", [bad])
@@ -368,7 +478,7 @@ def test_replace_adjudicaciones_batch_separates_persisted_from_dropped(db):
     bad = Adjudicacion(
         licitacion_id="TEST-001",
         nombre="Empresa Mala",
-        nif="B99999999",
+        nif="B99999997",
         fecha_adjudicacion="01/01/2026",  # no-ISO viola CHECK
     )
 
@@ -392,7 +502,7 @@ def test_replace_adjudicaciones_check_violation_routes_to_dlq(db):
     bad = Adjudicacion(
         licitacion_id="TEST-001",
         nombre="Empresa Mala",
-        nif="B99999999",
+        nif="B99999997",
         importe_adjudicado=1000.0,
         fecha_adjudicacion="14/06/2026",  # no-ISO: viola CHECK GLOB
     )
@@ -411,7 +521,7 @@ def test_replace_adjudicaciones_check_violation_routes_to_dlq(db):
     assert len(rows) == 1
     scope, payload_ref, fuente, run_id, error_type = rows[0]
     assert scope == "adjudicacion"
-    assert payload_ref == "TEST-001:B99999999:1000.0"
+    assert payload_ref == "TEST-001:B99999997:1000.0"
     assert fuente == "placsp"
     assert run_id == "run-test-1"
     # Cada driver nombra su excepción a su manera: sqlite3 stdlib lanza
@@ -886,7 +996,7 @@ def test_replace_adjudicaciones_idempotent_replay(db):
     from db.upsert import replace_adjudicaciones, upsert_licitaciones
 
     upsert_licitaciones([make_licitacion(id_externo="TEST-001")])
-    adj = _make_adj(nif="B99999999", importe_adjudicado=750.0)
+    adj = _make_adj(nif="B99999997", importe_adjudicado=750.0)
 
     replace_adjudicaciones("TEST-001", [adj])
     p2, d2 = replace_adjudicaciones("TEST-001", [adj])  # replay

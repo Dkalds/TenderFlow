@@ -48,7 +48,7 @@ Scopes usados en el proyecto:
 
 <!-- BEGIN scopes (generado por scripts/gen_scopes_doc.py — no editar a mano) -->
 
-Los scopes los resuelve `api/scopes.py::required_scope_for_request` a partir del método y la ruta; hoy son **30** familias. Esta tabla se genera con `python scripts/gen_scopes_doc.py` y CI la verifica con `--check`.
+Los scopes los resuelve `api/scopes.py::required_scope_for_request` a partir del método y la ruta; hoy son **31** familias. Esta tabla se genera con `python scripts/gen_scopes_doc.py` y CI la verifica con `--check`.
 
 | Scope | Métodos | Familias de ruta |
 |---|---|---|
@@ -59,6 +59,7 @@ Los scopes los resuelve `api/scopes.py::required_scope_for_request` a partir del
 | `api_keys:read` | GET/POST | `/me/keys` |
 | `api_keys:rotate` | POST | `/me/keys` |
 | `ask:read` | GET/POST | `/ask`, `/ask/models` |
+| `audit:read` | GET | `/organizations` |
 | `competitive:read` | GET | `/competitive/bajas`, `/competitive/cuota`, `/competitive/empresas`, `/competitive/hhi`, `/competitive/partners`, `/competitive/renovaciones`, `/competitive/watchlist` |
 | `competitive:write` | POST/DELETE | `/competitive/watchlist` |
 | `data:read` | GET | `/adjudicaciones`, `/auth/me`, `/auth/oauth`, `/cuentas`, `/etiquetas`, `/eventos`, `/health`, `/health/live`, `/health/ready`, `/jobs`, `/me/notification-preferences`, `/me/sessions`, `/meta/filters`, `/meta/last-extraction`, `/predicciones/calibracion`, `/publico/cobertura`, `/publico/hubs`, `/publico/licitaciones`, `/publico/sitemap`, `/radar/dismissals`, `/radar/proximas`, `/resoluciones`, `/search/global`, `/tecnologias/keywords` |
@@ -79,8 +80,8 @@ Los scopes los resuelve `api/scopes.py::required_scope_for_request` a partir del
 | `pursuits:write` | POST/PATCH/PUT/DELETE | `/organizations`, `/organizations/go-no-go`, `/organizations/invitations`, `/pursuits`, `/pursuits/adjuntos`, `/pursuits/weights-proposal` |
 | `saved_filters:read` | GET | `/saved-filters` |
 | `saved_filters:write` | POST/DELETE | `/saved-filters` |
-| `watchlist:read` | GET | `/watchlist/feed.xml`, `/watchlist/items`, `/watchlist/rules` |
-| `watchlist:write` | POST/PUT/DELETE | `/watchlist/items`, `/watchlist/rules` |
+| `watchlist:read` | GET | `/follows`, `/watchlist/feed.xml`, `/watchlist/items`, `/watchlist/rules` |
+| `watchlist:write` | POST/PUT/DELETE | `/follows`, `/watchlist/items`, `/watchlist/rules` |
 | `*` | — | Acceso total explícito. Solo para claves de operación. |
 
 <!-- END scopes -->
@@ -158,12 +159,13 @@ Respuesta:
 | `admin_users`      | `/admin/users`              | Administración de usuarios (scope `admin`)       |
 | `feature_flags`    | `/feature-flags`            | Feature flags                                    |
 | `saved_filters`    | `/saved-filters`            | Filtros de búsqueda guardados                    |
-| `webhooks`         | `/webhooks`                 | Gestión de webhooks                              |
+| `webhooks`         | `/webhooks`                 | Gestión de webhooks; firma de entregas y rotación del secret en [integraciones/webhooks.md](integraciones/webhooks.md) |
 | `exports`          | `/exports`                  | Exportación asíncrona (jobs)                     |
 | `feedback`         | `/feedback`                 | Feedback de clasificación ML                     |
 | `notifications`    | `/notifications`            | Notificaciones in-app del usuario                |
 | `health`           | `/health`                   | Health, liveness, readiness                      |
 | `me`               | `/me`, `/me/profile`        | Perfil, API keys y export/delete GDPR del usuario autenticado |
+| `organization_audit` | `/organizations/{id}/audit` | Rastro de auditoría de la organización, JSON o CSV (owner/admin; scope `audit:read`) |
 | `meta`             | `/meta`                     | Metadata del sistema (opciones de filtros)       |
 | `models`           | `/models`                   | Versiones de modelos ML, rollback (`admin`)      |
 | `search`           | `/search`                   | Búsqueda full-text (`tsvector` + GIN) y semántica    |

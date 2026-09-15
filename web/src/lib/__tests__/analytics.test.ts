@@ -174,6 +174,17 @@ describe("dimensionesDeDescarga", () => {
     expect(dimensionesDeDescarga("/api/v1/exports/download?format=pdf").formato).toBe("otro");
   });
 
+  it("reconoce la ficha de la oportunidad, que no lleva `format` en la query", () => {
+    // F2.7: el one-pager que se lleva a un comité es un recurso propio, no una
+    // exportación parametrizada. Sin este caso caería en `otro` y la métrica no
+    // distinguiría «se llevan la ficha a dirección» de cualquier otra descarga.
+    expect(dimensionesDeDescarga("/api/v1/pursuits/4821/ficha.pdf")).toEqual({
+      formato: "pdf_oportunidad",
+      // El id de la oportunidad se queda fuera, como cualquier identificador.
+      recurso: "pursuits",
+    });
+  });
+
   it("nunca devuelve un recurso vacío", () => {
     expect(dimensionesDeDescarga("/12345?format=csv").recurso).toBe("otro");
   });

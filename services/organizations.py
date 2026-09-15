@@ -23,6 +23,7 @@ from shared.dto import (
     OrganizationSummary,
 )
 from shared.signing import sign, verify
+from shared.tenant_context import tenant_scope
 
 log = get_logger(__name__)
 
@@ -171,7 +172,19 @@ def add_member_by_email(
 
 
 def claim_legacy_scope(user_id: int, user_key: str) -> None:
-    _repo.claim_legacy_rows(user_id, user_key)
+    """Adjudica al espacio personal las filas del usuario que aún no tienen organización.
+
+    Corre **sin ámbito** a propósito (ADR-034): las rutas lo invocan dentro de
+    una petición ya acotada a la organización activa, y el destino de esas
+    filas es la organización *personal*, que puede ser otra. Con el ámbito
+    puesto, el ``WITH CHECK`` de las políticas de ``v128`` rechazaría el
+    ``UPDATE`` en cuanto la activa fuera una compartida. Es un backfill de
+    propiedad por usuario, no una escritura de la organización activa; la
+    lista de tablas y el predicado viven en
+    ``OrganizationRepository.claim_legacy_rows``.
+    """
+    with tenant_scope(None):
+        _repo.claim_legacy_rows(user_id, user_key)
 
 
 # ── Invitaciones a correos sin cuenta (S1.1) ───────────────────────────────

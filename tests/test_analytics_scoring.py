@@ -621,7 +621,9 @@ def test_profile_uses_resolved_organization():
             organization_id=7,
         )
 
-    load.assert_called_once_with("user-a", 7)
+    # v129: el scoring propaga la identidad interna (None si el llamador no la
+    # pasa) para que la lectura del perfil sea dual.
+    load.assert_called_once_with("user-a", 7, user_id=None)
 
 
 def test_profile_load_failure_is_visible_in_signal_health():

@@ -197,13 +197,13 @@ def test_renovaciones_filtro_por_empresa(db):
     from db.database import connect_read
     from services.competitive.renovaciones import proximas_renovaciones
 
-    insert_contract(db, "R-006", "Zeta Solutions", nif="B11111111", fecha_fin=_date(30))
-    insert_contract(db, "R-007", "Omega Digital", nif="B22222222", fecha_fin=_date(30))
+    insert_contract(db, "R-006", "Zeta Solutions", nif="B11111119", fecha_fin=_date(30))
+    insert_contract(db, "R-007", "Omega Digital", nif="B22222228", fecha_fin=_date(30))
     resolve(db)
 
     with connect_read() as c:
         zeta_id = c.execute(
-            "SELECT empresa_id FROM empresas WHERE nif_canonico = 'B11111111'"
+            "SELECT empresa_id FROM empresas WHERE nif_canonico = 'B11111119'"
         ).fetchone()[0]
     items = proximas_renovaciones(months_ahead=2, empresa_id=zeta_id)
     assert len(items) == 1
@@ -252,15 +252,15 @@ def test_perfil_empresa_por_ccaa_es_por_empresa_y_completo(db):
     from services.competitive.mercado import perfil_empresa
 
     # Una empresa (mismo NIF) con adjudicaciones en 3 CCAA distintas.
-    insert_contract(db, "P-1", "Solo SL", nif="B99999999", ccaa="Madrid")
-    insert_contract(db, "P-2", "Solo SL", nif="B99999999", ccaa="Madrid")
-    insert_contract(db, "P-3", "Solo SL", nif="B99999999", ccaa="Cataluña")
-    insert_contract(db, "P-4", "Solo SL", nif="B99999999", ccaa="Galicia")
+    insert_contract(db, "P-1", "Solo SL", nif="B99999997", ccaa="Madrid")
+    insert_contract(db, "P-2", "Solo SL", nif="B99999997", ccaa="Madrid")
+    insert_contract(db, "P-3", "Solo SL", nif="B99999997", ccaa="Cataluña")
+    insert_contract(db, "P-4", "Solo SL", nif="B99999997", ccaa="Galicia")
     resolve(db)
 
     with connect_read() as c:
         empresa_id = c.execute(
-            "SELECT empresa_id FROM empresas WHERE nif_canonico = 'B99999999'"
+            "SELECT empresa_id FROM empresas WHERE nif_canonico = 'B99999997'"
         ).fetchone()[0]
 
     perfil = perfil_empresa(empresa_id)
@@ -275,14 +275,14 @@ def test_perfil_empresa_por_anio_traza_la_trayectoria(db):
     from services.competitive.mercado import perfil_empresa
 
     # 1 contrato en 2023, 3 en 2024 → trayectoria al alza.
-    insert_contract(db, "A-1", "Trend SL", nif="B12121212", fecha_adjudicacion="2023-04-01")
+    insert_contract(db, "A-1", "Trend SL", nif="B12121216", fecha_adjudicacion="2023-04-01")
     for i in range(3):
-        insert_contract(db, f"A-2{i}", "Trend SL", nif="B12121212", fecha_adjudicacion="2024-07-01")
+        insert_contract(db, f"A-2{i}", "Trend SL", nif="B12121216", fecha_adjudicacion="2024-07-01")
     resolve(db)
 
     with connect_read() as c:
         empresa_id = c.execute(
-            "SELECT empresa_id FROM empresas WHERE nif_canonico = 'B12121212'"
+            "SELECT empresa_id FROM empresas WHERE nif_canonico = 'B12121216'"
         ).fetchone()[0]
 
     perfil = perfil_empresa(empresa_id)
@@ -294,9 +294,9 @@ def test_resumen_renovaciones_agrega_por_empresa(db):
     from services.competitive.renovaciones import resumen_renovaciones
 
     insert_contract(
-        db, "R-008", "Acme S.L.", nif="B33333333", fecha_fin=_date(30), adjudicado=50000
+        db, "R-008", "Acme S.L.", nif="B33333337", fecha_fin=_date(30), adjudicado=50000
     )
-    insert_contract(db, "R-009", "ACME SL", nif="B33333333", fecha_fin=_date(60), adjudicado=70000)
+    insert_contract(db, "R-009", "ACME SL", nif="B33333337", fecha_fin=_date(60), adjudicado=70000)
     resolve(db)
 
     items = resumen_renovaciones(months_ahead=6)
@@ -311,10 +311,10 @@ def test_totales_renovaciones_suma_sobre_todas_las_empresas(db):
     from services.competitive.renovaciones import totales_renovaciones
 
     insert_contract(
-        db, "R-T10", "Acme S.L.", nif="B44444444", fecha_fin=_date(30), adjudicado=50000
+        db, "R-T10", "Acme S.L.", nif="B44444446", fecha_fin=_date(30), adjudicado=50000
     )
     insert_contract(
-        db, "R-T11", "Beta S.L.", nif="B55555555", fecha_fin=_date(60), adjudicado=70000
+        db, "R-T11", "Beta S.L.", nif="B55555551", fecha_fin=_date(60), adjudicado=70000
     )
     resolve(db)
 
@@ -359,7 +359,7 @@ def test_bajas_agregadas_por_empresa(db):
             db,
             f"B-{i}",
             "Lowball SL",
-            nif="B44444444",
+            nif="B44444446",
             importe=100000,
             adjudicado=80000,
         )
@@ -503,8 +503,8 @@ def test_bajas_sin_lote_sigue_usando_presupuesto_del_expediente(db):
 def test_cuota_mercado_suma_100(db):
     from services.competitive.mercado import cuota_mercado
 
-    insert_contract(db, "M-01", "Big Corp", nif="B55555555", adjudicado=750000)
-    insert_contract(db, "M-02", "Small SL", nif="B66666666", adjudicado=250000)
+    insert_contract(db, "M-01", "Big Corp", nif="B55555551", adjudicado=750000)
+    insert_contract(db, "M-02", "Small SL", nif="B66666660", adjudicado=250000)
     resolve(db)
 
     items = cuota_mercado()
@@ -523,7 +523,7 @@ def test_perfil_empresa_dossier_filtrado_y_posicion(db):
         db,
         "M-DOSSIER-PREV",
         "Dossier Alpha SL",
-        nif="B12340001",
+        nif="B12340006",
         adjudicado=100000,
         fecha_adjudicacion=_date(-500),
         ccaa="Madrid",
@@ -533,7 +533,7 @@ def test_perfil_empresa_dossier_filtrado_y_posicion(db):
         db,
         "M-DOSSIER-1",
         "Dossier Alpha SL",
-        nif="B12340001",
+        nif="B12340006",
         adjudicado=100000,
         fecha_adjudicacion=_date(-60),
         ccaa="Madrid",
@@ -544,7 +544,7 @@ def test_perfil_empresa_dossier_filtrado_y_posicion(db):
         db,
         "M-DOSSIER-2",
         "Dossier Alpha SL",
-        nif="B12340001",
+        nif="B12340006",
         adjudicado=200000,
         fecha_adjudicacion=_date(-30),
         ccaa="Galicia",
@@ -555,7 +555,7 @@ def test_perfil_empresa_dossier_filtrado_y_posicion(db):
         db,
         "M-DOSSIER-RIVAL",
         "Dossier Beta SA",
-        nif="B12340002",
+        nif="B12340014",
         adjudicado=400000,
         fecha_adjudicacion=_date(-20),
     )
@@ -564,7 +564,7 @@ def test_perfil_empresa_dossier_filtrado_y_posicion(db):
     with connect_read() as c:
         empresa_id = int(
             c.execute(
-                "SELECT empresa_id FROM empresas WHERE nif_canonico = 'B12340001'"
+                "SELECT empresa_id FROM empresas WHERE nif_canonico = 'B12340006'"
             ).fetchone()[0]
         )
 
@@ -599,7 +599,7 @@ def test_listar_adjudicaciones_empresa_filtra_ordena_y_pagina(db):
             db,
             f"M-LIST-{suffix}",
             "Listado Profile SL",
-            nif="B12340003",
+            nif="B12340022",
             adjudicado=amount,
             fecha_adjudicacion=_date(-10),
         )
@@ -607,7 +607,7 @@ def test_listar_adjudicaciones_empresa_filtra_ordena_y_pagina(db):
     with connect_read() as c:
         empresa_id = int(
             c.execute(
-                "SELECT empresa_id FROM empresas WHERE nif_canonico = 'B12340003'"
+                "SELECT empresa_id FROM empresas WHERE nif_canonico = 'B12340022'"
             ).fetchone()[0]
         )
 
@@ -623,7 +623,7 @@ def test_hhi_monopolio_es_10000(db):
     from services.competitive.mercado import concentracion_hhi
 
     for i in range(5):
-        insert_contract(db, f"M-1{i}", "Monopolist SA", nif="B77777777", cpv="48000000")
+        insert_contract(db, f"M-1{i}", "Monopolist SA", nif="B77777779", cpv="48000000")
     resolve(db)
 
     items = concentracion_hhi(segment_by="cpv", min_contratos=5)
@@ -707,12 +707,12 @@ def test_perfil_empresa_sin_ute_devuelve_lista_vacia(db):
     from db.database import connect_read
     from services.competitive.mercado import perfil_empresa
 
-    insert_contract(db, "SOLO-02", "Empresa Gamma", nif="B77777777", importe=50_000)
+    insert_contract(db, "SOLO-02", "Empresa Gamma", nif="B77777779", importe=50_000)
     resolve(db)
 
     with connect_read() as c:
         gamma_id = c.execute(
-            "SELECT empresa_id FROM empresas WHERE nif_canonico = 'B77777777'"
+            "SELECT empresa_id FROM empresas WHERE nif_canonico = 'B77777779'"
         ).fetchone()[0]
 
     perfil = perfil_empresa(gamma_id)
@@ -724,7 +724,7 @@ def test_perfil_empresa_sin_ute_devuelve_lista_vacia(db):
 # ---------------------------------------------------------------------------
 
 
-def _watched_empresa(db, nombre="Watched SL", nif="B99999999"):
+def _watched_empresa(db, nombre="Watched SL", nif="B99999997"):
     from db.database import connect_read
 
     insert_contract(db, "W-01", nombre, nif=nif)
@@ -831,7 +831,7 @@ def test_competitor_alerts_detecta_nuevas_y_territorio(db, monkeypatch):
     assert competitor_alerts.check_and_notify() == 0
 
     # Nueva adjudicación en CCAA nueva → alerta con marca de territorio
-    insert_contract(db, "W-02", "Watched SL", nif="B99999999", ccaa="Galicia")
+    insert_contract(db, "W-02", "Watched SL", nif="B99999997", ccaa="Galicia")
     resolve(db)
     assert competitor_alerts.check_and_notify() == 1
     assert "Galicia" in sent[0]["body"]
@@ -859,11 +859,11 @@ def test_totales_renovaciones_incluye_kpis_de_riesgo(db):
     )
 
     # Alto riesgo y vence pronto → cuenta como "caliente".
-    insert_contract(db, "R-K1", "Alpha SL", nif="B10000001", fecha_fin=_date(10), adjudicado=50000)
+    insert_contract(db, "R-K1", "Alpha SL", nif="B10000008", fecha_fin=_date(10), adjudicado=50000)
     # Alto riesgo pero lejos → suma a importe_alto_riesgo, no a calientes.
-    insert_contract(db, "R-K2", "Beta SL", nif="B10000002", fecha_fin=_date(120), adjudicado=30000)
+    insert_contract(db, "R-K2", "Beta SL", nif="B10000016", fecha_fin=_date(120), adjudicado=30000)
     # Riesgo bajo → no suma a ninguno de los dos.
-    insert_contract(db, "R-K3", "Gamma SL", nif="B10000003", fecha_fin=_date(15), adjudicado=20000)
+    insert_contract(db, "R-K3", "Gamma SL", nif="B10000024", fecha_fin=_date(15), adjudicado=20000)
     resolve(db)
 
     with connect() as c:
