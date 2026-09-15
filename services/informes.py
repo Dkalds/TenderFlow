@@ -153,7 +153,12 @@ def construir(
 
     instante = (ahora or datetime.now(UTC)).astimezone(UTC)
     hasta = instante.date()
-    desde = hasta - timedelta(days=DIAS_VENTANA)
+    # `- 1` porque los dos extremos son inclusivos: `desde <= fecha <= hasta`
+    # sobre `hasta - 7` abarca **ocho** fechas distintas, y con el informe
+    # saliendo cada lunes, lo cerrado el lunes anterior contaba en dos informes
+    # seguidos. Ganadas, perdidas, nuevas e importe se duplicaban en la costura,
+    # y la cabecera «Del X al Y» anunciaba una semana de ocho días.
+    desde = hasta - timedelta(days=DIAS_VENTANA - 1)
 
     repo = PursuitRepository()
     # Sin ventana: el embudo abierto es un stock, no un flujo. Acotarlo por
@@ -195,16 +200,18 @@ def construir(
 def _vencimientos(repo: Any, organization_id: int, hoy: date) -> list[Vencimiento]:
     """Plazos de la organización dentro del horizonte, del más próximo al último.
 
-    ``deadline_rows`` no acota por organización —lo consume el despachador de
-    recordatorios, que las necesita todas—, así que el filtro va aquí. Es una
-    lectura por informe y no una consulta nueva: reutilizarla mantiene una sola
-    definición de «plazo de una oportunidad abierta».
+    Se reutiliza ``deadline_rows`` para mantener una sola definición de «plazo
+    de una oportunidad abierta», pero **acotada en SQL**. Filtrarla en Python,
+    que es como nació, dejaba la sección vacía para cualquier organización
+    cuyos pursuits cayeran fuera de las primeras ``limit`` filas del corpus:
+    el ``LIMIT`` ordena por ``p.id`` sobre todos los tenants, así que los
+    equipos creados más tarde se quedaban sin la sección más accionable del
+    informe, sin error en ninguna parte y con el agravante de leer las mismas
+    5.000 filas una vez por organización en la misma pasada.
     """
     limite = hoy + timedelta(days=DIAS_VENCIMIENTO)
     salida: list[Vencimiento] = []
-    for fila in repo.deadline_rows():
-        if int(fila.get("organization_id") or 0) != organization_id:
-            continue
+    for fila in repo.deadline_rows(organization_id=organization_id):
         # De las dos fechas gana la más próxima: las dos son compromisos, y el
         # informe avisa del primero que llega.
         candidatas = [
@@ -250,6 +257,11 @@ def _filas_vencimiento(informe: InformeSemanal) -> list[dict[str, Any]]:
     ]
 
 
+def _euros(valor: float) -> str:
+    """Importe con separador de miles español: ``1.250.000 €``."""
+    return f"{valor:,.0f} €".replace(",", ".")
+
+
 def render_html(informe: InformeSemanal, *, url_baja: str | None = None) -> str:
     """El cuerpo del correo. HTML de tabla, sin CSS externo ni imágenes.
 
@@ -291,7 +303,10 @@ def render_html(informe: InformeSemanal, *, url_baja: str | None = None) -> str:
         f"<b>{informe.nuevas}</b> nuevas esta semana · "
         f"<b>{informe.ganadas}</b> ganadas · <b>{informe.perdidas}</b> perdidas"
         + (
-            f" · <b>{informe.importe_ganado:,.0f} €</b> adjudicados"
+            # Separador de miles a la española: `1,250,000 €` se lee en
+            # castellano como 1,25 € y este informe se reenvía a un comité. Es
+            # la convención que ya usa `_importe` en `services/email_digest.py`.
+            f" · <b>{_euros(informe.importe_ganado)}</b> adjudicados"
             if informe.importe_ganado
             else ""
         )

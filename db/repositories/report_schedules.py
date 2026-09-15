@@ -124,7 +124,7 @@ def guardar(
     return _fila(filas[0])
 
 
-def pendientes(ahora: datetime | None = None, *, limit: int = 200) -> list[dict[str, Any]]:
+def pendientes(ahora: datetime | None = None, *, limit: int = 2000) -> list[dict[str, Any]]:
     """Programaciones activas cuya ventana está abierta y sin enviar.
 
     Ver la cabecera del módulo: el filtro de «ya enviado» va aquí y no en el
@@ -142,8 +142,17 @@ def pendientes(ahora: datetime | None = None, *, limit: int = 200) -> list[dict[
                 # ventana sigue abierta. La tabla tiene como mucho una fila por
                 # organización activa, así que no hay nada que optimizar aquí.
                 f"SELECT {_COLS} FROM organization_report_schedules "
-                "WHERE activo ORDER BY organization_id LIMIT %s",
-                (max(1, min(int(limit), 1000)),),
+                # `ultimo_envio_at` ASC con NULLS FIRST y no `organization_id`:
+                # el `LIMIT` se aplica **antes** de que Python decida qué
+                # ventana está abierta, así que ordenar por id convertía el
+                # tope en inanición permanente —pasado el tope, las mismas
+                # organizaciones de id bajo se leían cada pasada y las de id
+                # alto no recibían informe nunca, sin error ni evento—. Por
+                # fecha de último envío, el tope rota: quien lleva más sin
+                # recibirlo va primero.
+                "WHERE activo ORDER BY ultimo_envio_at ASC NULLS FIRST, organization_id "
+                "LIMIT %s",
+                (max(1, min(int(limit), 5000)),),
             )
         )
 

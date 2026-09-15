@@ -3127,6 +3127,43 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/notifications/baja": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Dejar de recibir por correo un tipo de notificación
+         * @description Apaga el correo de **un** tipo, y nada más.
+         *
+         *     Sin sesión a propósito: quien quiere dejar de recibir un correo no quiere
+         *     antes hacer login. Lo que autoriza es la firma de ``(user_id, tipo)``.
+         *
+         *     Existe porque la baja del digest (``/watchlist/rules/baja``) pausa **todas
+         *     las reglas de watchlist**, y el informe semanal salió apuntando ahí: pulsar
+         *     «dejar de recibir este informe» borraba las alertas de licitaciones de esa
+         *     persona y el informe seguía llegando, porque su opt-out está en
+         *     ``notification_preferences``. Un enlace de baja que da de baja de otra cosa
+         *     es peor que no tener enlace.
+         */
+        get: operations["baja_de_tipo_api_v1_notifications_baja_get"];
+        put?: never;
+        /**
+         * Baja en un clic desde el cliente de correo (RFC 8058)
+         * @description La misma baja que el GET, para el ``POST`` del cliente de correo.
+         *
+         *     RFC 8058 exige responder 2xx y **no** redirigir: el cliente no sigue la
+         *     redirección y daría la baja por fallida.
+         */
+        post: operations["baja_de_tipo_un_clic_api_v1_notifications_baja_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/notifications/read": {
         parameters: {
             query?: never;
@@ -19494,6 +19531,99 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["StatusOk"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    baja_de_tipo_api_v1_notifications_baja_get: {
+        parameters: {
+            query: {
+                /** @description Usuario */
+                u: number;
+                /** @description Tipo de notificación */
+                tipo: string;
+                /** @description Firma HMAC (kid.sig) */
+                t: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StatusOk"];
+                };
+            };
+            /** @description Redirige a Ajustes con el tipo ya apagado */
+            303: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Firma inválida o tipo desconocido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    baja_de_tipo_un_clic_api_v1_notifications_baja_post: {
+        parameters: {
+            query: {
+                /** @description Usuario */
+                u: number;
+                /** @description Tipo de notificación */
+                tipo: string;
+                /** @description Firma HMAC (kid.sig) */
+                t: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StatusOk"];
+                };
+            };
+            /** @description Firma inválida o tipo desconocido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

@@ -17,8 +17,10 @@ Qué se prueba
    significó que sus peticiones corrían **sin ámbito**. El predicado de ``v128``
    deja pasar todo cuando el GUC está vacío, así que el respaldo no estaba roto:
    estaba apagado, en silencio y justo en la vertical con los datos más
-   sensibles. Se cerró armando el ámbito dentro de
-   ``services.organizations.resolve_organization``.
+   sensibles. Se cerró con ``services.organizations.alcance_resuelto``, un
+   context manager que resuelve y acota el bloque. **No** vale fijar el ámbito
+   dentro de ``resolve_organization``: se intentó y un ``set`` sin final deja
+   el ámbito clavado en el hilo de cualquier llamante síncrono.
 6. Estructural: toda tabla con ``organization_id`` está en el conjunto
    ``FORCE + políticas`` de ``v128`` o en la lista de exclusiones de este
    archivo. Una tabla nueva no entra sin decisión.
@@ -464,12 +466,14 @@ def test_la_vertical_de_pursuits_tambien_acota_la_peticion(
     comentarios, tareas y adjuntos, que es la más sensible del producto. Falla
     abierto, por eso ningún test lo vio: todo seguía funcionando.
 
-    El arreglo no fue reescribir 47 handlers sino armar el ámbito dentro de
-    ``services.organizations.resolve_organization``, que es por donde pasan
-    todos. Un ContextVar fijado dentro de ``to_thread.run_sync`` vive el resto
-    de esa llamada y muere con ella —lo comprueba
+    El arreglo no fue reescribir 47 handlers sino ``alcance_resuelto``, un
+    context manager que resuelve y acota el bloque, aplicado a las entradas de
+    servicio. Un ContextVar fijado dentro de ``to_thread.run_sync`` vive el
+    resto de esa llamada y muere con ella —lo comprueba
     ``tests/test_tenant_context.py``—, así que las consultas que vienen después
-    en el mismo ``run_db`` lo ven y ninguna petición se lo lleva a otra.
+    en el mismo ``run_db`` lo ven y ninguna petición se lo lleva a otra. Fijarlo
+    dentro de ``resolve_organization`` parecía más limpio y estaba mal: un
+    ``set`` sin final se queda clavado en el hilo de un llamante síncrono.
     """
     import db.connection as conn_mod
     from api.app import app

@@ -1375,51 +1375,58 @@ def apply_weights_proposal(
         # ver el corpus entero en banda Descarte.
         validate_scoring_weights(pesos)
 
-        previo = get_own_user_profile(user_key)
-        visibility: Literal["private", "organization"] = (
-            "private"
-            if str((previo or {}).get("visibility") or "") == "private"
-            else "organization"
-        )
-        # El upsert reemplaza el perfil entero (ver su docstring), así que el resto
-        # de los campos se reenvían tal cual: aplicar los pesos no puede borrar de
-        # paso las keywords de afinidad ni los CPV de quien lo aplica.
-        upsert_user_profile(
-            user_key,
-            {
-                "weights": pesos,
-                "afinidad_keywords": (previo or {}).get("afinidad_keywords"),
-                "cpvs": (previo or {}).get("cpvs"),
-                "importe_min": (previo or {}).get("importe_min"),
-                "importe_max": (previo or {}).get("importe_max"),
-            },
-            resolved_id,
-            visibility,
-        )
-        # El ranking cacheado se calculó con los pesos viejos, en el scope propio y
-        # en el de la organización que tuviera antes el perfil.
-        invalidate_user_scoped("analytics", "scoring", user_key)
-        anterior = (previo or {}).get("organization_id")
-        for afectada in {resolved_id, int(anterior) if anterior is not None else None}:
-            if afectada is not None:
-                invalidate_organization_scoped("analytics", "scoring", afectada)
-        log_event(
-            event_type=PURSUIT_WEIGHTS_PROPOSAL_APPLIED,
-            user_key=user_key,
-            resource=f"organization:{resolved_id}",
-            detail={
-                "pesos_anteriores": propuesta.pesos_actuales,
-                "pesos_aplicados": pesos,
-                "n_ganadas": propuesta.n_ganadas,
-                "n_perdidas": propuesta.n_perdidas,
-            },
-        )
-        return PesosPropuestosAplicados(
-            organization_id=resolved_id,
-            pesos=pesos,
-            visibility=visibility,
-            n_cierres=propuesta.n_cierres,
-        )
+    # A partir de aquí, **fuera** del ámbito de tenencia, a propósito.
+    #
+    # `get_own_user_profile` es el camino sin organización —lo dice su
+    # docstring— y este bloque cuenta con que el perfil pueda vivir en otra: el
+    # `anterior` de más abajo invalida la caché de la organización que lo
+    # tuviera antes. Con el ámbito puesto, `user_profiles` (tabla corporativa
+    # de v128) filtraría ese perfil, `previo` sería `None`, y el upsert —que
+    # reemplaza la fila entera— lo pisaría con nulos y publicaría como
+    # `organization` un perfil que era `private`.
+    previo = get_own_user_profile(user_key)
+    visibility: Literal["private", "organization"] = (
+        "private" if str((previo or {}).get("visibility") or "") == "private" else "organization"
+    )
+    # El upsert reemplaza el perfil entero (ver su docstring), así que el resto
+    # de los campos se reenvían tal cual: aplicar los pesos no puede borrar de
+    # paso las keywords de afinidad ni los CPV de quien lo aplica.
+    upsert_user_profile(
+        user_key,
+        {
+            "weights": pesos,
+            "afinidad_keywords": (previo or {}).get("afinidad_keywords"),
+            "cpvs": (previo or {}).get("cpvs"),
+            "importe_min": (previo or {}).get("importe_min"),
+            "importe_max": (previo or {}).get("importe_max"),
+        },
+        resolved_id,
+        visibility,
+    )
+    # El ranking cacheado se calculó con los pesos viejos, en el scope propio y
+    # en el de la organización que tuviera antes el perfil.
+    invalidate_user_scoped("analytics", "scoring", user_key)
+    anterior = (previo or {}).get("organization_id")
+    for afectada in {resolved_id, int(anterior) if anterior is not None else None}:
+        if afectada is not None:
+            invalidate_organization_scoped("analytics", "scoring", afectada)
+    log_event(
+        event_type=PURSUIT_WEIGHTS_PROPOSAL_APPLIED,
+        user_key=user_key,
+        resource=f"organization:{resolved_id}",
+        detail={
+            "pesos_anteriores": propuesta.pesos_actuales,
+            "pesos_aplicados": pesos,
+            "n_ganadas": propuesta.n_ganadas,
+            "n_perdidas": propuesta.n_perdidas,
+        },
+    )
+    return PesosPropuestosAplicados(
+        organization_id=resolved_id,
+        pesos=pesos,
+        visibility=visibility,
+        n_cierres=propuesta.n_cierres,
+    )
 
 
 def ficha_pdf(user_id: int, pursuit_id: int, *, organization_id: int | None = None) -> bytes:

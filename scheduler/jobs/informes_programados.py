@@ -114,7 +114,7 @@ def _enviar(fila: dict[str, Any], informe: Any, destinos: list[tuple[int | None,
     """Manda el informe a cada destinatario. Devuelve cuántos salieron."""
     from observability.mailer import Adjunto, Mensaje, enviar
     from services.app_urls import frontend_base_url
-    from services.email_digest import url_de_baja_para
+    from services.email_digest import url_de_baja_de_tipo
     from services.informes import nombre_pdf, render_html, render_pdf
 
     try:
@@ -136,7 +136,13 @@ def _enviar(fila: dict[str, Any], informe: Any, destinos: list[tuple[int | None,
     base = frontend_base_url() or ""
     enviados = 0
     for user_id, correo in destinos:
-        url_baja = url_de_baja_para(correo, user_id, base)
+        # `url_de_baja_de_tipo` y no la del digest: aquella pausa **todas** las
+        # reglas de watchlist y no toca este informe. Salió apuntando ahí, así
+        # que pulsar «dejar de recibir este informe» —o el POST automático que
+        # hace Gmail por RFC 8058— borraba las alertas de licitaciones de esa
+        # persona y el informe seguía llegando. Ésta apaga `informe_semanal`
+        # en el canal `email`, que es donde `_destinatarios` mira.
+        url_baja = url_de_baja_de_tipo(user_id, TIPO_AVISO, base)
         resultado = enviar(
             Mensaje(
                 to=correo,
@@ -208,12 +214,24 @@ def ejecutar(ahora: datetime | None = None) -> Resumen:
 
             enviados = _enviar(fila, informe, destinos)
             resumen.enviados += enviados
-            report_schedules.marcar_envio(
-                int(fila["id"]),
-                estado=f"enviado:{enviados}/{len(destinos)}" if enviados else "fallido",
-            )
             if not enviados:
+                # **No se sella.** El mailer no lanza ante un fallo del ESP:
+                # devuelve `ResultadoEnvio(ok=False)`, así que una caída del
+                # proveedor llegaba hasta aquí y estampaba `ultimo_envio_at`.
+                # Con eso `pendientes()` ya no devolvía la fila y la
+                # organización se quedaba sin informe **esa semana entera**,
+                # justo lo contrario de lo que promete la ventana de un día.
+                # Dejándola sin sellar, la pasada siguiente lo recupera.
                 resumen.fallidos += 1
+                log.warning(
+                    "informe_no_salio_ninguno",
+                    organization_id=organization_id,
+                    destinos=len(destinos),
+                )
+                continue
+            report_schedules.marcar_envio(
+                int(fila["id"]), estado=f"enviado:{enviados}/{len(destinos)}"
+            )
         except Exception:
             resumen.fallidos += 1
             log.warning("informe_semanal_fallido", organization_id=organization_id, exc_info=True)

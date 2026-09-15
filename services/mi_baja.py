@@ -11,7 +11,7 @@ from typing import Any
 
 from db.repositories.pursuits import PursuitRepository
 from observability.logging import get_logger
-from services.organizations import resolve_organization
+from services.organizations import alcance_resuelto
 from services.pursuit_bajas import agrupar
 
 log = get_logger(__name__)
@@ -39,35 +39,35 @@ def mi_baja(user_id: int, *, organization_id: int | None = None) -> dict[str, An
     """
     from services.competitive.bajas import baja_de_referencia
 
-    resolved_id, _role = resolve_organization(user_id, organization_id)
-    ofertas = _pursuits.ofertas_presentadas(resolved_id)
+    with alcance_resuelto(user_id, organization_id) as (resolved_id, _role):
+        ofertas = _pursuits.ofertas_presentadas(resolved_id)
 
-    # Primero se agrupa sin mercado para saber **qué** segmentos existen, y solo
-    # después se piden sus referencias: pedirlas antes obligaría a adivinarlas.
-    preliminar = agrupar(ofertas, {})
-    referencias: dict[tuple[str, str], dict[str, Any]] = {}
-    for segmento in preliminar[:MAX_SEGMENTOS]:
-        try:
-            referencias[(segmento.segmento, segmento.clave)] = baja_de_referencia(
-                organo=(segmento.clave if segmento.segmento == "organo" else None),
-                cpv_prefix=(segmento.clave if segmento.segmento == "cpv4" else None),
-                solo_base_declarada=True,
-            )
-        except Exception:
-            # Un segmento sin referencia sale igual, con `baja_mercado_pct` a
-            # null: perder mi propia cifra porque la del mercado falló sería
-            # esconder el dato que sí tengo.
-            log.warning(
-                "mi_baja_referencia_failed",
-                segmento=segmento.segmento,
-                clave=segmento.clave,
-                exc_info=True,
-            )
+        # Primero se agrupa sin mercado para saber **qué** segmentos existen, y solo
+        # después se piden sus referencias: pedirlas antes obligaría a adivinarlas.
+        preliminar = agrupar(ofertas, {})
+        referencias: dict[tuple[str, str], dict[str, Any]] = {}
+        for segmento in preliminar[:MAX_SEGMENTOS]:
+            try:
+                referencias[(segmento.segmento, segmento.clave)] = baja_de_referencia(
+                    organo=(segmento.clave if segmento.segmento == "organo" else None),
+                    cpv_prefix=(segmento.clave if segmento.segmento == "cpv4" else None),
+                    solo_base_declarada=True,
+                )
+            except Exception:
+                # Un segmento sin referencia sale igual, con `baja_mercado_pct` a
+                # null: perder mi propia cifra porque la del mercado falló sería
+                # esconder el dato que sí tengo.
+                log.warning(
+                    "mi_baja_referencia_failed",
+                    segmento=segmento.segmento,
+                    clave=segmento.clave,
+                    exc_info=True,
+                )
 
-    segmentos = agrupar(ofertas, referencias)[:MAX_SEGMENTOS]
-    return {
-        "organization_id": resolved_id,
-        "base": "sin_iva",
-        "ofertas_consideradas": len(ofertas),
-        "segmentos": [s.as_dict() for s in segmentos],
-    }
+        segmentos = agrupar(ofertas, referencias)[:MAX_SEGMENTOS]
+        return {
+            "organization_id": resolved_id,
+            "base": "sin_iva",
+            "ofertas_consideradas": len(ofertas),
+            "segmentos": [s.as_dict() for s in segmentos],
+        }

@@ -47,6 +47,23 @@ def _oferta(
     }
 
 
+def _alcance(resolucion):
+    """Doble de ``alcance_resuelto``: mismo contrato, sin base de datos.
+
+    Context manager y no función porque el real lo es: además de resolver,
+    acota el bloque con el ámbito de tenencia y lo suelta al salir (ADR-034).
+    Un doble que devolviera la tupla a secas haría pasar el test sin ejercitar
+    la forma ``with ... as (org, rol)`` que el servicio usa.
+    """
+    from contextlib import contextmanager
+
+    @contextmanager
+    def _cm(user_id, organization_id=None, *, write=False):
+        yield resolucion(user_id, organization_id, write=write)
+
+    return _cm
+
+
 def _correr(ofertas: list[dict[str, Any]], referencia: Any = None) -> dict[str, Any]:
     """Ejecuta `mi_baja` con la organización, el repo y el mercado simulados."""
     import services.mi_baja as mod
@@ -55,7 +72,7 @@ def _correr(ofertas: list[dict[str, Any]], referencia: Any = None) -> dict[str, 
         referencia = {"baja_media_pct": 15.0, "n": 40}
 
     with (
-        patch.object(mod, "resolve_organization", return_value=(7, "owner")),
+        patch.object(mod, "alcance_resuelto", _alcance(lambda *_a, **_k: (7, "owner"))),
         patch.object(mod._pursuits, "ofertas_presentadas", return_value=ofertas),
         patch(
             "services.competitive.bajas.baja_de_referencia",
@@ -84,7 +101,7 @@ class TestMiBaja:
             return {"baja_media_pct": 15.0}
 
         with (
-            patch.object(mod, "resolve_organization", return_value=(7, "owner")),
+            patch.object(mod, "alcance_resuelto", _alcance(lambda *_a, **_k: (7, "owner"))),
             patch.object(mod._pursuits, "ofertas_presentadas", return_value=[_oferta()]),
             patch("services.competitive.bajas.baja_de_referencia", side_effect=_referencia),
         ):

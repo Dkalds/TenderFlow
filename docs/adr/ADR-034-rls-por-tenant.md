@@ -152,10 +152,26 @@ esos tests lo dirían.
   ninguna. Un ámbito sin final no es un ámbito; es una fuga con otro nombre.
 
   Lo que hay ahora es `alcance_resuelto`, un context manager que resuelve,
-  acota el bloque y lo suelta al salir, también si el cuerpo lanza. Lo usan las
-  ~28 entradas de la vertical de pursuits (oportunidades, comentarios, tareas,
-  adjuntos, go/no-go). El ámbito se abre **después** de validar la membresía:
-  si se abriera antes, un 403 dejaría el bloque mirando datos de otro equipo.
+  acota el bloque y lo suelta al salir, también si el cuerpo lanza. El ámbito
+  se abre **después** de validar la membresía: si se abriera antes, un 403
+  dejaría el bloque mirando datos de otro equipo.
+
+  Lo usan las 44 entradas de servicio que resuelven una organización:
+  oportunidades, comentarios, tareas, adjuntos, go/no-go, cuentas objetivo,
+  cartera, socios, batallas, mi-baja, exportaciones y Dirección. Las únicas
+  llamadas a `resolve_organization` que quedan sin ámbito viven en
+  `services/organizations.py` y operan sobre `organizations`,
+  `organization_memberships` y `organization_invitations`, que están
+  **excluidas** de las políticas a propósito: resolver una membresía exige
+  poder mirar a través de organizaciones, y ese es el `TABLAS_EXCLUIDAS` del
+  test estructural.
+
+  La primera versión de este párrafo decía «toda petición que resuelva una
+  organización queda acotada» cuando siete módulos todavía no lo hacían —entre
+  ellos `direccion.py`, que es la entrada de `organization_report_schedules`,
+  una tabla creada **con** RLS en v132—. Se anota porque un ADR que promete
+  más cobertura de la que hay es peor que uno que admite el hueco: el
+  siguiente lector deja de comprobar.
 
   Queda un límite conocido: un `conn.commit()` a mitad de bloque cierra la
   transacción y con ella el ámbito (hoy solo lo hace

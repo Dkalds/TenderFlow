@@ -103,10 +103,20 @@ async def get_licitacion(
 
     etag = _make_etag(data)
     response.headers["ETag"] = etag
-    response.headers["Cache-Control"] = "private, max-age=60"
+    # Sin `Cache-Control` aquí: lo fija `ETagMiddleware`, que para tráfico
+    # autenticado —y esta ruta siempre lo es— lo pone en `private, no-cache`
+    # para que ningún caché compartido guarde la respuesta. El
+    # `private, max-age=60` que había era papel mojado: el middleware lo
+    # pisaba en cada respuesta, así que prometía una frescura que el cliente
+    # nunca recibió.
 
     if _check_etag(request, etag):
-        return Response(status_code=304)
+        # El `ETag` se repite aquí y no se hereda del `response` inyectado:
+        # FastAPI sólo fusiona sus cabeceras cuando el handler **no** devuelve
+        # un `Response` propio (`routing.py`: `if isinstance(raw_response,
+        # Response): response = raw_response`, y el `extend` vive en el `else`).
+        # Sin esto el 304 salía sin `ETag`, que RFC 7232 §4.1 exige.
+        return Response(status_code=304, headers={"ETag": etag})
 
     canonica = await run_db(_dedupe_repo.canonical_for, id_externo)
     lotes = await run_db(lotes_de, id_externo)

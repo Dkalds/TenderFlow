@@ -68,7 +68,16 @@ informe del lunes al martes es cambiar de día, no pedir dos.
   interruptores: `notification_preferences`, tipo `informe_semanal`, canal
   `email`, puesto a `off`. No hay una segunda pantalla para decir lo mismo.
   El correo lleva además `List-Unsubscribe` (RFC 8058) y un enlace de baja
-  firmado, el mismo mecanismo que los digests.
+  firmado que apunta a `GET|POST /api/v1/notifications/baja` y apaga **ese**
+  tipo en el canal `email`.
+
+  Conviene saber por qué se dice tan explícitamente: el informe se entregó
+  usando el enlace de los digests, que pausa **todas las reglas de watchlist**
+  y no toca `notification_preferences`. Quien pulsaba «dejar de recibir este
+  informe» —o cuyo cliente de correo lo pulsaba por él, que RFC 8058 es un POST
+  automático— perdía sus alertas de licitaciones y seguía recibiendo el
+  informe. Un enlace de baja que da de baja de otra cosa es peor que no tener
+  enlace.
 - **Una organización sin nada que contar.** Si no hay oportunidades abiertas,
   ni cierres en la semana, ni plazos en el horizonte, no se manda nada: un
   correo semanal que dice «nada» todas las semanas es la forma más rápida de

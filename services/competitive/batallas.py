@@ -277,13 +277,13 @@ def batallas_de_usuario(
     from datetime import UTC, datetime, timedelta
 
     from db.repositories.pursuits import PursuitRepository
-    from services.organizations import resolve_organization
+    from services.organizations import alcance_resuelto
 
-    resuelta, _rol = resolve_organization(user_id, organization_id)
-    desde = (datetime.now(UTC) - timedelta(days=30 * meses)).isoformat()
-    cruces = PursuitRepository().cruces_con_competidor(resuelta, empresa_key, desde_iso=desde)
-    resultado = construir_batallas(empresa_key, cruces, nif_propio=_nif_principal(resuelta))
-    return resultado.model_copy(update={"ventana": f"últimos {meses} meses"})
+    with alcance_resuelto(user_id, organization_id) as (resuelta, _rol):
+        desde = (datetime.now(UTC) - timedelta(days=30 * meses)).isoformat()
+        cruces = PursuitRepository().cruces_con_competidor(resuelta, empresa_key, desde_iso=desde)
+        resultado = construir_batallas(empresa_key, cruces, nif_propio=_nif_principal(resuelta))
+        return resultado.model_copy(update={"ventana": f"últimos {meses} meses"})
 
 
 def _nif_principal(organization_id: int) -> str | None:

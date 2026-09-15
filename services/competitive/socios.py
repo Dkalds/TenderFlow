@@ -32,7 +32,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from observability.logging import get_logger
 from services.analytics.competitors import cargar_adjudicaciones_resueltas
-from services.organizations import resolve_organization
+from services.organizations import alcance_resuelto
 from services.partners import segment_winners, suggest_partners
 from services.pursuit_awards import IdentidadFiscal, identidad_fiscal
 
@@ -370,9 +370,9 @@ def _identidad_de(user_id: int | None, organization_id: int | None) -> Identidad
     """
     if user_id is None:
         return None
-    resuelta, _rol = resolve_organization(user_id, organization_id)
-    try:
-        return identidad_fiscal(resuelta)
-    except Exception as exc:
-        log.warning("socios_identidad_fiscal_error", error=str(exc)[:200])
-        return None
+    with alcance_resuelto(user_id, organization_id) as (resuelta, _rol):
+        try:
+            return identidad_fiscal(resuelta)
+        except Exception as exc:
+            log.warning("socios_identidad_fiscal_error", error=str(exc)[:200])
+            return None

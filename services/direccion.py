@@ -27,7 +27,10 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field
 
 from observability.logging import get_logger
-from services.organizations import OrganizationPermissionError, resolve_organization
+from services.organizations import (
+    OrganizationPermissionError,
+    alcance_resuelto,
+)
 
 log = get_logger(__name__)
 
@@ -98,12 +101,12 @@ def exigir_direccion(user_id: int, organization_id: int | None) -> int:
     mismo error que el resto de operaciones restringidas, para que no haya dos
     formas de negar un permiso.
     """
-    resuelta, rol = resolve_organization(user_id, organization_id)
-    if str(rol) not in ROLES_DIRECCION:
-        raise OrganizationPermissionError(
-            "Dirección es para owner y admin: tu rol en esta organización no lo permite."
-        )
-    return resuelta
+    with alcance_resuelto(user_id, organization_id) as (resuelta, rol):
+        if str(rol) not in ROLES_DIRECCION:
+            raise OrganizationPermissionError(
+                "Dirección es para owner y admin: tu rol en esta organización no lo permite."
+            )
+        return resuelta
 
 
 def corte_con_minimo(
@@ -205,36 +208,35 @@ def actividad_de_organizacion(
     misma organización y por tanto ya visible en Equipo.
     """
     from db.repositories.cuentas import ActividadRepository
-    from services.organizations import resolve_organization
 
-    resuelta, rol = resolve_organization(user_id, organization_id)
-    incluir_admin = str(rol) in ROLES_DIRECCION
+    with alcance_resuelto(user_id, organization_id) as (resuelta, rol):
+        incluir_admin = str(rol) in ROLES_DIRECCION
 
-    filas = ActividadRepository().feed(
-        resuelta,
-        antes_de_id=antes_de_id,
-        actor_user_id=solo_usuario,
-        incluir_admin=incluir_admin,
-        limit=limit,
-    )
-    items = [
-        ItemActividad(
-            id=int(f["id"]),
-            pursuit_id=int(f["pursuit_id"]),
-            licitacion_id=str(f["licitacion_id"]),
-            titulo=f.get("titulo"),
-            evento=str(f["event_type"]),
-            actor=f.get("actor"),
-            cuando=str(f.get("created_at") or ""),
+        filas = ActividadRepository().feed(
+            resuelta,
+            antes_de_id=antes_de_id,
+            actor_user_id=solo_usuario,
+            incluir_admin=incluir_admin,
+            limit=limit,
         )
-        for f in filas
-    ]
-    return FeedActividad(
-        organization_id=resuelta,
-        items=items,
-        # El cursor sale de la última fila devuelta, no de `len(items)`: con
-        # una página incompleta por el filtro de rol, un cursor calculado por
-        # posición se saltaría eventos.
-        siguiente_cursor=items[-1].id if len(items) == limit else None,
-        filtrado_por_rol=not incluir_admin,
-    )
+        items = [
+            ItemActividad(
+                id=int(f["id"]),
+                pursuit_id=int(f["pursuit_id"]),
+                licitacion_id=str(f["licitacion_id"]),
+                titulo=f.get("titulo"),
+                evento=str(f["event_type"]),
+                actor=f.get("actor"),
+                cuando=str(f.get("created_at") or ""),
+            )
+            for f in filas
+        ]
+        return FeedActividad(
+            organization_id=resuelta,
+            items=items,
+            # El cursor sale de la última fila devuelta, no de `len(items)`: con
+            # una página incompleta por el filtro de rol, un cursor calculado por
+            # posición se saltaría eventos.
+            siguiente_cursor=items[-1].id if len(items) == limit else None,
+            filtrado_por_rol=not incluir_admin,
+        )

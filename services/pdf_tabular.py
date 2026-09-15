@@ -36,6 +36,7 @@ from __future__ import annotations
 import io
 from datetime import UTC, datetime
 from typing import Any
+from xml.sax.saxutils import escape as _escape_xml
 
 #: Tope de filas por tabla. Ver «Límites deliberados».
 MAX_FILAS = 500
@@ -46,6 +47,26 @@ _ANCHO_MAX = 180.0
 #: fuente: reportlab la haría, pero exige cargar la métrica y el error de esta
 #: aproximación cabe dentro del recorte de `_ANCHO_MAX`.
 _PUNTOS_POR_CARACTER = 5.5
+
+
+def _texto(valor: Any) -> str:
+    """Escapa para `Paragraph`, que **no** recibe texto plano sino mini-XML.
+
+    reportlab interpreta `<b>`, `<i>` y, lo que importa aquí, `<img src=...>`,
+    que **abre el recurso**: un fichero local o una URL. Y el título del
+    informe semanal lleva dentro el nombre de la organización, que es texto
+    libre del cliente (`SafeStr` sólo rechaza el byte NUL).
+
+    O sea que sin esto una organización llamada `Acme <b>x` hacía reventar la
+    generación del PDF —y el adjunto desaparecía en silencio, porque el job lo
+    captura—, y una llamada `Acme <img src="http://169.254.169.254/..."/>`
+    convertía al scheduler en un lector de recursos internos cuyo resultado
+    acababa incrustado en un PDF y enviado por correo.
+
+    `render_html` de `services/informes.py` ya escapaba; era el camino del PDF
+    el que no.
+    """
+    return _escape_xml(str(valor))
 
 
 def _estilo_tabla() -> Any:
@@ -116,16 +137,16 @@ def construir_pdf_secciones(
     doc = SimpleDocTemplate(buf, pagesize=landscape(A4), rightMargin=20, leftMargin=20)
     estilos = getSampleStyleSheet()
     story: list[Any] = [
-        Paragraph(title, estilos["Title"]),
+        Paragraph(_texto(title), estilos["Title"]),
         Paragraph(datetime.now(UTC).strftime("Generado: %Y-%m-%d %H:%M UTC"), estilos["Normal"]),
     ]
     if subtitulo:
-        story.append(Paragraph(subtitulo, estilos["Normal"]))
+        story.append(Paragraph(_texto(subtitulo), estilos["Normal"]))
     story.append(Spacer(1, 12))
 
     for encabezado, filas in secciones:
         if encabezado:
-            story.append(Paragraph(encabezado, estilos["Heading2"]))
+            story.append(Paragraph(_texto(encabezado), estilos["Heading2"]))
         tabla = _tabla(filas)
         story.append(
             tabla if tabla is not None else Paragraph("Sin resultados.", estilos["Normal"])
@@ -133,7 +154,7 @@ def construir_pdf_secciones(
         story.append(Spacer(1, 16))
 
     if pie:
-        story.append(Paragraph(pie, estilos["Normal"]))
+        story.append(Paragraph(_texto(pie), estilos["Normal"]))
 
     doc.build(story)
     return buf.getvalue()

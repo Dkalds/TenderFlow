@@ -142,19 +142,19 @@ def render_pursuits_export(
     que nadie sospecha del fichero.
     """
     from db.repositories.pursuits import PursuitRepository
-    from services.organizations import resolve_organization
+    from services.organizations import alcance_resuelto
 
-    organizacion, _role = resolve_organization(user_id, organization_id)
-    rows = PursuitRepository().export_rows(
-        organizacion,
-        status=status,
-        responsible_user_id=responsible_user_id,
-        limit=limit,
-    )
-    if formato == "excel":
-        return (
-            generate_excel(rows, PURSUIT_COLUMNS),
-            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            len(rows),
+    with alcance_resuelto(user_id, organization_id) as (organizacion, _role):
+        rows = PursuitRepository().export_rows(
+            organizacion,
+            status=status,
+            responsible_user_id=responsible_user_id,
+            limit=limit,
         )
-    return generate_csv(rows, PURSUIT_COLUMNS), "text/csv; charset=utf-8", len(rows)
+        if formato == "excel":
+            return (
+                generate_excel(rows, PURSUIT_COLUMNS),
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                len(rows),
+            )
+        return generate_csv(rows, PURSUIT_COLUMNS), "text/csv; charset=utf-8", len(rows)

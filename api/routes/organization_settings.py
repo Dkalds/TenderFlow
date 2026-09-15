@@ -89,6 +89,24 @@ async def put_organization_settings(
 # ── Informe semanal programado (T6) ──────────────────────────────────────────
 
 
+def _salida(fila: dict[str, Any]) -> ReportScheduleOut:
+    """Proyecta la fila del repositorio sobre el DTO de salida.
+
+    Hace falta porque ``ReportSchedule`` declara ``extra="forbid"`` —y con
+    razón: es también el DTO de **entrada** y ahí un campo de más es un error
+    del cliente que conviene devolver como 422—. El repositorio, en cambio,
+    devuelve la fila entera (``id``, ``created_at``, ``updated_at``), que el
+    job sí usa. Pasarla con ``**fila`` hacía que **las dos rutas respondieran
+    500** en cuanto existía una fila: la de lectura sólo funcionaba por el
+    camino de los valores por defecto sintéticos, que es justamente el que no
+    tiene columnas de más.
+
+    No se arregla relajando el DTO a ``extra="ignore"``: eso taparía también
+    los campos inventados que un cliente mande en el ``PUT``.
+    """
+    return ReportScheduleOut(**{k: fila[k] for k in ReportScheduleOut.model_fields if k in fila})
+
+
 @router.get(
     "/organizations/{organization_id}/report-schedule",
     response_model=ReportScheduleOut,
@@ -109,7 +127,7 @@ async def get_report_schedule(
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except OrganizationPermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
-    return ReportScheduleOut(**fila)
+    return _salida(fila)
 
 
 @router.put(
@@ -159,4 +177,4 @@ async def put_report_schedule(
             "destinatarios": len(body.destinatarios or []),
         },
     )
-    return ReportScheduleOut(**fila)
+    return _salida(fila)

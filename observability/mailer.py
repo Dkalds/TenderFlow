@@ -50,7 +50,8 @@ import re
 import smtplib
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from email.mime.application import MIMEApplication
+from email import encoders
+from email.mime.base import MIMEBase
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.utils import formataddr, formatdate, make_msgid
@@ -74,6 +75,20 @@ _USER_AGENT = "TenderFlow-mailer/1.0"
 _MAX_ERROR_PROVEEDOR = 300
 #: Resend solo admite ASCII alfanumérico, guion y guion bajo en las etiquetas.
 _TAG_RESEND_RE = re.compile(r"[^A-Za-z0-9_-]+")
+
+
+#: Tope del conjunto de adjuntos de un mensaje, antes de base64.
+#:
+#: Existe porque los dos backends HTTP meten el contenido **dentro del JSON**
+#: de la petición, codificado en base64 —que infla un tercio—, y el límite del
+#: proveedor es sobre la petición entera. Sin tope, un informe de una
+#: organización grande hace que el ESP rechace la llamada con un 4xx y el
+#: destinatario pierde **también el cuerpo**, no sólo el adjunto.
+#:
+#: 8 MiB deja el JSON en ~11 MiB, por debajo de los límites de Resend y
+#: Postmark con margen. Al pasarse se manda el correo **sin** adjuntos en vez
+#: de no mandarlo: el informe tiene las mismas tablas en HTML.
+_MAX_ADJUNTOS_BYTES = 8 * 1024 * 1024
 
 
 @dataclass(frozen=True)
@@ -295,6 +310,24 @@ def _normalizar(mensaje: Mensaje, settings: Any) -> _Preparado | ResultadoEnvio:
         headers["List-Unsubscribe-Post"] = "List-Unsubscribe=One-Click"
 
     reply_to = (mensaje.reply_to or settings.EMAIL_REPLY_TO or "").strip() or None
+
+    # Un adjunto sin bytes o sin nombre no es un adjunto: por SMTP sale como
+    # una parte vacía y por HTTP lo rechaza el ESP con un 422 que tumbaría el
+    # correo entero por algo que no aporta nada.
+    adjuntos = [a for a in mensaje.adjuntos if a.contenido and a.filename.strip()]
+    if sum(a.tamano for a in adjuntos) > _MAX_ADJUNTOS_BYTES:
+        # Se manda sin adjuntos, no se deja de mandar: el cuerpo lleva la misma
+        # información y perderlo entero por el peso del PDF sería cambiar un
+        # problema pequeño por uno grande. Queda en el log porque «el informe
+        # llegó sin PDF» es una pregunta que alguien hará.
+        log.warning(
+            "correo_adjuntos_demasiado_grandes",
+            to=destino[:64],
+            bytes=sum(a.tamano for a in adjuntos),
+            tope=_MAX_ADJUNTOS_BYTES,
+        )
+        adjuntos = []
+
     return _Preparado(
         to=destino,
         subject=mensaje.subject,
@@ -306,10 +339,7 @@ def _normalizar(mensaje: Mensaje, settings: Any) -> _Preparado | ResultadoEnvio:
         headers=headers,
         tags=[t for t in mensaje.tags if t],
         message_id=message_id,
-        # Un adjunto sin bytes o sin nombre no es un adjunto: por SMTP sale
-        # como una parte vacía y por HTTP lo rechaza el ESP con un 422 que
-        # tumbaría el correo entero por algo que no aporta nada.
-        adjuntos=[a for a in mensaje.adjuntos if a.contenido and a.filename.strip()],
+        adjuntos=adjuntos,
     )
 
 
@@ -348,8 +378,15 @@ def _construir_mime(prep: _Preparado) -> MIMEMultipart:
         msg = MIMEMultipart("mixed")
         msg.attach(cuerpo)
         for adjunto in prep.adjuntos:
-            _, _, subtipo = adjunto.content_type.partition("/")
-            parte = MIMEApplication(adjunto.contenido, _subtype=subtipo or "octet-stream")
+            # `MIMEBase` y no `MIMEApplication`: aquél sólo acepta el subtipo y
+            # clava `application/` como maintype, así que un `text/csv` salía
+            # por SMTP como `application/csv` mientras los dos ESP lo mandaban
+            # bien. El mismo correo con dos formas según el backend es
+            # exactamente lo que este módulo existe para no tener.
+            maintype, _, subtipo = adjunto.content_type.partition("/")
+            parte = MIMEBase(maintype or "application", subtipo or "octet-stream")
+            parte.set_payload(adjunto.contenido)
+            encoders.encode_base64(parte)
             parte.add_header("Content-Disposition", "attachment", filename=adjunto.filename)
             msg.attach(parte)
     else:
@@ -482,8 +519,8 @@ def _enviar_resend(prep: _Preparado, settings: Any) -> ResultadoEnvio:
         ]
     if prep.adjuntos:
         # Resend quiere el contenido en base64 dentro del JSON; no hay subida
-        # aparte. Es también el motivo del tope de `_MAX_ADJUNTO_BYTES`: base64
-        # infla un tercio y el límite del proveedor es sobre la petición entera.
+        # aparte. Ése es el motivo de `_MAX_ADJUNTOS_BYTES`: base64 infla un
+        # tercio y el límite del proveedor es sobre la petición entera.
         payload["attachments"] = [
             {
                 "filename": a.filename,

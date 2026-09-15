@@ -31,6 +31,8 @@ from unittest.mock import patch
 
 import pytest
 
+from shared.dto import ReportScheduleOut
+
 AHORA = datetime(2026, 9, 14, 7, 30, tzinfo=UTC)  # lunes
 
 
@@ -147,7 +149,10 @@ def test_el_informe_declara_universo_ventana_y_fecha_del_dato(tmp_db: Any) -> No
 
     informe = construir(org_id, organizacion="ACME", ahora=AHORA)
     assert str(org_id) in informe.universo
-    assert informe.ventana.startswith("Del 2026-09-07 al 2026-09-14")
+    # Siete fechas, no ocho. Los dos extremos son inclusivos, así que
+    # `hasta - 7` abarcaba del 07 al 14 —ocho días— y lo cerrado el lunes
+    # anterior contaba en dos informes seguidos.
+    assert informe.ventana.startswith("Del 2026-09-08 al 2026-09-14")
     assert informe.fecha_dato == "2026-09-14 07:30 UTC"
 
     html = render_html(informe)
@@ -553,3 +558,280 @@ def test_inicio_de_ventana(ahora: datetime, dia: int, hora: int, esperado: datet
     from db.repositories.report_schedules import inicio_de_ventana
 
     assert inicio_de_ventana(ahora, dia_semana=dia, hora_utc=hora) == esperado
+
+
+# ── Las dos rutas HTTP, que no tenían ningún test ───────────────────────────
+#
+# Y por eso T6 se entregó con las dos devolviendo **500** en cuanto existía una
+# fila: `ReportScheduleOut(**fila)` chocaba con el `extra="forbid"` del DTO
+# porque el repositorio devuelve además `id`, `created_at` y `updated_at`. El
+# `GET` sólo funcionaba por el camino de los valores por defecto sintéticos
+# —que no tiene columnas de más— y el `PUT` fallaba siempre. Los 24 tests de
+# arriba ejercitan el servicio y el job, nunca la ruta; el contrato HTTP era el
+# único trozo sin cubrir y era el único roto.
+
+
+def _ctx_http(user_id: int, email: str) -> dict[str, Any]:
+    from shared.identity import user_key_from_email
+
+    return {
+        "user_id": user_id,
+        "email": email,
+        "display_name": "Dirección",
+        "is_admin": False,
+        "auth_method": "session",
+        "authenticated_at": datetime.now(UTC).isoformat(),
+        "user_key": user_key_from_email(email, user_id),
+    }
+
+
+@pytest.fixture
+def cliente_direccion(client, api_db, tmp_db):
+    """`client` autenticado como owner de una organización recién creada."""
+    from api.app import app
+    from api.routes.dual_auth import require_any_auth
+
+    db_mod, _ = tmp_db
+    user_id, org_id = _organizacion(db_mod, "ruta-informe@example.test")
+    app.dependency_overrides[require_any_auth] = lambda: _ctx_http(
+        user_id, "ruta-informe@example.test"
+    )
+    try:
+        yield client, org_id
+    finally:
+        app.dependency_overrides.pop(require_any_auth, None)
+
+
+def test_get_sin_programacion_devuelve_los_valores_por_defecto(cliente_direccion) -> None:
+    cliente, org_id = cliente_direccion
+    with cliente as c:
+        resp = c.get(f"/api/v1/organizations/{org_id}/report-schedule")
+
+    assert resp.status_code == 200, resp.text
+    cuerpo = resp.json()
+    assert cuerpo["activo"] is False
+    assert cuerpo["dia_semana"] == 0
+    assert cuerpo["hora_utc"] == 7
+    assert cuerpo["organization_id"] == org_id
+
+
+def test_put_guarda_y_el_get_siguiente_lo_devuelve(cliente_direccion) -> None:
+    """El ciclo completo de la tarjeta: guardar y volver a entrar.
+
+    Es el que fallaba: el `PUT` respondía 500 y, aunque hubiera guardado, el
+    `GET` posterior también, porque ya existía la fila.
+    """
+    cliente, org_id = cliente_direccion
+    with cliente as c:
+        guardado = c.put(
+            f"/api/v1/organizations/{org_id}/report-schedule",
+            json={
+                "activo": True,
+                "dia_semana": 2,
+                "hora_utc": 9,
+                # `example.com` y no `.test`: `EmailStr` rechaza los TLD
+                # reservados, que es justo lo que queremos de un campo que
+                # acaba en la cabecera `To:` de un correo real.
+                "destinatarios": ["comite@example.com"],
+            },
+        )
+        assert guardado.status_code == 200, guardado.text
+        assert guardado.json()["activo"] is True
+
+        releido = c.get(f"/api/v1/organizations/{org_id}/report-schedule")
+
+    assert releido.status_code == 200, releido.text
+    cuerpo = releido.json()
+    assert cuerpo["dia_semana"] == 2
+    assert cuerpo["hora_utc"] == 9
+    assert cuerpo["destinatarios"] == ["comite@example.com"]
+
+
+def test_la_respuesta_no_filtra_las_columnas_internas(cliente_direccion) -> None:
+    """`id`, `created_at` y `updated_at` son del repositorio, no del contrato."""
+    cliente, org_id = cliente_direccion
+    with cliente as c:
+        c.put(
+            f"/api/v1/organizations/{org_id}/report-schedule",
+            json={"activo": True, "dia_semana": 0, "hora_utc": 7, "destinatarios": None},
+        )
+        cuerpo = c.get(f"/api/v1/organizations/{org_id}/report-schedule").json()
+
+    assert set(cuerpo) == set(ReportScheduleOut.model_fields)
+
+
+def test_un_campo_inventado_en_el_put_sigue_siendo_un_422(cliente_direccion) -> None:
+    """El `extra="forbid"` del DTO de entrada no se toca al arreglar la salida.
+
+    Es la razón de proyectar en la ruta en vez de relajar el modelo: quien
+    manda `dia_semana_v2` tiene que enterarse, no que se lo ignoren.
+    """
+    cliente, org_id = cliente_direccion
+    with cliente as c:
+        resp = c.put(
+            f"/api/v1/organizations/{org_id}/report-schedule",
+            json={"activo": True, "dia_semana": 0, "hora_utc": 7, "inventado": 1},
+        )
+
+    assert resp.status_code == 422, resp.text
+
+
+# ── El enlace de baja: apuntaba a la funcionalidad equivocada ────────────────
+
+
+def test_el_enlace_de_baja_apaga_el_informe_y_no_la_watchlist(tmp_db: Any) -> None:
+    """Regresión de un fallo que destruía datos de otra funcionalidad.
+
+    El informe salía con el enlace de baja de los **digests**, que llama a
+    `deactivate_all_for_user` y pausa **todas** las reglas de watchlist de esa
+    persona, sin tocar `notification_preferences`. O sea que quien pulsaba
+    «dejar de recibir este informe» —o cuyo Gmail lo pulsaba por él, que el
+    `List-Unsubscribe` de RFC 8058 es un POST automático— perdía todas sus
+    alertas de licitaciones **y seguía recibiendo el informe**, porque el
+    opt-out del informe vive en otro sitio.
+
+    La documentación prometía «el mismo mecanismo que los digests», que era
+    exactamente el bug: *era* el mecanismo del digest, apuntando a la
+    suscripción equivocada.
+    """
+    db_mod, _ = tmp_db
+    from db.repositories import report_schedules
+    from observability.mailer import ResultadoEnvio
+    from scheduler.jobs.informes_programados import ejecutar
+
+    user_id, org_id = _organizacion(db_mod, "baja-informe@example.test")
+    _pursuit(db_mod, org_id, user_id, id_externo="BAJA-INF-1")
+    report_schedules.guardar(org_id, activo=True, dia_semana=0, hora_utc=7, destinatarios=None)
+
+    with (
+        patch("services.app_urls.frontend_base_url", return_value="https://app.example.test"),
+        patch(
+            "observability.mailer.enviar", return_value=ResultadoEnvio(ok=True, backend="console")
+        ) as enviar,
+    ):
+        ejecutar(AHORA)
+
+    url = enviar.call_args.args[0].unsubscribe_url
+    assert url is not None
+    assert "/api/v1/notifications/baja" in url, url
+    assert "tipo=informe_semanal" in url, url
+    # Y sobre todo: **no** la baja de la watchlist.
+    assert "watchlist" not in url, url
+
+
+def test_la_baja_pone_el_informe_en_off_y_deja_la_watchlist_en_paz(tmp_db: Any) -> None:
+    """El camino completo, desde el enlace del correo hasta la preferencia."""
+    db_mod, _ = tmp_db
+    from db.repositories import notification_preferences as prefs
+    from services.email_digest import token_de_baja_de_tipo
+
+    user_id, _org_id = _organizacion(db_mod, "baja-camino@example.test")
+    token = token_de_baja_de_tipo(user_id, "informe_semanal")
+    assert token is not None
+
+    from api.routes.notifications import _apagar_por_enlace
+
+    valida, _destino = _apagar_por_enlace(user_id, "informe_semanal", token)
+
+    assert valida
+    assert prefs.resolver(user_id, tipo="informe_semanal", canal="email") == "off"
+    # Otra notificación del mismo usuario no se ha tocado.
+    assert prefs.resolver(user_id, tipo="watchlist_match", canal="email") != "off"
+
+
+def test_un_token_de_otro_tipo_no_sirve(tmp_db: Any) -> None:
+    """La firma incluye el tipo: si no, una baja valdría para todas."""
+    db_mod, _ = tmp_db
+    from api.routes.notifications import _apagar_por_enlace
+    from services.email_digest import token_de_baja_de_tipo
+
+    user_id, _org_id = _organizacion(db_mod, "baja-cruzada@example.test")
+    token = token_de_baja_de_tipo(user_id, "watchlist_match")
+    assert token is not None
+
+    valida, _ = _apagar_por_enlace(user_id, "informe_semanal", token)
+
+    assert not valida
+
+
+def test_un_tipo_que_no_existe_no_escribe_nada(tmp_db: Any) -> None:
+    """El catálogo se comprueba antes de firmar nada contra la base."""
+    db_mod, _ = tmp_db
+    from api.routes.notifications import _apagar_por_enlace
+    from services.email_digest import token_de_baja_de_tipo
+
+    user_id, _org_id = _organizacion(db_mod, "baja-inventada@example.test")
+    token = token_de_baja_de_tipo(user_id, "tipo_inventado") or "x.y"
+
+    valida, _ = _apagar_por_enlace(user_id, "tipo_inventado", token)
+
+    assert not valida
+
+
+def test_un_fallo_del_proveedor_no_sella_la_ventana(tmp_db: Any) -> None:
+    """Regresión: una caída del ESP dejaba a la organización sin informe la semana entera.
+
+    El mailer **no lanza** ante un fallo del proveedor: devuelve
+    `ResultadoEnvio(ok=False)`. El job llegaba igual a `marcar_envio` y
+    estampaba `ultimo_envio_at`, así que `pendientes()` dejaba de devolver la
+    fila y la pasada siguiente no reintentaba — lo contrario de lo que promete
+    la ventana de un día. El test que había patcheaba `enviar` con un
+    `side_effect=RuntimeError`, que cae por el `except` exterior y nunca llega
+    a `marcar_envio`: cubría el único modo de fallo que sí se recuperaba.
+    """
+    db_mod, _ = tmp_db
+    from db.repositories import report_schedules
+    from observability.mailer import ResultadoEnvio
+    from scheduler.jobs.informes_programados import ejecutar
+
+    user_id, org_id = _organizacion(db_mod, "esp-caido@example.test")
+    _pursuit(db_mod, org_id, user_id, id_externo="ESP-1")
+    report_schedules.guardar(org_id, activo=True, dia_semana=0, hora_utc=7, destinatarios=None)
+
+    with patch(
+        "observability.mailer.enviar",
+        return_value=ResultadoEnvio(ok=False, backend="resend", motivo="502"),
+    ):
+        resumen = ejecutar(AHORA)
+
+    assert resumen.enviados == 0
+    assert resumen.fallidos == 1
+    fila = report_schedules.get(org_id)
+    assert fila is not None
+    assert fila["ultimo_envio_at"] is None, "la ventana quedó sellada: no habrá reintento"
+
+    # Y la pasada siguiente sí lo recupera.
+    with patch(
+        "observability.mailer.enviar", return_value=ResultadoEnvio(ok=True, backend="console")
+    ) as enviar:
+        segunda = ejecutar(AHORA + timedelta(hours=4))
+
+    assert segunda.enviados == 1
+    assert enviar.called
+
+
+def test_el_nombre_de_la_organizacion_no_se_interpreta_como_marcado(tmp_db: Any) -> None:
+    """Regresión de seguridad: `Paragraph` de reportlab **no** recibe texto plano.
+
+    Interpreta mini-XML, incluido `<img src=...>`, que abre el recurso: un
+    fichero local o una URL. Y el título del PDF lleva dentro el nombre de la
+    organización, que es texto libre del cliente (`SafeStr` sólo rechaza el
+    byte NUL).
+
+    Sin escapar, `Acme <b>x` hacía reventar la generación —y el adjunto
+    desaparecía en silencio, porque el job captura ese fallo— y
+    `Acme <img src="http://169.254.169.254/..."/>` convertía al scheduler en un
+    lector de recursos internos cuyo resultado acababa incrustado en un PDF y
+    enviado por correo. `render_html` ya escapaba; era el PDF el que no.
+    """
+    db_mod, _ = tmp_db
+    from services.informes import construir, render_pdf
+
+    user_id, org_id = _organizacion(db_mod, "marcado@example.test")
+    _pursuit(db_mod, org_id, user_id, id_externo="MARCA-1")
+
+    for nombre in ("Acme <b>negrita", 'Acme <img src="/etc/passwd"/>'):
+        informe = construir(org_id, organizacion=nombre, ahora=AHORA)
+        pdf = render_pdf(informe)
+        assert pdf.startswith(b"%PDF"), nombre
+        assert len(pdf) > 500, nombre
