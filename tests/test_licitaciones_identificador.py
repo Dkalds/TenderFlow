@@ -17,6 +17,20 @@ Hasta esta tanda el árbol tenía **tres** formas de nombrar lo mismo:
   ``/escenarios-precio``, que funcionaban pero llamaban al mismo dato de otra
   manera, así que el esquema publicaba dos nombres para un solo concepto.
 
+La tercera **sigue viva a propósito**, y esa es la parte que esta tanda
+aprendió por las malas. Renombrar su parámetro de ruta no cambia ninguna URL,
+pero sí el OpenAPI, y de ahí sale el SDK de Python (``release-sdk.yml``): el
+argumento pasa a llamarse distinto y rompe a quien llame por keyword.
+``scripts/check_api_breaking.py`` lo ve como «la ruta desaparece» y tiene
+razón. Unificarlas exige el ciclo de ``docs/api-design.md`` §«Qué exige retirar
+una ruta»: sucesora sirviendo primero, ``deprecate_route()`` con ``sunset`` ≥
+hoy + 90 días, RFC de retirada enlazada y la etiqueta ``api-breaking`` en la PR
+que borre la vieja. Hasta entonces la excepción se queda **congelada**: estos
+tests comprueban que sean exactamente esas tres y que no aparezca una cuarta.
+
+Lo funcional —que el detalle glotón se registre el último— es independiente del
+nombre y sigue cubierto igual.
+
 El detalle se tapaba con un ``app.add_api_route(..., include_in_schema=False)``
 al final de ``api/app.py``: resolvía el 404 en runtime, pero dejaba el esquema
 publicando la variante rota —la que usa quien genera un cliente— y hacía
@@ -47,14 +61,31 @@ def _rutas_de_licitaciones() -> list[Any]:
     return [r for r in app.routes if str(getattr(r, "path", "")).startswith(_PREFIJO)]
 
 
+#: Las tres que siguen direccionando por ``{licitacion_id:path}``, congeladas
+#: hasta que alguien pague el ciclo de deprecación (ver el docstring). Es una
+#: lista que sólo puede **encoger**: renombrarlas de golpe rompe el SDK.
+_EXCEPCIONES_NOMBRE_VIEJO = frozenset(
+    {
+        f"{_PREFIJO}/{{licitacion_id:path}}/escenarios-precio",
+        f"{_PREFIJO}/{{licitacion_id:path}}/eventos",
+        f"{_PREFIJO}/{{licitacion_id:path}}/prediccion-baja",
+    }
+)
+
+
 def test_toda_ruta_de_expediente_usa_el_mismo_parametro() -> None:
-    """Ni ``{id_externo}`` a secas ni ``{licitacion_id}``: uno y con ``:path``."""
+    """``{id_externo:path}`` en todas menos las tres congeladas.
+
+    Nunca ``{id_externo}`` a secas: ese conversor no ve un id con barra.
+    """
     desviadas = []
     for ruta in _rutas_de_licitaciones():
         path = str(ruta.path)
         # Sólo las que direccionan un expediente concreto; `/licitaciones`,
         # `/cursor`, `/search`, `/comparar` y `/bulk-get` no llevan parámetro.
         if not path.startswith(f"{_PREFIJO}/{{"):
+            continue
+        if path in _EXCEPCIONES_NOMBRE_VIEJO:
             continue
         if not path.startswith(f"{_PREFIJO}/{{id_externo:path}}"):
             desviadas.append(f"{sorted(getattr(ruta, 'methods', []))} {path}")
@@ -63,6 +94,25 @@ def test_toda_ruta_de_expediente_usa_el_mismo_parametro() -> None:
         "Estas rutas nombran el expediente de otra forma. Un id_externo real "
         f"({ID_CON_BARRA!r}) lleva barras, así que el parámetro tiene que ser "
         "{id_externo:path} en todas: " + "; ".join(desviadas)
+    )
+
+
+def test_la_excepcion_del_nombre_viejo_no_crece() -> None:
+    """El trinquete: tres rutas heredadas, y ni una más.
+
+    Si una desaparece de aquí porque se unificó con su ciclo de deprecación
+    hecho, se quita de ``_EXCEPCIONES_NOMBRE_VIEJO``. Lo que no puede pasar es
+    que aparezca una cuarta: una ruta nueva no tiene ninguna excusa para nacer
+    con el nombre viejo.
+    """
+    vivas = {
+        str(r.path)
+        for r in _rutas_de_licitaciones()
+        if "{licitacion_id" in str(r.path)
+    }
+    assert vivas <= _EXCEPCIONES_NOMBRE_VIEJO, (
+        "Rutas nuevas con el nombre viejo del parámetro: "
+        + "; ".join(sorted(vivas - _EXCEPCIONES_NOMBRE_VIEJO))
     )
 
 
@@ -100,12 +150,24 @@ def test_el_esquema_publica_el_detalle() -> None:
     assert "get" in esquema["paths"]["/api/v1/licitaciones/{id_externo}"]
 
 
-def test_el_esquema_no_deja_rastro_del_nombre_viejo() -> None:
+def test_el_esquema_publica_el_nombre_viejo_solo_en_las_congeladas() -> None:
+    """El spec es el contrato, así que aquí es donde importa de verdad.
+
+    De este documento sale el SDK: cada parámetro de ruta acaba siendo el
+    nombre de un argumento. Por eso las tres heredadas tienen que seguir
+    publicándose con ``{licitacion_id}`` —cambiarlo rompe a quien llame por
+    keyword— y ninguna otra puede hacerlo.
+    """
     from api.app import app
 
-    con_nombre_viejo = [p for p in app.openapi()["paths"] if "{licitacion_id}" in p]
-    assert not con_nombre_viejo, "El esquema todavía publica {licitacion_id} en " + ", ".join(
-        con_nombre_viejo
+    # El esquema no lleva el conversor: `{licitacion_id:path}` se publica como
+    # `{licitacion_id}`.
+    esperadas = {p.replace(":path", "") for p in _EXCEPCIONES_NOMBRE_VIEJO}
+    con_nombre_viejo = {p for p in app.openapi()["paths"] if "{licitacion_id}" in p}
+    assert con_nombre_viejo == esperadas, (
+        "El esquema publica {licitacion_id} en un conjunto distinto del congelado. "
+        f"De más: {sorted(con_nombre_viejo - esperadas)}; "
+        f"de menos: {sorted(esperadas - con_nombre_viejo)}"
     )
 
 

@@ -54,26 +54,38 @@ class TimelineResult(BaseModel):
 
 
 @router.get(
-    "/licitaciones/{id_externo:path}/eventos",
+    "/licitaciones/{licitacion_id:path}/eventos",
     summary="Línea de tiempo de un contrato",
     responses={404: {"description": "Licitación no encontrada"}},
 )
 async def get_timeline(
-    id_externo: str,
+    licitacion_id: str,
     _ctx: dict[str, Any] = Depends(require_any_auth),
 ) -> TimelineResult:
     """Hitos del ciclo de vida: publicación → adjudicación → formalización →
     modificaciones/prórrogas → anulación, ordenados cronológicamente."""
-    if not await run_db(_repo_licitaciones.exists, id_externo):
+    if not await run_db(_repo_licitaciones.exists, licitacion_id):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Licitación no encontrada."
         )
-    items = await run_db(timeline, id_externo)
-    # El campo de la respuesta sigue llamándose `licitacion_id`: renombrarlo
-    # sería un cambio del contrato, y lo que se está unificando es cómo se
-    # **direcciona** el expediente en la URL, no cómo se llama en el cuerpo.
+    items = await run_db(timeline, licitacion_id)
+    # Esta ruta se queda con `licitacion_id` en la URL y en el cuerpo, aunque
+    # el resto de `/licitaciones/...` direccione por `id_externo`.
+    #
+    # El intento de unificarla renombrando el parámetro de ruta se revirtió: el
+    # nombre de un parámetro de ruta **es** contrato. No cambia la URL que se
+    # llama, pero sí el OpenAPI, y de ahí sale el SDK de Python
+    # (`release-sdk.yml`), donde el argumento pasa a llamarse distinto y rompe a
+    # quien llame por keyword. `check_api_breaking.py` lo ve como «la ruta
+    # desaparece», y tiene razón.
+    #
+    # Unificarla exige el ciclo de docs/api-design.md §«Qué exige retirar una
+    # ruta»: sucesora sirviendo primero, `deprecate_route()` con `sunset` ≥ hoy
+    # + 90 días, RFC de retirada enlazada, y la etiqueta `api-breaking` en la
+    # PR que finalmente borre la vieja. Nada de eso cabe en una PR que sólo
+    # quería nombres consistentes.
     return TimelineResult(
-        licitacion_id=id_externo, items=[TimelineEvento(**item) for item in items]
+        licitacion_id=licitacion_id, items=[TimelineEvento(**item) for item in items]
     )
 
 

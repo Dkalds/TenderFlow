@@ -76,7 +76,7 @@ class PrediccionBajaResult(BaseModel):
 
 
 @router.get(
-    "/licitaciones/{id_externo:path}/prediccion-baja",
+    "/licitaciones/{licitacion_id:path}/prediccion-baja",
     summary="Intervalo de baja esperada (p10/p50/p90)",
     responses={404: {"description": "Sin predicción para esa licitación"}},
     # Los bloques son condicionales (ver el docstring del DTO): la ausencia de
@@ -92,12 +92,12 @@ class PrediccionBajaResult(BaseModel):
     response_model_exclude_unset=True,
 )
 async def get_prediccion_baja(
-    id_externo: str,
+    licitacion_id: str,
     lote_id: int | None = None,
     _ctx: dict[str, Any] = Depends(require_any_auth),
 ) -> PrediccionBajaResult:
     try:
-        data = await run_db(prediccion_baja, id_externo, lote_id)
+        data = await run_db(prediccion_baja, licitacion_id, lote_id)
     except LoteDesconocidoError as exc:
         # 404 y no 422: el lote es un recurso que se pide por id, y "ese lote
         # no está en este expediente" es exactamente un no-encontrado. El
@@ -148,13 +148,13 @@ async def get_calibracion_baja(
 
 
 @router.get(
-    "/licitaciones/{id_externo:path}/escenarios-precio",
+    "/licitaciones/{licitacion_id:path}/escenarios-precio",
     summary="Escenarios descriptivos de precio sobre adjudicaciones comparables",
     response_model=PriceScenariosResult,
     responses={404: {"description": "Licitación (o lote) inexistente"}},
 )
 async def get_escenarios_precio(
-    id_externo: str,
+    licitacion_id: str,
     lote_id: int | None = None,
     competencia_esperada: int | None = None,
     _ctx: dict[str, Any] = Depends(require_any_auth),
@@ -171,7 +171,7 @@ async def get_escenarios_precio(
         )
     data = await run_db(
         get_price_scenarios,
-        id_externo,
+        licitacion_id,
         lote_id=lote_id,
         expected_competition=competencia_esperada,
     )

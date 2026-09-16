@@ -144,7 +144,7 @@
     {
       "fixture": "licitacion-escenarios-precio.json",
       "method": "GET",
-      "path": "/api/v1/licitaciones/{id_externo}/escenarios-precio",
+      "path": "/api/v1/licitaciones/{licitacion_id}/escenarios-precio",
       "kind": "response",
       "status": "200"
     },
