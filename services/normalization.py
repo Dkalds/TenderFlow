@@ -131,7 +131,9 @@ def normalize_nif(nif: str | None) -> str | None:
 #: licitador extranjero.
 TipoNif = Literal["dni", "nie", "cif", "invalido", "extranjero"]
 
-_LETRAS_DNI = "TRWAGMYFPDXBNJZSQVHLCKE"
+# La tabla oficial de letras de control del DNI, fijada por norma y pública.
+# detect-secrets la ve como base64 de alta entropía.
+_LETRAS_DNI = "TRWAGMYFPDXBNJZSQVHLCKE"  # pragma: allowlist secret
 _LETRAS_CIF = "JABCDEFGHI"
 _DNI_RE = re.compile(r"^(\d{8})([A-Z])$")
 _NIE_RE = re.compile(r"^([XYZ])(\d{7})([A-Z])$")

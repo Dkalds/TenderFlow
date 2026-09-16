@@ -105,11 +105,7 @@ def test_la_excepcion_del_nombre_viejo_no_crece() -> None:
     que aparezca una cuarta: una ruta nueva no tiene ninguna excusa para nacer
     con el nombre viejo.
     """
-    vivas = {
-        str(r.path)
-        for r in _rutas_de_licitaciones()
-        if "{licitacion_id" in str(r.path)
-    }
+    vivas = {str(r.path) for r in _rutas_de_licitaciones() if "{licitacion_id" in str(r.path)}
     assert vivas <= _EXCEPCIONES_NOMBRE_VIEJO, (
         "Rutas nuevas con el nombre viejo del parámetro: "
         + "; ".join(sorted(vivas - _EXCEPCIONES_NOMBRE_VIEJO))

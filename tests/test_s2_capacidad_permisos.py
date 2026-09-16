@@ -348,7 +348,7 @@ def test_put_nifs_rechaza_identificador_extranjero(tmp_db):
         _escribir_nifs(
             organizacion,
             OrganizationNifsIn(
-                nifs=[OrganizationNif(nif="DE123456789")]
-            ),  # pragma: allowlist secret
+                nifs=[OrganizationNif(nif="DE123456789")]  # pragma: allowlist secret
+            ),
             actor_user_id=owner,
         )

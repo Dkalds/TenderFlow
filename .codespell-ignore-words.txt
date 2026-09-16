@@ -149,6 +149,7 @@ variantes
 varios
 vas
 vectores
+vender
 viceversa
 vie
 visibles
