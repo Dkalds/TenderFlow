@@ -1427,7 +1427,7 @@ prometheus-fastapi-instrumentator==8.1.0 \
     --hash=sha256:b77f3043665e8d28e2bbd21017506195a43d9adf1d402d01bf95b494b7e560e1 \
     --hash=sha256:b9f40b2cff3f7891ca0610b3ae4fc6ec723fd326b04bb659819aaeb821a0fc7d
     # via -r requirements.in
-psycopg==3.3.5 \
+psycopg[binary]==3.3.5 \
     --hash=sha256:ce5aa5cdb4f9379f00f487590e5890bfa7df9a164648c969ffa628505e21af4e \
     --hash=sha256:d0a3d9ccf5788af054cbd745278cb02401b5c312aeaafbf2c6144460aec47da4
     # via -r requirements.in
@@ -1650,9 +1650,9 @@ python-dotenv==1.2.3 \
     # via
     #   -r requirements.in
     #   pydantic-settings
-redis==5.0.8 \
-    --hash=sha256:0c5b10d387568dfe0698c6fad6615750c24170e548ca2deac10c649d463e9870 \
-    --hash=sha256:56134ee08ea909106090934adc36f65c9bcbbaecea5b21ba704ba6fb561f8eb4
+redis==8.1.0 \
+    --hash=sha256:6e1a19beef9225c83efd689c7e6b7da2d5215b1f42cd13b7fc3714d0a09c7b25 \
+    --hash=sha256:a4fe1aac3d3b3cc791d4b3d5931c5a956045dc951ee74d1c913ee3ac4d2ee9fb
     # via -r requirements.in
 reportlab==4.5.0 \
     --hash=sha256:b8cc8996947d84e805368b47b2376070966f091d029351a0d8a1f238984c2c7f \
@@ -1934,13 +1934,17 @@ typing-extensions==4.15.0 \
     --hash=sha256:f0fa19c6845758ab08074a0cfa8b7aecb71c999ca73d62883bc25cc018c4e548
     # via
     #   alembic
+    #   anyio
     #   fastapi
     #   formulaic
+    #   httpx2
     #   openai
+    #   psycopg
     #   psycopg-pool
     #   pydantic
     #   pydantic-core
     #   sqlalchemy
+    #   starlette
     #   typing-inspection
 typing-inspection==0.4.2 \
     --hash=sha256:4ed1cacbdc298c220f1bd249ed5287caa16f34d44ef4e9c3d0cbad5b521545e7 \
