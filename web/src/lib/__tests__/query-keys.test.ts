@@ -208,6 +208,7 @@ const FABRICAS: readonly Fabrica[] = [
       { nombre: "pursuitKeys.detail", clave: pursuitKeys.detail("7") },
       { nombre: "pursuitKeys.metrics", clave: pursuitKeys.metrics },
       { nombre: "pursuitKeys.agenda", clave: pursuitKeys.agenda },
+      { nombre: "pursuitKeys.direccion", clave: pursuitKeys.direccion(21) },
     ],
   },
   {
@@ -425,6 +426,7 @@ describe("las fábricas parametrizadas", () => {
     { nombre: "competitiveKeys.companyAwards", conA: () => competitiveKeys.companyAwards(7, "limit=20"), conB: () => competitiveKeys.companyAwards(7, { limit: "20" }) },
     { nombre: "pursuitKeys.list", conA: () => pursuitKeys.list({ estado: "abierto" }), conB: () => pursuitKeys.list({ estado: "ganado" }) },
     { nombre: "pursuitKeys.detail", conA: () => pursuitKeys.detail("7"), conB: () => pursuitKeys.detail("8") },
+    { nombre: "pursuitKeys.direccion", conA: () => pursuitKeys.direccion(21), conB: () => pursuitKeys.direccion(null) },
     { nombre: "pursuitCommentKeys.thread", conA: () => pursuitCommentKeys.thread(7), conB: () => pursuitCommentKeys.thread(8) },
     { nombre: "organizationKeys.members", conA: () => organizationKeys.members(1), conB: () => organizationKeys.members(2) },
     { nombre: "organizationKeys.settings", conA: () => organizationKeys.settings(1), conB: () => organizationKeys.settings(null) },
@@ -496,6 +498,7 @@ const FABRICAS_CON_ARGUMENTOS: readonly string[] = [
   "competitiveKeys.companyAwards",
   "pursuitKeys.list",
   "pursuitKeys.detail",
+  "pursuitKeys.direccion",
   "pursuitCommentKeys.thread",
   "organizationKeys.members",
   "organizationKeys.settings",
