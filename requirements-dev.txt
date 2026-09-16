@@ -2346,9 +2346,9 @@ pyyaml==6.0.3 \
     # via
     #   detect-secrets
     #   pre-commit
-redis==5.0.8 \
-    --hash=sha256:0c5b10d387568dfe0698c6fad6615750c24170e548ca2deac10c649d463e9870 \
-    --hash=sha256:56134ee08ea909106090934adc36f65c9bcbbaecea5b21ba704ba6fb561f8eb4
+redis==8.1.0 \
+    --hash=sha256:6e1a19beef9225c83efd689c7e6b7da2d5215b1f42cd13b7fc3714d0a09c7b25 \
+    --hash=sha256:a4fe1aac3d3b3cc791d4b3d5931c5a956045dc951ee74d1c913ee3ac4d2ee9fb
     # via -r requirements.in
 reportlab==4.5.0 \
     --hash=sha256:b8cc8996947d84e805368b47b2376070966f091d029351a0d8a1f238984c2c7f \
