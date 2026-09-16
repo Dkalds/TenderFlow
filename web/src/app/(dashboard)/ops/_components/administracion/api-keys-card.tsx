@@ -3,13 +3,12 @@
 /** Claves de acceso a la API: listado, rotación y el token en claro de un solo uso. */
 
 import { useCallback, useMemo } from "react";
-import { type ColumnDef } from "@tanstack/react-table";
 import { Key, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { DataTable } from "@/components/ui/data-table";
+import { DataTable, type DataTableColumnDef } from "@/components/ui/data-table";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn, formatDate } from "@/lib/utils";
 import { useApiKeys, type ApiKey } from "../../_hooks/use-api-keys";
@@ -22,7 +21,7 @@ export function ApiKeysCard() {
     toast.info("Funcionalidad en desarrollo");
   }, []);
 
-  const keyColumns = useMemo<ColumnDef<ApiKey>[]>(
+  const keyColumns = useMemo<DataTableColumnDef<ApiKey>[]>(
     () => [
       {
         id: "prefijo",

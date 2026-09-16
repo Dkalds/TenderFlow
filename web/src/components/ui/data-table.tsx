@@ -2,12 +2,16 @@
 
 import * as React from "react";
 import {
+  columnVisibilityFeature,
+  createSortedRowModel,
   flexRender,
-  getCoreRowModel,
-  getSortedRowModel,
-  useReactTable,
+  rowSortingFeature,
+  sortFns,
+  tableFeatures,
+  useTable,
   type ColumnDef,
   type Row,
+  type RowData,
   type SortingState,
 } from "@tanstack/react-table";
 import { ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
@@ -22,12 +26,40 @@ import {
 import { cn, formatNumber } from "@/lib/utils";
 import { useAnnounceOnChange } from "@/components/live-region";
 
-interface DataTableProps<TData, TValue> {
-  columns: ColumnDef<TData, TValue>[];
+/**
+ * Features de v9 que usa esta tabla: ordenación en cliente y nada más.
+ *
+ * En v8 cada feature venía incluida de serie; v9 obliga a registrarlas y a
+ * declarar el row model de cada una en su slot. El objeto se exporta porque
+ * los tipos públicos (`ColumnDef`, `Row`, ...) ahora llevan `TFeatures` como
+ * primer parámetro: quien define columnas para esta tabla necesita
+ * `typeof dataTableFeatures` para que encajen.
+ */
+export const dataTableFeatures = tableFeatures({
+  rowSortingFeature,
+  // `row.getVisibleCells()` vive en esta feature: sin registrarla el método no
+  // existe (v9 no trae nada de serie) y el fallo sale como error de tipos en
+  // el render, no como una tabla vacía.
+  columnVisibilityFeature,
+  sortedRowModel: createSortedRowModel(),
+  // Ninguna columna declara `sortFn`, así que todas resuelven por
+  // autodetección; el registro completo garantiza que la clave que elija
+  // `getAutoSortFn` (basic/text/datetime/alphanumeric) esté disponible.
+  sortFns,
+});
+
+export type DataTableFeatures = typeof dataTableFeatures;
+
+/** `ColumnDef` ya ligado a las features de esta tabla. */
+export type DataTableColumnDef<TData extends RowData, TValue = unknown> =
+  ColumnDef<DataTableFeatures, TData, TValue>;
+
+interface DataTableProps<TData extends RowData, TValue> {
+  columns: DataTableColumnDef<TData, TValue>[];
   data: TData[];
   initialSorting?: SortingState;
   emptyMessage?: string;
-  getRowClassName?: (row: Row<TData>) => string | undefined;
+  getRowClassName?: (row: Row<DataTableFeatures, TData>) => string | undefined;
   className?: string;
   /**
    * Cómo nombrar las filas al anunciar el recuento ("licitaciones", "empresas").
@@ -37,7 +69,7 @@ interface DataTableProps<TData, TValue> {
   rowNoun?: string | null;
 }
 
-export function DataTable<TData, TValue>({
+export function DataTable<TData extends RowData, TValue>({
   columns,
   data,
   initialSorting = [],
@@ -58,14 +90,17 @@ export function DataTable<TData, TValue>({
         : `${formatNumber(data.length)} ${rowNoun}`,
   );
 
-  // eslint-disable-next-line react-hooks/incompatible-library
-  const table = useReactTable({
+  const table = useTable({
+    features: dataTableFeatures,
     data,
-    columns,
+    // `useTable` tipa la lista como `ColumnDef<..., TData, unknown>[]` y
+    // `ColumnDef` es invariante en `TValue`, así que un array con un `TValue`
+    // concreto no es asignable aunque en runtime sea el mismo objeto. En v8
+    // colaba por varianza. Se conserva `TValue` en la prop pública —es lo que
+    // le da tipo al `getValue()` de cada celda— y se ensancha sólo aquí.
+    columns: columns as DataTableColumnDef<TData>[],
     state: { sorting },
     onSortingChange: setSorting,
-    getCoreRowModel: getCoreRowModel(),
-    getSortedRowModel: getSortedRowModel(),
   });
 
   return (
