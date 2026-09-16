@@ -213,6 +213,14 @@ export const pursuitKeys = {
    * por prefijo que ya hacen las mutaciones de pursuits la alcanza.
    */
   weightsProposal: ["pursuits", "weights-proposal"] as const,
+  /**
+   * Cuadro de mando de Dirección (`GET /pursuits/direccion`, F4.2). Lleva la
+   * organización porque sin ella el backend resuelve la personal, que no tiene
+   * las oportunidades del equipo. Cuelga de `pursuits` por lo mismo que
+   * `weightsProposal`: cerrar una oportunidad cambia el win rate.
+   */
+  direccion: (organizationId: number | null) =>
+    ["pursuits", "direccion", organizationId] as const,
 };
 
 export const pursuitCommentKeys = {

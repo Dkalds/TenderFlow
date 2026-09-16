@@ -8,8 +8,11 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { SpaceShell, useSpaceView } from "@/components/layout/space-shell";
+import { useActiveOrganizationId } from "@/hooks/use-organization";
 import { CONSOLE_SPACES } from "@/lib/console-spaces";
 import { ApiError, apiGet } from "@/lib/api-client";
+import type { Schemas } from "@/lib/api-types";
+import { pursuitKeys } from "@/lib/query-keys";
 
 /**
  * F4.2 — Cuadro de mando de dirección.
@@ -26,13 +29,7 @@ import { ApiError, apiGet } from "@/lib/api-client";
  * dirección, es peor que un hueco: el hueco se pregunta, el número se cree.
  */
 
-type Celda = { clave: string; valor: number | null; n: number };
-type Cuadro = {
-  organization_id: number;
-  win_rate_por_tecnologia: Celda[];
-  win_rate_por_organo: Celda[];
-  n_minimo: number;
-};
+type Celda = Schemas["CorteMetrica"];
 
 function CorteTabla({
   titulo,
@@ -72,7 +69,7 @@ function CorteTabla({
               <TableCell className="font-medium">{fila.clave}</TableCell>
               <TableCell className="tf-tnum text-right">{fila.n}</TableCell>
               <TableCell className="tf-tnum text-right">
-                {fila.valor === null ? (
+                {fila.valor == null ? (
                   <span className="text-muted-foreground text-xs">
                     aún no ({fila.n}/{minimo})
                   </span>
@@ -95,9 +92,16 @@ export default function DireccionPage() {
   // local, `/direccion?vista=embudo` aterrizaba en Resultado y la URL no
   // cambiaba al conmutar, así que el corte no era enlazable.
   const { view: vista, setView: setVista } = useSpaceView(SPACE);
+  // Sin `organization_id` el backend resuelve la organización **personal**, y
+  // las oportunidades viven en la del equipo: la pantalla salía vacía para
+  // cualquier owner mientras Mi Pipeline, que sí la manda, las enseñaba.
+  const organizationId = useActiveOrganizationId();
   const { data, isLoading, isError, error } = useQuery({
-    queryKey: ["direccion"],
-    queryFn: () => apiGet("/api/v1/pursuits/direccion" as never) as Promise<Cuadro>,
+    queryKey: pursuitKeys.direccion(organizationId),
+    queryFn: () =>
+      apiGet("/api/v1/pursuits/direccion", {
+        params: { query: { organization_id: organizationId ?? undefined } },
+      }),
     retry: false,
   });
 
