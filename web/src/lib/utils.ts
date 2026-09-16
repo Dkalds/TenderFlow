@@ -186,6 +186,24 @@ export function formatDateTime(
   return d.toLocaleString(locale, { dateStyle: "medium", timeStyle: "short" });
 }
 
+/**
+ * Día de la semana y hora ("lunes, 09:00"), en el horario del navegador.
+ *
+ * Para lo que se repite todas las semanas a la misma hora y cuya fecha exacta
+ * no dice nada: la programación del informe semanal (T6) se guarda en UTC y
+ * hay que enseñarla en el horario de quien la lee, pero «17 ago 2026, 09:00»
+ * haría pensar que es un envío único.
+ */
+export function formatDiaYHora(
+  date: string | Date | null | undefined,
+  locale = "es-ES",
+): string {
+  if (!date) return EMPTY;
+  const d = typeof date === "string" ? new Date(date) : date;
+  if (isNaN(d.getTime())) return EMPTY;
+  return d.toLocaleString(locale, { weekday: "long", hour: "2-digit", minute: "2-digit" });
+}
+
 /** Solo la hora ("14:30:05"), para marcas de tiempo del mismo día. */
 export function formatTime(
   date: string | Date | null | undefined,

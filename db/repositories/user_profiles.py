@@ -4,6 +4,12 @@ Cada usuario puede tener un perfil con pesos de scoring propios, keywords de
 afinidad, filtros de CPV/CCAA y rango de importe ejecutable.
 
 Almacenado en user_profiles (migracion v49): PK = user_key, columnas JSON.
+
+Desde v129 (ADR-030 fase 2) la fila lleva también ``user_id`` y la lectura es
+dual: con ``user_id`` conocido se busca por él —y por ``user_key`` sólo en las
+filas que el backfill no resolvió—; sin él, por ``user_key`` como siempre. La
+PK sigue siendo ``user_key`` (recrearla es la fase 3), así que el upsert
+localiza primero la fila del usuario por identidad y sólo inserta si no hay.
 """
 
 from __future__ import annotations
@@ -16,15 +22,20 @@ from observability.logging import get_logger
 
 log = get_logger(__name__)
 
+#: Predicado de identidad dual. Parámetros: ``(user_id, user_key, user_id)``.
+#: Ver ``db/repositories/watchlist.py`` para el razonamiento.
+_IDENT = "(user_id = %s OR (user_key = %s AND (user_id IS NULL OR %s::int IS NULL)))"
 
 _PROFILE_COLS = (
     "SELECT user_key, weights_json, afinidad_keywords_json, "
     "cpvs_json, ccaa_json, importe_min, importe_max, updated_at, "
-    "organization_id, visibility FROM user_profiles "
+    "organization_id, visibility, user_id FROM user_profiles "
 )
 
 
-def get_user_profile(user_key: str, organization_id: int) -> dict[str, Any] | None:
+def get_user_profile(
+    user_key: str, organization_id: int, *, user_id: int | None = None
+) -> dict[str, Any] | None:
     """Perfil visible dentro de ``organization_id``. ``None`` si no hay.
 
     ``organization_id`` es obligatoria. Tenía default ``None`` y esa rama caía
@@ -32,18 +43,23 @@ def get_user_profile(user_key: str, organization_id: int) -> dict[str, Any] | No
     esa semántica, la heredaba en silencio. El camino sin organización sigue
     existiendo, pero hay que pedirlo por su nombre
     (:func:`get_own_user_profile`).
+
+    El propio va antes que el compartido; entre varios propios (un usuario que
+    cambió de correo y guardó bajo las dos claves antes de v129), el de la
+    clave actual y después el más reciente.
     """
     with connect_read() as c:
         row = c.execute(
             _PROFILE_COLS + "WHERE organization_id = %s "
-            "AND (visibility = 'organization' OR user_key = %s) "
-            "ORDER BY CASE WHEN user_key = %s THEN 0 ELSE 1 END, updated_at DESC LIMIT 1",
-            (organization_id, user_key, user_key),
+            f"AND (visibility = 'organization' OR {_IDENT}) "
+            f"ORDER BY CASE WHEN {_IDENT} THEN 0 ELSE 1 END, "
+            "CASE WHEN user_key = %s THEN 0 ELSE 1 END, updated_at DESC LIMIT 1",
+            (organization_id, user_id, user_key, user_id, user_id, user_key, user_id, user_key),
         ).fetchone()
     return _row_to_profile(row)
 
 
-def get_own_user_profile(user_key: str) -> dict[str, Any] | None:
+def get_own_user_profile(user_key: str, *, user_id: int | None = None) -> dict[str, Any] | None:
     """Perfil propio del usuario, deliberadamente sin ámbito de organización.
 
     Es el camino del export GDPR (Art. 15/20) y de los llamadores que todavía
@@ -54,8 +70,9 @@ def get_own_user_profile(user_key: str) -> dict[str, Any] | None:
     """
     with connect_read() as c:
         row = c.execute(
-            _PROFILE_COLS + "WHERE user_key = %s",
-            (user_key,),
+            _PROFILE_COLS + f"WHERE {_IDENT} "
+            "ORDER BY CASE WHEN user_key = %s THEN 0 ELSE 1 END, updated_at DESC LIMIT 1",
+            (user_id, user_key, user_id, user_key),
         ).fetchone()
     return _row_to_profile(row)
 
@@ -74,6 +91,7 @@ def _row_to_profile(row: Any) -> dict[str, Any] | None:
         "updated_at",
         "organization_id",
         "visibility",
+        "user_id",
     ]
     raw = dict(zip(cols, row, strict=False))
     # Deserializar JSON columns
@@ -88,6 +106,7 @@ def _row_to_profile(row: Any) -> dict[str, Any] | None:
     result["importe_max"] = raw["importe_max"]
     result["organization_id"] = raw["organization_id"]
     result["visibility"] = raw["visibility"]
+    result["user_id"] = raw["user_id"]
     return result
 
 
@@ -96,11 +115,19 @@ def upsert_user_profile(
     profile: dict[str, Any],
     organization_id: int,
     visibility: str = "private",
+    *,
+    user_id: int | None = None,
 ) -> None:
     """Crea o actualiza el perfil del usuario.
 
     ``organization_id`` sin default: escribir una fila con organización nula
     la deja invisible para :func:`get_user_profile`, que sí filtra por ámbito.
+
+    Con ``user_id`` la fila a actualizar se localiza por identidad dual, no
+    por la clave: tras un cambio de correo el perfil vive bajo la clave
+    antigua y ``ON CONFLICT(user_key)`` a secas insertaría un segundo perfil.
+    Se prefiere la fila con la clave actual si hubiera dos (usuario que guardó
+    bajo ambas antes de v129).
     """
     from db.database import now_utc_iso
 
@@ -110,41 +137,61 @@ def upsert_user_profile(
     ccaas = profile.get("ccaa")
     importe_min = profile.get("importe_min")
     importe_max = profile.get("importe_max")
+    valores = (
+        json.dumps(weights) if weights is not None else None,
+        json.dumps(afinidad) if afinidad is not None else None,
+        json.dumps(cpvs) if cpvs is not None else None,
+        json.dumps(ccaas) if ccaas is not None else None,
+        importe_min,
+        importe_max,
+        now_utc_iso(),
+        organization_id,
+        visibility,
+    )
 
     with connect() as c:
-        c.execute(
-            "INSERT INTO user_profiles "
-            "(user_key, weights_json, afinidad_keywords_json, cpvs_json, ccaa_json, "
-            " importe_min, importe_max, updated_at, organization_id, visibility) "
-            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) "
-            "ON CONFLICT(user_key) DO UPDATE SET "
-            "weights_json = excluded.weights_json, "
-            "afinidad_keywords_json = excluded.afinidad_keywords_json, "
-            "cpvs_json = excluded.cpvs_json, "
-            "ccaa_json = excluded.ccaa_json, "
-            "importe_min = excluded.importe_min, "
-            "importe_max = excluded.importe_max, "
-            "updated_at = excluded.updated_at, "
-            "organization_id = excluded.organization_id, "
-            "visibility = excluded.visibility",
-            (
-                user_key,
-                json.dumps(weights) if weights is not None else None,
-                json.dumps(afinidad) if afinidad is not None else None,
-                json.dumps(cpvs) if cpvs is not None else None,
-                json.dumps(ccaas) if ccaas is not None else None,
-                importe_min,
-                importe_max,
-                now_utc_iso(),
-                organization_id,
-                visibility,
-            ),
-        )
+        existente = c.execute(
+            f"SELECT user_key FROM user_profiles WHERE {_IDENT} "
+            "ORDER BY CASE WHEN user_key = %s THEN 0 ELSE 1 END, updated_at DESC LIMIT 1",
+            (user_id, user_key, user_id, user_key),
+        ).fetchone()
+        if existente is not None:
+            c.execute(
+                "UPDATE user_profiles SET "
+                "weights_json = %s, afinidad_keywords_json = %s, cpvs_json = %s, "
+                "ccaa_json = %s, importe_min = %s, importe_max = %s, updated_at = %s, "
+                "organization_id = %s, visibility = %s, user_id = COALESCE(user_id, %s) "
+                "WHERE user_key = %s",
+                (*valores, user_id, existente[0]),
+            )
+        else:
+            c.execute(
+                "INSERT INTO user_profiles "
+                "(weights_json, afinidad_keywords_json, cpvs_json, ccaa_json, "
+                " importe_min, importe_max, updated_at, organization_id, visibility, "
+                " user_key, user_id) "
+                "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) "
+                "ON CONFLICT(user_key) DO UPDATE SET "
+                "weights_json = excluded.weights_json, "
+                "afinidad_keywords_json = excluded.afinidad_keywords_json, "
+                "cpvs_json = excluded.cpvs_json, "
+                "ccaa_json = excluded.ccaa_json, "
+                "importe_min = excluded.importe_min, "
+                "importe_max = excluded.importe_max, "
+                "updated_at = excluded.updated_at, "
+                "organization_id = excluded.organization_id, "
+                "visibility = excluded.visibility, "
+                "user_id = COALESCE(user_profiles.user_id, excluded.user_id)",
+                (*valores, user_key, user_id),
+            )
     log.info("user_profile_upserted", user_key=user_key[:8])
 
 
-def delete_user_profile(user_key: str) -> bool:
+def delete_user_profile(user_key: str, *, user_id: int | None = None) -> bool:
     """Elimina el perfil del usuario. Devuelve True si existia."""
     with connect() as c:
-        cur = c.execute("DELETE FROM user_profiles WHERE user_key = %s", (user_key,))
+        cur = c.execute(
+            f"DELETE FROM user_profiles WHERE {_IDENT}",
+            (user_id, user_key, user_id),
+        )
         return bool(cur.rowcount > 0)

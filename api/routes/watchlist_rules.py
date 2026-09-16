@@ -71,6 +71,12 @@ def _ctx_email(ctx: dict[str, Any]) -> str | None:
     return str(email) if email else None
 
 
+def _user_id(ctx: dict[str, Any]) -> int | None:
+    """Identidad interna del principal (v129): la lectura dual va por ella."""
+    raw = ctx.get("user_id")
+    return int(raw) if raw is not None else None
+
+
 class WatchlistRuleBody(BaseModel):
     """Cuerpo de creacion/edicion de una regla (sin id, con limites de tamano).
 
@@ -127,9 +133,11 @@ class WatchlistRulesResult(BaseModel):
     items: list[WatchlistRuleOut]
 
 
-def _rules_with_counts(user_key: str, organization_id: int) -> list[WatchlistRuleOut]:
+def _rules_with_counts(
+    user_key: str, organization_id: int, user_id: int | None = None
+) -> list[WatchlistRuleOut]:
     """Lista las reglas del usuario con su conteo real de matches y email de entrega."""
-    rows_raw = list_rules_rows(user_key, organization_id)
+    rows_raw = list_rules_rows(user_key, organization_id, user_id=user_id)
 
     rules = [
         WatchlistRule(
@@ -172,7 +180,7 @@ async def get_rules(
 ) -> WatchlistRulesResult:
     if organization_id is not None:
         await run_db(claim_legacy_scope, int(ctx["user_id"]), _user_key(ctx))
-    items = await run_db(_rules_with_counts, _user_key(ctx), ctx["organization_id"])
+    items = await run_db(_rules_with_counts, _user_key(ctx), ctx["organization_id"], _user_id(ctx))
     return WatchlistRulesResult(items=items)
 
 
@@ -212,7 +220,7 @@ async def post_rule(
             visibility=body.visibility,
         )
         if email is not None:
-            set_rule_email(user_key, rule_id, email)
+            set_rule_email(user_key, rule_id, email, user_id=user_id)
         payload = CreatedId(id=rule_id).model_dump(mode="json")
         store_response(idempotency_key, ambito, payload)
         return payload
@@ -230,13 +238,14 @@ async def put_rule(
 ) -> StatusOk:
     ctx = await resolve_organization_ctx(ctx, body.organization_id, write=True)
     user_key = _user_key(ctx)
+    user_id = _user_id(ctx)
     email = _ctx_email(ctx)
     organization_id = ctx["organization_id"]
 
     def _update() -> bool:
-        ok = update_rule(user_key, rule_id, body.to_rule(), organization_id)
+        ok = update_rule(user_key, rule_id, body.to_rule(), organization_id, user_id=user_id)
         if ok and email is not None:
-            set_rule_email(user_key, rule_id, email)
+            set_rule_email(user_key, rule_id, email, user_id=user_id)
         return ok
 
     ok = await run_db(_update)
@@ -250,7 +259,9 @@ async def delete_rule_route(
     rule_id: int,
     ctx: dict[str, Any] = Depends(require_organization(write=True)),
 ) -> StatusOk:
-    ok = await run_db(delete_rule, _user_key(ctx), rule_id, ctx["organization_id"])
+    ok = await run_db(
+        delete_rule, _user_key(ctx), rule_id, ctx["organization_id"], user_id=_user_id(ctx)
+    )
     if not ok:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Regla no encontrada.")
     return StatusOk(status="ok")
@@ -262,7 +273,8 @@ async def get_rule_matches(
     ctx: dict[str, Any] = Depends(require_organization()),
     limit: int = Query(default=50, ge=1, le=200),
 ) -> WatchlistRuleMatchesResult:
-    by_id = {r.id: r for r in await run_db(list_rules, _user_key(ctx), ctx["organization_id"])}
+    reglas = await run_db(list_rules, _user_key(ctx), ctx["organization_id"], user_id=_user_id(ctx))
+    by_id = {r.id: r for r in reglas}
     rule = by_id.get(rule_id)
     if rule is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Regla no encontrada.")
@@ -348,28 +360,57 @@ async def baja_alertas(
     y se reactivan desde Mi Watchlist— y por eso, cuando se conoce el sitio,
     responde con una redirección a esa pantalla en vez de con JSON.
     """
-
-    def _pausar() -> tuple[bool, int, str | None]:
-        """Verificación, pausa y destino en un solo salto al threadpool.
-
-        La verificación de la firma es HMAC (CPU) y la pausa es una escritura:
-        las dos fuera de ``run_db`` correrían en el event loop. Devuelve
-        ``(firma_valida, reglas_pausadas, destino)`` en vez de lanzar, porque
-        ``HTTPException`` pertenece al handler y no al trabajo despachado.
-        """
-        from services.app_urls import url_absoluta
-        from services.email_digest import verificar_token_de_baja
-        from services.watchlist_rules import deactivate_all_for_user
-
-        if not verificar_token_de_baja(k, t):
-            return False, 0, None
-        pausadas = deactivate_all_for_user(k)
-        return True, pausadas, url_absoluta(f"/mi-watchlist?baja={pausadas}")
-
-    valida, pausadas, destino = await run_db(_pausar)
+    valida, pausadas, destino = await run_db(_pausar_por_enlace, k, t)
     if not valida:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Enlace no válido.")
     log.info("watchlist_rules_baja", user_key=k[:8], pausadas=pausadas)
     if destino:
         return RedirectResponse(destino, status_code=status.HTTP_303_SEE_OTHER)
+    return StatusOk(status="ok")
+
+
+def _pausar_por_enlace(k: str, t: str) -> tuple[bool, int, str | None]:
+    """Verificación, pausa y destino en un solo salto al threadpool.
+
+    La verificación de la firma es HMAC (CPU) y la pausa es una escritura:
+    las dos fuera de ``run_db`` correrían en el event loop. Devuelve
+    ``(firma_valida, reglas_pausadas, destino)`` en vez de lanzar, porque
+    ``HTTPException`` pertenece al handler y no al trabajo despachado. La
+    comparten el GET (la persona que pulsa el enlace del pie) y el POST (el
+    cliente de correo que ejecuta la baja en un clic).
+    """
+    from services.app_urls import url_absoluta
+    from services.email_digest import verificar_token_de_baja
+    from services.watchlist_rules import deactivate_all_for_user
+
+    if not verificar_token_de_baja(k, t):
+        return False, 0, None
+    pausadas = deactivate_all_for_user(k)
+    return True, pausadas, url_absoluta(f"/mi-watchlist?baja={pausadas}")
+
+
+@router.post(
+    "/baja",
+    response_model=StatusOk,
+    summary="Baja en un clic desde el cliente de correo (RFC 8058)",
+    responses={403: {"description": "Firma inválida"}},
+)
+async def baja_alertas_un_clic(
+    k: str = Query(..., min_length=8, max_length=64, description="user_key firmado"),
+    t: str = Query(..., min_length=8, max_length=200, description="Firma HMAC (kid.sig)"),
+) -> StatusOk:
+    """La misma baja que el GET, para el POST que hace el cliente de correo.
+
+    Los digests salen con ``List-Unsubscribe: <esta URL>`` y
+    ``List-Unsubscribe-Post: List-Unsubscribe=One-Click``
+    (``observability/mailer.py``). Gmail, Yahoo y Outlook ejecutan esa baja
+    con un ``POST`` a la URL, cuerpo ``List-Unsubscribe=One-Click`` y sin
+    cookies ni sesión; RFC 8058 exige responder 2xx y **no** redirigir, porque
+    el cliente de correo no sigue la redirección y daría la baja por fallida.
+    Autoriza lo mismo que el GET: la firma HMAC del ``user_key``.
+    """
+    valida, pausadas, _destino = await run_db(_pausar_por_enlace, k, t)
+    if not valida:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Enlace no válido.")
+    log.info("watchlist_rules_baja_un_clic", user_key=k[:8], pausadas=pausadas)
     return StatusOk(status="ok")

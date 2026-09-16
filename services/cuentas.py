@@ -26,7 +26,7 @@ from typing import Any
 
 from db.repositories.cuentas import CuentasRepository, EtiquetasRepository
 from observability.logging import get_logger
-from services.organizations import resolve_organization
+from services.organizations import alcance_resuelto
 from shared.dto import (
     CuentaObjetivo,
     Etiqueta,
@@ -60,8 +60,8 @@ class EtiquetaLimiteError(Exception):
 
 
 def listar_cuentas(user_id: int, *, organization_id: int | None = None) -> list[CuentaObjetivo]:
-    resuelta, _ = resolve_organization(user_id, organization_id)
-    return [CuentaObjetivo.model_validate(f) for f in _cuentas.list_for_organization(resuelta)]
+    with alcance_resuelto(user_id, organization_id) as (resuelta, _):
+        return [CuentaObjetivo.model_validate(f) for f in _cuentas.list_for_organization(resuelta)]
 
 
 def seguir_organo(
@@ -72,22 +72,22 @@ def seguir_organo(
     organization_id: int | None = None,
 ) -> CuentaObjetivo:
     """Sigue un órgano como cuenta objetivo. Idempotente."""
-    resuelta, _ = resolve_organization(user_id, organization_id, write=True)
-    fila = _cuentas.follow(
-        organization_id=resuelta, organo_nombre=organo, user_id=user_id, nota=nota
-    )
-    log.info("organo_seguido", organization_id=resuelta)
-    return CuentaObjetivo.model_validate(fila)
+    with alcance_resuelto(user_id, organization_id, write=True) as (resuelta, _):
+        fila = _cuentas.follow(
+            organization_id=resuelta, organo_nombre=organo, user_id=user_id, nota=nota
+        )
+        log.info("organo_seguido", organization_id=resuelta)
+        return CuentaObjetivo.model_validate(fila)
 
 
 def dejar_de_seguir(user_id: int, cuenta_id: int, *, organization_id: int | None = None) -> bool:
-    resuelta, _ = resolve_organization(user_id, organization_id, write=True)
-    return _cuentas.unfollow(resuelta, cuenta_id)
+    with alcance_resuelto(user_id, organization_id, write=True) as (resuelta, _):
+        return _cuentas.unfollow(resuelta, cuenta_id)
 
 
 def listar_etiquetas(user_id: int, *, organization_id: int | None = None) -> list[Etiqueta]:
-    resuelta, _ = resolve_organization(user_id, organization_id)
-    return [Etiqueta.model_validate(f) for f in _etiquetas.list_for_organization(resuelta)]
+    with alcance_resuelto(user_id, organization_id) as (resuelta, _):
+        return [Etiqueta.model_validate(f) for f in _etiquetas.list_for_organization(resuelta)]
 
 
 def crear_etiqueta(
@@ -99,37 +99,38 @@ def crear_etiqueta(
     dos personas etiquetando a la vez «Q4» quieren la misma etiqueta, no un
     conflicto que una de las dos tenga que resolver.
     """
-    resuelta, _ = resolve_organization(user_id, organization_id, write=True)
+    with alcance_resuelto(user_id, organization_id, write=True) as (resuelta, _):
+        # Primero se busca, después se cuenta. Al revés —que es como estaba— una
+        # organización con el cupo lleno recibía 409 «llegaste al máximo» al pedir
+        # una etiqueta **que ya tenía**: el cupo se aplicaba a una operación que no
+        # iba a crear nada. El límite sólo gobierna las altas de verdad.
+        existente = _etiquetas.get_by_nombre(resuelta, nombre)
+        if existente is not None:
+            return Etiqueta.model_validate(existente), False
 
-    # Primero se busca, después se cuenta. Al revés —que es como estaba— una
-    # organización con el cupo lleno recibía 409 «llegaste al máximo» al pedir
-    # una etiqueta **que ya tenía**: el cupo se aplicaba a una operación que no
-    # iba a crear nada. El límite sólo gobierna las altas de verdad.
-    existente = _etiquetas.get_by_nombre(resuelta, nombre)
-    if existente is not None:
-        return Etiqueta.model_validate(existente), False
-
-    if _etiquetas.count(resuelta) >= MAX_ETIQUETAS:
-        raise EtiquetaLimiteError(
-            f"La organización ya tiene {MAX_ETIQUETAS} etiquetas, que es el máximo. "
-            "Borra alguna antes de crear otra."
+        if _etiquetas.count(resuelta) >= MAX_ETIQUETAS:
+            raise EtiquetaLimiteError(
+                f"La organización ya tiene {MAX_ETIQUETAS} etiquetas, que es el máximo. "
+                "Borra alguna antes de crear otra."
+            )
+        fila = _etiquetas.create(
+            organization_id=resuelta, nombre=nombre, color=color, user_id=user_id
         )
-    fila = _etiquetas.create(organization_id=resuelta, nombre=nombre, color=color, user_id=user_id)
-    if fila is not None:
-        return Etiqueta.model_validate(fila), True
+        if fila is not None:
+            return Etiqueta.model_validate(fila), True
 
-    # `create` sólo devuelve vacío por conflicto, así que otra petición ganó la
-    # carrera entre el `get_by_nombre` de arriba y este INSERT: la etiqueta
-    # existe y es la que el llamante quería. Tampoco aquí es un 409.
-    concurrente = _etiquetas.get_by_nombre(resuelta, nombre)
-    if concurrente is not None:
-        return Etiqueta.model_validate(concurrente), False
-    raise EtiquetaLimiteError("No se pudo crear ni recuperar la etiqueta.")
+        # `create` sólo devuelve vacío por conflicto, así que otra petición ganó la
+        # carrera entre el `get_by_nombre` de arriba y este INSERT: la etiqueta
+        # existe y es la que el llamante quería. Tampoco aquí es un 409.
+        concurrente = _etiquetas.get_by_nombre(resuelta, nombre)
+        if concurrente is not None:
+            return Etiqueta.model_validate(concurrente), False
+        raise EtiquetaLimiteError("No se pudo crear ni recuperar la etiqueta.")
 
 
 def borrar_etiqueta(user_id: int, etiqueta_id: int, *, organization_id: int | None = None) -> bool:
-    resuelta, _ = resolve_organization(user_id, organization_id, write=True)
-    return _etiquetas.delete(resuelta, etiqueta_id)
+    with alcance_resuelto(user_id, organization_id, write=True) as (resuelta, _):
+        return _etiquetas.delete(resuelta, etiqueta_id)
 
 
 def aplicar_etiqueta(
@@ -141,17 +142,17 @@ def aplicar_etiqueta(
     organization_id: int | None = None,
 ) -> bool:
     """Aplica una etiqueta. ``False`` si la etiqueta no es de la organización."""
-    resuelta, _ = resolve_organization(user_id, organization_id, write=True)
-    aplicada = _etiquetas.aplicar(
-        organization_id=resuelta,
-        etiqueta_id=etiqueta_id,
-        objeto_tipo=objeto_tipo,
-        objeto_id=objeto_id,
-        user_id=user_id,
-    )
-    if aplicada:
-        log.info("etiqueta_aplicada", objeto=objeto_tipo)
-    return aplicada
+    with alcance_resuelto(user_id, organization_id, write=True) as (resuelta, _):
+        aplicada = _etiquetas.aplicar(
+            organization_id=resuelta,
+            etiqueta_id=etiqueta_id,
+            objeto_tipo=objeto_tipo,
+            objeto_id=objeto_id,
+            user_id=user_id,
+        )
+        if aplicada:
+            log.info("etiqueta_aplicada", objeto=objeto_tipo)
+        return aplicada
 
 
 def quitar_etiqueta(
@@ -162,13 +163,13 @@ def quitar_etiqueta(
     objeto_id: str,
     organization_id: int | None = None,
 ) -> bool:
-    resuelta, _ = resolve_organization(user_id, organization_id, write=True)
-    return _etiquetas.quitar(
-        organization_id=resuelta,
-        etiqueta_id=etiqueta_id,
-        objeto_tipo=objeto_tipo,
-        objeto_id=objeto_id,
-    )
+    with alcance_resuelto(user_id, organization_id, write=True) as (resuelta, _):
+        return _etiquetas.quitar(
+            organization_id=resuelta,
+            etiqueta_id=etiqueta_id,
+            objeto_tipo=objeto_tipo,
+            objeto_id=objeto_id,
+        )
 
 
 def etiquetas_de(
@@ -179,14 +180,14 @@ def etiquetas_de(
     organization_id: int | None = None,
 ) -> dict[str, list[EtiquetaAplicada]]:
     """Las etiquetas de varios objetos, para pintar una lista de una vez."""
-    resuelta, _ = resolve_organization(user_id, organization_id)
-    crudo: dict[str, list[dict[str, Any]]] = _etiquetas.por_objeto(
-        resuelta, objeto_tipo, objeto_ids
-    )
-    return {
-        objeto: [EtiquetaAplicada.model_validate(e) for e in etiquetas]
-        for objeto, etiquetas in crudo.items()
-    }
+    with alcance_resuelto(user_id, organization_id) as (resuelta, _):
+        crudo: dict[str, list[dict[str, Any]]] = _etiquetas.por_objeto(
+            resuelta, objeto_tipo, objeto_ids
+        )
+        return {
+            objeto: [EtiquetaAplicada.model_validate(e) for e in etiquetas]
+            for objeto, etiquetas in crudo.items()
+        }
 
 
 # ── F6.4: plantillas de organización ────────────────────────────────────────
@@ -281,4 +282,5 @@ def _copiar_para_miembro(
             str(contenido.get("nombre") or "Vista del equipo"),
             json.dumps(contenido.get("criterio") or {}, ensure_ascii=False),
             organization_id,
+            user_id=user_id,
         )

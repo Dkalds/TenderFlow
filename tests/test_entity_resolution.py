@@ -82,7 +82,7 @@ def test_new_company_created_and_linked(db):
     from services.entity_resolution import resolve_unlinked_adjudicaciones
 
     setup_lic(db)
-    insert_adj(db, "ACME Consulting S.L.", nif="B12345678")
+    insert_adj(db, "ACME Consulting S.L.", nif="B12345674")
     stats = resolve_unlinked_adjudicaciones()
 
     assert stats.created == 1
@@ -93,7 +93,7 @@ def test_new_company_created_and_linked(db):
             "SELECT e.nif_canonico, e.nombre_canonico FROM adjudicaciones a "
             "JOIN empresas e ON e.empresa_id = a.empresa_id"
         ).fetchone()
-    assert nif == "B12345678"
+    assert nif == "B12345674"
     assert nombre == "ACME Consulting S.L."
 
 
@@ -103,8 +103,8 @@ def test_nif_match_links_to_existing(db):
 
     setup_lic(db, "LIC-001")
     setup_lic(db, "LIC-002")
-    insert_adj(db, "ACME Consulting S.L.", nif="B12345678", lic_id="LIC-001")
-    insert_adj(db, "ACME CONSULTING SLU", nif="b-12345678", lic_id="LIC-002")
+    insert_adj(db, "ACME Consulting S.L.", nif="B12345674", lic_id="LIC-001")
+    insert_adj(db, "ACME CONSULTING SLU", nif="b-12345674", lic_id="LIC-002")
     stats = resolve_unlinked_adjudicaciones()
 
     assert stats.created == 1
@@ -176,8 +176,8 @@ def test_nif_conflict_goes_to_review(db):
 
     setup_lic(db, "LIC-001")
     setup_lic(db, "LIC-002")
-    insert_adj(db, "Accenture S.L.", nif="B11111111", lic_id="LIC-001")
-    insert_adj(db, "ACCENTURE SA", nif="A22222222", lic_id="LIC-002")
+    insert_adj(db, "Accenture S.L.", nif="B11111119", lic_id="LIC-001")
+    insert_adj(db, "ACCENTURE SA", nif="A22222228", lic_id="LIC-002")
     stats = resolve_unlinked_adjudicaciones()
 
     assert stats.created == 1
@@ -243,7 +243,7 @@ def test_resolution_idempotent(db):
     from services.entity_resolution import resolve_unlinked_adjudicaciones
 
     setup_lic(db)
-    insert_adj(db, "ACME Consulting S.L.", nif="B12345678")
+    insert_adj(db, "ACME Consulting S.L.", nif="B12345674")
     resolve_unlinked_adjudicaciones()
     stats2 = resolve_unlinked_adjudicaciones()
 
@@ -266,8 +266,8 @@ def _make_review(db):
 
     setup_lic(db, "LIC-001")
     setup_lic(db, "LIC-002")
-    insert_adj(db, "Accenture S.L.", nif="B11111111", lic_id="LIC-001")
-    insert_adj(db, "ACCENTURE SA", nif="A22222222", lic_id="LIC-002")
+    insert_adj(db, "Accenture S.L.", nif="B11111119", lic_id="LIC-001")
+    insert_adj(db, "ACCENTURE SA", nif="A22222228", lic_id="LIC-002")
     resolve_unlinked_adjudicaciones()
     with connect() as c:
         review_id, candidato = c.execute(
@@ -373,8 +373,8 @@ def _setup_dos_fuentes(db):
     """Una adjudicación de 'placsp' y otra de 'ted', cada una en su licitación."""
     setup_lic(db, "LIC-PLACSP", fuente="placsp")
     setup_lic(db, "LIC-TED", fuente="ted")
-    insert_adj(db, "Alfa Sistemas S.A.", nif="B11111111", lic_id="LIC-PLACSP")
-    insert_adj(db, "Beta Consulting S.L.", nif="B22222222", lic_id="LIC-TED")
+    insert_adj(db, "Alfa Sistemas S.A.", nif="B11111119", lic_id="LIC-PLACSP")
+    insert_adj(db, "Beta Consulting S.L.", nif="B22222228", lic_id="LIC-TED")
 
 
 def _unlinked_nombres(db):
@@ -514,3 +514,46 @@ def test_time_budget_stops_after_the_current_batch(db):
     assert len(_unlinked_nombres(db)) == 1
     # El progreso del lote que sí corrió queda guardado para la próxima.
     assert int(get_cursor("entity_resolution_all")["last_entry_id"]) > 0
+
+
+def test_nif_con_control_incorrecto_no_casa_por_nif(db):
+    """Un CIF con la letra de control mal se resuelve por nombre, no por NIF.
+
+    Casar por un NIF erróneo uniría dos erratas distintas o crearía una
+    empresa que no existe. La adjudicación entra igual (por alias) y el
+    contador ``nif_invalido`` deja constancia para corregir el origen.
+    """
+    from services.entity_resolution import resolve_unlinked_adjudicaciones
+
+    setup_lic(db, "LIC-001")
+    setup_lic(db, "LIC-002")
+    insert_adj(db, "ACME Consulting S.L.", nif="B12345674", lic_id="LIC-001")
+    insert_adj(db, "Otra Empresa S.A.", nif="B12345678", lic_id="LIC-002")  # control mal
+    stats = resolve_unlinked_adjudicaciones()
+
+    assert stats.nif_invalido == 1
+    assert stats.created == 2
+    from db.database import connect
+
+    with connect() as c:
+        nifs = {
+            r[0]
+            for r in c.execute("SELECT nif_canonico FROM empresas ORDER BY empresa_id").fetchall()
+        }
+    # La errata no se convierte en NIF canónico de nadie.
+    assert "B12345678" not in nifs
+
+
+def test_identificador_extranjero_sigue_casando_por_nif(db):
+    """Un IVA intracomunitario no es NIF español, pero sí clave opaca estable."""
+    from services.entity_resolution import resolve_unlinked_adjudicaciones
+
+    setup_lic(db, "LIC-001")
+    setup_lic(db, "LIC-002")
+    insert_adj(db, "Nordic Systems AB", nif="SE556677889901", lic_id="LIC-001")
+    insert_adj(db, "NORDIC SYSTEMS AKTIEBOLAG", nif="SE556677889901", lic_id="LIC-002")
+    stats = resolve_unlinked_adjudicaciones()
+
+    assert stats.nif_invalido == 0
+    assert stats.created == 1
+    assert stats.linked_nif == 1

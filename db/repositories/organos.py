@@ -140,6 +140,15 @@ def encolar_revision(
         )
 
 
+def revision_pendiente_count() -> int:
+    """Tamaño de la cola de revisión humana. Se publica en `/analytics/quality`."""
+    with connect_read() as c:
+        fila = c.execute(
+            "SELECT COUNT(*) FROM organo_review_queue WHERE status = 'pending'"
+        ).fetchone()
+    return int(fila[0] or 0) if fila else 0
+
+
 def listar_pendientes(*, limit: int = 200) -> list[dict[str, Any]]:
     """Cola de revisión pendiente, la más reciente primero."""
     with connect_read() as c:

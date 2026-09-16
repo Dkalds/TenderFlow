@@ -91,8 +91,9 @@ def build_question() -> str:
     El vocabulario viaja aquí y no en el system prompt para que
     ``llm/prompts.py`` siga sin depender de ``config``. Cabe de sobra en el
     tope interno de plantilla (``MAX_INTERNAL_QUESTION_LEN``) que
-    ``llm.client._validate_request`` aplica al modo ``clasificacion``: son 11
-    etiquetas cortas.
+    ``llm.client._validate_request`` aplica al modo ``clasificacion``: son unas
+    pocas decenas de etiquetas cortas (fabricantes y categorías de
+    ``config/keywords.py``), no un vocabulario libre.
     """
     return _QUESTION_TEMPLATE.format(labels=", ".join(TECH_LABELS))
 

@@ -286,3 +286,68 @@ def url_de_baja_alertas(user_key: str, base_url: str | None) -> str | None:
     from urllib.parse import urlencode
 
     return f"{base_url}/api/v1/watchlist/rules/baja?{urlencode({'k': user_key, 't': token})}"
+
+
+# ── Baja de un tipo concreto de notificación (T6) ───────────────────────────
+#
+# La baja de arriba pausa **todas las reglas de watchlist**: es la del digest,
+# y para el digest es correcta. Para cualquier otro correo no lo es, y el
+# informe semanal se entregó apuntando ahí. Una persona que pulsaba «dejar de
+# recibir este informe» —o cuyo Gmail lo hacía por ella, que RFC 8058 es un
+# POST automático— perdía todas sus alertas de licitaciones y **seguía**
+# recibiendo el informe, porque su opt-out vive en `notification_preferences`.
+#
+# Esto es la baja que sí corresponde: apaga el canal `email` de un tipo
+# concreto y no toca nada más.
+
+#: Prefijo propio: un token de esta baja no puede valer para la de watchlist
+#: ni al revés, aunque las dos firmen con la misma clave.
+_PREFIJO_BAJA_TIPO = b"baja-notificacion:"
+
+
+def _mensaje_baja_tipo(user_id: int, tipo: str) -> bytes:
+    return _PREFIJO_BAJA_TIPO + f"{int(user_id)}:{tipo}".encode()
+
+
+def token_de_baja_de_tipo(user_id: int, tipo: str) -> str | None:
+    """Firma ``(user_id, tipo)``, o ``None`` si no hay claves.
+
+    Firma el ``user_id`` y no la identidad heredada: es lo que recibe
+    ``notification_preferences.guardar`` y lo que D18/T4 deja en pie.
+    """
+    try:
+        from shared.signing import sign
+
+        return sign(_mensaje_baja_tipo(user_id, tipo))
+    except Exception:
+        log.warning("baja_tipo_token_failed", tipo=tipo, exc_info=True)
+        return None
+
+
+def verificar_token_de_baja_de_tipo(user_id: int, tipo: str, token: str) -> bool:
+    try:
+        from shared.signing import verify
+
+        return verify(_mensaje_baja_tipo(user_id, tipo), token)
+    except Exception:
+        log.warning("baja_tipo_verificacion_failed", tipo=tipo, exc_info=True)
+        return False
+
+
+def url_de_baja_de_tipo(user_id: int | None, tipo: str, base_url: str | None) -> str | None:
+    """Enlace absoluto que apaga el correo de ``tipo`` para esa persona.
+
+    ``None`` cuando no hay a quién apagárselo: un destinatario que no es cuenta
+    de la aplicación —una lista de distribución, el buzón de dirección— no
+    tiene preferencias, y ofrecerle un enlace de baja que no hace nada es peor
+    que no ofrecerle ninguno.
+    """
+    if user_id is None or not base_url:
+        return None
+    token = token_de_baja_de_tipo(user_id, tipo)
+    if token is None:
+        return None
+    from urllib.parse import urlencode
+
+    consulta = urlencode({"u": int(user_id), "tipo": tipo, "t": token})
+    return f"{base_url}/api/v1/notifications/baja?{consulta}"

@@ -5,7 +5,11 @@ del sistema (e.g. ``watchlist_match``, ``daily_summary``).
 
 Cuando se dispara un evento, :func:`trigger_event` envía un POST firmado con
 HMAC-SHA256 al ``url`` registrado. La firma viaja en la cabecera
-``X-Webhook-Signature`` para que el receptor pueda validar autenticidad.
+``X-Webhook-Signature`` para que el receptor pueda validar autenticidad, y
+desde la Ola 1 · Webhooks también en ``X-Webhook-Signature-V2``, que liga el
+sello ``X-Webhook-Timestamp`` al cuerpo para que el receptor pueda rechazar un
+replay (receta en ``docs/integraciones/webhooks.md``; helpers en
+``shared/crypto.py``).
 
 Las entregas son **best-effort**: timeout de 5s, reintentos limitados,
 ``failure_count`` se incrementa para detectar webhooks moribundos.
@@ -22,22 +26,28 @@ registro del webhook y cada entrega real.
 
 from __future__ import annotations
 
-import hashlib
-import hmac
 import json
 import uuid
 from typing import Any, cast
 
 import requests
 
-from db.database import connect, now_utc_iso
+from db.database import connect, now_utc, now_utc_iso
 from db.repositories.webhooks import (
     crear_entrega,
     marcar_para_reintento,
     marcar_webhook_tras_intento,
 )
 from observability.logging import get_logger
-from shared.crypto import DERIVED_SECRET_SENTINEL, derive_webhook_secret, is_derived_secret
+from shared.crypto import (
+    DERIVED_SECRET_SENTINEL,
+    cabeceras_de_firma,
+    derive_webhook_secret,
+    firmar_webhook,
+    is_derived_secret,
+    resolve_derived_secret,
+    segundos_unix,
+)
 from shared.outbound_http import pinned_https_request
 from shared.ssrf import validate_outbound_url
 
@@ -83,13 +93,13 @@ def _resolve_secret(webhook_id: int, stored_secret: str) -> str:
         if not master_key:
             log.error("webhook_no_master_key", webhook_id=webhook_id)
             return stored_secret
-        return derive_webhook_secret(master_key, webhook_id)
+        return resolve_derived_secret(master_key, webhook_id, stored_secret)
     return stored_secret
 
 
 def _sign(secret: str, payload: bytes) -> str:
-    """Firma HMAC-SHA256 en hex del payload con el secret del webhook."""
-    return hmac.new(secret.encode(), payload, hashlib.sha256).hexdigest()
+    """Firma HMAC-SHA256 en hex del payload con el secret del webhook (v1)."""
+    return firmar_webhook(secret, payload)
 
 
 def create_webhook(*, name: str, url: str, event_types: list[str]) -> tuple[int, str]:
@@ -151,22 +161,63 @@ def delete_webhook(webhook_id: int) -> bool:
         return cast(bool, cur.rowcount > 0)
 
 
-def _cabeceras(*, secret: str, body: bytes, event_type: str, delivery_uid: str) -> dict[str, str]:
-    """Cabeceras de una entrega. La firma se calcula **sobre el cuerpo dado**.
+def _cabeceras(
+    *, secret: str, body: bytes, event_type: str, delivery_uid: str, timestamp: int
+) -> dict[str, str]:
+    """Cabeceras de una entrega. Las firmas se calculan **sobre el cuerpo dado**.
 
     De ahí que el cuerpo se guarde en ``webhook_deliveries.payload_json`` en vez
     de reconstruirse en el reintento: un ``timestamp`` regenerado cambiaría el
     JSON, y con él la firma, así que el receptor vería dos mensajes distintos
     donde hubo un evento. ``X-Webhook-Delivery`` es estable entre intentos por
     el mismo motivo — es lo que permite al receptor deduplicar.
+
+    ``timestamp`` (segundos Unix) es el sello de la **entrega original** y va
+    en ``X-Webhook-Timestamp`` y dentro de ``X-Webhook-Signature-V2``. Un
+    reintento lo reutiliza —lo lee de ``webhook_deliveries.created_at``— por
+    la misma razón que reutiliza el cuerpo: regenerarlo daría una firma v2
+    distinta para el mismo evento, y además dejaría fuera de la ventana de
+    replay del receptor a cualquier reintento tardío, que es justo el caso que
+    el reintento existe para cubrir.
     """
     return {
         "Content-Type": "application/json",
-        "X-Webhook-Signature": f"sha256={_sign(secret, body)}",
+        **cabeceras_de_firma(secret=secret, body=body, timestamp=timestamp),
         "X-Webhook-Event": event_type,
         "X-Webhook-Delivery": delivery_uid,
         "User-Agent": "licitaciones-sap-webhook/1.0",
     }
+
+
+def _timestamp_de_entrega(entrega: dict[str, Any]) -> int:
+    """Sello (segundos Unix) de la entrega original, para el reintento.
+
+    Primero ``created_at`` de la fila, que ``trigger_event`` escribe con el
+    mismo instante que firmó. Si la fila no lo trae (un llamante antiguo, una
+    fila anterior a esta cabecera) se toma el ``timestamp`` del cuerpo JSON,
+    que es el mismo instante en el formato ``json``. Solo si tampoco hay eso se
+    sella con «ahora»: un sello inventado es peor que uno fresco, pero uno
+    fresco sigue siendo mejor que no reenviar.
+    """
+    for candidato in (entrega.get("created_at"), _timestamp_del_cuerpo(entrega)):
+        if not candidato:
+            continue
+        try:
+            return segundos_unix(str(candidato))
+        except ValueError:
+            continue
+    return segundos_unix(now_utc())
+
+
+def _timestamp_del_cuerpo(entrega: dict[str, Any]) -> str | None:
+    """``timestamp`` del cuerpo guardado, si es el formato ``json`` histórico."""
+    try:
+        cuerpo = json.loads(str(entrega.get("payload_json") or ""))
+    except ValueError:
+        return None
+    if isinstance(cuerpo, dict) and isinstance(cuerpo.get("timestamp"), str):
+        return cast(str, cuerpo["timestamp"])
+    return None
 
 
 def _intentar_entrega(
@@ -219,8 +270,13 @@ def trigger_event(event_type: str, payload: dict[str, Any]) -> int:
     """
     from services.webhook_retry import decidir
 
+    # Un solo instante para el cuerpo, la cabecera y la fila de la entrega:
+    # es lo que permite al reintento volver a sellar exactamente lo mismo.
+    momento = now_utc()
+    momento_iso = momento.isoformat()
+    timestamp = segundos_unix(momento)
     body = json.dumps(
-        {"event": event_type, "data": payload, "timestamp": now_utc_iso()},
+        {"event": event_type, "data": payload, "timestamp": momento_iso},
         ensure_ascii=False,
         separators=(",", ":"),
     ).encode("utf-8")
@@ -254,7 +310,11 @@ def trigger_event(event_type: str, payload: dict[str, Any]) -> int:
         delivery_uid = uuid.uuid4().hex
         secret = _resolve_secret(wid, stored_secret)
         headers = _cabeceras(
-            secret=secret, body=body, event_type=event_type, delivery_uid=delivery_uid
+            secret=secret,
+            body=body,
+            event_type=event_type,
+            delivery_uid=delivery_uid,
+            timestamp=timestamp,
         )
         status_code, error = _intentar_entrega(
             url=url, headers=headers, body=body, allowed_hosts=allowed_hosts
@@ -276,6 +336,7 @@ def trigger_event(event_type: str, payload: dict[str, Any]) -> int:
                 decision.proximo_intento.isoformat() if decision.proximo_intento else None
             ),
             error=error,
+            created_at=momento_iso,
         )
         _aplicar_decision(webhook_id=wid, status_code=status_code, exito=ok, decision=decision)
         if ok:
@@ -287,10 +348,10 @@ def trigger_event(event_type: str, payload: dict[str, Any]) -> int:
 def reenviar(entrega: dict[str, Any]) -> bool:
     """Reintenta una entrega pendiente. Devuelve si esta vez salió.
 
-    La usa ``scheduler.jobs.webhook_reintentos``. El cuerpo y el identificador
-    son los de la entrega original —no se regeneran—, así que el receptor ve el
-    mismo mensaje con la misma firma y puede deduplicar por
-    ``X-Webhook-Delivery``.
+    La usa ``scheduler.jobs.webhook_reintentos``. El cuerpo, el identificador y
+    el sello son los de la entrega original —no se regeneran—, así que el
+    receptor ve el mismo mensaje con las mismas firmas (v1 y v2) y puede
+    deduplicar por ``X-Webhook-Delivery``.
     """
     from services.webhook_retry import decidir
 
@@ -322,6 +383,7 @@ def reenviar(entrega: dict[str, Any]) -> bool:
         body=body,
         event_type=cast(str, entrega["event_type"]),
         delivery_uid=cast(str, entrega["delivery_uid"]),
+        timestamp=_timestamp_de_entrega(entrega),
     )
     status_code, error = _intentar_entrega(
         url=url, headers=headers, body=body, allowed_hosts=allowed_hosts

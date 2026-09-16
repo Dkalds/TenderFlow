@@ -347,7 +347,7 @@ directamente.
 
 | Mecanismo | Descripción |
 |-----------|-------------|
-| Password | Comparación con `hmac.compare_digest`. Rate limiting progresivo (bloqueo `2^n` segundos tras 3 intentos). Timeout de sesión 8h |
+| Password | Comparación con `hmac.compare_digest`. Rate limiting progresivo (bloqueo `2^n` segundos tras 3 intentos). Sesión deslizante: caduca tras 24 h sin actividad (`SESSION_IDLE_HOURS`, cada petición la renueva) con techo absoluto de 30 días desde el login (`SESSION_ABSOLUTE_DAYS`); «recordar este equipo» alarga la ventana de inactividad (`SESSION_REMEMBER_DAYS`) sin mover el techo |
 | Google OAuth | HMAC-SHA256 state con nonce + timestamp. Clave de firma independiente (`SIGNING_KEY`) del client secret |
 | TOTP (2FA) | Secretos cifrados con Fernet (`TOTP_ENCRYPTION_KEY`), obligatorio en `ENV=prod` |
 | Recuperación local | Token aleatorio de un uso; sólo se persiste SHA-256, caduca en 30 min y revoca todas las sesiones al cambiar la contraseña |
@@ -379,12 +379,36 @@ Matriz completa (qué rotar, cuándo, quién y dónde) en
 
 ## Personalizar keywords
 
-Las keywords para cada tecnología están en `config/keywords.py`:
+El diccionario vigente vive en la tabla `tecnologias_keywords` y se edita desde
+`/ops` sin desplegar; `config/keywords.py` es la **semilla** (lo que se vuelca
+cuando la tabla está vacía y el respaldo si la BD no responde):
 
 - `SAP_KEYWORDS` — módulos, suite cloud, infraestructura SAP
-- `TECHNOLOGY_KEYWORDS` — SAP, Salesforce, Oracle, Microsoft, ServiceNow, Workday, IBM, OpenText, Unit4, Meta4, Sopra, Sage, Infor
+- `TECHNOLOGY_KEYWORDS` — un label → lista de keywords, de dos tipos:
+  - **Fabricantes**: SAP, Salesforce, Oracle, Microsoft, ServiceNow, Workday,
+    IBM, OpenText, Unit4, Meta4, Sopra, Sage, Infor. Nombran productos de un
+    vendor.
+  - **Categorías** (desde 2026-09-14): ERP, CRM, CLOUD_INFRA, CIBERSEGURIDAD,
+    DATOS_IA, DESARROLLO, GIS, SANIDAD_DIGITAL, ADMIN_ELECTRONICA. Nombran qué
+    se compra sin decir de quién, siempre dentro de TI.
+- `TECH_CATEGORIAS` — etiqueta legible de cada label (UI y analítica) y
+  `TECH_LABEL_TIPO` — si es `fabricante` o `categoria`.
 
-Para añadir una tecnología nueva, añade una entrada al dict `TECHNOLOGY_KEYWORDS`.
+Las categorías llevan el vocabulario en **castellano, catalán, euskera y
+gallego** cuando la forma difiere («desarrollo de software»,
+«desenvolupament de programari», «software garapena», «desenvolvemento de
+software»): la PSCP, Euskadi y Galicia publican en sus lenguas y un diccionario
+solo en castellano no los veía. Los términos son sintagmas, no palabras sueltas
+(«datos» o «software» a secas casarían con todo); los acrónimos cortos (`erp`,
+`gis`) valen porque el filtro compila con límites de palabra.
+
+Para añadir un label nuevo, añade la entrada a `TECHNOLOGY_KEYWORDS` **y** a
+`TECH_CATEGORIAS` y `TECH_LABEL_TIPO` (el módulo falla al importar si los tres
+no coinciden), y resiembra (`POST /api/v1/tecnologias/keywords/sembrar` o desde
+`/ops`). Cualquier cambio de la semilla cambia `filter_version` (hash del
+contenido) y corta las series analíticas en esa fecha, por diseño (ADR-014).
+Lista completa con el motivo de cada label en
+[docs/taxonomia-tecnologica.md](docs/taxonomia-tecnologica.md).
 
 ---
 

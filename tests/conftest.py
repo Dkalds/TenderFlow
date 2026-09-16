@@ -618,6 +618,64 @@ def api_key(api_db):
     return create_api_key("test-key", scopes="*")
 
 
+@pytest.fixture(autouse=True)
+def _la_app_es_siempre_la_misma():
+    """Guardarraíl: nadie puede dejar un ``api.app`` nuevo en ``sys.modules``.
+
+    ``api/app.py`` crea el objeto ``app`` al importarse, y una veintena de
+    ficheros de test hacen ``from api.app import app`` **en la colección**. Si
+    un test recarga el módulo y deja el nuevo puesto, a partir de ahí conviven
+    dos objetos ``app``: el que aquellos capturaron y el que resuelve el
+    fixture ``client``. Sus ``dependency_overrides`` son diccionarios
+    distintos, así que un test instala su sustitución de ``require_any_auth``
+    en un ``app`` que ya no responde y su petición sale con **401**.
+
+    Pasó de verdad: ``tests/test_unit_dockerfile_api.py`` descargaba ``api.app``
+    para medir qué arrastra su import y no reponía el original.
+    ``test_webhooks_rotate_secret.py`` fallaba dos tests por tirada con
+    ``-n 4``, nunca los mismos, y pasaba en solitario y con ``-p no:randomly``.
+    Costó tres tiradas completas y un ``print(id(app))`` averiguarlo, porque el
+    síntoma —un 401— señala a la autenticación y el fallo estaba en
+    ``sys.modules``.
+
+    Este fixture lo convierte en un fallo con nombre y en el test que lo causa,
+    no en un 401 tres ficheros más allá. Compara identidades, así que no cuesta
+    nada.
+    """
+    import sys
+
+    def _vista() -> tuple[int, int] | None:
+        """``(id del app en sys.modules, id del app vía atributo del paquete)``.
+
+        Se miran las dos porque discrepan de formas distintas: ``from api.app
+        import app`` resuelve por ``sys.modules`` y ``import api.app as m``
+        por el atributo del paquete. Reponer sólo una deja el fallo vivo y más
+        difícil de ver.
+
+        ``None`` si ``api.app`` no está importado: este fixture es autouse y no
+        va a forzar el import de la API en un test de scraper que no la toca.
+        """
+        modulo = sys.modules.get("api.app")
+        paquete = sys.modules.get("api")
+        if modulo is None:
+            return None
+        por_atributo = getattr(paquete, "app", modulo) if paquete is not None else modulo
+        return id(modulo.app), id(getattr(por_atributo, "app", None))
+
+    antes = _vista()
+    yield
+    despues = _vista()
+
+    assert antes is None or despues == antes, (
+        "Este test dejó un `api.app` recargado en `sys.modules`. El resto de la "
+        "suite tiene referencias al objeto `app` anterior y sus "
+        "`dependency_overrides` dejan de aplicarse (401 inexplicables en otros "
+        "ficheros). Si hace falta recargarlo, hay que reponer el módulo "
+        "original al salir — ver `_api_app_descargada` en "
+        "tests/test_unit_dockerfile_api.py."
+    )
+
+
 @pytest.fixture()
 def client(api_db):
     """TestClient de FastAPI con DB temporal (raise_server_exceptions=True)."""

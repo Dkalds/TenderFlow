@@ -41,6 +41,8 @@ def store_pending_digest(
     licitacion_id: str,
     frequency: str,
     matched_at: str,
+    *,
+    user_id: int | None = None,
 ) -> bool:
     """Persiste una coincidencia en ``pending_digests``. Devuelve ``True`` si tuvo éxito."""
     return _repo.store_pending_digest(
@@ -50,6 +52,7 @@ def store_pending_digest(
         licitacion_id=licitacion_id,
         frequency=frequency,
         matched_at=matched_at,
+        user_id=user_id,
     )
 
 
@@ -71,9 +74,9 @@ def add_entry(entry: WatchlistEntry) -> None:
     _add_entry(entry)
 
 
-def remove_entry(entry_id: int, user_key: str) -> bool:
+def remove_entry(entry_id: int, user_key: str, *, user_id: int | None = None) -> bool:
     """Remove a watchlist entry by ID, scoped to its owner."""
-    return _remove_entry(entry_id, user_key)
+    return _remove_entry(entry_id, user_key, user_id=user_id)
 
 
 def list_entries(
@@ -86,9 +89,11 @@ def list_entries(
     return _list_entries(user_key, user_id=user_id, organization_id=organization_id)
 
 
-def update_frequency(entry_id: int, frequency: str, user_key: str) -> bool:
+def update_frequency(
+    entry_id: int, frequency: str, user_key: str, *, user_id: int | None = None
+) -> bool:
     """Update notification frequency for a watchlist entry, scoped to its owner."""
-    return _update_frequency(entry_id, frequency, user_key)
+    return _update_frequency(entry_id, frequency, user_key, user_id=user_id)
 
 
 def generate_atom_feed(user_key: str, limit: int = 50) -> str:

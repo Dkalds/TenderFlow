@@ -6,6 +6,8 @@ Reutilizable desde scraper, API REST y otros servicios.
 Las funciones públicas son:
     normalize_company(name)  →  str | None
     normalize_nif(nif)       →  str | None
+    clasificar_nif(nif)      →  "dni" | "nie" | "cif" | "invalido"
+    nif_valido(nif)          →  bool
     parse_ute_members(name)  →  list[str]
     fold_text(text)          →  str
 """
@@ -14,6 +16,7 @@ from __future__ import annotations
 
 import re
 import unicodedata
+from typing import Literal
 
 # Sufijos societarios (España + frecuentes UE) — se eliminan al final
 _LEGAL_SUFFIXES = [
@@ -94,11 +97,112 @@ def normalize_company(name: str | None) -> str | None:
 
 
 def normalize_nif(nif: str | None) -> str | None:
-    """Normaliza un NIF/CIF: quita espacios, guiones, mayúsculas."""
+    """Normaliza un NIF/CIF: quita espacios, guiones, mayúsculas.
+
+    Solo normaliza, no valida: TED trae identificadores de empresas de toda la
+    UE (IVA intracomunitario, registros mercantiles extranjeros) que no son
+    NIF españoles y que hay que conservar tal cual. Quien necesite saber si el
+    valor es un NIF español válido usa :func:`nif_valido` o
+    :func:`clasificar_nif`.
+    """
     if not nif or not isinstance(nif, str):
         return None
     s = re.sub(r"[\s\-\.]", "", nif).upper()
     return s or None
+
+
+# ── Validación de NIF español (DNI, NIE, CIF) ────────────────────────────
+#
+# Hasta 2026-09-14 no existía: cualquier cadena pasaba por «NIF canónico» y el
+# maestro de empresas, la ingesta por NIF vigilado, los NIF de la organización y
+# el cierre de oportunidades por adjudicación descansaban sobre una clave que
+# nadie comprobaba. Una letra de control mal tecleada no fallaba: creaba una
+# empresa nueva o vigilaba un NIF que ninguna adjudicación va a traer.
+#
+# Las tres reglas son las del Ministerio del Interior (DNI/NIE) y la Orden
+# EHA/451/2008 (CIF). No se inventa ninguna: se implementan y se prueban con
+# valores calculados.
+
+#: ``invalido`` es un valor con FORMA española y letra de control incorrecta.
+#: ``extranjero`` no encaja en ninguna forma española (IVA intracomunitario,
+#: registros mercantiles de otros países que trae TED): no es un NIF válido,
+#: pero tampoco es un error de tecleo, y el maestro de empresas lo conserva
+#: como identificador opaco para poder casar dos adjudicaciones del mismo
+#: licitador extranjero.
+TipoNif = Literal["dni", "nie", "cif", "invalido", "extranjero"]
+
+# La tabla oficial de letras de control del DNI, fijada por norma y pública.
+# detect-secrets la ve como base64 de alta entropía.
+_LETRAS_DNI = "TRWAGMYFPDXBNJZSQVHLCKE"  # pragma: allowlist secret
+_LETRAS_CIF = "JABCDEFGHI"
+_DNI_RE = re.compile(r"^(\d{8})([A-Z])$")
+_NIE_RE = re.compile(r"^([XYZ])(\d{7})([A-Z])$")
+_CIF_RE = re.compile(r"^([ABCDEFGHJNPQRSUVW])(\d{7})([0-9A-J])$")
+#: Letra de organización cuyo control es obligatoriamente una LETRA.
+_CIF_CONTROL_LETRA = frozenset("KPQSNW")
+#: Letra de organización cuyo control es obligatoriamente un DÍGITO.
+_CIF_CONTROL_DIGITO = frozenset("ABEH")
+
+
+def _control_cif(digitos: str) -> int:
+    """Dígito de control de un CIF a partir de sus siete dígitos centrales.
+
+    Suma de los dígitos en posición par (2.ª, 4.ª, 6.ª) más la suma de las
+    cifras del doble de los dígitos en posición impar; el control es lo que
+    falta para la siguiente decena (10 → 0).
+    """
+    pares = sum(int(d) for d in digitos[1::2])
+    impares = 0
+    for d in digitos[0::2]:
+        doble = int(d) * 2
+        impares += doble // 10 + doble % 10
+    return (10 - (pares + impares) % 10) % 10
+
+
+def clasificar_nif(nif: str | None) -> TipoNif:
+    """Clasifica un identificador como DNI, NIE, CIF, inválido o extranjero.
+
+    Normaliza antes de mirar (espacios, guiones, minúsculas no cuentan). Un
+    valor vacío es ``invalido``: no hay nada que clasificar.
+    """
+    s = normalize_nif(nif)
+    if s is None:
+        return "invalido"
+    if (m := _DNI_RE.match(s)) is not None:
+        numero, letra = m.groups()
+        return "dni" if _LETRAS_DNI[int(numero) % 23] == letra else "invalido"
+    if (m := _NIE_RE.match(s)) is not None:
+        prefijo, numero, letra = m.groups()
+        base = int(str("XYZ".index(prefijo)) + numero)
+        return "nie" if _LETRAS_DNI[base % 23] == letra else "invalido"
+    if (m := _CIF_RE.match(s)) is not None:
+        organizacion, digitos, control = m.groups()
+        esperado = _control_cif(digitos)
+        control_valido: bool
+        if organizacion in _CIF_CONTROL_LETRA:
+            control_valido = control == _LETRAS_CIF[esperado]
+        elif organizacion in _CIF_CONTROL_DIGITO:
+            control_valido = control == str(esperado)
+        else:
+            control_valido = control in {str(esperado), _LETRAS_CIF[esperado]}
+        return "cif" if control_valido else "invalido"
+    return "extranjero"
+
+
+def nif_valido(nif: str | None) -> bool:
+    """``True`` si el valor es un DNI, NIE o CIF español con control correcto."""
+    return clasificar_nif(nif) in {"dni", "nie", "cif"}
+
+
+def nif_espanol_malformado(nif: str | None) -> bool:
+    """``True`` si tiene forma española y la letra de control no cuadra.
+
+    Es la pregunta que hace la resolución de entidades: un identificador
+    extranjero se conserva como clave opaca, pero un CIF con la letra mal no
+    puede servir para casar adjudicaciones, porque casaría un error de tecleo
+    con otro error de tecleo o crearía una empresa que no existe.
+    """
+    return clasificar_nif(nif) == "invalido" and normalize_nif(nif) is not None
 
 
 # ── UTE member extraction ────────────────────────────────────────────────

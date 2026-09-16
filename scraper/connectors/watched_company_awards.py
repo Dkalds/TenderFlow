@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING, Any
 
 from observability import get_logger
 from scraper.connectors.base import ParsedTender, RawNotice
-from services.normalization import normalize_nif
+from services.normalization import nif_espanol_malformado, normalize_nif
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator
@@ -34,9 +34,17 @@ class PlacspWatchedCompanyAwardsConnector:
 
     def __init__(self, watched_nifs: Iterable[str]) -> None:
         self._source_id = SOURCE_ID
-        self._watched_nifs = frozenset(
+        normalizados = [
             normalized for nif in watched_nifs if (normalized := normalize_nif(nif)) is not None
-        )
+        ]
+        # Un NIF vigilado con la letra de control mal nunca va a casar con una
+        # adjudicación real: se descarta y se dice, en vez de vigilar en
+        # silencio algo que no existe (2026-09-14). Los identificadores
+        # extranjeros se conservan: TED los publica tal cual.
+        invalidos = sorted({nif for nif in normalizados if nif_espanol_malformado(nif)})
+        if invalidos:
+            log.warning("watched_company_awards_nif_invalido", nifs=invalidos)
+        self._watched_nifs = frozenset(nif for nif in normalizados if nif not in invalidos)
         self._meta: dict[str, Any] = {}
         self._last_seen_updated: str | None = None
 

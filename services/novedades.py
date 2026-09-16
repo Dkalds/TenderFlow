@@ -115,8 +115,12 @@ def desde_ultima_visita(
     last_seen: str | None,
     organization_id: int | None = None,
     limit: int = 40,
+    user_id: int | None = None,
 ) -> NovedadesDesdeUltimaVisita:
     """El diff personal desde ``last_seen``.
+
+    ``user_id`` (v129) hace dual la lectura de los favoritos: sin él, lo
+    seguido bajo la clave de un correo anterior no generaría novedades.
 
     Sin ``last_seen`` —primera visita, o navegador nuevo— se usa la ventana
     máxima. No se devuelve vacío: alguien que entra por primera vez desde otro
@@ -145,7 +149,9 @@ def desde_ultima_visita(
     items: list[Novedad] = []
 
     try:
-        for fila in _repo.cambios_en_seguidos(user_key, desde_iso=desde_iso, limit=limit):
+        for fila in _repo.cambios_en_seguidos(
+            user_key, desde_iso=desde_iso, limit=limit, user_id=user_id
+        ):
             aviso = clasificar_cambio(
                 _snapshot(fila.get("snapshot_json")),
                 {
@@ -160,7 +166,9 @@ def desde_ultima_visita(
         log.warning("novedades_cambios_error", exc_info=True)
 
     try:
-        for fila in _repo.documentos_nuevos_en_seguidos(user_key, desde_iso=desde_iso, limit=limit):
+        for fila in _repo.documentos_nuevos_en_seguidos(
+            user_key, desde_iso=desde_iso, limit=limit, user_id=user_id
+        ):
             items.append(
                 _a_novedad(
                     aviso_documento_nuevo(fila.get("tipo")),
@@ -172,7 +180,7 @@ def desde_ultima_visita(
         log.warning("novedades_documentos_error", exc_info=True)
 
     try:
-        for fila in _repo.recursos_en_seguidos(user_key, desde_iso=desde_iso):
+        for fila in _repo.recursos_en_seguidos(user_key, desde_iso=desde_iso, user_id=user_id):
             items.append(
                 _a_novedad(
                     aviso_recurso(fila.get("sentido")),

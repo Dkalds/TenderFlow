@@ -541,7 +541,9 @@ async def get_batallas(
 async def get_watchlist(
     ctx: dict[str, Any] = Depends(require_organization()),
 ) -> WatchlistEmpresasResult:
-    items = await run_db(list_entries, _user_key(ctx), ctx["organization_id"])
+    items = await run_db(
+        list_entries, _user_key(ctx), ctx["organization_id"], user_id=int(ctx["user_id"])
+    )
     return WatchlistEmpresasResult(items=[WatchlistEmpresaItem(**item) for item in items])
 
 
@@ -567,6 +569,7 @@ async def post_watchlist(
     )
     entry = WatchlistEmpresaEntry(
         user_key=_user_key(ctx),
+        user_id=int(ctx["user_id"]),
         empresa_id=body.empresa_id,
         email=body.email or ctx.get("email"),
         frequency=body.frequency,
@@ -606,7 +609,13 @@ async def delete_watchlist(
     empresa_id: int,
     ctx: dict[str, Any] = Depends(require_organization(write=True)),
 ) -> WatchlistEmpresaStatus:
-    removed = await run_db(remove_entry, _user_key(ctx), empresa_id, ctx["organization_id"])
+    removed = await run_db(
+        remove_entry,
+        _user_key(ctx),
+        empresa_id,
+        ctx["organization_id"],
+        user_id=int(ctx["user_id"]),
+    )
     if not removed:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

@@ -424,3 +424,48 @@ ventana de ingesta; (3) el resto de mitigaciones, en
   `observability/alerts.py` o su variable de entorno; para una del plano B, su
   regla en `observability/alert_rules.yml` (o un silencio temporal en el
   Alertmanager, que el disco conserva entre redeploys).
+
+---
+
+## 8. Receptor de guardia: que una `critical` despierte a alguien (2026-09-14)
+
+Hasta hoy el único receptor con destinatario real era el correo (§5). Un
+correo a las tres de la mañana no despierta a nadie, y el SLO de
+disponibilidad no se puede firmar sobre un buzón. El receptor `webhook` de
+`observability/alertmanager.yml` ya existe y recibe las `critical` y el
+`Watchdog`: lo único que falta es apuntarlo a un servicio de guardia, y eso
+es una variable de entorno, no código.
+
+**Qué poner en `ALERTMANAGER_WEBHOOK_URL` (servicio `tenderflow-alertmanager`
+en Render):**
+
+| Servicio | Integración que acepta el webhook de Alertmanager tal cual | Plan gratuito |
+|---|---|---|
+| PagerDuty | «Prometheus» (Events API v2 con parser de Alertmanager) → URL de integración | sí, hasta 5 usuarios |
+| Opsgenie | «Prometheus» → `https://api.opsgenie.com/v1/json/prometheus?apiKey=…` | sí, hasta 5 usuarios |
+| Better Stack (Uptime) | «Alertmanager» → URL de la integración | sí, acotado |
+| healthchecks.io / Cronitor | solo para el `Watchdog` (dead-man's-switch) | sí |
+
+Los tres primeros escalan por teléfono y SMS y tienen rotación de guardia;
+el último solo detecta que el `Watchdog` **dejó** de llegar, que es la otra
+mitad del problema (§3).
+
+**Pasos (acción humana, gate §6 por tocar secretos):**
+
+```
+[ ] 1. Crear la integración en el servicio elegido y copiar su URL.
+[ ] 2. Render → tenderflow-alertmanager → Environment → ALERTMANAGER_WEBHOOK_URL.
+[ ] 3. Redesplegar el servicio (la config se expande con envsubst al arrancar).
+[ ] 4. Comprobar que el Watchdog llega al servicio cada minuto (§3) y que una
+       critical de prueba abre un incidente: bajar temporalmente un umbral en
+       una rama, esperar el aviso, revertir.
+[ ] 5. Anotar aquí fecha, servicio y quién está en la rotación.
+```
+
+Mientras esta casilla esté vacía, `docs/sli-slo.md` no puede restituir el SLO
+de disponibilidad: un objetivo sin nadie que se entere de que se incumple no
+es un objetivo.
+
+| Fecha | Servicio | Rotación | Verificado por |
+|---|---|---|---|
+| _(pendiente)_ | | | |

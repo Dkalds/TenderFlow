@@ -165,16 +165,30 @@ def merge_doc_signals(licitacion_ids: list[str] | None = None) -> dict[str, int]
     ``ml_tecnologias``/``ml_proba_max``/``ml_tech_principal`` y hace upsert
     de las filas de ``licitacion_tecnologia_score`` que la señal tocó.
 
-    Sin ``licitacion_ids``, cubre TODAS las licitaciones con señal vigente --
-    uso nightly (``scheduler/pipeline_runs.py``, tras
-    ``precompute_ml_tecnologias``, que clobberea las tres columnas resumen en
-    cada re-scrape). Con una lista, cubre solo esas -- uso incremental tras
-    puntuar un lote nuevo (``scheduler/jobs/documentos_embeddings.py``).
+    Sin ``licitacion_ids``, cubre solo las licitaciones que lo NECESITAN
+    (``list_signals_for_merge``: alguna señal sin ``merged_at``, o un resumen
+    ML a NULL o que no contiene la tecnología detectada) -- uso del paso
+    ``tech_signal_merge`` (``scheduler/pipeline_runs.py``, tras
+    ``precompute_ml_tecnologias``, que reescribe las tres columnas resumen de
+    lo que puntúa). Hasta 2026-09-14 barría TODAS las licitaciones con señal
+    cada 4 h porque ``db/upsert.py`` las nuleaba en cada re-scrape; con las
+    columnas ML en ``_LIC_COALESCE_UPDATE_FIELDS`` eso ya no pasa, y la
+    pasada acotada deja el coste proporcional a lo que cambió. Con una lista,
+    cubre exactamente esas -- uso tras puntuar un lote nuevo
+    (``scheduler/jobs/documentos_embeddings.py``, ``llm_tech_labeling``).
 
-    Idempotente y fail-open por licitación: no depende de ``merged_at`` para
-    decidir si fusiona (siempre recalcula), solo lo usa para no reemitir el
-    evento de auditoría en re-corridas. El merge nunca borra una tecnología
-    ya predicha por el modelo, solo añade lo que el pliego detectó encima.
+    Idempotente y fail-open por licitación: para una licitación seleccionada
+    no depende de ``merged_at`` para decidir si fusiona (siempre recalcula),
+    solo lo usa para no reemitir el evento de auditoría en re-corridas. El
+    merge nunca borra una tecnología ya predicha por el modelo, solo añade lo
+    que el pliego detectó encima.
+
+    Devuelve, además de lo fusionado y lo emitido, ``licitaciones_candidatas``
+    (las que entraron en el lote) y ``licitaciones_reparadas`` (las del lote
+    cuya señal ya estaba TODA estampada: en la pasada sin ids, cada una es un
+    resumen ML que perdió una señal ya fusionada y hubo que reescribir). El
+    paso de la pipeline los loguea; «cero reparaciones en siete días» se mide
+    sobre ese contador.
     El read-modify-write en sí es atómico (``merge_many_with_lock``); el
     fail-open cubre la escritura del merge y, por separado, la emisión de
     eventos -- un fallo emitiendo el evento de UNA licitación no aborta el
@@ -194,8 +208,28 @@ def merge_doc_signals(licitacion_ids: list[str] | None = None) -> dict[str, int]
     by_licitacion: dict[str, list[dict[str, Any]]] = {}
     for row in signals:
         by_licitacion.setdefault(str(row["licitacion_id"]), []).append(row)
+    # Reparación = ninguna fila de la licitación quedaba por estampar. En la
+    # pasada sin ids, la única forma de volver a salir es que el resumen ML
+    # haya perdido la señal; es el contador del backlog («cero reparaciones
+    # en siete días»), y se loguea aquí además de devolverse para que también
+    # quede rastro cuando el llamador descarta el resultado.
+    reparadas = sum(
+        1 for rows in by_licitacion.values() if all(r.get("merged_at") is not None for r in rows)
+    )
+    log.info(
+        "tech_signal_merge_candidates",
+        modo="ids" if licitacion_ids else "pendientes",
+        n_licitaciones=len(by_licitacion),
+        n_reparaciones=reparadas,
+    )
     if not by_licitacion:
-        return {"licitaciones_merged": 0, "events_emitted": 0, "errors": 0}
+        return {
+            "licitaciones_merged": 0,
+            "events_emitted": 0,
+            "errors": 0,
+            "licitaciones_candidatas": 0,
+            "licitaciones_reparadas": 0,
+        }
 
     pliego_scores_por_licitacion: dict[str, dict[str, float]] = {}
     for licitacion_id, rows in by_licitacion.items():
@@ -265,6 +299,8 @@ def merge_doc_signals(licitacion_ids: list[str] | None = None) -> dict[str, int]
         "licitaciones_merged": len(outcome.results),
         "events_emitted": events_emitted,
         "errors": len(outcome.errors),
+        "licitaciones_candidatas": len(by_licitacion),
+        "licitaciones_reparadas": reparadas,
     }
 
 

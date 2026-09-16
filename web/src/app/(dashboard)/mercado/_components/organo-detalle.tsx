@@ -17,6 +17,8 @@ import { KpiCard } from "@/components/charts/kpi-card";
 import { formatCurrency, formatNumber, formatPercent } from "@/lib/utils";
 import { X, Hash, Trophy, Clock, Users, TrendingUp } from "lucide-react";
 
+import { SeguirBoton } from "@/components/seguir-boton";
+
 import type { OrganoDetailResponse } from "../_hooks/use-organos-view";
 import { OrganoTopScored } from "./organo-top-scored";
 
@@ -41,6 +43,16 @@ export function OrganoDetalle({
     >
       <div className="flex flex-none items-start gap-2 border-b border-border/60 px-3.5 py-2.5">
         <h2 className="min-w-0 flex-1 text-[13px] font-semibold leading-tight">{organo}</h2>
+        {/* F1.5 / ADR-031 §C — seguir un órgano no existía: habría hecho falta
+            una cuarta tabla de seguimiento. Es la primera acción que declara
+            «este cliente me interesa aunque hoy no publique nada». */}
+        <SeguirBoton
+          targetType="organo"
+          targetId={organo}
+          etiqueta={`el órgano ${organo}`}
+          variante="icono"
+          className="flex-none"
+        />
         <button
           type="button"
           aria-label="Cerrar detalle del órgano"

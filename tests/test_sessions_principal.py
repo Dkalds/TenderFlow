@@ -94,15 +94,22 @@ def test_expired_session_returns_none() -> None:
 
 
 def test_idle_session_is_revoked_and_rejected() -> None:
-    """Superado el umbral de inactividad, la sesión se revoca en la misma transacción."""
+    """Superado el plazo de inactividad, la sesión se revoca en la misma transacción.
+
+    Desde las sesiones deslizantes el plazo de inactividad es ``expires_at``
+    (``última escritura + SESSION_IDLE_HOURS``), no un umbral fijo de minutos
+    sobre ``last_seen_at``: la fila se deja como la dejaría una sesión sin uso
+    durante dos días.
+    """
     from db.sessions import _hash_token, create_session, validate_session_principal
 
     token = create_session(_make_user())
-    stale = (datetime.now(UTC) - timedelta(hours=2)).isoformat()
+    stale = (datetime.now(UTC) - timedelta(days=2)).isoformat()
+    lapsed = (datetime.now(UTC) - timedelta(days=1)).isoformat()
     with connect() as c:
         c.execute(
-            "UPDATE sessions SET last_seen_at = %s WHERE token_hash = %s",
-            (stale, _hash_token(token)),
+            "UPDATE sessions SET last_seen_at = %s, expires_at = %s WHERE token_hash = %s",
+            (stale, lapsed, _hash_token(token)),
         )
 
     assert validate_session_principal(token) is None

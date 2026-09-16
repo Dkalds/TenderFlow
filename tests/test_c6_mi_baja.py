@@ -30,6 +30,8 @@ from unittest.mock import patch
 
 import pytest
 
+from tests.dobles_tenencia import alcance_fijo
+
 
 def _oferta(
     *,
@@ -55,7 +57,7 @@ def _correr(ofertas: list[dict[str, Any]], referencia: Any = None) -> dict[str, 
         referencia = {"baja_media_pct": 15.0, "n": 40}
 
     with (
-        patch.object(mod, "resolve_organization", return_value=(7, "owner")),
+        patch.object(mod, "alcance_resuelto", alcance_fijo()),
         patch.object(mod._pursuits, "ofertas_presentadas", return_value=ofertas),
         patch(
             "services.competitive.bajas.baja_de_referencia",
@@ -84,7 +86,7 @@ class TestMiBaja:
             return {"baja_media_pct": 15.0}
 
         with (
-            patch.object(mod, "resolve_organization", return_value=(7, "owner")),
+            patch.object(mod, "alcance_resuelto", alcance_fijo()),
             patch.object(mod._pursuits, "ofertas_presentadas", return_value=[_oferta()]),
             patch("services.competitive.bajas.baja_de_referencia", side_effect=_referencia),
         ):

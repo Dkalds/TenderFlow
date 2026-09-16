@@ -9,7 +9,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, Field
 
 from api.concurrency import run_db
@@ -112,7 +113,7 @@ async def get_notifications(
 
     samples = novedades.sample if novedades else []
     candidate_ids = [s.id_externo for s in samples]
-    unread_ids = set(await run_db(get_unread_ids, user_key, candidate_ids))
+    unread_ids = set(await run_db(get_unread_ids, user_key, candidate_ids, user_id=user_id))
 
     items = [
         NotificationItem(
@@ -126,7 +127,7 @@ async def get_notifications(
     ]
 
     # Alertas in-app (reglas + deadlines) -- Feature A
-    raw_alerts = await run_db(get_user_alerts, user_key, 30, resolved_id)
+    raw_alerts = await run_db(get_user_alerts, user_key, 30, resolved_id, user_id=user_id)
     alerts = [
         AlertItem(
             id=int(a["id"]),
@@ -141,7 +142,7 @@ async def get_notifications(
         )
         for a in raw_alerts
     ]
-    alerts_unread = await run_db(get_alerts_unread_count, user_key, resolved_id)
+    alerts_unread = await run_db(get_alerts_unread_count, user_key, resolved_id, user_id=user_id)
 
     return NotificationsResult(
         items=items,
@@ -158,7 +159,7 @@ async def post_mark_read(
     ctx: dict[str, Any] = Depends(require_any_auth),
 ) -> StatusOk:
     if body.ids:
-        await run_db(mark_all_read, _user_key(ctx), body.ids)
+        await run_db(mark_all_read, _user_key(ctx), body.ids, user_id=_user_id_int(ctx))
     return StatusOk(status="ok")
 
 
@@ -169,9 +170,95 @@ async def post_mark_alerts_read(
 ) -> StatusOk:
     ctx = await resolve_organization_ctx(ctx, body.organization_id, write=True)
     user_key = _user_key(ctx)
+    user_id = _user_id_int(ctx)
     resolved_id = ctx["organization_id"]
     if body.all:
-        await run_db(mark_all_alerts_read, user_key, resolved_id)
+        await run_db(mark_all_alerts_read, user_key, resolved_id, user_id=user_id)
     elif body.ids:
-        await run_db(mark_alerts_read, user_key, body.ids, resolved_id)
+        await run_db(mark_alerts_read, user_key, body.ids, resolved_id, user_id=user_id)
+    return StatusOk(status="ok")
+
+
+# ── Baja de un tipo de notificación desde el correo ─────────────────────────
+
+
+def _apagar_por_enlace(user_id: int, tipo: str, token: str) -> tuple[bool, str | None]:
+    """Verifica la firma y apaga el canal ``email`` de ese tipo.
+
+    Devuelve ``(firma_valida, destino)`` en vez de lanzar: la ``HTTPException``
+    es del handler y no del trabajo despachado al threadpool. Firma y escritura
+    van en el mismo salto porque la primera es HMAC (CPU) y la segunda una
+    escritura, y las dos en el event loop lo bloquearían.
+    """
+    from db.repositories.notification_preferences import TIPOS, apagar_canal
+    from services.app_urls import url_absoluta
+    from services.email_digest import verificar_token_de_baja_de_tipo
+
+    if tipo not in {t for t, _ in TIPOS}:
+        return False, None
+    if not verificar_token_de_baja_de_tipo(user_id, tipo, token):
+        return False, None
+    # Sólo el canal `email`: quien se da de baja del correo no está pidiendo
+    # dejar de verlo en la aplicación. Y `apagar_canal` y no `guardar`, porque
+    # la preferencia de una organización concreta gana sobre la global: apagar
+    # sólo la global dejaba el enlace sin efecto para quien tuviera una.
+    apagar_canal(user_id, tipo=tipo, canal="email")
+    return True, url_absoluta("/ajustes?baja=1")
+
+
+@router.get(
+    "/baja",
+    response_model=StatusOk,
+    summary="Dejar de recibir por correo un tipo de notificación",
+    responses={
+        303: {"description": "Redirige a Ajustes con el tipo ya apagado"},
+        403: {"description": "Firma inválida o tipo desconocido"},
+    },
+)
+async def baja_de_tipo(
+    u: int = Query(..., ge=1, description="Usuario"),
+    tipo: str = Query(..., min_length=3, max_length=60, description="Tipo de notificación"),
+    t: str = Query(..., min_length=8, max_length=200, description="Firma HMAC (kid.sig)"),
+) -> Any:
+    """Apaga el correo de **un** tipo, y nada más.
+
+    Sin sesión a propósito: quien quiere dejar de recibir un correo no quiere
+    antes hacer login. Lo que autoriza es la firma de ``(user_id, tipo)``.
+
+    Existe porque la baja del digest (``/watchlist/rules/baja``) pausa **todas
+    las reglas de watchlist**, y el informe semanal salió apuntando ahí: pulsar
+    «dejar de recibir este informe» borraba las alertas de licitaciones de esa
+    persona y el informe seguía llegando, porque su opt-out está en
+    ``notification_preferences``. Un enlace de baja que da de baja de otra cosa
+    es peor que no tener enlace.
+    """
+    valida, destino = await run_db(_apagar_por_enlace, u, tipo, t)
+    if not valida:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Enlace no válido.")
+    log.info("notificacion_baja", user_id=u, tipo=tipo)
+    if destino:
+        return RedirectResponse(destino, status_code=status.HTTP_303_SEE_OTHER)
+    return StatusOk(status="ok")
+
+
+@router.post(
+    "/baja",
+    response_model=StatusOk,
+    summary="Baja en un clic desde el cliente de correo (RFC 8058)",
+    responses={403: {"description": "Firma inválida o tipo desconocido"}},
+)
+async def baja_de_tipo_un_clic(
+    u: int = Query(..., ge=1, description="Usuario"),
+    tipo: str = Query(..., min_length=3, max_length=60, description="Tipo de notificación"),
+    t: str = Query(..., min_length=8, max_length=200, description="Firma HMAC (kid.sig)"),
+) -> StatusOk:
+    """La misma baja que el GET, para el ``POST`` del cliente de correo.
+
+    RFC 8058 exige responder 2xx y **no** redirigir: el cliente no sigue la
+    redirección y daría la baja por fallida.
+    """
+    valida, _destino = await run_db(_apagar_por_enlace, u, tipo, t)
+    if not valida:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Enlace no válido.")
+    log.info("notificacion_baja_un_clic", user_id=u, tipo=tipo)
     return StatusOk(status="ok")

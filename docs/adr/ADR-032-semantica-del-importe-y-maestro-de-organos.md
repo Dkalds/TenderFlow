@@ -99,6 +99,14 @@ sigue siendo un expediente válido; lo que no puede es desaparecer de la
 analítica. Durante el backfill, la analítica agrupa por `organo_id` cuando lo
 hay y por texto normalizado cuando no.
 
+**Resolución incremental (2026-09-14).** El backfill llena el maestro una vez;
+lo que llega después lo resuelve el paso canónico `organos_resolve` de la
+pipeline en cada cierre (`services.organos.resolver_pendientes`, acotado por
+`ORGANOS_RESOLVE_MAX_GRAFIAS` y `ORGANOS_RESOLVE_BUDGET_S`), con la misma
+decisión que el script. Hasta esa fecha nada resolvía las filas nuevas y el
+maestro se degradaba con cada pasada del ATOM. La cobertura a 90 días y la cola
+de revisión se publican en `/analytics/quality`.
+
 ### D. Las cifras cambian, y el cambio se anota
 
 Agrupar por `organo_id` **fusiona** grafías que hoy cuentan como órganos

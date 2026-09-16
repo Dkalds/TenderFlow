@@ -167,6 +167,24 @@ class OrganizationRepository:
         with connect_read() as conn:
             return self._organization_with_role(conn, organization_id, user_id)
 
+    def get_by_id(self, organization_id: int) -> dict[str, Any] | None:
+        """La organización, sin pasar por la membresía de nadie.
+
+        Las lecturas existentes (`get_for_user`, `list_for_user`) resuelven
+        además el rol de quien pregunta, que es lo correcto para una petición
+        HTTP. Los informes programados los genera el scheduler, donde no hay
+        quien pregunte: sólo hace falta el nombre para el asunto del correo.
+        """
+        with connect_read() as conn:
+            filas = rows_to_dicts(
+                conn.execute(
+                    "SELECT id, name, is_personal, created_at, updated_at "
+                    "FROM organizations WHERE id = %s",
+                    (organization_id,),
+                )
+            )
+        return filas[0] if filas else None
+
     def list_members(self, organization_id: int) -> list[dict[str, Any]]:
         with connect_read() as conn:
             cur = conn.execute(
@@ -425,33 +443,33 @@ class OrganizationRepository:
         return {"total": total, "sin_organizacion": sin_organizacion}
 
     def claim_legacy_rows(self, user_id: int, user_key: str) -> int:
-        """Asigna filas sin scope al espacio personal, nunca a uno compartido."""
+        """Asigna filas sin scope al espacio personal, nunca a uno compartido.
+
+        Desde v129 las siete tablas llevan ``user_id``, así que el predicado es
+        el dual de ADR-030 fase 2 en todas: la fila es del usuario por su id, o
+        por su clave si el backfill no pudo resolverla. Una fila con OTRO id y
+        la misma clave no se reclama.
+        """
         personal = self.ensure_personal_organization(user_id)
         organization_id = int(personal["id"])
-        tables = {
-            "watchlist_items": True,
-            "watchlist_rules": True,
-            "watchlist_empresas": False,
-            "watchlist_cpv": True,
-            "saved_filters": False,
-            "user_profiles": False,
-            "user_notifications": False,
-        }
+        tables = (
+            "watchlist_items",
+            "watchlist_rules",
+            "watchlist_empresas",
+            "watchlist_cpv",
+            "saved_filters",
+            "user_profiles",
+            "user_notifications",
+        )
         changed = 0
         with connect() as conn:
-            for table, has_user_id in tables.items():
-                if has_user_id:
-                    cur = conn.execute(
-                        f"UPDATE {table} SET organization_id = %s "
-                        "WHERE organization_id IS NULL AND (user_id = %s OR user_key = %s)",
-                        (organization_id, user_id, user_key),
-                    )
-                else:
-                    cur = conn.execute(
-                        f"UPDATE {table} SET organization_id = %s "
-                        "WHERE organization_id IS NULL AND user_key = %s",
-                        (organization_id, user_key),
-                    )
+            for table in tables:
+                cur = conn.execute(
+                    f"UPDATE {table} SET organization_id = %s "
+                    "WHERE organization_id IS NULL "
+                    "AND (user_id = %s OR (user_key = %s AND user_id IS NULL))",
+                    (organization_id, user_id, user_key),
+                )
                 changed += max(0, int(getattr(cur, "rowcount", 0) or 0))
         return changed
 

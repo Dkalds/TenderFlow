@@ -202,8 +202,10 @@ def test_licitaciones_no_exige_api_key_en_ninguna_ruta() -> None:
     de este módulo, que es como se llegó a tener el listado recomendado
     inaccesible desde el navegador.
     """
-    fuente = (_REPO_ROOT / "api" / "routes" / "licitaciones.py").read_text(encoding="utf-8")
-    assert "require_api_key" not in fuente
+    modulos = sorted((_REPO_ROOT / "api" / "routes" / "licitaciones").glob("*.py"))
+    assert modulos, "El paquete api/routes/licitaciones no tiene módulos"
+    for modulo in modulos:
+        assert "require_api_key" not in modulo.read_text(encoding="utf-8"), modulo.name
 
 
 @pytest.mark.parametrize(

@@ -255,6 +255,9 @@ schema-doc:  ## Regenera docs/database-schema.md desde una BD migrada a head
 product-status:  ## Métricas de producto: funnel, win rate, euros y tiempo de decisión
 	python scripts/product_status.py
 
+medir-solape:  ## Cuánto de la contratación TI autonómica llega ya por PLACSP (D16, antes de abrir un conector)
+	python scripts/medir_solape_agregados.py
+
 job-parity:  ## Verifica que todo job del registry tiene plano de ejecución (ADR-012)
 	python scripts/check_job_parity.py
 

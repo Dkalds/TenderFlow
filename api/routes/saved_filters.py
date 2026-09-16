@@ -41,6 +41,12 @@ def _user_key(ctx: dict[str, Any]) -> str:
     return hashlib.sha256(seed.encode("utf-8")).hexdigest()[:16]
 
 
+def _user_id(ctx: dict[str, Any]) -> int | None:
+    """Identidad interna del principal (v129): la lectura dual va por ella."""
+    raw = ctx.get("user_id")
+    return int(raw) if raw is not None else None
+
+
 class SavedFilter(BaseModel):
     """Vista guardada tal como se devuelve al cliente."""
 
@@ -75,7 +81,9 @@ async def get_saved_filters(
 ) -> SavedFiltersResult:
     if organization_id is not None:
         await run_db(claim_legacy_scope, int(ctx["user_id"]), _user_key(ctx))
-    rows = await run_db(list_saved_filters, _user_key(ctx), ctx["organization_id"])
+    rows = await run_db(
+        list_saved_filters, _user_key(ctx), ctx["organization_id"], user_id=_user_id(ctx)
+    )
     return SavedFiltersResult(items=[SavedFilter(**row) for row in rows])
 
 
@@ -101,6 +109,7 @@ async def post_saved_filter(
         body.filters_json,
         ctx["organization_id"],
         body.visibility,
+        user_id=_user_id(ctx),
     )
     log.info("saved_filter_upsert", name=body.name)
     return SavedFilterSaved(status="ok", name=body.name.strip())
@@ -112,10 +121,11 @@ async def delete_saved_filter_route(
     ctx: dict[str, Any] = Depends(require_organization(write=True)),
 ) -> StatusOk:
     user_key = _user_key(ctx)
+    user_id = _user_id(ctx)
     # Comprobar visibilidad antes de borrar (previene IDOR — OWASP A01). No
     # basta con esto: la lista incluye las vistas *compartidas* de los demás
     # miembros, y ésas se ven pero no se borran.
-    rows = await run_db(list_saved_filters, user_key, ctx["organization_id"])
+    rows = await run_db(list_saved_filters, user_key, ctx["organization_id"], user_id=user_id)
     if not any(row["id"] == filter_id for row in rows):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -131,6 +141,7 @@ async def delete_saved_filter_route(
         filter_id,
         user_key=user_key,
         organization_id=ctx["organization_id"],
+        user_id=user_id,
     )
     if not deleted:
         raise HTTPException(

@@ -65,6 +65,11 @@ ORDEN_BANDAS: tuple[Banda, ...] = ("Descarte", "Tibia", "Atractiva", "Caliente")
 #: afinar la regla, no un dígito más.
 MAX_CANDIDATAS_BANDA = 1000
 
+#: Predicado de identidad dual (v129, ADR-030 fase 2). Parámetros:
+#: ``(user_id, user_key, user_id)``; con ``user_id=None`` se reduce a
+#: ``user_key = %s``. El razonamiento está en ``db/repositories/watchlist.py``.
+_IDENT = "(user_id = %s OR (user_key = %s AND (user_id IS NULL OR %s::int IS NULL)))"
+
 
 class WatchlistRule(BaseModel):
     """Regla de seguimiento por criterio. ``id`` es ``None`` hasta persistir."""
@@ -175,22 +180,24 @@ def _fila_a_regla(row: Sequence[Any]) -> WatchlistRule:
     )
 
 
-def list_rules(user_key: str, organization_id: int | None = None) -> list[WatchlistRule]:
+def list_rules(
+    user_key: str, organization_id: int | None = None, *, user_id: int | None = None
+) -> list[WatchlistRule]:
     """Reglas de un usuario, más recientes primero."""
     with connect() as c:
         if organization_id is None:
             rows = c.execute(
-                f"SELECT {_COLS_REGLA} FROM watchlist_rules WHERE user_key = %s "  # noqa: S608
+                f"SELECT {_COLS_REGLA} FROM watchlist_rules WHERE {_IDENT} "  # noqa: S608
                 "ORDER BY created_at DESC, id DESC",
-                (user_key,),
+                (user_id, user_key, user_id),
             ).fetchall()
         else:
             rows = c.execute(
                 f"SELECT {_COLS_REGLA} FROM watchlist_rules "  # noqa: S608
                 "WHERE organization_id = %s "
-                "AND (visibility = 'organization' OR user_key = %s) "
+                f"AND (visibility = 'organization' OR {_IDENT}) "
                 "ORDER BY created_at DESC, id DESC",
-                (organization_id, user_key),
+                (organization_id, user_id, user_key, user_id),
             ).fetchall()
     return [_fila_a_regla(row) for row in rows]
 
@@ -200,6 +207,8 @@ def update_rule(
     rule_id: int,
     rule: WatchlistRule,
     organization_id: int | None = None,
+    *,
+    user_id: int | None = None,
 ) -> bool:
     """Actualiza una regla propia. ``False`` si no existe o no es del usuario."""
     values = (
@@ -228,52 +237,62 @@ def update_rule(
         if organization_id is None:
             cur = c.execute(
                 f"UPDATE watchlist_rules SET {sets} "  # noqa: S608
-                "WHERE id = %s AND user_key = %s",
-                (*values, rule_id, user_key),
+                f"WHERE id = %s AND {_IDENT}",
+                (*values, rule_id, user_id, user_key, user_id),
             )
         else:
             cur = c.execute(
                 f"UPDATE watchlist_rules SET {sets} "  # noqa: S608
-                "WHERE id = %s AND user_key = %s AND organization_id = %s",
-                (*values, rule_id, user_key, organization_id),
+                f"WHERE id = %s AND {_IDENT} AND organization_id = %s",
+                (*values, rule_id, user_id, user_key, user_id, organization_id),
             )
         return bool(cur.rowcount > 0)
 
 
-def set_active(user_key: str, rule_id: int, active: bool) -> bool:
+def set_active(user_key: str, rule_id: int, active: bool, *, user_id: int | None = None) -> bool:
     """Activa o pausa una regla propia."""
     with connect() as c:
         cur = c.execute(
-            "UPDATE watchlist_rules SET active = %s WHERE id = %s AND user_key = %s",
-            (1 if active else 0, rule_id, user_key),
+            f"UPDATE watchlist_rules SET active = %s WHERE id = %s AND {_IDENT}",  # noqa: S608
+            (1 if active else 0, rule_id, user_id, user_key, user_id),
         )
         return bool(cur.rowcount > 0)
 
 
-def delete_rule(user_key: str, rule_id: int, organization_id: int | None = None) -> bool:
+def delete_rule(
+    user_key: str,
+    rule_id: int,
+    organization_id: int | None = None,
+    *,
+    user_id: int | None = None,
+) -> bool:
     """Borra una regla propia. ``False`` si no existe o no es del usuario."""
     with connect() as c:
         if organization_id is None:
             cur = c.execute(
-                "DELETE FROM watchlist_rules WHERE id = %s AND user_key = %s",
-                (rule_id, user_key),
+                f"DELETE FROM watchlist_rules WHERE id = %s AND {_IDENT}",  # noqa: S608
+                (rule_id, user_id, user_key, user_id),
             )
         else:
             cur = c.execute(
-                "DELETE FROM watchlist_rules WHERE id = %s AND user_key = %s AND organization_id = %s",
-                (rule_id, user_key, organization_id),
+                f"DELETE FROM watchlist_rules WHERE id = %s AND {_IDENT} "  # noqa: S608
+                "AND organization_id = %s",
+                (rule_id, user_id, user_key, user_id, organization_id),
             )
         return bool(cur.rowcount > 0)
 
 
-def delete_all_for_user(user_key: str) -> int:
+def delete_all_for_user(user_key: str, *, user_id: int | None = None) -> int:
     """Borra todas las reglas del usuario (GDPR). Devuelve el numero de filas borradas."""
     with connect() as c:
-        cur = c.execute("DELETE FROM watchlist_rules WHERE user_key = %s", (user_key,))
+        cur = c.execute(
+            f"DELETE FROM watchlist_rules WHERE {_IDENT}",  # noqa: S608
+            (user_id, user_key, user_id),
+        )
         return int(cur.rowcount)
 
 
-def deactivate_all_for_user(user_key: str) -> int:
+def deactivate_all_for_user(user_key: str, *, user_id: int | None = None) -> int:
     """Pausa todas las reglas del usuario. Devuelve cuántas estaban activas.
 
     Es la «baja» del enlace que va al pie de cada digest: no borra nada —las
@@ -282,8 +301,8 @@ def deactivate_all_for_user(user_key: str) -> int:
     """
     with connect() as c:
         cur = c.execute(
-            "UPDATE watchlist_rules SET active = 0 WHERE user_key = %s AND active = 1",
-            (user_key,),
+            f"UPDATE watchlist_rules SET active = 0 WHERE {_IDENT} AND active = 1",  # noqa: S608
+            (user_id, user_key, user_id),
         )
         return int(cur.rowcount)
 
@@ -593,6 +612,7 @@ def matches_since(
     *,
     limit: int = 50,
     user_key: str | None = None,
+    user_id: int | None = None,
 ) -> list[dict[str, Any]]:
     """Matches de la regla desde ``since`` que aún no se han notificado.
 
@@ -607,6 +627,7 @@ def matches_since(
     ``user_key`` activa el anti-join contra las notificaciones ya escritas, que
     es lo que hace seguro el solape de ventanas. Sin él —vista previa, tests que
     no ejercen el job— la función es un listado con corte temporal y basta.
+    ``user_id`` (v129) hace dual ese anti-join y no cambia nada más.
     """
     clauses = _rule_clauses(rule)
     if rule.banda_min:
@@ -620,4 +641,5 @@ def matches_since(
         desde=since,
         limit=limit,
         user_key=user_key,
+        user_id=user_id,
     )

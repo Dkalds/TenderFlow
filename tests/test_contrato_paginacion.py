@@ -105,11 +105,17 @@ def test_cursor_paginated_defaults():
 
 
 def test_licitaciones_usa_el_envelope_compartido():
-    """La ruta que ya tenía el idioma es la que lo demuestra en esta ola."""
-    from api.routes import licitaciones as lic
+    """La ruta que ya tenía el idioma es la que lo demuestra en esta ola.
 
-    assert lic.PaginatedResponse is PaginatedResponse
-    assert lic.CursorPaginatedResponse is CursorPaginatedResponse
+    Se mira ``licitaciones.listado`` y no el paquete: desde que el router se
+    partió por familias, el envoltorio lo usa la familia que pagina, y el
+    ``__init__`` sólo reexporta lo que el resto del árbol importa. Apuntar al
+    paquete comprobaría la lista de reexports, que no es lo que este test dice.
+    """
+    from api.routes.licitaciones import listado
+
+    assert listado.PaginatedResponse is PaginatedResponse
+    assert listado.CursorPaginatedResponse is CursorPaginatedResponse
 
 
 def test_cotas_de_pagina_son_las_de_siempre():

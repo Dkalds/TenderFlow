@@ -32,7 +32,13 @@ from pydantic import BaseModel, EmailStr, Field, field_validator
 
 from api.concurrency import run_db
 from config import settings
-from db.sessions import create_session, revoke_session, validate_session_principal
+from db.audit import log_event
+from db.sessions import (
+    create_session,
+    revoke_session,
+    session_max_age_seconds,
+    validate_session_principal,
+)
 from db.users import (
     admin_granted_by,
     create_user,
@@ -44,6 +50,15 @@ from db.users import (
     set_admin,
 )
 from observability.logging import get_logger
+from shared.audit_events import (
+    AUTH_LOGIN_FAILED,
+    AUTH_LOGIN_SUCCESS,
+    AUTH_LOGOUT,
+    AUTH_PASSWORD_RESET_COMPLETED,
+    AUTH_PASSWORD_RESET_REQUESTED,
+    AUTH_TOTP_DISABLED,
+    AUTH_TOTP_ENABLED,
+)
 from shared.auth_core import (
     csv_set,
     generate_oauth_state,
@@ -76,7 +91,11 @@ _OAUTH_TELEMETRY_COOKIE = "oauth_login"
 #: Proveedor con el que se entró, para que la analítica pueda distinguirlos.
 #: Va aparte de `_OAUTH_TELEMETRY_COOKIE` — ver el comentario en el callback.
 _OAUTH_TELEMETRY_PROVIDER_COOKIE = "oauth_login_provider"
-_SESSION_MAX_AGE = 86400  # 24h
+#: Vida máxima de la cookie de sesión y del token CSRF que nace con ella. No es
+#: un literal: es el techo absoluto de `db/sessions.py` (`SESSION_ABSOLUTE_DAYS`),
+#: porque la sesión es deslizante y la cookie tiene que sobrevivir a todas sus
+#: renovaciones; quien decide si sigue viva es el servidor.
+_SESSION_MAX_AGE = session_max_age_seconds()
 _OAUTH_MAX_AGE = 600
 _RESET_REQUEST_RESPONSE = "Si existe una cuenta local activa, recibirás un enlace de recuperación."
 
@@ -159,13 +178,22 @@ def _csrf_for_session(session_token: str) -> str:
     return generate_csrf_token(session_token)
 
 
-def _set_session_cookie(response: Response, user_id: int, request: Request) -> str:
-    """Crea una sesión opaca revocable y sus cookies de sesión/CSRF."""
+def _set_session_cookie(
+    response: Response, user_id: int, request: Request, *, remember: bool = False
+) -> str:
+    """Crea una sesión opaca revocable y sus cookies de sesión/CSRF.
+
+    ``remember`` («recordar este equipo») alarga la ventana de inactividad de
+    la sesión (ver ``db/sessions.py``). El ``max_age`` de las cookies no cambia
+    con él: es el techo absoluto en ambos casos, que es lo máximo que la sesión
+    puede vivir; caducar la cookie antes dejaría la renovación en servidor sin
+    efecto.
+    """
     session_token = create_session(
         user_id,
         ip=request.client.host if request.client else None,
         user_agent=request.headers.get("User-Agent"),
-        ttl_hours=_SESSION_MAX_AGE // 3600,
+        remember=remember,
     )
     csrf_token = _csrf_for_session(session_token)
     secure = _is_secure()
@@ -344,6 +372,11 @@ class LoginRequest(BaseModel):
 
     email: EmailStr
     password: str
+    #: «Recordar este equipo»: la sesión no caduca por inactividad hasta
+    #: ``SESSION_REMEMBER_DAYS`` (con el mismo techo absoluto). Opcional y
+    #: falso por defecto: los clientes que no lo envían conservan el
+    #: comportamiento anterior.
+    remember: bool = False
 
 
 class RegisterRequest(BaseModel):
@@ -423,6 +456,13 @@ async def login(body: LoginRequest, response: Response, request: Request) -> Use
         user = get_user_by_email(body.email)
         if not user:
             record_failed_login(client_key)
+            # Sin actor ni correo: un intento contra una cuenta que no existe
+            # no puede dejar la dirección tecleada en el rastro (ADR-030 §D).
+            log_event(
+                event_type=AUTH_LOGIN_FAILED,
+                outcome="failure",
+                detail={"reason": "user_not_found"},
+            )
             log.warning("login_failed", reason="user_not_found")
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials"
@@ -431,15 +471,28 @@ async def login(body: LoginRequest, response: Response, request: Request) -> Use
         pw_hash: str = user.get("password_hash", "") or ""
         if not verify_password(body.password, pw_hash):
             record_failed_login(client_key)
+            log_event(
+                event_type=AUTH_LOGIN_FAILED,
+                user_id=int(user["id"]),
+                outcome="failure",
+                resource=f"user:{user['id']}",
+                detail={"reason": "bad_password"},
+            )
             log.warning("login_failed", user_id=user["id"], reason="bad_password")
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials"
             )
 
         clear_login_attempts(client_key)
-        _set_session_cookie(response, user["id"], request)
+        _set_session_cookie(response, user["id"], request, remember=body.remember)
 
         log_access(auth_method="password", user_id=user["id"])
+        log_event(
+            event_type=AUTH_LOGIN_SUCCESS,
+            user_id=int(user["id"]),
+            resource=f"user:{user['id']}",
+            detail={"auth_method": "password"},
+        )
         log.info("login_success", user_id=user["id"])
 
         return UserInfo(
@@ -543,6 +596,14 @@ async def request_password_reset(
         return DetailMessage(detail=_RESET_REQUEST_RESPONSE)
     if created and token is not None:
         background_tasks.add_task(send_password_reset_email, email, token)
+    # La respuesta es indistinguible; el rastro no: dice si se emitió un
+    # enlace, sin el correo ni el id (para una cuenta que no existe no hay).
+    await run_db(
+        log_event,
+        event_type=AUTH_PASSWORD_RESET_REQUESTED,
+        outcome="success" if created else "failure",
+        detail={"issued": bool(created)},
+    )
     return DetailMessage(detail=_RESET_REQUEST_RESPONSE)
 
 
@@ -573,6 +634,12 @@ async def confirm_password_reset(
     user_id = await run_db(_consume)
     if user_id is None:
         raise HTTPException(status_code=400, detail="El enlace no es válido o ha caducado.")
+    await run_db(
+        log_event,
+        event_type=AUTH_PASSWORD_RESET_COMPLETED,
+        user_id=user_id,
+        resource=f"user:{user_id}",
+    )
     log.info("password_reset_completed", user_id=user_id)
     return StatusOk(status="ok")
 
@@ -639,6 +706,12 @@ async def logout(
     requerir completarlo.
     """
     await run_db(revoke_session, str(user["session_token"]))
+    await run_db(
+        log_event,
+        event_type=AUTH_LOGOUT,
+        user_id=int(user["user_id"]),
+        resource=f"user:{user['user_id']}",
+    )
     _clear_session_cookies(response)
     return DetailMessage(detail="Logged out")
 
@@ -751,6 +824,12 @@ async def confirm_totp(
         return generate_recovery_codes(user_id)
 
     recovery_codes = await run_db(_confirm)
+    await run_db(
+        log_event,
+        event_type=AUTH_TOTP_ENABLED,
+        user_id=user_id,
+        resource=f"user:{user_id}",
+    )
     response.headers["Cache-Control"] = "no-store"
     return TotpConfirmResult(status="ok", recovery_codes=recovery_codes)
 
@@ -804,6 +883,12 @@ async def remove_totp(
     from db.totp import delete_totp
 
     await run_db(delete_totp, int(user["user_id"]))
+    await run_db(
+        log_event,
+        event_type=AUTH_TOTP_DISABLED,
+        user_id=int(user["user_id"]),
+        resource=f"user:{user['user_id']}",
+    )
     return StatusOk(status="ok")
 
 

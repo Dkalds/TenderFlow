@@ -68,8 +68,13 @@ def signal_rows(
     tecnologia: str | None = None,
     ccaa: str | None = None,
     limit: int = 25,
+    user_id: int | None = None,
 ) -> list[dict[str, Any]]:
-    """Matches vivos y sin triar de una regla, más urgentes primero."""
+    """Matches vivos y sin triar de una regla, más urgentes primero.
+
+    ``user_id`` (v129) hace dual la lectura de los descartes: sin él, los
+    descartados bajo la clave de un correo anterior volverían a la Agenda.
+    """
     clauses = [
         abierta_sql("l.estado"),
         _FECHA_LIMITE_VIVA_SQL,
@@ -83,9 +88,11 @@ def signal_rows(
         # enseñar. Es el tercer lector del mismo juicio, y por eso comparte
         # la grafía con los otros dos.
         "NOT EXISTS (SELECT 1 FROM radar_dismissals rd "
-        f"WHERE rd.user_key = %s AND rd.id_externo = l.id_externo AND {VIGENTE_SQL})",
+        "WHERE (rd.user_id = %s OR (rd.user_key = %s "
+        "       AND (rd.user_id IS NULL OR %s::int IS NULL))) "
+        f"AND rd.id_externo = l.id_externo AND {VIGENTE_SQL})",
     ]
-    params: list[Any] = [organization_id, user_key]
+    params: list[Any] = [organization_id, user_id, user_key, user_id]
     if criteria.keyword:
         like = f"%{_escape_like(criteria.keyword)}%"
         clauses.append("(l.titulo LIKE %s OR l.descripcion LIKE %s)")

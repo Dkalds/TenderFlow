@@ -342,6 +342,18 @@ services:
       # en recuperarse un job que murió con su worker.
       - key: JOBS_LOCK_TTL_SEGUNDOS
         value: "900"
+      # Plano de cron (ADR-033). `sync: false` y NO un valor literal, que es la
+      # parte importante: el cutover consiste en poner `worker` aquí desde el
+      # dashboard, y un `value:` en este fichero se lo comería en el siguiente
+      # despliegue del Blueprint — apagando el cron de producción sin que nadie
+      # tocara nada. Con `sync: false` manda el dashboard.
+      #
+      # Mientras valga `actions` (o esté sin definir) este proceso arranca solo
+      # el consumidor de la cola: el plano de cron sigue siendo GitHub Actions.
+      # El procedimiento completo, con su vuelta atrás, está en
+      # `docs/runbooks/cutover-cron-al-worker.md`.
+      - key: SCHEDULER_PLANE
+        sync: false
 
   # ── Observabilidad (ADR-019) ────────────────────────────────────────────
   # El código expone /metrics desde siempre, pero hasta ahora nadie lo

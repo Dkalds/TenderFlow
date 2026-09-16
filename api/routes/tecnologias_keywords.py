@@ -25,6 +25,11 @@ from db.repositories.tecnologias_keywords import (
 )
 from observability.logging import get_logger
 from services.tecnologias_diccionario import invalidar, sembrar_desde_semilla, vigente
+from shared.audit_events import (
+    TECNOLOGIAS_KEYWORD_ADDED,
+    TECNOLOGIAS_KEYWORD_REMOVED,
+    TECNOLOGIAS_KEYWORD_SEEDED,
+)
 from shared.dto import SafeStr, StatusOk
 
 log = get_logger(__name__)
@@ -137,7 +142,7 @@ async def put_keyword(
     _diccionario, version_despues = await run_db(vigente, forzar=True)
     await run_db(
         log_event,
-        event_type="tecnologias_keyword.added",
+        event_type=TECNOLOGIAS_KEYWORD_ADDED,
         user_key=str(admin.get("user_id", "")),
         resource=f"tecnologia:{body.tecnologia}",
         detail={
@@ -168,7 +173,7 @@ async def delete_keyword(
     _diccionario, version_despues = await run_db(vigente, forzar=True)
     await run_db(
         log_event,
-        event_type="tecnologias_keyword.removed",
+        event_type=TECNOLOGIAS_KEYWORD_REMOVED,
         user_key=str(admin.get("user_id", "")),
         resource=f"tecnologia:{tecnologia}",
         detail={
@@ -193,7 +198,7 @@ async def post_sembrar(
     insertadas = await run_db(sembrar_desde_semilla)
     await run_db(
         log_event,
-        event_type="tecnologias_keyword.seeded",
+        event_type=TECNOLOGIAS_KEYWORD_SEEDED,
         user_key=str(admin.get("user_id", "")),
         resource="tecnologias_keywords",
         detail={"insertadas": insertadas},

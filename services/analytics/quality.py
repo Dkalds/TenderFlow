@@ -135,6 +135,11 @@ class QualityResult(BaseModel):
     # (la consulta falló o no hay adjudicaciones), no «todo a cero»: la misma
     # regla que `cobertura_nif` unas líneas más arriba.
     adjudicaciones_por_fuente: list[AdjudicacionesPorFuente] = Field(default_factory=list)
+    # Maestro de órganos (ADR-032 §C): % de expedientes de los últimos 90 días
+    # con `organo_id` resuelto y tamaño de la cola de revisión humana. `None` =
+    # NO MEDIDO (la consulta falló), misma regla que `cobertura_nif`.
+    organos_cobertura_pct: float | None = None
+    organos_revision_pendiente: int | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -279,6 +284,23 @@ def _reportes_por_tipo() -> dict[str, int]:
         return {}
 
 
+def _organos_cobertura() -> tuple[float | None, int | None]:
+    """(% con `organo_id` en 90 días, cola de revisión). Best-effort como sus vecinas."""
+    try:
+        from datetime import UTC, datetime, timedelta
+
+        from db.repositories import organos as repo_organos
+
+        desde = (datetime.now(UTC) - timedelta(days=90)).date().isoformat()
+        cobertura = repo_organos.cobertura(desde=desde)
+        total = cobertura["total"]
+        pct = None if total == 0 else round(100.0 * cobertura["resueltos"] / total, 1)
+        return pct, repo_organos.revision_pendiente_count()
+    except Exception:
+        log.debug("quality_organos_unavailable")
+        return None, None
+
+
 def _adjudicaciones_por_fuente() -> list[AdjudicacionesPorFuente]:
     """Cobertura por fuente, tolerante a fallo.
 
@@ -327,6 +349,7 @@ def get_quality() -> QualityResult:
     # y cada una de estas dos llamadas es una consulta.
     codigos_no_catalogados = _codigos_no_catalogados()
     reportes_por_tipo = _reportes_por_tipo()
+    organos_cobertura_pct, organos_revision_pendiente = _organos_cobertura()
 
     total = stats["total"]
     if total == 0:
@@ -340,6 +363,8 @@ def get_quality() -> QualityResult:
             blob_store_bytes=blob_bytes,
             codigos_no_catalogados=codigos_no_catalogados,
             reportes_por_tipo=reportes_por_tipo,
+            organos_cobertura_pct=organos_cobertura_pct,
+            organos_revision_pendiente=organos_revision_pendiente,
         )
 
     cols: dict[str, int] = stats["cols"]
@@ -393,6 +418,8 @@ def get_quality() -> QualityResult:
         codigos_no_catalogados=codigos_no_catalogados,
         reportes_por_tipo=reportes_por_tipo,
         adjudicaciones_por_fuente=_adjudicaciones_por_fuente(),
+        organos_cobertura_pct=organos_cobertura_pct,
+        organos_revision_pendiente=organos_revision_pendiente,
         # cobertura_nif / cobertura_modulo_sap se quedan en su default `None`
         # (no medidas): ver la nota del DTO.
     )

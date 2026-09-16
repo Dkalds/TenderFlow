@@ -8,6 +8,9 @@ rama era el bug de clase que documenta ``api/tenancy.py``: quien omitía el
 argumento no obtenía «sin filtrar por organización» como decisión, lo
 obtenía por descuido, y el repositorio caía a una query sin ámbito sin
 decir nada. Ahora un llamador que la omita falla al tipar.
+
+Desde v129 (ADR-030 fase 2) la fila lleva también ``user_id`` y la lectura es
+dual: ver ``db/repositories/watchlist.py``.
 """
 
 from __future__ import annotations
@@ -17,6 +20,9 @@ from typing import Any
 
 from db.database import connect, now_utc_iso
 
+#: Predicado de identidad dual. Parámetros: ``(user_id, user_key, user_id)``.
+_IDENT = "(user_id = %s OR (user_key = %s AND (user_id IS NULL OR %s::int IS NULL)))"
+
 
 def save_filter(
     user_key: str,
@@ -24,37 +30,83 @@ def save_filter(
     filters_json: str,
     organization_id: int,
     visibility: str = "private",
+    *,
+    user_id: int | None = None,
 ) -> None:
     """Guarda o actualiza un filtro con nombre para el usuario.
 
-    Si ya existe una entrada con (user_key, name) la sobreescribe.
-
+    Si el usuario ya tiene una vista con ese ``name`` la sobreescribe. «Ya la
+    tiene» se decide con la identidad dual y no sólo con ``UNIQUE(user_key,
+    name)``: tras un cambio de correo la vista antigua lleva otra clave, y el
+    ``ON CONFLICT`` a secas habría creado una segunda «Mi vista» en vez de
+    actualizar la que existe. Primero se intenta el ``UPDATE`` por identidad;
+    el ``INSERT ... ON CONFLICT`` queda para la fila nueva y para la carrera.
     """
+    now = now_utc_iso()
     with connect() as c:
+        cur = c.execute(
+            "UPDATE saved_filters SET filters_json = %s, created_at = %s, "
+            "organization_id = %s, visibility = %s, user_id = COALESCE(user_id, %s) "
+            f"WHERE {_IDENT} AND name = %s",
+            (
+                filters_json,
+                now,
+                organization_id,
+                visibility,
+                user_id,
+                user_id,
+                user_key,
+                user_id,
+                name,
+            ),
+        )
+        if int(getattr(cur, "rowcount", 0) or 0) > 0:
+            return
         c.execute(
             """
             INSERT INTO saved_filters
-                (user_key, name, filters_json, created_at, organization_id, visibility)
-            VALUES (%s, %s, %s, %s, %s, %s)
+                (user_key, user_id, name, filters_json, created_at, organization_id, visibility)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT(user_key, name) DO UPDATE SET
+                user_id = COALESCE(saved_filters.user_id, excluded.user_id),
                 filters_json = excluded.filters_json,
                 created_at   = excluded.created_at,
                 organization_id = excluded.organization_id,
                 visibility = excluded.visibility
             """,
-            (user_key, name, filters_json, now_utc_iso(), organization_id, visibility),
+            (user_key, user_id, name, filters_json, now, organization_id, visibility),
         )
 
 
-def list_saved_filters(user_key: str, organization_id: int) -> list[dict[str, Any]]:
+def list_saved_filters(
+    user_key: str, organization_id: int, *, user_id: int | None = None
+) -> list[dict[str, Any]]:
     """Devuelve los filtros guardados del usuario, más recientes primero."""
     with connect() as c:
         cur = c.execute(
             "SELECT id, name, filters_json, created_at, organization_id, visibility "
             "FROM saved_filters WHERE organization_id = %s "
-            "AND (visibility = 'organization' OR user_key = %s) "
+            f"AND (visibility = 'organization' OR {_IDENT}) "
             "ORDER BY created_at DESC",
-            (organization_id, user_key),
+            (organization_id, user_id, user_key, user_id),
+        )
+        cols = [d[0] for d in cur.description]
+        return [dict(zip(cols, row, strict=False)) for row in cur.fetchall()]
+
+
+def list_own_saved_filters(user_key: str, *, user_id: int | None = None) -> list[dict[str, Any]]:
+    """Todas las vistas propias del usuario, sin ámbito de organización.
+
+    Es el camino del export GDPR (Art. 15/20): la pregunta es qué guarda el
+    sistema sobre esta persona, no qué ve un equipo. Se separa de
+    :func:`list_saved_filters` para que la ausencia de ámbito sea una decisión
+    con nombre y no el default de un parámetro.
+    """
+    with connect() as c:
+        cur = c.execute(
+            "SELECT id, name, filters_json, created_at, organization_id, visibility "
+            f"FROM saved_filters WHERE {_IDENT} ORDER BY created_at DESC",
+            (user_id, user_key, user_id),
         )
         cols = [d[0] for d in cur.description]
         return [dict(zip(cols, row, strict=False)) for row in cur.fetchall()]
@@ -65,6 +117,7 @@ def delete_saved_filter(
     *,
     user_key: str,
     organization_id: int,
+    user_id: int | None = None,
 ) -> bool:
     """Elimina un filtro guardado por ID, siempre acotado a su dueño.
 
@@ -86,10 +139,24 @@ def delete_saved_filter(
     """
     with connect() as c:
         cur = c.execute(
-            "DELETE FROM saved_filters WHERE id = %s AND organization_id = %s AND user_key = %s",
-            (filter_id, organization_id, user_key),
+            f"DELETE FROM saved_filters WHERE id = %s AND organization_id = %s AND {_IDENT}",
+            (filter_id, organization_id, user_id, user_key, user_id),
         )
         return bool(cur.rowcount > 0)
+
+
+def delete_all_for_user(user_key: str, *, user_id: int | None = None) -> int:
+    """Borra todas las vistas del usuario (GDPR Art. 17). Filas borradas.
+
+    Son dato personal (ADR-030 §D): hasta v129 el borrado de cuenta no las
+    tocaba y una vista guardada sobrevivía a su dueño.
+    """
+    with connect() as c:
+        cur = c.execute(
+            f"DELETE FROM saved_filters WHERE {_IDENT}",
+            (user_id, user_key, user_id),
+        )
+        return int(cur.rowcount)
 
 
 def filters_to_json(

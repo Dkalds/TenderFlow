@@ -219,7 +219,7 @@ def cartera_de_usuario(
     `test_organization_sql_isolation`), porque cada ruta que lo hiciera sería
     otro sitio donde equivocarse con el ámbito.
     """
-    from services.organizations import resolve_organization
+    from services.organizations import alcance_resuelto
 
-    resuelta, _rol = resolve_organization(user_id, organization_id)
-    return listar_cartera(resuelta)
+    with alcance_resuelto(user_id, organization_id) as (resuelta, _rol):
+        return listar_cartera(resuelta)

@@ -147,7 +147,9 @@ async def delete_item(
     id_externo: str,
     ctx: dict[str, Any] = Depends(require_organization(write=True)),
 ) -> None:
-    ok = await run_db(_repo.remove_item, _user_key(ctx), id_externo, ctx["organization_id"])
+    ok = await run_db(
+        _repo.remove_item, _user_key(ctx), id_externo, ctx["organization_id"], _user_id(ctx)
+    )
     if not ok:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Favorito no encontrado.")
 
@@ -171,7 +173,7 @@ async def put_item_nota(
     siguen el mismo expediente tienen cada una la suya, y un compañero no puede
     sobrescribir la de otro aunque el favorito esté compartido.
     """
-    ok = await run_db(_repo.set_nota, _user_key(ctx), id_externo, body.nota)
+    ok = await run_db(_repo.set_nota, _user_key(ctx), id_externo, body.nota, _user_id(ctx))
     if not ok:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Favorito no encontrado.")
     return body

@@ -56,6 +56,14 @@ modelo no las mezcla.
 2. **Lectura dual** mientras un script de paridad no reproduzca, para cada
    usuario, favoritos + empresas + descartes desde `follows` con **cero
    diferencias**, ejecutado contra producción.
+
+   Desde 2026-09 ese número no hay que ir a buscarlo: el paso `follows_paridad`
+   de la pipeline lo mide a diario y lo deja en `ops_events`
+   (`follows_paridad_faltan`). La condición deja de ser «que alguien ejecute el
+   script» y pasa a ser «que la serie lleve N días en cero», que es una
+   pregunta que se puede responder. El paso **sólo mide**: si reparase, el cero
+   sería suyo y no del sistema. El procedimiento completo está en
+   [runbooks/cutover-follows.md](../runbooks/cutover-follows.md).
 3. Retirada de los nueve endpoints antiguos por RFC, con fecha.
 
 El orden importa: retirar antes de la paridad convierte un bug de backfill en

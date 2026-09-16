@@ -44,12 +44,12 @@ class PursuitCommentRepository:
         with connect_read() as conn:
             total_row = conn.execute(
                 "SELECT COUNT(*) FROM pursuit_comments "
-                "WHERE organization_id = %s AND pursuit_id = %s",
+                "WHERE organization_id = %s AND pursuit_id = %s AND deleted_at IS NULL",
                 (organization_id, pursuit_id),
             ).fetchone()
             cur = conn.execute(
                 _COMMENT_SELECT + "WHERE c.organization_id = %s AND c.pursuit_id = %s "
-                "ORDER BY c.id DESC LIMIT %s OFFSET %s",
+                "AND c.deleted_at IS NULL ORDER BY c.id DESC LIMIT %s OFFSET %s",
                 (organization_id, pursuit_id, limit, offset),
             )
             items = rows_to_dicts(cur)
@@ -99,11 +99,22 @@ class PursuitCommentRepository:
             return row, True
 
     def delete(self, organization_id: int, pursuit_id: int, comment_id: int) -> bool:
-        """Borra el comentario; ``False`` si no existía dentro del scope."""
+        """Marca el comentario como borrado; ``False`` si no existía dentro del scope.
+
+        Borrado lógico desde v131. El hilo de una oportunidad es trabajo
+        **compartido**: con un `DELETE`, cualquier miembro de la organización
+        podía hacer desaparecer sin rastro la razón por la que el equipo decidió
+        lo que decidió, y el ledger de `pursuit_events` seguía diciendo «Ana
+        comentó» sobre un comentario que ya no existía.
+
+        El `deleted_at IS NULL` del `WHERE` hace la operación idempotente:
+        borrar dos veces devuelve `False` la segunda, igual que antes.
+        """
         with connect() as conn:
             cur = conn.execute(
-                "DELETE FROM pursuit_comments "
-                "WHERE organization_id = %s AND pursuit_id = %s AND id = %s",
+                "UPDATE pursuit_comments SET deleted_at = now() "
+                "WHERE organization_id = %s AND pursuit_id = %s AND id = %s "
+                "AND deleted_at IS NULL",
                 (organization_id, pursuit_id, comment_id),
             )
             return int(getattr(cur, "rowcount", 0) or 0) > 0
@@ -112,7 +123,12 @@ class PursuitCommentRepository:
         """Comentarios escritos por el usuario (portabilidad RGPD)."""
         with connect_read() as conn:
             cur = conn.execute(
-                "SELECT id, pursuit_id, organization_id, author_user_id, body, created_at "
+                # `deleted_at` viaja en el export a propósito: un comentario
+                # borrado lógicamente **sigue estando** en la base, así que el
+                # derecho de acceso lo alcanza. Omitirlo sería decirle al
+                # usuario que no tenemos algo que sí tenemos.
+                "SELECT id, pursuit_id, organization_id, author_user_id, body, "
+                "created_at, deleted_at "
                 "FROM pursuit_comments WHERE author_user_id = %s ORDER BY id LIMIT 5000",
                 (user_id,),
             )
@@ -194,7 +210,11 @@ class PursuitCommentRepository:
                 "       c.created_at, c.author_user_id "
                 "FROM pursuit_comment_mentions m "
                 "JOIN pursuit_comments c ON c.id = m.comment_id "
-                "WHERE m.user_id = %s ORDER BY m.id DESC LIMIT %s",
+                # Sin este filtro (v131) la mención seguía sirviendo el texto de
+                # un comentario ya borrado: la única lectura por la que lo
+                # borrado volvía a verse, y precisamente al destinatario.
+                "WHERE m.user_id = %s AND c.deleted_at IS NULL "
+                "ORDER BY m.id DESC LIMIT %s",
                 (user_id, max(1, min(int(limit), 200))),
             )
             return rows_to_dicts(cur)
@@ -204,7 +224,8 @@ class PursuitCommentRepository:
         conn: Any, organization_id: int, pursuit_id: int, comment_id: int
     ) -> dict[str, Any] | None:
         cur = conn.execute(
-            _COMMENT_SELECT + "WHERE c.organization_id = %s AND c.pursuit_id = %s AND c.id = %s",
+            _COMMENT_SELECT + "WHERE c.organization_id = %s AND c.pursuit_id = %s "
+            "AND c.id = %s AND c.deleted_at IS NULL",
             (organization_id, pursuit_id, comment_id),
         )
         rows = rows_to_dicts(cur)

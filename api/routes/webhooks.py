@@ -7,7 +7,13 @@ Endpoints:
     PATCH  /api/v1/webhooks/{id}         — actualizar campos opcionales
     DELETE /api/v1/webhooks/{id}         — eliminar
     POST   /api/v1/webhooks/{id}/ping    — enviar entrega de prueba
+    POST   /api/v1/webhooks/{id}/rotate-secret — secret nuevo (se devuelve una sola vez)
     GET    /api/v1/webhooks/{id}/deliveries — historial de entregas
+
+Cada entrega —evento, ping o reintento— lleva ``X-Webhook-Signature`` (v1,
+HMAC del cuerpo), ``X-Webhook-Timestamp`` y ``X-Webhook-Signature-V2`` (HMAC
+de ``"{timestamp}.{cuerpo}"``, para rechazar replays). La receta de
+verificación está en ``docs/integraciones/webhooks.md``.
 
 Desde S4.2 del plan 2026-09 v2 **un webhook pertenece a una organización**:
 lo crea y lo gestiona cualquier miembro con permiso de escritura
@@ -55,6 +61,7 @@ from db.audit import log_event
 from db.events import registrar_metrica_pendientes
 from db.repositories.webhooks import WebhookRepository
 from observability.logging import get_logger
+from shared.crypto import cabeceras_de_firma, segundos_unix
 from shared.dto import StatusOk
 from shared.events import (
     FORMATOS,
@@ -244,6 +251,24 @@ class WebhookCreateResponse(BaseModel):
         description="Secret para verificar firma HMAC (X-Webhook-Signature). "
         "Solo se devuelve en la creación; guárdalo de forma segura.",
     )
+
+
+class WebhookSecretRotated(BaseModel):
+    """Resultado de rotar el secret de un webhook.
+
+    El ``secret`` nuevo viaja aquí y solo aquí, como en la creación: no se
+    almacena en claro y no hay forma de volver a leerlo. El anterior deja de
+    firmar en el mismo instante — no hay periodo de gracia—, así que el
+    receptor tiene que cargar este antes de la siguiente entrega.
+    """
+
+    id: int
+    secret: str = Field(
+        ...,
+        description="Secret nuevo para verificar X-Webhook-Signature y "
+        "X-Webhook-Signature-V2. Se devuelve una sola vez; el anterior ya no firma.",
+    )
+    rotated_at: str = Field(..., description="Instante de la rotación (ISO 8601, UTC).")
 
 
 # ── Endpoints ────────────────────────────────────────────────────────────────
@@ -588,8 +613,6 @@ async def ping(
     pinta.
     """
     import asyncio as _asyncio
-    import hashlib
-    import hmac as _hmac
     import json
 
     wh = await run_db(_repo.get_by_id, webhook_id, organization_id=int(ctx["organization_id"]))
@@ -600,18 +623,21 @@ async def ping(
     if not secret:
         raise HTTPException(status_code=500, detail="Secret no disponible.")
 
-    from db.database import now_utc_iso
+    from db.database import now_utc
 
+    # El mismo instante en el cuerpo y en `X-Webhook-Timestamp`: el ping tiene
+    # que salir con las mismas cabeceras que una entrega real, o no probaría
+    # la verificación que el receptor va a hacer después.
+    momento = now_utc()
     payload = json.dumps(
         renderizar(
             "ping",
             {"message": "Test delivery", "webhook_id": webhook_id},
             formato=str(wh.get("formato") or ""),
-            timestamp=now_utc_iso(),
+            timestamp=momento.isoformat(),
         ),
         ensure_ascii=False,
     ).encode()
-    sig = _hmac.new(secret.encode(), payload, hashlib.sha256).hexdigest()
 
     url = str(wh["url"])
     try:
@@ -622,7 +648,7 @@ async def ping(
 
     headers = {
         "Content-Type": "application/json",
-        "X-Webhook-Signature": f"sha256={sig}",
+        **cabeceras_de_firma(secret=secret, body=payload, timestamp=segundos_unix(momento)),
         "X-Webhook-Event": "ping",
         "User-Agent": "licitaciones-sap-webhook/1.0",
     }
@@ -662,6 +688,52 @@ async def ping(
         payload_size=len(payload),
     )
     return WebhookPingResult(success=False, error=str(last_exc), attempts=max_attempts)
+
+
+@router.post(
+    "/{webhook_id}/rotate-secret",
+    summary="Rotar el secret de firma de un webhook",
+    status_code=200,
+    responses={
+        401: {"description": "API key inválida"},
+        403: {"description": "Scope insuficiente o sin permiso de escritura en la organización"},
+        404: {"description": "No encontrado"},
+    },
+)
+async def rotate_secret(
+    webhook_id: int,
+    response: Response,
+    ctx: dict[str, Any] = Depends(require_organization(write=True)),
+) -> WebhookSecretRotated:
+    """Genera un secret nuevo y lo devuelve **una sola vez**, como en la creación.
+
+    Hasta aquí la única forma de cambiar el secret de un webhook era borrarlo y
+    crearlo de nuevo, perdiendo su historial de entregas y su id. La rotación
+    conserva ambos y cambia solo el material de firma.
+
+    **El secret anterior deja de valer en este mismo instante**: no hay
+    periodo de gracia. Cargá el nuevo en el receptor antes de la siguiente
+    entrega — o desactivá el webhook con ``PATCH {"active": false}`` mientras
+    tanto — o las entregas intermedias fallarán la verificación y entrarán en
+    reintento. Con el mismo alcance que ``PATCH``/``DELETE``: la fila tiene que
+    pertenecer a la organización activa y el principal tener permiso de
+    escritura en ella. Queda en el registro de auditoría como
+    ``webhook.secret_rotated``.
+    """
+    organization_id = int(ctx["organization_id"])
+    response.headers["Cache-Control"] = "no-store"
+    rotado = await run_db(_repo.rotate_secret, webhook_id, organization_id=organization_id)
+    if rotado is None:
+        raise HTTPException(status_code=404, detail="Webhook no encontrado.")
+    secret, rotated_at = rotado
+    await run_db(
+        log_event,
+        event_type="webhook.secret_rotated",
+        user_key=_actor_key(ctx),
+        resource=f"webhook:{webhook_id}",
+        detail={"organization_id": organization_id, "rotated_at": rotated_at},
+    )
+    return WebhookSecretRotated(id=webhook_id, secret=secret, rotated_at=rotated_at)
 
 
 @router.post(

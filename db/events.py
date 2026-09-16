@@ -373,7 +373,9 @@ def seguidores_de_licitacion(id_externo: str) -> list[dict[str, Any]]:
     resuelto en el caso de los favoritos (``watchlist_items`` ya lo guarda) y
     llega ``None`` en el de las oportunidades, donde lo que hay es un id de
     usuario: traducirlo exige el email, y eso es trabajo del productor, no de
-    esta consulta.
+    esta consulta. Desde v129 el favorito trae también su ``user_id`` (puede
+    ser ``None`` si el backfill no lo resolvió), para que la notificación se
+    escriba con las dos identidades.
 
     Vive en este módulo —y no en un repositorio de watchlist— porque su único
     consumidor es el productor del outbox: es «a quién va este evento», la
@@ -386,7 +388,7 @@ def seguidores_de_licitacion(id_externo: str) -> list[dict[str, Any]]:
     """
     with connect_read() as c:
         cur = c.execute(
-            "SELECT w.user_key, w.organization_id, NULL::int AS user_id "
+            "SELECT w.user_key, w.organization_id, w.user_id "
             "  FROM watchlist_items w WHERE w.id_externo = %s "
             "UNION "
             "SELECT NULL, p.organization_id, p.responsible_user_id "

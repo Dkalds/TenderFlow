@@ -30,6 +30,28 @@ que la API no te dio"**. Verificado en CI por
 
 ---
 
+## Cortes de serie por `filter_version`
+
+Un cambio de universo corta las series históricas y se etiqueta con
+`filter_version`, el hash del contenido del diccionario de tecnologías
+(`services/tecnologias_diccionario.py`). No es un contador: dos filas con el
+mismo `filter_version` se filtraron con el mismo diccionario, viniera de la
+semilla o de la tabla. El frontend **no** empalma dos versiones en una sola
+serie; si una gráfica cruza un corte, lo muestra o recorta al tramo vigente.
+
+Cortes registrados:
+
+- **2026-09-14 — taxonomía por categorías y lenguas cooficiales.** La semilla
+  (`config/keywords.py`) pasa de 13 labels de fabricante a 22 (nueve categorías
+  de TI: ERP, CRM, CLOUD_INFRA, CIBERSEGURIDAD, DATOS_IA, DESARROLLO, GIS,
+  SANIDAD_DIGITAL, ADMIN_ELECTRONICA) con vocabulario en catalán, euskera y
+  gallego. El hash cambia, la serie «por tecnología» arranca de nuevo en la
+  fecha de la resiembra, y los conteos de antes y después **no son
+  comparables**: el universo de después es más ancho por construcción. Detalle
+  en [taxonomia-tecnologica.md](taxonomia-tecnologica.md).
+
+---
+
 ## Los 5 anti-patrones (ejemplos reales de este repo)
 
 ### 1 — Dato sintético presentado como real *(el más grave)*

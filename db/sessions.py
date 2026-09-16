@@ -1,14 +1,48 @@
 """Gestión de sesiones server-side con revocación.
 
 Tabla ``sessions``:
-  token_hash  TEXT PK     — SHA-256 del token raw (nunca almacenar el token)
-  user_id     INTEGER     — FK a users
-  created_at  TEXT
-  expires_at  TEXT
-  ip          TEXT
-  user_agent  TEXT
-  revoked     INTEGER     — 0/1
-  revoked_at  TEXT
+  token_hash       TEXT PK     — SHA-256 del token raw (nunca almacenar el token)
+  user_id          INTEGER     — FK a users
+  created_at       TEXT        — instante del login; NUNCA se toca después
+  expires_at       TEXT        — plazo de inactividad (deslizante, ver abajo)
+  ip               TEXT
+  user_agent       TEXT
+  revoked          INTEGER     — 0/1
+  revoked_at       TEXT
+  last_seen_at     TEXT        — última petición validada (escritura throttled)
+  mfa_verified_at  TEXT        — última elevación de segundo factor
+
+Modelo de caducidad (Ola 1 · sesiones deslizantes)
+--------------------------------------------------
+
+Una sesión vive mientras se use, con un techo. Tres plazos, todos en
+``config/settings.py``:
+
+* **Ventana de inactividad** (``SESSION_IDLE_HOURS``): ``expires_at`` es
+  ``última escritura + ventana``. Cada petición validada que pase el throttle
+  vuelve a ponerlo en ``now + ventana`` en el mismo ``UPDATE`` que refresca
+  ``last_seen_at`` — un solo viaje a BD, ninguna consulta extra.
+* **Techo absoluto** (``SESSION_ABSOLUTE_DAYS``): ``created_at + techo``. La
+  renovación nunca lo supera (``min(now + ventana, techo)``) y la validación
+  rechaza toda sesión que lo haya cruzado aunque esté fresca por actividad. No
+  se persiste: se deriva de ``created_at``, que no cambia nunca.
+* **«Recordar este equipo»** (``SESSION_REMEMBER_DAYS``): la tabla no tiene
+  columna para la elección, así que se implementa como una ventana de
+  inactividad más larga (en días) **con el mismo techo absoluto** que el resto.
+  Con los valores por defecto (90 d de ventana, 30 d de techo) una sesión
+  recordada no caduca por inactividad: muere a los 30 días del login. Para
+  saber en la renovación qué ventana aplica sin una columna, se lee la que
+  dejó la última escritura: ``expires_at - last_seen_at`` (ambos salen del
+  mismo ``UPDATE``). Si esa distancia supera la ventana corta, la sesión es
+  «recordada». La única ambigüedad posible —una sesión recordada tan cerca del
+  techo que la distancia ya no supera la ventana corta— es inocua: en ese
+  tramo ``min(now + ventana, techo)`` devuelve el techo con cualquiera de las
+  dos ventanas.
+
+``require_recent_session`` (``api/routes/dual_auth.py``) sigue mirando
+``created_at`` (``authenticated_at``) y ``mfa_verified_at``: la renovación no
+toca ninguno de los dos, así que una sesión de hace tres semanas, por viva que
+esté, sigue exigiendo reautenticación para las acciones sensibles.
 """
 
 from __future__ import annotations
@@ -18,17 +52,16 @@ import secrets
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+from config.settings import settings
 from db.database import connect, now_utc_iso
 from observability.logging import get_logger
 
 log = get_logger(__name__)
 
-_SESSION_TTL_HOURS = 24
-_SESSION_IDLE_MINUTES = 30
-# Cada request autenticada refrescaba ``last_seen_at``. Con un umbral de
-# inactividad de 30 minutos, escribir en cada petición no aporta precisión: solo
-# convierte toda lectura autenticada en una escritura. Se refresca como mucho
-# una vez por minuto.
+# Cada request autenticada refrescaba ``last_seen_at``. Escribir en cada
+# petición no aporta precisión: solo convierte toda lectura autenticada en una
+# escritura. Se refresca —y con ello se renueva ``expires_at``— como mucho una
+# vez por minuto.
 _LAST_SEEN_THROTTLE_SECONDS = 60
 
 
@@ -42,18 +75,79 @@ def _as_utc(value: str) -> datetime:
     return parsed.replace(tzinfo=UTC) if parsed.tzinfo is None else parsed
 
 
+# ---------------------------------------------------------------------------
+# Plazos (leídos de settings en cada llamada: los tests los monkeypatchean)
+# ---------------------------------------------------------------------------
+
+
+def _idle_window() -> timedelta:
+    """Ventana de inactividad de una sesión normal."""
+    return timedelta(hours=settings.SESSION_IDLE_HOURS)
+
+
+def _remember_window() -> timedelta:
+    """Ventana de inactividad de una sesión «recordada»; nunca menor que la normal."""
+    return max(timedelta(days=settings.SESSION_REMEMBER_DAYS), _idle_window())
+
+
+def _absolute_ceiling(created_at: datetime) -> datetime:
+    """Techo absoluto: pasado este instante no hay renovación posible."""
+    return created_at + timedelta(days=settings.SESSION_ABSOLUTE_DAYS)
+
+
+def _window_in_effect(expires_at: datetime, last_seen: datetime | None) -> timedelta:
+    """Ventana que dejó la última escritura, deducida de la propia fila.
+
+    ``expires_at`` y ``last_seen_at`` se escriben juntos, así que su distancia
+    es la ventana vigente. Si supera la ventana corta, la sesión se creó con
+    «recordar este equipo». Filas anteriores a este modelo (``expires_at`` fijo
+    a 24 h del login, ``last_seen_at`` throttled) caen en la ventana corta.
+    """
+    idle = _idle_window()
+    if last_seen is not None and expires_at - last_seen > idle:
+        return _remember_window()
+    return idle
+
+
+def _renewed_expiry(now: datetime, created_at: datetime, window: timedelta) -> datetime:
+    """``min(now + ventana, techo)``: el plazo tras una petición validada."""
+    return min(now + window, _absolute_ceiling(created_at))
+
+
+def session_max_age_seconds() -> int:
+    """Vida máxima posible de una sesión, en segundos (``max_age`` de la cookie).
+
+    La cookie tiene que sobrevivir a todas las renovaciones: si el navegador la
+    tirara al cumplirse la ventana de inactividad, la renovación en servidor no
+    serviría de nada. Quien decide que la sesión sigue viva es el servidor, no
+    el navegador; la cookie solo dura lo que la sesión *podría* durar.
+    """
+    return settings.SESSION_ABSOLUTE_DAYS * 86_400
+
+
 def create_session(
     user_id: int,
     *,
     ip: str | None = None,
     user_agent: str | None = None,
-    ttl_hours: int = _SESSION_TTL_HOURS,
+    remember: bool = False,
+    ttl_hours: int | None = None,
 ) -> str:
-    """Crea una nueva sesión y devuelve el token raw (guardar en cookie)."""
+    """Crea una nueva sesión y devuelve el token raw (guardar en cookie).
+
+    ``expires_at`` nace en ``now + ventana`` (la normal o, con ``remember``, la
+    de «recordar este equipo»), nunca más allá del techo absoluto. ``ttl_hours``
+    es un override explícito de esa ventana inicial para tests y scripts; no
+    cambia el techo ni la ventana con que se renovará después.
+    """
     token = secrets.token_urlsafe(32)
     token_hash = _hash_token(token)
     now = datetime.now(UTC)
-    expires = now + timedelta(hours=ttl_hours)
+    if ttl_hours is not None:
+        window = timedelta(hours=ttl_hours)
+    else:
+        window = _remember_window() if remember else _idle_window()
+    expires = _renewed_expiry(now, now, window)
 
     with connect() as c:
         c.execute(
@@ -74,7 +168,12 @@ def create_session(
 
 
 def validate_session(token: str) -> dict[str, Any] | None:
-    """Verifica token, devuelve datos de sesión o None si inválida/expirada."""
+    """Verifica token, devuelve datos de sesión o None si inválida/expirada.
+
+    Camino legado (``validate_session_principal`` es el que recorre el SPA);
+    aplica el mismo modelo: rechazo por revocación, por plazo de inactividad o
+    por techo absoluto, y renovación throttled de ``expires_at``.
+    """
     token_hash = _hash_token(token)
     with connect() as c:
         row = c.execute(
@@ -87,31 +186,31 @@ def validate_session(token: str) -> dict[str, Any] | None:
     user_id, created_at, expires_at, revoked, ip, last_seen_at, mfa_verified_at = row
     if revoked:
         return None
+    now = datetime.now(UTC)
     try:
-        exp = datetime.fromisoformat(expires_at)
-        if exp.tzinfo is None:
-            exp = exp.replace(tzinfo=UTC)
-        now = datetime.now(UTC)
-        if now > exp:
-            return None
-        last_seen = datetime.fromisoformat(last_seen_at) if last_seen_at else None
-        if last_seen is not None:
-            if last_seen.tzinfo is None:
-                last_seen = last_seen.replace(tzinfo=UTC)
-            if now - last_seen > timedelta(minutes=_SESSION_IDLE_MINUTES):
-                revoke_session(token)
-                return None
+        created = _as_utc(created_at)
+        exp = _as_utc(expires_at)
+        last_seen = _as_utc(last_seen_at) if last_seen_at else None
     except Exception:
         # Camino de autenticación: sin log, un fallo de BD se presenta al
         # usuario como "sesión inválida" y nadie puede distinguirlo de un
         # token realmente caducado.
         log.warning("session_validation_failed", exc_info=True)
         return None
-    with connect() as c:
-        c.execute(
-            "UPDATE sessions SET last_seen_at = %s WHERE token_hash = %s AND revoked = 0",
-            (now.isoformat(), token_hash),
-        )
+
+    if now > exp or now > _absolute_ceiling(created):
+        revoke_session(token)
+        return None
+
+    if last_seen is None or (now - last_seen).total_seconds() >= _LAST_SEEN_THROTTLE_SECONDS:
+        renewed = _renewed_expiry(now, created, _window_in_effect(exp, last_seen))
+        with connect() as c:
+            c.execute(
+                "UPDATE sessions SET last_seen_at = %s, expires_at = %s "
+                "WHERE token_hash = %s AND revoked = 0",
+                (now.isoformat(), renewed.isoformat(), token_hash),
+            )
+        expires_at = renewed.isoformat()
     return {
         "user_id": user_id,
         "authenticated_at": created_at,
@@ -135,11 +234,15 @@ def validate_session_principal(token: str) -> dict[str, Any] | None:
     ``is_totp_required`` pasaba por ``get_totp_secret``, que descifra el TOTP
     entero para acabar mirando un booleano.
 
-    Devuelve ``None`` si la sesión no existe, está revocada, expiró, lleva
-    inactiva más de ``_SESSION_IDLE_MINUTES`` (en cuyo caso la revoca) o su
-    usuario está desactivado. El llamador no distingue entre esos casos a
+    Devuelve ``None`` si la sesión no existe, está revocada, superó su plazo de
+    inactividad (``expires_at``) o el techo absoluto (en ambos casos la revoca
+    en la misma transacción, para que ninguna renovación posterior la reviva)
+    o su usuario está desactivado. El llamador no distingue entre esos casos a
     propósito: todos son "sesión inválida" y detallarlos filtra si la cuenta
     existe.
+
+    Si la sesión es válida y pasó el throttle, renueva ``expires_at`` a
+    ``min(now + ventana, techo)`` en el mismo ``UPDATE`` de ``last_seen_at``.
     """
     token_hash = _hash_token(token)
     now = datetime.now(UTC)
@@ -179,7 +282,8 @@ def validate_session_principal(token: str) -> dict[str, Any] | None:
             return None
 
         try:
-            expired = now > _as_utc(expires_at)
+            created = _as_utc(created_at)
+            exp = _as_utc(expires_at)
             last_seen = _as_utc(last_seen_at) if last_seen_at else None
         except Exception:
             # Camino de autenticación: un fallo al interpretar las marcas de
@@ -188,10 +292,10 @@ def validate_session_principal(token: str) -> dict[str, Any] | None:
             log.warning("session_validation_failed", exc_info=True)
             return None
 
-        if expired:
-            return None
-
-        if last_seen is not None and now - last_seen > timedelta(minutes=_SESSION_IDLE_MINUTES):
+        # Plazo de inactividad o techo absoluto: fuera, aunque el otro plazo
+        # siga vivo. Se revoca para que la fila no pueda volver a validarse
+        # nunca (una fecha se puede reescribir; la revocación es definitiva).
+        if now > exp or now > _absolute_ceiling(created):
             c.execute(
                 "UPDATE sessions SET revoked = 1, revoked_at = %s WHERE token_hash = %s",
                 (now.isoformat(), token_hash),
@@ -206,10 +310,13 @@ def validate_session_principal(token: str) -> dict[str, Any] | None:
             last_seen is None or (now - last_seen).total_seconds() >= _LAST_SEEN_THROTTLE_SECONDS
         )
         if stale:
+            renewed = _renewed_expiry(now, created, _window_in_effect(exp, last_seen))
             c.execute(
-                "UPDATE sessions SET last_seen_at = %s WHERE token_hash = %s AND revoked = 0",
-                (now.isoformat(), token_hash),
+                "UPDATE sessions SET last_seen_at = %s, expires_at = %s "
+                "WHERE token_hash = %s AND revoked = 0",
+                (now.isoformat(), renewed.isoformat(), token_hash),
             )
+            expires_at = renewed.isoformat()
 
     return {
         "user_id": user_id,
@@ -256,12 +363,20 @@ def revoke_all_sessions(user_id: int) -> int:
 
 
 def purge_expired_sessions() -> int:
-    """Elimina sesiones expiradas/revocadas. Llamar en mantenimiento periódico."""
-    cutoff = (datetime.now(UTC) - timedelta(days=30)).isoformat()
+    """Elimina sesiones expiradas/revocadas. Llamar en mantenimiento periódico.
+
+    Además de las revocadas y las que llevan 30 días caducadas por
+    ``expires_at``, borra las que superaron el techo absoluto hace 30 días:
+    ninguna renovación las puede revivir y ``expires_at`` no lo refleja en
+    filas escritas antes de este modelo o retocadas a mano.
+    """
+    now = datetime.now(UTC)
+    cutoff = (now - timedelta(days=30)).isoformat()
+    ceiling_cutoff = (now - timedelta(days=settings.SESSION_ABSOLUTE_DAYS + 30)).isoformat()
     with connect() as c:
         cur = c.execute(
-            "DELETE FROM sessions WHERE expires_at < %s OR revoked = 1",
-            (cutoff,),
+            "DELETE FROM sessions WHERE expires_at < %s OR created_at < %s OR revoked = 1",
+            (cutoff, ceiling_cutoff),
         )
         return cur.rowcount if hasattr(cur, "rowcount") else 0
 
@@ -305,7 +420,11 @@ def revoke_session_by_public_id(user_id: int, public_id: str) -> bool:
 
 
 def list_active_sessions(user_id: int) -> list[dict[str, Any]]:
-    """Lista sesiones activas y no expiradas de un usuario."""
+    """Lista sesiones activas y no expiradas de un usuario.
+
+    ``expires_at`` es el plazo de inactividad vigente (se renueva con el uso),
+    no la vida máxima: esa es ``created_at`` + ``SESSION_ABSOLUTE_DAYS``.
+    """
     now = datetime.now(UTC).isoformat()
     with connect() as c:
         cur = c.execute(

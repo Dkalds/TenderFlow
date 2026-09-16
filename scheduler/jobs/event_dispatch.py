@@ -30,13 +30,11 @@ worker de S5 puede invocarlo a demanda con el mismo ``run()``.
 
 from __future__ import annotations
 
-import hashlib
-import hmac
 import json
 from dataclasses import dataclass
 from typing import Any
 
-from db.database import now_utc_iso
+from db.database import now_utc, now_utc_iso
 from db.events import (
     claim_channel,
     mark_dispatched,
@@ -44,6 +42,7 @@ from db.events import (
     release_channel,
 )
 from observability.logging import get_logger
+from shared.crypto import cabeceras_de_firma, segundos_unix
 from shared.events import CATALOGO, Canal, EspecificacionEvento, renderizar, suscripcion_cubre
 
 log = get_logger(__name__)
@@ -160,10 +159,14 @@ def _destinatarios(evento: dict[str, Any]) -> list[Destinatario]:
         user_key = str(fila.get("user_key") or "")
         if not user_key:
             continue
+        # ``user_id`` llega desde v129 (``services/contract_events``); los
+        # eventos anteriores en cola no lo traen y la alerta sale sólo con clave.
+        bruto = fila.get("user_id")
         seguidores.append(
             Destinatario(
                 user_key=user_key,
                 organization_id=int(fila.get("organization_id") or organization_id or 0),
+                user_id=int(bruto) if bruto is not None else None,
                 email=str(fila["email"]) if fila.get("email") else None,
             )
         )
@@ -226,6 +229,7 @@ def _canal_in_app(evento: dict[str, Any], spec: EspecificacionEvento) -> int:
             continue
         if insert_user_notification(
             user_key=destinatario.user_key,
+            user_id=destinatario.user_id,
             type_=tipo,
             title=titulo,
             body=cuerpo,
@@ -257,7 +261,7 @@ def _canal_digest(evento: dict[str, Any], spec: EspecificacionEvento) -> tuple[i
     encoladas = 0
     enviados = 0
     for destinatario in _destinatarios(evento):
-        modo = modo_email_de(destinatario.user_key, spec.tipo)
+        modo = modo_email_de(destinatario.user_key, spec.tipo, user_id=destinatario.user_id)
         if modo == "off" or not destinatario.email:
             continue
         if modo == "daily":
@@ -273,6 +277,7 @@ def _canal_digest(evento: dict[str, Any], spec: EspecificacionEvento) -> tuple[i
                 licitacion_id,
                 "daily",
                 now_utc_iso(),
+                user_id=destinatario.user_id,
             )
             encoladas += 1
             continue
@@ -290,17 +295,28 @@ def _canal_digest(evento: dict[str, Any], spec: EspecificacionEvento) -> tuple[i
     return encoladas, enviados
 
 
-def _firmar(secret: str, cuerpo: bytes) -> str:
-    return hmac.new(secret.encode(), cuerpo, hashlib.sha256).hexdigest()
+def _sello_unix(marca: str) -> int:
+    """Segundos Unix del ``created_at`` del evento, que es lo que lleva el cuerpo.
+
+    Sellar la cabecera con el mismo instante que el cuerpo es lo que hace que
+    ``X-Webhook-Timestamp`` describa el evento y no la pasada del despachador.
+    Si la marca no parsea (no debería: la escribe ``append_domain_event``) se
+    sella con «ahora» antes que no entregar.
+    """
+    try:
+        return segundos_unix(marca)
+    except ValueError:
+        return segundos_unix(now_utc())
 
 
 def _canal_webhook(evento: dict[str, Any], spec: EspecificacionEvento) -> int:
     """Entrega el evento a los webhooks suscritos. Devuelve entregas con 2xx.
 
-    La firma HMAC, la allowlist y el pinning de DNS son **los mismos** que ya
-    usaban el ping manual y ``db/webhooks.py``: lo único nuevo es de dónde sale
-    el cuerpo (la plantilla del formato del webhook) y qué filas se consultan
-    (las de la organización del evento, más las globales sin dueño).
+    Las firmas HMAC (``shared.crypto.cabeceras_de_firma``), la allowlist y el
+    pinning de DNS son **los mismos** que ya usaban el ping manual y
+    ``db/webhooks.py``: lo único nuevo es de dónde sale el cuerpo (la plantilla
+    del formato del webhook) y qué filas se consultan (las de la organización
+    del evento, más las globales sin dueño).
     """
     import requests
 
@@ -327,12 +343,13 @@ def _canal_webhook(evento: dict[str, Any], spec: EspecificacionEvento) -> int:
             continue
         webhook_id = int(fila["id"])
         url = str(fila["url"])
+        marca = str(evento.get("created_at") or now_utc_iso())
         cuerpo = json.dumps(
             renderizar(
                 spec.tipo,
                 dict(evento.get("payload") or {}),
                 formato=str(fila.get("formato") or ""),
-                timestamp=str(evento.get("created_at") or now_utc_iso()),
+                timestamp=marca,
             ),
             ensure_ascii=False,
             separators=(",", ":"),
@@ -355,7 +372,7 @@ def _canal_webhook(evento: dict[str, Any], spec: EspecificacionEvento) -> int:
         secret = resolve_stored_secret(webhook_id, str(fila["secret"]))
         cabeceras = {
             "Content-Type": "application/json",
-            "X-Webhook-Signature": f"sha256={_firmar(secret, cuerpo)}",
+            **cabeceras_de_firma(secret=secret, body=cuerpo, timestamp=_sello_unix(marca)),
             "X-Webhook-Event": spec.tipo,
             "User-Agent": "licitaciones-sap-webhook/1.0",
         }

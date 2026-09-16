@@ -1975,6 +1975,49 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/follows": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Listar lo que sigue el usuario */
+        get: operations["get_follows_api_v1_follows_get"];
+        put?: never;
+        /**
+         * Seguir algo
+         * @description Idempotente: seguir dos veces lo mismo devuelve la misma fila.
+         *
+         *     No lleva `X-Idempotency-Key` como `/watchlist/items` y no es un olvido: el
+         *     `ON CONFLICT` de `follows` ya hace que repetir la llamada sea inofensivo, y
+         *     una clave de idempotencia sobre una operación que ya lo es sólo añade una
+         *     tabla que mantener.
+         */
+        post: operations["post_follow_api_v1_follows_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/follows/{target_type}/{target_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Dejar de seguir */
+        delete: operations["delete_follow_api_v1_follows__target_type___target_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/health": {
         parameters: {
             query?: never;
@@ -3084,6 +3127,43 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/notifications/baja": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Dejar de recibir por correo un tipo de notificación
+         * @description Apaga el correo de **un** tipo, y nada más.
+         *
+         *     Sin sesión a propósito: quien quiere dejar de recibir un correo no quiere
+         *     antes hacer login. Lo que autoriza es la firma de ``(user_id, tipo)``.
+         *
+         *     Existe porque la baja del digest (``/watchlist/rules/baja``) pausa **todas
+         *     las reglas de watchlist**, y el informe semanal salió apuntando ahí: pulsar
+         *     «dejar de recibir este informe» borraba las alertas de licitaciones de esa
+         *     persona y el informe seguía llegando, porque su opt-out está en
+         *     ``notification_preferences``. Un enlace de baja que da de baja de otra cosa
+         *     es peor que no tener enlace.
+         */
+        get: operations["baja_de_tipo_api_v1_notifications_baja_get"];
+        put?: never;
+        /**
+         * Baja en un clic desde el cliente de correo (RFC 8058)
+         * @description La misma baja que el GET, para el ``POST`` del cliente de correo.
+         *
+         *     RFC 8058 exige responder 2xx y **no** redirigir: el cliente no sigue la
+         *     redirección y daría la baja por fallida.
+         */
+        post: operations["baja_de_tipo_un_clic_api_v1_notifications_baja_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/notifications/read": {
         parameters: {
             query?: never;
@@ -3178,6 +3258,31 @@ export interface paths {
          *     envió.
          */
         post: operations["post_accept_organization_invitation_api_v1_organizations_invitations_accept_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{organization_id}/audit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Rastro de auditoría de la organización (owner/admin)
+         * @description Eventos de la organización: pertenencia, invitaciones, configuración,
+         *     capacidad y ciclo de vida (familia ``org.*`` de ``shared/audit_events.py``).
+         *
+         *     El actor sale como ``actor_user_id`` y el ``detail`` lleva ids, nunca
+         *     correos: el rastro sobrevive a un cambio de dirección y a una
+         *     anonimización GDPR sin quedarse con dato personal (ADR-030 §D).
+         */
+        get: operations["get_organization_audit_api_v1_organizations__organization_id__audit_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -3408,6 +3513,37 @@ export interface paths {
          * @description Reemplaza el conjunto completo de NIFs: manda la lista entera, no un alta.
          */
         put: operations["put_organization_nifs_api_v1_organizations__organization_id__nifs_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{organization_id}/report-schedule": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Cuándo sale el informe semanal de esta organización
+         * @description Devuelve los valores por defecto cuando todavía no hay programación.
+         *
+         *     No crea la fila: quien sólo abre la pantalla a mirar no debería dejar nada
+         *     escrito.
+         */
+        get: operations["get_report_schedule_api_v1_organizations__organization_id__report_schedule_get"];
+        /**
+         * Programar el informe semanal (owner/admin)
+         * @description Activa, cambia el día y la hora, o fija la lista de destinatarios.
+         *
+         *     Cambiar la programación **no** reenvía el informe de esta semana: el
+         *     repositorio no toca ``ultimo_envio_at``. Mover el informe del lunes al
+         *     martes es cambiar de día, no pedir dos.
+         */
+        put: operations["put_report_schedule_api_v1_organizations__organization_id__report_schedule_put"];
         post?: never;
         delete?: never;
         options?: never;
@@ -4690,7 +4826,19 @@ export interface paths {
          */
         get: operations["baja_alertas_api_v1_watchlist_rules_baja_get"];
         put?: never;
-        post?: never;
+        /**
+         * Baja en un clic desde el cliente de correo (RFC 8058)
+         * @description La misma baja que el GET, para el POST que hace el cliente de correo.
+         *
+         *     Los digests salen con ``List-Unsubscribe: <esta URL>`` y
+         *     ``List-Unsubscribe-Post: List-Unsubscribe=One-Click``
+         *     (``observability/mailer.py``). Gmail, Yahoo y Outlook ejecutan esa baja
+         *     con un ``POST`` a la URL, cuerpo ``List-Unsubscribe=One-Click`` y sin
+         *     cookies ni sesión; RFC 8058 exige responder 2xx y **no** redirigir, porque
+         *     el cliente de correo no sigue la redirección y daría la baja por fallida.
+         *     Autoriza lo mismo que el GET: la firma HMAC del ``user_key``.
+         */
+        post: operations["baja_alertas_un_clic_api_v1_watchlist_rules_baja_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -4924,6 +5072,39 @@ export interface paths {
          *     pinta.
          */
         post: operations["ping_api_v1_webhooks__webhook_id__ping_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/webhooks/{webhook_id}/rotate-secret": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Rotar el secret de firma de un webhook
+         * @description Genera un secret nuevo y lo devuelve **una sola vez**, como en la creación.
+         *
+         *     Hasta aquí la única forma de cambiar el secret de un webhook era borrarlo y
+         *     crearlo de nuevo, perdiendo su historial de entregas y su id. La rotación
+         *     conserva ambos y cambia solo el material de firma.
+         *
+         *     **El secret anterior deja de valer en este mismo instante**: no hay
+         *     periodo de gracia. Cargá el nuevo en el receptor antes de la siguiente
+         *     entrega — o desactivá el webhook con ``PATCH {"active": false}`` mientras
+         *     tanto — o las entregas intermedias fallarán la verificación y entrarán en
+         *     reintento. Con el mismo alcance que ``PATCH``/``DELETE``: la fila tiene que
+         *     pertenecer a la organización activa y el principal tener permiso de
+         *     escritura en ella. Queda en el registro de auditoría como
+         *     ``webhook.secret_rotated``.
+         */
+        post: operations["rotate_secret_api_v1_webhooks__webhook_id__rotate_secret_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -5233,6 +5414,35 @@ export interface components {
             first_tampered_id: number | null;
             /** Valid */
             valid: boolean | null;
+        };
+        /**
+         * AuditEntryOut
+         * @description Una entrada del rastro de auditoría de la organización.
+         *
+         *     Es lo que sirve ``GET /organizations/{id}/audit`` (Ola 1 · Audit log). El
+         *     actor viaja como ``users.id`` y nunca como correo (ADR-030 §D); ``detail``
+         *     es el payload tal como se persistió —JSON o texto— y no un objeto: cada
+         *     familia de ``shared/audit_events.py`` guarda claves distintas y declarar
+         *     una forma por familia sería un contrato que nadie consume tipado.
+         */
+        AuditEntryOut: {
+            /** Actor User Id */
+            actor_user_id?: number | null;
+            /**
+             * Detail
+             * @default
+             */
+            detail: string;
+            /** Event Type */
+            event_type: string;
+            /** Id */
+            id: number;
+            /** Outcome */
+            outcome: string;
+            /** Resource */
+            resource?: string | null;
+            /** Ts */
+            ts: string;
         };
         /**
          * BajaAgregada
@@ -6568,6 +6778,20 @@ export interface components {
             items: components["schemas"]["CuotaEmpresa"][];
             scope: components["schemas"]["MetricScope"];
         };
+        /** CursorPaginatedResponse[AuditEntryOut] */
+        CursorPaginatedResponse_AuditEntryOut_: {
+            /**
+             * Has More
+             * @default false
+             */
+            has_more: boolean;
+            /** Items */
+            items: components["schemas"]["AuditEntryOut"][];
+            /** Limit */
+            limit: number;
+            /** Next Cursor */
+            next_cursor?: string | null;
+        };
         /** CursorPaginatedResponse[LicitacionSummary] */
         CursorPaginatedResponse_LicitacionSummary_: {
             /**
@@ -7412,6 +7636,74 @@ export interface components {
             /** Updated At */
             updated_at?: string | null;
         };
+        /**
+         * FollowBody
+         * @description Alta de un seguimiento.
+         */
+        FollowBody: {
+            /** Hasta */
+            hasta?: string | null;
+            /**
+             * Kind
+             * @default seguir
+             */
+            kind: string;
+            /** Organization Id */
+            organization_id?: number | null;
+            /** Target Id */
+            target_id: string;
+            /** Target Type */
+            target_type: string;
+            /**
+             * Visibility
+             * @default private
+             */
+            visibility: string;
+        };
+        /**
+         * FollowItem
+         * @description Un seguimiento de la tabla unificada (`follows`, ADR-031).
+         *
+         *     `target_id` es texto aunque el objetivo sea un entero (una empresa, un
+         *     órgano): el tipo es polimórfico y por eso ni lleva clave foránea ni puede
+         *     tener un tipo más estrecho (ADR-031 §Riesgo).
+         */
+        FollowItem: {
+            /** Channels */
+            channels?: {
+                [key: string]: unknown;
+            } | null;
+            /** Created At */
+            created_at?: string | null;
+            /** Hasta */
+            hasta?: string | null;
+            /** Id */
+            id: number;
+            /** Kind */
+            kind: string;
+            /** Organization Id */
+            organization_id?: number | null;
+            /** Target Id */
+            target_id: string;
+            /** Target Type */
+            target_type: string;
+            /** User Id */
+            user_id?: number | null;
+            /** User Key */
+            user_key: string;
+            /** Visibility */
+            visibility: string;
+        };
+        /**
+         * FollowsResult
+         * @description Listado de seguimientos, con el total por si la interfaz pagina.
+         */
+        FollowsResult: {
+            /** Items */
+            items: components["schemas"]["FollowItem"][];
+            /** Total */
+            total: number;
+        };
         /** ForecastEntry */
         ForecastEntry: {
             /** Adjudicatarios */
@@ -8213,6 +8505,11 @@ export interface components {
             email: string;
             /** Password */
             password: string;
+            /**
+             * Remember
+             * @default false
+             */
+            remember: boolean;
         };
         /**
          * LotFact
@@ -10559,6 +10856,10 @@ export interface components {
             filas_sin_organizacion: number;
             /** Last Scrape Hours Ago */
             last_scrape_hours_ago?: number | null;
+            /** Organos Cobertura Pct */
+            organos_cobertura_pct?: number | null;
+            /** Organos Revision Pendiente */
+            organos_revision_pendiente?: number | null;
             /**
              * Pct Cpv
              * @default 0
@@ -10932,6 +11233,75 @@ export interface components {
             importe_alto_riesgo: number;
             /** Importe En Juego */
             importe_en_juego: number;
+        };
+        /**
+         * ReportSchedule
+         * @description Cuándo y a quién sale el informe semanal de una organización (T6).
+         *
+         *     `dia_semana` es 0 = lunes, como `datetime.weekday()` y como el `CHECK` de
+         *     v132. No es el `DOW` de Postgres (0 = domingo): mezclar las dos
+         *     numeraciones desplaza el informe seis días, y por eso se dice aquí además
+         *     de en la migración.
+         */
+        ReportSchedule: {
+            /**
+             * Activo
+             * @default false
+             */
+            activo: boolean;
+            /** Destinatarios */
+            destinatarios?: string[] | null;
+            /**
+             * Dia Semana
+             * @default 0
+             */
+            dia_semana: number;
+            /**
+             * Hora Utc
+             * @default 7
+             */
+            hora_utc: number;
+        };
+        /**
+         * ReportScheduleOut
+         * @description La programación leída, con lo que hizo el último envío.
+         *
+         *     `extra="ignore"`, a diferencia del DTO de entrada: el repositorio devuelve
+         *     la fila entera —`id`, `created_at`, `updated_at`, que el job sí usa— y con
+         *     el `forbid` heredado **las dos rutas respondían 500** en cuanto existía una
+         *     fila. La entrada conserva el `forbid` porque se valida contra
+         *     `ReportSchedule`, no contra esta subclase: un campo inventado en el `PUT`
+         *     sigue siendo un 422.
+         */
+        ReportScheduleOut: {
+            /**
+             * Activo
+             * @default false
+             */
+            activo: boolean;
+            /** Destinatarios */
+            destinatarios?: string[] | null;
+            /**
+             * Dia Semana
+             * @default 0
+             */
+            dia_semana: number;
+            /**
+             * Hora Utc
+             * @default 7
+             */
+            hora_utc: number;
+            /** Organization Id */
+            organization_id: number;
+            /**
+             * Tipo
+             * @default pipeline_semanal
+             */
+            tipo: string;
+            /** Ultimo Envio At */
+            ultimo_envio_at?: string | null;
+            /** Ultimo Estado */
+            ultimo_estado?: string | null;
         };
         /**
          * ReporteDatoBody
@@ -13068,6 +13438,29 @@ export interface components {
             status_code?: number | null;
             /** Success */
             success: boolean;
+        };
+        /**
+         * WebhookSecretRotated
+         * @description Resultado de rotar el secret de un webhook.
+         *
+         *     El ``secret`` nuevo viaja aquí y solo aquí, como en la creación: no se
+         *     almacena en claro y no hay forma de volver a leerlo. El anterior deja de
+         *     firmar en el mismo instante — no hay periodo de gracia—, así que el
+         *     receptor tiene que cargar este antes de la siguiente entrega.
+         */
+        WebhookSecretRotated: {
+            /** Id */
+            id: number;
+            /**
+             * Rotated At
+             * @description Instante de la rotación (ISO 8601, UTC).
+             */
+            rotated_at: string;
+            /**
+             * Secret
+             * @description Secret nuevo para verificar X-Webhook-Signature y X-Webhook-Signature-V2. Se devuelve una sola vez; el anterior ya no firma.
+             */
+            secret: string;
         };
         /** WebhookUpdate */
         WebhookUpdate: {
@@ -16931,6 +17324,122 @@ export interface operations {
             };
         };
     };
+    get_follows_api_v1_follows_get: {
+        parameters: {
+            query?: {
+                target_type?: string | null;
+                kind?: string;
+                /** @description Excluir los seguimientos ya caducados (un descarte pospuesto que venció). La fila se conserva; sólo deja de contar. */
+                vigentes?: boolean;
+                limit?: number;
+                /** @description Organización activa; por defecto la personal del usuario. */
+                organization_id?: number | null;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FollowsResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_follow_api_v1_follows_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FollowBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FollowItem"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_follow_api_v1_follows__target_type___target_id__delete: {
+        parameters: {
+            query?: {
+                kind?: string;
+                /** @description Organización activa; por defecto la personal del usuario. */
+                organization_id?: number | null;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                target_type: string;
+                target_id: string;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     health_api_v1_health_get: {
         parameters: {
             query?: never;
@@ -19041,6 +19550,99 @@ export interface operations {
             };
         };
     };
+    baja_de_tipo_api_v1_notifications_baja_get: {
+        parameters: {
+            query: {
+                /** @description Usuario */
+                u: number;
+                /** @description Tipo de notificación */
+                tipo: string;
+                /** @description Firma HMAC (kid.sig) */
+                t: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StatusOk"];
+                };
+            };
+            /** @description Redirige a Ajustes con el tipo ya apagado */
+            303: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Firma inválida o tipo desconocido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    baja_de_tipo_un_clic_api_v1_notifications_baja_post: {
+        parameters: {
+            query: {
+                /** @description Usuario */
+                u: number;
+                /** @description Tipo de notificación */
+                tipo: string;
+                /** @description Firma HMAC (kid.sig) */
+                t: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StatusOk"];
+                };
+            };
+            /** @description Firma inválida o tipo desconocido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     post_mark_read_api_v1_notifications_read_post: {
         parameters: {
             query?: never;
@@ -19291,6 +19893,63 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
+            };
+        };
+    };
+    get_organization_audit_api_v1_organizations__organization_id__audit_get: {
+        parameters: {
+            query?: {
+                /** @description Primer día incluido (UTC). */
+                desde?: string | null;
+                /** @description Último día incluido (UTC). */
+                hasta?: string | null;
+                limit?: number;
+                /** @description `next_cursor` de la página anterior. */
+                cursor?: string | null;
+                formato?: "json" | "csv";
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                organization_id: number;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Página del rastro, del evento más reciente al más antiguo. Con `formato=csv` el mismo contenido como fichero; el cursor de la página siguiente viaja en `X-Next-Cursor`. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CursorPaginatedResponse_AuditEntryOut_"];
+                    "text/csv": unknown;
+                };
+            };
+            /** @description Cursor inválido */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No sos miembro, o no sos owner/admin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Rango de fechas invertido o límite fuera de rango */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
@@ -19802,6 +20461,87 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["OrganizationNifsOut"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_report_schedule_api_v1_organizations__organization_id__report_schedule_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                organization_id: number;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReportScheduleOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_report_schedule_api_v1_organizations__organization_id__report_schedule_put: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                organization_id: number;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReportSchedule"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReportScheduleOut"];
+                };
+            };
+            /** @description El informe lo programa quien puede ver Dirección */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -22455,6 +23195,47 @@ export interface operations {
             };
         };
     };
+    baja_alertas_un_clic_api_v1_watchlist_rules_baja_post: {
+        parameters: {
+            query: {
+                /** @description user_key firmado */
+                k: string;
+                /** @description Firma HMAC (kid.sig) */
+                t: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StatusOk"];
+                };
+            };
+            /** @description Firma inválida */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     preview_matches_api_v1_watchlist_rules_preview_post: {
         parameters: {
             query?: never;
@@ -23114,6 +23895,65 @@ export interface operations {
                 content?: never;
             };
             /** @description Scope insuficiente */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No encontrado */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    rotate_secret_api_v1_webhooks__webhook_id__rotate_secret_post: {
+        parameters: {
+            query?: {
+                /** @description Organización activa; por defecto la personal del usuario. */
+                organization_id?: number | null;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                webhook_id: number;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WebhookSecretRotated"];
+                };
+            };
+            /** @description API key inválida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Scope insuficiente o sin permiso de escritura en la organización */
             403: {
                 headers: {
                     [name: string]: unknown;

@@ -111,8 +111,11 @@ def version() -> str:
 def patrones() -> dict[str, re.Pattern[str]]:
     """`{tecnologia: regex}` con límites de palabra, memoizado por versión.
 
-    El límite de palabra es el mismo criterio de siempre: sin él, «sap» casa
-    dentro de «desaparecer». La memoización va por versión y no por tiempo
+    El límite de palabra es el mismo criterio de siempre —sin él, «sap» casa
+    dentro de «desaparecer»— pero lo aplica `config.keywords.patron_de_keywords`,
+    que además sabe qué hacer con los términos que no empiezan por letra: con el
+    `\b(...)\b` de antes, `.net` no podía casar nunca. La memoización va por
+    versión y no por tiempo
     porque compilar doscientos patrones en cada texto sería el coste dominante
     del filtro, y porque así un cambio del diccionario los invalida exactamente
     cuando cambia y no un minuto después.
@@ -121,13 +124,10 @@ def patrones() -> dict[str, re.Pattern[str]]:
     cacheado = _patrones_cache.get(ver)
     if cacheado is not None:
         return cacheado
+    from config.keywords import patron_de_keywords
+
     compilados = {
-        tec: re.compile(
-            r"\b(" + "|".join(re.escape(k) for k in keywords) + r")\b",
-            flags=re.IGNORECASE,
-        )
-        for tec, keywords in diccionario.items()
-        if keywords
+        tec: patron_de_keywords(keywords) for tec, keywords in diccionario.items() if keywords
     }
     with _lock:
         # Solo se guarda la versión vigente: el diccionario cambia poco y

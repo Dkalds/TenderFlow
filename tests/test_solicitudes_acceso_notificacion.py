@@ -148,6 +148,12 @@ class TestElTransporteTampocoRegistraLaDireccion:
     @staticmethod
     def _settings_smtp():
         return SimpleNamespace(
+            # El transporte (observability/mailer.py) lee el backend y el
+            # remitente además de las credenciales SMTP.
+            EMAIL_BACKEND="smtp",
+            EMAIL_FROM="",
+            EMAIL_FROM_NAME="TenderFlow",
+            EMAIL_REPLY_TO="",
             ALERT_SMTP_USER="bot@tenderflow.example",
             ALERT_SMTP_PASSWORD=SimpleNamespace(get_secret_value=lambda: "clave-de-app"),
             ALERT_SMTP_HOST="smtp.example",

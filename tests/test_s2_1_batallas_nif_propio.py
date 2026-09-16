@@ -55,7 +55,9 @@ def test_con_nif_declarado_la_pantalla_deja_de_avisar() -> None:
     ):
         resultado = batallas_de_usuario(3, "rival", organization_id=7)
 
-    resolver.assert_called_once_with(3, 7)
+    # `write=False` explícito: `alcance_resuelto` siempre lo pasa, porque es
+    # parte de su firma. Antes la llamada venía pelada.
+    resolver.assert_called_once_with(3, 7, write=False)
     # La identidad se lee de la organización **resuelta**, no de la pedida.
     identidad.assert_called_once_with(7)
     assert resultado.sin_nif_propio is False

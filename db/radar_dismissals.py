@@ -9,10 +9,16 @@ deja de aplicar y ``accion`` si el usuario silenció («no me interesa por
 ahora») o pospuso («recuérdamelo»). ``hasta IS NULL`` sigue siendo el descarte
 permanente de siempre, que es lo que tienen todas las filas anteriores.
 
-**Todas** las consultas filtran por ``user_key``. La tabla es user-scoped y el
+**Todas** las consultas filtran por identidad. La tabla es user-scoped y el
 repositorio se defiende solo: no delega el control de propiedad en la ruta que
 lo llame, que es justo el hueco de aislamiento que
 ``tests/test_user_key_sql_isolation.py`` audita en ``db/watchlist.py``.
+
+Desde v129 (ADR-030 fase 2) la fila lleva ``user_id`` junto a ``user_key`` y
+la lectura es dual (ver ``db/repositories/watchlist.py``). La PK sigue siendo
+``(user_key, id_externo)`` —recrearla es la fase 3—, así que :func:`add`
+actualiza primero por identidad y sólo inserta si el usuario no tenía ya ese
+descarte bajo ninguna de sus claves.
 """
 
 from __future__ import annotations
@@ -31,6 +37,9 @@ AccionDescarte = Literal["descartar", "silenciar", "posponer"]
 #: (ver ``shared/estados.py``, mismo argumento).
 VIGENTE_SQL: Final = "(hasta IS NULL OR hasta > now())"
 
+#: Predicado de identidad dual. Parámetros: ``(user_id, user_key, user_id)``.
+_IDENT = "(user_id = %s OR (user_key = %s AND (user_id IS NULL OR %s::int IS NULL)))"
+
 
 def add(
     user_key: str,
@@ -41,6 +50,7 @@ def add(
     hasta: str | None = None,
     accion: str | None = None,
     organization_id: int | None = None,
+    user_id: int | None = None,
 ) -> None:
     """Marca una licitación como descartada por el usuario.
 
@@ -61,34 +71,106 @@ def add(
     decisión de vigencia: quien silencia treinta días algo que había
     descartado, o vuelve a posponer lo que ya venció, está diciendo cuándo
     quiere volver a verlo, y un ``DO NOTHING`` lo ignoraría en silencio.
+
+    La fila existente se localiza por identidad dual (v129): tras un cambio
+    de correo vive bajo la clave antigua y el ``ON CONFLICT`` por PK no la
+    encontraría, dejando el mismo expediente descartado dos veces.
     """
     with connect() as c:
+        cur = c.execute(
+            "UPDATE radar_dismissals SET "
+            "  score = COALESCE(score, %s), banda = COALESCE(banda, %s), "
+            "  hasta = %s, accion = %s, "
+            "  organization_id = COALESCE(%s, organization_id), "
+            "  user_id = COALESCE(user_id, %s) "
+            f"WHERE {_IDENT} AND id_externo = %s",
+            (
+                score,
+                banda,
+                hasta,
+                accion,
+                organization_id,
+                user_id,
+                user_id,
+                user_key,
+                user_id,
+                id_externo,
+            ),
+        )
+        if int(getattr(cur, "rowcount", 0) or 0) > 0:
+            return
         c.execute(
             "INSERT INTO radar_dismissals "
-            "  (user_key, id_externo, score, banda, hasta, accion, organization_id) "
-            "VALUES (%s, %s, %s, %s, %s, %s, %s) "
+            "  (user_key, user_id, id_externo, score, banda, hasta, accion, organization_id) "
+            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s) "
             "ON CONFLICT (user_key, id_externo) DO UPDATE SET "
             "  score = COALESCE(radar_dismissals.score, EXCLUDED.score), "
             "  banda = COALESCE(radar_dismissals.banda, EXCLUDED.banda), "
             "  hasta = EXCLUDED.hasta, "
             "  accion = EXCLUDED.accion, "
             "  organization_id = COALESCE("
-            "    EXCLUDED.organization_id, radar_dismissals.organization_id)",
-            (user_key, id_externo, score, banda, hasta, accion, organization_id),
+            "    EXCLUDED.organization_id, radar_dismissals.organization_id), "
+            "  user_id = COALESCE(radar_dismissals.user_id, EXCLUDED.user_id)",
+            (user_key, user_id, id_externo, score, banda, hasta, accion, organization_id),
         )
 
+    # Escritura doble hacia `follows` (ADR-031 §B, fase aditiva): un descarte es
+    # seguir con signo negativo, y es una de las tres tablas que alimentan la
+    # unificada. Va FUERA del `with`, con la fila ya confirmada, y no lanza
+    # nunca (ver `db/repositories/follows.py::registrar`): mientras `follows`
+    # sea una copia, un fallo suyo no puede impedir que el usuario descarte.
+    from db.repositories import follows as _follows
 
-def remove(user_key: str, id_externo: str) -> bool:
+    _follows.registrar(
+        user_key=user_key,
+        user_id=user_id,
+        organization_id=organization_id,
+        target_type="licitacion",
+        target_id=id_externo,
+        kind="descartar",
+        hasta=hasta,
+    )
+
+
+def remove(user_key: str, id_externo: str, *, user_id: int | None = None) -> bool:
     """Deshace un descarte. ``True`` si había algo que deshacer."""
+    from db.repositories import follows as _follows
+
     with connect() as c:
         cur = c.execute(
-            "DELETE FROM radar_dismissals WHERE user_key = %s AND id_externo = %s",
-            (user_key, id_externo),
+            f"DELETE FROM radar_dismissals WHERE {_IDENT} AND id_externo = %s",
+            (user_id, user_key, user_id, id_externo),
         )
-        return bool(cur.rowcount > 0)
+        borrado = bool(cur.rowcount > 0)
+
+    # Se limpia `follows` aunque no hubiera nada que borrar aquí: si las dos
+    # tablas divergieron, esta es la ocasión de volver a cuadrarlas, y dejar un
+    # descarte huérfano en `follows` sería peor que el no-op.
+    _follows.olvidar(
+        user_key=user_key,
+        user_id=user_id,
+        target_type="licitacion",
+        target_id=id_externo,
+        kind="descartar",
+    )
+    return borrado
 
 
-def list_ids(user_key: str) -> list[str]:
+def delete_all_for_user(user_key: str, *, user_id: int | None = None) -> int:
+    """Borra todos los descartes del usuario, vigentes o caducados (GDPR).
+
+    Son dato personal (ADR-030 §D) y se van con la persona. Devuelve filas
+    borradas.
+    """
+    with connect() as c:
+        cur = c.execute(
+            f"DELETE FROM radar_dismissals WHERE {_IDENT}",
+            (user_id, user_key, user_id),
+        )
+        return int(cur.rowcount)
+
+
+def list_ids(user_key: str, *, user_id: int | None = None) -> list[str]:
     """``id_externo`` descartados **y vigentes**, recientes primero.
 
     Un descarte caducado no se borra: se deja de aplicar. Conservarlo es lo que
@@ -99,27 +181,33 @@ def list_ids(user_key: str) -> list[str]:
     """
     with connect_read() as c:
         cur = c.execute(
-            "SELECT id_externo FROM radar_dismissals "
-            f"WHERE user_key = %s AND {VIGENTE_SQL} "
-            "ORDER BY created_at DESC",
-            (user_key,),
+            "SELECT DISTINCT ON (id_externo) id_externo, created_at FROM radar_dismissals "
+            f"WHERE {_IDENT} AND {VIGENTE_SQL} "
+            "ORDER BY id_externo, created_at DESC",
+            (user_id, user_key, user_id),
         )
-        return [str(row[0]) for row in cur.fetchall()]
+        filas = sorted(cur.fetchall(), key=lambda row: row[1], reverse=True)
+        return [str(row[0]) for row in filas]
 
 
-def list_detalle(user_key: str) -> list[dict[str, Any]]:
+def list_detalle(user_key: str, *, user_id: int | None = None) -> list[dict[str, Any]]:
     """Los descartes vigentes con su fecha y acción, para pintarlos.
 
     El Radar necesita distinguir «silenciada hasta el 6 de octubre» de
     «descartada», y con :func:`list_ids` no puede: sólo devuelve ids.
+
+    ``DISTINCT ON (id_externo)``: un usuario que descartó lo mismo bajo dos
+    claves (antes de v129) tiene dos filas y un solo descarte.
     """
     with connect_read() as c:
         cur = c.execute(
-            "SELECT id_externo, hasta, accion, score, banda FROM radar_dismissals "
-            f"WHERE user_key = %s AND {VIGENTE_SQL} "
-            "ORDER BY created_at DESC",
-            (user_key,),
+            "SELECT DISTINCT ON (id_externo) id_externo, hasta, accion, score, banda, "
+            "created_at FROM radar_dismissals "
+            f"WHERE {_IDENT} AND {VIGENTE_SQL} "
+            "ORDER BY id_externo, created_at DESC",
+            (user_id, user_key, user_id),
         )
+        filas = sorted(cur.fetchall(), key=lambda row: row[5], reverse=True)
         return [
             {
                 "id_externo": str(row[0]),
@@ -128,7 +216,7 @@ def list_detalle(user_key: str) -> list[dict[str, Any]]:
                 "score": row[3],
                 "banda": row[4],
             }
-            for row in cur.fetchall()
+            for row in filas
         ]
 
 
@@ -149,7 +237,8 @@ def pospuestos_vencidos(*, desde_iso: str) -> list[dict[str, Any]]:
     """
     with connect_read() as c:
         cur = c.execute(
-            "SELECT user_key, id_externo, hasta, organization_id FROM radar_dismissals "
+            "SELECT user_key, id_externo, hasta, organization_id, user_id "
+            "FROM radar_dismissals "
             "WHERE accion = 'posponer' AND hasta IS NOT NULL "
             "  AND hasta <= now() AND hasta >= %s "
             "ORDER BY hasta",
@@ -161,6 +250,7 @@ def pospuestos_vencidos(*, desde_iso: str) -> list[dict[str, Any]]:
                 "id_externo": str(row[1]),
                 "hasta": row[2].isoformat() if row[2] is not None else None,
                 "organization_id": int(row[3]) if row[3] is not None else None,
+                "user_id": int(row[4]) if row[4] is not None else None,
             }
             for row in cur.fetchall()
         ]

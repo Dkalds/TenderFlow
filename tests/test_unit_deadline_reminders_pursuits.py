@@ -80,8 +80,14 @@ def test_las_inserciones_deduplicadas_no_cuentan() -> None:
 
 def test_check_all_users_suma_favoritos_y_pursuits_y_sobrevive_a_un_fallo() -> None:
     class _Cursor:
-        def fetchall(self) -> list[tuple[str]]:
-            return [("clave-a",), ("clave-b",)]
+        # Dos columnas desde v129: la consulta es
+        # `SELECT user_key, MAX(user_id) ... GROUP BY user_key`, porque una
+        # clave con filas resueltas y sin resolver por el backfill es UN
+        # usuario. La segunda entrada llega sin `user_id` a propósito: es la
+        # fila que el backfill no pudo casar por correo, y el camino tiene que
+        # seguir funcionando con `None`.
+        def fetchall(self) -> list[tuple[str, int | None]]:
+            return [("clave-a", 7), ("clave-b", None)]
 
     class _Conn:
         def execute(self, *_: Any) -> _Cursor:

@@ -228,8 +228,8 @@ def test_runner_sin_lote_preserva_dedup_antiguo(db):
             "id": "N1",
             "titulo": "Expediente sin lotes",
             "ganadores_multi_lote": [
-                {"nombre": "Empresa SL", "nif": "B99999999", "importe_adjudicado": 3000.0},
-                {"nombre": "Empresa SL", "nif": "B99999999", "importe_adjudicado": 3000.0},
+                {"nombre": "Empresa SL", "nif": "B99999997", "importe_adjudicado": 3000.0},
+                {"nombre": "Empresa SL", "nif": "B99999997", "importe_adjudicado": 3000.0},
             ],
         }
     ]

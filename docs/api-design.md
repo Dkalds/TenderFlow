@@ -6,6 +6,28 @@ más abajo) — es un URI opaco, no una URL real, y no se ha renombrado porque
 requeriría coordinar a los consumidores de la API (ver
 [ADR-015](adr/ADR-015-identidad-tenderflow.md)).
 
+## Qué parte de esta API es un contrato
+
+`api/openapi.json` lleva las más de doscientas operaciones que la aplicación
+expone, y la mayoría son internas: alimentan una pestaña de la consola, la
+administración o el registro de modelos. Enseñarle ese fichero entero a un
+integrador tiene dos efectos, los dos malos: cada endpoint se convierte en una
+promesa que no se puede romper, y el cliente no sabe cuál usar.
+
+La lista de lo que **sí** es contrato, con el motivo de cada línea, está en
+[`api/contrato_publico.py`](../api/contrato_publico.py). Con ella,
+`make openapi` produce dos ficheros:
+
+| Fichero | Qué lleva | Para quién |
+|---|---|---|
+| `api/openapi.json` | todo, con `x-public: true` en las operaciones con contrato | el codegen del frontend, y quien necesite ver la superficie completa |
+| `api/openapi-public.json` | sólo esas operaciones y los esquemas que alcanzan | **el que se publica** a integradores |
+
+Añadir una operación al contrato es una línea. **Quitarla no**: retirar algo de
+ahí rompe a quien lo use, y va por RFC con fecha —
+`tests/test_contrato_publico.py` falla en las dos direcciones para que el
+cambio sea visible en el diff y no un descuido.
+
 ## Base URL
 
 ```
@@ -48,7 +70,7 @@ Scopes usados en el proyecto:
 
 <!-- BEGIN scopes (generado por scripts/gen_scopes_doc.py — no editar a mano) -->
 
-Los scopes los resuelve `api/scopes.py::required_scope_for_request` a partir del método y la ruta; hoy son **30** familias. Esta tabla se genera con `python scripts/gen_scopes_doc.py` y CI la verifica con `--check`.
+Los scopes los resuelve `api/scopes.py::required_scope_for_request` a partir del método y la ruta; hoy son **31** familias. Esta tabla se genera con `python scripts/gen_scopes_doc.py` y CI la verifica con `--check`.
 
 | Scope | Métodos | Familias de ruta |
 |---|---|---|
@@ -59,6 +81,7 @@ Los scopes los resuelve `api/scopes.py::required_scope_for_request` a partir del
 | `api_keys:read` | GET/POST | `/me/keys` |
 | `api_keys:rotate` | POST | `/me/keys` |
 | `ask:read` | GET/POST | `/ask`, `/ask/models` |
+| `audit:read` | GET | `/organizations` |
 | `competitive:read` | GET | `/competitive/bajas`, `/competitive/cuota`, `/competitive/empresas`, `/competitive/hhi`, `/competitive/partners`, `/competitive/renovaciones`, `/competitive/watchlist` |
 | `competitive:write` | POST/DELETE | `/competitive/watchlist` |
 | `data:read` | GET | `/adjudicaciones`, `/auth/me`, `/auth/oauth`, `/cuentas`, `/etiquetas`, `/eventos`, `/health`, `/health/live`, `/health/ready`, `/jobs`, `/me/notification-preferences`, `/me/sessions`, `/meta/filters`, `/meta/last-extraction`, `/predicciones/calibracion`, `/publico/cobertura`, `/publico/hubs`, `/publico/licitaciones`, `/publico/sitemap`, `/radar/dismissals`, `/radar/proximas`, `/resoluciones`, `/search/global`, `/tecnologias/keywords` |
@@ -71,16 +94,16 @@ Los scopes los resuelve `api/scopes.py::required_scope_for_request` a partir del
 | `licitaciones:read` | GET/POST | `/licitaciones`, `/licitaciones/bulk-get`, `/licitaciones/cursor`, `/licitaciones/search`, `/licitaciones/stream` |
 | `licitaciones:write` | POST | `/licitaciones`, `/licitaciones/comparar` |
 | `models:read` | GET/POST | `/models` |
-| `notifications:read` | GET | `/notifications` |
-| `notifications:write` | POST | `/notifications/alerts`, `/notifications/read` |
+| `notifications:read` | GET | `/notifications`, `/notifications/baja` |
+| `notifications:write` | POST | `/notifications/alerts`, `/notifications/baja`, `/notifications/read` |
 | `profile:read` | GET | `/me/profile` |
 | `profile:write` | PUT/DELETE | `/me/profile` |
 | `pursuits:read` | GET | `/organizations`, `/organizations/active`, `/organizations/go-no-go`, `/pursuits`, `/pursuits/actividad`, `/pursuits/adjuntos`, `/pursuits/agenda`, `/pursuits/cartera`, `/pursuits/direccion`, `/pursuits/metrics`, `/pursuits/mi-baja`, `/pursuits/tasks`, `/pursuits/weights-proposal` |
 | `pursuits:write` | POST/PATCH/PUT/DELETE | `/organizations`, `/organizations/go-no-go`, `/organizations/invitations`, `/pursuits`, `/pursuits/adjuntos`, `/pursuits/weights-proposal` |
 | `saved_filters:read` | GET | `/saved-filters` |
 | `saved_filters:write` | POST/DELETE | `/saved-filters` |
-| `watchlist:read` | GET | `/watchlist/feed.xml`, `/watchlist/items`, `/watchlist/rules` |
-| `watchlist:write` | POST/PUT/DELETE | `/watchlist/items`, `/watchlist/rules` |
+| `watchlist:read` | GET | `/follows`, `/watchlist/feed.xml`, `/watchlist/items`, `/watchlist/rules` |
+| `watchlist:write` | POST/PUT/DELETE | `/follows`, `/watchlist/items`, `/watchlist/rules` |
 | `*` | — | Acceso total explícito. Solo para claves de operación. |
 
 <!-- END scopes -->
@@ -158,12 +181,13 @@ Respuesta:
 | `admin_users`      | `/admin/users`              | Administración de usuarios (scope `admin`)       |
 | `feature_flags`    | `/feature-flags`            | Feature flags                                    |
 | `saved_filters`    | `/saved-filters`            | Filtros de búsqueda guardados                    |
-| `webhooks`         | `/webhooks`                 | Gestión de webhooks                              |
+| `webhooks`         | `/webhooks`                 | Gestión de webhooks; firma de entregas y rotación del secret en [integraciones/webhooks.md](integraciones/webhooks.md) |
 | `exports`          | `/exports`                  | Exportación asíncrona (jobs)                     |
 | `feedback`         | `/feedback`                 | Feedback de clasificación ML                     |
 | `notifications`    | `/notifications`            | Notificaciones in-app del usuario                |
 | `health`           | `/health`                   | Health, liveness, readiness                      |
 | `me`               | `/me`, `/me/profile`        | Perfil, API keys y export/delete GDPR del usuario autenticado |
+| `organization_audit` | `/organizations/{id}/audit` | Rastro de auditoría de la organización, JSON o CSV (owner/admin; scope `audit:read`) |
 | `meta`             | `/meta`                     | Metadata del sistema (opciones de filtros)       |
 | `models`           | `/models`                   | Versiones de modelos ML, rollback (`admin`)      |
 | `search`           | `/search`                   | Búsqueda full-text (`tsvector` + GIN) y semántica    |
@@ -232,7 +256,39 @@ opcional **no** es incompatible: un cliente que los ignora sigue funcionando.
 ## Convenciones de naming
 
 - Sustantivos en plural para colecciones: `/licitaciones`, `/webhooks`, `/exports`.
-- IDs en la ruta: `/webhooks/{webhook_id}`, `/licitaciones/{licitacion_id}`.
+- IDs en la ruta: `/webhooks/{webhook_id}`, `/licitaciones/{id_externo}`.
 - Acciones como sub-recurso: `/webhooks/{webhook_id}/ping`,
   `/models/{name}/activate/{version}`.
 - Verbos HTTP semánticos: GET=leer, POST=crear/acción, PATCH=actualizar, DELETE=eliminar.
+
+### Un expediente se nombra `{id_externo:path}`, siempre
+
+Los `id_externo` de PLACSP llevan **barras y espacios** (`PA-S 2026/000058`).
+El servidor ASGI decodifica el `%2F` antes del enrutado, así que el conversor
+por defecto de Starlette (`[^/]+`) no ve el identificador entero y la ruta
+devuelve un 404 que no depende de los datos sino de cómo se declaró.
+
+Por eso toda ruta que direccione un expediente —esté en el paquete
+`api/routes/licitaciones/` o en `eventos.py`, `predicciones.py` o `ask.py`—
+declara `{id_externo:path}`, con ese nombre. Lo comprueba
+`tests/test_licitaciones_identificador.py`, que falla ante cualquier variante.
+
+El campo `licitacion_id` sigue existiendo en **cuerpos** de respuesta
+(`TimelineResult`, `SimilaresResult`): lo que se unificó es cómo se direcciona
+el expediente, no cómo se llama dentro del JSON.
+
+**El detalle es glotón.** `GET /licitaciones/{id_externo:path}` casa también
+con todo lo que cuelga de él —`/licitaciones/{id_externo}/eventos` y el resto—,
+y Starlette se queda con la primera ruta que case. Vive por eso en su propio `router_detalle` que `api/app.py` incluye el
+último de todos. Si añadís un router que cuelgue de `/licitaciones/{...}`,
+inclúyelo **antes** de esa línea.
+
+### Los routers grandes se parten por familias
+
+`api/routes/licitaciones/` es un paquete, no un módulo: `listado`, `ficha`,
+`documentos`, `pliegos`, `analitica` y `adjudicaciones`, más `_base` (lo que
+comparten) y `modelos` (los DTO que usa más de una). El criterio para partir no
+es el número de líneas: es que el orden de declaración dentro del fichero
+decidiera el comportamiento sin que se viera. El orden de inclusión está
+escrito en el `__init__.py` del paquete y hay un test que comprueba que ninguna
+familia se queda fuera.

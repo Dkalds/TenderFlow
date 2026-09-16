@@ -60,15 +60,17 @@ from api.routes.eventos import router as eventos_router
 from api.routes.exports import router as exports_router
 from api.routes.feature_flags import router as feature_flags_router
 from api.routes.feedback import router as feedback_router
+from api.routes.follows import router as follows_router
 from api.routes.health import router as health_router
 from api.routes.jobs import router as jobs_router
-from api.routes.licitaciones import get_licitacion as _get_licitacion_handler
 from api.routes.licitaciones import router as licitaciones_router
+from api.routes.licitaciones import router_detalle as licitaciones_detalle_router
 from api.routes.me import router as me_router
 from api.routes.meta import router as meta_router
 from api.routes.metrics import router as metrics_router
 from api.routes.models import router as models_router
 from api.routes.notifications import router as notifications_router
+from api.routes.organization_audit import router as organization_audit_router
 from api.routes.organization_settings import router as organization_settings_router
 from api.routes.organizations_capacidad import router as organizations_capacidad_router
 from api.routes.predicciones import router as predicciones_router
@@ -91,7 +93,8 @@ from db.database import init_db
 from observability import configure_logging, configure_sentry, configure_tracing
 from observability.logging import get_logger
 
-if TYPE_CHECKING:  # solo para anotar; el módulo se importa en el lifespan
+if TYPE_CHECKING:  # solo para anotar; los módulos se importan en el lifespan
+    from scheduler.cron_plane import CronPlane
     from scheduler.worker import Worker
 
 log = get_logger(__name__)
@@ -163,13 +166,29 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     # pidió. El import va aquí dentro para que la API normal no cargue
     # `scheduler/worker.py` —ni sus handlers— por arrancar.
     worker: Worker | None = None
+    cron: CronPlane | None = None
     if settings.APP_PROFILE == "worker":
         from scheduler.worker import arrancar_en_hilo
 
         worker = arrancar_en_hilo()
         log.info("worker_cola_arrancado_en_lifespan")
 
+        # Plano de cron (ADR-033): el MISMO proceso asume además el reloj
+        # cuando `SCHEDULER_PLANE=worker`. Sin esa variable devuelve None y el
+        # worker sigue siendo sólo el consumidor de la cola, que es el estado
+        # anterior al cutover. La exclusión con Actions no depende de esta
+        # línea: la sostienen la variable y los locks de `db.job_locks`.
+        from scheduler.cron_plane import arrancar_en_hilo as arrancar_cron
+
+        cron = arrancar_cron()
+
     yield
+
+    # Shutdown — el reloj primero: parar de *encolar* trabajo nuevo antes de
+    # drenar lo que ya hay evita terminar con la cola más llena que al empezar.
+    if cron is not None:
+        cron.detener()
+        log.info("worker_cron_detenido_en_lifespan")
 
     # Shutdown — parar el consumidor de la cola antes que nada: lo que no dé
     # tiempo a terminar vuelve a `pending` por TTL y lo remata otro worker, que
@@ -448,6 +467,7 @@ if not _ES_WORKER:
     app.include_router(pursuits_router, prefix="/api/v1")
     app.include_router(organization_settings_router, prefix="/api/v1")
     app.include_router(organizations_capacidad_router, prefix="/api/v1")
+    app.include_router(organization_audit_router, prefix="/api/v1")
     app.include_router(analytics_router, prefix="/api/v1")
     app.include_router(feedback_router, prefix="/api/v1")
     app.include_router(webhooks_router, prefix="/api/v1")
@@ -459,6 +479,7 @@ if not _ES_WORKER:
     app.include_router(watchlist_feed_router, prefix="/api/v1")
     app.include_router(watchlist_rules_router, prefix="/api/v1")
     app.include_router(watchlist_items_router, prefix="/api/v1")
+    app.include_router(follows_router, prefix="/api/v1")
     app.include_router(exports_router, prefix="/api/v1")
     app.include_router(radar_router, prefix="/api/v1")
     app.include_router(cuentas_router, prefix="/api/v1")
@@ -474,6 +495,13 @@ if not _ES_WORKER:
     # la que declaran los dashboards y el render.yaml. Su auth y su formato de
     # exposición viven en `api/routes/metrics.py`.
     app.include_router(metrics_router)
+    # ÚLTIMO A PROPÓSITO. `GET /licitaciones/{id_externo:path}` es glotón y
+    # casaría con `/licitaciones/X/eventos`, `/prediccion-baja`, `/resumen` y
+    # el resto de hijos que viven en otros módulos. Registrarlo al final hace
+    # que sólo recoja lo que ningún hermano reclamó, que es exactamente lo que
+    # tiene que hacer un detalle. Lo fija `tests/test_licitaciones_identificador.py`;
+    # no muevas esta línea sin leerlo.
+    app.include_router(licitaciones_detalle_router, prefix="/api/v1")
 
 
 # ---------------------------------------------------------------------------
@@ -495,20 +523,3 @@ async def _root() -> dict[str, str]:
         "docs": "/api/docs",
         "health": "/api/v1/health",
     }
-
-
-# ---------------------------------------------------------------------------
-# Fallback detalle — ids con '/' (p.ej. "PA-S 2026/000058")
-# ---------------------------------------------------------------------------
-# La ruta /api/v1/licitaciones/{id_externo} usa el conversor por defecto
-# ([^/]+), que no admite barras. Como algunos id_externo contienen '/',
-# registramos un catch-all con el conversor ``:path`` que reutiliza el mismo
-# handler. Va al final (último globalmente) para no ensombrecer las sub-rutas
-# específicas (/explain, /tech-scores, /eventos, /prediccion-baja).
-if not _ES_WORKER:
-    app.add_api_route(
-        "/api/v1/licitaciones/{id_externo:path}",
-        _get_licitacion_handler,
-        methods=["GET"],
-        include_in_schema=False,
-    )

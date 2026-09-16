@@ -40,7 +40,6 @@ if str(_PROJECT_ROOT) not in sys.path:
 
 from db.repositories import organos as repo  # noqa: E402
 from observability.logging import get_logger  # noqa: E402
-from services.organos import resolver  # noqa: E402
 
 log = get_logger(__name__)
 
@@ -74,41 +73,30 @@ def imprimir_cobertura(titulo: str) -> dict[str, int]:
 
 
 def procesar(*, max_grafias: int, batch: int, aplicar: bool) -> dict[str, int]:
-    """Resuelve las grafías pendientes. Devuelve el recuento por vía."""
-    grafias = repo.grafias_sin_resolver(limit=max_grafias)
-    conteo = {"dir3": 0, "nombre": 0, "nuevo": 0, "revision": 0, "sin_nombre": 0}
-    asignadas = 0
+    """Resuelve las grafías pendientes. Devuelve el recuento por vía.
 
-    for fila in grafias:
-        nombre = str(fila.get("nombre") or "")
-        # `crear_si_falta=aplicar`: en dry-run se cuenta lo que pasaría sin
-        # escribir nada en el maestro.
-        resolucion = resolver(
-            nombre,
-            ccaa=fila.get("ccaa"),
-            crear_si_falta=aplicar,
-        )
-        if resolucion is None:
-            conteo["sin_nombre"] += 1
-            continue
-        conteo[resolucion.via] = conteo.get(resolucion.via, 0) + 1
+    Delegado en ``services.organos.resolver_pendientes`` desde 2026-09-14: es la
+    misma decisión que corre el paso canónico ``organos_resolve`` en cada
+    cierre de la pipeline, y dos implementaciones de «qué es el mismo órgano»
+    acabarían discrepando. Aquí sin presupuesto de reloj: el backfill es la
+    pasada larga, y se para por cuenta (``--grafias``).
+    """
+    from services.organos import resolver_pendientes
 
-        if not aplicar or resolucion.organo_id is None:
-            continue
-        # La asignación va por lotes sobre la grafía cruda, que es como está en
-        # la tabla: `lower(btrim(...))` es el mismo predicado que usa la consulta
-        # que las descubrió.
-        plano = str(fila.get("nombre_plano") or "")
-        while True:
-            n = repo.asignar_a_licitaciones(
-                resolucion.organo_id, nombre_normalizado=plano, limit=batch
-            )
-            if n <= 0:
-                break
-            asignadas += n
-
-    conteo["expedientes_asignados"] = asignadas
-    return conteo
+    resumen = resolver_pendientes(
+        max_grafias=max_grafias,
+        presupuesto_s=float("inf"),
+        batch=batch,
+        aplicar=aplicar,
+    )
+    return {
+        "dir3": resumen.por_dir3,
+        "nombre": resumen.por_nombre,
+        "nuevo": resumen.creadas,
+        "revision": resumen.encoladas_revision,
+        "sin_nombre": resumen.sin_nombre,
+        "expedientes_asignados": resumen.filas_actualizadas,
+    }
 
 
 def main() -> int:

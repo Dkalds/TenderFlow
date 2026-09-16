@@ -44,6 +44,11 @@ MATCH_COUNT_CAP = 1000
 #: clave de deduplicación; la otra mitad son ``user_key`` y ``licitacion_id``.
 TIPO_NOTIFICACION_REGLA = "rule_match"
 
+#: Predicado de identidad dual (v129, ADR-030 fase 2). Parámetros:
+#: ``(user_id, user_key, user_id)``; con ``user_id=None`` se reduce a
+#: ``user_key = %s``. Ver ``db/repositories/watchlist.py``.
+_IDENT = "(user_id = %s OR (user_key = %s AND (user_id IS NULL OR %s::int IS NULL)))"
+
 
 def _bounded_count_stmt(clauses: Sequence[Any]) -> Select[tuple[int]]:
     """``SELECT count(*) FROM (SELECT 1 FROM licitaciones WHERE … LIMIT cap)``.
@@ -141,22 +146,28 @@ def daily_match_counts(clauses: Sequence[Any], *, desde_iso: str) -> dict[str, i
 # solo evita que el tope se gaste en filas cuyo INSERT iba a ser un no-op.
 
 
-def _sin_notificar(user_key: str) -> Any:
+def _sin_notificar(user_key: str, user_id: int | None = None) -> Any:
     """``NOT EXISTS`` contra las notificaciones ya escritas para ese usuario.
 
     Se escribe con ``text()`` y no con una tabla de ``db.models`` porque
     ``user_notifications`` no está declarada allí y declararla entera para dos
     columnas de un anti-join sería más superficie de la que resuelve. Los
     valores viajan como bind params, nunca interpolados.
+
+    La identidad es la dual de v129: con ``user_id`` se descartan también las
+    alertas escritas bajo la clave de un correo anterior; sin él, sólo las de
+    ``user_key``, que es lo que replica el índice único.
     """
     return text(
         "NOT EXISTS ("
         " SELECT 1 FROM user_notifications n"
-        " WHERE n.user_key = :wr_user_key"
+        " WHERE (n.user_id = :wr_user_id"
+        "        OR (n.user_key = :wr_user_key"
+        "            AND (n.user_id IS NULL OR CAST(:wr_user_id AS INTEGER) IS NULL)))"
         "   AND n.type = :wr_tipo"
         "   AND n.licitacion_id = licitaciones.id_externo"
         ")"
-    ).bindparams(wr_user_key=user_key, wr_tipo=TIPO_NOTIFICACION_REGLA)
+    ).bindparams(wr_user_key=user_key, wr_user_id=user_id, wr_tipo=TIPO_NOTIFICACION_REGLA)
 
 
 def _stmt_matches(
@@ -166,6 +177,7 @@ def _stmt_matches(
     desde: str | None,
     limit: int,
     user_key: str | None,
+    user_id: int | None = None,
 ) -> Select[Any]:
     condiciones = list(clauses)
     if desde:
@@ -173,7 +185,7 @@ def _stmt_matches(
         # anti-join, no el operador de comparación.
         condiciones.append(licitaciones.c.fecha_publicacion >= desde)
     if user_key is not None:
-        condiciones.append(_sin_notificar(user_key))
+        condiciones.append(_sin_notificar(user_key, user_id))
     stmt = select(*columns).select_from(licitaciones)
     if condiciones:
         stmt = stmt.where(and_(*condiciones))
@@ -201,17 +213,21 @@ def matches_pendientes(
     desde: str | None,
     limit: int,
     user_key: str | None = None,
+    user_id: int | None = None,
 ) -> list[dict[str, Any]]:
     """Matches de una regla que todavía no se han notificado a ``user_key``.
 
     Con ``user_key=None`` se comporta como un listado con corte temporal
     inclusivo y sin anti-join: es lo que consumen la vista previa y los tests
-    que no ejercen el job.
+    que no ejercen el job. ``user_id`` afina el anti-join (v129) y no cambia
+    nada más.
 
     Las cláusulas del filtro las construye ``services.watchlist_rules`` sobre la
     misma tabla de ``db.models``; aquí se componen y se ejecutan (ADR-022).
     """
-    stmt = _stmt_matches(clauses, columns, desde=desde, limit=limit, user_key=user_key)
+    stmt = _stmt_matches(
+        clauses, columns, desde=desde, limit=limit, user_key=user_key, user_id=user_id
+    )
     sql, params = compile_query(stmt)
     with connect_read() as c:
         try:
@@ -238,7 +254,7 @@ def matches_pendientes(
 # ``organization_id`` caía a ``WHERE user_key = %s``, sin ámbito.
 
 _RULE_COLS = (
-    "id, user_key, nombre, keyword, cpv, min_importe, ccaa, "
+    "id, user_key, user_id, nombre, keyword, cpv, min_importe, ccaa, "
     "frequency, active, last_notified_at, email, organization_id, visibility, "
     "tecnologia, organo, procedimiento, tipo_contrato, banda_min, plazo_min_dias"
 )
@@ -251,7 +267,9 @@ _RULE_COLS_LEGACY = (
 )
 
 
-def list_rules_rows(user_key: str, organization_id: int) -> list[dict[str, Any]]:
+def list_rules_rows(
+    user_key: str, organization_id: int, *, user_id: int | None = None
+) -> list[dict[str, Any]]:
     """Filas crudas de las reglas visibles en la organización, ordenadas por id.
 
     Devuelve dicts y no DTOs a propósito: quien llama necesita tanto los campos
@@ -263,8 +281,8 @@ def list_rules_rows(user_key: str, organization_id: int) -> list[dict[str, Any]]
             cur = c.execute(
                 "SELECT " + _RULE_COLS + " FROM watchlist_rules "
                 "WHERE organization_id = %s "
-                "AND (visibility = 'organization' OR user_key = %s) ORDER BY id",
-                (organization_id, user_key),
+                f"AND (visibility = 'organization' OR {_IDENT}) ORDER BY id",
+                (organization_id, user_id, user_key, user_id),
             )
             return rows_to_dicts(cur)
         except Exception as exc:
@@ -291,10 +309,10 @@ def _columna_ausente(exc: Exception) -> bool:
     return "column" in mensaje or "columna" in mensaje
 
 
-def set_rule_email(user_key: str, rule_id: int, email: str) -> None:
+def set_rule_email(user_key: str, rule_id: int, email: str, *, user_id: int | None = None) -> None:
     """Fija el destinatario de una regla propia. No-op si no es del usuario."""
     with connect() as c:
         c.execute(
-            "UPDATE watchlist_rules SET email = %s WHERE id = %s AND user_key = %s",
-            (email, rule_id, user_key),
+            f"UPDATE watchlist_rules SET email = %s WHERE id = %s AND {_IDENT}",
+            (email, rule_id, user_id, user_key, user_id),
         )

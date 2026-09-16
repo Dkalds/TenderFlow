@@ -52,7 +52,7 @@ _VENTANA_GRACIA_DIAS = 2
 #: el job evaluaría una regla MÁS ANCHA que la que el usuario escribió y
 #: notificaría lo que la pantalla no enseña.
 _COLS_ACTIVAS = (
-    "id, user_key, nombre, keyword, cpv, min_importe, ccaa, "
+    "id, user_key, user_id, nombre, keyword, cpv, min_importe, ccaa, "
     "frequency, active, last_notified_at, email, organization_id, visibility, "
     "tecnologia, organo, procedimiento, tipo_contrato, banda_min, plazo_min_dias"
 )
@@ -197,10 +197,12 @@ def _write_user_notifications(
     matches: list[dict[str, Any]],
     rule: WatchlistRule,
     now_ts: str,
+    user_id: int | None = None,
 ) -> int:
     """Escribe notificaciones in-app con INSERT OR IGNORE (idempotente).
 
     Tolerante a la ausencia de la tabla (BDs sin migracion v48).
+    ``user_id`` (v129) es el de la regla y se escribe junto a la clave.
     Returns: numero de filas insertadas (las que no eran duplicados).
     """
     inserted = 0
@@ -214,12 +216,13 @@ def _write_user_notifications(
                 body = f"{lic.get('titulo', '?')} | {lic.get('organo_contratacion', '?')}"
                 cur = c.execute(
                     "INSERT INTO user_notifications "
-                    "(user_key, created_at, type, title, body, licitacion_id, rule_id, "
+                    "(user_key, user_id, created_at, type, title, body, licitacion_id, rule_id, "
                     " organization_id) "
-                    "VALUES (%s, %s, 'rule_match', %s, %s, %s, %s, %s) "
+                    "VALUES (%s, %s, %s, 'rule_match', %s, %s, %s, %s, %s) "
                     "ON CONFLICT(user_key, licitacion_id, type) DO NOTHING",
                     (
                         user_key,
+                        user_id,
                         now_ts,
                         title,
                         body,
@@ -243,6 +246,7 @@ def _enqueue_pending_digest(
     frequency: str,
     rule: WatchlistRule,
     now_ts: str,
+    user_id: int | None = None,
 ) -> None:
     """Encola matches en pending_digests para entrega por email."""
     from services.watchlist import store_pending_digest
@@ -251,7 +255,7 @@ def _enqueue_pending_digest(
         lic_id = str(lic.get("id_externo") or "")
         if not lic_id:
             continue
-        store_pending_digest(user_key, email, rule_id, lic_id, frequency, now_ts)
+        store_pending_digest(user_key, email, rule_id, lic_id, frequency, now_ts, user_id=user_id)
 
 
 def check_rules_and_notify(*, limit_per_rule: int = 50) -> int:
@@ -278,11 +282,15 @@ def check_rules_and_notify(*, limit_per_rule: int = 50) -> int:
             continue
         rule = _row_to_rule(row)
         user_key = str(row["user_key"])
+        # `None` en bases sin v129 o en reglas que el backfill no resolvió.
+        raw_user_id = row.get("user_id")
+        user_id = int(raw_user_id) if raw_user_id is not None else None
         new_matches = matches_since(
             rule,
             _since_date(row, default_since),
             limit=limit_per_rule,
             user_key=user_key,
+            user_id=user_id,
         )
         if len(new_matches) >= limit_per_rule:
             # La página se llenó: hay más matches de los que caben en una
@@ -305,7 +313,9 @@ def check_rules_and_notify(*, limit_per_rule: int = 50) -> int:
         email = row.get("email")
 
         # 1. Notificaciones in-app (siempre)
-        written = _write_user_notifications(user_key, rule_id, new_matches, rule, now_ts)
+        written = _write_user_notifications(
+            user_key, rule_id, new_matches, rule, now_ts, user_id=user_id
+        )
 
         # 2. Email via pending_digests (solo si hay email configurado)
         if email:
@@ -317,6 +327,7 @@ def check_rules_and_notify(*, limit_per_rule: int = 50) -> int:
                 row.get("frequency") or "daily",
                 rule,
                 now_ts,
+                user_id=user_id,
             )
 
         log.info(
