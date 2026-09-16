@@ -221,6 +221,13 @@ export const pursuitKeys = {
    */
   direccion: (organizationId: number | null) =>
     ["pursuits", "direccion", organizationId] as const,
+  /**
+   * Feed de actividad del equipo (`GET /pursuits/actividad`, F4.5), por
+   * organización y persona filtrada. Cuelga de `pursuits`: cada mutación de una
+   * oportunidad escribe en el ledger que este feed lee.
+   */
+  actividad: (organizationId: number | null, usuario: number | null) =>
+    ["pursuits", "actividad", organizationId, usuario] as const,
 };
 
 export const pursuitCommentKeys = {
