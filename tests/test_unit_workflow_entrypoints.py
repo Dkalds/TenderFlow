@@ -209,7 +209,7 @@ def test_retrain_cli_ok_without_data(monkeypatch):
 
 def test_docs_cli_fails_only_when_whole_batch_failed():
     """Lote entero caído (errores y cero extraídos) = fallo sistémico."""
-    resumen = {"fetch": {"extracted": 0, "error": 7}, "embed": {}}
+    resumen = {"fetch": {"extracted": 0, "error": 7}, "embed": {}, "facts": {}}
     with patch.object(docs_job, "run", return_value=resumen), patch("db.database.init_db"):
         assert docs_job.run_cli() == 1
 
@@ -224,7 +224,7 @@ def test_docs_cli_fails_only_when_whole_batch_failed():
 )
 def test_docs_cli_tolerates_partial_failures(fetch):
     with (
-        patch.object(docs_job, "run", return_value={"fetch": fetch, "embed": {}}),
+        patch.object(docs_job, "run", return_value={"fetch": fetch, "embed": {}, "facts": {}}),
         patch("db.database.init_db"),
     ):
         assert docs_job.run_cli() == 0
