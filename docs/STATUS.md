@@ -6,7 +6,7 @@ tags: [status, generado]
 
 <!-- generado por scripts/gen_status.py — no editar a mano -->
 
-Generado: 2026-09-15
+Generado: 2026-09-16
 
 ## Paridad de planos de orquestación (ADR-012)
 
@@ -78,7 +78,7 @@ Generado: 2026-09-15
 
 ## Superficie de la API
 
-**261 endpoints** expuestos.
+**263 endpoints** expuestos.
 
 <details><summary>Ver listado</summary>
 
@@ -199,21 +199,21 @@ Generado: 2026-09-15
 | GET | `/api/v1/licitaciones/{id_externo:path}/documentos` |
 | GET | `/api/v1/licitaciones/{id_externo:path}/documentos/{documento_id}/paginas/{page_number}` |
 | POST | `/api/v1/licitaciones/{id_externo:path}/embeddings-async` |
-| GET | `/api/v1/licitaciones/{id_externo:path}/escenarios-precio` |
-| GET | `/api/v1/licitaciones/{id_externo:path}/eventos` |
 | GET | `/api/v1/licitaciones/{id_externo:path}/explain` |
 | GET | `/api/v1/licitaciones/{id_externo:path}/ficha-pliego` |
 | GET | `/api/v1/licitaciones/{id_externo:path}/ficha-pliego/estado` |
 | POST | `/api/v1/licitaciones/{id_externo:path}/ficha-pliego/extract` |
 | POST | `/api/v1/licitaciones/{id_externo:path}/ficha-pliego/extract-async` |
 | POST | `/api/v1/licitaciones/{id_externo:path}/guion` |
-| GET | `/api/v1/licitaciones/{id_externo:path}/prediccion-baja` |
 | POST | `/api/v1/licitaciones/{id_externo:path}/reportes` |
 | POST | `/api/v1/licitaciones/{id_externo:path}/resumen` |
 | GET | `/api/v1/licitaciones/{id_externo:path}/similares` |
 | GET | `/api/v1/licitaciones/{id_externo:path}/simulador` |
 | GET | `/api/v1/licitaciones/{id_externo:path}/tech-scores` |
 | GET | `/api/v1/licitaciones/{id_externo:path}/tecnologias` |
+| GET | `/api/v1/licitaciones/{licitacion_id:path}/escenarios-precio` |
+| GET | `/api/v1/licitaciones/{licitacion_id:path}/eventos` |
+| GET | `/api/v1/licitaciones/{licitacion_id:path}/prediccion-baja` |
 | DELETE | `/api/v1/me` |
 | GET | `/api/v1/me/data` |
 | GET | `/api/v1/me/keys` |
@@ -233,6 +233,8 @@ Generado: 2026-09-15
 | GET | `/api/v1/models/{name}/versions` |
 | GET | `/api/v1/notifications` |
 | POST | `/api/v1/notifications/alerts/read` |
+| GET | `/api/v1/notifications/baja` |
+| POST | `/api/v1/notifications/baja` |
 | POST | `/api/v1/notifications/read` |
 | GET | `/api/v1/organizations` |
 | POST | `/api/v1/organizations` |
