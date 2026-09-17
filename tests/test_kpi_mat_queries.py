@@ -1,9 +1,12 @@
 """Las consultas materializadas del export Parquet corren contra Postgres.
 
-`_MAT_QUERIES` se ejecuta por DuckDB *si* está instalado el extra
-`tenderflow[analytics]`; si no —el caso de la imagen que se despliega, porque
-`requirements.txt` no trae duckdb— cae a `_export_parquet_pandas_fallback`, que
-va contra Postgres. Ese camino no tenía ninguna prueba.
+`MAT_QUERIES` (``db/kpi_precompute.py``) se ejecuta por DuckDB *si* está
+instalado el extra `tenderflow[analytics]`; si no —el caso de la imagen que se
+despliega, porque `requirements.txt` no trae duckdb— cae a
+`_export_parquet_pandas_fallback`, que va contra Postgres. Ese camino no tenía
+ninguna prueba. Aquí se comprueba cada consulta por separado con
+`pd.read_sql`; el fallback entero, con su lector y su bucle,
+lo recorre `tests/test_kpi_precompute_fallback_pandas.py`.
 
 `mat_licitaciones_por_mes` usaba `strftime`, que existe en SQLite y en DuckDB
 pero no en Postgres. El bucle envuelve cada tabla en su propio `except` y
@@ -19,28 +22,28 @@ import pandas as pd
 import pytest
 
 from db.database import connect
-from scheduler.kpi_precompute import _MAT_QUERIES
+from db.kpi_precompute import MAT_QUERIES
 
 
 def test_hay_consultas_que_verificar():
     """Si alguien vacía el dict, el parametrizado de abajo pasaría sin probar nada."""
-    assert len(_MAT_QUERIES) >= 5
+    assert len(MAT_QUERIES) >= 5
 
 
-@pytest.mark.parametrize("nombre", sorted(_MAT_QUERIES))
+@pytest.mark.parametrize("nombre", sorted(MAT_QUERIES))
 def test_cada_consulta_materializada_es_sql_valido_en_postgres(tmp_db, nombre):
     """Se ejecuta de verdad: es el motor quien sabe qué funciones existen."""
     with connect() as conn:
         raw = getattr(conn, "_conn", None) or getattr(conn, "connection", None)
         assert raw is not None, "el fallback necesita la conexión DBAPI cruda"
-        df = pd.read_sql(_MAT_QUERIES[nombre], raw)
+        df = pd.read_sql(MAT_QUERIES[nombre], raw)
 
     assert isinstance(df, pd.DataFrame)
 
 
 def test_ninguna_consulta_usa_funciones_de_sqlite():
     """`strftime` es la que se coló; el motor de producción es Postgres."""
-    for nombre, sql in _MAT_QUERIES.items():
+    for nombre, sql in MAT_QUERIES.items():
         assert "strftime" not in sql, f"{nombre} usa strftime, que Postgres no tiene"
 
 
@@ -60,7 +63,7 @@ def test_el_mes_sale_del_texto_iso(tmp_db):
 
     with connect() as conn:
         raw = getattr(conn, "_conn", None) or getattr(conn, "connection", None)
-        df = pd.read_sql(_MAT_QUERIES["mat_licitaciones_por_mes"], raw)
+        df = pd.read_sql(MAT_QUERIES["mat_licitaciones_por_mes"], raw)
 
     por_mes = dict(zip(df["mes"], df["n"], strict=True))
     assert por_mes == {"2026-03": 2, "2026-04": 1}

@@ -11,11 +11,22 @@ Hoy todas las queries relevantes lo aplican. Este test falla si alguien añade
 una consulta analítica nueva sobre esas tablas y olvida el filtro — convierte
 una regresión silenciosa de correctitud en un fallo de CI ruidoso.
 
-Granularidad: por función. Una función en un módulo escaneado cuyo cuerpo
-referencia ``FROM/JOIN licitaciones`` o ``adjudicaciones`` debe contener una
-llamada textual a ``exclude_duplicados_sql``. Las excepciones legítimas (queries
-que deliberadamente no deduplican) se declaran en ``_ALLOWLIST`` con su
+Granularidad: por función. Una función en un módulo escaneado cuyo código
+referencia ``FROM/JOIN licitaciones`` o ``adjudicaciones`` debe referenciar
+también, en código, ``exclude_duplicados_sql`` o una guarda equivalente (ver
+:func:`_module_guard_names`). Las excepciones legítimas (queries que
+deliberadamente no deduplican) se declaran en ``_ALLOWLIST`` con su
 justificación.
+
+**La prosa no cuenta.** Docstrings y comentarios no ejecutan nada, así que ni
+aportan la guarda ni convierten una función en consulta. Una versión anterior
+del escáner buscaba nombres como subcadenas del texto de la función, docstring y
+comentarios incluidos, y bastaba escribir «mismo alcance que
+:func:`cuota_mercado`» para que una query sin el anti-join pasara por guardada:
+``cuota_mercado`` sí llama a ``exclude_duplicados_sql``, y su nombre en el
+docstring era suficiente. Ahora se lee el AST: cuentan los identificadores que
+el código usa y los literales de texto que no son cadenas sueltas (docstrings o
+cualquier otra cadena sin asignar).
 
 **Por qué la lista de módulos incluye ficheros de ``db/``.** El guardrail nació
 escaneando solo ``services/competitive`` y ``services/ml``, que era donde vivían
@@ -37,6 +48,7 @@ from __future__ import annotations
 
 import ast
 import re
+from dataclasses import dataclass
 from pathlib import Path
 
 # Directorios cuyas queries analíticas deben respetar el dedupe.
@@ -48,6 +60,7 @@ _SCANNED_FILES = (
     "db/repositories/renovaciones.py",
     "db/repositories/adjudicaciones.py",
     "db/repositories/ml_dataset.py",
+    "db/repositories/mercado.py",
 )
 
 # Referencia a las tablas canónicas en cláusulas FROM/JOIN.
@@ -132,11 +145,69 @@ def _scanned_paths() -> list[Path]:
     return paths
 
 
-def _module_guard_names(tree: ast.Module, source: str) -> set[str]:
+@dataclass(frozen=True)
+class _Codigo:
+    """Lo que un nodo del AST usa como código, sin su prosa.
+
+    ``nombres`` son los identificadores que referencia: un ``Name`` o el atributo
+    de un ``Attribute`` (``exclude_duplicados_sql`` y ``repo.alcance_sql`` cuentan
+    igual), comparados enteros y no como subcadena. ``literales`` son sus cadenas
+    —donde vive el SQL, también las partes fijas de un f-string— menos las
+    cadenas sueltas (:func:`_codigo`). Los comentarios no llegan al AST.
+
+    Límite conocido: el escáner no distingue SQL de otro texto, así que un
+    mensaje de error o de log que escriba ``licitaciones_duplicados`` contaría
+    como subconsulta de dedupe. Es un falso negativo que exige escribir ese
+    nombre en código ejecutable, no en prosa.
+    """
+
+    nombres: frozenset[str]
+    literales: tuple[str, ...]
+
+    def consulta_tablas_canonicas(self) -> bool:
+        """Algún literal hace ``FROM``/``JOIN`` sobre las tablas canónicas."""
+        return any(_TABLE_REF.search(literal) for literal in self.literales)
+
+    def excluye_duplicados(self) -> bool:
+        """Usa el helper canónico o escribe la subconsulta de dedupe a mano."""
+        return _GUARD_CALL in self.nombres or any(
+            _GUARD_TABLE in literal for literal in self.literales
+        )
+
+
+def _codigo(nodo: ast.AST) -> _Codigo:
+    """Identificadores y literales de ``nodo``, descartando la prosa.
+
+    Prosa es toda cadena usada como sentencia suelta: el docstring de un módulo,
+    una clase o una función, y cualquier otra cadena sin asignar, que tampoco
+    ejecuta nada.
+    """
+    prosa = {
+        id(sentencia.value)
+        for sentencia in ast.walk(nodo)
+        if isinstance(sentencia, ast.Expr)
+        and isinstance(sentencia.value, ast.Constant)
+        and isinstance(sentencia.value.value, str)
+    }
+    nombres: set[str] = set()
+    literales: list[str] = []
+    for hijo in ast.walk(nodo):
+        if isinstance(hijo, ast.Name):
+            nombres.add(hijo.id)
+        elif isinstance(hijo, ast.Attribute):
+            nombres.add(hijo.attr)
+        elif (
+            isinstance(hijo, ast.Constant) and isinstance(hijo.value, str) and id(hijo) not in prosa
+        ):
+            literales.append(hijo.value)
+    return _Codigo(frozenset(nombres), tuple(literales))
+
+
+def _module_guard_names(tree: ast.Module) -> set[str]:
     """Nombres del módulo que, al referenciarse, ya aportan el dedupe.
 
-    Son de tres clases, y hacen falta las tres porque el escáner es textual y la
-    cláusula no siempre está escrita dentro de la función que consulta:
+    Son de tres clases, y hacen falta las tres porque la cláusula no siempre está
+    escrita dentro de la función que consulta:
 
     1. **Constantes cuyo valor ES la cláusula**, escrita a mano. Fue el idioma
        de ``db/`` mientras la subquery se duplicaba en cada módulo para no
@@ -159,69 +230,83 @@ def _module_guard_names(tree: ast.Module, source: str) -> set[str]:
     motivo también pasaría. Es un cambio de falsos positivos por falsos
     negativos que se acepta a conciencia: el modo de fallo que importa es la
     query nueva escrita a mano sin dedupe, y esa no llama a ningún helper.
+
+    En las tres clases cuenta solo el código (:func:`_codigo`): un helper cuyo
+    docstring explica el anti-join sin aplicarlo no es una guarda.
     """
     names: set[str] = set()
     for node in tree.body:
-        if isinstance(node, ast.Assign):
-            valor_literal = (
-                isinstance(node.value, ast.Constant)
-                and isinstance(node.value.value, str)
-                and _GUARD_TABLE in node.value.value
-            )
-            # `ast.get_source_segment` y no un `ast.Call` con `func.id`: la
-            # llamada puede venir envuelta (concatenada con otro fragmento,
-            # dentro de un `f"..."`), y lo que importa es que el nombre del
-            # helper aparezca en la expresión que produce la constante.
-            valor_compuesto = _GUARD_CALL in (ast.get_source_segment(source, node.value) or "")
-            if valor_literal or valor_compuesto:
-                names.update(t.id for t in node.targets if isinstance(t, ast.Name))
-        elif isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
-            segment = ast.get_source_segment(source, node) or ""
-            if _GUARD_CALL in segment or _GUARD_TABLE in segment:
-                names.add(node.name)
+        # De una constante se mira toda la expresión y no solo un `ast.Call`
+        # directo: la llamada puede venir envuelta (concatenada con otro
+        # fragmento, dentro de un `f"..."`), y la subconsulta escrita a mano es
+        # un literal que también puede ir concatenado.
+        if isinstance(node, ast.Assign) and _codigo(node.value).excluye_duplicados():
+            names.update(t.id for t in node.targets if isinstance(t, ast.Name))
+        elif (
+            isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef)
+            and _codigo(node).excluye_duplicados()
+        ):
+            names.add(node.name)
     return names
 
 
-def _iter_functions() -> list[tuple[str, str, str, set[str]]]:
-    """(qualname, source, file, nombres-guarda-del-módulo) por cada función."""
-    out: list[tuple[str, str, str, set[str]]] = []
+@dataclass(frozen=True)
+class _Funcion:
+    """Una función escaneada, con el código de su cuerpo y las guardas de su módulo."""
+
+    qualname: str
+    fichero: str
+    codigo: _Codigo
+    guard_names: frozenset[str]
+
+
+def _funciones(source: str, *, module: str, fichero: str) -> list[_Funcion]:
+    """Todas las funciones de un módulo, anidadas y métodos incluidos."""
+    tree = ast.parse(source, filename=fichero)
+    guard_names = frozenset(_module_guard_names(tree))
+    return [
+        _Funcion(f"{module}.{node.name}", fichero, _codigo(node), guard_names)
+        for node in ast.walk(tree)
+        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef)
+    ]
+
+
+def _iter_functions() -> list[_Funcion]:
+    """Las funciones de todos los ficheros escaneados."""
+    out: list[_Funcion] = []
     for py_file in _scanned_paths():
         source = py_file.read_text(encoding="utf-8")
-        tree = ast.parse(source, filename=str(py_file))
-        guard_names = _module_guard_names(tree, source)
-        module = py_file.stem
-        for node in ast.walk(tree):
-            if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
-                segment = ast.get_source_segment(source, node)
-                if segment is None:
-                    continue
-                out.append((f"{module}.{node.name}", segment, str(py_file), guard_names))
+        out.extend(_funciones(source, module=py_file.stem, fichero=str(py_file)))
     return out
 
 
-def _is_guarded(segment: str, guard_names: set[str]) -> bool:
-    """La query excluye duplicados: por llamada, por subconsulta inline o por helper.
+def _is_guarded(funcion: _Funcion) -> bool:
+    """La query excluye duplicados: por llamada, por subconsulta inline o por guarda.
 
-    ``_GUARD_TABLE in segment`` cubre las queries que escriben el ``NOT IN
-    (SELECT ... FROM licitaciones_duplicados ...)`` a mano dentro del SQL, sin
-    pasar por el helper — ``ml_dataset.licitaciones_abiertas`` lo hace así y una
-    versión anterior de este escáner la marcaba como violación siendo correcta.
+    Lo segundo cubre las queries que escriben el ``NOT IN (SELECT ... FROM
+    licitaciones_duplicados ...)`` a mano dentro del SQL, sin pasar por el helper
+    — ``ml_dataset.licitaciones_abiertas`` lo hizo así y una versión anterior de
+    este escáner la marcaba como violación siendo correcta.
     """
-    return (
-        _GUARD_CALL in segment
-        or _GUARD_TABLE in segment
-        or any(name in segment for name in guard_names)
+    return funcion.codigo.excluye_duplicados() or not funcion.guard_names.isdisjoint(
+        funcion.codigo.nombres
     )
+
+
+def _violaciones(funciones: list[_Funcion]) -> list[str]:
+    """``qualname  (fichero)`` de cada consulta sin dedupe que no esté en ``_ALLOWLIST``."""
+    return [
+        f"{funcion.qualname}  ({funcion.fichero})"
+        for funcion in funciones
+        if funcion.qualname not in _ALLOWLIST
+        and funcion.codigo.consulta_tablas_canonicas()
+        and not _is_guarded(funcion)
+    ]
 
 
 def test_analytical_queries_exclude_duplicados() -> None:
     """Toda función que consulta las tablas canónicas debe excluir duplicados."""
-    violations: list[str] = []
-    for qualname, segment, file, guard_names in _iter_functions():
-        if qualname in _ALLOWLIST:
-            continue
-        if _TABLE_REF.search(segment) and not _is_guarded(segment, guard_names):
-            violations.append(f"{qualname}  ({file})")
+    violations = _violaciones(_iter_functions())
 
     assert not violations, (
         "Funciones que consultan licitaciones/adjudicaciones sin "
@@ -237,9 +322,112 @@ def test_guardrail_actually_scans_functions() -> None:
     funcs = _iter_functions()
     assert len(funcs) > 10, f"Escáner solo encontró {len(funcs)} funciones; ¿paths mal?"
     # Y al menos una función realmente referencia las tablas canónicas.
-    assert any(_TABLE_REF.search(seg) for _, seg, _, _ in funcs), (
+    assert any(funcion.codigo.consulta_tablas_canonicas() for funcion in funcs), (
         "Ninguna función referencia licitaciones/adjudicaciones; regex o paths rotos."
     )
+
+
+#: Módulo de mentira para :func:`test_la_prosa_no_cuenta_como_guarda`.
+#:
+#: - ``ranking``, ``con_constante``, ``con_subconsulta_escrita`` y ``con_helper``
+#:   deduplican en código: por llamada, por constante de módulo, por subconsulta
+#:   escrita en el literal y por un helper que llama a ``exclude_duplicados_sql``.
+#: - Las cuatro ``denominador*`` consultan sin dedupe y solo lo *mencionan* en
+#:   prosa: nombrando en su docstring la guarda ``ranking`` y
+#:   ``exclude_duplicados_sql`` (el caso real que motivó el endurecimiento),
+#:   escribiendo ``licitaciones_duplicados`` en su docstring o en un comentario,
+#:   o llamando a ``_filtro_sin_dedupe``, un helper que nombra
+#:   ``exclude_duplicados_sql`` y la tabla solo en su docstring.
+#: - ``explica_sin_consultar`` escribe ``FROM adjudicaciones`` sin ejecutarlo.
+_MODULO_DE_PRUEBA = '''
+"""Deduplica con exclude_duplicados_sql() contra licitaciones_duplicados."""
+
+from db.sql_fragments import exclude_duplicados_sql
+
+_NO_DUPLICADOS = exclude_duplicados_sql("a.licitacion_id")
+
+
+def _filtro_con_dedupe():
+    return f"a.importe_adjudicado > 0 AND {exclude_duplicados_sql()}"
+
+
+def _filtro_sin_dedupe():
+    """Importe positivo; exclude_duplicados_sql() y licitaciones_duplicados, aparte."""
+    return "a.importe_adjudicado > 0"
+
+
+def ranking():
+    return f"SELECT 1 FROM adjudicaciones a WHERE {exclude_duplicados_sql()}"
+
+
+def con_constante():
+    return f"SELECT 1 FROM adjudicaciones a WHERE {_NO_DUPLICADOS}"
+
+
+def con_subconsulta_escrita():
+    return (
+        "SELECT 1 FROM licitaciones l WHERE l.id_externo NOT IN "
+        "(SELECT licitacion_id FROM licitaciones_duplicados)"
+    )
+
+
+def con_helper():
+    return f"SELECT 1 FROM adjudicaciones a WHERE {_filtro_con_dedupe()}"
+
+
+def denominador():
+    """Mismo alcance que :func:`ranking`: sin duplicados (exclude_duplicados_sql)."""
+    return "SELECT COUNT(*) FROM adjudicaciones a"
+
+
+def denominador_tabla_en_docstring():
+    """Sin las filas de ``licitaciones_duplicados`` confirmadas."""
+    return "SELECT COUNT(*) FROM adjudicaciones a"
+
+
+def denominador_comentado():
+    # Sin duplicados, como ranking(): _NO_DUPLICADOS / licitaciones_duplicados.
+    return "SELECT COUNT(*) FROM licitaciones l"
+
+
+def denominador_con_helper_en_prosa():
+    return f"SELECT COUNT(*) FROM adjudicaciones a WHERE {_filtro_sin_dedupe()}"
+
+
+def explica_sin_consultar():
+    """Resume lo que ranking() hace FROM adjudicaciones, sin tocar la BD."""
+    return None
+'''
+
+
+def test_la_prosa_no_cuenta_como_guarda() -> None:
+    """Ni docstrings ni comentarios guardan una query, ni la convierten en query.
+
+    Cubre las dos mitades del escáner textual anterior: nombrar en prosa una
+    guarda (``ranking``, ``exclude_duplicados_sql``) y escribir en prosa la
+    tabla ``licitaciones_duplicados``. Las dos, en el docstring de la función que
+    consulta y en el de un helper al que llama. Sin esto, volver a buscar en el
+    texto de la función devolvería el punto ciego que tuvo
+    ``mercado.denominador_cuota``: su docstring nombraba la función hermana que
+    sí deduplica, así que quitarle el anti-join no hacía fallar el guardrail.
+    """
+    funciones = _funciones(_MODULO_DE_PRUEBA, module="prueba", fichero="<prueba>")
+
+    guard_names = funciones[0].guard_names
+    assert {"_NO_DUPLICADOS", "_filtro_con_dedupe"} <= guard_names
+    assert "_filtro_sin_dedupe" not in guard_names
+    assert {f.qualname for f in funciones if _is_guarded(f)} >= {
+        "prueba.ranking",
+        "prueba.con_constante",
+        "prueba.con_subconsulta_escrita",
+        "prueba.con_helper",
+    }
+    assert sorted(_violaciones(funciones)) == [
+        "prueba.denominador  (<prueba>)",
+        "prueba.denominador_comentado  (<prueba>)",
+        "prueba.denominador_con_helper_en_prosa  (<prueba>)",
+        "prueba.denominador_tabla_en_docstring  (<prueba>)",
+    ]
 
 
 #: Deuda de dedupe conocida. Se congeló en 7 al extender el escáner a ``db/`` el
@@ -268,12 +456,20 @@ def test_guardrail_cubre_el_sql_migrado_a_db() -> None:
 
     Sin esto, mover una query de ``services/`` a ``db/`` (ADR-022) la sacaba del
     radio del guardrail y el commit de la migración salía verde habiendo
-    desactivado la comprobación. Este test falla si alguien vuelve a dejar la
-    lista sin los módulos que sí tienen SQL analítico.
+    desactivado la comprobación. Este test falla si alguien quita de la lista
+    alguno de los módulos que ya recibieron SQL analítico migrado.
     """
-    escaneados = {str(p) for p in _scanned_paths()}
-    for rel_file in _SCANNED_FILES:
-        assert str(_REPO_ROOT / rel_file) in escaneados, f"{rel_file} no se escanea"
+    # Se repiten aquí a propósito y no se leen de `_SCANNED_FILES`: comprobar la
+    # lista contra sí misma no fallaría nunca. Así quitar uno obliga a tocar dos
+    # sitios, y el diff lo enseña. Un módulo migrado nuevo se añade a los dos.
+    migrados = {
+        "db/repositories/renovaciones.py",
+        "db/repositories/adjudicaciones.py",
+        "db/repositories/ml_dataset.py",
+        "db/repositories/mercado.py",
+    }
+    escaneados = {p.relative_to(_REPO_ROOT).as_posix() for p in _scanned_paths()}
+    assert migrados <= escaneados, f"no se escanean: {sorted(migrados - escaneados)}"
 
     # Y el idioma de db/ (constante de módulo) se reconoce de verdad: si
     # `_module_guard_names` dejara de detectarlo, las funciones de ml_dataset
@@ -281,8 +477,8 @@ def test_guardrail_cubre_el_sql_migrado_a_db() -> None:
     ml_dataset = _REPO_ROOT / "db/repositories/ml_dataset.py"
     source = ml_dataset.read_text(encoding="utf-8")
     tree = ast.parse(source, filename=str(ml_dataset))
-    assert _module_guard_names(tree, source), (
-        "No se detectó ninguna constante de dedupe en ml_dataset.py; "
+    assert "_NO_DUPLICADOS" in _module_guard_names(tree), (
+        "No se detectó la constante de dedupe de ml_dataset.py; "
         "¿cambió el idioma de db/ o la subquery?"
     )
 
@@ -292,10 +488,20 @@ def test_guardrail_cubre_el_sql_migrado_a_db() -> None:
     # de darse cuenta de que el guardrail es el que se rompió.
     adj = _REPO_ROOT / "db/repositories/adjudicaciones.py"
     adj_source = adj.read_text(encoding="utf-8")
-    adj_names = _module_guard_names(ast.parse(adj_source, filename=str(adj)), adj_source)
+    adj_names = _module_guard_names(ast.parse(adj_source, filename=str(adj)))
     assert "_adj_filter_conditions" in adj_names, (
         "El helper compartido de las consultas UTE ya no aporta el dedupe; "
         "o se le quitó la cláusula, o el detector dejó de verla."
+    )
+
+    # Lo mismo en mercado: el dossier y el listado no llaman al helper, sino a
+    # `_exigir_dedupe`, que comprueba en código que el alcance lo trae.
+    mercado = _REPO_ROOT / "db/repositories/mercado.py"
+    mercado_source = mercado.read_text(encoding="utf-8")
+    mercado_names = _module_guard_names(ast.parse(mercado_source, filename=str(mercado)))
+    assert {"alcance_sql", "_exigir_dedupe"} <= mercado_names, (
+        "El constructor de alcances de mercado o su comprobación ya no aportan "
+        "el dedupe; o se les quitó la cláusula, o el detector dejó de verla."
     )
 
 

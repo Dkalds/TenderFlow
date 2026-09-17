@@ -160,13 +160,14 @@ ignore = [
 # nada es peor que ninguna: deja pasar la próxima regresión sin ruido.
 # 32 → 28 entradas. La whitelist solo puede ENCOGER (ADR-022, AGENTS.md §3.10).
 # Ya no queda ninguna ruta de la API aquí: `api/**` está limpio de TID251.
+# 2026-09-16: salen `scheduler/kpi_precompute.py` y `services/competitive/mercado.py`;
+# su SQL vive en `db/kpi_precompute.py` y `db/repositories/mercado.py`. 28 → 26.
 "scheduler/aggregates_precompute.py" = ["TID251"]
 "scheduler/anomaly_alerts.py" = ["TID251"]
 "scheduler/competitor_alerts.py" = ["TID251"]
 "scheduler/concept_drift.py" = ["TID251"]
 "scheduler/drift_report.py" = ["TID251"]
 "scheduler/healthcheck.py" = ["TID251"]
-"scheduler/kpi_precompute.py" = ["TID251"]
 "scheduler/retention.py" = ["TID251"]
 "scheduler/watchlist_rules_alerts.py" = ["TID251"]
 "scraper/ml_training.py" = ["TID251", "S608"]  # SQL built from internal schema strings
@@ -178,7 +179,6 @@ ignore = [
 "scripts/seed_dev.py" = ["TID251"]
 "services/analytics/scoring_signals.py" = ["TID251"]
 "services/competitive/bajas.py" = ["TID251"]
-"services/competitive/mercado.py" = ["TID251"]
 "services/competitive/renovaciones.py" = ["TID251"]
 "services/contract_events.py" = ["TID251"]
 "services/deadline_reminders.py" = ["TID251"]

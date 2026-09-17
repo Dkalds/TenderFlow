@@ -701,6 +701,8 @@ def test_perfil_empresa_incluye_participaciones_ute_sin_duplicar_totales(db):
     assert participacion["contratos"] == 1
     assert participacion["importe_total"] == pytest.approx(180_000.0)
     assert any("BETA" in m.upper() for m in participacion["otros_miembros"])
+    # «Otros» miembros: la propia empresa del dossier no se lista a sí misma.
+    assert not any("ALFA" in m.upper() for m in participacion["otros_miembros"])
 
 
 def test_perfil_empresa_sin_ute_devuelve_lista_vacia(db):

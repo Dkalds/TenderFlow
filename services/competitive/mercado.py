@@ -3,6 +3,16 @@
 Todas las métricas se calculan sobre empresas canónicas del maestro (v35),
 no sobre strings de nombre — sin eso las cuotas estarían fragmentadas entre
 variantes del mismo adjudicatario.
+
+El SQL vive en ``db/repositories/mercado.py`` (ADR-022). Aquí queda el dominio
+(ADR-024): qué filtros lleva cada alcance del dossier, la ventana de
+comparación, los desgloses, las medianas y los movimientos.
+
+Este módulo no escribe SQL, pero sí lo transporta. Cuota, HHI y denominador
+reciben valores de filtro. El dossier y el listado reciben alcances: los
+construye ``mercado_repo.alcance_sql`` a partir de valores de filtro (el
+universo, por nombre) y el servicio los entrega al repositorio como
+``mercado_repo.Alcance``, cuyo ``where`` es SQL ya armado.
 """
 
 from __future__ import annotations
@@ -10,31 +20,12 @@ from __future__ import annotations
 from collections import defaultdict
 from datetime import UTC, date, datetime, timedelta
 from statistics import median
-from typing import Any, Literal
+from typing import Any
 
-from db.database import connect_read
-from db.repositories.base import rows_to_dicts
-from services.dedupe import exclude_duplicados_sql
-from services.sql_fragments import (
-    TECHNOLOGY_OBSERVED_L2_SQL,
-    TECHNOLOGY_OBSERVED_SQL,
-    WATCHED_COMPANY_AWARDS_SQL,
-    round_sql,
-)
+from db.repositories import mercado as mercado_repo
 from shared.metric_scope import MetricScope
 
-_SEGMENT_COLUMNS = {
-    "cpv": "substr(l.cpv, 1, 2)",
-    "ccaa": "l.ccaa",
-    "organo": "l.organo_contratacion",
-    "tecnologia": "l.tecnologia",
-}
-
-_ANALYSIS_UNIVERSE_SQL = {
-    "technology_observed": TECHNOLOGY_OBSERVED_SQL,
-    "watched_company_awards_observed": WATCHED_COMPANY_AWARDS_SQL,
-}
-AnalysisUniverse = Literal["technology_observed", "watched_company_awards_observed"]
+AnalysisUniverse = mercado_repo.UniversoAnalisis
 
 
 def metric_scope(
@@ -44,37 +35,15 @@ def metric_scope(
     desde: str | None = None,
 ) -> MetricScope:
     """Alcance exacto del agregado de cuota/HHI sobre el corpus observado."""
-    clauses = [TECHNOLOGY_OBSERVED_SQL, "a.importe_adjudicado > 0", exclude_duplicados_sql()]
-    params: list[Any] = []
     filters: dict[str, str] = {}
     if cpv_prefix:
-        clauses.append("l.cpv LIKE %s")
-        params.append(f"{cpv_prefix}%")
         filters["cpv_prefix"] = cpv_prefix
     if ccaa:
-        clauses.append("l.ccaa = %s")
-        params.append(ccaa)
         filters["ccaa"] = ccaa
     if desde:
-        clauses.append("a.fecha_adjudicacion >= %s")
-        params.append(desde)
         filters["desde"] = desde
-    where = " AND ".join(clauses)
-    totals_sql = f"""
-        SELECT COUNT(*), COALESCE(SUM(a.importe_adjudicado), 0)
-        FROM adjudicaciones a
-        JOIN licitaciones l ON l.id_externo = a.licitacion_id
-        WHERE {where}
-    """  # noqa: S608 -- cláusulas constantes, valores parametrizados
-    lineage_sql = f"""
-        SELECT DISTINCT l.fuente, l.filter_version, l.classifier_model_version
-        FROM adjudicaciones a
-        JOIN licitaciones l ON l.id_externo = a.licitacion_id
-        WHERE {where}
-    """  # noqa: S608 -- mismo scope parametrizado
-    with connect_read() as c:
-        row = c.execute(totals_sql, params).fetchone()
-        lineage = rows_to_dicts(c.execute(lineage_sql, params))
+    denominador = mercado_repo.denominador_cuota(cpv_prefix=cpv_prefix, ccaa=ccaa, desde=desde)
+    lineage = denominador.linaje
     sources = sorted({str(item["fuente"]) for item in lineage if item.get("fuente")})
     filter_versions = sorted(
         {str(item["filter_version"]) for item in lineage if item.get("filter_version")}
@@ -92,8 +61,8 @@ def metric_scope(
             "technology_observed (más filas históricas previas al linaje); excluye "
             "watched_company_awards_observed y no representa todo el mercado español"
         ),
-        denominator_records=int(row[0] or 0),
-        denominator_amount_eur=float(row[1] or 0),
+        denominator_records=denominador.registros,
+        denominator_amount_eur=denominador.importe_eur,
         filters=filters,
         sources=sources,
         filter_versions=filter_versions,
@@ -120,43 +89,12 @@ def cuota_mercado(
     La presión competitiva media (``ofertas_medias``) contextualiza la cuota:
     dominar un segmento con 1.2 ofertas medias no es lo mismo que con 8.
     """
-    filters = ""
-    params: list[Any] = []
-    if cpv_prefix:
-        filters += " AND l.cpv LIKE %s"
-        params.append(f"{cpv_prefix}%")
-    if ccaa:
-        filters += " AND l.ccaa = %s"
-        params.append(ccaa)
-    if desde:
-        filters += " AND a.fecha_adjudicacion >= %s"
-        params.append(desde)
-
-    sql = f"""
-        WITH segmento AS (
-            SELECT a.empresa_id,
-                   COALESCE(e.nombre_canonico, a.nombre) AS empresa,
-                   MAX(COALESCE(e.es_ute, 0)) AS es_ute,
-                   COUNT(*) AS contratos,
-                   COALESCE(SUM(a.importe_adjudicado), 0) AS importe,
-                   {round_sql("AVG(a.n_ofertas_recibidas)", 1)} AS ofertas_medias
-            FROM adjudicaciones a
-            JOIN licitaciones l ON l.id_externo = a.licitacion_id
-            LEFT JOIN empresas e ON e.empresa_id = a.empresa_id
-            WHERE {TECHNOLOGY_OBSERVED_SQL} AND a.importe_adjudicado > 0
-              AND {exclude_duplicados_sql()} {filters}
-            GROUP BY a.empresa_id, empresa
-        )
-        SELECT empresa_id, empresa, es_ute, contratos, importe, ofertas_medias,
-               {round_sql("importe * 100.0 / NULLIF((SELECT SUM(importe) FROM segmento), 0)", 2)}
-                   AS cuota_pct
-        FROM segmento
-        ORDER BY importe DESC
-        LIMIT %s
-    """  # noqa: S608 — filters se construye solo con fragmentos constantes; valores con ?
-    params.append(max(1, min(int(limit), 500)))
-    with connect_read() as c:
-        return rows_to_dicts(c.execute(sql, params))
+    return mercado_repo.cuota_mercado(
+        cpv_prefix=cpv_prefix,
+        ccaa=ccaa,
+        desde=desde,
+        limit=limit,
+    )
 
 
 def concentracion_hhi(*, segment_by: str = "cpv", min_contratos: int = 5) -> list[dict[str, Any]]:
@@ -166,52 +104,11 @@ def concentracion_hhi(*, segment_by: str = "cpv", min_contratos: int = 5) -> lis
     1500-2500 moderadamente concentrado, >2500 concentrado. Un segmento
     concentrado con vencimientos próximos es una oportunidad de entrada;
     uno competitivo exige afinar la baja (ver ``bajas``).
-    """
-    if segment_by not in _SEGMENT_COLUMNS:
-        raise ValueError(
-            f"segment_by inválido: {segment_by!r} (válidos: {sorted(_SEGMENT_COLUMNS)})"
-        )
-    seg_col = _SEGMENT_COLUMNS[segment_by]
 
-    sql = f"""
-        WITH por_empresa AS (
-            SELECT {seg_col} AS segmento,
-                   a.empresa_id,
-                   SUM(a.importe_adjudicado) AS importe
-            FROM adjudicaciones a
-            JOIN licitaciones l ON l.id_externo = a.licitacion_id
-            WHERE a.importe_adjudicado > 0 AND {seg_col} IS NOT NULL
-              AND {TECHNOLOGY_OBSERVED_SQL}
-              AND {exclude_duplicados_sql()}
-            GROUP BY segmento, a.empresa_id
-        ),
-        totales AS (
-            SELECT segmento,
-                   SUM(importe) AS total,
-                   COUNT(*) AS empresas
-            FROM por_empresa GROUP BY segmento
-        )
-        SELECT * FROM (
-            SELECT p.segmento,
-                   t.empresas,
-                   t.total AS importe_total,
-                   (SELECT COUNT(*) FROM adjudicaciones a2
-                    JOIN licitaciones l2 ON l2.id_externo = a2.licitacion_id
-                    WHERE {seg_col.replace("l.", "l2.")} = p.segmento
-                      AND a2.importe_adjudicado > 0
-                      AND {TECHNOLOGY_OBSERVED_L2_SQL}
-                      AND {exclude_duplicados_sql("l2.id_externo")}) AS contratos,
-                   {round_sql("SUM((p.importe * 100.0 / t.total) * (p.importe * 100.0 / t.total))", 0)}
-                       AS hhi
-            FROM por_empresa p
-            JOIN totales t ON t.segmento = p.segmento
-            GROUP BY p.segmento, t.empresas, t.total
-        ) seg
-        WHERE contratos >= %s
-        ORDER BY hhi DESC
-    """  # noqa: S608 — seg_col sale de _SEGMENT_COLUMNS (whitelist); valores con ?
-    with connect_read() as c:
-        return rows_to_dicts(c.execute(sql, [max(1, int(min_contratos))]))
+    Un ``segment_by`` que no esté en la whitelist de segmentación lanza
+    ``ValueError``: el repositorio la valida antes de interpolar la columna.
+    """
+    return mercado_repo.concentracion_hhi(segment_by=segment_by, min_contratos=min_contratos)
 
 
 def _scope_sql(
@@ -225,43 +122,27 @@ def _scope_sql(
     tecnologias: list[str] | None = None,
     importe_min: float | None = None,
     analysis_universe: AnalysisUniverse = "technology_observed",
-) -> tuple[str, list[Any]]:
+) -> mercado_repo.Alcance:
     """Build the shared award scope with parameterised values only.
 
     ``empresa_ids`` agrupa varias identidades del maestro (mismo competidor
     analítico sin fusionar aún) bajo un único dossier — tiene prioridad sobre
     ``empresa_id`` cuando se informan ambos.
+
+    Delega el SQL en ``mercado_repo.alcance_sql``, que traduce el universo de
+    análisis a su predicado y siembra ``exclude_duplicados_sql()``.
     """
-    clauses = [_ANALYSIS_UNIVERSE_SQL[analysis_universe], exclude_duplicados_sql()]
-    params: list[Any] = []
-    if empresa_ids:
-        placeholders = ", ".join("%s" for _ in empresa_ids)
-        clauses.append(f"a.empresa_id IN ({placeholders})")
-        params.extend(empresa_ids)
-    elif empresa_id is not None:
-        clauses.append("a.empresa_id = %s")
-        params.append(empresa_id)
-    if fecha_desde is not None:
-        clauses.append("a.fecha_adjudicacion >= %s")
-        params.append(fecha_desde.isoformat())
-    if fecha_hasta is not None:
-        clauses.append("a.fecha_adjudicacion <= %s")
-        params.append(fecha_hasta.isoformat())
-    if cpv_prefix:
-        clauses.append("l.cpv LIKE %s")
-        params.append(f"{cpv_prefix}%")
-    if ccaas:
-        placeholders = ", ".join("%s" for _ in ccaas)
-        clauses.append(f"l.ccaa IN ({placeholders})")
-        params.extend(ccaas)
-    if tecnologias:
-        placeholders = ", ".join("%s" for _ in tecnologias)
-        clauses.append(f"l.tecnologia IN ({placeholders})")
-        params.extend(tecnologias)
-    if importe_min is not None:
-        clauses.append("l.importe >= %s")
-        params.append(max(0.0, float(importe_min)))
-    return " AND ".join(clauses), params
+    return mercado_repo.alcance_sql(
+        universo=analysis_universe,
+        empresa_id=empresa_id,
+        empresa_ids=empresa_ids,
+        fecha_desde=fecha_desde,
+        fecha_hasta=fecha_hasta,
+        cpv_prefix=cpv_prefix,
+        ccaas=ccaas,
+        tecnologias=tecnologias,
+        importe_min=importe_min,
+    )
 
 
 def _as_date(value: object) -> date | None:
@@ -486,7 +367,11 @@ def perfil_empresa(
     group_ids = sorted({empresa_id, *(empresa_ids or [])})
     is_group = len(group_ids) > 1
 
-    scope_where, scope_params = _scope_sql(
+    # Cada alcance responde a una pregunta distinta del dossier: la actividad
+    # filtrada (con ventana), la base de comparación (mismos filtros sin
+    # ventana, para poder medir contra el periodo anterior), el mercado (sin
+    # empresa, para la posición) y la historia (solo empresa y universo).
+    scope_alcance = _scope_sql(
         empresa_id=empresa_id,
         empresa_ids=group_ids if is_group else None,
         fecha_desde=fecha_desde,
@@ -497,7 +382,7 @@ def perfil_empresa(
         importe_min=importe_min,
         analysis_universe=analysis_universe,
     )
-    baseline_where, baseline_params = _scope_sql(
+    baseline_alcance = _scope_sql(
         empresa_id=empresa_id,
         empresa_ids=group_ids if is_group else None,
         cpv_prefix=cpv_prefix,
@@ -506,7 +391,7 @@ def perfil_empresa(
         importe_min=importe_min,
         analysis_universe=analysis_universe,
     )
-    market_where, market_params = _scope_sql(
+    market_alcance = _scope_sql(
         fecha_desde=fecha_desde,
         fecha_hasta=fecha_hasta,
         cpv_prefix=cpv_prefix,
@@ -515,145 +400,28 @@ def perfil_empresa(
         importe_min=importe_min,
         analysis_universe=analysis_universe,
     )
-    history_where, history_params = _scope_sql(
+    history_alcance = _scope_sql(
         empresa_id=empresa_id,
         empresa_ids=group_ids if is_group else None,
         analysis_universe=analysis_universe,
     )
-    activity_select = """
-        SELECT a.licitacion_id,
-               l.titulo,
-               a.fecha_adjudicacion,
-               a.importe_adjudicado,
-               a.n_ofertas_recibidas,
-               l.importe AS presupuesto_licitacion,
-               l.organo_contratacion,
-               l.ccaa,
-               l.cpv,
-               l.tecnologia
-        FROM adjudicaciones a
-        JOIN licitaciones l ON l.id_externo = a.licitacion_id
-    """
-    with connect_read() as c:
-        id_placeholders = ", ".join("%s" for _ in group_ids)
-        identity_rows = rows_to_dicts(
-            c.execute(
-                "SELECT e.empresa_id, e.nombre_canonico, e.nif_canonico, e.es_ute, "  # noqa: S608
-                "       g.nombre AS grupo "
-                "FROM empresas e LEFT JOIN grupos_empresariales g ON g.grupo_id = e.grupo_id "
-                f"WHERE e.empresa_id IN ({id_placeholders})",
-                group_ids,
-            )
-        )
-        history_rows = rows_to_dicts(
-            c.execute(
-                f"""
-                SELECT COUNT(*) AS contratos,
-                       COALESCE(SUM(a.importe_adjudicado), 0) AS importe_total,
-                       MIN(a.fecha_adjudicacion) AS primera_adjudicacion,
-                       MAX(a.fecha_adjudicacion) AS ultima_adjudicacion
-                FROM adjudicaciones a
-                JOIN licitaciones l ON l.id_externo = a.licitacion_id
-                WHERE {history_where}
-                """,  # noqa: S608 -- history_where only contains constant fragments
-                history_params,
-            )
-        )
-        scope_rows = rows_to_dicts(
-            c.execute(f"{activity_select} WHERE {scope_where}", scope_params)
-        )
-        baseline_rows = (
-            scope_rows
-            if fecha_desde is None and fecha_hasta is None
-            else rows_to_dicts(
-                c.execute(
-                    f"{activity_select} WHERE {baseline_where}",
-                    baseline_params,
-                )
-            )
-        )
-        # Cuando hay varias identidades agrupadas, se suman como un único
-        # competidor antes de rankear frente al resto (que siguen sueltos por
-        # empresa_id) — así la cuota/posición reflejan al competidor real, no
-        # a una de sus identidades sueltas.
-        position_rows = rows_to_dicts(
-            c.execute(
-                f"""
-                WITH segmento AS (
-                    SELECT a.empresa_id,
-                           COALESCE(SUM(a.importe_adjudicado), 0) AS importe
-                    FROM adjudicaciones a
-                    JOIN licitaciones l ON l.id_externo = a.licitacion_id
-                    WHERE a.empresa_id IS NOT NULL AND {market_where}
-                    GROUP BY a.empresa_id
-                ),
-                agrupado AS (
-                    SELECT CASE WHEN empresa_id IN ({id_placeholders}) THEN -1 ELSE empresa_id END
-                               AS gid,
-                           importe
-                    FROM segmento
-                ),
-                sumado AS (
-                    SELECT gid, SUM(importe) AS importe
-                    FROM agrupado
-                    GROUP BY gid
-                ),
-                ranked AS (
-                    SELECT gid,
-                           importe,
-                           RANK() OVER (ORDER BY importe DESC) AS rank,
-                           COUNT(*) OVER () AS empresas,
-                           SUM(importe) OVER () AS importe_segmento
-                    FROM sumado
-                )
-                SELECT gid AS empresa_id, rank, empresas, importe_segmento,
-                       importe * 100.0 / NULLIF(importe_segmento, 0) AS cuota_pct
-                FROM ranked WHERE gid = -1
-                """,  # noqa: S608 -- market_where/placeholders constant, valores con ?
-                [*market_params, *group_ids],
-            )
-        )
-        # UTEs en las que participa como miembro (v35, ute_miembros) -- no
-        # como entidad propia. cuota_mercado()/concentracion_hhi() ya tratan
-        # a la UTE como participante independiente para no contar dos veces
-        # el mismo importe en el agregado del segmento; esto es visibilidad
-        # adicional sobre ESTE dossier, sin tocar ese cómputo.
-        ute_identity_rows = rows_to_dicts(
-            c.execute(
-                "SELECT DISTINCT u.ute_empresa_id, e.nombre_canonico AS ute_nombre "  # noqa: S608
-                "FROM ute_miembros u JOIN empresas e ON e.empresa_id = u.ute_empresa_id "
-                f"WHERE u.miembro_empresa_id IN ({id_placeholders})",
-                group_ids,
-            )
-        )
-        ute_ids = [int(row["ute_empresa_id"]) for row in ute_identity_rows]
-        ute_activity_rows: list[dict[str, Any]] = []
-        ute_miembros_rows: list[dict[str, Any]] = []
-        if ute_ids:
-            ute_placeholders = ", ".join("%s" for _ in ute_ids)
-            ute_activity_rows = rows_to_dicts(
-                c.execute(
-                    f"""
-                    SELECT a.empresa_id AS ute_empresa_id,
-                           COUNT(*) AS contratos,
-                           COALESCE(SUM(a.importe_adjudicado), 0) AS importe_total
-                    FROM adjudicaciones a
-                    JOIN licitaciones l ON l.id_externo = a.licitacion_id
-                    WHERE a.empresa_id IN ({ute_placeholders}) AND {market_where}
-                    GROUP BY a.empresa_id
-                    """,  # noqa: S608 -- placeholders/market_where constantes, valores con ?
-                    [*ute_ids, *market_params],
-                )
-            )
-            ute_miembros_rows = rows_to_dicts(
-                c.execute(
-                    "SELECT u.ute_empresa_id, m.nombre_canonico "  # noqa: S608
-                    "FROM ute_miembros u JOIN empresas m ON m.empresa_id = u.miembro_empresa_id "
-                    f"WHERE u.ute_empresa_id IN ({ute_placeholders}) "
-                    f"AND u.miembro_empresa_id NOT IN ({id_placeholders})",
-                    [*ute_ids, *group_ids],
-                )
-            )
+    filas = mercado_repo.filas_perfil_empresa(
+        group_ids,
+        alcance=scope_alcance,
+        # Sin ventana de fechas la base es la misma actividad: el repositorio
+        # reutiliza esas filas en vez de repetir la consulta.
+        alcance_base=None if fecha_desde is None and fecha_hasta is None else baseline_alcance,
+        alcance_mercado=market_alcance,
+        alcance_historia=history_alcance,
+    )
+    identity_rows = filas.identidades
+    history_rows = filas.historia
+    scope_rows = filas.actividad
+    baseline_rows = filas.base
+    position_rows = filas.posicion
+    ute_identity_rows = filas.utes
+    ute_activity_rows = filas.actividad_utes
+    ute_miembros_rows = filas.miembros_utes
 
     primary_identity = next(
         (row for row in identity_rows if row.get("empresa_id") == empresa_id),
@@ -856,14 +624,6 @@ def perfil_empresa(
     }
 
 
-_AWARD_SORT_SQL = {
-    "fecha_desc": "a.fecha_adjudicacion IS NULL, a.fecha_adjudicacion DESC",
-    "fecha_asc": "a.fecha_adjudicacion IS NULL, a.fecha_adjudicacion ASC",
-    "importe_desc": "a.importe_adjudicado IS NULL, a.importe_adjudicado DESC",
-    "importe_asc": "a.importe_adjudicado IS NULL, a.importe_adjudicado ASC",
-}
-
-
 def listar_adjudicaciones_empresa(
     empresa_id: int,
     *,
@@ -888,9 +648,12 @@ def listar_adjudicaciones_empresa(
 
     Usa `_scope_sql()`, que aplica `exclude_duplicados_sql()` para excluir
     duplicados cross-fuente de las tablas licitaciones/adjudicaciones.
+
+    ``limit`` y ``offset`` los acota el repositorio junto a la consulta; la
+    respuesta devuelve los efectivos, no los pedidos.
     """
     group_ids = sorted({empresa_id, *(empresa_ids or [])})
-    where, params = _scope_sql(
+    scope_alcance = _scope_sql(
         empresa_id=empresa_id,
         empresa_ids=group_ids if len(group_ids) > 1 else None,
         fecha_desde=fecha_desde,
@@ -901,60 +664,17 @@ def listar_adjudicaciones_empresa(
         importe_min=importe_min,
         analysis_universe=analysis_universe,
     )
-    clauses = [where]
-    if q and q.strip():
-        needle = f"%{q.strip().lower()}%"
-        clauses.append(
-            "(LOWER(COALESCE(l.titulo, '')) LIKE %s "
-            "OR LOWER(COALESCE(l.organo_contratacion, '')) LIKE %s "
-            "OR LOWER(COALESCE(a.licitacion_id, '')) LIKE %s)"
-        )
-        params.extend([needle, needle, needle])
-    if organo and organo.strip():
-        clauses.append("LOWER(COALESCE(l.organo_contratacion, '')) LIKE %s")
-        params.append(f"%{organo.strip().lower()}%")
-    full_where = " AND ".join(clauses)
-    safe_limit = max(1, min(int(limit), 500))
-    safe_offset = max(0, int(offset))
-    order_sql = _AWARD_SORT_SQL.get(sort, _AWARD_SORT_SQL["fecha_desc"])
-
-    with connect_read() as c:
-        total = int(
-            c.execute(
-                f"""
-                SELECT COUNT(*)
-                FROM adjudicaciones a
-                JOIN licitaciones l ON l.id_externo = a.licitacion_id
-                WHERE {full_where}
-                """,  # noqa: S608 -- full_where only contains constant fragments
-                params,
-            ).fetchone()[0]
-        )
-        items = rows_to_dicts(
-            c.execute(
-                f"""
-                SELECT a.licitacion_id,
-                       l.titulo,
-                       l.organo_contratacion,
-                       a.fecha_adjudicacion,
-                       l.cpv,
-                       l.ccaa,
-                       l.tecnologia,
-                       l.importe AS presupuesto_licitacion,
-                       a.importe_adjudicado,
-                       CASE
-                         WHEN l.importe > 0 AND a.importe_adjudicado IS NOT NULL
-                         THEN (1.0 - (a.importe_adjudicado * 1.0) / l.importe) * 100
-                         ELSE NULL
-                       END AS baja_pct,
-                       a.n_ofertas_recibidas
-                FROM adjudicaciones a
-                JOIN licitaciones l ON l.id_externo = a.licitacion_id
-                WHERE {full_where}
-                ORDER BY {order_sql}
-                LIMIT %s OFFSET %s
-                """,  # noqa: S608 -- fragments come from whitelists/constants
-                [*params, safe_limit, safe_offset],
-            )
-        )
-    return {"items": items, "total": total, "limit": safe_limit, "offset": safe_offset}
+    pagina = mercado_repo.adjudicaciones_empresa(
+        scope_alcance,
+        q=q,
+        organo=organo,
+        sort=sort,
+        limit=limit,
+        offset=offset,
+    )
+    return {
+        "items": pagina.items,
+        "total": pagina.total,
+        "limit": pagina.limit,
+        "offset": pagina.offset,
+    }
