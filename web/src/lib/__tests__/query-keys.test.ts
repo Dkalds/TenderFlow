@@ -209,6 +209,7 @@ const FABRICAS: readonly Fabrica[] = [
       { nombre: "pursuitKeys.metrics", clave: pursuitKeys.metrics },
       { nombre: "pursuitKeys.agenda", clave: pursuitKeys.agenda },
       { nombre: "pursuitKeys.direccion", clave: pursuitKeys.direccion(21) },
+      { nombre: "pursuitKeys.actividad", clave: pursuitKeys.actividad(21, null) },
     ],
   },
   {
@@ -427,6 +428,7 @@ describe("las fábricas parametrizadas", () => {
     { nombre: "pursuitKeys.list", conA: () => pursuitKeys.list({ estado: "abierto" }), conB: () => pursuitKeys.list({ estado: "ganado" }) },
     { nombre: "pursuitKeys.detail", conA: () => pursuitKeys.detail("7"), conB: () => pursuitKeys.detail("8") },
     { nombre: "pursuitKeys.direccion", conA: () => pursuitKeys.direccion(21), conB: () => pursuitKeys.direccion(null) },
+    { nombre: "pursuitKeys.actividad", conA: () => pursuitKeys.actividad(21, null), conB: () => pursuitKeys.actividad(21, 7) },
     { nombre: "pursuitCommentKeys.thread", conA: () => pursuitCommentKeys.thread(7), conB: () => pursuitCommentKeys.thread(8) },
     { nombre: "organizationKeys.members", conA: () => organizationKeys.members(1), conB: () => organizationKeys.members(2) },
     { nombre: "organizationKeys.settings", conA: () => organizationKeys.settings(1), conB: () => organizationKeys.settings(null) },
@@ -499,6 +501,7 @@ const FABRICAS_CON_ARGUMENTOS: readonly string[] = [
   "pursuitKeys.list",
   "pursuitKeys.detail",
   "pursuitKeys.direccion",
+  "pursuitKeys.actividad",
   "pursuitCommentKeys.thread",
   "organizationKeys.members",
   "organizationKeys.settings",

@@ -10,8 +10,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
-const { apiGet, ApiError } = vi.hoisted(() => ({
+const { apiGet, ApiError, vista } = vi.hoisted(() => ({
   apiGet: vi.fn(),
+  vista: { actual: "resultado" },
   ApiError: class ApiError extends Error {
     constructor(
       public status: number,
@@ -23,9 +24,12 @@ const { apiGet, ApiError } = vi.hoisted(() => ({
 }));
 
 vi.mock("@/lib/api-client", () => ({ apiGet, ApiError }));
-vi.mock("@/hooks/use-organization", () => ({ useActiveOrganizationId: () => 21 }));
+vi.mock("@/hooks/use-organization", () => ({
+  useActiveOrganizationId: () => 21,
+  useOrganizationMembers: () => ({ data: [] }),
+}));
 vi.mock("@/components/layout/space-shell", () => ({
-  useSpaceView: () => ({ view: "resultado", setView: vi.fn() }),
+  useSpaceView: () => ({ view: vista.actual, setView: vi.fn() }),
   SpaceShell: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
 }));
 
@@ -43,6 +47,7 @@ function renderPage() {
 afterEach(() => {
   cleanup();
   apiGet.mockReset();
+  vista.actual = "resultado";
 });
 
 describe("DireccionPage", () => {
@@ -84,5 +89,24 @@ describe("DireccionPage", () => {
     renderPage();
 
     expect(await screen.findByText("Dirección es para owner y admin")).toBeTruthy();
+  });
+
+  it("la vista Actividad pide el feed del equipo, no un texto que manda al Resumen", async () => {
+    vista.actual = "actividad";
+    apiGet.mockImplementation((path: string) =>
+      Promise.resolve(
+        path === "/api/v1/pursuits/actividad"
+          ? { organization_id: 21, items: [], siguiente_cursor: null, filtrado_por_rol: false }
+          : { organization_id: 21, n_minimo: 5, win_rate_por_tecnologia: [], win_rate_por_organo: [] },
+      ),
+    );
+
+    renderPage();
+
+    expect(await screen.findByText("Sin actividad")).toBeTruthy();
+    expect(apiGet).toHaveBeenCalledWith(
+      "/api/v1/pursuits/actividad",
+      expect.objectContaining({ params: { query: expect.objectContaining({ organization_id: 21 }) } }),
+    );
   });
 });

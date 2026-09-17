@@ -13,6 +13,7 @@ import { CONSOLE_SPACES } from "@/lib/console-spaces";
 import { ApiError, apiGet } from "@/lib/api-client";
 import type { Schemas } from "@/lib/api-types";
 import { pursuitKeys } from "@/lib/query-keys";
+import { ActividadEquipo } from "./_components/actividad-equipo";
 
 /**
  * F4.2 — Cuadro de mando de dirección.
@@ -129,10 +130,7 @@ export default function DireccionPage() {
           }
         />
       ) : vista === "actividad" ? (
-        <EmptyState
-          title="Actividad del equipo"
-          hint="Quién abrió, decidió, presentó y cerró, en «Qué cambió desde tu última visita» del Resumen."
-        />
+        <ActividadEquipo organizationId={organizationId} />
       ) : vista === "embudo" ? (
         // La vista existe en `space-views.ts`; sin esta rama caía al `else` y
         // pintaba las tablas de Resultado bajo la pestaña Embudo, que es peor
