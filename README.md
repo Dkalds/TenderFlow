@@ -65,7 +65,6 @@ tenderflow/
 │   ├── dto.py                    #   DTOs Pydantic v2 (contrato API ↔ web)
 │   ├── geo.py                    #   NUTS3 → CCAA
 │   ├── i18n.py                   #   Internacionalización (es/en)
-│   ├── schemas.py                #   Esquemas pandera para validación de DataFrames
 │   ├── signing.py                #   Rotación de claves de firma (kid/JWKS)
 │   ├── csrf.py                   #   HMAC-signed CSRF state
 │   ├── ssrf.py                   #   Validación de URLs salientes (documentos, webhooks)

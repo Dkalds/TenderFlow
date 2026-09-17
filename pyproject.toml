@@ -62,11 +62,6 @@ llm = [
 ml = [
     "sentence-transformers>=2.2.0,<7",
 ]
-# Validación de DataFrames con pandera.
-# Instalar con: pip install licitaciones-sap[schemas]
-schemas = [
-    "pandera>=0.18,<1",
-]
 # Deps opcionales para embeddings pre-entrenados en el pipeline ML.
 # Instalar con: pip install licitaciones-sap[ml-embeddings]
 ml-embeddings = [
@@ -291,8 +286,6 @@ module = [
     "joblib",
     "opentelemetry",
     "opentelemetry.*",
-    "pandera",
-    "pandera.*",
     "polars",
     "polars.*",
     "brotli_asgi",
