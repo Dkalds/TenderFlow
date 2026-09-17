@@ -15,14 +15,17 @@ Hardening (B11):
       Es la única capa: el SDK se crea con ``max_retries=0``.
     - Log de API key missing como warning en vez de silencio.
     - Una key rechazada (HTTP 401/403) **lanza** ``LLMAuthError`` sin reintentar.
+    - Señal de parada (``stop``): con ella activa no se abre ningún intento
+      nuevo y el backoff se corta.
 """
 
 from __future__ import annotations
 
+import threading
 from collections.abc import Iterator, MutableMapping
 
 from llm.prompts import ChatMessage
-from llm.providers import AUTH_HTTP_CODES, LLMAuthError
+from llm.providers import AUTH_HTTP_CODES, LLMAuthError, backoff_wait, stop_requested
 from observability.logging import get_logger
 
 log = get_logger(__name__)
@@ -53,6 +56,7 @@ def stream(
     api_key: str,
     usage_sink: MutableMapping[str, int] | None = None,
     max_tokens: int | None = None,
+    stop: threading.Event | None = None,
 ) -> Iterator[str]:
     """Streaming Anthropic Messages API con retry y timeout.
 
@@ -64,6 +68,8 @@ def stream(
         api_key: Clave de API de Anthropic.
         usage_sink: Si se provee, se rellena con input_tokens, output_tokens, source.
         max_tokens: Límite de tokens de salida; ``None`` usa el default del módulo.
+        stop: Señal de parada del consumidor; mismo contrato que en
+            ``openai_provider.stream``.
 
     Yields:
         Fragmentos de texto del modelo.
@@ -94,6 +100,10 @@ def stream(
     yielded = False
 
     for attempt in range(1, max_attempts + 1):
+        if stop_requested(stop):
+            # Ver openai_provider: otro intento sería gasto sin lector.
+            log.info("llm_anthropic.stopped", model=model, attempt=attempt)
+            return
         try:
             # `max_retries=0` por lo mismo que en `openai_provider`: el SDK
             # reintenta 2 veces por defecto dentro de cada llamada y este bucle
@@ -110,10 +120,23 @@ def stream(
                 system=system,
                 messages=list(messages),
             ) as stream_obj:
-                for text in stream_obj.text_stream:
-                    if text:
-                        yielded = True  # a partir de aquí el retry ya no es seguro
-                        yield text
+                output_chars = 0
+                try:
+                    for text in stream_obj.text_stream:
+                        if text:
+                            output_chars += len(text)
+                            yielded = True  # a partir de aquí el retry ya no es seguro
+                            yield text
+                except GeneratorExit:
+                    # El consumidor cerró a mitad de respuesta (ver
+                    # openai_provider). El `with` cierra la respuesta HTTP al
+                    # salir; el uso se estima porque `get_final_message()` ya no
+                    # se va a llamar y lo generado se factura igual.
+                    if usage_sink is not None:
+                        usage_sink["input_tokens"] = prompt_chars // 4
+                        usage_sink["output_tokens"] = output_chars // 4
+                        usage_sink["source"] = 1  # estimated
+                    raise
                 # Capturar usage real del SDK
                 if usage_sink is not None:
                     try:
@@ -140,8 +163,6 @@ def stream(
                 log.error("llm_anthropic.auth_rejected", model=model, status_code=status_code)
                 raise LLMAuthError(model=model, status_code=int(status_code)) from exc
             if attempt < max_attempts and _is_retryable(exc):
-                import time
-
                 wait = 2 ** (attempt - 1)
                 log.warning(
                     "llm_anthropic.retry",
@@ -150,7 +171,7 @@ def stream(
                     wait_s=wait,
                     error=str(exc),
                 )
-                time.sleep(wait)
+                backoff_wait(wait, stop)
             else:
                 break
 

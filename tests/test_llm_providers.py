@@ -6,6 +6,9 @@ y ``tests/test_llm_prompts.py`` para el montaje de prompts).
 
 from __future__ import annotations
 
+import threading
+import time
+from collections.abc import Generator, Iterator
 from typing import Any
 from unittest.mock import MagicMock, patch
 
@@ -414,3 +417,147 @@ def test_http_408_is_retryable(provider: Any) -> None:
     ``APIStatusError`` genérico), así que solo se reconoce por el código.
     """
     assert provider._is_retryable(_HTTPStatusError(408))
+
+
+# ── Señal de parada (stop) ────────────────────────────────────────────────────
+#
+# `/ask` la activa al vencer su timeout o desconectarse el cliente. La lectura
+# HTTP en curso no se puede interrumpir, pero después de ella no se abre ningún
+# intento más: cada uno es gasto de presupuesto en una respuesta sin lector.
+
+
+class _FakeOpenAIStream:
+    """``Stream`` del SDK: cuenta los chunks leídos y registra ``close()``."""
+
+    def __init__(self, texts: list[str]) -> None:
+        self._texts = texts
+        self.leidos = 0
+        self.cerrado = False
+
+    def __iter__(self) -> Iterator[MagicMock]:
+        for text in self._texts:
+            self.leidos += 1
+            yield _make_openai_chunk(text)
+
+    def close(self) -> None:
+        self.cerrado = True
+
+
+def test_openai_stream_no_retry_after_stop() -> None:
+    """La parada llega durante un intento que falla: no hay un segundo intento."""
+    stop = threading.Event()
+    call_count = [0]
+
+    def failing_create(*_args: object, **_kwargs: object) -> None:
+        call_count[0] += 1
+        stop.set()  # el timeout de /ask vence mientras dura esta lectura
+        raise ConnectionError("read timeout")
+
+    mock_openai_module = MagicMock()
+    mock_openai_module.OpenAI.return_value.chat.completions.create.side_effect = failing_create
+
+    with patch.dict("sys.modules", {"openai": mock_openai_module}):
+        result = list(oai.stream(SYSTEM, MESSAGES, "gpt-4o", "sk-fake", stop=stop))
+
+    assert result == []
+    assert call_count[0] == 1
+
+
+def test_openai_stream_stop_already_set_makes_no_request() -> None:
+    stop = threading.Event()
+    stop.set()
+    mock_openai_module = MagicMock()
+
+    with patch.dict("sys.modules", {"openai": mock_openai_module}):
+        result = list(oai.stream(SYSTEM, MESSAGES, "gpt-4o", "sk-fake", stop=stop))
+
+    assert result == []
+    mock_openai_module.OpenAI.return_value.chat.completions.create.assert_not_called()
+
+
+def test_openai_backoff_is_cut_short_by_stop() -> None:
+    """La espera de backoff (1 s) no retiene el hilo: la parada la despierta."""
+    stop = threading.Event()
+    call_count = [0]
+
+    def failing_create(*_args: object, **_kwargs: object) -> None:
+        call_count[0] += 1
+        # La parada llega DURANTE el backoff, no antes de empezarlo.
+        threading.Timer(0.05, stop.set).start()
+        raise ConnectionError("network unreachable")
+
+    mock_openai_module = MagicMock()
+    mock_openai_module.OpenAI.return_value.chat.completions.create.side_effect = failing_create
+
+    t0 = time.monotonic()
+    with patch.dict("sys.modules", {"openai": mock_openai_module}):
+        result = list(oai.stream(SYSTEM, MESSAGES, "gpt-4o", "sk-fake", stop=stop))
+    elapsed = time.monotonic() - t0
+
+    assert result == []
+    assert call_count[0] == 1
+    assert elapsed < 0.9
+
+
+def test_openai_stream_closed_mid_response_closes_http_and_estimates_usage() -> None:
+    """Cerrar el generador a mitad cierra el stream del SDK y deja uso estimado.
+
+    El SDK solo reporta el uso en el último chunk: sin la estimación, lo ya
+    generado (y facturado) no llegaría al presupuesto.
+    """
+    fake_stream = _FakeOpenAIStream(["Hola ", "mundo ", "sin ", "leer"])
+    mock_openai_module = MagicMock()
+    mock_openai_module.OpenAI.return_value.chat.completions.create.return_value = fake_stream
+    usage: dict[str, int] = {}
+
+    with patch.dict("sys.modules", {"openai": mock_openai_module}):
+        gen = oai.stream(SYSTEM, MESSAGES, "gpt-4o", "sk-fake", usage_sink=usage)
+        assert isinstance(gen, Generator)
+        assert next(gen) == "Hola "
+        gen.close()
+
+    assert fake_stream.cerrado
+    assert fake_stream.leidos == 1
+    assert usage["source"] == 1
+    assert usage["input_tokens"] > 0
+    assert usage["output_tokens"] == len("Hola ") // 4
+
+
+def test_anthropic_stream_no_retry_after_stop() -> None:
+    stop = threading.Event()
+    call_count = [0]
+
+    def failing_stream(*_args: object, **_kwargs: object) -> None:
+        call_count[0] += 1
+        stop.set()
+        raise ConnectionError("read timeout")
+
+    mock_anthropic_module = MagicMock()
+    mock_anthropic_module.Anthropic.return_value.messages.stream.side_effect = failing_stream
+
+    with patch.dict("sys.modules", {"anthropic": mock_anthropic_module}):
+        result = list(anth.stream(SYSTEM, MESSAGES, "claude-sonnet", "ant-fake", stop=stop))
+
+    assert result == []
+    assert call_count[0] == 1
+
+
+def test_anthropic_stream_closed_mid_response_exits_context_and_estimates_usage() -> None:
+    ctx = _mock_anthropic_stream_ctx(["Hola mundo ", "sin leer"])
+    mock_anthropic_module = MagicMock()
+    mock_anthropic_module.Anthropic.return_value.messages.stream.return_value = ctx
+    usage: dict[str, int] = {}
+
+    with patch.dict("sys.modules", {"anthropic": mock_anthropic_module}):
+        gen = anth.stream(SYSTEM, MESSAGES, "claude-sonnet", "ant-fake", usage_sink=usage)
+        assert isinstance(gen, Generator)
+        assert next(gen) == "Hola mundo "
+        gen.close()
+
+    ctx.__exit__.assert_called_once()  # el `with` del SDK cierra la respuesta HTTP
+    ctx.get_final_message.assert_not_called()
+    assert usage == {
+        "input_tokens": (len(SYSTEM) + len(MESSAGES[0]["content"])) // 4,
+        "output_tokens": len("Hola mundo ") // 4,
+        "source": 1,
+    }
