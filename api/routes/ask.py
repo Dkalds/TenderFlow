@@ -31,7 +31,8 @@ from __future__ import annotations
 
 import asyncio
 import json
-from collections.abc import AsyncGenerator, Callable, Iterator
+import threading
+from collections.abc import AsyncGenerator, Callable, Generator, Iterator
 from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -342,7 +343,7 @@ def _resumen_cache_key(
 
 
 def _stream_sse(
-    stream_factory: Callable[[], Iterator[str]],
+    stream_factory: Callable[[threading.Event], Iterator[str]],
     degraded_docs: list[dict[str, Any]],
     pre_events: list[dict[str, Any]] | None = None,
     post_event: Callable[[str], dict[str, Any] | None] | None = None,
@@ -354,6 +355,12 @@ def _stream_sse(
     stream vacío (API key ausente) o timeout, degrada a los documentos del
     contexto sin síntesis (evento SSE ``degraded``, RFC llm-dependencia-
     gestionada).
+
+    ``stream_factory`` recibe la señal de parada del stream y tiene que
+    pasarla a ``stream_llm_response(stop=...)``. Cancelar la tarea de
+    ``to_thread`` no detiene el hilo: sin la señal, tras un timeout o una
+    desconexión el hilo seguía recorriendo reintentos y la cadena de fallback
+    entera, gastando presupuesto en una respuesta que ya nadie iba a leer.
 
     ``post_event`` recibe la respuesta completa y devuelve un evento a emitir
     **antes** de ``[DONE]``; es lo que usa C5.3 para las citas, que solo se
@@ -368,14 +375,28 @@ def _stream_sse(
         loop = asyncio.get_running_loop()
         # Cola thread-safe para pasar (kind, payload) del executor al event loop
         queue: asyncio.Queue[tuple[str, str]] = asyncio.Queue()
+        # La activa el event loop cuando deja de leer la cola: timeout o
+        # cliente desconectado (el ``finally`` de abajo).
+        stop = threading.Event()
 
         def _run_sync() -> None:
-            """Ejecuta el stream LLM en un thread y encola los chunks."""
+            """Ejecuta el stream LLM en un thread y encola los chunks.
+
+            Con ``stop`` activa el hilo no encola nada más y cierra el stream:
+            el cierre corta la respuesta HTTP en curso, y ``stream_llm_response``
+            ya no arranca intentos ni candidatos de fallback nuevos.
+            """
             emitted = 0
+            stream: Iterator[str] | None = None
             try:
-                for chunk in stream_factory():
+                stream = stream_factory(stop)
+                for chunk in stream:
+                    if stop.is_set():
+                        return
                     emitted += 1
                     loop.call_soon_threadsafe(queue.put_nowait, ("chunk", chunk))
+                if stop.is_set():
+                    return
                 if emitted == 0:
                     # Providers sin API key/paquete devuelven un iterador vacío
                     # sin lanzar: degradar en vez de cerrar en silencio.
@@ -383,8 +404,19 @@ def _stream_sse(
                 else:
                     loop.call_soon_threadsafe(queue.put_nowait, ("done", ""))
             except Exception as exc:
+                if stop.is_set():
+                    # La respuesta ya se entregó degradada (o el cliente se
+                    # fue): no hay a quién avisar.
+                    log.info("ask.llm_stream_error_after_stop", error=str(exc))
+                    return
                 log.warning("ask.llm_stream_error_degrading", error=str(exc))
                 loop.call_soon_threadsafe(queue.put_nowait, ("degraded", "provider_error"))
+            finally:
+                if isinstance(stream, Generator):
+                    # Cierre explícito, sin esperar al recolector: llega al
+                    # provider como GeneratorExit, que libera la conexión y
+                    # estima el uso ya generado. Sobre un stream agotado es no-op.
+                    stream.close()
 
         # Solo se acumula cuando hay algo que calcular al final: guardar la
         # respuesta entera en memoria para no usarla sería pagar por nada en el
@@ -402,10 +434,12 @@ def _stream_sse(
                 try:
                     kind, payload = await asyncio.wait_for(queue.get(), timeout=timeout_seconds)
                 except TimeoutError:
+                    # La señal va antes que los eventos: el hilo deja de arrancar
+                    # trabajo desde ya, sin esperar a que se escriba la degradación.
+                    stop.set()
                     log.error("ask.llm_timeout_degrading", timeout=timeout_seconds)
                     yield _sse_event({"degraded": True, "reason": "timeout", "docs": degraded_docs})
                     yield "data: [DONE]\n\n"
-                    executor_task.cancel()
                     return
 
                 if kind == "done":
@@ -428,6 +462,10 @@ def _stream_sse(
                 respuesta.append(payload)
                 yield f"data: {json.dumps({'text': payload})}\n\n"
         finally:
+            # Al hilo que ya corre solo lo detiene ``stop``; la cancelación
+            # desengancha la tarea y evita que arranque si aún esperaba hueco
+            # en el threadpool.
+            stop.set()
             if not executor_task.done():
                 executor_task.cancel()
 
@@ -549,14 +587,15 @@ async def _stream_ask(
     if cacheado is not None:
         texto_cacheado = cacheado
 
-        def _factory() -> Iterator[str]:
+        def _factory(stop: threading.Event) -> Iterator[str]:
             # Un solo evento: el troceado original no aporta nada y reproducirlo
-            # falsearía una latencia de proveedor que aquí no existe.
+            # falsearía una latencia de proveedor que aquí no existe. Sin
+            # proveedor no hay nada que parar.
             return iter([texto_cacheado])
 
     else:
 
-        def _factory() -> Iterator[str]:
+        def _factory(stop: threading.Event) -> Iterator[str]:
             # El coste solo se conoce dentro de llm/client.py::_record_usage, que no
             # ve al usuario. Se corre en un thread con contexto propio (to_thread lo
             # copia), así que dejar ahí el sujeto lo atribuye sin filtrarlo a otras
@@ -572,6 +611,7 @@ async def _stream_ask(
                 keywords=keywords,
                 history=history,
                 mode=mode,
+                stop=stop,
             )
             if cache is None or clave is None:
                 return stream
@@ -800,12 +840,12 @@ async def resumen_licitacion(
 
     if cached_text is not None:
         # Hit: se sirve el texto persistido como un único evento, sin proveedor.
-        def _factory() -> Iterator[str]:
+        def _factory(stop: threading.Event) -> Iterator[str]:
             return iter([cached_text])
 
     else:
 
-        def _factory() -> Iterator[str]:
+        def _factory(stop: threading.Event) -> Iterator[str]:
             # Ver _stream_ask: sujeto y organización viajan por contexto hasta
             # _record_usage, que es donde se conoce el coste real.
             bind_budget_subject(scope_key)
@@ -820,6 +860,7 @@ async def resumen_licitacion(
                     keywords=[],
                     mode="resumen",
                     max_tokens=_RESUMEN_MAX_TOKENS,
+                    stop=stop,
                 ):
                     parts.append(token)
                     yield token

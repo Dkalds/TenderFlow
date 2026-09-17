@@ -233,12 +233,15 @@ def test_openai_usage_sink_estimation_fallback():
 
 
 def test_partial_consumption_does_not_record_tokens():
-    """Si el consumidor abandona el generador antes de agotarlo, no se contabilizan tokens.
+    """Si el provider no puebla el uso antes del cierre, el cliente no lo inventa.
 
-    El provider solo puebla ``usage_sink`` al final de su stream; al cerrarse el
+    Este doble solo puebla ``usage_sink`` al final de su stream; al cerrarse el
     generador a mitad (``GeneratorExit``), el sink queda vacío y ``_record_usage``
-    es no-op. Documentado en el RFC como comportamiento aceptable para un contador
-    de observabilidad.
+    es no-op. Los providers reales ya no se comportan así: desde que ``/ask``
+    cierra el stream al vencer su timeout o desconectarse el cliente, estiman el
+    uso en el ``GeneratorExit`` para que el presupuesto no pierda lo ya generado
+    (ver ``tests/test_llm_providers.py``). El RFC de observabilidad lo aceptaba
+    cuando el uso solo alimentaba un contador; hoy alimenta también el breaker.
     """
     from collections.abc import Iterator
 

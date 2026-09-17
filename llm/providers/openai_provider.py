@@ -16,15 +16,18 @@ Hardening (B11):
     - Log de tokens estimados pre-request y error detallado post-failure.
     - Una key rechazada (HTTP 401/403) **lanza** ``LLMAuthError`` sin reintentar,
       en vez de acabar en stream vacío como el resto de fallos.
+    - Señal de parada (``stop``): con ella activa no se abre ningún intento
+      nuevo y el backoff se corta.
 """
 
 from __future__ import annotations
 
+import threading
 from collections.abc import Iterator, MutableMapping
 from typing import Any
 
 from llm.prompts import ChatMessage
-from llm.providers import AUTH_HTTP_CODES, LLMAuthError
+from llm.providers import AUTH_HTTP_CODES, LLMAuthError, backoff_wait, stop_requested
 from observability.logging import get_logger
 
 log = get_logger(__name__)
@@ -54,6 +57,30 @@ def _is_retryable(exc: Exception) -> bool:
     return any(k in name for k in ("ratelimit", "timeout", "connection", "apiconnection"))
 
 
+def _fill_estimated_usage(
+    usage_sink: MutableMapping[str, int] | None, input_tokens: int, output_chars: int
+) -> None:
+    """Estima el uso cuando el SDK no lo reportó (``source=1``)."""
+    if usage_sink is not None and "input_tokens" not in usage_sink:
+        usage_sink["input_tokens"] = input_tokens
+        usage_sink["output_tokens"] = output_chars // 4
+        usage_sink["source"] = 1  # estimated
+
+
+def _close_stream(stream_obj: object) -> None:
+    """Cierra la respuesta HTTP del stream si el objeto lo permite.
+
+    ``getattr`` y no una llamada directa: ``create`` se tipa como
+    ``ChatCompletion | Stream`` y solo el segundo tiene ``close``.
+    """
+    close = getattr(stream_obj, "close", None)
+    if callable(close):
+        try:
+            close()
+        except Exception:
+            log.debug("llm_openai.stream_close_failed", exc_info=True)
+
+
 def stream(
     system: str,
     messages: list[ChatMessage],
@@ -63,6 +90,7 @@ def stream(
     base_url: str | None = None,
     max_tokens: int | None = None,
     chat_template_kwargs: dict[str, Any] | None = None,
+    stop: threading.Event | None = None,
 ) -> Iterator[str]:
     """Streaming OpenAI (o endpoint compatible) con retry y timeout.
 
@@ -82,6 +110,11 @@ def stream(
             devuelve 400, así que quien llama solo la pasa para los modelos que
             la entienden (ver ``llm/client.py``). ``None`` no añade nada al
             cuerpo, que es lo que tiene que pasar con cualquier otro proveedor.
+        stop: Señal de parada del consumidor (``/ask`` la activa al vencer su
+            timeout o desconectarse el cliente). Se comprueba antes de cada
+            intento y corta la espera de backoff. La lectura HTTP en curso no se
+            interrumpe, pero dura como mucho ``_REQUEST_TIMEOUT``. ``None``
+            reintenta como siempre.
 
     Yields:
         Fragmentos de texto del modelo.
@@ -113,6 +146,11 @@ def stream(
     yielded = False
 
     for attempt in range(1, max_attempts + 1):
+        if stop_requested(stop):
+            # Quien consume ya no espera la respuesta: otro intento solo gastaría
+            # presupuesto en tokens que nadie va a leer.
+            log.info("llm_openai.stopped", model=model, attempt=attempt)
+            return
         try:
             # `max_retries=0`: este bucle es la única capa de retry. El SDK
             # reintenta por defecto 2 veces DENTRO de cada llamada, así que cada
@@ -145,22 +183,30 @@ def stream(
                 stream_kwargs["extra_body"] = {"chat_template_kwargs": chat_template_kwargs}
             stream_obj = client.chat.completions.create(**stream_kwargs)
             output_chars = 0
-            for chunk in stream_obj:
-                if chunk.choices:
-                    delta = chunk.choices[0].delta.content
-                    if delta:
-                        output_chars += len(delta)
-                        yielded = True  # a partir de aquí el retry ya no es seguro
-                        yield delta
-                elif usage_sink is not None and hasattr(chunk, "usage") and chunk.usage:
-                    usage_sink["input_tokens"] = chunk.usage.prompt_tokens
-                    usage_sink["output_tokens"] = chunk.usage.completion_tokens
-                    usage_sink["source"] = 0  # reported by SDK
+            try:
+                for chunk in stream_obj:
+                    if chunk.choices:
+                        delta = chunk.choices[0].delta.content
+                        if delta:
+                            output_chars += len(delta)
+                            yielded = True  # a partir de aquí el retry ya no es seguro
+                            yield delta
+                    elif usage_sink is not None and hasattr(chunk, "usage") and chunk.usage:
+                        usage_sink["input_tokens"] = chunk.usage.prompt_tokens
+                        usage_sink["output_tokens"] = chunk.usage.completion_tokens
+                        usage_sink["source"] = 0  # reported by SDK
+            except GeneratorExit:
+                # El consumidor cerró el generador a mitad de respuesta (/ask lo
+                # hace tras su timeout o una desconexión). Cerrar la respuesta
+                # HTTP hace que el proveedor deje de generar. El uso se estima
+                # porque el SDK solo lo reporta en el último chunk y lo generado
+                # hasta aquí se factura igual: sin esto el presupuesto
+                # (``llm/budget.py``) no lo vería.
+                _close_stream(stream_obj)
+                _fill_estimated_usage(usage_sink, estimated_tokens, output_chars)
+                raise
             # Fallback si no recibimos usage del SDK
-            if usage_sink is not None and "input_tokens" not in usage_sink:
-                usage_sink["input_tokens"] = estimated_tokens
-                usage_sink["output_tokens"] = output_chars // 4
-                usage_sink["source"] = 1  # estimated
+            _fill_estimated_usage(usage_sink, estimated_tokens, output_chars)
             return  # éxito — salir del retry loop
         except Exception as exc:
             last_exc = exc
@@ -175,8 +221,6 @@ def stream(
                 log.error("llm_openai.auth_rejected", model=model, status_code=status_code)
                 raise LLMAuthError(model=model, status_code=int(status_code)) from exc
             if attempt < max_attempts and _is_retryable(exc):
-                import time
-
                 wait = 2 ** (attempt - 1)  # 1s, 2s
                 log.warning(
                     "llm_openai.retry",
@@ -185,7 +229,7 @@ def stream(
                     wait_s=wait,
                     error=str(exc),
                 )
-                time.sleep(wait)
+                backoff_wait(wait, stop)
             else:
                 break
 

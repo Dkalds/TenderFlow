@@ -2,7 +2,8 @@
 
 Interfaz pública:
     stream_llm_response(question, docs, model, keywords, *,
-                        history=None, mode="general", max_tokens=None) -> Iterator[str]
+                        history=None, mode="general", max_tokens=None,
+                        fallback=True, stop=None) -> Iterator[str]
     provider_for(model) -> str  # "openai" | "anthropic" | "nvidia" | "unknown"
 
 Los prompts y el montaje de mensajes (system + historial + contexto) viven en
@@ -19,6 +20,7 @@ Hardening (B11):
 from __future__ import annotations
 
 import os
+import threading
 import time
 from collections.abc import Iterator
 from typing import Any
@@ -426,6 +428,7 @@ def _stream_single_model(
     system: str,
     messages: list[ChatMessage],
     max_tokens: int | None,
+    stop: threading.Event | None = None,
 ) -> Iterator[str]:
     """Stream de UN modelo concreto, con instrumentación de latencia/uso."""
     p = provider_for(model)
@@ -444,6 +447,7 @@ def _stream_single_model(
                 _get_key("OPENAI_API_KEY"),
                 usage_sink=usage,
                 max_tokens=max_tokens,
+                stop=stop,
             )
         elif p == "anthropic":
             from llm.providers.anthropic_provider import stream as _stream_anthropic
@@ -455,6 +459,7 @@ def _stream_single_model(
                 _get_key("ANTHROPIC_API_KEY"),
                 usage_sink=usage,
                 max_tokens=max_tokens,
+                stop=stop,
             )
         elif p == "nvidia":
             # NVIDIA NIM reutiliza el proveedor OpenAI con su base_url propio.
@@ -469,6 +474,7 @@ def _stream_single_model(
                 base_url=_NVIDIA_BASE_URL,
                 max_tokens=max_tokens,
                 chat_template_kwargs=chat_template_kwargs_for(model),
+                stop=stop,
             )
         else:
             raise ValueError(f"Proveedor desconocido para modelo '{model}'")
@@ -508,6 +514,7 @@ def stream_llm_response(
     mode: PromptMode = "general",
     max_tokens: int | None = None,
     fallback: bool = True,
+    stop: threading.Event | None = None,
 ) -> Iterator[str]:
     """Genera tokens LLM en streaming delegando al proveedor correcto.
 
@@ -530,6 +537,15 @@ def stream_llm_response(
             ``FALLBACK_MODELS`` cuyo proveedor tenga API key. Nunca se cambia
             de modelo con tokens ya emitidos. Tras un ``LLMAuthError`` se
             saltan los demás modelos de ese proveedor: comparten la key.
+        stop: Señal de parada del consumidor (``/ask`` la activa al vencer su
+            timeout o desconectarse el cliente). Con ella activa no se arranca
+            ningún intento nuevo del provider ni candidato nuevo del fallback,
+            y el generador termina sin tokens y sin propagar el último error:
+            quien paró ya no espera respuesta. La lectura HTTP en curso no se
+            interrumpe, así que el hilo acaba como mucho un timeout de provider
+            (30 s) después. No corta un stream que ya emite: para eso el
+            consumidor deja de iterar y cierra el generador. ``None`` (jobs sin
+            timeout) conserva el comportamiento de siempre.
 
     Yields:
         Fragmentos de texto del modelo a medida que llegan.
@@ -573,7 +589,7 @@ def stream_llm_response(
             continue
         emitted = False
         try:
-            for chunk in _stream_single_model(candidate, system, messages, max_tokens):
+            for chunk in _stream_single_model(candidate, system, messages, max_tokens, stop):
                 emitted = True
                 yield chunk
         except Exception as exc:
@@ -583,13 +599,20 @@ def stream_llm_response(
             last_error = exc
             if isinstance(exc, LLMAuthError):
                 rechazados.add(proveedor)
-                _note_fallback(candidate, "auth")
+                reason = "auth"
             else:
-                _note_fallback(candidate, "error")
-            continue
-        if emitted:
+                reason = "error"
+        else:
+            if emitted:
+                return
+            reason = "empty"
+        if stop is not None and stop.is_set():
+            # Antes de `_note_fallback`: un candidato que acaba vacío porque su
+            # provider vio la parada no es un modelo roto, y contarlo en
+            # `llm_fallback_total` ensuciaría la señal que vigila la cadena.
+            log.info("llm_client.stopped", model=candidate, reason=reason)
             return
-        _note_fallback(candidate, "empty")
+        _note_fallback(candidate, reason)
 
     # Ningún candidato emitió: si hubo excepción se propaga la última; si todos
     # devolvieron vacío se termina sin tokens (los consumidores ya degradan

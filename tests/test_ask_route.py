@@ -12,8 +12,10 @@ Cubre:
 
 from __future__ import annotations
 
+import asyncio
+import threading
 from collections.abc import Iterator
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -812,3 +814,116 @@ class TestAskMetaEvent:
         meta = _json.loads(lines[0][len("data: ") :])["ask_meta"]
         assert meta["contexto"] == "general"
         assert meta["id_externo"] == "EXP-STALE"
+
+
+# ── Parada del hilo del LLM (timeout / desconexión) ───────────────────────────
+
+
+def _openai_chunk(text: str) -> MagicMock:
+    choice = MagicMock()
+    choice.delta.content = text
+    chunk = MagicMock()
+    chunk.choices = [choice]
+    return chunk
+
+
+class TestStreamSseParada:
+    """Cancelar la tarea de ``to_thread`` no detiene el hilo; la señal ``stop`` sí.
+
+    Sin BD: se ejercita ``_stream_sse`` con el cliente LLM y los providers
+    reales y solo los SDK simulados. ``asyncio.run`` espera al executor antes de
+    cerrar el loop, así que al volver el hilo ya terminó y los conteos son
+    definitivos (``hilo_terminado`` lo hace explícito).
+    """
+
+    @staticmethod
+    def _factory(hilo_terminado: threading.Event):
+        from llm.client import stream_llm_response
+
+        def _factory(stop: threading.Event) -> Iterator[str]:
+            def _stream() -> Iterator[str]:
+                try:
+                    yield from stream_llm_response(
+                        "pregunta de prueba", [], "gpt-4o-mini", [], stop=stop
+                    )
+                finally:
+                    hilo_terminado.set()
+
+            return _stream()
+
+        return _factory
+
+    def test_timeout_no_arranca_mas_llamadas_al_proveedor(self, monkeypatch):
+        from api.routes.ask import _stream_sse
+        from config import settings
+
+        monkeypatch.setattr(settings, "ASK_LLM_TIMEOUT_SECONDS", 0.2, raising=False)
+        # Con key, la cadena tiene cuatro candidatos de tres intentos por delante.
+        monkeypatch.setenv("OPENAI_API_KEY", "sk-test")  # pragma: allowlist secret
+        monkeypatch.setenv("NVIDIA_API_KEY", "nvapi-test")  # pragma: allowlist secret
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")  # pragma: allowlist secret
+        llamadas: list[str] = []
+        hilo_terminado = threading.Event()
+
+        def _lectura_colgada(*_args, **kwargs):
+            # Lectura HTTP que no se puede interrumpir: el timeout de /ask
+            # (0,2 s) vence mientras dura, y acaba en timeout de lectura.
+            llamadas.append(kwargs["model"])
+            threading.Event().wait(0.5)
+            raise TimeoutError("read timeout")
+
+        openai_mod = MagicMock()
+        openai_mod.OpenAI.return_value.chat.completions.create.side_effect = _lectura_colgada
+        anthropic_mod = MagicMock()
+        anthropic_mod.Anthropic.return_value.messages.stream.side_effect = _lectura_colgada
+
+        async def _consumir() -> list[str]:
+            return [e async for e in _stream_sse(self._factory(hilo_terminado), [])]
+
+        with patch.dict("sys.modules", {"openai": openai_mod, "anthropic": anthropic_mod}):
+            eventos = asyncio.run(_consumir())
+
+        assert '"reason": "timeout"' in "".join(eventos)
+        assert eventos[-1] == "data: [DONE]\n\n"
+        assert hilo_terminado.wait(5)
+        assert llamadas == ["gpt-4o-mini"]
+
+    def test_desconexion_a_mitad_cierra_el_stream_del_proveedor(self, monkeypatch):
+        from api.routes.ask import _stream_sse
+
+        monkeypatch.setenv("OPENAI_API_KEY", "sk-test")  # pragma: allowlist secret
+        hilo_terminado = threading.Event()
+
+        class _StreamLento:
+            total = 200
+
+            def __init__(self) -> None:
+                self.leidos = 0
+                self.cerrado = False
+
+            def __iter__(self):
+                for i in range(self.total):
+                    threading.Event().wait(0.01)
+                    self.leidos += 1
+                    yield _openai_chunk(f"t{i} ")
+
+            def close(self) -> None:
+                self.cerrado = True
+
+        sdk_stream = _StreamLento()
+        openai_mod = MagicMock()
+        openai_mod.OpenAI.return_value.chat.completions.create.return_value = sdk_stream
+
+        async def _leer_un_chunk_y_desconectar() -> None:
+            gen = _stream_sse(self._factory(hilo_terminado), [])
+            async for evento in gen:
+                if '"text"' in evento:
+                    break
+            await gen.aclose()  # lo que hace Starlette cuando el cliente se va
+
+        with patch.dict("sys.modules", {"openai": openai_mod}):
+            asyncio.run(_leer_un_chunk_y_desconectar())
+
+        assert hilo_terminado.wait(5)
+        assert sdk_stream.cerrado
+        assert sdk_stream.leidos < _StreamLento.total

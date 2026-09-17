@@ -10,6 +10,7 @@ Cubre:
 from __future__ import annotations
 
 import os
+import threading
 from collections.abc import Iterator
 from unittest.mock import MagicMock, patch
 
@@ -602,6 +603,89 @@ def test_rejected_key_skips_the_rest_of_its_provider(monkeypatch):
     assert result == ["rescatado"]
     assert DEFAULT_MODEL in intentados
     assert "nvidia/nemotron-3-super-120b-a12b" not in intentados
+
+
+def test_stop_is_forwarded_to_provider():
+    captured: dict[str, object] = {}
+
+    def fake_stream(system, messages, model, api_key, **kwargs) -> Iterator[str]:
+        captured["stop"] = kwargs.get("stop")
+        yield "ok"
+
+    stop = threading.Event()
+    with patch("llm.providers.openai_provider.stream", fake_stream):
+        from llm.client import stream_llm_response
+
+        result = list(stream_llm_response("pregunta de prueba", [], "gpt-4o-mini", [], stop=stop))
+
+    assert result == ["ok"]
+    assert captured["stop"] is stop
+
+
+def test_stop_prevents_fallback_candidates(monkeypatch):
+    """Con la parada activa, el fallo de un modelo no da paso al siguiente.
+
+    Tampoco se propaga el error ni cuenta como fallback: quien paró ya no espera
+    respuesta, y apuntarlo en ``llm_fallback_total`` lo haría pasar por un
+    modelo roto.
+    """
+    _sin_claves_nvidia_anthropic(monkeypatch)
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")  # pragma: allowlist secret
+    stop = threading.Event()
+    anthropic_calls: list[str] = []
+    fallbacks: list[tuple[str, str]] = []
+
+    def broken_openai(system, messages, model, api_key, **kwargs) -> Iterator[str]:
+        stop.set()  # el timeout de /ask vence mientras este modelo falla
+        raise RuntimeError("503")
+        yield  # pragma: no cover
+
+    def working_anthropic(system, messages, model, api_key, **kwargs) -> Iterator[str]:
+        anthropic_calls.append(model)
+        yield "no debería llegar aquí"
+
+    with (
+        patch("llm.providers.openai_provider.stream", broken_openai),
+        patch("llm.providers.anthropic_provider.stream", working_anthropic),
+        patch("llm.client._note_fallback", lambda m, r: fallbacks.append((m, r))),
+    ):
+        from llm.client import stream_llm_response
+
+        result = list(stream_llm_response("pregunta de prueba", [], "gpt-4o-mini", [], stop=stop))
+
+    assert result == []
+    assert anthropic_calls == []
+    assert fallbacks == []
+
+
+def test_stop_during_provider_read_makes_no_more_sdk_calls(monkeypatch):
+    """Cliente y providers reales, SDKs simulados: con cuatro candidatos con key
+    y tres intentos cada uno, una parada durante la primera lectura deja la
+    cadena en UNA sola llamada al proveedor."""
+    _sin_claves_nvidia_anthropic(monkeypatch)
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")  # pragma: allowlist secret
+    monkeypatch.setenv("NVIDIA_API_KEY", "nvapi-test")  # pragma: allowlist secret
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")  # pragma: allowlist secret
+    stop = threading.Event()
+    sdk_calls: list[str] = []
+
+    def read_timeout(*_args, **kwargs):
+        sdk_calls.append(kwargs["model"])
+        stop.set()
+        raise TimeoutError("read timeout")
+
+    openai_mod = MagicMock()
+    openai_mod.OpenAI.return_value.chat.completions.create.side_effect = read_timeout
+    anthropic_mod = MagicMock()
+    anthropic_mod.Anthropic.return_value.messages.stream.side_effect = read_timeout
+
+    with patch.dict("sys.modules", {"openai": openai_mod, "anthropic": anthropic_mod}):
+        from llm.client import stream_llm_response
+
+        result = list(stream_llm_response("pregunta de prueba", [], "gpt-4o-mini", [], stop=stop))
+
+    assert result == []
+    assert sdk_calls == ["gpt-4o-mini"]
 
 
 def test_fallback_models_are_available_and_priced():
