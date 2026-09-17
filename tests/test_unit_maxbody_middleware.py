@@ -1,4 +1,14 @@
-"""Tests unitarios para _MaxBodyMiddleware (raw ASGI)."""
+"""Tests unitarios de una versión antigua de _MaxBodyMiddleware (raw ASGI), escrita aquí.
+
+La clase de ``_make_app`` no se importa de ``api.middleware``: es una versión
+escrita dentro del test, con límite configurable, que ya no coincide con la real.
+Su 413 es ``application/json`` con solo ``{"detail": ...}``, y el real es
+``application/problem+json`` con ``type``/``title``/``status``; así que
+``test_413_response_is_json`` fija el contrato de esta versión, no el de la API.
+Tampoco descarta la respuesta que la app dé después del corte. Si el middleware
+real cambia, estos tests no se enteran. La clase real, por su camino lento, la
+prueba ``test_middleware_maxbody_streaming.py``.
+"""
 
 from __future__ import annotations
 
