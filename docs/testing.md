@@ -76,17 +76,26 @@ Algunos tests se saltan **a propósito** según el entorno. No son deuda: cada
 
 | Test | Condición de skip | Por qué es correcto |
 |------|-------------------|---------------------|
-| `test_shared_schemas.py` | `pandera` no instalado (`importorskip`) o `LicitacionSchema` es NoOp | La validación pandera es un extra opcional (`[schemas]`); sin él el schema degrada a NoOp y no hay nada que validar. |
+| `test_document_fetcher_formatos.py` | `ocrmypdf` no está en el `PATH` (`skipif`) | El OCR es un binario del sistema, no un paquete de Python: ni `requirements-dev.txt` ni CI lo instalan, así que ese caso solo corre donde alguien lo haya instalado a mano. |
+
+Los `pytest.importorskip` de `yaml`, `sklearn`, `pandas`, `numpy` y `openai` protegen
+dependencias que `requirements-dev.txt` **sí** instala: en CI no se disparan. Si
+alguno se disparara, el entorno estaría roto, no "mínimo".
 
 (Los archivos `test_unit_coverage_batch1b.py` y `test_visual_regression.py`
 que esta tabla citaba se redistribuyeron/retiraron — las filas se eliminaron
-en 2026-08 al detectar que documentaban tests inexistentes.)
+en 2026-08 al detectar que documentaban tests inexistentes. En 2026-09 salió
+`test_shared_schemas.py` junto con el módulo que probaba, y dejaron de saltarse
+`test_dedupe_quality.py`, `test_placsp_connector_parity.py` y
+`test_aislamiento_entre_tests.py`: sus condiciones de skip ocultaban regresiones
+en vez de describir un entorno, y ahora fallan con mensaje.)
 
 Regla general: usar `pytest.importorskip("dep")` para dependencias opcionales y
-`pytest.skip(motivo)` con un mensaje claro para condiciones de entorno. En CI,
-las dependencias opcionales relevantes (`pandera`, etc.) **sí** se instalan, de
-modo que estos paths se ejercitan; los skips solo aplican en entornos locales
-mínimos. Si añadís un skip nuevo, incluí siempre el motivo en el mensaje.
+`pytest.skip(motivo)` con un mensaje claro para condiciones de entorno. CI instala
+`requirements-dev.txt` y el extra `[pliegos]`; lo que quede fuera se salta también
+allí. Un skip no debe depender de un dato que el propio test debería garantizar
+(un fixture vacío, una métrica sin registrar): eso es un fallo, no un entorno.
+Si añadís un skip nuevo, incluí siempre el motivo en el mensaje.
 
 ## Configuración de cobertura
 

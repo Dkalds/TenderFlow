@@ -82,7 +82,14 @@ _SAMPLE_ATOM_FEED = textwrap.dedent("""\
 
 
 def _parse_feed_entries() -> list[tuple[Any, str]]:
-    """Extrae entries del feed XML de muestra."""
+    """Extrae entries del feed XML de muestra; nunca devuelve una lista vacía.
+
+    El feed es un literal de este módulo con una sola entry, así que quedarse
+    sin entries no es un entorno distinto sino un fixture roto (un namespace mal
+    escrito, una entry borrada). Los tests de paridad lo saltaban con
+    ``pytest.skip`` y la paridad quedaba en verde sin comparar nada; ahora
+    rompe aquí, con el motivo, para todos los que usan el helper.
+    """
     from lxml import etree
 
     ATOM_NS = "http://www.w3.org/2005/Atom"
@@ -93,6 +100,10 @@ def _parse_feed_entries() -> list[tuple[Any, str]]:
         updated_el = entry.find(f"{{{ATOM_NS}}}updated")
         updated = updated_el.text.strip() if updated_el is not None and updated_el.text else ""
         entries.append((entry, updated))
+    assert entries, (
+        "_SAMPLE_ATOM_FEED no produce ninguna <entry> ATOM: el fixture está roto y "
+        "los tests de paridad no tendrían nada que comparar"
+    )
     return entries
 
 
@@ -157,8 +168,10 @@ class TestPlacspAtomConnectorContract:
         assert isinstance(notices[0], RawNotice)
         assert notices[0].payload[1] == "2026-07-05T10:00:00Z"
 
-    def test_parse_returns_parsed_tender_or_none(self, tmp_db):
+    def test_parse_returns_parsed_tender(self, tmp_db):
         """parse() devuelve ParsedTender con la licitacion del fixture XML."""
+        from scraper.connectors.base import ParsedTender
+
         entries = _parse_feed_entries()
         entry_elem, updated = entries[0]
 
@@ -166,13 +179,18 @@ class TestPlacspAtomConnectorContract:
         raw = RawNotice(natural_id=updated, payload=(entry_elem, updated))
         result = connector.parse(raw)
 
-        # El XML de muestra puede o no pasar el filtro de keywords (depende de config),
-        # así que aceptamos tanto ParsedTender como None.
-        if result is not None:
-            from scraper.connectors.base import ParsedTender
-
-            assert isinstance(result, ParsedTender)
-            assert result.licitacion.fuente == "placsp"
+        # Antes aceptaba también None ("depende de config"), y así pasaba sin
+        # comprobar nada si el filtro descartaba la entry. Ya no depende de
+        # config: el diccionario sale de `tecnologias_keywords` con
+        # `config/keywords.py` como suelo (services/tecnologias_diccionario.py),
+        # y los dos traen SAP. Es la misma precondición que exige la paridad de
+        # datos de abajo sobre la misma entry.
+        assert result is not None, (
+            "parse() descarta la entry de muestra ('SAP Basis'): el contrato de "
+            "parse() no se ejercita. ¿Cambió el filtro de tecnología o el fixture?"
+        )
+        assert isinstance(result, ParsedTender)
+        assert result.licitacion.fuente == "placsp"
 
     def test_parse_raises_on_corrupt_payload(self, tmp_db):
         """parse() propaga excepciones de parseo (para que run_connector las envíe a DLQ)."""
@@ -245,9 +263,6 @@ class TestPlacspDataParity:
         from scraper.codice_parser import parse_entry
 
         entries = _parse_feed_entries()
-        if not entries:
-            pytest.skip("No entries in sample feed")
-
         entry_elem, updated = entries[0]
 
         # Resultado del pipeline legacy
@@ -257,9 +272,15 @@ class TestPlacspDataParity:
         core = _PlacspParseCore()
         parsed = core.parse_entry_elem(entry_elem, fuente="placsp", updated_str=updated)
 
-        if legacy_lic is None and parsed is None:
-            # Ambos descartan la entry (filtro de keywords) → paridad OK
-            return
+        # La entry de muestra está escrita para pasar el filtro de tecnología
+        # ("SAP Basis"). Si ambos la descartan, "los dos dicen None" es paridad
+        # formal pero no se compara ningún campo: antes el test volvía en verde
+        # aquí, igual que con el skip del feed vacío.
+        assert legacy_lic is not None or parsed is not None, (
+            "legacy y conector descartan la entry de muestra: la paridad de campos "
+            "no se ejercita. ¿Cambió el filtro de tecnología o el fixture ya no "
+            "contiene keywords?"
+        )
 
         if legacy_lic is None or parsed is None:
             # Divergencia: uno acepta, el otro descarta
@@ -280,8 +301,6 @@ class TestPlacspDataParity:
         """Dos ejecuciones del AtomConnector sobre el mismo fixture → 0 duplicados."""
         _db_mod, _ = tmp_db
         entries = _parse_feed_entries()
-        if not entries:
-            pytest.skip("No entries in sample feed")
 
         meta = {
             "newest_updated": "2026-07-05T10:00:00Z",
@@ -302,6 +321,13 @@ class TestPlacspDataParity:
             connector2 = PlacspAtomConnector()
             r2 = run_connector(connector2)
 
+        # Sin inserción en la primera pasada, `r2.nuevas == 0` se cumple por
+        # vacío: no hay nada que duplicar. La idempotencia solo se prueba si
+        # la primera pasada insertó lo que el feed trae.
+        assert r1.nuevas == len(entries), (
+            f"la primera pasada insertó {r1.nuevas} de {len(entries)} entries: "
+            "sin inserción inicial la idempotencia no se ejercita"
+        )
         # En la segunda pasada no debe haber nuevas licitaciones
         assert r2.nuevas == 0, (
             f"Idempotencia rota: segunda pasada insertó {r2.nuevas} nuevas licitaciones"

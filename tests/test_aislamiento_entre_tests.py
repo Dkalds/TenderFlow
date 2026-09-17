@@ -18,6 +18,7 @@ que hay que ver en verde con `truncate` antes de cambiar el default.
 from __future__ import annotations
 
 import pytest
+from psycopg import sql
 
 from tests.conftest import ESTRATEGIA_SCHEMA
 
@@ -26,6 +27,9 @@ pytestmark = pytest.mark.usefixtures("tmp_db")
 
 #: Filas que el primer test escribe y el segundo no puede ver.
 _ID_FUGA = "FUGA-C3.4-no-debe-sobrevivir"
+
+#: Los tiers que inserta `db/alembic/versions/v28_api_key_tiers.py`.
+_TIERS_SEMBRADOS_V28 = frozenset({"free", "pro", "enterprise"})
 
 
 def _contar(db_mod, id_externo: str) -> int:
@@ -112,15 +116,45 @@ def test_las_semillas_de_migracion_sobreviven(tmp_db) -> None:
     escrita a mano, para que una migración nueva no obligue a volver al
     conftest.
     """
+    # Aquí había un `pytest.skip` si la tabla no existía, y no protegía ningún
+    # caso real: el DDL de cada test sale de `alembic upgrade head`, que siempre
+    # pasa por v28, y `db/repositories/api_keys.py` hace JOIN contra la tabla.
+    # Que falte es un fallo que hay que ver, no otro entorno. Además miraba
+    # `information_schema.tables` sin filtrar por schema, así que veía la tabla
+    # de cualquier otro schema de la base (el de otro worker de xdist, p. ej.).
+    #
+    # Resolver el nombre sin cualificar tampoco basta: el search_path del test
+    # es `"<schema>", public`, y si `public` conservara la tabla —la red de
+    # seguridad silenciosa que `tests/conftest.py` evita vaciándolo— tanto la
+    # comprobación como la lectura de tiers la encontrarían ahí aunque faltase
+    # en el schema del test. Por eso las dos consultas se atan a
+    # `current_schema()`, el primer schema del search_path: el del test con
+    # `schema` y el de la sesión con `truncate`.
+    #
+    # Se comparan los tiers uno a uno y no `COUNT(*) > 0`: una restauración
+    # parcial —que devolviera una sola fila de las tres— dejaba la tabla no
+    # vacía y el test en verde. Se exige que estén los tres que siembra v28
+    # (inclusión, no igualdad), así que un tier sembrado por una migración
+    # posterior no rompe este test.
     db_mod, _ = tmp_db
     with db_mod.connect() as c:
+        esquema = c.execute("SELECT current_schema()").fetchone()[0]
         existe = c.execute(
-            "SELECT COUNT(*) FROM information_schema.tables WHERE table_name = 'api_key_tiers'"
+            "SELECT 1 FROM pg_tables WHERE schemaname = %s AND tablename = 'api_key_tiers'",
+            (esquema,),
         ).fetchone()
-        if not existe or int(existe[0]) == 0:
-            pytest.skip("api_key_tiers no está en este schema")
-        filas = c.execute("SELECT COUNT(*) FROM api_key_tiers").fetchone()
-    assert int(filas[0]) > 0, (
-        f"las semillas de migración no sobrevivieron al aislamiento "
-        f"{ESTRATEGIA_SCHEMA!r}: api_key_tiers está vacía"
+        assert existe is not None, (
+            f"api_key_tiers no existe en {esquema!r}: ¿se perdió la migración v28 del "
+            "DDL de head o algo la borró del schema? Sin la tabla, las semillas no "
+            "tienen dónde sobrevivir"
+        )
+        filas = c.execute(
+            sql.SQL("SELECT tier FROM {}.api_key_tiers").format(sql.Identifier(esquema))
+        ).fetchall()
+    tiers = {fila[0] for fila in filas}
+    faltan = _TIERS_SEMBRADOS_V28 - tiers
+    assert not faltan, (
+        f"las semillas de migración no sobrevivieron enteras al aislamiento "
+        f"{ESTRATEGIA_SCHEMA!r}: a {esquema}.api_key_tiers le faltan {sorted(faltan)} "
+        f"(tiene {sorted(tiers)})"
     )
