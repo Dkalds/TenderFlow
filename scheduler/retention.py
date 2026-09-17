@@ -13,7 +13,7 @@ from __future__ import annotations
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Protocol
 
 from config.settings import settings
 from db.database import connect
@@ -69,15 +69,32 @@ def _cutoff_iso(days: int) -> str:
     return (datetime.now(UTC) - timedelta(days=days)).isoformat()
 
 
-def _count_and_delete(conn: object, table: str, date_col: str, cutoff: str, *, apply: bool) -> int:
+class _ConexionConteo(Protocol):
+    """Lo que `_count_and_delete` usa de la conexión que entrega `connect()`.
 
-    c = conn.execute(  # type: ignore[attr-defined]
+    `connect()` la tipa como `Any` y la clase real
+    (`db.connection._PgConnAdapter`) es privada; anotarla como `object` obligaba
+    a silenciar mypy en cada `execute`. `execute` devuelve la propia conexión
+    porque el adaptador une conexión y cursor, y la única fila que se lee aquí
+    es la de un `COUNT(*)`.
+    """
+
+    def execute(self, sql: str, params: tuple[str], /) -> _ConexionConteo: ...
+
+    def fetchone(self) -> tuple[int]: ...
+
+
+def _count_and_delete(
+    conn: _ConexionConteo, table: str, date_col: str, cutoff: str, *, apply: bool
+) -> int:
+
+    c = conn.execute(
         "SELECT COUNT(*) FROM " + table + " WHERE " + date_col + " < %s",  # noqa: S608 — table/date_col are internal constants
         (cutoff,),
     )
     count = c.fetchone()[0]
     if apply and count > 0:
-        conn.execute(  # type: ignore[attr-defined]
+        conn.execute(
             "DELETE FROM " + table + " WHERE " + date_col + " < %s",  # noqa: S608 — table/date_col are internal constants
             (cutoff,),
         )

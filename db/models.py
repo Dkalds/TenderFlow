@@ -156,9 +156,7 @@ lotes = Table(
 # compilaba con el dialecto **SQLite**: emitía `?` —que el shim retirado
 # traducía en runtime— y, más grave, generaba SQL con la gramática del motor
 # equivocado contra una base Postgres.
-# `type: ignore`: los stubs de SQLAlchemy no anotan el constructor del dialecto,
-# así que mypy lo ve como llamada sin tipar. El valor sí es un `Dialect`.
-_DIALECT = _pg_dialect.dialect(paramstyle="format")  # type: ignore[no-untyped-call]
+_DIALECT = _pg_dialect.dialect(paramstyle="format")  # type: ignore[no-untyped-call]  # SQLAlchemy no anota el __init__ del dialecto; el valor sí es un Dialect
 
 
 def compile_query(stmt: Any) -> tuple[str, list[Any]]:

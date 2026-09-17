@@ -430,7 +430,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         connector = TedConnector(cpv_families=tuple(args.cpv.split(",")))
         if args.desde:
-            connector._since = lambda cursor: args.desde  # type: ignore[method-assign]
+            connector._since = lambda cursor: args.desde  # type: ignore[method-assign]  # --desde sustituye _since por contrato (ver su docstring)
         result = run_connector(connector)
     finally:
         close_pool()

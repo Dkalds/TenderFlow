@@ -647,7 +647,9 @@ async def get_licitacion(
     campos = {k: data.get(k) for k in LicitacionDetail.model_fields}
     campos["republicacion_de"] = canonica
     campos["lotes"] = [LoteOut(**lote) for lote in lotes]
-    return LicitacionDetail(**campos)  # type: ignore[arg-type]
+    # `model_validate` y no `**campos`: cada valor sale de `dict.get` como
+    # opcional, y es pydantic quien decide si un `None` cabe en el campo.
+    return LicitacionDetail.model_validate(campos)
 
 
 # ── /licitaciones/{id_externo}/similares ─────────────────────────────────
@@ -1557,9 +1559,8 @@ async def bulk_get_licitaciones(
 
     Con ``?format=csv`` devuelve un CSV descargable.
     """
-    # Deduplicar preservando orden
-    seen: set[str] = set()
-    ids = [id_ for id_ in body.ids if id_ not in seen and not seen.add(id_)]  # type: ignore[func-returns-value]
+    # Deduplicar preservando orden: `dict` conserva la primera aparición de cada id.
+    ids = list(dict.fromkeys(body.ids))
 
     items = await run_db(_lic_repo.get_by_ids, ids)
 

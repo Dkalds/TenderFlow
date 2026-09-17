@@ -13,9 +13,13 @@ Concebido para ejecutarse desde APScheduler::
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from observability.logging import get_logger
 from services.ml.thresholds import F1_DROP_CRIT, F1_DROP_WARN, PSI_CRIT, PSI_WARN
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 log = get_logger(__name__)
 
@@ -43,16 +47,21 @@ def run_once(model_name: str = "sap_classifier") -> DriftStatus:
     Las funciones de detección concretas viven en ``scheduler.concept_drift``;
     aquí sólo orquestamos.
     """
+    # Declaradas antes del import: si falla quedan en ``None``, y sin la
+    # anotación mypy fija el tipo de la función importada y rechaza ese ``None``.
+    compute_psi: Callable[[], float] | None
+    compute_f1_drop: Callable[[str], float] | None
+
     try:
         from scheduler.concept_drift import compute_psi
     except ImportError as exc:
         log.warning("drift_monitor_psi_unavailable", error=str(exc))
-        compute_psi = None  # type: ignore[assignment]
+        compute_psi = None
 
     try:
         from scheduler.drift_report import compute_f1_drop
     except ImportError:
-        compute_f1_drop = None  # type: ignore[assignment]
+        compute_f1_drop = None
 
     psi = float(compute_psi()) if compute_psi is not None else 0.0
     f1_drop = float(compute_f1_drop(model_name)) if compute_f1_drop is not None else 0.0

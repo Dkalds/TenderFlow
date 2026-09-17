@@ -113,7 +113,10 @@ def month_start(series: pd.Series) -> pd.Series:
     values = pd.to_datetime(series, errors="coerce", utc=True)
     if getattr(values.dt, "tz", None) is not None:
         values = values.dt.tz_localize(None)
-    return values.dt.to_period("M").dt.to_timestamp()  # type: ignore[return-value]
+    # ``start_time`` y no ``to_timestamp()``: es la misma operación en pandas
+    # (``to_timestamp(how="start")``), pero pandas-stubs tipa ``to_timestamp()``
+    # como ``DatetimeArray`` cuando sobre ``.dt`` devuelve una Series.
+    return values.dt.to_period("M").dt.start_time
 
 
 def month_period(series: pd.Series) -> pd.Series:
@@ -129,7 +132,8 @@ def quarter_start(series: pd.Series) -> pd.Series:
     values = pd.to_datetime(series, errors="coerce", utc=True)
     if getattr(values.dt, "tz", None) is not None:
         values = values.dt.tz_localize(None)
-    return values.dt.to_period("Q").dt.to_timestamp()  # type: ignore[return-value]
+    # ``start_time`` por lo mismo que en ``month_start``.
+    return values.dt.to_period("Q").dt.start_time
 
 
 #: Año mínimo plausible para una fecha de contratación pública española (C4.4).

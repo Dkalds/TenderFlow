@@ -40,8 +40,8 @@ def configure_sentry(*, service: str = "licitaciones", traces_sample_rate: float
         return False
 
     try:
-        import sentry_sdk  # type: ignore[import-not-found]
-        from sentry_sdk.integrations.logging import (  # type: ignore[import-not-found]
+        import sentry_sdk  # type: ignore[import-not-found]  # opt-in por SENTRY_DSN: sentry-sdk no está en requirements
+        from sentry_sdk.integrations.logging import (  # type: ignore[import-not-found]  # submódulo del mismo sentry-sdk opt-in
             LoggingIntegration,
         )
     except ImportError:

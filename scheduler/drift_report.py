@@ -74,7 +74,9 @@ def _load_window(days: int, offset_days: int = 0) -> pd.DataFrame:
 
 def _ks_test(ref: pd.Series, cur: pd.Series) -> dict[str, Any]:
     """KS test between two samples; returns statistic, p-value and drift flag."""
-    from scipy import stats as sp_stats  # type: ignore[import-untyped]
+    from scipy import (  # type: ignore[import-untyped]  # scipy no trae py.typed y scipy-stubs no está en requirements-dev
+        stats as sp_stats,
+    )
 
     ref_clean = ref.dropna()
     cur_clean = cur.dropna()
@@ -258,7 +260,9 @@ def run_drift_report() -> dict[str, Any]:
         ref_v = [ref_counts.get(c, 0) for c in all_cats]
         cur_v = [cur_counts.get(c, 0) for c in all_cats]
         try:
-            from scipy.stats import chi2_contingency  # type: ignore[import-untyped]
+            from scipy.stats import (  # type: ignore[import-untyped]  # para mypy scipy.stats cuenta aparte de scipy: mismo motivo
+                chi2_contingency,
+            )
 
             table = [ref_v, cur_v]
             _, pval, _, _ = chi2_contingency(table)
@@ -303,8 +307,12 @@ def run_drift_report() -> dict[str, Any]:
     # ── Evidently HTML report (opcional, artefacto local) ─────────────────
     date_str = datetime.now(UTC).strftime("%Y%m%d")
     try:
-        from evidently.metric_preset import DataDriftPreset  # type: ignore[import-not-found]
-        from evidently.report import Report  # type: ignore[import-not-found]
+        from evidently.metric_preset import (  # type: ignore[import-not-found]  # evidently es opcional y no está en ningún requirements
+            DataDriftPreset,
+        )
+        from evidently.report import (  # type: ignore[import-not-found]  # mismo paquete opcional; sin él salta el except ImportError
+            Report,
+        )
 
         report = Report(metrics=[DataDriftPreset()])
         report.run(reference_data=df_ref, current_data=df_cur)

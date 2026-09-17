@@ -683,7 +683,7 @@ class Settings(BaseSettings):
     @field_validator("ML_CONFIDENCE_THRESHOLD", mode="before")
     @classmethod
     def _validate_ml_threshold(cls, v: object) -> float:
-        val = float(v)  # type: ignore[arg-type]
+        val = float(v)  # type: ignore[arg-type]  # mode="before": v llega crudo y float() es la comprobación
         if not (0.0 <= val <= 1.0):
             raise ValueError("ML_CONFIDENCE_THRESHOLD debe estar entre 0.0 y 1.0")
         return val
@@ -691,7 +691,7 @@ class Settings(BaseSettings):
     @field_validator("ML_TECH_DEFAULT_THRESHOLD", mode="before")
     @classmethod
     def _validate_ml_tech_default_threshold(cls, v: object) -> float:
-        val = float(v)  # type: ignore[arg-type]
+        val = float(v)  # type: ignore[arg-type]  # mode="before": v llega crudo y float() es la comprobación
         if not (0.0 <= val <= 1.0):
             raise ValueError("ML_TECH_DEFAULT_THRESHOLD debe estar entre 0.0 y 1.0")
         return val
@@ -699,7 +699,7 @@ class Settings(BaseSettings):
     @field_validator("OTEL_SAMPLE_RATIO", mode="before")
     @classmethod
     def _validate_otel_sample_ratio(cls, v: object) -> float:
-        val = float(v)  # type: ignore[arg-type]
+        val = float(v)  # type: ignore[arg-type]  # mode="before": v llega crudo y float() es la comprobación
         if not (0.0 <= val <= 1.0):
             raise ValueError("OTEL_SAMPLE_RATIO debe estar entre 0.0 y 1.0")
         return val

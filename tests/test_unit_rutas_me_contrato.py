@@ -158,10 +158,14 @@ class TestPreferenciasDeNotificacion:
         assert cuerpo["defaults"] == dict(prefs.DEFECTOS)
         assert len(cuerpo["tipos"]) == len(prefs.TIPOS)
 
-    def test_las_filas_guardadas_salen_con_su_organizacion(
+    def test_las_filas_guardadas_salen_con_su_tipo_y_su_organizacion(
         self, client: TestClient, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """`None` = en todas partes; con organización, solo en ese equipo."""
+        """`None` = en todas partes; con organización, solo en ese equipo.
+
+        Las dos filas tienen tipos distintos, así que una ruta que devolviera un
+        tipo fijo no reproduciría la lista.
+        """
         from db.repositories import notification_preferences as prefs
 
         monkeypatch.setattr(
@@ -175,7 +179,7 @@ class TestPreferenciasDeNotificacion:
                     "organization_id": 7,
                 },
                 {
-                    "tipo": "daily_summary",
+                    "tipo": "pursuit.mention",
                     "canal": "email",
                     "frecuencia": "off",
                     "organization_id": None,
@@ -184,7 +188,92 @@ class TestPreferenciasDeNotificacion:
         )
 
         items = client.get(self.RUTA).json()["items"]
+        assert [i["tipo"] for i in items] == ["daily_summary", "pursuit.mention"]
         assert [i["organization_id"] for i in items] == [7, None]
+
+    def test_canal_y_frecuencia_salen_tal_cual_de_la_fila(
+        self, client: TestClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Cada fila conserva su canal y su frecuencia, con todo el vocabulario
+        del repositorio.
+
+        Las filas combinan cada canal de `CANALES` con cada frecuencia de
+        `FRECUENCIAS`, en ese orden: una ruta que devolviera un valor fijo o
+        tomara uno de otra fila no reproduciría la lista, y si la ruta no
+        admitiera un valor que el repositorio sí admite, esa fila haría fallar el
+        GET.
+        """
+        from db.repositories import notification_preferences as prefs
+
+        combinaciones = [(c, fr) for c in prefs.CANALES for fr in prefs.FRECUENCIAS]
+        monkeypatch.setattr(
+            prefs,
+            "listar",
+            lambda uid, organization_id=None: [
+                {"tipo": "daily_summary", "canal": c, "frecuencia": fr, "organization_id": None}
+                for c, fr in combinaciones
+            ],
+        )
+
+        items = client.get(self.RUTA).json()["items"]
+        assert [(i["canal"], i["frecuencia"]) for i in items] == combinaciones
+
+    def test_el_vocabulario_del_contrato_es_el_del_repositorio(self) -> None:
+        """Los `Literal` de la ruta y las tuplas del repositorio dicen lo mismo."""
+        from typing import get_args
+
+        import api.routes.me as rutas
+        from db.repositories import notification_preferences as prefs
+
+        assert get_args(rutas.CanalNotificacion) == prefs.CANALES
+        assert get_args(rutas.FrecuenciaNotificacion) == prefs.FRECUENCIAS
+
+    def test_una_fila_fuera_del_vocabulario_hace_fallar_el_get_con_400(
+        self, client: TestClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """La ruta no se salta la fila: el `ValidationError` llega al manejador de
+        `ValueError`, que responde 400 `problem+json`."""
+        from db.repositories import notification_preferences as prefs
+
+        monkeypatch.setattr(
+            prefs,
+            "listar",
+            lambda uid, organization_id=None: [
+                {"tipo": "daily_summary", "canal": "email", "frecuencia": "daily"},
+                {"tipo": "daily_summary", "canal": "sms", "frecuencia": "weekly"},
+            ],
+        )
+
+        respuesta = client.get(self.RUTA)
+        assert respuesta.status_code == 400
+        assert respuesta.headers["content-type"] == "application/problem+json"
+
+    def test_la_fila_fuera_del_vocabulario_da_los_mismos_errores_que_el_modelo_publico(
+        self,
+    ) -> None:
+        """Lo que promete `_CanalYFrecuencia`: los errores de los dos campos
+        juntos, con los mismos `loc`, tipo y mensaje que daría
+        `NotificationPreference`; solo cambia el título."""
+        from pydantic import ValidationError
+
+        import api.routes.me as rutas
+
+        fila = {"tipo": "daily_summary", "canal": "sms", "frecuencia": "weekly"}
+
+        with pytest.raises(ValidationError) as interno:
+            rutas._CanalYFrecuencia.model_validate(fila)
+        with pytest.raises(ValidationError) as publico:
+            rutas.NotificationPreference.model_validate(fila)
+
+        def _resumen(exc: ValidationError) -> list[tuple[Any, ...]]:
+            return [(e["loc"], e["type"], e["msg"]) for e in exc.errors()]
+
+        assert [e[0] for e in _resumen(interno.value)] == [("canal",), ("frecuencia",)]
+        assert _resumen(interno.value) == _resumen(publico.value)
+        assert (interno.value.title, publico.value.title) == (
+            "_CanalYFrecuencia",
+            "NotificationPreference",
+        )
 
     def test_el_put_guarda_cada_preferencia_enviada(
         self, client: TestClient, monkeypatch: pytest.MonkeyPatch

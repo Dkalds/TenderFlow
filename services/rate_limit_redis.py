@@ -1,4 +1,4 @@
-"""Backend Redis opcional para rate limiting (F4, extra ``[scale]``).
+"""Backend Redis para rate limiting (F4), elegido con ``RATE_LIMIT_BACKEND=redis``.
 
 Mantiene API compatible con ``db.rate_limits.check_rate_limit_db`` para
 permitir cambiar de backend con una variable de entorno
@@ -13,8 +13,11 @@ Diseño:
   abandonadas.
 * Operaciones combinadas en una pipeline para minimizar RTTs.
 
-Instalación opcional: ``pip install licitaciones-sap[scale]``
-(la dependencia ``redis`` se declara en pyproject como extra).
+Dependencia: el paquete ``redis`` no es un extra. Está en ``dependencies`` de
+``pyproject.toml`` y en ``requirements.in`` y ``requirements-api.in`` (este
+último lo hereda ``requirements-pipeline.in``), así que cualquier instalación
+desde esos ficheros lo trae. Lo opcional es usar el backend: el valor por
+defecto de ``RATE_LIMIT_BACKEND`` es la base de datos.
 """
 
 from __future__ import annotations
@@ -28,12 +31,18 @@ from observability.logging import get_logger
 
 log = get_logger(__name__)
 
-try:  # pragma: no cover - dependencia opcional
+# El ``except`` solo corre en un intérprete al que le falta el paquete ``redis``
+# (una instalación que no salió de los ficheros de dependencias). Entonces
+# ``has_redis()`` da False, ``check_rate_limit_redis`` devuelve None y tanto
+# ``check_rate_limit`` como ``services.rate_limiting`` usan la base de datos, en
+# vez de fallar con ImportError al importar este módulo. En los tests ``redis``
+# está instalado y el ``except`` no corre: de ahí los ``pragma: no cover``.
+try:  # pragma: no cover
     import redis
 
     _REDIS_AVAILABLE = True
 except ImportError:  # pragma: no cover
-    redis = None  # type: ignore[assignment]
+    redis = None  # type: ignore[assignment]  # import redis tipa el nombre como módulo (py.typed); el fallback lo deja en None y los tests parchean ese nombre
     _REDIS_AVAILABLE = False
 
 

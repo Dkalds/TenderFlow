@@ -44,7 +44,7 @@ evalúa filas nuevas de la pasada — sin full scan de pares.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Protocol, Self
 
 from db.database import connect, connect_read, get_cursor, set_cursor
 from db.repositories import dedupe as dedupe_repo
@@ -66,6 +66,27 @@ log = get_logger(__name__)
 CONFIANZA_EXACTA = 1.0
 CONFIANZA_REVISION = 0.8
 
+
+class ContadorPorFuente(Protocol):
+    """Lo que el runner usa de ``dedupe_run_failed_total``: ``labels(fuente=…).inc()``.
+
+    La variable se anota con esto y no con ``Counter`` porque sin
+    ``prometheus_client`` lo que se publica es la no-op de abajo, que no es un
+    ``Counter`` ni puede serlo. Las dos cumplen el protocolo, así que mypy no
+    necesita que se le silencie la asignación del fallback.
+
+    El tipo estático de ``dedupe_run_failed_total`` se estrecha a propósito: un
+    llamador tipado que use algo fuera de ``labels``/``inc`` (``collect()``…)
+    falla en mypy, en vez de pasar y reventar en runtime cuando lo publicado es
+    la no-op. Es público para que ese llamador pueda anotar con él sin importar
+    un nombre privado.
+    """
+
+    def labels(self, **labelkwargs: str) -> Self: ...
+
+    def inc(self, amount: float = 1, /) -> None: ...
+
+
 # ── Señal de fallo del job ────────────────────────────────────────────────
 # El llamador de :func:`detect_duplicates` (``scraper/connectors/base.py``,
 # ``_post_ingestion``) es fail-open a propósito: un dedupe roto no puede tumbar
@@ -84,7 +105,7 @@ CONFIANZA_REVISION = 0.8
 try:
     from prometheus_client import Counter
 
-    dedupe_run_failed_total = Counter(
+    dedupe_run_failed_total: ContadorPorFuente = Counter(
         "dedupe_run_failed_total",
         "Pasadas de detect_duplicates que terminaron en excepción, por fuente",
         ["fuente"],
@@ -97,10 +118,7 @@ except ImportError:  # pragma: no cover — mismo fallback que observability.run
 
         def inc(self, _value: float = 1) -> None: ...
 
-    # El stub no es un ``Counter`` y no puede serlo — el objetivo del fallback es
-    # justamente no depender de la librería. Mismo ``ignore`` que usa
-    # ``observability/runtime_metrics.py`` para sus propios no-op.
-    dedupe_run_failed_total = _ContadorNoop()  # type: ignore[assignment]
+    dedupe_run_failed_total = _ContadorNoop()
 
 
 def normalize_organo(name: str | None) -> str | None:

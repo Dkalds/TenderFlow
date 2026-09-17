@@ -40,7 +40,7 @@ por qué.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, TypedDict, TypeVar, cast
 
 from db.database import connect, connect_read
 from db.repositories.base import rows_to_dicts
@@ -55,6 +55,8 @@ from db.sql_fragments import (
 
 __all__ = [
     "EVENTO_REFRESCO_CANONICAS",
+    "FilaLicitacionPublica",
+    "FilaLotePublico",
     "PublicoRepository",
     "estado_refresco_canonicas",
     "refrescar_vista_canonicas",
@@ -100,6 +102,104 @@ _COLS_PUBLICAS: tuple[str, ...] = (
 )
 
 _SELECT_PUBLICO = ", ".join(f"l.{c}" for c in _COLS_PUBLICAS)
+
+
+class FilaLicitacionPublica(TypedDict):
+    """Una fila de :data:`_COLS_PUBLICAS`, con los tipos que entrega psycopg.
+
+    Los tipos son los del esquema, no los del DTO, y la diferencia es a
+    propósito: las fechas son ``TEXT`` con ISO 8601 (ADR-016/021) y llegan como
+    ``str``; convertirlas a ``datetime`` le toca al contrato, no a esta capa.
+    ``importe`` es ``double precision`` en el esquema de alembic y ``real`` en
+    la tabla de producción heredada de SQLite (ver ``tests/test_db_upsert.py``);
+    ``duracion_valor`` es ``double precision``. psycopg entrega ``float`` para
+    los dos tipos —``Decimal`` solo saldría de un ``NUMERIC``—. La nulabilidad
+    sigue a la columna: solo ``id_externo``, ``titulo``, ``fuente`` y
+    ``fecha_extraccion`` son ``NOT NULL``.
+
+    No es una segunda allowlist: es la misma tupla, con tipo. Lo que aporta es
+    que ``api/routes/publico.py`` deje de recibir ``dict[str, object]`` y mypy
+    compruebe allí el mapeo campo a campo. Eso solo vale mientras el ``cast`` de
+    :func:`_filas_tipadas` diga la verdad, y ``tests/test_publico_repository.py``
+    lo sostiene por tres lados, porque cada uno deja pasar lo que ven los otros:
+
+    - las claves son las de :data:`_COLS_PUBLICAS`, en su orden;
+    - los valores de ``ficha`` y ``listar`` caben en el tipo declarado, en una
+      fila con todas las columnas rellenas y en otra cuyas opcionales vacías
+      vuelven a ``NULL`` (el test fija cuáles: todas no pueden, o la fila no
+      pasaría el umbral de sustancia);
+    - la nulabilidad de cada clave es la de su columna en ``information_schema``,
+      en los dos sentidos. Una fila rellena no distingue ``str`` de
+      ``str | None``, y es justo lo que mypy da por bueno después del ``cast``:
+      si una migración quitara el ``NOT NULL`` de ``titulo``, la ruta seguiría
+      tratándolo como ``str``.
+    """
+
+    id_externo: str
+    titulo: str
+    descripcion: str | None
+    organo_contratacion: str | None
+    importe: float | None
+    moneda: str | None
+    cpv: str | None
+    tipo_contrato: str | None
+    estado: str | None
+    procedimiento: str | None
+    tramitacion: str | None
+    fecha_publicacion: str | None
+    fecha_limite: str | None
+    fecha_inicio: str | None
+    fecha_fin: str | None
+    duracion_valor: float | None
+    duracion_unidad: str | None
+    provincia: str | None
+    ccaa: str | None
+    nuts_code: str | None
+    url: str | None
+    fuente: str
+    fecha_extraccion: str
+
+
+class FilaLotePublico(TypedDict):
+    """Un lote tal como lo devuelve :meth:`PublicoRepository.lotes_de`.
+
+    Mismo criterio que :class:`FilaLicitacionPublica`: ``numero`` es ``TEXT NOT
+    NULL`` y ``fecha_limite``, ``TEXT`` nulable. Lo que sostiene el ``cast`` son
+    dos tests de ``tests/test_publico_repository.py``, no tres: los lotes no
+    tienen tupla de columnas, así que no hay test de allowlist, y con la forma
+    se contrasta directamente lo que devuelve el ``SELECT`` literal de
+    :meth:`PublicoRepository.lotes_de`. El test de tipos de los lotes comprueba
+    claves, orden y valores con un lote relleno y otro con los opcionales a
+    ``NULL``; el de nulabilidad compara cada clave con ``information_schema``.
+    """
+
+    numero: str
+    titulo: str | None
+    cpv: str | None
+    importe: float | None
+    fecha_limite: str | None
+
+
+_FilaT = TypeVar("_FilaT", FilaLicitacionPublica, FilaLotePublico)
+
+
+def _filas_tipadas(
+    cursor: Any,  # cursor de psycopg sin tipo de fila: el mismo contrato que `rows_to_dicts`
+    forma: type[_FilaT],
+) -> list[_FilaT]:
+    """Las filas del cursor, declaradas con la forma de su proyección.
+
+    ``forma`` no se usa en ejecución: existe para que el llamante nombre la
+    forma y mypy la infiera, en vez de un ``cast`` en cada consulta.
+    """
+    # Único `cast` de la frontera. psycopg no sabe tipar un `SELECT`, así que
+    # `rows_to_dicts` devuelve `dict[str, Any]`. Lo que lo hace verdad es que el
+    # SQL de cada llamante proyecta exactamente las claves de `forma`, con sus
+    # tipos y su nulabilidad, y eso lo comprueban tests contra Postgres (cada
+    # forma enumera en su docstring los que la cubren), no este código. La
+    # `TypeVar` está restringida a las dos formas que cubren esos tests.
+    return cast("list[_FilaT]", rows_to_dicts(cursor))
+
 
 # ── Umbral de sustancia ───────────────────────────────────────────────────
 # El mayor riesgo de un proyecto de SEO programático no es publicar poco: es
@@ -408,7 +508,7 @@ def estado_refresco_canonicas(*, conn: Any | None = None, historico: int = 2) ->
 class PublicoRepository:
     """Lecturas de la superficie pública. Solo SELECT, solo campos de fuente."""
 
-    def ficha(self, id_externo: str, *, conn: Any | None = None) -> dict[str, Any] | None:
+    def ficha(self, id_externo: str, *, conn: Any | None = None) -> FilaLicitacionPublica | None:
         """Devuelve el anuncio público de un expediente, o ``None``.
 
         ``None`` cubre tres casos que para el visitante son el mismo 404: el
@@ -428,8 +528,8 @@ class PublicoRepository:
         """
         sql = f"SELECT {_SELECT_PUBLICO} FROM licitaciones l WHERE l.id_externo = %s AND {_BASE_WHERE}"
 
-        def _consultar(c: Any) -> dict[str, Any] | None:
-            filas = rows_to_dicts(c.execute(sql, (id_externo,)))
+        def _consultar(c: Any) -> FilaLicitacionPublica | None:
+            filas = _filas_tipadas(c.execute(sql, (id_externo,)), FilaLicitacionPublica)
             return filas[0] if filas else None
 
         if conn is not None:
@@ -437,15 +537,15 @@ class PublicoRepository:
         with connect_read() as c:
             return _consultar(c)
 
-    def lotes_de(self, id_externo: str, *, conn: Any | None = None) -> list[dict[str, Any]]:
+    def lotes_de(self, id_externo: str, *, conn: Any | None = None) -> list[FilaLotePublico]:
         """Lotes del expediente. La tabla ``lotes`` no tiene campos de persona."""
         sql = (
             "SELECT numero, titulo, cpv, importe, fecha_limite FROM lotes "
             "WHERE licitacion_id = %s ORDER BY numero"
         )
 
-        def _consultar(c: Any) -> list[dict[str, Any]]:
-            return rows_to_dicts(c.execute(sql, (id_externo,)))
+        def _consultar(c: Any) -> list[FilaLotePublico]:
+            return _filas_tipadas(c.execute(sql, (id_externo,)), FilaLotePublico)
 
         if conn is not None:
             return _consultar(conn)
@@ -498,7 +598,7 @@ class PublicoRepository:
         limite: int = 50,
         desplazamiento: int = 0,
         conn: Any | None = None,
-    ) -> list[dict[str, Any]]:
+    ) -> list[FilaLicitacionPublica]:
         """Listado público para los hubs, del más reciente al más antiguo.
 
         Una fila por contrato: el filtro de canónica impide que el mismo
@@ -521,8 +621,8 @@ class PublicoRepository:
         )
         params.extend([max(1, min(limite, 200)), max(0, desplazamiento)])
 
-        def _consultar(c: Any) -> list[dict[str, Any]]:
-            return rows_to_dicts(c.execute(sql, tuple(params)))
+        def _consultar(c: Any) -> list[FilaLicitacionPublica]:
+            return _filas_tipadas(c.execute(sql, tuple(params)), FilaLicitacionPublica)
 
         if conn is not None:
             return _consultar(conn)
