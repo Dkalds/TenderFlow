@@ -62,6 +62,7 @@ from db.sql_fragments import (
     UNIVERSOS_TECNOLOGICOS,
     exclude_duplicados_sql,
 )
+from shared.dates import ANIO_MINIMO_PLAUSIBLE
 
 # Exclusión de duplicados cross-fuente. Era una copia literal de la subconsulta
 # —``db/`` no podía depender de ``services/`` (ADR-024)—; desde que la
@@ -78,6 +79,34 @@ _UNIVERSO = TECHNOLOGY_OBSERVED_SQL
 # modificados mal atribuidos). Mismo criterio que ``VALID_PAIR``, aplicado al
 # agregado.
 _TOLERANCIA_SOBRECOSTE = 1.5
+
+# Primer día plausible de una ``fecha_adjudicacion`` (``shared.dates``, C4.4).
+# Desde C4.4 el conector de PSCP corta en origen el ``1899-12-30`` —el cero de
+# la epoch de Excel, o sea una celda vacía—, pero las filas ya escritas siguen
+# en ``adjudicaciones`` y el conector no puede verlas. Sin este corte ganaban el
+# ``LEAST`` de ``fecha_anchor`` y entraban en el train de **todos** los folds con
+# los acumuladores vacíos, alimentándolos como si precedieran a todo el
+# histórico. Aquí se tratan igual que en el conector: como una adjudicación sin
+# fecha, que es lo que son, y que ya estaba fuera del dataset por el
+# ``fecha_adjudicacion IS NOT NULL``. Va como parámetro (no interpolado) y es
+# un umbral de *plausibilidad* distinto del ``_ANIO_MINIMO`` del parser de
+# ``services/ml/features.py``, que no se toca.
+_FECHA_ADJ_MINIMA = f"{ANIO_MINIMO_PLAUSIBLE:04d}-01-01"
+
+
+def _filtro_fecha_adj(columna: str, hasta: str | None) -> tuple[str, list[Any]]:
+    """Cláusulas ``AND`` sobre la fecha de adjudicación: plausible y ``<= hasta``.
+
+    Un ``>=`` también descarta los NULL, que es lo que ya hacía el ``<= hasta``
+    cuando había corte: las subconsultas de lotes dejan de contar una
+    adjudicación sin fecha que la CTE principal nunca vio.
+    """
+    sql = f" AND {columna} >= %s"
+    params: list[Any] = [_FECHA_ADJ_MINIMA]
+    if hasta:
+        sql += f" AND {columna} <= %s"
+        params.append(hasta)
+    return sql, params
 
 
 def _sql_agregado(hasta: str | None) -> tuple[str, list[Any]]:
@@ -96,11 +125,9 @@ def _sql_agregado(hasta: str | None) -> tuple[str, list[Any]]:
     incorporar el resultado de la propia fila antes de leerla, que es la
     garantía anti-fuga de ``services.ml.features``.
     """
-    filtro_adj = " AND a.fecha_adjudicacion <= %s" if hasta else ""
-    filtro_lote = " AND fecha_adjudicacion <= %s" if hasta else ""
-    params: list[Any] = []
-    if hasta:
-        params.extend([hasta, hasta])
+    filtro_adj, params = _filtro_fecha_adj("a.fecha_adjudicacion", hasta)
+    filtro_lote, params_lote = _filtro_fecha_adj("fecha_adjudicacion", hasta)
+    params.extend(params_lote)
 
     sql = f"""
         WITH adj AS (
@@ -194,11 +221,9 @@ def _sql_por_lote(hasta: str | None) -> tuple[str, list[Any]]:
     esas se exigen con ``lo.importe > 0``: un lote sin presupuesto publicado no
     tiene denominador propio y no puede entrar en el dataset por lote.
     """
-    filtro_adj = " AND a.fecha_adjudicacion <= %s" if hasta else ""
-    filtro_mixto = " AND fecha_adjudicacion <= %s" if hasta else ""
-    params: list[Any] = []
-    if hasta:
-        params.extend([hasta, hasta])
+    filtro_adj, params = _filtro_fecha_adj("a.fecha_adjudicacion", hasta)
+    filtro_mixto, params_mixto = _filtro_fecha_adj("fecha_adjudicacion", hasta)
+    params.extend(params_mixto)
 
     sql = f"""
         WITH adj AS (
@@ -375,8 +400,7 @@ class MlDatasetRepository:
         :meth:`pares_baja_agregada`: atribuir todo el expediente a su
         adjudicatario principal distorsionaría la concentración medida.
         """
-        filtro = " AND a.fecha_adjudicacion <= %s" if hasta else ""
-        params: list[Any] = [hasta] if hasta else []
+        filtro, params = _filtro_fecha_adj("a.fecha_adjudicacion", hasta)
         sql = f"""
             SELECT a.licitacion_id,
                    MAX(a.fecha_adjudicacion) AS fecha,
