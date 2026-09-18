@@ -21,6 +21,8 @@ from config.keywords import TECH_LABELS
 from observability.logging import get_logger
 
 if TYPE_CHECKING:
+    from collections.abc import Hashable
+
     import pandas as pd
 
 log = get_logger(__name__)
@@ -28,7 +30,7 @@ log = get_logger(__name__)
 _VALID_LABELS: frozenset[str] = frozenset(TECH_LABELS)
 
 
-class SentenceEmbeddingTransformer(BaseEstimator, TransformerMixin):  # type: ignore[misc]
+class SentenceEmbeddingTransformer(BaseEstimator, TransformerMixin):  # type: ignore[misc]  # sklearn no trae py.typed: sus bases son Any
     """Wraps sentence-transformers to produce dense embeddings for sklearn pipelines.
 
     Requires: pip install sentence-transformers (optional dependency).
@@ -505,7 +507,9 @@ def build_dataset_rows(df: pd.DataFrame) -> list[DatasetRow]:
 
     validate_training_data(df)
 
-    def _text_for_row(row: dict[str, Any]) -> str:
+    # Claves ``Hashable`` y no ``str``: es lo que declara pandas-stubs para
+    # ``to_dict("records")``, porque una etiqueta de columna no tiene por qué ser str.
+    def _text_for_row(row: dict[Hashable, Any]) -> str:
         titulo = str(row.get("titulo", "") or "")
         desc = str(row.get("descripcion", "") or "")
         text = (titulo + " " + desc).strip()
@@ -522,7 +526,7 @@ def build_dataset_rows(df: pd.DataFrame) -> list[DatasetRow]:
     # PU learning: un negativo con CPV TI (48/72) y sin keywords podría ser una
     # licitación SAP no detectada por el filtro → "unlabeled", no negativo de
     # confianza plena. Se marca como ambiguo para asignarle menor peso.
-    def _is_ambiguous_neg(row: dict[str, Any]) -> bool:
+    def _is_ambiguous_neg(row: dict[Hashable, Any]) -> bool:
         if not has_cpv:
             return False
         cpv_val = str(row.get("cpv", "") or "").strip()
@@ -548,7 +552,7 @@ def build_dataset_rows(df: pd.DataFrame) -> list[DatasetRow]:
     else:
         return []
 
-    records: list[dict[str, Any]] = df.to_dict("records")  # type: ignore[assignment]
+    records = df.to_dict("records")
     # ``mask_pos`` conserva el índice del df; se recorre por posición.
     pos_flags = [bool(v) for v in mask_pos.to_numpy()]
 

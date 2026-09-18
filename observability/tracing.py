@@ -22,7 +22,7 @@ from __future__ import annotations
 
 import functools
 from collections.abc import Callable
-from typing import Any, TypeVar
+from typing import Any, ParamSpec, TypeVar
 
 from observability.logging import get_logger
 
@@ -47,7 +47,11 @@ def _redact_span_text(text: str) -> str:
         return text
 
 
-F = TypeVar("F", bound=Callable[..., Any])
+# ParamSpec conserva la firma de la función decorada y deja tipar `wrapper` con
+# ella. Con un `TypeVar` acotado a `Callable`, `wrapper` no es de ese tipo (solo
+# lo es la función original) y había que silenciar a mypy al devolverlo.
+P = ParamSpec("P")
+R = TypeVar("R")
 
 _configured = False
 _noop = False
@@ -208,7 +212,7 @@ class _NoOpSpan:
         pass
 
 
-def traced(span_name: str | None = None) -> Callable[[F], F]:
+def traced(span_name: str | None = None) -> Callable[[Callable[P, R]], Callable[P, R]]:
     """Decorador que envuelve una función con un span OpenTelemetry.
 
     Args:
@@ -224,11 +228,11 @@ def traced(span_name: str | None = None) -> Callable[[F], F]:
         def download_month(year: int, month: int) -> Path | None: ...
     """
 
-    def decorator(fn: F) -> F:
+    def decorator(fn: Callable[P, R]) -> Callable[P, R]:
         name = span_name or f"{fn.__module__}.{fn.__qualname__}"
 
         @functools.wraps(fn)
-        def wrapper(*args: Any, **kwargs: Any) -> Any:
+        def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
             if not _configured or _noop:
                 # No se ha llamado configure_tracing(); ejecutar sin tracing
                 return fn(*args, **kwargs)
@@ -259,6 +263,6 @@ def traced(span_name: str | None = None) -> Callable[[F], F]:
                         log.debug("span_record_exception_failed", exc_info=True)
                     raise
 
-        return wrapper  # type: ignore[return-value]
+        return wrapper
 
     return decorator

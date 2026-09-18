@@ -45,15 +45,22 @@ def _get_from_env(name: str) -> str | None:
 def _get_from_azure(name: str) -> str | None:
     """Lee el secreto desde Azure KeyVault."""
     try:
-        from azure.identity import DefaultAzureCredential  # type: ignore[import-not-found]
-        from azure.keyvault.secrets import SecretClient  # type: ignore[import-not-found]
+        from azure.identity import (  # type: ignore[import-not-found]  # SDK opcional, fuera de requirements: solo lo instala quien usa azure_keyvault
+            DefaultAzureCredential,
+        )
+        from azure.keyvault.secrets import (  # type: ignore[import-not-found]  # azure-keyvault-secrets: mismo SDK opcional que azure-identity
+            SecretClient,
+        )
 
         credential = DefaultAzureCredential()
         client = SecretClient(vault_url=_AZURE_VAULT_URL, credential=credential)
         # KeyVault names use hyphens, not underscores
         kv_name = name.replace("_", "-").lower()
         secret = client.get_secret(kv_name)
-        return secret.value  # type: ignore[no-any-return]
+        # Sin el SDK a la vista mypy lo trata como `Any`; la anotación fija el
+        # tipo documentado de `KeyVaultSecret.value` en vez de propagar `Any`.
+        valor: str | None = secret.value
+        return valor
     except ImportError:
         log.warning("azure_keyvault_not_installed", secret_name=name)
         return _get_from_env(name)
@@ -70,7 +77,10 @@ def _get_from_aws(name: str) -> str | None:
         client = boto3.client("secretsmanager", region_name=_AWS_REGION)
         secret_id = f"{_AWS_SECRET_PREFIX}{name}"
         response = client.get_secret_value(SecretId=secret_id)
-        return response.get("SecretString")  # type: ignore[no-any-return]
+        # boto3 no está tipado (ver el import): se fija el tipo que documenta la
+        # API. `SecretString` falta en los secretos binarios, de ahí el `None`.
+        secreto: str | None = response.get("SecretString")
+        return secreto
     except ImportError:
         log.warning("boto3_not_installed", secret_name=name)
         return _get_from_env(name)

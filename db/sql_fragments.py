@@ -22,7 +22,9 @@ la dirección de la dependencia, que ahora es ``services/ → db/``, la permitid
 
 No se movieron los demás fragmentos de ``services/sql_fragments.py``: solo
 bajan los que ``db/`` consume hoy. Bajar el resto es trabajo de la misma ola del
-ratchet, cuando alguna query de ``db/`` los necesite.
+ratchet, cuando alguna query de ``db/`` los necesite. Así bajaron después
+:data:`WATCHED_COMPANY_AWARDS_SQL` y :func:`round_sql`, con el SQL de
+``services/competitive/mercado.py`` (``db/repositories/mercado.py``).
 
 Los fragmentos de **clave canónica** del final del módulo nacieron aquí, no
 bajaron de ``services/``. Viven en ``db/`` por ADR-022 —son SQL— y en este
@@ -65,6 +67,14 @@ def technology_observed_sql(alias: str = "l") -> str:
     sus disyuntos.
     """
     return f"COALESCE({alias}.analysis_universe, 'technology_observed') = 'technology_observed'"
+
+
+#: Universo de las adjudicaciones observadas por NIF de empresas vigiladas. Es
+#: el otro universo que eligen las métricas competitivas, y compara la columna
+#: pelada, sin ``COALESCE``: una fila sin universo es legado del radar y cuenta
+#: en :data:`TECHNOLOGY_OBSERVED_SQL`, no aquí. Por eso el parcial de ``v84`` no
+#: le sirve; el de ``v63``, que empieza por esa columna, sí puede.
+WATCHED_COMPANY_AWARDS_SQL = "l.analysis_universe = 'watched_company_awards_observed'"
 
 
 #: Universos que llegan filtrados por señal tecnológica **antes** de persistir:
@@ -204,6 +214,21 @@ ORIGENES_FECHA_FIN: tuple[str, ...] = (
 def fecha_fin_origen_sql() -> str:
     """Accessor de :data:`FECHA_FIN_ORIGEN_SQL`, simétrico a :func:`fecha_fin_sql`."""
     return FECHA_FIN_ORIGEN_SQL
+
+
+def round_sql(expr: str, ndigits: int) -> str:
+    """``ROUND`` para expresiones sobre columnas de coma flotante.
+
+    Postgres no tiene ``round(double precision, int)`` (solo ``round(numeric,
+    int)``), así que las columnas ``real`` (p. ej. ``importe``) rompen con un
+    ``UndefinedFunction``. Redondeamos casteando a ``numeric`` y devolvemos el
+    resultado como ``FLOAT`` (``double precision``). El cast final es
+    importante: sin él Postgres devuelve ``Decimal``, que Pydantic v2 serializa
+    como *string* en JSON y rompe el frontend (``value.toFixed is not a
+    function``). Solo debe recibir fragmentos SQL constantes/whitelisted (nunca
+    input de usuario): ``expr`` se interpola tal cual.
+    """
+    return f"CAST(ROUND(CAST({expr} AS numeric), {ndigits}) AS FLOAT)"
 
 
 def exclude_duplicados_sql(col: str = "l.id_externo") -> str:

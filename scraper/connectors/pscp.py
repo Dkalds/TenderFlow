@@ -519,7 +519,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         connector = PscpConnector(dataset_id=dataset_id)
         if args.desde:
-            connector._since = lambda cursor: args.desde  # type: ignore[method-assign]
+            connector._since = lambda cursor: args.desde  # type: ignore[method-assign]  # --desde sustituye _since en la instancia, como en TED
         result = run_connector(connector)
     finally:
         close_pool()

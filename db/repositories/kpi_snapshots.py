@@ -12,14 +12,17 @@ Ninguno de esos números cambia entre ingestas, y la ingesta corre cada 4 h
 pocas filas. El desfase máximo es el que ya tenían los datos.
 
 Sobre la tabla que se reutiliza: ``kpi_snapshots`` (v51) ya existía con este
-propósito exacto y con reemplazo atómico en ``_persist_snapshots``, así que
-esto no añade esquema. Las métricas ``ov_*`` conviven con las que ese job
-escribía antes, pero **no son las mismas y no deben mezclarse**: las legacy
-(``total_licitaciones``, ``importe_total``…) filtran
-``analysis_universe = 'technology_observed'`` y el overview agrega sin ese
-filtro. Por eso se recalculan aquí llamando a ``AggregateRepository``, que es
-literalmente el mismo código que sirve el camino en vivo — la paridad no
-depende de mantener dos SQL parecidos sincronizados a mano.
+propósito exacto y con reemplazo atómico —``DELETE`` e ``INSERT`` en la misma
+transacción, la de ``db.kpi_precompute.compute_and_persist_snapshots``—, así
+que esto no añade esquema. Las métricas ``ov_*`` conviven con las que calcula
+``db.kpi_precompute.compute_all_kpis``, pero **no son las mismas y no deben
+mezclarse**: las de allí (``total_licitaciones``, ``importe_total``…) filtran
+por el universo tecnológico en su forma ancha
+(``db.sql_fragments.universo_tecnologico_sql``) y el overview sin filtros
+agrega sin filtro de universo. Por eso se recalculan aquí llamando a
+``AggregateRepository``, que es literalmente el mismo código que sirve el
+camino en vivo — la paridad no depende de mantener dos SQL parecidos
+sincronizados a mano.
 """
 
 from __future__ import annotations
@@ -86,7 +89,11 @@ class OverviewSnapshot:
 def _fila(
     metrica: str, *, valor: float | None = None, valor_text: str | None = None
 ) -> dict[str, Any]:
-    """Fila en el formato que espera ``scheduler.kpi_precompute._persist_snapshots``."""
+    """Fila de ``kpi_snapshots`` sin ``computed_at``.
+
+    ``db.kpi_precompute.compute_all_kpis`` se lo añade antes de que
+    ``db.kpi_precompute.persist_snapshots`` la escriba.
+    """
     return {
         "metrica": metrica,
         "dimension": _DIMENSION,
@@ -98,9 +105,11 @@ def _fila(
 def compute_overview_snapshot_rows(conn: Any) -> list[dict[str, Any]]:
     """Calcula las métricas ``ov_*`` y la lista de CPV, listas para persistir.
 
-    Se llama desde ``scheduler/kpi_precompute.py``, que las añade a las suyas y
-    las escribe con el mismo ``computed_at``. El SQL vive aquí y en
-    ``AggregateRepository`` — nunca en ``scheduler/`` (ADR-022).
+    Se llama desde ``db/kpi_precompute.py`` (``compute_all_kpis``), que las
+    añade a las suyas y les pone a todas el mismo ``computed_at``. El SQL de
+    estas métricas vive en ``AggregateRepository`` y en
+    ``db.repositories.base.loose_distinct_strings`` — nunca en ``scheduler/``
+    (ADR-022).
 
     Todo va por la ``conn`` que ya tiene abierta el precálculo: son seis
     consultas de lectura y abrirles conexiones propias mientras se sostiene la

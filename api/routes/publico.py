@@ -31,15 +31,16 @@ mantiene ``KNOWN_5XX`` a cero: una referencia inventada tiene que acabar en un
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Query, Response, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, TypeAdapter, ValidationError
 
 from api.concurrency import run_db
-from db.repositories.publico import PublicoRepository
+from db.repositories.publico import FilaLicitacionPublica, FilaLotePublico, PublicoRepository
 from observability.logging import get_logger
-from shared.dto import LicitacionPublica, LotePublico, PaginatedResponse
+from shared.dto import LicitacionPublica, LotePublico, PaginatedResponse, PgDateTime
 from shared.public_ref import codificar_ref, decodificar_ref
 
 log = get_logger(__name__)
@@ -74,8 +75,60 @@ class EntradaSitemap(BaseModel):
     actualizado: str | None = None
 
 
+#: Validador de las fechas de la proyección, que en Postgres son ``TEXT``.
+#:
+#: Es el ``PgDateTime | None`` de los campos del DTO, no un parser de aquí: la
+#: cadena pasa por el mismo validador del offset corto y el mismo modo laxo que
+#: le aplicaba el constructor cuando la recibía sin convertir, así que el JSON
+#: publicado no cambia. Lo que cambia es que la conversión queda escrita, y con
+#: ella mypy puede comprobar el resto del mapeo de ``_a_dto``.
+_FECHA_PG: TypeAdapter[datetime | None] = TypeAdapter(PgDateTime | None)
+
+
+def _fecha(
+    valor: str | None, campo: str, modelo: type[BaseModel] = LicitacionPublica
+) -> datetime | None:
+    """Convierte una fecha ``TEXT`` de la proyección al tipo que declara el DTO.
+
+    ``campo`` y ``modelo`` solo sirven para el error. Cuando la cadena llegaba
+    sin convertir, era el constructor del DTO quien fallaba, y su
+    ``ValidationError`` nombraba el modelo y el campo roto. Un ``TypeAdapter``
+    suelto no sabe ninguna de las dos cosas ("1 validation error for
+    nullable[function-before[...]]"), y en una página del listado —hasta 100
+    filas con cinco fechas cada una— ese mensaje no dice qué columna falló, que
+    es justo lo que hay que saber cuando la fuente cambia de formato. Así que se
+    relanza con los dos y se conservan el tipo, la entrada y el contexto de cada
+    error: para una fecha rota el mensaje es el que daría el constructor con esa
+    misma cadena, palabra por palabra. ``tests/test_routes_publico.py`` lo
+    comprueba en cada campo de fecha, del DTO y del lote, contra ese
+    constructor y no contra un texto copiado, con una cadena que llega tal cual
+    al parser y con otra cuyo offset corto completa antes ``PgDateTime``.
+
+    Lo que no se recupera es la acumulación. El constructor juntaba todos los
+    errores de la fila; aquí sale solo la primera fecha que falla, en el orden
+    del mapeo, y lo que hubiera roto además en esa fila no llega a validarse.
+    Para diagnosticar basta: sigue siendo un ``ValidationError`` —el mismo 500—
+    y apunta a un campo concreto.
+    """
+    try:
+        return _FECHA_PG.validate_python(valor)
+    except ValidationError as exc:
+        raise ValidationError.from_exception_data(
+            modelo.__name__,
+            [
+                {
+                    "type": error["type"],
+                    "loc": (campo, *error["loc"]),
+                    "input": error["input"],
+                    "ctx": error.get("ctx", {}),
+                }
+                for error in exc.errors()
+            ],
+        ) from None
+
+
 def _a_dto(
-    fila: dict[str, object], lotes: list[dict[str, object]] | None = None
+    fila: FilaLicitacionPublica, lotes: list[FilaLotePublico] | None = None
 ) -> LicitacionPublica:
     """Construye el DTO público desde una fila del repositorio.
 
@@ -83,40 +136,54 @@ def _a_dto(
     el desempaquetado, una columna nueva en la proyección llegaría al DTO sin
     que nadie lo decidiera; así hay que escribirla aquí, que es donde toca
     pensárselo.
+
+    Las filas llegan tipadas (``FilaLicitacionPublica``) y se indexan con
+    ``[]``, no con ``.get``. Todas sus claves son obligatorias, así que ``[]``
+    da el tipo exacto de la columna —``titulo`` es ``str``, no ``str | None``—
+    y mypy contrasta cada una con el campo del DTO. Y si la proyección dejara
+    de traer una columna, la respuesta fallaría en vez de publicar un ``null``
+    que nadie decidió.
+
+    Por lo mismo ya no hay ``str()`` alrededor de ``id_externo``, ``titulo`` ni
+    del ``numero`` del lote, y no es un descuido: las tres columnas son ``TEXT
+    NOT NULL`` (``_BASE_WHERE`` exige además ``titulo IS NOT NULL``), así que
+    la coerción no convertía nada. Si algún día llegara otra cosa, ahora falla
+    —``codificar_ref`` o la validación del DTO— en vez de publicar ``"None"``
+    como número de expediente.
     """
-    id_externo = str(fila["id_externo"])
+    id_externo = fila["id_externo"]
     return LicitacionPublica(
         ref=codificar_ref(id_externo),
         expediente=id_externo,
-        titulo=str(fila["titulo"]),
-        descripcion=fila.get("descripcion"),  # type: ignore[arg-type]
-        organo_contratacion=fila.get("organo_contratacion"),  # type: ignore[arg-type]
-        importe=fila.get("importe"),  # type: ignore[arg-type]
-        moneda=fila.get("moneda"),  # type: ignore[arg-type]
-        cpv=fila.get("cpv"),  # type: ignore[arg-type]
-        tipo_contrato=fila.get("tipo_contrato"),  # type: ignore[arg-type]
-        estado=fila.get("estado"),  # type: ignore[arg-type]
-        procedimiento=fila.get("procedimiento"),  # type: ignore[arg-type]
-        tramitacion=fila.get("tramitacion"),  # type: ignore[arg-type]
-        fecha_publicacion=fila.get("fecha_publicacion"),  # type: ignore[arg-type]
-        fecha_limite=fila.get("fecha_limite"),  # type: ignore[arg-type]
-        fecha_inicio=fila.get("fecha_inicio"),  # type: ignore[arg-type]
-        fecha_fin=fila.get("fecha_fin"),  # type: ignore[arg-type]
-        duracion_valor=fila.get("duracion_valor"),  # type: ignore[arg-type]
-        duracion_unidad=fila.get("duracion_unidad"),  # type: ignore[arg-type]
-        provincia=fila.get("provincia"),  # type: ignore[arg-type]
-        ccaa=fila.get("ccaa"),  # type: ignore[arg-type]
-        nuts_code=fila.get("nuts_code"),  # type: ignore[arg-type]
-        url=fila.get("url"),  # type: ignore[arg-type]
-        fuente=str(fila.get("fuente") or "placsp"),
-        actualizado=fila.get("fecha_extraccion"),  # type: ignore[arg-type]
+        titulo=fila["titulo"],
+        descripcion=fila["descripcion"],
+        organo_contratacion=fila["organo_contratacion"],
+        importe=fila["importe"],
+        moneda=fila["moneda"],
+        cpv=fila["cpv"],
+        tipo_contrato=fila["tipo_contrato"],
+        estado=fila["estado"],
+        procedimiento=fila["procedimiento"],
+        tramitacion=fila["tramitacion"],
+        fecha_publicacion=_fecha(fila["fecha_publicacion"], "fecha_publicacion"),
+        fecha_limite=_fecha(fila["fecha_limite"], "fecha_limite"),
+        fecha_inicio=_fecha(fila["fecha_inicio"], "fecha_inicio"),
+        fecha_fin=_fecha(fila["fecha_fin"], "fecha_fin"),
+        duracion_valor=fila["duracion_valor"],
+        duracion_unidad=fila["duracion_unidad"],
+        provincia=fila["provincia"],
+        ccaa=fila["ccaa"],
+        nuts_code=fila["nuts_code"],
+        url=fila["url"],
+        fuente=fila["fuente"] or "placsp",
+        actualizado=_fecha(fila["fecha_extraccion"], "actualizado"),
         lotes=[
             LotePublico(
-                numero=str(lote["numero"]),
-                titulo=lote.get("titulo"),  # type: ignore[arg-type]
-                cpv=lote.get("cpv"),  # type: ignore[arg-type]
-                importe=lote.get("importe"),  # type: ignore[arg-type]
-                fecha_limite=lote.get("fecha_limite"),  # type: ignore[arg-type]
+                numero=lote["numero"],
+                titulo=lote["titulo"],
+                cpv=lote["cpv"],
+                importe=lote["importe"],
+                fecha_limite=_fecha(lote["fecha_limite"], "fecha_limite", LotePublico),
             )
             for lote in (lotes or [])
         ],

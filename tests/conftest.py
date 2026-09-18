@@ -184,7 +184,7 @@ def _clear_service_data_caches():
 #
 # Históricamente la suite corría sobre ficheros SQLite temporales mientras
 # producción era Postgres (ADR-016), y toda diferencia de dialecto quedaba sin
-# cubrir — el bug de ``round()`` documentado en services/sql_fragments.py llegó
+# cubrir — el bug de ``round()`` documentado en db/sql_fragments.py llegó
 # al frontend por esa vía. ADR-018 construyó esta infraestructura; ADR-021
 # retiró el otro camino.
 

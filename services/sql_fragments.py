@@ -8,21 +8,23 @@ composición del proyecto:
   whitelists internas de columnas o helpers como
   ``services.dedupe.exclude_duplicados_sql()`` (que sigue exponiéndose desde
   allí, aunque su definición bajó a ``db/sql_fragments.py``).
-- Los valores de usuario van **siempre** con placeholders ``?``.
+- Los valores de usuario van **siempre** con placeholders ``%s``.
 - Cada query que interpola lleva ``# noqa: S608`` inline con justificación.
 
-``FECHA_FIN_SQL``/``fecha_fin_sql()`` y ``TECHNOLOGY_OBSERVED_SQL`` ya no se
-definen aquí: los consume también ``db/`` (repositories de renovaciones y
-adjudicaciones, movidos por la ola del ratchet TID251) y ``db/`` no puede
-importar de ``services/`` (ADR-024). Viven en ``db/sql_fragments.py`` y se
-reexportan desde este módulo, que sigue siendo el sitio por el que los busca
-todo ``services/``. Ver el docstring de ese módulo para el razonamiento.
+``FECHA_FIN_SQL``/``fecha_fin_sql()``, ``TECHNOLOGY_OBSERVED_SQL``,
+``WATCHED_COMPANY_AWARDS_SQL`` y ``round_sql()`` ya no se definen aquí: los
+consume también ``db/`` (repositories de renovaciones, adjudicaciones y mercado,
+movidos por la ola del ratchet TID251) y ``db/`` no puede importar de
+``services/`` (ADR-024). Viven en ``db/sql_fragments.py`` y se reexportan desde
+este módulo, que sigue siendo el sitio por el que los busca todo ``services/``.
+Ver el docstring de ese módulo para el razonamiento.
 """
 
 from db.sql_fragments import FECHA_FIN_SQL as FECHA_FIN_SQL
 from db.sql_fragments import TECHNOLOGY_OBSERVED_SQL as TECHNOLOGY_OBSERVED_SQL
+from db.sql_fragments import WATCHED_COMPANY_AWARDS_SQL as WATCHED_COMPANY_AWARDS_SQL
 from db.sql_fragments import fecha_fin_sql as fecha_fin_sql
-from db.sql_fragments import technology_observed_sql
+from db.sql_fragments import round_sql as round_sql
 
 # Condiciones de validez de un par presupuesto/adjudicado. Descarta filas
 # sin importes positivos y outliers donde el adjudicado supera el
@@ -96,23 +98,3 @@ VALID_PAIR_LOTE = (
 # Único punto de esta fórmula fuera de la agregación por licitación — ver
 # nota en VALID_PAIR sobre cuál usar según el caso.
 BAJA_PCT_SQL = f"(({BASE_COMPARABLE_SQL}) - a.importe_adjudicado) / ({BASE_COMPARABLE_SQL}) * 100"
-
-# El mismo predicado estrecho escrito para el alias de la subconsulta. Era una
-# copia literal; ahora sale del helper canónico, que garantiza que las dos
-# grafías no puedan divergir (y con ellas, el uso del índice parcial de v84).
-TECHNOLOGY_OBSERVED_L2_SQL = technology_observed_sql("l2")
-WATCHED_COMPANY_AWARDS_SQL = "l.analysis_universe = 'watched_company_awards_observed'"
-
-
-def round_sql(expr: str, ndigits: int) -> str:
-    """``ROUND`` para expresiones sobre columnas de coma flotante.
-
-    Postgres no tiene ``round(double precision, int)`` (solo ``round(numeric,
-    int)``), así que las columnas ``real`` (p. ej. ``importe``) rompen con un
-    ``UndefinedFunction``. Redondeamos casteando a ``numeric`` y devolvemos el
-    resultado como ``FLOAT`` (``double precision``). El cast final es importante: sin él Postgres devuelve
-    ``Decimal``, que Pydantic v2 serializa como *string* en JSON y rompe el
-    frontend (``value.toFixed is not a function``). Solo debe recibir
-    fragmentos SQL constantes/whitelisted (nunca input de usuario).
-    """
-    return f"CAST(ROUND(CAST({expr} AS numeric), {ndigits}) AS FLOAT)"

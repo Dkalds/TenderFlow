@@ -4,7 +4,7 @@ Centraliza la elección de backend (base de datos o Redis) mediante una
 factory. Las implementaciones concretas delegan en los módulos existentes:
 
 * :class:`DbRateLimiter`     — ventana deslizante en la tabla ``rate_limits``.
-* :class:`RedisRateLimiter`  — sorted set en Redis (requiere extra ``[scale]``).
+* :class:`RedisRateLimiter`  — sorted set en Redis (``RATE_LIMIT_BACKEND=redis``).
 
 Uso::
 

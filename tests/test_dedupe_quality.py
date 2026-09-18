@@ -118,7 +118,7 @@ def test_dedupe_golden_precision_gate(tmp_db):
                 fp_cases.append(pair.get("case", "?"))
 
     assert tp_confirmed >= MIN_CONFIRMED_EXPECTED, (
-        f"solo {tp_confirmed} confirmados — ¿harness roto o golden set recortado%s"
+        f"solo {tp_confirmed} confirmados — ¿harness roto o golden set recortado?"
     )
 
     precision = tp_confirmed / (tp_confirmed + fp_confirmed)
@@ -140,28 +140,66 @@ def test_dedupe_golden_precision_gate(tmp_db):
     )
 
 
-def _metric_value(name: str, labels: dict[str, str]) -> float | None:
-    """Lee una métrica del REGISTRY; None si prometheus_client no está instalado."""
-    try:
-        from prometheus_client import REGISTRY
-    except ImportError:
-        return None
-    val = REGISTRY.get_sample_value(name, labels)
-    return float(val) if val is not None else 0.0
+def _metric_value(name: str, labels: dict[str, str]) -> float:
+    """Valor de una serie del REGISTRY: 0.0 si está registrada y aún sin muestra.
+
+    ``REGISTRY.get_sample_value`` devuelve ``None`` en dos casos opuestos, y la
+    versión anterior de este helper convertía los dos en el mismo 0.0 (su
+    ``None`` propio solo significaba "``prometheus_client`` no importa", y
+    acababa en skip):
+
+    - la serie **no está registrada** (renombrada, o su módulo cayó al fallback
+      no-op porque su ``from prometheus_client import …`` lanzó
+      ``ImportError``) — regresión: desaparece de ``/metrics``, y todo lo que la
+      consulta por nombre deja de verla (para ``dedupe_marked_total`` y
+      ``dedupe_match_rate``, las reglas de ``observability/alert_rules.yml``);
+    - está registrada pero el hijo con esas labels **aún no se incrementó** en
+      este proceso — un contador en 0. Es lo que ve la lectura ``before`` de los
+      dos tests de contadores en un proceso nuevo: el módulo ya se importó y
+      declaró la serie, pero nada la ha tocado todavía.
+
+    Ojo con el primer caso: la serie se registra al importar el módulo que la
+    declara. Un test que la lea antes de importarlo cae aquí aunque el código
+    esté bien, y pasa o no según qué otro test del proceso lo importó antes.
+
+    No hay skip por falta de ``prometheus_client``: es dependencia dura
+    (``[project].dependencies`` de ``pyproject.toml``), y si faltara las
+    métricas de producción serían no-op en silencio, justo lo que este test
+    existe para detectar. El import falla.
+    """
+    from prometheus_client import REGISTRY
+
+    # Un único recorrido de `collect()` distingue los dos `None`: la familia
+    # existe (registrada) y, dentro, la muestra con esas labels existe o no.
+    # Es lo mismo que hace `get_sample_value` por dentro, así que no cuesta más,
+    # y evita apoyarse en atributos privados del REGISTRY. Los Counter publican
+    # la familia sin el sufijo `_total` que sí llevan sus muestras y el nombre
+    # que usan las reglas; por eso se normaliza.
+    registrada = False
+    for familia in REGISTRY.collect():
+        nombre_publicado = f"{familia.name}_total" if familia.type == "counter" else familia.name
+        if name != nombre_publicado:
+            continue
+        registrada = True
+        for muestra in familia.samples:
+            if muestra.name == name and muestra.labels == labels:
+                return float(muestra.value)
+    assert registrada, (
+        f"la métrica {name!r} no está registrada en el REGISTRY de prometheus_client: "
+        "¿se renombró, su módulo cayó al fallback no-op, o el test la lee antes de "
+        "importar el módulo que la declara? Sin registrar, /metrics no la publica."
+    )
+    return 0.0
 
 
 def test_detect_duplicates_instrumenta_metricas(tmp_db):
     """RFC dedupe/linaje: dedupe_marked_total{source_pair} y dedupe_match_rate."""
-    import pytest
-
     from db.database import connect
     from services.dedupe import detect_duplicates
 
     before = _metric_value(
         "dedupe_marked_total", {"source_pair": "placsp|pscp", "status": "confirmed"}
     )
-    if before is None:
-        pytest.skip("prometheus_client no instalado — métricas no-op")
 
     with connect() as c:
         _insert_lic(
@@ -204,7 +242,10 @@ def test_detect_duplicates_instrumenta_metricas(tmp_db):
     after = _metric_value(
         "dedupe_marked_total", {"source_pair": "placsp|pscp", "status": "confirmed"}
     )
-    assert after is not None and after - before == 1.0
+    assert after - before == 1.0, (
+        f"dedupe_marked_total{{placsp|pscp,confirmed}} pasó de {before} a {after}: "
+        "el par confirmado no se contó"
+    )
 
     rate = _metric_value("dedupe_match_rate", {"fuente": "pscp"})
     assert rate == 0.5  # 1 marcada de 2 evaluadas en la última pasada
@@ -220,21 +261,26 @@ def test_dedupe_roto_en_la_ingesta_deja_senal_y_no_solo_un_log():
     """
     from unittest.mock import patch
 
-    import pytest
-
+    # `_metric_value` falla si la serie no está registrada, y
+    # `dedupe_run_failed_total` se registra al importar `services.dedupe`, que
+    # `_post_ingestion` solo importa tarde, dentro de la llamada. Por eso el
+    # módulo se importa aquí, antes de la primera lectura: sin este import, esa
+    # lectura dependería de que otro test del mismo proceso lo hubiera importado.
+    import services.dedupe
     from scraper.connectors.base import _post_ingestion
 
     before = _metric_value("dedupe_run_failed_total", {"fuente": "pscp"})
-    if before is None:
-        pytest.skip("prometheus_client no instalado — métricas no-op")
 
     with (
         patch("services.entity_resolution.resolve_all_unlinked"),
-        patch("services.dedupe.detect_duplicates", side_effect=RuntimeError("índice roto")),
+        patch.object(services.dedupe, "detect_duplicates", side_effect=RuntimeError("índice roto")),
         patch("services.contract_events.derive_new_events"),
         patch("shared.cache_signal.signal_cache_invalidation"),
     ):
         _post_ingestion("pscp")  # no propaga: el fail-open sigue en pie
 
     after = _metric_value("dedupe_run_failed_total", {"fuente": "pscp"})
-    assert after is not None and after - before == 1.0
+    assert after - before == 1.0, (
+        f"dedupe_run_failed_total{{pscp}} pasó de {before} a {after}: "
+        "el fallo del dedupe no dejó señal"
+    )

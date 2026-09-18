@@ -9,8 +9,11 @@ ni un campo del pipeline propio.
 from __future__ import annotations
 
 import pytest
+from pydantic import ValidationError
 
+from api.routes.publico import _a_dto
 from db.repositories.publico import refrescar_vista_canonicas
+from shared.dto import LicitacionPublica, LotePublico
 from shared.public_ref import codificar_ref
 
 _TITULO_LARGO = "Servicio de mantenimiento de sistemas"
@@ -195,6 +198,232 @@ def test_la_ficha_incluye_sus_lotes_ordenados(client, corpus):
     cuerpo = client.get(f"/api/v1/publico/licitaciones/{codificar_ref('R-01')}").json()
 
     assert [lote["numero"] for lote in cuerpo["lotes"]] == ["1", "2"]
+
+
+def test_la_ficha_lleva_cada_columna_a_su_campo(client, corpus):
+    """El cuerpo entero, campo a campo, con un valor distinto en cada columna.
+
+    El mapeo de ``_a_dto`` es explícito a propósito, y mypy comprueba que cada
+    columna cabe en su campo, pero no que vaya al suyo: ``fecha_inicio`` y
+    ``fecha_fin`` son del mismo tipo, igual que ``provincia`` y ``ccaa`` o
+    ``tipo_contrato`` y ``procedimiento``. Con un valor distinto en cada
+    columna, un cruce cambia el cuerpo. ``fuente`` va a ``ted`` para que el
+    ``or "placsp"`` de la ruta no pueda acertar por casualidad.
+    """
+    with corpus.connect() as c:
+        c.execute(
+            "UPDATE licitaciones SET descripcion = %s, organo_contratacion = %s, importe = %s, "
+            "moneda = %s, cpv = %s, tipo_contrato = %s, estado = %s, procedimiento = %s, "
+            "tramitacion = %s, fecha_publicacion = %s, fecha_limite = %s, fecha_inicio = %s, "
+            "fecha_fin = %s, duracion_valor = %s, duracion_unidad = %s, provincia = %s, "
+            "ccaa = %s, nuts_code = %s, url = %s, fuente = %s, fecha_extraccion = %s "
+            "WHERE id_externo = %s",
+            (
+                "Mantenimiento evolutivo del ERP municipal",
+                "Ayuntamiento de Segovia",
+                123456.5,
+                "EUR",
+                "72267000",
+                "2",
+                "ADJ",
+                "9",
+                "1",
+                "2026-08-03",
+                "2026-09-15T13:00:00+00:00",
+                "2026-10-01",
+                "2027-09-30",
+                18.0,
+                "MON",
+                "Segovia",
+                "Castilla y León",
+                "ES416",
+                "https://example.org/anuncio/R-01",
+                "ted",
+                "2026-08-04T06:30:00+00:00",
+                "R-01",
+            ),
+        )
+        c.execute(
+            "INSERT INTO lotes "
+            "(licitacion_id, numero, titulo, cpv, importe, fecha_limite, fecha_extraccion) "
+            "VALUES (%s,%s,%s,%s,%s,%s,CURRENT_TIMESTAMP)",
+            (
+                "R-01",
+                "1",
+                "Soporte de segundo nivel",
+                "72611000",
+                5000.5,
+                "2026-09-16T10:00:00+02:00",
+            ),
+        )
+
+    respuesta = client.get(f"/api/v1/publico/licitaciones/{codificar_ref('R-01')}")
+
+    assert respuesta.status_code == 200
+    assert respuesta.json() == {
+        "ref": codificar_ref("R-01"),
+        "expediente": "R-01",
+        "titulo": _TITULO_LARGO,
+        "descripcion": "Mantenimiento evolutivo del ERP municipal",
+        "organo_contratacion": "Ayuntamiento de Segovia",
+        "importe": 123456.5,
+        "moneda": "EUR",
+        "cpv": "72267000",
+        "tipo_contrato": "2",
+        "estado": "ADJ",
+        "procedimiento": "9",
+        "tramitacion": "1",
+        # Sin hora ni zona en la fuente, así que sale sin zona: no se inventa UTC.
+        "fecha_publicacion": "2026-08-03T00:00:00",
+        "fecha_limite": "2026-09-15T13:00:00Z",
+        "fecha_inicio": "2026-10-01T00:00:00",
+        "fecha_fin": "2027-09-30T00:00:00",
+        "duracion_valor": 18.0,
+        "duracion_unidad": "MON",
+        "provincia": "Segovia",
+        "ccaa": "Castilla y León",
+        "nuts_code": "ES416",
+        "url": "https://example.org/anuncio/R-01",
+        "fuente": "ted",
+        "actualizado": "2026-08-04T06:30:00Z",
+        "lotes": [
+            {
+                "numero": "1",
+                "titulo": "Soporte de segundo nivel",
+                "cpv": "72611000",
+                "importe": 5000.5,
+                "fecha_limite": "2026-09-16T10:00:00+02:00",
+            }
+        ],
+    }
+
+
+def test_una_fecha_con_el_offset_corto_de_postgres_no_rompe_la_ficha(client, corpus):
+    """``+00`` a secas es como Postgres escribe en texto un ``timestamptz``.
+
+    El parser de pydantic lo rechaza y ``PgDateTime`` lo completa antes de
+    parsear. La ruta convierte las fechas con su propio ``TypeAdapter``, que es
+    un segundo sitio donde esa normalización tiene que seguir estando: sin ella,
+    esta ficha sería un 500 en la superficie que rastrea Google.
+    """
+    with corpus.connect() as c:
+        c.execute(
+            "UPDATE licitaciones SET fecha_limite = %s WHERE id_externo = %s",
+            ("2026-08-01 00:45:48.33444+00", "R-01"),
+        )
+        c.execute(
+            "INSERT INTO lotes (licitacion_id, numero, fecha_limite, fecha_extraccion) "
+            "VALUES (%s,%s,%s,CURRENT_TIMESTAMP)",
+            ("R-01", "1", "2026-09-01 12:00:00+02"),
+        )
+
+    respuesta = client.get(f"/api/v1/publico/licitaciones/{codificar_ref('R-01')}")
+
+    assert respuesta.status_code == 200
+    cuerpo = respuesta.json()
+    assert cuerpo["fecha_limite"] == "2026-08-01T00:45:48.334440Z"
+    assert cuerpo["lotes"][0]["fecha_limite"] == "2026-09-01T12:00:00+02:00"
+
+
+#: Fila válida para construir el DTO sin base: los tests de abajo solo rompen
+#: una fecha cada vez.
+_FILA_SIN_BASE = {
+    "id_externo": "R-01",
+    "titulo": _TITULO_LARGO,
+    "descripcion": None,
+    "organo_contratacion": None,
+    "importe": 1000.0,
+    "moneda": None,
+    "cpv": None,
+    "tipo_contrato": None,
+    "estado": None,
+    "procedimiento": None,
+    "tramitacion": None,
+    "fecha_publicacion": None,
+    "fecha_limite": None,
+    "fecha_inicio": None,
+    "fecha_fin": None,
+    "duracion_valor": None,
+    "duracion_unidad": None,
+    "provincia": None,
+    "ccaa": None,
+    "nuts_code": None,
+    "url": None,
+    "fuente": "placsp",
+    "fecha_extraccion": "2026-08-01T00:00:00+00:00",
+}
+
+#: Fechas que el parser rechaza, una por cada camino del validador.
+_FECHAS_ILEGIBLES = pytest.mark.parametrize(
+    "fecha",
+    [
+        # Día/mes/año en vez de ISO 8601: llega al parser tal cual.
+        pytest.param("31/12/2026", id="dia-mes-anio"),
+        # Offset corto de Postgres con un mes imposible: `PgDateTime` completa el
+        # offset antes de parsear, así que la entrada del error ya no es la
+        # cadena cruda sino `...+00:00`. Solo con este caso se nota si `_fecha`
+        # informa de la cadena que recibió en vez de la que vio el parser.
+        pytest.param("2026-13-01 00:00:00+00", id="offset-corto-mes-imposible"),
+    ],
+)
+
+
+@_FECHAS_ILEGIBLES
+@pytest.mark.parametrize(
+    ("columna", "campo"),
+    [
+        ("fecha_publicacion", "fecha_publicacion"),
+        ("fecha_limite", "fecha_limite"),
+        ("fecha_inicio", "fecha_inicio"),
+        ("fecha_fin", "fecha_fin"),
+        ("fecha_extraccion", "actualizado"),
+    ],
+)
+def test_una_fecha_ilegible_dice_en_que_campo_esta(columna, campo, fecha):
+    """Cuando la fuente cambia de formato, lo primero que hay que saber es dónde.
+
+    En una página del listado —hasta 100 filas con cinco fechas cada una—, un
+    ``ValidationError`` que no nombra el campo no sirve para diagnosticar. Antes
+    lo garantizaba el constructor del DTO, que recibía la cadena sin convertir;
+    desde que la ruta convierte las fechas antes, lo tiene que garantizar
+    ``_fecha``.
+
+    La referencia es ese mismo constructor con la misma cadena, no un mensaje
+    copiado a mano: tienen que coincidir los errores enteros (campo, tipo,
+    entrada, contexto) y el texto, que además lleva el nombre del modelo.
+    """
+    with pytest.raises(ValidationError) as del_constructor:
+        LicitacionPublica(ref="x", expediente="x", titulo="x", fuente="x", **{campo: fecha})
+
+    with pytest.raises(ValidationError) as excinfo:
+        _a_dto({**_FILA_SIN_BASE, columna: fecha})
+
+    assert excinfo.value.title == "LicitacionPublica"
+    assert [error["loc"] for error in excinfo.value.errors()] == [(campo,)]
+    assert excinfo.value.errors() == del_constructor.value.errors()
+    assert str(excinfo.value) == str(del_constructor.value)
+
+
+@_FECHAS_ILEGIBLES
+def test_una_fecha_ilegible_en_un_lote_nombra_el_lote(fecha):
+    """Lo mismo para la fecha del lote, que se valida con ``LotePublico``."""
+    lote = {
+        "numero": "1",
+        "titulo": None,
+        "cpv": None,
+        "importe": None,
+        "fecha_limite": fecha,
+    }
+    with pytest.raises(ValidationError) as del_constructor:
+        LotePublico(numero="1", fecha_limite=fecha)
+
+    with pytest.raises(ValidationError) as excinfo:
+        _a_dto(dict(_FILA_SIN_BASE), [lote])
+
+    assert excinfo.value.title == "LotePublico"
+    assert [error["loc"] for error in excinfo.value.errors()] == [("fecha_limite",)]
+    assert excinfo.value.errors() == del_constructor.value.errors()
+    assert str(excinfo.value) == str(del_constructor.value)
 
 
 @pytest.mark.parametrize(

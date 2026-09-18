@@ -12,6 +12,11 @@ from unittest.mock import patch
 import numpy as np
 import pytest
 
+# Registra en el REGISTRY las series que leen los tests de métricas. Hoy ya
+# llegan por la cadena de `db.database`, pero el job importa las métricas tarde,
+# dentro de cada fase, y `_metric_value` falla con una serie sin registrar: el
+# resultado no puede depender de un import transitivo.
+import observability.runtime_metrics  # noqa: F401  -- registra las series antes de leerlas
 from db.database import DocumentoReferencia
 from db.repositories.documentos import DocumentosRepository
 from scheduler.jobs import documentos_embeddings
@@ -57,6 +62,38 @@ def _mock_ml_available():
     """sentence-transformers no está instalado en el entorno de test --
     parchea embeddings_available() a True para ejercitar la fase de embed."""
     return patch("services.embeddings.embeddings_available", return_value=True)
+
+
+def _metric_value(name: str, labels: dict[str, str]) -> float:
+    """Valor de una serie del REGISTRY: 0.0 si está registrada y aún sin muestra.
+
+    Copia de ``tests/test_dedupe_quality.py::_metric_value``, que explica el
+    detalle. ``REGISTRY.get_sample_value`` devuelve ``None`` tanto si la serie
+    no está registrada —regresión: ``/metrics`` deja de publicarla— como si lo
+    está y el hijo con esas labels aún no se incrementó en este proceso (lo que
+    ve la primera lectura de ``documentos_fetched_total{status}`` en un proceso
+    nuevo). Los tests de este fichero hacían ``if before is not None``, así que
+    cualquiera de los dos casos se saltaba la aserción en silencio. Aquí el
+    primero falla y el segundo cuenta como 0.
+    """
+    from prometheus_client import REGISTRY
+
+    # Los Counter publican la familia sin el sufijo `_total` que llevan sus
+    # muestras; por eso se normaliza antes de comparar con `name`.
+    registrada = False
+    for familia in REGISTRY.collect():
+        nombre_publicado = f"{familia.name}_total" if familia.type == "counter" else familia.name
+        if name != nombre_publicado:
+            continue
+        registrada = True
+        for muestra in familia.samples:
+            if muestra.name == name and muestra.labels == labels:
+                return float(muestra.value)
+    assert registrada, (
+        f"la métrica {name!r} no está registrada en el REGISTRY de prometheus_client: "
+        "¿se renombró o su módulo cayó al fallback no-op? Sin registrar, /metrics no la publica."
+    )
+    return 0.0
 
 
 # ── Fase fetch ────────────────────────────────────────────────────────────
@@ -118,17 +155,21 @@ class TestRunFetchPhase:
         assert counts["error"] == 1
 
     def test_increments_prometheus_metric(self, repo):
-        from prometheus_client import REGISTRY
-
-        before = REGISTRY.get_sample_value("documentos_fetched_total", {"status": "extracted"})
+        etiquetas = {"status": "extracted"}
+        before = _metric_value("documentos_fetched_total", etiquetas)
         _seed_pending(repo, "EXP-F4")
 
         with patch("scraper.document_fetcher.fetch_and_extract", return_value="extracted"):
-            _run_fetch_phase()
+            counts = _run_fetch_phase()
 
-        after = REGISTRY.get_sample_value("documentos_fetched_total", {"status": "extracted"})
-        if before is not None:  # prometheus_client instalado
-            assert after - before == 1.0
+        # Igual que abajo con los chunks: si la fase no extrae nada, el delta no
+        # se ejercita y el fallo diría "no se contó" cuando lo roto es otra cosa.
+        assert counts["extracted"] == 1, f"la fase de fetch no extrajo el documento: {counts}"
+        after = _metric_value("documentos_fetched_total", etiquetas)
+        assert after - before == 1.0, (
+            f"documentos_fetched_total{{status=extracted}} pasó de {before} a {after}: "
+            "el documento extraído no se contó"
+        )
 
 
 # ── Fase embed ────────────────────────────────────────────────────────────
@@ -239,9 +280,7 @@ class TestRunEmbedPhase:
         assert counts["error"] == 0  # no cuenta como error -- es un skip esperado
 
     def test_increments_chunk_count_metric(self, repo):
-        from prometheus_client import REGISTRY
-
-        before = REGISTRY.get_sample_value("documento_chunks_total")
+        before = _metric_value("documento_chunks_total", {})
         _seed_extracted(repo, "EXP-E7", texto="palabra " * 500)
 
         with (
@@ -253,9 +292,15 @@ class TestRunEmbedPhase:
         ):
             counts = _run_embed_phase()
 
-        after = REGISTRY.get_sample_value("documento_chunks_total")
-        if before is not None:
-            assert after - before == counts["chunks_creados"]
+        # Sin chunks, un contador mudo daría `0 == 0` y el delta pasaría en vacío.
+        assert counts["chunks_creados"] > 0, (
+            f"la fase de embed no creó chunks ({counts}): el delta del contador no se ejercita"
+        )
+        after = _metric_value("documento_chunks_total", {})
+        assert after - before == counts["chunks_creados"], (
+            f"documento_chunks_total pasó de {before} a {after} con "
+            f"{counts['chunks_creados']} chunks creados: los chunks no se contaron"
+        )
 
 
 # ── run() combinado ─────────────────────────────────────────────────────────

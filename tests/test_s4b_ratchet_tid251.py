@@ -35,10 +35,12 @@ from pathlib import Path
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 _PYPROJECT = _REPO_ROOT / "pyproject.toml"
 
-#: Tamaño MEDIDO de la whitelist el 2026-09-03, tras sacar `api/routes/`
-#: (empresas, eventos, exports, watchlist_rules). **Solo puede bajar.**
-#: Venía de 32; el objetivo del plan de arquitectura de septiembre es ≤ 24.
-MAX_ENTRADAS_WHITELIST = 28
+#: Tamaño MEDIDO de la whitelist. **Solo puede bajar.** Venía de 32; bajó a 28
+#: el 2026-09-03 al sacar `api/routes/` (empresas, eventos, exports,
+#: watchlist_rules) y a 26 el 2026-09-16 al sacar
+#: `scheduler/kpi_precompute.py` y `services/competitive/mercado.py`.
+#: El objetivo del plan de arquitectura de septiembre es ≤ 24.
+MAX_ENTRADAS_WHITELIST = 26
 
 #: Las cuatro rutas liberadas en esta ola. Su SQL vive ahora en
 #: ``db/repositories/{empresas,licitaciones,watchlist,watchlist_rules}.py``.

@@ -28,7 +28,7 @@ _ph = PasswordHasher()
 def generate_totp_secret() -> str:
     """Genera un secret TOTP base32 compatible con Google Authenticator."""
     try:
-        import pyotp  # type: ignore[import-not-found]
+        import pyotp  # type: ignore[import-not-found]  # opcional y fuera de requirements: sin él rige el fallback de abajo
 
         return str(pyotp.random_base32())
     except ImportError:

@@ -464,9 +464,8 @@ async def bulk_get_licitaciones(
 
     Con ``?format=csv`` devuelve un CSV descargable.
     """
-    # Deduplicar preservando orden
-    seen: set[str] = set()
-    ids = [id_ for id_ in body.ids if id_ not in seen and not seen.add(id_)]  # type: ignore[func-returns-value]
+    # Deduplicar preservando orden: `dict` conserva la primera aparición de cada id.
+    ids = list(dict.fromkeys(body.ids))
 
     items = await run_db(_lic_repo.get_by_ids, ids)
 

@@ -12,7 +12,7 @@ paquetes exentos — no reproduzcas aquí un estado por paquete, envejece mal.
 | Paquete | Propósito | Entry / fachada | Docs relacionados |
 |---|---|---|---|
 | `config/` | Settings (pydantic-settings), keywords SAP, constantes PLACSP, secrets | `config/settings.py` | [ADR-004](adr/ADR-004-sqlite-turso-vs-postgres.md) (histórico; superado por [ADR-016](adr/ADR-016-destino-persistencia-supabase.md)/[ADR-021](adr/ADR-021-retirada-sqlite.md)) |
-| `shared/` | auth_core, dto, geo (NUTS3→CCAA), i18n, schemas (pandera), signing (JWKS), ssrf, csrf, types | `shared/dto.py`, `shared/schemas.py` | [SECURITY.md](SECURITY.md) |
+| `shared/` | auth_core, dto, geo (NUTS3→CCAA), i18n, signing (JWKS), ssrf, csrf, types | `shared/dto.py` | [SECURITY.md](SECURITY.md) |
 | `services/` | Biblioteca de dominio: licitaciones, normalization, classification, clusters, rate_limiting, `analytics_engine.py` (DuckDB) + subpaquetes `analytics/`, `competitive/`, `investigador/` (FTS Postgres `tsvector`), `ml/`, `rag/` | `services/licitaciones.py` | [ADR-007](adr/ADR-007-services-domain-layer.md), [ADR-024](adr/ADR-024-services-biblioteca-no-frontera.md), [ADR-005](adr/ADR-005-clustering-ctfidf-minibatch.md) |
 | `db/` | Postgres (motor único), upsert batcheado e idempotente, migraciones solo Alembic, repositorios | `db/database.py` (fachada) → `db/connection.py`, `db/schema.py`, `db/upsert.py`; repos en `db/repositories/` | [database-schema.md](database-schema.md), [ADR-001](adr/ADR-001-sql-crudo-vs-orm.md), [ADR-022](adr/ADR-022-frontera-de-persistencia.md), [ADR-016](adr/ADR-016-destino-persistencia-supabase.md), [ADR-021](adr/ADR-021-retirada-sqlite.md) |
 | `api/` | FastAPI REST `/api/v1/*` con X-API-Key, ETag, rate limit, CORS, exception handlers | `api/app.py`; routers en `api/routes/` | [ADR-006](adr/ADR-006-etag-pdf-export-ratelimit-redis.md), [api-design.md](api-design.md) |
@@ -147,7 +147,6 @@ controles disponibles y reportá los tests como no ejecutados (AGENTS.md §4).
 | ¿Cache en frontend? | Invalidación cross-process vía `shared/cache_signal.py` para refrescar datos server-side tras cada scraping. |
 | ¿Cómo añado settings? | Campo nuevo en `config/settings.py` con `Field(...)` + default seguro + entry en `.env.example`. Nunca leer `os.environ` directo. |
 | ¿Cómo añado un test slow? | Nombrá el archivo con token `performance` o `load`, o marca explícito con `@pytest.mark.slow`. `make test` excluye `integration_e2e` por defecto. |
-| ¿Cómo validar un DataFrame? | Schema `pandera` en `shared/schemas.py`. No `assert` manuales. |
 | ¿Rate limit? | `services/rate_limiting.py` (en BD) o `services/rate_limit_redis.py` (Redis, opcional). No reinventar. |
 | ¿Auth en endpoint nuevo? | `Depends(get_api_key)` + scope si aplica (ver `api/routes/webhooks.py` como referencia). |
 

@@ -10,9 +10,18 @@ genera ``web/src/lib/slug.ts``.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+from typing import get_args, get_type_hints
+
 import pytest
 
-from db.repositories.publico import PublicoRepository, refrescar_vista_canonicas
+from db.repositories.publico import (
+    _COLS_PUBLICAS,
+    FilaLicitacionPublica,
+    FilaLotePublico,
+    PublicoRepository,
+    refrescar_vista_canonicas,
+)
 
 # ---------------------------------------------------------------------------
 # Corpus
@@ -116,6 +125,174 @@ def test_la_ficha_trae_fuente_y_fecha_que_exige_la_ley_37_2007(corpus, repo):
     assert ficha is not None
     assert ficha["url"]
     assert ficha["fecha_extraccion"] is not None
+
+
+# ---------------------------------------------------------------------------
+# Forma tipada de las filas: lo que sostiene el `cast` de `_filas_tipadas`
+# ---------------------------------------------------------------------------
+
+
+def _desajustes(fila: Mapping[str, object], forma: type) -> dict[str, str]:
+    """Columnas cuyo valor real no cabe en el tipo que declara ``forma``.
+
+    Compara claves **y** tipos, en orden. Con solo las claves, una migración
+    que pasara ``importe`` a ``NUMERIC`` —psycopg devolvería ``Decimal``— o una
+    fecha a ``timestamptz`` —devolvería ``datetime``— dejaría el ``TypedDict``
+    mintiendo con el test en verde, y mypy razonaría sobre tipos que no llegan.
+    """
+    tipos = get_type_hints(forma)
+    if list(fila) != list(tipos):
+        return {"<claves>": f"{list(fila)} != {list(tipos)}"}
+    return {
+        clave: f"{type(fila[clave]).__name__} no cabe en {tipo}"
+        for clave, tipo in tipos.items()
+        if not isinstance(fila[clave], get_args(tipo) or tipo)
+    }
+
+
+def test_la_forma_tipada_es_la_misma_allowlist_y_en_el_mismo_orden():
+    """``FilaLicitacionPublica`` no puede ganar ni perder una columna a solas.
+
+    Si la tupla ganara una columna y el ``TypedDict`` no, mypy no vería el
+    campo nuevo en la ruta; si fuera al revés, la ruta leería una clave que el
+    ``SELECT`` no trae.
+    """
+    assert tuple(get_type_hints(FilaLicitacionPublica)) == _COLS_PUBLICAS
+
+
+def test_las_filas_de_ficha_y_listado_traen_los_tipos_que_declara_su_forma(corpus, repo):
+    """Todas las columnas rellenas: un ``None`` pasaría la comprobación por vacío."""
+    with corpus.connect() as conn:
+        conn.execute(
+            "UPDATE licitaciones SET descripcion = %s, organo_contratacion = %s, "
+            "moneda = %s, tipo_contrato = %s, procedimiento = %s, tramitacion = %s, "
+            "fecha_limite = %s, fecha_inicio = %s, fecha_fin = %s, "
+            "duracion_valor = %s, duracion_unidad = %s, provincia = %s, nuts_code = %s "
+            "WHERE id_externo = %s",
+            (
+                _DESCRIPCION_LARGA,
+                "Ayuntamiento de Madrid",
+                "EUR",
+                "2",
+                "1",
+                "1",
+                "2026-09-01T12:00:00+00:00",
+                "2026-10-01",
+                "2027-10-01",
+                12.0,
+                "MON",
+                "Madrid",
+                "ES300",
+                "P-01",
+            ),
+        )
+
+    ficha = repo.ficha("P-01")
+    [del_listado] = [f for f in repo.listar(limite=200) if f["id_externo"] == "P-01"]
+
+    for fila in (ficha, del_listado):
+        assert fila is not None
+        assert _desajustes(fila, FilaLicitacionPublica) == {}
+        assert None not in fila.values()
+
+
+def test_una_fila_con_los_opcionales_a_null_tambien_cabe_en_su_forma(corpus, repo):
+    """La otra mitad del test anterior: los ``None`` que de verdad llegan.
+
+    P-02 solo trae las columnas del corpus. Si la forma declarara ``str`` una
+    columna que aquí vuelve a ``NULL``, ``_desajustes`` lo señala. No pueden
+    ser todas las opcionales: sin ``importe`` ni descripción larga, P-02 no
+    pasaría el umbral de sustancia y no tendría ficha. Se fija el conjunto
+    exacto de las que vuelven a ``NULL``, porque sin eso un ``COALESCE`` en el
+    SELECT —que las rellenaría y seguiría cabiendo en la forma— dejaría el test
+    sin nada que probar.
+    """
+    # `moneda` no está: el esquema le pone 'EUR' por defecto.
+    nulas_en_el_corpus = {
+        "descripcion",
+        "organo_contratacion",
+        "tipo_contrato",
+        "procedimiento",
+        "tramitacion",
+        "fecha_limite",
+        "fecha_inicio",
+        "fecha_fin",
+        "duracion_valor",
+        "duracion_unidad",
+        "provincia",
+        "nuts_code",
+    }
+    ficha = repo.ficha("P-02")
+    [del_listado] = [f for f in repo.listar(limite=200) if f["id_externo"] == "P-02"]
+
+    for fila in (ficha, del_listado):
+        assert fila is not None
+        assert {clave for clave, valor in fila.items() if valor is None} == nulas_en_el_corpus
+        assert _desajustes(fila, FilaLicitacionPublica) == {}
+
+
+def test_los_lotes_traen_los_tipos_que_declara_su_forma(corpus, repo):
+    with corpus.connect() as conn:
+        conn.execute(
+            "INSERT INTO lotes "
+            "(licitacion_id, numero, titulo, cpv, importe, fecha_limite, fecha_extraccion) "
+            "VALUES (%s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP)",
+            ("P-01", "1", "Lote 1", "72000000", 1000.0, "2026-09-01T12:00:00+00:00"),
+        )
+        conn.execute(
+            "INSERT INTO lotes (licitacion_id, numero, fecha_extraccion) "
+            "VALUES (%s, %s, CURRENT_TIMESTAMP)",
+            ("P-01", "2"),
+        )
+
+    lleno, vacio = repo.lotes_de("P-01")
+
+    assert _desajustes(lleno, FilaLotePublico) == {}
+    assert None not in lleno.values()
+    assert _desajustes(vacio, FilaLotePublico) == {}
+    # Todas las opcionales, no solo `titulo`: un `COALESCE` en el SELECT
+    # publicaría `importe: 0.0` o `cpv: ""` donde la fuente no trae nada, y eso
+    # cabe igual en la forma.
+    assert vacio == {
+        "numero": "2",
+        "titulo": None,
+        "cpv": None,
+        "importe": None,
+        "fecha_limite": None,
+    }
+
+
+@pytest.mark.parametrize(
+    ("forma", "tabla"),
+    [(FilaLicitacionPublica, "licitaciones"), (FilaLotePublico, "lotes")],
+)
+def test_la_nulabilidad_de_cada_forma_es_la_de_su_columna(tmp_db, forma, tabla):
+    """Lo que ninguna fila de ejemplo puede demostrar: que ``str`` sea ``str``.
+
+    Los dos tests de arriba ven valores, y un valor relleno cabe igual en
+    ``str`` que en ``str | None``. Pero es la nulabilidad lo que mypy da por
+    cierto después del ``cast``: la ruta pasa ``fila["titulo"]`` como ``str``
+    sin mirar si es ``None``. Por eso se compara con el esquema y en los dos
+    sentidos: una forma que declare obligatoria una columna nulable, y una
+    migración que quite el ``NOT NULL`` a una columna que la forma da por
+    obligatoria.
+
+    ``current_schema()`` y no ``'public'``: cada test tiene su propio schema.
+    Una columna que no exista sale como ``None`` y también rompe la igualdad.
+    """
+    db_mod, _ = tmp_db
+    with db_mod.connect() as conn:
+        columnas = conn.execute(
+            "SELECT column_name, is_nullable FROM information_schema.columns "
+            "WHERE table_schema = current_schema() AND table_name = %s",
+            (tabla,),
+        ).fetchall()
+    nulable_en_esquema = {nombre: es_nulable == "YES" for nombre, es_nulable in columnas}
+    tipos = get_type_hints(forma)
+
+    assert {clave: type(None) in get_args(tipo) for clave, tipo in tipos.items()} == {
+        clave: nulable_en_esquema.get(clave) for clave in tipos
+    }
 
 
 # ---------------------------------------------------------------------------

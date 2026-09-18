@@ -367,6 +367,12 @@ def _hash_de_la_sesion_actual(request: Request) -> str | None:
     return _hash_token(token)
 
 
+#: Vocabulario de canal y frecuencia que acepta el contrato; el mismo que
+#: `CANALES` y `FRECUENCIAS` de `db/repositories/notification_preferences.py`.
+CanalNotificacion = Literal["email", "in_app", "webhook"]
+FrecuenciaNotificacion = Literal["immediate", "daily", "off"]
+
+
 class NotificationPreference(BaseModel):
     """Una preferencia de notificación (C2.7).
 
@@ -376,9 +382,33 @@ class NotificationPreference(BaseModel):
     """
 
     tipo: str
-    canal: Literal["email", "in_app", "webhook"]
-    frecuencia: Literal["immediate", "daily", "off"]
+    canal: CanalNotificacion
+    frecuencia: FrecuenciaNotificacion
     organization_id: int | None = None
+
+
+class _CanalYFrecuencia(BaseModel):
+    """`canal` y `frecuencia` de una fila de `prefs.listar`, ya con su `Literal`.
+
+    Existe para que `get_notification_preferences` construya
+    `NotificationPreference` con argumentos tipados. Las filas son
+    `dict[str, Any]` y un `Any` cabe en cualquier `Literal`: pasado tal cual,
+    mypy no lo compara con el tipo del campo, y con el `str()` que llevaba la
+    ruta hacía falta un `type: ignore`. Con los dos valores validados aquí, mypy
+    comprueba los nombres y los obligatorios del constructor, el atributo que se
+    lee y que a `canal` no llegue una frecuencia ni a `frecuencia` un canal.
+
+    No cambia qué se acepta. Las dos columnas son `TEXT NOT NULL` y psycopg las
+    entrega como `str`, así que ese `str()` no convertía nada; y los `Literal`
+    son los de `NotificationPreference`, con la misma configuración por defecto,
+    que los vuelve a validar al construirse. Una fila fuera del vocabulario sigue
+    dando `ValidationError`, con los errores de los dos campos juntos y los
+    mismos `loc`, tipo y mensaje; solo el título del error nombra esta clase en
+    vez de `NotificationPreference`.
+    """
+
+    canal: CanalNotificacion
+    frecuencia: FrecuenciaNotificacion
 
 
 class NotificationTypeOut(BaseModel):
@@ -428,16 +458,19 @@ async def get_notification_preferences(
         )
 
     filas = await run_db(prefs.listar, user_id, organization_id=organization_id)
-    return NotificationPreferencesResult(
-        items=[
+    items: list[NotificationPreference] = []
+    for f in filas:
+        vocabulario = _CanalYFrecuencia.model_validate(f)
+        items.append(
             NotificationPreference(
                 tipo=str(f["tipo"]),
-                canal=str(f["canal"]),  # type: ignore[arg-type]
-                frecuencia=str(f["frecuencia"]),  # type: ignore[arg-type]
+                canal=vocabulario.canal,
+                frecuencia=vocabulario.frecuencia,
                 organization_id=f.get("organization_id"),
             )
-            for f in filas
-        ],
+        )
+    return NotificationPreferencesResult(
+        items=items,
         defaults=dict(prefs.DEFECTOS),
         tipos=[NotificationTypeOut(tipo=t, label=e) for t, e in prefs.TIPOS],
     )

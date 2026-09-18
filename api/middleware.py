@@ -660,19 +660,41 @@ class _MaxBodyMiddleware:
         if method in ("POST", "PUT", "PATCH"):
             body_size = 0
             max_bytes = self._MAX_BYTES
+            cortado = False
+            respuesta_empezada = False
 
-            async def limiting_receive() -> dict:  # type: ignore[type-arg]
-                nonlocal body_size
+            async def limiting_receive() -> Message:
+                nonlocal body_size, cortado
                 message = await receive()
                 if message.get("type") == "http.request":
                     body_size += len(message.get("body", b""))
                     if body_size > max_bytes:
+                        cortado = True
                         raise _BodyTooLargeError
                 return dict(message)
 
+            # El _BodyTooLargeError no siempre sale de la app: FastAPI envuelve lo
+            # que salte al leer el cuerpo de una ruta con parámetro de cuerpo en
+            # HTTPException(400, "There was an error parsing the body"), y su
+            # manejador responde ese 400. Por eso, cortado el cuerpo, se descarta
+            # lo que la app responda y el cliente recibe el 413. Si la app ya había
+            # empezado a responder antes del corte, el status no se puede cambiar:
+            # su respuesta pasa tal cual y, si el _BodyTooLargeError llega hasta
+            # aquí, se relanza en vez de mandar un segundo `http.response.start`.
+            async def send_hasta_el_corte(message: Message) -> None:
+                nonlocal respuesta_empezada
+                if cortado and not respuesta_empezada:
+                    return
+                if message["type"] == "http.response.start":
+                    respuesta_empezada = True
+                await send(message)
+
             try:
-                await self.app(scope, limiting_receive, send)
+                await self.app(scope, limiting_receive, send_hasta_el_corte)
             except _BodyTooLargeError:
+                if respuesta_empezada:
+                    raise
+            if cortado and not respuesta_empezada:
                 await self._send_413(send)
         else:
             await self.app(scope, receive, send)
@@ -837,7 +859,7 @@ class ETagMiddleware(BaseHTTPMiddleware):
 
         # Leer el cuerpo completo (sólo si es razonable en tamaño)
         body = b""
-        async for chunk in response.body_iterator:  # type: ignore[attr-defined]
+        async for chunk in response.body_iterator:  # type: ignore[attr-defined]  # call_next se anota como Response, pero BaseHTTPMiddleware entrega un _StreamingResponse, que sí lo tiene
             body += chunk
             if len(body) > self._max_bytes:
                 # Demasiado grande: devolver sin ETag (reconstruir la respuesta)

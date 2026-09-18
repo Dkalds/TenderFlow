@@ -36,7 +36,7 @@ from __future__ import annotations
 
 import dataclasses
 import functools
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from db.database import (
     Licitacion,
@@ -63,6 +63,12 @@ from scraper.codice_parser import (
     parse_entry,
     parse_entry_unfiltered,
 )
+
+if TYPE_CHECKING:
+    # Solo para anotar. El import real sigue dentro de ``_load_classifiers``:
+    # perezoso, detrás de ``ML_TECH_ENABLED`` y en el ``try`` que hace fail-open
+    # la carga del modelo.
+    from scraper.tech_classifier import TechnologyClassifier
 
 log = get_logger(__name__)
 
@@ -154,7 +160,7 @@ class _ClassifierHolder:
     """
 
     ml: Any  # SAPClassifier | None
-    tech: Any  # TechnologyClassifier | None
+    tech: TechnologyClassifier | None
 
 
 @functools.lru_cache(maxsize=1)
@@ -181,7 +187,7 @@ def _load_classifiers() -> _ClassifierHolder:
         log.debug("pipeline.ml_clf_unavailable")
 
     # ── Multi-tecnología (solo si ML_TECH_ENABLED) ─────────────────────────
-    tech: Any = None
+    tech: TechnologyClassifier | None = None
     if getattr(_settings, "ML_TECH_ENABLED", False):
         try:
             from scraper.tech_classifier import TechnologyClassifier
@@ -205,7 +211,7 @@ def _get_ml_clf() -> Any:
     return _load_classifiers().ml
 
 
-def _get_tech_clf() -> Any:
+def _get_tech_clf() -> TechnologyClassifier | None:
     """Devuelve el TechnologyClassifier cargado. None si deshabilitado o no disponible."""
     return _load_classifiers().tech
 
@@ -229,7 +235,7 @@ def _apply_tech_prediction(lic: Licitacion) -> dict[str, Any] | None:
     lic.ml_tecnologias = ",".join(pred["predicted"]) if pred["predicted"] else None
     lic.ml_proba_max = float(pred["max_proba"])
     lic.ml_tech_principal = pred["principal"]
-    return pred  # type: ignore[no-any-return]
+    return pred
 
 
 def _ml_classify_entry(entry_elem: Any) -> Licitacion | None:

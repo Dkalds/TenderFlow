@@ -80,7 +80,7 @@ from __future__ import annotations
 import math
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, NamedTuple
+from typing import TYPE_CHECKING, Any, NamedTuple, cast
 
 from config import settings
 from config.keywords import TECH_LABELS, TECHNOLOGY_KEYWORDS
@@ -1064,7 +1064,9 @@ class TechnologyClassifier:
         # Aceptar instancias re-importadas vía __main__
         if type(obj).__name__ != cls.__name__:
             raise TypeError(f"El archivo no contiene un TechnologyClassifier: {type(obj)}")
-        return obj  # type: ignore[no-any-return]
+        # ``cast`` y no ``isinstance``: la comprobación es por nombre, justo para
+        # admitir la clase re-importada, y mypy no la puede estrechar.
+        return cast(TechnologyClassifier, obj)
 
     @classmethod
     def ensure_downloaded(

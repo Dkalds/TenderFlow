@@ -199,5 +199,7 @@ real está en el backfill (paso 5), gated por OK humano.
   miscount de `INSERT OR IGNORE` en `replace_adjudicaciones_batch`.
 - ✅ Paso 7: comentario "temporal — defensa en profundidad" añadido a
   `web/src/lib/utils.ts::formatDate` con el plan de retirada.
-- ⏸ Paso 4 (pandera): diferido por baja prioridad, según el propio RFC.
+- ✖ Paso 4 (pandera): diferido por baja prioridad, según el propio RFC, y
+  descartado el 2026-09-16: `shared/schemas.py` se borró porque ningún módulo
+  de producción lo importaba. El `CHECK` de la BD sigue siendo el enforcement.
 - ⏸ Paso 5 (revisión Alembic de backfill): gated por OK humano (§6).

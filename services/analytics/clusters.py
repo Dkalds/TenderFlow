@@ -155,7 +155,9 @@ def _tfidf_embeddings(texts: list[str], n_features: int = 256) -> np.ndarray:
         vec = TfidfVectorizer(max_features=n_features, sublinear_tf=True)
         mat = vec.fit_transform(texts)
     dense = mat.toarray().astype(np.float32)
-    return normalize(dense)  # type: ignore[no-any-return]
+    # Anotado porque sklearn no trae py.typed y ``normalize`` devuelve ``Any``.
+    normalizadas: np.ndarray = normalize(dense)
+    return normalizadas
 
 
 def _kmeans_factory(k: int, n_samples: int) -> KMeans | MiniBatchKMeans:

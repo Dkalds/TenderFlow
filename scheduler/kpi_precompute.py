@@ -12,235 +12,35 @@ Uso:
     python -m scheduler.kpi_precompute --latest           # Muestra el último snapshot
     python -m scheduler.kpi_precompute --export-parquet   # Exporta agregados Parquet
 
-Qué universo miden estos KPIs (decisión del 2026-09-03)
---------------------------------------------------------
-Hasta esta fecha las dieciséis consultas de este módulo escribían a mano la
-forma **estrecha** del predicado de universo —el ``COALESCE`` de
-:data:`db.sql_fragments.TECHNOLOGY_OBSERVED_SQL`— mientras la superficie
-pública, el sitemap y los dos hubs usaban la **ancha**
-(``db.sql_fragments.universo_tecnologico_sql``: además, los universos RSS
-autonómicos y cualquier fila con señal técnica propia). Dos definiciones de "el
-radar" en el mismo producto: el KPI de portada contaba una cosa y la portada
-enseñaba otra.
+Dónde está el SQL
+-----------------
+En :mod:`db.kpi_precompute` (ADR-022): las consultas de métricas, el reemplazo
+del snapshot, sus lecturas y las consultas materializadas, junto con la decisión
+del 2026-09-03 sobre **qué universo miden** estos KPIs. Este módulo se queda con
+la orquestación —cronometrar, elegir motor para el Parquet, escribir los
+ficheros y loguear— y no abre conexiones. Los logs salen de aquí y no de ``db/``
+para que sigan firmados por el logger ``scheduler.kpi_precompute``.
 
-Se unifica en la **ancha**, que es la que ve el usuario. Consecuencias que hay
-que asumir a sabiendas:
-
-- **Las cifras de ``kpi_snapshots`` cambian.** Todas las métricas de este
-  módulo —``total_licitaciones``, ``importe_total``, ``n_organos``,
-  ``licitaciones_30d`` y sus deltas, las series por CCAA/estado/mes y los cinco
-  Parquet materializados— pasan a contar también las filas de los RSS
-  autonómicos y las de PSCP con etiqueta técnica. El delta va en la dirección
-  de crecer, pero **cuánto sólo se puede medir contra la BD real**, y esta
-  sesión no tiene Postgres: el número que salga en la primera pasada tras el
-  despliegue no es comparable con el de la pasada anterior, y un salto en la
-  serie histórica de ``kpi_snapshots`` en esa fecha es esperado, no una
-  anomalía de ingesta.
-- **Se pierde el índice parcial de ``v84``** para estas consultas: el predicado
-  ancho es un ``OR`` que incluye filas fuera de ese índice, así que el
-  planificador vuelve al seq scan. Es un job nocturno sin SLA de latencia, no
-  una petición HTTP; se acepta a cambio de que el KPI y la portada cuenten lo
-  mismo. Las consultas que sí necesitan el índice usan
-  ``technology_observed_sql`` y siguen donde estaban.
-
-Las métricas ``ov_*`` que añade ``db/repositories/kpi_snapshots.py`` no pasan
-por aquí y **no** filtran universo: ver su propio módulo.
+El job llega al SQL como ``kpi_db.<nombre>``, un atributo de
+:mod:`db.kpi_precompute` que se resuelve en cada llamada. Para sustituir una
+consulta en un test se parchea ahí o ``db.database.connect``: en este módulo no
+queda ningún alias del SQL por el que pase el job.
 """
 
 from __future__ import annotations
 
-import json
-from datetime import UTC, datetime
 from typing import Any
 
-from db.sql_fragments import universo_tecnologico_sql
+from db import kpi_precompute as kpi_db
 from observability.logging import get_logger
 
 log = get_logger(__name__)
 
-#: El universo del radar, en su forma ancha y escrita una sola vez. El alias
-#: ``l`` obliga a que todas las consultas de abajo lo declaren; ver el
-#: docstring del módulo para por qué la ancha y no la estrecha.
-_UNIVERSO = universo_tecnologico_sql("l")
-
-
-# ── Definición de KPIs a pre-calcular ────────────────────────────────────────
-
-
-def _compute_all_kpis(conn: Any) -> list[dict[str, Any]]:
-    """Calcula todos los KPIs desde la BD directamente.
-
-    Returns:
-        Lista de {metrica, dimension, valor, valor_text}.
-    """
-    snapshots: list[dict[str, Any]] = []
-    now = datetime.now(UTC).isoformat()
-
-    # ── Métricas globales ─────────────────────────────────────────────────
-
-    # Total de licitaciones
-    row = conn.execute(f"SELECT COUNT(*) FROM licitaciones l WHERE {_UNIVERSO}").fetchone()  # noqa: S608
-    snapshots.append({"metrica": "total_licitaciones", "dimension": "global", "valor": row[0]})
-
-    # Importe total y medio
-    row = conn.execute(
-        "SELECT SUM(l.importe), AVG(l.importe) FROM licitaciones l "  # noqa: S608
-        f"WHERE l.importe IS NOT NULL AND {_UNIVERSO}"
-    ).fetchone()
-    snapshots.append({"metrica": "importe_total", "dimension": "global", "valor": row[0] or 0.0})
-    snapshots.append({"metrica": "importe_medio", "dimension": "global", "valor": row[1] or 0.0})
-
-    # Órganos distintos
-    row = conn.execute(
-        "SELECT COUNT(DISTINCT l.organo_contratacion) FROM licitaciones l "  # noqa: S608
-        f"WHERE l.organo_contratacion IS NOT NULL AND {_UNIVERSO}"
-    ).fetchone()
-    snapshots.append({"metrica": "n_organos", "dimension": "global", "valor": row[0]})
-
-    # CCAA distintas
-    row = conn.execute(
-        "SELECT COUNT(DISTINCT l.ccaa) FROM licitaciones l "  # noqa: S608
-        f"WHERE l.ccaa IS NOT NULL AND {_UNIVERSO}"
-    ).fetchone()
-    snapshots.append({"metrica": "n_ccaa", "dimension": "global", "valor": row[0]})
-
-    # Licitaciones últimos 30 días
-    row = conn.execute(
-        "SELECT COUNT(*) FROM licitaciones l WHERE l.fecha_publicacion >= "  # noqa: S608
-        "to_char(CURRENT_DATE - INTERVAL '30 days', 'YYYY-MM-DD') "
-        f"AND {_UNIVERSO}"
-    ).fetchone()
-    snapshots.append({"metrica": "licitaciones_30d", "dimension": "global", "valor": row[0]})
-
-    # Licitaciones 30d anteriores (para delta)
-    row = conn.execute(
-        "SELECT COUNT(*) FROM licitaciones l "  # noqa: S608
-        "WHERE l.fecha_publicacion >= to_char(CURRENT_DATE - INTERVAL '60 days', 'YYYY-MM-DD') "
-        "  AND l.fecha_publicacion < to_char(CURRENT_DATE - INTERVAL '30 days', 'YYYY-MM-DD') "
-        f"  AND {_UNIVERSO}"
-    ).fetchone()
-    snapshots.append({"metrica": "licitaciones_30d_prev", "dimension": "global", "valor": row[0]})
-
-    # ── Por CCAA ──────────────────────────────────────────────────────────
-
-    rows = conn.execute(
-        "SELECT l.ccaa AS ccaa, COUNT(*) as n, SUM(l.importe) as total "  # noqa: S608
-        "FROM licitaciones l WHERE l.ccaa IS NOT NULL "
-        f"AND {_UNIVERSO} "
-        "GROUP BY l.ccaa ORDER BY n DESC"
-    ).fetchall()
-    ccaa_data = [{"ccaa": r[0], "n": r[1], "importe": r[2]} for r in rows]
-    snapshots.append(
-        {
-            "metrica": "licitaciones_por_ccaa",
-            "dimension": "global",
-            "valor": None,
-            "valor_text": json.dumps(ccaa_data, ensure_ascii=False),
-        }
-    )
-
-    # ── Por estado ────────────────────────────────────────────────────────
-
-    rows = conn.execute(
-        "SELECT l.estado, COUNT(*) FROM licitaciones l WHERE l.estado IS NOT NULL "  # noqa: S608
-        f"AND {_UNIVERSO} "
-        "GROUP BY l.estado ORDER BY 2 DESC"
-    ).fetchall()
-    estado_data = {r[0]: r[1] for r in rows}
-    snapshots.append(
-        {
-            "metrica": "licitaciones_por_estado",
-            "dimension": "global",
-            "valor": None,
-            "valor_text": json.dumps(estado_data, ensure_ascii=False),
-        }
-    )
-
-    # ── Adjudicaciones ────────────────────────────────────────────────────
-
-    row = conn.execute(
-        "SELECT COUNT(*), COUNT(DISTINCT a.licitacion_id) FROM adjudicaciones a "  # noqa: S608
-        "JOIN licitaciones l ON l.id_externo = a.licitacion_id "
-        f"WHERE {_UNIVERSO}"
-    ).fetchone()
-    snapshots.append({"metrica": "total_adjudicaciones", "dimension": "global", "valor": row[0]})
-    snapshots.append({"metrica": "licitaciones_con_adj", "dimension": "global", "valor": row[1]})
-
-    # Top 10 adjudicatarios por importe
-    rows = conn.execute(
-        "SELECT a.nombre, COUNT(*) as n, SUM(a.importe_adjudicado) as total "  # noqa: S608
-        "FROM adjudicaciones a JOIN licitaciones l ON l.id_externo = a.licitacion_id "
-        "WHERE a.nombre IS NOT NULL AND a.importe_adjudicado IS NOT NULL "
-        f"AND {_UNIVERSO} "
-        "GROUP BY a.nombre ORDER BY total DESC LIMIT 10"
-    ).fetchall()
-    top_adj = [{"nombre": r[0], "n": r[1], "importe": r[2]} for r in rows]
-    snapshots.append(
-        {
-            "metrica": "top10_adjudicatarios",
-            "dimension": "global",
-            "valor": None,
-            "valor_text": json.dumps(top_adj, ensure_ascii=False),
-        }
-    )
-
-    # ── Serie mensual últimos 24 meses ────────────────────────────────────
-
-    rows = conn.execute(
-        "SELECT to_char(l.fecha_publicacion::date, 'YYYY-MM') as mes, "  # noqa: S608
-        "       COUNT(*) as n, SUM(l.importe) as total "
-        "FROM licitaciones l "
-        "WHERE l.fecha_publicacion >= to_char(CURRENT_DATE - INTERVAL '24 months', 'YYYY-MM-DD') "
-        f"AND {_UNIVERSO} "
-        "GROUP BY mes ORDER BY mes"
-    ).fetchall()
-    serie = [{"mes": r[0], "n": r[1], "importe": r[2]} for r in rows]
-    snapshots.append(
-        {
-            "metrica": "serie_mensual_24m",
-            "dimension": "global",
-            "valor": None,
-            "valor_text": json.dumps(serie, ensure_ascii=False),
-        }
-    )
-
-    # ── Agregados globales del overview (métricas ``ov_*``) ───────────────
-    #
-    # Las calcula `db/repositories/kpi_snapshots.py` con el mismo
-    # `AggregateRepository` que sirve `/analytics/overview`, así que aquí no
-    # hay SQL (ADR-022) y la paridad con el camino en vivo no depende de
-    # mantener dos consultas parecidas sincronizadas a mano. Ojo: **no** son
-    # equivalentes a las métricas de arriba, que filtran `analysis_universe`.
-    from db.repositories.kpi_snapshots import compute_overview_snapshot_rows
-
-    snapshots.extend(compute_overview_snapshot_rows(conn))
-
-    # Añadir timestamp a todos
-    for s in snapshots:
-        s.setdefault("valor_text", None)
-        s["computed_at"] = now
-
-    return snapshots
-
-
-def _persist_snapshots(conn: Any, snapshots: list[dict[str, Any]]) -> int:
-    """Inserta los snapshots en la BD. Devuelve el número de filas insertadas."""
-    conn.execute(
-        "DELETE FROM kpi_snapshots"  # Limpiar todos antes de insertar nuevo snapshot completo
-    )
-    if not snapshots:
-        return 0
-    rows = [
-        (s["computed_at"], s["metrica"], s["dimension"], s.get("valor"), s.get("valor_text"))
-        for s in snapshots
-    ]
-    # executemany: una sola sentencia en vez de N round-trips a SQLite.
-    conn.executemany(
-        "INSERT INTO kpi_snapshots (computed_at, metrica, dimension, valor, valor_text) "
-        "VALUES (%s, %s, %s, %s, %s)",
-        rows,
-    )
-    return len(rows)
+# Reexportación, no costura: ni `run_kpi_precompute` ni el `--latest` de abajo
+# pasan por este nombre, así que parchearlo aquí no cambia lo que hace el job.
+# Existe solo porque `tests/test_integration_e2e.py` lo importa desde este
+# módulo; cuando lo importe de `db.kpi_precompute`, sobra.
+get_all_latest = kpi_db.get_all_latest
 
 
 def run_kpi_precompute() -> dict[str, Any]:
@@ -251,14 +51,12 @@ def run_kpi_precompute() -> dict[str, Any]:
     """
     import time
 
-    from db.database import connect, init_db
+    from db.database import init_db
 
     t0 = time.monotonic()
     init_db()
 
-    with connect() as c:
-        snapshots = _compute_all_kpis(c)
-        n = _persist_snapshots(c, snapshots)
+    n = kpi_db.compute_and_persist_snapshots()
 
     elapsed_ms = int((time.monotonic() - t0) * 1000)
     log.info("kpi_precompute.done", n_metricas=n, elapsed_ms=elapsed_ms)
@@ -267,55 +65,13 @@ def run_kpi_precompute() -> dict[str, Any]:
 
 # ── Exportación Parquet materializada (F2) ────────────────────────────────────
 
-_MAT_QUERIES: dict[str, str] = {
-    # `substr` y no `strftime`: esta consulta la ejecuta DuckDB sólo si el
-    # extra `[analytics]` está instalado; sin él —el caso de la imagen que se
-    # despliega, `requirements.txt` no trae duckdb— cae al fallback de pandas
-    # contra Postgres, que no tiene `strftime`. El `except` por tabla se comía
-    # el error como un `.skip`, así que este Parquet no se escribía nunca y en
-    # silencio. `fecha_publicacion` es texto ISO, de modo que cortar los 7
-    # primeros caracteres da el mes en los dos motores sin castear.
-    "mat_licitaciones_por_mes": (
-        "SELECT substr(l.fecha_publicacion, 1, 7) AS mes, "  # noqa: S608
-        "COUNT(*) AS n, SUM(l.importe) AS importe_total, AVG(l.importe) AS importe_medio "
-        "FROM licitaciones l WHERE l.fecha_publicacion IS NOT NULL "
-        f"AND {_UNIVERSO} "
-        "GROUP BY mes ORDER BY mes"
-    ),
-    "mat_licitaciones_por_ccaa": (
-        "SELECT l.ccaa AS ccaa, COUNT(*) AS n, SUM(l.importe) AS importe_total "  # noqa: S608
-        "FROM licitaciones l WHERE l.ccaa IS NOT NULL "
-        f"AND {_UNIVERSO} "
-        "GROUP BY l.ccaa ORDER BY n DESC"
-    ),
-    "mat_licitaciones_por_estado": (
-        "SELECT l.estado AS estado, COUNT(*) AS n FROM licitaciones l "  # noqa: S608
-        "WHERE l.estado IS NOT NULL "
-        f"AND {_UNIVERSO} "
-        "GROUP BY l.estado ORDER BY n DESC"
-    ),
-    "mat_top_adjudicatarios": (
-        "SELECT a.nombre, COUNT(*) AS n, SUM(a.importe_adjudicado) AS importe_total "  # noqa: S608
-        "FROM adjudicaciones a JOIN licitaciones l ON l.id_externo = a.licitacion_id "
-        "WHERE a.nombre IS NOT NULL AND a.importe_adjudicado IS NOT NULL "
-        f"AND {_UNIVERSO} "
-        "GROUP BY a.nombre ORDER BY importe_total DESC LIMIT 50"
-    ),
-    "mat_licitaciones_por_tipo": (
-        "SELECT l.tipo_contrato AS tipo_contrato, COUNT(*) AS n, "  # noqa: S608
-        "SUM(l.importe) AS importe_total "
-        "FROM licitaciones l WHERE l.tipo_contrato IS NOT NULL "
-        f"AND {_UNIVERSO} "
-        "GROUP BY l.tipo_contrato ORDER BY n DESC"
-    ),
-}
-
 
 def run_kpi_export_parquet(output_dir: str = "data/parquet") -> dict[str, Any]:
-    """Exporta agregados materializados a Parquet usando DuckDB + SQLite (F2).
+    """Exporta agregados materializados a Parquet usando DuckDB sobre Postgres (F2).
 
-    Requiere la dependencia opcional DuckDB (``pip install duckdb``).
-    Si DuckDB no está disponible, intenta exportar vía pandas como fallback.
+    Requiere la dependencia opcional DuckDB (``pip install duckdb``), que
+    :mod:`db.analytics` adjunta a Postgres en modo lectura. Si DuckDB no está
+    disponible, o falla antes de empezar a exportar, lo intenta vía pandas.
 
     Args:
         output_dir: Directorio de destino para los ficheros ``.parquet``.
@@ -328,7 +84,7 @@ def run_kpi_export_parquet(output_dir: str = "data/parquet") -> dict[str, Any]:
     t0 = time.monotonic()
 
     try:
-        from db.analytics import duckdb_query, has_duckdb
+        from db.analytics import has_duckdb
 
         if not has_duckdb():
             return _export_parquet_pandas_fallback(output_dir)
@@ -337,11 +93,10 @@ def run_kpi_export_parquet(output_dir: str = "data/parquet") -> dict[str, Any]:
 
         Path(output_dir).mkdir(parents=True, exist_ok=True)
         exported: list[str] = []
-        for table_name, sql in _MAT_QUERIES.items():
+        for table_name in kpi_db.MAT_QUERIES:
             dest = str(Path(output_dir) / f"{table_name}.parquet")
-            copy_sql = f"COPY ({sql}) TO '{dest}' (FORMAT PARQUET)"
             try:
-                duckdb_query(copy_sql)
+                kpi_db.export_mat_query_duckdb(table_name, dest)
                 exported.append(dest)
                 log.info("kpi_export_parquet.ok", table=table_name, dest=dest)
             except Exception as exc:
@@ -363,22 +118,17 @@ def _export_parquet_pandas_fallback(output_dir: str) -> dict[str, Any]:
 
     import pandas as pd
 
-    from db.database import connect
-
     t0 = time.monotonic()
     Path(output_dir).mkdir(parents=True, exist_ok=True)
     exported: list[str] = []
 
-    with connect() as conn:
-        for table_name, sql in _MAT_QUERIES.items():
+    with kpi_db.mat_query_reader() as leer:
+        for table_name in kpi_db.MAT_QUERIES:
             dest = str(Path(output_dir) / f"{table_name}.parquet")
             try:
-                # sqlite3.Connection compatible con pandas.read_sql
-
-                raw_conn = getattr(conn, "_conn", None) or getattr(conn, "connection", None)
-                if raw_conn is None:
+                if leer is None:
                     continue
-                df = pd.read_sql(sql, raw_conn)
+                df: pd.DataFrame = leer(table_name)
                 df.to_parquet(dest, index=False, engine="pyarrow")
                 exported.append(dest)
                 log.info("kpi_export_parquet_pandas.ok", table=table_name, dest=dest)
@@ -387,68 +137,6 @@ def _export_parquet_pandas_fallback(output_dir: str) -> dict[str, Any]:
 
     elapsed_ms = int((time.monotonic() - t0) * 1000)
     return {"exported": exported, "elapsed_ms": elapsed_ms, "engine": "pandas"}
-
-
-def get_latest_snapshot(metrica: str, dimension: str = "global") -> dict[str, Any] | None:
-    """Lee el snapshot más reciente de una métrica desde la BD.
-
-    Args:
-        metrica: Nombre de la métrica (e.g. "total_licitaciones").
-        dimension: Dimensión (default "global").
-
-    Returns:
-        Dict con {valor, valor_text, computed_at} o None si no hay datos.
-    """
-    from db.database import connect
-
-    with connect() as c:
-        row = c.execute(
-            "SELECT valor, valor_text, computed_at FROM kpi_snapshots "
-            "WHERE metrica = %s AND dimension = %s "
-            "ORDER BY computed_at DESC LIMIT 1",
-            [metrica, dimension],
-        ).fetchone()
-    if row is None:
-        return None
-    result: dict[str, Any] = {"valor": row[0], "computed_at": row[2]}
-    if row[1]:
-        try:
-            result["valor_text"] = json.loads(row[1])
-        except json.JSONDecodeError:
-            result["valor_text"] = row[1]
-    return result
-
-
-def get_all_latest() -> dict[str, Any]:
-    """Devuelve todos los snapshots más recientes como un dict plano.
-
-    Útil para cargar todos los KPIs pre-calculados de una vez.
-    """
-    from db.database import connect
-
-    with connect() as c:
-        # Obtener la fecha del snapshot más reciente
-        row = c.execute("SELECT MAX(computed_at) FROM kpi_snapshots").fetchone()
-        if not row or not row[0]:
-            return {}
-        latest_ts = row[0]
-
-        rows = c.execute(
-            "SELECT metrica, dimension, valor, valor_text FROM kpi_snapshots WHERE computed_at = %s",
-            [latest_ts],
-        ).fetchall()
-
-    result: dict[str, Any] = {"_computed_at": latest_ts}
-    for metrica, dimension, valor, valor_text in rows:
-        key = metrica if dimension == "global" else f"{metrica}__{dimension}"
-        if valor_text:
-            try:
-                result[key] = json.loads(valor_text)
-            except json.JSONDecodeError:
-                result[key] = valor_text
-        else:
-            result[key] = valor
-    return result
 
 
 # ── CLI ───────────────────────────────────────────────────────────────────────
@@ -469,7 +157,7 @@ if __name__ == "__main__":
         from db.database import init_db
 
         init_db()
-        data = get_all_latest()
+        data = kpi_db.get_all_latest()
         if not data:
             log.warning("kpi_precompute.no_snapshots")
         else:

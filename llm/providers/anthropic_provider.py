@@ -79,7 +79,7 @@ def stream(
         return
 
     try:
-        import anthropic  # type: ignore[import-not-found]
+        import anthropic  # type: ignore[import-not-found]  # extra opcional `llm` de pyproject, fuera de requirements
     except ImportError:
         log.warning("llm_anthropic.package_not_installed", hint="pip install anthropic")
         return
