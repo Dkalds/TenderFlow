@@ -969,6 +969,24 @@ tres deudas que hoy hacen frágil cualquier pantalla nueva.
    apareció que `equipo/_components/organizacion-tab.tsx` —la pestaña
    «Organización» que S2.1 y S2.2 dan por entregada, con su test propio— **no
    la montaba ninguna pantalla**. Ahora sí.
+   **2026-09-18 (rama `worktree-agent-acc2389c11c7f60d4`): S5.1 y S5.9, que
+   el cierre de arriba no cubría.** *S5.1:* `resumen/page.tsx` pasa a Server
+   Component y prefetchea `/analytics/resumen/hoy` y `/analytics/overview` con
+   el ámbito de la URL; el Radar prefetchea descartes y «Próximas» desde su
+   `layout.tsx`. Piezas en `web/src/lib/server-prefetch.ts` y
+   `components/prefetch-servidor.tsx`; patrón en `web/AGENTS.md`. La clave sale
+   de los mismos módulos puros que el hook (`lib/filter-params.ts`,
+   `lib/filtered-query.ts`) y un test de paridad por ruta lo exige. **Límite
+   hallado:** nada que dependa de la organización activa se puede prefetchear
+   —vive en `localStorage`— y por eso el ranking del Radar y «Tu día» siguen
+   en el cliente; moverla a cookie es lo que abriría la siguiente ola. Las
+   llamadas salen de la IP del servidor de Next y cuentan contra el
+   rate-limit por IP de la API. *S5.9, con desviación:* la pila común
+   (`Providers`, `Toaster`, nonce…) vive en
+   `components/layout/superficie-privada.tsx` y la usan los tres layouts, **no**
+   en un grupo `(privado)`: exigía mover los 346 ficheros de `(dashboard)`, y
+   un layout común no habría conservado estado porque entrar y salir de la
+   sesión son navegaciones completas. Sin E2E ejecutado en esta sesión.
 2. **Formularios con esquema.** `zod` y `react-hook-form` (**[§6]** deps,
    pre-autorizado) para los seis formularios con validación: login, reglas,
    perfil, equipo, oportunidad y webhooks. Esfuerzo M.
