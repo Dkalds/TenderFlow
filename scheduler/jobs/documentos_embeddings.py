@@ -21,6 +21,11 @@ resto del scraper):
    vigente → ``services.tech_signal.score_documents`` (keywords) → fusión
    inmediata hacia ``ml_tecnologias`` para ese lote
    (``services.tech_signal.merge_doc_signals``).
+5. **Resumen IA**: calienta el caché del resumen de las licitaciones que se
+   van a abrir (seguidas, banda ``Caliente`` del score, publicadas hoy) si no
+   tienen entrada vigente (solo con ``RESUMEN_PREGEN_ENABLED=True`` y caché
+   compartida). Mismo corte por credencial rechazada que la fase 3, más el
+   del presupuesto LLM.
 
 Si el extra ``[ml-embeddings]`` no está instalado, la fase de embeddings se
 salta con un warning (no rompe la fase de fetch, que solo necesita ``[pliegos]``).
@@ -28,7 +33,7 @@ salta con un warning (no rompe la fase de fetch, que solo necesita ``[pliegos]``
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from typing import Any
 
 from observability.logging import get_logger
@@ -39,6 +44,7 @@ _FETCH_BATCH_SIZE = 50
 _EMBED_BATCH_SIZE = 50
 _FACTS_BATCH_SIZE = 10
 _TECH_SIGNAL_BATCH_SIZE = 500
+_RESUMEN_PREGEN_BATCH_SIZE = 20
 
 
 def _run_fetch_phase(limit: int = _FETCH_BATCH_SIZE) -> dict[str, int]:
@@ -297,11 +303,129 @@ def _run_tech_signal_phase(limit: int = _TECH_SIGNAL_BATCH_SIZE) -> dict[str, in
     return counts
 
 
+def _ids_banda_caliente(limit: int) -> list[str]:
+    """Top de la banda ``Caliente`` del score genérico (sin perfil de usuario).
+
+    El score no tiene columna que leer —se calcula en
+    ``services.analytics.scoring`` sobre el universo vivo—, así que esta fuente
+    la pide el job al servicio en vez de a ``db/``.
+    """
+    from services.analytics.scoring import ScoringFilters, get_scoring
+
+    resultado = get_scoring(ScoringFilters(band="Caliente", limit=limit))
+    return [op.id_externo for op in resultado.opportunities]
+
+
+def _candidatas_resumen(limit: int) -> list[str]:
+    """Licitaciones a pre-resumir, por prioridad y sin repetir.
+
+    Orden: seguidas (oportunidad abierta o favorita) → banda ``Caliente`` del
+    score → publicadas hoy. Cada fuente es fail-open: si el scoring se cae, las
+    seguidas y las de hoy se resumen igual.
+    """
+    from datetime import UTC, datetime
+
+    from db.resumen_pregen import licitaciones_publicadas_desde, licitaciones_seguidas_abiertas
+
+    inicio_de_hoy = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
+    fuentes: list[tuple[str, Callable[[], list[str]]]] = [
+        ("seguidas", lambda: licitaciones_seguidas_abiertas(limit)),
+        ("banda_caliente", lambda: _ids_banda_caliente(limit)),
+        ("publicadas_hoy", lambda: licitaciones_publicadas_desde(inicio_de_hoy.isoformat(), limit)),
+    ]
+    vistas: dict[str, None] = {}
+    for nombre, fuente in fuentes:
+        if len(vistas) >= limit:
+            break
+        try:
+            ids = fuente()
+        except Exception as exc:
+            log.warning("resumen_pregen_fuente_failed", fuente=nombre, error=str(exc))
+            continue
+        for id_externo in ids:
+            vistas.setdefault(id_externo, None)
+    return list(vistas)[:limit]
+
+
+def _run_resumen_pregen_phase(limit: int = _RESUMEN_PREGEN_BATCH_SIZE) -> dict[str, Any]:
+    """Calienta el caché del resumen IA para las licitaciones que se van a abrir.
+
+    Fase opcional (``RESUMEN_PREGEN_ENABLED``, mismo patrón que la de fichas) y
+    la última del job: va después de fichas y embeddings porque los dos entran
+    en el contexto del resumen, y un resumen generado antes quedaría invalidado
+    —su firma de estado cambia— por el trabajo de esta misma corrida.
+
+    Solo tiene sentido con caché compartida (Redis): con la de memoria el
+    resumen moriría con el proceso del job, y la fase se salta entera en vez de
+    pagar por nada. El presupuesto LLM se comprueba **antes de cada**
+    licitación con el BudgetGuard global: agotarlo corta el lote, porque un
+    usuario que pide su resumen mañana tiene prioridad sobre calentar uno que
+    quizá nadie abra. Una credencial rechazada también lo corta, por lo mismo
+    que en la fase de fichas.
+    """
+    from config import settings
+
+    # Any: contadores enteros más la causa textual del corte.
+    counts: dict[str, Any] = {
+        "generados": 0,
+        "vigentes": 0,
+        "vacios": 0,
+        "no_encontradas": 0,
+        "error": 0,
+        "disabled": 0,
+    }
+    if not settings.RESUMEN_PREGEN_ENABLED:
+        counts["disabled"] = 1
+        return counts
+
+    from services.rag.resumen import RESUMEN_CACHE_NAMESPACE, pregenerar_resumen
+    from shared.cache import es_compartida, get_cache
+
+    if not es_compartida(get_cache(RESUMEN_CACHE_NAMESPACE)):
+        counts["sin_cache_compartida"] = 1
+        log.warning("resumen_pregen_skipped_sin_cache_compartida")
+        return counts
+
+    from llm.budget import LLMBudgetExceeded, get_budget_guard
+    from llm.providers import LLMAuthError
+
+    guard = get_budget_guard()
+    candidatas = _candidatas_resumen(limit)
+    counts["candidatas"] = len(candidatas)
+    for id_externo in candidatas:
+        try:
+            guard.check()
+        except LLMBudgetExceeded as exc:
+            counts["presupuesto_agotado"] = str(exc)
+            log.warning("resumen_pregen_budget_exhausted", pendientes=len(candidatas))
+            break
+        try:
+            resultado = pregenerar_resumen(id_externo, model=settings.RESUMEN_PREGEN_MODEL)
+        except LLMAuthError as exc:
+            counts["error"] += 1
+            counts["credencial_rechazada"] = str(exc)
+            log.error("resumen_pregen_auth_rejected", id_externo=id_externo, error=str(exc))
+            break
+        except Exception as exc:
+            counts["error"] += 1
+            log.warning("resumen_pregen_failed", id_externo=id_externo, error=str(exc))
+            continue
+        clave = {
+            "generado": "generados",
+            "vigente": "vigentes",
+            "vacio": "vacios",
+            "no_encontrada": "no_encontradas",
+        }[resultado]
+        counts[clave] += 1
+    return counts
+
+
 def run() -> dict[str, Any]:
     """Entry point del job.
 
     Los límites por fase vienen de ``config.settings`` (PLIEGO_FETCH_BATCH /
-    PLIEGO_EMBED_BATCH / PLIEGO_FACTS_BATCH / PLIEGO_TECH_SIGNAL_BATCH); las
+    PLIEGO_EMBED_BATCH / PLIEGO_FACTS_BATCH / PLIEGO_TECH_SIGNAL_BATCH /
+    RESUMEN_PREGEN_BATCH); las
     constantes de módulo ``_FETCH_BATCH_SIZE`` etc. quedan como default de
     cada función para quien las invoque directamente (tests, backfills
     manuales) sin pasar por aquí.
@@ -312,18 +436,21 @@ def run() -> dict[str, Any]:
     embed_result = _run_embed_phase(limit=settings.PLIEGO_EMBED_BATCH)
     facts_result = _run_facts_phase(limit=settings.PLIEGO_FACTS_BATCH)
     tech_signal_result = _run_tech_signal_phase(limit=settings.PLIEGO_TECH_SIGNAL_BATCH)
+    resumen_result = _run_resumen_pregen_phase(limit=settings.RESUMEN_PREGEN_BATCH)
     log.info(
         "documentos_embeddings_job_done",
         fetch=fetch_result,
         embed=embed_result,
         facts=facts_result,
         tech_signal=tech_signal_result,
+        resumen_pregen=resumen_result,
     )
     return {
         "fetch": fetch_result,
         "embed": embed_result,
         "facts": facts_result,
         "tech_signal": tech_signal_result,
+        "resumen_pregen": resumen_result,
     }
 
 

@@ -322,6 +322,16 @@ def get_cache(namespace: str = "default") -> _MemoryBackend | _RedisBackend:
         return backend
 
 
+def es_compartida(backend: _MemoryBackend | _RedisBackend) -> bool:
+    """True si lo que se escriba en ``backend`` lo verá otro proceso.
+
+    Lo necesita quien escribe en la caché **para otro**: un job que calienta
+    entradas que servirá la API. Con el backend de memoria esas escrituras
+    mueren con el proceso del job, y hacerlas es gasto sin efecto.
+    """
+    return isinstance(backend, _RedisBackend)
+
+
 def _try_redis(namespace: str) -> _MemoryBackend | _RedisBackend:
     """Intenta conectar con Redis; si falla devuelve MemoryBackend.
 
