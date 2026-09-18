@@ -11,6 +11,7 @@ import { MultiSelect } from "@/components/ui/multi-select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { SearchAutocomplete } from "@/components/ui/search-autocomplete";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { AmbitoIntro } from "@/components/layout/ambito-intro";
 import { ScrollEdge, useScrollEdgeState } from "@/components/layout/scroll-edge";
 import { SavedViewsMenu } from "@/components/saved-views-menu";
 import { ExportPopover } from "@/components/export-popover";
@@ -654,6 +655,9 @@ export function ScopeBar() {
         </div>
       </header>
       <ScrollEdge active={scrolled} />
+      {/* Primer uso: qué es esta barra. Solo en la rama con ámbito, que es
+          donde hay algo que explicar; se cierra una vez por navegador. */}
+      <AmbitoIntro />
     </>
   );
 }

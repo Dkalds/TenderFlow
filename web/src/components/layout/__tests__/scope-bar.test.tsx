@@ -106,6 +106,7 @@ vi.mock("@/components/export-popover", () => ({ ExportPopover: () => null }));
 vi.mock("@/components/notification-bell", () => ({ NotificationBell: () => null }));
 
 import { ScopeBar } from "@/components/layout/scope-bar";
+import { marcarAmbitoIntroVista } from "@/components/onboarding/ambito-intro";
 import { analyticsKeys, metaKeys } from "@/lib/query-keys";
 
 describe("contrato con las claves de query", () => {
@@ -132,6 +133,9 @@ const removeButton = (name: RegExp) => screen.getByRole("button", { name });
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // La explicación de primer uso tiene su propio test (`ambito-intro.test.tsx`);
+  // aquí se da por vista para que su texto no se cruce con el de la barra.
+  marcarAmbitoIntroVista();
   pathnameRef.current = "/mercado";
   filterParamsRef.current = {};
   historyRef.current = { canUndo: false, canRedo: false };
