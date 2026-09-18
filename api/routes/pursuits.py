@@ -19,6 +19,7 @@ from fastapi import (
 from pydantic import BaseModel, Field
 
 from api.concurrency import run_db
+from api.pagination import PageParams, pagina
 from api.routes.dual_auth import require_any_auth, require_recent_session
 from db.audit import log_event
 from db.repositories.pursuits import PursuitRepository
@@ -761,8 +762,7 @@ async def get_pursuits(
     organization_id: int | None = Query(default=None, ge=1),
     pursuit_status: PursuitStatus | None = Query(default=None, alias="status"),
     responsible_user_id: int | None = Query(default=None, ge=1),
-    limit: int = Query(default=50, ge=1, le=200),
-    offset: int = Query(default=0, ge=0),
+    page: PageParams = Depends(pagina(50)),
     ctx: dict[str, Any] = Depends(require_any_auth),
 ) -> PursuitListResponse:
     """Lista únicamente opportunities de una organización autorizada."""
@@ -773,8 +773,8 @@ async def get_pursuits(
             organization_id=organization_id,
             status=pursuit_status,
             responsible_user_id=responsible_user_id,
-            limit=limit,
-            offset=offset,
+            limit=page.limit,
+            offset=page.offset,
         )
     except OrganizationAccessError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
@@ -1346,8 +1346,7 @@ async def patch_pursuit(
 async def get_pursuit_comments(
     pursuit_id: int,
     organization_id: int | None = Query(default=None, ge=1),
-    limit: int = Query(default=200, ge=1, le=500),
-    offset: int = Query(default=0, ge=0),
+    page: PageParams = Depends(pagina(200)),
     ctx: dict[str, Any] = Depends(require_any_auth),
 ) -> PursuitCommentListResponse:
     """Conversación del equipo sobre la oportunidad.
@@ -1361,8 +1360,8 @@ async def get_pursuit_comments(
             int(ctx["user_id"]),
             pursuit_id,
             organization_id=organization_id,
-            limit=limit,
-            offset=offset,
+            limit=page.limit,
+            offset=page.offset,
         )
     except OrganizationAccessError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc

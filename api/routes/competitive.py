@@ -14,6 +14,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 from pydantic import BaseModel, Field
 
 from api.concurrency import run_db
+from api.pagination import PageParams, pagina
 from api.routes.dual_auth import require_any_auth
 from api.tenancy import require_organization, resolve_organization_ctx
 from db.idempotency import cached_response, store_response
@@ -427,8 +428,7 @@ async def get_adjudicaciones_empresa(
         "fecha_desc",
         pattern="^(fecha_desc|fecha_asc|importe_desc|importe_asc)$",
     ),
-    limit: int = Query(25, ge=1, le=500),
-    offset: int = Query(0, ge=0),
+    page: PageParams = Depends(pagina(25)),
     _ctx: dict[str, Any] = Depends(require_any_auth),
 ) -> dict[str, Any]:
     return await run_db(
@@ -444,8 +444,8 @@ async def get_adjudicaciones_empresa(
         q=q,
         organo=organo,
         sort=sort,
-        limit=limit,
-        offset=offset,
+        limit=page.limit,
+        offset=page.offset,
     )
 
 

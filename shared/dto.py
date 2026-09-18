@@ -400,6 +400,22 @@ class WatchlistEntry(BaseModel):
     updated_at: PgDateTime | None = None
 
 
+# ── «Grandes en plazo» (el campo que se llama `calientes`) ──────────────────
+#
+# Decisión del 2026-09-18 (P3 «Unificar la definición de Calientes»): el
+# contador del Resumen y de la campana **mantiene su heurística de importe** y
+# no adopta la banda `Caliente` del score. Responde a «cuáles son gordas y
+# siguen vivas», que es otra pregunta que «cuáles merecen mi tiempo», y el
+# score ya tiene su superficie (el Radar). La UI lo rotula «Grandes en plazo»
+# desde el 2026-08-12; el nombre del campo se conserva porque es contrato
+# público, y esta descripción es lo que el cliente generado lee en su lugar.
+DESCRIPCION_GRANDES_EN_PLAZO = (
+    "«Grandes en plazo»: licitaciones abiertas, en plazo y con importe ≥ P75 del "
+    "ámbito. NO es la banda `Caliente` del score (≥ 75 puntos); el nombre del "
+    "campo se conserva por compatibilidad del contrato."
+)
+
+
 # ── Clustering (F1) ─────────────────────────────────────────────────────────
 
 

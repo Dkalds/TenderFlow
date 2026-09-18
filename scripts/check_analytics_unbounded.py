@@ -38,13 +38,13 @@ _ROUTER = _REPO_ROOT / "api" / "routes" / "analytics.py"
 _SERVICIOS = _REPO_ROOT / "services" / "analytics"
 _REPOSITORIOS = _REPO_ROOT / "db" / "repositories"
 
-#: Violaciones vivas el 2026-09-06. **Solo puede encoger.**
+#: Violaciones vivas el 2026-09-06 (ocho; siete desde el 2026-09-18). **Solo puede encoger.**
 #:
 #: Formato `fichero::metodo`. Añadir una entrada es declarar que se introduce un
 #: escaneo sin cota alcanzable desde la analítica: una decisión explícita, no un
 #: descuido.
 #:
-#: Ninguna de estas ocho se arregla con un `LIMIT` puesto encima: todas acotan
+#: Ninguna de estas siete se arregla con un `LIMIT` puesto encima: todas acotan
 #: hoy por filtro (órgano, ventana de fechas, estado abierto) y ponerles un tope
 #: constante **truncaría el resultado en silencio** — un Radar con 300 de 400
 #: candidatas, un forecast sobre media serie. Lo que piden es o bien agregar en
@@ -64,8 +64,9 @@ ALLOWLIST: frozenset[str] = frozenset(
         "adjudicaciones.py::load_por_organo",
         "adjudicaciones.py::load_ute_rows",
         # Serie histórica completa para el forecast. Un LIMIT aquí recorta la
-        # serie por un extremo y sesga la predicción.
-        "aggregates.py::adjudicaciones_para_forecast",
+        # serie por un extremo y sesga la predicción. Sus adjudicaciones
+        # (`adjudicaciones_para_forecast`) salieron el 2026-09-18: leen por
+        # `= ANY(%s)` los ids de esta proyección, así que su cota es esta.
         "aggregates.py::retendering_universe",
         # Proyecciones acotadas por filtro (un órgano, una ventana de fechas).
         "aggregates.py::licitaciones_por_organo",
@@ -86,14 +87,19 @@ _COTA_EN_SQL = re.compile(
     r"\bMAX\s*\(|\bMIN\s*\(|\bfetchone\b",
     re.I,
 )
-#: Lectura acotada por identidad. Cubre tres formas, y las tres las acota el
+#: Lectura acotada por identidad. Cubre cuatro formas, y las cuatro las acota el
 #: argumento de quien llama, no el tamaño de la tabla:
 #:
 #: - `WHERE licitacion_id = %s` — una fila.
 #: - `WHERE id_externo IN (%s, %s, …)` — tantas como ids se pasen.
+#: - `WHERE licitacion_id = ANY(%s)` — la misma lista, pasada como array: la
+#:   forma de psycopg para no generar un marcador por id. Hasta el 2026-09-18 el
+#:   detector no la reconocía y `adjudicaciones_para_forecast` figuraba en la
+#:   allowlist por la grafía, no por falta de cota; su cota es la lista que le
+#:   pasa `retendering_universe`, que sigue declarada abajo.
 #: - `WHERE a.id = %s` — con alias de tabla.
 _POR_IDENTIDAD = re.compile(
-    r"WHERE\s+[\w.\"]*\w*id\w*\s*(?:=\s*%s|IN\s*\()",
+    r"WHERE\s+[\w.\"]*\w*id\w*\s*(?:=\s*%s|=\s*ANY\s*\(\s*%s\s*\)|IN\s*\()",
     re.I,
 )
 

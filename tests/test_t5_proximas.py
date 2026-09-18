@@ -26,6 +26,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from api.pagination import PageParams
 from db.repositories.licitaciones import LicitacionRepository
 from services.classification import ESTADOS_PRE_LICITACION
 from shared.estados import ESTADOS_CERRADOS
@@ -179,7 +180,7 @@ def _llamar(filas: list[dict[str, Any]], total: int, con_fecha: int) -> Any:
         "proximas",
         return_value=(filas, total, con_fecha),
     ):
-        return asyncio.run(radar_route.get_proximas(limit=50, offset=0, _ctx={}))
+        return asyncio.run(radar_route.get_proximas(page=PageParams(limit=50, offset=0), _ctx={}))
 
 
 def test_la_fecha_prevista_es_fecha_inicio_cuando_existe() -> None:

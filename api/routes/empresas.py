@@ -13,6 +13,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
 
 from api.concurrency import run_db
+from api.pagination import PageParams, pagina
 from api.routes.dual_auth import require_any_auth
 from db.audit import log_event
 from db.empresas import apply_review, list_pending_reviews, resolution_stats
@@ -140,8 +141,7 @@ _repo = EmpresasReadRepository()
 @router.get("", summary="Buscar empresas del maestro")
 async def list_empresas(
     q: str | None = Query(None, max_length=200, description="Nombre, alias o NIF (parcial)"),
-    limit: int = Query(50, ge=1, le=200),
-    offset: int = Query(0, ge=0),
+    page: PageParams = Depends(pagina(50)),
     sort: EmpresasOrderBy = Query("importe", description="Columna por la que ordenar"),
     order: EmpresasOrderDir = Query("desc", description="Sentido del orden"),
     _ctx: dict[str, Any] = Depends(require_any_auth),
@@ -153,11 +153,11 @@ async def list_empresas(
     empresas eso responde a una pregunta distinta de la que hace quien pulsa
     la cabecera «Importe».
     """
-    items, total = await run_db(_repo.list_empresas, q, limit, offset, sort, order)
+    items, total = await run_db(_repo.list_empresas, q, page.limit, page.offset, sort, order)
     return EmpresasListResult(
         items=[EmpresaListItem(**item) for item in items],
-        limit=limit,
-        offset=offset,
+        limit=page.limit,
+        offset=page.offset,
         total=total,
         sort=sort,
         order=order,

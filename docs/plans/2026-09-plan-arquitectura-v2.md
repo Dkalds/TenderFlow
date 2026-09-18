@@ -878,6 +878,12 @@ API no pague en su threadpool lo que puede esperar.
    el 202 responde en menos de 200 ms sin tocar el LLM (test con proveedor
    simulado); `GET /jobs/{id}` de otra organización → 404; el estado de la
    ficha (`ficha-pliego/estado`) lee la cola.
+   *Estado (2026-09-18):* el «`resumen` sin caché» **sale de esta lista por
+   decisión**, no por olvido: sigue en línea con SSE como `/ask`, y la
+   excepción y su motivo están en
+   [ADR-028 §F](../adr/ADR-028-cola-de-trabajo-y-worker.md). Lo que ataca su
+   coste es la pre-generación nocturna del caché (fase 5 de
+   `scheduler/jobs/documentos_embeddings.py`).
 3. **Worker en Render.** `APP_PROFILE=worker` y `scheduler/worker.py`
    consumen la cola; `render.yaml` declara el servicio (**[§6]**,
    pre-autorizado; exige O0.2 cerrado). Actions sigue siendo el único plano de

@@ -164,9 +164,18 @@ def test_funnel_estados_orden_fijo(db):
     ]
     expected_n = _expected_por_estado()
     total = len(_ROWS)
+    # Desde 2026-09-18 los cinco escalones se miden contra su propia suma (el
+    # dataset solo tiene esos cinco, así que el denominador es el total) y el
+    # resto contra el ámbito entero.
+    escalones = ("PUB", "EV", "RES", "ADJ", "ANUL")
+    denominador = sum(expected_n.get(est, 0) for est in escalones)
+    assert res.funnel_denominador == denominador
+    assert res.fuera_del_embudo == total - denominador
     for step in res.funnel_estados:
+        base = denominador if step.en_embudo else total
+        assert step.en_embudo is (step.estado in escalones)
         assert step.n == expected_n.get(step.estado, 0)
-        assert step.pct == pytest.approx(expected_n.get(step.estado, 0) / total * 100)
+        assert step.pct == pytest.approx(expected_n.get(step.estado, 0) / base * 100)
 
 
 def test_funnel_estados_suman_el_total(db):

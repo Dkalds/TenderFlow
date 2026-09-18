@@ -17,6 +17,7 @@ from fastapi import (
 from pydantic import BaseModel
 
 from api.concurrency import run_db
+from api.pagination import PageParams, pagina
 from api.routes.dual_auth import require_any_auth
 from api.routes.licitaciones._base import (
     _adj_repo,
@@ -24,7 +25,6 @@ from api.routes.licitaciones._base import (
 )
 from observability.logging import get_logger
 from shared.dto import (
-    MAX_PAGE_LIMIT,
     PaginatedResponse,
 )
 
@@ -63,8 +63,7 @@ async def list_adjudicaciones(
     fecha_desde: str | None = Query(None, description="Fecha adjudicación desde"),
     fecha_hasta: str | None = Query(None, description="Fecha adjudicación hasta"),
     with_total: bool = Query(True, description="Incluir total"),
-    limit: int = Query(50, ge=1, le=MAX_PAGE_LIMIT),
-    offset: int = Query(0, ge=0),
+    page: PageParams = Depends(pagina(50)),
     _ctx: dict[str, Any] = Depends(require_any_auth),
 ) -> PaginatedResponse[AdjudicacionSummary]:
     """Devuelve lista paginada de adjudicaciones."""
@@ -77,14 +76,14 @@ async def list_adjudicaciones(
         ccaa=ccaa,
         fecha_desde=fecha_desde,
         fecha_hasta=fecha_hasta,
-        limit=limit,
-        offset=offset,
+        limit=page.limit,
+        offset=page.offset,
         with_total=with_total,
     )
 
     return PaginatedResponse[AdjudicacionSummary](
         total=total,
-        limit=limit,
-        offset=offset,
+        limit=page.limit,
+        offset=page.offset,
         items=[AdjudicacionSummary.model_validate(d) for d in items],
     )

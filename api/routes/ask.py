@@ -55,17 +55,9 @@ _MAX_TOP_K = 20
 _MAX_HISTORY_MESSAGES = 20
 _MAX_HISTORY_CONTENT_LEN = 4000
 
-_RESUMEN_QUESTION = "Genera el resumen estructurado de esta licitación."
-_RESUMEN_MAX_TOKENS = 1500
-
-# Caché del resumen: mismo expediente + mismos documentos + misma ficha →
-# mismo texto, sin pagar otra llamada LLM ni la espera del streaming. La clave
-# incorpora una firma del estado (metadatos del anuncio, status de cada
-# documento, extracted_at de la ficha), así que un pliego recién procesado o
-# una ficha nueva invalidan solos; el TTL solo acota el caso residual.
-# ``_RESUMEN_CACHE_VERSION`` se bumpea al cambiar el prompt o el contexto.
-_RESUMEN_CACHE_TTL_SECONDS = 7 * 24 * 3600
-_RESUMEN_CACHE_VERSION = "resumen-v2"
+# El prompt, la clave de caché y el armado del contexto del resumen viven en
+# `services/rag/resumen.py`: el job nocturno los usa para pre-generar, y una
+# segunda copia aquí haría que calentara claves que esta ruta nunca lee.
 
 # Campos que viajan en el evento SSE ``degraded`` (fallback sin síntesis LLM).
 # Aditivo al stream, NO al DTO (RFC llm-dependencia-gestionada §3.5).
@@ -303,43 +295,6 @@ def _huella_contexto(question: str, history: list[ChatMessage], docs: list[dict[
 
 def _sse_event(payload: dict[str, Any]) -> str:
     return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
-
-
-def _resumen_cache_key(
-    id_externo: str,
-    model: str,
-    doc: dict[str, Any],
-    documentos: list[dict[str, Any]],
-    ficha_extracted_at: str | None,
-) -> str:
-    """Clave de caché del resumen: expediente + modelo + firma de estado.
-
-    La firma cubre lo que puede cambiar el resumen sin que cambie el id: los
-    metadatos del anuncio (importe, estado, fechas…), el ciclo de vida de cada
-    documento (un pliego que pasa a ``extracted`` cambia el contexto) y la
-    ficha verificada vigente.
-    """
-    import hashlib
-
-    from llm.prompts import prompt_version
-
-    payload = {
-        "v": _RESUMEN_CACHE_VERSION,
-        # C5.5: el hash del system prompt vigente. `_RESUMEN_CACHE_VERSION` se
-        # sube a mano y por eso puede olvidarse; esto no.
-        "prompt": prompt_version("resumen"),
-        "id": id_externo,
-        "model": model,
-        "doc": {k: v for k, v in doc.items() if k not in ("chunks", "_score")},
-        "documentos": [
-            (d.get("id"), d.get("status"), str(d.get("created_at"))) for d in documentos
-        ],
-        "ficha": ficha_extracted_at,
-    }
-    digest = hashlib.sha256(
-        json.dumps(payload, sort_keys=True, ensure_ascii=False, default=str).encode("utf-8")
-    ).hexdigest()
-    return f"resumen|{digest}"
 
 
 def _stream_sse(
@@ -760,53 +715,21 @@ async def resumen_licitacion(
 
     from llm.budget import bind_budget_org, bind_budget_subject
     from llm.client import stream_llm_response
-    from services.rag.context import (
-        LicitacionContext,
-        build_licitacion_context,
-        primary_doc_from_context,
+    from services.rag.resumen import (
+        RESUMEN_CACHE_NAMESPACE,
+        RESUMEN_CACHE_TTL_SECONDS,
+        RESUMEN_MAX_TOKENS,
+        RESUMEN_QUESTION,
+        cargar_contexto_resumen,
+        resumen_cache_key,
     )
 
     scope_key = _budget_subject(user)
     org_key = _budget_org(user)
 
-    # Igual que en `/ask`: el armado del contexto toca BD y no puede correr en
-    # el event loop. `primary_doc_from_context` también va a BD, así que viaja
-    # en el mismo salto al threadpool en vez de en uno propio.
-    def _load_context() -> tuple[LicitacionContext, dict[str, Any], str | None] | None:
-        """Contexto + documento principal + ficha, en el threadpool (van a BD).
-
-        Si hay ficha verificada vigente, sus hechos entran como primer chunk
-        etiquetado: son los únicos datos del sistema validados con cita, y el
-        system prompt de modo ``resumen`` les da prioridad en la sección de
-        requisitos. Su ``extracted_at`` forma parte de la firma de caché.
-        """
-        loaded = build_licitacion_context(id_externo, None)
-        if loaded is None:
-            return None
-        doc = primary_doc_from_context(id_externo, loaded)
-        ficha_at: str | None = None
-        try:
-            from services.rag.fact_sheet import facts_summary_text, get_fact_sheet
-
-            ficha = get_fact_sheet(id_externo)
-            if (
-                ficha is not None
-                and ficha.facts is not None
-                and ficha.status in ("extracted", "needs_review")
-            ):
-                texto = facts_summary_text(ficha.facts)
-                if texto:
-                    doc["chunks"] = [
-                        {"tipo": "ficha estructurada verificada", "texto": texto},
-                        *doc["chunks"],
-                    ]
-                    ficha_at = ficha.extracted_at
-        except Exception as exc:
-            # La ficha es un refuerzo del contexto, nunca un bloqueo del resumen.
-            log.warning("resumen.fact_sheet_context_failed", id_externo=id_externo, error=str(exc))
-        return loaded, doc, ficha_at
-
-    loaded_tuple = await run_db(_load_context)
+    # Igual que en `/ask`: el armado del contexto (anuncio, documento principal
+    # y ficha) toca BD y no puede correr en el event loop.
+    loaded_tuple = await run_db(cargar_contexto_resumen, id_externo)
     if loaded_tuple is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -817,8 +740,8 @@ async def resumen_licitacion(
 
     from shared.cache import get_cache
 
-    cache = get_cache("llm_resumen")
-    cache_key = _resumen_cache_key(id_externo, body.model, doc, ctx["documentos"], ficha_at)
+    cache = get_cache(RESUMEN_CACHE_NAMESPACE)
+    cache_key = resumen_cache_key(id_externo, body.model, doc, ctx["documentos"], ficha_at)
     cached_raw = None if body.force else cache.get(cache_key)
     cached_text = str(cached_raw) if isinstance(cached_raw, str) and cached_raw.strip() else None
 
@@ -854,12 +777,12 @@ async def resumen_licitacion(
             def _generate_and_cache() -> Iterator[str]:
                 parts: list[str] = []
                 for token in stream_llm_response(
-                    question=_RESUMEN_QUESTION,
+                    question=RESUMEN_QUESTION,
                     docs=[doc],
                     model=body.model,
                     keywords=[],
                     mode="resumen",
-                    max_tokens=_RESUMEN_MAX_TOKENS,
+                    max_tokens=RESUMEN_MAX_TOKENS,
                     stop=stop,
                 ):
                     parts.append(token)
@@ -869,7 +792,7 @@ async def resumen_licitacion(
                 texto = "".join(parts).strip()
                 if texto:
                     try:
-                        cache.set(cache_key, texto, ttl=_RESUMEN_CACHE_TTL_SECONDS)
+                        cache.set(cache_key, texto, ttl=RESUMEN_CACHE_TTL_SECONDS)
                     except Exception:
                         log.debug("resumen.cache_set_failed", exc_info=True)
 

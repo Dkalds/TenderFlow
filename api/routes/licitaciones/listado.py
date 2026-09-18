@@ -23,6 +23,7 @@ from pydantic import BaseModel, Field
 
 from api.concurrency import run_db
 from api.errors import deprecate_route
+from api.pagination import PageParams, pagina
 from api.routes.dual_auth import require_any_auth
 from api.routes.licitaciones._base import (
     _MAX_QUERY_LENGTH,
@@ -174,8 +175,7 @@ async def list_licitaciones(
     with_total: bool = Query(
         True, description="Incluir total (false = más rápido para paginación)"
     ),
-    limit: int = Query(50, ge=1, le=MAX_PAGE_LIMIT),
-    offset: int = Query(0, ge=0),
+    page: PageParams = Depends(pagina(50)),
     _ctx: dict[str, Any] = Depends(require_any_auth),
 ) -> PaginatedResponse[LicitacionSummary]:
     """Devuelve lista paginada con filtros opcionales.
@@ -221,8 +221,8 @@ async def list_licitaciones(
         tramitacion=tramitacion,
         tipo_contrato=tipo_contrato,
         dias_restantes_max=dias_restantes_max,
-        limit=limit,
-        offset=offset,
+        limit=page.limit,
+        offset=page.offset,
         sort=sort,
         with_total=with_total,
     )
@@ -237,8 +237,8 @@ async def list_licitaciones(
 
     return PaginatedResponse[LicitacionSummary](
         total=total,
-        limit=limit,
-        offset=offset,
+        limit=page.limit,
+        offset=page.offset,
         items=[LicitacionSummary.model_validate(d) for d in items],
         deprecation_notice="Usa /licitaciones/cursor para datasets grandes.",
     )
