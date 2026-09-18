@@ -1,7 +1,18 @@
 "use client";
 
-import { AlertCircle, BookOpenCheck, ExternalLink, FileText, Loader2, RefreshCw, ScanText } from "lucide-react";
+import * as React from "react";
+import {
+  AlertCircle,
+  BookOpenCheck,
+  ExternalLink,
+  FileSearch,
+  FileText,
+  Loader2,
+  RefreshCw,
+  ScanText,
+} from "lucide-react";
 import { toast } from "sonner";
+import { PaginaPliegoDialog } from "@/components/pliego/pagina-pliego-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -9,6 +20,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { FeedbackButtons } from "@/components/chat-thread";
 import {
   type AnyFact,
+  type EvidenceRef,
   type FactSheetStatus,
   type TenderFactSheet,
   useFactSheetDocumentos,
@@ -85,7 +97,15 @@ function citaPresentation(
   };
 }
 
-function FactRow({ item, docsById }: { item: AnyFact; docsById: Map<number, DocumentoSummary> }) {
+function FactRow({
+  item,
+  docsById,
+  onVerPagina,
+}: {
+  item: AnyFact;
+  docsById: Map<number, DocumentoSummary>;
+  onVerPagina: (cita: EvidenceRef) => void;
+}) {
   const confidence = confidencePresentation(item.confidence);
   const name = optionalField<string>(item, "name");
   const role = optionalField<string>(item, "role");
@@ -164,6 +184,17 @@ function FactRow({ item, docsById }: { item: AnyFact; docsById: Map<number, Docu
                   <blockquote className="mt-1 leading-relaxed text-foreground/85">
                     «{cita.quote}»
                   </blockquote>
+                  {/* F2.5 — la página del pliego con la cita resaltada, sin
+                      salir de la ficha: el enlace de arriba lleva al portal,
+                      que no siempre responde y nunca marca el fragmento. */}
+                  <button
+                    type="button"
+                    onClick={() => onVerPagina(cita)}
+                    className="mt-1 inline-flex items-center gap-1 font-medium text-primary hover:underline"
+                  >
+                    <FileSearch className="h-3 w-3 shrink-0" aria-hidden="true" />
+                    Ver la cita en su página
+                  </button>
                 </li>
               );
             })}
@@ -188,6 +219,8 @@ export function TenderFactSheetPanel({ licitacionId }: { licitacionId: string })
     (documentos.data?.items ?? []).map((doc) => [doc.id, doc]),
   );
   const extracting = extraction.isStarting || extraction.running;
+  const [citaAbierta, setCitaAbierta] = React.useState<EvidenceRef | null>(null);
+  const docCita = citaAbierta ? docsById.get(citaAbierta.documento_id) : undefined;
 
   const requestExtraction = async () => {
     try {
@@ -291,7 +324,12 @@ export function TenderFactSheetPanel({ licitacionId }: { licitacionId: string })
                   </h3>
                   <ul className="space-y-2">
                     {items.map((item, index) => (
-                      <FactRow key={`${category.key}-${index}`} item={item} docsById={docsById} />
+                      <FactRow
+                        key={`${category.key}-${index}`}
+                        item={item}
+                        docsById={docsById}
+                        onVerPagina={setCitaAbierta}
+                      />
                     ))}
                   </ul>
                 </section>
@@ -312,6 +350,15 @@ export function TenderFactSheetPanel({ licitacionId }: { licitacionId: string })
           </div>
         )}
       </CardContent>
+      {/* Montado sólo con una cita abierta: cerrado no pide nada. */}
+      {citaAbierta && (
+        <PaginaPliegoDialog
+          licitacionId={licitacionId}
+          cita={citaAbierta}
+          nombreDocumento={docCita ? (docCita.filename ?? docCita.tipo) : null}
+          onClose={() => setCitaAbierta(null)}
+        />
+      )}
     </Card>
   );
 }

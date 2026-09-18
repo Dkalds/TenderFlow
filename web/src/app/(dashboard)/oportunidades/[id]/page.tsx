@@ -18,6 +18,8 @@ import {
   loteEtiqueta,
 } from "@/components/pursuits/pursuit-presenters";
 import { TenderFactSheetPanel } from "@/components/pursuits/tender-fact-sheet";
+import { GuionOfertaPanel } from "@/components/pliego/guion-oferta";
+import { SimuladorPuntuacion } from "@/components/pliego/simulador-puntuacion";
 import { ChecklistGoNoGo } from "@/components/pursuits/checklist-go-no-go";
 import { AdjudicacionDetectada } from "@/components/pursuits/adjudicacion-detectada";
 import { ExpedientePanel } from "@/components/pursuits/expediente-panel";
@@ -217,8 +219,20 @@ export default function OpportunityDetailPage() {
 
         {tab === "expediente" && <ExpedientePanel licitacionId={pursuit.licitacion_id} />}
 
-        {tab === "pliego" && <TenderFactSheetPanel licitacionId={pursuit.licitacion_id} />}
-        {tab === "precio" && <PriceScenariosPanel licitacionId={pursuit.licitacion_id} />}
+        {tab === "pliego" && (
+          <>
+            <TenderFactSheetPanel licitacionId={pursuit.licitacion_id} />
+            <GuionOfertaPanel licitacionId={pursuit.licitacion_id} />
+          </>
+        )}
+        {tab === "precio" && (
+          <>
+            <PriceScenariosPanel licitacionId={pursuit.licitacion_id} />
+            <Panel className="mt-4">
+              <SimuladorPuntuacion licitacionId={pursuit.licitacion_id} />
+            </Panel>
+          </>
+        )}
         {tab === "conversacion" && (
           <PursuitCommentsThread pursuitId={pursuit.id} className="mx-auto h-full max-w-[760px]" />
         )}

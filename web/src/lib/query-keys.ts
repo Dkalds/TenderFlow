@@ -104,6 +104,41 @@ export const fichaKeys = {
   estado: (licitacionId: string) => ["tender-fact-sheet-estado", licitacionId] as const,
 };
 
+/**
+ * Herramientas que leen la ficha del pliego (F2.2, F2.5, F2.6, F2.8).
+ *
+ * Raíces propias y no bajo `tender-fact-sheet`: el `setQueryData` de la
+ * extracción escribe en `fichaKeys.detail`, y una clave hija con otra forma
+ * de dato compartiría prefijo con ella sin compartir tipo.
+ */
+export const simuladorKeys = {
+  all: ["simulador-precio"] as const,
+  detail: (licitacionId: string, bajas: readonly number[], referencia: number | null) =>
+    ["simulador-precio", licitacionId, [...bajas], referencia] as const,
+};
+
+export const paginaKeys = {
+  all: ["pagina-pliego"] as const,
+  detail: (
+    licitacionId: string,
+    documentoId: number,
+    pagina: number,
+    inicio: number | null,
+    fin: number | null,
+  ) => ["pagina-pliego", licitacionId, documentoId, pagina, inicio, fin] as const,
+};
+
+export const guionKeys = {
+  all: ["guion-oferta"] as const,
+  detail: (licitacionId: string) => ["guion-oferta", licitacionId] as const,
+};
+
+export const comparacionKeys = {
+  all: ["comparar-fichas"] as const,
+  /** El orden importa: es el de las columnas que eligió el usuario. */
+  fichas: (ids: readonly string[]) => ["comparar-fichas", [...ids]] as const,
+};
+
 // ---------------------------------------------------------------------------
 // Analítica
 // ---------------------------------------------------------------------------

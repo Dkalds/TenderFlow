@@ -9,6 +9,7 @@ import { ConsoleFrame } from "@/components/layout/console-frame";
 import { CommandPalette } from "@/components/command-palette";
 import { GlobalCopilot } from "@/components/copilot-panel";
 import { KeyboardHelp } from "@/components/keyboard-help";
+import { BandejaComparacion } from "@/components/pliego/comparacion-bandeja";
 import { OAuthLoginTelemetry } from "@/components/oauth-login-telemetry";
 
 export const dynamic = "force-dynamic";
@@ -51,6 +52,9 @@ export default async function DashboardLayout({ children }: { children: React.Re
       <ConsoleFrame>{children}</ConsoleFrame>
       <CommandPalette />
       <GlobalCopilot />
+      {/* F2.8 — los expedientes marcados para comparar siguen a mano al
+          cambiar de pantalla (Radar → watchlist → ficha). */}
+      <BandejaComparacion />
       <KeyboardHelp />
       <Toaster />
       <LiveRegion />
