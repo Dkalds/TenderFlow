@@ -13,6 +13,7 @@ import { useOrganizationStore } from "@/hooks/use-organization";
 import { useFilters } from "@/lib/filters";
 import { getJSON, setJSON } from "@/lib/storage";
 import {
+  type AccionAplazar,
   type RadarTender,
   type ScoringSignals,
   esBandaConocida,
@@ -88,6 +89,8 @@ export interface RadarConsola {
   lastVisit: number;
   opening: boolean;
   dismiss: (tender: RadarTender) => void;
+  /** F5.6 — silenciar o posponer: ocultar hasta dentro de `dias` días. */
+  aplazar: (tender: RadarTender, accion: AccionAplazar, dias: number) => void;
   restoreAll: () => void;
   toggleFollow: (tender: RadarTender) => void;
   openPursuit: (tender: RadarTender) => Promise<void>;
@@ -215,6 +218,26 @@ export function useRadarConsola(): RadarConsola {
     [dismissTender, restore],
   );
 
+  const aplazar = React.useCallback(
+    (tender: RadarTender, accion: AccionAplazar, dias: number) => {
+      dismissTender.mutate({
+        idExterno: tender.id_externo,
+        score: tender.score,
+        banda: esBandaConocida(tender.band) ? tender.band : null,
+        accion,
+        dias,
+      });
+      // El texto dice cuándo vuelve, que es lo que distingue esto de descartar;
+      // sólo `posponer` promete además un aviso ese día (lo entrega el backend
+      // como alerta de la campana).
+      toast(accion === "silenciar" ? `Silenciada ${dias} días` : `Te lo recordamos en ${dias} días`, {
+        description: tender.titulo ?? undefined,
+        action: { label: "Deshacer", onClick: () => restore(tender.id_externo) },
+      });
+    },
+    [dismissTender, restore],
+  );
+
   const toggleFollow = React.useCallback(
     (tender: RadarTender) => {
       const id = tender.id_externo;
@@ -276,6 +299,7 @@ export function useRadarConsola(): RadarConsola {
     lastVisit,
     opening: createPursuit.isPending,
     dismiss,
+    aplazar,
     restoreAll,
     toggleFollow,
     openPursuit,

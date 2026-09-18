@@ -1,6 +1,6 @@
 "use client";
 
-import type { RadarTender } from "@/hooks/use-radar";
+import type { AccionAplazar, RadarTender } from "@/hooks/use-radar";
 import { InspectorAcciones } from "./radar-inspector-acciones";
 import { InspectorCabecera } from "./radar-inspector-cabecera";
 import { InspectorCuerpo } from "./radar-inspector-cuerpo";
@@ -25,6 +25,7 @@ export function RadarInspector({
   followed,
   onFollow,
   onDismiss,
+  onAplazar,
   onOpenPursuit,
   opening,
   onClose,
@@ -33,6 +34,7 @@ export function RadarInspector({
   followed: boolean;
   onFollow: () => void;
   onDismiss: () => void;
+  onAplazar: (accion: AccionAplazar, dias: number) => void;
   onOpenPursuit: () => void;
   opening: boolean;
   onClose?: () => void;
@@ -47,6 +49,7 @@ export function RadarInspector({
         opening={opening}
         onFollow={onFollow}
         onDismiss={onDismiss}
+        onAplazar={onAplazar}
         onOpenPursuit={onOpenPursuit}
       />
     </div>
