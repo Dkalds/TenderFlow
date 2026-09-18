@@ -559,6 +559,15 @@ class Settings(BaseSettings):
     # Con el flag off, search_for_ask() es idéntico byte-a-byte al camino
     # anterior — PR mergeable sin riesgo.
     RAG_HYBRID_ENABLED: bool = False
+    # ── Núcleo tipado (T2, v133) ────────────────────────────────────────────
+    # Lectura de las columnas sombra (`fecha_publicacion_ts`, `fecha_limite_ts`,
+    # `importe_num`, `duracion_valor_num`) en los fragmentos de lectura dual de
+    # `db/sql_fragments.py`. Default False y se queda así hasta que el backfill
+    # esté VERIFICADO en producción con cero divergencias
+    # (`docs/runbooks/nucleo-tipado-ventana.md`): con el flag off, cada
+    # fragmento devuelve la columna vieja byte a byte. La escritura dual no
+    # depende de esto — `db/upsert.py` escribe las sombras en cuanto existen.
+    NUCLEO_TIPADO_LECTURA: bool = False
     # Extracción tipada de ficha del pliego. Requiere credencial para el modelo
     # seleccionado; se activa de forma explícita para no generar gasto por el
     # mero despliegue de la migración.

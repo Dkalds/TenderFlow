@@ -1086,6 +1086,25 @@ endpoints antiguos por **RFC**. Esfuerzo L · **[§6]** migración y RFC.
 
 ### T2 — Núcleo tipado (backlog P2, ampliado)
 
+> **2026-09-18 — PARCIAL: código y migraciones en el repo; los pasos de
+> producción, pendientes** (rama `worktree-agent-ae7fea40cc310a705`).
+> Hecho: `v133_nucleo_tipado_sombra` (las tres columnas del plan más
+> `duracion_valor_num`, que pedía el P2 del backlog; `importe_num` absorbe el
+> `importe_f8` de aquel ítem), `v134_nucleo_tipado_indices` (`CONCURRENTLY`),
+> escritura dual en `db/upsert.py` (se activa sola cuando existen las
+> columnas), backfill por lotes con verificación
+> (`scripts/backfill_nucleo_tipado.py`, SQL en `db/nucleo_tipado.py`) y
+> fragmentos de lectura dual en `db/sql_fragments.py` detrás de
+> `NUCLEO_TIPADO_LECTURA` (apagado; la clave canónica sigue leyendo el texto).
+> Tests: `tests/test_nucleo_tipado.py` (sin BD) y
+> `tests/test_nucleo_tipado_pg.py` (round-trip exacto con `importe` en `real`
+> y clave canónica idéntica antes/después del backfill — **no ejecutados**, sin
+> Postgres en la máquina que los escribió). **Falta, todo con el dato real**:
+> la ventana de [runbooks/nucleo-tipado-ventana.md](../runbooks/nucleo-tipado-ventana.md)
+> (migrar, backfill, verificación con cero divergencias, índices), el paso de
+> las cinco consultas calientes a los fragmentos con su `EXPLAIN`, y los
+> criterios de aceptación de abajo, que sólo se pueden medir en producción.
+
 **Qué.** Columnas sombra `fecha_publicacion_ts timestamptz`,
 `fecha_limite_ts timestamptz` e `importe_num numeric(14,2)` en
 `licitaciones`, rellenadas por el upsert y por backfill; lectura dual en los
