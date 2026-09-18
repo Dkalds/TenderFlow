@@ -338,6 +338,11 @@ _LEGITIMATE_SWEEPS: frozenset[str] = frozenset(
         "db/repositories/documentos.py::DocumentosRepository.list_pendientes",
         "db/repositories/tender_fact_sheets.py::"
         "TenderFactSheetsRepository.list_pending_licitaciones",
+        # La misma pregunta para la fase 5 de ese job (pre-generación del
+        # resumen IA, 2026-09-18): devuelve solo ids de licitación ordenados
+        # por demanda, y el resumen que se calienta es el del expediente, no el
+        # de un usuario.
+        "db/resumen_pregen.py::licitaciones_seguidas_abiertas",
         # Fan-out del outbox (S4.5 del plan 2026-09 v2). A diferencia de las dos
         # de arriba, ésta SÍ contesta «¿a quién?»: es la consulta que, cuando un
         # expediente seguido cambia, dice a qué seguidores hay que avisar. Un
