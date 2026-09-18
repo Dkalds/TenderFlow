@@ -76,7 +76,7 @@ Generado: 2026-09-18
 
 ## Superficie de la API
 
-**263 endpoints** expuestos.
+**266 endpoints** expuestos.
 
 <details><summary>Ver listado</summary>
 
@@ -254,6 +254,8 @@ Generado: 2026-09-18
 | PUT | `/api/v1/organizations/{organization_id}/members/{member_user_id}` |
 | GET | `/api/v1/organizations/{organization_id}/nifs` |
 | PUT | `/api/v1/organizations/{organization_id}/nifs` |
+| GET | `/api/v1/organizations/{organization_id}/plantilla-tareas` |
+| PUT | `/api/v1/organizations/{organization_id}/plantilla-tareas` |
 | GET | `/api/v1/organizations/{organization_id}/report-schedule` |
 | PUT | `/api/v1/organizations/{organization_id}/report-schedule` |
 | GET | `/api/v1/organizations/{organization_id}/settings` |
@@ -295,6 +297,7 @@ Generado: 2026-09-18
 | PUT | `/api/v1/pursuits/{pursuit_id}/go-no-go` |
 | GET | `/api/v1/pursuits/{pursuit_id}/kit` |
 | POST | `/api/v1/pursuits/{pursuit_id}/kit` |
+| POST | `/api/v1/pursuits/{pursuit_id}/kit/responsable` |
 | GET | `/api/v1/pursuits/{pursuit_id}/tasks` |
 | POST | `/api/v1/pursuits/{pursuit_id}/tasks` |
 | DELETE | `/api/v1/pursuits/{pursuit_id}/tasks/{task_id}` |
