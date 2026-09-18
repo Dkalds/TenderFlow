@@ -1,9 +1,11 @@
 """Scoring batch de predicciones (Fase 6, RFC 20260611-2).
 
 Serving = batch nocturno + lectura de tabla (patrón ``ml_proba``): nada de
-inferencia online por request. Idempotente: PK natural + upsert
+inferencia online por request. Idempotente: clave natural + upsert
 (``ON CONFLICT ... DO UPDATE``) — doble
-ejecución produce las mismas filas.
+ejecución produce las mismas filas. En ``predicciones_baja`` la clave son los
+dos únicos parciales de v140 (expediente, o expediente + ``lote_numero``), y el
+upsert vive en ``PrediccionesRepository.guardar_baja``.
 
 Si no hay versión activa del modelo en ``model_versions`` (no entrenado aún,
 o el entrenamiento no batió al baseline — criterio de honestidad), se sirve
@@ -27,6 +29,7 @@ from observability.logging import get_logger
 from services.dedupe import exclude_duplicados_sql, normalize_organo
 from services.ml.baja_model import (
     MODEL_NAME,
+    MODEL_NAME_LOTE,
     BajaModel,
     FeatureSchemaMismatch,
     Prediccion,
@@ -37,21 +40,22 @@ from services.ml.features import features_licitaciones_abiertas
 log = get_logger(__name__)
 
 
-def _media_global_baja() -> float:
+def _media_global_baja(*, por_lote: bool = False) -> float:
     """Baja media histórica, usada como baseline sin modelo entrenado.
 
     Delega en ``db.repositories.ml_dataset`` para compartir la regla de
     denominador con el target de entrenamiento y con ``calibration.py``: antes
     promediaba bajas **por lote** mientras el modelo predice la baja
     **agregada por expediente**, así que el baseline y el modelo no medían la
-    misma magnitud.
+    misma magnitud. ``por_lote=True`` es el caso simétrico: el baseline del
+    batch por lote promedia bajas por lote, que es lo que ese batch predice.
     """
     from db.repositories.ml_dataset import MlDatasetRepository
 
-    return MlDatasetRepository().media_global_baja()
+    return MlDatasetRepository().media_global_baja(por_lote=por_lote)
 
 
-def _offset_baseline() -> float:
+def _offset_baseline(*, por_lote: bool = False) -> float:
     """Corrección conformal del intervalo del baseline, sobre pares ya resueltos.
 
     Sin esto el baseline servía un ±40% relativo que no cubría el 80% que su
@@ -67,18 +71,55 @@ def _offset_baseline() -> float:
     from services.ml.baja_model import offset_conformal_baseline
 
     try:
-        return offset_conformal_baseline(MlDatasetRepository().pares_baseline_resueltos())
+        return offset_conformal_baseline(
+            MlDatasetRepository().pares_baseline_resueltos(por_lote=por_lote)
+        )
     except Exception as exc:
-        log.warning("baja_baseline_conformal_failed", error=str(exc))
+        log.warning("baja_baseline_conformal_failed", error=str(exc), por_lote=por_lote)
         return 0.0
 
 
 def score_predicciones_baja(*, limit: int = 5000) -> dict[str, Any]:
-    """Puntúa las licitaciones abiertas y materializa ``predicciones_baja``."""
-    filas = features_licitaciones_abiertas(limit=limit)
+    """Puntúa las licitaciones abiertas y materializa ``predicciones_baja``.
+
+    Escribe la fila **agregada** de cada expediente (``lote_numero`` NULL), que
+    es la que se sirve por defecto. Las filas por lote las escribe
+    :func:`score_predicciones_baja_por_lote`, aparte y solo con
+    ``ML_BAJA_POR_LOTE``.
+    """
+    return _score_baja(limit=limit, por_lote=False)
+
+
+def score_predicciones_baja_por_lote(*, limit: int = 5000) -> dict[str, Any]:
+    """Materializa una predicción **por lote** de las licitaciones abiertas (v140).
+
+    Cada lote publicado con presupuesto recibe su fila (``lote_numero`` no
+    nulo), junto a la agregada del expediente, que no se toca. La sirve el
+    modelo :data:`~services.ml.baja_model.MODEL_NAME_LOTE` si hay versión
+    activa y, si no, el baseline histórico calculado **por lote** (medias y
+    anchura conformal sobre pares por lote): el mismo criterio de honestidad
+    que el agregado, a su granularidad.
+
+    No sustituye a nada: la vista del expediente sigue sirviendo el agregado,
+    y la de un lote ya prefería la fila del lote cuando existía
+    (``prediccion_ambito``). Por eso el job solo lo llama con
+    ``ML_BAJA_POR_LOTE`` encendido: la decisión de encenderlo es la que
+    informa ``scripts/comparar_baja_por_lote.py``.
+    """
+    return _score_baja(limit=limit, por_lote=True)
+
+
+def _score_baja(*, limit: int, por_lote: bool) -> dict[str, Any]:
+    """Cuerpo común de los dos batches de baja; ver sus docstrings."""
+    filas = (
+        features_licitaciones_abiertas(limit=limit, por_lote=True)
+        if por_lote
+        else features_licitaciones_abiertas(limit=limit)
+    )
+    granularidad = "lote" if por_lote else "expediente"
     if not filas:
-        log.info("baja_scoring_skip", reason="sin_licitaciones_abiertas")
-        return {"status": "sin_abiertas", "filas": 0}
+        log.info("baja_scoring_skip", reason="sin_licitaciones_abiertas", granularidad=granularidad)
+        return {"status": "sin_abiertas", "filas": 0, "granularidad": granularidad}
 
     from db.model_registry import get_active
     from shared.model_artifacts import resolve_active_artifact
@@ -87,8 +128,9 @@ def score_predicciones_baja(*, limit: int = 5000) -> dict[str, Any]:
     # asset de la Release si el runner efímero no tiene el fichero). Un
     # artefacto irresoluble degrada a baseline; un MISMATCH propaga — servir
     # predicciones de un artefacto equivocado es peor que no servirlas.
-    activa = get_active(MODEL_NAME)
-    artefacto = resolve_active_artifact(MODEL_NAME) if activa else None
+    nombre = MODEL_NAME_LOTE if por_lote else MODEL_NAME
+    activa = get_active(nombre)
+    artefacto = resolve_active_artifact(nombre) if activa else None
     preds: list[Prediccion] | None = None
     version: int | None = None
     # Distingue el baseline legítimo (no hay versión activa: el RFC lo sirve a
@@ -102,7 +144,7 @@ def score_predicciones_baja(*, limit: int = 5000) -> dict[str, Any]:
     # conformalización ya viene dentro del artefacto (`conformal_offset`).
     offset_baseline: float | None = None
     if activa and artefacto is not None:
-        modelo = BajaModel.load(artefacto)
+        modelo = BajaModel.load(artefacto, por_lote=True) if por_lote else BajaModel.load(artefacto)
         try:
             preds = modelo.predict(filas)
             version = int(activa["version"])
@@ -122,33 +164,35 @@ def score_predicciones_baja(*, limit: int = 5000) -> dict[str, Any]:
         if activa and artefacto is None:
             log.warning("baja_model_artifact_unresolvable_fallback_baseline")
             degradado = "artefacto_irresoluble"
-        offset_baseline = _offset_baseline()
-        preds = predecir_baseline(filas, _media_global_baja(), offset_baseline)
+        if por_lote:
+            offset_baseline = _offset_baseline(por_lote=True)
+            media = _media_global_baja(por_lote=True)
+        else:
+            offset_baseline = _offset_baseline()
+            media = _media_global_baja()
+        preds = predecir_baseline(filas, media, offset_baseline)
         version = None
 
     computed_at = now_utc_iso()
-    with connect() as c:
-        c.executemany(
-            "INSERT INTO predicciones_baja "
-            "(licitacion_id, p10, p50, p90, model_version, computed_at) "
-            "VALUES (%s, %s, %s, %s, %s, %s) "
-            "ON CONFLICT(licitacion_id) DO UPDATE SET "
-            "p10=excluded.p10, p50=excluded.p50, p90=excluded.p90, "
-            "model_version=excluded.model_version, computed_at=excluded.computed_at",
-            [
-                (
-                    p.licitacion_id,
-                    round(p.p10, 5),
-                    round(p.p50, 5),
-                    round(p.p90, 5),
-                    version,
-                    computed_at,
-                )
-                for p in preds
-            ],
-        )
+    PrediccionesRepository().guardar_baja(
+        [
+            (
+                p.licitacion_id,
+                # En el batch agregado se fuerza NULL aunque la fila trajera
+                # lote: la unicidad agregada es justo la que protege este NULL.
+                p.lote_numero if por_lote else None,
+                round(p.p10, 5),
+                round(p.p50, 5),
+                round(p.p90, 5),
+                version,
+                computed_at,
+            )
+            for p in preds
+        ]
+    )
     log.info(
         "baja_scoring_done",
+        granularidad=granularidad,
         filas=len(preds),
         model_version=version,
         serving="modelo" if version else "baseline",
@@ -157,6 +201,7 @@ def score_predicciones_baja(*, limit: int = 5000) -> dict[str, Any]:
     )
     return {
         "status": "ok",
+        "granularidad": granularidad,
         "filas": len(preds),
         "model_version": version,
         "serving": "modelo" if version else "baseline",
@@ -415,49 +460,59 @@ def prediccion_baja(licitacion_id: str, lote_id: int | None = None) -> dict[str,
     - Ninguna de las dos → ``None`` (404).
 
     Con ``lote_id`` la unidad pasa a ser el lote (S3.1): ver
-    :func:`_prediccion_baja_lote`. Sin él, ni una línea cambia respecto de
-    antes de S3.1.
+    :func:`_prediccion_baja_lote`. Sin él la cifra es la agregada de siempre,
+    y se le suma ``lotes`` —el desglose por lote— solo cuando el batch por
+    lote materializó alguna fila (v140); si no, la respuesta no cambia.
 
     Raises:
         LoteDesconocidoError: Si ``lote_id`` no pertenece a ``licitacion_id``.
     """
     if lote_id is not None:
         return _prediccion_baja_lote(licitacion_id, lote_id)
+    repo = PrediccionesRepository()
+    # La fila agregada se pide explícitamente (`lote_numero IS NULL`): desde
+    # v140 puede haber además una por lote, y un `fetchone()` sin ese predicado
+    # contestaría con el intervalo de un lote cualquiera.
+    pred = repo.prediccion_materializada(licitacion_id)
+    desglose = repo.predicciones_por_lote(licitacion_id)
     with connect_read() as c:
-        # `lote_id IS NULL` pide explícitamente la fila del expediente entero.
-        # Hoy es redundante —el único escritor (`score_predicciones_baja`) no
-        # rellena la columna y el `ON CONFLICT(licitacion_id)` ni siquiera
-        # dejaría convivir dos filas—, pero sin el predicado esta consulta
-        # devuelve la primera fila que salga: el día que el batch materialice
-        # por lote, pedir el expediente contestaría con el intervalo de un lote
-        # cualquiera, sin error y sin forma de notarlo en pantalla. Un
-        # `SELECT ... fetchone()` sin ORDER BY no tiene fila «correcta».
-        cur = c.execute(
-            "SELECT p10, p50, p90, model_version, computed_at "
-            "FROM predicciones_baja WHERE licitacion_id = %s AND lote_id IS NULL",
-            (licitacion_id,),
-        )
-        pred_row = cur.fetchone()
         real = _baja_real(c, licitacion_id)
 
-    if pred_row is None and real is None:
+    if pred is None and real is None and not desglose:
         return None
 
     data: dict[str, Any] = {"licitacion_id": licitacion_id}
-    if pred_row is not None:
-        p10, p50, p90, model_version, computed_at = pred_row
+    if pred is not None:
+        model_version = pred["model_version"]
         data.update(
-            p10=p10,
-            p50=p50,
-            p90=p90,
+            p10=pred["p10"],
+            p50=pred["p50"],
+            p90=pred["p90"],
             model_version=model_version,
-            computed_at=computed_at,
+            computed_at=pred["computed_at"],
             serving="modelo" if model_version else "baseline",
         )
     if real is not None:
         baja_real, importe_adjudicado = real
         data["baja_real"] = baja_real
         data["importe_adjudicado"] = importe_adjudicado
+    # Aditivo: solo aparece si el batch por lote materializó algo. Sin él la
+    # respuesta es byte a byte la de siempre (la ruta serializa con
+    # `exclude_unset`).
+    if desglose:
+        data["lotes"] = [
+            {
+                "lote_id": fila["lote_id"],
+                "lote_numero": str(fila["lote_numero"]),
+                "p10": fila["p10"],
+                "p50": fila["p50"],
+                "p90": fila["p90"],
+                "model_version": fila["model_version"],
+                "computed_at": fila["computed_at"],
+                "serving": "modelo" if fila["model_version"] else "baseline",
+            }
+            for fila in desglose
+        ]
     return data
 
 
@@ -472,11 +527,12 @@ def _prediccion_baja_lote(licitacion_id: str, lote_id: int) -> dict[str, Any] | 
       ``baja_real``/``importe_adjudicado`` describen exactamente ese lote. Si
       el pliego no publica el importe del lote, no hay denominador y no hay
       baja real: no se sustituye por el del expediente (ADR-014).
-    - **La estimación todavía no.** v86 dejó ``predicciones_baja.lote_id``
-      preparada, pero el batch sigue materializando una fila agregada por
-      expediente (el switch está condicionado a medir antes el ``mae_p50`` por
-      lote). Si existe fila del lote se sirve esa; si no, se sirve la del
-      expediente marcada ``prediccion_ambito='expediente'``. Es una
+    - **La estimación, solo si el batch por lote corrió.** Desde v140
+      ``predicciones_baja`` admite una fila por lote, pero el batch solo la
+      materializa con ``ML_BAJA_POR_LOTE`` (el switch está condicionado a
+      medir antes el ``mae_p50`` por lote). Si existe fila del lote se sirve
+      esa; si no, se sirve la del expediente marcada
+      ``prediccion_ambito='expediente'``. Es una
       aproximación declarada —la baja es un ratio, no un importe, así que
       aplicar la del expediente a un lote es discutible pero no absurdo—, y
       404 en su lugar dejaría la pantalla del lote sin nada que enseñar
@@ -495,8 +551,11 @@ def _prediccion_baja_lote(licitacion_id: str, lote_id: int) -> dict[str, Any] | 
             f"El lote {lote_id} no pertenece a la licitación {licitacion_id}."
         )
 
+    numero = lote.get("numero")
     ambito = "lote"
-    pred = repo.prediccion_materializada(licitacion_id, lote_id)
+    # Por número de lote, no por id: es la clave con la que el batch escribe
+    # (v140), y el id cambia en cada re-ingesta.
+    pred = repo.prediccion_materializada(licitacion_id, str(numero)) if numero is not None else None
     if pred is None:
         pred = repo.prediccion_materializada(licitacion_id)
         ambito = "expediente"
@@ -504,7 +563,6 @@ def _prediccion_baja_lote(licitacion_id: str, lote_id: int) -> dict[str, Any] | 
     if pred is None and real is None:
         return None
 
-    numero = lote.get("numero")
     data: dict[str, Any] = {
         "licitacion_id": licitacion_id,
         "lote_id": lote_id,

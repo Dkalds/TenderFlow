@@ -271,8 +271,10 @@ def comparar_mae_p50() -> dict[str, Any]:
         "delta_mae_p50": delta,
         "mejora_lote": mejora,
         # Incluso "candidato_a_sustituir" es una lectura, no un cambio: el
-        # switch de granularidad toca el esquema (v86 documenta el DROP de la
-        # PK y el ON CONFLICT de scoring.py) y no se hace desde un monitor.
+        # esquema ya admite filas por lote (v140), pero materializarlas es
+        # `ML_BAJA_POR_LOTE` y servirlas por defecto es una decisión humana
+        # que no se toma desde un monitor (ver scripts/comparar_baja_por_lote.py,
+        # que añade el backtest sobre los mismos lotes).
         "recomendacion": recomendacion,
     }
     log.info(
@@ -323,8 +325,8 @@ class CalibracionRegimenDTO(BaseModel):
 class CalibracionPorLoteDTO(BaseModel):
     """Calibración medida sobre lotes en vez de sobre expedientes.
 
-    Bloque **de diagnóstico**, no la cifra que se sirve: mientras
-    ``predicciones_baja`` almacene una predicción por expediente,
+    Bloque **de diagnóstico**, no la cifra que se sirve: mientras el batch no
+    materialice filas por lote (``ML_BAJA_POR_LOTE``, v140),
     ``n_prediccion_por_lote`` vale 0 y esto es el modelo agregado evaluado a
     granularidad de lote. Ese número es precisamente el baseline contra el que
     hay que comparar un futuro modelo por lote, y por eso viaja en el contrato:

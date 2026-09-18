@@ -144,6 +144,9 @@ class FilaDataset:
     fecha: str
     features: dict[str, Any]
     baja: float | None = None
+    #: ``lotes.numero`` en el dataset por lote (``por_lote=True``); ``None`` en
+    #: el agregado y en las filas por lote de un expediente de lote único.
+    lote_numero: str | None = None
 
 
 @dataclass
@@ -586,9 +589,11 @@ def _procesar(
                 fecha=ancla,
             )
         )
+        numero = row.get("lote_numero")
         out.append(
             FilaDataset(
                 licitacion_id=str(row["id_externo"]),
+                lote_numero=None if numero is None else str(numero),
                 # ``isoformat`` y no ``strftime('%Y-%m-%d')``: el segundo no
                 # rellena el año a cuatro cifras en glibc, y esta cadena se
                 # relee después con ``_fecha_dt``, que exige cuatro. Hoy
@@ -613,30 +618,61 @@ def _procesar(
     return out, acum
 
 
+def _como_lote(row: dict[str, Any]) -> dict[str, Any]:
+    """La fila vista como unidad de puja: el tamaño es el del lote.
+
+    ``importe`` alimenta ``log_importe``, ``banda_importe`` y
+    ``log_importe_mensual``. En el dataset por lote el tamaño que importa es el
+    de la unidad que se puja, y ``lotes.importe`` se conoce al publicar, así
+    que entra igual en entrenamiento y en scoring (garantía 3 de la cabecera).
+    Sin lote propio (expediente de lote único) se queda el del expediente, que
+    es el mismo número.
+    """
+    importe_lote = row.get("importe_lote")
+    if importe_lote is None or float(importe_lote) <= 0:
+        return row
+    return {**row, "importe": importe_lote}
+
+
+def _orden(t: tuple[dict[str, Any], datetime, float | None]) -> tuple[datetime, str, str]:
+    """Ancla, expediente y lote: el lote desempata para que el orden sea reproducible."""
+    return (t[1], str(t[0]["id_externo"]), str(t[0].get("lote_numero") or ""))
+
+
 def construir_dataset_baja(
-    hasta: str | None = None,
+    hasta: str | None = None, *, por_lote: bool = False
 ) -> tuple[list[FilaDataset], _Acumuladores]:
     """Dataset de entrenamiento del modelo de baja, en orden de fecha ancla.
 
-    Una fila por expediente adjudicado (no por lote): es la granularidad que
-    sirve ``predicciones_baja`` y la que mide ``calibration.py``.
+    Por defecto una fila por expediente adjudicado: es la granularidad que se
+    sirve y la que alerta en ``calibration.py``.
+
+    ``por_lote=True`` construye el dataset del modelo por lote (backlog P2):
+    una fila por lote adjudicado con el denominador de ese lote
+    (``MlDatasetRepository.pares_baja_por_lote``). Los acumuladores históricos
+    se alimentan entonces de bajas **por lote**, porque las medias por
+    segmento tienen que describir la misma magnitud que el target.
 
     Devuelve también los acumuladores con todo el histórico procesado.
     """
     repo = MlDatasetRepository()
-    pares = repo.pares_baja_agregada(hasta)
+    pares = (
+        [_como_lote(r) for r in repo.pares_baja_por_lote(hasta)]
+        if por_lote
+        else repo.pares_baja_agregada(hasta)
+    )
     if not pares:
         return [], _Acumuladores()
     cuotas = _cuotas_de_rows(repo.adjudicaciones_por_empresa(hasta))
     eventos = _eventos_de_pares(pares)
     defecto = _fecha_opt(hasta) or datetime.now()
     filas = [(row, _ancla(row, defecto), _baja_agregada(row)) for row in pares]
-    filas.sort(key=lambda t: (t[1], str(t[0]["id_externo"])))
+    filas.sort(key=_orden)
     return _procesar(filas=filas, eventos=eventos, cuotas=cuotas)
 
 
 def features_licitaciones_abiertas(
-    *, ahora: str | None = None, limit: int = 5000
+    *, ahora: str | None = None, limit: int = 5000, por_lote: bool = False
 ) -> list[FilaDataset]:
     """Features de scoring para licitaciones sin adjudicación (batch nocturno).
 
@@ -645,14 +681,28 @@ def features_licitaciones_abiertas(
     hoy. Anclar en hoy daría a las filas de scoring una ventana histórica más
     larga que la que vio cualquier fila de entrenamiento, que es exactamente el
     tipo de asimetría que este módulo existe para evitar.
+
+    ``por_lote=True`` devuelve una fila por lote publicado (con presupuesto)
+    de cada licitación abierta, con los acumuladores alimentados por el
+    histórico **por lote**: la misma construcción que
+    ``construir_dataset_baja(por_lote=True)``.
     """
     repo = MlDatasetRepository()
-    pares = repo.pares_baja_agregada(ahora)
+    if por_lote:
+        pares = [_como_lote(r) for r in repo.pares_baja_por_lote(ahora)]
+        abiertas = [
+            _como_lote(r)
+            for r in repo.licitaciones_abiertas_por_lote(
+                estados_cerrados=ESTADOS_CERRADOS, limit=limit
+            )
+        ]
+    else:
+        pares = repo.pares_baja_agregada(ahora)
+        abiertas = repo.licitaciones_abiertas(estados_cerrados=ESTADOS_CERRADOS, limit=limit)
     cuotas = _cuotas_de_rows(repo.adjudicaciones_por_empresa(ahora))
     eventos = _eventos_de_pares(pares)
     defecto = _fecha_opt(ahora) or datetime.now()
-    abiertas = repo.licitaciones_abiertas(estados_cerrados=ESTADOS_CERRADOS, limit=limit)
     filas = [(row, _ancla(row, defecto), None) for row in abiertas]
-    filas.sort(key=lambda t: (t[1], str(t[0]["id_externo"])))
+    filas.sort(key=_orden)
     scoreadas, _ = _procesar(filas=filas, eventos=eventos, cuotas=cuotas)
     return scoreadas

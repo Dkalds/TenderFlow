@@ -56,7 +56,10 @@ def test_serializacion_scoreada_y_adjudicada_trae_los_dos_bloques():
             "p10": 0.1,
             "p50": 0.12,
             "p90": 0.2,
-            "model_version": "v3",
+            # Entero, como la columna: con "v3" este test fijaba un valor que la
+            # BD no puede devolver y escondía que un int real daba 500. El
+            # contrato lo publica como texto.
+            "model_version": 3,
             "computed_at": "2026-01-01",
             "serving": "modelo",
             "baja_real": 0.12,
@@ -65,6 +68,7 @@ def test_serializacion_scoreada_y_adjudicada_trae_los_dos_bloques():
     )
     assert out["p50"] == 0.12
     assert out["baja_real"] == 0.12
+    assert out["model_version"] == "3"
 
 
 # ---------------------------------------------------------------------------
