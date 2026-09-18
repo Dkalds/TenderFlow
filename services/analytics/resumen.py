@@ -19,6 +19,7 @@ from pydantic import BaseModel, Field
 from db.repositories.aggregates import AggregateRepository, LicitacionesFilters
 from db.repositories.kpi_snapshots import read_overview_snapshot_for
 from observability.logging import get_logger
+from shared.dto import DESCRIPCION_GRANDES_EN_PLAZO
 
 log = get_logger(__name__)
 
@@ -71,7 +72,7 @@ class ResumenHoyResult(BaseModel):
     # frente a "cuáles merecen mi tiempo"— que compartían nombre en dos
     # páginas contiguas. El campo se conserva porque es contrato público; la
     # UI ya no lo llama "Calientes".
-    calientes: int = 0
+    calientes: int = Field(default=0, description=DESCRIPCION_GRANDES_EN_PLAZO)
     vencen_48h: int = 0
     nuevas_24h: int = 0
     total_activas: int = 0
