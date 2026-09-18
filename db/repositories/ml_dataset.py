@@ -596,6 +596,62 @@ class MlDatasetRepository:
             return None
         return "baseline" if row[0] else "modelo"
 
+    def cobertura_features_pendientes(self) -> list[dict[str, Any]]:
+        """Filas no nulas de cada candidata a feature, por población y corte.
+
+        Es la medida que decide si ``procedimiento``, ``tramitacion`` y
+        ``peso_precio_pct`` entran en ``FEATURE_COLUMNS`` (umbral 50 %, ver
+        ``services.ml.features.FEATURES_PENDIENTES_COBERTURA``). Dos poblaciones,
+        porque la cobertura del feed y la del dataset no tienen por qué coincidir:
+
+        - ``dataset_baja``: las filas de :func:`_sql_agregado`, o sea
+          exactamente lo que entrena el modelo. Es la que decide.
+        - ``universo_abierto``: expedientes del universo tecnológico **sin**
+          adjudicación, los que puntúa el batch. Una feature cubierta en train
+          y vacía en scoring no sirve de nada.
+
+        Cada población sale con su total y partida por ``fuente`` y por año de
+        ``fecha_publicacion`` (``GROUPING SETS``): el parser solo lee los tres
+        campos desde v85 (2026-08-18) y solo del CODICE de PLACSP, así que un
+        total bajo puede ser histórico sin reprocesar y no ausencia en la fuente.
+        Devuelve conteos crudos; el porcentaje lo calcula quien presenta.
+        """
+        sql_dataset, params = _sql_agregado(None)
+        sql = f"""
+            WITH poblaciones AS (
+                SELECT 'dataset_baja' AS poblacion, l.fuente,
+                       substr(l.fecha_publicacion, 1, 4) AS anio,
+                       l.procedimiento, l.tramitacion, l.peso_precio_pct
+                FROM ({sql_dataset}) t
+                JOIN licitaciones l ON l.id_externo = t.id_externo
+                UNION ALL
+                SELECT 'universo_abierto', l.fuente,
+                       substr(l.fecha_publicacion, 1, 4),
+                       l.procedimiento, l.tramitacion, l.peso_precio_pct
+                FROM licitaciones l
+                WHERE l.importe > 0 AND {_UNIVERSO}
+                  AND NOT EXISTS (
+                      SELECT 1 FROM adjudicaciones a WHERE a.licitacion_id = l.id_externo
+                  )
+                  -- Misma exclusión que `licitaciones_abiertas`: la población
+                  -- que de verdad puntúa el batch.
+                  AND {exclude_duplicados_sql("l.id_externo")}
+            )
+            SELECT poblacion,
+                   GROUPING(fuente) = 0 AS por_fuente,
+                   GROUPING(anio) = 0 AS por_anio,
+                   fuente, anio,
+                   COUNT(*) AS n,
+                   COUNT(procedimiento) AS procedimiento,
+                   COUNT(tramitacion) AS tramitacion,
+                   COUNT(peso_precio_pct) AS peso_precio_pct
+            FROM poblaciones
+            GROUP BY GROUPING SETS ((poblacion), (poblacion, fuente), (poblacion, anio))
+            ORDER BY poblacion, por_fuente, por_anio, fuente NULLS FIRST, anio NULLS FIRST
+        """  # Interpola solo fragmentos constantes del módulo; los valores van con %s.
+        with connect_read() as c:
+            return rows_to_dicts(c.execute(sql, params))
+
 
 # ── Población de los clasificadores de texto (S6.1) ───────────────────────
 #
