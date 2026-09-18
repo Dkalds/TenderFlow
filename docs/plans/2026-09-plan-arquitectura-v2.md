@@ -803,6 +803,9 @@ trabaja.
    `GET /webhooks/event-types` lista el catálogo completo; la vista de
    webhooks sale de `/ops` y entra en `/equipo` para owner/admin, quedando en
    `/ops` la vista global.
+   **Cola de UI cerrada el 2026-09-18 (rama `worktree-agent-aa4eeee01ef3fbb62`):** `WebhooksEquipoView`
+   se monta como pestaña «Integraciones» de `/equipo`, sólo para owner/admin
+   (test en `equipo/__tests__/page.test.tsx`).
 3. **Plantillas Teams y Slack (D13).** `webhooks.formato ∈ {json,
    slack_blocks, teams_adaptive_card}` con un renderer por evento y una página
    de ayuda con capturas. Esfuerzo M.
@@ -984,6 +987,11 @@ tres deudas que hoy hacen frágil cualquier pantalla nueva.
    ficheros fuera de `ops/`; sin API de flags la vista experimental sigue
    visible y marcada (fail-open, test); el catálogo de telemetría gana el
    evento de vista experimental abierta.
+   **Criterio del grep cumplido el 2026-09-18 (rama `worktree-agent-aa4eeee01ef3fbb62`):**
+   `mercado/page.tsx` es el segundo consumidor fuera de `ops/`: lee las mismas
+   flags (`mercado_clusters`, `mercado_proyectos_modulos`) y rotula la pestaña
+   «apagada» ante un `false` explícito, fail-open con test. Las flags siguen
+   sin sembrar: la fila se crea desde `/ops`, como el resto.
 4. **Inspectores desde `md`.** Los inspectores de Radar y Detalle se abren
    como `Sheet` entre `md` y `xl`. Esfuerzo S.
    *Aceptación:* `responsive.spec.ts` a 768×1024 abre el inspector y lee la

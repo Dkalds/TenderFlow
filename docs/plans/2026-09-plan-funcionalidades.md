@@ -202,6 +202,13 @@ sea una entidad; hasta entonces busca sobre el nombre normalizado.
 
 *Adopción:* `busqueda_realizada` con `origen=paleta` y `tipo_resultado`.
 
+*Estado 2026-09-18 (UI, rama `worktree-agent-aa4eeee01ef3fbb62`):* la paleta ⌘K
+(`components/command-palette.tsx`, hook `hooks/use-busqueda-global.ts`)
+consume `GET /search/global` con debounce y la organización activa, agrupa por
+tipo, abre el perfil con un NIF exacto y, sin coincidencias, dice qué tipos
+buscó y ofrece «Buscar en licitaciones». El órgano abre
+`/mercado?vista=organos&organo_q=` hasta que exista C1.2. El p95 no se midió.
+
 #### F1.3 Explicación del score en lenguaje claro — P0
 
 **Para quién.** Quien tría en el Radar. **Qué.** Tres frases por tarjeta,
@@ -501,6 +508,13 @@ gate.
 
 *Adopción:* propiedad `vista=contra_mi` en `espacio_abierto`.
 
+*Estado 2026-09-18 (UI, rama `worktree-agent-aa4eeee01ef3fbb62`):* pestaña «Contra mí»
+(`components/competitors/company-contra-mi.tsx`) en el dossier de Competencia
+y en el perfil completo, con ventana 12/24/36 meses y `n`. Pinta «Ganaron
+ellos» y «Perdimos» por separado según `resultado`; las filas sin
+`offer_price_eur` dicen «Sin precio registrado»; con `sin_nif_propio` avisa y
+manda a Equipo → Organización.
+
 #### F3.3 Socios de UTE sugeridos — P1
 
 **Para quién.** Quien no llega solo a la solvencia. **Qué.**
@@ -519,6 +533,12 @@ S2.2) para «complementan»; sin él, sugerencia por co-adjudicación.
   marcados como excluidos.
 
 *Adopción:* evento nuevo `partners_consultado`.
+
+*Estado 2026-09-18 (UI, rama `worktree-agent-aa4eeee01ef3fbb62`):* «Socios de UTE
+sugeridos» en la pestaña Expediente de la oportunidad
+(`components/competitors/socios-ute.tsx`), con el segmento del expediente
+(prefijo CPV sin ceros de cola + CCAA), el motivo de cada socio, los líderes
+aparte y rotulados como competencia, el `n` y la lista vacía declarada.
 
 #### F3.4 Alertas de competidor en mi segmento — P1
 
@@ -716,6 +736,13 @@ gate.** S · sin gate.
 
 *Adopción:* propiedad `banda=desde_ultima_visita` en `espacio_abierto`.
 
+*Estado 2026-09-18 (UI, rama `worktree-agent-aa4eeee01ef3fbb62`):* la banda abre el
+Resumen (`resumen/_components/desde-ultima-visita.tsx`) con la organización
+activa; cero ítems lo dice y `ventana_recortada` se declara. **Falta «marcar
+todo como visto»:** `last_seen` es la lectura más reciente de la campana y no
+hay endpoint que la mueva sin marcar notificaciones concretas; queda para
+backend. `espacio_abierto.origen` gana el valor `pantalla`.
+
 #### F5.5 Reglas con vista previa de ruido — P2
 
 **Para quién.** Quien recibe demasiado. **Qué.** Al crear o editar una
@@ -743,6 +770,11 @@ vencer. **Hoy.** Hecho 18. **Depende de.** Nada. **Esfuerzo / gate.** S ·
 - El recordatorio llega como alerta en la fecha elegida.
 
 *Adopción:* propiedad `accion=silenciar|posponer` en `radar_triaje`.
+
+*Estado 2026-09-18 (UI, rama `worktree-agent-aa4eeee01ef3fbb62`):* el inspector del
+Radar gana la fila «Más tarde»: «Silenciar 30 días» y «Recordar en 3/7/14/30
+días → Posponer», separadas de «Descartar». **Parcial:** la campana no ofrece
+todavía silenciar/posponer desde una alerta.
 
 ### F6 — Configurar y compartir
 
