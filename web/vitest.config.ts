@@ -103,22 +103,34 @@ export default defineConfig({
       // el global POR DEBAJO (52.82 vs 53.48), o sea que no hay relación fija
       // que aplicar. Lo publica vitest la primera vez que este umbral corra en
       // CI, y entonces añadirlo es una línea.
+      // 2026-09-18 (S7.1 / P1 de cobertura): **el octavo intento local sí
+      // terminó**. `npx vitest run --coverage` con el pool por defecto: 199
+      // ficheros, 2.198 tests, 161 s, exit 0. Es la primera medición local
+      // completa desde 2026-08-10, y de ella salen todos los pisos de abajo con
+      // el buffer de siempre (~2-3 puntos):
+      //
+      //   global       56.45 stmts / 48.45 branches / 51.45 funcs / 57.15 lines
+      //   src/app/**   39.27 / 34.54 / 34.44 / 39.47
+      //   src/lib/**   93.05 / 87.00 / 94.82 / 94.65
+      //   src/hooks/** 77.50 / 66.79 / 72.49 / 77.15
+      //   src/components/** 71.66 / 64.02 / 68.66 / 73.94
+      //
+      // `src/app/**` gana además su piso de `statements`, que el lcov de CI no
+      // traía y ahora sí está medido. Ningún piso por carpeta baja; el de
+      // branches de `src/hooks/**` se queda en 66 porque lo medido (66.79) no
+      // deja buffer para subirlo.
       thresholds: {
-        statements: 38,
-        branches: 28,
-        functions: 35,
-        lines: 39,
-        // Medido 2026-08 (agregado de cada árbol completo, subcarpetas incluidas):
-        // lib 93.8/85.9/95.2/94.8 · hooks 76.0/69.8/67.3/75.9 ·
-        // components 66.2/60.4/64.6/68.2.
-        "src/lib/**": { statements: 90, branches: 82, functions: 92, lines: 91 },
-        "src/hooks/**": { statements: 72, branches: 66, functions: 64, lines: 72 },
-        "src/components/**": { statements: 64, branches: 58, functions: 62, lines: 66 },
-        // El buffer de siempre (~3 puntos) sobre lo medido arriba. Solo sube:
-        // `src/app/**` es donde viven las ~18.700 líneas de páginas cliente que
-        // durante meses estuvieron fuera del denominador, y este piso es lo que
-        // impide que vuelvan a salirse sin que nadie lo decida.
-        "src/app/**": { branches: 27, functions: 27, lines: 32 },
+        statements: 54,
+        branches: 46,
+        functions: 49,
+        lines: 55,
+        "src/lib/**": { statements: 91, branches: 85, functions: 92, lines: 92 },
+        "src/hooks/**": { statements: 75, branches: 66, functions: 70, lines: 75 },
+        "src/components/**": { statements: 69, branches: 61, functions: 66, lines: 71 },
+        // Solo sube: `src/app/**` es donde viven las páginas cliente que durante
+        // meses estuvieron fuera del denominador, y este piso es lo que impide
+        // que vuelvan a salirse sin que nadie lo decida.
+        "src/app/**": { statements: 37, branches: 32, functions: 32, lines: 37 },
       },
       reporter: ["text", "text-summary", "lcov"],
     },

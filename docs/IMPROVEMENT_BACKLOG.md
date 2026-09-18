@@ -68,7 +68,7 @@ estado real de cada ítem en su §8. **Excluye a propósito `backup.yml` y
 | [P2] Migrar las llamadas del frontend al cliente tipado | **Cerrado y movido** el 2026-09-06 a _Cerrados_ — no queda ningún `fetch("/api/…")` crudo fuera de `lib/`, y una regla ESLint impide que vuelva |
 | [P3] Vigilar el crecimiento de `predicciones_baja` | **Cerrado y movido** el 2026-09-06 a _Cerrados_ — el job de ML purga por antigüedad, y el consumidor distingue el p50 del modelo del del baseline histórico |
 | [P3] F5: refactor de repositories (ratchet TID251) | **Progresa** — la whitelist baja de 32 a 28 archivos, y a 26 el 2026-09-16 (`kpi_precompute`, `mercado`); el destino sigue siendo vaciarla |
-| [P1] Cobertura de tests de las páginas del frontend | **Parcial** — los pisos por carpeta siguen en pie; el piso de `src/app/**` no llegó a ponerse |
+| [P1] Cobertura de tests de las páginas del frontend | **Cerrado y movido** el 2026-09-18 a _Cerrados_ — primera medición local completa; pisos globales y de `src/app/**` subidos a lo medido |
 | [P2] Remediación axe: 4 reglas desactivadas | **Abierto, encogiendo** — `nested-interactive` reactivada (C7.1); quedan `color-contrast`, `scrollable-region-focusable` y `target-size`, que son la ola móvil |
 | [P2] Contrato de paginación común | **Abierto** — el agente que lo tenía asignado murió por límite de sesión |
 | [P3] Los dos módulos-dios (`aggregates.py`, `settings.py`) | **Abierto** — sigue vigente la regla oportunista |
@@ -314,17 +314,6 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
   - `ENV=dev python scripts/capture_placsp_fixtures.py --caso <caso>` sustituye cada fixture sintético por uno real, y `python -m tests.test_codice_parser_golden --update` regenera el golden con el diff revisado.
 - **Files de partida:** [scripts/capture_placsp_fixtures.py](../scripts/capture_placsp_fixtures.py), [tests/fixtures/placsp/README.md](../tests/fixtures/placsp/README.md)
 - **Riesgo:** bajo — solo tests.
-
-### [P1] Cobertura de tests de las páginas del frontend
-- **Área:** web/src/app (tests vitest)
-- **Problema:** Con el denominador corregido el 2026-08-10 (antes se excluía `src/app/**` entero alegando que son Server Components, y la mayoría de las páginas son `"use client"`), la cobertura real del frontend es **40.2/30.4/37.5/41.6**, no el 68/63/68/70 que CI parecía exigir. Las páginas están al 0%: ahí vive la lógica de filtros, mutaciones y derivación. Los pisos por carpeta de `lib`/`hooks`/`components` conservan la garantía anterior, pero el conjunto está descubierto.
-- **Cifras actualizadas 2026-08-27:** las tres páginas que este ítem citaba con 1.000+ líneas (`competidores` 1.047, `mi-watchlist` 1.044, `detalle` 1.015) **ya no las tienen**: hoy son `detalle` 929, `mi-watchlist` 917 y `competidores` 867, porque su lógica salió a `_hooks/` (las tres tienen ya ese directorio, y `vitest.config.ts` mide `src/app/**/_hooks/*.ts` al 99,67 % de sentencias). O sea que el segundo criterio de aceptación está a medias por las tres de arriba y sin empezar por el resto. Los porcentajes globales **no se han vuelto a medir en esta sesión** (`make web-test` no se ejecutó): los 40.2/30.4/37.5/41.6 son del 2026-08-10 y hay que releerlos antes de usarlos como baseline.
-- **Acceptance criteria:**
-  - Tests de los 3 flujos críticos que siguen sin cubrir: filtros nuqs (`web/src/lib/filters.ts` ya cubierto; falta su uso desde las páginas), watchlist (`use-watchlist-items`), streaming SSE de `/ask` (`ask-stream.ts`).
-  - Seguir extrayendo a hooks testeables la lógica de las páginas más grandes, en vez de testear el árbol entero. Siguientes por tamaño tras las tres ya extraídas: `tecnologias` 734, `organos` 649, `radar` 635.
-  - Subir los umbrales globales de `vitest.config.ts` conforme suba lo medido. **No bajar los pisos por carpeta.**
-- **Files de partida:** [web/vitest.config.ts](../web/vitest.config.ts), [web/src/lib/ask-stream.ts](../web/src/lib/ask-stream.ts)
-- **Riesgo:** bajo — solo añade tests.
 
 ### [P2] La consola no tiene primer uso: se entra a 14 espacios sin que nadie explique ninguno
 - **Área:** web/src/components/layout, web/src/app/(dashboard)
@@ -668,6 +657,22 @@ cabecera de este fichero: los seis se comprobaron contra el código.
 - [P2] Migrar las llamadas del frontend al cliente OpenAPI tipado — sin `fetch("/api/…")` crudo fuera de `lib/`, con regla ESLint que lo impide.
 - [P3] Vigilar el crecimiento de `predicciones_baja` — purga por antigüedad en el job de ML.
 - Modelos NIM de razonamiento sin `chat_template_kwargs` — arreglado en `9a6014b`; nunca llegó a ser ítem abierto, y se anota para que el backlog refleje el código.
+- [2026-09-18, rama `worktree-agent-acc2389c11c7f60d4`] **[P1] Cobertura de tests de las
+  páginas del frontend** — los tres criterios, medidos. (1) De los tres flujos «sin cubrir»,
+  dos ya lo estaban cuando se revisó: `use-watchlist-items` (100 % de sentencias) y
+  `ask-stream.ts` (96,9 %); el que faltaba de verdad, los filtros nuqs usados desde una
+  página, lo cubren ahora los tests de `mercado/_hooks/use-tecnologias-view`,
+  `use-organos-view` y `radar/_hooks/use-radar-consola` con el ámbito **real** (adaptador de
+  pruebas de nuqs, sin doblar `useFilterParams`) y el test de paridad
+  `lib/__tests__/filter-params.test.tsx`. (2) La lógica de `tecnologias`, `organos` y `radar`
+  ya estaba en `_hooks/`; le faltaban tests, y los tres hooks quedan en 97–100 % de
+  sentencias. (3) `npx vitest run --coverage` **terminó en local por primera vez desde
+  2026-08-10** (199 ficheros, 2.198 tests): global 56,45/48,45/51,45/57,15 y `src/app/**`
+  39,27/34,54/34,44/39,47. `web/vitest.config.ts` sube los globales de 38/28/35/39 a
+  54/46/49/55, `src/app/**` gana su piso de sentencias (37/32/32/37) y los pisos por carpeta
+  suben donde había margen, sin bajar ninguno. Hallazgo sin arreglar: en la vista
+  Tecnologías, con `?tecnologia=` en el ámbito, el detalle de la tecnología elegida viaja con
+  la del ámbito (`useFilteredQuery` hace ganar al filtro global sobre `extraParams`).
 - [2026-09-07] **Barrido de ortografía castellana en las cadenas visibles**
   — cerrado al medirlo (C7.8): **cero** cadenas de UI sin tilde y **cero** `...`
   donde corresponde `…`. La ola anterior lo había cerrado y el backlog no se
