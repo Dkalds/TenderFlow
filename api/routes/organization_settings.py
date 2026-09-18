@@ -14,6 +14,8 @@ Dos cosas, con dos almacenes distintos y a propósito:
   en ``settings_json`` porque el scheduler la consulta por día y hora en cada
   pasada: buscar dentro de un JSON de todas las organizaciones para saber a
   quién le toca el lunes sería un escaneo completo cada cuatro horas.
+- ``/organizations/{id}/plantilla-tareas`` — las tareas que se crean al pasar
+  una oportunidad a ``preparing`` (F4.6), en ``plantillas_organizacion``.
 """
 
 from __future__ import annotations
@@ -31,6 +33,12 @@ from services.organizations import (
     OrganizationPermissionError,
     get_settings,
     update_settings,
+)
+from services.plantilla_tareas import (
+    PlantillaTareas,
+    PlantillaTareasOut,
+    guardar_plantilla,
+    leer_plantilla,
 )
 from shared.audit_events import ORG_SETTINGS_UPDATED
 from shared.dto import (
@@ -160,3 +168,54 @@ async def put_report_schedule(
         },
     )
     return ReportScheduleOut(**fila)
+
+
+# ── Plantilla de tareas por etapa (F4.6) ─────────────────────────────────────
+
+
+@router.get(
+    "/organizations/{organization_id}/plantilla-tareas",
+    response_model=PlantillaTareasOut,
+    summary="Tareas que se crean al pasar una oportunidad a «preparando oferta»",
+)
+async def get_plantilla_tareas(
+    organization_id: int,
+    ctx: dict[str, Any] = Depends(require_any_auth),
+) -> PlantillaTareasOut:
+    """Cualquier miembro la lee; `puede_editar` dice si además la cambia."""
+    try:
+        return await run_db(leer_plantilla, int(ctx["user_id"]), organization_id)
+    except OrganizationAccessError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+
+
+@router.put(
+    "/organizations/{organization_id}/plantilla-tareas",
+    response_model=PlantillaTareasOut,
+    summary="Cambiar la plantilla de tareas (owner/admin)",
+    responses={403: {"description": "Solo owner o admin cambian la plantilla"}},
+)
+async def put_plantilla_tareas(
+    organization_id: int,
+    body: PlantillaTareas,
+    ctx: dict[str, Any] = Depends(require_any_auth),
+) -> PlantillaTareasOut:
+    """Sustituye la plantilla entera. No toca las tareas ya creadas."""
+    try:
+        guardada = await run_db(guardar_plantilla, int(ctx["user_id"]), organization_id, body)
+    except (OrganizationAccessError, OrganizationPermissionError) as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    # Cuántas tareas, no cuáles: los títulos son el método del equipo y el
+    # rastro de auditoría sólo necesita saber que cambió.
+    await run_db(
+        log_event,
+        event_type=ORG_SETTINGS_UPDATED,
+        user_id=int(ctx["user_id"]),
+        resource=f"org:{guardada.organization_id}",
+        detail={
+            "organization_id": guardada.organization_id,
+            "campos": ["plantilla_tareas"],
+            "tareas": len(guardada.tareas),
+        },
+    )
+    return guardada

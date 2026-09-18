@@ -21,6 +21,16 @@ En ``pursuit_events``, con tipo ``kit_item_marcado``. Es un ledger append-only
 último de cada ítem. Eso da gratis el «quién marcó qué y cuándo», que en un
 equipo que se reparte la oferta es la mitad del valor del checklist — y no
 habría forma de tenerlo con una columna booleana.
+
+El responsable
+--------------
+El plan dejaba el kit sin responsable hasta que existieran las tareas de
+oportunidad (C6.1). Ya existen, así que el responsable de un documento **es**
+el de su tarea: asignar un ítem crea una tarea en ``pursuit_tasks`` y anota en
+el mismo ledger ``{"clave", "tarea_id"}``. No hay un segundo campo
+«responsable del kit» que mantener sincronizado con la tarea: si alguien la
+reasigna o la borra desde la lista de tareas, el kit lo refleja en la
+siguiente lectura.
 """
 
 from __future__ import annotations
@@ -42,8 +52,10 @@ __all__ = [
     "EVENTO_KIT",
     "ItemKit",
     "KitPresentacion",
+    "anotar_tarea",
     "construir_kit",
     "marcar_item",
+    "reducir_eventos",
 ]
 
 #: Tipo de evento en el ledger. Se re-exporta del repositorio —donde vive el
@@ -76,6 +88,14 @@ class ItemKit(BaseModel):
     #: Quién lo marcó por última vez, y cuándo. `None` si nadie lo ha tocado.
     marcado_por: int | None = None
     marcado_en: str | None = None
+    #: Tarea (C6.1) que lleva este documento, si se asignó. Los tres campos
+    #: siguientes salen de la tarea viva, no de una copia: `None` si nunca se
+    #: asignó o si la tarea se borró después.
+    tarea_id: int | None = None
+    responsable_user_id: int | None = None
+    responsable_name: str | None = None
+    tarea_estado: str | None = None
+    tarea_vence: str | None = None
 
 
 class KitPresentacion(BaseModel):
@@ -113,22 +133,37 @@ def _estado_actual(organization_id: int, pursuit_id: int) -> dict[str, dict[str,
     El SQL vive en el repositorio (invariante 10); aquí sólo queda la
     reducción, que es regla de dominio: «el último evento de cada clave manda».
     """
-    filas = _repo.kit_events(organization_id, pursuit_id)
+    return reducir_eventos(_repo.kit_events(organization_id, pursuit_id))
 
+
+def reducir_eventos(filas: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    """Estado por clave a partir de los eventos del ledger, en orden.
+
+    Hay dos clases de evento bajo el mismo tipo: el marcado (``listo``) y la
+    asignación (``tarea_id``). Cada uno pisa **sólo lo suyo**: asignar un
+    documento que ya estaba listo no puede desmarcarlo, y marcarlo no puede
+    soltar la tarea. Con un último-evento-manda a secas, cualquiera de las dos
+    acciones borraba la otra en silencio.
+    """
     estado: dict[str, dict[str, Any]] = {}
     for fila in filas:
         try:
             payload = json.loads(str(fila["payload_json"]))
         except (TypeError, json.JSONDecodeError):
             continue
+        if not isinstance(payload, dict):
+            continue
         clave = str(payload.get("clave") or "")
         if not clave:
             continue
-        estado[clave] = {
-            "listo": bool(payload.get("listo")),
-            "marcado_por": fila.get("actor_user_id"),
-            "marcado_en": str(fila.get("created_at") or "") or None,
-        }
+        actual = estado.setdefault(clave, {})
+        if "listo" in payload:
+            actual["listo"] = bool(payload.get("listo"))
+            actual["marcado_por"] = fila.get("actor_user_id")
+            actual["marcado_en"] = str(fila.get("created_at") or "") or None
+        tarea = payload.get("tarea_id")
+        if isinstance(tarea, int) and not isinstance(tarea, bool) and tarea > 0:
+            actual["tarea_id"] = tarea
     return estado
 
 
@@ -138,12 +173,17 @@ def construir_kit(
     *,
     organization_id: int | None = None,
     pursuit_id: int | None = None,
+    tareas: dict[int, dict[str, Any]] | None = None,
 ) -> KitPresentacion:
     """El kit, con el estado de la oportunidad si la hay.
 
     Sin ``pursuit_id`` devuelve la lista sin marcar: la ficha del expediente
     puede enseñar qué documentos exige el pliego aunque nadie haya abierto
     todavía una oportunidad.
+
+    ``tareas`` son las tareas **vivas** de la oportunidad por id. Un ítem cuya
+    tarea ya no está ahí sale sin responsable: la tarea se borró y enseñar a
+    quien la tenía sería afirmar un reparto que el equipo deshizo.
     """
     if not documentos:
         return KitPresentacion(licitacion_id=licitacion_id, sin_extraccion=True)
@@ -160,6 +200,7 @@ def construir_kit(
     for indice, documento in enumerate(documentos):
         clave = clave_de(indice, documento)
         marca = estado.get(clave, {})
+        tarea = (tareas or {}).get(int(marca.get("tarea_id") or 0))
         items.append(
             ItemKit(
                 clave=clave,
@@ -169,6 +210,11 @@ def construir_kit(
                 listo=bool(marca.get("listo")),
                 marcado_por=marca.get("marcado_por"),
                 marcado_en=marca.get("marcado_en"),
+                tarea_id=int(tarea["id"]) if tarea else None,
+                responsable_user_id=tarea.get("responsable_user_id") if tarea else None,
+                responsable_name=tarea.get("responsable_name") if tarea else None,
+                tarea_estado=str(tarea.get("estado")) if tarea else None,
+                tarea_vence=(str(tarea["vence"]) if tarea and tarea.get("vence") else None),
             )
         )
 
@@ -195,4 +241,25 @@ def marcar_item(
         pursuit_id=pursuit_id,
         actor_user_id=actor_user_id,
         payload={"clave": clave, "listo": listo},
+    )
+
+
+def anotar_tarea(
+    *,
+    organization_id: int,
+    pursuit_id: int,
+    actor_user_id: int,
+    clave: str,
+    tarea_id: int,
+) -> None:
+    """Ata un documento del kit a la tarea que lo lleva. Sin ``listo``.
+
+    El payload no lleva ``listo`` a propósito: :func:`reducir_eventos` sólo
+    toca el marcado cuando el evento lo trae, así que asignar no desmarca.
+    """
+    _repo.append_kit_event(
+        organization_id=organization_id,
+        pursuit_id=pursuit_id,
+        actor_user_id=actor_user_id,
+        payload={"clave": clave, "tarea_id": tarea_id},
     )
