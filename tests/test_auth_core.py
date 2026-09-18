@@ -505,6 +505,49 @@ class TestVerifyPassword:
         with patch("bcrypt.checkpw", side_effect=Exception("bad")):
             assert verify_password("x", "$2b$12$somehash") is False
 
+    # Los dos siguientes sustituyen a `test_argon2_verify_success` y
+    # `test_argon2_import_error` de `tests/test_TODO_review_tautologico.py`
+    # (2026-09-18): parcheaban `shared.auth_core.PasswordHasher`, un nombre que
+    # `verify_password` no usa —lo importa de `argon2` dentro de la función—, y
+    # afirmaban `isinstance(resultado, bool)`, cierto para cualquier resultado.
+
+    def test_argon2_verifica_de_verdad_un_hash_de_hash_password(self):
+        """Ida y vuelta con la librería real, sin mocks: lo que se guarda en
+        `users.password_hash` es lo que `verify_password` sabe comprobar."""
+        from shared.auth_core import hash_password, verify_password
+
+        almacenado = hash_password("correcta horse battery")
+
+        assert almacenado.startswith("$argon2id$")
+        assert verify_password("correcta horse battery", almacenado) is True
+        assert verify_password("otra", almacenado) is False
+
+    def test_sin_argon2_un_hash_argon2_no_verifica_ni_cae_a_bcrypt(self):
+        """Sin la librería, un hash argon2 no puede darse por bueno: devuelve
+        False en su propia rama, sin intentar leerlo como bcrypt."""
+        from shared.auth_core import hash_password, verify_password
+
+        almacenado = hash_password("secreta")
+        with (
+            patch.dict("sys.modules", {"argon2": None, "argon2.exceptions": None}),
+            patch("bcrypt.checkpw") as checkpw,
+        ):
+            assert verify_password("secreta", almacenado) is False
+        checkpw.assert_not_called()
+
+    def test_sin_argon2_hash_password_cae_a_bcrypt_verificable(self):
+        """La otra mitad de la misma rama: el fallback produce un hash que la
+        verificación reconoce, así que un entorno sin argon2 sigue pudiendo
+        registrar y autenticar cuentas locales."""
+        from shared.auth_core import hash_password, verify_password
+
+        with patch.dict("sys.modules", {"argon2": None}):
+            almacenado = hash_password("secreta")
+
+        assert almacenado.startswith("$2b$")
+        assert verify_password("secreta", almacenado) is True
+        assert verify_password("otra", almacenado) is False
+
 
 # ---------------------------------------------------------------------------
 # verify_oauth_state — timestamp parsing edge cases
