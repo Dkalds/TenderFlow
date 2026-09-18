@@ -6,6 +6,7 @@ import { cn, formatCurrency, formatNumber } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PanelError } from "@/components/console/panel";
 import { EmptyState } from "@/components/ui/empty-state";
+import { Pista } from "@/components/ui/pista";
 import { PAGE_SIZE, type EmpresaRow, type EmpresaSortKey } from "../_hooks/use-maestro";
 
 /** Rejilla compartida por la cabecera y las filas: una sola definición. */
@@ -84,12 +85,11 @@ export function MaestroList({
             className="text-tf-body text-foreground placeholder:text-muted-foreground h-6 min-w-0 flex-1 border-0 bg-transparent outline-none"
           />
           {fromDeepLink && (
-            <span
-              title="Búsqueda recibida por ?q= desde un grafo"
-              className="bg-primary/12 text-tf-micro text-primary flex h-5 flex-none items-center rounded px-1.5 font-mono font-medium"
-            >
-              desde grafo
-            </span>
+            <Pista contenido="Búsqueda recibida por ?q= desde un grafo">
+              <span className="bg-primary/12 text-tf-micro text-primary flex h-5 flex-none items-center rounded px-1.5 font-mono font-medium">
+                desde grafo
+              </span>
+            </Pista>
           )}
           {search && (
             <button
@@ -197,11 +197,13 @@ export function MaestroList({
                     <span className="tf-tnum text-tf-meta text-foreground text-right font-mono font-medium">
                       {formatCurrency(row.importe_total)}
                     </span>
+                    {/* Sin `title` y sin `Tooltip`: el `aria-label` ya dice
+                        vigilar o dejar de vigilar, y un Tooltip por fila
+                        repetiría lo mismo con un portal más por fila. */}
                     <button
                       type="button"
                       onClick={() => onToggleWatch(row.empresa_id, watched)}
                       disabled={watchPending}
-                      title={watched ? "Dejar de vigilar" : "Vigilar empresa"}
                       aria-label={watched ? "Dejar de vigilar" : "Vigilar empresa"}
                       aria-pressed={watched}
                       className={cn(

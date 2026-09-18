@@ -11,6 +11,7 @@
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Pista } from "@/components/ui/pista";
 import { formatCurrency, formatDate } from "@/lib/utils";
 
 import type { TopScoredItem } from "../_hooks/use-organos-view";
@@ -71,9 +72,9 @@ export function OrganoTopScored({ items }: { items: TopScoredItem[] }) {
                 <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-muted-foreground/80">
                   {s.tipo_contrato_desc && <span>📑 {s.tipo_contrato_desc}</span>}
                   {s.cpv_desc && (
-                    <span className="truncate max-w-full" title={s.cpv_desc}>
-                      🏷️ {s.cpv_desc}
-                    </span>
+                    <Pista contenido={s.cpv_desc}>
+                      <span className="truncate max-w-full">🏷️ {s.cpv_desc}</span>
+                    </Pista>
                   )}
                 </div>
               )}

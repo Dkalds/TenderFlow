@@ -1,4 +1,7 @@
-import { render, screen } from "@testing-library/react";
+import { render as renderBase, screen } from "@testing-library/react";
+import type { ReactElement } from "react";
+
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { describe, expect, it, vi } from "vitest";
 
 import { initialCompanyProfilePeriod } from "../company-profile";
@@ -115,6 +118,10 @@ const recentAwards: CompanyAwardsData = {
   limit: 5,
   offset: 0,
 };
+
+// Los textos truncados y las barras llevan `Pista` (un `Tooltip`), que
+// necesita proveedor; en la app lo monta `Providers`.
+const render = (ui: ReactElement) => renderBase(<TooltipProvider>{ui}</TooltipProvider>);
 
 describe("company profile presentation helpers", () => {
   it("opens the complete history unless a global date range is active", () => {

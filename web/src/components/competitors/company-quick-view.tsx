@@ -6,7 +6,8 @@ import { ArrowDownRight, ArrowUpRight, CalendarDays, Eye, ExternalLink } from "l
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { cn, formatCurrency, formatDate, formatNumber, formatPercent, truncate } from "@/lib/utils";
+import { Pista } from "@/components/ui/pista";
+import { cn, formatCurrency, formatDate, formatNumber, formatPercent } from "@/lib/utils";
 
 import { CompanyYearTrend } from "./company-year-trend";
 import { buildExecutiveSummary, type CompanyAwardsData, type CompanyProfileData } from "./company-profile-types";
@@ -52,9 +53,9 @@ function Metric({
   return (
     <div className="min-w-0 p-4">
       <dt className="text-muted-foreground text-[11px] font-semibold tracking-[0.12em] uppercase">{label}</dt>
-      <dd className="mt-1.5 truncate text-xl font-semibold tracking-tight tabular-nums" title={value}>
-        {value}
-      </dd>
+      <Pista contenido={value}>
+        <dd className="mt-1.5 truncate text-xl font-semibold tracking-tight tabular-nums">{value}</dd>
+      </Pista>
       <p className="text-muted-foreground mt-1 min-h-5 text-xs leading-5">
         {delta == null ? (
           detail
@@ -99,15 +100,18 @@ function AwardsPreview({ data, loading }: { data?: CompanyAwardsData; loading: b
         >
           <div className="flex items-start justify-between gap-4">
             <div className="min-w-0">
-              <p
-                className="group-hover:text-primary truncate text-sm font-medium"
-                title={award.titulo ?? award.licitacion_id}
-              >
-                {truncate(award.titulo ?? award.licitacion_id, 84)}
-              </p>
-              <p className="text-muted-foreground mt-1 truncate text-xs" title={award.organo_contratacion ?? undefined}>
-                {formatDate(award.fecha_adjudicacion)} · {award.organo_contratacion || "Órgano sin identificar"}
-              </p>
+              {/* Dentro de un enlace: la `Pista` no añade foco y el nombre del
+                  enlace ya es el título entero (el recorte es CSS). */}
+              <Pista contenido={award.titulo ?? award.licitacion_id}>
+                <p className="group-hover:text-primary truncate text-sm font-medium">
+                  {award.titulo ?? award.licitacion_id}
+                </p>
+              </Pista>
+              <Pista contenido={award.organo_contratacion}>
+                <p className="text-muted-foreground mt-1 truncate text-xs">
+                  {formatDate(award.fecha_adjudicacion)} · {award.organo_contratacion || "Órgano sin identificar"}
+                </p>
+              </Pista>
             </div>
             <div className="shrink-0 text-right">
               <p className="text-sm font-semibold tabular-nums">{formatCurrency(award.importe_adjudicado)}</p>

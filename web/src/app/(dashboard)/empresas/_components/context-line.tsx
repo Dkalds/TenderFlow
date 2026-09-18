@@ -2,6 +2,8 @@
 
 import * as React from "react";
 import { TriangleAlert } from "lucide-react";
+import { Pista } from "@/components/ui/pista";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
 /**
@@ -52,14 +54,25 @@ export function ContextLine({ items }: { items: ContextItem[] }) {
           index > 0 && "border-l border-border/60",
           item.onClick && "cursor-pointer",
         );
+        // La explicación era un `title` nativo. En el botón pasa a `Tooltip`
+        // (se abre también con foco); en la cifra sin acción, a `Pista` más
+        // `sr-only`, porque ahí no hay foco que la abra.
         return item.onClick ? (
-          <button key={item.key} type="button" onClick={item.onClick} title={item.title} className={clases}>
-            {contenido}
-          </button>
+          <Tooltip key={item.key}>
+            <TooltipTrigger asChild>
+              <button type="button" onClick={item.onClick} className={clases}>
+                {contenido}
+              </button>
+            </TooltipTrigger>
+            <TooltipContent className="max-w-[22rem] text-pretty">{item.title}</TooltipContent>
+          </Tooltip>
         ) : (
-          <div key={item.key} title={item.title} className={clases}>
-            {contenido}
-          </div>
+          <Pista key={item.key} contenido={item.title}>
+            <div className={clases}>
+              {contenido}
+              <span className="sr-only">. {item.title}</span>
+            </div>
+          </Pista>
         );
       })}
     </div>

@@ -11,6 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { KpiCard } from "@/components/charts/kpi-card";
+import { Pista } from "@/components/ui/pista";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { formatCurrency, formatDate, formatNumber } from "@/lib/utils";
@@ -107,10 +108,14 @@ export function TecnologiasDetalle({
                   {(detalle?.items ?? []).map((it) => (
                     <TableRow key={it.id_externo} className="border-b border-border/50 hover:bg-muted/50">
                       <TableCell className="max-w-sm py-2 pr-4 font-medium">
-                        <span className="line-clamp-2" title={it.titulo ?? ""}>{it.titulo ?? "-"}</span>
+                        <Pista contenido={it.titulo}>
+                          <span className="line-clamp-2">{it.titulo ?? "-"}</span>
+                        </Pista>
                       </TableCell>
-                      <TableCell className="max-w-[12rem] truncate py-2 pr-4" title={it.organo_contratacion ?? ""}>
-                        {it.organo_contratacion ?? "-"}
+                      <TableCell className="max-w-[12rem] py-2 pr-4">
+                        <Pista contenido={it.organo_contratacion}>
+                          <span className="block truncate">{it.organo_contratacion ?? "-"}</span>
+                        </Pista>
                       </TableCell>
                       <TableCell className="py-2 pr-4 text-right tabular-nums">
                         {it.importe != null ? formatCurrency(it.importe) : "-"}

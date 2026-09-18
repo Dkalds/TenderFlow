@@ -8,6 +8,7 @@
 
 import React from "react";
 
+import { Pista } from "@/components/ui/pista";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { truncate } from "@/lib/utils";
 
@@ -59,20 +60,23 @@ export function CompetidoresHeatmap({
         {/* Data rows */}
         {heatmap.empresas.map((empresa) => (
           <React.Fragment key={empresa}>
-            <div key={`label-${empresa}`} className="truncate p-1 font-medium" title={empresa}>
-              {truncate(empresa, 25)}
-            </div>
+            {/* El nombre va entero en el DOM y lo recorta el CSS: el lector
+                lo lee completo y la `Pista` lo enseña al pasar el puntero,
+                sin añadir paradas de tabulación a la rejilla. */}
+            <Pista contenido={empresa}>
+              <div className="truncate p-1 font-medium">{empresa}</div>
+            </Pista>
             {heatmap.ccaas.map((ccaa) => {
               const val = heatmap.matrix[empresa]?.[ccaa] ?? 0;
               return (
-                <div
-                  key={`${empresa}-${ccaa}`}
-                  className="cursor-default rounded-sm p-1 text-center transition-colors"
-                  style={{ backgroundColor: heatColor(val, heatmap.max) }}
-                  title={`${empresa} - ${ccaa}: ${val}`}
-                >
-                  {val > 0 ? val : ""}
-                </div>
+                <Pista key={`${empresa}-${ccaa}`} contenido={`${empresa} - ${ccaa}: ${val}`}>
+                  <div
+                    className="cursor-default rounded-sm p-1 text-center transition-colors"
+                    style={{ backgroundColor: heatColor(val, heatmap.max) }}
+                  >
+                    {val > 0 ? val : ""}
+                  </div>
+                </Pista>
               );
             })}
           </React.Fragment>

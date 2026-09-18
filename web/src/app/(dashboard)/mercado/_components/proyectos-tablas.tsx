@@ -11,6 +11,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
+import { Pista } from "@/components/ui/pista";
 import { formatCurrency, formatNumber } from "@/lib/utils";
 import { ArrowUpDown } from "lucide-react";
 
@@ -191,9 +192,9 @@ export function ProyectosCpvTabla({
                 {filas.map((item) => (
                   <tr key={item.cpv} className="border-b border-border/50 hover:bg-muted/50">
                     <td className="py-2 pr-4">
-                      <span className="block max-w-md truncate" title={item.cpv_desc}>
-                        {item.cpv_desc}
-                      </span>
+                      <Pista contenido={item.cpv_desc}>
+                        <span className="block max-w-md truncate">{item.cpv_desc}</span>
+                      </Pista>
                     </td>
                     <td className="py-2 pr-4 text-right tabular-nums">
                       {formatNumber(item.count)}

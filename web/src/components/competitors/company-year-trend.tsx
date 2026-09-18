@@ -3,6 +3,7 @@
 import { Minus, TrendingDown, TrendingUp } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
+import { Pista } from "@/components/ui/pista";
 import { cn, formatCurrency, formatNumber } from "@/lib/utils";
 
 import type { CompanyYear } from "./company-profile-types";
@@ -97,34 +98,38 @@ export function CompanyYearTrend({ rows, compact = false }: CompanyYearTrendProp
           {sorted.map((row) => {
             const height = Math.max(5, (row.importe / maxAmount) * 100);
             const isCurrentPartial = row.anio === currentYear;
+            // `Pista` en vez de `title`: el lector ya tiene la tabla `sr-only`
+            // de abajo con las mismas cifras, así que la barra no necesita ser
+            // focusable para contarlas.
             return (
-              <li
+              <Pista
                 key={row.anio}
-                className="group flex h-full min-w-0 flex-col justify-end gap-2 rounded-sm"
-                title={`${row.anio}: ${formatCurrency(row.importe)}, ${formatNumber(row.contratos)} adjudicaciones${isCurrentPartial ? ", dato parcial" : ""}`}
+                contenido={`${row.anio}: ${formatCurrency(row.importe)}, ${formatNumber(row.contratos)} adjudicaciones${isCurrentPartial ? ", dato parcial" : ""}`}
               >
-                {!compact ? (
-                  <div className="text-center text-xs font-medium tabular-nums opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
-                    {formatCurrency(row.importe)}
+                <li className="group flex h-full min-w-0 flex-col justify-end gap-2 rounded-sm">
+                  {!compact ? (
+                    <div className="text-center text-xs font-medium tabular-nums opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
+                      {formatCurrency(row.importe)}
+                    </div>
+                  ) : null}
+                  <div className="bg-muted/55 relative flex min-h-0 flex-1 items-end rounded-md">
+                    <div
+                      className={cn(
+                        "w-full rounded-md transition-[height,background-color]",
+                        isCurrentPartial
+                          ? "bg-primary/45 ring-primary/50 ring-1 ring-inset"
+                          : "bg-primary/80 group-hover:bg-primary",
+                      )}
+                      style={{ height: `${height}%` }}
+                      aria-hidden="true"
+                    />
                   </div>
-                ) : null}
-                <div className="bg-muted/55 relative flex min-h-0 flex-1 items-end rounded-md">
-                  <div
-                    className={cn(
-                      "w-full rounded-md transition-[height,background-color]",
-                      isCurrentPartial
-                        ? "bg-primary/45 ring-primary/50 ring-1 ring-inset"
-                        : "bg-primary/80 group-hover:bg-primary",
-                    )}
-                    style={{ height: `${height}%` }}
-                    aria-hidden="true"
-                  />
-                </div>
-                <div className="text-center">
-                  <p className="text-xs font-semibold tabular-nums">{row.anio}</p>
-                  <p className="text-muted-foreground mt-0.5 text-[11px]">{formatNumber(row.contratos)} adj.</p>
-                </div>
-              </li>
+                  <div className="text-center">
+                    <p className="text-xs font-semibold tabular-nums">{row.anio}</p>
+                    <p className="text-muted-foreground mt-0.5 text-[11px]">{formatNumber(row.contratos)} adj.</p>
+                  </div>
+                </li>
+              </Pista>
             );
           })}
         </ol>

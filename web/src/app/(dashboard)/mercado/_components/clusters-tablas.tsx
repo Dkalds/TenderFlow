@@ -6,6 +6,7 @@
  */
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Pista } from "@/components/ui/pista";
 import { SkeletonTable } from "@/components/ui/skeleton";
 import {
   Select,
@@ -63,14 +64,22 @@ export function ClustersResumenTabla({
                     onClick={() => onSelect(c.cluster_id)}
                   >
                     <TableCell className="py-2 pr-4 tabular-nums">{c.cluster_id}</TableCell>
+                    {/* `Pista` y no `title`: se ve al pasar el puntero y la
+                        tabla no gana paradas de tabulación. */}
                     <TableCell className="max-w-md py-2 pr-4">
-                      <span className="block truncate" title={c.label}>{c.label}</span>
+                      <Pista contenido={c.label}>
+                        <span className="block truncate">{c.label}</span>
+                      </Pista>
                     </TableCell>
-                    <TableCell className="max-w-[14rem] truncate py-2 pr-4 text-muted-foreground" title={c.cpv_dominante ?? ""}>
-                      {c.cpv_dominante ?? "-"}
+                    <TableCell className="max-w-[14rem] py-2 pr-4 text-muted-foreground">
+                      <Pista contenido={c.cpv_dominante}>
+                        <span className="block truncate">{c.cpv_dominante ?? "-"}</span>
+                      </Pista>
                     </TableCell>
-                    <TableCell className="max-w-[12rem] truncate py-2 pr-4 text-muted-foreground" title={c.organo_dominante ?? ""}>
-                      {c.organo_dominante ?? "-"}
+                    <TableCell className="max-w-[12rem] py-2 pr-4 text-muted-foreground">
+                      <Pista contenido={c.organo_dominante}>
+                        <span className="block truncate">{c.organo_dominante ?? "-"}</span>
+                      </Pista>
                     </TableCell>
                     <TableCell className="py-2 pr-4 text-right tabular-nums">{formatNumber(c.n)}</TableCell>
                     <TableCell className="py-2 pr-4 text-right tabular-nums">{formatCurrency(c.importe_medio)}</TableCell>
@@ -140,10 +149,14 @@ export function ClusterDetalleTabla({
               {selected.items.map((it) => (
                 <TableRow key={it.id_externo} className="border-b border-border/50 hover:bg-muted/50">
                   <TableCell className="max-w-sm py-2 pr-4 font-medium">
-                    <span className="line-clamp-2" title={it.titulo ?? ""}>{it.titulo ?? "-"}</span>
+                    <Pista contenido={it.titulo}>
+                      <span className="line-clamp-2">{it.titulo ?? "-"}</span>
+                    </Pista>
                   </TableCell>
-                  <TableCell className="max-w-[12rem] truncate py-2 pr-4" title={it.organo_contratacion ?? ""}>
-                    {it.organo_contratacion ?? "-"}
+                  <TableCell className="max-w-[12rem] py-2 pr-4">
+                    <Pista contenido={it.organo_contratacion}>
+                      <span className="block truncate">{it.organo_contratacion ?? "-"}</span>
+                    </Pista>
                   </TableCell>
                   <TableCell className="py-2 pr-4 text-right tabular-nums">
                     {it.importe != null ? formatCurrency(it.importe) : "-"}

@@ -2,6 +2,7 @@ import * as React from "react";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, waitFor, act, cleanup } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { TooltipProvider } from "@/components/ui/tooltip";
 
 /**
  * Lo que fija este suite: el ámbito activo llega a las DOS peticiones de la
@@ -118,7 +119,9 @@ function renderPage() {
     React.createElement(
       QueryClientProvider,
       { client: queryClient },
-      React.createElement(OrganosView),
+      // `TooltipProvider`: el nombre del órgano abre un `Tooltip` (antes era
+      // un `title` nativo, que no necesitaba proveedor).
+      React.createElement(TooltipProvider, null, React.createElement(OrganosView)),
     );
   const utils = render(ui());
   return { ...utils, rerenderPage: () => utils.rerender(ui()) };
@@ -170,7 +173,7 @@ describe("Órganos — el ámbito llega a las dos peticiones", () => {
     renderPage();
 
     // La fila del listado completo lleva el nombre del órgano en su `title`.
-    fireEvent.click(await screen.findByTitle("ORG A", undefined, { timeout: ESPERA_MS }));
+    fireEvent.click(await screen.findByRole("button", { name: "ORG A" }, { timeout: ESPERA_MS }));
 
     await waitFor(() => expect(urlDetalle()).toBeDefined(), { timeout: ESPERA_MS });
 
@@ -186,7 +189,7 @@ describe("Órganos — el ámbito llega a las dos peticiones", () => {
 
     const { rerenderPage } = renderPage();
 
-    fireEvent.click(await screen.findByTitle("ORG A", undefined, { timeout: ESPERA_MS }));
+    fireEvent.click(await screen.findByRole("button", { name: "ORG A" }, { timeout: ESPERA_MS }));
     await waitFor(() => expect(urlDetalle()).toBeDefined(), { timeout: ESPERA_MS });
 
     // Cambiar de tecnología no puede dejar el panel anterior en pantalla: los

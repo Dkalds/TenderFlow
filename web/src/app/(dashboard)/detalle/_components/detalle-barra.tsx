@@ -1,6 +1,7 @@
 "use client";
 
 import { ExportPopover } from "@/components/export-popover";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
 /**
@@ -33,16 +34,24 @@ export function DetalleBarra({
         Tabla completa con todos los campos y exportación
       </span>
       <div className="flex-1" />
+      {/* La «×» es decorativa: lo que el lector anuncia es la etiqueta más
+          «quitar». Antes el `title` nativo era la única pista de que el chip
+          se pulsaba para quitarlo, y ni el teclado ni el táctil lo veían. */}
       {cierreLabel && (
-        <button
-          type="button"
-          onClick={onClearCierre}
-          title="Quitar el recorte por fecha de cierre"
-          className="tf-pressable inline-flex h-6 items-center gap-1.5 rounded-md border border-primary/26 bg-primary/10 px-2 text-[11px] font-medium text-primary transition-colors duration-140 ease-out hover:bg-primary/20"
-        >
-          {cierreLabel}
-          <span className="opacity-60">×</span>
-        </button>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              onClick={onClearCierre}
+              className="tf-pressable inline-flex h-6 items-center gap-1.5 rounded-md border border-primary/26 bg-primary/10 px-2 text-[11px] font-medium text-primary transition-colors duration-140 ease-out hover:bg-primary/20"
+            >
+              {cierreLabel}
+              <span aria-hidden="true">×</span>
+              <span className="sr-only">(quitar)</span>
+            </button>
+          </TooltipTrigger>
+          <TooltipContent>Quitar el recorte por fecha de cierre</TooltipContent>
+        </Tooltip>
       )}
       {sortLabel && (
         <button
@@ -51,7 +60,8 @@ export function DetalleBarra({
           className="tf-pressable inline-flex h-6 items-center gap-1.5 rounded-md border border-primary/26 bg-primary/10 px-2 text-[11px] font-medium text-primary transition-colors duration-140 ease-out hover:bg-primary/20"
         >
           {sortLabel}
-          <span className="opacity-60">×</span>
+          <span aria-hidden="true">×</span>
+          <span className="sr-only">(quitar)</span>
         </button>
       )}
       <div className="flex items-center gap-0.5 rounded-md border border-border/70 p-0.5">
