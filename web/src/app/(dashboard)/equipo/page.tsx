@@ -13,6 +13,13 @@
  * La pestaña «Organización» es el destino que S2.1 y S2.2 le habían dado a sus
  * tarjetas de NIF y capacidad: existían y estaban probadas, pero ninguna
  * pantalla las montaba.
+ *
+ * La pestaña «Integraciones» es la mitad de S4.2 que faltaba: los webhooks de
+ * la organización salieron de `/ops` (donde queda la vista global de la
+ * instancia) y la vista de equipo, `WebhooksEquipoView`, no la montaba nadie.
+ * Sólo la ven `owner` y `admin`: son quienes pueden crear un webhook que manda
+ * datos del equipo fuera del producto, y enseñarle a un `member` un formulario
+ * que el backend le va a rechazar es prometer un permiso que no tiene.
  */
 
 import { Plus } from "lucide-react";
@@ -29,6 +36,7 @@ import { InvitacionesPendientes } from "./_components/invitaciones-pendientes";
 import { MatrizPermisos } from "./_components/matriz-permisos";
 import { MiembrosCard } from "./_components/miembros-card";
 import { OrganizacionTab } from "./_components/organizacion-tab";
+import { WebhooksEquipoView } from "../ops/_components/webhooks-view";
 
 export default function EquipoPage() {
   const organizations = useOrganizations();
@@ -57,6 +65,7 @@ export default function EquipoPage() {
           <TabsList>
             <TabsTrigger value="miembros">Miembros</TabsTrigger>
             <TabsTrigger value="organizacion">Organización</TabsTrigger>
+            {canManage && <TabsTrigger value="integraciones">Integraciones</TabsTrigger>}
           </TabsList>
 
           <TabsContent value="miembros" className="space-y-5">
@@ -82,6 +91,12 @@ export default function EquipoPage() {
               isPersonal={isPersonal}
             />
           </TabsContent>
+
+          {canManage && (
+            <TabsContent value="integraciones">
+              <WebhooksEquipoView />
+            </TabsContent>
+          )}
         </Tabs>
       </div>
     </SpaceShell>
