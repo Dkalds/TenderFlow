@@ -10,9 +10,13 @@
  * No reutiliza `RuleFormFields` (el panel de edición sí): esta rejilla es de
  * tres columnas y lleva el botón de alta como sexta celda. Ver la nota de
  * `rule-form-fields.tsx`.
+ *
+ * Los valores y la validación son de react-hook-form con el esquema de alta
+ * rápida (S7.2): cada error sale debajo de su campo, enlazado a él.
  */
 
 import { ChevronDown, ChevronRight, Plus } from "lucide-react";
+import { Controller, useWatch } from "react-hook-form";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -29,8 +33,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { ariaCampo, CampoError } from "@/lib/forms/campo";
 import { FREQ_NOTE, FREQ_OPTIONS } from "../_hooks/watchlist-rule-options";
-import type { Frequency } from "../_hooks/watchlist-rule-types";
 import type { NuevaReglaForm } from "../_hooks/use-mi-watchlist";
 
 export function NuevaReglaCard({
@@ -44,6 +48,9 @@ export function NuevaReglaCard({
   open: boolean;
   onToggle: () => void;
 }) {
+  const { control, register, formState } = form.form;
+  const errores = formState.errors;
+  const keyword = useWatch({ control, name: "keyword" });
   return (
     <Card>
       <CardHeader
@@ -81,10 +88,11 @@ export function NuevaReglaCard({
               <Input
                 id="wl-keyword"
                 placeholder="Ej: SAP, infraestructura…"
-                value={form.keyword}
-                onChange={(e) => form.setKeyword(e.target.value)}
+                {...register("keyword")}
                 onKeyDown={(e) => e.key === "Enter" && form.submit()}
+                {...ariaCampo("wl-keyword", errores.keyword?.message)}
               />
+              <CampoError campoId="wl-keyword" mensaje={errores.keyword?.message} />
             </div>
             <div className="space-y-1">
               <label htmlFor="wl-cpv" className="text-sm font-medium">
@@ -93,9 +101,10 @@ export function NuevaReglaCard({
               <Input
                 id="wl-cpv"
                 placeholder="Ej: 72000000"
-                value={form.cpv}
-                onChange={(e) => form.setCpv(e.target.value)}
+                {...register("cpv")}
+                {...ariaCampo("wl-cpv", errores.cpv?.message)}
               />
+              <CampoError campoId="wl-cpv" mensaje={errores.cpv?.message} />
             </div>
             <div className="space-y-1">
               <label htmlFor="wl-importe" className="text-sm font-medium">
@@ -105,49 +114,59 @@ export function NuevaReglaCard({
                 id="wl-importe"
                 type="number"
                 placeholder="Ej: 100000"
-                value={form.minImporte}
-                onChange={(e) => form.setMinImporte(e.target.value)}
+                {...register("min_importe")}
+                {...ariaCampo("wl-importe", errores.min_importe?.message)}
               />
+              <CampoError campoId="wl-importe" mensaje={errores.min_importe?.message} />
             </div>
             <div className="space-y-1">
               <label htmlFor="wl-ccaa" className="text-sm font-medium">
                 Comunidad Autónoma
               </label>
-              <Select
-                value={form.ccaa || "__all__"}
-                onValueChange={(v) => form.setCcaa(v === "__all__" ? "" : v)}
-              >
-                <SelectTrigger id="wl-ccaa">
-                  <SelectValue placeholder="— Todas —" />
-                </SelectTrigger>
-                <SelectContent>
-                  {ccaaList.map((c) => (
-                    <SelectItem key={c} value={c}>
-                      {c === "__all__" ? "— Todas —" : c}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Controller
+                control={control}
+                name="ccaa"
+                render={({ field }) => (
+                  <Select
+                    value={field.value || "__all__"}
+                    onValueChange={(v) => field.onChange(v === "__all__" ? "" : v)}
+                  >
+                    <SelectTrigger id="wl-ccaa">
+                      <SelectValue placeholder="— Todas —" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {ccaaList.map((c) => (
+                        <SelectItem key={c} value={c}>
+                          {c === "__all__" ? "— Todas —" : c}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              />
             </div>
             <div className="space-y-1">
               <label htmlFor="wl-frequency" className="text-sm font-medium">
                 Frecuencia de notificación
               </label>
-              <Select
-                value={form.frequency}
-                onValueChange={(v) => form.setFrequency(v as Frequency)}
-              >
-                <SelectTrigger id="wl-frequency" aria-describedby="wl-frequency-note">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {FREQ_OPTIONS.map((f) => (
-                    <SelectItem key={f.value} value={f.value}>
-                      {f.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Controller
+                control={control}
+                name="frequency"
+                render={({ field }) => (
+                  <Select value={field.value} onValueChange={field.onChange}>
+                    <SelectTrigger id="wl-frequency" aria-describedby="wl-frequency-note">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {FREQ_OPTIONS.map((f) => (
+                        <SelectItem key={f.value} value={f.value}>
+                          {f.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              />
               <p id="wl-frequency-note" className="text-xs text-muted-foreground">
                 {FREQ_NOTE}
               </p>
@@ -155,7 +174,7 @@ export function NuevaReglaCard({
             <div className="flex items-end">
               <Button
                 onClick={form.submit}
-                disabled={!form.keyword.trim() || form.creating}
+                disabled={!keyword.trim() || form.creating}
                 className="w-full"
               >
                 <Plus className="mr-2 h-4 w-4" />

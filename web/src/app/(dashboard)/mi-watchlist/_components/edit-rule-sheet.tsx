@@ -7,10 +7,15 @@
  * mutación de solo lectura (`POST …/preview`) cuyo resultado no sale de este
  * panel y muere al cerrarlo. Subirla al estado de la pantalla obligaría a
  * limpiarla a mano cada vez que cambia la regla en edición.
+ *
+ * Los valores viven en react-hook-form con el esquema de `WatchlistRuleBody`
+ * (S7.2): «Probar regla» y «Guardar cambios» validan antes de llamar a la API,
+ * y un importe o un plazo imposibles se explican debajo de su campo.
  */
 
-import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
+import { useForm, useWatch } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
 import { FlaskConical, Mail } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -22,6 +27,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { apiMutate } from "@/lib/api-client";
+import { regla } from "@/lib/forms/esquemas";
 import { RULES_KEY } from "../_hooks/use-mi-watchlist";
 import {
   formStateToBody,
@@ -29,7 +35,21 @@ import {
   tieneCriterio,
 } from "../_hooks/use-watchlist-rules";
 import type { ApiRule, RuleBody, RuleFormState } from "../_hooks/watchlist-rule-types";
-import { RuleFormFields } from "./rule-form-fields";
+import { RuleFormFields, type RuleFormErrors } from "./rule-form-fields";
+
+const VACIA: RuleFormState = {
+  keyword: "",
+  cpv: "",
+  min_importe: "",
+  ccaa: "",
+  frequency: "daily",
+  tecnologia: "",
+  organo: "",
+  procedimiento: "",
+  tipo_contrato: "",
+  banda_min: "",
+  plazo_min_dias: "",
+};
 
 export function EditRuleSheet({
   rule,
@@ -49,13 +69,32 @@ export function EditRuleSheet({
   // Inicializado desde `rule` -- el llamador remonta este componente con
   // `key={rule?.id}` cuando cambia la regla en edición, así que no hace
   // falta sincronizar con un efecto (evita cascading renders).
-  const [form, setForm] = useState<RuleFormState | null>(() =>
-    rule ? ruleToFormState(rule) : null,
+  const formulario = useForm<RuleFormState>({
+    resolver: zodResolver(regla.esquema),
+    defaultValues: rule ? ruleToFormState(rule) : VACIA,
+  });
+  // `defaultValues` trae las once claves, así que lo observado está completo
+  // aunque el tipo de `useWatch` lo declare parcial.
+  const form = useWatch({ control: formulario.control }) as RuleFormState;
+  const { errors, isSubmitted } = formulario.formState;
+  const errores: RuleFormErrors = Object.fromEntries(
+    Object.entries(errors).map(([campo, error]) => [campo, error?.message]),
   );
   const previewMut = useMutation({
     mutationFn: (body: RuleBody) =>
       apiMutate<{ total: number }>("POST", `${RULES_KEY}/preview`, body),
   });
+
+  /** Aplica el parche; tras el primer intento, revalida al escribir. */
+  const cambiar = (patch: Partial<RuleFormState>) => {
+    for (const [campo, valor] of Object.entries(patch) as [keyof RuleFormState, string][]) {
+      formulario.setValue(campo, valor, { shouldDirty: true, shouldValidate: isSubmitted });
+    }
+  };
+  const probar = () =>
+    formulario.handleSubmit((valores) => rule && previewMut.mutate(formStateToBody(valores, rule.active)))();
+  const guardar = () =>
+    formulario.handleSubmit((valores) => rule && onSave(rule.id, formStateToBody(valores, rule.active)))();
 
   return (
     <Sheet open={rule != null} onOpenChange={(open) => !open && onClose()}>
@@ -67,7 +106,7 @@ export function EditRuleSheet({
             cuántas licitaciones coinciden antes de guardar.
           </SheetDescription>
         </SheetHeader>
-        {form && rule && (
+        {rule && (
           <div className="mt-6 space-y-4">
             <div className="flex items-center gap-2 rounded-md border border-border/70 bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
               <Mail className="h-4 w-4 shrink-0" />
@@ -82,7 +121,8 @@ export function EditRuleSheet({
 
             <RuleFormFields
               value={form}
-              onChange={(patch) => setForm((f) => (f ? { ...f, ...patch } : f))}
+              onChange={cambiar}
+              errores={errores}
               ccaaList={ccaaList}
               tecnologiaList={tecnologiaList}
               idPrefix="edit-wl"
@@ -92,7 +132,7 @@ export function EditRuleSheet({
               <Button
                 type="button"
                 variant="outline"
-                onClick={() => previewMut.mutate(formStateToBody(form, rule.active))}
+                onClick={probar}
                 disabled={!tieneCriterio(form) || previewMut.isPending}
               >
                 <FlaskConical className="mr-2 h-4 w-4" />
@@ -120,7 +160,7 @@ export function EditRuleSheet({
               <Button
                 type="button"
                 disabled={!tieneCriterio(form) || saving}
-                onClick={() => onSave(rule.id, formStateToBody(form, rule.active))}
+                onClick={guardar}
               >
                 Guardar cambios
               </Button>
