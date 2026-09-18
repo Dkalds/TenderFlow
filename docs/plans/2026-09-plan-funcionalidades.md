@@ -364,6 +364,13 @@ M · sin gate.
 
 *Adopción:* evento nuevo `simulador_usado` con `formula_tipo`.
 
+*Estado (2026-09-18, rama `worktree-agent-ac5d5218d7d3b1f8b`):* **UI hecha.**
+`components/pliego/simulador-puntuacion.tsx` en el Resumen del inspector de
+Detalle y en la pestaña Precio de la oportunidad: escenarios de referencia,
+baja propia contra la del rival (con el p90 de `prediccion-baja` a un clic),
+motivo por caso de `sin_calculo` y `simulador_usado` emitido. El test de los
+diez pliegos golden es del backend y no se toca aquí.
+
 #### F2.3 Kit de presentación: documentos exigidos — P0
 
 **Para quién.** Quien monta la oferta administrativa. **Qué.** Lista de
@@ -416,6 +423,15 @@ después el PDF real. **Esfuerzo / gate.** S · sin gate.
 
 *Adopción:* propiedad `evidencia_abierta` en `espacio_abierto`.
 
+*Estado (2026-09-18, rama `worktree-agent-ac5d5218d7d3b1f8b`):* **UI hecha.**
+`components/pliego/pagina-pliego-dialog.tsx`, abierto desde cada cita de la
+ficha y del guion: resaltado por offsets, aviso y página completa si no
+sirven, navegación y enlace al original. E2E `web/e2e/pagina-cita.spec.ts`
+escrito (ficha → página resaltada en dos clics) y **no ejecutado** en local.
+Pendiente: `evidencia_abierta` no se emite — `espacio_abierto` exige un
+`origen` de navegación que abrir una cita no tiene; decidir si va en otro
+evento.
+
 #### F2.6 Guion de la oferta técnica por criterio (D33) — P1
 
 **Para quién.** Quien redacta. **Qué.** Para cada criterio de adjudicación,
@@ -433,6 +449,12 @@ Presupuesto LLM por organización (C2.9). **Esfuerzo / gate.** M · **[§6]**
   dos frases (esquema, no prosa).
 
 *Adopción:* evento nuevo `guion_generado` con `criterios` en tramos.
+
+*Estado (2026-09-18, rama `worktree-agent-ac5d5218d7d3b1f8b`):* **UI hecha**
+(`components/pliego/guion-oferta.tsx`, pestaña IA del inspector y pestaña
+Pliego de la oportunidad). Se genera sólo con botón (cuesta presupuesto), los
+puntos `sin_base` se marcan, el 429 se explica y se descarga en Markdown. El
+**PDF** no tiene ruta en el backend y queda sin hacer.
 
 #### F2.7 Ficha de oportunidad en PDF — P1
 
@@ -464,6 +486,13 @@ Detalle compara metadatos del anuncio, no fichas. **Depende de.** Nada.
   declara en el evento `degraded` si trunca.
 
 *Adopción:* propiedad `n_expedientes` en `asistente_usado`.
+
+*Estado (2026-09-18, rama `worktree-agent-ac5d5218d7d3b1f8b`):* **UI de la
+tabla hecha.** Bandeja de comparación (hasta tres) con botón «Comparar» en el
+inspector de Detalle, el del Radar y los favoritos de la watchlist; tabla
+`components/pliego/comparar-fichas.tsx` en la bandeja y como sección opcional
+del comparador de Detalle. Fuera de esta rama: `/ask` con varios expedientes
+desde la UI.
 
 ### F3 — Competir
 
@@ -778,6 +807,12 @@ tecnología existe; el resto no tiene entrada. **Depende de.** Nada.
 
 *Adopción:* evento nuevo `dato_reportado` con `tipo`.
 
+*Estado (2026-09-18, rama `worktree-agent-ac5d5218d7d3b1f8b`):* **UI hecha.**
+«Reportar dato» en la cabecera del inspector (`components/pliego/reportar-dato.tsx`):
+tipo cerrado, comentario opcional y acuse con la cola que lo revisa;
+`dato_reportado` tras el 201. La vista Calidad de datos pinta
+`reportes_por_tipo` (`ops/_components/calidad-datos/reportes-card.tsx`).
+
 #### F6.3 Exportación a CRM (D35) — P1
 
 **Para quién.** Comercial que vive en el CRM. **Qué.** Plantilla de webhook
@@ -822,6 +857,13 @@ pública. **Hoy.** Hecho 16. **Depende de.** Maestro de órganos (C1.2).
   anuncios.
 
 *Adopción:* ninguna (superficie pública, telemetría ya existente).
+
+*Estado (2026-09-18, rama `worktree-agent-ac5d5218d7d3b1f8b`):* **Hecho en
+web.** `/licitaciones/organo/[slug]` (nombre del backend, 404 si el órgano no
+tiene hub) y el índice `/licitaciones/organo`; sitemap e índice anuncian sólo
+los hubs con más de diez anuncios (`hubsOrganoAnunciables`).
+`check_public_surface.py --strict` en verde. `seo.spec.ts` cubre las rutas y
+el sitemap; **no ejecutado** en local.
 
 #### F6.6 Boletín público (D36) — P2, solo si D36 lo aprueba
 

@@ -41,6 +41,26 @@ describe("Comparator", () => {
     expect(screen.getByText("Órgano de contratación")).toBeInTheDocument();
   });
 
+  it("F2.8: las fichas del pliego se comparan a petición, no al abrir", () => {
+    const fetchSpy = vi.fn();
+    vi.stubGlobal("fetch", fetchSpy);
+    render(
+      <Comparator items={[makeItem(), makeItem({ id_externo: "EXT-2" })]} onClose={() => {}} />,
+    );
+    expect(
+      screen.getByRole("button", { name: "Comparar también las fichas del pliego" }),
+    ).toBeInTheDocument();
+    expect(fetchSpy).not.toHaveBeenCalled();
+    vi.unstubAllGlobals();
+  });
+
+  it("con un solo expediente no ofrece comparar fichas", () => {
+    render(<Comparator items={[makeItem()]} onClose={() => {}} />);
+    expect(
+      screen.queryByRole("button", { name: "Comparar también las fichas del pliego" }),
+    ).not.toBeInTheDocument();
+  });
+
   it("calls onClose from the close button and on Escape", () => {
     const onClose = vi.fn();
     render(<Comparator items={[makeItem()]} onClose={onClose} />);

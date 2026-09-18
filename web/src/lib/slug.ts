@@ -67,6 +67,23 @@ export function rutaHubCcaa(ccaa: string | null | undefined): string {
   return `/licitaciones/${slugCcaa(ccaa)}`;
 }
 
+/**
+ * Ruta del hub de un órgano de contratación (F6.5).
+ *
+ * Recibe el slug **que da el backend** (`/publico/hubs` → `organo[].slug`) y no
+ * el nombre: el slug de órgano se calcula en SQL (`_organo_slug_sql`) sin el
+ * recorte a 80 caracteres de `slugificar`, y un nombre largo slugificado aquí
+ * no casaría con el filtro del listado.
+ */
+export function rutaHubOrgano(slug: string): string {
+  return `/licitaciones/organo/${slug}`;
+}
+
+/** Forma válida de un slug de órgano: minúsculas, dígitos y guiones simples. */
+export function esSlugOrgano(slug: string): boolean {
+  return /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug);
+}
+
 /** Ruta del hub de una familia CPV (los dos primeros dígitos). */
 export function rutaHubCpv(cpv: string): string {
   return `/cpv/${cpv.replace(/\D/g, "").slice(0, 8)}`;

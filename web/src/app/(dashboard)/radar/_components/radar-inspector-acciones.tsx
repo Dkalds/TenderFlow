@@ -1,6 +1,7 @@
 "use client";
 
 import { ArrowUpRight, ExternalLink, Loader2, Star } from "lucide-react";
+import { CompararBoton } from "@/components/pliego/comparacion-bandeja";
 import type { RadarTender } from "@/hooks/use-radar";
 import { fuenteLinkLabel } from "@/lib/fuentes";
 import { cn } from "@/lib/utils";
@@ -55,6 +56,13 @@ export function InspectorAcciones({
         <Star className={cn("h-3.5 w-3.5", followed && "fill-current")} aria-hidden="true" />
         {followed ? "Siguiendo" : "Seguir"}
       </button>
+      {/* F2.8 — a la bandeja de comparación, que sigue abierta al pasar a la
+          watchlist o a Detalle. */}
+      <CompararBoton
+        id={tender.id_externo}
+        titulo={tender.titulo}
+        className="tf-pressable inline-flex h-[34px] flex-none items-center gap-1.5 rounded-lg border border-border/80 px-3 text-[12.5px] font-medium text-muted-foreground transition-colors hover:text-foreground aria-pressed:border-primary/50 aria-pressed:bg-primary/14 aria-pressed:text-primary"
+      />
       <button
         type="button"
         onClick={onOpenPursuit}

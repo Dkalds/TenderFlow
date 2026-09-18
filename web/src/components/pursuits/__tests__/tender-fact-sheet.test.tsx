@@ -40,6 +40,29 @@ vi.mock("@/hooks/use-tender-fact-sheet", () => ({
   }),
 }));
 
+// El visor de página (F2.5) pide su texto con React Query; aquí basta con
+// comprobar que la cita llega al visor con su documento, página y offsets.
+const paginaPedida = vi.fn();
+vi.mock("@/hooks/use-pagina-documento", () => ({
+  usePaginaDocumento: (_id: string, solicitud: unknown) => {
+    paginaPedida(solicitud);
+    return {
+      isLoading: false,
+      error: null,
+      data: {
+        documento_id: 7,
+        page_number: 3,
+        texto: "Cláusula 9. El precio tiene un peso del 55%. Resto.",
+        total_paginas: 20,
+        resaltado_inicio: 12,
+        resaltado_fin: 44,
+        filename: "PCAP.pdf",
+      },
+    };
+  },
+}));
+
+import { fireEvent } from "@testing-library/react";
 import { TenderFactSheetPanel } from "@/components/pursuits/tender-fact-sheet";
 
 describe("TenderFactSheetPanel", () => {
@@ -58,6 +81,17 @@ describe("TenderFactSheetPanel", () => {
     const enlaces = screen.getAllByRole("link", { name: /PCAP\.pdf · página/ });
     expect(enlaces.length).toBeGreaterThan(0);
     expect(enlaces[0]).toHaveAttribute("href", expect.stringContaining("#page="));
+  });
+
+  it("F2.5: una cita abre su página con el fragmento resaltado", () => {
+    render(<TenderFactSheetPanel licitacionId="LIC-1" />);
+    // La primera cita pintada es la del criterio «Precio» (página 3).
+    fireEvent.click(screen.getAllByRole("button", { name: "Ver la cita en su página" })[1]);
+
+    expect(paginaPedida).toHaveBeenLastCalledWith({ documentoId: 7, pagina: 3, inicio: 0, fin: 30 });
+    const visor = screen.getByRole("dialog");
+    expect(visor).toHaveTextContent("PCAP.pdf · página 3 de 20");
+    expect(visor.querySelector("mark")).toHaveTextContent("El precio tiene un peso del 55%.");
   });
 
   it("renders v3 families: lots with number, SLAs with target and certifications with scope", () => {

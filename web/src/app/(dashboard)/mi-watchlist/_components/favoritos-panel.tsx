@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { CompararBoton } from "@/components/pliego/comparacion-bandeja";
 import {
   useRemoveWatchlistItem,
   useWatchlistItems,
@@ -84,6 +85,11 @@ export function FavoritosPanel() {
                 {formatDate(item.fecha_publicacion)}
               </span>
             )}
+            <CompararBoton
+              id={item.id_externo}
+              titulo={item.titulo}
+              className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-md border border-border/80 px-2.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground aria-pressed:border-primary/50 aria-pressed:text-primary"
+            />
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button

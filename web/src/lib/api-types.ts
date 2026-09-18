@@ -163,3 +163,20 @@ export type MyApiKeysResult = Schemas["MyApiKeysResult"];
 export type CreatedKey = Schemas["CreatedKey"];
 export type NotificationPreference = Schemas["NotificationPreference"];
 export type NotificationPreferencesResult = Schemas["NotificationPreferencesResult"];
+
+// Herramientas del pliego del plan de funcionalidades 2026-09 que llegaron al
+// backend sin pantalla: simulador de puntuación (F2.2), visor de página (F2.5),
+// guion de la oferta técnica (F2.6), comparador de fichas (F2.8) y reporte de
+// un dato incorrecto (F6.2).
+export type SimulacionPrecio = Schemas["SimulacionPrecio"];
+export type EscenarioPuntos = Schemas["EscenarioPuntos"];
+export type PaginaDocumento = Schemas["PaginaDocumento"];
+export type GuionOferta = Schemas["GuionOferta"];
+export type GuionCriterio = Schemas["GuionCriterio"];
+export type PuntoGuion = Schemas["PuntoGuion"];
+export type ComparacionFichas = Schemas["ComparacionFichas"];
+export type FilaComparacion = Schemas["FilaComparacion"];
+export type CeldaComparacion = Schemas["CeldaComparacion"];
+export type ReporteDatoBody = Schemas["ReporteDatoBody"];
+export type ReporteDatoResult = Schemas["ReporteDatoResult"];
+export type TipoReporte = ReporteDatoBody["tipo"];

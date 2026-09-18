@@ -1,22 +1,8 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
-import { fetchWithAuth } from "@/lib/api-client";
 import { Badge } from "@/components/ui/badge";
+import { usePrediccionBaja } from "@/hooks/use-prediccion-baja";
 import { formatCurrency } from "@/lib/utils";
-import { prediccionKeys } from "@/lib/query-keys";
-
-interface PrediccionBaja {
-  licitacion_id: string;
-  p10?: number | null;
-  p50?: number | null;
-  p90?: number | null;
-  model_version?: number | null;
-  computed_at?: string | null;
-  serving?: "modelo" | "baseline";
-  baja_real?: number | null;
-  importe_adjudicado?: number | null;
-}
 
 function pct(v: number): string {
   return `${(v * 100).toFixed(1)}%`;
@@ -26,15 +12,8 @@ function pct(v: number): string {
  *  Si la licitación ya está adjudicada, compara la estimación (si existía
  *  antes de la adjudicación) contra la baja real observada. */
 export function PrediccionBajaBlock({ licitacionId }: { licitacionId: string }) {
-  const { data } = useQuery<PrediccionBaja>({
-    queryKey: prediccionKeys.baja(licitacionId),
-    queryFn: () =>
-      fetchWithAuth(
-        `/api/v1/licitaciones/${encodeURIComponent(licitacionId)}/prediccion-baja`,
-      ),
-    staleTime: 5 * 60 * 1000,
-    retry: false, // 404 = sin predicción y sin adjudicación registrada
-  });
+  // 404 = sin predicción y sin adjudicación registrada: no se reintenta.
+  const { data } = usePrediccionBaja(licitacionId);
   if (!data) return null;
 
   if (data.baja_real != null) {

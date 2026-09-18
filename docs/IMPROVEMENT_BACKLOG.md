@@ -39,6 +39,14 @@ Lo que se hizo **con fallback**, porque su dependencia no está en este árbol
   (v2 S2.1) sólo se puede afirmar lo primero, y la respuesta lo declara.
 - **F2.3** entrega el kit sin responsable, que es lo que el plan prevé sin C6.1.
 
+Pantallas que faltaban de lado ficha y superficie pública (2026-09-18, rama
+`worktree-agent-ac5d5218d7d3b1f8b`): F2.2, F2.5, F2.6, F2.8, F6.2 y F6.5 ya
+tienen UI; el estado por ítem está anotado en el plan. Quedan sin hacer: el
+PDF del guion (F2.6, sin ruta en el backend), `/ask` multi-expediente desde la
+UI (F2.8) y la emisión de `evidencia_abierta` (F2.5). Los E2E nuevos
+(`pagina-cita.spec.ts`, bloque de órganos de `seo.spec.ts`) no se ejecutaron
+en local.
+
 Ítems de **este** backlog que el plan toca:
 
 | Ítem | Estado tras el plan |
