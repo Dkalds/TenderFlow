@@ -319,3 +319,28 @@ groups:
             minutos. Es el camino de lectura mas fragil de los seis (ADR-026):
             revisar primero la frescura y los indices de la vista materializada
             licitaciones_canonicas.
+
+  - name: domain_events
+    # Backbone de eventos (ADR-027): la API escribe en la outbox
+    # `domain_events` y el job `event_dispatch` del scheduler la vacia hacia
+    # notificaciones, digests y webhooks. `domain_events_pending` la publica la
+    # API al servir /metrics (colector de db/events.py, muestreado con TTL), asi
+    # que SI es scrapeable aunque quien vacia la cola sea otro proceso.
+    rules:
+      - alert: DomainEventsBacklogHigh
+        # El umbral es `UMBRAL_PENDIENTES_ALERTA` de db/events.py; si cambia
+        # alli, cambia aqui (tests/test_alert_rules.py compara los dos).
+        # `for: 1h`: el despacho corre por lotes, y una rafaga de un backfill
+        # puede dejar la cola alta unos minutos sin que nada este roto. Una
+        # hora entera por encima es un dispatcher parado o que no da abasto.
+        expr: domain_events_pending > 1000
+        for: 1h
+        labels:
+          severity: warning
+        annotations:
+          summary: "Outbox de eventos: mas de 1000 pendientes durante 1h"
+          description: >
+            La cola domain_events lleva una hora con mas de 1000 eventos sin
+            despachar. Comprobar que el job de despacho de eventos corre en el
+            plano que declara SCHEDULER_PLANE y revisar sus logs: mientras la
+            cola crece, nadie recibe notificaciones, digests ni webhooks.

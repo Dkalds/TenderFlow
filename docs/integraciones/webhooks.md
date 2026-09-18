@@ -2,7 +2,7 @@
 tags: [integraciones, webhooks, seguridad]
 ---
 
-# Webhooks: verificar la firma y rotar el secret
+# Webhooks: formatos (JSON, Slack, Teams), firma y rotación del secret
 
 Cada entrega de TenderFlow —evento del catálogo, `ping` de prueba o reintento—
 es un `POST` con cuerpo JSON y tres cabeceras de autenticidad calculadas con
@@ -10,6 +10,177 @@ el `secret` del webhook. El `secret` se devuelve **una sola vez**: al crear el
 webhook (`POST /api/v1/webhooks`) y al rotarlo
 (`POST /api/v1/webhooks/{id}/rotate-secret`). No se almacena en claro y no hay
 forma de volver a leerlo ([RFC 049](../rfc/049-encrypt-webhook-secrets.md)).
+
+## Formatos del cuerpo
+
+Cada webhook tiene un `formato` que decide **cómo** se serializa el evento
+(D13 del plan v2: plantillas sobre el webhook genérico, sin integración OAuth
+por plataforma). Los tres valores y las plantillas viven en
+[`shared/events.py`](../../shared/events.py) (`renderizar`); la lista vigente la
+sirve `GET /api/v1/webhooks/event-types` en el campo `formatos`.
+
+| `formato` | Para qué receptor | Cuerpo |
+|---|---|---|
+| `json` (por defecto) | Tu propio endpoint | `{event, data, timestamp}`: el payload del evento tal cual. |
+| `slack_blocks` | Webhook entrante de un canal de Slack | Mensaje de Block Kit con `text` de respaldo. |
+| `teams_adaptive_card` | Webhook entrante de un canal de Teams | Mensaje con una Adaptive Card 1.5 adjunta. |
+
+Un webhook creado sin `formato` —o uno anterior a que existiera la columna—
+recibe `json`. Si el valor guardado no se reconoce, la entrega **no se pierde**:
+cae también a `json`. Las firmas y cabeceras son las mismas en los tres
+formatos, aunque Slack y Teams no las verifican; solo le sirven a un receptor
+propio.
+
+### Crear un webhook con cada plantilla
+
+Desde la vista de webhooks de `/ops` (selector «formato» del alta) o por API.
+El `organization_id` es opcional: sin él, el webhook es de tu organización
+personal. `event_types` acepta tipos del catálogo y comodines (`*`,
+`pursuit.*`, `licitacion.*`…).
+
+```bash
+# Tu endpoint: JSON crudo (el formato por defecto; el campo puede omitirse)
+curl -X POST https://<api>/api/v1/webhooks \
+  -H "X-API-Key: <clave con scope admin>" -H "Content-Type: application/json" \
+  -d '{"name": "erp", "url": "https://erp.example.com/hooks/tenderflow",
+       "event_types": ["pursuit.*"], "formato": "json"}'
+
+# Slack: la URL es la del webhook entrante que creas en la app de Slack del canal
+curl -X POST https://<api>/api/v1/webhooks \
+  -H "X-API-Key: <clave con scope admin>" -H "Content-Type: application/json" \
+  -d '{"name": "canal-licitaciones", "url": "https://hooks.slack.com/services/...",
+       "event_types": ["pursuit.*", "adjudicacion.*"], "formato": "slack_blocks"}'
+
+# Teams: la URL es la del webhook entrante (o flujo de Workflows) del canal
+curl -X POST https://<api>/api/v1/webhooks \
+  -H "X-API-Key: <clave con scope admin>" -H "Content-Type: application/json" \
+  -d '{"name": "equipo-ofertas", "url": "https://<url-del-webhook-entrante-del-canal>",
+       "event_types": ["pursuit.*"], "formato": "teams_adaptive_card"}'
+```
+
+El formato se cambia después con `PATCH /api/v1/webhooks/{id}` y
+`{"formato": "slack_blocks"}`. Antes de activarlo, `POST
+/api/v1/webhooks/{id}/ping` envía un evento `ping` **en el formato del
+webhook**: es la forma de comprobar que la tarjeta llega y se pinta.
+
+**Allowlist en producción.** En `prod` y `staging` los webhooks salientes solo
+van a hosts listados en `WEBHOOK_ALLOWED_HOSTS`; sin esa variable, el alta se
+rechaza. Para Slack o Teams, el host de la URL que te da la plataforma
+(`hooks.slack.com` en Slack) tiene que estar en la lista.
+
+### Ejemplos de cuerpo
+
+Los tres son el mismo evento —`pursuit.assigned` con el payload de
+`tests/test_s4_plantillas_webhook.py`— renderizado por `renderizar`. Ese test
+valida las dos plantillas contra `tests/fixtures/block_kit_schema.json` y
+`tests/fixtures/adaptive_cards_schema.json`.
+
+`json`:
+
+```json
+{
+  "event": "pursuit.assigned",
+  "data": {
+    "pursuit_id": 42,
+    "licitacion_id": "PLACSP:2026/000123",
+    "titulo": "Servicios de mantenimiento SAP",
+    "organization_id": 7,
+    "responsible_user_id": 3,
+    "actor_user_id": 1
+  },
+  "timestamp": "2026-09-06T08:00:00+00:00"
+}
+```
+
+`slack_blocks` (campos del payload en orden alfabético; `text` es lo que Slack
+enseña en la notificación del móvil y en los clientes que no pintan bloques):
+
+```json
+{
+  "text": "Te han asignado una oportunidad: Servicios de mantenimiento SAP",
+  "blocks": [
+    {
+      "type": "header",
+      "text": {
+        "type": "plain_text",
+        "text": "Te han asignado una oportunidad: Servicios de mantenimiento SAP"
+      }
+    },
+    {
+      "type": "section",
+      "fields": [
+        {"type": "mrkdwn", "text": "*actor_user_id*\n1"},
+        {"type": "mrkdwn", "text": "*licitacion_id*\nPLACSP:2026/000123"},
+        {"type": "mrkdwn", "text": "*organization_id*\n7"},
+        {"type": "mrkdwn", "text": "*pursuit_id*\n42"},
+        {"type": "mrkdwn", "text": "*responsible_user_id*\n3"},
+        {"type": "mrkdwn", "text": "*titulo*\nServicios de mantenimiento SAP"}
+      ]
+    },
+    {
+      "type": "context",
+      "elements": [
+        {
+          "type": "mrkdwn",
+          "text": "TenderFlow · pursuit.assigned · 2026-09-06T08:00:00+00:00"
+        }
+      ]
+    }
+  ]
+}
+```
+
+`teams_adaptive_card`:
+
+```json
+{
+  "type": "message",
+  "attachments": [
+    {
+      "contentType": "application/vnd.microsoft.card.adaptive",
+      "contentUrl": null,
+      "content": {
+        "type": "AdaptiveCard",
+        "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+        "version": "1.5",
+        "body": [
+          {
+            "type": "TextBlock",
+            "text": "Te han asignado una oportunidad: Servicios de mantenimiento SAP",
+            "weight": "Bolder",
+            "size": "Medium",
+            "wrap": true
+          },
+          {
+            "type": "FactSet",
+            "facts": [
+              {"title": "actor_user_id", "value": "1"},
+              {"title": "licitacion_id", "value": "PLACSP:2026/000123"},
+              {"title": "organization_id", "value": "7"},
+              {"title": "pursuit_id", "value": "42"},
+              {"title": "responsible_user_id", "value": "3"},
+              {"title": "titulo", "value": "Servicios de mantenimiento SAP"}
+            ]
+          },
+          {
+            "type": "TextBlock",
+            "text": "TenderFlow · pursuit.assigned · 2026-09-06T08:00:00+00:00",
+            "isSubtle": true,
+            "spacing": "Small",
+            "wrap": true
+          }
+        ]
+      }
+    }
+  ]
+}
+```
+
+En Slack y Teams los valores del payload se aplanan a texto (listas separadas
+por comas, objetos como `clave=valor`), se omiten los vacíos, se recortan a
+300 caracteres y se pintan como mucho ocho. El encabezado es el título del
+evento en el catálogo seguido de `titulo`, `licitacion_id`, `id_externo` o
+`rule_id` del payload, el primero que exista.
 
 ## Cabeceras
 
