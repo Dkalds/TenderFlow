@@ -5,6 +5,7 @@ import { ExportPopover } from "@/components/export-popover";
 import { Skeleton } from "@/components/ui/skeleton";
 import { SpaceShell, useSpaceView } from "@/components/layout/space-shell";
 import { CONSOLE_SPACES } from "@/lib/console-spaces";
+import { useFeatureFlag } from "@/hooks/use-feature-flag";
 
 /**
  * Mercado — las ocho rutas analíticas como cortes de una sola superficie.
@@ -46,15 +47,43 @@ const VIEWS: Record<string, React.ComponentType> = {
 
 const SPACE = CONSOLE_SPACES.find((space) => space.key === "mercado")!;
 
+/**
+ * Las dos vistas `experimental` y la fila de `feature_flags` que las gobierna.
+ * Son los mismos nombres que pasan `clusters-view.tsx` y
+ * `proyectos-modulos-view.tsx` a `VistaExperimental`.
+ */
+const FLAG_CLUSTERS = "mercado_clusters";
+const FLAG_PROYECTOS = "mercado_proyectos_modulos";
+
+/**
+ * Marca en el conmutador las vistas que `/ops` apagó.
+ *
+ * `VistaExperimental` ya se niega a montar una vista con su flag en `false`,
+ * pero la pestaña seguía anunciándola como una más: el usuario pulsaba para
+ * descubrir que estaba apagada. Aquí se dice antes de pulsar. Sólo cuenta un
+ * **no** explícito del backend: sin respuesta, el fail-open de `useFeatureFlag`
+ * deja la pestaña como estaba.
+ */
+function useBadgesDeFlags(): Record<string, string> | undefined {
+  const clusters = useFeatureFlag(FLAG_CLUSTERS);
+  const proyectos = useFeatureFlag(FLAG_PROYECTOS);
+  const badges: Record<string, string> = {};
+  if (!clusters.enabled) badges.clusters = "apagada";
+  if (!proyectos.enabled) badges.proyectos = "apagada";
+  return Object.keys(badges).length > 0 ? badges : undefined;
+}
+
 export default function MercadoPage() {
   const { view, setView } = useSpaceView(SPACE);
   const View = VIEWS[view] ?? VIEWS.tiempo;
+  const viewBadges = useBadgesDeFlags();
 
   return (
     <SpaceShell
       spaceKey="mercado"
       view={view}
       onViewChange={setView}
+      viewBadges={viewBadges}
       actions={
         <ExportPopover className="[&>button]:h-7 [&>button]:px-2.5 [&>button]:py-0 [&>button]:text-xs" />
       }
