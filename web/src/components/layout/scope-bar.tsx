@@ -120,16 +120,18 @@ const NAV_BUTTON =
 
 function ScopeChip({ chip }: { chip: Chip }) {
   return (
-    <span className="border-primary/30 bg-primary/10 text-primary inline-flex h-[26px] items-center gap-[7px] rounded-md border px-2">
-      <span className="font-mono text-[9px] leading-none font-medium tracking-[0.06em] uppercase opacity-60">
-        {chip.key}
-      </span>
+    // La clave y la «×» iban con `opacity-60`/`opacity-50` sobre el tinte del
+    // chip: 2,4:1, y la «×» medía 8×13 px. Ahora son tinta plena (la jerarquía
+    // la da el cuerpo mono de 9 px) y la «×» ocupa 24×24 (WCAG 2.5.8), con el
+    // margen negativo para que el chip no crezca.
+    <span className="border-primary/30 bg-primary/10 text-primary inline-flex h-[26px] items-center gap-[7px] rounded-md border pr-0.5 pl-2">
+      <span className="font-mono text-[9px] leading-none font-medium tracking-[0.06em] uppercase">{chip.key}</span>
       <span className="max-w-40 truncate text-xs leading-none font-medium">{chip.value}</span>
       <button
         type="button"
         aria-label={`Quitar ${chip.key.toLowerCase()} ${chip.value}`}
         onClick={chip.remove}
-        className="cursor-pointer border-0 bg-transparent p-0 pl-px text-[13px] leading-none opacity-50 transition-opacity duration-140 ease-out hover:opacity-100"
+        className="hover:bg-primary/15 -ml-1 grid h-6 w-6 cursor-pointer place-items-center rounded border-0 bg-transparent p-0 text-[13px] leading-none transition-colors duration-140 ease-out"
       >
         ×
       </button>
@@ -277,7 +279,7 @@ function ScopeEditor({
             />
             <label htmlFor="scope-solo-abiertas" className="text-muted-foreground cursor-pointer text-xs">
               Sólo abiertas
-              <span className="ml-1 text-[10px] opacity-70">(sin adjudicar ni cerrar)</span>
+              <span className="ml-1 text-[10px]">(sin adjudicar ni cerrar)</span>
             </label>
           </div>
         </div>
@@ -611,7 +613,7 @@ export function ScopeBar() {
           <span className="tf-tnum">
             {countLoading || !overview ? "—" : `${formatNumber(overview.total_licitaciones)} licitaciones`}
           </span>
-          <span className="opacity-40" aria-hidden="true">
+          <span aria-hidden="true">
             ·
           </span>
           <span>{relative ? `sync ${relative}` : "sin registro de sync"}</span>

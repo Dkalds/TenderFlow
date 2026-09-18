@@ -91,7 +91,7 @@ export function RadarControles({
       )}
       {conOrden ? (
         <>
-          <span className="mr-1.5 flex-none font-mono text-[8.5px] font-semibold uppercase tracking-[0.11em] text-muted-foreground/70">
+          <span className="mr-1.5 flex-none font-mono text-[8.5px] font-semibold uppercase tracking-[0.11em] text-muted-foreground">
             Orden
           </span>
           {SORTS.map((item) => {
@@ -115,7 +115,7 @@ export function RadarControles({
           })}
         </>
       ) : (
-        <span className="mr-1.5 flex-none font-mono text-[8.5px] font-semibold uppercase tracking-[0.11em] text-muted-foreground/70">
+        <span className="mr-1.5 flex-none font-mono text-[8.5px] font-semibold uppercase tracking-[0.11em] text-muted-foreground">
           Orden · fecha prevista
         </span>
       )}

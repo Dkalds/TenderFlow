@@ -44,7 +44,7 @@
     --card-foreground: 204 35% 10%;
     --popover: 0 0% 100%;
     --popover-foreground: 204 35% 10%;
-    --primary: 22 78% 40%;
+    --primary: 22 78% 34%;
     --primary-foreground: 36 100% 97%;
     --secondary: 42 14% 91%;
     --secondary-foreground: 204 30% 12%;
@@ -76,20 +76,30 @@
      * oscuro, que resta ~0,4 al ratio. `contraste-tokens.test.ts` recalcula
      * estos números leyendo este fichero — si alguien aclara un token, cae.
      *
-     * Lo que sigue sin llegar a 4,5:1 es el texto sobre el propio tinte del
-     * token (`bg-warning/15 text-warning` del `Badge`): sube de 2,51 a 4,20 pero
-     * cerrarlo del todo exige tocar la opacidad del tinte en `badge.tsx` /
-     * `status-badge.tsx`, no la rampa.
+     * Segunda pasada (2026-09-18, remediación axe `color-contrast`): el texto
+     * sobre el **propio tinte** del token —`bg-warning/15 text-warning` del
+     * `Badge`, los chips `bg-primary/10 text-primary` del ámbito, la paginación
+     * `bg-primary/14`— seguía en 3,8-4,4:1. Cerrarlo tocando la opacidad de
+     * cada tinte eran decenas de sitios; se cierra en la rampa, bajando L hasta
+     * que un tinte de hasta el 16 % sobre el fondo de página pasa 4,5:1:
+     *
+     *   --primary / --ring        40% -> 34%   tinte 16 % page 3,76 -> 4,73
+     *   --warning / --score-warm  29% -> 25%   tinte 16 % page 3,85 -> 4,73
+     *   --success                 28% -> 25%   tinte 16 % page 4,02 -> 4,70
+     *   --info                    39% -> 37%   tinte 16 % page 4,33 -> 4,65
+     *
+     * `contraste-tokens.test.ts` lo fija también («texto sobre su propio
+     * tinte»), para que el siguiente retoque de marca no lo deshaga a ciegas.
      */
-    --success: 150 70% 28%;
+    --success: 150 70% 25%;
     --success-foreground: 0 0% 100%;
-    --warning: 42 95% 29%;
+    --warning: 42 95% 25%;
     --warning-foreground: 42 100% 8%;
-    --info: 210 90% 39%;
+    --info: 210 90% 37%;
     --info-foreground: 0 0% 100%;
     --border: 200 15% 40% / 0.28;
     --input: 200 15% 40% / 0.3;
-    --ring: 22 78% 40%;
+    --ring: 22 78% 34%;
     --radius: 0.625rem;
 
     --shadow-ink: 204 30% 10%;
@@ -125,7 +135,7 @@
     --score-hot: 0 78% 48%;
     /* La banda media del score comparte tinta con `--warning` a propósito, así
        que comparte también su luminosidad corregida. */
-    --score-warm: 42 95% 29%;
+    --score-warm: 42 95% 25%;
     --score-cold: 210 80% 45%;
     --score-skip: 200 6% 46%;
   }

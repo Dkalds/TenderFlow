@@ -175,7 +175,7 @@ export function DetalleTabla(props: DetalleTablaProps) {
                 Error al cargar la tabla
               </span>
             </div>
-            <p className="mb-3.5 font-mono text-xs leading-[1.55] text-destructive/80">
+            <p className="mb-3.5 font-mono text-xs leading-[1.55] text-destructive">
               {(error as Error).message}
             </p>
             <button

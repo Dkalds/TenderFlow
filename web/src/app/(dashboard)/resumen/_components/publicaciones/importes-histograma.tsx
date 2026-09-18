@@ -44,7 +44,7 @@ export function ImportesHistograma({ histograma, total, maximo }: ImportesHistog
                   {bin.bin_label}
                 </span>
                 <span className="flex-1" />
-                <span className="text-muted-foreground/80 tf-tnum flex-none font-mono text-[10px]">
+                <span className="text-muted-foreground tf-tnum flex-none font-mono text-[10px]">
                   {pct.toFixed(1).replace(".", ",")}%
                 </span>
                 <span className="tf-tnum flex-none font-mono text-[11px] font-semibold">

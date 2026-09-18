@@ -79,7 +79,7 @@ function RailButton({ space, active, href }: { space: ConsoleSpace; active: bool
             "transition-colors duration-150 ease-out",
             active
               ? "border-primary/30 bg-primary/12 text-primary"
-              : "text-muted-foreground/80 hover:text-foreground border-transparent",
+              : "text-muted-foreground hover:text-foreground border-transparent",
           )}
         >
           <Icon className="h-4 w-4" aria-hidden="true" />

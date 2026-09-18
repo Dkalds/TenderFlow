@@ -48,7 +48,7 @@ function RadarError({ error, onRetry }: { error: Error; onRetry: () => void }) {
           Error al cargar la bandeja del radar
         </span>
       </div>
-      <p className="mb-3.5 font-mono text-xs leading-[1.55] text-destructive/80">{error.message}</p>
+      <p className="mb-3.5 font-mono text-xs leading-[1.55] text-destructive">{error.message}</p>
       <button
         type="button"
         onClick={onRetry}

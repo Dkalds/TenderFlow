@@ -41,7 +41,7 @@ import { shortEur } from "./radar-shared";
 function FechaPrevista({ iso }: { iso: string | null | undefined }) {
   if (!iso) {
     return (
-      <span className="tf-tnum font-mono text-[11px] font-medium text-muted-foreground/70">
+      <span className="tf-tnum font-mono text-[11px] font-medium text-muted-foreground">
         Sin fecha
       </span>
     );
@@ -82,7 +82,7 @@ function ProximaFila({ item }: { item: RadarProxima }) {
         <span className="block line-clamp-2 text-[13px] font-medium leading-[1.35] tracking-[-0.005em] md:line-clamp-1">
           {item.titulo ?? "—"}
         </span>
-        <span className="mt-0.5 block truncate font-mono text-[10.5px] leading-[1.3] text-muted-foreground/80">
+        <span className="mt-0.5 block truncate font-mono text-[10.5px] leading-[1.3] text-muted-foreground">
           {meta}
         </span>
       </span>
@@ -96,7 +96,7 @@ function ProximaFila({ item }: { item: RadarProxima }) {
       </span>
 
       <span className="flex items-baseline gap-1.5 md:flex-col md:items-end md:gap-0.5">
-        <span className="font-mono text-[8.5px] font-semibold uppercase tracking-[0.11em] text-muted-foreground/70">
+        <span className="font-mono text-[8.5px] font-semibold uppercase tracking-[0.11em] text-muted-foreground">
           Prevista
         </span>
         <FechaPrevista iso={item.fecha_prevista} />
@@ -137,7 +137,7 @@ function ProximasCabecera({ consola }: { consola: RadarProximasConsola }) {
         )}
       </p>
       {total != null && total > 0 && conFechaPrevista != null && (
-        <p className="mt-1 font-mono text-[10.5px] leading-relaxed text-muted-foreground/80">
+        <p className="mt-1 font-mono text-[10.5px] leading-relaxed text-muted-foreground">
           <span className="tf-tnum">
             {conFechaPrevista} de {total}
           </span>{" "}
@@ -163,7 +163,7 @@ function ProximasCabecera({ consola }: { consola: RadarProximasConsola }) {
 function ProximasVacia() {
   return (
     <div className="px-5 py-20 text-center">
-      <CalendarClock className="mx-auto mb-3 h-6 w-6 text-muted-foreground/60" aria-hidden="true" />
+      <CalendarClock className="mx-auto mb-3 h-6 w-6 text-muted-foreground" aria-hidden="true" />
       <div className="mb-1.5 font-display text-[15px] font-semibold leading-[1.3]">
         Ninguna compra anunciada por ahora
       </div>
@@ -190,7 +190,7 @@ function ProximasError({ error, onRetry }: { error: Error; onRetry: () => void }
           Error al cargar las próximas
         </span>
       </div>
-      <p className="mb-3.5 font-mono text-xs leading-[1.55] text-destructive/80">{error.message}</p>
+      <p className="mb-3.5 font-mono text-xs leading-[1.55] text-destructive">{error.message}</p>
       <button
         type="button"
         onClick={onRetry}
