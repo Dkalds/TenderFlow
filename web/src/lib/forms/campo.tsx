@@ -39,12 +39,32 @@ export function ariaCampo(
   };
 }
 
-/** Mensaje de error de un campo; no pinta nada si no hay error. */
-export function CampoError({ campoId, mensaje }: { campoId: string; mensaje: string | undefined }) {
+/**
+ * Mensaje de error de un campo; no pinta nada si no hay error.
+ *
+ * `enLabel` es para los formularios cuyo `<label>` envuelve el control: ahí el
+ * texto del error pasaría a formar parte del nombre accesible del campo
+ * («Precio ofertado (€) Escribe un importe…»). Con `aria-hidden` el cálculo del
+ * nombre lo salta, y el del `aria-describedby` lo sigue leyendo porque lo
+ * referencia por id (accname 1.2, paso 2A).
+ */
+export function CampoError({
+  campoId,
+  mensaje,
+  enLabel = false,
+}: {
+  campoId: string;
+  mensaje: string | undefined;
+  enLabel?: boolean;
+}) {
   if (!mensaje) return null;
   return (
-    <p id={idError(campoId)} className="text-destructive text-xs font-normal">
+    <span
+      id={idError(campoId)}
+      aria-hidden={enLabel || undefined}
+      className="text-destructive block text-xs font-normal"
+    >
       {mensaje}
-    </p>
+    </span>
   );
 }
