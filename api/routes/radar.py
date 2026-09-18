@@ -211,7 +211,9 @@ async def post_dismissal(
     ctx: dict[str, Any] = Depends(require_any_auth),
 ) -> RadarDismissalsResult:
     user_key = _user_key(ctx)
-    user_id = _user_id(ctx)
+    # Obligatorio desde v135: la PK del descarte es `(user_id, id_externo)`.
+    # `require_any_auth` lo adjunta a todo principal, sesión o API key.
+    user_id = int(ctx["user_id"])
     ambito = idem_scope("radar_dismissals", actor=user_key)
     hasta = (
         (datetime.now(UTC) + timedelta(days=body.dias)).isoformat()

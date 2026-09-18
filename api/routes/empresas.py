@@ -207,7 +207,7 @@ async def resolve_review(
     await run_db(
         log_event,
         event_type=EMPRESA_REVIEW_RESOLVED,
-        user_key=resolved_by[:8],
+        actor=resolved_by[:8],
         resource=f"empresa_review:{review_id}",
         detail={"accept": body.accept, "empresa_id": empresa_id},
     )

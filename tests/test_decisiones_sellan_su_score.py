@@ -30,6 +30,30 @@ def db(tmp_db: Any) -> Any:
     return db_mod
 
 
+def _uid(clave: str) -> int:
+    """``users.id`` estable para la clave de prueba, creándolo si falta.
+
+    Desde v135 la PK de ``radar_dismissals`` es ``(user_id, id_externo)`` con
+    FK a ``users``: un descarte sin usuario real ya no existe.
+    """
+    from db.database import connect, now_utc_iso
+
+    email = f"{clave}@decisiones.test"
+    with connect() as c:
+        fila = c.execute("SELECT id FROM users WHERE email = %s", (email,)).fetchone()
+        if fila is None:
+            fila = c.execute(
+                "INSERT INTO users (email, password_hash, created_at) "
+                "VALUES (%s, 'h', %s) RETURNING id",
+                (email, now_utc_iso()),
+            ).fetchone()
+    return int(fila[0])
+
+
+def _descartar(clave: str, id_externo: str, **kwargs: Any) -> None:
+    radar_dismissals.add(clave, id_externo, user_id=_uid(clave), **kwargs)
+
+
 def _fila(db: Any, user_key: str, id_externo: str) -> tuple[Any, Any]:
     with db.connect_read() as c:
         cur = c.execute(
@@ -42,7 +66,7 @@ def _fila(db: Any, user_key: str, id_externo: str) -> tuple[Any, Any]:
 
 
 def test_el_descarte_guarda_el_score_que_el_usuario_tenia_delante(db: Any) -> None:
-    radar_dismissals.add("u-1", "EXP-1", score=82, banda="Caliente")
+    _descartar("u-1", "EXP-1", score=82, banda="Caliente")
 
     assert _fila(db, "u-1", "EXP-1") == (82, "Caliente")
 
@@ -57,8 +81,8 @@ def test_un_segundo_descarte_no_reescribe_el_score_de_la_decision(db: Any) -> No
     que el Radar le estaba vendiendo como caliente — que es justo la señal de
     que el ranking no sirve.
     """
-    radar_dismissals.add("u-1", "EXP-1", score=82, banda="Caliente")
-    radar_dismissals.add("u-1", "EXP-1", score=31, banda="Tibia")
+    _descartar("u-1", "EXP-1", score=82, banda="Caliente")
+    _descartar("u-1", "EXP-1", score=31, banda="Tibia")
 
     assert _fila(db, "u-1", "EXP-1") == (82, "Caliente")
 
@@ -71,7 +95,7 @@ def test_se_puede_descartar_sin_score_y_la_fila_dice_que_no_se_supo(db: Any) -> 
     fila queda con ``NULL`` —«no se supo»— en vez de con un cero, que se
     confundiría con una señal puntuada bajísima.
     """
-    radar_dismissals.add("u-1", "EXP-2")
+    _descartar("u-1", "EXP-2")
 
     assert _fila(db, "u-1", "EXP-2") == (None, None)
 
@@ -83,8 +107,8 @@ def test_el_score_es_por_usuario_como_el_resto_de_la_tabla(db: Any) -> None:
     propiedad del expediente sino de la decisión. La clave primaria compuesta ya
     lo permitía; esto lo fija.
     """
-    radar_dismissals.add("u-1", "EXP-3", score=90, banda="Caliente")
-    radar_dismissals.add("u-2", "EXP-3", score=12, banda="Descarte")
+    _descartar("u-1", "EXP-3", score=90, banda="Caliente")
+    _descartar("u-2", "EXP-3", score=12, banda="Descarte")
 
     assert _fila(db, "u-1", "EXP-3") == (90, "Caliente")
     assert _fila(db, "u-2", "EXP-3") == (12, "Descarte")
@@ -97,6 +121,6 @@ def test_listar_descartes_no_cambia_de_forma_al_anadir_las_columnas(db: Any) -> 
     en la respuesta, el frontend tendría que conocerlas y el cambio dejaría de
     ser aditivo.
     """
-    radar_dismissals.add("u-1", "EXP-4", score=55, banda="Atractiva")
+    _descartar("u-1", "EXP-4", score=55, banda="Atractiva")
 
     assert radar_dismissals.list_ids("u-1") == ["EXP-4"]

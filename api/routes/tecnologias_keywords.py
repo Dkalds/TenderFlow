@@ -143,7 +143,7 @@ async def put_keyword(
     await run_db(
         log_event,
         event_type=TECNOLOGIAS_KEYWORD_ADDED,
-        user_key=str(admin.get("user_id", "")),
+        actor=str(admin.get("user_id", "")),
         resource=f"tecnologia:{body.tecnologia}",
         detail={
             "keyword": str(body.keyword),
@@ -174,7 +174,7 @@ async def delete_keyword(
     await run_db(
         log_event,
         event_type=TECNOLOGIAS_KEYWORD_REMOVED,
-        user_key=str(admin.get("user_id", "")),
+        actor=str(admin.get("user_id", "")),
         resource=f"tecnologia:{tecnologia}",
         detail={
             "keyword": keyword,
@@ -199,7 +199,7 @@ async def post_sembrar(
     await run_db(
         log_event,
         event_type=TECNOLOGIAS_KEYWORD_SEEDED,
-        user_key=str(admin.get("user_id", "")),
+        actor=str(admin.get("user_id", "")),
         resource="tecnologias_keywords",
         detail={"insertadas": insertadas},
     )

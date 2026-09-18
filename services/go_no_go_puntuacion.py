@@ -139,7 +139,7 @@ def _auditar(organization_id: int, user_id: int, pesos: dict[str, float]) -> Non
 
     log_event(
         event_type=GO_NO_GO_WEIGHTS_UPDATED,
-        user_key=f"user:{user_id}",
+        actor=f"user:{user_id}",
         resource=f"organization:{organization_id}",
         detail={"pesos": {k: float(v) for k, v in pesos.items() if k in plantilla.CRITERIOS}},
     )

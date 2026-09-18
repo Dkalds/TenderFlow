@@ -1264,7 +1264,7 @@ def _reequilibrar(pesos: dict[str, int], ajustes: Mapping[str, float]) -> dict[s
 
 
 def _pesos_vigentes(
-    user_key: str, organization_id: int
+    user_key: str, organization_id: int, *, user_id: int | None = None
 ) -> tuple[dict[str, int], Literal["perfil", "global"]]:
     """Pesos con los que el Radar puntúa hoy, y de dónde salen.
 
@@ -1275,7 +1275,7 @@ def _pesos_vigentes(
     from config import settings
     from db.repositories.user_profiles import get_user_profile
 
-    perfil = get_user_profile(user_key, organization_id)
+    perfil = get_user_profile(user_key, organization_id, user_id=user_id)
     weights = (perfil or {}).get("weights")
     if isinstance(weights, dict) and weights:
         return {str(k): int(v) for k, v in weights.items()}, "perfil"
@@ -1312,7 +1312,7 @@ def get_weights_proposal(
 ) -> PesosPropuestos:
     """Propuesta de ajuste de pesos a partir de los cierres de la organización."""
     with alcance_resuelto(user_id, organization_id) as (resolved_id, _):
-        pesos_actuales, origen = _pesos_vigentes(user_key, resolved_id)
+        pesos_actuales, origen = _pesos_vigentes(user_key, resolved_id, user_id=user_id)
         ganadas, perdidas = _desgloses_cerrados(resolved_id)
         n_cierres = len(ganadas) + len(perdidas)
         if n_cierres < PESOS_MINIMO_CIERRES:
@@ -1384,7 +1384,7 @@ def apply_weights_proposal(
     # de v128) filtraría ese perfil, `previo` sería `None`, y el upsert —que
     # reemplaza la fila entera— lo pisaría con nulos y publicaría como
     # `organization` un perfil que era `private`.
-    previo = get_own_user_profile(user_key)
+    previo = get_own_user_profile(user_key, user_id=user_id)
     visibility: Literal["private", "organization"] = (
         "private" if str((previo or {}).get("visibility") or "") == "private" else "organization"
     )
@@ -1392,7 +1392,6 @@ def apply_weights_proposal(
     # de los campos se reenvían tal cual: aplicar los pesos no puede borrar de
     # paso las keywords de afinidad ni los CPV de quien lo aplica.
     upsert_user_profile(
-        user_key,
         {
             "weights": pesos,
             "afinidad_keywords": (previo or {}).get("afinidad_keywords"),
@@ -1402,6 +1401,7 @@ def apply_weights_proposal(
         },
         resolved_id,
         visibility,
+        user_id=user_id,
     )
     # El ranking cacheado se calculó con los pesos viejos, en el scope propio y
     # en el de la organización que tuviera antes el perfil.

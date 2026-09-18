@@ -187,6 +187,9 @@ CATALOGO: dict[str, EspecificacionEvento] = dict(
             ("id_externo",),
             ("webhook", "cache"),
         ),
+        # `user_key` sigue en el payload a propósito: retirarlo rompe a los
+        # receptores externos y va con ventana de deprecación
+        # (docs/rfc/2026-09-18-rfc-retirar-user-key-payload-watchlist-rule-matched.md).
         _spec(
             "watchlist_rule.matched",
             "Coincidencias de una regla de seguimiento",
