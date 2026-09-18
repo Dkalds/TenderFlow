@@ -101,7 +101,7 @@ def test_una_reingesta_sin_el_dato_no_borra_los_anuncios(db):
 
     base = {"id_externo": "NTC-DB-1", "titulo": "Soporte SAP", "estado": "PUB"}
     upsert_licitaciones([Licitacion(**base, tipos_anuncio="DOC_CN,DOC_PIN_RTL")])
-    upsert_licitaciones([Licitacion(**base, estado="ADJ")])
+    upsert_licitaciones([Licitacion(**{**base, "estado": "ADJ"})])
 
     assert _tipos_en_bd("NTC-DB-1") == "DOC_CN,DOC_PIN_RTL"
 

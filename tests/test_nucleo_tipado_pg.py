@@ -240,8 +240,9 @@ def test_la_clave_canonica_no_se_mueve_con_el_backfill_ni_con_el_flag(
             _lic(id_externo="B", fecha_publicacion="2026-01-31T23:59:59+00:00"),
             _lic(id_externo="C", fecha_publicacion="2026-02-01T00:00:00Z"),
             _lic(id_externo="D", fecha_publicacion=None),
-            # Pasa el CHECK de v59 (prefijo ISO) pero no es una fecha.
-            _lic(id_externo="E", fecha_publicacion="2026-02-30"),
+            # Un «2026-02-30» no llega a esta tabla: pasa el CHECK de v59 pero
+            # la columna generada de v68 (`iso_prefix_to_date`) lo rechaza al
+            # insertar, así que no es un estado que el backfill pueda ver.
         ]
     )
     with connect() as c:
@@ -270,7 +271,7 @@ def test_la_clave_canonica_no_se_mueve_con_el_backfill_ni_con_el_flag(
     verificacion = _verificar_todo()
     assert verificacion["divergentes"] == 0
     assert verificacion["periodo_distinto"] == 0
-    assert verificacion["fecha_publicacion_no_iso"] == 1  # la fila E
+    assert verificacion["fecha_publicacion_no_iso"] == 0
 
 
 def test_indices_de_v134_existen_y_son_validos(db: Any) -> None:
