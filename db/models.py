@@ -85,6 +85,8 @@ licitaciones = Table(
     Column("procedimiento", String),
     Column("tramitacion", String),
     Column("peso_precio_pct", Float),
+    # v138_notice_type_code: `NoticeTypeCode` crudos de `ValidNoticeInfo`, CSV.
+    Column("tipos_anuncio", Text),
     Column("fuente", String, nullable=False, default="placsp"),
     Column("fecha_extraccion", String, nullable=False),
 )

@@ -201,6 +201,11 @@ class Licitacion:
     procedimiento: str | None = None
     tramitacion: str | None = None
     peso_precio_pct: float | None = None
+    #: `cbc-place-ext:NoticeTypeCode` de cada `ValidNoticeInfo` (v138): los
+    #: códigos CODICE crudos, distintos y ordenados, en CSV —
+    #: `"DOC_CD,DOC_CN,DOC_PIN_RTL"`—. Dice qué anuncios tuvo el expediente;
+    #: `DOC_PIN*` es el anuncio de información previa (spike T5).
+    tipos_anuncio: str | None = None
     # Fuente de ingesta (ADR-009): 'placsp', 'ted', 'pscp_cat'… Las fuentes
     # nuevas namespacean ademas su id_externo como "{fuente}:{id_natural}".
     fuente: str = "placsp"
@@ -295,6 +300,11 @@ _LIC_COALESCE_UPDATE_FIELDS = frozenset(
         "procedimiento",
         "tramitacion",
         "peso_precio_pct",
+        # `tipos_anuncio` (v138): solo lo lee el parser CODICE. Cualquier camino
+        # que construya la `Licitacion` sin leer `ValidNoticeInfo` la trae a
+        # `None` por no saberlo, no porque el expediente haya dejado de tener
+        # sus anuncios. Un valor no nulo sí pisa, como en el resto de este set.
+        "tipos_anuncio",
         # ── Linaje de inclusión ──
         "filter_version",
         "classifier_model_version",
