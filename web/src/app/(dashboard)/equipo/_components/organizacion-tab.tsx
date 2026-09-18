@@ -13,6 +13,7 @@
 
 import { OrganizacionCapacidadCard } from "./organizacion-capacidad-card";
 import { OrganizacionNifsCard } from "./organizacion-nifs-card";
+import { PlantillaTareasCard } from "./plantilla-tareas-card";
 
 export function OrganizacionTab({
   organizationId,
@@ -42,6 +43,7 @@ export function OrganizacionTab({
     <div className="space-y-5">
       <OrganizacionNifsCard organizationId={organizationId} canManage={canManage} />
       <OrganizacionCapacidadCard organizationId={organizationId} canManage={canManage} />
+      <PlantillaTareasCard organizationId={organizationId} />
     </div>
   );
 }

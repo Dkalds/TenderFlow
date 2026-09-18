@@ -156,7 +156,16 @@ export function useUpdatePursuit(id: string | number) {
       // ¿El pipeline se mueve, o se abandona en cuanto se crea? Sólo cuando el
       // parche toca el estado: un PATCH de precio o de responsable no es un
       // avance del workflow y contarlo como tal enmascararía el abandono.
-      if (input.status) registrarEvento("pursuit_estado_cambiado", { estado: input.status });
+      // F3.1: al cerrar como perdida viaja el motivo codificado (lista cerrada
+      // de D37, categórica); la nota de texto libre nunca sale de aquí.
+      if (input.status) {
+        registrarEvento("pursuit_estado_cambiado", {
+          estado: input.status,
+          ...(input.status === "lost" && input.outcome_reason_code
+            ? { motivo: input.outcome_reason_code }
+            : {}),
+        });
+      }
       // La misma clave que lee `usePursuit`, organización incluida: sin ella el
       // detalle se sembraba en una entrada que nadie consulta y la vista se
       // quedaba esperando al refetch de la invalidación.

@@ -38,6 +38,9 @@ const VIEWS: Record<string, React.ComponentType> = {
   agenda: dynamic(() => import("./_components/agenda-view"), { loading }),
   embudo: dynamic(() => import("./_components/embudo-view"), { loading }),
   horizonte: dynamic(() => import("./_components/horizonte-view"), { loading }),
+  // F4.3: la vista estaba declarada en `space-views.ts` sin componente, así
+  // que `?vista=cartera` caía en silencio a la agenda.
+  cartera: dynamic(() => import("./_components/cartera-view"), { loading }),
 };
 
 /**

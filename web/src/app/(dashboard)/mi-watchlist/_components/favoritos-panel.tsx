@@ -15,6 +15,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { EtiquetaChips, EtiquetasEditor } from "@/components/etiquetas/etiquetas-objeto";
+import { useEtiquetasDe } from "@/hooks/use-etiquetas";
 import {
   useRemoveWatchlistItem,
   useWatchlistItems,
@@ -24,6 +26,10 @@ import { formatCurrency, formatDate, truncate } from "@/lib/utils";
 export function FavoritosPanel() {
   const { data: items, isLoading } = useWatchlistItems();
   const removeItem = useRemoveWatchlistItem();
+  // F1.6 — el favorito se etiqueta por su `id_externo`; una sola petición
+  // para toda la lista.
+  const etiquetas =
+    useEtiquetasDe("favorito", (items ?? []).map((item) => item.id_externo)).data ?? {};
 
   if (isLoading) {
     return (
@@ -68,7 +74,14 @@ export function FavoritosPanel() {
               >
                 {truncate(item.titulo ?? item.id_externo, 100)}
               </a>
+              <EtiquetaChips etiquetas={etiquetas[item.id_externo]} className="mt-1" />
             </div>
+            <EtiquetasEditor
+              objetoTipo="favorito"
+              objetoId={item.id_externo}
+              aplicadas={etiquetas[item.id_externo]}
+              descripcion={truncate(item.titulo ?? item.id_externo, 60)}
+            />
             {item.importe != null && (
               <Badge variant="secondary" className="shrink-0">
                 {formatCurrency(item.importe)}
