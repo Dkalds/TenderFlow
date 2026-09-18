@@ -471,7 +471,12 @@ export function ScopeBar() {
   if (!filtersApply) {
     return (
       <>
-        <header className="tf-glass sticky top-0 z-30 flex h-[52px] flex-none items-center gap-2.5 px-3.5">
+        {/* `overflow-x-auto` como la barra con ámbito. Sin él, a 375 px el
+            rótulo «Ámbito · no aplica…» más las utilidades medían ~650 px y
+            empujaban el documento entero: era el desborde de 274 px de Mi
+            Watchlist y de Mi Pipeline en `responsive.spec.ts`, que no son
+            pantallas con ámbito. El rótulo, además, se oculta en móvil. */}
+        <header className="tf-glass sticky top-0 z-30 flex h-[52px] flex-none [scrollbar-width:none] items-center gap-2.5 overflow-x-auto px-3.5 [&::-webkit-scrollbar]:hidden">
           {activeCount > 0 ? (
             <>
               <Info className="text-primary h-3.5 w-3.5 shrink-0" aria-hidden="true" />
@@ -485,7 +490,7 @@ export function ScopeBar() {
               </Button>
             </>
           ) : (
-            <span className="text-muted-foreground font-mono text-[9px] font-semibold tracking-[0.14em] uppercase">
+            <span className="text-muted-foreground hidden flex-none font-mono text-[9px] font-semibold tracking-[0.14em] uppercase sm:inline">
               Ámbito · no aplica en esta pantalla
             </span>
           )}
@@ -657,7 +662,7 @@ export function ScopeBar() {
 function ScopeUtilities({ onSearch, relative }: { onSearch: () => void; relative: string | null }) {
   return (
     <>
-      <span className="text-muted-foreground flex-none text-[11px]">
+      <span className="text-muted-foreground hidden flex-none text-[11px] sm:inline">
         {relative ? `sync ${relative}` : "sin registro de sync"}
       </span>
       <button

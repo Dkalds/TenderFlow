@@ -40,7 +40,9 @@ export function DetallePie({
   onPageChange: (page: number) => void;
 }) {
   return (
-    <div className="flex h-11 flex-none items-center gap-3 border-t border-border/70 bg-card/60 px-3.5">
+    // Mismo criterio que la barra de arriba: con cinco páginas en la ventana
+    // la paginación no cabe a 375 px y se desplaza el pie, no el documento.
+    <div className="flex h-11 flex-none items-center gap-3 overflow-x-auto border-t border-border/70 bg-card/60 px-3.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
       <span className="tf-tnum text-[11px] text-muted-foreground">{showingLine}</span>
       {/* La explicación va también en `sr-only`: con el `title` de antes solo
           la veía quien pasaba el ratón, y es justo la advertencia que dice que

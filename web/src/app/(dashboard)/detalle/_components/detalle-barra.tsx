@@ -28,7 +28,10 @@ export function DetalleBarra({
   onCompactChange: (compact: boolean) => void;
 }) {
   return (
-    <div className="flex h-11 flex-none items-center gap-2.5 border-b border-border/60 px-3.5">
+    // `overflow-x-auto` y hijos `flex-none`: a 375 px, con los dos chips de
+    // recorte puestos, la barra no cabe; antes empujaba el documento entero a
+    // scroll horizontal y ahora se desplaza ella sola (móvil es consulta).
+    <div className="flex h-11 flex-none items-center gap-2.5 overflow-x-auto border-b border-border/60 px-3.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&>*]:flex-none">
       <span className="text-[12.5px] font-semibold">Detalle</span>
       <span className="hidden text-[11.5px] text-muted-foreground lg:inline">
         Tabla completa con todos los campos y exportación
