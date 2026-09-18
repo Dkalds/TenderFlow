@@ -66,6 +66,48 @@ describe("PrediccionBajaBlock", () => {
     expect(screen.getByText("+6.0% vs. estimado")).toBeInTheDocument();
   });
 
+  it("shows the per-lot breakdown next to the aggregate when lots were scored", () => {
+    renderWithData("L5", {
+      licitacion_id: "L5",
+      p10: 0.05,
+      p50: 0.15,
+      p90: 0.3,
+      model_version: "3",
+      computed_at: "2026-09-18T03:00:00Z",
+      serving: "modelo",
+      lotes: [
+        {
+          lote_id: 11,
+          lote_numero: "1",
+          p10: 0.2,
+          p50: 0.28,
+          p90: 0.35,
+          model_version: null,
+          computed_at: "2026-09-18T03:00:00Z",
+          serving: "baseline",
+        },
+      ],
+    });
+    // La cifra del expediente sigue siendo la principal.
+    expect(screen.getByText("15.0%")).toBeInTheDocument();
+    expect(screen.getByText("Por lote")).toBeInTheDocument();
+    expect(screen.getByText("Lote 1")).toBeInTheDocument();
+    expect(screen.getByText("28.0%")).toBeInTheDocument();
+  });
+
+  it("omits the per-lot block when no lot has its own estimate", () => {
+    renderWithData("L6", {
+      licitacion_id: "L6",
+      p10: 0.05,
+      p50: 0.15,
+      p90: 0.3,
+      model_version: null,
+      computed_at: "2026-09-18T03:00:00Z",
+      serving: "baseline",
+    });
+    expect(screen.queryByText("Por lote")).not.toBeInTheDocument();
+  });
+
   it("renders only the real baja for an awarded tender with no prior estimate", () => {
     renderWithData("L4", { licitacion_id: "L4", baja_real: 0.2, importe_adjudicado: 40000 });
     expect(screen.getByText("Baja real")).toBeInTheDocument();

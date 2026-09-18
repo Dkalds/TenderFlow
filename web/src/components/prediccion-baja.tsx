@@ -6,20 +6,61 @@ import { Badge } from "@/components/ui/badge";
 import { formatCurrency } from "@/lib/utils";
 import { prediccionKeys } from "@/lib/query-keys";
 
+interface PrediccionBajaLote {
+  lote_id: number;
+  lote_numero: string;
+  p10: number;
+  p50: number;
+  p90: number;
+  model_version?: number | null;
+  computed_at?: string | null;
+  serving: string;
+}
+
 interface PrediccionBaja {
   licitacion_id: string;
   p10?: number | null;
   p50?: number | null;
   p90?: number | null;
-  model_version?: number | null;
+  model_version?: number | string | null;
   computed_at?: string | null;
   serving?: "modelo" | "baseline";
   baja_real?: number | null;
   importe_adjudicado?: number | null;
+  /** Desglose por lote (v140). Solo llega si el batch por lote materializó
+   *  filas propias de algún lote; nunca se rellena con la cifra agregada. */
+  lotes?: PrediccionBajaLote[] | null;
 }
 
 function pct(v: number): string {
   return `${(v * 100).toFixed(1)}%`;
+}
+
+/** Estimación propia de cada lote, junto a la cifra del expediente.
+ *  El lote es la unidad sobre la que se puja: en un expediente de varios
+ *  lotes una sola mediana promedia justo lo que el pliego separa. */
+function DesgloseLotes({ lotes }: { lotes: PrediccionBajaLote[] }) {
+  return (
+    <div className="space-y-1 pt-2">
+      <h4 className="text-xs font-medium text-muted-foreground">Por lote</h4>
+      <ul className="space-y-0.5 text-xs">
+        {lotes.map((l) => (
+          <li key={l.lote_id} className="flex flex-wrap items-baseline gap-x-2">
+            <span className="font-medium">Lote {l.lote_numero}</span>
+            <span>
+              Mediana <span className="font-semibold">{pct(l.p50)}</span>
+            </span>
+            <span className="text-muted-foreground">
+              · {pct(l.p10)} – {pct(l.p90)}
+            </span>
+            <span className="text-muted-foreground">
+              · {l.serving === "modelo" ? `modelo por lote v${l.model_version}` : "estimación histórica"}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
 }
 
 /** Intervalo de baja esperada (p10/p50/p90) del batch nocturno (Fase 6).
@@ -71,6 +112,7 @@ export function PrediccionBajaBlock({ licitacionId }: { licitacionId: string }) 
             Sin estimación del modelo previa a la adjudicación.
           </p>
         )}
+        {data.lotes && data.lotes.length > 0 && <DesgloseLotes lotes={data.lotes} />}
       </div>
     );
   }
@@ -116,6 +158,7 @@ export function PrediccionBajaBlock({ licitacionId }: { licitacionId: string }) 
         Calculado {data.computed_at?.slice(0, 10)} · descripción del mercado, no una
         recomendación de puja.
       </p>
+      {data.lotes && data.lotes.length > 0 && <DesgloseLotes lotes={data.lotes} />}
     </div>
   );
 }

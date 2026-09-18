@@ -5685,8 +5685,8 @@ export interface components {
          * CalibracionPorLoteDTO
          * @description Calibración medida sobre lotes en vez de sobre expedientes.
          *
-         *     Bloque **de diagnóstico**, no la cifra que se sirve: mientras
-         *     ``predicciones_baja`` almacene una predicción por expediente,
+         *     Bloque **de diagnóstico**, no la cifra que se sirve: mientras el batch no
+         *     materialice filas por lote (``ML_BAJA_POR_LOTE``, v140),
          *     ``n_prediccion_por_lote`` vale 0 y esto es el modelo agregado evaluado a
          *     granularidad de lote. Ese número es precisamente el baseline contra el que
          *     hay que comparar un futuro modelo por lote, y por eso viaja en el contrato:
@@ -10016,6 +10016,32 @@ export interface components {
             vencen_7d: number;
         };
         /**
+         * PrediccionBajaLote
+         * @description Predicción **propia** de un lote, materializada por el batch por lote (v140).
+         *
+         *     Solo existe para lotes con fila en ``predicciones_baja``: el desglose no se
+         *     rellena con la cifra del expediente (ver
+         *     ``PrediccionesRepository.predicciones_por_lote``).
+         */
+        PrediccionBajaLote: {
+            /** Computed At */
+            computed_at?: string | null;
+            /** Lote Id */
+            lote_id: number;
+            /** Lote Numero */
+            lote_numero: string;
+            /** Model Version */
+            model_version?: number | null;
+            /** P10 */
+            p10: number;
+            /** P50 */
+            p50: number;
+            /** P90 */
+            p90: number;
+            /** Serving */
+            serving: string;
+        };
+        /**
          * PrediccionBajaResult
          * @description Predicción materializada y/o baja real de una licitación.
          *
@@ -10037,6 +10063,8 @@ export interface components {
             lote_id?: number | null;
             /** Lote Numero */
             lote_numero?: string | null;
+            /** Lotes */
+            lotes?: components["schemas"]["PrediccionBajaLote"][] | null;
             /** Model Version */
             model_version?: string | null;
             /** P10 */
