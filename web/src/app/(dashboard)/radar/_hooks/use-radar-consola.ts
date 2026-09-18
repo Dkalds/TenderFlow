@@ -89,7 +89,6 @@ export interface RadarConsola {
   lastVisit: number;
   opening: boolean;
   dismiss: (tender: RadarTender) => void;
-  /** F5.6 — silenciar o posponer: ocultar hasta dentro de `dias` días. */
   aplazar: (tender: RadarTender, accion: AccionAplazar, dias: number) => void;
   restoreAll: () => void;
   toggleFollow: (tender: RadarTender) => void;
@@ -201,42 +200,30 @@ export function useRadarConsola(): RadarConsola {
     [dismissed, restore],
   );
 
-  const dismiss = React.useCallback(
-    (tender: RadarTender) => {
-      // El score y la banda viajan con el descarte: son los que el usuario tenía
-      // delante al decidir, y no se pueden reconstruir después (revisión v93).
-      dismissTender.mutate({
-        idExterno: tender.id_externo,
-        score: tender.score,
-        banda: esBandaConocida(tender.band) ? tender.band : null,
-      });
-      toast("Señal descartada", {
-        description: tender.titulo ?? undefined,
-        action: { label: "Deshacer", onClick: () => restore(tender.id_externo) },
-      });
-    },
-    [dismissTender, restore],
-  );
-
+  // Descartar, silenciar y posponer (F5.6) son el mismo POST con otra acción.
+  // El score y la banda viajan con él: son los que el usuario tenía delante al
+  // decidir, y no se pueden reconstruir después (revisión v93).
   const aplazar = React.useCallback(
-    (tender: RadarTender, accion: AccionAplazar, dias: number) => {
+    (tender: RadarTender, accion?: AccionAplazar, dias?: number) => {
       dismissTender.mutate({
         idExterno: tender.id_externo,
         score: tender.score,
         banda: esBandaConocida(tender.band) ? tender.band : null,
-        accion,
-        dias,
+        ...(accion ? { accion, dias } : {}),
       });
-      // El texto dice cuándo vuelve, que es lo que distingue esto de descartar;
-      // sólo `posponer` promete además un aviso ese día (lo entrega el backend
-      // como alerta de la campana).
-      toast(accion === "silenciar" ? `Silenciada ${dias} días` : `Te lo recordamos en ${dias} días`, {
+      const titulo = !accion
+        ? "Señal descartada"
+        : accion === "silenciar"
+          ? `Silenciada ${dias} días`
+          : `Te lo recordamos en ${dias} días`;
+      toast(titulo, {
         description: tender.titulo ?? undefined,
         action: { label: "Deshacer", onClick: () => restore(tender.id_externo) },
       });
     },
     [dismissTender, restore],
   );
+  const dismiss = React.useCallback((tender: RadarTender) => aplazar(tender), [aplazar]);
 
   const toggleFollow = React.useCallback(
     (tender: RadarTender) => {

@@ -72,7 +72,6 @@ function LineaNovedad({ novedad }: { novedad: Novedad }) {
       {novedad.cuando && (
         <time
           dateTime={novedad.cuando}
-          title={formatDateTime(novedad.cuando)}
           className="text-muted-foreground flex-none text-[10.5px] whitespace-nowrap"
         >
           {formatRelativeTime(novedad.cuando)}
