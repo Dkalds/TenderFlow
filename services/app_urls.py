@@ -1,9 +1,9 @@
 """URLs absolutas del frontend, deducidas de la configuración existente.
 
-No hay una variable de entorno «URL pública del sitio»: ``FRONTEND_URL`` existe
-en ``render.yaml`` pero no en ``config/settings.py`` ni en ``.env.example``
-(deuda anotada en el backlog), y tocar ``.env*`` requiere OK humano (AGENTS.md
-§6). Así que se deduce de lo que ya está declarado y validado —el primer origen
+No hay una variable de entorno «URL pública del sitio» validada al arrancar:
+``FRONTEND_URL`` está en ``render.yaml`` y en ``.env.example``, pero no en
+``config/settings.py``, y solo la lee el callback de OAuth. Así que se deduce de
+lo que ya está declarado y validado —el primer origen
 de ``CORS_ALLOWED_ORIGINS``, que es el sitio que puede hablar con esta API— y,
 si está vacío, del origen del callback de OAuth.
 
