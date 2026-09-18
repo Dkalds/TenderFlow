@@ -138,12 +138,22 @@
     --chart-10: 218 75% 48%;
 
     /* Scoring bands */
-    --score-hot: 0 78% 48%;
     /* La banda media del score comparte tinta con `--warning` a propósito, así
        que comparte también su luminosidad corregida. */
     --score-warm: 42 95% 25%;
-    --score-cold: 210 80% 45%;
-    --score-skip: 200 6% 46%;
+    /* hot/cold/skip bajan (2026-09-19, axe `color-contrast` en /radar): la
+     * cifra del score del Radar es texto de 15 px sobre el fondo de página, no
+     * sobre la tarjeta, y daba 4,43 (cold) y 4,19 (skip); con la fila en hover
+     * (`bg-primary/5`) o activa (`bg-primary/9`), aún menos. Ratios en página
+     * · fila activa, antes -> ahora:
+     *
+     *   --score-hot   48% -> 42%   4,67 · 4,10 -> 5,79 · 5,08
+     *   --score-cold  45% -> 38%   4,43 · 3,89 -> 5,78 · 5,07
+     *   --score-skip  46% -> 38%   4,19 · 3,67 -> 5,67 · 4,97
+     */
+    --score-hot: 0 78% 42%;
+    --score-cold: 210 80% 38%;
+    --score-skip: 200 6% 38%;
   }
 
   .dark {

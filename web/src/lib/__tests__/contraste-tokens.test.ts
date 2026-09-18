@@ -154,7 +154,10 @@ const RAMPA_CLARA_SOBRE_FONDO = [
   "urgency-high",
   "urgency-medium",
   "urgency-low",
+  "score-hot",
   "score-warm",
+  "score-cold",
+  "score-skip",
 ] as const;
 
 /**
@@ -285,6 +288,45 @@ describe("tema claro: gris secundario sobre el badge neutro de una fila activa",
     expect(medido, `--muted-foreground da ${medido.toFixed(2)}:1 sobre el badge neutro`).toBeGreaterThanOrEqual(
       AA_TEXTO,
     );
+  });
+});
+
+/**
+ * Pilas de tintes del Radar (axe `color-contrast`, /radar, 2026-09-19). Los
+ * tintes se suman: un texto sobre su tinte dentro de la fila activa
+ * (`bg-primary/9`) queda por debajo de lo que el test de «su propio tinte»
+ * mide sobre la página limpia.
+ */
+describe("tema claro: el Radar sobre sus filas tintadas", () => {
+  const fila = (alfa: number) => mezcla(color("claro", "primary"), color("claro", "background"), alfa);
+
+  // La cifra del score (`radar-fila.tsx`) sobre la fila activa y en hover.
+  it.each(["score-hot", "score-warm", "score-cold", "score-skip"] as const)(
+    "--%s pasa 4,5:1 sobre la fila activa (primary 9 %%) y en hover (5 %%)",
+    (token) => {
+      for (const alfa of [0.05, 0.09]) {
+        const medido = ratioContraste(color("claro", token), fila(alfa));
+        expect(medido, `--${token} da ${medido.toFixed(2)}:1 sobre primary/${alfa * 100}`).toBeGreaterThanOrEqual(
+          AA_TEXTO,
+        );
+      }
+    },
+  );
+
+  // «Abrir» (`radar-acciones.tsx`): `bg-primary/6`, `hover:bg-primary/10`,
+  // dentro de la fila activa.
+  it.each([0.06, 0.1])("--primary pasa 4,5:1 sobre un tinte del %s dentro de la fila activa", (alfa) => {
+    const tinta = color("claro", "primary");
+    const medido = ratioContraste(tinta, mezcla(tinta, fila(0.09), alfa));
+    expect(medido, `--primary da ${medido.toFixed(2)}:1`).toBeGreaterThanOrEqual(AA_TEXTO);
+  });
+
+  // Recuento del segmento activo (`radar-controles.tsx`): `bg-primary/10`
+  // sobre `bg-secondary`, más oscuro que la página.
+  it("--primary pasa 4,5:1 sobre primary/10 encima de --secondary", () => {
+    const tinta = color("claro", "primary");
+    const medido = ratioContraste(tinta, mezcla(tinta, color("claro", "secondary"), 0.1));
+    expect(medido, `--primary da ${medido.toFixed(2)}:1`).toBeGreaterThanOrEqual(AA_TEXTO);
   });
 });
 

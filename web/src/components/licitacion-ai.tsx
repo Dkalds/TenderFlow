@@ -132,7 +132,7 @@ export function LicitacionAI({ idExterno, askSignal = 0 }: LicitacionAIProps) {
           )}
 
           {meta && !meta.has_pliego_text && (
-            <div className="mb-3 rounded-md border border-amber-500/50 bg-amber-500/10 p-2.5 text-xs text-amber-700 dark:text-amber-400">
+            <div className="mb-3 rounded-md border border-amber-500/50 bg-amber-500/10 p-2.5 text-xs text-amber-800 dark:text-amber-400">
               Resumen basado solo en los metadatos del anuncio: los pliegos no están disponibles o aún no se han
               procesado.
               {meta.documentos.length > 0 && (

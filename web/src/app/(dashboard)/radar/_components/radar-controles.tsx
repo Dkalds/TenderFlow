@@ -68,7 +68,10 @@ export function RadarControles({
             <span
               className={cn(
                 "tf-tnum rounded px-1.5 py-0.5 font-mono text-[10px] font-medium",
-                on ? "bg-primary/16 text-primary" : "bg-muted-foreground/12 text-muted-foreground",
+                // Tinte al 10 % y no al 16: el recuento va sobre el segmento
+                // activo (`bg-secondary`), más oscuro que la página, y ahí el
+                // 16 % dejaba el texto en 4,28:1 (axe, /radar). Al 10 %, 4,67.
+                on ? "bg-primary/10 text-primary" : "bg-muted-foreground/12 text-muted-foreground",
               )}
             >
               {counts[item.key] ?? "—"}
