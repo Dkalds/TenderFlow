@@ -115,6 +115,10 @@ _PURE_CALLS: frozenset[str] = frozenset(
         # proceso bajo un lock. Quien va a BD justo después es `vigente(...)`, y
         # esa sí se despacha con `run_db`.
         "invalidar",
+        # `services.rag.resumen.resumen_cache_key`: sha256 del expediente, el
+        # modelo y la firma de estado ya cargada. El contexto que firma lo trae
+        # `cargar_contexto_resumen`, y ese sí se despacha con `run_db`.
+        "resumen_cache_key",
     }
 )
 

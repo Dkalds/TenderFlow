@@ -184,10 +184,14 @@ function ValorPonderado({ metrics }: { metrics: PursuitMetrics }) {
             <li key={t.clave} className="grid grid-cols-[64px_1fr_72px] items-center gap-3">
               <span className="text-[11.5px] text-muted-foreground">{t.etiqueta}</span>
               <div className="h-4 overflow-hidden rounded bg-secondary/60" aria-hidden="true">
-                <div
-                  className="h-full rounded bg-primary/60"
-                  style={{ width: `${Math.max(2, (t.valor / maxTrimestre) * 100)}%` }}
-                />
+                {/* Barra en SVG: el ancho es un atributo, no un estilo inline (C2.8). */}
+                <svg className="h-full w-full" preserveAspectRatio="none" viewBox="0 0 100 1">
+                  <rect
+                    className="fill-primary/60"
+                    height="1"
+                    width={Math.max(2, (t.valor / maxTrimestre) * 100)}
+                  />
+                </svg>
               </div>
               <span className="tf-tnum text-right font-mono text-[11.5px] font-semibold">
                 {formatCompactCurrency(t.valor)}

@@ -29,11 +29,11 @@ import { cn } from "@/lib/utils";
 export function EtiquetaChip({ etiqueta }: { etiqueta: Pick<EtiquetaAplicada, "nombre" | "color"> }) {
   return (
     <span className="inline-flex h-5 max-w-[14rem] items-center gap-1 rounded-full border border-border/70 bg-background px-2 text-[10.5px] font-medium">
-      <span
-        aria-hidden="true"
-        className="h-1.5 w-1.5 flex-none rounded-full"
-        style={{ backgroundColor: etiqueta.color }}
-      />
+      {/* `fill` es un atributo de presentación SVG, no un estilo inline: la CSP
+          (`style-src`, C2.8) no lo gobierna y el color sigue viniendo del dato. */}
+      <svg aria-hidden="true" viewBox="0 0 6 6" className="h-1.5 w-1.5 flex-none">
+        <circle cx="3" cy="3" r="3" fill={etiqueta.color} />
+      </svg>
       <span className="truncate">{etiqueta.nombre}</span>
     </span>
   );
@@ -190,8 +190,11 @@ export function EtiquetasEditor({
                   "h-5 w-5 rounded-full border-2",
                   color === opcion ? "border-foreground" : "border-transparent",
                 )}
-                style={{ backgroundColor: opcion }}
-              />
+              >
+                <svg aria-hidden="true" viewBox="0 0 16 16" className="h-full w-full">
+                  <circle cx="8" cy="8" r="8" fill={opcion} />
+                </svg>
+              </button>
             ))}
           </div>
           {llena ? (
