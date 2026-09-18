@@ -64,7 +64,7 @@ def _ejecutar(monkeypatch: pytest.MonkeyPatch, paso: str) -> str:
 def test_cadena_e_inventario() -> None:
     migracion = _load()
     assert migracion.revision == "v135_user_id_pk_fase3"
-    assert migracion.down_revision == "v132_informes_programados"
+    assert migracion.down_revision == "v136_tecnologia_verdad_unica"
     assert migracion.PK_NUEVA == {
         "user_profiles": ("user_id",),
         "radar_dismissals": ("user_id", "id_externo"),
