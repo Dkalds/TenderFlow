@@ -8,7 +8,7 @@
  * cualquier componente que solo necesitara nombrar un tipo.
  */
 
-import type { z } from "zod";
+import type * as z from "zod/mini";
 import type { WatchlistRuleMatch, WatchlistRuleOut } from "@/lib/api-types";
 import type { regla } from "@/lib/forms/esquemas";
 

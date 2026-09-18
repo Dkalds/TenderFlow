@@ -4,7 +4,7 @@ import type * as React from "react";
 import { Check, CircleDollarSign, Loader2, Save } from "lucide-react";
 import { useForm, useWatch, type PathValue } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import type { z } from "zod";
+import type * as z from "zod/mini";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";

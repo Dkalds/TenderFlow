@@ -12,7 +12,7 @@
  * no haga.
  */
 
-import { z } from "zod";
+import * as z from "zod/mini";
 import type { components } from "@/generated/api";
 import { MOTIVOS_PERDIDA, type MotivoPerdida } from "@/lib/motivos-perdida";
 import { esquemaDeDto, type ContratoDto } from "./dto-schema";
@@ -26,7 +26,7 @@ type Schemas = components["schemas"];
 export const acceso = esquemaDeDto("LoginRequest")(
   {
     email: correo,
-    password: z.string().min(1, "Escribe tu contraseña."),
+    password: z.string().check(z.minLength(1, "Escribe tu contraseña.")),
   },
   // «Recordar este equipo» no se ofrece en esta pantalla: el backend lo toma
   // a `false`, que es el comportamiento que ya tenía.
@@ -45,25 +45,31 @@ export const registro = esquemaDeDto("RegisterRequest")(
     email: correo,
     password: z
       .string()
-      .min(10, "Mínimo 10 caracteres.")
-      .regex(/[a-z]/, "Tiene que llevar alguna minúscula.")
-      .regex(/[A-Z]/, "Tiene que llevar alguna mayúscula.")
-      .regex(/\d/, "Tiene que llevar algún número."),
+      .check(
+        z.minLength(10, "Mínimo 10 caracteres."),
+        z.regex(/[a-z]/, "Tiene que llevar alguna minúscula."),
+        z.regex(/[A-Z]/, "Tiene que llevar alguna mayúscula."),
+        z.regex(/\d/, "Tiene que llevar algún número."),
+      ),
   },
   [],
 );
 
 /** El alta añade la confirmación, que es del formulario y no del contrato. */
-export const registroFormulario = registro.esquema
-  .extend({ confirm_password: z.string() })
-  .refine((valores) => valores.password === valores.confirm_password, {
+export const registroFormulario = z.extend(registro.esquema, { confirm_password: z.string() }).check(
+  z.refine((valores) => valores.password === valores.confirm_password, {
     path: ["confirm_password"],
     message: "Las contraseñas no coinciden",
-  });
+  }),
+);
 
 /* ------------------------------------------------------------------ Reglas */
 
-const FRECUENCIAS = ["immediate", "daily", "weekly"] as const satisfies readonly Schemas["WatchlistRuleBody"]["frequency"][];
+const FRECUENCIAS = [
+  "immediate",
+  "daily",
+  "weekly",
+] as const satisfies readonly Schemas["WatchlistRuleBody"]["frequency"][];
 const BANDAS = ["Caliente", "Atractiva", "Tibia", "Descarte"] as const satisfies readonly NonNullable<
   Schemas["WatchlistRuleBody"]["banda_min"]
 >[];
@@ -98,7 +104,7 @@ export const regla = esquemaDeDto("WatchlistRuleBody")(
  */
 export const nuevaRegla = esquemaDeDto("WatchlistRuleBody")(
   {
-    keyword: textoOpcional(200).refine((valor) => valor.trim() !== "", "Escribe una palabra clave."),
+    keyword: textoOpcional(200).check(z.refine((valor) => valor.trim() !== "", "Escribe una palabra clave.")),
     cpv: textoOpcional(20),
     min_importe: importeOpcional,
     ccaa: z.string(),
@@ -123,12 +129,12 @@ export const nuevaRegla = esquemaDeDto("WatchlistRuleBody")(
 /** `api/routes/me.py::UserProfileBody`. */
 export const perfil = esquemaDeDto("UserProfileBody")(
   {
-    weights: z.record(z.string(), z.number().int().min(0).max(100)),
+    weights: z.record(z.string(), z.int().check(z.minimum(0), z.maximum(100))),
     afinidad_keywords: z.array(z.string()),
     // `_CPV_RE` y `_MAX_CPVS` del backend.
     cpvs: z
-      .array(z.string().regex(/^\d{4,8}$/, "Un CPV son entre 4 y 8 dígitos."))
-      .max(50, "Máximo 50 CPVs por perfil."),
+      .array(z.string().check(z.regex(/^\d{4,8}$/, "Un CPV son entre 4 y 8 dígitos.")))
+      .check(z.maxLength(50, "Máximo 50 CPVs por perfil.")),
     importe_min: importeOpcional,
     importe_max: importeOpcional,
     visibility: z.enum(["private", "organization"]),
@@ -141,24 +147,32 @@ export const perfil = esquemaDeDto("UserProfileBody")(
  * Un rango al revés no puntúa nada dentro: todo contrato caería «fuera de
  * rango». El backend lo guardaría igual, así que se para aquí.
  */
-export const perfilFormulario = perfil.esquema.refine(
-  (valores) => {
-    const minimo = numeroDeTexto(valores.importe_min);
-    const maximo = numeroDeTexto(valores.importe_max);
-    return minimo == null || maximo == null || minimo <= maximo;
-  },
-  { path: ["importe_max"], message: "El máximo no puede ser menor que el mínimo." },
+export const perfilFormulario = perfil.esquema.check(
+  z.refine(
+    (valores) => {
+      const minimo = numeroDeTexto(valores.importe_min);
+      const maximo = numeroDeTexto(valores.importe_max);
+      return minimo == null || maximo == null || minimo <= maximo;
+    },
+    { path: ["importe_max"], message: "El máximo no puede ser menor que el mínimo." },
+  ),
 );
 
 /* ------------------------------------------------------------------ Equipo */
 
 /** `shared/dto.py::OrganizationCreate` (`min_length=1, max_length=200`). */
 export const organizacion = esquemaDeDto("OrganizationCreate")(
-  { name: z.string().trim().min(1, "Escribe un nombre.").max(200, "Máximo 200 caracteres.") },
+  {
+    name: z.string().check(z.trim(), z.minLength(1, "Escribe un nombre."), z.maxLength(200, "Máximo 200 caracteres.")),
+  },
   [],
 );
 
-const ROLES_INVITABLES = ["admin", "member", "viewer"] as const satisfies readonly Schemas["OrganizationMemberInvite"]["role"][];
+const ROLES_INVITABLES = [
+  "admin",
+  "member",
+  "viewer",
+] as const satisfies readonly Schemas["OrganizationMemberInvite"]["role"][];
 
 /** `shared/dto.py::OrganizationMemberInvite`. */
 export const invitacion = esquemaDeDto("OrganizationMemberInvite")(
@@ -181,11 +195,8 @@ const ESTADOS = [
   "withdrawn",
 ] as const satisfies readonly NonNullable<PursuitUpdate["status"]>[];
 const DECISIONES = ["pending", "go", "no_go"] as const satisfies readonly NonNullable<PursuitUpdate["decision"]>[];
-const CODIGOS_MOTIVO_PERDIDA = MOTIVOS_PERDIDA.map((motivo) => motivo.codigo) as [
-  MotivoPerdida,
-  ...MotivoPerdida[],
-];
-const RESULTADOS =["pending", "won", "lost", "cancelled"] as const satisfies readonly NonNullable<
+const CODIGOS_MOTIVO_PERDIDA = MOTIVOS_PERDIDA.map((motivo) => motivo.codigo) as [MotivoPerdida, ...MotivoPerdida[]];
+const RESULTADOS = ["pending", "won", "lost", "cancelled"] as const satisfies readonly NonNullable<
   PursuitUpdate["outcome"]
 >[];
 
@@ -193,7 +204,7 @@ const RESULTADOS =["pending", "won", "lost", "cancelled"] as const satisfies rea
 export const oportunidad = esquemaDeDto("PursuitUpdate")(
   {
     status: z.enum(ESTADOS),
-    responsible_user_id: z.string().regex(/^\d*$/, "Elige una persona de la lista."),
+    responsible_user_id: z.string().check(z.regex(/^\d*$/, "Elige una persona de la lista.")),
     decision: z.enum(DECISIONES),
     decision_reason: textoOpcional(4000),
     offer_price_eur: importeOpcional,
@@ -219,13 +230,15 @@ const FORMATOS = ["json", "slack_blocks", "teams_adaptive_card"] as const satisf
 /** `api/routes/webhooks.py::WebhookCreate`. */
 export const webhook = esquemaDeDto("WebhookCreate")(
   {
-    name: z.string().trim().min(1, "Escribe un nombre.").max(100, "Máximo 100 caracteres."),
+    name: z.string().check(z.trim(), z.minLength(1, "Escribe un nombre."), z.maxLength(100, "Máximo 100 caracteres.")),
     url: z
       .string()
-      .trim()
-      .min(1, "Escribe la URL de destino.")
-      .startsWith("https://", "La URL debe empezar por https://")
-      .max(500, "Máximo 500 caracteres."),
+      .check(
+        z.trim(),
+        z.minLength(1, "Escribe la URL de destino."),
+        z.startsWith("https://", "La URL debe empezar por https://"),
+        z.maxLength(500, "Máximo 500 caracteres."),
+      ),
     event_types: z.array(z.string()),
     formato: z.enum(FORMATOS),
   },

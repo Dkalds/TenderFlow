@@ -14,7 +14,7 @@ import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useForm, useWatch, type PathValue } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import type { z } from "zod";
+import type * as z from "zod/mini";
 import { toast } from "sonner";
 import { apiMutate, fetchWithAuth } from "@/lib/api-client";
 import { primeraVez, registrarEvento } from "@/lib/analytics";

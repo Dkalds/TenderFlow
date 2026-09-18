@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { z } from "zod";
+import * as z from "zod/mini";
 import { esquemaDeDto } from "../dto-schema";
 import { CONTRATOS_DE_FORMULARIO } from "../esquemas";
 

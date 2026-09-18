@@ -21,7 +21,7 @@ import { toast } from "sonner";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useForm, type UseFormReturn } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import type { z } from "zod";
+import type * as z from "zod/mini";
 import { nuevaRegla } from "@/lib/forms/esquemas";
 import { numeroDeTexto } from "@/lib/forms/valores";
 import { apiMutate, fetchWithAuth } from "@/lib/api-client";

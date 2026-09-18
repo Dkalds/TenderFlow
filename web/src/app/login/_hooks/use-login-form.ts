@@ -18,7 +18,7 @@ import { useState, type FormEvent } from "react";
 import { useSearchParams } from "next/navigation";
 import { useForm, type Resolver } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { z } from "zod";
+import * as z from "zod/mini";
 import { acceso, registroFormulario } from "@/lib/forms/esquemas";
 import { apiMutate, ApiError, fetchWithAuth } from "@/lib/api-client";
 import { safeRedirectPath } from "@/lib/safe-redirect";
@@ -49,7 +49,7 @@ export interface CredencialesValores {
 
 // En modo acceso los dos campos del alta existen pero no se validan.
 const resolverAcceso = zodResolver(
-  acceso.esquema.extend({ display_name: z.string(), confirm_password: z.string() }),
+  z.extend(acceso.esquema, { display_name: z.string(), confirm_password: z.string() }),
 );
 const resolverRegistro = zodResolver(registroFormulario);
 

@@ -20,9 +20,18 @@
  * traducción a `number | null` sigue viviendo en cada pantalla. Lo que se
  * comparte con el DTO son las claves, que es justo lo que no se debe duplicar
  * a mano (ADR-014).
+ *
+ * **Siempre `import * as z from "zod/mini"`**, en todos los ficheros de
+ * formulario. El `z` clásico de `"zod"` cuelga los validadores como métodos
+ * (`.min()`, `.regex()`…) y el bundler no puede descartar ninguno: metía unos
+ * 300 KB (sin comprimir) de First Load JS en cada ruta con formulario. La API
+ * funcional de `zod/mini` (`z.string().check(z.minLength(…))`) solo arrastra lo
+ * que se usa, y el `import * as` importa: con `import { z }` el objeto espacio
+ * de nombres entero —locales incluidos— entra en el bundle igual. Lo vigila
+ * `scripts/check_bundle_budget.py`.
  */
 
-import { z } from "zod";
+import * as z from "zod/mini";
 import type { components } from "@/generated/api";
 
 type Schemas = components["schemas"];
@@ -44,7 +53,7 @@ export interface ContratoDto {
 
 /** Forma cuyas claves son todas del DTO `N`. */
 type FormaDe<N extends NombreDto, S> = {
-  [K in keyof S]: K extends ClaveDto<N> ? z.ZodType : never;
+  [K in keyof S]: K extends ClaveDto<N> ? z.ZodMiniType : never;
 };
 
 /**
@@ -69,7 +78,7 @@ type Exhaustivo<N extends NombreDto, S, O extends readonly string[]> = [
  */
 export function esquemaDeDto<N extends NombreDto>(dto: N) {
   return <
-    S extends Record<string, z.ZodType> & FormaDe<N, S>,
+    S extends Record<string, z.ZodMiniType> & FormaDe<N, S>,
     const O extends readonly Exclude<ClaveDto<N>, keyof S>[],
   >(
     forma: S,
