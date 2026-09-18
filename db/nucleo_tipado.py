@@ -385,10 +385,14 @@ def verificar_lote(desde: str, tamano: int, *, statement_timeout_ms: int = 60000
     )
 
 
+# `pg_attribute` y no `information_schema.columns`: la vista del estándar
+# evalúa privilegios columna a columna sobre todo el catálogo antes de filtrar,
+# y esta consulta corre en cada chunk del upsert. `to_regclass` resuelve la
+# tabla por el search_path, igual que el `INSERT` que viene después.
 _SQL_COLUMNAS_SOMBRA = (
-    "SELECT count(*) FROM information_schema.columns "
-    "WHERE table_schema = current_schema() AND table_name = 'licitaciones' "
-    "AND column_name = ANY(%s)"
+    "SELECT count(*) FROM pg_catalog.pg_attribute "
+    "WHERE attrelid = to_regclass('licitaciones') "
+    "AND attnum > 0 AND NOT attisdropped AND attname = ANY(%s)"
 )
 
 
