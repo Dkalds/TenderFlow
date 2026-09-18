@@ -89,6 +89,12 @@ class EspecificacionEvento:
         preferencia_email: El usuario decide por preferencia
             (``immediate``/``daily``/``off``) si este evento le llega por
             correo. Solo lo tienen los eventos personales (S4.6).
+        clave_ajustes: Tipo de ``notification_preferences`` (C2.7) que
+            gobierna este evento, cuando su interruptor vive en la pantalla de
+            Ajustes y no en ``user_event_prefs``. Con clave, el despachador lee
+            ahí la frecuencia de los canales ``in_app`` y ``email``: un aviso
+            que el usuario apagó en Ajustes no puede seguir llegando porque el
+            despachador mire otra tabla.
     """
 
     tipo: str
@@ -97,6 +103,7 @@ class EspecificacionEvento:
     canales: tuple[Canal, ...]
     tipo_notificacion: str | None = None
     preferencia_email: bool = False
+    clave_ajustes: str | None = None
 
     @property
     def familia(self) -> str:
@@ -111,6 +118,7 @@ def _spec(
     *,
     tipo_notificacion: str | None = None,
     preferencia_email: bool = False,
+    clave_ajustes: str | None = None,
 ) -> tuple[str, EspecificacionEvento]:
     return tipo, EspecificacionEvento(
         tipo=tipo,
@@ -119,6 +127,7 @@ def _spec(
         canales=canales,
         tipo_notificacion=tipo_notificacion,
         preferencia_email=preferencia_email,
+        clave_ajustes=clave_ajustes,
     )
 
 
@@ -159,6 +168,30 @@ CATALOGO: dict[str, EspecificacionEvento] = dict(
             ("in_app", "digest", "webhook"),
             tipo_notificacion="pursuit_comentada",
             preferencia_email=True,
+        ),
+        # C6.1. Lo emite `services/pursuit_tasks.emitir_tareas_que_vencen` el
+        # día del vencimiento, una vez por `(tarea, fecha)`. El destinatario es
+        # el responsable de la **tarea**, no el de la oportunidad.
+        _spec(
+            "pursuit.task_due",
+            "Vence hoy una tarea",
+            ("pursuit_id", "licitacion_id", "task_id", "vence", "destinatarios"),
+            ("in_app", "digest", "webhook"),
+            tipo_notificacion="pursuit_tarea_vence",
+            clave_ajustes="pursuit.task_due",
+        ),
+        # C6.2. Lo emite `services/pursuit_comments.add_comment` con los ids
+        # que resolvió contra los miembros activos de la organización: nadie de
+        # fuera puede estar en `destinatarios`. La clave de Ajustes se llama
+        # `pursuit.mention` desde que existe la pantalla y no se renombra: puede
+        # haber preferencias guardadas con ella.
+        _spec(
+            "pursuit.mentioned",
+            "Te han mencionado en un comentario",
+            ("pursuit_id", "licitacion_id", "comment_id", "actor_user_id", "destinatarios"),
+            ("in_app", "digest", "webhook"),
+            tipo_notificacion="pursuit_mencion",
+            clave_ajustes="pursuit.mention",
         ),
         _spec(
             "licitacion.cambiada",
