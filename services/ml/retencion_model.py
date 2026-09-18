@@ -125,6 +125,39 @@ def _pr_auc_por_bloques(
     return float(np.std(valores)), valores
 
 
+def _pr_auc_ranking_antiguedad(
+    pares: list[ParRetencion], y_true: npt.NDArray[np.float64]
+) -> float | None:
+    """PR-AUC de ordenar por ``antiguedad_relacion_meses``, sin modelo.
+
+    Es el segundo rival que nombraba el backlog, más exigente que la
+    prevalencia: la heurística de una línea «cuanto más larga la relación
+    órgano-empresa, más probable que la renueve». Un modelo que no la supera no
+    aporta nada que no se pueda servir con un ``ORDER BY``.
+
+    Es **informativa**: se registra (``pr_auc_baseline_antiguedad``) para que
+    quien decide la activación la vea junto al baseline del gate, pero no entra
+    en :func:`~services.ml.promotion.evaluar_promocion_predictiva`. Cambiar
+    contra qué rival se gatea es una decisión de criterio, no de código.
+
+    Las filas sin antigüedad van al fondo del ranking (el rival no sabe nada
+    de ellas). Sin ninguna antigüedad en la ventana, o sin las dos clases,
+    devuelve ``None`` en vez de un número que no mide nada.
+    """
+    import numpy as np
+    from sklearn.metrics import average_precision_score
+
+    if len(set(y_true.tolist())) < 2:
+        return None
+    crudos = [par.features.get("antiguedad_relacion_meses") for par in pares]
+    observados = [float(v) for v in crudos if v is not None]
+    if not observados:
+        return None
+    suelo = min(observados) - 1.0
+    puntuacion = np.array([float(v) if v is not None else suelo for v in crudos], dtype=np.float64)
+    return float(average_precision_score(y_true, puntuacion))
+
+
 class RetencionModel:
     """Clasificador calibrado + metadata."""
 
@@ -220,6 +253,7 @@ def entrenar(
     pr_auc = float(average_precision_score(y_valid, proba))
     ece = _ece(y_valid, proba)
     dispersion, pr_auc_bloques = _pr_auc_por_bloques(y_valid, proba)
+    pr_auc_antiguedad = _pr_auc_ranking_antiguedad(valid, y_valid)
     metricas: dict[str, Any] = {
         "pr_auc": round(pr_auc, 4),
         "prevalencia": round(prevalencia, 4),
@@ -228,6 +262,10 @@ def entrenar(
         # `pr_auc_baseline` describe el rival, y quien lea el registro tiene
         # que poder comparar dos números con el mismo nombre de métrica.
         "pr_auc_baseline": round(prevalencia, 4),
+        # Rival informativo más exigente (no gatea): ver `_pr_auc_ranking_antiguedad`.
+        "pr_auc_baseline_antiguedad": (
+            round(pr_auc_antiguedad, 4) if pr_auc_antiguedad is not None else None
+        ),
         "pr_auc_std_folds": round(dispersion, 5) if dispersion is not None else None,
         "pr_auc_por_bloque": [round(v, 4) for v in pr_auc_bloques],
         "brier": round(float(brier_score_loss(y_valid, proba)), 5),
