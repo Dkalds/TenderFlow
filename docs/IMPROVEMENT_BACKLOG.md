@@ -70,9 +70,9 @@ estado real de cada ítem en su §8. **Excluye a propósito `backup.yml` y
 | [P3] F5: refactor de repositories (ratchet TID251) | **Progresa** — la whitelist baja de 32 a 28 archivos, y a 26 el 2026-09-16 (`kpi_precompute`, `mercado`); el destino sigue siendo vaciarla |
 | [P1] Cobertura de tests de las páginas del frontend | **Parcial** — los pisos por carpeta siguen en pie; el piso de `src/app/**` no llegó a ponerse |
 | [P2] Remediación axe: 4 reglas desactivadas | **Abierto, encogiendo** — `nested-interactive` reactivada (C7.1); quedan `color-contrast`, `scrollable-region-focusable` y `target-size`, que son la ola móvil |
-| [P2] Contrato de paginación común | **Abierto** — el agente que lo tenía asignado murió por límite de sesión |
+| [P2] Contrato de paginación común | **Cerrado y movido** el 2026-09-18 a _Cerrados_ — dependencia `limit`/`offset` compartida en `api/pagination.py`, primera ola de siete rutas; `trends` ya exponía `group_by` |
 | [P3] Los dos módulos-dios (`aggregates.py`, `settings.py`) | **Abierto** — sigue vigente la regla oportunista |
-| [P3] Unificar la definición de «Calientes» | **Abierto** |
+| [P3] Unificar la definición de «Calientes» | **Cerrado y movido** el 2026-09-18 a _Cerrados_ — se mantiene la heurística de importe como «Grandes en plazo», documentada en los DTOs |
 | [P3] Descartar los avisos fantasma de Dependabot | **Abierto** — acción del usuario en GitHub |
 
 Ítems **nuevos** que salen del plan y no estaban aquí: partir las páginas
@@ -484,13 +484,6 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 
 ## P3 — Nice to have
 
-### [P3] Pre-generar el resumen IA nocturno para licitaciones calientes
-- **Área:** scheduler/jobs, api/routes/ask.py
-- **Problema:** desde 2026-09-01 el resumen se cachea por firma de estado (documentos + ficha + metadatos), pero la primera visita de cada licitación sigue pagando latencia completa de proveedor. El cron nocturno podría calentar el caché para el subconjunto que la gente abre (vigiladas, banda alta de score, publicadas ese día) y el detalle abriría con el resumen ya puesto.
-- **Acceptance criteria:** fase opcional del job nocturno (gated por setting, mismo patrón que `PLIEGO_FACTS_ENABLED`) que genera el resumen para N licitaciones priorizadas si no hay entrada vigente; presupuesto LLM respetado (BudgetGuard ya cuenta este gasto).
-- **Files de partida:** [api/routes/ask.py](../api/routes/ask.py), [scheduler/jobs/documentos_embeddings.py](../scheduler/jobs/documentos_embeddings.py)
-- **Riesgo:** bajo — reutiliza el caché y el breaker de coste existentes; el riesgo es gasto LLM, acotado por el propio guard.
-
 ### [P3] Descartar los avisos fantasma de Dependabot (manifest `uv.lock` inexistente)
 - **Área:** GitHub Security (acción del usuario), .github/dependabot.yml
 - **Problema:** 37 de los 38 avisos abiertos apuntan a un `uv.lock` que se borró de `master` en `cc096fb` (2026-05-31). El grafo de dependencias de GitHub conservó una instantánea de ese fichero y **sigue emitiendo avisos nuevos contra ella** — los abiertos van del 2026-07-13 al 2026-08-07, todos posteriores al borrado. La prueba está en el SBOM, que lista a la vez los pines vivos y sus fantasmas (`pillow@12.3.0` ×2 junto a `pillow@12.2.0`; `cryptography@50.0.0` ×2 junto a `46.0.7`), y en el trío del 2026-08-03 sobre `GHSA-g6cj-pr64-35w5`: #82 y #83 (manifiestos vivos) se cerraron el mismo día; #87 (`uv.lock`) sigue abierto y no puede cerrarse nunca.
@@ -520,6 +513,7 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 - **Acceptance criteria:**
   - Una agregación o setting **nuevo** va a un módulo hermano (`aggregates_<área>.py` / settings por dominio) en vez de sumar al monolito.
   - Al tocar un bloque cohesivo existente **por otro motivo**, se evalúa extraerlo en el mismo cambio. El destino de `AggregateRepository` es partido por dominio (overview / geografía / competidores) y el de `Settings` submodelos anidados por eje preservando los nombres de variables de entorno — pero **llegando por partes, con la suite verde entre cada una**, no en un big-bang.
+- **Progreso 2026-09-18 (rama worktree-agent-acad4a43a2c0f0bae):** primer módulo hermano de settings, `config/settings_resumen.py` (`ResumenPregenSettings`, de la que hereda `Settings`: mismos nombres de variable de entorno y mismo acceso `settings.X`). Es el patrón para los siguientes settings nuevos. En `aggregates.py` no hubo agregación nueva que mover.
 - **Files de partida:** [db/repositories/aggregates.py](../db/repositories/aggregates.py), [config/settings.py](../config/settings.py)
 - **Riesgo:** bajo si se hace oportunista; medio si alguien intenta el big-bang.
 
@@ -574,26 +568,6 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 - **Files de partida:** `pyproject.toml` (whitelist TID251), `db/repositories/`
 - **Riesgo:** medio — toca caminos de datos; mitigado por ratchet como gate y tests de caracterización previos a cada movimiento.
 
-### [P3] Unificar la definición de "Calientes" (heurística de resumen vs banda de scoring)
-- **Área:** services/analytics/resumen, services/analytics/pipeline, services/analytics/scoring
-- **Problema:** `services/analytics/resumen.py::get_resumen_hoy` calcula "calientes" como `importe ≥ P75 AND estado activo AND en plazo` (heurística ad-hoc), mientras que el KPI "Calientes" nuevo de `/analytics/pipeline` (2026-07-20) usa la banda de scoring genérico (`score ≥ 75`, `services/analytics/scoring.py`). Son dos definiciones distintas de la misma palabra visibles en páginas contiguas (Resumen enlaza su "Calientes" a Pipeline & Alertas), lo que puede desconcertar si los números no coinciden.
-- **Progreso 2026-08-12:** resuelta la mitad barata — el KPI del resumen ya no se llama "Calientes" en la UI (`kpi-rows.tsx` → "Grandes en plazo", `notification-bell.tsx` → "Grandes"), así que dos números distintos dejan de compartir nombre. El campo `ResumenHoyResult.calientes` se conserva porque es contrato público, con la advertencia en su docstring.
-- **Progreso 2026-08-13:** el otro extremo del vector de confusión desapareció con la retirada de `/pipeline-alertas` (rediseño de Mi Pipeline, ver `docs/redesign/mi-pipeline-inventario.md`): el KPI "Calientes" por banda de score ya no tiene superficie propia —la banda de score vive solo en el Radar— y las tarjetas del resumen enlazan ahora a `/detalle`. Queda el criterio de aceptación sobre qué definición adopta el resumen.
-- **Acceptance criteria (lo que queda):**
-  - Decidir si el resumen adopta la banda de scoring (señal más rica) o mantiene su heurística de importe con el nombre nuevo. Si adopta el score, renombrar también el campo del DTO en una migración consciente del contrato (AGENTS §3.5).
-- **Files de partida:** [services/analytics/resumen.py](../services/analytics/resumen.py), [services/analytics/pipeline.py](../services/analytics/pipeline.py), [services/analytics/scoring.py](../services/analytics/scoring.py)
-- **Riesgo:** bajo — cambia un número visible en dos KPIs; sin migración de schema.
-
-### [P3] El embudo del Resumen mide sus porcentajes contra todo el corpus
-- **Área:** db/repositories/aggregates (`overview_funnel`), services/analytics/overview
-- **Problema:** `overview_funnel` divide cada escalón (`PUB`, `EV`, `RES`, `ADJ`, `ANUL`) entre `COUNT(*)` de la tabla filtrada, no entre las filas que participan en el embudo. Con los 645.664 expedientes en `AGR` —que no son un escalón de nada: son avisos agregados de contratos ya celebrados— los cinco escalones suman ~6,7% y el 93% restante es invisible. El embudo se lee como si el 93% de los expedientes se hubieran perdido entre publicación y adjudicación.
-- **Origen:** salió al normalizar `licitaciones.estado` (migración v91, 2026-08-26). La normalización no lo causó ni lo arregla: sólo lo hace explicable, porque hasta entonces ese 93% ni siquiera tenía nombre.
-- **Acceptance criteria:**
-  - Decidir el denominador: o los cinco escalones (`pct` suma 100 y el embudo se lee como embudo), o el corpus entero pero rotulando en la UI qué queda fuera. Lo que no puede quedarse es un porcentaje sin denominador declarado.
-  - Si cambia `FunnelStep.pct`, es un cambio de semántica sobre contrato público (AGENTS §3.5): documentarlo en el DTO.
-- **Files de partida:** [db/repositories/aggregates.py](../db/repositories/aggregates.py), [services/analytics/overview.py](../services/analytics/overview.py)
-- **Riesgo:** bajo — cambia un porcentaje mostrado; sin migración de schema.
-
 ### [P3] Scroll edge effects en vez de divisores duros bajo el chrome flotante
 - **Área:** web/src/components/layout
 - **Problema:** el chrome flotante es `tf-glass` (translúcido, `position: sticky`) y delimita con un `border-b` fijo, en vez del "scroll edge effect" que pide apple-design §12: un fade/máscara activado por scroll, solo donde el contenido realmente pasa por debajo. Hallazgo F11 de la revisión de las skills de Emil Kowalski (2026-07-25); no bloqueante, es refinamiento visual.
@@ -604,16 +578,6 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
   - Sin borde visible cuando el contenido está en el tope (`scrollY === 0`).
 - **Files de partida:** [web/src/components/layout/scroll-edge.tsx](../web/src/components/layout/scroll-edge.tsx), [web/src/components/layout/console-frame.tsx](../web/src/components/layout/console-frame.tsx), [web/src/components/layout/scope-bar.tsx](../web/src/components/layout/scope-bar.tsx)
 - **Riesgo:** bajo — puramente visual, sin tocar datos ni contratos.
-
-### [P2] Contrato de paginación común para la API
-
-- **Área:** api/routes/
-- **Problema:** `PaginatedResponse` vive en 1 de los 30 módulos de rutas (`licitaciones.py`) sobre 146 endpoints, así que cada consumidor del cliente TS aprende una forma distinta de paginar. Revisado el 2026-08-10: los endpoints de analytics **no** son el problema que parecía —devuelven agregados acotados por la cardinalidad del `GROUP BY` (≤19 CCAA, ≤52 provincias, nº de códigos tech) y `competitors`/`organos` ya aceptan `limit`—. El caso real de crecimiento no acotado es `trends`, cuya serie escala con la **longitud del rango de fechas** (10 años ≈ 3.650 puntos), donde un `limit` por filas es la herramienta equivocada: lo que hay que acotar es el rango o la granularidad del roll-up.
-- **Acceptance criteria:**
-  - Un `Paginated[T]` (o dependencia `limit`/`offset` compartida) reutilizado por las rutas que devuelven listas, aplicado por olas.
-  - `trends` acota rango o expone `freq` de roll-up; documentado en el DTO.
-- **Files de partida:** [api/routes/licitaciones/](../api/routes/licitaciones/), [api/routes/analytics.py](../api/routes/analytics.py)
-- **Riesgo:** bajo — aditivo si se hace con defaults generosos.
 
 ### [P2] Aislamiento de la suite: una base por sesión en vez de un schema por test
 
@@ -679,6 +643,40 @@ cabecera de este fichero: los seis se comprobaron contra el código.
   llevaba en la lista los plurales en `-ciones`, que no llevan tilde
   («licitación» → «licitaciones»). La lista quedó con los singulares agudos y
   con los plurales que sí la conservan («órganos», «tecnologías»).
+- [2026-09-18] **P2: Contrato de paginación común para la API** (rama
+  worktree-agent-acad4a43a2c0f0bae) — `PaginatedResponse`/`CursorPaginatedResponse`
+  ya vivían en `shared/dto.py`; faltaba la otra mitad: `api/pagination.py`
+  (`PageParams` + `pagina(default)`) declara `limit`/`offset` una sola vez con
+  `MAX_PAGE_LIMIT` como tope único. Primera ola: las siete rutas que ya paginaban
+  por offset (licitaciones, adjudicaciones, adjudicaciones de empresa, pursuits,
+  comentarios, Próximas, empresas); mismos parámetros y misma respuesta, con el tope
+  ensanchado de 200 a 500 donde era 200. `trends` ya exponía el roll-up `group_by`
+  (day/week/month) y `serie_truncada` documentados en el DTO. Siguientes olas: las
+  rutas con solo `limit` que devuelven listas.
+- [2026-09-18] **P3: El embudo del Resumen mide sus porcentajes contra todo el
+  corpus** (misma rama) — decidido: los cinco escalones (PUB, EV, RES, ADJ, ANUL)
+  se miden contra su propia suma y suman 100; lo demás (PRE, AGR, EJEC, CPM, OTROS)
+  sigue listado con `en_embudo=false` y `pct` sobre el ámbito. `OverviewResult`
+  gana `funnel_denominador` y `fuera_del_embudo`. Cambio de semántica de
+  `FunnelStep.pct` documentado en el DTO (AGENTS §3.5). El frontend no pinta
+  `funnel_estados`, así que no hubo rótulo que cambiar.
+- [2026-09-18] **P3: Unificar la definición de «Calientes»** (misma rama) —
+  decidido: el Resumen mantiene su heurística (importe ≥ P75, abierta y en plazo)
+  con el nombre que ya enseña la UI, «Grandes en plazo»; la banda `Caliente` del
+  score queda para el Radar. Los campos `ResumenHoyResult.calientes`,
+  `HoyCounters.calientes` y `OverviewResult.calientes_hoy` no se renombran y llevan
+  la definición en su descripción OpenAPI (`shared.dto.DESCRIPCION_GRANDES_EN_PLAZO`).
+- [2026-09-18] **P3: Pre-generar el resumen IA nocturno para licitaciones
+  calientes** (misma rama) — fase 5 de `scheduler/jobs/documentos_embeddings.py`,
+  gated por `RESUMEN_PREGEN_ENABLED` (off; `config/settings_resumen.py`): hasta
+  `RESUMEN_PREGEN_BATCH` licitaciones abiertas —seguidas, banda `Caliente`, publicadas
+  hoy— sin entrada vigente en el caché del resumen. BudgetGuard antes de cada una,
+  corte por credencial rechazada, y salto entero sin caché compartida (Redis).
+  Clave, prompt y contexto compartidos con la ruta en `services/rag/resumen.py`.
+  **Pendiente de decisión humana para que sirva en Actions:** `pliegos.yml` no
+  propaga `REDIS_URL` (a propósito, por el gate de presupuesto de fichas), así que
+  en ese plano la fase se salta; activarla allí exige propagar `REDIS_URL` y la
+  variable `RESUMEN_PREGEN_ENABLED`.
 - [2026-09-14] **P2: cada re-ingesta nuleaba las cuatro columnas ML, y `tech_signal_merge`
   lo curaba a ciegas cada 4 h** — decidido: el clobber se corta en origen. `ml_proba`,
   `ml_tecnologias`, `ml_proba_max` y `ml_tech_principal` entran en
