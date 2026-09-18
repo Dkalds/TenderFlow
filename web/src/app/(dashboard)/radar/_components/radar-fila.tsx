@@ -189,7 +189,7 @@ export function RadarFila({
           </div>
           {/* Flujo inline, no flex: `text-overflow` se ignora en un
               contenedor flex y la línea se cortaría a medias. */}
-          <div className="mt-0.5 block truncate font-mono text-[10.5px] leading-[1.3] text-muted-foreground/80">
+          <div className="mt-0.5 block truncate font-mono text-[10.5px] leading-[1.3] text-muted-foreground">
             {[tender.id_externo, tender.cpv ? `CPV ${tender.cpv}` : null, tender.ccaa]
               .filter(Boolean)
               .join(" · ")}
@@ -210,7 +210,7 @@ export function RadarFila({
             {tech}
           </span>
         ) : (
-          <span className="flex-none text-[11px] text-muted-foreground/60">—</span>
+          <span className="flex-none text-[11px] text-muted-foreground">—</span>
         )}
       </div>
 

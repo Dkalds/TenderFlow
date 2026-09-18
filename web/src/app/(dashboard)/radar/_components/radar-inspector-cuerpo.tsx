@@ -27,7 +27,16 @@ export function InspectorCuerpo({ tender }: { tender: RadarTender }) {
   ].filter((event) => Boolean(event.date));
 
   return (
-    <div className="min-h-0 flex-1 overflow-y-auto px-4.5 pt-4">
+    // Región con foco propio (axe `scrollable-region-focusable`): el cuerpo es
+    // solo lectura —datos, desglose, hitos—, así que sin `tabIndex` el teclado
+    // no tenía forma de desplazar lo que no cabe en el inspector.
+    <div
+      role="region"
+      aria-label="Detalle de la señal"
+      // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex -- región con scroll sin controles: WCAG 2.1.1 exige que el teclado pueda desplazarla (axe scrollable-region-focusable)
+      tabIndex={0}
+      className="min-h-0 flex-1 overflow-y-auto px-4.5 pt-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+    >
       <div className="mb-5 grid grid-cols-2 gap-px overflow-hidden rounded-[9px] border border-border/60 bg-border/60">
         <Fact label="Órgano" value={tender.organo_contratacion ?? "—"} />
         <Fact label="Importe" value={formatCurrency(tender.importe)} variant="mono" />
@@ -47,7 +56,7 @@ export function InspectorCuerpo({ tender }: { tender: RadarTender }) {
           equipo dónde mirar y al usuario, nada. Lo que sí le importa es de
           dónde sale el número, y eso es lo que dice ahora. */}
       <SectionTitle
-        aside={<span className="text-[10.5px] text-muted-foreground/70">calculado en servidor</span>}
+        aside={<span className="text-[10.5px] text-muted-foreground">calculado en servidor</span>}
       >
         Desglose de score
       </SectionTitle>

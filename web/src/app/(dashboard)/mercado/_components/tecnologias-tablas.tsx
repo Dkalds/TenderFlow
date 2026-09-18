@@ -12,6 +12,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { Pista } from "@/components/ui/pista";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { formatCurrency, formatNumber, formatPercent } from "@/lib/utils";
 import { Search, Star } from "lucide-react";
@@ -107,9 +108,9 @@ export function TecnologiasTopScore({ items }: { items: ScoredItem[] }) {
                 <span className="text-xs tabular-nums text-muted-foreground">{item.id}</span>
                 <Badge variant={item.score >= 80 ? "default" : "secondary"}>{item.score}</Badge>
               </div>
-              <p className="line-clamp-2 text-sm font-medium" title={item.titulo}>
-                {item.titulo}
-              </p>
+              <Pista contenido={item.titulo}>
+                <p className="line-clamp-2 text-sm font-medium">{item.titulo}</p>
+              </Pista>
               <div className="flex items-center justify-between text-xs text-muted-foreground">
                 <span>{formatCurrency(item.importe)}</span>
                 {item.organo_contratacion && (

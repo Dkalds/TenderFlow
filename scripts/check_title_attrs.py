@@ -74,7 +74,13 @@ _EXENTOS = frozenset({"abbr", "iframe"})
 #: Con el escaneo bueno salían **39**. Los tres que la regex escondía estaban
 #: sobre `<button>` —el caso limpio, porque un botón ya es focusable— y se
 #: migraron en el mismo cambio: quedan 36.
-MAX_TITLE_NATIVO = 36
+#:
+#: 2026-09-18: **0**. Los 36 se migraron —controles a `<Tooltip>`, texto
+#: truncado y casillas de heatmap a `<Pista>` (disparador no focusable, para no
+#: sumar una parada de tabulación por celda)— y `deudaTitleNativo` de
+#: `web/eslint.config.mjs` quedó vacía. El techo se queda en 0: cualquier
+#: `title=` nativo nuevo es un error, no una deuda más.
+MAX_TITLE_NATIVO = 0
 
 
 def _es_test(ruta: Path) -> bool:

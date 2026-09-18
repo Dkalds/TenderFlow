@@ -122,11 +122,18 @@ Cualquier componente que use `<Tooltip>` necesita un ancestro
 (fuera del árbol de `Providers`), hay que envolverlo explícitamente (ver
 `global-filter-bar.test.tsx`, `top-nav.test.tsx`, `kpi-card.test.tsx`).
 
-**Migración de `title=` nativos**: no se hizo de una vez. Se migraron los
-controles interactivos icon-only (`PresetMenu` de `GlobalFilterBar`, el
-badge de anomalía de `KpiCard`, los toggles de densidad/tema de `TopNav`).
-Los `title=` en celdas de tabla y textos truncados informativos (que no son
-controles) quedan fuera de esta pasada — ver `IMPROVEMENT_BACKLOG.md`.
+**Migración de `title=` nativos**: cerrada el 2026-09-18 (techo 0 en
+`scripts/check_title_attrs.py`, `deudaTitleNativo` vacía). Dos herramientas:
+
+- **Controles** (ya focusables): `<Tooltip>` con `TooltipTrigger asChild`.
+  No añade paradas de tabulación y se abre también con foco.
+- **Texto truncado, celdas y casillas de heatmap**: `<Pista>`
+  (`components/ui/pista.tsx`). El disparador es el propio elemento y **no** es
+  focusable, para que una tabla de 25 filas o un heatmap de 365 casillas no
+  gane una parada de tabulación por celda. Lo que el teclado y el lector
+  necesitan va en el texto: el recorte es CSS (el DOM guarda la cadena
+  entera), y lo que solo estaba en el `title` pasa a `sr-only` o a
+  `role="img"` + `aria-label` en las casillas sin texto.
 
 ## Virtualización
 

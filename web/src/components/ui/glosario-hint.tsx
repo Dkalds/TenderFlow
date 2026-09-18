@@ -46,7 +46,9 @@ export function GlosarioHint({ termino, entrada, className }: GlosarioHintProps)
       <TooltipTrigger
         type="button"
         className={cn(
-          "inline-flex size-4 shrink-0 items-center justify-center rounded-full align-middle",
+          // 24×24 de diana (WCAG 2.5.8) con el margen negativo que la deja en
+          // los 16 px de siempre en el flujo: el icono no cambia de sitio.
+          "-m-1 inline-flex size-6 shrink-0 items-center justify-center rounded-full align-middle",
           "text-muted-foreground/70 transition-colors hover:text-foreground",
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
           className
@@ -58,7 +60,7 @@ export function GlosarioHint({ termino, entrada, className }: GlosarioHintProps)
       <TooltipContent className="max-w-[18rem] text-pretty leading-relaxed">
         <p className="font-medium">{definicion.termino}</p>
         <p className="mt-1 text-muted-foreground">{definicion.definicion}</p>
-        <p className="mt-1.5 text-[11px] text-muted-foreground/80">Más en Metodología</p>
+        <p className="mt-1.5 text-[11px] text-muted-foreground">Más en Metodología</p>
       </TooltipContent>
     </Tooltip>
   )

@@ -9,7 +9,8 @@
  */
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { formatNumber, formatPercent, truncate } from "@/lib/utils";
+import { Pista } from "@/components/ui/pista";
+import { formatNumber, formatPercent } from "@/lib/utils";
 import { valorOEmpty } from "@/lib/cobertura";
 import { TrendingDown } from "lucide-react";
 
@@ -31,9 +32,9 @@ export function CompetidoresBajas({ bajas }: { bajas: BajasModel }) {
         <div className="space-y-1.5">
           {bajas.rows.map((b) => (
             <div key={b.grupo_id ?? b.grupo} className="flex items-center gap-2 text-sm">
-              <span className="w-48 truncate" title={b.grupo}>
-                {truncate(b.grupo, 32)}
-              </span>
+              <Pista contenido={b.grupo}>
+                <span className="w-48 truncate">{b.grupo}</span>
+              </Pista>
               <div className="bg-muted h-4 flex-1 overflow-hidden rounded-full">
                 <div
                   className="bg-primary h-full rounded-full"

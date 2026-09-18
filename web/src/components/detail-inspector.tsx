@@ -213,7 +213,16 @@ export function DetailInspector({
         </div>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-4 pt-4">
+      {/* Región con foco propio (axe `scrollable-region-focusable`): la
+          pestaña «Resumen» puede no tener ningún control dentro, y sin foco
+          el teclado no puede desplazar lo que no cabe. */}
+      <div
+        role="region"
+        aria-label="Contenido de la ficha"
+        // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex -- región con scroll sin controles: WCAG 2.1.1 exige que el teclado pueda desplazarla (axe scrollable-region-focusable)
+        tabIndex={0}
+        className="min-h-0 flex-1 overflow-y-auto px-4 pt-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+      >
         {tab === "resumen" && (
           <div className="pb-6">
             {l.score != null && (

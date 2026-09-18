@@ -6,12 +6,15 @@
  *
  * La escala de color es por tramos y la leyenda los enumera con su rango
  * («1-2», «3-5»…): sin ella el verde de una celda no significaría nada. Cada
- * celda lleva además su fecha y su conteo exacto en el `title`, así que la
- * cifra nunca aparece sin decir de qué día es (ADR-014).
+ * celda lleva además su fecha y su conteo exacto —en la `Pista` al pasar el
+ * puntero y como nombre accesible—, así que la cifra nunca aparece sin decir
+ * de qué día es (ADR-014). Las casillas no son focusables: 365 paradas de
+ * tabulación harían la tarjeta intransitable.
  */
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
+import { Pista } from "@/components/ui/pista";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { CalendarDays } from "lucide-react";
@@ -97,15 +100,18 @@ export function CalendarioHeatmap({
                         <div key={weekIdx} className="w-5 h-5 m-[1px] rounded-sm" />
                       );
                     }
+                    const etiqueta = `${cell.dateStr}: ${cell.count} publicaciones`;
                     return (
-                      <div
-                        key={weekIdx}
-                        className={cn(
-                          "w-5 h-5 m-[1px] rounded-sm transition-colors cursor-default",
-                          getColorClass(cell.count),
-                        )}
-                        title={`${cell.dateStr}: ${cell.count} publicaciones`}
-                      />
+                      <Pista key={weekIdx} contenido={etiqueta}>
+                        <div
+                          role="img"
+                          aria-label={etiqueta}
+                          className={cn(
+                            "w-5 h-5 m-[1px] rounded-sm transition-colors cursor-default",
+                            getColorClass(cell.count),
+                          )}
+                        />
+                      </Pista>
                     );
                   })}
                 </div>
@@ -115,7 +121,9 @@ export function CalendarioHeatmap({
               <div className="flex items-center gap-2 mt-4 ml-10">
                 <span className="text-xs text-muted-foreground">Menos</span>
                 {COLOR_SCALE.map((c, i) => (
-                  <div key={i} className={cn("w-5 h-5 rounded-sm", c.bg)} title={c.label} />
+                  <Pista key={i} contenido={c.label}>
+                    <div role="img" aria-label={c.label} className={cn("w-5 h-5 rounded-sm", c.bg)} />
+                  </Pista>
                 ))}
                 <span className="text-xs text-muted-foreground">Mas</span>
               </div>

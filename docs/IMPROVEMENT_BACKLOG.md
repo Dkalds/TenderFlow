@@ -88,8 +88,8 @@ estado real de cada ítem en su §8. **Excluye a propósito `backup.yml` y
 | [P3] Vigilar el crecimiento de `predicciones_baja` | **Cerrado y movido** el 2026-09-06 a _Cerrados_ — el job de ML purga por antigüedad, y el consumidor distingue el p50 del modelo del del baseline histórico |
 | [P3] F5: refactor de repositories (ratchet TID251) | **Progresa** — la whitelist baja de 32 a 28 archivos, y a 26 el 2026-09-16 (`kpi_precompute`, `mercado`); el destino sigue siendo vaciarla |
 | [P1] Cobertura de tests de las páginas del frontend | **Cerrado y movido** el 2026-09-18 a _Cerrados_ — primera medición local completa; pisos globales y de `src/app/**` subidos a lo medido |
-| [P2] Remediación axe: 4 reglas desactivadas | **Abierto, encogiendo** — `nested-interactive` reactivada (C7.1); quedan `color-contrast`, `scrollable-region-focusable` y `target-size`, que son la ola móvil |
 | [P2] Contrato de paginación común | **Cerrado y movido** el 2026-09-18 a _Cerrados_ — dependencia `limit`/`offset` compartida en `api/pagination.py`, primera ola de siete rutas; `trends` ya exponía `group_by` |
+| [P2] Remediación axe: 4 reglas desactivadas | **Código completo, pendiente de CI** — `nested-interactive` (C7.1) y, el 2026-09-18, las tres restantes; `disableRules` y los `fixme` de móvil retirados |
 | [P3] Los dos módulos-dios (`aggregates.py`, `settings.py`) | **Abierto** — sigue vigente la regla oportunista |
 | [P3] Unificar la definición de «Calientes» | **Cerrado y movido** el 2026-09-18 a _Cerrados_ — se mantiene la heurística de importe como «Grandes en plazo», documentada en los DTOs |
 | [P3] Descartar los avisos fantasma de Dependabot | **Abierto** — acción del usuario en GitHub |
@@ -333,16 +333,6 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 - **Files de partida:** [scripts/capture_placsp_fixtures.py](../scripts/capture_placsp_fixtures.py), [tests/fixtures/placsp/README.md](../tests/fixtures/placsp/README.md)
 - **Riesgo:** bajo — solo tests.
 
-### [P2] La consola no tiene primer uso: se entra a 14 espacios sin que nadie explique ninguno
-- **Área:** web/src/components/layout, web/src/app/(dashboard)
-- **Problema (parcialmente resuelto, ver progreso):** quien entra por primera vez aterriza en `/resumen` con el rail de 14 espacios (`web/src/lib/console-spaces.ts`) y una barra de ámbito ya aplicada. En un producto que vende **confianza en el dato**, un número sin explicar la primera vez que se ve no se lee como preciso: se lee como opaco.
-- **Progreso 2026-08-30:** la frase original de este ítem —«no existe onboarding de ningún tipo, cero coincidencias de `onboarding` en todo `web/src`»— **ya era falsa** cuando se auditó: `components/onboarding/` y `resumen/_components/primeros-pasos.tsx` existen desde #226, con los tres pasos derivados del estado real del servidor. Y el criterio del score se cerró con el desglose en el propio Radar (`components/score-desglose.tsx`): el badge abre un `Popover` con las dimensiones que componen la puntuación y una nota de qué mide y qué no. El desglose ya viajaba en `ScoredOpportunity.desglose` y solo se pintaba en el inspector de `/detalle`.
-- **Acceptance criteria (lo que queda):**
-  - ~~Explicar de dónde sale el score~~ ✅ 2026-08-30.
-  - Explicar qué es el ámbito de la `scope-bar` la primera vez.
-  - Estados vacíos que enseñen en vez de solo informar: el patrón de "sin resultados" ya existe; lo que falta es que diga qué hacer.
-- **Files de partida:** [web/src/lib/console-spaces.ts](../web/src/lib/console-spaces.ts), [web/src/components/layout/console-rail.tsx](../web/src/components/layout/console-rail.tsx)
-- **Riesgo:** bajo — aditivo, sin tocar datos; el cuidado está en no fabricar explicaciones que el backend no respalde.
 
 ### [P2] La experiencia móvil existe pero nadie la diseñó
 - **Área:** web/src/components/layout, web/src/app/(dashboard)
@@ -355,11 +345,15 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
   - ✅ El selector de organización usa Radix `Select`, alineado con el resto de
     controles de la consola.
   - Pendiente hasta que CI ejecute el nuevo E2E: confirmar Detalle y Watchlist
-    a 375×812 sobre el build de producción.
+    a 375×812 sobre el build de producción. **2026-09-18 (rama worktree-agent-a37b58d577faad267):** revisado sobre
+    el código —la watchlist desbordaba por la barra de ámbito «no aplica», ya con
+    `overflow-x-auto`, y la barra y el pie de Detalle se desplazan en vez de
+    empujar el documento—; los `fixme` salieron. Falta el verde de CI.
 - **Files de partida:** [web/src/components/layout/console-rail.tsx](../web/src/components/layout/console-rail.tsx), [web/e2e/responsive.spec.ts](../web/e2e/responsive.spec.ts)
 - **Riesgo:** bajo — presentación; sin tocar contratos ni datos.
 
 ### [P2] Remediación axe pendiente: reactivar las reglas desactivadas del E2E de accesibilidad
+- **Avance 2026-09-18 (rama worktree-agent-a37b58d577faad267):** código de las **tres reglas restantes remediado y `disableRules` retirado**, junto con los dos `test.fixme` de `responsive.spec.ts`. `color-contrast`: la rampa del tema claro baja de L (primary 34 %, warning/score-warm 25 %, success 25 %, info 37 %) para que el texto sobre su propio tinte pase 4,5:1 —`contraste-tokens.test.ts` lo fija— y se retiran las opacidades de texto en Radar, Detalle, Resumen, rail y barra de ámbito. `scrollable-region-focusable`: inspectores de Radar y Detalle y lotes públicos con `tabIndex={0}`. `target-size`: «×» de chips del ámbito, estrella de Detalle y «?» del glosario a 24×24. El desborde de 274 px de la watchlist era la barra de ámbito en su rama «no aplica» (sin `overflow-x-auto`), y era también lo que quedaba de la agenda móvil. **El E2E no se ejecutó en local (sin stack)**: el ítem se cierra cuando el job de Playwright de CI salga verde; si alguna regla cae, el informe de axe dice qué nodo.
 - **Avance 2026-09-08 (C7.1):** `nested-interactive` **reactivada**. La causaba una sola cosa —la fila del Radar era un `role="button"` con cinco botones dentro— y se corrige poniendo la selección en un botón hermano en capa, con las acciones por encima. Con ella se van los **dos** `test.fixme` de `critical-workflows.spec.ts`: «seguir una licitación» era su consecuencia funcional directa, y «exportar el ámbito» resultó ser otro bug distinto —`lib/export.ts` revocaba el object URL en la misma vuelta del event loop que el `click()`, así que el Chromium headless de CI abortaba la descarga antes de empezarla—. Quedan tres reglas y dos `test.fixme`, los de móvil.
 - **Área:** web/e2e/accessibility.spec.ts, web/src (radar, detalle, watchlist, mi-pipeline)
 - **Problema:** el E2E de axe (WCAG 2.2 AA sobre /login, /resumen, /radar y /detalle) nació exigiendo cero violaciones antes de la remediación, y bloqueaba CI con deuda real: `color-contrast` (textos ≤10.5px con opacidad/tokens tenues en las filas del Radar y el detalle), `nested-interactive` (filas-botón del Radar con botones dentro), `scrollable-region-focusable` y `target-size` (<24px). El 2026-09-01 se acotó el gate con `disableRules([...])` — el resto de WCAG-AA y los checks estructurales (landmarks, lang, skip-link, ids únicos, controles con nombre) siguen bloqueando. Los dos ofensores de /resumen sí se arreglaron en ese momento (hint de `StatCell` sin `/80`, chips de Primeros pasos a texto pleno).
@@ -505,15 +499,6 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 - **Files de partida:** [db/repositories/aggregates.py](../db/repositories/aggregates.py), [config/settings.py](../config/settings.py)
 - **Riesgo:** bajo si se hace oportunista; medio si alguien intenta el big-bang.
 
-### [P3] Migrar los 33 `title=` nativos restantes a `Tooltip`
-- **Área:** web/src (celdas de tabla y textos truncados)
-- **Nota:** este ítem estaba duplicado (había una segunda entrada, "Completar la migración de `title=` nativos a `ui/tooltip.tsx`", con el mismo alcance). Fusionados el 2026-08-10.
-- **La cifra estaba mal.** Este ítem decía «~180» y el plan complementario (C7.4) contó «152 apariciones de `title=` en `.tsx`». Las dos salen de un grep que mezcla tres cosas: `title` como **prop de un componente** (`<KpiCard title="…">`, que no genera atributo HTML y es la mayoría), `title=` dentro de **tests**, y `title=` sobre un **elemento nativo**, que es el único caso del problema. Medido el 2026-09-07 con `scripts/check_title_attrs.py`, que distingue por la minúscula inicial de la etiqueta —la misma regla que usa JSX—: **33 en 18 ficheros**. O sea que no hay «olas de ≥ 50» que hacer, y el ítem es más pequeño de lo que aparentaba.
-- **Ya puesto (C7.4):** regla ESLint que prohíbe `title=` sobre elemento nativo salvo `<abbr>`/`<iframe>`, con los 18 ficheros de hoy como deuda declarada en `web/eslint.config.mjs` (`deudaTitleNativo`, solo puede encoger), y `scripts/check_title_attrs.py` en CI para que el total no suba mientras se migran.
-- **Acceptance criteria:** `deudaTitleNativo` vacío y `MAX_TITLE_NATIVO` a 0; en celdas y textos truncados, o `Tooltip` o texto visible.
-- **Files de partida:** [docs/frontend-motion.md](frontend-motion.md) (sección Tooltip), `scripts/check_title_attrs.py --listar`
-- **Riesgo:** bajo por sitio, pero **no verificable sin ver la pantalla**: `TooltipTrigger asChild` cambia el foco y el orden de tabulación de la celda, y eso se comprueba mirando, no compilando. Por eso C7.4 dejó la regla puesta y la migración sin hacer.
-
 ### [P3] Migrar la resolución de identidad de `competitors.py` a SQL (union-find + unaccent)
 - **Área:** services/analytics/competitors.py, db/repositories/adjudicaciones.py
 - **Problema:** Tras mover `overview.py`/`tecnologias.py` a agregación SQL (commit `ab520da`), `competitors.py` quedó híbrido a propósito: sus filtros (fecha/tecnologia/estado/importe_min) ya se empujan a SQL, pero la resolución de identidad de empresa (`_prepare_company_identity`/`_connected_identity_keys`, un connected-components/union-find sobre 5 tokens de identidad por fila) sigue en pandas. Migrarla a SQL necesita `normalize_company`/`normalize_nif` en el motor (NFKD accent-fold + 12+ alternativas regex de sufijo legal), lo que requiere la extensión `unaccent` de Postgres — no habilitada hoy (solo `pg_trgm`/`vector` lo están), y habilitarla exige una migración Alembic (fuera de alcance sin OK humano, AGENTS.md §6).
@@ -548,16 +533,6 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 - **Files de partida:** `pyproject.toml` (whitelist TID251), `db/repositories/`
 - **Riesgo:** medio — toca caminos de datos; mitigado por ratchet como gate y tests de caracterización previos a cada movimiento.
 
-### [P3] Scroll edge effects en vez de divisores duros bajo el chrome flotante
-- **Área:** web/src/components/layout
-- **Problema:** el chrome flotante es `tf-glass` (translúcido, `position: sticky`) y delimita con un `border-b` fijo, en vez del "scroll edge effect" que pide apple-design §12: un fade/máscara activado por scroll, solo donde el contenido realmente pasa por debajo. Hallazgo F11 de la revisión de las skills de Emil Kowalski (2026-07-25); no bloqueante, es refinamiento visual.
-- **⚠️ Este ítem citaba tres ficheros que ya no existen.** Nombraba `top-nav.tsx`, `kpi-bar.tsx` y `global-filter-bar.tsx`; el rediseño de la consola (2026-08-13, ver [docs/redesign/](redesign/)) los sustituyó. El chrome vigente es `console-frame.tsx`, `console-rail.tsx`, `space-shell.tsx`, `scope-bar.tsx`, `dashboard-shell.tsx` y `page-header.tsx`. Corregido el 2026-08-18 — un ítem que apunta a ficheros borrados hace que quien lo coja empiece por un callejón sin salida.
-- **Progreso 2026-08-18:** existe `web/src/components/layout/scroll-edge.tsx` con la primitiva (sentinel + `IntersectionObserver`, `prefers-reduced-motion` respetado) y 14 tests. Queda cablearla en el resto de superficies con borde duro.
-- **Acceptance criteria:**
-  - El borde duro se sustituye por una máscara/gradiente que aparece solo cuando hay contenido scrolleado debajo.
-  - Sin borde visible cuando el contenido está en el tope (`scrollY === 0`).
-- **Files de partida:** [web/src/components/layout/scroll-edge.tsx](../web/src/components/layout/scroll-edge.tsx), [web/src/components/layout/console-frame.tsx](../web/src/components/layout/console-frame.tsx), [web/src/components/layout/scope-bar.tsx](../web/src/components/layout/scope-bar.tsx)
-- **Riesgo:** bajo — puramente visual, sin tocar datos ni contratos.
 
 ### [P2] Aislamiento de la suite: una base por sesión en vez de un schema por test
 
@@ -592,6 +567,25 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 ---
 
 ## Cerrados
+
+- [2026-09-18] **P2: La consola no tiene primer uso** (rama worktree-agent-a37b58d577faad267) — la barra de
+  ámbito explica qué es la primera vez (`components/layout/ambito-intro.tsx`,
+  se cierra y se recuerda por navegador como `descarte.ts`; cada frase describe
+  algo que la barra hace), y cuatro vacíos dicen qué hacer: Radar (quitar la
+  tecnología del ámbito o crear una regla), Favoritos (dónde está la estrella,
+  con enlace), Reglas (qué hace una regla) y Resultados combinados (aflojar
+  criterios). El score ya se explicaba desde el 2026-08-30.
+- [2026-09-18] **P3: Migrar los `title=` nativos restantes a `Tooltip`** (rama worktree-agent-a37b58d577faad267)
+  — los 36 migrados: controles a `<Tooltip>`, texto truncado y casillas de
+  heatmap a `<Pista>` (`components/ui/pista.tsx`), cuyo disparador no es
+  focusable para no sumar una parada de tabulación por celda; lo que solo
+  vivía en el `title` pasa a texto, `sr-only` o `aria-label`.
+  `deudaTitleNativo` vacía y `MAX_TITLE_NATIVO = 0`.
+- [2026-09-18] **P3: Scroll edge effects en vez de divisores duros** (rama worktree-agent-a37b58d577faad267) —
+  además de la barra de ámbito y la barra móvil, las cabeceras de
+  `SpaceShell` y de Resumen pierden el `border-b` fijo: montan su propio
+  `ScrollEdgeProvider` (el que scrollea es su cuerpo, no `#main-content`) y el
+  borde solo aparece con contenido debajo. Con `bleed` se conserva el borde.
 
 **Cerrados el 2026-09-06 por la reconciliación O0.5** — ficha completa de cada
 uno en [el archivo](archive/IMPROVEMENT_BACKLOG_CERRADOS.md), que es donde

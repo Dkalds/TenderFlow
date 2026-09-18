@@ -246,6 +246,30 @@ describe("tema claro sobre el fondo de página", () => {
   });
 });
 
+/**
+ * Chips, badges y paginación pintan el token como texto **sobre su propio
+ * tinte** (`bg-primary/10 text-primary`, `bg-warning/15 text-warning`…). El
+ * tinte aclara la superficie y el ratio cae ~0,9 puntos respecto al fondo
+ * limpio: es lo que el E2E de axe marcaba en el Radar y el Detalle. Se mide
+ * sobre el fondo de página, la superficie opaca más oscura, con el tinte más
+ * denso que usa el árbol para texto (16 %).
+ */
+const TINTE_MAXIMO = 0.16;
+const TEXTO_SOBRE_SU_TINTE = ["primary", "success", "warning", "info", "score-warm"] as const;
+
+function mezcla(frente: Rgb, fondo: Rgb, alfa: number): Rgb {
+  return [0, 1, 2].map((i) => frente[i] * alfa + fondo[i] * (1 - alfa)) as unknown as Rgb;
+}
+
+describe("tema claro: texto sobre su propio tinte", () => {
+  it.each(TEXTO_SOBRE_SU_TINTE)(`--%s pasa 4,5:1 sobre un tinte del ${TINTE_MAXIMO * 100} %% de sí mismo`, (token) => {
+    const tinta = color("claro", token);
+    const superficie = mezcla(tinta, color("claro", "background"), TINTE_MAXIMO);
+    const medido = ratioContraste(tinta, superficie);
+    expect(medido, `--${token} da ${medido.toFixed(2)}:1 sobre su tinte`).toBeGreaterThanOrEqual(AA_TEXTO);
+  });
+});
+
 describe("deudas de contraste conocidas", () => {
   it.each(DEUDAS)("%s/--%s sobre --%s no empeora de %s:1", (tema, token, superficie, suelo) => {
     const medido = ratio(tema, token, superficie);

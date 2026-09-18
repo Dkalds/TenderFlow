@@ -1,9 +1,13 @@
 "use client";
 
 import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from "lucide-react";
+import { Pista } from "@/components/ui/pista";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { SHORTCUTS } from "./detalle-columnas";
+
+const EXPLICACION_ORDEN_LOCAL =
+  "El backend sólo ordena por título, importe y fecha; el resto se ordena sobre las filas ya cargadas.";
 
 const BOTON_PAGINA =
   "tf-pressable grid h-6.5 w-6.5 place-items-center rounded-md border border-border/70 text-[12px] text-muted-foreground transition-colors duration-140 ease-out hover:text-foreground disabled:cursor-default disabled:opacity-35";
@@ -36,15 +40,20 @@ export function DetallePie({
   onPageChange: (page: number) => void;
 }) {
   return (
-    <div className="flex h-11 flex-none items-center gap-3 border-t border-border/70 bg-card/60 px-3.5">
+    // Mismo criterio que la barra de arriba: con cinco páginas en la ventana
+    // la paginación no cabe a 375 px y se desplaza el pie, no el documento.
+    <div className="flex h-11 flex-none items-center gap-3 overflow-x-auto border-t border-border/70 bg-card/60 px-3.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
       <span className="tf-tnum text-[11px] text-muted-foreground">{showingLine}</span>
+      {/* La explicación va también en `sr-only`: con el `title` de antes solo
+          la veía quien pasaba el ratón, y es justo la advertencia que dice que
+          el orden no cubre el catálogo entero. */}
       {clientSorted && (
-        <span
-          className="rounded border border-[hsl(var(--warning)/0.35)] bg-[hsl(var(--warning)/0.12)] px-1.5 py-0.5 text-[10.5px] text-[hsl(var(--warning))]"
-          title="El backend sólo ordena por título, importe y fecha; el resto se ordena sobre las filas ya cargadas."
-        >
-          orden sobre esta página
-        </span>
+        <Pista contenido={EXPLICACION_ORDEN_LOCAL}>
+          <span className="rounded border border-[hsl(var(--warning)/0.35)] bg-[hsl(var(--warning)/0.12)] px-1.5 py-0.5 text-[10.5px] text-[hsl(var(--warning))]">
+            orden sobre esta página
+            <span className="sr-only">. {EXPLICACION_ORDEN_LOCAL}</span>
+          </span>
+        </Pista>
       )}
       <div className="flex-1" />
       {SHORTCUTS.map((shortcut) => (

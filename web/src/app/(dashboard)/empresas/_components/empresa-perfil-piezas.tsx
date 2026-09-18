@@ -14,6 +14,7 @@
 
 import * as React from "react";
 import { TrendingDown, TrendingUp } from "lucide-react";
+import { Pista } from "@/components/ui/pista";
 import { cn, formatCurrency, formatNumber } from "@/lib/utils";
 
 export function Separador({ text }: { text: string }) {
@@ -88,11 +89,16 @@ export function Trayectoria({ anios }: { anios: { anio: number; contratos: numbe
             <span className="tf-tnum text-tf-micro text-muted-foreground font-mono font-medium">
               {formatNumber(anio.contratos)}
             </span>
-            <span
-              className="bg-primary/70 block min-h-[2px] w-full rounded-t-[3px]"
-              style={{ height: `${(anio.importe / maximo) * 100}%` }}
-              title={`${anio.anio}: ${formatNumber(anio.contratos)} contratos · ${formatCurrency(anio.importe)}`}
-            />
+            {/* El año y los contratos ya están en pantalla; el importe solo
+                vivía en el `title`. Va en la `Pista` y en `sr-only`. */}
+            <Pista contenido={`${anio.anio}: ${formatNumber(anio.contratos)} contratos · ${formatCurrency(anio.importe)}`}>
+              <span
+                className="bg-primary/70 block min-h-[2px] w-full rounded-t-[3px]"
+                style={{ height: `${(anio.importe / maximo) * 100}%` }}
+              >
+                <span className="sr-only">{formatCurrency(anio.importe)}</span>
+              </span>
+            </Pista>
             <span className="text-tf-micro text-muted-foreground absolute -bottom-[18px] font-mono">{anio.anio}</span>
           </div>
         ))}

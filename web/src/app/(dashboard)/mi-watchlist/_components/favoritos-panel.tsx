@@ -9,6 +9,7 @@
  * Favoritos no paga la petición.
  */
 
+import Link from "next/link";
 import { Trash2, Star } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -51,12 +52,18 @@ export function FavoritosPanel() {
     return (
       <Card className="border-dashed">
         <CardContent className="flex flex-col items-center justify-center py-12 text-center">
-          <Star className="h-12 w-12 text-muted-foreground/50 mb-4" />
+          <Star className="h-12 w-12 text-muted-foreground/50 mb-4" aria-hidden="true" />
           <p className="text-lg font-medium text-muted-foreground">
             No tienes licitaciones marcadas como favoritas
           </p>
-          <p className="text-sm text-muted-foreground/70 mt-1">
-            Marca licitaciones con la estrella desde la tabla de Detalle.
+          {/* Dice dónde está la estrella y lleva hasta ella (C7.3); el `/70`
+              del texto quedaba por debajo de 4,5:1. */}
+          <p className="text-sm text-muted-foreground mt-1 max-w-[52ch]">
+            Pulsa la estrella de una fila en{" "}
+            <Link href="/detalle" className="text-primary font-medium hover:underline">
+              Detalle
+            </Link>{" "}
+            (o la tecla S sobre la fila activa) y la licitación aparecerá aquí.
           </p>
         </CardContent>
       </Card>

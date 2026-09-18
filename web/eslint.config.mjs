@@ -64,53 +64,21 @@ const restriccionTitleNativo = {
   selector:
     "JSXOpeningElement[name.type='JSXIdentifier'][name.name=/^[a-z]/]:not([name.name='abbr']):not([name.name='iframe']) > JSXAttribute[name.name='title']",
   message:
-    "El `title` nativo no existe para teclado ni táctil: usá <Tooltip> de @/components/ui/tooltip. En <abbr> e <iframe> sí es semántico y está permitido.",
+    "El `title` nativo no existe para teclado ni táctil: usá <Tooltip> (@/components/ui/tooltip) en controles y <Pista> (@/components/ui/pista) en texto y celdas. En <abbr> e <iframe> sí es semántico y está permitido.",
 };
 
-//: Ficheros con `title=` nativo. **Solo puede encoger**: al migrar uno a
-//: `<Tooltip>`, borrá su línea. `scripts/check_title_attrs.py` impide que el
-//: total suba, y es él quien manda: la lista de abajo dice *dónde* está la
-//: deuda, el ratchet dice *cuánta*.
+//: Ficheros con `title=` nativo. **Solo puede encoger**, y desde el
+//: 2026-09-18 está vacía: los 36 que quedaban (22 ficheros, casi todos celdas
+//: de tabla y heatmaps) se migraron. Los controles —que ya eran focusables— a
+//: `<Tooltip>`; el texto truncado y las casillas de heatmap a `<Pista>`
+//: (`components/ui/pista.tsx`), cuyo disparador **no** es focusable: la rejilla
+//: no gana una parada de tabulación por celda, y lo que el teclado necesita va
+//: en el texto (recorte por CSS, `sr-only` o `aria-label`).
 //:
-//: Regenerada el 2026-09-08 (22 ficheros, 33 `title=`) al fusionar el plan
-//: complementario sobre `master`. La lista anterior tenía 18 ficheros y once
-//: de ellos ya no existían con ese nombre: #272/#274 partieron las vistas
-//: grandes —`observabilidad-view.tsx` en `observabilidad/`, `contexto-strip.tsx`
-//: en `contexto/`, `tecnologias-view.tsx` en tabla + heatmap + detalle— y la
-//: misma deuda quedó en rutas nuevas que la lista no cubría, con ESLint en rojo
-//: sin que nadie hubiera añadido un `title=`. Regenerar no es ampliar: el total
-//: no sube, y de hecho bajó de 38 a 33 en el mismo cambio.
-//:
-//: Cinco salieron aquí (`space-shell` a `<abbr>`, que es donde `title` sí es
-//: semántico; `estado-global-row`, `mercado-strip`, `eventos-feed` y
-//: `pursuit-comments` a `<Tooltip>`). Los 33 que quedan están casi todos en
-//: celdas de tabla y en heatmaps, donde el disparador tendría que ser una celda
-//: focusable: eso cambia el orden de tabulación de la rejilla entera y se
-//: decide mirando la pantalla, no leyendo el diff.
-const deudaTitleNativo = [
-      "src/app/(dashboard)/competencia/_components/competidores-bajas.tsx",
-      "src/app/(dashboard)/competencia/_components/competidores-heatmap.tsx",
-      "src/app/(dashboard)/detalle/_components/detalle-barra.tsx",
-      "src/app/(dashboard)/detalle/_components/detalle-fila.tsx",
-      "src/app/(dashboard)/detalle/_components/detalle-pie.tsx",
-      "src/app/(dashboard)/empresas/_components/context-line.tsx",
-      "src/app/(dashboard)/empresas/_components/empresa-perfil-piezas.tsx",
-      "src/app/(dashboard)/empresas/_components/maestro-list.tsx",
-      "src/app/(dashboard)/mercado/_components/calendario-heatmap.tsx",
-      "src/app/(dashboard)/mercado/_components/clusters-tablas.tsx",
-      "src/app/(dashboard)/mercado/_components/organo-top-scored.tsx",
-      "src/app/(dashboard)/mercado/_components/organos-tabla.tsx",
-      "src/app/(dashboard)/mercado/_components/proyectos-tablas.tsx",
-      "src/app/(dashboard)/mercado/_components/tecnologias-detalle.tsx",
-      "src/app/(dashboard)/mercado/_components/tecnologias-heatmap.tsx",
-      "src/app/(dashboard)/mercado/_components/tecnologias-tablas.tsx",
-      "src/app/(dashboard)/mercado/_components/tendencias-heatmap.tsx",
-      "src/components/competitors/company-awards.tsx",
-      "src/components/competitors/company-profile-summary.tsx",
-      "src/components/competitors/company-quick-view.tsx",
-      "src/components/competitors/company-year-trend.tsx",
-      "src/components/source-freshness-panel.tsx",
-];
+//: Se deja la constante —vacía— en vez de borrarla para que un `title=` nuevo
+//: no pueda volver por la vía de «añadir una línea a la lista»: añadirla es un
+//: cambio que se ve en el diff. `scripts/check_title_attrs.py` tiene el techo a 0.
+const deudaTitleNativo = [];
 
 const eslintConfig = defineConfig([
   ...nextVitals,
@@ -146,7 +114,12 @@ const eslintConfig = defineConfig([
       // icon-only sin nombre accesible (WCAG 4.1.2). Los dos flechas de año del
       // Calendario se colaron precisamente porque nada lo verificaba, mientras
       // todos los demás `size="icon"` del repo sí llevan `aria-label`.
-      "jsx-a11y/control-has-associated-label": "error",
+      //
+      // `depth: 3` (la regla mira dos niveles por defecto): una celda con el
+      // texto envuelto en `<Pista>` —el sustituto de `title=`— queda
+      // `td > Pista > span > {texto}`, tres niveles. Con el defecto la regla
+      // daba por «sin nombre» una celda cuyo texto está ahí.
+      "jsx-a11y/control-has-associated-label": ["error", { depth: 3 }],
     },
   },
   // Stricter rules
