@@ -195,3 +195,21 @@ porque un job nocturno decidiera que esa fila es un duplicado —sobre todo
 tratándose de `pending`, que por definición nadie ha confirmado—. La ficha
 responde, y `republicacion_de` le da al usuario el id de la canónica para que
 juzgue por sí mismo.
+
+---
+
+## Addendum 2026-09-18 — El resumen `ml_*` se deriva (T3, `v136`)
+
+§B decía que el LLM y el pliego «se funden hacia `ml_tecnologias`». Desde
+`v136_tecnologia_verdad_unica` ese «fundir» ya no es un `UPDATE`: todos los
+productores escriben filas de `licitacion_tecnologia_score` y el trigger
+`trg_lts_derivar_ml` deriva `ml_tecnologias`, `ml_tech_principal` y
+`ml_proba_max` (predicha = `probabilidad >= threshold_aplicado`). La precedencia
+de §B no cambia, y tampoco la regla «el merge nunca borra»: una etiqueta del
+CSV sin fila de score se **adopta** con umbral igual a su score antes de que el
+trigger pueda perderla.
+
+`licitaciones.tecnologia` queda **fuera** de la derivación: es la señal 1 de
+§B y no nace de esta tabla. Ni §A ni §C cambian — la columna que lee
+`universo_tecnologico_sql` es la misma, así que la vista materializada no se
+reconstruye.

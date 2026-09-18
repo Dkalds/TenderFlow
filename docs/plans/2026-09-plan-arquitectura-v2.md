@@ -1123,6 +1123,30 @@ ventana.
 
 ### T3 — Tecnología: una sola verdad
 
+> **2026-09-18 — escrito en código (rama `worktree-agent-af7ab85116eea30b4`),
+> sin aplicar en ninguna BD.** Revisión `v136_tecnologia_verdad_unica`:
+> **trigger y no vista**, precisamente para no mover la MV
+> `licitaciones_canonicas` ni la cadena byte-idéntica de
+> `universo_tecnologico_sql` (índice parcial de `v84`) — las columnas siguen
+> existiendo, las escribe un solo sitio (`lts_derivar_ml`, *constraint trigger*
+> diferido sobre `licitacion_tecnologia_score`), y la MV no se reconstruye: el
+> `REFRESH` siguiente recoge el dato. El backfill adopta en la tabla las
+> etiquetas que hoy solo están en el CSV (si no, derivar las borraría) y loguea
+> cuántas filas adopta y cuántos resúmenes reescribe.
+> `precompute_ml_tecnologias` (vía `db/repositories/ml_dataset.guardar_scores_tecnologia`)
+> y el merge de `tecnologia_pliego.py` ya **solo escriben filas de score**; la
+> categoría `tecnologia` del guardrail de literales está puesta y a cero.
+> **Tres cosas no están hechas, a propósito:** `licitaciones.tecnologia` no se
+> deriva (es la señal de keywords, primera en ADR-026 §B, sin fila de score que
+> la origine); la ingesta (`scraper/pipeline.py` → upsert) sigue escribiendo el
+> resumen en el `INSERT` sin filas de score —el merge las adopta—; y
+> **`tech_signal_merge` sigue en `CANONICAL_STEPS`**: retirarlo exige siete días
+> de `ops_events` de producción con `licitaciones_reparadas = 0`, y
+> `precompute_ml_tecnologias(force=True)` aún borra filas del pliego.
+> Pendiente de BD real: los tests de `tests/test_tech_signal_db.py` (**no
+> ejecutados**: sin Postgres en la máquina que lo escribió), `alembic upgrade
+> --sql` antes del `apply` y el delta de `make audit-truth-check`.
+
 **Qué.** `licitacion_tecnologia_score` (`v30`) es el origen;
 `licitaciones.tecnologia`, `ml_tecnologias` y `ml_tech_principal` se derivan
 (vista o trigger) y dejan de escribirse desde conectores y ML;

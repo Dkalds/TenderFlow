@@ -18,6 +18,15 @@ ML aún no la refleja -- lo que ``precompute_ml_tecnologias`` acaba de
 reescribir, o lo que nunca se fusionó. ``db/upsert.py`` ya no resetea esas
 columnas en cada re-scrape (ver docstring de ``_run_tech_signal_merge``).
 
+**Sigue en ``CANONICAL_STEPS`` a propósito** tras ``v136`` (T3 del plan v2,
+2026-09-18): ya ningún productor hace ``UPDATE`` del resumen —lo deriva un
+trigger de ``licitacion_tecnologia_score``—, pero el criterio de retirada es
+«cero reparaciones en siete días de cierre, medido en ``ops_events``» sobre
+producción, y ``precompute_ml_tecnologias(force=True)`` todavía borra las
+filas del pliego al sustituir las del modelo. Se retira cuando el contador
+``licitaciones_reparadas`` lo demuestre, no antes; ``scripts/check_job_parity.py``
+va en el mismo commit.
+
 ``digests``, ``retention_cleanup`` y ``drift_checks`` tienen **cadencia
 propia** (ver ``_run_periodic``): la pipeline corre cada 4h, pero un digest
 diario debe enviarse una vez al día y la retención purgar una vez al día,

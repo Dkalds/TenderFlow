@@ -217,6 +217,92 @@ class TestBuildMergeResult:
         assert result["ml_proba_max"] == 0.0
 
 
+def _derivar_como_el_trigger(
+    filas: dict[str, tuple[float, float]],
+) -> tuple[str | None, str | None, float | None]:
+    """Réplica en Python de ``lts_derivar_ml`` (``v136``): predicha es
+    ``probabilidad >= threshold_aplicado``; CSV y principal por score
+    descendente (empate por nombre); ``ml_proba_max`` es el máximo de las
+    predichas o, si no hay ninguna, el de todas las filas."""
+    predichas = sorted(
+        (t for t, (p, thr) in filas.items() if p >= thr), key=lambda t: (-filas[t][0], t)
+    )
+    if predichas:
+        return ",".join(predichas), predichas[0], filas[predichas[0]][0]
+    if filas:
+        return None, None, max(p for p, _thr in filas.values())
+    return None, None, None
+
+
+class TestMergeWritesOnlyTheSingleSource:
+    """T3 (v136): el merge ya no escribe ``licitaciones.ml_*``; escribe filas
+    de score y el trigger deriva el resumen. Estos tests fijan que las filas
+    que el merge persiste, pasadas por la regla del trigger, dan **el mismo
+    resumen** que el merge calculaba y escribía antes. La regla SQL en sí solo
+    se ejercita contra Postgres (``tests/test_tech_signal_db.py``)."""
+
+    @staticmethod
+    def _tabla_tras_merge(state, pliego_scores, threshold_aplicado):
+        result = _build_merge_result(state, pliego_scores, threshold_aplicado)
+        tabla = {
+            t: (p, state["thresholds"][t])
+            for t, p in state["scores"].items()
+            if t in state["thresholds"]
+        }
+        for tech, proba in result["pliego_scores"]:
+            tabla[tech] = (proba, threshold_aplicado)
+        for tech, proba in result["adopted_scores"]:
+            tabla[tech] = (proba, proba)
+        return result, tabla
+
+    def test_csv_technology_without_score_row_is_adopted(self):
+        """El camino de ingesta escribe el CSV sin filas de score: si el merge
+        no la adoptara, el trigger la borraría del resumen al fundir META4."""
+        state = {"predicted": {"SAP"}, "scores": {}, "thresholds": {}}
+        result, tabla = self._tabla_tras_merge(state, {"META4": 0.8}, 0.5)
+
+        assert result["adopted_scores"] == [("SAP", 0.0)]
+        assert _derivar_como_el_trigger(tabla) == (
+            result["ml_tecnologias"],
+            result["ml_tech_principal"],
+            result["ml_proba_max"],
+        )
+
+    def test_technology_already_predicted_in_the_table_is_not_rewritten(self):
+        state = {"predicted": {"SAP"}, "scores": {"SAP": 0.9}, "thresholds": {"SAP": 0.5}}
+        result, tabla = self._tabla_tras_merge(state, {"META4": 0.8}, 0.5)
+
+        assert result["adopted_scores"] == []
+        assert _derivar_como_el_trigger(tabla) == ("SAP,META4", "SAP", 0.9)
+        assert result["ml_tech_principal"] == "SAP"
+
+    def test_below_threshold_row_that_the_csv_predicted_is_adopted_at_its_score(self):
+        state = {"predicted": {"SAP"}, "scores": {"SAP": 0.3}, "thresholds": {"SAP": 0.5}}
+        result, tabla = self._tabla_tras_merge(state, {}, 0.5)
+
+        assert result["adopted_scores"] == [("SAP", 0.3)]
+        assert _derivar_como_el_trigger(tabla) == ("SAP", "SAP", 0.3)
+        assert result["ml_tecnologias"] == "SAP"
+
+    def test_unpredicted_row_is_never_promoted(self):
+        """SAP=0.45 bajo su umbral y ausente del CSV: ni el merge ni el
+        trigger la nombran (mismo contrato que
+        ``test_ml_proba_max_and_principal_are_restricted_to_included``)."""
+        state = {"predicted": set(), "scores": {"SAP": 0.45}, "thresholds": {"SAP": 0.5}}
+        result, tabla = self._tabla_tras_merge(state, {"DOCKER": 0.25}, 0.2)
+
+        assert result["adopted_scores"] == []
+        assert _derivar_como_el_trigger(tabla) == ("DOCKER", "DOCKER", 0.25)
+
+    def test_without_thresholds_in_state_nothing_is_adopted(self):
+        """Un llamador que no lee umbrales no adopta a ciegas: reescribiría
+        el umbral ML propio de filas que ya estaban predichas."""
+        result = _build_merge_result(
+            {"predicted": {"SAP"}, "scores": {"SAP": 0.9}}, {"META4": 0.8}, 0.5
+        )
+        assert result["adopted_scores"] == []
+
+
 class TestMergeDocSignals:
     """Orquestación: lectura de señales, dedupe de eventos por ``merged_at``
     y fail-open. La aritmética del merge en sí se prueba en

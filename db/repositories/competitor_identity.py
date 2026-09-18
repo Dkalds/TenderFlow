@@ -9,10 +9,15 @@ NIF normalizado y nombre normalizado. Este módulo es la **misma partición
 expresada en SQL**, para poder *medirla* contra la de pandas antes de
 sustituirla.
 
-Nadie lo llama todavía, y eso es deliberado: la paridad solo se puede observar
-con un Postgres real (``tests/test_analytics_competitors_identity_sql.py``, que
-corre en CI). Cambiar el camino por defecto sin esa medida sería cambiar el
-significado de la pantalla de competidores a ciegas.
+Desde 2026-09-18 está **cableado detrás de un interruptor apagado**
+(``settings.COMPETITORS_IDENTITY_SQL``, por defecto ``False``): con él
+activado, ``services/analytics/competitors.py`` pide a
+:func:`resolve_identity_for_rows` la partición de las mismas filas que ya
+cargó, en vez de correr el union-find de pandas. Sigue apagado porque la
+paridad solo se puede observar con un Postgres real
+(``tests/test_analytics_competitors_identity_sql.py``, que corre en CI) y el
+coste solo con ``identity_graph_stats`` en producción. Encenderlo sin esas dos
+medidas sería cambiar el significado de la pantalla de competidores a ciegas.
 
 Qué significa "paridad" aquí
 ----------------------------
@@ -357,6 +362,86 @@ def load_competitor_identity(
         cur = c.execute(sql, params)
         cols = [d[0] for d in cur.description]
         return [dict(zip(cols, row, strict=False)) for row in cur.fetchall()]
+
+
+def _identity_for_rows_sql(unaccent_fn: str) -> str:
+    """Partición de identidad sobre filas que el llamador ya tiene en memoria.
+
+    Mismo ``tokens_sql``/``components_sql`` que :func:`_identity_sql`; cambia
+    solo de dónde salen las filas: de cuatro arrays paralelos en vez de
+    ``adjudicaciones``. ``row_id`` es la posición 0-based en esos arrays.
+    """
+    name_chain = normalize_company_lateral("src.nombre", "nom", unaccent_fn)
+    nif_expr = normalize_nif_sql("src.nif")
+    return f"""
+WITH RECURSIVE
+pat AS (SELECT %s::text AS re),
+placeholders AS (SELECT unnest(%s::text[]) AS nif),
+curated AS (
+    SELECT * FROM unnest(%s::text[], %s::text[]) AS c(nif, grupo_key)
+),
+base AS (
+    SELECT src.pos - 1                                AS row_id,
+           src.grupo_id                               AS grupo_id,
+           src.empresa_id                             AS empresa_id,
+           nom_out.v                                  AS name_key,
+           CASE WHEN nifk.v IN (SELECT nif FROM placeholders) THEN NULL
+                ELSE nifk.v END                       AS nif_key
+    FROM unnest(%s::text[], %s::text[], %s::text[], %s::text[])
+         WITH ORDINALITY AS src(nombre, nif, empresa_id, grupo_id, pos)
+    CROSS JOIN pat
+    CROSS JOIN LATERAL (SELECT {nif_expr} AS v) nifk
+{name_chain}
+),
+{tokens_sql()},
+{components_sql()}
+{IDENTITY_TAIL_SELECT}"""
+
+
+def resolve_identity_for_rows(
+    *,
+    nombres: Sequence[str | None],
+    nifs: Sequence[str | None],
+    empresa_ids: Sequence[int | None],
+    grupo_ids: Sequence[int | None],
+    placeholder_nifs: Sequence[str],
+    curated_groups: Mapping[str, str],
+) -> list[str]:
+    """Clave de competidor de cada fila, calculada en Postgres.
+
+    Es el camino que ``services/analytics/competitors.py`` usa con
+    ``COMPETITORS_IDENTITY_SQL`` activado: las filas ya las cargó
+    ``load_for_competitors`` (con su ``LIMIT`` y su orden), así que se
+    reparten **exactamente las mismas filas** que reparte el union-find de
+    pandas — con :func:`load_competitor_identity` el universo sería el filtro
+    sin techo, y la partición podría unir por filas que la pantalla no ve.
+
+    ``nombres``/``nifs`` llegan sin normalizar (ya con el maestro preferido
+    sobre el crudo y los blancos a ``None``, que es limpieza de pandas y no
+    normalización); la normalización de nombre y NIF es SQL. Devuelve una
+    clave por posición, en el mismo orden. La etiqueta es ``MIN(token)`` del
+    componente (ver docstring del módulo): comparar particiones, no strings.
+    """
+    n = len(nombres)
+    if not (len(nifs) == len(empresa_ids) == len(grupo_ids) == n):
+        raise ValueError("resolve_identity_for_rows: arrays de longitudes distintas")
+    if n == 0:
+        return []
+    curated_nifs = list(curated_groups.keys())
+    params: list[Any] = [
+        SUFFIX_RE_ARE,
+        list(placeholder_nifs),
+        curated_nifs,
+        [curated_groups[nif] for nif in curated_nifs],
+        list(nombres),
+        list(nifs),
+        [str(int(v)) if v is not None else None for v in empresa_ids],
+        [str(int(v)) if v is not None else None for v in grupo_ids],
+    ]
+    with connect_read() as c:
+        rows = c.execute(_identity_for_rows_sql(unaccent_function(c)), params).fetchall()
+    # IDENTITY_TAIL_SELECT ordena por row_id, que aquí es la posición.
+    return [str(row[1]) for row in rows]
 
 
 def _graph_stats_sql(unaccent_fn: str, *, where: str) -> str:

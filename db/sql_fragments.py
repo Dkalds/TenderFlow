@@ -124,8 +124,11 @@ def universo_tecnologico_sql(alias: str = "l") -> str:
     ``tecnologia`` (regex de keywords de la ingesta) → ``ml_tecnologias``
     (clasificador) → LLM → pliego. Los dos últimos **no tienen columna propia**:
     ``db/repositories/tecnologia_pliego.py::merge_many_with_lock`` los escribe
-    sobre ``licitaciones.ml_tecnologias``/``ml_tech_principal``, así que entran
-    al universo por el cuarto disyunto y no por uno quinto.
+    como filas de ``licitacion_tecnologia_score``, de la que el trigger de
+    ``v136`` deriva ``licitaciones.ml_tecnologias``/``ml_tech_principal`` (T3:
+    una sola verdad), así que entran al universo por el cuarto disyunto y no
+    por uno quinto. Por eso este predicado no cambió con ``v136`` y la vista
+    materializada no hubo que reconstruirla.
 
     Qué gana cuando hay conflicto: **nada, aquí**. Este fragmento decide
     pertenencia al universo, no etiqueta, y basta con que **una** señal exista

@@ -572,15 +572,18 @@ def precompute_ml_proba(*, batch_size: int = 500, force: bool = False) -> dict[s
 
 
 def precompute_ml_tecnologias(*, batch_size: int = 500, force: bool = False) -> dict[str, Any]:
-    """Pre-computa ml_tecnologias/ml_proba_max/ml_tech_principal en BD.
+    """Puntúa el clasificador multi-tecnología y lo persiste en su única fuente.
 
-    Pobla también la tabla normalizada ``licitacion_tecnologia_score`` con un
-    score por tecnología (modelo o fallback rules). Por defecto solo procesa
-    filas donde ``ml_proba_max IS NULL``; con ``force=True`` recalcula todas.
+    Escribe **solo** ``licitacion_tecnologia_score`` (un score por tecnología,
+    modelo o fallback de reglas). ``ml_tecnologias``, ``ml_proba_max`` y
+    ``ml_tech_principal`` no se tocan desde aquí: las deriva el trigger de
+    ``v136`` a partir de esa tabla (T3 del plan v2, «Tecnología: una sola
+    verdad»). Por defecto solo procesa filas donde ``ml_proba_max IS NULL``;
+    con ``force=True`` recalcula todas.
 
     Args:
         batch_size: Número de filas por batch (control de memoria).
-        force: Si True, sobreescribe valores existentes.
+        force: Si True, sustituye las filas de score existentes.
 
     Returns:
         ``{"updated": N, "scores_inserted": M, "skipped_no_model": bool}``.
@@ -599,14 +602,12 @@ def precompute_ml_tecnologias(*, batch_size: int = 500, force: bool = False) -> 
         log.error("precompute_ml_tecnologias.load_failed", error=str(exc))
         return {"updated": 0, "scores_inserted": 0, "skipped_no_model": True}
 
-    from db.database import connect
+    from db.repositories.ml_dataset import (
+        filas_pendientes_ml_tecnologias,
+        guardar_scores_tecnologia,
+    )
 
-    now_sql = "NOW()"
-    where = "" if force else "WHERE ml_proba_max IS NULL"
-    with connect() as c:
-        rows = c.execute(
-            f"SELECT id_externo, titulo, descripcion, cpv, importe FROM licitaciones {where}"
-        ).fetchall()
+    rows = filas_pendientes_ml_tecnologias(force=force)
 
     if not rows:
         log.info("precompute_ml_tecnologias.nothing_to_update")
@@ -618,9 +619,9 @@ def precompute_ml_tecnologias(*, batch_size: int = 500, force: bool = False) -> 
         batch = rows[i : i + batch_size]
         items = [
             {
-                "text": (str(r[1] or "") + " " + str(r[2] or "")).strip(),
-                "cpv": str(r[3]) if r[3] else None,
-                "importe": float(r[4]) if r[4] else None,
+                "text": (str(r["titulo"] or "") + " " + str(r["descripcion"] or "")).strip(),
+                "cpv": str(r["cpv"]) if r["cpv"] else None,
+                "importe": float(r["importe"]) if r["importe"] else None,
             }
             for r in batch
         ]
@@ -634,54 +635,29 @@ def precompute_ml_tecnologias(*, batch_size: int = 500, force: bool = False) -> 
             )
             continue
 
-        # Construir listas de parámetros para executemany (1 petición HTTP por tabla).
-        update_params: list[tuple[Any, ...]] = []
-        delete_params: list[tuple[Any, ...]] = []
-        score_params: list[tuple[Any, ...]] = []
-
+        score_params: list[tuple[str, str, float, float]] = []
+        sin_score: list[tuple[float, str]] = []
         for row, pred in zip(batch, preds, strict=False):
-            lic_id = row[0]
-            ml_tecnologias = ",".join(pred["predicted"]) if pred["predicted"] else None
-            update_params.append(
-                (ml_tecnologias, float(pred["max_proba"]), pred["principal"], lic_id)
-            )
-            if force:
-                delete_params.append((lic_id,))
+            lic_id = str(row["id_externo"])
+            filas_de_esta = 0
             for label, score in pred["scores"].items():
                 if score <= 0.0:
                     continue
                 thr = pred["thresholds"].get(label, 0.5)
                 score_params.append((lic_id, label, float(score), float(thr)))
-                scores_inserted += 1
+                filas_de_esta += 1
+            if not filas_de_esta:
+                # Puntuada y sin ninguna etiqueta > 0: sin fila de score el
+                # trigger no tiene de dónde derivar ml_proba_max, y sin él la
+                # pasada siguiente volvería a seleccionarla.
+                sin_score.append((float(pred["max_proba"]), lic_id))
+            scores_inserted += filas_de_esta
 
-        # Persistir batch con queries parametrizadas (seguro contra SQL injection).
-        # executemany agrupa operaciones, minimizando round-trips de red al backend remoto.
-        with connect() as c:
-            if force and delete_params:
-                c.executemany(
-                    "DELETE FROM licitacion_tecnologia_score WHERE licitacion_id = %s",
-                    delete_params,
-                )
-            c.executemany(
-                "UPDATE licitaciones SET "
-                "ml_tecnologias = %s, "
-                "ml_proba_max = %s, "
-                "ml_tech_principal = %s "
-                "WHERE id_externo = %s",
-                update_params,
-            )
-            c.executemany(
-                "INSERT INTO licitacion_tecnologia_score "
-                "(licitacion_id, tecnologia, probabilidad, "
-                " threshold_aplicado, computed_at) "
-                f"VALUES (%s, %s, %s, %s, {now_sql}) "
-                "ON CONFLICT(licitacion_id, tecnologia) DO UPDATE SET "
-                "probabilidad=excluded.probabilidad, "
-                "threshold_aplicado=excluded.threshold_aplicado, "
-                "computed_at=excluded.computed_at",
-                score_params,
-            )
-            c.commit()
+        guardar_scores_tecnologia(
+            scores=score_params,
+            sin_score=sin_score,
+            reemplazar=[str(r["id_externo"]) for r in batch] if force else None,
+        )
         updated += len(batch)
         log.debug(
             "precompute_ml_tecnologias.batch_done",

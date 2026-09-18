@@ -149,11 +149,29 @@ def _build_merge_result(
         max(included_scores, key=lambda t: included_scores[t]) if included_scores else None
     )
 
+    # Desde v136 el resumen lo deriva el trigger de ``licitacion_tecnologia_score``
+    # (predicha = ``probabilidad >= threshold_aplicado``), y el repositorio ya
+    # no escribe las tres columnas. Para que «el merge nunca borra» siga siendo
+    # verdad, una tecnología que el CSV daba por predicha y la tabla no (sin
+    # fila, o con fila por debajo de su umbral: el camino de ingesta de
+    # ``scraper/pipeline.py`` escribe el CSV sin filas de score) se **adopta**:
+    # se persiste con ``threshold_aplicado`` igual a su propio score, que es
+    # exactamente «predicha a este score». ``thresholds`` ausente = estado sin
+    # umbrales leídos, y entonces no se adopta nada (llamadores anteriores).
+    thresholds: dict[str, float] | None = state.get("thresholds")
+    adopted_scores: list[tuple[str, float]] = []
+    if thresholds is not None:
+        for tech in sorted(existing_predicted - set(pliego_scores)):
+            previo = existing_scores.get(tech)
+            if previo is None or previo < thresholds.get(tech, float("inf")):
+                adopted_scores.append((tech, previo or 0.0))
+
     return {
         "ml_tecnologias": ml_tecnologias,
         "ml_proba_max": ml_proba_max,
         "ml_tech_principal": ml_tech_principal,
         "pliego_scores": [(tech, full_scores[tech]) for tech in pliego_scores],
+        "adopted_scores": adopted_scores,
         "threshold_aplicado": threshold_aplicado,
         "existing_scores": existing_scores,
         "full_scores": full_scores,

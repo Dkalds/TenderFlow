@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, ClassVar
 from unittest.mock import MagicMock, patch
 
 
@@ -412,25 +412,35 @@ class TestPrecomputeMlTecnologias:
         result = precompute_ml_tecnologias()
         assert result["skipped_no_model"] is True
 
-    @patch("db.database.connect")
+    _FILA: ClassVar[dict[str, Any]] = {
+        "id_externo": "ext1",
+        "titulo": "titulo",
+        "descripcion": "desc",
+        "cpv": "48000000",
+        "importe": 1000,
+    }
+
+    @patch("db.repositories.ml_dataset.guardar_scores_tecnologia")
+    @patch("db.repositories.ml_dataset.filas_pendientes_ml_tecnologias", return_value=[])
     @patch("scraper.tech_classifier.TechnologyClassifier")
-    def test_no_rows(self, mock_cls: MagicMock, mock_connect: MagicMock) -> None:
+    def test_no_rows(
+        self, mock_cls: MagicMock, _pendientes: MagicMock, mock_guardar: MagicMock
+    ) -> None:
         mock_cls.is_available.return_value = True
         mock_cls.load.return_value = MagicMock()
-
-        mock_conn = MagicMock()
-        mock_conn.execute.return_value.fetchall.return_value = []
-        mock_connect.return_value.__enter__ = MagicMock(return_value=mock_conn)
-        mock_connect.return_value.__exit__ = MagicMock(return_value=False)
 
         from scraper.ml_training import precompute_ml_tecnologias
 
         result = precompute_ml_tecnologias()
         assert result == {"updated": 0, "scores_inserted": 0, "skipped_no_model": False}
+        mock_guardar.assert_not_called()
 
-    @patch("db.database.connect")
+    @patch("db.repositories.ml_dataset.guardar_scores_tecnologia")
+    @patch("db.repositories.ml_dataset.filas_pendientes_ml_tecnologias")
     @patch("scraper.tech_classifier.TechnologyClassifier")
-    def test_updates_rows_force(self, mock_cls: MagicMock, mock_connect: MagicMock) -> None:
+    def test_updates_rows_force(
+        self, mock_cls: MagicMock, mock_pendientes: MagicMock, mock_guardar: MagicMock
+    ) -> None:
         mock_cls.is_available.return_value = True
         mock_clf = MagicMock()
         mock_cls.load.return_value = mock_clf
@@ -444,36 +454,64 @@ class TestPrecomputeMlTecnologias:
                 "thresholds": {"SAP": 0.5, "ORACLE": 0.5},
             }
         ]
-
-        mock_conn = MagicMock()
-        mock_conn.execute.return_value.fetchall.return_value = [
-            ("ext1", "titulo", "desc", "48000000", 1000),
-        ]
-        mock_connect.return_value.__enter__ = MagicMock(return_value=mock_conn)
-        mock_connect.return_value.__exit__ = MagicMock(return_value=False)
+        mock_pendientes.return_value = [dict(self._FILA)]
 
         from scraper.ml_training import precompute_ml_tecnologias
 
         result = precompute_ml_tecnologias(force=True, batch_size=10)
         assert result["updated"] == 1
         assert result["scores_inserted"] == 2
+        mock_pendientes.assert_called_once_with(force=True)
+        # Una sola fuente (T3): solo filas de score, y con force se sustituyen.
+        mock_guardar.assert_called_once_with(
+            scores=[("ext1", "SAP", 0.9, 0.5), ("ext1", "ORACLE", 0.7, 0.5)],
+            sin_score=[],
+            reemplazar=["ext1"],
+        )
 
-    @patch("db.database.connect")
+    @patch("db.repositories.ml_dataset.guardar_scores_tecnologia")
+    @patch("db.repositories.ml_dataset.filas_pendientes_ml_tecnologias")
     @patch("scraper.tech_classifier.TechnologyClassifier")
-    def test_predict_batch_failure(self, mock_cls: MagicMock, mock_connect: MagicMock) -> None:
+    def test_all_zero_scores_mark_ml_proba_max_without_labels(
+        self, mock_cls: MagicMock, mock_pendientes: MagicMock, mock_guardar: MagicMock
+    ) -> None:
+        """Una licitación puntuada sin ninguna etiqueta > 0 no deja fila de
+        score, así que el trigger de v136 no puede derivar su ml_proba_max: se
+        marca aparte para que la pasada siguiente no la vuelva a seleccionar."""
+        mock_cls.is_available.return_value = True
+        mock_clf = MagicMock()
+        mock_cls.load.return_value = mock_clf
+        mock_clf.predict_batch.return_value = [
+            {
+                "predicted": [],
+                "max_proba": 0.0,
+                "principal": None,
+                "scores": {"SAP": 0.0, "ORACLE": 0.0},
+                "thresholds": {"SAP": 0.5, "ORACLE": 0.5},
+            }
+        ]
+        mock_pendientes.return_value = [dict(self._FILA)]
+
+        from scraper.ml_training import precompute_ml_tecnologias
+
+        result = precompute_ml_tecnologias()
+        assert result["scores_inserted"] == 0
+        mock_guardar.assert_called_once_with(scores=[], sin_score=[(0.0, "ext1")], reemplazar=None)
+
+    @patch("db.repositories.ml_dataset.guardar_scores_tecnologia")
+    @patch("db.repositories.ml_dataset.filas_pendientes_ml_tecnologias")
+    @patch("scraper.tech_classifier.TechnologyClassifier")
+    def test_predict_batch_failure(
+        self, mock_cls: MagicMock, mock_pendientes: MagicMock, mock_guardar: MagicMock
+    ) -> None:
         mock_cls.is_available.return_value = True
         mock_clf = MagicMock()
         mock_cls.load.return_value = mock_clf
         mock_clf.predict_batch.side_effect = RuntimeError("boom")
-
-        mock_conn = MagicMock()
-        mock_conn.execute.return_value.fetchall.return_value = [
-            ("ext1", "titulo", "desc", "48000000", 1000),
-        ]
-        mock_connect.return_value.__enter__ = MagicMock(return_value=mock_conn)
-        mock_connect.return_value.__exit__ = MagicMock(return_value=False)
+        mock_pendientes.return_value = [dict(self._FILA)]
 
         from scraper.ml_training import precompute_ml_tecnologias
 
         result = precompute_ml_tecnologias()
         assert result["updated"] == 0
+        mock_guardar.assert_not_called()
