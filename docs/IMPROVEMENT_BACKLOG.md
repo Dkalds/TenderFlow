@@ -289,13 +289,12 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 - **Files de partida:** [requirements.in](../requirements.in), [docker/](../docker/)
 - **Riesgo:** medio — toca dependencias (gate humano §6) y puede destapar imports implícitos; mitigado con smoke de import por entrypoint.
 
-### [P2] Calibrar los umbrales de la auditoría de verdad del dato
-- **Área:** scripts/audit_domain_truth.py
-- **Problema:** `MAX_PCT_SIN_FECHA_LIMITE = 60`, `MAX_PCT_FILAS_UTE = 8` y `MAX_DELTA_BAJA_PUNTOS = 5` se eligieron holgados para que el primer mes detecte empeoramientos bruscos sin ahogar en ruido. No son la calidad real medida.
-- **Acceptance criteria:**
-  - Tras una semana de ejecuciones de `.github/workflows/domain-truth.yml`, comparar los `domain-truth.json` archivados y bajar cada umbral al valor medido con margen, dejando el histórico en el docstring (patrón de `tests/eval/test_eval_rag.py`).
-- **Files de partida:** [scripts/audit_domain_truth.py](../scripts/audit_domain_truth.py)
-- **Riesgo:** bajo — solo umbrales.
+### [P2] Filas nuevas con importe y sin `importe_tipo`: la auditoría lo viola a diario y crece
+- **Área:** scraper/connectors/, db/upsert.py, scripts/audit_domain_truth.py
+- **Problema:** el umbral `importe/filas_nuevas_sin_tipo` (cero, sin margen, desde `v113`) se supera en las siete ejecuciones archivadas de `domain-truth.yml` del 12 al 18/09, y la cuenta **crece cada día**: 131, 131, 152, 190, 238, 279, 316 filas con importe desde el 2026-09-06 y sin base declarada. Algún camino de escritura no puebla `importe_tipo`; el correo de alerta lleva una semana diciendo lo mismo. (En la misma serie, `ml_proba` > 0,7 está en el 72,9 % de lo puntuado frente al 50 % del criterio: eso es el P2 del corpus de PSCP, ya abierto.)
+- **Acceptance criteria:** identificado el camino (por `fuente` de esas filas) y corregido en origen; la cuenta deja de crecer en `domain-truth.json`. El umbral no se relaja.
+- **Files de partida:** [db/domain_truth_audit.py](../db/domain_truth_audit.py) (`importe_sin_base_declarada`), [scripts/audit_domain_truth.py](../scripts/audit_domain_truth.py)
+- **Riesgo:** bajo — corrección de ingesta; la serie está en el docstring del script.
 
 ### [P2] Modelo de baja por lote
 - **Área:** services/ml, db/alembic, api/routes/predicciones.py, web/
@@ -692,6 +691,15 @@ cabecera de este fichero: los seis se comprobaron contra el código.
   después de materializar, igual para bucket y Release. Tests nuevos en
   `tests/test_model_artifacts.py` (delegación, asset ausente, Release inaccesible, y un guard AST
   de que `requests` no vuelve).
+- [2026-09-18, rama worktree-agent-a3fd0bc81b8a949c2] **P2: calibrar los umbrales de la
+  auditoría de verdad del dato** — con los `domain-truth.json` de siete ejecuciones
+  programadas (12→18/09, descargados con `gh run download`, artefacto
+  `domain-truth-measurements`). `fecha_limite` por fuente ya se había calibrado en C4.5
+  (2026-09-06); ahora `placsp` baja a 81,9 % (su límite estaba topado en 100 y no podía
+  saltar), `ted` a 65,9 %, la UTE de 8 % a 0,02 % (medido las siete veces) y el delta de
+  baja de 5 a 1,12 puntos. Histórico por día en el docstring de
+  `scripts/audit_domain_truth.py`. De la serie sale un P2 nuevo: `importe_tipo` sin base
+  declarada viola su umbral a diario y crece.
 
 
 - [2026-09-01] **Revisión integral de la IA del detalle de licitación (10 mejoras en un
