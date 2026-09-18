@@ -493,6 +493,15 @@ class Settings(BaseSettings):
     #   SCORING_AFINIDAD_KEYWORDS='["consultoría","mantenimiento"]'
     SCORING_AFINIDAD_KEYWORDS: list[str] = []
 
+    # ── Analítica de competidores ─────────────────────────────────────────
+    # Resolución de identidad de empresa (quién es el mismo competidor) en
+    # Postgres (`db/repositories/competitor_identity.py`: unaccent + CTE
+    # recursiva) en vez del union-find de pandas. APAGADO hasta que la paridad
+    # de `tests/test_analytics_competitors_identity_sql.py` pase en CI contra
+    # Postgres real y `identity_graph_stats` se haya medido en producción: el
+    # cierre de la CTE es cuadrático en el tamaño del componente.
+    COMPETITORS_IDENTITY_SQL: bool = False
+
     # ── API REST ─────────────────────────────────────────────────────────
     # Hilos del threadpool de anyio, donde corre TODO el trabajo síncrono de la
     # API (los ~104 `run_db` y los handlers `def`). Estuvo fijado a 4 desde un
