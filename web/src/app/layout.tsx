@@ -92,14 +92,16 @@ export const metadata: Metadata = {
  * **entera**: ni la landing ni `/aviso-legal` aparecían en el
  * `prerender-manifest`, y los `revalidate = 3600` de la superficie de datos no
  * se aplicaban nunca. Cada visita y cada rastreo pagaba un render de servidor.
- * Hoy el nonce lo leen los layouts que de verdad lo necesitan —`(dashboard)` y
- * `login`, ya dinámicos— y la superficie pública se sirve con una CSP sin
- * nonce (ver `src/proxy.ts`).
+ * Hoy el nonce lo leen los layouts que de verdad lo necesitan —`(dashboard)`,
+ * `login` y `restablecer-contrasena`, ya dinámicos, a través de
+ * `SuperficiePrivada`— y la superficie pública se sirve con una CSP sin nonce
+ * (ver `src/proxy.ts`).
  *
  * Los providers (react-query, sesión, tooltips, nuqs) y sus overlays viajaban
  * aquí, así que la landing cargaba el runtime completo del dashboard más el CSS
  * de Leaflet y disparaba un `GET /auth/me` por visita anónima. Ahora los monta
- * cada grupo de rutas que los usa; la superficie pública sólo necesita el tema.
+ * `components/layout/superficie-privada.tsx`, que usan los tres layouts con
+ * sesión; la superficie pública sólo necesita el tema.
  */
 export default function RootLayout({
   children,

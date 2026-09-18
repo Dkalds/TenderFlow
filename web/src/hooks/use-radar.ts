@@ -24,7 +24,7 @@ export type RadarTender = ScoredOpportunity;
 /** De qué señales está hecho el score que se está mostrando. */
 export type ScoringSignals = ScoringSignalsHealth;
 
-const DISMISSALS_KEY = ["radar", "dismissals"] as const;
+const DISMISSALS_KEY = radarKeys.dismissals;
 
 /**
  * Fuente del Radar: el ranking de mercado, no el listado reordenado.

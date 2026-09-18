@@ -5,11 +5,12 @@
 import { parseAsString, useQueryStates } from "nuqs";
 import { useSearchParams } from "next/navigation";
 import { useCallback, useMemo } from "react";
+import { type DateRange, filtersToParams } from "./filter-params";
 
-export interface DateRange {
-  desde: string | null; // YYYY-MM-DD
-  hasta: string | null;
-}
+// La derivación pura (URL → parámetros de API) vive en `filter-params.ts` para
+// que el prefetch en servidor la comparta sin importar `nuqs` ni hooks.
+export type { DateRange, FilterValues } from "./filter-params";
+export { filtersToParams } from "./filter-params";
 
 export interface FiltersState {
   q: string;
@@ -35,25 +36,6 @@ export interface FiltersState {
 }
 
 /** Filter values without action methods. */
-export interface FilterValues {
-  q: string;
-  rango: DateRange;
-  estados: string[];
-  ccaas: string[];
-  tecnologias: string[];
-  importeMin: number | null;
-  /**
-   * "Sólo las que siguen abiertas" — descarta los estados terminales.
-   *
-   * No es lo mismo que `estados: ["PUB","EV"]`, y por eso existe: enumerar los
-   * abiertos deja fuera cualquier código que la fuente publique después
-   * (`ADM` es el caso real). El backend ya lo resolvía con `solo_abiertas`;
-   * lo que faltaba era que el ámbito pudiera expresarlo, para que una tarjeta
-   * que cuenta "activas" pueda abrir el listado que enseña justo esas.
-   */
-  soloAbiertas: boolean;
-}
-
 const filterParsers = {
   q: parseAsString.withDefault(""),
   fecha_desde: parseAsString.withDefault(""),
@@ -231,23 +213,6 @@ export function useScopeSnapshot(): {
   );
 
   return { snapshot, applySnapshot };
-}
-
-/**
- * Convert current filter state to API query params.
- * Only includes non-empty/non-null values.
- */
-export function filtersToParams(filters: FilterValues): Record<string, string> {
-  const params: Record<string, string> = {};
-  if (filters.q) params.q = filters.q;
-  if (filters.rango.desde) params.fecha_desde = filters.rango.desde;
-  if (filters.rango.hasta) params.fecha_hasta = filters.rango.hasta;
-  if (filters.estados.length) params.estado = filters.estados.join(",");
-  if (filters.ccaas.length) params.ccaa = filters.ccaas.join(",");
-  if (filters.tecnologias.length) params.tecnologia = filters.tecnologias.join(",");
-  if (filters.importeMin !== null) params.importe_min = String(filters.importeMin);
-  if (filters.soloAbiertas) params.solo_abiertas = "true";
-  return params;
 }
 
 /** URL param keys owned by the global filter state. */

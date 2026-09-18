@@ -132,6 +132,11 @@ export const radarKeys = {
   dismissed: (organizationId: number | null, visibles: readonly string[]) =>
     ["radar", "dismissed-tenders", organizationId, visibles] as const,
   organo: (organo: string | null | undefined) => ["radar", "organo", organo] as const,
+  // Estas dos las usa también el prefetch en servidor del Radar
+  // (`radar/layout.tsx`): son las del Radar que no dependen de la organización
+  // activa, que vive en `localStorage` y el servidor no puede leer.
+  dismissals: ["radar", "dismissals"] as const,
+  proximas: (limite: number) => ["radar", "proximas", limite] as const,
 };
 
 // ---------------------------------------------------------------------------
