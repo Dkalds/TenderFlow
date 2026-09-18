@@ -17,7 +17,7 @@ Todos los RFCs siguen esta estructura.
 
 <!-- BEGIN indice-rfc (generado por scripts/gen_rfc_index.py — no editar a mano) -->
 
-**72 RFC**, de los cuales **17** siguen abiertos. `approved` 2 · `implemented` 49 · `obsolete` 4 · `partially-implemented` 15 · `superseded` 2.
+**73 RFC**, de los cuales **18** siguen abiertos. `approved` 2 · `implemented` 49 · `obsolete` 4 · `partially-implemented` 15 · `review` 1 · `superseded` 2.
 
 **Criterio de `implemented`: que el código exista en el árbol, no que el PR se haya mergeado.** Un RFC cuyo código está pero cuyo PR quedó abierto está implementado; uno cuyo PR se mergeó sin dejar código, no.
 
@@ -108,6 +108,7 @@ Esta tabla se genera con `python scripts/gen_rfc_index.py`; CI la verifica con `
 | [UX/KPIs · Resumen — deltas consistentes, KPIs accionables y arreglo de CCAA cubiertas](2026-06-16-rfc-ux-resumen.md) | `partially-implemented` | 2026-06-16 | — |
 | [UX/KPIs · Tendencias CPV — forecast por CPV (no global) y drill-down](2026-06-16-rfc-ux-tendencias-cpv.md) | `partially-implemented` | 2026-06-16 | — |
 | [UX/KPIs · Tendencias — heatmap real Mes×Estado, banda de forecast theme-safe, drill-down](2026-06-16-rfc-ux-tendencias.md) | `partially-implemented` | 2026-06-16 | — |
+| [Sacar la inferencia de scikit-learn del proceso HTTP — destino de /explain y de /analytics/clusters](2026-09-18-rfc-explain-fuera-del-proceso-api.md) | `review` | 2026-09-18 | — |
 | [Meta-RFC · Integridad analítica del frontend — el frontend no fabrica datos; backend = única fuente de verdad analítica](2026-06-16-rfc-meta-integridad-analitica-frontend.md) | `superseded` | 2026-06-16 | El meta-RFC graduó: la decisión vive en `docs/adr/ADR-014-integridad-analitica-frontend.md` y su guardarraíl es `scripts/check_frontend_invariants.py --strict`, bloqueante en el job `static-analysis` de `.github/workflows/ci.yml` desde 2026-07-28. Un RFC en `draft` cuya decisión ya es un ADR ejecutable en CI solo confunde a quien lo lea. Verificado contra el árbol el 2026-09-06 (O0.7b del plan de arquitectura v2). |
 | [Plan de migración de persistencia pre-cocido con disparador binario (SQLite/Turso → Postgres)](2026-06-30-rfc-plan-migracion-persistencia-pre-cocido.md) | `superseded` | 2026-06-30 | Decisión de migración tomada sin esperar tripwires (2026-07-05). El destino es Supabase + psycopg3. La ejecución está documentada en ADR-016 y el plan de fases en AGENTS.md §0. Este RFC escala a ejecución directa. |
 

@@ -89,7 +89,7 @@ Todas están en el roadmap H0 de la revisión. Ninguna es código.
 - **Conectores de Madrid, Andalucía y Valencia:** dependen de la medición de D42 contra producción.
 - **Golden set de fichas y de clasificador:** requieren etiquetado humano; fabricarlos mediría el texto de quien los fabrica.
 - **SAML/SCIM, P(ganar), broker de mensajería, microservicios, inglés en la UI:** siguen fuera (§8 del plan v2 y §«Lo que no haría» de la revisión).
-- **Aligerar la imagen de la API** (sacar scikit-learn del proceso): exige partir los requirements y retirar el `/explain` síncrono por RFC; queda propuesto, no hecho.
+- **Aligerar la imagen de la API** (sacar scikit-learn del proceso): exige partir los requirements y retirar el `/explain` síncrono por RFC. *Actualización 2026-09-18:* requirements partidos y la imagen de la API ya no instala scikit-learn (rama `worktree-agent-aa37c7b64b746caaa`); `/explain` responde 503 y su retirada o precálculo es la RFC [2026-09-18-rfc-explain-fuera-del-proceso-api](../rfc/2026-09-18-rfc-explain-fuera-del-proceso-api.md), pendiente de decisión.
 
 ### Lo de Ola 2 que se queda fuera, y qué falta exactamente
 

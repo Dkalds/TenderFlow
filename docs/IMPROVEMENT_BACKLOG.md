@@ -280,16 +280,6 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 - **Riesgo:** alto — migra schema de la tabla núcleo con lock exclusivo sobre 1,3 M filas; la mitigación aplicada (tolerancia) es de riesgo bajo y ya cubre el síntoma.
 - **Progreso (2026-09-18, PARCIAL, rama `worktree-agent-ae7fea40cc310a705`):** unificado con T2 del plan de arquitectura v2. El plan de columna sombra está escrito con el nombre que fijó el plan, **`importe_num numeric(14,2)`** (no `importe_f8`: céntimos exactos en vez de otro float), más `duracion_valor_num numeric` (`v133_nucleo_tipado_sombra`, sólo catálogo, sin reescritura), escritura dual en `db/upsert.py` que traduce el `float` del conector **antes** de que pase por `real`, backfill por lotes (`scripts/backfill_nucleo_tipado.py`) y runbook de la ventana ([runbooks/nucleo-tipado-ventana.md](runbooks/nucleo-tipado-ventana.md)). `FLOAT_REL_TOL` **no se ha tocado**. Pendiente, todo en producción: aplicar la ventana, verificar cero divergencias, mover las lecturas de `importe` a la sombra, y sólo entonces bajar la tolerancia y limpiar `licitaciones_history`/`contrato_eventos`. El test de round-trip exacto contra Postgres (`tests/test_nucleo_tipado_pg.py`) está escrito y **no se ha ejecutado**.
 
-### [P2] Separar los requirements de la API de los del pipeline/ML
-- **Área:** requirements.in, docker/
-- **Problema:** las 33 deps runtime (pandas, scikit-learn, statsmodels, networkx, reportlab, boto3, lxml, openai…) viven en un único deployable: la imagen de la API que corre en 0.1 vCPU/2GiB paga memoria, cold start y superficie de ataque de librerías que solo usa el plano de ingesta/ML. El OOM del 2026-08-02 (comentario en `api/app.py`) es el síntoma de fondo: OLAP y ML dentro del proceso HTTP. Con 38 avisos de Dependabot abiertos (29 high), reducir lo que instala la imagen expuesta a internet también encoge la superficie que hay que parchear.
-- **Acceptance criteria:**
-  - `requirements-api.in` y `requirements-pipeline.in` compilados por separado (mismo flujo pip-tools con hashes).
-  - La imagen de la API no instala scikit-learn/statsmodels/networkx salvo que una ruta los importe de verdad (los imports lazy existentes delimitan el corte).
-  - CI construye ambas variantes y el smoke de la API pasa con la imagen reducida.
-- **Files de partida:** [requirements.in](../requirements.in), [docker/](../docker/)
-- **Riesgo:** medio — toca dependencias (gate humano §6) y puede destapar imports implícitos; mitigado con smoke de import por entrypoint.
-
 ### [P2] Calibrar los umbrales de la auditoría de verdad del dato
 - **Área:** scripts/audit_domain_truth.py
 - **Problema:** `MAX_PCT_SIN_FECHA_LIMITE = 60`, `MAX_PCT_FILAS_UTE = 8` y `MAX_DELTA_BAJA_PUNTOS = 5` se eligieron holgados para que el primer mes detecte empeoramientos bruscos sin ahogar en ruido. No son la calidad real medida.
@@ -690,6 +680,27 @@ cabecera de este fichero: los seis se comprobaron contra el código.
   `licitaciones_candidatas`/`licitaciones_reparadas`, que el paso loguea — «cero reparaciones en
   siete días» se lee ahí. Ficha completa en
   [el archivo](archive/IMPROVEMENT_BACKLOG_CERRADOS.md).
+- [2026-09-18] **P2: Separar los requirements de la API de los del pipeline/ML**
+  — rama `worktree-agent-aa37c7b64b746caaa` (sin PR). `requirements-api.txt`
+  (63 pines) y `requirements-pipeline.txt` (79) compilados con hashes por
+  `make lock`, con `--constraint requirements.txt` para que los pines coincidan
+  con los que prueba el CI (`scripts/check_requirements_sync.py` lo verifica y
+  además que el lock de la API no traiga nada solo-pipeline).
+  `docker/Dockerfile.api` instala por defecto el de la API; `ARG
+  REQUIREMENTS_FILE` da la variante del pipeline, que es la que usa
+  `tenderflow-worker` en render.yaml y la vuelta atrás sin tocar código. Salen
+  de la imagen de la API scikit-learn, scipy, joblib, statsmodels, networkx y
+  lxml. Smoke por entrypoint en `tests/test_unit_api_imagen_slim.py` (la API
+  arranca en un proceso que solo puede importar su lockfile; el worker, el del
+  pipeline) y `ci.yml::docker-build` construye y prueba las dos variantes y
+  publica su tamaño. La medición destapó un import implícito: `/publico/cobertura`
+  arrastraba lxml vía `scraper.connectors` (arreglado con re-export diferido).
+  `/explain` y `/analytics/clusters` responden 503 sin sklearn; su destino es la
+  RFC [2026-09-18-rfc-explain-fuera-del-proceso-api](rfc/2026-09-18-rfc-explain-fuera-del-proceso-api.md)
+  (`review`), que deja la decisión de desplegar la imagen reducida al mantenedor.
+  **No verificado:** el build Docker real (el daemon no estaba levantado en la
+  máquina que lo hizo; lo cubre el job de CI) y que Render pase
+  `REQUIREMENTS_FILE` como build arg.
 
 
 - [2026-09-01] **Revisión integral de la IA del detalle de licitación (10 mejoras en un

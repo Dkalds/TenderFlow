@@ -22,6 +22,7 @@ from fastapi import (
 from pydantic import BaseModel
 
 from api.concurrency import run_db, run_ml
+from api.dependencias_pipeline import paquete_del_pipeline_ausente
 from api.routes.dual_auth import require_any_auth
 from api.routes.licitaciones._base import (
     _get_classifier,
@@ -106,6 +107,16 @@ async def explain_licitacion(
             detail="Modelo no disponible. Entrena el clasificador primero.",
         ) from None
     except Exception as exc:
+        # C3.1: la imagen de la API no instala scikit-learn, y el clasificador
+        # es un pipeline de sklearn serializado. Es un estado conocido del
+        # despliegue, no un fallo: 503 y no 500. El destino de esta ruta está
+        # en docs/rfc/2026-09-18-rfc-explain-fuera-del-proceso-api.md.
+        if paquete := paquete_del_pipeline_ausente(exc):
+            log.info("explain_sin_ml_en_imagen", id_externo=id_externo, paquete=paquete)
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="La explicación del clasificador no está disponible en este despliegue.",
+            ) from None
         log.warning("explain_failed", id_externo=id_externo, error=str(exc))
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

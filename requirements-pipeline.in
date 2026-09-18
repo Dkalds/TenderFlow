@@ -11,8 +11,9 @@
 -r requirements-api.in
 
 # ── Parseo CODICE/ATOM ───────────────────────────────────────────────────────
-# Solo `scraper/`: seis ficheros, cero en el cono de la API (medido 2026-09-06).
-# Es el paquete más grande que la imagen expuesta a internet deja de instalar.
+# Solo `scraper/`. La medición del 2026-09-06 lo dio fuera del cono de la API y
+# no lo estaba: `/publico/cobertura` lo arrastraba vía `scraper.connectors`
+# hasta que el paquete pasó a cargar los conectores en diferido (2026-09-18).
 lxml>=5.0.0,<7
 
 # ── Resiliencia de la ingesta ────────────────────────────────────────────────
@@ -20,6 +21,18 @@ lxml>=5.0.0,<7
 # regionales. La API no reintenta nada de esto: responde o falla.
 tenacity>=8.2.0,<10
 pybreaker>=1.0.0,<2
+
+# ── ML clásico y analítica pesada (salen de la API el 2026-09-18) ────────────
+# Entrenamiento, scoring por lotes, drift y el precálculo de clusters los usan
+# a diario. La API los tenía para cinco caminos de request que ahora degradan
+# sin ellos; el detalle y la vuelta atrás están en requirements-api.in.
+#
+# Techo <1.9 de scikit-learn por la regresión de HistGradientBoostingRegressor
+# con una columna entera a NaN. El detalle está en requirements.in y en
+# tests/test_s3_feature_todo_nan.py.
+scikit-learn>=1.3.0,<1.9
+statsmodels>=0.15.0,<1
+networkx>=3.0,<4
 
 # ── Extras que solo el pipeline instala ──────────────────────────────────────
 #

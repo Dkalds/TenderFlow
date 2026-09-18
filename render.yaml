@@ -306,6 +306,13 @@ services:
       # router de salud y su lifespan arranca el consumidor de la cola.
       - key: APP_PROFILE
         value: worker
+      # Variante de dependencias (C3.1, 2026-09-18). La imagen por defecto es
+      # la de la API, sin lxml ni scikit-learn; el plano de cron de este
+      # servicio los necesita (drift, clusters, DLQ de TACRC). Render expone
+      # las variables del servicio como build args, y `docker/Dockerfile.api`
+      # declara `ARG REQUIREMENTS_FILE`.
+      - key: REQUIREMENTS_FILE
+        value: requirements-pipeline.txt
       - key: DATABASE_URL
         sync: false
       - key: DATABASE_SSL_ROOT_CERT
