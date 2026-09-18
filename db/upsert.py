@@ -277,9 +277,9 @@ _LIC_PLACEHOLDERS = ", ".join("%s" for _ in _LIC_KEYS)
 # Las cuatro columnas ML (2026-09-14) entran por un motivo distinto: un
 # conector NUNCA las calcula. `ml_proba` la escribe el scoring SAP
 # (`guardar_ml_proba`, desde `scraper/ml_training.py::precompute_ml_proba`) y
-# las tres de tecnología las escriben `precompute_ml_tecnologias` y el merge
-# de la señal de pliego (`db/repositories/tecnologia_pliego.py`), siempre con
-# un UPDATE de valores explícitos que sigue pisando lo que haya. La
+# las tres de tecnología, desde `v136` (T3), las deriva el trigger
+# `trg_lts_derivar_ml` de `licitacion_tecnologia_score`, que es donde escriben
+# `precompute_ml_tecnologias` y el merge de la señal de pliego. La
 # `Licitacion` que construye un conector las trae a `None` porque no tiene
 # opinión, no porque quiera borrarlas -- y sin COALESCE cada pasada del ATOM
 # (cada 4 h, reenviando los mismos expedientes) las nuleaba, y
@@ -287,8 +287,9 @@ _LIC_PLACEHOLDERS = ", ".join("%s" for _ in _LIC_KEYS)
 # La única ruta que las trae no nulas desde la ingesta es
 # `scraper/pipeline.py::_apply_tech_prediction` (clasificador cargado en el
 # proceso), y ese valor explícito sí gana. Quien necesite VACIAR un score viejo
-# lo hace con su propio UPDATE (`limpiar_ml_proba_fuera_de_poblacion`,
-# `precompute_ml_tecnologias`), nunca a través del upsert de ingesta.
+# lo hace por su camino (`limpiar_ml_proba_fuera_de_poblacion` con UPDATE;
+# `precompute_ml_tecnologias` borrando filas de score, y el trigger deriva),
+# nunca a través del upsert de ingesta.
 _LIC_COALESCE_UPDATE_FIELDS = frozenset(
     {
         "fecha_limite",

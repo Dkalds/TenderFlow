@@ -203,6 +203,11 @@ llegue.
 
 ## T3 — Tecnología: una sola verdad
 
+> **2026-09-18 — escrita como `v136_tecnologia_verdad_unica`** (trigger, no
+> vista). Productores 1 y 2 cortados; 3 y 4 (ingesta) siguen, con adopción en el
+> merge; la categoría del guardrail está puesta. Estado y lo que falta: nota de
+> T3 en [2026-09-plan-arquitectura-v2.md](2026-09-plan-arquitectura-v2.md) §6.
+
 **Hoy: la tabla origen existe y ya se lee; lo que falta es cortar a los
 productores.** `licitacion_tecnologia_score` es de `v30`
 (`docs/database-schema.md:1160-1172`: `licitacion_id, tecnologia, probabilidad,

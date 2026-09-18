@@ -51,6 +51,8 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
+import pytest
+
 # Directorios cuyas queries analíticas deben respetar el dedupe.
 _SCANNED_DIRS = ("services/competitive", "services/ml")
 
@@ -105,6 +107,14 @@ _ALLOWLIST: dict[str, str] = {
         "eso lo que la tabla de completitud describe. Ademas el sesgo iria en "
         "la direccion equivocada: las fuentes con mas duplicados perderian mas "
         "filas y su cobertura se calcularia sobre una muestra distinta."
+    ),
+    "ml_dataset.filas_pendientes_ml_tecnologias": (
+        "Poblacion de PUNTUACION por fila del clasificador multi-tecnologia, no "
+        "un agregado: cada licitacion lleva su propio resumen ml_*, y una "
+        "duplicada que se quedara sin puntuar mostraria resumen vacio en su "
+        "ficha. Es la misma consulta que ya corria inline en "
+        "scraper/ml_training.py (fuera del escaner) hasta que T3 la movio a db/ "
+        "el 2026-09-18; la dedupe se aplica al agregar, no al etiquetar."
     ),
     # --- Auditadas y corregidas el 2026-08-18 ------------------------------
     # Al ampliar el escaner a db/ aparecieron 7 funciones sin la clausula. Se
@@ -565,6 +575,29 @@ _LITERALES_PROHIBIDOS: dict[str, tuple[str, str]] = {
         r"FROM\s+licitaciones_duplicados\s+WHERE\s+status",
         "db.sql_fragments.exclude_duplicados_sql(col)",
     ),
+    # T3 del plan v2 (2026-09-18): el resumen tecnológico de ``licitaciones``
+    # tiene un solo escritor, el trigger de ``v136`` que lo deriva de
+    # ``licitacion_tecnologia_score``. Un ``UPDATE`` directo de cualquiera de
+    # las tres columnas en cualquier paquete de producción —incluido ``db/``—
+    # es el clobber que ``tech_signal_merge`` existía para reparar. La ventana
+    # se corta en ``WHERE`` y en 300 caracteres para no casar un ``UPDATE`` de
+    # otra columna con una mención posterior en la misma sentencia o fichero.
+    "tecnologia": (
+        r"UPDATE\s+licitaciones(?:\s+(?:AS\s+)?\w+)?\s+SET\b"
+        r"(?:(?!\bWHERE\b)[^;]){0,300}?"
+        r"\b(?:tecnologia|ml_tecnologias|ml_tech_principal)\s*=",
+        "filas en licitacion_tecnologia_score (el trigger de v136 deriva "
+        "ml_tecnologias/ml_tech_principal/ml_proba_max); `tecnologia` solo la "
+        "escribe el upsert de ingesta",
+    ),
+}
+
+#: Dónde vive la definición canónica de cada categoría, para el meta-test.
+#: Por defecto ``db/sql_fragments.py``; la de ``tecnologia`` no es un fragmento
+#: que se importe sino la función que el trigger ejecuta, y vive en su
+#: revisión (exenta del escaneo como todo ``db/alembic/versions/``).
+_CANONICO_POR_CATEGORIA: dict[str, str] = {
+    "tecnologia": "db/alembic/versions/v136_tecnologia_verdad_unica.py",
 }
 
 
@@ -621,6 +654,26 @@ def test_los_fragmentos_compartidos_no_se_reescriben_a_mano() -> None:
     )
 
 
+@pytest.mark.parametrize(
+    ("texto", "casa"),
+    [
+        # Las dos grafías de los productores que T3 cortó (ml_training y el
+        # merge de tecnologia_pliego, hasta 2026-09-18).
+        ('"UPDATE licitaciones SET "\n"ml_tecnologias = %s, "\n"ml_proba_max = %s, "', True),
+        ('"UPDATE licitaciones SET ml_tecnologias = %s, ml_proba_max = %s, "', True),
+        ("UPDATE licitaciones l SET ml_tech_principal = 'SAP'", True),
+        ("UPDATE licitaciones SET tecnologia = %s WHERE id_externo = %s", True),
+        # La marca de «puntuada sin filas» y columnas ajenas no son el resumen.
+        ("UPDATE licitaciones SET ml_proba_max = %s WHERE id_externo = %s", False),
+        ("UPDATE licitaciones SET estado = 'ADJ' WHERE tecnologia = 'SAP'", False),
+        ("UPDATE licitaciones SET analysis_universe = %s WHERE ml_tecnologias = %s", False),
+    ],
+)
+def test_la_categoria_tecnologia_caza_los_productores_cortados(texto: str, casa: bool) -> None:
+    patron, _remedio = _LITERALES_PROHIBIDOS["tecnologia"]
+    assert bool(re.search(patron, texto)) is casa
+
+
 def test_el_escaner_de_literales_mira_donde_debe() -> None:
     """Meta-test: sin esto, un path roto daría verde con el repo lleno de copias.
 
@@ -632,11 +685,12 @@ def test_el_escaner_de_literales_mira_donde_debe() -> None:
     ficheros = _ficheros_de_produccion()
     assert len(ficheros) > 100, f"solo {len(ficheros)} ficheros escaneados; ¿paths mal?"
 
-    canonico = (_REPO_ROOT / "db/sql_fragments.py").read_text(encoding="utf-8")
     for nombre, (patron, _remedio) in _LITERALES_PROHIBIDOS.items():
+        fichero = _CANONICO_POR_CATEGORIA.get(nombre, "db/sql_fragments.py")
+        canonico = (_REPO_ROOT / fichero).read_text(encoding="utf-8")
         assert re.search(patron, canonico), (
-            f"el patrón [{nombre}] ya no casa con db/sql_fragments.py: "
-            "o cambió el fragmento canónico, o el escáner quedó muerto"
+            f"el patrón [{nombre}] ya no casa con {fichero}: "
+            "o cambió la definición canónica, o el escáner quedó muerto"
         )
 
     # Y el fichero canónico está exento de verdad: si dejara de estarlo, el

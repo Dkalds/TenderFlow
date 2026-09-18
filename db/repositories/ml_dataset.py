@@ -760,6 +760,76 @@ def guardar_ml_proba(pares: list[tuple[float, str]]) -> int:
     return len(pares)
 
 
+def filas_pendientes_ml_tecnologias(*, force: bool = False) -> list[dict[str, Any]]:
+    """Licitaciones que ``precompute_ml_tecnologias`` tiene que puntuar.
+
+    ``force=False`` (default) solo devuelve las que nunca se puntuaron
+    (``ml_proba_max IS NULL``). Desde ``v136`` esa columna la deriva el trigger
+    de ``licitacion_tecnologia_score`` en cuanto la licitación tiene alguna fila
+    de score; la que se puntuó sin ninguna (todas las etiquetas a 0.0) la marca
+    :func:`guardar_scores_tecnologia`, así que no vuelve a salir aquí.
+    """
+    where = "" if force else " WHERE ml_proba_max IS NULL"
+    with connect_read() as c:
+        return rows_to_dicts(
+            c.execute(
+                "SELECT id_externo, titulo, descripcion, cpv, importe FROM licitaciones" + where
+            )
+        )
+
+
+def guardar_scores_tecnologia(
+    *,
+    scores: list[tuple[str, str, float, float]],
+    sin_score: list[tuple[float, str]],
+    reemplazar: list[str] | None = None,
+) -> None:
+    """Persiste un lote del clasificador multi-tecnología en su única fuente.
+
+    ``licitacion_tecnologia_score`` es el origen de ``ml_tecnologias``,
+    ``ml_tech_principal`` y ``ml_proba_max`` desde ``v136``: el trigger
+    ``trg_lts_derivar_ml`` las recalcula al cerrar la transacción. Por eso aquí
+    **no hay** ``UPDATE`` de esas columnas — hasta 2026-09-18 lo había, y
+    reescribía el resumen sin la señal de pliego que otro paso había fundido
+    (el clobber que ``tech_signal_merge`` existía para reparar).
+
+    - ``scores``: ``(licitacion_id, tecnologia, probabilidad, threshold)`` de
+      cada etiqueta con score > 0.
+    - ``sin_score``: ``(proba_max, licitacion_id)`` de las licitaciones que se
+      puntuaron y no dieron **ninguna** fila (todas las etiquetas a 0.0). Sin
+      filas el trigger no tiene de dónde sacar ``ml_proba_max`` y lo deja como
+      está; esta marca es lo que distingue «puntuada, nada» de «sin puntuar»
+      para :func:`filas_pendientes_ml_tecnologias`. No toca ninguna de las dos
+      columnas de etiqueta: ésas solo las escribe el trigger.
+    - ``reemplazar``: licitaciones cuyas filas previas se borran antes (el
+      ``force=True`` del precompute). Borra también lo que fundió el pliego;
+      ``tech_signal_merge`` lo repone en la pasada siguiente, y ese es
+      precisamente el contador («reparaciones») que decide cuándo se retira.
+    """
+    with connect() as c:
+        if reemplazar:
+            c.execute(
+                "DELETE FROM licitacion_tecnologia_score WHERE licitacion_id = ANY(%s)",
+                (reemplazar,),
+            )
+        if scores:
+            c.executemany(
+                "INSERT INTO licitacion_tecnologia_score "
+                "(licitacion_id, tecnologia, probabilidad, threshold_aplicado, computed_at) "
+                "VALUES (%s, %s, %s, %s, NOW()) "
+                "ON CONFLICT(licitacion_id, tecnologia) DO UPDATE SET "
+                "probabilidad=excluded.probabilidad, "
+                "threshold_aplicado=excluded.threshold_aplicado, "
+                "computed_at=excluded.computed_at",
+                scores,
+            )
+        if sin_score:
+            c.executemany(
+                "UPDATE licitaciones SET ml_proba_max = %s WHERE id_externo = %s",
+                sin_score,
+            )
+
+
 #: Filas por pasada de :func:`limpiar_ml_proba_fuera_de_poblacion`. La primera
 #: vez que esto corre en producción hay del orden de 600.000 scores heredados
 #: que borrar (el corpus PSCP del backlog P2), y esa limpieza vive dentro del

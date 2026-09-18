@@ -233,8 +233,9 @@ def _leer_columnas_ml(id_externo: str) -> tuple:
 def _escribir_columnas_ml_por_el_camino_real(id_externo: str) -> None:
     """Deja las cuatro columnas ML como las dejan los pasos que las poseen:
     ``ml_proba`` vía ``guardar_ml_proba`` (scoring SAP) y las tres de
-    tecnología vía el merge por lotes (``merge_many_with_lock``), que emite el
-    mismo UPDATE explícito que ``precompute_ml_tecnologias``."""
+    tecnología vía el merge por lotes (``merge_many_with_lock``), que desde
+    ``v136`` escribe filas de score y deja que el trigger derive el resumen,
+    igual que ``precompute_ml_tecnologias``."""
     from db.repositories.ml_dataset import guardar_ml_proba
     from db.repositories.tecnologia_pliego import TecnologiaPliegoRepository
     from services.tech_signal import _build_merge_result
