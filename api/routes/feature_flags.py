@@ -83,7 +83,7 @@ def set_feature_flags(
         )
         log_event(
             event_type=FEATURE_FLAG_SET,
-            user_key=str(admin.get("user_id", "")),
+            actor=str(admin.get("user_id", "")),
             resource=f"feature_flag:{f.flag}",
             detail=f"enabled={f.enabled} rollout_pct={f.rollout_pct}",
         )

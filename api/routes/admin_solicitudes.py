@@ -161,14 +161,14 @@ async def cambiar_estado(
         if actualizada:
             log_event(
                 event_type=SOLICITUD_ACCESO_ESTADO,
-                user_key=str(admin.get("user_id", "")),
+                actor=str(admin.get("user_id", "")),
                 resource=f"solicitud_acceso:{solicitud_id}",
                 detail=body.estado,
             )
             if body.conceder is not None:
                 log_event(
                     event_type=ACCESS_GRANT_GRANTED,
-                    user_key=str(admin.get("user_id", "")),
+                    actor=str(admin.get("user_id", "")),
                     resource=f"access_grant:{grant_id}",
                     detail={"kind": grant["kind"]},
                 )
@@ -216,7 +216,7 @@ async def revocar_grant(
     await run_db(
         log_event,
         event_type=ACCESS_GRANT_REVOKED,
-        user_key=str(admin.get("user_id", "")),
+        actor=str(admin.get("user_id", "")),
         resource=f"access_grant:{grant_id}",
         detail={"kind": grant["kind"]},
     )

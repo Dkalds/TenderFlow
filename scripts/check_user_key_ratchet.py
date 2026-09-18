@@ -69,6 +69,7 @@ _REPORTEROS = frozenset(
 
 # ── RATCHET: ficheros de producción que todavía usan ``user_key`` ───────────
 # Medido con este mismo script el 2026-09-06 sobre la cabeza del repo.
+# Remedido el 2026-09-18 (ADR-030 fase 3): 69 → 63 entradas.
 # **Añadir líneas está prohibido.** Para quitar una: deja de usar ``user_key``
 # en ese fichero y borra su entrada.
 #
@@ -137,6 +138,14 @@ _REPORTEROS = frozenset(
 # viejo». Anotarlo es más honesto que ampliar el escaneo para esconderlo: el
 # día que `log_event` cambie de firma, estas dos salen solas.
 #
+# **Salieron el 2026-09-18** (ADR-030 fase 3, v135), y con ellas otras cuatro
+# del mismo caso: `log_event` recibe ahora al autor como `actor` —`user_key`
+# queda como alias deprecado para los llamadores que siguen en esta lista por
+# otros motivos— y los seis ficheros que sólo nombraban el símbolo en ese
+# parámetro (`admin_users`, `admin_solicitudes`, `feature_flags`,
+# `tecnologias_keywords`, `empresas` y `go_no_go_puntuacion`) pasan `actor=`
+# con el mismo valor de antes. Lo que se guarda en `audit_log` no cambia.
+#
 # `db/idempotency.py` **no** está en la lista: llegó con el mismo plan y su
 # `scope()` recibía la identidad en un parámetro propio, así que ahí sí había
 # algo que arreglar y se llama `actor`. Un fichero que se puede sacar de este
@@ -167,16 +176,12 @@ CONGELADOS: frozenset[str] = frozenset(
         "api/routes/follows.py",
         "db/repositories/follows.py",
         "scripts/check_follows_paridad.py",
-        "api/routes/admin_solicitudes.py",
-        "api/routes/admin_users.py",
         "api/routes/analytics.py",
         "api/routes/ask.py",
         "api/routes/auth.py",
         "api/routes/competitive.py",
         "api/routes/dual_auth.py",
-        "api/routes/empresas.py",
         "api/routes/exports.py",
-        "api/routes/feature_flags.py",
         "api/routes/feedback.py",
         # `api/routes/licitaciones.py` se partió en paquete por familias
         # (2026-09). El único uso de `user_key` era `_budget_subject`, que
@@ -192,7 +197,6 @@ CONGELADOS: frozenset[str] = frozenset(
         "api/routes/watchlist_items.py",
         "api/routes/watchlist_rules.py",
         "api/routes/webhooks.py",
-        "api/routes/tecnologias_keywords.py",
         "db/audit.py",
         "db/events.py",
         "db/notifications.py",
@@ -227,7 +231,6 @@ CONGELADOS: frozenset[str] = frozenset(
         "services/organizations.py",
         "services/pursuit_awards.py",
         "services/pursuits.py",
-        "services/go_no_go_puntuacion.py",
         "services/saved_filters.py",
         "services/watchlist.py",
         "services/watchlist_rules.py",
