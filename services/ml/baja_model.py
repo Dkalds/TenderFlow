@@ -82,10 +82,15 @@ if TYPE_CHECKING:
 log = get_logger(__name__)
 
 MODEL_NAME = "baja_model"
+#: El modelo **por lote** (backlog P2): misma arquitectura, entrenado sobre
+#: ``construir_dataset_baja(por_lote=True)``. Nombre y artefacto propios para
+#: que registrarlo o activarlo no toque nunca la versión agregada que se sirve.
+MODEL_NAME_LOTE = "baja_model_lote"
 QUANTILES = (0.10, 0.50, 0.90)
 MIN_TRAIN_SAMPLES = 200
 _MIN_VALID_SAMPLES = 30
 _MODEL_PATH = Path(__file__).parents[2] / "data" / "models" / "baja_model.pkl"
+_MODEL_PATH_LOTE = Path(__file__).parents[2] / "data" / "models" / "baja_model_lote.pkl"
 # Tope físico del target: una baja real vive en [0, 1); el clip evita que
 # outliers residuales empujen predicciones absurdas.
 _BAJA_MAX = 0.95
@@ -150,6 +155,8 @@ class Prediccion:
     p10: float
     p50: float
     p90: float
+    #: ``None`` = predicción del expediente entero (ver ``FilaDataset``).
+    lote_numero: str | None = None
 
 
 def _aprender_categorias(filas: list[FilaDataset], col: str) -> dict[str, int]:
@@ -359,7 +366,15 @@ class BajaModel:
             ajustados = (crudos[0.10] - offset, crudos[0.50], crudos[0.90] + offset)
             # Monotonicidad: los tres fits son independientes y pueden cruzarse.
             p10, p50, p90 = sorted(min(max(v, 0.0), _BAJA_MAX) for v in ajustados)
-            out.append(Prediccion(licitacion_id=fila.licitacion_id, p10=p10, p50=p50, p90=p90))
+            out.append(
+                Prediccion(
+                    licitacion_id=fila.licitacion_id,
+                    p10=p10,
+                    p50=p50,
+                    p90=p90,
+                    lote_numero=fila.lote_numero,
+                )
+            )
         return out
 
     def save(self, path: Path | None = None) -> Path:
@@ -375,28 +390,33 @@ class BajaModel:
         return target
 
     @classmethod
-    def load(cls, path: Path | None = None) -> BajaModel:
+    def load(cls, path: Path | None = None, *, por_lote: bool = False) -> BajaModel:
         """Carga un modelo serializado con joblib. Lanza FileNotFoundError si no existe.
 
         Verifica la integridad del fichero (pin out-of-band ML_BAJA_MODEL_SHA256
         y/o checksum co-ubicado .sha256) antes de deserializar — ver
         ``shared.model_integrity`` para el razonamiento completo: joblib.load
         ejecuta código arbitrario, así que un .pkl manipulado es RCE.
+
+        ``por_lote=True`` carga el modelo por lote contra **su** pin
+        (``ML_BAJA_LOTE_MODEL_SHA256``): con un pin compartido, fijar el del
+        agregado haría imposible cargar el otro, y viceversa.
         """
         import joblib
 
         from config import settings
         from shared.model_integrity import verify_model_integrity
 
-        target = path or _MODEL_PATH
+        target = path or (_MODEL_PATH_LOTE if por_lote else _MODEL_PATH)
         if not target.exists():
             raise FileNotFoundError(f"No existe el modelo en {target}")
 
+        pin = "ML_BAJA_LOTE_MODEL_SHA256" if por_lote else "ML_BAJA_MODEL_SHA256"
         verify_model_integrity(
             target,
-            pinned_sha256=str(getattr(settings, "ML_BAJA_MODEL_SHA256", "") or ""),
-            pin_setting_name="ML_BAJA_MODEL_SHA256",
-            model_label=MODEL_NAME,
+            pinned_sha256=str(getattr(settings, pin, "") or ""),
+            pin_setting_name=pin,
+            model_label=MODEL_NAME_LOTE if por_lote else MODEL_NAME,
             env=str(getattr(settings, "ENV", "dev")),
         )
 
@@ -406,7 +426,7 @@ class BajaModel:
         return obj
 
 
-def _fechas_adjudicacion(hasta: str | None = None) -> dict[str, str]:
+def _fechas_adjudicacion(hasta: str | None = None, *, por_lote: bool = False) -> dict[str, str]:
     """``licitacion_id`` → fecha de adjudicación (``YYYY-MM-DD``) del expediente.
 
     ``FilaDataset`` solo lleva el ancla de features —la publicación, acotada a
@@ -419,14 +439,29 @@ def _fechas_adjudicacion(hasta: str | None = None) -> dict[str, str]:
     Lo natural sería que ``construir_dataset_baja`` devolviera esa fecha en la
     propia fila; eso es un cambio en ``services.ml.features``, fuera del alcance
     de este arreglo.
+
+    ``por_lote=True`` lee el dataset por lote y se queda con la **última**
+    adjudicación de cada expediente. El mapa sigue indexado por expediente
+    (``_fecha_label`` busca por ``licitacion_id``), y quedarse con la máxima es
+    el lado seguro: un lote adjudicado antes solo puede ver su corte retrasado,
+    nunca adelantado a antes de conocerse su etiqueta.
     """
     from db.repositories.ml_dataset import MlDatasetRepository
 
-    return {
-        str(row["id_externo"]): str(row["fecha_adjudicacion"])[:10]
-        for row in MlDatasetRepository().pares_baja_agregada(hasta)
-        if row.get("fecha_adjudicacion")
-    }
+    repo = MlDatasetRepository()
+    if not por_lote:
+        return {
+            str(row["id_externo"]): str(row["fecha_adjudicacion"])[:10]
+            for row in repo.pares_baja_agregada(hasta)
+            if row.get("fecha_adjudicacion")
+        }
+    fechas: dict[str, str] = {}
+    for row in repo.pares_baja_por_lote(hasta):
+        if not row.get("fecha_adjudicacion"):
+            continue
+        clave, fecha = str(row["id_externo"]), str(row["fecha_adjudicacion"])[:10]
+        fechas[clave] = max(fechas.get(clave, fecha), fecha)
+    return fechas
 
 
 def _fecha_label(fila: FilaDataset, fechas_label: Mapping[str, str]) -> datetime:
@@ -752,6 +787,7 @@ def entrenar(
     valid_meses: int = 6,
     activar: bool | None = None,
     model_path: Path | None = None,
+    por_lote: bool = False,
 ) -> dict[str, Any]:
     """Entrena p10/p50/p90, valida contra el baseline y registra la versión.
 
@@ -763,12 +799,26 @@ def entrenar(
     ``ML_PRED_AUTO_ACTIVATE`` está encendido Y el modelo bate el baseline ≥10%
     relativo en MAE Y la cobertura del intervalo 80% nominal cae en [75, 85]%.
     Devuelve el resumen con métricas (clave ``activado``).
+
+    ``por_lote=True`` entrena el modelo **por lote** sobre
+    ``construir_dataset_baja(por_lote=True)`` y lo registra como
+    :data:`MODEL_NAME_LOTE`, con su propio artefacto. Las métricas que reporta
+    son por lote y **no** son comparables con las del agregado (otra unidad,
+    otro denominador): la comparación que decide si sustituirlo la hace
+    ``scripts/comparar_baja_por_lote.py`` sobre los mismos pares.
     """
     import numpy as np
 
     from config import settings
 
-    filas_todas, _ = construir_dataset_baja(hasta=hasta)
+    nombre_modelo = MODEL_NAME_LOTE if por_lote else MODEL_NAME
+    if model_path is None and por_lote:
+        model_path = _MODEL_PATH_LOTE
+    filas_todas, _ = (
+        construir_dataset_baja(hasta=hasta, por_lote=True)
+        if por_lote
+        else construir_dataset_baja(hasta=hasta)
+    )
     # Una fila con fecha no parseable no puede caer en ningún lado de un corte
     # temporal; se descarta con log en vez de abortar el entrenamiento (ver
     # `filtrar_fechas_invalidas`).
@@ -791,7 +841,9 @@ def entrenar(
     cat_mask = [col in CATEGORICAL_COLUMNS for col in FEATURE_COLUMNS]
     # Cuándo pasó a ser observable la etiqueta de cada fila: sin esto los folds
     # se cortan por la publicación y el train ve bajas del futuro.
-    fechas_label, fechas_label_invalidas = sanear_fechas_label(_fechas_adjudicacion(hasta))
+    fechas_label, fechas_label_invalidas = sanear_fechas_label(
+        _fechas_adjudicacion(hasta, por_lote=True) if por_lote else _fechas_adjudicacion(hasta)
+    )
     folds = _folds_rolling(filas, valid_meses, n_folds, fechas_label)
     hiper, n_explorados = _buscar_hiper(folds, cat_mask, n_combos, halflife)
 
@@ -975,6 +1027,9 @@ def entrenar(
             "feature_columns_descartadas": features_descartadas,
             "conformal_offset": offset,
             "metrics": metricas,
+            # Granularidad del target: un artefacto por lote servido como
+            # agregado (o al revés) predeciría otra magnitud sin error visible.
+            "granularidad": "lote" if por_lote else "expediente",
         },
     )
     path = modelo.save(model_path)
@@ -983,7 +1038,7 @@ def entrenar(
     from db.model_registry import register_version
 
     version = register_version(
-        name=MODEL_NAME,
+        name=nombre_modelo,
         path=str(path),
         sha256=sha256,
         metrics=metricas,
@@ -996,6 +1051,7 @@ def entrenar(
     )
     log.info(
         "baja_model_trained",
+        modelo=nombre_modelo,
         version=version,
         activado=bool(activar),
         cumple_criterios=cumple,
@@ -1135,5 +1191,13 @@ def predecir_baseline(
     for fila in filas:
         p50 = min(max(_baseline(fila, media_global), 0.0), _BAJA_MAX)
         p10, p90 = intervalo_baseline(p50, offset)
-        out.append(Prediccion(licitacion_id=fila.licitacion_id, p10=p10, p50=p50, p90=p90))
+        out.append(
+            Prediccion(
+                licitacion_id=fila.licitacion_id,
+                p10=p10,
+                p50=p50,
+                p90=p90,
+                lote_numero=fila.lote_numero,
+            )
+        )
     return out

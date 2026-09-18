@@ -200,6 +200,8 @@ class Settings(BaseSettings):
     # (data/models/baja_model.pkl). Vacío = sin pin. Ver
     # services.ml.baja_model.BajaModel.load.
     ML_BAJA_MODEL_SHA256: str = ""
+    # Mismo pin para el modelo de baja por lote (data/models/baja_model_lote.pkl).
+    ML_BAJA_LOTE_MODEL_SHA256: str = ""
     # Hash SHA256 fijado (out-of-band) para RetencionModel
     # (data/models/retencion_model.pkl). Vacío = sin pin. Ver
     # services.ml.retencion_model.RetencionModel.load.
@@ -224,6 +226,11 @@ class Settings(BaseSettings):
     # Vida media en meses del peso por recencia de las filas de entrenamiento.
     # 0 desactiva el decaimiento (pesos uniformes, comportamiento anterior).
     ML_BAJA_HALFLIFE_MESES: float = 18.0
+    # Materializa además una predicción por lote (v140) en el batch nocturno.
+    # Apagado por defecto: el agregado por expediente sigue siendo lo que se
+    # sirve hasta que `scripts/comparar_baja_por_lote.py` mida que el
+    # `mae_p50` por lote mejora (backlog P2 «Modelo de baja por lote»).
+    ML_BAJA_POR_LOTE: bool = False
 
     # ── DB / Upsert ──────────────────────────────────────────────────────
     # Tamaño de chunk para upsert_licitaciones_with_history. Cada chunk

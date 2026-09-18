@@ -185,9 +185,13 @@ class _FakePredicciones:
         return self.lote
 
     def prediccion_materializada(
-        self, licitacion_id: str, lote_id: int | None = None
+        self, licitacion_id: str, lote_numero: str | None = None
     ) -> dict[str, Any] | None:
-        return self.pred_lote if lote_id is not None else self.pred_agregada
+        # v140: la fila del lote se busca por su número, no por `lotes.id`.
+        if lote_numero is not None:
+            assert lote_numero == str((self.lote or {}).get("numero"))
+            return self.pred_lote
+        return self.pred_agregada
 
     def baja_real_de_lote(self, licitacion_id: str, lote_id: int) -> dict[str, Any] | None:
         return self.baja
@@ -329,7 +333,7 @@ def test_la_ruta_pasa_el_lote_al_servicio() -> None:
 
 
 def test_la_prediccion_del_lote_declara_que_el_intervalo_es_del_expediente() -> None:
-    """Hoy el batch solo materializa la fila agregada (v86 no cruzó la puerta).
+    """Sin el batch por lote (``ML_BAJA_POR_LOTE``) solo existe la fila agregada.
 
     Servirla para un lote es defendible —la baja es un ratio— pero solo si se
     dice; lo que no vale es presentarla como una predicción de ese lote.
