@@ -2,8 +2,9 @@
 """
 check_requirements_sync.py — Verifica que requirements.txt cubre requirements.in.
 
-Motivación: requirements.txt es el lockfile que instala docker/Dockerfile.api
-(``pip install -r requirements.txt``). requirements.in declara las dependencias
+Motivación: requirements.txt es el lockfile del CI y de los runners (y hasta
+2026-09-18 lo era de docker/Dockerfile.api, que ahora instala
+requirements-api.txt; ver C3.1 abajo). requirements.in declara las dependencias
 directas y se recompila a mano con ``uv pip compile requirements.in -o
 requirements.txt``. Si alguien agrega una dependencia a requirements.in y
 olvida recompilar, requirements.txt queda con un paquete faltante y el build
@@ -43,7 +44,13 @@ REQUIREMENTS_PIPELINE_TXT = REPO_ROOT / "requirements-pipeline.txt"
 #: es un subconjunto suyo. Un paquete que no esté en ninguno de los dos hijos es
 #: un olvido, y este check lo dice: es justo el error que convierte el corte en
 #: un `ModuleNotFoundError` en el primer arranque.
-SOLO_PIPELINE = frozenset({"lxml", "tenacity", "pybreaker"})
+#:
+#: scikit-learn, statsmodels y networkx entraron el 2026-09-18: la API los
+#: usaba en caminos de request que ahora degradan sin ellos (ver la cabecera de
+#: requirements-api.in).
+SOLO_PIPELINE = frozenset(
+    {"lxml", "tenacity", "pybreaker", "scikit-learn", "statsmodels", "networkx"}
+)
 
 # PEP 503: normaliza nombres de paquete para comparar (case-insensitive,
 # "-"/"_"/"." equivalentes). p.ej. "psycopg-pool" == "psycopg_pool" == "Psycopg.Pool".
@@ -86,6 +93,56 @@ def _names_from_compiled(path: Path) -> set[str]:
         if name:
             names.add(_normalize(name))
     return names
+
+
+def _pines(path: Path) -> dict[str, str]:
+    """``{paquete normalizado: versión}`` de un lockfile compilado."""
+    pines: dict[str, str] = {}
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if line.startswith((" ", "#", "\t")):
+            continue
+        match = re.match(r"^([A-Za-z0-9][A-Za-z0-9._-]*)(?:\[[^\]]*\])?==([^\s;\\]+)", line)
+        if match:
+            pines[_normalize(match.group(1))] = match.group(2)
+    return pines
+
+
+def _comprueba_pines_coherentes() -> int:
+    """Los hijos del corte fijan las mismas versiones que `requirements.txt`.
+
+    El CI prueba con `requirements.txt`; la imagen de la API instala
+    `requirements-api.txt`. Si un pin difiere, producción corre una versión
+    que ningún test ejercitó — o, en el caso de un bump de seguridad aplicado
+    solo al lock histórico, la imagen expuesta a internet se queda sin el
+    parche. `make lock` los compila con `--constraint requirements.txt`, así
+    que un desajuste significa que alguien tocó un lockfile y no los otros.
+    """
+    if not REQUIREMENTS_TXT.exists():
+        return 0
+    referencia = _pines(REQUIREMENTS_TXT)
+    codigo = 0
+    for hijo in (REQUIREMENTS_API_TXT, REQUIREMENTS_PIPELINE_TXT):
+        if not hijo.exists():
+            continue
+        distintos = sorted(
+            f"{nombre} {version} (requirements.txt: {referencia[nombre]})"
+            for nombre, version in _pines(hijo).items()
+            if nombre in referencia and referencia[nombre] != version
+        )
+        if distintos:
+            print(
+                f"[check-requirements-sync] {hijo.name} fija versiones distintas "
+                "de requirements.txt:\n"
+            )
+            for linea in distintos:
+                print(f"  - {linea}")
+            print("\nRecompila los tres con `make lock`.")
+            codigo = 1
+    if codigo == 0:
+        print(
+            "[check-requirements-sync] OK — los pines del corte C3.1 coinciden con requirements.txt."
+        )
+    return codigo
 
 
 def _comprueba_par(nombre_in: Path, nombre_txt: Path) -> int:
@@ -155,6 +212,18 @@ def _comprueba_corte() -> int:
         )
         return 1
 
+    # Declarar fuera no basta: una dependencia transitiva nueva de la API
+    # podría volver a traer scikit-learn al lockfile sin que nadie lo escriba
+    # en un `.in`. Lo que cuenta es lo que la imagen instala.
+    if REQUIREMENTS_API_TXT.exists():
+        colados = sorted(_names_from_compiled(REQUIREMENTS_API_TXT) & solo_pipeline)
+        if colados:
+            print(
+                "[check-requirements-sync] requirements-api.txt instala paquetes "
+                f"que el corte deja solo al pipeline: {colados}"
+            )
+            return 1
+
     print(
         f"[check-requirements-sync] OK — el corte C3.1 asigna los "
         f"{len(historico)} paquetes: {len(api & historico)} a la API, "
@@ -169,6 +238,7 @@ def main() -> int:
     codigo |= _comprueba_par(REQUIREMENTS_API_IN, REQUIREMENTS_API_TXT)
     codigo |= _comprueba_par(REQUIREMENTS_PIPELINE_IN, REQUIREMENTS_PIPELINE_TXT)
     codigo |= _comprueba_corte()
+    codigo |= _comprueba_pines_coherentes()
     return codigo
 
 

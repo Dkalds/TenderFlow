@@ -12,6 +12,7 @@ from typing import Any, Literal
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from api.concurrency import run_db
+from api.dependencias_pipeline import paquete_del_pipeline_ausente
 from api.routes.dual_auth import require_any_auth
 from api.routes.dual_auth import require_any_auth as require_analytics_auth
 from api.tenancy import require_organization, resolve_organization_ctx
@@ -414,7 +415,20 @@ def clusters(
         fecha_hasta=fecha_hasta,
         ccaa=ccaa,
     )
-    return get_clusters(filters)
+    try:
+        return get_clusters(filters)
+    except ModuleNotFoundError as exc:
+        # C3.1: KMeans/TF-IDF son scikit-learn, que la imagen de la API ya no
+        # instala. 503 declara un estado del despliegue; un 500 lo haría pasar
+        # por bug, y un resultado vacío por «no hay clusters», que es mentira.
+        paquete = paquete_del_pipeline_ausente(exc)
+        if paquete is None:
+            raise
+        log.info("analytics_clusters_sin_ml_en_imagen", paquete=paquete)
+        raise HTTPException(
+            status_code=503,
+            detail="El agrupamiento semántico no está disponible en este despliegue.",
+        ) from None
 
 
 @router.get("/pipeline", response_model=PipelineResult)

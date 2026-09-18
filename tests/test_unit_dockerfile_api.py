@@ -193,10 +193,18 @@ def test_el_dockerfile_usa_el_lockfile_de_la_api_cuando_existe() -> None:
             "el Dockerfile debe explicar por qué todavía no usa requirements-api.txt"
         )
         return
-    assert "-r requirements-api.txt" in dockerfile, (
+    # Desde 2026-09-18 el lockfile se elige con un build arg (la variante del
+    # pipeline la usa el worker), pero el valor por defecto —el que construye
+    # la API— tiene que ser el reducido.
+    assert "ARG REQUIREMENTS_FILE=requirements-api.txt" in dockerfile, (
         "requirements-api.txt existe: docker/Dockerfile.api tiene que instalarlo "
-        "en vez de requirements.txt (C3.1)"
+        "por defecto en vez de requirements.txt (C3.1)"
     )
+    instrucciones = "\n".join(
+        linea for linea in dockerfile.splitlines() if not linea.lstrip().startswith("#")
+    )
+    assert '-r "${REQUIREMENTS_FILE}"' in instrucciones
+    assert "-r requirements.txt" not in instrucciones
 
 
 def test_el_corte_de_requirements_esta_declarado() -> None:
