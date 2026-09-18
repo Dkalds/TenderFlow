@@ -7,9 +7,19 @@
  * a la derecha, y la tabla sigue ahí para saltar a la siguiente empresa sin
  * cerrar nada. Sólo aparece a partir de `xl`; por debajo no hay dos columnas que
  * repartir.
+ *
+ * Dos pestañas: el perfil de la empresa y «Contra mí» (F3.2), los expedientes
+ * en los que el equipo presentó oferta y esta empresa aparece adjudicataria.
+ * La pestaña vuelve a «Perfil» al cambiar de empresa porque `competidores-view`
+ * monta el dossier con `key` por empresa.
  */
 
+import { useState } from "react";
 import { X } from "lucide-react";
+
+import { PanelTabs } from "@/components/console/panel";
+import { CompanyContraMi } from "@/components/competitors/company-contra-mi";
+import { registrarEvento } from "@/lib/analytics";
 
 import { CompanyQuickView } from "@/components/competitors/company-quick-view";
 import type {
@@ -45,6 +55,14 @@ export function CompetidoresDossier({
   onToggleWatch: () => void;
   onClose: () => void;
 }) {
+  const [pestana, setPestana] = useState<"perfil" | "contra_mi">("perfil");
+  const cambiarPestana = (siguiente: "perfil" | "contra_mi") => {
+    setPestana(siguiente);
+    if (siguiente === "contra_mi") {
+      registrarEvento("espacio_abierto", { espacio: "competencia", origen: "conmutador", vista: "contra_mi" });
+    }
+  };
+
   return (
     <aside
       aria-label="Dossier de empresa"
@@ -64,8 +82,25 @@ export function CompetidoresDossier({
           <X className="h-3 w-3" aria-hidden="true" />
         </button>
       </div>
+      {companyId != null && (
+        <div className="flex-none px-3 pt-2">
+          <PanelTabs
+            label="Secciones del dossier"
+            value={pestana}
+            onChange={cambiarPestana}
+            tabs={[
+              { key: "perfil", label: "Perfil" },
+              { key: "contra_mi", label: "Contra mí" },
+            ]}
+          />
+        </div>
+      )}
       <div className="min-h-0 flex-1 overflow-y-auto">
-        {companyId != null ? (
+        {companyId != null && pestana === "contra_mi" ? (
+          <div className="p-3">
+            <CompanyContraMi empresaKey={String(companyId)} />
+          </div>
+        ) : companyId != null ? (
           <CompanyQuickView
             empresaId={companyId}
             groupIds={groupIds}
