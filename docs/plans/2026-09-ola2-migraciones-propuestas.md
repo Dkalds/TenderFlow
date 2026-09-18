@@ -126,6 +126,12 @@ tres.
 
 ## T2 — Núcleo tipado
 
+> **2026-09-18:** escritas como `v133_nucleo_tipado_sombra` y
+> `v134_nucleo_tipado_indices`, sin aplicar en producción. Estado y pasos
+> pendientes en el ítem T2 del plan y en
+> [runbooks/nucleo-tipado-ventana.md](../runbooks/nucleo-tipado-ventana.md).
+> Lo de abajo es el diseño del 2026-09-08, que se conserva como estaba.
+
 **Hoy: las tres columnas no existen.** El estado real de `licitaciones`
 (`docs/database-schema.md:163-204`) es `importe double precision`,
 `fecha_publicacion text`, `fecha_limite text`, y `fecha_inicio`, `fecha_fin`,
