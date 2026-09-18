@@ -391,6 +391,101 @@ def iso_guard(column: str) -> str:
     return f"({column} >= '{ISO_MIN}' AND {column} < '{ISO_MAX}')"
 
 
+# ── Lectura dual del núcleo tipado (T2, v133) ─────────────────────────────
+# `v133` añade sombras tipadas de cuatro columnas de `licitaciones` y
+# `db/upsert.py` las escribe desde el mismo despliegue. Leerlas es otra cosa:
+# sólo es seguro cuando el backfill ha rellenado las filas viejas y la
+# verificación da cero divergencias **en producción**. Hasta entonces cada
+# fragmento de abajo devuelve la columna vieja carácter a carácter, y el
+# interruptor es un único setting, `NUCLEO_TIPADO_LECTURA`, para que el paso
+# —y su vuelta atrás— sea un cambio de configuración y no un despliegue.
+#
+# Lo que **no** pasa por aquí, a propósito, es la clave canónica:
+# `periodo_publicacion_sql` sigue leyendo el TEXTO con el flag encendido. La
+# clave está indexada (`v92`), materializada (`v101`/`v102`) y decide la URL
+# del sitemap; leerla de la sombra exigiría reescribir ese índice y esas vistas,
+# y además sólo es equivalente si ninguna fila tiene un offset que cruce la
+# medianoche de fin de mes (la verificación del backfill lo cuenta como
+# `periodo_distinto`). Lo fija `tests/test_nucleo_tipado.py`.
+
+#: Columnas con sombra: nombre lógico → (columna vieja, sombra).
+_SOMBRAS: dict[str, tuple[str, str]] = {
+    "fecha_publicacion": ("fecha_publicacion", "fecha_publicacion_ts"),
+    "fecha_limite": ("fecha_limite", "fecha_limite_ts"),
+    "importe": ("importe", "importe_num"),
+    "duracion_valor": ("duracion_valor", "duracion_valor_num"),
+}
+
+
+def lectura_tipada_activa() -> bool:
+    """Valor vigente de ``settings.NUCLEO_TIPADO_LECTURA``.
+
+    Importación diferida: este módulo es de constantes y lo importa medio
+    ``db/``; no debe arrastrar la carga de ``Settings`` a cada import.
+    """
+    from config import settings
+
+    return bool(settings.NUCLEO_TIPADO_LECTURA)
+
+
+def _tipada(tipada: bool | None) -> bool:
+    return lectura_tipada_activa() if tipada is None else tipada
+
+
+def columna_nucleo_sql(nombre: str, alias: str = "l", *, tipada: bool | None = None) -> str:
+    """La columna que hay que leer para ``nombre``: la vieja o su sombra.
+
+    Para filtros y ``ORDER BY``. ``tipada=None`` sigue el setting; los tests y
+    la verificación pasan ``True``/``False`` explícito.
+
+    Ojo al compararla con parámetros: con la sombra, un parámetro
+    ``'2026-01-31'`` se interpreta como ``timestamptz`` en la zona de la sesión
+    —UTC por defecto en Supabase; ``db/connection.py`` no la fija, y eso hay
+    que comprobarlo antes del primer call-site—, o sea la medianoche UTC de ese
+    día. Con valores
+    guardados en UTC eso reproduce el orden del texto: ``'2026-01-31'`` y
+    ``'2026-01-31T10:00:00+00:00'`` quedan a los dos lados de un ``<=`` igual
+    que antes. Deja de reproducirlo con una sesión en otra zona o con valores
+    guardados con otro offset, así que el paso de lecturas se hace **consulta
+    a consulta**, con su ``EXPLAIN`` y su comparación de resultados, no
+    encendiendo el flag y confiando.
+    """
+    vieja, sombra = _SOMBRAS[nombre]
+    return f"{alias}.{sombra if _tipada(tipada) else vieja}"
+
+
+def importe_sql(alias: str = "l", *, tipada: bool | None = None) -> str:
+    """El importe para **proyectar** en un ``SELECT``.
+
+    Con la sombra, castea a ``double precision``: ``numeric`` llega a Python
+    como ``Decimal``, que Pydantic serializa como string y rompe el frontend
+    (el mismo motivo que :func:`round_sql`). Para filtrar u ordenar usá
+    :func:`columna_nucleo_sql`, que no castea.
+    """
+    columna = columna_nucleo_sql("importe", alias, tipada=tipada)
+    return f"CAST({columna} AS double precision)" if _tipada(tipada) else columna
+
+
+def fecha_valida_sql(nombre: str, alias: str = "l", *, tipada: bool | None = None) -> str:
+    """Guarda de fecha bien formada para ``fecha_publicacion``/``fecha_limite``.
+
+    Sobre el texto es exactamente :func:`iso_guard`. Sobre la sombra el rango
+    lexicográfico deja de tener sentido —una sombra no nula ya es una fecha—,
+    pero se conservan las **mismas cotas** como rango de ``timestamptz``: una
+    fecha de publicación del año 3021 es basura aunque esté bien escrita, y la
+    guarda de texto también la excluía.
+    """
+    if nombre not in ("fecha_publicacion", "fecha_limite"):
+        raise ValueError(f"fecha_valida_sql no conoce la fecha {nombre!r}")
+    columna = columna_nucleo_sql(nombre, alias, tipada=tipada)
+    if not _tipada(tipada):
+        return iso_guard(columna)
+    return (
+        f"({columna} >= TIMESTAMPTZ '{ISO_MIN}-01-01 00:00:00+00' "
+        f"AND {columna} < TIMESTAMPTZ '{ISO_MAX}-01-01 00:00:00+00')"
+    )
+
+
 # ── Clave canónica de un contrato ─────────────────────────────────────────
 # `exclude_duplicados_sql` solo tapa lo que un humano o el job de dedupe ya
 # marcaron. Los fragmentos de abajo son la otra mitad: colapsan en SQL, sin

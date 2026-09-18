@@ -15,6 +15,7 @@ from typing import Any
 from config import HISTORY_TRACKED_FIELDS
 from db.connection import connect, now_utc_iso
 from db.dlq import record_failure
+from db.nucleo_tipado import COLUMNAS_SOMBRA, sombras_disponibles, valores_sombra
 from observability.logging import get_logger
 from observability.runtime_metrics import upsert_rows_dropped_total
 from shared.numeric import values_equal
@@ -329,6 +330,63 @@ _LIC_UPDATES = ", ".join(
     if k != "id_externo" and k not in _LIC_INSERT_ONLY_FIELDS
 )
 
+# ── Escritura dual del núcleo tipado (T2, v133) ──
+# Las cuatro sombras de `db/nucleo_tipado.py` se escriben en el mismo INSERT
+# que sus columnas viejas, con el valor traducido en Python ANTES de que
+# Postgres lo meta en la vieja: para `importe_num` eso es el `float` intacto
+# del conector, no lo que queda de él tras pasar por `real`.
+#
+# La regla del UPDATE de cada sombra es la de su columna vieja, no una propia.
+# Para `fecha_limite` (COALESCE) no basta con `COALESCE` en la sombra: si la
+# reingesta trae un texto no nulo pero no ISO, la vieja se actualiza y un
+# COALESCE en la sombra conservaría la fecha anterior — la sombra dejaría de
+# describir a su columna. Se decide por la vieja: si la vieja se conserva, la
+# sombra también.
+_LIC_SOMBRA_KEYS = tuple(sombra for sombra, _ in COLUMNAS_SOMBRA)
+_LIC_SOMBRA_UPDATES = ", ".join(
+    f"{sombra}=CASE WHEN excluded.{vieja} IS NULL THEN licitaciones.{sombra} "
+    f"ELSE excluded.{sombra} END"
+    if vieja in _LIC_COALESCE_UPDATE_FIELDS
+    else f"{sombra}=excluded.{sombra}"
+    for sombra, vieja in COLUMNAS_SOMBRA
+)
+
+
+def _sql_upsert_licitaciones(*, con_sombras: bool) -> str:
+    """El ``INSERT ... ON CONFLICT`` de licitaciones, con o sin las sombras."""
+    if not con_sombras:
+        return (
+            f"INSERT INTO licitaciones ({_LIC_COLS}) VALUES ({_LIC_PLACEHOLDERS}) "
+            f"ON CONFLICT(id_externo) DO UPDATE SET {_LIC_UPDATES}"
+        )
+    cols = ", ".join((*_LIC_KEYS, *_LIC_SOMBRA_KEYS))
+    placeholders = ", ".join("%s" for _ in (*_LIC_KEYS, *_LIC_SOMBRA_KEYS))
+    return (
+        f"INSERT INTO licitaciones ({cols}) VALUES ({placeholders}) "
+        f"ON CONFLICT(id_externo) DO UPDATE SET {_LIC_UPDATES}, {_LIC_SOMBRA_UPDATES}"
+    )
+
+
+def _con_sombras(c: Any) -> bool:
+    """¿Escribe este chunk las sombras? Se pregunta al catálogo cada vez.
+
+    Sin caché a propósito: es una consulta por cada 500 filas, despreciable
+    frente al ``executemany`` que la sigue, y a cambio el proceso empieza a
+    escribir las sombras en cuanto ``v133`` se aplica y **deja** de escribirlas
+    si se revierte, sin reinicio en ninguno de los dos sentidos. Con una caché
+    del «sí», un ``downgrade`` dejaría la ingesta fallando hasta reiniciar cada
+    escritor.
+    """
+    return sombras_disponibles(c)
+
+
+def _fila_licitacion(data: dict[str, Any], *, con_sombras: bool) -> list[Any]:
+    fila = [data[k] for k in _LIC_KEYS]
+    if con_sombras:
+        fila.extend(valores_sombra(data))
+    return fila
+
+
 # lote_numero_raw es parse-only (ver docstring de Adjudicacion): nunca es
 # columna de `adjudicaciones`, así que se excluye de las columnas del INSERT.
 _ADJ_KEYS = tuple(f.name for f in fields(Adjudicacion) if f.name != "lote_numero_raw")
@@ -372,6 +430,7 @@ def upsert_licitaciones(items: Iterable[Licitacion]) -> tuple[int, int]:
             ).fetchall()
             existing_pub.update((row[0], row[1]) for row in rows)
 
+        con_sombras = _con_sombras(c)
         lic_rows: list[list[Any]] = []
         for lic in batch:
             data = asdict(lic)
@@ -381,18 +440,14 @@ def upsert_licitaciones(items: Iterable[Licitacion]) -> tuple[int, int]:
                 data["fecha_publicacion"] = _earliest_iso_date(
                     existing_pub[lic.id_externo], data["fecha_publicacion"]
                 )
-            lic_rows.append([data[k] for k in _LIC_KEYS])
+            lic_rows.append(_fila_licitacion(data, con_sombras=con_sombras))
 
         # Un único executemany en vez de un execute por fila: contra una BD
         # remota lo que domina es el round trip, no el coste del INSERT
         # (psycopg3 agrupa el executemany en un solo viaje). Column names come
         # from dataclass fields (controlled code) — safe.
         if lic_rows:
-            c.executemany(
-                f"INSERT INTO licitaciones ({_LIC_COLS}) VALUES ({_LIC_PLACEHOLDERS}) "
-                f"ON CONFLICT(id_externo) DO UPDATE SET {_LIC_UPDATES}",
-                lic_rows,
-            )
+            c.executemany(_sql_upsert_licitaciones(con_sombras=con_sombras), lic_rows)
 
     existing_ids = set(existing_pub)
     nuevas = sum(1 for lic in batch if lic.id_externo not in existing_ids)
@@ -809,6 +864,7 @@ def _upsert_chunk(
         }
         existing_pub: dict[str, str | None] = {row[0]: row[-1] for row in existing_rows}
 
+        con_sombras = _con_sombras(c)
         lic_rows: list[list[Any]] = []
         history_rows: list[tuple[str, str, str, str, str]] = []
 
@@ -820,7 +876,7 @@ def _upsert_chunk(
                 data["fecha_publicacion"] = _earliest_iso_date(
                     existing_pub[lic.id_externo], data["fecha_publicacion"]
                 )
-            lic_rows.append([data[k] for k in _LIC_KEYS])
+            lic_rows.append(_fila_licitacion(data, con_sombras=con_sombras))
             old_record = existing.get(lic.id_externo)
 
             if old_record is not None:
@@ -868,11 +924,7 @@ def _upsert_chunk(
                 history_rows,
             )
         if lic_rows:
-            c.executemany(
-                f"INSERT INTO licitaciones ({_LIC_COLS}) VALUES ({_LIC_PLACEHOLDERS}) "
-                f"ON CONFLICT(id_externo) DO UPDATE SET {_LIC_UPDATES}",
-                lic_rows,
-            )
+            c.executemany(_sql_upsert_licitaciones(con_sombras=con_sombras), lic_rows)
 
     return result
 
