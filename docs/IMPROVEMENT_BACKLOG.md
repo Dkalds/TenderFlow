@@ -13,16 +13,17 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 
 El plan y sus criterios de aceptación están en
 [plans/2026-09-plan-funcionalidades.md](plans/2026-09-plan-funcionalidades.md).
-Treinta y ocho funcionalidades en seis recorridos; **treinta y cinco
-implementadas**, una descartada por su propia decisión y dos bloqueadas por
-dependencias que no existen en este árbol.
+Treinta y ocho funcionalidades en seis recorridos; **treinta y seis con
+backend** (F4.6 se desbloqueó el 2026-09-18) y dos descartadas por su propia
+decisión (F2.1 y F6.6). Tener backend no es tener pantalla: ver la nota de
+abajo.
 
 Lo que **no** se hizo, y por qué:
 
 | Ítem | Estado | Motivo |
 |---|---|---|
 | F2.1 Hitos del procedimiento | **Descartado por D32** | El spike midió 735 entradas del ATOM en vivo: `OpenTenderEvent` aparece en el **0 %**, muy por debajo del umbral del 30 % que D32 fijaba. Ver [el documento del spike](plans/2026-09-spike-d32-hitos-procedimiento.md). La consecuencia prevista —que la fecha prevista de adjudicación se estime sola— está implementada (F4.4), y `ExpectedAward.metodo` ya admite `hito` para el día que la Plataforma los publique. |
-| F4.6 Plantillas de tareas por etapa | **Bloqueado** | Depende de las tareas de oportunidad (C6.1 del plan complementario), que no existen en este árbol. Construirlo exigiría crear una tabla de tareas, y el gate de F4.6 es «sin gate»: no tiene migración autorizada. Se deja sin empezar en vez de inventar el modelo de datos de otro plan. |
+| F4.6 Plantillas de tareas por etapa | **Hecho el 2026-09-18** (rama `worktree-agent-a46c6c93b69b8f96c`) | Se desbloqueó al llegar las tareas C6.1 (v122). Sin migración: plantilla en `plantillas_organizacion` (`tipo='tareas'`), instanciación idempotente por `pursuit_events`, editor en Equipo → Organización. |
 | F6.6 Boletín público | **Descartado por D36** | La propuesta de D36 es «no hasta que exista dominio propio (v2 S1.3) y política de privacidad para suscriptores». Ninguna de las dos existe. |
 
 Lo que se hizo **con fallback**, porque su dependencia no está en este árbol
@@ -37,7 +38,15 @@ Lo que se hizo **con fallback**, porque su dependencia no está en este árbol
   el productor, no el vocabulario.
 - **F3.2** distingue «nosotros perdimos» de «ellos ganaron»: sin el NIF propio
   (v2 S2.1) sólo se puede afirmar lo primero, y la respuesta lo declara.
-- **F2.3** entrega el kit sin responsable, que es lo que el plan prevé sin C6.1.
+- **F2.3** se entregó sin responsable; desde el 2026-09-18 el responsable es
+  el de la tarea C6.1 del documento (rama `worktree-agent-a46c6c93b69b8f96c`).
+
+**«Implementadas» significaba backend.** Varias de las treinta y cinco no
+tenían pantalla. En el lado de oportunidades, la UI llegó el 2026-09-18 (rama
+`worktree-agent-a46c6c93b69b8f96c`) para F1.6 (aplicar/quitar etiquetas; falta
+el filtro en Radar y Detalle), F2.3, F3.1, F4.1 (sin pantalla para editar las
+probabilidades), F4.3 (sin «preparar renovación», que no tiene endpoint), F4.4
+y F4.6. El estado de cada una está anotado en el plan.
 
 Pantallas que faltaban de lado ficha y superficie pública (2026-09-18, rama
 `worktree-agent-ac5d5218d7d3b1f8b`): F2.2, F2.5, F2.6, F2.8, F6.2 y F6.5 ya

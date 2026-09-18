@@ -3520,6 +3520,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/organizations/{organization_id}/plantilla-tareas": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Tareas que se crean al pasar una oportunidad a «preparando oferta»
+         * @description Cualquier miembro la lee; `puede_editar` dice si además la cambia.
+         */
+        get: operations["get_plantilla_tareas_api_v1_organizations__organization_id__plantilla_tareas_get"];
+        /**
+         * Cambiar la plantilla de tareas (owner/admin)
+         * @description Sustituye la plantilla entera. No toca las tareas ya creadas.
+         */
+        put: operations["put_plantilla_tareas_api_v1_organizations__organization_id__plantilla_tareas_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/organizations/{organization_id}/report-schedule": {
         parameters: {
             query?: never;
@@ -4343,6 +4367,29 @@ export interface paths {
          *     que el cliente lo cargó.
          */
         post: operations["post_pursuit_kit_item_api_v1_pursuits__pursuit_id__kit_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/pursuits/{pursuit_id}/kit/responsable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Asignar un documento del kit a una persona (crea o reasigna su tarea)
+         * @description F2.3 + C6.1 — el responsable de un documento es el de su tarea.
+         *
+         *     Devuelve el kit entero por lo mismo que el marcado: la respuesta trae
+         *     también lo que otros han asignado desde que el cliente lo cargó.
+         */
+        post: operations["post_pursuit_kit_responsable_api_v1_pursuits__pursuit_id__kit_responsable_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -8208,6 +8255,10 @@ export interface components {
             marcado_por?: number | null;
             /** Nombre */
             nombre: string;
+            /** Responsable Name */
+            responsable_name?: string | null;
+            /** Responsable User Id */
+            responsable_user_id?: number | null;
             /**
              * Sobre
              * @enum {string}
@@ -8215,6 +8266,12 @@ export interface components {
             sobre: "sobre_a" | "sobre_b" | "sobre_c" | "otro";
             /** Subsanable */
             subsanable?: boolean | null;
+            /** Tarea Estado */
+            tarea_estado?: string | null;
+            /** Tarea Id */
+            tarea_id?: number | null;
+            /** Tarea Vence */
+            tarea_vence?: string | null;
         };
         /**
          * JobEstadoDTO
@@ -8330,6 +8387,18 @@ export interface components {
              * @default false
              */
             sin_extraccion: boolean;
+        };
+        /**
+         * KitResponsableBody
+         * @description Responsable de un documento del kit. Se guarda como tarea (C6.1).
+         */
+        KitResponsableBody: {
+            /** Clave */
+            clave: string;
+            /** Responsable User Id */
+            responsable_user_id: number;
+            /** Vence */
+            vence?: string | null;
         };
         /** LastExtraction */
         LastExtraction: {
@@ -10044,6 +10113,40 @@ export interface components {
              * @default 0
              */
             vencen_7d: number;
+        };
+        /**
+         * PlantillaTareas
+         * @description Cuerpo del PUT: la plantilla entera, que sustituye a la anterior.
+         */
+        PlantillaTareas: {
+            /** Tareas */
+            tareas?: components["schemas"]["TareaPlantilla"][];
+        };
+        /**
+         * PlantillaTareasOut
+         * @description La plantilla leída, con lo que la pantalla necesita para editarla.
+         */
+        PlantillaTareasOut: {
+            /**
+             * Etapa
+             * @default preparing
+             * @constant
+             */
+            etapa: "preparing";
+            /**
+             * Max Tareas
+             * @default 20
+             */
+            max_tareas: number;
+            /** Organization Id */
+            organization_id: number;
+            /**
+             * Puede Editar
+             * @default false
+             */
+            puede_editar: boolean;
+            /** Tareas */
+            tareas?: components["schemas"]["TareaPlantilla"][];
         };
         /**
          * PrediccionBajaLote
@@ -12266,6 +12369,16 @@ export interface components {
             sin_resultados?: string | null;
             /** Socios */
             socios?: components["schemas"]["SocioSugerido"][];
+        };
+        /**
+         * TareaPlantilla
+         * @description Una tarea de la plantilla: título y plazo relativo a la fecha límite.
+         */
+        TareaPlantilla: {
+            /** Dias Antes Limite */
+            dias_antes_limite?: number | null;
+            /** Titulo */
+            titulo: string;
         };
         /**
          * TarjetaMetrica
@@ -20540,6 +20653,87 @@ export interface operations {
             };
         };
     };
+    get_plantilla_tareas_api_v1_organizations__organization_id__plantilla_tareas_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                organization_id: number;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlantillaTareasOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_plantilla_tareas_api_v1_organizations__organization_id__plantilla_tareas_put: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                organization_id: number;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PlantillaTareas"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlantillaTareasOut"];
+                };
+            };
+            /** @description Solo owner o admin cambian la plantilla */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_report_schedule_api_v1_organizations__organization_id__report_schedule_get: {
         parameters: {
             query?: never;
@@ -22140,6 +22334,52 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
+            };
+        };
+    };
+    post_pursuit_kit_responsable_api_v1_pursuits__pursuit_id__kit_responsable_post: {
+        parameters: {
+            query?: {
+                organization_id?: number | null;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                pursuit_id: number;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["KitResponsableBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KitPresentacion"];
+                };
+            };
+            /** @description La oportunidad es de otra organización, tu rol es de lectura o el responsable no es miembro activo */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description El documento no está en el kit de esta oportunidad */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

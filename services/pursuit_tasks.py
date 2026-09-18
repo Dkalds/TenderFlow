@@ -169,6 +169,12 @@ def emitir_tareas_que_vencen(fecha: str | None = None) -> int:
     return emitidos
 
 
+def sincronizar_next_action(organization_id: int, pursuit_id: int) -> None:
+    """Punto de entrada público de la derivación, para quien crea tareas por
+    su cuenta (F4.6: la plantilla por etapa). Mismo fail-open."""
+    _sincronizar_next_action(organization_id, pursuit_id)
+
+
 def _sincronizar_next_action(organization_id: int, pursuit_id: int) -> None:
     """Deja `next_action` reflejando la tarea abierta más urgente.
 

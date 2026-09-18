@@ -287,6 +287,12 @@ migración, pre-autorizada.
 *Adopción:* evento nuevo `etiqueta_aplicada` con `objeto ∈ {favorito,
 oportunidad, cuenta}`.
 
+**Estado (2026-09-18, rama `worktree-agent-a46c6c93b69b8f96c`).** Backend
+desde PR #272; UI hecha: selector para aplicar/quitar (y crear) etiquetas en
+Mi Watchlist → Favoritos, en la ficha de la oportunidad y en Cuentas; chips en
+las tarjetas del tablero y filtro por etiqueta en Oportunidades. Falta el
+filtro en Radar y Detalle.
+
 #### F1.7 Procedimiento y tramitación legibles — P1
 
 **Para quién.** Todos; sobre todo quien no vive en la Ley 9/2017. **Qué.**
@@ -391,6 +397,12 @@ ellas, checklist sin responsable. **Esfuerzo / gate.** M · sin gate.
   lista genérica como si fuera del pliego.
 
 *Adopción:* evento nuevo `kit_abierto` con `items` en tramos.
+
+**Estado (2026-09-18, rama `worktree-agent-a46c6c93b69b8f96c`).** Hecho. La
+pestaña Decisión pinta el kit por sobre con casillas persistidas. El
+responsable sale de C6.1: `POST /pursuits/{id}/kit/responsable` crea (o
+reasigna) la tarea «Kit: …» y ata clave→tarea en el mismo ledger; si la tarea
+se borra, el documento vuelve a quedar sin responsable.
 
 #### F2.4 Tarifas por perfil y desglose del presupuesto — P1
 
@@ -513,6 +525,13 @@ CPV 72». **Hoy.** Hecho 10. **Depende de.** Nada. **Esfuerzo / gate.** S ·
 
 *Adopción:* propiedad `motivo` en `pursuit_estado_cambiado` (categórica).
 
+**Estado (2026-09-18, rama `worktree-agent-a46c6c93b69b8f96c`).** Hecho. El
+editor de la oportunidad pide el motivo codificado al cerrar como perdida
+(«otro» exige nota) y ofrece completar los cierres `sin_codificar`;
+`perdidas_por_motivo` se pinta en Mi Pipeline → Embudo con el mínimo del
+backend. El evento lleva `motivo`. El corte por tecnología/órgano/competidor
+queda para Dirección (F4.2).
+
 #### F3.2 Batallas directas por competidor — P1
 
 **Para quién.** Quien conoce a sus rivales. **Qué.** Por competidor:
@@ -595,6 +614,11 @@ configuración por organización, pre-autorizada.
 *Adopción:* propiedad `vista=embudo` ya existe en `espacio_abierto`; sin
 evento nuevo.
 
+**Estado (2026-09-18, rama `worktree-agent-a46c6c93b69b8f96c`).** Hecho en UI:
+Mi Pipeline → Embudo pinta `pipeline_value_eur`, la previsión trimestral y los
+supuestos (probabilidades usadas, oportunidades sin importe). La edición de
+`probabilidades_etapa` por owner/admin no tiene pantalla todavía.
+
 #### F4.2 Cuadro de mando de dirección — P1
 
 **Para quién.** Owner y admin. **Qué.** Espacio «Dirección» (grupo
@@ -636,6 +660,13 @@ pre-autorizada.
 *Adopción:* evento nuevo `cartera_abierta` y propiedad
 `origen=renovacion` en `pursuit_creado`.
 
+**Estado (2026-09-18, rama `worktree-agent-a46c6c93b69b8f96c`).** Vista Mi
+Pipeline → Cartera hecha (estaba declarada en `space-views.ts` sin componente
+y caía a la agenda): fin efectivo con su origen, prórrogas, ventana de
+relicitación como estimación, filtros por tecnología y órgano, evento
+`cartera_abierta`. **Pendiente:** «Preparar renovación» — el backend no expone
+esa acción (sólo `renovacion_pursuit_id`, que la vista enlaza).
+
 #### F4.4 Fecha prevista de adjudicación — P1
 
 **Para quién.** Quien planifica recursos. **Qué.** `expected_award_date`
@@ -651,6 +682,11 @@ rango p25–p75 y `n`; la agenda y F4.1 la usan. **Hoy.** Hecho 12.
 - Test con fixture de órgano con lead-time conocido.
 
 *Adopción:* ninguna propia.
+
+**Estado (2026-09-18, rama `worktree-agent-a46c6c93b69b8f96c`).** UI hecha en
+la ficha de la oportunidad: una estimación se muestra como intervalo p25–p75
+con su `n` y la marca «estimación»; sólo un `hito` se muestra como fecha; sin
+base, «Sin estimación».
 
 #### F4.5 Actividad de la organización — P2
 
@@ -682,6 +718,14 @@ gate.
   `pursuit_events`).
 
 *Adopción:* propiedad `origen=plantilla` en la creación de tareas.
+
+**Estado (2026-09-18, rama `worktree-agent-a46c6c93b69b8f96c`).** Hecho, sin
+migración. Plantilla en `plantillas_organizacion` (`tipo='tareas'`, v106),
+`GET/PUT /organizations/{id}/plantilla-tareas` (owner/admin editan), editor en
+Equipo → Organización. La transición a `preparing` instancia una sola vez vía
+evento `plantilla_tareas_aplicada` con clave de idempotencia (índice único de
+v61). `origen=plantilla` va en el payload del evento y en el log, no en una
+columna de `pursuit_tasks`: ninguna pantalla necesita distinguirlas.
 
 ### F5 — Vigilar: alertas y novedades
 

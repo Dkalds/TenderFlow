@@ -14,6 +14,8 @@ import { SpaceShell, useSpaceView } from "@/components/layout/space-shell";
 import { CONSOLE_SPACES } from "@/lib/console-spaces";
 import { apiGet, apiMutate } from "@/lib/api-client";
 import { registrarEvento } from "@/lib/analytics";
+import { EtiquetaChips, EtiquetasEditor } from "@/components/etiquetas/etiquetas-objeto";
+import { useEtiquetasDe } from "@/hooks/use-etiquetas";
 
 /**
  * F1.5 — Cuentas objetivo.
@@ -99,6 +101,9 @@ function SeguirOrgano() {
 function ListaCuentas() {
   const { data, isLoading, isError } = useCuentas();
   const qc = useQueryClient();
+  // F1.6 — etiquetas de todas las cuentas en una sola petición.
+  const etiquetas =
+    useEtiquetasDe("cuenta", (data ?? []).map((cuenta) => String(cuenta.id))).data ?? {};
   const dejar = useMutation({
     mutationFn: (id: number) => apiMutate("DELETE", `/api/v1/cuentas/${id}` as never),
     onSuccess: () => {
@@ -137,6 +142,7 @@ function ListaCuentas() {
         <TableRow>
           <TableHead>Órgano</TableHead>
           <TableHead>Nota</TableHead>
+          <TableHead>Etiquetas</TableHead>
           <TableHead className="w-24 text-right">Acciones</TableHead>
         </TableRow>
       </TableHeader>
@@ -145,6 +151,17 @@ function ListaCuentas() {
           <TableRow key={cuenta.id}>
             <TableCell className="font-medium">{cuenta.organo_nombre}</TableCell>
             <TableCell className="text-muted-foreground">{cuenta.nota ?? "—"}</TableCell>
+            <TableCell>
+              <div className="flex flex-wrap items-center gap-1.5">
+                <EtiquetaChips etiquetas={etiquetas[String(cuenta.id)]} />
+                <EtiquetasEditor
+                  objetoTipo="cuenta"
+                  objetoId={String(cuenta.id)}
+                  aplicadas={etiquetas[String(cuenta.id)]}
+                  descripcion={cuenta.organo_nombre}
+                />
+              </div>
+            </TableCell>
             <TableCell className="text-right">
               <Button
                 variant="ghost"

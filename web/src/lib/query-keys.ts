@@ -268,6 +268,27 @@ export const pursuitKeys = {
    */
   actividad: (organizationId: number | null, usuario: number | null) =>
     ["pursuits", "actividad", organizationId, usuario] as const,
+  /**
+   * Kit de presentación de una oportunidad (`GET /pursuits/{id}/kit`, F2.3).
+   * Cuelga de `pursuits`: asignar un documento crea una tarea y cambia la
+   * próxima acción de la oportunidad, que leen el tablero y la agenda.
+   */
+  kit: (pursuitId: number | string, organizationId: number | null) =>
+    ["pursuits", "kit", String(pursuitId), organizationId] as const,
+  /** Contratos ganados en ejecución (`GET /pursuits/cartera`, F4.3). */
+  cartera: (organizationId: number | null) => ["pursuits", "cartera", organizationId] as const,
+};
+
+/**
+ * Etiquetas de organización (F1.6). `porObjeto` lleva los ids pedidos porque
+ * la respuesta sólo trae los objetos de esa página; `all` es prefijo de todo y
+ * es lo que invalidan las mutaciones.
+ */
+export const etiquetaKeys = {
+  all: ["etiquetas"] as const,
+  lista: (organizationId: number | null) => ["etiquetas", "lista", organizationId] as const,
+  porObjeto: (organizationId: number | null, objetoTipo: string, ids: readonly string[]) =>
+    ["etiquetas", "por-objeto", organizationId, objetoTipo, [...ids].sort()] as const,
 };
 
 export const pursuitCommentKeys = {
@@ -279,6 +300,12 @@ export const organizationKeys = {
   all: ["organizations"] as const,
   members: (organizationId: number | null) => ["organization-members", organizationId] as const,
   settings: (organizationId: number | null) => ["organization-settings", organizationId] as const,
+  /**
+   * Plantilla de tareas por etapa (F4.6). Nace bajo la raíz, no con literal
+   * propio como `members`/`settings`: no hay clientes desplegados que migrar.
+   */
+  plantillaTareas: (organizationId: number | null) =>
+    ["organizations", "plantilla-tareas", organizationId] as const,
 };
 
 export const perfilKeys = {

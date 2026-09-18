@@ -436,7 +436,35 @@ def update_pursuit(
             raise PursuitNotFoundError("Oportunidad no encontrada.")
         if changes.get("responsible_user_id") is not None:
             _notificar_asignacion(updated, actor_user_id=user_id)
+        if changes.get("status") == "preparing":
+            _instanciar_plantilla_tareas(updated, resolved_id, pursuit_id, user_id)
         return _detalle(updated, resolved_id, pursuit_id)
+
+
+def _instanciar_plantilla_tareas(
+    pursuit: dict[str, Any], organization_id: int, pursuit_id: int, actor_user_id: int
+) -> None:
+    """F4.6 — crea las tareas de la plantilla al entrar en ``preparing``.
+
+    Fail-open: la transición ya está guardada, y devolver un 500 por no poder
+    crear las tareas diría que la oportunidad no avanzó cuando sí lo hizo.
+    """
+    from services.plantilla_tareas import instanciar_en_pursuit
+
+    try:
+        instanciar_en_pursuit(
+            organization_id=organization_id,
+            pursuit_id=pursuit_id,
+            actor_user_id=actor_user_id,
+            fecha_limite=pursuit.get("tender_deadline"),
+        )
+    except Exception as exc:
+        log.warning(
+            "plantilla_tareas_error",
+            pursuit_id=pursuit_id,
+            organization_id=organization_id,
+            error=str(exc)[:200],
+        )
 
 
 #: Los motivos de D37, como tupla, para el mensaje de error de la ruta.
@@ -1566,12 +1594,92 @@ def kit_de_pursuit(
     entonces habría dos sitios donde olvidarse del ámbito.
     """
     detalle = get_pursuit(user_id, pursuit_id, organization_id=organization_id)
+    with alcance_resuelto(user_id, detalle.organization_id) as (resolved_id, _):
+        return _kit(detalle.licitacion_id, resolved_id, pursuit_id)
+
+
+def _tareas_vivas(organization_id: int, pursuit_id: int) -> dict[int, dict[str, Any]]:
+    """Tareas de la oportunidad por id, para poner responsable al kit.
+
+    Fail-open: sin tareas el kit sigue diciendo qué hay que entregar, que es
+    lo que no puede dejar de hacer; sólo pierde la columna del responsable.
+    """
+    from db.repositories.pursuit_tasks import PursuitTasksRepository
+
+    try:
+        filas = PursuitTasksRepository().list_by_pursuit(organization_id, pursuit_id)
+    except Exception as exc:
+        log.warning("kit_tareas_error", error=str(exc)[:200])
+        return {}
+    return {int(fila["id"]): fila for fila in filas}
+
+
+def _kit(licitacion_id: str, organization_id: int, pursuit_id: int) -> KitPresentacion:
     return construir_kit(
-        detalle.licitacion_id,
-        _documentos_del_pliego(detalle.licitacion_id),
-        organization_id=detalle.organization_id,
+        licitacion_id,
+        _documentos_del_pliego(licitacion_id),
+        organization_id=organization_id,
         pursuit_id=pursuit_id,
+        tareas=_tareas_vivas(organization_id, pursuit_id),
     )
+
+
+def asignar_kit_de_pursuit(
+    user_id: int,
+    pursuit_id: int,
+    *,
+    clave: str,
+    responsable_user_id: int,
+    vence: str | None = None,
+    organization_id: int | None = None,
+) -> KitPresentacion:
+    """Da responsable a un documento del kit, a través de una tarea (C6.1).
+
+    Si el documento ya tiene tarea viva, se **reasigna** esa tarea en vez de
+    crear otra: dos tareas para el mismo papel son dos personas creyendo que
+    lo lleva la otra. Si no la tiene —nunca se asignó, o se borró—, se crea
+    una con el nombre del documento y se anota el vínculo en el ledger.
+
+    Pasa por el servicio de tareas y no por su repositorio: la comprobación de
+    que el responsable es miembro activo y la derivación de ``next_action``
+    viven allí, y duplicarlas aquí sería el segundo sitio donde olvidarlas.
+    """
+    from services.kit_presentacion import anotar_tarea
+    from services.pursuit_tasks import create_task, update_task
+
+    with alcance_resuelto(user_id, organization_id, write=True) as (resolved_id, _):
+        detalle = get_pursuit(user_id, pursuit_id, organization_id=resolved_id)
+        kit = _kit(detalle.licitacion_id, resolved_id, pursuit_id)
+        item = next((i for i in kit.items if i.clave == clave), None)
+        if item is None:
+            raise PursuitValidationError("Ese documento no está en el kit de esta oportunidad.")
+
+        if item.tarea_id is not None:
+            update_task(
+                user_id,
+                pursuit_id,
+                item.tarea_id,
+                organization_id=resolved_id,
+                responsable_user_id=responsable_user_id,
+                vence=vence,
+            )
+        else:
+            tarea = create_task(
+                user_id,
+                pursuit_id,
+                titulo=f"Kit: {item.nombre}",
+                responsable_user_id=responsable_user_id,
+                vence=vence,
+                organization_id=resolved_id,
+            )
+            anotar_tarea(
+                organization_id=resolved_id,
+                pursuit_id=pursuit_id,
+                actor_user_id=user_id,
+                clave=clave,
+                tarea_id=int(tarea["id"]),
+            )
+        return _kit(detalle.licitacion_id, resolved_id, pursuit_id)
 
 
 def marcar_kit_de_pursuit(
@@ -1597,9 +1705,4 @@ def marcar_kit_de_pursuit(
             clave=clave,
             listo=listo,
         )
-        return construir_kit(
-            detalle.licitacion_id,
-            _documentos_del_pliego(detalle.licitacion_id),
-            organization_id=resolved_id,
-            pursuit_id=pursuit_id,
-        )
+        return _kit(detalle.licitacion_id, resolved_id, pursuit_id)

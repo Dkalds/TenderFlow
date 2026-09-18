@@ -11,6 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { type Pursuit, type PursuitDecision, type PursuitOutcome, type PursuitStatus, useUpdatePursuit } from "@/hooks/use-pursuits";
 import { useOrganizationMembers } from "@/hooks/use-organization";
 import { PursuitDecisionBadge, PursuitOutcomeBadge, PursuitStatusBadge } from "@/components/pursuits/pursuit-presenters";
+import { MOTIVOS_PERDIDA, type MotivoPerdida, errorDeCierre, esMotivoPerdida, pideCodificar } from "@/lib/motivos-perdida";
 
 const statuses: Array<{ value: PursuitStatus; label: string }> = [
   { value: "identified", label: "Identificada" }, { value: "qualifying", label: "En cualificación" },
@@ -28,6 +29,8 @@ interface FormState {
   outcome: PursuitOutcome;
   awarded_amount_eur: string;
   outcome_reason: string;
+  /** F3.1 — código de D37; vacío = sin elegir. */
+  outcome_reason_code: MotivoPerdida | "";
 }
 
 function formFrom(pursuit: Pursuit): FormState {
@@ -40,6 +43,7 @@ function formFrom(pursuit: Pursuit): FormState {
     outcome: pursuit.outcome,
     awarded_amount_eur: pursuit.awarded_amount_eur?.toString() ?? "",
     outcome_reason: pursuit.outcome_reason ?? "",
+    outcome_reason_code: pursuit.outcome_reason_code ?? "",
   };
 }
 
@@ -59,9 +63,16 @@ function PursuitEditorForm({ pursuit }: { pursuit: Pursuit }) {
   const update = useUpdatePursuit(pursuit.id);
   const members = useOrganizationMembers(pursuit.organization_id).data ?? [];
   const [form, setForm] = React.useState<FormState>(() => formFrom(pursuit));
+  const [intentado, setIntentado] = React.useState(false);
+  const errorMotivo = errorDeCierre(form.outcome, form.outcome_reason_code, form.outcome_reason);
 
   const save = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    setIntentado(true);
+    if (errorMotivo) {
+      toast.error(errorMotivo);
+      return;
+    }
     try {
       await update.mutateAsync({
         status: form.status,
@@ -72,6 +83,11 @@ function PursuitEditorForm({ pursuit }: { pursuit: Pursuit }) {
         outcome: form.outcome,
         awarded_amount_eur: moneyOrNull(form.awarded_amount_eur),
         outcome_reason: form.outcome_reason.trim() || null,
+        // Sólo viaja al cerrar (o completar) una pérdida: en cualquier otro
+        // resultado el código no significa nada y no se toca.
+        ...(form.outcome === "lost" && form.outcome_reason_code
+          ? { outcome_reason_code: form.outcome_reason_code }
+          : {}),
         expected_version: pursuit.version,
       });
       toast.success("Oportunidad actualizada");
@@ -138,7 +154,43 @@ function PursuitEditorForm({ pursuit }: { pursuit: Pursuit }) {
           <label className="space-y-1.5 text-sm font-medium" htmlFor={inputId("awarded-price")}>Importe adjudicado (€)
             <Input id={inputId("awarded-price")} inputMode="decimal" value={form.awarded_amount_eur} onChange={(event) => set("awarded_amount_eur", event.target.value)} placeholder="Solo si se conoce" />
           </label>
-          <label className="space-y-1.5 text-sm font-medium" htmlFor={inputId("outcome-reason")}>Nota de cierre
+          {form.outcome === "lost" && (
+            <div className="space-y-1.5 text-sm font-medium sm:col-span-2">
+              {pideCodificar(pursuit) && !form.outcome_reason_code ? (
+                <p role="status" className="rounded-md border border-border/70 bg-muted/40 px-3 py-2 text-xs font-normal text-muted-foreground">
+                  Este cierre es anterior a los motivos codificados y cuenta como «sin codificar» en el reparto de pérdidas. Elige el motivo para completarlo.
+                </p>
+              ) : null}
+              <label htmlFor={inputId("outcome-reason-code")}>Motivo de la pérdida</label>
+              <Select
+                value={form.outcome_reason_code}
+                onValueChange={(value) => set("outcome_reason_code", esMotivoPerdida(value) ? value : "")}
+              >
+                <SelectTrigger
+                  id={inputId("outcome-reason-code")}
+                  aria-required="true"
+                  aria-invalid={intentado && Boolean(errorMotivo)}
+                  aria-describedby={inputId("outcome-reason-code-ayuda")}
+                >
+                  <SelectValue placeholder="Elige un motivo" />
+                </SelectTrigger>
+                <SelectContent>
+                  {MOTIVOS_PERDIDA.map((motivo) => (
+                    <SelectItem key={motivo.codigo} value={motivo.codigo}>{motivo.etiqueta}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <span id={inputId("outcome-reason-code-ayuda")} className="block text-xs font-normal text-muted-foreground">
+                {MOTIVOS_PERDIDA.find((motivo) => motivo.codigo === form.outcome_reason_code)?.ayuda ??
+                  "Obligatorio al cerrar como perdida: es lo que permite saber por qué se pierde."}
+              </span>
+              {intentado && errorMotivo ? (
+                <span role="alert" className="block text-xs font-normal text-destructive">{errorMotivo}</span>
+              ) : null}
+            </div>
+          )}
+          <label className="space-y-1.5 text-sm font-medium" htmlFor={inputId("outcome-reason")}>
+            {form.outcome === "lost" && form.outcome_reason_code === "otro" ? "Nota de cierre (obligatoria con «Otro»)" : "Nota de cierre"}
             <Textarea id={inputId("outcome-reason")} value={form.outcome_reason} onChange={(event) => set("outcome_reason", event.target.value)} placeholder="Contexto del resultado o ausencia de importe" />
           </label>
         </CardContent>

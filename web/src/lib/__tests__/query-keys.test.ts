@@ -33,6 +33,7 @@ import {
   competitiveKeys,
   documentosKeys,
   empresasKeys,
+  etiquetaKeys,
   eventosKeys,
   feedbackKeys,
   fichaKeys,
@@ -214,6 +215,19 @@ const FABRICAS: readonly Fabrica[] = [
       { nombre: "pursuitKeys.agenda", clave: pursuitKeys.agenda },
       { nombre: "pursuitKeys.direccion", clave: pursuitKeys.direccion(21) },
       { nombre: "pursuitKeys.actividad", clave: pursuitKeys.actividad(21, null) },
+      { nombre: "pursuitKeys.kit", clave: pursuitKeys.kit(7, 21) },
+      { nombre: "pursuitKeys.cartera", clave: pursuitKeys.cartera(21) },
+    ],
+  },
+  {
+    nombre: "etiquetaKeys",
+    raiz: etiquetaKeys.all,
+    miembros: [
+      { nombre: "etiquetaKeys.lista", clave: etiquetaKeys.lista(21) },
+      {
+        nombre: "etiquetaKeys.porObjeto",
+        clave: etiquetaKeys.porObjeto(21, "oportunidad", ["7"]),
+      },
     ],
   },
   {
@@ -227,6 +241,7 @@ const FABRICAS: readonly Fabrica[] = [
     miembros: [
       { nombre: "organizationKeys.members", clave: organizationKeys.members(1) },
       { nombre: "organizationKeys.settings", clave: organizationKeys.settings(1) },
+      { nombre: "organizationKeys.plantillaTareas", clave: organizationKeys.plantillaTareas(1) },
     ],
   },
   {

@@ -68,6 +68,7 @@ from services.pursuits import (
     PursuitTransitionError,
     PursuitValidationError,
     apply_weights_proposal,
+    asignar_kit_de_pursuit,
     create_pursuit,
     ficha_pdf,
     get_agenda,
@@ -1250,6 +1251,15 @@ class KitItemBody(BaseModel):
     listo: bool
 
 
+class KitResponsableBody(BaseModel):
+    """Responsable de un documento del kit. Se guarda como tarea (C6.1)."""
+
+    clave: str = Field(min_length=1, max_length=120)
+    responsable_user_id: int = Field(ge=1)
+    #: `YYYY-MM-DD`, o ausente para no fijar (ni tocar) el plazo.
+    vence: str | None = Field(default=None, max_length=10)
+
+
 @router.get(
     "/pursuits/{pursuit_id}/kit",
     summary="Kit de presentación: documentos que exige el pliego y cuáles están listos",
@@ -1305,6 +1315,49 @@ async def post_pursuit_kit_item(
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except PursuitNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.post(
+    "/pursuits/{pursuit_id}/kit/responsable",
+    status_code=status.HTTP_200_OK,
+    summary="Asignar un documento del kit a una persona (crea o reasigna su tarea)",
+    responses={
+        403: {
+            "description": (
+                "La oportunidad es de otra organización, tu rol es de lectura "
+                "o el responsable no es miembro activo"
+            )
+        },
+        422: {"description": "El documento no está en el kit de esta oportunidad"},
+    },
+)
+async def post_pursuit_kit_responsable(
+    pursuit_id: int,
+    body: KitResponsableBody,
+    organization_id: int | None = Query(default=None, ge=1),
+    ctx: dict[str, Any] = Depends(require_any_auth),
+) -> KitPresentacion:
+    """F2.3 + C6.1 — el responsable de un documento es el de su tarea.
+
+    Devuelve el kit entero por lo mismo que el marcado: la respuesta trae
+    también lo que otros han asignado desde que el cliente lo cargó.
+    """
+    try:
+        return await run_db(
+            asignar_kit_de_pursuit,
+            int(ctx["user_id"]),
+            pursuit_id,
+            clave=body.clave,
+            responsable_user_id=body.responsable_user_id,
+            vence=body.vence,
+            organization_id=organization_id,
+        )
+    except (OrganizationAccessError, OrganizationPermissionError) as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except PursuitNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except (PursuitValidationError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @router.patch("/pursuits/{pursuit_id}", response_model=PursuitDetail)

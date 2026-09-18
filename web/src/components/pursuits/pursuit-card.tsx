@@ -3,6 +3,8 @@ import { ArrowRight, CalendarClock, UserRound } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { PursuitCommentsButton } from "@/components/pursuits/pursuit-comments";
 import { PursuitDecisionBadge, PursuitLoteBadge, PursuitStatusBadge, daysUntil, formatDate, loteEtiqueta } from "@/components/pursuits/pursuit-presenters";
+import { EtiquetaChips } from "@/components/etiquetas/etiquetas-objeto";
+import type { EtiquetaAplicada } from "@/hooks/use-etiquetas";
 import type { Pursuit } from "@/hooks/use-pursuits";
 
 /**
@@ -14,9 +16,12 @@ import type { Pursuit } from "@/hooks/use-pursuits";
 export function PursuitCard({
   pursuit,
   enExpediente = false,
+  etiquetas,
 }: {
   pursuit: Pursuit;
   enExpediente?: boolean;
+  /** F1.6 — etiquetas de la organización sobre esta oportunidad, si las hay. */
+  etiquetas?: readonly EtiquetaAplicada[];
 }) {
   const deadline = daysUntil(pursuit.tender_deadline);
   const lote = loteEtiqueta(pursuit);
@@ -39,6 +44,7 @@ export function PursuitCard({
                 </div>
               ) : null}
               <p className="mt-1 truncate text-xs text-muted-foreground">Referencia {pursuit.licitacion_id}</p>
+              <EtiquetaChips etiquetas={etiquetas} className="mt-1.5" />
             </div>
             <PursuitStatusBadge status={pursuit.status} />
           </div>
