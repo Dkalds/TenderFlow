@@ -1,7 +1,7 @@
 """v136: ``licitacion_tecnologia_score`` es la única verdad del resumen ML (T3).
 
 Revision ID: v136_tecnologia_verdad_unica
-Revises: v132_informes_programados
+Revises: v134_nucleo_tipado_indices
 Create Date: 2026-09-18
 
 Qué había
@@ -114,7 +114,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "v136_tecnologia_verdad_unica"
-down_revision: str | Sequence[str] | None = "v132_informes_programados"
+down_revision: str | Sequence[str] | None = "v134_nucleo_tipado_indices"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
