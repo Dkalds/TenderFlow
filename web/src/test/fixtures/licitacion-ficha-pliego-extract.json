@@ -1,0 +1,29 @@
+{
+  "licitacion_id": "LIC-2026-0001",
+  "status": "extracted",
+  "extraction_version": "v1",
+  "model": null,
+  "extracted_at": "2026-09-10T08:00:00Z",
+  "updated_at": "2026-09-10T08:00:00Z",
+  "error_detail": null,
+  "field_count": 1,
+  "evidence_count": 1,
+  "facts": {
+    "award_criteria": [
+      {
+        "name": "Oferta económica",
+        "description": "Criterio de precio evaluable mediante fórmula",
+        "criterion_type": "price",
+        "weight_pct": 60,
+        "confidence": 0.9,
+        "evidence": [
+          {
+            "documento_id": 12,
+            "page_number": 14,
+            "quote": "Oferta económica: hasta 60 puntos"
+          }
+        ]
+      }
+    ]
+  }
+}

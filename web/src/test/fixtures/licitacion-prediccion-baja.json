@@ -1,0 +1,15 @@
+{
+  "licitacion_id": "LIC-2026-0001",
+  "p10": 0.05,
+  "p50": 0.12,
+  "p90": 0.21,
+  "serving": "global",
+  "model_version": "1",
+  "computed_at": "2026-09-10T08:00:00Z",
+  "prediccion_ambito": null,
+  "baja_real": null,
+  "importe_adjudicado": null,
+  "lote_id": null,
+  "lote_numero": null,
+  "lotes": null
+}

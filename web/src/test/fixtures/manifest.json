@@ -252,6 +252,104 @@
       "path": "/api/v1/organizations/{organization_id}/report-schedule",
       "kind": "response",
       "status": "200"
+    },
+    {
+      "fixture": "etiquetas-list.json",
+      "method": "GET",
+      "path": "/api/v1/etiquetas",
+      "kind": "response",
+      "status": "200"
+    },
+    {
+      "fixture": "etiquetas-aplicar.json",
+      "method": "POST",
+      "path": "/api/v1/etiquetas/aplicar",
+      "kind": "response",
+      "status": "200"
+    },
+    {
+      "fixture": "etiquetas-por-objeto.json",
+      "method": "POST",
+      "path": "/api/v1/etiquetas/por-objeto",
+      "kind": "response",
+      "status": "200"
+    },
+    {
+      "fixture": "etiquetas-quitar.json",
+      "method": "POST",
+      "path": "/api/v1/etiquetas/quitar",
+      "kind": "response",
+      "status": "200"
+    },
+    {
+      "fixture": "licitaciones-comparar.json",
+      "method": "POST",
+      "path": "/api/v1/licitaciones/comparar",
+      "kind": "response",
+      "status": "200"
+    },
+    {
+      "fixture": "licitacion-ficha-pliego-extract.json",
+      "method": "POST",
+      "path": "/api/v1/licitaciones/{id_externo}/ficha-pliego/extract",
+      "kind": "response",
+      "status": "200"
+    },
+    {
+      "fixture": "licitacion-ficha-pliego-extract-async.json",
+      "method": "POST",
+      "path": "/api/v1/licitaciones/{id_externo}/ficha-pliego/extract-async",
+      "kind": "response",
+      "status": "202"
+    },
+    {
+      "fixture": "licitacion-guion.json",
+      "method": "POST",
+      "path": "/api/v1/licitaciones/{id_externo}/guion",
+      "kind": "response",
+      "status": "200"
+    },
+    {
+      "fixture": "licitacion-prediccion-baja.json",
+      "method": "GET",
+      "path": "/api/v1/licitaciones/{licitacion_id}/prediccion-baja",
+      "kind": "response",
+      "status": "200"
+    },
+    {
+      "fixture": "licitacion-reporte.json",
+      "method": "POST",
+      "path": "/api/v1/licitaciones/{id_externo}/reportes",
+      "kind": "response",
+      "status": "201"
+    },
+    {
+      "fixture": "organization-member-update.json",
+      "method": "PUT",
+      "path": "/api/v1/organizations/{organization_id}/members/{member_user_id}",
+      "kind": "response",
+      "status": "200"
+    },
+    {
+      "fixture": "organization-plantilla-tareas.json",
+      "method": "GET",
+      "path": "/api/v1/organizations/{organization_id}/plantilla-tareas",
+      "kind": "response",
+      "status": "200"
+    },
+    {
+      "fixture": "pursuits-cartera.json",
+      "method": "GET",
+      "path": "/api/v1/pursuits/cartera",
+      "kind": "response",
+      "status": "200"
+    },
+    {
+      "fixture": "search-global.json",
+      "method": "GET",
+      "path": "/api/v1/search/global",
+      "kind": "response",
+      "status": "200"
     }
   ]
 }

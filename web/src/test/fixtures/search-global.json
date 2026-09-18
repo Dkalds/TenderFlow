@@ -1,0 +1,30 @@
+{
+  "q": "mantenimiento sap",
+  "tipos_buscados": [
+    "expediente",
+    "empresa",
+    "organo",
+    "oportunidad"
+  ],
+  "sin_busqueda": null,
+  "por_tipo": {
+    "expediente": 1,
+    "organo": 1
+  },
+  "resultados": [
+    {
+      "tipo": "expediente",
+      "id": "LIC-2026-0001",
+      "titulo": "Mantenimiento de sistemas de prueba",
+      "subtitulo": "Ministerio de Prueba",
+      "exacto": false
+    },
+    {
+      "tipo": "organo",
+      "id": "Ministerio de Prueba",
+      "titulo": "Ministerio de Prueba",
+      "subtitulo": null,
+      "exacto": false
+    }
+  ]
+}
