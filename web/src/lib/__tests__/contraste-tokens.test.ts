@@ -270,6 +270,24 @@ describe("tema claro: texto sobre su propio tinte", () => {
   });
 });
 
+/**
+ * El gris secundario sobre la pila más densa que axe encontró en la UI: el
+ * badge neutro de `StatusBadge` (`bg-muted-foreground/10 text-muted-foreground`)
+ * dentro de la fila activa de una tabla (`bg-primary/9`), sobre el fondo de
+ * página. Con `--muted-foreground` al 40 % daba 4,04:1 en /detalle.
+ */
+describe("tema claro: gris secundario sobre el badge neutro de una fila activa", () => {
+  it("--muted-foreground pasa 4,5:1 sobre muted/10 encima de primary/9", () => {
+    const tinta = color("claro", "muted-foreground");
+    const fila = mezcla(color("claro", "primary"), color("claro", "background"), 0.09);
+    const superficie = mezcla(tinta, fila, 0.1);
+    const medido = ratioContraste(tinta, superficie);
+    expect(medido, `--muted-foreground da ${medido.toFixed(2)}:1 sobre el badge neutro`).toBeGreaterThanOrEqual(
+      AA_TEXTO,
+    );
+  });
+});
+
 describe("deudas de contraste conocidas", () => {
   it.each(DEUDAS)("%s/--%s sobre --%s no empeora de %s:1", (tema, token, superficie, suelo) => {
     const medido = ratio(tema, token, superficie);

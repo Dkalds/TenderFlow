@@ -32,6 +32,14 @@ describe("AmbitoIntro", () => {
     expect(franja()).toBeNull();
   });
 
+  it("no ocupa la primera pantalla en móvil: oculta por debajo de md", () => {
+    // jsdom no evalúa media queries, así que se fija la clase. A 375 px la
+    // franja eran ~200 px que empujaban las acciones de la primera ficha del
+    // Radar fuera del viewport (`e2e/responsive.spec.ts`).
+    render(<AmbitoIntro />);
+    expect(franja()).toHaveClass("hidden", "md:flex");
+  });
+
   it("sobrevive a un localStorage roto sin romper la barra", () => {
     // Clave con JSON inválido: `getJSON` cae al valor por defecto y la franja
     // se muestra en vez de lanzar.

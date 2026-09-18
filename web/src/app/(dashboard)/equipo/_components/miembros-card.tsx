@@ -65,7 +65,10 @@ function MemberRow({
       <TableCell>
         {canManage && !isOwner ? (
           <Select value={member.role} onValueChange={(value) => void changeRole(value as RolAsignable)}>
-            <SelectTrigger className="h-8 w-36 text-xs">
+            <SelectTrigger
+              className="h-8 w-36 text-xs"
+              aria-label={`Rol de ${member.display_name ?? member.email ?? `Usuario ${member.user_id}`}`}
+            >
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -124,7 +127,11 @@ export function MiembrosCard({
           value={activeOrganizationId ? String(activeOrganizationId) : ""}
           onValueChange={(value) => onSelectOrganization(value ? Number(value) : null)}
         >
-          <SelectTrigger className="w-56">
+          {/* Un combobox se nombra por lo que elige, no por lo que tiene
+              elegido: sin `aria-label` su nombre era el valor, y con una
+              organización activa que aún no está en la lista (la carga llega
+              después), ni eso — axe `button-name`, crítico. */}
+          <SelectTrigger className="w-56" aria-label="Organización activa">
             <SelectValue placeholder="Selecciona una organización" />
           </SelectTrigger>
           <SelectContent>

@@ -41,6 +41,8 @@ export function useWebhooksDeEquipo(organizationId: number | null) {
           ? "/api/v1/webhooks"
           : `/api/v1/webhooks?organization_id=${organizationId}`,
       ),
+    // Mismo motivo que la global: el error ya lo dice `Listado` en su sitio.
+    meta: { silent: true },
   });
 }
 
@@ -49,5 +51,9 @@ export function useWebhooksGlobales() {
   return useQuery({
     queryKey: [...webhookKeys.all, "global"] as const,
     queryFn: () => fetchWithAuth<WebhookAmpliado[]>("/api/v1/webhooks/global"),
+    // `Listado` ya pinta el fallo en su sitio (`role="alert"`). El toast global
+    // lo duplicaba, y para quien no es administrador —el 403 esperado de esta
+    // ruta— era un error rojo por visitar una vista que solo puede leer.
+    meta: { silent: true },
   });
 }

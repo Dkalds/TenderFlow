@@ -56,6 +56,26 @@ async function expectBasicAccessibility(page: Page): Promise<void> {
     );
   expect(unnamedControls).toEqual([]);
 
+  // axe mide el color **computado en ese instante**, opacidad incluida. La
+  // entrada del hero de la portada (`ENTRADA_HERO`: fade de 500 ms escalonado
+  // 60 ms por hijo) y la de los toasts de Sonner seguían a media opacidad
+  // cuando corría el análisis, y axe daba por bajo contraste un texto que en
+  // reposo pasa de sobra (más de 6:1 todos). Qué nodos caían cambiaba de un
+  // reintento a otro —la firma de medir una transición—. Se espera a que
+  // acaben las animaciones **finitas**; las infinitas (`animate-ping`,
+  // `tf-shimmer`, spinners) no terminan nunca y se ignoran, y un techo de 3 s
+  // impide que una animación en pausa cuelgue el test.
+  await page.evaluate(async () => {
+    const finitas = document.getAnimations().filter((animacion) => {
+      const fin = animacion.effect?.getComputedTiming().endTime;
+      return typeof fin === "number" && Number.isFinite(fin);
+    });
+    await Promise.race([
+      Promise.all(finitas.map((animacion) => animacion.finished.catch(() => undefined))),
+      new Promise((resolve) => setTimeout(resolve, 3_000)),
+    ]);
+  });
+
   const result = await new AxeBuilder({ page })
     .withTags(["wcag2a", "wcag2aa", "wcag21aa", "wcag22aa"])
     // Sin `disableRules`: WCAG 2.2 AA entero bloquea.

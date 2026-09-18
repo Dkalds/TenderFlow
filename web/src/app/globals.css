@@ -49,7 +49,13 @@
     --secondary: 42 14% 91%;
     --secondary-foreground: 204 30% 12%;
     --muted: 42 14% 91%;
-    --muted-foreground: 200 10% 40%;
+    /* 40% -> 34% (2026-09-19, axe `color-contrast` en /detalle). El gris
+     * secundario va sobre superficies que no son la página: el badge neutro
+     * (`bg-muted-foreground/10`) dentro de la fila activa (`bg-primary/9`)
+     * daba 4,04:1. A 34 % esa misma pila da 5,05:1 y la página limpia 6,59:1,
+     * lejos aún de los ~16:1 del `--foreground`: la jerarquía primario /
+     * secundario se conserva. Lo fija `contraste-tokens.test.ts`. */
+    --muted-foreground: 200 10% 34%;
     --accent: 26 70% 92%;
     --accent-foreground: 22 75% 28%;
     --destructive: 355 75% 42%;
@@ -856,4 +862,25 @@ body {
     0 0 3px hsl(200 32% 5%),
     0 0 6px hsl(200 32% 5%),
     0 1px 2px rgb(0 0 0 / 0.4);
+}
+
+/*
+ * Sonner con `richColors` en tema claro (2026-09-19, axe `color-contrast` en
+ * /ops?vista=webhooks). La paleta de la librería pinta el texto de cada tipo
+ * sobre su propio fondo pastel a 3,1-4,4:1 —el aviso de error de una consulta
+ * fallida, justo el que hay que poder leer, daba 4,36—. Se oscurece solo el
+ * texto; fondos y bordes siguen siendo los de Sonner. Ratios (antes -> ahora):
+ *
+ *   success  4,29 -> 5,96    info     4,35 -> 5,71
+ *   warning  3,07 -> 6,10    error    4,36 -> 5,76
+ *
+ * El tema oscuro de Sonner ya pasa (6,6-12,3:1) y no se toca. El `html`
+ * delante sube la especificidad por encima de la hoja que Sonner inyecta en
+ * tiempo de ejecución, que llega después de esta y ganaría el empate.
+ */
+html [data-sonner-toaster][data-sonner-theme="light"] {
+  --success-text: hsl(140, 100%, 22%);
+  --info-text: hsl(210, 92%, 38%);
+  --warning-text: hsl(31, 92%, 30%);
+  --error-text: hsl(360, 100%, 38%);
 }

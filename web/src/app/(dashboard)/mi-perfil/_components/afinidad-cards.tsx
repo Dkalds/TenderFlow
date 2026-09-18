@@ -40,7 +40,10 @@ export function KeywordsAfinidadCard({
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="flex gap-2">
+          {/* El placeholder no es un nombre: desaparece al escribir y axe no
+              lo cuenta. El título de la tarjeta no está asociado al campo. */}
           <Input
+            aria-label="Nueva keyword de afinidad"
             placeholder="p.ej. consultoría, mantenimiento, SAP…"
             value={kwInput}
             onChange={(e) => onKwInputChange(e.target.value)}
@@ -110,6 +113,7 @@ export function CpvsInteresCard({
         <div className="flex gap-2">
           <Input
             id="mp-cpvs"
+            aria-label="Nuevo código CPV de interés"
             placeholder="p.ej. 72000000, 4823…"
             value={cpvInput}
             inputMode="numeric"

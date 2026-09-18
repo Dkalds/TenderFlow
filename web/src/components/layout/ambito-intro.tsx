@@ -36,10 +36,17 @@ export function AmbitoIntro() {
   if (vista) return null;
 
   return (
+    // Solo desde `md`. A 375 px el párrafo ocupa nueve líneas (~200 px) encima
+    // de cada pantalla, y las del dashboard miden `100vh - 52px` contando solo
+    // con la barra: en el Radar empujaba «Abrir» y «Descartar» de la primera
+    // ficha por debajo del pliegue (E2E `responsive.spec.ts`). Móvil es
+    // consulta y triaje (decisión 2026-09-01, `docs/UX_AUDIT.md`): la primera
+    // pantalla es para la señal, no para aprender a configurar el filtro, y
+    // quien lo configura lo hace en escritorio, donde la franja sí aparece.
     <aside
       aria-label="Qué es el ámbito"
       data-slot="ambito-intro"
-      className="animate-in fade-in-0 border-border/60 bg-card/70 flex flex-none items-start gap-2.5 border-b px-3.5 py-2.5 text-xs"
+      className="animate-in fade-in-0 border-border/60 bg-card/70 hidden flex-none items-start gap-2.5 border-b px-3.5 py-2.5 text-xs md:flex"
     >
       <Info className="text-primary mt-0.5 h-3.5 w-3.5 flex-none" aria-hidden="true" />
       <div className="min-w-0 flex-1 space-y-1 leading-relaxed">

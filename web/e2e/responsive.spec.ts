@@ -184,8 +184,15 @@ test.describe("Móvil (375×812)", () => {
     // Las fichas móviles de la agenda existen (`agenda-fila.tsx`, `md:contents`)
     // y el desborde que quedaba era el mismo de la barra de ámbito que el test
     // de la watchlist. `fixme` retirado el 2026-09-18.
+    //
+    // El texto se ancla al recuento («N compromisos») o al vacío. Un
+    // `/compromisos/` suelto resolvía primero a la descripción del espacio
+    // («Tus compromisos, ordenados…»), que es `hidden xl:inline` en la
+    // cabecera: el test esperaba 20 s a que se viera algo que a 375 px está
+    // oculto a propósito, con la agenda ya pintada debajo.
     await page.goto("/mi-pipeline");
-    await expect(page.getByText(/compromisos|Tu agenda está vacía/).first()).toBeVisible({
+    await expect(page.locator('[data-slot="agenda-filas"]')).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByText(/^[\d.]+ compromisos$|Tu agenda está vacía/).first()).toBeVisible({
       timeout: 20_000,
     });
 
