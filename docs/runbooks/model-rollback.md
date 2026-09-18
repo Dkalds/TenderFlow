@@ -46,6 +46,10 @@ criterio escrito es este, y no la intuición de quien mire el número:
 
   El baseline de retención es el **ranking trivial**: el PR-AUC esperado de
   ordenar al azar es la prevalencia, y se registra como `pr_auc_baseline`.
+  Desde 2026-09-18 se registra además `pr_auc_baseline_antiguedad` (ordenar
+  por `antiguedad_relacion_meses`, sin modelo): es un rival más exigente y
+  **no gatea** — está para que quien active vea si el modelo aporta algo sobre
+  un `ORDER BY`.
 
 Cada versión guarda el veredicto y su número en `notes` y en `metrics_json`
 (`promotion_reason`, `mejora_sobre_baseline`, `dispersion_entre_folds`,

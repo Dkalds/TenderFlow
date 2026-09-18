@@ -148,10 +148,11 @@ def test_evaluar_detecta_fuente_sin_plazo() -> None:
             "por_fuente": [
                 {
                     # C4.5: el umbral es POR FUENTE y sale del valor medido.
-                    # `ted` está calibrado en 65,6 % (límite 72,16), así que 80
-                    # es una regresión de verdad. `placsp` está en 93,1 % con
-                    # tope 100 y ya no puede superarse: usar aquella fuente
-                    # convertiría este test en uno que no puede fallar.
+                    # `ted` está calibrado en 65,9 % (límite 72,49), así que 80
+                    # es una regresión de verdad. Las fuentes calibradas cerca
+                    # de 100 (`pscp`) tienen el límite topado y no pueden
+                    # superarse: usarlas convertiría este test en uno que no
+                    # puede fallar.
                     "fuente": "ted",
                     "total": MIN_LICITACIONES_PARA_EVALUAR + 1,
                     "sin_fecha_limite": MIN_LICITACIONES_PARA_EVALUAR,

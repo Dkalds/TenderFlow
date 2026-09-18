@@ -296,13 +296,12 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 - **Riesgo:** alto — migra schema de la tabla núcleo con lock exclusivo sobre 1,3 M filas; la mitigación aplicada (tolerancia) es de riesgo bajo y ya cubre el síntoma.
 - **Progreso (2026-09-18, PARCIAL, rama `worktree-agent-ae7fea40cc310a705`):** unificado con T2 del plan de arquitectura v2. El plan de columna sombra está escrito con el nombre que fijó el plan, **`importe_num numeric(14,2)`** (no `importe_f8`: céntimos exactos en vez de otro float), más `duracion_valor_num numeric` (`v133_nucleo_tipado_sombra`, sólo catálogo, sin reescritura), escritura dual en `db/upsert.py` que traduce el `float` del conector **antes** de que pase por `real`, backfill por lotes (`scripts/backfill_nucleo_tipado.py`) y runbook de la ventana ([runbooks/nucleo-tipado-ventana.md](runbooks/nucleo-tipado-ventana.md)). `FLOAT_REL_TOL` **no se ha tocado**. Pendiente, todo en producción: aplicar la ventana, verificar cero divergencias, mover las lecturas de `importe` a la sombra, y sólo entonces bajar la tolerancia y limpiar `licitaciones_history`/`contrato_eventos`. El test de round-trip exacto contra Postgres (`tests/test_nucleo_tipado_pg.py`) está escrito y **no se ha ejecutado**.
 
-### [P2] Calibrar los umbrales de la auditoría de verdad del dato
-- **Área:** scripts/audit_domain_truth.py
-- **Problema:** `MAX_PCT_SIN_FECHA_LIMITE = 60`, `MAX_PCT_FILAS_UTE = 8` y `MAX_DELTA_BAJA_PUNTOS = 5` se eligieron holgados para que el primer mes detecte empeoramientos bruscos sin ahogar en ruido. No son la calidad real medida.
-- **Acceptance criteria:**
-  - Tras una semana de ejecuciones de `.github/workflows/domain-truth.yml`, comparar los `domain-truth.json` archivados y bajar cada umbral al valor medido con margen, dejando el histórico en el docstring (patrón de `tests/eval/test_eval_rag.py`).
-- **Files de partida:** [scripts/audit_domain_truth.py](../scripts/audit_domain_truth.py)
-- **Riesgo:** bajo — solo umbrales.
+### [P2] Filas nuevas con importe y sin `importe_tipo`: la auditoría lo viola a diario y crece
+- **Área:** scraper/connectors/, db/upsert.py, scripts/audit_domain_truth.py
+- **Problema:** el umbral `importe/filas_nuevas_sin_tipo` (cero, sin margen, desde `v113`) se supera en las siete ejecuciones archivadas de `domain-truth.yml` del 12 al 18/09, y la cuenta **crece cada día**: 131, 131, 152, 190, 238, 279, 316 filas con importe desde el 2026-09-06 y sin base declarada. Algún camino de escritura no puebla `importe_tipo`; el correo de alerta lleva una semana diciendo lo mismo. (En la misma serie, `ml_proba` > 0,7 está en el 72,9 % de lo puntuado frente al 50 % del criterio: eso es el P2 del corpus de PSCP, ya abierto.)
+- **Acceptance criteria:** identificado el camino (por `fuente` de esas filas) y corregido en origen; la cuenta deja de crecer en `domain-truth.json`. El umbral no se relaja.
+- **Files de partida:** [db/domain_truth_audit.py](../db/domain_truth_audit.py) (`importe_sin_base_declarada`), [scripts/audit_domain_truth.py](../scripts/audit_domain_truth.py)
+- **Riesgo:** bajo — corrección de ingesta; la serie está en el docstring del script.
 
 ### [P2] Modelo de baja por lote
 - **Área:** services/ml, db/alembic, api/routes/predicciones.py, web/
@@ -415,6 +414,7 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
   - Decidido y ejecutado: activar o descartar, con el número que lo justifica anotado en `notes` de `model_versions`.
 - **Files de partida:** [db/model_registry.py](../db/model_registry.py), [services/ml/baja_model.py](../services/ml/baja_model.py), [services/ml/promotion.py](../services/ml/promotion.py) (el gate del SAP, como referencia), [.github/workflows/train-predictivos.yml](../.github/workflows/train-predictivos.yml)
 - **Riesgo:** medio — activar cambia lo que sirve `predicciones_baja` sin red que lo detecte.
+- **Progreso parcial (2026-09-18, rama worktree-agent-a3fd0bc81b8a949c2) — los dos primeros criterios ya estaban en código; queda solo la decisión humana.** Comprobado contra el código: el criterio escrito existe desde #274 (v2 S6.4) — `services.ml.promotion.evaluar_promocion_predictiva`: una versión solo es promocionable si su mejora sobre el baseline mide al menos `MIN_IMPROVEMENT_OVER_FOLD_DISPERSION` (1.0) veces la dispersión de la métrica entre folds, sin dispersión medida no se promociona, y los criterios del RFC entran como motivos extra. `baja_model.entrenar` y `retencion_model.entrenar` lo aplican y dejan el veredicto en `notes` (`promotion_reason`); retención registra `pr_auc_baseline` (prevalencia) y `pr_auc_std_folds` (bloques contiguos de validación). Tests en `tests/test_ml_promocion_predictiva.py`; el runbook `model-rollback.md` lo cita. Esta rama añade a retención el rival de antigüedad que pedía el criterio: `pr_auc_baseline_antiguedad` (ordenar por `antiguedad_relacion_meses`), **informativo, no gatea**. Aplicado a los números de arriba, baja v2 sale «indistinguible de ruido» (0.005 < 0.0129). **Falta (humano):** relanzar `train-predictivos.yml` para que retención tenga dispersión y rival registrados —v1 es anterior al gate—, y decidir activar o descartar con el `promotion_reason` delante.
 
 ### [P3] Las 47 adjudicaciones con fecha imposible siguen anclando filas de entrenamiento
 - **Área:** services/ml/features.py, db/repositories/ml_dataset.py, scraper/connectors/pscp.py
@@ -425,14 +425,7 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
   - Las 47 filas dejan de anclar filas de entrenamiento, verificado con la misma query que las midió.
 - **Files de partida:** [services/ml/features.py](../services/ml/features.py) (`_fecha_opt`), [db/repositories/ml_dataset.py](../db/repositories/ml_dataset.py) (`fecha_anchor`), [scraper/connectors/pscp.py](../scraper/connectors/pscp.py)
 - **Riesgo:** bajo — son 47 filas de ~691k adjudicaciones; el impacto es de calidad de dataset, no de disponibilidad.
-
-### [P3] Un solo transporte para bajar assets de la Release
-- **Área:** shared/model_artifacts.py, shared/release_assets.py
-- **Problema:** conviven dos implementaciones de "bajar un asset de la última Release". `shared/release_assets.py` (2026-09-03) va sobre HTTPS pinned con allowlist por salto; `shared/model_artifacts.py::_download_release_asset` usa `requests.get(browser_download_url)` a pelo, que sigue redirects sin validar el destino y sin DNS pinning. La segunda funciona —de hecho es la única que nunca se rompió— pero tiene controles más débiles que el resto de las salidas del repo, y dos implementaciones divergentes del mismo salto es cómo se cuelan las regresiones asimétricas.
-- **Por qué NO se hizo en el mismo cambio:** era el único camino de descarga que funcionaba; tocarlo mientras se arreglaba el otro habría dejado el sistema sin ninguno si el refactor fallaba.
-- **Acceptance criteria:** `_download_release_asset` delega en `shared.release_assets`, conservando la verificación contra el sha256 del registry; los tests de `shared/model_artifacts.py` siguen verdes.
-- **Files de partida:** [shared/model_artifacts.py](../shared/model_artifacts.py), [shared/release_assets.py](../shared/release_assets.py)
-- **Riesgo:** bajo — el fallback a baseline ya está cubierto y testeado.
+- **Progreso parcial (2026-09-18, rama worktree-agent-a3fd0bc81b8a949c2) — decidido: se corta en los dos extremos, y en ninguno con `_ANIO_MINIMO`.** El conector de PSCP ya descartaba en origen desde C4.4 las fechas anteriores a `shared.dates.ANIO_MINIMO_PLAUSIBLE` (1990; cubre `1899-12-30` y `1900-01-00`), pero no puede ver las filas ya escritas. Para esas, `db/repositories/ml_dataset.py` añade `fecha_adjudicacion >= '1990-01-01'` (como parámetro, `_filtro_fecha_adj`) en las dos CTE de `_sql_agregado` y de `_sql_por_lote` y en `adjudicaciones_por_empresa` (HHI): la fila se trata como adjudicación sin fecha —lo que es—, que ya quedaba fuera por el `IS NOT NULL`. `_ANIO_MINIMO = 1000` del parser no cambia de significado (lo fija un test). Efecto colateral buscado: las subconsultas de lotes dejan de contar adjudicaciones sin fecha que la CTE principal nunca vio. Tests: `tests/test_ml_dataset_fecha_plausible.py` (SQL y parámetros sin BD; uno contra Postgres **no ejecutado** en local) y el de año corto de `tests/test_ml_features.py` adaptado. **Falta:** verificar contra producción, con la query de `db.domain_truth_audit.adjudicaciones_con_fecha_imposible`, que ninguna de esas filas aparece en `pares_baja_agregada()` — sin acceso a la BD desde esta rama.
 
 ### [P2] [Ola 1 · S3] Oportunidad por lote, y saber si el Radar prioriza bien
 - **Área:** db/repositories/pursuits.py, services/pursuits.py, services/product_metrics.py, web/src/app/(dashboard)/oportunidades
@@ -467,7 +460,7 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 - **Acceptance criteria:** los de S8.1–S8.4 del plan v2, sin redefinirlos aquí. Los cuatro son independientes y se entregan por separado; S8.1 y S8.2 llevan migración y dependencias nuevas, ambas pre-autorizadas por D20.
 - **Estado:** lo dice el §5 del plan cuando el stream se cierra, no este ítem — ver la nota de cabecera. S8 se está entregando en esta misma ola.
 - **Files de partida:** [docs/plans/2026-09-plan-arquitectura-v2.md](plans/2026-09-plan-arquitectura-v2.md) (§5, S8), [scraper/document_fetcher.py](../scraper/document_fetcher.py)
-- **Relación:** S8.4 roza el P3 «Un solo transporte para bajar assets de la Release»: los dos tocan cómo se resuelve un artefacto de modelo, y conviene decidirlos juntos.
+- **Relación:** S8.4 roza el P3 «Un solo transporte para bajar assets de la Release» (cerrado el 2026-09-18): los dos tocan cómo se resuelve un artefacto de modelo, y conviene decidirlos juntos.
 - **Riesgo:** medio — el coste del OCR por página se mide en el primer run nocturno y lo acota el tope de páginas.
 
 ---
@@ -619,6 +612,7 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
   - Si supera el 50 %: los cuatro pasos que enumera `FEATURES_PENDIENTES_COBERTURA` en `services/ml/features.py`, incluido reentrenar y reportar el delta de `mae_p50` contra la versión previa. Si no lo supera, queda escrito el número que lo desaconseja.
 - **Files de partida:** [services/ml/features.py](../services/ml/features.py) (`FEATURES_PENDIENTES_COBERTURA`), [db/repositories/ml_dataset.py](../db/repositories/ml_dataset.py)
 - **Riesgo:** bajo — el guard de `feature_columns` de `BajaModel` degrada a baseline si se despliega el código sin reentrenar.
+- **Progreso parcial (2026-09-18, rama worktree-agent-a3fd0bc81b8a949c2) — la medición existe; el número no.** `ENV=dev python scripts/medir_cobertura_features.py` (o `--json` para archivarlo) imprime, contra la BD de `DATABASE_URL` y solo leyendo, la cobertura de los tres campos sobre dos poblaciones: `dataset_baja` (las filas exactas de entrenamiento, `_sql_agregado`) y `universo_abierto` (lo que puntúa el batch), cada una con total, por `fuente` y por año de publicación, y un veredicto contra el 50 % **solo sobre el total del dataset**. El SQL vive en `MlDatasetRepository.cobertura_features_pendientes`. Tests en `tests/test_medir_cobertura_features.py` (uno contra Postgres, no ejecutado en local). **Falta:** correrlo contra producción, anotar aquí el número con fecha y, según salga, seguir los cuatro pasos o dejar escrito el número que lo desaconseja.
 
 ---
 
@@ -699,6 +693,23 @@ cabecera de este fichero: los seis se comprobaron contra el código.
   **No verificado:** el build Docker real (el daemon no estaba levantado en la
   máquina que lo hizo; lo cubre el job de CI) y que Render pase
   `REQUIREMENTS_FILE` como build arg.
+- [2026-09-18, rama worktree-agent-a3fd0bc81b8a949c2] **P3: un solo transporte para bajar
+  assets de la Release** — `shared/model_artifacts.py::_download_release_asset` delega en
+  `shared.release_assets` (`fetch_latest_release` → `find_asset_id` → `download_asset`): HTTPS
+  pinned, allowlist por salto y sin reenviar el token al CDN. `requests` sale del módulo. La
+  verificación del sha256 contra `model_versions` no se tocó: sigue en `resolve_active_artifact`,
+  después de materializar, igual para bucket y Release. Tests nuevos en
+  `tests/test_model_artifacts.py` (delegación, asset ausente, Release inaccesible, y un guard AST
+  de que `requests` no vuelve).
+- [2026-09-18, rama worktree-agent-a3fd0bc81b8a949c2] **P2: calibrar los umbrales de la
+  auditoría de verdad del dato** — con los `domain-truth.json` de siete ejecuciones
+  programadas (12→18/09, descargados con `gh run download`, artefacto
+  `domain-truth-measurements`). `fecha_limite` por fuente ya se había calibrado en C4.5
+  (2026-09-06); ahora `placsp` baja a 81,9 % (su límite estaba topado en 100 y no podía
+  saltar), `ted` a 65,9 %, la UTE de 8 % a 0,02 % (medido las siete veces) y el delta de
+  baja de 5 a 1,12 puntos. Histórico por día en el docstring de
+  `scripts/audit_domain_truth.py`. De la serie sale un P2 nuevo: `importe_tipo` sin base
+  declarada viola su umbral a diario y crece.
 
 
 - [2026-09-01] **Revisión integral de la IA del detalle de licitación (10 mejoras en un

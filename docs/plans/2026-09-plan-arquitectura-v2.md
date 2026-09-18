@@ -934,6 +934,14 @@ que puntúa, con etiquetas que no sean su propia salida.
    *Aceptación:* la decisión de promoción tiene test; una versión que no supere
    el criterio queda registrada con `promotion_reason`; el runbook
    `model-rollback.md` cita el criterio.
+   **Hecho** (código ya en `master` con #274; comprobado el 2026-09-18):
+   `evaluar_promocion_predictiva` con `MIN_IMPROVEMENT_OVER_FOLD_DISPERSION`,
+   cableado en `baja_model.entrenar` y `retencion_model.entrenar`, que
+   registran `pr_auc_baseline`, `pr_auc_std_folds` y `promotion_reason` en
+   `notes`; tests en `tests/test_ml_promocion_predictiva.py`. El 2026-09-18
+   retención añade el rival informativo `pr_auc_baseline_antiguedad`. Lo que
+   **no** es código: reentrenar para que las versiones nuevas traigan esas
+   métricas y decidir la activación (backlog P2).
 5. **Predicción por lote.** `GET /licitaciones/{id}/prediccion-baja?lote_id=`
    sirve las filas por lote que `predicciones_baja` ya guarda (depende de
    S3.1). Esfuerzo S.

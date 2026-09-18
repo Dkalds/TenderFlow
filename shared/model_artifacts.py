@@ -39,15 +39,13 @@ import hashlib
 import os
 import tempfile
 from pathlib import Path
-from typing import Any
-
-import requests
 
 from observability.logging import get_logger
 
 log = get_logger(__name__)
 
-_RELEASES_URL = "https://api.github.com/repos/Dkalds/TenderFlow/releases/latest"
+# Repo cuya Release *latest* publica los artefactos (``train-predictivos.yml``).
+_RELEASE_REPO = "Dkalds/TenderFlow"
 _CHUNK = 1 << 20
 # Subcarpeta propia dentro del temp: los artefactos se nombran por el basename
 # del path registrado (``baja_model.pkl``), demasiado genérico para soltarlo en
@@ -112,41 +110,35 @@ def _sha256(path: Path) -> str:
 
 
 def _download_release_asset(asset_name: str, dest: Path) -> bool:
-    """Descarga ``asset_name`` de la última Release a ``dest``. True si lo logró."""
-    headers = {"Accept": "application/vnd.github+json"}
+    """Descarga ``asset_name`` de la última Release a ``dest``. True si lo logró.
+
+    El transporte es el de ``shared.release_assets`` —HTTPS con DNS pinning,
+    allowlist por salto y sin reenviar el ``Authorization`` al CDN—, el mismo
+    que usan los clasificadores de ``scraper/``. Hasta 2026-09-18 aquí convivía
+    un ``requests.get(browser_download_url)`` a pelo que seguía redirects sin
+    validar el destino: dos implementaciones del mismo salto con controles
+    distintos es como se cuelan las regresiones asimétricas.
+
+    La verificación del sha256 contra ``model_versions`` NO vive aquí: la hace
+    :func:`resolve_active_artifact` después de materializar, sea cual sea el
+    camino que haya funcionado. Nunca lanza: ``shared.release_assets`` ya
+    convierte cualquier fallo de red en ``None``/``False`` y borra el parcial.
+    """
+    from shared.release_assets import download_asset, fetch_latest_release, find_asset_id
+
     token = os.environ.get("GITHUB_TOKEN", "")
-    if token:
-        headers["Authorization"] = f"Bearer {token}"
-    try:
-        resp = requests.get(_RELEASES_URL, headers=headers, timeout=30)
-        resp.raise_for_status()
-        release: dict[str, Any] = resp.json()
-        asset = next(
-            (a for a in release.get("assets", []) if a.get("name") == asset_name),
-            None,
-        )
-        if asset is None:
-            log.warning("model_artifact_asset_not_in_release", asset=asset_name)
-            return False
-        url = str(asset["browser_download_url"])
-        if not url.startswith("https://"):
-            log.warning("model_artifact_download_url_no_https", asset=asset_name)
-            return False
-        dest.parent.mkdir(parents=True, exist_ok=True)
-        # `stream=True`: los artefactos de modelo pesan cientos de MB y el runner
-        # de Actions no tiene RAM para materializarlos antes de escribirlos.
-        with (
-            requests.get(url, headers=headers, timeout=120, stream=True) as asset_resp,
-            dest.open("wb") as out,
-        ):
-            asset_resp.raise_for_status()
-            for chunk in asset_resp.iter_content(chunk_size=_CHUNK):
-                out.write(chunk)
-        log.info("model_artifact_downloaded", asset=asset_name, dest=str(dest))
-        return True
-    except Exception as exc:
-        log.warning("model_artifact_download_failed", asset=asset_name, error=str(exc))
+    release = fetch_latest_release(_RELEASE_REPO, token=token)
+    if release is None:
         return False
+    asset_id = find_asset_id(release, asset_name)
+    if asset_id is None:
+        log.warning("model_artifact_asset_not_in_release", asset=asset_name)
+        return False
+    if not download_asset(_RELEASE_REPO, asset_id, dest, token=token):
+        log.warning("model_artifact_download_failed", asset=asset_name)
+        return False
+    log.info("model_artifact_downloaded", asset=asset_name, dest=str(dest))
+    return True
 
 
 def _download_bucket_asset(asset_name: str, dest: Path) -> bool:

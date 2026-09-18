@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<entry xmlns="http://www.w3.org/2005/Atom"
+       xmlns:cbc="urn:dgpe:names:draft:codice:schema:xsd:CommonBasicComponents-2"
+       xmlns:cac="urn:dgpe:names:draft:codice:schema:xsd:CommonAggregateComponents-2"
+       xmlns:cacext="urn:dgpe:names:draft:codice-place-ext:schema:xsd:CommonAggregateComponents-2"
+       xmlns:cbcext="urn:dgpe:names:draft:codice-place-ext:schema:xsd:CommonBasicComponents-2">
+  <id>https://contrataciondelestado.es/wps/poc?uri=deeplink:detalle_licitacion&amp;idEvl=2026-PIN-0015</id>
+  <title>Soporte y evolución de la plataforma SAP de nóminas</title>
+  <updated>2026-06-20T10:00:00+02:00</updated>
+  <link href="https://contrataciondelestado.es/wps/poc?uri=deeplink:detalle_licitacion&amp;idEvl=2026-PIN-0015" rel="alternate"/>
+  <summary type="text">Id licitación: 2026-PIN-0015; Órgano de Contratación: Diputación de Sevilla; Importe: 240000.00 EUR; Estado: PUB</summary>
+  <cacext:ContractFolderStatus>
+    <cbc:ContractFolderID>2026-PIN-0015</cbc:ContractFolderID>
+    <cbcext:ContractFolderStatusCode>PUB</cbcext:ContractFolderStatusCode>
+    <cacext:LocatedContractingParty>
+      <cac:Party>
+        <cac:PartyName><cbc:Name>Diputación de Sevilla</cbc:Name></cac:PartyName>
+      </cac:Party>
+    </cacext:LocatedContractingParty>
+    <!-- Anuncio de información previa publicado meses antes de la licitación
+         (spike T5): lo que distingue su bloque es solo el NoticeTypeCode. -->
+    <cacext:ValidNoticeInfo>
+      <cbcext:NoticeTypeCode listURI="https://contrataciondelestado.es/codice/cl/2.11/TenderingNoticeTypeCode-2.11.gc">DOC_PIN_RTL</cbcext:NoticeTypeCode>
+      <cacext:AdditionalPublicationStatus>
+        <cacext:AdditionalPublicationDocumentReference>
+          <cbc:IssueDate>2026-03-10</cbc:IssueDate>
+        </cacext:AdditionalPublicationDocumentReference>
+      </cacext:AdditionalPublicationStatus>
+    </cacext:ValidNoticeInfo>
+    <cacext:ValidNoticeInfo>
+      <cbcext:NoticeTypeCode listURI="https://contrataciondelestado.es/codice/cl/2.11/TenderingNoticeTypeCode-2.11.gc">DOC_CN</cbcext:NoticeTypeCode>
+      <cacext:AdditionalPublicationStatus>
+        <cacext:AdditionalPublicationDocumentReference>
+          <cbc:IssueDate>2026-06-01</cbc:IssueDate>
+        </cacext:AdditionalPublicationDocumentReference>
+      </cacext:AdditionalPublicationStatus>
+    </cacext:ValidNoticeInfo>
+    <cacext:ValidNoticeInfo>
+      <cbcext:NoticeTypeCode listURI="https://contrataciondelestado.es/codice/cl/2.11/TenderingNoticeTypeCode-2.11.gc">DOC_CD</cbcext:NoticeTypeCode>
+      <cacext:AdditionalPublicationStatus>
+        <cacext:AdditionalPublicationDocumentReference>
+          <cbc:IssueDate>2026-06-01</cbc:IssueDate>
+        </cacext:AdditionalPublicationDocumentReference>
+      </cacext:AdditionalPublicationStatus>
+    </cacext:ValidNoticeInfo>
+    <!-- Rectificación del anuncio de licitación: segundo DOC_CN, que no
+         debe aparecer dos veces en la columna. -->
+    <cacext:ValidNoticeInfo>
+      <cbcext:NoticeTypeCode listURI="https://contrataciondelestado.es/codice/cl/2.11/TenderingNoticeTypeCode-2.11.gc">DOC_CN</cbcext:NoticeTypeCode>
+      <cacext:AdditionalPublicationStatus>
+        <cacext:AdditionalPublicationDocumentReference>
+          <cbc:IssueDate>2026-06-15</cbc:IssueDate>
+        </cacext:AdditionalPublicationDocumentReference>
+      </cacext:AdditionalPublicationStatus>
+    </cacext:ValidNoticeInfo>
+    <cac:ProcurementProject>
+      <cbc:Name>Soporte y evolución de la plataforma SAP de nóminas</cbc:Name>
+      <cbc:TypeCode>2</cbc:TypeCode>
+      <cac:RequiredCommodityClassification>
+        <cbc:ItemClassificationCode>72267100-0</cbc:ItemClassificationCode>
+      </cac:RequiredCommodityClassification>
+      <cac:BudgetAmount>
+        <cbc:TaxExclusiveAmount currencyID="EUR">240000.00</cbc:TaxExclusiveAmount>
+      </cac:BudgetAmount>
+      <cac:RealizedLocation>
+        <cbc:CountrySubentity>Sevilla</cbc:CountrySubentity>
+        <cbc:CountrySubentityCode>ES618</cbc:CountrySubentityCode>
+      </cac:RealizedLocation>
+    </cac:ProcurementProject>
+  </cacext:ContractFolderStatus>
+</entry>

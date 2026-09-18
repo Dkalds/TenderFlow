@@ -237,6 +237,25 @@ def _issue_date(entry: Any, cfs: str) -> str | None:
     return min(normalized) if normalized else None
 
 
+def _tipos_anuncio(entry: Any, cfs: str) -> str | None:
+    """``NoticeTypeCode`` de cada ``ValidNoticeInfo``: CSV de códigos crudos.
+
+    Cada ``ValidNoticeInfo`` es un anuncio publicado (``DOC_CN`` licitación,
+    ``DOC_CD`` pliegos, ``DOC_PIN_RTL`` información previa…). El parser ya leía
+    su ``IssueDate`` (:func:`_issue_date`) y tiraba el código, así que no se
+    podía saber si un expediente tuvo anuncio previo (spike T5). Se guardan los
+    códigos **crudos**, distintos y ordenados: la lista oficial está versionada
+    (``TenderingNoticeTypeCode-2.11.gc``) y traducirla aquí congelaría una
+    copia. ``None`` si el expediente no publica ninguno.
+    """
+    codigos = entry.xpath(
+        f"{cfs}/cacext:ValidNoticeInfo/cbcext:NoticeTypeCode/text()",
+        namespaces=NS,
+    )
+    distintos = sorted({str(c).strip() for c in codigos if str(c).strip()})
+    return ",".join(distintos) if distintos else None
+
+
 #: Vocabulario de `licitaciones.importe_tipo` (ADR-032, D21).
 TIPO_SIN_IVA = "sin_iva"
 TIPO_CON_IVA = "con_iva"
@@ -670,6 +689,7 @@ def parse_entry(entry: Any) -> Licitacion | None:
         procedimiento=procedimiento,
         tramitacion=tramitacion,
         peso_precio_pct=peso_precio_pct,
+        tipos_anuncio=_tipos_anuncio(entry, cfs),
     )
 
     # Track NULL % for critical fields (silent data loss detection)
@@ -800,6 +820,7 @@ def parse_entry_unfiltered(entry: Any) -> Licitacion | None:
         procedimiento=procedimiento,
         tramitacion=tramitacion,
         peso_precio_pct=peso_precio_pct,
+        tipos_anuncio=_tipos_anuncio(entry, cfs),
     )
 
 
