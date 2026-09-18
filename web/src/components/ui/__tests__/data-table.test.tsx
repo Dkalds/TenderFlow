@@ -1,14 +1,13 @@
 import { describe, it, expect } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
-import type { ColumnDef } from "@tanstack/react-table";
-import { DataTable } from "@/components/ui/data-table";
+import { DataTable, type DataTableColumnDef } from "@/components/ui/data-table";
 
 interface Row {
   name: string;
   value: number;
 }
 
-const columns: ColumnDef<Row>[] = [
+const columns: DataTableColumnDef<Row>[] = [
   { accessorKey: "name", header: "Nombre" },
   { accessorKey: "value", header: "Valor" },
 ];

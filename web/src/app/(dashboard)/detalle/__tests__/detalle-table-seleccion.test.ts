@@ -3,7 +3,7 @@
  * que la tabla decide qué está marcado, qué página se pinta y qué se exporta.
  */
 import { describe, it, expect } from "vitest";
-import type { SortingState } from "@tanstack/react-table";
+import type { RowSelectionState, SortingState } from "@tanstack/react-table";
 import {
   buildCsv,
   isClientSorted,
@@ -53,7 +53,7 @@ describe("selección", () => {
   });
 
   it("no muta el estado recibido", () => {
-    const current = { A: true };
+    const current: RowSelectionState = { A: true };
     toggleRowSelection(current, "B");
     expect(current).toEqual({ A: true });
   });

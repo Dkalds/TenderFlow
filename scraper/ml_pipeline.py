@@ -10,6 +10,8 @@ Contiene:
 
 from __future__ import annotations
 
+import functools
+import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Literal, overload
 
@@ -1039,8 +1041,22 @@ def _build_multilabel_dataset(
     return texts, Y, positives
 
 
+@functools.lru_cache(maxsize=4096)
+def _keyword_pattern(keyword: str) -> re.Pattern[str]:
+    """Regex de una keyword con límites de palabra, memoizada por keyword.
+
+    Mismo criterio que ``services.tecnologias_diccionario.patrones``, que es lo
+    que ``matches_technology`` aplica en la ingesta: sin ``\\b``, «erp» casa
+    dentro de «interpretación», «gis» dentro de «registro» y «api» dentro de
+    «capital». Antes era un ``in`` sobre el texto en minúsculas, y con la
+    taxonomía por categorías (2026-09-14) el tier ``rules`` pasa a estar hecho
+    en buena parte de acrónimos cortos así.
+    """
+    return re.compile(r"\b" + re.escape(keyword.lower()) + r"\b", flags=re.IGNORECASE)
+
+
 def _keyword_fallback_score(text: str, keywords: list[str]) -> float:
-    """Fracción de keywords del label presentes en el texto (en minúsculas).
+    """Fracción de keywords del label presentes en el texto (palabra entera).
 
     Usado para tecnologías en tier "rules" (sin modelo entrenado por falta
     de positivos). Devuelve un valor en ``[0, 1]`` apto para usarse como
@@ -1048,6 +1064,5 @@ def _keyword_fallback_score(text: str, keywords: list[str]) -> float:
     """
     if not keywords:
         return 0.0
-    t = text.lower()
-    matches = sum(1 for kw in keywords if kw.lower() in t)
+    matches = sum(1 for kw in keywords if _keyword_pattern(kw).search(text))
     return matches / len(keywords)

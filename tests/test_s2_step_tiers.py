@@ -19,17 +19,27 @@ from scheduler.pipeline_runs import (
     step_tier,
 )
 
-# Los cinco pasos que informan sobre el sistema en vez de entregar algo de lo
-# que dependa una superficie. Su fallo notifica por email y se ve en el
-# resumen, pero no puede poner el job en rojo.
+# Los pasos que informan sobre el sistema, o entregan algo opcional, en vez de
+# producir lo que una superficie del producto necesita. Su fallo notifica por
+# email y se ve en el resumen, pero no puede poner el job en rojo.
 #
 # `webhook_reintentos` entró con C2.4 y es advisory por lo mismo: una entrega
 # que no se pudo reintentar sigue `pending` y la recoge la pasada siguiente, así
 # que un fallo aquí no rompe el contrato de la pasada — a diferencia de
 # `dlq_retry`, cuyo fallo deja el corpus incompleto.
 PASOS_ADVISORY = {
+    "organos_resolve",
+    # T6: el informe semanal lo activa cada organización por su cuenta y su
+    # ventana de envío dura un día entero, así que un ESP caído lo recupera la
+    # pasada siguiente. Tumbar la ingesta por un correo no enviado sería
+    # cambiar un problema pequeño por uno grande.
+    "informes_programados",
     "llm_models_canary",
     "anomaly_checks",
+    # Mide la paridad de `follows` (ADR-031 §B) y no repara nada: que esté rota
+    # no rompe la pasada ni lo nota ningún cliente. Lo que bloquea es la
+    # migración, y eso lo decide una persona leyendo la serie.
+    "follows_paridad",
     "drift_checks",
     "sap_active_learning",
     "webhook_reintentos",

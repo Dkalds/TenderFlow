@@ -74,6 +74,17 @@ class RegisteredSource:
     motivo: str
     alcance: str
     estado: EstadoCobertura = "activa"
+    #: Dominios desde los que esta fuente enlaza documentos (pliegos, anexos).
+    #: Es lo que alimenta ``DOCUMENT_ALLOWED_HOSTS`` (2026-09-14): hasta
+    #: entonces la allowlist era un literal de settings que solo nombraba
+    #: PLACSP, y ninguna otra fuente podía aportar un pliego aunque lo
+    #: enlazara. Vacío significa «esta fuente no emite referencias a
+    #: documentos», que hoy es el caso de todas menos PLACSP: TED publica la
+    #: página del comprador (BT-15), no el adjunto, y PSCP, Galicia, Euskadi y
+    #: TACRC aún no extraen enlaces. Cuando un conector empiece a emitir
+    #: ``DocumentoReferencia``, su dominio se declara aquí y el test de
+    #: paridad exige que la allowlist por defecto lo incluya.
+    dominios_documentos: tuple[str, ...] = ()
 
     @property
     def opcional(self) -> bool:
@@ -121,6 +132,7 @@ REGISTERED_SOURCES: tuple[RegisteredSource, ...] = (
             "tecnología enterprise. Se consulta cada cuatro horas con cursor "
             "incremental e historial de cambios por expediente."
         ),
+        dominios_documentos=("contrataciondelestado.es", "*.contrataciondelestado.es"),
     ),
     RegisteredSource(
         source_id="ted",
@@ -216,8 +228,31 @@ REGISTERED_SOURCES: tuple[RegisteredSource, ...] = (
             "el momento del alta. Sin empresas vigiladas no ingiere nada."
         ),
         estado="opcional",
+        dominios_documentos=("contrataciondelestado.es", "*.contrataciondelestado.es"),
     ),
 )
+
+
+def dominios_documentos_por_defecto() -> tuple[str, ...]:
+    """Allowlist de hosts de documentos que se deriva del inventario.
+
+    Une los ``dominios_documentos`` de toda fuente que no esté
+    ``fuera_de_alcance``, sin duplicados y en orden estable. Es la única
+    fuente de verdad de ``DOCUMENT_ALLOWED_HOSTS`` por defecto: ``config/``
+    no importa ``scraper/`` (rompería la capa), así que el literal de settings
+    se mantiene a mano y ``tests/test_cobertura_solape_integration.py`` exige
+    que ambos coincidan. Una fuente nueva que enlace pliegos y no aparezca en
+    la allowlist falla ahí, no en producción con un ``Host no incluido``.
+    """
+    vistos: list[str] = []
+    for fuente in REGISTERED_SOURCES:
+        if fuente.estado == "fuera_de_alcance":
+            continue
+        for dominio in fuente.dominios_documentos:
+            if dominio not in vistos:
+                vistos.append(dominio)
+    return tuple(vistos)
+
 
 #: Índice por nombre canónico, que es como llegan las filas de
 #: ``source_ingestion_health``.

@@ -101,6 +101,41 @@ siguiente agente.
   Se anota aquí para que el backlog refleje el estado del código y no solo lo que alguien
   llegó a escribir como ítem.
 
+- [2026-09-14] **P2: cada re-ingesta nuleaba las cuatro columnas ML, y `tech_signal_merge`
+  lo curaba a ciegas cada 4 h** — `_LIC_UPDATES` generaba `k=excluded.k` para `ml_proba`,
+  `ml_tecnologias`, `ml_proba_max` y `ml_tech_principal`, así que cada pasada del ATOM (que
+  reenvía los mismos expedientes cada 4 h) las pisaba con el `None` con que un conector
+  construye la `Licitacion`, y `merge_doc_signals()` sin ids barría la tabla entera (72.235
+  filas en `licitacion_tecnologia_score`, medido 2026-09-03) en cada corrida para curarlo,
+  también en las pasadas que no ingirieron nada. El ítem pedía decidir si el clobber se cortaba
+  en origen o se seguía sanando aguas abajo: **se corta en origen**. Las cuatro columnas entran
+  en `_LIC_COALESCE_UPDATE_FIELDS` (`db/upsert.py`), con el motivo escrito al lado: un conector
+  nunca las calcula, así que su `None` es «sin opinión» y no «borrar»; los pasos que sí las
+  poseen (`guardar_ml_proba`, `precompute_ml_tecnologias`, el merge de
+  `db/repositories/tecnologia_pliego.py`) escriben por UPDATE explícito y siguen pisando, y
+  quien necesita vaciar un score viejo (`limpiar_ml_proba_fuera_de_poblacion`) tiene su propio
+  UPDATE. La objeción de 2026-09-03 («impediría que un re-scoring legítimo limpie un valor
+  viejo») queda respondida ahí: ningún re-scoring limpia a través del upsert de ingesta. Los
+  dos caminos (`upsert_licitaciones` y `upsert_licitaciones_with_history`) comparten
+  `_LIC_UPDATES`, y el historial no cambia: las columnas ML no están en
+  `HISTORY_TRACKED_FIELDS`. Aguas abajo, el merge deja de sanar a ciegas:
+  `TecnologiaPliegoRepository.list_signals_for_merge` sin ids selecciona solo las licitaciones
+  con alguna señal sin `merged_at` o cuyo resumen ML está a NULL o no contiene la tecnología
+  detectada (lo que deja un `precompute_ml_tecnologias(force=True)` o una limpieza manual), con
+  todas sus filas y en un solo viaje; el camino con ids explícitos no cambia.
+  `merge_doc_signals` devuelve además `licitaciones_candidatas` y `licitaciones_reparadas`
+  (señal ya toda estampada que hubo que volver a aplicar), que `_run_tech_signal_merge` loguea
+  en `pipeline_tech_signal_merge_completed`: «cero reparaciones en siete días» se mide contando
+  ese campo. El tercer criterio del ítem (pasar al merge los ids que la pasada tocó y bajar el
+  barrido a cadencia diaria) no aplica: con el clobber cortado en origen y el predicado acotado,
+  la pasada sin ids es proporcional a lo que cambió, y su docstring ya no cita solo a
+  `precompute_ml_tecnologias`. Tests: `tests/test_db_upsert.py` (sobrevive a la re-ingesta sin
+  opinión, un valor explícito sí pisa, el camino con historial hereda la protección),
+  `tests/test_s2_linaje_coalesce.py` (SQL generado) y `tests/test_tech_signal_db.py` (la pasada
+  sin ids solo toca lo pendiente o perdido, con todas las filas de cada candidata). El
+  comentario de la revisión `v71_licitacion_tecnologia_pliego` («la cola de merge filtra por
+  score, no por merged_at») queda desactualizado a propósito: las migraciones son append-only.
+
 - [2026-09-02] **P1: la superficie pública publicaba el censo de PSCP, no el universo
   tecnológico** — Medido contra producción el 2026-09-01: 415.868 expedientes, 396.583 de
   Cataluña, con reactivos de laboratorio, servicios a empresas y material sanitario como CPV más

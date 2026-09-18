@@ -36,6 +36,14 @@ directamente (siempre incondicional -- el patrón correcto, anterior a esta
 corrección), pero vive en ``services/``, no en ``api/routes/``, así que este
 test no lo escanea: no es donde se demostró el bug ni donde un nuevo route
 handler podría reintroducirlo.
+
+Desde 2026-09 las dos vías convergen en lo que importa: los servicios
+resuelven con ``services.organizations.alcance_resuelto``, un context manager
+que además **acota el bloque** con el ámbito de ``shared.tenant_context``, así
+que el respaldo RLS de ADR-034 cubre también lo que no pasa por
+``api/tenancy.py``. Esa parte la cubre
+``tests/test_rls_tenant_scope_integration.py``; este archivo sigue vigilando lo
+suyo, que es que una ruta no resuelva por su cuenta.
 """
 
 from __future__ import annotations

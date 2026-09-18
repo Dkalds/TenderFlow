@@ -69,6 +69,21 @@ async def get_timeline(
             status_code=status.HTTP_404_NOT_FOUND, detail="Licitación no encontrada."
         )
     items = await run_db(timeline, licitacion_id)
+    # Esta ruta se queda con `licitacion_id` en la URL y en el cuerpo, aunque
+    # el resto de `/licitaciones/...` direccione por `id_externo`.
+    #
+    # El intento de unificarla renombrando el parámetro de ruta se revirtió: el
+    # nombre de un parámetro de ruta **es** contrato. No cambia la URL que se
+    # llama, pero sí el OpenAPI, y de ahí sale el SDK de Python
+    # (`release-sdk.yml`), donde el argumento pasa a llamarse distinto y rompe a
+    # quien llame por keyword. `check_api_breaking.py` lo ve como «la ruta
+    # desaparece», y tiene razón.
+    #
+    # Unificarla exige el ciclo de docs/api-design.md §«Qué exige retirar una
+    # ruta»: sucesora sirviendo primero, `deprecate_route()` con `sunset` ≥ hoy
+    # + 90 días, RFC de retirada enlazada, y la etiqueta `api-breaking` en la
+    # PR que finalmente borre la vieja. Nada de eso cabe en una PR que sólo
+    # quería nombres consistentes.
     return TimelineResult(
         licitacion_id=licitacion_id, items=[TimelineEvento(**item) for item in items]
     )

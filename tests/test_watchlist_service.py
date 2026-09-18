@@ -133,6 +133,9 @@ def test_store_pending_digest_returns_true_on_success():
         licitacion_id="LIC-001",
         frequency="daily",
         matched_at="2026-01-01",
+        # v129: la fachada propaga siempre la identidad interna (None si el
+        # productor no la conoce) para que el repositorio escriba las dos.
+        user_id=None,
     )
 
 

@@ -91,6 +91,9 @@ _PURE_CALLS: frozenset[str] = frozenset(
         # Formato de fecha puro (datetime.now().strftime), sin BD.
         "get_export_filename",
         "now_utc_iso",
+        # `db.database.now_utc`: `datetime.now(UTC)`, sin BD. El ping de
+        # webhooks lo usa para sellar cuerpo y cabecera con el mismo instante.
+        "now_utc",
         # `db.idempotency.scope` (importado como `idem_scope`): concatena el
         # nombre del endpoint con la identidad de quien escribe para formar el
         # ámbito de la clave. Es `":".join(...)` — no abre conexión. Las que sí

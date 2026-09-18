@@ -9,9 +9,61 @@ Validates that:
 from __future__ import annotations
 
 import stat
+import sys
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+
+
+@contextmanager
+def _api_app_descargada() -> Iterator[None]:
+    """Descarga ``api.app`` para poder medir qué arrastra su import, y **repone
+    el módulo original al salir**.
+
+    La reposición no es limpieza de buenos modales: es lo que impide que estos
+    dos tests rompan la suite entera. ``api/app.py`` crea el objeto ``app`` en
+    el import, y una veintena de ficheros de test hacen ``from api.app import
+    app`` **en la colección**, antes de que corra nada. Si aquí se deja en
+    ``sys.modules`` el módulo recién importado, a partir de ese punto hay dos
+    objetos ``app``: el que aquellos ficheros capturaron y el que resuelve el
+    fixture ``client``. Sus ``dependency_overrides`` son diccionarios distintos,
+    así que un test que instala su sustitución de ``require_any_auth`` la pone
+    en un ``app`` que ya no responde y su petición sale con **401**.
+
+    Eso es exactamente lo que pasaba: `test_webhooks_rotate_secret.py` fallaba
+    dos tests por tirada con ``-n 4``, nunca los mismos, y pasaba en solitario y
+    con ``-p no:randomly`` —hace falta que estos tests corran antes, y el orden
+    aleatorio decide si pasa—. Se diagnosticó imprimiendo `id(app)` desde el
+    test que fallaba: el del módulo y el del ``TestClient`` eran distintos.
+    """
+    guardados = {
+        nombre: modulo
+        for nombre, modulo in sys.modules.items()
+        if nombre == "api.app" or nombre.startswith("api.app.")
+    }
+    for nombre in guardados:
+        del sys.modules[nombre]
+    try:
+        yield
+    finally:
+        # El módulo recién importado se descarta entero y vuelve el original:
+        # quedarse con el nuevo es justo el fallo que este helper existe para
+        # no cometer.
+        for nombre in [n for n in sys.modules if n == "api.app" or n.startswith("api.app.")]:
+            del sys.modules[nombre]
+        sys.modules.update(guardados)
+        # Y el atributo del paquete, que es la mitad que se olvida. `import
+        # api.app` deja `app` como atributo de `api`, y al reimportar queda
+        # apuntando al módulo nuevo. Reponer sólo `sys.modules` deja las dos
+        # vías discrepando: `from api.app import app` da el original y
+        # `import api.app as m; m.app` da el recargado. Con eso el fallo no
+        # desaparece, sólo se vuelve más raro.
+        for nombre, modulo in guardados.items():
+            padre, _, hoja = nombre.rpartition(".")
+            if padre in sys.modules:
+                setattr(sys.modules[padre], hoja, modulo)
 
 
 def test_entrypoint_script_exists() -> None:
@@ -91,8 +143,6 @@ def test_la_api_arranca_sin_sentence_transformers() -> None:
     un import nuevo en el arranque lo convertiría en obligatorio y el fallo
     aparecería en el despliegue, no en CI.
     """
-    import sys
-
     # Se simula "no instalado" incluso si el entorno de desarrollo lo tiene.
     centinelas = {
         nombre: sys.modules.get(nombre) for nombre in ("sentence_transformers", "torch", "faiss")
@@ -100,10 +150,8 @@ def test_la_api_arranca_sin_sentence_transformers() -> None:
     for nombre in centinelas:
         sys.modules[nombre] = None  # type: ignore[assignment]
     try:
-        for nombre in list(sys.modules):
-            if nombre == "api.app" or nombre.startswith("api.app."):
-                del sys.modules[nombre]
-        import api.app  # noqa: F401
+        with _api_app_descargada():
+            import api.app  # noqa: F401
     finally:
         for nombre, previo in centinelas.items():
             if previo is None:
@@ -119,15 +167,13 @@ def test_la_api_no_importa_el_parser_codice() -> None:
     internet, así que un import eager desde `api/` lo devolvería sin que nadie
     lo note hasta ver la factura de parches.
     """
-    import sys
+    with _api_app_descargada():
+        antes = "lxml" in sys.modules
+        import api.app  # noqa: F401
 
-    for nombre in list(sys.modules):
-        if nombre == "api.app" or nombre.startswith("api.app."):
-            del sys.modules[nombre]
-    antes = "lxml" in sys.modules
-    import api.app  # noqa: F401
+        arrastra = not antes and "lxml" in sys.modules
 
-    assert antes or "lxml" not in sys.modules, (
+    assert not arrastra, (
         "importar api.app arrastra lxml; el corte de requirements-api.in deja de valer"
     )
 

@@ -1,6 +1,11 @@
 """CRUD ligero sobre ``watchlist_cpv`` para alertas personalizadas por usuario.
 
 ``user_key`` es opaco (hash de email o nombre). No almacenamos PII directa.
+
+Desde v129 (ADR-030 fase 2) cada fila lleva además ``user_id`` y las lecturas
+son duales: con ``user_id`` conocido se busca por él —y por ``user_key`` sólo
+en las filas que el backfill no pudo resolver—; sin él, por ``user_key`` como
+siempre. Es lo que hace que cambiar de correo no pierda la watchlist.
 """
 
 from __future__ import annotations
@@ -9,6 +14,11 @@ from dataclasses import dataclass
 from typing import Any
 
 from db.database import connect, now_utc_iso
+
+#: Predicado de identidad dual. Parámetros: ``(user_id, user_key, user_id)``.
+#: Con ``user_id=None`` se reduce a ``user_key = %s``; ver
+#: ``db/repositories/watchlist.py`` para el razonamiento completo.
+_IDENT = "(user_id = %s OR (user_key = %s AND (user_id IS NULL OR %s::int IS NULL)))"
 
 
 @dataclass
@@ -29,16 +39,20 @@ def add_entry(entry: WatchlistEntry) -> None:
     # SQLite considera que dos NULL son distintos a efectos de UNIQUE, así que
     # la deduplicación por constraint no funciona cuando hay campos nulos.
     # Hacemos un SELECT explícito usando COALESCE para tratar NULL == NULL.
+    # La identidad del SELECT es la dual: tras un cambio de correo, la misma
+    # entrada bajo la clave antigua sigue contando como «ya existe».
     with connect() as c:
         cur = c.execute(
             "SELECT id FROM watchlist_cpv WHERE "
-            "user_key = %s AND cpv_prefix = %s "
+            f"{_IDENT} AND cpv_prefix = %s "
             "AND COALESCE(keyword,'') = COALESCE(%s, '') "
             "AND COALESCE(ccaa,'') = COALESCE(%s, '') "
             "AND COALESCE(min_importe, -1) = COALESCE(%s, -1) "
             "LIMIT 1",
             (
+                entry.user_id,
                 entry.user_key,
+                entry.user_id,
                 entry.cpv_prefix,
                 entry.keyword,
                 entry.ccaa,
@@ -68,7 +82,7 @@ def add_entry(entry: WatchlistEntry) -> None:
         )
 
 
-def remove_entry(entry_id: int, user_key: str) -> bool:
+def remove_entry(entry_id: int, user_key: str, *, user_id: int | None = None) -> bool:
     """Elimina una entrada propia. ``True`` si borró algo.
 
     ``user_key`` no es opcional a propósito: sin él, un ``id`` adivinado
@@ -79,8 +93,8 @@ def remove_entry(entry_id: int, user_key: str) -> bool:
     """
     with connect() as c:
         cur = c.execute(
-            "DELETE FROM watchlist_cpv WHERE id = %s AND user_key = %s",
-            (entry_id, user_key),
+            f"DELETE FROM watchlist_cpv WHERE id = %s AND {_IDENT}",
+            (entry_id, user_id, user_key, user_id),
         )
         return bool(cur.rowcount > 0)
 
@@ -98,26 +112,18 @@ def list_entries(
                 "created_at, last_notified_at, user_id, "
                 "COALESCE(frequency, 'daily') AS frequency, organization_id, visibility "
                 "FROM watchlist_cpv WHERE organization_id = %s "
-                "AND (visibility = 'organization' OR user_id = %s OR user_key = %s) "
+                f"AND (visibility = 'organization' OR {_IDENT}) "
                 "ORDER BY created_at DESC",
-                (organization_id, user_id, user_key),
-            )
-        elif user_id is not None:
-            cur = c.execute(
-                "SELECT id, cpv_prefix, keyword, min_importe, ccaa, email, "
-                "created_at, last_notified_at, user_id, "
-                "COALESCE(frequency, 'daily') AS frequency "
-                "FROM watchlist_cpv WHERE user_id = %s OR user_key = %s "
-                "ORDER BY created_at DESC",
-                (user_id, user_key),
+                (organization_id, user_id, user_key, user_id),
             )
         else:
             cur = c.execute(
                 "SELECT id, cpv_prefix, keyword, min_importe, ccaa, email, "
                 "created_at, last_notified_at, user_id, "
                 "COALESCE(frequency, 'daily') AS frequency "
-                "FROM watchlist_cpv WHERE user_key = %s ORDER BY created_at DESC",
-                (user_key,),
+                f"FROM watchlist_cpv WHERE {_IDENT} "
+                "ORDER BY created_at DESC",
+                (user_id, user_key, user_id),
             )
         cols = [d[0] for d in cur.description]
         return [dict(zip(cols, row, strict=False)) for row in cur.fetchall()]
@@ -132,7 +138,9 @@ def update_last_notified(entry_id: int, ts: str) -> None:
         )
 
 
-def update_frequency(entry_id: int, frequency: str, user_key: str) -> bool:
+def update_frequency(
+    entry_id: int, frequency: str, user_key: str, *, user_id: int | None = None
+) -> bool:
     """Actualiza la frecuencia de notificación de una entrada propia.
 
     Args:
@@ -140,6 +148,7 @@ def update_frequency(entry_id: int, frequency: str, user_key: str) -> bool:
         frequency: 'immediate' | 'daily' | 'weekly'
         user_key: Dueño de la entrada. Obligatorio por el mismo motivo que en
             :func:`remove_entry`.
+        user_id: Identidad interna del dueño, si se conoce (lectura dual).
 
     Returns:
         ``True`` si actualizó alguna fila.
@@ -148,8 +157,8 @@ def update_frequency(entry_id: int, frequency: str, user_key: str) -> bool:
         raise ValueError(f"frequency debe ser 'immediate', 'daily' o 'weekly', no {frequency!r}")
     with connect() as c:
         cur = c.execute(
-            "UPDATE watchlist_cpv SET frequency = %s WHERE id = %s AND user_key = %s",
-            (frequency, entry_id, user_key),
+            f"UPDATE watchlist_cpv SET frequency = %s WHERE id = %s AND {_IDENT}",
+            (frequency, entry_id, user_id, user_key, user_id),
         )
         return bool(cur.rowcount > 0)
 

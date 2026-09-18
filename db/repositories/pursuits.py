@@ -31,7 +31,8 @@ _PURSUIT_SELECT = (
     "p.created_at, p.updated_at, p.version, "
     # Contador del hilo de comentarios en la misma consulta: el tablero lo
     # pinta en cada tarjeta y una llamada por oportunidad no escala (v97).
-    "(SELECT COUNT(*) FROM pursuit_comments c WHERE c.pursuit_id = p.id) AS comments_count "
+    "(SELECT COUNT(*) FROM pursuit_comments c "
+    " WHERE c.pursuit_id = p.id AND c.deleted_at IS NULL) AS comments_count "
     "FROM pursuits p "
     "JOIN licitaciones l ON l.id_externo = p.licitacion_id "
     "LEFT JOIN lotes lo ON lo.licitacion_id = p.licitacion_id "
@@ -532,14 +533,52 @@ class PursuitRepository:
             )
             return rows_to_dicts(cur)
 
-    def deadline_rows(self, *, limit: int = 5000) -> list[dict[str, Any]]:
+    def deadline_rows(
+        self,
+        *,
+        organization_id: int | None = None,
+        desde: str | None = None,
+        hasta: str | None = None,
+        limit: int = 5000,
+    ) -> list[dict[str, Any]]:
         """Pursuits abiertos con responsable y alguna fecha que recordar.
 
         ``fecha_limite`` es la de presentación del expediente;
         ``next_action_due`` la que el propio equipo se puso. Las dos son
         compromisos del pursuit, no del favorito, y hasta 2026-09 ninguna
         generaba recordatorio: sólo los favoritos de la watchlist lo hacían.
+
+        Los tres filtros van **en SQL** y el orden es por fecha, no por
+        ``p.id``. Es lo que hace que el ``LIMIT`` sea inofensivo: corta lo más
+        lejano en el tiempo, que es lo que a nadie le urge.
+
+        Ordenado por ``p.id`` el tope cortaba por antigüedad de la fila, así
+        que un plazo dentro de tres días sobre un pursuit recién creado quedaba
+        fuera de la rodaja y su aviso no se enviaba nunca — sin error y sin
+        métrica. Le pasaba a los dos llamantes: al informe semanal (T6), cuya
+        sección de plazos salía vacía, y al despachador de recordatorios.
+
+        ``organization_id`` acota además por tenant; el despachador lo omite
+        porque las quiere todas.
         """
+        condiciones = [
+            "p.status NOT IN " + _ESTADOS_TERMINALES_SQL,
+            "(l.fecha_limite IS NOT NULL OR p.next_action_due IS NOT NULL)",
+        ]
+        parametros: list[Any] = []
+        if organization_id is not None:
+            condiciones.append("p.organization_id = %s")
+            parametros.append(int(organization_id))
+        if desde is not None and hasta is not None:
+            # Las dos columnas son `text` ISO, así que el rango se compara como
+            # cadena sobre los diez primeros caracteres: `fecha_limite` puede
+            # traer la hora y `next_action_due` no.
+            condiciones.append(
+                "(LEFT(l.fecha_limite, 10) BETWEEN %s AND %s "
+                " OR LEFT(p.next_action_due, 10) BETWEEN %s AND %s)"
+            )
+            parametros += [desde, hasta, desde, hasta]
+        parametros.append(max(1, min(int(limit), 20000)))
         with connect_read() as conn:
             cur = conn.execute(
                 "SELECT p.id AS pursuit_id, p.organization_id, p.licitacion_id, "
@@ -548,10 +587,12 @@ class PursuitRepository:
                 "FROM pursuits p "
                 "JOIN licitaciones l ON l.id_externo = p.licitacion_id "
                 "JOIN users ru ON ru.id = p.responsible_user_id "
-                "WHERE p.status NOT IN " + _ESTADOS_TERMINALES_SQL + " "
-                "AND (l.fecha_limite IS NOT NULL OR p.next_action_due IS NOT NULL) "
-                "ORDER BY p.id LIMIT %s",
-                (max(1, min(int(limit), 20000)),),
+                "WHERE " + " AND ".join(condiciones) + " "
+                "ORDER BY LEAST("
+                "  COALESCE(LEFT(l.fecha_limite, 10), '9999-12-31'),"
+                "  COALESCE(LEFT(p.next_action_due, 10), '9999-12-31')"
+                ") LIMIT %s",
+                tuple(parametros),
             )
             return rows_to_dicts(cur)
 

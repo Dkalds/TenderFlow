@@ -326,7 +326,13 @@ class TestNotaDelFavorito:
         from db.repositories.watchlist import WatchlistRepository
 
         fuente = inspect.getsource(WatchlistRepository.set_nota)
-        assert "WHERE user_key = %s AND id_externo = %s" in fuente
+        # Desde v129 el filtro es el predicado de identidad dual (`_IDENT`), no
+        # `user_key` pelado: la nota sigue siendo de la persona, sólo que ahora
+        # la persona se reconoce también por `user_id` — que es justamente lo
+        # que hace que no se pierda al cambiar de correo. Lo que este test
+        # protege no es la cadena, es que el filtro sea **por persona** y nunca
+        # por organización.
+        assert "WHERE {_IDENT} AND id_externo = %s" in fuente
         assert "organization_id" not in fuente.split('"""')[2]
 
     def test_la_nota_viaja_en_el_listado(self) -> None:
@@ -648,14 +654,26 @@ class TestAdjuntosPropios:
         fuente = inspect.getsource(mod.subir)
         assert "almacen.delete(clave)" in fuente
 
-    def test_primero_la_fila_y_despues_el_binario_al_borrar(self) -> None:
-        """Al revés quedaría una fila apuntando a un objeto que ya no existe."""
+    def test_borrar_un_adjunto_no_toca_el_binario(self) -> None:
+        """Desde v131 el borrado es lógico y el objeto del almacén se conserva.
+
+        Antes esto fijaba el orden «primero la fila, después el binario», que era
+        lo correcto cuando `delete` borraba la fila de verdad. Con borrado lógico
+        el orden deja de existir porque el segundo paso ya no está: la fila queda
+        marcada, apuntando a un objeto que sigue ahí. Borrarlo haría
+        irreversible justo lo que v131 vino a hacer reversible — restaurar daría
+        una descarga rota.
+
+        Lo comprueba de verdad, ejecutando, `tests/test_pursuit_borrado_logico.py
+        ::test_el_objeto_del_almacen_no_se_borra`. Aquí se fija la forma del
+        código para que nadie reintroduzca la llamada «arreglando» una fuga de
+        almacenamiento sin ver lo que se lleva por delante.
+        """
         import services.pursuit_attachments as mod
 
-        fuente = inspect.getsource(mod.borrar)
-        assert fuente.index("PursuitAttachmentsRepository().delete") < fuente.index(
-            "get_object_store().delete"
-        )
+        cuerpo = inspect.getsource(mod.borrar).split('"""')[2]
+        assert "get_object_store" not in cuerpo
+        assert "PursuitAttachmentsRepository().delete" in cuerpo
 
     # ── GDPR: dato corporativo ───────────────────────────────────────────
 

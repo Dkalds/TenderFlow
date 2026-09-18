@@ -374,6 +374,21 @@ _LEGITIMATE_SWEEPS: frozenset[str] = frozenset(
         # (no estaba en el análisis manual previo): confirma que el escaneo
         # tiene dientes incluso para el propio autor del test.
         "db/audit.py::log_action",
+        # Rastro de auditoría **de una organización** (GET /organizations/{id}/
+        # audit). Es un barrido por organización y no por usuario, y tiene que
+        # serlo: el propietario de un espacio compartido pide ver quién invitó,
+        # quién cambió un rol y quién exportó, lo cual incluye por definición a
+        # otras personas. Acotarlo por `user_key` devolvería sólo los eventos
+        # propios y el panel no serviría para lo único que existe.
+        #
+        # La frontera que sí tiene que haber es la de organización, y está: el
+        # `WHERE detail ~ 'resource=org:<id>'` con la regex anclada a los
+        # separadores (para que `org:12` no case con `org:123`), más el control
+        # de quién puede pedirlo —owner/admin— en `api/routes/organization_audit.py`.
+        # `audit_log` no tiene columna `organization_id`, así que ese predicado
+        # sobre `detail` es la frontera; el día que la tenga, esta entrada sale
+        # de aquí y pasa a ser un filtro normal.
+        "db/repositories/audit.py::AuditRepository.list_for_organization",
     }
 )
 

@@ -22,6 +22,7 @@ from db.repositories.empresas import (
     EmpresasReadRepository,
 )
 from observability.logging import get_logger
+from shared.audit_events import EMPRESA_REVIEW_RESOLVED
 
 log = get_logger(__name__)
 
@@ -205,7 +206,7 @@ async def resolve_review(
         )
     await run_db(
         log_event,
-        event_type="empresa.review_resolved",
+        event_type=EMPRESA_REVIEW_RESOLVED,
         user_key=resolved_by[:8],
         resource=f"empresa_review:{review_id}",
         detail={"accept": body.accept, "empresa_id": empresa_id},

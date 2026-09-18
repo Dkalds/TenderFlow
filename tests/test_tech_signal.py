@@ -254,7 +254,13 @@ class TestMergeDocSignals:
         ):
             result = merge_doc_signals(licitacion_ids=["L1"])
 
-        assert result == {"licitaciones_merged": 1, "events_emitted": 1, "errors": 0}
+        assert result == {
+            "licitaciones_merged": 1,
+            "events_emitted": 1,
+            "errors": 0,
+            "licitaciones_candidatas": 1,
+            "licitaciones_reparadas": 0,
+        }
         append_event.assert_called_once()
         assert append_event.call_args.args[0] == "licitacion.tecnologia_pliego"
         repo.stamp_merged.assert_called_once()
@@ -276,6 +282,7 @@ class TestMergeDocSignals:
         repo.stamp_merged.assert_not_called()
         assert result["events_emitted"] == 0
         assert result["licitaciones_merged"] == 1  # el merge SÍ se re-aplica
+        assert result["licitaciones_reparadas"] == 1  # señal ya estampada, vuelta a aplicar
 
     def test_two_methods_tied_score_both_get_their_own_event(self):
         """Antes: elegir un único 'best row' por tecnología con comparación
@@ -397,6 +404,12 @@ class TestMergeDocSignals:
         with patch("services.tech_signal.TecnologiaPliegoRepository", return_value=repo):
             result = merge_doc_signals()
 
-        assert result == {"licitaciones_merged": 0, "events_emitted": 0, "errors": 0}
+        assert result == {
+            "licitaciones_merged": 0,
+            "events_emitted": 0,
+            "errors": 0,
+            "licitaciones_candidatas": 0,
+            "licitaciones_reparadas": 0,
+        }
         repo.merge_many_with_lock.assert_not_called()
         repo.stamp_merged.assert_not_called()

@@ -57,6 +57,15 @@ _LICITACIONES_READ_POST_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(r"^/api/v1/licitaciones/.+/resumen$"),
 )
 
+# El rastro de auditoría de una organización (``GET /organizations/{id}/audit``)
+# es la superficie más sensible del subárbol: enumera quién hizo qué. Que una
+# API key de lectura del tablero (``pursuits:read``, lo que recibe cualquier
+# clave que lea oportunidades) lo alcanzara sería conceder más de lo que el
+# dueño creyó dar, así que tiene scope propio y se resuelve **antes** que el
+# prefijo genérico de ``/organizations``. Lleva el id en medio del path, así
+# que se casa por regex, como los POST de lectura de ``/licitaciones``.
+_ORGANIZATION_AUDIT_PATTERN: re.Pattern[str] = re.compile(r"^/api/v1/organizations/[^/]+/audit$")
+
 
 def _es_post_de_lectura_de_licitaciones(path: str) -> bool:
     """¿Este POST bajo /licitaciones sólo lee?
@@ -88,6 +97,8 @@ def required_scope_for_request(method: str, path: str) -> str:
         return "api_keys:read"
     if normalized_path.startswith("/api/v1/me/profile"):
         return "profile:read" if normalized_method in _READ_METHODS else "profile:write"
+    if _ORGANIZATION_AUDIT_PATTERN.match(normalized_path):
+        return "audit:read"
     if normalized_path.startswith("/api/v1/organizations"):
         return "pursuits:read" if normalized_method in _READ_METHODS else "pursuits:write"
     if normalized_path.startswith("/api/v1/pursuits"):
@@ -135,6 +146,13 @@ def required_scope_for_request(method: str, path: str) -> str:
     if normalized_path.startswith("/api/v1/empresas"):
         return "empresas:read"
     if normalized_path.startswith("/api/v1/watchlist"):
+        return "watchlist:read" if normalized_method in _READ_METHODS else "watchlist:write"
+    # `/follows` (ADR-031) reutiliza los scopes de watchlist y no estrena par
+    # propio: es la misma capacidad —«lo que este usuario sigue»— vista desde
+    # una sola tabla. Una API key que hoy puede leer favoritos no debería tener
+    # que pedir permiso otra vez para leer los mismos favoritos por la ruta
+    # nueva, y una que no puede escribirlos no puede escribirlos por aquí.
+    if normalized_path.startswith("/api/v1/follows"):
         return "watchlist:read" if normalized_method in _READ_METHODS else "watchlist:write"
     if normalized_path.startswith("/api/v1/notifications"):
         return "notifications:read" if normalized_method in _READ_METHODS else "notifications:write"

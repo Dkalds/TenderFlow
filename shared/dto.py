@@ -350,6 +350,38 @@ class WatchlistFavoriteCreated(BaseModel):
     created_at: PgDateTime | None
 
 
+class FollowItem(BaseModel):
+    """Un seguimiento de la tabla unificada (`follows`, ADR-031).
+
+    `target_id` es texto aunque el objetivo sea un entero (una empresa, un
+    órgano): el tipo es polimórfico y por eso ni lleva clave foránea ni puede
+    tener un tipo más estrecho (ADR-031 §Riesgo).
+    """
+
+    id: int
+    user_key: str
+    user_id: int | None = None
+    organization_id: int | None = None
+    target_type: str
+    target_id: str
+    kind: str
+    visibility: str
+    # Caducidad de un descarte pospuesto («recuérdamelo en una semana»). `None`
+    # es para siempre, que es lo que vale para todo lo que no sea un descarte.
+    hasta: PgDateTime | None = None
+    # Vocabulario pendiente de C2.7 (ver v130): hoy siempre `None`. Viaja en el
+    # contrato desde el principio para que añadirlo no sea un cambio de forma.
+    channels: dict[str, Any] | None = None
+    created_at: PgDateTime | None = None
+
+
+class FollowsResult(BaseModel):
+    """Listado de seguimientos, con el total por si la interfaz pagina."""
+
+    items: list[FollowItem]
+    total: int
+
+
 class WatchlistEntry(BaseModel):
     """Entrada de la watchlist de un usuario.
 
@@ -848,6 +880,49 @@ class OrganizationSettings(BaseModel):
         if etapa not in PROBABILIDADES_ETAPA_DEFAULT:
             return 0
         return self.probabilidades_etapa.get(etapa, PROBABILIDADES_ETAPA_DEFAULT[etapa])
+
+
+class ReportSchedule(BaseModel):
+    """Cuándo y a quién sale el informe semanal de una organización (T6).
+
+    `dia_semana` es 0 = lunes, como `datetime.weekday()` y como el `CHECK` de
+    v132. No es el `DOW` de Postgres (0 = domingo): mezclar las dos
+    numeraciones desplaza el informe seis días, y por eso se dice aquí además
+    de en la migración.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    activo: bool = False
+    dia_semana: int = Field(default=0, ge=0, le=6)
+    #: Hora **UTC**. La interfaz la traduce al enseñarla; el scheduler razona en
+    #: UTC de punta a punta (ADR-033).
+    hora_utc: int = Field(default=7, ge=0, le=23)
+    #: `None` o vacío = «los owner y admin de la organización». Dejarlo vacío es
+    #: lo que hace que dar de alta a un administrador nuevo no exija acordarse
+    #: de editar esta lista.
+    destinatarios: list[EmailStr] | None = Field(default=None, max_length=25)
+
+
+class ReportScheduleOut(ReportSchedule):
+    """La programación leída, con lo que hizo el último envío.
+
+    `extra="ignore"`, a diferencia del DTO de entrada: el repositorio devuelve
+    la fila entera —`id`, `created_at`, `updated_at`, que el job sí usa— y con
+    el `forbid` heredado **las dos rutas respondían 500** en cuanto existía una
+    fila. La entrada conserva el `forbid` porque se valida contra
+    `ReportSchedule`, no contra esta subclase: un campo inventado en el `PUT`
+    sigue siendo un 422.
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    organization_id: int = Field(ge=1)
+    tipo: str = "pipeline_semanal"
+    ultimo_envio_at: PgDateTime | None = None
+    #: `enviado:2/3`, `vacio`, `sin_destinatarios`, `fallido`. Es lo que
+    #: responde «¿por qué no me llegó el informe?» sin abrir los logs.
+    ultimo_estado: str | None = None
 
 
 class OrganizationSettingsOut(OrganizationSettings):
@@ -1445,6 +1520,30 @@ class OrganizationInvitationAccept(BaseModel):
     token: str = Field(min_length=16, max_length=512)
 
 
+class AuditEntryOut(BaseModel):
+    """Una entrada del rastro de auditoría de la organización.
+
+    Es lo que sirve ``GET /organizations/{id}/audit`` (Ola 1 · Audit log). El
+    actor viaja como ``users.id`` y nunca como correo (ADR-030 §D); ``detail``
+    es el payload tal como se persistió —JSON o texto— y no un objeto: cada
+    familia de ``shared/audit_events.py`` guarda claves distintas y declarar
+    una forma por familia sería un contrato que nadie consume tipado.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: int = Field(ge=1)
+    #: ISO 8601 en UTC, tal como lo escribe ``db.audit``.
+    ts: str
+    #: Uno de ``shared.audit_events.EVENTOS`` (los anteriores al catálogo
+    #: pueden llevar nombres fuera de él).
+    event_type: str
+    actor_user_id: int | None = None
+    outcome: str
+    resource: str | None = None
+    detail: str = ""
+
+
 # ── ANCLA S2 — capacidad de la organización (NIF, solvencia, go/no-go) ─────
 
 #: Ámbito de una certificación: la acredita la empresa o una persona del
@@ -1691,8 +1790,8 @@ PursuitMetrics.model_rebuild()
 # tipos que S4 introduce la tiene.
 #
 # - ``WebhookOut``, ``WebhookCreate``, ``WebhookUpdate``, ``WebhookDelivery``,
-#   ``WebhookPingResult`` y ``WebhookEventTypes`` los sirve una sola ruta
-#   (``api/routes/webhooks.py``) y ya vivían junto a ella.
+#   ``WebhookPingResult``, ``WebhookEventTypes`` y ``WebhookSecretRotated`` los
+#   sirve una sola ruta (``api/routes/webhooks.py``) y ya vivían junto a ella.
 # - Los seis criterios nuevos de la regla (`tecnologia`, `organo`,
 #   `procedimiento`, `tipo_contrato`, `banda_min`, `plazo_min_dias`) son campos
 #   aditivos de ``WatchlistRuleBody``, que es de ``api/routes/watchlist_rules.py``.

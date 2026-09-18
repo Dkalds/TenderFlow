@@ -17,6 +17,7 @@ import { usePerfilScoring } from "./_hooks/use-perfil-scoring";
 import { AmbitoPerfilCard } from "./_components/ambito-perfil-card";
 import { CpvsInteresCard, KeywordsAfinidadCard } from "./_components/afinidad-cards";
 import { GdprSection } from "./_components/gdpr-section";
+import { InformeSemanalCard } from "./_components/informe-semanal-card";
 import { PesosPropuestosCard } from "./_components/pesos-propuestos-card";
 import { PesosScoringCard } from "./_components/pesos-scoring-card";
 import { RangoImporteCard } from "./_components/rango-importe-card";
@@ -60,6 +61,11 @@ export default function MiPerfilPage() {
         />
 
         <TecnologiasOrganizacionCard />
+
+        {/* Debajo de las tecnologías por ser el otro ajuste de organización
+            de esta página, y no al final: nace apagado, así que tiene que
+            verse para que alguien lo encienda. */}
+        <InformeSemanalCard />
 
         <PesosScoringCard
           weights={perfil.weights}

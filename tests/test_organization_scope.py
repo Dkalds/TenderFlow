@@ -241,3 +241,82 @@ def test_viewer_role_cannot_write(client, api_db):
             json={"id_externo": "VIEWER-CANNOT-ADD", "organization_id": org_id},
         )
     assert resp.status_code == 403, resp.text
+
+
+# ── El ámbito de tenencia se abre y se cierra (ADR-034) ────────────────────
+
+
+def test_alcance_resuelto_acota_el_bloque_y_lo_suelta_al_salir(tmp_db):
+    """Resolver y acotar en una sola pieza, con final.
+
+    La primera versión de esto fijaba el ámbito dentro de
+    ``resolve_organization``: cubría lo que había que cubrir, pero un
+    ``set_organization`` no tiene final. Dentro de ``run_db`` muere con la copia
+    del contexto del hilo; llamada desde código síncrono —un script, un job, la
+    propia suite— deja el ámbito clavado para todo lo que venga después en ese
+    hilo. Se vio en la suite: ``tests/test_tenant_context.py`` entero en rojo
+    porque otro test había resuelto una organización antes.
+
+    Por eso es un context manager: lo que acota, lo suelta.
+    """
+    from services.organizations import alcance_resuelto
+    from shared.tenant_context import current_organization, tenant_scope
+
+    user_id = _user("alcance-bloque@example.test")
+    organizations = OrganizationRepository()
+    equipo = int(organizations.create_organization("Equipo alcance", user_id)["id"])
+
+    with tenant_scope(None):
+        with alcance_resuelto(user_id, equipo) as (resuelta, _rol):
+            assert resuelta == equipo
+            assert current_organization() == equipo
+        assert current_organization() is None
+
+
+def test_alcance_resuelto_sin_organizacion_acota_a_la_personal(tmp_db):
+    """Omitir ``organization_id`` no es «sin ámbito»: es el ámbito personal."""
+    from services.organizations import alcance_resuelto
+    from shared.tenant_context import current_organization, tenant_scope
+
+    user_id = _user("alcance-personal@example.test")
+
+    with tenant_scope(None):
+        with alcance_resuelto(user_id, None) as (resuelta, _rol):
+            assert current_organization() == resuelta
+
+
+def test_alcance_resuelto_lo_suelta_tambien_si_el_bloque_lanza(tmp_db):
+    """Una excepción dentro del bloque no puede dejar el hilo acotado."""
+    import pytest as _pytest
+
+    from services.organizations import alcance_resuelto
+    from shared.tenant_context import current_organization, tenant_scope
+
+    user_id = _user("alcance-lanza@example.test")
+    equipo = int(OrganizationRepository().create_organization("Equipo lanza", user_id)["id"])
+
+    with tenant_scope(None):
+        with _pytest.raises(RuntimeError), alcance_resuelto(user_id, equipo):
+            raise RuntimeError("algo falló a mitad")
+        assert current_organization() is None
+
+
+def test_una_resolucion_rechazada_no_abre_ambito(tmp_db):
+    """Lo importante del orden: primero se valida, después se acota.
+
+    Si el ámbito se abriera antes de comprobar la membresía, un 403 dejaría la
+    petición acotada a una organización ajena mientras la excepción sube.
+    """
+    import pytest as _pytest
+
+    from services.organizations import OrganizationAccessError, alcance_resuelto
+    from shared.tenant_context import current_organization, tenant_scope
+
+    intruso = _user("alcance-intruso@example.test")
+    duena = _user("alcance-duena@example.test")
+    ajena = int(OrganizationRepository().create_organization("Ajena", duena)["id"])
+
+    with tenant_scope(None):
+        with _pytest.raises(OrganizationAccessError), alcance_resuelto(intruso, ajena):
+            pass  # pragma: no cover — la resolución lanza antes de entrar
+        assert current_organization() is None

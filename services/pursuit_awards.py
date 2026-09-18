@@ -174,6 +174,7 @@ def notify_detected_awards(*, limit: int = 500) -> int:
             try:
                 inserted = insert_user_notification(
                     user_key=user_key_from_email(email, user_id),
+                    user_id=user_id,
                     type_=TIPO_NOTIFICACION,
                     title=title,
                     body=body,

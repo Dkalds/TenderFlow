@@ -44,6 +44,22 @@ export function useOrganizations() {
   });
 }
 
+/**
+ * Organización que se usa mientras la persona no haya elegido ninguna: la
+ * primera de equipo y, si no pertenece a ninguno, la personal.
+ *
+ * `GET /organizations` devuelve la personal primero (`ORDER BY is_personal
+ * DESC`), así que quedarse con la primera dejaba a cualquier miembro de un
+ * equipo mirando una organización vacía —Mi Pipeline, Dirección y el resto de
+ * pantallas con ámbito— hasta que encontraba el selector del menú de cuenta.
+ * El trabajo compartido vive en el equipo; la personal es el caso de quien
+ * todavía no tiene uno.
+ */
+export function organizacionPorDefecto(organizations: readonly Organization[]): number | null {
+  const equipo = organizations.find((organization) => !organization.is_personal);
+  return (equipo ?? organizations[0])?.id ?? null;
+}
+
 export function useActiveOrganizationId(): number | null {
   const selected = useOrganizationStore((state) => state.activeOrganizationId);
   const organizations = useOrganizations();
@@ -53,7 +69,7 @@ export function useActiveOrganizationId(): number | null {
   if (selected && organizations.data?.some((organization) => organization.id === selected)) {
     return selected;
   }
-  return organizations.data?.[0]?.id ?? null;
+  return organizacionPorDefecto(organizations.data ?? []);
 }
 
 export function useOrganizationMembers(organizationId: number | null) {

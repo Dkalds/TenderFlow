@@ -49,7 +49,7 @@ users(id)`. La migración es en tres tiempos, y este ADR fija los tres:
 | Fase | Qué | Dónde |
 |---|---|---|
 | 1 | Ratchet: la lista de ficheros que usan `user_key` solo encoge; `user_key_from_email` marcada `@deprecated` | S1.4 |
-| 2 | Columna `user_id` + backfill por email + **lectura dual** | T4 |
+| 2 | Columna `user_id` + backfill por email + **lectura dual**. **Hecho 2026-09-14 (v129)**: las nueve tablas que faltaban reciben la columna (FK `ON DELETE SET NULL`, índice), el backfill es SQL puro (`sha256(lower(btrim(email)))` reproduce `user_key_from_email`; equivalencia probada en `tests/test_user_id_cambio_email_integration.py`), y los repositorios leen por `user_id` —o por `user_key` sólo en las filas sin resolver— y escriben las dos columnas. Las PK/UNIQUE tecleados por `user_key` siguen ahí: los upserts localizan la fila por identidad antes de insertar. | T4 |
 | 3 | `user_key` deja de escribirse; GDPR anonimiza por id; el ratchet llega a cero | T4 |
 
 La lectura dual de la fase 2 no es opcional: el backfill por email no puede

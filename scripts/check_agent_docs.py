@@ -83,13 +83,22 @@ MANUAL_CATEGORY_MARKER_ALLOWLIST = frozenset(
 # Tokens que parecen slash-command pero no lo son.
 SLASH_ALLOWLIST = {"/api", "/ask", "/me", "/competitive", "/analytics", "/graphify"}
 
-# Rutas citadas que son ejemplos o plantillas, no archivos reales.
+# Rutas citadas que son ejemplos, plantillas o artefactos generados, no
+# archivos reales del árbol.
+#
+# `tests/test_docs_paths.py` mantiene la lista gemela para la documentación de
+# arquitectura: lo que se añada aquí por ser un artefacto hay que mirarlo allí
+# también, porque los dos verificadores recorren `docs/api-design.md`.
 PATH_ALLOWLIST = {
     "graphify-out/wiki/index.md",  # lo genera el CLI, opcional
     "graphify-out/wiki/",
     "graphify-out/GRAPH_REPORT.md",
     "graphify-out/.graph_stale",
     "graphify-out/graph.json",
+    # Los produce `make openapi` (`scripts/export_openapi.py`) y están en
+    # .gitignore: en un checkout limpio no existen.
+    "api/openapi.json",
+    "api/openapi-public.json",
 }
 
 ABSOLUTE_PATH_PATTERNS = [

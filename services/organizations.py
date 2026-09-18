@@ -5,6 +5,8 @@ from __future__ import annotations
 import hashlib
 import html
 import secrets
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from urllib.parse import quote
@@ -23,6 +25,7 @@ from shared.dto import (
     OrganizationSummary,
 )
 from shared.signing import sign, verify
+from shared.tenant_context import tenant_scope
 
 log = get_logger(__name__)
 
@@ -58,7 +61,19 @@ def resolve_organization(
     *,
     write: bool = False,
 ) -> tuple[int, str]:
-    """Resuelve organización explícita o personal y valida el rol."""
+    """Resuelve organización explícita o personal y valida el rol.
+
+    **No fija el ámbito de tenencia.** Se intentó —parecía la forma de que el
+    respaldo RLS cubriera todo sin depender de que el llamante se acordara— y
+    está mal: ``set_organization`` no tiene final. Dentro de ``run_db`` muere
+    con la copia del contexto del hilo, pero un llamante síncrono (un script,
+    un job, la propia suite) deja el ámbito clavado para todo lo que venga
+    después en ese hilo, incluido trabajo de otra organización o de ninguna.
+    Un ámbito sin final no es un ámbito.
+
+    Quien necesite el respaldo lo abre con :func:`alcance_resuelto`, que es un
+    context manager y por tanto lo cierra.
+    """
     if organization_id is None:
         personal = _repo.ensure_personal_organization(user_id)
         return int(personal["id"]), str(personal["role"])
@@ -70,6 +85,34 @@ def resolve_organization(
     if write and role == "viewer":
         raise OrganizationPermissionError("El rol viewer es de solo lectura.")
     return organization_id, role
+
+
+@contextmanager
+def alcance_resuelto(
+    user_id: int,
+    organization_id: int | None,
+    *,
+    write: bool = False,
+) -> Iterator[tuple[int, str]]:
+    """Resuelve la organización y deja el bloque **acotado** a ella (ADR-034).
+
+    Es :func:`resolve_organization` con el respaldo RLS puesto y, sobre todo,
+    quitado al salir: dentro del bloque cada transacción que abra
+    ``db/connection.py`` emite ``SET LOCAL app.organization_id``, y al salir el
+    ámbito vuelve a lo que hubiera, también si el cuerpo lanza.
+
+    Lo usan las verticales que resuelven desde ``services/`` en vez de pasar
+    por ``api/tenancy.py``. La de pursuits es la grande, y estuvo sin respaldo:
+    como el predicado de ``v128`` deja pasar todo con el GUC vacío, sus
+    peticiones corrían sin RLS y nada fallaba. Ver
+    ``tests/test_rls_tenant_scope_integration.py``.
+
+    El ámbito se abre **después** de validar la membresía, nunca antes: si se
+    abriera antes, un 403 dejaría el bloque mirando datos de otro equipo.
+    """
+    resuelta, rol = resolve_organization(user_id, organization_id, write=write)
+    with tenant_scope(resuelta):
+        yield resuelta, rol
 
 
 def require_active_member(organization_id: int, user_id: int) -> None:
@@ -171,7 +214,19 @@ def add_member_by_email(
 
 
 def claim_legacy_scope(user_id: int, user_key: str) -> None:
-    _repo.claim_legacy_rows(user_id, user_key)
+    """Adjudica al espacio personal las filas del usuario que aún no tienen organización.
+
+    Corre **sin ámbito** a propósito (ADR-034): las rutas lo invocan dentro de
+    una petición ya acotada a la organización activa, y el destino de esas
+    filas es la organización *personal*, que puede ser otra. Con el ámbito
+    puesto, el ``WITH CHECK`` de las políticas de ``v128`` rechazaría el
+    ``UPDATE`` en cuanto la activa fuera una compartida. Es un backfill de
+    propiedad por usuario, no una escritura de la organización activa; la
+    lista de tablas y el predicado viven en
+    ``OrganizationRepository.claim_legacy_rows``.
+    """
+    with tenant_scope(None):
+        _repo.claim_legacy_rows(user_id, user_key)
 
 
 # ── Invitaciones a correos sin cuenta (S1.1) ───────────────────────────────

@@ -26,6 +26,7 @@ from services.pursuits import (
     proponer_pesos,
 )
 from shared.scoring_weights import WEIGHTS_TOTAL, validate_scoring_weights
+from tests.dobles_tenencia import alcance_fijo
 
 _PESOS_BASE = {
     "importe": 20,
@@ -144,7 +145,10 @@ def _filas_cerradas(ganadas: int, perdidas: int) -> list[dict[str, Any]]:
 @pytest.fixture
 def _organizacion_suplantada(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
-        pursuits_svc, "resolve_organization", lambda *_a, **_k: (7, "owner"), raising=True
+        pursuits_svc,
+        "alcance_resuelto",
+        alcance_fijo(),
+        raising=True,
     )
     monkeypatch.setattr(
         pursuits_svc, "_pesos_vigentes", lambda *_a, **_k: (dict(_PESOS_BASE), "global")

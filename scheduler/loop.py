@@ -241,13 +241,20 @@ def main() -> int:
     # este loop. Hasta 2026-08 la variable se leía en healthcheck/ops_events
     # pero NADIE la escribía ni la aplicaba: docker-compose levantaba el loop
     # incondicionalmente y nada impedía dos planos activos contra la misma BD.
+    # ADR-033 añadió un tercer valor admisible (`worker`): el cron dentro del
+    # proceso `APP_PROFILE=worker`. No cambia nada aquí —este bucle sigue
+    # exigiendo `docker` y solo `docker`—, pero sí el mensaje: quien lea este
+    # error tiene ahora tres planos posibles, no dos, y decir «el plano por
+    # defecto es Actions» a secas mandaría a configurar el que se está
+    # retirando.
     plane = os.environ.get("SCHEDULER_PLANE", "")
     if plane != "docker":
         log.error(
             "scheduler_loop_refused_wrong_plane",
             scheduler_plane=plane or "(sin definir)",
             hint="exportá SCHEDULER_PLANE=docker para activar este plano (ADR-012); "
-            "el plano por defecto es GitHub Actions",
+            "los otros dos valores son 'actions' (GitHub Actions, el de producción "
+            "hasta el cutover) y 'worker' (el cron dentro del worker, ADR-033)",
         )
         return 2
 

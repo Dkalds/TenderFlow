@@ -14,6 +14,7 @@ import pytest
 
 import services.pursuits as sp
 from services.watchlist_rules import WatchlistRule
+from tests.dobles_tenencia import alcance_fijo
 
 # ── Bandas de urgencia ──────────────────────────────────────────────────────
 
@@ -155,7 +156,7 @@ def agenda_deps(monkeypatch: pytest.MonkeyPatch) -> _RepoStub:
         ]
     )
     monkeypatch.setattr(sp, "_repo", stub)
-    monkeypatch.setattr(sp, "resolve_organization", lambda *a, **k: (7, "member"))
+    monkeypatch.setattr(sp, "alcance_resuelto", alcance_fijo(rol="member"))
     monkeypatch.setattr(
         sp,
         "list_rules",

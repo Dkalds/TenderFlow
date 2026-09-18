@@ -66,6 +66,22 @@ def test_el_linaje_esta_declarado_en_el_conjunto_de_coalesce(columna: str) -> No
     assert columna in _LIC_COALESCE_UPDATE_FIELDS
 
 
+#: Las cuatro columnas ML. Un conector nunca las calcula: el ``None`` con que
+#: construye la ``Licitacion`` es «sin opinión», no «borrar». Los pasos ML que
+#: las poseen escriben por UPDATE explícito y no pasan por aquí.
+COLUMNAS_ML = ("ml_proba", "ml_tecnologias", "ml_proba_max", "ml_tech_principal")
+
+
+@pytest.mark.parametrize("columna", COLUMNAS_ML)
+def test_las_columnas_ml_se_actualizan_con_coalesce(columna: str) -> None:
+    """Regresión del ítem «cada re-ingesta nulea las cuatro columnas ML»
+    (cerrado el 2026-09-14): sin COALESCE cada pasada del ATOM las pisaba con
+    NULL y ``tech_signal_merge`` barría la tabla entera para curarlo."""
+    assert columna in {f.name for f in fields(Licitacion)}
+    assert columna in _LIC_COALESCE_UPDATE_FIELDS
+    assert _asignacion(columna) == f"{columna}=COALESCE(excluded.{columna}, licitaciones.{columna})"
+
+
 def test_los_campos_originales_de_coalesce_siguen_protegidos() -> None:
     """Regresión: añadir linaje no puede desproteger `fecha_limite` y compañía."""
     for columna in ("fecha_limite", "procedimiento", "tramitacion", "peso_precio_pct"):

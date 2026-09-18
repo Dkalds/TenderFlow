@@ -48,6 +48,12 @@ def _user_key(ctx: dict[str, Any]) -> str:
     return str(ctx["user_key"])
 
 
+def _user_id(ctx: dict[str, Any]) -> int | None:
+    """Identidad interna del principal (v129): la lectura dual va por ella."""
+    raw = ctx.get("user_id")
+    return int(raw) if raw is not None else None
+
+
 async def _organizacion_activa(ctx: dict[str, Any]) -> int | None:
     """La organización desde la que el usuario pospone, o ``None``.
 
@@ -73,7 +79,7 @@ async def _organizacion_activa(ctx: dict[str, Any]) -> int | None:
     return int(organization_id) if organization_id is not None else None
 
 
-async def _resultado(user_key: str) -> RadarDismissalsResult:
+async def _resultado(user_key: str, user_id: int | None = None) -> RadarDismissalsResult:
     """La respuesta de las tres rutas: una sola lectura, no dos.
 
     `list_detalle` ya trae el id, así que pedir además `list_ids` sería una
@@ -81,7 +87,7 @@ async def _resultado(user_key: str) -> RadarDismissalsResult:
     consultas separadas pueden además discrepar si un descarte vence entre
     ellas.
     """
-    filas = await run_db(radar_dismissals.list_detalle, user_key)
+    filas = await run_db(radar_dismissals.list_detalle, user_key, user_id=user_id)
     detalle = [RadarDismissal(**fila) for fila in filas]
     return RadarDismissalsResult(ids=[d.id_externo for d in detalle], detalle=detalle)
 
@@ -183,7 +189,7 @@ class RadarDismissalsResult(BaseModel):
 async def get_dismissals(
     ctx: dict[str, Any] = Depends(require_any_auth),
 ) -> RadarDismissalsResult:
-    return await _resultado(_user_key(ctx))
+    return await _resultado(_user_key(ctx), _user_id(ctx))
 
 
 @router.post(
@@ -205,6 +211,7 @@ async def post_dismissal(
     ctx: dict[str, Any] = Depends(require_any_auth),
 ) -> RadarDismissalsResult:
     user_key = _user_key(ctx)
+    user_id = _user_id(ctx)
     ambito = idem_scope("radar_dismissals", actor=user_key)
     hasta = (
         (datetime.now(UTC) + timedelta(days=body.dias)).isoformat()
@@ -235,8 +242,9 @@ async def post_dismissal(
             # `descartar` no escribe acción: la fila queda como las de v76, y así
             # `accion IS NULL` sigue significando exactamente «permanente».
             accion=None if body.accion == "descartar" else body.accion,
+            user_id=user_id,
         )
-        filas = radar_dismissals.list_detalle(user_key)
+        filas = radar_dismissals.list_detalle(user_key, user_id=user_id)
         detalle = [RadarDismissal(**fila) for fila in filas]
         respuesta = RadarDismissalsResult(
             ids=[d.id_externo for d in detalle], detalle=detalle
@@ -269,7 +277,7 @@ async def delete_dismissal(
     id_externo: str,
     ctx: dict[str, Any] = Depends(require_any_auth),
 ) -> None:
-    ok = await run_db(radar_dismissals.remove, _user_key(ctx), id_externo)
+    ok = await run_db(radar_dismissals.remove, _user_key(ctx), id_externo, user_id=_user_id(ctx))
     if not ok:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

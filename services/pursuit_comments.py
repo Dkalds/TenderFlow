@@ -14,7 +14,10 @@ from db.repositories.organizations import OrganizationRepository
 from db.repositories.pursuit_comments import PursuitCommentRepository
 from db.repositories.pursuits import PursuitRepository
 from observability.logging import get_logger
-from services.organizations import OrganizationPermissionError, resolve_organization
+from services.organizations import (
+    OrganizationPermissionError,
+    alcance_resuelto,
+)
 from services.pursuits import PursuitNotFoundError
 from shared.dto import PursuitCommentCreate, PursuitCommentListResponse, PursuitCommentOut
 
@@ -41,17 +44,17 @@ def list_comments(
     offset: int = 0,
 ) -> PursuitCommentListResponse:
     """Página del hilo en orden cronológico, paginada desde el más reciente."""
-    resolved_id, role = resolve_organization(user_id, organization_id)
-    _require_pursuit(resolved_id, pursuit_id)
-    rows, total = _repo.list_for_pursuit(resolved_id, pursuit_id, limit=limit, offset=offset)
-    return PursuitCommentListResponse(
-        pursuit_id=pursuit_id,
-        organization_id=resolved_id,
-        items=[_to_out(row, user_id, role) for row in reversed(rows)],
-        total=total,
-        limit=limit,
-        offset=offset,
-    )
+    with alcance_resuelto(user_id, organization_id) as (resolved_id, role):
+        _require_pursuit(resolved_id, pursuit_id)
+        rows, total = _repo.list_for_pursuit(resolved_id, pursuit_id, limit=limit, offset=offset)
+        return PursuitCommentListResponse(
+            pursuit_id=pursuit_id,
+            organization_id=resolved_id,
+            items=[_to_out(row, user_id, role) for row in reversed(rows)],
+            total=total,
+            limit=limit,
+            offset=offset,
+        )
 
 
 def add_comment(
@@ -63,22 +66,22 @@ def add_comment(
     idempotency_key: str | None = None,
 ) -> PursuitCommentOut:
     """Publica un comentario. Un ``viewer`` no escribe: el rol es de solo lectura."""
-    resolved_id, role = resolve_organization(user_id, organization_id, write=True)
-    _require_pursuit(resolved_id, pursuit_id)
-    row, created = _repo.create(
-        organization_id=resolved_id,
-        pursuit_id=pursuit_id,
-        author_user_id=user_id,
-        body=body.body,
-        idempotency_key=idempotency_key,
-    )
-    # C6.2: las menciones se resuelven **solo al crear**. Un reintento
-    # idempotente devuelve el comentario original y no vuelve a resolver: si lo
-    # hiciera, alguien que cambió de nombre entre el primer envío y el reintento
-    # quedaría mencionado o desmencionado por un corte de red.
-    if created:
-        _resolver_menciones(resolved_id, int(row["id"]), body.body)
-    return _to_out(row, user_id, role)
+    with alcance_resuelto(user_id, organization_id, write=True) as (resolved_id, role):
+        _require_pursuit(resolved_id, pursuit_id)
+        row, created = _repo.create(
+            organization_id=resolved_id,
+            pursuit_id=pursuit_id,
+            author_user_id=user_id,
+            body=body.body,
+            idempotency_key=idempotency_key,
+        )
+        # C6.2: las menciones se resuelven **solo al crear**. Un reintento
+        # idempotente devuelve el comentario original y no vuelve a resolver: si lo
+        # hiciera, alguien que cambió de nombre entre el primer envío y el reintento
+        # quedaría mencionado o desmencionado por un corte de red.
+        if created:
+            _resolver_menciones(resolved_id, int(row["id"]), body.body)
+        return _to_out(row, user_id, role)
 
 
 def _resolver_menciones(organization_id: int, comment_id: int, texto: str) -> list[int]:
@@ -129,17 +132,17 @@ def delete_comment(
     organization_id: int | None = None,
 ) -> None:
     """Borra un comentario propio; owner y admin pueden borrar cualquiera."""
-    resolved_id, role = resolve_organization(user_id, organization_id, write=True)
-    _require_pursuit(resolved_id, pursuit_id)
-    row = _repo.get(resolved_id, pursuit_id, comment_id)
-    if row is None:
-        raise PursuitCommentNotFoundError("Comentario no encontrado.")
-    if not _can_delete(row, user_id, role):
-        raise OrganizationPermissionError(
-            "Solo el autor, o un owner o admin del espacio, puede borrar un comentario."
-        )
-    if not _repo.delete(resolved_id, pursuit_id, comment_id):
-        raise PursuitCommentNotFoundError("Comentario no encontrado.")
+    with alcance_resuelto(user_id, organization_id, write=True) as (resolved_id, role):
+        _require_pursuit(resolved_id, pursuit_id)
+        row = _repo.get(resolved_id, pursuit_id, comment_id)
+        if row is None:
+            raise PursuitCommentNotFoundError("Comentario no encontrado.")
+        if not _can_delete(row, user_id, role):
+            raise OrganizationPermissionError(
+                "Solo el autor, o un owner o admin del espacio, puede borrar un comentario."
+            )
+        if not _repo.delete(resolved_id, pursuit_id, comment_id):
+            raise PursuitCommentNotFoundError("Comentario no encontrado.")
 
 
 def _require_pursuit(organization_id: int, pursuit_id: int) -> None:

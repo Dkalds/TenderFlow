@@ -46,7 +46,13 @@ PREFIJOS_ARTEFACTO = ("data/", "coverage/", "htmlcov/", "dist/", "build/")
 BACKTICK = re.compile(r"`([^`\n]+)`")
 LINK_TARGET = re.compile(r"\]\(([^)\s]+)\)")
 
-# Rutas que se citan como ejemplo o pertenecen a un entorno, no al árbol.
+# Rutas que se citan como ejemplo, pertenecen a un entorno o son artefactos
+# generados, no al árbol.
+#
+# Los dos specs de OpenAPI son el mismo caso que `PREFIJOS_ARTEFACTO`: los
+# produce `make openapi` (`scripts/export_openapi.py`) y están en .gitignore, así
+# que en un checkout limpio no existen. Van aquí y no como prefijo `api/` porque
+# ese prefijo silenciaría también `api/routes/...`, que sí tiene que existir.
 PATH_ALLOWLIST = frozenset(
     {
         "graphify-out/graph.json",
@@ -54,6 +60,8 @@ PATH_ALLOWLIST = frozenset(
         "graphify-out/wiki/",
         "graphify-out/wiki/index.md",
         "graphify-out/.graph_stale",
+        "api/openapi.json",
+        "api/openapi-public.json",
     }
 )
 

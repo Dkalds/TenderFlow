@@ -55,8 +55,8 @@ def _entry(*, nif: str, contract_id: str = "WATCH-001") -> tuple[Any, str]:
 
 
 def test_parse_unfiltered_persists_non_technology_award_for_watched_nif() -> None:
-    entry, updated = _entry(nif="B-12345678")
-    connector = PlacspWatchedCompanyAwardsConnector({"B12345678"})
+    entry, updated = _entry(nif="B-12345674")
+    connector = PlacspWatchedCompanyAwardsConnector({"B12345674"})
 
     parsed = connector.parse(RawNotice(natural_id="notice", payload=(entry, updated)))
 
@@ -67,12 +67,12 @@ def test_parse_unfiltered_persists_non_technology_award_for_watched_nif() -> Non
     assert parsed.licitacion.analysis_universe == ANALYSIS_UNIVERSE
     assert parsed.licitacion.inclusion_reason == INCLUSION_REASON
     assert parsed.adjudicaciones[0].licitacion_id == parsed.licitacion.id_externo
-    assert parsed.adjudicaciones[0].nif == "B-12345678"
+    assert parsed.adjudicaciones[0].nif == "B-12345674"
 
 
 def test_parse_discards_award_without_watched_nif() -> None:
-    entry, updated = _entry(nif="B99999999")
-    connector = PlacspWatchedCompanyAwardsConnector({"B12345678"})
+    entry, updated = _entry(nif="B99999997")
+    connector = PlacspWatchedCompanyAwardsConnector({"B12345674"})
 
     assert connector.parse(RawNotice(natural_id="notice", payload=(entry, updated))) is None
 
@@ -88,7 +88,7 @@ def test_empty_watchlist_does_not_download_atom_feed() -> None:
 
 def test_runner_is_idempotent_and_uses_own_cursor(tmp_db: Any) -> None:
     db_mod, _ = tmp_db
-    entry, updated = _entry(nif="B12345678")
+    entry, updated = _entry(nif="B12345674")
     meta = {
         "newest_updated": updated,
         "etag": '"watched"',
@@ -99,9 +99,9 @@ def test_runner_is_idempotent_and_uses_own_cursor(tmp_db: Any) -> None:
     }
 
     with patch("scraper.atom_live.iter_live_entries", return_value=([(entry, updated)], meta)):
-        first = run_connector(PlacspWatchedCompanyAwardsConnector({"B12345678"}))
+        first = run_connector(PlacspWatchedCompanyAwardsConnector({"B12345674"}))
     with patch("scraper.atom_live.iter_live_entries", return_value=([(entry, updated)], meta)):
-        second = run_connector(PlacspWatchedCompanyAwardsConnector({"B12345678"}))
+        second = run_connector(PlacspWatchedCompanyAwardsConnector({"B12345674"}))
 
     assert first.nuevas == 1
     assert second.nuevas == 0
@@ -116,7 +116,7 @@ def test_repository_lists_unique_nonempty_canonical_nifs(tmp_db: Any) -> None:
     with db_mod.connect() as c:
         c.execute(
             "INSERT INTO empresas (nif_canonico, nombre_canonico) VALUES (%s, %s)",
-            ("B12345678", "Uno"),  # pragma: allowlist secret
+            ("B12345674", "Uno"),  # pragma: allowlist secret
         )
         c.execute(
             "INSERT INTO empresas (nif_canonico, nombre_canonico) VALUES (%s, %s)",
@@ -142,7 +142,7 @@ def test_repository_lists_unique_nonempty_canonical_nifs(tmp_db: Any) -> None:
         )
 
     assert WatchedCompanyRepository().list_canonical_nifs() == {
-        "B12345678"  # pragma: allowlist secret
+        "B12345674"  # pragma: allowlist secret
     }
 
 
@@ -160,7 +160,18 @@ def test_cli_exits_successfully_without_watched_nifs(monkeypatch: Any) -> None:
 
 
 def test_bulk_connector_is_parameterized_and_has_no_cursor() -> None:
-    connector = PlacspWatchedCompanyAwardsBulkConnector(2026, 7, {"B12345678"})
+    connector = PlacspWatchedCompanyAwardsBulkConnector(2026, 7, {"B12345674"})
 
     assert connector.source_id == f"{SOURCE_ID}_bulk_202607"
     assert connector.new_cursor() is None
+
+
+def test_watched_nif_con_control_incorrecto_se_descarta_y_avisa() -> None:
+    """Vigilar un CIF con la letra mal no casaría nunca: fuera, y dicho."""
+    connector = PlacspWatchedCompanyAwardsConnector({"B12345678", "B12345674"})
+    assert connector.watched_nif_count == 1
+
+
+def test_watched_identificador_extranjero_se_conserva() -> None:
+    connector = PlacspWatchedCompanyAwardsConnector({"DE123456789"})
+    assert connector.watched_nif_count == 1

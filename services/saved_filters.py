@@ -18,16 +18,31 @@ from db.saved_filters import save_filter as _save_filter
 # ``organization_id`` viaja hasta aquí en vez de quedarse en la ruta: el
 # CRUD de abajo dejó de admitir ``None`` (ver ``db/saved_filters.py``) y
 # una fachada que lo omitiera reintroduciría el fail-open que se retira.
-def save_filter(user_key: str, name: str, filters_json: str, organization_id: int) -> None:
-    _save_filter(user_key, name, filters_json, organization_id)
+# ``user_id`` (v129) es opcional: con él la lectura es dual y la escritura
+# pone las dos identidades.
+def save_filter(
+    user_key: str,
+    name: str,
+    filters_json: str,
+    organization_id: int,
+    *,
+    user_id: int | None = None,
+) -> None:
+    _save_filter(user_key, name, filters_json, organization_id, user_id=user_id)
 
 
-def list_saved_filters(user_key: str, organization_id: int) -> list[dict[str, Any]]:
-    return _list_saved_filters(user_key, organization_id)
+def list_saved_filters(
+    user_key: str, organization_id: int, *, user_id: int | None = None
+) -> list[dict[str, Any]]:
+    return _list_saved_filters(user_key, organization_id, user_id=user_id)
 
 
-def delete_saved_filter(filter_id: int, user_key: str, organization_id: int) -> None:
-    _delete_saved_filter(filter_id, user_key=user_key, organization_id=organization_id)
+def delete_saved_filter(
+    filter_id: int, user_key: str, organization_id: int, *, user_id: int | None = None
+) -> None:
+    _delete_saved_filter(
+        filter_id, user_key=user_key, organization_id=organization_id, user_id=user_id
+    )
 
 
 def filters_to_json(

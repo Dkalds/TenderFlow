@@ -5,16 +5,18 @@ from __future__ import annotations
 import re
 
 from config import SAP_KEYWORDS
+from config.keywords import patron_de_keywords
 from observability.logging import get_logger
 
 log = get_logger(__name__)
 
-# Compilamos un regex con word boundaries para evitar falsos positivos
-# (ej: 'sap' dentro de otra palabra como 'desaparecer')
-_SAP_PATTERN = re.compile(
-    r"\b(" + "|".join(re.escape(k) for k in SAP_KEYWORDS) + r")\b",
-    flags=re.IGNORECASE,
-)
+# Límites de palabra para evitar falsos positivos ('sap' dentro de
+# 'desaparecer'). Se compila por `config.keywords.patron_de_keywords` —el mismo
+# camino que `services.tecnologias_diccionario.patrones`— y no con un
+# `\b(...)\b` propio: hoy ninguna keyword de esta lista empieza o acaba en
+# símbolo, pero el día que entre una (`.net`, `c#`) el `\b` la dejaría muerta
+# sin que nada lo dijera, que es lo que pasó en el diccionario de tecnologías.
+_SAP_PATTERN = patron_de_keywords(SAP_KEYWORDS)
 
 
 def _tech_patterns() -> dict[str, re.Pattern[str]]:

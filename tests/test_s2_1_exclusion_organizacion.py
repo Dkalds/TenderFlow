@@ -28,6 +28,7 @@ from services.competitive.socios import (
 )
 from services.organizations import OrganizationAccessError
 from services.pursuit_awards import IdentidadFiscal
+from tests.dobles_tenencia import alcance_doble, alcance_fijo
 
 _NIF_PROPIO = "B12345678"  # pragma: allowlist secret
 _NIF_AJENO = "A87654321"  # pragma: allowlist secret
@@ -171,7 +172,7 @@ class TestSociosDelSegmento:
         """Un job sin contexto no tiene identidad fiscal: no se inventa una."""
         with (
             patch(_CARGA, return_value=self._df()),
-            patch("services.competitive.socios.resolve_organization") as resolver,
+            patch("services.competitive.socios.alcance_resuelto") as resolver,
         ):
             resultado = socios_del_segmento()
 
@@ -179,23 +180,32 @@ class TestSociosDelSegmento:
         assert [s.empresa_key for s in resultado.socios] == ["acme"]
 
     def test_con_usuario_se_excluye_su_organizacion(self) -> None:
+        # El doble anota sus llamadas en vez de ser un Mock: `alcance_resuelto`
+        # es un context manager, y un `MagicMock` no lo es.
+        llamadas: list[tuple[Any, ...]] = []
+
+        def _anotando(user_id, organization_id=None, *, write=False):
+            llamadas.append((user_id, organization_id, write))
+            return (7, "owner")
+
         with (
             patch(_CARGA, return_value=self._df()),
-            patch(
-                "services.competitive.socios.resolve_organization", return_value=(7, "owner")
-            ) as resolver,
+            patch("services.competitive.socios.alcance_resuelto", alcance_doble(_anotando)),
             patch("services.competitive.socios.identidad_fiscal", return_value=_PROPIA),
         ):
             resultado = socios_del_segmento(user_id=3, organization_id=7)
 
-        resolver.assert_called_once_with(3, 7)
+        assert llamadas == [(3, 7, False)]
         assert resultado.socios == []
 
     def test_un_fallo_leyendo_la_identidad_no_tumba_la_pantalla(self) -> None:
         """Sin exclusión la lista sigue sirviendo; sin lista, no."""
         with (
             patch(_CARGA, return_value=self._df()),
-            patch("services.competitive.socios.resolve_organization", return_value=(7, "owner")),
+            patch(
+                "services.competitive.socios.alcance_resuelto",
+                alcance_fijo(),
+            ),
             patch(
                 "services.competitive.socios.identidad_fiscal",
                 side_effect=RuntimeError("BD caída"),
@@ -210,7 +220,7 @@ class TestSociosDelSegmento:
         with (
             patch(_CARGA, return_value=self._df()),
             patch(
-                "services.competitive.socios.resolve_organization",
+                "services.competitive.socios.alcance_resuelto",
                 side_effect=OrganizationAccessError("No perteneces a esta organización."),
             ),
             pytest.raises(OrganizationAccessError),

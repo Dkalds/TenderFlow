@@ -20,6 +20,7 @@ from pydantic import BaseModel, Field
 
 from api.concurrency import run_db
 from api.routes.dual_auth import require_any_auth, require_recent_session
+from db.audit import log_event
 from db.repositories.pursuits import PursuitRepository
 from observability.logging import get_logger
 from services.cartera import ContratoCartera, cartera_de_usuario
@@ -28,7 +29,7 @@ from services.direccion import (
     FeedActividad,
     actividad_de_organizacion,
     corte_con_minimo,
-    exigir_direccion,
+    direccion_resuelta,
 )
 from services.kit_presentacion import KitPresentacion
 from services.organizations import (
@@ -77,6 +78,19 @@ from services.pursuits import (
     marcar_kit_de_pursuit,
     update_pursuit,
 )
+from shared.audit_events import (
+    ORG_CREATED,
+    ORG_DELETED,
+    ORG_INVITATION_ACCEPTED,
+    ORG_INVITATION_RESENT,
+    ORG_INVITATION_REVOKED,
+    ORG_INVITATION_SENT,
+    ORG_LEFT,
+    ORG_MEMBER_ADDED,
+    ORG_MEMBER_REMOVED,
+    ORG_MEMBER_ROLE_CHANGED,
+    ORG_OWNERSHIP_TRANSFERRED,
+)
 from shared.dto import (
     OrganizationCreate,
     OrganizationInvitationAccept,
@@ -101,6 +115,26 @@ from shared.dto import (
 
 log = get_logger(__name__)
 router = APIRouter(tags=["pursuits"])
+
+
+async def _auditar_organizacion(
+    ctx: dict[str, Any], event_type: str, organization_id: int, **detail: Any
+) -> None:
+    """Deja el rastro de un evento ``org.*`` (``shared/audit_events.py``).
+
+    ``resource="org:<id>"`` es lo que ``GET /organizations/{id}/audit``
+    recupera; el actor va como ``users.id`` y el ``detail`` solo lleva ids,
+    nunca correos (ADR-030 §D). ``log_event`` no lanza: la auditoría no rompe
+    la petición que acaba de completarse.
+    """
+    await run_db(
+        log_event,
+        event_type=event_type,
+        user_id=int(ctx["user_id"]),
+        resource=f"org:{organization_id}",
+        detail={"organization_id": organization_id, **detail},
+    )
+
 
 _pursuit_repo = PursuitRepository()
 
@@ -260,7 +294,9 @@ async def post_organization(
     body: OrganizationCreate,
     ctx: dict[str, Any] = Depends(require_any_auth),
 ) -> OrganizationSummary:
-    return await run_db(create_organization, int(ctx["user_id"]), body.name)
+    creada = await run_db(create_organization, int(ctx["user_id"]), body.name)
+    await _auditar_organizacion(ctx, ORG_CREATED, creada.id)
+    return creada
 
 
 @router.get("/organizations/active", response_model=OrganizationSummary)
@@ -345,6 +381,13 @@ async def post_transfer_ownership(
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except OrganizationLifecycleError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+    await _auditar_organizacion(
+        ctx,
+        ORG_OWNERSHIP_TRANSFERRED,
+        organization_id,
+        from_user_id=int(ctx["user_id"]),
+        to_user_id=body.nuevo_owner_user_id,
+    )
     return StatusOk(status="ok")
 
 
@@ -375,6 +418,7 @@ async def post_leave_organization(
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except OrganizationLifecycleError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+    await _auditar_organizacion(ctx, ORG_LEFT, organization_id, user_id=int(ctx["user_id"]))
     return StatusOk(status="ok")
 
 
@@ -438,6 +482,9 @@ async def post_delete_organization(
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except OrganizationLifecycleError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+    # El rastro sobrevive a la organización: es el único sitio donde queda
+    # cuánto se llevó el borrado, ahora que las filas ya no están.
+    await _auditar_organizacion(ctx, ORG_DELETED, organization_id, **conteos)
     return OrganizationDeletionSummary(**conteos)
 
 
@@ -470,7 +517,7 @@ async def post_accept_organization_invitation(
     envió.
     """
     try:
-        return await run_db(
+        organizacion = await run_db(
             accept_invitation_token,
             int(ctx["user_id"]),
             ctx.get("email"),
@@ -480,6 +527,10 @@ async def post_accept_organization_invitation(
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except OrganizationPermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
+    await _auditar_organizacion(
+        ctx, ORG_INVITATION_ACCEPTED, organizacion.id, user_id=int(ctx["user_id"])
+    )
+    return organizacion
 
 
 @router.post(
@@ -501,7 +552,7 @@ async def post_organization_member(
     registrado antes por su cuenta.
     """
     try:
-        return await run_db(
+        resultado = await run_db(
             invite_member_by_email,
             int(ctx["user_id"]),
             organization_id,
@@ -510,6 +561,22 @@ async def post_organization_member(
         )
     except (OrganizationAccessError, OrganizationPermissionError) as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
+    # Dos eventos distintos porque son dos hechos distintos: una persona que
+    # ya está dentro, o un enlace que todavía tiene que canjearse. En ninguno
+    # va el correo: el id de la invitación es lo que enlaza con ella.
+    if isinstance(resultado, OrganizationInvitationOut):
+        await _auditar_organizacion(
+            ctx,
+            ORG_INVITATION_SENT,
+            organization_id,
+            invitation_id=resultado.id,
+            role=resultado.role,
+        )
+    else:
+        await _auditar_organizacion(
+            ctx, ORG_MEMBER_ADDED, organization_id, user_id=resultado.user_id, role=resultado.role
+        )
+    return resultado
 
 
 @router.get(
@@ -542,11 +609,21 @@ async def post_resend_organization_invitation(
 ) -> OrganizationInvitationOut:
     """Vuelve a enviar el correo con un enlace nuevo; el anterior deja de valer."""
     try:
-        return await run_db(resend_invitation, int(ctx["user_id"]), organization_id, invitation_id)
+        reenviada = await run_db(
+            resend_invitation, int(ctx["user_id"]), organization_id, invitation_id
+        )
     except (OrganizationAccessError, OrganizationPermissionError) as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except OrganizationInvitationNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    await _auditar_organizacion(
+        ctx,
+        ORG_INVITATION_RESENT,
+        organization_id,
+        invitation_id=reenviada.id,
+        previous_invitation_id=invitation_id,
+    )
+    return reenviada
 
 
 @router.delete(
@@ -565,6 +642,9 @@ async def delete_organization_invitation(
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except OrganizationInvitationNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    await _auditar_organizacion(
+        ctx, ORG_INVITATION_REVOKED, organization_id, invitation_id=invitation_id
+    )
     return StatusOk(status="ok")
 
 
@@ -581,7 +661,7 @@ async def put_organization_member(
     if body.user_id != member_user_id:
         raise HTTPException(status_code=422, detail="user_id no coincide con la ruta.")
     try:
-        return await run_db(
+        membresia = await run_db(
             upsert_membership,
             int(ctx["user_id"]),
             organization_id,
@@ -589,6 +669,18 @@ async def put_organization_member(
         )
     except (OrganizationAccessError, OrganizationPermissionError) as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
+    # Un upsert que deja la membresía fuera de `active` es una baja, aunque la
+    # ruta sea la misma: el rastro lo nombra como tal.
+    evento = ORG_MEMBER_ROLE_CHANGED if body.status == "active" else ORG_MEMBER_REMOVED
+    await _auditar_organizacion(
+        ctx,
+        evento,
+        organization_id,
+        user_id=member_user_id,
+        role=membresia.role,
+        status=membresia.status,
+    )
+    return membresia
 
 
 @router.post(
@@ -835,13 +927,15 @@ async def get_direccion(
     """
 
     def _trabajo() -> CuadroDireccion:
-        resuelta = exigir_direccion(int(ctx["user_id"]), organization_id)
-        filas = _pursuit_repo.metric_rows(resuelta)
-        return CuadroDireccion(
-            organization_id=resuelta,
-            win_rate_por_tecnologia=corte_con_minimo(filas, clave="tender_tecnologia"),
-            win_rate_por_organo=corte_con_minimo(filas, clave="tender_organo"),
-        )
+        # El `with` tiene que envolver la consulta, no sólo la resolución: el
+        # ámbito de tenencia vive mientras el bloque está abierto.
+        with direccion_resuelta(int(ctx["user_id"]), organization_id) as resuelta:
+            filas = _pursuit_repo.metric_rows(resuelta)
+            return CuadroDireccion(
+                organization_id=resuelta,
+                win_rate_por_tecnologia=corte_con_minimo(filas, clave="tender_tecnologia"),
+                win_rate_por_organo=corte_con_minimo(filas, clave="tender_organo"),
+            )
 
     try:
         return await run_db(_trabajo)

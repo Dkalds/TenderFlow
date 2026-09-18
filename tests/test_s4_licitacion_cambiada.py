@@ -109,7 +109,13 @@ def test_un_cambio_de_fecha_limite_en_expediente_seguido_genera_evento(org_segui
         "antes": "2026-11-01",
         "despues": "2026-12-01",
     }
-    assert {"user_key": _UK_SEGUIDOR, "organization_id": org_seguidora} in payload["seguidores"]
+    # `user_id` viaja desde v129; `None` porque el favorito se sembró sólo
+    # con `user_key`, como las filas anteriores al backfill.
+    assert {
+        "user_key": _UK_SEGUIDOR,
+        "organization_id": org_seguidora,
+        "user_id": None,
+    } in payload["seguidores"]
 
 
 def test_el_despachador_escribe_la_alerta_in_app_con_campo_y_valores(org_seguidora):

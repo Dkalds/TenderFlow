@@ -16,6 +16,7 @@ periódica.
 | `ALERT_EMAIL_TO`           | Destinatario de alertas por email | Al cambiar cuenta    | Maintainer | GitHub Secrets + `.env` |
 | `ALERT_SMTP_USER`          | Cuenta remitente Gmail            | Al cambiar cuenta    | Maintainer | GitHub Secrets + `.env` |
 | `ALERT_SMTP_PASSWORD`      | App Password de Gmail (16 chars)  | 90 días              | Maintainer | GitHub Secrets + `.env` |
+| `EMAIL_API_KEY`            | Clave del ESP (Resend / Postmark) cuando `EMAIL_BACKEND` no es `smtp`; sólo permiso de envío | 90 días | Maintainer | Render env (dashboard) + `.env`; si el healthcheck de GitHub Actions cambia de backend, también GitHub Secrets. Procedimiento en [runbooks/correo-transaccional.md](runbooks/correo-transaccional.md) |
 
 Turso/libSQL se retiró como backend (ADR-020, 2026-07-26); `TURSO_AUTH_TOKEN`
 y `TURSO_DATABASE_URL` ya no existen como secretos gestionados.
@@ -27,6 +28,7 @@ y `TURSO_DATABASE_URL` ya no existen como secretos gestionados.
 - Configurar `AUDIT_HMAC_KEY` con al menos 32 caracteres, diferente de las claves de sesión/API. El proceso API (`APP_PROFILE=api`) no arranca en producción sin ella; scraper/worker no la usan (`db/audit.py` solo lo llama código del servidor HTTP) y no la exigen.
 - Configurar `AWS_ROLE_TO_ASSUME` y la trust policy OIDC de GitHub para el bucket de backups; el workflow ya no usa claves AWS estáticas.
 - Configurar `WEBHOOK_ALLOWED_HOSTS` como lista explícita de dominios aprobados. Sin esa lista, los webhooks salientes quedan deshabilitados en producción.
+- Rotar el secret de un webhook con `POST /api/v1/webhooks/{id}/rotate-secret` en vez de borrarlo y recrearlo: conserva id e historial, invalida el anterior al instante (sin gracia) y queda en auditoría como `webhook.secret_rotated`. Las entregas llevan además `X-Webhook-Timestamp` y `X-Webhook-Signature-V2` para que el receptor rechace replays; receta en [integraciones/webhooks.md](integraciones/webhooks.md).
 - Mantener `DOCUMENT_ALLOWED_HOSTS` limitado a fuentes de contratación aprobadas. Las conexiones HTTP salientes fijan la IP validada, verifican TLS/SNI y rechazan redireccionamientos.
 - Configurar `BACKUP_ENCRYPTION_KEY` antes de ejecutar cualquier copia: los scripts cifran todas las copias con GPG/AES-256 y exigen la misma clave para restaurarlas.
 - Asociar o rotar las API keys heredadas sin `user_id`: producción y staging las rechazan para evitar que una clave sin propietario pueda actuar como administrador.
@@ -91,11 +93,49 @@ deshacer por descuido:
   en error una vez completado el cutover.
 
 Alcance de lo que cierra: el DDL (la app deja de poder alterar el schema) y la
-Data API de Supabase (`anon`/`authenticated` quedan en deny-all). **No** cierra
-el aislamiento entre organizaciones, que sigue viviendo en la capa de
-aplicación; el runbook explica por qué y qué haría falta para moverlo a RLS.
+Data API de Supabase (`anon`/`authenticated` quedan en deny-all). El
+aislamiento entre organizaciones es otra cosa: lo aplica la capa de aplicación
+y, desde `v128`, lo respalda la RLS por tenant de la sección siguiente — que
+solo se ejerce de verdad con un rol sin `BYPASSRLS`, es decir, tras el cutover.
 
 Contexto de la migración a Postgres: `docs/runbooks/migracion-persistencia.md`.
+
+## Aislamiento por organización en dos capas
+
+Decisión en [ADR-034](adr/ADR-034-rls-por-tenant.md); migración
+`db/alembic/versions/v128_rls_tenant_policies.py`.
+
+1. **Capa primaria — aplicación.** `api/tenancy.py` resuelve la organización
+   activa de cada petición y los repositorios de `db/` filtran por
+   `organization_id`. Es el control que se prueba en
+   `tests/test_organization_sql_isolation.py` y sigue siendo obligatorio.
+2. **Respaldo — RLS por tenant.** Al resolver la organización,
+   `api/tenancy.py` la deja en `shared/tenant_context.py` (un `ContextVar`
+   que `anyio` copia al hilo del pool). `db/connection.py` emite `SET LOCAL
+   app.organization_id = '<id>'` como primera sentencia de cada transacción
+   con ámbito, y las políticas `tenant_scope_*` (permisiva) y `tenant_guard_*`
+   (restrictiva) de cada tabla corporativa hacen invisibles las filas de
+   otras organizaciones y rechazan insertarlas o moverlas allí. Un `WHERE`
+   olvidado devuelve cero filas ajenas; un `INSERT` mal dirigido falla con
+   `new row violates row-level security policy`.
+
+Sin ámbito (scheduler, scripts, migraciones, backups) las políticas son paso
+franco: la variable no está, o está a `''`, y se ve todo. Las filas legadas
+con `organization_id NULL` siguen visibles desde cualquier ámbito. Una
+operación que deba cruzar organizaciones dentro de una petición acotada lo
+declara con `tenant_scope(None)` (hoy: `services/organizations.py::claim_legacy_scope`).
+
+Límites que conviene tener presentes:
+
+- Los superusuarios y los roles `BYPASSRLS` no están sujetos a RLS. El rol de
+  la suite es superusuario, así que `tests/test_rls_tenant_scope_integration.py`
+  ejerce las políticas con un rol sonda que emula a `tenderflow_app`.
+- Solo las rutas que pasan por `api/tenancy.py` fijan ámbito; la vertical de
+  pursuits resuelve la organización en `services/pursuits.py` y aún no lleva
+  respaldo.
+- Una tabla nueva con `organization_id` debe añadir `FORCE ROW LEVEL SECURITY`
+  y las dos políticas en su migración, o declararse excluida con motivo en el
+  test estructural; el test falla si no se decide.
 
 ## Workflow de recordatorio automatizado
 
@@ -119,7 +159,15 @@ los secretos cuando lleven más de 90 días.
 ## Protección de endpoints
 
 - Frontend web: rate-limit progresivo (2ⁿ backoff) tras 3 intentos
-  fallidos y sesiones con caducidad limitada.
+  fallidos y sesiones server-side revocables con caducidad **deslizante**
+  (`db/sessions.py`): cada petición validada vuelve a poner el plazo de
+  inactividad en `now + SESSION_IDLE_HOURS` (24 h), sin superar nunca el techo
+  absoluto `created_at + SESSION_ABSOLUTE_DAYS` (30 días), pasado el cual la
+  sesión se rechaza aunque esté fresca. «Recordar este equipo» en el login
+  alarga la ventana de inactividad a `SESSION_REMEMBER_DAYS` con el mismo
+  techo. La renovación no toca `created_at` ni `mfa_verified_at`: las acciones
+  sensibles (`require_recent_session`) siguen exigiendo login y segundo factor
+  recientes con independencia de lo viva que esté la sesión.
 - SQL: todas las queries usan parámetros posicionales. Los nombres de columna se
   validan contra regex `^[a-zA-Z_]\w*$` antes de usarse en `ALTER TABLE`.
 - XML: lxml con `resolve_entities=False`, `no_network=True` para prevenir XXE.
@@ -141,6 +189,56 @@ logs— y en Postgres sólo se guarda su SHA-256. Caduca en 30 minutos, se consu
 una vez y la confirmación revoca todas las sesiones activas. Las solicitudes se
 limitan por IP y por hash del email; los tokens usados/expirados se purgan por
 retención.
+
+## Auditoría
+
+`audit_log` es una cadena de hashes firmada con HMAC (`db/audit.py`): cada
+fila enlaza con la anterior y una cabecera firmada ancla el último hash y el
+número de filas, así que se detectan tanto la alteración de una fila como el
+borrado por la cola. Se verifica con `scripts/verify_audit_chain.py` o con
+`GET /api/v1/security/audit/verify` (administración).
+
+Desde 2026-09 los tipos de evento son un **catálogo cerrado** en
+`shared/audit_events.py`. `db.audit.log_event` lo consulta de forma blanda: un
+tipo fuera del catálogo se registra igual y deja `audit_event_type_unknown`
+en el log — es un bug del llamante, no un motivo para perder el rastro.
+
+| Familia | Eventos | Dónde se escriben |
+|---|---|---|
+| `org.*` | `created`, `deleted`, `settings_updated`, `nifs_updated`, `capabilities_updated`, `member_added`, `member_role_changed`, `member_removed`, `ownership_transferred`, `left`, `invitation_sent`, `invitation_resent`, `invitation_revoked`, `invitation_accepted` | `api/routes/pursuits.py`, `organization_settings.py`, `organizations_capacidad.py` |
+| `auth.*` | `login_success`, `login_failed`, `logout`, `logout_all`, `password_reset_requested`, `password_reset_completed`, `totp_enabled`, `totp_disabled`, `session_revoked` | `api/routes/auth.py`, `api/routes/me.py` |
+| `api_key.*` | `created`, `rotated`, `revoked` | `api/routes/me.py`; `revoked` lo emite la revocación por Secret Scanning de GitHub (`api/routes/security.py`) |
+| `export.*` | `downloaded`, `calendar_link_created` | `api/routes/exports.py` |
+| `gdpr.*` | `export`, `delete` | `api/routes/me.py` |
+| `user.*` | `admin_changed`, `deactivate`, `reactivate`, `anonymize` | `api/routes/admin_users.py` |
+| acceso | `solicitud_acceso.estado`, `access_grant.granted`, `access_grant.revoked` | `api/routes/admin_solicitudes.py` |
+| `webhook.*` | `created`, `updated`, `deleted`, `secret_rotated` | `api/routes/webhooks.py` |
+| configuración | `feature_flag.set`, `tecnologias_keyword.{added,removed,seeded}`, `empresa.review_resolved` | rutas de administración |
+| producto | `feedback.submitted`, `pursuit.weights_proposal_applied`, `go_no_go.weights_updated` | `api/routes/feedback.py`, `services/pursuits.py`, `services/go_no_go_puntuacion.py` |
+
+Reglas del rastro (ADR-030 §D): el actor se guarda como `users.id` —columna
+`user_id` desde v129 y `user_key = str(id)`—, nunca el correo. Los eventos de
+organización llevan `resource="org:<id>"` y en `detail` solo ids (`user_id`,
+`invitation_id`, recuentos); `auth.login_failed` contra una cuenta inexistente
+no guarda la dirección tecleada. Los nombres persistidos antes del catálogo
+(`auth.session_revoked`, `api_key.*`, `gdpr.export`, `gdpr.delete`) se
+conservan: renombrarlos partiría el histórico y la etiqueta `event_type` de
+`audit_events_total`.
+
+### Export por organización
+
+`GET /api/v1/organizations/{id}/audit` devuelve el rastro del tenant a su
+owner o admin (un `member`/`viewer` recibe 403, igual que quien no es
+miembro). Para API keys exige el scope `audit:read`, que `pursuits:read` **no**
+implica. Parámetros: `desde`/`hasta` (fechas ISO en UTC, ambos días incluidos),
+`limit` (hasta `MAX_PAGE_LIMIT`), `cursor` (el `next_cursor` de la página
+anterior) y `formato=json|csv`. JSON responde
+`CursorPaginatedResponse[AuditEntryOut]` (`id`, `ts`, `event_type`,
+`actor_user_id`, `outcome`, `resource`, `detail`); CSV responde la misma
+página con las celdas neutralizadas (`shared/export_safety.py`) y el cursor
+siguiente en la cabecera `X-Next-Cursor`. Solo salen las filas con
+`resource="org:<id>"`: los eventos de usuario (`auth.*`, `api_key.*`,
+`gdpr.*`) son de la persona y viajan en su export GDPR (`GET /me/data`).
 
 ## Reporte de vulnerabilidades
 

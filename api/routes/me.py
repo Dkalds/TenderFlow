@@ -49,6 +49,7 @@ from services.gdpr import (
     export_audit_log,
     export_collaboration_data,
     export_feedback,
+    export_saved_filters,
     export_user_notifications,
     export_user_profile,
     export_watchlist,
@@ -56,6 +57,14 @@ from services.gdpr import (
     export_watchlist_rules,
     revoke_all_api_keys_for_user,
     set_key_expiry,
+)
+from shared.audit_events import (
+    API_KEY_CREATED,
+    API_KEY_ROTATED,
+    AUTH_LOGOUT_ALL,
+    AUTH_SESSION_REVOKED,
+    GDPR_DELETE,
+    GDPR_EXPORT,
 )
 from shared.cache import invalidate_organization_scoped, invalidate_user_scoped
 from shared.dto import SessionsRevoked, StatusMessage, StatusOk
@@ -127,29 +136,35 @@ def export_my_data(ctx: dict[str, Any] = Depends(require_any_auth)) -> Streaming
     with zipfile.ZipFile(buf, "w", compression=zipfile.ZIP_DEFLATED) as zf:
         zf.writestr("api_keys.json", json.dumps(api_keys_data, ensure_ascii=False, indent=2))
 
-        watchlist = export_watchlist(user_key)
+        # ``user_id`` (v129): el export cubre lo guardado bajo cualquier correo
+        # anterior de la persona, no sólo la clave del actual.
+        uid = int(ctx["user_id"])
+        watchlist = export_watchlist(user_key, user_id=uid)
         zf.writestr("watchlist.json", json.dumps(watchlist, ensure_ascii=False, indent=2))
 
-        watchlist_items = export_watchlist_items(user_key)
+        watchlist_items = export_watchlist_items(user_key, user_id=uid)
         zf.writestr(
             "watchlist_items.json", json.dumps(watchlist_items, ensure_ascii=False, indent=2)
         )
 
-        watchlist_rules = export_watchlist_rules(user_key)
+        watchlist_rules = export_watchlist_rules(user_key, user_id=uid)
         zf.writestr(
             "watchlist_rules.json", json.dumps(watchlist_rules, ensure_ascii=False, indent=2)
         )
 
-        profile = export_user_profile(user_key)
+        profile = export_user_profile(user_key, user_id=uid)
         zf.writestr("perfil_scoring.json", json.dumps(profile, ensure_ascii=False, indent=2))
 
-        notifications = export_user_notifications(user_key)
+        vistas = export_saved_filters(user_key, user_id=uid)
+        zf.writestr("vistas_guardadas.json", json.dumps(vistas, ensure_ascii=False, indent=2))
+
+        notifications = export_user_notifications(user_key, user_id=uid)
         zf.writestr("notificaciones.json", json.dumps(notifications, ensure_ascii=False, indent=2))
 
         feedback = export_feedback(int(ctx["user_id"]))
         zf.writestr("feedback.json", json.dumps(feedback, ensure_ascii=False, indent=2))
 
-        audit = export_audit_log(_actor_key(ctx))
+        audit = export_audit_log(_actor_key(ctx), user_id=uid)
         zf.writestr("audit.json", json.dumps(audit, ensure_ascii=False, indent=2))
 
         collaboration = export_collaboration_data(int(ctx["user_id"]))
@@ -168,7 +183,7 @@ def export_my_data(ctx: dict[str, Any] = Depends(require_any_auth)) -> Streaming
 
     buf.seek(0)
     log_event(
-        event_type="gdpr.export",
+        event_type=GDPR_EXPORT,
         user_key=_actor_key(ctx),
         outcome="success",
     )
@@ -209,7 +224,7 @@ def delete_my_data(
     revoke_all_api_keys_for_user(user_id)
 
     log_event(
-        event_type="gdpr.delete",
+        event_type=GDPR_DELETE,
         user_key=_actor_key(ctx),
         outcome="success",
         resource=resource,
@@ -229,7 +244,7 @@ def logout_all(ctx: dict[str, Any] = Depends(require_any_auth)) -> SessionsRevok
     if user_id:
         n = revoke_all_sessions(user_id)
         log_event(
-            event_type="auth.logout_all",
+            event_type=AUTH_LOGOUT_ALL,
             user_key=_actor_key(ctx),
             resource=f"user:{user_id}",
             detail={"sessions_revoked": n},
@@ -326,7 +341,7 @@ async def delete_my_session(
 
     await run_db(
         log_event,
-        event_type="auth.session_revoked",
+        event_type=AUTH_SESSION_REVOKED,
         user_key=_actor_key(ctx),
         resource=f"user:{user_id}",
         detail={"session_id": session_id},
@@ -658,7 +673,7 @@ async def create_my_key(
 
     await run_db(
         log_event,
-        event_type="api_key.created",
+        event_type=API_KEY_CREATED,
         user_key=_actor_key(ctx),
         resource=f"user:{user_id}",
         detail={"name": body.name, "scopes": scopes},
@@ -733,7 +748,7 @@ def rotate_my_key(
     )
 
     log_event(
-        event_type="api_key.rotated",
+        event_type=API_KEY_ROTATED,
         user_key=_actor_key(ctx),
         resource=f"api_key:{key_id}",
         detail={"grace_days": grace_days, "old_expires_at": grace_expires},
@@ -835,9 +850,18 @@ async def get_profile(
     from db.repositories.user_profiles import get_user_profile
 
     user_key = _user_key(ctx)
-    raw = await run_db(get_user_profile, user_key, ctx["organization_id"])
+    user_id = int(ctx["user_id"])
+    raw = await run_db(get_user_profile, user_key, ctx["organization_id"], user_id=user_id)
     if raw is None:
         return UserProfileOut()
+    # «Heredado» = de otra persona. Por id cuando la fila lo tiene (v129): tras
+    # un cambio de correo el perfil propio lleva la clave antigua y comparar
+    # claves lo marcaría como ajeno.
+    propio = (
+        raw.get("user_id") == user_id
+        if raw.get("user_id") is not None
+        else (raw.get("user_key") == user_key)
+    )
     return UserProfileOut(
         user_key=raw.get("user_key"),
         weights=raw.get("weights"),
@@ -848,7 +872,7 @@ async def get_profile(
         updated_at=raw.get("updated_at"),
         organization_id=raw.get("organization_id"),
         visibility=raw.get("visibility") or "private",
-        inherited=raw.get("user_key") != user_key,
+        inherited=not propio,
     )
 
 
@@ -874,9 +898,10 @@ async def put_profile(
     body.validate_weights()
     ctx = await resolve_organization_ctx(ctx, body.organization_id, write=True)
     user_key = _user_key(ctx)
+    user_id = int(ctx["user_id"])
     # Sin ámbito a propósito: hace falta la organización que tenía ANTES
     # para invalidar su caché, y esa es justo la que no se conoce aquí.
-    previous = await run_db(get_own_user_profile, user_key)
+    previous = await run_db(get_own_user_profile, user_key, user_id=user_id)
     await run_db(
         upsert_user_profile,
         user_key,
@@ -889,6 +914,7 @@ async def put_profile(
         },
         ctx["organization_id"],
         body.visibility,
+        user_id=user_id,
     )
     _invalidate_profile_scoring(
         user_key,
@@ -906,10 +932,11 @@ async def delete_profile(
     from db.repositories.user_profiles import delete_user_profile, get_own_user_profile
 
     user_key = _user_key(ctx)
+    user_id = int(ctx["user_id"])
     # Sin ámbito a propósito: hace falta la organización que tenía ANTES
     # para invalidar su caché, y esa es justo la que no se conoce aquí.
-    previous = await run_db(get_own_user_profile, user_key)
-    await run_db(delete_user_profile, user_key)
+    previous = await run_db(get_own_user_profile, user_key, user_id=user_id)
+    await run_db(delete_user_profile, user_key, user_id=user_id)
     _invalidate_profile_scoring(
         user_key,
         previous.get("organization_id") if previous else None,

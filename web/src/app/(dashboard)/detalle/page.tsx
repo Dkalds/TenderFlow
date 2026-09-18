@@ -2,7 +2,13 @@
 
 import { startTransition, useCallback, useMemo, useState } from "react";
 import { parseAsString, useQueryState } from "nuqs";
-import { useReactTable, getCoreRowModel } from "@tanstack/react-table";
+import {
+  rowPaginationFeature,
+  rowSelectionFeature,
+  rowSortingFeature,
+  tableFeatures,
+  useTable,
+} from "@tanstack/react-table";
 import { Comparator } from "@/components/comparator";
 import { formatNumber } from "@/lib/utils";
 import { useDensity } from "@/lib/density";
@@ -23,6 +29,20 @@ import { useDetalleFavoritos } from "./_hooks/use-detalle-favoritos";
 import { useDetalleQueries, useDetailWithScore } from "./_hooks/use-detalle-queries";
 import { useDetalleRows, useDetalleTableState } from "./_hooks/use-detalle-table";
 import { useDetalleTeclado } from "./_hooks/use-detalle-teclado";
+
+/**
+ * Features de v9 que usa esta tabla.
+ *
+ * Orden y paginación son manuales (los resuelve el servidor), así que se
+ * registran las features para disponer de su estado y sus métodos pero sin
+ * row model: registrar `sortedRowModel`/`paginatedRowModel` aquí volvería a
+ * ordenar y a recortar en cliente una página que ya viene hecha.
+ */
+const detalleTableFeatures = tableFeatures({
+  rowSortingFeature,
+  rowPaginationFeature,
+  rowSelectionFeature,
+});
 
 /**
  * Detalle — tabla de trabajo con inspector en el mismo plano.
@@ -103,15 +123,17 @@ export default function DetallePage() {
   });
   const { mergedRows, totalPages, selectedIds, selectedItems } = filas;
 
-  // eslint-disable-next-line react-hooks/incompatible-library
-  const table = useReactTable({
+  const table = useTable({
+    features: detalleTableFeatures,
     data: mergedRows,
     columns: useMemo(() => COLUMNS.map((column) => ({ id: column.key })), []),
     state: { sorting, pagination, rowSelection },
     onSortingChange: setSorting,
     onPaginationChange: setPagination,
     onRowSelectionChange: setRowSelection,
-    getCoreRowModel: getCoreRowModel(),
+    // Sin row models de orden/página: el servidor ya devuelve la página
+    // ordenada, así que sólo se registran las features para tener su estado y
+    // sus métodos. El core row model en v9 es automático.
     manualSorting: true,
     manualPagination: true,
     pageCount: totalPages,

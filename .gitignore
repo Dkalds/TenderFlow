@@ -30,6 +30,9 @@ data/*
 coverage.json
 # OpenAPI spec dump (generated artifact; regen with the API or `npm run codegen:file`)
 api/openapi.json
+# Mismo trato que el completo: lo regenera `make openapi` y lo publica la
+# release, no el repositorio (ver api/superficie_publica.py).
+api/openapi-public.json
 # Generated test/coverage output
 test_results.txt
 _test_summary.txt

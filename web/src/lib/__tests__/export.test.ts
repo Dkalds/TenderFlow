@@ -183,6 +183,29 @@ describe("triggerDownload", () => {
     });
   });
 
+  it("mide la ficha de la oportunidad como `pdf_oportunidad`", async () => {
+    // El endpoint responde `Content-Disposition: inline` porque el usuario
+    // quiere verla antes de guardarla; aquí se fuerza la descarga igual, y lo
+    // que importa es que el evento no caiga en `otro`.
+    vi.stubGlobal(
+      "fetch",
+      vi.fn<typeof fetch>().mockResolvedValue(
+        new Response("%PDF-1.4", {
+          status: 200,
+          headers: { "Content-Disposition": 'inline; filename="oportunidad-4821.pdf"' },
+        }),
+      ),
+    );
+
+    await triggerDownload("/api/v1/pursuits/4821/ficha.pdf");
+
+    expect(anclas[0].getAttribute("download")).toBe("oportunidad-4821.pdf");
+    expect(trackMock).toHaveBeenCalledWith("export_lanzado", {
+      formato: "pdf_oportunidad",
+      recurso: "pursuits",
+    });
+  });
+
   it("no cuenta como exportación una respuesta de error, y avisa", async () => {
     vi.stubGlobal(
       "fetch",

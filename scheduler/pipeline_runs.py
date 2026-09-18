@@ -11,12 +11,12 @@ Secuencia canónica::
             → DLQ retry → anomaly checks → retention cleanup
             → ML retrain → drift checks
 
-``tech_signal_merge`` corre justo después de ``ml_tecnologias``: re-aplica la
+``tech_signal_merge`` corre justo después de ``ml_tecnologias``: aplica la
 señal de tecnología detectada en los pliegos (``services/tech_signal.py``)
-sobre ``ml_tecnologias``/``licitacion_tecnologia_score``, sanando el clobber
-que ``precompute_ml_tecnologias`` acaba de hacer sobre esas mismas columnas
-(``db/upsert.py`` también las resetea en cada re-scrape -- ver docstring de
-``_run_tech_signal_merge``).
+sobre ``ml_tecnologias``/``licitacion_tecnologia_score`` allí donde el resumen
+ML aún no la refleja -- lo que ``precompute_ml_tecnologias`` acaba de
+reescribir, o lo que nunca se fusionó. ``db/upsert.py`` ya no resetea esas
+columnas en cada re-scrape (ver docstring de ``_run_tech_signal_merge``).
 
 ``digests``, ``retention_cleanup`` y ``drift_checks`` tienen **cadencia
 propia** (ver ``_run_periodic``): la pipeline corre cada 4h, pero un digest
@@ -46,13 +46,16 @@ CANONICAL_STEPS: list[str] = [
     "tech_signal_merge",
     "llm_tech_labeling",
     "analytics_export",
+    "organos_resolve",
     "kpi_precompute",
     "aggregates_precompute",
     "watchlist_notify",
     "digests",
+    "informes_programados",
     "dlq_retry",
     "webhook_reintentos",
     "anomaly_checks",
+    "follows_paridad",
     "llm_models_canary",
     "retention_cleanup",
     "sap_active_learning",
@@ -89,16 +92,30 @@ STEP_TIER: dict[str, StepTier] = {
     "tech_signal_merge": "bloqueante",
     "llm_tech_labeling": "bloqueante",
     "analytics_export": "bloqueante",
+    # advisory: el maestro de órganos (ADR-032) mejora la analítica pero no
+    # produce nada que la pasada deba entregar; una grafía que no resuelve
+    # sigue agregándose por texto. Va antes de los precomputes para que estos
+    # agrupen por los ids recién asignados.
+    "organos_resolve": "advisory",
     "kpi_precompute": "bloqueante",
     "aggregates_precompute": "bloqueante",
     "watchlist_notify": "bloqueante",
     "digests": "bloqueante",
+    # advisory: el informe semanal es una función opcional que cada
+    # organización activa por su cuenta. Un ESP caído no puede tumbar la
+    # pasada de ingesta — y la ventana de envío es de un día entero, así que
+    # la pasada siguiente lo recupera sola.
+    "informes_programados": "advisory",
     "dlq_retry": "bloqueante",
     # advisory: un receptor externo caído no es un fallo de la pasada. Que
     # el reenvío no salga significa que el endpoint del cliente sigue sin
     # responder, y sacar la pasada en rojo por eso enseña a ignorar el rojo.
     "webhook_reintentos": "advisory",
     "anomaly_checks": "advisory",
+    # Mide, no repara: que la paridad de `follows` esté rota no rompe la
+    # pasada ni lo nota ningún cliente. Lo que bloquea es la migración de
+    # ADR-031 §B, y eso lo decide una persona mirando la serie.
+    "follows_paridad": "advisory",
     "llm_models_canary": "advisory",
     "retention_cleanup": "bloqueante",
     "sap_active_learning": "advisory",
@@ -353,15 +370,19 @@ def _run_ml_tecnologias() -> str:
 
 
 def _run_tech_signal_merge() -> None:
-    """Re-aplica la señal de pliego sobre TODAS las licitaciones con señal.
+    """Fusiona la señal de pliego que el resumen ML aún no refleja.
 
-    ``precompute_ml_tecnologias`` (paso anterior) sobreescribe
-    ``ml_tecnologias``/``ml_proba_max``/``ml_tech_principal`` para toda fila
-    con ``ml_proba_max IS NULL`` -- lo mismo que ``db/upsert.py`` hace en cada
-    re-scrape (ver docstring de ``_LIC_UPDATES``). Sin este paso, un merge ya
-    aplicado revertiría a la señal de solo-título en la primera re-ingesta o
-    el primer precompute posterior. Barato (≤ ~11k licitaciones con pliegos
-    procesados) y fail-open por licitación -- no hace falta ``try/except``
+    Sin ids, ``merge_doc_signals`` ya no barre todas las licitaciones con
+    señal: ``list_signals_for_merge`` selecciona solo las que tienen alguna
+    señal sin ``merged_at`` o cuyo resumen (``ml_tecnologias``/
+    ``ml_proba_max``/``ml_tech_principal``) está a NULL o no contiene la
+    tecnología detectada. Desde 2026-09-14 las cuatro columnas ML están en
+    ``_LIC_COALESCE_UPDATE_FIELDS`` (``db/upsert.py``), así que una re-ingesta
+    ya no las nulea; lo que queda por sanar aquí son los caminos que
+    reescriben el resumen por UPDATE explícito sin la señal:
+    ``precompute_ml_tecnologias`` (paso anterior; con ``force=True`` toca todas
+    las filas, sin él solo las que tienen ``ml_proba_max IS NULL``) y cualquier
+    limpieza manual. Fail-open por licitación -- no hace falta ``try/except``
     aquí porque ``merge_doc_signals`` ya captura y cuenta los fallos.
 
     El resultado se loguea en vez de descartarse: este paso se comió 14 de los
@@ -369,7 +390,10 @@ def _run_tech_signal_merge() -> None:
     ver ``merge_many_with_lock``) y desde fuera era invisible -- ni duración ni
     recuento de errores, solo un warning suelto por licitación rota. Con
     ``elapsed_ms`` y ``errors`` en el log, la próxima deriva se ve en el propio
-    runner.
+    runner. ``licitaciones_reparadas`` es el contador con el que se mide el
+    cierre del ítem del backlog («cero reparaciones en siete días»): cada
+    unidad es una licitación cuya señal ya estaba fusionada y cuyo resumen
+    hubo que reescribir.
     """
     import time as _time
 
@@ -410,6 +434,25 @@ def _run_llm_tech_labeling() -> str:
             raise RuntimeError(f"El lote de etiquetado por LLM falló entero: {counts}")
 
     return _run_periodic("llm_tech_labeling", _SEGUNDOS_DIA, _run_and_check)
+
+
+def _run_organos_resolve() -> str:
+    """Resuelve ``organo_id`` de las grafías nuevas (ADR-032 §C, 2026-09-14).
+
+    Hasta esta fecha solo ``scripts/backfill_organos.py`` llamaba al resolutor,
+    así que cada pasada del ATOM dejaba filas nuevas sin órgano y el maestro
+    se degradaba solo. Acotado por cuenta y por reloj (settings
+    ``ORGANOS_RESOLVE_*``): el backlog grande sigue siendo del script.
+    """
+    from config import settings as _settings
+    from services.organos import resolver_pendientes
+
+    resumen = resolver_pendientes(
+        max_grafias=int(_settings.ORGANOS_RESOLVE_MAX_GRAFIAS),
+        presupuesto_s=float(_settings.ORGANOS_RESOLVE_BUDGET_S),
+    )
+    log.info("pipeline_organos_resolve_completed", **resumen.as_dict())
+    return STEP_OK if resumen.grafias_vistas else STEP_SKIPPED
 
 
 def _run_analytics_export() -> None:
@@ -554,6 +597,22 @@ def _run_digests() -> dict[str, str]:
     return resultado
 
 
+def _run_informes_programados() -> str:
+    """Envía los informes semanales cuya ventana está abierta (T6).
+
+    Sin cadencia propia (`_run_periodic`) y eso es deliberado: la cadencia la
+    pone cada organización en `organization_report_schedules`, y el filtro de
+    «ya enviado en esta ventana» vive en el SQL del repositorio. Envolverlo
+    además en un lock de periodo global haría que dos organizaciones con la
+    misma hora compitieran por él y una se quedara sin informe.
+    """
+    from scheduler.jobs.informes_programados import ejecutar
+
+    resumen = ejecutar()
+    log.info("pipeline_informes_programados_completed", **resumen.as_dict())
+    return STEP_OK if resumen.programadas else STEP_SKIPPED
+
+
 def _run_retention_cleanup() -> str:
     """Purga histórico según la política de retención (una vez al día)."""
     from scheduler.jobs.retention_cleanup import run as run_retention_cleanup
@@ -642,6 +701,18 @@ def _run_anomaly_checks() -> None:
     from scheduler.anomaly_alerts import run_anomaly_checks
 
     run_anomaly_checks()
+
+
+def _run_follows_paridad() -> str:
+    """Paridad `follows` ↔ tablas de origen (ADR-031 §B), una vez al día.
+
+    Diaria y no cada cuatro horas: compara tres tablas enteras y el número no
+    se mueve en horas. Lo que interesa es la serie —«lleva N días en cero»—,
+    no el instante.
+    """
+    from scheduler.jobs.follows_paridad import run as run_follows_paridad
+
+    return _run_periodic("follows_paridad", _SEGUNDOS_DIA, run_follows_paridad)
 
 
 def _run_llm_models_canary() -> str:

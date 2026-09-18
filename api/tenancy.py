@@ -23,6 +23,7 @@ from fastapi import Depends, HTTPException, Query, status
 from api.concurrency import run_db
 from api.routes.dual_auth import require_any_auth
 from services.organizations import resolve_organization
+from shared.tenant_context import set_organization
 
 
 async def resolve_organization_ctx(
@@ -36,6 +37,22 @@ async def resolve_organization_ctx(
     Traduce el rechazo de dominio (sin membresía, o viewer intentando
     escribir) a HTTP 403. Devuelve ``ctx`` enriquecido con
     ``organization_id``/``organization_role`` ya resueltos -- nunca ``None``.
+
+    Además deja la organización resuelta en ``shared.tenant_context`` para el
+    resto de la petición: cada transacción que abra ``db/connection.py`` a
+    partir de aquí emite ``SET LOCAL app.organization_id`` y las políticas
+    RLS de ``v128`` actúan de respaldo del filtro de los repositorios
+    (ADR-034). La resolución en sí corre **antes** de fijar el ámbito, sin
+    respaldo: lee ``organization_memberships``, que está fuera de las
+    políticas precisamente para poder resolver membresías entre
+    organizaciones.
+
+    No se guarda el token ni se restaura al salir: la dependency y el handler
+    corren en la tarea de asyncio de la petición, que nace con una copia del
+    contexto y muere con la respuesta, así que el valor no puede filtrarse a
+    otra petición. Y no hay un único punto de salida donde restaurarlo — esta
+    función se usa como dependency (GET/DELETE) y llamada a mano desde
+    handlers POST/PUT.
     """
     try:
         resolved_id, role = await run_db(
@@ -43,6 +60,7 @@ async def resolve_organization_ctx(
         )
     except PermissionError as exc:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+    set_organization(resolved_id)
     return {**ctx, "organization_id": resolved_id, "organization_role": role}
 
 

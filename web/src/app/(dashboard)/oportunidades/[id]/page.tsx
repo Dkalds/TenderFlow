@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { ArrowLeft, CalendarClock, ExternalLink, Landmark, User } from "lucide-react";
+import { ArrowLeft, CalendarClock, ExternalLink, FileDown, Landmark, User } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PursuitCommentsThread } from "@/components/pursuits/pursuit-comments";
 import { PursuitEditor } from "@/components/pursuits/pursuit-editor";
@@ -24,6 +24,7 @@ import { ExpedientePanel } from "@/components/pursuits/expediente-panel";
 import { PursuitActivity } from "@/components/pursuits/pursuit-activity";
 import { Panel, PanelError, PanelTabs, SectionTitle } from "@/components/console/panel";
 import { usePursuit } from "@/hooks/use-pursuits";
+import { triggerDownload } from "@/lib/export";
 
 /**
  * Ficha de la oportunidad — Decisión primero.
@@ -113,6 +114,17 @@ export default function OpportunityDetailPage() {
             </span>
           </span>
           <div className="flex-1" />
+          {/* F2.7 — el one-pager para dirección. El backend lo servía desde
+              `GET /pursuits/{id}/ficha.pdf` y ninguna pantalla lo pedía: la
+              única forma de obtenerlo era llamar a la API a mano. */}
+          <button
+            type="button"
+            onClick={() => void triggerDownload(`/api/v1/pursuits/${pursuit.id}/ficha.pdf`)}
+            className="inline-flex items-center gap-1.5 text-xs font-medium hover:text-foreground"
+          >
+            <FileDown className="h-3 w-3" aria-hidden="true" />
+            Descargar PDF
+          </button>
           <Link
             href={`/detalle?lic=${encodeURIComponent(pursuit.licitacion_id)}`}
             className="inline-flex items-center gap-1.5 text-xs font-medium"

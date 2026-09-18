@@ -289,6 +289,15 @@ class Settings(BaseSettings):
     MFA_STEP_UP_MAX_AGE_SECONDS: int = 900
     MFA_MAX_FAILURES: int = 5
     MFA_FAILURE_WINDOW_SECONDS: int = 300
+    # Sesiones de navegador deslizantes (Ola 1). ``expires_at`` es el plazo de
+    # inactividad: cada petición validada lo vuelve a poner en ``now + IDLE``,
+    # nunca más allá del techo ``created_at + ABSOLUTE_DAYS``, pasado el cual la
+    # sesión se rechaza aunque esté fresca. La tabla ``sessions`` no tiene
+    # columna para «recordar este equipo»: ese login solo alarga la ventana de
+    # inactividad a ``REMEMBER_DAYS``; el techo es el mismo (ver db/sessions.py).
+    SESSION_IDLE_HOURS: int = 24
+    SESSION_ABSOLUTE_DAYS: int = 30
+    SESSION_REMEMBER_DAYS: int = 90
     # Las claves de idempotencia son datos de corta vida: no deben convertirse
     # en una caché permanente de respuestas ni secretos de integración.
     IDEMPOTENCY_TTL_SECONDS: int = 86_400
@@ -340,6 +349,22 @@ class Settings(BaseSettings):
     ALERT_SMTP_PASSWORD: SecretStr = SecretStr("")
     ALERT_SMTP_HOST: str = "smtp.gmail.com"
     ALERT_SMTP_PORT: int = 587
+
+    # ── Correo transaccional (observability/mailer.py) ───────────────────
+    # Backend por el que sale TODO el correo (alertas, invitaciones, reset de
+    # contraseña, digests). `smtp` reutiliza ALERT_SMTP_*; `resend` y
+    # `postmark` hablan con el ESP por HTTPS con EMAIL_API_KEY; `console` solo
+    # escribe al log (desarrollo y tests). Ver docs/runbooks/correo-transaccional.md.
+    EMAIL_BACKEND: Literal["smtp", "resend", "postmark", "console"] = "smtp"
+    # Remitente. Vacío → la cuenta SMTP (ALERT_SMTP_USER). Con un ESP tiene que
+    # ser una dirección de un dominio verificado en el proveedor (SPF/DKIM).
+    EMAIL_FROM: str = ""
+    EMAIL_FROM_NAME: str = "TenderFlow"
+    # Clave del ESP (Resend: API key; Postmark: Server API token). Solo se usa
+    # con esos backends; observability/logging.py redacta su valor en los logs.
+    EMAIL_API_KEY: SecretStr = SecretStr("")
+    # Reply-To opcional para todo el correo (p. ej. un buzón de soporte).
+    EMAIL_REPLY_TO: str = ""
 
     # ── Grafana ─────────────────────────────────────────────────────────
     GF_SECURITY_ADMIN_PASSWORD: SecretStr = SecretStr("")
@@ -560,6 +585,13 @@ class Settings(BaseSettings):
     # Score mínimo (matched_terms ponderado por tipo de documento) para que
     # una señal de pliego entre al merge hacia ml_tecnologias/licitacion_tecnologia_score.
     PLIEGO_TECH_MIN_SCORE: float = 0.5
+
+    # ── Maestro de órganos: resolución incremental en la pipeline (ADR-032) ─
+    # Grafías nuevas de `organo_contratacion` que cada cierre intenta resolver
+    # a `organo_id`, y presupuesto de reloj para no quedarse con el step. El
+    # backlog histórico es de `scripts/backfill_organos.py`, no de la pipeline.
+    ORGANOS_RESOLVE_MAX_GRAFIAS: int = 500
+    ORGANOS_RESOLVE_BUDGET_S: int = 120
 
     # ── LLM: etiquetado batch de tecnología sobre la metadata del anuncio ────
     # Categorizar a mano la cola de active learning es inviable por volumen.
@@ -954,6 +986,39 @@ class Settings(BaseSettings):
                 "ALERT_SMTP_PASSWORD es obligatorio cuando ALERT_EMAIL_TO está "
                 "configurado en ENV=prod. Configura un app password de Gmail."
             )
+        return self
+
+    @model_validator(mode="after")
+    def _validate_prod_email_backend(self) -> Settings:
+        """Con un ESP elegido en producción, la clave y el remitente no pueden faltar.
+
+        Condicional al backend a propósito: con el default ``smtp`` el proceso
+        arranca exactamente igual que antes, así que esta regla no convierte
+        ninguna variable en obligatoria para el despliegue actual —y por eso
+        ``scripts/check_env_parity.py``, que solo ve obligatoriedad
+        incondicional, no la cuenta entre las que exige ``render.yaml``—. Quien
+        cambie ``EMAIL_BACKEND`` a ``resend`` o ``postmark`` sí tiene que
+        declarar las dos: un ESP sin clave no envía nada y un ESP con remitente
+        vacío rechaza cada mensaje con un 4xx, y ambos fallos serían silenciosos
+        porque el transporte nunca propaga. Aplica a todos los perfiles: el
+        scraper y los workers también escriben correo.
+        """
+        if self._is_prod_data and self.EMAIL_BACKEND in ("resend", "postmark"):
+            faltan = [
+                nombre
+                for nombre, valor in (
+                    ("EMAIL_API_KEY", self.EMAIL_API_KEY.get_secret_value()),
+                    ("EMAIL_FROM", self.EMAIL_FROM),
+                )
+                if not valor.strip()
+            ]
+            if faltan:
+                raise ValueError(
+                    f"{' y '.join(faltan)}: obligatorio con EMAIL_BACKEND="
+                    f"{self.EMAIL_BACKEND} en ENV={self.ENV}. El remitente debe ser una "
+                    "dirección de un dominio verificado en el proveedor "
+                    "(ver docs/runbooks/correo-transaccional.md)."
+                )
         return self
 
     @model_validator(mode="after")

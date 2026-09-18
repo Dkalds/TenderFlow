@@ -5,6 +5,17 @@ por un OneVsRest cuyas etiquetas son exactamente las claves de
 ``TECHNOLOGY_KEYWORDS`` (SAP, SALESFORCE, ORACLE, MICROSOFT, SERVICENOW,
 WORKDAY, IBM, OPENTEXT, UNIT4, META4, SOPRA, SAGE, INFOR, …).
 
+Desde el 2026-09-14 esas claves incluyen también **categorías** (ERP, CRM,
+CLOUD_INFRA, CIBERSEGURIDAD, DATOS_IA, DESARROLLO, GIS, SANIDAD_DIGITAL,
+ADMIN_ELECTRONICA; ver ``config.keywords.TECH_LABEL_TIPO``). Nacen sin
+positivos etiquetados, así que ``train`` las deja en el tier ``rules`` —
+keywords curadas con umbral propio— hasta que el feedback humano o el
+etiquetado LLM las alimente. No alteran el gating de ingesta:
+``ML_TECH_GATING_PRACTICES`` sigue nombrando qué etiquetas aceptan un
+expediente, y un modelo serializado antes de esa fecha conserva sus trece
+labels hasta que se reentrena (``labels`` y ``_fallback_keywords`` viajan en
+el pickle).
+
 Circularidad del entrenamiento (por qué existe ``_resolver_label_column``)
 --------------------------------------------------------------------------
 La columna ``licitaciones.tecnologia`` la escriben los conectores

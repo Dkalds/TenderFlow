@@ -334,16 +334,25 @@ def send_pending_digests(frequency: str = "daily") -> int:
             )
 
         n = sum(len(b.licitaciones) for b in bloques)
+        baja_url = url_de_baja_alertas(user_key_de.get(recipient) or "", base_url)
         texto, html = render_digest(
             bloques=bloques,
             frecuencia=frequency,
             base_url=base_url,
-            baja_url=url_de_baja_alertas(user_key_de.get(recipient) or "", base_url),
+            baja_url=baja_url,
         )
         # Correo de producto, no alerta de operación: sin prefijo de severidad
-        # ni plantilla de monitorización, y no sujeto a ALERT_MIN_LEVEL.
+        # ni plantilla de monitorización, y no sujeto a ALERT_MIN_LEVEL. La misma
+        # URL de baja del pie va en `List-Unsubscribe` (RFC 8058): es lo que
+        # Gmail y Yahoo miran para ofrecer «Cancelar suscripción» sin marcar
+        # el correo como spam.
         enviado = enviar_email_transaccional(
-            to_addr=recipient, subject=asunto_digest(frequency, n), texto=texto, html=html
+            to_addr=recipient,
+            subject=asunto_digest(frequency, n),
+            texto=texto,
+            html=html,
+            unsubscribe_url=baja_url,
+            tags=["watchlist-digest"],
         )
         log.info(
             "watchlist_digest_sent",

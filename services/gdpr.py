@@ -13,12 +13,18 @@ como las filas de esas tablas se escriben con el hash derivado, la
 exportación/borrado de watchlist nunca encontraba nada para usuarios
 autenticados por API key (bug preexistente, ver test histórico
 ``test_export_watchlist_returns_empty_gracefully``).
+
+Desde v129 (ADR-030 fase 2) cada función acepta además ``user_id``: el export
+y el borrado cubren las filas por **id o por clave**, de modo que lo guardado
+bajo el correo anterior de la persona no se queda fuera del export ni
+sobrevive al borrado. Sin ``user_id`` se comportan como antes.
 """
 
 from __future__ import annotations
 
 from typing import Any
 
+from db import radar_dismissals
 from db.repositories.api_keys import ApiKeyRepository
 from db.repositories.audit import AuditRepository
 from db.repositories.feedback import FeedbackRepository
@@ -61,35 +67,42 @@ def export_api_keys(key_hash: str) -> list[dict[str, Any]]:
     return _api_key_repo.list_for_export(key_hash)
 
 
-def export_watchlist(key_hash: str) -> list[dict[str, Any]]:
+def export_watchlist(key_hash: str, *, user_id: int | None = None) -> list[dict[str, Any]]:
     """Exporta las entradas de watchlist del usuario."""
-    return _watchlist_repo.export_by_user_key(key_hash)
+    return _watchlist_repo.export_by_user_key(key_hash, user_id)
 
 
-def export_watchlist_items(key_hash: str) -> list[dict[str, Any]]:
+def export_watchlist_items(key_hash: str, *, user_id: int | None = None) -> list[dict[str, Any]]:
     """Exporta los favoritos de licitaciones (watchlist_items) del usuario."""
-    return _watchlist_repo.export_items_by_user_key(key_hash)
+    return _watchlist_repo.export_items_by_user_key(key_hash, user_id)
 
 
-def export_watchlist_rules(user_key: str) -> list[dict[str, Any]]:
+def export_watchlist_rules(user_key: str, *, user_id: int | None = None) -> list[dict[str, Any]]:
     """Exporta las reglas de watchlist por criterio (mi-watchlist) del usuario."""
     from services.watchlist_rules import list_rules
 
-    return [r.model_dump() for r in list_rules(user_key)]
+    return [r.model_dump() for r in list_rules(user_key, user_id=user_id)]
 
 
-def export_user_profile(user_key: str) -> dict[str, Any] | None:
+def export_saved_filters(user_key: str, *, user_id: int | None = None) -> list[dict[str, Any]]:
+    """Exporta las vistas guardadas del usuario (todas, sin ámbito de equipo)."""
+    from db.saved_filters import list_own_saved_filters
+
+    return list_own_saved_filters(user_key, user_id=user_id)
+
+
+def export_user_profile(user_key: str, *, user_id: int | None = None) -> dict[str, Any] | None:
     """Exporta el perfil de scoring personalizado del usuario, si existe."""
     # Export GDPR: la pregunta es qué guarda el sistema sobre esta persona,
     # no qué ve un equipo. Camino sin ámbito, pedido por su nombre.
-    return get_own_user_profile(user_key)
+    return get_own_user_profile(user_key, user_id=user_id)
 
 
-def export_user_notifications(user_key: str) -> list[dict[str, Any]]:
+def export_user_notifications(user_key: str, *, user_id: int | None = None) -> list[dict[str, Any]]:
     """Exporta las alertas in-app (user_notifications) del usuario."""
     from services.notifications import get_user_alerts
 
-    return get_user_alerts(user_key, limit=5000)
+    return get_user_alerts(user_key, limit=5000, user_id=user_id)
 
 
 def export_feedback(user_id: int) -> list[dict[str, Any]]:
@@ -97,9 +110,9 @@ def export_feedback(user_id: int) -> list[dict[str, Any]]:
     return _feedback_repo.export_for_user(user_id)
 
 
-def export_audit_log(key_hash: str) -> list[dict[str, Any]]:
-    """Exporta el audit log filtrado por ``user_key``."""
-    return _audit_repo.export_by_user_key(key_hash)
+def export_audit_log(key_hash: str, *, user_id: int | None = None) -> list[dict[str, Any]]:
+    """Exporta el audit log filtrado por ``user_key`` (y ``user_id`` si se conoce)."""
+    return _audit_repo.export_by_user_key(key_hash, user_id)
 
 
 def export_collaboration_data(user_id: int) -> dict[str, list[dict[str, Any]]]:
@@ -125,17 +138,24 @@ def anonymize_user_data(
     """Anonimiza/borra los datos personales del usuario (RGPD Art. 17).
 
     Cubre watchlist (empresa/CPV), favoritos, reglas de watchlist por criterio,
-    perfil de scoring y alertas in-app — todo lo persistido bajo ``user_key``.
-    Si se pasa ``key_id`` (autenticación por API key), además revoca esa key.
+    perfil de scoring, alertas in-app, descartes del Radar y preferencias de
+    correo — todo lo persistido bajo ``user_key`` **o** ``user_id`` (v129: un
+    borrado que sólo mirase la clave del correo actual dejaría vivo lo
+    guardado con el anterior). Si se pasa ``key_id`` (autenticación por API
+    key), además revoca esa key.
     """
-    from services.notifications import delete_all_alerts
+    from db.saved_filters import delete_all_for_user as delete_all_saved_filters
+    from services.notifications import delete_all_alerts, delete_email_prefs
     from services.watchlist_rules import delete_all_for_user
 
-    _watchlist_repo.anonymize_by_user_key(user_key)
-    _watchlist_repo.anonymize_items_by_user_key(user_key)
-    delete_all_for_user(user_key)
-    delete_user_profile(user_key)
-    delete_all_alerts(user_key)
+    _watchlist_repo.anonymize_by_user_key(user_key, user_id)
+    _watchlist_repo.anonymize_items_by_user_key(user_key, user_id)
+    delete_all_for_user(user_key, user_id=user_id)
+    delete_all_saved_filters(user_key, user_id=user_id)
+    delete_user_profile(user_key, user_id=user_id)
+    delete_all_alerts(user_key, user_id=user_id)
+    delete_email_prefs(user_key, user_id=user_id)
+    radar_dismissals.delete_all_for_user(user_key, user_id=user_id)
     if user_id is not None:
         _feedback_repo.delete_for_user(user_id)
         _pursuit_repo.anonymize_user_references(user_id)

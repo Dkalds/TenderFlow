@@ -3,12 +3,11 @@
 /** Usuarios de la instancia: rol, estado y último acceso, con el alta/baja de admin. */
 
 import { useMemo } from "react";
-import { type ColumnDef } from "@tanstack/react-table";
 import { Info, Shield, Users } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { DataTable } from "@/components/ui/data-table";
+import { DataTable, type DataTableColumnDef } from "@/components/ui/data-table";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn, formatDate } from "@/lib/utils";
 import { useAdminUsers, type UserRow } from "../../_hooks/use-admin-users";
@@ -16,7 +15,7 @@ import { useAdminUsers, type UserRow } from "../../_hooks/use-admin-users";
 export function UsuariosCard() {
   const { users, isLoading, error, toggleAdmin } = useAdminUsers();
 
-  const userColumns = useMemo<ColumnDef<UserRow>[]>(
+  const userColumns = useMemo<DataTableColumnDef<UserRow>[]>(
     () => [
       { accessorKey: "email", header: "Email" },
       { accessorKey: "display_name", header: "Nombre" },

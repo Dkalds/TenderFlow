@@ -537,7 +537,14 @@ const FORMATO_POR_PARAMETRO: Readonly<Record<string, "csv" | "xlsx">> = {
 export function dimensionesDeDescarga(url: string): EventosProducto["export_lanzado"] {
   const [ruta = "", query = ""] = url.split("?");
   const declarado = new URLSearchParams(query).get("format");
-  const formato = FORMATO_POR_PARAMETRO[declarado ?? ""] ?? "otro";
+  // La ficha de la oportunidad (F2.7) no negocia el formato por query: es un
+  // recurso propio, `/pursuits/{id}/ficha.pdf`, y el formato está en su nombre.
+  // Sin este caso el único evento que distingue «se llevan la ficha a un
+  // comité» de «descargaron algo» caería en `otro`, que es justo lo que el
+  // valor `pdf_oportunidad` existe para evitar.
+  const formato = ruta.endsWith("/ficha.pdf")
+    ? "pdf_oportunidad"
+    : (FORMATO_POR_PARAMETRO[declarado ?? ""] ?? "otro");
   const recurso = ruta
     .replace(/^\/?api\/v\d+\//, "")
     .split("/")

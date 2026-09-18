@@ -12,6 +12,8 @@ from typing import Any
 
 import pytest
 
+from tests.dobles_tenencia import alcance_doble, alcance_fijo
+
 
 class _RepoDoble:
     def __init__(
@@ -57,7 +59,7 @@ def mod(monkeypatch: pytest.MonkeyPatch):
         def _resolve(user_id: int, organization_id: Any = None, *, write: bool = False):
             return 7, rol
 
-        monkeypatch.setattr(modulo, "resolve_organization", _resolve)
+        monkeypatch.setattr(modulo, "alcance_resuelto", alcance_doble(_resolve))
         return modulo
 
     modulo.con_rol = _hacer  # type: ignore[attr-defined]
@@ -105,7 +107,7 @@ class TestPesos:
     ) -> None:
         import services.go_no_go_puntuacion as mod
 
-        monkeypatch.setattr(mod, "resolve_organization", lambda u, o=None, *, write=False: (7, rol))
+        monkeypatch.setattr(mod, "alcance_resuelto", alcance_fijo(rol=rol))
         repo = _RepoDoble(pesos={})
         monkeypatch.setattr(mod, "_repo", repo)
 

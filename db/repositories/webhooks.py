@@ -8,7 +8,14 @@ from typing import Any, cast
 from db.database import connect, connect_read, now_utc_iso
 from db.repositories.base import rows_to_dicts
 from observability.logging import get_logger
-from shared.crypto import DERIVED_SECRET_SENTINEL, derive_webhook_secret, is_derived_secret
+from shared.crypto import (
+    DERIVED_SECRET_SENTINEL,
+    derive_webhook_secret,
+    is_derived_secret,
+    nuevo_material_de_secreto,
+    resolve_derived_secret,
+    sentinel_rotado,
+)
 
 log = get_logger(__name__)
 
@@ -51,7 +58,7 @@ def resolve_stored_secret(webhook_id: int, stored: str) -> str:
     if is_derived_secret(stored):
         master_key = _get_webhook_master_key()
         if master_key:
-            return derive_webhook_secret(master_key, webhook_id)
+            return resolve_derived_secret(master_key, webhook_id, stored)
     return stored
 
 
@@ -253,8 +260,51 @@ class WebhookRepository:
         if is_derived_secret(stored):
             master_key = _get_webhook_master_key()
             if master_key:
-                return derive_webhook_secret(master_key, webhook_id)
+                return resolve_derived_secret(master_key, webhook_id, stored)
         return stored
+
+    def rotate_secret(
+        self, webhook_id: int, *, organization_id: int | None = None
+    ) -> tuple[str, str] | None:
+        """Sustituye el secreto de firma. Devuelve ``(secret, rotated_at)`` o ``None``.
+
+        Con clave maestra se guarda un sentinel **con material nuevo**
+        (``derived:v2:<material>``) y el secreto se deriva de él: la columna
+        sigue sin contener nada firmable por sí solo, que es la garantía de
+        RFC 049. Un webhook anterior a la derivación (secret en claro) sale de
+        aquí ya derivado: es la «rotación manual» que aquel RFC dejaba pendiente.
+        Sin clave maestra (dev) se genera un secreto aleatorio y se guarda tal
+        cual, igual que hace ``create``.
+
+        El secreto anterior deja de valer en el mismo ``UPDATE``: no hay
+        periodo de gracia, y el llamante tiene que entregar el nuevo al receptor
+        antes de la siguiente entrega. ``organization_id`` acota **qué fila**
+        se rota, como en ``update`` y ``delete``; ``None`` es «no encontrado» en
+        esa organización, no un error.
+        """
+        master_key = _get_webhook_master_key()
+        if master_key:
+            material = nuevo_material_de_secreto()
+            stored = sentinel_rotado(material)
+            secret = derive_webhook_secret(master_key, webhook_id, material)
+        else:
+            import secrets as _secrets
+
+            secret = _secrets.token_urlsafe(32)
+            stored = secret
+
+        sql = "UPDATE webhooks SET secret = %s WHERE id = %s"
+        params: list[Any] = [stored, webhook_id]
+        if organization_id is not None:
+            sql += " AND organization_id = %s"
+            params.append(organization_id)
+        rotated_at = now_utc_iso()
+        with connect() as c:
+            cur = c.execute(sql, tuple(params))
+            if not cur.rowcount:
+                return None
+        log.info("webhook_secret_rotated", webhook_id=webhook_id)
+        return secret, rotated_at
 
     def record_delivery(
         self,
@@ -481,11 +531,17 @@ def encolar_reintento(delivery_id: int, *, ahora: str) -> bool:
 
 
 def pendientes_de_reintento(*, ahora: str, limit: int = 100) -> list[dict[str, Any]]:
-    """Entregas cuyo `proximo_intento` ya venció. Las lee el job de reintento."""
+    """Entregas cuyo `proximo_intento` ya venció. Las lee el job de reintento.
+
+    ``created_at`` viaja en la fila porque es el sello de la entrega original:
+    el reintento lo pone en ``X-Webhook-Timestamp`` en vez de regenerarlo, y
+    con él la firma v2 sigue siendo la misma que vio el receptor la primera vez.
+    """
     with connect_read() as c:
         return rows_to_dicts(
             c.execute(
-                "SELECT id, webhook_id, event_type, payload_json, delivery_uid, intentos "
+                "SELECT id, webhook_id, event_type, payload_json, delivery_uid, intentos, "
+                "       created_at "
                 "FROM webhook_deliveries "
                 "WHERE estado = 'pending' AND proximo_intento IS NOT NULL "
                 "  AND proximo_intento <= %s "
@@ -506,6 +562,7 @@ def crear_entrega(
     success: bool,
     proximo_intento: str | None,
     error: str | None,
+    created_at: str | None = None,
 ) -> int | None:
     """Registra el **primer** intento de una entrega y devuelve su id (C2.4).
 
@@ -515,6 +572,11 @@ def crear_entrega(
     el cuerpo (`payload_json`) porque sin él un reintento tendría que
     reconstruirlo, y un cuerpo reconstruido no es el mismo cuerpo: la firma que
     el receptor validó dejaría de cuadrar.
+
+    ``created_at`` lo pasa el despachador con el **mismo instante** que puso en
+    el cuerpo y en ``X-Webhook-Timestamp``: así la fila guarda el sello que se
+    firmó y el reintento lo reutiliza tal cual. Sin él se toma el instante del
+    INSERT, que es lo que hacía antes.
 
     Devuelve `None` si el INSERT falla (tabla sin migrar, por ejemplo): la
     entrega ya salió, y no poder anotarla no puede tumbar el disparo del evento.
@@ -533,7 +595,7 @@ def crear_entrega(
                     status_code,
                     1 if success else 0,
                     len(payload_json.encode("utf-8")),
-                    now_utc_iso(),
+                    created_at or now_utc_iso(),
                     payload_json,
                     delivery_uid,
                     estado,

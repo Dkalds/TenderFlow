@@ -44,6 +44,19 @@ def test_la_lista_congelada_no_tiene_fosiles(ratchet):
     assert fosiles == []
 
 
+def test_ningun_fichero_nuevo_usa_user_key(ratchet, capsys):
+    """El check de CI, corrido de verdad contra el árbol.
+
+    Faltaba, y el hueco costó: los tests de al lado comprueban que el ratchet
+    **sabría** detectar un fichero nuevo —con una lista simulada— y que la lista
+    no tiene fósiles, pero ninguno corría la comprobación real. Un módulo nuevo
+    que usara `user_key` pasaba toda la suite en verde y sólo caía en el paso
+    `python scripts/check_user_key_ratchet.py` del workflow de CI, ya empujado.
+    Pasó exactamente eso con `scheduler/jobs/informes_programados.py` (T6).
+    """
+    assert ratchet.main([]) == 0, capsys.readouterr().err
+
+
 def test_pasa_cuando_el_arbol_es_exactamente_la_lista(ratchet, monkeypatch, capsys):
     monkeypatch.setattr(ratchet, "_ficheros_con_user_key", lambda: sorted(ratchet.CONGELADOS))
 

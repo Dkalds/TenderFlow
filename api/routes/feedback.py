@@ -14,6 +14,7 @@ from db.audit import log_event
 from db.repositories.feedback import FeedbackRepository
 from db.repositories.licitaciones import LicitacionRepository
 from observability.logging import get_logger
+from shared.audit_events import FEEDBACK_SUBMITTED
 
 log = get_logger(__name__)
 
@@ -291,7 +292,7 @@ async def submit_feedback(
 
     await run_db(
         log_event,
-        event_type="feedback.submitted",
+        event_type=FEEDBACK_SUBMITTED,
         user_key=str(ctx.get("user_key", "system"))[:8],
         resource=f"licitacion:{body.expediente}",
         detail={

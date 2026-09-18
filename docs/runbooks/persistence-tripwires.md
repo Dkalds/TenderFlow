@@ -211,15 +211,18 @@ WHERE n.nspname = 'public' AND c.relkind = 'r'
 psql "$DATABASE_URL_APP" -c "SELECT organization_id, count(*) FROM pursuits GROUP BY 1"
 ```
 
-**Lo que 2c devuelve hoy, y por qué.** Devuelve filas de **todas** las
-organizaciones. No es un fallo del cutover: `scripts/setup_pg_roles.sql` crea
-para `tenderflow_app` una política `tenderflow_app_full_access ... USING (true)`
-en cada tabla, y `v62` hace lo mismo para las tablas que añade. Es deliberado —
-`tenderflow_app` es la aplicación entera, no un rol por usuario, y el
-aislamiento por organización vive en la capa de aplicación (los repositorios
+**Lo que 2c devuelve, y por qué.** Devuelve filas de **todas** las
+organizaciones, también tras `v128`: sin tenant fijado, las políticas por
+tenant son paso franco (el scheduler, los scripts y el backup leen todo). No
+es un fallo del cutover: `scripts/setup_pg_roles.sql` crea para
+`tenderflow_app` una política `tenderflow_app_full_access ... USING (true)` en
+cada tabla, y `v62` hace lo mismo para las tablas que añade. Es deliberado —
+`tenderflow_app` es la aplicación entera, no un rol por usuario. El
+aislamiento por organización lo aplica la capa de aplicación (los repositorios
 filtran por `organization_id`, y los tests de aislamiento de `#271` lo
-verifican). Lo que la RLS de `v52` cierra es **la Data API de Supabase**, o sea
-los roles `anon`/`authenticated`:
+verifican) y, desde `v128`, lo respalda la RLS **cuando la petición fija
+tenant** (control 2e). Lo que la RLS de `v52` cierra es **la Data API de
+Supabase**, o sea los roles `anon`/`authenticated`:
 
 ```bash
 # 2d. El control que sí demuestra el aislamiento que la RLS aporta hoy.
@@ -229,17 +232,25 @@ psql "$DATABASE_ADMIN_URL" -c "SET ROLE anon; SELECT count(*) FROM pursuits;"
 #     anon la RLS deja la tabla en deny-all)
 ```
 
-**Consecuencia, escrita para que no se pierda.** El criterio de O0.4 tal como
-está redactado —cero filas de otra organización *para el rol de la app*— **no lo
-cumple el diseño actual y no basta con ejecutar el cutover**: exigiría políticas
-RLS por tenant sobre una variable de sesión (`current_setting('app.current_organization')`
-o equivalente) fijada por el pool en cada conexión, y una migración que las
-cree. Eso es un cambio de arquitectura de acceso a datos, no un paso de este
-runbook: se decide en un ADR, se implementa en `scripts/setup_pg_roles.sql` más
-una revisión de alembic, y se paga en cada `SET` del pool. Hasta entonces, lo
-honesto es decir que el cutover cierra el DDL (control 1) y la Data API (2d), y
-que el aislamiento entre organizaciones sigue siendo responsabilidad de la capa
-de aplicación.
+```bash
+# 2e. Con tenant fijado, la misma lectura de 2c solo devuelve esa organización
+#     (políticas tenant_scope_*/tenant_guard_* de v128, ADR-034). La variable es
+#     de transacción: fuera del BEGIN/ROLLBACK no queda nada en la sesión.
+psql "$DATABASE_URL_APP" -c "BEGIN; SET LOCAL app.organization_id = '<id>';
+  SELECT organization_id, count(*) FROM pursuits GROUP BY 1; ROLLBACK;"
+#     esperado: solo la fila de <id> (y las de organization_id NULL, si quedan
+#     legadas sin adjudicar — ver db/tenancy_backfill.py)
+```
+
+**Consecuencia, escrita para que no se pierda.** El criterio de O0.4 —cero
+filas de otra organización *para el rol de la app*— se cumple **con tenant
+fijado** (2e) y no sin él (2c), por diseño: [ADR-034](../adr/ADR-034-rls-por-tenant.md)
+explica por qué el paso franco sin ámbito es necesario (scheduler, scripts,
+backups). Es `db/connection.py` quien fija la variable en cada transacción
+acotada, no el pool ni `setup_pg_roles.sql`. Y 2e solo demuestra algo con un rol
+**sin** `BYPASSRLS` (2a): con el dueño superusuario de antes del cutover sale
+todo, aunque las políticas estén instaladas. El cutover sigue cerrando el DDL
+(control 1) y la Data API (2d); 2e es lo que `v128` añade encima.
 
 ---
 

@@ -106,6 +106,7 @@ class TestCanonicalPipelineSteps:
             "scheduler.pipeline_runs._run_tech_signal_merge": _make_mock("tech_signal_merge"),
             "scheduler.pipeline_runs._run_llm_tech_labeling": _make_mock("llm_tech_labeling"),
             "scheduler.pipeline_runs._run_analytics_export": _make_mock("analytics_export"),
+            "scheduler.pipeline_runs._run_organos_resolve": _make_mock("organos_resolve"),
             "scheduler.pipeline_runs._run_kpi_precompute": _make_mock("kpi_precompute"),
             "scheduler.pipeline_runs._run_aggregates_precompute": _make_mock(
                 "aggregates_precompute"
@@ -115,9 +116,11 @@ class TestCanonicalPipelineSteps:
             "scheduler.pipeline_runs._run_dlq_retry": _make_mock("dlq_retry"),
             "scheduler.pipeline_runs._run_webhook_reintentos": _make_mock("webhook_reintentos"),
             "scheduler.pipeline_runs._run_anomaly_checks": _make_mock("anomaly_checks"),
+            "scheduler.pipeline_runs._run_follows_paridad": _make_mock("follows_paridad"),
             "scheduler.pipeline_runs._run_llm_models_canary": _make_mock("llm_models_canary"),
             "scheduler.pipeline_runs._run_retention_cleanup": _make_mock("retention_cleanup"),
             "scheduler.pipeline_runs._run_sap_active_learning": _make_mock("sap_active_learning"),
+            "scheduler.pipeline_runs._run_informes_programados": _make_mock("informes_programados"),
             "scheduler.pipeline_runs._run_drift_checks": _make_mock("drift_checks"),
         }
 

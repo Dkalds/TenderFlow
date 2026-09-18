@@ -125,11 +125,11 @@ def test_dossier_agrupado_suma_las_identidades_antes_de_rankear(tmp_db):
     a ser las primeras. Si la posición agrupara solo una de las identidades, el
     dossier diría rank 2 y una cuota de la mitad.
     """
-    _adjudicar("G-UNO", "Grupo Uno SL", nif="B20000001", adjudicado=300_000)
-    _adjudicar("G-DOS", "Grupo Dos SL", nif="B20000002", adjudicado=300_000)
-    _adjudicar("G-RIVAL", "Rival Grupo SA", nif="B20000003", adjudicado=500_000)
+    _adjudicar("G-UNO", "Grupo Uno SL", nif="B30000012", adjudicado=300_000)
+    _adjudicar("G-DOS", "Grupo Dos SL", nif="B30000020", adjudicado=300_000)
+    _adjudicar("G-RIVAL", "Rival Grupo SA", nif="B30000038", adjudicado=500_000)
     _resolver()
-    uno, dos = _empresa_id("B20000001"), _empresa_id("B20000002")
+    uno, dos = _empresa_id("B30000012"), _empresa_id("B30000020")
     assert uno != dos
 
     perfil = perfil_empresa(uno, empresa_ids=[dos])
@@ -155,21 +155,21 @@ def test_la_base_de_comparacion_llega_fuera_de_la_ventana(tmp_db):
     _adjudicar(
         "C-ANTERIOR",
         "Comparada SL",
-        nif="B20000010",
+        nif="B30000103",
         adjudicado=100_000,
         fecha_adjudicacion=_hace(500),
     )
     _adjudicar(
         "C-ACTUAL",
         "Comparada SL",
-        nif="B20000010",
+        nif="B30000103",
         adjudicado=250_000,
         fecha_adjudicacion=_hace(30),
     )
     _resolver()
 
     perfil = perfil_empresa(
-        _empresa_id("B20000010"),
+        _empresa_id("B30000103"),
         fecha_desde=date.today() - timedelta(days=364),
         fecha_hasta=date.today(),
     )
@@ -189,12 +189,12 @@ def test_un_duplicado_confirmado_no_cuenta_en_ninguna_superficie(client, auth):
     HHI y sus contratos, el denominador que ``/hhi`` declara en ``scope``, los
     totales y la posición del dossier y el total del listado.
     """
-    _adjudicar("D-ORIGINAL", "Duplicada SL", nif="B20000020", adjudicado=100_000)
-    _adjudicar("D-COPIA", "Duplicada SL", nif="B20000020", adjudicado=100_000)
-    _adjudicar("D-RIVAL", "Rival Dup SA", nif="B20000021", adjudicado=150_000)
+    _adjudicar("D-ORIGINAL", "Duplicada SL", nif="B30000202", adjudicado=100_000)
+    _adjudicar("D-COPIA", "Duplicada SL", nif="B30000202", adjudicado=100_000)
+    _adjudicar("D-RIVAL", "Rival Dup SA", nif="B30000210", adjudicado=150_000)
     _resolver()
     _marcar_duplicado("D-COPIA", "D-ORIGINAL")
-    duplicada = _empresa_id("B20000020")
+    duplicada = _empresa_id("B30000202")
 
     respuesta = client.get(
         "/api/v1/competitive/hhi", params={"segment_by": "cpv", "min_contratos": 1}, headers=auth
@@ -250,8 +250,8 @@ def test_el_listado_aplica_offset_y_acota_limit_y_offset(tmp_db):
 
 def test_metric_scope_filtra_el_denominador_por_ccaa(tmp_db):
     """Con ``ccaa`` el denominador solo cuenta esa comunidad."""
-    _adjudicar("S-MAD", "Madrileña SL", nif="B20000040", adjudicado=100_000, ccaa="Madrid")
-    _adjudicar("S-GAL", "Gallega SL", nif="B20000041", adjudicado=40_000, ccaa="Galicia")
+    _adjudicar("S-MAD", "Madrileña SL", nif="B30000400", adjudicado=100_000, ccaa="Madrid")
+    _adjudicar("S-GAL", "Gallega SL", nif="B30000418", adjudicado=40_000, ccaa="Galicia")
     _resolver()
 
     alcance = metric_scope(ccaa="Galicia")
@@ -265,15 +265,15 @@ def test_el_listado_filtra_por_organo(tmp_db):
     _adjudicar(
         "O-HACIENDA",
         "Organica SL",
-        nif="B20000050",
+        nif="B30000509",
         adjudicado=50_000,
         organo="Ministerio de Hacienda",
     )
     _adjudicar(
-        "O-XUNTA", "Organica SL", nif="B20000050", adjudicado=60_000, organo="Xunta de Galicia"
+        "O-XUNTA", "Organica SL", nif="B30000509", adjudicado=60_000, organo="Xunta de Galicia"
     )
     _resolver()
-    empresa = _empresa_id("B20000050")
+    empresa = _empresa_id("B30000509")
 
     assert listar_adjudicaciones_empresa(empresa)["total"] == 2
     filtrado = listar_adjudicaciones_empresa(empresa, organo="xunta")
@@ -286,14 +286,14 @@ def test_cuota_mercado_filtra_por_desde(tmp_db):
     _adjudicar(
         "Q-ANTES",
         "Antigua SL",
-        nif="B20000060",
+        nif="B30000608",
         adjudicado=700_000,
         fecha_adjudicacion="2024-01-15",
     )
     _adjudicar(
         "Q-DESPUES",
         "Reciente SL",
-        nif="B20000061",
+        nif="B30000616",
         adjudicado=300_000,
         fecha_adjudicacion="2025-06-01",
     )
@@ -302,7 +302,7 @@ def test_cuota_mercado_filtra_por_desde(tmp_db):
     assert len(cuota_mercado()) == 2
     ranking = cuota_mercado(desde="2025-01-01")
     assert [(fila["empresa_id"], fila["importe"], fila["cuota_pct"]) for fila in ranking] == [
-        (_empresa_id("B20000061"), 300_000, 100.0)
+        (_empresa_id("B30000616"), 300_000, 100.0)
     ]
 
 
@@ -314,7 +314,7 @@ def test_hhi_cuenta_contratos_solo_del_universo_observado(tmp_db):
     cuentan las tres primeras.
     """
     for i in range(3):
-        _adjudicar(f"H-OBS-{i}", "Observada SA", nif="B20000070", adjudicado=10_000, cpv="48000000")
+        _adjudicar(f"H-OBS-{i}", "Observada SA", nif="B30000707", adjudicado=10_000, cpv="48000000")
         _adjudicar(
             f"H-VIG-{i}",
             "Vigilada SA",
@@ -346,7 +346,7 @@ def _tres_segmentos() -> tuple[int, int, int]:
     _adjudicar(
         "T-A",
         "Segmento A SL",
-        nif="B20000090",
+        nif="B30000905",
         adjudicado=400_000,
         fecha_adjudicacion="2025-06-01",
         cpv="72000000",
@@ -355,7 +355,7 @@ def _tres_segmentos() -> tuple[int, int, int]:
     _adjudicar(
         "T-B",
         "Segmento B SL",
-        nif="B20000091",
+        nif="B30000913",
         adjudicado=300_000,
         fecha_adjudicacion="2025-03-01",
         cpv="48000000",
@@ -364,14 +364,14 @@ def _tres_segmentos() -> tuple[int, int, int]:
     _adjudicar(
         "T-C",
         "Segmento C SL",
-        nif="B20000092",
+        nif="B30000921",
         adjudicado=100_000,
         fecha_adjudicacion="2024-01-15",
         cpv="72000000",
         ccaa="Galicia",
     )
     _resolver()
-    return _empresa_id("B20000090"), _empresa_id("B20000091"), _empresa_id("B20000092")
+    return _empresa_id("B30000905"), _empresa_id("B30000913"), _empresa_id("B30000921")
 
 
 def test_cuota_mercado_filtra_por_cpv_y_ccaa_y_respeta_limit(tmp_db):
@@ -414,9 +414,9 @@ def test_hhi_segmenta_por_ccaa(tmp_db):
     Las tres adjudicaciones son del CPV 72. Segmentadas por CPV serían un único
     segmento de tres empresas.
     """
-    _adjudicar("H-MAD-1", "Madrid Uno SL", nif="B20000100", adjudicado=100_000, ccaa="Madrid")
-    _adjudicar("H-MAD-2", "Madrid Dos SL", nif="B20000101", adjudicado=100_000, ccaa="Madrid")
-    _adjudicar("H-GAL-1", "Galicia Uno SL", nif="B20000102", adjudicado=100_000, ccaa="Galicia")
+    _adjudicar("H-MAD-1", "Madrid Uno SL", nif="B30001002", adjudicado=100_000, ccaa="Madrid")
+    _adjudicar("H-MAD-2", "Madrid Dos SL", nif="B30001010", adjudicado=100_000, ccaa="Madrid")
+    _adjudicar("H-GAL-1", "Galicia Uno SL", nif="B30001028", adjudicado=100_000, ccaa="Galicia")
     _resolver()
 
     segmentos = concentracion_hhi(segment_by="ccaa", min_contratos=1)
@@ -442,12 +442,12 @@ def test_el_dossier_aplica_cpv_ccaas_y_tecnologias_a_actividad_y_mercado(tmp_db)
     # distintos: con nombres parecidos la resolución deja a los rivales en
     # revisión, sin empresa, y no entrarían en el mercado.
     filas = [
-        ("P-DENTRO", "Filtrada SL", "B20000110", 300_000, "72000000", "Madrid", "SAP"),
-        ("P-CPV", "Filtrada SL", "B20000110", 50_000, "48000000", "Madrid", "SAP"),
-        ("P-CCAA", "Filtrada SL", "B20000110", 70_000, "72000000", "Galicia", "SAP"),
-        ("P-TEC", "Filtrada SL", "B20000110", 30_000, "72000000", "Madrid", "SALESFORCE"),
-        ("R-DENTRO", "Hermanos Ruiz SA", "B20000111", 100_000, "72000000", "Madrid", "SAP"),
-        ("R-CCAA", "Consultora Atlantica SA", "B20000112", 900_000, "72000000", "Galicia", "SAP"),
+        ("P-DENTRO", "Filtrada SL", "B30001101", 300_000, "72000000", "Madrid", "SAP"),
+        ("P-CPV", "Filtrada SL", "B30001101", 50_000, "48000000", "Madrid", "SAP"),
+        ("P-CCAA", "Filtrada SL", "B30001101", 70_000, "72000000", "Galicia", "SAP"),
+        ("P-TEC", "Filtrada SL", "B30001101", 30_000, "72000000", "Madrid", "SALESFORCE"),
+        ("R-DENTRO", "Hermanos Ruiz SA", "B30001119", 100_000, "72000000", "Madrid", "SAP"),
+        ("R-CCAA", "Consultora Atlantica SA", "B30001127", 900_000, "72000000", "Galicia", "SAP"),
         ("R-TEC", "Nubes Integradas SA", "B20000113", 800_000, "72000000", "Madrid", "SALESFORCE"),
     ]
     for lic_id, empresa, nif, importe, cpv, ccaa, tecnologia in filas:
@@ -463,7 +463,7 @@ def test_el_dossier_aplica_cpv_ccaas_y_tecnologias_a_actividad_y_mercado(tmp_db)
     _resolver()
 
     perfil = perfil_empresa(
-        _empresa_id("B20000110"), cpv_prefix="72", ccaas=["Madrid"], tecnologias=["SAP"]
+        _empresa_id("B30001101"), cpv_prefix="72", ccaas=["Madrid"], tecnologias=["SAP"]
     )
 
     assert (perfil["totales"]["contratos"], perfil["totales"]["importe_total"]) == (1, 300_000)

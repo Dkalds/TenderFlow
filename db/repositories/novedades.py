@@ -16,11 +16,17 @@ from db.repositories.base import rows_to_dicts
 __all__ = ["NovedadesRepository"]
 
 
+#: Predicado de identidad dual sobre ``watchlist_items w`` (v129, ADR-030 fase
+#: 2). Parámetros: ``(user_id, user_key, user_id)``; con ``user_id=None`` se
+#: reduce a ``w.user_key = %s``. Ver ``db/repositories/watchlist.py``.
+_IDENT_W = "(w.user_id = %s OR (w.user_key = %s AND (w.user_id IS NULL OR %s::int IS NULL)))"
+
+
 class NovedadesRepository:
     """Lo que ha pasado, desde una fecha, en lo que el usuario sigue."""
 
     def cambios_en_seguidos(
-        self, user_key: str, *, desde_iso: str, limit: int = 50
+        self, user_key: str, *, desde_iso: str, limit: int = 50, user_id: int | None = None
     ) -> list[dict[str, Any]]:
         """Cambios registrados en `licitaciones_history` de expedientes seguidos.
 
@@ -39,15 +45,15 @@ class NovedadesRepository:
                 "FROM licitaciones_history h "
                 "JOIN watchlist_items w ON w.id_externo = h.id_externo "
                 "JOIN licitaciones l ON l.id_externo = h.id_externo "
-                "WHERE w.user_key = %s AND h.captured_at >= %s "
+                f"WHERE {_IDENT_W} AND h.captured_at >= %s "
                 "ORDER BY h.captured_at DESC "
                 "LIMIT %s",
-                (user_key, desde_iso, limit),
+                (user_id, user_key, user_id, desde_iso, limit),
             )
             return rows_to_dicts(cur)
 
     def documentos_nuevos_en_seguidos(
-        self, user_key: str, *, desde_iso: str, limit: int = 50
+        self, user_key: str, *, desde_iso: str, limit: int = 50, user_id: int | None = None
     ) -> list[dict[str, Any]]:
         """Adjuntos publicados después de ``desde_iso`` en expedientes seguidos.
 
@@ -64,17 +70,17 @@ class NovedadesRepository:
                 "FROM documentos d "
                 "JOIN watchlist_items w ON w.id_externo = d.licitacion_id "
                 "JOIN licitaciones l ON l.id_externo = d.licitacion_id "
-                "WHERE w.user_key = %s AND d.created_at >= %s "
+                f"WHERE {_IDENT_W} AND d.created_at >= %s "
                 "GROUP BY COALESCE(d.source_hash, d.uri), d.licitacion_id, d.tipo, "
                 "         d.filename, l.titulo "
                 "ORDER BY publicado_en DESC "
                 "LIMIT %s",
-                (user_key, desde_iso, limit),
+                (user_id, user_key, user_id, desde_iso, limit),
             )
             return rows_to_dicts(cur)
 
     def recursos_en_seguidos(
-        self, user_key: str, *, desde_iso: str, limit: int = 20
+        self, user_key: str, *, desde_iso: str, limit: int = 20, user_id: int | None = None
     ) -> list[dict[str, Any]]:
         """Resoluciones de recurso sobre expedientes seguidos (F5.2)."""
         with connect_read() as c:
@@ -83,10 +89,10 @@ class NovedadesRepository:
                 "FROM resoluciones_recurso r "
                 "JOIN watchlist_items w ON w.id_externo = r.licitacion_id "
                 "JOIN licitaciones l ON l.id_externo = r.licitacion_id "
-                "WHERE w.user_key = %s AND r.fecha >= %s "
+                f"WHERE {_IDENT_W} AND r.fecha >= %s "
                 "ORDER BY r.fecha DESC "
                 "LIMIT %s",
-                (user_key, desde_iso, limit),
+                (user_id, user_key, user_id, desde_iso, limit),
             )
             return rows_to_dicts(cur)
 

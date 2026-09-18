@@ -37,7 +37,12 @@ from db.empresas import (
     set_nif_canonico_if_null,
 )
 from observability.logging import get_logger
-from services.normalization import normalize_company, normalize_nif, parse_ute_members
+from services.normalization import (
+    nif_espanol_malformado,
+    normalize_company,
+    normalize_nif,
+    parse_ute_members,
+)
 
 log = get_logger(__name__)
 
@@ -64,6 +69,9 @@ class ResolutionStats:
     skipped: int = 0
     fetched: int = 0
     last_id: int = 0  # cursor: máximo id de adjudicación visto en el lote
+    #: Adjudicaciones cuyo NIF tenía forma española y control incorrecto: se
+    #: resuelven solo por nombre, como si no trajeran NIF (2026-09-14).
+    nif_invalido: int = 0
 
     @property
     def processed(self) -> int:
@@ -77,6 +85,7 @@ class ResolutionStats:
             "queued_review": self.queued_review,
             "utes": self.utes,
             "skipped": self.skipped,
+            "nif_invalido": self.nif_invalido,
         }
 
 
@@ -256,6 +265,13 @@ def resolve_unlinked_adjudicaciones(
             nombre = (row.get("nombre") or "").strip()
             alias = normalize_company(nombre)
             nif_norm = normalize_nif(row.get("nif"))
+            if nif_norm is not None and nif_espanol_malformado(nif_norm):
+                # Un CIF con la letra de control mal no es una clave: casar por
+                # él uniría dos erratas o crearía una empresa inexistente. Se
+                # resuelve por nombre y se cuenta, para que el dato de origen
+                # pueda corregirse en vez de propagarse al maestro.
+                stats.nif_invalido += 1
+                nif_norm = None
             if not alias:
                 if nif_norm and nif_norm in caches.nif:
                     link_adjudicacion(conn, int(row["id"]), caches.nif[nif_norm])

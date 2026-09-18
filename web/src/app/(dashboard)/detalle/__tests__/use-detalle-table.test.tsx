@@ -7,6 +7,7 @@
  */
 import { describe, it, expect } from "vitest";
 import { renderHook, act } from "@testing-library/react";
+import type { RowSelectionState } from "@tanstack/react-table";
 import { PAGE_SIZE, type ScoringResponse } from "../_hooks/detalle-table-model";
 import { useDetalleRows, useDetalleTableState } from "../_hooks/use-detalle-table";
 import { PAGINATION, row } from "./detalle-fixtures";
@@ -94,7 +95,7 @@ describe("useDetalleRows", () => {
     opportunities: [{ id_externo: "A", score: 70, band: "media", desglose: {} }],
   };
 
-  function setup(rowSelection: Record<string, boolean> = {}) {
+  function setup(rowSelection: RowSelectionState = {}) {
     const state = { current: rowSelection };
     const hook = renderHook(() =>
       useDetalleRows({

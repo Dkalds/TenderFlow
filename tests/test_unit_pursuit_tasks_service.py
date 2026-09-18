@@ -19,6 +19,8 @@ from typing import Any
 
 import pytest
 
+from tests.dobles_tenencia import alcance_doble
+
 
 class _RepoDoble:
     """Doble de `PursuitTasksRepository` que registra lo que le piden."""
@@ -88,7 +90,7 @@ def mod(monkeypatch: pytest.MonkeyPatch):
         resoluciones.append({"user_id": user_id, "org": organization_id, "write": write})
         return 7, "member"
 
-    monkeypatch.setattr(modulo, "resolve_organization", _resolve)
+    monkeypatch.setattr(modulo, "alcance_resuelto", alcance_doble(_resolve))
     monkeypatch.setattr(
         modulo,
         "require_active_member",

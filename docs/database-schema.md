@@ -6,9 +6,9 @@ tags: [database, schema, generado]
 
 <!-- generado por scripts/gen_schema_doc.py — no editar a mano -->
 
-Generado: 2026-09-08
+Generado: 2026-09-15
 
-Revisión Alembic aplicada: `v127_pursuit_attachments`.
+Revisión Alembic aplicada: `v132_informes_programados`.
 
 Catálogo de una base Postgres recién migrada con `alembic upgrade head`. Se listan
 las tablas de `public` agrupadas por familia, con sus columnas
@@ -27,13 +27,13 @@ migración que los declara— y, por supuesto, cualquier dato.
 | Licitaciones y fuente | 11 | 151 | 51 |
 | Documentos y pliegos | 4 | 43 | 11 |
 | Empresas y mercado | 6 | 34 | 8 |
-| Organizaciones y oportunidades | 14 | 127 | 27 |
-| Identidad, acceso y auditoría | 15 | 104 | 23 |
-| Seguimiento y notificaciones | 12 | 125 | 24 |
+| Organizaciones y oportunidades | 15 | 141 | 31 |
+| Identidad, acceso y auditoría | 15 | 105 | 24 |
+| Seguimiento y notificaciones | 12 | 132 | 33 |
 | ML y predicciones | 7 | 55 | 13 |
 | Operación y observabilidad | 6 | 46 | 11 |
-| Otras | 18 | 138 | 22 |
-| **Total** | **93** | **823** | **190** |
+| Otras | 19 | 150 | 28 |
+| **Total** | **95** | **857** | **210** |
 
 ## Licitaciones y fuente
 
@@ -539,6 +539,26 @@ Claves: `PRIMARY KEY (id)`
 
 Índices: `ix_organization_references_org`
 
+### `organization_report_schedules`
+
+| Columna | Tipo | Nulo |
+|---|---|---|
+| `id` | `integer` | no |
+| `organization_id` | `integer` | no |
+| `tipo` | `text` | no |
+| `activo` | `boolean` | no |
+| `dia_semana` | `smallint` | no |
+| `hora_utc` | `smallint` | no |
+| `destinatarios_json` | `text` | sí |
+| `ultimo_envio_at` | `timestamp with time zone` | sí |
+| `ultimo_estado` | `text` | sí |
+| `created_at` | `timestamp with time zone` | no |
+| `updated_at` | `timestamp with time zone` | no |
+
+Claves: `PRIMARY KEY (id)` · `UNIQUE (organization_id, tipo)`
+
+Índices: `idx_report_schedules_pendientes`
+
 ### `organization_revenues`
 
 | Columna | Tipo | Nulo |
@@ -598,10 +618,11 @@ Claves: `PRIMARY KEY (id)` · `UNIQUE (personal_owner_user_id)`
 | `uploaded_by_user_id` | `integer` | sí |
 | `indexable` | `boolean` | no |
 | `created_at` | `text` | no |
+| `deleted_at` | `timestamp with time zone` | sí |
 
 Claves: `PRIMARY KEY (id)` · `UNIQUE (blob_key)`
 
-Índices: `idx_pursuit_attachments_org`, `idx_pursuit_attachments_pursuit`
+Índices: `idx_pursuit_attachments_org`, `idx_pursuit_attachments_pursuit`, `idx_pursuit_attachments_vivas`
 
 ### `pursuit_comment_mentions`
 
@@ -627,10 +648,11 @@ Claves: `PRIMARY KEY (id)`
 | `body` | `text` | no |
 | `idempotency_key` | `text` | sí |
 | `created_at` | `text` | no |
+| `deleted_at` | `timestamp with time zone` | sí |
 
 Claves: `PRIMARY KEY (id)`
 
-Índices: `idx_pursuit_comments_author`, `idx_pursuit_comments_pursuit_id`, `uq_pursuit_comments_idempotency` (único)
+Índices: `idx_pursuit_comments_author`, `idx_pursuit_comments_pursuit_id`, `idx_pursuit_comments_vivas`, `uq_pursuit_comments_idempotency` (único)
 
 ### `pursuit_events`
 
@@ -662,10 +684,11 @@ Claves: `PRIMARY KEY (id)`
 | `estado` | `text` | no |
 | `created_at` | `text` | no |
 | `updated_at` | `text` | no |
+| `deleted_at` | `timestamp with time zone` | sí |
 
 Claves: `PRIMARY KEY (id)`
 
-Índices: `idx_pursuit_tasks_agenda`, `idx_pursuit_tasks_pursuit`, `idx_pursuit_tasks_responsable`
+Índices: `idx_pursuit_tasks_agenda`, `idx_pursuit_tasks_pursuit`, `idx_pursuit_tasks_responsable`, `idx_pursuit_tasks_vivas`
 
 ### `pursuits`
 
@@ -794,10 +817,11 @@ Claves: `PRIMARY KEY (chain_name)`
 | `prev_hash` | `text` | sí |
 | `this_hash` | `text` | sí |
 | `hash_version` | `text` | sí |
+| `user_id` | `integer` | sí |
 
 Claves: `PRIMARY KEY (id)`
 
-Índices: `idx_audit_log_action`, `idx_audit_log_created_id`, `idx_audit_log_user`
+Índices: `idx_audit_log_action`, `idx_audit_log_created_id`, `idx_audit_log_user`, `idx_audit_log_user_id`
 
 ### `csp_violations`
 
@@ -950,10 +974,11 @@ Claves: `PRIMARY KEY (id)` · `UNIQUE (email)` · `UNIQUE (oauth_provider, oauth
 | `user_key` | `text` | no |
 | `notification_id` | `text` | no |
 | `read_at` | `text` | no |
+| `user_id` | `integer` | sí |
 
 Claves: `PRIMARY KEY (id)` · `UNIQUE (user_key, notification_id)`
 
-Índices: `idx_notif_reads_user`
+Índices: `idx_notif_reads_user`, `idx_notification_reads_user_id`
 
 ### `pending_digests`
 
@@ -967,10 +992,11 @@ Claves: `PRIMARY KEY (id)` · `UNIQUE (user_key, notification_id)`
 | `frequency` | `text` | no |
 | `matched_at` | `text` | no |
 | `sent` | `integer` | no |
+| `user_id` | `integer` | sí |
 
 Claves: `PRIMARY KEY (id)` · `UNIQUE (entry_id, licitacion_id)`
 
-Índices: `idx_pending_digests_recipient`
+Índices: `idx_pending_digests_recipient`, `idx_pending_digests_user_id`
 
 ### `radar_dismissals`
 
@@ -984,10 +1010,11 @@ Claves: `PRIMARY KEY (id)` · `UNIQUE (entry_id, licitacion_id)`
 | `hasta` | `timestamp with time zone` | sí |
 | `accion` | `text` | sí |
 | `organization_id` | `integer` | sí |
+| `user_id` | `integer` | sí |
 
 Claves: `PRIMARY KEY (user_key, id_externo)`
 
-Índices: `idx_radar_dismissals_user_hasta`
+Índices: `idx_radar_dismissals_user_hasta`, `idx_radar_dismissals_user_id`
 
 ### `saved_filters`
 
@@ -1000,10 +1027,11 @@ Claves: `PRIMARY KEY (user_key, id_externo)`
 | `created_at` | `text` | no |
 | `organization_id` | `integer` | sí |
 | `visibility` | `text` | no |
+| `user_id` | `integer` | sí |
 
 Claves: `PRIMARY KEY (id)` · `UNIQUE (user_key, name)`
 
-Índices: `idx_saved_filters_organization`, `idx_saved_filters_user`
+Índices: `idx_saved_filters_organization`, `idx_saved_filters_user`, `idx_saved_filters_user_id`
 
 ### `user_notifications`
 
@@ -1019,10 +1047,11 @@ Claves: `PRIMARY KEY (id)` · `UNIQUE (user_key, name)`
 | `rule_id` | `integer` | sí |
 | `read_at` | `text` | sí |
 | `organization_id` | `integer` | sí |
+| `user_id` | `integer` | sí |
 
 Claves: `PRIMARY KEY (id)` · `UNIQUE (user_key, licitacion_id, type)`
 
-Índices: `idx_user_notif_user_read`, `idx_user_notifications_organization`
+Índices: `idx_user_notif_user_read`, `idx_user_notifications_organization`, `idx_user_notifications_user_id`
 
 ### `user_profiles`
 
@@ -1038,10 +1067,11 @@ Claves: `PRIMARY KEY (id)` · `UNIQUE (user_key, licitacion_id, type)`
 | `updated_at` | `text` | no |
 | `organization_id` | `integer` | sí |
 | `visibility` | `text` | no |
+| `user_id` | `integer` | sí |
 
 Claves: `PRIMARY KEY (user_key)`
 
-Índices: `idx_user_profiles_organization`
+Índices: `idx_user_profiles_organization`, `idx_user_profiles_user_id`
 
 ### `watchlist_cpv`
 
@@ -1078,10 +1108,11 @@ Claves: `PRIMARY KEY (id)` · `UNIQUE (user_key, cpv_prefix, keyword, ccaa)`
 | `last_notified_at` | `text` | sí |
 | `organization_id` | `integer` | sí |
 | `visibility` | `text` | no |
+| `user_id` | `integer` | sí |
 
 Claves: `PRIMARY KEY (id)` · `UNIQUE (user_key, empresa_id)`
 
-Índices: `idx_watchlist_empresas_organization`, `idx_wl_emp_user`
+Índices: `idx_watchlist_empresas_organization`, `idx_watchlist_empresas_user_id`, `idx_wl_emp_user`
 
 ### `watchlist_items`
 
@@ -1098,7 +1129,7 @@ Claves: `PRIMARY KEY (id)` · `UNIQUE (user_key, empresa_id)`
 
 Claves: `PRIMARY KEY (id)` · `UNIQUE (user_key, id_externo)`
 
-Índices: `idx_watchlist_items_organization`, `idx_wl_items_user`
+Índices: `idx_watchlist_items_organization`, `idx_watchlist_items_user_id`, `idx_wl_items_user`
 
 ### `watchlist_rules`
 
@@ -1129,7 +1160,7 @@ Claves: `PRIMARY KEY (id)` · `UNIQUE (user_key, id_externo)`
 
 Claves: `PRIMARY KEY (id)`
 
-Índices: `idx_watchlist_rules_organization`, `idx_wl_rules_active`, `idx_wl_rules_user`
+Índices: `idx_watchlist_rules_organization`, `idx_watchlist_rules_user_id`, `idx_wl_rules_active`, `idx_wl_rules_user`
 
 ### `webhook_deliveries`
 
@@ -1525,6 +1556,26 @@ Claves: `PRIMARY KEY (id)`
 
 Índices: `idx_extr_fecha`
 
+### `follows`
+
+| Columna | Tipo | Nulo |
+|---|---|---|
+| `id` | `integer` | no |
+| `organization_id` | `integer` | sí |
+| `user_id` | `integer` | sí |
+| `user_key` | `text` | no |
+| `target_type` | `text` | no |
+| `target_id` | `text` | no |
+| `kind` | `text` | no |
+| `visibility` | `text` | no |
+| `channels_json` | `text` | sí |
+| `hasta` | `timestamp with time zone` | sí |
+| `created_at` | `timestamp with time zone` | no |
+
+Claves: `PRIMARY KEY (id)` · `UNIQUE (user_key, target_type, target_id, kind)`
+
+Índices: `idx_follows_hasta`, `idx_follows_organization`, `idx_follows_target`, `idx_follows_user`, `idx_follows_user_id`
+
 ### `go_no_go_scores`
 
 | Columna | Tipo | Nulo |
@@ -1682,8 +1733,11 @@ Claves: `PRIMARY KEY (id)`
 | `event_type` | `text` | no |
 | `modo` | `text` | no |
 | `updated_at` | `text` | no |
+| `user_id` | `integer` | sí |
 
 Claves: `PRIMARY KEY (id)` · `UNIQUE (user_key, event_type)`
+
+Índices: `idx_user_event_prefs_user_id`
 
 ## Vistas materializadas
 
