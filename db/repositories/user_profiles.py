@@ -7,9 +7,14 @@ Almacenado en user_profiles (migracion v49): PK = user_key, columnas JSON.
 
 Desde v129 (ADR-030 fase 2) la fila lleva también ``user_id`` y la lectura es
 dual: con ``user_id`` conocido se busca por él —y por ``user_key`` sólo en las
-filas que el backfill no resolvió—; sin él, por ``user_key`` como siempre. La
-PK sigue siendo ``user_key`` (recrearla es la fase 3), así que el upsert
-localiza primero la fila del usuario por identidad y sólo inserta si no hay.
+filas que el backfill no resolvió—; sin él, por ``user_key`` como siempre.
+
+Desde v135 (fase 3) la PK es ``user_id`` y **la escritura ya no pone
+``user_key``**: el upsert es un ``ON CONFLICT (user_id)`` y un usuario tiene,
+por construcción, un único perfil. La lectura dual se queda: no cuesta nada
+(todas las filas tienen ``user_id``) y es la que sigue sirviendo las filas
+viejas a quien llame sin id. Por eso todo llamador debe pasar ``user_id``:
+sin él sólo se ven los perfiles escritos antes de esta fase.
 """
 
 from __future__ import annotations
@@ -111,23 +116,22 @@ def _row_to_profile(row: Any) -> dict[str, Any] | None:
 
 
 def upsert_user_profile(
-    user_key: str,
     profile: dict[str, Any],
     organization_id: int,
     visibility: str = "private",
     *,
-    user_id: int | None = None,
+    user_id: int,
 ) -> None:
     """Crea o actualiza el perfil del usuario.
 
     ``organization_id`` sin default: escribir una fila con organización nula
     la deja invisible para :func:`get_user_profile`, que sí filtra por ámbito.
 
-    Con ``user_id`` la fila a actualizar se localiza por identidad dual, no
-    por la clave: tras un cambio de correo el perfil vive bajo la clave
-    antigua y ``ON CONFLICT(user_key)`` a secas insertaría un segundo perfil.
-    Se prefiere la fila con la clave actual si hubiera dos (usuario que guardó
-    bajo ambas antes de v129).
+    Desde v135 (ADR-030 fase 3) la PK es ``user_id`` y la escritura sólo
+    conoce esa identidad: ``user_id`` es obligatorio y la columna ``user_key``
+    ya no se escribe. Las filas anteriores la conservan —nadie la borra— y el
+    ``ON CONFLICT`` no la toca, así que un perfil viejo sigue leyéndose igual
+    por cualquiera de los dos caminos de la lectura dual.
     """
     from db.database import now_utc_iso
 
@@ -150,41 +154,24 @@ def upsert_user_profile(
     )
 
     with connect() as c:
-        existente = c.execute(
-            f"SELECT user_key FROM user_profiles WHERE {_IDENT} "
-            "ORDER BY CASE WHEN user_key = %s THEN 0 ELSE 1 END, updated_at DESC LIMIT 1",
-            (user_id, user_key, user_id, user_key),
-        ).fetchone()
-        if existente is not None:
-            c.execute(
-                "UPDATE user_profiles SET "
-                "weights_json = %s, afinidad_keywords_json = %s, cpvs_json = %s, "
-                "ccaa_json = %s, importe_min = %s, importe_max = %s, updated_at = %s, "
-                "organization_id = %s, visibility = %s, user_id = COALESCE(user_id, %s) "
-                "WHERE user_key = %s",
-                (*valores, user_id, existente[0]),
-            )
-        else:
-            c.execute(
-                "INSERT INTO user_profiles "
-                "(weights_json, afinidad_keywords_json, cpvs_json, ccaa_json, "
-                " importe_min, importe_max, updated_at, organization_id, visibility, "
-                " user_key, user_id) "
-                "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) "
-                "ON CONFLICT(user_key) DO UPDATE SET "
-                "weights_json = excluded.weights_json, "
-                "afinidad_keywords_json = excluded.afinidad_keywords_json, "
-                "cpvs_json = excluded.cpvs_json, "
-                "ccaa_json = excluded.ccaa_json, "
-                "importe_min = excluded.importe_min, "
-                "importe_max = excluded.importe_max, "
-                "updated_at = excluded.updated_at, "
-                "organization_id = excluded.organization_id, "
-                "visibility = excluded.visibility, "
-                "user_id = COALESCE(user_profiles.user_id, excluded.user_id)",
-                (*valores, user_key, user_id),
-            )
-    log.info("user_profile_upserted", user_key=user_key[:8])
+        c.execute(
+            "INSERT INTO user_profiles "
+            "(weights_json, afinidad_keywords_json, cpvs_json, ccaa_json, "
+            " importe_min, importe_max, updated_at, organization_id, visibility, user_id) "
+            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) "
+            "ON CONFLICT(user_id) DO UPDATE SET "
+            "weights_json = excluded.weights_json, "
+            "afinidad_keywords_json = excluded.afinidad_keywords_json, "
+            "cpvs_json = excluded.cpvs_json, "
+            "ccaa_json = excluded.ccaa_json, "
+            "importe_min = excluded.importe_min, "
+            "importe_max = excluded.importe_max, "
+            "updated_at = excluded.updated_at, "
+            "organization_id = excluded.organization_id, "
+            "visibility = excluded.visibility",
+            (*valores, user_id),
+        )
+    log.info("user_profile_upserted", user_id=user_id)
 
 
 def delete_user_profile(user_key: str, *, user_id: int | None = None) -> bool:

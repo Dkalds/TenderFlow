@@ -904,7 +904,6 @@ async def put_profile(
     previous = await run_db(get_own_user_profile, user_key, user_id=user_id)
     await run_db(
         upsert_user_profile,
-        user_key,
         {
             "weights": body.weights,
             "afinidad_keywords": body.afinidad_keywords,
