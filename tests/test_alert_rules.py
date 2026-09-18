@@ -136,3 +136,27 @@ def test_la_superficie_publica_se_filtra_por_handler() -> None:
     """
     expr = _regla("PublicSurfaceSlow")["expr"]
     assert "/api/v1/publico" in expr
+
+
+# ── S4.1: la cola de la outbox tiene alerta, con el umbral de db/events.py ───
+
+
+def test_la_cola_de_eventos_alerta_con_el_umbral_del_codigo() -> None:
+    """`DomainEventsBacklogHigh` y `UMBRAL_PENDIENTES_ALERTA` son el mismo número.
+
+    El umbral vive en dos sitios (la constante de Python y la regla de
+    Prometheus). Si solo cambia uno, la alerta miente sobre lo que vigila.
+    """
+    import re
+
+    from db.events import UMBRAL_PENDIENTES_ALERTA
+
+    regla = _regla("DomainEventsBacklogHigh")
+    match = re.fullmatch(r"\s*domain_events_pending\s*>\s*(\d+)\s*", regla["expr"])
+    assert match, f"expr inesperada: {regla['expr']!r}"
+    assert int(match.group(1)) == UMBRAL_PENDIENTES_ALERTA
+
+
+def test_la_cola_de_eventos_espera_una_hora() -> None:
+    """El plan pide «más de 1.000 durante una hora», no un pico puntual."""
+    assert _regla("DomainEventsBacklogHigh").get("for") == "1h"

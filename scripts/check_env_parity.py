@@ -64,7 +64,12 @@ _NO_APLICA_AL_SERVICIO_WEB = frozenset(
 # ALERTMANAGER_WEBHOOK_URL salió de la lista el 2026-09-06: O0.3 del plan de
 # arquitectura v2 documenta la variable en `.env.example` con el gate `.env*`
 # pre-autorizado por D20.
-_DOCUMENTACION_PENDIENTE = frozenset({"FRONTEND_URL", "SENTRY_DSN"})
+#
+# FRONTEND_URL y SENTRY_DSN salieron el 2026-09-18 (backlog P3 «Documentar
+# `FRONTEND_URL` y `SENTRY_DSN`»), junto con las DOCUMENT_BLOB_* de S8.1, que no
+# están en render.yaml y por eso no llegaron a estar aquí. La lista queda vacía:
+# no se le añaden entradas.
+_DOCUMENTACION_PENDIENTE: frozenset[str] = frozenset()
 
 # ── Variables PROHIBIDAS en render.yaml (O0.4) ───────────────────────────────
 # El sentido inverso del chequeo de arriba: no que falte, sino que no puede

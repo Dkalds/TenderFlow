@@ -841,6 +841,18 @@ E2E que crea un webhook de organización y recibe el `ping`.
 **Riesgo:** medio en S4.1 (toca el camino de escritura de pursuits y reglas;
 el ratchet de productores es la red).
 
+**Estado de los restos (2026-09-18).** S4.1: la alerta `DomainEventsBacklogHigh`
+(`domain_events_pending > 1000` durante `1h`) está en
+`observability/alert_rules.yml`, con un test que la ata a
+`UMBRAL_PENDIENTES_ALERTA` de `db/events.py`. S4.3: la página de ayuda es
+`docs/integraciones/webhooks.md` §«Formatos del cuerpo», con cuerpos de ejemplo
+generados por `renderizar` en lugar de capturas. **Pendiente, fuera de estos
+restos:** `event_dispatch.run()` no lo invoca ningún plano (ni
+`scheduler/pipeline_runs.py` ni `scheduler/jobs/__init__.py`), así que el
+despachador está escrito y probado pero no corre; cablearlo vacía de golpe la
+cola acumulada (correos y webhooks incluidos) y pide decidir antes qué hacer con
+ella.
+
 ### S5 — Cola de trabajo y worker (D14)
 
 **Objetivo:** que un despliegue no mate el trabajo de un usuario, y que la

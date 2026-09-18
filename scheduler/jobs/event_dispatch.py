@@ -213,7 +213,48 @@ def _tipo_notificacion(evento: dict[str, Any], spec: EspecificacionEvento) -> st
         # todas las alertas de la bandeja.
         payload = evento.get("payload") or {}
         return f"{base}:{payload.get('history_id') or evento.get('id')}"
+    if spec.tipo == "pursuit.task_due":
+        # Una tarea que se re-fecha vuelve a vencer otro día y eso es otro
+        # aviso; con el tipo fijo, el segundo vencimiento chocaría con el único
+        # de la oportunidad y no llegaría.
+        payload = evento.get("payload") or {}
+        return f"{base}:{payload.get('task_id')}:{payload.get('vence')}"
+    if spec.tipo == "pursuit.mentioned":
+        # Una mención por comentario: dos comentarios que te mencionan en la
+        # misma oportunidad son dos avisos.
+        payload = evento.get("payload") or {}
+        return f"{base}:{payload.get('comment_id')}"
     return base
+
+
+def _frecuencia_en_ajustes(
+    destinatario: Destinatario, spec: EspecificacionEvento, canal: str
+) -> str | None:
+    """Frecuencia del canal en Ajustes (``notification_preferences``), o ``None``.
+
+    Solo para los eventos cuyo interruptor vive en Ajustes (``clave_ajustes``)
+    y destinatarios con ``user_id``: esa tabla se indexa por id. ``None``
+    significa «este evento no se gobierna desde Ajustes» y deja la decisión al
+    camino de siempre.
+
+    Fail-safe hacia el defecto del canal y no hacia ``off``, por lo mismo que
+    ``services.notifications.modo_email_de``: silenciar por un fallo de lectura
+    es el modo de fallo que nadie detecta.
+    """
+    if spec.clave_ajustes is None or destinatario.user_id is None:
+        return None
+    from db.repositories import notification_preferences as prefs
+
+    try:
+        return prefs.resolver(
+            destinatario.user_id,
+            tipo=spec.clave_ajustes,
+            canal=canal,
+            organization_id=destinatario.organization_id or None,
+        )
+    except Exception:
+        log.warning("event_dispatch_prefs_ilegibles", tipo=spec.tipo, canal=canal, exc_info=True)
+        return prefs.frecuencia_por_defecto(canal)
 
 
 def _canal_in_app(evento: dict[str, Any], spec: EspecificacionEvento) -> int:
@@ -226,6 +267,8 @@ def _canal_in_app(evento: dict[str, Any], spec: EspecificacionEvento) -> int:
     escritas = 0
     for destinatario in _destinatarios(evento):
         if not destinatario.organization_id:
+            continue
+        if _frecuencia_en_ajustes(destinatario, spec, "in_app") == "off":
             continue
         if insert_user_notification(
             user_key=destinatario.user_key,
@@ -249,8 +292,11 @@ def _canal_digest(evento: dict[str, Any], spec: EspecificacionEvento) -> tuple[i
     - ``daily`` se encola en ``pending_digests`` y lo agrupa el digest diario.
     - ``off`` no escribe nada: es la única forma de que «desactivado» signifique
       lo que dice, porque una fila encolada acaba entregándose.
+
+    Los eventos con ``clave_ajustes`` (C6.1, C6.2) leen el modo del canal
+    ``email`` de Ajustes; el resto, de ``user_event_prefs`` (S4.6).
     """
-    if not spec.preferencia_email:
+    if not spec.preferencia_email and spec.clave_ajustes is None:
         return 0, 0
 
     from services.email_digest import asunto_evento, render_evento
@@ -261,7 +307,9 @@ def _canal_digest(evento: dict[str, Any], spec: EspecificacionEvento) -> tuple[i
     encoladas = 0
     enviados = 0
     for destinatario in _destinatarios(evento):
-        modo = modo_email_de(destinatario.user_key, spec.tipo, user_id=destinatario.user_id)
+        modo = _frecuencia_en_ajustes(destinatario, spec, "email") or modo_email_de(
+            destinatario.user_key, spec.tipo, user_id=destinatario.user_id
+        )
         if modo == "off" or not destinatario.email:
             continue
         if modo == "daily":
@@ -478,7 +526,23 @@ def dispatch_pending(limit: int = LOTE_POR_PASADA) -> ResultadoDespacho:
 
 
 def run() -> int:
-    """Entry point del scheduler. Devuelve cuántos eventos quedaron despachados."""
+    """Entry point del scheduler. Devuelve cuántos eventos quedaron despachados.
+
+    Antes de vaciar la cola, escribe los ``pursuit.task_due`` del día (C6.1):
+    el vencimiento no es una mutación que alguien haga, así que no tiene un
+    productor en el camino de escritura y su sitio natural es la pasada que ya
+    corre periódicamente. Es idempotente por ``(tarea, fecha)``, así que da
+    igual cuántas pasadas haya en un día. Un fallo aquí no puede impedir el
+    despacho del resto de la cola.
+    """
+    from services.pursuit_tasks import emitir_tareas_que_vencen
+
+    try:
+        emitidos = emitir_tareas_que_vencen()
+        if emitidos:
+            log.info("event_dispatch_tareas_que_vencen", emitidos=emitidos)
+    except Exception:
+        log.warning("event_dispatch_tareas_que_vencen_failed", exc_info=True)
     resultado = dispatch_pending()
     if resultado.procesados or resultado.fallidos or resultado.ignorados:
         log.info(

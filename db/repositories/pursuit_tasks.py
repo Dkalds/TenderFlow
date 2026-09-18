@@ -199,13 +199,21 @@ class PursuitTasksRepository:
 
         Sin filtro de organización a propósito: lo consume el despachador, que
         emite un evento por fila y necesita ver todas. Cada fila lleva su
-        `organization_id`, así que el destinatario se resuelve sin volver a la BD.
+        `organization_id`, así que el destinatario se resuelve sin volver a la BD,
+        y el `licitacion_id` de su oportunidad, que el evento necesita para que
+        el aviso enlace al expediente.
         """
         with connect_read() as c:
             cur = c.execute(
+                "SELECT t.id, t.pursuit_id, t.organization_id, t.titulo, "
+                "t.responsable_user_id, u.display_name AS responsable_name, "
+                "t.vence, t.estado, t.created_at, t.updated_at, p.licitacion_id "
+                "FROM pursuit_tasks t "
+                "JOIN pursuits p ON p.id = t.pursuit_id "
+                "LEFT JOIN users u ON u.id = t.responsable_user_id "
                 # El despachador tampoco puede avisar de una tarea borrada:
                 # sería un correo sobre trabajo que ya nadie ve en la ficha.
-                _SELECT + " WHERE t.vence = %s AND t.estado IN ('pendiente', 'en_curso') "
+                "WHERE t.vence = %s AND t.estado IN ('pendiente', 'en_curso') "
                 "AND t.deleted_at IS NULL "
                 "ORDER BY t.organization_id, t.id",
                 (fecha,),

@@ -65,10 +65,9 @@ def url_de_login() -> str | None:
     """URL de la pantalla de acceso, deducida de la configuración existente.
 
     No se introduce una variable de entorno nueva para esto a propósito:
-    ``FRONTEND_URL`` existe en ``render.yaml`` pero **no** en
-    ``config/settings.py`` ni en ``.env.example`` (está anotada como deuda de
-    documentación en el backlog), y tocar ``.env*`` requiere OK humano
-    (AGENTS.md §6). Así que se deduce de lo que ya está declarado y validado:
+    ``FRONTEND_URL`` está en ``render.yaml`` y en ``.env.example`` pero **no**
+    en ``config/settings.py``, así que nada la valida al arrancar. Se deduce de
+    lo que ya está declarado y validado:
     el primer origen de ``CORS_ALLOWED_ORIGINS`` —que es el sitio que puede
     hablar con esta API— y, si está vacío, el origen del callback de OAuth.
 

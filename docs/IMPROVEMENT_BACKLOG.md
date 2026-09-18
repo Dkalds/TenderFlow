@@ -235,6 +235,13 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 
 ---
 
+### [P1] El despachador del outbox no lo invoca ningún plano
+- **Área:** scheduler/jobs/event_dispatch.py, scheduler/pipeline_runs.py, scheduler/jobs/__init__.py
+- **Problema:** `scheduler/jobs/event_dispatch.run()` está escrito y probado (S4.1), pero ni el cierre de `pipeline_runs.py` ni el registro de jobs de APScheduler lo llaman (comprobado el 2026-09-18 buscando `event_dispatch` fuera de `tests/` y `docs/`). Ningún evento de `domain_events` se entrega: ni notificaciones in-app, ni correos de `pursuit.*`, ni webhooks del catálogo, ni los nuevos `pursuit.task_due`/`pursuit.mentioned`. La alerta `DomainEventsBacklogHigh` acabará disparándose por esto.
+- **Por qué no se hizo en el mismo cambio:** cablearlo vacía de golpe la cola acumulada desde que existe el outbox —correos y webhooks incluidos, con fechas viejas—. Hace falta decidir antes si se marca como despachado lo anterior a una fecha o se entrega.
+- **Acceptance criteria:** un paso del cierre (plano `pipeline`, ADR-012) llama a `event_dispatch.run()`; decisión documentada sobre la cola histórica; `domain_events_pending` baja en producción.
+- **Riesgo:** medio — primera vez que salen correos y webhooks del outbox.
+
 ## P2 — Media
 
 ### [P2] La portada cita el tamaño del censo bajo un titular que promete lo contrario
@@ -332,13 +339,6 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
     a 375×812 sobre el build de producción.
 - **Files de partida:** [web/src/components/layout/console-rail.tsx](../web/src/components/layout/console-rail.tsx), [web/e2e/responsive.spec.ts](../web/e2e/responsive.spec.ts)
 - **Riesgo:** bajo — presentación; sin tocar contratos ni datos.
-
-### [P3] Documentar `FRONTEND_URL` y `SENTRY_DSN` en `.env.example`
-- **Área:** .env.example
-- **Problema:** `render.yaml` las declara y `.env.example` no las documenta, así que no se pueden descubrir leyendo el fichero que existe para eso. `scripts/check_env_parity.py` las lleva anotadas en `_DOCUMENTACION_PENDIENTE` para no bloquear CI; esa lista solo puede encoger. No se arreglaron en el mismo cambio porque tocar `.env*` requiere OK explícito (AGENTS.md §6).
-- **Acceptance criteria:** ambas documentadas con un comentario de una línea; entrada retirada de `_DOCUMENTACION_PENDIENTE`; `make check-env-parity` sigue verde.
-- **Files de partida:** [.env.example](../.env.example), [scripts/check_env_parity.py](../scripts/check_env_parity.py)
-- **Riesgo:** bajo — documentación.
 
 ### [P2] Remediación axe pendiente: reactivar las reglas desactivadas del E2E de accesibilidad
 - **Avance 2026-09-08 (C7.1):** `nested-interactive` **reactivada**. La causaba una sola cosa —la fila del Radar era un `role="button"` con cinco botones dentro— y se corrige poniendo la selección en un botón hermano en capa, con las acciones por encima. Con ella se van los **dos** `test.fixme` de `critical-workflows.spec.ts`: «seguir una licitación» era su consecuencia funcional directa, y «exportar el ámbito» resultó ser otro bug distinto —`lib/export.ts` revocaba el object URL en la misma vuelta del event loop que el `click()`, así que el Chromium headless de CI abortaba la descarga antes de empezarla—. Quedan tres reglas y dos `test.fixme`, los de móvil.
@@ -480,12 +480,6 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 - **Files de partida:** [.github/dependabot.yml](../.github/dependabot.yml)
 - **Riesgo:** bajo — no toca código; el cuidado está en verificar cada aviso contra el pin vivo en vez de contra el nombre del manifiesto.
 
-### [P3] Suites propias para `services/investigador/` y `extraction_runs`
-- **Área:** tests/
-- **Problema:** ambos módulos se ejercitan hoy solo de refilón, desde tests de search y de pipeline que van a otra cosa. Eso da cobertura de líneas pero no fija su contrato: un cambio de comportamiento puede pasar si los tests que lo tocan siguen verdes por lo que ellos venían a comprobar.
-- **Acceptance criteria:** un `tests/test_investigador*.py` y un `tests/test_extraction_runs.py` que cubran sus caminos principales y sus errores esperados, sin depender de la suite que hoy los roza.
-- **Riesgo:** bajo — solo añade tests.
-
 ### [P3] Decidir el destino del peso de `graphify-out/` (28 MB y creciendo)
 - **Área:** graphify-out, .claude/hooks
 - **Problema:** los artefactos commiteados del knowledge graph pesan **28 MB** (medido 2026-08-18): cada clone y cada sesión remota los paga, y el hook de stale-flag deja el working tree dirty en sesiones sin el CLI (que no pueden limpiarlo). El valor para agentes sin CLI es real (AGENTS.md §1), así que es un trade-off consciente a revisar, no un error. **La cifra de este ítem estaba desactualizada: decía 17 MB, o sea que el artefacto creció un 65% mientras la decisión seguía aplazada.** La comparación "~52% del repo" ya no es evaluable tal cual y se retira; lo que decide es el absoluto y su tendencia.
@@ -523,15 +517,6 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 - **Files de partida:** [services/analytics/competitors.py](../services/analytics/competitors.py), [services/normalization.py](../services/normalization.py), [db/repositories/adjudicaciones.py](../db/repositories/adjudicaciones.py), [tests/test_analytics_competitors.py](../tests/test_analytics_competitors.py)
 - **Riesgo:** medio — toca una migración de schema (gate humano) y una query recursiva no trivial; mitigado por los 17 tests de caracterización ya existentes.
 - **Progreso 2026-09-18 (rama `worktree-agent-af7ab85116eea30b4`) — parcial, el interruptor sigue apagado.** El «Problema» de arriba está desfasado en dos cosas que el código ya desmentía: `unaccent` **sí** está habilitada (`v87_unaccent_extension`, no hace falta otra revisión y no se creó ninguna) y el SQL de la CTE recursiva ya existía sin cablear en `db/repositories/competitor_identity.py`, con su test de paridad por capas. Los tests de `tests/test_analytics_competitors.py` son **15**, no 17. Lo hecho ahora: `resolve_identity_for_rows` reparte **las mismas filas** que ya cargó `load_for_competitors` (con su `LIMIT`), y `services/analytics/competitors.py` la usa cuando `settings.COMPETITORS_IDENTITY_SQL` está activo — **por defecto `False`**, así que el camino de pandas sigue siendo el de producción. La paridad contra los 15 tests se mide reejecutando cada uno con el interruptor encendido (`tests/test_analytics_competitors_identity_sql.py`, capa 5), **no ejecutada**: no hay Postgres en la máquina que la escribió. Falta para cerrar: (1) esa capa en verde en CI; (2) `identity_graph_stats` medido en producción (el cierre de la CTE es cuadrático en el tamaño del componente); (3) encender el interruptor y, tras un ciclo, retirar el union-find de pandas y `_apply_filters`. Aviso para (3): la etiqueta del grupo pasa de raíz del union-find a `MIN(token)`, y es lo que `services/competitive/socios.py` expone como `empresa_key`.
-
-### [P3] Decidir el destino de los tests tautológicos encontrados al redistribuir los batches de coverage
-- **Área:** tests/test_TODO_review_tautologico.py
-- **Problema:** Al redistribuir `test_unit_coverage_batch*.py` (commit `96ec96f`) a ficheros por módulo, 3 tests resultaron tautológicos (afirman sobre un mock que el propio test configuró, o ejercitan una rama que nunca se dispara de verdad) y se movieron a `tests/test_TODO_review_tautologico.py` en vez de borrarse, porque borrar tests existentes requiere OK explícito (AGENTS.md §6): `test_protocol_stubs` (verifica `hasattr` sobre un `Protocol`, cierto por construcción), `test_argon2_verify_success` y `test_argon2_import_error` (parchean un símbolo que `verify_password` no usa por ese nombre — el mock es un no-op inerte en ambos).
-- **Acceptance criteria:**
-  - Revisión humana de los 3 tests: o se borran (confirmando que no aportan cobertura real), o se reescriben para ejercitar el comportamiento real que su nombre sugiere.
-  - `tests/test_TODO_review_tautologico.py` desaparece (vacío) al resolverse.
-- **Files de partida:** [tests/test_TODO_review_tautologico.py](../tests/test_TODO_review_tautologico.py)
-- **Riesgo:** bajo — son 3 tests aislados; el único riesgo es decidir mal si alguno en realidad sí ejercitaba algo no obvio.
 
 ### [P3] F5: Refactor de repositories por olas (TID251 whitelist decreciente)
 - **Área:** services/, scheduler/, api/routes/, scraper/, scripts/
@@ -626,15 +611,6 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 - **Files de partida:** [services/ml/features.py](../services/ml/features.py) (`FEATURES_PENDIENTES_COBERTURA`), [db/repositories/ml_dataset.py](../db/repositories/ml_dataset.py)
 - **Riesgo:** bajo — el guard de `feature_columns` de `BajaModel` degrada a baseline si se despliega el código sin reentrenar.
 
-### [P3] Cuatro módulos citan un RFC de retirada de exports que no existe en el repo
-- **Área:** docs/rfc/, api/routes/exports.py, api/app.py, shared/cache.py, tests/test_unit_export_idor.py
-- **Problema:** la retirada de `POST/GET/DELETE /exports` (D7 del plan de septiembre) se ejecutó el 2026-09-03, y los cuatro ficheros que la explican remiten a `docs/rfc/2026-09-03-rfc-retirada-exports-asincronos.md` para el motivo y el plan. Ese fichero **no está en `docs/rfc/`** (comprobado el 2026-09-06). Quien vaya a entender por qué desapareció un endpoint público llega a un enlace muerto, que es la variante documental del callejón sin salida que AGENTS.md §5 prohíbe.
-- **Acceptance criteria:**
-  - O se escribe el RFC con el contenido que las cuatro referencias prometen (motivo, sustituto, fecha), o las cuatro referencias se corrigen para apuntar a donde esté escrito de verdad. Lo que no puede quedarse es la cita a un fichero inexistente.
-- **Files de partida:** [api/routes/exports.py](../api/routes/exports.py), [docs/rfc/README.md](rfc/README.md)
-- **Relación:** O0.7 del plan v2 ya barre el `status` de cinco RFC; éste es del mismo barrido y no estaba en su lista.
-- **Riesgo:** bajo — documentación.
-
 ---
 
 ## Cerrados
@@ -677,6 +653,12 @@ cabecera de este fichero: los seis se comprobaron contra el código.
   llevaba en la lista los plurales en `-ciones`, que no llevan tilde
   («licitación» → «licitaciones»). La lista quedó con los singulares agudos y
   con los plurales que sí la conservan («órganos», «tecnologías»).
+- [2026-09-18] **Cerrados en la rama `worktree-agent-ac2127b7dcd3fc315`:**
+  - P3 «Documentar `FRONTEND_URL` y `SENTRY_DSN` en `.env.example`» — documentadas, junto con las `DOCUMENT_BLOB_*` de S8.1; `_DOCUMENTACION_PENDIENTE` queda vacía y `scripts/check_env_parity.py` pasa.
+  - P3 «Cuatro módulos citan un RFC de retirada de exports que no existe» — `docs/rfc/2026-09-03-rfc-retirada-exports-asincronos.md` reconstruido desde D7, `9207bde9` y #265; índice regenerado.
+  - P3 «Decidir el destino de los tests tautológicos» — los dos de argon2 se reescriben en `tests/test_auth_core.py` contra la librería real y la rama sin argon2; el de `hasattr` sobre un `Protocol` se borra; `tests/test_TODO_review_tautologico.py` desaparece.
+  - P3 «Suites propias para `services/investigador/` y `extraction_runs`» — `tests/test_investigador_search_engine.py` y `tests/test_extraction_runs.py` (el test `_bd` necesita Postgres).
+
 - [2026-09-14] **P2: cada re-ingesta nuleaba las cuatro columnas ML, y `tech_signal_merge`
   lo curaba a ciegas cada 4 h** — decidido: el clobber se corta en origen. `ml_proba`,
   `ml_tecnologias`, `ml_proba_max` y `ml_tech_principal` entran en
