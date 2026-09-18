@@ -140,6 +140,17 @@ export function ScrollEdge({ active, className }: { active: boolean; className?:
 }
 
 /**
+ * `ScrollEdge` que lee su estado del proveedor más cercano. Es la forma
+ * cómoda para las cabeceras de pantalla (`SpaceShell`, Resumen), que montan su
+ * propio `ScrollEdgeProvider` porque ahí el que scrollea es el cuerpo de la
+ * pantalla y no `#main-content`: sin esto necesitarían un componente hijo solo
+ * para poder llamar al hook dentro del proveedor.
+ */
+export function ScrollEdgeDelProveedor({ className }: { className?: string }) {
+  return <ScrollEdge active={useScrollEdgeState()} className={className} />;
+}
+
+/**
  * Variante anclada **dentro** del propio cromo: sirve cuando la barra ya tiene
  * posicionamiento propio (`sticky`) y no recorta, y evita depender de cómo esté
  * colocada esa barra entre sus hermanos.

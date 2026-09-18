@@ -147,7 +147,7 @@ describe("SpaceShell", () => {
         <p>contenido</p>
       </SpaceShell>,
     );
-    const cuerpo = () => container.querySelector("header")!.nextElementSibling!;
+    const cuerpo = () => container.querySelector("[data-slot=\"space-shell-cuerpo\"]")!;
     expect(cuerpo()).toHaveClass("overflow-hidden");
 
     rerender(
@@ -156,6 +156,34 @@ describe("SpaceShell", () => {
       </SpaceShell>,
     );
     expect(cuerpo()).toHaveClass("overflow-y-auto");
+  });
+
+  it("sin bleed no hay borde duro: el separador es el borde de scroll, apagado en el tope", () => {
+    // apple-design §12: en el tope la cabecera y el cuerpo son la misma
+    // superficie y una línea fija anunciaría una profundidad que no existe.
+    const { container } = render(
+      <SpaceShell spaceKey="mercado" view="tiempo">
+        <p>contenido</p>
+      </SpaceShell>,
+    );
+    expect(container.querySelector("header")).not.toHaveClass("border-b");
+    expect(container.querySelector("[data-scroll-edge]")).toHaveAttribute("data-scroll-edge", "off");
+    // El centinela mide el cuerpo, que es quien scrollea en estas pantallas.
+    const cuerpo = container.querySelector("[data-slot=\"space-shell-cuerpo\"]")!;
+    expect(cuerpo.firstElementChild).toHaveAttribute("data-scroll-edge-sentinel");
+  });
+
+  it("con bleed conserva el borde duro y no monta el de scroll", () => {
+    // Con `bleed` el cuerpo no scrollea: no hay nada que el borde de scroll
+    // pueda anunciar, y la línea separa la cabecera de la tabla pegada a ella.
+    const { container } = render(
+      <SpaceShell spaceKey="mercado" view="tiempo" bleed>
+        <p>contenido</p>
+      </SpaceShell>,
+    );
+    expect(container.querySelector("header")).toHaveClass("border-b");
+    expect(container.querySelector("[data-scroll-edge]")).toBeNull();
+    expect(container.querySelector("[data-scroll-edge-sentinel]")).toBeNull();
   });
 
   it("no revienta con un espacio desconocido", () => {

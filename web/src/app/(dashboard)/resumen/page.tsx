@@ -2,6 +2,11 @@
 
 import { useCallback, useRef } from "react";
 import { ExportPopover } from "@/components/export-popover";
+import {
+  ScrollEdgeDelProveedor,
+  ScrollEdgeProvider,
+  ScrollEdgeSentinel,
+} from "@/components/layout/scroll-edge";
 import { CopilotBar } from "@/components/copilot-panel";
 import { TuDia } from "./_components/tu-dia";
 import { PrimerosPasos } from "./_components/primeros-pasos";
@@ -59,33 +64,40 @@ export default function ResumenPage() {
     contenidoRef.current?.focus({ preventScroll: true });
   }, []);
 
+  // Borde de scroll y no `border-b` fijo (apple-design §12): quien scrollea es
+  // el cuerpo de la pantalla, no `#main-content`, así que lleva su propio
+  // proveedor y en el tope no hay línea.
   return (
-    <div className="flex h-[calc(100vh-52px)] min-h-0 flex-col">
-      <header className="border-border/60 flex h-11 flex-none items-center gap-2.5 border-b px-4">
-        <h1 className="font-display text-[13px] font-semibold">Resumen</h1>
-        <span className="text-muted-foreground hidden truncate text-[11.5px] lg:inline">
-          qué tienes que hacer hoy y qué se ha movido en el mercado
-        </span>
-        <div className="flex-1" />
-        <ExportPopover className="[&>button]:h-7 [&>button]:px-2.5 [&>button]:py-0 [&>button]:text-xs" />
-      </header>
+    <ScrollEdgeProvider>
+      <div className="flex h-[calc(100vh-52px)] min-h-0 flex-col">
+        <header className="flex h-11 flex-none items-center gap-2.5 px-4">
+          <h1 className="font-display text-[13px] font-semibold">Resumen</h1>
+          <span className="text-muted-foreground hidden truncate text-[11.5px] lg:inline">
+            qué tienes que hacer hoy y qué se ha movido en el mercado
+          </span>
+          <div className="flex-1" />
+          <ExportPopover className="[&>button]:h-7 [&>button]:px-2.5 [&>button]:py-0 [&>button]:text-xs" />
+        </header>
+        <ScrollEdgeDelProveedor />
 
-      <div
-        ref={contenidoRef}
-        tabIndex={-1}
-        className="min-h-0 flex-1 overflow-y-auto px-4 pt-4 pb-6 outline-none"
-      >
-        <CopilotBar className="mb-4 max-w-[720px]" />
+        <div
+          ref={contenidoRef}
+          tabIndex={-1}
+          className="min-h-0 flex-1 overflow-y-auto px-4 pt-4 pb-6 outline-none"
+        >
+          <ScrollEdgeSentinel />
+          <CopilotBar className="mb-4 max-w-[720px]" />
 
-        <TuDia />
-        <PrimerosPasos onDescartar={recogerFoco} />
-        <AtencionCards />
-        <ContextoStrip />
-        <ComposicionPanel />
-        <TimelineSection />
-        <EventosFeed />
-        <AtajosAnalisis />
+          <TuDia />
+          <PrimerosPasos onDescartar={recogerFoco} />
+          <AtencionCards />
+          <ContextoStrip />
+          <ComposicionPanel />
+          <TimelineSection />
+          <EventosFeed />
+          <AtajosAnalisis />
+        </div>
       </div>
-    </div>
+    </ScrollEdgeProvider>
   );
 }

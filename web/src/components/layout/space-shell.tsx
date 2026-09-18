@@ -5,6 +5,11 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { registrarEvento } from "@/lib/analytics";
 import { CONSOLE_SPACES, type ConsoleSpace } from "@/lib/console-spaces";
+import {
+  ScrollEdgeDelProveedor,
+  ScrollEdgeProvider,
+  ScrollEdgeSentinel,
+} from "@/components/layout/scroll-edge";
 
 /**
  * Cabecera de un espacio y su conmutador de vistas.
@@ -79,78 +84,99 @@ export function SpaceShell({
   const space = CONSOLE_SPACES.find((candidate) => candidate.key === spaceKey);
   const views = space?.views ?? [];
 
+  // Proveedor propio del borde de scroll. El shell ocupa el alto entero bajo la
+  // barra de ámbito y el que scrollea es su cuerpo, no `#main-content`: el
+  // centinela del marco no sale nunca de vista en estas pantallas, así que el
+  // borde tiene que medirse aquí. El proveedor anidado solo lo ven la cabecera
+  // y el cuerpo del espacio; la barra de ámbito sigue leyendo el del marco.
   return (
-    <div className="flex h-[calc(100vh-52px)] min-h-0 flex-col">
-      <header className="flex h-11 flex-none items-center gap-2.5 overflow-x-auto border-b border-border/60 px-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        <h1 className="flex-none font-display text-[13px] font-semibold">{space?.label}</h1>
-        <span className="hidden flex-none truncate text-[11.5px] text-muted-foreground xl:inline">
-          {space?.description}
-        </span>
+    <ScrollEdgeProvider>
+      <div className="flex h-[calc(100vh-52px)] min-h-0 flex-col">
+        {/* Borde duro solo con `bleed`: ahí el cuerpo no scrollea (cada columna
+            lleva su scroll) y la línea separa la cabecera de una tabla pegada a
+            ella, no anuncia contenido oculto. Sin `bleed` el separador es el
+            borde de scroll y en el tope no hay ninguno (apple-design §12). */}
+        <header
+          className={cn(
+            "flex h-11 flex-none items-center gap-2.5 overflow-x-auto px-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
+            bleed && "border-b border-border/60",
+          )}
+        >
+          <h1 className="flex-none font-display text-[13px] font-semibold">{space?.label}</h1>
+          <span className="hidden flex-none truncate text-[11.5px] text-muted-foreground xl:inline">
+            {space?.description}
+          </span>
 
-        {views.length > 1 && (
-          <div
-            role="tablist"
-            aria-label={`Vistas de ${space?.label}`}
-            className="ml-2 flex items-center gap-0.5 border-l border-border/60 pl-2.5"
-          >
-            {views.map((item) => {
-              const on = item.key === view;
-              return (
-                <button
-                  key={item.key}
-                  type="button"
-                  role="tab"
-                  aria-selected={on}
-                  onClick={() => onViewChange?.(item.key)}
-                  className={cn(
-                    "tf-pressable h-7 flex-none whitespace-nowrap rounded-md border px-2.5 text-[12px] font-medium transition-colors duration-150 ease-out",
-                    on
-                      ? "border-border/70 bg-secondary text-foreground"
-                      : "border-transparent text-muted-foreground hover:text-foreground",
-                  )}
-                >
-                  {item.label}
-                  {viewBadges?.[item.key] != null && (
-                    <span
-                      className={cn(
-                        "tf-tnum ml-1.5 rounded px-1 py-0.5 font-mono text-tf-micro font-medium",
-                        on
-                          ? "bg-primary/16 text-primary"
-                          : "bg-muted-foreground/12 text-muted-foreground",
-                      )}
-                    >
-                      {viewBadges[item.key]}
-                    </span>
-                  )}
-                  {item.visibility === "experimental" && (
-                    // Marca la vista en vez de esconderla: ocultarla la
-                    // convertiría en código muerto, y presentarla como una
-                    // vista más prometería una madurez que no tiene.
-                    <abbr
-                      className="ml-1.5 rounded-sm border border-warning/40 bg-warning/10 px-1 py-px font-mono text-[8.5px] font-semibold uppercase leading-none tracking-[0.04em] text-warning no-underline"
-                      title="Vista experimental: en validación, puede cambiar o desaparecer"
-                    >
-                      Exp
-                    </abbr>
-                  )}
-                </button>
-              );
-            })}
-          </div>
-        )}
+          {views.length > 1 && (
+            <div
+              role="tablist"
+              aria-label={`Vistas de ${space?.label}`}
+              className="ml-2 flex items-center gap-0.5 border-l border-border/60 pl-2.5"
+            >
+              {views.map((item) => {
+                const on = item.key === view;
+                return (
+                  <button
+                    key={item.key}
+                    type="button"
+                    role="tab"
+                    aria-selected={on}
+                    onClick={() => onViewChange?.(item.key)}
+                    className={cn(
+                      "tf-pressable h-7 flex-none whitespace-nowrap rounded-md border px-2.5 text-[12px] font-medium transition-colors duration-150 ease-out",
+                      on
+                        ? "border-border/70 bg-secondary text-foreground"
+                        : "border-transparent text-muted-foreground hover:text-foreground",
+                    )}
+                  >
+                    {item.label}
+                    {viewBadges?.[item.key] != null && (
+                      <span
+                        className={cn(
+                          "tf-tnum ml-1.5 rounded px-1 py-0.5 font-mono text-tf-micro font-medium",
+                          on
+                            ? "bg-primary/16 text-primary"
+                            : "bg-muted-foreground/12 text-muted-foreground",
+                        )}
+                      >
+                        {viewBadges[item.key]}
+                      </span>
+                    )}
+                    {item.visibility === "experimental" && (
+                      // Marca la vista en vez de esconderla: ocultarla la
+                      // convertiría en código muerto, y presentarla como una
+                      // vista más prometería una madurez que no tiene.
+                      <abbr
+                        className="ml-1.5 rounded-sm border border-warning/40 bg-warning/10 px-1 py-px font-mono text-[8.5px] font-semibold uppercase leading-none tracking-[0.04em] text-warning no-underline"
+                        title="Vista experimental: en validación, puede cambiar o desaparecer"
+                      >
+                        Exp
+                      </abbr>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          )}
 
-        <div className="flex-1" />
-        {actions}
-      </header>
+          <div className="flex-1" />
+          {actions}
+        </header>
+        {/* Hermano de alto cero y no hijo: la cabecera scrollea en horizontal y
+            su `overflow` recortaría un gradiente colgado dentro. */}
+        {!bleed && <ScrollEdgeDelProveedor />}
 
-      <div
-        className={cn(
-          "min-h-0 flex-1",
-          bleed ? "overflow-hidden" : "overflow-y-auto px-4 pb-6 pt-4",
-        )}
-      >
-        {children}
+        <div
+          data-slot="space-shell-cuerpo"
+          className={cn(
+            "min-h-0 flex-1",
+            bleed ? "overflow-hidden" : "overflow-y-auto px-4 pb-6 pt-4",
+          )}
+        >
+          {!bleed && <ScrollEdgeSentinel />}
+          {children}
+        </div>
       </div>
-    </div>
+    </ScrollEdgeProvider>
   );
 }
