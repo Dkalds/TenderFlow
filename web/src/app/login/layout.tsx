@@ -1,9 +1,5 @@
 import type { Metadata } from "next";
-import { headers } from "next/headers";
-import { Providers } from "@/components/providers";
-import { RouteProgress } from "@/components/route-progress";
-import { Toaster } from "@/components/toaster";
-import { LiveRegion } from "@/components/live-region";
+import { SuperficiePrivada } from "@/components/layout/superficie-privada";
 
 /**
  * Los metadatos de `/login` viven en un layout y no en la página porque
@@ -28,26 +24,15 @@ export const metadata: Metadata = {
 };
 
 /**
- * Monta los providers y el `Toaster`, que antes vivían en el layout raíz.
- *
- * El motivo original de tenerlos arriba sigue vigente y por eso se replican
- * aquí: un `toast()` disparado en /login se descartaba en silencio cuando el
- * Toaster sólo existía en `(dashboard)`. Lo que cambió es el alcance — el
- * layout raíz los servía también a la superficie pública, que no los usa.
+ * Monta los providers y el `Toaster` vía `SuperficiePrivada`, la pieza común
+ * con el dashboard y `/restablecer-contrasena`. Tenerlos aquí sigue siendo
+ * necesario: un `toast()` disparado en /login se descartaba en silencio cuando
+ * el Toaster sólo existía en `(dashboard)`.
  *
  * `/login` conserva la CSP estricta con nonce (`src/proxy.ts` la excluye del
- * conjunto prerenderizado a propósito: es la superficie de credenciales), así
- * que leer `headers()` aquí es correcto y necesario para el script de tema.
+ * conjunto prerenderizado a propósito: es la superficie de credenciales), y
+ * `SuperficiePrivada` lee `headers()` para el script de tema.
  */
-export default async function LoginLayout({ children }: { children: React.ReactNode }) {
-  const nonce = (await headers()).get("x-nonce") ?? undefined;
-
-  return (
-    <Providers nonce={nonce}>
-      <RouteProgress />
-      {children}
-      <Toaster />
-      <LiveRegion />
-    </Providers>
-  );
+export default function LoginLayout({ children }: { children: React.ReactNode }) {
+  return <SuperficiePrivada>{children}</SuperficiePrivada>;
 }

@@ -1,9 +1,5 @@
 import type { Metadata } from "next";
-import { headers } from "next/headers";
-import { LiveRegion } from "@/components/live-region";
-import { Providers } from "@/components/providers";
-import { RouteProgress } from "@/components/route-progress";
-import { Toaster } from "@/components/toaster";
+import { SuperficiePrivada } from "@/components/layout/superficie-privada";
 
 export const metadata: Metadata = {
   title: "Restablecer contraseña",
@@ -11,14 +7,7 @@ export const metadata: Metadata = {
   alternates: { canonical: "/restablecer-contrasena" },
 };
 
-export default async function PasswordResetLayout({ children }: { children: React.ReactNode }) {
-  const nonce = (await headers()).get("x-nonce") ?? undefined;
-  return (
-    <Providers nonce={nonce}>
-      <RouteProgress />
-      {children}
-      <Toaster />
-      <LiveRegion />
-    </Providers>
-  );
+/** Providers, `Toaster` y nonce: la pila común de `SuperficiePrivada`. */
+export default function PasswordResetLayout({ children }: { children: React.ReactNode }) {
+  return <SuperficiePrivada>{children}</SuperficiePrivada>;
 }
