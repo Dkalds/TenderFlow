@@ -310,6 +310,36 @@ test.describe("Superficie pública sin sesión", () => {
     }
   });
 
+  test("los hubs por órgano (F6.5) se sirven y el sitemap sólo anuncia los que existen", async ({
+    request,
+  }) => {
+    // Como los otros índices: con una base sembrada sin volumen, el índice de
+    // órganos da 404 a propósito. Lo que no puede dar nunca es un 5xx.
+    const indice = await request.get("/licitaciones/organo", { maxRedirects: 0 });
+    expect(indice.status(), "/licitaciones/organo no puede dar 5xx").toBeLessThan(500);
+
+    // Un órgano que no tiene hub es un 404, no una página vacía indexable.
+    const inexistente = await request.get("/licitaciones/organo/organo-que-no-existe", {
+      maxRedirects: 0,
+    });
+    expect(inexistente.status()).toBe(404);
+
+    // Cada hub de órgano que el sitemap anuncia tiene que responder 200: un
+    // sitemap que apunta a 404 es un error de cobertura en Search Console.
+    const estaticas = await (await request.get("/sitemap/0.xml", { maxRedirects: 0 })).text();
+    const hubs = [...estaticas.matchAll(/<loc>([^<]+\/licitaciones\/organo\/[^<]+)<\/loc>/g)].map(
+      (m) => new URL(m[1]).pathname,
+    );
+    for (const ruta of hubs.slice(0, 5)) {
+      const res = await request.get(ruta, { maxRedirects: 0 });
+      expect(res.status(), `${ruta} anunciado en el sitemap`).toBe(200);
+      // Público e indexable, con el canonical apuntando a sí mismo.
+      const html = await res.text();
+      expect(html).not.toMatch(/name="robots"[^>]*noindex/);
+      expect(html).toMatch(/rel="canonical"[^>]*\/licitaciones\/organo\//);
+    }
+  });
+
   test("la imagen Open Graph se sirve como PNG", async ({ request }) => {
     const res = await request.get("/opengraph-image", { maxRedirects: 0 });
 

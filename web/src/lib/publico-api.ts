@@ -251,12 +251,15 @@ export function obtenerLicitacion(ref: string): Promise<LicitacionPublica | null
 export async function listarLicitaciones(params: {
   ccaa?: string;
   cpv?: string;
+  /** Slug del órgano de contratación (F6.5), tal como lo da `/hubs`. */
+  organo?: string;
   limit?: number;
   offset?: number;
 }): Promise<{ items: LicitacionPublica[]; total: number }> {
   const query = new URLSearchParams();
   if (params.ccaa) query.set("ccaa", params.ccaa);
   if (params.cpv) query.set("cpv", params.cpv);
+  if (params.organo) query.set("organo", params.organo);
   query.set("limit", String(params.limit ?? 50));
   query.set("offset", String(params.offset ?? 0));
 
@@ -278,7 +281,24 @@ export async function listarLicitaciones(params: {
  * no respondió, esto lanza. El `??` solo cubre el 404 del propio endpoint.
  */
 export async function obtenerHubs(): Promise<Hubs> {
-  return (await pedir<Hubs>("/hubs")) ?? { ccaa: [], cpv: [] };
+  return (await pedir<Hubs>("/hubs")) ?? { ccaa: [], cpv: [], organo: [] };
+}
+
+/**
+ * Umbral de los hubs de órgano que entran en el sitemap y en el índice (F6.5).
+ *
+ * El backend da página a todo órgano con al menos tres anuncios (el mismo
+ * umbral que CCAA y CPV), pero el plan fija que al sitemap sólo van los que
+ * pasan de diez: hay miles de órganos, y anunciar a Google miles de páginas
+ * de tres fichas es invitarle a juzgar el dominio por su contenido más
+ * delgado. Los de 3–10 siguen respondiendo si alguien llega a ellos, pero ni
+ * el sitemap ni el índice de órganos los anuncian.
+ */
+export const MIN_ANUNCIOS_HUB_ORGANO_SITEMAP = 10;
+
+/** Los hubs de órgano que se anuncian: más de diez anuncios. */
+export function hubsOrganoAnunciables(hubs: Hubs): NonNullable<Hubs["organo"]> {
+  return (hubs.organo ?? []).filter((hub) => hub.total > MIN_ANUNCIOS_HUB_ORGANO_SITEMAP);
 }
 
 /**
