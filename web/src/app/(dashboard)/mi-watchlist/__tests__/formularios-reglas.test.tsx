@@ -98,7 +98,9 @@ describe("Nueva regla", () => {
   });
 });
 
-describe("Editar regla", () => {
+// Abrir el Sheet de Radix y rellenarlo pasa de los 5 s por defecto cuando la
+// suite entera corre en paralelo; aislado tarda ~1 s.
+describe("Editar regla", { timeout: 20_000 }, () => {
   async function abrirEdicion() {
     montar();
     fireEvent.click(await screen.findByRole("button", { name: "Editar regla" }));

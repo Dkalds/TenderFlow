@@ -976,6 +976,20 @@ tres deudas que hoy hacen frágil cualquier pantalla nueva.
    OpenAPI y un test compara las claves del esquema con el DTO generado (sin
    duplicar la forma a mano); errores por campo con `aria-describedby`;
    `accessibility.spec.ts` verde en las seis pantallas.
+   **Entregado el 2026-09-18 (rama `worktree-agent-a24ebf3de6c7d99d4`, pendiente
+   de CI).** `web/src/lib/forms/`: `esquemaDeDto(dto)(forma, omitidas)` obliga
+   al compilar a que cada clave sea del DTO generado y a que cada clave del DTO
+   esté validada u omitida a sabiendas; `__tests__/contrato-dto.test.ts` lee
+   `src/generated/api.d.ts` como texto y compara las claves de los nueve
+   esquemas (acceso, alta, regla, alta rápida de regla, perfil, espacio,
+   invitación, oportunidad y webhook), y exige `@default` en toda omitida
+   obligatoria. `CampoError`/`ariaCampo` ponen el error bajo el campo con
+   `<id>-error` en su `aria-describedby`. Los tipos de formulario
+   (`RuleFormState`, el del editor de oportunidad) pasan a ser el input del
+   esquema. Tests vitest por formulario. `accessibility.spec.ts` suma
+   `/mi-watchlist`, `/mi-perfil`, `/equipo` y `/ops?vista=webhooks`; **no
+   ejecutado en local** (sin API ni semilla), y la ficha de oportunidad queda
+   fuera del E2E porque la semilla no crea ninguna.
 3. **Feature flags: leer o borrar.** Hook `useFeatureFlag(name)` sobre
    `GET /feature-flags` y las dos vistas `experimental` de Mercado pasan a
    depender de un flag; si el mantenedor prefiere borrar, RFC de retirada de
