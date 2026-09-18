@@ -93,6 +93,7 @@ export default function MiPerfilPage() {
           onCpvInputChange={perfil.setCpvInput}
           onAdd={perfil.addCpv}
           onRemove={perfil.removeCpv}
+          error={perfil.errores.cpvs}
         />
 
         <RangoImporteCard
@@ -100,6 +101,7 @@ export default function MiPerfilPage() {
           importeMax={perfil.importeMax}
           onImporteMinChange={perfil.setImporteMin}
           onImporteMaxChange={perfil.setImporteMax}
+          errores={perfil.errores}
         />
 
         <GdprSection />
@@ -107,7 +109,7 @@ export default function MiPerfilPage() {
         {/* Acciones */}
         <div className="flex items-center gap-3 pb-6">
           <Button
-            onClick={() => saveMut.mutate()}
+            onClick={perfil.guardar}
             disabled={!perfil.dirty || !perfil.weightsValid || saveMut.isPending}
             className="gap-1.5"
           >

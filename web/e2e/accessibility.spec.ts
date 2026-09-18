@@ -136,7 +136,18 @@ test.describe("Accesibilidad básica sin sesión", () => {
 });
 
 test.describe("Accesibilidad básica con sesión", () => {
-  for (const route of ["/resumen", "/radar", `/detalle?lic=${SEED_LICITACION.id}`]) {
+  // S7.2: las pantallas de los formularios con esquema (el login va arriba,
+  // sin sesión). La ficha de oportunidad no está: la semilla E2E no crea
+  // ninguna, y su editor lo cubre `pursuit-editor-esquema.test.tsx`.
+  for (const route of [
+    "/resumen",
+    "/radar",
+    `/detalle?lic=${SEED_LICITACION.id}`,
+    "/mi-watchlist",
+    "/mi-perfil",
+    "/equipo",
+    "/ops?vista=webhooks",
+  ]) {
     test(`${route} conserva landmarks y nombres accesibles`, async ({ page }) => {
       await page.goto(route);
       await expect(page.locator("main#main-content")).toBeVisible({ timeout: 20_000 });

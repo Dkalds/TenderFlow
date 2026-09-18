@@ -16,6 +16,10 @@
 
 import { useState, type FormEvent } from "react";
 import { useSearchParams } from "next/navigation";
+import { useForm, type Resolver } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
+import { acceso, registroFormulario } from "@/lib/forms/esquemas";
 import { apiMutate, ApiError, fetchWithAuth } from "@/lib/api-client";
 import { safeRedirectPath } from "@/lib/safe-redirect";
 import { registrarEvento } from "@/lib/analytics";
@@ -32,13 +36,41 @@ const OAUTH_ERROR_MESSAGES: Record<string, string> = {
 
 const ERROR_CONEXION = "Error de conexión. Inténtalo de nuevo.";
 
+/**
+ * Campos de la cuenta local, con los nombres de `LoginRequest` y
+ * `RegisterRequest` más la confirmación del alta.
+ */
+export interface CredencialesValores {
+  email: string;
+  password: string;
+  display_name: string;
+  confirm_password: string;
+}
+
+// En modo acceso los dos campos del alta existen pero no se validan.
+const resolverAcceso = zodResolver(
+  acceso.esquema.extend({ display_name: z.string(), confirm_password: z.string() }),
+);
+const resolverRegistro = zodResolver(registroFormulario);
+
+/**
+ * Un solo formulario sirve a los dos modos, así que el esquema se elige en cada
+ * validación según el modo del momento (el `context` de react-hook-form se
+ * refresca en cada render; el `resolver`, no).
+ */
+const resolverCredenciales: Resolver<CredencialesValores, { mode: Mode }> = (valores, contexto, opciones) =>
+  contexto?.mode === "register"
+    ? resolverRegistro(valores, contexto, opciones)
+    : resolverAcceso(valores, contexto, opciones);
+
 export function useLoginForm() {
   const searchParams = useSearchParams();
   const [mode, setMode] = useState<Mode>("login");
-  const [email, setEmail] = useState("");
-  const [displayName, setDisplayName] = useState("");
-  const [password, setPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
+  const form = useForm<CredencialesValores, { mode: Mode }>({
+    resolver: resolverCredenciales,
+    context: { mode },
+    defaultValues: { email: "", password: "", display_name: "", confirm_password: "" },
+  });
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(() => {
     const oauthError = searchParams.get("error");
@@ -70,10 +102,10 @@ export function useLoginForm() {
   function switchMode(next: Mode) {
     setMode(next);
     setError(null);
+    form.clearErrors();
   }
 
-  async function handleLogin(e: FormEvent) {
-    e.preventDefault();
+  async function login({ email, password }: CredencialesValores) {
     setError(null);
     setLoading(true);
 
@@ -149,22 +181,17 @@ export function useLoginForm() {
     window.location.href = "/login";
   }
 
-  async function handleRegister(e: FormEvent) {
-    e.preventDefault();
+  // La coincidencia de contraseñas y la política de la contraseña ya las ha
+  // comprobado el esquema del alta antes de llegar aquí.
+  async function register({ email, password, display_name }: CredencialesValores) {
     setError(null);
-
-    if (password !== confirmPassword) {
-      setError("Las contraseñas no coinciden");
-      return;
-    }
-
     setLoading(true);
     try {
       // El backend setea la cookie de sesion (auto-login) al crear la cuenta.
       await apiMutate("POST", "/api/v1/auth/register", {
         email,
         password,
-        display_name: displayName.trim() || undefined,
+        display_name: display_name.trim() || undefined,
       });
       // El alta self-service está apagada en producción, así que esto sólo se
       // ve el día que se abra; entonces conviene poder distinguir la primera
@@ -225,14 +252,7 @@ export function useLoginForm() {
     mode,
     isRegister: mode === "register",
     switchMode,
-    email,
-    setEmail,
-    displayName,
-    setDisplayName,
-    password,
-    setPassword,
-    confirmPassword,
-    setConfirmPassword,
+    form,
     showPassword,
     toggleShowPassword: () => setShowPassword((v) => !v),
     error,
@@ -241,8 +261,10 @@ export function useLoginForm() {
     mfaPending,
     mfaCode,
     setMfaCode,
-    handleLogin,
-    handleRegister,
+    // `handleSubmit` se llama dentro del evento, no al renderizar: así el
+    // compilador de React no toma `login`/`register` por código de render.
+    handleLogin: (e: FormEvent) => form.handleSubmit(login)(e),
+    handleRegister: (e: FormEvent) => form.handleSubmit(register)(e),
     handleVerifyMfa,
     cancelarMfa,
     handleOAuthLogin,

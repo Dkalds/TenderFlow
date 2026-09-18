@@ -16,9 +16,9 @@
  */
 "use client";
 
+import { numeroDeTexto } from "@/lib/forms/valores";
 import type {
   ApiRule,
-  Banda,
   RuleBody,
   RuleCriteriosS4,
   RuleFormState,
@@ -28,15 +28,15 @@ export function ruleToFormState(rule: ApiRule): RuleFormState {
   return {
     keyword: rule.keyword ?? "",
     cpv: rule.cpv ?? "",
-    minImporte: rule.min_importe != null ? String(rule.min_importe) : "",
+    min_importe: rule.min_importe != null ? String(rule.min_importe) : "",
     ccaa: rule.ccaa ?? "",
     frequency: rule.frequency,
     tecnologia: rule.tecnologia ?? "",
     organo: rule.organo ?? "",
     procedimiento: rule.procedimiento ?? "",
-    tipoContrato: rule.tipo_contrato ?? "",
-    bandaMin: rule.banda_min ?? "",
-    plazoMinDias: rule.plazo_min_dias != null ? String(rule.plazo_min_dias) : "",
+    tipo_contrato: rule.tipo_contrato ?? "",
+    banda_min: rule.banda_min ?? "",
+    plazo_min_dias: rule.plazo_min_dias != null ? String(rule.plazo_min_dias) : "",
   };
 }
 
@@ -51,14 +51,14 @@ export function tieneCriterio(form: RuleFormState): boolean {
   return Boolean(
     form.keyword.trim() ||
       form.cpv.trim() ||
-      form.minImporte.trim() ||
+      form.min_importe.trim() ||
       form.ccaa ||
       form.tecnologia ||
       form.organo.trim() ||
       form.procedimiento ||
-      form.tipoContrato ||
-      form.bandaMin ||
-      form.plazoMinDias.trim(),
+      form.tipo_contrato ||
+      form.banda_min ||
+      form.plazo_min_dias.trim(),
   );
 }
 
@@ -74,9 +74,9 @@ function criteriosDeFormulario(form: RuleFormState): RuleCriteriosS4 {
     tecnologia: form.tecnologia || null,
     organo: form.organo.trim() || null,
     procedimiento: form.procedimiento || null,
-    tipo_contrato: form.tipoContrato || null,
-    banda_min: (form.bandaMin || null) as Banda | null,
-    plazo_min_dias: enteroONulo(form.plazoMinDias),
+    tipo_contrato: form.tipo_contrato || null,
+    banda_min: form.banda_min || null,
+    plazo_min_dias: enteroONulo(form.plazo_min_dias),
   };
 }
 
@@ -91,7 +91,8 @@ export function formStateToBody(form: RuleFormState, active: boolean): RuleBody 
     nombre: form.keyword.trim() || form.organo.trim() || form.tecnologia || null,
     keyword: form.keyword.trim() || null,
     cpv: form.cpv.trim() || null,
-    min_importe: form.minImporte ? parseFloat(form.minImporte) : null,
+    // Mismo lector que el esquema: si aceptó «1500,5», aquí no puede salir 1500.
+    min_importe: numeroDeTexto(form.min_importe),
     ccaa: form.ccaa || null,
     frequency: form.frequency,
     active,
@@ -143,7 +144,7 @@ export function prefillToFormState(
   return {
     keyword: prefill?.q ?? "",
     cpv: "",
-    minImporte: prefill?.importe_min ?? "",
+    min_importe: prefill?.importe_min ?? "",
     // El ámbito global admite varias CCAA; el formulario solo una.
     ccaa: prefill?.ccaa?.split(",")[0] ?? "",
     frequency: "daily",
@@ -152,8 +153,8 @@ export function prefillToFormState(
     tecnologia: prefill?.tecnologia?.split(",")[0] ?? "",
     organo: "",
     procedimiento: "",
-    tipoContrato: "",
-    bandaMin: "",
-    plazoMinDias: "",
+    tipo_contrato: "",
+    banda_min: "",
+    plazo_min_dias: "",
   };
 }

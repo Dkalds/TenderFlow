@@ -19,6 +19,11 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useForm, type UseFormReturn } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import type { z } from "zod";
+import { nuevaRegla } from "@/lib/forms/esquemas";
+import { numeroDeTexto } from "@/lib/forms/valores";
 import { apiMutate, fetchWithAuth } from "@/lib/api-client";
 import { getJSON, setJSON } from "@/lib/storage";
 import { primeraVez, registrarEvento } from "@/lib/analytics";
@@ -27,12 +32,7 @@ import { watchlistKeys } from "@/lib/query-keys";
 import { parsePrefill, prefillToFormState } from "./use-watchlist-rules";
 import { activeRulesOf, dedupeMatches } from "./watchlist-matches";
 import { ccaaOptions } from "./watchlist-rule-options";
-import type {
-  ApiRule,
-  Frequency,
-  MatchItem,
-  RuleBody,
-} from "./watchlist-rule-types";
+import type { ApiRule, MatchItem, RuleBody } from "./watchlist-rule-types";
 import {
   LEGACY_KEY,
   MIGRATED_FLAG,
@@ -75,19 +75,21 @@ function useAvisoBajaCorreos(): void {
   }, [searchParams, router]);
 }
 
-/** Campos del formulario «Nueva regla» y sus setters. */
+/** Valores de «Nueva regla»: cinco claves de `WatchlistRuleBody` (S7.2). */
+export type NuevaReglaValores = z.input<typeof nuevaRegla.esquema>;
+
+const NUEVA_VACIA: NuevaReglaValores = {
+  keyword: "",
+  cpv: "",
+  min_importe: "",
+  ccaa: "",
+  frequency: "daily",
+};
+
+/** El formulario «Nueva regla» (react-hook-form + esquema) y su envío. */
 export interface NuevaReglaForm {
-  keyword: string;
-  setKeyword: (value: string) => void;
-  cpv: string;
-  setCpv: (value: string) => void;
-  minImporte: string;
-  setMinImporte: (value: string) => void;
-  ccaa: string;
-  setCcaa: (value: string) => void;
-  frequency: Frequency;
-  setFrequency: (value: Frequency) => void;
-  /** Crea la regla y vacía el formulario. No hace nada sin palabra clave. */
+  form: UseFormReturn<NuevaReglaValores>;
+  /** Valida, crea la regla y vacía el formulario. Sin palabra clave no crea nada. */
   submit: () => void;
   creating: boolean;
 }
@@ -132,11 +134,16 @@ export function useMiWatchlist(): MiWatchlistState {
     [searchParams],
   );
 
-  const [keyword, setKeyword] = useState(() => prefilled.keyword);
-  const [cpv, setCpv] = useState(() => prefilled.cpv);
-  const [minImporte, setMinImporte] = useState(() => prefilled.minImporte);
-  const [ccaa, setCcaa] = useState(() => prefilled.ccaa);
-  const [frequency, setFrequency] = useState<Frequency>(prefilled.frequency);
+  const nuevaForm = useForm<NuevaReglaValores>({
+    resolver: zodResolver(nuevaRegla.esquema),
+    defaultValues: {
+      keyword: prefilled.keyword,
+      cpv: prefilled.cpv,
+      min_importe: prefilled.min_importe,
+      ccaa: prefilled.ccaa,
+      frequency: prefilled.frequency,
+    },
+  });
   const [formOpen, setFormOpen] = useState(true);
   const [editingRule, setEditingRule] = useState<ApiRule | null>(null);
 
@@ -195,13 +202,12 @@ export function useMiWatchlist(): MiWatchlistState {
     onSuccess: invalidate,
   });
 
-  const submit = () => {
-    if (!keyword.trim()) return;
+  const crear = ({ keyword, cpv, min_importe, ccaa, frequency }: NuevaReglaValores) => {
     createMut.mutate({
       nombre: keyword.trim(),
       keyword: keyword.trim(),
       cpv: cpv.trim() || null,
-      min_importe: minImporte ? parseFloat(minImporte) : null,
+      min_importe: numeroDeTexto(min_importe),
       ccaa: ccaa || null,
       frequency,
       active: true,
@@ -218,12 +224,10 @@ export function useMiWatchlist(): MiWatchlistState {
       banda_min: null,
       plazo_min_dias: null,
     });
-    setKeyword("");
-    setCpv("");
-    setMinImporte("");
-    setCcaa("");
-    setFrequency("daily");
+    nuevaForm.reset(NUEVA_VACIA);
   };
+  // `handleSubmit` dentro del evento, no al renderizar (compilador de React).
+  const submit = () => void nuevaForm.handleSubmit(crear)();
 
   const activeRules = useMemo(() => activeRulesOf(rules), [rules]);
 
@@ -252,16 +256,7 @@ export function useMiWatchlist(): MiWatchlistState {
     tab,
     setTab,
     nueva: {
-      keyword,
-      setKeyword,
-      cpv,
-      setCpv,
-      minImporte,
-      setMinImporte,
-      ccaa,
-      setCcaa,
-      frequency,
-      setFrequency,
+      form: nuevaForm,
       submit,
       creating: createMut.isPending,
     },

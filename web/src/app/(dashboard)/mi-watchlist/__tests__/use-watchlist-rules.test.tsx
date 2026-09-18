@@ -55,15 +55,15 @@ function rule(over: Partial<ApiRule> & { id: number }): ApiRule {
 const EMPTY_FORM: RuleFormState = {
   keyword: "",
   cpv: "",
-  minImporte: "",
+  min_importe: "",
   ccaa: "",
   frequency: "daily",
   tecnologia: "",
   organo: "",
   procedimiento: "",
-  tipoContrato: "",
-  bandaMin: "",
-  plazoMinDias: "",
+  tipo_contrato: "",
+  banda_min: "",
+  plazo_min_dias: "",
 };
 
 /**
@@ -91,13 +91,13 @@ describe("ruleToFormState", () => {
   });
 
   it("el importe mínimo viaja como texto al input numérico", () => {
-    expect(ruleToFormState(rule({ id: 1, min_importe: 50000 })).minImporte).toBe("50000");
+    expect(ruleToFormState(rule({ id: 1, min_importe: 50000 })).min_importe).toBe("50000");
   });
 
   it("un importe mínimo de cero no se confunde con «sin importe»", () => {
     // `min_importe: 0` es un criterio válido; tratarlo como ausente lo perdería
     // al reabrir el panel de edición.
-    expect(ruleToFormState(rule({ id: 1, min_importe: 0 })).minImporte).toBe("0");
+    expect(ruleToFormState(rule({ id: 1, min_importe: 0 })).min_importe).toBe("0");
   });
 });
 
@@ -136,7 +136,7 @@ describe("formStateToBody", () => {
   });
 
   it("el importe mínimo se manda como número", () => {
-    const body = formStateToBody({ ...EMPTY_FORM, minImporte: "1500.5" }, true);
+    const body = formStateToBody({ ...EMPTY_FORM, min_importe: "1500.5" }, true);
     expect(body.min_importe).toBe(1500.5);
   });
 
@@ -186,14 +186,14 @@ describe("tieneCriterio", () => {
   it.each([
     ["keyword", "SAP"],
     ["cpv", "72000000"],
-    ["minImporte", "50000"],
+    ["min_importe", "50000"],
     ["ccaa", "Madrid"],
     ["tecnologia", "SAP"],
     ["organo", "Ayuntamiento"],
     ["procedimiento", "abierto"],
-    ["tipoContrato", "servicios"],
-    ["bandaMin", "Caliente"],
-    ["plazoMinDias", "15"],
+    ["tipo_contrato", "servicios"],
+    ["banda_min", "Caliente"],
+    ["plazo_min_dias", "15"],
   ] as [keyof RuleFormState, string][])(
     "basta con %s para que la regla filtre",
     (campo, valor) => {
@@ -230,7 +230,7 @@ describe("prefillToFormState", () => {
   it("traslada búsqueda e importe mínimo del ámbito", () => {
     const form = prefillToFormState({ q: "SAP", importe_min: "100000" });
     expect(form.keyword).toBe("SAP");
-    expect(form.minImporte).toBe("100000");
+    expect(form.min_importe).toBe("100000");
   });
 
   it("de varias CCAA del ámbito el formulario se queda con la primera", () => {
