@@ -436,14 +436,6 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 - **Files de partida:** [services/ml/features.py](../services/ml/features.py) (`_fecha_opt`), [db/repositories/ml_dataset.py](../db/repositories/ml_dataset.py) (`fecha_anchor`), [scraper/connectors/pscp.py](../scraper/connectors/pscp.py)
 - **Riesgo:** bajo — son 47 filas de ~691k adjudicaciones; el impacto es de calidad de dataset, no de disponibilidad.
 
-### [P3] Un solo transporte para bajar assets de la Release
-- **Área:** shared/model_artifacts.py, shared/release_assets.py
-- **Problema:** conviven dos implementaciones de "bajar un asset de la última Release". `shared/release_assets.py` (2026-09-03) va sobre HTTPS pinned con allowlist por salto; `shared/model_artifacts.py::_download_release_asset` usa `requests.get(browser_download_url)` a pelo, que sigue redirects sin validar el destino y sin DNS pinning. La segunda funciona —de hecho es la única que nunca se rompió— pero tiene controles más débiles que el resto de las salidas del repo, y dos implementaciones divergentes del mismo salto es cómo se cuelan las regresiones asimétricas.
-- **Por qué NO se hizo en el mismo cambio:** era el único camino de descarga que funcionaba; tocarlo mientras se arreglaba el otro habría dejado el sistema sin ninguno si el refactor fallaba.
-- **Acceptance criteria:** `_download_release_asset` delega en `shared.release_assets`, conservando la verificación contra el sha256 del registry; los tests de `shared/model_artifacts.py` siguen verdes.
-- **Files de partida:** [shared/model_artifacts.py](../shared/model_artifacts.py), [shared/release_assets.py](../shared/release_assets.py)
-- **Riesgo:** bajo — el fallback a baseline ya está cubierto y testeado.
-
 ### [P2] [Ola 1 · S3] Oportunidad por lote, y saber si el Radar prioriza bien
 - **Área:** db/repositories/pursuits.py, services/pursuits.py, services/product_metrics.py, web/src/app/(dashboard)/oportunidades
 - **Problema:** `pursuits` es única por `(organization_id, licitacion_id)`, así que no se puede abrir una oportunidad por lote — que es la unidad sobre la que de verdad se puja, y que los lotes existen desde `v65`. Y el bucle del Radar no se cierra: `score_al_abrir` y `banda_al_abrir` se persisten desde `v93` y **ningún módulo de producción los lee**, o sea que el producto no puede responder si la banda «Caliente» acierta.
@@ -477,7 +469,7 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 - **Acceptance criteria:** los de S8.1–S8.4 del plan v2, sin redefinirlos aquí. Los cuatro son independientes y se entregan por separado; S8.1 y S8.2 llevan migración y dependencias nuevas, ambas pre-autorizadas por D20.
 - **Estado:** lo dice el §5 del plan cuando el stream se cierra, no este ítem — ver la nota de cabecera. S8 se está entregando en esta misma ola.
 - **Files de partida:** [docs/plans/2026-09-plan-arquitectura-v2.md](plans/2026-09-plan-arquitectura-v2.md) (§5, S8), [scraper/document_fetcher.py](../scraper/document_fetcher.py)
-- **Relación:** S8.4 roza el P3 «Un solo transporte para bajar assets de la Release»: los dos tocan cómo se resuelve un artefacto de modelo, y conviene decidirlos juntos.
+- **Relación:** S8.4 roza el P3 «Un solo transporte para bajar assets de la Release» (cerrado el 2026-09-18): los dos tocan cómo se resuelve un artefacto de modelo, y conviene decidirlos juntos.
 - **Riesgo:** medio — el coste del OCR por página se mide en el primer run nocturno y lo acota el tope de páginas.
 
 ---
@@ -689,6 +681,14 @@ cabecera de este fichero: los seis se comprobaron contra el código.
   `licitaciones_candidatas`/`licitaciones_reparadas`, que el paso loguea — «cero reparaciones en
   siete días» se lee ahí. Ficha completa en
   [el archivo](archive/IMPROVEMENT_BACKLOG_CERRADOS.md).
+- [2026-09-18, rama worktree-agent-a3fd0bc81b8a949c2] **P3: un solo transporte para bajar
+  assets de la Release** — `shared/model_artifacts.py::_download_release_asset` delega en
+  `shared.release_assets` (`fetch_latest_release` → `find_asset_id` → `download_asset`): HTTPS
+  pinned, allowlist por salto y sin reenviar el token al CDN. `requests` sale del módulo. La
+  verificación del sha256 contra `model_versions` no se tocó: sigue en `resolve_active_artifact`,
+  después de materializar, igual para bucket y Release. Tests nuevos en
+  `tests/test_model_artifacts.py` (delegación, asset ausente, Release inaccesible, y un guard AST
+  de que `requests` no vuelve).
 
 
 - [2026-09-01] **Revisión integral de la IA del detalle de licitación (10 mejoras en un
