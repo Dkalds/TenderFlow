@@ -50,7 +50,7 @@ users(id)`. La migración es en tres tiempos, y este ADR fija los tres:
 |---|---|---|
 | 1 | Ratchet: la lista de ficheros que usan `user_key` solo encoge; `user_key_from_email` marcada `@deprecated` | S1.4 |
 | 2 | Columna `user_id` + backfill por email + **lectura dual**. **Hecho 2026-09-14 (v129)**: las nueve tablas que faltaban reciben la columna (FK `ON DELETE SET NULL`, índice), el backfill es SQL puro (`sha256(lower(btrim(email)))` reproduce `user_key_from_email`; equivalencia probada en `tests/test_user_id_cambio_email_integration.py`), y los repositorios leen por `user_id` —o por `user_key` sólo en las filas sin resolver— y escriben las dos columnas. Las PK/UNIQUE tecleados por `user_key` siguen ahí: los upserts localizan la fila por identidad antes de insertar. | T4 |
-| 3 | `user_key` deja de escribirse; GDPR anonimiza por id; el ratchet llega a cero | T4 |
+| 3 | `user_key` deja de escribirse; GDPR anonimiza por id; el ratchet llega a cero. **Empezada 2026-09-18 (v135)**: `user_profiles` y `radar_dismissals` pasan a PK por `user_id` (backfill previo y `RAISE` si alguna fila queda sin id o duplicada; la PK vieja queda como índice único de transición); `user_profiles` deja de escribir `user_key`; `radar_dismissals` la sigue escribiendo mientras `user_notifications` y `follows` se tecleen por ella; `log_event` recibe al autor como `actor`; ratchet 69 → 63. La retirada de `user_key` del webhook `watchlist_rule.matched` va por [RFC con ventana](../rfc/2026-09-18-rfc-retirar-user-key-payload-watchlist-rule-matched.md). | T4 |
 
 La lectura dual de la fase 2 no es opcional: el backfill por email no puede
 resolver el 100 % (API keys sin usuario, filas huérfanas), y una lectura que

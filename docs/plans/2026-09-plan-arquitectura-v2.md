@@ -1121,6 +1121,22 @@ materializada (ADR-026 §A).
 
 ### T4 — `user_key` → `user_id`, fase 2 (D18)
 
+> **2026-09-18 — fase 3 de ADR-030 empezada (v135, rama
+> `worktree-agent-a8484f81d7c8a27e2`); T4 sigue abierto.** Hecho: la PK de
+> `user_profiles` pasa a `(user_id)` y la de `radar_dismissals` a
+> `(user_id, id_externo)`, con backfill previo y `RAISE EXCEPTION` si queda
+> alguna fila sin `user_id` o duplicada (la PK vieja queda como índice único de
+> transición para que el código de la fase 2 siga valiendo durante el
+> despliegue); `user_profiles` deja de escribir `user_key`; `log_event` recibe
+> al autor como `actor` y el ratchet baja de 69 a 63. RFC de retirada de
+> `user_key` del payload de `watchlist_rule.matched` en `draft`, con el campo
+> intacto hasta la ventana
+> ([RFC](../rfc/2026-09-18-rfc-retirar-user-key-payload-watchlist-rule-matched.md)).
+> **Falta** para la aceptación: `radar_dismissals` sigue escribiendo `user_key`
+> porque `user_notifications` y `follows` —a los que alimenta— siguen tecleadas
+> por ella; el resto de tablas conservan sus UNIQUE por `user_key`; y el ratchet
+> no llega a cero hasta retirar la columna de esas tablas.
+
 **Qué.** Columna `user_id` en las tablas que aún no la tienen; backfill por
 email; lectura dual; `user_key` deja de escribirse; el GDPR anonimiza por id.
 Esfuerzo L · **[§6]** migración.
@@ -1246,7 +1262,7 @@ anotan cifras a mano en este fichero.
 | Tipos de evento de webhook | 4 → **11 medido el 2026-09-08** | catálogo completo (≥ 12) | `GET /webhooks/event-types` |
 | Productores de notificación fuera del despachador | por medir en S4.1 | 0 | ratchet de S4.1 |
 | Trabajos pesados en `BackgroundTasks` de la API | 1 | 0 | grep en `api/routes/` |
-| Ficheros con `user_key` | 60 → **64 medido el 2026-09-08** | ratchet que solo baja; 0 tras T4 | `make status` |
+| Ficheros con `user_key` | 60 → 64 medido el 2026-09-08 → **63 medido el 2026-09-18** | ratchet que solo baja; 0 tras T4 | `make status` |
 | Primitivas de seguimiento | 6 tablas / 22 endpoints | 1 tabla / 3 endpoints, más reglas | `git ls-files`, OpenAPI |
 | Ficheros de `web/src/app` con más de 300 líneas | 12 → **0 el 2026-09-08** | 0 | `max-lines` en `make web-lint` |
 | Golden set SAP | 27 | ≥ 300 | `wc -l tests/fixtures/golden_set.jsonl` |
