@@ -267,7 +267,7 @@ Todo en `70b3c37` (v116–v119) salvo lo indicado.
 
 | Ítem | Estado |
 |---|---|
-| C3.1 Imagen de la API sin ML | **Hecho con el objetivo corregido** (`928d227`). Ver corrección 3. |
+| C3.1 Imagen de la API sin ML | **Hecho con el objetivo corregido** (`928d227`). Ver corrección 3. **Completado el 2026-09-18** (rama `worktree-agent-aa37c7b64b746caaa`): lockfiles compilados, Dockerfile en `requirements-api.txt`, sklearn/scipy/statsmodels/networkx/lxml fuera de la imagen de la API, CI construye las dos variantes y publica su tamaño. La corrección 3 se resolvió por la otra vía: `/explain` y `/analytics/clusters` responden 503 y su destino queda en la RFC `2026-09-18-rfc-explain-fuera-del-proceso-api` (`review`). El «≤ 60 %» se mide ahora en cada `docker-build`; no se midió aquí. |
 | C3.2 Agregados sin pandas | **Parcial + ratchet.** 9 escaneos sin cota encontrados, 1 corregido, 8 en allowlist decreciente con su motivo. |
 | C3.3 Alertas de latencia | **Hecho.** `ApiLatencyP99High` y `PublicSurfaceSlow`, `for: 10m`. La latencia de navegador (SLO 3) la mide Speed Insights: alerta = acción humana en Vercel. |
 | C3.4 Suite más rápida | **Hecho, detrás de interruptor.** `TF_TEST_SCHEMA_STRATEGY=truncate`. El default sigue en `schema`: cambiarlo sin poder ejecutar un test de integración es lo que AGENTS.md §4 prohíbe. |
