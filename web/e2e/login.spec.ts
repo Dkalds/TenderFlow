@@ -127,9 +127,10 @@ test.describe("Alta de cuenta", () => {
     await page.locator("#confirm-password").fill("Zzzz999999");
     await page.getByRole("button", { name: /crear cuenta|sign up|registr/i }).click();
 
-    // La validación de cliente corre antes de cualquier petición. Se apunta a
-    // aria-live="polite" para no capturar el anunciador de rutas de Next.
-    await expect(page.locator("[role='alert'][aria-live='polite']")).toContainText(/no coinciden|do not match/i);
+    // La validación de cliente (esquema de S7.2) corre antes de cualquier
+    // petición, y el error sale debajo de la confirmación, enlazado a ella.
+    await expect(page.locator("#confirm-password-error")).toContainText(/no coinciden|do not match/i);
+    await expect(page.locator("#confirm-password")).toHaveAttribute("aria-describedby", /confirm-password-error/);
     await expect(page).toHaveURL(/\/login/);
   });
 });
