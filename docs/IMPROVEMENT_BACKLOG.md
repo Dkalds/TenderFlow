@@ -37,7 +37,9 @@ Lo que se hizo **con fallback**, porque su dependencia no está en este árbol
   (`services/avisos.py`), así que enchufarlo al outbox cuando exista es cambiar
   el productor, no el vocabulario.
 - **F3.2** distingue «nosotros perdimos» de «ellos ganaron»: sin el NIF propio
-  (v2 S2.1) sólo se puede afirmar lo primero, y la respuesta lo declara.
+  (v2 S2.1) sólo se puede afirmar lo primero, y la respuesta lo declara. La
+  pestaña «Contra mí» lo pinta así desde el 2026-09-18 (UI de F1.2, F3.2,
+  F3.3, F5.4 y F5.6 en la rama `worktree-agent-aa4eeee01ef3fbb62`; ver el estado de cada ítem en el plan).
 - **F2.3** se entregó sin responsable; desde el 2026-09-18 el responsable es
   el de la tarea C6.1 del documento (rama `worktree-agent-a46c6c93b69b8f96c`).
 

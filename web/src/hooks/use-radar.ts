@@ -174,6 +174,9 @@ export function esBandaConocida(valor: string | null | undefined): valor is Band
  */
 export type AccionDescarte = "descartar" | "silenciar" | "posponer";
 
+/** Las dos acciones que caducan: ocultan la señal hasta dentro de `dias` días. */
+export type AccionAplazar = Exclude<AccionDescarte, "descartar">;
+
 export type DescarteRadar = {
   idExterno: string;
   score?: number | null;

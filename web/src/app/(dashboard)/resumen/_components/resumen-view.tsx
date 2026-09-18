@@ -4,6 +4,7 @@ import { useCallback, useRef } from "react";
 import { ExportPopover } from "@/components/export-popover";
 import { CopilotBar } from "@/components/copilot-panel";
 import { TuDia } from "./tu-dia";
+import { DesdeUltimaVisita } from "./desde-ultima-visita";
 import { PrimerosPasos } from "./primeros-pasos";
 import { AtencionCards } from "./atencion-cards";
 import { ContextoStrip } from "./contexto-strip";
@@ -23,6 +24,10 @@ import { AtajosAnalisis } from "./atajos-analisis";
  * señales de sus reglas sin triar) vivía en Mi Pipeline y la entrada no daba
  * ninguna pista de que existiera. Ahora la página va **de dentro hacia fuera**:
  *
+ * 0. **Desde tu última visita** (F5.4) — qué se movió en lo que sigues y en el
+ *    pipeline del equipo (`GET /analytics/resumen/desde-mi-ultima-visita`).
+ *    Abre la pantalla porque es la pregunta de quien entra una vez al día, y
+ *    con cero cambios lo dice en una línea en vez de desaparecer.
  * 1. **Tu día** — compromisos de tu organización (`GET /pursuits/agenda`).
  * 1b. **Primeros pasos** — sólo mientras al usuario le falte configurar algo que
  *    el producto necesita para hablar de su negocio. Va **debajo** de «Tu día»
@@ -78,6 +83,7 @@ export function ResumenView() {
       >
         <CopilotBar className="mb-4 max-w-[720px]" />
 
+        <DesdeUltimaVisita />
         <TuDia />
         <PrimerosPasos onDescartar={recogerFoco} />
         <AtencionCards />

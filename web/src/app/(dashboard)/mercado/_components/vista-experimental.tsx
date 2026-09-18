@@ -2,7 +2,8 @@
 
 /**
  * Envoltorio de las dos vistas `experimental` de Mercado (Clusters y Proyectos
- * y módulos), y el único sitio del producto que lee una feature flag.
+ * y módulos). Lee la misma flag que `mercado/page.tsx`, que la usa para marcar
+ * la pestaña del conmutador como apagada antes de que nadie la pulse.
  *
  * # Qué hace
  *

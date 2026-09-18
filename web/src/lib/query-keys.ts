@@ -157,6 +157,13 @@ export const analyticsKeys = {
     ["analytics", "overview", "/api/v1/analytics/overview", params] as const,
   /** Score de las filas visibles de `detalle` (batch por `id_externo`). */
   scoringBatch: (ids: readonly string[]) => ["scoring-batch", ids] as const,
+  /**
+   * Diff personal del Resumen (`GET /analytics/resumen/desde-mi-ultima-visita`,
+   * F5.4). No se comparte con `resumen/novedades`: es otra pregunta y otro
+   * endpoint.
+   */
+  desdeUltimaVisita: (organizationId: number | null) =>
+    ["analytics", "resumen", "desde-mi-ultima-visita", organizationId] as const,
 };
 
 export const radarKeys = {
@@ -228,6 +235,26 @@ export const competitiveKeys = {
     ["competitive-company-profile", empresaId, scopeQuery] as const,
   companyAwards: (empresaId: number | string, params: string | Record<string, string>) =>
     ["competitive-company-awards", empresaId, params] as const,
+  /**
+   * Cruces con un competidor (`GET /competitive/empresas/{key}/contra-mi`,
+   * F3.2). Lleva la organización: son las oportunidades de ese equipo.
+   */
+  contraMi: (empresaKey: string, organizationId: number | null, meses: number) =>
+    ["competitive", "contra-mi", empresaKey, organizationId, meses] as const,
+  /** Socios de UTE de un segmento (`GET /competitive/partners`, F3.3). */
+  partners: (cpv: string | null, ccaa: string | null) =>
+    ["competitive", "partners", cpv, ccaa] as const,
+};
+
+// ---------------------------------------------------------------------------
+// Búsqueda global (paleta ⌘K)
+// ---------------------------------------------------------------------------
+
+export const searchKeys = {
+  all: ["search"] as const,
+  /** `GET /search/global` (F1.2), por término y organización activa. */
+  global: (q: string, organizationId: number | null) =>
+    ["search", "global", q, organizationId] as const,
 };
 
 // ---------------------------------------------------------------------------

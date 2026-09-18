@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
-import type { RadarTender } from "@/hooks/use-radar";
+import type { AccionAplazar, RadarTender } from "@/hooks/use-radar";
 import type { ModoInspector } from "../_hooks/use-media-query";
 import { RadarInspector } from "./radar-inspector";
 
@@ -30,6 +30,7 @@ export function RadarInspectorPanel({
   onAbiertaChange,
   onFollow,
   onDismiss,
+  onAplazar,
   onOpenPursuit,
 }: {
   modo: ModoInspector;
@@ -40,6 +41,7 @@ export function RadarInspectorPanel({
   onAbiertaChange: (abierta: boolean) => void;
   onFollow: () => void;
   onDismiss: () => void;
+  onAplazar: (accion: AccionAplazar, dias: number) => void;
   onOpenPursuit: () => void;
 }) {
   // Ensanchar la ventana hasta `xl` ancla el inspector: dejar el Sheet marcado
@@ -56,6 +58,7 @@ export function RadarInspectorPanel({
       followed={followed}
       onFollow={onFollow}
       onDismiss={onDismiss}
+      onAplazar={onAplazar}
       onOpenPursuit={onOpenPursuit}
       opening={opening}
     />
@@ -92,6 +95,7 @@ export function RadarInspectorPanel({
               followed={followed}
               onFollow={onFollow}
               onDismiss={onDismiss}
+              onAplazar={onAplazar}
               onOpenPursuit={onOpenPursuit}
               opening={opening}
               onClose={() => onAbiertaChange(false)}

@@ -14,6 +14,10 @@
  * `TecnologiasBlock`), que traen su propio estado de carga, error y vacío. El
  * asistente IA **no** entra aquí: es una superficie con su propio coste y su
  * propio contrato, y vive en `/detalle`.
+ *
+ * La columna lateral añade los socios de UTE sugeridos para el segmento del
+ * expediente (F3.3, `SociosUte`): es aquí, delante de la solvencia que pide el
+ * pliego, donde se decide si se va solo o acompañado.
  */
 import { ExternalLink } from "lucide-react";
 import Link from "next/link";
@@ -21,6 +25,7 @@ import { DocumentosBlock } from "@/components/documentos-block";
 import { EventosTimeline } from "@/components/eventos-timeline";
 import { ResolucionesBlock } from "@/components/resoluciones-block";
 import { TecnologiasBlock } from "@/components/tecnologias-block";
+import { SociosUte } from "@/components/competitors/socios-ute";
 import { Panel, PanelError, PanelLoading, SectionTitle } from "@/components/console/panel";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { useLicitacion } from "@/hooks/use-licitacion";
@@ -127,6 +132,11 @@ export function ExpedientePanel({ licitacionId }: { licitacionId: string }) {
         <Panel>
           <SectionTitle>Cronología</SectionTitle>
           <EventosTimeline licitacionId={licitacionId} />
+        </Panel>
+
+        <Panel>
+          <SectionTitle>Socios de UTE sugeridos</SectionTitle>
+          <SociosUte cpv={l.cpv} ccaa={l.ccaa} />
         </Panel>
 
         <Panel>
