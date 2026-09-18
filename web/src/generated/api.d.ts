@@ -7776,14 +7776,30 @@ export interface components {
         };
         /**
          * FunnelStep
-         * @description Funnel step with absolute count and percentage.
+         * @description Tramo del embudo por estado, con su conteo y su porcentaje.
+         *
+         *     **Cambio de semántica de `pct` (2026-09-18, AGENTS §3.5).** Hasta esa fecha
+         *     todos los tramos se dividían entre el total del ámbito, y como `AGR` es el
+         *     ~93 % del corpus los cinco escalones sumaban ~6,7 %: el embudo se leía como
+         *     si el 93 % de los expedientes se hubiera perdido entre publicación y
+         *     adjudicación. Desde entonces el denominador depende del tramo y el tramo lo
+         *     declara en `en_embudo`.
          */
         FunnelStep: {
+            /**
+             * En Embudo
+             * @description True para los cinco escalones de tramitación; false para lo que se cuenta aparte (PRE, AGR, EJEC, CPM y OTROS).
+             * @default true
+             */
+            en_embudo: boolean;
             /** Estado */
             estado: string;
             /** N */
             n: number;
-            /** Pct */
+            /**
+             * Pct
+             * @description Porcentaje del tramo. Si `en_embudo` es true, sobre `OverviewResult.funnel_denominador` (los cinco escalones PUB, EV, RES, ADJ y ANUL suman 100). Si es false, sobre el total del ámbito (`funnel_denominador + fuera_del_embudo`).
+             */
             pct: number;
         };
         /**
@@ -8063,6 +8079,7 @@ export interface components {
         HoyCounters: {
             /**
              * Calientes
+             * @description «Grandes en plazo»: licitaciones abiertas, en plazo y con importe ≥ P75 del ámbito. NO es la banda `Caliente` del score (≥ 75 puntos); el nombre del campo se conserva por compatibilidad del contrato.
              * @default 0
              */
             calientes: number;
@@ -9516,6 +9533,7 @@ export interface components {
         OverviewResult: {
             /**
              * Calientes Hoy
+             * @description «Grandes en plazo»: licitaciones abiertas, en plazo y con importe ≥ P75 del ámbito. NO es la banda `Caliente` del score (≥ 75 puntos); el nombre del campo se conserva por compatibilidad del contrato.
              * @default 0
              */
             calientes_hoy: number;
@@ -9536,6 +9554,18 @@ export interface components {
              * @default 0
              */
             concentracion_top10: number;
+            /**
+             * Fuera Del Embudo
+             * @description Expedientes del ámbito que no están en ningún escalón (PRE, AGR, EJEC, CPM y sin código conocido). Con `funnel_denominador` suma el total del ámbito.
+             * @default 0
+             */
+            fuera_del_embudo: number;
+            /**
+             * Funnel Denominador
+             * @description Expedientes en alguno de los cinco escalones del embudo: el denominador de `pct` en los tramos con `en_embudo`.
+             * @default 0
+             */
+            funnel_denominador: number;
             /** Funnel Estados */
             funnel_estados?: components["schemas"]["FunnelStep"][];
             /**
@@ -11430,6 +11460,7 @@ export interface components {
         ResumenHoyResult: {
             /**
              * Calientes
+             * @description «Grandes en plazo»: licitaciones abiertas, en plazo y con importe ≥ P75 del ámbito. NO es la banda `Caliente` del score (≥ 75 puntos); el nombre del campo se conserva por compatibilidad del contrato.
              * @default 0
              */
             calientes: number;
@@ -13532,7 +13563,9 @@ export interface operations {
                 fecha_hasta?: string | null;
                 /** @description Incluir total */
                 with_total?: boolean;
+                /** @description Tamaño de página (máx. 500). */
                 limit?: number;
+                /** @description Filas a saltar desde el inicio. */
                 offset?: number;
             };
             header?: {
@@ -15732,7 +15765,9 @@ export interface operations {
                 q?: string | null;
                 organo?: string | null;
                 sort?: string;
+                /** @description Tamaño de página (máx. 500). */
                 limit?: number;
+                /** @description Filas a saltar desde el inicio. */
                 offset?: number;
             };
             header?: {
@@ -16255,12 +16290,14 @@ export interface operations {
             query?: {
                 /** @description Nombre, alias o NIF (parcial) */
                 q?: string | null;
-                limit?: number;
-                offset?: number;
                 /** @description Columna por la que ordenar */
                 sort?: "nombre" | "nif" | "contratos" | "importe";
                 /** @description Sentido del orden */
                 order?: "asc" | "desc";
+                /** @description Tamaño de página (máx. 500). */
+                limit?: number;
+                /** @description Filas a saltar desde el inicio. */
+                offset?: number;
             };
             header?: {
                 "X-CSRF-Token"?: string | null;
@@ -17600,7 +17637,9 @@ export interface operations {
                 sort?: string | null;
                 /** @description Incluir total (false = más rápido para paginación) */
                 with_total?: boolean;
+                /** @description Tamaño de página (máx. 500). */
                 limit?: number;
+                /** @description Filas a saltar desde el inicio. */
                 offset?: number;
             };
             header?: {
@@ -20913,7 +20952,9 @@ export interface operations {
                 organization_id?: number | null;
                 status?: ("identified" | "qualifying" | "go_no_go" | "preparing" | "submitted" | "won" | "lost" | "withdrawn") | null;
                 responsible_user_id?: number | null;
+                /** @description Tamaño de página (máx. 500). */
                 limit?: number;
+                /** @description Filas a saltar desde el inicio. */
                 offset?: number;
             };
             header?: {
@@ -21738,7 +21779,9 @@ export interface operations {
         parameters: {
             query?: {
                 organization_id?: number | null;
+                /** @description Tamaño de página (máx. 500). */
                 limit?: number;
+                /** @description Filas a saltar desde el inicio. */
                 offset?: number;
             };
             header?: {
@@ -22336,7 +22379,9 @@ export interface operations {
     get_proximas_api_v1_radar_proximas_get: {
         parameters: {
             query?: {
+                /** @description Tamaño de página (máx. 500). */
                 limit?: number;
+                /** @description Filas a saltar desde el inicio. */
                 offset?: number;
             };
             header?: {
