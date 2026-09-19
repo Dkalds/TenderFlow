@@ -63,8 +63,58 @@ from services.analytics.scoring_signals import (
     load_margen_stats,
 )
 from shared.dto import OrganizationSettings
+from shared.scoring_weights import dimension_weights
 
 log = get_logger(__name__)
+
+# ── F1.4: riesgo de anulación o desierto ────────────────────────────────────
+#: Clave del peso de la penalización en `SCORING_WEIGHTS` / perfil, y nombre
+#: del flag que emite. Son la misma cadena a propósito: el perfil la pone a
+#: cero con el mismo nombre que el usuario ve en la tarjeta.
+FLAG_ANULACION = "organo_anula_frecuente"
+
+#: Expedientes resueltos mínimos para publicar una tasa. Por debajo no hay
+#: señal (y la fila no lleva el flag): con cinco expedientes, uno anulado es
+#: un 20 % que no dice nada del órgano.
+ANULACION_MINIMO_EXPEDIENTES = 10
+
+#: Tasa a partir de la cual el órgano «anula a menudo». La media del corpus
+#: ronda el 5-10 %; un 25 % es uno de cada cuatro expedientes que no llega a
+#: contrato, y ahí preparar la oferta es una apuesta distinta.
+ANULACION_UMBRAL = 0.25
+
+
+def tasa_anulacion(
+    organo: Any,
+    cpv: Any,
+    tasas: dict[tuple[str, str], tuple[int, int]],
+) -> tuple[float, int] | None:
+    """``(tasa, n)`` que aplica a una fila, o ``None`` si no hay muestra.
+
+    Primero el órgano en ese CPV-4 —anular obras no dice lo mismo que anular
+    servicios de TI—, y si ese cruce no llega al mínimo, el órgano entero. Por
+    debajo del mínimo en los dos, ``None``: sin señal, nunca una tasa de tres
+    expedientes presentada como si fuera un hábito del órgano.
+    """
+    from db.repositories.tasas_anulacion import TODAS, clave_organo
+
+    clave = clave_organo(organo if pd.notna(organo) else None)
+    if clave is None:
+        return None
+    candidatos = []
+    cpv4 = _cpv4(cpv)
+    if cpv4 is not None:
+        candidatos.append((clave, cpv4))
+    candidatos.append((clave, TODAS))
+    for par in candidatos:
+        conteo = tasas.get(par)
+        if conteo is None:
+            continue
+        n, fallidos = conteo
+        if n >= ANULACION_MINIMO_EXPEDIENTES:
+            return fallidos / n, n
+    return None
+
 
 _repo = AggregateRepository()
 
@@ -178,6 +228,9 @@ class ScoringSignalsHealth(BaseModel):
     )
     senal_tecnica: str = Field(default="ok", description="ok | error")
     perfil: str = Field(default="ok", description="ok | error")
+    # Campo ADITIVO (F1.4): la penalización por órgano que anula a menudo.
+    # `apagada` es una decisión del perfil (peso 0), no una avería.
+    anulacion_organo: str = Field(default="ok", description="ok | apagada | error")
 
     @property
     def degradado(self) -> bool:
@@ -187,6 +240,7 @@ class ScoringSignalsHealth(BaseModel):
             or self.margen != "ok"
             or self.senal_tecnica != "ok"
             or self.perfil != "ok"
+            or self.anulacion_organo == "error"
             or self.percentiles_fuente != "universo_vivo"
         )
 
@@ -250,6 +304,11 @@ class _ScoringContext:
     importe_min: float | None = None
     importe_max: float | None = None
     now: pd.Timestamp = field(default_factory=lambda: pd.Timestamp.now("UTC"))
+    # F1.4 — puntos que resta `organo_anula_frecuente` (0 = apagada) y las
+    # tasas de los órganos del lote, ``{(organo_key, cpv4): (n, fallidos)}``.
+    # None = la consulta falló: ninguna fila lleva el flag y la salud lo dice.
+    penalizacion_anulacion: int = 0
+    tasas_anulacion: dict[tuple[str, str], tuple[int, int]] | None = field(default_factory=dict)
 
 
 # ---------------------------------------------------------------------------
@@ -273,6 +332,9 @@ def _effective_weights(
     (por peso descendente y, a igualdad, por nombre), para que dos requests con
     el mismo perfil no puedan devolver scores distintos.
     """
+    # Las penalizaciones (F1.4) comparten mapa con los pesos pero no son
+    # dimensiones: ni suman ni reciben reparto.
+    weights = dimension_weights(weights)
     if keywords or "afinidad" not in weights:
         return dict(weights)
     afinidad_peso = weights["afinidad"]
@@ -332,6 +394,22 @@ def _load_tech_signal(df: pd.DataFrame, tecnologia: str | None) -> dict[str, flo
         return _repo.tech_signal_by_ids(ids, tecnologia=tecnologia)
     except Exception as exc:
         log.warning("scoring_signals_tecnica_error", error=str(exc))
+        return None
+
+
+def _load_tasas_anulacion(df: pd.DataFrame) -> dict[tuple[str, str], tuple[int, int]] | None:
+    """Tasas de anulación de los órganos del lote, o None si la consulta falla."""
+    if "organo_contratacion" not in df.columns or df.empty:
+        return {}
+    from db.repositories.tasas_anulacion import clave_organo, tasas_por_organos
+
+    claves = [
+        c for c in (clave_organo(v) for v in df["organo_contratacion"].dropna().tolist()) if c
+    ]
+    try:
+        return tasas_por_organos(claves)
+    except Exception as exc:
+        log.warning("scoring_signals_anulacion_error", error=str(exc))
         return None
 
 
@@ -416,6 +494,14 @@ def _build_context(
         _load_tech_signal(df, tecnologia) if eff_weights.get("senal_tecnica", 0) > 0 else {}
     )
 
+    # F1.4: el perfil manda si trae la clave (ponerla a 0 la apaga); si no, la
+    # configuración global. Un perfil anterior a la penalización no la apaga
+    # por omisión.
+    penalizacion = int(
+        weights_raw.get(FLAG_ANULACION, settings.SCORING_WEIGHTS.get(FLAG_ANULACION, 0))
+    )
+    tasas = _load_tasas_anulacion(df) if penalizacion > 0 else {}
+
     return _ScoringContext(
         imp_p10=imp_p10,
         imp_p90=imp_p90,
@@ -432,6 +518,8 @@ def _build_context(
         tech_signal=tech_signal,
         importe_min=profile.importe_min if profile else None,
         importe_max=profile.importe_max if profile else None,
+        penalizacion_anulacion=penalizacion,
+        tasas_anulacion=tasas,
     )
 
 
@@ -618,6 +706,16 @@ def _score_row(
         if fuera_de_rango:
             d_riesgo -= 15.0
             flags.append("fuera_de_rango")
+
+    # F1.4 — órgano que anula o deja desiertos muchos expedientes. Solo con
+    # muestra suficiente (`tasa_anulacion` devuelve None por debajo) y solo
+    # si la penalización pesa: con peso 0 el flag diría «penaliza» sin
+    # penalizar, que es justo la frase que no puede mentir.
+    if ctx.penalizacion_anulacion > 0 and ctx.tasas_anulacion:
+        medida = tasa_anulacion(row.get("organo_contratacion"), row.get("cpv"), ctx.tasas_anulacion)
+        if medida is not None and medida[0] >= ANULACION_UMBRAL:
+            d_riesgo -= float(ctx.penalizacion_anulacion)
+            flags.append(FLAG_ANULACION)
 
     desglose["riesgo"] = round(d_riesgo, 2)
 
@@ -940,6 +1038,13 @@ def get_scoring(
             afinidad_origen=ctx.affinity_origen,
             senal_tecnica="error" if ctx.tech_signal is None else "ok",
             perfil=profile_status,
+            anulacion_organo=(
+                "apagada"
+                if ctx.penalizacion_anulacion <= 0
+                else "error"
+                if ctx.tasas_anulacion is None
+                else "ok"
+            ),
         ),
     )
     log.info("analytics_scoring_done", total=total, devueltas=len(scored))

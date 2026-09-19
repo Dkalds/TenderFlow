@@ -44,8 +44,11 @@ __all__ = [
     "GuionCriterio",
     "GuionOferta",
     "PuntoGuion",
+    "a_pdf",
     "contar_frases",
     "generar_guion",
+    "guion_generado",
+    "guion_pdf",
     "marcar_sin_base",
     "validar_esquema",
 ]
@@ -281,6 +284,12 @@ def generar_guion(
             sin_guion="Todavía no hay texto extraído de los pliegos de este expediente.",
         )
 
+    firma = firma_de(record.facts if record else None, paginas)
+    cacheado = _leer_cache(licitacion_id, firma)
+    if cacheado is not None:
+        # Mismo pliego, mismo guion: pedirlo otra vez no gasta presupuesto.
+        return cacheado
+
     docs = [
         {
             "id_externo": licitacion_id,
@@ -360,7 +369,7 @@ def generar_guion(
         GuionOferta(
             licitacion_id=licitacion_id,
             criterios=criterios,
-            firma=firma_de(record.facts if record else None, paginas),
+            firma=firma,
         ),
         validas,
     )
@@ -372,7 +381,195 @@ def generar_guion(
         # porque uno de doce salió largo no lo usaría nadie.
         log.info("guion_puntos_recortados", licitacion_id=licitacion_id, n=len(infractores))
         guion = _recortar(guion)
+    if guion.criterios:
+        # Solo se cachea un guion con contenido: uno vacío por un JSON roto
+        # del modelo sería la respuesta oficial hasta que cambiara el pliego.
+        _guardar_cache(guion)
     return guion
+
+
+# ── Caché por firma y exportación ──────────────────────────────────────────
+#
+# La firma (ficha + páginas) es la clave: mientras el pliego no cambie, el
+# guion es el mismo. Es también lo que deja exportarlo a PDF **sin volver a
+# llamar al LLM**: la descarga lee lo que la generación dejó aquí.
+
+GUION_CACHE_NAMESPACE = "guion_oferta"
+
+#: Treinta días. La firma ya invalida la entrada en cuanto cambia el pliego;
+#: el TTL solo acota cuánto sobrevive un guion de un expediente que nadie abre.
+GUION_CACHE_TTL_SECONDS = 30 * 86_400
+
+
+def _clave_cache(licitacion_id: str, firma: str) -> str:
+    return f"{licitacion_id}:{firma}"
+
+
+def _leer_cache(licitacion_id: str, firma: str) -> GuionOferta | None:
+    from shared.cache import get_cache
+
+    try:
+        crudo = get_cache(GUION_CACHE_NAMESPACE).get(_clave_cache(licitacion_id, firma))
+    except Exception:
+        log.debug("guion_cache_get_failed", exc_info=True)
+        return None
+    if crudo is None:
+        return None
+    try:
+        return GuionOferta.model_validate(crudo)
+    except Exception:
+        # Una entrada de otra versión del modelo no se sirve: se regenera.
+        log.debug("guion_cache_ilegible", licitacion_id=licitacion_id)
+        return None
+
+
+def _guardar_cache(guion: GuionOferta) -> None:
+    from shared.cache import get_cache
+
+    if not guion.firma:
+        return
+    try:
+        get_cache(GUION_CACHE_NAMESPACE).set(
+            _clave_cache(guion.licitacion_id, guion.firma),
+            guion.model_dump(mode="json"),
+            ttl=GUION_CACHE_TTL_SECONDS,
+        )
+    except Exception:
+        log.debug("guion_cache_set_failed", exc_info=True)
+
+
+def guion_generado(licitacion_id: str) -> GuionOferta | None:
+    """El guion ya generado para el estado vigente del pliego, o ``None``.
+
+    **Nunca llama al LLM**: recalcula la firma (ficha + páginas, dos lecturas)
+    y busca en la caché. ``None`` significa «no se ha generado para este
+    pliego», y quien descarga tiene que generarlo antes — descargar no puede
+    ser una forma de gastar presupuesto sin que se vea.
+    """
+    from db.repositories.documentos import DocumentosRepository
+    from services.rag.fact_sheet import get_fact_sheet
+
+    record = get_fact_sheet(licitacion_id)
+    if record is None or not record.facts or not record.facts.award_criteria:
+        return None
+    paginas = DocumentosRepository().list_pages_by_licitacion(licitacion_id)
+    if not paginas:
+        return None
+    return _leer_cache(licitacion_id, firma_de(record.facts, paginas))
+
+
+def guion_pdf(licitacion_id: str) -> bytes | None:
+    """El PDF del guion ya generado, o ``None`` si no lo hay. Nunca llama al LLM.
+
+    Resuelve el nombre de cada documento citado para que el papel diga «pliego
+    técnico.pdf p. 12» y no «doc 4812 p. 12»; si esa lectura falla, el PDF sale
+    igual con los ids, que siguen siendo verificables.
+    """
+    from db.repositories.documentos import DocumentosRepository
+
+    guion = guion_generado(licitacion_id)
+    if guion is None:
+        return None
+    nombres: dict[int, str] = {}
+    try:
+        for doc in DocumentosRepository().list_by_licitacion(licitacion_id):
+            nombre = doc.get("filename") or doc.get("tipo")
+            if doc.get("id") is not None and nombre:
+                nombres[int(doc["id"])] = str(nombre)
+    except Exception:
+        log.warning("guion_pdf_nombres_fallidos", licitacion_id=licitacion_id, exc_info=True)
+    return a_pdf(guion, nombres)
+
+
+def a_pdf(guion: GuionOferta, nombres: dict[int, str] | None = None) -> bytes:
+    """El guion en PDF, con la misma forma que :func:`a_markdown`.
+
+    ``nombres`` traduce ``documento_id`` a nombre de fichero cuando se conoce;
+    sin él la cita sale como «doc N». Los imports de ``reportlab`` van dentro,
+    como en ``services/ficha_pdf.py``: tarda en cargar y este módulo lo importa
+    la API entera.
+    """
+    import io
+    from datetime import UTC, datetime
+    from xml.sax.saxutils import escape
+
+    from reportlab.lib import colors
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+    from reportlab.lib.units import mm
+    from reportlab.platypus import ListFlowable, ListItem, Paragraph, SimpleDocTemplate, Spacer
+
+    nombres = nombres or {}
+    buf = io.BytesIO()
+    titulo = f"Guion de la oferta técnica — {guion.licitacion_id}"
+    doc = SimpleDocTemplate(
+        buf,
+        pagesize=A4,
+        title=titulo,
+        leftMargin=18 * mm,
+        rightMargin=18 * mm,
+        topMargin=16 * mm,
+        bottomMargin=16 * mm,
+    )
+    base = getSampleStyleSheet()
+    pequeno = ParagraphStyle(
+        "guion_pequeno",
+        parent=base["Normal"],
+        fontSize=7.5,
+        leading=9.5,
+        textColor=colors.HexColor("#5b6b7c"),
+    )
+    seccion = ParagraphStyle(
+        "guion_seccion",
+        parent=base["Heading2"],
+        fontSize=11,
+        spaceAfter=3,
+        textColor=colors.HexColor("#1a5276"),
+    )
+    punto_estilo = ParagraphStyle("guion_punto", parent=base["Normal"], fontSize=9, leading=12)
+
+    def _t(texto: str) -> str:
+        # `Paragraph` interpreta marcado: un `<` del pliego rompería el PDF.
+        return escape(texto)
+
+    story: list[Any] = [
+        Paragraph(_t(titulo), base["Title"]),
+        Paragraph(
+            _t(
+                "Esquema de puntos a cubrir por criterio, con citas al pliego. No redacta la "
+                "oferta: la prosa la escribe el equipo."
+            ),
+            base["Normal"],
+        ),
+        Paragraph(
+            datetime.now(UTC).strftime("Exportado el %Y-%m-%d a las %H:%M UTC")
+            + (f" · firma {guion.firma[:12]}" if guion.firma else ""),
+            pequeno,
+        ),
+        Spacer(1, 10),
+    ]
+    if guion.sin_guion:
+        story.append(Paragraph(_t(guion.sin_guion), base["Italic"]))
+    for criterio in guion.criterios:
+        peso = f" ({criterio.peso_pct:g} puntos)" if criterio.peso_pct is not None else ""
+        story.append(Paragraph(_t(f"{criterio.criterio}{peso}"), seccion))
+        items: list[Any] = []
+        for punto in criterio.puntos:
+            refs = ", ".join(
+                f"{nombres.get(c.documento_id, f'doc {c.documento_id}')} p. {c.page_number}"
+                for c in punto.evidencia
+            )
+            marca = (
+                f' <font color="#b45309"><i>[{SIN_BASE}]</i></font>'
+                if punto.sin_base
+                else (f' <font color="#5b6b7c"><i>({_t(refs)})</i></font>' if refs else "")
+            )
+            items.append(ListItem(Paragraph(_t(punto.texto) + marca, punto_estilo)))
+        if items:
+            story.append(ListFlowable(items, bulletType="bullet", leftIndent=10))
+        story.append(Spacer(1, 8))
+    doc.build(story)
+    return buf.getvalue()
 
 
 def _recortar(guion: GuionOferta) -> GuionOferta:

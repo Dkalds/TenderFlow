@@ -15,6 +15,7 @@ from fastapi import (
     APIRouter,
     Depends,
     HTTPException,
+    Response,
     status,
 )
 from pydantic import BaseModel
@@ -26,7 +27,7 @@ from api.routes.licitaciones._base import (
 )
 from api.tenancy import require_organization
 from observability.logging import get_logger
-from services.rag.guion_oferta import GuionOferta, generar_guion
+from services.rag.guion_oferta import GuionOferta, generar_guion, guion_pdf
 from shared.tender_facts import TenderFactSheetRecord
 
 log = get_logger(__name__)
@@ -65,6 +66,43 @@ async def post_guion_oferta(
         return await run_db(_trabajo)
     except LLMBudgetExceeded as exc:
         raise HTTPException(status_code=429, detail=str(exc)) from exc
+
+
+@router.get(
+    "/licitaciones/{id_externo:path}/guion.pdf",
+    # `response_class`: la respuesta es el fichero. Mismo patrón que
+    # `GET /pursuits/{id}/ficha.pdf` y `api/routes/exports.py`.
+    response_class=Response,
+    summary="Guion de la oferta técnica en PDF (el ya generado; no llama al LLM)",
+    responses={
+        200: {"content": {"application/pdf": {}}, "description": "El PDF"},
+        401: {"description": "Autenticación inválida"},
+        404: {"description": "No hay guion generado para el estado vigente del pliego"},
+    },
+)
+async def get_guion_oferta_pdf(
+    id_externo: str,
+    _ctx: dict[str, Any] = Depends(require_any_auth),
+) -> Response:
+    """F2.6 — descarga en PDF del guion **ya generado**.
+
+    Nunca genera: descargar no puede ser una forma de gastar presupuesto de
+    LLM sin que se vea. Si el pliego cambió desde la última generación, la
+    firma no coincide y la respuesta es 404 — el guion guardado sería de otro
+    pliego.
+    """
+    pdf = await run_db(guion_pdf, id_externo)
+    if pdf is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No hay guion generado para el pliego vigente. Genéralo antes de descargarlo.",
+        )
+    nombre = "".join(c if c.isalnum() or c in "-_" else "_" for c in id_externo)
+    return Response(
+        content=pdf,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="guion-oferta-{nombre}.pdf"'},
+    )
 
 
 @router.get(

@@ -272,6 +272,12 @@ def _tipo_notificacion(evento: dict[str, Any], spec: EspecificacionEvento) -> st
         return f"{base}:{payload.get('empresa_id')}"
     if spec.tipo == "cuenta.vencimiento_proximo":
         return f"{base}:{payload.get('fecha_fin')}"
+    if spec.tipo == "pursuit.cartera_vence":
+        # F4.3: el mismo contrato avisa a seis, tres y un mes. Con el tipo
+        # fijo, el segundo aviso chocaría con el único del expediente.
+        return (
+            f"{base}:{payload.get('cartera_id')}:{payload.get('meses')}:{payload.get('fecha_fin')}"
+        )
     return base
 
 

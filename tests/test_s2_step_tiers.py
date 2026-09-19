@@ -43,6 +43,9 @@ PASOS_ADVISORY = {
     # no rompe la pasada ni lo nota ningún cliente. Lo que bloquea es la
     # migración, y eso lo decide una persona leyendo la serie.
     "follows_paridad",
+    # F4.3: avisos de fin de contrato con meses de margen; la pasada
+    # siguiente recupera una fallida.
+    "cartera_avisos",
     "drift_checks",
     "sap_active_learning",
     "webhook_reintentos",

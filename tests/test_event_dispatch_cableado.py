@@ -159,12 +159,14 @@ def test_run_emite_los_avisos_antes_de_repartir(monkeypatch: pytest.MonkeyPatch)
 
 
 def test_event_dispatch_es_un_paso_canonico_entre_notify_y_digests() -> None:
-    """Después de quien escribe eventos de reglas y competidores, y antes del
-    digest, que así incluye en la misma pasada lo que el despachador encoló."""
+    """Después de quienes escriben eventos (reglas y competidores; avisos de
+    fin de contrato de F4.3), y antes del digest, que así incluye en la misma
+    pasada lo que el despachador encoló."""
     from scheduler.pipeline_runs import CANONICAL_STEPS, STEP_DEPS, step_tier
 
     i = CANONICAL_STEPS.index("event_dispatch")
-    assert CANONICAL_STEPS[i - 1] == "watchlist_notify"
+    assert CANONICAL_STEPS.index("watchlist_notify") < i
+    assert CANONICAL_STEPS.index("cartera_avisos") < i
     assert CANONICAL_STEPS[i + 1] == "digests"
     assert step_tier("event_dispatch") == "advisory"
     assert "event_dispatch" not in STEP_DEPS

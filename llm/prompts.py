@@ -14,6 +14,8 @@ Modos:
       relevantes y responde con conocimiento general cuando no los hay.
     - ``licitacion``: conversación centrada en un único expediente, con
       fragmentos de sus pliegos como contexto.
+    - ``comparacion``: pregunta cruzada sobre dos o tres expedientes (F2.8),
+      citando cada dato con su expediente.
     - ``resumen``: resumen ejecutivo estructurado de una licitación.
     - ``extraction``: JSON estricto para la ficha verificable del pliego.
     - ``clasificacion``: JSON estricto con las tecnologías del anuncio, sobre
@@ -27,7 +29,9 @@ import re
 from typing import Any, Literal, TypedDict
 
 Role = Literal["user", "assistant"]
-PromptMode = Literal["general", "licitacion", "resumen", "extraction", "clasificacion"]
+PromptMode = Literal[
+    "general", "licitacion", "resumen", "extraction", "clasificacion", "comparacion"
+]
 
 
 class ChatMessage(TypedDict):
@@ -51,6 +55,10 @@ _CONTEXT_CHARS_BY_MODE: dict[PromptMode, int] = {
     "extraction": MAX_CONTEXT_CHARS_LICITACION,
     # Clasificación: un solo anuncio (título + descripción), sin pliegos.
     "clasificacion": MAX_CONTEXT_CHARS_GENERAL,
+    # F2.8: el mismo techo que un expediente, repartido entre dos o tres. La
+    # ruta reparte antes de llamar (`api/routes/ask._presupuesto_por_expediente`)
+    # para que el corte no se coma al último expediente entero.
+    "comparacion": MAX_CONTEXT_CHARS_LICITACION,
 }
 
 # Presupuesto del extracto de ``descripcion`` por modo. Los 300 chars están
@@ -65,7 +73,19 @@ _EXCERPT_CHARS_BY_MODE: dict[PromptMode, int] = {
     "resumen": 2400,
     "extraction": 300,
     "clasificacion": 300,
+    "comparacion": 1200,
 }
+
+
+def context_chars_for(mode: PromptMode) -> int:
+    """Presupuesto de chars del bloque de CONTEXTO de ``mode``."""
+    return _CONTEXT_CHARS_BY_MODE[mode]
+
+
+def excerpt_chars_for(mode: PromptMode) -> int:
+    """Chars del extracto de ``descripcion`` de cada anuncio en ``mode``."""
+    return _EXCERPT_CHARS_BY_MODE[mode]
+
 
 _TRUNCATION_MARK = "\n[contexto truncado]"
 
@@ -125,6 +145,24 @@ _SYSTEM_LICITACION = (
     )
 )
 
+_SYSTEM_COMPARACION = (
+    _BASE
+    + _UNTRUSTED_CONTEXT_RULES
+    + (
+        "El CONTEXTO contiene entre dos y tres licitaciones, cada una encabezada por su ID "
+        "entre corchetes, con los metadatos de su anuncio y, si están disponibles, fragmentos "
+        "de sus pliegos. Responde a la pregunta comparándolas. Atribuye cada dato a su "
+        "expediente citando su ID entre corchetes, ej: [EXP-2024-001]; nunca mezcles en una "
+        "misma frase datos de dos expedientes sin decir de cuál es cada uno. "
+        "Cada afirmación que salga de un pliego debe terminar además con el marcador del "
+        "fragmento que la sostiene, copiado tal cual de su cabecera: [doc:N p.M] (o [doc:N] "
+        "si la cabecera no trae página). No inventes marcadores. Si para un expediente el "
+        "CONTEXTO no dice nada sobre lo preguntado, dilo para ese expediente en vez de "
+        "suponerlo. Cuando compares más de un aspecto, incluye una tabla Markdown con una "
+        "columna por expediente. Responde siempre en español y en formato Markdown."
+    )
+)
+
 _SYSTEM_RESUMEN = (
     _BASE
     + _UNTRUSTED_CONTEXT_RULES
@@ -180,6 +218,8 @@ def build_system_prompt(mode: PromptMode, *, has_corpus_context: bool) -> str:
         return _SYSTEM_CLASIFICACION
     if mode == "licitacion":
         return _SYSTEM_LICITACION
+    if mode == "comparacion":
+        return _SYSTEM_COMPARACION
     if mode == "resumen":
         return _SYSTEM_RESUMEN
     return _SYSTEM_GENERAL_WITH_CORPUS if has_corpus_context else _SYSTEM_GENERAL_NO_CORPUS

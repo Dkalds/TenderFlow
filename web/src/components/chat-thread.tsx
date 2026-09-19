@@ -8,7 +8,7 @@ import { MarkdownAnswer } from "@/components/markdown-answer";
 import { registrarEvento } from "@/lib/analytics";
 import { apiMutate } from "@/lib/api-client";
 import type { ChatTurn } from "@/hooks/use-ask";
-import type { DegradedInfo, FuenteDocumento, SourcesInfo } from "@/lib/ask-stream";
+import type { AskMeta, DegradedInfo, FuenteDocumento, SourcesInfo } from "@/lib/ask-stream";
 
 /** Collapsible block with the pliego/corpus citations of one assistant turn. */
 function FuentesBlock({ fuentes }: { fuentes: FuenteDocumento[] }) {
@@ -85,6 +85,7 @@ function CitasBlock({ info }: { info: SourcesInfo }) {
           className="border-primary/40 text-muted-foreground border-l-2 pl-2 text-xs"
         >
           <span className="text-foreground font-medium">
+            {f.id_externo ? `${f.id_externo} · ` : ""}
             {[f.tipo, f.filename].filter(Boolean).join(" · ") || `Documento ${f.documento_id}`}
             {f.page_number != null ? `, p. ${f.page_number}` : ""}
           </span>
@@ -199,6 +200,42 @@ function ScopeFallbackNotice() {
   );
 }
 
+/**
+ * F2.8 — lo que de verdad entró en una pregunta cruzada.
+ *
+ * Una comparación en la que uno de los tres expedientes no cargó, o llegó con
+ * su parte del pliego recortada, se leería como una comparación de tres. El
+ * backend lo declara en `ask_meta`; aquí se dice con nombre.
+ */
+function ComparacionNotice({ meta }: { meta: AskMeta }) {
+  const expedientes = meta.expedientes ?? [];
+  const ausentes = expedientes.filter((e) => !e.encontrado).map((e) => e.id_externo);
+  const recortados = expedientes.filter((e) => e.encontrado && e.truncado).map((e) => e.id_externo);
+  const sinPliego = expedientes
+    .filter((e) => e.encontrado && e.has_pliego_text === false)
+    .map((e) => e.id_externo);
+  if (ausentes.length === 0 && recortados.length === 0 && sinPliego.length === 0) return null;
+  return (
+    <div className="mt-2 rounded-md border border-amber-500/50 bg-amber-500/10 p-2 text-xs" role="status">
+      <p className="flex items-center gap-1.5 font-medium text-amber-700 dark:text-amber-400">
+        <TriangleAlert className="h-3.5 w-3.5" aria-hidden="true" />
+        Comparación incompleta
+      </p>
+      {ausentes.length > 0 && (
+        <p className="text-muted-foreground mt-0.5">No se pudo cargar: {ausentes.join(", ")}.</p>
+      )}
+      {sinPliego.length > 0 && (
+        <p className="text-muted-foreground mt-0.5">Solo con el anuncio, sin pliegos: {sinPliego.join(", ")}.</p>
+      )}
+      {recortados.length > 0 && (
+        <p className="text-muted-foreground mt-0.5">
+          Pliego recortado para que quepan todos: {recortados.join(", ")}.
+        </p>
+      )}
+    </div>
+  );
+}
+
 /** Amber notice shown when the backend degraded (no LLM synthesis). */
 function DegradedNotice({ degraded }: { degraded: DegradedInfo }) {
   const docs = degraded.docs ?? [];
@@ -289,9 +326,10 @@ export function ChatThread({
                 ▌
               </span>
             ) : null}
-            {expectLicitacionContext && m.askMeta && m.askMeta.contexto !== "licitacion" ? (
+            {expectLicitacionContext && m.askMeta && m.askMeta.contexto === "general" ? (
               <ScopeFallbackNotice />
             ) : null}
+            {m.askMeta?.expedientes ? <ComparacionNotice meta={m.askMeta} /> : null}
             {m.degraded ? <DegradedNotice degraded={m.degraded} /> : null}
             {m.sources ? <CitasBlock info={m.sources} /> : null}
             {m.sources?.sinFuentes ? <SinFuentesNotice /> : null}

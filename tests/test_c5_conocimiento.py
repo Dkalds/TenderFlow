@@ -152,7 +152,8 @@ class TestCitasEnLaRuta:
         import api.routes.ask as mod
 
         fuente = inspect.getsource(mod._stream_ask)
-        assert 'if mode == "licitacion":' in fuente
+        # F2.8: la pregunta cruzada también cita pliegos; el modo general no.
+        assert 'if mode in ("licitacion", "comparacion"):' in fuente
 
     def test_una_respuesta_degradada_no_emite_sources(self) -> None:
         """No hay respuesta que citar: `sin_fuentes` ahí sería una afirmación falsa."""

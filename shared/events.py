@@ -300,6 +300,18 @@ CATALOGO: dict[str, EspecificacionEvento] = dict(
             ("in_app", "webhook"),
             tipo_notificacion="cuenta_vencimiento_proximo",
         ),
+        # F4.3. Lo emite `services/cartera.emitir_avisos_de_fin` a seis, tres
+        # y un mes del fin efectivo de un contrato ganado, una vez por
+        # `(contrato, ventana, fecha de fin)`. Va al responsable de la
+        # oportunidad ganada; el opt-out es la preferencia de Ajustes.
+        _spec(
+            "pursuit.cartera_vence",
+            "Se acerca el fin de un contrato en cartera",
+            ("pursuit_id", "licitacion_id", "cartera_id", "meses", "fecha_fin", "destinatarios"),
+            ("in_app", "digest", "webhook"),
+            tipo_notificacion="cartera_vence",
+            clave_ajustes="pursuit.cartera_vence",
+        ),
     )
 )
 
