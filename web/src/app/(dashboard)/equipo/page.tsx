@@ -20,6 +20,11 @@
  * Sólo la ven `owner` y `admin`: son quienes pueden crear un webhook que manda
  * datos del equipo fuera del producto, y enseñarle a un `member` un formulario
  * que el backend le va a rechazar es prometer un permiso que no tiene.
+ *
+ * La pestaña «Actividad» (F4.5) es para **todos** los roles: el feed vivía
+ * sólo en Dirección, que es owner/admin, y un `member` no tenía dónde ver qué
+ * hizo el equipo. El backend ya lo acota por rol (sin eventos de
+ * administración para un `member`), así que aquí no se filtra nada.
  */
 
 import { Plus } from "lucide-react";
@@ -37,6 +42,7 @@ import { MatrizPermisos } from "./_components/matriz-permisos";
 import { MiembrosCard } from "./_components/miembros-card";
 import { OrganizacionTab } from "./_components/organizacion-tab";
 import { WebhooksEquipoView } from "../ops/_components/webhooks-view";
+import { ActividadEquipo } from "../direccion/_components/actividad-equipo";
 
 export default function EquipoPage() {
   const organizations = useOrganizations();
@@ -65,6 +71,7 @@ export default function EquipoPage() {
           <TabsList>
             <TabsTrigger value="miembros">Miembros</TabsTrigger>
             <TabsTrigger value="organizacion">Organización</TabsTrigger>
+            <TabsTrigger value="actividad">Actividad</TabsTrigger>
             {canManage && <TabsTrigger value="integraciones">Integraciones</TabsTrigger>}
           </TabsList>
 
@@ -90,6 +97,10 @@ export default function EquipoPage() {
               canManage={canManage}
               isPersonal={isPersonal}
             />
+          </TabsContent>
+
+          <TabsContent value="actividad">
+            <ActividadEquipo organizationId={activeOrganizationId} />
           </TabsContent>
 
           {canManage && (

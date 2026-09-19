@@ -4043,6 +4043,9 @@ export interface paths {
          *
          *     Un `member` que teclee la URL recibe 403, no una pantalla sin enlace: un
          *     rail sin enlace es una sugerencia, esto es un permiso.
+         *
+         *     Cada tarjeta lleva universo, `n` y mínimo; por debajo del mínimo sale sin
+         *     `valor` y con la `nota` que dice por qué, nunca con un número inventado.
          */
         get: operations["get_direccion_api_v1_pursuits_direccion_get"];
         put?: never;
@@ -6759,6 +6762,18 @@ export interface components {
             n_minimo: number;
             /** Organization Id */
             organization_id: number;
+            /**
+             * Perdidas N Minimo
+             * @default 5
+             */
+            perdidas_n_minimo: number;
+            /** Perdidas Por Motivo */
+            perdidas_por_motivo?: components["schemas"]["PerdidaPorMotivo"][];
+            /** Probabilidades Etapa Usadas */
+            probabilidades_etapa_usadas?: {
+                [key: string]: number;
+            };
+            radar_quality?: components["schemas"]["RadarQuality"] | null;
             /** Tarjetas */
             tarjetas?: components["schemas"]["TarjetaMetrica"][];
             /** Win Rate Por Organo */
@@ -12394,8 +12409,18 @@ export interface components {
              * @default 0
              */
             n: number;
+            /**
+             * N Minimo
+             * @default 1
+             */
+            n_minimo: number;
             /** Nota */
             nota?: string | null;
+            /**
+             * Unidad
+             * @enum {string}
+             */
+            unidad: "eur" | "dias" | "pct";
             /** Universo */
             universo: string;
             /** Valor */
