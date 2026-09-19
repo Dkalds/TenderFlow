@@ -31,6 +31,7 @@ export function RadarFila({
   onFollow,
   onOpenPursuit,
   onOpenFicha,
+  onExplicacion,
   afinidadOrigen,
 }: {
   tender: RadarTender;
@@ -54,6 +55,8 @@ export function RadarFila({
   onFollow: (tender: RadarTender) => void;
   onOpenPursuit: (tender: RadarTender) => void;
   onOpenFicha: (index: number) => void;
+  /** F1.3 — se abrió «cómo se compone esta puntuación» de esta fila. */
+  onExplicacion?: (tender: RadarTender) => void;
 }) {
   const days = daysLeft(tender.fecha_limite);
   const urg = urgency(days);
@@ -119,7 +122,7 @@ export function RadarFila({
             dispara con teclado y aquí el contenido no es una
             etiqueta sino datos. El `stopPropagation` evita que
             abrir la explicación cuente como seleccionar la fila. */}
-        <Popover>
+        <Popover onOpenChange={(abierto) => abierto && onExplicacion?.(tender)}>
           <PopoverTrigger asChild>
             <button
               type="button"

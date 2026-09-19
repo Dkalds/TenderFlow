@@ -146,6 +146,7 @@ export default function RadarPage() {
               onFollow={consola.toggleFollow}
               onOpenPursuit={(tender) => void openPursuit(tender)}
               onOpenFicha={abrirFicha}
+              onExplicacion={consola.marcarExplicacion}
               afinidadOrigen={consola.signals?.afinidad_origen}
             />
           </>

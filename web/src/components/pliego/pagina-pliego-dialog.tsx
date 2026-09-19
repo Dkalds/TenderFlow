@@ -13,6 +13,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { usePaginaDocumento } from "@/hooks/use-pagina-documento";
 import type { EvidenceRef } from "@/lib/api-types";
 import { ApiError } from "@/lib/api-client";
+import { registrarEvento } from "@/lib/analytics";
+import { espacioActual } from "@/lib/espacio-actual";
 
 /**
  * F2.5 — visor de página del pliego con la cita resaltada.
@@ -65,6 +67,19 @@ export function PaginaPliegoDialog({
     setCitaPrevia(cita);
     if (cita) setPagina(cita.page_number);
   }
+
+  // F2.5 — se abrió una cita. Una vez por cita abierta, no por página
+  // recorrida: navegar dentro del documento es leer la misma evidencia. Va en
+  // `espacio_abierto` con su propio origen porque abrir una cita no es una
+  // navegación del rail ni del conmutador.
+  React.useEffect(() => {
+    if (cita == null) return;
+    registrarEvento("espacio_abierto", {
+      espacio: espacioActual(),
+      origen: "cita",
+      evidencia_abierta: "si",
+    });
+  }, [cita]);
 
   const enPaginaDeLaCita = cita != null && pagina === cita.page_number;
   const consulta = usePaginaDocumento(

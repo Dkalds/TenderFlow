@@ -189,6 +189,31 @@ describe("descarte server-side", () => {
     expect(registrarEvento).toHaveBeenCalledWith("radar_triaje", { accion: "descartar" });
   });
 
+  it("el triaje dice si se leyó la explicación del score, sin mandarlo al servidor", async () => {
+    const fetchMock = stubApi({ dismissals: [] });
+    const { result } = renderHook(() => useDismissRadarTender(), { wrapper });
+
+    await act(async () => {
+      await result.current.mutateAsync({
+        idExterno: "LEIDA",
+        score: 70,
+        banda: "Atractiva",
+        accion: "silenciar",
+        dias: 30,
+        explicacionAbierta: true,
+      });
+    });
+
+    const posted = fetchMock.mock.calls.find(
+      (call) => callUrl(call).includes("/radar/dismissals") && callMethod(call) === "POST",
+    );
+    expect(JSON.parse(String(posted?.[1]?.body))).not.toHaveProperty("explicacionAbierta");
+    expect(registrarEvento).toHaveBeenCalledWith("radar_triaje", {
+      accion: "silenciar",
+      explicacion_abierta: "si",
+    });
+  });
+
   it("deshacer hace DELETE sobre el id descartado", async () => {
     const fetchMock = stubApi({ dismissals: ["DESCARTADA"] });
 

@@ -210,6 +210,23 @@ describe("useRadarConsola", () => {
     expect(dismissMutate).toHaveBeenLastCalledWith({ idExterno: "Y", score: 88, banda: "Caliente" });
   });
 
+  it("el triaje lleva si se abrió la explicación del score de esa señal (F1.3)", () => {
+    const { result } = montar();
+    act(() => result.current.marcarExplicacion(tender("LEIDA")));
+    act(() => result.current.aplazar(tender("LEIDA", { score: 60, band: "Tibia" }), "silenciar", 30));
+    expect(dismissMutate).toHaveBeenLastCalledWith({
+      idExterno: "LEIDA",
+      score: 60,
+      banda: "Tibia",
+      explicacionAbierta: true,
+      accion: "silenciar",
+      dias: 30,
+    });
+    // Otra señal sin explicación abierta no la hereda.
+    act(() => result.current.dismiss(tender("OTRA", { score: 50, band: "Tibia" })));
+    expect(dismissMutate).toHaveBeenLastCalledWith({ idExterno: "OTRA", score: 50, banda: "Tibia" });
+  });
+
   it("restaurar todo restaura cada descartada", () => {
     estado.descartadas = ["D", "A"];
     const { result } = montar();
