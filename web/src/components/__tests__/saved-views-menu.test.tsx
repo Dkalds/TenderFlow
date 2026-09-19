@@ -20,6 +20,9 @@ const filtersStub = {
   setCcaas: vi.fn(),
   setTecnologias: vi.fn(),
   setImporteMin: vi.fn(),
+  setImporteMax: vi.fn(),
+  setProcedimientos: vi.fn(),
+  setProvincias: vi.fn(),
   setSoloAbiertas: vi.fn(),
 };
 vi.mock("@/lib/filters", () => ({ useFilters: () => filtersStub }));

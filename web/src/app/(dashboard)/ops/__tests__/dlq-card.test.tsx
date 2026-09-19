@@ -2,6 +2,7 @@ import * as React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { callMethod, callUrl, jsonResponse } from "@/hooks/__tests__/fetch-call";
 
 /**
@@ -41,7 +42,9 @@ function montar(listado: unknown = LISTADO, status = 200) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
     <QueryClientProvider client={client}>
-      <DlqCard />
+      <TooltipProvider>
+        <DlqCard />
+      </TooltipProvider>
     </QueryClientProvider>,
   );
   return fetchMock;
