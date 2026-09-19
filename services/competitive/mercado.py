@@ -23,6 +23,11 @@ from statistics import median
 from typing import Any
 
 from db.repositories import mercado as mercado_repo
+from services.competitive.batallas import (
+    MIN_POR_CELDA,
+    corte_por_procedimiento,
+    corte_por_tramo,
+)
 from shared.metric_scope import MetricScope
 
 AnalysisUniverse = mercado_repo.UniversoAnalisis
@@ -621,6 +626,24 @@ def perfil_empresa(
         "movimientos": movements,
         "contratos_recientes": recent_contracts,
         "participaciones_ute": participaciones_ute,
+        **_cortes_f35(scope_rows),
+    }
+
+
+def _cortes_f35(scope_rows: list[dict[str, Any]]) -> dict[str, Any]:
+    """F3.5 — los cortes por procedimiento y por tramo sobre la actividad filtrada.
+
+    `corte_por_procedimiento`/`corte_por_tramo` agrupan por ``importe`` (el de
+    licitación: la baja se mide contra él y el tramo LCSP también). En las
+    filas del dossier ese número se llama ``presupuesto_licitacion``, así que
+    se renombra aquí en vez de tocar la consulta que comparten todas las
+    secciones del perfil.
+    """
+    filas = [{**row, "importe": row.get("presupuesto_licitacion")} for row in scope_rows]
+    return {
+        "por_procedimiento": [c.model_dump() for c in corte_por_procedimiento(filas)],
+        "por_tramo_importe": [c.model_dump() for c in corte_por_tramo(filas)],
+        "corte_min_n": MIN_POR_CELDA,
     }
 
 

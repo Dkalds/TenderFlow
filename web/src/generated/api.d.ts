@@ -461,6 +461,9 @@ export interface paths {
         /**
          * Overview
          * @description Return aggregated KPIs, breakdowns, and funnel data.
+         *
+         *     `importe_max`, `provincia` y `procedimiento` (F1.1) tienen la semántica del
+         *     listado (`GET /licitaciones`): el mismo filtro acota los KPIs y la tabla.
          */
         get: operations["overview_api_v1_analytics_overview_get"];
         put?: never;
@@ -554,6 +557,32 @@ export interface paths {
         get: operations["resumen_desde_ultima_visita_api_v1_analytics_resumen_desde_mi_ultima_visita_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/analytics/resumen/desde-mi-ultima-visita/visto": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Marcar todo como visto: la última visita pasa a ser ahora
+         * @description F5.4 — «marcar todo como visto» en la banda del Resumen.
+         *
+         *     La última visita es la lectura más reciente de la campana, y hasta ahora
+         *     solo avanzaba leyendo notificaciones concretas. Esto la mueve a ahora sin
+         *     tocar ninguna: la siguiente lectura de la banda empieza aquí. Es personal
+         *     —la marca es del principal, nunca de un parámetro— y no depende de la
+         *     organización, igual que la marca que lee el GET.
+         */
+        post: operations["resumen_marcar_visto_api_v1_analytics_resumen_desde_mi_ultima_visita_visto_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1801,6 +1830,33 @@ export interface paths {
          *     host que sirve la consola proxya ``/api`` a esta API.
          */
         get: operations["calendario_enlace_api_v1_exports_calendario_enlace_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/exports/crm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Oportunidades en CSV con el mapeo genérico de CRM
+         * @description F6.3 — el tablero de oportunidades en el vocabulario de un CRM.
+         *
+         *     D35: CSV con mapeo documentado (Salesforce y Dynamics lo importan sin
+         *     configurar nada) y no un conector nativo. Mismos filtros que el tablero y
+         *     que `GET /exports/download?recurso=pursuits`; lo que cambia son las
+         *     columnas: las nueve de `CABECERAS_CSV`, separadas por comas y en UTF-8 con
+         *     BOM. Solo sale lo del pipeline —ni score ni predicciones— porque un CRM es
+         *     un sistema de terceros.
+         */
+        get: operations["download_crm_api_v1_exports_crm_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -3623,6 +3679,53 @@ export interface paths {
         put: operations["put_plantilla_tareas_api_v1_organizations__organization_id__plantilla_tareas_put"];
         post?: never;
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{organization_id}/plantillas-miembro": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Reglas y vistas que recibe un miembro nuevo al aceptar la invitación
+         * @description Cualquier miembro las lee; `puede_editar` dice si además las cambia.
+         */
+        get: operations["get_plantillas_miembro_api_v1_organizations__organization_id__plantillas_miembro_get"];
+        put?: never;
+        /**
+         * Añadir una plantilla de miembro (owner/admin)
+         * @description Se copia a quien acepte una invitación **a partir de ahora**, una vez.
+         *
+         *     No se reparte a los miembros que ya estaban: la copia ocurre al activar la
+         *     membresía (`services.cuentas.aplicar_plantillas`).
+         */
+        post: operations["post_plantilla_miembro_api_v1_organizations__organization_id__plantillas_miembro_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{organization_id}/plantillas-miembro/{plantilla_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Borrar una plantilla de miembro (owner/admin)
+         * @description No toca las copias ya repartidas: son de cada miembro.
+         */
+        delete: operations["delete_plantilla_miembro_api_v1_organizations__organization_id__plantillas_miembro__plantilla_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -5638,6 +5741,11 @@ export interface components {
         Batalla: {
             /** Baja Ganadora */
             baja_ganadora?: number | null;
+            /**
+             * Contradiccion
+             * @default false
+             */
+            contradiccion: boolean;
             /** Fecha */
             fecha?: string | null;
             /** Importe */
@@ -5663,6 +5771,11 @@ export interface components {
         BatallasContraMi: {
             /** Batallas */
             batallas?: components["schemas"]["Batalla"][];
+            /**
+             * Contradicciones
+             * @default 0
+             */
+            contradicciones: number;
             /** Empresa Key */
             empresa_key: string;
             /**
@@ -6350,6 +6463,28 @@ export interface components {
             top3_importe_pct: number;
         };
         /**
+         * CompetitiveCompanyCorteDTO
+         * @description F3.5 — una celda de un corte del perfil (procedimiento o tramo de importe).
+         *
+         *     Con ``n`` siempre; ``baja_media`` e ``importe_total`` solo cuando la celda
+         *     llega al mínimo (``CompetitiveCompanyProfileDTO.corte_min_n``). La celda no
+         *     se omite por debajo: que un competidor tenga dos adjudicaciones por
+         *     negociado también dice algo, pero su media no.
+         */
+        CompetitiveCompanyCorteDTO: {
+            /**
+             * Baja Media
+             * @description Baja media en tanto por uno (0.12 = 12 %). Nula por debajo del mínimo.
+             */
+            baja_media?: number | null;
+            /** Clave */
+            clave: string;
+            /** Importe Total */
+            importe_total?: number | null;
+            /** N */
+            n: number;
+        };
+        /**
          * CompetitiveCompanyHistoryDTO
          * @description Unfiltered company history, separate from the active analysis scope.
          */
@@ -6418,6 +6553,11 @@ export interface components {
             concentracion_clientes: components["schemas"]["CompetitiveCompanyConcentrationDTO"];
             /** Contratos Recientes */
             contratos_recientes?: components["schemas"]["CompetitiveCompanyAwardDTO"][];
+            /**
+             * Corte Min N
+             * @default 5
+             */
+            corte_min_n: number;
             empresa: components["schemas"]["CompetitiveCompanyIdentityDTO"];
             /** Movimientos */
             movimientos?: components["schemas"]["CompetitiveCompanySignalDTO"][];
@@ -6431,6 +6571,10 @@ export interface components {
             por_ccaa?: components["schemas"]["CompetitiveCompanyBreakdownDTO"][];
             /** Por Cpv */
             por_cpv?: components["schemas"]["CompetitiveCompanyBreakdownDTO"][];
+            /** Por Procedimiento */
+            por_procedimiento?: components["schemas"]["CompetitiveCompanyCorteDTO"][];
+            /** Por Tramo Importe */
+            por_tramo_importe?: components["schemas"]["CompetitiveCompanyCorteDTO"][];
             posicion_mercado: components["schemas"]["CompetitiveCompanyPositionDTO"];
             scope: components["schemas"]["CompetitiveCompanyScopeDTO"];
             totales: components["schemas"]["CompetitiveCompanyTotalsDTO"];
@@ -10360,6 +10504,42 @@ export interface components {
             vencen_7d: number;
         };
         /**
+         * PlantillaMiembro
+         * @description Una plantilla guardada, en la forma en que la edita la pantalla.
+         */
+        PlantillaMiembro: {
+            /** Created At */
+            created_at?: string | null;
+            /** Filters Json */
+            filters_json?: string | null;
+            /** Id */
+            id: number;
+            /** Nombre */
+            nombre: string;
+            regla?: components["schemas"]["WatchlistRule"] | null;
+            /**
+             * Tipo
+             * @enum {string}
+             */
+            tipo: "regla" | "vista";
+        };
+        /**
+         * PlantillaMiembroIn
+         * @description Cuerpo del alta: una regla o una vista, según ``tipo``.
+         */
+        PlantillaMiembroIn: {
+            /** Filters Json */
+            filters_json?: string | null;
+            /** Nombre */
+            nombre: string;
+            regla?: components["schemas"]["WatchlistRule"] | null;
+            /**
+             * Tipo
+             * @enum {string}
+             */
+            tipo: "regla" | "vista";
+        };
+        /**
          * PlantillaTareas
          * @description Cuerpo del PUT: la plantilla entera, que sustituye a la anterior.
          */
@@ -10392,6 +10572,26 @@ export interface components {
             puede_editar: boolean;
             /** Tareas */
             tareas?: components["schemas"]["TareaPlantilla"][];
+        };
+        /**
+         * PlantillasMiembroOut
+         * @description Las plantillas de miembro de la organización.
+         */
+        PlantillasMiembroOut: {
+            /**
+             * Max Plantillas
+             * @default 20
+             */
+            max_plantillas: number;
+            /** Organization Id */
+            organization_id: number;
+            /** Plantillas */
+            plantillas?: components["schemas"]["PlantillaMiembro"][];
+            /**
+             * Puede Editar
+             * @default false
+             */
+            puede_editar: boolean;
         };
         /**
          * PrediccionBajaLote
@@ -13509,6 +13709,14 @@ export interface components {
             total: number;
         };
         /**
+         * VisitaMarcada
+         * @description Respuesta de «marcar todo como visto»: la nueva marca de última visita.
+         */
+        VisitaMarcada: {
+            /** Visto En */
+            visto_en: string;
+        };
+        /**
          * WatchlistEmpresaItem
          * @description Empresa vigilada, con nombre canónico del maestro.
          */
@@ -13652,6 +13860,55 @@ export interface components {
         WatchlistNotaBody: {
             /** Nota */
             nota?: string | null;
+        };
+        /**
+         * WatchlistRule
+         * @description Regla de seguimiento por criterio. ``id`` es ``None`` hasta persistir.
+         */
+        WatchlistRule: {
+            /**
+             * Active
+             * @default true
+             */
+            active: boolean;
+            /** Banda Min */
+            banda_min?: ("Caliente" | "Atractiva" | "Tibia" | "Descarte") | null;
+            /** Ccaa */
+            ccaa?: string | null;
+            /** Cpv */
+            cpv?: string | null;
+            /**
+             * Frequency
+             * @default daily
+             * @enum {string}
+             */
+            frequency: "immediate" | "daily" | "weekly";
+            /** Id */
+            id?: number | null;
+            /** Keyword */
+            keyword?: string | null;
+            /** Min Importe */
+            min_importe?: number | null;
+            /** Nombre */
+            nombre?: string | null;
+            /** Organization Id */
+            organization_id?: number | null;
+            /** Organo */
+            organo?: string | null;
+            /** Plazo Min Dias */
+            plazo_min_dias?: number | null;
+            /** Procedimiento */
+            procedimiento?: string | null;
+            /** Tecnologia */
+            tecnologia?: string | null;
+            /** Tipo Contrato */
+            tipo_contrato?: string | null;
+            /**
+             * Visibility
+             * @default private
+             * @enum {string}
+             */
+            visibility: "private" | "organization";
         };
         /**
          * WatchlistRuleBody
@@ -14964,6 +15221,12 @@ export interface operations {
                 q?: string | null;
                 /** @description Min tender budget (EUR) */
                 importe_min?: number | null;
+                /** @description Importe de licitación máximo, en euros (inclusive) */
+                importe_max?: number | null;
+                /** @description Provincia (multi-valor, separadas por comas) */
+                provincia?: string | null;
+                /** @description Código CODICE de procedimiento (multi-valor); se compara normalizado */
+                procedimiento?: string | null;
             };
             header?: {
                 "X-CSRF-Token"?: string | null;
@@ -15151,6 +15414,39 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    resumen_marcar_visto_api_v1_analytics_resumen_desde_mi_ultima_visita_visto_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VisitaMarcada"];
+                };
             };
             /** @description Validation Error */
             422: {
@@ -17527,6 +17823,54 @@ export interface operations {
             };
         };
     };
+    download_crm_api_v1_exports_crm_get: {
+        parameters: {
+            query?: {
+                /** @description Organización cuyo pipeline */
+                organization_id?: number | null;
+                /** @description Filtro de estado del tablero */
+                pursuit_status?: string | null;
+                /** @description Filtro de responsable */
+                responsible_user_id?: number | null;
+                limit?: number;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Una fila por oportunidad con las columnas de `docs/integraciones/crm.md` (cuenta = órgano, etapa traducida al embudo estándar) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/csv": unknown;
+                };
+            };
+            /** @description Sin membresía en la organización pedida */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     descargar_export_encolado_api_v1_exports_descargas__job_id__get: {
         parameters: {
             query?: {
@@ -17610,6 +17954,14 @@ export interface operations {
                 tecnologia?: string | null;
                 fecha_desde?: string | null;
                 fecha_hasta?: string | null;
+                /** @description Importe de licitación mínimo, en euros (inclusive) */
+                importe_min?: number | null;
+                /** @description Importe de licitación máximo, en euros (inclusive) */
+                importe_max?: number | null;
+                /** @description Provincia (multi-valor, separadas por comas) */
+                provincia?: string | null;
+                /** @description Código CODICE de procedimiento (multi-valor); se compara normalizado */
+                procedimiento?: string | null;
                 limit?: number;
                 /** @description Organización a la que se atribuye la exportación encolada. */
                 organization_id?: number | null;
@@ -21251,6 +21603,144 @@ export interface operations {
             };
             /** @description Solo owner o admin cambian la plantilla */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_plantillas_miembro_api_v1_organizations__organization_id__plantillas_miembro_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                organization_id: number;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlantillasMiembroOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_plantilla_miembro_api_v1_organizations__organization_id__plantillas_miembro_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                organization_id: number;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PlantillaMiembroIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlantillasMiembroOut"];
+                };
+            };
+            /** @description Solo owner o admin cambian las plantillas */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description La organización llegó al máximo de plantillas */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_plantilla_miembro_api_v1_organizations__organization_id__plantillas_miembro__plantilla_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                organization_id: number;
+                plantilla_id: number;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlantillasMiembroOut"];
+                };
+            };
+            /** @description Solo owner o admin cambian las plantillas */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description La plantilla no existe o no es de miembro */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

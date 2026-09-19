@@ -733,10 +733,20 @@ def _ambito_como_filtros(
     los CPV y el importe mínimo se calculaban y se tiraban, así que un admin que
     acotaba su mercado veía el Radar sin acotar y sin ningún aviso.
 
-    ``importe_max``, ``tipos_organo`` y ``procedimientos_excluidos`` siguen sin
-    aplicarse: ``LicitacionesFilters`` no tiene esos campos y añadirlos toca el
-    SQL de ``scoring_candidates``. Se declara aquí para que no se lea como que
-    ya funcionan.
+    Desde 2026-09-19 se aplican las siete, en SQL (``scoring_candidates``):
+
+    - ``cpvs`` por **prefijo** (``cpv_prefijos``). Viajaba en ``cpv``, que es
+      igualdad exacta contra la cadena unida: con dos CPV declarados
+      (``72,48``) no casaba con ninguna fila y el Radar salía vacío; con uno
+      solo, había que teclear los ocho dígitos.
+    - ``importe_max``, igual que ``importe_min``: sin importe publicado la fila
+      queda fuera en cuanto hay cota.
+    - ``procedimientos_excluidos`` por código normalizado; un expediente sin
+      procedimiento publicado **no** se excluye.
+    - ``tipos_organo`` contra ``organos.tipo`` del maestro. Solo excluye los
+      órganos con un tipo conocido y distinto: el maestro aún no rellena
+      ``tipo``, y exigirlo vaciaría el Radar en silencio — justo lo que la
+      regla «vacío = sin restricción» de :mod:`services.ambito_mercado` evita.
     """
     if tecnologia_manual:
         return LicitacionesFilters(tecnologia=tecnologia_manual)
@@ -744,11 +754,16 @@ def _ambito_como_filtros(
     codigos = [t.strip().upper() for t in ambito.tecnologias if t.strip()]
     cpvs = [c.strip() for c in ambito.cpvs if c.strip()]
     ccaas = [c.strip() for c in ambito.ccaas if c.strip()]
+    excluidos = [p.strip() for p in ambito.procedimientos_excluidos if p.strip()]
+    tipos = [t.strip() for t in ambito.tipos_organo if t.strip()]
     return LicitacionesFilters(
         tecnologia=",".join(codigos) or None,
-        cpv=",".join(cpvs) or None,
+        cpv_prefijos=",".join(cpvs) or None,
         ccaa=",".join(ccaas) or None,
         importe_min=ambito.importe_min,
+        importe_max=ambito.importe_max,
+        procedimientos_excluidos=",".join(excluidos) or None,
+        tipos_organo=",".join(tipos) or None,
     )
 
 

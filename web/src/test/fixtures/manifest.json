@@ -350,6 +350,13 @@
       "path": "/api/v1/search/global",
       "kind": "response",
       "status": "200"
+    },
+    {
+      "fixture": "resumen-marcar-visto.json",
+      "method": "POST",
+      "path": "/api/v1/analytics/resumen/desde-mi-ultima-visita/visto",
+      "kind": "response",
+      "status": "200"
     }
   ]
 }

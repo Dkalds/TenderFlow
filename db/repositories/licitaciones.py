@@ -22,6 +22,7 @@ from db.sql_fragments import (
     FOLD_TABLE,
     ISO_MAX,
     ISO_MIN,
+    codigo_normalizado_sql,
     fold_expr,
     iso_guard,
     tecnologia_en_csv_sql,
@@ -1368,6 +1369,10 @@ class LicitacionRepository:
         tecnologia: str | None = None,
         fecha_desde: str | None = None,
         fecha_hasta: str | None = None,
+        importe_min: float | None = None,
+        importe_max: float | None = None,
+        provincia: str | None = None,
+        procedimiento: str | None = None,
         limit: int = 500,
     ) -> list[dict[str, Any]]:
         """Carga licitaciones para exportación PDF.
@@ -1376,6 +1381,12 @@ class LicitacionRepository:
         el llamador: la ruta de descarga los aplicaba en Python **después** de
         traer hasta 50 000 filas, así que el LIMIT se consumía con filas que
         luego se descartaban (una exportación filtrada podía salir corta).
+
+        ``importe_min``/``importe_max``/``provincia``/``procedimiento`` (F1.1)
+        con la semántica de ``_base_filters``: cotas inclusivas que dejan fuera
+        el importe NULL, provincia multi-valor y procedimiento por código
+        normalizado. Sin ellos el export bajaba el corpus entero mientras el
+        listado de la misma pantalla estaba acotado.
         """
         conditions: list[str] = []
         params: list[Any] = []
@@ -1399,6 +1410,20 @@ class LicitacionRepository:
         if fecha_hasta:
             conditions.append("fecha_publicacion <= %s")
             params.append(fecha_hasta)
+        if importe_min is not None:
+            conditions.append("importe >= %s")
+            params.append(float(importe_min))
+        if importe_max is not None:
+            conditions.append("importe <= %s")
+            params.append(float(importe_max))
+        if provincias := csv_values(provincia):
+            conditions.append(f"provincia IN ({','.join('%s' for _ in provincias)})")
+            params.extend(provincias)
+        if codigos := sorted({_normaliza_codigo(c) for c in csv_values(procedimiento)}):
+            conditions.append(
+                f"{codigo_normalizado_sql('procedimiento')} IN ({','.join('%s' for _ in codigos)})"
+            )
+            params.extend(codigos)
         if q:
             like_op = "ILIKE"
             conditions.append(

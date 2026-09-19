@@ -6,6 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Pista } from "@/components/ui/pista";
 import { cn, formatCurrency, formatNumber, formatPercent } from "@/lib/utils";
 
+import { CompanyCortes } from "./company-cortes";
 import { CompanyUteParticipations } from "./company-ute-participations";
 import { CompanyYearTrend } from "./company-year-trend";
 import {
@@ -249,6 +250,24 @@ export function CompanyProfileSummary({ profile }: { profile: CompanyProfileData
           </p>
         </CardContent>
       </Card>
+
+      {(profile.por_procedimiento?.length ?? 0) + (profile.por_tramo_importe?.length ?? 0) > 0 ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Procedimiento y tamaño</CardTitle>
+            <CardDescription>
+              Dónde gana y con qué baja. Sin media por debajo de {profile.corte_min_n ?? 5} adjudicaciones por celda.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="p-0">
+            <CompanyCortes
+              porProcedimiento={profile.por_procedimiento ?? []}
+              porTramo={profile.por_tramo_importe ?? []}
+              minimo={profile.corte_min_n ?? 5}
+            />
+          </CardContent>
+        </Card>
+      ) : null}
 
       {profile.movimientos.length ? (
         <section aria-labelledby="movements-title">

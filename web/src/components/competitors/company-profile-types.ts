@@ -1,5 +1,7 @@
 "use client";
 
+import type { Schemas } from "@/lib/api-types";
+
 export interface CompanyIdentity {
   empresa_id: number;
   nombre: string;
@@ -121,7 +123,14 @@ export interface CompanyProfileData {
   por_anio: CompanyYear[];
   movimientos: CompanyMovement[];
   participaciones_ute: CompanyUteParticipation[];
+  /** F3.5 — cortes por procedimiento y por tramo de importe (contrato generado). */
+  por_procedimiento?: CompanyCorte[];
+  por_tramo_importe?: CompanyCorte[];
+  corte_min_n?: number;
 }
+
+/** Celda de un corte F3.5: `baja_media` en tanto por uno, nula bajo el mínimo. */
+export type CompanyCorte = Schemas["CompetitiveCompanyCorteDTO"];
 
 export interface CompanyAward {
   licitacion_id: string;

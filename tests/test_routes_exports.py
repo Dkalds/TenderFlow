@@ -59,6 +59,10 @@ _SIN_FILTROS: dict[str, Any] = {
     "tecnologia": None,
     "fecha_desde": None,
     "fecha_hasta": None,
+    "importe_min": None,
+    "importe_max": None,
+    "provincia": None,
+    "procedimiento": None,
     "limit": 10000,
 }
 
@@ -166,9 +170,14 @@ class TestDescargaPdfSincrona:
                 tecnologia="S/4HANA",
                 fecha_desde="2026-01-01",
                 fecha_hasta="2026-06-30",
+                importe_min=10_000.0,
+                importe_max=500_000.0,
+                provincia="Madrid,Toledo",
+                procedimiento="1,6",
                 limit=250,
             )
 
+        # F1.1: importe, provincia y procedimiento, igual que el listado.
         assert consultar.call_args.kwargs == {
             "ccaa": "Madrid",
             "estado": "PUB",
@@ -176,6 +185,10 @@ class TestDescargaPdfSincrona:
             "tecnologia": "S/4HANA",
             "fecha_desde": "2026-01-01",
             "fecha_hasta": "2026-06-30",
+            "importe_min": 10_000.0,
+            "importe_max": 500_000.0,
+            "provincia": "Madrid,Toledo",
+            "procedimiento": "1,6",
             "limit": 250,
         }
 

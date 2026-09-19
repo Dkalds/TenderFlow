@@ -48,11 +48,13 @@ from db.sql_fragments import (
     FOLD_TABLE,
     TECHNOLOGY_OBSERVED_SQL,
     clave_organo_sql,
+    codigo_normalizado_sql,
     empresa_key_sql,
     exclude_duplicados_presentacion_sql,
     fold_expr,
     iso_guard,
     nombre_organo_sql,
+    normaliza_codigo,
     tecnologia_en_csv_sql,
 )
 from observability.logging import get_logger
@@ -131,6 +133,28 @@ class LicitacionesFilters:
     # ``estado``: ése fija uno concreto, éste excluye el cierre y deja pasar
     # cualquier código que la fuente publique mañana.
     solo_abiertas: bool = False
+    # ── F1.1: los filtros del listado que faltaban aquí ──────────────────
+    # Misma semántica que ``LicitacionRepository._base_filters``: sin ellos,
+    # el listado acotaba por provincia o procedimiento y los KPIs y el export
+    # de la misma pantalla seguían contando el corpus entero.
+    #: Importe de licitación máximo (inclusive). NULL queda fuera, igual que
+    #: con ``importe_min``.
+    importe_max: float | None = None
+    #: Provincias, CSV.
+    provincia: str | None = None
+    #: Códigos CODICE de procedimiento, CSV; se comparan normalizados.
+    procedimiento: str | None = None
+    # ── F6.1: ámbito de mercado de la organización ───────────────────────
+    #: CPVs por **prefijo**, CSV. No es ``cpv`` (igualdad exacta, lo que usan
+    #: los drill-downs): el ámbito se declara por familias (``72`` = TI).
+    cpv_prefijos: str | None = None
+    #: Procedimientos que **no** se quieren ver, CSV (códigos normalizados).
+    #: Un expediente sin procedimiento publicado no se excluye.
+    procedimientos_excluidos: str | None = None
+    #: Tipos de órgano (``organos.tipo`` del maestro, C1.2), CSV. Solo excluye
+    #: los expedientes cuyo órgano tiene un tipo **conocido y distinto**: el
+    #: maestro todavía no rellena ``tipo``, y exigirlo vaciaría el Radar.
+    tipos_organo: str | None = None
 
     def is_empty(self) -> bool:
         """True si ningún filtro está activo, es decir, si el ámbito es la tabla entera.
@@ -224,6 +248,48 @@ def build_licitaciones_where(
     if filters.organo and filters.organo.strip():
         clauses.append(f"{col('organo_contratacion')} = %s")
         params.append(filters.organo.strip())
+
+    # ── F1.1 ──────────────────────────────────────────────────────────────
+    if filters.importe_max is not None:
+        clauses.append(f"{col('importe')} <= %s")
+        params.append(filters.importe_max)
+    provincias = csv_values(filters.provincia)
+    if provincias:
+        clauses.append(_in_clause(col("provincia"), provincias))
+        params.extend(provincias)
+    procedimientos = sorted({normaliza_codigo(c) for c in csv_values(filters.procedimiento)})
+    if procedimientos:
+        marcadores = ",".join("%s" for _ in procedimientos)
+        clauses.append(f"{codigo_normalizado_sql(col('procedimiento'))} IN ({marcadores})")
+        params.extend(procedimientos)
+
+    # ── F6.1 ──────────────────────────────────────────────────────────────
+    prefijos = csv_values(filters.cpv_prefijos)
+    if prefijos:
+        disyuntos = " OR ".join(f"{col('cpv')} LIKE %s ESCAPE '\\'" for _ in prefijos)
+        clauses.append(f"({disyuntos})")
+        params.extend(f"{_escape_like(p)}%" for p in prefijos)
+    excluidos = sorted({normaliza_codigo(c) for c in csv_values(filters.procedimientos_excluidos)})
+    if excluidos:
+        marcadores = ",".join("%s" for _ in excluidos)
+        clauses.append(
+            f"({col('procedimiento')} IS NULL OR "
+            f"{codigo_normalizado_sql(col('procedimiento'))} NOT IN ({marcadores}))"
+        )
+        params.extend(excluidos)
+    tipos = csv_values(filters.tipos_organo)
+    if tipos:
+        # La tabla exterior se califica siempre: sin alias, `organo_id` a
+        # secas dentro de la subconsulta resolvería a `o.organo_id` y la
+        # condición compararía la columna consigo misma.
+        exterior = alias or "licitaciones"
+        marcadores = ",".join("%s" for _ in tipos)
+        clauses.append(
+            "NOT EXISTS (SELECT 1 FROM organos o "
+            f"WHERE o.organo_id = {exterior}.organo_id "
+            f"AND o.tipo IS NOT NULL AND o.tipo NOT IN ({marcadores}))"
+        )
+        params.extend(tipos)
 
     return " AND ".join(clauses), params
 

@@ -155,9 +155,13 @@ def fetch_for_pdf(
     tecnologia: str | None = None,
     fecha_desde: str | None = None,
     fecha_hasta: str | None = None,
+    importe_min: float | None = None,
+    importe_max: float | None = None,
+    provincia: str | None = None,
+    procedimiento: str | None = None,
     limit: int = 500,
 ) -> list[dict[str, Any]]:
-    """Carga licitaciones para exportación PDF."""
+    """Carga licitaciones para exportación (CSV, Excel y PDF)."""
     return _repo.fetch_for_pdf(
         ccaa=ccaa,
         estado=estado,
@@ -165,6 +169,10 @@ def fetch_for_pdf(
         tecnologia=tecnologia,
         fecha_desde=fecha_desde,
         fecha_hasta=fecha_hasta,
+        importe_min=importe_min,
+        importe_max=importe_max,
+        provincia=provincia,
+        procedimiento=procedimiento,
         limit=limit,
     )
 

@@ -548,9 +548,13 @@ export function dimensionesDeDescarga(url: string): EventosProducto["export_lanz
   // Sin este caso el único evento que distingue «se llevan la ficha a un
   // comité» de «descargaron algo» caería en `otro`, que es justo lo que el
   // valor `pdf_oportunidad` existe para evitar.
+  // El CSV para el CRM (F6.3, `/exports/crm`) tampoco: es una salida con
+  // destinatario, y en `csv` se confundiría con el export del tablero.
   const formato = ruta.endsWith("/ficha.pdf")
     ? "pdf_oportunidad"
-    : (FORMATO_POR_PARAMETRO[declarado ?? ""] ?? "otro");
+    : ruta.endsWith("/exports/crm")
+      ? "crm"
+      : (FORMATO_POR_PARAMETRO[declarado ?? ""] ?? "otro");
   const recurso = ruta
     .replace(/^\/?api\/v\d+\//, "")
     .split("/")

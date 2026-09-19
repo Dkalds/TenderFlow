@@ -85,6 +85,39 @@ def _amount(value: str) -> float | None:
         return None
 
 
+#: «sin IVA» en castellano, gallego («sen IVE»/«sen IVA»), catalán («sense IVA»)
+#: y euskera («BEZ gabe»), más las fórmulas «IVA excluido/excluído».
+_SIN_IVA_RE = re.compile(
+    r"\b(?:sin|sen|sense)\s+(?:IVA|IVE)\b|\b(?:IVA|IVE)\s+exclu[ií]d[oa]\b|\bBEZ\s+gabe\b",
+    re.IGNORECASE,
+)
+#: «con IVA», «IVA incluido», «con IVE», «amb IVA», «BEZ barne».
+_CON_IVA_RE = re.compile(
+    r"\b(?:con|co|amb)\s+(?:IVA|IVE)\b|\b(?:IVA|IVE)\s+inclu[ií]d[oa]\b|\bBEZ\s+barne\b",
+    re.IGNORECASE,
+)
+
+
+def _tipo_de_importe(description: str, importe: float | None) -> str | None:
+    """La base del importe que publica el feed (ADR-032, D21).
+
+    Los RSS autonómicos no tienen campos: el importe sale de la prosa de la
+    descripción (``Importe: 2.364.210,48 €``) y solo a veces la acompañan de
+    «sin IVA» o «IVA incluido». Si lo dicen, se declara; si no lo dicen, la
+    base es ``desconocido`` — adivinarla metería el IVA en las bajas, que es
+    justo el error que ADR-032 vino a cerrar. ``None`` cuando no hay importe.
+    """
+    if importe is None:
+        return None
+    sin_iva = bool(_SIN_IVA_RE.search(description))
+    con_iva = bool(_CON_IVA_RE.search(description))
+    if sin_iva and not con_iva:
+        return "sin_iva"
+    if con_iva and not sin_iva:
+        return "con_iva"
+    return "desconocido"
+
+
 def _label(text: str, labels: tuple[str, ...]) -> str | None:
     # Cada valor viene tras ``<b>Etiqueta:</b> valor </p>``.  El corte por
     # etiquetas conocidas evita inventar una estructura DOM que los feeds no
@@ -176,13 +209,18 @@ class RegionalRssConnector:
         technologies = sorted(matches)
         keywords = sorted({keyword for values in matches.values() for keyword in values})
         published = payload.get("published")
+        importe = _amount(description)
+        importe_tipo = _tipo_de_importe(description, importe)
         lic = Licitacion(
             id_externo=f"{self.source_id}:{raw.natural_id}",
             titulo=tender_title[:500],
             organo_contratacion=_label(
                 description, ("Órgano de contratación", "Organo de contratacion", "Órgano")
             ),
-            importe=_amount(description),
+            importe=importe,
+            importe_base_sin_iva=importe if importe_tipo == "sin_iva" else None,
+            importe_con_iva=importe if importe_tipo == "con_iva" else None,
+            importe_tipo=importe_tipo,
             tipo_contrato=_label(description, ("Tipo de contrato",)),
             # `Estado:` llega como prosa ("En licitación", "Adjudicada"…), no
             # como código: se normaliza igual que la fase de PSCP para que las

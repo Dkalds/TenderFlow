@@ -375,6 +375,26 @@ def empresa_key_sql(alias: str = "a") -> str:
     )
 
 
+def normaliza_codigo(code: str) -> str:
+    """Código de lista controlada CODICE listo para comparar: sin ceros a la izquierda.
+
+    La fuente publica ``01`` y ``1`` para el mismo procedimiento según el
+    emisor. Mismo criterio que ``db/repositories/licitaciones._normaliza_codigo``
+    (el listado, en SA Core) y que ``shared/procedimientos.py`` al traducir.
+    """
+    limpio = code.strip()
+    return str(int(limpio)) if limpio.isdigit() else limpio
+
+
+def codigo_normalizado_sql(column: str) -> str:
+    """La columna de código normalizada en SQL, con la regla de :func:`normaliza_codigo`.
+
+    ``NULLIF``+``COALESCE`` porque ``ltrim('0', '0')`` deja ``''``, que no es
+    ningún código: el cero se conserva como ``'0'``.
+    """
+    return f"COALESCE(NULLIF(ltrim(trim({column}), '0'), ''), '0')"
+
+
 def iso_guard(column: str) -> str:
     """Cláusula que excluye fechas claramente malformadas (mirror de coerce+dropna).
 
