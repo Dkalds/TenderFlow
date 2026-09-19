@@ -200,8 +200,8 @@ pesaban más de lo que parece:
 | **`<Toaster />` vivía en `(dashboard)/layout.tsx`**: todo `toast()` disparado en `/login` se descartaba en silencio | ✅ montado en `Providers`, que hoy cuelga de `(dashboard)/layout.tsx` **y** de `login/layout.tsx`. Pasó por el layout raíz, pero desde ahí lo heredaba también la superficie pública, que no dispara toasts y no debía cargar el runtime del dashboard. El invariante es el de siempre: un `toast()` en `/login` tiene que verse |
 | **Atajos que secuestraban la escritura**: el guard solo excluía `input`/`textarea`, así que con el foco en un `contenteditable` o un listbox de Radix pulsar `1` te sacaba de la página. Y los 5 atajos apuntaban a páginas legacy, ninguno a Radar ni Oportunidades | ✅ guard ampliado, modificadores respetados, `1`–`6` incluyen los espacios primarios |
 | **Atajos indescubribles**: solo ⌘K estaba anunciado | ✅ overlay `?`, derivado de `NUMBER_SHORTCUTS` para que no driftee |
-| **192 `title=` nativos** frente a un `Tooltip` de Radix ya construido. El `title` nativo no se dispara con teclado | ◐ migrados los de la cabecera y los controles icon-only; **quedan 137** (medidos el 2026-08-27), sobre todo celdas de tabla y textos truncados |
-| **Ortografía castellana rota** en decenas de cadenas visibles, incluida la meta description del sitio | ◐ hechas las superficies de mayor visibilidad; el barrido completo queda pendiente |
+| **192 `title=` nativos** frente a un `Tooltip` de Radix ya construido. El `title` nativo no se dispara con teclado | ◐ migrados los de la cabecera y los controles icon-only; **quedan 137** (medidos el 2026-08-27), sobre todo celdas de tabla y textos truncados. *Estado (2026-09-19):* ✅ **0** — los últimos 36 migrados a `Tooltip`/`Pista` en `fe4a28d5` (2026-09-18); `scripts/check_title_attrs.py` con techo 0 |
+| **Ortografía castellana rota** en decenas de cadenas visibles, incluida la meta description del sitio | ◐ hechas las superficies de mayor visibilidad; el barrido completo queda pendiente. *Estado (2026-09-19):* ✅ barrido cerrado con gate — `scripts/check_ortografia_ui.py` da 0 hallazgos (C7.8 del plan complementario) |
 
 ---
 
@@ -215,11 +215,11 @@ un fichero borrado hace que quien lo coja empiece por un callejón sin salida.
 |---|---|---|
 | ~~`e2e/responsive.spec.ts` es un test vacío~~ ✅ **resuelto** (`197df83`): tres casos reales de drawer móvil y rail de escritorio, sin `.or()` ni condicionales | `web/e2e/responsive.spec.ts` | — |
 | ~~`vitest.config.ts` excluye `src/app/**` de cobertura~~ ✅ **corregido el 2026-08-10**: solo se excluyen `layout/loading/error/not-found`, y `src/app/**/_hooks/*.ts` se mide. Lo que sigue abierto es la cobertura en sí, no el denominador | `web/vitest.config.ts` | ver backlog |
-| Páginas grandes sin descomponer. **Las tres que citaba esta fila ya bajaron** al extraer su lógica a `_hooks/`: `detalle` 929 (era 1.015), `mi-watchlist` 917 (1.044), `competidores` 867 (1.047). Siguientes por tamaño, aún sin `_hooks/`: `tecnologias` 734, `organos` 649, `radar` 635 | medido 2026-08-27 | P2 |
+| Páginas grandes sin descomponer. **Las tres que citaba esta fila ya bajaron** al extraer su lógica a `_hooks/`: `detalle` 929 (era 1.015), `mi-watchlist` 917 (1.044), `competidores` 867 (1.047). Siguientes por tamaño, aún sin `_hooks/`: `tecnologias` 734, `organos` 649, `radar` 635. *Estado (2026-09-19):* ✅ **resuelto** — ESLint aplica `max-lines: 300` a todo `src/app/**` sin allowlist (`web/eslint.config.mjs`, vacía desde el 2026-09-08, S7.1 del plan v2); hoy ningún fichero de `src/app` pasa de 300 | medido 2026-08-27 | — |
 | ~~`radar/page.tsx` y `oportunidades/page.tsx` en estilo comprimido~~ — retirado: `oportunidades` son hoy 245 líneas y `radar` 635, ambas reescritas desde entonces. La afirmación sobre su legibilidad no se ha vuelto a comprobar, así que se retira en vez de repetirse | — | — |
-| El selector de organización es un `<select>` nativo estilado, mientras el resto de controles son Radix: comportamiento de teclado y lector distinto. **Vive ahora en el rail**, no en la sidebar (demolida) | `layout/console-rail.tsx:125` | P2 |
+| ~~El selector de organización es un `<select>` nativo estilado, mientras el resto de controles son Radix~~ ✅ **resuelto** (*Estado 2026-09-19*): usa el `Select` de Radix con `aria-label="Organización activa"` | `layout/console-rail.tsx:138` | — |
 | ~~Los filtros de CCAA / tecnología / estado son `<select>` nativos~~ ✅ resuelto 2026-08-07 (`352db1b`): `ui/multi-select.tsx` con Popover, búsqueda que ignora tildes (`foldText`) y quitar desde el propio control | `layout/scope-bar.tsx` | — |
-| Por debajo de `md` el rail de espacios es `hidden` y el drawer es la única navegación. **Decisión 2026-09-01:** móvil cubre consulta y triaje (Radar, ficha, watchlist y agenda), no la edición completa de matrices analíticas. `responsive.spec.ts` fija que esos cuatro flujos no desborden el documento; las tablas bidimensionales pueden conservar scroll interno | `layout/console-rail.tsx`, `e2e/responsive.spec.ts` | verificación CI pendiente |
+| Por debajo de `md` el rail de espacios es `hidden` y el drawer es la única navegación. **Decisión 2026-09-01:** móvil cubre consulta y triaje (Radar, ficha, watchlist y agenda), no la edición completa de matrices analíticas. `responsive.spec.ts` fija que esos cuatro flujos no desborden el documento; las tablas bidimensionales pueden conservar scroll interno. *Estado (2026-09-19):* sin `fixme` en `responsive.spec.ts` y los rojos móviles del E2E corregidos en `8a424967`; el ítem del backlog está cerrado | `layout/console-rail.tsx`, `e2e/responsive.spec.ts` | — |
 | ~~`next.config.ts` describe la CSP como Report-Only~~ ✅ **el comentario ya dice lo contrario** ("no Report-Only", `next.config.ts:11`) | `web/next.config.ts` | — |
 | ~~`/licitadores` conserva `layout.tsx` y `loading.tsx`~~ ✅ **resuelto**: el directorio solo contiene `page.tsx` | `app/(dashboard)/licitadores/` | — |
 
@@ -276,6 +276,8 @@ código el 2026-08-27:
 3. `ui/multi-select.tsx` sustituye a los `<select>` nativos de los filtros
    (`352db1b`, squash `b070c0e`). Queda **uno** sin migrar, el de organización
    del rail (`console-rail.tsx:125`); está en el backlog con la experiencia móvil.
+   *Estado (2026-09-19):* migrado a Radix `Select` (`console-rail.tsx:138`); el
+   ítem de experiencia móvil está cerrado.
 
 **Ola 3 — hecha.** La unificación de árboles se ejecutó el 2026-08-03: hoy hay un
 solo registro (`CONSOLE_SPACES`/`SPACE_VIEWS`) y el cromo heredado se demolió.
@@ -284,6 +286,10 @@ solo registro (`CONSOLE_SPACES`/`SPACE_VIEWS`) y el cromo heredado se demolió.
 los 192 del original), barrido de ortografía, y descomposición de las páginas
 grandes — la vía que funcionó es extraer a `_hooks/`, hecha en `detalle`,
 `mi-watchlist` y `competidores`.
+*Estado (2026-09-19):* los tres frentes están cerrados — `title=` en **0**
+(`fe4a28d5`), páginas grandes bajo `max-lines: 300` en todo `src/app/**` sin
+excepciones, y ortografía con gate propio (`scripts/check_ortografia_ui.py`,
+0 hallazgos; C7.8 del plan complementario).
 
 ---
 

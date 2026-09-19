@@ -25,6 +25,22 @@ Mismo contrato de ejecución que sus hermanos: un stream por rama y por
 agente, este documento como única fuente de alcance y criterios, y los gates
 de AGENTS.md §6 marcados **[§6]** salvo lo que D39 pre-autoriza.
 
+> *Estado (2026-09-19):* la frase «nada está implementado» es del
+> 2026-09-05 y ya no es cierta. El plan se ejecutó casi entero: sus
+> migraciones pre-autorizadas existen (p. ej. `v104_pursuit_outcome_reason_code`,
+> `v105_cuentas_objetivo_y_etiquetas`, `v106_cartera_y_plantillas_organizacion`)
+> y la mayoría de ítems tiene backend y, desde el 2026-09-18, pantalla; cada
+> ítem lleva su nota *Estado* y el resumen vive en
+> [IMPROVEMENT_BACKLOG.md](../IMPROVEMENT_BACKLOG.md) («Plan de
+> funcionalidades 2026-09»). Excepciones comprobadas en el código:
+> **F2.1** y **F6.6** descartadas (D32, D36); **F1.4 sin backend real** — el
+> scoring nunca emite `organo_anula_frecuente` (solo existe su texto en
+> `services/analytics/scoring_explicacion.py` y `web/src/lib/riesgos.ts`) y no
+> hay tabla de tasas precalculadas; **F2.8 a medias** — la tabla comparativa
+> sí (`POST /licitaciones/comparar` en `api/routes/licitaciones/ficha.py`), pero
+> `/ask` sigue aceptando un solo `id_externo`, así que la pregunta cruzada no
+> tiene ni backend ni UI.
+
 ## 0. Alcance y método
 
 **Qué cubre.** Treinta y ocho funcionalidades en seis recorridos (F1–F6),
@@ -247,6 +263,13 @@ precalculadas, pre-autorizada.
 - Test con fixture de un órgano con el 40 % de anulaciones.
 
 *Adopción:* propiedad `flag=organo_anula_frecuente` en `radar_triaje`.
+
+*Estado (2026-09-19):* **sin backend.** Solo existe el vocabulario: la
+entrada de `organo_anula_frecuente` en el catálogo de explicaciones
+(`services/analytics/scoring_explicacion.py`), su rótulo en
+`web/src/lib/riesgos.ts` y la mención en `web/src/lib/analytics.ts`. Ni el
+precómputo calcula la tasa, ni hay migración de tasas, ni `scoring.py`
+añade el flag a `risk_flags`.
 
 #### F1.5 Cuentas objetivo: seguir un órgano — P0
 
@@ -512,6 +535,8 @@ inspector de Detalle, el del Radar y los favoritos de la watchlist; tabla
 `components/pliego/comparar-fichas.tsx` en la bandeja y como sección opcional
 del comparador de Detalle. Fuera de esta rama: `/ask` con varios expedientes
 desde la UI.
+*Estado (2026-09-19):* la mitad de `/ask` tampoco tiene backend:
+`AskRequest.id_externo` (`api/routes/ask.py`) sigue siendo un único `str`.
 
 ### F3 — Competir
 

@@ -21,6 +21,38 @@ No se borra nada: el histórico de por qué se hizo cada cosa sigue siendo
 
 ---
 
+## Cerrados el 2026-09-19 — accesibilidad y móvil
+
+### [P2] La experiencia móvil existe pero nadie la diseñó
+- **Área:** web/src/components/layout, web/src/app/(dashboard)
+- **Problema:** por debajo de `md` el rail de espacios es `hidden` (`console-rail.tsx:196`) y la única navegación es el drawer del `Sheet` (`console-rail.tsx:242-258`). Eso **ya está cubierto por un test real** (`web/e2e/responsive.spec.ts` a 375×812, sin `.or()` ni condicionales), así que no es un agujero de verificación: es que el contenido que hay detrás del drawer no está pensado para ese ancho — lo que llenan las páginas son tablas densas y grafos. El selector de organización del propio rail sigue además siendo un `<select>` nativo (`console-rail.tsx:125`) mientras el resto de controles son Radix: comportamiento de teclado y de lector distinto.
+- **Acceptance criteria:**
+  - ✅ **Decidido 2026-09-01:** móvil es consulta y triaje —Radar, ficha,
+    watchlist y agenda—, no edición completa de matrices analíticas.
+  - ✅ Radar y Agenda tienen presentación propia bajo `md`; el E2E exige que
+    los cuatro flujos elegidos no desborden el documento.
+  - ✅ El selector de organización usa Radix `Select`, alineado con el resto de
+    controles de la consola.
+  - Pendiente hasta que CI ejecute el nuevo E2E: confirmar Detalle y Watchlist
+    a 375×812 sobre el build de producción. **2026-09-18 (rama worktree-agent-a37b58d577faad267):** revisado sobre
+    el código —la watchlist desbordaba por la barra de ámbito «no aplica», ya con
+    `overflow-x-auto`, y la barra y el pie de Detalle se desplazan en vez de
+    empujar el documento—; los `fixme` salieron. Falta el verde de CI.
+- **Files de partida:** [web/src/components/layout/console-rail.tsx](../web/src/components/layout/console-rail.tsx), [web/e2e/responsive.spec.ts](../web/e2e/responsive.spec.ts)
+- **Riesgo:** bajo — presentación; sin tocar contratos ni datos.
+- **Cerrado:** 2026-09-19. Los `fixme` de `responsive.spec.ts` salieron el 2026-09-18; los rojos móviles que dio después el E2E (franja de primer uso del Radar empujando «Abrir»/«Descartar» fuera del viewport a 375 px, y el localizador de la agenda móvil) se corrigieron en `8a424967`. Hoy no queda ningún `fixme` en `web/e2e/`.
+
+### [P2] Remediación axe pendiente: reactivar las reglas desactivadas del E2E de accesibilidad
+- **Avance 2026-09-18 (rama worktree-agent-a37b58d577faad267):** código de las **tres reglas restantes remediado y `disableRules` retirado**, junto con los dos `test.fixme` de `responsive.spec.ts`. `color-contrast`: la rampa del tema claro baja de L (primary 34 %, warning/score-warm 25 %, success 25 %, info 37 %) para que el texto sobre su propio tinte pase 4,5:1 —`contraste-tokens.test.ts` lo fija— y se retiran las opacidades de texto en Radar, Detalle, Resumen, rail y barra de ámbito. `scrollable-region-focusable`: inspectores de Radar y Detalle y lotes públicos con `tabIndex={0}`. `target-size`: «×» de chips del ámbito, estrella de Detalle y «?» del glosario a 24×24. El desborde de 274 px de la watchlist era la barra de ámbito en su rama «no aplica» (sin `overflow-x-auto`), y era también lo que quedaba de la agenda móvil. **El E2E no se ejecutó en local (sin stack)**: el ítem se cierra cuando el job de Playwright de CI salga verde; si alguna regla cae, el informe de axe dice qué nodo.
+- **Avance 2026-09-08 (C7.1):** `nested-interactive` **reactivada**. La causaba una sola cosa —la fila del Radar era un `role="button"` con cinco botones dentro— y se corrige poniendo la selección en un botón hermano en capa, con las acciones por encima. Con ella se van los **dos** `test.fixme` de `critical-workflows.spec.ts`: «seguir una licitación» era su consecuencia funcional directa, y «exportar el ámbito» resultó ser otro bug distinto —`lib/export.ts` revocaba el object URL en la misma vuelta del event loop que el `click()`, así que el Chromium headless de CI abortaba la descarga antes de empezarla—. Quedan tres reglas y dos `test.fixme`, los de móvil.
+- **Área:** web/e2e/accessibility.spec.ts, web/src (radar, detalle, watchlist, mi-pipeline)
+- **Problema:** el E2E de axe (WCAG 2.2 AA sobre /login, /resumen, /radar y /detalle) nació exigiendo cero violaciones antes de la remediación, y bloqueaba CI con deuda real: `color-contrast` (textos ≤10.5px con opacidad/tokens tenues en las filas del Radar y el detalle), `nested-interactive` (filas-botón del Radar con botones dentro), `scrollable-region-focusable` y `target-size` (<24px). El 2026-09-01 se acotó el gate con `disableRules([...])` — el resto de WCAG-AA y los checks estructurales (landmarks, lang, skip-link, ids únicos, controles con nombre) siguen bloqueando. Los dos ofensores de /resumen sí se arreglaron en ese momento (hint de `StatCell` sin `/80`, chips de Primeros pasos a texto pleno).
+- **Relación:** los dos `test.fixme` de `responsive.spec.ts` (watchlist desborda 274px a 375px; la agenda de /mi-pipeline no tiene fichas móviles) son la misma ola — «móvil es consulta y triaje», decidido 2026-09-01. También los dos `test.fixme` de `critical-workflows.spec.ts`: «seguir una licitación» (el click en «Seguir» dentro de la fila-botón del Radar no registra — consecuencia funcional directa del `nested-interactive`, no solo cosmética) y «exportar el ámbito» (el evento `download` no llega en el Chromium de CI; flujo de descarga por diagnosticar bajo Playwright). Ambos eran estrenos en rojo: el `describe` serial los saltaba mientras fallara el primero.
+- **Acceptance criteria:** cada regla se reactiva al remediar sus ofensores; la lista de `disableRules` y los `test.fixme` **solo pueden encoger**. Empezar por `nested-interactive` (estructural, no cosmético: rompe la navegación por teclado en el Radar).
+- **Files de partida:** [web/e2e/accessibility.spec.ts](../web/e2e/accessibility.spec.ts), [web/e2e/responsive.spec.ts](../web/e2e/responsive.spec.ts), [docs/UX_AUDIT.md](UX_AUDIT.md)
+- **Riesgo:** bajo — reactivar una regla sin remediar la pone en rojo en el PR, no en master.
+- **Cerrado:** 2026-09-19. `accessibility.spec.ts` corre sin `disableRules` (WCAG 2.2 AA entero bloquea) y sin `fixme` en `web/e2e/`. Los siete rojos que destapó el E2E con las reglas reactivadas se corrigieron en `8a424967` (nombres accesibles en `/mi-perfil` y `/equipo`, contraste de tokens y toasts, espera a las animaciones del hero) y los seis de contraste y `target-size` del Radar en `0fd5082c`; `contraste-tokens.test.ts` fija los tintes.
+
 ## Cerrados
 
 Los seis primeros los cerró la reconciliación **O0.5** del plan v2 (2026-09-06).

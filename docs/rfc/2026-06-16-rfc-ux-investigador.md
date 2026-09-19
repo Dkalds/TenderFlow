@@ -132,3 +132,17 @@ hallazgos.
 **Diferido:** feedback de relevancia (👍/👎) sobre resultados y respuesta RAG (#3) —
 alimentaría el active-learning; y threading de filtros al `/ask` (RAG), que hoy
 sigue ignorándolos. El historial sigue en `localStorage` (menor, #4).
+
+*Estado (2026-09-19):* sigue **parcial**, pero lo diferido avanzó.
+- **Filtros en `/ask`:** `AskRequest` acepta `ccaa` y `tecnologia`
+  (`api/routes/ask.py:112-113`) y el retrieval general los aplica. Son **un
+  solo valor** (`str | None`), no multi-valor como en la búsqueda; y el hook
+  `investigador/_hooks/use-investigador.ts` manda en modo «ask» los mismos
+  `filterExtras` que en búsqueda —`ccaa`/`tecnologia` como **listas**, más
+  `fecha_desde`/`fecha_hasta`—, así que con filtros globales activos la forma
+  del cuerpo no casa con el contrato. No se ejecutó para confirmar el código
+  de respuesta.
+- **Feedback del RAG (#3, mitad RAG):** hecho vía C5.4 del plan complementario
+  — `POST /feedback/asistente` (`v121_asistente_feedback`), votado desde
+  `components/chat-thread.tsx`. **Falta** el feedback de relevancia sobre los
+  resultados de búsqueda.

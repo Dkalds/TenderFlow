@@ -22,12 +22,19 @@ antiguo deja de compilar, la pregunta es *dónde ha ido esa capacidad*, no
 | --- | --- | --- |
 | Rail de 56px | `components/layout/console-rail.tsx` | La sidebar de 248px con sus once secciones, más el menú de cuenta del TopNav (organización activa, densidad, tema, cerrar sesión) |
 | Barra de ámbito de 52px | `components/layout/scope-bar.tsx` | La `GlobalFilterBar` entera (mismos seis controles, mismo contrato por página), el buscador ⌘K, exportar, notificaciones y el indicador de frescura |
-| Marco | `components/layout/console-frame.tsx` | Decide entre superficie de consola y cromo heredado según `isConsoleRoute` |
+| Marco | `components/layout/console-frame.tsx` | Decidía entre superficie de consola y cromo heredado según `isConsoleRoute`; *desde que se construyeron todos los espacios monta siempre rail + barra de ámbito (ver nota abajo)* |
 | Mapa de espacios | `lib/console-spaces.ts` + `lib/space-views.ts` | Las 25 rutas → 16 espacios; gobierna rail, redirects y qué ruta usa qué cromo |
 | Historial del ámbito | `lib/scope-history.ts` | Deshacer / rehacer sobre cualquier cambio de filtro, venga de donde venga |
 
 `TopNav`, `Sidebar` y `GlobalFilterBar` siguen en el árbol con sus tests: son la
 referencia de lo que había que conservar mientras quedan espacios por migrar.
+
+> *Estado (2026-09-19):* ya no siguen. Ninguno de los tres existe en
+> `web/src` —solo sobreviven como nombres en comentarios de `console-frame.tsx`,
+> `scope-bar.tsx` y `lib/navigation.ts`—, y con ellos se fue la rama de cromo
+> heredado: `ConsoleFrame` ya no decide entre dos cromos ni existe
+> `isConsoleRoute`; toda ruta renderizable es superficie de consola y las
+> heredadas redirigen por `next.config` a su `?vista=`.
 
 ## Migración por lotes
 
@@ -163,6 +170,15 @@ pendiente, y no es sólo mover ficheros:
 
 Mezclar veinte movimientos de fichero con el cambio de arquitectura en el mismo
 diff habría hecho ilegible el uno y arriesgado el otro.
+
+> *Estado (2026-09-19):* deuda pagada, aunque no con `_views/`. Las rutas
+> absorbidas ya no tienen directorio en `app/(dashboard)/`: cada vista vive
+> como `<vista>-view.tsx` en el `_components/` de su espacio
+> (`mercado/_components/tendencias-cpv-*`, `organos-view.tsx`…,
+> `competencia/_components/competidores-view.tsx`,
+> `ops/_components/observabilidad-view.tsx`…). De `competidores/` solo queda la
+> subruta viva `empresa/[empresaId]`, y `licitadores/` se conserva como
+> redirect deliberado a `/competencia?vista=competidores`.
 
 ### Qué está verificado y qué no
 

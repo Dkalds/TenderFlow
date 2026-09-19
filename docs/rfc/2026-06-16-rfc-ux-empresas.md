@@ -130,3 +130,11 @@ sin años nulos). Verde: pytest/mypy/ruff/codespell + `tsc`/`eslint`/`vitest` (2
 #1) — requieren cómputo del universo del nicho en backend; drill-down de los
 desgloses a las adjudicaciones reales (#3); y paginación del maestro más allá de
 50 (#4).
+
+*Estado (2026-09-19):* sigue **parcial**. **Hecho** el #4: `GET /empresas`
+pagina con la dependencia común (`Depends(pagina(50))`, `api/routes/empresas.py`)
+y el maestro pide páginas por `offset` (`empresas/_hooks/use-maestro.ts`).
+**Siguen sin hacer** el #1 —la cuota por segmento existe como servicio de
+mercado (`services/competitive/mercado.py::cuota_mercado`), pero el perfil de
+empresa no muestra cuota ni rank propios— y el #3, el drill-down de los
+desgloses a las adjudicaciones.

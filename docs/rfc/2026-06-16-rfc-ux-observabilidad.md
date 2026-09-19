@@ -4,7 +4,8 @@ title: "UX/KPIs · Observabilidad — URL de Grafana por config (no localhost), 
 issue: pendiente (crear issue y renumerar si no coincide)
 author: agent:architect
 date: 2026-06-16
-status: partially-implemented
+status: implemented
+evidence: "NEXT_PUBLIC_GRAFANA_URL en web/.env.example; getGrafanaUrl() en web/src/lib/runtime-config.ts, consumido por ops/_components/observabilidad/grafana-card.tsx (verificado 2026-09-19)"
 area: web/observabilidad
 ---
 
@@ -96,3 +97,10 @@ subtítulo "infra/SRE" con cross-link a Calidad de Datos; `dlq_count` enlaza a
 `/calidad-datos` ("Inspeccionar DLQ"). Tests: `runtime-config.test.ts` (3). Verde:
 `tsc`/`eslint`/`vitest` (18 files, 279 tests). **Pendiente (§6):** añadir
 `NEXT_PUBLIC_GRAFANA_URL` a `.env.example` (edición de `.env*` requiere OK humano).
+
+*Estado (2026-09-19):* **implementado.** Lo único pendiente ya está:
+`NEXT_PUBLIC_GRAFANA_URL` figura en `web/.env.example`. La página ya no es
+`observabilidad/page.tsx` sino la vista `?vista=observabilidad` de `/ops`
+(`ops/_components/observabilidad/`: `grafana-card.tsx` con `getGrafanaUrl()`,
+`dlq-panel.tsx` con «Inspeccionar DLQ», refresco periódico en
+`ops/_hooks/use-observabilidad.ts`).
