@@ -138,13 +138,20 @@ class WatchlistRepository:
                 "       COALESCE(r.keyword, w.keyword) AS keyword, "
                 "       COALESCE(r.min_importe, w.min_importe) AS min_importe, "
                 "       COALESCE(r.ccaa, w.ccaa) AS entry_ccaa, "
-                "       r.nombre AS rule_nombre "
+                "       r.nombre AS rule_nombre, "
+                "       de.event_type AS evento_tipo, de.payload_json AS evento_payload "
                 "FROM pending_digests pd "
                 "LEFT JOIN licitaciones l ON l.id_externo = pd.licitacion_id "
-                "LEFT JOIN watchlist_rules r ON r.id = pd.entry_id "
+                "LEFT JOIN watchlist_rules r ON pd.entry_id > 0 AND r.id = pd.entry_id "
                 "  AND (r.user_key = pd.user_key "
                 "       OR (pd.user_id IS NOT NULL AND r.user_id = pd.user_id)) "
-                "LEFT JOIN watchlist_cpv w ON w.id = pd.entry_id AND r.id IS NULL "
+                "LEFT JOIN watchlist_cpv w ON pd.entry_id > 0 AND w.id = pd.entry_id "
+                "  AND r.id IS NULL "
+                # Filas del despachador de eventos (S4.1): `entry_id` negativo
+                # que codifica `-(event_id * 100 + posición)`. Ver
+                # `scheduler/jobs/event_dispatch.entry_id_de_digest`.
+                "LEFT JOIN domain_events de ON pd.entry_id < 0 "
+                "  AND de.id = (-pd.entry_id) / 100 "
                 "WHERE pd.sent = 0 AND pd.frequency = %s "
                 "ORDER BY pd.recipient_email, pd.entry_id",
                 (frequency,),

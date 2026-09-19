@@ -1419,4 +1419,40 @@ def jobs_cierre_por_cola() -> bool:
     return crudo not in ("0", "false", "no", "off")
 
 
+# ── Despachador del outbox (S4.1) ────────────────────────────────────────────
+
+#: Antigüedad máxima, en horas, de un evento que el despachador todavía entrega.
+#:
+#: El despachador estuvo escrito y sin cablear desde S4.1: cuando se enchufó, la
+#: cola traía semanas de ``domain_events`` sin repartir. Entregarlos habría sido
+#: un aluvión de correos y webhooks sobre cosas que ya no importan —«te han
+#: asignado» una oportunidad que se cerró hace diez días—, así que lo que supera
+#: esta antigüedad se marca como despachado **sin** entregarse, con su conteo en
+#: el log y en ``ops_events``. 48 h cubren un fin de semana con el cierre caído
+#: sin tirar nada que todavía se pueda leer como noticia.
+EVENT_DISPATCH_MAX_AGE_HOURS_DEFAULT = 48
+
+
+def event_dispatch_enabled() -> bool:
+    """¿El cierre reparte el outbox de ``domain_events``?
+
+    Por defecto sí, en todos los entornos: un aviso que no sale es un fallo que
+    nadie ve. ``EVENT_DISPATCH_ENABLED=0`` lo apaga sin desplegar código —la
+    salida de escape si el reparto diera problemas—; los eventos se siguen
+    escribiendo y esperan en la cola, sujetos a la antigüedad máxima cuando se
+    vuelva a encender.
+    """
+    crudo = os.environ.get("EVENT_DISPATCH_ENABLED", "").strip().lower()
+    if not crudo:
+        return True
+    return crudo not in ("0", "false", "no", "off")
+
+
+def event_dispatch_max_age_hours() -> int:
+    """Horas tras las que un evento pendiente caduca sin entregarse (mínimo 1)."""
+    return _entero_env(
+        "EVENT_DISPATCH_MAX_AGE_HOURS", EVENT_DISPATCH_MAX_AGE_HOURS_DEFAULT, minimo=1
+    )
+
+
 # ── ANCLA S8 — documentos: almacén de objetos y OCR ──────────────────────

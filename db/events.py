@@ -301,6 +301,40 @@ def mark_dispatched(event_id: int) -> None:
         )
 
 
+def caducar_pendientes(creados_antes_de: str) -> dict[str, int]:
+    """Da por despachados, **sin entregarlos**, los pendientes anteriores a la marca.
+
+    Devuelve el conteo por ``event_type`` de lo que caducó. Es la política de
+    antigüedad máxima del despachador (``EVENT_DISPATCH_MAX_AGE_HOURS``): un
+    aviso de hace una semana no es noticia, y entregar de golpe la cola
+    acumulada sería un aluvión de correos y webhooks sobre cosas que ya no
+    importan.
+
+    Una sola sentencia y no un bucle por lote: la cola que motivó esto tenía
+    semanas de eventos, y caducarlos de doscientos en doscientos habría costado
+    decenas de pasadas del cierre.
+
+    ``created_at`` es TEXT ISO en UTC escrito por ``now_utc_iso`` (mismo
+    formato en todas las filas), así que la comparación de cadenas ordena como
+    la de instantes. Se evita el ``::timestamptz`` a propósito: una sola fila
+    con una marca ilegible haría fallar la sentencia entera y la cola no se
+    podría caducar nunca.
+    """
+    with connect() as c:
+        cur = c.execute(
+            "UPDATE domain_events SET dispatched_at = %s "
+            "WHERE dispatched_at IS NULL AND created_at < %s "
+            "RETURNING event_type",
+            (now_utc_iso(), creados_antes_de),
+        )
+        filas = cur.fetchall()
+    conteo: dict[str, int] = {}
+    for fila in filas:
+        tipo = str(fila[0])
+        conteo[tipo] = conteo.get(tipo, 0) + 1
+    return conteo
+
+
 def count_pending_events() -> int:
     """Cuántos eventos esperan despacho. Alimenta ``domain_events_pending``."""
     with connect_read() as c:
