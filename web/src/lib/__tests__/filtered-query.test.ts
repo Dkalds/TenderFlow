@@ -9,6 +9,16 @@ describe("lib/filtered-query", () => {
     });
   });
 
+  it("los overrides ganan al ámbito y el ámbito sigue ganando a los explícitos", () => {
+    expect(
+      mergeFilteredParams(
+        { tecnologia: "SAP", ccaa: "MD", limit: "5" },
+        { limit: "20", ccaa: "CT" },
+        { tecnologia: "Oracle" },
+      ),
+    ).toEqual({ tecnologia: "Oracle", ccaa: "MD", limit: "5" });
+  });
+
   it("sin parámetros la URL queda sin `?`", () => {
     expect(filteredQueryUrl("/api/v1/analytics/overview", {})).toBe("/api/v1/analytics/overview");
   });
