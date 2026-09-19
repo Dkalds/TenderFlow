@@ -847,7 +847,9 @@ class OrganizationSettings(BaseModel):
     ccaas: list[str] = Field(default_factory=list, max_length=25)
     importe_min: float | None = Field(default=None, ge=0)
     importe_max: float | None = Field(default=None, ge=0)
-    #: Tipos de contrato CODICE que interesan (`shared/procedimientos.py`).
+    #: Tipos de órgano que interesan, contra `organos.tipo` del maestro (C1.2).
+    #: El Radar solo excluye los órganos con un tipo **conocido y distinto**:
+    #: el maestro todavía no rellena `tipo`, y exigirlo vaciaría el Radar.
     tipos_organo: list[str] = Field(default_factory=list, max_length=20)
     #: Procedimientos que la organización **no** quiere ver. Es una lista de
     #: exclusión y no de inclusión porque así es como se usa: casi nadie
