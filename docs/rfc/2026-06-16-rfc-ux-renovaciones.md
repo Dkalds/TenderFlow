@@ -115,3 +115,14 @@ migrar a `useFilteredQuery` (el endpoint `/competitive/renovaciones` debe acepta
 CCAA/CPV), totales sobre dataset completo (hoy KPIs sobre el `limit=1000`), y
 drill-down interno al listado. Score listo para moverse a backend si se quiere
 consistencia cross-página.
+
+*Estado (2026-09-19):* sigue **parcial**, con dos de los diferidos resueltos.
+La pantalla es hoy la vista `horizonte` de `/mi-pipeline`
+(`mi-pipeline/_hooks/use-horizonte.ts`). **Hecho:** el orden por oportunidad lo
+hace el SQL (`GET /competitive/renovaciones?order_by=score`, misma fórmula que
+`lib/opportunity-score.ts`, fijada por `tests/test_renovaciones_score.py`), y
+los KPIs son totales del backend sobre el dataset completo
+(`/competitive/renovaciones/resumen` → `totales`), no la suma de una página.
+**Falta:** el filtro global de CCAA —el endpoint acepta `ccaa`, pero la vista
+solo le pasa `tecnologia`—, CPV (el endpoint no lo acepta) y el drill-down
+interno al listado.

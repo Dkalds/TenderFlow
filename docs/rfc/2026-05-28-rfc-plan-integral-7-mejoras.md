@@ -4,9 +4,23 @@ title: Plan integral ejecutable para 7 mejoras transversales (typing, CI tests, 
 issue: N/A (consolidacion roadmap interno)
 author: agent:architect
 date: 2026-05-28
-status: approved
+status: partially-implemented
+evidence: "Fase 0 COMPLETADA (2026-06-28); typing strict en todo el código de producción (pyproject.toml, overrides solo para tests/scripts y deps sin stubs); SLIs en docs/sli-slo.md; make doctor; /graph-refresh y hooks de graphify. Falta el alerting de burn-rate de la Fase 4 (verificado 2026-09-19)"
 supersedes:
 ---
+
+> *Estado (2026-09-19):* `approved` («el código todavía no existe») ya no
+> describía el árbol, pero `implemented` tampoco: el cuerpo solo marca
+> **COMPLETADA** la Fase 0, y los criterios globales siguen sin tachar. Lo
+> comprobado en el código: Fase 1 — `[tool.mypy] strict = true` y ningún
+> override sobre módulos de producción («todos pasan strict desde
+> 2026-05-29», `pyproject.toml`); Fase 3 — las migraciones viven solo en
+> `db/alembic/versions/`; Fase 4 — SLIs con fórmula y fuente en
+> [sli-slo.md](../sli-slo.md), pero sin reglas de burn-rate en
+> `observability/alert_rules.yml`; Fase 5 — `make doctor` existe; Fase 6 —
+> `/graph-refresh` y los hooks de `.claude/settings.json`. No se verificó aquí
+> la parte de CI (Fase 2) ni la reproducibilidad en máquina limpia de la
+> Fase 5.
 
 ## Problema
 
