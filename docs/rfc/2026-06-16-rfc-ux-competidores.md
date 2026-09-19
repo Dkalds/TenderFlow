@@ -107,7 +107,7 @@ arreglando primero las dos incoherencias.
 - [x] El ranking de bajas respeta los filtros globales, o lo declara explícitamente en UI.
 - [x] El drill-down muestra desglose CCAA para cualquier empresa (no solo top-10).
 - [x] El Sheet muestra trayectoria temporal (↑/↓) del competidor.
-- [ ] Existe un bloque de señales/movimientos sobre empresas/CCAA vigiladas.
+- [x] Existe un bloque de señales/movimientos sobre empresas/CCAA vigiladas.
 - [x] Fechas con `formatDate`.
 - [ ] `npm run typecheck && npm run lint && npm test` (web) y `make ...` (backend) en verde.
 - [ ] diff-cover ≥ 80% en líneas nuevas.
@@ -160,3 +160,27 @@ proactivas/"Movimientos" sobre watchlist (#4), y fechas crudas → `formatDate`
 - #2, #3 y #5 quedan completos. #4 avanza con un bloque de movimientos calculado
   bajo demanda para la empresa, pero sigue pendiente su activación proactiva desde
   watchlist/notificaciones. El alcance declarado de `/competitive/bajas` no cambia.
+
+2026-09-19 — **#1 completo en el endpoint y #4 con bloque «Movimientos».**
+
+- **#1 `/competitive/bajas` honra fechas e importe.** Nuevos `fecha_desde`/
+  `fecha_hasta` (sobre la **fecha de adjudicación**, ambas incluidas, igual que
+  `services/analytics/competitors.py`) e `importe_min` (presupuesto de la
+  licitación). `ccaa` admite varias separadas por comas (antes comparaba el CSV
+  entero por igualdad y con dos CCAA no casaba nada). La card declara lo que
+  queda fuera: estado, tecnología y búsqueda.
+- **#4 Señales proactivas.** `GET /competitive/watchlist/movimientos?dias=30`
+  (`db.watchlist_empresas.movimientos_vigiladas` + clasificación pura en
+  `services/competitive/movimientos.py`): para las empresas vigiladas (propias
+  y compartidas con la organización), actividad en la ventana y señales
+  explicables —entrada en una CCAA nueva, en una familia CPV nueva, rachas de
+  ≥3 adjudicaciones—. Bloque «Movimientos de tus competidores vigilados» en
+  Competidores. El email proactivo ya existía (`scheduler/competitor_alerts.py`);
+  no se tocó `competitive/batallas.py`.
+- Tests: `tests/test_competitive_movimientos.py` (3 de clasificación
+  ejecutados; 3 con `tmp_db` escritos, no ejecutados en local).
+
+**No hecho:** «salto de cuota» como señal (comparar cuota entre dos periodos
+sobre el segmento del usuario sale caro en vivo sin persistencia nueva) y la
+integración de estas señales en `notifications` (esa línea está en curso en
+otra rama).

@@ -97,8 +97,8 @@ métricas; las cards pueden landear incrementalmente.
 
 - [ ] La página muestra filas descartadas en escritura (no solo `dlq_count`).
 - [ ] Hay un indicador de consistencia de formato de fecha (no solo completitud).
-- [ ] Hay tendencia temporal de las métricas de calidad clave.
-- [ ] `dlq_count` enlaza a una vista para inspeccionar/reintentar la DLQ.
+- [x] Hay tendencia temporal de las métricas de calidad clave.
+- [x] `dlq_count` enlaza a una vista para inspeccionar/reintentar la DLQ.
 - [ ] `npm run typecheck && npm run lint && npm test` (web) y `make ...` (backend) en verde.
 - [ ] diff-cover ≥ 80% en líneas nuevas.
 
@@ -134,3 +134,36 @@ inspeccionar/reintentar (#4, requiere ruta/página nuevas); card de
 `upsert_rows_dropped_total` como tal (#1 métrica Prometheus — hoy la pérdida de
 adjudicaciones ya es visible vía DLQ); tendencia temporal de completitud (#3,
 requiere persistir histórico de métricas); desglose por fuente/conector (#5).
+
+2026-09-19 — **Implementados #3 (tendencia, sin tabla nueva) y #4 (DLQ accionable).**
+
+- **#4 DLQ accionable.** Nuevo `api/routes/admin_dlq.py`: `GET /admin/dlq`
+  (entradas abiertas o agotadas + resumen por fuente) y
+  `POST /admin/dlq/{id}/reintentar`. Sólo administradores de la plataforma
+  (`require_admin`: la DLQ es de la ingesta, común a todas las
+  organizaciones, así que no hay owner de organización que decida), y cada
+  reencolado se audita (`dlq.requeued`, familia `operacion` de
+  `shared/audit_events.py`). Reencolar **no** ejecuta el conector en la
+  petición (minutos u horas): `db.dlq.requeue` deja la entrada vencida
+  (`retry_count=0`, `last_attempt_at=NULL`; reabre las agotadas) para el
+  próximo ciclo de `scheduler.dlq_retry`, y no reabre una agotada si ya hay
+  otra abierta para la misma fuente/scope (índice único
+  `idx_fail_unique_unresolved`). `dlq-card.tsx` lista y reencola con
+  confirmación; la card de DLQ de Calidad de Datos y el panel de
+  Observabilidad enlazan allí (se retira el botón «Funcionalidad en
+  desarrollo»). Limitación: `list_unresolved` ordena por `created_at DESC` y el
+  ciclo toma `batch*3` candidatos, así que una entrada muy antigua con mucha
+  cola delante puede tardar más de un ciclo.
+- **#3 Tendencia de completitud.** `QualityResult.tendencia_completitud`:
+  % de CPV, importe, órgano y fecha límite por **mes de publicación** (12
+  meses), calculado en vivo (`AggregateRepository.quality_completitud_mensual`).
+  Es la cohorte de cada mes medida hoy, no un histórico de snapshots —la
+  tarjeta lo dice—, y detecta lo que el RFC pedía: una caída desde el mes en
+  que la fuente cambia de esquema. Un histórico real (snapshots diarios)
+  seguiría necesitando tabla nueva; queda anotado, sin migración.
+- Tests: `tests/test_admin_dlq.py` (8 sin BD ejecutados; 3 de `requeue` con
+  `tmp_db` escritos, no ejecutados), `tests/test_calidad_tendencia_completitud.py`
+  (3 ejecutados, 1 con `tmp_db`) y `dlq-card.test.tsx` (vitest).
+
+**Siguen pendientes:** #1 (card de `upsert_rows_dropped_total` como tal) y #5
+(desglose por fuente de las métricas de licitaciones).

@@ -106,11 +106,11 @@ tiene **dos defectos de correctitud/visualización** y gaps de interacción:
 
 ## Acceptance criteria
 
-- [ ] El heatmap Mes×Estado refleja el cruce real del backend (no marginales), o se
+- [x] El heatmap Mes×Estado refleja el cruce real del backend (no marginales), o se
       etiqueta/oculta si el dato no existe.
 - [ ] La banda de confianza del forecast se ve correctamente en claro y oscuro (sin
       relleno blanco hardcodeado).
-- [ ] Barras por mes y celdas del heatmap son clicables → listado filtrado.
+- [x] Barras por mes y celdas del heatmap son clicables → listado filtrado.
 - [ ] El forecast muestra cobertura (meses) y, si está, error.
 - [ ] `npm run typecheck && npm run lint && npm test` (web) en verde; `make lint &&
       make typecheck && make test-unit` si cambió el DTO.
@@ -129,3 +129,22 @@ síntesis como dato real" (paso interino que el propio RFC contempla). Verde:
 `tsc`/`eslint`/`vitest` (19 files, 285 tests). **Diferido (requiere backend):**
 (1) cross-tab real `(mes,estado)` en `services/analytics`, (3) drill-down de barras/
 celdas al listado filtrado, (4) metadata de calidad del forecast (meses, MAPE).
+
+2026-09-19 — **Implementados #1 (cruce real) y #3 (drill-down).**
+
+- **#1 Heatmap Mes×Estado real.** El backend ya servía el cruce real en
+  `/analytics/trends` → `heatmap` (`AggregateRepository.trends_heatmap`,
+  `GROUP BY mes, estado`), pero la página seguía fabricando el producto de
+  marginales desde `/analytics/overview`. `use-tendencias-view.ts` consume
+  ahora `trends.heatmap` (`heatmapFromCells`), la vista deja de pedir
+  `/overview` y desaparece el badge «Estimado».
+- **#3 Drill-down.** Cada celda con licitaciones enlaza a
+  `/detalle?fecha_desde=<mes-01>&fecha_hasta=<fin de mes>&estado=<código>` con
+  el ámbito activo; la cabecera de cada mes enlaza al mes completo (es el
+  camino de teclado: las celdas no son paradas de tabulación) y las barras de
+  «Licitaciones por Mes» abren el mismo listado al pulsarlas.
+- Tests: `tendencias-drilldown.test.ts` (vitest).
+
+**Sigue pendiente:** enlace de los KPIs YoY a la comparación de periodos
+(último inciso de #3) y la metadata de calidad del forecast (#4: meses de
+histórico y error de backtest).

@@ -70,7 +70,7 @@ defecto de correctitud:
 
 ## Acceptance criteria
 
-- [ ] El forecast corresponde al/los CPV seleccionados (o se etiqueta como global explícitamente).
+- [x] El forecast corresponde al/los CPV seleccionados (o se etiqueta como global explícitamente).
 - [ ] Top-CPV y series enlazan al listado filtrado por CPV.
 - [ ] `npm run typecheck && npm run lint && npm test` (web) y `make ...` (backend) en verde.
 - [ ] diff-cover ≥ 80% en líneas nuevas.
@@ -87,3 +87,21 @@ banda blanca (`hsl(0,0%,100%)` → `hsl(var(--card))`, igual que en ux-tendencia
 no estaba listado en este RFC pero el smell vivía aquí también, línea 266). Verde:
 `tsc`/`eslint`/`vitest` (19 files, 285 tests). **Diferido (requiere backend):**
 forecast por CPV (`forecast/volume?cpv=...`) y drill-down al listado por CPV.
+
+2026-09-19 — **Implementado #1 (forecast por CPV).**
+
+- `GET /analytics/forecast/volume` acepta `cpv` (8 dígitos con dígito de
+  control opcional: `max_length=10`, patrón `^\d{8}(-\d)?$`), comparado por
+  igualdad: el mismo valor que identifica cada serie de `/trends-cpv`. La
+  respuesta devuelve `cpv` para que la UI rotule el ámbito que realmente
+  recibió.
+- `tendencias-cpv`: selector «Prever» entre los CPV pintados (o «Mercado
+  entero»); arranca en el primero, y si el elegido deja de estar pintado vuelve
+  al primero. El badge dice `CPV xxxxxxxx` o «Global del mercado» según la
+  respuesta.
+- Tests: `tests/test_forecast_volume_cpv.py` (ejecutados) y
+  `tendencias-drilldown.test.ts` (vitest).
+
+**Sigue pendiente:** drill-down de top-CPV y series al listado (#2): `/detalle`
+no acepta `cpv` por URL todavía (su ámbito de URL lo lleva otra línea de
+trabajo, filtros globales).
