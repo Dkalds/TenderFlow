@@ -2,8 +2,9 @@
 
 /**
  * Los tres gráficos de Tendencias CPV: el multilínea de importe por periodo
- * (con el botón que abre la previsión), la previsión global superpuesta y el
- * ranking Top 15 por importe.
+ * (con el botón que abre la previsión), la previsión —de un CPV pintado o del
+ * mercado entero, rotulada con el ámbito que declara la API— y el ranking Top
+ * 15 por importe.
  */
 
 import {
@@ -108,24 +109,61 @@ export function TendenciasCpvSeries({
 
 export function TendenciasCpvForecast({
   data,
+  cpv,
+  cpvRespuesta,
+  opciones,
+  onCpvChange,
   isLoading,
 }: {
   data: ForecastRow[];
+  /** CPV pedido; `null` = mercado entero. */
+  cpv: string | null;
+  /** CPV que declara la respuesta: es el que se rotula, no el que se creía pedir. */
+  cpvRespuesta: string | null;
+  opciones: CpvSeries[];
+  onCpvChange: (cpv: string | null) => void;
   isLoading: boolean;
 }) {
+  const esGlobal = cpvRespuesta == null;
+  const etiquetaCpv = opciones.find((o) => o.cpv === cpvRespuesta)?.label ?? cpvRespuesta;
   return (
     <Card>
       <CardHeader>
-        <div className="flex items-center gap-2">
-          <CardTitle className="text-base">Previsión Volumen (6 meses)</CardTitle>
-          <Badge variant="outline" className="text-amber-600 border-amber-400">
-            Global del mercado
-          </Badge>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <CardTitle className="text-base">Previsión nº de licitaciones (6 meses)</CardTitle>
+            <Badge variant="outline" className={esGlobal ? "text-amber-600 border-amber-400" : undefined}>
+              {esGlobal ? "Global del mercado" : `CPV ${cpvRespuesta}`}
+            </Badge>
+          </div>
+          <label className="flex items-center gap-2 text-sm">
+            <span className="text-muted-foreground">Prever</span>
+            <select
+              className="h-9 rounded-md border bg-background px-2 text-sm"
+              value={cpv ?? ""}
+              onChange={(e) => onCpvChange(e.target.value === "" ? null : e.target.value)}
+            >
+              {opciones.map((o) => (
+                <option key={o.cpv} value={o.cpv}>
+                  {o.cpv}
+                  {o.label && o.label !== o.cpv ? ` — ${o.label}` : ""}
+                </option>
+              ))}
+              <option value="">Mercado entero</option>
+            </select>
+          </label>
         </div>
         <CardDescription>
-          Previsión del volumen <strong>global</strong>, no de los CPV
-          seleccionados arriba. Pendiente de soportar forecast por CPV en el
-          backend.
+          {esGlobal ? (
+            <>
+              Previsión del volumen <strong>global</strong>, no de un CPV concreto.
+            </>
+          ) : (
+            <>
+              Previsión de licitaciones publicadas del CPV <strong>{etiquetaCpv}</strong>,
+              calculada sobre su propia serie mensual.
+            </>
+          )}
         </CardDescription>
       </CardHeader>
       <CardContent>

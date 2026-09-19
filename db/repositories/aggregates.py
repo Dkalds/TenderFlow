@@ -1099,6 +1099,91 @@ class AggregateRepository:
             for i, (label, _lo, _hi) in enumerate(self._HISTOGRAM_BINS)
         ]
 
+    # ── Calendario de vencimientos ───────────────────────────────────────
+    #
+    # Eje ``fecha_limite`` (fin del plazo de presentación), no publicación. El
+    # universo es el MISMO que el del listado al que enlaza cada día
+    # (``GET /licitaciones?cierre_desde=D&cierre_hasta=D``): el filtro global
+    # de ``_build_where`` más ``tecnologia`` informada, que es el
+    # ``only_classified`` que ``LicitacionRepository._base_filters`` aplica
+    # siempre. Sin esa cláusula el calendario contaría filas que el listado no
+    # enseña y el día prometería más de lo que abre (ADR-014).
+    #
+    # La cota superior es EXCLUSIVA (el día siguiente al ``hasta``) porque
+    # ``fecha_limite`` puede llevar hora: ``'2026-09-20T14:00' <= '2026-09-20'``
+    # es falso en orden lexicográfico. Es la misma convención que usa
+    # ``_base_filters`` para ``cierre_hasta``.
+
+    _VENCIMIENTOS_UNIVERSO = "tecnologia IS NOT NULL AND tecnologia != ''"
+
+    def vencimientos_diarios(
+        self, filters: LicitacionesFilters, *, desde_iso: str, hasta_exclusivo_iso: str
+    ) -> list[dict[str, Any]]:
+        """(dia YYYY-MM-DD, count, importe) de cierres en ``[desde, hasta)``.
+
+        El tamaño está acotado por la ventana (un día por fila), que el servicio
+        limita; no escala con el número de licitaciones.
+        """
+        where, params = _build_where(filters)
+        guard = iso_guard("fecha_limite")
+        sql = (
+            "SELECT substr(fecha_limite, 1, 10) AS dia, "
+            "       COUNT(*) AS count, COALESCE(SUM(importe), 0) AS importe "
+            "FROM licitaciones "
+            f"WHERE {where} AND {guard} AND {self._VENCIMIENTOS_UNIVERSO} "
+            "  AND fecha_limite >= %s AND fecha_limite < %s "
+            "GROUP BY dia ORDER BY dia"
+        )
+        with connect_read() as c:
+            return rows_to_dicts(c.execute(sql, [*params, desde_iso, hasta_exclusivo_iso]))
+
+    def vencimientos_kpis(
+        self,
+        filters: LicitacionesFilters,
+        *,
+        hoy_iso: str,
+        manana_iso: str,
+        fin_7d_exclusivo_iso: str,
+        fin_mes_exclusivo_iso: str,
+    ) -> dict[str, int]:
+        """Cierres de hoy, de los próximos 7 días y de lo que queda de mes.
+
+        Relativos a ``hoy`` y no a la ventana que pinta el calendario: el KPI
+        responde «¿qué me vence ya?» aunque el usuario esté mirando otro año.
+        Todas las cotas superiores son exclusivas (ver la nota de la sección).
+        """
+        where, params = _build_where(filters)
+        guard = iso_guard("fecha_limite")
+        sql = (
+            "SELECT "
+            "  COUNT(*) FILTER (WHERE fecha_limite < %s) AS hoy, "
+            "  COUNT(*) FILTER (WHERE fecha_limite < %s) AS proximos_7d, "
+            "  COUNT(*) FILTER (WHERE fecha_limite < %s) AS resto_mes "
+            "FROM licitaciones "
+            f"WHERE {where} AND {guard} AND {self._VENCIMIENTOS_UNIVERSO} "
+            "  AND fecha_limite >= %s AND fecha_limite < %s"
+        )
+        # El techo del WHERE es el mayor de las dos ventanas: el fin de mes
+        # puede caer antes que hoy+7 (último día del mes) o después.
+        techo = max(fin_7d_exclusivo_iso, fin_mes_exclusivo_iso)
+        run_params = [
+            manana_iso,
+            fin_7d_exclusivo_iso,
+            fin_mes_exclusivo_iso,
+            *params,
+            hoy_iso,
+            techo,
+        ]
+        with connect_read() as c:
+            row = c.execute(sql, run_params).fetchone()
+        if row is None:
+            return {"hoy": 0, "proximos_7d": 0, "resto_mes": 0}
+        return {
+            "hoy": int(row[0] or 0),
+            "proximos_7d": int(row[1] or 0),
+            "resto_mes": int(row[2] or 0),
+        }
+
     # ── Organos ──────────────────────────────────────────────────────────
 
     def _organos_where(self, filters: LicitacionesFilters, q: str | None) -> tuple[str, list[Any]]:
@@ -1483,6 +1568,35 @@ class AggregateRepository:
             "importe": int(row[len(self._QUALITY_TEXT_COLS) + 1] or 0),
             "fecha_iso": int(row[len(self._QUALITY_TEXT_COLS) + 2] or 0),
         }
+
+    def quality_completitud_mensual(self, *, desde_iso: str) -> list[dict[str, Any]]:
+        """Completitud por mes de PUBLICACIÓN desde ``desde_iso`` (RFC calidad #3).
+
+        Una serie de completitud sin tabla de histórico: cada mes es la cohorte
+        de expedientes publicados en él, medida hoy. No es «cómo estaba el dato
+        el mes pasado» (eso exigiría persistir snapshots), sino «qué tan
+        completos llegan los expedientes de cada mes» — que es justo lo que se
+        rompe cuando la fuente cambia de esquema: los meses posteriores al
+        cambio caen y los anteriores no.
+
+        Acotada por la ventana (un grupo por mes, ~12 filas) y por el índice de
+        ``fecha_publicacion``.
+        """
+        guard = iso_guard("fecha_publicacion")
+        sql = (
+            "SELECT substr(fecha_publicacion, 1, 7) AS mes, COUNT(*) AS total, "
+            "  COUNT(*) FILTER (WHERE cpv IS NOT NULL AND trim(cpv) != '') AS con_cpv, "
+            "  COUNT(*) FILTER (WHERE importe IS NOT NULL) AS con_importe, "
+            "  COUNT(*) FILTER (WHERE organo_contratacion IS NOT NULL "
+            "                   AND trim(organo_contratacion) != '') AS con_organo, "
+            "  COUNT(*) FILTER (WHERE fecha_limite IS NOT NULL "
+            "                   AND trim(fecha_limite) != '') AS con_fecha_limite "
+            "FROM licitaciones "
+            f"WHERE {guard} AND fecha_publicacion >= %s "
+            "GROUP BY mes ORDER BY mes"
+        )
+        with connect_read() as c:
+            return rows_to_dicts(c.execute(sql, [desde_iso]))
 
     # ── Forecast ─────────────────────────────────────────────────────────
 

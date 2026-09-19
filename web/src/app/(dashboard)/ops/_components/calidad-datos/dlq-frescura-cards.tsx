@@ -7,6 +7,7 @@
  * cola creciendo con el scraping al día.
  */
 
+import Link from "next/link";
 import { AlertTriangle, Clock } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -53,6 +54,16 @@ export function DlqFrescuraCards({
                   Requiere atención
                 </Badge>
               )}
+              {/* RFC calidad #4: el número enlaza a donde se inspecciona y
+                  reencola cada entrada, en vez de quedarse en un contador. */}
+              <p className="mt-3 text-sm">
+                <Link
+                  href="/ops?vista=administracion"
+                  className="text-primary underline-offset-4 hover:underline"
+                >
+                  Inspeccionar y reencolar entradas
+                </Link>
+              </p>
             </>
           )}
         </CardContent>

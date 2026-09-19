@@ -11,8 +11,8 @@ describe("calendario charts", () => {
       render(
         <CalendarioMonthlyChart
           data={[
-            { mes: "2024-01", publicaciones: 12, importe: 100000 },
-            { mes: "2024-02", publicaciones: 8, importe: 54000 },
+            { mes: "2024-01", count: 12, importe: 100000 },
+            { mes: "2024-02", count: 8, importe: 54000 },
           ]}
         />,
       ),
