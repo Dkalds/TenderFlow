@@ -504,6 +504,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/analytics/resumen/desde-mi-ultima-visita/visto": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Marcar todo como visto: la última visita pasa a ser ahora
+         * @description F5.4 — «marcar todo como visto» en la banda del Resumen.
+         *
+         *     La última visita es la lectura más reciente de la campana, y hasta ahora
+         *     solo avanzaba leyendo notificaciones concretas. Esto la mueve a ahora sin
+         *     tocar ninguna: la siguiente lectura de la banda empieza aquí. Es personal
+         *     —la marca es del principal, nunca de un parámetro— y no depende de la
+         *     organización, igual que la marca que lee el GET.
+         */
+        post: operations["resumen_marcar_visto_api_v1_analytics_resumen_desde_mi_ultima_visita_visto_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/analytics/resumen/hoy": {
         parameters: {
             query?: never;
@@ -13198,6 +13224,14 @@ export interface components {
             type: string;
         };
         /**
+         * VisitaMarcada
+         * @description Respuesta de «marcar todo como visto»: la nueva marca de última visita.
+         */
+        VisitaMarcada: {
+            /** Visto En */
+            visto_en: string;
+        };
+        /**
          * WatchlistEmpresaItem
          * @description Empresa vigilada, con nombre canónico del maestro.
          */
@@ -14713,6 +14747,39 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    resumen_marcar_visto_api_v1_analytics_resumen_desde_mi_ultima_visita_visto_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VisitaMarcada"];
+                };
             };
             /** @description Validation Error */
             422: {

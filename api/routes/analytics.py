@@ -16,7 +16,7 @@ from api.dependencias_pipeline import paquete_del_pipeline_ausente
 from api.routes.dual_auth import require_any_auth
 from api.routes.dual_auth import require_any_auth as require_analytics_auth
 from api.tenancy import require_organization, resolve_organization_ctx
-from db.notifications import get_last_seen_ts
+from db.notifications import get_last_seen_ts, marcar_visita
 from observability.logging import get_logger
 from services.analytics.clusters import ClustersFilters, ClustersResult, get_clusters
 from services.analytics.compare import CompareFilters, CompareResult, get_compare_periods
@@ -81,7 +81,11 @@ from services.analytics.trends import (
 )
 from services.analytics.trends_cpv import TrendsCpvFilters, TrendsCpvResult, get_trends_cpv
 from services.analytics.utes import UTEFilters, UTEResult, get_utes
-from services.novedades import NovedadesDesdeUltimaVisita, desde_ultima_visita
+from services.novedades import (
+    NovedadesDesdeUltimaVisita,
+    VisitaMarcada,
+    desde_ultima_visita,
+)
 from services.source_health import SourceFreshnessResult, get_source_freshness
 from shared.cache import cache_response
 
@@ -528,6 +532,33 @@ async def resumen_desde_ultima_visita(
             limit=limit,
             user_id=user_id,
         )
+
+    return await run_db(_trabajo)
+
+
+@router.post(
+    "/resumen/desde-mi-ultima-visita/visto",
+    summary="Marcar todo como visto: la última visita pasa a ser ahora",
+)
+async def resumen_marcar_visto(
+    ctx: dict[str, Any] = Depends(require_any_auth),
+) -> VisitaMarcada:
+    """F5.4 — «marcar todo como visto» en la banda del Resumen.
+
+    La última visita es la lectura más reciente de la campana, y hasta ahora
+    solo avanzaba leyendo notificaciones concretas. Esto la mueve a ahora sin
+    tocar ninguna: la siguiente lectura de la banda empieza aquí. Es personal
+    —la marca es del principal, nunca de un parámetro— y no depende de la
+    organización, igual que la marca que lee el GET.
+    """
+
+    def _trabajo() -> VisitaMarcada:
+        user_id = ctx.get("user_id")
+        visto_en = marcar_visita(
+            str(ctx["user_key"]),
+            user_id=int(user_id) if user_id is not None else None,
+        )
+        return VisitaMarcada(visto_en=visto_en)
 
     return await run_db(_trabajo)
 

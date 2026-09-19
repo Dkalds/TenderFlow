@@ -7,15 +7,16 @@
  * ventana se declare, y que la telemetría salga una vez con `banda`.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
-const { apiGet, registrarEvento } = vi.hoisted(() => ({
+const { apiGet, apiMutate, registrarEvento } = vi.hoisted(() => ({
   apiGet: vi.fn(),
+  apiMutate: vi.fn(),
   registrarEvento: vi.fn(),
 }));
 
-vi.mock("@/lib/api-client", () => ({ apiGet }));
+vi.mock("@/lib/api-client", () => ({ apiGet, apiMutate }));
 vi.mock("@/lib/analytics", () => ({ registrarEvento }));
 vi.mock("@/hooks/use-organization", () => ({ useActiveOrganizationId: () => 21 }));
 
@@ -44,6 +45,7 @@ function novedad(i: number, extra: Record<string, unknown> = {}) {
 afterEach(() => {
   cleanup();
   apiGet.mockReset();
+  apiMutate.mockReset();
   registrarEvento.mockReset();
 });
 
@@ -88,6 +90,34 @@ describe("DesdeUltimaVisita", () => {
 
     expect(await screen.findByText(/Sin cambios en lo que sigues desde el/)).toBeInTheDocument();
     expect(screen.getByRole("region")).toBeInTheDocument();
+    // Sin cambios no hay nada que marcar.
+    expect(screen.queryByRole("button", { name: /Marcar todo como visto/ })).not.toBeInTheDocument();
+  });
+
+  it("«marcar todo como visto» mueve la marca y vuelve a pedir la banda", async () => {
+    apiGet
+      .mockResolvedValueOnce({
+        desde: "2026-09-16T08:00:00+00:00",
+        items: [novedad(1)],
+        por_subtipo: { plazo_ampliado: 1 },
+        ventana_recortada: false,
+      })
+      .mockResolvedValue({
+        desde: "2026-09-19T10:00:00+00:00",
+        items: [],
+        por_subtipo: {},
+        ventana_recortada: false,
+      });
+    apiMutate.mockResolvedValue({ visto_en: "2026-09-19T10:00:00+00:00" });
+    renderBanda();
+
+    fireEvent.click(await screen.findByRole("button", { name: /Marcar todo como visto/ }));
+
+    await waitFor(() =>
+      expect(apiMutate).toHaveBeenCalledWith("POST", "/api/v1/analytics/resumen/desde-mi-ultima-visita/visto"),
+    );
+    expect(await screen.findByText(/Sin cambios en lo que sigues desde el/)).toBeInTheDocument();
+    expect(apiGet).toHaveBeenCalledTimes(2);
   });
 
   it("declara el recorte de la ventana y pliega lo que no cabe", async () => {

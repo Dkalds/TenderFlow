@@ -80,6 +80,37 @@ def get_last_seen_ts(user_key: str, *, user_id: int | None = None) -> str | None
     return row[0] if row else None
 
 
+#: ``notification_id`` reservado para la marca de «visto todo» (F5.4). No es un
+#: ``id_externo`` —ninguno empieza por doble guion bajo—, así que no puede
+#: chocar con una lectura real ni aparecer como «leída» en la campana.
+MARCA_VISITA = "__ultima_visita__"
+
+
+def marcar_visita(user_key: str, *, user_id: int | None = None) -> str:
+    """Mueve la última visita a ahora sin marcar ninguna notificación concreta.
+
+    La última visita es ``MAX(read_at)`` de ``notification_reads``
+    (:func:`get_last_seen_ts`), y hasta ahora solo avanzaba leyendo algo en la
+    campana: «marcar todo como visto» en el Resumen no tenía qué escribir. Se
+    guarda como una fila más con un ``notification_id`` reservado
+    (:data:`MARCA_VISITA`) y se **actualiza** en cada llamada, así que no
+    crece: una fila por usuario, sin migración.
+
+    Devuelve la marca escrita.
+    """
+    ahora = now_utc_iso()
+    with connect() as c:
+        c.execute(
+            "INSERT INTO notification_reads (user_key, user_id, notification_id, read_at) "
+            "VALUES (%s, %s, %s, %s) "
+            "ON CONFLICT(user_key, notification_id) DO UPDATE SET "
+            "read_at = excluded.read_at, user_id = COALESCE(excluded.user_id, "
+            "notification_reads.user_id)",
+            (user_key, user_id, MARCA_VISITA, ahora),
+        )
+    return ahora
+
+
 def insert_user_notification(
     *,
     user_key: str,
