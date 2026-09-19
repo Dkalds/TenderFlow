@@ -224,6 +224,7 @@ def test_dos_seguidores_del_mismo_expediente_tienen_su_linea_de_digest(
 
 def test_un_recurso_sobre_un_expediente_seguido_emite_con_su_sentido(seguidora):
     set_cursor(avisos_outbox.CURSOR_RECURSOS, last_entry_id="0")
+    _lic("NADIE-LO-SIGUE")  # existe (FK de resoluciones_recurso) pero nadie la sigue
     with connect() as c:
         c.execute(
             "INSERT INTO resoluciones_recurso (tribunal, numero_resolucion, fecha, sentido, "
