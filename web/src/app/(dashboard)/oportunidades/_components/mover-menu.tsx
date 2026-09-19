@@ -9,6 +9,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import type { Pursuit } from "@/hooks/use-pursuits";
 import { FASES, faseDe, type FaseKey } from "../_lib/fases";
+import { bloqueoDeFase, resultadosPermitidos } from "../_lib/flujo";
 
 /**
  * La vía de teclado para mover una tarjeta.
@@ -18,6 +19,10 @@ import { FASES, faseDe, type FaseKey } from "../_lib/fases";
  * esto en la tercera columna». Sin este menú el tablero sería una pantalla que
  * sólo se puede usar apuntando, así que **no es opcional**: cada tarjeta
  * arrastrable lo lleva.
+ *
+ * Lista las seis fases, con las que el flujo no permite deshabilitadas: así se
+ * ve el orden entero y cuál es el único paso posible. Cuando cerrar solo puede
+ * ser retirarla, la opción lo dice.
  *
  * El nombre accesible incluye el título de la oportunidad porque en una columna
  * hay varios de estos botones y «Mover de fase» repetido ocho veces no dice
@@ -32,6 +37,7 @@ export function MoverMenu({
 }) {
   const actual = faseDe(pursuit.status);
   const titulo = pursuit.tender_title ?? `Licitación ${pursuit.licitacion_id}`;
+  const soloRetirar = resultadosPermitidos(pursuit).every((resultado) => resultado === "withdrawn");
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
@@ -44,10 +50,10 @@ export function MoverMenu({
         {FASES.map((fase) => (
           <DropdownMenuItem
             key={fase.key}
-            disabled={fase.key === actual}
+            disabled={fase.key === actual || bloqueoDeFase(pursuit, fase.key) !== null}
             onSelect={() => onMover(fase.key)}
           >
-            {fase.key === "cerrada" ? "Cerrar…" : fase.titulo}
+            {fase.key === "cerrada" ? (soloRetirar ? "Retirar…" : "Cerrar…") : fase.titulo}
           </DropdownMenuItem>
         ))}
       </DropdownMenuContent>

@@ -13,6 +13,7 @@ import { TableroMetricas } from "./_components/tablero-metricas";
 import { TableroVacio } from "./_components/tablero-vacio";
 import { useTablero } from "./_hooks/use-tablero";
 import { FASES, faseDe } from "./_lib/fases";
+import { bloqueoDeFase, resultadosPermitidos } from "./_lib/flujo";
 
 /**
  * Oportunidades — tablero por fases.
@@ -26,6 +27,8 @@ import { FASES, faseDe } from "./_lib/fases";
  * Arrastrar no es la única forma de mover: cada tarjeta lleva su menú «Mover
  * a», que es la vía de teclado y de lector de pantalla. Soltar en «Cerradas»
  * abre el diálogo de resultado y motivo en vez de elegir uno por el usuario.
+ * Las dos vías respetan el flujo del backend (`_lib/flujo.ts`): mientras se
+ * arrastra, solo aceptan la tarjeta la fase siguiente, «Cerradas» y la suya.
  *
  * La unidad sigue siendo la **oportunidad**, no el expediente: un expediente
  * dividido en lotes puede tener una por lote, así que las columnas agrupan por
@@ -58,6 +61,7 @@ export default function OportunidadesPage() {
   );
 
   const vacio = !pursuits.isLoading && !pursuits.error && (pursuits.data?.items?.length ?? 0) === 0;
+  const arrastrada = items.find((item) => item.id === tablero.arrastrandoId) ?? null;
 
   return (
     <SpaceShell spaceKey="oportunidades" actions={filtros} bleed>
@@ -84,11 +88,11 @@ export default function OportunidadesPage() {
                 etiquetasPorId={etiquetasPorId}
                 cargando={pursuits.isLoading}
                 activa={tablero.columnaActiva === fase.key}
+                aceptaSoltar={arrastrada == null || bloqueoDeFase(arrastrada, fase.key) === null}
                 arrastrandoId={tablero.arrastrandoId}
                 onSobrevolar={() => tablero.sobrevolar(fase.key)}
                 onSalir={() => tablero.salirDe(fase.key)}
                 onSoltarEnColumna={() => {
-                  const arrastrada = items.find((item) => item.id === tablero.arrastrandoId);
                   if (arrastrada) tablero.moverA(arrastrada, fase.key);
                 }}
                 onArrastrar={tablero.empezarArrastre}
@@ -105,6 +109,7 @@ export default function OportunidadesPage() {
       <DialogoCierre
         key={tablero.cierre?.id ?? "sin-cierre"}
         pursuit={tablero.cierre}
+        resultados={tablero.cierre ? resultadosPermitidos(tablero.cierre) : undefined}
         onCancelar={tablero.cancelarCierre}
         onConfirmar={tablero.confirmarCierre}
       />

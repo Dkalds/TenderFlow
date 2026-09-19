@@ -6,6 +6,7 @@ import { ApiError } from "@/lib/api-client";
 import { useMoverPursuit } from "@/hooks/use-pursuits";
 import type { Pursuit, PursuitStatus, UpdatePursuitInput } from "@/hooks/use-pursuits";
 import { FASES, faseDe, type FaseKey } from "../_lib/fases";
+import { bloqueoDeFase } from "../_lib/flujo";
 
 function tituloDe(pursuit: Pursuit): string {
   return pursuit.tender_title ?? `Licitación ${pursuit.licitacion_id}`;
@@ -18,12 +19,19 @@ function nombreFase(key: FaseKey): string {
 /**
  * El estado de arrastre del tablero y el movimiento de una tarjeta.
  *
- * Dos cosas que no son adorno:
+ * Tres cosas que no son adorno:
  *
+ * - **El flujo manda antes del PATCH.** El backend solo acepta avanzar a la
+ *   fase siguiente o retirar (`_lib/flujo.ts`). Un movimiento que va a
+ *   rechazar no se envía: se explica por qué no se puede. Por eso tampoco hay
+ *   «Deshacer»: deshacer un avance es retroceder, y el flujo no tiene vuelta
+ *   atrás.
  * - **`expected_version` en cada PATCH.** Un tablero es de equipo. Si alguien
  *   movió la misma tarjeta mientras ésta estaba en el aire, el backend
  *   responde 409 y aquí se deshace el movimiento optimista y se dice quién
- *   manda, en vez de pisar su cambio en silencio.
+ *   manda, en vez de pisar su cambio en silencio. Con el flujo comprobado
+ *   antes, un 409 solo puede venir de ahí: de que el servidor ya tenía otro
+ *   estado.
  * - **El movimiento optimista es local y efímero.** `overrides` pinta la
  *   tarjeta en su columna nueva mientras el PATCH viaja, y se borra en cuanto
  *   la invalidación trae el listado de verdad. No se toca la caché de la query:
@@ -45,21 +53,13 @@ export function useTablero() {
     });
   }, []);
 
-  /**
-   * El PATCH en sí, sin nada que contar. Separado de `aplicar` porque
-   * «Deshacer» vuelve a pasar por aquí y una función que se llama a sí misma
-   * dentro de su propio `useCallback` no puede leerse antes de existir.
-   */
-  const parchear = React.useCallback(
-    async (
-      pursuit: Pursuit,
-      cambios: UpdatePursuitInput & { status: PursuitStatus },
-    ): Promise<Pursuit | null> => {
+  const aplicar = React.useCallback(
+    async (pursuit: Pursuit, cambios: UpdatePursuitInput & { status: PursuitStatus }) => {
       setOverrides((previo) => ({ ...previo, [String(pursuit.id)]: cambios.status }));
       try {
-        const actualizado = await mover.mutateAsync({ id: pursuit.id, ...cambios });
+        await mover.mutateAsync({ id: pursuit.id, ...cambios });
         quitarOverride(pursuit.id);
-        return actualizado;
+        toast.success(`«${tituloDe(pursuit)}» pasa a ${nombreFase(faseDe(cambios.status))}`);
       } catch (error) {
         quitarOverride(pursuit.id);
         const conflicto = error instanceof ApiError && error.status === 409;
@@ -73,33 +73,9 @@ export function useTablero() {
               : (error as Error).message,
           },
         );
-        return null;
       }
     },
     [mover, quitarOverride],
-  );
-
-  const aplicar = React.useCallback(
-    async (pursuit: Pursuit, cambios: UpdatePursuitInput & { status: PursuitStatus }) => {
-      const anterior = pursuit.status;
-      const actualizado = await parchear(pursuit, cambios);
-      if (!actualizado) return;
-      toast.success(`«${tituloDe(pursuit)}» pasa a ${nombreFase(faseDe(cambios.status))}`, {
-        action: {
-          label: "Deshacer",
-          onClick: () => {
-            // La versión de vuelta es la del PATCH que acaba de entrar, no la
-            // que tenía la tarjeta al empezar: con la vieja, deshacer chocaría
-            // con su propio cambio.
-            void parchear(actualizado, {
-              status: anterior,
-              expected_version: actualizado.version,
-            });
-          },
-        },
-      });
-    },
-    [parchear],
   );
 
   const moverA = React.useCallback(
@@ -107,6 +83,13 @@ export function useTablero() {
       setArrastrandoId(null);
       setColumnaActiva(null);
       if (faseDe(pursuit.status) === destino) return;
+      const bloqueo = bloqueoDeFase(pursuit, destino);
+      if (bloqueo) {
+        toast.warning(`«${tituloDe(pursuit)}» no puede pasar a ${nombreFase(destino)}`, {
+          description: bloqueo,
+        });
+        return;
+      }
       // Cerrar no es mover: hay tres resultados detrás de esa columna y el
       // motivo alimenta el informe de pérdidas, así que se pregunta.
       if (destino === "cerrada") {

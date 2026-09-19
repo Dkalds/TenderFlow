@@ -5,8 +5,8 @@ import { PanelEmpty } from "@/components/console/panel";
 import { PursuitCard } from "@/components/pursuits/pursuit-card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
+import { esTerminal, type Pursuit } from "@/hooks/use-pursuits";
 import type { EtiquetaAplicada } from "@/hooks/use-etiquetas";
-import type { Pursuit } from "@/hooks/use-pursuits";
 import { agruparPorExpediente, type Fase, type FaseKey } from "../_lib/fases";
 import { MoverMenu } from "./mover-menu";
 
@@ -20,6 +20,12 @@ import { MoverMenu } from "./mover-menu";
  * Cuando `/pursuits/metrics` devuelva un agregado por fase, la cifra entra
  * aquí; hasta entonces el valor del pipeline vive en la tira de arriba, que sí
  * lo recibe calculado.
+ *
+ * `aceptaSoltar` lo decide el flujo (`_lib/flujo.ts`) para la tarjeta que se
+ * arrastra. Una columna que no la acepta no llama a `preventDefault`, y el
+ * navegador enseña el cursor de «aquí no» en vez de dejar soltar para que
+ * luego el backend lo rechace. Una tarjeta cerrada no se arrastra ni lleva
+ * menú: ya no tiene adónde ir.
  */
 export function TableroColumna({
   fase,
@@ -27,6 +33,7 @@ export function TableroColumna({
   etiquetasPorId,
   cargando,
   activa,
+  aceptaSoltar,
   arrastrandoId,
   onSobrevolar,
   onSalir,
@@ -40,6 +47,7 @@ export function TableroColumna({
   etiquetasPorId: Record<string, readonly EtiquetaAplicada[]>;
   cargando: boolean;
   activa: boolean;
+  aceptaSoltar: boolean;
   arrastrandoId: number | null;
   onSobrevolar: () => void;
   onSalir: () => void;
@@ -48,25 +56,35 @@ export function TableroColumna({
   onFinArrastre: () => void;
   onMover: (pursuit: Pursuit, destino: FaseKey) => void;
 }) {
-  const tarjeta = (pursuit: Pursuit, enExpediente: boolean) => (
-    <PursuitCard
-      key={pursuit.id}
-      pursuit={pursuit}
-      enExpediente={enExpediente}
-      etiquetas={etiquetasPorId[String(pursuit.id)]}
-      arrastrando={arrastrandoId === pursuit.id}
-      onArrastrar={onArrastrar}
-      onSoltar={onFinArrastre}
-      acciones={<MoverMenu pursuit={pursuit} onMover={(destino) => onMover(pursuit, destino)} />}
-    />
-  );
+  const tarjeta = (pursuit: Pursuit, enExpediente: boolean) => {
+    const cerrada = esTerminal(pursuit.status);
+    return (
+      <PursuitCard
+        key={pursuit.id}
+        pursuit={pursuit}
+        enExpediente={enExpediente}
+        etiquetas={etiquetasPorId[String(pursuit.id)]}
+        arrastrando={arrastrandoId === pursuit.id}
+        onArrastrar={cerrada ? undefined : onArrastrar}
+        onSoltar={onFinArrastre}
+        acciones={
+          cerrada ? undefined : (
+            <MoverMenu pursuit={pursuit} onMover={(destino) => onMover(pursuit, destino)} />
+          )
+        }
+      />
+    );
+  };
+
+  const arrastrandoAjena = arrastrandoId != null && !aceptaSoltar;
 
   return (
     <section
       aria-label={fase.titulo}
       className={cn(
-        "flex min-h-0 min-w-0 flex-col transition-colors duration-150 ease-out",
+        "flex min-h-0 min-w-0 flex-col transition-[background-color,opacity] duration-150 ease-out",
         activa ? "bg-primary/[0.06]" : "bg-background",
+        arrastrandoAjena && "opacity-55",
       )}
     >
       <div className="flex-none px-3 pt-2.5">
@@ -93,14 +111,16 @@ export function TableroColumna({
       <div
         onDragOver={(event) => {
           // Sin `preventDefault` el navegador no considera la zona soltable y
-          // el `drop` no llega nunca.
+          // el `drop` no llega nunca: es justo lo que se quiere donde el flujo
+          // no deja llevar la tarjeta.
+          if (!aceptaSoltar) return;
           event.preventDefault();
           onSobrevolar();
         }}
         onDragLeave={onSalir}
         onDrop={(event) => {
           event.preventDefault();
-          onSoltarEnColumna();
+          if (aceptaSoltar) onSoltarEnColumna();
         }}
         className={cn(
           "flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto border-t px-2.5 py-2.5",
