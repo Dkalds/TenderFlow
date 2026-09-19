@@ -8449,6 +8449,8 @@ export interface components {
             nuts_code?: string | null;
             /** Organo Contratacion */
             organo_contratacion?: string | null;
+            /** Procedimiento */
+            procedimiento?: string | null;
             /** Provincia */
             provincia?: string | null;
             /** Raw Keywords */
@@ -8461,6 +8463,8 @@ export interface components {
             tipo_contrato?: string | null;
             /** Titulo */
             titulo: string;
+            /** Tramitacion */
+            tramitacion?: string | null;
             /** Url */
             url?: string | null;
         };
@@ -8549,10 +8553,14 @@ export interface components {
             ml_tecnologias?: string | null;
             /** Organo Contratacion */
             organo_contratacion?: string | null;
+            /** Procedimiento */
+            procedimiento?: string | null;
             /** Tecnologia */
             tecnologia?: string | null;
             /** Titulo */
             titulo: string;
+            /** Tramitacion */
+            tramitacion?: string | null;
             /** Url */
             url?: string | null;
         };
@@ -11854,6 +11862,8 @@ export interface components {
             ml_tech_principal?: string | null;
             /** Organo Contratacion */
             organo_contratacion?: string | null;
+            /** Procedimiento */
+            procedimiento?: string | null;
             /** Risk Flags */
             risk_flags?: string[];
             /** Score */
@@ -11862,6 +11872,8 @@ export interface components {
             tecnologia?: string | null;
             /** Titulo */
             titulo?: string | null;
+            /** Tramitacion */
+            tramitacion?: string | null;
             /** Url */
             url?: string | null;
         };

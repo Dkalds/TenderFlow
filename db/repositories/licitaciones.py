@@ -186,6 +186,9 @@ _SUMMARY_COLS = [
     licitaciones.c.ml_tecnologias,
     licitaciones.c.ml_proba_max,
     licitaciones.c.ml_tech_principal,
+    # F1.7: códigos crudos; la etiqueta la pone la consola con `/meta/filters`.
+    licitaciones.c.procedimiento,
+    licitaciones.c.tramitacion,
 ]
 
 # Columnas de la bandeja «Próximas» del Radar (T5). Es ``_SUMMARY_COLS`` menos
@@ -226,7 +229,7 @@ _DEFAULT_ORDER = licitaciones.c.fecha_publicacion.desc()
 _SUMMARY_COLS_STR = (
     "id_externo, titulo, organo_contratacion, importe, estado, "
     "fecha_publicacion, fecha_limite, ccaa, cpv, url, tecnologia, "
-    "ml_tecnologias, ml_proba_max, ml_tech_principal"
+    "ml_tecnologias, ml_proba_max, ml_tech_principal, procedimiento, tramitacion"
 )
 
 _SORT_WHITELIST: dict[str, str] = {

@@ -1635,7 +1635,7 @@ class AggregateRepository:
     _SCORING_COLS = (
         "id_externo, titulo, descripcion, organo_contratacion, importe, cpv, "
         "fecha_limite, estado, ccaa, tecnologia, fecha_publicacion, ml_tech_principal, url, "
-        "fuente"
+        "fuente, procedimiento, tramitacion"
     )
 
     def importe_percentiles(self) -> tuple[float, float]:
