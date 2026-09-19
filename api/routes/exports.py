@@ -79,6 +79,10 @@ def build_pdf_export(payload: dict[str, Any]) -> tuple[bytes, int]:
         tecnologia=payload.get("tecnologia"),
         fecha_desde=payload.get("fecha_desde"),
         fecha_hasta=payload.get("fecha_hasta"),
+        importe_min=payload.get("importe_min"),
+        importe_max=payload.get("importe_max"),
+        provincia=payload.get("provincia"),
+        procedimiento=payload.get("procedimiento"),
         limit=int(payload.get("limit") or 10000),
     )
     title = "Licitaciones SAP — Exportación"
@@ -136,6 +140,20 @@ async def download_export(
     tecnologia: str | None = Query(None),
     fecha_desde: str | None = Query(None),
     fecha_hasta: str | None = Query(None),
+    importe_min: float | None = Query(
+        None, ge=0, description="Importe de licitación mínimo, en euros (inclusive)"
+    ),
+    importe_max: float | None = Query(
+        None, ge=0, description="Importe de licitación máximo, en euros (inclusive)"
+    ),
+    provincia: str | None = Query(
+        None, max_length=200, description="Provincia (multi-valor, separadas por comas)"
+    ),
+    procedimiento: str | None = Query(
+        None,
+        max_length=100,
+        description="Código CODICE de procedimiento (multi-valor); se compara normalizado",
+    ),
     limit: int = Query(10000, ge=1, le=50000),
     organization_id: int | None = Query(
         None,
@@ -176,6 +194,10 @@ async def download_export(
         "tecnologia": tecnologia,
         "fecha_desde": fecha_desde,
         "fecha_hasta": fecha_hasta,
+        "importe_min": importe_min,
+        "importe_max": importe_max,
+        "provincia": provincia,
+        "procedimiento": procedimiento,
         "limit": limit,
     }
 
@@ -212,6 +234,10 @@ async def download_export(
             tecnologia=tecnologia,
             fecha_desde=fecha_desde,
             fecha_hasta=fecha_hasta,
+            importe_min=importe_min,
+            importe_max=importe_max,
+            provincia=provincia,
+            procedimiento=procedimiento,
             limit=limit,
         )
         if por_lote:

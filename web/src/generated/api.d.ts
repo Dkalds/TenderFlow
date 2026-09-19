@@ -402,6 +402,9 @@ export interface paths {
         /**
          * Overview
          * @description Return aggregated KPIs, breakdowns, and funnel data.
+         *
+         *     `importe_max`, `provincia` y `procedimiento` (F1.1) tienen la semántica del
+         *     listado (`GET /licitaciones`): el mismo filtro acota los KPIs y la tabla.
          */
         get: operations["overview_api_v1_analytics_overview_get"];
         put?: never;
@@ -14517,6 +14520,12 @@ export interface operations {
                 q?: string | null;
                 /** @description Min tender budget (EUR) */
                 importe_min?: number | null;
+                /** @description Importe de licitación máximo, en euros (inclusive) */
+                importe_max?: number | null;
+                /** @description Provincia (multi-valor, separadas por comas) */
+                provincia?: string | null;
+                /** @description Código CODICE de procedimiento (multi-valor); se compara normalizado */
+                procedimiento?: string | null;
             };
             header?: {
                 "X-CSRF-Token"?: string | null;
@@ -17118,6 +17127,14 @@ export interface operations {
                 tecnologia?: string | null;
                 fecha_desde?: string | null;
                 fecha_hasta?: string | null;
+                /** @description Importe de licitación mínimo, en euros (inclusive) */
+                importe_min?: number | null;
+                /** @description Importe de licitación máximo, en euros (inclusive) */
+                importe_max?: number | null;
+                /** @description Provincia (multi-valor, separadas por comas) */
+                provincia?: string | null;
+                /** @description Código CODICE de procedimiento (multi-valor); se compara normalizado */
+                procedimiento?: string | null;
                 limit?: number;
                 /** @description Organización a la que se atribuye la exportación encolada. */
                 organization_id?: number | null;

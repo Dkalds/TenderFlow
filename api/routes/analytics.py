@@ -100,9 +100,24 @@ def overview(
     estado: str | None = Query(default=None, description="Filter by estado"),
     q: str | None = Query(default=None, description="Free-text search (titulo, organo, id)"),
     importe_min: float | None = Query(default=None, ge=0, description="Min tender budget (EUR)"),
+    importe_max: float | None = Query(
+        default=None, ge=0, description="Importe de licitación máximo, en euros (inclusive)"
+    ),
+    provincia: str | None = Query(
+        default=None, max_length=200, description="Provincia (multi-valor, separadas por comas)"
+    ),
+    procedimiento: str | None = Query(
+        default=None,
+        max_length=100,
+        description="Código CODICE de procedimiento (multi-valor); se compara normalizado",
+    ),
     _user: dict[str, Any] = Depends(require_analytics_auth),
 ) -> OverviewResult:
-    """Return aggregated KPIs, breakdowns, and funnel data."""
+    """Return aggregated KPIs, breakdowns, and funnel data.
+
+    `importe_max`, `provincia` y `procedimiento` (F1.1) tienen la semántica del
+    listado (`GET /licitaciones`): el mismo filtro acota los KPIs y la tabla.
+    """
     filters = OverviewFilters(
         fecha_desde=fecha_desde,
         fecha_hasta=fecha_hasta,
@@ -111,6 +126,9 @@ def overview(
         estado=estado,
         q=q,
         importe_min=importe_min,
+        importe_max=importe_max,
+        provincia=provincia,
+        procedimiento=procedimiento,
     )
     return get_overview(filters)
 

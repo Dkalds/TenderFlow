@@ -119,6 +119,12 @@ class OverviewFilters(BaseModel):
     estado: str | None = None
     q: str | None = None
     importe_min: float | None = None
+    # F1.1: los tres del listado que el overview no aceptaba. Sin ellos, la
+    # barra de ámbito acotaba el listado por provincia o procedimiento y los
+    # KPIs de la misma pantalla seguían midiendo el corpus entero.
+    importe_max: float | None = None
+    provincia: str | None = None
+    procedimiento: str | None = None
 
 
 class EstadoCount(BaseModel):
@@ -249,6 +255,9 @@ def _to_repo_filters(filters: OverviewFilters) -> LicitacionesFilters:
         fecha_hasta=filters.fecha_hasta.isoformat() if filters.fecha_hasta else None,
         importe_min=filters.importe_min,
         q=filters.q,
+        importe_max=filters.importe_max,
+        provincia=filters.provincia,
+        procedimiento=filters.procedimiento,
     )
 
 
