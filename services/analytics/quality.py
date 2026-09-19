@@ -85,6 +85,17 @@ class AdjudicacionesPorFuente(BaseModel):
     pct_es_pyme: float
 
 
+class CompletitudMes(BaseModel):
+    """Completitud de la cohorte de expedientes publicados en un mes."""
+
+    mes: str = Field(description="YYYY-MM (mes de publicación)")
+    total: int
+    pct_cpv: float
+    pct_importe: float
+    pct_organo: float
+    pct_fecha_limite: float
+
+
 class QualityResult(BaseModel):
     """Data quality metrics."""
 
@@ -140,6 +151,16 @@ class QualityResult(BaseModel):
     # NO MEDIDO (la consulta falló), misma regla que `cobertura_nif`.
     organos_cobertura_pct: float | None = None
     organos_revision_pendiente: int | None = None
+    # RFC ux-calidad-datos #3 — tendencia de completitud por mes de
+    # PUBLICACIÓN, últimos `MESES_TENDENCIA` meses. Cada punto es la cohorte de
+    # ese mes medida hoy, no un snapshot histórico (no hay tabla de
+    # histórico): sirve para ver si los expedientes de un mes llegan peor que
+    # los de los anteriores. Lista vacía = no medido o sin datos.
+    tendencia_completitud: list[CompletitudMes] = Field(default_factory=list)
+
+
+#: Meses de la tendencia de completitud (incluido el mes en curso).
+MESES_TENDENCIA = 12
 
 
 # ---------------------------------------------------------------------------
@@ -338,6 +359,44 @@ def _adjudicaciones_por_fuente() -> list[AdjudicacionesPorFuente]:
     return salida
 
 
+def inicio_ventana_tendencia(hoy: datetime, meses: int = MESES_TENDENCIA) -> str:
+    """Día 1 del mes que abre una ventana de ``meses`` meses terminada en el actual."""
+    indice = hoy.year * 12 + (hoy.month - 1) - (meses - 1)
+    return f"{indice // 12:04d}-{indice % 12 + 1:02d}-01"
+
+
+def _tendencia_completitud(hoy: datetime | None = None) -> list[CompletitudMes]:
+    """Serie mensual de completitud (best-effort, como sus vecinas)."""
+    try:
+        filas = _repo.quality_completitud_mensual(
+            desde_iso=inicio_ventana_tendencia(hoy or datetime.now(UTC))
+        )
+    except Exception:
+        log.debug("quality_tendencia_unavailable")
+        return []
+
+    serie: list[CompletitudMes] = []
+    for fila in filas:
+        total = int(fila.get("total") or 0)
+        if total <= 0:
+            continue
+
+        def _pct(clave: str, n: int = total, f: dict[str, Any] = fila) -> float:
+            return round(100.0 * int(f.get(clave) or 0) / n, 1)
+
+        serie.append(
+            CompletitudMes(
+                mes=str(fila["mes"]),
+                total=total,
+                pct_cpv=_pct("con_cpv"),
+                pct_importe=_pct("con_importe"),
+                pct_organo=_pct("con_organo"),
+                pct_fecha_limite=_pct("con_fecha_limite"),
+            )
+        )
+    return serie
+
+
 def get_quality() -> QualityResult:
     """Compute data quality metrics (agregación SQL, ADR-023)."""
     log.info("analytics_quality_start")
@@ -420,6 +479,7 @@ def get_quality() -> QualityResult:
         adjudicaciones_por_fuente=_adjudicaciones_por_fuente(),
         organos_cobertura_pct=organos_cobertura_pct,
         organos_revision_pendiente=organos_revision_pendiente,
+        tendencia_completitud=_tendencia_completitud(),
         # cobertura_nif / cobertura_modulo_sap se quedan en su default `None`
         # (no medidas): ver la nota del DTO.
     )

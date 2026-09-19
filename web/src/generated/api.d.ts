@@ -24,6 +24,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/dlq": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Entradas de la DLQ de ingesta */
+        get: operations["listar_dlq_api_v1_admin_dlq_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/dlq/{failure_id}/reintentar": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Devolver una entrada de la DLQ a la cola de reintentos */
+        post: operations["reintentar_dlq_api_v1_admin_dlq__failure_id__reintentar_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/solicitudes-acceso": {
         parameters: {
             query?: never;
@@ -173,6 +207,31 @@ export interface paths {
          *     hay credencial que invalidar.
          */
         post: operations["admin_deactivate_user_api_v1_admin_users__user_id__deactivate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/analytics/calendario/vencimientos": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Calendario Vencimientos
+         * @description Cierres de plazo de presentación (`fecha_limite`) por día, con KPIs de cierre.
+         *
+         *     Cada día cuenta exactamente las licitaciones que devuelve
+         *     `GET /licitaciones?cierre_desde=D&cierre_hasta=D` con el mismo ámbito: es
+         *     el listado al que enlaza el calendario. Los KPIs (`vencen_hoy`,
+         *     `vencen_7d`, `vencen_resto_mes`) son relativos a hoy, no a la ventana.
+         */
+        get: operations["calendario_vencimientos_api_v1_analytics_calendario_vencimientos_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1378,6 +1437,31 @@ export interface paths {
         put?: never;
         /** Vigilar una empresa */
         post: operations["post_watchlist_api_v1_competitive_watchlist_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/competitive/watchlist/movimientos": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Señales recientes de las empresas vigiladas
+         * @description Qué han hecho en la ventana las empresas que vigila el usuario.
+         *
+         *     Señales explicables sobre adjudicaciones reales (entrada en una CCAA o en
+         *     una familia CPV nueva, rachas), más la actividad de cada empresa vigilada
+         *     —con 0 si no se ha movido—. Es la versión en pantalla de lo que
+         *     `scheduler/competitor_alerts.py` manda por correo.
+         */
+        get: operations["get_watchlist_movimientos_api_v1_competitive_watchlist_movimientos_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -6580,6 +6664,27 @@ export interface components {
             truncado: boolean;
         };
         /**
+         * CompletitudMes
+         * @description Completitud de la cohorte de expedientes publicados en un mes.
+         */
+        CompletitudMes: {
+            /**
+             * Mes
+             * @description YYYY-MM (mes de publicación)
+             */
+            mes: string;
+            /** Pct Cpv */
+            pct_cpv: number;
+            /** Pct Fecha Limite */
+            pct_fecha_limite: number;
+            /** Pct Importe */
+            pct_importe: number;
+            /** Pct Organo */
+            pct_organo: number;
+            /** Total */
+            total: number;
+        };
+        /**
          * ContratoCartera
          * @description Un contrato ganado que sigue vivo.
          */
@@ -6924,6 +7029,89 @@ export interface components {
             version: string;
         };
         /**
+         * DlqEntrada
+         * @description Una extracción fallida.
+         */
+        DlqEntrada: {
+            /** Created At */
+            created_at?: string | null;
+            /** Error Message */
+            error_message?: string | null;
+            /** Error Type */
+            error_type?: string | null;
+            /** Exhausted At */
+            exhausted_at?: string | null;
+            /** Fuente */
+            fuente: string;
+            /** Id */
+            id: number;
+            /** Last Attempt At */
+            last_attempt_at?: string | null;
+            /**
+             * Retry Count
+             * @default 0
+             */
+            retry_count: number;
+            /** Scope */
+            scope?: string | null;
+        };
+        /** DlqListado */
+        DlqListado: {
+            /**
+             * Estado
+             * @enum {string}
+             */
+            estado: "abiertas" | "agotadas";
+            /** Items */
+            items?: components["schemas"]["DlqEntrada"][];
+            /**
+             * Resumen
+             * @description Abiertas por fuente/scope (siempre, sea cual sea `estado`).
+             */
+            resumen?: components["schemas"]["DlqResumenFuente"][];
+        };
+        /**
+         * DlqReintento
+         * @description Resultado de reencolar una entrada.
+         */
+        DlqReintento: {
+            /** Detalle */
+            detalle: string;
+            /**
+             * Estado Previo
+             * @enum {string}
+             */
+            estado_previo: "abierta" | "agotada" | "duplicada" | "resuelta";
+            /** Id */
+            id: number;
+            /** Reencolada */
+            reencolada: boolean;
+        };
+        /**
+         * DlqResumenFuente
+         * @description Fallos abiertos agrupados por fuente/scope.
+         */
+        DlqResumenFuente: {
+            /** First Seen */
+            first_seen?: string | null;
+            /** Fuente */
+            fuente: string;
+            /** Last Attempt */
+            last_attempt?: string | null;
+            /** N */
+            n: number;
+            /**
+             * Retries
+             * @default 0
+             */
+            retries: number;
+            /**
+             * Scope
+             * @default
+             */
+            scope: string;
+        };
+        /**
          * DocumentoFormatoCobertura
          * @description Cuántos adjuntos hay de cada formato y cuántos se supieron leer (S8.2).
          *
@@ -7092,6 +7280,26 @@ export interface components {
         EmpresaReviewsResult: {
             /** Items */
             items: components["schemas"]["EmpresaReviewItem"][];
+        };
+        /**
+         * EmpresaVigiladaActividad
+         * @description Actividad de una empresa vigilada en la ventana (0 si no se ha movido).
+         */
+        EmpresaVigiladaActividad: {
+            /**
+             * Adjudicaciones
+             * @default 0
+             */
+            adjudicaciones: number;
+            /** Empresa Id */
+            empresa_id: number;
+            /**
+             * Importe
+             * @default 0
+             */
+            importe: number;
+            /** Nombre */
+            nombre: string;
         };
         /** EmpresasListResult */
         EmpresasListResult: {
@@ -7792,6 +8000,8 @@ export interface components {
              * @default 1.5
              */
             banda_sigmas: number;
+            /** Cpv */
+            cpv?: string | null;
             /** Modelo */
             modelo?: string | null;
             /** Series */
@@ -8882,6 +9092,26 @@ export interface components {
             description: string;
             /** Evidence */
             evidence?: components["schemas"]["EvidenceRef"][];
+        };
+        /**
+         * MovimientosVigiladasResult
+         * @description Señales y actividad de las empresas vigiladas en los últimos ``dias``.
+         */
+        MovimientosVigiladasResult: {
+            /** Desde */
+            desde: string;
+            /** Dias */
+            dias: number;
+            /** Empresas */
+            empresas?: components["schemas"]["EmpresaVigiladaActividad"][];
+            /** Senales */
+            senales?: components["schemas"]["SenalCompetitiva"][];
+            /**
+             * Senales Truncadas
+             * @description True si había más de 50 señales y se recortaron.
+             * @default false
+             */
+            senales_truncadas: boolean;
         };
         /**
          * MyApiKeyOut
@@ -11055,6 +11285,8 @@ export interface components {
             reportes_por_tipo?: {
                 [key: string]: number;
             };
+            /** Tendencia Completitud */
+            tendencia_completitud?: components["schemas"]["CompletitudMes"][];
             /**
              * Total Records
              * @default 0
@@ -12079,6 +12311,37 @@ export interface components {
             source: string;
             /** Top K */
             top_k: number;
+        };
+        /**
+         * SenalCompetitiva
+         * @description Una señal explicable sobre una empresa vigilada.
+         */
+        SenalCompetitiva: {
+            /** Detalle */
+            detalle: string;
+            /** Empresa */
+            empresa: string;
+            /** Empresa Id */
+            empresa_id: number;
+            /**
+             * Fecha
+             * @description Fecha de adjudicación, YYYY-MM-DD.
+             */
+            fecha?: string | null;
+            /** Importe */
+            importe?: number | null;
+            /** Licitacion Id */
+            licitacion_id?: string | null;
+            /**
+             * Tipo
+             * @enum {string}
+             */
+            tipo: "nueva_ccaa" | "nuevo_cpv" | "racha";
+            /**
+             * Titulo
+             * @description Frase corta, lista para pintar.
+             */
+            titulo: string;
         };
         /**
          * ServiceLevelFact
@@ -13154,6 +13417,73 @@ export interface components {
             type: string;
         };
         /**
+         * VencimientoDia
+         * @description Cierres de plazo de un día.
+         */
+        VencimientoDia: {
+            /** Count */
+            count: number;
+            /**
+             * Fecha
+             * @description Día de cierre, YYYY-MM-DD.
+             */
+            fecha: string;
+            /**
+             * Importe
+             * @description Suma del presupuesto de las que cierran ese día.
+             */
+            importe: number;
+        };
+        /**
+         * VencimientosKpis
+         * @description Cierres relativos a HOY, independientes de la ventana pintada.
+         */
+        VencimientosKpis: {
+            /**
+             * Hoy
+             * @description Fecha de referencia (UTC), YYYY-MM-DD.
+             */
+            hoy: string;
+            /**
+             * Vencen 7D
+             * @description Cierres de hoy a hoy+6, ambos incluidos.
+             * @default 0
+             */
+            vencen_7d: number;
+            /**
+             * Vencen Hoy
+             * @default 0
+             */
+            vencen_hoy: number;
+            /**
+             * Vencen Resto Mes
+             * @description Cierres de hoy al último día del mes en curso, ambos incluidos.
+             * @default 0
+             */
+            vencen_resto_mes: number;
+        };
+        /**
+         * VencimientosResult
+         * @description Serie diaria de cierres en la ventana pedida y KPIs de cierre.
+         */
+        VencimientosResult: {
+            /** Desde */
+            desde: string;
+            /** @description Día de la ventana con más cierres (el primero si hay empate). `null` si la ventana no tiene ninguno. */
+            dia_pico?: components["schemas"]["VencimientoDia"] | null;
+            /** Dias */
+            dias?: components["schemas"]["VencimientoDia"][];
+            /** Hasta */
+            hasta: string;
+            kpis: components["schemas"]["VencimientosKpis"];
+            /**
+             * Total
+             * @description Cierres en toda la ventana.
+             * @default 0
+             */
+            total: number;
+        };
+        /**
          * WatchlistEmpresaItem
          * @description Empresa vigilada, con nombre canónico del maestro.
          */
@@ -13744,6 +14074,85 @@ export interface operations {
             };
         };
     };
+    listar_dlq_api_v1_admin_dlq_get: {
+        parameters: {
+            query?: {
+                /** @description Abiertas (en ciclo de reintento) o agotadas (sin más intentos) */
+                estado?: "abiertas" | "agotadas";
+                limit?: number;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DlqListado"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reintentar_dlq_api_v1_admin_dlq__failure_id__reintentar_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                failure_id: number;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DlqReintento"];
+                };
+            };
+            /** @description La entrada no existe */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     listar_api_v1_admin_solicitudes_acceso_get: {
         parameters: {
             query?: {
@@ -14039,6 +14448,58 @@ export interface operations {
             };
         };
     };
+    calendario_vencimientos_api_v1_analytics_calendario_vencimientos_get: {
+        parameters: {
+            query: {
+                /** @description Primer día de la ventana de cierre (YYYY-MM-DD) */
+                desde: string;
+                /** @description Último día de la ventana de cierre, incluido. Como mucho 366 días después de `desde`: la serie tiene un punto por día. */
+                hasta: string;
+                /** @description Publicación desde (YYYY-MM-DD) */
+                fecha_desde?: string | null;
+                /** @description Publicación hasta (YYYY-MM-DD) */
+                fecha_hasta?: string | null;
+                /** @description Filter by CCAA */
+                ccaa?: string | null;
+                /** @description Filter by tecnologia */
+                tecnologia?: string | null;
+                /** @description Filter by estado */
+                estado?: string | null;
+                /** @description Free-text search */
+                q?: string | null;
+                /** @description Min tender budget (EUR) */
+                importe_min?: number | null;
+                /** @description Sólo las que siguen abiertas */
+                solo_abiertas?: boolean;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VencimientosResult"];
+                };
+            };
+            /** @description Ventana invertida o de más de 366 días */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     clusters_api_v1_analytics_clusters_get: {
         parameters: {
             query?: {
@@ -14284,6 +14745,8 @@ export interface operations {
                 ccaa?: string | null;
                 /** @description Filter by tecnologia */
                 tecnologia?: string | null;
+                /** @description Un CPV concreto (8 dígitos, dígito de control opcional), comparado por igualdad: el mismo valor que identifica cada serie de `/trends-cpv`. Sin él, la previsión es la del mercado entero. La respuesta lo devuelve en `cpv`. */
+                cpv?: string | null;
             };
             header?: {
                 "X-CSRF-Token"?: string | null;
@@ -15781,7 +16244,14 @@ export interface operations {
                 min_contratos?: number;
                 /** @description Prefijo CPV */
                 cpv?: string | null;
+                /** @description CCAA; varias separadas por comas, como la barra global */
                 ccaa?: string | null;
+                /** @description Adjudicadas desde (YYYY-MM-DD, incluida). Eje: fecha de adjudicación. */
+                fecha_desde?: string | null;
+                /** @description Adjudicadas hasta (YYYY-MM-DD, incluida). Eje: fecha de adjudicación. */
+                fecha_hasta?: string | null;
+                /** @description Presupuesto mínimo de la licitación (EUR) */
+                importe_min?: number | null;
                 limit?: number;
                 /** @description Solo filas con base de importe sin IVA declarada. Devuelve `base: "sin_iva"` y hoy pocas filas: la columna se puebla con la re-ingesta, no con la migración. Por defecto se excluye lo que se sabe que lleva IVA y se declara `base: "mixta"`. */
                 solo_base_declarada?: boolean;
@@ -16259,6 +16729,44 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["WatchlistEmpresaStatus"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_watchlist_movimientos_api_v1_competitive_watchlist_movimientos_get: {
+        parameters: {
+            query?: {
+                /** @description Ventana hacia atrás, en días */
+                dias?: number;
+                /** @description Organización activa; por defecto la personal del usuario. */
+                organization_id?: number | null;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MovimientosVigiladasResult"];
                 };
             };
             /** @description Validation Error */

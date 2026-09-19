@@ -12,6 +12,7 @@ outliers donde el adjudicado supera ese presupuesto en más de un 50%
 
 from __future__ import annotations
 
+from datetime import date, timedelta
 from typing import Any
 
 from db.database import connect_read
@@ -64,6 +65,9 @@ def bajas_agregadas(
     ccaa: str | None = None,
     limit: int = 100,
     solo_base_declarada: bool = False,
+    fecha_desde: date | None = None,
+    fecha_hasta: date | None = None,
+    importe_min: float | None = None,
 ) -> tuple[list[dict[str, Any]], str]:
     """Baja media/mediana-aproximada por dimensión.
 
@@ -72,6 +76,19 @@ def bajas_agregadas(
     :data:`services.sql_fragments.EFFECTIVE_BUDGET_SQL`). Devuelve media,
     mínimo, máximo, nº de contratos e importe total por grupo;
     ``min_contratos`` filtra grupos sin masa estadística.
+
+    Filtros de ámbito (RFC ux-competidores #1), con la MISMA semántica que el
+    resto de la página de Competidores (``services/analytics/competitors.py``),
+    para que el ranking de bajas y las cards de al lado midan el mismo
+    universo:
+
+    - ``fecha_desde``/``fecha_hasta`` acotan la **fecha de adjudicación**
+      (ambas incluidas), no la de publicación: una baja existe cuando hay
+      adjudicación.
+    - ``importe_min`` acota el **presupuesto de la licitación** (``l.importe``),
+      el mismo campo que filtra la barra global.
+    - ``ccaa`` admite varias separadas por comas, como la barra global. Antes
+      se comparaba el CSV entero por igualdad y con dos CCAA no casaba nada.
     """
     if group_by not in _GROUP_COLUMNS:
         raise ValueError(f"group_by inválido: {group_by!r} (válidos: {sorted(_GROUP_COLUMNS)})")
@@ -103,9 +120,24 @@ def bajas_agregadas(
     if cpv_prefix:
         sql += " AND l.cpv LIKE %s"
         params.append(f"{cpv_prefix}%")
-    if ccaa:
+    ccaas = [c.strip() for c in (ccaa or "").split(",") if c.strip()]
+    if len(ccaas) == 1:
         sql += " AND l.ccaa = %s"
-        params.append(ccaa)
+        params.append(ccaas[0])
+    elif ccaas:
+        sql += " AND l.ccaa IN (" + ",".join("%s" for _ in ccaas) + ")"
+        params.extend(ccaas)
+    if fecha_desde is not None:
+        sql += " AND a.fecha_adjudicacion >= %s"
+        params.append(fecha_desde.isoformat())
+    if fecha_hasta is not None:
+        # Cota exclusiva al día siguiente: `fecha_adjudicacion` es texto ISO y
+        # puede llevar hora, y `'2026-03-31T10:00' <= '2026-03-31'` es falso.
+        sql += " AND a.fecha_adjudicacion < %s"
+        params.append((fecha_hasta + timedelta(days=1)).isoformat())
+    if importe_min is not None:
+        sql += " AND l.importe >= %s"
+        params.append(float(importe_min))
     sql += f"""
         GROUP BY {group_cols}
         HAVING COUNT(*) >= %s AND {label_col} IS NOT NULL

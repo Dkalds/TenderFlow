@@ -81,6 +81,14 @@ from services.analytics.trends import (
 )
 from services.analytics.trends_cpv import TrendsCpvFilters, TrendsCpvResult, get_trends_cpv
 from services.analytics.utes import UTEFilters, UTEResult, get_utes
+from services.analytics.vencimientos import (
+    MAX_VENTANA_DIAS,
+    VencimientosFilters,
+    VencimientosResult,
+    VentanaInvalida,
+    get_vencimientos,
+    validar_ventana,
+)
 from services.novedades import NovedadesDesdeUltimaVisita, desde_ultima_visita
 from services.source_health import SourceFreshnessResult, get_source_freshness
 from shared.cache import cache_response
@@ -151,6 +159,58 @@ def trends(
         group_by=group_by,
     )
     return get_trends(filters)
+
+
+@router.get(
+    "/calendario/vencimientos",
+    response_model=VencimientosResult,
+    responses={422: {"description": "Ventana invertida o de más de 366 días"}},
+)
+@cache_response(ttl=300, user_scoped=False)
+def calendario_vencimientos(
+    desde: date = Query(description="Primer día de la ventana de cierre (YYYY-MM-DD)"),
+    hasta: date = Query(
+        description=(
+            f"Último día de la ventana de cierre, incluido. Como mucho {MAX_VENTANA_DIAS} "
+            "días después de `desde`: la serie tiene un punto por día."
+        )
+    ),
+    fecha_desde: date | None = Query(default=None, description="Publicación desde (YYYY-MM-DD)"),
+    fecha_hasta: date | None = Query(default=None, description="Publicación hasta (YYYY-MM-DD)"),
+    ccaa: str | None = Query(default=None, max_length=500, description="Filter by CCAA"),
+    tecnologia: str | None = Query(
+        default=None, max_length=500, description="Filter by tecnologia"
+    ),
+    estado: str | None = Query(default=None, max_length=200, description="Filter by estado"),
+    q: str | None = Query(default=None, max_length=200, description="Free-text search"),
+    importe_min: float | None = Query(default=None, ge=0, description="Min tender budget (EUR)"),
+    solo_abiertas: bool = Query(default=False, description="Sólo las que siguen abiertas"),
+    _user: dict[str, Any] = Depends(require_analytics_auth),
+) -> VencimientosResult:
+    """Cierres de plazo de presentación (`fecha_limite`) por día, con KPIs de cierre.
+
+    Cada día cuenta exactamente las licitaciones que devuelve
+    `GET /licitaciones?cierre_desde=D&cierre_hasta=D` con el mismo ámbito: es
+    el listado al que enlaza el calendario. Los KPIs (`vencen_hoy`,
+    `vencen_7d`, `vencen_resto_mes`) son relativos a hoy, no a la ventana.
+    """
+    try:
+        validar_ventana(desde, hasta)
+    except VentanaInvalida as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    filters = VencimientosFilters(
+        desde=desde,
+        hasta=hasta,
+        fecha_desde=fecha_desde,
+        fecha_hasta=fecha_hasta,
+        ccaa=ccaa,
+        tecnologia=tecnologia,
+        estado=estado,
+        q=q,
+        importe_min=importe_min,
+        solo_abiertas=solo_abiertas,
+    )
+    return get_vencimientos(filters)
 
 
 @router.get("/geography", response_model=GeoResult)
@@ -622,6 +682,17 @@ def forecast_volume_endpoint(
     fecha_hasta: date | None = Query(default=None, description="End date (YYYY-MM-DD)"),
     ccaa: str | None = Query(default=None, description="Filter by CCAA"),
     tecnologia: str | None = Query(default=None, description="Filter by tecnologia"),
+    cpv: str | None = Query(
+        default=None,
+        max_length=10,
+        pattern=r"^\d{8}(-\d)?$",
+        description=(
+            "Un CPV concreto (8 dígitos, dígito de control opcional), comparado por "
+            "igualdad: el mismo valor que identifica cada serie de `/trends-cpv`. "
+            "Sin él, la previsión es la del mercado entero. La respuesta lo devuelve "
+            "en `cpv`."
+        ),
+    ),
     _user: dict[str, Any] = Depends(require_analytics_auth),
 ) -> ForecastVolumeResult:
     """Volume forecast using Holt-Winters / linear regression."""
@@ -632,6 +703,7 @@ def forecast_volume_endpoint(
         fecha_hasta=fecha_hasta,
         ccaa=ccaa,
         tecnologia=tecnologia,
+        cpv=cpv,
     )
     return get_forecast_volume(filters)
 
