@@ -11,12 +11,9 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
-import {
-  type AccionAplazar,
-  useDismissRadarTender,
-  useRestoreRadarTender,
-} from "@/hooks/use-radar";
+import { registrarEvento } from "@/lib/analytics";
 import { fetchWithAuth, apiMutate } from "@/lib/api-client";
+import { pursuitKeys, radarKeys } from "@/lib/query-keys";
 import { reportError } from "@/lib/report-error";
 
 interface NotificationBellProps {
@@ -167,18 +164,41 @@ export function NotificationBell({ className: _className }: NotificationBellProp
   // `posponer` además lo devuelve como recordatorio ese día. No hay endpoint
   // para silenciar la regla que disparó la alerta: eso se hace pausándola en
   // Mi Watchlist, y aquí no se finge otra cosa.
-  const descartar = useDismissRadarTender();
-  const restaurar = useRestoreRadarTender();
-  const aplazar = (idExterno: string, accion: AccionAplazar, dias: number) => {
-    descartar.mutate(
-      { idExterno, accion, dias },
-      {
-        onSuccess: () =>
-          toast(accion === "silenciar" ? `Oculta del Radar ${dias} días` : `Te lo recordamos en ${dias} días`, {
-            action: { label: "Deshacer", onClick: () => restaurar.mutate(idExterno) },
-          }),
+  //
+  // Llamadas directas y no los hooks de `use-radar`: la campana está en todas
+  // las pantallas, y arrastrar el módulo del Radar entero al bundle común por
+  // dos botones subía el First Load JS de cada ruta.
+  const refrescarRadar = () =>
+    Promise.all([
+      queryClient.invalidateQueries({ queryKey: radarKeys.dismissals }),
+      queryClient.invalidateQueries({ queryKey: radarKeys.scoring }),
+      queryClient.invalidateQueries({ queryKey: pursuitKeys.agenda }),
+    ]);
+  const aplazar = async (idExterno: string, accion: "silenciar" | "posponer", dias: number) => {
+    try {
+      await apiMutate("POST", "/api/v1/radar/dismissals", {
+        id_externo: idExterno,
+        score: null,
+        banda: null,
+        accion,
+        dias,
+      });
+    } catch (err) {
+      reportError("NotificationBell.aplazar", err);
+      toast.error("No se pudo aplazar el expediente");
+      return;
+    }
+    registrarEvento("radar_triaje", { accion });
+    void refrescarRadar();
+    toast(accion === "silenciar" ? `Oculta del Radar ${dias} días` : `Te lo recordamos en ${dias} días`, {
+      action: {
+        label: "Deshacer",
+        onClick: () =>
+          void apiMutate("DELETE", `/api/v1/radar/dismissals/${encodeURIComponent(idExterno)}`)
+            .then(refrescarRadar)
+            .catch((err: unknown) => reportError("NotificationBell.deshacer", err)),
       },
-    );
+    });
   };
 
   return (
@@ -249,14 +269,14 @@ export function NotificationBell({ className: _className }: NotificationBellProp
                           <DropdownMenuItem
                             className="h-6 px-1.5 py-0 text-[11px] text-muted-foreground"
                             aria-label={`Ocultar del Radar 30 días: ${a.title ?? a.type}`}
-                            onSelect={() => aplazar(a.licitacion_id!, "silenciar", 30)}
+                            onSelect={() => void aplazar(a.licitacion_id!, "silenciar", 30)}
                           >
                             Ocultar del Radar 30 días
                           </DropdownMenuItem>
                           <DropdownMenuItem
                             className="h-6 px-1.5 py-0 text-[11px] text-muted-foreground"
                             aria-label={`Recordármelo en 7 días: ${a.title ?? a.type}`}
-                            onSelect={() => aplazar(a.licitacion_id!, "posponer", 7)}
+                            onSelect={() => void aplazar(a.licitacion_id!, "posponer", 7)}
                           >
                             Recordármelo en 7 días
                           </DropdownMenuItem>
