@@ -723,6 +723,10 @@ class PursuitRepository:
                 "p.offer_price_eur, p.outcome, p.awarded_amount_eur, p.outcome_reason, "
                 "p.next_action, p.next_action_due, p.identified_at, p.decision_at, "
                 "p.submitted_at, p.closed_at, p.updated_at, "
+                # Importe y enlace del expediente: los pide el CSV para el CRM
+                # (F6.3, `services/exports_crm.py`). El export del tablero no
+                # los lista en `PURSUIT_COLUMNS` y no cambia.
+                "l.importe AS tender_importe, l.url AS tender_url, "
                 "%s AS organizacion_id, %s AS exportado_en "
                 "FROM pursuits p "
                 "JOIN licitaciones l ON l.id_externo = p.licitacion_id "

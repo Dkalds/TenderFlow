@@ -1754,6 +1754,33 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/exports/crm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Oportunidades en CSV con el mapeo genérico de CRM
+         * @description F6.3 — el tablero de oportunidades en el vocabulario de un CRM.
+         *
+         *     D35: CSV con mapeo documentado (Salesforce y Dynamics lo importan sin
+         *     configurar nada) y no un conector nativo. Mismos filtros que el tablero y
+         *     que `GET /exports/download?recurso=pursuits`; lo que cambia son las
+         *     columnas: las nueve de `CABECERAS_CSV`, separadas por comas y en UTF-8 con
+         *     BOM. Solo sale lo del pipeline —ni score ni predicciones— porque un CRM es
+         *     un sistema de terceros.
+         */
+        get: operations["download_crm_api_v1_exports_crm_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/exports/descargas/{job_id}": {
         parameters: {
             query?: never;
@@ -17251,6 +17278,54 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["CalendarioEnlace"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    download_crm_api_v1_exports_crm_get: {
+        parameters: {
+            query?: {
+                /** @description Organización cuyo pipeline */
+                organization_id?: number | null;
+                /** @description Filtro de estado del tablero */
+                pursuit_status?: string | null;
+                /** @description Filtro de responsable */
+                responsible_user_id?: number | null;
+                limit?: number;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Una fila por oportunidad con las columnas de `docs/integraciones/crm.md` (cuenta = órgano, etapa traducida al embudo estándar) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/csv": unknown;
+                };
+            };
+            /** @description Sin membresía en la organización pedida */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

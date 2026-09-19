@@ -445,6 +445,79 @@ async def _download_pursuits(
 
 
 # ---------------------------------------------------------------------------
+# Export a CRM (F6.3, D35)
+# ---------------------------------------------------------------------------
+
+
+@router.get(
+    "/crm",
+    response_class=StreamingResponse,
+    summary="Oportunidades en CSV con el mapeo genérico de CRM",
+    responses={
+        200: {
+            "content": {"text/csv": {}},
+            "description": (
+                "Una fila por oportunidad con las columnas de `docs/integraciones/crm.md` "
+                "(cuenta = órgano, etapa traducida al embudo estándar)"
+            ),
+        },
+        403: {"description": "Sin membresía en la organización pedida"},
+    },
+)
+async def download_crm(
+    organization_id: int | None = Query(None, ge=1, description="Organización cuyo pipeline"),
+    pursuit_status: str | None = Query(
+        None, max_length=40, description="Filtro de estado del tablero"
+    ),
+    responsible_user_id: int | None = Query(None, ge=1, description="Filtro de responsable"),
+    limit: int = Query(10000, ge=1, le=50000),
+    user: dict[str, Any] = Depends(require_any_auth),
+) -> StreamingResponse:
+    """F6.3 — el tablero de oportunidades en el vocabulario de un CRM.
+
+    D35: CSV con mapeo documentado (Salesforce y Dynamics lo importan sin
+    configurar nada) y no un conector nativo. Mismos filtros que el tablero y
+    que `GET /exports/download?recurso=pursuits`; lo que cambia son las
+    columnas: las nueve de `CABECERAS_CSV`, separadas por comas y en UTF-8 con
+    BOM. Solo sale lo del pipeline —ni score ni predicciones— porque un CRM es
+    un sistema de terceros.
+    """
+    from services.exports import get_export_filename
+    from services.exports_crm import render_crm_export
+    from services.organizations import OrganizationAccessError
+
+    try:
+        content, n_rows = await run_db(
+            render_crm_export,
+            int(user["user_id"]),
+            organization_id=organization_id,
+            status=pursuit_status,
+            responsible_user_id=responsible_user_id,
+            limit=limit,
+        )
+    except OrganizationAccessError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+
+    await run_db(
+        log_event,
+        event_type=EXPORT_DOWNLOADED,
+        user_id=int(user["user_id"]),
+        resource=f"user:{int(user['user_id'])}",
+        detail={"recurso": "pursuits", "format": "crm", "n_rows": n_rows},
+    )
+    log.info("export_download", format="crm", recurso="pursuits", n_rows=n_rows)
+    return StreamingResponse(
+        io.BytesIO(content),
+        media_type="text/csv; charset=utf-8",
+        headers={
+            "Content-Disposition": (
+                f'attachment; filename="{get_export_filename("csv", prefix="oportunidades_crm")}"'
+            )
+        },
+    )
+
+
+# ---------------------------------------------------------------------------
 # Export calendario ICS (Feature D)
 # ---------------------------------------------------------------------------
 

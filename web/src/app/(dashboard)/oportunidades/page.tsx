@@ -14,6 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { type EtiquetaAplicada, useEtiquetas, useEtiquetasDe } from "@/hooks/use-etiquetas";
 import { cn } from "@/lib/utils";
 import { LANES, agruparPorExpediente } from "./_lib/carriles";
+import { ExportarCrm } from "./_components/exportar-crm";
 
 const TODAS = "todas";
 
@@ -106,6 +107,7 @@ export default function OportunidadesPage() {
   // espacio: es el control que gobierna los cuatro carriles.
   const search = (
     <div className="flex flex-none items-center gap-2">
+    <ExportarCrm />
     {etiquetasOrg.length > 0 ? (
       <Select value={etiquetaFiltro} onValueChange={setEtiquetaFiltro}>
         <SelectTrigger className="h-7 w-44 text-xs" aria-label="Filtrar por etiqueta">
