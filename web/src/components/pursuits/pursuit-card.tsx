@@ -152,9 +152,12 @@ export function PursuitCard({
             </span>
           </div>
           {/* Decorativa: los días ya van en el texto de arriba, así que la barra
-              no añade nada que leer y sí ruido si se anuncia. */}
+              no añade nada que leer y sí ruido si se anuncia. Va en SVG, como la
+              del embudo: el ancho es un atributo, no un estilo inline (C2.8). */}
           <div className="bg-border/40 h-[3px] overflow-hidden rounded-full" aria-hidden="true">
-            <div className={cn("h-full rounded-full", plazo.clases.barra)} style={{ width: `${plazo.pct}%` }} />
+            <svg className="h-full w-full" preserveAspectRatio="none" viewBox="0 0 100 1">
+              <rect className={plazo.clases.barra} height="1" width={plazo.pct} />
+            </svg>
           </div>
         </div>
       ) : null}

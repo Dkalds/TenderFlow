@@ -115,16 +115,19 @@ export type BandaPlazo = "pasado" | "critico" | "alto" | "medio" | "holgado";
 /**
  * Clases estáticas por banda. El JIT de Tailwind no ve una clase compuesta en
  * tiempo de ejecución, así que la tabla se escribe entera aunque se repita.
+ *
+ * `barra` es un `fill-*` y no un `bg-*`: la barra de la tarjeta es un `<rect>`
+ * de SVG, para que su ancho sea un atributo y no un estilo inline (C2.8).
  */
 const PLAZO_CLASES: Record<BandaPlazo, { texto: string; barra: string }> = {
-  pasado: { texto: "text-muted-foreground", barra: "bg-muted-foreground/40" },
+  pasado: { texto: "text-muted-foreground", barra: "fill-muted-foreground/40" },
   critico: {
     texto: "text-[hsl(var(--urgency-critical))]",
-    barra: "bg-[hsl(var(--urgency-critical))]",
+    barra: "fill-[hsl(var(--urgency-critical))]",
   },
-  alto: { texto: "text-[hsl(var(--urgency-high))]", barra: "bg-[hsl(var(--urgency-high))]" },
-  medio: { texto: "text-[hsl(var(--urgency-medium))]", barra: "bg-[hsl(var(--urgency-medium))]" },
-  holgado: { texto: "text-[hsl(var(--urgency-low))]", barra: "bg-[hsl(var(--urgency-low))]" },
+  alto: { texto: "text-[hsl(var(--urgency-high))]", barra: "fill-[hsl(var(--urgency-high))]" },
+  medio: { texto: "text-[hsl(var(--urgency-medium))]", barra: "fill-[hsl(var(--urgency-medium))]" },
+  holgado: { texto: "text-[hsl(var(--urgency-low))]", barra: "fill-[hsl(var(--urgency-low))]" },
 };
 
 export interface PlazoVisual {
