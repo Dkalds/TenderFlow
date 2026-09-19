@@ -217,7 +217,6 @@ export default function DetallePage() {
           detailId={detailId}
           cursor={cursor}
           rowSelection={rowSelection}
-          watchedIds={favoritos.watchedIds}
           ccaas={ccaas}
           tecnologias={tecnologias}
           compact={compact}
@@ -227,7 +226,6 @@ export default function DetallePage() {
             openDetail(id);
           }}
           onToggleSelect={tabla.toggleRow}
-          onToggleFavorite={favoritos.toggleFavorite}
           onToggleCcaa={toggleCcaa}
           onToggleTecnologia={toggleTecnologia}
         />

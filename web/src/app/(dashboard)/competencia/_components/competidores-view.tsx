@@ -56,8 +56,6 @@ export default function CompetidoresView() {
     drillDownAwards,
     isLoadingDrillDownProfile,
     isLoadingDrillDownAwards,
-    watchedIds,
-    toggleWatch,
   } = useCompetidoresData();
 
   const [corte, setCorte] = useState<CorteKey>("top20");
@@ -72,8 +70,6 @@ export default function CompetidoresView() {
       </div>
     );
   }
-
-  const watched = drillDownGroupIds.some((id) => watchedIds.has(id));
 
   return (
     <div className="flex min-h-0 gap-4">
@@ -135,11 +131,6 @@ export default function CompetidoresView() {
           recentAwards={drillDownAwards}
           isLoadingProfile={isLoadingDrillDownProfile}
           isLoadingAwards={isLoadingDrillDownAwards}
-          watched={watched}
-          watchPending={toggleWatch.isPending}
-          onToggleWatch={() =>
-            toggleWatch.mutate({ empresaIds: drillDownGroupIds, watched })
-          }
           onClose={() => startTransition(() => setDrillDownCompany(null))}
         />
       )}

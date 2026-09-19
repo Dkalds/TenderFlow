@@ -68,7 +68,11 @@ async function cancelarYFotografiar(
   return qc.getQueryData<Follow[]>(clave);
 }
 
-export function useFollows(tipo: TargetType, kind: FollowKind = "seguir") {
+export function useFollows(
+  tipo: TargetType,
+  kind: FollowKind = "seguir",
+  { enabled = true }: { enabled?: boolean } = {},
+) {
   return useQuery({
     queryKey: followKeys.lista(tipo, kind),
     queryFn: () =>
@@ -78,6 +82,7 @@ export function useFollows(tipo: TargetType, kind: FollowKind = "seguir") {
     // `silent`: que no se siga un órgano no es un error que merezca un toast
     // rojo tapando la pantalla; el control se queda sin marcar y ya.
     meta: { silent: true },
+    enabled,
   });
 }
 

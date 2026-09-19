@@ -18,7 +18,6 @@ import { useCallback, useMemo, useState } from "react";
 
 import { useFilteredQuery } from "@/hooks/use-filtered-query";
 import { useSortToggle } from "@/hooks/use-sort-toggle";
-import { useEmpresasWatchlist, useToggleEmpresaWatch } from "@/hooks/use-empresas-watchlist";
 import { useFilters } from "@/lib/filters";
 import { toggleValue } from "@/lib/chart-interaction";
 import type { ScatterPoint } from "@/components/charts/competitors-charts";
@@ -73,9 +72,6 @@ export function useCompetidoresData() {
     { staleTime: 5 * 60 * 1000 },
     { group_by: "empresa", min_contratos: "5", limit: "15" },
   );
-
-  const { watchedIds } = useEmpresasWatchlist();
-  const toggleWatch = useToggleEmpresaWatch();
 
   const [search, setSearch] = useState("");
   const { ccaas, setCcaas } = useFilters();
@@ -160,7 +156,5 @@ export function useCompetidoresData() {
     drillDownAwards,
     isLoadingDrillDownProfile,
     isLoadingDrillDownAwards,
-    watchedIds,
-    toggleWatch,
   };
 }

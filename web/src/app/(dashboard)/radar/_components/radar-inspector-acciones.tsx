@@ -1,11 +1,11 @@
 "use client";
 
 import * as React from "react";
-import { ArrowUpRight, BellOff, Clock, ExternalLink, Loader2, Star } from "lucide-react";
+import { ArrowUpRight, BellOff, Clock, ExternalLink, Loader2 } from "lucide-react";
+import { SeguirBoton } from "@/components/seguir-boton";
 import { CompararBoton } from "@/components/pliego/comparacion-bandeja";
 import type { AccionAplazar, RadarTender } from "@/hooks/use-radar";
 import { fuenteLinkLabel } from "@/lib/fuentes";
-import { cn } from "@/lib/utils";
 
 /**
  * Barra de acciones del inspector, fija al pie.
@@ -32,17 +32,16 @@ export const DIAS_SILENCIO = 30;
 export const PLAZOS_RECORDATORIO = [3, 7, 14, 30] as const;
 export function InspectorAcciones({
   tender,
-  followed,
   opening,
-  onFollow,
+  onFollowed,
   onDismiss,
   onAplazar,
   onOpenPursuit,
 }: {
   tender: RadarTender;
-  followed: boolean;
   opening: boolean;
-  onFollow: () => void;
+  /** Tras alternar «Seguir», con el estado nuevo. */
+  onFollowed: (ahoraSigue: boolean) => void;
   onDismiss: () => void;
   onAplazar: (accion: AccionAplazar, dias: number) => void;
   onOpenPursuit: () => void;
@@ -98,20 +97,20 @@ export function InspectorAcciones({
       >
         Descartar
       </button>
-      <button
-        type="button"
-        onClick={onFollow}
-        aria-pressed={followed}
-        className={cn(
-          "tf-pressable inline-flex h-[34px] flex-none items-center gap-1.5 rounded-lg border px-3 text-[12.5px] font-medium transition-colors",
-          followed
-            ? "border-primary/50 bg-primary/14 text-primary"
-            : "border-border/80 text-muted-foreground hover:text-foreground",
-        )}
-      >
-        <Star className={cn("h-3.5 w-3.5", followed && "fill-current")} aria-hidden="true" />
-        {followed ? "Siguiendo" : "Seguir"}
-      </button>
+      {/* El control único (ADR-031 §C). Nombre accesible = el texto visible,
+          como antes: «Seguir» / «Siguiendo». */}
+      <SeguirBoton
+        targetType="licitacion"
+        targetId={tender.id_externo}
+        icono="estrella"
+        nombreAccesible="visible"
+        clases={{
+          base: "tf-pressable inline-flex h-[34px] flex-none items-center gap-1.5 rounded-lg border px-3 text-[12.5px] font-medium transition-colors",
+          activo: "border-primary/50 bg-primary/14 text-primary",
+          inactivo: "border-border/80 text-muted-foreground hover:text-foreground",
+        }}
+        onAlternar={onFollowed}
+      />
       {/* F2.8 — a la bandeja de comparación, que sigue abierta al pasar a la
           watchlist o a Detalle. */}
       <CompararBoton

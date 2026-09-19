@@ -37,9 +37,6 @@ export function CompetidoresDossier({
   recentAwards,
   isLoadingProfile,
   isLoadingAwards,
-  watched,
-  watchPending,
-  onToggleWatch,
   onClose,
 }: {
   company: Competitor;
@@ -50,9 +47,6 @@ export function CompetidoresDossier({
   recentAwards: CompanyAwardsData | undefined;
   isLoadingProfile: boolean;
   isLoadingAwards: boolean;
-  watched: boolean;
-  watchPending: boolean;
-  onToggleWatch: () => void;
   onClose: () => void;
 }) {
   const [pestana, setPestana] = useState<"perfil" | "contra_mi">("perfil");
@@ -109,9 +103,6 @@ export function CompetidoresDossier({
             recentAwards={recentAwards}
             isLoadingProfile={isLoadingProfile}
             isLoadingAwards={isLoadingAwards}
-            watched={watched}
-            watchPending={watchPending}
-            onToggleWatch={onToggleWatch}
           />
         ) : null}
       </div>

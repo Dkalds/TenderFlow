@@ -14,6 +14,20 @@ import {
 } from "../company-profile-types";
 import { CompanyYearTrend } from "../company-year-trend";
 
+// «Vigilar» es el control único `SeguirBoton` (ADR-031 §C). Estos tests miran
+// la ficha, no el seguimiento: un estado fijo y sin red basta.
+vi.mock("@/hooks/use-seguimiento", () => ({
+  useSeguimiento: () => ({
+    ids: new Set<string>(),
+    sigue: () => false,
+    alternar: vi.fn(() => true),
+    seguir: vi.fn(),
+    dejar: vi.fn(),
+    isLoading: false,
+    enVuelo: false,
+  }),
+}));
+
 const profile: CompanyProfileData = {
   empresa: {
     empresa_id: 7,
@@ -178,9 +192,6 @@ describe("company profile presentation helpers", () => {
         recentAwards={recentAwards}
         isLoadingProfile={false}
         isLoadingAwards={false}
-        watched={false}
-        watchPending={false}
-        onToggleWatch={vi.fn()}
       />,
     );
 
@@ -189,5 +200,10 @@ describe("company profile presentation helpers", () => {
     expect(screen.getByText("Progreso anual")).toBeInTheDocument();
     expect(screen.getByText("Adjudicaciones recientes")).toBeInTheDocument();
     expect(screen.getByText("Servicio de soporte y evolución de sistemas")).toBeInTheDocument();
+    // El pie conserva su «Vigilar empresa», ahora servido por `SeguirBoton`.
+    expect(screen.getByRole("button", { name: "Vigilar empresa" })).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
   });
 });
