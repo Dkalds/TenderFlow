@@ -100,4 +100,24 @@ describe("DocumentosBlock", () => {
     const link2 = screen.getByRole("link", { name: /Pliego técnico/ });
     expect(link2).toHaveAttribute("href", "https://example.org/ppt.pdf");
   });
+
+  it("marks as «Nuevo» only the document added after the first batch (F5.1)", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-09-19T12:00:00Z"));
+    try {
+      withData(
+        "L-nuevo",
+        {
+          items: [
+            { ...ITEMS.items[0], created_at: "2026-08-01T10:00:00Z" },
+            { ...ITEMS.items[1], created_at: "2026-09-17T10:00:00Z" },
+          ],
+        },
+        <DocumentosBlock licitacionId="L-nuevo" />,
+      );
+      expect(screen.getAllByText("Nuevo")).toHaveLength(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

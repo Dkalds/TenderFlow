@@ -2,6 +2,7 @@
 
 import { useFactSheetDocumentos } from "@/hooks/use-tender-fact-sheet";
 import type { DocumentoSummary } from "@/lib/api-types";
+import { documentosNuevos } from "@/lib/documento-nuevo";
 import { ExternalLink, FileText } from "lucide-react";
 
 const TIPO_LABELS: Record<string, string> = {
@@ -67,6 +68,9 @@ export function DocumentosBlock({
   const { data } = useFactSheetDocumentos(licitacionId);
 
   const items: DocumentoSummary[] = data?.items ?? [];
+  // F5.1: el documento que llegó después del primer lote se marca «Nuevo»
+  // siete días — es el que avisó la campana, y aquí es donde se busca.
+  const nuevos = documentosNuevos(items);
 
   if (items.length === 0) {
     if (!fichaUrl) return null;
@@ -108,6 +112,11 @@ export function DocumentosBlock({
                   <ExternalLink className="h-3 w-3 shrink-0" />
                 </a>
                 <p className="text-xs text-muted-foreground">
+                  {nuevos.has(doc.id) && (
+                    <span className="mr-1.5 rounded-sm bg-primary/10 px-1 py-px font-medium text-primary">
+                      Nuevo
+                    </span>
+                  )}
                   {TIPO_LABELS[doc.tipo] ?? doc.tipo}
                   {doc.size_bytes != null && ` · ${formatBytes(doc.size_bytes)}`}
                   {caducado && " · el enlace original puede haber caducado"}
