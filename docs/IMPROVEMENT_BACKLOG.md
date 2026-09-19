@@ -13,16 +13,17 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 
 El plan y sus criterios de aceptación están en
 [plans/2026-09-plan-funcionalidades.md](plans/2026-09-plan-funcionalidades.md).
-Treinta y ocho funcionalidades en seis recorridos; **treinta y cinco
-implementadas**, una descartada por su propia decisión y dos bloqueadas por
-dependencias que no existen en este árbol.
+Treinta y ocho funcionalidades en seis recorridos; **treinta y seis con
+backend** (F4.6 se desbloqueó el 2026-09-18) y dos descartadas por su propia
+decisión (F2.1 y F6.6). Tener backend no es tener pantalla: ver la nota de
+abajo.
 
 Lo que **no** se hizo, y por qué:
 
 | Ítem | Estado | Motivo |
 |---|---|---|
 | F2.1 Hitos del procedimiento | **Descartado por D32** | El spike midió 735 entradas del ATOM en vivo: `OpenTenderEvent` aparece en el **0 %**, muy por debajo del umbral del 30 % que D32 fijaba. Ver [el documento del spike](plans/2026-09-spike-d32-hitos-procedimiento.md). La consecuencia prevista —que la fecha prevista de adjudicación se estime sola— está implementada (F4.4), y `ExpectedAward.metodo` ya admite `hito` para el día que la Plataforma los publique. |
-| F4.6 Plantillas de tareas por etapa | **Bloqueado** | Depende de las tareas de oportunidad (C6.1 del plan complementario), que no existen en este árbol. Construirlo exigiría crear una tabla de tareas, y el gate de F4.6 es «sin gate»: no tiene migración autorizada. Se deja sin empezar en vez de inventar el modelo de datos de otro plan. |
+| F4.6 Plantillas de tareas por etapa | **Hecho el 2026-09-18** (rama `worktree-agent-a46c6c93b69b8f96c`) | Se desbloqueó al llegar las tareas C6.1 (v122). Sin migración: plantilla en `plantillas_organizacion` (`tipo='tareas'`), instanciación idempotente por `pursuit_events`, editor en Equipo → Organización. |
 | F6.6 Boletín público | **Descartado por D36** | La propuesta de D36 es «no hasta que exista dominio propio (v2 S1.3) y política de privacidad para suscriptores». Ninguna de las dos existe. |
 
 Lo que se hizo **con fallback**, porque su dependencia no está en este árbol
@@ -36,8 +37,26 @@ Lo que se hizo **con fallback**, porque su dependencia no está en este árbol
   (`services/avisos.py`), así que enchufarlo al outbox cuando exista es cambiar
   el productor, no el vocabulario.
 - **F3.2** distingue «nosotros perdimos» de «ellos ganaron»: sin el NIF propio
-  (v2 S2.1) sólo se puede afirmar lo primero, y la respuesta lo declara.
-- **F2.3** entrega el kit sin responsable, que es lo que el plan prevé sin C6.1.
+  (v2 S2.1) sólo se puede afirmar lo primero, y la respuesta lo declara. La
+  pestaña «Contra mí» lo pinta así desde el 2026-09-18 (UI de F1.2, F3.2,
+  F3.3, F5.4 y F5.6 en la rama `worktree-agent-aa4eeee01ef3fbb62`; ver el estado de cada ítem en el plan).
+- **F2.3** se entregó sin responsable; desde el 2026-09-18 el responsable es
+  el de la tarea C6.1 del documento (rama `worktree-agent-a46c6c93b69b8f96c`).
+
+**«Implementadas» significaba backend.** Varias de las treinta y cinco no
+tenían pantalla. En el lado de oportunidades, la UI llegó el 2026-09-18 (rama
+`worktree-agent-a46c6c93b69b8f96c`) para F1.6 (aplicar/quitar etiquetas; falta
+el filtro en Radar y Detalle), F2.3, F3.1, F4.1 (sin pantalla para editar las
+probabilidades), F4.3 (sin «preparar renovación», que no tiene endpoint), F4.4
+y F4.6. El estado de cada una está anotado en el plan.
+
+Pantallas que faltaban de lado ficha y superficie pública (2026-09-18, rama
+`worktree-agent-ac5d5218d7d3b1f8b`): F2.2, F2.5, F2.6, F2.8, F6.2 y F6.5 ya
+tienen UI; el estado por ítem está anotado en el plan. Quedan sin hacer: el
+PDF del guion (F2.6, sin ruta en el backend), `/ask` multi-expediente desde la
+UI (F2.8) y la emisión de `evidencia_abierta` (F2.5). Los E2E nuevos
+(`pagina-cita.spec.ts`, bloque de órganos de `seo.spec.ts`) no se ejecutaron
+en local.
 
 Ítems de **este** backlog que el plan toca:
 
@@ -68,11 +87,11 @@ estado real de cada ítem en su §8. **Excluye a propósito `backup.yml` y
 | [P2] Migrar las llamadas del frontend al cliente tipado | **Cerrado y movido** el 2026-09-06 a _Cerrados_ — no queda ningún `fetch("/api/…")` crudo fuera de `lib/`, y una regla ESLint impide que vuelva |
 | [P3] Vigilar el crecimiento de `predicciones_baja` | **Cerrado y movido** el 2026-09-06 a _Cerrados_ — el job de ML purga por antigüedad, y el consumidor distingue el p50 del modelo del del baseline histórico |
 | [P3] F5: refactor de repositories (ratchet TID251) | **Progresa** — la whitelist baja de 32 a 28 archivos, y a 26 el 2026-09-16 (`kpi_precompute`, `mercado`); el destino sigue siendo vaciarla |
-| [P1] Cobertura de tests de las páginas del frontend | **Parcial** — los pisos por carpeta siguen en pie; el piso de `src/app/**` no llegó a ponerse |
-| [P2] Remediación axe: 4 reglas desactivadas | **Abierto, encogiendo** — `nested-interactive` reactivada (C7.1); quedan `color-contrast`, `scrollable-region-focusable` y `target-size`, que son la ola móvil |
-| [P2] Contrato de paginación común | **Abierto** — el agente que lo tenía asignado murió por límite de sesión |
+| [P1] Cobertura de tests de las páginas del frontend | **Cerrado y movido** el 2026-09-18 a _Cerrados_ — primera medición local completa; pisos globales y de `src/app/**` subidos a lo medido |
+| [P2] Contrato de paginación común | **Cerrado y movido** el 2026-09-18 a _Cerrados_ — dependencia `limit`/`offset` compartida en `api/pagination.py`, primera ola de siete rutas; `trends` ya exponía `group_by` |
+| [P2] Remediación axe: 4 reglas desactivadas | **Código completo, pendiente de CI** — `nested-interactive` (C7.1) y, el 2026-09-18, las tres restantes; `disableRules` y los `fixme` de móvil retirados |
 | [P3] Los dos módulos-dios (`aggregates.py`, `settings.py`) | **Abierto** — sigue vigente la regla oportunista |
-| [P3] Unificar la definición de «Calientes» | **Abierto** |
+| [P3] Unificar la definición de «Calientes» | **Cerrado y movido** el 2026-09-18 a _Cerrados_ — se mantiene la heurística de importe como «Grandes en plazo», documentada en los DTOs |
 | [P3] Descartar los avisos fantasma de Dependabot | **Abierto** — acción del usuario en GitHub |
 
 Ítems **nuevos** que salen del plan y no estaban aquí: partir las páginas
@@ -211,6 +230,7 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 - **Problema:** una organización no puede incorporar a nadie que no tenga ya cuenta —`add_member_by_email` rechaza el email aunque `organization_memberships.status` admita `invited` desde `v61`—, el único OAuth es Google (un partner con Microsoft 365 no entra con su identidad), y la identidad interna sigue derivándose del email: `user_key` aparece en 60 ficheros (grep 2026-09-05), así que un cambio de email es un cambio de clave primaria de facto.
 - **Decisiones ya tomadas (2026-09-06):** D17 → Entra ID multi-tenant reutilizando `OAUTH_ALLOWED_DOMAINS` y `access_grants`; D18 → ratchet ahora y migración aditiva por olas después (esa segunda fase es T4 del plan, no este ítem).
 - **Progreso T4 (2026-09-14, v129 · ADR-030 fase 2):** `user_id` junto a `user_key` en las doce tablas de usuario (nueve nuevas + FK e índice en las tres que ya la tenían), backfill por email en SQL y lectura dual + escritura doble en `db/`, `services/notifications.py`, `services/watchlist_rules.py` y los productores de alertas; GDPR exporta y borra por id o por clave (y cubre por fin `saved_filters`). Test de aceptación del ADR: `tests/test_user_id_cambio_email_integration.py`. **Queda la fase 3** (dejar de escribir `user_key`, recrear las PK de `user_profiles`/`radar_dismissals`, retirar `user_key` del payload de `watchlist_rule.matched` con RFC, y llevar el ratchet a cero).
+- **Progreso fase 3 (2026-09-18, v135, rama `worktree-agent-a8484f81d7c8a27e2`):** PK de `user_profiles` → `(user_id)` y de `radar_dismissals` → `(user_id, id_externo)`, con backfill y fallo ruidoso si queda alguna fila sin id o duplicada; `user_profiles` ya no escribe `user_key`; `log_event(actor=…)` saca seis ficheros del ratchet (69 → 63); RFC `draft` [2026-09-18](rfc/2026-09-18-rfc-retirar-user-key-payload-watchlist-rule-matched.md) para el payload del webhook, con el campo intacto hasta la ventana y la sustitución pendiente de decisión humana. **Queda:** `user_notifications`/`follows`/`watchlist_*` siguen tecleadas por `user_key` (y con ellas `radar_dismissals` la sigue escribiendo); aplicar v135 en producción (antes del deploy del código) y regenerar `docs/database-schema.md`.
 - **Acceptance criteria:** los de S1.1–S1.4 del plan v2, sin redefinirlos aquí. Los cuatro subítems son independientes y se pueden entregar por separado; S1.3 (dominio propio) es acción humana.
 - **Files de partida:** [docs/plans/2026-09-plan-arquitectura-v2.md](plans/2026-09-plan-arquitectura-v2.md) (§5, S1), [services/organizations.py](../services/organizations.py), [api/routes/auth.py](../api/routes/auth.py)
 - **Riesgo:** medio — S1.2 toca el login, que es el camino por el que entra todo el mundo; el resto es aditivo.
@@ -233,6 +253,13 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 - **Riesgo:** medio — servicio nuevo en producción y cambio del camino por el que se sirve la ficha.
 
 ---
+
+### [P1] El despachador del outbox no lo invoca ningún plano
+- **Área:** scheduler/jobs/event_dispatch.py, scheduler/pipeline_runs.py, scheduler/jobs/__init__.py
+- **Problema:** `scheduler/jobs/event_dispatch.run()` está escrito y probado (S4.1), pero ni el cierre de `pipeline_runs.py` ni el registro de jobs de APScheduler lo llaman (comprobado el 2026-09-18 buscando `event_dispatch` fuera de `tests/` y `docs/`). Ningún evento de `domain_events` se entrega: ni notificaciones in-app, ni correos de `pursuit.*`, ni webhooks del catálogo, ni los nuevos `pursuit.task_due`/`pursuit.mentioned`. La alerta `DomainEventsBacklogHigh` acabará disparándose por esto.
+- **Por qué no se hizo en el mismo cambio:** cablearlo vacía de golpe la cola acumulada desde que existe el outbox —correos y webhooks incluidos, con fechas viejas—. Hace falta decidir antes si se marca como despachado lo anterior a una fecha o se entrega.
+- **Acceptance criteria:** un paso del cierre (plano `pipeline`, ADR-012) llama a `event_dispatch.run()`; decisión documentada sobre la cola histórica; `domain_events_pending` baja en producción.
+- **Riesgo:** medio — primera vez que salen correos y webhooks del outbox.
 
 ## P2 — Media
 
@@ -278,24 +305,14 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 - **Nota de deriva de schema:** `alembic upgrade head` crea la columna como `double precision` (`sa.Float` en `baseline002_pg_core_genesis`), así que **CI y cualquier bootstrap nuevo no reproducen el bug**: el `real` de producción viene del schema SQLite pre-ADR-021. Los tests de regresión (`tests/test_db_upsert.py::test_reingesta_identica_no_genera_historial_con_importe_float4`) alinean la columna con producción vía `ALTER` en una fixture para poder medir algo.
 - **Files de partida:** [db/upsert.py](../db/upsert.py), [shared/numeric.py](../shared/numeric.py), [services/contract_events.py](../services/contract_events.py), [db/alembic/versions/baseline002_pg_core_genesis.py](../db/alembic/versions/baseline002_pg_core_genesis.py)
 - **Riesgo:** alto — migra schema de la tabla núcleo con lock exclusivo sobre 1,3 M filas; la mitigación aplicada (tolerancia) es de riesgo bajo y ya cubre el síntoma.
+- **Progreso (2026-09-18, PARCIAL, rama `worktree-agent-ae7fea40cc310a705`):** unificado con T2 del plan de arquitectura v2. El plan de columna sombra está escrito con el nombre que fijó el plan, **`importe_num numeric(14,2)`** (no `importe_f8`: céntimos exactos en vez de otro float), más `duracion_valor_num numeric` (`v133_nucleo_tipado_sombra`, sólo catálogo, sin reescritura), escritura dual en `db/upsert.py` que traduce el `float` del conector **antes** de que pase por `real`, backfill por lotes (`scripts/backfill_nucleo_tipado.py`) y runbook de la ventana ([runbooks/nucleo-tipado-ventana.md](runbooks/nucleo-tipado-ventana.md)). `FLOAT_REL_TOL` **no se ha tocado**. Pendiente, todo en producción: aplicar la ventana, verificar cero divergencias, mover las lecturas de `importe` a la sombra, y sólo entonces bajar la tolerancia y limpiar `licitaciones_history`/`contrato_eventos`. El test de round-trip exacto contra Postgres (`tests/test_nucleo_tipado_pg.py`) está escrito y **no se ha ejecutado**.
 
-### [P2] Separar los requirements de la API de los del pipeline/ML
-- **Área:** requirements.in, docker/
-- **Problema:** las 33 deps runtime (pandas, scikit-learn, statsmodels, networkx, reportlab, boto3, lxml, openai…) viven en un único deployable: la imagen de la API que corre en 0.1 vCPU/2GiB paga memoria, cold start y superficie de ataque de librerías que solo usa el plano de ingesta/ML. El OOM del 2026-08-02 (comentario en `api/app.py`) es el síntoma de fondo: OLAP y ML dentro del proceso HTTP. Con 38 avisos de Dependabot abiertos (29 high), reducir lo que instala la imagen expuesta a internet también encoge la superficie que hay que parchear.
-- **Acceptance criteria:**
-  - `requirements-api.in` y `requirements-pipeline.in` compilados por separado (mismo flujo pip-tools con hashes).
-  - La imagen de la API no instala scikit-learn/statsmodels/networkx salvo que una ruta los importe de verdad (los imports lazy existentes delimitan el corte).
-  - CI construye ambas variantes y el smoke de la API pasa con la imagen reducida.
-- **Files de partida:** [requirements.in](../requirements.in), [docker/](../docker/)
-- **Riesgo:** medio — toca dependencias (gate humano §6) y puede destapar imports implícitos; mitigado con smoke de import por entrypoint.
-
-### [P2] Calibrar los umbrales de la auditoría de verdad del dato
-- **Área:** scripts/audit_domain_truth.py
-- **Problema:** `MAX_PCT_SIN_FECHA_LIMITE = 60`, `MAX_PCT_FILAS_UTE = 8` y `MAX_DELTA_BAJA_PUNTOS = 5` se eligieron holgados para que el primer mes detecte empeoramientos bruscos sin ahogar en ruido. No son la calidad real medida.
-- **Acceptance criteria:**
-  - Tras una semana de ejecuciones de `.github/workflows/domain-truth.yml`, comparar los `domain-truth.json` archivados y bajar cada umbral al valor medido con margen, dejando el histórico en el docstring (patrón de `tests/eval/test_eval_rag.py`).
-- **Files de partida:** [scripts/audit_domain_truth.py](../scripts/audit_domain_truth.py)
-- **Riesgo:** bajo — solo umbrales.
+### [P2] Filas nuevas con importe y sin `importe_tipo`: la auditoría lo viola a diario y crece
+- **Área:** scraper/connectors/, db/upsert.py, scripts/audit_domain_truth.py
+- **Problema:** el umbral `importe/filas_nuevas_sin_tipo` (cero, sin margen, desde `v113`) se supera en las siete ejecuciones archivadas de `domain-truth.yml` del 12 al 18/09, y la cuenta **crece cada día**: 131, 131, 152, 190, 238, 279, 316 filas con importe desde el 2026-09-06 y sin base declarada. Algún camino de escritura no puebla `importe_tipo`; el correo de alerta lleva una semana diciendo lo mismo. (En la misma serie, `ml_proba` > 0,7 está en el 72,9 % de lo puntuado frente al 50 % del criterio: eso es el P2 del corpus de PSCP, ya abierto.)
+- **Acceptance criteria:** identificado el camino (por `fuente` de esas filas) y corregido en origen; la cuenta deja de crecer en `domain-truth.json`. El umbral no se relaja.
+- **Files de partida:** [db/domain_truth_audit.py](../db/domain_truth_audit.py) (`importe_sin_base_declarada`), [scripts/audit_domain_truth.py](../scripts/audit_domain_truth.py)
+- **Riesgo:** bajo — corrección de ingesta; la serie está en el docstring del script.
 
 ### [P2] Modelo de baja por lote
 - **Área:** services/ml, db/alembic, api/routes/predicciones.py, web/
@@ -305,6 +322,7 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
   - `db/repositories/ml_dataset.py` expone la variante por lote (el denominador por fila ya existe: `EFFECTIVE_BUDGET_SQL`), `calibration.py` compara a la misma granularidad, y el DTO/endpoint/frontend exponen el desglose.
   - Se compara `mae_p50` por lote contra el agregado actual antes de sustituirlo; si no mejora, se documenta y se queda el agregado.
 - **Files de partida:** [db/repositories/ml_dataset.py](../db/repositories/ml_dataset.py), [services/ml/calibration.py](../services/ml/calibration.py), [api/routes/predicciones.py](../api/routes/predicciones.py)
+- **Progreso (2026-09-18, rama `worktree-agent-a0a81e5a659bd1de7`) — parte de código hecha, falta la medida:** `v140_predicciones_baja_por_lote` retira la PK y deja dos únicos parciales (patrón v65/v110): uno por expediente (`lote_numero IS NULL`) y otro por `(licitacion_id, lote_numero)`. La identidad del lote es **`lote_numero`, no `lote_id`**: `replace_lotes` renumera `lotes.id` en cada re-ingesta y la FK CASCADE de v86 habría borrado la predicción justo en la re-ingesta que trae la adjudicación, así que la calibración por lote no habría visto nunca un par (la columna `lote_id`, siempre NULL, se elimina). Hay dataset y features por lote (`construir_dataset_baja(por_lote=True)`, importe del lote), modelo propio `baja_model_lote` (`score_predicciones.py --model baja --por-lote --train`), batch por lote tras `ML_BAJA_POR_LOTE` (apagado por defecto), lecturas agregadas filtradas por `lote_numero IS NULL`, desglose aditivo `lotes` en `GET /licitaciones/{id}/prediccion-baja` y en el bloque de baja del detalle. **Pendiente, humano y con BD real:** correr `ENV=dev python scripts/comparar_baja_por_lote.py` (backtest sobre los mismos lotes + la comparación servida) y decidir si se enciende `ML_BAJA_POR_LOTE`; hasta entonces el agregado es lo servido. De paso: `PrediccionBajaResult.model_version` (contrato `string`) daba 500 con un modelo activo (int); se convierte en el validador sin cambiar el contrato.
 - **Riesgo:** medio — migración de una tabla materializada + cambio de contrato API.
 
 ### [P2] Sustituir los fixtures sintéticos del corpus CODICE por expedientes reales
@@ -315,27 +333,6 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 - **Files de partida:** [scripts/capture_placsp_fixtures.py](../scripts/capture_placsp_fixtures.py), [tests/fixtures/placsp/README.md](../tests/fixtures/placsp/README.md)
 - **Riesgo:** bajo — solo tests.
 
-### [P1] Cobertura de tests de las páginas del frontend
-- **Área:** web/src/app (tests vitest)
-- **Problema:** Con el denominador corregido el 2026-08-10 (antes se excluía `src/app/**` entero alegando que son Server Components, y la mayoría de las páginas son `"use client"`), la cobertura real del frontend es **40.2/30.4/37.5/41.6**, no el 68/63/68/70 que CI parecía exigir. Las páginas están al 0%: ahí vive la lógica de filtros, mutaciones y derivación. Los pisos por carpeta de `lib`/`hooks`/`components` conservan la garantía anterior, pero el conjunto está descubierto.
-- **Cifras actualizadas 2026-08-27:** las tres páginas que este ítem citaba con 1.000+ líneas (`competidores` 1.047, `mi-watchlist` 1.044, `detalle` 1.015) **ya no las tienen**: hoy son `detalle` 929, `mi-watchlist` 917 y `competidores` 867, porque su lógica salió a `_hooks/` (las tres tienen ya ese directorio, y `vitest.config.ts` mide `src/app/**/_hooks/*.ts` al 99,67 % de sentencias). O sea que el segundo criterio de aceptación está a medias por las tres de arriba y sin empezar por el resto. Los porcentajes globales **no se han vuelto a medir en esta sesión** (`make web-test` no se ejecutó): los 40.2/30.4/37.5/41.6 son del 2026-08-10 y hay que releerlos antes de usarlos como baseline.
-- **Acceptance criteria:**
-  - Tests de los 3 flujos críticos que siguen sin cubrir: filtros nuqs (`web/src/lib/filters.ts` ya cubierto; falta su uso desde las páginas), watchlist (`use-watchlist-items`), streaming SSE de `/ask` (`ask-stream.ts`).
-  - Seguir extrayendo a hooks testeables la lógica de las páginas más grandes, en vez de testear el árbol entero. Siguientes por tamaño tras las tres ya extraídas: `tecnologias` 734, `organos` 649, `radar` 635.
-  - Subir los umbrales globales de `vitest.config.ts` conforme suba lo medido. **No bajar los pisos por carpeta.**
-- **Files de partida:** [web/vitest.config.ts](../web/vitest.config.ts), [web/src/lib/ask-stream.ts](../web/src/lib/ask-stream.ts)
-- **Riesgo:** bajo — solo añade tests.
-
-### [P2] La consola no tiene primer uso: se entra a 14 espacios sin que nadie explique ninguno
-- **Área:** web/src/components/layout, web/src/app/(dashboard)
-- **Problema (parcialmente resuelto, ver progreso):** quien entra por primera vez aterriza en `/resumen` con el rail de 14 espacios (`web/src/lib/console-spaces.ts`) y una barra de ámbito ya aplicada. En un producto que vende **confianza en el dato**, un número sin explicar la primera vez que se ve no se lee como preciso: se lee como opaco.
-- **Progreso 2026-08-30:** la frase original de este ítem —«no existe onboarding de ningún tipo, cero coincidencias de `onboarding` en todo `web/src`»— **ya era falsa** cuando se auditó: `components/onboarding/` y `resumen/_components/primeros-pasos.tsx` existen desde #226, con los tres pasos derivados del estado real del servidor. Y el criterio del score se cerró con el desglose en el propio Radar (`components/score-desglose.tsx`): el badge abre un `Popover` con las dimensiones que componen la puntuación y una nota de qué mide y qué no. El desglose ya viajaba en `ScoredOpportunity.desglose` y solo se pintaba en el inspector de `/detalle`.
-- **Acceptance criteria (lo que queda):**
-  - ~~Explicar de dónde sale el score~~ ✅ 2026-08-30.
-  - Explicar qué es el ámbito de la `scope-bar` la primera vez.
-  - Estados vacíos que enseñen en vez de solo informar: el patrón de "sin resultados" ya existe; lo que falta es que diga qué hacer.
-- **Files de partida:** [web/src/lib/console-spaces.ts](../web/src/lib/console-spaces.ts), [web/src/components/layout/console-rail.tsx](../web/src/components/layout/console-rail.tsx)
-- **Riesgo:** bajo — aditivo, sin tocar datos; el cuidado está en no fabricar explicaciones que el backend no respalde.
 
 ### [P2] La experiencia móvil existe pero nadie la diseñó
 - **Área:** web/src/components/layout, web/src/app/(dashboard)
@@ -348,18 +345,15 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
   - ✅ El selector de organización usa Radix `Select`, alineado con el resto de
     controles de la consola.
   - Pendiente hasta que CI ejecute el nuevo E2E: confirmar Detalle y Watchlist
-    a 375×812 sobre el build de producción.
+    a 375×812 sobre el build de producción. **2026-09-18 (rama worktree-agent-a37b58d577faad267):** revisado sobre
+    el código —la watchlist desbordaba por la barra de ámbito «no aplica», ya con
+    `overflow-x-auto`, y la barra y el pie de Detalle se desplazan en vez de
+    empujar el documento—; los `fixme` salieron. Falta el verde de CI.
 - **Files de partida:** [web/src/components/layout/console-rail.tsx](../web/src/components/layout/console-rail.tsx), [web/e2e/responsive.spec.ts](../web/e2e/responsive.spec.ts)
 - **Riesgo:** bajo — presentación; sin tocar contratos ni datos.
 
-### [P3] Documentar `FRONTEND_URL` y `SENTRY_DSN` en `.env.example`
-- **Área:** .env.example
-- **Problema:** `render.yaml` las declara y `.env.example` no las documenta, así que no se pueden descubrir leyendo el fichero que existe para eso. `scripts/check_env_parity.py` las lleva anotadas en `_DOCUMENTACION_PENDIENTE` para no bloquear CI; esa lista solo puede encoger. No se arreglaron en el mismo cambio porque tocar `.env*` requiere OK explícito (AGENTS.md §6).
-- **Acceptance criteria:** ambas documentadas con un comentario de una línea; entrada retirada de `_DOCUMENTACION_PENDIENTE`; `make check-env-parity` sigue verde.
-- **Files de partida:** [.env.example](../.env.example), [scripts/check_env_parity.py](../scripts/check_env_parity.py)
-- **Riesgo:** bajo — documentación.
-
 ### [P2] Remediación axe pendiente: reactivar las reglas desactivadas del E2E de accesibilidad
+- **Avance 2026-09-18 (rama worktree-agent-a37b58d577faad267):** código de las **tres reglas restantes remediado y `disableRules` retirado**, junto con los dos `test.fixme` de `responsive.spec.ts`. `color-contrast`: la rampa del tema claro baja de L (primary 34 %, warning/score-warm 25 %, success 25 %, info 37 %) para que el texto sobre su propio tinte pase 4,5:1 —`contraste-tokens.test.ts` lo fija— y se retiran las opacidades de texto en Radar, Detalle, Resumen, rail y barra de ámbito. `scrollable-region-focusable`: inspectores de Radar y Detalle y lotes públicos con `tabIndex={0}`. `target-size`: «×» de chips del ámbito, estrella de Detalle y «?» del glosario a 24×24. El desborde de 274 px de la watchlist era la barra de ámbito en su rama «no aplica» (sin `overflow-x-auto`), y era también lo que quedaba de la agenda móvil. **El E2E no se ejecutó en local (sin stack)**: el ítem se cierra cuando el job de Playwright de CI salga verde; si alguna regla cae, el informe de axe dice qué nodo.
 - **Avance 2026-09-08 (C7.1):** `nested-interactive` **reactivada**. La causaba una sola cosa —la fila del Radar era un `role="button"` con cinco botones dentro— y se corrige poniendo la selección en un botón hermano en capa, con las acciones por encima. Con ella se van los **dos** `test.fixme` de `critical-workflows.spec.ts`: «seguir una licitación» era su consecuencia funcional directa, y «exportar el ámbito» resultó ser otro bug distinto —`lib/export.ts` revocaba el object URL en la misma vuelta del event loop que el `click()`, así que el Chromium headless de CI abortaba la descarga antes de empezarla—. Quedan tres reglas y dos `test.fixme`, los de móvil.
 - **Área:** web/e2e/accessibility.spec.ts, web/src (radar, detalle, watchlist, mi-pipeline)
 - **Problema:** el E2E de axe (WCAG 2.2 AA sobre /login, /resumen, /radar y /detalle) nació exigiendo cero violaciones antes de la remediación, y bloqueaba CI con deuda real: `color-contrast` (textos ≤10.5px con opacidad/tokens tenues en las filas del Radar y el detalle), `nested-interactive` (filas-botón del Radar con botones dentro), `scrollable-region-focusable` y `target-size` (<24px). El 2026-09-01 se acotó el gate con `disableRules([...])` — el resto de WCAG-AA y los checks estructurales (landmarks, lang, skip-link, ids únicos, controles con nombre) siguen bloqueando. Los dos ofensores de /resumen sí se arreglaron en ese momento (hint de `StatCell` sin `/80`, chips de Primeros pasos a texto pleno).
@@ -425,6 +419,7 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
   - Decidido y ejecutado: activar o descartar, con el número que lo justifica anotado en `notes` de `model_versions`.
 - **Files de partida:** [db/model_registry.py](../db/model_registry.py), [services/ml/baja_model.py](../services/ml/baja_model.py), [services/ml/promotion.py](../services/ml/promotion.py) (el gate del SAP, como referencia), [.github/workflows/train-predictivos.yml](../.github/workflows/train-predictivos.yml)
 - **Riesgo:** medio — activar cambia lo que sirve `predicciones_baja` sin red que lo detecte.
+- **Progreso parcial (2026-09-18, rama worktree-agent-a3fd0bc81b8a949c2) — los dos primeros criterios ya estaban en código; queda solo la decisión humana.** Comprobado contra el código: el criterio escrito existe desde #274 (v2 S6.4) — `services.ml.promotion.evaluar_promocion_predictiva`: una versión solo es promocionable si su mejora sobre el baseline mide al menos `MIN_IMPROVEMENT_OVER_FOLD_DISPERSION` (1.0) veces la dispersión de la métrica entre folds, sin dispersión medida no se promociona, y los criterios del RFC entran como motivos extra. `baja_model.entrenar` y `retencion_model.entrenar` lo aplican y dejan el veredicto en `notes` (`promotion_reason`); retención registra `pr_auc_baseline` (prevalencia) y `pr_auc_std_folds` (bloques contiguos de validación). Tests en `tests/test_ml_promocion_predictiva.py`; el runbook `model-rollback.md` lo cita. Esta rama añade a retención el rival de antigüedad que pedía el criterio: `pr_auc_baseline_antiguedad` (ordenar por `antiguedad_relacion_meses`), **informativo, no gatea**. Aplicado a los números de arriba, baja v2 sale «indistinguible de ruido» (0.005 < 0.0129). **Falta (humano):** relanzar `train-predictivos.yml` para que retención tenga dispersión y rival registrados —v1 es anterior al gate—, y decidir activar o descartar con el `promotion_reason` delante.
 
 ### [P3] Las 47 adjudicaciones con fecha imposible siguen anclando filas de entrenamiento
 - **Área:** services/ml/features.py, db/repositories/ml_dataset.py, scraper/connectors/pscp.py
@@ -435,14 +430,7 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
   - Las 47 filas dejan de anclar filas de entrenamiento, verificado con la misma query que las midió.
 - **Files de partida:** [services/ml/features.py](../services/ml/features.py) (`_fecha_opt`), [db/repositories/ml_dataset.py](../db/repositories/ml_dataset.py) (`fecha_anchor`), [scraper/connectors/pscp.py](../scraper/connectors/pscp.py)
 - **Riesgo:** bajo — son 47 filas de ~691k adjudicaciones; el impacto es de calidad de dataset, no de disponibilidad.
-
-### [P3] Un solo transporte para bajar assets de la Release
-- **Área:** shared/model_artifacts.py, shared/release_assets.py
-- **Problema:** conviven dos implementaciones de "bajar un asset de la última Release". `shared/release_assets.py` (2026-09-03) va sobre HTTPS pinned con allowlist por salto; `shared/model_artifacts.py::_download_release_asset` usa `requests.get(browser_download_url)` a pelo, que sigue redirects sin validar el destino y sin DNS pinning. La segunda funciona —de hecho es la única que nunca se rompió— pero tiene controles más débiles que el resto de las salidas del repo, y dos implementaciones divergentes del mismo salto es cómo se cuelan las regresiones asimétricas.
-- **Por qué NO se hizo en el mismo cambio:** era el único camino de descarga que funcionaba; tocarlo mientras se arreglaba el otro habría dejado el sistema sin ninguno si el refactor fallaba.
-- **Acceptance criteria:** `_download_release_asset` delega en `shared.release_assets`, conservando la verificación contra el sha256 del registry; los tests de `shared/model_artifacts.py` siguen verdes.
-- **Files de partida:** [shared/model_artifacts.py](../shared/model_artifacts.py), [shared/release_assets.py](../shared/release_assets.py)
-- **Riesgo:** bajo — el fallback a baseline ya está cubierto y testeado.
+- **Progreso parcial (2026-09-18, rama worktree-agent-a3fd0bc81b8a949c2) — decidido: se corta en los dos extremos, y en ninguno con `_ANIO_MINIMO`.** El conector de PSCP ya descartaba en origen desde C4.4 las fechas anteriores a `shared.dates.ANIO_MINIMO_PLAUSIBLE` (1990; cubre `1899-12-30` y `1900-01-00`), pero no puede ver las filas ya escritas. Para esas, `db/repositories/ml_dataset.py` añade `fecha_adjudicacion >= '1990-01-01'` (como parámetro, `_filtro_fecha_adj`) en las dos CTE de `_sql_agregado` y de `_sql_por_lote` y en `adjudicaciones_por_empresa` (HHI): la fila se trata como adjudicación sin fecha —lo que es—, que ya quedaba fuera por el `IS NOT NULL`. `_ANIO_MINIMO = 1000` del parser no cambia de significado (lo fija un test). Efecto colateral buscado: las subconsultas de lotes dejan de contar adjudicaciones sin fecha que la CTE principal nunca vio. Tests: `tests/test_ml_dataset_fecha_plausible.py` (SQL y parámetros sin BD; uno contra Postgres **no ejecutado** en local) y el de año corto de `tests/test_ml_features.py` adaptado. **Falta:** verificar contra producción, con la query de `db.domain_truth_audit.adjudicaciones_con_fecha_imposible`, que ninguna de esas filas aparece en `pares_baja_agregada()` — sin acceso a la BD desde esta rama.
 
 ### [P2] [Ola 1 · S3] Oportunidad por lote, y saber si el Radar prioriza bien
 - **Área:** db/repositories/pursuits.py, services/pursuits.py, services/product_metrics.py, web/src/app/(dashboard)/oportunidades
@@ -451,7 +439,7 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 - **Acceptance criteria:** los de S3.1–S3.3 del plan v2. La precisión por banda solo se pinta con N ≥ 10 y, por debajo, dice «sin datos suficientes» (ADR-014); la propuesta de pesos nunca se aplica sola.
 - **Files de partida:** [docs/plans/2026-09-plan-arquitectura-v2.md](plans/2026-09-plan-arquitectura-v2.md) (§5, S3), [db/repositories/pursuits.py](../db/repositories/pursuits.py)
 - **Relación:** desbloquea el P2 «Modelo de baja por lote» de este backlog (S6.5 del plan sirve las filas por lote que `predicciones_baja` ya guarda desde `v86`).
-- **Estado:** lo dice el §5 del plan, no este ítem. **Corrección de un hecho de la línea anterior**, comprobada el 2026-09-08: `predicciones_baja` **no guarda filas por lote**. `v86` dejó la columna `lote_id` preparada, pero el único escritor (`score_predicciones_baja`) nunca la rellena y su `ON CONFLICT(licitacion_id)` ni siquiera dejaría convivir dos filas del mismo expediente. S6.5 sirve la estimación agregada declarándolo en `prediccion_ambito`; la `baja_real` sí es del lote. El «Modelo de baja por lote» sigue, pues, siendo trabajo de ML, no de fontanería.
+- **Estado:** lo dice el §5 del plan, no este ítem. **Corrección de un hecho de la línea anterior**, comprobada el 2026-09-08: `predicciones_baja` **no guarda filas por lote**. `v86` dejó la columna `lote_id` preparada, pero el único escritor (`score_predicciones_baja`) nunca la rellena y su `ON CONFLICT(licitacion_id)` ni siquiera dejaría convivir dos filas del mismo expediente. S6.5 sirve la estimación agregada declarándolo en `prediccion_ambito`; la `baja_real` sí es del lote. El «Modelo de baja por lote» sigue, pues, siendo trabajo de ML, no de fontanería. (2026-09-18: `v140` ya permite y escribe filas por lote, identificadas por `lote_numero`; ver el progreso de ese ítem.)
 - **Riesgo:** medio — cambia la clave única de una tabla viva; `plan` antes de `apply`.
 
 ### [P2] [Ola 1 · S4] Eventos y salida: siete almacenes con forma de evento y ningún backbone
@@ -477,19 +465,12 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 - **Acceptance criteria:** los de S8.1–S8.4 del plan v2, sin redefinirlos aquí. Los cuatro son independientes y se entregan por separado; S8.1 y S8.2 llevan migración y dependencias nuevas, ambas pre-autorizadas por D20.
 - **Estado:** lo dice el §5 del plan cuando el stream se cierra, no este ítem — ver la nota de cabecera. S8 se está entregando en esta misma ola.
 - **Files de partida:** [docs/plans/2026-09-plan-arquitectura-v2.md](plans/2026-09-plan-arquitectura-v2.md) (§5, S8), [scraper/document_fetcher.py](../scraper/document_fetcher.py)
-- **Relación:** S8.4 roza el P3 «Un solo transporte para bajar assets de la Release»: los dos tocan cómo se resuelve un artefacto de modelo, y conviene decidirlos juntos.
+- **Relación:** S8.4 roza el P3 «Un solo transporte para bajar assets de la Release» (cerrado el 2026-09-18): los dos tocan cómo se resuelve un artefacto de modelo, y conviene decidirlos juntos.
 - **Riesgo:** medio — el coste del OCR por página se mide en el primer run nocturno y lo acota el tope de páginas.
 
 ---
 
 ## P3 — Nice to have
-
-### [P3] Pre-generar el resumen IA nocturno para licitaciones calientes
-- **Área:** scheduler/jobs, api/routes/ask.py
-- **Problema:** desde 2026-09-01 el resumen se cachea por firma de estado (documentos + ficha + metadatos), pero la primera visita de cada licitación sigue pagando latencia completa de proveedor. El cron nocturno podría calentar el caché para el subconjunto que la gente abre (vigiladas, banda alta de score, publicadas ese día) y el detalle abriría con el resumen ya puesto.
-- **Acceptance criteria:** fase opcional del job nocturno (gated por setting, mismo patrón que `PLIEGO_FACTS_ENABLED`) que genera el resumen para N licitaciones priorizadas si no hay entrada vigente; presupuesto LLM respetado (BudgetGuard ya cuenta este gasto).
-- **Files de partida:** [api/routes/ask.py](../api/routes/ask.py), [scheduler/jobs/documentos_embeddings.py](../scheduler/jobs/documentos_embeddings.py)
-- **Riesgo:** bajo — reutiliza el caché y el breaker de coste existentes; el riesgo es gasto LLM, acotado por el propio guard.
 
 ### [P3] Descartar los avisos fantasma de Dependabot (manifest `uv.lock` inexistente)
 - **Área:** GitHub Security (acción del usuario), .github/dependabot.yml
@@ -498,12 +479,6 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 - **Acceptance criteria:** los 37 descartados con motivo (`not_used` los 18 de GitPython, que no está en ningún manifiesto; `inaccurate` el resto, cuyo pin vivo ya está parcheado); el listado refleja solo manifiestos reales. La cura de fondo —que el grafo deje de ver `uv.lock`— exige forzar un re-parse del path o abrir ticket a GitHub Support; el toggle del dependency graph no existe en repos públicos.
 - **Files de partida:** [.github/dependabot.yml](../.github/dependabot.yml)
 - **Riesgo:** bajo — no toca código; el cuidado está en verificar cada aviso contra el pin vivo en vez de contra el nombre del manifiesto.
-
-### [P3] Suites propias para `services/investigador/` y `extraction_runs`
-- **Área:** tests/
-- **Problema:** ambos módulos se ejercitan hoy solo de refilón, desde tests de search y de pipeline que van a otra cosa. Eso da cobertura de líneas pero no fija su contrato: un cambio de comportamiento puede pasar si los tests que lo tocan siguen verdes por lo que ellos venían a comprobar.
-- **Acceptance criteria:** un `tests/test_investigador*.py` y un `tests/test_extraction_runs.py` que cubran sus caminos principales y sus errores esperados, sin depender de la suite que hoy los roza.
-- **Riesgo:** bajo — solo añade tests.
 
 ### [P3] Decidir el destino del peso de `graphify-out/` (28 MB y creciendo)
 - **Área:** graphify-out, .claude/hooks
@@ -520,17 +495,9 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 - **Acceptance criteria:**
   - Una agregación o setting **nuevo** va a un módulo hermano (`aggregates_<área>.py` / settings por dominio) en vez de sumar al monolito.
   - Al tocar un bloque cohesivo existente **por otro motivo**, se evalúa extraerlo en el mismo cambio. El destino de `AggregateRepository` es partido por dominio (overview / geografía / competidores) y el de `Settings` submodelos anidados por eje preservando los nombres de variables de entorno — pero **llegando por partes, con la suite verde entre cada una**, no en un big-bang.
+- **Progreso 2026-09-18 (rama worktree-agent-acad4a43a2c0f0bae):** primer módulo hermano de settings, `config/settings_resumen.py` (`ResumenPregenSettings`, de la que hereda `Settings`: mismos nombres de variable de entorno y mismo acceso `settings.X`). Es el patrón para los siguientes settings nuevos. En `aggregates.py` no hubo agregación nueva que mover.
 - **Files de partida:** [db/repositories/aggregates.py](../db/repositories/aggregates.py), [config/settings.py](../config/settings.py)
 - **Riesgo:** bajo si se hace oportunista; medio si alguien intenta el big-bang.
-
-### [P3] Migrar los 33 `title=` nativos restantes a `Tooltip`
-- **Área:** web/src (celdas de tabla y textos truncados)
-- **Nota:** este ítem estaba duplicado (había una segunda entrada, "Completar la migración de `title=` nativos a `ui/tooltip.tsx`", con el mismo alcance). Fusionados el 2026-08-10.
-- **La cifra estaba mal.** Este ítem decía «~180» y el plan complementario (C7.4) contó «152 apariciones de `title=` en `.tsx`». Las dos salen de un grep que mezcla tres cosas: `title` como **prop de un componente** (`<KpiCard title="…">`, que no genera atributo HTML y es la mayoría), `title=` dentro de **tests**, y `title=` sobre un **elemento nativo**, que es el único caso del problema. Medido el 2026-09-07 con `scripts/check_title_attrs.py`, que distingue por la minúscula inicial de la etiqueta —la misma regla que usa JSX—: **33 en 18 ficheros**. O sea que no hay «olas de ≥ 50» que hacer, y el ítem es más pequeño de lo que aparentaba.
-- **Ya puesto (C7.4):** regla ESLint que prohíbe `title=` sobre elemento nativo salvo `<abbr>`/`<iframe>`, con los 18 ficheros de hoy como deuda declarada en `web/eslint.config.mjs` (`deudaTitleNativo`, solo puede encoger), y `scripts/check_title_attrs.py` en CI para que el total no suba mientras se migran.
-- **Acceptance criteria:** `deudaTitleNativo` vacío y `MAX_TITLE_NATIVO` a 0; en celdas y textos truncados, o `Tooltip` o texto visible.
-- **Files de partida:** [docs/frontend-motion.md](frontend-motion.md) (sección Tooltip), `scripts/check_title_attrs.py --listar`
-- **Riesgo:** bajo por sitio, pero **no verificable sin ver la pantalla**: `TooltipTrigger asChild` cambia el foco y el orden de tabulación de la celda, y eso se comprueba mirando, no compilando. Por eso C7.4 dejó la regla puesta y la migración sin hacer.
 
 ### [P3] Migrar la resolución de identidad de `competitors.py` a SQL (union-find + unaccent)
 - **Área:** services/analytics/competitors.py, db/repositories/adjudicaciones.py
@@ -541,15 +508,7 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
   - `_apply_filters` (red de seguridad redundante añadida en la migración parcial) puede retirarse si el filtrado SQL cubre todos los casos que cubría.
 - **Files de partida:** [services/analytics/competitors.py](../services/analytics/competitors.py), [services/normalization.py](../services/normalization.py), [db/repositories/adjudicaciones.py](../db/repositories/adjudicaciones.py), [tests/test_analytics_competitors.py](../tests/test_analytics_competitors.py)
 - **Riesgo:** medio — toca una migración de schema (gate humano) y una query recursiva no trivial; mitigado por los 17 tests de caracterización ya existentes.
-
-### [P3] Decidir el destino de los tests tautológicos encontrados al redistribuir los batches de coverage
-- **Área:** tests/test_TODO_review_tautologico.py
-- **Problema:** Al redistribuir `test_unit_coverage_batch*.py` (commit `96ec96f`) a ficheros por módulo, 3 tests resultaron tautológicos (afirman sobre un mock que el propio test configuró, o ejercitan una rama que nunca se dispara de verdad) y se movieron a `tests/test_TODO_review_tautologico.py` en vez de borrarse, porque borrar tests existentes requiere OK explícito (AGENTS.md §6): `test_protocol_stubs` (verifica `hasattr` sobre un `Protocol`, cierto por construcción), `test_argon2_verify_success` y `test_argon2_import_error` (parchean un símbolo que `verify_password` no usa por ese nombre — el mock es un no-op inerte en ambos).
-- **Acceptance criteria:**
-  - Revisión humana de los 3 tests: o se borran (confirmando que no aportan cobertura real), o se reescriben para ejercitar el comportamiento real que su nombre sugiere.
-  - `tests/test_TODO_review_tautologico.py` desaparece (vacío) al resolverse.
-- **Files de partida:** [tests/test_TODO_review_tautologico.py](../tests/test_TODO_review_tautologico.py)
-- **Riesgo:** bajo — son 3 tests aislados; el único riesgo es decidir mal si alguno en realidad sí ejercitaba algo no obvio.
+- **Progreso 2026-09-18 (rama `worktree-agent-af7ab85116eea30b4`) — parcial, el interruptor sigue apagado.** El «Problema» de arriba está desfasado en dos cosas que el código ya desmentía: `unaccent` **sí** está habilitada (`v87_unaccent_extension`, no hace falta otra revisión y no se creó ninguna) y el SQL de la CTE recursiva ya existía sin cablear en `db/repositories/competitor_identity.py`, con su test de paridad por capas. Los tests de `tests/test_analytics_competitors.py` son **15**, no 17. Lo hecho ahora: `resolve_identity_for_rows` reparte **las mismas filas** que ya cargó `load_for_competitors` (con su `LIMIT`), y `services/analytics/competitors.py` la usa cuando `settings.COMPETITORS_IDENTITY_SQL` está activo — **por defecto `False`**, así que el camino de pandas sigue siendo el de producción. La paridad contra los 15 tests se mide reejecutando cada uno con el interruptor encendido (`tests/test_analytics_competitors_identity_sql.py`, capa 5), **no ejecutada**: no hay Postgres en la máquina que la escribió. Falta para cerrar: (1) esa capa en verde en CI; (2) `identity_graph_stats` medido en producción (el cierre de la CTE es cuadrático en el tamaño del componente); (3) encender el interruptor y, tras un ciclo, retirar el union-find de pandas y `_apply_filters`. Aviso para (3): la etiqueta del grupo pasa de raíz del union-find a `MIN(token)`, y es lo que `services/competitive/socios.py` expone como `empresa_key`.
 
 ### [P3] F5: Refactor de repositories por olas (TID251 whitelist decreciente)
 - **Área:** services/, scheduler/, api/routes/, scraper/, scripts/
@@ -574,46 +533,6 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 - **Files de partida:** `pyproject.toml` (whitelist TID251), `db/repositories/`
 - **Riesgo:** medio — toca caminos de datos; mitigado por ratchet como gate y tests de caracterización previos a cada movimiento.
 
-### [P3] Unificar la definición de "Calientes" (heurística de resumen vs banda de scoring)
-- **Área:** services/analytics/resumen, services/analytics/pipeline, services/analytics/scoring
-- **Problema:** `services/analytics/resumen.py::get_resumen_hoy` calcula "calientes" como `importe ≥ P75 AND estado activo AND en plazo` (heurística ad-hoc), mientras que el KPI "Calientes" nuevo de `/analytics/pipeline` (2026-07-20) usa la banda de scoring genérico (`score ≥ 75`, `services/analytics/scoring.py`). Son dos definiciones distintas de la misma palabra visibles en páginas contiguas (Resumen enlaza su "Calientes" a Pipeline & Alertas), lo que puede desconcertar si los números no coinciden.
-- **Progreso 2026-08-12:** resuelta la mitad barata — el KPI del resumen ya no se llama "Calientes" en la UI (`kpi-rows.tsx` → "Grandes en plazo", `notification-bell.tsx` → "Grandes"), así que dos números distintos dejan de compartir nombre. El campo `ResumenHoyResult.calientes` se conserva porque es contrato público, con la advertencia en su docstring.
-- **Progreso 2026-08-13:** el otro extremo del vector de confusión desapareció con la retirada de `/pipeline-alertas` (rediseño de Mi Pipeline, ver `docs/redesign/mi-pipeline-inventario.md`): el KPI "Calientes" por banda de score ya no tiene superficie propia —la banda de score vive solo en el Radar— y las tarjetas del resumen enlazan ahora a `/detalle`. Queda el criterio de aceptación sobre qué definición adopta el resumen.
-- **Acceptance criteria (lo que queda):**
-  - Decidir si el resumen adopta la banda de scoring (señal más rica) o mantiene su heurística de importe con el nombre nuevo. Si adopta el score, renombrar también el campo del DTO en una migración consciente del contrato (AGENTS §3.5).
-- **Files de partida:** [services/analytics/resumen.py](../services/analytics/resumen.py), [services/analytics/pipeline.py](../services/analytics/pipeline.py), [services/analytics/scoring.py](../services/analytics/scoring.py)
-- **Riesgo:** bajo — cambia un número visible en dos KPIs; sin migración de schema.
-
-### [P3] El embudo del Resumen mide sus porcentajes contra todo el corpus
-- **Área:** db/repositories/aggregates (`overview_funnel`), services/analytics/overview
-- **Problema:** `overview_funnel` divide cada escalón (`PUB`, `EV`, `RES`, `ADJ`, `ANUL`) entre `COUNT(*)` de la tabla filtrada, no entre las filas que participan en el embudo. Con los 645.664 expedientes en `AGR` —que no son un escalón de nada: son avisos agregados de contratos ya celebrados— los cinco escalones suman ~6,7% y el 93% restante es invisible. El embudo se lee como si el 93% de los expedientes se hubieran perdido entre publicación y adjudicación.
-- **Origen:** salió al normalizar `licitaciones.estado` (migración v91, 2026-08-26). La normalización no lo causó ni lo arregla: sólo lo hace explicable, porque hasta entonces ese 93% ni siquiera tenía nombre.
-- **Acceptance criteria:**
-  - Decidir el denominador: o los cinco escalones (`pct` suma 100 y el embudo se lee como embudo), o el corpus entero pero rotulando en la UI qué queda fuera. Lo que no puede quedarse es un porcentaje sin denominador declarado.
-  - Si cambia `FunnelStep.pct`, es un cambio de semántica sobre contrato público (AGENTS §3.5): documentarlo en el DTO.
-- **Files de partida:** [db/repositories/aggregates.py](../db/repositories/aggregates.py), [services/analytics/overview.py](../services/analytics/overview.py)
-- **Riesgo:** bajo — cambia un porcentaje mostrado; sin migración de schema.
-
-### [P3] Scroll edge effects en vez de divisores duros bajo el chrome flotante
-- **Área:** web/src/components/layout
-- **Problema:** el chrome flotante es `tf-glass` (translúcido, `position: sticky`) y delimita con un `border-b` fijo, en vez del "scroll edge effect" que pide apple-design §12: un fade/máscara activado por scroll, solo donde el contenido realmente pasa por debajo. Hallazgo F11 de la revisión de las skills de Emil Kowalski (2026-07-25); no bloqueante, es refinamiento visual.
-- **⚠️ Este ítem citaba tres ficheros que ya no existen.** Nombraba `top-nav.tsx`, `kpi-bar.tsx` y `global-filter-bar.tsx`; el rediseño de la consola (2026-08-13, ver [docs/redesign/](redesign/)) los sustituyó. El chrome vigente es `console-frame.tsx`, `console-rail.tsx`, `space-shell.tsx`, `scope-bar.tsx`, `dashboard-shell.tsx` y `page-header.tsx`. Corregido el 2026-08-18 — un ítem que apunta a ficheros borrados hace que quien lo coja empiece por un callejón sin salida.
-- **Progreso 2026-08-18:** existe `web/src/components/layout/scroll-edge.tsx` con la primitiva (sentinel + `IntersectionObserver`, `prefers-reduced-motion` respetado) y 14 tests. Queda cablearla en el resto de superficies con borde duro.
-- **Acceptance criteria:**
-  - El borde duro se sustituye por una máscara/gradiente que aparece solo cuando hay contenido scrolleado debajo.
-  - Sin borde visible cuando el contenido está en el tope (`scrollY === 0`).
-- **Files de partida:** [web/src/components/layout/scroll-edge.tsx](../web/src/components/layout/scroll-edge.tsx), [web/src/components/layout/console-frame.tsx](../web/src/components/layout/console-frame.tsx), [web/src/components/layout/scope-bar.tsx](../web/src/components/layout/scope-bar.tsx)
-- **Riesgo:** bajo — puramente visual, sin tocar datos ni contratos.
-
-### [P2] Contrato de paginación común para la API
-
-- **Área:** api/routes/
-- **Problema:** `PaginatedResponse` vive en 1 de los 30 módulos de rutas (`licitaciones.py`) sobre 146 endpoints, así que cada consumidor del cliente TS aprende una forma distinta de paginar. Revisado el 2026-08-10: los endpoints de analytics **no** son el problema que parecía —devuelven agregados acotados por la cardinalidad del `GROUP BY` (≤19 CCAA, ≤52 provincias, nº de códigos tech) y `competitors`/`organos` ya aceptan `limit`—. El caso real de crecimiento no acotado es `trends`, cuya serie escala con la **longitud del rango de fechas** (10 años ≈ 3.650 puntos), donde un `limit` por filas es la herramienta equivocada: lo que hay que acotar es el rango o la granularidad del roll-up.
-- **Acceptance criteria:**
-  - Un `Paginated[T]` (o dependencia `limit`/`offset` compartida) reutilizado por las rutas que devuelven listas, aplicado por olas.
-  - `trends` acota rango o expone `freq` de roll-up; documentado en el DTO.
-- **Files de partida:** [api/routes/licitaciones/](../api/routes/licitaciones/), [api/routes/analytics.py](../api/routes/analytics.py)
-- **Riesgo:** bajo — aditivo si se hace con defaults generosos.
 
 ### [P2] Aislamiento de la suite: una base por sesión en vez de un schema por test
 
@@ -643,19 +562,30 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
   - Si supera el 50 %: los cuatro pasos que enumera `FEATURES_PENDIENTES_COBERTURA` en `services/ml/features.py`, incluido reentrenar y reportar el delta de `mae_p50` contra la versión previa. Si no lo supera, queda escrito el número que lo desaconseja.
 - **Files de partida:** [services/ml/features.py](../services/ml/features.py) (`FEATURES_PENDIENTES_COBERTURA`), [db/repositories/ml_dataset.py](../db/repositories/ml_dataset.py)
 - **Riesgo:** bajo — el guard de `feature_columns` de `BajaModel` degrada a baseline si se despliega el código sin reentrenar.
-
-### [P3] Cuatro módulos citan un RFC de retirada de exports que no existe en el repo
-- **Área:** docs/rfc/, api/routes/exports.py, api/app.py, shared/cache.py, tests/test_unit_export_idor.py
-- **Problema:** la retirada de `POST/GET/DELETE /exports` (D7 del plan de septiembre) se ejecutó el 2026-09-03, y los cuatro ficheros que la explican remiten a `docs/rfc/2026-09-03-rfc-retirada-exports-asincronos.md` para el motivo y el plan. Ese fichero **no está en `docs/rfc/`** (comprobado el 2026-09-06). Quien vaya a entender por qué desapareció un endpoint público llega a un enlace muerto, que es la variante documental del callejón sin salida que AGENTS.md §5 prohíbe.
-- **Acceptance criteria:**
-  - O se escribe el RFC con el contenido que las cuatro referencias prometen (motivo, sustituto, fecha), o las cuatro referencias se corrigen para apuntar a donde esté escrito de verdad. Lo que no puede quedarse es la cita a un fichero inexistente.
-- **Files de partida:** [api/routes/exports.py](../api/routes/exports.py), [docs/rfc/README.md](rfc/README.md)
-- **Relación:** O0.7 del plan v2 ya barre el `status` de cinco RFC; éste es del mismo barrido y no estaba en su lista.
-- **Riesgo:** bajo — documentación.
+- **Progreso parcial (2026-09-18, rama worktree-agent-a3fd0bc81b8a949c2) — la medición existe; el número no.** `ENV=dev python scripts/medir_cobertura_features.py` (o `--json` para archivarlo) imprime, contra la BD de `DATABASE_URL` y solo leyendo, la cobertura de los tres campos sobre dos poblaciones: `dataset_baja` (las filas exactas de entrenamiento, `_sql_agregado`) y `universo_abierto` (lo que puntúa el batch), cada una con total, por `fuente` y por año de publicación, y un veredicto contra el 50 % **solo sobre el total del dataset**. El SQL vive en `MlDatasetRepository.cobertura_features_pendientes`. Tests en `tests/test_medir_cobertura_features.py` (uno contra Postgres, no ejecutado en local). **Falta:** correrlo contra producción, anotar aquí el número con fecha y, según salga, seguir los cuatro pasos o dejar escrito el número que lo desaconseja.
 
 ---
 
 ## Cerrados
+
+- [2026-09-18] **P2: La consola no tiene primer uso** (rama worktree-agent-a37b58d577faad267) — la barra de
+  ámbito explica qué es la primera vez (`components/layout/ambito-intro.tsx`,
+  se cierra y se recuerda por navegador como `descarte.ts`; cada frase describe
+  algo que la barra hace), y cuatro vacíos dicen qué hacer: Radar (quitar la
+  tecnología del ámbito o crear una regla), Favoritos (dónde está la estrella,
+  con enlace), Reglas (qué hace una regla) y Resultados combinados (aflojar
+  criterios). El score ya se explicaba desde el 2026-08-30.
+- [2026-09-18] **P3: Migrar los `title=` nativos restantes a `Tooltip`** (rama worktree-agent-a37b58d577faad267)
+  — los 36 migrados: controles a `<Tooltip>`, texto truncado y casillas de
+  heatmap a `<Pista>` (`components/ui/pista.tsx`), cuyo disparador no es
+  focusable para no sumar una parada de tabulación por celda; lo que solo
+  vivía en el `title` pasa a texto, `sr-only` o `aria-label`.
+  `deudaTitleNativo` vacía y `MAX_TITLE_NATIVO = 0`.
+- [2026-09-18] **P3: Scroll edge effects en vez de divisores duros** (rama worktree-agent-a37b58d577faad267) —
+  además de la barra de ámbito y la barra móvil, las cabeceras de
+  `SpaceShell` y de Resumen pierden el `border-b` fijo: montan su propio
+  `ScrollEdgeProvider` (el que scrollea es su cuerpo, no `#main-content`) y el
+  borde solo aparece con contenido debajo. Con `bleed` se conserva el borde.
 
 **Cerrados el 2026-09-06 por la reconciliación O0.5** — ficha completa de cada
 uno en [el archivo](archive/IMPROVEMENT_BACKLOG_CERRADOS.md), que es donde
@@ -668,6 +598,22 @@ cabecera de este fichero: los seis se comprobaron contra el código.
 - [P2] Migrar las llamadas del frontend al cliente OpenAPI tipado — sin `fetch("/api/…")` crudo fuera de `lib/`, con regla ESLint que lo impide.
 - [P3] Vigilar el crecimiento de `predicciones_baja` — purga por antigüedad en el job de ML.
 - Modelos NIM de razonamiento sin `chat_template_kwargs` — arreglado en `9a6014b`; nunca llegó a ser ítem abierto, y se anota para que el backlog refleje el código.
+- [2026-09-18, rama `worktree-agent-acc2389c11c7f60d4`] **[P1] Cobertura de tests de las
+  páginas del frontend** — los tres criterios, medidos. (1) De los tres flujos «sin cubrir»,
+  dos ya lo estaban cuando se revisó: `use-watchlist-items` (100 % de sentencias) y
+  `ask-stream.ts` (96,9 %); el que faltaba de verdad, los filtros nuqs usados desde una
+  página, lo cubren ahora los tests de `mercado/_hooks/use-tecnologias-view`,
+  `use-organos-view` y `radar/_hooks/use-radar-consola` con el ámbito **real** (adaptador de
+  pruebas de nuqs, sin doblar `useFilterParams`) y el test de paridad
+  `lib/__tests__/filter-params.test.tsx`. (2) La lógica de `tecnologias`, `organos` y `radar`
+  ya estaba en `_hooks/`; le faltaban tests, y los tres hooks quedan en 97–100 % de
+  sentencias. (3) `npx vitest run --coverage` **terminó en local por primera vez desde
+  2026-08-10** (199 ficheros, 2.198 tests): global 56,45/48,45/51,45/57,15 y `src/app/**`
+  39,27/34,54/34,44/39,47. `web/vitest.config.ts` sube los globales de 38/28/35/39 a
+  54/46/49/55, `src/app/**` gana su piso de sentencias (37/32/32/37) y los pisos por carpeta
+  suben donde había margen, sin bajar ninguno. Hallazgo sin arreglar: en la vista
+  Tecnologías, con `?tecnologia=` en el ámbito, el detalle de la tecnología elegida viaja con
+  la del ámbito (`useFilteredQuery` hace ganar al filtro global sobre `extraParams`).
 - [2026-09-07] **Barrido de ortografía castellana en las cadenas visibles**
   — cerrado al medirlo (C7.8): **cero** cadenas de UI sin tilde y **cero** `...`
   donde corresponde `…`. La ola anterior lo había cerrado y el backlog no se
@@ -679,6 +625,46 @@ cabecera de este fichero: los seis se comprobaron contra el código.
   llevaba en la lista los plurales en `-ciones`, que no llevan tilde
   («licitación» → «licitaciones»). La lista quedó con los singulares agudos y
   con los plurales que sí la conservan («órganos», «tecnologías»).
+- [2026-09-18] **Cerrados en la rama `worktree-agent-ac2127b7dcd3fc315`:**
+  - P3 «Documentar `FRONTEND_URL` y `SENTRY_DSN` en `.env.example`» — documentadas, junto con las `DOCUMENT_BLOB_*` de S8.1; `_DOCUMENTACION_PENDIENTE` queda vacía y `scripts/check_env_parity.py` pasa.
+  - P3 «Cuatro módulos citan un RFC de retirada de exports que no existe» — `docs/rfc/2026-09-03-rfc-retirada-exports-asincronos.md` reconstruido desde D7, `9207bde9` y #265; índice regenerado.
+  - P3 «Decidir el destino de los tests tautológicos» — los dos de argon2 se reescriben en `tests/test_auth_core.py` contra la librería real y la rama sin argon2; el de `hasattr` sobre un `Protocol` se borra; `tests/test_TODO_review_tautologico.py` desaparece.
+  - P3 «Suites propias para `services/investigador/` y `extraction_runs`» — `tests/test_investigador_search_engine.py` y `tests/test_extraction_runs.py` (el test `_bd` necesita Postgres).
+
+- [2026-09-18] **P2: Contrato de paginación común para la API** (rama
+  worktree-agent-acad4a43a2c0f0bae) — `PaginatedResponse`/`CursorPaginatedResponse`
+  ya vivían en `shared/dto.py`; faltaba la otra mitad: `api/pagination.py`
+  (`PageParams` + `pagina(default)`) declara `limit`/`offset` una sola vez con
+  `MAX_PAGE_LIMIT` como tope único. Primera ola: las siete rutas que ya paginaban
+  por offset (licitaciones, adjudicaciones, adjudicaciones de empresa, pursuits,
+  comentarios, Próximas, empresas); mismos parámetros y misma respuesta, con el tope
+  ensanchado de 200 a 500 donde era 200. `trends` ya exponía el roll-up `group_by`
+  (day/week/month) y `serie_truncada` documentados en el DTO. Siguientes olas: las
+  rutas con solo `limit` que devuelven listas.
+- [2026-09-18] **P3: El embudo del Resumen mide sus porcentajes contra todo el
+  corpus** (misma rama) — decidido: los cinco escalones (PUB, EV, RES, ADJ, ANUL)
+  se miden contra su propia suma y suman 100; lo demás (PRE, AGR, EJEC, CPM, OTROS)
+  sigue listado con `en_embudo=false` y `pct` sobre el ámbito. `OverviewResult`
+  gana `funnel_denominador` y `fuera_del_embudo`. Cambio de semántica de
+  `FunnelStep.pct` documentado en el DTO (AGENTS §3.5). El frontend no pinta
+  `funnel_estados`, así que no hubo rótulo que cambiar.
+- [2026-09-18] **P3: Unificar la definición de «Calientes»** (misma rama) —
+  decidido: el Resumen mantiene su heurística (importe ≥ P75, abierta y en plazo)
+  con el nombre que ya enseña la UI, «Grandes en plazo»; la banda `Caliente` del
+  score queda para el Radar. Los campos `ResumenHoyResult.calientes`,
+  `HoyCounters.calientes` y `OverviewResult.calientes_hoy` no se renombran y llevan
+  la definición en su descripción OpenAPI (`shared.dto.DESCRIPCION_GRANDES_EN_PLAZO`).
+- [2026-09-18] **P3: Pre-generar el resumen IA nocturno para licitaciones
+  calientes** (misma rama) — fase 5 de `scheduler/jobs/documentos_embeddings.py`,
+  gated por `RESUMEN_PREGEN_ENABLED` (off; `config/settings_resumen.py`): hasta
+  `RESUMEN_PREGEN_BATCH` licitaciones abiertas —seguidas, banda `Caliente`, publicadas
+  hoy— sin entrada vigente en el caché del resumen. BudgetGuard antes de cada una,
+  corte por credencial rechazada, y salto entero sin caché compartida (Redis).
+  Clave, prompt y contexto compartidos con la ruta en `services/rag/resumen.py`.
+  **Pendiente de decisión humana para que sirva en Actions:** `pliegos.yml` no
+  propaga `REDIS_URL` (a propósito, por el gate de presupuesto de fichas), así que
+  en ese plano la fase se salta; activarla allí exige propagar `REDIS_URL` y la
+  variable `RESUMEN_PREGEN_ENABLED`.
 - [2026-09-14] **P2: cada re-ingesta nuleaba las cuatro columnas ML, y `tech_signal_merge`
   lo curaba a ciegas cada 4 h** — decidido: el clobber se corta en origen. `ml_proba`,
   `ml_tecnologias`, `ml_proba_max` y `ml_tech_principal` entran en
@@ -689,6 +675,44 @@ cabecera de este fichero: los seis se comprobaron contra el código.
   `licitaciones_candidatas`/`licitaciones_reparadas`, que el paso loguea — «cero reparaciones en
   siete días» se lee ahí. Ficha completa en
   [el archivo](archive/IMPROVEMENT_BACKLOG_CERRADOS.md).
+- [2026-09-18] **P2: Separar los requirements de la API de los del pipeline/ML**
+  — rama `worktree-agent-aa37c7b64b746caaa` (sin PR). `requirements-api.txt`
+  (63 pines) y `requirements-pipeline.txt` (79) compilados con hashes por
+  `make lock`, con `--constraint requirements.txt` para que los pines coincidan
+  con los que prueba el CI (`scripts/check_requirements_sync.py` lo verifica y
+  además que el lock de la API no traiga nada solo-pipeline).
+  `docker/Dockerfile.api` instala por defecto el de la API; `ARG
+  REQUIREMENTS_FILE` da la variante del pipeline, que es la que usa
+  `tenderflow-worker` en render.yaml y la vuelta atrás sin tocar código. Salen
+  de la imagen de la API scikit-learn, scipy, joblib, statsmodels, networkx y
+  lxml. Smoke por entrypoint en `tests/test_unit_api_imagen_slim.py` (la API
+  arranca en un proceso que solo puede importar su lockfile; el worker, el del
+  pipeline) y `ci.yml::docker-build` construye y prueba las dos variantes y
+  publica su tamaño. La medición destapó un import implícito: `/publico/cobertura`
+  arrastraba lxml vía `scraper.connectors` (arreglado con re-export diferido).
+  `/explain` y `/analytics/clusters` responden 503 sin sklearn; su destino es la
+  RFC [2026-09-18-rfc-explain-fuera-del-proceso-api](rfc/2026-09-18-rfc-explain-fuera-del-proceso-api.md)
+  (`review`), que deja la decisión de desplegar la imagen reducida al mantenedor.
+  **No verificado:** el build Docker real (el daemon no estaba levantado en la
+  máquina que lo hizo; lo cubre el job de CI) y que Render pase
+  `REQUIREMENTS_FILE` como build arg.
+- [2026-09-18, rama worktree-agent-a3fd0bc81b8a949c2] **P3: un solo transporte para bajar
+  assets de la Release** — `shared/model_artifacts.py::_download_release_asset` delega en
+  `shared.release_assets` (`fetch_latest_release` → `find_asset_id` → `download_asset`): HTTPS
+  pinned, allowlist por salto y sin reenviar el token al CDN. `requests` sale del módulo. La
+  verificación del sha256 contra `model_versions` no se tocó: sigue en `resolve_active_artifact`,
+  después de materializar, igual para bucket y Release. Tests nuevos en
+  `tests/test_model_artifacts.py` (delegación, asset ausente, Release inaccesible, y un guard AST
+  de que `requests` no vuelve).
+- [2026-09-18, rama worktree-agent-a3fd0bc81b8a949c2] **P2: calibrar los umbrales de la
+  auditoría de verdad del dato** — con los `domain-truth.json` de siete ejecuciones
+  programadas (12→18/09, descargados con `gh run download`, artefacto
+  `domain-truth-measurements`). `fecha_limite` por fuente ya se había calibrado en C4.5
+  (2026-09-06); ahora `placsp` baja a 81,9 % (su límite estaba topado en 100 y no podía
+  saltar), `ted` a 65,9 %, la UTE de 8 % a 0,02 % (medido las siete veces) y el delta de
+  baja de 5 a 1,12 puntos. Histórico por día en el docstring de
+  `scripts/audit_domain_truth.py`. De la serie sale un P2 nuevo: `importe_tipo` sin base
+  declarada viola su umbral a diario y crece.
 
 
 - [2026-09-01] **Revisión integral de la IA del detalle de licitación (10 mejoras en un

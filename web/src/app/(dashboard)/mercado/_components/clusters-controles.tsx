@@ -48,6 +48,7 @@ export function ClustersControles({
             value={[kDraft]}
             onValueChange={(v) => onKDraftChange(v[0])}
             disabled={autoK}
+            aria-label="Número de clusters"
           />
         </div>
         <label htmlFor="cl-autok" className="flex items-center gap-2 text-sm">

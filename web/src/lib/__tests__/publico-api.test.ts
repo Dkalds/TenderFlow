@@ -1,9 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   ErrorApiPublica,
+  MIN_ANUNCIOS_HUB_ORGANO_SITEMAP,
   SITEMAP_POR_FICHERO,
   contarPublicables,
   entradasSitemap,
+  hubsOrganoAnunciables,
   listarLicitaciones,
   obtenerHubs,
   obtenerLicitacion,
@@ -226,7 +228,7 @@ describe("degradación solo en el build deliberadamente sin backend", () => {
     const aviso = vi.spyOn(console, "warn").mockImplementation(() => {});
     vi.mocked(globalThis.fetch).mockRejectedValue(new Error("ECONNREFUSED"));
 
-    await expect(obtenerHubs()).resolves.toEqual({ ccaa: [], cpv: [] });
+    await expect(obtenerHubs()).resolves.toEqual({ ccaa: [], cpv: [], organo: [] });
     await expect(contarPublicables()).resolves.toBe(0);
     expect(aviso).toHaveBeenCalled();
   });
@@ -339,5 +341,33 @@ describe("obtenerHubs", () => {
       ccaa: [{ slug: "galicia", total: 10 }],
       cpv: [{ codigo: "72", total: 5 }],
     });
+  });
+});
+
+describe("hubs por órgano (F6.5)", () => {
+  it("el listado filtra por el slug del órgano", async () => {
+    vi.mocked(globalThis.fetch).mockResolvedValue(respuestaOk({ items: [], total: 0 }));
+
+    await listarLicitaciones({ organo: "ayuntamiento-de-madrid" });
+
+    expect(new URL(urlDeLaLlamada()).searchParams.get("organo")).toBe("ayuntamiento-de-madrid");
+  });
+
+  it("al sitemap y al índice sólo van los órganos con más de diez anuncios", () => {
+    const anunciables = hubsOrganoAnunciables({
+      ccaa: [],
+      cpv: [],
+      organo: [
+        { slug: "grande", nombre: "Grande", total: 11 },
+        { slug: "justo-diez", nombre: "Justo diez", total: MIN_ANUNCIOS_HUB_ORGANO_SITEMAP },
+        { slug: "pequeno", nombre: "Pequeño", total: 3 },
+      ],
+    });
+
+    expect(anunciables.map((h) => h.slug)).toEqual(["grande"]);
+  });
+
+  it("un backend sin la lista de órganos (campo aditivo) no rompe nada", () => {
+    expect(hubsOrganoAnunciables({ ccaa: [], cpv: [] })).toEqual([]);
   });
 });

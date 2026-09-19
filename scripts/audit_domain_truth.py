@@ -55,6 +55,33 @@ La calibración cambia lo que el control **afirma**: ya no dice "así de bueno
 tiene que ser el dato" (una afirmación que nadie había validado), sino "así de
 bueno es hoy, y no puede empeorar más de un 10 %". Subir la calidad es otro
 trabajo, con su propio ítem; lo que este control protege es que no baje.
+
+**Recalibración del 2026-09-18** sobre los ``domain-truth.json`` archivados de
+siete ejecuciones programadas (12→18/09, artefacto
+``domain-truth-measurements``). Histórico, por día:
+
+=====  ======  =====  =====  =====  =====  ===========  ========
+día    placsp  ted    pscp   UTE %  Δbaja  fechas<1990  sin_tipo
+=====  ======  =====  =====  =====  =====  ===========  ========
+09-12  89,8    65,4   96,6   0,02   1,10   50           131
+09-13  89,8    65,4   96,6   0,02   1,10   50           131
+09-14  89,8    65,2   96,6   0,02   1,10   50           152
+09-15  85,0    65,5   96,6   0,02   1,11   50           190
+09-16  84,0    65,5   96,6   0,02   1,11   50           238
+09-17  82,9    65,3   96,6   0,02   1,12   50           279
+09-18  81,9    65,9   96,6   0,02   1,12   50           316
+=====  ======  =====  =====  =====  =====  ===========  ========
+
+Cambian ``placsp`` (93,1 → 81,9: el límite estaba topado en 100 y no podía
+saltar), ``ted`` (65,6 → 65,9, el máximo de la semana), la UTE (8 → 0,02) y
+el delta de baja (5 → 1,12). Los dos últimos eran holgura de primer mes, no
+calidad medida. ``pscp`` y las fechas imposibles no se mueven.
+
+``sin_tipo`` es el umbral de ``importe_tipo`` (cero, sin margen): la serie dice
+que **se viola todos los días y crece** (131 → 316). No se recalibra —un cero
+que es una corrección no se relaja para silenciar el correo—: es un camino de
+escritura que no puebla ``importe_tipo``, anotado como P2 propio en el backlog
+el mismo día.
 """
 
 from __future__ import annotations
@@ -128,18 +155,23 @@ UMBRALES_FECHA_LIMITE: dict[str, Umbral] = {
         "Censo de la Generalitat: la mayoría son publicaciones de fase sin plazo propio.",
         tope=100.0,
     ),
+    # 2026-09-18: bajando cada día (89,8 → 81,9 en la semana) a medida que el
+    # feed reingiere expedientes con el parser arreglado. Se recalibra al
+    # último valor, no al máximo: con 93,1 el límite estaba topado en 100 y no
+    # podía saltar nunca.
     "placsp": Umbral(
         "fecha_limite/placsp",
-        93.1,
-        "2026-09-06",
+        81.9,
+        "2026-09-18",
         "%",
         "El fix de Ola 1 extrae el campo, pero el histórico ingerido antes sigue sin él.",
         tope=100.0,
     ),
+    # 2026-09-18: entre 65,2 y 65,9 en la semana; se toma el máximo.
     "ted": Umbral(
         "fecha_limite/ted",
-        65.6,
-        "2026-09-06",
+        65.9,
+        "2026-09-18",
         "%",
         "TED publica plazo solo en una parte de los formularios.",
         tope=100.0,
@@ -164,19 +196,28 @@ UMBRAL_FECHA_LIMITE_POR_DEFECTO = Umbral(
 # plazo es 75% y no significa nada). Por debajo de esto solo se informa.
 MIN_LICITACIONES_PARA_EVALUAR = 50
 
+#: Recalibrado el 2026-09-18 sobre las siete ejecuciones archivadas de
+#: `domain-truth.yml` (12→18/09): 0,02 % las siete (109 filas de ~695k). El 8 %
+#: del 2026-07-26 era holgura de primer mes —400 veces el valor real— y no
+#: habría saltado ni con el defecto multiplicado por cien. El JSON redondea a
+#: dos decimales, así que con el límite en 0,022 la alerta salta al leer 0,03:
+#: en la práctica, cuando las filas afectadas suben ~50 %.
 UMBRAL_UTE = Umbral(
     "ute/pct_filas_afectadas",
-    8.0,
-    "2026-07-26",
+    0.02,
+    "2026-09-18",
     "%",
     "Defecto de modelado conocido y acumulado: detecta que crezca de golpe, no que exista.",
     tope=100.0,
 )
 
+#: Recalibrado el 2026-09-18 con la misma serie: 1,10 / 1,10 / 1,10 / 1,11 /
+#: 1,11 / 1,12 / 1,12 puntos. Se toma el máximo de la semana (1,12) y el margen
+#: por defecto: límite 1,23. El 5,0 anterior era cuatro veces el valor real.
 UMBRAL_DELTA_BAJA = Umbral(
     "baja/delta_puntos",
-    5.0,
-    "2026-07-26",
+    1.12,
+    "2026-09-18",
     "puntos",
     "Distancia entre la baja por adjudicación y la agregada por licitación (multi-lote).",
 )

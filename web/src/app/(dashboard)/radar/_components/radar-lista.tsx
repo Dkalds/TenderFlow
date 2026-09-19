@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { RadioTower } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { RadarTender } from "@/hooks/use-radar";
@@ -48,7 +49,7 @@ function RadarError({ error, onRetry }: { error: Error; onRetry: () => void }) {
           Error al cargar la bandeja del radar
         </span>
       </div>
-      <p className="mb-3.5 font-mono text-xs leading-[1.55] text-destructive/80">{error.message}</p>
+      <p className="mb-3.5 font-mono text-xs leading-[1.55] text-destructive">{error.message}</p>
       <button
         type="button"
         onClick={onRetry}
@@ -116,6 +117,17 @@ export function RadarLista({
           </div>
           <p className="text-[13px] leading-[1.5] text-muted-foreground">
             No quedan señales con el ámbito actual.
+          </p>
+          {/* Un vacío que dice qué hacer (C7.3). Las dos salidas existen: el
+              Radar aplica la tecnología del ámbito, y las reglas de Mi
+              Watchlist avisan desde el servidor según su frecuencia. */}
+          <p className="mx-auto mt-2 max-w-[44ch] text-[12px] leading-[1.5] text-muted-foreground">
+            Si has acotado la tecnología en la barra de ámbito, quítala para ver el resto. Para
+            enterarte de lo que se publique sin volver aquí, crea una regla en{" "}
+            <Link href="/mi-watchlist" className="text-primary font-medium hover:underline">
+              Mi Watchlist
+            </Link>
+            .
           </p>
         </div>
       ) : (

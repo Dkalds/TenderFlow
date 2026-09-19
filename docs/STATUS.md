@@ -6,7 +6,7 @@ tags: [status, generado]
 
 <!-- generado por scripts/gen_status.py — no editar a mano -->
 
-Generado: 2026-09-17
+Generado: 2026-09-18
 
 ## Paridad de planos de orquestación (ADR-012)
 
@@ -66,7 +66,7 @@ Generado: 2026-09-17
 
 ## Ratchet `user_key` — identidad derivada del correo (D18, fase 1)
 
-**69 ficheros** de producción usan `user_key` (lista congelada: 69; solo puede decrecer).
+**63 ficheros** de producción usan `user_key` (lista congelada: 63; solo puede decrecer).
 
 `scripts/check_user_key_ratchet.py` falla ante un fichero nuevo que la use. Llega a cero con T4, que migra a `user_id` con columna doble y lectura dual; hasta entonces cambiar de correo pierde los datos que cuelgan de esa clave. No cuenta `tests/` ni `db/alembic/versions/`.
 
@@ -76,7 +76,7 @@ Generado: 2026-09-17
 
 ## Superficie de la API
 
-**263 endpoints** expuestos.
+**266 endpoints** expuestos.
 
 <details><summary>Ver listado</summary>
 
@@ -254,6 +254,8 @@ Generado: 2026-09-17
 | PUT | `/api/v1/organizations/{organization_id}/members/{member_user_id}` |
 | GET | `/api/v1/organizations/{organization_id}/nifs` |
 | PUT | `/api/v1/organizations/{organization_id}/nifs` |
+| GET | `/api/v1/organizations/{organization_id}/plantilla-tareas` |
+| PUT | `/api/v1/organizations/{organization_id}/plantilla-tareas` |
 | GET | `/api/v1/organizations/{organization_id}/report-schedule` |
 | PUT | `/api/v1/organizations/{organization_id}/report-schedule` |
 | GET | `/api/v1/organizations/{organization_id}/settings` |
@@ -295,6 +297,7 @@ Generado: 2026-09-17
 | PUT | `/api/v1/pursuits/{pursuit_id}/go-no-go` |
 | GET | `/api/v1/pursuits/{pursuit_id}/kit` |
 | POST | `/api/v1/pursuits/{pursuit_id}/kit` |
+| POST | `/api/v1/pursuits/{pursuit_id}/kit/responsable` |
 | GET | `/api/v1/pursuits/{pursuit_id}/tasks` |
 | POST | `/api/v1/pursuits/{pursuit_id}/tasks` |
 | DELETE | `/api/v1/pursuits/{pursuit_id}/tasks/{task_id}` |

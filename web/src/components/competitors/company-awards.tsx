@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Pista } from "@/components/ui/pista";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -228,9 +229,12 @@ export function CompanyAwards({ empresaId, scopeQuery }: CompanyAwardsProps) {
                       <p className="text-muted-foreground mt-1 text-xs">{formatDate(award.fecha_adjudicacion)}</p>
                     </TableCell>
                     <TableCell className="max-w-64">
-                      <span title={award.organo_contratacion ?? undefined}>
-                        {truncate(award.organo_contratacion, 54) || "-"}
-                      </span>
+                      {/* Entero en el DOM y recortado por CSS: el lector lo lee
+                          completo y la `Pista` lo enseña al puntero sin sumar
+                          una parada de tabulación por fila. */}
+                      <Pista contenido={award.organo_contratacion}>
+                        <span className="block truncate">{award.organo_contratacion || "-"}</span>
+                      </Pista>
                     </TableCell>
                     <TableCell>
                       <div className="flex flex-wrap gap-1">

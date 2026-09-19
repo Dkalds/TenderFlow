@@ -136,7 +136,7 @@ def admin_set_admin(
     set_admin(user_id, body.is_admin, granted_by="panel")
     log_event(
         event_type=USER_ADMIN_CHANGED,
-        user_key=str(admin.get("user_id", "")),
+        actor=str(admin.get("user_id", "")),
         resource=f"user:{user_id}",
         detail=f"is_admin={body.is_admin}",
     )
@@ -189,7 +189,7 @@ def admin_deactivate_user(
 
     log_event(
         event_type=_EVENTO_POR_ACCION[body.action],
-        user_key=str(admin.get("user_id", "")),
+        actor=str(admin.get("user_id", "")),
         resource=f"user:{user_id}",
         detail=detail,
     )

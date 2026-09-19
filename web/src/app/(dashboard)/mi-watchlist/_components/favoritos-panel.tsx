@@ -9,12 +9,16 @@
  * Favoritos no paga la petición.
  */
 
+import Link from "next/link";
 import { Trash2, Star } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { CompararBoton } from "@/components/pliego/comparacion-bandeja";
+import { EtiquetaChips, EtiquetasEditor } from "@/components/etiquetas/etiquetas-objeto";
+import { useEtiquetasDe } from "@/hooks/use-etiquetas";
 import {
   useRemoveWatchlistItem,
   useWatchlistItems,
@@ -24,6 +28,10 @@ import { formatCurrency, formatDate, truncate } from "@/lib/utils";
 export function FavoritosPanel() {
   const { data: items, isLoading } = useWatchlistItems();
   const removeItem = useRemoveWatchlistItem();
+  // F1.6 — el favorito se etiqueta por su `id_externo`; una sola petición
+  // para toda la lista.
+  const etiquetas =
+    useEtiquetasDe("favorito", (items ?? []).map((item) => item.id_externo)).data ?? {};
 
   if (isLoading) {
     return (
@@ -44,12 +52,18 @@ export function FavoritosPanel() {
     return (
       <Card className="border-dashed">
         <CardContent className="flex flex-col items-center justify-center py-12 text-center">
-          <Star className="h-12 w-12 text-muted-foreground/50 mb-4" />
+          <Star className="h-12 w-12 text-muted-foreground/50 mb-4" aria-hidden="true" />
           <p className="text-lg font-medium text-muted-foreground">
             No tienes licitaciones marcadas como favoritas
           </p>
-          <p className="text-sm text-muted-foreground/70 mt-1">
-            Marca licitaciones con la estrella desde la tabla de Detalle.
+          {/* Dice dónde está la estrella y lleva hasta ella (C7.3); el `/70`
+              del texto quedaba por debajo de 4,5:1. */}
+          <p className="text-sm text-muted-foreground mt-1 max-w-[52ch]">
+            Pulsa la estrella de una fila en{" "}
+            <Link href="/detalle" className="text-primary font-medium hover:underline">
+              Detalle
+            </Link>{" "}
+            (o la tecla S sobre la fila activa) y la licitación aparecerá aquí.
           </p>
         </CardContent>
       </Card>
@@ -68,7 +82,14 @@ export function FavoritosPanel() {
               >
                 {truncate(item.titulo ?? item.id_externo, 100)}
               </a>
+              <EtiquetaChips etiquetas={etiquetas[item.id_externo]} className="mt-1" />
             </div>
+            <EtiquetasEditor
+              objetoTipo="favorito"
+              objetoId={item.id_externo}
+              aplicadas={etiquetas[item.id_externo]}
+              descripcion={truncate(item.titulo ?? item.id_externo, 60)}
+            />
             {item.importe != null && (
               <Badge variant="secondary" className="shrink-0">
                 {formatCurrency(item.importe)}
@@ -84,6 +105,11 @@ export function FavoritosPanel() {
                 {formatDate(item.fecha_publicacion)}
               </span>
             )}
+            <CompararBoton
+              id={item.id_externo}
+              titulo={item.titulo}
+              className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-md border border-border/80 px-2.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground aria-pressed:border-primary/50 aria-pressed:text-primary"
+            />
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button

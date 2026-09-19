@@ -4,6 +4,9 @@ import * as React from "react";
 import { CardHeader, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { ComparacionFichasTabla } from "@/components/pliego/comparar-fichas";
+import { MAX_COMPARAR } from "@/hooks/use-comparar-fichas";
 import { cn, formatCurrency, formatDate } from "@/lib/utils";
 import type { LicitacionDetail } from "@/components/detail-panel";
 
@@ -34,6 +37,11 @@ function formatValue(key: string, value: unknown): string {
 }
 
 export function Comparator({ items, onClose, className }: ComparatorProps) {
+  // F2.8 — las fichas del pliego se comparan a petición: la tabla de arriba
+  // es lo que ya se ve en el listado, y la de fichas es la que decide entre
+  // dos pliegos (solvencia, criterios, garantías). Montada sólo al pedirla.
+  const [conFichas, setConFichas] = React.useState(false);
+  const puedeFichas = items.length >= 2 && items.length <= MAX_COMPARAR;
   return (
     // Centered modal, so DialogContent keeps the default transform-origin:
     // center rather than the trigger-anchored origin used by Sheet/DropdownMenu/
@@ -84,6 +92,19 @@ export function Comparator({ items, onClose, className }: ComparatorProps) {
               })}
             </tbody>
           </table>
+          )}
+          {puedeFichas && (
+            <section className="mt-6 border-t border-border pt-4" aria-label="Fichas del pliego">
+              {conFichas ? (
+                // Cabeceras por id, como la tabla de arriba: las dos se leen
+                // columna contra columna.
+                <ComparacionFichasTabla ids={items.map((item) => item.id_externo)} />
+              ) : (
+                <Button variant="outline" size="sm" onClick={() => setConFichas(true)}>
+                  Comparar también las fichas del pliego
+                </Button>
+              )}
+            </section>
           )}
         </CardContent>
       </DialogContent>

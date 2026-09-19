@@ -50,12 +50,17 @@ export function ReglasLista({
       ) : ruleCount === 0 ? (
         <Card className="border-dashed">
           <CardContent className="flex flex-col items-center justify-center py-12 text-center">
-            <Eye className="h-12 w-12 text-muted-foreground/50 mb-4" />
+            <Eye className="h-12 w-12 text-muted-foreground/50 mb-4" aria-hidden="true" />
             <p className="text-lg font-medium text-muted-foreground">
               No tienes reglas de seguimiento configuradas
             </p>
-            <p className="text-sm text-muted-foreground/70 mt-1">
-              Usa el formulario de arriba para crear tu primera regla.
+            {/* Qué hace una regla antes de pedir que se cree (C7.3). Es lo
+                que ya dice la nota de la página: conteo real sobre todo el
+                dataset y avisos por frecuencia desde el servidor. */}
+            <p className="text-sm text-muted-foreground mt-1 max-w-[56ch]">
+              Una regla guarda unos criterios (palabra clave, CPV, importe mínimo, CCAA) y cuenta
+              cuántas licitaciones los cumplen; con frecuencia de aviso, el servidor te escribe
+              cuando entran nuevas. Crea la primera con «Nueva regla de seguimiento», arriba.
             </p>
           </CardContent>
         </Card>

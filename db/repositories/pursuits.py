@@ -819,6 +819,43 @@ class PursuitRepository:
                 created_at=now_utc_iso(),
             )
 
+    def reservar_evento_unico(
+        self,
+        *,
+        organization_id: int,
+        pursuit_id: int,
+        actor_user_id: int,
+        event_type: str,
+        idempotency_key: str,
+        payload: dict[str, Any],
+    ) -> bool:
+        """Anota un evento que sólo puede existir una vez. ``True`` si es nuevo.
+
+        La unicidad la pone el índice parcial ``(pursuit_id, idempotency_key)``
+        de v61 y no un ``SELECT`` previo: entre comprobar y escribir caben dos
+        transiciones simultáneas, y lo que se protege aquí (F4.6: instanciar la
+        plantilla de tareas) duplicaría el trabajo del equipo si ganaran las dos.
+        """
+        with connect() as conn:
+            cur = conn.execute(
+                "INSERT INTO pursuit_events "
+                "(pursuit_id, organization_id, event_type, actor_user_id, "
+                " payload_json, idempotency_key, created_at) "
+                "SELECT p.id, p.organization_id, %s, %s, %s, %s, %s "
+                "FROM pursuits p WHERE p.id = %s AND p.organization_id = %s "
+                "ON CONFLICT DO NOTHING",
+                (
+                    event_type,
+                    actor_user_id,
+                    json.dumps(payload, ensure_ascii=False, sort_keys=True),
+                    idempotency_key,
+                    now_utc_iso(),
+                    pursuit_id,
+                    organization_id,
+                ),
+            )
+            return bool(getattr(cur, "rowcount", 0))
+
     def cruces_con_competidor(
         self, organization_id: int, empresa_key: str, *, desde_iso: str, limit: int = 100
     ) -> list[dict[str, Any]]:

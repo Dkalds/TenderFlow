@@ -32,6 +32,8 @@ export interface QualityData {
   fechas_no_iso?: number;
   last_scrape_hours_ago?: number;
   last_scrape_at?: string;
+  /** F6.2 — reportes de dato abiertos, por tipo (`QualityResult.reportes_por_tipo`). */
+  reportes_por_tipo?: Record<string, number>;
   [key: string]: unknown;
 }
 

@@ -154,7 +154,10 @@ const RAMPA_CLARA_SOBRE_FONDO = [
   "urgency-high",
   "urgency-medium",
   "urgency-low",
+  "score-hot",
   "score-warm",
+  "score-cold",
+  "score-skip",
 ] as const;
 
 /**
@@ -243,6 +246,87 @@ describe("tema claro sobre el fondo de página", () => {
   it("--chart-3 llega al 3:1 de objeto gráfico también sobre el fondo de página", () => {
     const medido = ratio("claro", "chart-3", "background");
     expect(medido, `--chart-3 da ${medido.toFixed(2)}:1 sobre --background`).toBeGreaterThanOrEqual(AA_GRAFICO);
+  });
+});
+
+/**
+ * Chips, badges y paginación pintan el token como texto **sobre su propio
+ * tinte** (`bg-primary/10 text-primary`, `bg-warning/15 text-warning`…). El
+ * tinte aclara la superficie y el ratio cae ~0,9 puntos respecto al fondo
+ * limpio: es lo que el E2E de axe marcaba en el Radar y el Detalle. Se mide
+ * sobre el fondo de página, la superficie opaca más oscura, con el tinte más
+ * denso que usa el árbol para texto (16 %).
+ */
+const TINTE_MAXIMO = 0.16;
+const TEXTO_SOBRE_SU_TINTE = ["primary", "success", "warning", "info", "score-warm"] as const;
+
+function mezcla(frente: Rgb, fondo: Rgb, alfa: number): Rgb {
+  return [0, 1, 2].map((i) => frente[i] * alfa + fondo[i] * (1 - alfa)) as unknown as Rgb;
+}
+
+describe("tema claro: texto sobre su propio tinte", () => {
+  it.each(TEXTO_SOBRE_SU_TINTE)(`--%s pasa 4,5:1 sobre un tinte del ${TINTE_MAXIMO * 100} %% de sí mismo`, (token) => {
+    const tinta = color("claro", token);
+    const superficie = mezcla(tinta, color("claro", "background"), TINTE_MAXIMO);
+    const medido = ratioContraste(tinta, superficie);
+    expect(medido, `--${token} da ${medido.toFixed(2)}:1 sobre su tinte`).toBeGreaterThanOrEqual(AA_TEXTO);
+  });
+});
+
+/**
+ * El gris secundario sobre la pila más densa que axe encontró en la UI: el
+ * badge neutro de `StatusBadge` (`bg-muted-foreground/10 text-muted-foreground`)
+ * dentro de la fila activa de una tabla (`bg-primary/9`), sobre el fondo de
+ * página. Con `--muted-foreground` al 40 % daba 4,04:1 en /detalle.
+ */
+describe("tema claro: gris secundario sobre el badge neutro de una fila activa", () => {
+  it("--muted-foreground pasa 4,5:1 sobre muted/10 encima de primary/9", () => {
+    const tinta = color("claro", "muted-foreground");
+    const fila = mezcla(color("claro", "primary"), color("claro", "background"), 0.09);
+    const superficie = mezcla(tinta, fila, 0.1);
+    const medido = ratioContraste(tinta, superficie);
+    expect(medido, `--muted-foreground da ${medido.toFixed(2)}:1 sobre el badge neutro`).toBeGreaterThanOrEqual(
+      AA_TEXTO,
+    );
+  });
+});
+
+/**
+ * Pilas de tintes del Radar (axe `color-contrast`, /radar, 2026-09-19). Los
+ * tintes se suman: un texto sobre su tinte dentro de la fila activa
+ * (`bg-primary/9`) queda por debajo de lo que el test de «su propio tinte»
+ * mide sobre la página limpia.
+ */
+describe("tema claro: el Radar sobre sus filas tintadas", () => {
+  const fila = (alfa: number) => mezcla(color("claro", "primary"), color("claro", "background"), alfa);
+
+  // La cifra del score (`radar-fila.tsx`) sobre la fila activa y en hover.
+  it.each(["score-hot", "score-warm", "score-cold", "score-skip"] as const)(
+    "--%s pasa 4,5:1 sobre la fila activa (primary 9 %%) y en hover (5 %%)",
+    (token) => {
+      for (const alfa of [0.05, 0.09]) {
+        const medido = ratioContraste(color("claro", token), fila(alfa));
+        expect(medido, `--${token} da ${medido.toFixed(2)}:1 sobre primary/${alfa * 100}`).toBeGreaterThanOrEqual(
+          AA_TEXTO,
+        );
+      }
+    },
+  );
+
+  // «Abrir» (`radar-acciones.tsx`): `bg-primary/6`, `hover:bg-primary/10`,
+  // dentro de la fila activa.
+  it.each([0.06, 0.1])("--primary pasa 4,5:1 sobre un tinte del %s dentro de la fila activa", (alfa) => {
+    const tinta = color("claro", "primary");
+    const medido = ratioContraste(tinta, mezcla(tinta, fila(0.09), alfa));
+    expect(medido, `--primary da ${medido.toFixed(2)}:1`).toBeGreaterThanOrEqual(AA_TEXTO);
+  });
+
+  // Recuento del segmento activo (`radar-controles.tsx`): `bg-primary/10`
+  // sobre `bg-secondary`, más oscuro que la página.
+  it("--primary pasa 4,5:1 sobre primary/10 encima de --secondary", () => {
+    const tinta = color("claro", "primary");
+    const medido = ratioContraste(tinta, mezcla(tinta, color("claro", "secondary"), 0.1));
+    expect(medido, `--primary da ${medido.toFixed(2)}:1`).toBeGreaterThanOrEqual(AA_TEXTO);
   });
 });
 

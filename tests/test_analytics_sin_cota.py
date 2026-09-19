@@ -50,5 +50,8 @@ def test_el_detector_reconoce_una_cota() -> None:
     assert _COTA_EN_SQL.search("SELECT ccaa, COUNT(*) FROM licitaciones GROUP BY ccaa")
     assert _POR_IDENTIDAD.search("SELECT * FROM t WHERE licitacion_id = %s")
     assert _POR_IDENTIDAD.search("SELECT * FROM t WHERE id_externo IN (%s, %s)")
+    assert _POR_IDENTIDAD.search("SELECT * FROM t WHERE licitacion_id = ANY(%s)")
+    # `ANY` sobre una columna que no es de identidad no acota nada.
+    assert not _POR_IDENTIDAD.search("SELECT * FROM t WHERE ccaa = ANY(%s)")
     assert not _COTA_EN_SQL.search("SELECT id_externo, titulo FROM licitaciones")
     assert not _POR_IDENTIDAD.search("SELECT * FROM t WHERE ccaa = %s")

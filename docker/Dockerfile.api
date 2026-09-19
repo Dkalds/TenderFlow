@@ -15,22 +15,32 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libffi-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# C3.1 — corte API / pipeline, a medio camino a propósito.
+# C3.1 — corte API / pipeline (2026-09-18).
 #
-# `requirements-api.in` ya declara el subconjunto que la API necesita de verdad
-# (medido sobre el cono de imports alcanzable desde `api/`, 2026-09-06), y
-# `scripts/check_requirements_sync.py` verifica que el corte no deja ningún
-# paquete sin asignar. Lo que falta es el lockfile: `requirements-api.txt` lo
-# produce `make lock`, que necesita `uv`.
+# La imagen instala por defecto `requirements-api.txt`: sin lxml, scikit-learn,
+# scipy, statsmodels ni networkx. Los caminos de request que los usaban
+# degradan de forma visible (cabecera de `requirements-api.in`) y
+# `tests/test_unit_api_imagen_slim.py` prueba en un proceso aparte que
+# `api.app` arranca con esos paquetes vetados.
 #
-# **Esta línea pasa a `requirements-api.txt` en el mismo commit que genere ese
-# fichero**, no antes: apuntar a un lockfile inexistente rompe el build de
-# producción, y un Dockerfile que no construye es peor que uno que instala de
-# más. `tests/test_unit_dockerfile_api.py` obliga al cambio en cuanto el
-# fichero aparezca.
-COPY requirements.txt pyproject.toml ./
+# `REQUIREMENTS_FILE` elige la variante, y hay dos usos legítimos de la otra:
+#
+# - **El worker** (`render.yaml::tenderflow-worker`, `APP_PROFILE=worker`)
+#   corre la misma imagen pero ejecuta el plano de cron —drift, precálculo de
+#   clusters, reintentos de la DLQ contra TACRC— y necesita el conjunto del
+#   pipeline. Render pasa las variables de entorno del servicio como build
+#   args, así que la declara allí.
+# - **Vuelta atrás sin tocar código**: si retirar `/explain` de la imagen
+#   resulta inaceptable antes de que la RFC
+#   `docs/rfc/2026-09-18-rfc-explain-fuera-del-proceso-api.md` se resuelva,
+#   `REQUIREMENTS_FILE=requirements-pipeline.txt` devuelve el conjunto anterior
+#   (es `requirements.txt` pin a pin; `check_requirements_sync.py` lo vigila).
+#
+# El CI construye las dos variantes (`.github/workflows/ci.yml::docker-build`).
+ARG REQUIREMENTS_FILE=requirements-api.txt
+COPY requirements-api.txt requirements-pipeline.txt pyproject.toml ./
 RUN pip install --upgrade "pip>=26.1" \
-    && pip install --prefix=/install --no-cache-dir -r requirements.txt
+    && pip install --prefix=/install --no-cache-dir --require-hashes -r "${REQUIREMENTS_FILE}"
 
 
 # ── Etapa 2: imagen de producción — FastAPI / uvicorn ────────────────────────

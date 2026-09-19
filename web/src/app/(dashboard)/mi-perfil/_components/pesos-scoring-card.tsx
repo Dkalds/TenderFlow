@@ -61,6 +61,7 @@ function WeightSlider({
         value={[value]}
         onValueChange={([v]) => onChange(v)}
         disabled={disabled}
+        aria-label={`Peso de ${WEIGHT_LABELS[name] ?? name}`}
         className="w-full"
       />
     </div>

@@ -14,13 +14,25 @@ import { fetchWithAuth } from "@/lib/api-client";
 import { useFilters } from "@/lib/filters";
 import { formatDate, formatNumber } from "@/lib/utils";
 
+import { PanelTabs } from "@/components/console/panel";
+import { registrarEvento } from "@/lib/analytics";
+
 import { CompanyAwards } from "./company-awards";
+import { CompanyContraMi } from "./company-contra-mi";
 import { CompanyProfileSummary } from "./company-profile-summary";
 import { CompanyUteParticipations } from "./company-ute-participations";
 import type { CompanyProfileData } from "./company-profile-types";
 import { competitiveKeys } from "@/lib/query-keys";
 
 type Period = "12m" | "3y" | "all" | "global";
+
+/**
+ * Pestañas del dossier. «Contra mí» (F3.2) es la única que habla de nosotros:
+ * cruza las oportunidades presentadas del equipo con las adjudicaciones de
+ * esta empresa. La clave del competidor es su id del maestro, que es lo primero
+ * que prueba `empresa_key_sql` en el backend.
+ */
+type Pestana = "perfil" | "contra_mi";
 
 export function initialCompanyProfilePeriod(hasGlobalPeriod: boolean): Period {
   return hasGlobalPeriod ? "global" : "all";
@@ -56,6 +68,13 @@ export function CompanyProfile({ empresaId, groupIds }: CompanyProfileProps) {
   const filters = useFilters();
   const hasGlobalPeriod = Boolean(filters.rango.desde || filters.rango.hasta);
   const [period, setPeriod] = useState<Period>(() => initialCompanyProfilePeriod(hasGlobalPeriod));
+  const [pestana, setPestana] = useState<Pestana>("perfil");
+  const cambiarPestana = (siguiente: Pestana) => {
+    setPestana(siguiente);
+    if (siguiente === "contra_mi") {
+      registrarEvento("espacio_abierto", { espacio: "competencia", origen: "conmutador", vista: "contra_mi" });
+    }
+  };
   // El dossier agrega la actividad de todo el grupo; el usuario nunca elige
   // cuál identidad abrir.
   const allIds = useMemo(() => [...new Set([empresaId, ...(groupIds ?? [])])], [empresaId, groupIds]);
@@ -187,7 +206,19 @@ export function CompanyProfile({ empresaId, groupIds }: CompanyProfileProps) {
         </div>
       </section>
 
-      {noActivity ? (
+      <PanelTabs
+        label="Secciones del dossier"
+        value={pestana}
+        onChange={cambiarPestana}
+        tabs={[
+          { key: "perfil", label: "Perfil" },
+          { key: "contra_mi", label: "Contra mí" },
+        ]}
+      />
+
+      {pestana === "contra_mi" ? (
+        <CompanyContraMi empresaKey={String(empresaId)} />
+      ) : noActivity ? (
         // Un miembro que solo ha ganado a través de UTEs tiene 0 adjudicaciones
         // propias: sin esta rama su participación quedaría igual de invisible
         // que antes de exponerla.

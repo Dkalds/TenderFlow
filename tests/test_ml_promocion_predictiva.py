@@ -16,6 +16,8 @@ reales del backlog, para que la próxima versión se juzgue con la misma vara.
 
 from __future__ import annotations
 
+import pytest
+
 from services.ml.promotion import (
     MIN_IMPROVEMENT_OVER_FOLD_DISPERSION,
     evaluar_promocion_predictiva,
@@ -201,3 +203,55 @@ class TestDispersionPorBloques:
         desviacion, valores = _pr_auc_por_bloques(y, proba)
         assert len(valores) == 2
         assert desviacion is not None
+
+
+def _par(label: int, antiguedad: float | None):
+    from services.ml.retencion_labels import ParRetencion
+
+    return ParRetencion(
+        licitacion_id="L",
+        sucesor_id="S",
+        empresa_id=1,
+        organo="O",
+        fecha_fin="2025-01-01",
+        fecha_sucesor="2025-06-01",
+        label=label,
+        features={"antiguedad_relacion_meses": antiguedad},
+    )
+
+
+class TestBaselineAntiguedad:
+    """Rival informativo: ordenar por antigüedad de la relación, sin modelo."""
+
+    def test_si_la_antiguedad_separa_las_clases_el_rival_es_perfecto(self) -> None:
+        import numpy as np
+
+        from services.ml.retencion_model import _pr_auc_ranking_antiguedad
+
+        pares = [_par(1, 60.0), _par(1, 48.0), _par(0, 6.0), _par(0, 3.0)]
+        y = np.array([1.0, 1.0, 0.0, 0.0])
+        assert _pr_auc_ranking_antiguedad(pares, y) == pytest.approx(1.0)
+
+    def test_las_filas_sin_antiguedad_van_al_fondo(self) -> None:
+        import numpy as np
+
+        from services.ml.retencion_model import _pr_auc_ranking_antiguedad
+
+        # El positivo sin antigüedad queda el último: el rival no sabe nada de él.
+        pares = [_par(1, 24.0), _par(0, 12.0), _par(1, None)]
+        y = np.array([1.0, 0.0, 1.0])
+        valor = _pr_auc_ranking_antiguedad(pares, y)
+        assert valor is not None
+        assert valor < 1.0
+
+    def test_sin_antiguedad_o_sin_las_dos_clases_no_hay_numero(self) -> None:
+        import numpy as np
+
+        from services.ml.retencion_model import _pr_auc_ranking_antiguedad
+
+        assert (
+            _pr_auc_ranking_antiguedad([_par(1, None), _par(0, None)], np.array([1.0, 0.0])) is None
+        )
+        assert (
+            _pr_auc_ranking_antiguedad([_par(1, 5.0), _par(1, 9.0)], np.array([1.0, 1.0])) is None
+        )

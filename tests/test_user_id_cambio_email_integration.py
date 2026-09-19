@@ -31,6 +31,11 @@ from shared.identity import user_key_from_email
 
 _MIGRACION = "db.alembic.versions.v129_user_id_fase2"
 
+#: Tablas con PK en ``user_id`` desde v135 (ADR-030 fase 3). Ya no admiten una
+#: fila sin ``user_id``, así que no hay «fila legacy» que sembrar en ellas: su
+#: backfill y su fallo ruidoso los prueba ``tests/test_v135_user_id_pk_fase3.py``.
+_CON_PK_USER_ID = frozenset({"user_profiles", "radar_dismissals"})
+
 _EMAIL_VIEJO = "Persona.Antes@Example.com"
 _EMAIL_NUEVO = "persona.despues@example.com"
 _PASSWORD = "Cambio-2026-Seguro"  # pragma: allowlist secret
@@ -38,6 +43,11 @@ _PASSWORD = "Cambio-2026-Seguro"  # pragma: allowlist secret
 
 def _migracion() -> Any:
     return importlib.import_module(_MIGRACION)
+
+
+def _tablas_legacy() -> tuple[str, ...]:
+    """Las tablas de v129 que todavía aceptan filas escritas sólo con ``user_key``."""
+    return tuple(t for t in _migracion().TABLAS if t not in _CON_PK_USER_ID)
 
 
 # ── Derivación y backfill ───────────────────────────────────────────────────
@@ -87,12 +97,14 @@ def _organizacion_personal(user_id: int) -> int:
 
 
 def _sembrar_filas_legacy(user_key: str, organization_id: int) -> None:
-    """Una fila por tabla, escrita SÓLO con ``user_key`` (como antes de v129)."""
-    from db import radar_dismissals
+    """Una fila por tabla, escrita SÓLO con ``user_key`` (como antes de v129).
+
+    Salvo ``user_profiles`` y ``radar_dismissals``: desde v135 su PK es
+    ``user_id`` y una fila sin él ya no existe (ver ``_CON_PK_USER_ID``).
+    """
     from db.audit import log_action
     from db.database import now_utc_iso
     from db.notifications import insert_user_notification, mark_read
-    from db.repositories.user_profiles import upsert_user_profile
     from db.repositories.watchlist import WatchlistRepository
     from db.saved_filters import save_filter
     from db.watchlist import WatchlistEntry, add_entry
@@ -106,7 +118,6 @@ def _sembrar_filas_legacy(user_key: str, organization_id: int) -> None:
     create_rule(user_key, WatchlistRule(keyword="sap"), organization_id=organization_id)
     add_entry(WatchlistEntry(user_key=user_key, cpv_prefix="72", organization_id=organization_id))
     save_filter(user_key, "Vista legacy", "{}", organization_id)
-    upsert_user_profile(user_key, {"importe_min": 1000}, organization_id)
     insert_user_notification(
         user_key=user_key,
         type_="rule_match",
@@ -116,7 +127,6 @@ def _sembrar_filas_legacy(user_key: str, organization_id: int) -> None:
         organization_id=organization_id,
     )
     mark_read(user_key, "LIC-LEGACY")
-    radar_dismissals.add(user_key, "LIC-LEGACY")
     set_modo_email(user_key, "pursuit.assigned", "off")
     log_action(user_key, "sess", "login", "")
     repo.store_pending_digest(
@@ -146,7 +156,7 @@ def _contar(tabla: str, user_id: int) -> int:
     return int(row[0])
 
 
-def test_backfill_resuelve_user_id_en_las_doce_tablas(tmp_db):
+def test_backfill_resuelve_user_id_en_las_tablas_legacy(tmp_db):
     """Filas legacy (sólo ``user_key``) quedan ancladas al ``users.id``.
 
     Se ejecuta el mismo SQL de la migración sobre datos sembrados después de
@@ -165,17 +175,17 @@ def test_backfill_resuelve_user_id_en_las_doce_tablas(tmp_db):
 
     log_action(str(user_id), "sess", "gdpr.export", "")
 
-    for tabla in migracion.TABLAS:
+    for tabla in _tablas_legacy():
         assert _contar(tabla, user_id) == 0, tabla
 
     with connect() as c:
         c.execute(migracion._CREAR_CLAVES)
         c.execute(migracion._SEMBRAR_CLAVES)
-        for tabla in migracion.TABLAS:
+        for tabla in _tablas_legacy():
             c.execute(migracion.sql_backfill(tabla))
         c.execute(migracion.SQL_BACKFILL_AUDIT_POR_ID)
 
-    for tabla in migracion.TABLAS:
+    for tabla in _tablas_legacy():
         assert _contar(tabla, user_id) >= 1, tabla
         assert _contar(tabla, otro) == 0, tabla
     # Las dos formas de `audit_log`: la clave derivada y el id en texto.
@@ -368,8 +378,13 @@ def test_cambiar_de_email_conserva_todo(sesion):
 
 
 def test_escribir_tras_el_cambio_no_duplica(sesion):
-    """Las claves únicas siguen tecleadas por ``user_key``: repetir una
-    escritura con la clave nueva debe actualizar la fila antigua, no clonarla."""
+    """Repetir una escritura con la clave nueva actualiza la fila, no la clona.
+
+    En las tablas tecleadas todavía por ``user_key`` lo garantiza el
+    repositorio (localiza la fila por identidad dual antes de insertar); en
+    ``user_profiles`` y ``radar_dismissals`` lo garantiza la PK por
+    ``user_id`` de v135.
+    """
     client, csrf, user_id = sesion
     cab = {"X-CSRF-Token": csrf}
 

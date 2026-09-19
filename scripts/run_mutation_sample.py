@@ -4,8 +4,9 @@ Por qué
 -------
 El porcentaje de cobertura mide qué líneas se ejecutan, no si alguna aserción
 las vigila. Un test que llama a una función y comprueba que "no lanza" cubre
-sus líneas y no detecta ninguna regresión. El repo ya tiene casos documentados
-(``tests/test_TODO_review_tautologico.py``) y el propio corpus golden del
+sus líneas y no detecta ninguna regresión. El repo ya tuvo casos documentados
+(tres tests tautológicos de ``shared/auth_core.py``, reescritos o borrados el
+2026-09-18) y el propio corpus golden del
 parser nació de descubrir, mutando el código a mano, que invertir la prioridad
 de dos periodos no rompía ningún test.
 

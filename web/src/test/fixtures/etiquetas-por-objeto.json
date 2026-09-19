@@ -1,0 +1,12 @@
+{
+  "por_objeto": {
+    "LIC-2026-0001": [
+      {
+        "id": 1,
+        "nombre": "Prioridad alta",
+        "color": "#dc2626"
+      }
+    ],
+    "LIC-2026-0002": []
+  }
+}

@@ -8,6 +8,7 @@
 import * as React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { MaestroList, ventanaDePaginas } from "../_components/maestro-list";
 import type { EmpresaRow } from "../_hooks/use-maestro";
 
@@ -66,7 +67,15 @@ function renderLista(overrides: Partial<React.ComponentProps<typeof MaestroList>
     onRetry: vi.fn(),
     ...overrides,
   };
-  return { props, ...render(<MaestroList {...props} />) };
+  // `TooltipProvider`: la marca «desde grafo» lleva `Pista` (un `Tooltip`).
+  return {
+    props,
+    ...render(
+      <TooltipProvider>
+        <MaestroList {...props} />
+      </TooltipProvider>,
+    ),
+  };
 }
 
 afterEach(() => cleanup());

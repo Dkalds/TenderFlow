@@ -7,6 +7,7 @@ from datetime import date
 import pandas as pd
 from pydantic import BaseModel, Field
 
+from config import settings
 from db.repositories.adjudicaciones import LIMITE_COMPETIDORES
 from observability.logging import get_logger
 from services.adjudicaciones import load_for_competitors
@@ -250,6 +251,44 @@ def _connected_identity_keys(df: pd.DataFrame) -> list[str]:
     return [find(token) for token in primary_tokens]
 
 
+def _optional_ints(values: pd.Series) -> list[int | None]:
+    return [int(value) if pd.notna(value) else None for value in values]
+
+
+def _sql_identity_keys(
+    df: pd.DataFrame, effective_name: pd.Series, effective_nif: pd.Series
+) -> list[str]:
+    """La misma partición que :func:`_connected_identity_keys`, calculada en SQL.
+
+    Camino de ``settings.COMPETITORS_IDENTITY_SQL`` (apagado por defecto):
+    normalización con ``unaccent`` y componentes conexos por CTE recursiva en
+    ``db/repositories/competitor_identity.py``, sobre **las mismas filas** que
+    ya se cargaron. La política —qué NIF es placeholder, qué NIF es de un grupo
+    curado— viaja como parámetro: ``db/`` no importa de ``services/``.
+
+    Lo que no cambia es todo lo de alrededor: nombre preferido, NIF canónico y
+    trazabilidad siguen saliendo de pandas. Lo que sí cambia es la etiqueta
+    del grupo (``MIN(token)`` en vez de la raíz del union-find); nada aguas
+    abajo depende de su texto salvo ``empresa_key`` en
+    :func:`cargar_adjudicaciones_resueltas`, que pasa a ser más estable (no
+    depende del orden de las filas).
+    """
+    from db.repositories.competitor_identity import resolve_identity_for_rows
+
+    master_ids = pd.to_numeric(
+        df.get("empresa_grupo_id", pd.Series(pd.NA, index=df.index, dtype="Int64")),
+        errors="coerce",
+    )
+    return resolve_identity_for_rows(
+        nombres=[str(v) if pd.notna(v) else None for v in effective_name],
+        nifs=[str(v) if pd.notna(v) else None for v in effective_nif],
+        empresa_ids=_optional_ints(df["_empresa_id_key"]),
+        grupo_ids=_optional_ints(master_ids),
+        placeholder_nifs=sorted(_INVALID_NIF_KEYS),
+        curated_groups={nif: key for nif, (key, _nombre) in _CURATED_GROUPS_BY_NIF.items()},
+    )
+
+
 def _preferred_names(df: pd.DataFrame) -> dict[str, str]:
     """Choose a stable display name, preferring master names over raw aliases."""
     candidates = pd.concat(
@@ -324,7 +363,11 @@ def _prepare_company_identity(df: pd.DataFrame) -> pd.DataFrame:
         empresa_id_values,
         errors="coerce",
     ).astype("Int64")
-    prepared[_GROUP_KEY] = pd.Categorical(_connected_identity_keys(prepared))
+    prepared[_GROUP_KEY] = pd.Categorical(
+        _sql_identity_keys(prepared, effective_name, effective_nif)
+        if settings.COMPETITORS_IDENTITY_SQL
+        else _connected_identity_keys(prepared)
+    )
 
     name_map = _preferred_names(prepared)
     prepared["empresa"] = (

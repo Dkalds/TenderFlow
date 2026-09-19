@@ -111,6 +111,70 @@ def agenda(
         return _repo.agenda(resolved_id, limit=limit)
 
 
+#: Tipo del evento de vencimiento y agregado con el que se escribe. El agregado
+#: es la tarea y no la oportunidad: es lo que permite preguntar «¿ya avisé de
+#: esta tarea para esta fecha?» con el índice por agregado de `domain_events`.
+EVENTO_TAREA_VENCE = "pursuit.task_due"
+_AGREGADO_TAREA = "pursuit_task"
+
+
+def _hoy_madrid() -> str:
+    """Fecha de hoy en España. `vence` es una fecha de calendario local."""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    return datetime.now(ZoneInfo("Europe/Madrid")).date().isoformat()
+
+
+def emitir_tareas_que_vencen(fecha: str | None = None) -> int:
+    """Escribe un ``pursuit.task_due`` por cada tarea abierta que vence ``fecha``.
+
+    Devuelve cuántos eventos escribió. Idempotente por ``(tarea, fecha)``: la
+    pasada del despachador corre varias veces al día, y sin la comprobación
+    cada una encolaría otro correo por la misma tarea. Re-fechar una tarea a
+    otro día sí vuelve a avisar ese día, que es lo que se espera.
+
+    El destinatario es el responsable de la tarea. Una tarea sin responsable
+    sale igual —las integraciones de la organización (webhook) sí la reciben—
+    pero no avisa a nadie en persona: adivinar a quién le toca sería peor que
+    no avisar.
+    """
+    from db.events import append_domain_event, get_events
+
+    dia = fecha or _hoy_madrid()
+    emitidos = 0
+    for tarea in _repo.vencen_en(fecha=dia):
+        task_id = int(tarea["id"])
+        previos = get_events(_AGREGADO_TAREA, task_id, event_type=EVENTO_TAREA_VENCE)
+        if any((ev.get("payload") or {}).get("vence") == dia for ev in previos):
+            continue
+        responsable = tarea.get("responsable_user_id")
+        append_domain_event(
+            EVENTO_TAREA_VENCE,
+            task_id,
+            _AGREGADO_TAREA,
+            {
+                "pursuit_id": int(tarea["pursuit_id"]),
+                "licitacion_id": tarea.get("licitacion_id"),
+                "task_id": task_id,
+                "titulo": tarea.get("titulo"),
+                "vence": dia,
+                "detalle": f"{tarea.get('titulo') or 'Tarea'} · vence el {dia}",
+                "destinatarios": [int(responsable)] if responsable is not None else [],
+                "organization_id": int(tarea["organization_id"]),
+            },
+            organization_id=int(tarea["organization_id"]),
+        )
+        emitidos += 1
+    return emitidos
+
+
+def sincronizar_next_action(organization_id: int, pursuit_id: int) -> None:
+    """Punto de entrada público de la derivación, para quien crea tareas por
+    su cuenta (F4.6: la plantilla por etapa). Mismo fail-open."""
+    _sincronizar_next_action(organization_id, pursuit_id)
+
+
 def _sincronizar_next_action(organization_id: int, pursuit_id: int) -> None:
     """Deja `next_action` reflejando la tarea abierta más urgente.
 

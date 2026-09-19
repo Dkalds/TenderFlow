@@ -292,6 +292,19 @@ expediente tuvo anuncio previo» y medir la anticipación **sobre nuestro propio
 histórico** en vez de sobre tres páginas del feed. Queda anotado, no hecho: T5 no
 lo pedía y toca un fichero fuera del alcance de este trabajo.
 
+**Hecho el 2026-09-18** (rama `worktree-agent-a3fd0bc81b8a949c2`):
+`scraper/codice_parser.py::_tipos_anuncio` lee el `NoticeTypeCode` de cada
+`ValidNoticeInfo` y lo persiste en `licitaciones.tipos_anuncio` (migración
+`v138_notice_type_code`): códigos crudos, distintos y ordenados, en CSV. El
+upsert lo protege con `COALESCE` como a `procedimiento`. Caso golden
+`15_anuncio_previo_notice_type_code`. Nace NULL en todo lo ya ingerido; la
+medición de la anticipación sobre el histórico propio necesita que el feed lo
+vaya rellenando (o un reproceso de los ZIP cacheados), y no está hecha. Una
+observación que deja el caso golden: `fecha_publicacion` sale de la `IssueDate`
+**mínima** de todos los bloques, así que en un expediente con PIN es la fecha
+del anuncio previo, no la de la licitación. No se cambió: es comportamiento
+previo y cambiarlo mueve el ancla de ML y los filtros por fecha.
+
 ---
 
 ## Hallazgo lateral: D32 queda corroborado

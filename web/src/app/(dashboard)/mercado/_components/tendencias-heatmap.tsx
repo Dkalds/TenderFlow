@@ -12,6 +12,7 @@
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
+import { Pista } from "@/components/ui/pista";
 import { Skeleton } from "@/components/ui/skeleton";
 import { estadoLabel } from "@/lib/estados";
 import { cn } from "@/lib/utils";
@@ -63,33 +64,39 @@ export function TendenciasHeatmap({
             <div className="inline-block min-w-full">
               <div className="flex">
                 <div className="w-32 shrink-0" />
+                {/* `Pista` en vez de `title`: al pasar el puntero, sin
+                    convertir cada casilla en una parada de tabulación. */}
                 {heatmapData.meses.map((mes) => (
-                  <div key={mes} className="w-14 shrink-0 text-center text-xs text-muted-foreground truncate px-0.5" title={mes}>
-                    {mes.length > 7 ? mes.slice(5) : mes}
-                  </div>
+                  <Pista key={mes} contenido={mes}>
+                    <div className="w-14 shrink-0 text-center text-xs text-muted-foreground truncate px-0.5">
+                      {mes.length > 7 ? mes.slice(5) : mes}
+                    </div>
+                  </Pista>
                 ))}
               </div>
               {heatmapData.estados.map((estado) => (
                 <div key={estado} className="flex items-center">
                   {/* `por_estado` viaja con el código de la columna, no con la
                       etiqueta: sin traducir, la fila del heatmap se rotula "AGR". */}
-                  <div className="w-32 shrink-0 text-xs text-muted-foreground truncate pr-2" title={estadoLabel(estado)}>{estadoLabel(estado)}</div>
+                  <Pista contenido={estadoLabel(estado)}>
+                    <div className="w-32 shrink-0 text-xs text-muted-foreground truncate pr-2">{estadoLabel(estado)}</div>
+                  </Pista>
                   {heatmapData.meses.map((mes) => {
                     const cell = heatmapData.grid.find((g) => g.mes === mes && g.estado === estado);
                     const value = cell?.value ?? 0;
                     const intensity = heatmapData.maxVal > 0 ? value / heatmapData.maxVal : 0;
                     return (
-                      <div
-                        key={`${estado}-${mes}`}
-                        className={cn(
-                          "w-14 h-8 shrink-0 m-0.5 rounded-sm flex items-center justify-center text-xs font-medium transition-colors",
-                          intensity > 0.55 ? "text-primary-foreground" : "text-foreground/80",
-                        )}
-                        style={heatmapCellStyle(value, heatmapData.maxVal)}
-                        title={`${estadoLabel(estado)} - ${mes}: ${value}`}
-                      >
-                        {value > 0 ? value : ""}
-                      </div>
+                      <Pista key={`${estado}-${mes}`} contenido={`${estadoLabel(estado)} - ${mes}: ${value}`}>
+                        <div
+                          className={cn(
+                            "w-14 h-8 shrink-0 m-0.5 rounded-sm flex items-center justify-center text-xs font-medium transition-colors",
+                            intensity > 0.55 ? "text-primary-foreground" : "text-foreground/80",
+                          )}
+                          style={heatmapCellStyle(value, heatmapData.maxVal)}
+                        >
+                          {value > 0 ? value : ""}
+                        </div>
+                      </Pista>
                     );
                   })}
                 </div>

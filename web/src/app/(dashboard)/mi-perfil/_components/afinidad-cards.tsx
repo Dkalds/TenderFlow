@@ -12,6 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { ariaCampo, CampoError } from "@/lib/forms/campo";
 import { isValidCpv } from "../_hooks/use-perfil-scoring";
 
 export function KeywordsAfinidadCard({
@@ -39,7 +40,10 @@ export function KeywordsAfinidadCard({
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="flex gap-2">
+          {/* El placeholder no es un nombre: desaparece al escribir y axe no
+              lo cuenta. El título de la tarjeta no está asociado al campo. */}
           <Input
+            aria-label="Nueva keyword de afinidad"
             placeholder="p.ej. consultoría, mantenimiento, SAP…"
             value={kwInput}
             onChange={(e) => onKwInputChange(e.target.value)}
@@ -85,12 +89,15 @@ export function CpvsInteresCard({
   onCpvInputChange,
   onAdd,
   onRemove,
+  error,
 }: {
   cpvs: string[];
   cpvInput: string;
   onCpvInputChange: (value: string) => void;
   onAdd: () => void;
   onRemove: (cpv: string) => void;
+  /** Error del esquema sobre la lista (p. ej. más de 50 CPVs). */
+  error?: string;
 }) {
   return (
     <Card>
@@ -105,9 +112,12 @@ export function CpvsInteresCard({
       <CardContent className="space-y-4">
         <div className="flex gap-2">
           <Input
+            id="mp-cpvs"
+            aria-label="Nuevo código CPV de interés"
             placeholder="p.ej. 72000000, 4823…"
             value={cpvInput}
             inputMode="numeric"
+            {...ariaCampo("mp-cpvs", error)}
             onChange={(e) => onCpvInputChange(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Enter") {
@@ -121,6 +131,7 @@ export function CpvsInteresCard({
             Añadir
           </Button>
         </div>
+        <CampoError campoId="mp-cpvs" mensaje={error} />
         {cpvInput.trim() !== "" && !isValidCpv(cpvInput) && (
           <p className="text-xs text-destructive">
             Un CPV son entre 4 y 8 dígitos, sin letras ni guiones.

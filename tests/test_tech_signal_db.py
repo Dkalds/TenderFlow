@@ -369,6 +369,80 @@ class TestMergeManyWithLockScope:
         assert row[1] == "DOCKER"  # nunca "SAP" -- ausente de ml_tecnologias
 
 
+class TestResumenDerivadoPorElTrigger:
+    """T3 (``v136``): ``licitacion_tecnologia_score`` es la única verdad del
+    resumen; ``trg_lts_derivar_ml`` recalcula ``ml_tecnologias``,
+    ``ml_tech_principal`` y ``ml_proba_max`` al cerrar la transacción."""
+
+    @staticmethod
+    def _resumen(licitacion_id: str):
+        with connect() as c:
+            return c.execute(
+                "SELECT ml_tecnologias, ml_tech_principal, ml_proba_max "
+                "FROM licitaciones WHERE id_externo = %s",
+                (licitacion_id,),
+            ).fetchone()
+
+    @staticmethod
+    def _scores(filas):
+        with connect() as c:
+            c.executemany(
+                "INSERT INTO licitacion_tecnologia_score "
+                "(licitacion_id, tecnologia, probabilidad, threshold_aplicado, computed_at) "
+                "VALUES (%s, %s, %s, %s, '2026-09-18T00:00:00+00:00')",
+                filas,
+            )
+
+    def test_only_rows_over_their_own_threshold_enter_the_summary(self, repo):
+        _insert_licitacion("TRG-1")
+        self._scores(
+            [
+                ("TRG-1", "SAP", 0.9, 0.5),
+                ("TRG-1", "ORACLE", 0.7, 0.6),
+                ("TRG-1", "META4", 0.4, 0.5),
+            ]
+        )
+
+        csv, principal, proba_max = self._resumen("TRG-1")
+        assert csv == "SAP,ORACLE"
+        assert principal == "SAP"
+        assert proba_max == pytest.approx(0.9)
+
+    def test_without_predicted_rows_proba_max_is_the_overall_max(self, repo):
+        _insert_licitacion("TRG-2")
+        self._scores([("TRG-2", "SAP", 0.3, 0.5), ("TRG-2", "ORACLE", 0.2, 0.5)])
+
+        assert self._resumen("TRG-2") == (None, None, pytest.approx(0.3))
+
+    def test_deleting_every_row_clears_labels_and_keeps_the_scored_mark(self, repo):
+        """Sin filas no hay de dónde derivar ``ml_proba_max``: se conserva,
+        porque es la marca de «ya puntuada» que evita reseleccionarla."""
+        _insert_licitacion("TRG-3")
+        self._scores([("TRG-3", "SAP", 0.9, 0.5)])
+        with connect() as c:
+            c.execute("DELETE FROM licitacion_tecnologia_score WHERE licitacion_id = 'TRG-3'")
+
+        assert self._resumen("TRG-3") == (None, None, pytest.approx(0.9))
+
+    def test_merge_result_matches_what_the_trigger_derives(self, repo):
+        """Paridad: el resumen que calcula ``_build_merge_result`` es el que
+        el trigger acaba escribiendo, incluida la adopción de una etiqueta del
+        CSV sin fila de score (el camino de ingesta)."""
+        _insert_licitacion("TRG-4", ml_tecnologias="SAP")
+        outcome = repo.merge_many_with_lock(
+            ["TRG-4"],
+            lambda _lic, state: _build_merge_result(
+                state, pliego_scores={"META4": 0.8}, threshold_aplicado=0.5
+            ),
+        )
+
+        esperado = outcome.results["TRG-4"]
+        csv, principal, proba_max = self._resumen("TRG-4")
+        assert csv == esperado["ml_tecnologias"] == "META4,SAP"
+        assert principal == esperado["ml_tech_principal"] == "META4"
+        assert proba_max == pytest.approx(esperado["ml_proba_max"])
+
+
 class TestListLicitacionesPendingSignal:
     def test_only_selects_licitaciones_with_extracted_documents(self, repo):
         _seed_pages("PEND-1", "algo")

@@ -26,7 +26,7 @@ from services.notifications import (
     mark_all_alerts_read,
     mark_all_read,
 )
-from shared.dto import StatusOk
+from shared.dto import DESCRIPCION_GRANDES_EN_PLAZO, StatusOk
 
 log = get_logger(__name__)
 router = APIRouter(prefix="/notifications", tags=["notifications"])
@@ -76,7 +76,7 @@ class AlertItem(BaseModel):
 
 
 class HoyCounters(BaseModel):
-    calientes: int = 0
+    calientes: int = Field(default=0, description=DESCRIPCION_GRANDES_EN_PLAZO)
     vencen_48h: int = 0
     nuevas_24h: int = 0
     total_activas: int = 0

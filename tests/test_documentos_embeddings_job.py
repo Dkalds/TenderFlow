@@ -335,12 +335,16 @@ def test_run_passes_batch_sizes_from_settings(repo):
         patch.object(settings, "PLIEGO_EMBED_BATCH", 3),
         patch.object(settings, "PLIEGO_FACTS_BATCH", 2),
         patch.object(settings, "PLIEGO_TECH_SIGNAL_BATCH", 9),
+        patch.object(settings, "RESUMEN_PREGEN_BATCH", 4),
         patch.object(documentos_embeddings, "_run_fetch_phase", return_value={}) as fetch,
         patch.object(documentos_embeddings, "_run_embed_phase", return_value={}) as embed,
         patch.object(documentos_embeddings, "_run_facts_phase", return_value={}) as facts,
         patch.object(
             documentos_embeddings, "_run_tech_signal_phase", return_value={}
         ) as tech_signal,
+        patch.object(
+            documentos_embeddings, "_run_resumen_pregen_phase", return_value={}
+        ) as resumen_pregen,
     ):
         run()
 
@@ -348,3 +352,4 @@ def test_run_passes_batch_sizes_from_settings(repo):
     embed.assert_called_once_with(limit=3)
     facts.assert_called_once_with(limit=2)
     tech_signal.assert_called_once_with(limit=9)
+    resumen_pregen.assert_called_once_with(limit=4)

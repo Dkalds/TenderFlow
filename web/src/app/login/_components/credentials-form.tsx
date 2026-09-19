@@ -7,16 +7,29 @@
  * `#password`, `#confirm-password` y el `login-error` al que apuntan los
  * `aria-describedby`. Cambiar uno rompe a la vez al lector de pantalla y a
  * `e2e/login.spec.ts`.
+ *
+ * Los valores los lleva react-hook-form con el esquema de `LoginRequest` o
+ * `RegisterRequest` (S7.2). `noValidate` apaga los globos nativos del
+ * navegador: el error de cada campo sale debajo de él, en `<id>-error`, y el
+ * campo lo enlaza por `aria-describedby` delante del error general.
  */
 
 import { AlertCircle, Eye, EyeOff, LogIn, UserPlus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { ariaCampo, CampoError } from "@/lib/forms/campo";
 import type { LoginForm } from "../_hooks/use-login-form";
 
 export function CredentialsForm({ login }: { login: LoginForm }) {
   const { error, loading, isRegister, showPassword } = login;
+  const { register } = login.form;
+  const errores = login.form.formState.errors;
   const errorId = error ? "login-error" : undefined;
+  /** ARIA de un campo: su propio error primero, luego el general. */
+  const aria = (campoId: string, mensaje: string | undefined, ...otros: Array<string | null>) => {
+    const propios = ariaCampo(campoId, mensaje, ...otros, errorId);
+    return { ...propios, "aria-invalid": error ? true : propios["aria-invalid"] };
+  };
 
   return (
     /* tf-stagger cascades each direct child's entrance (reusing the app's one
@@ -26,6 +39,7 @@ export function CredentialsForm({ login }: { login: LoginForm }) {
        delight, not friction. */
     <form
       onSubmit={isRegister ? login.handleRegister : login.handleLogin}
+      noValidate
       className="tf-stagger space-y-4"
     >
       {error && (
@@ -49,8 +63,7 @@ export function CredentialsForm({ login }: { login: LoginForm }) {
             id="name"
             type="text"
             placeholder="Tu nombre"
-            value={login.displayName}
-            onChange={(e) => login.setDisplayName(e.target.value)}
+            {...register("display_name")}
             autoComplete="name"
             disabled={loading}
           />
@@ -66,14 +79,13 @@ export function CredentialsForm({ login }: { login: LoginForm }) {
           id="email"
           type="email"
           placeholder="tu@email.com"
-          value={login.email}
-          onChange={(e) => login.setEmail(e.target.value)}
+          {...register("email")}
           required
           autoComplete="email"
-          aria-invalid={error ? true : undefined}
-          aria-describedby={errorId}
+          {...aria("email", errores.email?.message)}
           disabled={loading}
         />
+        <CampoError campoId="email" mensaje={errores.email?.message} />
       </div>
 
       <div className="animate-in fade-in-0 slide-in-from-bottom-2 space-y-2">
@@ -85,16 +97,11 @@ export function CredentialsForm({ login }: { login: LoginForm }) {
           <Input
             id="password"
             type={showPassword ? "text" : "password"}
-            value={login.password}
-            onChange={(e) => login.setPassword(e.target.value)}
+            {...register("password")}
             required
             minLength={isRegister ? 10 : undefined}
             autoComplete={isRegister ? "new-password" : "current-password"}
-            aria-invalid={error ? true : undefined}
-            aria-describedby={
-              [isRegister ? "password-hint" : null, errorId ?? null].filter(Boolean).join(" ") ||
-              undefined
-            }
+            {...aria("password", errores.password?.message, isRegister ? "password-hint" : null)}
             disabled={loading}
           />
           <button
@@ -106,6 +113,7 @@ export function CredentialsForm({ login }: { login: LoginForm }) {
             {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
           </button>
         </div>
+        <CampoError campoId="password" mensaje={errores.password?.message} />
         {isRegister && (
           <p id="password-hint" className="text-muted-foreground text-xs">
             {"Mínimo 10 caracteres, con mayúsculas, minúsculas y un número"}
@@ -130,14 +138,13 @@ export function CredentialsForm({ login }: { login: LoginForm }) {
           <Input
             id="confirm-password"
             type={showPassword ? "text" : "password"}
-            value={login.confirmPassword}
-            onChange={(e) => login.setConfirmPassword(e.target.value)}
+            {...register("confirm_password")}
             required
             autoComplete="new-password"
-            aria-invalid={error ? true : undefined}
-            aria-describedby={errorId}
+            {...aria("confirm-password", errores.confirm_password?.message)}
             disabled={loading}
           />
+          <CampoError campoId="confirm-password" mensaje={errores.confirm_password?.message} />
         </div>
       )}
 

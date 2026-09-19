@@ -33,7 +33,12 @@ def _seed_user_and_key(db_mod, *, user_id: int = 1, key_id: int = 1, key_hash: s
 
 
 def _organizacion_de_pruebas(nombre: str) -> int:
-    """Crea una organización real (con su owner) y devuelve su id.
+    """Crea una organización real (con su owner) y devuelve su id."""
+    return _organizacion_y_owner(nombre)[0]
+
+
+def _organizacion_y_owner(nombre: str) -> tuple[int, int]:
+    """Crea una organización real y devuelve ``(organization_id, owner_id)``.
 
     ``user_profiles.organization_id`` y ``user_notifications.organization_id``
     son FK contra ``organizations`` (v64), así que un id inventado revienta el
@@ -48,7 +53,7 @@ def _organizacion_de_pruebas(nombre: str) -> int:
         password_hash="test-hash",  # pragma: allowlist secret -- literal de test
         display_name=nombre,
     )
-    return int(OrganizationRepository().create_organization(nombre, owner)["id"])
+    return int(OrganizationRepository().create_organization(nombre, owner)["id"]), int(owner)
 
 
 # ---------------------------------------------------------------------------
@@ -217,11 +222,12 @@ def test_export_user_profile(tmp_db):
     from db.repositories.user_profiles import upsert_user_profile
     from services.gdpr import export_user_profile
 
-    organizacion = _organizacion_de_pruebas("gdpr-export")
+    organizacion, owner = _organizacion_y_owner("gdpr-export")
 
-    assert export_user_profile("uk1") is None
-    upsert_user_profile("uk1", {"weights": {"importe": 100}}, organizacion)
-    profile = export_user_profile("uk1")
+    # Desde v135 el perfil es de un ``user_id`` (PK): el export se pide por él.
+    assert export_user_profile("uk1", user_id=owner) is None
+    upsert_user_profile({"weights": {"importe": 100}}, organizacion, user_id=owner)
+    profile = export_user_profile("uk1", user_id=owner)
     assert profile is not None
     assert profile["weights"] == {"importe": 100}
     assert profile["organization_id"] == organizacion
@@ -257,12 +263,12 @@ def test_anonymize_user_data_covers_rules_profile_and_notifications(tmp_db):
     from services.gdpr import anonymize_user_data
     from services.watchlist_rules import WatchlistRule, create_rule
 
-    organizacion = _organizacion_de_pruebas("gdpr-anonimizacion")
+    organizacion, owner = _organizacion_y_owner("gdpr-anonimizacion")
 
     create_rule(
         "uk1", WatchlistRule(keyword="SAP", frequency="daily"), organization_id=organizacion
     )
-    upsert_user_profile("uk1", {"weights": {"importe": 100}}, organizacion)
+    upsert_user_profile({"weights": {"importe": 100}}, organizacion, user_id=owner)
     with connect() as c:
         c.execute(
             "INSERT INTO user_notifications (user_key, created_at, type, title, organization_id) "
@@ -270,14 +276,14 @@ def test_anonymize_user_data_covers_rules_profile_and_notifications(tmp_db):
             ("uk1", now_utc_iso(), "titulo", organizacion),
         )
 
-    anonymize_user_data("uk1")
+    anonymize_user_data("uk1", user_id=owner)
 
     with connect() as c:
         n_rules = c.execute(
             "SELECT COUNT(*) FROM watchlist_rules WHERE user_key = %s", ("uk1",)
         ).fetchone()[0]
         n_profile = c.execute(
-            "SELECT COUNT(*) FROM user_profiles WHERE user_key = %s", ("uk1",)
+            "SELECT COUNT(*) FROM user_profiles WHERE user_id = %s", (owner,)
         ).fetchone()[0]
         n_notif = c.execute(
             "SELECT COUNT(*) FROM user_notifications WHERE user_key = %s", ("uk1",)

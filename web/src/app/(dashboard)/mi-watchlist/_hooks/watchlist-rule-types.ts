@@ -8,7 +8,9 @@
  * cualquier componente que solo necesitara nombrar un tipo.
  */
 
+import type * as z from "zod/mini";
 import type { WatchlistRuleMatch, WatchlistRuleOut } from "@/lib/api-types";
+import type { regla } from "@/lib/forms/esquemas";
 
 export type Frequency = "immediate" | "daily" | "weekly";
 
@@ -46,17 +48,10 @@ export interface RuleBody extends RuleCriteriosS4 {
   active: boolean;
 }
 
-/** Estado de formulario compartido entre «Nueva regla» y el panel de edición. */
-export interface RuleFormState {
-  keyword: string;
-  cpv: string;
-  minImporte: string;
-  ccaa: string;
-  frequency: Frequency;
-  tecnologia: string;
-  organo: string;
-  procedimiento: string;
-  tipoContrato: string;
-  bandaMin: string;
-  plazoMinDias: string;
-}
+/**
+ * Valores del formulario de una regla: las claves de `WatchlistRuleBody` con
+ * el valor que da cada control (cadenas; vacío es «no filtra»). Sale del
+ * esquema de S7.2 en vez de declararse aquí, así que no puede divergir del
+ * DTO generado.
+ */
+export type RuleFormState = z.input<typeof regla.esquema>;

@@ -69,12 +69,14 @@ def _seed_adjudicacion(
 
 
 def _seed_prediccion(
-    c, lic_id: str, p10: float, p50: float, p90: float, *, lote_id: int | None = None
+    c, lic_id: str, p10: float, p50: float, p90: float, *, lote_numero: str | None = None
 ) -> None:
+    # Desde v140 la predicción de un lote se identifica por su número (la clave
+    # de negocio que sobrevive a la re-ingesta), no por `lotes.id`.
     c.execute(
-        "INSERT INTO predicciones_baja (licitacion_id, lote_id, p10, p50, p90, model_version, "
-        " computed_at) VALUES (%s, %s, %s, %s, %s, 1, CURRENT_TIMESTAMP)",
-        (lic_id, lote_id, p10, p50, p90),
+        "INSERT INTO predicciones_baja (licitacion_id, lote_numero, p10, p50, p90, "
+        " model_version, computed_at) VALUES (%s, %s, %s, %s, %s, 1, CURRENT_TIMESTAMP)",
+        (lic_id, lote_numero, p10, p50, p90),
     )
 
 
@@ -214,7 +216,7 @@ def test_la_prediccion_del_lote_gana_a_la_del_expediente(db):
             _seed_licitacion(c, lic, 100_000.0)
             lote = _seed_lote(c, lic, "1", 100_000.0)
             _seed_adjudicacion(c, lic, 80_000.0, lote_id=lote)  # baja 20%
-            _seed_prediccion(c, lic, 0.15, 0.20, 0.25, lote_id=lote)
+            _seed_prediccion(c, lic, 0.15, 0.20, 0.25, lote_numero="1")
 
     res = comprobar_calibracion_baja("lote")
     assert res["n"] == 35
@@ -230,13 +232,85 @@ def test_lote_sin_prediccion_aplicable_no_entra_en_el_par(db):
         lote_b = _seed_lote(c, "PAR1", "2", 50_000.0)
         _seed_adjudicacion(c, "PAR1", 40_000.0, lote_id=lote_a)
         _seed_adjudicacion(c, "PAR1", 40_000.0, lote_id=lote_b)
-        # Predicción sólo para el lote A (la PK por expediente aún permite una
-        # única fila; el switch a varias es el commit que v86 deja preparado).
-        _seed_prediccion(c, "PAR1", 0.15, 0.20, 0.25, lote_id=lote_a)
+        # Predicción sólo para el lote A, sin fila agregada.
+        _seed_prediccion(c, "PAR1", 0.15, 0.20, 0.25, lote_numero="1")
 
     medido = _repo().calibracion_baja_por_lote()
     assert medido["n"] == 1
     assert medido["n_prediccion_por_lote"] == 1
+
+
+def test_v140_admite_agregada_y_por_lote_del_mismo_expediente(db):
+    """Lo que la PK de v41 impedía: dos filas del mismo expediente."""
+    with db.connect() as c:
+        _seed_licitacion(c, "COEX1", 100_000.0)
+        _seed_prediccion(c, "COEX1", 0.10, 0.20, 0.30)
+        _seed_prediccion(c, "COEX1", 0.05, 0.15, 0.25, lote_numero="1")
+        _seed_prediccion(c, "COEX1", 0.12, 0.22, 0.32, lote_numero="2")
+        n = c.execute(
+            "SELECT COUNT(*) FROM predicciones_baja WHERE licitacion_id = 'COEX1'"
+        ).fetchone()[0]
+    assert n == 3
+
+
+@pytest.mark.parametrize("lote_numero", [None, "1"])
+def test_v140_sigue_impidiendo_duplicados_en_cada_granularidad(db, lote_numero):
+    """Los dos únicos parciales: ni dos agregadas ni dos del mismo lote."""
+    with db.connect() as c:
+        _seed_licitacion(c, "DUPP1", 100_000.0)
+        _seed_prediccion(c, "DUPP1", 0.10, 0.20, 0.30, lote_numero=lote_numero)
+    # `Exception` y no la clase de psycopg: la conexión puede envolverla. Se
+    # afina con el assert de abajo.
+    with pytest.raises(Exception) as error:
+        with db.connect() as c:
+            _seed_prediccion(c, "DUPP1", 0.10, 0.20, 0.30, lote_numero=lote_numero)
+    assert type(error.value).__name__ == "UniqueViolation" or "unique" in str(error.value).lower()
+
+
+def test_guardar_baja_es_idempotente_en_las_dos_granularidades(db):
+    """El upsert del batch con los árbitros de v140: re-ejecutar no duplica."""
+    from db.repositories.predicciones import PrediccionesRepository
+
+    with db.connect() as c:
+        _seed_licitacion(c, "UPS1", 100_000.0)
+    repo = PrediccionesRepository()
+    filas = [
+        ("UPS1", None, 0.10, 0.20, 0.30, None, "2026-09-18T00:00:00+00:00"),
+        ("UPS1", "1", 0.05, 0.15, 0.25, None, "2026-09-18T00:00:00+00:00"),
+    ]
+    repo.guardar_baja(filas)
+    repo.guardar_baja([(*f[:3], 0.99, *f[4:]) for f in filas])
+
+    assert repo.prediccion_materializada("UPS1")["p50"] == pytest.approx(0.99)
+    assert repo.prediccion_materializada("UPS1", "1")["p50"] == pytest.approx(0.99)
+    with db.connect() as c:
+        n = c.execute(
+            "SELECT COUNT(*) FROM predicciones_baja WHERE licitacion_id = 'UPS1'"
+        ).fetchone()[0]
+    assert n == 2
+
+
+def test_la_prediccion_del_lote_sobrevive_a_la_reingesta(db):
+    """El motivo de ``lote_numero``: `replace_lotes` renumera `lotes.id`.
+
+    Con la FK ``lote_id → lotes ON DELETE CASCADE`` de v86 esta predicción
+    habría desaparecido al re-ingerir el expediente, y con ella el único par
+    predicción↔realidad que la calibración por lote podía medir.
+    """
+    from db.repositories.predicciones import PrediccionesRepository
+    from db.upsert import Lote, replace_lotes
+
+    with db.connect() as c:
+        _seed_licitacion(c, "REI1", 100_000.0)
+        _seed_lote(c, "REI1", "1", 60_000.0)
+        _seed_prediccion(c, "REI1", 0.05, 0.15, 0.25, lote_numero="1")
+
+    nuevo_id = replace_lotes("REI1", [Lote(licitacion_id="REI1", numero="1", importe=60_000.0)])[
+        "1"
+    ]
+
+    desglose = PrediccionesRepository().predicciones_por_lote("REI1")
+    assert [(f["lote_id"], f["lote_numero"]) for f in desglose] == [(nuevo_id, "1")]
 
 
 def test_la_granularidad_por_lote_no_altera_el_agregado(db):

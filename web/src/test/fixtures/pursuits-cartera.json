@@ -1,0 +1,21 @@
+[
+  {
+    "id": 1,
+    "organization_id": 1,
+    "pursuit_id": 7,
+    "licitacion_id": "LIC-2024-0100",
+    "titulo": "Mantenimiento de sistemas de prueba",
+    "organo_contratacion": "Ministerio de Prueba",
+    "cpv": "72267000",
+    "tecnologia": "SAP",
+    "importe_adjudicado": 250000.0,
+    "fecha_inicio": "2024-10-01",
+    "fecha_fin_origen": "2026-09-30",
+    "fecha_fin_efectiva": "2027-09-30",
+    "prorrogas_aplicadas": 1,
+    "meses_restantes": 12,
+    "relicitacion_desde": "2027-03-01",
+    "relicitacion_hasta": "2027-06-30",
+    "renovacion_pursuit_id": null
+  }
+]

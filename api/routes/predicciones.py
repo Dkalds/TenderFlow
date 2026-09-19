@@ -25,7 +25,7 @@ from __future__ import annotations
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 from api.concurrency import run_db
 from api.routes.dual_auth import require_any_auth
@@ -42,6 +42,25 @@ router = APIRouter(tags=["predicciones"])
 _CALIBRACION_CACHE_TTL_S = 900
 
 
+class PrediccionBajaLote(BaseModel):
+    """Predicción **propia** de un lote, materializada por el batch por lote (v140).
+
+    Solo existe para lotes con fila en ``predicciones_baja``: el desglose no se
+    rellena con la cifra del expediente (ver
+    ``PrediccionesRepository.predicciones_por_lote``).
+    """
+
+    lote_id: int
+    lote_numero: str
+    p10: float
+    p50: float
+    p90: float
+    #: NULL = baseline histórico por lote, no modelo.
+    model_version: int | None = None
+    computed_at: str | None = None
+    serving: str
+
+
 class PrediccionBajaResult(BaseModel):
     """Predicción materializada y/o baja real de una licitación.
 
@@ -55,6 +74,11 @@ class PrediccionBajaResult(BaseModel):
     p10: float | None = None
     p50: float | None = None
     p90: float | None = None
+    #: La columna es ``INTEGER`` pero el contrato publicado dice ``string``, y
+    #: Pydantic v2 no convierte ``int`` → ``str``: en cuanto el batch sirviera un
+    #: modelo activo (hoy sirve el baseline, NULL), esta ruta habría respondido
+    #: 500. Se convierte en el validador en vez de cambiar el tipo, porque
+    #: cambiarlo rompe el contrato (``scripts/check_api_breaking.py``).
     model_version: str | None = None
     computed_at: str | None = None
     serving: str | None = None
@@ -73,6 +97,17 @@ class PrediccionBajaResult(BaseModel):
     #: la columna, el switch sigue pendiente de medir su ``mae_p50``).
     #: ``baja_real``/``importe_adjudicado`` sí son siempre del lote pedido.
     prediccion_ambito: str | None = None
+    #: Desglose por lote, ADITIVO (v140): solo en la respuesta del expediente
+    #: completo y solo si el batch por lote (``ML_BAJA_POR_LOTE``) materializó
+    #: alguna fila. Los campos de primer nivel siguen siendo la cifra agregada,
+    #: que es la que se sirve por defecto mientras la comparación de
+    #: ``mae_p50`` no diga otra cosa.
+    lotes: list[PrediccionBajaLote] | None = None
+
+    @field_validator("model_version", mode="before")
+    @classmethod
+    def _version_como_texto(cls, valor: object) -> object:
+        return str(valor) if isinstance(valor, int) and not isinstance(valor, bool) else valor
 
 
 @router.get(

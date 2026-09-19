@@ -2,12 +2,13 @@ import type { MetadataRoute } from "next";
 import {
   contarPublicables,
   entradasSitemap,
+  hubsOrganoAnunciables,
   obtenerHubs,
   SITEMAP_POR_FICHERO,
 } from "@/lib/publico-api";
 import { SITE_URL } from "@/lib/site";
 import { paginasDeSitemap } from "@/lib/rutas-publicas";
-import { rutaHubCcaa, rutaHubCpv, rutaLicitacion } from "@/lib/slug";
+import { rutaHubCcaa, rutaHubCpv, rutaHubOrgano, rutaLicitacion } from "@/lib/slug";
 
 /**
  * Sitemap particionado.
@@ -60,7 +61,11 @@ import { rutaHubCcaa, rutaHubCpv, rutaLicitacion } from "@/lib/slug";
  * justamente las páginas que reparten autoridad hacia las fichas.
  */
 async function estaticas(): Promise<MetadataRoute.Sitemap> {
-  const { ccaa, cpv } = await obtenerHubs();
+  const hubs = await obtenerHubs();
+  const { ccaa, cpv } = hubs;
+  // F6.5 — sólo los órganos con más de diez anuncios (ver
+  // `hubsOrganoAnunciables`): los hay por miles y la mayoría son delgados.
+  const organos = hubsOrganoAnunciables(hubs);
 
   return [
     // Las páginas fijas salen de `lib/rutas-publicas.ts`, que es también la
@@ -81,6 +86,15 @@ async function estaticas(): Promise<MetadataRoute.Sitemap> {
       url: `${SITE_URL}${rutaHubCpv(hub.codigo)}`,
       changeFrequency: "daily" as const,
       priority: 0.7,
+    })),
+    // El índice de órganos sólo existe (200) si hay alguno que anunciar.
+    ...(organos.length > 0
+      ? [{ url: `${SITE_URL}/licitaciones/organo`, changeFrequency: "daily" as const, priority: 0.6 }]
+      : []),
+    ...organos.map((hub) => ({
+      url: `${SITE_URL}${rutaHubOrgano(hub.slug)}`,
+      changeFrequency: "daily" as const,
+      priority: 0.6,
     })),
   ];
 }

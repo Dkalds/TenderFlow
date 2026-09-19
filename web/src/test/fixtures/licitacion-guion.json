@@ -1,0 +1,24 @@
+{
+  "licitacion_id": "LIC-2026-0001",
+  "firma": "abc123",
+  "sin_guion": null,
+  "criterios": [
+    {
+      "criterio": "Oferta económica",
+      "peso_pct": 60,
+      "puntos": [
+        {
+          "texto": "Justificar la fórmula de precio aplicada",
+          "sin_base": false,
+          "evidencia": [
+            {
+              "documento_id": 12,
+              "page_number": 14,
+              "quote": "Oferta económica: hasta 60 puntos"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

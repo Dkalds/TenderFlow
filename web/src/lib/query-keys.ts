@@ -104,6 +104,41 @@ export const fichaKeys = {
   estado: (licitacionId: string) => ["tender-fact-sheet-estado", licitacionId] as const,
 };
 
+/**
+ * Herramientas que leen la ficha del pliego (F2.2, F2.5, F2.6, F2.8).
+ *
+ * Raíces propias y no bajo `tender-fact-sheet`: el `setQueryData` de la
+ * extracción escribe en `fichaKeys.detail`, y una clave hija con otra forma
+ * de dato compartiría prefijo con ella sin compartir tipo.
+ */
+export const simuladorKeys = {
+  all: ["simulador-precio"] as const,
+  detail: (licitacionId: string, bajas: readonly number[], referencia: number | null) =>
+    ["simulador-precio", licitacionId, [...bajas], referencia] as const,
+};
+
+export const paginaKeys = {
+  all: ["pagina-pliego"] as const,
+  detail: (
+    licitacionId: string,
+    documentoId: number,
+    pagina: number,
+    inicio: number | null,
+    fin: number | null,
+  ) => ["pagina-pliego", licitacionId, documentoId, pagina, inicio, fin] as const,
+};
+
+export const guionKeys = {
+  all: ["guion-oferta"] as const,
+  detail: (licitacionId: string) => ["guion-oferta", licitacionId] as const,
+};
+
+export const comparacionKeys = {
+  all: ["comparar-fichas"] as const,
+  /** El orden importa: es el de las columnas que eligió el usuario. */
+  fichas: (ids: readonly string[]) => ["comparar-fichas", [...ids]] as const,
+};
+
 // ---------------------------------------------------------------------------
 // Analítica
 // ---------------------------------------------------------------------------
@@ -122,6 +157,13 @@ export const analyticsKeys = {
     ["analytics", "overview", "/api/v1/analytics/overview", params] as const,
   /** Score de las filas visibles de `detalle` (batch por `id_externo`). */
   scoringBatch: (ids: readonly string[]) => ["scoring-batch", ids] as const,
+  /**
+   * Diff personal del Resumen (`GET /analytics/resumen/desde-mi-ultima-visita`,
+   * F5.4). No se comparte con `resumen/novedades`: es otra pregunta y otro
+   * endpoint.
+   */
+  desdeUltimaVisita: (organizationId: number | null) =>
+    ["analytics", "resumen", "desde-mi-ultima-visita", organizationId] as const,
 };
 
 export const radarKeys = {
@@ -132,6 +174,11 @@ export const radarKeys = {
   dismissed: (organizationId: number | null, visibles: readonly string[]) =>
     ["radar", "dismissed-tenders", organizationId, visibles] as const,
   organo: (organo: string | null | undefined) => ["radar", "organo", organo] as const,
+  // Estas dos las usa también el prefetch en servidor del Radar
+  // (`radar/layout.tsx`): son las del Radar que no dependen de la organización
+  // activa, que vive en `localStorage` y el servidor no puede leer.
+  dismissals: ["radar", "dismissals"] as const,
+  proximas: (limite: number) => ["radar", "proximas", limite] as const,
 };
 
 // ---------------------------------------------------------------------------
@@ -188,6 +235,26 @@ export const competitiveKeys = {
     ["competitive-company-profile", empresaId, scopeQuery] as const,
   companyAwards: (empresaId: number | string, params: string | Record<string, string>) =>
     ["competitive-company-awards", empresaId, params] as const,
+  /**
+   * Cruces con un competidor (`GET /competitive/empresas/{key}/contra-mi`,
+   * F3.2). Lleva la organización: son las oportunidades de ese equipo.
+   */
+  contraMi: (empresaKey: string, organizationId: number | null, meses: number) =>
+    ["competitive", "contra-mi", empresaKey, organizationId, meses] as const,
+  /** Socios de UTE de un segmento (`GET /competitive/partners`, F3.3). */
+  partners: (cpv: string | null, ccaa: string | null) =>
+    ["competitive", "partners", cpv, ccaa] as const,
+};
+
+// ---------------------------------------------------------------------------
+// Búsqueda global (paleta ⌘K)
+// ---------------------------------------------------------------------------
+
+export const searchKeys = {
+  all: ["search"] as const,
+  /** `GET /search/global` (F1.2), por término y organización activa. */
+  global: (q: string, organizationId: number | null) =>
+    ["search", "global", q, organizationId] as const,
 };
 
 // ---------------------------------------------------------------------------
@@ -228,6 +295,27 @@ export const pursuitKeys = {
    */
   actividad: (organizationId: number | null, usuario: number | null) =>
     ["pursuits", "actividad", organizationId, usuario] as const,
+  /**
+   * Kit de presentación de una oportunidad (`GET /pursuits/{id}/kit`, F2.3).
+   * Cuelga de `pursuits`: asignar un documento crea una tarea y cambia la
+   * próxima acción de la oportunidad, que leen el tablero y la agenda.
+   */
+  kit: (pursuitId: number | string, organizationId: number | null) =>
+    ["pursuits", "kit", String(pursuitId), organizationId] as const,
+  /** Contratos ganados en ejecución (`GET /pursuits/cartera`, F4.3). */
+  cartera: (organizationId: number | null) => ["pursuits", "cartera", organizationId] as const,
+};
+
+/**
+ * Etiquetas de organización (F1.6). `porObjeto` lleva los ids pedidos porque
+ * la respuesta sólo trae los objetos de esa página; `all` es prefijo de todo y
+ * es lo que invalidan las mutaciones.
+ */
+export const etiquetaKeys = {
+  all: ["etiquetas"] as const,
+  lista: (organizationId: number | null) => ["etiquetas", "lista", organizationId] as const,
+  porObjeto: (organizationId: number | null, objetoTipo: string, ids: readonly string[]) =>
+    ["etiquetas", "por-objeto", organizationId, objetoTipo, [...ids].sort()] as const,
 };
 
 export const pursuitCommentKeys = {
@@ -239,6 +327,12 @@ export const organizationKeys = {
   all: ["organizations"] as const,
   members: (organizationId: number | null) => ["organization-members", organizationId] as const,
   settings: (organizationId: number | null) => ["organization-settings", organizationId] as const,
+  /**
+   * Plantilla de tareas por etapa (F4.6). Nace bajo la raíz, no con literal
+   * propio como `members`/`settings`: no hay clientes desplegados que migrar.
+   */
+  plantillaTareas: (organizationId: number | null) =>
+    ["organizations", "plantilla-tareas", organizationId] as const,
 };
 
 export const perfilKeys = {

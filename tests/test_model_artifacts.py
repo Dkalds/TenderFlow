@@ -451,3 +451,75 @@ def test_sin_bucket_configurado_el_camino_es_el_de_siempre(tmp_db, tmp_path, cac
     from shared.model_artifacts import _download_bucket_asset
 
     assert _download_bucket_asset("baja_model.pkl", tmp_path / "destino.pkl") is False
+
+
+# ── Un solo transporte para la Release (P3 del backlog, 2026-09-18) ─────────
+
+
+def test_la_descarga_de_la_release_delega_en_release_assets(tmp_path, monkeypatch):
+    """``_download_release_asset`` usa el transporte pinned, no ``requests``."""
+    from shared import model_artifacts
+
+    monkeypatch.setenv("GITHUB_TOKEN", "tok")
+    dest = tmp_path / "baja_model.pkl"
+    with (
+        patch(
+            "shared.release_assets.fetch_latest_release",
+            return_value={"assets": [{"name": "baja_model.pkl", "id": 9}]},
+        ) as release,
+        patch("shared.release_assets.download_asset", return_value=True) as descarga,
+    ):
+        assert model_artifacts._download_release_asset("baja_model.pkl", dest) is True
+    release.assert_called_once_with("Dkalds/TenderFlow", token="tok")
+    descarga.assert_called_once_with("Dkalds/TenderFlow", 9, dest, token="tok")
+
+
+def test_la_release_sin_el_asset_no_intenta_descargar(tmp_path):
+    from shared import model_artifacts
+
+    with (
+        patch(
+            "shared.release_assets.fetch_latest_release",
+            return_value={"assets": [{"name": "otro.pkl", "id": 1}]},
+        ),
+        patch("shared.release_assets.download_asset") as descarga,
+    ):
+        assert model_artifacts._download_release_asset("baja_model.pkl", tmp_path / "x") is False
+    descarga.assert_not_called()
+
+
+def test_la_release_inaccesible_devuelve_false(tmp_path):
+    from shared import model_artifacts
+
+    with patch("shared.release_assets.fetch_latest_release", return_value=None):
+        assert model_artifacts._download_release_asset("baja_model.pkl", tmp_path / "x") is False
+
+
+def test_una_descarga_fallida_devuelve_false(tmp_path):
+    from shared import model_artifacts
+
+    with (
+        patch(
+            "shared.release_assets.fetch_latest_release",
+            return_value={"assets": [{"name": "baja_model.pkl", "id": 9}]},
+        ),
+        patch("shared.release_assets.download_asset", return_value=False),
+    ):
+        assert model_artifacts._download_release_asset("baja_model.pkl", tmp_path / "x") is False
+
+
+def test_model_artifacts_no_usa_requests():
+    """El salto sin pinning no puede volver por la puerta de atrás."""
+    import ast
+    import inspect
+
+    from shared import model_artifacts
+
+    arbol = ast.parse(inspect.getsource(model_artifacts))
+    importados = {
+        alias.name
+        for nodo in ast.walk(arbol)
+        if isinstance(nodo, ast.Import)
+        for alias in nodo.names
+    } | {nodo.module for nodo in ast.walk(arbol) if isinstance(nodo, ast.ImportFrom)}
+    assert "requests" not in importados

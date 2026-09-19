@@ -14,7 +14,15 @@ export function LotesLicitacion({ lotes }: { lotes: NonNullable<LicitacionPublic
   return (
     <>
       <h2 className="font-display mt-12 text-xl font-semibold tracking-[-0.02em]">Lotes ({lotes.length})</h2>
-      <div className="border-border/70 bg-card mt-5 overflow-x-auto rounded-xl border px-5 py-2">
+      {/* Foco propio: en móvil la tabla de lotes scrollea en horizontal y no
+          tiene controles dentro (axe `scrollable-region-focusable`). */}
+      <div
+        role="region"
+        aria-label="Lotes del expediente"
+        // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex -- región con scroll sin controles: WCAG 2.1.1 exige que el teclado pueda desplazarla (axe scrollable-region-focusable)
+        tabIndex={0}
+        className="border-border/70 bg-card focus-visible:ring-ring mt-5 overflow-x-auto rounded-xl border px-5 py-2 focus-visible:ring-2 focus-visible:outline-none"
+      >
         <table className="w-full min-w-[32rem] text-sm">
           <thead>
             <tr className="border-border/60 text-muted-foreground border-b text-left text-[11px] tracking-wide uppercase">

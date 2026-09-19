@@ -90,6 +90,16 @@ def test_los_campos_originales_de_coalesce_siguen_protegidos() -> None:
         )
 
 
+def test_tipos_anuncio_no_se_nulea_en_una_reingesta() -> None:
+    """v138: solo el parser CODICE lee `NoticeTypeCode`; un camino que no lo lee
+    trae `None` por no saberlo, y eso no puede borrar los anuncios ya vistos."""
+    assert "tipos_anuncio" in {f.name for f in fields(Licitacion)}
+    assert "tipos_anuncio" in _LIC_COALESCE_UPDATE_FIELDS
+    assert _asignacion("tipos_anuncio") == (
+        "tipos_anuncio=COALESCE(excluded.tipos_anuncio, licitaciones.tipos_anuncio)"
+    )
+
+
 def test_una_columna_normal_sigue_sobreescribiendose() -> None:
     """COALESCE es la excepción, no la regla: el estado debe pisarse."""
     assert _asignacion("estado") == "estado=excluded.estado"

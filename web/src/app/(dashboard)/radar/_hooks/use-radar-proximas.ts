@@ -3,6 +3,8 @@
 import { useQuery } from "@tanstack/react-query";
 import { fetchWithAuth } from "@/lib/api-client";
 import type { Schemas } from "@/lib/api-types";
+import { radarKeys } from "@/lib/query-keys";
+import { LIMITE_PROXIMAS } from "../_lib/prefetch";
 
 /**
  * Fuente de la bandeja «Próximas» (T5): `GET /api/v1/radar/proximas`.
@@ -32,15 +34,6 @@ import type { Schemas } from "@/lib/api-types";
 export type RadarProxima = Schemas["RadarProxima"];
 export type RadarProximasResult = Schemas["RadarProximasResult"];
 
-/**
- * Cuántas filas se piden. Cabe la bandeja entera con holgura: la medición del
- * spike (`docs/plans/2026-09-spike-planes-anuales-placsp.md`) dice que `PRE` es
- * el 0,14 % del flujo de PLACSP y que `CPM` no entra por ahí. Si algún día el
- * `total` supera este tope, la cabecera lo dirá comparando `total` con las
- * filas recibidas en vez de callarlo.
- */
-const LIMITE_PROXIMAS = 100;
-
 export interface RadarProximasConsola {
   items: RadarProxima[];
   /** `null` mientras no se sabe: un «0» durante la carga afirma que no hay. */
@@ -61,7 +54,7 @@ export interface RadarProximasConsola {
 
 export function useRadarProximas(): RadarProximasConsola {
   const query = useQuery<RadarProximasResult>({
-    queryKey: ["radar", "proximas", LIMITE_PROXIMAS],
+    queryKey: radarKeys.proximas(LIMITE_PROXIMAS),
     queryFn: () => fetchWithAuth(`/api/v1/radar/proximas?limit=${LIMITE_PROXIMAS}`),
     staleTime: 5 * 60_000,
   });

@@ -13,6 +13,10 @@
  * (el Sheet se abre encima de la página) y dos `<label for>` con el mismo `id`
  * dejan al lector de pantalla apuntando al campo equivocado.
  *
+ * Los valores y su validación son del formulario que los monta (react-hook-form
+ * con el esquema de `WatchlistRuleBody`, S7.2); aquí solo se pintan, junto al
+ * error de cada campo enlazado por `aria-describedby`.
+ *
  * **Los seis criterios de S4.4 viven aquí y no en el alta rápida.** Crear una
  * regla es un gesto de dos campos —palabra clave y poco más— y afinarla es un
  * trabajo aparte que se hace sobre una regla que ya existe y ya tiene un
@@ -21,6 +25,7 @@
  */
 
 import { Input } from "@/components/ui/input";
+import { ariaCampo, CampoError } from "@/lib/forms/campo";
 import {
   Select,
   SelectContent,
@@ -47,15 +52,20 @@ function opcionesConVacio(valores: string[]): { value: string; label: string }[]
   ];
 }
 
+/** Mensaje de error por campo, ya resuelto por el esquema. */
+export type RuleFormErrors = Partial<Record<keyof RuleFormState, string>>;
+
 export function RuleFormFields({
   value,
   onChange,
+  errores = {},
   ccaaList,
   tecnologiaList = [],
   idPrefix,
 }: {
   value: RuleFormState;
   onChange: (patch: Partial<RuleFormState>) => void;
+  errores?: RuleFormErrors;
   ccaaList: string[];
   /** Catálogo de `/meta/filters`; vacío mientras carga o si la API falla. */
   tecnologiaList?: string[];
@@ -72,7 +82,9 @@ export function RuleFormFields({
           placeholder="Ej: SAP, infraestructura…"
           value={value.keyword}
           onChange={(e) => onChange({ keyword: e.target.value })}
+          {...ariaCampo(`${idPrefix}-keyword`, errores.keyword)}
         />
+        <CampoError campoId={`${idPrefix}-keyword`} mensaje={errores.keyword} />
       </div>
       <div className="space-y-1">
         <label htmlFor={`${idPrefix}-cpv`} className="text-sm font-medium">
@@ -83,7 +95,9 @@ export function RuleFormFields({
           placeholder="Ej: 72000000"
           value={value.cpv}
           onChange={(e) => onChange({ cpv: e.target.value })}
+          {...ariaCampo(`${idPrefix}-cpv`, errores.cpv)}
         />
+        <CampoError campoId={`${idPrefix}-cpv`} mensaje={errores.cpv} />
       </div>
       <div className="space-y-1">
         <label htmlFor={`${idPrefix}-importe`} className="text-sm font-medium">
@@ -93,9 +107,11 @@ export function RuleFormFields({
           id={`${idPrefix}-importe`}
           type="number"
           placeholder="Ej: 100000"
-          value={value.minImporte}
-          onChange={(e) => onChange({ minImporte: e.target.value })}
+          value={value.min_importe}
+          onChange={(e) => onChange({ min_importe: e.target.value })}
+          {...ariaCampo(`${idPrefix}-importe`, errores.min_importe)}
         />
+        <CampoError campoId={`${idPrefix}-importe`} mensaje={errores.min_importe} />
       </div>
       <div className="space-y-1">
         <label htmlFor={`${idPrefix}-ccaa`} className="text-sm font-medium">
@@ -148,8 +164,9 @@ export function RuleFormFields({
           placeholder="Ej: Ayuntamiento de Alcañiz"
           value={value.organo}
           onChange={(e) => onChange({ organo: e.target.value })}
-          aria-describedby={`${idPrefix}-organo-note`}
+          {...ariaCampo(`${idPrefix}-organo`, errores.organo, `${idPrefix}-organo-note`)}
         />
+        <CampoError campoId={`${idPrefix}-organo`} mensaje={errores.organo} />
         <p id={`${idPrefix}-organo-note`} className="text-muted-foreground text-xs">
           No hace falta clavar el nombre: se compara sin tildes, sin mayúsculas y sin la forma jurídica.
         </p>
@@ -181,8 +198,8 @@ export function RuleFormFields({
           Tipo de contrato
         </label>
         <Select
-          value={value.tipoContrato || SIN_FILTRO}
-          onValueChange={(v) => onChange({ tipoContrato: v === SIN_FILTRO ? "" : v })}
+          value={value.tipo_contrato || SIN_FILTRO}
+          onValueChange={(v) => onChange({ tipo_contrato: v === SIN_FILTRO ? "" : v })}
         >
           <SelectTrigger id={`${idPrefix}-tipo-contrato`}>
             <SelectValue placeholder="— Cualquiera —" />
@@ -202,8 +219,10 @@ export function RuleFormFields({
           Banda mínima del Radar
         </label>
         <Select
-          value={value.bandaMin || SIN_FILTRO}
-          onValueChange={(v) => onChange({ bandaMin: v === SIN_FILTRO ? "" : v })}
+          value={value.banda_min || SIN_FILTRO}
+          // Las opciones salen de `BANDA_OPTIONS`; el esquema rechaza cualquier
+          // otra cosa antes de enviar.
+          onValueChange={(v) => onChange({ banda_min: (v === SIN_FILTRO ? "" : v) as RuleFormState["banda_min"] })}
         >
           <SelectTrigger id={`${idPrefix}-banda`} aria-describedby={`${idPrefix}-banda-note`}>
             <SelectValue placeholder="— Cualquiera —" />
@@ -231,10 +250,11 @@ export function RuleFormFields({
           min={0}
           max={365}
           placeholder="Ej: 15"
-          value={value.plazoMinDias}
-          onChange={(e) => onChange({ plazoMinDias: e.target.value })}
-          aria-describedby={`${idPrefix}-plazo-note`}
+          value={value.plazo_min_dias}
+          onChange={(e) => onChange({ plazo_min_dias: e.target.value })}
+          {...ariaCampo(`${idPrefix}-plazo`, errores.plazo_min_dias, `${idPrefix}-plazo-note`)}
         />
+        <CampoError campoId={`${idPrefix}-plazo`} mensaje={errores.plazo_min_dias} />
         <p id={`${idPrefix}-plazo-note`} className="text-muted-foreground text-xs">
           Descarta lo que vence antes de que te dé tiempo a preparar la oferta.
         </p>

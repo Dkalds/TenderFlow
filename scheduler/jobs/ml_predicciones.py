@@ -55,6 +55,7 @@ def run_scoring() -> dict[str, Any]:
     from services.ml.scoring import score_predicciones_baja, score_predicciones_retencion
 
     baja = score_predicciones_baja()
+    baja_por_lote = _score_baja_por_lote_si_activo()
     retencion = score_predicciones_retencion()
     drift = comprobar_drift_baja()
     calibracion = comprobar_calibracion_baja()
@@ -63,11 +64,33 @@ def run_scoring() -> dict[str, Any]:
     purga = purgar_predicciones_cerradas()
     return {
         "baja": baja,
+        "baja_por_lote": baja_por_lote,
         "retencion": retencion,
         "drift": drift,
         "calibracion": calibracion,
         "purga": purga,
     }
+
+
+def _score_baja_por_lote_si_activo() -> dict[str, Any]:
+    """Batch por lote (v140), solo con ``ML_BAJA_POR_LOTE`` encendido.
+
+    Apagado por defecto: sustituir la granularidad servida está condicionado a
+    que ``scripts/comparar_baja_por_lote.py`` mida una mejora de ``mae_p50``.
+    Encendido, un fallo aquí no tumba el batch agregado —que ya escribió y es
+    lo que se sirve—: se loguea y se devuelve como ``error``.
+    """
+    from config import settings
+
+    if not bool(getattr(settings, "ML_BAJA_POR_LOTE", False)):
+        return {"status": "desactivado"}
+    from services.ml.scoring import score_predicciones_baja_por_lote
+
+    try:
+        return score_predicciones_baja_por_lote()
+    except Exception as exc:
+        log.warning("ml_scoring_por_lote_failed", error=str(exc))
+        return {"status": "error", "error": str(exc)}
 
 
 def run_retrain() -> dict[str, Any]:

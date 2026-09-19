@@ -35,8 +35,12 @@ menos accionable que 30 cifras; pero sustituir el agregado está condicionado a
 medir antes el ``mae_p50`` por lote contra el agregado actual, y esa medida
 requiere Postgres con histórico. :meth:`~MlDatasetRepository.pares_baja_por_lote`
 y :meth:`~MlDatasetRepository.calibracion_baja_por_lote` son la instrumentación
-que hace posible esa comparación (ver ``services.ml.calibration``); hasta que
-diga que el lote mejora, el agregado se queda.
+que hace posible esa comparación (ver ``services.ml.calibration`` y
+``scripts/comparar_baja_por_lote.py``); hasta que diga que el lote mejora, el
+agregado se queda. Desde v140 ``predicciones_baja`` guarda además filas por
+lote (``lote_numero`` no nulo) cuando el batch las materializa
+(``ML_BAJA_POR_LOTE``): toda lectura **agregada** de esa tabla filtra
+``lote_numero IS NULL``, o contaría cada expediente una vez por lote.
 
 Denominador del target -- la regla está en :func:`_sql_agregado`:
 
@@ -62,6 +66,7 @@ from db.sql_fragments import (
     UNIVERSOS_TECNOLOGICOS,
     exclude_duplicados_sql,
 )
+from shared.dates import ANIO_MINIMO_PLAUSIBLE
 
 # Exclusión de duplicados cross-fuente. Era una copia literal de la subconsulta
 # —``db/`` no podía depender de ``services/`` (ADR-024)—; desde que la
@@ -78,6 +83,34 @@ _UNIVERSO = TECHNOLOGY_OBSERVED_SQL
 # modificados mal atribuidos). Mismo criterio que ``VALID_PAIR``, aplicado al
 # agregado.
 _TOLERANCIA_SOBRECOSTE = 1.5
+
+# Primer día plausible de una ``fecha_adjudicacion`` (``shared.dates``, C4.4).
+# Desde C4.4 el conector de PSCP corta en origen el ``1899-12-30`` —el cero de
+# la epoch de Excel, o sea una celda vacía—, pero las filas ya escritas siguen
+# en ``adjudicaciones`` y el conector no puede verlas. Sin este corte ganaban el
+# ``LEAST`` de ``fecha_anchor`` y entraban en el train de **todos** los folds con
+# los acumuladores vacíos, alimentándolos como si precedieran a todo el
+# histórico. Aquí se tratan igual que en el conector: como una adjudicación sin
+# fecha, que es lo que son, y que ya estaba fuera del dataset por el
+# ``fecha_adjudicacion IS NOT NULL``. Va como parámetro (no interpolado) y es
+# un umbral de *plausibilidad* distinto del ``_ANIO_MINIMO`` del parser de
+# ``services/ml/features.py``, que no se toca.
+_FECHA_ADJ_MINIMA = f"{ANIO_MINIMO_PLAUSIBLE:04d}-01-01"
+
+
+def _filtro_fecha_adj(columna: str, hasta: str | None) -> tuple[str, list[Any]]:
+    """Cláusulas ``AND`` sobre la fecha de adjudicación: plausible y ``<= hasta``.
+
+    Un ``>=`` también descarta los NULL, que es lo que ya hacía el ``<= hasta``
+    cuando había corte: las subconsultas de lotes dejan de contar una
+    adjudicación sin fecha que la CTE principal nunca vio.
+    """
+    sql = f" AND {columna} >= %s"
+    params: list[Any] = [_FECHA_ADJ_MINIMA]
+    if hasta:
+        sql += f" AND {columna} <= %s"
+        params.append(hasta)
+    return sql, params
 
 
 def _sql_agregado(hasta: str | None) -> tuple[str, list[Any]]:
@@ -96,11 +129,9 @@ def _sql_agregado(hasta: str | None) -> tuple[str, list[Any]]:
     incorporar el resultado de la propia fila antes de leerla, que es la
     garantía anti-fuga de ``services.ml.features``.
     """
-    filtro_adj = " AND a.fecha_adjudicacion <= %s" if hasta else ""
-    filtro_lote = " AND fecha_adjudicacion <= %s" if hasta else ""
-    params: list[Any] = []
-    if hasta:
-        params.extend([hasta, hasta])
+    filtro_adj, params = _filtro_fecha_adj("a.fecha_adjudicacion", hasta)
+    filtro_lote, params_lote = _filtro_fecha_adj("fecha_adjudicacion", hasta)
+    params.extend(params_lote)
 
     sql = f"""
         WITH adj AS (
@@ -176,8 +207,8 @@ def _sql_por_lote(hasta: str | None) -> tuple[str, list[Any]]:
     - ``lote_id IS NULL`` -> una sola fila por expediente con denominador
       ``licitaciones.importe``. Es el caso de lote único (o de datos anteriores
       a v65_lotes, donde el parser no resolvía el lote): el expediente **es** la
-      unidad de puja, y por eso la clave admite ``lote_id`` NULL, igual que el
-      índice único ``(licitacion_id, COALESCE(lote_id, -1))`` de v86.
+      unidad de puja, y por eso la clave admite lote NULL, igual que el único
+      parcial ``uq_pred_baja_expediente`` de v140.
 
     El caso mixto —expediente con algunas adjudicaciones con lote resuelto y
     otras sin él— descarta las filas sin lote en vez de darles un denominador.
@@ -194,11 +225,9 @@ def _sql_por_lote(hasta: str | None) -> tuple[str, list[Any]]:
     esas se exigen con ``lo.importe > 0``: un lote sin presupuesto publicado no
     tiene denominador propio y no puede entrar en el dataset por lote.
     """
-    filtro_adj = " AND a.fecha_adjudicacion <= %s" if hasta else ""
-    filtro_mixto = " AND fecha_adjudicacion <= %s" if hasta else ""
-    params: list[Any] = []
-    if hasta:
-        params.extend([hasta, hasta])
+    filtro_adj, params = _filtro_fecha_adj("a.fecha_adjudicacion", hasta)
+    filtro_mixto, params_mixto = _filtro_fecha_adj("fecha_adjudicacion", hasta)
+    params.extend(params_mixto)
 
     sql = f"""
         WITH adj AS (
@@ -237,6 +266,11 @@ def _sql_por_lote(hasta: str | None) -> tuple[str, list[Any]]:
                    COALESCE(lo.cpv, l.cpv) AS cpv,
                    l.ccaa, l.provincia, l.tipo_contrato, l.fuente,
                    l.importe, l.duracion_valor, l.duracion_unidad,
+                   -- El tamaño **de la unidad que se puja**, conocido al
+                   -- publicar: es la feature de importe del modelo por lote
+                   -- (``services.ml.features``). ``importe`` sigue siendo el
+                   -- del expediente para no cambiar el contrato de la columna.
+                   lo.importe AS importe_lote,
                    COALESCE(lp.n_lotes, 0) AS n_lotes,
                    adj.total_adjudicado, adj.n_ofertas_media,
                    COALESCE(lo.importe, l.importe) AS presupuesto_efectivo
@@ -263,16 +297,21 @@ def _sql_por_lote(hasta: str | None) -> tuple[str, list[Any]]:
 # false < true, así que la específica gana a la agregada; ``LIMIT 1`` garantiza
 # que un expediente con predicción por lote Y agregada no cuente dos veces.
 #
-# Mientras el serving siga siendo agregado (v86 no cambia el default), TODAS
-# las filas caen en la rama agregada: eso no es un apaño, es exactamente la
-# medida que pide el gate — el modelo actual evaluado a granularidad de lote,
-# que es el número contra el que hay que comparar un futuro modelo por lote.
+# El emparejamiento va por ``lote_numero`` (la clave de negocio que v140
+# persiste), no por ``lotes.id``: la re-ingesta que trae la adjudicación
+# renumera los lotes, y un JOIN por id no encontraría nunca la predicción que
+# se hizo con el expediente abierto.
+#
+# Mientras el batch no materialice filas por lote (``ML_BAJA_POR_LOTE``
+# apagado), TODAS las filas caen en la rama agregada: eso no es un apaño, es
+# exactamente la medida que pide el gate — el modelo actual evaluado a
+# granularidad de lote, el número contra el que se compara el modelo por lote.
 _PREDICCION_APLICABLE = """
-    SELECT p.p10, p.p50, p.p90, p.lote_id, p.model_version
+    SELECT p.p10, p.p50, p.p90, p.lote_numero, p.model_version
     FROM predicciones_baja p
     WHERE p.licitacion_id = pl.id_externo
-      AND (p.lote_id = pl.lote_id OR p.lote_id IS NULL)
-    ORDER BY (p.lote_id IS NULL)
+      AND (p.lote_numero = pl.lote_numero OR p.lote_numero IS NULL)
+    ORDER BY (p.lote_numero IS NULL)
     LIMIT 1
 """
 
@@ -375,8 +414,7 @@ class MlDatasetRepository:
         :meth:`pares_baja_agregada`: atribuir todo el expediente a su
         adjudicatario principal distorsionaría la concentración medida.
         """
-        filtro = " AND a.fecha_adjudicacion <= %s" if hasta else ""
-        params: list[Any] = [hasta] if hasta else []
+        filtro, params = _filtro_fecha_adj("a.fecha_adjudicacion", hasta)
         sql = f"""
             SELECT a.licitacion_id,
                    MAX(a.fecha_adjudicacion) AS fecha,
@@ -433,13 +471,65 @@ class MlDatasetRepository:
                 c.execute(sql, (*estados_cerrados, max(1, min(int(limit), 50_000))))
             )
 
-    def media_global_baja(self, defecto: float = 0.12) -> float:
-        """Baja media agregada del histórico, baseline sin modelo activo.
+    def licitaciones_abiertas_por_lote(
+        self, *, estados_cerrados: tuple[str, ...], limit: int = 5000
+    ) -> list[dict[str, Any]]:
+        """Un **lote** por fila de las licitaciones abiertas, para el batch por lote.
+
+        Misma población que :meth:`licitaciones_abiertas` (mismos filtros de
+        estado, universo y duplicados; ``limit`` acota **expedientes**, no
+        lotes, para que activar el batch por lote no cambie qué expedientes se
+        puntúan) y mismas columnas que :meth:`pares_baja_por_lote` puede
+        conocer antes de adjudicar: ``cpv`` resuelto al del lote e
+        ``importe_lote``.
+
+        Solo lotes con ``importe > 0``: es la condición con la que un lote
+        entra en el dataset de entrenamiento por lote (sin presupuesto propio no
+        hay denominador), y puntuar lo que el modelo nunca vio sería extrapolar.
+        """
+        marcadores = ", ".join(["%s"] * len(estados_cerrados))
+        sql = f"""
+            WITH abiertas AS (
+                SELECT l.id_externo
+                FROM licitaciones l
+                WHERE l.importe > 0
+                  AND {_UNIVERSO}
+                  AND COALESCE(l.estado, '') NOT IN ({marcadores})
+                  AND NOT EXISTS (
+                      SELECT 1 FROM adjudicaciones a WHERE a.licitacion_id = l.id_externo
+                  )
+                  AND {exclude_duplicados_sql("l.id_externo")}
+                ORDER BY l.fecha_publicacion DESC
+                LIMIT %s
+            )
+            SELECT l.id_externo, l.organo_contratacion AS organo,
+                   COALESCE(lo.cpv, l.cpv) AS cpv,
+                   l.ccaa, l.provincia, l.tipo_contrato, l.fuente, l.importe,
+                   lo.importe AS importe_lote,
+                   lo.id AS lote_id, lo.numero AS lote_numero,
+                   l.fecha_publicacion, l.fecha_limite,
+                   l.duracion_valor, l.duracion_unidad,
+                   (SELECT COUNT(*) FROM lotes x WHERE x.licitacion_id = l.id_externo)
+                       AS n_lotes
+            FROM abiertas ab
+            JOIN licitaciones l ON l.id_externo = ab.id_externo
+            JOIN lotes lo ON lo.licitacion_id = l.id_externo
+            WHERE lo.importe > 0
+            ORDER BY l.fecha_publicacion DESC, l.id_externo, lo.numero
+        """  # Los marcadores se generan aquí; los valores van con %s.
+        with connect_read() as c:
+            return rows_to_dicts(
+                c.execute(sql, (*estados_cerrados, max(1, min(int(limit), 50_000))))
+            )
+
+    def media_global_baja(self, defecto: float = 0.12, *, por_lote: bool = False) -> float:
+        """Baja media del histórico, baseline sin modelo activo.
 
         Comparte la regla de denominador con el target de entrenamiento: el
-        baseline y el modelo predicen la misma magnitud.
+        baseline y el modelo predicen la misma magnitud. ``por_lote`` la mide
+        sobre el dataset por lote, que es la magnitud del modelo por lote.
         """
-        sql, params = _sql_agregado(None)
+        sql, params = _sql_por_lote(None) if por_lote else _sql_agregado(None)
         envuelto = (
             "SELECT AVG((t2.presupuesto_efectivo - t2.total_adjudicado) "
             f"/ t2.presupuesto_efectivo) FROM ({sql}) t2"
@@ -448,7 +538,7 @@ class MlDatasetRepository:
             row = c.execute(envuelto, params).fetchone()
         return float(row[0]) if row and row[0] is not None else defecto
 
-    def pares_baseline_resueltos(self) -> list[tuple[float, float]]:
+    def pares_baseline_resueltos(self, *, por_lote: bool = False) -> list[tuple[float, float]]:
         """``(p50_servido, baja_realizada)`` de los pares que sirvió el baseline.
 
         Solo filas con ``model_version IS NULL``: son exactamente las que
@@ -465,14 +555,24 @@ class MlDatasetRepository:
 
         Misma regla de denominador que el target de entrenamiento, por el mismo
         motivo que en :meth:`calibracion_baja`.
+
+        Cada granularidad calibra su propio baseline: ``por_lote=False`` solo
+        empareja filas agregadas (``lote_numero IS NULL``) con expedientes, y
+        ``por_lote=True`` solo filas **de lote** con su lote adjudicado. Mezclar
+        las dos mediría una anchura que no describe a ninguna.
         """
-        sql, params = _sql_agregado(None)
+        if por_lote:
+            sql, params = _sql_por_lote(None)
+            union = "t2.id_externo = pb.licitacion_id AND pb.lote_numero = t2.lote_numero"
+        else:
+            sql, params = _sql_agregado(None)
+            union = "t2.id_externo = pb.licitacion_id AND pb.lote_numero IS NULL"
         envuelto = f"""
             SELECT pb.p50 AS p50,
                    (t2.presupuesto_efectivo - t2.total_adjudicado)
                        / t2.presupuesto_efectivo AS realizada
             FROM predicciones_baja pb
-            JOIN ({sql}) t2 ON t2.id_externo = pb.licitacion_id
+            JOIN ({sql}) t2 ON {union}
             WHERE pb.model_version IS NULL
         """  # SQL propio del módulo; los valores van con %s.
         with connect_read() as c:
@@ -500,7 +600,10 @@ class MlDatasetRepository:
                        (t2.presupuesto_efectivo - t2.total_adjudicado)
                            / t2.presupuesto_efectivo AS realizada
                 FROM predicciones_baja pb
+                -- Solo la fila agregada: desde v140 puede haber además una
+                -- por lote, y sin el filtro el expediente contaría N veces.
                 JOIN ({sql}) t2 ON t2.id_externo = pb.licitacion_id
+                               AND pb.lote_numero IS NULL
             )
             SELECT {_AGREGADOS_CALIBRACION}
             FROM evaluadas
@@ -531,7 +634,7 @@ class MlDatasetRepository:
             WITH evaluadas AS (
                 SELECT (pb.model_version IS NULL) AS es_baseline,
                        pb.p10 AS p10, pb.p50 AS p50, pb.p90 AS p90,
-                       pb.lote_id IS NOT NULL AS prediccion_propia,
+                       pb.lote_numero IS NOT NULL AS prediccion_propia,
                        (pl.presupuesto_efectivo - pl.total_adjudicado)
                            / pl.presupuesto_efectivo AS realizada
                 FROM ({sql}) pl
@@ -557,11 +660,18 @@ class MlDatasetRepository:
         Mira solo el lote más reciente de ``computed_at`` (indexado): las filas
         viejas describen lo que se servía entonces, que es justo lo que no hay
         que confundir con lo de ahora. ``None`` si no hay ninguna predicción.
+
+        Mira solo las filas agregadas: el batch por lote (v140) escribe con su
+        propio ``computed_at`` y su propio modelo, y lo que este método describe
+        es el régimen de la granularidad que se sirve.
         """
         sql = """
             SELECT (model_version IS NULL) AS es_baseline, COUNT(*) AS n
             FROM predicciones_baja
-            WHERE computed_at = (SELECT MAX(computed_at) FROM predicciones_baja)
+            WHERE lote_numero IS NULL
+              AND computed_at = (
+                  SELECT MAX(computed_at) FROM predicciones_baja WHERE lote_numero IS NULL
+              )
             GROUP BY 1
             ORDER BY n DESC
             LIMIT 1
@@ -571,6 +681,62 @@ class MlDatasetRepository:
         if not row:
             return None
         return "baseline" if row[0] else "modelo"
+
+    def cobertura_features_pendientes(self) -> list[dict[str, Any]]:
+        """Filas no nulas de cada candidata a feature, por población y corte.
+
+        Es la medida que decide si ``procedimiento``, ``tramitacion`` y
+        ``peso_precio_pct`` entran en ``FEATURE_COLUMNS`` (umbral 50 %, ver
+        ``services.ml.features.FEATURES_PENDIENTES_COBERTURA``). Dos poblaciones,
+        porque la cobertura del feed y la del dataset no tienen por qué coincidir:
+
+        - ``dataset_baja``: las filas de :func:`_sql_agregado`, o sea
+          exactamente lo que entrena el modelo. Es la que decide.
+        - ``universo_abierto``: expedientes del universo tecnológico **sin**
+          adjudicación, los que puntúa el batch. Una feature cubierta en train
+          y vacía en scoring no sirve de nada.
+
+        Cada población sale con su total y partida por ``fuente`` y por año de
+        ``fecha_publicacion`` (``GROUPING SETS``): el parser solo lee los tres
+        campos desde v85 (2026-08-18) y solo del CODICE de PLACSP, así que un
+        total bajo puede ser histórico sin reprocesar y no ausencia en la fuente.
+        Devuelve conteos crudos; el porcentaje lo calcula quien presenta.
+        """
+        sql_dataset, params = _sql_agregado(None)
+        sql = f"""
+            WITH poblaciones AS (
+                SELECT 'dataset_baja' AS poblacion, l.fuente,
+                       substr(l.fecha_publicacion, 1, 4) AS anio,
+                       l.procedimiento, l.tramitacion, l.peso_precio_pct
+                FROM ({sql_dataset}) t
+                JOIN licitaciones l ON l.id_externo = t.id_externo
+                UNION ALL
+                SELECT 'universo_abierto', l.fuente,
+                       substr(l.fecha_publicacion, 1, 4),
+                       l.procedimiento, l.tramitacion, l.peso_precio_pct
+                FROM licitaciones l
+                WHERE l.importe > 0 AND {_UNIVERSO}
+                  AND NOT EXISTS (
+                      SELECT 1 FROM adjudicaciones a WHERE a.licitacion_id = l.id_externo
+                  )
+                  -- Misma exclusión que `licitaciones_abiertas`: la población
+                  -- que de verdad puntúa el batch.
+                  AND {exclude_duplicados_sql("l.id_externo")}
+            )
+            SELECT poblacion,
+                   GROUPING(fuente) = 0 AS por_fuente,
+                   GROUPING(anio) = 0 AS por_anio,
+                   fuente, anio,
+                   COUNT(*) AS n,
+                   COUNT(procedimiento) AS procedimiento,
+                   COUNT(tramitacion) AS tramitacion,
+                   COUNT(peso_precio_pct) AS peso_precio_pct
+            FROM poblaciones
+            GROUP BY GROUPING SETS ((poblacion), (poblacion, fuente), (poblacion, anio))
+            ORDER BY poblacion, por_fuente, por_anio, fuente NULLS FIRST, anio NULLS FIRST
+        """  # Interpola solo fragmentos constantes del módulo; los valores van con %s.
+        with connect_read() as c:
+            return rows_to_dicts(c.execute(sql, params))
 
 
 # ── Población de los clasificadores de texto (S6.1) ───────────────────────
@@ -758,6 +924,76 @@ def guardar_ml_proba(pares: list[tuple[float, str]]) -> int:
     with connect() as c:
         c.executemany("UPDATE licitaciones SET ml_proba = %s WHERE id_externo = %s", pares)
     return len(pares)
+
+
+def filas_pendientes_ml_tecnologias(*, force: bool = False) -> list[dict[str, Any]]:
+    """Licitaciones que ``precompute_ml_tecnologias`` tiene que puntuar.
+
+    ``force=False`` (default) solo devuelve las que nunca se puntuaron
+    (``ml_proba_max IS NULL``). Desde ``v136`` esa columna la deriva el trigger
+    de ``licitacion_tecnologia_score`` en cuanto la licitación tiene alguna fila
+    de score; la que se puntuó sin ninguna (todas las etiquetas a 0.0) la marca
+    :func:`guardar_scores_tecnologia`, así que no vuelve a salir aquí.
+    """
+    where = "" if force else " WHERE ml_proba_max IS NULL"
+    with connect_read() as c:
+        return rows_to_dicts(
+            c.execute(
+                "SELECT id_externo, titulo, descripcion, cpv, importe FROM licitaciones" + where
+            )
+        )
+
+
+def guardar_scores_tecnologia(
+    *,
+    scores: list[tuple[str, str, float, float]],
+    sin_score: list[tuple[float, str]],
+    reemplazar: list[str] | None = None,
+) -> None:
+    """Persiste un lote del clasificador multi-tecnología en su única fuente.
+
+    ``licitacion_tecnologia_score`` es el origen de ``ml_tecnologias``,
+    ``ml_tech_principal`` y ``ml_proba_max`` desde ``v136``: el trigger
+    ``trg_lts_derivar_ml`` las recalcula al cerrar la transacción. Por eso aquí
+    **no hay** ``UPDATE`` de esas columnas — hasta 2026-09-18 lo había, y
+    reescribía el resumen sin la señal de pliego que otro paso había fundido
+    (el clobber que ``tech_signal_merge`` existía para reparar).
+
+    - ``scores``: ``(licitacion_id, tecnologia, probabilidad, threshold)`` de
+      cada etiqueta con score > 0.
+    - ``sin_score``: ``(proba_max, licitacion_id)`` de las licitaciones que se
+      puntuaron y no dieron **ninguna** fila (todas las etiquetas a 0.0). Sin
+      filas el trigger no tiene de dónde sacar ``ml_proba_max`` y lo deja como
+      está; esta marca es lo que distingue «puntuada, nada» de «sin puntuar»
+      para :func:`filas_pendientes_ml_tecnologias`. No toca ninguna de las dos
+      columnas de etiqueta: ésas solo las escribe el trigger.
+    - ``reemplazar``: licitaciones cuyas filas previas se borran antes (el
+      ``force=True`` del precompute). Borra también lo que fundió el pliego;
+      ``tech_signal_merge`` lo repone en la pasada siguiente, y ese es
+      precisamente el contador («reparaciones») que decide cuándo se retira.
+    """
+    with connect() as c:
+        if reemplazar:
+            c.execute(
+                "DELETE FROM licitacion_tecnologia_score WHERE licitacion_id = ANY(%s)",
+                (reemplazar,),
+            )
+        if scores:
+            c.executemany(
+                "INSERT INTO licitacion_tecnologia_score "
+                "(licitacion_id, tecnologia, probabilidad, threshold_aplicado, computed_at) "
+                "VALUES (%s, %s, %s, %s, NOW()) "
+                "ON CONFLICT(licitacion_id, tecnologia) DO UPDATE SET "
+                "probabilidad=excluded.probabilidad, "
+                "threshold_aplicado=excluded.threshold_aplicado, "
+                "computed_at=excluded.computed_at",
+                scores,
+            )
+        if sin_score:
+            c.executemany(
+                "UPDATE licitaciones SET ml_proba_max = %s WHERE id_externo = %s",
+                sin_score,
+            )
 
 
 #: Filas por pasada de :func:`limpiar_ml_proba_fuera_de_poblacion`. La primera

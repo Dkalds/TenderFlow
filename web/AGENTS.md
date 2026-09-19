@@ -43,3 +43,33 @@ qué no animar nunca y por qué `motion`/Framer Motion salió del bundle:
 cualquier animación, revisar ese documento y las skills `emil-design-eng` /
 `review-animations` / `apple-design` (instaladas en los dos árboles: Claude Code
 las carga de `.claude/skills/`, el resto de herramientas de `.agents/skills/`).
+
+# Prefetch en servidor con hidratación (S7.1)
+
+Las pantallas del dashboard son `"use client"`, pero su primer dato puede
+pedirse en servidor y llegar hidratado al `QueryClient` del navegador. Patrón
+de referencia: `resumen` (en `page.tsx`, porque sus consultas dependen del
+ámbito de la URL) y `radar` (en `layout.tsx`, porque las suyas no). Piezas:
+`web/src/lib/server-prefetch.ts` (reglas y límites),
+`web/src/components/prefetch-servidor.tsx` y un módulo `_lib/prefetch` por ruta con
+sus consultas.
+
+1. **La clave sale de los mismos módulos puros que usa el hook**
+   (`web/src/lib/filtered-query.ts`, `web/src/lib/filter-params.ts` y
+   `web/src/lib/query-keys.ts`),
+   nunca escrita a mano, y un test de paridad por ruta monta el hook real y
+   comprueba que cachea bajo esa clave. Una clave distinta se paga dos veces.
+2. **Nada que dependa de la organización activa**: vive en `localStorage` y el
+   servidor no la ve. Prefetchearla daría un HTML distinto del primer render
+   del cliente para quien eligió otra organización.
+3. **El prefetch nunca bloquea ni rompe**: presupuesto por consulta, y lo que
+   falla no se hidrata, así que la pantalla cae al comportamiento de siempre.
+4. **Pocas consultas por ruta**: salen de la IP del servidor de Next y cuentan
+   contra el rate-limit por IP de la API.
+
+Para extenderlo a otra ruta: su módulo `_lib/prefetch`, la página (o el layout, si
+no depende de la URL) envuelta en `PrefetchServidor`, y su test de paridad.
+
+Los providers, el `Toaster` y el nonce de la CSP de las tres superficies con
+sesión (dashboard, login y restablecer contraseña) se montan en
+`web/src/components/layout/superficie-privada.tsx`; ningún layout los monta a mano.

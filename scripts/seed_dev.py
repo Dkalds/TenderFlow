@@ -552,7 +552,8 @@ def step_predicciones(licitacion_ids: list[str]) -> None:
             "INSERT INTO predicciones_baja "
             "(licitacion_id, p10, p50, p90, model_version, computed_at) "
             "VALUES (%s, %s, %s, %s, %s, %s) "
-            "ON CONFLICT (licitacion_id) DO UPDATE SET "
+            # Árbitro del único parcial agregado (v140): la PK ya no existe.
+            "ON CONFLICT (licitacion_id) WHERE lote_numero IS NULL DO UPDATE SET "
             "p10 = EXCLUDED.p10, p50 = EXCLUDED.p50, p90 = EXCLUDED.p90, "
             "model_version = EXCLUDED.model_version, computed_at = EXCLUDED.computed_at",
             rows,

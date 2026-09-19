@@ -127,6 +127,7 @@ export default function CompetidoresView() {
 
       {drillDownCompany && (
         <CompetidoresDossier
+          key={drillDownCompanyId ?? drillDownCompany.nombre}
           company={drillDownCompany}
           companyId={drillDownCompanyId}
           groupIds={drillDownGroupIds}

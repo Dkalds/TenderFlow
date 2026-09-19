@@ -14,6 +14,7 @@ import Link from "next/link";
 
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Pista } from "@/components/ui/pista";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { TableCell, TableRow } from "@/components/ui/table";
 import { formatCurrency, formatNumber, formatPercent } from "@/lib/utils";
@@ -120,8 +121,19 @@ export const CompetitorRow = React.memo(function CompetitorRow({
           ) : null}
         </div>
       </TableCell>
-      <TableCell className="text-muted-foreground px-3 py-2 tabular-nums" title={cifs.join(", ")}>
-        {cifs.length > 1 ? `${cifs[0]} +${cifs.length - 1}` : (cifs[0] ?? "-")}
+      {/* «+N» esconde CIF: la lista entera va en la `Pista` y en `sr-only`,
+          que el `title` de antes solo daba al ratón. */}
+      <TableCell className="text-muted-foreground px-3 py-2 tabular-nums">
+        {cifs.length > 1 ? (
+          <Pista contenido={cifs.join(", ")}>
+            <span>
+              {`${cifs[0]} +${cifs.length - 1}`}
+              <span className="sr-only">: {cifs.join(", ")}</span>
+            </span>
+          </Pista>
+        ) : (
+          (cifs[0] ?? "-")
+        )}
       </TableCell>
       <TableCell className="px-3 py-2 tabular-nums">{formatNumber(c.count)}</TableCell>
       <TableCell className="px-3 py-2 tabular-nums">{formatCurrency(c.importe)}</TableCell>

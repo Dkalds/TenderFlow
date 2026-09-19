@@ -14,9 +14,15 @@
  * Vive aquí y no en uno de los dos componentes que la usan porque cabecera y
  * fila tienen que compartir exactamente el mismo reparto: si divergen, los
  * rótulos dejan de caer sobre sus datos.
+ *
+ * La columna de acciones mide 116 px (antes 108, que se quitan de Importe):
+ * descartar + seguir (26 px cada uno, `gap` de 6) + «Abrir» suman ~113 px. En
+ * 108 no cabían, y como los botones de icono podían encogerse, «Descartar»
+ * quedaba por debajo de los 24 px de WCAG 2.5.8 (axe `target-size`, /radar).
+ * Ahora los botones de icono son `flex-none` y la columna los aloja enteros.
  */
 export const RADAR_GRID =
-  "md:grid-cols-[46px_1fr_176px_132px_108px_96px_108px] md:gap-3 md:px-3.5";
+  "md:grid-cols-[46px_1fr_176px_132px_100px_96px_116px] md:gap-3 md:px-3.5";
 
 /** Banda de scoring que devuelve el backend (`Caliente|Atractiva|Tibia|Descarte`). */
 export const BAND_TOKEN: Record<string, string> = {

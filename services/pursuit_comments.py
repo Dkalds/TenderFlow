@@ -67,7 +67,7 @@ def add_comment(
 ) -> PursuitCommentOut:
     """Publica un comentario. Un ``viewer`` no escribe: el rol es de solo lectura."""
     with alcance_resuelto(user_id, organization_id, write=True) as (resolved_id, role):
-        _require_pursuit(resolved_id, pursuit_id)
+        pursuit = _require_pursuit(resolved_id, pursuit_id)
         row, created = _repo.create(
             organization_id=resolved_id,
             pursuit_id=pursuit_id,
@@ -80,8 +80,63 @@ def add_comment(
         # hiciera, alguien que cambió de nombre entre el primer envío y el reintento
         # quedaría mencionado o desmencionado por un corte de red.
         if created:
-            _resolver_menciones(resolved_id, int(row["id"]), body.body)
+            mencionados = _resolver_menciones(resolved_id, int(row["id"]), body.body)
+            _emitir_mencion(resolved_id, pursuit, int(row["id"]), user_id, mencionados, body.body)
         return _to_out(row, user_id, role)
+
+
+#: Cuánto del comentario viaja en el aviso. Lo justo para saber de qué va sin
+#: abrir la ficha; el hilo entero sigue estando en la oportunidad.
+_EXTRACTO_MENCION = 280
+
+
+def _emitir_mencion(
+    organization_id: int,
+    pursuit: dict[str, Any],
+    comment_id: int,
+    autor_user_id: int,
+    mencionados: list[int],
+    texto: str,
+) -> None:
+    """Escribe ``pursuit.mentioned`` para que el despachador avise (C6.2).
+
+    El aviso sale **por el outbox** y no con un `INSERT` en
+    ``user_notifications``: el ratchet de productores de S4.1
+    (`tests/test_s4_outbox_ratchet.py`) no admite productores nuevos fuera del
+    despachador, y así la mención llega también por correo según Ajustes y a
+    los webhooks de la organización.
+
+    Los destinatarios son los ids ya resueltos contra los miembros activos de
+    **esta** organización, así que nadie de fuera puede recibirlo. El autor se
+    descarta aquí y otra vez en el despachador: mencionarse a uno mismo no avisa.
+
+    No lanza: el comentario ya está escrito, y perderlo porque la cola falló
+    sería peor que perder el aviso.
+    """
+    destinatarios = sorted({int(u) for u in mencionados if int(u) != autor_user_id})
+    if not destinatarios:
+        return
+    from db.events import append_domain_event
+
+    try:
+        append_domain_event(
+            "pursuit.mentioned",
+            comment_id,
+            "pursuit_comment",
+            {
+                "pursuit_id": int(pursuit.get("id") or 0),
+                "licitacion_id": pursuit.get("licitacion_id"),
+                "comment_id": comment_id,
+                "actor_user_id": autor_user_id,
+                "destinatarios": destinatarios,
+                "detalle": texto[:_EXTRACTO_MENCION],
+                "organization_id": organization_id,
+            },
+            organization_id=organization_id,
+            actor_id=autor_user_id,
+        )
+    except Exception:
+        log.warning("pursuit_mencion_evento_failed", comment_id=comment_id, exc_info=True)
 
 
 def _resolver_menciones(organization_id: int, comment_id: int, texto: str) -> list[int]:
@@ -145,9 +200,11 @@ def delete_comment(
             raise PursuitCommentNotFoundError("Comentario no encontrado.")
 
 
-def _require_pursuit(organization_id: int, pursuit_id: int) -> None:
-    if _pursuits.get(organization_id, pursuit_id) is None:
+def _require_pursuit(organization_id: int, pursuit_id: int) -> dict[str, Any]:
+    pursuit = _pursuits.get(organization_id, pursuit_id)
+    if pursuit is None:
         raise PursuitNotFoundError("Oportunidad no encontrada.")
+    return pursuit
 
 
 def _can_delete(row: dict[str, Any], user_id: int, role: str) -> bool:

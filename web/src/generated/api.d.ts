@@ -3520,6 +3520,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/organizations/{organization_id}/plantilla-tareas": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Tareas que se crean al pasar una oportunidad a «preparando oferta»
+         * @description Cualquier miembro la lee; `puede_editar` dice si además la cambia.
+         */
+        get: operations["get_plantilla_tareas_api_v1_organizations__organization_id__plantilla_tareas_get"];
+        /**
+         * Cambiar la plantilla de tareas (owner/admin)
+         * @description Sustituye la plantilla entera. No toca las tareas ya creadas.
+         */
+        put: operations["put_plantilla_tareas_api_v1_organizations__organization_id__plantilla_tareas_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/organizations/{organization_id}/report-schedule": {
         parameters: {
             query?: never;
@@ -4343,6 +4367,29 @@ export interface paths {
          *     que el cliente lo cargó.
          */
         post: operations["post_pursuit_kit_item_api_v1_pursuits__pursuit_id__kit_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/pursuits/{pursuit_id}/kit/responsable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Asignar un documento del kit a una persona (crea o reasigna su tarea)
+         * @description F2.3 + C6.1 — el responsable de un documento es el de su tarea.
+         *
+         *     Devuelve el kit entero por lo mismo que el marcado: la respuesta trae
+         *     también lo que otros han asignado desde que el cliente lo cargó.
+         */
+        post: operations["post_pursuit_kit_responsable_api_v1_pursuits__pursuit_id__kit_responsable_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -5685,8 +5732,8 @@ export interface components {
          * CalibracionPorLoteDTO
          * @description Calibración medida sobre lotes en vez de sobre expedientes.
          *
-         *     Bloque **de diagnóstico**, no la cifra que se sirve: mientras
-         *     ``predicciones_baja`` almacene una predicción por expediente,
+         *     Bloque **de diagnóstico**, no la cifra que se sirve: mientras el batch no
+         *     materialice filas por lote (``ML_BAJA_POR_LOTE``, v140),
          *     ``n_prediccion_por_lote`` vale 0 y esto es el modelo agregado evaluado a
          *     granularidad de lote. Ese número es precisamente el baseline contra el que
          *     hay que comparar un futuro modelo por lote, y por eso viaja en el contrato:
@@ -7776,14 +7823,30 @@ export interface components {
         };
         /**
          * FunnelStep
-         * @description Funnel step with absolute count and percentage.
+         * @description Tramo del embudo por estado, con su conteo y su porcentaje.
+         *
+         *     **Cambio de semántica de `pct` (2026-09-18, AGENTS §3.5).** Hasta esa fecha
+         *     todos los tramos se dividían entre el total del ámbito, y como `AGR` es el
+         *     ~93 % del corpus los cinco escalones sumaban ~6,7 %: el embudo se leía como
+         *     si el 93 % de los expedientes se hubiera perdido entre publicación y
+         *     adjudicación. Desde entonces el denominador depende del tramo y el tramo lo
+         *     declara en `en_embudo`.
          */
         FunnelStep: {
+            /**
+             * En Embudo
+             * @description True para los cinco escalones de tramitación; false para lo que se cuenta aparte (PRE, AGR, EJEC, CPM y OTROS).
+             * @default true
+             */
+            en_embudo: boolean;
             /** Estado */
             estado: string;
             /** N */
             n: number;
-            /** Pct */
+            /**
+             * Pct
+             * @description Porcentaje del tramo. Si `en_embudo` es true, sobre `OverviewResult.funnel_denominador` (los cinco escalones PUB, EV, RES, ADJ y ANUL suman 100). Si es false, sobre el total del ámbito (`funnel_denominador + fuera_del_embudo`).
+             */
             pct: number;
         };
         /**
@@ -8063,6 +8126,7 @@ export interface components {
         HoyCounters: {
             /**
              * Calientes
+             * @description «Grandes en plazo»: licitaciones abiertas, en plazo y con importe ≥ P75 del ámbito. NO es la banda `Caliente` del score (≥ 75 puntos); el nombre del campo se conserva por compatibilidad del contrato.
              * @default 0
              */
             calientes: number;
@@ -8191,6 +8255,10 @@ export interface components {
             marcado_por?: number | null;
             /** Nombre */
             nombre: string;
+            /** Responsable Name */
+            responsable_name?: string | null;
+            /** Responsable User Id */
+            responsable_user_id?: number | null;
             /**
              * Sobre
              * @enum {string}
@@ -8198,6 +8266,12 @@ export interface components {
             sobre: "sobre_a" | "sobre_b" | "sobre_c" | "otro";
             /** Subsanable */
             subsanable?: boolean | null;
+            /** Tarea Estado */
+            tarea_estado?: string | null;
+            /** Tarea Id */
+            tarea_id?: number | null;
+            /** Tarea Vence */
+            tarea_vence?: string | null;
         };
         /**
          * JobEstadoDTO
@@ -8313,6 +8387,18 @@ export interface components {
              * @default false
              */
             sin_extraccion: boolean;
+        };
+        /**
+         * KitResponsableBody
+         * @description Responsable de un documento del kit. Se guarda como tarea (C6.1).
+         */
+        KitResponsableBody: {
+            /** Clave */
+            clave: string;
+            /** Responsable User Id */
+            responsable_user_id: number;
+            /** Vence */
+            vence?: string | null;
         };
         /** LastExtraction */
         LastExtraction: {
@@ -9516,6 +9602,7 @@ export interface components {
         OverviewResult: {
             /**
              * Calientes Hoy
+             * @description «Grandes en plazo»: licitaciones abiertas, en plazo y con importe ≥ P75 del ámbito. NO es la banda `Caliente` del score (≥ 75 puntos); el nombre del campo se conserva por compatibilidad del contrato.
              * @default 0
              */
             calientes_hoy: number;
@@ -9536,6 +9623,18 @@ export interface components {
              * @default 0
              */
             concentracion_top10: number;
+            /**
+             * Fuera Del Embudo
+             * @description Expedientes del ámbito que no están en ningún escalón (PRE, AGR, EJEC, CPM y sin código conocido). Con `funnel_denominador` suma el total del ámbito.
+             * @default 0
+             */
+            fuera_del_embudo: number;
+            /**
+             * Funnel Denominador
+             * @description Expedientes en alguno de los cinco escalones del embudo: el denominador de `pct` en los tramos con `en_embudo`.
+             * @default 0
+             */
+            funnel_denominador: number;
             /** Funnel Estados */
             funnel_estados?: components["schemas"]["FunnelStep"][];
             /**
@@ -10016,6 +10115,66 @@ export interface components {
             vencen_7d: number;
         };
         /**
+         * PlantillaTareas
+         * @description Cuerpo del PUT: la plantilla entera, que sustituye a la anterior.
+         */
+        PlantillaTareas: {
+            /** Tareas */
+            tareas?: components["schemas"]["TareaPlantilla"][];
+        };
+        /**
+         * PlantillaTareasOut
+         * @description La plantilla leída, con lo que la pantalla necesita para editarla.
+         */
+        PlantillaTareasOut: {
+            /**
+             * Etapa
+             * @default preparing
+             * @constant
+             */
+            etapa: "preparing";
+            /**
+             * Max Tareas
+             * @default 20
+             */
+            max_tareas: number;
+            /** Organization Id */
+            organization_id: number;
+            /**
+             * Puede Editar
+             * @default false
+             */
+            puede_editar: boolean;
+            /** Tareas */
+            tareas?: components["schemas"]["TareaPlantilla"][];
+        };
+        /**
+         * PrediccionBajaLote
+         * @description Predicción **propia** de un lote, materializada por el batch por lote (v140).
+         *
+         *     Solo existe para lotes con fila en ``predicciones_baja``: el desglose no se
+         *     rellena con la cifra del expediente (ver
+         *     ``PrediccionesRepository.predicciones_por_lote``).
+         */
+        PrediccionBajaLote: {
+            /** Computed At */
+            computed_at?: string | null;
+            /** Lote Id */
+            lote_id: number;
+            /** Lote Numero */
+            lote_numero: string;
+            /** Model Version */
+            model_version?: number | null;
+            /** P10 */
+            p10: number;
+            /** P50 */
+            p50: number;
+            /** P90 */
+            p90: number;
+            /** Serving */
+            serving: string;
+        };
+        /**
          * PrediccionBajaResult
          * @description Predicción materializada y/o baja real de una licitación.
          *
@@ -10037,6 +10196,8 @@ export interface components {
             lote_id?: number | null;
             /** Lote Numero */
             lote_numero?: string | null;
+            /** Lotes */
+            lotes?: components["schemas"]["PrediccionBajaLote"][] | null;
             /** Model Version */
             model_version?: string | null;
             /** P10 */
@@ -11430,6 +11591,7 @@ export interface components {
         ResumenHoyResult: {
             /**
              * Calientes
+             * @description «Grandes en plazo»: licitaciones abiertas, en plazo y con importe ≥ P75 del ámbito. NO es la banda `Caliente` del score (≥ 75 puntos); el nombre del campo se conserva por compatibilidad del contrato.
              * @default 0
              */
             calientes: number;
@@ -12207,6 +12369,16 @@ export interface components {
             sin_resultados?: string | null;
             /** Socios */
             socios?: components["schemas"]["SocioSugerido"][];
+        };
+        /**
+         * TareaPlantilla
+         * @description Una tarea de la plantilla: título y plazo relativo a la fecha límite.
+         */
+        TareaPlantilla: {
+            /** Dias Antes Limite */
+            dias_antes_limite?: number | null;
+            /** Titulo */
+            titulo: string;
         };
         /**
          * TarjetaMetrica
@@ -13532,7 +13704,9 @@ export interface operations {
                 fecha_hasta?: string | null;
                 /** @description Incluir total */
                 with_total?: boolean;
+                /** @description Tamaño de página (máx. 500). */
                 limit?: number;
+                /** @description Filas a saltar desde el inicio. */
                 offset?: number;
             };
             header?: {
@@ -15732,7 +15906,9 @@ export interface operations {
                 q?: string | null;
                 organo?: string | null;
                 sort?: string;
+                /** @description Tamaño de página (máx. 500). */
                 limit?: number;
+                /** @description Filas a saltar desde el inicio. */
                 offset?: number;
             };
             header?: {
@@ -16255,12 +16431,14 @@ export interface operations {
             query?: {
                 /** @description Nombre, alias o NIF (parcial) */
                 q?: string | null;
-                limit?: number;
-                offset?: number;
                 /** @description Columna por la que ordenar */
                 sort?: "nombre" | "nif" | "contratos" | "importe";
                 /** @description Sentido del orden */
                 order?: "asc" | "desc";
+                /** @description Tamaño de página (máx. 500). */
+                limit?: number;
+                /** @description Filas a saltar desde el inicio. */
+                offset?: number;
             };
             header?: {
                 "X-CSRF-Token"?: string | null;
@@ -17600,7 +17778,9 @@ export interface operations {
                 sort?: string | null;
                 /** @description Incluir total (false = más rápido para paginación) */
                 with_total?: boolean;
+                /** @description Tamaño de página (máx. 500). */
                 limit?: number;
+                /** @description Filas a saltar desde el inicio. */
                 offset?: number;
             };
             header?: {
@@ -20473,6 +20653,87 @@ export interface operations {
             };
         };
     };
+    get_plantilla_tareas_api_v1_organizations__organization_id__plantilla_tareas_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                organization_id: number;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlantillaTareasOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_plantilla_tareas_api_v1_organizations__organization_id__plantilla_tareas_put: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                organization_id: number;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PlantillaTareas"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlantillaTareasOut"];
+                };
+            };
+            /** @description Solo owner o admin cambian la plantilla */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_report_schedule_api_v1_organizations__organization_id__report_schedule_get: {
         parameters: {
             query?: never;
@@ -20913,7 +21174,9 @@ export interface operations {
                 organization_id?: number | null;
                 status?: ("identified" | "qualifying" | "go_no_go" | "preparing" | "submitted" | "won" | "lost" | "withdrawn") | null;
                 responsible_user_id?: number | null;
+                /** @description Tamaño de página (máx. 500). */
                 limit?: number;
+                /** @description Filas a saltar desde el inicio. */
                 offset?: number;
             };
             header?: {
@@ -21738,7 +22001,9 @@ export interface operations {
         parameters: {
             query?: {
                 organization_id?: number | null;
+                /** @description Tamaño de página (máx. 500). */
                 limit?: number;
+                /** @description Filas a saltar desde el inicio. */
                 offset?: number;
             };
             header?: {
@@ -22072,6 +22337,52 @@ export interface operations {
             };
         };
     };
+    post_pursuit_kit_responsable_api_v1_pursuits__pursuit_id__kit_responsable_post: {
+        parameters: {
+            query?: {
+                organization_id?: number | null;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                pursuit_id: number;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["KitResponsableBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KitPresentacion"];
+                };
+            };
+            /** @description La oportunidad es de otra organización, tu rol es de lectura o el responsable no es miembro activo */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description El documento no está en el kit de esta oportunidad */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     get_pursuit_tasks_api_v1_pursuits__pursuit_id__tasks_get: {
         parameters: {
             query?: {
@@ -22336,7 +22647,9 @@ export interface operations {
     get_proximas_api_v1_radar_proximas_get: {
         parameters: {
             query?: {
+                /** @description Tamaño de página (máx. 500). */
                 limit?: number;
+                /** @description Filas a saltar desde el inicio. */
                 offset?: number;
             };
             header?: {

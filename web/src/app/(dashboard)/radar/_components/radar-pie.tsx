@@ -12,7 +12,7 @@ export function RadarPie({ statusLine }: { statusLine: string }) {
   return (
     <div className="flex h-[34px] min-w-0 flex-none items-center gap-3.5 border-t border-border/70 bg-card/60 px-3 text-[11px] text-muted-foreground md:px-3.5">
       <span className="tf-tnum truncate">{statusLine}</span>
-      <span className="hidden text-muted-foreground/60 lg:inline">
+      <span className="hidden text-muted-foreground lg:inline">
         · top 24 del mercado abierto por potencial comercial
       </span>
       <div className="flex-1" />

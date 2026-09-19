@@ -72,7 +72,7 @@ export function RadarAcciones({
             // 36×36 en móvil. Los 26 px de la consola cumplen el
             // mínimo de WCAG 2.5.8 (24×24) pero se fallan con el
             // pulgar, y aquí el error cuesta una señal descartada.
-            className="tf-pressable grid h-9 w-9 place-items-center rounded-md border border-border/80 bg-card text-muted-foreground transition-colors duration-140 ease-out hover:border-destructive/50 hover:text-destructive md:h-6.5 md:w-6.5"
+            className="tf-pressable grid h-9 w-9 flex-none place-items-center rounded-md border border-border/80 bg-card text-muted-foreground transition-colors duration-140 ease-out hover:border-destructive/50 hover:text-destructive md:h-6.5 md:w-6.5"
           >
             <X className="h-4 w-4 md:h-3 md:w-3" aria-hidden="true" />
           </button>
@@ -90,7 +90,7 @@ export function RadarAcciones({
               onFollow();
             }}
             className={cn(
-              "tf-pressable grid h-9 w-9 place-items-center rounded-md border transition-colors duration-140 ease-out md:h-6.5 md:w-6.5",
+              "tf-pressable grid h-9 w-9 flex-none place-items-center rounded-md border transition-colors duration-140 ease-out md:h-6.5 md:w-6.5",
               followed
                 ? "border-primary/50 bg-primary/16 text-primary"
                 : "border-border/80 bg-card text-muted-foreground hover:text-foreground",
@@ -114,7 +114,7 @@ export function RadarAcciones({
                 event.stopPropagation();
                 onOpenFicha();
               }}
-              className="tf-pressable grid h-9 w-9 place-items-center rounded-md border border-border/80 bg-card text-muted-foreground transition-colors duration-140 ease-out hover:text-foreground md:h-6.5 md:w-6.5"
+              className="tf-pressable grid h-9 w-9 flex-none place-items-center rounded-md border border-border/80 bg-card text-muted-foreground transition-colors duration-140 ease-out hover:text-foreground md:h-6.5 md:w-6.5"
             >
               <PanelRight className="h-4 w-4 md:h-3 md:w-3" aria-hidden="true" />
             </button>
@@ -133,7 +133,12 @@ export function RadarAcciones({
             // En móvil ocupa el resto de la línea: es la acción
             // que se busca, y el borde derecho es donde cae el
             // pulgar. En la tabla vuelve a su ancho de contenido.
-            className="tf-pressable h-9 flex-1 whitespace-nowrap rounded-md border border-primary/35 bg-primary/14 px-2.5 text-[12px] font-semibold text-primary transition-colors duration-140 ease-out hover:bg-primary/24 md:h-6.5 md:flex-none md:text-[11px]"
+            //
+            // Tinte al 6 % (10 % en hover) y no al 14/24: el botón vive dentro
+            // de la fila activa, que ya lleva `bg-primary/9`, y los dos tintes
+            // se suman — el texto quedaba en 4,32:1 (axe, /radar). Ahora 4,84
+            // en reposo y 4,58 en hover sobre esa fila.
+            className="tf-pressable h-9 flex-1 whitespace-nowrap rounded-md border border-primary/35 bg-primary/6 px-2.5 text-[12px] font-semibold text-primary transition-colors duration-140 ease-out hover:bg-primary/10 md:h-6.5 md:flex-none md:text-[11px]"
           >
             Abrir
           </button>

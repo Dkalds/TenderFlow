@@ -24,7 +24,7 @@ export type RadarTender = ScoredOpportunity;
 /** De qué señales está hecho el score que se está mostrando. */
 export type ScoringSignals = ScoringSignalsHealth;
 
-const DISMISSALS_KEY = ["radar", "dismissals"] as const;
+const DISMISSALS_KEY = radarKeys.dismissals;
 
 /**
  * Fuente del Radar: el ranking de mercado, no el listado reordenado.
@@ -173,6 +173,9 @@ export function esBandaConocida(valor: string | null | undefined): valor is Band
  * la ocultan hasta esa fecha. Sólo `posponer` deja además un recordatorio.
  */
 export type AccionDescarte = "descartar" | "silenciar" | "posponer";
+
+/** Las dos acciones que caducan: ocultan la señal hasta dentro de `dias` días. */
+export type AccionAplazar = Exclude<AccionDescarte, "descartar">;
 
 export type DescarteRadar = {
   idExterno: string;

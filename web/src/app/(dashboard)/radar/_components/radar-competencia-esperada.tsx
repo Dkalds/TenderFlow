@@ -40,7 +40,7 @@ export function ExpectedCompetition({ organo }: { organo: string | null | undefi
     <>
       <SectionTitle
         aside={
-          <span className="text-[10.5px] text-muted-foreground/70">histórico del órgano</span>
+          <span className="text-[10.5px] text-muted-foreground">histórico del órgano</span>
         }
       >
         Competencia esperada

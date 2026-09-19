@@ -78,7 +78,7 @@ export function SectionTitle({
       <h4 className="font-mono text-[9.5px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
         {children}
       </h4>
-      {aside && <span className="text-[10.5px] text-muted-foreground/70">{aside}</span>}
+      {aside && <span className="text-[10.5px] text-muted-foreground">{aside}</span>}
     </div>
   );
 }
@@ -284,7 +284,7 @@ export function PanelError({
           <span className="text-[13.5px] font-semibold text-destructive">{title}</span>
         </div>
         {detail && (
-          <p className="mb-3.5 font-mono text-xs leading-[1.55] text-destructive/80">{detail}</p>
+          <p className="mb-3.5 font-mono text-xs leading-[1.55] text-destructive">{detail}</p>
         )}
         {onRetry && (
           <button

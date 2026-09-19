@@ -11,6 +11,7 @@ import { MultiSelect } from "@/components/ui/multi-select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { SearchAutocomplete } from "@/components/ui/search-autocomplete";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { AmbitoIntro } from "@/components/layout/ambito-intro";
 import { ScrollEdge, useScrollEdgeState } from "@/components/layout/scroll-edge";
 import { SavedViewsMenu } from "@/components/saved-views-menu";
 import { ExportPopover } from "@/components/export-popover";
@@ -120,16 +121,18 @@ const NAV_BUTTON =
 
 function ScopeChip({ chip }: { chip: Chip }) {
   return (
-    <span className="border-primary/30 bg-primary/10 text-primary inline-flex h-[26px] items-center gap-[7px] rounded-md border px-2">
-      <span className="font-mono text-[9px] leading-none font-medium tracking-[0.06em] uppercase opacity-60">
-        {chip.key}
-      </span>
+    // La clave y la «×» iban con `opacity-60`/`opacity-50` sobre el tinte del
+    // chip: 2,4:1, y la «×» medía 8×13 px. Ahora son tinta plena (la jerarquía
+    // la da el cuerpo mono de 9 px) y la «×» ocupa 24×24 (WCAG 2.5.8), con el
+    // margen negativo para que el chip no crezca.
+    <span className="border-primary/30 bg-primary/10 text-primary inline-flex h-[26px] items-center gap-[7px] rounded-md border pr-0.5 pl-2">
+      <span className="font-mono text-[9px] leading-none font-medium tracking-[0.06em] uppercase">{chip.key}</span>
       <span className="max-w-40 truncate text-xs leading-none font-medium">{chip.value}</span>
       <button
         type="button"
         aria-label={`Quitar ${chip.key.toLowerCase()} ${chip.value}`}
         onClick={chip.remove}
-        className="cursor-pointer border-0 bg-transparent p-0 pl-px text-[13px] leading-none opacity-50 transition-opacity duration-140 ease-out hover:opacity-100"
+        className="hover:bg-primary/15 -ml-1 grid h-6 w-6 cursor-pointer place-items-center rounded border-0 bg-transparent p-0 text-[13px] leading-none transition-colors duration-140 ease-out"
       >
         ×
       </button>
@@ -277,7 +280,7 @@ function ScopeEditor({
             />
             <label htmlFor="scope-solo-abiertas" className="text-muted-foreground cursor-pointer text-xs">
               Sólo abiertas
-              <span className="ml-1 text-[10px] opacity-70">(sin adjudicar ni cerrar)</span>
+              <span className="ml-1 text-[10px]">(sin adjudicar ni cerrar)</span>
             </label>
           </div>
         </div>
@@ -469,7 +472,12 @@ export function ScopeBar() {
   if (!filtersApply) {
     return (
       <>
-        <header className="tf-glass sticky top-0 z-30 flex h-[52px] flex-none items-center gap-2.5 px-3.5">
+        {/* `overflow-x-auto` como la barra con ámbito. Sin él, a 375 px el
+            rótulo «Ámbito · no aplica…» más las utilidades medían ~650 px y
+            empujaban el documento entero: era el desborde de 274 px de Mi
+            Watchlist y de Mi Pipeline en `responsive.spec.ts`, que no son
+            pantallas con ámbito. El rótulo, además, se oculta en móvil. */}
+        <header className="tf-glass sticky top-0 z-30 flex h-[52px] flex-none [scrollbar-width:none] items-center gap-2.5 overflow-x-auto px-3.5 [&::-webkit-scrollbar]:hidden">
           {activeCount > 0 ? (
             <>
               <Info className="text-primary h-3.5 w-3.5 shrink-0" aria-hidden="true" />
@@ -483,7 +491,7 @@ export function ScopeBar() {
               </Button>
             </>
           ) : (
-            <span className="text-muted-foreground font-mono text-[9px] font-semibold tracking-[0.14em] uppercase">
+            <span className="text-muted-foreground hidden flex-none font-mono text-[9px] font-semibold tracking-[0.14em] uppercase sm:inline">
               Ámbito · no aplica en esta pantalla
             </span>
           )}
@@ -611,7 +619,7 @@ export function ScopeBar() {
           <span className="tf-tnum">
             {countLoading || !overview ? "—" : `${formatNumber(overview.total_licitaciones)} licitaciones`}
           </span>
-          <span className="opacity-40" aria-hidden="true">
+          <span aria-hidden="true">
             ·
           </span>
           <span>{relative ? `sync ${relative}` : "sin registro de sync"}</span>
@@ -647,6 +655,9 @@ export function ScopeBar() {
         </div>
       </header>
       <ScrollEdge active={scrolled} />
+      {/* Primer uso: qué es esta barra. Solo en la rama con ámbito, que es
+          donde hay algo que explicar; se cierra una vez por navegador. */}
+      <AmbitoIntro />
     </>
   );
 }
@@ -655,7 +666,7 @@ export function ScopeBar() {
 function ScopeUtilities({ onSearch, relative }: { onSearch: () => void; relative: string | null }) {
   return (
     <>
-      <span className="text-muted-foreground flex-none text-[11px]">
+      <span className="text-muted-foreground hidden flex-none text-[11px] sm:inline">
         {relative ? `sync ${relative}` : "sin registro de sync"}
       </span>
       <button

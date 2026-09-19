@@ -56,20 +56,37 @@ async function expectBasicAccessibility(page: Page): Promise<void> {
     );
   expect(unnamedControls).toEqual([]);
 
+  // axe mide el color **computado en ese instante**, opacidad incluida. La
+  // entrada del hero de la portada (`ENTRADA_HERO`: fade de 500 ms escalonado
+  // 60 ms por hijo) y la de los toasts de Sonner seguían a media opacidad
+  // cuando corría el análisis, y axe daba por bajo contraste un texto que en
+  // reposo pasa de sobra (más de 6:1 todos). Qué nodos caían cambiaba de un
+  // reintento a otro —la firma de medir una transición—. Se espera a que
+  // acaben las animaciones **finitas**; las infinitas (`animate-ping`,
+  // `tf-shimmer`, spinners) no terminan nunca y se ignoran, y un techo de 3 s
+  // impide que una animación en pausa cuelgue el test.
+  await page.evaluate(async () => {
+    const finitas = document.getAnimations().filter((animacion) => {
+      const fin = animacion.effect?.getComputedTiming().endTime;
+      return typeof fin === "number" && Number.isFinite(fin);
+    });
+    await Promise.race([
+      Promise.all(finitas.map((animacion) => animacion.finished.catch(() => undefined))),
+      new Promise((resolve) => setTimeout(resolve, 3_000)),
+    ]);
+  });
+
   const result = await new AxeBuilder({ page })
     .withTags(["wcag2a", "wcag2aa", "wcag21aa", "wcag22aa"])
-    // Ratchet, no aspiración: estas reglas fallan HOY en /radar y /detalle
-    // (contraste de textos pequeños, regiones scrolleables sin foco, targets
-    // <24px) y su remediación es la ola de UX/móvil en curso, no un fix de CI.
-    // El resto de WCAG-AA más los checks estructurales de arriba SÍ bloquean.
-    // Backlog: «Remediación axe pendiente» en docs/IMPROVEMENT_BACKLOG.md — la
-    // lista solo puede encoger.
+    // Sin `disableRules`: WCAG 2.2 AA entero bloquea.
     //
-    // `nested-interactive` SALIÓ el 2026-09-08 (C7.1, que la nombra como la
-    // primera). La causaba una sola cosa: la fila del Radar era un
-    // `role="button"` con cinco botones dentro. Ahora la selección es un botón
-    // hermano en capa, así que la regla vuelve a bloquear.
-    .disableRules(["color-contrast", "scrollable-region-focusable", "target-size"])
+    // Hasta el 2026-09-18 había un ratchet de cuatro reglas desactivadas.
+    // `nested-interactive` salió el 2026-09-08 (C7.1: la fila del Radar era un
+    // `role="button"` con cinco botones dentro). Las otras tres salieron juntas:
+    // `color-contrast` (rampa del tema claro más oscura para el texto sobre su
+    // propio tinte y fuera las opacidades de texto), `scrollable-region-focusable`
+    // (inspectores y lotes con `tabIndex={0}`) y `target-size` (la «×» del
+    // ámbito, la estrella de Detalle y el «?» del glosario a 24×24).
     .analyze();
   const violations = result.violations.map((violation) => ({
     id: violation.id,
@@ -139,7 +156,18 @@ test.describe("Accesibilidad básica sin sesión", () => {
 });
 
 test.describe("Accesibilidad básica con sesión", () => {
-  for (const route of ["/resumen", "/radar", `/detalle?lic=${SEED_LICITACION.id}`]) {
+  // S7.2: las pantallas de los formularios con esquema (el login va arriba,
+  // sin sesión). La ficha de oportunidad no está: la semilla E2E no crea
+  // ninguna, y su editor lo cubre `pursuit-editor-esquema.test.tsx`.
+  for (const route of [
+    "/resumen",
+    "/radar",
+    `/detalle?lic=${SEED_LICITACION.id}`,
+    "/mi-watchlist",
+    "/mi-perfil",
+    "/equipo",
+    "/ops?vista=webhooks",
+  ]) {
     test(`${route} conserva landmarks y nombres accesibles`, async ({ page }) => {
       await page.goto(route);
       await expect(page.locator("main#main-content")).toBeVisible({ timeout: 20_000 });

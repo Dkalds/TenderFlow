@@ -18,11 +18,17 @@ import {
   loteEtiqueta,
 } from "@/components/pursuits/pursuit-presenters";
 import { TenderFactSheetPanel } from "@/components/pursuits/tender-fact-sheet";
+import { GuionOfertaPanel } from "@/components/pliego/guion-oferta";
+import { SimuladorPuntuacion } from "@/components/pliego/simulador-puntuacion";
 import { ChecklistGoNoGo } from "@/components/pursuits/checklist-go-no-go";
 import { AdjudicacionDetectada } from "@/components/pursuits/adjudicacion-detectada";
 import { ExpedientePanel } from "@/components/pursuits/expediente-panel";
 import { PursuitActivity } from "@/components/pursuits/pursuit-activity";
+import { KitPresentacionPanel } from "@/components/pursuits/kit-presentacion";
+import { AdjudicacionPrevistaDato } from "@/components/pursuits/adjudicacion-prevista";
+import { EtiquetaChips, EtiquetasEditor } from "@/components/etiquetas/etiquetas-objeto";
 import { Panel, PanelError, PanelTabs, SectionTitle } from "@/components/console/panel";
+import { useEtiquetasDe } from "@/hooks/use-etiquetas";
 import { usePursuit } from "@/hooks/use-pursuits";
 import { triggerDownload } from "@/lib/export";
 
@@ -50,6 +56,9 @@ export default function OpportunityDetailPage() {
   const params = useParams<{ id: string }>();
   const { data: pursuit, isLoading, error, refetch } = usePursuit(params.id ?? null);
   const [tab, setTab] = React.useState<TabKey>("decision");
+  // F1.6 — el id de la oportunidad es la clave del objeto etiquetable.
+  const objetoId = pursuit ? String(pursuit.id) : "";
+  const etiquetas = useEtiquetasDe("oportunidad", objetoId ? [objetoId] : []);
 
   if (isLoading) {
     return (
@@ -84,6 +93,13 @@ export default function OpportunityDetailPage() {
           {/* El lote va con los estados y no en el título: dos oportunidades
               del mismo expediente comparten título y sólo el lote las separa. */}
           <PursuitLoteBadge pursuit={pursuit} />
+          <EtiquetaChips etiquetas={etiquetas.data?.[objetoId]} />
+          <EtiquetasEditor
+            objetoTipo="oportunidad"
+            objetoId={objetoId}
+            aplicadas={etiquetas.data?.[objetoId]}
+            descripcion="esta oportunidad"
+          />
           <div className="flex-1" />
           <span className="text-[11px] text-muted-foreground">
             Última actualización {formatDate(pursuit.updated_at)}
@@ -173,6 +189,12 @@ export default function OpportunityDetailPage() {
                   la decisión, no lo que la sustituye, y subirlo empujaría el
                   único control que el usuario abre esta ficha para tocar. */}
               <ChecklistGoNoGo pursuitId={pursuit.id} licitacionId={pursuit.licitacion_id} />
+              {/* F2.3 — qué hay que entregar y quién lo lleva. Después del
+                  contraste: primero se decide si ir, luego se monta la oferta. */}
+              <KitPresentacionPanel
+                pursuitId={pursuit.id}
+                organizationId={pursuit.organization_id}
+              />
             </div>
             <aside className="flex flex-col gap-3.5">
               <Panel>
@@ -188,6 +210,7 @@ export default function OpportunityDetailPage() {
                     <dt className="text-[10.5px] text-muted-foreground">Fecha límite</dt>
                     <dd className="font-semibold">{formatDate(pursuit.tender_deadline)}</dd>
                   </div>
+                  <AdjudicacionPrevistaDato prevista={pursuit.expected_award} />
                   <div>
                     <dt className="text-[10.5px] text-muted-foreground">Responsable actual</dt>
                     <dd className="font-semibold">
@@ -217,8 +240,20 @@ export default function OpportunityDetailPage() {
 
         {tab === "expediente" && <ExpedientePanel licitacionId={pursuit.licitacion_id} />}
 
-        {tab === "pliego" && <TenderFactSheetPanel licitacionId={pursuit.licitacion_id} />}
-        {tab === "precio" && <PriceScenariosPanel licitacionId={pursuit.licitacion_id} />}
+        {tab === "pliego" && (
+          <>
+            <TenderFactSheetPanel licitacionId={pursuit.licitacion_id} />
+            <GuionOfertaPanel licitacionId={pursuit.licitacion_id} />
+          </>
+        )}
+        {tab === "precio" && (
+          <>
+            <PriceScenariosPanel licitacionId={pursuit.licitacion_id} />
+            <Panel className="mt-4">
+              <SimuladorPuntuacion licitacionId={pursuit.licitacion_id} />
+            </Panel>
+          </>
+        )}
         {tab === "conversacion" && (
           <PursuitCommentsThread pursuitId={pursuit.id} className="mx-auto h-full max-w-[760px]" />
         )}

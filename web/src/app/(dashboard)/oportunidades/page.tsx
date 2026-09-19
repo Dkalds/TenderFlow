@@ -10,8 +10,17 @@ import { formatEur } from "@/components/pursuits/pursuit-presenters";
 import { PanelEmpty, PanelError } from "@/components/console/panel";
 import { usePursuitMetrics, usePursuits } from "@/hooks/use-pursuits";
 import { SpaceShell } from "@/components/layout/space-shell";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { type EtiquetaAplicada, useEtiquetas, useEtiquetasDe } from "@/hooks/use-etiquetas";
 import { cn } from "@/lib/utils";
 import { LANES, agruparPorExpediente } from "./_lib/carriles";
+
+const TODAS = "todas";
+
+/** F1.6 — ¿la tarjeta pasa el filtro de etiqueta? `TODAS` no filtra. */
+function tieneEtiqueta(etiquetas: readonly EtiquetaAplicada[] | undefined, filtro: string): boolean {
+  return filtro === TODAS || (etiquetas ?? []).some((e) => String(e.id) === filtro);
+}
 
 /**
  * Oportunidades — tablero de ejecución.
@@ -77,19 +86,41 @@ function Metric({
 
 export default function OportunidadesPage() {
   const [query, setQuery] = React.useState("");
+  const [etiquetaFiltro, setEtiquetaFiltro] = React.useState<string>(TODAS);
   const pursuits = usePursuits();
   const metrics = usePursuitMetrics();
+  // F1.6 — una sola petición con las etiquetas de todas las tarjetas.
+  const ids = (pursuits.data?.items ?? []).map((pursuit) => String(pursuit.id));
+  const etiquetasPorId = useEtiquetasDe("oportunidad", ids).data ?? {};
+  const etiquetasOrg = useEtiquetas().data ?? [];
   const items = (pursuits.data?.items ?? []).filter(
     (pursuit) =>
-      !query.trim() ||
-      `${pursuit.tender_title ?? ""} ${pursuit.licitacion_id} ${pursuit.responsible_name ?? ""}`
-        .toLocaleLowerCase("es")
-        .includes(query.trim().toLocaleLowerCase("es")),
+      (!query.trim() ||
+        `${pursuit.tender_title ?? ""} ${pursuit.licitacion_id} ${pursuit.responsible_name ?? ""}`
+          .toLocaleLowerCase("es")
+          .includes(query.trim().toLocaleLowerCase("es"))) &&
+      tieneEtiqueta(etiquetasPorId[String(pursuit.id)], etiquetaFiltro),
   );
 
   // El buscador por título, referencia y responsable vive en la cabecera del
   // espacio: es el control que gobierna los cuatro carriles.
   const search = (
+    <div className="flex flex-none items-center gap-2">
+    {etiquetasOrg.length > 0 ? (
+      <Select value={etiquetaFiltro} onValueChange={setEtiquetaFiltro}>
+        <SelectTrigger className="h-7 w-44 text-xs" aria-label="Filtrar por etiqueta">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value={TODAS}>Todas las etiquetas</SelectItem>
+          {etiquetasOrg.map((etiqueta) => (
+            <SelectItem key={etiqueta.id} value={String(etiqueta.id)}>
+              {etiqueta.nombre}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    ) : null}
     <label className="relative block w-56 flex-none" htmlFor="pursuit-search">
       <Search
         className="text-muted-foreground pointer-events-none absolute top-1.5 left-2.5 h-3.5 w-3.5"
@@ -104,6 +135,7 @@ export default function OportunidadesPage() {
         onChange={(event) => setQuery(event.target.value)}
       />
     </label>
+    </div>
   );
 
   const empty = !pursuits.isLoading && !pursuits.error && (pursuits.data?.items?.length ?? 0) === 0;
@@ -206,7 +238,11 @@ export default function OportunidadesPage() {
                     ) : laneItems.length ? (
                       agruparPorExpediente(laneItems).map((grupo) =>
                         grupo.items.length === 1 ? (
-                          <PursuitCard key={grupo.items[0].id} pursuit={grupo.items[0]} />
+                          <PursuitCard
+                            key={grupo.items[0].id}
+                            pursuit={grupo.items[0]}
+                            etiquetas={etiquetasPorId[String(grupo.items[0].id)]}
+                          />
                         ) : (
                           <section
                             key={grupo.licitacionId}
@@ -221,7 +257,12 @@ export default function OportunidadesPage() {
                             </div>
                             <div className="flex flex-col gap-2">
                               {grupo.items.map((pursuit) => (
-                                <PursuitCard key={pursuit.id} pursuit={pursuit} enExpediente />
+                                <PursuitCard
+                                  key={pursuit.id}
+                                  pursuit={pursuit}
+                                  enExpediente
+                                  etiquetas={etiquetasPorId[String(pursuit.id)]}
+                                />
                               ))}
                             </div>
                           </section>

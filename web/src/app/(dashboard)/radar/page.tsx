@@ -168,6 +168,9 @@ export default function RadarPage() {
           onDismiss={() => {
             if (active) dismiss(active);
           }}
+          onAplazar={(accion, dias) => {
+            if (active) consola.aplazar(active, accion, dias);
+          }}
           onOpenPursuit={() => {
             if (active) void openPursuit(active);
           }}

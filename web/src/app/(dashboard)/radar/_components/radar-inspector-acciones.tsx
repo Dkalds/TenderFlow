@@ -1,7 +1,9 @@
 "use client";
 
-import { ArrowUpRight, ExternalLink, Loader2, Star } from "lucide-react";
-import type { RadarTender } from "@/hooks/use-radar";
+import * as React from "react";
+import { ArrowUpRight, BellOff, Clock, ExternalLink, Loader2, Star } from "lucide-react";
+import { CompararBoton } from "@/components/pliego/comparacion-bandeja";
+import type { AccionAplazar, RadarTender } from "@/hooks/use-radar";
 import { fuenteLinkLabel } from "@/lib/fuentes";
 import { cn } from "@/lib/utils";
 
@@ -16,13 +18,25 @@ import { cn } from "@/lib/utils";
  * escribe `fuenteLinkLabel` con el nombre de la fuente: «Abrir en PLACSP» dice
  * a dónde lleva; «Abrir enlace externo» no dice nada a quien usa lector de
  * pantalla.
+ *
+ * Encima, la fila «Más tarde» (F5.6): **silenciar 30 días** oculta la señal y
+ * la devuelve a la bandeja al vencer; **recordar en N días** hace lo mismo y
+ * además deja un aviso ese día en la campana. Son distintas de «Descartar»,
+ * que no caduca, y por eso no comparten botón.
  */
+
+/** Plazo de «silenciar», el que fija el plan (F5.6). */
+export const DIAS_SILENCIO = 30;
+
+/** Plazos ofrecidos para el recordatorio. El backend admite de 1 a 365. */
+export const PLAZOS_RECORDATORIO = [3, 7, 14, 30] as const;
 export function InspectorAcciones({
   tender,
   followed,
   opening,
   onFollow,
   onDismiss,
+  onAplazar,
   onOpenPursuit,
 }: {
   tender: RadarTender;
@@ -30,10 +44,53 @@ export function InspectorAcciones({
   opening: boolean;
   onFollow: () => void;
   onDismiss: () => void;
+  onAplazar: (accion: AccionAplazar, dias: number) => void;
   onOpenPursuit: () => void;
 }) {
+  const [plazo, setPlazo] = React.useState<number>(7);
+  const selectId = React.useId();
+
   return (
-    <div className="flex flex-none items-center gap-[7px] border-t border-border/60 bg-card/80 px-4.5 py-3">
+    <div className="flex-none border-t border-border/60 bg-card/80">
+    <div
+      role="group"
+      aria-label="Más tarde"
+      className="flex flex-wrap items-center gap-[7px] border-b border-border/40 px-4.5 py-2 text-[12px]"
+    >
+      <button
+        type="button"
+        onClick={() => onAplazar("silenciar", DIAS_SILENCIO)}
+        className="tf-pressable inline-flex h-[28px] items-center gap-1.5 rounded-md border border-border/80 px-2.5 font-medium text-muted-foreground transition-colors hover:text-foreground"
+      >
+        <BellOff className="h-3.5 w-3.5" aria-hidden="true" />
+        Silenciar {DIAS_SILENCIO} días
+      </button>
+      <div className="flex-1" />
+      <label htmlFor={selectId} className="text-muted-foreground">
+        Recordar en
+      </label>
+      <select
+        id={selectId}
+        value={plazo}
+        onChange={(event) => setPlazo(Number(event.target.value))}
+        className="h-[28px] rounded-md border border-border/80 bg-card px-1.5 text-[12px]"
+      >
+        {PLAZOS_RECORDATORIO.map((dias) => (
+          <option key={dias} value={dias}>
+            {dias} días
+          </option>
+        ))}
+      </select>
+      <button
+        type="button"
+        onClick={() => onAplazar("posponer", plazo)}
+        className="tf-pressable inline-flex h-[28px] items-center gap-1.5 rounded-md border border-border/80 px-2.5 font-medium text-muted-foreground transition-colors hover:text-foreground"
+      >
+        <Clock className="h-3.5 w-3.5" aria-hidden="true" />
+        Posponer
+      </button>
+    </div>
+    <div className="flex items-center gap-[7px] px-4.5 py-3">
       <button
         type="button"
         onClick={onDismiss}
@@ -55,6 +112,13 @@ export function InspectorAcciones({
         <Star className={cn("h-3.5 w-3.5", followed && "fill-current")} aria-hidden="true" />
         {followed ? "Siguiendo" : "Seguir"}
       </button>
+      {/* F2.8 — a la bandeja de comparación, que sigue abierta al pasar a la
+          watchlist o a Detalle. */}
+      <CompararBoton
+        id={tender.id_externo}
+        titulo={tender.titulo}
+        className="tf-pressable inline-flex h-[34px] flex-none items-center gap-1.5 rounded-lg border border-border/80 px-3 text-[12.5px] font-medium text-muted-foreground transition-colors hover:text-foreground aria-pressed:border-primary/50 aria-pressed:bg-primary/14 aria-pressed:text-primary"
+      />
       <button
         type="button"
         onClick={onOpenPursuit}
@@ -79,6 +143,7 @@ export function InspectorAcciones({
           <ExternalLink className="h-3.5 w-3.5" />
         </a>
       )}
+    </div>
     </div>
   );
 }

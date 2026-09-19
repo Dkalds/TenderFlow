@@ -20,8 +20,11 @@ puras, y esta suite tiene que poder correr sin BD.
 from __future__ import annotations
 
 import pytest
+from fastapi import Depends, FastAPI
+from fastapi.testclient import TestClient
 from pydantic import BaseModel
 
+from api.pagination import PageParams, pagina
 from services.analytics.trends import (
     MAX_TREND_POINTS,
     TrendPoint,
@@ -122,6 +125,73 @@ def test_cotas_de_pagina_son_las_de_siempre():
     """Mover el tope al contrato no puede cambiar su valor."""
     assert MAX_PAGE_LIMIT == 500
     assert DEFAULT_PAGE_LIMIT == 50
+
+
+# ── 1b. Dependencia compartida `limit`/`offset` ────────────────────────────
+
+
+def _cliente_con_pagina(default_limit: int) -> TestClient:
+    app = FastAPI()
+
+    @app.get("/cosas")
+    def _listar(page: PageParams = Depends(pagina(default_limit))) -> dict[str, int]:
+        return {"limit": page.limit, "offset": page.offset}
+
+    return TestClient(app)
+
+
+def test_dependencia_aplica_el_default_de_la_ruta():
+    cliente = _cliente_con_pagina(25)
+    assert cliente.get("/cosas").json() == {"limit": 25, "offset": 0}
+    assert cliente.get("/cosas?limit=7&offset=14").json() == {"limit": 7, "offset": 14}
+
+
+@pytest.mark.parametrize(
+    "query", ["limit=0", f"limit={MAX_PAGE_LIMIT + 1}", "offset=-1", "limit=abc"]
+)
+def test_dependencia_rechaza_fuera_del_contrato(query: str):
+    """El tope es `MAX_PAGE_LIMIT` para todas: no hay tope propio por ruta."""
+    assert _cliente_con_pagina(50).get(f"/cosas?{query}").status_code == 422
+
+
+def test_dependencia_acepta_el_tope_exacto():
+    cliente = _cliente_con_pagina(50)
+    assert cliente.get(f"/cosas?limit={MAX_PAGE_LIMIT}").json()["limit"] == MAX_PAGE_LIMIT
+
+
+@pytest.mark.parametrize("default", [0, MAX_PAGE_LIMIT + 1])
+def test_un_default_fuera_de_rango_falla_al_registrar(default: int):
+    """Si no, toda petición sin `limit` a esa ruta respondería 422."""
+    with pytest.raises(ValueError):
+        pagina(default)
+
+
+#: Primera ola (2026-09-18): rutas que ya paginaban por offset con sus dos
+#: `Query` a mano. Cambia la declaración, no la forma de la respuesta ni los
+#: nombres de los parámetros.
+_PRIMERA_OLA = [
+    ("api.routes.licitaciones.listado", "list_licitaciones", 50),
+    ("api.routes.licitaciones.adjudicaciones", "list_adjudicaciones", 50),
+    ("api.routes.competitive", "get_adjudicaciones_empresa", 25),
+    ("api.routes.pursuits", "get_pursuits", 50),
+    ("api.routes.pursuits", "get_pursuit_comments", 200),
+    ("api.routes.radar", "get_proximas", 50),
+    ("api.routes.empresas", "list_empresas", 50),
+]
+
+
+@pytest.mark.parametrize(("modulo", "funcion", "default"), _PRIMERA_OLA)
+def test_la_primera_ola_usa_la_dependencia_compartida(modulo: str, funcion: str, default: int):
+    import importlib
+    import inspect
+
+    endpoint = getattr(importlib.import_module(modulo), funcion)
+    firma = inspect.signature(endpoint)
+    assert "limit" not in firma.parameters and "offset" not in firma.parameters
+    dependencia = firma.parameters["page"].default.dependency
+    assert dependencia.__qualname__ == "pagina.<locals>._page_params"
+    limite = inspect.signature(dependencia).parameters["limit"].default
+    assert limite.default == default
 
 
 # ── 2. Cota de la serie de trends ──────────────────────────────────────────

@@ -803,6 +803,9 @@ trabaja.
    `GET /webhooks/event-types` lista el catálogo completo; la vista de
    webhooks sale de `/ops` y entra en `/equipo` para owner/admin, quedando en
    `/ops` la vista global.
+   **Cola de UI cerrada el 2026-09-18 (rama `worktree-agent-aa4eeee01ef3fbb62`):** `WebhooksEquipoView`
+   se monta como pestaña «Integraciones» de `/equipo`, sólo para owner/admin
+   (test en `equipo/__tests__/page.test.tsx`).
 3. **Plantillas Teams y Slack (D13).** `webhooks.formato ∈ {json,
    slack_blocks, teams_adaptive_card}` con un renderer por evento y una página
    de ayuda con capturas. Esfuerzo M.
@@ -841,6 +844,18 @@ E2E que crea un webhook de organización y recibe el `ping`.
 **Riesgo:** medio en S4.1 (toca el camino de escritura de pursuits y reglas;
 el ratchet de productores es la red).
 
+**Estado de los restos (2026-09-18).** S4.1: la alerta `DomainEventsBacklogHigh`
+(`domain_events_pending > 1000` durante `1h`) está en
+`observability/alert_rules.yml`, con un test que la ata a
+`UMBRAL_PENDIENTES_ALERTA` de `db/events.py`. S4.3: la página de ayuda es
+`docs/integraciones/webhooks.md` §«Formatos del cuerpo», con cuerpos de ejemplo
+generados por `renderizar` en lugar de capturas. **Pendiente, fuera de estos
+restos:** `event_dispatch.run()` no lo invoca ningún plano (ni
+`scheduler/pipeline_runs.py` ni `scheduler/jobs/__init__.py`), así que el
+despachador está escrito y probado pero no corre; cablearlo vacía de golpe la
+cola acumulada (correos y webhooks incluidos) y pide decidir antes qué hacer con
+ella.
+
 ### S5 — Cola de trabajo y worker (D14)
 
 **Objetivo:** que un despliegue no mate el trabajo de un usuario, y que la
@@ -866,6 +881,12 @@ API no pague en su threadpool lo que puede esperar.
    el 202 responde en menos de 200 ms sin tocar el LLM (test con proveedor
    simulado); `GET /jobs/{id}` de otra organización → 404; el estado de la
    ficha (`ficha-pliego/estado`) lee la cola.
+   *Estado (2026-09-18):* el «`resumen` sin caché» **sale de esta lista por
+   decisión**, no por olvido: sigue en línea con SSE como `/ask`, y la
+   excepción y su motivo están en
+   [ADR-028 §F](../adr/ADR-028-cola-de-trabajo-y-worker.md). Lo que ataca su
+   coste es la pre-generación nocturna del caché (fase 5 de
+   `scheduler/jobs/documentos_embeddings.py`).
 3. **Worker en Render.** `APP_PROFILE=worker` y `scheduler/worker.py`
    consumen la cola; `render.yaml` declara el servicio (**[§6]**,
    pre-autorizado; exige O0.2 cerrado). Actions sigue siendo el único plano de
@@ -922,6 +943,14 @@ que puntúa, con etiquetas que no sean su propia salida.
    *Aceptación:* la decisión de promoción tiene test; una versión que no supere
    el criterio queda registrada con `promotion_reason`; el runbook
    `model-rollback.md` cita el criterio.
+   **Hecho** (código ya en `master` con #274; comprobado el 2026-09-18):
+   `evaluar_promocion_predictiva` con `MIN_IMPROVEMENT_OVER_FOLD_DISPERSION`,
+   cableado en `baja_model.entrenar` y `retencion_model.entrenar`, que
+   registran `pr_auc_baseline`, `pr_auc_std_folds` y `promotion_reason` en
+   `notes`; tests en `tests/test_ml_promocion_predictiva.py`. El 2026-09-18
+   retención añade el rival informativo `pr_auc_baseline_antiguedad`. Lo que
+   **no** es código: reentrenar para que las versiones nuevas traigan esas
+   métricas y decidir la activación (backlog P2).
 5. **Predicción por lote.** `GET /licitaciones/{id}/prediccion-baja?lote_id=`
    sirve las filas por lote que `predicciones_baja` ya guarda (depende de
    S3.1). Esfuerzo S.
@@ -969,6 +998,24 @@ tres deudas que hoy hacen frágil cualquier pantalla nueva.
    apareció que `equipo/_components/organizacion-tab.tsx` —la pestaña
    «Organización» que S2.1 y S2.2 dan por entregada, con su test propio— **no
    la montaba ninguna pantalla**. Ahora sí.
+   **2026-09-18 (rama `worktree-agent-acc2389c11c7f60d4`): S5.1 y S5.9, que
+   el cierre de arriba no cubría.** *S5.1:* `resumen/page.tsx` pasa a Server
+   Component y prefetchea `/analytics/resumen/hoy` y `/analytics/overview` con
+   el ámbito de la URL; el Radar prefetchea descartes y «Próximas» desde su
+   `layout.tsx`. Piezas en `web/src/lib/server-prefetch.ts` y
+   `components/prefetch-servidor.tsx`; patrón en `web/AGENTS.md`. La clave sale
+   de los mismos módulos puros que el hook (`lib/filter-params.ts`,
+   `lib/filtered-query.ts`) y un test de paridad por ruta lo exige. **Límite
+   hallado:** nada que dependa de la organización activa se puede prefetchear
+   —vive en `localStorage`— y por eso el ranking del Radar y «Tu día» siguen
+   en el cliente; moverla a cookie es lo que abriría la siguiente ola. Las
+   llamadas salen de la IP del servidor de Next y cuentan contra el
+   rate-limit por IP de la API. *S5.9, con desviación:* la pila común
+   (`Providers`, `Toaster`, nonce…) vive en
+   `components/layout/superficie-privada.tsx` y la usan los tres layouts, **no**
+   en un grupo `(privado)`: exigía mover los 346 ficheros de `(dashboard)`, y
+   un layout común no habría conservado estado porque entrar y salir de la
+   sesión son navegaciones completas. Sin E2E ejecutado en esta sesión.
 2. **Formularios con esquema.** `zod` y `react-hook-form` (**[§6]** deps,
    pre-autorizado) para los seis formularios con validación: login, reglas,
    perfil, equipo, oportunidad y webhooks. Esfuerzo M.
@@ -976,6 +1023,20 @@ tres deudas que hoy hacen frágil cualquier pantalla nueva.
    OpenAPI y un test compara las claves del esquema con el DTO generado (sin
    duplicar la forma a mano); errores por campo con `aria-describedby`;
    `accessibility.spec.ts` verde en las seis pantallas.
+   **Entregado el 2026-09-18 (rama `worktree-agent-a24ebf3de6c7d99d4`, pendiente
+   de CI).** `web/src/lib/forms/`: `esquemaDeDto(dto)(forma, omitidas)` obliga
+   al compilar a que cada clave sea del DTO generado y a que cada clave del DTO
+   esté validada u omitida a sabiendas; `__tests__/contrato-dto.test.ts` lee
+   `src/generated/api.d.ts` como texto y compara las claves de los nueve
+   esquemas (acceso, alta, regla, alta rápida de regla, perfil, espacio,
+   invitación, oportunidad y webhook), y exige `@default` en toda omitida
+   obligatoria. `CampoError`/`ariaCampo` ponen el error bajo el campo con
+   `<id>-error` en su `aria-describedby`. Los tipos de formulario
+   (`RuleFormState`, el del editor de oportunidad) pasan a ser el input del
+   esquema. Tests vitest por formulario. `accessibility.spec.ts` suma
+   `/mi-watchlist`, `/mi-perfil`, `/equipo` y `/ops?vista=webhooks`; **no
+   ejecutado en local** (sin API ni semilla), y la ficha de oportunidad queda
+   fuera del E2E porque la semilla no crea ninguna.
 3. **Feature flags: leer o borrar.** Hook `useFeatureFlag(name)` sobre
    `GET /feature-flags` y las dos vistas `experimental` de Mercado pasan a
    depender de un flag; si el mantenedor prefiere borrar, RFC de retirada de
@@ -984,6 +1045,11 @@ tres deudas que hoy hacen frágil cualquier pantalla nueva.
    ficheros fuera de `ops/`; sin API de flags la vista experimental sigue
    visible y marcada (fail-open, test); el catálogo de telemetría gana el
    evento de vista experimental abierta.
+   **Criterio del grep cumplido el 2026-09-18 (rama `worktree-agent-aa4eeee01ef3fbb62`):**
+   `mercado/page.tsx` es el segundo consumidor fuera de `ops/`: lee las mismas
+   flags (`mercado_clusters`, `mercado_proyectos_modulos`) y rotula la pestaña
+   «apagada» ante un `false` explícito, fail-open con test. Las flags siguen
+   sin sembrar: la fila se crea desde `/ops`, como el resto.
 4. **Inspectores desde `md`.** Los inspectores de Radar y Detalle se abren
    como `Sheet` entre `md` y `xl`. Esfuerzo S.
    *Aceptación:* `responsive.spec.ts` a 768×1024 abre el inspector y lee la
@@ -1086,6 +1152,25 @@ endpoints antiguos por **RFC**. Esfuerzo L · **[§6]** migración y RFC.
 
 ### T2 — Núcleo tipado (backlog P2, ampliado)
 
+> **2026-09-18 — PARCIAL: código y migraciones en el repo; los pasos de
+> producción, pendientes** (rama `worktree-agent-ae7fea40cc310a705`).
+> Hecho: `v133_nucleo_tipado_sombra` (las tres columnas del plan más
+> `duracion_valor_num`, que pedía el P2 del backlog; `importe_num` absorbe el
+> `importe_f8` de aquel ítem), `v134_nucleo_tipado_indices` (`CONCURRENTLY`),
+> escritura dual en `db/upsert.py` (se activa sola cuando existen las
+> columnas), backfill por lotes con verificación
+> (`scripts/backfill_nucleo_tipado.py`, SQL en `db/nucleo_tipado.py`) y
+> fragmentos de lectura dual en `db/sql_fragments.py` detrás de
+> `NUCLEO_TIPADO_LECTURA` (apagado; la clave canónica sigue leyendo el texto).
+> Tests: `tests/test_nucleo_tipado.py` (sin BD) y
+> `tests/test_nucleo_tipado_pg.py` (round-trip exacto con `importe` en `real`
+> y clave canónica idéntica antes/después del backfill — **no ejecutados**, sin
+> Postgres en la máquina que los escribió). **Falta, todo con el dato real**:
+> la ventana de [runbooks/nucleo-tipado-ventana.md](../runbooks/nucleo-tipado-ventana.md)
+> (migrar, backfill, verificación con cero divergencias, índices), el paso de
+> las cinco consultas calientes a los fragmentos con su `EXPLAIN`, y los
+> criterios de aceptación de abajo, que sólo se pueden medir en producción.
+
 **Qué.** Columnas sombra `fecha_publicacion_ts timestamptz`,
 `fecha_limite_ts timestamptz` e `importe_num numeric(14,2)` en
 `licitaciones`, rellenadas por el upsert y por backfill; lectura dual en los
@@ -1104,6 +1189,30 @@ ventana.
 
 ### T3 — Tecnología: una sola verdad
 
+> **2026-09-18 — escrito en código (rama `worktree-agent-af7ab85116eea30b4`),
+> sin aplicar en ninguna BD.** Revisión `v136_tecnologia_verdad_unica`:
+> **trigger y no vista**, precisamente para no mover la MV
+> `licitaciones_canonicas` ni la cadena byte-idéntica de
+> `universo_tecnologico_sql` (índice parcial de `v84`) — las columnas siguen
+> existiendo, las escribe un solo sitio (`lts_derivar_ml`, *constraint trigger*
+> diferido sobre `licitacion_tecnologia_score`), y la MV no se reconstruye: el
+> `REFRESH` siguiente recoge el dato. El backfill adopta en la tabla las
+> etiquetas que hoy solo están en el CSV (si no, derivar las borraría) y loguea
+> cuántas filas adopta y cuántos resúmenes reescribe.
+> `precompute_ml_tecnologias` (vía `db/repositories/ml_dataset.guardar_scores_tecnologia`)
+> y el merge de `tecnologia_pliego.py` ya **solo escriben filas de score**; la
+> categoría `tecnologia` del guardrail de literales está puesta y a cero.
+> **Tres cosas no están hechas, a propósito:** `licitaciones.tecnologia` no se
+> deriva (es la señal de keywords, primera en ADR-026 §B, sin fila de score que
+> la origine); la ingesta (`scraper/pipeline.py` → upsert) sigue escribiendo el
+> resumen en el `INSERT` sin filas de score —el merge las adopta—; y
+> **`tech_signal_merge` sigue en `CANONICAL_STEPS`**: retirarlo exige siete días
+> de `ops_events` de producción con `licitaciones_reparadas = 0`, y
+> `precompute_ml_tecnologias(force=True)` aún borra filas del pliego.
+> Pendiente de BD real: los tests de `tests/test_tech_signal_db.py` (**no
+> ejecutados**: sin Postgres en la máquina que lo escribió), `alembic upgrade
+> --sql` antes del `apply` y el delta de `make audit-truth-check`.
+
 **Qué.** `licitacion_tecnologia_score` (`v30`) es el origen;
 `licitaciones.tecnologia`, `ml_tecnologias` y `ml_tech_principal` se derivan
 (vista o trigger) y dejan de escribirse desde conectores y ML;
@@ -1120,6 +1229,22 @@ materializada (ADR-026 §A).
 - `make audit-truth-check` antes y después con delta anotado.
 
 ### T4 — `user_key` → `user_id`, fase 2 (D18)
+
+> **2026-09-18 — fase 3 de ADR-030 empezada (v135, rama
+> `worktree-agent-a8484f81d7c8a27e2`); T4 sigue abierto.** Hecho: la PK de
+> `user_profiles` pasa a `(user_id)` y la de `radar_dismissals` a
+> `(user_id, id_externo)`, con backfill previo y `RAISE EXCEPTION` si queda
+> alguna fila sin `user_id` o duplicada (la PK vieja queda como índice único de
+> transición para que el código de la fase 2 siga valiendo durante el
+> despliegue); `user_profiles` deja de escribir `user_key`; `log_event` recibe
+> al autor como `actor` y el ratchet baja de 69 a 63. RFC de retirada de
+> `user_key` del payload de `watchlist_rule.matched` en `draft`, con el campo
+> intacto hasta la ventana
+> ([RFC](../rfc/2026-09-18-rfc-retirar-user-key-payload-watchlist-rule-matched.md)).
+> **Falta** para la aceptación: `radar_dismissals` sigue escribiendo `user_key`
+> porque `user_notifications` y `follows` —a los que alimenta— siguen tecleadas
+> por ella; el resto de tablas conservan sus UNIQUE por `user_key`; y el ratchet
+> no llega a cero hasta retirar la columna de esas tablas.
 
 **Qué.** Columna `user_id` en las tablas que aún no la tienen; backfill por
 email; lectura dual; `user_key` deja de escribirse; el GDPR anonimiza por id.
@@ -1246,7 +1371,7 @@ anotan cifras a mano en este fichero.
 | Tipos de evento de webhook | 4 → **11 medido el 2026-09-08** | catálogo completo (≥ 12) | `GET /webhooks/event-types` |
 | Productores de notificación fuera del despachador | por medir en S4.1 | 0 | ratchet de S4.1 |
 | Trabajos pesados en `BackgroundTasks` de la API | 1 | 0 | grep en `api/routes/` |
-| Ficheros con `user_key` | 60 → **64 medido el 2026-09-08** | ratchet que solo baja; 0 tras T4 | `make status` |
+| Ficheros con `user_key` | 60 → 64 medido el 2026-09-08 → **63 medido el 2026-09-18** | ratchet que solo baja; 0 tras T4 | `make status` |
 | Primitivas de seguimiento | 6 tablas / 22 endpoints | 1 tabla / 3 endpoints, más reglas | `git ls-files`, OpenAPI |
 | Ficheros de `web/src/app` con más de 300 líneas | 12 → **0 el 2026-09-08** | 0 | `max-lines` en `make web-lint` |
 | Golden set SAP | 27 | ≥ 300 | `wc -l tests/fixtures/golden_set.jsonl` |

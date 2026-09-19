@@ -21,10 +21,11 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from typing import Any, Literal
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Header, HTTPException, status
 from pydantic import BaseModel, Field, model_validator
 
 from api.concurrency import run_db
+from api.pagination import PageParams, pagina
 from api.routes.dual_auth import require_any_auth
 from api.tenancy import resolve_organization_ctx
 from db import radar_dismissals
@@ -211,7 +212,9 @@ async def post_dismissal(
     ctx: dict[str, Any] = Depends(require_any_auth),
 ) -> RadarDismissalsResult:
     user_key = _user_key(ctx)
-    user_id = _user_id(ctx)
+    # Obligatorio desde v135: la PK del descarte es `(user_id, id_externo)`.
+    # `require_any_auth` lo adjunta a todo principal, sesión o API key.
+    user_id = int(ctx["user_id"])
     ambito = idem_scope("radar_dismissals", actor=user_key)
     hasta = (
         (datetime.now(UTC) + timedelta(days=body.dias)).isoformat()
@@ -357,8 +360,7 @@ class RadarProximasResult(BaseModel):
     },
 )
 async def get_proximas(
-    limit: int = Query(50, ge=1, le=200),
-    offset: int = Query(0, ge=0),
+    page: PageParams = Depends(pagina(50)),
     _ctx: dict[str, Any] = Depends(require_any_auth),
 ) -> RadarProximasResult:
     """Lista **sólo** ``PRE`` y ``CPM`` abiertos, con su fecha prevista si la hay.
@@ -378,8 +380,8 @@ async def get_proximas(
     items, total, con_fecha = await run_db(
         _lic_repo.proximas,
         estados=ESTADOS_PRE_LICITACION,
-        limit=limit,
-        offset=offset,
+        limit=page.limit,
+        offset=page.offset,
     )
     return RadarProximasResult(
         items=[
@@ -404,7 +406,7 @@ async def get_proximas(
         ],
         total=total,
         con_fecha_prevista=con_fecha,
-        limit=limit,
-        offset=offset,
+        limit=page.limit,
+        offset=page.offset,
         estados=list(ESTADOS_PRE_LICITACION),
     )

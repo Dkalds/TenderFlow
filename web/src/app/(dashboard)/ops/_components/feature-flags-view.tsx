@@ -208,6 +208,7 @@ function FeatureFlagsContent() {
                     <Slider
                       value={[r]}
                       onValueChange={([v]) => setRollout(flag.key, v)}
+                      aria-label={`Rollout de ${flag.key}`}
                       min={0}
                       max={100}
                       className="flex-1"

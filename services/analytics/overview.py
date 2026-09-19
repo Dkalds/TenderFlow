@@ -37,7 +37,7 @@ from pydantic import BaseModel, Field
 from db.repositories.aggregates import AggregateRepository, LicitacionesFilters
 from db.repositories.kpi_snapshots import read_overview_snapshot_for
 from observability.logging import get_logger
-from shared.dto import CoberturaMetricaDTO
+from shared.dto import DESCRIPCION_GRANDES_EN_PLAZO, CoberturaMetricaDTO
 
 log = get_logger(__name__)
 
@@ -144,12 +144,45 @@ class OrganoAggregate(BaseModel):
     importe: float
 
 
+#: Los cinco escalones del embudo de tramitación, en su orden. Son el
+#: denominador de `FunnelStep.pct` para los tramos que están dentro del embudo.
+ESCALONES_EMBUDO: tuple[str, ...] = ("PUB", "EV", "RES", "ADJ", "ANUL")
+
+#: Códigos que se cuentan aparte, **fuera** del embudo: `PRE` todavía no ha
+#: salido a licitación, y `AGR`/`EJEC`/`CPM` (PSCP catalana, v91) son avisos de
+#: contratos ya celebrados o consultas, no un escalón de nada. `AGR` sola es el
+#: ~93 % del corpus.
+FUERA_DEL_EMBUDO: tuple[str, ...] = ("PRE", "AGR", "EJEC", "CPM")
+
+
 class FunnelStep(BaseModel):
-    """Funnel step with absolute count and percentage."""
+    """Tramo del embudo por estado, con su conteo y su porcentaje.
+
+    **Cambio de semántica de `pct` (2026-09-18, AGENTS §3.5).** Hasta esa fecha
+    todos los tramos se dividían entre el total del ámbito, y como `AGR` es el
+    ~93 % del corpus los cinco escalones sumaban ~6,7 %: el embudo se leía como
+    si el 93 % de los expedientes se hubiera perdido entre publicación y
+    adjudicación. Desde entonces el denominador depende del tramo y el tramo lo
+    declara en `en_embudo`.
+    """
 
     estado: str
     n: int
-    pct: float
+    pct: float = Field(
+        description=(
+            "Porcentaje del tramo. Si `en_embudo` es true, sobre "
+            "`OverviewResult.funnel_denominador` (los cinco escalones PUB, EV, RES, "
+            "ADJ y ANUL suman 100). Si es false, sobre el total del ámbito "
+            "(`funnel_denominador + fuera_del_embudo`)."
+        )
+    )
+    en_embudo: bool = Field(
+        default=True,
+        description=(
+            "True para los cinco escalones de tramitación; false para lo que se "
+            "cuenta aparte (PRE, AGR, EJEC, CPM y OTROS)."
+        ),
+    )
 
 
 class OverviewResult(BaseModel):
@@ -166,6 +199,21 @@ class OverviewResult(BaseModel):
     por_mes: list[MesAggregate] = Field(default_factory=list)
     top_organos: list[OrganoAggregate] = Field(default_factory=list)
     funnel_estados: list[FunnelStep] = Field(default_factory=list)
+    funnel_denominador: int = Field(
+        default=0,
+        description=(
+            "Expedientes en alguno de los cinco escalones del embudo: el "
+            "denominador de `pct` en los tramos con `en_embudo`."
+        ),
+    )
+    fuera_del_embudo: int = Field(
+        default=0,
+        description=(
+            "Expedientes del ámbito que no están en ningún escalón (PRE, AGR, EJEC, "
+            "CPM y sin código conocido). Con `funnel_denominador` suma el total del "
+            "ámbito."
+        ),
+    )
     hhi: float = 0.0
     pct_oferta_unica: float = 0.0
     # Market indicators
@@ -182,7 +230,7 @@ class OverviewResult(BaseModel):
     concentracion_geo_top3: float = 0.0
     ccaa_cubiertas: int = 0
     # "Para hoy" counts
-    calientes_hoy: int = 0
+    calientes_hoy: int = Field(default=0, description=DESCRIPCION_GRANDES_EN_PLAZO)
     vencen_48h: int = 0
     nuevas_24h: int = 0
 
@@ -216,6 +264,45 @@ def _adj_indicadores() -> dict[str, float | None]:
             "lead_time_medio": None,
             "pct_pyme": 0.0,
         }
+
+
+def construir_embudo(conteos: dict[str, int]) -> tuple[list[FunnelStep], int, int]:
+    """Tramos del embudo, su denominador y lo que queda fuera.
+
+    ``conteos`` es la salida de ``AggregateRepository.overview_funnel``: un
+    conteo por código más ``total`` (todas las filas del ámbito).
+
+    Los cinco escalones se dividen entre su propia suma, así que suman 100 y el
+    embudo se lee como embudo. Lo que no es escalón (``FUERA_DEL_EMBUDO`` y lo
+    que no cae en ningún código conocido) sigue en la lista —quitarlo lo haría
+    invisible, que era la otra mitad del problema— pero con ``en_embudo=False``
+    y su porcentaje sobre el total del ámbito.
+    """
+    total = int(conteos.get("total", 0))
+    denominador = sum(int(conteos.get(est, 0)) for est in ESCALONES_EMBUDO)
+
+    def _pct(n: int, base: int) -> float:
+        return float(n / base * 100) if base else 0.0
+
+    pasos: list[FunnelStep] = []
+    for est in ESCALONES_EMBUDO:
+        n = int(conteos.get(est, 0))
+        pasos.append(FunnelStep(estado=est, n=n, pct=_pct(n, denominador), en_embudo=True))
+    for est in FUERA_DEL_EMBUDO:
+        n = int(conteos.get(est, 0))
+        pasos.append(FunnelStep(estado=est, n=n, pct=_pct(n, total), en_embudo=False))
+
+    # Lo que no cae en ningún código —filas sin estado, o con el texto crudo que
+    # el conector escribió antes del arreglo y que la reparación aún no ha
+    # limpiado— se declara en vez de desaparecer. Solo aparece si hay algo
+    # dentro, así que sobre un corpus limpio nada cambia. Que los tramos sumen
+    # el total es lo que deja saber si lo que falta es cero o un millón de filas.
+    conocidos = denominador + sum(int(conteos.get(est, 0)) for est in FUERA_DEL_EMBUDO)
+    resto = total - conocidos
+    if resto > 0:
+        pasos.append(FunnelStep(estado="OTROS", n=resto, pct=_pct(resto, total), en_embudo=False))
+
+    return pasos, denominador, max(total - denominador, 0)
 
 
 def get_overview(filters: OverviewFilters) -> OverviewResult:
@@ -297,31 +384,9 @@ def get_overview(filters: OverviewFilters) -> OverviewResult:
         for row in _repo.overview_top_organos(repo_filters)
     ]
 
-    funnel_data = _repo.overview_funnel(repo_filters)
-    total_funnel = funnel_data["total"]
-
-    def _paso(estado: str, n: int) -> FunnelStep:
-        return FunnelStep(
-            estado=estado,
-            n=n,
-            pct=float(n / total_funnel * 100) if total_funnel else 0.0,
-        )
-
-    # AGR, EJEC y CPM son los códigos de la PSCP catalana que normalizó v91, y
-    # AGR solo es el 93% del corpus: sin ellos estos tramos sumaban una fracción
-    # del total y la pantalla no lo decía.
-    codigos = ("PUB", "EV", "RES", "ADJ", "ANUL", "PRE", "AGR", "EJEC", "CPM")
-    funnel_estados = [_paso(est, funnel_data.get(est, 0)) for est in codigos]
-
-    # Y lo que no cae en ninguno —filas sin estado, o con el texto crudo que el
-    # conector escribió antes del arreglo y que la reparación aún no ha
-    # limpiado— se declara en vez de desaparecer. El tramo solo aparece si hay
-    # algo dentro, así que sobre un corpus limpio nada cambia. Que los tramos
-    # sumen el total es la propiedad que hace legible el embudo: sin ella, quien
-    # lo mira no puede saber si lo que falta es cero o es un millón de filas.
-    resto = total_funnel - sum(funnel_data.get(est, 0) for est in codigos)
-    if resto > 0:
-        funnel_estados.append(_paso("OTROS", resto))
+    funnel_estados, funnel_denominador, fuera_del_embudo = construir_embudo(
+        _repo.overview_funnel(repo_filters)
+    )
 
     result = OverviewResult(
         total_licitaciones=k["total"],
@@ -335,6 +400,8 @@ def get_overview(filters: OverviewFilters) -> OverviewResult:
         por_mes=por_mes,
         top_organos=top_organos,
         funnel_estados=funnel_estados,
+        funnel_denominador=funnel_denominador,
+        fuera_del_embudo=fuera_del_embudo,
         hhi=adj_ind["hhi"] or 0.0,
         pct_oferta_unica=adj_ind["pct_oferta_unica"] or 0.0,
         pct_pyme=adj_ind["pct_pyme"] or 0.0,

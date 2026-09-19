@@ -1,0 +1,20 @@
+{
+  "organization_id": 1,
+  "etapa": "preparing",
+  "max_tareas": 20,
+  "puede_editar": true,
+  "tareas": [
+    {
+      "titulo": "Revisar pliego administrativo",
+      "dias_antes_limite": 10
+    },
+    {
+      "titulo": "Preparar sobre A",
+      "dias_antes_limite": 3
+    },
+    {
+      "titulo": "Reunión de arranque",
+      "dias_antes_limite": null
+    }
+  ]
+}

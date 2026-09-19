@@ -11,6 +11,7 @@ from typing import Literal
 from pydantic import SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from config.settings_resumen import ResumenPregenSettings
 from shared.scoring_weights import validate_scoring_weights
 
 _ROOT = Path(__file__).resolve().parent.parent
@@ -58,7 +59,7 @@ if "site-packages" in str(_ROOT):
     _DEFAULT_DATA_DIR = Path("/tmp/licitaciones_data")  # noqa: S108
 
 
-class Settings(BaseSettings):
+class Settings(ResumenPregenSettings, BaseSettings):
     """Todas las variables de entorno del proyecto, validadas al arrancar."""
 
     model_config = SettingsConfigDict(
@@ -200,6 +201,8 @@ class Settings(BaseSettings):
     # (data/models/baja_model.pkl). Vacío = sin pin. Ver
     # services.ml.baja_model.BajaModel.load.
     ML_BAJA_MODEL_SHA256: str = ""
+    # Mismo pin para el modelo de baja por lote (data/models/baja_model_lote.pkl).
+    ML_BAJA_LOTE_MODEL_SHA256: str = ""
     # Hash SHA256 fijado (out-of-band) para RetencionModel
     # (data/models/retencion_model.pkl). Vacío = sin pin. Ver
     # services.ml.retencion_model.RetencionModel.load.
@@ -224,6 +227,11 @@ class Settings(BaseSettings):
     # Vida media en meses del peso por recencia de las filas de entrenamiento.
     # 0 desactiva el decaimiento (pesos uniformes, comportamiento anterior).
     ML_BAJA_HALFLIFE_MESES: float = 18.0
+    # Materializa además una predicción por lote (v140) en el batch nocturno.
+    # Apagado por defecto: el agregado por expediente sigue siendo lo que se
+    # sirve hasta que `scripts/comparar_baja_por_lote.py` mida que el
+    # `mae_p50` por lote mejora (backlog P2 «Modelo de baja por lote»).
+    ML_BAJA_POR_LOTE: bool = False
 
     # ── DB / Upsert ──────────────────────────────────────────────────────
     # Tamaño de chunk para upsert_licitaciones_with_history. Cada chunk
@@ -493,6 +501,15 @@ class Settings(BaseSettings):
     #   SCORING_AFINIDAD_KEYWORDS='["consultoría","mantenimiento"]'
     SCORING_AFINIDAD_KEYWORDS: list[str] = []
 
+    # ── Analítica de competidores ─────────────────────────────────────────
+    # Resolución de identidad de empresa (quién es el mismo competidor) en
+    # Postgres (`db/repositories/competitor_identity.py`: unaccent + CTE
+    # recursiva) en vez del union-find de pandas. APAGADO hasta que la paridad
+    # de `tests/test_analytics_competitors_identity_sql.py` pase en CI contra
+    # Postgres real y `identity_graph_stats` se haya medido en producción: el
+    # cierre de la CTE es cuadrático en el tamaño del componente.
+    COMPETITORS_IDENTITY_SQL: bool = False
+
     # ── API REST ─────────────────────────────────────────────────────────
     # Hilos del threadpool de anyio, donde corre TODO el trabajo síncrono de la
     # API (los ~104 `run_db` y los handlers `def`). Estuvo fijado a 4 desde un
@@ -559,6 +576,15 @@ class Settings(BaseSettings):
     # Con el flag off, search_for_ask() es idéntico byte-a-byte al camino
     # anterior — PR mergeable sin riesgo.
     RAG_HYBRID_ENABLED: bool = False
+    # ── Núcleo tipado (T2, v133) ────────────────────────────────────────────
+    # Lectura de las columnas sombra (`fecha_publicacion_ts`, `fecha_limite_ts`,
+    # `importe_num`, `duracion_valor_num`) en los fragmentos de lectura dual de
+    # `db/sql_fragments.py`. Default False y se queda así hasta que el backfill
+    # esté VERIFICADO en producción con cero divergencias
+    # (`docs/runbooks/nucleo-tipado-ventana.md`): con el flag off, cada
+    # fragmento devuelve la columna vieja byte a byte. La escritura dual no
+    # depende de esto — `db/upsert.py` escribe las sombras en cuanto existen.
+    NUCLEO_TIPADO_LECTURA: bool = False
     # Extracción tipada de ficha del pliego. Requiere credencial para el modelo
     # seleccionado; se activa de forma explícita para no generar gasto por el
     # mero despliegue de la migración.

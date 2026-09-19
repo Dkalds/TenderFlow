@@ -82,7 +82,7 @@ def test_una_fuente_sin_calibrar_no_alerta() -> None:
 
 
 class TestEvaluar:
-    """`evaluar` sobre las cifras reales de producción del 2026-09-06."""
+    """`evaluar` sobre las cifras reales de producción del 2026-09-18 (recalibración)."""
 
     #: Copiadas de la medición; son el caso que el umbral anterior suspendía.
     MEDICION_REAL: ClassVar[dict[str, Any]] = {
@@ -90,21 +90,21 @@ class TestEvaluar:
             "por_fuente": [
                 {
                     "fuente": "pscp",
-                    "total": 684_374,
-                    "sin_fecha_limite": 661_211,
+                    "total": 685_447,
+                    "sin_fecha_limite": 662_022,
                     "pct_sin_fecha_limite": 96.6,
                 },
                 {
                     "fuente": "placsp",
-                    "total": 6_853,
-                    "sin_fecha_limite": 6_382,
-                    "pct_sin_fecha_limite": 93.1,
+                    "total": 7_839,
+                    "sin_fecha_limite": 6_423,
+                    "pct_sin_fecha_limite": 81.9,
                 },
                 {
                     "fuente": "ted",
-                    "total": 2_015,
-                    "sin_fecha_limite": 1_321,
-                    "pct_sin_fecha_limite": 65.6,
+                    "total": 2_367,
+                    "sin_fecha_limite": 1_559,
+                    "pct_sin_fecha_limite": 65.9,
                 },
                 {
                     "fuente": "bulk_202512",
@@ -121,7 +121,7 @@ class TestEvaluar:
         assert evaluar(dict(self.MEDICION_REAL)) == []
 
     def test_una_regresion_si_dispara(self) -> None:
-        """TED al 80 % (calibrado en 65,6, límite 72,16) tiene que saltar."""
+        """TED al 80 % (calibrado en 65,9, límite 72,49) tiene que saltar."""
         datos = {
             "fecha_limite": {
                 "por_fuente": [
@@ -137,7 +137,7 @@ class TestEvaluar:
         violaciones = evaluar(datos)
         assert len(violaciones) == 1
         assert "ted" in violaciones[0]
-        assert "72.16" in violaciones[0]
+        assert "72.49" in violaciones[0]
 
     def test_una_fuente_pequena_no_dispara(self) -> None:
         """3 de 4 sin plazo es 75 % y no significa nada."""

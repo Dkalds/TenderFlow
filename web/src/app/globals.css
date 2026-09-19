@@ -44,12 +44,18 @@
     --card-foreground: 204 35% 10%;
     --popover: 0 0% 100%;
     --popover-foreground: 204 35% 10%;
-    --primary: 22 78% 40%;
+    --primary: 22 78% 34%;
     --primary-foreground: 36 100% 97%;
     --secondary: 42 14% 91%;
     --secondary-foreground: 204 30% 12%;
     --muted: 42 14% 91%;
-    --muted-foreground: 200 10% 40%;
+    /* 40% -> 34% (2026-09-19, axe `color-contrast` en /detalle). El gris
+     * secundario va sobre superficies que no son la página: el badge neutro
+     * (`bg-muted-foreground/10`) dentro de la fila activa (`bg-primary/9`)
+     * daba 4,04:1. A 34 % esa misma pila da 5,05:1 y la página limpia 6,59:1,
+     * lejos aún de los ~16:1 del `--foreground`: la jerarquía primario /
+     * secundario se conserva. Lo fija `contraste-tokens.test.ts`. */
+    --muted-foreground: 200 10% 34%;
     --accent: 26 70% 92%;
     --accent-foreground: 22 75% 28%;
     --destructive: 355 75% 42%;
@@ -76,20 +82,30 @@
      * oscuro, que resta ~0,4 al ratio. `contraste-tokens.test.ts` recalcula
      * estos números leyendo este fichero — si alguien aclara un token, cae.
      *
-     * Lo que sigue sin llegar a 4,5:1 es el texto sobre el propio tinte del
-     * token (`bg-warning/15 text-warning` del `Badge`): sube de 2,51 a 4,20 pero
-     * cerrarlo del todo exige tocar la opacidad del tinte en `badge.tsx` /
-     * `status-badge.tsx`, no la rampa.
+     * Segunda pasada (2026-09-18, remediación axe `color-contrast`): el texto
+     * sobre el **propio tinte** del token —`bg-warning/15 text-warning` del
+     * `Badge`, los chips `bg-primary/10 text-primary` del ámbito, la paginación
+     * `bg-primary/14`— seguía en 3,8-4,4:1. Cerrarlo tocando la opacidad de
+     * cada tinte eran decenas de sitios; se cierra en la rampa, bajando L hasta
+     * que un tinte de hasta el 16 % sobre el fondo de página pasa 4,5:1:
+     *
+     *   --primary / --ring        40% -> 34%   tinte 16 % page 3,76 -> 4,73
+     *   --warning / --score-warm  29% -> 25%   tinte 16 % page 3,85 -> 4,73
+     *   --success                 28% -> 25%   tinte 16 % page 4,02 -> 4,70
+     *   --info                    39% -> 37%   tinte 16 % page 4,33 -> 4,65
+     *
+     * `contraste-tokens.test.ts` lo fija también («texto sobre su propio
+     * tinte»), para que el siguiente retoque de marca no lo deshaga a ciegas.
      */
-    --success: 150 70% 28%;
+    --success: 150 70% 25%;
     --success-foreground: 0 0% 100%;
-    --warning: 42 95% 29%;
+    --warning: 42 95% 25%;
     --warning-foreground: 42 100% 8%;
-    --info: 210 90% 39%;
+    --info: 210 90% 37%;
     --info-foreground: 0 0% 100%;
     --border: 200 15% 40% / 0.28;
     --input: 200 15% 40% / 0.3;
-    --ring: 22 78% 40%;
+    --ring: 22 78% 34%;
     --radius: 0.625rem;
 
     --shadow-ink: 204 30% 10%;
@@ -122,12 +138,22 @@
     --chart-10: 218 75% 48%;
 
     /* Scoring bands */
-    --score-hot: 0 78% 48%;
     /* La banda media del score comparte tinta con `--warning` a propósito, así
        que comparte también su luminosidad corregida. */
-    --score-warm: 42 95% 29%;
-    --score-cold: 210 80% 45%;
-    --score-skip: 200 6% 46%;
+    --score-warm: 42 95% 25%;
+    /* hot/cold/skip bajan (2026-09-19, axe `color-contrast` en /radar): la
+     * cifra del score del Radar es texto de 15 px sobre el fondo de página, no
+     * sobre la tarjeta, y daba 4,43 (cold) y 4,19 (skip); con la fila en hover
+     * (`bg-primary/5`) o activa (`bg-primary/9`), aún menos. Ratios en página
+     * · fila activa, antes -> ahora:
+     *
+     *   --score-hot   48% -> 42%   4,67 · 4,10 -> 5,79 · 5,08
+     *   --score-cold  45% -> 38%   4,43 · 3,89 -> 5,78 · 5,07
+     *   --score-skip  46% -> 38%   4,19 · 3,67 -> 5,67 · 4,97
+     */
+    --score-hot: 0 78% 42%;
+    --score-cold: 210 80% 38%;
+    --score-skip: 200 6% 38%;
   }
 
   .dark {
@@ -846,4 +872,25 @@ body {
     0 0 3px hsl(200 32% 5%),
     0 0 6px hsl(200 32% 5%),
     0 1px 2px rgb(0 0 0 / 0.4);
+}
+
+/*
+ * Sonner con `richColors` en tema claro (2026-09-19, axe `color-contrast` en
+ * /ops?vista=webhooks). La paleta de la librería pinta el texto de cada tipo
+ * sobre su propio fondo pastel a 3,1-4,4:1 —el aviso de error de una consulta
+ * fallida, justo el que hay que poder leer, daba 4,36—. Se oscurece solo el
+ * texto; fondos y bordes siguen siendo los de Sonner. Ratios (antes -> ahora):
+ *
+ *   success  4,29 -> 5,96    info     4,35 -> 5,71
+ *   warning  3,07 -> 6,10    error    4,36 -> 5,76
+ *
+ * El tema oscuro de Sonner ya pasa (6,6-12,3:1) y no se toca. El `html`
+ * delante sube la especificidad por encima de la hoja que Sonner inyecta en
+ * tiempo de ejecución, que llega después de esta y ganaría el empate.
+ */
+html [data-sonner-toaster][data-sonner-theme="light"] {
+  --success-text: hsl(140, 100%, 22%);
+  --info-text: hsl(210, 92%, 38%);
+  --warning-text: hsl(31, 92%, 30%);
+  --error-text: hsl(360, 100%, 38%);
 }

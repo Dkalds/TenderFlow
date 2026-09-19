@@ -141,7 +141,13 @@ class CarteraRepository:
 
 
 class PlantillasRepository:
-    """Reglas, vistas y etiquetas que hereda un miembro nuevo (F6.4)."""
+    """Reglas, vistas y etiquetas que hereda un miembro nuevo (F6.4).
+
+    También guarda la plantilla de tareas por etapa (F4.6, ``tipo='tareas'``):
+    misma tabla de organización y mismo ``contenido_json``, sin migración.
+    ``aplicar_plantillas`` la ignora porque no se aplica a un miembro, sino a
+    una oportunidad.
+    """
 
     def list_for_organization(
         self, organization_id: int, tipo: str | None = None
@@ -191,6 +197,40 @@ class PlantillasRepository:
             )
             fila = cur.fetchone()
         return int(fila[0])
+
+    def reemplazar(
+        self,
+        *,
+        organization_id: int,
+        tipo: str,
+        nombre: str,
+        contenido: dict[str, Any],
+        user_id: int | None,
+    ) -> None:
+        """Deja **una** plantilla de ese tipo: borra las anteriores e inserta.
+
+        Para los tipos que son una sola pieza por organización (F4.6: la
+        plantilla de tareas). Va en una transacción para que un lector
+        concurrente vea la plantilla vieja o la nueva, nunca ninguna.
+        """
+        with connect() as conn:
+            conn.execute(
+                "DELETE FROM plantillas_organizacion WHERE organization_id = %s AND tipo = %s",
+                (organization_id, tipo),
+            )
+            conn.execute(
+                "INSERT INTO plantillas_organizacion "
+                "(organization_id, tipo, nombre, contenido_json, created_by_user_id, created_at) "
+                "VALUES (%s, %s, %s, %s, %s, %s)",
+                (
+                    organization_id,
+                    tipo,
+                    nombre.strip(),
+                    json.dumps(contenido, ensure_ascii=False, sort_keys=True),
+                    user_id,
+                    now_utc_iso(),
+                ),
+            )
 
     def delete(self, organization_id: int, plantilla_id: int) -> bool:
         with connect() as conn:

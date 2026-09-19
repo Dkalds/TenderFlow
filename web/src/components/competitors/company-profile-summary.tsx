@@ -3,6 +3,7 @@
 import { ArrowDownRight, ArrowUpRight, Building2, MapPinned, Shapes, Target } from "lucide-react";
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Pista } from "@/components/ui/pista";
 import { cn, formatCurrency, formatNumber, formatPercent } from "@/lib/utils";
 
 import { CompanyUteParticipations } from "./company-ute-participations";
@@ -30,9 +31,9 @@ function MetricCell({
   return (
     <div className="min-w-0 p-4 md:p-5">
       <dt className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">{label}</dt>
-      <dd className="mt-2 truncate text-2xl font-semibold tracking-tight tabular-nums" title={value}>
-        {value}
-      </dd>
+      <Pista contenido={value}>
+        <dd className="mt-2 truncate text-2xl font-semibold tracking-tight tabular-nums">{value}</dd>
+      </Pista>
       <p className="text-muted-foreground mt-1.5 min-h-5 text-xs leading-5">
         {delta == null ? (
           detail
@@ -92,9 +93,9 @@ function BreakdownColumn({
               <div key={`${row.codigo ?? row.label}-${index}`} className="space-y-1.5">
                 <div className="flex items-start justify-between gap-3 text-sm">
                   <div className="min-w-0">
-                    <p className="truncate font-medium" title={label}>
-                      {label}
-                    </p>
+                    <Pista contenido={label}>
+                      <p className="truncate font-medium">{label}</p>
+                    </Pista>
                     <p className="text-muted-foreground text-xs">{formatNumber(row.contratos)} adjudicaciones</p>
                   </div>
                   <div className="shrink-0 text-right">

@@ -3,7 +3,8 @@
 ``db/repositories/competitor_identity.py`` reexpresa en SQL lo que
 ``services/analytics/competitors.py`` hace hoy en pandas (union-find sobre
 cinco tokens de identidad). Este fichero es la **medida** de esa equivalencia:
-mientras no pase entero, la versión SQL no se cablea.
+la versión SQL está cableada detrás de ``COMPETITORS_IDENTITY_SQL`` (apagado),
+y mientras este fichero no pase entero en CI el interruptor no se enciende.
 
 Necesita Postgres real (fixture ``tmp_db`` ⇒ marcado ``integration``
 automáticamente por ``conftest``), porque lo que se está verificando es
@@ -19,11 +20,13 @@ grupo con el token que quedó de raíz (depende del orden de llegada) y el SQL
 con ``MIN(token)``. Repartir las filas igual es la propiedad que importa; el
 nombre del grupo lo elige después ``_preferred_names``.
 
-Cobertura, en cuatro capas independientes para que un fallo diga *dónde*:
+Cobertura, en cinco capas independientes para que un fallo diga *dónde*:
   1. ``normalize_company`` traducido a SQL (acentos + sufijos societarios).
   2. ``normalize_nif`` traducido a SQL.
   3. tokens + componentes conexos, alimentados con un ``base`` literal.
   4. la consulta entera contra ``adjudicaciones`` reales.
+  5. el camino cableado: cada test de ``tests/test_analytics_competitors.py``
+     reejecutado con el interruptor encendido.
 """
 
 from __future__ import annotations
@@ -51,6 +54,7 @@ from services.analytics.competitors import (
     _prepare_company_identity,
 )
 from services.normalization import normalize_company, normalize_nif
+from tests import test_analytics_competitors as casos_pandas
 
 pytestmark = pytest.mark.usefixtures("tmp_db")
 
@@ -371,3 +375,34 @@ def test_consulta_completa_reparte_como_prepare_company_identity(tmp_db):
     assert obtenido == esperado
     # Y la propiedad de negocio, explícita: se unen por NIF, no por placeholder.
     assert obtenido == frozenset({frozenset({0, 1}), frozenset({2}), frozenset({3})})
+
+
+# ── 5. El camino cableado: los tests de pandas, con la identidad en SQL ──────
+#
+# Esta es la prueba que decide si ``COMPETITORS_IDENTITY_SQL`` puede encenderse:
+# **cada** test de ``tests/test_analytics_competitors.py`` se vuelve a ejecutar
+# con el interruptor activado, con sus propias filas y sus propias aserciones.
+# No se copia ningún caso: si alguien añade un test allí, entra aquí solo.
+
+_CASOS_PANDAS = sorted(nombre for nombre in dir(casos_pandas) if nombre.startswith("test_"))
+
+
+@pytest.mark.parametrize("nombre", _CASOS_PANDAS)
+def test_los_tests_de_pandas_pasan_con_la_identidad_en_sql(nombre: str, monkeypatch):
+    from config import settings
+    from db.repositories import competitor_identity
+
+    llamadas: list[int] = []
+    original = competitor_identity.resolve_identity_for_rows
+
+    def _espia(**kwargs: Any) -> list[str]:
+        llamadas.append(len(kwargs["nombres"]))
+        return original(**kwargs)
+
+    monkeypatch.setattr(settings, "COMPETITORS_IDENTITY_SQL", True)
+    monkeypatch.setattr(competitor_identity, "resolve_identity_for_rows", _espia)
+
+    getattr(casos_pandas, nombre)()
+
+    # Sin esto, un interruptor que se ignorase daría verde sin haber tocado SQL.
+    assert llamadas or nombre == "test_empty_rows"

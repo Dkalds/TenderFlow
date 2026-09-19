@@ -198,8 +198,11 @@ class PursuitCommentRepository:
     def menciones_de_usuario(self, user_id: int, *, limit: int = 50) -> list[dict[str, Any]]:
         """En qué comentarios se ha mencionado a alguien, del más reciente atrás.
 
-        Es la consulta del destinatario, y la que alimenta la notificación
-        cuando exista el outbox de v2 S4.1. Va acotada por el `organization_id`
+        Es la consulta del destinatario («dónde me han mencionado»). El aviso
+        no sale de aquí: lo lleva el evento ``pursuit.mentioned``, que
+        ``services/pursuit_comments.add_comment`` escribe en el outbox con los
+        mismos ids que se guardan en ``pursuit_comment_mentions``, y reparte el
+        despachador. Va acotada por el `organization_id`
         del propio comentario: una mención solo existe dentro de la organización
         donde se escribió, así que no hace falta un filtro extra que alguien
         pueda olvidar.

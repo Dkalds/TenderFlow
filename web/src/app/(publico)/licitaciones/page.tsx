@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowUpRight, MapPin } from "lucide-react";
-import { obtenerHubs } from "@/lib/publico-api";
+import { hubsOrganoAnunciables, obtenerHubs } from "@/lib/publico-api";
 import { OG_IMAGE_COMPARTIDA, TWITTER_COMPARTIDO } from "@/lib/site";
 import { listaJsonLd, migasJsonLd, serializarJsonLd } from "@/lib/jsonld";
 import { rutaHubCcaa } from "@/lib/slug";
@@ -43,7 +43,11 @@ export const metadata: Metadata = {
 export const revalidate = 3600;
 
 export default async function IndiceLicitaciones() {
-  const { ccaa } = await obtenerHubs();
+  const hubs = await obtenerHubs();
+  const { ccaa } = hubs;
+  // El enlace al índice de órganos sólo si ese índice tiene algo: enlazar a un
+  // 404 desde la página que reparte autoridad sería gastarla en nada.
+  const hayOrganos = hubsOrganoAnunciables(hubs).length > 0;
 
   // Un índice sin nada que indexar es contenido delgado. Mejor 404 que una
   // página vacía que Google cuente contra la calidad del dominio.
@@ -113,6 +117,18 @@ export default async function IndiceLicitaciones() {
           <Link href="/cpv" className="text-foreground font-medium underline underline-offset-4">
             Índice por código CPV
           </Link>
+          {hayOrganos && (
+            <>
+              {" "}
+              ·{" "}
+              <Link
+                href="/licitaciones/organo"
+                className="text-foreground font-medium underline underline-offset-4"
+              >
+                Índice por órgano de contratación
+              </Link>
+            </>
+          )}
           .
         </p>
       </div>

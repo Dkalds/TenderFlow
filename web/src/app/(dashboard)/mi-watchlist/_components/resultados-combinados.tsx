@@ -88,7 +88,13 @@ export function ResultadosCombinados({
         ) : (
           <Card className="border-dashed">
             <CardContent className="py-8 text-center text-muted-foreground">
-              No se encontraron licitaciones que coincidan con tus reglas activas.
+              <p>No se encontraron licitaciones que coincidan con tus reglas activas.</p>
+              {/* Qué hacer con un vacío (C7.3): cada criterio de una regla
+                  restringe, así que la salida es aflojar alguno. */}
+              <p className="mt-1 text-sm">
+                Cada criterio de una regla se suma a los demás: edita la regla y quita o afloja
+                alguno (el importe mínimo o la CCAA suelen ser los que más recortan).
+              </p>
             </CardContent>
           </Card>
         )}

@@ -12,6 +12,12 @@ pierda: el merge la vuelve a aplicar allí donde el resumen ya no la refleja.
 (están en ``_LIC_COALESCE_UPDATE_FIELDS``), así que la pasada sin ids de
 ``list_signals_for_merge`` ya no barre la tabla: acota a lo pendiente o
 perdido.
+
+Desde ``v136`` (T3 del plan v2, 2026-09-18) el merge **solo escribe filas de
+``licitacion_tecnologia_score``**: ``ml_tecnologias``/``ml_proba_max``/
+``ml_tech_principal`` las deriva el trigger ``trg_lts_derivar_ml`` de esa tabla.
+Este fichero dejó de ser el sitio donde «los dos lados se escribían desde el
+mismo sitio», que es lo que convertía la duplicidad en diseño.
 """
 
 from __future__ import annotations
@@ -328,10 +334,13 @@ class TecnologiaPliegoRepository:
         toman son jobs por lotes.
 
         ``compute`` es lógica de dominio pura (sin I/O) que recibe
-        ``(licitacion_id, {"predicted": set[str], "scores": dict[str, float]})``
-        -- el estado actual de ``licitaciones.ml_tecnologias`` +
-        ``licitacion_tecnologia_score`` -- y devuelve el resultado a escribir,
-        o ``None`` para no escribir nada de esa licitación.
+        ``(licitacion_id, {"predicted": set[str], "scores": dict[str, float],
+        "thresholds": dict[str, float]})`` -- el estado actual de
+        ``licitaciones.ml_tecnologias`` + ``licitacion_tecnologia_score`` -- y
+        devuelve el resultado a escribir, o ``None`` para no escribir nada de
+        esa licitación. Lo que se escribe son filas de score
+        (``pliego_scores`` y ``adopted_scores``); el resumen lo deriva el
+        trigger de ``v136``.
 
         Fail-open por licitación: una excepción de ``compute`` (dato
         inconsistente) descarta solo esa licitación y el resto del chunk se
@@ -383,7 +392,7 @@ class TecnologiaPliegoRepository:
                 (chunk,),
             ).fetchall()
             score_rows = c.execute(
-                "SELECT licitacion_id, tecnologia, probabilidad "
+                "SELECT licitacion_id, tecnologia, probabilidad, threshold_aplicado "
                 "FROM licitacion_tecnologia_score WHERE licitacion_id = ANY(%s)",
                 (chunk,),
             ).fetchall()
@@ -393,11 +402,12 @@ class TecnologiaPliegoRepository:
                 raw = str(row[1]) if row[1] else ""
                 predicted[str(row[0])] = {t for t in raw.split(",") if t}
             scores: dict[str, dict[str, float]] = {}
+            thresholds: dict[str, dict[str, float]] = {}
             for row in score_rows:
                 scores.setdefault(str(row[0]), {})[str(row[1])] = float(row[2])
+                thresholds.setdefault(str(row[0]), {})[str(row[1])] = float(row[3])
 
             now = now_utc_iso()
-            update_params: list[tuple[Any, ...]] = []
             score_params: list[tuple[Any, ...]] = []
             for licitacion_id in chunk:
                 # Una licitación inexistente se descarta aquí y no en la BD:
@@ -413,6 +423,7 @@ class TecnologiaPliegoRepository:
                 state: dict[str, Any] = {
                     "predicted": predicted[licitacion_id],
                     "scores": scores.get(licitacion_id, {}),
+                    "thresholds": thresholds.get(licitacion_id, {}),
                 }
                 try:
                     result = compute(licitacion_id, state)
@@ -427,25 +438,21 @@ class TecnologiaPliegoRepository:
                 if result is None:
                     continue
                 results[licitacion_id] = result
-                update_params.append(
-                    (
-                        result["ml_tecnologias"],
-                        result["ml_proba_max"],
-                        result["ml_tech_principal"],
-                        licitacion_id,
-                    )
-                )
                 score_params.extend(
                     (licitacion_id, tech, proba, result["threshold_aplicado"], now)
                     for tech, proba in result["pliego_scores"]
                 )
-
-            if update_params:
-                c.executemany(
-                    "UPDATE licitaciones SET ml_tecnologias = %s, ml_proba_max = %s, "
-                    "ml_tech_principal = %s WHERE id_externo = %s",
-                    update_params,
+                # Adoptadas: predichas en el CSV y no en la tabla. Umbral igual
+                # a su score = «predicha a este score» (ver _build_merge_result).
+                score_params.extend(
+                    (licitacion_id, tech, proba, proba, now)
+                    for tech, proba in result.get("adopted_scores", [])
                 )
+
+            # Ningún UPDATE de licitaciones: el resumen ml_* lo deriva el
+            # trigger de v136 a partir de estas filas al cerrar la transacción
+            # (T3, «una sola verdad»). ``result`` sigue trayendo el resumen que
+            # el trigger va a escribir, para el log y los tests de paridad.
             if score_params:
                 c.executemany(
                     "INSERT INTO licitacion_tecnologia_score "

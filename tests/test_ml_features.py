@@ -256,7 +256,11 @@ def test_una_adjudicacion_con_anio_corto_no_rompe_el_dataset(db):
 
     filas, _ = construir_dataset_baja()
 
-    fila = next(f for f in filas if f.licitacion_id == "ANIO-CORTO")
-    # El ancla cae a la publicación, y la cadena resultante se relee sin error
-    # (que es exactamente lo que hacía `_folds_rolling` cuando reventaba).
-    assert _fecha_dt(fila.fecha) == datetime(2026, 5, 1)
+    # Desde 2026-09-18 el SQL del dataset trata cualquier `fecha_adjudicacion`
+    # anterior al umbral de plausibilidad (`shared.dates`) como adjudicación
+    # sin fecha, así que la fila ya no llega a Python. Lo que este test fija
+    # sigue en pie: construir el dataset no revienta, y todas las fechas
+    # serializadas se releen (que es lo que hacía `_folds_rolling` al romper).
+    # El camino Python de `_fecha_opt` lo cubren los dos tests de arriba.
+    assert all(f.licitacion_id != "ANIO-CORTO" for f in filas)
+    assert all(_fecha_dt(f.fecha) >= datetime(1990, 1, 1) for f in filas)

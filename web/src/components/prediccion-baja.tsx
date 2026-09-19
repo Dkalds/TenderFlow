@@ -1,40 +1,49 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
-import { fetchWithAuth } from "@/lib/api-client";
 import { Badge } from "@/components/ui/badge";
+import { usePrediccionBaja } from "@/hooks/use-prediccion-baja";
+import type { Schemas } from "@/lib/api-types";
 import { formatCurrency } from "@/lib/utils";
-import { prediccionKeys } from "@/lib/query-keys";
 
-interface PrediccionBaja {
-  licitacion_id: string;
-  p10?: number | null;
-  p50?: number | null;
-  p90?: number | null;
-  model_version?: number | null;
-  computed_at?: string | null;
-  serving?: "modelo" | "baseline";
-  baja_real?: number | null;
-  importe_adjudicado?: number | null;
-}
+type PrediccionBajaLote = Schemas["PrediccionBajaLote"];
 
 function pct(v: number): string {
   return `${(v * 100).toFixed(1)}%`;
+}
+
+/** Estimación propia de cada lote, junto a la cifra del expediente.
+ *  El lote es la unidad sobre la que se puja: en un expediente de varios
+ *  lotes una sola mediana promedia justo lo que el pliego separa. */
+function DesgloseLotes({ lotes }: { lotes: PrediccionBajaLote[] }) {
+  return (
+    <div className="space-y-1 pt-2">
+      <h4 className="text-xs font-medium text-muted-foreground">Por lote</h4>
+      <ul className="space-y-0.5 text-xs">
+        {lotes.map((l) => (
+          <li key={l.lote_id} className="flex flex-wrap items-baseline gap-x-2">
+            <span className="font-medium">Lote {l.lote_numero}</span>
+            <span>
+              Mediana <span className="font-semibold">{pct(l.p50)}</span>
+            </span>
+            <span className="text-muted-foreground">
+              · {pct(l.p10)} – {pct(l.p90)}
+            </span>
+            <span className="text-muted-foreground">
+              · {l.serving === "modelo" ? `modelo por lote v${l.model_version}` : "estimación histórica"}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
 }
 
 /** Intervalo de baja esperada (p10/p50/p90) del batch nocturno (Fase 6).
  *  Si la licitación ya está adjudicada, compara la estimación (si existía
  *  antes de la adjudicación) contra la baja real observada. */
 export function PrediccionBajaBlock({ licitacionId }: { licitacionId: string }) {
-  const { data } = useQuery<PrediccionBaja>({
-    queryKey: prediccionKeys.baja(licitacionId),
-    queryFn: () =>
-      fetchWithAuth(
-        `/api/v1/licitaciones/${encodeURIComponent(licitacionId)}/prediccion-baja`,
-      ),
-    staleTime: 5 * 60 * 1000,
-    retry: false, // 404 = sin predicción y sin adjudicación registrada
-  });
+  // 404 = sin predicción y sin adjudicación registrada: no se reintenta.
+  const { data } = usePrediccionBaja(licitacionId);
   if (!data) return null;
 
   if (data.baja_real != null) {
@@ -71,6 +80,7 @@ export function PrediccionBajaBlock({ licitacionId }: { licitacionId: string }) 
             Sin estimación del modelo previa a la adjudicación.
           </p>
         )}
+        {data.lotes && data.lotes.length > 0 && <DesgloseLotes lotes={data.lotes} />}
       </div>
     );
   }
@@ -116,6 +126,7 @@ export function PrediccionBajaBlock({ licitacionId }: { licitacionId: string }) 
         Calculado {data.computed_at?.slice(0, 10)} · descripción del mercado, no una
         recomendación de puja.
       </p>
+      {data.lotes && data.lotes.length > 0 && <DesgloseLotes lotes={data.lotes} />}
     </div>
   );
 }

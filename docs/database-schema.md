@@ -6,9 +6,9 @@ tags: [database, schema, generado]
 
 <!-- generado por scripts/gen_schema_doc.py — no editar a mano -->
 
-Generado: 2026-09-15
+Generado: 2026-09-18
 
-Revisión Alembic aplicada: `v132_informes_programados`.
+Revisión Alembic aplicada: `v138_notice_type_code`.
 
 Catálogo de una base Postgres recién migrada con `alembic upgrade head`. Se listan
 las tablas de `public` agrupadas por familia, con sus columnas
@@ -24,16 +24,16 @@ migración que los declara— y, por supuesto, cualquier dato.
 
 | Familia | Tablas | Columnas | Índices |
 |---|---:|---:|---:|
-| Licitaciones y fuente | 11 | 151 | 51 |
+| Licitaciones y fuente | 11 | 156 | 53 |
 | Documentos y pliegos | 4 | 43 | 11 |
 | Empresas y mercado | 6 | 34 | 8 |
 | Organizaciones y oportunidades | 15 | 141 | 31 |
 | Identidad, acceso y auditoría | 15 | 105 | 24 |
-| Seguimiento y notificaciones | 12 | 132 | 33 |
-| ML y predicciones | 7 | 55 | 13 |
+| Seguimiento y notificaciones | 12 | 132 | 35 |
+| ML y predicciones | 7 | 55 | 14 |
 | Operación y observabilidad | 6 | 46 | 11 |
 | Otras | 19 | 150 | 28 |
-| **Total** | **95** | **857** | **210** |
+| **Total** | **95** | **862** | **215** |
 
 ## Licitaciones y fuente
 
@@ -190,10 +190,15 @@ Claves: `PRIMARY KEY (source)`
 | `valor_estimado` | `double precision` | sí |
 | `importe_tipo` | `text` | sí |
 | `organo_id` | `integer` | sí |
+| `fecha_publicacion_ts` | `timestamp with time zone` | sí |
+| `fecha_limite_ts` | `timestamp with time zone` | sí |
+| `importe_num` | `numeric` | sí |
+| `duracion_valor_num` | `numeric` | sí |
+| `tipos_anuncio` | `text` | sí |
 
 Claves: `PRIMARY KEY (id_externo)`
 
-Índices: `idx_ccaa`, `idx_cpv`, `idx_estado`, `idx_fecha_pub`, `idx_lic_clave_canonica_v101`, `idx_lic_cursor`, `idx_lic_fecha_act_fuente`, `idx_lic_fecha_extraccion`, `idx_lic_fecha_limite`, `idx_lic_fecha_pub_d`, `idx_lic_fecha_pub_tech`, `idx_lic_fuente`, `idx_lic_importe`, `idx_lic_importe_base_sin_iva`, `idx_lic_ml_proba`, `idx_lic_organo_id`, `idx_lic_tecnologia`, `idx_lic_universo_cpv`, `idx_licitaciones_analysis_lineage`, `idx_licitaciones_search_vector`, `idx_licitaciones_titulo_trgm`, `idx_ml_tech_principal`, `idx_organo`
+Índices: `idx_ccaa`, `idx_cpv`, `idx_estado`, `idx_fecha_pub`, `idx_lic_clave_canonica_v101`, `idx_lic_cursor`, `idx_lic_fecha_act_fuente`, `idx_lic_fecha_extraccion`, `idx_lic_fecha_limite`, `idx_lic_fecha_limite_ts`, `idx_lic_fecha_pub_d`, `idx_lic_fecha_pub_tech`, `idx_lic_fecha_publicacion_ts`, `idx_lic_fuente`, `idx_lic_importe`, `idx_lic_importe_base_sin_iva`, `idx_lic_ml_proba`, `idx_lic_organo_id`, `idx_lic_tecnologia`, `idx_lic_universo_cpv`, `idx_licitaciones_analysis_lineage`, `idx_licitaciones_search_vector`, `idx_licitaciones_titulo_trgm`, `idx_ml_tech_principal`, `idx_organo`
 
 ### `licitaciones_duplicados`
 
@@ -1002,7 +1007,7 @@ Claves: `PRIMARY KEY (id)` · `UNIQUE (entry_id, licitacion_id)`
 
 | Columna | Tipo | Nulo |
 |---|---|---|
-| `user_key` | `text` | no |
+| `user_key` | `text` | sí |
 | `id_externo` | `text` | no |
 | `created_at` | `timestamp with time zone` | no |
 | `score` | `smallint` | sí |
@@ -1010,11 +1015,11 @@ Claves: `PRIMARY KEY (id)` · `UNIQUE (entry_id, licitacion_id)`
 | `hasta` | `timestamp with time zone` | sí |
 | `accion` | `text` | sí |
 | `organization_id` | `integer` | sí |
-| `user_id` | `integer` | sí |
+| `user_id` | `integer` | no |
 
-Claves: `PRIMARY KEY (user_key, id_externo)`
+Claves: `PRIMARY KEY (user_id, id_externo)`
 
-Índices: `idx_radar_dismissals_user_hasta`, `idx_radar_dismissals_user_id`
+Índices: `idx_radar_dismissals_user_hasta`, `idx_radar_dismissals_user_id`, `uq_radar_dismissals_user_key` (único)
 
 ### `saved_filters`
 
@@ -1057,7 +1062,7 @@ Claves: `PRIMARY KEY (id)` · `UNIQUE (user_key, licitacion_id, type)`
 
 | Columna | Tipo | Nulo |
 |---|---|---|
-| `user_key` | `text` | no |
+| `user_key` | `text` | sí |
 | `weights_json` | `text` | sí |
 | `afinidad_keywords_json` | `text` | sí |
 | `cpvs_json` | `text` | sí |
@@ -1067,11 +1072,11 @@ Claves: `PRIMARY KEY (id)` · `UNIQUE (user_key, licitacion_id, type)`
 | `updated_at` | `text` | no |
 | `organization_id` | `integer` | sí |
 | `visibility` | `text` | no |
-| `user_id` | `integer` | sí |
+| `user_id` | `integer` | no |
 
-Claves: `PRIMARY KEY (user_key)`
+Claves: `PRIMARY KEY (user_id)`
 
-Índices: `idx_user_profiles_organization`, `idx_user_profiles_user_id`
+Índices: `idx_user_profiles_organization`, `idx_user_profiles_user_id`, `uq_user_profiles_user_key` (único)
 
 ### `watchlist_cpv`
 
@@ -1303,11 +1308,9 @@ Claves: `PRIMARY KEY (id)` · `UNIQUE (name, version)`
 | `p90` | `double precision` | no |
 | `model_version` | `integer` | sí |
 | `computed_at` | `text` | no |
-| `lote_id` | `integer` | sí |
+| `lote_numero` | `text` | sí |
 
-Claves: `PRIMARY KEY (licitacion_id)`
-
-Índices: `idx_pred_baja_computed`, `uq_pred_baja_lic_lote` (único)
+Índices: `idx_pred_baja_computed`, `uq_pred_baja_expediente` (único), `uq_pred_baja_lote` (único)
 
 ### `predicciones_retencion`
 

@@ -1,0 +1,31 @@
+{
+  "licitacion_ids": [
+    "LIC-2026-0001",
+    "LIC-2026-0002"
+  ],
+  "sin_ficha": [
+    "LIC-2026-0002"
+  ],
+  "filas": [
+    {
+      "familia": "technologies",
+      "etiqueta": "Tecnologías",
+      "vacia_en_todos": false,
+      "celdas": [
+        {
+          "licitacion_id": "LIC-2026-0001",
+          "n": 2,
+          "ejemplos": [
+            "SAP S/4HANA",
+            "SAP BTP"
+          ]
+        },
+        {
+          "licitacion_id": "LIC-2026-0002",
+          "n": 0,
+          "ejemplos": []
+        }
+      ]
+    }
+  ]
+}

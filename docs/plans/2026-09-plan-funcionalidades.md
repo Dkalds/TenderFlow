@@ -202,6 +202,13 @@ sea una entidad; hasta entonces busca sobre el nombre normalizado.
 
 *Adopción:* `busqueda_realizada` con `origen=paleta` y `tipo_resultado`.
 
+*Estado 2026-09-18 (UI, rama `worktree-agent-aa4eeee01ef3fbb62`):* la paleta ⌘K
+(`components/command-palette.tsx`, hook `hooks/use-busqueda-global.ts`)
+consume `GET /search/global` con debounce y la organización activa, agrupa por
+tipo, abre el perfil con un NIF exacto y, sin coincidencias, dice qué tipos
+buscó y ofrece «Buscar en licitaciones». El órgano abre
+`/mercado?vista=organos&organo_q=` hasta que exista C1.2. El p95 no se midió.
+
 #### F1.3 Explicación del score en lenguaje claro — P0
 
 **Para quién.** Quien tría en el Radar. **Qué.** Tres frases por tarjeta,
@@ -287,6 +294,12 @@ migración, pre-autorizada.
 *Adopción:* evento nuevo `etiqueta_aplicada` con `objeto ∈ {favorito,
 oportunidad, cuenta}`.
 
+**Estado (2026-09-18, rama `worktree-agent-a46c6c93b69b8f96c`).** Backend
+desde PR #272; UI hecha: selector para aplicar/quitar (y crear) etiquetas en
+Mi Watchlist → Favoritos, en la ficha de la oportunidad y en Cuentas; chips en
+las tarjetas del tablero y filtro por etiqueta en Oportunidades. Falta el
+filtro en Radar y Detalle.
+
 #### F1.7 Procedimiento y tramitación legibles — P1
 
 **Para quién.** Todos; sobre todo quien no vive en la Ley 9/2017. **Qué.**
@@ -364,6 +377,13 @@ M · sin gate.
 
 *Adopción:* evento nuevo `simulador_usado` con `formula_tipo`.
 
+*Estado (2026-09-18, rama `worktree-agent-ac5d5218d7d3b1f8b`):* **UI hecha.**
+`components/pliego/simulador-puntuacion.tsx` en el Resumen del inspector de
+Detalle y en la pestaña Precio de la oportunidad: escenarios de referencia,
+baja propia contra la del rival (con el p90 de `prediccion-baja` a un clic),
+motivo por caso de `sin_calculo` y `simulador_usado` emitido. El test de los
+diez pliegos golden es del backend y no se toca aquí.
+
 #### F2.3 Kit de presentación: documentos exigidos — P0
 
 **Para quién.** Quien monta la oferta administrativa. **Qué.** Lista de
@@ -384,6 +404,12 @@ ellas, checklist sin responsable. **Esfuerzo / gate.** M · sin gate.
   lista genérica como si fuera del pliego.
 
 *Adopción:* evento nuevo `kit_abierto` con `items` en tramos.
+
+**Estado (2026-09-18, rama `worktree-agent-a46c6c93b69b8f96c`).** Hecho. La
+pestaña Decisión pinta el kit por sobre con casillas persistidas. El
+responsable sale de C6.1: `POST /pursuits/{id}/kit/responsable` crea (o
+reasigna) la tarea «Kit: …» y ata clave→tarea en el mismo ledger; si la tarea
+se borra, el documento vuelve a quedar sin responsable.
 
 #### F2.4 Tarifas por perfil y desglose del presupuesto — P1
 
@@ -416,6 +442,15 @@ después el PDF real. **Esfuerzo / gate.** S · sin gate.
 
 *Adopción:* propiedad `evidencia_abierta` en `espacio_abierto`.
 
+*Estado (2026-09-18, rama `worktree-agent-ac5d5218d7d3b1f8b`):* **UI hecha.**
+`components/pliego/pagina-pliego-dialog.tsx`, abierto desde cada cita de la
+ficha y del guion: resaltado por offsets, aviso y página completa si no
+sirven, navegación y enlace al original. E2E `web/e2e/pagina-cita.spec.ts`
+escrito (ficha → página resaltada en dos clics) y **no ejecutado** en local.
+Pendiente: `evidencia_abierta` no se emite — `espacio_abierto` exige un
+`origen` de navegación que abrir una cita no tiene; decidir si va en otro
+evento.
+
 #### F2.6 Guion de la oferta técnica por criterio (D33) — P1
 
 **Para quién.** Quien redacta. **Qué.** Para cada criterio de adjudicación,
@@ -433,6 +468,12 @@ Presupuesto LLM por organización (C2.9). **Esfuerzo / gate.** M · **[§6]**
   dos frases (esquema, no prosa).
 
 *Adopción:* evento nuevo `guion_generado` con `criterios` en tramos.
+
+*Estado (2026-09-18, rama `worktree-agent-ac5d5218d7d3b1f8b`):* **UI hecha**
+(`components/pliego/guion-oferta.tsx`, pestaña IA del inspector y pestaña
+Pliego de la oportunidad). Se genera sólo con botón (cuesta presupuesto), los
+puntos `sin_base` se marcan, el 429 se explica y se descarga en Markdown. El
+**PDF** no tiene ruta en el backend y queda sin hacer.
 
 #### F2.7 Ficha de oportunidad en PDF — P1
 
@@ -465,6 +506,13 @@ Detalle compara metadatos del anuncio, no fichas. **Depende de.** Nada.
 
 *Adopción:* propiedad `n_expedientes` en `asistente_usado`.
 
+*Estado (2026-09-18, rama `worktree-agent-ac5d5218d7d3b1f8b`):* **UI de la
+tabla hecha.** Bandeja de comparación (hasta tres) con botón «Comparar» en el
+inspector de Detalle, el del Radar y los favoritos de la watchlist; tabla
+`components/pliego/comparar-fichas.tsx` en la bandeja y como sección opcional
+del comparador de Detalle. Fuera de esta rama: `/ask` con varios expedientes
+desde la UI.
+
 ### F3 — Competir
 
 #### F3.1 Motivos de pérdida codificados y analítica win/loss (D37) — P0
@@ -484,6 +532,13 @@ CPV 72». **Hoy.** Hecho 10. **Depende de.** Nada. **Esfuerzo / gate.** S ·
 
 *Adopción:* propiedad `motivo` en `pursuit_estado_cambiado` (categórica).
 
+**Estado (2026-09-18, rama `worktree-agent-a46c6c93b69b8f96c`).** Hecho. El
+editor de la oportunidad pide el motivo codificado al cerrar como perdida
+(«otro» exige nota) y ofrece completar los cierres `sin_codificar`;
+`perdidas_por_motivo` se pinta en Mi Pipeline → Embudo con el mínimo del
+backend. El evento lleva `motivo`. El corte por tecnología/órgano/competidor
+queda para Dirección (F4.2).
+
 #### F3.2 Batallas directas por competidor — P1
 
 **Para quién.** Quien conoce a sus rivales. **Qué.** Por competidor:
@@ -500,6 +555,13 @@ gate.
 - Test de aislamiento: no mezcla oportunidades de otra organización.
 
 *Adopción:* propiedad `vista=contra_mi` en `espacio_abierto`.
+
+*Estado 2026-09-18 (UI, rama `worktree-agent-aa4eeee01ef3fbb62`):* pestaña «Contra mí»
+(`components/competitors/company-contra-mi.tsx`) en el dossier de Competencia
+y en el perfil completo, con ventana 12/24/36 meses y `n`. Pinta «Ganaron
+ellos» y «Perdimos» por separado según `resultado`; las filas sin
+`offer_price_eur` dicen «Sin precio registrado»; con `sin_nif_propio` avisa y
+manda a Equipo → Organización.
 
 #### F3.3 Socios de UTE sugeridos — P1
 
@@ -519,6 +581,12 @@ S2.2) para «complementan»; sin él, sugerencia por co-adjudicación.
   marcados como excluidos.
 
 *Adopción:* evento nuevo `partners_consultado`.
+
+*Estado 2026-09-18 (UI, rama `worktree-agent-aa4eeee01ef3fbb62`):* «Socios de UTE
+sugeridos» en la pestaña Expediente de la oportunidad
+(`components/competitors/socios-ute.tsx`), con el segmento del expediente
+(prefijo CPV sin ceros de cola + CCAA), el motivo de cada socio, los líderes
+aparte y rotulados como competencia, el `n` y la lista vacía declarada.
 
 #### F3.4 Alertas de competidor en mi segmento — P1
 
@@ -566,6 +634,11 @@ configuración por organización, pre-autorizada.
 *Adopción:* propiedad `vista=embudo` ya existe en `espacio_abierto`; sin
 evento nuevo.
 
+**Estado (2026-09-18, rama `worktree-agent-a46c6c93b69b8f96c`).** Hecho en UI:
+Mi Pipeline → Embudo pinta `pipeline_value_eur`, la previsión trimestral y los
+supuestos (probabilidades usadas, oportunidades sin importe). La edición de
+`probabilidades_etapa` por owner/admin no tiene pantalla todavía.
+
 #### F4.2 Cuadro de mando de dirección — P1
 
 **Para quién.** Owner y admin. **Qué.** Espacio «Dirección» (grupo
@@ -607,6 +680,13 @@ pre-autorizada.
 *Adopción:* evento nuevo `cartera_abierta` y propiedad
 `origen=renovacion` en `pursuit_creado`.
 
+**Estado (2026-09-18, rama `worktree-agent-a46c6c93b69b8f96c`).** Vista Mi
+Pipeline → Cartera hecha (estaba declarada en `space-views.ts` sin componente
+y caía a la agenda): fin efectivo con su origen, prórrogas, ventana de
+relicitación como estimación, filtros por tecnología y órgano, evento
+`cartera_abierta`. **Pendiente:** «Preparar renovación» — el backend no expone
+esa acción (sólo `renovacion_pursuit_id`, que la vista enlaza).
+
 #### F4.4 Fecha prevista de adjudicación — P1
 
 **Para quién.** Quien planifica recursos. **Qué.** `expected_award_date`
@@ -622,6 +702,11 @@ rango p25–p75 y `n`; la agenda y F4.1 la usan. **Hoy.** Hecho 12.
 - Test con fixture de órgano con lead-time conocido.
 
 *Adopción:* ninguna propia.
+
+**Estado (2026-09-18, rama `worktree-agent-a46c6c93b69b8f96c`).** UI hecha en
+la ficha de la oportunidad: una estimación se muestra como intervalo p25–p75
+con su `n` y la marca «estimación»; sólo un `hito` se muestra como fecha; sin
+base, «Sin estimación».
 
 #### F4.5 Actividad de la organización — P2
 
@@ -653,6 +738,14 @@ gate.
   `pursuit_events`).
 
 *Adopción:* propiedad `origen=plantilla` en la creación de tareas.
+
+**Estado (2026-09-18, rama `worktree-agent-a46c6c93b69b8f96c`).** Hecho, sin
+migración. Plantilla en `plantillas_organizacion` (`tipo='tareas'`, v106),
+`GET/PUT /organizations/{id}/plantilla-tareas` (owner/admin editan), editor en
+Equipo → Organización. La transición a `preparing` instancia una sola vez vía
+evento `plantilla_tareas_aplicada` con clave de idempotencia (índice único de
+v61). `origen=plantilla` va en el payload del evento y en el log, no en una
+columna de `pursuit_tasks`: ninguna pantalla necesita distinguirlas.
 
 ### F5 — Vigilar: alertas y novedades
 
@@ -716,6 +809,13 @@ gate.** S · sin gate.
 
 *Adopción:* propiedad `banda=desde_ultima_visita` en `espacio_abierto`.
 
+*Estado 2026-09-18 (UI, rama `worktree-agent-aa4eeee01ef3fbb62`):* la banda abre el
+Resumen (`resumen/_components/desde-ultima-visita.tsx`) con la organización
+activa; cero ítems lo dice y `ventana_recortada` se declara. **Falta «marcar
+todo como visto»:** `last_seen` es la lectura más reciente de la campana y no
+hay endpoint que la mueva sin marcar notificaciones concretas; queda para
+backend. `espacio_abierto.origen` gana el valor `pantalla`.
+
 #### F5.5 Reglas con vista previa de ruido — P2
 
 **Para quién.** Quien recibe demasiado. **Qué.** Al crear o editar una
@@ -743,6 +843,11 @@ vencer. **Hoy.** Hecho 18. **Depende de.** Nada. **Esfuerzo / gate.** S ·
 - El recordatorio llega como alerta en la fecha elegida.
 
 *Adopción:* propiedad `accion=silenciar|posponer` en `radar_triaje`.
+
+*Estado 2026-09-18 (UI, rama `worktree-agent-aa4eeee01ef3fbb62`):* el inspector del
+Radar gana la fila «Más tarde»: «Silenciar 30 días» y «Recordar en 3/7/14/30
+días → Posponer», separadas de «Descartar». **Parcial:** la campana no ofrece
+todavía silenciar/posponer desde una alerta.
 
 ### F6 — Configurar y compartir
 
@@ -777,6 +882,12 @@ tecnología existe; el resto no tiene entrada. **Depende de.** Nada.
 - La vista Calidad de datos muestra reportes abiertos por tipo.
 
 *Adopción:* evento nuevo `dato_reportado` con `tipo`.
+
+*Estado (2026-09-18, rama `worktree-agent-ac5d5218d7d3b1f8b`):* **UI hecha.**
+«Reportar dato» en la cabecera del inspector (`components/pliego/reportar-dato.tsx`):
+tipo cerrado, comentario opcional y acuse con la cola que lo revisa;
+`dato_reportado` tras el 201. La vista Calidad de datos pinta
+`reportes_por_tipo` (`ops/_components/calidad-datos/reportes-card.tsx`).
 
 #### F6.3 Exportación a CRM (D35) — P1
 
@@ -822,6 +933,13 @@ pública. **Hoy.** Hecho 16. **Depende de.** Maestro de órganos (C1.2).
   anuncios.
 
 *Adopción:* ninguna (superficie pública, telemetría ya existente).
+
+*Estado (2026-09-18, rama `worktree-agent-ac5d5218d7d3b1f8b`):* **Hecho en
+web.** `/licitaciones/organo/[slug]` (nombre del backend, 404 si el órgano no
+tiene hub) y el índice `/licitaciones/organo`; sitemap e índice anuncian sólo
+los hubs con más de diez anuncios (`hubsOrganoAnunciables`).
+`check_public_surface.py --strict` en verde. `seo.spec.ts` cubre las rutas y
+el sitemap; **no ejecutado** en local.
 
 #### F6.6 Boletín público (D36) — P2, solo si D36 lo aprueba
 

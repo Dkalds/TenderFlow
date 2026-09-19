@@ -11,6 +11,7 @@
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Grid3x3 } from "lucide-react";
+import { Pista } from "@/components/ui/pista";
 
 import type { HeatmapMatrix } from "../_hooks/use-tecnologias-view";
 
@@ -39,35 +40,34 @@ export function TecnologiasHeatmap({ heatmap }: { heatmap: HeatmapMatrix }) {
           <div className="inline-block min-w-full">
             <div className="grid gap-px" style={columnas}>
               <div className="p-1" />
+              {/* Cabeceras y celdas con `Pista` y no con un disparador
+                  focusable: la rejilla no gana paradas de tabulación. El
+                  órgano va entero en el DOM y lo recorta el CSS. */}
               {heatmap.organos.map((org) => (
-                <div
-                  key={org}
-                  className="truncate p-1 text-center text-xs font-medium text-muted-foreground"
-                  title={org}
-                >
-                  {org.slice(0, 18)}
-                </div>
+                <Pista key={org} contenido={org}>
+                  <div className="truncate p-1 text-center text-xs font-medium text-muted-foreground">{org}</div>
+                </Pista>
               ))}
             </div>
             {heatmap.techs.map((tech) => (
               <div key={tech} className="grid gap-px" style={columnas}>
-                <div className="truncate p-1 text-xs font-medium" title={tech}>
-                  {tech}
-                </div>
+                <Pista contenido={tech}>
+                  <div className="truncate p-1 text-xs font-medium">{tech}</div>
+                </Pista>
                 {heatmap.organos.map((org) => {
                   const val = heatmap.cell.get(`${tech}||${org}`) ?? 0;
                   return (
-                    <div
-                      key={org}
-                      className="flex items-center justify-center rounded p-1 text-xs tabular-nums"
-                      style={{
-                        backgroundColor: heatColor(val, heatmap.maxVal),
-                        color: val > heatmap.maxVal * 0.5 ? "hsl(var(--primary-foreground))" : "inherit",
-                      }}
-                      title={`${tech} x ${org}: ${val}`}
-                    >
-                      {val > 0 ? val : ""}
-                    </div>
+                    <Pista key={org} contenido={`${tech} x ${org}: ${val}`}>
+                      <div
+                        className="flex items-center justify-center rounded p-1 text-xs tabular-nums"
+                        style={{
+                          backgroundColor: heatColor(val, heatmap.maxVal),
+                          color: val > heatmap.maxVal * 0.5 ? "hsl(var(--primary-foreground))" : "inherit",
+                        }}
+                      >
+                        {val > 0 ? val : ""}
+                      </div>
+                    </Pista>
                   );
                 })}
               </div>

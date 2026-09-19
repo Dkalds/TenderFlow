@@ -15,10 +15,10 @@ lo llame, que es justo el hueco de aislamiento que
 ``tests/test_user_key_sql_isolation.py`` audita en ``db/watchlist.py``.
 
 Desde v129 (ADR-030 fase 2) la fila lleva ``user_id`` junto a ``user_key`` y
-la lectura es dual (ver ``db/repositories/watchlist.py``). La PK sigue siendo
-``(user_key, id_externo)`` —recrearla es la fase 3—, así que :func:`add`
-actualiza primero por identidad y sólo inserta si el usuario no tenía ya ese
-descarte bajo ninguna de sus claves.
+la lectura es dual (ver ``db/repositories/watchlist.py``). Desde v135 (fase 3)
+la PK es ``(user_id, id_externo)``: :func:`add` exige ``user_id`` y es un
+único upsert por esa clave. La lectura dual se conserva porque no cuesta nada
+y sigue sirviendo a quien llame sin id las filas escritas antes.
 """
 
 from __future__ import annotations
@@ -50,7 +50,7 @@ def add(
     hasta: str | None = None,
     accion: str | None = None,
     organization_id: int | None = None,
-    user_id: int | None = None,
+    user_id: int,
 ) -> None:
     """Marca una licitación como descartada por el usuario.
 
@@ -72,45 +72,25 @@ def add(
     descartado, o vuelve a posponer lo que ya venció, está diciendo cuándo
     quiere volver a verlo, y un ``DO NOTHING`` lo ignoraría en silencio.
 
-    La fila existente se localiza por identidad dual (v129): tras un cambio
-    de correo vive bajo la clave antigua y el ``ON CONFLICT`` por PK no la
-    encontraría, dejando el mismo expediente descartado dos veces.
+    Desde v135 (ADR-030 fase 3) la PK es ``(user_id, id_externo)``, así que
+    ``user_id`` es obligatorio y un solo ``ON CONFLICT`` encuentra el descarte
+    aunque se hubiera escrito bajo otra clave: ya no hace falta localizarlo
+    antes por identidad dual. ``user_key`` se sigue escribiendo —y la de la
+    fila existente no se toca— porque el recordatorio de :func:`pospuestos_vencidos`
+    la entrega a ``user_notifications``, que todavía se teclea por ella.
     """
     with connect() as c:
-        cur = c.execute(
-            "UPDATE radar_dismissals SET "
-            "  score = COALESCE(score, %s), banda = COALESCE(banda, %s), "
-            "  hasta = %s, accion = %s, "
-            "  organization_id = COALESCE(%s, organization_id), "
-            "  user_id = COALESCE(user_id, %s) "
-            f"WHERE {_IDENT} AND id_externo = %s",
-            (
-                score,
-                banda,
-                hasta,
-                accion,
-                organization_id,
-                user_id,
-                user_id,
-                user_key,
-                user_id,
-                id_externo,
-            ),
-        )
-        if int(getattr(cur, "rowcount", 0) or 0) > 0:
-            return
         c.execute(
             "INSERT INTO radar_dismissals "
             "  (user_key, user_id, id_externo, score, banda, hasta, accion, organization_id) "
             "VALUES (%s, %s, %s, %s, %s, %s, %s, %s) "
-            "ON CONFLICT (user_key, id_externo) DO UPDATE SET "
+            "ON CONFLICT (user_id, id_externo) DO UPDATE SET "
             "  score = COALESCE(radar_dismissals.score, EXCLUDED.score), "
             "  banda = COALESCE(radar_dismissals.banda, EXCLUDED.banda), "
             "  hasta = EXCLUDED.hasta, "
             "  accion = EXCLUDED.accion, "
             "  organization_id = COALESCE("
-            "    EXCLUDED.organization_id, radar_dismissals.organization_id), "
-            "  user_id = COALESCE(radar_dismissals.user_id, EXCLUDED.user_id)",
+            "    EXCLUDED.organization_id, radar_dismissals.organization_id)",
             (user_key, user_id, id_externo, score, banda, hasta, accion, organization_id),
         )
 

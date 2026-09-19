@@ -9,6 +9,10 @@ import { DocumentosBlock } from "@/components/documentos-block";
 import { TecnologiasBlock } from "@/components/tecnologias-block";
 import { EventosTimeline } from "@/components/eventos-timeline";
 import { PrediccionBajaBlock } from "@/components/prediccion-baja";
+import { SimuladorPuntuacion } from "@/components/pliego/simulador-puntuacion";
+import { GuionOfertaPanel } from "@/components/pliego/guion-oferta";
+import { ReportarDatoBoton } from "@/components/pliego/reportar-dato";
+import { CompararBoton } from "@/components/pliego/comparacion-bandeja";
 import { RecurridoBadge, ResolucionesBlock, useResoluciones } from "@/components/resoluciones-block";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -42,6 +46,10 @@ import { DESGLOSE_LABELS } from "@/components/score-desglose";
 import { riesgoLabel } from "@/lib/riesgos";
 
 type TabKey = "resumen" | "ia" | "pliegos" | "recursos";
+
+/** Botón secundario de la cabecera: mismo tamaño que «Copiar enlace». */
+const ACCION_SECUNDARIA =
+  "tf-pressable inline-flex h-6.5 items-center gap-1.5 rounded-md border border-border/80 px-2.5 text-[11.5px] font-medium text-muted-foreground transition-colors duration-140 ease-out hover:border-primary/45 hover:text-foreground aria-pressed:border-primary/50 aria-pressed:text-primary";
 
 const TABS: { key: TabKey; label: string }[] = [
   { key: "resumen", label: "Resumen" },
@@ -145,11 +153,13 @@ export function DetailInspector({
           {l.titulo ?? l.id_externo}
         </h2>
 
-        <div className="mb-3 flex items-center gap-2">
+        <div className="mb-3 flex flex-wrap items-center gap-2">
           <span className="tf-tnum font-mono text-[17px] font-semibold leading-none">
             {formatCurrency(l.importe)}
           </span>
           <div className="flex-1" />
+          <CompararBoton id={l.id_externo} titulo={l.titulo} className={ACCION_SECUNDARIA} />
+          <ReportarDatoBoton licitacionId={l.id_externo} className={ACCION_SECUNDARIA} />
           <Tooltip>
             <TooltipTrigger asChild>
               <button
@@ -203,7 +213,16 @@ export function DetailInspector({
         </div>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-4 pt-4">
+      {/* Región con foco propio (axe `scrollable-region-focusable`): la
+          pestaña «Resumen» puede no tener ningún control dentro, y sin foco
+          el teclado no puede desplazar lo que no cabe. */}
+      <div
+        role="region"
+        aria-label="Contenido de la ficha"
+        // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex -- región con scroll sin controles: WCAG 2.1.1 exige que el teclado pueda desplazarla (axe scrollable-region-focusable)
+        tabIndex={0}
+        className="min-h-0 flex-1 overflow-y-auto px-4 pt-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+      >
         {tab === "resumen" && (
           <div className="pb-6">
             {l.score != null && (
@@ -282,6 +301,12 @@ export function DetailInspector({
               <PrediccionBajaBlock licitacionId={l.id_externo} />
             </div>
 
+            {/* F2.2 — junto a la baja esperada: es con esa baja con la que se
+                mide el rival, y el simulador la ofrece como referencia. */}
+            <div className="mb-4.5">
+              <SimuladorPuntuacion licitacionId={l.id_externo} />
+            </div>
+
             <SectionTitle>Ficha</SectionTitle>
             <div className="mb-4.5 grid grid-cols-2 gap-px overflow-hidden rounded-[9px] border border-border/60 bg-border/60">
               <Fact label="Órgano" value={l.organo_contratacion} />
@@ -343,6 +368,8 @@ export function DetailInspector({
                 con citas verificables; el botón «Extraer ficha» descarga los
                 pliegos pendientes bajo demanda y lanza la extracción LLM. */}
             <TenderFactSheetPanel licitacionId={l.id_externo} />
+            {/* F2.6 — se construye sobre los criterios de esa misma ficha. */}
+            <GuionOfertaPanel licitacionId={l.id_externo} />
           </div>
         )}
 

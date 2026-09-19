@@ -227,6 +227,7 @@ def log_action(
 def log_event(
     *,
     event_type: str,
+    actor: str = "",
     user_key: str = "",
     session_hash: str = "",
     outcome: str = "success",
@@ -240,7 +241,14 @@ def log_event(
     Args:
         event_type: Categoría del evento (e.g. ``api_key.created``,
             ``webhook.delivery``, ``model.activated``).
-        user_key: Clave opaca del usuario (hash) o ``"system"``.
+        actor: Quién actúa, tal y como se guarda en la columna ``user_key``
+            de ``audit_log``: el id del principal en texto, un prefijo de hash
+            o ``"system"``. Es el nombre nuevo del parámetro (ADR-030 fase 3):
+            lo que se pasa aquí no tiene por qué ser una clave derivada del
+            correo, y el nombre viejo obligaba a congelar en el ratchet a
+            llamadores que ya pasaban el ``user_id``.
+        user_key: Alias **deprecado** de ``actor``, vivo mientras queden
+            llamadores sin migrar. Si llegan los dos, manda ``actor``.
         session_hash: Hash de sesión, opcional para eventos de sistema.
         outcome: ``success`` | ``failure`` | ``denied``.
         ip: IP del cliente, ya redactada/truncada si aplica.
@@ -260,6 +268,7 @@ def log_event(
     if not es_evento_conocido(event_type):
         log.warning("audit_event_type_unknown", event_type=event_type)
 
+    user_key = actor or user_key
     # Quien ya tiene ``user_id`` no tiene por qué repetirlo como clave: la
     # columna ``user_key`` queda con el id en texto, que es la forma que el
     # backfill de v129 resuelve y la que llevan los llamadores más recientes.

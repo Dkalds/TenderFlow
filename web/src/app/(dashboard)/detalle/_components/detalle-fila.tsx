@@ -2,9 +2,10 @@
 
 import { Star } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Pista } from "@/components/ui/pista";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { cn, formatCurrency, formatDate, truncate } from "@/lib/utils";
+import { cn, formatCurrency, formatDate } from "@/lib/utils";
 import { bandColor, shortEur } from "../../radar/_components/radar-shared";
 import type { MergedRow } from "../_hooks/detalle-table-model";
 
@@ -87,11 +88,15 @@ export function DetalleFila({
         />
       </td>
       <td>
+        {/* El punto era solo color + `title`: ni el teclado ni el lector
+            sabían que la fila era nueva. Ahora lo dice un texto `sr-only` y
+            la `Pista` lo enseña al puntero, sin sumar una parada por fila. */}
         {row.isNew && (
-          <span
-            className="block h-1.5 w-1.5 rounded-full bg-[hsl(var(--info))]"
-            title="Publicada desde tu última visita"
-          />
+          <Pista contenido="Publicada desde tu última visita">
+            <span className="block h-1.5 w-1.5 rounded-full bg-[hsl(var(--info))]">
+              <span className="sr-only">Publicada desde tu última visita</span>
+            </span>
+          </Pista>
         )}
       </td>
       <td>
@@ -109,7 +114,7 @@ export function DetalleFila({
             event.stopPropagation();
             onToggleFavorite(row.id_externo);
           }}
-          className="tf-pressable grid h-5 w-5 place-items-center rounded"
+          className="tf-pressable grid h-6 w-6 place-items-center rounded"
         >
           <Star
             className={cn(
@@ -122,24 +127,28 @@ export function DetalleFila({
       <td className="truncate px-1 font-mono text-[10.5px] text-muted-foreground">
         {row.id_externo.replace("PLACSP-", "")}
       </td>
+      {/* Título y órgano: el texto entero va en el DOM (lo recorta el CSS, así
+          que el lector lo lee completo) y la `Pista` lo enseña al puntero. Un
+          disparador focusable aquí serían 50 paradas de tabulación por página
+          dentro de una fila que ya es focusable. */}
       <td className="px-1">
-        <span
-          title={row.titulo}
-          className={cn(
-            "block truncate text-[12.5px] leading-[1.3] tracking-[-0.005em]",
-            open ? "font-semibold text-foreground" : "font-medium",
-          )}
-        >
-          {row.titulo}
-        </span>
+        <Pista contenido={row.titulo}>
+          <span
+            className={cn(
+              "block truncate text-[12.5px] leading-[1.3] tracking-[-0.005em]",
+              open ? "font-semibold text-foreground" : "font-medium",
+            )}
+          >
+            {row.titulo}
+          </span>
+        </Pista>
       </td>
       <td className="px-1">
-        <span
-          title={row.organo_contratacion ?? ""}
-          className="block truncate text-xs leading-[1.3] text-muted-foreground"
-        >
-          {truncate(row.organo_contratacion, compact ? 30 : 40)}
-        </span>
+        <Pista contenido={row.organo_contratacion}>
+          <span className="block truncate text-xs leading-[1.3] text-muted-foreground">
+            {row.organo_contratacion ?? ""}
+          </span>
+        </Pista>
       </td>
       <td className="tf-tnum px-1 text-right font-mono text-xs font-semibold">
         {compact ? shortEur(row.importe) : formatCurrency(row.importe)}

@@ -66,7 +66,7 @@ function Barra({
           {label}
         </span>
         {hint && (
-          <span className="text-muted-foreground/80 tf-tnum flex-none font-mono text-[10px]">
+          <span className="text-muted-foreground tf-tnum flex-none font-mono text-[10px]">
             {hint}
           </span>
         )}

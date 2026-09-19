@@ -13,6 +13,7 @@ import { useOrganizationStore } from "@/hooks/use-organization";
 import { useFilters } from "@/lib/filters";
 import { getJSON, setJSON } from "@/lib/storage";
 import {
+  type AccionAplazar,
   type RadarTender,
   type ScoringSignals,
   esBandaConocida,
@@ -88,6 +89,7 @@ export interface RadarConsola {
   lastVisit: number;
   opening: boolean;
   dismiss: (tender: RadarTender) => void;
+  aplazar: (tender: RadarTender, accion: AccionAplazar, dias: number) => void;
   restoreAll: () => void;
   toggleFollow: (tender: RadarTender) => void;
   openPursuit: (tender: RadarTender) => Promise<void>;
@@ -198,22 +200,30 @@ export function useRadarConsola(): RadarConsola {
     [dismissed, restore],
   );
 
-  const dismiss = React.useCallback(
-    (tender: RadarTender) => {
-      // El score y la banda viajan con el descarte: son los que el usuario tenía
-      // delante al decidir, y no se pueden reconstruir después (revisión v93).
+  // Descartar, silenciar y posponer (F5.6) son el mismo POST con otra acción.
+  // El score y la banda viajan con él: son los que el usuario tenía delante al
+  // decidir, y no se pueden reconstruir después (revisión v93).
+  const aplazar = React.useCallback(
+    (tender: RadarTender, accion?: AccionAplazar, dias?: number) => {
       dismissTender.mutate({
         idExterno: tender.id_externo,
         score: tender.score,
         banda: esBandaConocida(tender.band) ? tender.band : null,
+        ...(accion ? { accion, dias } : {}),
       });
-      toast("Señal descartada", {
+      const titulo = !accion
+        ? "Señal descartada"
+        : accion === "silenciar"
+          ? `Silenciada ${dias} días`
+          : `Te lo recordamos en ${dias} días`;
+      toast(titulo, {
         description: tender.titulo ?? undefined,
         action: { label: "Deshacer", onClick: () => restore(tender.id_externo) },
       });
     },
     [dismissTender, restore],
   );
+  const dismiss = React.useCallback((tender: RadarTender) => aplazar(tender), [aplazar]);
 
   const toggleFollow = React.useCallback(
     (tender: RadarTender) => {
@@ -276,6 +286,7 @@ export function useRadarConsola(): RadarConsola {
     lastVisit,
     opening: createPursuit.isPending,
     dismiss,
+    aplazar,
     restoreAll,
     toggleFollow,
     openPursuit,

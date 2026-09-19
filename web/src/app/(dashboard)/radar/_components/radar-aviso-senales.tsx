@@ -36,7 +36,7 @@ export function RadarAvisoSenales({ signals }: { signals: ScoringSignals | null 
   return (
     <div
       role="status"
-      className="flex-none border-b border-amber-500/25 bg-amber-500/8 px-3 py-1.5 text-[11.5px] leading-[1.45] text-amber-700 dark:text-amber-300 md:px-3.5"
+      className="flex-none border-b border-amber-500/25 bg-amber-500/8 px-3 py-1.5 text-[11.5px] leading-[1.45] text-amber-800 dark:text-amber-300 md:px-3.5"
     >
       <span className="font-medium">Score degradado</span> — {avisos.join(" · ")}.
     </div>

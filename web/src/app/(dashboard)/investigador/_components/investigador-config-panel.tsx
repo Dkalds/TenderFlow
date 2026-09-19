@@ -54,6 +54,7 @@ export function InvestigadorConfigPanel({ config, onChange, models }: Props) {
               <Slider
                 value={[config.topK]}
                 onValueChange={([v]) => onChange({ topK: v })}
+                aria-label="top_k"
                 min={1}
                 max={50}
                 className="w-full"
@@ -70,6 +71,7 @@ export function InvestigadorConfigPanel({ config, onChange, models }: Props) {
               <Slider
                 value={[Math.round(config.alpha * 100)]}
                 onValueChange={([v]) => onChange({ alpha: v / 100 })}
+                aria-label="Peso semántico"
                 min={0}
                 max={100}
                 className="w-full"

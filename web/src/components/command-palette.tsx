@@ -5,6 +5,9 @@
  *  - navigation to every dashboard route (admin routes gated by role),
  *  - "jump to licitación by id" when the query looks like an id,
  *  - free-text search handoff to /detalle when it doesn't look like an id,
+ *  - búsqueda global (F1.2, `GET /search/global`): expedientes, empresas,
+ *    órganos y oportunidades de la organización activa, agrupados por tipo. Un
+ *    NIF exacto abre el perfil de la empresa sin pasar por la lista,
  *  - quick actions: open copilot, toggle theme, toggle density.
  *
  * Visibility is driven by the shared UI store so keyboard shortcuts, the hero
@@ -21,8 +24,11 @@ import {
   ArrowRight,
   AlignJustify,
   Bookmark,
+  Briefcase,
+  Building2,
   FileSpreadsheet,
   FileText,
+  Landmark,
   LayoutGrid,
   Link2,
   Moon,
@@ -30,6 +36,7 @@ import {
   Sparkles,
   Star,
   Sun,
+  type LucideIcon,
 } from "lucide-react";
 import { isSpaceVisible, CONSOLE_GROUP_ORDER, CONSOLE_SPACES, type ConsoleGroup } from "@/lib/console-spaces";
 
@@ -45,6 +52,56 @@ import { useAdmin } from "@/hooks/use-admin";
 import { useDensity } from "@/lib/density";
 import { useFilterParams, useWithFilters } from "@/lib/filters";
 import { buildExportUrl, triggerDownload } from "@/lib/export";
+import { registrarEvento } from "@/lib/analytics";
+import {
+  destinoResultado,
+  ETIQUETA_TIPO,
+  PLURAL_TIPO,
+  useBusquedaGlobal,
+  type ResultadoBusqueda,
+  type TipoResultado,
+} from "@/hooks/use-busqueda-global";
+import { PURSUIT_STATUSES } from "@/hooks/use-pursuits";
+import { statusLabel } from "@/components/pursuits/pursuit-presenters";
+
+/** Orden de los grupos de resultados: el de `TIPOS_RESULTADO` del backend. */
+const TIPOS_ORDEN: TipoResultado[] = ["expediente", "empresa", "organo", "oportunidad"];
+
+const ICONO_TIPO: Record<TipoResultado, LucideIcon> = {
+  expediente: FileText,
+  empresa: Building2,
+  organo: Landmark,
+  oportunidad: Briefcase,
+};
+
+/** Encabezado de cada grupo de resultados. */
+const GRUPO_TIPO: Record<TipoResultado, string> = {
+  expediente: "Expedientes",
+  empresa: "Empresas",
+  organo: "Órganos",
+  oportunidad: "Oportunidades de tu equipo",
+};
+
+/**
+ * Segunda línea de un resultado. El backend manda el conteo del órgano como
+ * número a secas y el estado de la oportunidad como código del workflow; aquí
+ * se les pone nombre.
+ */
+function subtituloResultado(resultado: ResultadoBusqueda): string | null | undefined {
+  if (resultado.tipo === "organo" && resultado.subtitulo) return `${resultado.subtitulo} expedientes`;
+  if (resultado.tipo === "oportunidad" && resultado.subtitulo) {
+    const estado = PURSUIT_STATUSES.find((valor) => valor === resultado.subtitulo);
+    return estado ? statusLabel(estado) : resultado.subtitulo;
+  }
+  return resultado.subtitulo;
+}
+
+/** «expedientes, empresas y órganos»: qué se buscó, en castellano. */
+function listaTipos(tipos: readonly string[]): string {
+  const nombres = tipos.map((tipo) => PLURAL_TIPO[tipo] ?? tipo);
+  if (nombres.length <= 1) return nombres.join("");
+  return `${nombres.slice(0, -1).join(", ")} y ${nombres[nombres.length - 1]}`;
+}
 
 /** Heuristic: a token with a digit and id-like separators is probably a tender id. */
 function looksLikeLicitacionId(value: string): boolean {
@@ -74,6 +131,8 @@ function CommandPaletteInner() {
   const filterParams = useFilterParams();
   const [search, setSearch] = React.useState("");
   const inputRef = React.useRef<HTMLInputElement>(null);
+  const busqueda = useBusquedaGlobal(search);
+  const resultados = React.useMemo(() => busqueda.data?.resultados ?? [], [busqueda.data]);
 
   // Focus the search field when the palette opens (a11y-friendly vs. autoFocus).
   React.useEffect(() => {
@@ -122,6 +181,51 @@ function CommandPaletteInner() {
   const showJump = looksLikeLicitacionId(idQuery);
   const showSearch = idQuery.length >= 2 && !showJump;
   const hasActiveFilters = Object.keys(filterParams).length > 0;
+
+  // Resultados de la búsqueda global, agrupados por tipo en el orden del
+  // backend. Sólo se pintan los de la búsqueda vigente: mientras el debounce no
+  // alcanza lo tecleado, la respuesta anterior hablaría de otro término.
+  const gruposResultados = React.useMemo(
+    () =>
+      busqueda.pendiente
+        ? []
+        : TIPOS_ORDEN.map((tipo) => ({
+            tipo,
+            items: resultados.filter((resultado) => resultado.tipo === tipo),
+          })).filter((grupo) => grupo.items.length > 0),
+    [busqueda.pendiente, resultados],
+  );
+  const sinCoincidencias =
+    !busqueda.pendiente &&
+    busqueda.data != null &&
+    busqueda.data.sin_busqueda == null &&
+    resultados.length === 0;
+
+  const abrirResultado = React.useCallback(
+    (resultado: ResultadoBusqueda) => {
+      registrarEvento("busqueda_realizada", {
+        superficie: "paleta",
+        con_resultados: "si",
+        tipo_resultado: resultado.tipo,
+      });
+      run(() => router.push(destinoResultado(resultado)));
+    },
+    [router, run],
+  );
+
+  // Un NIF exacto es una identificación, no una búsqueda: quien lo teclea sabe
+  // a quién busca, y enseñarle una lista de un elemento que hay que pulsar es
+  // un paso de más (criterio de F1.2). Se abre en cuanto llega la respuesta.
+  const exacto = busqueda.pendiente ? undefined : resultados.find((resultado) => resultado.exacto);
+  const destinoExacto = exacto ? destinoResultado(exacto) : null;
+  const exactoRef = React.useRef<ResultadoBusqueda | undefined>(undefined);
+  React.useEffect(() => {
+    exactoRef.current = exacto;
+  });
+  React.useEffect(() => {
+    if (destinoExacto == null || exactoRef.current == null) return;
+    abrirResultado(exactoRef.current);
+  }, [destinoExacto, abrirResultado]);
 
   return (
     <div
@@ -185,7 +289,12 @@ function CommandPaletteInner() {
               {showSearch && (
                 <Command.Item
                   value={`buscar ${idQuery}`}
-                  onSelect={() => run(() => router.push(`/detalle?q=${encodeURIComponent(idQuery)}`))}
+                  onSelect={() => {
+                    if (sinCoincidencias) {
+                      registrarEvento("busqueda_realizada", { superficie: "paleta", con_resultados: "no" });
+                    }
+                    run(() => router.push(`/detalle?q=${encodeURIComponent(idQuery)}`));
+                  }}
                   className="aria-selected:bg-accent aria-selected:text-accent-foreground flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-sm"
                 >
                   <Search className="text-primary h-4 w-4" />
@@ -194,6 +303,55 @@ function CommandPaletteInner() {
               )}
             </Command.Group>
           )}
+
+          {/* Búsqueda global (F1.2). Sin coincidencias se dice qué se buscó —y
+              que sin organización no se buscan oportunidades—, y la salida es
+              el «Buscar en licitaciones» de arriba, que manda el texto a
+              Detalle. */}
+          {sinCoincidencias && busqueda.data && (
+            <p role="status" className="text-muted-foreground px-3 py-2 text-[12px]">
+              Sin coincidencias para «{busqueda.q}» en {listaTipos(busqueda.data.tipos_buscados ?? [])}.
+              {!(busqueda.data.tipos_buscados ?? []).includes("oportunidad") &&
+                " Sin organización activa no se buscan oportunidades."}
+            </p>
+          )}
+          {busqueda.isError && (
+            <p role="status" className="text-muted-foreground px-3 py-2 text-[12px]">
+              La búsqueda de expedientes, empresas y órganos no respondió. Puedes buscar el texto en licitaciones.
+            </p>
+          )}
+          {gruposResultados.map((grupo) => {
+            const Icon = ICONO_TIPO[grupo.tipo];
+            return (
+              <Command.Group
+                key={grupo.tipo}
+                heading={GRUPO_TIPO[grupo.tipo]}
+                className="text-muted-foreground px-1 text-[11px] font-medium [&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:py-1.5"
+              >
+                {grupo.items.map((resultado) => (
+                  <Command.Item
+                    key={`${resultado.tipo}:${resultado.id}`}
+                    // El término va en `keywords`: el filtro de cmdk compara lo
+                    // tecleado con el valor, y un resultado encontrado por NIF o
+                    // por nombre normalizado no tiene por qué contenerlo.
+                    value={`${resultado.tipo}:${resultado.id}`}
+                    keywords={[idQuery, resultado.titulo]}
+                    onSelect={() => abrirResultado(resultado)}
+                    className="aria-selected:bg-accent aria-selected:text-accent-foreground flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-sm"
+                  >
+                    <Icon className="text-primary h-4 w-4 flex-none" aria-hidden="true" />
+                    <span className="min-w-0 flex-1 truncate">{resultado.titulo}</span>
+                    {resultado.subtitulo && (
+                      <span className="text-muted-foreground ml-auto max-w-[40%] truncate text-[11px]">
+                        {subtituloResultado(resultado)}
+                      </span>
+                    )}
+                    <span className="sr-only">, {ETIQUETA_TIPO[resultado.tipo]}</span>
+                  </Command.Item>
+                ))}
+              </Command.Group>
+            );
+          })}
 
           <Command.Group
             heading="Acciones"

@@ -303,7 +303,9 @@ def test_entrenar_y_puntuar_retencion(db, monkeypatch, tmp_path):
     resumen = entrenar(activar=False, model_path=tmp_path / "ret.pkl")
 
     assert resumen["status"] == "ok"
-    for clave in ("pr_auc", "prevalencia", "brier", "ece"):
+    for clave in ("pr_auc", "prevalencia", "pr_auc_baseline", "pr_auc_baseline_antiguedad"):
+        assert clave in resumen
+    for clave in ("brier", "ece", "promotion_reason"):
         assert clave in resumen
 
     # Sin modelo activo el scoring usa baseline heuristico (Feature D)
