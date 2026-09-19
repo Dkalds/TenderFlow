@@ -25,6 +25,7 @@ import { DetallePie } from "./_components/detalle-pie";
 import { DetalleSeleccion } from "./_components/detalle-seleccion";
 import { DetalleTabla } from "./_components/detalle-tabla";
 import { buildCsv } from "./_hooks/detalle-table-model";
+import { useBusquedaListado } from "./_hooks/use-busqueda-listado";
 import { useCierreRecorte } from "./_hooks/use-cierre-recorte";
 import { useDetalleFavoritos } from "./_hooks/use-detalle-favoritos";
 import { useDetalleQueries, useDetailWithScore } from "./_hooks/use-detalle-queries";
@@ -108,6 +109,7 @@ export default function DetallePage() {
   const favoritos = useDetalleFavoritos();
 
   const queries = useDetalleQueries({ queryParams: tabla.queryParams, detailId });
+  useBusquedaListado(queryFilters, queries.data, queries.isFetching);
 
   // Orden en cliente sólo para las columnas que el backend no sabe ordenar
   // (`clientSorted`): es un orden sobre la página cargada, no sobre el total, y

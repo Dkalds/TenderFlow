@@ -46,7 +46,23 @@ export type GlobalFilterKey =
   | "ccaa"
   | "tecnologia"
   | "estado"
-  | "importe";
+  | "importe"
+  // F1.1 — sólo los aplica el listado (`GET /licitaciones`).
+  | "procedimiento"
+  | "provincia"
+  | "importe_max";
+
+/**
+ * Filtros que una página tiene que **declarar** para verlos (F1.1).
+ *
+ * El resto del ámbito se asume aplicado cuando la página no dice lo contrario
+ * (`globalFilterKeys` ausente = todos): es el comportamiento histórico y lo
+ * cumplen porque sus endpoints aceptan esos parámetros. Estos tres no: hoy
+ * sólo los entiende el listado, y un endpoint analítico que no los conoce los
+ * ignora en silencio. Ofrecerlos en todas las pantallas sería pintar filtros
+ * inertes, que es lo que la barra de ámbito existe para no hacer.
+ */
+export const FILTROS_OPT_IN: readonly GlobalFilterKey[] = ["procedimiento", "provincia", "importe_max"];
 
 export interface NavPage {
   label: string;
@@ -73,6 +89,8 @@ export interface NavPage {
    * operativo claro.
    */
   singleValueFilterKeys?: GlobalFilterKey[];
+  /** Filtros de {@link FILTROS_OPT_IN} que la página aplica además del resto. */
+  optInFilterKeys?: GlobalFilterKey[];
 }
 
 export interface NavSection {
@@ -162,6 +180,8 @@ export const SECTIONS: NavSection[] = [
         description:
           "Tabla completa con todos los campos y exportación a Excel/CSV.",
         icon: Search,
+        // Consume `GET /licitaciones`, que sí filtra por ellos (F1.1).
+        optInFilterKeys: ["procedimiento", "provincia", "importe_max"],
       },
     ],
   },
@@ -437,6 +457,20 @@ export function pageGlobalFilterKeys(pathname: string): GlobalFilterKey[] | null
   if (absorbed.some((item) => !item.globalFilterKeys)) return null;
   const union = new Set<GlobalFilterKey>();
   for (const item of absorbed) for (const key of item.globalFilterKeys ?? []) union.add(key);
+  return [...union];
+}
+
+/**
+ * Filtros opt-in ({@link FILTROS_OPT_IN}) que la página aplica. Un espacio
+ * hereda la unión de las rutas que absorbe: basta con que una vista los
+ * aplique para ofrecerlos.
+ */
+export function pageOptInFilterKeys(pathname: string): GlobalFilterKey[] {
+  const slug = pathname.replace(/^\//, "").split("/")[0];
+  const page = findPage(slug);
+  if (page) return page.optInFilterKeys ?? [];
+  const union = new Set<GlobalFilterKey>();
+  for (const item of absorbedPages(slug)) for (const key of item.optInFilterKeys ?? []) union.add(key);
   return [...union];
 }
 
