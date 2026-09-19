@@ -180,6 +180,31 @@ export const invitacion = esquemaDeDto("OrganizationMemberInvite")(
   [],
 );
 
+/**
+ * F4.1 — `shared/dto.py::OrganizationSettings.probabilidades_etapa`: un
+ * entero 0-100 por etapa (`_valida_probabilidades`). Vacío es «usar el valor
+ * por defecto» y no viaja: el backend aplica `PROBABILIDADES_ETAPA_DEFAULT` a
+ * lo que falta, y así el formulario no congela una copia de los defaults.
+ * Las etapas válidas no se enumeran aquí: las trae la respuesta
+ * (`probabilidades_etapa_default`).
+ */
+export const probabilidadesEtapa = esquemaDeDto("OrganizationSettings")(
+  {
+    probabilidades_etapa: z.record(z.string(), enteroOpcional(0, 100)),
+  },
+  // El resto de la configuración (tecnologías, ámbito de mercado F6.1) se
+  // edita en Mi Perfil; el PUT la reenvía tal cual está guardada.
+  [
+    "tecnologias",
+    "cpvs",
+    "ccaas",
+    "importe_min",
+    "importe_max",
+    "tipos_organo",
+    "procedimientos_excluidos",
+  ],
+);
+
 /* -------------------------------------------------------------- Oportunidad */
 
 type PursuitUpdate = Schemas["PursuitUpdate"];
@@ -255,6 +280,7 @@ export const CONTRATOS_DE_FORMULARIO: Readonly<Record<string, ContratoDto>> = {
   perfil: perfil.contrato,
   organizacion: organizacion.contrato,
   invitacion: invitacion.contrato,
+  probabilidadesEtapa: probabilidadesEtapa.contrato,
   oportunidad: oportunidad.contrato,
   webhook: webhook.contrato,
 };

@@ -14,6 +14,7 @@
 import { OrganizacionCapacidadCard } from "./organizacion-capacidad-card";
 import { OrganizacionNifsCard } from "./organizacion-nifs-card";
 import { PlantillaTareasCard } from "./plantilla-tareas-card";
+import { ProbabilidadesEtapaCard } from "./probabilidades-etapa-card";
 
 export function OrganizacionTab({
   organizationId,
@@ -44,6 +45,7 @@ export function OrganizacionTab({
       <OrganizacionNifsCard organizationId={organizationId} canManage={canManage} />
       <OrganizacionCapacidadCard organizationId={organizationId} canManage={canManage} />
       <PlantillaTareasCard organizationId={organizationId} />
+      <ProbabilidadesEtapaCard organizationId={organizationId} canManage={canManage} />
     </div>
   );
 }

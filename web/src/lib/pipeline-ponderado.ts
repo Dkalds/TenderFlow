@@ -21,6 +21,24 @@ const ETIQUETA_ETAPA: Record<string, string> = {
   submitted: "Presentada",
 };
 
+/** Etiqueta de una etapa del workflow; una desconocida se deja tal cual. */
+export function etiquetaEtapa(etapa: string): string {
+  return ETIQUETA_ETAPA[etapa] ?? etapa;
+}
+
+/**
+ * Etapas en el orden del workflow. Las etapas las pone quien llama (las que
+ * el backend declara en `probabilidades_etapa_default`); aquí sólo se ordenan,
+ * y una que no está en el orden conocido va al final en vez de perderse.
+ */
+export function ordenarEtapas(etapas: readonly string[]): string[] {
+  const posicion = (etapa: string) => {
+    const i = (ORDEN_ETAPAS as readonly string[]).indexOf(etapa);
+    return i === -1 ? ORDEN_ETAPAS.length : i;
+  };
+  return [...etapas].sort((a, b) => posicion(a) - posicion(b));
+}
+
 export interface SupuestoEtapa {
   etapa: string;
   etiqueta: string;
