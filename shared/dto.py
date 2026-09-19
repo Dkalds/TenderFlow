@@ -654,13 +654,9 @@ PursuitOutcome = Literal["pending", "won", "lost", "cancelled"]
 #: revisión ``v93`` lo guardó deliberadamente como TEXT para que la banda pueda
 #: moverse sin migrar.
 #:
-#: Queda **una copia viva**: ``Banda`` en ``services/watchlist_rules.py``, que
-#: publica ``banda_min`` en el contrato. Hoy no produce deriva porque su orden
-#: se alineó con este a mano, pero eso es lo que aplaza el problema, no lo que
-#: lo cierra: sustituirla por ``from shared.dto import RadarBanda`` está
-#: pendiente y no se hizo aquí sólo porque ese fichero está en vuelo en otra
-#: rama. Mientras exista, cualquier reordenación de una de las dos listas
-#: vuelve a poner el gate de deriva a suertes.
+#: Es la única: la copia ``Banda`` que vivía en ``services/watchlist_rules.py``
+#: (y publicaba ``banda_min`` en el contrato) se sustituyó por este alias.
+#: ``tests/test_radar_banda_canonica.py`` impide que vuelva otra.
 #:
 #: **Orden canónico: de mayor a menor interés comercial** (``Caliente`` →
 #: ``Descarte``), el mismo en que ``_band()`` va comparando umbrales de arriba
