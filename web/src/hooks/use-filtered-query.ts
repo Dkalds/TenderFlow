@@ -19,6 +19,8 @@ import { filteredQueryKey, filteredQueryUrl, mergeFilteredParams } from "@/lib/f
  * @param extraParams - Additional params merged with global filters
  * @param isRealtime - If true, does NOT use keepPreviousData (shows loading
  *   skeleton instead of stale data during refetch)
+ * @param overrideParams - Params that win over the global filters (see
+ *   `mergeFilteredParams`): only for params that identify the resource.
  */
 export function useFilteredQuery<T>(
   baseKey: string[],
@@ -26,9 +28,10 @@ export function useFilteredQuery<T>(
   options?: Omit<UseQueryOptions<T>, "queryKey" | "queryFn">,
   extraParams?: Record<string, string>,
   isRealtime?: boolean,
+  overrideParams?: Record<string, string>,
 ) {
   const filterParams = useFilterParams();
-  const merged = mergeFilteredParams(filterParams, extraParams);
+  const merged = mergeFilteredParams(filterParams, extraParams, overrideParams);
   const fullUrl = filteredQueryUrl(url, merged);
 
   return useQuery<T>({

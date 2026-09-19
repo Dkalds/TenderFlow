@@ -200,6 +200,50 @@ test.describe("Móvil (375×812)", () => {
   });
 });
 
+/**
+ * La franja `md`–`xl`, donde el inspector es un `Sheet` y cada fila lleva un
+ * cuarto botón («Ver ficha»). El E2E de accesibilidad corre a 1280, que ya es
+ * `xl` y enseña tres: el desborde de esta franja no lo veía nadie.
+ */
+test.describe("Tableta horizontal (1024×768)", () => {
+  test.use({ viewport: { width: 1024, height: 768 } });
+
+  test("las acciones de la fila activa caben en su columna y no pisan Plazo", async ({ page }) => {
+    await page.goto("/radar");
+    // `[data-active]` solo lo emite `radar-fila.tsx`; ver `seleccionarFila` en
+    // critical-workflows.spec.ts. Hay que seleccionarla: las acciones de una
+    // fila inactiva son `inert` y no están en el árbol de accesibilidad.
+    const fila = page.locator("[data-active]").filter({ hasText: SEED_LICITACION.tituloRadar }).first();
+    await expect(fila).toBeVisible({ timeout: 20_000 });
+    await fila.locator('[data-slot="radar-fila-seleccion"]').click();
+    await expect(fila).toHaveAttribute("data-active", "true");
+
+    const acciones = fila.locator('[data-slot="radar-acciones"]');
+    // Sin el cuarto botón la medida pasaría con la columna de 116 px de `xl`.
+    await expect(acciones.getByRole("button", { name: /^Ver ficha de / })).toBeVisible();
+    // Esperar a que acabe el `slide-in-from-right` de la fila activa: con el
+    // `translate` a medias las cajas salen corridas.
+    await acciones.evaluate((el) => Promise.all(el.getAnimations({ subtree: true }).map((a) => a.finished)));
+
+    // La celda es el propio bloque: es hijo directo de la rejilla y toma el
+    // ancho de la pista. El desborde de `justify-end` sale por la izquierda,
+    // que `scrollWidth` no cuenta, así que se comparan cajas.
+    const celda = await acciones.boundingBox();
+    expect(celda).not.toBeNull();
+    const botones = acciones.getByRole("button");
+    await expect(botones).toHaveCount(4);
+    for (const boton of await botones.all()) {
+      const caja = await boton.boundingBox();
+      expect(caja).not.toBeNull();
+      expect(caja!.x).toBeGreaterThanOrEqual(celda!.x - 0.5);
+      expect(caja!.x + caja!.width).toBeLessThanOrEqual(celda!.x + celda!.width + 0.5);
+      // WCAG 2.5.8 / axe `target-size`: que el arreglo no sea encoger botones.
+      expect(caja!.width).toBeGreaterThanOrEqual(24);
+      expect(caja!.height).toBeGreaterThanOrEqual(24);
+    }
+  });
+});
+
 test.describe("Escritorio (1440×900)", () => {
   test.use({ viewport: ESCRITORIO });
 
