@@ -244,6 +244,21 @@ class CursorPaginatedResponse(BaseModel, Generic[_ItemT]):
     limit: int
 
 
+class CursorPaginatedResponseWithTotal(CursorPaginatedResponse[_ItemT], Generic[_ItemT]):
+    """:class:`CursorPaginatedResponse` con un ``total`` opcional.
+
+    Subclase y no un campo más en la base: las claves de la base están
+    congeladas (``tests/test_contrato_paginacion.py``) porque el cliente
+    generado ya las declara. ``total`` sólo llega cuando se pide
+    (``with_total=true``) y es ``None`` si no: el cursor existe precisamente
+    para no pagar un ``COUNT(*)`` en cada página. Lo usa el listado de
+    licitaciones, que es el que sustituye al de offset en /detalle y necesita
+    decir «de N» al pie.
+    """
+
+    total: int | None = None
+
+
 # ── Envelopes genéricos del contrato (tipado de operaciones opacas) ─────────
 #
 # Nota de modelado (backlog «Tipar el contrato API↔web»): los campos van SIN

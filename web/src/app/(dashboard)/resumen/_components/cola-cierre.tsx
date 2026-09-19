@@ -7,7 +7,7 @@ import { ArrowRight, Check, Clock } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { fetchWithAuth } from "@/lib/api-client";
 import { cn, formatCompactCurrency, formatNumber } from "@/lib/utils";
-import type { LicitacionSummary } from "@/lib/api-types";
+import type { LicitacionSummary, LicitacionesCursorPage } from "@/lib/api-types";
 import { useFiltrosDeResumen } from "./alcance";
 
 /**
@@ -23,7 +23,7 @@ import { useFiltrosDeResumen } from "./alcance";
  *
  * 1. **La lista mide lo mismo que el número.** El contador sale de
  *    `/analytics/resumen/hoy`, que sólo aplica cuatro de los siete filtros del
- *    ámbito; `GET /licitaciones` los aplica todos. Mandarle el ámbito entero
+ *    ámbito; `GET /licitaciones/cursor` los aplica todos. Mandarle el ámbito entero
  *    dejaría la lista más estrecha que su propio encabezado —«37» sobre cuatro
  *    filas que sobrevivieron a un chip de estado—, así que se le manda el mismo
  *    recorte que aplicó el contador (`useFiltrosDeResumen`).
@@ -45,11 +45,6 @@ const VISIBLES = 4;
  * tarjeta lo dice en vez de fingir que las cuatro son las más próximas.
  */
 const TECHO = 200;
-
-interface PaginaLicitaciones {
-  items: LicitacionSummary[];
-  total: number;
-}
 
 interface FilaCierre {
   id: string;
@@ -119,16 +114,22 @@ export function ColaCierre({
     };
   }, []);
 
+  // Sin `with_total`: para saber si la lista se quedó corta basta `has_more`
+  // del cursor, sin pagar un COUNT(*). El listado por offset que esto usaba
+  // se retira (RFC 2026-09-06); el cursor acepta los mismos filtros.
   const params = useMemo(
-    () => ({ ...filtros, ...ventana, limit: String(TECHO), with_total: "true" }),
+    () => ({ ...filtros, ...ventana, limit: String(TECHO) }),
     [filtros, ventana],
   );
 
   const hayCola = (total ?? 0) > 0;
 
-  const cola = useQuery<PaginaLicitaciones>({
+  const cola = useQuery<LicitacionesCursorPage>({
     queryKey: ["licitaciones", "cola-cierre", params],
-    queryFn: () => fetchWithAuth<PaginaLicitaciones>(`/api/v1/licitaciones?${new URLSearchParams(params)}`),
+    queryFn: () =>
+      fetchWithAuth<LicitacionesCursorPage>(
+        `/api/v1/licitaciones/cursor?${new URLSearchParams(params)}`,
+      ),
     staleTime: 2 * 60 * 1000,
     // Sin cola que desglosar la petición no aporta nada: la tarjeta ya sabe que
     // va a pintar el estado resuelto.
@@ -140,7 +141,7 @@ export function ColaCierre({
     return proximasACerrar(cola.data?.items ?? [], Date.now());
   }, [cola.data?.items]);
 
-  const recortada = cola.data != null && cola.data.total > cola.data.items.length;
+  const recortada = cola.data?.has_more === true;
   const cargandoFilas = hayCola && cola.isLoading;
 
   return (

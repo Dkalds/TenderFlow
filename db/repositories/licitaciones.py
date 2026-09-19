@@ -280,6 +280,25 @@ def _orden(sort: str | None) -> Any:
     return ordenes.get(sort or "", fecha.desc())
 
 
+#: Órdenes que admite el listado por cursor: los mismos seis que el de offset.
+SORTS_CURSOR: Final = frozenset(_SORT_MAP)
+
+
+def _orden_cursor(sort: str) -> tuple[Any, bool]:
+    """``(columna, descendente)`` de un valor de ``sort``, con la semántica de ``_SORT_MAP``.
+
+    Se resuelve en cada llamada, como :func:`_orden`: fecha e importe salen del
+    núcleo tipado vigente (T2).
+    """
+    if sort not in SORTS_CURSOR:
+        raise ValueError(f"orden de cursor desconocido: {sort!r}")
+    nombre = sort.lstrip("-")
+    columna = licitaciones.c.titulo if nombre == "titulo" else _nucleo(nombre)
+    # `fecha_publicacion` es descendente sin signo; importe y título, ascendentes.
+    descendente = (nombre == "fecha_publicacion") != sort.startswith("-")
+    return columna, descendente
+
+
 def _columnas_resumen() -> list[Any]:
     """``_SUMMARY_COLS`` con el importe que toca proyectar (T2)."""
     return [_importe_proyectado() if c is licitaciones.c.importe else c for c in _SUMMARY_COLS]
@@ -974,8 +993,19 @@ class LicitacionRepository:
         tipo_contrato: str | None = None,
         dias_restantes_max: int | None = None,
         limit: int = 100,
+        sort: str | None = None,
+        cursor_orden: tuple[str | float | None, str] | None = None,
     ) -> list[dict[str, Any]]:
         """Paginación por cursor (fecha_publicacion, id_externo) DESC.
+
+        ``sort`` admite los mismos seis valores que el listado por offset
+        (:data:`SORTS_CURSOR`). Sin él —o con ``fecha_publicacion``, que es el
+        mismo orden— el camino es el de siempre y el cursor es
+        ``(cursor_fecha, cursor_id)``. Con otro orden la clave es
+        ``(columna, id_externo)`` y el cursor llega en ``cursor_orden``: ver
+        :meth:`_keyset_ordenado`. Es lo que deja al listado de /detalle pasar
+        del offset (en retirada, RFC 2026-09-06) al cursor sin perder la
+        ordenación por importe o por título.
 
         Los filtros salen de :meth:`_base_filters`, los mismos que el listado
         por offset. Antes esta función tenía su propio par de cláusulas
@@ -1006,6 +1036,9 @@ class LicitacionRepository:
             dias_restantes_max=dias_restantes_max,
         )
 
+        if sort and sort != "fecha_publicacion":
+            return self._keyset_ordenado(clauses, sort=sort, cursor=cursor_orden, limit=limit)
+
         # Clave del cursor sobre la columna del núcleo vigente (T2). El valor
         # del cursor sigue siendo el TEXTO de la última fila —es lo que viaja
         # en el token—; con la sombra, Postgres lo interpreta como
@@ -1035,6 +1068,73 @@ class LicitacionRepository:
         sql, params = compile_query(stmt)
         with connect_read() as c:
             return rows_to_dicts(c.execute(sql, params))
+
+    @staticmethod
+    def _keyset_ordenado(
+        clauses: list[Any],
+        *,
+        sort: str,
+        cursor: tuple[str | float | None, str] | None,
+        limit: int,
+    ) -> list[dict[str, Any]]:
+        """Keyset ``(columna, id_externo)`` para los órdenes distintos del de fecha.
+
+        **Nulos al final en los dos sentidos** (``NULLS LAST``). El listado por
+        offset los dejaba donde Postgres quiere —primero en ``DESC`` en importe—,
+        lo que abría «mayor importe» con una página de expedientes sin importe.
+        Y el keyset lo necesita: con los nulos al final, el cursor tiene dos
+        tramos bien definidos —con valor y la cola de nulos— y la cláusula de
+        «después de» se escribe sin ambigüedad:
+
+        - cursor con valor ``v``: ``col ⋚ v`` o (``col = v`` e ``id ⋚ id₀``) o
+          ``col IS NULL`` (la cola entera va después);
+        - cursor en la cola (``v`` nulo): ``col IS NULL`` e ``id ⋚ id₀``.
+
+        El desempate por ``id_externo`` va en el mismo sentido que la columna,
+        y hace el orden total: sin él, dos importes iguales podían aparecer en
+        dos páginas o en ninguna.
+        """
+        columna, descendente = _orden_cursor(sort)
+        id_col = licitaciones.c.id_externo
+        if cursor is not None:
+            valor, id_previo = cursor
+            id_despues = id_col < id_previo if descendente else id_col > id_previo
+            if valor is None:
+                clauses = [*clauses, and_(columna.is_(None), id_despues)]
+            else:
+                col_despues = columna < valor if descendente else columna > valor
+                clauses = [
+                    *clauses,
+                    or_(col_despues, and_(columna == valor, id_despues), columna.is_(None)),
+                ]
+        orden_col = columna.desc() if descendente else columna.asc()
+        orden_id = id_col.desc() if descendente else id_col.asc()
+        stmt = (
+            select(*_columnas_resumen())
+            .where(and_(*clauses))
+            .order_by(orden_col.nulls_last(), orden_id)
+            .limit(limit + 1)
+        )
+        sql, params = compile_query(stmt)
+        with connect_read() as c:
+            return rows_to_dicts(c.execute(sql, params))
+
+    def count_cursor(self, **filtros: Any) -> int:
+        """``COUNT(*)`` del universo que recorre :meth:`list_cursor` con esos filtros.
+
+        Mismo constructor de cláusulas (:meth:`_base_filters`), así que el total
+        y las páginas no pueden discrepar. Lo pide el listado por cursor sólo
+        con ``with_total=true``: el cursor existe para no pagar este conteo en
+        cada página, y quien lo quiere lo pide una vez.
+        """
+        clauses = self._base_filters(**filtros)
+        stmt = select(func.count()).select_from(licitaciones)
+        if clauses:
+            stmt = stmt.where(and_(*clauses))
+        sql, params = compile_query(stmt)
+        with connect_read() as c:
+            row = c.execute(sql, params).fetchone()
+        return int(row[0]) if row else 0
 
     def get_by_id(self, id_externo: str) -> dict[str, Any] | None:
         """Devuelve el registro completo o None."""

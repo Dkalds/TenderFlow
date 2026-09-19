@@ -1,6 +1,6 @@
 "use client";
 
-import { startTransition, useCallback, useMemo, useState } from "react";
+import { startTransition, useCallback, useEffect, useMemo, useState } from "react";
 import { parseAsString, useQueryState } from "nuqs";
 import {
   rowPaginationFeature,
@@ -108,9 +108,16 @@ export default function DetallePage() {
 
   const queries = useDetalleQueries({ queryParams: tabla.queryParams, detailId });
 
-  // Orden en cliente sólo para las columnas que el backend no sabe ordenar
-  // (`clientSorted`): es un orden sobre la página cargada, no sobre el total, y
-  // el pie de la tabla lo dice.
+  // Cursor de la siguiente, aprendido de ésta (nunca del `placeholderData` de la anterior).
+  const { registrarSiguiente } = tabla;
+  const siguienteCursor = queries.isPlaceholderData ? undefined : queries.data?.next_cursor;
+  useEffect(
+    () => registrarSiguiente(pagination.pageIndex, siguienteCursor),
+    [registrarSiguiente, pagination.pageIndex, siguienteCursor],
+  );
+
+  // Orden en cliente sólo para columnas que el backend no ordena (`clientSorted`):
+  // es sobre la página cargada, no sobre el total, y el pie lo dice.
   const filas = useDetalleRows({
     items: queries.data?.items,
     total: queries.data?.total,
@@ -119,9 +126,11 @@ export default function DetallePage() {
     activeSort: tabla.activeSort,
     pagination,
     rowSelection,
+    alcanzables: tabla.alcanzables,
     setRowSelection,
   });
   const { mergedRows, totalPages, selectedIds, selectedItems } = filas;
+  const total = queries.data?.total ?? 0;
 
   const table = useTable({
     features: detalleTableFeatures,
@@ -173,8 +182,8 @@ export default function DetallePage() {
   const showingLine = queries.data
     ? `Mostrando ${pagination.pageIndex * pagination.pageSize + 1}–${Math.min(
         (pagination.pageIndex + 1) * pagination.pageSize,
-        queries.data.total,
-      )} de ${formatNumber(queries.data.total)}`
+        total,
+      )} de ${formatNumber(total)}`
     : "—";
 
   return (
@@ -237,8 +246,9 @@ export default function DetallePage() {
           totalPages={totalPages}
           pageWindow={filas.pageWindow}
           canPrevious={table.getCanPreviousPage()}
-          canNext={table.getCanNextPage()}
-          onPageChange={(page) => table.setPageIndex(page)}
+          canNext={pagination.pageIndex + 1 < tabla.alcanzables}
+          canLast={totalPages - 1 < tabla.alcanzables && pagination.pageIndex < totalPages - 1}
+          onPageChange={tabla.irAPagina}
         />
       </section>
 
