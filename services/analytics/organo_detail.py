@@ -175,6 +175,41 @@ def _adj_lookup_for(adj_df: pd.DataFrame, ids: pd.Series) -> dict[str, dict[str,
 # ---------------------------------------------------------------------------
 
 
+def _estacionalidad(fechas: list[tuple[int, int]]) -> list[Estacionalidad]:
+    """Media de publicaciones por mes de calendario, con denominador por mes.
+
+    ``fechas`` son ``(año, mes)`` de cada publicación. El denominador de cada
+    mes es **cuántas veces cae ese mes de calendario en el tramo con datos**
+    —del primer mes con publicaciones al último—, no el número de años
+    distintos. Con el ``n_years`` global que había, un tramo de marzo de 2024 a
+    febrero de 2026 tiene tres años distintos pero solo dos marzos y dos
+    febreros: todos los meses se dividían entre tres y la curva salía un tercio
+    más baja, y un mes que cae dos veces valía lo mismo que uno que cae tres.
+    Es la misma regla que ``forecast_svc.get_estacionalidad_organo`` (nota T5
+    de ``docs/plans/2026-09-plan-arquitectura-v2.md``).
+
+    Un mes de calendario que no cae en el tramo no sale (no hay denominador);
+    uno que cae y no tiene publicaciones tampoco, igual que antes: la serie
+    lista los meses con actividad.
+    """
+    if not fechas:
+        return []
+    ordinales = [anio * 12 + (mes - 1) for anio, mes in fechas]
+    primero, ultimo = min(ordinales), max(ordinales)
+    denominadores: dict[int, int] = {}
+    for ordinal in range(primero, ultimo + 1):
+        mes = ordinal % 12 + 1
+        denominadores[mes] = denominadores.get(mes, 0) + 1
+    numeradores: dict[int, int] = {}
+    for ordinal in ordinales:
+        mes = ordinal % 12 + 1
+        numeradores[mes] = numeradores.get(mes, 0) + 1
+    return [
+        Estacionalidad(mes_numero=mes, count=round(numeradores[mes] / denominadores[mes]))
+        for mes in sorted(numeradores)
+    ]
+
+
 def get_organo_detail(organo: str, filters: OrganoDetailFilters) -> OrganoDetailResult:
     """Drill-down for a single contracting body."""
     log.info("analytics_organo_detail_start", organo=organo)
@@ -243,17 +278,10 @@ def get_organo_detail(organo: str, filters: OrganoDetailFilters) -> OrganoDetail
         kpis.top_adj_importe = top_adj[0].importe
 
     # Estacionalidad
-    estacionalidad: list[Estacionalidad] = []
     valid_dates = df.dropna(subset=["fecha_publicacion"])
-    if not valid_dates.empty:
-        valid_dates = valid_dates.copy()
-        valid_dates["mes_num"] = valid_dates["fecha_publicacion"].dt.month
-        n_years = max(valid_dates["fecha_publicacion"].dt.year.nunique(), 1)
-        mes_counts = valid_dates.groupby("mes_num").size()
-        estacionalidad = [
-            Estacionalidad(mes_numero=int(str(m)), count=round(c / n_years))
-            for m, c in mes_counts.items()
-        ]
+    estacionalidad = _estacionalidad(
+        [(int(f.year), int(f.month)) for f in valid_dates["fecha_publicacion"]]
+    )
 
     # Top scored — el mismo motor que el Radar, enriquecido con adjudicación.
     #

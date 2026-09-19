@@ -135,9 +135,9 @@ def test_organo_vacio_no_consulta_la_base() -> None:
 def test_denominador_por_mes_no_es_un_n_years_comun() -> None:
     """Tramo de 14 meses: enero y febrero caen dos veces; el resto, una.
 
-    Es la regresión del patrón que sigue vivo en el drill-down de órgano
-    (``services/analytics/organo_detail.py``: divide los doce meses por
-    ``nunique(year)``), que infla las casillas del borde.
+    Es la regresión del patrón que tuvo el drill-down de órgano
+    (``services/analytics/organo_detail.py`` dividía los doce meses por
+    ``nunique(year)`` hasta 2026-09; ver ``test_organo_detail_estacionalidad``).
     """
     rows = _serie("2025-12", 14, publicaciones=3)  # 2025-12 .. 2027-01
     resultado, _ = _correr(rows)
