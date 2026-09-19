@@ -112,6 +112,8 @@ export default function RadarPage() {
           onSort={consola.setSort}
           dismissedCount={consola.dismissedCount}
           onRestoreAll={consola.restoreAll}
+          etiqueta={consola.etiqueta.filtro}
+          onEtiqueta={consola.etiqueta.setFiltro}
         />
 
         {enProximas ? (

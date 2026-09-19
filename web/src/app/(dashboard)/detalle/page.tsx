@@ -10,6 +10,7 @@ import {
   useTable,
 } from "@tanstack/react-table";
 import { Comparator } from "@/components/comparator";
+import { useFiltroEtiqueta } from "@/components/etiquetas/filtro-etiqueta";
 import { formatNumber } from "@/lib/utils";
 import { useDensity } from "@/lib/density";
 import { descargarBlob } from "@/lib/export";
@@ -121,7 +122,11 @@ export default function DetallePage() {
     rowSelection,
     setRowSelection,
   });
-  const { mergedRows, totalPages, selectedIds, selectedItems } = filas;
+  const { mergedRows: filasPagina, totalPages, selectedIds, selectedItems } = filas;
+  // F1.6 — filtra la página cargada: `GET /licitaciones` no acepta etiqueta.
+  const etiqueta = useFiltroEtiqueta("favorito", filasPagina.map((row) => row.id_externo));
+  const pasaEtiqueta = etiqueta.pasa;
+  const mergedRows = useMemo(() => filasPagina.filter((row) => pasaEtiqueta(row.id_externo)), [filasPagina, pasaEtiqueta]);
 
   const table = useTable({
     features: detalleTableFeatures,
@@ -190,6 +195,7 @@ export default function DetallePage() {
           }}
           sortLabel={sortLabel}
           onClearSort={() => setSorting([])}
+          etiqueta={etiqueta}
           compact={compact}
           onCompactChange={(next) => {
             if (compact !== next) toggleCompact();

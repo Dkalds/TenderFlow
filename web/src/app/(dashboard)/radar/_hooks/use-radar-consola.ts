@@ -3,6 +3,7 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import { type FiltroEtiqueta, useFiltroEtiqueta } from "@/components/etiquetas/filtro-etiqueta";
 import { useCreatePursuit } from "@/hooks/use-pursuits";
 import {
   useAddWatchlistItem,
@@ -78,6 +79,8 @@ export interface RadarConsola {
   openPursuit: (tender: RadarTender) => Promise<void>;
   /** F1.3 — anota que se leyó la explicación del score de esta señal. */
   marcarExplicacion: (tender: RadarTender) => void;
+  /** F1.6 — filtro por etiqueta de favorito, sobre las filas ya cargadas. */
+  etiqueta: FiltroEtiqueta;
 }
 
 export function useRadarConsola(): RadarConsola {
@@ -129,6 +132,10 @@ export function useRadarConsola(): RadarConsola {
   // de segmentos. Su contador es el `total` del servidor sobre el corpus, no la
   // longitud de la página recibida.
   const proximas = useRadarProximas();
+  // F1.6 — las etiquetas de un expediente son las de su favorito (`id_externo`).
+  const idsVisibles = [...all, ...descartadas.items].map((t) => t.id_externo);
+  const etiqueta = useFiltroEtiqueta("favorito", idsVisibles);
+  const pasaEtiqueta = etiqueta.pasa;
 
   const counts = React.useMemo(
     () => ({
@@ -151,6 +158,7 @@ export function useRadarConsola(): RadarConsola {
     // entre la mutación optimista y el refetch del ranking.
     const base = segment === "descartadas" ? descartadas.items : all;
     const filtered = base.filter((tender) => {
+      if (!pasaEtiqueta(tender.id_externo)) return false;
       if (segment === "bandeja")
         return !dismissed.has(tender.id_externo) && !followedIds.has(tender.id_externo);
       if (segment === "siguiendo") return followedIds.has(tender.id_externo);
@@ -163,7 +171,7 @@ export function useRadarConsola(): RadarConsola {
         return (daysLeft(a.fecha_limite) ?? 9999) - (daysLeft(b.fecha_limite) ?? 9999);
       return (b.importe ?? 0) - (a.importe ?? 0);
     });
-  }, [all, descartadas.items, segment, sort, dismissed, followedIds]);
+  }, [all, descartadas.items, segment, sort, dismissed, followedIds, pasaEtiqueta]);
 
   const activeIndex = Math.min(selected, Math.max(0, rows.length - 1));
   const active: RadarTender | undefined = rows[activeIndex];
@@ -285,5 +293,6 @@ export function useRadarConsola(): RadarConsola {
     toggleFollow,
     openPursuit,
     marcarExplicacion,
+    etiqueta,
   };
 }
