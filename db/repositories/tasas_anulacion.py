@@ -43,6 +43,9 @@ TODAS = "*"
 #: `TenderResultCode` que no terminan en contrato. Ver la cabecera.
 CODIGOS_RESULTADO_FALLIDO: tuple[str, ...] = ("3", "4", "5", "6", "7")
 
+#: Techo de filas de una lectura para el scoring.
+MAX_FILAS_POR_CONSULTA = 20_000
+
 
 def clave_organo(nombre: Any) -> str | None:
     """La clave con la que se guarda un órgano: nombre plegado, o ``None``.
@@ -117,8 +120,12 @@ def tasas_por_organos(organos: list[str]) -> dict[tuple[str, str], tuple[int, in
         filas = rows_to_dicts(
             conn.execute(
                 "SELECT organo_key, cpv4, n_expedientes, n_fallidos "
-                f"FROM tasas_anulacion_organo WHERE organo_key IN ({marcas})",
-                claves,
+                f"FROM tasas_anulacion_organo WHERE organo_key IN ({marcas}) "
+                # Cota (ADR-023): un lote del Radar son cientos de órganos con
+                # unas decenas de CPV-4 cada uno; el techo solo evita que un
+                # lote patológico materialice la tabla entera.
+                "LIMIT %s",
+                [*claves, MAX_FILAS_POR_CONSULTA],
             )
         )
     return {
