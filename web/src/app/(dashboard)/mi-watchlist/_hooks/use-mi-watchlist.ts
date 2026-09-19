@@ -23,13 +23,13 @@ import { useForm, type UseFormReturn } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import type * as z from "zod/mini";
 import { nuevaRegla } from "@/lib/forms/esquemas";
-import { numeroDeTexto } from "@/lib/forms/valores";
 import { apiMutate, fetchWithAuth } from "@/lib/api-client";
 import { getJSON, setJSON } from "@/lib/storage";
 import { primeraVez, registrarEvento } from "@/lib/analytics";
 import { useMetaFilters } from "@/hooks/use-meta-filters";
 import { watchlistKeys } from "@/lib/query-keys";
 import { parsePrefill, prefillToFormState } from "./use-watchlist-rules";
+import { cuerpoDeNuevaRegla, ruidoAvisado, usePreviewRegla } from "./use-preview-regla";
 import { activeRulesOf, dedupeMatches } from "./watchlist-matches";
 import { ccaaOptions } from "./watchlist-rule-options";
 import type { ApiRule, MatchItem, RuleBody } from "./watchlist-rule-types";
@@ -92,6 +92,9 @@ export interface NuevaReglaForm {
   /** Valida, crea la regla y vacía el formulario. Sin palabra clave no crea nada. */
   submit: () => void;
   creating: boolean;
+  /** F5.5 — valida y pide la vista previa de ruido de lo escrito. */
+  probar: () => void;
+  preview: ReturnType<typeof usePreviewRegla>;
 }
 
 export interface MiWatchlistState {
@@ -179,8 +182,9 @@ export function useMiWatchlist(): MiWatchlistState {
   const invalidate = () => qc.invalidateQueries({ queryKey: watchlistKeys.rules });
 
   const createMut = useMutation({
-    mutationFn: (body: RuleBody) => apiMutate("POST", RULES_KEY, body),
-    onSuccess: () => {
+    mutationFn: ({ body }: { body: RuleBody; ruido?: "si" | "no" }) =>
+      apiMutate("POST", RULES_KEY, body),
+    onSuccess: (_respuesta, { ruido }) => {
       invalidate();
       // Crear la primera regla de vigilancia es la señal de activación del
       // producto: es el momento en que alguien pasa de mirar el mercado a
@@ -188,8 +192,12 @@ export function useMiWatchlist(): MiWatchlistState {
       // primera de las siguientes, que es lo que hace medible el embudo de
       // activación en vez de un contador de uso. Sin propiedades del contenido
       // de la regla: qué CPV o qué keyword vigila alguien no es una dimensión
-      // de producto, es su estrategia comercial.
-      registrarEvento("regla_creada", { primera_vez: primeraVez("regla") });
+      // de producto, es su estrategia comercial. F5.5: sí viaja si la vista
+      // previa de esta misma regla avisó de ruido (`ruidoAvisado`).
+      registrarEvento("regla_creada", {
+        primera_vez: primeraVez("regla"),
+        ...(ruido ? { ruido_avisado: ruido } : {}),
+      });
     },
   });
   const updateMut = useMutation({
@@ -202,32 +210,21 @@ export function useMiWatchlist(): MiWatchlistState {
     onSuccess: invalidate,
   });
 
-  const crear = ({ keyword, cpv, min_importe, ccaa, frequency }: NuevaReglaValores) => {
-    createMut.mutate({
-      nombre: keyword.trim(),
-      keyword: keyword.trim(),
-      cpv: cpv.trim() || null,
-      min_importe: numeroDeTexto(min_importe),
-      ccaa: ccaa || null,
-      frequency,
-      active: true,
-      // El alta rápida no expone los criterios de S4.4 —se afinan en el panel
-      // de edición, sobre una regla que ya tiene conteo con el que comparar—
-      // así que viajan a `null`, que es «este criterio no filtra». La única
-      // excepción es la tecnología del prefill de la command palette: venía en
-      // el ámbito desde el que se pulsó «crear regla», y perderla haría que la
-      // regla naciera más ancha de lo que el usuario estaba mirando.
-      tecnologia: prefilled.tecnologia || null,
-      organo: null,
-      procedimiento: null,
-      tipo_contrato: null,
-      banda_min: null,
-      plazo_min_dias: null,
-    });
+  // F5.5 — vista previa de ruido del alta rápida, con el mismo cuerpo que se
+  // guardará (`cuerpoDeNuevaRegla`).
+  const previewNueva = usePreviewRegla();
+  const crear = (valores: NuevaReglaValores) => {
+    const body = cuerpoDeNuevaRegla(valores, prefilled.tecnologia);
+    createMut.mutate({ body, ruido: ruidoAvisado(previewNueva, body) });
     nuevaForm.reset(NUEVA_VACIA);
+    previewNueva.reset();
   };
   // `handleSubmit` dentro del evento, no al renderizar (compilador de React).
   const submit = () => void nuevaForm.handleSubmit(crear)();
+  const probarNueva = () =>
+    void nuevaForm.handleSubmit((valores) =>
+      previewNueva.mutate(cuerpoDeNuevaRegla(valores, prefilled.tecnologia)),
+    )();
 
   const activeRules = useMemo(() => activeRulesOf(rules), [rules]);
 
@@ -259,6 +256,8 @@ export function useMiWatchlist(): MiWatchlistState {
       form: nuevaForm,
       submit,
       creating: createMut.isPending,
+      probar: probarNueva,
+      preview: previewNueva,
     },
     formOpen,
     setFormOpen,

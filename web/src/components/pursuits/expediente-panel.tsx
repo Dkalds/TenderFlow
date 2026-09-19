@@ -27,6 +27,7 @@ import { ResolucionesBlock } from "@/components/resoluciones-block";
 import { TecnologiasBlock } from "@/components/tecnologias-block";
 import { SociosUte } from "@/components/competitors/socios-ute";
 import { Panel, PanelError, PanelLoading, SectionTitle } from "@/components/console/panel";
+import { GlosarioHint } from "@/components/ui/glosario-hint";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { useLicitacion } from "@/hooks/use-licitacion";
 import { EMPTY, formatCurrency, formatDate } from "@/lib/utils";
@@ -135,7 +136,7 @@ export function ExpedientePanel({ licitacionId }: { licitacionId: string }) {
         </Panel>
 
         <Panel>
-          <SectionTitle>Socios de UTE sugeridos</SectionTitle>
+          <SectionTitle aside={<GlosarioHint termino="ute" />}>Socios de UTE sugeridos</SectionTitle>
           <SociosUte cpv={l.cpv} ccaa={l.ccaa} />
         </Panel>
 

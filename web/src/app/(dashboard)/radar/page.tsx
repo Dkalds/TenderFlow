@@ -112,6 +112,8 @@ export default function RadarPage() {
           onSort={consola.setSort}
           dismissedCount={consola.dismissedCount}
           onRestoreAll={consola.restoreAll}
+          etiqueta={consola.etiqueta.filtro}
+          onEtiqueta={consola.etiqueta.setFiltro}
         />
 
         {enProximas ? (
@@ -146,6 +148,7 @@ export default function RadarPage() {
               onFollow={consola.toggleFollow}
               onOpenPursuit={(tender) => void openPursuit(tender)}
               onOpenFicha={abrirFicha}
+              onExplicacion={consola.marcarExplicacion}
               afinidadOrigen={consola.signals?.afinidad_origen}
             />
           </>

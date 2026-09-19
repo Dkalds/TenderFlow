@@ -7,12 +7,45 @@ import { StatusBadge } from "@/components/ui/status-badge";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn, formatCurrency, formatDate } from "@/lib/utils";
 import { bandColor, shortEur } from "../../radar/_components/radar-shared";
+import { useMetaFilters } from "@/hooks/use-meta-filters";
+import { resolverCodigo } from "@/lib/procedimientos";
 import type { MergedRow } from "../_hooks/detalle-table-model";
+
+/**
+ * F1.7 — procedimiento legible, con la tramitación y la definición en la
+ * `Pista`. Sin `?` por fila: serían veinticinco paradas de tabulación más
+ * dentro de filas que ya son focusables; la definición entera está en la
+ * ficha. Un código sin catalogar se ve tal cual, con su aviso en el texto.
+ */
+function ProcedimientoCelda({
+  procedimiento,
+  tramitacion,
+}: {
+  procedimiento: string | null | undefined;
+  tramitacion: string | null | undefined;
+}) {
+  const { data: meta } = useMetaFilters();
+  const proc = resolverCodigo(meta, "procedimiento", procedimiento);
+  const tram = resolverCodigo(meta, "tramitacion", tramitacion);
+  if (!proc) return <span className="text-muted-foreground">—</span>;
+  const texto = proc.catalogado ? proc.etiqueta : `${proc.codigo} (código no catalogado)`;
+  const pista = [
+    proc.descripcion,
+    tram ? `Tramitación: ${tram.catalogado ? tram.etiqueta : `${tram.codigo} (no catalogada)`}` : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  return (
+    <Pista contenido={pista || null}>
+      <span className="block truncate text-[11.5px] text-muted-foreground">{texto}</span>
+    </Pista>
+  );
+}
 
 /**
  * Una fila de la tabla de Detalle.
  *
- * Las trece celdas en el mismo orden que declara `COLUMNS`: sin esa
+ * Las catorce celdas en el mismo orden que declara `COLUMNS`: sin esa
  * correspondencia el `<colgroup>` reparte anchos sobre columnas equivocadas.
  * Las dos celdas de cross-filter (CCAA y Tecnología) son botones y no texto
  * porque filtran; lo demás es dato.
@@ -155,6 +188,9 @@ export function DetalleFila({
       </td>
       <td className="px-1">
         <StatusBadge value={row.estado} kind="estado" className="text-[10.5px]" />
+      </td>
+      <td className="px-1">
+        <ProcedimientoCelda procedimiento={row.procedimiento} tramitacion={row.tramitacion} />
       </td>
       <td className="truncate px-1 align-middle whitespace-nowrap">
         <span

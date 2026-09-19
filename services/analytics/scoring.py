@@ -172,6 +172,10 @@ class ScoredOpportunity(BaseModel):
     # y con TED o PSCP apunta a otro portal.
     fuente: str | None = None
     estado: str | None = None
+    # Campos ADITIVOS (F1.7): código CODICE crudo; la etiqueta legible sale de
+    # `GET /meta/filters` para que el Radar no guarde su propia copia.
+    procedimiento: str | None = None
+    tramitacion: str | None = None
     score: int
     band: str
     risk_flags: list[str] = Field(default_factory=list)
@@ -1005,6 +1009,10 @@ def get_scoring(
                 url=str(row["url"]) if pd.notna(row.get("url")) else None,
                 fuente=str(row["fuente"]) if pd.notna(row.get("fuente")) else None,
                 estado=str(row["estado"]) if pd.notna(row.get("estado")) else None,
+                procedimiento=str(row["procedimiento"])
+                if pd.notna(row.get("procedimiento"))
+                else None,
+                tramitacion=str(row["tramitacion"]) if pd.notna(row.get("tramitacion")) else None,
                 score=s,
                 band=band,
                 risk_flags=flags,

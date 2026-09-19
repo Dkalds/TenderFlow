@@ -35,6 +35,12 @@ const {
         tecnologias: [] as string[],
         importeMin: null as number | null,
         soloAbiertas: false,
+        procedimientos: [] as string[],
+        provincias: [] as string[],
+        importeMax: null as number | null,
+        setProcedimientos: vi.fn(),
+        setProvincias: vi.fn(),
+        setImporteMax: vi.fn(),
         setQ: vi.fn(),
         setRango: vi.fn(),
         setEstados: vi.fn(),
@@ -150,10 +156,50 @@ beforeEach(() => {
     ccaas: [],
     tecnologias: [],
     importeMin: null,
+    procedimientos: [],
+    provincias: [],
+    importeMax: null,
   };
 });
 afterEach(() => {
   cleanup();
+});
+
+describe("ScopeBar — filtros del listado (F1.1)", () => {
+  const conFiltrosDeListado = () => {
+    filterParamsRef.current = { procedimiento: "1", provincia: "Sevilla", importe_max: "500000" };
+    filtersRef.current = {
+      ...filtersRef.current,
+      procedimientos: ["1"],
+      provincias: ["Sevilla"],
+      importeMax: 500000,
+    };
+  };
+
+  it("en Detalle, que los aplica, se pintan como chips y cuentan en el recuento", () => {
+    pathnameRef.current = "/detalle";
+    conFiltrosDeListado();
+    renderBar();
+    expect(screen.getByRole("button", { name: /Quitar provincia Sevilla/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Quitar importe < 500/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Quitar procedimiento/ })).toBeInTheDocument();
+    expect(overviewKeyRef.current.at(-1)).toMatchObject({ provincia: "Sevilla" });
+    expect(screen.queryByText(/no aplica[n]? en esta pantalla/)).not.toBeInTheDocument();
+  });
+
+  it("en una pantalla analítica que no los declara no se pintan y se avisa", () => {
+    pathnameRef.current = "/mercado";
+    conFiltrosDeListado();
+    renderBar();
+    expect(screen.queryByRole("button", { name: /Quitar provincia/ })).not.toBeInTheDocument();
+    expect(overviewKeyRef.current.at(-1)).not.toHaveProperty("provincia");
+    expect(screen.getByText("3 filtros activos no aplican en esta pantalla")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Quitarlos/ }));
+    expect(filtersRef.current.setProvincias).toHaveBeenCalledWith([]);
+    expect(filtersRef.current.setProcedimientos).toHaveBeenCalledWith([]);
+    expect(filtersRef.current.setImporteMax).toHaveBeenCalledWith(null);
+    expect(filtersRef.current.setCcaas).not.toHaveBeenCalled();
+  });
 });
 
 describe("ScopeBar — chips del ámbito", () => {

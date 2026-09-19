@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { SpainMap } from "@/components/charts/spain-map";
 
 // react-leaflet cannot initialise a real Leaflet map in jsdom. Mock the pieces
@@ -25,9 +25,17 @@ vi.mock("react-leaflet", () => ({
       geometry: { type: "Polygon", coordinates: [] },
     };
     style?.(feature);
+    // El trazo de la región: Leaflet lo crea al añadir la capa y lo entrega
+    // con `getElement()`. Aquí es un `<path>` real colgado del documento para
+    // poder afirmar sus atributos y mandarle teclas.
+    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    path.setAttribute("data-testid", "region-madrid");
+    document.body.appendChild(path);
     onEachFeature?.(feature, {
       bindTooltip: () => {},
-      on: () => {},
+      getElement: () => path,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      on: (handlers: Record<string, (...a: any[]) => void>) => handlers.add?.(),
     });
     return <div data-testid="geojson" />;
   },
@@ -83,5 +91,38 @@ describe("SpainMap", () => {
     render(<SpainMap data={DATA} colorScale="green" metric="Importe" />);
     await waitFor(() => expect(screen.getByTestId("map-container")).toBeInTheDocument());
     expect(screen.getByTestId("geojson")).toBeInTheDocument();
+  });
+
+  it("cuando filtra, cada región es un botón con nombre que responde al teclado", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() =>
+        Promise.resolve({ ok: true, json: () => Promise.resolve(GEOJSON) } as unknown as Response),
+      ),
+    );
+    const onCcaaClick = vi.fn();
+    render(<SpainMap data={DATA} metric="Licitaciones" onCcaaClick={onCcaaClick} />);
+    expect(
+      await screen.findByRole("region", { name: "Mapa de España por comunidad autónoma: Licitaciones" }),
+    ).toHaveAccessibleDescription(/Tabulador/);
+
+    const region = screen.getAllByTestId("region-madrid").at(-1)!;
+    expect(region).toHaveAttribute("tabindex", "0");
+    expect(region).toHaveAttribute("role", "button");
+    expect(region.getAttribute("aria-label")).toMatch(/^Madrid: Licitaciones .*Filtrar por esta comunidad$/);
+    fireEvent.keyDown(region, { key: "Enter" });
+    expect(onCcaaClick).toHaveBeenCalledWith("Madrid");
+  });
+
+  it("sin acción de filtrar, las regiones no se vuelven botones", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() =>
+        Promise.resolve({ ok: true, json: () => Promise.resolve(GEOJSON) } as unknown as Response),
+      ),
+    );
+    render(<SpainMap data={DATA} />);
+    await waitFor(() => expect(screen.getByTestId("map-container")).toBeInTheDocument());
+    expect(screen.getAllByTestId("region-madrid").at(-1)).not.toHaveAttribute("tabindex");
   });
 });

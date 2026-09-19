@@ -1,5 +1,5 @@
 /**
- * Las trece columnas de la tabla y sus anchos.
+ * Las catorce columnas de la tabla y sus anchos.
  *
  * `table-layout: fixed` + `<colgroup>`: la rejilla del diseño sin renunciar a
  * una `<table>` real, que es lo que un lector de pantalla necesita para
@@ -26,6 +26,9 @@ export const COLUMNS: DetalleColumna[] = [
   { key: "organo_contratacion", label: "Órgano", width: "156px", sortable: true },
   { key: "importe", label: "Importe", width: "108px", sortable: true, align: "right" },
   { key: "estado", label: "Estado", width: "104px", sortable: true },
+  // F1.7 — etiqueta legible del código CODICE. El backend no ordena por
+  // procedimiento: la columna se ordena en cliente sobre la página, como Score.
+  { key: "procedimiento", label: "Procedimiento", width: "112px", sortable: true },
   { key: "score", label: "Score", width: "100px", sortable: true },
   { key: "fecha_publicacion", label: "Fecha", width: "86px", sortable: true, align: "right" },
   { key: "ccaa", label: "CCAA", width: "108px", sortable: true },
@@ -34,7 +37,7 @@ export const COLUMNS: DetalleColumna[] = [
 ];
 
 /** Suma de anchos: por debajo la tabla scrollea en horizontal en vez de apretarse. */
-export const TABLE_MIN_WIDTH = 1246;
+export const TABLE_MIN_WIDTH = 1358;
 
 export const SHORTCUTS = [
   { key: "J K", label: "recorrer" },

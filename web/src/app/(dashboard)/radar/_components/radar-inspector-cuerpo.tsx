@@ -1,5 +1,6 @@
 "use client";
 
+import { CodigoLegible } from "@/components/codigo-legible";
 import type { RadarTender } from "@/hooks/use-radar";
 import { cn, formatCurrency, formatDate } from "@/lib/utils";
 import { ExpectedCompetition } from "./radar-competencia-esperada";
@@ -7,7 +8,7 @@ import { Fact, SectionTitle } from "./radar-inspector-piezas";
 import { DESGLOSE_LABELS, daysLeft, urgency } from "./radar-shared";
 
 /**
- * Cuerpo del inspector: los seis datos del anuncio, el desglose del score, la
+ * Cuerpo del inspector: los ocho datos del anuncio, el desglose del score, la
  * línea de tiempo y la competencia esperada. Es la única parte que hace scroll.
  *
  * Nada de esto se calcula aquí: el desglose viene del scoring y si no lo ha
@@ -49,6 +50,28 @@ export function InspectorCuerpo({ tender }: { tender: RadarTender }) {
         <Fact label="Tecnología" value={tender.tecnologia ?? tender.ml_tech_principal ?? "—"} />
         <Fact label="CPV" value={tender.cpv ?? "—"} variant="mono" />
         <Fact label="Ámbito" value={tender.ccaa ?? "—"} />
+        {/* F1.7 — quien no vive en la Ley 9/2017 lee «Abierto» y no «1»; la
+            etiqueta y la definición las sirve `/meta/filters`. */}
+        <Fact
+          label="Procedimiento"
+          value={
+            tender.procedimiento ? (
+              <CodigoLegible familia="procedimiento" codigo={tender.procedimiento} />
+            ) : (
+              "—"
+            )
+          }
+        />
+        <Fact
+          label="Tramitación"
+          value={
+            tender.tramitacion ? (
+              <CodigoLegible familia="tramitacion" codigo={tender.tramitacion} />
+            ) : (
+              "—"
+            )
+          }
+        />
       </div>
 
       {/* El aside decía «ADR-014 · backend». Es la referencia interna de la

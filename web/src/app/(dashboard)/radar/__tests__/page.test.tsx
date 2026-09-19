@@ -53,6 +53,11 @@ const setActiveOrganizationId = vi.fn();
 vi.mock("@/hooks/use-organization", () => ({
   useOrganizationStore: (selector: (s: unknown) => unknown) => selector({ setActiveOrganizationId }),
 }));
+// F1.6 — sin etiquetas en la organización el filtro no se pinta ni filtra.
+vi.mock("@/hooks/use-etiquetas", () => ({
+  useEtiquetas: () => ({ data: [] }),
+  useEtiquetasDe: () => ({ data: {}, isLoading: false }),
+}));
 
 const refetch = vi.fn();
 const radarState: {

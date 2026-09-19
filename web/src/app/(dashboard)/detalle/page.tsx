@@ -10,6 +10,7 @@ import {
   useTable,
 } from "@tanstack/react-table";
 import { Comparator } from "@/components/comparator";
+import { useFiltroEtiqueta } from "@/components/etiquetas/filtro-etiqueta";
 import { formatNumber } from "@/lib/utils";
 import { useDensity } from "@/lib/density";
 import { descargarBlob } from "@/lib/export";
@@ -24,6 +25,7 @@ import { DetallePie } from "./_components/detalle-pie";
 import { DetalleSeleccion } from "./_components/detalle-seleccion";
 import { DetalleTabla } from "./_components/detalle-tabla";
 import { buildCsv } from "./_hooks/detalle-table-model";
+import { useBusquedaListado } from "./_hooks/use-busqueda-listado";
 import { useCierreRecorte } from "./_hooks/use-cierre-recorte";
 import { useDetalleFavoritos } from "./_hooks/use-detalle-favoritos";
 import { useDetalleQueries, useDetailWithScore } from "./_hooks/use-detalle-queries";
@@ -53,7 +55,7 @@ const detalleTableFeatures = tableFeatures({
  * abrir. Ahora el inspector (`components/detail-inspector.tsx`) convive con la
  * tabla y reparte esos once bloques en cinco pestañas.
  *
- * La tabla conserva las trece columnas, el orden asc/desc/none con cabecera
+ * La tabla conserva las catorce columnas, el orden asc/desc/none con cabecera
  * pegajosa, la selección múltiple con select-all, el punto de «nueva», la
  * estrella de watchlist, el cross-filter desde CCAA y Tecnología, la densidad,
  * la paginación completa con contador, la exportación y los estados de carga,
@@ -107,6 +109,7 @@ export default function DetallePage() {
   const favoritos = useDetalleFavoritos();
 
   const queries = useDetalleQueries({ queryParams: tabla.queryParams, detailId });
+  useBusquedaListado(queryFilters, queries.data, queries.isFetching);
 
   // Orden en cliente sólo para las columnas que el backend no sabe ordenar
   // (`clientSorted`): es un orden sobre la página cargada, no sobre el total, y
@@ -121,7 +124,11 @@ export default function DetallePage() {
     rowSelection,
     setRowSelection,
   });
-  const { mergedRows, totalPages, selectedIds, selectedItems } = filas;
+  const { mergedRows: filasPagina, totalPages, selectedIds, selectedItems } = filas;
+  // F1.6 — filtra la página cargada: `GET /licitaciones` no acepta etiqueta.
+  const etiqueta = useFiltroEtiqueta("favorito", filasPagina.map((row) => row.id_externo));
+  const pasaEtiqueta = etiqueta.pasa;
+  const mergedRows = useMemo(() => filasPagina.filter((row) => pasaEtiqueta(row.id_externo)), [filasPagina, pasaEtiqueta]);
 
   const table = useTable({
     features: detalleTableFeatures,
@@ -190,6 +197,7 @@ export default function DetallePage() {
           }}
           sortLabel={sortLabel}
           onClearSort={() => setSorting([])}
+          etiqueta={etiqueta}
           compact={compact}
           onCompactChange={(next) => {
             if (compact !== next) toggleCompact();

@@ -26,11 +26,14 @@ import { useScopeHistory } from "@/lib/scope-history";
 import { useSearchHistory } from "@/lib/search-history";
 import { useUiStore } from "@/lib/ui-store";
 import {
+  FILTROS_OPT_IN,
   pageGlobalFilterKeys,
+  pageOptInFilterKeys,
   pageSingleValueFilterKeys,
   pathUsesGlobalFilters,
   type GlobalFilterKey,
 } from "@/lib/navigation";
+import { chipsListado, FiltrosListadoEditor } from "@/components/layout/scope-filtros-listado";
 import { cn, formatNumber } from "@/lib/utils";
 import { analyticsKeys } from "@/lib/query-keys";
 import { useMetaFilters } from "@/hooks/use-meta-filters";
@@ -73,7 +76,12 @@ const FILTER_KEY_PARAMS: Record<GlobalFilterKey, readonly string[]> = {
   tecnologia: ["tecnologia"],
   estado: ["estado", "solo_abiertas"],
   importe: ["importe_min"],
+  procedimiento: ["procedimiento"],
+  provincia: ["provincia"],
+  importe_max: ["importe_max"],
 };
+
+const TODAS_LAS_CLAVES = Object.keys(FILTER_KEY_PARAMS) as GlobalFilterKey[];
 
 function toIsoDate(d: Date): string {
   return d.toISOString().slice(0, 10);
@@ -318,6 +326,9 @@ function ScopeEditor({
           </div>
         </div>
       )}
+
+      {/* F1.1 — sólo en las pantallas que los declaran (opt-in). */}
+      <FiltrosListadoEditor filters={filters} meta={meta} shows={shows} />
     </div>
   );
 }
@@ -337,8 +348,15 @@ export function ScopeBar() {
 
   const subsetKeys = pageGlobalFilterKeys(pathname);
   const singleValueKeys = pageSingleValueFilterKeys(pathname);
+  const optInKeys = React.useMemo(() => pageOptInFilterKeys(pathname), [pathname]);
   const filtersApply = pathUsesGlobalFilters(pathname) || (subsetKeys?.length ?? 0) > 0;
-  const shows = React.useCallback((key: GlobalFilterKey) => !subsetKeys || subsetKeys.includes(key), [subsetKeys]);
+  // Los filtros opt-in (F1.1) sólo se ven donde la página los declara; el
+  // resto sigue el contrato de siempre (ausente = todos).
+  const shows = React.useCallback(
+    (key: GlobalFilterKey) =>
+      FILTROS_OPT_IN.includes(key) ? optInKeys.includes(key) : !subsetKeys || subsetKeys.includes(key),
+    [subsetKeys, optInKeys],
+  );
 
   useAnnounceOnChange(
     filtersApply
@@ -359,10 +377,9 @@ export function ScopeBar() {
   // enseñaba el top nacional. El aviso honesto que ya existía era inalcanzable
   // justo ahí, porque `filtersApply` es cierto en el caso subconjunto.
   const scopedParams = React.useMemo(() => {
-    if (!subsetKeys) return filterParams;
-    const allowed = new Set(subsetKeys.flatMap((key) => FILTER_KEY_PARAMS[key]));
+    const allowed = new Set(TODAS_LAS_CLAVES.filter(shows).flatMap((key) => FILTER_KEY_PARAMS[key]));
     return Object.fromEntries(Object.entries(filterParams).filter(([param]) => allowed.has(param)));
-  }, [filterParams, subsetKeys]);
+  }, [filterParams, shows]);
 
   // Filtros activos que esta pantalla NO aplica. Cero cuando la página consume
   // el ámbito entero.
@@ -370,8 +387,10 @@ export function ScopeBar() {
 
   /** Limpia solo lo que no aplica: lo que sí filtra la pantalla se conserva. */
   const clearOutOfScope = React.useCallback(() => {
-    if (!subsetKeys) return;
-    const applies = (key: GlobalFilterKey) => subsetKeys.includes(key);
+    const applies = shows;
+    if (!applies("procedimiento")) filters.setProcedimientos([]);
+    if (!applies("provincia")) filters.setProvincias([]);
+    if (!applies("importe_max")) filters.setImporteMax(null);
     if (!applies("q")) filters.setQ("");
     if (!applies("fecha")) filters.setRango({ desde: null, hasta: null });
     if (!applies("estado")) {
@@ -381,7 +400,7 @@ export function ScopeBar() {
     if (!applies("ccaa")) filters.setCcaas([]);
     if (!applies("tecnologia")) filters.setTecnologias([]);
     if (!applies("importe")) filters.setImporteMin(null);
-  }, [filters, subsetKeys]);
+  }, [filters, shows]);
 
   // Recuento del ámbito: el mismo dataset y la misma forma de clave que
   // `useFilteredQuery` (`[...baseKey, url, params]`), para que en las pantallas
@@ -464,8 +483,9 @@ export function ScopeBar() {
         remove: () => filters.setImporteMin(null),
       });
     }
+    list.push(...chipsListado(filters, meta, shows));
     return list;
-  }, [filters, shows]);
+  }, [filters, shows, meta]);
 
   // Contrato de filtros por página: donde no aplican, no se pintan chips que no
   // filtran nada. Si además hay filtros activos, se dice.

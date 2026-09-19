@@ -77,6 +77,15 @@ const setActiveOrganizationId = vi.fn();
 vi.mock("@/hooks/use-organization", () => ({
   useOrganizationStore: (selector: (s: unknown) => unknown) => selector({ setActiveOrganizationId }),
 }));
+// F1.6 — etiquetas de favorito por `id_externo`; el filtro sólo las pide puesto.
+const etiquetasPorObjeto: Record<string, { id: number; nombre: string; color: string }[]> = {};
+vi.mock("@/hooks/use-etiquetas", () => ({
+  useEtiquetas: () => ({ data: [] }),
+  useEtiquetasDe: (_tipo: string, ids: readonly string[]) => ({
+    data: ids.length > 0 ? etiquetasPorObjeto : undefined,
+    isLoading: false,
+  }),
+}));
 
 vi.mock("../use-radar-proximas", () => ({
   useRadarProximas: () => ({
@@ -208,6 +217,36 @@ describe("useRadarConsola", () => {
 
     act(() => result.current.dismiss(tender("Y", { score: 88, band: "Caliente" })));
     expect(dismissMutate).toHaveBeenLastCalledWith({ idExterno: "Y", score: 88, banda: "Caliente" });
+  });
+
+  it("el triaje lleva si se abrió la explicación del score de esa señal (F1.3)", () => {
+    const { result } = montar();
+    act(() => result.current.marcarExplicacion(tender("LEIDA")));
+    act(() => result.current.aplazar(tender("LEIDA", { score: 60, band: "Tibia" }), "silenciar", 30));
+    expect(dismissMutate).toHaveBeenLastCalledWith({
+      idExterno: "LEIDA",
+      score: 60,
+      banda: "Tibia",
+      explicacionAbierta: true,
+      accion: "silenciar",
+      dias: 30,
+    });
+    // Otra señal sin explicación abierta no la hereda.
+    act(() => result.current.dismiss(tender("OTRA", { score: 50, band: "Tibia" })));
+    expect(dismissMutate).toHaveBeenLastCalledWith({ idExterno: "OTRA", score: 50, banda: "Tibia" });
+  });
+
+  it("el filtro por etiqueta deja sólo las señales cuyo favorito la lleva (F1.6)", () => {
+    etiquetasPorObjeto.B = [{ id: 7, nombre: "Q4", color: "#2563eb" }];
+    const { result } = montar();
+    act(() => result.current.setSegment("todas"));
+    expect(result.current.rows.map((t) => t.id_externo)).toEqual(["B", "C", "A"]);
+
+    act(() => result.current.etiqueta.setFiltro("7"));
+    expect(result.current.rows.map((t) => t.id_externo)).toEqual(["B"]);
+    // Los contadores son del ranking, no del filtro de cliente: no se recalculan.
+    expect(result.current.counts.todas).toBe(4);
+    delete etiquetasPorObjeto.B;
   });
 
   it("restaurar todo restaura cada descartada", () => {

@@ -3,6 +3,7 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import { type FiltroEtiqueta, useFiltroEtiqueta } from "@/components/etiquetas/filtro-etiqueta";
 import { useCreatePursuit } from "@/hooks/use-pursuits";
 import {
   useAddWatchlistItem,
@@ -24,6 +25,7 @@ import {
   useRestoreRadarTender,
 } from "@/hooks/use-radar";
 import { daysLeft } from "../_components/radar-shared";
+import type { SegmentKey, SortKey } from "./radar-segmentos";
 import { type RadarProximasConsola, useRadarProximas } from "./use-radar-proximas";
 
 /**
@@ -38,25 +40,7 @@ import { type RadarProximasConsola, useRadarProximas } from "./use-radar-proxima
  * `@/hooks/use-radar`, que son los que consumen la API por HTTP (invariante §3.8).
  */
 
-export const SEGMENTS = [
-  { key: "bandeja", label: "Bandeja" },
-  // T5. Va justo detrás de la bandeja y no al final: es la otra mitad del
-  // Radar —lo que todavía no se puede ofertar— y esconderla tras «Todas» la
-  // convertiría en una pestaña que nadie encuentra.
-  { key: "proximas", label: "Próximas" },
-  { key: "siguiendo", label: "Siguiendo" },
-  { key: "descartadas", label: "Descartadas" },
-  { key: "todas", label: "Todas" },
-] as const;
-
-export const SORTS = [
-  { key: "score", label: "Score" },
-  { key: "plazo", label: "Plazo" },
-  { key: "importe", label: "Importe" },
-] as const;
-
-export type SegmentKey = (typeof SEGMENTS)[number]["key"];
-export type SortKey = (typeof SORTS)[number]["key"];
+export { SEGMENTS, SORTS, type SegmentKey, type SortKey } from "./radar-segmentos";
 
 /** Marca de la última visita, para el punto «nueva» de cada fila. */
 const LAST_VISIT_KEY = "radar-last-visit";
@@ -93,6 +77,10 @@ export interface RadarConsola {
   restoreAll: () => void;
   toggleFollow: (tender: RadarTender) => void;
   openPursuit: (tender: RadarTender) => Promise<void>;
+  /** F1.3 — anota que se leyó la explicación del score de esta señal. */
+  marcarExplicacion: (tender: RadarTender) => void;
+  /** F1.6 — filtro por etiqueta de favorito, sobre las filas ya cargadas. */
+  etiqueta: FiltroEtiqueta;
 }
 
 export function useRadarConsola(): RadarConsola {
@@ -144,6 +132,10 @@ export function useRadarConsola(): RadarConsola {
   // de segmentos. Su contador es el `total` del servidor sobre el corpus, no la
   // longitud de la página recibida.
   const proximas = useRadarProximas();
+  // F1.6 — las etiquetas de un expediente son las de su favorito (`id_externo`).
+  const idsVisibles = [...all, ...descartadas.items].map((t) => t.id_externo);
+  const etiqueta = useFiltroEtiqueta("favorito", idsVisibles);
+  const pasaEtiqueta = etiqueta.pasa;
 
   const counts = React.useMemo(
     () => ({
@@ -166,6 +158,7 @@ export function useRadarConsola(): RadarConsola {
     // entre la mutación optimista y el refetch del ranking.
     const base = segment === "descartadas" ? descartadas.items : all;
     const filtered = base.filter((tender) => {
+      if (!pasaEtiqueta(tender.id_externo)) return false;
       if (segment === "bandeja")
         return !dismissed.has(tender.id_externo) && !followedIds.has(tender.id_externo);
       if (segment === "siguiendo") return followedIds.has(tender.id_externo);
@@ -178,7 +171,7 @@ export function useRadarConsola(): RadarConsola {
         return (daysLeft(a.fecha_limite) ?? 9999) - (daysLeft(b.fecha_limite) ?? 9999);
       return (b.importe ?? 0) - (a.importe ?? 0);
     });
-  }, [all, descartadas.items, segment, sort, dismissed, followedIds]);
+  }, [all, descartadas.items, segment, sort, dismissed, followedIds, pasaEtiqueta]);
 
   const activeIndex = Math.min(selected, Math.max(0, rows.length - 1));
   const active: RadarTender | undefined = rows[activeIndex];
@@ -200,6 +193,14 @@ export function useRadarConsola(): RadarConsola {
     [dismissed, restore],
   );
 
+  // F1.3 — señales cuya explicación se abrió; el triaje lo lleva como
+  // `explicacion_abierta` (mide si acompaña a la decisión, no curiosidad).
+  const explicaciones = React.useRef(new Set<string>());
+  const marcarExplicacion = React.useCallback(
+    (tender: RadarTender) => void explicaciones.current.add(tender.id_externo),
+    [],
+  );
+
   // Descartar, silenciar y posponer (F5.6) son el mismo POST con otra acción.
   // El score y la banda viajan con él: son los que el usuario tenía delante al
   // decidir, y no se pueden reconstruir después (revisión v93).
@@ -209,6 +210,7 @@ export function useRadarConsola(): RadarConsola {
         idExterno: tender.id_externo,
         score: tender.score,
         banda: esBandaConocida(tender.band) ? tender.band : null,
+        ...(explicaciones.current.has(tender.id_externo) ? { explicacionAbierta: true } : {}),
         ...(accion ? { accion, dias } : {}),
       });
       const titulo = !accion
@@ -290,5 +292,7 @@ export function useRadarConsola(): RadarConsola {
     restoreAll,
     toggleFollow,
     openPursuit,
+    marcarExplicacion,
+    etiqueta,
   };
 }
