@@ -3,9 +3,11 @@
 /**
  * Ranking de empresas más agresivas en precio.
  *
- * Su ámbito NO es el de la pantalla y por eso lo dice en la cabecera: el
- * endpoint respeta el filtro de CCAA e ignora rango de fechas, CPV e importe.
- * Una cifra sin su universo declarado es exactamente lo que ADR-014 prohíbe.
+ * Su ámbito no es EXACTAMENTE el de la pantalla y por eso lo dice en la
+ * cabecera: el endpoint honra CCAA, rango de fechas (sobre la fecha de
+ * adjudicación, como el resto de Competidores) e importe mínimo, pero no
+ * estado, tecnología ni búsqueda libre. Una cifra sin su universo declarado es
+ * exactamente lo que ADR-014 prohíbe.
  */
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -25,7 +27,8 @@ export function CompetidoresBajas({ bajas }: { bajas: BajasModel }) {
           Empresas mas agresivas en precio (baja media)
         </CardTitle>
         <p className="text-muted-foreground mt-1 text-xs">
-          Ambito: respeta el filtro de CCAA; no aplica rango de fechas, CPV ni importe.
+          Ámbito: respeta CCAA, fechas (de adjudicación) e importe mínimo; no aplica estado,
+          tecnología ni búsqueda.
         </p>
       </CardHeader>
       <CardContent>

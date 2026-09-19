@@ -10,6 +10,7 @@
  */
 
 import dynamic from "next/dynamic";
+import { useRouter } from "next/navigation";
 import {
   Area,
   AreaChart,
@@ -23,16 +24,18 @@ import {
 } from "recharts";
 
 import { ChartErrorBoundary } from "@/components/charts/chart-error-boundary";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useScopedHref } from "@/lib/filters";
 import { formatCurrency, formatNumber } from "@/lib/utils";
 import type { TrendPoint } from "@/lib/api-types";
 
-import type {
-  CumulativePoint,
-  HistogramBin,
-  WaterfallPoint,
+import {
+  mesHref,
+  type CumulativePoint,
+  type HistogramBin,
+  type WaterfallPoint,
 } from "../_hooks/use-tendencias-view";
 
 const WaterfallChart = dynamic(() => import("@/components/charts/waterfall-chart").then(m => ({ default: m.WaterfallChart })), { ssr: false, loading: () => <Skeleton className="h-[420px] w-full rounded-md" /> });
@@ -44,10 +47,20 @@ export function TendenciasVolumen({
   series: TrendPoint[];
   isLoading: boolean;
 }) {
+  // Drill-down (RFC ux-tendencias #3): la barra de un mes abre el listado de
+  // lo publicado ese mes, con el resto del ámbito activo. El camino de
+  // teclado equivalente son las cabeceras de mes del heatmap Mes×Estado.
+  const router = useRouter();
+  const scopedHref = useScopedHref();
+  const abrirMes = (dato: unknown) => {
+    const periodo = (dato as { payload?: TrendPoint } | undefined)?.payload?.period;
+    if (periodo && /^\d{4}-\d{2}$/.test(periodo)) router.push(scopedHref(mesHref(periodo)));
+  };
   return (
     <Card>
       <CardHeader>
         <CardTitle className="text-base">Licitaciones por Mes</CardTitle>
+        <CardDescription>Pulsa una barra para ver las licitaciones de ese mes.</CardDescription>
       </CardHeader>
       <CardContent>
         {isLoading ? (
@@ -60,7 +73,14 @@ export function TendenciasVolumen({
               <XAxis dataKey="period" tick={{ fontSize: 12 }} angle={-45} textAnchor="end" height={60} />
               <YAxis tick={{ fontSize: 12 }} />
               <Tooltip formatter={(value) => [formatNumber(value as number), "Licitaciones"]} />
-              <Bar dataKey="count" fill="hsl(221, 83%, 53%)" radius={[4, 4, 0, 0]} name="Licitaciones" />
+              <Bar
+                dataKey="count"
+                fill="hsl(221, 83%, 53%)"
+                radius={[4, 4, 0, 0]}
+                name="Licitaciones"
+                className="cursor-pointer"
+                onClick={abrirMes}
+              />
             </BarChart>
           </ResponsiveContainer>
             </ChartErrorBoundary>

@@ -24,6 +24,7 @@ import { DlqFrescuraCards } from "./calidad-datos/dlq-frescura-cards";
 import { FormatoFechaCard } from "./calidad-datos/formato-fecha-card";
 import { PipelineCard } from "./calidad-datos/pipeline-card";
 import { ReportesCard } from "./calidad-datos/reportes-card";
+import { TendenciaCompletitudCard } from "./calidad-datos/tendencia-completitud-card";
 
 export default function CalidadDatosView() {
   const { data, isLoading, isError, hoursAgo, freshness, chartData, dlqCount, fechasNoIso } =
@@ -58,6 +59,8 @@ export default function CalidadDatosView() {
       <SourceFreshnessPanel />
 
       <CompletitudCard data={chartData} isLoading={isLoading} />
+
+      <TendenciaCompletitudCard serie={data?.tendencia_completitud} isLoading={isLoading} />
 
       <FormatoFechaCard
         pctIso={data?.pct_fecha_iso}

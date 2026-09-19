@@ -65,8 +65,9 @@ export function useCompetidoresData() {
     { limit: "100" },
   );
 
-  // Ranking de bajas por empresa (quién oferta más agresivo). Honra ccaa global
-  // vía useFilteredQuery; el endpoint ignora el resto de filtros.
+  // Ranking de bajas por empresa (quién oferta más agresivo). Honra CCAA, fechas
+  // (de adjudicación) e importe mínimo del ámbito global vía useFilteredQuery;
+  // estado, tecnología y búsqueda no los aplica (la card lo declara).
   const { data: bajasData } = useFilteredQuery<{ items: BajaItem[] }>(
     ["competitive", "bajas-empresa"],
     "/api/v1/competitive/bajas",

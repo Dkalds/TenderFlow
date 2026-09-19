@@ -9,9 +9,12 @@ import {
   Tooltip,
   ResponsiveContainer,
   Cell,
+  Legend,
+  Line,
+  LineChart,
 } from "recharts";
 import { ChartErrorBoundary } from "@/components/charts/chart-error-boundary";
-import { URGENCY_COLORS } from "@/lib/chart-colors";
+import { CHART_SERIES, URGENCY_COLORS } from "@/lib/chart-colors";
 
 /* ── Types ─────────────────────────────────────────────────────── */
 
@@ -54,6 +57,50 @@ export function CalidadCompletenessChart({ data }: { data: ColumnCompleteness[] 
             ))}
           </Bar>
         </BarChart>
+      </ResponsiveContainer>
+    </ChartErrorBoundary>
+  );
+}
+
+/* ── Tendencia de completitud (RFC calidad #3) ─────────────────── */
+
+interface CompletitudMesEntry {
+  mes: string;
+  pct_cpv: number;
+  pct_importe: number;
+  pct_organo: number;
+  pct_fecha_limite: number;
+}
+
+const TENDENCIA_SERIES: { key: keyof Omit<CompletitudMesEntry, "mes">; name: string }[] = [
+  { key: "pct_cpv", name: "CPV" },
+  { key: "pct_importe", name: "Importe" },
+  { key: "pct_organo", name: "Órgano" },
+  { key: "pct_fecha_limite", name: "Fecha límite" },
+];
+
+export function CalidadTendenciaChart({ data }: { data: CompletitudMesEntry[] }) {
+  return (
+    <ChartErrorBoundary>
+      <ResponsiveContainer width="100%" height={260}>
+        <LineChart accessibilityLayer data={data} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
+          <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+          <XAxis dataKey="mes" tick={{ fontSize: 12 }} />
+          <YAxis domain={[0, 100]} unit="%" tick={{ fontSize: 12 }} />
+          <Tooltip formatter={(value, name) => [`${Number(value).toFixed(1)}%`, name]} />
+          <Legend />
+          {TENDENCIA_SERIES.map((s, i) => (
+            <Line
+              key={s.key}
+              type="monotone"
+              dataKey={s.key}
+              name={s.name}
+              stroke={CHART_SERIES[i % CHART_SERIES.length]}
+              strokeWidth={2}
+              dot={{ r: 2 }}
+            />
+          ))}
+        </LineChart>
       </ResponsiveContainer>
     </ChartErrorBoundary>
   );

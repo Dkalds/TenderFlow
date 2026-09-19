@@ -3,32 +3,58 @@
 /**
  * Datos y rejilla de la vista Calendario.
  *
- * La única fuente es la serie DIARIA del backend (`group_by=day`): cada celda
- * del heatmap es el conteo real de publicaciones de ese día. Antes se repartía
- * la serie SEMANAL ÷7 con un fudge de día laborable, que es exactamente el
- * patrón 1 que prohíbe ADR-014 — una cifra inventada en el cliente.
+ * Dos métricas, las dos diarias y REALES del backend:
  *
- * Lo que se calcula aquí es geometría, no analítica: en qué semana y en qué
- * fila cae cada día del año elegido, y las sumas por mes y por día de la semana
- * de esos mismos conteos.
+ * - **Vencimientos** (vista principal, RFC ux-calendario #2-#4): cierres de
+ *   plazo de presentación (`fecha_limite`) por día, desde
+ *   `/analytics/calendario/vencimientos`. Cada día cuenta exactamente lo que
+ *   abre `/detalle?cierre_desde=D&cierre_hasta=D` con el mismo ámbito, así que
+ *   la celda es un enlace honesto (ADR-014, patrón 5).
+ * - **Publicaciones** (vista secundaria): la serie `group_by=day` de
+ *   `/analytics/trends`. Antes se repartía la serie SEMANAL ÷7 con un fudge de
+ *   día laborable —el patrón 1 que prohíbe ADR-014—.
+ *
+ * Lo que se calcula aquí es geometría, no analítica: en qué semana y fila cae
+ * cada día del año elegido, y las sumas por mes y día de la semana de esos
+ * mismos conteos diarios.
  */
 
 import { useMemo, useState } from "react";
 
 import { useFilteredQuery } from "@/hooks/use-filtered-query";
-import type { TrendPoint } from "@/lib/api-types";
+import type { Schemas, TrendPoint } from "@/lib/api-types";
 
 interface TrendsResponse {
   series: TrendPoint[];
 }
 
+export type VencimientosResponse = Schemas["VencimientosResult"];
+
+export type CalendarioModo = "vencimientos" | "publicaciones";
+
 export const DAY_LABELS = ["Lun", "Mar", "Mie", "Jue", "Vie", "Sab", "Dom"];
 const MONTH_NAMES = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
+
+/**
+ * Años navegables en la vista de vencimientos: no hay una serie de la que
+ * deducirlos sin pedirla entera, y un plazo de presentación rara vez cae a más
+ * de un año vista. Un año sin cierres se pinta vacío, no se inventa.
+ */
+const VENCIMIENTOS_ANIOS_ATRAS = 5;
+const VENCIMIENTOS_ANIOS_ADELANTE = 1;
+
+export interface DayValue {
+  count: number;
+  importe: number;
+}
 
 export interface DayCell {
   date: Date;
   count: number;
   dateStr: string;
+  esHoy: boolean;
+  /** Hoy o uno de los seis días siguientes. */
+  proximos7: boolean;
 }
 
 export interface CalendarWeek {
@@ -45,7 +71,7 @@ export interface MonthLabel {
 
 export interface MonthlyPoint {
   mes: string;
-  publicaciones: number;
+  count: number;
   importe: number;
 }
 
@@ -54,133 +80,178 @@ export interface DowPoint {
   promedio: number;
 }
 
+/** `YYYY-MM-DD` en hora LOCAL (la rejilla se construye con fechas locales). */
+export function isoLocal(d: Date): string {
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${d.getFullYear()}-${mm}-${dd}`;
+}
+
+/** Enlace al listado de las licitaciones que cierran ese día. */
+export function diaHref(fecha: string): string {
+  return `/detalle?cierre_desde=${fecha}&cierre_hasta=${fecha}`;
+}
+
+/** Conteo e importe por día desde la serie diaria de publicaciones. */
+export function dayMapFromTrends(series: TrendPoint[] | undefined): Map<string, DayValue> {
+  const map = new Map<string, DayValue>();
+  for (const p of series ?? []) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(p.period)) continue;
+    const prev = map.get(p.period) ?? { count: 0, importe: 0 };
+    map.set(p.period, { count: prev.count + p.count, importe: prev.importe + (p.importe ?? 0) });
+  }
+  return map;
+}
+
+/** Conteo e importe por día desde la serie de vencimientos. */
+export function dayMapFromVencimientos(data: VencimientosResponse | undefined): Map<string, DayValue> {
+  const map = new Map<string, DayValue>();
+  for (const d of data?.dias ?? []) {
+    map.set(d.fecha, { count: d.count, importe: d.importe });
+  }
+  return map;
+}
+
+/** Rejilla semanal Lun→Dom del año, con hoy y los próximos 7 días marcados. */
+export function buildCalendarGrid(
+  days: Map<string, DayValue>,
+  year: number,
+  today: Date,
+): { weeks: CalendarWeek[]; months: MonthLabel[] } {
+  const hoy = isoLocal(today);
+  const limite7 = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 7);
+  const limite7Str = isoLocal(limite7);
+
+  const startDate = new Date(year, 0, 1);
+  const endDate = new Date(year, 11, 31);
+  const dow = startDate.getDay() || 7;
+  startDate.setDate(startDate.getDate() - (dow - 1));
+
+  const weeks: CalendarWeek[] = [];
+  const months: MonthLabel[] = [];
+  let lastMonth = -1;
+  const current = new Date(startDate);
+
+  while (current <= endDate) {
+    const week: (DayCell | null)[] = [];
+    const weekStart = new Date(current);
+    for (let d = 0; d < 7; d++) {
+      const dayDate = new Date(current.getFullYear(), current.getMonth(), current.getDate() + d);
+      if (dayDate.getFullYear() !== year) {
+        week.push(null);
+        continue;
+      }
+      const key = isoLocal(dayDate);
+      week.push({
+        date: dayDate,
+        count: days.get(key)?.count ?? 0,
+        dateStr: key,
+        esHoy: key === hoy,
+        proximos7: key >= hoy && key < limite7Str,
+      });
+      if (dayDate.getMonth() !== lastMonth && d === 0) {
+        lastMonth = dayDate.getMonth();
+        months.push({ label: MONTH_NAMES[dayDate.getMonth()], weekIdx: weeks.length });
+      }
+    }
+    weeks.push({ weekStart, days: week });
+    current.setDate(current.getDate() + 7);
+  }
+  return { weeks, months };
+}
+
+/** Suma por mes (sólo el año elegido). */
+export function monthlyFromDays(days: Map<string, DayValue>, year: number): MonthlyPoint[] {
+  const agg = new Map<string, DayValue>();
+  for (const [key, v] of days) {
+    if (!key.startsWith(`${year}-`)) continue;
+    const mes = key.slice(0, 7);
+    const prev = agg.get(mes) ?? { count: 0, importe: 0 };
+    agg.set(mes, { count: prev.count + v.count, importe: prev.importe + v.importe });
+  }
+  return Array.from(agg.entries())
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([mes, v]) => ({
+      mes: MONTH_NAMES[parseInt(mes.slice(5, 7), 10) - 1],
+      count: v.count,
+      importe: v.importe,
+    }));
+}
+
+/** Media por día de la semana sobre los días CON dato del año elegido. */
+export function dowFromDays(days: Map<string, DayValue>, year: number): DowPoint[] {
+  const totals = [0, 0, 0, 0, 0, 0, 0];
+  const counts = [0, 0, 0, 0, 0, 0, 0];
+  for (const [key, v] of days) {
+    if (!key.startsWith(`${year}-`)) continue;
+    const [y, m, d] = key.split("-").map(Number);
+    const dow = (new Date(y, m - 1, d).getDay() + 6) % 7;
+    totals[dow] += v.count;
+    counts[dow] += 1;
+  }
+  return DAY_LABELS.map((label, i) => ({
+    dia: label,
+    promedio: counts[i] > 0 ? Math.round(totals[i] / counts[i]) : 0,
+  }));
+}
+
 export function useCalendarioView() {
   const currentYear = new Date().getFullYear();
   const [selectedYear, setSelectedYear] = useState(currentYear);
+  const [modo, setModo] = useState<CalendarioModo>("vencimientos");
 
-  const { data, isLoading, error } = useFilteredQuery<TrendsResponse>(
-    ["analytics", "trends", "day"],
-    "/api/v1/analytics/trends?group_by=day",
-    { staleTime: 5 * 60 * 1000 },
+  const vencimientos = useFilteredQuery<VencimientosResponse>(
+    ["analytics", "calendario-vencimientos", String(selectedYear)],
+    "/api/v1/analytics/calendario/vencimientos",
+    { staleTime: 5 * 60 * 1000, enabled: modo === "vencimientos" },
+    { desde: `${selectedYear}-01-01`, hasta: `${selectedYear}-12-31` },
   );
 
-  // Conteos diarios REALES del backend (group_by=day): period = "YYYY-MM-DD".
-  const dailyCounts = useMemo(() => {
-    const counts = new Map<string, number>();
-    for (const point of data?.series ?? []) {
-      if (/^\d{4}-\d{2}-\d{2}$/.test(point.period)) {
-        counts.set(point.period, (counts.get(point.period) ?? 0) + point.count);
-      }
-    }
-    return counts;
-  }, [data]);
+  const publicaciones = useFilteredQuery<TrendsResponse>(
+    ["analytics", "trends", "day"],
+    "/api/v1/analytics/trends?group_by=day",
+    { staleTime: 5 * 60 * 1000, enabled: modo === "publicaciones" },
+  );
 
-  // Available years
+  const activa = modo === "vencimientos" ? vencimientos : publicaciones;
+
+  const dayMap = useMemo(
+    () =>
+      modo === "vencimientos"
+        ? dayMapFromVencimientos(vencimientos.data)
+        : dayMapFromTrends(publicaciones.data?.series),
+    [modo, vencimientos.data, publicaciones.data],
+  );
+
   const availableYears = useMemo(() => {
+    if (modo === "vencimientos") {
+      const years: number[] = [];
+      for (let y = currentYear - VENCIMIENTOS_ANIOS_ATRAS; y <= currentYear + VENCIMIENTOS_ANIOS_ADELANTE; y++) {
+        years.push(y);
+      }
+      return years;
+    }
     const years = new Set<number>();
-    for (const key of dailyCounts.keys()) {
-      years.add(parseInt(key.slice(0, 4)));
-    }
-    const sorted = Array.from(years).sort();
+    for (const key of dayMap.keys()) years.add(parseInt(key.slice(0, 4), 10));
+    const sorted = Array.from(years).sort((a, b) => a - b);
     return sorted.length > 0 ? sorted : [currentYear];
-  }, [dailyCounts, currentYear]);
+  }, [modo, dayMap, currentYear]);
 
-  // Heatmap grid filtered by selected year
-  const { weeks, months } = useMemo<{ weeks: CalendarWeek[]; months: MonthLabel[] }>(() => {
-    if (dailyCounts.size === 0) return { weeks: [], months: [] };
-
-    const startDate = new Date(selectedYear, 0, 1);
-    const endDate = new Date(selectedYear, 11, 31);
-
-    // Align to Monday
-    const dow = startDate.getDay() || 7;
-    startDate.setDate(startDate.getDate() - (dow - 1));
-
-    const calWeeks: CalendarWeek[] = [];
-    const monthLabels: MonthLabel[] = [];
-    let lastMonth = -1;
-    const current = new Date(startDate);
-
-    while (current <= endDate) {
-      const week: (DayCell | null)[] = [];
-      const weekStart = new Date(current);
-
-      for (let d = 0; d < 7; d++) {
-        const dayDate = new Date(current);
-        dayDate.setDate(current.getDate() + d);
-        const key = dayDate.toISOString().slice(0, 10);
-
-        if (dayDate.getFullYear() !== selectedYear) {
-          week.push(null);
-        } else {
-          const count = dailyCounts.get(key) ?? 0;
-          week.push({ date: dayDate, count, dateStr: key });
-
-          if (dayDate.getMonth() !== lastMonth && d === 0) {
-            lastMonth = dayDate.getMonth();
-            monthLabels.push({
-              label: MONTH_NAMES[dayDate.getMonth()],
-              weekIdx: calWeeks.length,
-            });
-          }
-        }
-      }
-
-      calWeeks.push({ weekStart, days: week });
-      current.setDate(current.getDate() + 7);
-    }
-
-    return { weeks: calWeeks, months: monthLabels };
-  }, [dailyCounts, selectedYear]);
-
-  // Monthly aggregation for bar chart
-  const monthlyData = useMemo<MonthlyPoint[]>(() => {
-    const agg = new Map<string, { count: number; importe: number }>();
-    for (const [key, count] of dailyCounts.entries()) {
-      if (!key.startsWith(String(selectedYear))) continue;
-      const month = key.slice(0, 7);
-      const prev = agg.get(month) ?? { count: 0, importe: 0 };
-      agg.set(month, { count: prev.count + count, importe: prev.importe });
-    }
-    // Also aggregate importe from series if available
-    if (data?.series) {
-      for (const point of data.series) {
-        const d = new Date(point.period);
-        if (!isNaN(d.getTime()) && d.getFullYear() === selectedYear) {
-          const month = d.toISOString().slice(0, 7);
-          const prev = agg.get(month) ?? { count: 0, importe: 0 };
-          agg.set(month, { count: prev.count, importe: prev.importe + (point.importe ?? 0) });
-        }
-      }
-    }
-    return Array.from(agg.entries())
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([mes, v]) => ({
-        mes: MONTH_NAMES[parseInt(mes.slice(5, 7)) - 1],
-        publicaciones: v.count,
-        importe: v.importe,
-      }));
-  }, [dailyCounts, data, selectedYear]);
-
-  // Day-of-week distribution
-  const dowData = useMemo<DowPoint[]>(() => {
-    const totals = [0, 0, 0, 0, 0, 0, 0];
-    const counts = [0, 0, 0, 0, 0, 0, 0];
-    for (const [key, count] of dailyCounts.entries()) {
-      if (!key.startsWith(String(selectedYear))) continue;
-      const d = new Date(key);
-      // JS: 0=Sun, convert to 0=Mon
-      const dow = (d.getDay() + 6) % 7;
-      totals[dow] += count;
-      counts[dow] += 1;
-    }
-    return DAY_LABELS.map((label, i) => ({
-      dia: label,
-      promedio: counts[i] > 0 ? Math.round(totals[i] / counts[i]) : 0,
-    }));
-  }, [dailyCounts, selectedYear]);
+  // Sin ningún día con dato no se pinta una rejilla de ceros: la tarjeta cae
+  // en su estado vacío, que dice lo mismo sin parecer una medición.
+  const { weeks, months } = useMemo(
+    () =>
+      dayMap.size === 0
+        ? { weeks: [], months: [] }
+        : buildCalendarGrid(dayMap, selectedYear, new Date()),
+    [dayMap, selectedYear],
+  );
+  const monthlyData = useMemo(() => monthlyFromDays(dayMap, selectedYear), [dayMap, selectedYear]);
+  const dowData = useMemo(() => dowFromDays(dayMap, selectedYear), [dayMap, selectedYear]);
 
   return {
+    modo,
+    setModo,
     weeks,
     months,
     monthlyData,
@@ -188,7 +259,8 @@ export function useCalendarioView() {
     availableYears,
     selectedYear,
     setSelectedYear,
-    isLoading,
-    error,
+    vencimientos: vencimientos.data,
+    isLoading: activa.isLoading,
+    error: activa.error,
   };
 }

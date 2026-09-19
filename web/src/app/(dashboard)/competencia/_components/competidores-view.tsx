@@ -30,6 +30,7 @@ import { CompetidoresBanner } from "./competidores-banner";
 import { CompetidoresCortes, type CorteKey } from "./competidores-cortes";
 import { CompetidoresDossier } from "./competidores-dossier";
 import { CompetidoresKpis } from "./competidores-kpis";
+import { CompetidoresMovimientos } from "./competidores-movimientos";
 import { CompetidoresTabla } from "./competidores-tabla";
 import { CompetidoresToolbar } from "./competidores-toolbar";
 
@@ -86,6 +87,9 @@ export default function CompetidoresView() {
 
         {/* Marcador del espacio: los cuatro KPIs del mercado competitivo. */}
         <CompetidoresKpis data={data} isLoading={isLoading} />
+
+        {/* Señales proactivas de la watchlist de empresas (RFC #4). */}
+        <CompetidoresMovimientos />
 
         {/* La tabla gobierna los nueve cortes, así que va primero. Antes había
             que bajar 2.400 px de gráficos para llegar a la superficie de
