@@ -3573,6 +3573,53 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/organizations/{organization_id}/plantillas-miembro": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Reglas y vistas que recibe un miembro nuevo al aceptar la invitación
+         * @description Cualquier miembro las lee; `puede_editar` dice si además las cambia.
+         */
+        get: operations["get_plantillas_miembro_api_v1_organizations__organization_id__plantillas_miembro_get"];
+        put?: never;
+        /**
+         * Añadir una plantilla de miembro (owner/admin)
+         * @description Se copia a quien acepte una invitación **a partir de ahora**, una vez.
+         *
+         *     No se reparte a los miembros que ya estaban: la copia ocurre al activar la
+         *     membresía (`services.cuentas.aplicar_plantillas`).
+         */
+        post: operations["post_plantilla_miembro_api_v1_organizations__organization_id__plantillas_miembro_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{organization_id}/plantillas-miembro/{plantilla_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Borrar una plantilla de miembro (owner/admin)
+         * @description No toca las copias ya repartidas: son de cada miembro.
+         */
+        delete: operations["delete_plantilla_miembro_api_v1_organizations__organization_id__plantillas_miembro__plantilla_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/organizations/{organization_id}/report-schedule": {
         parameters: {
             query?: never;
@@ -10185,6 +10232,42 @@ export interface components {
             vencen_7d: number;
         };
         /**
+         * PlantillaMiembro
+         * @description Una plantilla guardada, en la forma en que la edita la pantalla.
+         */
+        PlantillaMiembro: {
+            /** Created At */
+            created_at?: string | null;
+            /** Filters Json */
+            filters_json?: string | null;
+            /** Id */
+            id: number;
+            /** Nombre */
+            nombre: string;
+            regla?: components["schemas"]["WatchlistRule"] | null;
+            /**
+             * Tipo
+             * @enum {string}
+             */
+            tipo: "regla" | "vista";
+        };
+        /**
+         * PlantillaMiembroIn
+         * @description Cuerpo del alta: una regla o una vista, según ``tipo``.
+         */
+        PlantillaMiembroIn: {
+            /** Filters Json */
+            filters_json?: string | null;
+            /** Nombre */
+            nombre: string;
+            regla?: components["schemas"]["WatchlistRule"] | null;
+            /**
+             * Tipo
+             * @enum {string}
+             */
+            tipo: "regla" | "vista";
+        };
+        /**
          * PlantillaTareas
          * @description Cuerpo del PUT: la plantilla entera, que sustituye a la anterior.
          */
@@ -10217,6 +10300,26 @@ export interface components {
             puede_editar: boolean;
             /** Tareas */
             tareas?: components["schemas"]["TareaPlantilla"][];
+        };
+        /**
+         * PlantillasMiembroOut
+         * @description Las plantillas de miembro de la organización.
+         */
+        PlantillasMiembroOut: {
+            /**
+             * Max Plantillas
+             * @default 20
+             */
+            max_plantillas: number;
+            /** Organization Id */
+            organization_id: number;
+            /** Plantillas */
+            plantillas?: components["schemas"]["PlantillaMiembro"][];
+            /**
+             * Puede Editar
+             * @default false
+             */
+            puede_editar: boolean;
         };
         /**
          * PrediccionBajaLote
@@ -13375,6 +13478,55 @@ export interface components {
         WatchlistNotaBody: {
             /** Nota */
             nota?: string | null;
+        };
+        /**
+         * WatchlistRule
+         * @description Regla de seguimiento por criterio. ``id`` es ``None`` hasta persistir.
+         */
+        WatchlistRule: {
+            /**
+             * Active
+             * @default true
+             */
+            active: boolean;
+            /** Banda Min */
+            banda_min?: ("Caliente" | "Atractiva" | "Tibia" | "Descarte") | null;
+            /** Ccaa */
+            ccaa?: string | null;
+            /** Cpv */
+            cpv?: string | null;
+            /**
+             * Frequency
+             * @default daily
+             * @enum {string}
+             */
+            frequency: "immediate" | "daily" | "weekly";
+            /** Id */
+            id?: number | null;
+            /** Keyword */
+            keyword?: string | null;
+            /** Min Importe */
+            min_importe?: number | null;
+            /** Nombre */
+            nombre?: string | null;
+            /** Organization Id */
+            organization_id?: number | null;
+            /** Organo */
+            organo?: string | null;
+            /** Plazo Min Dias */
+            plazo_min_dias?: number | null;
+            /** Procedimiento */
+            procedimiento?: string | null;
+            /** Tecnologia */
+            tecnologia?: string | null;
+            /** Tipo Contrato */
+            tipo_contrato?: string | null;
+            /**
+             * Visibility
+             * @default private
+             * @enum {string}
+             */
+            visibility: "private" | "organization";
         };
         /**
          * WatchlistRuleBody
@@ -20843,6 +20995,144 @@ export interface operations {
             };
             /** @description Solo owner o admin cambian la plantilla */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_plantillas_miembro_api_v1_organizations__organization_id__plantillas_miembro_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                organization_id: number;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlantillasMiembroOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_plantilla_miembro_api_v1_organizations__organization_id__plantillas_miembro_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                organization_id: number;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PlantillaMiembroIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlantillasMiembroOut"];
+                };
+            };
+            /** @description Solo owner o admin cambian las plantillas */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description La organización llegó al máximo de plantillas */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_plantilla_miembro_api_v1_organizations__organization_id__plantillas_miembro__plantilla_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                organization_id: number;
+                plantilla_id: number;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlantillasMiembroOut"];
+                };
+            };
+            /** @description Solo owner o admin cambian las plantillas */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description La plantilla no existe o no es de miembro */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
