@@ -172,6 +172,8 @@ export type SimulacionPrecio = Schemas["SimulacionPrecio"];
 export type EscenarioPuntos = Schemas["EscenarioPuntos"];
 export type PaginaDocumento = Schemas["PaginaDocumento"];
 export type GuionOferta = Schemas["GuionOferta"];
+/** F4.3 — resultado de «preparar renovación» sobre un contrato en cartera. */
+export type RenovacionPreparada = Schemas["RenovacionPreparada"];
 export type GuionCriterio = Schemas["GuionCriterio"];
 export type PuntoGuion = Schemas["PuntoGuion"];
 export type ComparacionFichas = Schemas["ComparacionFichas"];

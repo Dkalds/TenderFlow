@@ -10,8 +10,11 @@
  * relicitación — que es una estimación de dominio y se presenta como
  * intervalo, no como fecha.
  *
- * «Preparar renovación» no está aquí: el backend todavía no expone esa
- * acción. Cuando un contrato ya tiene oportunidad de renovación, se enlaza.
+ * «Preparar renovación» crea la oportunidad de la relicitación enlazada al
+ * contrato (`POST /pursuits/cartera/{id}/renovacion`). Pide el expediente de
+ * la relicitación porque la oportunidad es sobre **ese** expediente: el del
+ * contrato vigente ya tiene la suya, la ganada. Cuando un contrato ya tiene
+ * oportunidad de renovación, se enlaza en vez de ofrecer el botón.
  */
 import * as React from "react";
 import Link from "next/link";
@@ -23,6 +26,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Panel, PanelError, PanelLoading, PanelTitle } from "@/components/console/panel";
 import { useCartera } from "@/hooks/use-cartera";
+import { PrepararRenovacion } from "./preparar-renovacion";
 import { registrarEvento } from "@/lib/analytics";
 import { fechaCorta } from "@/lib/adjudicacion-prevista";
 import {
@@ -174,7 +178,13 @@ export default function CarteraView() {
                       >
                         Ver oportunidad de renovación
                       </Link>
-                    ) : null}
+                    ) : (
+                      <PrepararRenovacion
+                        carteraId={contrato.id}
+                        licitacionVigente={contrato.licitacion_id}
+                        titulo={contrato.titulo ?? contrato.licitacion_id}
+                      />
+                    )}
                   </TableCell>
                   <TableCell>
                     <span className="tf-tnum whitespace-nowrap">

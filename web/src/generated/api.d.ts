@@ -2511,6 +2511,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/licitaciones/{id_externo}/guion.pdf": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Guion de la oferta técnica en PDF (el ya generado; no llama al LLM)
+         * @description F2.6 — descarga en PDF del guion **ya generado**.
+         *
+         *     Nunca genera: descargar no puede ser una forma de gastar presupuesto de
+         *     LLM sin que se vea. Si el pliego cambió desde la última generación, la
+         *     firma no coincide y la respuesta es 404 — el guion guardado sería de otro
+         *     pliego.
+         */
+        get: operations["get_guion_oferta_pdf_api_v1_licitaciones__id_externo__guion_pdf_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/licitaciones/{id_externo}/reportes": {
         parameters: {
             query?: never;
@@ -4030,6 +4055,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/pursuits/cartera/{cartera_id}/renovacion": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Preparar la renovación de un contrato en cartera (F4.3)
+         * @description Crea la oportunidad de la relicitación, enlazada al contrato.
+         *
+         *     Idempotente: si el contrato ya tenía oportunidad de renovación, devuelve
+         *     esa con ``creada=false`` y no crea otra.
+         */
+        post: operations["post_cartera_renovacion_api_v1_pursuits_cartera__cartera_id__renovacion_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/pursuits/direccion": {
         parameters: {
             query?: never;
@@ -5417,6 +5465,11 @@ export interface components {
              * @description ID de una licitación específica: el contexto pasa a ser esa licitación (metadatos del anuncio + fragmentos de sus pliegos) en lugar del retrieval de corpus.
              */
             id_externo?: string | null;
+            /**
+             * Ids Externos
+             * @description F2.8 — hasta tres licitaciones para una pregunta cruzada (comparar). El contexto se reparte entre ellas —el presupuesto por expediente se reduce y se declara en `ask_meta`— y la respuesta cita cada dato con su expediente. Compatible con `id_externo`: si llegan los dos, `id_externo` va primero.
+             */
+            ids_externos?: string[] | null;
             /**
              * Messages
              * @description Historial previo de la conversación (no incluye la pregunta actual). No se persiste en el servidor.
@@ -10212,6 +10265,14 @@ export interface components {
             serving?: string | null;
         };
         /**
+         * PrepararRenovacionIn
+         * @description Cuerpo de «preparar renovación»: el expediente de la relicitación.
+         */
+        PrepararRenovacionIn: {
+            /** Licitacion Id */
+            licitacion_id: string;
+        };
+        /**
          * PreviewResult
          * @description Conteo de la regla más su serie de ruido (F5.5).
          *
@@ -11361,6 +11422,18 @@ export interface components {
             url: string | null;
         };
         /**
+         * RenovacionPreparada
+         * @description Resultado de «preparar renovación».
+         */
+        RenovacionPreparada: {
+            /** Cartera Id */
+            cartera_id: number;
+            /** Creada */
+            creada: boolean;
+            /** Renovacion Pursuit Id */
+            renovacion_pursuit_id: number;
+        };
+        /**
          * RenovacionesResult
          * @description Respuesta de ``GET /competitive/renovaciones``.
          */
@@ -11903,6 +11976,12 @@ export interface components {
              * @default ninguno
              */
             afinidad_origen: string;
+            /**
+             * Anulacion Organo
+             * @description ok | apagada | error
+             * @default ok
+             */
+            anulacion_organo: string;
             /**
              * Competencia
              * @description ok | vacia | error
@@ -18575,6 +18654,55 @@ export interface operations {
             };
         };
     };
+    get_guion_oferta_pdf_api_v1_licitaciones__id_externo__guion_pdf_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                id_externo: string;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description El PDF */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/pdf": unknown;
+                };
+            };
+            /** @description Autenticación inválida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No hay guion generado para el estado vigente del pliego */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     post_reporte_dato_api_v1_licitaciones__id_externo__reportes_post: {
         parameters: {
             query?: never;
@@ -21540,6 +21668,59 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
+            };
+        };
+    };
+    post_cartera_renovacion_api_v1_pursuits_cartera__cartera_id__renovacion_post: {
+        parameters: {
+            query?: {
+                organization_id?: number | null;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                cartera_id: number;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PrepararRenovacionIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RenovacionPreparada"];
+                };
+            };
+            /** @description No perteneces a esa organización o no puedes escribir */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description El contrato no está en la cartera de la organización */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description El expediente no sirve como relicitación */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

@@ -47,13 +47,28 @@ export const DEFAULT_WEIGHTS: Record<string, number> = {
   senal_tecnica: 10,
 };
 
+/**
+ * F1.4 — penalizaciones con peso propio. **No son dimensiones**: no suman en
+ * el 100 ni tienen slider, y su valor son los puntos que se restan cuando la
+ * oportunidad lleva el flag. Refleja `organo_anula_frecuente` de
+ * `settings.SCORING_WEIGHTS`; ponerla a 0 la apaga (`PENALTY_WEIGHT_KEYS` en
+ * `shared/scoring_weights.py`).
+ */
+export const PENALIZACIONES: Record<string, number> = {
+  organo_anula_frecuente: 8,
+};
+
+export function esPenalizacion(clave: string): boolean {
+  return clave in PENALIZACIONES;
+}
+
 const PROFILE_KEY = perfilKeys.me;
 
 /** Valores del formulario: las claves editables de `UserProfileBody` (S7.2). */
 export type PerfilValores = z.input<typeof perfilFormulario>;
 
 const VACIO: PerfilValores = {
-  weights: DEFAULT_WEIGHTS,
+  weights: { ...DEFAULT_WEIGHTS, ...PENALIZACIONES },
   afinidad_keywords: [],
   cpvs: [],
   importe_min: "",
@@ -61,8 +76,11 @@ const VACIO: PerfilValores = {
   visibility: "private",
 };
 
+/** Suma de las dimensiones; las penalizaciones (F1.4) no cuentan en el 100. */
 function sumWeights(w: Record<string, number>): number {
-  return Object.values(w).reduce((a, b) => a + b, 0);
+  return Object.entries(w)
+    .filter(([clave]) => !esPenalizacion(clave))
+    .reduce((a, [, b]) => a + b, 0);
 }
 
 /**
@@ -73,9 +91,12 @@ function sumWeights(w: Record<string, number>): number {
  * el 0 explícito la ve, sabe que no está puntuando, y la suma sigue en 100.
  */
 function hydrateWeights(saved: Record<string, number> | null | undefined): Record<string, number> {
-  if (!saved) return DEFAULT_WEIGHTS;
+  if (!saved) return { ...DEFAULT_WEIGHTS, ...PENALIZACIONES };
   const ceros = Object.fromEntries(Object.keys(DEFAULT_WEIGHTS).map((k) => [k, 0]));
-  return { ...ceros, ...saved };
+  // Una penalización ausente no se rellena con 0 como las dimensiones: el
+  // backend aplica la global a quien no la trae, y rellenarla con 0 la
+  // apagaría en silencio al guardar un perfil anterior a F1.4.
+  return { ...ceros, ...PENALIZACIONES, ...saved };
 }
 
 /** Mismo criterio que valida el backend: división, grupo o código completo. */
@@ -176,7 +197,7 @@ export function usePerfilScoring() {
   }
 
   function handleResetWeights() {
-    cambiar("weights", DEFAULT_WEIGHTS);
+    cambiar("weights", { ...DEFAULT_WEIGHTS, ...PENALIZACIONES });
   }
 
   function addKeyword() {

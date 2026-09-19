@@ -80,6 +80,8 @@ const SIGNALS_SANAS: ScoringSignals = {
   afinidad_origen: "perfil",
   perfil: "ok",
   senal_tecnica: "ok",
+  // F1.4: la penalización por órgano que anula a menudo, operativa.
+  anulacion_organo: "ok",
 };
 
 // El triaje es server-side: la página lee los descartes y muta contra

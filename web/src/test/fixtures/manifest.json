@@ -345,6 +345,13 @@
       "status": "200"
     },
     {
+      "fixture": "pursuits-cartera-renovacion.json",
+      "method": "POST",
+      "path": "/api/v1/pursuits/cartera/{cartera_id}/renovacion",
+      "kind": "response",
+      "status": "200"
+    },
+    {
       "fixture": "search-global.json",
       "method": "GET",
       "path": "/api/v1/search/global",

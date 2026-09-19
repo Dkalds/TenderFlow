@@ -16,6 +16,8 @@ const SIGNAL_WARNINGS: Record<string, string> = {
   percentiles:
     "el importe se compara contra el histórico completo, no contra el mercado abierto",
   perfil: "no se pudo cargar tu perfil: el orden usa temporalmente los pesos globales",
+  anulacion:
+    "no se pudo leer la tasa de anulación por órgano: ningún expediente lleva esa penalización",
 };
 
 export function signalWarnings(signals: ScoringSignals | null | undefined): string[] {
@@ -25,6 +27,8 @@ export function signalWarnings(signals: ScoringSignals | null | undefined): stri
   if (signals.margen !== "ok") avisos.push(SIGNAL_WARNINGS.margen);
   if (signals.percentiles_fuente !== "universo_vivo") avisos.push(SIGNAL_WARNINGS.percentiles);
   if (signals.perfil !== "ok") avisos.push(SIGNAL_WARNINGS.perfil);
+  // F1.4: `apagada` es una decisión del perfil, no una avería; solo `error` avisa.
+  if (signals.anulacion_organo === "error") avisos.push(SIGNAL_WARNINGS.anulacion);
   return avisos;
 }
 
