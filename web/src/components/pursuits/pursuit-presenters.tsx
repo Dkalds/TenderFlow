@@ -30,6 +30,14 @@ export function statusLabel(status: PursuitStatus): string {
   return statusCopy[status];
 }
 
+export function decisionLabel(decision: PursuitDecision): string {
+  return decisionCopy[decision];
+}
+
+export function outcomeLabel(outcome: PursuitOutcome): string {
+  return outcomeCopy[outcome];
+}
+
 /** Alias de dominio sobre el formateador único (`lib/utils.ts`). */
 export const formatEur = formatCurrency;
 

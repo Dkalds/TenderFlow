@@ -1,5 +1,4 @@
 "use client";
-
 /**
  * El historial de la oportunidad, que se persistía y nunca se pintaba.
  *
@@ -13,15 +12,44 @@
  * El `payload` es `Record<string, unknown>` en el contrato: aquí se valida
  * campo a campo en vez de castear. Un evento con una forma que este componente
  * no reconoce se pinta con su tipo y su fecha, nunca se descarta.
+ *
+ * Los valores se traducen al vocabulario de la pantalla —`qualifying` es «En
+ * cualificación» y `2080000` es «2,08 M€»—, y el cambio de estado sube al
+ * titular de la entrada: «Pasa a «Preparando oferta»» es lo que alguien busca
+ * al abrir el historial. `miembros` resuelve el nombre del actor; sin esa
+ * lista queda el «Usuario #3» de antes, que al menos identifica a quién.
  */
 import * as React from "react";
+import {
+  decisionLabel,
+  outcomeLabel,
+  statusLabel,
+} from "@/components/pursuits/pursuit-presenters";
+import {
+  PURSUIT_STATUSES,
+  type PursuitDecision,
+  type PursuitOutcome,
+  type PursuitStatus,
+} from "@/hooks/use-pursuits";
 import type { PursuitDetail } from "@/lib/api-types";
-import { EMPTY } from "@/lib/utils";
-import { formatDate } from "@/components/pursuits/pursuit-presenters";
+import { EMPTY, cn, formatCompactCurrency, formatDate } from "@/lib/utils";
 
 /** El ledger viaja como opcional en el contrato: se desenvuelve para indexar. */
 type PursuitEvents = NonNullable<PursuitDetail["events"]>;
 type PursuitEvent = PursuitEvents[number];
+
+/** Lo que hace falta de un miembro para ponerle nombre a un id. */
+export interface ActorConocido {
+  user_id: number;
+  display_name?: string | null;
+  email?: string | null;
+}
+
+interface Cambio {
+  campo: string;
+  desde: unknown;
+  hasta: unknown;
+}
 
 const TIPO_LEGIBLE: Record<string, string> = {
   "pursuit.created": "Oportunidad abierta",
@@ -38,25 +66,18 @@ const CAMPO_LEGIBLE: Record<string, string> = {
   outcome: "Resultado",
   awarded_amount_eur: "Importe adjudicado",
   outcome_reason: "Nota de cierre",
+  outcome_reason_code: "Motivo del cierre",
   next_action: "Próxima acción",
   next_action_due: "Fecha de la próxima acción",
 };
 
-/** Un valor del payload en texto, sin inventar nada cuando viene vacío. */
-function valorLegible(valor: unknown): string {
-  if (valor === null || valor === undefined || valor === "") return EMPTY;
-  if (typeof valor === "boolean") return valor ? "sí" : "no";
-  if (typeof valor === "number" || typeof valor === "string") return String(valor);
-  return "—";
+const DECISIONES: readonly string[] = ["pending", "go", "no_go"];
+const RESULTADOS: readonly string[] = ["pending", "won", "lost", "cancelled"];
+
+function esEstado(valor: string): valor is PursuitStatus {
+  return (PURSUIT_STATUSES as readonly string[]).includes(valor);
 }
 
-interface Cambio {
-  campo: string;
-  desde: unknown;
-  hasta: unknown;
-}
-
-/** Extrae `payload.changes` sin asumir su forma. */
 function cambiosDe(evento: PursuitEvent): Cambio[] {
   const payload = evento.payload as Record<string, unknown> | undefined;
   const changes = payload?.changes;
@@ -71,11 +92,55 @@ function cambiosDe(evento: PursuitEvent): Cambio[] {
   return salida;
 }
 
-function actorLegible(evento: PursuitEvent): string {
-  return evento.actor_user_id != null ? `Usuario #${evento.actor_user_id}` : "Sistema";
+function nombreDe(userId: number, miembros: readonly ActorConocido[]): string {
+  const miembro = miembros.find((candidato) => candidato.user_id === userId);
+  return miembro?.display_name?.trim() || miembro?.email?.trim() || `Usuario #${userId}`;
 }
 
-export function PursuitActivity({ events }: { events: PursuitDetail["events"] }) {
+function actorLegible(evento: PursuitEvent, miembros: readonly ActorConocido[]): string {
+  return evento.actor_user_id != null ? nombreDe(evento.actor_user_id, miembros) : "Sistema";
+}
+
+/** Un valor del payload en el vocabulario de la pantalla, sin inventar nada. */
+function valorLegible(campo: string, valor: unknown, miembros: readonly ActorConocido[]): string {
+  if (valor === null || valor === undefined || valor === "") return EMPTY;
+  if (typeof valor === "boolean") return valor ? "sí" : "no";
+  if (campo === "status" && typeof valor === "string" && esEstado(valor)) return statusLabel(valor);
+  if (campo === "decision" && typeof valor === "string" && DECISIONES.includes(valor)) {
+    return decisionLabel(valor as PursuitDecision);
+  }
+  if (campo === "outcome" && typeof valor === "string" && RESULTADOS.includes(valor)) {
+    return outcomeLabel(valor as PursuitOutcome);
+  }
+  if (
+    (campo === "offer_price_eur" || campo === "awarded_amount_eur") &&
+    typeof valor === "number"
+  ) {
+    return formatCompactCurrency(valor);
+  }
+  if (campo === "responsible_user_id" && typeof valor === "number") {
+    return nombreDe(valor, miembros);
+  }
+  if (typeof valor === "number" || typeof valor === "string") return String(valor);
+  return EMPTY;
+}
+
+/** El titular de la entrada: el cambio de fase manda sobre el tipo de evento. */
+function tituloDe(evento: PursuitEvent, cambios: Cambio[]): string {
+  const estado = cambios.find((cambio) => cambio.campo === "status");
+  if (estado && typeof estado.hasta === "string" && esEstado(estado.hasta)) {
+    return `Pasa a «${statusLabel(estado.hasta)}»`;
+  }
+  return TIPO_LEGIBLE[evento.event_type] ?? evento.event_type;
+}
+
+export function PursuitActivity({
+  events,
+  miembros = [],
+}: {
+  events: PursuitDetail["events"];
+  miembros?: readonly ActorConocido[];
+}) {
   // Más reciente arriba. Se copia antes de ordenar: el array llega del caché
   // de react-query y mutarlo en sitio reordenaría el dato compartido.
   const ordenados = React.useMemo(
@@ -85,7 +150,7 @@ export function PursuitActivity({ events }: { events: PursuitDetail["events"] })
 
   if (ordenados.length === 0) {
     return (
-      <p className="text-[11.5px] leading-[1.5] text-muted-foreground">
+      <p className="text-muted-foreground text-tf-micro leading-[1.5]">
         Sin actividad registrada todavía. Cada cambio de estado, decisión o precio deja aquí su
         rastro con autor y fecha.
       </p>
@@ -93,35 +158,50 @@ export function PursuitActivity({ events }: { events: PursuitDetail["events"] })
   }
 
   return (
-    <ol className="space-y-2.5">
-      {ordenados.map((evento) => {
+    <ol className="flex flex-col gap-2.5">
+      {ordenados.map((evento, indice) => {
         const cambios = cambiosDe(evento);
+        const titulo = tituloDe(evento, cambios);
+        // El estado ya va en el titular: repetirlo debajo sería decir dos veces
+        // lo mismo en la entrada más frecuente del historial.
+        const resto = titulo.startsWith("Pasa a")
+          ? cambios.filter((cambio) => cambio.campo !== "status")
+          : cambios;
         return (
-          <li key={evento.id} className="border-l-2 border-border/70 pl-2.5">
-            <div className="flex flex-wrap items-baseline gap-x-2">
-              <span className="text-[12px] font-medium">
-                {TIPO_LEGIBLE[evento.event_type] ?? evento.event_type}
-              </span>
-              <span className="text-[10.5px] text-muted-foreground">
-                {formatDate(evento.created_at)} · {actorLegible(evento)}
-              </span>
+          <li key={evento.id} className="flex gap-2.5">
+            <span
+              aria-hidden="true"
+              className={cn(
+                "mt-1.5 h-1.5 w-1.5 flex-none rounded-full",
+                indice === 0 ? "bg-primary" : "bg-border",
+              )}
+            />
+            <div className="min-w-0 flex-1">
+              <p className="text-tf-meta leading-[1.35] font-medium">{titulo}</p>
+              <p className="text-muted-foreground mt-0.5 font-mono text-tf-micro">
+                {formatDate(evento.created_at)} · {actorLegible(evento, miembros)}
+              </p>
+              {resto.length > 0 && (
+                <ul className="mt-1 flex flex-col gap-0.5">
+                  {resto.map((cambio) => (
+                    <li key={cambio.campo} className="text-tf-micro leading-[1.45]">
+                      <span className="text-muted-foreground">
+                        {CAMPO_LEGIBLE[cambio.campo] ?? cambio.campo}:
+                      </span>{" "}
+                      <span className="text-muted-foreground/80">
+                        {valorLegible(cambio.campo, cambio.desde, miembros)}
+                      </span>
+                      <span aria-hidden="true" className="text-muted-foreground/60">
+                        {" → "}
+                      </span>
+                      <span className="font-medium">
+                        {valorLegible(cambio.campo, cambio.hasta, miembros)}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
-            {cambios.length > 0 && (
-              <ul className="mt-1 space-y-0.5">
-                {cambios.map((cambio) => (
-                  <li key={cambio.campo} className="text-[11.5px] leading-[1.45]">
-                    <span className="text-muted-foreground">
-                      {CAMPO_LEGIBLE[cambio.campo] ?? cambio.campo}:
-                    </span>{" "}
-                    <span className="text-muted-foreground/80">{valorLegible(cambio.desde)}</span>
-                    <span aria-hidden="true" className="text-muted-foreground/60">
-                      {" → "}
-                    </span>
-                    <span className="font-medium">{valorLegible(cambio.hasta)}</span>
-                  </li>
-                ))}
-              </ul>
-            )}
           </li>
         );
       })}

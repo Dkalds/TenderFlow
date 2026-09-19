@@ -29,7 +29,7 @@ describe("PursuitActivity", () => {
     expect(screen.getByText(/Usuario #3/)).toBeInTheDocument();
   });
 
-  it("pinta cada cambio como campo, valor anterior y nuevo", () => {
+  it("sube el cambio de fase al titular, con el nombre de la fase", () => {
     render(
       <PursuitActivity
         events={[
@@ -45,9 +45,43 @@ describe("PursuitActivity", () => {
         ]}
       />,
     );
-    expect(screen.getByText("Estado:")).toBeInTheDocument();
-    expect(screen.getByText("identified")).toBeInTheDocument();
-    expect(screen.getByText("qualifying")).toBeInTheDocument();
+    expect(screen.getByText("Pasa a «En cualificación»")).toBeInTheDocument();
+    // El estado ya está en el titular: no se repite debajo.
+    expect(screen.queryByText("Estado:")).not.toBeInTheDocument();
+    expect(screen.queryByText("qualifying")).not.toBeInTheDocument();
+  });
+
+  it("pinta los demás cambios como campo, antes y después, en vocabulario de pantalla", () => {
+    render(
+      <PursuitActivity
+        events={[
+          evento({
+            id: 2,
+            event_type: "pursuit.updated",
+            payload: {
+              changes: {
+                decision: { from: "pending", to: "go" },
+                offer_price_eur: { from: null, to: 2_080_000 },
+              },
+            },
+          }),
+        ]}
+      />,
+    );
+    expect(screen.getByText("Decisión:")).toBeInTheDocument();
+    expect(screen.getByText("GO")).toBeInTheDocument();
+    expect(screen.getByText("Precio ofertado:")).toBeInTheDocument();
+    expect(screen.getByText(/2,\d\s?M/)).toBeInTheDocument();
+  });
+
+  it("nombra al actor cuando conoce al miembro", () => {
+    render(
+      <PursuitActivity
+        events={[evento()]}
+        miembros={[{ user_id: 3, display_name: "Guillermo Bentabol", email: null }]}
+      />,
+    );
+    expect(screen.getByText(/Guillermo Bentabol/)).toBeInTheDocument();
   });
 
   it("ordena de más reciente a más antiguo", () => {
