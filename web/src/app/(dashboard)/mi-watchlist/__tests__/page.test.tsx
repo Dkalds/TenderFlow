@@ -9,6 +9,12 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ replace: vi.fn() }),
 }));
 
+const { registrarEvento } = vi.hoisted(() => ({ registrarEvento: vi.fn() }));
+vi.mock("@/lib/analytics", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/analytics")>()),
+  registrarEvento,
+}));
+
 import MiWatchlistPage from "@/app/(dashboard)/mi-watchlist/page";
 
 const RULE = {
@@ -44,6 +50,9 @@ function mockFetchRouter(handlers: {
       if (url === "/api/v1/watchlist/rules" && method === "GET") {
         return jsonResponse({ items: rules });
       }
+      if (url === "/api/v1/watchlist/rules" && method === "POST") {
+        return jsonResponse({ id: 99 });
+      }
       if (url.startsWith("/api/v1/watchlist/rules/") && url.endsWith("/matches")) {
         return jsonResponse({ items: [] });
       }
@@ -51,7 +60,22 @@ function mockFetchRouter(handlers: {
         return jsonResponse({ ccaas: ["Madrid", "Cataluna"] });
       }
       if (url === "/api/v1/watchlist/rules/preview" && method === "POST") {
-        return jsonResponse({ total: 12 });
+        // Forma de `PreviewResult` (F5.5): ocho semanas, antiguas primero.
+        return jsonResponse({
+          total: 12,
+          serie_semanal: [
+            "2026-07-06",
+            "2026-07-13",
+            "2026-07-20",
+            "2026-07-27",
+            "2026-08-03",
+            "2026-08-10",
+            "2026-08-17",
+            "2026-08-24",
+          ].map((semana, i) => ({ semana, n: 60 + i })),
+          umbral_semanal: 50,
+          ruido_alto: true,
+        });
       }
       if (url.match(/\/api\/v1\/watchlist\/rules\/\d+$/) && method === "PUT") {
         const id = Number(url.split("/").pop());
@@ -145,7 +169,36 @@ describe("MiWatchlistPage — edición de reglas", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /Probar regla/ }));
 
-    expect(await screen.findByText("12 licitación(es) coincidirían")).toBeInTheDocument();
+    expect(await screen.findByText(/12 licitación\(es\) coincidirían hoy/)).toBeInTheDocument();
+    // F5.5 — la serie va en una tabla para el lector y el aviso lo decide el servidor.
+    const tabla = screen.getByRole("table", { name: "Coincidencias por semana" });
+    expect(within(tabla).getAllByRole("row")).toHaveLength(1 + 8 + 1);
+    expect(screen.getByRole("status")).toHaveTextContent(/esta regla va a hacer ruido/);
     expect(onPut).not.toHaveBeenCalled();
+  });
+});
+
+describe("MiWatchlistPage — alta con vista previa de ruido (F5.5)", () => {
+  it("crear tras ver el aviso manda ruido_avisado; sin vista previa no lo manda", async () => {
+    mockFetchRouter({});
+    renderPage();
+
+    fireEvent.change(await screen.findByLabelText(/Palabra clave/), { target: { value: "ERP" } });
+    fireEvent.click(screen.getByRole("button", { name: /Ver cuántas alertas daría/ }));
+    expect(await screen.findByRole("status")).toHaveTextContent(/va a hacer ruido/);
+
+    fireEvent.click(screen.getByRole("button", { name: /Agregar regla/ }));
+    await waitFor(() =>
+      expect(registrarEvento).toHaveBeenCalledWith(
+        "regla_creada",
+        expect.objectContaining({ ruido_avisado: "si" }),
+      ),
+    );
+
+    registrarEvento.mockClear();
+    fireEvent.change(screen.getByLabelText(/Palabra clave/), { target: { value: "CRM" } });
+    fireEvent.click(screen.getByRole("button", { name: /Agregar regla/ }));
+    await waitFor(() => expect(registrarEvento).toHaveBeenCalledWith("regla_creada", expect.anything()));
+    expect(registrarEvento.mock.calls[0][1]).not.toHaveProperty("ruido_avisado");
   });
 });

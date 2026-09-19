@@ -206,11 +206,8 @@ export interface EventosProducto {
    * Activación por la otra puerta: la primera regla de watchlist es lo que
    * convierte el producto en algo que trabaja solo.
    *
-   * PENDIENTE DE CABLEAR: el `POST /watchlist/rules` vive en
-   * `app/(dashboard)/mi-watchlist/page.tsx` (mutación `crear`), fichero que no
-   * pertenecía a este trabajo. El evento se declara aquí para que cablearlo sea
-   * una línea en el `onSuccess` de esa mutación:
-   * `registrarEvento("regla_creada", { primera_vez: primeraVez("regla") })`.
+   * Lo emite el `onSuccess` del alta en
+   * `app/(dashboard)/mi-watchlist/_hooks/use-mi-watchlist.ts`.
    */
   regla_creada: {
     primera_vez: PrimeraVez;
