@@ -129,21 +129,11 @@ export function useTecnologiasView() {
     { staleTime: 5 * 60 * 1000 },
   );
 
-  // Detalle de la tecnología elegida en la vista (sólo si hay una elegida).
-  //
-  // Si la URL ya filtra por tecnología (`?tecnologia=SAP`) y en la vista se
-  // elige otra, el detalle es el de la **elegida**: el endpoint admite una sola
-  // tecnología y no puede cruzar las dos, y el panel se titula con la elegida,
-  // así que pedir la de la URL enseñaba el detalle de SAP bajo «Oracle». Por eso
-  // va como `overrideParams` (gana al ámbito) y no como `extraParams` (pierde).
-  // El resto del ámbito (CCAA, fechas…) sí se aplica, y el agregado de arriba
-  // sigue acotado por la tecnología de la URL.
+  // Per-technology detail (only when a technology is selected)
   const { data: detalle, isLoading: detalleLoading } = useFilteredQuery<DetalleResponse>(
     ["analytics", "tecnologias", "detail", selectedTech],
     "/api/v1/analytics/tecnologias/detail",
     { enabled: !!selectedTech, staleTime: 5 * 60 * 1000 },
-    undefined,
-    undefined,
     selectedTech ? { tecnologia: selectedTech } : undefined,
   );
 

@@ -8,21 +8,12 @@
  * caché que nadie lee: el servidor paga la petición y el cliente la repite.
  */
 
-/**
- * Parámetros explícitos fusionados con el ámbito, en tres niveles:
- * `extraParams` ← ámbito ← `overrideParams`.
- *
- * Por defecto el ámbito gana: un `extraParams` es un valor por omisión que el
- * filtro global de la URL puede acotar. `overrideParams` es para el caso
- * contrario, un parámetro que *identifica* el recurso pedido y que el ámbito no
- * puede cambiar sin pedir otra cosa (la tecnología del detalle de Tecnologías).
- */
+/** Parámetros explícitos fusionados con el ámbito; el ámbito gana. */
 export function mergeFilteredParams(
   filterParams: Record<string, string>,
   extraParams?: Record<string, string>,
-  overrideParams?: Record<string, string>,
 ): Record<string, string> {
-  return { ...extraParams, ...filterParams, ...overrideParams };
+  return { ...extraParams, ...filterParams };
 }
 
 /**

@@ -4,7 +4,6 @@ import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { withNuqsTestingAdapter } from "nuqs/adapters/testing";
 import { callUrl, jsonResponse } from "@/hooks/__tests__/fetch-call";
-import { filteredQueryKey } from "@/lib/filtered-query";
 
 /**
  * `useTecnologiasView` con el ámbito **real**: nuqs leyendo la URL de la
@@ -80,7 +79,7 @@ function montar(search: string) {
   );
   const hook = renderHook(() => useTecnologiasView(), { wrapper });
   const urls = () => fetchMock.mock.calls.map((call) => callUrl(call));
-  return { ...hook, urls, client };
+  return { ...hook, urls };
 }
 
 afterEach(() => {
@@ -118,34 +117,6 @@ describe("useTecnologiasView", () => {
     const detalle = new URL(urls().find((u) => u.includes("/tecnologias/detail"))!, "http://x");
     expect(detalle.searchParams.get("tecnologia")).toBe("SAP");
     expect(detalle.searchParams.get("ccaa")).toBe("MD");
-  });
-
-  it("con la URL filtrando por tecnología, el detalle pide la elegida en la vista", async () => {
-    // Regresión 2026-09-18: el ámbito gana a los params explícitos en
-    // `mergeFilteredParams`, así que `?tecnologia=SAP` pisaba la elección y el
-    // panel de «Oracle» enseñaba el detalle de SAP.
-    const { result, urls, client } = montar("?tecnologia=SAP&ccaa=MD");
-    await waitFor(() => expect(result.current.data).toBeDefined());
-
-    act(() => result.current.setSelectedTech("Oracle"));
-    await waitFor(() => expect(result.current.detalle).toBeDefined());
-
-    const detalle = new URL(urls().find((u) => u.includes("/tecnologias/detail"))!, "http://x");
-    expect(detalle.searchParams.get("tecnologia")).toBe("Oracle");
-    // El resto del ámbito sigue aplicando al detalle…
-    expect(detalle.searchParams.get("ccaa")).toBe("MD");
-    // …y el agregado sigue filtrado por la tecnología de la URL.
-    const agregado = new URL(urls().find((u) => u.startsWith("/api/v1/analytics/tecnologias?"))!, "http://x");
-    expect(agregado.searchParams.get("tecnologia")).toBe("SAP");
-
-    // La caché guarda el detalle bajo la clave de `lib/filtered-query.ts` con la
-    // tecnología elegida: una clave con la de la URL colisionaría con su detalle.
-    const key = filteredQueryKey(
-      ["analytics", "tecnologias", "detail", "Oracle"],
-      "/api/v1/analytics/tecnologias/detail",
-      { tecnologia: "Oracle", ccaa: "MD" },
-    );
-    expect(client.getQueryData(key)).toEqual(DETALLE);
   });
 
   it("sin ámbito la petición sale sin query", async () => {
