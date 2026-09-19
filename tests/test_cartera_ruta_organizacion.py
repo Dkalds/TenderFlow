@@ -8,12 +8,9 @@ fecha al final y, sobre todo, el filtro por organización. La cartera es dato
 corporativo —importes adjudicados, cuándo se relicita lo que uno ejecuta— y la
 de otra organización no puede asomar en la propia.
 
-Hoy la ruta no tiene consumidor en ``web/`` —solo aparece en el esquema
-generado, ``web/src/generated/api.d.ts``— ni escritor en producción: fuera de
-los tests nadie llama a los dos métodos de ``CarteraRepository`` que escriben
-en ``contratos_cartera``: ``upsert`` —el único que inserta filas— y
-``marcar_renovacion``. Por eso las filas se siembran con ``upsert``, y lo que
-queda fijado es el camino de lectura, no el de escritura que falta.
+Las filas se siembran con ``upsert`` directamente: lo que queda fijado aquí es
+el camino de lectura. El escritor (cerrar como ganada, resincronización,
+«preparar renovación») tiene sus tests en ``tests/test_cartera_escritor*.py``.
 
 ``meses_restantes`` se mide contra el reloj de ``services.cartera``. El
 escenario lo congela en ``_HOY`` y siembra las fechas relativas a ese mismo

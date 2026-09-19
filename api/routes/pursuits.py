@@ -24,7 +24,15 @@ from api.routes.dual_auth import require_any_auth, require_recent_session
 from db.audit import log_event
 from db.repositories.pursuits import PursuitRepository
 from observability.logging import get_logger
-from services.cartera import ContratoCartera, cartera_de_usuario
+from services.cartera import (
+    CarteraNoEncontradaError,
+    ContratoCartera,
+    PrepararRenovacionIn,
+    RenovacionInvalidaError,
+    RenovacionPreparada,
+    cartera_de_usuario,
+    preparar_renovacion,
+)
 from services.direccion import (
     CuadroDireccion,
     FeedActividad,
@@ -884,6 +892,43 @@ async def get_cartera(
         )
     except OrganizationAccessError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
+
+
+@router.post(
+    "/pursuits/cartera/{cartera_id}/renovacion",
+    response_model=RenovacionPreparada,
+    summary="Preparar la renovación de un contrato en cartera (F4.3)",
+    responses={
+        403: {"description": "No perteneces a esa organización o no puedes escribir"},
+        404: {"description": "El contrato no está en la cartera de la organización"},
+        422: {"description": "El expediente no sirve como relicitación"},
+    },
+)
+async def post_cartera_renovacion(
+    cartera_id: int,
+    body: PrepararRenovacionIn,
+    organization_id: int | None = Query(default=None, ge=1),
+    ctx: dict[str, Any] = Depends(require_any_auth),
+) -> RenovacionPreparada:
+    """Crea la oportunidad de la relicitación, enlazada al contrato.
+
+    Idempotente: si el contrato ya tenía oportunidad de renovación, devuelve
+    esa con ``creada=false`` y no crea otra.
+    """
+    try:
+        return await run_db(
+            preparar_renovacion,
+            int(ctx["user_id"]),
+            cartera_id,
+            body.licitacion_id,
+            organization_id=organization_id,
+        )
+    except (OrganizationAccessError, OrganizationPermissionError) as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except CarteraNoEncontradaError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except (RenovacionInvalidaError, PursuitValidationError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @router.post("/pursuits/weights-proposal/apply", response_model=PesosPropuestosAplicados)

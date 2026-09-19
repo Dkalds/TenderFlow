@@ -438,7 +438,32 @@ def update_pursuit(
             _notificar_asignacion(updated, actor_user_id=user_id)
         if changes.get("status") == "preparing":
             _instanciar_plantilla_tareas(updated, resolved_id, pursuit_id, user_id)
+        if updated.get("status") == "won" and (
+            "status" in changes or "awarded_amount_eur" in changes
+        ):
+            _registrar_en_cartera(resolved_id, pursuit_id)
         return _detalle(updated, resolved_id, pursuit_id)
+
+
+def _registrar_en_cartera(organization_id: int, pursuit_id: int) -> None:
+    """F4.3 — la oportunidad ganada pasa a la cartera de contratos.
+
+    También al corregir el importe de una ya ganada: la cartera lo enseña.
+    Fail-open, por lo mismo que la plantilla de tareas: el cierre ya está
+    guardado, y la resincronización diaria (`cartera_avisos`) recoge la fila
+    si esta escritura falla.
+    """
+    from services.cartera import registrar_ganada
+
+    try:
+        registrar_ganada(organization_id, pursuit_id)
+    except Exception as exc:
+        log.warning(
+            "cartera_registro_error",
+            pursuit_id=pursuit_id,
+            organization_id=organization_id,
+            error=str(exc)[:200],
+        )
 
 
 def _instanciar_plantilla_tareas(

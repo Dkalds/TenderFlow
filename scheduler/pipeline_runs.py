@@ -59,6 +59,7 @@ CANONICAL_STEPS: list[str] = [
     "kpi_precompute",
     "aggregates_precompute",
     "watchlist_notify",
+    "cartera_avisos",
     "digests",
     "informes_programados",
     "dlq_retry",
@@ -109,6 +110,10 @@ STEP_TIER: dict[str, StepTier] = {
     "kpi_precompute": "bloqueante",
     "aggregates_precompute": "bloqueante",
     "watchlist_notify": "bloqueante",
+    # advisory: los avisos de fin de contrato (F4.3) tienen meses de margen y
+    # la ventana es diaria; una pasada fallida la recupera la siguiente. No
+    # puede tumbar la ingesta.
+    "cartera_avisos": "advisory",
     "digests": "bloqueante",
     # advisory: el informe semanal es una función opcional que cada
     # organización activa por su cuenta. Un ESP caído no puede tumbar la
@@ -710,6 +715,31 @@ def _run_anomaly_checks() -> None:
     from scheduler.anomaly_alerts import run_anomaly_checks
 
     run_anomaly_checks()
+
+
+def _run_cartera_avisos() -> str:
+    """F4.3 — cartera de contratos: resincroniza y avisa del fin, una vez al día.
+
+    Primero lleva a la cartera las oportunidades ganadas y lo que cambió desde
+    ayer (una prórroga que ``contract_events`` registró mueve la fecha de fin),
+    y después escribe en el outbox los avisos a seis, tres y un mes. En ese
+    orden, para que el aviso salga con la fecha ya movida.
+    """
+    from services.cartera import emitir_avisos_de_fin, sincronizar_cartera
+
+    def _run() -> None:
+        resumen = sincronizar_cartera(dry_run=False)
+        emitidos = emitir_avisos_de_fin()
+        log.info(
+            "cartera_avisos_done",
+            ganadas=resumen.ganadas,
+            nuevos=resumen.nuevos,
+            actualizados=resumen.actualizados,
+            sin_fecha=resumen.sin_fecha,
+            avisos=emitidos,
+        )
+
+    return _run_periodic("cartera_avisos", _SEGUNDOS_DIA, _run)
 
 
 def _run_follows_paridad() -> str:

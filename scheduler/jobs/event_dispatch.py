@@ -224,6 +224,13 @@ def _tipo_notificacion(evento: dict[str, Any], spec: EspecificacionEvento) -> st
         # misma oportunidad son dos avisos.
         payload = evento.get("payload") or {}
         return f"{base}:{payload.get('comment_id')}"
+    if spec.tipo == "pursuit.cartera_vence":
+        # F4.3: el mismo contrato avisa a seis, tres y un mes. Con el tipo
+        # fijo, el segundo aviso chocaría con el único del expediente.
+        payload = evento.get("payload") or {}
+        return (
+            f"{base}:{payload.get('cartera_id')}:{payload.get('meses')}:{payload.get('fecha_fin')}"
+        )
     return base
 
 

@@ -112,6 +112,7 @@ class TestCanonicalPipelineSteps:
                 "aggregates_precompute"
             ),
             "scheduler.pipeline_runs._run_watchlist_notify": _make_mock("watchlist_notify"),
+            "scheduler.pipeline_runs._run_cartera_avisos": _make_mock("cartera_avisos"),
             "scheduler.pipeline_runs._run_digests": _make_mock("digests"),
             "scheduler.pipeline_runs._run_dlq_retry": _make_mock("dlq_retry"),
             "scheduler.pipeline_runs._run_webhook_reintentos": _make_mock("webhook_reintentos"),
