@@ -119,7 +119,8 @@ class LicitacionesFilters:
     cpv: str | None = None
     # Un órgano concreto, por igualdad exacta sobre ``organo_contratacion`` —
     # la misma comparación que ya usan los drill-downs
-    # (``licitaciones_por_organo``, ``AdjudicacionRepository.load_por_organo``),
+    # (``licitaciones_por_organo`` y los agregados por órgano de
+    # ``AdjudicacionRepository``),
     # que reciben el nombre como argumento aparte. Aquí viaja dentro de los
     # filtros para que una agregación acotada a un órgano no necesite un
     # parámetro extra en cada firma. No es lo mismo que ``q``: aquélla es

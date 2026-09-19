@@ -38,30 +38,36 @@ _ROUTER = _REPO_ROOT / "api" / "routes" / "analytics.py"
 _SERVICIOS = _REPO_ROOT / "services" / "analytics"
 _REPOSITORIOS = _REPO_ROOT / "db" / "repositories"
 
-#: Violaciones vivas el 2026-09-06 (ocho; siete desde el 2026-09-18). **Solo puede encoger.**
+#: Violaciones vivas el 2026-09-06 (ocho; siete desde el 2026-09-18; seis desde el 2026-09-19). **Solo puede encoger.**
 #:
 #: Formato `fichero::metodo`. Añadir una entrada es declarar que se introduce un
 #: escaneo sin cota alcanzable desde la analítica: una decisión explícita, no un
 #: descuido.
 #:
-#: Ninguna de estas siete se arregla con un `LIMIT` puesto encima: todas acotan
-#: hoy por filtro (órgano, ventana de fechas, estado abierto) y ponerles un tope
-#: constante **truncaría el resultado en silencio** — un Radar con 300 de 400
-#: candidatas, un forecast sobre media serie. Lo que piden es o bien agregar en
-#: SQL (ADR-023) o bien una cota con `truncado: true` declarado en la respuesta,
-#: y las dos cosas cambian comportamiento que solo la suite de integración
-#: contra Postgres puede validar.
+#: Ninguna de estas seis se arregla con un `LIMIT` puesto encima: todas acotan
+#: hoy por filtro (patrón UTE, ventana de fechas, estado abierto) y ponerles un
+#: tope constante **truncaría el resultado en silencio** — un Radar con 300 de
+#: 400 candidatas, un forecast sobre media serie. Lo que piden es o bien agregar
+#: en SQL (ADR-023) o bien una cota con `truncado: true` declarado en la
+#: respuesta, y las dos cosas cambian comportamiento que solo la suite de
+#: integración contra Postgres puede validar.
 #:
 #: `tecnologia_detalle_items` salió de esta lista el 2026-09-06: tenía un
 #: `limit` que se aplicaba en Python después de materializarlo todo, así que
 #: bajarlo al SQL fue equivalencia exacta y no una decisión de producto.
+#:
+#: `load_por_organo` salió el 2026-09-19: el drill-down de órgano traía todas
+#: sus adjudicaciones a pandas para quedarse con veinte filas, una mediana y
+#: treinta lookups. Son ahora tres consultas agregadas o acotadas por identidad
+#: (`top_adjudicatarios_por_organo`, `lead_time_mediano_por_organo`,
+#: `mejor_adjudicacion_por_licitacion`), con test de paridad contra el cálculo
+#: en pandas (`tests/test_organo_detail_sql_paridad.py`).
 ALLOWLIST: frozenset[str] = frozenset(
     {
-        # Filas de adjudicación de UN órgano y de UN patrón de UTE. Acotadas por
-        # el filtro; el techo real es cuántas adjudicaciones tiene el órgano más
-        # grande. Camino 2 de ADR-026 (SQL acotado + pandas), que exige LIMIT y
-        # alcance declarado: pendiente de ese contrato de respuesta.
-        "adjudicaciones.py::load_por_organo",
+        # Filas de adjudicación de UN patrón de UTE. Acotadas por el filtro; el
+        # techo real es cuántas UTE matchean. Camino 2 de ADR-026 (SQL acotado +
+        # pandas), que exige LIMIT y alcance declarado: pendiente de ese
+        # contrato de respuesta.
         "adjudicaciones.py::load_ute_rows",
         # Serie histórica completa para el forecast. Un LIMIT aquí recorta la
         # serie por un extremo y sesga la predicción. Sus adjudicaciones

@@ -1,7 +1,11 @@
 "use client";
 
 /**
- * F4.5 — Actividad del equipo, en Dirección.
+ * F4.5 — Actividad del equipo, en Dirección y en Equipo → Actividad.
+ *
+ * Equipo lo monta para todos los roles: un `member` no entra en Dirección, y
+ * el backend ya le quita los eventos de administración, así que el componente
+ * no filtra nada por rol.
  *
  * `GET /pursuits/actividad` existía con cursor y filtro por persona, y ninguna
  * pantalla lo llamaba: la pestaña era un texto que mandaba al Resumen, y

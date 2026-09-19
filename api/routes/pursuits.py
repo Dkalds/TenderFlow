@@ -22,15 +22,13 @@ from api.concurrency import run_db
 from api.pagination import PageParams, pagina
 from api.routes.dual_auth import require_any_auth, require_recent_session
 from db.audit import log_event
-from db.repositories.pursuits import PursuitRepository
 from observability.logging import get_logger
 from services.cartera import ContratoCartera, cartera_de_usuario
 from services.direccion import (
     CuadroDireccion,
     FeedActividad,
     actividad_de_organizacion,
-    corte_con_minimo,
-    direccion_resuelta,
+    cuadro_de_direccion,
 )
 from services.kit_presentacion import KitPresentacion
 from services.organizations import (
@@ -136,9 +134,6 @@ async def _auditar_organizacion(
         resource=f"org:{organization_id}",
         detail={"organization_id": organization_id, **detail},
     )
-
-
-_pursuit_repo = PursuitRepository()
 
 
 # ── DTOs de captura: tareas, go/no-go y «mi baja» (C6) ──────────────────────
@@ -925,21 +920,12 @@ async def get_direccion(
 
     Un `member` que teclee la URL recibe 403, no una pantalla sin enlace: un
     rail sin enlace es una sugerencia, esto es un permiso.
+
+    Cada tarjeta lleva universo, `n` y mínimo; por debajo del mínimo sale sin
+    `valor` y con la `nota` que dice por qué, nunca con un número inventado.
     """
-
-    def _trabajo() -> CuadroDireccion:
-        # El `with` tiene que envolver la consulta, no sólo la resolución: el
-        # ámbito de tenencia vive mientras el bloque está abierto.
-        with direccion_resuelta(int(ctx["user_id"]), organization_id) as resuelta:
-            filas = _pursuit_repo.metric_rows(resuelta)
-            return CuadroDireccion(
-                organization_id=resuelta,
-                win_rate_por_tecnologia=corte_con_minimo(filas, clave="tender_tecnologia"),
-                win_rate_por_organo=corte_con_minimo(filas, clave="tender_organo"),
-            )
-
     try:
-        return await run_db(_trabajo)
+        return await run_db(cuadro_de_direccion, int(ctx["user_id"]), organization_id)
     except OrganizationPermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except OrganizationAccessError as exc:

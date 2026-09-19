@@ -599,9 +599,10 @@ class Settings(ResumenPregenSettings, BaseSettings):
     # (deepseek-v4-pro) quedó EOL en NVIDIA el 2026-08-07 y devolvía 410.
     PLIEGO_FACTS_MODEL: str = "deepseek-ai/deepseek-v4-flash-0731"
     # Tamaños de lote por fase del job scheduler/jobs/documentos_embeddings.py.
-    # pliegos.yml no propaga REDIS_URL, así que el gate de presupuesto LLM
-    # arranca de 0 en cada corrida -- el tope real del batch de facts es este
-    # tamaño de lote, no un presupuesto acumulado (documentado, no un bug).
+    # pliegos.yml propaga REDIS_URL desde el secret del mismo nombre; si el
+    # secret no está definido, el gate de presupuesto LLM arranca de 0 en cada
+    # corrida y el tope real del batch de facts es este tamaño de lote, no un
+    # presupuesto acumulado (documentado, no un bug).
     PLIEGO_FETCH_BATCH: int = 300
     PLIEGO_EMBED_BATCH: int = 100
     PLIEGO_FACTS_BATCH: int = 25
