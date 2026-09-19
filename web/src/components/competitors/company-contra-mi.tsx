@@ -15,6 +15,10 @@
  *   no se le atribuye a este rival una victoria que quizá fue de un tercero.
  * - `ganamos` y `sin_resolver`, tal cual.
  *
+ * Una fila con `contradiccion` es un cierre `lost` cuyo adjudicatario observado
+ * es nuestra propia empresa: el backend la deja `sin_resolver` y la pestaña la
+ * señala y cuenta aparte (`contradicciones`) para que alguien revise el cierre.
+ *
  * Con `sin_nif_propio` el backend avisa de que no sabe cuál es nuestra empresa
  * en el maestro; la pestaña lo dice y manda a declararlo en Equipo, porque sin
  * ese aviso un historial lleno de «perdimos» parecería un rival invencible.
@@ -26,7 +30,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
-import { Info } from "lucide-react";
+import { AlertTriangle, Info } from "lucide-react";
 import { PanelEmpty, PanelError, PanelLoading } from "@/components/console/panel";
 import { useActiveOrganizationId } from "@/hooks/use-organization";
 import { fetchWithAuth } from "@/lib/api-client";
@@ -137,6 +141,21 @@ export function CompanyContraMi({ empresaKey }: { empresaKey: string }) {
             </p>
           )}
 
+          {(data.contradicciones ?? 0) > 0 && (
+            <p
+              role="note"
+              className="flex gap-2 rounded-lg border border-[hsl(var(--warning)/0.4)] bg-[hsl(var(--warning)/0.08)] px-3 py-2 text-[12px] leading-[1.5]"
+            >
+              <AlertTriangle className="mt-0.5 h-3.5 w-3.5 flex-none text-[hsl(var(--warning))]" aria-hidden="true" />
+              <span>
+                {data.contradicciones === 1
+                  ? "Un expediente cerrado como perdido aparece adjudicado a vuestro NIF."
+                  : `${data.contradicciones} expedientes cerrados como perdidos aparecen adjudicados a vuestro NIF.`}{" "}
+                No se cuentan como derrota: revisad el cierre de la oportunidad o la adjudicación publicada.
+              </span>
+            </p>
+          )}
+
           {data.n === 0 ? (
             <PanelEmpty
               message={`Ningún expediente en los ${data.ventana} en el que tu equipo presentara oferta y este competidor aparezca como adjudicatario.`}
@@ -195,6 +214,11 @@ export function CompanyContraMi({ empresaKey }: { empresaKey: string }) {
                           >
                             {RESULTADO_BATALLA[batalla.resultado].label}
                           </span>
+                          {batalla.contradiccion && (
+                            <span className="mt-1 block text-[10.5px] font-medium text-[hsl(var(--warning))]">
+                              Cerrado perdido, adjudicado a vosotros
+                            </span>
+                          )}
                         </td>
                         <td className="tf-tnum py-2 pr-3 text-right">
                           {batalla.nuestra_baja == null ? (

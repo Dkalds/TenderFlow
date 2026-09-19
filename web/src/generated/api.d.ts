@@ -5551,6 +5551,11 @@ export interface components {
         Batalla: {
             /** Baja Ganadora */
             baja_ganadora?: number | null;
+            /**
+             * Contradiccion
+             * @default false
+             */
+            contradiccion: boolean;
             /** Fecha */
             fecha?: string | null;
             /** Importe */
@@ -5576,6 +5581,11 @@ export interface components {
         BatallasContraMi: {
             /** Batallas */
             batallas?: components["schemas"]["Batalla"][];
+            /**
+             * Contradicciones
+             * @default 0
+             */
+            contradicciones: number;
             /** Empresa Key */
             empresa_key: string;
             /**
@@ -6263,6 +6273,28 @@ export interface components {
             top3_importe_pct: number;
         };
         /**
+         * CompetitiveCompanyCorteDTO
+         * @description F3.5 — una celda de un corte del perfil (procedimiento o tramo de importe).
+         *
+         *     Con ``n`` siempre; ``baja_media`` e ``importe_total`` solo cuando la celda
+         *     llega al mínimo (``CompetitiveCompanyProfileDTO.corte_min_n``). La celda no
+         *     se omite por debajo: que un competidor tenga dos adjudicaciones por
+         *     negociado también dice algo, pero su media no.
+         */
+        CompetitiveCompanyCorteDTO: {
+            /**
+             * Baja Media
+             * @description Baja media en tanto por uno (0.12 = 12 %). Nula por debajo del mínimo.
+             */
+            baja_media?: number | null;
+            /** Clave */
+            clave: string;
+            /** Importe Total */
+            importe_total?: number | null;
+            /** N */
+            n: number;
+        };
+        /**
          * CompetitiveCompanyHistoryDTO
          * @description Unfiltered company history, separate from the active analysis scope.
          */
@@ -6331,6 +6363,11 @@ export interface components {
             concentracion_clientes: components["schemas"]["CompetitiveCompanyConcentrationDTO"];
             /** Contratos Recientes */
             contratos_recientes?: components["schemas"]["CompetitiveCompanyAwardDTO"][];
+            /**
+             * Corte Min N
+             * @default 5
+             */
+            corte_min_n: number;
             empresa: components["schemas"]["CompetitiveCompanyIdentityDTO"];
             /** Movimientos */
             movimientos?: components["schemas"]["CompetitiveCompanySignalDTO"][];
@@ -6344,6 +6381,10 @@ export interface components {
             por_ccaa?: components["schemas"]["CompetitiveCompanyBreakdownDTO"][];
             /** Por Cpv */
             por_cpv?: components["schemas"]["CompetitiveCompanyBreakdownDTO"][];
+            /** Por Procedimiento */
+            por_procedimiento?: components["schemas"]["CompetitiveCompanyCorteDTO"][];
+            /** Por Tramo Importe */
+            por_tramo_importe?: components["schemas"]["CompetitiveCompanyCorteDTO"][];
             posicion_mercado: components["schemas"]["CompetitiveCompanyPositionDTO"];
             scope: components["schemas"]["CompetitiveCompanyScopeDTO"];
             totales: components["schemas"]["CompetitiveCompanyTotalsDTO"];

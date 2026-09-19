@@ -604,6 +604,24 @@ class CompetitiveCompanyUteParticipationDTO(BaseModel):
     importe_total: float = Field(default=0, ge=0)
 
 
+class CompetitiveCompanyCorteDTO(BaseModel):
+    """F3.5 — una celda de un corte del perfil (procedimiento o tramo de importe).
+
+    Con ``n`` siempre; ``baja_media`` e ``importe_total`` solo cuando la celda
+    llega al mínimo (``CompetitiveCompanyProfileDTO.corte_min_n``). La celda no
+    se omite por debajo: que un competidor tenga dos adjudicaciones por
+    negociado también dice algo, pero su media no.
+    """
+
+    clave: str
+    n: int = Field(ge=0)
+    baja_media: float | None = Field(
+        default=None,
+        description="Baja media en tanto por uno (0.12 = 12 %). Nula por debajo del mínimo.",
+    )
+    importe_total: float | None = Field(default=None, ge=0)
+
+
 class CompetitiveCompanyProfileDTO(BaseModel):
     """Full competitor dossier used by quick and deep company views."""
 
@@ -621,6 +639,13 @@ class CompetitiveCompanyProfileDTO(BaseModel):
     movimientos: list[CompetitiveCompanySignalDTO] = Field(default_factory=list)
     contratos_recientes: list[CompetitiveCompanyAwardDTO] = Field(default_factory=list)
     participaciones_ute: list[CompetitiveCompanyUteParticipationDTO] = Field(default_factory=list)
+    #: F3.5 — bajas y adjudicaciones por tipo de procedimiento (etiqueta de
+    #: F1.7) y por tramo de importe de licitación (fronteras LCSP), sobre la
+    #: misma actividad filtrada que ``totales``.
+    por_procedimiento: list[CompetitiveCompanyCorteDTO] = Field(default_factory=list)
+    por_tramo_importe: list[CompetitiveCompanyCorteDTO] = Field(default_factory=list)
+    #: Adjudicaciones mínimas por celda para publicar su media.
+    corte_min_n: int = Field(default=5, ge=1)
 
 
 class CompetitiveCompanyAwardsDTO(BaseModel):

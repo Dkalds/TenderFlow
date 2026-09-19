@@ -882,6 +882,11 @@ class PursuitRepository:
                 "SELECT p.licitacion_id, l.titulo, l.organo_contratacion, l.importe, "
                 "       p.offer_price_eur, p.outcome, "
                 "       a.importe_adjudicado, a.fecha_adjudicacion, "
+                # NIF y `empresa_id` crudos del adjudicatario: la clave de
+                # arriba antepone `empresa_id`, así que por sí sola no dice
+                # si el adjudicatario es **nuestra** empresa. Con los dos se
+                # detecta el cierre perdido que en realidad ganamos.
+                "       a.nif AS adjudicatario_nif, a.empresa_id AS adjudicatario_empresa_id, "
                 f"      {clave} AS adjudicatario_key "
                 "FROM pursuits p "
                 "JOIN licitaciones l ON l.id_externo = p.licitacion_id "
