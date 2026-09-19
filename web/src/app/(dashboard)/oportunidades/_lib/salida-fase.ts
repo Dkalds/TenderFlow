@@ -16,6 +16,14 @@
  * `hecho: null` es «no se sabe», y no «no»: el dato que lo decide todavía no ha
  * llegado o el pliego no lo trae. No cuenta como hecho ni se presenta como
  * pendiente.
+ *
+ * **Un hueco no se cierra por avanzar**: lo que quedó pendiente en una fase
+ * anterior se arrastra a la lista, y se dice de dónde viene. Una oportunidad
+ * que llega a «Preparando oferta» sin responsable sigue estando incompleta, y
+ * esconderlo porque ya pasó esa fase es lo que hace que no se arregle nunca.
+ * Se arrastran solo los pendientes de verdad (`hecho === false`), nunca los que
+ * están sin dato, y cada paso se identifica por el campo del contrato del que
+ * sale, así que un mismo campo no aparece dos veces con dos nombres.
  */
 
 import { statusLabel } from "@/components/pursuits/pursuit-presenters";
@@ -23,6 +31,7 @@ import { esTerminal, type Pursuit, type PursuitStatus } from "@/hooks/use-pursui
 import { motivoBloqueo, siguienteFase } from "./flujo";
 
 export interface PasoSalida {
+  /** El campo del contrato del que sale, que es también su identidad. */
   clave: string;
   texto: string;
   /** `true` hecho, `false` pendiente, `null` sin dato para decidirlo. */
@@ -98,8 +107,9 @@ function pasosDeCierre(pursuit: Pursuit): PasoSalida[] {
       hecho: conTexto(pursuit.outcome_reason_code) || conTexto(pursuit.outcome_reason),
     },
   ];
-  // Retirarla no adjudica nada a nadie: ahí no hay importe que confirmar.
-  if (pursuit.status !== "withdrawn") {
+  // Solo si se ganó: en una pérdida el importe es de otro y retirarla no
+  // adjudica nada, así que pedirlo dejaría la ficha incompleta para siempre.
+  if (pursuit.status === "won") {
     pasos.push({
       clave: "importe",
       texto: "Importe adjudicado anotado",
@@ -109,14 +119,19 @@ function pasosDeCierre(pursuit: Pursuit): PasoSalida[] {
   return pasos;
 }
 
-function pasosDeFase(pursuit: Pursuit, contexto: ContextoSalida): PasoSalida[] {
-  switch (pursuit.status) {
+function pasosDeFase(fase: PursuitStatus, pursuit: Pursuit, contexto: ContextoSalida): PasoSalida[] {
+  switch (fase) {
     case "identified":
       return [
         {
           clave: "responsable",
           texto: "Responsable asignado",
           hecho: pursuit.responsible_user_id != null,
+        },
+        {
+          clave: "plazo",
+          texto: "Fecha límite conocida",
+          hecho: pursuit.tender_deadline != null,
         },
         {
           clave: "proxima",
@@ -170,7 +185,7 @@ function pasosDeFase(pursuit: Pursuit, contexto: ContextoSalida): PasoSalida[] {
       return [
         pasoKit(contexto.kit),
         {
-          clave: "precio",
+          clave: "oferta",
           texto: "Precio de la oferta fijado",
           hecho: pursuit.offer_price_eur != null,
         },
@@ -178,7 +193,7 @@ function pasosDeFase(pursuit: Pursuit, contexto: ContextoSalida): PasoSalida[] {
     case "submitted":
       return [
         {
-          clave: "seguimiento",
+          clave: "proxima",
           texto: "Seguimiento de la mesa planificado",
           hecho: conTexto(pursuit.next_action),
         },
@@ -195,6 +210,46 @@ function pasosDeFase(pursuit: Pursuit, contexto: ContextoSalida): PasoSalida[] {
     default:
       return pasosDeCierre(pursuit);
   }
+}
+
+/** Las fases abiertas en orden: por ahí se mira atrás buscando huecos. */
+const FASES_ABIERTAS: readonly PursuitStatus[] = [
+  "identified",
+  "qualifying",
+  "go_no_go",
+  "preparing",
+  "submitted",
+];
+
+/**
+ * Lo que quedó pendiente en las fases anteriores, con su procedencia.
+ *
+ * Solo lo pendiente de verdad: un paso sin dato (`null`) no se arrastra como
+ * deuda, y lo que ya está en la lista de la fase actual no se repite. De una
+ * cerrada no se arrastra nada: ahí ya no hay nada que preparar.
+ */
+function pasosArrastrados(
+  pursuit: Pursuit,
+  contexto: ContextoSalida,
+  propios: PasoSalida[],
+): PasoSalida[] {
+  const hasta = FASES_ABIERTAS.indexOf(pursuit.status);
+  if (hasta <= 0) return [];
+  const vistos = new Set(propios.map((paso) => paso.clave));
+  const arrastrados: PasoSalida[] = [];
+  for (const fase of FASES_ABIERTAS.slice(0, hasta)) {
+    for (const paso of pasosDeFase(fase, pursuit, contexto)) {
+      if (paso.hecho !== false || vistos.has(paso.clave)) continue;
+      vistos.add(paso.clave);
+      arrastrados.push({
+        ...paso,
+        // Obligatorio lo es para su transición, no para ésta.
+        requerido: false,
+        detalle: `Quedó pendiente en «${statusLabel(fase)}»`,
+      });
+    }
+  }
+  return arrastrados;
 }
 
 const ETIQUETA_AVANCE: Record<string, string> = {
@@ -223,7 +278,8 @@ function accionDeFase(pursuit: Pursuit): AccionSalida | null {
 }
 
 export function salidaDeFase(pursuit: Pursuit, contexto: ContextoSalida = {}): SalidaFase {
-  const pasos = pasosDeFase(pursuit, contexto);
+  const propios = pasosDeFase(pursuit.status, pursuit, contexto);
+  const pasos = [...propios, ...pasosArrastrados(pursuit, contexto, propios)];
   return {
     titulo: esTerminal(pursuit.status)
       ? "Lo que quedó registrado al cerrar"

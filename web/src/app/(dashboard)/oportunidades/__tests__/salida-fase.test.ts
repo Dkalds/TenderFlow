@@ -29,7 +29,7 @@ describe("salidaDeFase", () => {
   it("nombra la fase de la que hay que salir y cuenta solo lo que hay hecho", () => {
     const salida = salidaDeFase(en({ status: "identified", responsible_user_id: 4 }));
     expect(salida.titulo).toBe("Para salir de «Identificada»");
-    expect(salida.pasos).toHaveLength(2);
+    expect(salida.pasos.map((paso) => paso.clave)).toEqual(["responsable", "plazo", "proxima"]);
     expect(salida.hechos).toBe(1);
     expect(salida.accion).toEqual({
       tipo: "avanzar",
@@ -103,6 +103,23 @@ describe("salidaDeFase", () => {
     });
   });
 
+  it("arrastra los huecos de las fases anteriores, diciendo de dónde vienen", () => {
+    const salida = salidaDeFase(
+      en({ status: "preparing", decision: "go", decision_reason: "Encaja", offer_price_eur: 2_000_000 }),
+      { kit: { listos: 3, total: 3 } },
+    );
+    // Lo suyo primero; detrás, lo que quedó sin hacer por el camino.
+    expect(salida.pasos.slice(0, 2).map((p) => p.clave)).toEqual(["kit", "oferta"]);
+    expect(paso(salida, "responsable")).toMatchObject({
+      hecho: false,
+      detalle: "Quedó pendiente en «Identificada»",
+    });
+    // El precio ya está en la lista de la fase: no se repite con otro nombre.
+    expect(salida.pasos.filter((p) => p.clave === "oferta")).toHaveLength(1);
+    // Un paso sin dato no es deuda: el contraste del pliego no se arrastra.
+    expect(paso(salida, "contraste")).toBeUndefined();
+  });
+
   it("de una cerrada enseña lo que quedó registrado, sin acción que ofrecer", () => {
     const ganada = salidaDeFase(
       en({ status: "won", decision: "go", outcome: "won", awarded_amount_eur: 2_000_000 }),
@@ -113,7 +130,10 @@ describe("salidaDeFase", () => {
     expect(paso(ganada, "importe")?.hecho).toBe(true);
     expect(paso(ganada, "motivo")?.hecho).toBe(false);
 
-    // Retirarla no adjudica nada: no hay importe que confirmar.
+    // El importe solo se exige en las ganadas: en una pérdida es de otro, y
+    // retirarla no adjudica nada.
+    const perdida = salidaDeFase(en({ status: "lost", decision: "go", outcome: "lost" }));
+    expect(paso(perdida, "importe")).toBeUndefined();
     const retirada = salidaDeFase(en({ status: "withdrawn", outcome: "cancelled" }));
     expect(paso(retirada, "importe")).toBeUndefined();
   });
