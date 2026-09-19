@@ -13,6 +13,15 @@ implementan en la misma tanda que este documento.
 ningún fichero nuevo en `db/alembic/versions/`; la cabeza del repo sigue en
 `v112`. Este documento es lo que hay que leer antes de escribirlas.
 
+> *Estado (2026-09-19):* la frase anterior ya es falsa. **Las cinco se
+> escribieron:** T1 → `v130_follows`, T4 fase 2 → `v129_user_id_fase2` y
+> T6 → `v132_informes_programados` (las tres con `#311`, 2026-09-16); T2 →
+> `v133`/`v134`, T3 → `v136` y T4 fase 3 → `v135` (2026-09-18). La cabeza del
+> repo es `v138` (cadena `v132 → v133 → v134 → v136 → v135 → v140 → v138`).
+> Estado y pendientes de cada ítem: §6 de
+> [2026-09-plan-arquitectura-v2.md](2026-09-plan-arquitectura-v2.md). Lo que
+> sigue es el diseño del 2026-09-08 y se conserva como estaba.
+
 ## Por qué no se escribieron
 
 Dos razones, ambas del propio plan:
@@ -47,6 +56,10 @@ copiarse, no reinventarse.
 ---
 
 ## T1 — Seguimiento unificado
+
+> *Estado (2026-09-19):* escrita como `v130_follows` (fase aditiva: tabla,
+> backfill y escritura doble), con `api/routes/follows.py` y
+> `scripts/check_follows_paridad.py`. La lectura sigue en las tablas de origen.
 
 **Hoy: no existe nada.** Cero coincidencias de `follows` fuera del plan.
 
@@ -281,6 +294,10 @@ la MV a la vez.
 
 ## T4 — `user_key` → `user_id`, fase 2
 
+> *Estado (2026-09-19):* fase 2 escrita como `v129_user_id_fase2` (`#311`) y
+> fase 3 empezada con `v135_user_id_pk_fase3` (PK de `user_profiles` y
+> `radar_dismissals` por `user_id`). T4 sigue abierto; ver su nota en el plan.
+
 **Fase 1 hecha, fase 2 sin empezar.** `scripts/check_user_key_ratchet.py` existe
 y funciona; `CONGELADOS` (`:119-186`) lista **64 ficheros** de producción y
 `docs/STATUS.md:68-72` lo confirma.
@@ -332,6 +349,11 @@ marcada `.. deprecated:: 2026-09` con D18 escrito en el docstring.
 ---
 
 ## T6 — Informes programados
+
+> *Estado (2026-09-19):* escrita como `v132_informes_programados`
+> (`organization_report_schedules`), con `services/informes.py` y
+> `scheduler/jobs/informes_programados.py`. El opt-out por usuario usa
+> `notification_preferences`, no `user_event_prefs`.
 
 **Depende de T4 tanto como de S4 y S5**, y eso el plan no lo dice: las
 preferencias de notificación viven en `user_event_prefs(user_key, event_type,

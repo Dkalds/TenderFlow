@@ -33,6 +33,17 @@ De la Ola 2 se ejecutan **T5 y T7**, los dos únicos ítems sin gate **[§6]**.
 D20 no pre-autoriza esas migraciones y producción sigue once revisiones por
 detrás. La cabeza del repo no se mueve de `v112` en esta tanda.
 
+> *Estado (2026-09-19):* el párrafo anterior describe la tanda del 2026-09-08
+> y ya no vale para el árbol. Las revisiones de la Ola 2 se escribieron
+> después: `v129` (T4 fase 2), `v130_follows` (T1, fase aditiva) y
+> `v132_informes_programados` (T6) llegaron con `#311` (2026-09-16), y el
+> 2026-09-18 `v133`/`v134` (T2), `v136` (T3), `v135` (T4, fase 3 de ADR-030),
+> `v140` (predicciones de baja por lote) y `v138` (`notice_type_code`). La
+> cadena ya no es monótona en número:
+> `v132 → v133 → v134 → v136 → v135 → v140 → v138`, **cabeza `v138`**. Qué
+> parte está aplicada en producción no se comprobó al escribir esta nota. El
+> estado por ítem está en §6.
+
 Mismo contrato que sus predecesores: cada stream se ejecuta en su propia rama
 por un agente independiente, este documento es la fuente única de alcance y
 criterios de aceptación, y un agente que toma un stream trabaja **solo** los
@@ -305,7 +316,7 @@ el stream que la cita.
 |---|---|---|---|
 | D11 | **Perfil de capacidad.** ¿Vive en `organizations.settings_json` (sin migración) o en tablas propias (`organization_nifs`, `organization_capabilities`)? Propuesta: tablas propias, porque el cierre por NIF y el contraste de solvencia se resuelven en SQL y un JSON no se indexa ni se valida. | S2 | **2026-09-06 — tablas propias.** Sin implementar: S2.1 y S2.2. |
 | D12 | **Oportunidad por lote.** ¿`pursuits.lote_id` nullable con dos únicos parciales (patrón `v65` de adjudicaciones) o entidad hija `pursuit_lotes`? Propuesta: `lote_id` nullable; `NULL` significa expediente completo y las filas existentes no cambian. | S3 | **2026-09-06 — `lote_id` nullable** con dos únicos parciales. Sin implementar: S3.1. |
-| D13 | **Teams y Slack.** ¿Plantillas de payload sobre el webhook genérico existente, o integraciones nativas con OAuth de cada plataforma? Propuesta: plantillas (`json`, `slack_blocks`, `teams_adaptive_card`) y webhooks que pueda crear un miembro dentro de su organización, no solo el administrador global. | S4 | **2026-09-06 — plantillas**, sin OAuth por plataforma (coherente con §8). Sin implementar: S4.2 y S4.3. |
+| D13 | **Teams y Slack.** ¿Plantillas de payload sobre el webhook genérico existente, o integraciones nativas con OAuth de cada plataforma? Propuesta: plantillas (`json`, `slack_blocks`, `teams_adaptive_card`) y webhooks que pueda crear un miembro dentro de su organización, no solo el administrador global. | S4 | **2026-09-06 — plantillas**, sin OAuth por plataforma (coherente con §8). Sin implementar: S4.2 y S4.3. *Estado (2026-09-19):* ya implementados — `v108_webhooks_organizacion` (webhooks por organización y columna `formato` con `json`/`slack_blocks`/`teams_adaptive_card`), renderer en `shared/events.py` y ayuda en `docs/integraciones/webhooks.md` (ver §5 S4). |
 | D14 | **Worker.** ¿Un servicio `worker` en Render (coste de un servicio más) o consumir la cola desde el propio job de Actions cada cuatro horas? Propuesta: worker en Render para lo que pide un usuario (ficha, resumen, export) y Actions para lo programado; la cola es la misma tabla. | S5 | **2026-09-06 — worker en Render** para lo que pide un usuario y Actions para lo programado, sobre la misma tabla. Sin implementar: S5; el servicio exige además O0.2 cerrado. |
 | D15 | **Búsqueda semántica.** ¿Servir la fusión RRF que ya existe en `/search/semantic`, o retirar el deslizador y renombrar el endpoint (**RFC**: cambia la semántica del contrato)? Propuesta: servir. | O0.6 | **2026-09-06 — servir** la fusión RRF, y **ya ejecutada** por O0.6a: `api/routes/search.py` publica `source ∈ {rrf, fts, like}` con el camino realmente ejecutado, `alpha` gobierna el peso solo cuando hay fusión, y el deslizador del Investigador deja de mandar a un parámetro inerte. |
 | D16 | **Cobertura fuera de PLACSP y TED.** Contratos menores, BOE y los portales de Madrid, Andalucía y Valencia. Propuesta: declararlos fuera de alcance en `/cobertura` con fecha, y abrir un conector solo cuando una organización lo pida por escrito. | T7 | **2026-09-06 — fuera de alcance declarado**, con conector solo a petición escrita. Sin implementar: T7. |
@@ -967,6 +978,15 @@ que puntúa, con etiquetas que no sean su propia salida.
    `baja_real`, que sale de `lotes.importe` y de las adjudicaciones de ese
    lote. Cuando el batch materialice por lote —pendiente de medir su
    `mae_p50`— la ruta servirá la fila real sin más cambios.
+   *Estado (2026-09-19):* esa materialización **ya existe en código**
+   (commit `11618aff`): `v140_predicciones_baja_por_lote` retira la PK sobre
+   `licitacion_id`, persiste `lote_numero` (no `lote_id`, que no sobrevive a la
+   re-ingesta) y deja dos únicos parciales, uno agregado y uno por lote; el
+   batch por lote (`scheduler/jobs/ml_predicciones.py`) solo corre con el flag
+   `ML_BAJA_POR_LOTE` (`config/settings.py`, **apagado por defecto**), y
+   `scripts/comparar_baja_por_lote.py` es el backtest que debe informar la
+   decisión de encenderlo. Mientras siga apagado, la ruta sigue declarando
+   `prediccion_ambito="expediente"`.
 
 **Verificación:** `make check`; `train-model.yml` y `train-tech.yml` verdes
 con registro de población y etiquetas.
@@ -1130,8 +1150,28 @@ formato en su resumen.
 > sentido cuando los cuatro productores estén cortados, y el de T6 sería
 > infraestructura sin consumidor, que es justo el defecto que esta tanda vino a
 > corregir.
+>
+> *Estado (2026-09-19):* la nota de arriba es del 2026-09-08. Hoy **las cinco
+> revisiones existen** y la cabeza del repo es `v138` (ver la nota de la
+> cabecera): T1 → `v130`, T2 → `v133`/`v134`, T3 → `v136`, T4 → `v129` y
+> `v135`, T6 → `v132`. Escritas no quiere decir aplicadas (producción no se
+> comprobó al escribir esta nota), y cada ítem dice abajo qué le falta.
 
 ### T1 — Seguimiento unificado (depende de S4)
+
+> *Estado (2026-09-19): PARCIAL — fase aditiva de ADR-031 §B.* Hecho:
+> `v130_follows` crea la tabla (con RLS de v128 desde el nacimiento) y la
+> rellena desde `watchlist_items`, `watchlist_empresas` y `radar_dismissals`;
+> escritura doble desde las tablas de origen (`db/repositories/watchlist.py` →
+> `db/repositories/follows.py`); `GET/POST/DELETE /follows`
+> (`api/routes/follows.py`), que añade seguir órganos y CPV; el script de
+> paridad `scripts/check_follows_paridad.py`; y un `SeguirBoton`
+> (`web/src/components/seguir-boton.tsx`, hook `use-follows.ts`) que hoy solo
+> monta la ficha de órgano (`mercado/_components/organo-detalle.tsx`).
+> **Falta:** medir la paridad contra producción (cero diferencias), la lectura
+> desde `follows` (favoritos, empresas y Radar siguen leyendo su tabla), el
+> control único en Radar, Detalle y Empresas, y la RFC de retirada de los
+> endpoints antiguos, que no existe todavía.
 
 **Qué.** Tabla `follows(id, organization_id, user_id, target_type ∈
 {licitacion, lote, empresa, organo, cpv}, target_id, kind ∈ {seguir,
@@ -1303,6 +1343,19 @@ contratación de PLACSP con resultado go/no-go. Esfuerzo M.
   formato encontrado y decisión.
 
 ### T6 — Informes programados (depende de S4 y S5)
+
+> *Estado (2026-09-19): escrito en código* (llegó con `#311`, 2026-09-16).
+> `v132_informes_programados` crea
+> `organization_report_schedules` (día, hora y destinatarios por
+> organización); `services/informes.py` construye el informe desde las mismas
+> consultas que Dirección, lo renderiza en HTML y PDF y declara universo,
+> ventana y fecha del dato; `scheduler/jobs/informes_programados.py` lo envía
+> y lo registra `scheduler/pipeline_runs.py` como paso `advisory`, no el
+> worker de S5; un informe vacío no se envía; la preferencia se lee y escribe
+> desde `api/routes/organization_settings.py`, y el opt-out por usuario es
+> `notification_preferences` con `tipo='informe_semanal'`. Tests en
+> `tests/test_informes_programados.py`. No verificado aquí: que haya enviado
+> un informe real.
 
 **Qué.** Informe semanal del pipeline por organización (oportunidades por
 estado, vencimientos a catorce días, ganadas y perdidas, señales calientes
