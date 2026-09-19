@@ -20,9 +20,20 @@
  * 108 no cabían, y como los botones de icono podían encogerse, «Descartar»
  * quedaba por debajo de los 24 px de WCAG 2.5.8 (axe `target-size`, /radar).
  * Ahora los botones de icono son `flex-none` y la columna los aloja enteros.
+ *
+ * **Entre `md` y `xl` hay un cuarto botón**: «Ver ficha», porque ahí el
+ * inspector es un `Sheet` y no hay otro disparador (`conFicha`, que sale de
+ * `useModoInspector()` con los mismos 768/1280 que `md`/`xl`). Son 3 × 26 +
+ * «Abrir» + 3 huecos de 6 ≈ 143 px: en 116 los botones no encogen (son
+ * `flex-none`), así que la fila desbordaba por la izquierda —`justify-end`—
+ * y se montaba sobre Plazo. El E2E de accesibilidad corre a 1280, donde solo
+ * hay tres, y no lo veía. En esa franja la columna pasa a 148 px y los 32 salen
+ * de Órgano, que ya trunca, no de Licitación: el `1fr` del título queda igual.
+ * A partir de `xl` vuelve el reparto de siempre.
+ * `responsive.spec.ts` lo mide a 1024 px.
  */
 export const RADAR_GRID =
-  "md:grid-cols-[46px_1fr_176px_132px_100px_96px_116px] md:gap-3 md:px-3.5";
+  "md:grid-cols-[46px_1fr_144px_132px_100px_96px_148px] xl:grid-cols-[46px_1fr_176px_132px_100px_96px_116px] md:gap-3 md:px-3.5";
 
 /** Banda de scoring que devuelve el backend (`Caliente|Atractiva|Tibia|Descarte`). */
 export const BAND_TOKEN: Record<string, string> = {
