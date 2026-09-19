@@ -114,7 +114,16 @@ def remove_entry(
 def list_entries(
     user_key: str, organization_id: int, *, user_id: int | None = None
 ) -> list[dict[str, Any]]:
-    """Empresas vigiladas por un usuario, con nombre canónico."""
+    """Empresas vigiladas por un usuario, con nombre canónico.
+
+    Con ``FOLLOWS_LECTURA`` encendido la pertenencia sale de ``follows``
+    (ADR-031 §B, fase 2) y esta tabla sólo aporta correo, frecuencia y último
+    aviso: ver :func:`db.repositories.follows.empresas_desde_follows`.
+    """
+    from db.repositories import follows as _follows
+
+    if _follows.lectura_desde_follows():
+        return _follows.empresas_desde_follows(user_key, organization_id, user_id=user_id)
     with connect() as c:
         return rows_to_dicts(
             c.execute(

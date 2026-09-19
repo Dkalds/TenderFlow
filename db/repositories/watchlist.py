@@ -234,7 +234,15 @@ class WatchlistRepository:
 
         El backend es la fuente de la analítica/join (ADR-014): el frontend
         nunca debe fabricar este enriquecimiento por su cuenta.
+
+        Con ``FOLLOWS_LECTURA`` encendido la pertenencia sale de ``follows``
+        (ADR-031 §B, fase 2) y de aquí sólo la nota personal: ver
+        :func:`db.repositories.follows.favoritos_desde_follows`.
         """
+        from db.repositories import follows as _follows
+
+        if _follows.lectura_desde_follows():
+            return _follows.favoritos_desde_follows(user_key, organization_id, user_id)
         with connect_read() as c:
             cur = c.execute(
                 "SELECT wi.id, wi.id_externo, wi.created_at, "

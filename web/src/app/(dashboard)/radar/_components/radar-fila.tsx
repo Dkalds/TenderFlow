@@ -21,14 +21,13 @@ export function RadarFila({
   tender,
   index,
   isActive,
-  isFollowed,
   isNew,
   rowHeight,
   enTabla,
   conFicha,
   onSelect,
   onDismiss,
-  onFollow,
+  onFollowed,
   onOpenPursuit,
   onOpenFicha,
   onExplicacion,
@@ -37,7 +36,6 @@ export function RadarFila({
   tender: RadarTender;
   index: number;
   isActive: boolean;
-  isFollowed: boolean;
   isNew: boolean;
   rowHeight: number;
   /**
@@ -52,7 +50,8 @@ export function RadarFila({
   conFicha: boolean;
   onSelect: (index: number) => void;
   onDismiss: (tender: RadarTender) => void;
-  onFollow: (tender: RadarTender) => void;
+  /** Tras alternar «Seguir» (lo hace `SeguirBoton`), con el estado nuevo. */
+  onFollowed: (tender: RadarTender, ahoraSigue: boolean) => void;
   onOpenPursuit: (tender: RadarTender) => void;
   onOpenFicha: (index: number) => void;
   /** F1.3 — se abrió «cómo se compone esta puntuación» de esta fila. */
@@ -242,10 +241,9 @@ export function RadarFila({
         tender={tender}
         isActive={isActive}
         inerte={enTabla && !isActive}
-        followed={isFollowed}
         conFicha={conFicha}
         onDismiss={() => onDismiss(tender)}
-        onFollow={() => onFollow(tender)}
+        onFollowed={(ahoraSigue) => onFollowed(tender, ahoraSigue)}
         onOpenPursuit={() => onOpenPursuit(tender)}
         onOpenFicha={() => onOpenFicha(index)}
       />

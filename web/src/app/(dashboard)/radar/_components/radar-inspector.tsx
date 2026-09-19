@@ -22,8 +22,7 @@ import { InspectorCuerpo } from "./radar-inspector-cuerpo";
  */
 export function RadarInspector({
   tender,
-  followed,
-  onFollow,
+  onFollowed,
   onDismiss,
   onAplazar,
   onOpenPursuit,
@@ -31,8 +30,8 @@ export function RadarInspector({
   onClose,
 }: {
   tender: RadarTender;
-  followed: boolean;
-  onFollow: () => void;
+  /** Tras alternar «Seguir», con el estado nuevo. */
+  onFollowed: (ahoraSigue: boolean) => void;
   onDismiss: () => void;
   onAplazar: (accion: AccionAplazar, dias: number) => void;
   onOpenPursuit: () => void;
@@ -45,9 +44,8 @@ export function RadarInspector({
       <InspectorCuerpo tender={tender} />
       <InspectorAcciones
         tender={tender}
-        followed={followed}
         opening={opening}
-        onFollow={onFollow}
+        onFollowed={onFollowed}
         onDismiss={onDismiss}
         onAplazar={onAplazar}
         onOpenPursuit={onOpenPursuit}

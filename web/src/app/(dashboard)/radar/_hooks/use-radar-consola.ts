@@ -5,11 +5,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { type FiltroEtiqueta, useFiltroEtiqueta } from "@/components/etiquetas/filtro-etiqueta";
 import { useCreatePursuit } from "@/hooks/use-pursuits";
-import {
-  useAddWatchlistItem,
-  useRemoveWatchlistItem,
-  useWatchlistItems,
-} from "@/hooks/use-watchlist-items";
+import { useSeguimiento } from "@/hooks/use-seguimiento";
 import { useOrganizationStore } from "@/hooks/use-organization";
 import { useFilters } from "@/lib/filters";
 import { getJSON, setJSON } from "@/lib/storage";
@@ -76,6 +72,8 @@ export interface RadarConsola {
   aplazar: (tender: RadarTender, accion: AccionAplazar, dias: number) => void;
   restoreAll: () => void;
   toggleFollow: (tender: RadarTender) => void;
+  /** Aviso con deshacer tras alternar desde `SeguirBoton`. */
+  avisarSeguimiento: (tender: RadarTender, ahoraSigue: boolean) => void;
   openPursuit: (tender: RadarTender) => Promise<void>;
   /** F1.3 — anota que se leyó la explicación del score de esta señal. */
   marcarExplicacion: (tender: RadarTender) => void;
@@ -92,9 +90,9 @@ export function useRadarConsola(): RadarConsola {
   const dismissTender = useDismissRadarTender();
   const restoreTender = useRestoreRadarTender();
 
-  const { data: watched = [] } = useWatchlistItems();
-  const addWatchlist = useAddWatchlistItem();
-  const removeWatchlist = useRemoveWatchlistItem();
+  // El mismo estado que pinta `SeguirBoton` en cada fila y en el inspector
+  // (ADR-031 §C): el atajo «S» y el botón pasan por el mismo sitio.
+  const seguimiento = useSeguimiento("licitacion");
   const createPursuit = useCreatePursuit();
   const setActiveOrganizationId = useOrganizationStore((state) => state.setActiveOrganizationId);
 
@@ -115,10 +113,7 @@ export function useRadarConsola(): RadarConsola {
     };
   }, []);
 
-  const followedIds = React.useMemo(
-    () => new Set(watched.map((item) => item.id_externo)),
-    [watched],
-  );
+  const followedIds = seguimiento.ids;
 
   const all = React.useMemo(() => data?.items ?? [], [data]);
 
@@ -227,24 +222,33 @@ export function useRadarConsola(): RadarConsola {
   );
   const dismiss = React.useCallback((tender: RadarTender) => aplazar(tender), [aplazar]);
 
-  const toggleFollow = React.useCallback(
-    (tender: RadarTender) => {
+  const { seguir, dejar, alternar } = seguimiento;
+
+  /**
+   * Aviso con «Deshacer» tras seguir o dejar de seguir (`SeguirBoton` y atajo
+   * «S»). Deshacer es `seguir`/`dejar` explícito: alternar desde el toast
+   * leería un estado ya cambiado. */
+  const avisarSeguimiento = React.useCallback(
+    (tender: RadarTender, ahoraSigue: boolean) => {
       const id = tender.id_externo;
-      if (followedIds.has(id)) {
-        removeWatchlist.mutate(id);
-        toast("Dejaste de seguir", {
-          description: tender.titulo,
-          action: { label: "Deshacer", onClick: () => addWatchlist.mutate(id) },
-        });
-      } else {
-        addWatchlist.mutate(id);
+      if (ahoraSigue) {
         toast("Añadida a seguimiento", {
           description: tender.titulo,
-          action: { label: "Deshacer", onClick: () => removeWatchlist.mutate(id) },
+          action: { label: "Deshacer", onClick: () => dejar(id) },
+        });
+      } else {
+        toast("Dejaste de seguir", {
+          description: tender.titulo,
+          action: { label: "Deshacer", onClick: () => seguir(id) },
         });
       }
     },
-    [addWatchlist, followedIds, removeWatchlist],
+    [seguir, dejar],
+  );
+
+  const toggleFollow = React.useCallback(
+    (tender: RadarTender) => avisarSeguimiento(tender, alternar(tender.id_externo)),
+    [alternar, avisarSeguimiento],
   );
 
   const openPursuit = React.useCallback(
@@ -291,6 +295,7 @@ export function useRadarConsola(): RadarConsola {
     aplazar,
     restoreAll,
     toggleFollow,
+    avisarSeguimiento,
     openPursuit,
     marcarExplicacion,
     etiqueta,

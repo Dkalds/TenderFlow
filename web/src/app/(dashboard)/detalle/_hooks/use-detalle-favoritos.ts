@@ -1,11 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import {
-  useAddWatchlistItem,
-  useRemoveWatchlistItem,
-  useWatchlistItems,
-} from "@/hooks/use-watchlist-items";
+import { useEffect, useState } from "react";
+import { useSeguimiento } from "@/hooks/use-seguimiento";
 import { getJSON, setJSON, remove as removeStored } from "@/lib/storage";
 
 const LAST_VIEWED_KEY = "detalle_last_viewed";
@@ -35,12 +31,14 @@ export interface DetalleFavoritos {
  * El estado de usuario es server-side (ADR-014 §2). Lo único que queda en el
  * navegador es el sello de la última visita, que es preferencia de lectura y no
  * un dato del que dependa nadie más.
+ *
+ * Seguir pasa por `useSeguimiento`, lo mismo que la estrella de cada fila
+ * (`SeguirBoton`): el atajo «S» y la acción en bloque no pueden comportarse
+ * distinto que el botón (ADR-031 §C).
  */
 export function useDetalleFavoritos(): DetalleFavoritos {
-  const addWatchlistItem = useAddWatchlistItem();
-  const removeWatchlistItem = useRemoveWatchlistItem();
-  const { data: watched = [] } = useWatchlistItems();
-  const watchedIds = useMemo(() => new Set(watched.map((item) => item.id_externo)), [watched]);
+  const seguimiento = useSeguimiento("licitacion");
+  const { seguir, alternar } = seguimiento;
 
   const [lastViewed] = useState(() => getJSON<number>(LAST_VIEWED_KEY, 0));
   useEffect(() => {
@@ -52,20 +50,17 @@ export function useDetalleFavoritos(): DetalleFavoritos {
   useEffect(() => {
     const legacy = getWatchlist();
     if (legacy.length === 0) return;
-    legacy.forEach((id) => addWatchlistItem.mutate(id));
+    legacy.forEach((id) => seguir(id));
     removeStored(WATCHLIST_KEY);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- migración única al montar
   }, []);
 
-  const toggleFavorite = (id: string) => {
-    if (watchedIds.has(id)) removeWatchlistItem.mutate(id);
-    else addWatchlistItem.mutate(id);
-  };
-
   return {
-    watchedIds,
+    watchedIds: seguimiento.ids,
     lastViewed,
-    toggleFavorite,
-    seguir: (id: string) => addWatchlistItem.mutate(id),
+    toggleFavorite: (id: string) => {
+      alternar(id);
+    },
+    seguir,
   };
 }

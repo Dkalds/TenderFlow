@@ -7142,6 +7142,22 @@ export interface components {
             items: components["schemas"]["CuotaEmpresa"][];
             scope: components["schemas"]["MetricScope"];
         };
+        /** CursorPaginatedResponseWithTotal[LicitacionSummary] */
+        CursorPaginatedResponseWithTotal_LicitacionSummary_: {
+            /**
+             * Has More
+             * @default false
+             */
+            has_more: boolean;
+            /** Items */
+            items: components["schemas"]["LicitacionSummary"][];
+            /** Limit */
+            limit: number;
+            /** Next Cursor */
+            next_cursor?: string | null;
+            /** Total */
+            total?: number | null;
+        };
         /** CursorPaginatedResponse[AuditEntryOut] */
         CursorPaginatedResponse_AuditEntryOut_: {
             /**
@@ -7151,20 +7167,6 @@ export interface components {
             has_more: boolean;
             /** Items */
             items: components["schemas"]["AuditEntryOut"][];
-            /** Limit */
-            limit: number;
-            /** Next Cursor */
-            next_cursor?: string | null;
-        };
-        /** CursorPaginatedResponse[LicitacionSummary] */
-        CursorPaginatedResponse_LicitacionSummary_: {
-            /**
-             * Has More
-             * @default false
-             */
-            has_more: boolean;
-            /** Items */
-            items: components["schemas"]["LicitacionSummary"][];
             /** Limit */
             limit: number;
             /** Next Cursor */
@@ -18925,6 +18927,10 @@ export interface operations {
                 tipo_contrato?: string | null;
                 /** @description Plazo que vence dentro de N días */
                 dias_restantes_max?: number | null;
+                /** @description Orden, con los mismos valores que `/licitaciones`: `fecha_publicacion` (recientes primero, el de por defecto), `importe`, `titulo` y sus inversos con `-`. Los nulos van al final en los dos sentidos. El cursor lleva el orden dentro: no vale para otro. */
+                sort?: string | null;
+                /** @description Añade `total`: un COUNT(*) con los mismos filtros. Pídelo sólo en la primera página; el cursor existe para no pagarlo en cada una. */
+                with_total?: boolean;
             };
             header?: {
                 "X-CSRF-Token"?: string | null;
@@ -18942,7 +18948,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["CursorPaginatedResponse_LicitacionSummary_"];
+                    "application/json": components["schemas"]["CursorPaginatedResponseWithTotal_LicitacionSummary_"];
                 };
             };
             /** @description Cursor inválido */

@@ -24,6 +24,10 @@ from typing import Any
 
 import pytest
 
+# `db_float4` cambia tipos y tira la vista canónica: schema de usar y tirar
+# también con TF_TEST_SCHEMA_STRATEGY=truncate.
+pytestmark = pytest.mark.schema_propio
+
 
 @pytest.fixture()
 def db(tmp_db: Any) -> Any:

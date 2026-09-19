@@ -158,3 +158,61 @@ def test_las_semillas_de_migracion_sobreviven(tmp_db) -> None:
         f"{ESTRATEGIA_SCHEMA!r}: a {esquema}.api_key_tiers le faltan {sorted(faltan)} "
         f"(tiene {sorted(tiers)})"
     )
+
+
+@pytest.mark.schema_propio
+def test_c_schema_propio_puede_alterar_el_ddl(tmp_db) -> None:
+    """Un test marcado recibe su propio schema aunque la sesión use `truncate`."""
+    db_mod, _ = tmp_db
+    with db_mod.connect() as c:
+        c.execute("CREATE TABLE tabla_de_un_solo_test_c34 (id int)")
+
+
+def test_d_el_ddl_del_test_marcado_no_llega_al_siguiente(tmp_db) -> None:
+    db_mod, _ = tmp_db
+    with db_mod.connect() as c:
+        esquema = c.execute("SELECT current_schema()").fetchone()[0]
+        fila = c.execute(
+            "SELECT 1 FROM pg_tables WHERE schemaname = %s AND tablename = %s",
+            (esquema, "tabla_de_un_solo_test_c34"),
+        ).fetchone()
+    assert fila is None, f"el DDL del test marcado sobrevivió en {esquema!r}"
+
+
+def test_e_las_semillas_no_chocan_con_su_secuencia(tmp_db) -> None:
+    """Tras el aislamiento, cada secuencia va por delante de las filas sembradas.
+
+    Con `truncate`, `RESTART IDENTITY` ponía las secuencias a 1 y las semillas
+    volvían con sus ids: el primer INSERT de un test en una tabla sembrada
+    chocaba con la clave de la semilla. Se comprueba en todas las columnas con
+    secuencia propia, sin enumerar tablas.
+    """
+    db_mod, _ = tmp_db
+    with db_mod.connect() as c:
+        esquema = c.execute("SELECT current_schema()").fetchone()[0]
+        columnas = c.execute(
+            "SELECT t.relname, a.attname, pg_get_serial_sequence("
+            "  quote_ident(n.nspname) || '.' || quote_ident(t.relname), a.attname) "
+            "FROM pg_class t JOIN pg_namespace n ON n.oid = t.relnamespace "
+            "JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum > 0 AND NOT a.attisdropped "
+            "WHERE n.nspname = %s AND t.relkind = 'r'",
+            (esquema,),
+        ).fetchall()
+        for tabla, columna, secuencia in columnas:
+            if secuencia is None:
+                continue
+            maximo = c.execute(
+                sql.SQL("SELECT MAX({}) FROM {}.{}").format(
+                    sql.Identifier(columna), sql.Identifier(esquema), sql.Identifier(tabla)
+                )
+            ).fetchone()[0]
+            if maximo is None:
+                continue
+            ultimo, llamada = c.execute(
+                sql.SQL("SELECT last_value, is_called FROM {}").format(sql.SQL(secuencia))
+            ).fetchone()
+            siguiente = ultimo + 1 if llamada else ultimo
+            assert siguiente > maximo, (
+                f"{tabla}.{columna}: la secuencia daría {siguiente} y ya hay una fila "
+                f"con {maximo} (estrategia {ESTRATEGIA_SCHEMA!r})"
+            )

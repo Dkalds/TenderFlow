@@ -1,6 +1,6 @@
 "use client";
 
-import { Star } from "lucide-react";
+import { SeguirBoton } from "@/components/seguir-boton";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Pista } from "@/components/ui/pista";
 import { StatusBadge } from "@/components/ui/status-badge";
@@ -56,7 +56,6 @@ export function DetalleFila({
   open,
   picked,
   isCursor,
-  favorite,
   ccaaOn,
   tecOn,
   compact,
@@ -64,7 +63,6 @@ export function DetalleFila({
   atenuada,
   onOpen,
   onToggleSelect,
-  onToggleFavorite,
   onToggleCcaa,
   onToggleTecnologia,
 }: {
@@ -73,7 +71,6 @@ export function DetalleFila({
   open: boolean;
   picked: boolean;
   isCursor: boolean;
-  favorite: boolean;
   ccaaOn: boolean;
   tecOn: boolean;
   compact: boolean;
@@ -82,7 +79,6 @@ export function DetalleFila({
   atenuada: boolean;
   onOpen: (index: number, id: string) => void;
   onToggleSelect: (id: string) => void;
-  onToggleFavorite: (id: string) => void;
   onToggleCcaa: (ccaa: string) => void;
   onToggleTecnologia: (tecnologia: string) => void;
 }) {
@@ -139,23 +135,20 @@ export function DetalleFila({
             del pie— y el `aria-label` sí distingue añadir de
             quitar, que es lo que el `title` no hacía. De paso
             son 25 Popovers menos por página. */}
-        <button
-          type="button"
-          aria-label={favorite ? "Quitar de favoritos" : "Añadir a favoritos"}
-          aria-pressed={favorite}
-          onClick={(event) => {
-            event.stopPropagation();
-            onToggleFavorite(row.id_externo);
+        {/* El control único de ADR-031 §C (el mismo del Radar), con la piel
+            y los nombres accesibles de siempre de esta tabla. */}
+        <SeguirBoton
+          targetType="licitacion"
+          targetId={row.id_externo}
+          variante="icono"
+          icono="estrella"
+          nombreAccesible={{ seguir: "Añadir a favoritos", dejar: "Quitar de favoritos" }}
+          clases={{
+            base: "tf-pressable grid h-6 w-6 place-items-center rounded transition-colors duration-140 ease-out",
+            activo: "text-primary",
+            inactivo: "text-muted-foreground/45",
           }}
-          className="tf-pressable grid h-6 w-6 place-items-center rounded"
-        >
-          <Star
-            className={cn(
-              "h-3.5 w-3.5 transition-colors duration-140 ease-out",
-              favorite ? "fill-primary text-primary" : "text-muted-foreground/45",
-            )}
-          />
-        </button>
+        />
       </td>
       <td className="truncate px-1 font-mono text-[10.5px] text-muted-foreground">
         {row.id_externo.replace("PLACSP-", "")}

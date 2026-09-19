@@ -351,7 +351,12 @@ def test_paginated_component_names_are_stable(schema_components: dict[str, Any])
     for nombre in (
         "PaginatedResponse_LicitacionSummary_",
         "PaginatedResponse_AdjudicacionSummary_",
-        "CursorPaginatedResponse_LicitacionSummary_",
+        # El listado por cursor de licitaciones pasó el 2026-09-19 a la subclase
+        # con `total` opcional (sucesor del offset en /detalle, RFC 2026-09-06).
+        # Cambio consciente: ningún consumidor de `web/src` usaba el nombre
+        # anterior, y el cliente lo referencia vía `LicitacionesCursorPage`.
+        "CursorPaginatedResponseWithTotal_LicitacionSummary_",
+        "CursorPaginatedResponse_AuditEntryOut_",
     ):
         assert nombre in schema_components, f"desapareció del esquema: {nombre}"
 

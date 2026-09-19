@@ -62,6 +62,26 @@ def _infer_marker(path: str, name: str) -> str:
     return "unit"
 
 
+def pytest_configure(config):
+    # `schema_propio` no es un marker de categoría (no lo toca el auto-marking
+    # ni `scripts/check_agent_docs.py`): dice que el test altera el DDL y
+    # necesita un schema de usar y tirar aunque la suite corra con
+    # `TF_TEST_SCHEMA_STRATEGY=truncate`. Se registra aquí y no en
+    # `pyproject.toml` para que viva junto a la estrategia que lo lee.
+    config.addinivalue_line(
+        "markers",
+        "schema_propio: el test altera el DDL (DROP/ALTER/CREATE); recibe un schema "
+        "propio también con TF_TEST_SCHEMA_STRATEGY=truncate",
+    )
+    if ESTRATEGIA_SCHEMA not in ESTRATEGIAS_SCHEMA:
+        # Un valor mal escrito caía en silencio a `schema`: quien creía estar
+        # midiendo `truncate` medía el camino de siempre.
+        raise pytest.UsageError(
+            f"TF_TEST_SCHEMA_STRATEGY={ESTRATEGIA_SCHEMA!r} no es válida; "
+            f"usa una de {sorted(ESTRATEGIAS_SCHEMA)}"
+        )
+
+
 def pytest_collection_modifyitems(config, items):
     for item in items:
         marks_existing = {m.name for m in item.iter_markers()}
@@ -370,7 +390,28 @@ def _materialize_schema_ddl(url: str) -> str:
 #: Para medir:
 #:
 #:     TF_TEST_SCHEMA_STRATEGY=truncate make test-integration
+#:
+#: Lo que la estrategia ``truncate`` garantiza además del vaciado (2026-09-19,
+#: los huecos que había que cerrar antes de poder plantear el cambio de
+#: default; ver ``docs/runbooks/suite-schema-por-sesion.md``):
+#:
+#: - **Secuencias como recién migradas**, no a 1: ``RESTART IDENTITY`` las ponía
+#:   a 1 y las semillas vuelven con sus ids explícitos, así que el primer
+#:   ``INSERT`` de un test en una tabla sembrada chocaba con la clave de la
+#:   semilla. Se fotografían tras el DDL y se restauran con ``setval``, también
+#:   las que no son de ninguna tabla (``RESTART IDENTITY`` ni las tocaba).
+#: - **Semillas sin columnas generadas** y con ``OVERRIDING SYSTEM VALUE``: un
+#:   ``INSERT … VALUES`` de ``SELECT *`` falla contra una columna ``GENERATED``.
+#: - **Deriva de DDL por huella de catálogo**, no sólo por lista de tablas:
+#:   columnas, restricciones, índices, triggers, funciones y vistas. Un test que
+#:   suelta un CHECK o cambia un tipo dejaba la lista de tablas igual.
+#: - **El schema envenenado se reconstruye** antes de fallar: el error señala al
+#:   test culpable y los siguientes reciben un schema limpio, en vez de heredar
+#:   la deriva y fallar lejos de su causa.
+#: - ``@pytest.mark.schema_propio``: el test que altera el DDL a propósito recibe
+#:   un schema de usar y tirar aunque la sesión use ``truncate``.
 ESTRATEGIA_SCHEMA = os.environ.get("TF_TEST_SCHEMA_STRATEGY", "schema").strip().lower()
+ESTRATEGIAS_SCHEMA = frozenset({"schema", "truncate"})
 
 #: Tablas que las migraciones siembran y que un `TRUNCATE` se llevaría por
 #: delante. Se recargan tras cada truncado desde el snapshot de la sesión.
@@ -401,52 +442,199 @@ def _vistas_materializadas(conn, schema: str) -> list[str]:
     ]
 
 
-def _snapshot_semillas(conn, schema: str, tablas: list[str]) -> dict[str, list[tuple]]:
+def _columnas_insertables(conn, schema: str, tabla: str) -> list[str]:
+    """Columnas de ``tabla`` que admiten un valor explícito en un ``INSERT``.
+
+    Fuera las generadas (``attgenerated``): ``fecha_pub_date`` de v68 es
+    ``GENERATED ALWAYS … STORED`` y Postgres rechaza cualquier valor que no sea
+    ``DEFAULT``. Las de identidad sí entran (con ``OVERRIDING SYSTEM VALUE``).
+    """
+    return [
+        r[0]
+        for r in conn.execute(
+            "SELECT a.attname FROM pg_attribute a "
+            "JOIN pg_class c ON c.oid = a.attrelid "
+            "JOIN pg_namespace n ON n.oid = c.relnamespace "
+            "WHERE n.nspname = %s AND c.relname = %s AND a.attnum > 0 "
+            "AND NOT a.attisdropped AND a.attgenerated = '' "
+            "ORDER BY a.attnum",
+            [schema, tabla],
+        ).fetchall()
+    ]
+
+
+def _snapshot_semillas(
+    conn, schema: str, tablas: list[str]
+) -> dict[str, tuple[list[str], list[tuple]]]:
     """Filas presentes justo tras aplicar el DDL: las que sembró una migración.
 
     `api_key_tiers` (v28) es el caso conocido, pero enumerarlo a mano obligaría
     a volver aquí cada vez que una migración siembre algo nuevo — y el fallo
     sería silencioso: la tabla vacía y el test pasando vacunado.
+
+    Devuelve ``{tabla: (columnas, filas)}``: las columnas se nombran porque un
+    ``SELECT *`` arrastraría las generadas, que luego no se pueden reinsertar.
     """
-    semillas: dict[str, list[tuple]] = {}
+    semillas: dict[str, tuple[list[str], list[tuple]]] = {}
     for tabla in tablas:
-        # `schema` y `tabla` salen de `pg_tables`, no de una entrada externa;
-        # psycopg no parametriza identificadores. De ahí el S608 silenciado.
-        filas = conn.execute(f'SELECT * FROM "{schema}"."{tabla}"').fetchall()  # noqa: S608
+        columnas = _columnas_insertables(conn, schema, tabla)
+        if not columnas:
+            continue
+        lista = ", ".join(f'"{c}"' for c in columnas)
+        # `schema`, `tabla` y las columnas salen del catálogo, no de una entrada
+        # externa; psycopg no parametriza identificadores. De ahí el S608.
+        filas = conn.execute(f'SELECT {lista} FROM "{schema}"."{tabla}"').fetchall()  # noqa: S608
         if filas:
-            semillas[tabla] = filas
+            semillas[tabla] = (columnas, filas)
     return semillas
 
 
-def _restaura_semillas(conn, schema: str, semillas: dict[str, list[tuple]]) -> None:
-    for tabla, filas in semillas.items():
+def _restaura_semillas(
+    conn, schema: str, semillas: dict[str, tuple[list[str], list[tuple]]]
+) -> None:
+    for tabla, (columnas, filas) in semillas.items():
         if not filas:
             continue
-        marcadores = ", ".join(["%s"] * len(filas[0]))
+        lista = ", ".join(f'"{c}"' for c in columnas)
+        marcadores = ", ".join(["%s"] * len(columnas))
         for fila in filas:
             # Identificadores del catálogo; los VALORES sí van parametrizados,
             # que es donde podría entrar algo externo. De ahí el S608 silenciado.
+            # `OVERRIDING SYSTEM VALUE`: sin él, una columna `GENERATED ALWAYS
+            # AS IDENTITY` rechaza el id de la semilla; en tablas sin identidad
+            # no hace nada.
             conn.execute(
-                f'INSERT INTO "{schema}"."{tabla}" VALUES ({marcadores}) '  # noqa: S608
-                f"ON CONFLICT DO NOTHING",
+                f'INSERT INTO "{schema}"."{tabla}" ({lista}) '  # noqa: S608
+                f"OVERRIDING SYSTEM VALUE VALUES ({marcadores}) ON CONFLICT DO NOTHING",
                 list(fila),
             )
 
 
-def _limpia_schema(conn, schema: str, tablas: list[str], semillas, vistas) -> None:
+def _snapshot_secuencias(conn, schema: str) -> dict[str, tuple[int, bool]]:
+    """``{secuencia: (last_value, is_called)}`` justo tras aplicar el DDL.
+
+    Es el estado que un schema recién creado tendría, y el que hay que
+    devolver tras el ``TRUNCATE``: una semilla insertada por la migración ya
+    consumió valores (``api_key_tiers`` tiene tres filas → su secuencia va por
+    3). Reiniciarla a 1, que es lo que hace ``RESTART IDENTITY``, deja el primer
+    ``INSERT`` del test chocando con la clave de la semilla.
+    """
+    secuencias: dict[str, tuple[int, bool]] = {}
+    for (nombre,) in conn.execute(
+        "SELECT c.relname FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace "
+        "WHERE c.relkind = 'S' AND n.nspname = %s ORDER BY c.relname",
+        [schema],
+    ).fetchall():
+        fila = conn.execute(
+            f'SELECT last_value, is_called FROM "{schema}"."{nombre}"'  # noqa: S608
+        ).fetchone()
+        secuencias[nombre] = (int(fila[0]), bool(fila[1]))
+    return secuencias
+
+
+def _restaura_secuencias(conn, schema: str, secuencias: dict[str, tuple[int, bool]]) -> None:
+    for nombre, (valor, llamada) in secuencias.items():
+        conn.execute("SELECT setval(%s, %s, %s)", [f'"{schema}"."{nombre}"', valor, llamada])
+
+
+#: Qué entra en la huella del DDL. Cada consulta devuelve filas ordenadas de un
+#: aspecto del catálogo del schema; la huella es la tupla de todas. Basta con
+#: que un test suelte un CHECK (`test_analytics_quality`), cambie un tipo
+#: (`test_db_upsert`) o tire una tabla (`test_ops_events`) para que cambie.
+_CONSULTAS_HUELLA: tuple[str, ...] = (
+    # Columnas: nombre, tipo, nulabilidad y default.
+    "SELECT table_name, column_name, data_type, is_nullable, column_default "
+    "FROM information_schema.columns WHERE table_schema = %s ORDER BY 1, 2",
+    # Restricciones con su definición (CHECK, FK, UNIQUE, PK).
+    "SELECT cl.relname, c.conname, pg_get_constraintdef(c.oid) "
+    "FROM pg_constraint c JOIN pg_namespace n ON n.oid = c.connamespace "
+    "LEFT JOIN pg_class cl ON cl.oid = c.conrelid "
+    "WHERE n.nspname = %s ORDER BY 1, 2",
+    "SELECT tablename, indexname, indexdef FROM pg_indexes WHERE schemaname = %s ORDER BY 1, 2",
+    "SELECT event_object_table, trigger_name, action_statement "
+    "FROM information_schema.triggers WHERE trigger_schema = %s ORDER BY 1, 2, 3",
+    "SELECT p.proname, pg_get_function_identity_arguments(p.oid), md5(p.prosrc) "
+    "FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace "
+    "WHERE n.nspname = %s ORDER BY 1, 2",
+    # Vistas y vistas materializadas (su existencia; la definición la fija
+    # la columna de `information_schema.columns` de arriba).
+    "SELECT c.relname, c.relkind FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace "
+    "WHERE n.nspname = %s AND c.relkind IN ('v', 'm') ORDER BY 1",
+)
+
+
+def _huella_ddl(conn, schema: str) -> tuple:
+    """Huella del DDL del schema: si cambia, un test lo alteró.
+
+    Fija antes el ``search_path``: ``pg_get_constraintdef``, ``indexdef`` y los
+    ``nextval(...)`` de los defaults cualifican un nombre sólo si no es visible
+    desde el ``search_path``, así que dos conexiones con distinto camino darían
+    dos huellas del mismo DDL — y una deriva que no existe.
+    """
+    conn.execute(f'SET search_path TO "{schema}", public')
+    return tuple(
+        tuple(conn.execute(consulta, [schema]).fetchall()) for consulta in _CONSULTAS_HUELLA
+    )
+
+
+def _limpia_schema(conn, estado: _SchemaSesion) -> None:
     """Deja el schema como recién migrado, sin volver a crearlo.
 
     Un solo `TRUNCATE` con todas las tablas y `CASCADE`: hacerlo tabla a tabla
     fallaría por las claves foráneas y costaría una ida y vuelta por tabla.
-    `RESTART IDENTITY` devuelve las secuencias a 1, sin lo cual un test que
-    asuma `id == 1` pasaría solo si corre el primero.
+    Después, semillas y secuencias vuelven a su estado de recién migrado
+    (`_snapshot_secuencias` explica por qué no basta `RESTART IDENTITY`).
     """
-    if tablas:
-        lista = ", ".join(f'"{schema}"."{t}"' for t in tablas)
+    schema = estado.schema
+    if estado.tablas:
+        lista = ", ".join(f'"{schema}"."{t}"' for t in estado.tablas)
         conn.execute(f"TRUNCATE {lista} RESTART IDENTITY CASCADE")
-    _restaura_semillas(conn, schema, semillas)
-    for vista in vistas:
+    _restaura_semillas(conn, schema, estado.semillas)
+    _restaura_secuencias(conn, schema, estado.secuencias)
+    for vista in estado.vistas:
         conn.execute(f'REFRESH MATERIALIZED VIEW "{schema}"."{vista}"')
+
+
+class _SchemaSesion:
+    """El schema compartido de la estrategia ``truncate`` y su foto de recién migrado.
+
+    Es mutable a propósito: si un test lo envenena (altera el DDL), se
+    reconstruye en sitio y los tests siguientes reciben el nuevo, sin que el
+    fixture de sesión tenga que volver a producirse.
+    """
+
+    def __init__(self, base_url: str, ddl: str, schema: str) -> None:
+        self.base_url = base_url
+        self.ddl = ddl
+        self.schema = schema
+        self.tablas: list[str] = []
+        self.vistas: list[str] = []
+        self.semillas: dict[str, tuple[list[str], list[tuple]]] = {}
+        self.secuencias: dict[str, tuple[int, bool]] = {}
+        self.huella: tuple = ()
+
+    def construir(self) -> None:
+        import psycopg
+
+        schema = self.schema
+        with psycopg.connect(self.base_url, autocommit=True) as conn:
+            conn.execute(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE')
+            conn.execute(f'CREATE SCHEMA "{schema}"')
+            conn.execute(f'SET search_path TO "{schema}", public')
+            conn.execute(self.ddl)
+            self.tablas = _tablas_del_schema(conn, schema)
+            self.vistas = _vistas_materializadas(conn, schema)
+            for vista in self.vistas:
+                conn.execute(f'REFRESH MATERIALIZED VIEW "{schema}"."{vista}"')
+            self.semillas = _snapshot_semillas(conn, schema, self.tablas)
+            self.secuencias = _snapshot_secuencias(conn, schema)
+            self.huella = _huella_ddl(conn, schema)
+
+    def destruir(self) -> None:
+        import psycopg
+
+        with psycopg.connect(self.base_url, autocommit=True) as conn:
+            conn.execute(f'DROP SCHEMA IF EXISTS "{self.schema}" CASCADE')
 
 
 @pytest.fixture(scope="session")
@@ -456,26 +644,11 @@ def _pg_schema_sesion(_pg_schema_ddl):
     Se materializa aunque la estrategia sea ``schema``: no cuesta nada crearlo
     perezosamente, y tenerlo aquí mantiene las dos ramas simétricas.
     """
-    import psycopg
-
     base_url, ddl = _pg_schema_ddl
-    schema = f"tf_sesion_{os.getpid()}"
-
-    with psycopg.connect(base_url, autocommit=True) as conn:
-        conn.execute(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE')
-        conn.execute(f'CREATE SCHEMA "{schema}"')
-        conn.execute(f'SET search_path TO "{schema}", public')
-        conn.execute(ddl)
-        tablas = _tablas_del_schema(conn, schema)
-        vistas = _vistas_materializadas(conn, schema)
-        for vista in vistas:
-            conn.execute(f'REFRESH MATERIALIZED VIEW "{schema}"."{vista}"')
-        semillas = _snapshot_semillas(conn, schema, tablas)
-
-    yield base_url, schema, tablas, vistas, semillas
-
-    with psycopg.connect(base_url, autocommit=True) as conn:
-        conn.execute(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE')
+    estado = _SchemaSesion(base_url, ddl, f"tf_sesion_{os.getpid()}")
+    estado.construir()
+    yield estado
+    estado.destruir()
 
 
 def _url_con_schema(base_url: str, schema: str) -> str:
@@ -485,8 +658,12 @@ def _url_con_schema(base_url: str, schema: str) -> str:
 
 @pytest.fixture()
 def _pg_schema(request, _pg_schema_ddl):
-    """Base de datos limpia para un test. La estrategia decide el cómo."""
-    if ESTRATEGIA_SCHEMA == "truncate":
+    """Base de datos limpia para un test. La estrategia decide el cómo.
+
+    ``@pytest.mark.schema_propio`` gana a la estrategia: un test que altera el
+    DDL a propósito recibe siempre un schema de usar y tirar.
+    """
+    if ESTRATEGIA_SCHEMA == "truncate" and request.node.get_closest_marker("schema_propio") is None:
         yield from _pg_schema_por_truncado(request)
         return
     yield from _pg_schema_por_creacion(_pg_schema_ddl)
@@ -496,19 +673,20 @@ def _pg_schema_por_truncado(request):
     """Reutiliza el schema de sesión y lo vacía. Detecta si quedó envenenado.
 
     El riesgo de compartir schema es que un test que altere el DDL —crear una
-    tabla, borrar una columna— se lo deje al siguiente. `TRUNCATE` no lo
-    arregla. Por eso se compara el conjunto de tablas antes y después: si
-    cambió, el schema se descarta y el siguiente test recibe uno nuevo. Cuesta
-    una consulta a `pg_tables` por test; el fallo que evita cuesta una tarde.
+    tabla, soltar un CHECK, cambiar un tipo— se lo deje al siguiente.
+    `TRUNCATE` no lo arregla. Por eso se compara la huella del catálogo
+    (`_huella_ddl`) antes y después: si cambió, el schema se **reconstruye**
+    —el siguiente test recibe uno limpio— y este test falla señalándose. Cuesta
+    seis consultas al catálogo por test; el fallo que evita cuesta una tarde.
     """
     import psycopg
 
-    base_url, schema, tablas, vistas, semillas = request.getfixturevalue("_pg_schema_sesion")
+    estado: _SchemaSesion = request.getfixturevalue("_pg_schema_sesion")
 
-    with psycopg.connect(base_url, autocommit=True) as conn:
-        _limpia_schema(conn, schema, tablas, semillas, vistas)
+    with psycopg.connect(estado.base_url, autocommit=True) as conn:
+        _limpia_schema(conn, estado)
 
-    scoped_url = _url_con_schema(base_url, schema)
+    scoped_url = _url_con_schema(estado.base_url, estado.schema)
 
     import db.database as db_mod
 
@@ -519,13 +697,16 @@ def _pg_schema_por_truncado(request):
     finally:
         db_mod.close_pool()
         db_mod.set_pg_test_url(None)
-        with psycopg.connect(base_url, autocommit=True) as conn:
-            if _tablas_del_schema(conn, schema) != tablas:
-                raise AssertionError(
-                    f"el test alteró el DDL del schema compartido {schema!r}. "
-                    "Marcalo con `@pytest.mark.schema_propio` o corré la suite "
-                    "con TF_TEST_SCHEMA_STRATEGY=schema."
-                )
+        with psycopg.connect(estado.base_url, autocommit=True) as conn:
+            envenenado = _huella_ddl(conn, estado.schema) != estado.huella
+        if envenenado:
+            estado.construir()
+            raise AssertionError(
+                f"el test alteró el DDL del schema compartido {estado.schema!r} "
+                "(ya reconstruido para los siguientes). Marcalo con "
+                "`@pytest.mark.schema_propio` o corré la suite con "
+                "TF_TEST_SCHEMA_STRATEGY=schema."
+            )
 
 
 def _pg_schema_por_creacion(_pg_schema_ddl):

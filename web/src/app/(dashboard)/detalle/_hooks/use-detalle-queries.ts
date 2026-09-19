@@ -4,7 +4,7 @@ import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { fetchWithAuth } from "@/lib/api-client";
 import { analyticsKeys, licitacionKeys, licitacionesKeys } from "@/lib/query-keys";
-import type { LicitacionSummary } from "@/lib/api-types";
+import type { LicitacionesCursorPage } from "@/lib/api-types";
 import type { LicitacionDetail } from "@/components/detail-panel";
 import { pageIdsOf, type ScoringItem, type ScoringResponse } from "./detalle-table-model";
 
@@ -17,17 +17,24 @@ import { pageIdsOf, type ScoringItem, type ScoringResponse } from "./detalle-tab
  * desglose vienen calculados de servidor (ADR-014).
  */
 
-export interface LicitacionesResponse {
-  items: LicitacionSummary[];
-  total: number;
-  limit: number;
-  offset: number;
-}
+/**
+ * Página del listado por cursor (`GET /licitaciones/cursor`). Sustituye al
+ * listado por offset, que se retira (RFC 2026-09-06): mismos filtros y mismos
+ * órdenes, `next_cursor` en vez de `offset` y `total` porque se pide
+ * `with_total`.
+ */
+export type LicitacionesResponse = LicitacionesCursorPage;
 
 export interface DetalleQueries {
   data: LicitacionesResponse | undefined;
   isLoading: boolean;
   isFetching: boolean;
+  /**
+   * `true` mientras se enseña la página anterior (`placeholderData`) y la
+   * pedida no ha llegado. El `next_cursor` de ese dato es de la página
+   * anterior: no se puede apuntar como el de la actual.
+   */
+  isPlaceholderData: boolean;
   error: unknown;
   refetch: () => void;
   scoring: ScoringResponse | undefined;
@@ -41,11 +48,11 @@ export function useDetalleQueries({
   queryParams: Record<string, string>;
   detailId: string | null;
 }): DetalleQueries {
-  const { data, isLoading, error, isFetching, refetch } = useQuery({
+  const { data, isLoading, error, isFetching, isPlaceholderData, refetch } = useQuery({
     queryKey: licitacionesKeys.list(queryParams),
     queryFn: ({ signal }) =>
       fetchWithAuth<LicitacionesResponse>(
-        `/api/v1/licitaciones?${new URLSearchParams(queryParams)}`,
+        `/api/v1/licitaciones/cursor?${new URLSearchParams(queryParams)}`,
         { signal },
       ),
     staleTime: 30_000,
@@ -77,7 +84,7 @@ export function useDetalleQueries({
     enabled: !!detailId,
   });
 
-  return { data, isLoading, isFetching, error, refetch, scoring, detailData };
+  return { data, isLoading, isFetching, isPlaceholderData, error, refetch, scoring, detailData };
 }
 
 /**

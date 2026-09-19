@@ -14,8 +14,10 @@ Fase **aditiva**, la primera de tres:
 2. **Siguiente.** `scripts/check_follows_paridad.py` contra producción, con
    cero diferencias por usuario. Hasta que ese número sea cero, mover una
    lectura a `follows` es apostar el dato del cliente a que el backfill salió
-   bien.
-3. **Después, por RFC y con fecha.** Retirada de los endpoints antiguos.
+   bien. El código de esa lectura ya está (ver «Lectura desde `follows`» más
+   abajo), detrás de `FOLLOWS_LECTURA`, apagado: encenderlo es la fase 2.
+3. **Después, por RFC y con fecha.** Retirada de los endpoints antiguos
+   (`docs/rfc/2026-09-19-rfc-retirada-endpoints-watchlist.md`).
 
 Lo que este módulo **sí** sirve hoy en producción es lo que antes no existía:
 seguir órganos y CPV (que no tenían tabla) y la pregunta inversa —«¿quién
@@ -236,6 +238,137 @@ def seguidores(target_type: str, target_id: str, *, kind: str = "seguir") -> lis
             )
         )
     return [_fila(f) for f in filas]
+
+
+# ── Lectura desde `follows` (ADR-031 §B, fase 2) ────────────────────────────
+#
+# Detrás de `FOLLOWS_LECTURA` (apagado por defecto). Con el flag encendido, las
+# tres pantallas antiguas —favoritos, empresas vigiladas y descartes del
+# Radar— siguen llamando a sus endpoints de siempre, pero **qué** sigue el
+# usuario lo decide `follows`; la tabla de origen sólo aporta las columnas que
+# `follows` no tiene (la nota del favorito, el correo y la frecuencia de la
+# alerta de empresa, la acción y el score del descarte). Por eso el cruce con
+# ella es un `LEFT JOIN`: si una fila falta en origen, el seguimiento se ve
+# igual, con esas columnas vacías — que es exactamente lo que habrá el día que
+# la tabla de origen se retire (ver `docs/rfc/2026-09-19-rfc-retirada-endpoints-watchlist.md`).
+#
+# Cada función devuelve la MISMA forma que su gemela antigua, clave a clave,
+# para que la ruta no tenga que saber de dónde leyó. Lo fija
+# `tests/test_follows_lectura.py`.
+
+
+def lectura_desde_follows() -> bool:
+    """Valor vigente de ``settings.FOLLOWS_LECTURA``.
+
+    Importación diferida, igual que ``db.sql_fragments.lectura_tipada_activa``:
+    el flag se lee en cada llamada para que la vuelta atrás sea un cambio de
+    configuración y no un despliegue.
+    """
+    from config import settings
+
+    return bool(settings.FOLLOWS_LECTURA)
+
+
+def _iso(valor: Any) -> Any:
+    return valor.isoformat() if isinstance(valor, datetime) else valor
+
+
+def favoritos_desde_follows(
+    user_key: str, organization_id: int, user_id: int | None = None
+) -> list[dict[str, Any]]:
+    """Forma de ``WatchlistRepository.list_items``, con la pertenencia de ``follows``.
+
+    Mismo ámbito que la gemela: la organización activa, y dentro de ella lo
+    compartido o lo propio (identidad dual). ``id`` es el del favorito de
+    origen si existe; si no, el de ``follows`` —el DTO lo exige entero y el
+    frontend sólo lo usa como clave de fila—.
+    """
+    with connect_read() as c:
+        return rows_to_dicts(
+            c.execute(
+                "SELECT COALESCE(wi.id, f.id) AS id, f.target_id AS id_externo, "
+                "       f.created_at, f.organization_id, f.visibility, wi.nota, "
+                "       l.titulo, l.importe, l.estado, l.fecha_publicacion "
+                "FROM follows f "
+                "LEFT JOIN watchlist_items wi "
+                "  ON wi.id_externo = f.target_id AND wi.user_key = f.user_key "
+                "LEFT JOIN licitaciones l ON l.id_externo = f.target_id "
+                "WHERE f.target_type = 'licitacion' AND f.kind = 'seguir' "
+                "AND f.organization_id = %s AND (f.visibility = 'organization' OR "
+                "(f.user_id = %s OR (f.user_key = %s AND (f.user_id IS NULL OR %s::int IS NULL)))) "
+                "ORDER BY f.created_at DESC, f.id DESC",
+                (organization_id, user_id, user_key, user_id),
+            )
+        )
+
+
+def empresas_desde_follows(
+    user_key: str, organization_id: int, *, user_id: int | None = None
+) -> list[dict[str, Any]]:
+    """Forma de ``db.watchlist_empresas.list_entries``, con la pertenencia de ``follows``.
+
+    ``target_id`` es texto (el objetivo es polimórfico); se compara contra
+    ``empresa_id::text`` y no al revés para que un ``target_id`` que no sea un
+    entero no tumbe la consulta con un error de cast. Las fechas salen en ISO:
+    el DTO de la ruta las declara ``str``.
+    """
+    with connect_read() as c:
+        filas = rows_to_dicts(
+            c.execute(
+                "SELECT COALESCE(w.id, f.id) AS id, e.empresa_id, e.nombre_canonico, "
+                "       e.nif_canonico, w.email, w.frequency, f.created_at, "
+                "       w.last_notified_at, f.organization_id, f.visibility "
+                "FROM follows f "
+                "JOIN empresas e ON e.empresa_id::text = f.target_id "
+                "LEFT JOIN watchlist_empresas w "
+                "  ON w.empresa_id = e.empresa_id AND w.user_key = f.user_key "
+                " AND w.organization_id = f.organization_id "
+                "WHERE f.target_type = 'empresa' AND f.kind = 'seguir' "
+                "AND f.organization_id = %s AND (f.visibility = 'organization' OR "
+                "(f.user_id = %s OR (f.user_key = %s AND (f.user_id IS NULL OR %s::int IS NULL)))) "
+                "ORDER BY e.nombre_canonico",
+                (organization_id, user_id, user_key, user_id),
+            )
+        )
+    return [{**f, "created_at": _iso(f["created_at"])} for f in filas]
+
+
+def descartes_desde_follows(user_key: str, *, user_id: int | None = None) -> list[dict[str, Any]]:
+    """Forma de ``db.radar_dismissals.list_detalle``, con la pertenencia de ``follows``.
+
+    Vigencia y caducidad (``hasta``) salen de ``follows``; ``accion``,
+    ``score`` y ``banda`` del descarte de origen más reciente, que es lo que
+    ``follows`` no guarda. ``DISTINCT ON`` por lo mismo que la gemela: dos
+    claves de un mismo usuario (antes de v129) son dos filas y un descarte.
+    Recientes primero.
+    """
+    with connect_read() as c:
+        cur = c.execute(
+            "SELECT DISTINCT ON (f.target_id) f.target_id, f.hasta, rd.accion, rd.score, "
+            "       rd.banda, f.created_at "
+            "FROM follows f "
+            "LEFT JOIN LATERAL ("
+            "  SELECT accion, score, banda FROM radar_dismissals "
+            "  WHERE id_externo = f.target_id AND user_key = f.user_key "
+            "  ORDER BY created_at DESC LIMIT 1"
+            ") rd ON TRUE "
+            "WHERE f.target_type = 'licitacion' AND f.kind = 'descartar' "
+            "AND (f.hasta IS NULL OR f.hasta > now()) "
+            "AND (f.user_id = %s OR (f.user_key = %s AND (f.user_id IS NULL OR %s::int IS NULL))) "
+            "ORDER BY f.target_id, f.created_at DESC",
+            (user_id, user_key, user_id),
+        )
+        filas = sorted(cur.fetchall(), key=lambda row: row[5], reverse=True)
+    return [
+        {
+            "id_externo": str(row[0]),
+            "hasta": row[1].isoformat() if row[1] is not None else None,
+            "accion": row[2],
+            "score": row[3],
+            "banda": row[4],
+        }
+        for row in filas
+    ]
 
 
 def contar_por_tipo() -> dict[str, int]:

@@ -68,7 +68,7 @@ export default function RadarPage() {
     openPursuit: consola.openPursuit,
   });
 
-  const { active, setSelected, openPursuit, toggleFollow, dismiss } = consola;
+  const { active, setSelected, openPursuit, dismiss } = consola;
   const abrirFicha = React.useCallback(
     (index: number) => {
       setSelected(index);
@@ -135,7 +135,6 @@ export default function RadarPage() {
               listRef={listRef}
               rows={consola.rows}
               activeIndex={consola.activeIndex}
-              followedIds={consola.followedIds}
               lastVisit={consola.lastVisit}
               rowHeight={compact ? 44 : 56}
               enTabla={enTabla}
@@ -145,7 +144,7 @@ export default function RadarPage() {
               onRetry={consola.refetch}
               onSelect={consola.setSelected}
               onDismiss={consola.dismiss}
-              onFollow={consola.toggleFollow}
+              onFollowed={consola.avisarSeguimiento}
               onOpenPursuit={(tender) => void openPursuit(tender)}
               onOpenFicha={abrirFicha}
               onExplicacion={consola.marcarExplicacion}
@@ -161,12 +160,11 @@ export default function RadarPage() {
         <RadarInspectorPanel
           modo={modo}
           tender={active}
-          followed={active ? consola.followedIds.has(active.id_externo) : false}
           opening={consola.opening}
           abierta={fichaAbierta}
           onAbiertaChange={setFichaAbierta}
-          onFollow={() => {
-            if (active) toggleFollow(active);
+          onFollowed={(ahoraSigue) => {
+            if (active) consola.avisarSeguimiento(active, ahoraSigue);
           }}
           onDismiss={() => {
             if (active) dismiss(active);

@@ -29,7 +29,9 @@ export function contarFiltros(params: Record<string, string>): number {
 
 export function useBusquedaListado(
   filtros: Record<string, string>,
-  resultado: { total: number } | undefined,
+  // El listado por cursor sólo trae `total` si se pidió (`with_total`); sin
+  // él, la página cargada basta para decir si hubo resultados.
+  resultado: { total?: number | null; items?: readonly unknown[] } | undefined,
   cargando: boolean,
 ): void {
   const ultima = useRef<string | null>(null);
@@ -42,7 +44,7 @@ export function useBusquedaListado(
     ultima.current = clave;
     registrarEvento("busqueda_realizada", {
       superficie: "listado",
-      con_resultados: resultado.total > 0 ? "si" : "no",
+      con_resultados: (resultado.total ?? resultado.items?.length ?? 0) > 0 ? "si" : "no",
       filtros: tramoDeFiltros(n),
     });
   }, [filtros, resultado, cargando]);
