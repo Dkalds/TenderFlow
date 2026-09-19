@@ -361,6 +361,17 @@ _LEGITIMATE_SWEEPS: frozenset[str] = frozenset(
         # Si algún día una ruta HTTP la llama, esta entrada deja de ser cierta
         # y hay que quitarla: la comprobación es el grep de (2).
         "db/events.py::seguidores_de_licitacion",
+        # Candidatos de los avisos F5.1/F5.2 del outbox (2026-09-19). Tocan
+        # `watchlist_items` sólo en un `EXISTS` que pregunta «¿este expediente
+        # lo sigue alguien?» —el mismo barrido que `list_pendientes` de arriba—
+        # y devuelven filas de `documentos`/`resoluciones_recurso`, nunca
+        # contenido de la watchlist ni identidades. A quién se avisa lo decide
+        # después `seguidores_de_licitacion`. Su único llamador es
+        # `services/avisos_outbox.py`, dentro del paso `event_dispatch` del
+        # cierre; ninguna ruta de `api/routes/` las alcanza (`grep -rn
+        # AvisosSeguidosRepository api/` vacío).
+        "db/repositories/novedades.py::AvisosSeguidosRepository.documentos_nuevos_seguidos",
+        "db/repositories/novedades.py::AvisosSeguidosRepository.recursos_seguidos",
         # Integridad de la cadena de hashes de auditoría (v26): es UNA
         # cadena global (no una por usuario) -- necesita leer la cola/COUNT
         # de audit_log sin filtrar por usuario para verificar continuidad.

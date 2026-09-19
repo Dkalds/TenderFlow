@@ -147,6 +147,7 @@ def check_and_notify() -> int:
         by_recipient.setdefault(entry["email"], []).append(entry)
 
     total_alertas = 0
+    en_segmento: dict[tuple[int, int, str], dict[str, Any]] = {}
     for recipient, recipient_entries in by_recipient.items():
         secciones: list[tuple[str, list[dict[str, Any]], list[dict[str, Any]]]] = []
         for entry in recipient_entries:
@@ -162,6 +163,7 @@ def check_and_notify() -> int:
                 )
                 continue
             _anotar_segmento(nuevas, entry.get("organization_id"))
+            _acumular_en_segmento(en_segmento, entry, nuevas)
             if nuevas or vencimientos:
                 secciones.append((entry["nombre_canonico"], nuevas, vencimientos))
             update_last_notified(int(entry["id"]), now_ts)
@@ -177,9 +179,96 @@ def check_and_notify() -> int:
             empresas_con_novedades=len(secciones),
         )
 
-    if total_alertas:
-        log.info("competitor_alerts_sent", alertas=total_alertas)
+    emitidos = _emitir_en_segmento(en_segmento)
+    if total_alertas or emitidos:
+        log.info("competitor_alerts_sent", alertas=total_alertas, eventos=emitidos)
     return total_alertas
+
+
+def _acumular_en_segmento(
+    acumulado: dict[tuple[int, int, str], dict[str, Any]],
+    entry: dict[str, Any],
+    adjudicaciones: list[dict[str, Any]],
+) -> None:
+    """Junta las adjudicaciones «en mi segmento» por (organización, empresa, expediente).
+
+    Varias personas de la misma organización pueden vigilar a la misma empresa;
+    el evento sale **uno** por organización —el webhook del equipo no debe
+    recibir la misma adjudicación tres veces— con todas ellas como seguidores.
+    Sólo entran las que ``_anotar_segmento`` marcó: el evento es precisamente
+    lo que distingue «le toca a tu organización» del boletín completo, que
+    sigue saliendo por correo.
+    """
+    organization_id = entry.get("organization_id")
+    user_id = entry.get("user_id")
+    if organization_id is None:
+        return
+    for adj in adjudicaciones:
+        motivo = adj.get("_motivo_segmento")
+        if not motivo:
+            continue
+        clave = (int(organization_id), int(entry["empresa_id"]), str(adj["licitacion_id"]))
+        if clave not in acumulado:
+            acumulado[clave] = {
+                "empresa": entry.get("nombre_canonico"),
+                "adjudicacion": adj,
+                "motivo": motivo,
+                "seguidores": [],
+            }
+        # Sólo por id (ADR-030): una entrada legada sin `user_id` no tiene a
+        # quién pintarle la campana, pero el webhook de su organización sale.
+        if user_id is not None:
+            fila = {"user_id": int(user_id), "organization_id": int(organization_id)}
+            if fila not in acumulado[clave]["seguidores"]:
+                acumulado[clave]["seguidores"].append(fila)
+
+
+def _emitir_en_segmento(acumulado: dict[tuple[int, int, str], dict[str, Any]]) -> int:
+    """Escribe un ``competidor.adjudicacion_en_mi_segmento`` por entrada (F3.4).
+
+    Best-effort por evento: un fallo al escribir uno no puede impedir los demás
+    ni, sobre todo, el correo de competidores, que ya salió arriba.
+    """
+    from db.events import append_domain_event
+
+    emitidos = 0
+    for (organization_id, empresa_id, licitacion_id), datos in acumulado.items():
+        adj = datos["adjudicacion"]
+        motivo = datos["motivo"]
+        empresa = str(datos.get("empresa") or "Un competidor vigilado")
+        try:
+            append_domain_event(
+                "competidor.adjudicacion_en_mi_segmento",
+                licitacion_id,
+                "licitacion",
+                {
+                    "id_externo": licitacion_id,
+                    "licitacion_id": licitacion_id,
+                    "titulo": adj.get("titulo"),
+                    "empresa_id": empresa_id,
+                    "empresa": datos.get("empresa"),
+                    "organo_contratacion": adj.get("organo_contratacion"),
+                    "cpv": adj.get("cpv"),
+                    "importe_adjudicado": adj.get("importe_adjudicado"),
+                    "fecha_adjudicacion": adj.get("fecha_adjudicacion"),
+                    "motivo": str(motivo.get("motivo") or ""),
+                    "referencia": motivo.get("referencia"),
+                    "aviso_titulo": f"{empresa} gana en tu terreno",
+                    "aviso_detalle": f"Te toca: {_motivo_legible(motivo)}.",
+                    "organization_id": organization_id,
+                    "seguidores": datos["seguidores"],
+                },
+                organization_id=organization_id,
+            )
+            emitidos += 1
+        except Exception as exc:
+            log.warning(
+                "competitor_segmento_evento_failed",
+                organization_id=organization_id,
+                empresa_id=empresa_id,
+                error=str(exc)[:200],
+            )
+    return emitidos
 
 
 def _en_mi_segmento(adjudicacion: dict[str, Any]) -> list[tuple[int, dict[str, Any]]]:

@@ -77,6 +77,9 @@ class ResultadoDespacho:
     correos: int = 0
     webhooks: int = 0
     fallidos: int = 0
+    #: Pendientes más viejos que ``EVENT_DISPATCH_MAX_AGE_HOURS``: se dieron
+    #: por despachados sin entregarse (ver :func:`caducar_viejos`).
+    caducados: int = 0
 
 
 # ── Resolución de destinatarios ──────────────────────────────────────────────
@@ -157,11 +160,22 @@ def _destinatarios(evento: dict[str, Any]) -> list[Destinatario]:
         if not isinstance(fila, dict):
             continue
         user_key = str(fila.get("user_key") or "")
-        if not user_key:
-            continue
         # ``user_id`` llega desde v129 (``services/contract_events``); los
         # eventos anteriores en cola no lo traen y la alerta sale sólo con clave.
         bruto = fila.get("user_id")
+        if not user_key:
+            # Los productores nuevos (F1.5, F3.4, F5.1, F5.2) mandan sólo el
+            # ``user_id`` (ADR-030): la traducción a la clave de la bandeja
+            # vive aquí, en el único sitio que ya la hacía para ``pursuit.*``.
+            if bruto is None:
+                continue
+            org_fila = int(fila.get("organization_id") or organization_id or 0)
+            if not org_fila:
+                continue
+            resuelto = _usuario_a_destinatario(int(bruto), org_fila)
+            if resuelto is not None and resuelto.user_id != actor_id:
+                seguidores.append(resuelto)
+            continue
         seguidores.append(
             Destinatario(
                 user_key=user_key,
@@ -170,7 +184,18 @@ def _destinatarios(evento: dict[str, Any]) -> list[Destinatario]:
                 email=str(fila["email"]) if fila.get("email") else None,
             )
         )
-    return seguidores
+    # La misma persona puede llegar dos veces —favorito y responsable de la
+    # oportunidad sobre el mismo expediente—; un solo aviso y una sola línea
+    # de digest por persona y organización.
+    unicos: list[Destinatario] = []
+    vistas: set[tuple[str, int]] = set()
+    for destinatario in seguidores:
+        clave = (destinatario.user_key, destinatario.organization_id)
+        if clave in vistas:
+            continue
+        vistas.add(clave)
+        unicos.append(destinatario)
+    return unicos
 
 
 # ── Canales ──────────────────────────────────────────────────────────────────
@@ -182,16 +207,26 @@ def _titulo_y_cuerpo(evento: dict[str, Any], spec: EspecificacionEvento) -> tupl
     referencia = str(
         payload.get("titulo") or payload.get("licitacion_id") or payload.get("id_externo") or ""
     )
-    titulo = f"{spec.titulo}: {referencia}".strip().rstrip(":")[:200]
+    # F5.3: el aviso con nombre («Plazo ampliado al 12/10») sustituye al
+    # título genérico de la familia. Los eventos anteriores a F5.3 que sigan en
+    # cola no lo traen y salen con el título del catálogo, como siempre.
+    encabezado = str(payload.get("aviso_titulo") or spec.titulo)
+    titulo = f"{encabezado}: {referencia}".strip().rstrip(":")[:200]
+    partes: list[str] = []
+    if payload.get("aviso_detalle"):
+        partes.append(str(payload["aviso_detalle"]))
     cambios = payload.get("valores")
     if isinstance(cambios, dict) and cambios:
-        cuerpo = " · ".join(
-            f"{campo}: {(valor or {}).get('antes', '—')} → {(valor or {}).get('despues', '—')}"
-            for campo, valor in sorted(cambios.items())
-            if isinstance(valor, dict)
+        partes.append(
+            " · ".join(
+                f"{campo}: {(valor or {}).get('antes', '—')} → {(valor or {}).get('despues', '—')}"
+                for campo, valor in sorted(cambios.items())
+                if isinstance(valor, dict)
+            )
         )
-    else:
-        cuerpo = str(payload.get("detalle") or referencia)
+    elif payload.get("detalle"):
+        partes.append(str(payload["detalle"]))
+    cuerpo = " — ".join(p for p in partes if p) or referencia
     return titulo, cuerpo[:1000]
 
 
@@ -224,6 +259,19 @@ def _tipo_notificacion(evento: dict[str, Any], spec: EspecificacionEvento) -> st
         # misma oportunidad son dos avisos.
         payload = evento.get("payload") or {}
         return f"{base}:{payload.get('comment_id')}"
+    # F1.5, F3.4, F5.1, F5.2: el discriminante es el hecho, no el evento, por
+    # la misma razón que en `licitacion.cambiada` — un segundo documento o un
+    # segundo competidor sobre el mismo expediente es otro aviso, y el mismo
+    # hecho reemitido no debe duplicar la bandeja.
+    payload = evento.get("payload") or {}
+    if spec.tipo == "licitacion.documento_nuevo":
+        return f"{base}:{payload.get('documento_id')}"
+    if spec.tipo == "licitacion.recurso":
+        return f"{base}:{payload.get('resolucion_id')}"
+    if spec.tipo == "competidor.adjudicacion_en_mi_segmento":
+        return f"{base}:{payload.get('empresa_id')}"
+    if spec.tipo == "cuenta.vencimiento_proximo":
+        return f"{base}:{payload.get('fecha_fin')}"
     return base
 
 
@@ -306,22 +354,25 @@ def _canal_digest(evento: dict[str, Any], spec: EspecificacionEvento) -> tuple[i
     licitacion_id = str(payload.get("licitacion_id") or payload.get("id_externo") or "")
     encoladas = 0
     enviados = 0
-    for destinatario in _destinatarios(evento):
+    for posicion, destinatario in enumerate(_destinatarios(evento)):
         modo = _frecuencia_en_ajustes(destinatario, spec, "email") or modo_email_de(
             destinatario.user_key, spec.tipo, user_id=destinatario.user_id
         )
-        if modo == "off" or not destinatario.email:
+        if modo == "off":
+            continue
+        email = destinatario.email or _email_de(destinatario)
+        if not email:
             continue
         if modo == "daily":
             from services.watchlist import store_pending_digest
 
-            # `entry_id` es el id del evento y no el del pursuit: dos eventos
-            # sobre la misma oportunidad son dos avisos distintos, y el único
-            # de `pending_digests` es (entry_id, licitacion_id).
+            entry_id = entry_id_de_digest(int(evento["id"]), posicion)
+            if entry_id is None:
+                continue
             store_pending_digest(
                 destinatario.user_key,
-                destinatario.email,
-                int(evento["id"]),
+                email,
+                entry_id,
                 licitacion_id,
                 "daily",
                 now_utc_iso(),
@@ -334,13 +385,81 @@ def _canal_digest(evento: dict[str, Any], spec: EspecificacionEvento) -> tuple[i
         from observability.alerts import enviar_email_transaccional
 
         if enviar_email_transaccional(
-            to_addr=destinatario.email,
-            subject=asunto_evento(spec.titulo, licitacion_id),
+            to_addr=email,
+            subject=asunto_evento(str(payload.get("aviso_titulo") or spec.titulo), licitacion_id),
             texto=texto,
             html=html,
         ):
             enviados += 1
     return encoladas, enviados
+
+
+#: Huecos por evento en el ``entry_id`` negativo de ``pending_digests``.
+DIGEST_HUECOS_POR_EVENTO = 100
+
+
+def entry_id_de_digest(event_id: int, posicion: int) -> int | None:
+    """``entry_id`` con el que un evento se encola en ``pending_digests``.
+
+    Negativo, y codifica el evento y la posición del destinatario:
+    ``-(event_id * 100 + posicion)``. Dos restricciones de la tabla obligan a
+    esta forma, y las dos se resolverían con una columna que hoy no existe:
+
+    - ``entry_id`` apuntaba a una regla (``watchlist_rules``) o a una entrada
+      legada (``watchlist_cpv``) sin discriminador. Con el id del evento en
+      positivo, un evento cuyo id coincidiera con el de una regla del mismo
+      usuario salía en el digest con los criterios de esa regla. El signo
+      negativo es el discriminador: ninguna secuencia de esas tablas es
+      negativa, y ``load_pending_digests`` sólo cruza con ``domain_events`` las
+      filas con ``entry_id < 0``.
+    - El único es ``(entry_id, licitacion_id)``, sin destinatario. Con un
+      ``entry_id`` por evento, el segundo seguidor del mismo expediente chocaba
+      con el primero y su fila se descartaba en silencio (``DO NOTHING``).
+
+    La posición es la del destinatario en :func:`_destinatarios`, que es
+    determinista: reintentar el mismo evento reproduce los mismos ``entry_id``
+    y el ``ON CONFLICT`` lo hace idempotente.
+
+    Devuelve ``None`` cuando no hay hueco —más de 99 destinatarios para un
+    evento, o un ``event_id`` por encima de ~21 millones, donde el producto ya
+    no cabe en el ``integer`` de la columna—: ese destinatario se queda sin la
+    línea del digest (la campana sí le llega) y el log lo dice. Una columna
+    propia para el evento en ``pending_digests`` retiraría este límite; hasta
+    entonces, la cola lleva miles de eventos, no millones.
+    """
+    maximo_int4 = 2**31 - 1
+    codificado = event_id * DIGEST_HUECOS_POR_EVENTO + posicion
+    if posicion >= DIGEST_HUECOS_POR_EVENTO or codificado > maximo_int4:
+        log.warning("event_dispatch_digest_sin_hueco", event_id=event_id, posicion=posicion)
+        return None
+    return -codificado
+
+
+def event_id_de_entry(entry_id: int) -> int | None:
+    """Inversa de :func:`entry_id_de_digest`: el evento de una fila del digest.
+
+    ``None`` para las filas de reglas (``entry_id`` positivo).
+    """
+    if entry_id >= 0:
+        return None
+    return (-entry_id) // DIGEST_HUECOS_POR_EVENTO
+
+
+def _email_de(destinatario: Destinatario) -> str | None:
+    """Correo del destinatario cuando el productor no lo trajo en el payload.
+
+    Los seguidores de un expediente viajan con clave e id, no con correo: el
+    correo es dato personal y el evento se guarda para siempre en una tabla
+    append-only. Se resuelve aquí, en el momento de entregar, y sólo para el
+    canal que lo necesita.
+    """
+    if destinatario.user_id is None:
+        return None
+    from db.users import get_user_by_id
+
+    usuario = get_user_by_id(int(destinatario.user_id))
+    email = (usuario or {}).get("email")
+    return str(email) if email else None
 
 
 def _sello_unix(marca: str) -> int:
@@ -484,9 +603,60 @@ def _despachar_canal(
         _canal_cache()
 
 
-def dispatch_pending(limit: int = LOTE_POR_PASADA) -> ResultadoDespacho:
-    """Reparte los eventos pendientes. Devuelve el desglose de la pasada."""
+def caducar_viejos(max_age_hours: int | None = None) -> int:
+    """Da por despachados, sin entregarlos, los pendientes más viejos que el tope.
+
+    **Decisión sobre la cola acumulada** (2026-09-19, S4.1): el despachador
+    estuvo escrito y sin cablear, así que al enchufarlo la cola trae semanas de
+    eventos. No se entregan: un «te han asignado» de hace diez días, o un
+    webhook que anuncia un cambio de plazo ya vencido, es ruido que enseña a
+    ignorar el canal. Lo que supera ``EVENT_DISPATCH_MAX_AGE_HOURS`` (48 h por
+    defecto) sale de la cola marcado como despachado, con el conteo por tipo en
+    el log (``event_dispatch_caducados``) y en ``ops_events``
+    (``domain_events_caducados``), que es la métrica que sobrevive a los
+    runners efímeros de Actions.
+
+    La misma regla vale después del arranque: un evento que se queda atascado
+    —un canal que falla pasada tras pasada, o el despachador apagado con
+    ``EVENT_DISPATCH_ENABLED=0`` más de dos días— caduca igual en vez de salir
+    tarde. El evento no se borra: sigue en ``domain_events`` para la
+    cronología y la auditoría, sólo deja de estar pendiente.
+    """
+    from datetime import timedelta
+
+    from config.settings import event_dispatch_max_age_hours
+    from db.events import caducar_pendientes
+
+    horas = max_age_hours if max_age_hours is not None else event_dispatch_max_age_hours()
+    limite = (now_utc() - timedelta(hours=max(1, int(horas)))).isoformat()
+    conteo = caducar_pendientes(limite)
+    total = sum(conteo.values())
+    if total:
+        log.warning("event_dispatch_caducados", total=total, horas=horas, por_tipo=conteo)
+        try:
+            from observability.ops_events import record_event
+
+            record_event(
+                "domain_events_caducados",
+                value=float(total),
+                detail=json.dumps(conteo, ensure_ascii=False, sort_keys=True)[:500],
+            )
+        except Exception:  # pragma: no cover - la métrica nunca tumba el reparto
+            log.debug("event_dispatch_caducados_sin_ops_event", exc_info=True)
+    return total
+
+
+def dispatch_pending(
+    limit: int = LOTE_POR_PASADA, *, max_age_hours: int | None = None
+) -> ResultadoDespacho:
+    """Reparte los eventos pendientes. Devuelve el desglose de la pasada.
+
+    Antes de repartir caduca lo que supera la antigüedad máxima
+    (:func:`caducar_viejos`): así el lote de la pasada nunca se gasta en
+    eventos que no se van a entregar.
+    """
     resultado = ResultadoDespacho()
+    resultado.caducados = caducar_viejos(max_age_hours)
     for evento in pending_events(limit):
         event_id = int(evento["id"])
         spec = CATALOGO.get(str(evento.get("event_type") or ""))
@@ -535,6 +705,15 @@ def run() -> int:
     igual cuántas pasadas haya en un día. Un fallo aquí no puede impedir el
     despacho del resto de la cola.
     """
+    from config.settings import event_dispatch_enabled
+
+    if not event_dispatch_enabled():
+        # Los eventos se siguen escribiendo; esperan en la cola y, al volver a
+        # encenderlo, lo que supere la antigüedad máxima caduca sin salir.
+        log.info("event_dispatch_desactivado")
+        return 0
+
+    from services.avisos_outbox import emitir_avisos
     from services.pursuit_tasks import emitir_tareas_que_vencen
 
     try:
@@ -543,12 +722,18 @@ def run() -> int:
             log.info("event_dispatch_tareas_que_vencen", emitidos=emitidos)
     except Exception:
         log.warning("event_dispatch_tareas_que_vencen_failed", exc_info=True)
+    # F1.5, F5.1 y F5.2: tampoco son mutaciones de nadie —un documento nuevo
+    # lo trae la ingesta, un contrato entra solo en su ventana de vencimiento—
+    # así que se derivan aquí, con cursor, igual que las tareas que vencen.
+    # `emitir_avisos` aísla cada productor: uno roto no para a los demás.
+    emitir_avisos()
     resultado = dispatch_pending()
-    if resultado.procesados or resultado.fallidos or resultado.ignorados:
+    if resultado.procesados or resultado.fallidos or resultado.ignorados or resultado.caducados:
         log.info(
             "event_dispatch_done",
             procesados=resultado.procesados,
             ignorados=resultado.ignorados,
+            caducados=resultado.caducados,
             in_app=resultado.in_app,
             digest=resultado.digest,
             correos=resultado.correos,

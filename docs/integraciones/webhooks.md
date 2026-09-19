@@ -182,6 +182,42 @@ por comas, objetos como `clave=valor`), se omiten los vacíos, se recortan a
 evento en el catálogo seguido de `titulo`, `licitacion_id`, `id_externo` o
 `rule_id` del payload, el primero que exista.
 
+## Eventos de avisos sobre lo que sigues
+
+Los reparte el despachador del outbox (`scheduler/jobs/event_dispatch.py`),
+que corre en cada pasada del cierre (paso `event_dispatch`, cada cuatro horas).
+Todos llevan `organization_id` y sólo llegan a los webhooks de esa
+organización (más los globales sin dueño). La lista completa y vigente es la de
+`GET /api/v1/webhooks/event-types`; esta tabla describe los que avisan de algo
+que pasó en un expediente, una cuenta o un competidor que la organización
+vigila.
+
+| Evento | Cuándo sale | Campos que siempre trae |
+|---|---|---|
+| `licitacion.cambiada` | Cambia estado, importe, plazo, fin, duración, CPV o URL de un expediente seguido (favorito u oportunidad abierta). | `id_externo`, `changed_fields`, `valores` (`{campo: {antes, despues}}`), `history_id`, `subtipo`, `aviso_titulo` |
+| `licitacion.documento_nuevo` | Aparece un adjunto nuevo en un expediente seguido. El mismo pliego con el token de la URL rotado **no** cuenta (identidad por `source_hash`). | `id_externo`, `documento_id`, `tipo` (`legal`, `technical`, `additional`), `filename` |
+| `licitacion.recurso` | Se publica una resolución de recurso (TACRC) enlazada a un expediente seguido. | `id_externo`, `resolucion_id`, `sentido` (`estimado`, `desestimado`, `inadmitido` o `null`), `tribunal`, `numero_resolucion` |
+| `competidor.adjudicacion_en_mi_segmento` | Una empresa que alguien de la organización vigila gana en un órgano que la organización sigue como cuenta, o en un CPV (4 dígitos) donde tiene oportunidades abiertas. Uno por organización, empresa y expediente. | `id_externo`, `empresa_id`, `empresa`, `motivo` (`cuenta` u `oportunidad_abierta`), `referencia` |
+| `cuenta.publicacion_nueva` | Entra en el corpus un expediente de un órgano que la organización sigue como cuenta objetivo. | `id_externo`, `organo`, `cuenta_id` |
+| `cuenta.vencimiento_proximo` | Un contrato adjudicado de una cuenta seguida entra en los seis meses previos a su fecha de fin (fin publicado o estimado por duración). Una vez por fecha de fin: una prórroga vuelve a avisar. | `id_externo`, `organo`, `cuenta_id`, `fecha_fin` |
+
+**`subtipo` y `aviso_titulo`.** Los avisos de `licitacion.*` traen el nombre
+de lo que pasó, calculado por `services/avisos.py`: `subtipo` es uno de
+`anulado`, `desierto`, `plazo_ampliado`, `plazo_acortado`,
+`importe_corregido`, `adjudicado`, `documento_nuevo`, `recurso` o `cambio` (el
+genérico, cuando el cambio no encaja en ninguno), y `aviso_titulo` es el
+titular legible («Plazo ampliado al 12/10/2026»). Son campos **añadidos**: el
+resto del payload de `licitacion.cambiada` no cambia de forma.
+
+**`seguidores`.** El payload incluye a quién avisa la campana (`user_id` y
+`organization_id`; los favoritos antiguos también su clave opaca). Es dato
+interno de la organización: no lo reenvíes fuera de ella.
+
+**Eventos viejos.** El despachador no entrega eventos con más de
+`EVENT_DISPATCH_MAX_AGE_HOURS` horas (48 por defecto): si el reparto estuvo
+parado, lo acumulado caduca sin salir en vez de llegar de golpe. Un receptor
+no recibirá nunca un aviso de hace una semana.
+
 ## Cabeceras
 
 | Cabecera | Contenido | Para qué |

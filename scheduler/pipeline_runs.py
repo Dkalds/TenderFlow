@@ -7,7 +7,7 @@ en estas funciones para garantizar paridad.
 Secuencia canónica::
 
     ingesta → ML scoring → analytics export → KPI precompute
-            → aggregates precompute → watchlist notify → digests
+            → aggregates precompute → watchlist notify → event dispatch → digests
             → DLQ retry → anomaly checks → retention cleanup
             → ML retrain → drift checks
 
@@ -59,6 +59,7 @@ CANONICAL_STEPS: list[str] = [
     "kpi_precompute",
     "aggregates_precompute",
     "watchlist_notify",
+    "event_dispatch",
     "digests",
     "informes_programados",
     "dlq_retry",
@@ -109,6 +110,11 @@ STEP_TIER: dict[str, StepTier] = {
     "kpi_precompute": "bloqueante",
     "aggregates_precompute": "bloqueante",
     "watchlist_notify": "bloqueante",
+    # advisory: el outbox es persistente. Si el reparto falla, los eventos
+    # siguen pendientes y la pasada siguiente los entrega (dentro de la
+    # antigüedad máxima, ver `event_dispatch.caducar_viejos`); un receptor de
+    # webhook caído o un SMTP lento no pueden poner la ingesta en rojo.
+    "event_dispatch": "advisory",
     "digests": "bloqueante",
     # advisory: el informe semanal es una función opcional que cada
     # organización activa por su cuenta. Un ESP caído no puede tumbar la
@@ -604,6 +610,30 @@ def _run_digests() -> dict[str, str]:
         lambda: send_pending_digests("weekly"),
     )
     return resultado
+
+
+def _run_event_dispatch() -> str:
+    """Reparte el outbox de ``domain_events`` (S4.1, ADR-027).
+
+    Va después de ``watchlist_notify`` —que escribe los eventos de reglas y de
+    competidores— y antes de ``digests``: el despachador encola en
+    ``pending_digests`` los avisos en modo ``daily``, y así el digest de esta
+    misma pasada ya los incluye. Sin dependencia declarada en ``STEP_DEPS``: un
+    fallo de ``watchlist_notify`` no impide repartir lo que otros productores
+    (oportunidades, tareas, cambios de expediente) dejaron en la cola.
+
+    ``EVENT_DISPATCH_ENABLED=0`` lo apaga sin desplegar (``skipped``).
+    """
+    from config.settings import event_dispatch_enabled
+
+    if not event_dispatch_enabled():
+        log.info("pipeline_event_dispatch_desactivado")
+        return STEP_SKIPPED
+    from scheduler.jobs.event_dispatch import run as run_event_dispatch
+
+    procesados = run_event_dispatch()
+    log.info("pipeline_event_dispatch_completed", procesados=procesados)
+    return STEP_OK
 
 
 def _run_informes_programados() -> str:
