@@ -484,8 +484,13 @@ class Settings(ResumenPregenSettings, BaseSettings):
     # medias por CPV-4 con muestras de tres expedientes. `margen` se deja
     # intacta porque es la única que viene de una predicción por licitación.
     #
+    # `organo_anula_frecuente` (F1.4) **no es una dimensión**: no cuenta en la
+    # suma de 100. Son los puntos que se restan cuando el órgano anula o deja
+    # desiertos al menos el 25 % de sus expedientes resueltos (mínimo diez, 24
+    # meses). 0 la apaga; el perfil de usuario puede sobreescribirla.
+    #
     # Overridable via ENV como JSON:
-    #   SCORING_WEIGHTS='{"importe":20,"plazo":15,"competencia":20,"margen":20,"afinidad":15,"senal_tecnica":10}'
+    #   SCORING_WEIGHTS='{"importe":20,"plazo":15,"competencia":20,"margen":20,"afinidad":15,"senal_tecnica":10,"organo_anula_frecuente":8}'
     SCORING_WEIGHTS: dict[str, int] = {
         "importe": 20,
         "plazo": 15,
@@ -493,6 +498,7 @@ class Settings(ResumenPregenSettings, BaseSettings):
         "margen": 20,
         "afinidad": 15,
         "senal_tecnica": 10,
+        "organo_anula_frecuente": 8,
     }
     # Keywords de afinidad configurables por el usuario (casefold-substring sobre título).
     # Si está vacía, la dimensión afinidad se omite del desglose y su peso se
