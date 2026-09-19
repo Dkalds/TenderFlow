@@ -2,13 +2,7 @@
 
 import { startTransition, useCallback, useEffect, useMemo, useState } from "react";
 import { parseAsString, useQueryState } from "nuqs";
-import {
-  rowPaginationFeature,
-  rowSelectionFeature,
-  rowSortingFeature,
-  tableFeatures,
-  useTable,
-} from "@tanstack/react-table";
+import { useTable } from "@tanstack/react-table";
 import { Comparator } from "@/components/comparator";
 import { useFiltroEtiqueta } from "@/components/etiquetas/filtro-etiqueta";
 import { formatNumber } from "@/lib/utils";
@@ -25,26 +19,13 @@ import { DetallePie } from "./_components/detalle-pie";
 import { DetalleSeleccion } from "./_components/detalle-seleccion";
 import { DetalleTabla } from "./_components/detalle-tabla";
 import { buildCsv } from "./_hooks/detalle-table-model";
+import { detalleTableFeatures } from "./_hooks/detalle-table-features";
 import { useBusquedaListado } from "./_hooks/use-busqueda-listado";
 import { useCierreRecorte } from "./_hooks/use-cierre-recorte";
 import { useDetalleFavoritos } from "./_hooks/use-detalle-favoritos";
 import { useDetalleQueries, useDetailWithScore } from "./_hooks/use-detalle-queries";
 import { useDetalleRows, useDetalleTableState } from "./_hooks/use-detalle-table";
 import { useDetalleTeclado } from "./_hooks/use-detalle-teclado";
-
-/**
- * Features de v9 que usa esta tabla.
- *
- * Orden y paginación son manuales (los resuelve el servidor), así que se
- * registran las features para disponer de su estado y sus métodos pero sin
- * row model: registrar `sortedRowModel`/`paginatedRowModel` aquí volvería a
- * ordenar y a recortar en cliente una página que ya viene hecha.
- */
-const detalleTableFeatures = tableFeatures({
-  rowSortingFeature,
-  rowPaginationFeature,
-  rowSelectionFeature,
-});
 
 /**
  * Detalle — tabla de trabajo con inspector en el mismo plano.

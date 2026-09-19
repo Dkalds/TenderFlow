@@ -22,6 +22,7 @@ import {
 } from "@/hooks/use-radar";
 import { daysLeft } from "../_components/radar-shared";
 import type { SegmentKey, SortKey } from "./radar-segmentos";
+import { useExplicacionesAbiertas } from "./use-explicaciones-abiertas";
 import { type RadarProximasConsola, useRadarProximas } from "./use-radar-proximas";
 
 /**
@@ -188,13 +189,7 @@ export function useRadarConsola(): RadarConsola {
     [dismissed, restore],
   );
 
-  // F1.3 — señales cuya explicación se abrió; el triaje lo lleva como
-  // `explicacion_abierta` (mide si acompaña a la decisión, no curiosidad).
-  const explicaciones = React.useRef(new Set<string>());
-  const marcarExplicacion = React.useCallback(
-    (tender: RadarTender) => void explicaciones.current.add(tender.id_externo),
-    [],
-  );
+  const { marcar: marcarExplicacion, abierta: explicacionAbierta } = useExplicacionesAbiertas();
 
   // Descartar, silenciar y posponer (F5.6) son el mismo POST con otra acción.
   // El score y la banda viajan con él: son los que el usuario tenía delante al
@@ -205,7 +200,7 @@ export function useRadarConsola(): RadarConsola {
         idExterno: tender.id_externo,
         score: tender.score,
         banda: esBandaConocida(tender.band) ? tender.band : null,
-        ...(explicaciones.current.has(tender.id_externo) ? { explicacionAbierta: true } : {}),
+        ...(explicacionAbierta(tender.id_externo) ? { explicacionAbierta: true } : {}),
         ...(accion ? { accion, dias } : {}),
       });
       const titulo = !accion
@@ -218,7 +213,7 @@ export function useRadarConsola(): RadarConsola {
         action: { label: "Deshacer", onClick: () => restore(tender.id_externo) },
       });
     },
-    [dismissTender, restore],
+    [dismissTender, restore, explicacionAbierta],
   );
   const dismiss = React.useCallback((tender: RadarTender) => aplazar(tender), [aplazar]);
 
