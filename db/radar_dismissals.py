@@ -158,7 +158,16 @@ def list_ids(user_key: str, *, user_id: int | None = None) -> list[str]:
     reaparición sea un hecho observable en la tabla y no un borrado que nadie
     puede auditar. La limpieza, si algún día hace falta, es retención — no
     lectura.
+
+    Con ``FOLLOWS_LECTURA`` encendido la pertenencia sale de ``follows``
+    (ADR-031 §B, fase 2): los ids de :func:`list_detalle`, que ya lee de allí.
     """
+    from db.repositories import follows as _follows
+
+    if _follows.lectura_desde_follows():
+        return [
+            d["id_externo"] for d in _follows.descartes_desde_follows(user_key, user_id=user_id)
+        ]
     with connect_read() as c:
         cur = c.execute(
             "SELECT DISTINCT ON (id_externo) id_externo, created_at FROM radar_dismissals "
@@ -178,7 +187,15 @@ def list_detalle(user_key: str, *, user_id: int | None = None) -> list[dict[str,
 
     ``DISTINCT ON (id_externo)``: un usuario que descartó lo mismo bajo dos
     claves (antes de v129) tiene dos filas y un solo descarte.
+
+    Con ``FOLLOWS_LECTURA`` encendido, qué está descartado y hasta cuándo lo
+    decide ``follows``; esta tabla sólo aporta acción, score y banda (ver
+    :func:`db.repositories.follows.descartes_desde_follows`).
     """
+    from db.repositories import follows as _follows
+
+    if _follows.lectura_desde_follows():
+        return _follows.descartes_desde_follows(user_key, user_id=user_id)
     with connect_read() as c:
         cur = c.execute(
             "SELECT DISTINCT ON (id_externo) id_externo, hasta, accion, score, banda, "

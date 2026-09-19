@@ -585,6 +585,14 @@ class Settings(ResumenPregenSettings, BaseSettings):
     # fragmento devuelve la columna vieja byte a byte. La escritura dual no
     # depende de esto — `db/upsert.py` escribe las sombras en cuanto existen.
     NUCLEO_TIPADO_LECTURA: bool = False
+    # ── Seguimiento unificado (T1, ADR-031 §B fase 2, v130) ────────────────
+    # Con True, `GET /watchlist/items`, `GET /competitive/watchlist` y los
+    # descartes del Radar deciden la pertenencia leyendo `follows`; la tabla de
+    # origen sólo aporta las columnas que `follows` no tiene (nota, correo,
+    # frecuencia, acción del descarte). Default False hasta que
+    # `scripts/check_follows_paridad.py` dé cero diferencias en producción.
+    # Las escrituras no dependen de esto: la doble escritura ya está activa.
+    FOLLOWS_LECTURA: bool = False
     # Extracción tipada de ficha del pliego. Requiere credencial para el modelo
     # seleccionado; se activa de forma explícita para no generar gasto por el
     # mero despliegue de la migración.

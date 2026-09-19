@@ -17,7 +17,7 @@ Todos los RFCs siguen esta estructura.
 
 <!-- BEGIN indice-rfc (generado por scripts/gen_rfc_index.py — no editar a mano) -->
 
-**75 RFC**, de los cuales **19** siguen abiertos. `approved` 2 · `draft` 1 · `implemented` 50 · `obsolete` 4 · `partially-implemented` 15 · `review` 1 · `superseded` 2.
+**76 RFC**, de los cuales **20** siguen abiertos. `approved` 2 · `draft` 2 · `implemented` 50 · `obsolete` 4 · `partially-implemented` 15 · `review` 1 · `superseded` 2.
 
 **Criterio de `implemented`: que el código exista en el árbol, no que el PR se haya mergeado.** Un RFC cuyo código está pero cuyo PR quedó abierto está implementado; uno cuyo PR se mergeó sin dejar código, no.
 
@@ -41,6 +41,7 @@ Esta tabla se genera con `python scripts/gen_rfc_index.py`; CI la verifica con `
 | [Plan integral ejecutable para 7 mejoras transversales (typing, CI tests, markers, migraciones, observabilidad, DX Windows, graphify)](2026-05-28-rfc-plan-integral-7-mejoras.md) | `approved` | 2026-05-28 | — |
 | [Retirada de tres endpoints de analítica sin consumidor y del listado por offset](2026-09-06-rfc-retirada-endpoints-analitica.md) | `approved` | 2026-09-06 | — |
 | [Retirar `user_key` del payload del webhook `watchlist_rule.matched`](2026-09-18-rfc-retirar-user-key-payload-watchlist-rule-matched.md) | `draft` | 2026-09-18 | — |
+| [Retirada de los endpoints antiguos de seguimiento (favoritos, empresas vigiladas y descartes) en favor de `/follows`](2026-09-19-rfc-retirada-endpoints-watchlist.md) | `draft` | 2026-09-19 | — |
 | [Documentar la fachada db.database](001-documentar-facade-db-database.md) | `implemented` | 2026-05-24 | — |
 | [Add PEP 561 py.typed marker to shared/ package](040-py-typed-marker-shared.md) | `implemented` | 2026-05-24 | — |
 | [Fortalecer validación de secretos y contraseñas en arranque](042-rotar-secretos-fortalecer-passwords.md) | `implemented` | 2026-05-24 | — |
