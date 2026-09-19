@@ -93,8 +93,14 @@ export interface EventosProducto {
      * pantalla al pintar una pieza que se quiere medir (la banda de F5.4). Sin
      * ese valor, la banda tendría que fingir que vino del rail o del
      * conmutador.
+     *
+     * `glosario` y `cita` son las dos aperturas que ocurren dentro de una
+     * pantalla por decisión del usuario, sin navegar: la ayuda de un término
+     * (F1.8) y la página del pliego con la cita resaltada (F2.5). Van con su
+     * propio origen para que no inflen `pantalla`, que mide piezas que la
+     * pantalla pinta sola.
      */
-    origen: "rail" | "rail_movil" | "conmutador" | "pantalla";
+    origen: "rail" | "rail_movil" | "conmutador" | "pantalla" | "glosario" | "cita";
     vista?: string;
     /**
      * F1.8 — se abrió una ayuda del glosario en este espacio. **Sin el

@@ -30,6 +30,9 @@ interface LicitacionDetail {
   fuente: string | null;
   tecnologia: string | null;
   tipo_contrato: string | null;
+  /** F1.7 — código CODICE crudo; la etiqueta la pone `CodigoLegible`. */
+  procedimiento?: string | null;
+  tramitacion?: string | null;
   provincia: string | null;
   fecha_limite: string | null;
   fecha_inicio: string | null;

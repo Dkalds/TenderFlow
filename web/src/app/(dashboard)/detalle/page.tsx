@@ -53,7 +53,7 @@ const detalleTableFeatures = tableFeatures({
  * abrir. Ahora el inspector (`components/detail-inspector.tsx`) convive con la
  * tabla y reparte esos once bloques en cinco pestañas.
  *
- * La tabla conserva las trece columnas, el orden asc/desc/none con cabecera
+ * La tabla conserva las catorce columnas, el orden asc/desc/none con cabecera
  * pegajosa, la selección múltiple con select-all, el punto de «nueva», la
  * estrella de watchlist, el cross-filter desde CCAA y Tecnología, la densidad,
  * la paginación completa con contador, la exportación y los estados de carga,
