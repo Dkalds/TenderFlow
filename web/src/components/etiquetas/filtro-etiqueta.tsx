@@ -65,7 +65,13 @@ export function useFiltroEtiqueta(
     (id: string) => !activo || (mapa != null && pasaFiltroEtiqueta(mapa[id], filtro)),
     [activo, mapa, filtro],
   );
-  return { filtro, setFiltro, activo, cargando: activo && porObjeto.isLoading, pasa };
+  // `isPending` y no `isLoading`: con la organización todavía sin resolver la
+  // consulta está retenida y `isLoading` diría que ya no carga, así que el
+  // filtro escondería las filas cuyas etiquetas aún no han llegado. La
+  // condición de `ids` replica la del hook, que sin ids no pide nada y se
+  // quedaría en «cargando» para siempre sobre una lista vacía.
+  const cargando = activo && ids.length > 0 && porObjeto.isPending;
+  return { filtro, setFiltro, activo, cargando, pasa };
 }
 
 export function FiltroEtiquetaSelect({

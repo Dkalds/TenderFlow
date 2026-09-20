@@ -123,7 +123,7 @@ export default function OportunidadesPage() {
     </div>
   );
 
-  const empty = !pursuits.isLoading && !pursuits.error && (pursuits.data?.items?.length ?? 0) === 0;
+  const empty = !pursuits.isPending && !pursuits.error && (pursuits.data?.items?.length ?? 0) === 0;
 
   return (
     <SpaceShell spaceKey="oportunidades" actions={search} bleed>
@@ -137,28 +137,28 @@ export default function OportunidadesPage() {
             label="Oportunidades"
             hint="Total creadas: una por lote, no por expediente"
             value={metrics.data?.pursuits_identified}
-            loading={metrics.isLoading}
+            loading={metrics.isPending}
           />
           <Metric
             icon={CircleCheckBig}
             label="Presentadas"
             hint="Las que llegaron a presentarse"
             value={metrics.data?.pursuits_submitted}
-            loading={metrics.isLoading}
+            loading={metrics.isPending}
           />
           <Metric
             icon={Trophy}
             label="Ganadas"
             hint="Con resultado adjudicado"
             value={metrics.data?.pursuits_won}
-            loading={metrics.isLoading}
+            loading={metrics.isPending}
           />
           <Metric
             icon={CircleX}
             label="Adjudicado"
             hint="Suma de las ganadas"
             value={metrics.data ? formatEur(metrics.data.awarded_amount_eur) : undefined}
-            loading={metrics.isLoading}
+            loading={metrics.isPending}
           />
         </section>
 
@@ -215,7 +215,7 @@ export default function OportunidadesPage() {
                     <p className="text-muted-foreground mt-1 text-[10.5px] leading-[1.4]">{lane.description}</p>
                   </div>
                   <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-3 py-2.5">
-                    {pursuits.isLoading ? (
+                    {pursuits.isPending ? (
                       <>
                         <Skeleton className="h-28 rounded-xl" />
                         <Skeleton className="h-28 rounded-xl" />

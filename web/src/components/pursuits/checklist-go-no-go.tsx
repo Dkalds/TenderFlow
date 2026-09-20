@@ -50,7 +50,7 @@ export function ChecklistGoNoGo({
   pursuitId: number | string;
   licitacionId: string;
 }) {
-  const { data, isLoading, error, refetch } = usePursuitChecklist(pursuitId);
+  const { data, isPending, error, refetch } = usePursuitChecklist(pursuitId);
   // Los mismos documentos que ya carga la pestaña Pliego: comparten clave de
   // caché, así que abrir las dos no son dos peticiones.
   const documentos = useFactSheetDocumentos(licitacionId);
@@ -58,7 +58,7 @@ export function ChecklistGoNoGo({
     (documentos.data?.items ?? []).map((doc) => [doc.id, doc]),
   );
 
-  if (isLoading) {
+  if (isPending) {
     return (
       <Panel className="mt-3.5">
         <SectionTitle>Requisitos del pliego</SectionTitle>

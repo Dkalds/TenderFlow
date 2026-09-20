@@ -6,6 +6,7 @@ import {
   pursuitKeys,
   useCreatePursuit,
   usePipelineAgenda,
+  usePursuit,
   usePursuits,
   useUpdatePursuit,
 } from "@/hooks/use-pursuits";
@@ -242,5 +243,79 @@ describe("usePipelineAgenda", () => {
     await result.current.mutateAsync({ status: "qualifying" });
 
     expect(client.getQueryState(agendaKey)?.isInvalidated).toBe(true);
+  });
+});
+
+/**
+ * La ficha de una oportunidad es donde preguntar antes de tiempo no se ve como
+ * un parpadeo sino como un error.
+ *
+ * `useActiveOrganizationId` devolvía `null` tanto mientras `/organizations`
+ * estaba en vuelo como cuando de verdad no había ninguna, y `usePursuit`
+ * lanzaba igual: el `GET /pursuits/{id}` sin `organization_id` hacía que el
+ * backend resolviera la organización **personal**, donde el expediente del
+ * equipo no está. Respuesta: 404, y el manejador global de queries lo pintaba
+ * como «Error al cargar datos — Oportunidad no encontrada» en cada apertura,
+ * corregido medio segundo después por la petición buena.
+ */
+const ORG_PERSONAL = {
+  id: 9, name: "Personal", is_personal: true, role: "owner", created_at: "2026-07-30T10:00:00Z",
+} as const;
+
+const ORG_EQUIPO = {
+  id: 21, name: "Equipo", is_personal: false, role: "owner", created_at: "2026-07-30T10:00:00Z",
+} as const;
+
+/** Dobla al backend real: sin ámbito explícito responde por la personal. */
+function stubFicha(organizations: readonly unknown[]) {
+  const fetchMock = vi.fn().mockImplementation((...call: unknown[]) => {
+    const url = callUrl(call);
+    if (url.includes("/organizations")) return Promise.resolve(jsonResponse(organizations));
+    if (!url.includes("organization_id=")) {
+      return Promise.resolve(jsonResponse({ detail: "Oportunidad no encontrada" }, 404));
+    }
+    return Promise.resolve(jsonResponse(pursuit));
+  });
+  vi.stubGlobal("fetch", fetchMock);
+  return fetchMock;
+}
+
+function urlsDeFicha(fetchMock: ReturnType<typeof stubFicha>): string[] {
+  return fetchMock.mock.calls.map((call) => callUrl(call)).filter((u) => u.startsWith("/api/v1/pursuits/10"));
+}
+
+describe("usePursuit y la organización activa", () => {
+  it("no pide la ficha hasta saber contra qué organización preguntar", async () => {
+    // `/organizations` devuelve la personal primero: es la que el backend
+    // resolvería sola, y la que no tiene este expediente.
+    const fetchMock = stubFicha([ORG_PERSONAL, ORG_EQUIPO]);
+
+    const { result } = renderHook(() => usePursuit("10"), { wrapper });
+
+    // Mientras se espera no hay ninguna petición de ficha en vuelo. Es por esto
+    // que las pantallas miran `isPending` y no `isLoading`: con la consulta
+    // retenida, `isLoading` es false y el detalle caía en su rama de error.
+    expect(urlsDeFicha(fetchMock)).toEqual([]);
+    expect(result.current.isPending).toBe(true);
+    expect(result.current.isLoading).toBe(false);
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    // Una sola petición, y con ámbito. Antes eran dos: el 404 y la buena.
+    expect(urlsDeFicha(fetchMock)).toEqual(["/api/v1/pursuits/10?organization_id=21"]);
+  });
+
+  it("sin ninguna organización sí pregunta, y deja que el backend resuelva la personal", async () => {
+    // El otro estado resuelto: omitir `organization_id` es aquí la respuesta
+    // correcta, no un descuido, y la consulta no puede quedarse retenida.
+    const fetchMock = vi.fn().mockImplementation((...call: unknown[]) =>
+      Promise.resolve(jsonResponse(callUrl(call).includes("/organizations") ? [] : pursuit)),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { result } = renderHook(() => usePursuit("10"), { wrapper });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    expect(urlsDeFicha(fetchMock)).toEqual(["/api/v1/pursuits/10"]);
   });
 });

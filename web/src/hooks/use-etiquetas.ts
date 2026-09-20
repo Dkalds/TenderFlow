@@ -15,7 +15,11 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiGet, apiMutate } from "@/lib/api-client";
 import type { Schemas } from "@/lib/api-types";
-import { useActiveOrganizationId } from "@/hooks/use-organization";
+import {
+  organizacionResuelta,
+  useActiveOrganizationId,
+  type OrganizacionActiva,
+} from "@/hooks/use-organization";
 import { etiquetaKeys } from "@/lib/query-keys";
 import { registrarEvento } from "@/lib/analytics";
 
@@ -38,7 +42,7 @@ export const COLORES_ETIQUETA = [
   "#9333ea",
 ] as const;
 
-function conOrganizacion(url: string, organizationId: number | null): string {
+function conOrganizacion(url: string, organizationId: OrganizacionActiva): string {
   return organizationId != null ? `${url}?organization_id=${organizationId}` : url;
 }
 
@@ -50,6 +54,7 @@ export function useEtiquetas() {
       apiGet("/api/v1/etiquetas", {
         params: { query: { organization_id: organizationId ?? undefined } },
       }),
+    enabled: organizacionResuelta(organizationId),
     staleTime: 60_000,
   });
 }
@@ -71,7 +76,7 @@ export function useEtiquetasDe(objetoTipo: ObjetoEtiquetable, ids: readonly stri
       );
       return respuesta.por_objeto ?? {};
     },
-    enabled: unicos.length > 0,
+    enabled: unicos.length > 0 && organizacionResuelta(organizationId),
     staleTime: 30_000,
   });
 }

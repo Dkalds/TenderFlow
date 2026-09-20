@@ -11,14 +11,18 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiMutate, fetchWithAuth } from "@/lib/api-client";
 import type { Schemas } from "@/lib/api-types";
-import { useActiveOrganizationId } from "@/hooks/use-organization";
+import {
+  organizacionResuelta,
+  useActiveOrganizationId,
+  type OrganizacionActiva,
+} from "@/hooks/use-organization";
 import { pursuitKeys } from "@/lib/query-keys";
 import { registrarEvento, tramoDeItems } from "@/lib/analytics";
 
 export type KitPresentacion = Schemas["KitPresentacion"];
 export type ItemKit = Schemas["ItemKit"];
 
-function kitUrl(pursuitId: number, organizationId: number | null, sufijo = ""): string {
+function kitUrl(pursuitId: number, organizationId: OrganizacionActiva, sufijo = ""): string {
   const query = organizationId != null ? `?organization_id=${organizationId}` : "";
   return `/api/v1/pursuits/${encodeURIComponent(String(pursuitId))}/kit${sufijo}${query}`;
 }
@@ -28,6 +32,9 @@ export function usePursuitKit(pursuitId: number) {
   return useQuery({
     queryKey: pursuitKeys.kit(pursuitId, organizationId),
     queryFn: () => fetchWithAuth<KitPresentacion>(kitUrl(pursuitId, organizationId)),
+    // El kit es de un expediente de la organización activa: pedirlo antes de
+    // saber cuál es lo busca en la personal y responde 404.
+    enabled: organizacionResuelta(organizationId),
     staleTime: 30_000,
   });
 }

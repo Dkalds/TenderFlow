@@ -28,7 +28,7 @@ export function useAgenda() {
   const ccaa = filters.ccaas[0] ?? null;
 
   const [soloMios, setSoloMios] = React.useState(false);
-  const { data, isLoading, error, refetch } = usePipelineAgenda({ soloMios, tecnologia, ccaa });
+  const { data, isPending, error, refetch } = usePipelineAgenda({ soloMios, tecnologia, ccaa });
 
   const createPursuit = useCreatePursuit();
   const dismissTender = useDismissRadarTender();
@@ -115,7 +115,10 @@ export function useAgenda() {
 
   return {
     data,
-    isLoading,
+    // `isPending` y no `isLoading`: mientras la organización activa no está
+    // resuelta la consulta sigue retenida, sin fetch en vuelo, y la agenda
+    // tiene que seguir enseñando su esqueleto en vez de su estado vacío.
+    isLoading: isPending,
     error,
     refetch,
     items,

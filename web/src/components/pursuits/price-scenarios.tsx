@@ -52,7 +52,7 @@ export function PriceScenariosPanel({
   // Mientras no se sepa si hay lote no se pide nada: pedir el del expediente y
   // sustituirlo por el del lote es enseñar un precio equivocado y corregirlo a
   // la vista del usuario.
-  const resolviendo = !explicito && pursuitId !== null && pursuit.isLoading;
+  const resolviendo = !explicito && pursuitId !== null && pursuit.isPending;
   const query = usePriceScenarios(licitacionId, lote, { enabled: !resolviendo });
 
   if (resolviendo || query.isLoading) {

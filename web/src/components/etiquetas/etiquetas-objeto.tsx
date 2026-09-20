@@ -125,7 +125,7 @@ export function EtiquetasEditor({
       <PopoverContent align="end" className="w-72 p-3">
         <fieldset>
           <legend className="mb-2 text-xs font-semibold">Etiquetas del equipo</legend>
-          {etiquetas.isLoading ? (
+          {etiquetas.isPending ? (
             <Loader2 className="h-4 w-4 animate-spin" aria-label="Cargando etiquetas" />
           ) : todas.length === 0 ? (
             <p className="text-[11.5px] text-muted-foreground">

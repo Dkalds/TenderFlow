@@ -13,7 +13,12 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 const { fetchWithAuth } = vi.hoisted(() => ({ fetchWithAuth: vi.fn() }));
 
 vi.mock("@/lib/api-client", () => ({ fetchWithAuth }));
-vi.mock("@/hooks/use-organization", () => ({ useActiveOrganizationId: () => 21 }));
+vi.mock("@/hooks/use-organization", () => ({
+  // Réplica de la real: `undefined` es «todavía no se sabe»; `null`, «no hay
+  // ninguna», que sí es una respuesta y deja pasar la consulta.
+  organizacionResuelta: (id: unknown) => id !== undefined,
+  useActiveOrganizationId: () => 21,
+}));
 
 import { CompanyContraMi } from "../company-contra-mi";
 

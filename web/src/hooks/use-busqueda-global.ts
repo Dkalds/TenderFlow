@@ -16,7 +16,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { useDebounce } from "@/hooks/use-debounce";
-import { useActiveOrganizationId } from "@/hooks/use-organization";
+import { organizacionResuelta, useActiveOrganizationId } from "@/hooks/use-organization";
 import { apiGet } from "@/lib/api-client";
 import type { Schemas } from "@/lib/api-types";
 import { searchKeys } from "@/lib/query-keys";
@@ -88,7 +88,7 @@ export function useBusquedaGlobal(termino: string) {
         },
         signal,
       }),
-    enabled: activa,
+    enabled: activa && organizacionResuelta(organizationId),
     staleTime: 30_000,
     retry: false,
     // Un fallo aquí no es un incidente: la paleta sigue ofreciendo navegar y

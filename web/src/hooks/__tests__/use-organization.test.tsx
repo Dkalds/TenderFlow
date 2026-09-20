@@ -11,6 +11,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderHook, waitFor } from "@testing-library/react";
 import {
   organizacionPorDefecto,
+  organizacionResuelta,
   useActiveOrganizationId,
   useOrganizationStore,
   type Organization,
@@ -80,6 +81,51 @@ describe("useActiveOrganizationId", () => {
     const { result } = renderHook(() => useActiveOrganizationId(), { wrapper });
 
     await waitFor(() => expect(result.current).toBe(9));
+  });
+
+  /**
+   * Los tres estados, que antes eran dos.
+   *
+   * «Todavía no lo sé» y «no hay ninguna» compartían el mismo `null`, así que
+   * toda consulta con ámbito salía en el primer render preguntando por la
+   * organización personal. En la ficha de una oportunidad eso era un 404 con
+   * toast rojo en cada apertura, corregido medio segundo después por la
+   * petición buena.
+   */
+  it("mientras el listado está en vuelo no dice que no haya ninguna", async () => {
+    servirOrganizaciones([org(9, true), org(21, false)]);
+
+    const { result } = renderHook(() => useActiveOrganizationId(), { wrapper });
+
+    expect(result.current).toBeUndefined();
+    expect(organizacionResuelta(result.current)).toBe(false);
+
+    await waitFor(() => expect(result.current).toBe(21));
+    expect(organizacionResuelta(result.current)).toBe(true);
+  });
+
+  it("sin ninguna organización resuelve a null, que sí es una respuesta", async () => {
+    // El estado que no hay que confundir con el de arriba: aquí ya se sabe, y
+    // omitir `organization_id` es lo correcto —el backend resuelve la personal—,
+    // así que las consultas con ámbito tienen que salir igualmente.
+    servirOrganizaciones([]);
+
+    const { result } = renderHook(() => useActiveOrganizationId(), { wrapper });
+
+    await waitFor(() => expect(organizacionResuelta(result.current)).toBe(true));
+    expect(result.current).toBeNull();
+  });
+
+  it("si el listado falla deja de esperar en vez de retener las consultas", async () => {
+    // Retenerlas para siempre dejaría el dashboard entero en esqueleto por una
+    // sola petición caída. Se vuelve al comportamiento de siempre: preguntar
+    // sin ámbito y que el backend resuelva la personal.
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("sin red")));
+
+    const { result } = renderHook(() => useActiveOrganizationId(), { wrapper });
+
+    await waitFor(() => expect(organizacionResuelta(result.current)).toBe(true));
+    expect(result.current).toBeNull();
   });
 
   it("una elección que ya no es de la persona no se respeta", async () => {

@@ -12,6 +12,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiMutate, fetchWithAuth } from "@/lib/api-client";
 import type { OrganizationSettings, OrganizationSettingsOut } from "@/lib/api-types";
+import { type OrganizacionActiva } from "@/hooks/use-organization";
 import { organizationKeys, pursuitKeys, radarKeys } from "@/lib/query-keys";
 
 /** Alias histórico; la fábrica canónica es `organizationKeys` de `lib/query-keys`. */
@@ -19,7 +20,7 @@ export const organizationSettingsKeys = {
   detail: organizationKeys.settings,
 };
 
-export function useOrganizationSettings(organizationId: number | null) {
+export function useOrganizationSettings(organizationId: OrganizacionActiva) {
   return useQuery({
     queryKey: organizationSettingsKeys.detail(organizationId),
     queryFn: () =>
@@ -53,7 +54,7 @@ export function cuerpoDeAjustes(
   return { ...ajustes, ...cambio };
 }
 
-export function useUpdateOrganizationSettings(organizationId: number | null) {
+export function useUpdateOrganizationSettings(organizationId: OrganizacionActiva) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (cambio: Partial<OrganizationSettings>) => {

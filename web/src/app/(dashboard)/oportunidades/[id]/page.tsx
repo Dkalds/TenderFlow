@@ -54,13 +54,13 @@ type TabKey = "decision" | "expediente" | "pliego" | "precio" | "conversacion";
 
 export default function OpportunityDetailPage() {
   const params = useParams<{ id: string }>();
-  const { data: pursuit, isLoading, error, refetch } = usePursuit(params.id ?? null);
+  const { data: pursuit, isPending, error, refetch } = usePursuit(params.id ?? null);
   const [tab, setTab] = React.useState<TabKey>("decision");
   // F1.6 — el id de la oportunidad es la clave del objeto etiquetable.
   const objetoId = pursuit ? String(pursuit.id) : "";
   const etiquetas = useEtiquetasDe("oportunidad", objetoId ? [objetoId] : []);
 
-  if (isLoading) {
+  if (isPending) {
     return (
       <div className="flex h-[calc(100vh-52px)] min-h-0 flex-col gap-3 p-4">
         <Skeleton className="h-24 w-full rounded-xl" />

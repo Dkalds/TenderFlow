@@ -16,7 +16,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiGet, apiMutate } from "@/lib/api-client";
-import { useActiveOrganizationId } from "@/hooks/use-organization";
+import { organizacionResuelta, useActiveOrganizationId } from "@/hooks/use-organization";
 import type { Schemas } from "@/lib/api-types";
 import { perfilKeys, pursuitKeys, radarKeys } from "@/lib/query-keys";
 
@@ -32,6 +32,7 @@ export function useWeightsProposal() {
       apiGet("/api/v1/pursuits/weights-proposal", {
         params: { query: { organization_id: organizationId ?? undefined } },
       }),
+    enabled: organizacionResuelta(organizationId),
     staleTime: 60_000,
   });
 }

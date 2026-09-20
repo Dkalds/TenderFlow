@@ -23,7 +23,11 @@
  */
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { fetchWithAuth } from "@/lib/api-client";
-import { useActiveOrganizationId } from "@/hooks/use-organization";
+import {
+  organizacionResuelta,
+  useActiveOrganizationId,
+  type OrganizacionActiva,
+} from "@/hooks/use-organization";
 import { pursuitKeys } from "@/hooks/use-pursuits";
 import type {
   PursuitCommentCreate,
@@ -59,7 +63,7 @@ export interface AddPursuitCommentInput extends PursuitCommentCreate {
 
 function threadUrl(
   pursuitId: number | string,
-  organizationId: number | null,
+  organizationId: OrganizacionActiva,
   options: { suffix?: string; limit?: number } = {},
 ): string {
   const params = new URLSearchParams();
@@ -73,7 +77,8 @@ function threadUrl(
 /**
  * Hilo de una oportunidad. `organizationId === null` no desactiva la query: el
  * backend resuelve la organización personal cuando se omite, igual que en
- * `usePursuit`.
+ * `usePursuit`. No saberla todavía sí la desactiva, también igual que allí: el
+ * hilo de un expediente del equipo no existe en la personal.
  */
 export function usePursuitComments(
   pursuitId: number | string | null,
@@ -86,7 +91,7 @@ export function usePursuitComments(
       fetchWithAuth<PursuitCommentList>(
         threadUrl(pursuitId!, organizationId, { limit: COMMENTS_PAGE_SIZE }),
       ),
-    enabled: pursuitId != null && (options.enabled ?? true),
+    enabled: pursuitId != null && (options.enabled ?? true) && organizacionResuelta(organizationId),
     refetchInterval: COMMENTS_REFETCH_MS,
     staleTime: 5_000,
   });

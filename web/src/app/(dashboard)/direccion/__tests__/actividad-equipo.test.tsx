@@ -17,7 +17,12 @@ const { apiGet, miembros } = vi.hoisted(() => ({
 }));
 
 vi.mock("@/lib/api-client", () => ({ apiGet }));
-vi.mock("@/hooks/use-organization", () => ({ useOrganizationMembers: () => miembros }));
+vi.mock("@/hooks/use-organization", () => ({
+  // Réplica de la real: `undefined` es «todavía no se sabe»; `null`, «no hay
+  // ninguna», que sí es una respuesta y deja pasar la consulta.
+  organizacionResuelta: (id: unknown) => id !== undefined,
+  useOrganizationMembers: () => miembros,
+}));
 
 import { ActividadEquipo, verboDeEvento } from "@/app/(dashboard)/direccion/_components/actividad-equipo";
 

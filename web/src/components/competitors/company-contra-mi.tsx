@@ -32,7 +32,7 @@ import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { AlertTriangle, Info } from "lucide-react";
 import { PanelEmpty, PanelError, PanelLoading } from "@/components/console/panel";
-import { useActiveOrganizationId } from "@/hooks/use-organization";
+import { organizacionResuelta, useActiveOrganizationId } from "@/hooks/use-organization";
 import { fetchWithAuth } from "@/lib/api-client";
 import type { Schemas } from "@/lib/api-types";
 import { competitiveKeys } from "@/lib/query-keys";
@@ -68,7 +68,9 @@ export function useBatallasContraMi(empresaKey: string, meses: number) {
         `/api/v1/competitive/empresas/${encodeURIComponent(empresaKey)}/contra-mi?${query}`,
       );
     },
-    enabled: empresaKey.length > 0,
+    // «Contra mí» es contra la organización activa: sin saber cuál es, la
+    // comparación saldría contra la personal, que no ha competido con nadie.
+    enabled: empresaKey.length > 0 && organizacionResuelta(organizationId),
     staleTime: 5 * 60_000,
   });
 }
@@ -79,7 +81,7 @@ function baja(valor: number | null | undefined): string {
 
 export function CompanyContraMi({ empresaKey }: { empresaKey: string }) {
   const [meses, setMeses] = React.useState<number>(24);
-  const { data, isLoading, error, refetch } = useBatallasContraMi(empresaKey, meses);
+  const { data, isPending, error, refetch } = useBatallasContraMi(empresaKey, meses);
 
   const conteo = React.useMemo(() => {
     const porResultado: Partial<Record<ResultadoBatalla, number>> = {};
@@ -114,7 +116,7 @@ export function CompanyContraMi({ empresaKey }: { empresaKey: string }) {
         </div>
       </div>
 
-      {isLoading ? (
+      {isPending ? (
         <PanelLoading height={200} />
       ) : error || !data ? (
         <PanelError

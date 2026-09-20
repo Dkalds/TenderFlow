@@ -12,7 +12,12 @@ const { triggerDownload } = vi.hoisted(() => ({ triggerDownload: vi.fn() }));
 let organizacion: number | null = 21;
 
 vi.mock("@/lib/export", () => ({ triggerDownload }));
-vi.mock("@/hooks/use-organization", () => ({ useActiveOrganizationId: () => organizacion }));
+vi.mock("@/hooks/use-organization", () => ({
+  // Réplica de la real: `undefined` es «todavía no se sabe»; `null`, «no hay
+  // ninguna», que sí es una respuesta y deja pasar la consulta.
+  organizacionResuelta: (id: unknown) => id !== undefined,
+  useActiveOrganizationId: () => organizacion,
+}));
 
 import { ExportarCrm, urlExportCrm } from "../_components/exportar-crm";
 

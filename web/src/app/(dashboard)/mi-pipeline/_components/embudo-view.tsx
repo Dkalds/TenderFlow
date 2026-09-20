@@ -39,7 +39,7 @@ function mediana(horas: number | null | undefined): string {
 
 export default function EmbudoView() {
   const router = useRouter();
-  const { data, isLoading, error, refetch } = usePursuitMetrics();
+  const { data, isPending, error, refetch } = usePursuitMetrics();
 
   if (error) {
     return (
@@ -59,25 +59,25 @@ export default function EmbudoView() {
       <StatStrip columns={4} className="lg:grid-cols-[repeat(var(--console-stat-columns),minmax(0,1fr))]">
         <StatCell
           label="Win rate"
-          loading={isLoading}
+          loading={isPending}
           value={data?.win_rate != null ? `${Math.round(data.win_rate * 100)}%` : EMPTY}
           hint="Sobre ganadas + perdidas"
         />
         <StatCell
           label="Importe adjudicado"
-          loading={isLoading}
+          loading={isPending}
           value={data ? formatCompactCurrency(data.awarded_amount_eur) : EMPTY}
           hint="Suma de las ganadas"
         />
         <StatCell
           label="Mediana de decisión"
-          loading={isLoading}
+          loading={isPending}
           value={mediana(data?.median_decision_time_hours)}
           hint="De identificada a go/no-go"
         />
         <StatCell
           label="Perdidas"
-          loading={isLoading}
+          loading={isPending}
           value={data ? formatNumber(data.pursuits_lost) : EMPTY}
           hint="Con resultado final conocido"
         />
@@ -88,7 +88,7 @@ export default function EmbudoView() {
           title="Funnel de pursuits"
           hint="Histórico completo de la organización activa"
         />
-        {isLoading ? (
+        {isPending ? (
           <PanelLoading height={180} />
         ) : !data || data.pursuits_identified === 0 ? (
           <EmptyState

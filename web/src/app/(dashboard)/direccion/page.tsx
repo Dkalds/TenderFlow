@@ -8,7 +8,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { SpaceShell, useSpaceView } from "@/components/layout/space-shell";
-import { useActiveOrganizationId } from "@/hooks/use-organization";
+import { organizacionResuelta, useActiveOrganizationId } from "@/hooks/use-organization";
 import { CONSOLE_SPACES } from "@/lib/console-spaces";
 import { ApiError, apiGet } from "@/lib/api-client";
 import type { Schemas } from "@/lib/api-types";
@@ -98,18 +98,21 @@ export default function DireccionPage() {
   // las oportunidades viven en la del equipo: la pantalla salía vacía para
   // cualquier owner mientras Mi Pipeline, que sí la manda, las enseñaba.
   const organizationId = useActiveOrganizationId();
-  const { data, isLoading, isError, error } = useQuery({
+  const { data, isPending, isError, error } = useQuery({
     queryKey: pursuitKeys.direccion(organizationId),
     queryFn: () =>
       apiGet("/api/v1/pursuits/direccion", {
         params: { query: { organization_id: organizationId ?? undefined } },
       }),
+    // Y por lo mismo tampoco se pregunta antes de saberlo: el `organization_id`
+    // que falta en el primer render es exactamente el que vaciaba la pantalla.
+    enabled: organizacionResuelta(organizationId),
     retry: false,
   });
 
   return (
     <SpaceShell spaceKey="direccion" view={vista} onViewChange={setVista}>
-      {isLoading ? (
+      {isPending ? (
         <Skeleton className="h-64 w-full" />
       ) : isError ? (
         // 403 es «tu rol no llega»; cualquier otro fallo es un fallo. Enseñarlo

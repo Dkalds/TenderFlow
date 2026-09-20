@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { useActiveOrganizationId } from "@/hooks/use-organization";
+import { organizacionResuelta, useActiveOrganizationId } from "@/hooks/use-organization";
 import { apiGet, apiMutate } from "@/lib/api-client";
 import { registrarEvento } from "@/lib/analytics";
 import type {
@@ -68,6 +68,9 @@ export function useRadar(tecnologia: string | null = null) {
           },
         },
       }),
+    // El ranking se puntúa con los pesos del perfil de la organización activa:
+    // pedirlo antes de saber cuál es devuelve el orden de la personal.
+    enabled: organizacionResuelta(organizationId),
     staleTime: 5 * 60_000,
   });
 
@@ -107,7 +110,7 @@ export function useRadarDismissedTenders(ids: string[], enabled: boolean) {
           },
         },
       }),
-    enabled: enabled && visibles.length > 0,
+    enabled: enabled && visibles.length > 0 && organizacionResuelta(organizationId),
     staleTime: 5 * 60_000,
   });
 

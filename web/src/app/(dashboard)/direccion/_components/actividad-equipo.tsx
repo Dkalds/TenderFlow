@@ -25,7 +25,11 @@ import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useOrganizationMembers } from "@/hooks/use-organization";
+import {
+  organizacionResuelta,
+  useOrganizationMembers,
+  type OrganizacionActiva,
+} from "@/hooks/use-organization";
 import { apiGet } from "@/lib/api-client";
 import type { Schemas } from "@/lib/api-types";
 import { pursuitKeys } from "@/lib/query-keys";
@@ -73,7 +77,7 @@ function FilaActividad({ item }: { item: ItemActividad }) {
   );
 }
 
-export function ActividadEquipo({ organizationId }: { organizationId: number | null }) {
+export function ActividadEquipo({ organizationId }: { organizationId: OrganizacionActiva }) {
   const [usuario, setUsuario] = React.useState<number | null>(null);
   const miembros = useOrganizationMembers(organizationId);
 
@@ -92,6 +96,9 @@ export function ActividadEquipo({ organizationId }: { organizationId: number | n
       }),
     initialPageParam: null as number | null,
     getNextPageParam: (pagina) => pagina.siguiente_cursor ?? undefined,
+    // La actividad es la del equipo: sin saber de cuál, el feed sale con la de
+    // la organización personal y se reemplaza a la vista del usuario.
+    enabled: organizacionResuelta(organizationId),
   });
 
   const items = feed.data?.pages.flatMap((pagina) => pagina.items ?? []) ?? [];
@@ -124,7 +131,7 @@ export function ActividadEquipo({ organizationId }: { organizationId: number | n
         )}
       </div>
 
-      {feed.isLoading ? (
+      {feed.isPending ? (
         <Skeleton className="h-64 w-full" />
       ) : feed.isError ? (
         <EmptyState

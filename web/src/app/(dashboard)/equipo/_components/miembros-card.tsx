@@ -19,6 +19,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
+  type OrganizacionActiva,
   type Organization,
   type OrganizationMember,
   useOrganizationMembers,
@@ -109,7 +110,7 @@ export function MiembrosCard({
 }: {
   organizations: Organization[];
   activeOrganization: Organization | undefined;
-  activeOrganizationId: number | null;
+  activeOrganizationId: OrganizacionActiva;
   onSelectOrganization: (id: number | null) => void;
   canManage: boolean;
 }) {

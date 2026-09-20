@@ -5,13 +5,14 @@
  *
  * Lleva `organization_id` siempre que haya una activa: sin él, el backend
  * resuelve la organización **personal**, y la cartera vive en la del equipo
- * (el mismo fallo que tuvo Dirección).
+ * (el mismo fallo que tuvo Dirección). Por eso tampoco sale antes de saber
+ * cuál es la activa: la petición adelantada traía justo esa cartera vacía.
  */
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiGet, apiMutate } from "@/lib/api-client";
 import { primeraVez, registrarEvento } from "@/lib/analytics";
 import type { RenovacionPreparada } from "@/lib/api-types";
-import { useActiveOrganizationId } from "@/hooks/use-organization";
+import { organizacionResuelta, useActiveOrganizationId } from "@/hooks/use-organization";
 import { pursuitKeys } from "@/lib/query-keys";
 
 export type { RenovacionPreparada };
@@ -24,6 +25,7 @@ export function useCartera() {
       apiGet("/api/v1/pursuits/cartera", {
         params: { query: { organization_id: organizationId ?? undefined } },
       }),
+    enabled: organizacionResuelta(organizationId),
     staleTime: 60_000,
   });
 }

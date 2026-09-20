@@ -14,6 +14,7 @@
  */
 
 import { useQuery } from "@tanstack/react-query";
+import { organizacionResuelta, type OrganizacionActiva } from "@/hooks/use-organization";
 import { type WebhookOut } from "@/hooks/use-webhooks";
 import { fetchWithAuth } from "@/lib/api-client";
 import { webhookKeys } from "@/lib/query-keys";
@@ -31,8 +32,14 @@ export type WebhookAmpliado = WebhookOut & {
   formato?: string | null;
 };
 
-/** Webhooks de una organización (los que gestiona un equipo desde `/equipo`). */
-export function useWebhooksDeEquipo(organizationId: number | null) {
+/**
+ * Webhooks de una organización (los que gestiona un equipo desde `/equipo`).
+ *
+ * Sin organización activa (`null`) sí se pide: es la lista sin ámbito. Lo que
+ * no se hace es pedirla antes de saber cuál es, porque entonces la pestaña
+ * enseñaría la lista personal medio segundo antes que la del equipo.
+ */
+export function useWebhooksDeEquipo(organizationId: OrganizacionActiva) {
   return useQuery({
     queryKey: [...webhookKeys.all, "organizacion", organizationId] as const,
     queryFn: () =>
@@ -41,6 +48,7 @@ export function useWebhooksDeEquipo(organizationId: number | null) {
           ? "/api/v1/webhooks"
           : `/api/v1/webhooks?organization_id=${organizationId}`,
       ),
+    enabled: organizacionResuelta(organizationId),
     // Mismo motivo que la global: el error ya lo dice `Listado` en su sitio.
     meta: { silent: true },
   });

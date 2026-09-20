@@ -18,7 +18,12 @@ const { apiGet, apiMutate, registrarEvento } = vi.hoisted(() => ({
 
 vi.mock("@/lib/api-client", () => ({ apiGet, apiMutate }));
 vi.mock("@/lib/analytics", () => ({ registrarEvento }));
-vi.mock("@/hooks/use-organization", () => ({ useActiveOrganizationId: () => 21 }));
+vi.mock("@/hooks/use-organization", () => ({
+  // Réplica de la real: `undefined` es «todavía no se sabe»; `null`, «no hay
+  // ninguna», que sí es una respuesta y deja pasar la consulta.
+  organizacionResuelta: (id: unknown) => id !== undefined,
+  useActiveOrganizationId: () => 21,
+}));
 
 import { DesdeUltimaVisita } from "../desde-ultima-visita";
 
