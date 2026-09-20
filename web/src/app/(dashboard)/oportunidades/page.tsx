@@ -1,12 +1,25 @@
 "use client";
 
 import * as React from "react";
+import dynamic from "next/dynamic";
 import { PanelError } from "@/components/console/panel";
 import { SpaceShell } from "@/components/layout/space-shell";
 import { useEtiquetas, useEtiquetasDe, type EtiquetaAplicada } from "@/hooks/use-etiquetas";
 import { usePursuitMetrics, usePursuits } from "@/hooks/use-pursuits";
 import type { Pursuit } from "@/hooks/use-pursuits";
-import { DialogoCierre } from "./_components/dialogo-cierre";
+/**
+ * El diálogo de cierre, sólo cuando se cierra algo.
+ *
+ * Trae el `Dialog` y el `Select` de Radix, y se abre en una de cada muchas
+ * visitas al tablero: estáticamente son 68 KB de First Load que paga todo el
+ * mundo por un caso raro, y el presupuesto por ruta
+ * (`scripts/check_bundle_budget.py`) lo cobra. Va montado bajo condición, no
+ * sólo importado así: un `dynamic` que se renderiza siempre carga igual.
+ */
+const DialogoCierre = dynamic(
+  () => import("./_components/dialogo-cierre").then((modulo) => modulo.DialogoCierre),
+  { ssr: false },
+);
 import { TODAS, TableroFiltros } from "./_components/tablero-filtros";
 import { TableroColumna } from "./_components/tablero-columna";
 import { TableroMetricas } from "./_components/tablero-metricas";
@@ -106,13 +119,15 @@ export default function OportunidadesPage() {
 
       {/* `key` por oportunidad: el diálogo se remonta limpio para cada tarjeta,
           que es cómo se reinicia su estado sin un efecto que lo haga a mano. */}
-      <DialogoCierre
-        key={tablero.cierre?.id ?? "sin-cierre"}
-        pursuit={tablero.cierre}
-        resultados={tablero.cierre ? resultadosPermitidos(tablero.cierre) : undefined}
-        onCancelar={tablero.cancelarCierre}
-        onConfirmar={tablero.confirmarCierre}
-      />
+      {tablero.cierre ? (
+        <DialogoCierre
+          key={tablero.cierre.id}
+          pursuit={tablero.cierre}
+          resultados={resultadosPermitidos(tablero.cierre)}
+          onCancelar={tablero.cancelarCierre}
+          onConfirmar={tablero.confirmarCierre}
+        />
+      ) : null}
     </SpaceShell>
   );
 }

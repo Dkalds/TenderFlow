@@ -74,9 +74,13 @@ describe("SalidaDeFase", () => {
     );
   });
 
-  it("desde Presentada, la salida es registrar el resultado y abre el diálogo", () => {
+  // El diálogo se carga bajo demanda (`next/dynamic`), para no meter el
+  // `Dialog` de Radix en el First Load de la ruta: por eso se espera.
+  it("desde Presentada, la salida es registrar el resultado y abre el diálogo", async () => {
     render(<SalidaDeFase pursuit={en({ status: "submitted", decision: "go" })} />);
     fireEvent.click(screen.getByRole("button", { name: "Registrar resultado" }));
-    expect(screen.getByText("Cerrar la oportunidad")).toBeInTheDocument();
+    expect(
+      await screen.findByText("Cerrar la oportunidad", {}, { timeout: 5000 }),
+    ).toBeInTheDocument();
   });
 });

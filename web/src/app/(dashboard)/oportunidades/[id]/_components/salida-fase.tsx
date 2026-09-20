@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import dynamic from "next/dynamic";
 import { ArrowRight, Check } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -15,7 +16,11 @@ import {
 } from "@/hooks/use-pursuits";
 import { ApiError } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
-import { DialogoCierre } from "../../_components/dialogo-cierre";
+/** Mismo motivo que en el tablero: sólo pesa cuando se va a cerrar de verdad. */
+const DialogoCierre = dynamic(
+  () => import("../../_components/dialogo-cierre").then((modulo) => modulo.DialogoCierre),
+  { ssr: false },
+);
 import { resultadosPermitidos } from "../../_lib/flujo";
 import { salidaDeFase } from "../../_lib/salida-fase";
 
