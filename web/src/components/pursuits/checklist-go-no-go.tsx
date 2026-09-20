@@ -118,8 +118,8 @@ export function ChecklistGoNoGo({
       )}
 
       <p className="mt-3 text-[11px] leading-relaxed text-muted-foreground">
-        Esto no decide el go/no-go: lo propone. La decisión se marca a mano en el selector
-        «Decisión» de arriba, y un «desconocido» es una pregunta abierta, no un no.
+        Esto no decide el go/no-go: lo propone. La decisión se marca a mano en «Decisión del
+        comité», arriba, y un «desconocido» es una pregunta abierta, no un no.
       </p>
     </Panel>
   );

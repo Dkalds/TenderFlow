@@ -3,20 +3,12 @@
 import * as React from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { ArrowLeft, CalendarClock, ExternalLink, FileDown, Landmark, User } from "lucide-react";
+import { ExternalLink, FileDown, X } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PursuitCommentsThread } from "@/components/pursuits/pursuit-comments";
 import { PursuitEditor } from "@/components/pursuits/pursuit-editor";
 import { PriceScenariosPanel } from "@/components/pursuits/price-scenarios";
-import {
-  PursuitDecisionBadge,
-  PursuitLoteBadge,
-  PursuitOutcomeBadge,
-  PursuitStatusBadge,
-  daysUntil,
-  formatDate,
-  loteEtiqueta,
-} from "@/components/pursuits/pursuit-presenters";
+import { PursuitLoteBadge, loteEtiqueta } from "@/components/pursuits/pursuit-presenters";
 import { TenderFactSheetPanel } from "@/components/pursuits/tender-fact-sheet";
 import { GuionOfertaPanel } from "@/components/pliego/guion-oferta";
 import { SimuladorPuntuacion } from "@/components/pliego/simulador-puntuacion";
@@ -25,40 +17,51 @@ import { AdjudicacionDetectada } from "@/components/pursuits/adjudicacion-detect
 import { ExpedientePanel } from "@/components/pursuits/expediente-panel";
 import { PursuitActivity } from "@/components/pursuits/pursuit-activity";
 import { KitPresentacionPanel } from "@/components/pursuits/kit-presentacion";
-import { AdjudicacionPrevistaDato } from "@/components/pursuits/adjudicacion-prevista";
 import { EtiquetaChips, EtiquetasEditor } from "@/components/etiquetas/etiquetas-objeto";
 import { Panel, PanelError, PanelTabs, SectionTitle } from "@/components/console/panel";
 import { useEtiquetasDe } from "@/hooks/use-etiquetas";
+import { useOrganizationMembers } from "@/hooks/use-organization";
 import { usePursuit } from "@/hooks/use-pursuits";
 import { triggerDownload } from "@/lib/export";
+import { DecisionComite } from "./_components/decision-comite";
+import { FichaDatos } from "./_components/ficha-datos";
+import { PathFases } from "./_components/path-fases";
+import { ProximaAccion } from "./_components/proxima-accion";
+import { SalidaDeFase } from "./_components/salida-fase";
 
 /**
- * Ficha de la oportunidad — Decisión primero.
+ * Ficha de la oportunidad — el path de fases primero.
  *
- * Eran seis paneles apilados con el formulario de decisión **al final**, detrás
- * de la ficha del pliego y de los escenarios de precio: lo único que el usuario
- * abre la ficha para tocar quedaba a tres pantallas de scroll. Ahora son tres
- * pestañas y Decisión abre; Pliego y Precio quedan a un clic.
+ * La cabecera dice **en qué punto del workflow está** y el primer bloque, qué
+ * falta para salir de esa fase y cuál es el único paso posible. Antes la ficha
+ * abría con el formulario completo: para avanzar había que saber que el estado
+ * es un desplegable, y nada decía qué se esperaba de la fase actual.
  *
- * No se ha quitado nada: el editor completo, la ficha del pliego y los
- * escenarios siguen siendo los mismos componentes, con su `expected_version` y
- * su bloqueo de P(ganar) intactos.
+ * No se ha quitado nada. El editor completo, el contraste del pliego, el kit,
+ * los escenarios de precio y la conversación siguen siendo los mismos
+ * componentes; lo que cambia es el orden y qué se toca primero. Los tres
+ * controles del día a día —avanzar, decidir y apuntar la próxima acción— son
+ * ahora un clic desde arriba, y cada uno manda su propio PATCH con
+ * `expected_version`.
  *
- * La cuarta pestaña, «Conversación», es el hilo de comentarios del equipo
- * (`pursuit-comments.tsx`): el mismo hilo que se abre en panel lateral desde
- * cada tarjeta del tablero. Su badge es el contador que ya viaja en la
- * oportunidad (`comments_count`), no una segunda llamada.
+ * Las tres columnas del diseño no caben en una pantalla de consola, así que en
+ * `xl` la ficha se parte: a la izquierda lo que se trabaja, a la derecha los
+ * datos y el historial. En móvil vuelve a ser una sola columna, en el orden
+ * del diseño.
  */
 
-type TabKey = "decision" | "expediente" | "pliego" | "precio" | "conversacion";
+type TabKey = "resumen" | "expediente" | "pliego" | "precio" | "conversacion";
 
 export default function OpportunityDetailPage() {
   const params = useParams<{ id: string }>();
   const { data: pursuit, isPending, error, refetch } = usePursuit(params.id ?? null);
-  const [tab, setTab] = React.useState<TabKey>("decision");
+  const [tab, setTab] = React.useState<TabKey>("resumen");
   // F1.6 — el id de la oportunidad es la clave del objeto etiquetable.
   const objetoId = pursuit ? String(pursuit.id) : "";
   const etiquetas = useEtiquetasDe("oportunidad", objetoId ? [objetoId] : []);
+  // El historial guarda ids de actor; los nombres son los de la organización,
+  // la misma lista que ya pide el editor de responsable.
+  const miembros = useOrganizationMembers(pursuit?.organization_id ?? null);
 
   if (isPending) {
     return (
@@ -81,160 +84,136 @@ export default function OpportunityDetailPage() {
     );
   }
 
-  const deadline = daysUntil(pursuit.tender_deadline);
+  const alcance = loteEtiqueta(pursuit);
+  const version = `${pursuit.id}:${pursuit.version}`;
 
   return (
     <div className="flex h-[calc(100vh-52px)] min-h-0 flex-col">
-      <header className="flex-none border-b border-border/60 bg-card/40 px-4 pt-3.5">
-        <div className="mb-2.5 flex flex-wrap items-center gap-2">
-          <PursuitStatusBadge status={pursuit.status} />
-          <PursuitDecisionBadge decision={pursuit.decision} />
-          <PursuitOutcomeBadge outcome={pursuit.outcome} />
-          {/* El lote va con los estados y no en el título: dos oportunidades
-              del mismo expediente comparten título y sólo el lote las separa. */}
-          <PursuitLoteBadge pursuit={pursuit} />
-          <EtiquetaChips etiquetas={etiquetas.data?.[objetoId]} />
-          <EtiquetasEditor
-            objetoTipo="oportunidad"
-            objetoId={objetoId}
-            aplicadas={etiquetas.data?.[objetoId]}
-            descripcion="esta oportunidad"
+      <header className="border-border/60 bg-card/40 flex-none border-b px-4 pt-3.5">
+        <div className="flex items-start gap-3">
+          <div className="min-w-0 flex-1">
+            <div className="mb-1.5 flex flex-wrap items-center gap-1.5">
+              <span className="text-muted-foreground font-mono text-tf-micro font-semibold tracking-wider uppercase">
+                {pursuit.licitacion_id}
+              </span>
+              {/* El lote va aquí y no en el título: dos oportunidades del mismo
+                  expediente comparten título y sólo el lote las separa. */}
+              {alcance ? (
+                <PursuitLoteBadge pursuit={pursuit} />
+              ) : (
+                <span className="text-muted-foreground text-tf-micro">Expediente completo</span>
+              )}
+              <EtiquetaChips etiquetas={etiquetas.data?.[objetoId]} />
+              <EtiquetasEditor
+                objetoTipo="oportunidad"
+                objetoId={objetoId}
+                aplicadas={etiquetas.data?.[objetoId]}
+                descripcion="esta oportunidad"
+              />
+            </div>
+
+            <h1 className="font-display max-w-[74ch] text-tf-title leading-[1.2] font-semibold tracking-[-0.015em] text-pretty">
+              {pursuit.tender_title ?? `Licitación ${pursuit.licitacion_id}`}
+            </h1>
+
+            <p className="text-muted-foreground mt-1 text-tf-body">
+              {pursuit.tender_organo ?? `Referencia ${pursuit.licitacion_id}`} ·{" "}
+              {pursuit.responsible_name ?? "Sin responsable"}
+            </p>
+          </div>
+
+          <div className="flex flex-none items-center gap-3">
+            {/* F2.7 — el one-pager para dirección. El backend lo servía desde
+                `GET /pursuits/{id}/ficha.pdf` y ninguna pantalla lo pedía. */}
+            <button
+              type="button"
+              onClick={() => void triggerDownload(`/api/v1/pursuits/${pursuit.id}/ficha.pdf`)}
+              className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5 text-tf-meta font-medium"
+            >
+              <FileDown className="h-3 w-3" aria-hidden="true" />
+              Descargar PDF
+            </button>
+            <Link
+              href={`/detalle?lic=${encodeURIComponent(pursuit.licitacion_id)}`}
+              className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5 text-tf-meta font-medium"
+            >
+              Ver anuncio original <ExternalLink className="h-3 w-3" aria-hidden="true" />
+            </Link>
+            <Link
+              href="/oportunidades"
+              aria-label="Cerrar la ficha"
+              className="border-border/60 text-muted-foreground hover:text-foreground grid h-8 w-8 flex-none place-items-center rounded-lg border transition-colors"
+            >
+              <X className="h-4 w-4" aria-hidden="true" />
+            </Link>
+          </div>
+        </div>
+
+        <PathFases pursuit={pursuit} className="mt-3.5" />
+
+        <div className="mt-3">
+          <PanelTabs
+            label="Secciones de la oportunidad"
+            value={tab}
+            onChange={setTab}
+            tabs={[
+              { key: "resumen", label: "Resumen" },
+              // El expediente vive aquí desde 2026-09: antes había que salir a
+              // `/detalle` para leer órgano, CPV, plazos y pliegos de aquello
+              // sobre lo que se decide en esta misma pantalla.
+              { key: "expediente", label: "Expediente" },
+              { key: "pliego", label: "Pliego" },
+              { key: "precio", label: "Precio" },
+              {
+                key: "conversacion",
+                label: "Conversación",
+                badge: pursuit.comments_count ? pursuit.comments_count : undefined,
+              },
+            ]}
           />
-          <div className="flex-1" />
-          <span className="text-[11px] text-muted-foreground">
-            Última actualización {formatDate(pursuit.updated_at)}
-          </span>
         </div>
-
-        <h1 className="mb-2.5 max-w-[74ch] font-display text-[19px] font-semibold leading-[1.28] tracking-[-0.015em] text-pretty">
-          {pursuit.tender_title ?? `Licitación ${pursuit.licitacion_id}`}
-        </h1>
-
-        <div className="mb-3 flex flex-wrap items-center gap-x-5 gap-y-1.5 text-xs text-muted-foreground">
-          <span className="inline-flex items-center gap-1.5">
-            <Landmark className="h-3.5 w-3.5" aria-hidden="true" />
-            Referencia{" "}
-            <span className="font-mono text-[11.5px] text-foreground/80">
-              {pursuit.licitacion_id}
-            </span>
-          </span>
-          <span className="inline-flex items-center gap-1.5">
-            <CalendarClock className="h-3.5 w-3.5" aria-hidden="true" />
-            {deadline ?? formatDate(pursuit.tender_deadline)}
-          </span>
-          <span className="inline-flex items-center gap-1.5">
-            <User className="h-3.5 w-3.5" aria-hidden="true" />
-            Responsable{" "}
-            <span className="font-medium text-foreground">
-              {pursuit.responsible_name ?? "Sin asignar"}
-            </span>
-          </span>
-          <div className="flex-1" />
-          {/* F2.7 — el one-pager para dirección. El backend lo servía desde
-              `GET /pursuits/{id}/ficha.pdf` y ninguna pantalla lo pedía: la
-              única forma de obtenerlo era llamar a la API a mano. */}
-          <button
-            type="button"
-            onClick={() => void triggerDownload(`/api/v1/pursuits/${pursuit.id}/ficha.pdf`)}
-            className="inline-flex items-center gap-1.5 text-xs font-medium hover:text-foreground"
-          >
-            <FileDown className="h-3 w-3" aria-hidden="true" />
-            Descargar PDF
-          </button>
-          <Link
-            href={`/detalle?lic=${encodeURIComponent(pursuit.licitacion_id)}`}
-            className="inline-flex items-center gap-1.5 text-xs font-medium"
-          >
-            Ver anuncio original <ExternalLink className="h-3 w-3" aria-hidden="true" />
-          </Link>
-          <Link
-            href="/oportunidades"
-            className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-foreground"
-          >
-            <ArrowLeft className="h-3 w-3" aria-hidden="true" />
-            Oportunidades
-          </Link>
-        </div>
-
-        <PanelTabs
-          label="Secciones de la oportunidad"
-          value={tab}
-          onChange={setTab}
-          tabs={[
-            { key: "decision", label: "Decisión" },
-            // El expediente vive aquí desde 2026-09: antes había que salir a
-            // `/detalle` para leer órgano, CPV, plazos y pliegos de aquello
-            // sobre lo que se decide en esta misma pantalla.
-            { key: "expediente", label: "Expediente" },
-            { key: "pliego", label: "Pliego" },
-            { key: "precio", label: "Precio" },
-            {
-              key: "conversacion",
-              label: "Conversación",
-              badge: pursuit.comments_count ? pursuit.comments_count : undefined,
-            },
-          ]}
-        />
       </header>
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-8 pt-4">
-        {tab === "decision" && (
-          <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
-            <div>
+      <div className="min-h-0 flex-1 overflow-y-auto px-4 pt-4 pb-8">
+        {tab === "resumen" && (
+          <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
+            <div className="flex flex-col gap-3.5">
               {/* Cierre asistido: sólo aparece cuando la ingesta ya conoce una
                   adjudicación de este expediente. */}
               <AdjudicacionDetectada pursuit={pursuit} />
-              <PursuitEditor pursuit={pursuit} />
-              {/* El contraste va **debajo** del formulario: es lo que sostiene
-                  la decisión, no lo que la sustituye, y subirlo empujaría el
-                  único control que el usuario abre esta ficha para tocar. */}
-              <ChecklistGoNoGo pursuitId={pursuit.id} licitacionId={pursuit.licitacion_id} />
-              {/* F2.3 — qué hay que entregar y quién lo lleva. Después del
-                  contraste: primero se decide si ir, luego se monta la oferta. */}
-              <KitPresentacionPanel
-                pursuitId={pursuit.id}
-                organizationId={pursuit.organization_id}
-              />
+              <SalidaDeFase pursuit={pursuit} />
+              <DecisionComite key={version} pursuit={pursuit} />
             </div>
-            <aside className="flex flex-col gap-3.5">
-              <Panel>
-                <SectionTitle>Contexto de la licitación</SectionTitle>
-                <dl className="space-y-2.5 text-xs">
-                  <div>
-                    <dt className="text-[10.5px] text-muted-foreground">Alcance</dt>
-                    <dd className="font-semibold">
-                      {loteEtiqueta(pursuit) ?? "Expediente completo"}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt className="text-[10.5px] text-muted-foreground">Fecha límite</dt>
-                    <dd className="font-semibold">{formatDate(pursuit.tender_deadline)}</dd>
-                  </div>
-                  <AdjudicacionPrevistaDato prevista={pursuit.expected_award} />
-                  <div>
-                    <dt className="text-[10.5px] text-muted-foreground">Responsable actual</dt>
-                    <dd className="font-semibold">
-                      {pursuit.responsible_name ?? "Sin asignar"}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt className="text-[10.5px] text-muted-foreground">Última actualización</dt>
-                    <dd className="font-semibold">{formatDate(pursuit.updated_at)}</dd>
-                  </div>
-                </dl>
-              </Panel>
+
+            <aside className="flex flex-col gap-3.5 xl:col-start-2 xl:row-span-2 xl:row-start-1">
+              <FichaDatos pursuit={pursuit} />
+              <ProximaAccion key={version} pursuit={pursuit} />
               <Panel>
                 {/* El ledger `pursuit_events` se persistía desde v61 y no lo
                     pintaba ninguna pantalla: en un espacio compartido nadie
                     veía quién había movido qué. */}
-                <SectionTitle>Actividad</SectionTitle>
-                <PursuitActivity events={pursuit.events} />
+                <SectionTitle>Historial</SectionTitle>
+                <PursuitActivity events={pursuit.events} miembros={miembros.data ?? []} />
               </Panel>
-              <p className="px-1 text-[11px] leading-relaxed text-muted-foreground">
+              <p className="text-muted-foreground px-1 text-tf-micro leading-relaxed">
                 Los escenarios se basan en el universo observado. La decisión y el precio final
                 siguen siendo responsabilidad del equipo.
               </p>
             </aside>
+
+            {/* Lo que sostiene la decisión y el trabajo de la oferta. Cada panel
+                trae su propio margen superior, así que aquí no hay `gap`. */}
+            <div className="xl:col-start-1">
+              <ChecklistGoNoGo pursuitId={pursuit.id} licitacionId={pursuit.licitacion_id} />
+              <KitPresentacionPanel
+                pursuitId={pursuit.id}
+                organizationId={pursuit.organization_id}
+              />
+              <div className="mt-4">
+                <SectionTitle>Todos los campos</SectionTitle>
+                <PursuitEditor pursuit={pursuit} />
+              </div>
+            </div>
           </div>
         )}
 

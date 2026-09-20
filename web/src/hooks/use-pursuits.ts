@@ -43,6 +43,23 @@ export const PURSUIT_STATUSES = [
   "withdrawn",
 ] as const satisfies readonly PursuitStatus[];
 
+/**
+ * Los tres estados de los que una oportunidad ya no sale por su cuenta. Vive
+ * aquí, junto al orden del workflow, y no en la pantalla del tablero: la
+ * tarjeta y la ficha también necesitan saber si algo está cerrado.
+ */
+export const ESTADOS_TERMINALES = [
+  "won",
+  "lost",
+  "withdrawn",
+] as const satisfies readonly PursuitStatus[];
+
+export type EstadoTerminal = (typeof ESTADOS_TERMINALES)[number];
+
+export function esTerminal(status: PursuitStatus): status is EstadoTerminal {
+  return (ESTADOS_TERMINALES as readonly PursuitStatus[]).includes(status);
+}
+
 export type PursuitDecision = Pursuit["decision"];
 export type PursuitOutcome = Pursuit["outcome"];
 export type PursuitList = PursuitListResponse;
@@ -182,6 +199,51 @@ export function useUpdatePursuit(id: string | number) {
       // detalle se sembraba en una entrada que nadie consulta y la vista se
       // quedaba esperando al refetch de la invalidación.
       queryClient.setQueryData([...pursuitKeys.detail(pursuitId), organizationId], pursuit);
+      return invalidatePursuits(queryClient);
+    },
+  });
+}
+
+/**
+ * Mover una oportunidad de fase desde el tablero.
+ *
+ * `useUpdatePursuit` liga el id al hook, y el tablero no sabe cuál va a
+ * arrastrar el usuario hasta que la suelta. Esta variante recibe el id en la
+ * mutación; a cambio comparte con aquélla el evento de analítica y la misma
+ * invalidación, para que mover una tarjeta y cambiar el estado desde la ficha
+ * cuenten igual en el embudo.
+ *
+ * `expected_version` viaja siempre. Un tablero es de equipo: si alguien movió
+ * la misma tarjeta mientras ésta estaba en el aire, el backend rechaza el PATCH
+ * en vez de pisar su cambio, y la pantalla deshace su movimiento optimista.
+ */
+export function useMoverPursuit() {
+  const queryClient = useQueryClient();
+  const organizationId = useActiveOrganizationId();
+  return useMutation({
+    mutationFn: ({ id, ...input }: UpdatePursuitInput & { id: string | number }) => {
+      const params = new URLSearchParams();
+      if (organizationId != null) params.set("organization_id", String(organizationId));
+      const query = params.toString();
+      return apiMutate<Pursuit>(
+        "PATCH",
+        `/api/v1/pursuits/${encodeURIComponent(String(id))}${query ? `?${query}` : ""}`,
+        input,
+      );
+    },
+    onSuccess: (pursuit, variables) => {
+      if (variables.status) {
+        registrarEvento("pursuit_estado_cambiado", {
+          estado: variables.status,
+          ...(variables.status === "lost" && variables.outcome_reason_code
+            ? { motivo: variables.outcome_reason_code }
+            : {}),
+        });
+      }
+      queryClient.setQueryData(
+        [...pursuitKeys.detail(String(variables.id)), organizationId],
+        pursuit,
+      );
       return invalidatePursuits(queryClient);
     },
   });

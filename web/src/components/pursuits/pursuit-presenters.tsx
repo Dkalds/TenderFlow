@@ -30,6 +30,14 @@ export function statusLabel(status: PursuitStatus): string {
   return statusCopy[status];
 }
 
+export function decisionLabel(decision: PursuitDecision): string {
+  return decisionCopy[decision];
+}
+
+export function outcomeLabel(outcome: PursuitOutcome): string {
+  return outcomeCopy[outcome];
+}
+
 /** Alias de dominio sobre el formateador único (`lib/utils.ts`). */
 export const formatEur = formatCurrency;
 
@@ -106,4 +114,78 @@ export function PursuitLoteBadge({ pursuit }: { pursuit: PursuitConLote }) {
 export function PursuitOutcomeBadge({ outcome }: { outcome: PursuitOutcome }) {
   const variant = outcome === "won" ? "success" : outcome === "lost" ? "destructive" : outcome === "cancelled" ? "warning" : "secondary";
   return <Badge variant={variant}>{outcomeCopy[outcome]}</Badge>;
+}
+
+/* ── Plazo: la rampa de urgencia como dato, no como adorno ─────────── */
+
+export type BandaPlazo = "pasado" | "critico" | "alto" | "medio" | "holgado";
+
+/**
+ * Clases estáticas por banda. El JIT de Tailwind no ve una clase compuesta en
+ * tiempo de ejecución, así que la tabla se escribe entera aunque se repita.
+ *
+ * `barra` es un `fill-*` y no un `bg-*`: la barra de la tarjeta es un `<rect>`
+ * de SVG, para que su ancho sea un atributo y no un estilo inline (C2.8).
+ */
+const PLAZO_CLASES: Record<BandaPlazo, { texto: string; barra: string }> = {
+  pasado: { texto: "text-muted-foreground", barra: "fill-muted-foreground/40" },
+  critico: {
+    texto: "text-[hsl(var(--urgency-critical))]",
+    barra: "fill-[hsl(var(--urgency-critical))]",
+  },
+  alto: { texto: "text-[hsl(var(--urgency-high))]", barra: "fill-[hsl(var(--urgency-high))]" },
+  medio: { texto: "text-[hsl(var(--urgency-medium))]", barra: "fill-[hsl(var(--urgency-medium))]" },
+  holgado: { texto: "text-[hsl(var(--urgency-low))]", barra: "fill-[hsl(var(--urgency-low))]" },
+};
+
+export interface PlazoVisual {
+  dias: number;
+  banda: BandaPlazo;
+  /** Relleno de la barra, 0–100: cuanto más cerca el plazo, más llena. */
+  pct: number;
+  texto: string;
+  clases: { texto: string; barra: string };
+}
+
+/**
+ * El plazo de presentación como algo que se ve de un vistazo.
+ *
+ * Los cortes son los de la rampa `--urgency-*` de `globals.css`, no unos
+ * nuevos: crítico hasta 3 días, alto hasta 7, medio hasta 21 y holgado a partir
+ * de ahí. La barra se llena contra una ventana de 60 días, que es el horizonte
+ * típico de un anuncio; más allá el relleno se queda en su mínimo y lo que
+ * informa es el texto.
+ *
+ * El color nunca va solo: la banda acompaña siempre al texto con los días, que
+ * es lo que lee quien no distingue los tonos de la rampa.
+ */
+export function plazoVisual(value: string | null | undefined): PlazoVisual | null {
+  if (!value) return null;
+  const dias = Math.ceil((new Date(value).getTime() - Date.now()) / 86_400_000);
+  if (Number.isNaN(dias)) return null;
+  const banda: BandaPlazo =
+    dias < 0 ? "pasado" : dias <= 3 ? "critico" : dias <= 7 ? "alto" : dias <= 21 ? "medio" : "holgado";
+  const pct = dias < 0 ? 0 : Math.max(6, Math.round(((60 - Math.min(dias, 60)) / 60) * 100));
+  return {
+    dias,
+    banda,
+    pct,
+    texto: daysUntil(value) ?? formatDate(value),
+    clases: PLAZO_CLASES[banda],
+  };
+}
+
+/**
+ * Iniciales para el avatar del responsable. Sin nombre devuelve la raya del
+ * resto de la consola, que es lo que significa "nadie lo tiene asignado".
+ */
+export function iniciales(nombre: string | null | undefined): string {
+  if (!nombre?.trim()) return "\u2014";
+  const letras = nombre
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((parte) => parte[0]?.toLocaleUpperCase("es") ?? "")
+    .join("");
+  return letras || "\u2014";
 }
