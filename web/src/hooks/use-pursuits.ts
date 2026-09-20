@@ -10,7 +10,11 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiGet, apiMutate, fetchWithAuth, type ApiQueryValue } from "@/lib/api-client";
 import { primeraVez, registrarEvento } from "@/lib/analytics";
-import { useActiveOrganizationId } from "@/hooks/use-organization";
+import {
+  organizacionResuelta,
+  useActiveOrganizationId,
+  type OrganizacionActiva,
+} from "@/hooks/use-organization";
 import type {
   PipelineAgendaItem as PipelineAgendaItemDTO,
   PipelineAgendaResponse,
@@ -80,7 +84,7 @@ export interface PursuitFilters {
  */
 function pursuitQuery(
   filters: PursuitFilters,
-  organizationId: number | null,
+  organizationId: OrganizacionActiva,
 ): Record<string, ApiQueryValue> {
   return {
     status: filters.status,
@@ -90,15 +94,22 @@ function pursuitQuery(
 }
 
 /** Query común a las vistas de organización que van por el cliente tipado. */
-function organizationQuery(organizationId: number | null): Record<string, ApiQueryValue> {
+function organizationQuery(organizationId: OrganizacionActiva): Record<string, ApiQueryValue> {
   return { organization_id: organizationId ?? undefined };
 }
 
 /**
  * `organizationId === null` no significa "sin datos": el backend resuelve la
  * organización personal automáticamente cuando se omite el parámetro. Por eso
- * estas queries se ejecutan siempre, en vez de quedar deshabilitadas hasta que
- * exista un ID explícito seleccionado en el frontend.
+ * una organización resuelta a `null` **sí** lanza la consulta, en vez de
+ * quedarse deshabilitada esperando un id explícito.
+ *
+ * Lo que no se puede hacer es lanzarla antes de saberlo (`undefined`), que es
+ * distinto: `/organizations` sigue en vuelo y preguntar ya significa preguntar
+ * por la personal. En un listado eso era un parpadeo con las oportunidades de
+ * otra organización; en `usePursuit` era un 404 con toast rojo en cada apertura
+ * de ficha, corregido medio segundo después por la petición buena. De ahí el
+ * `organizacionResuelta` de cada `enabled`.
  */
 export function usePursuits(filters: PursuitFilters = {}) {
   const organizationId = useActiveOrganizationId();
@@ -106,6 +117,7 @@ export function usePursuits(filters: PursuitFilters = {}) {
     queryKey: [...pursuitKeys.list(filters), organizationId],
     queryFn: () =>
       apiGet("/api/v1/pursuits", { params: { query: pursuitQuery(filters, organizationId) } }),
+    enabled: organizacionResuelta(organizationId),
     staleTime: 30_000,
   });
 }
@@ -122,7 +134,7 @@ export function usePursuit(id: string | null) {
         `/api/v1/pursuits/${encodeURIComponent(id!)}${query ? `?${query}` : ""}`,
       );
     },
-    enabled: Boolean(id),
+    enabled: Boolean(id) && organizacionResuelta(organizationId),
   });
 }
 
@@ -243,6 +255,7 @@ export function usePursuitMetrics() {
     queryKey: [...pursuitKeys.metrics, organizationId],
     queryFn: () =>
       apiGet("/api/v1/pursuits/metrics", { params: { query: organizationQuery(organizationId) } }),
+    enabled: organizacionResuelta(organizationId),
     staleTime: 60_000,
   });
 }
@@ -278,6 +291,7 @@ export function usePipelineAgenda(filters: AgendaFilters) {
           },
         },
       }),
+    enabled: organizacionResuelta(organizationId),
     staleTime: 30_000,
   });
 }

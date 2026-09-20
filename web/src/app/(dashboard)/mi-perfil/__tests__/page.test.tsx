@@ -51,6 +51,9 @@ vi.mock("@/lib/analytics", async (importOriginal) => {
 });
 
 vi.mock("@/hooks/use-organization", () => ({
+  // Réplica de la real: `undefined` es «todavía no se sabe»; `null`, «no hay
+  // ninguna», que sí es una respuesta y deja pasar la consulta.
+  organizacionResuelta: (id: unknown) => id !== undefined,
   useActiveOrganizationId: () => 7,
   // La tarjeta de familias tecnológicas mira el rol para decidir si los
   // controles van deshabilitados: aquí, `member` (solo lectura).

@@ -82,7 +82,7 @@ function Insuficiente({ propuesta }: { propuesta: PesosPropuestos }) {
 }
 
 export function PesosPropuestosCard() {
-  const { data, isLoading, error } = useWeightsProposal();
+  const { data, isPending, error } = useWeightsProposal();
   const aplicar = useApplyWeightsProposal();
   const [confirmando, setConfirmando] = useState(false);
 
@@ -118,9 +118,9 @@ export function PesosPropuestosCard() {
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
-        {isLoading && <p className="text-sm text-muted-foreground">Calculando la propuesta…</p>}
+        {isPending && <p className="text-sm text-muted-foreground">Calculando la propuesta…</p>}
 
-        {!isLoading && (error || !data) && (
+        {!isPending && (error || !data) && (
           <p className="text-sm text-muted-foreground">
             No se pudo calcular la propuesta de pesos.
           </p>

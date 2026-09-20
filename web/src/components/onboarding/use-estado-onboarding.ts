@@ -3,7 +3,11 @@
 import { useQuery } from "@tanstack/react-query";
 import { apiGet } from "@/lib/api-client";
 import { pursuitKeys } from "@/hooks/use-pursuits";
-import { useActiveOrganizationId, useOrganizations } from "@/hooks/use-organization";
+import {
+  organizacionResuelta,
+  useActiveOrganizationId,
+  useOrganizations,
+} from "@/hooks/use-organization";
 import { hayReglaActiva, perfilConfigurado, tienePursuits } from "@/components/onboarding/senales";
 import type { PasoId, SenalPaso } from "@/components/onboarding/pasos";
 import { perfilKeys, watchlistKeys } from "@/lib/query-keys";
@@ -45,8 +49,8 @@ function senalDe<T>(
 
 export function useSenalesOnboarding(activo: boolean): Partial<Record<PasoId, SenalPaso>> {
   // `useActiveOrganizationId` ya resuelve `["organizations"]`; pedirlo otra vez
-  // es gratis (misma clave) y aquí hace falta el estado de esa query, no sólo
-  // su resultado, para no colgar los pursuits de un id que aún no existe.
+  // es gratis (misma clave) y aquí hace falta además saber si esa query falló,
+  // que el id resuelto por sí solo no lo cuenta.
   const organizations = useOrganizations();
   const organizationId = useActiveOrganizationId();
 
@@ -71,8 +75,10 @@ export function useSenalesOnboarding(activo: boolean): Partial<Record<PasoId, Se
         params: { query: { organization_id: organizationId ?? undefined } },
       }),
     // Sin la organización resuelta se preguntaría por la personal por defecto,
-    // que es otra respuesta: se espera a saber contra cuál se pregunta.
-    enabled: activo && !organizations.isPending,
+    // que es otra respuesta: se espera a saber contra cuál se pregunta. La
+    // espera la expresa ya el propio id, que además adelanta una elección
+    // guardada sin aguardar al listado.
+    enabled: activo && organizacionResuelta(organizationId),
     staleTime: STALE,
   });
 

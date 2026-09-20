@@ -11,12 +11,14 @@
  *
  * La organización viaja como parámetro igual que en `usePursuit`: el backend la
  * resuelve sola si se omite, pero el contraste se hace contra el perfil de la
- * organización activa y la clave de caché tiene que distinguirlas.
+ * organización activa y la clave de caché tiene que distinguirlas. Y, por lo
+ * mismo, la consulta espera a saber cuál es: preguntar antes es preguntar por
+ * el perfil de la personal, que no es el que se está enseñando.
  */
 
 import { useQuery } from "@tanstack/react-query";
 import { fetchWithAuth } from "@/lib/api-client";
-import { useActiveOrganizationId } from "@/hooks/use-organization";
+import { organizacionResuelta, useActiveOrganizationId } from "@/hooks/use-organization";
 import type { Schemas } from "@/lib/api-types";
 import { pursuitKeys } from "@/lib/query-keys";
 
@@ -39,7 +41,7 @@ export function usePursuitChecklist(pursuitId: number | string | null) {
         }`,
       );
     },
-    enabled: pursuitId != null && pursuitId !== "",
+    enabled: pursuitId != null && pursuitId !== "" && organizacionResuelta(organizationId),
     // La ficha del pliego no cambia entre pestañas: la evaluación se sella una
     // vez por versión de ficha, así que volver a pedirla en cada foco solo
     // añadiría eventos `checklist_evaluated` sin información nueva.

@@ -11,6 +11,7 @@
  * que declararle un NIF o un perfil de solvencia no sirve para nada.
  */
 
+import { type OrganizacionActiva } from "@/hooks/use-organization";
 import { OrganizacionCapacidadCard } from "./organizacion-capacidad-card";
 import { OrganizacionNifsCard } from "./organizacion-nifs-card";
 import { PlantillaTareasCard } from "./plantilla-tareas-card";
@@ -21,7 +22,7 @@ export function OrganizacionTab({
   canManage,
   isPersonal,
 }: {
-  organizationId: number | null;
+  organizationId: OrganizacionActiva;
   canManage: boolean;
   isPersonal: boolean;
 }) {

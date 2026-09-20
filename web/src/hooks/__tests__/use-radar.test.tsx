@@ -9,7 +9,12 @@ import { registrarEvento } from "@/lib/analytics";
 // La telemetría se dobla entera: aquí se fija *qué* evento sale del triaje, no
 // que la librería de Vercel funcione.
 vi.mock("@/lib/analytics", () => ({ registrarEvento: vi.fn() }));
-vi.mock("@/hooks/use-organization", () => ({ useActiveOrganizationId: () => 7 }));
+vi.mock("@/hooks/use-organization", () => ({
+  // Réplica de la real: `undefined` es «todavía no se sabe»; `null`, «no hay
+  // ninguna», que sí es una respuesta y deja pasar la consulta.
+  organizacionResuelta: (id: unknown) => id !== undefined,
+  useActiveOrganizationId: () => 7,
+}));
 
 /**
  * El Radar consume `GET /analytics/scoring?limit=24` como fuente única: es el

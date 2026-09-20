@@ -76,13 +76,13 @@ export default function OportunidadesPage() {
     />
   );
 
-  const vacio = !pursuits.isLoading && !pursuits.error && (pursuits.data?.items?.length ?? 0) === 0;
+  const vacio = !pursuits.isPending && !pursuits.error && (pursuits.data?.items?.length ?? 0) === 0;
   const arrastrada = items.find((item) => item.id === tablero.arrastrandoId) ?? null;
 
   return (
     <SpaceShell spaceKey="oportunidades" actions={filtros} bleed>
       <div className="flex h-full min-h-0 flex-col">
-        <TableroMetricas metrics={metrics.data} cargando={metrics.isLoading} />
+        <TableroMetricas metrics={metrics.data} cargando={metrics.isPending} />
 
         {pursuits.error ? (
           <div className="grid flex-1 place-items-center p-10">
@@ -102,7 +102,7 @@ export default function OportunidadesPage() {
                 fase={fase}
                 items={items.filter((item) => faseDe(tablero.estadoDe(item)) === fase.key)}
                 etiquetasPorId={etiquetasPorId}
-                cargando={pursuits.isLoading}
+                cargando={pursuits.isPending}
                 activa={tablero.columnaActiva === fase.key}
                 aceptaSoltar={arrastrada == null || bloqueoDeFase(arrastrada, fase.key) === null}
                 arrastrandoId={tablero.arrastrandoId}

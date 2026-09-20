@@ -36,7 +36,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CheckCheck, ChevronRight, History } from "lucide-react";
 import { toast } from "sonner";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useActiveOrganizationId } from "@/hooks/use-organization";
+import { organizacionResuelta, useActiveOrganizationId } from "@/hooks/use-organization";
 import { registrarEvento } from "@/lib/analytics";
 import { apiGet, apiMutate } from "@/lib/api-client";
 import type { Schemas } from "@/lib/api-types";
@@ -68,6 +68,7 @@ export function useDesdeUltimaVisita() {
       apiGet("/api/v1/analytics/resumen/desde-mi-ultima-visita", {
         params: { query: { organization_id: organizationId ?? undefined } },
       }),
+    enabled: organizacionResuelta(organizationId),
     // El endpoint no cachea a propósito (es un diff por usuario y marca). En
     // cliente basta con no repetirlo en cada re-montaje de la pantalla.
     staleTime: 60_000,
@@ -110,7 +111,7 @@ function LineaNovedad({ novedad }: { novedad: Novedad }) {
 }
 
 export function DesdeUltimaVisita() {
-  const { data, isLoading, isError } = useDesdeUltimaVisita();
+  const { data, isPending, isError } = useDesdeUltimaVisita();
   const marcarVisto = useMarcarVisto();
   const medida = React.useRef(false);
 
@@ -124,7 +125,7 @@ export function DesdeUltimaVisita() {
     });
   }, [data]);
 
-  if (isLoading) return <Skeleton className="mb-3.5 h-11 w-full rounded-xl" />;
+  if (isPending) return <Skeleton className="mb-3.5 h-11 w-full rounded-xl" />;
   // Un fallo no tumba el Resumen: la banda es un añadido sobre lo que ya había.
   if (isError || !data) return null;
 

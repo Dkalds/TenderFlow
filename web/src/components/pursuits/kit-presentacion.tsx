@@ -53,7 +53,7 @@ export function KitPresentacionPanel({
   pursuitId: number;
   organizationId: number;
 }) {
-  const { data: kit, isLoading, error, refetch } = usePursuitKit(pursuitId);
+  const { data: kit, isPending, error, refetch } = usePursuitKit(pursuitId);
   const marcar = useMarcarKitItem(pursuitId);
   const asignar = useAsignarKitItem(pursuitId);
   const members = useOrganizationMembers(organizationId).data ?? [];
@@ -69,7 +69,7 @@ export function KitPresentacionPanel({
   const onError = (mensaje: string) => (err: unknown) =>
     toast.error(err instanceof Error ? err.message : mensaje);
 
-  if (isLoading) {
+  if (isPending) {
     return (
       <Panel className="mt-4">
         <PanelLoading height={160} />

@@ -24,7 +24,12 @@ const apiGet = vi.hoisted(() => vi.fn());
 const apiMutate = vi.hoisted(() => vi.fn());
 vi.mock("@/lib/api-client", () => ({ apiGet, apiMutate }));
 
-vi.mock("@/hooks/use-organization", () => ({ useActiveOrganizationId: () => 7 }));
+vi.mock("@/hooks/use-organization", () => ({
+  // Réplica de la real: `undefined` es «todavía no se sabe»; `null`, «no hay
+  // ninguna», que sí es una respuesta y deja pasar la consulta.
+  organizacionResuelta: (id: unknown) => id !== undefined,
+  useActiveOrganizationId: () => 7,
+}));
 
 import { PesosPropuestosCard } from "@/app/(dashboard)/mi-perfil/_components/pesos-propuestos-card";
 

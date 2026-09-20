@@ -66,7 +66,7 @@ function destino(item: PipelineAgendaItem): string {
 
 export function TuDia() {
   const { tecnologias, ccaas } = useFilters();
-  const { data, isLoading, error, refetch } = usePipelineAgenda({
+  const { data, isPending, error, refetch } = usePipelineAgenda({
     soloMios: false,
     tecnologia: tecnologias[0] ?? null,
     ccaa: ccaas[0] ?? null,
@@ -114,7 +114,7 @@ export function TuDia() {
           >
             <StatCell
               label="Vence en ≤7 días"
-              loading={isLoading}
+              loading={isPending}
               value={kpis ? formatNumber(kpis.vence_semana) : EMPTY}
               accent={kpis && kpis.vence_semana > 0 ? "hsl(var(--score-hot))" : undefined}
               hint={
@@ -125,20 +125,20 @@ export function TuDia() {
             />
             <StatCell
               label="Go/No-go pendientes"
-              loading={isLoading}
+              loading={isPending}
               value={kpis ? formatNumber(kpis.go_no_go_pendientes) : EMPTY}
               hint="Sin decisión tomada"
             />
             <StatCell
               label="Sin próxima acción"
-              loading={isLoading}
+              loading={isPending}
               value={kpis ? formatNumber(kpis.sin_proxima_accion) : EMPTY}
               accent={kpis && kpis.sin_proxima_accion > 0 ? "hsl(var(--warning))" : undefined}
               hint="Pursuits sin siguiente paso"
             />
             <StatCell
               label="Señales nuevas"
-              loading={isLoading}
+              loading={isPending}
               value={kpis ? formatNumber(kpis.senales_nuevas) : EMPTY}
               hint="Matches de tus reglas sin triar"
             />
@@ -157,7 +157,7 @@ export function TuDia() {
           )}
 
           <div className="border-border/60 bg-card/70 mt-2.5 overflow-hidden rounded-xl border">
-            {isLoading ? (
+            {isPending ? (
               <div className="flex flex-col gap-2 p-3">
                 {Array.from({ length: 3 }, (_, index) => (
                   <Skeleton key={index} className="h-6 w-full rounded" />

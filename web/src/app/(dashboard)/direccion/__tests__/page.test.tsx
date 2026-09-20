@@ -25,6 +25,9 @@ const { apiGet, ApiError, vista } = vi.hoisted(() => ({
 
 vi.mock("@/lib/api-client", () => ({ apiGet, ApiError }));
 vi.mock("@/hooks/use-organization", () => ({
+  // Réplica de la real: `undefined` es «todavía no se sabe»; `null`, «no hay
+  // ninguna», que sí es una respuesta y deja pasar la consulta.
+  organizacionResuelta: (id: unknown) => id !== undefined,
   useActiveOrganizationId: () => 21,
   useOrganizationMembers: () => ({ data: [] }),
 }));

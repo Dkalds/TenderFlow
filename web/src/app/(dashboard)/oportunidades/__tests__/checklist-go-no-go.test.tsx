@@ -23,7 +23,12 @@ vi.mock("@/lib/api-client", () => ({
   ApiError: class ApiError extends Error {},
 }));
 
-vi.mock("@/hooks/use-organization", () => ({ useActiveOrganizationId: () => 7 }));
+vi.mock("@/hooks/use-organization", () => ({
+  // Réplica de la real: `undefined` es «todavía no se sabe»; `null`, «no hay
+  // ninguna», que sí es una respuesta y deja pasar la consulta.
+  organizacionResuelta: (id: unknown) => id !== undefined,
+  useActiveOrganizationId: () => 7,
+}));
 
 import { ChecklistGoNoGo } from "@/components/pursuits/checklist-go-no-go";
 import type { GoNoGoChecklist } from "@/hooks/use-pursuit-checklist";

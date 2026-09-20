@@ -47,7 +47,9 @@ export function WebhooksEquipoView() {
     <div className="mx-auto w-full max-w-4xl space-y-4 p-4">
       {newSecret && <SecretNotice secret={newSecret} onDismiss={() => setNewSecret(null)} />}
 
-      <CreateForm organizationId={organizationId} onCreated={setNewSecret} />
+      {/* El formulario conserva su contrato de dos estados: crear sin ámbito
+          es un caso válido suyo, y «todavía no se sabe» no lo es. */}
+      <CreateForm organizationId={organizationId ?? null} onCreated={setNewSecret} />
 
       <Listado
         webhooks={data}

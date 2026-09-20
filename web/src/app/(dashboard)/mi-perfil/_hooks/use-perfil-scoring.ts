@@ -19,7 +19,7 @@ import { toast } from "sonner";
 import { apiMutate, fetchWithAuth } from "@/lib/api-client";
 import { primeraVez, registrarEvento } from "@/lib/analytics";
 import { perfilKeys, radarKeys } from "@/lib/query-keys";
-import { useActiveOrganizationId } from "@/hooks/use-organization";
+import { organizacionResuelta, useActiveOrganizationId } from "@/hooks/use-organization";
 import { perfilFormulario } from "@/lib/forms/esquemas";
 import { numeroDeTexto } from "@/lib/forms/valores";
 
@@ -109,12 +109,16 @@ export function usePerfilScoring() {
   const activeOrganizationId = useActiveOrganizationId();
 
   // Carga del perfil actual
-  const { data, isLoading } = useQuery<UserProfile>({
+  const { data, isPending } = useQuery<UserProfile>({
     queryKey: [...PROFILE_KEY, activeOrganizationId],
     queryFn: () =>
       fetchWithAuth<UserProfile>(
         `/api/v1/me/profile${activeOrganizationId ? `?organization_id=${activeOrganizationId}` : ""}`,
       ),
+    // El perfil de scoring es el de la organización activa: pedirlo antes de
+    // saber cuál es trae el de la personal, y el formulario se rellenaría con
+    // unos pesos que no son los que se están editando.
+    enabled: organizacionResuelta(activeOrganizationId),
     staleTime: 60_000,
   });
 
@@ -240,7 +244,10 @@ export function usePerfilScoring() {
 
   return {
     data,
-    isLoading,
+    // `isPending` y no `isLoading`: con la organización aún sin resolver la
+    // consulta está retenida, y `isLoading` —que exige un fetch en vuelo— diría
+    // que ya no se está cargando cuando todavía no hay nada que enseñar.
+    isLoading: isPending,
     hasProfile,
     weights,
     total,

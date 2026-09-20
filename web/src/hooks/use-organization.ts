@@ -60,19 +60,59 @@ export function organizacionPorDefecto(organizations: readonly Organization[]): 
   return (equipo ?? organizations[0])?.id ?? null;
 }
 
-export function useActiveOrganizationId(): number | null {
+/**
+ * Organización con la que una pantalla pregunta a la API. **Tres** estados, no
+ * dos:
+ *
+ * - `undefined` — todavía no se sabe. `GET /organizations` sigue en vuelo y no
+ *   hay elección guardada que adelantar.
+ * - `null` — ya se sabe, y no hay ninguna que mandar. Omitir `organization_id`
+ *   es entonces la respuesta correcta: el backend resuelve la personal.
+ * - `number` — ya se sabe cuál.
+ *
+ * Los dos primeros estaban colapsados en un único `null`, y la diferencia
+ * importa: con un solo valor, toda consulta con ámbito salía en el primer
+ * render preguntando por la personal y se corregía al siguiente. En un listado
+ * eso es un parpadeo con los datos de otra organización; en una ficha
+ * —`GET /pursuits/{id}`— es un 404 «Oportunidad no encontrada» con su toast
+ * rojo, porque el expediente del equipo no está en la personal.
+ */
+export type OrganizacionActiva = number | null | undefined;
+
+export function useActiveOrganizationId(): OrganizacionActiva {
   const selected = useOrganizationStore((state) => state.activeOrganizationId);
   const organizations = useOrganizations();
+  // Una elección guardada se adelanta al listado: quien ya eligió no espera. Si
+  // resulta que ya no pertenece a esa organización, los dos casos de abajo la
+  // corrigen en cuanto llega la respuesta.
   if (selected && !organizations.data) {
     return selected;
   }
   if (selected && organizations.data?.some((organization) => organization.id === selected)) {
     return selected;
   }
+  // Sin nada guardado no hay qué adelantar: hasta que `/organizations` conteste,
+  // no se sabe contra cuál se pregunta. Un fallo no cuenta como pendiente —la
+  // query sale de `pending` al agotar reintentos— y cae en el valor por defecto,
+  // que es el comportamiento de siempre.
+  if (organizations.isPending) {
+    return undefined;
+  }
   return organizacionPorDefecto(organizations.data ?? []);
 }
 
-export function useOrganizationMembers(organizationId: number | null) {
+/**
+ * ¿Ya se sabe contra qué organización preguntar?
+ *
+ * Es el `enabled` de toda consulta con ámbito. `null` —no hay ninguna, la
+ * resuelve el backend— **sí** es una respuesta y deja pasar la consulta; sólo
+ * `undefined` la retiene.
+ */
+export function organizacionResuelta(organizationId: OrganizacionActiva): boolean {
+  return organizationId !== undefined;
+}
+
+export function useOrganizationMembers(organizationId: OrganizacionActiva) {
   return useQuery({
     queryKey: organizationKeys.members(organizationId),
     queryFn: () =>
@@ -98,7 +138,7 @@ export function useCreateOrganization() {
   });
 }
 
-export function useAddOrganizationMember(organizationId: number | null) {
+export function useAddOrganizationMember(organizationId: OrganizacionActiva) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (input: AddOrganizationMemberInput) =>
@@ -112,7 +152,7 @@ export function useAddOrganizationMember(organizationId: number | null) {
   });
 }
 
-export function useUpdateOrganizationMember(organizationId: number | null) {
+export function useUpdateOrganizationMember(organizationId: OrganizacionActiva) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (input: UpdateOrganizationMemberInput) =>

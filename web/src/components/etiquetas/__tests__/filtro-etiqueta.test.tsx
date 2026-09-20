@@ -9,7 +9,12 @@ import type * as React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { callUrl, jsonResponse } from "@/hooks/__tests__/fetch-call";
 
-vi.mock("@/hooks/use-organization", () => ({ useActiveOrganizationId: () => 3 }));
+vi.mock("@/hooks/use-organization", () => ({
+  // Réplica de la real: `undefined` es «todavía no se sabe»; `null`, «no hay
+  // ninguna», que sí es una respuesta y deja pasar la consulta.
+  organizacionResuelta: (id: unknown) => id !== undefined,
+  useActiveOrganizationId: () => 3,
+}));
 
 import {
   FiltroEtiquetaSelect,

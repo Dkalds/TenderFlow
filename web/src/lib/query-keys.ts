@@ -41,6 +41,22 @@
  * dos `queryFn` distintas bajo la misma clave es el bug de arriba.
  */
 
+/**
+ * Organización de una clave con ámbito, tal y como la devuelve
+ * `useActiveOrganizationId`: `number` cuando se sabe cuál, `null` cuando no hay
+ * ninguna y la resuelve el backend, y `undefined` mientras todavía no se sabe
+ * —la consulta está retenida, pero React Query construye igualmente su clave.
+ *
+ * Se declara aquí en vez de importarse de `hooks/use-organization` porque ese
+ * módulo ya importa de éste (`organizationKeys`) y el ciclo no compraría nada:
+ * la caché no distingue los dos últimos estados. React Query hashea la clave
+ * con `JSON.stringify`, que convierte el `undefined` de un array en `null`, así
+ * que «no se sabe» y «no hay ninguna» caen en la misma entrada. No es un
+ * problema: la consulta retenida no escribe en ella, y cuando se resuelve a
+ * `null` es exactamente la entrada que le toca.
+ */
+type OrganizacionDeClave = number | null | undefined;
+
 // ---------------------------------------------------------------------------
 // Sesión y metadatos
 // ---------------------------------------------------------------------------
@@ -162,16 +178,16 @@ export const analyticsKeys = {
    * F5.4). No se comparte con `resumen/novedades`: es otra pregunta y otro
    * endpoint.
    */
-  desdeUltimaVisita: (organizationId: number | null) =>
+  desdeUltimaVisita: (organizationId: OrganizacionDeClave) =>
     ["analytics", "resumen", "desde-mi-ultima-visita", organizationId] as const,
 };
 
 export const radarKeys = {
   all: ["radar"] as const,
   scoring: ["radar", "scoring"] as const,
-  scopedScoring: (organizationId: number | null, tecnologia: string | null) =>
+  scopedScoring: (organizationId: OrganizacionDeClave, tecnologia: string | null) =>
     ["radar", "scoring", organizationId, tecnologia] as const,
-  dismissed: (organizationId: number | null, visibles: readonly string[]) =>
+  dismissed: (organizationId: OrganizacionDeClave, visibles: readonly string[]) =>
     ["radar", "dismissed-tenders", organizationId, visibles] as const,
   organo: (organo: string | null | undefined) => ["radar", "organo", organo] as const,
   // Estas dos las usa también el prefetch en servidor del Radar
@@ -239,7 +255,7 @@ export const competitiveKeys = {
    * Cruces con un competidor (`GET /competitive/empresas/{key}/contra-mi`,
    * F3.2). Lleva la organización: son las oportunidades de ese equipo.
    */
-  contraMi: (empresaKey: string, organizationId: number | null, meses: number) =>
+  contraMi: (empresaKey: string, organizationId: OrganizacionDeClave, meses: number) =>
     ["competitive", "contra-mi", empresaKey, organizationId, meses] as const,
   /** Socios de UTE de un segmento (`GET /competitive/partners`, F3.3). */
   partners: (cpv: string | null, ccaa: string | null) =>
@@ -253,7 +269,7 @@ export const competitiveKeys = {
 export const searchKeys = {
   all: ["search"] as const,
   /** `GET /search/global` (F1.2), por término y organización activa. */
-  global: (q: string, organizationId: number | null) =>
+  global: (q: string, organizationId: OrganizacionDeClave) =>
     ["search", "global", q, organizationId] as const,
 };
 
@@ -286,24 +302,24 @@ export const pursuitKeys = {
    * las oportunidades del equipo. Cuelga de `pursuits` por lo mismo que
    * `weightsProposal`: cerrar una oportunidad cambia el win rate.
    */
-  direccion: (organizationId: number | null) =>
+  direccion: (organizationId: OrganizacionDeClave) =>
     ["pursuits", "direccion", organizationId] as const,
   /**
    * Feed de actividad del equipo (`GET /pursuits/actividad`, F4.5), por
    * organización y persona filtrada. Cuelga de `pursuits`: cada mutación de una
    * oportunidad escribe en el ledger que este feed lee.
    */
-  actividad: (organizationId: number | null, usuario: number | null) =>
+  actividad: (organizationId: OrganizacionDeClave, usuario: number | null) =>
     ["pursuits", "actividad", organizationId, usuario] as const,
   /**
    * Kit de presentación de una oportunidad (`GET /pursuits/{id}/kit`, F2.3).
    * Cuelga de `pursuits`: asignar un documento crea una tarea y cambia la
    * próxima acción de la oportunidad, que leen el tablero y la agenda.
    */
-  kit: (pursuitId: number | string, organizationId: number | null) =>
+  kit: (pursuitId: number | string, organizationId: OrganizacionDeClave) =>
     ["pursuits", "kit", String(pursuitId), organizationId] as const,
   /** Contratos ganados en ejecución (`GET /pursuits/cartera`, F4.3). */
-  cartera: (organizationId: number | null) => ["pursuits", "cartera", organizationId] as const,
+  cartera: (organizationId: OrganizacionDeClave) => ["pursuits", "cartera", organizationId] as const,
 };
 
 /**
@@ -313,8 +329,8 @@ export const pursuitKeys = {
  */
 export const etiquetaKeys = {
   all: ["etiquetas"] as const,
-  lista: (organizationId: number | null) => ["etiquetas", "lista", organizationId] as const,
-  porObjeto: (organizationId: number | null, objetoTipo: string, ids: readonly string[]) =>
+  lista: (organizationId: OrganizacionDeClave) => ["etiquetas", "lista", organizationId] as const,
+  porObjeto: (organizationId: OrganizacionDeClave, objetoTipo: string, ids: readonly string[]) =>
     ["etiquetas", "por-objeto", organizationId, objetoTipo, [...ids].sort()] as const,
 };
 
@@ -325,13 +341,13 @@ export const pursuitCommentKeys = {
 
 export const organizationKeys = {
   all: ["organizations"] as const,
-  members: (organizationId: number | null) => ["organization-members", organizationId] as const,
-  settings: (organizationId: number | null) => ["organization-settings", organizationId] as const,
+  members: (organizationId: OrganizacionDeClave) => ["organization-members", organizationId] as const,
+  settings: (organizationId: OrganizacionDeClave) => ["organization-settings", organizationId] as const,
   /**
    * Plantilla de tareas por etapa (F4.6). Nace bajo la raíz, no con literal
    * propio como `members`/`settings`: no hay clientes desplegados que migrar.
    */
-  plantillaTareas: (organizationId: number | null) =>
+  plantillaTareas: (organizationId: OrganizacionDeClave) =>
     ["organizations", "plantilla-tareas", organizationId] as const,
 };
 

@@ -60,7 +60,7 @@ function OrigenFin({ origen }: { origen: string | null | undefined }) {
 }
 
 export default function CarteraView() {
-  const { data, isLoading, error, refetch } = useCartera();
+  const { data, isPending, error, refetch } = useCartera();
   const params = useSearchParams();
   const [tecnologia, setTecnologia] = React.useState<string>(TODOS);
   const [organo, setOrgano] = React.useState<string>(TODOS);
@@ -85,7 +85,7 @@ export default function CarteraView() {
       />
     );
   }
-  if (isLoading) return <PanelLoading height={320} />;
+  if (isPending) return <PanelLoading height={320} />;
 
   const contratos = data ?? [];
   if (contratos.length === 0) {

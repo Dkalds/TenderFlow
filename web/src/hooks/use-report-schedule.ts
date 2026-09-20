@@ -18,6 +18,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { apiMutate, fetchWithAuth } from "@/lib/api-client";
+import { type OrganizacionActiva } from "@/hooks/use-organization";
 import { organizationKeys } from "@/lib/query-keys";
 
 export interface ReportSchedule {
@@ -48,11 +49,11 @@ export const DIAS = [
 ] as const;
 
 export const reportScheduleKeys = {
-  detail: (organizationId: number | null) =>
+  detail: (organizationId: OrganizacionActiva) =>
     [...organizationKeys.all, "report-schedule", organizationId] as const,
 };
 
-export function useReportSchedule(organizationId: number | null) {
+export function useReportSchedule(organizationId: OrganizacionActiva) {
   return useQuery({
     queryKey: reportScheduleKeys.detail(organizationId),
     queryFn: () =>
@@ -75,7 +76,7 @@ export interface GuardarProgramacion {
   destinatarios: string[] | null;
 }
 
-export function useGuardarReportSchedule(organizationId: number | null) {
+export function useGuardarReportSchedule(organizationId: OrganizacionActiva) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (cambios: GuardarProgramacion) =>

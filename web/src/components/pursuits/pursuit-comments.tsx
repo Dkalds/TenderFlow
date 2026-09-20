@@ -292,9 +292,9 @@ export function PursuitCommentsThread({
       <div
         ref={listRef}
         className="min-h-0 flex-1 overflow-y-auto pb-3"
-        aria-busy={thread.isLoading || undefined}
+        aria-busy={thread.isPending || undefined}
       >
-        {thread.isLoading ? (
+        {thread.isPending ? (
           <div className="space-y-3 px-1 py-2" aria-hidden="true">
             <Skeleton className="h-10 w-3/4 rounded-lg" />
             <Skeleton className="h-10 w-2/3 rounded-lg" />
