@@ -61,6 +61,9 @@ TIPOS: tuple[tuple[str, str], ...] = (
     # `daily` del canal email, quien no diga nada lo recibe — que es lo que su
     # owner activó al programarlo.
     ("informe_semanal", "Informe semanal de pipeline de mi organización"),
+    # F4.3. Avisos a seis, tres y un mes del fin de un contrato ganado. Es el
+    # opt-out que pide el plan: apagarlo aquí lo apaga en campana y correo.
+    ("pursuit.cartera_vence", "Se acerca el fin de un contrato de mi cartera"),
 )
 
 

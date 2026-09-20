@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { ComparacionFichasTabla } from "@/components/pliego/comparar-fichas";
+import { PreguntaComparacion } from "@/components/pliego/pregunta-comparacion";
 import { useBandejaComparacion } from "@/hooks/use-comparacion";
 import { MAX_COMPARAR } from "@/hooks/use-comparar-fichas";
 import { truncate } from "@/lib/utils";
@@ -97,9 +98,10 @@ export function BandejaComparacion() {
           <DialogTitle>Comparar fichas del pliego</DialogTitle>
           <DialogDescription>
             Lo que cada pliego dice de cada familia, tal como se extrajo. Sin síntesis: la comparación
-            la haces tú.
+            la haces tú. Debajo puedes preguntar sobre los expedientes a la vez.
           </DialogDescription>
           {abierta && <ComparacionFichasTabla ids={ids} etiquetas={etiquetas} />}
+          {abierta && <PreguntaComparacion ids={ids} etiquetas={etiquetas} />}
         </DialogContent>
       </Dialog>
     </>

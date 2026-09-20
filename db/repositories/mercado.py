@@ -437,7 +437,8 @@ def filas_perfil_empresa(
                l.organo_contratacion,
                l.ccaa,
                l.cpv,
-               l.tecnologia
+               l.tecnologia,
+               l.procedimiento
         FROM adjudicaciones a
         JOIN licitaciones l ON l.id_externo = a.licitacion_id
     """

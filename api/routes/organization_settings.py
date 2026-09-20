@@ -16,6 +16,8 @@ Dos cosas, con dos almacenes distintos y a propósito:
   quién le toca el lunes sería un escaneo completo cada cuatro horas.
 - ``/organizations/{id}/plantilla-tareas`` — las tareas que se crean al pasar
   una oportunidad a ``preparing`` (F4.6), en ``plantillas_organizacion``.
+- ``/organizations/{id}/plantillas-miembro`` — las reglas y vistas que recibe
+  un miembro nuevo al aceptar la invitación (F6.4), en la misma tabla.
 """
 
 from __future__ import annotations
@@ -39,6 +41,15 @@ from services.plantilla_tareas import (
     PlantillaTareasOut,
     guardar_plantilla,
     leer_plantilla,
+)
+from services.plantillas_miembro import (
+    PlantillaMiembroIn,
+    PlantillaNoEncontradaError,
+    PlantillasLimiteError,
+    PlantillasMiembroOut,
+    borrar_plantilla_miembro,
+    crear_plantilla_miembro,
+    leer_plantillas_miembro,
 )
 from shared.audit_events import ORG_SETTINGS_UPDATED
 from shared.dto import (
@@ -219,3 +230,103 @@ async def put_plantilla_tareas(
         },
     )
     return guardada
+
+
+# ── Plantillas para nuevos miembros (F6.4) ────────────────────────────────────
+
+
+@router.get(
+    "/organizations/{organization_id}/plantillas-miembro",
+    response_model=PlantillasMiembroOut,
+    summary="Reglas y vistas que recibe un miembro nuevo al aceptar la invitación",
+)
+async def get_plantillas_miembro(
+    organization_id: int,
+    ctx: dict[str, Any] = Depends(require_any_auth),
+) -> PlantillasMiembroOut:
+    """Cualquier miembro las lee; `puede_editar` dice si además las cambia."""
+    try:
+        return await run_db(leer_plantillas_miembro, int(ctx["user_id"]), organization_id)
+    except OrganizationAccessError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+
+
+@router.post(
+    "/organizations/{organization_id}/plantillas-miembro",
+    response_model=PlantillasMiembroOut,
+    status_code=201,
+    summary="Añadir una plantilla de miembro (owner/admin)",
+    responses={
+        403: {"description": "Solo owner o admin cambian las plantillas"},
+        409: {"description": "La organización llegó al máximo de plantillas"},
+    },
+)
+async def post_plantilla_miembro(
+    organization_id: int,
+    body: PlantillaMiembroIn,
+    ctx: dict[str, Any] = Depends(require_any_auth),
+) -> PlantillasMiembroOut:
+    """Se copia a quien acepte una invitación **a partir de ahora**, una vez.
+
+    No se reparte a los miembros que ya estaban: la copia ocurre al activar la
+    membresía (`services.cuentas.aplicar_plantillas`).
+    """
+    try:
+        guardadas = await run_db(
+            crear_plantilla_miembro, int(ctx["user_id"]), organization_id, body
+        )
+    except (OrganizationAccessError, OrganizationPermissionError) as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except PlantillasLimiteError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    await run_db(
+        log_event,
+        event_type=ORG_SETTINGS_UPDATED,
+        user_id=int(ctx["user_id"]),
+        resource=f"org:{guardadas.organization_id}",
+        detail={
+            "organization_id": guardadas.organization_id,
+            "campos": ["plantillas_miembro"],
+            "tipo": body.tipo,
+            "plantillas": len(guardadas.plantillas),
+        },
+    )
+    return guardadas
+
+
+@router.delete(
+    "/organizations/{organization_id}/plantillas-miembro/{plantilla_id}",
+    response_model=PlantillasMiembroOut,
+    summary="Borrar una plantilla de miembro (owner/admin)",
+    responses={
+        403: {"description": "Solo owner o admin cambian las plantillas"},
+        404: {"description": "La plantilla no existe o no es de miembro"},
+    },
+)
+async def delete_plantilla_miembro(
+    organization_id: int,
+    plantilla_id: int,
+    ctx: dict[str, Any] = Depends(require_any_auth),
+) -> PlantillasMiembroOut:
+    """No toca las copias ya repartidas: son de cada miembro."""
+    try:
+        guardadas = await run_db(
+            borrar_plantilla_miembro, int(ctx["user_id"]), organization_id, plantilla_id
+        )
+    except (OrganizationAccessError, OrganizationPermissionError) as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except PlantillaNoEncontradaError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    await run_db(
+        log_event,
+        event_type=ORG_SETTINGS_UPDATED,
+        user_id=int(ctx["user_id"]),
+        resource=f"org:{guardadas.organization_id}",
+        detail={
+            "organization_id": guardadas.organization_id,
+            "campos": ["plantillas_miembro"],
+            "borrada": plantilla_id,
+            "plantillas": len(guardadas.plantillas),
+        },
+    )
+    return guardadas

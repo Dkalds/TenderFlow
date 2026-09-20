@@ -15,7 +15,7 @@
  * rápida (S7.2): cada error sale debajo de su campo, enlazado a él.
  */
 
-import { ChevronDown, ChevronRight, Plus } from "lucide-react";
+import { ChevronDown, ChevronRight, FlaskConical, Plus } from "lucide-react";
 import { Controller, useWatch } from "react-hook-form";
 import { Button } from "@/components/ui/button";
 import {
@@ -36,6 +36,7 @@ import {
 import { ariaCampo, CampoError } from "@/lib/forms/campo";
 import { FREQ_NOTE, FREQ_OPTIONS } from "../_hooks/watchlist-rule-options";
 import type { NuevaReglaForm } from "../_hooks/use-mi-watchlist";
+import { VistaPreviaRuido } from "./vista-previa-ruido";
 
 export function NuevaReglaCard({
   form,
@@ -181,6 +182,28 @@ export function NuevaReglaCard({
                 Agregar regla
               </Button>
             </div>
+          </div>
+          {/* F5.5 — antes de crearla, cuántas alertas habría dado cada semana. */}
+          <div className="mt-4 space-y-2">
+            <div className="flex flex-wrap items-center gap-3">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={form.probar}
+                disabled={!keyword.trim() || form.preview.isPending}
+              >
+                <FlaskConical className="mr-2 h-4 w-4" aria-hidden="true" />
+                Ver cuántas alertas daría
+              </Button>
+              {form.preview.isPending && (
+                <span className="text-sm text-muted-foreground">Calculando…</span>
+              )}
+              {form.preview.isError && (
+                <span className="text-sm text-destructive">No se pudo calcular la vista previa.</span>
+              )}
+            </div>
+            {form.preview.isSuccess && <VistaPreviaRuido preview={form.preview.data} />}
           </div>
         </CardContent>
       )}

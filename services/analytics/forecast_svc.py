@@ -56,6 +56,11 @@ class ForecastFilters(BaseModel):
     fecha_hasta: date | None = None
     ccaa: str | None = None
     tecnologia: str | None = None
+    # Un CPV concreto, por igualdad sobre la columna `cpv` — la misma
+    # comparación con la que `trends_cpv_series` construye la serie de ese CPV,
+    # así que la previsión corresponde a la línea que el usuario está mirando
+    # (RFC ux-tendencias-cpv #1). `None` = previsión del mercado entero.
+    cpv: str | None = None
 
 
 class ForecastSeriesPoint(BaseModel):
@@ -78,6 +83,10 @@ class ForecastVolumeResult(BaseModel):
     # real se ensancha con el horizonte). Se publica para que la UI la rotule
     # con el número real en vez de dejar que se lea como un IC.
     banda_sigmas: float = BANDA_SIGMAS
+    # Ámbito de CPV de la previsión: el CPV pedido, o `None` si es la del
+    # mercado entero. Viaja en la respuesta para que la pantalla rotule lo que
+    # realmente recibió y no lo que creía haber pedido.
+    cpv: str | None = None
 
 
 class RetenderingFilters(BaseModel):
@@ -180,6 +189,7 @@ def _to_repo_filters(filters: Any) -> LicitacionesFilters:
         ccaa=getattr(filters, "ccaa", None),
         tecnologia=getattr(filters, "tecnologia", None),
         organo=getattr(filters, "organo", None),
+        cpv=getattr(filters, "cpv", None),
     )
 
 
@@ -212,7 +222,7 @@ def get_forecast_volume(filters: ForecastFilters) -> ForecastVolumeResult:
     log.info("analytics_forecast_volume_start", filters=filters.model_dump(exclude_none=True))
     monthly = _repo.forecast_monthly(_to_repo_filters(filters), metric=filters.metric)
     if not monthly:
-        return ForecastVolumeResult()
+        return ForecastVolumeResult(cpv=filters.cpv)
 
     hist = pd.DataFrame(
         {
@@ -222,7 +232,7 @@ def get_forecast_volume(filters: ForecastFilters) -> ForecastVolumeResult:
     )
     result_df = forecast_volume_from_monthly(hist, months_ahead=filters.months_ahead)
     if result_df.empty:
-        return ForecastVolumeResult()
+        return ForecastVolumeResult(cpv=filters.cpv)
 
     series = [
         ForecastSeriesPoint(
@@ -240,7 +250,7 @@ def get_forecast_volume(filters: ForecastFilters) -> ForecastVolumeResult:
     modelo = str(result_df["modelo"].iloc[0]) if "modelo" in result_df.columns else None
 
     log.info("analytics_forecast_volume_done", points=len(series), modelo=modelo)
-    return ForecastVolumeResult(series=series, modelo=modelo)
+    return ForecastVolumeResult(series=series, modelo=modelo, cpv=filters.cpv)
 
 
 def get_estacionalidad_organo(filters: EstacionalidadFilters) -> EstacionalidadOrganoResult:

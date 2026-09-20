@@ -76,8 +76,8 @@ Los scopes los resuelve `api/scopes.py::required_scope_for_request` a partir del
 |---|---|---|
 | `account:delete` | DELETE | `/me` |
 | `account:read` | GET | `/me/data` |
-| `admin` | todos | `/admin/solicitudes-acceso`, `/admin/users`, `/empresas/reviews`, `/feature-flags`, `/security/audit`, `/security/client-error`, `/security/client-errors`, `/security/csp-report`, `/security/leaked-key`, `/webhooks`, `/webhooks/event-types`, `/webhooks/global` |
-| `analytics:read` | GET | `/analytics/clusters`, `/analytics/compare-periods`, `/analytics/competitors`, `/analytics/forecast`, `/analytics/geography`, `/analytics/organos`, `/analytics/overview`, `/analytics/pipeline`, `/analytics/proyectos-modulos`, `/analytics/quality`, `/analytics/resumen`, `/analytics/scoring`, `/analytics/source-freshness`, `/analytics/tecnologias`, `/analytics/trends`, `/analytics/trends-cpv`, `/analytics/utes` |
+| `admin` | todos | `/admin/dlq`, `/admin/solicitudes-acceso`, `/admin/users`, `/empresas/reviews`, `/feature-flags`, `/security/audit`, `/security/client-error`, `/security/client-errors`, `/security/csp-report`, `/security/leaked-key`, `/webhooks`, `/webhooks/event-types`, `/webhooks/global` |
+| `analytics:read` | GET/POST | `/analytics/calendario`, `/analytics/clusters`, `/analytics/compare-periods`, `/analytics/competitors`, `/analytics/forecast`, `/analytics/geography`, `/analytics/organos`, `/analytics/overview`, `/analytics/pipeline`, `/analytics/proyectos-modulos`, `/analytics/quality`, `/analytics/resumen`, `/analytics/scoring`, `/analytics/source-freshness`, `/analytics/tecnologias`, `/analytics/trends`, `/analytics/trends-cpv`, `/analytics/utes` |
 | `api_keys:read` | GET/POST | `/me/keys` |
 | `api_keys:rotate` | POST | `/me/keys` |
 | `ask:read` | GET/POST | `/ask`, `/ask/models` |
@@ -87,7 +87,7 @@ Los scopes los resuelve `api/scopes.py::required_scope_for_request` a partir del
 | `data:read` | GET | `/adjudicaciones`, `/auth/me`, `/auth/oauth`, `/cuentas`, `/etiquetas`, `/eventos`, `/health`, `/health/live`, `/health/ready`, `/jobs`, `/me/notification-preferences`, `/me/sessions`, `/meta/filters`, `/meta/last-extraction`, `/predicciones/calibracion`, `/publico/cobertura`, `/publico/hubs`, `/publico/licitaciones`, `/publico/sitemap`, `/radar/dismissals`, `/radar/proximas`, `/resoluciones`, `/search/global`, `/tecnologias/keywords` |
 | `data:write` | POST/PUT/DELETE | `/auth/dev-login`, `/auth/login`, `/auth/logout`, `/auth/logout-all`, `/auth/password-reset`, `/auth/register`, `/auth/totp`, `/cuentas`, `/etiquetas`, `/etiquetas/aplicar`, `/etiquetas/por-objeto`, `/etiquetas/quitar`, `/me/notification-preferences`, `/me/sessions`, `/publico/solicitudes-acceso`, `/radar/dismissals`, `/search/semantic`, `/tecnologias/keywords` |
 | `empresas:read` | GET | `/empresas`, `/empresas/stats` |
-| `exports:read` | GET | `/exports/calendario`, `/exports/calendario.ics`, `/exports/descargas`, `/exports/download` |
+| `exports:read` | GET | `/exports/calendario`, `/exports/calendario.ics`, `/exports/crm`, `/exports/descargas`, `/exports/download` |
 | `feature_flags:read` | GET | `/feature-flags` |
 | `feedback:read` | GET | `/feedback/asistente`, `/feedback/model-info`, `/feedback/queue`, `/feedback/stats` |
 | `feedback:write` | POST | `/feedback`, `/feedback/asistente` |
@@ -99,7 +99,7 @@ Los scopes los resuelve `api/scopes.py::required_scope_for_request` a partir del
 | `profile:read` | GET | `/me/profile` |
 | `profile:write` | PUT/DELETE | `/me/profile` |
 | `pursuits:read` | GET | `/organizations`, `/organizations/active`, `/organizations/go-no-go`, `/pursuits`, `/pursuits/actividad`, `/pursuits/adjuntos`, `/pursuits/agenda`, `/pursuits/cartera`, `/pursuits/direccion`, `/pursuits/metrics`, `/pursuits/mi-baja`, `/pursuits/tasks`, `/pursuits/weights-proposal` |
-| `pursuits:write` | POST/PATCH/PUT/DELETE | `/organizations`, `/organizations/go-no-go`, `/organizations/invitations`, `/pursuits`, `/pursuits/adjuntos`, `/pursuits/weights-proposal` |
+| `pursuits:write` | POST/PATCH/PUT/DELETE | `/organizations`, `/organizations/go-no-go`, `/organizations/invitations`, `/pursuits`, `/pursuits/adjuntos`, `/pursuits/cartera`, `/pursuits/weights-proposal` |
 | `saved_filters:read` | GET | `/saved-filters` |
 | `saved_filters:write` | POST/DELETE | `/saved-filters` |
 | `watchlist:read` | GET | `/follows`, `/watchlist/feed.xml`, `/watchlist/items`, `/watchlist/rules` |

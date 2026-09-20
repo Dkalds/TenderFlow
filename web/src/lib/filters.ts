@@ -20,6 +20,10 @@ export interface FiltersState {
   tecnologias: string[];
   importeMin: number | null;
   soloAbiertas: boolean;
+  /** F1.1 — sólo el listado los aplica (ver `FilterValues`). */
+  procedimientos: string[];
+  provincias: string[];
+  importeMax: number | null;
   comparar: boolean;
   rangoB: DateRange;
 
@@ -30,6 +34,9 @@ export interface FiltersState {
   setTecnologias: (tecnologias: string[]) => void;
   setImporteMin: (min: number | null) => void;
   setSoloAbiertas: (soloAbiertas: boolean) => void;
+  setProcedimientos: (procedimientos: string[]) => void;
+  setProvincias: (provincias: string[]) => void;
+  setImporteMax: (max: number | null) => void;
   setComparar: (comparar: boolean) => void;
   setRangoB: (rango: DateRange) => void;
   resetFilters: () => void;
@@ -45,6 +52,9 @@ const filterParsers = {
   tecnologia: parseAsString.withDefault(""),
   importe_min: parseAsString.withDefault(""),
   solo_abiertas: parseAsString.withDefault(""),
+  procedimiento: parseAsString.withDefault(""),
+  provincia: parseAsString.withDefault(""),
+  importe_max: parseAsString.withDefault(""),
   comparar: parseAsString.withDefault(""),
   rango_b_desde: parseAsString.withDefault(""),
   rango_b_hasta: parseAsString.withDefault(""),
@@ -102,6 +112,27 @@ export function useFilters(): FiltersState {
 
   const setSoloAbiertas = useCallback((val: boolean) => setParams({ solo_abiertas: val ? "true" : "" }), [setParams]);
 
+  const procedimientos = useMemo(
+    () => (params.procedimiento ? params.procedimiento.split(",") : []),
+    [params.procedimiento],
+  );
+  const setProcedimientos = useCallback(
+    (valores: string[]) => setParams({ procedimiento: valores.join(",") || "" }),
+    [setParams],
+  );
+
+  const provincias = useMemo(() => (params.provincia ? params.provincia.split(",") : []), [params.provincia]);
+  const setProvincias = useCallback(
+    (valores: string[]) => setParams({ provincia: valores.join(",") || "" }),
+    [setParams],
+  );
+
+  const importeMax = useMemo(() => (params.importe_max ? Number(params.importe_max) : null), [params.importe_max]);
+  const setImporteMax = useCallback(
+    (val: number | null) => setParams({ importe_max: val != null ? String(val) : "" }),
+    [setParams],
+  );
+
   const comparar = params.comparar === "true";
 
   const setComparar = useCallback((val: boolean) => setParams({ comparar: val ? "true" : "" }), [setParams]);
@@ -132,6 +163,9 @@ export function useFilters(): FiltersState {
         tecnologia: "",
         importe_min: "",
         solo_abiertas: "",
+        procedimiento: "",
+        provincia: "",
+        importe_max: "",
         comparar: "",
         rango_b_desde: "",
         rango_b_hasta: "",
@@ -154,6 +188,12 @@ export function useFilters(): FiltersState {
     setImporteMin,
     soloAbiertas,
     setSoloAbiertas,
+    procedimientos,
+    setProcedimientos,
+    provincias,
+    setProvincias,
+    importeMax,
+    setImporteMax,
     comparar,
     setComparar,
     rangoB,
@@ -291,14 +331,51 @@ export function useWithFilters(): (path: string) => string {
  * doesn't refetch on every render.
  */
 export function useFilterParams(): Record<string, string> {
-  const { q, rango, estados, ccaas, tecnologias, importeMin, soloAbiertas } = useFilters();
+  const {
+    q,
+    rango,
+    estados,
+    ccaas,
+    tecnologias,
+    importeMin,
+    soloAbiertas,
+    procedimientos,
+    provincias,
+    importeMax,
+  } = useFilters();
   // Serialize arrays to strings so object identity doesn't cause unnecessary recalculations
   const estadosKey = estados.join();
   const ccaasKey = ccaas.join();
   const tecnologiasKey = tecnologias.join();
+  const procedimientosKey = procedimientos.join();
+  const provinciasKey = provincias.join();
   return useMemo(
-    () => filtersToParams({ q, rango, estados, ccaas, tecnologias, importeMin, soloAbiertas }),
+    () =>
+      filtersToParams({
+        q,
+        rango,
+        estados,
+        ccaas,
+        tecnologias,
+        importeMin,
+        soloAbiertas,
+        procedimientos,
+        provincias,
+        importeMax,
+      }),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- stable primitive deps via join()
-    [q, rango.desde, rango.hasta, estadosKey, ccaasKey, tecnologiasKey, importeMin, soloAbiertas],
+    [
+      q,
+      rango.desde,
+      rango.hasta,
+      estadosKey,
+      ccaasKey,
+      tecnologiasKey,
+      importeMin,
+      soloAbiertas,
+      procedimientosKey,
+      provinciasKey,
+      importeMax,
+    ],
   );
 }

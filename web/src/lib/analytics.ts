@@ -93,8 +93,14 @@ export interface EventosProducto {
      * pantalla al pintar una pieza que se quiere medir (la banda de F5.4). Sin
      * ese valor, la banda tendría que fingir que vino del rail o del
      * conmutador.
+     *
+     * `glosario` y `cita` son las dos aperturas que ocurren dentro de una
+     * pantalla por decisión del usuario, sin navegar: la ayuda de un término
+     * (F1.8) y la página del pliego con la cita resaltada (F2.5). Van con su
+     * propio origen para que no inflen `pantalla`, que mide piezas que la
+     * pantalla pinta sola.
      */
-    origen: "rail" | "rail_movil" | "conmutador" | "pantalla";
+    origen: "rail" | "rail_movil" | "conmutador" | "pantalla" | "glosario" | "cita";
     vista?: string;
     /**
      * F1.8 — se abrió una ayuda del glosario en este espacio. **Sin el
@@ -200,11 +206,8 @@ export interface EventosProducto {
    * Activación por la otra puerta: la primera regla de watchlist es lo que
    * convierte el producto en algo que trabaja solo.
    *
-   * PENDIENTE DE CABLEAR: el `POST /watchlist/rules` vive en
-   * `app/(dashboard)/mi-watchlist/page.tsx` (mutación `crear`), fichero que no
-   * pertenecía a este trabajo. El evento se declara aquí para que cablearlo sea
-   * una línea en el `onSuccess` de esa mutación:
-   * `registrarEvento("regla_creada", { primera_vez: primeraVez("regla") })`.
+   * Lo emite el `onSuccess` del alta en
+   * `app/(dashboard)/mi-watchlist/_hooks/use-mi-watchlist.ts`.
    */
   regla_creada: {
     primera_vez: PrimeraVez;
@@ -548,9 +551,13 @@ export function dimensionesDeDescarga(url: string): EventosProducto["export_lanz
   // Sin este caso el único evento que distingue «se llevan la ficha a un
   // comité» de «descargaron algo» caería en `otro`, que es justo lo que el
   // valor `pdf_oportunidad` existe para evitar.
+  // El CSV para el CRM (F6.3, `/exports/crm`) tampoco: es una salida con
+  // destinatario, y en `csv` se confundiría con el export del tablero.
   const formato = ruta.endsWith("/ficha.pdf")
     ? "pdf_oportunidad"
-    : (FORMATO_POR_PARAMETRO[declarado ?? ""] ?? "otro");
+    : ruta.endsWith("/exports/crm")
+      ? "crm"
+      : (FORMATO_POR_PARAMETRO[declarado ?? ""] ?? "otro");
   const recurso = ruta
     .replace(/^\/?api\/v\d+\//, "")
     .split("/")

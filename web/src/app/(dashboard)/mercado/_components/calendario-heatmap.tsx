@@ -1,27 +1,38 @@
 "use client";
 
 /**
- * El heatmap anual de publicaciones: una columna por semana, siete filas
- * Lun→Dom.
+ * El heatmap anual del Calendario: una columna por semana, siete filas
+ * Lun→Dom. Pinta cierres de plazo (vista principal) o publicaciones.
  *
  * La escala de color es por tramos y la leyenda los enumera con su rango
  * («1-2», «3-5»…): sin ella el verde de una celda no significaría nada. Cada
  * celda lleva además su fecha y su conteo exacto —en la `Pista` al pasar el
  * puntero y como nombre accesible—, así que la cifra nunca aparece sin decir
- * de qué día es (ADR-014). Las casillas no son focusables: 365 paradas de
- * tabulación harían la tarjeta intransitable.
+ * de qué día es (ADR-014).
+ *
+ * En la vista de vencimientos, un día con cierres es un enlace al listado de
+ * esas licitaciones (con el ámbito activo). Esos enlaces NO son paradas de
+ * tabulación —365 harían la tarjeta intransitable—: el camino de teclado es la
+ * lista «Próximos 7 días» y el día pico, que enlazan a lo mismo. Hoy lleva un
+ * anillo y los seis días siguientes, uno más tenue.
  */
 
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import Link from "next/link";
+
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Pista } from "@/components/ui/pista";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useScopedHref } from "@/lib/filters";
 import { cn } from "@/lib/utils";
 import { CalendarDays } from "lucide-react";
 
 import {
   DAY_LABELS,
+  diaHref,
+  type CalendarioModo,
   type CalendarWeek,
+  type DayCell,
   type MonthLabel,
 } from "../_hooks/use-calendario-view";
 
@@ -45,24 +56,79 @@ function getColorClass(count: number): string {
   return COLOR_SCALE[6].bg;
 }
 
+const TEXTOS: Record<CalendarioModo, { titulo: string; unidad: string; descripcion: string }> = {
+  vencimientos: {
+    titulo: "Cierres de plazo",
+    unidad: "cierres",
+    descripcion:
+      "Licitaciones cuyo plazo de presentación termina cada día. Pulsa un día para ver cuáles; hoy y los próximos 7 días van resaltados.",
+  },
+  publicaciones: {
+    titulo: "Densidad de Publicaciones",
+    unidad: "publicaciones",
+    descripcion: "Licitaciones publicadas cada día.",
+  },
+};
+
+function Celda({
+  cell,
+  modo,
+  scopedHref,
+}: {
+  cell: DayCell;
+  modo: CalendarioModo;
+  /** Resuelto una vez en la tarjeta: 365 celdas no abren 365 suscripciones a la URL. */
+  scopedHref: (path: string) => string;
+}) {
+  const etiqueta = `${cell.dateStr}: ${cell.count} ${TEXTOS[modo].unidad}${cell.esHoy ? " (hoy)" : ""}`;
+  const clase = cn(
+    "block w-5 h-5 m-[1px] rounded-sm transition-colors",
+    getColorClass(cell.count),
+    cell.esHoy && "ring-2 ring-primary ring-offset-1 ring-offset-background",
+    !cell.esHoy && cell.proximos7 && modo === "vencimientos" && "ring-1 ring-primary/60",
+  );
+  if (modo === "vencimientos" && cell.count > 0) {
+    return (
+      <Pista contenido={etiqueta}>
+        <Link
+          href={scopedHref(diaHref(cell.dateStr))}
+          tabIndex={-1}
+          aria-label={`${etiqueta}. Ver licitaciones`}
+          className={cn(clase, "cursor-pointer hover:opacity-80")}
+        />
+      </Pista>
+    );
+  }
+  return (
+    <Pista contenido={etiqueta}>
+      <div role="img" aria-label={etiqueta} className={cn(clase, "cursor-default")} />
+    </Pista>
+  );
+}
+
 export function CalendarioHeatmap({
   weeks,
   months,
   selectedYear,
+  modo = "publicaciones",
   isLoading,
 }: {
   weeks: CalendarWeek[];
   months: MonthLabel[];
   selectedYear: number;
+  modo?: CalendarioModo;
   isLoading: boolean;
 }) {
+  const textos = TEXTOS[modo];
+  const scopedHref = useScopedHref();
   return (
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-base">
-          <CalendarDays className="h-5 w-5" />
-          Densidad de Publicaciones — {selectedYear}
+          <CalendarDays className="h-5 w-5" aria-hidden="true" />
+          {textos.titulo} — {selectedYear}
         </CardTitle>
+        <CardDescription>{textos.descripcion}</CardDescription>
       </CardHeader>
       <CardContent>
         {isLoading ? (
@@ -96,22 +162,10 @@ export function CalendarioHeatmap({
                   {weeks.map((week, weekIdx) => {
                     const cell = week.days[dayIdx];
                     if (!cell) {
-                      return (
-                        <div key={weekIdx} className="w-5 h-5 m-[1px] rounded-sm" />
-                      );
+                      return <div key={weekIdx} className="w-5 h-5 m-[1px] rounded-sm" />;
                     }
-                    const etiqueta = `${cell.dateStr}: ${cell.count} publicaciones`;
                     return (
-                      <Pista key={weekIdx} contenido={etiqueta}>
-                        <div
-                          role="img"
-                          aria-label={etiqueta}
-                          className={cn(
-                            "w-5 h-5 m-[1px] rounded-sm transition-colors cursor-default",
-                            getColorClass(cell.count),
-                          )}
-                        />
-                      </Pista>
+                      <Celda key={weekIdx} cell={cell} modo={modo} scopedHref={scopedHref} />
                     );
                   })}
                 </div>

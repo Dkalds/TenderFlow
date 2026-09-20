@@ -24,6 +24,8 @@ alguien pregunte qué se comparte.
 
 from __future__ import annotations
 
+import csv
+import io
 from typing import Any, Final
 
 from pydantic import BaseModel, ConfigDict
@@ -35,7 +37,9 @@ __all__ = [
     "ETAPAS_CRM",
     "PayloadCRM",
     "a_csv_fila",
+    "csv_crm",
     "payload_de_pursuit",
+    "render_crm_export",
 ]
 
 #: Traducción de las etapas del producto a las de un CRM genérico. Los nombres
@@ -135,3 +139,61 @@ def a_csv_fila(payload: PayloadCRM) -> list[Any]:
     # fichero. Dos exports de las mismas filas con propiedades de seguridad
     # distintas es una diferencia que no se ve hasta que alguien abre el malo.
     return [sanitize_spreadsheet_value(datos[clave]) for clave in CABECERAS_CSV]
+
+
+def csv_crm(filas: list[dict[str, Any]]) -> bytes:
+    """El CSV del mapeo a partir de las filas del tablero. Puro.
+
+    ``filas`` son las de ``PursuitRepository.export_rows`` (las mismas del
+    export del tablero, C6.7). UTF-8 **con BOM**, como declara
+    ``docs/integraciones/crm.md``: sin él, Excel abre el fichero en la página
+    de códigos local y rompe los acentos de los órganos.
+    """
+    salida = io.StringIO()
+    escritor = csv.writer(salida, lineterminator="\r\n")
+    escritor.writerow(CABECERAS_CSV)
+    for fila in filas:
+        importe = fila.get("tender_importe")
+        escritor.writerow(
+            a_csv_fila(
+                payload_de_pursuit(
+                    licitacion_id=str(fila.get("licitacion_id") or ""),
+                    titulo=fila.get("tender_title"),
+                    organo=fila.get("organo_contratacion"),
+                    importe=float(importe) if importe is not None else None,
+                    status=str(fila.get("status") or ""),
+                    fecha_limite=fila.get("tender_deadline"),
+                    responsable=fila.get("responsable"),
+                    url=fila.get("tender_url"),
+                )
+            )
+        )
+    return ("﻿" + salida.getvalue()).encode("utf-8")
+
+
+def render_crm_export(
+    user_id: int,
+    *,
+    organization_id: int | None = None,
+    status: str | None = None,
+    responsible_user_id: int | None = None,
+    limit: int = 10_000,
+) -> tuple[bytes, int]:
+    """``(bytes, n_filas)`` del CSV para el CRM, con el ámbito ya resuelto.
+
+    La organización se resuelve aquí y no en la ruta por la misma razón que
+    ``services.exports.render_pursuits_export``: un solo sitio decide con qué
+    organización se lee el pipeline (``tests/test_organization_sql_isolation.py``).
+    Mismos filtros que el tablero, para que el CRM reciba lo que se está viendo.
+    """
+    from db.repositories.pursuits import PursuitRepository
+    from services.organizations import alcance_resuelto
+
+    with alcance_resuelto(user_id, organization_id) as (organizacion, _rol):
+        filas = PursuitRepository().export_rows(
+            organizacion,
+            status=status,
+            responsible_user_id=responsible_user_id,
+            limit=limit,
+        )
+    return csv_crm(filas), len(filas)

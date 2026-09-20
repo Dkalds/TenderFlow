@@ -34,6 +34,11 @@ export function snapshotFilters(values: FilterValues): string {
     tecnologias: values.tecnologias,
     importeMin: values.importeMin,
     soloAbiertas: values.soloAbiertas,
+    // F1.1 — sólo si están puestos: una vista sin ellos se guarda igual que
+    // antes de que existieran.
+    ...(values.procedimientos?.length ? { procedimientos: values.procedimientos } : {}),
+    ...(values.provincias?.length ? { provincias: values.provincias } : {}),
+    ...(values.importeMax != null ? { importeMax: values.importeMax } : {}),
   });
 }
 
@@ -56,6 +61,10 @@ export function applySnapshot(filters: FiltersState, filtersJson: string): void 
   // hubiera activo al aplicarla — el mismo valor daría dos resultados.
   filters.setSoloAbiertas(snap.soloAbiertas ?? false);
   filters.setImporteMin(snap.importeMin ?? null);
+  // Mismo criterio que `soloAbiertas`: una vista sin estos campos los apaga.
+  filters.setProcedimientos(snap.procedimientos ?? []);
+  filters.setProvincias(snap.provincias ?? []);
+  filters.setImporteMax(snap.importeMax ?? null);
 }
 
 export function useSavedViews() {

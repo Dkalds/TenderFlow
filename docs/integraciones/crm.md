@@ -62,15 +62,23 @@ no un campo más en el payload.
 
 ## Idempotencia
 
-El webhook viaja por las plantillas de `webhooks` con la entrega del outbox,
-así que un cambio de etapa dispara **un** envío aunque el job reintente. La
-deduplicación en el destino la da `external_id`, que es estable durante toda
-la vida del expediente.
+**Pendiente: la plantilla de webhook `crm_generic` no existe todavía.** El
+payload (`PayloadCRM`) está escrito y es el mismo del CSV, pero no hay un tipo
+de evento de webhook que lo emita. Cuando exista, viajará por las plantillas de
+`webhooks` con la entrega del outbox, así que un cambio de etapa disparará
+**un** envío aunque el job reintente; la deduplicación en el destino la da
+`external_id`, que es estable durante toda la vida del expediente.
 
 ## Formato CSV
 
+Se descarga con `GET /api/v1/exports/crm` (botón «Exportar a CRM» en
+Oportunidades), con los filtros del tablero: `organization_id`,
+`pursuit_status`, `responsible_user_id` y `limit`.
+
 Mismas columnas, mismo orden que la tabla de arriba
 (`CABECERAS_CSV` en `services/exports_crm.py`). Cabecera en la primera fila,
+separador **coma** (el que esperan los asistentes de importación de Salesforce
+y Dynamics; el export del tablero usa punto y coma porque se abre en Excel),
 UTF-8 con BOM para que Excel no rompa los acentos, y el saneado de fórmulas de
 `shared/export_safety.py` — un título que empiece por `=` no puede convertirse
 en una fórmula al abrirlo.

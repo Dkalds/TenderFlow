@@ -23,22 +23,27 @@ const CalendarioDowChart = dynamic(() => import("@/components/charts/calendario-
 export function CalendarioMensual({
   data,
   selectedYear,
+  etiqueta = "Publicaciones",
   isLoading,
 }: {
   data: MonthlyPoint[];
   selectedYear: number;
+  /** «Publicaciones» o «Cierres»: nombra la serie y el título. */
+  etiqueta?: string;
   isLoading: boolean;
 }) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base">Publicaciones por Mes — {selectedYear}</CardTitle>
+        <CardTitle className="text-base">
+          {etiqueta} por Mes — {selectedYear}
+        </CardTitle>
       </CardHeader>
       <CardContent>
         {isLoading ? (
           <Skeleton className="h-[300px] w-full" />
         ) : data.length > 0 ? (
-          <CalendarioMonthlyChart data={data} />
+          <CalendarioMonthlyChart data={data} etiqueta={etiqueta} />
         ) : (
           <EmptyState />
         )}

@@ -13,7 +13,12 @@ vi.mock("@/lib/analytics", () => ({ registrarEvento: vi.fn() }));
 
 import { registrarEvento } from "@/lib/analytics";
 import { callUrl } from "@/hooks/__tests__/fetch-call";
-import { parsearBajaPct, SimuladorPuntuacion } from "@/components/pliego/simulador-puntuacion";
+import {
+  conTarifas,
+  parsearBajaPct,
+  SimuladorPuntuacion,
+} from "@/components/pliego/simulador-puntuacion";
+import type { TenderFactSheetRecord } from "@/hooks/use-tender-fact-sheet";
 import { fetchPorRuta, renderConQuery } from "./pliego-render";
 
 const REFERENCIA = {
@@ -39,6 +44,21 @@ const PROPIA = {
 
 beforeEach(() => vi.clearAllMocks());
 afterEach(() => vi.unstubAllGlobals());
+
+describe("conTarifas (F2.4)", () => {
+  const ficha = (rate_cards: unknown[]) =>
+    ({ facts: { rate_cards } }) as unknown as TenderFactSheetRecord;
+
+  it("sólo dice «si» con tarifa y horas, que es cuando el backend puede dar margen", () => {
+    expect(conTarifas(ficha([{ role: "A", max_rate_eur_hour: 60, estimated_hours: 100 }]))).toBe("si");
+    expect(conTarifas(ficha([{ role: "A", max_rate_eur_hour: 60, estimated_hours: null }]))).toBe("no");
+    expect(conTarifas(ficha([]))).toBe("no");
+  });
+
+  it("sin ficha cargada no se sabe y no se afirma nada", () => {
+    expect(conTarifas(undefined)).toBeUndefined();
+  });
+});
 
 describe("parsearBajaPct", () => {
   it.each([

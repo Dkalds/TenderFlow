@@ -93,10 +93,10 @@ diarios reales.
 
 ## Acceptance criteria
 
-- [ ] El heatmap usa conteos diarios reales del backend (sin reparto semanal/fudge).
-- [ ] La vista principal muestra vencimientos por día; "hoy" y próximos 7 resaltados.
-- [ ] Click en un día lista las licitaciones que cierran ese día.
-- [ ] KPIs "vencen esta semana/mes" desde el dato real.
+- [x] El heatmap usa conteos diarios reales del backend (sin reparto semanal/fudge).
+- [x] La vista principal muestra vencimientos por día; "hoy" y próximos 7 resaltados.
+- [x] Click en un día lista las licitaciones que cierran ese día.
+- [x] KPIs "vencen esta semana/mes" desde el dato real.
 - [ ] `npm run typecheck && npm run lint && npm test` (web) y `make ...` (backend) en verde.
 - [ ] diff-cover ≥ 80% en líneas nuevas.
 
@@ -125,3 +125,34 @@ de producto más amplio: requiere exponer el campo de fecha límite en el agrega
 (hoy `load_stats_dataframe` sirve `fecha_publicacion`) y un endpoint/serie de
 vencimientos. Se aborda en un RFC/iteración aparte; la vista de actividad de
 publicación —ahora honesta— se mantiene como base.
+
+2026-09-19 — **Implementados #2, #3 y #4 (vencimientos).** El calendario pasa a
+responder «¿qué me vence y cuándo?».
+
+- **Backend.** `GET /api/v1/analytics/calendario/vencimientos?desde&hasta`
+  (`services/analytics/vencimientos.py`, SQL en
+  `AggregateRepository.vencimientos_diarios`/`vencimientos_kpis`): cierres por
+  día de `fecha_limite` (conteo e importe en juego), total, día pico de la
+  ventana y KPIs relativos a hoy (`vencen_hoy`, `vencen_7d`,
+  `vencen_resto_mes`). Honra el ámbito global completo (fechas de publicación,
+  CCAA, tecnología, estado, q, importe mínimo, solo abiertas). La ventana está
+  acotada a 366 días (422 si se excede): la serie crece con el rango, no con
+  las filas. El universo es el MISMO que el del listado al que enlaza cada día
+  (incluido el `only_classified` de `_base_filters`), y la cota superior es
+  exclusiva para que una `fecha_limite` con hora caiga en su día.
+- **Frontend.** `use-calendario-view.ts` consume `fecha_limite` vía ese
+  endpoint; la vista principal es «Vencimientos» y «Publicaciones» queda como
+  conmutador (`aria-pressed`). Cada día con cierres enlaza a
+  `/detalle?cierre_desde=D&cierre_hasta=D` con el ámbito activo; hoy lleva
+  anillo y los seis días siguientes uno tenue; tarjeta «Próximos 7 días»
+  (camino de teclado) y cuatro KPIs enlazados (hoy, 7 días, resto de mes, día
+  pico).
+- Tests: `tests/test_analytics_vencimientos.py` (9 sin BD, ejecutados; 2 con
+  `tmp_db` —paridad con el listado y ámbito— escritos, no ejecutados en local
+  sin Postgres) y `use-calendario-view.test.tsx` (vitest).
+
+**No hecho:** «vencen y coinciden con tus reglas» (integración con la
+watchlist de reglas, último inciso de #3). Exige evaluar las reglas del
+usuario por día; el motor server-side de reglas está en curso en otra línea de
+trabajo y no se tocó. Los KPIs usan la fecha UTC del servidor; el resaltado de
+«hoy» en la rejilla, la fecha local del navegador.

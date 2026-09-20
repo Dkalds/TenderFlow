@@ -3,11 +3,11 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
-import { useEmpresasWatchlist, useToggleEmpresaWatch } from "@/hooks/use-empresas-watchlist";
-import { ArrowLeft, Building2, CalendarDays, Eye, EyeOff, ShieldAlert } from "lucide-react";
+import { ArrowLeft, Building2, CalendarDays, ShieldAlert } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { SeguirBoton } from "@/components/seguir-boton";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { fetchWithAuth } from "@/lib/api-client";
@@ -110,10 +110,6 @@ export function CompanyProfile({ empresaId, groupIds }: CompanyProfileProps) {
     staleTime: 5 * 60 * 1000,
   });
 
-  const { watchedIds } = useEmpresasWatchlist();
-  const watched = allIds.some((id) => watchedIds.has(id));
-  const toggleWatch = useToggleEmpresaWatch();
-
   if (isLoading) return <ProfileSkeleton />;
 
   if (error || !profile) {
@@ -176,15 +172,20 @@ export function CompanyProfile({ empresaId, groupIds }: CompanyProfileProps) {
                 </span>
               </div>
             </div>
-            <Button
-              variant={watched ? "secondary" : "outline"}
-              className="min-h-10 shrink-0"
-              onClick={() => toggleWatch.mutate({ empresaIds: allIds, watched })}
-              disabled={toggleWatch.isPending}
-            >
-              {watched ? <EyeOff aria-hidden="true" /> : <Eye aria-hidden="true" />}
-              {watched ? "Dejar de vigilar" : "Vigilar empresa"}
-            </Button>
+            {/* El control único de ADR-031 §C; sigue el grupo de identidades. */}
+            <SeguirBoton
+              targetType="empresa"
+              targetId={String(empresaId)}
+              equivalentes={allIds.map(String)}
+              icono="ojo"
+              nombreAccesible="visible"
+              textos={{ seguir: "Vigilar empresa", siguiendo: "Dejar de vigilar" }}
+              clases={{
+                base: "min-h-10 shrink-0",
+                activo: buttonVariants({ variant: "secondary" }),
+                inactivo: buttonVariants({ variant: "outline" }),
+              }}
+            />
           </div>
 
           <div className="mt-6 flex flex-wrap items-center gap-2 border-t pt-5">

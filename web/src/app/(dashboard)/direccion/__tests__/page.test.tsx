@@ -83,6 +83,50 @@ describe("DireccionPage", () => {
     expect(screen.getByText("aún no (1/5)")).toBeTruthy();
   });
 
+  it("pinta las tarjetas con su cifra y, sin base, la nota en vez de un número", async () => {
+    apiGet.mockResolvedValue({
+      organization_id: 21,
+      n_minimo: 5,
+      win_rate_por_tecnologia: [],
+      win_rate_por_organo: [],
+      perdidas_n_minimo: 5,
+      perdidas_por_motivo: [{ motivo: "precio", n: 4, pct: 0.8 }],
+      radar_quality: null,
+      tarjetas: [
+        {
+          clave: "valor_ponderado",
+          etiqueta: "Valor ponderado del pipeline",
+          valor: 50000,
+          unidad: "eur",
+          n: 3,
+          n_minimo: 1,
+          universo: "Oportunidades abiertas hoy.",
+          nota: null,
+        },
+        {
+          clave: "ciclo_dias",
+          etiqueta: "Ciclo de identificada a cerrada (mediana)",
+          valor: null,
+          unidad: "dias",
+          n: 2,
+          n_minimo: 5,
+          universo: "Ganadas o perdidas.",
+          nota: "Sin base: 2 cierre(s) con fechas; hacen falta 5.",
+        },
+      ],
+    });
+
+    renderPage();
+
+    expect(await screen.findByText("Valor ponderado del pipeline")).toBeTruthy();
+    expect(screen.getByText(/50\.000\s€/)).toBeTruthy();
+    expect(screen.getByText("Sin base")).toBeTruthy();
+    expect(screen.getByText("Sin base: 2 cierre(s) con fechas; hacen falta 5.")).toBeTruthy();
+    expect(screen.getByText(/n = 2 \(mínimo 5\)/)).toBeTruthy();
+    expect(screen.getByText("Precio")).toBeTruthy();
+    expect(screen.getByText("80 %")).toBeTruthy();
+  });
+
   it("un 403 se explica como rol, no como caída", async () => {
     apiGet.mockRejectedValue(new ApiError(403, "Forbidden"));
 

@@ -24,6 +24,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/dlq": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Entradas de la DLQ de ingesta */
+        get: operations["listar_dlq_api_v1_admin_dlq_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/dlq/{failure_id}/reintentar": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Devolver una entrada de la DLQ a la cola de reintentos */
+        post: operations["reintentar_dlq_api_v1_admin_dlq__failure_id__reintentar_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/solicitudes-acceso": {
         parameters: {
             query?: never;
@@ -173,6 +207,31 @@ export interface paths {
          *     hay credencial que invalidar.
          */
         post: operations["admin_deactivate_user_api_v1_admin_users__user_id__deactivate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/analytics/calendario/vencimientos": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Calendario Vencimientos
+         * @description Cierres de plazo de presentación (`fecha_limite`) por día, con KPIs de cierre.
+         *
+         *     Cada día cuenta exactamente las licitaciones que devuelve
+         *     `GET /licitaciones?cierre_desde=D&cierre_hasta=D` con el mismo ámbito: es
+         *     el listado al que enlaza el calendario. Los KPIs (`vencen_hoy`,
+         *     `vencen_7d`, `vencen_resto_mes`) son relativos a hoy, no a la ventana.
+         */
+        get: operations["calendario_vencimientos_api_v1_analytics_calendario_vencimientos_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -402,6 +461,9 @@ export interface paths {
         /**
          * Overview
          * @description Return aggregated KPIs, breakdowns, and funnel data.
+         *
+         *     `importe_max`, `provincia` y `procedimiento` (F1.1) tienen la semántica del
+         *     listado (`GET /licitaciones`): el mismo filtro acota los KPIs y la tabla.
          */
         get: operations["overview_api_v1_analytics_overview_get"];
         put?: never;
@@ -495,6 +557,32 @@ export interface paths {
         get: operations["resumen_desde_ultima_visita_api_v1_analytics_resumen_desde_mi_ultima_visita_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/analytics/resumen/desde-mi-ultima-visita/visto": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Marcar todo como visto: la última visita pasa a ser ahora
+         * @description F5.4 — «marcar todo como visto» en la banda del Resumen.
+         *
+         *     La última visita es la lectura más reciente de la campana, y hasta ahora
+         *     solo avanzaba leyendo notificaciones concretas. Esto la mueve a ahora sin
+         *     tocar ninguna: la siguiente lectura de la banda empieza aquí. Es personal
+         *     —la marca es del principal, nunca de un parámetro— y no depende de la
+         *     organización, igual que la marca que lee el GET.
+         */
+        post: operations["resumen_marcar_visto_api_v1_analytics_resumen_desde_mi_ultima_visita_visto_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1384,6 +1472,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/competitive/watchlist/movimientos": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Señales recientes de las empresas vigiladas
+         * @description Qué han hecho en la ventana las empresas que vigila el usuario.
+         *
+         *     Señales explicables sobre adjudicaciones reales (entrada en una CCAA o en
+         *     una familia CPV nueva, rachas), más la actividad de cada empresa vigilada
+         *     —con 0 si no se ha movido—. Es la versión en pantalla de lo que
+         *     `scheduler/competitor_alerts.py` manda por correo.
+         */
+        get: operations["get_watchlist_movimientos_api_v1_competitive_watchlist_movimientos_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/competitive/watchlist/{empresa_id}": {
         parameters: {
             query?: never;
@@ -1717,6 +1830,33 @@ export interface paths {
          *     host que sirve la consola proxya ``/api`` a esta API.
          */
         get: operations["calendario_enlace_api_v1_exports_calendario_enlace_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/exports/crm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Oportunidades en CSV con el mapeo genérico de CRM
+         * @description F6.3 — el tablero de oportunidades en el vocabulario de un CRM.
+         *
+         *     D35: CSV con mapeo documentado (Salesforce y Dynamics lo importan sin
+         *     configurar nada) y no un conector nativo. Mismos filtros que el tablero y
+         *     que `GET /exports/download?recurso=pursuits`; lo que cambia son las
+         *     columnas: las nueve de `CABECERAS_CSV`, separadas por comas y en UTF-8 con
+         *     BOM. Solo sale lo del pipeline —ni score ni predicciones— porque un CRM es
+         *     un sistema de terceros.
+         */
+        get: operations["download_crm_api_v1_exports_crm_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2505,6 +2645,31 @@ export interface paths {
          *     LLM, con la `user_key` del auth y nunca el email ni el `user_id` crudo.
          */
         post: operations["post_guion_oferta_api_v1_licitaciones__id_externo__guion_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/licitaciones/{id_externo}/guion.pdf": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Guion de la oferta técnica en PDF (el ya generado; no llama al LLM)
+         * @description F2.6 — descarga en PDF del guion **ya generado**.
+         *
+         *     Nunca genera: descargar no puede ser una forma de gastar presupuesto de
+         *     LLM sin que se vea. Si el pliego cambió desde la última generación, la
+         *     firma no coincide y la respuesta es 404 — el guion guardado sería de otro
+         *     pliego.
+         */
+        get: operations["get_guion_oferta_pdf_api_v1_licitaciones__id_externo__guion_pdf_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -3544,6 +3709,53 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/organizations/{organization_id}/plantillas-miembro": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Reglas y vistas que recibe un miembro nuevo al aceptar la invitación
+         * @description Cualquier miembro las lee; `puede_editar` dice si además las cambia.
+         */
+        get: operations["get_plantillas_miembro_api_v1_organizations__organization_id__plantillas_miembro_get"];
+        put?: never;
+        /**
+         * Añadir una plantilla de miembro (owner/admin)
+         * @description Se copia a quien acepte una invitación **a partir de ahora**, una vez.
+         *
+         *     No se reparte a los miembros que ya estaban: la copia ocurre al activar la
+         *     membresía (`services.cuentas.aplicar_plantillas`).
+         */
+        post: operations["post_plantilla_miembro_api_v1_organizations__organization_id__plantillas_miembro_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{organization_id}/plantillas-miembro/{plantilla_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Borrar una plantilla de miembro (owner/admin)
+         * @description No toca las copias ya repartidas: son de cada miembro.
+         */
+        delete: operations["delete_plantilla_miembro_api_v1_organizations__organization_id__plantillas_miembro__plantilla_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/organizations/{organization_id}/report-schedule": {
         parameters: {
             query?: never;
@@ -4030,6 +4242,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/pursuits/cartera/{cartera_id}/renovacion": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Preparar la renovación de un contrato en cartera (F4.3)
+         * @description Crea la oportunidad de la relicitación, enlazada al contrato.
+         *
+         *     Idempotente: si el contrato ya tenía oportunidad de renovación, devuelve
+         *     esa con ``creada=false`` y no crea otra.
+         */
+        post: operations["post_cartera_renovacion_api_v1_pursuits_cartera__cartera_id__renovacion_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/pursuits/direccion": {
         parameters: {
             query?: never;
@@ -4043,6 +4278,9 @@ export interface paths {
          *
          *     Un `member` que teclee la URL recibe 403, no una pantalla sin enlace: un
          *     rail sin enlace es una sugerencia, esto es un permiso.
+         *
+         *     Cada tarjeta lleva universo, `n` y mínimo; por debajo del mínimo sale sin
+         *     `valor` y con la `nota` que dice por qué, nunca con un número inventado.
          */
         get: operations["get_direccion_api_v1_pursuits_direccion_get"];
         put?: never;
@@ -5418,6 +5656,11 @@ export interface components {
              */
             id_externo?: string | null;
             /**
+             * Ids Externos
+             * @description F2.8 — hasta tres licitaciones para una pregunta cruzada (comparar). El contexto se reparte entre ellas —el presupuesto por expediente se reduce y se declara en `ask_meta`— y la respuesta cita cada dato con su expediente. Compatible con `id_externo`: si llegan los dos, `id_externo` va primero.
+             */
+            ids_externos?: string[] | null;
+            /**
              * Messages
              * @description Historial previo de la conversación (no incluye la pregunta actual). No se persiste en el servidor.
              */
@@ -5551,6 +5794,11 @@ export interface components {
         Batalla: {
             /** Baja Ganadora */
             baja_ganadora?: number | null;
+            /**
+             * Contradiccion
+             * @default false
+             */
+            contradiccion: boolean;
             /** Fecha */
             fecha?: string | null;
             /** Importe */
@@ -5576,6 +5824,11 @@ export interface components {
         BatallasContraMi: {
             /** Batallas */
             batallas?: components["schemas"]["Batalla"][];
+            /**
+             * Contradicciones
+             * @default 0
+             */
+            contradicciones: number;
             /** Empresa Key */
             empresa_key: string;
             /**
@@ -6263,6 +6516,28 @@ export interface components {
             top3_importe_pct: number;
         };
         /**
+         * CompetitiveCompanyCorteDTO
+         * @description F3.5 — una celda de un corte del perfil (procedimiento o tramo de importe).
+         *
+         *     Con ``n`` siempre; ``baja_media`` e ``importe_total`` solo cuando la celda
+         *     llega al mínimo (``CompetitiveCompanyProfileDTO.corte_min_n``). La celda no
+         *     se omite por debajo: que un competidor tenga dos adjudicaciones por
+         *     negociado también dice algo, pero su media no.
+         */
+        CompetitiveCompanyCorteDTO: {
+            /**
+             * Baja Media
+             * @description Baja media en tanto por uno (0.12 = 12 %). Nula por debajo del mínimo.
+             */
+            baja_media?: number | null;
+            /** Clave */
+            clave: string;
+            /** Importe Total */
+            importe_total?: number | null;
+            /** N */
+            n: number;
+        };
+        /**
          * CompetitiveCompanyHistoryDTO
          * @description Unfiltered company history, separate from the active analysis scope.
          */
@@ -6331,6 +6606,11 @@ export interface components {
             concentracion_clientes: components["schemas"]["CompetitiveCompanyConcentrationDTO"];
             /** Contratos Recientes */
             contratos_recientes?: components["schemas"]["CompetitiveCompanyAwardDTO"][];
+            /**
+             * Corte Min N
+             * @default 5
+             */
+            corte_min_n: number;
             empresa: components["schemas"]["CompetitiveCompanyIdentityDTO"];
             /** Movimientos */
             movimientos?: components["schemas"]["CompetitiveCompanySignalDTO"][];
@@ -6344,6 +6624,10 @@ export interface components {
             por_ccaa?: components["schemas"]["CompetitiveCompanyBreakdownDTO"][];
             /** Por Cpv */
             por_cpv?: components["schemas"]["CompetitiveCompanyBreakdownDTO"][];
+            /** Por Procedimiento */
+            por_procedimiento?: components["schemas"]["CompetitiveCompanyCorteDTO"][];
+            /** Por Tramo Importe */
+            por_tramo_importe?: components["schemas"]["CompetitiveCompanyCorteDTO"][];
             posicion_mercado: components["schemas"]["CompetitiveCompanyPositionDTO"];
             scope: components["schemas"]["CompetitiveCompanyScopeDTO"];
             totales: components["schemas"]["CompetitiveCompanyTotalsDTO"];
@@ -6580,6 +6864,27 @@ export interface components {
             truncado: boolean;
         };
         /**
+         * CompletitudMes
+         * @description Completitud de la cohorte de expedientes publicados en un mes.
+         */
+        CompletitudMes: {
+            /**
+             * Mes
+             * @description YYYY-MM (mes de publicación)
+             */
+            mes: string;
+            /** Pct Cpv */
+            pct_cpv: number;
+            /** Pct Fecha Limite */
+            pct_fecha_limite: number;
+            /** Pct Importe */
+            pct_importe: number;
+            /** Pct Organo */
+            pct_organo: number;
+            /** Total */
+            total: number;
+        };
+        /**
          * ContratoCartera
          * @description Un contrato ganado que sigue vivo.
          */
@@ -6759,6 +7064,18 @@ export interface components {
             n_minimo: number;
             /** Organization Id */
             organization_id: number;
+            /**
+             * Perdidas N Minimo
+             * @default 5
+             */
+            perdidas_n_minimo: number;
+            /** Perdidas Por Motivo */
+            perdidas_por_motivo?: components["schemas"]["PerdidaPorMotivo"][];
+            /** Probabilidades Etapa Usadas */
+            probabilidades_etapa_usadas?: {
+                [key: string]: number;
+            };
+            radar_quality?: components["schemas"]["RadarQuality"] | null;
             /** Tarjetas */
             tarjetas?: components["schemas"]["TarjetaMetrica"][];
             /** Win Rate Por Organo */
@@ -6825,6 +7142,22 @@ export interface components {
             items: components["schemas"]["CuotaEmpresa"][];
             scope: components["schemas"]["MetricScope"];
         };
+        /** CursorPaginatedResponseWithTotal[LicitacionSummary] */
+        CursorPaginatedResponseWithTotal_LicitacionSummary_: {
+            /**
+             * Has More
+             * @default false
+             */
+            has_more: boolean;
+            /** Items */
+            items: components["schemas"]["LicitacionSummary"][];
+            /** Limit */
+            limit: number;
+            /** Next Cursor */
+            next_cursor?: string | null;
+            /** Total */
+            total?: number | null;
+        };
         /** CursorPaginatedResponse[AuditEntryOut] */
         CursorPaginatedResponse_AuditEntryOut_: {
             /**
@@ -6834,20 +7167,6 @@ export interface components {
             has_more: boolean;
             /** Items */
             items: components["schemas"]["AuditEntryOut"][];
-            /** Limit */
-            limit: number;
-            /** Next Cursor */
-            next_cursor?: string | null;
-        };
-        /** CursorPaginatedResponse[LicitacionSummary] */
-        CursorPaginatedResponse_LicitacionSummary_: {
-            /**
-             * Has More
-             * @default false
-             */
-            has_more: boolean;
-            /** Items */
-            items: components["schemas"]["LicitacionSummary"][];
             /** Limit */
             limit: number;
             /** Next Cursor */
@@ -6922,6 +7241,89 @@ export interface components {
              * @description Hash del contenido; es el `filter_version` del linaje
              */
             version: string;
+        };
+        /**
+         * DlqEntrada
+         * @description Una extracción fallida.
+         */
+        DlqEntrada: {
+            /** Created At */
+            created_at?: string | null;
+            /** Error Message */
+            error_message?: string | null;
+            /** Error Type */
+            error_type?: string | null;
+            /** Exhausted At */
+            exhausted_at?: string | null;
+            /** Fuente */
+            fuente: string;
+            /** Id */
+            id: number;
+            /** Last Attempt At */
+            last_attempt_at?: string | null;
+            /**
+             * Retry Count
+             * @default 0
+             */
+            retry_count: number;
+            /** Scope */
+            scope?: string | null;
+        };
+        /** DlqListado */
+        DlqListado: {
+            /**
+             * Estado
+             * @enum {string}
+             */
+            estado: "abiertas" | "agotadas";
+            /** Items */
+            items?: components["schemas"]["DlqEntrada"][];
+            /**
+             * Resumen
+             * @description Abiertas por fuente/scope (siempre, sea cual sea `estado`).
+             */
+            resumen?: components["schemas"]["DlqResumenFuente"][];
+        };
+        /**
+         * DlqReintento
+         * @description Resultado de reencolar una entrada.
+         */
+        DlqReintento: {
+            /** Detalle */
+            detalle: string;
+            /**
+             * Estado Previo
+             * @enum {string}
+             */
+            estado_previo: "abierta" | "agotada" | "duplicada" | "resuelta";
+            /** Id */
+            id: number;
+            /** Reencolada */
+            reencolada: boolean;
+        };
+        /**
+         * DlqResumenFuente
+         * @description Fallos abiertos agrupados por fuente/scope.
+         */
+        DlqResumenFuente: {
+            /** First Seen */
+            first_seen?: string | null;
+            /** Fuente */
+            fuente: string;
+            /** Last Attempt */
+            last_attempt?: string | null;
+            /** N */
+            n: number;
+            /**
+             * Retries
+             * @default 0
+             */
+            retries: number;
+            /**
+             * Scope
+             * @default
+             */
+            scope: string;
         };
         /**
          * DocumentoFormatoCobertura
@@ -7092,6 +7494,26 @@ export interface components {
         EmpresaReviewsResult: {
             /** Items */
             items: components["schemas"]["EmpresaReviewItem"][];
+        };
+        /**
+         * EmpresaVigiladaActividad
+         * @description Actividad de una empresa vigilada en la ventana (0 si no se ha movido).
+         */
+        EmpresaVigiladaActividad: {
+            /**
+             * Adjudicaciones
+             * @default 0
+             */
+            adjudicaciones: number;
+            /** Empresa Id */
+            empresa_id: number;
+            /**
+             * Importe
+             * @default 0
+             */
+            importe: number;
+            /** Nombre */
+            nombre: string;
         };
         /** EmpresasListResult */
         EmpresasListResult: {
@@ -7792,6 +8214,8 @@ export interface components {
              * @default 1.5
              */
             banda_sigmas: number;
+            /** Cpv */
+            cpv?: string | null;
             /** Modelo */
             modelo?: string | null;
             /** Series */
@@ -8449,6 +8873,8 @@ export interface components {
             nuts_code?: string | null;
             /** Organo Contratacion */
             organo_contratacion?: string | null;
+            /** Procedimiento */
+            procedimiento?: string | null;
             /** Provincia */
             provincia?: string | null;
             /** Raw Keywords */
@@ -8461,6 +8887,8 @@ export interface components {
             tipo_contrato?: string | null;
             /** Titulo */
             titulo: string;
+            /** Tramitacion */
+            tramitacion?: string | null;
             /** Url */
             url?: string | null;
         };
@@ -8549,10 +8977,14 @@ export interface components {
             ml_tecnologias?: string | null;
             /** Organo Contratacion */
             organo_contratacion?: string | null;
+            /** Procedimiento */
+            procedimiento?: string | null;
             /** Tecnologia */
             tecnologia?: string | null;
             /** Titulo */
             titulo: string;
+            /** Tramitacion */
+            tramitacion?: string | null;
             /** Url */
             url?: string | null;
         };
@@ -8882,6 +9314,26 @@ export interface components {
             description: string;
             /** Evidence */
             evidence?: components["schemas"]["EvidenceRef"][];
+        };
+        /**
+         * MovimientosVigiladasResult
+         * @description Señales y actividad de las empresas vigiladas en los últimos ``dias``.
+         */
+        MovimientosVigiladasResult: {
+            /** Desde */
+            desde: string;
+            /** Dias */
+            dias: number;
+            /** Empresas */
+            empresas?: components["schemas"]["EmpresaVigiladaActividad"][];
+            /** Senales */
+            senales?: components["schemas"]["SenalCompetitiva"][];
+            /**
+             * Senales Truncadas
+             * @description True si había más de 50 señales y se recortaron.
+             * @default false
+             */
+            senales_truncadas: boolean;
         };
         /**
          * MyApiKeyOut
@@ -10115,6 +10567,42 @@ export interface components {
             vencen_7d: number;
         };
         /**
+         * PlantillaMiembro
+         * @description Una plantilla guardada, en la forma en que la edita la pantalla.
+         */
+        PlantillaMiembro: {
+            /** Created At */
+            created_at?: string | null;
+            /** Filters Json */
+            filters_json?: string | null;
+            /** Id */
+            id: number;
+            /** Nombre */
+            nombre: string;
+            regla?: components["schemas"]["WatchlistRule"] | null;
+            /**
+             * Tipo
+             * @enum {string}
+             */
+            tipo: "regla" | "vista";
+        };
+        /**
+         * PlantillaMiembroIn
+         * @description Cuerpo del alta: una regla o una vista, según ``tipo``.
+         */
+        PlantillaMiembroIn: {
+            /** Filters Json */
+            filters_json?: string | null;
+            /** Nombre */
+            nombre: string;
+            regla?: components["schemas"]["WatchlistRule"] | null;
+            /**
+             * Tipo
+             * @enum {string}
+             */
+            tipo: "regla" | "vista";
+        };
+        /**
          * PlantillaTareas
          * @description Cuerpo del PUT: la plantilla entera, que sustituye a la anterior.
          */
@@ -10147,6 +10635,26 @@ export interface components {
             puede_editar: boolean;
             /** Tareas */
             tareas?: components["schemas"]["TareaPlantilla"][];
+        };
+        /**
+         * PlantillasMiembroOut
+         * @description Las plantillas de miembro de la organización.
+         */
+        PlantillasMiembroOut: {
+            /**
+             * Max Plantillas
+             * @default 20
+             */
+            max_plantillas: number;
+            /** Organization Id */
+            organization_id: number;
+            /** Plantillas */
+            plantillas?: components["schemas"]["PlantillaMiembro"][];
+            /**
+             * Puede Editar
+             * @default false
+             */
+            puede_editar: boolean;
         };
         /**
          * PrediccionBajaLote
@@ -10210,6 +10718,14 @@ export interface components {
             prediccion_ambito?: string | null;
             /** Serving */
             serving?: string | null;
+        };
+        /**
+         * PrepararRenovacionIn
+         * @description Cuerpo de «preparar renovación»: el expediente de la relicitación.
+         */
+        PrepararRenovacionIn: {
+            /** Licitacion Id */
+            licitacion_id: string;
         };
         /**
          * PreviewResult
@@ -11055,6 +11571,8 @@ export interface components {
             reportes_por_tipo?: {
                 [key: string]: number;
             };
+            /** Tendencia Completitud */
+            tendencia_completitud?: components["schemas"]["CompletitudMes"][];
             /**
              * Total Records
              * @default 0
@@ -11359,6 +11877,18 @@ export interface components {
             titulo: string | null;
             /** Url */
             url: string | null;
+        };
+        /**
+         * RenovacionPreparada
+         * @description Resultado de «preparar renovación».
+         */
+        RenovacionPreparada: {
+            /** Cartera Id */
+            cartera_id: number;
+            /** Creada */
+            creada: boolean;
+            /** Renovacion Pursuit Id */
+            renovacion_pursuit_id: number;
         };
         /**
          * RenovacionesResult
@@ -11854,6 +12384,8 @@ export interface components {
             ml_tech_principal?: string | null;
             /** Organo Contratacion */
             organo_contratacion?: string | null;
+            /** Procedimiento */
+            procedimiento?: string | null;
             /** Risk Flags */
             risk_flags?: string[];
             /** Score */
@@ -11862,6 +12394,8 @@ export interface components {
             tecnologia?: string | null;
             /** Titulo */
             titulo?: string | null;
+            /** Tramitacion */
+            tramitacion?: string | null;
             /** Url */
             url?: string | null;
         };
@@ -11903,6 +12437,12 @@ export interface components {
              * @default ninguno
              */
             afinidad_origen: string;
+            /**
+             * Anulacion Organo
+             * @description ok | apagada | error
+             * @default ok
+             */
+            anulacion_organo: string;
             /**
              * Competencia
              * @description ok | vacia | error
@@ -12079,6 +12619,37 @@ export interface components {
             source: string;
             /** Top K */
             top_k: number;
+        };
+        /**
+         * SenalCompetitiva
+         * @description Una señal explicable sobre una empresa vigilada.
+         */
+        SenalCompetitiva: {
+            /** Detalle */
+            detalle: string;
+            /** Empresa */
+            empresa: string;
+            /** Empresa Id */
+            empresa_id: number;
+            /**
+             * Fecha
+             * @description Fecha de adjudicación, YYYY-MM-DD.
+             */
+            fecha?: string | null;
+            /** Importe */
+            importe?: number | null;
+            /** Licitacion Id */
+            licitacion_id?: string | null;
+            /**
+             * Tipo
+             * @enum {string}
+             */
+            tipo: "nueva_ccaa" | "nuevo_cpv" | "racha";
+            /**
+             * Titulo
+             * @description Frase corta, lista para pintar.
+             */
+            titulo: string;
         };
         /**
          * ServiceLevelFact
@@ -12394,8 +12965,18 @@ export interface components {
              * @default 0
              */
             n: number;
+            /**
+             * N Minimo
+             * @default 1
+             */
+            n_minimo: number;
             /** Nota */
             nota?: string | null;
+            /**
+             * Unidad
+             * @enum {string}
+             */
+            unidad: "eur" | "dias" | "pct";
             /** Universo */
             universo: string;
             /** Valor */
@@ -13154,6 +13735,81 @@ export interface components {
             type: string;
         };
         /**
+         * VencimientoDia
+         * @description Cierres de plazo de un día.
+         */
+        VencimientoDia: {
+            /** Count */
+            count: number;
+            /**
+             * Fecha
+             * @description Día de cierre, YYYY-MM-DD.
+             */
+            fecha: string;
+            /**
+             * Importe
+             * @description Suma del presupuesto de las que cierran ese día.
+             */
+            importe: number;
+        };
+        /**
+         * VencimientosKpis
+         * @description Cierres relativos a HOY, independientes de la ventana pintada.
+         */
+        VencimientosKpis: {
+            /**
+             * Hoy
+             * @description Fecha de referencia (UTC), YYYY-MM-DD.
+             */
+            hoy: string;
+            /**
+             * Vencen 7D
+             * @description Cierres de hoy a hoy+6, ambos incluidos.
+             * @default 0
+             */
+            vencen_7d: number;
+            /**
+             * Vencen Hoy
+             * @default 0
+             */
+            vencen_hoy: number;
+            /**
+             * Vencen Resto Mes
+             * @description Cierres de hoy al último día del mes en curso, ambos incluidos.
+             * @default 0
+             */
+            vencen_resto_mes: number;
+        };
+        /**
+         * VencimientosResult
+         * @description Serie diaria de cierres en la ventana pedida y KPIs de cierre.
+         */
+        VencimientosResult: {
+            /** Desde */
+            desde: string;
+            /** @description Día de la ventana con más cierres (el primero si hay empate). `null` si la ventana no tiene ninguno. */
+            dia_pico?: components["schemas"]["VencimientoDia"] | null;
+            /** Dias */
+            dias?: components["schemas"]["VencimientoDia"][];
+            /** Hasta */
+            hasta: string;
+            kpis: components["schemas"]["VencimientosKpis"];
+            /**
+             * Total
+             * @description Cierres en toda la ventana.
+             * @default 0
+             */
+            total: number;
+        };
+        /**
+         * VisitaMarcada
+         * @description Respuesta de «marcar todo como visto»: la nueva marca de última visita.
+         */
+        VisitaMarcada: {
+            /** Visto En */
+            visto_en: string;
+        };
+        /**
          * WatchlistEmpresaItem
          * @description Empresa vigilada, con nombre canónico del maestro.
          */
@@ -13297,6 +13953,55 @@ export interface components {
         WatchlistNotaBody: {
             /** Nota */
             nota?: string | null;
+        };
+        /**
+         * WatchlistRule
+         * @description Regla de seguimiento por criterio. ``id`` es ``None`` hasta persistir.
+         */
+        WatchlistRule: {
+            /**
+             * Active
+             * @default true
+             */
+            active: boolean;
+            /** Banda Min */
+            banda_min?: ("Caliente" | "Atractiva" | "Tibia" | "Descarte") | null;
+            /** Ccaa */
+            ccaa?: string | null;
+            /** Cpv */
+            cpv?: string | null;
+            /**
+             * Frequency
+             * @default daily
+             * @enum {string}
+             */
+            frequency: "immediate" | "daily" | "weekly";
+            /** Id */
+            id?: number | null;
+            /** Keyword */
+            keyword?: string | null;
+            /** Min Importe */
+            min_importe?: number | null;
+            /** Nombre */
+            nombre?: string | null;
+            /** Organization Id */
+            organization_id?: number | null;
+            /** Organo */
+            organo?: string | null;
+            /** Plazo Min Dias */
+            plazo_min_dias?: number | null;
+            /** Procedimiento */
+            procedimiento?: string | null;
+            /** Tecnologia */
+            tecnologia?: string | null;
+            /** Tipo Contrato */
+            tipo_contrato?: string | null;
+            /**
+             * Visibility
+             * @default private
+             * @enum {string}
+             */
+            visibility: "private" | "organization";
         };
         /**
          * WatchlistRuleBody
@@ -13744,6 +14449,85 @@ export interface operations {
             };
         };
     };
+    listar_dlq_api_v1_admin_dlq_get: {
+        parameters: {
+            query?: {
+                /** @description Abiertas (en ciclo de reintento) o agotadas (sin más intentos) */
+                estado?: "abiertas" | "agotadas";
+                limit?: number;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DlqListado"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reintentar_dlq_api_v1_admin_dlq__failure_id__reintentar_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                failure_id: number;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DlqReintento"];
+                };
+            };
+            /** @description La entrada no existe */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     listar_api_v1_admin_solicitudes_acceso_get: {
         parameters: {
             query?: {
@@ -14039,6 +14823,58 @@ export interface operations {
             };
         };
     };
+    calendario_vencimientos_api_v1_analytics_calendario_vencimientos_get: {
+        parameters: {
+            query: {
+                /** @description Primer día de la ventana de cierre (YYYY-MM-DD) */
+                desde: string;
+                /** @description Último día de la ventana de cierre, incluido. Como mucho 366 días después de `desde`: la serie tiene un punto por día. */
+                hasta: string;
+                /** @description Publicación desde (YYYY-MM-DD) */
+                fecha_desde?: string | null;
+                /** @description Publicación hasta (YYYY-MM-DD) */
+                fecha_hasta?: string | null;
+                /** @description Filter by CCAA */
+                ccaa?: string | null;
+                /** @description Filter by tecnologia */
+                tecnologia?: string | null;
+                /** @description Filter by estado */
+                estado?: string | null;
+                /** @description Free-text search */
+                q?: string | null;
+                /** @description Min tender budget (EUR) */
+                importe_min?: number | null;
+                /** @description Sólo las que siguen abiertas */
+                solo_abiertas?: boolean;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VencimientosResult"];
+                };
+            };
+            /** @description Ventana invertida o de más de 366 días */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     clusters_api_v1_analytics_clusters_get: {
         parameters: {
             query?: {
@@ -14284,6 +15120,8 @@ export interface operations {
                 ccaa?: string | null;
                 /** @description Filter by tecnologia */
                 tecnologia?: string | null;
+                /** @description Un CPV concreto (8 dígitos, dígito de control opcional), comparado por igualdad: el mismo valor que identifica cada serie de `/trends-cpv`. Sin él, la previsión es la del mercado entero. La respuesta lo devuelve en `cpv`. */
+                cpv?: string | null;
             };
             header?: {
                 "X-CSRF-Token"?: string | null;
@@ -14476,6 +15314,12 @@ export interface operations {
                 q?: string | null;
                 /** @description Min tender budget (EUR) */
                 importe_min?: number | null;
+                /** @description Importe de licitación máximo, en euros (inclusive) */
+                importe_max?: number | null;
+                /** @description Provincia (multi-valor, separadas por comas) */
+                provincia?: string | null;
+                /** @description Código CODICE de procedimiento (multi-valor); se compara normalizado */
+                procedimiento?: string | null;
             };
             header?: {
                 "X-CSRF-Token"?: string | null;
@@ -14663,6 +15507,39 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    resumen_marcar_visto_api_v1_analytics_resumen_desde_mi_ultima_visita_visto_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VisitaMarcada"];
+                };
             };
             /** @description Validation Error */
             422: {
@@ -15781,7 +16658,14 @@ export interface operations {
                 min_contratos?: number;
                 /** @description Prefijo CPV */
                 cpv?: string | null;
+                /** @description CCAA; varias separadas por comas, como la barra global */
                 ccaa?: string | null;
+                /** @description Adjudicadas desde (YYYY-MM-DD, incluida). Eje: fecha de adjudicación. */
+                fecha_desde?: string | null;
+                /** @description Adjudicadas hasta (YYYY-MM-DD, incluida). Eje: fecha de adjudicación. */
+                fecha_hasta?: string | null;
+                /** @description Presupuesto mínimo de la licitación (EUR) */
+                importe_min?: number | null;
                 limit?: number;
                 /** @description Solo filas con base de importe sin IVA declarada. Devuelve `base: "sin_iva"` y hoy pocas filas: la columna se puebla con la re-ingesta, no con la migración. Por defecto se excluye lo que se sabe que lleva IVA y se declara `base: "mixta"`. */
                 solo_base_declarada?: boolean;
@@ -16259,6 +17143,44 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["WatchlistEmpresaStatus"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_watchlist_movimientos_api_v1_competitive_watchlist_movimientos_get: {
+        parameters: {
+            query?: {
+                /** @description Ventana hacia atrás, en días */
+                dias?: number;
+                /** @description Organización activa; por defecto la personal del usuario. */
+                organization_id?: number | null;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MovimientosVigiladasResult"];
                 };
             };
             /** @description Validation Error */
@@ -16994,6 +17916,54 @@ export interface operations {
             };
         };
     };
+    download_crm_api_v1_exports_crm_get: {
+        parameters: {
+            query?: {
+                /** @description Organización cuyo pipeline */
+                organization_id?: number | null;
+                /** @description Filtro de estado del tablero */
+                pursuit_status?: string | null;
+                /** @description Filtro de responsable */
+                responsible_user_id?: number | null;
+                limit?: number;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Una fila por oportunidad con las columnas de `docs/integraciones/crm.md` (cuenta = órgano, etapa traducida al embudo estándar) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/csv": unknown;
+                };
+            };
+            /** @description Sin membresía en la organización pedida */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     descargar_export_encolado_api_v1_exports_descargas__job_id__get: {
         parameters: {
             query?: {
@@ -17077,6 +18047,14 @@ export interface operations {
                 tecnologia?: string | null;
                 fecha_desde?: string | null;
                 fecha_hasta?: string | null;
+                /** @description Importe de licitación mínimo, en euros (inclusive) */
+                importe_min?: number | null;
+                /** @description Importe de licitación máximo, en euros (inclusive) */
+                importe_max?: number | null;
+                /** @description Provincia (multi-valor, separadas por comas) */
+                provincia?: string | null;
+                /** @description Código CODICE de procedimiento (multi-valor); se compara normalizado */
+                procedimiento?: string | null;
                 limit?: number;
                 /** @description Organización a la que se atribuye la exportación encolada. */
                 organization_id?: number | null;
@@ -17949,6 +18927,10 @@ export interface operations {
                 tipo_contrato?: string | null;
                 /** @description Plazo que vence dentro de N días */
                 dias_restantes_max?: number | null;
+                /** @description Orden, con los mismos valores que `/licitaciones`: `fecha_publicacion` (recientes primero, el de por defecto), `importe`, `titulo` y sus inversos con `-`. Los nulos van al final en los dos sentidos. El cursor lleva el orden dentro: no vale para otro. */
+                sort?: string | null;
+                /** @description Añade `total`: un COUNT(*) con los mismos filtros. Pídelo sólo en la primera página; el cursor existe para no pagarlo en cada una. */
+                with_total?: boolean;
             };
             header?: {
                 "X-CSRF-Token"?: string | null;
@@ -17966,7 +18948,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["CursorPaginatedResponse_LicitacionSummary_"];
+                    "application/json": components["schemas"]["CursorPaginatedResponseWithTotal_LicitacionSummary_"];
                 };
             };
             /** @description Cursor inválido */
@@ -18572,6 +19554,55 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    get_guion_oferta_pdf_api_v1_licitaciones__id_externo__guion_pdf_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                id_externo: string;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description El PDF */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/pdf": unknown;
+                };
+            };
+            /** @description Autenticación inválida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No hay guion generado para el estado vigente del pliego */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
             };
         };
     };
@@ -20734,6 +21765,144 @@ export interface operations {
             };
         };
     };
+    get_plantillas_miembro_api_v1_organizations__organization_id__plantillas_miembro_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                organization_id: number;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlantillasMiembroOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_plantilla_miembro_api_v1_organizations__organization_id__plantillas_miembro_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                organization_id: number;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PlantillaMiembroIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlantillasMiembroOut"];
+                };
+            };
+            /** @description Solo owner o admin cambian las plantillas */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description La organización llegó al máximo de plantillas */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_plantilla_miembro_api_v1_organizations__organization_id__plantillas_miembro__plantilla_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                organization_id: number;
+                plantilla_id: number;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlantillasMiembroOut"];
+                };
+            };
+            /** @description Solo owner o admin cambian las plantillas */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description La plantilla no existe o no es de miembro */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_report_schedule_api_v1_organizations__organization_id__report_schedule_get: {
         parameters: {
             query?: never;
@@ -21540,6 +22709,59 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
+            };
+        };
+    };
+    post_cartera_renovacion_api_v1_pursuits_cartera__cartera_id__renovacion_post: {
+        parameters: {
+            query?: {
+                organization_id?: number | null;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                cartera_id: number;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PrepararRenovacionIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RenovacionPreparada"];
+                };
+            };
+            /** @description No perteneces a esa organización o no puedes escribir */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description El contrato no está en la cartera de la organización */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description El expediente no sirve como relicitación */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

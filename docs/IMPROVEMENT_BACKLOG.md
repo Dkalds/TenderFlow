@@ -18,6 +18,15 @@ backend** (F4.6 se desbloqueó el 2026-09-18) y dos descartadas por su propia
 decisión (F2.1 y F6.6). Tener backend no es tener pantalla: ver la nota de
 abajo.
 
+*Estado (2026-09-19):* el «treinta y seis con backend» era optimista en dos
+ítems, comprobado en el código: **F1.4 no tiene backend real** — el scoring
+nunca emite `organo_anula_frecuente` (solo existen su texto en
+`services/analytics/scoring_explicacion.py` y su rótulo en
+`web/src/lib/riesgos.ts`) y no hay tasas precalculadas —, y **F2.8 tiene
+backend solo para la tabla** (`POST /licitaciones/comparar`): `/ask` sigue
+aceptando un único `id_externo`, así que la pregunta cruzada falta también en
+el backend, no solo en la UI.
+
 Lo que **no** se hizo, y por qué:
 
 | Ítem | Estado | Motivo |
@@ -53,8 +62,8 @@ y F4.6. El estado de cada una está anotado en el plan.
 Pantallas que faltaban de lado ficha y superficie pública (2026-09-18, rama
 `worktree-agent-ac5d5218d7d3b1f8b`): F2.2, F2.5, F2.6, F2.8, F6.2 y F6.5 ya
 tienen UI; el estado por ítem está anotado en el plan. Quedan sin hacer: el
-PDF del guion (F2.6, sin ruta en el backend), `/ask` multi-expediente desde la
-UI (F2.8) y la emisión de `evidencia_abierta` (F2.5). Los E2E nuevos
+PDF del guion (F2.6, sin ruta en el backend), `/ask` multi-expediente (F2.8;
+sin backend ni UI, ver la nota de arriba) y la emisión de `evidencia_abierta` (F2.5). Los E2E nuevos
 (`pagina-cita.spec.ts`, bloque de órganos de `seo.spec.ts`) no se ejecutaron
 en local.
 
@@ -63,7 +72,7 @@ en local.
 | Ítem | Estado tras el plan |
 |---|---|
 | [P3] Unificar la definición de «Calientes» | **Sin tocar** — sigue abierto |
-| [P2] Remediación axe: 4 reglas desactivadas | **3 reglas** — `nested-interactive` reactivada el 2026-09-08 (C7.1) |
+| [P2] Remediación axe: 4 reglas desactivadas | **Cerrado** el 2026-09-19 — las cuatro reactivadas; ver _Cerrados_ |
 
 Hallazgos nuevos que el plan destapó y ya están corregidos: el
 `TIPO_CONTRATO_LABELS` con dos etiquetas desplazadas y cuatro códigos sin
@@ -89,7 +98,7 @@ estado real de cada ítem en su §8. **Excluye a propósito `backup.yml` y
 | [P3] F5: refactor de repositories (ratchet TID251) | **Progresa** — la whitelist baja de 32 a 28 archivos, y a 26 el 2026-09-16 (`kpi_precompute`, `mercado`); el destino sigue siendo vaciarla |
 | [P1] Cobertura de tests de las páginas del frontend | **Cerrado y movido** el 2026-09-18 a _Cerrados_ — primera medición local completa; pisos globales y de `src/app/**` subidos a lo medido |
 | [P2] Contrato de paginación común | **Cerrado y movido** el 2026-09-18 a _Cerrados_ — dependencia `limit`/`offset` compartida en `api/pagination.py`, primera ola de siete rutas; `trends` ya exponía `group_by` |
-| [P2] Remediación axe: 4 reglas desactivadas | **Código completo, pendiente de CI** — `nested-interactive` (C7.1) y, el 2026-09-18, las tres restantes; `disableRules` y los `fixme` de móvil retirados |
+| [P2] Remediación axe: 4 reglas desactivadas | **Cerrado y movido** el 2026-09-19 a _Cerrados_ — `nested-interactive` (C7.1), las tres restantes el 2026-09-18 y los rojos que destapó el E2E en `8a424967` y `0fd5082c`; sin `disableRules` ni `fixme` |
 | [P3] Los dos módulos-dios (`aggregates.py`, `settings.py`) | **Abierto** — sigue vigente la regla oportunista |
 | [P3] Unificar la definición de «Calientes» | **Cerrado y movido** el 2026-09-18 a _Cerrados_ — se mantiene la heurística de importe como «Grandes en plazo», documentada en los DTOs |
 | [P3] Descartar los avisos fantasma de Dependabot | **Abierto** — acción del usuario en GitHub |
@@ -142,7 +151,7 @@ no una comprobación hecha a mitad de ella.
 Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citaban. Lo que cambió:
 
 - **Cerrado y archivado:** el P1 de los enlaces caducados de PLACSP — entregado entero en `c230e63` (PR #191), no en los tres SHAs que el ítem citaba, que nunca llegaron a `master`. Ficha completa en [el archivo](archive/IMPROVEMENT_BACKLOG_CERRADOS.md).
-- **Altas:** dos P1 (allowlist de acceso, `plan: free` frente al SLO) y dos P2 (onboarding de primer uso, experiencia móvil). El de la allowlist nace como **RFC**, no como PR: toca auth y necesita migración.
+- **Altas:** dos P1 (allowlist de acceso, `plan: free` frente al SLO) y dos P2 (onboarding de primer uso, experiencia móvil). El de la allowlist nace como **RFC**, no como PR: toca auth y necesita migración. *(2026-09-19: los cuatro están resueltos; el del `plan: free` nunca llegó a tener entrada — ver la nota del P3 de staging.)*
 - **Cifras corregidas** en el P1 de cobertura del frontend: las páginas de 1.000+ líneas que citaba ya no existen.
 - **Sigue abierto y requiere acción externa:** el P0 de los backups sin copia remota
   (configuración de infraestructura). El índice del scoring en frío ya existe en
@@ -230,7 +239,7 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 - **Problema:** una organización no puede incorporar a nadie que no tenga ya cuenta —`add_member_by_email` rechaza el email aunque `organization_memberships.status` admita `invited` desde `v61`—, el único OAuth es Google (un partner con Microsoft 365 no entra con su identidad), y la identidad interna sigue derivándose del email: `user_key` aparece en 60 ficheros (grep 2026-09-05), así que un cambio de email es un cambio de clave primaria de facto.
 - **Decisiones ya tomadas (2026-09-06):** D17 → Entra ID multi-tenant reutilizando `OAUTH_ALLOWED_DOMAINS` y `access_grants`; D18 → ratchet ahora y migración aditiva por olas después (esa segunda fase es T4 del plan, no este ítem).
 - **Progreso T4 (2026-09-14, v129 · ADR-030 fase 2):** `user_id` junto a `user_key` en las doce tablas de usuario (nueve nuevas + FK e índice en las tres que ya la tenían), backfill por email en SQL y lectura dual + escritura doble en `db/`, `services/notifications.py`, `services/watchlist_rules.py` y los productores de alertas; GDPR exporta y borra por id o por clave (y cubre por fin `saved_filters`). Test de aceptación del ADR: `tests/test_user_id_cambio_email_integration.py`. **Queda la fase 3** (dejar de escribir `user_key`, recrear las PK de `user_profiles`/`radar_dismissals`, retirar `user_key` del payload de `watchlist_rule.matched` con RFC, y llevar el ratchet a cero).
-- **Progreso fase 3 (2026-09-18, v135, rama `worktree-agent-a8484f81d7c8a27e2`):** PK de `user_profiles` → `(user_id)` y de `radar_dismissals` → `(user_id, id_externo)`, con backfill y fallo ruidoso si queda alguna fila sin id o duplicada; `user_profiles` ya no escribe `user_key`; `log_event(actor=…)` saca seis ficheros del ratchet (69 → 63); RFC `draft` [2026-09-18](rfc/2026-09-18-rfc-retirar-user-key-payload-watchlist-rule-matched.md) para el payload del webhook, con el campo intacto hasta la ventana y la sustitución pendiente de decisión humana. **Queda:** `user_notifications`/`follows`/`watchlist_*` siguen tecleadas por `user_key` (y con ellas `radar_dismissals` la sigue escribiendo); aplicar v135 en producción (antes del deploy del código) y regenerar `docs/database-schema.md`.
+- **Progreso fase 3 (2026-09-18, v135, rama `worktree-agent-a8484f81d7c8a27e2`):** PK de `user_profiles` → `(user_id)` y de `radar_dismissals` → `(user_id, id_externo)`, con backfill y fallo ruidoso si queda alguna fila sin id o duplicada; `user_profiles` ya no escribe `user_key`; `log_event(actor=…)` saca seis ficheros del ratchet (69 → 63); RFC `draft` [2026-09-18](rfc/2026-09-18-rfc-retirar-user-key-payload-watchlist-rule-matched.md) para el payload del webhook, con el campo intacto hasta la ventana y la sustitución pendiente de decisión humana. **Queda:** `user_notifications`/`follows`/`watchlist_*` siguen tecleadas por `user_key` (y con ellas `radar_dismissals` la sigue escribiendo); aplicar v135 en producción (antes del deploy del código) y regenerar `docs/database-schema.md`. *Estado (2026-09-19):* `docs/database-schema.md` ya está regenerado con v135 y v140 (`98f34bee`; su cabecera dice `v138_notice_type_code`).
 - **Acceptance criteria:** los de S1.1–S1.4 del plan v2, sin redefinirlos aquí. Los cuatro subítems son independientes y se pueden entregar por separado; S1.3 (dominio propio) es acción humana.
 - **Files de partida:** [docs/plans/2026-09-plan-arquitectura-v2.md](plans/2026-09-plan-arquitectura-v2.md) (§5, S1), [services/organizations.py](../services/organizations.py), [api/routes/auth.py](../api/routes/auth.py)
 - **Riesgo:** medio — S1.2 toca el login, que es el camino por el que entra todo el mundo; el resto es aditivo.
@@ -334,34 +343,6 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 - **Riesgo:** bajo — solo tests.
 
 
-### [P2] La experiencia móvil existe pero nadie la diseñó
-- **Área:** web/src/components/layout, web/src/app/(dashboard)
-- **Problema:** por debajo de `md` el rail de espacios es `hidden` (`console-rail.tsx:196`) y la única navegación es el drawer del `Sheet` (`console-rail.tsx:242-258`). Eso **ya está cubierto por un test real** (`web/e2e/responsive.spec.ts` a 375×812, sin `.or()` ni condicionales), así que no es un agujero de verificación: es que el contenido que hay detrás del drawer no está pensado para ese ancho — lo que llenan las páginas son tablas densas y grafos. El selector de organización del propio rail sigue además siendo un `<select>` nativo (`console-rail.tsx:125`) mientras el resto de controles son Radix: comportamiento de teclado y de lector distinto.
-- **Acceptance criteria:**
-  - ✅ **Decidido 2026-09-01:** móvil es consulta y triaje —Radar, ficha,
-    watchlist y agenda—, no edición completa de matrices analíticas.
-  - ✅ Radar y Agenda tienen presentación propia bajo `md`; el E2E exige que
-    los cuatro flujos elegidos no desborden el documento.
-  - ✅ El selector de organización usa Radix `Select`, alineado con el resto de
-    controles de la consola.
-  - Pendiente hasta que CI ejecute el nuevo E2E: confirmar Detalle y Watchlist
-    a 375×812 sobre el build de producción. **2026-09-18 (rama worktree-agent-a37b58d577faad267):** revisado sobre
-    el código —la watchlist desbordaba por la barra de ámbito «no aplica», ya con
-    `overflow-x-auto`, y la barra y el pie de Detalle se desplazan en vez de
-    empujar el documento—; los `fixme` salieron. Falta el verde de CI.
-- **Files de partida:** [web/src/components/layout/console-rail.tsx](../web/src/components/layout/console-rail.tsx), [web/e2e/responsive.spec.ts](../web/e2e/responsive.spec.ts)
-- **Riesgo:** bajo — presentación; sin tocar contratos ni datos.
-
-### [P2] Remediación axe pendiente: reactivar las reglas desactivadas del E2E de accesibilidad
-- **Avance 2026-09-18 (rama worktree-agent-a37b58d577faad267):** código de las **tres reglas restantes remediado y `disableRules` retirado**, junto con los dos `test.fixme` de `responsive.spec.ts`. `color-contrast`: la rampa del tema claro baja de L (primary 34 %, warning/score-warm 25 %, success 25 %, info 37 %) para que el texto sobre su propio tinte pase 4,5:1 —`contraste-tokens.test.ts` lo fija— y se retiran las opacidades de texto en Radar, Detalle, Resumen, rail y barra de ámbito. `scrollable-region-focusable`: inspectores de Radar y Detalle y lotes públicos con `tabIndex={0}`. `target-size`: «×» de chips del ámbito, estrella de Detalle y «?» del glosario a 24×24. El desborde de 274 px de la watchlist era la barra de ámbito en su rama «no aplica» (sin `overflow-x-auto`), y era también lo que quedaba de la agenda móvil. **El E2E no se ejecutó en local (sin stack)**: el ítem se cierra cuando el job de Playwright de CI salga verde; si alguna regla cae, el informe de axe dice qué nodo.
-- **Avance 2026-09-08 (C7.1):** `nested-interactive` **reactivada**. La causaba una sola cosa —la fila del Radar era un `role="button"` con cinco botones dentro— y se corrige poniendo la selección en un botón hermano en capa, con las acciones por encima. Con ella se van los **dos** `test.fixme` de `critical-workflows.spec.ts`: «seguir una licitación» era su consecuencia funcional directa, y «exportar el ámbito» resultó ser otro bug distinto —`lib/export.ts` revocaba el object URL en la misma vuelta del event loop que el `click()`, así que el Chromium headless de CI abortaba la descarga antes de empezarla—. Quedan tres reglas y dos `test.fixme`, los de móvil.
-- **Área:** web/e2e/accessibility.spec.ts, web/src (radar, detalle, watchlist, mi-pipeline)
-- **Problema:** el E2E de axe (WCAG 2.2 AA sobre /login, /resumen, /radar y /detalle) nació exigiendo cero violaciones antes de la remediación, y bloqueaba CI con deuda real: `color-contrast` (textos ≤10.5px con opacidad/tokens tenues en las filas del Radar y el detalle), `nested-interactive` (filas-botón del Radar con botones dentro), `scrollable-region-focusable` y `target-size` (<24px). El 2026-09-01 se acotó el gate con `disableRules([...])` — el resto de WCAG-AA y los checks estructurales (landmarks, lang, skip-link, ids únicos, controles con nombre) siguen bloqueando. Los dos ofensores de /resumen sí se arreglaron en ese momento (hint de `StatCell` sin `/80`, chips de Primeros pasos a texto pleno).
-- **Relación:** los dos `test.fixme` de `responsive.spec.ts` (watchlist desborda 274px a 375px; la agenda de /mi-pipeline no tiene fichas móviles) son la misma ola — «móvil es consulta y triaje», decidido 2026-09-01. También los dos `test.fixme` de `critical-workflows.spec.ts`: «seguir una licitación» (el click en «Seguir» dentro de la fila-botón del Radar no registra — consecuencia funcional directa del `nested-interactive`, no solo cosmética) y «exportar el ámbito» (el evento `download` no llega en el Chromium de CI; flujo de descarga por diagnosticar bajo Playwright). Ambos eran estrenos en rojo: el `describe` serial los saltaba mientras fallara el primero.
-- **Acceptance criteria:** cada regla se reactiva al remediar sus ofensores; la lista de `disableRules` y los `test.fixme` **solo pueden encoger**. Empezar por `nested-interactive` (estructural, no cosmético: rompe la navegación por teclado en el Radar).
-- **Files de partida:** [web/e2e/accessibility.spec.ts](../web/e2e/accessibility.spec.ts), [web/e2e/responsive.spec.ts](../web/e2e/responsive.spec.ts), [docs/UX_AUDIT.md](UX_AUDIT.md)
-- **Riesgo:** bajo — reactivar una regla sin remediar la pone en rojo en el PR, no en master.
-
 ### [P2] Golden set de extracción de fichas: la calidad de la ficha no se mide
 - **Área:** tests/eval, services/rag/fact_sheet.py
 - **Problema:** el retrieval tiene eval con ratchet (`tests/eval/test_eval_rag.py`, MRR ≥ 0.65); la extracción de fichas y el resumen IA no tienen ninguno. La ficha ya tiene mecánica de validación dura (citas contra texto persistido), pero nadie mide precisión/recall por familia: un cambio de prompt, de modelo o del selector de páginas puede degradar la extracción sin que nada salte. El feedback de usuario (evento `asistente_feedback`, 2026-09-01) da señal débil; el eval da la red fuerte. Esto además **bloquea** la unificación del selector de páginas de la ficha con el retrieval pgvector (ítem siguiente): refactorizar ese selector sin eval es volar a ciegas.
@@ -405,6 +386,7 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 - **Relación:** bloquea el P1 del golden set (ampliarlo no sirve de nada si el dataset de entrenamiento está ahogado) y explica por qué `model_versions` no tiene ninguna fila de `sap_classifier`.
 - **Riesgo:** medio — cambiar la población de entrenamiento cambia qué aprende el clasificador que decide el rescate ML en ingesta.
 - **Progreso parcial (2026-09-14, Ola 1 · Taxonomía):** parte del 0,46 % era vocabulario, no población: el diccionario solo tenía castellano y la PSCP publica en catalán. `config/keywords.py` añade nueve categorías de TI con formas en catalán, euskera y gallego ([docs/taxonomia-tecnologica.md](taxonomia-tecnologica.md)); tras resembrar, la tasa de positivos de PSCP hay que volver a medirla antes de decidir la bifurcación. No toca la población de entrenamiento ni `validate_training_data`.
+- *Estado (2026-09-19):* **la bifurcación ya se tomó en código, por la opción 1**, y el ítem no lo decía. Desde S6.1 del plan v2 (`#274`, 2026-09-08) `train_from_db` (`scraper/ml_training.py:374-418`) no lee `licitaciones` entera: entrena sobre `db.repositories.ml_dataset.filas_entrenamiento_sap`, acotada por `poblacion_clasificador_sql` (universo tecnológico observado, no un filtro por nombre de fuente, y sin duplicados confirmados), pasa `validate_training_data` en ese mismo camino y registra la población como `train_population`. Lo que sigue abierto es la consecuencia que la propia opción 1 anunciaba —el modelo puntúa una población distinta de la que aprende— y la medida: `domain-truth.yml` seguía dando `ml_proba > 0,7` en el 72,9 % de lo puntuado del 12 al 18/09 (ver el P2 de `importe_tipo`). No se comprobó aquí si hay ya una versión de `sap_classifier` entrenada con esa población.
 
 ### [P2] `baja_model` v2 y `retencion_model` v1 están entrenados y publicados, pero nadie puede decidir si activarlos
 - **Área:** db/model_registry.py, services/ml/baja_model.py, services/ml/calibration.py (acción del usuario)
@@ -487,6 +469,7 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
   - Decisión registrada: mantener como está, excluir `wiki/` (la parte más pesada y más regenerable), o mover a artefacto de CI/LFS con fallback textual documentado en AGENTS.md §1.
 - **Files de partida:** [AGENTS.md](../AGENTS.md), [.claude/hooks/](../.claude/hooks/)
 - **Riesgo:** bajo — decisión de mantenedor; sin impacto en runtime.
+- *Estado (2026-09-19):* **40,6 MB versionados** (suma de blobs de `graphify-out/` en `HEAD`, `git ls-tree -r -l`), un 45 % más que los 28 MB de agosto; el working tree llega a ~41,7 MB cuando el hook post-commit lo reescribe. La premisa de «excluir `wiki/`» ya no vale: `wiki/` pesa unos KB y el 98 % es `graph.json` (39,9 MB), seguido de `GRAPH_REPORT.md` (0,7 MB).
 
 ### [P3] Los dos módulos-dios: `aggregates.py` y `settings.py`
 - **Nota:** este ítem estaba **duplicado**. Había una segunda entrada, "Partir los dos módulos-dios: `aggregates.py` y `settings.py`", sobre los mismos dos ficheros y con criterios que se contradecían: una decía "no big-bang, solo dejar de crecer" y la otra "partir por dominio". Fusionados el 2026-08-18 (mismo patrón que la fusión de los `title=` el 2026-08-10). El criterio que sobrevive es el gradual, que es el que el repo ha demostrado que sí ejecuta.
@@ -496,6 +479,7 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
   - Una agregación o setting **nuevo** va a un módulo hermano (`aggregates_<área>.py` / settings por dominio) en vez de sumar al monolito.
   - Al tocar un bloque cohesivo existente **por otro motivo**, se evalúa extraerlo en el mismo cambio. El destino de `AggregateRepository` es partido por dominio (overview / geografía / competidores) y el de `Settings` submodelos anidados por eje preservando los nombres de variables de entorno — pero **llegando por partes, con la suite verde entre cada una**, no en un big-bang.
 - **Progreso 2026-09-18 (rama worktree-agent-acad4a43a2c0f0bae):** primer módulo hermano de settings, `config/settings_resumen.py` (`ResumenPregenSettings`, de la que hereda `Settings`: mismos nombres de variable de entorno y mismo acceso `settings.X`). Es el patrón para los siguientes settings nuevos. En `aggregates.py` no hubo agregación nueva que mover.
+- *Estado (2026-09-19) — las cifras del problema están caducadas y la regla «no crecer» no se ha cumplido:* `db/repositories/aggregates.py` tiene hoy **1.980 líneas** (eran 1.327) y `AggregateRepository` **60 métodos** (eran 55); `config/settings.py`, **1.422 líneas** (eran 946) y **27 validadores**. `shared/dto.py` ya no es el contraejemplo sano: **1.904 líneas y 83 clases** (eran 620 / 45). Medido con `wc -l` y `grep` sobre el árbol.
 - **Files de partida:** [db/repositories/aggregates.py](../db/repositories/aggregates.py), [config/settings.py](../config/settings.py)
 - **Riesgo:** bajo si se hace oportunista; medio si alguien intenta el big-bang.
 
@@ -552,6 +536,7 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
   - Decidir si se añade un servicio de staging apuntando a una BD de staging, y si `deploy.yml` despliega allí primero.
 - **Files de partida:** [render.yaml](../render.yaml), [.github/workflows/deploy.yml](../.github/workflows/deploy.yml)
 - **Relación:** la otra mitad de este ítem —el `plan: free` de la API— se separó el 2026-08-27 y subió a P1, porque contradice un SLO escrito y eso no es un nice-to-have. Se decide con coste, igual que ésta.
+- *Estado (2026-09-19):* ese P1 **no existe** en este backlog ni en el archivo, y ya no hace falta: `render.yaml:105` declara `plan: standard` para `tenderflow-api`, con el comentario de que el 2026-08-28 se verificó por la API de Render que el servicio real corre en `standard`. Lo que queda de aquella mitad es reconfirmarlo tras vincular el Blueprint (P2 de `render.yaml`). De paso: `render.yaml` ya no define tres servicios sino cinco (`tenderflow-api`, `tenderflow-worker`, `tenderflow-prometheus`, `tenderflow-alertmanager`, `tenderflow-grafana`), todos en `frankfurt` y ninguno de staging.
 - **Riesgo:** bajo técnico, con coste económico — por eso es decisión del usuario.
 
 ### [P3] Medir la cobertura de `procedimiento`, `tramitacion` y `peso_precio_pct` y decidir si entran como features
@@ -568,6 +553,8 @@ Este fichero y [UX_AUDIT.md](UX_AUDIT.md) iban por detrás del código que citab
 
 ## Cerrados
 
+- [2026-09-19] **P2: Remediación axe — reactivar las reglas desactivadas del E2E de accesibilidad** — sin `disableRules` ni `fixme`; últimos rojos en `8a424967` y `0fd5082c`. Ficha en [el archivo](archive/IMPROVEMENT_BACKLOG_CERRADOS.md).
+- [2026-09-19] **P2: La experiencia móvil existe pero nadie la diseñó** — los cuatro criterios cumplidos; los rojos móviles del E2E, en `8a424967`. Ficha en [el archivo](archive/IMPROVEMENT_BACKLOG_CERRADOS.md).
 - [2026-09-18] **P2: La consola no tiene primer uso** (rama worktree-agent-a37b58d577faad267) — la barra de
   ámbito explica qué es la primera vez (`components/layout/ambito-intro.tsx`,
   se cierra y se recuerda por navegador como `descarte.ts`; cada frase describe

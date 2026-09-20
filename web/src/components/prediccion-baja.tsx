@@ -2,6 +2,7 @@
 
 import { Badge } from "@/components/ui/badge";
 import { usePrediccionBaja } from "@/hooks/use-prediccion-baja";
+import { GlosarioHint } from "@/components/ui/glosario-hint";
 import type { Schemas } from "@/lib/api-types";
 import { formatCurrency } from "@/lib/utils";
 
@@ -51,9 +52,12 @@ export function PrediccionBajaBlock({ licitacionId }: { licitacionId: string }) 
     const delta = tieneEstimacion ? data.baja_real - data.p50! : null;
     return (
       <div className="mt-6 space-y-2">
-        <h3 className="text-sm font-medium text-muted-foreground">
-          Baja {tieneEstimacion ? "estimada vs. real" : "real"}
-        </h3>
+        <div className="flex items-center gap-1.5">
+          <h3 className="text-sm font-medium text-muted-foreground">
+            Baja {tieneEstimacion ? "estimada vs. real" : "real"}
+          </h3>
+          <GlosarioHint termino="baja" />
+        </div>
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
           {tieneEstimacion && (
             <span>
@@ -100,6 +104,7 @@ export function PrediccionBajaBlock({ licitacionId }: { licitacionId: string }) 
     <div className="mt-6 space-y-2">
       <div className="flex items-center gap-2">
         <h3 className="text-sm font-medium text-muted-foreground">Baja esperada</h3>
+        <GlosarioHint termino="baja" />
         <Badge variant={data.serving === "modelo" ? "default" : "outline"} className="text-xs">
           {data.serving === "modelo"
             ? `modelo v${data.model_version}`

@@ -118,7 +118,9 @@ def test_licitaciones_usa_el_envelope_compartido():
     from api.routes.licitaciones import listado
 
     assert listado.PaginatedResponse is PaginatedResponse
-    assert listado.CursorPaginatedResponse is CursorPaginatedResponse
+    # El cursor de licitaciones usa la subclase con `total` opcional; sigue
+    # siendo el envoltorio compartido, con las claves de la base intactas.
+    assert issubclass(listado.CursorPaginatedResponseWithTotal, CursorPaginatedResponse)
 
 
 def test_cotas_de_pagina_son_las_de_siempre():

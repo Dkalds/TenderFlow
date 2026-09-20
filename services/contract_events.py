@@ -191,6 +191,14 @@ def _emitir_cambio_seguido(
     if not resueltos:
         return False
 
+    # F5.3: el cambio sale con nombre. La clasificación es la misma función
+    # pura que usa «desde tu última visita», así que la campana, el digest y
+    # el Resumen llaman igual a lo mismo. Se clasifica sobre los campos con
+    # cambio real (`valores`), no sobre `changed`, para que un campo que la
+    # fuente reescribió con el mismo valor no gane el titular.
+    from services.avisos import clasificar_cambio
+
+    aviso = clasificar_cambio(antes, despues, sorted(valores))
     append_domain_event(
         "licitacion.cambiada",
         id_externo,
@@ -202,6 +210,9 @@ def _emitir_cambio_seguido(
             "changed_fields": sorted(valores),
             "valores": valores,
             "history_id": history_id,
+            "subtipo": aviso.subtipo,
+            "aviso_titulo": aviso.titulo,
+            "aviso_detalle": aviso.detalle,
             "seguidores": resueltos,
         },
         conn=conn,

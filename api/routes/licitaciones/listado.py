@@ -29,7 +29,9 @@ from api.routes.licitaciones._base import (
     _MAX_QUERY_LENGTH,
     SUNSET_LISTADO_POR_OFFSET,
     _decode_cursor,
+    _decode_cursor_orden,
     _encode_cursor,
+    _encode_cursor_orden,
     _lic_repo,
     _validate_date,
     _validate_query,
@@ -40,7 +42,7 @@ from api.routes.licitaciones.modelos import (
 from observability.logging import get_logger
 from shared.dto import (
     MAX_PAGE_LIMIT,
-    CursorPaginatedResponse,
+    CursorPaginatedResponseWithTotal,
     PaginatedResponse,
     SafeStr,
 )
@@ -249,7 +251,7 @@ async def list_licitaciones(
 
 @router.get(
     "/licitaciones/cursor",
-    response_model=CursorPaginatedResponse[LicitacionSummary],
+    response_model=CursorPaginatedResponseWithTotal[LicitacionSummary],
     summary="Listado con paginación por cursor (recomendado)",
     responses={
         400: {"description": "Cursor inválido"},
@@ -287,8 +289,25 @@ async def list_licitaciones_cursor(
     dias_restantes_max: int | None = Query(
         None, ge=0, le=3650, description="Plazo que vence dentro de N días"
     ),
+    sort: str | None = Query(
+        None,
+        pattern="^-?(fecha_publicacion|importe|titulo)$",
+        description=(
+            "Orden, con los mismos valores que `/licitaciones`: `fecha_publicacion` "
+            "(recientes primero, el de por defecto), `importe`, `titulo` y sus "
+            "inversos con `-`. Los nulos van al final en los dos sentidos. El "
+            "cursor lleva el orden dentro: no vale para otro."
+        ),
+    ),
+    with_total: bool = Query(
+        False,
+        description=(
+            "Añade `total`: un COUNT(*) con los mismos filtros. Pídelo sólo en la "
+            "primera página; el cursor existe para no pagarlo en cada una."
+        ),
+    ),
     _ctx: dict[str, Any] = Depends(require_any_auth),
-) -> CursorPaginatedResponse[LicitacionSummary]:
+) -> CursorPaginatedResponseWithTotal[LicitacionSummary]:
     """Paginación estable por cursor (fecha_publicacion, id_externo).
 
     Más eficiente que offset: no requiere COUNT(*) y no se ve afectado
@@ -305,35 +324,55 @@ async def list_licitaciones_cursor(
     _validate_date(cierre_desde, "cierre_desde")
     _validate_date(cierre_hasta, "cierre_hasta")
 
+    # El orden de fecha (sin `sort` o con `fecha_publicacion`) conserva su
+    # cursor de siempre, `fecha|id`: los tokens ya emitidos siguen valiendo.
+    # Los demás órdenes llevan el orden dentro del cursor (`_encode_cursor_orden`).
+    orden_por_fecha = sort in (None, "fecha_publicacion")
     cursor_fecha: str | None = None
     cursor_id: str | None = None
+    cursor_orden: tuple[str | float | None, str] | None = None
     if cursor:
-        cursor_fecha, cursor_id = _decode_cursor(cursor)
+        if orden_por_fecha:
+            cursor_fecha, cursor_id = _decode_cursor(cursor)
+        else:
+            cursor_orden = _decode_cursor_orden(cursor, str(sort))
 
-    items = await run_db(
-        _lic_repo.list_cursor,
-        cursor_fecha=cursor_fecha,
-        cursor_id=cursor_id,
-        q=q,
-        estado=estado,
-        solo_abiertas=solo_abiertas,
-        ccaa=ccaa,
-        tecnologia=tecnologia,
-        fecha_desde=fecha_desde,
-        fecha_hasta=fecha_hasta,
-        cierre_desde=cierre_desde,
-        cierre_hasta=cierre_hasta,
-        importe_min=importe_min,
-        importe_max=importe_max,
-        cpv=cpv,
-        organo=organo,
-        provincia=provincia,
-        procedimiento=procedimiento,
-        tramitacion=tramitacion,
-        tipo_contrato=tipo_contrato,
-        dias_restantes_max=dias_restantes_max,
-        limit=limit,
-    )
+    filtros: dict[str, Any] = {
+        "q": q,
+        "estado": estado,
+        "solo_abiertas": solo_abiertas,
+        "ccaa": ccaa,
+        "tecnologia": tecnologia,
+        "fecha_desde": fecha_desde,
+        "fecha_hasta": fecha_hasta,
+        "cierre_desde": cierre_desde,
+        "cierre_hasta": cierre_hasta,
+        "importe_min": importe_min,
+        "importe_max": importe_max,
+        "cpv": cpv,
+        "organo": organo,
+        "provincia": provincia,
+        "procedimiento": procedimiento,
+        "tramitacion": tramitacion,
+        "tipo_contrato": tipo_contrato,
+        "dias_restantes_max": dias_restantes_max,
+    }
+
+    def _leer() -> tuple[list[dict[str, Any]], int | None]:
+        # Página y total en UN salto al threadpool (ver
+        # `tests/test_async_handlers_no_blocking_io.py`): el conteo sólo si se
+        # pide, y con los mismos filtros que la página.
+        filas = _lic_repo.list_cursor(
+            cursor_fecha=cursor_fecha,
+            cursor_id=cursor_id,
+            sort=sort,
+            cursor_orden=cursor_orden,
+            limit=limit,
+            **filtros,
+        )
+        return filas, (_lic_repo.count_cursor(**filtros) if with_total else None)
+
+    items, total = await run_db(_leer)
 
     has_more = len(items) > limit
     if has_more:
@@ -342,13 +381,18 @@ async def list_licitaciones_cursor(
     next_cursor: str | None = None
     if has_more and items:
         last = items[-1]
-        next_cursor = _encode_cursor(last.get("fecha_publicacion"), last["id_externo"])
+        if orden_por_fecha:
+            next_cursor = _encode_cursor(last.get("fecha_publicacion"), last["id_externo"])
+        else:
+            columna = str(sort).lstrip("-")
+            next_cursor = _encode_cursor_orden(str(sort), last.get(columna), last["id_externo"])
 
-    return CursorPaginatedResponse[LicitacionSummary](
+    return CursorPaginatedResponseWithTotal[LicitacionSummary](
         items=[LicitacionSummary.model_validate(d) for d in items],
         next_cursor=next_cursor,
         has_more=has_more,
         limit=limit,
+        total=total,
     )
 
 

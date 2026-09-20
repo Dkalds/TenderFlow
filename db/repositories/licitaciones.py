@@ -11,7 +11,7 @@ from collections.abc import Sequence
 from datetime import UTC, date, datetime, timedelta
 from typing import TYPE_CHECKING, Any, Final
 
-from sqlalchemy import Select, and_, func, or_, select, text
+from sqlalchemy import Select, and_, func, literal_column, or_, select, text
 
 from db.database import connect, connect_read, fts_available
 from db.models import _DIALECT, compile_query, licitacion_tecnologia_score, licitaciones
@@ -22,8 +22,14 @@ from db.sql_fragments import (
     FOLD_TABLE,
     ISO_MAX,
     ISO_MIN,
+    codigo_normalizado_sql,
+    columna_nucleo,
+    columna_nucleo_sql,
+    fecha_valida_sql,
     fold_expr,
-    iso_guard,
+    importe_select_sql,
+    importe_sql,
+    lectura_tipada_activa,
     tecnologia_en_csv_sql,
 )
 from observability.logging import get_logger
@@ -53,6 +59,41 @@ _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 def _iso_guard(column: Any) -> Any:
     """Cláusula SA Core que excluye fechas claramente malformadas."""
     return and_(column >= ISO_MIN, column < ISO_MAX)
+
+
+# ── Núcleo tipado (T2): listado y cursor ──────────────────────────────────
+# Las dos consultas calientes de este módulo filtran y ordenan por fecha e
+# importe. Leen la columna que decide `db.sql_fragments.columna_nucleo` —la
+# vieja con `NUCLEO_TIPADO_LECTURA` apagado, la sombra de `v133` encendido—, y
+# todo se evalúa **en cada llamada**, no al importar: el flag se cambia por
+# configuración y la vuelta atrás no puede exigir reiniciar el proceso.
+#
+# Con el flag apagado el SQL compilado es byte a byte el de antes; lo fija
+# `tests/test_nucleo_tipado_consultas.py`.
+
+
+def _nucleo(nombre: str) -> Any:
+    """Columna SA Core de ``nombre`` para filtrar u ordenar: vieja o sombra."""
+    return licitaciones.c[columna_nucleo(nombre)]
+
+
+def _fecha_valida(nombre: str) -> Any:
+    """Guarda de fecha bien formada en SA Core, gemela de ``fecha_valida_sql``.
+
+    Apagado es :func:`_iso_guard` sobre el texto (parámetros ligados, como
+    siempre). Encendido, el rango de ``timestamptz`` de ``fecha_valida_sql``
+    sobre la sombra, que es un literal constante y no necesita parámetros.
+    """
+    if not lectura_tipada_activa():
+        return _iso_guard(licitaciones.c[nombre])
+    return text(fecha_valida_sql(nombre, "licitaciones"))
+
+
+def _importe_proyectado() -> Any:
+    """``importe`` para la lista de columnas del listado, con su nombre de siempre."""
+    if not lectura_tipada_activa():
+        return licitaciones.c.importe
+    return literal_column(importe_sql("licitaciones")).label("importe")
 
 
 def _dia_siguiente(iso_date: str) -> str | None:
@@ -186,6 +227,9 @@ _SUMMARY_COLS = [
     licitaciones.c.ml_tecnologias,
     licitaciones.c.ml_proba_max,
     licitaciones.c.ml_tech_principal,
+    # F1.7: códigos crudos; la etiqueta la pone la consola con `/meta/filters`.
+    licitaciones.c.procedimiento,
+    licitaciones.c.tramitacion,
 ]
 
 # Columnas de la bandeja «Próximas» del Radar (T5). Es ``_SUMMARY_COLS`` menos
@@ -219,6 +263,59 @@ _SORT_MAP: dict[str, Any] = {
 
 _DEFAULT_ORDER = licitaciones.c.fecha_publicacion.desc()
 
+
+def _orden(sort: str | None) -> Any:
+    """``ORDER BY`` del listado, resuelto contra el núcleo tipado vigente (T2).
+
+    Mismo contrato que ``_SORT_MAP``/``_DEFAULT_ORDER`` —que se conservan para
+    la búsqueda avanzada, fuera de las consultas calientes—, pero construido en
+    cada llamada: con ``NUCLEO_TIPADO_LECTURA`` encendido ordena por la sombra,
+    y un orden precompilado al importar se quedaría con la columna vieja.
+    """
+    fecha, importe = _nucleo("fecha_publicacion"), _nucleo("importe")
+    ordenes: dict[str, Any] = {
+        "fecha_publicacion": fecha.desc(),
+        "-fecha_publicacion": fecha.asc(),
+        "importe": importe.asc(),
+        "-importe": importe.desc(),
+        "titulo": licitaciones.c.titulo.asc(),
+        "-titulo": licitaciones.c.titulo.desc(),
+    }
+    return ordenes.get(sort or "", fecha.desc())
+
+
+#: Órdenes que admite el listado por cursor: los mismos seis que el de offset.
+SORTS_CURSOR: Final = frozenset(_SORT_MAP)
+
+
+def _orden_cursor(sort: str) -> tuple[Any, bool]:
+    """``(columna, descendente)`` de un valor de ``sort``, con la semántica de ``_SORT_MAP``.
+
+    Se resuelve en cada llamada, como :func:`_orden`: fecha e importe salen del
+    núcleo tipado vigente (T2).
+    """
+    if sort not in SORTS_CURSOR:
+        raise ValueError(f"orden de cursor desconocido: {sort!r}")
+    nombre = sort.lstrip("-")
+    columna = licitaciones.c.titulo if nombre == "titulo" else _nucleo(nombre)
+    # `fecha_publicacion` es descendente sin signo; importe y título, ascendentes.
+    descendente = (nombre == "fecha_publicacion") != sort.startswith("-")
+    return columna, descendente
+
+
+def _columnas_resumen() -> list[Any]:
+    """``_SUMMARY_COLS`` con el importe que toca proyectar (T2)."""
+    return [_importe_proyectado() if c is licitaciones.c.importe else c for c in _SUMMARY_COLS]
+
+
+def _columnas_resumen_sql(alias: str) -> str:
+    """Las mismas columnas que :func:`_columnas_resumen`, como texto (rama FTS)."""
+    return ", ".join(
+        importe_select_sql(alias) if c is licitaciones.c.importe else f"{alias}.{c.key}"
+        for c in _SUMMARY_COLS
+    )
+
+
 # ---------------------------------------------------------------------------
 # Backward-compat string aliases (used by services/licitaciones.py)
 # ---------------------------------------------------------------------------
@@ -226,7 +323,7 @@ _DEFAULT_ORDER = licitaciones.c.fecha_publicacion.desc()
 _SUMMARY_COLS_STR = (
     "id_externo, titulo, organo_contratacion, importe, estado, "
     "fecha_publicacion, fecha_limite, ccaa, cpv, url, tecnologia, "
-    "ml_tecnologias, ml_proba_max, ml_tech_principal"
+    "ml_tecnologias, ml_proba_max, ml_tech_principal, procedimiento, tramitacion"
 )
 
 _SORT_WHITELIST: dict[str, str] = {
@@ -345,10 +442,14 @@ class LicitacionRepository:
                     )
                 )
 
+        # Fechas e importe van por `_nucleo`/`_fecha_valida` (T2): la columna la
+        # decide `NUCLEO_TIPADO_LECTURA`. Apagado, es la de siempre.
+        fecha_pub = _nucleo("fecha_publicacion")
+        fecha_lim = _nucleo("fecha_limite")
         if fecha_desde and _DATE_RE.match(fecha_desde):
-            clauses.append(licitaciones.c.fecha_publicacion >= fecha_desde)
+            clauses.append(fecha_pub >= fecha_desde)
         if fecha_hasta and _DATE_RE.match(fecha_hasta):
-            clauses.append(licitaciones.c.fecha_publicacion <= fecha_hasta)
+            clauses.append(fecha_pub <= fecha_hasta)
 
         # Ventana de cierre. El guard ISO va una sola vez aunque haya dos cotas
         # —son rangos sobre la misma columna y Postgres los funde en un único
@@ -361,11 +462,11 @@ class LicitacionRepository:
             _dia_siguiente(cierre_hasta) if cierre_hasta and _DATE_RE.match(cierre_hasta) else None
         )
         if cierre_desde_ok or hasta_exclusivo:
-            clauses.append(_iso_guard(licitaciones.c.fecha_limite))
+            clauses.append(_fecha_valida("fecha_limite"))
         if cierre_desde_ok:
-            clauses.append(licitaciones.c.fecha_limite >= cierre_desde)
+            clauses.append(fecha_lim >= cierre_desde)
         if hasta_exclusivo:
-            clauses.append(licitaciones.c.fecha_limite < hasta_exclusivo)
+            clauses.append(fecha_lim < hasta_exclusivo)
 
         # ── F1.1: los ocho filtros que faltaban ──────────────────────────
         #
@@ -379,9 +480,9 @@ class LicitacionRepository:
         # Es lo correcto y hay que decirlo: «de 100k a 500k» no puede incluir
         # expedientes sin importe publicado, aunque alguno lo tuviera.
         if importe_min is not None:
-            clauses.append(licitaciones.c.importe >= float(importe_min))
+            clauses.append(_nucleo("importe") >= float(importe_min))
         if importe_max is not None:
-            clauses.append(licitaciones.c.importe <= float(importe_max))
+            clauses.append(_nucleo("importe") <= float(importe_max))
 
         # CPV **por prefijo**: es como se usa de verdad. `72` es «servicios de
         # TI» entero y `7222` una familia dentro. Igualdad exacta obligaría a
@@ -430,14 +531,14 @@ class LicitacionRepository:
         # futura no «vence en 5 días», ya no se puede licitar.
         if dias_restantes_max is not None:
             tope = (datetime.now(UTC) + timedelta(days=int(dias_restantes_max))).date().isoformat()
-            clauses.append(_iso_guard(licitaciones.c.fecha_limite))
+            clauses.append(_fecha_valida("fecha_limite"))
             # `<` y no `<=`: `_dia_siguiente` produce una cota **exclusiva**
             # (lo dice su docstring, y así la usan `cierre_hasta` y la rama
             # FTS). Con `<=` esta rama devolvía un día de más, así que el
             # mismo filtro daba un universo distinto según si el usuario había
             # escrito o no en la caja de búsqueda.
-            clauses.append(licitaciones.c.fecha_limite < _dia_siguiente(tope))
-            clauses.append(licitaciones.c.fecha_limite >= datetime.now(UTC).date().isoformat())
+            clauses.append(fecha_lim < _dia_siguiente(tope))
+            clauses.append(fecha_lim >= datetime.now(UTC).date().isoformat())
             clauses.append(abierta_core(licitaciones.c.estado))
 
         return clauses
@@ -519,7 +620,7 @@ class LicitacionRepository:
         cuanto se pide cualquiera de las dos cotas: NULL no cumple el guard
         ISO, igual que en los contadores de ``/analytics/resumen/hoy``.
         """
-        order = _SORT_MAP.get(sort or "", _DEFAULT_ORDER)
+        order = _orden(sort)
         clauses = self._base_filters(
             q=q,
             estado=estado,
@@ -573,7 +674,7 @@ class LicitacionRepository:
             )
 
         # Query SA Core
-        base: Select[Any] = select(*_SUMMARY_COLS).select_from(licitaciones)
+        base: Select[Any] = select(*_columnas_resumen()).select_from(licitaciones)
         if clauses:
             base = base.where(and_(*clauses))
 
@@ -709,6 +810,12 @@ class LicitacionRepository:
         with_total: bool,
     ) -> tuple[list[dict[str, Any]], int]:
         """Búsqueda FTS5: usa SQL directo porque FTS MATCH no tiene soporte SA."""
+        # Núcleo tipado (T2): las mismas columnas que `_base_filters` elige vía
+        # `_nucleo`, en su forma de texto. Apagado son `l.fecha_publicacion`,
+        # `l.fecha_limite` y `l.importe`, como siempre.
+        fpub = columna_nucleo_sql("fecha_publicacion", "l")
+        flim = columna_nucleo_sql("fecha_limite", "l")
+        imp = columna_nucleo_sql("importe", "l")
         extra_conditions: list[str] = ["tecnologia IS NOT NULL AND tecnologia != ''"]
         extra_params: list[Any] = []
         # `csv_values` y no el valor crudo: la rama SA Core acepta multi-valor
@@ -764,10 +871,10 @@ class LicitacionRepository:
                 )
 
         if fecha_desde and _DATE_RE.match(fecha_desde):
-            extra_conditions.append("l.fecha_publicacion >= %s")
+            extra_conditions.append(f"{fpub} >= %s")
             extra_params.append(fecha_desde)
         if fecha_hasta and _DATE_RE.match(fecha_hasta):
-            extra_conditions.append("l.fecha_publicacion <= %s")
+            extra_conditions.append(f"{fpub} <= %s")
             extra_params.append(fecha_hasta)
         # La ventana de cierre también aquí: si esta rama se saltara el recorte,
         # escribir en la búsqueda global convertiría en silencio un listado de
@@ -777,12 +884,12 @@ class LicitacionRepository:
             _dia_siguiente(cierre_hasta) if cierre_hasta and _DATE_RE.match(cierre_hasta) else None
         )
         if cierre_desde_ok or hasta_exclusivo:
-            extra_conditions.append(iso_guard("l.fecha_limite"))
+            extra_conditions.append(fecha_valida_sql("fecha_limite", "l"))
         if cierre_desde_ok:
-            extra_conditions.append("l.fecha_limite >= %s")
+            extra_conditions.append(f"{flim} >= %s")
             extra_params.append(cierre_desde)
         if hasta_exclusivo:
-            extra_conditions.append("l.fecha_limite < %s")
+            extra_conditions.append(f"{flim} < %s")
             extra_params.append(hasta_exclusivo)
 
         # ── F1.1 en la rama FTS ──────────────────────────────────────────
@@ -794,10 +901,10 @@ class LicitacionRepository:
         # test de paridad de F1.1 compara el `COUNT(*)` de las dos ramas con
         # los mismos filtros: si una se queda atrás, falla.
         if importe_min is not None:
-            extra_conditions.append("l.importe >= %s")
+            extra_conditions.append(f"{imp} >= %s")
             extra_params.append(float(importe_min))
         if importe_max is not None:
-            extra_conditions.append("l.importe <= %s")
+            extra_conditions.append(f"{imp} <= %s")
             extra_params.append(float(importe_max))
 
         cpvs = csv_values(cpv)
@@ -835,10 +942,10 @@ class LicitacionRepository:
 
         if dias_restantes_max is not None:
             tope = (datetime.now(UTC) + timedelta(days=int(dias_restantes_max))).date().isoformat()
-            extra_conditions.append(iso_guard("l.fecha_limite"))
-            extra_conditions.append("l.fecha_limite >= %s")
+            extra_conditions.append(fecha_valida_sql("fecha_limite", "l"))
+            extra_conditions.append(f"{flim} >= %s")
             extra_params.append(datetime.now(UTC).date().isoformat())
-            extra_conditions.append("l.fecha_limite < %s")
+            extra_conditions.append(f"{flim} < %s")
             extra_params.append(_dia_siguiente(tope))
             extra_conditions.append(abierta_sql("l.estado"))
 
@@ -848,7 +955,7 @@ class LicitacionRepository:
         compiled_order = compiled_order.replace("licitaciones.", "l.")
 
         extra_where = " AND ".join(extra_conditions)
-        col_list = ", ".join(f"l.{c.key}" for c in _SUMMARY_COLS)
+        col_list = _columnas_resumen_sql("l")
         match_clause = "l.search_vector @@ websearch_to_tsquery('spanish', %s)"
         base_sql = f"SELECT {col_list} FROM licitaciones l WHERE {match_clause} AND {extra_where}"
         count_sql = f"SELECT COUNT(*) FROM licitaciones l WHERE {match_clause} AND {extra_where}"
@@ -890,8 +997,19 @@ class LicitacionRepository:
         tipo_contrato: str | None = None,
         dias_restantes_max: int | None = None,
         limit: int = 100,
+        sort: str | None = None,
+        cursor_orden: tuple[str | float | None, str] | None = None,
     ) -> list[dict[str, Any]]:
         """Paginación por cursor (fecha_publicacion, id_externo) DESC.
+
+        ``sort`` admite los mismos seis valores que el listado por offset
+        (:data:`SORTS_CURSOR`). Sin él —o con ``fecha_publicacion``, que es el
+        mismo orden— el camino es el de siempre y el cursor es
+        ``(cursor_fecha, cursor_id)``. Con otro orden la clave es
+        ``(columna, id_externo)`` y el cursor llega en ``cursor_orden``: ver
+        :meth:`_keyset_ordenado`. Es lo que deja al listado de /detalle pasar
+        del offset (en retirada, RFC 2026-09-06) al cursor sin perder la
+        ordenación por importe o por título.
 
         Los filtros salen de :meth:`_base_filters`, los mismos que el listado
         por offset. Antes esta función tenía su propio par de cláusulas
@@ -922,22 +1040,31 @@ class LicitacionRepository:
             dias_restantes_max=dias_restantes_max,
         )
 
+        if sort and sort != "fecha_publicacion":
+            return self._keyset_ordenado(clauses, sort=sort, cursor=cursor_orden, limit=limit)
+
+        # Clave del cursor sobre la columna del núcleo vigente (T2). El valor
+        # del cursor sigue siendo el TEXTO de la última fila —es lo que viaja
+        # en el token—; con la sombra, Postgres lo interpreta como
+        # `timestamptz` al compararlo, así que la clave (instante, id) ordena
+        # igual siempre que el texto guardado sea el mismo instante.
+        fecha = _nucleo("fecha_publicacion")
         if cursor_fecha is not None and cursor_id is not None:
             clauses.append(
                 or_(
-                    licitaciones.c.fecha_publicacion < cursor_fecha,
+                    fecha < cursor_fecha,
                     and_(
-                        licitaciones.c.fecha_publicacion == cursor_fecha,
+                        fecha == cursor_fecha,
                         licitaciones.c.id_externo < cursor_id,
                     ),
                 )
             )
 
         stmt = (
-            select(*_SUMMARY_COLS)
+            select(*_columnas_resumen())
             .where(and_(*clauses))
             .order_by(
-                licitaciones.c.fecha_publicacion.desc(),
+                fecha.desc(),
                 licitaciones.c.id_externo.desc(),
             )
             .limit(limit + 1)
@@ -945,6 +1072,73 @@ class LicitacionRepository:
         sql, params = compile_query(stmt)
         with connect_read() as c:
             return rows_to_dicts(c.execute(sql, params))
+
+    @staticmethod
+    def _keyset_ordenado(
+        clauses: list[Any],
+        *,
+        sort: str,
+        cursor: tuple[str | float | None, str] | None,
+        limit: int,
+    ) -> list[dict[str, Any]]:
+        """Keyset ``(columna, id_externo)`` para los órdenes distintos del de fecha.
+
+        **Nulos al final en los dos sentidos** (``NULLS LAST``). El listado por
+        offset los dejaba donde Postgres quiere —primero en ``DESC`` en importe—,
+        lo que abría «mayor importe» con una página de expedientes sin importe.
+        Y el keyset lo necesita: con los nulos al final, el cursor tiene dos
+        tramos bien definidos —con valor y la cola de nulos— y la cláusula de
+        «después de» se escribe sin ambigüedad:
+
+        - cursor con valor ``v``: ``col ⋚ v`` o (``col = v`` e ``id ⋚ id₀``) o
+          ``col IS NULL`` (la cola entera va después);
+        - cursor en la cola (``v`` nulo): ``col IS NULL`` e ``id ⋚ id₀``.
+
+        El desempate por ``id_externo`` va en el mismo sentido que la columna,
+        y hace el orden total: sin él, dos importes iguales podían aparecer en
+        dos páginas o en ninguna.
+        """
+        columna, descendente = _orden_cursor(sort)
+        id_col = licitaciones.c.id_externo
+        if cursor is not None:
+            valor, id_previo = cursor
+            id_despues = id_col < id_previo if descendente else id_col > id_previo
+            if valor is None:
+                clauses = [*clauses, and_(columna.is_(None), id_despues)]
+            else:
+                col_despues = columna < valor if descendente else columna > valor
+                clauses = [
+                    *clauses,
+                    or_(col_despues, and_(columna == valor, id_despues), columna.is_(None)),
+                ]
+        orden_col = columna.desc() if descendente else columna.asc()
+        orden_id = id_col.desc() if descendente else id_col.asc()
+        stmt = (
+            select(*_columnas_resumen())
+            .where(and_(*clauses))
+            .order_by(orden_col.nulls_last(), orden_id)
+            .limit(limit + 1)
+        )
+        sql, params = compile_query(stmt)
+        with connect_read() as c:
+            return rows_to_dicts(c.execute(sql, params))
+
+    def count_cursor(self, **filtros: Any) -> int:
+        """``COUNT(*)`` del universo que recorre :meth:`list_cursor` con esos filtros.
+
+        Mismo constructor de cláusulas (:meth:`_base_filters`), así que el total
+        y las páginas no pueden discrepar. Lo pide el listado por cursor sólo
+        con ``with_total=true``: el cursor existe para no pagar este conteo en
+        cada página, y quien lo quiere lo pide una vez.
+        """
+        clauses = self._base_filters(**filtros)
+        stmt = select(func.count()).select_from(licitaciones)
+        if clauses:
+            stmt = stmt.where(and_(*clauses))
+        sql, params = compile_query(stmt)
+        with connect_read() as c:
+            row = c.execute(sql, params).fetchone()
+        return int(row[0]) if row else 0
 
     def get_by_id(self, id_externo: str) -> dict[str, Any] | None:
         """Devuelve el registro completo o None."""
@@ -1368,6 +1562,10 @@ class LicitacionRepository:
         tecnologia: str | None = None,
         fecha_desde: str | None = None,
         fecha_hasta: str | None = None,
+        importe_min: float | None = None,
+        importe_max: float | None = None,
+        provincia: str | None = None,
+        procedimiento: str | None = None,
         limit: int = 500,
     ) -> list[dict[str, Any]]:
         """Carga licitaciones para exportación PDF.
@@ -1376,6 +1574,12 @@ class LicitacionRepository:
         el llamador: la ruta de descarga los aplicaba en Python **después** de
         traer hasta 50 000 filas, así que el LIMIT se consumía con filas que
         luego se descartaban (una exportación filtrada podía salir corta).
+
+        ``importe_min``/``importe_max``/``provincia``/``procedimiento`` (F1.1)
+        con la semántica de ``_base_filters``: cotas inclusivas que dejan fuera
+        el importe NULL, provincia multi-valor y procedimiento por código
+        normalizado. Sin ellos el export bajaba el corpus entero mientras el
+        listado de la misma pantalla estaba acotado.
         """
         conditions: list[str] = []
         params: list[Any] = []
@@ -1399,6 +1603,20 @@ class LicitacionRepository:
         if fecha_hasta:
             conditions.append("fecha_publicacion <= %s")
             params.append(fecha_hasta)
+        if importe_min is not None:
+            conditions.append("importe >= %s")
+            params.append(float(importe_min))
+        if importe_max is not None:
+            conditions.append("importe <= %s")
+            params.append(float(importe_max))
+        if provincias := csv_values(provincia):
+            conditions.append(f"provincia IN ({','.join('%s' for _ in provincias)})")
+            params.extend(provincias)
+        if codigos := sorted({_normaliza_codigo(c) for c in csv_values(procedimiento)}):
+            conditions.append(
+                f"{codigo_normalizado_sql('procedimiento')} IN ({','.join('%s' for _ in codigos)})"
+            )
+            params.extend(codigos)
         if q:
             like_op = "ILIKE"
             conditions.append(

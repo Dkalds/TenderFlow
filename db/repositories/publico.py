@@ -50,6 +50,7 @@ from db.sql_fragments import (
     exclude_duplicados_sql,
     fila_canonica_sql,
     fold_expr,
+    importe_select_sql,
     universo_tecnologico_sql,
 )
 
@@ -102,6 +103,27 @@ _COLS_PUBLICAS: tuple[str, ...] = (
 )
 
 _SELECT_PUBLICO = ", ".join(f"l.{c}" for c in _COLS_PUBLICAS)
+
+
+def _select_publico() -> str:
+    """:data:`_SELECT_PUBLICO` con el importe del núcleo tipado vigente (T2).
+
+    La superficie pública es una de las cinco consultas calientes del plan. Lo
+    único que cambia aquí es de dónde **sale** el importe: la sombra exacta de
+    ``v133`` (casteada a ``double precision`` y con ``AS importe``, para que el
+    tipo de :class:`FilaLicitacionPublica` siga diciendo la verdad) en vez del
+    ``real`` heredado. Con el flag apagado es :data:`_SELECT_PUBLICO` byte a
+    byte.
+
+    Lo que **no** se mueve, y es a propósito: el umbral de sustancia
+    (``_sustancia_sql``) ni el orden del listado. El primero es la definición
+    congelada de la vista materializada (``v98``; lo compara
+    ``tests/test_mv_canonicas_definicion.py``), y el segundo ordena por
+    ``c.fecha_publicacion`` de esa vista, que no tiene sombra.
+    """
+    return ", ".join(
+        importe_select_sql("l") if c == "importe" else f"l.{c}" for c in _COLS_PUBLICAS
+    )
 
 
 class FilaLicitacionPublica(TypedDict):
@@ -526,7 +548,7 @@ class PublicoRepository:
         entra en el sitemap, así que no compite por indexación. Marcarla con
         ``rel=canonical`` es trabajo del frontend, no de esta capa.
         """
-        sql = f"SELECT {_SELECT_PUBLICO} FROM licitaciones l WHERE l.id_externo = %s AND {_BASE_WHERE}"
+        sql = f"SELECT {_select_publico()} FROM licitaciones l WHERE l.id_externo = %s AND {_BASE_WHERE}"
 
         def _consultar(c: Any) -> FilaLicitacionPublica | None:
             filas = _filas_tipadas(c.execute(sql, (id_externo,)), FilaLicitacionPublica)
@@ -614,7 +636,7 @@ class PublicoRepository:
         # haría discrepar y el hub paginaría hacia páginas vacías.
         where = f" WHERE {' AND '.join(condiciones)}" if condiciones else ""
         sql = (
-            f"SELECT {_SELECT_PUBLICO} FROM {VISTA_CANONICAS} c "
+            f"SELECT {_select_publico()} FROM {VISTA_CANONICAS} c "
             f"JOIN licitaciones l ON l.id_externo = c.id_externo{where} "
             "ORDER BY c.fecha_publicacion DESC NULLS LAST, c.id_externo "
             "LIMIT %s OFFSET %s"

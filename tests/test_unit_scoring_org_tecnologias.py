@@ -47,7 +47,10 @@ def test_el_ambito_no_se_queda_en_las_tecnologias() -> None:
     ):
         filtros = _ambito_como_filtros(7, None)
     assert filtros.tecnologia == "SAP"
-    assert filtros.cpv == "72,48"
+    # Por prefijo, no en `cpv` (igualdad exacta contra "72,48" no casaba con
+    # ninguna fila: ver `test_radar_ambito_f61.py`).
+    assert filtros.cpv_prefijos == "72,48"
+    assert filtros.cpv is None
     assert filtros.ccaa == "Madrid,Cataluña"
     assert filtros.importe_min == 100_000
 

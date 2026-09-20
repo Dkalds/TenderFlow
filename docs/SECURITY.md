@@ -214,6 +214,7 @@ en el log — es un bug del llamante, no un motivo para perder el rastro.
 | acceso | `solicitud_acceso.estado`, `access_grant.granted`, `access_grant.revoked` | `api/routes/admin_solicitudes.py` |
 | `webhook.*` | `created`, `updated`, `deleted`, `secret_rotated` | `api/routes/webhooks.py` |
 | configuración | `feature_flag.set`, `tecnologias_keyword.{added,removed,seeded}`, `empresa.review_resolved` | rutas de administración |
+| operación | `dlq.requeued` | `api/routes/admin_dlq.py` |
 | producto | `feedback.submitted`, `pursuit.weights_proposal_applied`, `go_no_go.weights_updated` | `api/routes/feedback.py`, `services/pursuits.py`, `services/go_no_go_puntuacion.py` |
 
 Reglas del rastro (ADR-030 §D): el actor se guarda como `users.id` —columna

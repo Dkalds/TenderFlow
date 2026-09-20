@@ -17,6 +17,20 @@ hecha.
 **Última actualización: 2026-09-08 (cuarta pasada: el E2E, y las rutas sí se
 prueban sin Postgres).**
 
+> *Estado (2026-09-19):* el resumen y las métricas de abajo son del
+> 2026-09-08; lo que ha cambiado desde entonces, comprobado en el árbol de
+> `claude/backlog-ola2`: **C7 pasa a 7 hechos y 1 no hecho (C7.7)** — C7.1
+> cerrado (las tres reglas axe restantes y los dos `fixme` de
+> `responsive.spec.ts`, en código el 2026-09-18; los siete rojos que dio
+> después el E2E, corregidos en `8a424967` y `0fd5082c`; hoy
+> `web/e2e/accessibility.spec.ts` corre sin `disableRules` y no queda ningún
+> `fixme` en `web/e2e/`), C7.3 hecho en código y C7.4 en **0** `title=`.
+> Totales: 51 hechos, 4 parciales, 6 no hechos (en esta pasada solo se revisó
+> C7; los demás streams conservan la cifra del 2026-09-08). La cabeza Alembic ya no es
+> `v127` sino `v138` (ver la cabecera de
+> [2026-09-plan-arquitectura-v2.md](2026-09-plan-arquitectura-v2.md)). El verde
+> de CI del E2E tras esos dos commits no se comprobó al escribir esta nota.
+
 ## Resumen
 
 «Parcial» significa que el ítem entrega valor pero **no** cumple todavía todos
@@ -31,10 +45,10 @@ como hecho sería la clase de optimismo que obligó a escribir este documento.
 | C4 Ingesta y calidad | 6 | 0 | 1 (C4.3) | 7 |
 | C5 Conocimiento | 5 | 0 | 3 (C5.1, C5.2, C5.8) | 8 |
 | C6 Colaboración y captura | **7** | 0 | **0** | 7 |
-| C7 Frontend y accesibilidad | 4 | **2** (C7.1 una regla de cuatro, C7.4) | **2** (C7.3, C7.7) | 8 |
+| C7 Frontend y accesibilidad | **7** (2026-09-19; eran 4) | 0 (eran 2: C7.1, C7.4) | **1** (C7.7; C7.3 hecho en código) | 8 |
 | C8 API y contrato | 5 | 0 | 0 | 5 |
 | C9 Documentación y proceso | 6 | 0 | 0 | 6 |
-| **Total** | **48** | **6** | **7** | **61** |
+| **Total** | **51** (eran 48) | **4** (eran 6) | **6** (eran 7) | **61** |
 
 ## Tercera pasada (2026-09-08): la fusión sobre `master`
 
@@ -322,7 +336,7 @@ Seis de siete, en v122–v124.
 
 | Ítem | Estado |
 |---|---|
-| C7.1 Remediación axe | **Parcial: una regla de cuatro y dos `fixme` de cuatro.** `nested-interactive` sale (la fila del Radar deja de ser un `role="button"` con cinco botones dentro; la selección pasa a un `<button>` hermano en capa) y con ella los dos `fixme` de `critical-workflows`. Quedan `color-contrast`, `scrollable-region-focusable` y `target-size`, que son la ola de UX/móvil y sí exigen pantalla; los dos `fixme` que restan describen funcionalidad que no existe (la watchlist desborda a 375 px, la agenda móvil no está). **Y la nota que dejó el ítem era falsa**: ver la cuarta pasada. **2026-09-18 (rama worktree-agent-a37b58d577faad267): las tres reglas restantes remediadas en código y fuera `disableRules` y los dos `fixme` de `responsive.spec.ts`; E2E no ejecutado en local, pendiente del verde de CI.** |
+| C7.1 Remediación axe | **Parcial: una regla de cuatro y dos `fixme` de cuatro.** `nested-interactive` sale (la fila del Radar deja de ser un `role="button"` con cinco botones dentro; la selección pasa a un `<button>` hermano en capa) y con ella los dos `fixme` de `critical-workflows`. Quedan `color-contrast`, `scrollable-region-focusable` y `target-size`, que son la ola de UX/móvil y sí exigen pantalla; los dos `fixme` que restan describen funcionalidad que no existe (la watchlist desborda a 375 px, la agenda móvil no está). **Y la nota que dejó el ítem era falsa**: ver la cuarta pasada. **2026-09-18 (rama worktree-agent-a37b58d577faad267): las tres reglas restantes remediadas en código y fuera `disableRules` y los dos `fixme` de `responsive.spec.ts`; E2E no ejecutado en local, pendiente del verde de CI.** *Estado (2026-09-19): **hecho.*** El E2E destapó siete rojos más (nombres accesibles en `/mi-perfil` y `/equipo`, contraste de tokens y toasts, animación del hero, franja de primer uso y agenda en móvil), corregidos en `8a424967`, y seis de contraste/`target-size` del Radar, en `0fd5082c`; `contraste-tokens.test.ts` fija los tintes. `accessibility.spec.ts` sin `disableRules` y ningún `fixme` en `web/e2e/`. |
 | C7.2 S5.8 | **Hecho** (2026-09-08). La ficha pública entra en el barrido axe, y el piso de `src/app/**` queda fijado **al valor medido**: 35.06 lines / 30.15 functions / 30.74 branches, con el buffer de ~3 puntos de siempre. El número no salió de esta máquina —el séptimo intento local murió como los seis anteriores— sino del `lcov` que publica el job `frontend` de CI, agregado por subárbol. La agregación se validó antes de fiarse de ella: el mismo método sobre `src/hooks/**` reproduce los 69.32 / 61.21 que vitest había reportado en ese run. `statements` se deja sin fijar a propósito: el `lcov` no lo lleva y derivarlo de `lines` sería inventarlo — en ese mismo run `hooks` lo tiene por encima de `lines` y el global por debajo. |
 | C7.3 Primer uso | **Hecho en código (2026-09-18, rama worktree-agent-a37b58d577faad267).** Explicación de primer uso de la barra de ámbito, descartable y recordada, y cuatro estados vacíos que dicen qué hacer (Radar, Favoritos, Reglas, Resultados combinados). Sin verificación visual. |
 | C7.4 `title=` a `Tooltip` | **Regla, ratchet corregido y ocho migrados; el resto no.** Ver corrección 1, que a su vez estaba mal: el contador subcontaba (2026-09-08). De 39 reales quedan **36**. Migrados: `space-shell` a `<abbr>` —que es donde `title` sí es semántico, y además va dentro de un `<button>`, así que un tooltip ahí sería `nested-interactive`—; `estado-global-row`, `mercado-strip`, `eventos-feed` y `pursuit-comments` a `<Tooltip>`; y los tres `<button title=>` de `empresa-perfil` y `review-queue`, que son el caso limpio porque un botón ya es focusable. **Sin `tabIndex`**: ESLint (`jsx-a11y/no-noninteractive-tabindex`) tiene razón en que un `<span>` focusable que no hace nada al pulsarlo es otra violación, no una mejora — cambiar `title` por eso sería mover el problema. Lo que sí entregan los tooltips es el **táctil**, que es la mitad del reproche del ratchet. Los 36 que quedan están casi todos en celdas de tabla y heatmaps: hacerlos focusables cambia el orden de tabulación de la rejilla entera y eso se decide mirando la pantalla. **2026-09-18 (rama worktree-agent-a37b58d577faad267): hecho, 36 → 0** — `<Pista>` resuelve el conflicto: disparador no focusable (hover, como el `title`), y lo que el teclado necesita va en el texto. |
@@ -349,14 +363,14 @@ documento de estado sin números es una opinión.
 
 | Métrica | Objetivo | Hoy | Comando |
 |---|---|---|---|
-| `title=` nativo en `.tsx` | 0, por olas | **36** (eran 39 al corregir el escaneo) | `python scripts/check_title_attrs.py` |
+| `title=` nativo en `.tsx` | 0, por olas | **36** (eran 39 al corregir el escaneo). *2026-09-19: **0** en 0 ficheros, techo 0* | `python scripts/check_title_attrs.py` |
 | Estilos inline en JSX | ratchet que solo baja | **94** (97 tras la fusión) | `python scripts/check_inline_styles.py` |
 | Ortografía de la UI | 0 | **0** | `python scripts/check_ortografia_ui.py` |
 | Operaciones de API opacas | 0 | **0** | `python scripts/check_openapi_contract.py` |
 | Cobertura de fixtures de contrato | ≥ 80 % | **82 %** (31/38) | `python scripts/check_contract_fixtures.py` |
 | Escaneos analíticos sin cota | 0 fuera de la allowlist | **0**, con 7 excepciones declaradas (8 hasta el 2026-09-18) | `python scripts/check_analytics_unbounded.py` |
 | Avisos de seguridad abiertos fuera de plazo | 0 | **0** — los 3 abiertos son fantasmas | `python scripts/check_security_alerts.py` |
-| Cabezas Alembic | 1 | **1** (`v127_pursuit_attachments`) | `alembic heads` |
+| Cabezas Alembic | 1 | **1** (`v127_pursuit_attachments`). *2026-09-19: sigue siendo **1**, ahora `v138_notice_type_code` (leído de los `down_revision`, no con `alembic heads`)* | `alembic heads` |
 | Suite unitaria de Python | verde | **3983 pasan, 0 fallan** (más los guardarraíles nuevos) | `pytest -m "unit and not slow"` |
 | Typecheck de Python | limpio | **limpio** (929 ficheros) | `mypy .` |
 | 5xx en el fuzzing de la API | 0 | **2 encontrados y corregidos** | job `API contract fuzzing` |
@@ -453,6 +467,8 @@ Cinco cosas, y ninguna es de código. Actualizado el 2026-09-08.
    también las tres reglas axe que le quedan a C7.1 —contraste, regiones
    scrolleables y tamaño de target— que son la ola de UX/móvil. Sin API ni datos
    sembrados no hay pantalla.
+   *Estado (2026-09-19):* las tres reglas axe de C7.1 ya no bloquean (ver su
+   fila); de este punto queda C7.7, y la verificación visual de C7.3.
 
    Matiz que la cuarta pasada obliga a añadir: **no todo lo que parece necesitar
    pantalla la necesita**. El `nested-interactive` de C7.1 se resolvió leyendo el

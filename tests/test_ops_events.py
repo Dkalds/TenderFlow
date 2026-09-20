@@ -10,6 +10,8 @@ import threading
 from collections import deque
 from unittest.mock import patch
 
+import pytest
+
 # ---------------------------------------------------------------------------
 # Tests del buffer
 # ---------------------------------------------------------------------------
@@ -165,6 +167,7 @@ def test_healthcheck_ops_events_check_ok(tmp_db):
     assert not any("sqlite_busy" in e for e in result["errors"])
 
 
+@pytest.mark.schema_propio  # tira `ops_events`
 def test_healthcheck_ops_events_tabla_ausente(tmp_db):
     """run_check no falla si ops_events no existe (BD legacy)."""
     import db.database as db_mod

@@ -41,6 +41,12 @@ class LicitacionSummary(BaseModel):
     ml_tecnologias: str | None = None
     ml_proba_max: float | None = None
     ml_tech_principal: str | None = None
+    # F1.7 — código CODICE crudo de procedimiento y tramitación. La etiqueta
+    # legible y su definición las sirve `GET /meta/filters` desde
+    # `shared/procedimientos.py`: el listado no traduce, para que un código
+    # nuevo llegue como código nuevo y la consola lo marque «no catalogado».
+    procedimiento: str | None = None
+    tramitacion: str | None = None
 
 
 class LoteOut(BaseModel):

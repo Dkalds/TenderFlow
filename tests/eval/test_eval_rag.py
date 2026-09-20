@@ -28,6 +28,7 @@ que CI levanta para toda la suite.
 from __future__ import annotations
 
 import json
+import os
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -60,6 +61,27 @@ TOP_K = 5
 # número: `test_backend_ranking_vs_production_path` lo imprime en CI, que es
 # donde hay Postgres. Subirlo antes de leer ese número sería ratchear a ciegas,
 # que es justo el fallo que un ratchet existe para prevenir.
+#
+# **Por qué ese número no ha aparecido todavía (2026-09-19).** El `print` de
+# un test que pasa lo captura pytest, y CI no corre con `-s` ni `-rP`: la
+# evidencia se generaba en cada corrida y se tiraba. Desde esta fecha los tres
+# tests que miden publican además su línea en el resumen del job
+# (`GITHUB_STEP_SUMMARY`, ver `_publicar`). Lo que falta para cerrar el ítem
+# (MRR 0.689 → 0.75), en este orden:
+#
+# 1. Leer en el resumen de un job de CI el MRR de producción y el de
+#    `PgTsBackend.search_ids`.
+# 2. Tocar lo que mueve el número que se ratchea. Ojo: `TS_RANK_WEIGHTS` y
+#    `TS_RANK_NORMALIZATION` (`db/search_backend.py`) **sólo** afectan a
+#    `PgTsBackend`; `/ask` va por `search_fts_docs` (pesos por defecto de
+#    Postgres) y por `search_like_for_ask`, sin `ORDER BY`. Si el backend ya
+#    mide ≥ 0.75, la palanca es encaminar `/ask` por su ranking (o dar orden
+#    al fallback LIKE), no retocar pesos.
+# 3. Con cualquier cambio de pesos, medir el MRR antes y después sobre este
+#    golden set en Postgres y subir `MRR_MIN` al valor medido menos el margen.
+#
+# No se tocó ningún peso en local: esta máquina no tiene Postgres y el ranking
+# es `ts_rank_cd` sobre `tsvector` en español, que no tiene equivalente fuera.
 MRR_MIN = 0.65
 
 # Licitaciones "ruido": vocabulario genérico que se solapa con el golden set
@@ -129,6 +151,25 @@ def _seed(entries: list[dict[str, Any]]) -> None:
             )
 
 
+def _publicar(texto: str) -> None:
+    """Imprime ``texto`` y, en GitHub Actions, lo añade al resumen del job.
+
+    El ``print`` solo no llega a ningún sitio en CI: pytest captura la salida
+    de los tests que pasan. ``GITHUB_STEP_SUMMARY`` es un fichero que Actions
+    pinta en la página de la corrida; fuera de Actions no existe y esto se
+    queda en el ``print``. Un fallo al escribirlo no puede tumbar el eval.
+    """
+    print(texto)
+    destino = os.environ.get("GITHUB_STEP_SUMMARY")
+    if not destino:
+        return
+    try:
+        with open(destino, "a", encoding="utf-8") as resumen:
+            resumen.write(f"```\n{texto.strip()}\n```\n")
+    except OSError:
+        pass
+
+
 def _reciprocal_rank(result_ids: list[str], expected_ids: set[str]) -> float:
     for i, rid in enumerate(result_ids, start=1):
         if rid in expected_ids:
@@ -181,6 +222,20 @@ def _retrieve_backend(question: str) -> list[str]:
         return PgTsBackend().search_ids(conn, question, limit=TOP_K)
 
 
+def test_publicar_llega_al_resumen_del_job(tmp_path, monkeypatch):
+    """Sin esto, el MRR que el ratchet necesita leer se imprimía y se perdía."""
+    resumen = tmp_path / "summary.md"
+    monkeypatch.setenv("GITHUB_STEP_SUMMARY", str(resumen))
+    _publicar("\neval_rag: MRR=0.700")
+    assert "eval_rag: MRR=0.700" in resumen.read_text(encoding="utf-8")
+
+
+def test_publicar_fuera_de_actions_solo_imprime(monkeypatch, capsys):
+    monkeypatch.delenv("GITHUB_STEP_SUMMARY", raising=False)
+    _publicar("eval_rag: MRR=0.700")
+    assert "MRR=0.700" in capsys.readouterr().out
+
+
 def test_retrieval_hit_rate_and_mrr_meet_ratchet(tmp_db):
     """Métrica principal del eval: hit-rate@k y MRR sobre el golden set."""
     entries = _load_golden_set()
@@ -190,7 +245,7 @@ def test_retrieval_hit_rate_and_mrr_meet_ratchet(tmp_db):
     hit_rate, mrr, misses = _measure(entries, _retrieve_production)
     hits = round(hit_rate * len(entries))
 
-    print(f"\neval_rag: hit_rate@{TOP_K}={hit_rate:.3f} MRR={mrr:.3f} ({hits}/{len(entries)})")
+    _publicar(f"\neval_rag: hit_rate@{TOP_K}={hit_rate:.3f} MRR={mrr:.3f} ({hits}/{len(entries)})")
     if misses:
         print("  Fallos:")
         for m in misses:
@@ -240,7 +295,7 @@ def test_strict_tsquery_alone_leaves_questions_unanswered(tmp_db):
             if not rows:
                 sin_match_estricto.append(entry)
 
-    print(
+    _publicar(
         f"\neval_rag: preguntas sin match con la tsquery estricta: "
         f"{len(sin_match_estricto)}/{len(entries)}"
     )
@@ -281,7 +336,7 @@ def test_backend_ranking_vs_production_path(tmp_db):
     hr_prod, mrr_prod, misses_prod = _measure(entries, _retrieve_production)
     hr_backend, mrr_backend, misses_backend = _measure(entries, _retrieve_backend)
 
-    print(
+    _publicar(
         f"\neval_rag ranking:"
         f"\n  producción (/ask)      hit_rate@{TOP_K}={hr_prod:.3f} MRR={mrr_prod:.3f}"
         f"\n  PgTsBackend.search_ids hit_rate@{TOP_K}={hr_backend:.3f} MRR={mrr_backend:.3f}"

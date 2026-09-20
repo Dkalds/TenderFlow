@@ -53,6 +53,11 @@ const setActiveOrganizationId = vi.fn();
 vi.mock("@/hooks/use-organization", () => ({
   useOrganizationStore: (selector: (s: unknown) => unknown) => selector({ setActiveOrganizationId }),
 }));
+// F1.6 — sin etiquetas en la organización el filtro no se pinta ni filtra.
+vi.mock("@/hooks/use-etiquetas", () => ({
+  useEtiquetas: () => ({ data: [] }),
+  useEtiquetasDe: () => ({ data: {}, isLoading: false }),
+}));
 
 const refetch = vi.fn();
 const radarState: {
@@ -80,6 +85,8 @@ const SIGNALS_SANAS: ScoringSignals = {
   afinidad_origen: "perfil",
   perfil: "ok",
   senal_tecnica: "ok",
+  // F1.4: la penalización por órgano que anula a menudo, operativa.
+  anulacion_organo: "ok",
 };
 
 // El triaje es server-side: la página lee los descartes y muta contra

@@ -151,7 +151,14 @@ export async function triggerDownload(url: string): Promise<void> {
  * `lib/analytics.ts`). Un `string` libre aquí sería la puerta por la que se
  * cuela un identificador.
  */
-export type RecursoDescargaLocal = "detalle" | "investigador" | "adjudicaciones-empresa";
+export type RecursoDescargaLocal =
+  | "detalle"
+  | "investigador"
+  | "adjudicaciones-empresa"
+  // F2.6: el PDF del guion llega de la API pero se descarga por aquí para
+  // poder explicar un 404 (guion no generado para el pliego vigente) en vez
+  // del mensaje genérico de exportación de `triggerDownload`.
+  | "guion";
 
 /** Formato de la métrica deducido de la extensión del fichero generado. */
 function formatoDeNombre(nombre: string): EventosProducto["export_lanzado"]["formato"] {

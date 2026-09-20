@@ -14,7 +14,13 @@ vi.mock("@/lib/analytics", async (importOriginal) => ({
   registrarEvento: vi.fn(),
 }));
 
+vi.mock("@/lib/export", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/export")>()),
+  descargarBlob: vi.fn(),
+}));
+
 import { registrarEvento } from "@/lib/analytics";
+import { descargarBlob } from "@/lib/export";
 import { callMethod, callUrl } from "@/hooks/__tests__/fetch-call";
 import { GuionOfertaPanel } from "@/components/pliego/guion-oferta";
 import { guionAMarkdown, type GuionOferta } from "@/hooks/use-guion-oferta";
@@ -105,6 +111,43 @@ describe("GuionOfertaPanel", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "Presupuesto de IA agotado: Tope mensual alcanzado",
     );
+  });
+});
+
+describe("GuionOfertaPanel · PDF", () => {
+  it("descarga el PDF del guion ya generado, con GET y sin volver a generar", async () => {
+    const descargar = vi.mocked(descargarBlob);
+    const fetch = fetchPorRuta(
+      [/guion\.pdf$/, { ok: true }],
+      [/\/guion$/, GUION],
+      [/documentos$/, DOCUMENTOS],
+    );
+    renderConQuery(<GuionOfertaPanel licitacionId="LIC-1" />);
+    fireEvent.click(screen.getByRole("button", { name: "Generar guion" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Descargar PDF" }));
+
+    await vi.waitFor(() => expect(descargar).toHaveBeenCalled());
+    const pdf = fetch.mock.calls.find((c) => callUrl(c).endsWith("/guion.pdf"))!;
+    expect(callMethod(pdf)).toBe("GET");
+    expect(fetch.mock.calls.filter((c) => callUrl(c).endsWith("/guion"))).toHaveLength(1);
+    expect(descargar).toHaveBeenCalledWith("guion-oferta-LIC-1.pdf", expect.anything(), "guion");
+  });
+
+  it("un 404 explica que hay que volver a generarlo", async () => {
+    const { toast } = await import("sonner");
+    const aviso = vi.spyOn(toast, "error").mockImplementation(() => "id");
+    fetchPorRuta(
+      [/guion\.pdf$/, { detail: "No hay guion generado" }, 404],
+      [/\/guion$/, GUION],
+      [/documentos$/, DOCUMENTOS],
+    );
+    renderConQuery(<GuionOfertaPanel licitacionId="LIC-1" />);
+    fireEvent.click(screen.getByRole("button", { name: "Generar guion" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Descargar PDF" }));
+
+    await vi.waitFor(() => expect(aviso).toHaveBeenCalled());
+    expect(aviso.mock.calls[0][1]?.description).toMatch(/Vuelve a generarlo/);
+    aviso.mockRestore();
   });
 });
 

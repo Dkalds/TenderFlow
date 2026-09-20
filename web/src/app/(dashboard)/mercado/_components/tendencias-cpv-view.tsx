@@ -24,6 +24,10 @@ export default function TendenciasCpvView() {
     chartData,
     forecastData,
     forecastLoading,
+    forecastCpv,
+    forecastCpvRespuesta,
+    forecastCpvOptions,
+    setForecastCpv,
     showForecast,
     setShowForecast,
     cpvTableData,
@@ -63,7 +67,14 @@ export default function TendenciasCpvView() {
       />
 
       {showForecast && (
-        <TendenciasCpvForecast data={forecastData} isLoading={forecastLoading} />
+        <TendenciasCpvForecast
+          data={forecastData}
+          cpv={forecastCpv}
+          cpvRespuesta={forecastCpvRespuesta}
+          opciones={forecastCpvOptions}
+          onCpvChange={setForecastCpv}
+          isLoading={forecastLoading}
+        />
       )}
 
       <TendenciasCpvTop topCpvs={topCpvs} isLoading={isLoading} />

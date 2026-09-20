@@ -99,6 +99,22 @@ describe("CompanyContraMi", () => {
     expect(screen.getByRole("link", { name: /Declararlo en Equipo/ })).toHaveAttribute("href", "/equipo");
   });
 
+  it("un cierre perdido adjudicado a nuestro NIF se señala y no cuenta como derrota", async () => {
+    fetchWithAuth.mockResolvedValue({
+      ...BATALLAS,
+      contradicciones: 1,
+      batallas: [
+        ...BATALLAS.batallas.slice(0, 2),
+        { ...BATALLAS.batallas[2], resultado: "sin_resolver", contradiccion: true },
+      ],
+    });
+    renderPestana();
+
+    expect(await screen.findByRole("note")).toHaveTextContent(/aparece adjudicado a vuestro NIF/);
+    expect(screen.getByText("Cerrado perdido, adjudicado a vosotros")).toBeInTheDocument();
+    expect(screen.getByText("Sin resolver")).toBeInTheDocument();
+  });
+
   it("sin cruces lo dice con la ventana, y cambiar la ventana vuelve a pedir", async () => {
     fetchWithAuth.mockResolvedValue({ ...BATALLAS, n: 0, batallas: [] });
     renderPestana();

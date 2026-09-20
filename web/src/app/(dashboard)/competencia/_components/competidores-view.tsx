@@ -30,6 +30,7 @@ import { CompetidoresBanner } from "./competidores-banner";
 import { CompetidoresCortes, type CorteKey } from "./competidores-cortes";
 import { CompetidoresDossier } from "./competidores-dossier";
 import { CompetidoresKpis } from "./competidores-kpis";
+import { CompetidoresMovimientos } from "./competidores-movimientos";
 import { CompetidoresTabla } from "./competidores-tabla";
 import { CompetidoresToolbar } from "./competidores-toolbar";
 
@@ -56,8 +57,6 @@ export default function CompetidoresView() {
     drillDownAwards,
     isLoadingDrillDownProfile,
     isLoadingDrillDownAwards,
-    watchedIds,
-    toggleWatch,
   } = useCompetidoresData();
 
   const [corte, setCorte] = useState<CorteKey>("top20");
@@ -73,8 +72,6 @@ export default function CompetidoresView() {
     );
   }
 
-  const watched = drillDownGroupIds.some((id) => watchedIds.has(id));
-
   return (
     <div className="flex min-h-0 gap-4">
       <div className="min-w-0 flex-1 space-y-4">
@@ -86,6 +83,9 @@ export default function CompetidoresView() {
 
         {/* Marcador del espacio: los cuatro KPIs del mercado competitivo. */}
         <CompetidoresKpis data={data} isLoading={isLoading} />
+
+        {/* Señales proactivas de la watchlist de empresas (RFC #4). */}
+        <CompetidoresMovimientos />
 
         {/* La tabla gobierna los nueve cortes, así que va primero. Antes había
             que bajar 2.400 px de gráficos para llegar a la superficie de
@@ -135,11 +135,6 @@ export default function CompetidoresView() {
           recentAwards={drillDownAwards}
           isLoadingProfile={isLoadingDrillDownProfile}
           isLoadingAwards={isLoadingDrillDownAwards}
-          watched={watched}
-          watchPending={toggleWatch.isPending}
-          onToggleWatch={() =>
-            toggleWatch.mutate({ empresaIds: drillDownGroupIds, watched })
-          }
           onClose={() => startTransition(() => setDrillDownCompany(null))}
         />
       )}

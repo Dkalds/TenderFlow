@@ -9,6 +9,22 @@ rama/sesión por un agente independiente; este documento es la fuente única de
 alcance, criterios de aceptación y orden de merge. Un agente que tome un stream
 trabaja **solo** los archivos de ese stream.
 
+> *Estado (2026-09-19):* **plan cerrado.** Los streams S0–S6 (Ola 1) y los
+> tres ítems propios de la Ola 2 se cerraron el 2026-08-07; el detalle y los
+> commits están en
+> [docs/archive/IMPROVEMENT_BACKLOG_CERRADOS.md](../archive/IMPROVEMENT_BACKLOG_CERRADOS.md)
+> («Cerrados el 2026-08-07 — plan de saneamiento»). Comprobable en el código:
+> el shim qmark ya no existe (`_translate_qmarks` retirado; `_PgConnAdapter`
+> sigue en `db/connection.py` pero solo une conexión y cursor, sin reescribir
+> SQL), `_GRANDFATHERED_PENDING_FIX` de
+> `tests/test_swallowed_exceptions_guard.py` está vacío, `KNOWN_5XX` de
+> `scripts/fuzz_api_contract.py` está vacío, y las UIs de webhooks (espacio
+> `ops`) y GDPR (`mi-perfil/_components/gdpr-section.tsx`) están en el árbol.
+> El congelamiento de superficie se levantó el 2026-08-10 (AGENTS.md §0). El
+> ítem 4 de la Ola 2 («el resto del backlog») nunca fue alcance de este plan:
+> vive en [docs/IMPROVEMENT_BACKLOG.md](../IMPROVEMENT_BACKLOG.md). El resto del
+> documento se conserva como registro histórico.
+
 ## Contexto
 
 La crítica de la app (2026-08-07) encontró una inversión proceso>producto: 68

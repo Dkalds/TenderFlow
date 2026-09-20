@@ -13,7 +13,7 @@ from typing import Any
 
 from db.database import connect, connect_read, now_utc_iso
 from db.repositories.base import rows_to_dicts
-from db.sql_fragments import plegar_organo
+from db.sql_fragments import fecha_fin_sql, organo_normalizado_sql, plegar_organo
 
 __all__ = [
     "ActividadRepository",
@@ -105,6 +105,85 @@ class CuentasRepository:
                 (organization_id,),
             )
             return [str(row[0]) for row in cur.fetchall()]
+
+    # ── Avisos de cuenta (F1.5, por el outbox) ──────────────────────────────
+
+    def publicaciones_nuevas(
+        self, *, desde_iso: str, hasta_iso: str, limit: int = 500
+    ) -> list[dict[str, Any]]:
+        """Expedientes vistos por primera vez en ``(desde_iso, hasta_iso]`` de
+        órganos que alguna organización sigue como cuenta.
+
+        «Publicación nueva» es ``primera_extraccion`` —el primer día que el
+        corpus vio el expediente— y no ``fecha_publicacion``: una fuente que
+        publica con retraso traería expedientes con fecha de hace un mes, y
+        el aviso tiene que salir cuando el comercial puede enterarse, no
+        cuando la fuente dice que pasó.
+
+        El órgano se cruza plegado con :func:`organo_normalizado_sql`, el
+        gemelo SQL de ``plegar_organo``, que es con lo que ``follow`` escribe
+        ``organo_norm``: los dos lados pliegan igual o la cuenta no casaría
+        con sus propias publicaciones.
+        """
+
+        with connect_read() as conn:
+            cur = conn.execute(
+                "SELECT c.organization_id, c.id AS cuenta_id, c.organo_nombre, "
+                "       l.id_externo, l.titulo, l.importe, l.fecha_limite, "
+                "       l.primera_extraccion "
+                "FROM licitaciones l "
+                f"JOIN cuentas_objetivo c ON c.organo_norm = {organo_normalizado_sql('l')} "
+                "WHERE l.primera_extraccion > %s AND l.primera_extraccion <= %s "
+                "ORDER BY l.primera_extraccion, l.id_externo, c.organization_id "
+                "LIMIT %s",
+                (desde_iso, hasta_iso, limit),
+            )
+            return rows_to_dicts(cur)
+
+    def vencimientos_entrando(
+        self, *, dias_desde: int, dias_hasta: int, limit: int = 500
+    ) -> list[dict[str, Any]]:
+        """Contratos adjudicados de órganos seguidos cuya fecha de fin efectiva
+        cae entre hoy + ``dias_desde`` y hoy + ``dias_hasta``.
+
+        El productor pide una **franja** pegada al borde de los seis meses y no
+        la ventana entera: lo que se avisa es «este contrato acaba de entrar en
+        los seis meses», no «estos son todos los que vencen», que ya enseña la
+        vista de la cuenta. La franja tiene anchura para que un cierre caído
+        unos días no se salte ningún contrato; la idempotencia la pone el
+        productor.
+
+        La fecha es :data:`FECHA_FIN_SQL` (fin explícito, o inicio/adjudicación
+        más duración), la misma que usan Renovaciones y la vista de la cuenta.
+        """
+
+        fecha_fin = fecha_fin_sql()
+        with connect_read() as conn:
+            cur = conn.execute(
+                "SELECT DISTINCT ON (c.organization_id, l.id_externo) "
+                "       c.organization_id, c.id AS cuenta_id, c.organo_nombre, "
+                f"      l.id_externo, l.titulo, {fecha_fin} AS fecha_fin "
+                "FROM adjudicaciones a "
+                "JOIN licitaciones l ON l.id_externo = a.licitacion_id "
+                f"JOIN cuentas_objetivo c ON c.organo_norm = {organo_normalizado_sql('l')} "
+                f"WHERE {fecha_fin} BETWEEN "
+                "      to_char(CURRENT_DATE + %s * INTERVAL '1 day', 'YYYY-MM-DD') "
+                "  AND to_char(CURRENT_DATE + %s * INTERVAL '1 day', 'YYYY-MM-DD') "
+                "ORDER BY c.organization_id, l.id_externo "
+                "LIMIT %s",
+                (dias_desde, dias_hasta, limit),
+            )
+            return rows_to_dicts(cur)
+
+    def miembros_activos(self, organization_id: int) -> list[int]:
+        """Ids de los miembros activos: a quién avisa una cuenta de equipo."""
+        with connect_read() as conn:
+            cur = conn.execute(
+                "SELECT user_id FROM organization_memberships "
+                "WHERE organization_id = %s AND status = 'active' ORDER BY user_id",
+                (organization_id,),
+            )
+            return [int(row[0]) for row in cur.fetchall()]
 
 
 class EtiquetasRepository:

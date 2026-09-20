@@ -5,6 +5,7 @@ import { Calculator, ShieldAlert } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { TarifasPresupuesto } from "@/components/pliego/tarifas-presupuesto";
 import { usePriceScenarios } from "@/hooks/use-price-scenarios";
 import { usePursuit } from "@/hooks/use-pursuits";
 import { formatCurrency, formatPercent } from "@/lib/utils";
@@ -69,6 +70,9 @@ export function PriceScenariosPanel({
 
   const data = query.data;
   if (!data) return null;
+  // El coste y la fuente son los mismos en los tres escenarios (sólo cambia el
+  // precio): se dicen una vez bajo la rejilla.
+  const margen = data.scenarios?.find((s) => s.margen_implicito)?.margen_implicito ?? null;
   const qualityVariant =
     data.sample_quality === "robusta"
       ? "success"
@@ -118,6 +122,22 @@ export function PriceScenariosPanel({
                 <p className="mt-1 text-sm font-medium text-primary">
                   Baja {percent(scenario.discount)}
                 </p>
+                {/* F2.4 — sólo cuando el pliego publica tarifas y horas; el
+                    backend lo calcula y declara la fuente. */}
+                {scenario.margen_implicito && (
+                  <p className="mt-2 text-sm">
+                    Margen techo{" "}
+                    <span className="font-semibold tabular-nums">
+                      {eur(scenario.margen_implicito.margen_eur)}
+                    </span>
+                    {scenario.margen_implicito.margen_pct != null && (
+                      <span className="text-muted-foreground">
+                        {" "}
+                        ({percent(scenario.margen_implicito.margen_pct)})
+                      </span>
+                    )}
+                  </p>
+                )}
                 <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
                   {scenario.basis}
                 </p>
@@ -129,6 +149,13 @@ export function PriceScenariosPanel({
             No hay comparables suficientes para proponer escenarios.
           </p>
         )}
+        {margen && (
+          <p className="text-xs leading-relaxed text-muted-foreground">
+            Coste estimado {eur(margen.coste_estimado_eur)} con {margen.perfiles} perfil
+            {margen.perfiles === 1 ? "" : "es"}. {margen.fuente}
+          </p>
+        )}
+        {lote == null && <TarifasPresupuesto licitacionId={licitacionId} />}
         <div className="flex flex-wrap gap-x-5 gap-y-1 text-xs text-muted-foreground">
           <span>n = {data.distribution?.n ?? 0}</span>
           <span>Cohorte: {data.cohort?.join(" · ") || "sin cohorte comparable"}</span>

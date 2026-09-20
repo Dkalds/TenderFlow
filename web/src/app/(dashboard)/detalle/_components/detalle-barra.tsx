@@ -1,6 +1,7 @@
 "use client";
 
 import { ExportPopover } from "@/components/export-popover";
+import { type FiltroEtiqueta, FiltroEtiquetaSelect } from "@/components/etiquetas/filtro-etiqueta";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
@@ -19,6 +20,7 @@ export function DetalleBarra({
   onClearSort,
   compact,
   onCompactChange,
+  etiqueta,
 }: {
   cierreLabel: string | null;
   onClearCierre: () => void;
@@ -26,6 +28,8 @@ export function DetalleBarra({
   onClearSort: () => void;
   compact: boolean;
   onCompactChange: (compact: boolean) => void;
+  /** F1.6 — filtro por etiqueta de favorito sobre la página cargada. */
+  etiqueta?: FiltroEtiqueta;
 }) {
   return (
     // `overflow-x-auto` y hijos `flex-none`: a 375 px, con los dos chips de
@@ -66,6 +70,20 @@ export function DetalleBarra({
           <span aria-hidden="true">×</span>
           <span className="sr-only">(quitar)</span>
         </button>
+      )}
+      {etiqueta && (
+        // Sin parámetro de etiqueta en `/licitaciones`: filtra las filas de
+        // esta página, y el nombre accesible lo dice.
+        <FiltroEtiquetaSelect
+          value={etiqueta.filtro}
+          onChange={etiqueta.setFiltro}
+          alcance="en esta página"
+        />
+      )}
+      {etiqueta?.activo && (
+        <span className="text-[11px] text-muted-foreground">
+          {etiqueta.cargando ? "Cargando etiquetas…" : "Sólo en esta página"}
+        </span>
       )}
       <div className="flex items-center gap-0.5 rounded-md border border-border/70 p-0.5">
         {[

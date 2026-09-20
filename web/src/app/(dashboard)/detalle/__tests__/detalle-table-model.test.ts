@@ -20,13 +20,22 @@ import { PAGINATION, row } from "./detalle-fixtures";
 /* ── buildQueryParams ───────────────────────────────────────────────── */
 
 describe("buildQueryParams", () => {
-  it("traduce página y tamaño a limit/offset", () => {
-    const params = buildQueryParams({
+  it("la página es un cursor, no un offset (el listado por offset se retira)", () => {
+    const primera = buildQueryParams({
+      filterParams: { ccaa: "MD" },
+      pagination: { pageIndex: 0, pageSize: 25 },
+      sorting: [],
+    });
+    expect(primera).toEqual({ ccaa: "MD", limit: "25", with_total: "true" });
+
+    const cuarta = buildQueryParams({
       filterParams: { ccaa: "MD" },
       pagination: { pageIndex: 3, pageSize: 25 },
       sorting: [],
+      cursor: "abc",
     });
-    expect(params).toEqual({ ccaa: "MD", limit: "25", offset: "75" });
+    expect(cuarta).toEqual({ ccaa: "MD", limit: "25", with_total: "true", cursor: "abc" });
+    expect(cuarta.offset).toBeUndefined();
   });
 
   it("no manda `sort` sin orden activo", () => {

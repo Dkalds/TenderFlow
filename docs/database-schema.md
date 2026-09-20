@@ -8,7 +8,7 @@ tags: [database, schema, generado]
 
 Generado: 2026-09-18
 
-Revisión Alembic aplicada: `v138_notice_type_code`.
+Revisión Alembic aplicada: `v141_tasas_anulacion_organo`.
 
 Catálogo de una base Postgres recién migrada con `alembic upgrade head`. Se listan
 las tablas de `public` agrupadas por familia, con sus columnas
@@ -32,8 +32,8 @@ migración que los declara— y, por supuesto, cualquier dato.
 | Seguimiento y notificaciones | 12 | 132 | 35 |
 | ML y predicciones | 7 | 55 | 14 |
 | Operación y observabilidad | 6 | 46 | 11 |
-| Otras | 19 | 150 | 28 |
-| **Total** | **95** | **862** | **215** |
+| Otras | 20 | 157 | 28 |
+| **Total** | **96** | **869** | **215** |
 
 ## Licitaciones y fuente
 
@@ -1709,6 +1709,20 @@ Claves: `PRIMARY KEY (id)` · `UNIQUE (organization_id, user_id)`
 Claves: `PRIMARY KEY (id)`
 
 Índices: `idx_plantillas_org`
+
+### `tasas_anulacion_organo`
+
+| Columna | Tipo | Nulo |
+|---|---|---|
+| `organo_key` | `text` | no |
+| `cpv4` | `text` | no |
+| `n_expedientes` | `integer` | no |
+| `n_fallidos` | `integer` | no |
+| `tasa` | `double precision` | no |
+| `desde` | `text` | no |
+| `updated_at` | `text` | no |
+
+Claves: `PRIMARY KEY (organo_key, cpv4)`
 
 ### `tecnologias_keywords`
 

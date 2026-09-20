@@ -627,6 +627,10 @@ Está en ADR-026 §A.
 
 ## 8. Estado de implementación (2026-09-04)
 
+> *Estado (2026-09-19):* de la tabla «No hecho, y por qué» ya solo queda la
+> acción humana (O0.1 / O0.9 / S6.1 / S6.4). S4.10, S5.1, S5.2, S5.8 y S5.9 se
+> cerraron después; cada fila lleva su nota.
+
 Implementado en la rama `claude/arq-2026-09` (base `origin/master` = `1a4f094`).
 La ejecución la hicieron agentes en paralelo; **tres murieron a la vez por
 límite de sesión**, así que hay ítems a medias y están marcados como tales. Un
@@ -675,10 +679,10 @@ contra ninguna base de datos real.**
 | Ítem | Estado |
 |---|---|
 | **S5.1** prefetch en servidor con hidratación | No empezado. El agente murió antes. **Entregado el 2026-09-18 vía S7.1 del plan v2** (Resumen y Radar; ver su nota). |
-| **S5.2** partir las páginas monolito | **A medias y revertido.** Se extrajeron hooks de `mi-watchlist` y `detalle`, pero el agente murió antes de recablear las páginas, dejando hooks huérfanos y el árbol en un estado incoherente. Se restauró al último estado bueno; el trabajo parcial está apartado, no perdido. Sin él, `max-lines` tampoco se puso. |
+| **S5.2** partir las páginas monolito | **A medias y revertido.** Se extrajeron hooks de `mi-watchlist` y `detalle`, pero el agente murió antes de recablear las páginas, dejando hooks huérfanos y el árbol en un estado incoherente. Se restauró al último estado bueno; el trabajo parcial está apartado, no perdido. Sin él, `max-lines` tampoco se puso. *Estado (2026-09-19):* **hecho vía S7.1 del plan v2** (cerrado el 2026-09-08): páginas partidas en `_hooks/`/`_components/` y `max-lines` a 300 sobre `src/app/**` en `web/eslint.config.mjs`, con la allowlist vacía. |
 | **S5.9** grupo de rutas `(privado)` | **Revertido a conciencia.** El agente reescribió 9 imports de test a `@/app/(privado)/…` y murió antes de mover los directorios, dejando el árbol roto. Mueve TODA la superficie autenticada y no se puede verificar sin E2E, y el repo ya revirtió una vez un cambio de este tipo por heredarlo la superficie pública. Se revirtieron los imports. **2026-09-18, vía S7.1 del plan v2: resuelto sin mover directorios** — `components/layout/superficie-privada.tsx` monta la pila una vez para los tres layouts (ver la nota de S7.1). |
-| **S4.10** paginación común | No empezado. |
-| **S5.8** piso de cobertura de `src/app/**` y axe sobre la superficie pública | No hecho. Sí se movieron los 17 tests a la carpeta de su componente. |
+| **S4.10** paginación común | No empezado. *Estado (2026-09-19):* **hecho** (commit `7aa161f5`, 2026-09-18): `api/pagination.py` (`PageParams`/`pagina()`, tope único `MAX_PAGE_LIMIT` de `shared/dto.py`) y una primera ola de rutas que la adopta (`competitive`, `empresas`, `licitaciones/adjudicaciones`, `licitaciones/listado`, `pursuits`, `radar`). `publico.py` y parte de `competitive.py` aún declaran `offset` a mano. |
+| **S5.8** piso de cobertura de `src/app/**` y axe sobre la superficie pública | No hecho. Sí se movieron los 17 tests a la carpeta de su componente. *Estado (2026-09-19):* **hecho vía C7.2 del plan complementario** (2026-09-08): la ficha pública entra en `web/e2e/accessibility.spec.ts` y el piso de `src/app/**` se fijó al valor medido en CI (ver el comentario en `web/vitest.config.ts`). |
 | **O0.1 / O0.9 / S6.1 / S6.4** | Acción humana: aplicar migraciones, limpiar worktrees, verificar el panel de Render, cutover de roles de BD. |
 
 ### Sorpresas que corrigieron el plan

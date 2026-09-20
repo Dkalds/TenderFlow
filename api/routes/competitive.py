@@ -7,7 +7,7 @@ concentración HHI, perfil de competidor y watchlist por empresa.
 from __future__ import annotations
 
 import hashlib
-from datetime import date
+from datetime import UTC, date, datetime, timedelta
 from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
@@ -25,6 +25,7 @@ from db.watchlist_empresas import (
     WatchlistEmpresaEntry,
     add_entry,
     list_entries,
+    movimientos_vigiladas,
     remove_entry,
 )
 from observability.logging import get_logger
@@ -37,6 +38,7 @@ from services.competitive.mercado import (
     metric_scope,
     perfil_empresa,
 )
+from services.competitive.movimientos import MovimientosVigiladasResult, construir_movimientos
 from services.competitive.renovaciones import (
     RenovacionesResult,
     RenovacionesResumenResult,
@@ -287,7 +289,18 @@ async def get_bajas(
     group_by: str = Query("empresa", pattern="^(empresa|organo|cpv|ccaa)$"),
     min_contratos: int = Query(3, ge=1, le=100),
     cpv: str | None = Query(None, max_length=8, description="Prefijo CPV"),
-    ccaa: str | None = Query(None, max_length=50),
+    ccaa: str | None = Query(
+        None, max_length=500, description="CCAA; varias separadas por comas, como la barra global"
+    ),
+    fecha_desde: date | None = Query(
+        None, description="Adjudicadas desde (YYYY-MM-DD, incluida). Eje: fecha de adjudicación."
+    ),
+    fecha_hasta: date | None = Query(
+        None, description="Adjudicadas hasta (YYYY-MM-DD, incluida). Eje: fecha de adjudicación."
+    ),
+    importe_min: float | None = Query(
+        None, ge=0, description="Presupuesto mínimo de la licitación (EUR)"
+    ),
     limit: int = Query(100, ge=1, le=500),
     solo_base_declarada: bool = Query(
         False,
@@ -308,6 +321,9 @@ async def get_bajas(
         ccaa=ccaa,
         limit=limit,
         solo_base_declarada=solo_base_declarada,
+        fecha_desde=fecha_desde,
+        fecha_hasta=fecha_hasta,
+        importe_min=importe_min,
     )
     return BajasResult(items=[BajaAgregada(**item) for item in items], group_by=group_by, base=base)
 
@@ -545,6 +561,36 @@ async def get_watchlist(
         list_entries, _user_key(ctx), ctx["organization_id"], user_id=int(ctx["user_id"])
     )
     return WatchlistEmpresasResult(items=[WatchlistEmpresaItem(**item) for item in items])
+
+
+@router.get(
+    "/watchlist/movimientos",
+    response_model=MovimientosVigiladasResult,
+    summary="Señales recientes de las empresas vigiladas",
+)
+async def get_watchlist_movimientos(
+    dias: int = Query(30, ge=1, le=180, description="Ventana hacia atrás, en días"),
+    ctx: dict[str, Any] = Depends(require_organization()),
+) -> MovimientosVigiladasResult:
+    """Qué han hecho en la ventana las empresas que vigila el usuario.
+
+    Señales explicables sobre adjudicaciones reales (entrada en una CCAA o en
+    una familia CPV nueva, rachas), más la actividad de cada empresa vigilada
+    —con 0 si no se ha movido—. Es la versión en pantalla de lo que
+    `scheduler/competitor_alerts.py` manda por correo.
+    """
+    desde = (datetime.now(UTC).date() - timedelta(days=dias)).isoformat()
+
+    def _trabajo() -> MovimientosVigiladasResult:
+        datos = movimientos_vigiladas(
+            _user_key(ctx),
+            int(ctx["organization_id"]),
+            desde_iso=desde,
+            user_id=int(ctx["user_id"]),
+        )
+        return construir_movimientos(datos, dias=dias, desde=desde)
+
+    return await run_db(_trabajo)
 
 
 @router.post("/watchlist", status_code=status.HTTP_201_CREATED, summary="Vigilar una empresa")

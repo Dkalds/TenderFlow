@@ -158,6 +158,22 @@ def _recalcular_clusters() -> int:
     return len(clusters)
 
 
+#: Ventana de la tasa de anulación o desierto por órgano (F1.4).
+MESES_TASA_ANULACION = 24
+
+
+def _recalcular_tasas_anulacion() -> int:
+    """Recalcula ``tasas_anulacion_organo`` sobre los últimos 24 meses."""
+    from datetime import timedelta
+
+    from db.repositories.tasas_anulacion import recalcular
+
+    desde = (datetime.now(UTC) - timedelta(days=MESES_TASA_ANULACION * 365 // 12)).date()
+    n = recalcular(desde_iso=desde.isoformat())
+    log.info("aggregates_precompute.tasas_anulacion_done", n=n)
+    return n
+
+
 def run_aggregates_precompute() -> dict[str, Any]:
     """Recalcula los clusters semánticos y refresca la vista de canónicas.
 
@@ -210,9 +226,20 @@ def run_aggregates_precompute() -> dict[str, Any]:
         resultado["error_canonicas"] = str(exc)
         fallos.append("canonicas")
 
+    # F1.4 — tercera pieza, con su propio `try` por lo mismo que las otras
+    # dos. Un fallo aquí deja el scoring con las tasas de la pasada anterior
+    # (o sin señal), así que cuenta como `partial`; `error` sigue reservado a
+    # que las dos piezas originales caigan.
+    try:
+        resultado["n_tasas_anulacion"] = _recalcular_tasas_anulacion()
+    except Exception as exc:
+        log.exception("aggregates_precompute.tasas_anulacion_failed", error=str(exc))
+        resultado["error_tasas_anulacion"] = str(exc)
+        fallos.append("tasas_anulacion")
+
     if not fallos:
         resultado["status"] = "ok"
-    elif len(fallos) == 2:
+    elif "clusters" in fallos and "canonicas" in fallos:
         resultado["status"] = "error"
         resultado["error"] = "; ".join(fallos)
     else:

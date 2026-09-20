@@ -1,13 +1,15 @@
 "use client";
 
 import * as React from "react";
-import { Download, ListChecks, Loader2, RefreshCw } from "lucide-react";
+import { Download, FileDown, ListChecks, Loader2, RefreshCw } from "lucide-react";
+import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { PaginaPliegoDialog } from "@/components/pliego/pagina-pliego-dialog";
 import { guionAMarkdown, useGuionOferta } from "@/hooks/use-guion-oferta";
 import { useFactSheetDocumentos } from "@/hooks/use-tender-fact-sheet";
-import { ApiError } from "@/lib/api-client";
+import { ApiError, fetchBlobWithAuth } from "@/lib/api-client";
+import { descargarBlob } from "@/lib/export";
 import type { EvidenceRef } from "@/lib/api-types";
 
 /**
@@ -46,6 +48,30 @@ export function GuionOfertaPanel({ licitacionId }: { licitacionId: string }) {
     URL.revokeObjectURL(url);
   };
 
+  // El PDF lo compone el backend a partir del guion **ya generado** (no vuelve
+  // a llamar al LLM). Un 404 significa que el guion guardado no corresponde al
+  // pliego vigente —cambió, o la caché caducó—: se dice así, no como un error
+  // de exportación genérico.
+  const [descargandoPdf, setDescargandoPdf] = React.useState(false);
+  const descargarPdf = async () => {
+    setDescargandoPdf(true);
+    try {
+      const blob = await fetchBlobWithAuth(
+        `/api/v1/licitaciones/${encodeURIComponent(licitacionId)}/guion.pdf`,
+      );
+      descargarBlob(`guion-oferta-${licitacionId.replace(/[^\w-]+/g, "_")}.pdf`, blob, "guion");
+    } catch (e) {
+      toast.error("No se pudo descargar el PDF", {
+        description:
+          e instanceof ApiError && e.status === 404
+            ? "El guion guardado ya no corresponde al pliego vigente. Vuelve a generarlo y descárgalo."
+            : (e as Error).message,
+      });
+    } finally {
+      setDescargandoPdf(false);
+    }
+  };
+
   const error = generar.error;
   const mensajeError =
     error instanceof ApiError && error.status === 429
@@ -70,10 +96,25 @@ export function GuionOfertaPanel({ licitacionId }: { licitacionId: string }) {
         </div>
         <div className="flex gap-2">
           {guion && criterios.length > 0 && (
-            <Button size="sm" variant="outline" onClick={descargar}>
-              <Download aria-hidden="true" />
-              Descargar Markdown
-            </Button>
+            <>
+              <Button size="sm" variant="outline" onClick={descargar}>
+                <Download aria-hidden="true" />
+                Descargar Markdown
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => void descargarPdf()}
+                disabled={descargandoPdf}
+              >
+                {descargandoPdf ? (
+                  <Loader2 className="animate-spin" aria-hidden="true" />
+                ) : (
+                  <FileDown aria-hidden="true" />
+                )}
+                Descargar PDF
+              </Button>
+            </>
           )}
           <Button size="sm" onClick={() => generar.mutate()} disabled={generar.isPending}>
             {generar.isPending ? (

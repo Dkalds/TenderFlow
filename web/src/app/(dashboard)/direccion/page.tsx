@@ -14,6 +14,7 @@ import { ApiError, apiGet } from "@/lib/api-client";
 import type { Schemas } from "@/lib/api-types";
 import { pursuitKeys } from "@/lib/query-keys";
 import { ActividadEquipo } from "./_components/actividad-equipo";
+import { PerdidasDireccion, RadarDireccion, TarjetasDireccion } from "./_components/cuadro-direccion";
 
 /**
  * F4.2 — Cuadro de mando de dirección.
@@ -143,6 +144,7 @@ export default function DireccionPage() {
         />
       ) : (
         <div className="flex flex-col gap-8">
+          <TarjetasDireccion tarjetas={data?.tarjetas ?? []} />
           <CorteTabla
             titulo="Tecnología"
             filas={data?.win_rate_por_tecnologia ?? []}
@@ -153,6 +155,12 @@ export default function DireccionPage() {
             filas={data?.win_rate_por_organo ?? []}
             minimo={data?.n_minimo ?? 5}
           />
+          {data ? (
+            <div className="grid gap-8 lg:grid-cols-2">
+              <PerdidasDireccion cuadro={data} />
+              <RadarDireccion cuadro={data} />
+            </div>
+          ) : null}
         </div>
       )}
     </SpaceShell>

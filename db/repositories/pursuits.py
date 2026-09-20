@@ -723,6 +723,10 @@ class PursuitRepository:
                 "p.offer_price_eur, p.outcome, p.awarded_amount_eur, p.outcome_reason, "
                 "p.next_action, p.next_action_due, p.identified_at, p.decision_at, "
                 "p.submitted_at, p.closed_at, p.updated_at, "
+                # Importe y enlace del expediente: los pide el CSV para el CRM
+                # (F6.3, `services/exports_crm.py`). El export del tablero no
+                # los lista en `PURSUIT_COLUMNS` y no cambia.
+                "l.importe AS tender_importe, l.url AS tender_url, "
                 "%s AS organizacion_id, %s AS exportado_en "
                 "FROM pursuits p "
                 "JOIN licitaciones l ON l.id_externo = p.licitacion_id "
@@ -882,6 +886,11 @@ class PursuitRepository:
                 "SELECT p.licitacion_id, l.titulo, l.organo_contratacion, l.importe, "
                 "       p.offer_price_eur, p.outcome, "
                 "       a.importe_adjudicado, a.fecha_adjudicacion, "
+                # NIF y `empresa_id` crudos del adjudicatario: la clave de
+                # arriba antepone `empresa_id`, así que por sí sola no dice
+                # si el adjudicatario es **nuestra** empresa. Con los dos se
+                # detecta el cierre perdido que en realidad ganamos.
+                "       a.nif AS adjudicatario_nif, a.empresa_id AS adjudicatario_empresa_id, "
                 f"      {clave} AS adjudicatario_key "
                 "FROM pursuits p "
                 "JOIN licitaciones l ON l.id_externo = p.licitacion_id "

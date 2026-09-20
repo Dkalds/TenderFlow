@@ -23,25 +23,39 @@
  * Sin organización activa el backend sólo mira lo seguido, no el equipo; se
  * pide con la organización activa para que las oportunidades entren.
  *
- * Lo que la banda **no** ofrece es «marcar todo como visto»: la marca de la
- * última visita es la lectura más reciente de la campana, y el backend no
- * tiene hoy una escritura que la mueva sin marcar notificaciones concretas.
+ * «Marcar todo como visto» mueve la marca a ahora
+ * (`POST …/desde-mi-ultima-visita/visto`) sin marcar ninguna notificación
+ * concreta, y vuelve a pedir la banda: lo que se ve después es «sin cambios
+ * desde ahora», que confirma que la marca se movió. Solo se ofrece con cambios
+ * que marcar.
  */
 
 import * as React from "react";
 import Link from "next/link";
-import { useQuery } from "@tanstack/react-query";
-import { ChevronRight, History } from "lucide-react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { CheckCheck, ChevronRight, History } from "lucide-react";
+import { toast } from "sonner";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useActiveOrganizationId } from "@/hooks/use-organization";
 import { registrarEvento } from "@/lib/analytics";
-import { apiGet } from "@/lib/api-client";
+import { apiGet, apiMutate } from "@/lib/api-client";
 import type { Schemas } from "@/lib/api-types";
 import { analyticsKeys } from "@/lib/query-keys";
 import { formatDateTime, formatRelativeTime, truncate } from "@/lib/utils";
 
 type NovedadesDesdeUltimaVisita = Schemas["NovedadesDesdeUltimaVisita"];
 type Novedad = Schemas["Novedad"];
+type VisitaMarcada = Schemas["VisitaMarcada"];
+
+/** «Marcar todo como visto»: mueve la marca y vuelve a pedir la banda. */
+export function useMarcarVisto() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => apiMutate<VisitaMarcada>("POST", "/api/v1/analytics/resumen/desde-mi-ultima-visita/visto"),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["analytics", "resumen", "desde-mi-ultima-visita"] }),
+    onError: () => toast.error("No se pudo marcar como visto. Vuelve a intentarlo."),
+  });
+}
 
 /** Líneas visibles sin desplegar: las que caben en la primera pantalla. */
 const VISIBLES = 4;
@@ -97,6 +111,7 @@ function LineaNovedad({ novedad }: { novedad: Novedad }) {
 
 export function DesdeUltimaVisita() {
   const { data, isLoading, isError } = useDesdeUltimaVisita();
+  const marcarVisto = useMarcarVisto();
   const medida = React.useRef(false);
 
   React.useEffect(() => {
@@ -122,18 +137,31 @@ export function DesdeUltimaVisita() {
       aria-labelledby="desde-ultima-visita-titulo"
       className="border-border/60 bg-card/60 mb-3.5 rounded-xl border px-3.5 py-2.5"
     >
-      <h2
-        id="desde-ultima-visita-titulo"
-        className="flex items-center gap-2 text-[12px] leading-[1.4] font-semibold"
-      >
-        <History className="text-primary h-3.5 w-3.5 flex-none" aria-hidden="true" />
-        {items.length > 0
-          ? `${items.length} ${items.length === 1 ? "cambio" : "cambios"} en lo que sigues desde el ${desde}`
-          : `Sin cambios en lo que sigues desde el ${desde}`}
-        <span className="text-muted-foreground text-[10.5px] font-normal">
-          expedientes seguidos, sus pliegos y recursos, y las oportunidades de tu equipo{recorte}
-        </span>
-      </h2>
+      <div className="flex items-center gap-2">
+        <h2
+          id="desde-ultima-visita-titulo"
+          className="flex min-w-0 flex-1 items-center gap-2 text-[12px] leading-[1.4] font-semibold"
+        >
+          <History className="text-primary h-3.5 w-3.5 flex-none" aria-hidden="true" />
+          {items.length > 0
+            ? `${items.length} ${items.length === 1 ? "cambio" : "cambios"} en lo que sigues desde el ${desde}`
+            : `Sin cambios en lo que sigues desde el ${desde}`}
+          <span className="text-muted-foreground text-[10.5px] font-normal">
+            expedientes seguidos, sus pliegos y recursos, y las oportunidades de tu equipo{recorte}
+          </span>
+        </h2>
+        {items.length > 0 && (
+          <button
+            type="button"
+            onClick={() => marcarVisto.mutate()}
+            disabled={marcarVisto.isPending}
+            className="text-muted-foreground hover:text-foreground inline-flex min-h-6 flex-none items-center gap-1 rounded-md px-1.5 text-[11px] font-medium transition-colors disabled:opacity-60"
+          >
+            <CheckCheck className="h-3.5 w-3.5" aria-hidden="true" />
+            {marcarVisto.isPending ? "Marcando…" : "Marcar todo como visto"}
+          </button>
+        )}
+      </div>
 
       {items.length > 0 && (
         <ul className="mt-1.5 flex flex-col">

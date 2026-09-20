@@ -4,6 +4,8 @@ import * as React from "react"
 import { HelpCircle } from "lucide-react"
 
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { registrarEvento } from "@/lib/analytics"
+import { espacioActual } from "@/lib/espacio-actual"
 import { type EntradaGlosario, glosario } from "@/lib/glosario"
 import { cn } from "@/lib/utils"
 
@@ -37,12 +39,29 @@ export interface GlosarioHintProps {
 
 export function GlosarioHint({ termino, entrada, className }: GlosarioHintProps) {
   const definicion = entrada ?? glosario(termino)
+  // Una vez por ayuda montada: pasar el ratón tres veces por el mismo `?` no
+  // son tres consultas al glosario, y contarlas inflaría el uso.
+  const medida = React.useRef(false)
+  const alAbrir = React.useCallback(
+    (abierto: boolean) => {
+      if (!abierto || medida.current) return
+      medida.current = true
+      // F1.8 — sin el término: qué palabra no entiende alguien es un dato
+      // sobre esa persona. Basta con saber que se usa y en qué espacio.
+      registrarEvento("espacio_abierto", {
+        espacio: espacioActual(),
+        origen: "glosario",
+        glosario_abierto: "si",
+      })
+    },
+    []
+  )
   // Sin entrada no se pinta nada. Un `?` que al abrirse dice «sin definición»
   // gasta la atención del usuario para no darle nada.
   if (!definicion) return null
 
   return (
-    <Tooltip>
+    <Tooltip onOpenChange={alAbrir}>
       <TooltipTrigger
         type="button"
         className={cn(

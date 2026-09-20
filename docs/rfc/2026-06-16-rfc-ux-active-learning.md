@@ -4,7 +4,8 @@ title: "UX/KPIs · Active Learning — cerrar el bucle (impacto en el modelo) y 
 issue: pendiente (crear issue y renumerar si no coincide)
 author: agent:architect
 date: 2026-06-16
-status: partially-implemented
+status: implemented
+evidence: "#1 y #3 el 2026-06-25; #2 (multi-clase) vía el RFC 2026-06-28-rfc-ux-active-learning-multi-tech: FeedbackRequest.tecnologia y tecnologias_secundarias en api/routes/feedback.py, consumidos por ops/_hooks/use-active-learning.ts (verificado 2026-09-19)"
 area: web/active-learning
 ---
 
@@ -115,3 +116,9 @@ hallazgos.
 los items de la cola de "sin clasificar" requiere el contrato multi-clase en
 `/feedback` y la integración con el RFC de Tecnologías; el etiquetado sigue siendo
 binario (relevante sí/no) por ahora.
+
+*Estado (2026-09-19):* **implementado.** El criterio #2 lo entregó el RFC
+[2026-06-28-rfc-ux-active-learning-multi-tech](2026-06-28-rfc-ux-active-learning-multi-tech.md)
+(`implemented`): el cuerpo de `POST /feedback` acepta `tecnologia` y
+`tecnologias_secundarias` (`api/routes/feedback.py:199`) y la vista
+`?vista=active-learning` de `/ops` los envía (`ops/_hooks/use-active-learning.ts`).

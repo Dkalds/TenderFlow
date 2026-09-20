@@ -185,6 +185,13 @@ describe("dimensionesDeDescarga", () => {
     });
   });
 
+  it("reconoce el CSV para el CRM, que tampoco negocia el formato por query", () => {
+    expect(dimensionesDeDescarga("/api/v1/exports/crm?organization_id=21")).toEqual({
+      formato: "crm",
+      recurso: "exports/crm",
+    });
+  });
+
   it("nunca devuelve un recurso vacío", () => {
     expect(dimensionesDeDescarga("/12345?format=csv").recurso).toBe("otro");
   });

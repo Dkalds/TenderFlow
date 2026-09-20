@@ -361,9 +361,21 @@ class TedConnector:
         # lleva a los adjuntos. No se pierde nada al desplazarlo — el PDF se
         # reconstruye desde el id (ted:{pub} → ted.europa.eu/es/notice/{pub}/pdf).
         url = _documents_url(n) or anuncio_url
-        importe = _to_float(n.get("estimated-value-proc")) or _to_float(
-            n.get("result-value-notice")
-        )
+        # La base del importe (ADR-032, D21). En eForms el valor estimado del
+        # procedimiento (BT-27) se publica **sin IVA** por definición, así que
+        # es `sin_iva` — pero es valor estimado, no presupuesto base: va a
+        # `valor_estimado` y `importe_base_sin_iva` queda vacío, para que bajas
+        # y pricing no lo comparen contra lo adjudicado. Cuando falta y el
+        # importe cae al valor del resultado (lo adjudicado), el número no es
+        # un presupuesto de nada: `desconocido`.
+        valor_estimado = _to_float(n.get("estimated-value-proc"))
+        importe = valor_estimado or _to_float(n.get("result-value-notice"))
+        if importe is None:
+            importe_tipo: str | None = None
+        elif valor_estimado:
+            importe_tipo = "sin_iva"
+        else:
+            importe_tipo = "desconocido"
         naturalezas = n.get("contract-nature") or []
         tipo = str(naturalezas[0]) if isinstance(naturalezas, list) and naturalezas else None
 
@@ -377,6 +389,8 @@ class TedConnector:
             descripcion=descripcion,
             organo_contratacion=organo,
             importe=importe,
+            valor_estimado=valor_estimado or None,
+            importe_tipo=importe_tipo,
             cpv=cpv,
             tipo_contrato=tipo,
             estado=estado,

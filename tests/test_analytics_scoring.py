@@ -61,7 +61,11 @@ _PROJ_KEYS = (
 
 
 @contextmanager
-def _repo_data(rows: list[dict], tech_signal: dict[str, float] | None = None):
+def _repo_data(
+    rows: list[dict],
+    tech_signal: dict[str, float] | None = None,
+    tasas: dict[tuple[str, str], tuple[int, int]] | None = None,
+):
     normalized = [{k: r.get(k) for k in _PROJ_KEYS} for r in rows]
     imp = pd.Series([r.get("importe") for r in normalized], dtype=float).dropna()
     p10 = float(imp.quantile(0.10)) if len(imp) else 0.0
@@ -87,6 +91,14 @@ def _repo_data(rows: list[dict], tech_signal: dict[str, float] | None = None):
         # test unit y la salud saldría degradada por el fallo de conexión.
         stack.enter_context(
             patch.object(sc_mod._repo, "tech_signal_by_ids", return_value=dict(tech_signal or {}))
+        )
+        # Igual para la tasa de anulación por órgano (F1.4): sin el doble iría a
+        # Postgres y la salud saldría degradada.
+        stack.enter_context(
+            patch(
+                "db.repositories.tasas_anulacion.tasas_por_organos",
+                return_value=dict(tasas or {}),
+            )
         )
         yield
 

@@ -2,13 +2,17 @@ import { describe, it, expect } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { PrediccionBajaBlock } from "@/components/prediccion-baja";
+import { TooltipProvider } from "@/components/ui/tooltip";
 
 function renderWithData(id: string, data: unknown) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   if (data !== undefined) qc.setQueryData(["prediccion-baja", id], data);
   return render(
     <QueryClientProvider client={qc}>
-      <PrediccionBajaBlock licitacionId={id} />
+      {/* F1.8: la cabecera lleva el `?` del glosario, que es un Tooltip. */}
+      <TooltipProvider>
+        <PrediccionBajaBlock licitacionId={id} />
+      </TooltipProvider>
     </QueryClientProvider>,
   );
 }

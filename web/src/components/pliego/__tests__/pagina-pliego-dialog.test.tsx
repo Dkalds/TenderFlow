@@ -13,6 +13,12 @@ import { callUrl } from "@/hooks/__tests__/fetch-call";
 import { PaginaPliegoDialog, trocearResaltado } from "@/components/pliego/pagina-pliego-dialog";
 import { fetchPorRuta, renderConQuery } from "./pliego-render";
 
+const { registrarEvento } = vi.hoisted(() => ({ registrarEvento: vi.fn() }));
+vi.mock("@/lib/analytics", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/analytics")>()),
+  registrarEvento,
+}));
+
 const CITA = {
   documento_id: 7,
   page_number: 3,
@@ -39,6 +45,7 @@ function pagina(extra: Record<string, unknown> = {}) {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  registrarEvento.mockReset();
 });
 
 describe("trocearResaltado", () => {
@@ -73,6 +80,30 @@ describe("PaginaPliegoDialog", () => {
       "href",
       "https://placsp.example/pcap.pdf#page=3",
     );
+  });
+
+  it("abrir una cita mide evidencia_abierta una vez, no una por página recorrida", async () => {
+    window.history.replaceState(null, "", "/oportunidades/12");
+    fetchPorRuta(
+      [/paginas\/4/, pagina({ page_number: 4, texto: "Otra.", resaltado_inicio: null, resaltado_fin: null })],
+      [/paginas\/3/, pagina()],
+    );
+    renderConQuery(<PaginaPliegoDialog licitacionId="LIC-1" cita={CITA} onClose={() => {}} />);
+    await screen.findByText("peso del 55 %");
+    fireEvent.click(screen.getByRole("button", { name: /Página siguiente/ }));
+    await screen.findByText("Otra.");
+
+    expect(registrarEvento).toHaveBeenCalledTimes(1);
+    expect(registrarEvento).toHaveBeenCalledWith("espacio_abierto", {
+      espacio: "oportunidades",
+      origen: "cita",
+      evidencia_abierta: "si",
+    });
+  });
+
+  it("con el diálogo cerrado no se mide nada", () => {
+    renderConQuery(<PaginaPliegoDialog licitacionId="LIC-1" cita={null} onClose={() => {}} />);
+    expect(registrarEvento).not.toHaveBeenCalled();
   });
 
   it("con offsets inválidos enseña la página completa y dice por qué", async () => {

@@ -3,21 +3,27 @@
 /**
  * Heatmap Mes × Estado de Tendencias.
  *
- * La cifra de cada celda es un ESTIMADO declarado, no un cruce real: sale del
- * producto de marginales (distribución global de estados × volumen mensual). El
- * badge y la descripción lo dicen en la propia tarjeta, que es lo que exige
- * ADR-014 para no presentar una síntesis como dato medido.
+ * Cada celda es el cruce REAL que calcula el backend (`GROUP BY mes, estado`
+ * en `/analytics/trends`), no el producto de marginales que se pintaba antes
+ * con el badge «Estimado» (RFC ux-tendencias #1, ADR-014).
+ *
+ * Drill-down (RFC #3): cada celda con licitaciones enlaza al listado de ese mes
+ * y ese estado, y la cabecera de cada mes al listado del mes entero. Las
+ * celdas no son paradas de tabulación (serían meses × estados); las cabeceras
+ * sí, y son el camino de teclado.
  */
 
-import { Badge } from "@/components/ui/badge";
+import Link from "next/link";
+
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Pista } from "@/components/ui/pista";
 import { Skeleton } from "@/components/ui/skeleton";
 import { estadoLabel } from "@/lib/estados";
+import { useScopedHref } from "@/lib/filters";
 import { cn } from "@/lib/utils";
 
-import type { HeatmapEstimado } from "../_hooks/use-tendencias-view";
+import { mesHref, type HeatmapMesEstado } from "../_hooks/use-tendencias-view";
 
 /**
  * Heatmap intensity — returns an inline style using the primary accent token
@@ -38,22 +44,17 @@ export function TendenciasHeatmap({
   heatmapData,
   isLoading,
 }: {
-  heatmapData: HeatmapEstimado | null;
+  heatmapData: HeatmapMesEstado | null;
   isLoading: boolean;
 }) {
+  const scopedHref = useScopedHref();
   return (
     <Card>
       <CardHeader>
-        <div className="flex items-center gap-2">
-          <CardTitle className="text-base">Heatmap: Mes x Estado</CardTitle>
-          <Badge variant="outline" className="text-amber-600 border-amber-400">
-            Estimado
-          </Badge>
-        </div>
+        <CardTitle className="text-base">Heatmap: Mes x Estado</CardTitle>
         <CardDescription>
-          Estimación a partir de marginales (distribución global de estados ×
-          volumen mensual), no un cruce real Mes×Estado. Pendiente de exponer el
-          cross-tab real en backend.
+          Licitaciones publicadas cada mes, por estado actual. Pulsa un mes o una
+          celda para ver esas licitaciones.
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -64,37 +65,47 @@ export function TendenciasHeatmap({
             <div className="inline-block min-w-full">
               <div className="flex">
                 <div className="w-32 shrink-0" />
-                {/* `Pista` en vez de `title`: al pasar el puntero, sin
-                    convertir cada casilla en una parada de tabulación. */}
                 {heatmapData.meses.map((mes) => (
-                  <Pista key={mes} contenido={mes}>
-                    <div className="w-14 shrink-0 text-center text-xs text-muted-foreground truncate px-0.5">
-                      {mes.length > 7 ? mes.slice(5) : mes}
-                    </div>
-                  </Pista>
+                  <Link
+                    key={mes}
+                    href={scopedHref(mesHref(mes))}
+                    aria-label={`Ver licitaciones publicadas en ${mes}`}
+                    className="w-14 shrink-0 truncate rounded-sm px-0.5 text-center text-xs text-muted-foreground hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    {mes.length > 7 ? mes.slice(5) : mes}
+                  </Link>
                 ))}
               </div>
               {heatmapData.estados.map((estado) => (
                 <div key={estado} className="flex items-center">
-                  {/* `por_estado` viaja con el código de la columna, no con la
+                  {/* `col` viaja con el código de la columna, no con la
                       etiqueta: sin traducir, la fila del heatmap se rotula "AGR". */}
                   <Pista contenido={estadoLabel(estado)}>
                     <div className="w-32 shrink-0 text-xs text-muted-foreground truncate pr-2">{estadoLabel(estado)}</div>
                   </Pista>
                   {heatmapData.meses.map((mes) => {
-                    const cell = heatmapData.grid.find((g) => g.mes === mes && g.estado === estado);
-                    const value = cell?.value ?? 0;
+                    const value = heatmapData.valores.get(`${mes}|${estado}`) ?? 0;
                     const intensity = heatmapData.maxVal > 0 ? value / heatmapData.maxVal : 0;
+                    const etiqueta = `${estadoLabel(estado)} - ${mes}: ${value}`;
                     return (
-                      <Pista key={`${estado}-${mes}`} contenido={`${estadoLabel(estado)} - ${mes}: ${value}`}>
+                      <Pista key={`${estado}-${mes}`} contenido={etiqueta}>
                         <div
                           className={cn(
-                            "w-14 h-8 shrink-0 m-0.5 rounded-sm flex items-center justify-center text-xs font-medium transition-colors",
+                            "w-14 h-8 shrink-0 m-0.5 rounded-sm text-xs font-medium transition-colors",
                             intensity > 0.55 ? "text-primary-foreground" : "text-foreground/80",
                           )}
                           style={heatmapCellStyle(value, heatmapData.maxVal)}
                         >
-                          {value > 0 ? value : ""}
+                          {value > 0 && (
+                            <Link
+                              href={scopedHref(mesHref(mes, estado))}
+                              tabIndex={-1}
+                              aria-label={`${etiqueta}. Ver licitaciones`}
+                              className="flex h-full w-full items-center justify-center rounded-sm hover:ring-2 hover:ring-ring"
+                            >
+                              {value}
+                            </Link>
+                          )}
                         </div>
                       </Pista>
                     );

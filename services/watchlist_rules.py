@@ -35,30 +35,21 @@ from db.repositories.watchlist_rules import (
 )
 from db.sql_fragments import FOLD_TABLE, fold_expr, iso_guard
 from services.dedupe import normalize_organo
+from shared.dto import RadarBanda
 from shared.estados import abierta_core
 
 Frequency = Literal["immediate", "daily", "weekly"]
 
-#: Bandas comerciales del Radar. El vocabulario lo fija
-#: ``services/analytics/scoring._band``.
+#: Las bandas son ``RadarBanda`` de ``shared/dto.py``, la declaración canónica.
+#: Aquí vivía una copia (``Banda``) alineada a mano; como ``typing.Literal``
+#: compara por conjunto, dos copias en distinto orden hacían que el enumerado
+#: del contrato saliera en el orden de quien se importase antes, y el «Codegen
+#: Drift Check» fallaba al azar. Una sola declaración lo cierra.
 #:
-#: **El orden de los argumentos de este ``Literal`` tiene que coincidir con el
-#: de los otros tres sitios que declaran las mismas cuatro bandas**
-#: (``api/routes/radar.py`` y dos DTO de ``shared/dto.py``), y no es una manía
-#: de estilo: ``typing.Literal`` compara y hashea por CONJUNTO, así que
-#: ``Literal["Descarte", …]`` y ``Literal["Caliente", …]`` son iguales para
-#: Pydantic, que reutiliza el esquema del primero que construye. Cuál sea el
-#: primero depende del orden en que se importan los routers, de modo que el
-#: enumerado salía unas veces en un orden y otras en el contrario: el job
-#: «Codegen Drift Check» fallaba de forma intermitente sobre una línea de
-#: ``web/src/generated/api.d.ts`` que nadie había tocado. Un gate que falla por
-#: azar deja de leerse.
-Banda = Literal["Caliente", "Atractiva", "Tibia", "Descarte"]
-
 #: La escala ordinal, de menor a mayor, que es lo que ``banda_min`` necesita
-#: para comparar. Vive aquí y no en el orden del ``Literal`` de arriba
-#: precisamente porque aquel no puede llevar significado: es un conjunto.
-ORDEN_BANDAS: tuple[Banda, ...] = ("Descarte", "Tibia", "Atractiva", "Caliente")
+#: para comparar. Vive aquí y no en el orden del ``Literal`` precisamente
+#: porque aquel no puede llevar significado: es un conjunto.
+ORDEN_BANDAS: tuple[RadarBanda, ...] = ("Descarte", "Tibia", "Atractiva", "Caliente")
 
 #: Techo de filas que se puntúan para resolver ``banda_min``. Es el mismo que
 #: el conteo acotado del listado: por encima, lo que el usuario necesita es
@@ -91,7 +82,7 @@ class WatchlistRule(BaseModel):
     organo: str | None = None
     procedimiento: str | None = None
     tipo_contrato: str | None = None
-    banda_min: Banda | None = None
+    banda_min: RadarBanda | None = None
     plazo_min_dias: int | None = None
 
     @property

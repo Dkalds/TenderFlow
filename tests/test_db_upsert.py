@@ -671,6 +671,7 @@ def db_importe_float4(db):
     return db
 
 
+@pytest.mark.schema_propio  # cambia el tipo de `importe`
 def test_reingesta_identica_no_genera_historial_con_importe_float4(db_importe_float4):
     """Re-ingerir la misma licitación dos veces no debe escribir historial.
 
@@ -703,6 +704,7 @@ def test_reingesta_identica_no_genera_historial_con_importe_float4(db_importe_fl
     assert n == 0
 
 
+@pytest.mark.schema_propio  # cambia el tipo de `importe`
 def test_cambio_real_de_importe_si_genera_historial_con_float4(db_importe_float4):
     """La tolerancia no puede tapar una modificación de importe de verdad."""
     from db.database import connect
@@ -721,6 +723,7 @@ def test_cambio_real_de_importe_si_genera_historial_con_float4(db_importe_float4
     assert "importe" in row[0].split(",")
 
 
+@pytest.mark.schema_propio  # cambia el tipo de `importe`
 def test_reingesta_identica_no_genera_historial_de_ningun_campo(db_importe_float4):
     """El resto de campos rastreados tampoco debe moverse en una re-ingesta.
 

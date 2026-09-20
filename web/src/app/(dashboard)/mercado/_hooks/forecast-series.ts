@@ -32,6 +32,8 @@ export interface ForecastResponse {
   modelo?: string | null;
   /** Sigmas de la banda `lower`/`upper`. No es un intervalo de confianza. */
   banda_sigmas?: number;
+  /** CPV al que corresponde la previsión; `null` = mercado entero. */
+  cpv?: string | null;
 }
 
 /** Fila del `AreaChart`: una clave por serie dibujada, `undefined` donde no aplica. */

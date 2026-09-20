@@ -11,6 +11,8 @@ import { RotateCcw, Info } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Slider } from "@/components/ui/slider";
+import { Switch } from "@/components/ui/switch";
+import { PENALIZACIONES, esPenalizacion } from "../_hooks/use-perfil-scoring";
 
 /** Compartido con la tarjeta de pesos propuestos: una sola lista de rótulos. */
 export const WEIGHT_LABELS: Record<string, string> = {
@@ -96,14 +98,41 @@ export function PesosScoringCard({
         </div>
       </CardHeader>
       <CardContent className="space-y-6">
-        {Object.entries(weights).map(([name, value]) => (
-          <WeightSlider
-            key={name}
-            name={name}
-            value={value}
-            onChange={(v) => onWeightChange(name, v)}
+        {Object.entries(weights)
+          .filter(([name]) => !esPenalizacion(name))
+          .map(([name, value]) => (
+            <WeightSlider
+              key={name}
+              name={name}
+              value={value}
+              onChange={(v) => onWeightChange(name, v)}
+            />
+          ))}
+
+        {/* F1.4: una penalización no es una dimensión. No suma en el 100: se
+            enciende o se apaga, con los puntos que resta a la vista. */}
+        <div className="flex items-start justify-between gap-4 rounded-md border border-border/70 px-3 py-2">
+          <div>
+            <label htmlFor="pen-anulacion" className="text-sm font-medium">
+              Penalizar órganos que anulan a menudo
+            </label>
+            <p className="text-xs text-muted-foreground">
+              Resta {PENALIZACIONES.organo_anula_frecuente} puntos cuando el órgano anula o deja
+              desiertos al menos uno de cada cuatro expedientes (mínimo diez en 24 meses). No cuenta
+              en la suma de 100.
+            </p>
+          </div>
+          <Switch
+            id="pen-anulacion"
+            checked={(weights.organo_anula_frecuente ?? 0) > 0}
+            onCheckedChange={(activa) =>
+              onWeightChange(
+                "organo_anula_frecuente",
+                activa ? PENALIZACIONES.organo_anula_frecuente : 0,
+              )
+            }
           />
-        ))}
+        </div>
 
         {/* Indicador de suma */}
         <div

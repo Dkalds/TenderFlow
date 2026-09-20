@@ -6,7 +6,7 @@ tags: [status, generado]
 
 <!-- generado por scripts/gen_status.py — no editar a mano -->
 
-Generado: 2026-09-18
+Generado: 2026-09-19
 
 ## Paridad de planos de orquestación (ADR-012)
 
@@ -76,7 +76,7 @@ Generado: 2026-09-18
 
 ## Superficie de la API
 
-**266 endpoints** expuestos.
+**277 endpoints** expuestos.
 
 <details><summary>Ver listado</summary>
 
@@ -87,6 +87,8 @@ Generado: 2026-09-18
 | GET | `/api/openapi.json` |
 | GET | `/api/redoc` |
 | GET | `/api/v1/adjudicaciones` |
+| GET | `/api/v1/admin/dlq` |
+| POST | `/api/v1/admin/dlq/{failure_id}/reintentar` |
 | GET | `/api/v1/admin/solicitudes-acceso` |
 | GET | `/api/v1/admin/solicitudes-acceso/grants` |
 | DELETE | `/api/v1/admin/solicitudes-acceso/grants/{grant_id}` |
@@ -95,6 +97,7 @@ Generado: 2026-09-18
 | GET | `/api/v1/admin/users/{user_id}` |
 | PUT | `/api/v1/admin/users/{user_id}/admin` |
 | POST | `/api/v1/admin/users/{user_id}/deactivate` |
+| GET | `/api/v1/analytics/calendario/vencimientos` |
 | GET | `/api/v1/analytics/clusters` |
 | GET | `/api/v1/analytics/compare-periods` |
 | GET | `/api/v1/analytics/competitors` |
@@ -109,6 +112,7 @@ Generado: 2026-09-18
 | GET | `/api/v1/analytics/proyectos-modulos` |
 | GET | `/api/v1/analytics/quality` |
 | GET | `/api/v1/analytics/resumen/desde-mi-ultima-visita` |
+| POST | `/api/v1/analytics/resumen/desde-mi-ultima-visita/visto` |
 | GET | `/api/v1/analytics/resumen/hoy` |
 | GET | `/api/v1/analytics/resumen/novedades` |
 | GET | `/api/v1/analytics/resumen/sankey` |
@@ -151,6 +155,7 @@ Generado: 2026-09-18
 | GET | `/api/v1/competitive/renovaciones/resumen` |
 | GET | `/api/v1/competitive/watchlist` |
 | POST | `/api/v1/competitive/watchlist` |
+| GET | `/api/v1/competitive/watchlist/movimientos` |
 | DELETE | `/api/v1/competitive/watchlist/{empresa_id}` |
 | GET | `/api/v1/cuentas` |
 | POST | `/api/v1/cuentas` |
@@ -169,6 +174,7 @@ Generado: 2026-09-18
 | GET | `/api/v1/eventos` |
 | GET | `/api/v1/exports/calendario.ics` |
 | GET | `/api/v1/exports/calendario/enlace` |
+| GET | `/api/v1/exports/crm` |
 | GET | `/api/v1/exports/descargas/{job_id}` |
 | GET | `/api/v1/exports/download` |
 | GET | `/api/v1/feature-flags` |
@@ -203,6 +209,7 @@ Generado: 2026-09-18
 | POST | `/api/v1/licitaciones/{id_externo:path}/ficha-pliego/extract` |
 | POST | `/api/v1/licitaciones/{id_externo:path}/ficha-pliego/extract-async` |
 | POST | `/api/v1/licitaciones/{id_externo:path}/guion` |
+| GET | `/api/v1/licitaciones/{id_externo:path}/guion.pdf` |
 | POST | `/api/v1/licitaciones/{id_externo:path}/reportes` |
 | POST | `/api/v1/licitaciones/{id_externo:path}/resumen` |
 | GET | `/api/v1/licitaciones/{id_externo:path}/similares` |
@@ -256,6 +263,9 @@ Generado: 2026-09-18
 | PUT | `/api/v1/organizations/{organization_id}/nifs` |
 | GET | `/api/v1/organizations/{organization_id}/plantilla-tareas` |
 | PUT | `/api/v1/organizations/{organization_id}/plantilla-tareas` |
+| GET | `/api/v1/organizations/{organization_id}/plantillas-miembro` |
+| POST | `/api/v1/organizations/{organization_id}/plantillas-miembro` |
+| DELETE | `/api/v1/organizations/{organization_id}/plantillas-miembro/{plantilla_id}` |
 | GET | `/api/v1/organizations/{organization_id}/report-schedule` |
 | PUT | `/api/v1/organizations/{organization_id}/report-schedule` |
 | GET | `/api/v1/organizations/{organization_id}/settings` |
@@ -278,6 +288,7 @@ Generado: 2026-09-18
 | PUT | `/api/v1/pursuits/adjuntos/{attachment_id}/indexable` |
 | GET | `/api/v1/pursuits/agenda` |
 | GET | `/api/v1/pursuits/cartera` |
+| POST | `/api/v1/pursuits/cartera/{cartera_id}/renovacion` |
 | GET | `/api/v1/pursuits/direccion` |
 | GET | `/api/v1/pursuits/metrics` |
 | GET | `/api/v1/pursuits/mi-baja` |

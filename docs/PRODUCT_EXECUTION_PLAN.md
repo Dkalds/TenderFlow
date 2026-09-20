@@ -280,3 +280,10 @@ Las ocho fases quedan implementadas en una entrega vertical:
 
 La cadena de schema es aditiva y conserva una única cabeza Alembic:
 `v60_pg_missing_user_columns → v61 → v62 → v63 → v64`.
+
+> *Estado (2026-09-19):* la frase describe la entrega del 2026-07-30. La cadena
+> sigue teniendo una sola cabeza, pero ya no es `v64` sino
+> `v138_notice_type_code`, y desde `v134` no avanza en orden numérico
+> (`v134 → v136 → v135 → v140 → v138`). La revisión vigente se lee de
+> `alembic heads` o de la cabecera de
+> [database-schema.md](database-schema.md), no de este documento.

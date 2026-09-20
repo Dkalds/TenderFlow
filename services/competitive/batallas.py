@@ -23,11 +23,14 @@ mínimo: el mismo criterio que el resto del producto.
 
 from __future__ import annotations
 
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from observability.logging import get_logger
+
+if TYPE_CHECKING:
+    from services.pursuit_awards import IdentidadFiscal
 
 log = get_logger(__name__)
 
@@ -80,6 +83,12 @@ class Batalla(BaseModel):
     nuestra_baja: float | None = None
     #: La baja con la que se adjudicó, si se observó.
     baja_ganadora: float | None = None
+    #: `True` cuando nuestro cierre dice `lost` pero el adjudicatario observado
+    #: es **nuestra** empresa (NIF declarado o `empresa_id` propio). Una de las
+    #: dos cosas está mal —el cierre o la adjudicación— y no se puede contar
+    #: como derrota: el resultado queda `sin_resolver` y la fila lo marca para
+    #: que alguien revise el cierre.
+    contradiccion: bool = False
 
 
 class BatallasContraMi(BaseModel):
@@ -97,6 +106,10 @@ class BatallasContraMi(BaseModel):
     #: no puede afirmar «ellos ganaron». La UI lo dice; sin eso, un historial
     #: lleno de «perdimos» parecería un rival invencible.
     sin_nif_propio: bool = False
+    #: Cruces con `contradiccion`: cerrados como perdidos con adjudicación a
+    #: nuestro NIF. Se cuentan aparte para que la pantalla pueda decir «revisa
+    #: estos cierres» en vez de sumarlos a las derrotas.
+    contradicciones: int = Field(default=0, ge=0)
 
 
 def _baja(importe: float | None, adjudicado: float | None) -> float | None:
@@ -111,6 +124,7 @@ def construir_batallas(
     cruces: list[dict[str, Any]],
     *,
     nif_propio: str | None = None,
+    identidad: IdentidadFiscal | None = None,
 ) -> BatallasContraMi:
     """Convierte los cruces en el historial contra un competidor.
 
@@ -124,6 +138,12 @@ def construir_batallas(
     sin él **se cuentan** en `n` y se devuelven con `nuestra_baja=None`, para
     que la pantalla pueda decir «de estos doce cruces, en cinco no registramos
     el precio» en vez de esconderlos.
+
+    ``identidad`` es la identidad fiscal completa de la organización (NIFs y
+    ``empresa_id``). Con ella se detecta la contradicción «cerramos perdido y
+    el adjudicatario somos nosotros»: antes contaba como derrota en silencio,
+    y un historial que apunta como derrota lo que ganamos es exactamente el
+    error que hace dudar del resto de la pantalla.
     """
     batallas: list[Batalla] = []
     for fila in cruces:
@@ -132,10 +152,15 @@ def construir_batallas(
         adjudicado = fila.get("importe_adjudicado")
         outcome = str(fila.get("outcome") or "")
         adjudicatario = str(fila.get("adjudicatario_key") or "")
+        somos_adjudicatarios = identidad is not None and identidad.reconoce(
+            nifs=[fila.get("adjudicatario_nif")],
+            empresa_ids=[_entero(fila.get("adjudicatario_empresa_id"))],
+        )
+        contradiccion = outcome == "lost" and somos_adjudicatarios
 
         if outcome == "won":
             resultado: ResultadoBatalla = "ganamos"
-        elif outcome != "lost":
+        elif outcome != "lost" or contradiccion:
             resultado = "sin_resolver"
         elif adjudicatario and adjudicatario == empresa_key:
             # Sólo aquí se puede afirmar que ganaron ellos: el adjudicatario
@@ -154,15 +179,31 @@ def construir_batallas(
                 resultado=resultado,
                 nuestra_baja=_baja(importe, nuestro_precio),
                 baja_ganadora=_baja(importe, adjudicado),
+                contradiccion=contradiccion,
             )
         )
 
+    contradicciones = sum(1 for b in batallas if b.contradiccion)
+    if contradicciones:
+        log.warning(
+            "batallas.cierre_perdido_con_adjudicacion_propia",
+            empresa_key=empresa_key,
+            n=contradicciones,
+        )
     return BatallasContraMi(
         empresa_key=empresa_key,
         batallas=batallas,
         n=len(batallas),
         sin_nif_propio=nif_propio is None,
+        contradicciones=contradicciones,
     )
+
+
+def _entero(valor: Any) -> int | None:
+    try:
+        return int(valor) if valor is not None else None
+    except (TypeError, ValueError):
+        return None
 
 
 # ── F3.5 ────────────────────────────────────────────────────────────────────
@@ -282,12 +323,16 @@ def batallas_de_usuario(
     with alcance_resuelto(user_id, organization_id) as (resuelta, _rol):
         desde = (datetime.now(UTC) - timedelta(days=30 * meses)).isoformat()
         cruces = PursuitRepository().cruces_con_competidor(resuelta, empresa_key, desde_iso=desde)
-        resultado = construir_batallas(empresa_key, cruces, nif_propio=_nif_principal(resuelta))
+        identidad = _identidad_propia(resuelta)
+        nif_propio = next(iter(sorted(identidad.nifs)), None) if identidad else None
+        resultado = construir_batallas(
+            empresa_key, cruces, nif_propio=nif_propio, identidad=identidad
+        )
         return resultado.model_copy(update={"ventana": f"últimos {meses} meses"})
 
 
-def _nif_principal(organization_id: int) -> str | None:
-    """El NIF declarado por la organización, o ``None`` si no declaró ninguno.
+def _identidad_propia(organization_id: int) -> IdentidadFiscal | None:
+    """La identidad fiscal declarada, o ``None`` si no se pudo leer.
 
     Un fallo de lectura degrada a ``None`` en vez de tumbar la pantalla: el
     historial contra un competidor sigue siendo útil sin saber quiénes somos, y
@@ -301,4 +346,4 @@ def _nif_principal(organization_id: int) -> str | None:
     except Exception:
         log.warning("batallas.nif_propio_no_leido", organization_id=organization_id)
         return None
-    return next(iter(sorted(identidad.nifs)), None)
+    return identidad

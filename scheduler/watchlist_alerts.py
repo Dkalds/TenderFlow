@@ -282,6 +282,7 @@ def send_pending_digests(frequency: str = "daily") -> int:
     from services.email_digest import (
         BloqueDigest,
         asunto_digest,
+        bloques_de_avisos,
         etiqueta_de_regla,
         render_digest,
         url_de_baja_alertas,
@@ -291,16 +292,24 @@ def send_pending_digests(frequency: str = "daily") -> int:
     by_recipient: dict[str, dict[int, list[dict[str, Any]]]] = defaultdict(
         lambda: defaultdict(list)
     )
+    # Filas del despachador de eventos (S4.1, `entry_id` negativo): no son
+    # coincidencias de una regla sino avisos sobre lo seguido, y se agrupan por
+    # subtipo (F5.3) en vez de por entrada.
+    avisos_de: dict[str, list[dict[str, Any]]] = defaultdict(list)
     user_key_de: dict[str, str] = {}
     digest_ids: list[int] = []
     for row in rows:
         recipient = str(row["recipient_email"])
-        by_recipient[recipient][int(row["entry_id"])].append(row)
+        if int(row["entry_id"]) < 0:
+            avisos_de[recipient].append(row)
+        else:
+            by_recipient[recipient][int(row["entry_id"])].append(row)
         user_key_de.setdefault(recipient, str(row.get("user_key") or ""))
         digest_ids.append(int(row["id"]))
 
     emails_sent = 0
-    for recipient, by_entry in by_recipient.items():
+    for recipient in sorted({*by_recipient, *avisos_de}):
+        by_entry = by_recipient.get(recipient, {})
         bloques: list[BloqueDigest] = []
         for lics in by_entry.values():
             first = lics[0]
@@ -333,7 +342,10 @@ def send_pending_digests(frequency: str = "daily") -> int:
                 )
             )
 
-        n = sum(len(b.licitaciones) for b in bloques)
+        bloques.extend(bloques_de_avisos(avisos_de.get(recipient, [])))
+
+        n = sum(len(b.licitaciones) for b in bloques if not b.es_aviso)
+        n_avisos = sum(len(b.licitaciones) for b in bloques if b.es_aviso)
         baja_url = url_de_baja_alertas(user_key_de.get(recipient) or "", base_url)
         texto, html = render_digest(
             bloques=bloques,
@@ -348,7 +360,7 @@ def send_pending_digests(frequency: str = "daily") -> int:
         # el correo como spam.
         enviado = enviar_email_transaccional(
             to_addr=recipient,
-            subject=asunto_digest(frequency, n),
+            subject=asunto_digest(frequency, n, avisos=n_avisos),
             texto=texto,
             html=html,
             unsubscribe_url=baja_url,

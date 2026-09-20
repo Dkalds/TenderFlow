@@ -14,6 +14,8 @@ import threading
 from collections.abc import Iterator
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 # ---------------------------------------------------------------------------
 # provider_for
 # ---------------------------------------------------------------------------
@@ -404,6 +406,23 @@ def test_stream_llm_response_history_content_too_long_raises():
                 history=history,  # type: ignore[arg-type]
             )
         )
+
+
+@pytest.fixture(autouse=True)
+def _sin_secretos_cacheados():
+    """La clave que lea este módulo es la que fija el test, no la del vecino.
+
+    ``config.secrets`` cachea 300 s: un test que hace
+    ``monkeypatch.setenv("OPENAI_API_KEY", ...)`` deja ahí su valor y el
+    siguiente del mismo worker lo hereda. Detectado en CI el 2026-09-19
+    (PR #320): este módulo recibía el ``sk-test`` de ``test_ask_route`` al
+    cambiar el reparto de xdist.
+    """
+    from config.secrets import clear_cache
+
+    clear_cache()
+    yield
+    clear_cache()
 
 
 def test_stream_llm_response_passes_api_key(monkeypatch):

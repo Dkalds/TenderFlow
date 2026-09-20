@@ -18,7 +18,7 @@ import type { ModoInspector } from "../../radar/_hooks/use-media-query";
  *   `?lic=` ya existía y no pintaba nada: abrir una fila era un clic sin
  *   respuesta. Ahora la ficha entra como panel lateral sobre la tabla y se
  *   cierra con Esc, con la X o navegando atrás.
- * - **< md — nada.** La tabla mide 1246 px y a 375 px la pantalla es de
+ * - **< md — nada.** La tabla mide 1358 px y a 375 px la pantalla es de
  *   consulta: el permalink sigue siendo válido y la ficha se lee en cuanto la
  *   ventana da para ello.
  *

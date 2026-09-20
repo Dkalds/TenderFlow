@@ -156,13 +156,38 @@ Si alguno sale `false`: `DROP INDEX CONCURRENTLY <nombre>;` y repetir el paso.
 
 ## Paso 6 — lecturas (fuera de esta ventana)
 
-`NUCLEO_TIPADO_LECTURA=true` **no hace nada por sí solo**: sólo cambia lo que
-devuelven `columna_nucleo_sql`, `importe_sql` y `fecha_valida_sql`
-(`db/sql_fragments.py`), y hoy ninguna consulta los usa todavía. El paso de
-lecturas es consulta a consulta —listado, cursor, scoring, overview y
-superficie pública, las cinco del criterio de `EXPLAIN` del plan—, cada una con
-su `EXPLAIN` antes y después y su comparación de resultados, y sólo después de
-un paso 4 con cero divergencias.
+`NUCLEO_TIPADO_LECTURA=true` cambia lo que devuelven `columna_nucleo`,
+`columna_nucleo_sql`, `importe_sql`, `importe_select_sql` y `fecha_valida_sql`
+(`db/sql_fragments.py`). Desde 2026-09-19 las cinco consultas calientes del
+criterio de `EXPLAIN` del plan los consumen, así que **encender el flag las
+mueve a las cinco a la vez**:
+
+| Consulta | Dónde | Qué pasa a la sombra |
+|---|---|---|
+| Listado | `LicitacionRepository.list_paginated` (+ rama FTS `_list_fts`) | filtros de publicación, cierre, plazo e importe; `ORDER BY`; importe proyectado |
+| Cursor | `LicitacionRepository.list_cursor` | los mismos filtros; clave del cursor y su orden; importe proyectado |
+| Scoring | `AggregateRepository.scoring_candidates`, `licitaciones_by_ids`, `importe_percentiles_universo` | plazo vivo y su guarda; filtros; importe proyectado y percentiles |
+| Overview | `AggregateRepository.overview_kpis` | filtros; `SUM`/`AVG` de importe |
+| Pública | `PublicoRepository.ficha` y `listar` | sólo el importe proyectado (sustancia y orden son la definición de la vista materializada y no se mueven) |
+
+El resto de agregados que comparten `build_licitaciones_where` **no** se mueve:
+el constructor sólo lee la sombra con `nucleo=True`, y sólo lo pasan esas
+consultas. Con el flag apagado el SQL de las cinco es byte a byte el anterior
+(comprobado al migrarlas comparando el SQL y los parámetros emitidos contra el
+commit anterior; lo sostienen `tests/test_nucleo_tipado_consultas.py`).
+
+Antes de encenderlo en producción, y sólo después de un paso 4 con cero
+divergencias:
+
+1. `EXPLAIN` de las cinco con el flag en `false` y en `true` (una sesión con
+   `SET` no basta: el flag es un setting de la app; usá un entorno de staging o
+   el SQL que emiten los tests). Criterio del plan: ningún cast en tiempo de
+   ejecución sobre esas columnas en el `WHERE`/`ORDER BY`.
+2. Comparar resultados de cada una con los dos valores del flag sobre la misma
+   BD (mismos ids, mismo orden, mismos totales).
+3. Comprobar la zona horaria de la sesión (`SHOW timezone` → `UTC`): los
+   parámetros de fecha (`'2026-01-31'`) se interpretan como `timestamptz` en esa
+   zona. Ver el docstring de `columna_nucleo_sql`.
 
 **La clave canónica no se mueve** en ningún caso: `periodo_publicacion_sql`
 sigue leyendo el texto (índice `v92`, vistas `v101`/`v102`, sitemap). Lo fija

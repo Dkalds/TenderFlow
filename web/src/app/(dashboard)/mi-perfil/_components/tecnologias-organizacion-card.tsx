@@ -94,7 +94,7 @@ export function TecnologiasOrganizacionCard() {
             disabled={!dirty || update.isPending}
             onClick={() =>
               update
-                .mutateAsync(seleccion)
+                .mutateAsync({ tecnologias: seleccion })
                 .then(() => {
                   setDirty(false);
                   toast.success("Tecnologías guardadas. El Radar ya usa este ámbito.");

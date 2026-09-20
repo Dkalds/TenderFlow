@@ -103,6 +103,12 @@ describe("paginación", () => {
     expect(pageWindowFor(9, 10)).toEqual([7, 8, 9]);
     expect(pageWindowFor(0, 1)).toEqual([0]);
   });
+
+  it("con cursor, la ventana no ofrece páginas sin cursor conocido", () => {
+    // Vistas la 0 y la 1, y conocido el cursor de la 2: hasta ahí se puede ir.
+    expect(pageWindowFor(1, 10, 3)).toEqual([0, 1, 2]);
+    expect(pageWindowFor(0, 10, 1)).toEqual([0]);
+  });
 });
 
 /* ── CSV ────────────────────────────────────────────────────────────── */

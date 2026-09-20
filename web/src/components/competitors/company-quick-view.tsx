@@ -1,10 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowDownRight, ArrowUpRight, CalendarDays, Eye, ExternalLink } from "lucide-react";
+import { ArrowDownRight, ArrowUpRight, CalendarDays, ExternalLink } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button";
+import { SeguirBoton } from "@/components/seguir-boton";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Pista } from "@/components/ui/pista";
 import { cn, formatCurrency, formatDate, formatNumber, formatPercent } from "@/lib/utils";
@@ -32,9 +33,6 @@ interface CompanyQuickViewProps {
   recentAwards?: CompanyAwardsData;
   isLoadingProfile: boolean;
   isLoadingAwards: boolean;
-  watched: boolean;
-  watchPending: boolean;
-  onToggleWatch: () => void;
 }
 
 function Metric({
@@ -135,9 +133,6 @@ export function CompanyQuickView({
   recentAwards,
   isLoadingProfile,
   isLoadingAwards,
-  watched,
-  watchPending,
-  onToggleWatch,
 }: CompanyQuickViewProps) {
   const totals = profile?.totales;
   const comparison = profile?.comparacion;
@@ -288,10 +283,22 @@ export function CompanyQuickView({
       </div>
 
       <div className="bg-background/95 supports-[backdrop-filter]:bg-background/85 flex flex-col-reverse gap-2 border-t p-4 backdrop-blur sm:flex-row sm:items-center sm:justify-between md:px-6">
-        <Button variant={watched ? "secondary" : "outline"} onClick={onToggleWatch} disabled={watchPending}>
-          <Eye aria-hidden="true" />
-          {watched ? "Vigilando" : "Vigilar empresa"}
-        </Button>
+        {/* El control único de ADR-031 §C con la piel del botón de siempre.
+            Sigue el grupo entero de identidades equivalentes: vigilar una
+            empresa deduplicada es vigilar todos sus `empresa_id`. */}
+        <SeguirBoton
+          targetType="empresa"
+          targetId={String(empresaId)}
+          equivalentes={(groupIds && groupIds.length > 0 ? groupIds : [empresaId]).map(String)}
+          icono="ojo"
+          nombreAccesible="visible"
+          textos={{ seguir: "Vigilar empresa", siguiendo: "Vigilando" }}
+          clases={{
+            base: "",
+            activo: buttonVariants({ variant: "secondary" }),
+            inactivo: buttonVariants({ variant: "outline" }),
+          }}
+        />
         <Link href={fullProfileHref} className={cn(buttonVariants(), "min-h-10 gap-2")}>
           Ver análisis y listado completo
           <ExternalLink aria-hidden="true" />

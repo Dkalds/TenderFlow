@@ -33,6 +33,11 @@ vi.mock("../_components/organizacion-tab", () => ({ OrganizacionTab: () => null 
 vi.mock("../../ops/_components/webhooks-view", () => ({
   WebhooksEquipoView: () => <p>webhooks del equipo</p>,
 }));
+vi.mock("../../direccion/_components/actividad-equipo", () => ({
+  ActividadEquipo: ({ organizationId }: { organizationId: number | null }) => (
+    <p>feed de la organización {organizationId}</p>
+  ),
+}));
 
 import EquipoPage from "@/app/(dashboard)/equipo/page";
 
@@ -62,5 +67,17 @@ describe("EquipoPage — pestaña Integraciones", () => {
 
     expect(screen.queryByRole("tab", { name: "Integraciones" })).not.toBeInTheDocument();
     expect(screen.queryByText("webhooks del equipo")).not.toBeInTheDocument();
+  });
+});
+
+describe("EquipoPage — pestaña Actividad (F4.5)", () => {
+  // Un `member` también: el feed vivía sólo en Dirección (owner/admin) y el
+  // backend ya lo acota por rol, así que la pantalla no tiene nada que ocultar.
+  it.each(["owner", "admin", "member"])("un %s ve el feed de la organización activa", (role) => {
+    fijarRol(role);
+    render(<EquipoPage />);
+
+    fireEvent.mouseDown(screen.getByRole("tab", { name: "Actividad" }));
+    expect(screen.getByText("feed de la organización 21")).toBeInTheDocument();
   });
 });
