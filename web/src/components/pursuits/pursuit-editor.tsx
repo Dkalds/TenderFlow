@@ -11,20 +11,13 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { type Pursuit, type PursuitDecision, type PursuitOutcome, type PursuitStatus, useUpdatePursuit } from "@/hooks/use-pursuits";
+import { type Pursuit, type PursuitDecision, type PursuitOutcome, useUpdatePursuit } from "@/hooks/use-pursuits";
 import { useOrganizationMembers } from "@/hooks/use-organization";
-import { PursuitDecisionBadge, PursuitOutcomeBadge, PursuitStatusBadge } from "@/components/pursuits/pursuit-presenters";
+import { PursuitDecisionBadge, PursuitOutcomeBadge } from "@/components/pursuits/pursuit-presenters";
 import { MOTIVOS_PERDIDA, errorDeCierre, esMotivoPerdida, pideCodificar } from "@/lib/motivos-perdida";
 import { ariaCampo, CampoError } from "@/lib/forms/campo";
 import { oportunidad } from "@/lib/forms/esquemas";
 import { numeroDeTexto } from "@/lib/forms/valores";
-
-const statuses: Array<{ value: PursuitStatus; label: string }> = [
-  { value: "identified", label: "Identificada" }, { value: "qualifying", label: "En cualificación" },
-  { value: "go_no_go", label: "Decisión GO/NO-GO" }, { value: "preparing", label: "Preparando oferta" },
-  { value: "submitted", label: "Oferta presentada" }, { value: "won", label: "Ganada" },
-  { value: "lost", label: "Perdida" }, { value: "withdrawn", label: "Retirada" },
-];
 
 /** Valores del formulario: claves de `PursuitUpdate`, del esquema de S7.2. */
 type FormState = z.input<typeof oportunidad.esquema>;
@@ -69,6 +62,10 @@ function PursuitEditorForm({ pursuit }: { pursuit: Pursuit }) {
     }
     try {
       await update.mutateAsync({
+        // Sin control propio desde que la fase vive en el path de la ficha:
+        // viaja el valor que ya tenía, y `expected_version` corta si alguien la
+        // movió. Elegir un resultado sí la fija, porque el backend deriva el
+        // estado terminal del `outcome`.
         status: form.status,
         responsible_user_id: form.responsible_user_id.trim() ? Number(form.responsible_user_id) : null,
         decision: form.decision,
@@ -102,13 +99,9 @@ function PursuitEditorForm({ pursuit }: { pursuit: Pursuit }) {
     <form onSubmit={save} noValidate className="space-y-4">
       <Card>
         <CardHeader className="flex-row items-center justify-between gap-3 space-y-0">
-          <div><CardTitle className="flex items-center gap-2"><Check className="h-4 w-4 text-primary" />Decisión y avance</CardTitle><p className="mt-1 text-sm text-muted-foreground">El estado no sustituye la decisión de negocio.</p></div>
-          <PursuitStatusBadge status={form.status} />
+          <div><CardTitle className="flex items-center gap-2"><Check className="h-4 w-4 text-primary" />Decisión y responsable</CardTitle><p className="mt-1 text-sm text-muted-foreground">La fase se cambia en el path de la cabecera; esto es la decisión de negocio.</p></div>
         </CardHeader>
         <CardContent className="grid gap-4 sm:grid-cols-2">
-          <label className="space-y-1.5 text-sm font-medium" htmlFor={inputId("status")}>Estado
-            <Select value={form.status} onValueChange={(value) => set("status", value as PursuitStatus)}><SelectTrigger id={inputId("status")}><SelectValue /></SelectTrigger><SelectContent>{statuses.map((status) => <SelectItem key={status.value} value={status.value}>{status.label}</SelectItem>)}</SelectContent></Select>
-          </label>
           <label className="space-y-1.5 text-sm font-medium" htmlFor={inputId("owner")}>Responsable
             <Select
               value={form.responsible_user_id || "unassigned"}
