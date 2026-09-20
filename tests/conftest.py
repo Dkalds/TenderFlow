@@ -180,23 +180,6 @@ def _disable_rate_limiter(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
-def _clear_secrets_cache():
-    """Vacía la caché TTL de ``config.secrets`` antes de cada test.
-
-    Un test que hace ``monkeypatch.setenv("OPENAI_API_KEY", ...)`` y llega a
-    ``get_secret`` deja el valor cacheado 300 s: el siguiente test del mismo
-    worker que fija otra clave recibe la vieja. Detectado 2026-09-19 en CI
-    (PR #320): ``test_stream_llm_response_passes_api_key`` recibía el
-    ``sk-test`` de ``test_ask_route.py`` al cambiar el reparto de xdist.
-    """
-    from config.secrets import clear_cache
-
-    clear_cache()
-    yield
-    clear_cache()
-
-
-@pytest.fixture(autouse=True)
 def _clear_service_data_caches():
     """Limpia las cachés en memoria de la capa de servicios entre tests.
 
